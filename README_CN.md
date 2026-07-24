@@ -5,7 +5,7 @@
 <h1 align="center">ReadAny</h1>
 
 <p align="center">
-  <strong>阅读无界，理解无限</strong>
+  <strong>本地优先的 AI 电子书阅读器，覆盖桌面端与移动端</strong>
 </p>
 
 <p align="center">
@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  AI 驱动的电子书阅读器 —— 语义搜索、智能对话、知识管理，一站式解决
+  ReadAny 帮你向书籍提问、按语义寻找观点，并用 RAG 对话、语义搜索、高亮笔记、TTS 与 WebDAV 同步构建私有阅读知识库。
 </p>
 
 <p align="center">
@@ -35,6 +35,13 @@
 ---
 
 > 🚀 **v2.0 更新**: 移动端应用（iOS/Android）现已上线！详见下方 [移动端](#移动端应用) 章节。
+
+## AI 原生阅读工作流
+
+- **和书库对话** - 围绕当前书籍、选中文本和阅读位置提问，答案基于你的阅读上下文生成
+- **按语义找内容** - 向量检索 + BM25 混合搜索，不记得原文关键词也能找回相关概念
+- **知识留在本地** - 本地 embeddings 与本地向量库，让书籍、高亮和笔记具备离线可用能力
+- **接入常用模型** - 支持 OpenAI、Claude、Gemini、Ollama、DeepSeek 以及兼容接口
 
 ## 为什么选择 ReadAny？
 
