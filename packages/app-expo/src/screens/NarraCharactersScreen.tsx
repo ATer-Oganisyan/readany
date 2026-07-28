@@ -1,12 +1,15 @@
 import { NarraLogo } from "@/components/NarraLogo";
+import { type ExtractorRef, ExtractorWebView } from "@/components/rag/ExtractorWebView";
 import { ChevronLeftIcon, MessageSquareIcon, SparklesIcon } from "@/components/ui/Icon";
 import { analyzeBookCharacters } from "@/lib/narra/character-analysis";
 import { generateCharacterPortrait } from "@/lib/narra/media";
+import { inspectMobileBookForVectorize } from "@/lib/rag/auto-vectorize-book";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useLibraryStore, useNarraStore } from "@/stores";
 import { radius, useColors } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useMemo, useState } from "react";
+import * as FileSystem from "expo-file-system/legacy";
+import { useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -29,7 +32,10 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
   const analyzing = useNarraStore((state) => state.analyzingBookId === bookId);
   const updateCharacter = useNarraStore((state) => state.updateCharacter);
   const [portraitLoading, setPortraitLoading] = useState<string | null>(null);
+  const [analysisStage, setAnalysisStage] = useState("");
+  const extractorRef = useRef<ExtractorRef>(null);
   const characters = bookState?.characters ?? [];
+  const busy = analyzing || Boolean(analysisStage);
   const unlocked = useMemo(
     () => characters.filter((character) => (book?.progress ?? 0) >= character.unlockProgress),
     [book?.progress, characters],
@@ -38,9 +44,24 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
   const analyze = async () => {
     if (!book) return;
     try {
-      await analyzeBookCharacters(book);
+      setAnalysisStage("Извлекаю текст…");
+      const info = await inspectMobileBookForVectorize(book);
+      let extractedText = "";
+      if (info.canVectorize && info.mimeType && extractorRef.current) {
+        const base64 = await FileSystem.readAsStringAsync(info.absPath, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        const chapters = await extractorRef.current.extractChapters(base64, info.mimeType);
+        extractedText = chapters
+          .map((chapter) => `${chapter.title || ""}\n${chapter.content || ""}`)
+          .join("\n\n");
+      }
+      setAnalysisStage("Ищу героев…");
+      await analyzeBookCharacters(book, extractedText);
     } catch (error) {
       Alert.alert("Не удалось найти персонажей", error instanceof Error ? error.message : String(error));
+    } finally {
+      setAnalysisStage("");
     }
   };
 
@@ -58,6 +79,7 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={["top"]}>
+      <ExtractorWebView ref={extractorRef} />
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
           <ChevronLeftIcon color={colors.foreground} />
@@ -87,10 +109,15 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
             <TouchableOpacity
               style={[styles.primaryButton, { backgroundColor: colors.primary }]}
               onPress={() => void analyze()}
-              disabled={analyzing}
+              disabled={busy}
             >
-              {analyzing ? (
-                <ActivityIndicator color={colors.primaryForeground} />
+              {busy ? (
+                <View style={styles.analyzingRow}>
+                  <ActivityIndicator color={colors.primaryForeground} />
+                  <Text style={[styles.primaryText, { color: colors.primaryForeground }]}>
+                    {analysisStage || "Ищу героев…"}
+                  </Text>
+                </View>
               ) : (
                 <Text style={[styles.primaryText, { color: colors.primaryForeground }]}>
                   Найти персонажей
@@ -155,6 +182,31 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
                         {character.traits.join(" · ")}
                       </Text>
                     ) : null}
+                    {isUnlocked ? (
+                      <View style={styles.characterActions}>
+                        <TouchableOpacity
+                          style={[styles.characterAction, { borderColor: colors.border }]}
+                          onPress={(event) => {
+                            event.stopPropagation();
+                            void createPortrait(character);
+                          }}
+                        >
+                          <Text style={[styles.characterActionText, { color: colors.foreground }]}>
+                            {character.portraitUri ? "Обновить портрет" : "Создать портрет"}
+                          </Text>
+                        </TouchableOpacity>
+                        <View style={[styles.characterAction, { backgroundColor: colors.primary }]}>
+                          <Text
+                            style={[
+                              styles.characterActionText,
+                              { color: colors.primaryForeground },
+                            ]}
+                          >
+                            Голосовой чат
+                          </Text>
+                        </View>
+                      </View>
+                    ) : null}
                   </View>
                   {isUnlocked ? <MessageSquareIcon size={20} color={colors.indigo} /> : null}
                 </TouchableOpacity>
@@ -191,9 +243,10 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 14, lineHeight: 21, textAlign: "center", marginTop: 8 },
   primaryButton: { borderRadius: 999, minHeight: 48, paddingHorizontal: 24, marginTop: 22, justifyContent: "center" },
   primaryText: { fontSize: 15, fontWeight: "700" },
+  analyzingRow: { flexDirection: "row", alignItems: "center", gap: 9 },
   error: { fontSize: 13, lineHeight: 18, textAlign: "center", marginTop: 14 },
   card: {
-    minHeight: 104,
+    minHeight: 128,
     padding: 16,
     borderWidth: 1,
     borderRadius: radius.xl,
@@ -209,5 +262,15 @@ const styles = StyleSheet.create({
   characterName: { fontSize: 17, fontWeight: "700" },
   role: { fontSize: 13, lineHeight: 18, marginTop: 4 },
   traits: { fontSize: 12, lineHeight: 17, marginTop: 5 },
+  characterActions: { flexDirection: "row", gap: 7, marginTop: 10, flexWrap: "wrap" },
+  characterAction: {
+    minHeight: 30,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  characterActionText: { fontSize: 11, fontWeight: "700" },
   refreshButton: { alignSelf: "center", padding: 16 },
 });

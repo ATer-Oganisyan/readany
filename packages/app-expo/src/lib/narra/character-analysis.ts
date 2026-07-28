@@ -79,20 +79,23 @@ function normalizeCharacters(payload: Record<string, unknown>): NarraCharacter[]
   });
 }
 
-export async function analyzeBookCharacters(book: Book): Promise<NarraCharacter[]> {
+export async function analyzeBookCharacters(
+  book: Book,
+  extractedText?: string,
+): Promise<NarraCharacter[]> {
   const store = useNarraStore.getState();
   store.setAnalyzing(book.id);
   store.setAnalysisError(book.id);
   try {
     const chunks = await getChunks(book.id);
-    if (chunks.length === 0) {
-      throw new Error("Сначала проиндексируйте книгу, чтобы Narra могла найти персонажей");
-    }
-    const excerpt = chunks
-      .slice(0, 28)
-      .map((chunk) => `${chunk.chapterTitle}\n${chunk.content}`)
-      .join("\n\n")
-      .slice(0, 100_000);
+    const excerpt = (
+      extractedText ||
+      chunks
+        .slice(0, 28)
+        .map((chunk) => `${chunk.chapterTitle}\n${chunk.content}`)
+        .join("\n\n")
+    ).slice(0, 100_000);
+    if (!excerpt.trim()) throw new Error("В книге не удалось извлечь текст для анализа");
     const messages = [
       {
         role: "system",

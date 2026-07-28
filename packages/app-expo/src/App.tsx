@@ -51,7 +51,7 @@ import TrackPlayer, {
 import { FloatingTTSBubble } from "@/components/tts/FloatingTTSBubble";
 import { UpdateDialog } from "@/components/update/UpdateDialog";
 import { useUpdateChecker } from "@/hooks/use-update-checker";
-import { createNarraGatewayFetch } from "@/lib/ai/narra-gateway-fetch";
+import { createNarraGatewayFetch, setNarraDirectFetch } from "@/lib/ai/narra-gateway-fetch";
 import { navigationRef } from "@/lib/navigationRef";
 import { ExpoPlatformService } from "@/lib/platform/expo-platform-service";
 import { MobileSyncAdapter } from "@/lib/sync/sync-adapter-mobile";
@@ -129,6 +129,13 @@ export default function App() {
         console.log("[App] bootstrap: register platform service");
         const platform = new ExpoPlatformService();
         setPlatformService(platform);
+        setNarraDirectFetch(
+          ((input: RequestInfo | URL, init?: RequestInit) =>
+            platform.fetch(
+              typeof input === "string" ? input : input.toString(),
+              { ...init, responseType: "text", timeoutMs: 60_000 },
+            )) as typeof globalThis.fetch,
+        );
 
         console.log("[App] bootstrap: register sync adapter");
         setSyncAdapter(new MobileSyncAdapter());

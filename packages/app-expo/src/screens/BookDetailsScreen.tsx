@@ -12,6 +12,7 @@ import { extractLocalBookMetadata } from "@/lib/book/auto-metadata";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { SettingsHeader } from "@/screens/settings/SettingsHeader";
 import { useLibraryStore } from "@/stores/library-store";
+import { useNarraStore } from "@/stores/narra-store";
 import {
   type ThemeColors,
   fontSize,
@@ -276,6 +277,7 @@ async function pickCoverFromPhotoLibrary(): Promise<PickedCoverSource | null> {
 export function BookDetailsScreen({ route, navigation }: Props) {
   const { bookId } = route.params;
   const colors = useColors();
+  const narraBook = useNarraStore((state) => state.books[bookId]);
   const layout = useResponsiveLayout();
   const { t, i18n } = useTranslation();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -641,6 +643,36 @@ export function BookDetailsScreen({ route, navigation }: Props) {
               last
             />
           </View>
+
+          <TouchableOpacity
+            activeOpacity={0.82}
+            style={styles.narraPanel}
+            onPress={() => navigation.navigate("NarraCharacters", { bookId })}
+          >
+            <View style={styles.narraPanelHeader}>
+              <View style={styles.narraMark}>
+                <Sparkles size={22} color="#FFFFFF" />
+              </View>
+              <View style={styles.narraPanelCopy}>
+                <Text style={styles.narraPanelEyebrow}>NARRA · ЖИВАЯ КНИГА</Text>
+                <Text style={styles.narraPanelTitle}>
+                  {narraBook?.characters.length
+                    ? `Герои готовы: ${narraBook.characters.length}`
+                    : "Оживить эту книгу"}
+                </Text>
+              </View>
+              <ChevronRightIcon size={22} color="#FFFFFF" />
+            </View>
+            <Text style={styles.narraPanelDescription}>
+              Персонажи с памятью, голосовые диалоги, портреты, иллюстрации сцен и
+              многоголосая озвучка.
+            </Text>
+            <View style={styles.narraFeatureRow}>
+              <Text style={styles.narraFeature}>Герои</Text>
+              <Text style={styles.narraFeature}>Голос</Text>
+              <Text style={styles.narraFeature}>Изображения</Text>
+            </View>
+          </TouchableOpacity>
 
           <View style={styles.tabBar}>
             <DetailsTabButton
@@ -1914,6 +1946,50 @@ const makeStyles = (colors: ThemeColors) =>
       borderTopWidth: StyleSheet.hairlineWidth,
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderColor: withOpacity(colors.border, 0.8),
+    },
+    narraPanel: {
+      marginTop: spacing.lg,
+      padding: 18,
+      borderRadius: radius.xl,
+      backgroundColor: "#05042B",
+      shadowColor: "#5B4BFF",
+      shadowOpacity: 0.22,
+      shadowRadius: 18,
+      shadowOffset: { width: 0, height: 7 },
+      elevation: 6,
+    },
+    narraPanelHeader: { flexDirection: "row", alignItems: "center" },
+    narraMark: {
+      width: 44,
+      height: 44,
+      borderRadius: 14,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "#675CFF",
+    },
+    narraPanelCopy: { flex: 1, marginHorizontal: 12 },
+    narraPanelEyebrow: {
+      color: "#AAA5FF",
+      fontSize: 10,
+      fontWeight: "800",
+      letterSpacing: 1.2,
+    },
+    narraPanelTitle: { color: "#FFFFFF", fontSize: 19, fontWeight: "800", marginTop: 3 },
+    narraPanelDescription: {
+      color: "rgba(255,255,255,0.72)",
+      fontSize: 13,
+      lineHeight: 19,
+      marginTop: 14,
+    },
+    narraFeatureRow: { flexDirection: "row", gap: 8, marginTop: 14 },
+    narraFeature: {
+      color: "#FFFFFF",
+      fontSize: 11,
+      fontWeight: "700",
+      paddingHorizontal: 11,
+      paddingVertical: 6,
+      borderRadius: 999,
+      backgroundColor: "rgba(255,255,255,0.12)",
     },
     metaItem: {
       flex: 1,

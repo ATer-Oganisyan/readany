@@ -2,7 +2,9 @@ import * as Crypto from "expo-crypto";
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 
-const DEFAULT_GATEWAY_URL = "https://narra-proxy-production.up.railway.app";
+// Production service currently runs the legacy gateway without installation auth.
+// Narra's current v2 installation/token API and all media providers are deployed here.
+const DEFAULT_GATEWAY_URL = "https://narra-proxy-staging.up.railway.app";
 const INSTALLATION_ID_KEY = "narra.gateway.installation-id";
 const INSTALLATION_SECRET_KEY = "narra.gateway.installation-secret";
 const TOKEN_EXPIRY_SKEW_MS = 30_000;
@@ -25,6 +27,23 @@ interface OpenAIMessage {
 let cachedIdentity: InstallationIdentity | null = null;
 let cachedToken: GatewayToken | null = null;
 let tokenPromise: Promise<string> | null = null;
+let configuredFetch: typeof globalThis.fetch = globalThis.fetch;
+
+export function setNarraDirectFetch(fetchImpl: typeof globalThis.fetch) {
+  configuredFetch = fetchImpl;
+}
+
+function logGateway(stage: string, detail?: unknown) {
+  console.log(`[NarraGateway] ${stage}`, detail ?? "");
+}
+
+function requestHeaders(initHeaders?: HeadersInit): Record<string, string> {
+  const headers: Record<string, string> = {};
+  new Headers(initHeaders).forEach((value, key) => {
+    headers[key] = value;
+  });
+  return headers;
+}
 
 function gatewayUrl(): string {
   return (process.env.EXPO_PUBLIC_NARRA_GATEWAY_URL?.trim() || DEFAULT_GATEWAY_URL).replace(
@@ -97,11 +116,13 @@ async function requestToken(
           installation_id: identity.installationId,
           installation_secret: identity.installationSecret,
         };
+  logGateway(`authorization ${mode}: start`);
   const response = await fetchImpl(`${gatewayUrl()}/v2/installations/${mode}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
+  logGateway(`authorization ${mode}: ${response.status}`);
 
   if (!response.ok) {
     if (mode === "refresh" && response.status === 404) {
@@ -134,16 +155,20 @@ async function getToken(fetchImpl: typeof globalThis.fetch, forceRefresh = false
 export async function narraGatewayRequest(
   path: string,
   init: RequestInit = {},
-  fetchImpl: typeof globalThis.fetch = globalThis.fetch,
+  fetchImpl: typeof globalThis.fetch = configuredFetch,
 ): Promise<Response> {
   const send = async (forceRefresh = false) => {
+    logGateway(`${path}: token`);
     const token = await getToken(fetchImpl, forceRefresh);
-    const headers = new Headers(init.headers);
-    headers.set("authorization", `Bearer ${token}`);
-    return fetchImpl(`${gatewayUrl()}${path.startsWith("/") ? path : `/${path}`}`, {
-      ...init,
-      headers,
-    });
+    const headers = requestHeaders(init.headers);
+    headers.authorization = `Bearer ${token}`;
+    logGateway(`${path}: request`);
+    const response = await fetchImpl(
+      `${gatewayUrl()}${path.startsWith("/") ? path : `/${path}`}`,
+      { ...init, headers, signal: undefined },
+    );
+    logGateway(`${path}: ${response.status}`);
+    return response;
   };
 
   let response = await send();
@@ -256,16 +281,19 @@ export function createNarraGatewayFetch(
     });
 
     const send = async (forceRefresh = false) => {
+      logGateway(`chat ${stream ? "stream" : "complete"}: token`);
       const token = await getToken(fetchImpl, forceRefresh);
-      return fetchImpl(`${gatewayUrl()}/v2/ai/chat/${stream ? "stream" : "complete"}`, {
+      logGateway(`chat ${stream ? "stream" : "complete"}: request`);
+      const response = await fetchImpl(`${gatewayUrl()}/v2/ai/chat/${stream ? "stream" : "complete"}`, {
         method: "POST",
         headers: {
           authorization: `Bearer ${token}`,
           "content-type": "application/json",
         },
         body: gatewayBody,
-        signal: init?.signal,
       });
+      logGateway(`chat ${stream ? "stream" : "complete"}: ${response.status}`);
+      return response;
     };
 
     let response = await send();
