@@ -1,4 +1,4 @@
-import { BookOpenIcon, LibraryIcon, PaletteIcon, UserIcon } from "@/components/ui/Icon";
+import { BookOpenIcon, LibraryIcon, UserIcon } from "@/components/ui/Icon";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { LibraryScreen } from "@/screens/LibraryScreen";
 import { ProfileScreen } from "@/screens/ProfileScreen";
@@ -20,7 +20,6 @@ export type TabParamList = {
   Library: undefined;
   ReaderHome: undefined;
   Journey: undefined;
-  Settings: undefined;
   // Legacy contextual screens remain typed for existing deep links,
   // but are no longer top-level Narra tabs.
   Chat: undefined;
@@ -54,10 +53,6 @@ function ReaderHomeScreen() {
 
 function JourneyScreen() {
   return <ProfileScreen section="journey" />;
-}
-
-function SettingsScreen() {
-  return <ProfileScreen section="settings" />;
 }
 
 export function TabNavigator() {
@@ -126,14 +121,6 @@ export function TabNavigator() {
         options={{
           tabBarLabel: "Мой путь",
           tabBarIcon: ({ color, size }) => <UserIcon color={color} size={size} />,
-        }}
-      />
-      <Tab.Screen
-        name="Settings"
-        component={SettingsScreen}
-        options={{
-          tabBarLabel: "Настройки",
-          tabBarIcon: ({ color, size }) => <PaletteIcon color={color} size={size} />,
         }}
       />
     </Tab.Navigator>
