@@ -24,9 +24,7 @@ const THEMES: { id: ThemeMode; labelKey: string; fallback: string; Icon: typeof 
 ];
 
 const LANGUAGES = [
-  { code: "zh", label: "简体中文" },
-  { code: "zh-TW", label: "繁體中文" },
-  { code: "en", label: "English" },
+  { code: "ru", label: "Русский" },
   { code: "ja", label: "日本語" },
   { code: "ko", label: "한국어" },
   { code: "fr", label: "Français" },

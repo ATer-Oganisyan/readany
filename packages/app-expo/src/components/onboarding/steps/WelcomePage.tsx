@@ -1,4 +1,4 @@
-import { DarkModeSvg } from "@/components/DarkModeSvg";
+import { NarraLogo } from "@/components/NarraLogo";
 import { useTheme } from "@/styles/theme";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -8,7 +8,6 @@ import { useTranslation } from "react-i18next";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import ReadingSvg from "../../../../assets/illustrations/reading.svg";
 import type { OnboardingStackParamList } from "../OnboardingNavigator";
 
 type NavProp = NativeStackNavigationProp<OnboardingStackParamList, "Welcome">;
@@ -39,16 +38,14 @@ export function WelcomePage() {
           entering={FadeInDown.delay(100).springify()}
           style={[styles.iconContainer, { backgroundColor: "transparent" }]}
         >
-          <DarkModeSvg width={180} height={180}>
-            <ReadingSvg width={180} height={180} />
-          </DarkModeSvg>
+          <NarraLogo size={116} />
         </Animated.View>
 
         <Animated.Text
           entering={FadeInDown.delay(200).springify()}
           style={[styles.title, { color: colors.foreground }]}
         >
-          {t("onboarding.welcome.title", "Welcome to ReadAny")}
+          {t("onboarding.welcome.title", "Narra")}
         </Animated.Text>
         <Animated.Text
           entering={FadeInDown.delay(300).springify()}
@@ -56,24 +53,24 @@ export function WelcomePage() {
         >
           {t(
             "onboarding.welcome.desc",
-            "The ultimate intelligent reading experience, uniquely yours.",
+            "Read deeply. Ask naturally. Keep what matters.",
           )}
         </Animated.Text>
 
         <View style={styles.features}>
           {[
             {
-              icon: <Bot size={24} color="#6366f1" />,
+              icon: <Bot size={24} color={colors.indigo} />,
               title: t("onboarding.welcome.ai", "AI Co-pilot"),
               desc: t("onboarding.welcome.aiDesc", "Discuss books naturally with AI"),
             },
             {
-              icon: <Search size={24} color="#10b981" />,
+              icon: <Search size={24} color={colors.emerald} />,
               title: t("onboarding.welcome.search", "Smart Search"),
               desc: t("onboarding.welcome.searchDesc", "Semantic knowledge retrieval"),
             },
             {
-              icon: <Languages size={24} color="#f59e0b" />,
+              icon: <Languages size={24} color={colors.amber} />,
               title: t("onboarding.welcome.translate", "Instant Translation"),
               desc: t("onboarding.welcome.translateDesc", "Seamless bilingual reading"),
             },
@@ -135,8 +132,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingBottom: 24,
   },
-  iconContainer: { marginBottom: 24 },
-  title: { fontSize: 28, fontWeight: "800", textAlign: "center", marginBottom: 12 },
+  iconContainer: { marginBottom: 28, marginTop: 28 },
+  title: { fontSize: 42, fontWeight: "800", letterSpacing: -1.5, textAlign: "center", marginBottom: 12 },
   subtitle: {
     fontSize: 16,
     textAlign: "center",

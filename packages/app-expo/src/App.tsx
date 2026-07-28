@@ -26,7 +26,7 @@ import { DarkTheme, DefaultTheme, NavigationContainer } from "@react-navigation/
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { LogBox, Platform, Text, View } from "react-native";
+import { AppState, LogBox, Platform, Text, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -51,6 +51,7 @@ import TrackPlayer, {
 import { FloatingTTSBubble } from "@/components/tts/FloatingTTSBubble";
 import { UpdateDialog } from "@/components/update/UpdateDialog";
 import { useUpdateChecker } from "@/hooks/use-update-checker";
+import { createNarraGatewayFetch } from "@/lib/ai/narra-gateway-fetch";
 import { navigationRef } from "@/lib/navigationRef";
 import { ExpoPlatformService } from "@/lib/platform/expo-platform-service";
 import { MobileSyncAdapter } from "@/lib/sync/sync-adapter-mobile";
@@ -79,6 +80,43 @@ setFeedbackWorkerUrl(feedbackWorkerUrl);
 
 // Keep the native splash screen visible while we bootstrap
 SplashScreen.preventAutoHideAsync().catch(() => {});
+
+function waitForActiveApp(): Promise<void> {
+  if (AppState.currentState === "active") return Promise.resolve();
+
+  return new Promise((resolve) => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        subscription.remove();
+        resolve();
+      }
+    });
+  });
+}
+
+async function setupTrackPlayerInForeground(): Promise<void> {
+  const foregroundError =
+    /app must be in the foreground|foreground.*setting up the player|setup.*foreground/i;
+
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    await waitForActiveApp();
+    // AppState can become active just before Android finishes Activity.onResume.
+    await new Promise((resolve) => setTimeout(resolve, attempt === 0 ? 350 : 250));
+
+    try {
+      await TrackPlayer.setupPlayer();
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/already been initialized/i.test(message)) {
+        console.log("[App] TrackPlayer already initialized — reusing existing native instance");
+        return;
+      }
+      if (!foregroundError.test(message) || attempt === 11) throw error;
+      console.log(`[App] TrackPlayer waiting for foreground (${attempt + 1}/12)`);
+    }
+  }
+}
 
 export default function App() {
   const [ready, setReady] = useState(false);
@@ -110,7 +148,7 @@ export default function App() {
 
         console.log("[App] bootstrap: import expo/fetch");
         const { fetch: expoFetch } = await import("expo/fetch");
-        setStreamingFetch(expoFetch as typeof globalThis.fetch);
+        setStreamingFetch(createNarraGatewayFetch(expoFetch as typeof globalThis.fetch));
 
         console.log("[App] bootstrap: configure audio mode");
         await Audio.setAudioModeAsync({
@@ -120,19 +158,7 @@ export default function App() {
         });
 
         console.log("[App] bootstrap: init react-native-track-player");
-        // setupPlayer can only be called once per native process. On Android,
-        // a Configuration Change (e.g. Huawei tablet small-screen → fullscreen)
-        // restarts the Activity and re-runs this bootstrap, but the native
-        // singleton is still alive — so setupPlayer() throws
-        // "The player has already been initialized via setupPlayer".
-        // Treat that specific error as success so bootstrap can continue.
-        try {
-          await TrackPlayer.setupPlayer();
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          if (!/already been initialized/i.test(msg)) throw e;
-          console.log("[App] TrackPlayer already initialized — reusing existing native instance");
-        }
+        await setupTrackPlayerInForeground();
         await TrackPlayer.updateOptions({
           android: {
             appKilledPlaybackBehavior: AppKilledPlaybackBehavior.ContinuePlayback,

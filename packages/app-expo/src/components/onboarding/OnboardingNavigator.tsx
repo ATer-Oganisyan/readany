@@ -1,10 +1,8 @@
 import { useTheme } from "@/styles/theme";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { View } from "react-native";
-import { AIPage } from "./steps/AIPage";
 import { AppearancePage } from "./steps/AppearancePage";
 import { CompletePage } from "./steps/CompletePage";
-import { EmbeddingPage } from "./steps/EmbeddingPage";
 import { SyncPage } from "./steps/SyncPage";
 import { TranslationPage } from "./steps/TranslationPage";
 import { WelcomePage } from "./steps/WelcomePage";
@@ -12,6 +10,8 @@ import { WelcomePage } from "./steps/WelcomePage";
 export type OnboardingStackParamList = {
   Welcome: undefined;
   Appearance: undefined;
+  // Kept in the type because the legacy components remain in the source tree,
+  // but intentionally not registered in the Narra onboarding flow.
   AI: undefined;
   Embedding: undefined;
   Translation: undefined;
@@ -35,8 +35,6 @@ export function OnboardingNavigator() {
       >
         <Stack.Screen name="Welcome" component={WelcomePage} />
         <Stack.Screen name="Appearance" component={AppearancePage} />
-        <Stack.Screen name="AI" component={AIPage} />
-        <Stack.Screen name="Embedding" component={EmbeddingPage} />
         <Stack.Screen name="Translation" component={TranslationPage} />
         <Stack.Screen name="Sync" component={SyncPage} />
         <Stack.Screen name="Complete" component={CompletePage} />

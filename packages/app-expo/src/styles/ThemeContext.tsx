@@ -45,24 +45,24 @@ export interface ThemeColors {
 
 // ── Light theme (from :root in globals.css) ──
 const lightColors: ThemeColors = {
-  background: "#faf9f5",
-  foreground: "#1c1c1e",
+  background: "#fafaf8",
+  foreground: "#161613",
   card: "#ffffff",
-  cardForeground: "#1c1c1e",
-  muted: "#f2f1ed",
-  mutedForeground: "#7c7c82",
-  border: "#e5e5e5",
-  primary: "#2d2d30",
-  primaryForeground: "#fafafa",
-  destructive: "#e53935",
-  destructiveForeground: "#fafafa",
-  accent: "#f5f5f5",
-  accentForeground: "#2d2d30",
-  indigo: "#6366f1",
-  emerald: "#10b981",
-  amber: "#f59e0b",
-  blue: "#3b82f6",
-  violet: "#7c3aed",
+  cardForeground: "#161613",
+  muted: "#f4f4f0",
+  mutedForeground: "#6d6d66",
+  border: "#ecece7",
+  primary: "#161613",
+  primaryForeground: "#ffffff",
+  destructive: "#cc4a2e",
+  destructiveForeground: "#ffffff",
+  accent: "#f4f4f0",
+  accentForeground: "#161613",
+  indigo: "#d94a2b",
+  emerald: "#2f9e63",
+  amber: "#f6a53a",
+  blue: "#4a7df0",
+  violet: "#b03a1e",
   highlightYellow: "#fef08a",
   highlightGreen: "#bbf7d0",
   highlightBlue: "#bfdbfe",
@@ -77,24 +77,24 @@ const lightColors: ThemeColors = {
 
 // ── Dark theme (from .dark in globals.css) ──
 const darkColors: ThemeColors = {
-  background: "#1c1c1e",
-  foreground: "#e8e8ed",
-  card: "#2c2c2e",
-  cardForeground: "#e8e8ed",
-  muted: "#333336",
-  mutedForeground: "#7c7c82",
-  border: "#3d3d40",
-  primary: "#e0e0e6",
-  primaryForeground: "#1c1c1e",
-  destructive: "#e53935",
+  background: "#151513",
+  foreground: "#f4f4f0",
+  card: "#20201d",
+  cardForeground: "#f4f4f0",
+  muted: "#292925",
+  mutedForeground: "#a6a69d",
+  border: "#363630",
+  primary: "#f4f4f0",
+  primaryForeground: "#161613",
+  destructive: "#e86a4e",
   destructiveForeground: "#ffffff",
-  accent: "#363638",
-  accentForeground: "#e0e0e6",
-  indigo: "#6366f1",
-  emerald: "#10b981",
-  amber: "#f59e0b",
-  blue: "#3b82f6",
-  violet: "#a78bfa",
+  accent: "#292925",
+  accentForeground: "#f4f4f0",
+  indigo: "#ef6a4b",
+  emerald: "#54b981",
+  amber: "#f6a53a",
+  blue: "#6c96f4",
+  violet: "#d94a2b",
   highlightYellow: "#854d0e",
   highlightGreen: "#166534",
   highlightBlue: "#1e40af",
@@ -145,7 +145,7 @@ const THEME_MAP: Record<ThemeMode, ThemeColors> = {
   sepia: sepiaColors,
 };
 
-const STORAGE_KEY = "readany-theme";
+const STORAGE_KEY = "narra-theme";
 
 interface ThemeContextValue {
   mode: ThemeMode;
@@ -155,15 +155,15 @@ interface ThemeContextValue {
 }
 
 const ThemeContext = createContext<ThemeContextValue>({
-  mode: "sepia",
-  colors: sepiaColors,
+  mode: "light",
+  colors: lightColors,
   setMode: () => {},
   isDark: false,
 });
 
 export function ThemeProvider({
   children,
-  initialMode = "sepia",
+  initialMode = "light",
 }: {
   children: ReactNode;
   initialMode?: ThemeMode;

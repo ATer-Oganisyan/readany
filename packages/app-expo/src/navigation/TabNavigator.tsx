@@ -1,21 +1,28 @@
-import { BookOpenIcon, MessageSquareIcon, NotebookPenIcon, UserIcon } from "@/components/ui/Icon";
+import { BookOpenIcon, LibraryIcon, PaletteIcon, UserIcon } from "@/components/ui/Icon";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
-import { ChatScreen } from "@/screens/ChatScreen";
 import { LibraryScreen } from "@/screens/LibraryScreen";
-import { NotesScreen } from "@/screens/NotesScreen";
 import { ProfileScreen } from "@/screens/ProfileScreen";
+import { useLibraryStore } from "@/stores";
 import { useTheme } from "@/styles/ThemeContext";
 /**
  * TabNavigator — bottom tab bar matching the Tauri mobile app's 4 tabs.
  * Icons: BookOpen, MessageSquare, NotebookPen, User (matching BottomTabBar.tsx)
  */
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { useTranslation } from "react-i18next";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import type { NavigationProp } from "@react-navigation/native";
+import { useCallback } from "react";
 import { Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import type { RootStackParamList } from "./RootNavigator";
 
 export type TabParamList = {
   Library: undefined;
+  ReaderHome: undefined;
+  Journey: undefined;
+  Settings: undefined;
+  // Legacy contextual screens remain typed for existing deep links,
+  // but are no longer top-level Narra tabs.
   Chat: undefined;
   Notes: { bookId?: string } | undefined;
   Profile: undefined;
@@ -23,8 +30,37 @@ export type TabParamList = {
 
 const Tab = createBottomTabNavigator<TabParamList>();
 
+function ReaderHomeScreen() {
+  const navigation = useNavigation<NavigationProp<RootStackParamList>>();
+  const books = useLibraryStore((state) => state.books);
+
+  useFocusEffect(
+    useCallback(() => {
+      const recent = [...books]
+        .filter((book) => !book.deletedAt)
+        .sort((a, b) => (b.lastOpenedAt || 0) - (a.lastOpenedAt || 0))[0];
+      if (recent) {
+        navigation.navigate("Reader", {
+          bookId: recent.id,
+          cfi: recent.currentCfi,
+        });
+      }
+    }, [books, navigation]),
+  );
+
+  // When the library is empty, this doubles as the useful empty state/import screen.
+  return <LibraryScreen />;
+}
+
+function JourneyScreen() {
+  return <ProfileScreen section="journey" />;
+}
+
+function SettingsScreen() {
+  return <ProfileScreen section="settings" />;
+}
+
 export function TabNavigator() {
-  const { t } = useTranslation();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const layout = useResponsiveLayout();
@@ -72,32 +108,32 @@ export function TabNavigator() {
         name="Library"
         component={LibraryScreen}
         options={{
-          tabBarLabel: t("tabs.library", "书架"),
+          tabBarLabel: "Библиотека",
+          tabBarIcon: ({ color, size }) => <LibraryIcon color={color} size={size} />,
+        }}
+      />
+      <Tab.Screen
+        name="ReaderHome"
+        component={ReaderHomeScreen}
+        options={{
+          tabBarLabel: "Читалка",
           tabBarIcon: ({ color, size }) => <BookOpenIcon color={color} size={size} />,
         }}
       />
       <Tab.Screen
-        name="Chat"
-        component={ChatScreen}
+        name="Journey"
+        component={JourneyScreen}
         options={{
-          tabBarLabel: t("tabs.ai", "AI"),
-          tabBarIcon: ({ color, size }) => <MessageSquareIcon color={color} size={size} />,
-        }}
-      />
-      <Tab.Screen
-        name="Notes"
-        component={NotesScreen}
-        options={{
-          tabBarLabel: t("tabs.notes", "笔记"),
-          tabBarIcon: ({ color, size }) => <NotebookPenIcon color={color} size={size} />,
-        }}
-      />
-      <Tab.Screen
-        name="Profile"
-        component={ProfileScreen}
-        options={{
-          tabBarLabel: t("tabs.profile", "我的"),
+          tabBarLabel: "Мой путь",
           tabBarIcon: ({ color, size }) => <UserIcon color={color} size={size} />,
+        }}
+      />
+      <Tab.Screen
+        name="Settings"
+        component={SettingsScreen}
+        options={{
+          tabBarLabel: "Настройки",
+          tabBarIcon: ({ color, size }) => <PaletteIcon color={color} size={size} />,
         }}
       />
     </Tab.Navigator>

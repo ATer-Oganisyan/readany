@@ -18,7 +18,7 @@ export function AppearancePage() {
   const { mode: currentTheme, setMode: setTheme, colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
 
-  const handleNext = () => navigation.navigate("AI");
+  const handleNext = () => navigation.navigate("Translation");
   const handlePrev = () => navigation.goBack();
 
   const themes: { id: ThemeMode; name: string; icon: React.ReactNode }[] = [
@@ -117,10 +117,7 @@ export function AppearancePage() {
                 {t("settings.language", "Language")}
               </Text>
               <View style={styles.langGrid}>
-                {[
-                  { code: "en", label: t("settings.english", "English") },
-                  { code: "zh", label: t("settings.simplifiedChinese", "中文") },
-                ].map((lang) => {
+                {[{ code: "ru", label: "Русский" }].map((lang) => {
                   const isActive = i18n.language === lang.code;
                   return (
                     <Pressable

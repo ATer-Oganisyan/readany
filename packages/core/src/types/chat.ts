@@ -123,6 +123,7 @@ export interface SemanticContext {
 }
 
 export type AIProviderType =
+  | "narra"
   | "openai"
   | "anthropic"
   | "google"

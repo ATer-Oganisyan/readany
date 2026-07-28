@@ -22,9 +22,17 @@ export interface ProviderConfig {
   keyPlaceholder: string;
 }
 
-const OPTIONAL_API_KEY_PROVIDERS = new Set(["ollama", "lmstudio"]);
+const OPTIONAL_API_KEY_PROVIDERS = new Set(["narra", "ollama", "lmstudio"]);
 
 export const PROVIDER_CONFIGS: Record<string, ProviderConfig> = {
+  narra: {
+    id: "narra",
+    name: "Narra",
+    defaultBaseUrl: "https://narra-proxy-production.up.railway.app",
+    needsV1Suffix: true,
+    placeholder: "https://narra-proxy-production.up.railway.app",
+    keyPlaceholder: "Managed by Narra gateway",
+  },
   openai: {
     id: "openai",
     name: "OpenAI",

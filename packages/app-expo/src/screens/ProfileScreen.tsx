@@ -313,7 +313,11 @@ function MiniHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
   );
 }
 
-export function ProfileScreen() {
+export function ProfileScreen({
+  section = "all",
+}: {
+  section?: "all" | "journey" | "settings";
+}) {
   const colors = useColors();
   const s = makeStyles(colors);
   const { t, i18n } = useTranslation();
@@ -453,11 +457,6 @@ export function ProfileScreen() {
       {
         title: t("settings.skills", "能力"),
         items: [
-          {
-            icon: DatabaseIcon,
-            label: t("settings.ai_title", "AI 模型"),
-            route: "AISettings" as const,
-          },
           { icon: Volume2Icon, label: t("tts.title", "语音朗读"), route: "TTSSettings" as const },
           {
             icon: LanguagesIcon,
@@ -465,11 +464,6 @@ export function ProfileScreen() {
             route: "TranslationSettings" as const,
           },
           { icon: PuzzleIcon, label: t("skills.title", "技能"), route: "Skills" as const },
-          {
-            icon: CpuIcon,
-            label: t("settings.vm_title", "向量模型"),
-            route: "VectorModelSettings" as const,
-          },
         ],
       },
       {
@@ -535,7 +529,7 @@ export function ProfileScreen() {
       <View style={s.header}>
         <View style={s.headerTitleWrap}>
           <Text style={s.headerTitle} numberOfLines={1} maxFontSizeMultiplier={1.6}>
-            {t("profile.title", "我的")}
+            {section === "settings" ? "Настройки" : "Мой путь"}
           </Text>
         </View>
         <SyncButton size={20} color={colors.mutedForeground} />
@@ -547,7 +541,7 @@ export function ProfileScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Stats cards */}
-        <View style={s.statsSection}>
+        {section !== "settings" && <View style={s.statsSection}>
           {statsLoading ? (
             <View style={s.statsLoading}>
               <ActivityIndicator size="small" color={colors.mutedForeground} />
@@ -575,10 +569,10 @@ export function ProfileScreen() {
               ))}
             </View>
           )}
-        </View>
+        </View>}
 
         {/* Compact heatmap */}
-        <View style={s.heatmapSection}>
+        {section !== "settings" && <View style={s.heatmapSection}>
           <View style={s.heatmapHeader}>
             <Text style={s.heatmapTitle} numberOfLines={1} maxFontSizeMultiplier={1.5}>
               {t("profile.readingActivity", "阅读活动")}
@@ -591,16 +585,16 @@ export function ProfileScreen() {
             </TouchableOpacity>
           </View>
           <MiniHeatmap dailyStats={liveDailyStats} />
-        </View>
+        </View>}
 
         {/* Settings menu */}
-        {menuSections.map((section) => (
-          <View key={section.title} style={s.menuSection}>
+        {section !== "journey" && menuSections.map((menuSection) => (
+          <View key={menuSection.title} style={s.menuSection}>
             <Text style={s.menuSectionTitle} maxFontSizeMultiplier={1.5}>
-              {section.title}
+              {menuSection.title}
             </Text>
             <View style={s.menuCard}>
-              {section.items.map((item, idx) => {
+              {menuSection.items.map((item, idx) => {
                 const Icon = item.icon;
                 const itemKey =
                   "route" in item ? item.route : "url" in item ? item.url : item.label;
@@ -619,7 +613,7 @@ export function ProfileScreen() {
                 return (
                   <TouchableOpacity
                     key={itemKey}
-                    style={[s.menuItem, idx < section.items.length - 1 && s.menuItemBorder]}
+                    style={[s.menuItem, idx < menuSection.items.length - 1 && s.menuItemBorder]}
                     onPress={handlePress}
                     disabled={"disabled" in item && item.disabled}
                     activeOpacity={0.7}
@@ -638,10 +632,10 @@ export function ProfileScreen() {
         ))}
 
         {/* Version */}
-        <Text style={s.version} maxFontSizeMultiplier={1.4}>
+        {section !== "journey" && <Text style={s.version} maxFontSizeMultiplier={1.4}>
           {t("profile.version", { version: Constants.expoConfig?.version ?? "1.0.0" })}
-        </Text>
-        <TouchableOpacity
+        </Text>}
+        {section !== "journey" && <TouchableOpacity
           style={s.icpLink}
           onPress={() => Linking.openURL(ICP_URL)}
           activeOpacity={0.7}
@@ -649,7 +643,7 @@ export function ProfileScreen() {
           <Text style={s.icpText} maxFontSizeMultiplier={1.4}>
             {ICP_NUMBER}
           </Text>
-        </TouchableOpacity>
+        </TouchableOpacity>}
       </ScrollView>
     </SafeAreaView>
   );

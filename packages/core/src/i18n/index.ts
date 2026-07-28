@@ -98,6 +98,7 @@ import es_stats from "./locales/es/stats.json";
 import es_onboarding from "./locales/es/onboarding.json";
 import es_profile from "./locales/es/profile.json";
 import es_misc from "./locales/es/misc.json";
+import ru from "./locales/ru.json";
 
 // --- Merge modules per language ---
 const en = { ...en_common, ...en_library, ...en_reader, ...en_chat, ...en_notes, ...en_settings, ...en_translation, ...en_tts, ...en_stats, ...en_onboarding, ...en_profile, ...en_misc };
@@ -121,9 +122,10 @@ export const i18nReady = i18n
       ko: { translation: ko },
       fr: { translation: fr },
       es: { translation: es },
+      ru: { translation: ru },
     },
-    lng: "en",
-    fallbackLng: "en",
+    lng: "ru",
+    fallbackLng: "ru",
     interpolation: {
       escapeValue: false,
     },
@@ -141,37 +143,10 @@ export async function initI18nLanguage(): Promise<void> {
     // 1. Check if user has already chosen a language
     const savedLang = await platform.kvGetItem("readany-lang");
 
-    if (savedLang && savedLang !== i18n.language) {
-      try {
-        await i18n.changeLanguage(savedLang);
-      } catch {
-        i18n.language = savedLang;
-      }
-      return;
-    }
-
-    // 2. If no saved language, try to get system locale as default
-    if (!savedLang && platform.getLocale) {
-      try {
-        const systemLocale = await platform.getLocale();
-        if (systemLocale) {
-          const lc = systemLocale.toLowerCase();
-          const lang = lc.startsWith("zh-tw") || lc.startsWith("zh-hk") || lc.startsWith("zh-hant") ? "zh-TW"
-            : lc.startsWith("zh") ? "zh"
-            : lc.startsWith("ja") ? "ja"
-            : lc.startsWith("ko") ? "ko"
-            : lc.startsWith("fr") ? "fr"
-            : lc.startsWith("es") ? "es"
-            : "en";
-          if (lang !== i18n.language) {
-            await i18n.changeLanguage(lang);
-            await platform.kvSetItem("readany-lang", lang);
-          }
-        }
-      } catch {
-        // getLocale not supported or failed, keep default (en)
-      }
-    }
+    // Narra mobile currently ships as a Russian-first product. Migrate any
+    // previously persisted ReadAny locale instead of keeping its English UI.
+    if (savedLang !== "ru") await platform.kvSetItem("readany-lang", "ru");
+    if (i18n.language !== "ru") await i18n.changeLanguage("ru");
   } catch {
     // Platform not ready or storage error — keep default
   }

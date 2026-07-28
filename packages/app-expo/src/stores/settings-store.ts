@@ -59,44 +59,50 @@ const defaultReadSettings: ReadSettings = {
 
 const defaultTranslationConfig: TranslationConfig = {
   provider: { id: "ai", name: "AI 翻译" },
-  targetLang: "zh-CN",
+  targetLang: "ru",
 };
 
 const defaultEndpoint: AIEndpoint = {
-  id: "default",
-  name: "OpenAI",
-  provider: "openai",
+  id: "narra",
+  name: "Narra AI · Giga / OpenRouter",
+  provider: "narra",
   apiKey: "",
-  baseUrl: "https://api.openai.com",
+  baseUrl: "https://narra-proxy-production.up.railway.app",
   useExactRequestUrl: false,
-  models: [],
-  modelsFetched: false,
+  models: ["narra"],
+  modelsFetched: true,
 };
 
 const defaultAIConfig: AIConfig = {
   endpoints: [defaultEndpoint],
-  activeEndpointId: "default",
-  activeModel: "",
+  activeEndpointId: "narra",
+  activeModel: "narra",
   temperature: 0.7,
   maxTokens: 8192,
   slidingWindowSize: 8,
 };
 
 function migrateSettingsState(state: SettingsState): SettingsState {
-  if (state.aiConfig.maxTokens !== 4096) return state;
   return {
     ...state,
+    translationConfig: defaultTranslationConfig,
     aiConfig: {
-      ...state.aiConfig,
+      ...defaultAIConfig,
       maxTokens: defaultAIConfig.maxTokens,
     },
   };
 }
 
 async function fetchModelsFromEndpoint(endpoint: AIEndpoint): Promise<string[]> {
-  if (!endpoint.apiKey && endpoint.provider !== "ollama" && endpoint.provider !== "lmstudio") {
+  if (
+    !endpoint.apiKey &&
+    endpoint.provider !== "ollama" &&
+    endpoint.provider !== "lmstudio" &&
+    endpoint.provider !== "narra"
+  ) {
     return [];
   }
+  if (endpoint.provider === "narra") return ["narra"];
   if (endpoint.useExactRequestUrl && providerSupportsExactRequestUrl(endpoint.provider)) {
     throw new Error(
       "Exact request URL mode cannot infer the model list automatically. Add models manually.",

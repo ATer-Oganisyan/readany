@@ -1,24 +1,24 @@
 const APP_VARIANTS = {
   development: {
     key: "development",
-    name: "ReadAny Dev",
-    bundleIdentifier: "com.readany.app.dev",
-    androidPackage: "com.readany.app.dev",
-    scheme: "readany-dev",
+    name: "Narra Reader Dev",
+    bundleIdentifier: "com.narra.reader.dev",
+    androidPackage: "com.narra.reader.dev",
+    scheme: "narra-reader-dev",
   },
   preview: {
     key: "preview",
-    name: "ReadAny Preview",
-    bundleIdentifier: "com.readany.app.preview",
-    androidPackage: "com.readany.app.preview",
-    scheme: "readany-preview",
+    name: "Narra Reader Preview",
+    bundleIdentifier: "com.narra.reader.preview",
+    androidPackage: "com.narra.reader.preview",
+    scheme: "narra-reader-preview",
   },
   production: {
     key: "production",
-    name: "ReadAny",
-    bundleIdentifier: "com.readany.app",
-    androidPackage: "com.readany.app",
-    scheme: "readany",
+    name: "Narra Reader",
+    bundleIdentifier: "com.narra.reader",
+    androidPackage: "com.narra.reader",
+    scheme: "narra-reader",
   },
 };
 
