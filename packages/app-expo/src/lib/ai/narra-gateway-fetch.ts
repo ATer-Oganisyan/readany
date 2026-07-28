@@ -131,6 +131,26 @@ async function getToken(fetchImpl: typeof globalThis.fetch, forceRefresh = false
   return tokenPromise;
 }
 
+export async function narraGatewayRequest(
+  path: string,
+  init: RequestInit = {},
+  fetchImpl: typeof globalThis.fetch = globalThis.fetch,
+): Promise<Response> {
+  const send = async (forceRefresh = false) => {
+    const token = await getToken(fetchImpl, forceRefresh);
+    const headers = new Headers(init.headers);
+    headers.set("authorization", `Bearer ${token}`);
+    return fetchImpl(`${gatewayUrl()}${path.startsWith("/") ? path : `/${path}`}`, {
+      ...init,
+      headers,
+    });
+  };
+
+  let response = await send();
+  if (response.status === 401) response = await send(true);
+  return response;
+}
+
 function requestUrl(input: RequestInfo | URL): string {
   if (typeof input === "string") return input;
   if (input instanceof URL) return input.toString();

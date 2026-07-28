@@ -5,6 +5,9 @@ import { BookChatScreen } from "@/screens/BookChatScreen";
 import { BookDetailsScreen } from "@/screens/BookDetailsScreen";
 import { FullScreenNotesScreen } from "@/screens/FullScreenNotesScreen";
 import { ReaderScreen } from "@/screens/ReaderScreen";
+import { NarraCharactersScreen } from "@/screens/NarraCharactersScreen";
+import { NarraCharacterChatScreen } from "@/screens/NarraCharacterChatScreen";
+import { NarraMomentScreen } from "@/screens/NarraMomentScreen";
 import SkillsScreen from "@/screens/SkillsScreen";
 import StatsScreen from "@/screens/StatsScreen";
 import { WebDavImportBrowserScreen } from "@/screens/library/WebDavImportBrowserScreen";
@@ -32,6 +35,9 @@ export type RootStackParamList = {
   Reader: { bookId: string; cfi?: string; highlight?: boolean; openTTS?: boolean };
   BookDetails: { bookId: string };
   BookChat: { bookId: string; selectedText?: string; chapterTitle?: string };
+  NarraCharacters: { bookId: string };
+  NarraCharacterChat: { bookId: string; characterId: string };
+  NarraMoment: { bookId: string; chapter: string; excerpt: string };
   Stats: undefined;
   Badges: undefined;
   Skills: undefined;
@@ -79,6 +85,21 @@ export function RootNavigator() {
             <Stack.Screen
               name="BookChat"
               component={BookChatScreen}
+              options={{ animation: "slide_from_right" }}
+            />
+            <Stack.Screen
+              name="NarraCharacters"
+              component={NarraCharactersScreen}
+              options={{ animation: "slide_from_right" }}
+            />
+            <Stack.Screen
+              name="NarraCharacterChat"
+              component={NarraCharacterChatScreen}
+              options={{ animation: "slide_from_right" }}
+            />
+            <Stack.Screen
+              name="NarraMoment"
+              component={NarraMomentScreen}
               options={{ animation: "slide_from_right" }}
             />
             <Stack.Screen

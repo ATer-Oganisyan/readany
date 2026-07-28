@@ -13,6 +13,7 @@ export type { SettingsState } from "./settings-store";
 
 export { useTTSStore, setTTSPlayerFactories } from "./tts-store";
 export type { TTSPlayState, TTSState } from "./tts-store";
+export { useNarraStore } from "./narra-store";
 
 export { useAnnotationStore } from "./annotation-store";
 export type { HighlightStats, AnnotationState } from "./annotation-store";

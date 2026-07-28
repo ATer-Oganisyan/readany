@@ -15,6 +15,8 @@ import {
   LanguagesIcon,
   NotebookPenIcon,
   SearchIcon,
+  SparklesIcon,
+  UserIcon,
   XIcon,
 } from "@/components/ui/Icon";
 import { SyncButton } from "@/components/ui/SyncButton";
@@ -1761,6 +1763,34 @@ export function ReaderScreen({ route, navigation }: Props) {
             onPress={tts.handleToggleTTS}
           >
             <HeadphonesIcon size={20} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={s.floatingToolBtn}
+            onPress={() => navigation.navigate("NarraCharacters", { bookId })}
+          >
+            <UserIcon size={20} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={s.floatingToolBtn}
+            onPress={() => {
+              void bridgeRef.current
+                ?.getVisibleText()
+                .then((excerpt) =>
+                  navigation.navigate("NarraMoment", {
+                    bookId,
+                    chapter: currentChapter || bookTitle,
+                    excerpt,
+                  }),
+                )
+                .catch((cause) =>
+                  Alert.alert(
+                    "Не удалось прочитать страницу",
+                    cause instanceof Error ? cause.message : String(cause),
+                  ),
+                );
+            }}
+          >
+            <SparklesIcon size={20} color="#fff" />
           </TouchableOpacity>
           <TouchableOpacity
             style={s.floatingToolBtn}

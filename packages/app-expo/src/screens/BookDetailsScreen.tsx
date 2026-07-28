@@ -37,7 +37,7 @@ import {
 } from "@readany/core/utils";
 import * as ImagePicker from "expo-image-picker";
 import type { TFunction } from "i18next";
-import { Star } from "lucide-react-native";
+import { Sparkles, Star } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -273,7 +273,7 @@ async function pickCoverFromPhotoLibrary(): Promise<PickedCoverSource | null> {
   };
 }
 
-export function BookDetailsScreen({ route }: Props) {
+export function BookDetailsScreen({ route, navigation }: Props) {
   const { bookId } = route.params;
   const colors = useColors();
   const layout = useResponsiveLayout();
@@ -510,7 +510,14 @@ export function BookDetailsScreen({ route }: Props) {
       style={[styles.container, { backgroundColor: colors.background }]}
       edges={["top"]}
     >
-      <SettingsHeader title={t("library.detailsTitle", "书籍详情")} />
+      <SettingsHeader
+        title={t("library.detailsTitle", "О книге")}
+        right={
+          <TouchableOpacity onPress={() => navigation.navigate("NarraCharacters", { bookId })}>
+            <Sparkles size={22} color={colors.indigo} />
+          </TouchableOpacity>
+        }
+      />
       <View style={styles.flex}>
         <ScrollView
           style={styles.flex}
