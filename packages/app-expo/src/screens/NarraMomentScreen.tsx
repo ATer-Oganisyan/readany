@@ -1,11 +1,14 @@
 import { ChevronLeftIcon, SparklesIcon } from "@/components/ui/Icon";
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
 import { generateSceneImage } from "@/lib/narra/media";
+import { synthesizeNarraSpeech } from "@/lib/narra/media";
+import type { NarraScenarioSegment } from "@/lib/narra/types";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useNarraStore } from "@/stores";
 import { radius, useColors } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useState } from "react";
+import { Audio } from "expo-av";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -25,9 +28,111 @@ export function NarraMomentScreen({ route, navigation }: Props) {
   const colors = useColors();
   const cachedSummary = useNarraStore((state) => state.books[bookId]?.summaries[chapter]);
   const setSummary = useNarraStore((state) => state.setSummary);
+  const characters = useNarraStore((state) => state.books[bookId]?.characters ?? []);
   const [summary, setLocalSummary] = useState(cachedSummary || "");
   const [imageUri, setImageUri] = useState<string | null>(null);
-  const [busy, setBusy] = useState<"summary" | "image" | null>(null);
+  const [busy, setBusy] = useState<"summary" | "image" | "audio" | null>(null);
+  const [audioProgress, setAudioProgress] = useState("");
+  const cancelledRef = useRef(false);
+  const soundRef = useRef<Audio.Sound | null>(null);
+
+  useEffect(
+    () => () => {
+      cancelledRef.current = true;
+      void soundRef.current?.unloadAsync();
+    },
+    [],
+  );
+
+  const extractScenario = (value: string): NarraScenarioSegment[] => {
+    const fenced = value.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1] || value;
+    const start = fenced.indexOf("[");
+    const end = fenced.lastIndexOf("]");
+    if (start < 0 || end <= start) throw new Error("AI не вернул сценарий озвучки");
+    const raw = JSON.parse(fenced.slice(start, end + 1)) as Array<Record<string, unknown>>;
+    return raw
+      .filter((item) => typeof item.text === "string" && item.text.trim())
+      .map((item) => ({
+        type: item.type === "speech" ? "speech" : "narration",
+        characterId: item.character ? String(item.character) : null,
+        emotion: (item.emotion || "neutral") as NarraScenarioSegment["emotion"],
+        text: String(item.text),
+      }));
+  };
+
+  const playSound = async (uri: string) =>
+    new Promise<void>(async (resolve, reject) => {
+      try {
+        const { sound } = await Audio.Sound.createAsync({ uri }, { shouldPlay: true });
+        soundRef.current = sound;
+        sound.setOnPlaybackStatusUpdate((status) => {
+          if (!status.isLoaded) return;
+          if (status.didJustFinish) {
+            void sound.unloadAsync();
+            soundRef.current = null;
+            resolve();
+          }
+        });
+      } catch (error) {
+        reject(error);
+      }
+    });
+
+  const toggleAudio = async () => {
+    if (busy === "audio") {
+      cancelledRef.current = true;
+      await soundRef.current?.unloadAsync();
+      soundRef.current = null;
+      setBusy(null);
+      setAudioProgress("");
+      return;
+    }
+    setBusy("audio");
+    cancelledRef.current = false;
+    try {
+      const roster = characters.map((item) => `${item.id} = ${item.name}`).join("; ");
+      const response = await narraGatewayRequest("/v2/ai/chat/complete", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          messages: [
+            {
+              role: "system",
+              content:
+                `Разбей текст на сценарий аудиокниги. Верни только JSON-массив ` +
+                `[{"type":"narration|speech","character":"id|null","emotion":"neutral|joy|tenderness|anger|fear|irony|sadness","text":"дословный текст"}]. ` +
+                `Сохрани весь текст и порядок. Персонажи: ${roster || "не определены"}.`,
+            },
+            { role: "user", content: excerpt.slice(0, 12_000) },
+          ],
+          temperature: 0.15,
+          purpose: "structured_task",
+          origin: "user",
+          analytics_tier: "essential",
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | { text?: string; error?: string }
+        | null;
+      if (!response.ok) throw new Error(payload?.error || `Ошибка AI (${response.status})`);
+      const scenario = extractScenario(payload?.text || "");
+      for (let index = 0; index < scenario.length; index += 1) {
+        if (cancelledRef.current) break;
+        const segment = scenario[index];
+        const character = characters.find((item) => item.id === segment.characterId);
+        setAudioProgress(`${character?.name || "Рассказчик"} · ${index + 1}/${scenario.length}`);
+        const uri = await synthesizeNarraSpeech(segment.text, character?.voice || "Nec");
+        if (!cancelledRef.current) await playSound(uri);
+      }
+    } catch (error) {
+      if (!cancelledRef.current) {
+        Alert.alert("Не удалось озвучить сцену", error instanceof Error ? error.message : String(error));
+      }
+    } finally {
+      setBusy(null);
+      setAudioProgress("");
+    }
+  };
 
   const createSummary = async () => {
     setBusy("summary");
@@ -115,6 +220,16 @@ export function NarraMomentScreen({ route, navigation }: Props) {
             )}
           </TouchableOpacity>
         </View>
+        <TouchableOpacity
+          style={[styles.audioAction, { borderColor: colors.border, backgroundColor: colors.card }]}
+          disabled={Boolean(busy && busy !== "audio")}
+          onPress={() => void toggleAudio()}
+        >
+          {busy === "audio" ? <ActivityIndicator color={colors.indigo} /> : null}
+          <Text style={[styles.audioText, { color: colors.foreground }]}>
+            {busy === "audio" ? `Остановить · ${audioProgress}` : "▶ Озвучить по ролям"}
+          </Text>
+        </TouchableOpacity>
         {summary ? (
           <View style={[styles.result, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Text style={[styles.resultTitle, { color: colors.foreground }]}>Коротко о прочитанном</Text>
@@ -139,6 +254,8 @@ const styles = StyleSheet.create({
   actions: { flexDirection: "row", gap: 10, marginVertical: 18 },
   action: { flex: 1, minHeight: 48, borderRadius: 999, alignItems: "center", justifyContent: "center", paddingHorizontal: 12 },
   actionText: { fontSize: 14, fontWeight: "700" },
+  audioAction: { minHeight: 50, borderWidth: 1, borderRadius: 999, flexDirection: "row", gap: 9, alignItems: "center", justifyContent: "center", marginBottom: 18 },
+  audioText: { fontSize: 14, fontWeight: "700" },
   result: { borderWidth: 1, borderRadius: radius.xl, padding: 20, marginBottom: 18 },
   resultTitle: { fontSize: 17, fontWeight: "800", marginBottom: 8 },
   resultText: { fontSize: 15, lineHeight: 23 },
