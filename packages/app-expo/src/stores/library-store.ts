@@ -1,3 +1,4 @@
+import { generateBookCoverWithOpenRouter } from "@/lib/book/generate-book-cover";
 import {
   generateBookIdentityWithGemini,
   isSuspiciousBookTitle,
@@ -137,14 +138,17 @@ async function ensureAppSubDir(subDir: string): Promise<void> {
   }
 }
 
-async function saveCoverToAppData(bookId: string, coverBlob: Blob): Promise<string> {
+async function saveCoverBytesToAppData(
+  bookId: string,
+  bytes: Uint8Array,
+  mimeType: string,
+): Promise<string> {
   const platform = getPlatformService();
   await ensureAppSubDir("covers");
-  const ext = coverBlob.type.includes("png") ? "png" : "jpg";
+  const ext = mimeType.includes("webp") ? "webp" : mimeType.includes("jpeg") ? "jpg" : "png";
   const relativePath = `covers/${bookId}.${ext}`;
-  const absPath = await resolveAppPath(relativePath);
-  const arrayBuffer = await coverBlob.arrayBuffer();
-  await platform.writeFile(absPath, new Uint8Array(arrayBuffer));
+  const absolutePath = await resolveAppPath(relativePath);
+  await platform.writeFile(absolutePath, bytes);
   return relativePath;
 }
 
@@ -241,6 +245,8 @@ async function resolveImportedBookIdentity(params: {
 }
 
 const titleRepairAttempted = new Set<string>();
+const coverGenerationAttempted = new Set<string>();
+let coverGenerationQueue: Promise<void> = Promise.resolve();
 
 async function repairSuspiciousBookTitles(books: Book[]): Promise<void> {
   for (const book of books) {
@@ -287,6 +293,81 @@ async function repairSuspiciousBookTitles(books: Book[]): Promise<void> {
       console.warn(`[Library] Failed to repair title for ${book.id}:`, error);
     }
   }
+}
+
+async function ensureGeneratedBookCover(
+  book: Book,
+  context?: { description?: string; textSample?: string },
+): Promise<void> {
+  if (book.meta.coverUrl) return;
+
+  try {
+    const generated = await generateBookCoverWithOpenRouter({
+      title: book.meta.title,
+      author: book.meta.author,
+      description: context?.description || book.meta.description,
+      excerpt: context?.textSample,
+    });
+    if (!generated) return;
+
+    const coverUrl = await saveCoverBytesToAppData(book.id, generated.bytes, generated.mimeType);
+    const currentBook = useLibraryStore.getState().books.find((item) => item.id === book.id);
+    if (!currentBook || currentBook.meta.coverUrl) return;
+    await useLibraryStore.getState().updateBook(book.id, {
+      meta: { ...currentBook.meta, coverUrl },
+      updatedAt: Date.now(),
+    });
+    console.log(`[Library] Generated OpenRouter cover for "${currentBook.meta.title}"`);
+  } catch (error) {
+    console.warn(`[Library] OpenRouter could not generate a cover for ${book.id}:`, error);
+  }
+}
+
+function queueGeneratedBookCover(
+  book: Book,
+  context?: { description?: string; textSample?: string },
+): Promise<void> {
+  if (book.meta.coverUrl || coverGenerationAttempted.has(book.id)) return Promise.resolve();
+  coverGenerationAttempted.add(book.id);
+
+  const task = coverGenerationQueue.then(() => ensureGeneratedBookCover(book, context));
+  coverGenerationQueue = task.catch(() => undefined);
+  return task;
+}
+
+async function repairMissingBookCovers(books: Book[]): Promise<void> {
+  for (const originalBook of books) {
+    const book =
+      useLibraryStore.getState().books.find((item) => item.id === originalBook.id) || originalBook;
+    if (book.meta.coverUrl || coverGenerationAttempted.has(book.id)) continue;
+
+    let context: { description?: string; textSample?: string } | undefined;
+    if (book.format === "epub" || book.format === "fb2") {
+      try {
+        const filePath = isRelativeAppPath(book.filePath)
+          ? await resolveAppPath(book.filePath)
+          : book.filePath;
+        const { size } = await getMobileFileStat(filePath);
+        const fileName = filePath.split("/").pop() || `${book.meta.title}.${book.format}`;
+        const metadata = await extractMobileImportMetadata({
+          filePath,
+          format: book.format,
+          fileName,
+          fileSize: size,
+        });
+        context = { description: metadata.description, textSample: metadata.textSample };
+      } catch (error) {
+        console.warn(`[Library] Could not read cover context for ${book.id}:`, error);
+      }
+    }
+
+    await queueGeneratedBookCover(book, context);
+  }
+}
+
+async function repairImportedBookMetadata(books: Book[]): Promise<void> {
+  await repairSuspiciousBookTitles(books);
+  await repairMissingBookCovers(books);
 }
 
 function shouldAutoVectorizeMobile(format: Book["format"]): boolean {
@@ -827,7 +908,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       debouncedSave("library-books", books);
       debouncedSave("library-groups", groups);
       debouncedSave("library-tags", allTags);
-      void repairSuspiciousBookTitles(books);
+      void repairImportedBookMetadata(books);
     } catch (err) {
       console.error("Failed to load books from database:", err);
       set({ isLoaded: true });
@@ -1076,6 +1157,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
                 await get().addBook(book);
               }
               result.imported.push(book);
+              if (!book.meta.coverUrl) {
+                void queueGeneratedBookCover(book);
+              }
               if (fileHash) {
                 duplicateIndex.byHash.set(fileHash, book);
               }
@@ -1199,6 +1283,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
                 await get().addBook(book);
               }
               result.imported.push(book);
+              if (!book.meta.coverUrl) {
+                void queueGeneratedBookCover(book);
+              }
               if (fileHash) {
                 duplicateIndex.byHash.set(fileHash, book);
               }
@@ -1235,6 +1322,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           let title = fileName.replace(/\.\w+$/i, "") || "Untitled";
           let author = "";
           let coverUrl: string | undefined;
+          let coverContext: { description?: string; textSample?: string } | undefined;
           const shouldGenerateIdentity = isTechnicalBookTitle(title);
 
           try {
@@ -1250,6 +1338,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             );
             if (meta.title) title = meta.title;
             if (meta.author) author = meta.author;
+            coverContext = { description: meta.description, textSample: meta.textSample };
 
             const identity = await resolveImportedBookIdentity({
               fileName,
@@ -1294,6 +1383,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
               ...(deletedMatch?.meta ?? {}),
               title,
               author,
+              description: coverContext?.description || deletedMatch?.meta.description,
               coverUrl: coverUrl || deletedMatch?.meta.coverUrl,
             },
             groupId: deletedMatch?.groupId,
@@ -1329,6 +1419,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             await get().addBook(book);
           }
           result.imported.push(book);
+          if (!book.meta.coverUrl) {
+            void queueGeneratedBookCover(book, coverContext);
+          }
           if (fileHash) {
             duplicateIndex.byHash.set(fileHash, book);
           }
