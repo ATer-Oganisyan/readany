@@ -1,3 +1,4 @@
+import { Text, TextInput } from "@/components/ui/Typography";
 import { useSettingsStore } from "@/stores";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import {
@@ -12,8 +13,6 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -71,7 +70,7 @@ export default function TranslationSettingsScreen() {
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
-      edges={["top"]}
+      edges={[]}
     >
       <SettingsHeader
         title={t("translation.settingsTitle", "翻译设置")}

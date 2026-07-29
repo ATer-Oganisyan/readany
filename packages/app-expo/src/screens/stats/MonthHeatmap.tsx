@@ -1,7 +1,8 @@
+import { Text } from "@/components/ui/Typography";
 import { useColors, withOpacity } from "@/styles/theme";
 import type { StatsChartBlock } from "@readany/core/stats";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { TouchableOpacity, View } from "react-native";
 import { makeStyles } from "./stats-styles";
 import { formatCompactMinutes } from "./stats-utils";
 import type { StatsCopy } from "./StatsSections";

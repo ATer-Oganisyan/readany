@@ -1,3 +1,4 @@
+import { Text } from "@/components/ui/Typography";
 import { CheckIcon, ClockIcon, Loader2Icon, MoreVerticalIcon } from "@/components/ui/Icon";
 import { useColors } from "@/styles/theme";
 import { getPlatformService } from "@readany/core/services";
@@ -14,7 +15,6 @@ import {
   Easing,
   Image,
   type LayoutRectangle,
-  Text,
   TouchableOpacity,
   View,
 } from "react-native";

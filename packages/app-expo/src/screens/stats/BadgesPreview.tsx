@@ -1,10 +1,11 @@
+import { Text } from "@/components/ui/Typography";
 /**
  * BadgesPreview.tsx — Compact badge summary for mobile Stats screen.
  * Horizontal scroll of earned badges with rich icon rendering.
  */
 import { useColors, withOpacity } from "@/styles/theme";
 import type { EarnedBadge } from "@readany/core/stats";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { ScrollView, TouchableOpacity, View } from "react-native";
 import { BadgeIconMobile } from "./BadgeIconMobile";
 
 export function BadgesPreview({

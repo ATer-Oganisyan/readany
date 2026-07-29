@@ -71,5 +71,10 @@ if (!cryptoObject.subtle) {
   });
 }
 
-registerRootComponent(App);
+const RootComponent =
+  process.env.EXPO_PUBLIC_STORYBOOK_ENABLED === "true"
+    ? require("./.rnstorybook").default
+    : App;
+
+registerRootComponent(RootComponent);
 TrackPlayer.registerPlaybackService(() => PlaybackService);

@@ -1,5 +1,6 @@
+import { Text } from "@/components/ui/Typography";
 import { useColors } from "@/styles/theme";
-import { Text, View } from "react-native";
+import { View } from "react-native";
 import { makeStyles } from "./stats-styles";
 
 export function StatCard({

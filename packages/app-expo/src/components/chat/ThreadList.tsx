@@ -1,3 +1,4 @@
+import { Text } from "@/components/ui/Typography";
 import { HistoryIcon, MessageCirclePlusIcon, Trash2Icon } from "@/components/ui/Icon";
 import { fontSize as fs, fontWeight as fw, radius, useColors, withOpacity } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
@@ -7,7 +8,7 @@ import type { Thread } from "@readany/core/types";
  */
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, FlatList, StyleSheet, TouchableOpacity, View } from "react-native";
 
 interface ThreadListProps {
   threads: Thread[];

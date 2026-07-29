@@ -19,7 +19,9 @@ import {
   Trash2Icon,
   XIcon,
 } from "@/components/ui/Icon";
+import { NativeButton } from "@/components/ui/NativeButton";
 import { SyncButton } from "@/components/ui/SyncButton";
+import { Text, TextInput, type TextInputHandle } from "@/components/ui/Typography";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
 import { setCallback, setExtractorRef } from "@/lib/rag/auto-vectorize-service";
@@ -33,9 +35,9 @@ import {
   fontWeight,
   radius,
   useColors,
-  useTheme,
   withOpacity,
 } from "@/styles/theme";
+import { useHeaderHeight } from "@react-navigation/elements";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import {
@@ -55,22 +57,28 @@ import { File as ExpoFile } from "expo-file-system";
  * Features: header search/sort/import, tag filter, vectorization progress banner,
  * tag management sheet, book grid (3 cols), empty/loading states.
  */
-import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import {
+  ActionSheetIOS,
   ActivityIndicator,
   Alert,
   Animated,
   FlatList,
-  Image,
   Keyboard,
   Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -89,9 +97,6 @@ function bytesToBase64(bytes: Uint8Array): string {
 
   return btoa(binary);
 }
-
-const BOOK_PNG = require("../../assets/book.png");
-const BOOK_DARK_PNG = require("../../assets/book-dark.png");
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -143,9 +148,9 @@ type LibraryGridItem =
 
 export function LibraryScreen() {
   const colors = useColors();
-  const { isDark } = useTheme();
   const { t } = useTranslation();
   const nav = useNavigation<Nav>();
+  const nativeHeaderHeight = useHeaderHeight();
   const layout = useResponsiveLayout();
   const gridGap = layout.isTablet ? 16 : GRID_GAP;
   const columnCount = layout.isTabletLandscape ? 5 : layout.isTablet ? 4 : NUM_COLUMNS;
@@ -165,7 +170,7 @@ export function LibraryScreen() {
   const [showSearch, setShowSearch] = useState(false);
   const [showSort, setShowSort] = useState(false);
   const searchAnim = useRef(new Animated.Value(0)).current;
-  const searchInputRef = useRef<TextInput>(null);
+  const searchInputRef = useRef<TextInputHandle>(null);
 
   const [tagSheetOpen, setTagSheetOpen] = useState(false);
   const [tagSheetBook, setTagSheetBook] = useState<Book | null>(null);
@@ -361,6 +366,17 @@ export function LibraryScreen() {
     [groups, activeGroupId],
   );
 
+  useLayoutEffect(() => {
+    nav.setOptions({
+      title: selectionMode
+        ? t("library.selectedCount", {
+            count: selectedBookIds.size,
+            defaultValue: "Выбрано: {{count}}",
+          })
+        : activeGroup?.name || t("tabs.library", "Библиотека"),
+    });
+  }, [activeGroup?.name, nav, selectedBookIds.size, selectionMode, t]);
+
   const hasSearch = filter.search.trim().length > 0;
 
   const groupedEntries = useMemo(() => {
@@ -457,28 +473,6 @@ export function LibraryScreen() {
     });
   }, [handleLocalImport, pendingLocalImport]);
 
-  const handleOpenImportSources = useCallback((anchorRef?: RefObject<View | null>) => {
-    const openWithFallback = () => {
-      setSourceSheetAnchor(null);
-      setSourceSheetOpen(true);
-    };
-
-    if (!anchorRef?.current || typeof anchorRef.current.measureInWindow !== "function") {
-      openWithFallback();
-      return;
-    }
-
-    anchorRef.current.measureInWindow((x, y, width, height) => {
-      if ([x, y, width, height].some((value) => Number.isNaN(value) || value <= 0)) {
-        openWithFallback();
-        return;
-      }
-
-      setSourceSheetAnchor({ x, y, width, height });
-      setSourceSheetOpen(true);
-    });
-  }, []);
-
   const handleOpenSavedWebDav = useCallback(async () => {
     setSourceSheetOpen(false);
 
@@ -535,6 +529,117 @@ export function LibraryScreen() {
     setSourceSheetOpen(false);
     setTemporaryWebDavOpen(true);
   }, []);
+
+  const handleOpenImportSources = useCallback(
+    (anchorRef?: RefObject<View | null>) => {
+      if (Platform.OS === "ios") {
+        const hasSavedWebDav = syncBackendType === "webdav" && syncConfig?.type === "webdav";
+        const cancelButtonIndex = 3;
+
+        ActionSheetIOS.showActionSheetWithOptions(
+          {
+            options: [
+              t("library.importSourceLocal", "Локальные файлы"),
+              t("library.importSourceSavedWebDav", "Мой WebDAV"),
+              t("library.importSourceTemporaryWebDav", "Подключить другой WebDAV"),
+              t("common.cancel", "Отмена"),
+            ],
+            cancelButtonIndex,
+            disabledButtonIndices: hasSavedWebDav ? [] : [1],
+          },
+          (buttonIndex) => {
+            if (buttonIndex === 0) {
+              setTimeout(() => void handleLocalImport(), 200);
+            } else if (buttonIndex === 1) {
+              void handleOpenSavedWebDav();
+            } else if (buttonIndex === 2) {
+              handleOpenTemporaryWebDav();
+            }
+          },
+        );
+        return;
+      }
+
+      const openWithFallback = () => {
+        setSourceSheetAnchor(null);
+        setSourceSheetOpen(true);
+      };
+
+      if (!anchorRef?.current || typeof anchorRef.current.measureInWindow !== "function") {
+        openWithFallback();
+        return;
+      }
+
+      anchorRef.current.measureInWindow((x, y, width, height) => {
+        if ([x, y, width, height].some((value) => Number.isNaN(value) || value <= 0)) {
+          openWithFallback();
+          return;
+        }
+
+        setSourceSheetAnchor({ x, y, width, height });
+        setSourceSheetOpen(true);
+      });
+    },
+    [
+      handleLocalImport,
+      handleOpenSavedWebDav,
+      handleOpenTemporaryWebDav,
+      syncBackendType,
+      syncConfig?.type,
+      t,
+    ],
+  );
+
+  useLayoutEffect(() => {
+    if (Platform.OS !== "ios") return;
+
+    const hasSavedWebDav = syncBackendType === "webdav" && syncConfig?.type === "webdav";
+
+    nav.setOptions({
+      unstable_headerRightItems: () => [
+        {
+          type: "menu",
+          label: t("library.importFirst", "Добавить книгу"),
+          accessibilityLabel: t("library.importFirst", "Добавить книгу"),
+          icon: { type: "sfSymbol", name: "plus" },
+          disabled: isImporting || isPickingImport,
+          menu: {
+            items: [
+              {
+                type: "action",
+                label: t("library.importSourceLocal", "Локальные файлы"),
+                icon: { type: "sfSymbol", name: "folder" },
+                onPress: () => void handleLocalImport(),
+              },
+              {
+                type: "action",
+                label: t("library.importSourceSavedWebDav", "Мой WebDAV"),
+                icon: { type: "sfSymbol", name: "icloud" },
+                disabled: !hasSavedWebDav,
+                onPress: () => void handleOpenSavedWebDav(),
+              },
+              {
+                type: "action",
+                label: t("library.importSourceTemporaryWebDav", "Подключить другой WebDAV"),
+                icon: { type: "sfSymbol", name: "globe" },
+                onPress: handleOpenTemporaryWebDav,
+              },
+            ],
+          },
+        },
+      ],
+    });
+  }, [
+    handleLocalImport,
+    handleOpenSavedWebDav,
+    handleOpenTemporaryWebDav,
+    isImporting,
+    isPickingImport,
+    nav,
+    syncBackendType,
+    syncConfig?.type,
+    t,
+  ]);
 
   const handleConnectTemporaryWebDav = useCallback(
     async (source: WebDavImportSource) => {
@@ -788,219 +893,220 @@ export function LibraryScreen() {
   );
 
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={["top"]}>
+    <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={[]}>
       <ExtractorWebView ref={extractorRef} />
 
       {/* Header */}
-      <View style={[s.header, { zIndex: 20 }]}>
-        <View style={s.headerInner}>
-          {selectionMode ? (
-            <View style={s.headerRow}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <TouchableOpacity style={s.headerBtn} onPress={exitSelectionMode}>
-                  <XIcon size={18} color={colors.foreground} />
-                </TouchableOpacity>
-                <Text style={s.headerTitle}>
-                  {t("library.selectedCount", {
-                    count: selectedBookIds.size,
-                    defaultValue: `已选 ${selectedBookIds.size} 本`,
-                  })}
-                </Text>
-              </View>
-              <View style={s.headerActions}>
-                <TouchableOpacity style={s.headerBtn} onPress={toggleSelectAll}>
-                  <CheckCheckIcon
-                    size={18}
-                    color={isAllSelected ? colors.primary : colors.mutedForeground}
-                  />
-                </TouchableOpacity>
-                <TouchableOpacity style={s.headerBtn} onPress={handleBatchTag}>
-                  <HashIcon size={18} color={colors.mutedForeground} />
-                </TouchableOpacity>
-                <TouchableOpacity style={s.headerBtn} onPress={handleBatchMoveGroup}>
-                  <FolderInputIcon size={18} color={colors.mutedForeground} />
-                </TouchableOpacity>
-                {activeGroupId ? (
-                  <TouchableOpacity style={s.headerBtn} onPress={handleBatchRemoveFromGroup}>
-                    <FolderMinusIcon size={18} color={colors.mutedForeground} />
+      {(Platform.OS !== "ios" || hasBooks || selectionMode) && (
+        <View style={[s.header, { zIndex: 20 }]}>
+          <View style={s.headerInner}>
+            {selectionMode ? (
+              <View style={s.headerRow}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <TouchableOpacity style={s.headerBtn} onPress={exitSelectionMode}>
+                    <XIcon size={18} color={colors.foreground} />
                   </TouchableOpacity>
-                ) : null}
-                <TouchableOpacity style={s.headerBtn} onPress={handleBatchVectorize}>
-                  <DatabaseIcon size={18} color={colors.mutedForeground} />
-                </TouchableOpacity>
-                <TouchableOpacity style={s.headerBtn} onPress={handleBatchDelete}>
-                  <Trash2Icon size={18} color={colors.destructive} />
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : (
-            <View style={s.headerRow}>
-              <View
-                style={{ flexDirection: "row", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}
-              >
-                {activeGroup && (
-                  <TouchableOpacity style={s.headerBtn} onPress={() => setActiveGroupId("")}>
-                    <ChevronLeftIcon size={18} color={colors.mutedForeground} />
-                  </TouchableOpacity>
-                )}
-                <Text style={s.headerTitle} numberOfLines={1}>
-                  {activeGroup?.name ?? t("sidebar.library", "书库")}
-                </Text>
-              </View>
-              <View style={s.headerActions}>
-                <SyncButton size={18} color={colors.mutedForeground} />
-                {hasBooks && (
-                  <TouchableOpacity
-                    style={s.headerBtn}
-                    onPress={() => {
-                      if (showSearch) {
-                        closeSearch();
-                        Keyboard.dismiss();
-                      } else {
-                        openSearch();
-                      }
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <SearchIcon
+                </View>
+                <View style={s.headerActions}>
+                  <TouchableOpacity style={s.headerBtn} onPress={toggleSelectAll}>
+                    <CheckCheckIcon
                       size={18}
-                      color={showSearch ? colors.primary : colors.mutedForeground}
+                      color={isAllSelected ? colors.primary : colors.mutedForeground}
                     />
                   </TouchableOpacity>
-                )}
-                {hasBooks && (
-                  <TouchableOpacity style={s.headerBtn} onPress={() => setShowSort(!showSort)}>
-                    <SortAscIcon size={18} color={colors.mutedForeground} />
+                  <TouchableOpacity style={s.headerBtn} onPress={handleBatchTag}>
+                    <HashIcon size={18} color={colors.mutedForeground} />
                   </TouchableOpacity>
-                )}
-                {hasBooks && (
-                  <TouchableOpacity
-                    style={s.headerBtn}
-                    onPress={() => {
-                      setActiveGroupId("");
-                      setGroupView(!isGroupView);
-                    }}
-                  >
-                    <LayersIcon
-                      size={18}
-                      color={isGroupView ? colors.primary : colors.mutedForeground}
-                    />
+                  <TouchableOpacity style={s.headerBtn} onPress={handleBatchMoveGroup}>
+                    <FolderInputIcon size={18} color={colors.mutedForeground} />
                   </TouchableOpacity>
-                )}
-                <View ref={importButtonAnchorRef} collapsable={false}>
-                  <TouchableOpacity
-                    style={s.importBtn}
-                    onPress={() => handleOpenImportSources(importButtonAnchorRef)}
-                    disabled={isImporting || isPickingImport}
-                    activeOpacity={0.8}
-                  >
-                    {isImporting || isPickingImport ? (
-                      <ActivityIndicator size="small" color={colors.primaryForeground} />
-                    ) : (
-                      <PlusIcon size={18} color={colors.primaryForeground} />
-                    )}
+                  {activeGroupId ? (
+                    <TouchableOpacity style={s.headerBtn} onPress={handleBatchRemoveFromGroup}>
+                      <FolderMinusIcon size={18} color={colors.mutedForeground} />
+                    </TouchableOpacity>
+                  ) : null}
+                  <TouchableOpacity style={s.headerBtn} onPress={handleBatchVectorize}>
+                    <DatabaseIcon size={18} color={colors.mutedForeground} />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={s.headerBtn} onPress={handleBatchDelete}>
+                    <Trash2Icon size={18} color={colors.destructive} />
                   </TouchableOpacity>
                 </View>
               </View>
-            </View>
-          )}
-
-          {hasBooks && ((!selectionMode && showSearch) || allTags.length > 0) && (
-            <View style={s.searchTagSection}>
-              {!selectionMode && showSearch && (
-                <Animated.View
-                  style={[
-                    s.searchInputContainer,
-                    layout.isTablet ? s.searchInputContainerWide : null,
-                    {
-                      opacity: searchAnim,
-                      transform: [
-                        {
-                          translateY: searchAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [-4, 0],
-                          }),
-                        },
-                      ],
-                    },
-                  ]}
+            ) : (
+              <View style={s.headerRow}>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 6,
+                    flex: 1,
+                    minWidth: 0,
+                  }}
                 >
-                  <SearchIcon size={16} color={colors.mutedForeground} />
-                  <TextInput
-                    ref={searchInputRef}
-                    style={s.searchInput}
-                    placeholder={t("library.searchPlaceholder", "搜索...")}
-                    placeholderTextColor={colors.mutedForeground}
-                    value={filter.search}
-                    onChangeText={(text) => setFilter({ search: text })}
-                    onBlur={() => {
-                      if (!filter.search.trim()) closeSearch();
-                    }}
-                    returnKeyType="search"
-                  />
-                  {filter.search.length > 0 && (
-                    <TouchableOpacity
-                      style={s.searchClearBtn}
-                      onPress={() => {
-                        setFilter({ search: "" });
-                        searchInputRef.current?.focus();
-                      }}
-                      hitSlop={6}
-                    >
-                      <XIcon size={14} color={colors.mutedForeground} />
+                  {activeGroup && (
+                    <TouchableOpacity style={s.headerBtn} onPress={() => setActiveGroupId("")}>
+                      <ChevronLeftIcon size={18} color={colors.mutedForeground} />
                     </TouchableOpacity>
                   )}
-                </Animated.View>
-              )}
-              {allTags.length > 0 && (
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  style={[s.tagScroll, layout.isTablet ? s.tagScrollWide : null]}
-                  contentContainerStyle={s.tagScrollContent}
-                >
-                  <TouchableOpacity
-                    style={[s.tagChip, !activeTag && !activeGroupId && s.tagChipActive]}
-                    onPress={() => setActiveTag("")}
-                  >
-                    <Text
-                      style={[s.tagChipText, !activeTag && !activeGroupId && s.tagChipTextActive]}
-                    >
-                      {t("library.all", "全部")}
-                    </Text>
-                  </TouchableOpacity>
-                  {allTags.map((tag) => (
+                </View>
+                <View style={s.headerActions}>
+                  <SyncButton size={18} color={colors.mutedForeground} />
+                  {hasBooks && (
                     <TouchableOpacity
-                      key={tag}
-                      style={[s.tagChip, activeTag === tag && s.tagChipActive]}
-                      onPress={() => setActiveTag(activeTag === tag ? "" : tag)}
+                      style={s.headerBtn}
+                      onPress={() => {
+                        if (showSearch) {
+                          closeSearch();
+                          Keyboard.dismiss();
+                        } else {
+                          openSearch();
+                        }
+                      }}
+                      activeOpacity={0.7}
                     >
-                      <Text style={[s.tagChipText, activeTag === tag && s.tagChipTextActive]}>
-                        {tag}
+                      <SearchIcon
+                        size={18}
+                        color={showSearch ? colors.primary : colors.mutedForeground}
+                      />
+                    </TouchableOpacity>
+                  )}
+                  {hasBooks && (
+                    <TouchableOpacity style={s.headerBtn} onPress={() => setShowSort(!showSort)}>
+                      <SortAscIcon size={18} color={colors.mutedForeground} />
+                    </TouchableOpacity>
+                  )}
+                  {hasBooks && (
+                    <TouchableOpacity
+                      style={s.headerBtn}
+                      onPress={() => {
+                        setActiveGroupId("");
+                        setGroupView(!isGroupView);
+                      }}
+                    >
+                      <LayersIcon
+                        size={18}
+                        color={isGroupView ? colors.primary : colors.mutedForeground}
+                      />
+                    </TouchableOpacity>
+                  )}
+                  {Platform.OS !== "ios" && (
+                    <View ref={importButtonAnchorRef} collapsable={false}>
+                      <TouchableOpacity
+                        style={s.importBtn}
+                        onPress={() => handleOpenImportSources(importButtonAnchorRef)}
+                        disabled={isImporting || isPickingImport}
+                        activeOpacity={0.8}
+                      >
+                        {isImporting || isPickingImport ? (
+                          <ActivityIndicator size="small" color={colors.primaryForeground} />
+                        ) : (
+                          <PlusIcon size={18} color={colors.primaryForeground} />
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              </View>
+            )}
+
+            {hasBooks && ((!selectionMode && showSearch) || allTags.length > 0) && (
+              <View style={s.searchTagSection}>
+                {!selectionMode && showSearch && (
+                  <Animated.View
+                    style={[
+                      s.searchInputContainer,
+                      layout.isTablet ? s.searchInputContainerWide : null,
+                      {
+                        opacity: searchAnim,
+                        transform: [
+                          {
+                            translateY: searchAnim.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [-4, 0],
+                            }),
+                          },
+                        ],
+                      },
+                    ]}
+                  >
+                    <SearchIcon size={16} color={colors.mutedForeground} />
+                    <TextInput
+                      ref={searchInputRef}
+                      style={s.searchInput}
+                      placeholder={t("library.searchPlaceholder", "搜索...")}
+                      placeholderTextColor={colors.mutedForeground}
+                      value={filter.search}
+                      onChangeText={(text) => setFilter({ search: text })}
+                      onBlur={() => {
+                        if (!filter.search.trim()) closeSearch();
+                      }}
+                      returnKeyType="search"
+                    />
+                    {filter.search.length > 0 && (
+                      <TouchableOpacity
+                        style={s.searchClearBtn}
+                        onPress={() => {
+                          setFilter({ search: "" });
+                          searchInputRef.current?.focus();
+                        }}
+                        hitSlop={6}
+                      >
+                        <XIcon size={14} color={colors.mutedForeground} />
+                      </TouchableOpacity>
+                    )}
+                  </Animated.View>
+                )}
+                {allTags.length > 0 && (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={[s.tagScroll, layout.isTablet ? s.tagScrollWide : null]}
+                    contentContainerStyle={s.tagScrollContent}
+                  >
+                    <TouchableOpacity
+                      style={[s.tagChip, !activeTag && !activeGroupId && s.tagChipActive]}
+                      onPress={() => setActiveTag("")}
+                    >
+                      <Text
+                        style={[s.tagChipText, !activeTag && !activeGroupId && s.tagChipTextActive]}
+                      >
+                        {t("library.all", "全部")}
                       </Text>
                     </TouchableOpacity>
-                  ))}
-                  <TouchableOpacity
-                    style={[s.tagChip, activeTag === "__uncategorized__" && s.tagChipActive]}
-                    onPress={() =>
-                      setActiveTag(activeTag === "__uncategorized__" ? "" : "__uncategorized__")
-                    }
-                  >
-                    <Text
-                      style={[
-                        s.tagChipText,
-                        activeTag === "__uncategorized__" && s.tagChipTextActive,
-                      ]}
+                    {allTags.map((tag) => (
+                      <TouchableOpacity
+                        key={tag}
+                        style={[s.tagChip, activeTag === tag && s.tagChipActive]}
+                        onPress={() => setActiveTag(activeTag === tag ? "" : tag)}
+                      >
+                        <Text style={[s.tagChipText, activeTag === tag && s.tagChipTextActive]}>
+                          {tag}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                    <TouchableOpacity
+                      style={[s.tagChip, activeTag === "__uncategorized__" && s.tagChipActive]}
+                      onPress={() =>
+                        setActiveTag(activeTag === "__uncategorized__" ? "" : "__uncategorized__")
+                      }
                     >
-                      {t("sidebar.uncategorized", "未分类")}
-                    </Text>
-                  </TouchableOpacity>
-                </ScrollView>
-              )}
-            </View>
-          )}
+                      <Text
+                        style={[
+                          s.tagChipText,
+                          activeTag === "__uncategorized__" && s.tagChipTextActive,
+                        ]}
+                      >
+                        {t("sidebar.uncategorized", "未分类")}
+                      </Text>
+                    </TouchableOpacity>
+                  </ScrollView>
+                )}
+              </View>
+            )}
+          </View>
         </View>
-      </View>
+      )}
 
       {/* Sort dropdown */}
       <Modal
@@ -1047,27 +1153,31 @@ export function LibraryScreen() {
             </View>
           )}
           {isLoaded && books.length === 0 && (
-            <View style={s.emptyWrap}>
-              <Image
-                source={isDark ? BOOK_DARK_PNG : BOOK_PNG}
-                style={{ width: 160, height: 160 }}
-              />
+            <View
+              style={[
+                s.emptyWrap,
+                Platform.OS === "ios" && {
+                  transform: [{ translateY: -nativeHeaderHeight / 2 }],
+                },
+              ]}
+            >
               <Text style={s.emptyTitle}>{t("library.empty", "暂无书籍")}</Text>
               <Text style={s.emptyHint}>{t("library.emptyHint", "导入电子书开始阅读之旅")}</Text>
-              <View ref={emptyImportAnchorRef} collapsable={false}>
-                <TouchableOpacity
-                  style={s.emptyImportBtn}
+              <View ref={emptyImportAnchorRef} collapsable={false} style={{ alignSelf: "center" }}>
+                <NativeButton
+                  label={t("library.importFirst", "Добавить книгу")}
                   onPress={() => handleOpenImportSources(emptyImportAnchorRef)}
                   disabled={isPickingImport}
-                  activeOpacity={0.8}
-                >
-                  <Text style={s.emptyImportText}>{t("library.importFirst", "导入书籍")}</Text>
-                </TouchableOpacity>
+                  icon="add"
+                  size="large"
+                />
               </View>
             </View>
           )}
           {isLoaded && hasBooks && isEmpty && (
-            <View style={s.noResultsWrap}>
+            <View
+              style={[s.noResultsWrap, { transform: [{ translateY: -nativeHeaderHeight / 2 }] }]}
+            >
               <SearchIcon size={40} color={withOpacity(colors.mutedForeground, 0.3)} />
               <Text style={s.noResultsText}>{t("library.noResults", "没有找到匹配的书籍")}</Text>
             </View>
@@ -1121,15 +1231,15 @@ export function LibraryScreen() {
               onSubmitEditing={() => void submitGroupName()}
             />
             <View style={s.groupModalActions}>
-              <TouchableOpacity
-                style={s.groupModalSecondary}
+              <NativeButton
+                label={t("common.cancel", "Отмена")}
                 onPress={() => setGroupNameModal(null)}
-              >
-                <Text style={s.groupModalSecondaryText}>{t("common.cancel", "取消")}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={s.groupModalPrimary} onPress={() => void submitGroupName()}>
-                <Text style={s.groupModalPrimaryText}>{t("common.confirm", "确定")}</Text>
-              </TouchableOpacity>
+                variant="secondary"
+              />
+              <NativeButton
+                label={t("common.confirm", "Готово")}
+                onPress={() => void submitGroupName()}
+              />
             </View>
           </Pressable>
         </Pressable>

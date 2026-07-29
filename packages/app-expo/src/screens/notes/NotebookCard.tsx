@@ -1,7 +1,8 @@
+import { Text } from "@/components/ui/Typography";
 import { BookOpenIcon, HighlighterIcon, NotebookPenIcon } from "@/components/ui/Icon";
 import { useColors } from "@/styles/theme";
 import type { HighlightWithBook } from "@readany/core/db/database";
-import { Image, Text, TouchableOpacity, View } from "react-native";
+import { Image, TouchableOpacity, View } from "react-native";
 import { makeStyles } from "./notes-styles";
 
 export function NotebookCard({

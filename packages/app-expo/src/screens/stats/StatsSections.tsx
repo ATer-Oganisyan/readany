@@ -1,3 +1,4 @@
+import { Text } from "@/components/ui/Typography";
 /**
  * StatsSections.tsx — Section components for the mobile Stats screen.
  * Each section is a self-contained visual block with no business logic.
@@ -23,7 +24,7 @@ import type {
 } from "@readany/core/stats";
 import { ClockIcon } from "@/components/ui/Icon";
 import { useState } from "react";
-import { Text, TouchableOpacity, type ViewStyle, View } from "react-native";
+import { TouchableOpacity, type ViewStyle, View } from "react-native";
 import { BarChart } from "./BarChart";
 import { MonthHeatmap } from "./MonthHeatmap";
 import { makeStyles } from "./stats-styles";

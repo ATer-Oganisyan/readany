@@ -1,3 +1,4 @@
+import { Text } from "@/components/ui/Typography";
 import { useColors, radius } from "@/styles/theme";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import {
@@ -23,7 +24,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   TouchableOpacity,
   View,
 } from "react-native";

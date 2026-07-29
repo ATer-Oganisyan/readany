@@ -1,88 +1,12 @@
-import { ChevronDownIcon, ChevronUpIcon, ClockIcon } from "@/components/ui/Icon";
+import { Text } from "@/components/ui/Typography";
+import { ChevronDownIcon, ChevronUpIcon, ClockIcon, MinusIcon, PauseIcon, PlayIcon, PlusIcon, SquareIcon, Volume2Icon } from "@/components/ui/Icon";
 import { TTSSleepTimerSheet } from "@/components/tts/TTSSleepTimerSheet";
 import { useTTSStore } from "@/stores";
 import { type ThemeColors, fontSize, radius, useColors, withOpacity } from "@/styles/theme";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { StyleSheet, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Svg, { Path } from "react-native-svg";
-
-function PlayIcon({ size = 24, color = "#fff" }: { size?: number; color?: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
-      <Path d="M8 5v14l11-7z" />
-    </Svg>
-  );
-}
-
-function PauseIcon({ size = 24, color = "#fff" }: { size?: number; color?: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
-      <Path d="M6 4h4v16H6zM14 4h4v16h-4z" />
-    </Svg>
-  );
-}
-
-function SquareIcon({ size = 24, color = "#fff" }: { size?: number; color?: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
-      <Path d="M6 6h12v12H6z" />
-    </Svg>
-  );
-}
-
-function Volume2Icon({ size = 24, color = "#fff" }: { size?: number; color?: string }) {
-  return (
-    <Svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={color}
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <Path d="M11 5L6 9H2v6h4l5 4V5z" />
-      <Path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
-    </Svg>
-  );
-}
-
-function MinusIcon({ size = 24, color = "#fff" }: { size?: number; color?: string }) {
-  return (
-    <Svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={color}
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <Path d="M5 12h14" />
-    </Svg>
-  );
-}
-
-function PlusIcon({ size = 24, color = "#fff" }: { size?: number; color?: string }) {
-  return (
-    <Svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={color}
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <Path d="M12 5v14M5 12h14" />
-    </Svg>
-  );
-}
 
 interface TTSControlsProps {
   onClose: () => void;

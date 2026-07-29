@@ -1,14 +1,14 @@
-import { DarkModeSvg } from "@/components/DarkModeSvg";
+import { Bot, Languages, Search } from "@/components/ui/Icon";
+import { NativeButton } from "@/components/ui/NativeButton";
+import { Text } from "@/components/ui/Typography";
+import { useSettingsStore } from "@/stores";
 import { useTheme } from "@/styles/theme";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { useSettingsStore } from "@/stores";
-import { Bot, Languages, Search } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import ReadingSvg from "../../../../assets/illustrations/reading.svg";
 import type { OnboardingStackParamList } from "../OnboardingNavigator";
 
 type NavProp = NativeStackNavigationProp<OnboardingStackParamList, "Welcome">;
@@ -17,7 +17,7 @@ export function WelcomePage() {
   const { t } = useTranslation();
   const navigation = useNavigation<NavProp>();
   const { completeOnboarding } = useSettingsStore();
-  const { isDark, colors } = useTheme();
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
 
   const handleSkip = () => {
@@ -35,15 +35,6 @@ export function WelcomePage() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <Animated.View
-          entering={FadeInDown.delay(100).springify()}
-          style={[styles.iconContainer, { backgroundColor: "transparent" }]}
-        >
-          <DarkModeSvg width={180} height={180}>
-            <ReadingSvg width={180} height={180} />
-          </DarkModeSvg>
-        </Animated.View>
-
         <Animated.Text
           entering={FadeInDown.delay(200).springify()}
           style={[styles.title, { color: colors.foreground }]}
@@ -79,7 +70,7 @@ export function WelcomePage() {
             },
           ].map((f, i) => (
             <Animated.View
-              key={i}
+              key={f.title}
               entering={FadeInDown.delay(400 + i * 100).springify()}
               style={styles.featureRow}
             >
@@ -107,20 +98,17 @@ export function WelcomePage() {
           },
         ]}
       >
-        <TouchableOpacity onPress={handleSkip} style={styles.skipBtn} activeOpacity={0.7}>
-          <Text style={[styles.skipText, { color: colors.mutedForeground }]}>
-            {t("onboarding.skip", "Skip")}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
+        <NativeButton
+          label={t("onboarding.skip", "Пропустить")}
+          onPress={handleSkip}
+          variant="tertiary"
+        />
+        <NativeButton
+          label={t("onboarding.getStarted", "Начать")}
           onPress={handleNext}
-          style={[styles.nextBtn, { backgroundColor: colors.primary }]}
-          activeOpacity={0.7}
-        >
-          <Text style={[styles.nextText, { color: colors.primaryForeground }]}>
-            {t("onboarding.getStarted", "Get Started")} →
-          </Text>
-        </TouchableOpacity>
+          icon="forward"
+          size="large"
+        />
       </View>
     </View>
   );
@@ -165,8 +153,4 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderTopWidth: 1,
   },
-  skipBtn: { paddingVertical: 12, paddingHorizontal: 16 },
-  skipText: { fontSize: 16, fontWeight: "500" },
-  nextBtn: { paddingVertical: 14, paddingHorizontal: 28, borderRadius: 999 },
-  nextText: { fontSize: 16, fontWeight: "600" },
 });

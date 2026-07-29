@@ -1,10 +1,11 @@
+import { Text } from "@/components/ui/Typography";
 /**
  * BookCoverImage — pure render helper for TTS cover display.
  * Renders a book cover with realistic spine shadow, or a styled fallback.
  */
 import { fontWeight } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { Image, StyleSheet, View } from "react-native";
 
 export interface BookCoverImageProps {
   coverUri?: string;
@@ -55,7 +56,7 @@ export function BookCoverImage({
           <View style={{ flex: 1, padding: Math.max(6, width * 0.07), alignItems: "center", justifyContent: "center", zIndex: 1 }}>
             <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
               <Text
-                style={{ textAlign: "center", fontSize, fontWeight: fontWeight.medium, fontFamily: "serif", color: colors.stone500, lineHeight: Math.round(fontSize * 1.45) }}
+                style={{ textAlign: "center", fontSize, fontWeight: fontWeight.medium, color: colors.stone500, lineHeight: Math.round(fontSize * 1.45) }}
                 numberOfLines={4}
               >
                 {bookTitle || t("reader.untitled")}
@@ -63,7 +64,7 @@ export function BookCoverImage({
             </View>
             <View style={{ width: Math.round(width * 0.28), height: 1, backgroundColor: `${colors.stone300}99`, marginVertical: 5 }} />
             <View style={{ height: "22%", alignItems: "center", justifyContent: "center" }}>
-              <Text style={{ textAlign: "center", fontSize: subFontSize, fontFamily: "serif", color: colors.stone400 }} numberOfLines={1}>
+              <Text style={{ textAlign: "center", fontSize: subFontSize, color: colors.stone400 }} numberOfLines={1}>
                 {chapterTitle}
               </Text>
             </View>

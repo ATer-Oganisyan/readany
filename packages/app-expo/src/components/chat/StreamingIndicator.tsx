@@ -1,7 +1,8 @@
+import { Text } from "@/components/ui/Typography";
 import { BrainIcon, Loader2Icon, WrenchIcon } from "@/components/ui/Icon";
 import { fontSize as fs, fontWeight as fw, radius, useColors } from "@/styles/theme";
 import { useTranslation } from "react-i18next";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 
 interface StreamingIndicatorProps {
   step: "thinking" | "tool_calling" | "responding";

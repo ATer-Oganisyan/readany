@@ -1,3 +1,4 @@
+import { Text, TextInput, type TextInputHandle } from "@/components/ui/Typography";
 import {
   BrainIcon,
   ChevronDownIcon,
@@ -20,8 +21,6 @@ import {
   Keyboard,
   Platform,
   StyleSheet,
-  Text,
-  TextInput,
   type TextInputContentSizeChangeEvent,
   TouchableOpacity,
   View,
@@ -62,7 +61,7 @@ export function ChatInput({
   const { t } = useTranslation();
   const colors = useColors();
   const s = makeStyles(colors);
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<TextInputHandle>(null);
   const keyboardInsets = useKeyboardInsets();
   const effectiveKeyboardBottomOffset = keyboardBottomOffset ?? keyboardInsets.safeAreaBottom;
   const visibleKeyboardPadding =

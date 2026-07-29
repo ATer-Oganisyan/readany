@@ -1,7 +1,8 @@
+import { Text } from "@/components/ui/Typography";
 import { useColors } from "@/styles/theme";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { LayoutChangeEvent, Text, TouchableOpacity, View } from "react-native";
+import { LayoutChangeEvent, TouchableOpacity, View } from "react-native";
 import { makeStyles } from "./stats-styles";
 import { formatTime } from "./stats-utils";
 

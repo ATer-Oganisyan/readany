@@ -1,10 +1,11 @@
+import { Text } from "@/components/ui/Typography";
 import { FolderIcon, MoreVerticalIcon } from "@/components/ui/Icon";
 import { type ThemeColors, radius, useColors } from "@/styles/theme";
 import { getPlatformService } from "@readany/core/services";
 import type { Book, BookGroup } from "@readany/core/types";
 import { memo, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Image, StyleSheet, TouchableOpacity, View } from "react-native";
 import { makeStyles as makeBookCardStyles } from "./book-card-styles";
 
 interface GroupCardProps {

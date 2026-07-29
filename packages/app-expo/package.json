@@ -20,6 +20,9 @@
     "start:clear": "APP_VARIANT=development pnpm run build:reader && APP_VARIANT=development node scripts/configure-native-variant.js && APP_VARIANT=development expo start --dev-client --scheme readany-dev --clear",
     "start:dev": "pnpm run start",
     "start:dev:clear": "pnpm run start:clear",
+    "storybook": "EXPO_PUBLIC_STORYBOOK_ENABLED=true APP_VARIANT=development node scripts/configure-native-variant.js && EXPO_PUBLIC_STORYBOOK_ENABLED=true APP_VARIANT=development expo start --dev-client --scheme readany-dev --clear",
+    "storybook:ios": "EXPO_PUBLIC_STORYBOOK_ENABLED=true APP_VARIANT=development expo run:ios",
+    "storybook:android": "EXPO_PUBLIC_STORYBOOK_ENABLED=true APP_VARIANT=development expo run:android",
     "preandroid": "pnpm run build:reader",
     "android": "expo run:android",
     "android:dev": "APP_VARIANT=development pnpm run build:reader && APP_VARIANT=development expo run:android --device",
@@ -45,8 +48,10 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.712.0",
+    "@deslop/primitives": "workspace:*",
     "@dr.pogodin/react-native-fs": "^2.38.2",
     "@dr.pogodin/react-native-static-server": "^0.26.2",
+    "@expo/ui": "0.2.0-beta.9",
     "@langchain/anthropic": "^1.3.21",
     "@langchain/core": "^1.1.29",
     "@langchain/deepseek": "^1.0.15",
@@ -84,7 +89,6 @@
     "expo-sqlite": "~16.0.10",
     "expo-status-bar": "~3.0.9",
     "i18next": "^25.8.13",
-    "lucide-react-native": "^0.577.0",
     "pako": "^2.1.0",
     "punycode": "^2.3.1",
     "react": "19.1.0",
@@ -97,7 +101,7 @@
     "react-native-qrcode-svg": "^6.3.21",
     "react-native-reanimated": "4.1.1",
     "react-native-safe-area-context": "~5.6.2",
-    "react-native-screens": "~4.16.0",
+    "react-native-screens": "4.24.0",
     "react-native-svg": "~15.12.1",
     "react-native-tcp-socket": "^6.4.1",
     "react-native-track-player": "^4.1.2",
@@ -110,6 +114,12 @@
   },
   "devDependencies": {
     "@babel/core": "^7.25.0",
+    "@storybook/addon-ondevice-actions": "10.4.2",
+    "@storybook/addon-ondevice-backgrounds": "10.4.2",
+    "@storybook/addon-ondevice-controls": "10.4.2",
+    "@storybook/react": "10.4.2",
+    "@storybook/react-native": "10.4.2",
+    "@storybook/react-native-ui": "10.4.2",
     "@types/pako": "^2.0.4",
     "@types/react": "^19.1.17",
     "babel-plugin-module-resolver": "^5.0.2",
@@ -117,6 +127,7 @@
     "eas-cli": "^18.11.0",
     "esbuild": "^0.27.3",
     "react-native-svg-transformer": "^1.5.3",
+    "storybook": "10.4.2",
     "typescript": "^5.9.3"
   }
 }

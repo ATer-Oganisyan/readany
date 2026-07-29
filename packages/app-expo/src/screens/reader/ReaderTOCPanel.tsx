@@ -1,3 +1,4 @@
+import { Text } from "@/components/ui/Typography";
 /**
  * ReaderTOCPanel — bottom-sheet modal with two tabs: Table of Contents and Bookmarks.
  */
@@ -11,7 +12,7 @@ import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { useColors } from "@/styles/theme";
 import { fontSize } from "@/styles/theme";
 import type { TOCItem } from "@readany/core/types";
-import { Modal, Pressable, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { Modal, Pressable, ScrollView, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { ListIcon } from "./reader-icons";

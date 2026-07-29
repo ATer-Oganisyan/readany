@@ -1,3 +1,4 @@
+import { Text } from "@/components/ui/Typography";
 import { getPlatformService } from "@readany/core/services";
 import { checkForUpdate } from "@readany/core/update";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
@@ -10,7 +11,6 @@ import {
   Linking,
   ScrollView,
   StyleSheet,
-  Text,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -79,7 +79,7 @@ export default function AboutScreen() {
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
-      edges={["top"]}
+      edges={[]}
     >
       <SettingsHeader title={t("about.title", "关于")} />
 

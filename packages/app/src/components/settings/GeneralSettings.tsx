@@ -6,13 +6,6 @@ import {
 } from "@/lib/storage/desktop-library-root";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Coffee, FolderOpen, HardDrive, Monitor, Moon, RotateCcw, Sun } from "lucide-react";
 /**
  * GeneralSettings — app-level settings
@@ -31,7 +24,7 @@ const THEME_CONFIG: Record<ThemeMode, { icon: typeof Sun; labelKey: string }> = 
 };
 
 export function GeneralSettings() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const [theme, setThemeState] = useState<ThemeMode>("dark");
   const [currentLibraryRoot, setCurrentLibraryRoot] = useState("");
   const [defaultLibraryRoot, setDefaultLibraryRoot] = useState("");
@@ -78,11 +71,6 @@ export function GeneralSettings() {
       cancelled = true;
     };
   }, []);
-
-  const handleLanguageChange = async (lang: string) => {
-    const { changeAndPersistLanguage } = await import("@readany/core/i18n");
-    await changeAndPersistLanguage(lang);
-  };
 
   const handleThemeChange = (newTheme: ThemeMode) => {
     setThemeState(newTheme);
@@ -213,40 +201,13 @@ export function GeneralSettings() {
         </div>
       </section>
 
-      {/* Language Section */}
-      <section className="rounded-lg bg-muted/60 p-4">
-        <h2 className="mb-4 text-sm font-medium text-foreground">{t("settings.language")}</h2>
-        <div className="flex items-center justify-between">
-          <div>
-            <span className="text-sm text-foreground">{t("settings.language")}</span>
-            <p className="mt-1 text-xs text-muted-foreground">{t("settings.languageDesc")}</p>
-          </div>
-          <Select value={i18n.language} onValueChange={handleLanguageChange}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="en">English</SelectItem>
-              <SelectItem value="zh">简体中文</SelectItem>
-              <SelectItem value="zh-TW">繁體中文</SelectItem>
-              <SelectItem value="ja">日本語</SelectItem>
-              <SelectItem value="ko">한국어</SelectItem>
-              <SelectItem value="fr">Français</SelectItem>
-              <SelectItem value="es">Español</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </section>
-
       <section className="rounded-lg bg-muted/60 p-4">
         <div className="mb-4 flex items-start gap-3">
           <div className="mt-0.5 rounded-md bg-background p-2 text-primary shadow-sm">
             <HardDrive className="h-4 w-4" />
           </div>
           <div className="min-w-0">
-            <h2 className="text-sm font-medium text-foreground">
-              {t("settings.storageLocation")}
-            </h2>
+            <h2 className="text-sm font-medium text-foreground">{t("settings.storageLocation")}</h2>
             <p className="mt-1 text-xs text-muted-foreground">
               {t("settings.storageLocationDesc")}
             </p>
@@ -271,7 +232,11 @@ export function GeneralSettings() {
                 onChange={(e) => setTargetLibraryRoot(e.target.value)}
                 placeholder={t("settings.storageTargetPath")}
               />
-              <Button variant="outline" onClick={handleChooseLibraryFolder} disabled={migratingLibrary}>
+              <Button
+                variant="outline"
+                onClick={handleChooseLibraryFolder}
+                disabled={migratingLibrary}
+              >
                 <FolderOpen className="h-4 w-4" />
                 {t("settings.storageChooseFolder")}
               </Button>

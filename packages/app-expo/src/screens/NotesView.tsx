@@ -7,11 +7,12 @@ import {
   ShareIcon,
   XIcon,
 } from "@/components/ui/Icon";
-import { SyncButton } from "@/components/ui/SyncButton";
+import { Text, TextInput } from "@/components/ui/Typography";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useAnnotationStore, useLibraryStore } from "@/stores";
-import { useColors, useTheme } from "@/styles/theme";
+import { useColors } from "@/styles/theme";
+import { useHeaderHeight } from "@react-navigation/elements";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HighlightWithBook } from "@readany/core/db/database";
@@ -33,8 +34,6 @@ import {
   Modal,
   Pressable,
   ScrollView,
-  Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -45,9 +44,6 @@ import { NoteCard } from "./notes/NoteCard";
 import { NotebookCard } from "./notes/NotebookCard";
 import { makeStyles } from "./notes/notes-styles";
 import { useResolvedCovers } from "./notes/useResolvedCovers";
-
-const NOTE_PNG = require("../../assets/note.png");
-const NOTE_DARK_PNG = require("../../assets/note-dark.png");
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type DetailTab = "notes" | "highlights";
@@ -64,8 +60,8 @@ export function NotesView({
   hideDetailHeader?: boolean;
 }) {
   const colors = useColors();
-  const { isDark } = useTheme();
   const s = makeStyles(colors);
+  const nativeHeaderHeight = useHeaderHeight();
   const { t } = useTranslation();
   const nav = useNavigation<Nav>();
   const {
@@ -302,8 +298,8 @@ export function NotesView({
   // Loading
   if (isLoading) {
     return (
-      <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={["top"]}>
-        <View style={s.loadingWrap}>
+      <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={edges}>
+        <View style={[s.loadingWrap, { transform: [{ translateY: -nativeHeaderHeight / 2 }] }]}>
           <View style={s.spinner} />
           <Text style={s.loadingText}>{t("common.loading", "加载中...")}</Text>
         </View>
@@ -314,17 +310,8 @@ export function NotesView({
   // Empty
   if (bookNotebooks.length === 0) {
     return (
-      <SafeAreaView
-        style={[s.container, { backgroundColor: colors.background }]}
-        edges={hideDetailHeader ? [] : ["top"]}
-      >
-        {!hideDetailHeader && (
-          <View style={s.header}>
-            <Text style={s.headerTitle}>{t("notes.title", "笔记")}</Text>
-          </View>
-        )}
-        <View style={s.emptyWrap}>
-          <Image source={isDark ? NOTE_DARK_PNG : NOTE_PNG} style={{ width: 160, height: 160 }} />
+      <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={edges}>
+        <View style={[s.emptyWrap, { transform: [{ translateY: -nativeHeaderHeight / 2 }] }]}>
           <Text style={s.emptyTitle}>{t("notes.empty", "暂无笔记")}</Text>
           <Text style={s.emptyHint}>{t("notes.emptyHint", "阅读时长按文字添加高亮和笔记")}</Text>
         </View>
@@ -430,7 +417,7 @@ export function NotesView({
 
         {/* Detail content */}
         {currentList.length === 0 ? (
-          <View style={s.detailEmpty}>
+          <View style={[s.detailEmpty, { transform: [{ translateY: -nativeHeaderHeight / 2 }] }]}>
             <Text style={s.detailEmptyText}>
               {searchQuery
                 ? t("notes.noSearchResults", "没有匹配结果")
@@ -513,10 +500,7 @@ export function NotesView({
     <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={edges}>
       <View style={s.header}>
         <View style={s.headerRow}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <Text style={s.headerTitle}>{t("notes.title", "笔记")}</Text>
-            <SyncButton size={18} color={colors.mutedForeground} />
-          </View>
+          <View />
           {bookNotebooks.length > 0 && (
             <TouchableOpacity
               style={s.searchToggle}

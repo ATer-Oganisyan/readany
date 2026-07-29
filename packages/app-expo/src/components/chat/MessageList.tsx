@@ -1,3 +1,4 @@
+import { Text, TextInput } from "@/components/ui/Typography";
 import { CheckIcon, ChevronDownIcon, CopyIcon } from "@/components/ui/Icon";
 import { fontSize as fs, radius, useColors, withOpacity } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
@@ -18,8 +19,6 @@ import {
   Platform,
   Pressable,
   StyleSheet,
-  Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";

@@ -1,28 +1,22 @@
+import { MessageCircle } from "@/components/ui/Icon";
+import { Text } from "@/components/ui/Typography";
+import type { RootStackParamList } from "@/navigation/RootNavigator";
+import { useNativeHeaderActions } from "@/navigation/useNativeHeaderActions";
 /**
  * FeedbackDetailScreen — Shows issue detail + comments within the app.
  */
 import { useColors } from "@/styles/theme";
-import type { RootStackParamList } from "@/navigation/RootNavigator";
+import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { getFeedbackDetail, markFeedbackReplySeen } from "@readany/core/feedback";
 import type { FeedbackComment, FeedbackDetail } from "@readany/core/feedback";
-import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { ChevronLeft, ExternalLink, MessageCircle } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  ActivityIndicator,
-  Linking,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { ActivityIndicator, Linking, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 type Props = NativeStackScreenProps<RootStackParamList, "FeedbackDetail">;
 
-export default function FeedbackDetailScreen({ navigation, route }: Props) {
+export default function FeedbackDetailScreen({ route }: Props) {
   const { issueNumber, title } = route.params;
   const colors = useColors();
   const { t } = useTranslation();
@@ -40,26 +34,21 @@ export default function FeedbackDetailScreen({ navigation, route }: Props) {
     load();
   }, [issueNumber]);
 
-  return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={["top"]}>
-      {/* Header */}
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <ChevronLeft size={22} color={colors.foreground} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.foreground }]} numberOfLines={1}>
-          #{issueNumber} {title}
-        </Text>
-        <TouchableOpacity
-          onPress={() =>
-            Linking.openURL(`https://github.com/codedogQBY/ReadAny/issues/${issueNumber}`)
-          }
-          style={styles.externalBtn}
-        >
-          <ExternalLink size={18} color={colors.mutedForeground} />
-        </TouchableOpacity>
-      </View>
+  useNativeHeaderActions({
+    title: `#${issueNumber} ${title}`,
+    right: [
+      {
+        label: t("feedback.openOnGithub", "Открыть на GitHub"),
+        icon: "forward",
+        sfSymbol: "arrow.up.right.square",
+        onPress: () =>
+          Linking.openURL(`https://github.com/codedogQBY/ReadAny/issues/${issueNumber}`),
+      },
+    ],
+  });
 
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={[]}>
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator color={colors.primary} />
@@ -100,7 +89,9 @@ export default function FeedbackDetailScreen({ navigation, route }: Props) {
           </View>
 
           {/* Issue body */}
-          <View style={[styles.bodyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View
+            style={[styles.bodyCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+          >
             <Text style={[styles.bodyText, { color: colors.foreground }]}>
               {stripMarkdown(detail.body)}
             </Text>
@@ -139,7 +130,9 @@ function CommentItem({
   colors,
 }: { comment: FeedbackComment; colors: ReturnType<typeof useColors> }) {
   return (
-    <View style={[styles.commentCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+    <View
+      style={[styles.commentCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+    >
       <View style={styles.commentMeta}>
         <Text style={[styles.commentAuthor, { color: colors.foreground }]}>{comment.author}</Text>
         <Text style={[styles.commentDate, { color: colors.mutedForeground }]}>
@@ -200,7 +193,12 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
   },
-  commentMeta: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
+  commentMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
   commentAuthor: { fontSize: 12, fontWeight: "600" },
   commentDate: { fontSize: 11 },
   commentBody: { fontSize: 13, lineHeight: 19 },

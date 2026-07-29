@@ -1,3 +1,4 @@
+import { Text } from "@/components/ui/Typography";
 import { MermaidView } from "@/components/common/MermaidView";
 import { fontSize as fs, radius, useColors } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
@@ -5,7 +6,7 @@ import type { CitationPart } from "@readany/core/types/message";
 import * as Clipboard from "expo-clipboard";
 import { Fragment, type ReactNode, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { StyleSheet, TouchableOpacity, View } from "react-native";
 import type { StyleProp, TextStyle } from "react-native";
 import Markdown, { type RenderRules, type ASTNode } from "react-native-markdown-display";
 
@@ -303,7 +304,6 @@ const makeMarkdownStyles = (colors: ThemeColors) =>
       backgroundColor: colors.muted,
       color: colors.foreground,
       fontSize: fs.xs + 1,
-      fontFamily: "Menlo",
       paddingHorizontal: 4,
       paddingVertical: 1,
       borderRadius: radius.sm,
@@ -312,7 +312,6 @@ const makeMarkdownStyles = (colors: ThemeColors) =>
       backgroundColor: colors.muted,
       color: colors.foreground,
       fontSize: fs.xs + 1,
-      fontFamily: "Menlo",
       padding: 12,
       borderRadius: radius.md,
       marginVertical: 6,
@@ -321,7 +320,6 @@ const makeMarkdownStyles = (colors: ThemeColors) =>
       backgroundColor: colors.muted,
       color: colors.foreground,
       fontSize: fs.xs + 1,
-      fontFamily: "Menlo",
       padding: 12,
       borderRadius: radius.md,
       marginVertical: 6,

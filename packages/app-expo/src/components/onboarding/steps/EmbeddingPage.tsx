@@ -1,18 +1,17 @@
-import { DarkModeSvg } from "@/components/DarkModeSvg";
+import { Check, ChevronLeftIcon, Cloud, Plus, Trash2, X } from "@/components/ui/Icon";
 import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
+import { Text, TextInput } from "@/components/ui/Typography";
 import { useVectorModelStore } from "@/stores/vector-model-store";
 import { useTheme } from "@/styles/theme";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { VectorModelConfig } from "@readany/core/types";
 import { normalizeEmbeddingEndpointUrl, testEmbeddingEndpoint } from "@readany/core/utils/api";
-import { Check, Cloud, Plus, Trash2, X } from "lucide-react-native";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import Animated, { SlideInRight } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import SearchSvg from "../../../../assets/illustrations/search.svg";
 import type { OnboardingStackParamList } from "../OnboardingNavigator";
 
 type NavProp = NativeStackNavigationProp<OnboardingStackParamList, "Embedding">;
@@ -75,16 +74,6 @@ export function EmbeddingPage() {
       <Animated.View entering={SlideInRight.duration(500)} style={styles.container}>
         <KeyboardAwareScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
           <View style={styles.header}>
-            <View
-              style={[
-                styles.iconContainer,
-                { backgroundColor: "transparent", shadowOpacity: 0, width: "100%", height: 140 },
-              ]}
-            >
-              <DarkModeSvg width={140} height={140}>
-                <SearchSvg width={140} height={140} />
-              </DarkModeSvg>
-            </View>
             <Text style={[styles.title, { color: colors.foreground }]}>
               {t("onboarding.embedding.title", "Smart Search")}
             </Text>
@@ -304,8 +293,13 @@ export function EmbeddingPage() {
             },
           ]}
         >
-          <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
-            <Text style={styles.backText}>{t("common.back", "Back")}</Text>
+          <Pressable
+            onPress={() => navigation.goBack()}
+            style={styles.backBtn}
+            accessibilityRole="button"
+            accessibilityLabel={t("common.back", "Назад")}
+          >
+            <ChevronLeftIcon size={24} color={colors.foreground} />
           </Pressable>
           <View style={styles.rightActions}>
             <Pressable onPress={handleNext} style={[styles.skipBtn, { opacity: 0.8 }]}>
@@ -441,7 +435,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
   },
   backBtn: { padding: 8 },
-  backText: { fontSize: 14, color: "#64748b" },
   rightActions: { flexDirection: "row", alignItems: "center", gap: 12 },
   skipBtn: { paddingVertical: 10 },
   skipText: { fontSize: 14 },

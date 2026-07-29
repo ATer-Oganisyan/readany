@@ -1,8 +1,9 @@
+import { Text } from "@/components/ui/Typography";
 import { useColors } from "@/styles/theme";
 import type { PeriodBookStats } from "@readany/core/stats";
 import { getBookProgressPercent } from "@readany/core/utils";
 import { useTranslation } from "react-i18next";
-import { Image, Text, View } from "react-native";
+import { Image, View } from "react-native";
 import { makeStyles } from "./stats-styles";
 import { formatTime } from "./stats-utils";
 

@@ -1,24 +1,16 @@
-import { DarkModeSvg } from "@/components/DarkModeSvg";
+import { AlertCircle, Check, CheckCircle2, ChevronLeftIcon } from "@/components/ui/Icon";
 import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
+import { Text, TextInput } from "@/components/ui/Typography";
+import { useSettingsStore } from "@/stores";
 import { useTheme } from "@/styles/theme";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { useSettingsStore } from "@/stores";
 import { testDeepLConnection } from "@readany/core/translation/providers";
-import { AlertCircle, Check, CheckCircle2 } from "lucide-react-native";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import Animated, { SlideInRight } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import DiscussionSvg from "../../../../assets/illustrations/discussion.svg";
 import type { OnboardingStackParamList } from "../OnboardingNavigator";
 
 type NavProp = NativeStackNavigationProp<OnboardingStackParamList, "Translation">;
@@ -26,7 +18,7 @@ type NavProp = NativeStackNavigationProp<OnboardingStackParamList, "Translation"
 export function TranslationPage() {
   const { t } = useTranslation();
   const navigation = useNavigation<NavProp>();
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const { translationConfig, updateTranslationConfig } = useSettingsStore();
   const insets = useSafeAreaInsets();
 
@@ -87,16 +79,6 @@ export function TranslationPage() {
       <Animated.View entering={SlideInRight.duration(500)} style={styles.container}>
         <KeyboardAwareScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
           <View style={styles.header}>
-            <View
-              style={[
-                styles.iconContainer,
-                { backgroundColor: "transparent", shadowOpacity: 0, width: "100%", height: 140 },
-              ]}
-            >
-              <DarkModeSvg width={140} height={140}>
-                <DiscussionSvg width={140} height={140} />
-              </DarkModeSvg>
-            </View>
             <Text style={[styles.title, { color: colors.foreground }]}>
               {t("onboarding.translation.title", "Translation Engine")}
             </Text>
@@ -269,8 +251,13 @@ export function TranslationPage() {
             },
           ]}
         >
-          <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
-            <Text style={styles.backText}>{t("common.back", "Back")}</Text>
+          <Pressable
+            onPress={() => navigation.goBack()}
+            style={styles.backBtn}
+            accessibilityRole="button"
+            accessibilityLabel={t("common.back", "Назад")}
+          >
+            <ChevronLeftIcon size={24} color={colors.foreground} />
           </Pressable>
           <View style={styles.rightActions}>
             <Pressable
@@ -385,7 +372,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#f8fafc",
   },
   backBtn: { paddingVertical: 12, paddingHorizontal: 4 },
-  backText: { fontSize: 16, color: "#64748b", fontWeight: "500" },
   rightActions: { flexDirection: "row", gap: 16, alignItems: "center" },
   skipBtn: { paddingVertical: 12 },
   skipText: { fontSize: 14, color: "#94a3b8", fontWeight: "500" },

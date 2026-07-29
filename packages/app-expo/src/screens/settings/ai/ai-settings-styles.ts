@@ -169,7 +169,6 @@ export const makeStyles = (colors: ThemeColors) =>
     previewValue: {
       fontSize: fontSize.sm,
       color: colors.foreground,
-      fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
     },
     previewCopyButton: {
       paddingHorizontal: spacing.sm,

@@ -1,8 +1,9 @@
+import { Text } from "@/components/ui/Typography";
 /**
  * Recursive TOC (Table of Contents) tree item component.
  */
 import { useState } from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { StyleSheet, TouchableOpacity, View } from "react-native";
 
 import { ChevronDownIcon, ChevronRightIcon } from "@/components/ui/Icon";
 import { type ThemeColors, fontSize, fontWeight, radius, useColors } from "@/styles/theme";

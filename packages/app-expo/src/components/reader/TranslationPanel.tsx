@@ -1,3 +1,5 @@
+import { Text } from "@/components/ui/Typography";
+import { NativeButton } from "@/components/ui/NativeButton";
 import { CheckIcon, ChevronDownIcon, XIcon } from "@/components/ui/Icon";
 import { useSettingsStore } from "@/stores";
 import { type ThemeColors, fontSize, fontWeight, radius, useColors } from "@/styles/theme";
@@ -21,7 +23,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -253,9 +254,12 @@ export function TranslationPanel({ text, onClose }: TranslationPanelProps) {
           ) : error ? (
             <View style={s.errorWrap}>
               <Text style={s.errorText}>{error}</Text>
-              <TouchableOpacity style={s.retryBtn} onPress={translate}>
-                <Text style={s.retryBtnText}>{t("common.retry", "重试")}</Text>
-              </TouchableOpacity>
+              <NativeButton
+                label={t("common.retry", "Повторить")}
+                onPress={translate}
+                icon="refresh"
+                variant="secondary"
+              />
             </View>
           ) : translation ? (
             <Text style={s.translationText}>{translation}</Text>

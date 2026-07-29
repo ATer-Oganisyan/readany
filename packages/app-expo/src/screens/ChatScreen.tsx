@@ -1,5 +1,7 @@
+import { Text } from "@/components/ui/Typography";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
+import { useNativeHeaderActions } from "@/navigation/useNativeHeaderActions";
+import { useHeaderHeight } from "@react-navigation/elements";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 /**
@@ -10,13 +12,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Animated,
-  Image,
   Keyboard,
   Modal,
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   TouchableOpacity,
   TouchableWithoutFeedback,
   View,
@@ -52,33 +52,20 @@ import {
   BookOpenIcon,
   CopyIcon,
   Download,
-  HistoryIcon,
   LibraryIcon,
   LightbulbIcon,
   MessageCirclePlusIcon,
   ScrollTextIcon,
-  ShareIcon,
   Trash2Icon,
   XIcon,
 } from "@/components/ui/Icon";
-import {
-  fontSize as fs,
-  fontWeight as fw,
-  radius,
-  useColors,
-  useTheme,
-  withOpacity,
-} from "@/styles/theme";
+import { fontSize as fs, fontWeight as fw, radius, useColors, withOpacity } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
-
-const THINK_PNG = require("../../assets/think.png");
-const THINK_DARK_PNG = require("../../assets/think-dark.png");
 
 export function ChatScreen() {
   const { t } = useTranslation();
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const tabBarHeight = useBottomTabBarHeight();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const layout = useResponsiveLayout();
   const isTabletLandscape = layout.isTabletLandscape;
@@ -177,9 +164,14 @@ export function ChatScreen() {
     ? threads.find((th) => th.id === generalActiveThreadId)
     : null;
 
-  const activeCurrentMessage = activeThread?.id === currentMessage?.threadId ? currentMessage : null;
+  const activeCurrentMessage =
+    activeThread?.id === currentMessage?.threadId ? currentMessage : null;
   const displayMessages = convertToMessageV2(activeThread?.messages || []);
-  const allMessages = mergeMessagesWithStreaming(displayMessages, activeCurrentMessage, isStreaming);
+  const allMessages = mergeMessagesWithStreaming(
+    displayMessages,
+    activeCurrentMessage,
+    isStreaming,
+  );
 
   // Handlers
   const handleSend = useCallback(
@@ -382,8 +374,36 @@ export function ChatScreen() {
     ],
   );
 
+  useNativeHeaderActions({
+    left: !isTabletLandscape
+      ? [
+          {
+            label: t("chat.history", "История"),
+            icon: "back",
+            sfSymbol: "clock.arrow.circlepath",
+            onPress: openSidebar,
+          },
+        ]
+      : [],
+    right: [
+      {
+        label: t("chat.export", "Экспортировать"),
+        icon: "share",
+        sfSymbol: "square.and.arrow.up",
+        disabled: allMessages.length === 0,
+        onPress: () => setShowExportMenu(true),
+      },
+      {
+        label: t("chat.newChat", "Новый чат"),
+        icon: "add",
+        sfSymbol: "square.and.pencil",
+        onPress: handleNewThread,
+      },
+    ],
+  });
+
   return (
-    <SafeAreaView style={s.container} edges={["top"]}>
+    <SafeAreaView style={s.container} edges={[]}>
       <View style={s.shell}>
         {isTabletLandscape && (
           <View style={[s.sidebarDocked, { paddingTop: insets.top }]}>
@@ -392,71 +412,41 @@ export function ChatScreen() {
         )}
 
         <View style={s.mainColumn}>
-          {/* Header — compact, matching mobile */}
-          <View style={s.header}>
-            <View style={s.headerLeft}>
-              {!isTabletLandscape && (
-                <TouchableOpacity style={s.iconBtn} onPress={openSidebar} activeOpacity={0.7}>
-                  <HistoryIcon size={16} color={colors.foreground} />
-                </TouchableOpacity>
-              )}
-            </View>
-            <View style={s.headerRight}>
-              <ModelSelector onNavigateToSettings={() => navigation.navigate("AISettings")} />
-              <ContextPopover />
-              {allMessages.length > 0 && (
-                <>
-                  <TouchableOpacity
-                    style={s.iconBtn}
-                    onPress={() => setShowExportMenu(true)}
-                    activeOpacity={0.7}
-                  >
-                    <ShareIcon size={16} color={colors.foreground} />
-                  </TouchableOpacity>
-                  <Modal
-                    visible={showExportMenu}
-                    transparent
-                    animationType="fade"
-                    onRequestClose={() => setShowExportMenu(false)}
-                  >
-                    <Pressable style={s.exportOverlay} onPress={() => setShowExportMenu(false)}>
-                      <View style={s.exportMenu}>
-                        <TouchableOpacity
-                          style={s.exportMenuItem}
-                          activeOpacity={0.85}
-                          onPress={handleExportMarkdown}
-                        >
-                          <ScrollTextIcon size={18} color={colors.foreground} />
-                          <Text style={s.exportMenuText}>
-                            {t("chat.exportMarkdown", "导出 Markdown")}
-                          </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[s.exportMenuItem, s.exportMenuItemDivider]}
-                          activeOpacity={0.85}
-                          onPress={handleExportJSON}
-                        >
-                          <Download size={18} color={colors.foreground} />
-                          <Text style={s.exportMenuText}>{t("chat.exportJSON", "导出 JSON")}</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={s.exportMenuItem}
-                          activeOpacity={0.85}
-                          onPress={handleCopyAll}
-                        >
-                          <CopyIcon size={18} color={colors.foreground} />
-                          <Text style={s.exportMenuText}>{t("chat.copyAll", "复制全部")}</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </Pressable>
-                  </Modal>
-                </>
-              )}
-              <TouchableOpacity style={s.iconBtn} onPress={handleNewThread} activeOpacity={0.7}>
-                <MessageCirclePlusIcon size={16} color={colors.foreground} />
-              </TouchableOpacity>
-            </View>
+          <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8, padding: 8 }}>
+            <ModelSelector onNavigateToSettings={() => navigation.navigate("AISettings")} />
+            <ContextPopover />
           </View>
+
+          <Modal
+            visible={showExportMenu}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setShowExportMenu(false)}
+          >
+            <Pressable style={s.exportOverlay} onPress={() => setShowExportMenu(false)}>
+              <View style={s.exportMenu}>
+                <TouchableOpacity style={s.exportMenuItem} onPress={handleExportMarkdown}>
+                  <ScrollTextIcon size={18} color={colors.foreground} />
+                  <Text style={s.exportMenuText}>
+                    {t("chat.exportMarkdown", "Экспортировать Markdown")}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.exportMenuItem, s.exportMenuItemDivider]}
+                  onPress={handleExportJSON}
+                >
+                  <Download size={18} color={colors.foreground} />
+                  <Text style={s.exportMenuText}>
+                    {t("chat.exportJSON", "Экспортировать JSON")}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={s.exportMenuItem} onPress={handleCopyAll}>
+                  <CopyIcon size={18} color={colors.foreground} />
+                  <Text style={s.exportMenuText}>{t("chat.copyAll", "Скопировать чат")}</Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Modal>
 
           {/* Content */}
           <View style={s.content}>
@@ -483,7 +473,7 @@ export function ChatScreen() {
               onSend={handleSend}
               onStop={stopStream}
               isStreaming={isStreaming}
-              keyboardBottomOffset={tabBarHeight}
+              keyboardBottomOffset={insets.bottom}
             />
           </View>
         </View>
@@ -534,7 +524,7 @@ function EmptyState({
   compact?: boolean;
 }) {
   const { t } = useTranslation();
-  const { isDark } = useTheme();
+  const nativeHeaderHeight = useHeaderHeight();
   const s = useMemo(
     () => makeStyles(colors, { isTabletLandscape: false, sidebarWidth: 0, horizontalPadding: 16 }),
     [colors],
@@ -563,9 +553,14 @@ function EmptyState({
   );
 
   return (
-    <View style={[s.emptyContainer, compact && s.emptyContainerCompact]}>
+    <View
+      style={[
+        s.emptyContainer,
+        compact && s.emptyContainerCompact,
+        { transform: [{ translateY: -nativeHeaderHeight / 2 }] },
+      ]}
+    >
       <View style={s.emptyInner}>
-        <Image source={isDark ? THINK_DARK_PNG : THINK_PNG} style={{ width: 140, height: 140 }} />
         <Text style={s.emptyTitle}>{t("chat.howCanIHelp", "有什么我可以帮你的？")}</Text>
         <Text style={s.emptySubtitle}>
           {t("chat.askAboutBooks", "关于书籍的任何问题都可以问我")}
@@ -667,7 +662,9 @@ const makeStyles = (
     suggestionCard: {
       width: "48%",
       flexGrow: 1,
-      backgroundColor: colors.muted,
+      backgroundColor: colors.card,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
       borderRadius: radius.xl,
       padding: 14,
       gap: 10,

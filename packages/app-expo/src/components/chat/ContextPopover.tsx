@@ -1,3 +1,4 @@
+import { Text } from "@/components/ui/Typography";
 import { BookOpenIcon, CheckIcon } from "@/components/ui/Icon";
 import { useLibraryStore } from "@/stores/library-store";
 import { fontSize as fs, fontWeight as fw, radius, useColors, withOpacity } from "@/styles/theme";
@@ -10,7 +11,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   TouchableOpacity,
   View,
 } from "react-native";

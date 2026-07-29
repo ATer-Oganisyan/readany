@@ -707,7 +707,6 @@ export const makeStyles = (colors: ThemeColors) =>
       color: colors.stone400,
       textAlign: "center",
       lineHeight: 11,
-      fontFamily: "serif",
     },
     calSpineOverlay: {
       position: "absolute",

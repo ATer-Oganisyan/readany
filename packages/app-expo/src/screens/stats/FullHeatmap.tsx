@@ -1,8 +1,9 @@
+import { Text } from "@/components/ui/Typography";
 import { useColors, withOpacity } from "@/styles/theme";
 import type { DailyStats } from "@readany/core/stats";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { ScrollView, TouchableOpacity, View } from "react-native";
 import { formatTime } from "./stats-utils";
 
 export function FullHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {

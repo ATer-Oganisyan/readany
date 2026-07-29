@@ -3,6 +3,7 @@
  * Use `useTheme()` from ThemeContext for reactive theme colors.
  */
 import { darkColors, useTheme } from "./ThemeContext";
+import { interfaceFontFamily } from "@deslop/primitives/native";
 export type { ThemeColors } from "./ThemeContext";
 export { useTheme } from "./ThemeContext";
 
@@ -72,3 +73,5 @@ export const fontWeight = {
   semibold: "600" as const,
   bold: "700" as const,
 };
+
+export const fontFamily = interfaceFontFamily;

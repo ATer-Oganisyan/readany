@@ -1,3 +1,4 @@
+import { Text, TextInput } from "@/components/ui/Typography";
 import { useTTSStore } from "@/stores";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import {
@@ -27,8 +28,6 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -185,7 +184,7 @@ export default function TTSSettingsScreen() {
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
-      edges={["top"]}
+      edges={[]}
     >
       <SettingsHeader
         title={t("tts.title", "TTS 设置")}

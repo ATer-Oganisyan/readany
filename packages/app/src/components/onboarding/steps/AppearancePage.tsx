@@ -1,11 +1,4 @@
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Coffee, Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -21,7 +14,7 @@ const THEME_CONFIG: Record<ThemeMode, { icon: typeof Sun; labelKey: string }> = 
 import { OnboardingLayout } from "../OnboardingLayout";
 
 export function AppearancePage({ onNext, onPrev, step, totalSteps }: any) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const [theme, setThemeState] = useState<ThemeMode>("dark");
 
   useEffect(() => {
@@ -30,11 +23,6 @@ export function AppearancePage({ onNext, onPrev, step, totalSteps }: any) {
       setThemeState(saved);
     }
   }, []);
-
-  const handleLanguageChange = async (lang: string) => {
-    const { changeAndPersistLanguage } = await import("@readany/core/i18n");
-    await changeAndPersistLanguage(lang);
-  };
 
   const handleThemeChange = (newTheme: ThemeMode) => {
     setThemeState(newTheme);
@@ -68,7 +56,7 @@ export function AppearancePage({ onNext, onPrev, step, totalSteps }: any) {
           </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4">
           <div className="rounded-xl border bg-muted/30 p-4 shadow-sm">
             <h3 className="mb-3 text-xs font-medium text-foreground uppercase tracking-wide">
               {t("settings.theme", "Theme")}
@@ -94,21 +82,6 @@ export function AppearancePage({ onNext, onPrev, step, totalSteps }: any) {
                 );
               })}
             </div>
-          </div>
-
-          <div className="rounded-xl border bg-muted/30 p-4 shadow-sm">
-            <h3 className="mb-3 text-xs font-medium text-foreground uppercase tracking-wide">
-              {t("settings.language", "Language")}
-            </h3>
-            <Select value={i18n.language} onValueChange={handleLanguageChange}>
-              <SelectTrigger className="h-10 rounded-lg font-medium text-sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="en">English</SelectItem>
-                <SelectItem value="zh">{t("settings.simplifiedChinese", "中文")}</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
         </div>
       </div>

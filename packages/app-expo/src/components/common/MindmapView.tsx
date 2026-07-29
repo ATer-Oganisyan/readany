@@ -1,3 +1,4 @@
+import { Text } from "@/components/ui/Typography";
 import { Download, Maximize2, Minimize2, RotateCcw } from "@/components/ui/Icon";
 import { useColors } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
@@ -5,7 +6,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ActivityIndicator, Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Modal, StyleSheet, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import WebView, { type WebViewMessageEvent } from "react-native-webview";
 

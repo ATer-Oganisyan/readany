@@ -1,3 +1,5 @@
+import { Text, TextInput } from "@/components/ui/Typography";
+import { NativeButton } from "@/components/ui/NativeButton";
 import { ClockIcon } from "@/components/ui/Icon";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { useTTSStore } from "@/stores";
@@ -8,8 +10,6 @@ import {
   Modal,
   Pressable,
   StyleSheet,
-  Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -267,26 +267,25 @@ export function TTSSleepTimerSheet({ visible, onClose }: TTSSleepTimerSheetProps
               placeholder={t("tts.sleepTimerCustomPlaceholder", "自定义分钟数")}
               placeholderTextColor={colors.mutedForeground}
             />
-            <TouchableOpacity style={s.applyBtn} onPress={applyCustomMinutes}>
-              <Text style={s.applyBtnText}>{t("tts.sleepTimerApply", "开始计时")}</Text>
-            </TouchableOpacity>
+            <NativeButton
+              label={t("tts.sleepTimerApply", "Запустить")}
+              onPress={applyCustomMinutes}
+              icon="play"
+            />
           </View>
 
           <View style={s.footer}>
             {sleepTimerEndsAt ? (
-              <TouchableOpacity
-                style={s.ghostBtn}
+              <NativeButton
+                label={t("tts.sleepTimerCancel", "Отключить таймер")}
+                variant="destructive"
                 onPress={() => {
                   clearSleepTimer();
                   onClose();
                 }}
-              >
-                <Text style={s.ghostBtnText}>{t("tts.sleepTimerCancel", "关闭定时")}</Text>
-              </TouchableOpacity>
+              />
             ) : null}
-            <TouchableOpacity style={s.ghostBtn} onPress={onClose}>
-              <Text style={s.ghostBtnText}>{t("common.cancel", "取消")}</Text>
-            </TouchableOpacity>
+            <NativeButton label={t("common.cancel", "Отмена")} onPress={onClose} variant="tertiary" />
           </View>
         </Pressable>
       </Pressable>

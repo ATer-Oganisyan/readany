@@ -1,8 +1,9 @@
+import { Text, TextInput } from "@/components/ui/Typography";
 import { type LANQRData, createLANServer } from "@readany/core/sync/lan-server";
 import type { ISyncBackend } from "@readany/core/sync/sync-backend";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import Constants from "expo-constants";
-import { Scan } from "lucide-react-native";
+import { Scan } from "@/components/ui/Icon";
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -10,8 +11,6 @@ import {
   Animated,
   Modal,
   StyleSheet,
-  Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -334,7 +333,7 @@ export function LanSection({
                     <Text style={styles.lanAddress}>
                       {t("settings.syncLANIP")}:{" "}
                       <Text
-                        style={{ fontFamily: "SpaceMono_400Regular", color: colors.foreground }}
+                        style={{ color: colors.foreground }}
                       >
                         {lanQrData.ip}
                       </Text>
@@ -342,7 +341,7 @@ export function LanSection({
                     <Text style={styles.lanAddress}>
                       {t("settings.syncLANPort")}:{" "}
                       <Text
-                        style={{ fontFamily: "SpaceMono_400Regular", color: colors.foreground }}
+                        style={{ color: colors.foreground }}
                       >
                         {lanQrData.port}
                       </Text>

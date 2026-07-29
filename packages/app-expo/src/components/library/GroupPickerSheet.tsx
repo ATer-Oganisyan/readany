@@ -1,3 +1,5 @@
+import { Text, TextInput } from "@/components/ui/Typography";
+import { NativeButton } from "@/components/ui/NativeButton";
 import { FolderPlusIcon } from "@/components/ui/Icon";
 import { type ThemeColors, fontSize, fontWeight, radius, spacing, useColors } from "@/styles/theme";
 import type { BookGroup } from "@readany/core/types";
@@ -9,8 +11,6 @@ import {
   Platform,
   Pressable,
   StyleSheet,
-  Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -94,13 +94,11 @@ export function GroupPickerSheet({
                   onSubmitEditing={handleCreate}
                   returnKeyType="done"
                 />
-                <TouchableOpacity
-                  style={[styles.createBtn, !newGroupName.trim() && styles.createBtnDisabled]}
+                <NativeButton
+                  label={t("common.confirm", "Готово")}
                   disabled={!newGroupName.trim()}
                   onPress={handleCreate}
-                >
-                  <Text style={styles.createBtnText}>{t("common.confirm", "确定")}</Text>
-                </TouchableOpacity>
+                />
               </View>
             ) : (
               <TouchableOpacity

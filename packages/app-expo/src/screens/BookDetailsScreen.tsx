@@ -1,3 +1,4 @@
+import { Text, TextInput, type TextInputHandle } from "@/components/ui/Typography";
 import {
   CalendarIcon,
   CheckIcon,
@@ -37,7 +38,7 @@ import {
 } from "@readany/core/utils";
 import * as ImagePicker from "expo-image-picker";
 import type { TFunction } from "i18next";
-import { Star } from "lucide-react-native";
+import { Star } from "@/components/ui/Icon";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -50,8 +51,6 @@ import {
   ScrollView,
   type StyleProp,
   StyleSheet,
-  Text,
-  TextInput,
   type TextStyle,
   TouchableOpacity,
   View,
@@ -491,7 +490,7 @@ export function BookDetailsScreen({ route }: Props) {
     return (
       <SafeAreaView
         style={[styles.container, { backgroundColor: colors.background }]}
-        edges={["top"]}
+        edges={[]}
       >
         <SettingsHeader title={t("library.detailsTitle", "书籍详情")} />
         <View style={styles.missingWrap}>
@@ -508,7 +507,7 @@ export function BookDetailsScreen({ route }: Props) {
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
-      edges={["top"]}
+      edges={[]}
     >
       <SettingsHeader title={t("library.detailsTitle", "书籍详情")} />
       <View style={styles.flex}>
@@ -909,7 +908,7 @@ function EditableInfoRow({
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<TextInputHandle>(null);
   const display = value.trim();
   const showPlaceholder = !display;
 
@@ -1300,7 +1299,7 @@ function TextEditSheet({
   onDone: (text: string) => void;
 }) {
   const [draft, setDraft] = useState("");
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<TextInputHandle>(null);
   const keyboardInsets = useKeyboardInsets();
   const multiline = Boolean(target && (target.kind !== "field" || target.multiline));
 

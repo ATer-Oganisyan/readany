@@ -2,8 +2,8 @@ const APP_VARIANTS = {
   development: {
     key: "development",
     name: "ReadAny Dev",
-    bundleIdentifier: "com.readany.app.dev",
-    androidPackage: "com.readany.app.dev",
+    bundleIdentifier: "com.mishanaer.readany.dev",
+    androidPackage: "com.mishanaer.readany.dev",
     scheme: "readany-dev",
   },
   preview: {

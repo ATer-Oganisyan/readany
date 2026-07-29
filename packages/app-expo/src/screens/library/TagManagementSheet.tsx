@@ -1,3 +1,4 @@
+import { Text, TextInput } from "@/components/ui/Typography";
 import {
   CheckIcon,
   EditIcon,
@@ -16,8 +17,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";

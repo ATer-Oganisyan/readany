@@ -3,8 +3,19 @@ const path = require("node:path");
 const { getAppVariantConfig } = require("./app-variant");
 
 const appRoot = path.resolve(__dirname, "..");
-const iosProjectPath = path.join(appRoot, "ios", "ReadAny.xcodeproj", "project.pbxproj");
-const iosInfoPlistPath = path.join(appRoot, "ios", "ReadAny", "Info.plist");
+
+function firstExistingPath(...candidates) {
+  return candidates.find((candidate) => fs.existsSync(candidate));
+}
+
+const iosProjectPath = firstExistingPath(
+  path.join(appRoot, "ios", "ReadAnyDev.xcodeproj", "project.pbxproj"),
+  path.join(appRoot, "ios", "ReadAny.xcodeproj", "project.pbxproj"),
+);
+const iosInfoPlistPath = firstExistingPath(
+  path.join(appRoot, "ios", "ReadAnyDev", "Info.plist"),
+  path.join(appRoot, "ios", "ReadAny", "Info.plist"),
+);
 
 function replaceAll(content, pattern, replacement) {
   pattern.lastIndex = 0;
@@ -16,7 +27,7 @@ function replaceAll(content, pattern, replacement) {
 }
 
 function syncIosProject(variant) {
-  if (!fs.existsSync(iosProjectPath)) {
+  if (!iosProjectPath) {
     return false;
   }
 
@@ -36,7 +47,7 @@ function syncIosProject(variant) {
 }
 
 function syncIosInfoPlist(variant) {
-  if (!fs.existsSync(iosInfoPlistPath)) {
+  if (!iosInfoPlistPath) {
     return false;
   }
 
@@ -53,7 +64,7 @@ function syncIosInfoPlist(variant) {
   );
   plist = replaceAll(
     plist,
-    /<string>com\.readany\.app(?:\.(?:dev|preview))?<\/string>/g,
+    /<string>(?:com\.readany\.app(?:\.(?:dev|preview))?|com\.mishanaer\.readany\.dev)<\/string>/g,
     `<string>${variant.bundleIdentifier}</string>`,
   );
   plist = replaceAll(

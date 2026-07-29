@@ -1,3 +1,4 @@
+import { Text } from "@/components/ui/Typography";
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
 import { CheckIcon, EditIcon, Trash2Icon, XIcon } from "@/components/ui/Icon";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
@@ -5,7 +6,7 @@ import { useColors } from "@/styles/theme";
 import type { HighlightWithBook } from "@readany/core/db/database";
 import { HIGHLIGHT_COLOR_HEX } from "@readany/core/types";
 import type { TFunction } from "i18next";
-import { KeyboardAvoidingView, Platform, Text, TouchableOpacity, View } from "react-native";
+import { KeyboardAvoidingView, Platform, TouchableOpacity, View } from "react-native";
 import { makeStyles } from "./notes-styles";
 
 export function NoteCard({

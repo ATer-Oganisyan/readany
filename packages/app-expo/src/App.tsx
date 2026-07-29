@@ -1,3 +1,4 @@
+import { Text } from "@/components/ui/Typography";
 /**
  * ReadAny Expo App — Root component
  *
@@ -23,10 +24,12 @@ if (typeof navigator !== "undefined" && !navigator.userAgent) {
 }
 
 import { DarkTheme, DefaultTheme, NavigationContainer } from "@react-navigation/native";
+import { interfaceFontAssets } from "@deslop/primitives/native";
+import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { LogBox, Platform, Text, View } from "react-native";
+import { LogBox, Platform, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -56,7 +59,12 @@ import { ExpoPlatformService } from "@/lib/platform/expo-platform-service";
 import { MobileSyncAdapter } from "@/lib/sync/sync-adapter-mobile";
 import { RootNavigator } from "@/navigation/RootNavigator";
 import { useLibraryStore } from "@/stores/library-store";
-import { ThemeProvider, useTheme } from "@/styles/ThemeContext";
+import {
+  ThemeProvider,
+  loadStoredThemeMode,
+  type ThemeMode,
+  useTheme,
+} from "@/styles/ThemeContext";
 import { useAutoSync } from "@readany/core/hooks/use-auto-sync";
 
 installFeedbackLogCapture();
@@ -81,9 +89,11 @@ setFeedbackWorkerUrl(feedbackWorkerUrl);
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function App() {
+  const [fontsLoaded, fontError] = useFonts(interfaceFontAssets);
   const [ready, setReady] = useState(false);
   const [splashDone, setSplashDone] = useState(false);
   const [bootError, setBootError] = useState<string | null>(null);
+  const [initialThemeMode, setInitialThemeMode] = useState<ThemeMode | null>(null);
 
   useEffect(() => {
     async function bootstrap() {
@@ -107,6 +117,9 @@ export default function App() {
 
         console.log("[App] bootstrap: init language");
         await initI18nLanguage();
+
+        console.log("[App] bootstrap: load theme");
+        setInitialThemeMode(await loadStoredThemeMode());
 
         console.log("[App] bootstrap: import expo/fetch");
         const { fetch: expoFetch } = await import("expo/fetch");
@@ -199,7 +212,9 @@ export default function App() {
     setSplashDone(true);
   }, []);
 
-  if (bootError) {
+  const startupError = bootError ?? fontError?.message ?? null;
+
+  if (startupError) {
     return (
       <View
         style={{
@@ -219,14 +234,14 @@ export default function App() {
             textAlign: "center",
           }}
         >
-          App failed to start
+          Не удалось запустить приложение
         </Text>
-        <Text style={{ color: "#fca5a5", fontSize: 14, textAlign: "center" }}>{bootError}</Text>
+        <Text style={{ color: "#fca5a5", fontSize: 14, textAlign: "center" }}>{startupError}</Text>
       </View>
     );
   }
 
-  if (!ready) {
+  if (!ready || !fontsLoaded || initialThemeMode === null) {
     return (
       <View
         style={{
@@ -243,7 +258,7 @@ export default function App() {
 
   return (
     <I18nextProvider i18n={i18n}>
-      <ThemeProvider>
+      <ThemeProvider initialMode={initialThemeMode}>
         <AppInner />
         {!splashDone && <AnimatedSplash onFinish={handleSplashFinish} />}
       </ThemeProvider>
@@ -252,7 +267,7 @@ export default function App() {
 }
 
 function AppInner() {
-  const { colors, isDark, mode } = useTheme();
+  const { colors, isDark } = useTheme();
   const loadBooks = useLibraryStore((s) => s.loadBooks);
   useUpdateChecker();
   useAutoSync(loadBooks);
@@ -276,7 +291,7 @@ function AppInner() {
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.background }}>
       <SafeAreaProvider>
         <NavigationContainer theme={navTheme} ref={navigationRef}>
-          <StatusBar style={mode === "dark" ? "light" : "dark"} />
+          <StatusBar style={isDark ? "light" : "dark"} />
           <RootNavigator />
         </NavigationContainer>
         <UpdateDialog />

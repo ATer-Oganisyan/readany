@@ -1,3 +1,4 @@
+import { Text } from "@/components/ui/Typography";
 /**
  * ReaderSettingsPanel — bottom-sheet modal for reading display settings.
  */
@@ -5,7 +6,7 @@ import { XIcon } from "@/components/ui/Icon";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { useColors } from "@/styles/theme";
 import type { ReadSettings } from "@readany/core/types";
-import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { makeStyles } from "./reader-styles";

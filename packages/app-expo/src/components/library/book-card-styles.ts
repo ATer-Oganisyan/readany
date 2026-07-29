@@ -55,12 +55,12 @@ export const makeStyles = (colors: ThemeColors, cardWidth: number) => {
     fallbackTitleWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
     fallbackTitle: {
       textAlign: "center", fontSize: fontSize.sm,
-      fontWeight: fontWeight.medium, fontFamily: "serif",
+      fontWeight: fontWeight.medium,
       color: colors.stone500, lineHeight: 18,
     },
     fallbackDivider: { width: 32, height: 1, backgroundColor: `${colors.stone300}99`, marginVertical: 6 },
     fallbackAuthorWrap: { height: "25%", alignItems: "center", justifyContent: "center" },
-    fallbackAuthor: { textAlign: "center", fontSize: 12, fontFamily: "serif", color: colors.stone400 },
+    fallbackAuthor: { textAlign: "center", fontSize: 12, color: colors.stone400 },
     progressBarBg: { position: "absolute", bottom: 0, left: 0, right: 0, height: 2, backgroundColor: "rgba(0,0,0,0.1)" },
     progressBarFill: { height: 2, backgroundColor: colors.primary, opacity: 0.8 },
     vecOverlay: {

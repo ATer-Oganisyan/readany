@@ -1,10 +1,11 @@
+import { Text } from "@/components/ui/Typography";
 /**
  * LifetimeSections.tsx — Rhythm profile, category distribution, yearly snapshots, journey summary.
  * Extracted from StatsSections.tsx.
  */
 import { useColors, withOpacity } from "@/styles/theme";
 import type { StatsChartBlock, StatsReport } from "@readany/core/stats";
-import { Text, View } from "react-native";
+import { View } from "react-native";
 import { BarChart } from "./BarChart";
 import { makeStyles } from "./stats-styles";
 import {

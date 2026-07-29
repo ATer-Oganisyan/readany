@@ -1,3 +1,4 @@
+import { Text } from "@/components/ui/Typography";
 /**
  * ChapterTranslationSheet — bottom action-sheet on mobile for whole-chapter translation.
  *
@@ -16,7 +17,7 @@ import { TRANSLATOR_LANGS } from "@readany/core/types/translation";
 import { type ThemeColors, fontSize, useColors } from "@/styles/theme";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ActivityIndicator, FlatList, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, FlatList, Modal, Pressable, StyleSheet, View } from "react-native";
 
 interface ChapterTranslationSheetProps {
   visible: boolean;

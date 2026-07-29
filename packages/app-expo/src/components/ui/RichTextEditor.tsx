@@ -1,3 +1,4 @@
+import { Text, TextInput, type TextInputHandle } from "@/components/ui/Typography";
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
 import {
   BoldIcon,
@@ -22,8 +23,6 @@ import {
   Modal,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -49,7 +48,7 @@ export function RichTextEditor({
   const [linkUrl, setLinkUrl] = useState("");
   const [linkText, setLinkText] = useState("");
   const [previewMode, setPreviewMode] = useState(false);
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<TextInputHandle>(null);
   const selectionRef = useRef<{ start: number; end: number }>({
     start: initialContent.length,
     end: initialContent.length,

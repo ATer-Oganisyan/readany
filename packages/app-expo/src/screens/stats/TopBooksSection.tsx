@@ -1,3 +1,4 @@
+import { Text } from "@/components/ui/Typography";
 /**
  * TopBooksSection.tsx — Top books section with expand/collapse.
  * Extracted from StatsSections.tsx.
@@ -8,7 +9,7 @@ import { computeBookETA } from "@readany/core/stats";
 import { ChevronDownIcon, ChevronUpIcon } from "@/components/ui/Icon";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Text, TouchableOpacity, View } from "react-native";
+import { TouchableOpacity, View } from "react-native";
 import { makeStyles } from "./stats-styles";
 import { formatCharacterCount, formatCharactersPerMinute, formatTimeLocalized } from "./stats-utils";
 import type { StatsCopy } from "./StatsSections";

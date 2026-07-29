@@ -1,12 +1,9 @@
 import {
   BarChart3Icon,
-  BookOpenIcon,
   ChevronRightIcon,
-  ClockIcon,
   CloudIcon,
   CpuIcon,
   DatabaseIcon,
-  FlameIcon,
   HelpCircleIcon,
   InfoIcon,
   LanguagesIcon,
@@ -17,7 +14,8 @@ import {
   TypeIcon,
   Volume2Icon,
 } from "@/components/ui/Icon";
-import { SyncButton } from "@/components/ui/SyncButton";
+import type { MaterialIconComponent } from "@/components/ui/Icon";
+import { Text } from "@/components/ui/Typography";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { clearMobileRuntimeCache, formatCacheSize } from "@/lib/platform/mobile-cache";
 import { stopTTSPreview } from "@/lib/platform/tts-preview";
@@ -26,7 +24,7 @@ import {
   mergeCurrentSessionIntoOverallStats,
 } from "@/lib/stats/live-reading-stats";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
-import { formatCharacterCount, formatTimeLocalized } from "@/screens/stats/stats-utils";
+import { formatTimeLocalized } from "@/screens/stats/stats-utils";
 import { useReadingSessionStore, useTTSStore } from "@/stores";
 import {
   type ThemeColors,
@@ -54,10 +52,10 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
+  Pressable,
   ScrollView,
   type StyleProp,
   StyleSheet,
-  Text,
   TouchableOpacity,
   View,
   type ViewStyle,
@@ -65,11 +63,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
-type ProfileMenuIcon = (props: {
-  size?: number;
-  color?: string;
-  strokeWidth?: number;
-}) => React.ReactNode;
+type ProfileMenuIcon = MaterialIconComponent;
 type ProfileMenuRoute = Extract<
   keyof RootStackParamList,
   | "AppearanceSettings"
@@ -106,14 +100,12 @@ const ICP_NUMBER = "粤ICP备2025444251号-2A";
 const ICP_URL = "https://beian.miit.gov.cn/";
 
 function StatCard({
-  icon,
   title,
   value,
   unit,
   onPress,
   style,
 }: {
-  icon: React.ReactNode;
   title: string;
   value: string;
   unit?: string;
@@ -125,7 +117,6 @@ function StatCard({
   return (
     <TouchableOpacity activeOpacity={0.7} onPress={onPress} style={[s.statCard, style]}>
       <View style={s.statCardTitleRow}>
-        <View style={s.statCardIconWrap}>{icon}</View>
         <Text style={s.statCardTitle} numberOfLines={1} maxFontSizeMultiplier={1.6}>
           {title}
         </Text>
@@ -497,33 +488,29 @@ export function ProfileScreen() {
   const totalTime = liveOverall
     ? formatTimeLocalized(liveOverall.totalReadingTime, isZh)
     : formatTimeLocalized(0, isZh);
-  const totalCharacters = liveOverall
-    ? formatCharacterCount(liveOverall.totalCharactersRead ?? 0, isZh)
-    : formatCharacterCount(0, isZh);
+  const totalCharacters = new Intl.NumberFormat("ru-RU").format(
+    Math.max(0, Math.round(liveOverall?.totalCharactersRead ?? 0)),
+  );
   const streak = liveOverall?.currentStreak ?? 0;
   const overviewCards = [
     {
       key: "time",
-      icon: <ClockIcon size={16} color={colors.primary} />,
       title: t("profile.totalTime", "总时长"),
       value: totalTime,
     },
     {
       key: "volume",
-      icon: <TypeIcon size={16} color={colors.primary} />,
       title: t("profile.readingVolume", "阅读字数"),
       value: totalCharacters,
     },
     {
       key: "books",
-      icon: <BookOpenIcon size={16} color={colors.primary} />,
       title: t("profile.booksRead", "已读"),
       value: String(booksRead),
       unit: t("profile.booksUnit", "本"),
     },
     {
       key: "streak",
-      icon: <FlameIcon size={16} color={colors.primary} />,
       title: t("profile.streak", "连续阅读"),
       value: String(streak),
       unit: t("profile.daysUnit", "天"),
@@ -531,18 +518,10 @@ export function ProfileScreen() {
   ];
 
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={["top"]}>
-      <View style={s.header}>
-        <View style={s.headerTitleWrap}>
-          <Text style={s.headerTitle} numberOfLines={1} maxFontSizeMultiplier={1.6}>
-            {t("profile.title", "我的")}
-          </Text>
-        </View>
-        <SyncButton size={20} color={colors.mutedForeground} />
-      </View>
-
+    <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={[]}>
       <ScrollView
         style={s.scrollView}
+        contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={{ paddingTop: 20, paddingBottom: 12 }}
         showsVerticalScrollIndicator={false}
       >
@@ -564,7 +543,6 @@ export function ProfileScreen() {
                   }}
                 >
                   <StatCard
-                    icon={card.icon}
                     title={card.title}
                     value={card.value}
                     unit={card.unit}
@@ -617,12 +595,17 @@ export function ProfileScreen() {
                   }
                 };
                 return (
-                  <TouchableOpacity
+                  <Pressable
                     key={itemKey}
-                    style={[s.menuItem, idx < section.items.length - 1 && s.menuItemBorder]}
+                    style={({ pressed }) => [
+                      s.menuItem,
+                      idx < section.items.length - 1 && s.menuItemBorder,
+                      pressed && { backgroundColor: colors.primary5 },
+                    ]}
                     onPress={handlePress}
                     disabled={"disabled" in item && item.disabled}
-                    activeOpacity={0.7}
+                    android_ripple={{ color: colors.primary5 }}
+                    accessibilityRole="button"
                   >
                     <Icon size={20} color={colors.mutedForeground} />
                     <Text style={s.menuItemLabel} maxFontSizeMultiplier={1.7}>
@@ -630,7 +613,7 @@ export function ProfileScreen() {
                     </Text>
                     {"showDot" in item && item.showDot ? <View style={s.menuItemDot} /> : null}
                     <ChevronRightIcon size={16} color={colors.mutedForeground} />
-                  </TouchableOpacity>
+                  </Pressable>
                 );
               })}
             </View>
@@ -700,16 +683,7 @@ const makeStyles = (colors: ThemeColors) =>
     statCardTitleRow: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 8,
       minWidth: 0,
-    },
-    statCardIconWrap: {
-      width: 24,
-      height: 24,
-      borderRadius: radius.md,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: withOpacity(colors.primary, 0.1),
     },
     statCardTitle: {
       flex: 1,

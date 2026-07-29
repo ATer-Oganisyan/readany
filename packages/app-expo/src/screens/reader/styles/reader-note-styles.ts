@@ -21,9 +21,9 @@ export const noteTooltipMdStyles = {
   strong: { fontWeight: "700" as const, color: "#fff" },
   em: { fontStyle: "italic" as const, color: "#e2e8f0" },
   link: { color: "#60a5fa" },
-  code_inline: { backgroundColor: "rgba(255,255,255,0.1)", color: TOOLTIP_FG, fontSize: 14, fontFamily: "Menlo" },
-  code_block: { backgroundColor: "rgba(0,0,0,0.3)", color: TOOLTIP_FG, fontSize: 14, fontFamily: "Menlo", padding: 8 },
-  fence: { backgroundColor: "rgba(0,0,0,0.3)", color: TOOLTIP_FG, fontSize: 14, fontFamily: "Menlo", padding: 8 },
+  code_inline: { backgroundColor: "rgba(255,255,255,0.1)", color: TOOLTIP_FG, fontSize: 14 },
+  code_block: { backgroundColor: "rgba(0,0,0,0.3)", color: TOOLTIP_FG, fontSize: 14, padding: 8 },
+  fence: { backgroundColor: "rgba(0,0,0,0.3)", color: TOOLTIP_FG, fontSize: 14, padding: 8 },
   blockquote: {
     borderLeftWidth: 2, borderLeftColor: TOOLTIP_MUTED,
     paddingLeft: 10, backgroundColor: "transparent", color: TOOLTIP_FG,

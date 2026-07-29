@@ -1,3 +1,4 @@
+import { TextInput } from "@/components/ui/Typography";
 import { EyeIcon, EyeOffIcon } from "@/components/ui/Icon";
 import { useColors } from "@/styles/theme";
 /**
@@ -5,7 +6,6 @@ import { useColors } from "@/styles/theme";
  */
 import { useState } from "react";
 import {
-  TextInput,
   type TextInputProps,
   TouchableOpacity,
   View,

@@ -1,3 +1,4 @@
+import { Text } from "@/components/ui/Typography";
 import {
   BookOpenIcon,
   ChevronRightIcon,
@@ -13,7 +14,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   TouchableOpacity,
   View,
 } from "react-native";

@@ -1,7 +1,9 @@
+import { Text } from "@/components/ui/Typography";
+import { interfaceFontFamily } from "@deslop/primitives/native";
 import { fontSize as fs, useColors } from "@/styles/theme";
 import type { MindmapPart } from "@readany/core/types/message";
 import { useCallback, useMemo } from "react";
-import { Dimensions, ScrollView, Text, View } from "react-native";
+import { Dimensions, ScrollView, View } from "react-native";
 import Svg, { G, Line, Rect, Text as SvgText } from "react-native-svg";
 
 interface MindmapPartViewProps {
@@ -158,6 +160,7 @@ export function MindmapPartView({ part }: MindmapPartViewProps) {
             textAnchor="middle"
             fontSize={isRoot ? 16 : 14}
             fontWeight={isRoot ? "600" : "400"}
+            fontFamily={interfaceFontFamily.regular}
             fill={isRoot ? colors.primaryForeground : colors.foreground}
           >
             {node.text.length > 15 ? node.text.slice(0, 15) + "..." : node.text}

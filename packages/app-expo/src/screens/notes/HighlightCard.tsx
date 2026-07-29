@@ -1,8 +1,9 @@
+import { Text } from "@/components/ui/Typography";
 import { Trash2Icon } from "@/components/ui/Icon";
 import { useColors } from "@/styles/theme";
 import type { HighlightWithBook } from "@readany/core/db/database";
 import { HIGHLIGHT_COLOR_HEX } from "@readany/core/types";
-import { Text, TouchableOpacity, View } from "react-native";
+import { TouchableOpacity, View } from "react-native";
 import { makeStyles } from "./notes-styles";
 
 export function HighlightCard({

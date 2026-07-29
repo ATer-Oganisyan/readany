@@ -1,3 +1,4 @@
+import { Text } from "@/components/ui/Typography";
 /**
  * BadgeIconMobile.tsx — Rich SVG badge renderer for React Native.
  *
@@ -19,7 +20,7 @@ import {
 } from "@/components/ui/Icon";
 import type { BadgeDefinition } from "@readany/core/stats";
 import { BADGE_NUMBERS } from "@readany/core/stats";
-import { Text, View } from "react-native";
+import { View } from "react-native";
 import Svg, { Circle, Defs, Ellipse, Path, RadialGradient, Stop } from "react-native-svg";
 
 const ICON_MAP: Record<string, React.ComponentType<{ size?: number; color?: string }>> = {

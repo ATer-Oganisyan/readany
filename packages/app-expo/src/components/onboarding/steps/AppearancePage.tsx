@@ -1,69 +1,49 @@
-import { DarkModeSvg } from "@/components/DarkModeSvg";
+import { Moon, PaletteIcon, Sun } from "@/components/ui/Icon";
+import { NativeButton } from "@/components/ui/NativeButton";
+import { Text } from "@/components/ui/Typography";
 import { type ThemeMode, useTheme } from "@/styles/ThemeContext";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { Coffee, Moon, Sun } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import Animated, { SlideInRight } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import SmilingGirlSvg from "../../../../assets/illustrations/smiling_girl.svg";
 import type { OnboardingStackParamList } from "../OnboardingNavigator";
 
 type NavProp = NativeStackNavigationProp<OnboardingStackParamList, "Appearance">;
 
 export function AppearancePage() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const navigation = useNavigation<NavProp>();
-  const { mode: currentTheme, setMode: setTheme, colors, isDark } = useTheme();
+  const { mode: currentTheme, setMode: setTheme, colors } = useTheme();
   const insets = useSafeAreaInsets();
 
-  const handleNext = () => navigation.navigate("AI");
+  const handleNext = () => navigation.navigate("Complete");
   const handlePrev = () => navigation.goBack();
 
   const themes: { id: ThemeMode; name: string; icon: React.ReactNode }[] = [
     {
+      id: "system",
+      name: t("settings.system", "Системная"),
+      icon: <PaletteIcon size={24} color={colors.foreground} />,
+    },
+    {
       id: "light",
-      name: t("settings.light", "Light"),
+      name: t("settings.light", "Светлая"),
       icon: <Sun size={24} color={colors.foreground} />,
     },
     {
       id: "dark",
-      name: t("settings.dark", "Dark"),
+      name: t("settings.dark", "Тёмная"),
       icon: <Moon size={24} color={colors.foreground} />,
     },
-    {
-      id: "sepia",
-      name: t("settings.sepia", "Sepia"),
-      icon: <Coffee size={24} color={colors.foreground} />,
-    },
   ];
-
-  const handleLangChange = async (code: string) => {
-    try {
-      const { changeAndPersistLanguage } = await import("@readany/core/i18n");
-      await changeAndPersistLanguage(code);
-    } catch (err) {
-      console.warn("[Settings] Failed to change and persist language:", err);
-      i18n.changeLanguage(code);
-    }
-  };
 
   return (
     <View style={[styles.safeArea, { backgroundColor: colors.background }]}>
       <Animated.View entering={SlideInRight.duration(500)} style={styles.container}>
         <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
           <View style={styles.header}>
-            <View
-              style={[
-                styles.iconContainer,
-                { backgroundColor: "transparent", shadowOpacity: 0, width: "100%", height: 160 },
-              ]}
-            >
-              <DarkModeSvg width={160} height={160}>
-                <SmilingGirlSvg width={160} height={160} />
-              </DarkModeSvg>
-            </View>
             <Text style={[styles.title, { color: colors.foreground }]}>
               {t("onboarding.appearance.title", "Appearance & Language")}
             </Text>
@@ -109,45 +89,6 @@ export function AppearancePage() {
                 })}
               </View>
             </View>
-
-            <View
-              style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
-            >
-              <Text style={[styles.cardTitle, { color: colors.mutedForeground }]}>
-                {t("settings.language", "Language")}
-              </Text>
-              <View style={styles.langGrid}>
-                {[
-                  { code: "en", label: t("settings.english", "English") },
-                  { code: "zh", label: t("settings.simplifiedChinese", "中文") },
-                ].map((lang) => {
-                  const isActive = i18n.language === lang.code;
-                  return (
-                    <Pressable
-                      key={lang.code}
-                      style={[
-                        styles.langBtn,
-                        {
-                          borderColor: isActive ? colors.primary : colors.border,
-                          backgroundColor: isActive ? colors.primary : colors.muted,
-                        },
-                        isActive && styles.langBtnActive,
-                      ]}
-                      onPress={() => handleLangChange(lang.code)}
-                    >
-                      <Text
-                        style={[
-                          styles.langLabel,
-                          { color: isActive ? colors.primaryForeground : colors.mutedForeground },
-                        ]}
-                      >
-                        {lang.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
           </View>
         </ScrollView>
 
@@ -161,26 +102,26 @@ export function AppearancePage() {
             },
           ]}
         >
-          <Pressable onPress={handlePrev} style={styles.backBtn}>
-            <Text style={styles.backText}>{t("common.back", "Back")}</Text>
-          </Pressable>
+          <NativeButton
+            label=""
+            accessibilityLabel={t("common.back", "Назад")}
+            onPress={handlePrev}
+            variant="tertiary"
+            icon="back"
+          />
           <View style={styles.rightActions}>
-            <Pressable onPress={handleNext} style={[styles.skipBtn, { opacity: 0.8 }]}>
-              <Text style={[styles.skipText, { color: colors.mutedForeground }]}>
-                {t("onboarding.skipForNow", "Skip for now")}
-              </Text>
-            </Pressable>
-            <Pressable
+            <NativeButton
+              label={t("onboarding.skipForNow", "Пока пропустить")}
               onPress={handleNext}
-              style={[
-                styles.nextBtn,
-                { backgroundColor: colors.primary, shadowColor: "transparent" },
-              ]}
-            >
-              <Text style={[styles.nextText, { color: colors.primaryForeground }]}>
-                {t("common.next", "Next")} →
-              </Text>
-            </Pressable>
+              variant="tertiary"
+              size="small"
+            />
+            <NativeButton
+              label={t("common.next", "Далее")}
+              onPress={handleNext}
+              icon="forward"
+              size="large"
+            />
           </View>
         </View>
       </Animated.View>
@@ -263,16 +204,5 @@ const styles = StyleSheet.create({
     borderTopColor: "#e2e8f0",
     backgroundColor: "#f8fafc",
   },
-  backBtn: { paddingVertical: 12, paddingHorizontal: 4 },
-  backText: { fontSize: 16, color: "#64748b", fontWeight: "500" },
   rightActions: { flexDirection: "row", gap: 16, alignItems: "center" },
-  skipBtn: { paddingVertical: 12 },
-  skipText: { fontSize: 14, color: "#94a3b8", fontWeight: "500" },
-  nextBtn: {
-    backgroundColor: "#6366f1",
-    paddingVertical: 14,
-    paddingHorizontal: 28,
-    borderRadius: 999,
-  },
-  nextText: { color: "#ffffff", fontSize: 16, fontWeight: "600" },
 });

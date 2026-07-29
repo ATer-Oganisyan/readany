@@ -1,4 +1,5 @@
-import { ChevronLeftIcon, EditIcon, PlusIcon, Trash2Icon, XIcon } from "@/components/ui/Icon";
+import { EditIcon, PlusIcon, Trash2Icon, XIcon } from "@/components/ui/Icon";
+import { Text, TextInput } from "@/components/ui/Typography";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { useVectorModelStore } from "@/stores/vector-model-store";
 import {
@@ -9,7 +10,6 @@ import {
   useColors,
   withOpacity,
 } from "@/styles/theme";
-import { useNavigation } from "@react-navigation/native";
 import type { VectorModelConfig } from "@readany/core/types";
 import {
   EmbeddingEndpointTestError,
@@ -28,8 +28,6 @@ import {
   ScrollView,
   StyleSheet,
   Switch,
-  Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -40,7 +38,6 @@ import { PasswordInput } from "../../components/ui/PasswordInput";
 export default function VectorModelSettingsScreen() {
   const colors = useColors();
   const s = makeStyles(colors);
-  const nav = useNavigation();
   const { t } = useTranslation();
   const layout = useResponsiveLayout();
   const {
@@ -51,17 +48,7 @@ export default function VectorModelSettingsScreen() {
   } = useVectorModelStore();
 
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={["top"]}>
-      {/* Header */}
-      <View style={s.header}>
-        <View style={[s.headerInner, { maxWidth: layout.centeredContentWidth }]}>
-          <TouchableOpacity style={s.backBtn} onPress={() => nav.goBack()}>
-            <ChevronLeftIcon size={20} color={colors.foreground} />
-          </TouchableOpacity>
-          <Text style={s.headerTitle}>{t("settings.vm_title", "向量模型")}</Text>
-        </View>
-      </View>
-
+    <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={[]}>
       <KeyboardAvoidingView
         style={s.keyboardView}
         behavior={Platform.OS === "ios" ? "padding" : "height"}

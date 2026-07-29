@@ -1,5 +1,8 @@
+import { Text } from "@/components/ui/Typography";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
+import { useNativeHeaderActions } from "@/navigation/useNativeHeaderActions";
+import { useHeaderHeight } from "@react-navigation/elements";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 /**
  * BookChatScreen — book-scoped AI chat, opened from reader AI button.
@@ -10,13 +13,11 @@ import { useTranslation } from "react-i18next";
 import {
   Alert,
   Animated,
-  Image,
   Keyboard,
   Modal,
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   TouchableOpacity,
   TouchableWithoutFeedback,
   View,
@@ -49,36 +50,23 @@ import { ChatInput } from "@/components/chat/ChatInput";
 import { MessageList } from "@/components/chat/MessageList";
 import { ModelSelector } from "@/components/chat/ModelSelector";
 import {
-  ChevronLeftIcon,
   CopyIcon,
   Download,
-  HistoryIcon,
   MessageCirclePlusIcon,
   ScrollTextIcon,
-  ShareIcon,
   Trash2Icon,
   XIcon,
 } from "@/components/ui/Icon";
-import {
-  fontSize as fs,
-  fontWeight as fw,
-  radius,
-  useColors,
-  useTheme,
-  withOpacity,
-} from "@/styles/theme";
+import { fontSize as fs, fontWeight as fw, radius, useColors, withOpacity } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
-
-const THINK_PNG = require("../../assets/think.png");
-const THINK_DARK_PNG = require("../../assets/think-dark.png");
 
 type Props = NativeStackScreenProps<RootStackParamList, "BookChat">;
 
 export function BookChatScreen({ route, navigation }: Props) {
+  const nativeHeaderHeight = useHeaderHeight();
   const { bookId, selectedText, chapterTitle } = route.params;
   const { t } = useTranslation();
   const colors = useColors();
-  const { isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const layout = useResponsiveLayout();
   const isTabletLandscape = layout.isTabletLandscape;
@@ -235,7 +223,8 @@ export function BookChatScreen({ route, navigation }: Props) {
     return convertToMessageV2(activeThread.messages);
   }, [activeThread]);
 
-  const activeCurrentMessage = activeThread?.id === currentMessage?.threadId ? currentMessage : null;
+  const activeCurrentMessage =
+    activeThread?.id === currentMessage?.threadId ? currentMessage : null;
   const allMessages = useMemo(
     () => mergeMessagesWithStreaming(messagesV2, activeCurrentMessage, isStreaming),
     [activeCurrentMessage, isStreaming, messagesV2],
@@ -439,8 +428,36 @@ export function BookChatScreen({ route, navigation }: Props) {
     ],
   );
 
+  useNativeHeaderActions({
+    right: [
+      ...(!isTabletLandscape
+        ? [
+            {
+              label: t("chat.history", "История"),
+              icon: "back" as const,
+              sfSymbol: "clock.arrow.circlepath",
+              onPress: openSidebar,
+            },
+          ]
+        : []),
+      {
+        label: t("chat.export", "Экспортировать"),
+        icon: "share",
+        sfSymbol: "square.and.arrow.up",
+        disabled: allMessages.length === 0,
+        onPress: () => setShowExportMenu(true),
+      },
+      {
+        label: t("chat.newChat", "Новый чат"),
+        icon: "add",
+        sfSymbol: "square.and.pencil",
+        onPress: handleNewThread,
+      },
+    ],
+  });
+
   return (
-    <SafeAreaView style={s.container} edges={["top", "bottom"]}>
+    <SafeAreaView style={s.container} edges={["bottom"]}>
       <View style={s.shell}>
         {isTabletLandscape && (
           <View style={[s.sidebarDocked, { paddingTop: insets.top }]}>
@@ -449,81 +466,40 @@ export function BookChatScreen({ route, navigation }: Props) {
         )}
 
         <View style={s.mainColumn}>
-          <View style={s.header}>
-            <View style={s.headerLeft}>
-              <TouchableOpacity
-                style={s.iconBtn}
-                onPress={() => navigation.goBack()}
-                activeOpacity={0.7}
-              >
-                <ChevronLeftIcon size={20} color={colors.foreground} />
-              </TouchableOpacity>
-              {!isTabletLandscape && (
-                <TouchableOpacity style={s.iconBtn} onPress={openSidebar} activeOpacity={0.7}>
-                  <HistoryIcon size={16} color={colors.foreground} />
-                </TouchableOpacity>
-              )}
-            </View>
-
-            <Text style={s.headerTitle} numberOfLines={1}>
-              {t("chat.aiAssistant", "AI 助手")}
-            </Text>
-
-            <View style={s.headerRight}>
-              <ModelSelector onNavigateToSettings={() => navigation.navigate("AISettings")} />
-              {allMessages.length > 0 && (
-                <>
-                  <TouchableOpacity
-                    style={s.iconBtn}
-                    onPress={() => setShowExportMenu(true)}
-                    activeOpacity={0.7}
-                  >
-                    <ShareIcon size={16} color={colors.foreground} />
-                  </TouchableOpacity>
-                  <Modal
-                    visible={showExportMenu}
-                    transparent
-                    animationType="fade"
-                    onRequestClose={() => setShowExportMenu(false)}
-                  >
-                    <Pressable style={s.exportOverlay} onPress={() => setShowExportMenu(false)}>
-                      <View style={s.exportMenu}>
-                        <TouchableOpacity
-                          style={s.exportMenuItem}
-                          activeOpacity={0.85}
-                          onPress={handleExportMarkdown}
-                        >
-                          <ScrollTextIcon size={18} color={colors.foreground} />
-                          <Text style={s.exportMenuText}>
-                            {t("chat.exportMarkdown", "导出 Markdown")}
-                          </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[s.exportMenuItem, s.exportMenuItemDivider]}
-                          activeOpacity={0.85}
-                          onPress={handleExportJSON}
-                        >
-                          <Download size={18} color={colors.foreground} />
-                          <Text style={s.exportMenuText}>{t("chat.exportJSON", "导出 JSON")}</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={s.exportMenuItem}
-                          activeOpacity={0.85}
-                          onPress={handleCopyAll}
-                        >
-                          <CopyIcon size={18} color={colors.foreground} />
-                          <Text style={s.exportMenuText}>{t("chat.copyAll", "复制全部")}</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </Pressable>
-                  </Modal>
-                </>
-              )}
-              <TouchableOpacity style={s.iconBtn} onPress={handleNewThread} activeOpacity={0.7}>
-                <MessageCirclePlusIcon size={16} color={colors.foreground} />
-              </TouchableOpacity>
-            </View>
+          <View style={{ alignItems: "flex-end", paddingHorizontal: 12, paddingTop: 8 }}>
+            <ModelSelector onNavigateToSettings={() => navigation.navigate("AISettings")} />
           </View>
+
+          <Modal
+            visible={showExportMenu}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setShowExportMenu(false)}
+          >
+            <Pressable style={s.exportOverlay} onPress={() => setShowExportMenu(false)}>
+              <View style={s.exportMenu}>
+                <TouchableOpacity style={s.exportMenuItem} onPress={handleExportMarkdown}>
+                  <ScrollTextIcon size={18} color={colors.foreground} />
+                  <Text style={s.exportMenuText}>
+                    {t("chat.exportMarkdown", "Экспортировать Markdown")}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.exportMenuItem, s.exportMenuItemDivider]}
+                  onPress={handleExportJSON}
+                >
+                  <Download size={18} color={colors.foreground} />
+                  <Text style={s.exportMenuText}>
+                    {t("chat.exportJSON", "Экспортировать JSON")}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={s.exportMenuItem} onPress={handleCopyAll}>
+                  <CopyIcon size={18} color={colors.foreground} />
+                  <Text style={s.exportMenuText}>{t("chat.copyAll", "Скопировать чат")}</Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Modal>
 
           <View style={s.content}>
             <View style={s.content}>
@@ -536,12 +512,14 @@ export function BookChatScreen({ route, navigation }: Props) {
                 />
               ) : (
                 <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-                  <View style={[s.emptyContainer, isTabletLandscape && s.emptyContainerCompact]}>
+                  <View
+                    style={[
+                      s.emptyContainer,
+                      isTabletLandscape && s.emptyContainerCompact,
+                      { transform: [{ translateY: -nativeHeaderHeight / 2 }] },
+                    ]}
+                  >
                     <View style={s.emptyInner}>
-                      <Image
-                        source={isDark ? THINK_DARK_PNG : THINK_PNG}
-                        style={{ width: 120, height: 120 }}
-                      />
                       <Text style={s.emptyTitle}>{t("chat.aiAssistant", "AI 阅读助手")}</Text>
                       <Text style={s.emptySubtitle}>
                         {t("chat.aiAssistantDesc", "分析内容、回答问题...")}
@@ -693,7 +671,9 @@ const makeStyles = (
     },
     suggestionCard: {
       width: layout.isTabletLandscape ? "48%" : undefined,
-      backgroundColor: colors.muted,
+      backgroundColor: colors.card,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
       borderRadius: radius.lg,
       paddingHorizontal: 14,
       paddingVertical: 12,

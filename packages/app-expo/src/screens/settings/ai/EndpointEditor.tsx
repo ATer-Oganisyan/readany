@@ -1,3 +1,5 @@
+import { Text, TextInput } from "@/components/ui/Typography";
+import { hasBundledOpenRouterKey } from "@/config/bundled-ai";
 import { getAIEndpointRequestPreview, testAIEndpoint } from "@readany/core/ai";
 import { getPlatformService } from "@readany/core/services";
 import type { AIEndpoint, AIProviderType } from "@readany/core/types";
@@ -13,8 +15,6 @@ import {
   Alert,
   ScrollView,
   Switch,
-  Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -314,17 +314,19 @@ export function EndpointEditor({
         </View>
       </View>
 
-      <View style={styles.fieldGroup}>
-        <Text style={styles.fieldLabel}>{t("settings.ai_apiKey", "API Key")}</Text>
-        <PasswordInput
-          style={styles.input}
-          value={apiKey}
-          onChangeText={setApiKey}
-          onBlur={() => { if (apiKey !== ep.apiKey) onUpdate(ep.id, { apiKey }).catch(console.error); }}
-          placeholder="sk-..."
-          placeholderTextColor={colors.mutedForeground}
-        />
-      </View>
+      {!(ep.provider === "openrouter" && hasBundledOpenRouterKey) && (
+        <View style={styles.fieldGroup}>
+          <Text style={styles.fieldLabel}>{t("settings.ai_apiKey", "API Key")}</Text>
+          <PasswordInput
+            style={styles.input}
+            value={apiKey}
+            onChangeText={setApiKey}
+            onBlur={() => { if (apiKey !== ep.apiKey) onUpdate(ep.id, { apiKey }).catch(console.error); }}
+            placeholder="sk-..."
+            placeholderTextColor={colors.mutedForeground}
+          />
+        </View>
+      )}
 
       <View style={styles.fieldGroup}>
         <Text style={styles.fieldLabel}>

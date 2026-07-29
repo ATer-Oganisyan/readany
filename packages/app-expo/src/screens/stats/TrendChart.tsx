@@ -1,8 +1,10 @@
+import { Text } from "@/components/ui/Typography";
+import { interfaceFontFamily } from "@deslop/primitives/native";
 import { useColors } from "@/styles/theme";
 import type { TrendPoint } from "@readany/core/stats";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Text, TouchableOpacity, View } from "react-native";
+import { TouchableOpacity, View } from "react-native";
 import Svg, { Defs, G, Line, LinearGradient, Path, Rect, Stop, Text as SvgText } from "react-native-svg";
 import { makeStyles } from "./stats-styles";
 import { formatDate, formatTime } from "./stats-utils";
@@ -71,7 +73,7 @@ export function TrendChart({ data }: { data: TrendPoint[] }) {
               {yTicks.map((tick) => (
                 <G key={tick.value}>
                   <Line x1={MARGIN_LEFT} y1={tick.y} x2={containerWidth - 8} y2={tick.y} stroke={colors.border} strokeWidth={1} />
-                  <SvgText x={MARGIN_LEFT - 4} y={tick.y} fontSize={9} fill={colors.mutedForeground} textAnchor="end" alignmentBaseline="middle">
+                  <SvgText x={MARGIN_LEFT - 4} y={tick.y} fontSize={9} fontFamily={interfaceFontFamily.regular} fill={colors.mutedForeground} textAnchor="end" alignmentBaseline="middle">
                     {tick.value < 60 ? `${Math.round(tick.value)}m` : `${(tick.value / 60).toFixed(1)}h`}
                   </SvgText>
                 </G>
@@ -82,7 +84,7 @@ export function TrendChart({ data }: { data: TrendPoint[] }) {
               {xTicks.map((d) => {
                 const idx = data.findIndex((dd) => dd.date === d.date);
                 return (
-                  <SvgText key={d.date} x={xScale(idx)} y={CHART_HEIGHT + 14} fontSize={9} fill={colors.mutedForeground} textAnchor="middle">
+                  <SvgText key={d.date} x={xScale(idx)} y={CHART_HEIGHT + 14} fontSize={9} fontFamily={interfaceFontFamily.regular} fill={colors.mutedForeground} textAnchor="middle">
                     {formatDate(d.date)}
                   </SvgText>
                 );

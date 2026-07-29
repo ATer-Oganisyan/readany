@@ -1,3 +1,5 @@
+import { Text } from "@/components/ui/Typography";
+import { NativeButton } from "@/components/ui/NativeButton";
 import { useMissingBookPromptStore } from "@/stores/missing-book-prompt-store";
 import {
   type ThemeColors,
@@ -8,7 +10,7 @@ import {
   useColors,
 } from "@/styles/theme";
 import { useEffect, useMemo, useRef } from "react";
-import { Animated, BackHandler, Pressable, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Animated, BackHandler, Pressable, StyleSheet, View } from "react-native";
 
 export function MissingBookPrompt() {
   const colors = useColors();
@@ -45,12 +47,8 @@ export function MissingBookPrompt() {
         <Text style={styles.title}>{title}</Text>
         <Text style={styles.description}>{description}</Text>
         <View style={styles.actions}>
-          <TouchableOpacity style={styles.secondaryButton} onPress={() => resolvePrompt(false)} activeOpacity={0.8}>
-            <Text style={styles.secondaryText}>{cancelLabel}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.primaryButton} onPress={() => resolvePrompt(true)} activeOpacity={0.85}>
-            <Text style={styles.primaryText}>{confirmLabel}</Text>
-          </TouchableOpacity>
+          <NativeButton label={cancelLabel} onPress={() => resolvePrompt(false)} variant="secondary" style={styles.action} />
+          <NativeButton label={confirmLabel} onPress={() => resolvePrompt(true)} style={styles.action} />
         </View>
       </View>
     </Animated.View>
@@ -95,30 +93,5 @@ const makeStyles = (colors: ThemeColors) =>
       flexDirection: "row",
       gap: spacing.sm,
     },
-    secondaryButton: {
-      flex: 1,
-      minHeight: 44,
-      borderRadius: radius.xl,
-      backgroundColor: colors.muted,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    secondaryText: {
-      fontSize: fontSize.sm,
-      fontWeight: fontWeight.medium,
-      color: colors.foreground,
-    },
-    primaryButton: {
-      flex: 1,
-      minHeight: 44,
-      borderRadius: radius.xl,
-      backgroundColor: colors.primary,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    primaryText: {
-      fontSize: fontSize.sm,
-      fontWeight: fontWeight.semibold,
-      color: colors.primaryForeground,
-    },
+    action: { flex: 1 },
   });

@@ -1,4 +1,5 @@
-import { BookOpenIcon, CheckIcon, ChevronDownIcon, MoonIcon, SunIcon } from "@/components/ui/Icon";
+import { CheckIcon, ChevronDownIcon, MoonIcon, PaletteIcon, SunIcon } from "@/components/ui/Icon";
+import { Text } from "@/components/ui/Typography";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { useTheme } from "@/styles/ThemeContext";
 import type { ThemeMode } from "@/styles/ThemeContext";
@@ -10,7 +11,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -18,9 +18,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { SettingsHeader } from "./SettingsHeader";
 
 const THEMES: { id: ThemeMode; labelKey: string; fallback: string; Icon: typeof SunIcon }[] = [
-  { id: "light", labelKey: "settings.light", fallback: "Light", Icon: SunIcon },
-  { id: "dark", labelKey: "settings.dark", fallback: "Dark", Icon: MoonIcon },
-  { id: "sepia", labelKey: "settings.sepia", fallback: "Sepia", Icon: BookOpenIcon },
+  { id: "system", labelKey: "settings.system", fallback: "Системная", Icon: PaletteIcon },
+  { id: "light", labelKey: "settings.light", fallback: "Светлая", Icon: SunIcon },
+  { id: "dark", labelKey: "settings.dark", fallback: "Тёмная", Icon: MoonIcon },
 ];
 
 const LANGUAGES = [
@@ -60,7 +60,7 @@ export default function AppearanceSettingsScreen() {
   const s = makeStyles(colors);
 
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={["top"]}>
+    <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={[]}>
       <SettingsHeader
         title={t("settings.general", "通用")}
         subtitle={t("settings.realtimeHint")}

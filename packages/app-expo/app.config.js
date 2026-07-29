@@ -4,6 +4,7 @@ const variant = getAppVariantConfig();
 
 module.exports = {
   expo: {
+    owner: "mishanaer",
     name: variant.name,
     slug: "readany",
     version: "1.3.5",
@@ -23,9 +24,9 @@ module.exports = {
       infoPlist: {
         UIBackgroundModes: ["audio"],
         NSCameraUsageDescription:
-          "ReadAny uses the camera to scan sync and configuration QR codes.",
+          "Камера нужна ReadAny для сканирования QR‑кодов синхронизации и настройки.",
         NSLocalNetworkUsageDescription:
-          "ReadAny uses the local network to connect to sync devices and the development server while debugging.",
+          "Локальная сеть нужна ReadAny для синхронизации с другими устройствами и подключения к серверу разработки.",
         ITSAppUsesNonExemptEncryption: false,
       },
     },
@@ -47,7 +48,7 @@ module.exports = {
       [
         "expo-dev-client",
         {
-          launchMode: "launcher",
+          launchMode: "most-recent",
         },
       ],
       [
@@ -71,7 +72,7 @@ module.exports = {
       [
         "expo-image-picker",
         {
-          photosPermission: "ReadAny uses your photo library to choose custom book covers.",
+          photosPermission: "Доступ к медиатеке нужен ReadAny, чтобы выбирать обложки книг.",
         },
       ],
       "expo-secure-store",
@@ -81,7 +82,8 @@ module.exports = {
       [
         "expo-camera",
         {
-          cameraPermission: "Allow ReadAny to use your camera to scan sync QR codes.",
+          cameraPermission:
+            "Разрешите ReadAny доступ к камере, чтобы сканировать QR‑коды синхронизации.",
         },
       ],
     ],
@@ -89,7 +91,7 @@ module.exports = {
     extra: {
       appVariant: variant.key,
       eas: {
-        projectId: "e9c65825-d965-4d58-a3af-46406ee8a9ae",
+        projectId: "db152809-736c-4207-b073-38de82e61495",
       },
     },
   },

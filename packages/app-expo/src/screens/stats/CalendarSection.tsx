@@ -1,3 +1,4 @@
+import { Text } from "@/components/ui/Typography";
 /**
  * CalendarSection.tsx — Month calendar section with day cells.
  * Extracted from StatsSections.tsx.
@@ -5,7 +6,7 @@
 import { useColors, withOpacity } from "@/styles/theme";
 import type { MonthReport, StatsCalendarCell } from "@readany/core/stats";
 import { useMemo, useState } from "react";
-import { Image, Text, TouchableOpacity, View } from "react-native";
+import { Image, TouchableOpacity, View } from "react-native";
 import { makeStyles } from "./stats-styles";
 import { formatCompactMinutes } from "./stats-utils";
 import type { StatsCopy } from "./StatsSections";

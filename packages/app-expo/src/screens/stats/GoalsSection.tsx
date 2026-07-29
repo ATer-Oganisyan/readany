@@ -1,3 +1,4 @@
+import { Text, TextInput } from "@/components/ui/Typography";
 /**
  * GoalsSection.tsx — Mobile goal progress rings + inline add form.
  * Feature-parity with desktop GoalsSection (packages/app/src/components/stats/GoalsSection.tsx).
@@ -5,7 +6,7 @@
 import type { GoalPeriod, GoalProgress, GoalType, StatsDimension } from "@readany/core/stats";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Modal, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Modal, Pressable, StyleSheet, TouchableOpacity, View } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 import { useColors, withOpacity } from "@/styles/theme";
 import { formatCharacterCount } from "./stats-utils";

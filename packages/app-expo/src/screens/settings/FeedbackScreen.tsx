@@ -1,3 +1,6 @@
+import { Bug, Check, Lightbulb, MessageSquare } from "@/components/ui/Icon";
+import type { MaterialIconComponent } from "@/components/ui/Icon";
+import { Text, TextInput } from "@/components/ui/Typography";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 /**
  * FeedbackScreen — Submit bug reports / feature requests and track history.
@@ -5,6 +8,7 @@ import type { RootStackParamList } from "@/navigation/RootNavigator";
  */
 import { useColors } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
+import { useHeaderHeight } from "@react-navigation/elements";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import {
@@ -18,12 +22,10 @@ import {
   submitFeedback,
 } from "@readany/core/feedback";
 import type { DeviceInfo, FeedbackRecord, FeedbackType } from "@readany/core/feedback";
+import Constants from "expo-constants";
 import type { TFunction } from "i18next";
-import { Bug, Check, Lightbulb, MessageSquare } from "lucide-react-native";
-import type { LucideIcon } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import Constants from "expo-constants";
 import {
   ActivityIndicator,
   Alert,
@@ -32,8 +34,6 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -44,7 +44,7 @@ const FEEDBACK_TYPES: {
   key: FeedbackType;
   labelKey: string;
   fallback: string;
-  Icon: LucideIcon;
+  Icon: MaterialIconComponent;
 }[] = [
   { key: "bug", labelKey: "feedback.typeBug", fallback: "Bug", Icon: Bug },
   { key: "feature", labelKey: "feedback.typeFeature", fallback: "建议", Icon: Lightbulb },
@@ -80,10 +80,7 @@ export default function FeedbackScreen() {
   }, [hasUnread]);
 
   return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: colors.background }]}
-      edges={["top"]}
-    >
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={[]}>
       <SettingsHeader title={t("feedback.title", "反馈建议")} />
 
       {/* Tab bar */}
@@ -114,9 +111,7 @@ export default function FeedbackScreen() {
             >
               {t("feedback.historyTab", "我的反馈")}
             </Text>
-            {hasUnread && (
-              <View style={[styles.tabDot, { backgroundColor: colors.destructive }]} />
-            )}
+            {hasUnread && <View style={[styles.tabDot, { backgroundColor: colors.destructive }]} />}
           </View>
         </TouchableOpacity>
       </View>
@@ -343,6 +338,7 @@ function HistoryTab({
 }: FeedbackTabProps & { onUnreadChange?: () => void }) {
   const [records, setRecords] = useState<FeedbackRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const nativeHeaderHeight = useHeaderHeight();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
   const handleOpenIssue = useCallback(
@@ -379,7 +375,7 @@ function HistoryTab({
 
   if (loading) {
     return (
-      <View style={styles.emptyState}>
+      <View style={[styles.emptyState, { transform: [{ translateY: -nativeHeaderHeight / 2 }] }]}>
         <ActivityIndicator color={colors.primary} />
       </View>
     );
@@ -387,7 +383,7 @@ function HistoryTab({
 
   if (records.length === 0) {
     return (
-      <View style={styles.emptyState}>
+      <View style={[styles.emptyState, { transform: [{ translateY: -nativeHeaderHeight / 2 }] }]}>
         <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
           {t("feedback.noHistory", "暂无反馈记录")}
         </Text>

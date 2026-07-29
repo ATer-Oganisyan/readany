@@ -1,0 +1,20 @@
+{
+  "name": "@deslop/primitives",
+  "version": "0.1.0-readany",
+  "private": true,
+  "main": "index.js",
+  "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./native": {
+      "types": "./native.d.ts",
+      "default": "./native.js"
+    },
+    "./fonts/*": "./fonts/*",
+    "./material-symbols.json": "./material-symbols.json"
+  },
+  "files": ["*.js", "*.d.ts", "*.json", "fonts"]
+}

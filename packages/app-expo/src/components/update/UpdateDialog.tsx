@@ -1,3 +1,5 @@
+import { Text } from "@/components/ui/Typography";
+import { NativeButton } from "@/components/ui/NativeButton";
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -5,8 +7,6 @@ import {
   Modal,
   Pressable,
   StyleSheet,
-  Text,
-  TouchableOpacity,
   View,
 } from "react-native";
 import {
@@ -106,20 +106,17 @@ export function UpdateDialog() {
 
           {/* Actions */}
           <View style={s.actions}>
-            <TouchableOpacity
-              style={s.primaryBtn}
+            <NativeButton
+              label={t("settings.downloadUpdate")}
               onPress={handleDownload}
-              activeOpacity={0.8}
-            >
-              <Text style={s.primaryBtnText}>{t("settings.downloadUpdate")}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={s.secondaryBtn}
+              fullWidth
+            />
+            <NativeButton
+              label={t("settings.later")}
               onPress={handleLater}
-              activeOpacity={0.7}
-            >
-              <Text style={s.secondaryBtnText}>{t("settings.later")}</Text>
-            </TouchableOpacity>
+              variant="tertiary"
+              fullWidth
+            />
           </View>
         </Pressable>
       </Pressable>

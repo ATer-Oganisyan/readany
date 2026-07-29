@@ -1,3 +1,4 @@
+import { Text } from "@/components/ui/Typography";
 import {
   BookOpenIcon,
   ClockIcon,
@@ -22,7 +23,6 @@ import {
   Modal,
   Pressable,
   StyleSheet,
-  Text,
   TouchableOpacity,
   View,
 } from "react-native";

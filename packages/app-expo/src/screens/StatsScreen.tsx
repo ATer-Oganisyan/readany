@@ -16,9 +16,11 @@
  * - Longest streak card
  */
 import { ChevronLeftIcon, ChevronRightIcon, ClockIcon, SearchIcon } from "@/components/ui/Icon";
+import { Text } from "@/components/ui/Typography";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { useReadingSessionStore } from "@/stores";
 import { useColors, withOpacity } from "@/styles/theme";
+import { useHeaderHeight } from "@react-navigation/elements";
 import {
   type NavigationProp,
   type ParamListBase,
@@ -41,7 +43,7 @@ import { useGoalsStore } from "@readany/core/stores";
 import { eventBus } from "@readany/core/utils/event-bus";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, ScrollView, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useResolvedCovers } from "./notes/useResolvedCovers";
 import { BadgesPreview } from "./stats/BadgesPreview";
@@ -102,6 +104,7 @@ function shiftAnchor(date: Date, dim: StatsDimension, delta: -1 | 1): Date {
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
 export default function StatsScreen() {
+  const nativeHeaderHeight = useHeaderHeight();
   const colors = useColors();
   const { t, i18n } = useTranslation();
   const isZh = i18n.language.startsWith("zh");
@@ -464,32 +467,12 @@ export default function StatsScreen() {
   /* ━━━━━━━━━━ Render ━━━━━━━━━━ */
 
   return (
-    <SafeAreaView style={s.container} edges={["top"]}>
-      {/* Header */}
-      <View style={[s.header, { paddingHorizontal: layout.horizontalPadding }]}>
-        <View style={[s.headerInner, { maxWidth: statsContentWidth }]}>
-          <TouchableOpacity
-            style={s.backBtn}
-            onPress={() => {
-              if (nav.canGoBack()) {
-                nav.goBack();
-              } else {
-                nav.navigate("Tabs" as never);
-              }
-            }}
-          >
-            <ChevronLeftIcon size={20} color={colors.foreground} />
-          </TouchableOpacity>
-          <Text style={s.headerTitle}>{t("stats.title")}</Text>
-          <View style={{ width: 36 }} />
-        </View>
-      </View>
-
+    <SafeAreaView style={s.container} edges={[]}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[
           s.scrollContent,
-          { paddingHorizontal: layout.horizontalPadding, alignItems: "center" },
+          { paddingHorizontal: layout.horizontalPadding, alignItems: "center", flexGrow: 1 },
         ]}
         stickyHeaderIndices={[0]}
       >
@@ -519,11 +502,20 @@ export default function StatsScreen() {
             <ActivityIndicator size="large" color={colors.mutedForeground} />
           </View>
         ) : errorKey || !report ? (
-          <EmptyState
-            title={errorKey ? t(errorKey) : t("stats.desktop.noDataTitle")}
-            description={t("stats.desktop.noDataDesc")}
-            icon={<SearchIcon size={24} color={withOpacity(colors.mutedForeground, 0.45)} />}
-          />
+          <View
+            style={{
+              flex: 1,
+              width: "100%",
+              justifyContent: "center",
+              transform: [{ translateY: -nativeHeaderHeight / 2 }],
+            }}
+          >
+            <EmptyState
+              title={errorKey ? t(errorKey) : t("stats.desktop.noDataTitle")}
+              description={t("stats.desktop.noDataDesc")}
+              icon={<SearchIcon size={24} color={withOpacity(colors.mutedForeground, 0.45)} />}
+            />
+          </View>
         ) : (
           <View style={{ width: "100%", maxWidth: statsContentWidth }}>
             {/* ═══ Hero Section ═══ */}

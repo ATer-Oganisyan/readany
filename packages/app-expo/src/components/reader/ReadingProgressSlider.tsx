@@ -1,3 +1,4 @@
+import { Text } from "@/components/ui/Typography";
 /**
  * ReadingProgressSlider — A draggable progress slider for the reader.
  *
@@ -5,7 +6,7 @@
  * Debounces seek at 100ms, with cooldown to prevent snap-back.
  */
 import React, { useCallback, useRef, useState } from "react";
-import { Animated, PanResponder, StyleSheet, Text, View } from "react-native";
+import { Animated, PanResponder, StyleSheet, View } from "react-native";
 
 interface Props {
   /** Current reading progress 0-1 */

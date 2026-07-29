@@ -1,9 +1,10 @@
+import { Text } from "@/components/ui/Typography";
 /**
  * StatsBookCover.tsx — Shared BookCover component with library-style spine + highlights.
  * Extracted from StatsSections.tsx.
  */
 import { useColors, withOpacity } from "@/styles/theme";
-import { Image, Text, View } from "react-native";
+import { Image, View } from "react-native";
 
 export function StatsBookCover({
   coverUrl,

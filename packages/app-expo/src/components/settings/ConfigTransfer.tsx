@@ -1,8 +1,9 @@
+import { Text, TextInput } from "@/components/ui/Typography";
 import { decodeConfig, encodeConfig } from "@readany/core/utils";
 import * as Clipboard from "expo-clipboard";
 import { memo, useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Alert, TouchableOpacity, View } from "react-native";
 import { fontSize, fontWeight, radius, useColors } from "../../styles/theme";
 
 interface ConfigTransferProps {
@@ -109,7 +110,6 @@ export const ConfigTransfer = memo(function ConfigTransfer({
             backgroundColor: colors.background,
             color: colors.foreground,
             fontSize: fontSize.xs,
-            fontFamily: "monospace",
             textAlignVertical: "top",
           }}
         />
@@ -177,7 +177,6 @@ export const ConfigTransfer = memo(function ConfigTransfer({
             backgroundColor: colors.background,
             color: colors.foreground,
             fontSize: fontSize.xs,
-            fontFamily: "monospace",
             textAlignVertical: "top",
           }}
         />

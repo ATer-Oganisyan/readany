@@ -176,7 +176,7 @@ export const makeStyles = (colors: ThemeColors) =>
     },
     resultCard: {
       borderRadius: radius.lg,
-      backgroundColor: colors.background,
+      backgroundColor: colors.card,
       padding: 12,
       gap: 2,
     },

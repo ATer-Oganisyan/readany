@@ -1,3 +1,4 @@
+import { Text, TextInput } from "@/components/ui/Typography";
 import {
   DEFAULT_WEBDAV_IMPORT_REMOTE_ROOT,
   getPlatformService,
@@ -19,8 +20,6 @@ import {
   ScrollView,
   StyleSheet,
   Switch,
-  Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";

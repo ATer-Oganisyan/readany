@@ -1,44 +1,12 @@
-/**
- * SVG icon components used by ReaderScreen.
- */
-import React from "react";
+import { ListIcon, MaterialIcon } from "@/components/ui/Icon";
 import Svg, { Path, Rect } from "react-native-svg";
 
 // ──────────────────────────── Settings Icon (Gear) ────────────────────────────
 export function SettingsIcon({ size = 24, color = "#e8e8ed" }: { size?: number; color?: string }) {
-  return (
-    <Svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={color}
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <Path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-      <Path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" />
-    </Svg>
-  );
+  return <MaterialIcon name="settings" size={size} color={color} />;
 }
 
-export function ListIcon({ size = 24, color = "#e8e8ed" }: { size?: number; color?: string }) {
-  return (
-    <Svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={color}
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <Path d="M3 12h18M3 6h18M3 18h18" />
-    </Svg>
-  );
-}
+export { ListIcon };
 
 export function BatteryIcon({
   width = 24,

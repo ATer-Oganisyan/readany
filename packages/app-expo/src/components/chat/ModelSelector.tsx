@@ -1,3 +1,4 @@
+import { Text } from "@/components/ui/Typography";
 import { CheckIcon, ChevronDownIcon } from "@/components/ui/Icon";
 import { useSettingsStore } from "@/stores/settings-store";
 import { fontSize as fs, fontWeight as fw, radius, useColors, withOpacity } from "@/styles/theme";
@@ -13,7 +14,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   TouchableOpacity,
   View,
 } from "react-native";

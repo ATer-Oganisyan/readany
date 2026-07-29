@@ -1,7 +1,8 @@
-import { ChevronLeftIcon, EditIcon, PlusIcon, PuzzleIcon, Trash2Icon } from "@/components/ui/Icon";
+import { EditIcon, PlusIcon, PuzzleIcon, Trash2Icon } from "@/components/ui/Icon";
+import { Text, TextInput } from "@/components/ui/Typography";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
+import { useNativeHeaderActions } from "@/navigation/useNativeHeaderActions";
 import { type ThemeColors, fontSize, fontWeight, radius, useColors } from "@/styles/theme";
-import { useNavigation } from "@react-navigation/native";
 import { builtinSkills } from "@readany/core/ai/skills/builtin-skills";
 import { deleteSkill, getSkills, insertSkill, upsertSkill } from "@readany/core/db";
 import type { Skill } from "@readany/core/types";
@@ -19,8 +20,6 @@ import {
   ScrollView,
   StyleSheet,
   Switch,
-  Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -41,7 +40,6 @@ export default function SkillsScreen() {
   const colors = useColors();
   const s = makeStyles(colors);
   const layout = useResponsiveLayout();
-  const nav = useNavigation();
   const { t } = useTranslation();
   const [skills, setSkills] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
@@ -105,6 +103,18 @@ export default function SkillsScreen() {
     setFormPrompt("");
     setEditorOpen(true);
   }, []);
+
+  useNativeHeaderActions({
+    right: [
+      {
+        label: t("settings.addSkill", "Добавить навык"),
+        accessibilityLabel: t("settings.addSkill", "Добавить навык"),
+        icon: "add",
+        sfSymbol: "plus",
+        onPress: handleCreateSkill,
+      },
+    ],
+  });
 
   const handleEditSkill = useCallback((skill: Skill) => {
     setEditingSkill(skill);
@@ -258,32 +268,7 @@ export default function SkillsScreen() {
   );
 
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={["top"]}>
-      {/* Header */}
-      <View style={s.header}>
-        <View style={[s.headerInner, { maxWidth: layout.centeredContentWidth }]}>
-          <View style={s.headerLeft}>
-            <TouchableOpacity
-              style={s.backBtn}
-              onPress={() => {
-                if (nav.canGoBack()) {
-                  nav.goBack();
-                } else {
-                  nav.navigate("Tabs" as never);
-                }
-              }}
-            >
-              <ChevronLeftIcon size={20} color={colors.foreground} />
-            </TouchableOpacity>
-            <Text style={s.headerTitle}>{t("skills.title", "技能")}</Text>
-          </View>
-          <TouchableOpacity style={s.addBtn} onPress={handleCreateSkill}>
-            <PlusIcon size={14} color={colors.primaryForeground} />
-            <Text style={s.addBtnText}>{t("settings.addSkill", "添加技能")}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
+    <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={[]}>
       <ScrollView
         style={s.scrollView}
         contentContainerStyle={s.scrollContent}

@@ -1,15 +1,22 @@
+import { type AdaptiveColor, accentColors, baseColors, primaryColors } from "@deslop/primitives";
 import * as SecureStore from "expo-secure-store";
 /**
- * ThemeContext — provides light / dark / sepia theme support matching Tauri mobile.
+ * ThemeContext — provides system / light / dark theme support.
  *
  * oklch values from globals.css are converted to hex.
  */
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import { useColorScheme } from "react-native";
 
-export type ThemeMode = "light" | "dark" | "sepia";
+export type ThemeMode = "system" | "light" | "dark";
+type ResolvedThemeMode = Exclude<ThemeMode, "system">;
 
 export interface ThemeColors {
+  backgroundPrimary: string;
+  backgroundSecondary: string;
+  elevation1: string;
+  elevation2: string;
   background: string;
   foreground: string;
   card: string;
@@ -18,6 +25,7 @@ export interface ThemeColors {
   mutedForeground: string;
   border: string;
   primary: string;
+  primary5: string;
   primaryForeground: string;
   destructive: string;
   destructiveForeground: string;
@@ -43,109 +51,100 @@ export interface ThemeColors {
   stone500: string;
 }
 
-// ── Light theme (from :root in globals.css) ──
-const lightColors: ThemeColors = {
-  background: "#faf9f5",
-  foreground: "#1c1c1e",
-  card: "#ffffff",
-  cardForeground: "#1c1c1e",
-  muted: "#f2f1ed",
-  mutedForeground: "#7c7c82",
-  border: "#e5e5e5",
-  primary: "#2d2d30",
-  primaryForeground: "#fafafa",
-  destructive: "#e53935",
-  destructiveForeground: "#fafafa",
-  accent: "#f5f5f5",
-  accentForeground: "#2d2d30",
-  indigo: "#6366f1",
-  emerald: "#10b981",
-  amber: "#f59e0b",
-  blue: "#3b82f6",
-  violet: "#7c3aed",
-  highlightYellow: "#fef08a",
-  highlightGreen: "#bbf7d0",
-  highlightBlue: "#bfdbfe",
-  highlightPink: "#fbcfe8",
-  highlightPurple: "#e9d5ff",
-  stone100: "#f5f5f4",
-  stone200: "#e7e5e4",
-  stone300: "#d6d3d1",
-  stone400: "#a8a29e",
-  stone500: "#78716c",
-};
+function adaptiveToken(
+  palette: readonly AdaptiveColor[],
+  name: string,
+  mode: ResolvedThemeMode,
+): string {
+  const token = palette.find((color) => color.name === name);
+  if (!token) throw new Error(`Missing @deslop/primitives color token: ${name}`);
+  return token[mode];
+}
 
-// ── Dark theme (from .dark in globals.css) ──
-const darkColors: ThemeColors = {
-  background: "#1c1c1e",
-  foreground: "#e8e8ed",
-  card: "#2c2c2e",
-  cardForeground: "#e8e8ed",
-  muted: "#333336",
-  mutedForeground: "#7c7c82",
-  border: "#3d3d40",
-  primary: "#e0e0e6",
-  primaryForeground: "#1c1c1e",
-  destructive: "#e53935",
-  destructiveForeground: "#ffffff",
-  accent: "#363638",
-  accentForeground: "#e0e0e6",
-  indigo: "#6366f1",
-  emerald: "#10b981",
-  amber: "#f59e0b",
-  blue: "#3b82f6",
-  violet: "#a78bfa",
-  highlightYellow: "#854d0e",
-  highlightGreen: "#166534",
-  highlightBlue: "#1e40af",
-  highlightPink: "#9d174d",
-  highlightPurple: "#6b21a8",
-  stone100: "#f5f5f4",
-  stone200: "#e7e5e4",
-  stone300: "#d6d3d1",
-  stone400: "#a8a29e",
-  stone500: "#78716c",
-};
+function mixHex(foreground: string, background: string, opacity: number): string {
+  const parse = (hex: string) => {
+    const value = hex.replace("#", "").slice(0, 6);
+    return [
+      Number.parseInt(value.slice(0, 2), 16),
+      Number.parseInt(value.slice(2, 4), 16),
+      Number.parseInt(value.slice(4, 6), 16),
+    ];
+  };
+  const foregroundRgb = parse(foreground);
+  const backgroundRgb = parse(background);
+  const channel = (index: number) =>
+    Math.round(foregroundRgb[index] * opacity + backgroundRgb[index] * (1 - opacity))
+      .toString(16)
+      .padStart(2, "0");
 
-// ── Sepia theme (from [data-theme="sepia"] in globals.css) ──
-const sepiaColors: ThemeColors = {
-  background: "#f0e6d2",
-  foreground: "#3d2b1f",
-  card: "#f5ebd7",
-  cardForeground: "#3d2b1f",
-  muted: "#e6d9c3",
-  mutedForeground: "#7a6652",
-  border: "#d4c4a8",
-  primary: "#6b4c2a",
-  primaryForeground: "#f5ebd7",
-  destructive: "#e53935",
-  destructiveForeground: "#fafafa",
-  accent: "#e6d9c3",
-  accentForeground: "#4a3728",
-  indigo: "#6366f1",
-  emerald: "#10b981",
-  amber: "#f59e0b",
-  blue: "#3b82f6",
-  violet: "#7c3aed",
-  highlightYellow: "#fef08a",
-  highlightGreen: "#bbf7d0",
-  highlightBlue: "#bfdbfe",
-  highlightPink: "#fbcfe8",
-  highlightPurple: "#e9d5ff",
-  stone100: "#f5f5f4",
-  stone200: "#e7e5e4",
-  stone300: "#d6d3d1",
-  stone400: "#a8a29e",
-  stone500: "#78716c",
-};
+  return `#${channel(0)}${channel(1)}${channel(2)}`;
+}
 
-const THEME_MAP: Record<ThemeMode, ThemeColors> = {
+function makeThemeColors(mode: ResolvedThemeMode): ThemeColors {
+  const base = (name: string) => adaptiveToken(baseColors, name, mode);
+  const primaryScale = (name: string) => adaptiveToken(primaryColors, name, mode);
+  const accentScale = (name: string) => adaptiveToken(accentColors, name, mode);
+  const backgroundPrimary = base("Background Primary");
+  const backgroundSecondary = base("Background Secondary");
+  const elevation1 = base("Elevation 1");
+  const elevation2 = base("Elevation 2");
+  const primary = primaryScale("Primary");
+
+  return {
+    backgroundPrimary,
+    backgroundSecondary,
+    elevation1,
+    elevation2,
+    // Existing semantic aliases keep screens on the Primitives surface scale.
+    background: backgroundSecondary,
+    foreground: primary,
+    card: elevation1,
+    cardForeground: primary,
+    muted: mixHex(primary, backgroundSecondary, 0.05),
+    mutedForeground: mixHex(primary, backgroundSecondary, 0.5),
+    border: mixHex(primary, backgroundSecondary, 0.1),
+    primary,
+    primary5: primaryScale("Primary 5"),
+    primaryForeground: mode === "light" ? base("White") : base("Black"),
+    destructive: accentScale("Red"),
+    destructiveForeground: base("White"),
+    accent: mixHex(primary, elevation1, 0.08),
+    accentForeground: primary,
+    indigo: accentScale("Indigo"),
+    emerald: accentScale("Green"),
+    amber: accentScale("Orange"),
+    blue: accentScale("Blue"),
+    violet: accentScale("Purple"),
+    highlightYellow: mixHex(accentScale("Yellow"), elevation1, 0.28),
+    highlightGreen: mixHex(accentScale("Green"), elevation1, 0.24),
+    highlightBlue: mixHex(accentScale("Blue"), elevation1, 0.22),
+    highlightPink: mixHex(accentScale("Pink"), elevation1, 0.22),
+    highlightPurple: mixHex(accentScale("Purple"), elevation1, 0.22),
+    stone100: mixHex(primary, backgroundSecondary, 0.05),
+    stone200: mixHex(primary, backgroundSecondary, 0.1),
+    stone300: mixHex(primary, backgroundSecondary, 0.2),
+    stone400: mixHex(primary, backgroundSecondary, 0.4),
+    stone500: mixHex(primary, backgroundSecondary, 0.6),
+  };
+}
+
+const lightColors = makeThemeColors("light");
+const darkColors = makeThemeColors("dark");
+
+const THEME_MAP: Record<ResolvedThemeMode, ThemeColors> = {
   light: lightColors,
   dark: darkColors,
-  sepia: sepiaColors,
 };
 
 const STORAGE_KEY = "readany-theme";
+
+export async function loadStoredThemeMode(): Promise<ThemeMode> {
+  const saved = await SecureStore.getItemAsync(STORAGE_KEY);
+  if (saved === "system" || saved === "light" || saved === "dark") return saved;
+  // Migrate the removed sepia theme without exposing it during first render.
+  if (saved === "sepia") return "system";
+  return "system";
+}
 
 interface ThemeContextValue {
   mode: ThemeMode;
@@ -155,39 +154,42 @@ interface ThemeContextValue {
 }
 
 const ThemeContext = createContext<ThemeContextValue>({
-  mode: "sepia",
-  colors: sepiaColors,
+  mode: "system",
+  colors: lightColors,
   setMode: () => {},
   isDark: false,
 });
 
 export function ThemeProvider({
   children,
-  initialMode = "sepia",
+  initialMode,
 }: {
   children: ReactNode;
   initialMode?: ThemeMode;
 }) {
-  const [mode, setModeState] = useState<ThemeMode>(initialMode);
+  const [mode, setModeState] = useState<ThemeMode>(initialMode ?? "system");
+  const systemColorScheme = useColorScheme();
 
   useEffect(() => {
-    SecureStore.getItemAsync(STORAGE_KEY).then((saved) => {
-      if (saved === "light" || saved === "dark" || saved === "sepia") {
-        setModeState(saved);
-      }
-    });
-  }, []);
+    // The application preloads the value before mounting navigation. Keep the
+    // fallback for isolated previews such as Storybook.
+    if (initialMode !== undefined) return;
+    void loadStoredThemeMode().then(setModeState);
+  }, [initialMode]);
 
   const setMode = useCallback((m: ThemeMode) => {
     setModeState(m);
     SecureStore.setItemAsync(STORAGE_KEY, m);
   }, []);
 
+  const resolvedMode: ResolvedThemeMode =
+    mode === "system" ? (systemColorScheme === "dark" ? "dark" : "light") : mode;
+
   const value: ThemeContextValue = {
     mode,
-    colors: THEME_MAP[mode],
+    colors: THEME_MAP[resolvedMode],
     setMode,
-    isDark: mode === "dark",
+    isDark: resolvedMode === "dark",
   };
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
@@ -201,4 +203,4 @@ export function useTheme(): ThemeContextValue {
  * Helper: get the initial theme synchronously for static styles.
  * Components that need reactive theme should use useTheme() instead.
  */
-export { lightColors, darkColors, sepiaColors, THEME_MAP };
+export { lightColors, darkColors, THEME_MAP };

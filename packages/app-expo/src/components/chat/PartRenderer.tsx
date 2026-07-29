@@ -1,3 +1,4 @@
+import { Text } from "@/components/ui/Typography";
 import { MermaidView } from "@/components/common/MermaidView";
 import { MindmapView } from "@/components/common/MindmapView";
 import { BrainIcon, CheckIcon, ChevronDownIcon, OctagonXIcon, XIcon } from "@/components/ui/Icon";
@@ -20,7 +21,6 @@ import {
   ActivityIndicator,
   ScrollView,
   StyleSheet,
-  Text,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -376,7 +376,6 @@ const makeToolStyles = (colors: ThemeColors) =>
     queryText: {
       flex: 1,
       fontSize: fs.xs,
-      fontFamily: "Menlo",
       color: colors.mutedForeground,
     },
     errorBadge: {
@@ -422,7 +421,6 @@ const makeToolStyles = (colors: ThemeColors) =>
     },
     codeText: {
       fontSize: fs.xs,
-      fontFamily: "Menlo",
       color: colors.foreground,
       lineHeight: 16,
     },

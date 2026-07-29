@@ -1,3 +1,4 @@
+import { Text } from "@/components/ui/Typography";
 import {
   ChevronDownIcon,
   ClockIcon,
@@ -26,7 +27,6 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  Text,
   TouchableOpacity,
   View,
 } from "react-native";

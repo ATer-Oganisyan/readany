@@ -1,3 +1,4 @@
+import { Text } from "@/components/ui/Typography";
 /**
  * BadgesSection.tsx — Premium achievement badges for mobile Stats screen.
  * Hexagonal shield badges with metallic gradients and large icons.
@@ -10,7 +11,7 @@ import {
   TrendingUpIcon,
 } from "@/components/ui/Icon";
 import type { BadgeDefinition, EarnedBadge } from "@readany/core/stats";
-import { Text, View } from "react-native";
+import { View } from "react-native";
 import Svg, {
   Circle,
   Defs,

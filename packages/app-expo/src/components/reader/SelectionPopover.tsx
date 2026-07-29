@@ -1,3 +1,4 @@
+import { Text } from "@/components/ui/Typography";
 import {
   CopyIcon,
   HighlighterIcon,
@@ -9,6 +10,7 @@ import {
   XIcon,
 } from "@/components/ui/Icon";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
+import { NativeButton } from "@/components/ui/NativeButton";
 import type { SelectionEvent } from "@/hooks/use-reader-bridge";
 import { radius, spacing, useColors, withOpacity } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
@@ -28,7 +30,6 @@ import {
   Modal,
   Platform,
   StyleSheet,
-  Text,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -307,12 +308,16 @@ export function SelectionPopover({
               />
             </View>
             <View style={s.noteModalActions}>
-              <TouchableOpacity style={s.noteCancelBtn} onPress={() => setShowNoteModal(false)}>
-                <Text style={s.noteCancelText}>{t("common.cancel", "取消")}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={s.noteSaveBtn} onPress={handleSaveNote}>
-                <Text style={s.noteSaveText}>{t("common.save", "保存")}</Text>
-              </TouchableOpacity>
+              <NativeButton
+                label={t("common.cancel", "Отмена")}
+                onPress={() => setShowNoteModal(false)}
+                variant="secondary"
+              />
+              <NativeButton
+                label={t("common.save", "Сохранить")}
+                onPress={handleSaveNote}
+                icon="check"
+              />
             </View>
           </View>
         </KeyboardAvoidingView>

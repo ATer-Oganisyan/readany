@@ -1,18 +1,20 @@
-import { BookOpenIcon, MessageSquareIcon, NotebookPenIcon, UserIcon } from "@/components/ui/Icon";
-import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
+import { NativeButton } from "@/components/ui/NativeButton";
+import { SyncButton } from "@/components/ui/SyncButton";
 import { ChatScreen } from "@/screens/ChatScreen";
 import { LibraryScreen } from "@/screens/LibraryScreen";
 import { NotesScreen } from "@/screens/NotesScreen";
 import { ProfileScreen } from "@/screens/ProfileScreen";
 import { useTheme } from "@/styles/ThemeContext";
-/**
- * TabNavigator — bottom tab bar matching the Tauri mobile app's 4 tabs.
- * Icons: BookOpen, MessageSquare, NotebookPen, User (matching BottomTabBar.tsx)
- */
-import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { fontFamily } from "@/styles/theme";
+import {
+  type NativeBottomTabIcon,
+  createNativeBottomTabNavigator,
+} from "@react-navigation/bottom-tabs/unstable";
+import { useSyncStore } from "@readany/core/stores";
+import { LinearGradient } from "expo-linear-gradient";
+import { useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { Platform } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Platform, StyleSheet } from "react-native";
 
 export type TabParamList = {
   Library: undefined;
@@ -21,83 +23,156 @@ export type TabParamList = {
   Profile: undefined;
 };
 
-const Tab = createBottomTabNavigator<TabParamList>();
+const Tab = createNativeBottomTabNavigator<TabParamList>();
+
+const ANDROID_ICONS = {
+  Library: require("../../assets/book.png"),
+  Chat: require("../../assets/think.png"),
+  Notes: require("../../assets/note.png"),
+  Profile: require("../../assets/icon.png"),
+} as const;
+
+function tabIcon(
+  sfSymbol: Extract<NativeBottomTabIcon, { type: "sfSymbol" }>["name"],
+  androidSource: number,
+): NativeBottomTabIcon {
+  return Platform.OS === "ios"
+    ? { type: "sfSymbol", name: sfSymbol }
+    : { type: "image", source: androidSource };
+}
 
 export function TabNavigator() {
   const { t } = useTranslation();
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
-  const layout = useResponsiveLayout();
+  const syncNow = useSyncStore((state) => state.syncNow);
+  const syncStatus = useSyncStore((state) => state.status);
+  const syncBackendType = useSyncStore((state) => state.backendType);
+  const loadSyncConfig = useSyncStore((state) => state.loadConfig);
+  const isSyncBusy = syncStatus !== "idle" && syncStatus !== "error";
 
-  const androidNavigationFallback =
-    Platform.OS === "android" ? (insets.bottom > 0 ? 28 : layout.isTablet ? 32 : 40) : 0;
+  useEffect(() => {
+    if (!syncBackendType) {
+      void loadSyncConfig();
+    }
+  }, [loadSyncConfig, syncBackendType]);
 
-  // Some Android devices under-report or completely miss the bottom inset when
-  // classic three-button navigation is enabled, so we keep a larger fallback
-  // reserve in that case to stop the system bar from covering the tab bar.
-  const bottomInset =
-    Platform.OS === "android" ? Math.max(insets.bottom, androidNavigationFallback) : insets.bottom;
-
-  const baseTabBarHeight = layout.isTabletLandscape ? 72 : layout.isTablet ? 76 : 60;
-  const tabBarHeight = baseTabBarHeight + bottomInset;
+  const handleSync = useCallback(() => {
+    if (!isSyncBusy) {
+      void syncNow();
+    }
+  }, [isSyncBusy, syncNow]);
 
   return (
     <Tab.Navigator
-      safeAreaInsets={{ ...insets, bottom: bottomInset }}
       screenOptions={{
-        headerShown: false,
-        tabBarHideOnKeyboard: false,
+        headerShown: true,
+        headerStyle: { backgroundColor: colors.background },
+        headerShadowVisible: false,
+        headerTintColor: colors.foreground,
+        headerTitleStyle: {
+          color: colors.foreground,
+          fontFamily: fontFamily.semibold,
+          fontWeight: "600",
+        },
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.mutedForeground,
-        tabBarLabelStyle: {
-          fontSize: layout.isTablet ? 13 : 12,
-          fontWeight: "500",
-          marginBottom: layout.isTabletLandscape ? 2 : 0,
-        },
-        tabBarItemStyle: layout.isTabletLandscape ? { paddingHorizontal: 10 } : undefined,
-        tabBarStyle: {
-          backgroundColor: colors.background,
-          borderTopColor: colors.border,
-          borderTopWidth: 0.5,
-          paddingTop: layout.isTabletLandscape ? 8 : 4,
-          paddingBottom: bottomInset,
-          height: tabBarHeight,
-        },
-        sceneStyle: {
-          paddingBottom: Platform.OS === "android" && insets.bottom === 0 ? 4 : 0,
-        },
+        tabBarLabelStyle: { fontFamily: fontFamily.regular },
+        tabBarStyle: { backgroundColor: colors.background },
+        tabBarBlurEffect: "systemDefault",
+        tabBarControllerMode: "tabBar",
+        tabBarMinimizeBehavior: "onScrollDown",
       }}
     >
       <Tab.Screen
         name="Library"
         component={LibraryScreen}
-        options={{
-          tabBarLabel: t("tabs.library", "书架"),
-          tabBarIcon: ({ color, size }) => <BookOpenIcon color={color} size={size} />,
-        }}
+        options={({ navigation }) => ({
+          title: t("tabs.library", "Библиотека"),
+          tabBarLabel: t("tabs.library", "Библиотека"),
+          tabBarIcon: tabIcon("book.closed.fill", ANDROID_ICONS.Library),
+          ...(Platform.OS === "ios"
+            ? {
+                unstable_headerLeftItems: () => [
+                  {
+                    type: "button" as const,
+                    label: "Компоненты",
+                    accessibilityLabel: "Открыть каталог компонентов",
+                    icon: { type: "sfSymbol" as const, name: "square.grid.2x2" as const },
+                    onPress: () => navigation.getParent()?.navigate("Storybook" as never),
+                  },
+                ],
+              }
+            : {
+                headerLeft: () => (
+                  <NativeButton
+                    label="Компоненты"
+                    accessibilityLabel="Открыть каталог компонентов"
+                    icon="components"
+                    size="small"
+                    variant="tertiary"
+                    onPress={() => navigation.getParent()?.navigate("Storybook" as never)}
+                  />
+                ),
+              }),
+        })}
       />
       <Tab.Screen
         name="Chat"
         component={ChatScreen}
         options={{
-          tabBarLabel: t("tabs.ai", "AI"),
-          tabBarIcon: ({ color, size }) => <MessageSquareIcon color={color} size={size} />,
+          title: t("tabs.ai", "ИИ"),
+          tabBarLabel: t("tabs.ai", "ИИ"),
+          tabBarIcon: tabIcon("message", ANDROID_ICONS.Chat),
         }}
       />
       <Tab.Screen
         name="Notes"
         component={NotesScreen}
         options={{
-          tabBarLabel: t("tabs.notes", "笔记"),
-          tabBarIcon: ({ color, size }) => <NotebookPenIcon color={color} size={size} />,
+          title: t("tabs.notes", "Заметки"),
+          tabBarLabel: t("tabs.notes", "Заметки"),
+          tabBarIcon: tabIcon("highlighter", ANDROID_ICONS.Notes),
         }}
       />
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
         options={{
-          tabBarLabel: t("tabs.profile", "我的"),
-          tabBarIcon: ({ color, size }) => <UserIcon color={color} size={size} />,
+          title: t("tabs.profile", "Профиль"),
+          tabBarLabel: t("tabs.profile", "Профиль"),
+          tabBarIcon: tabIcon("person.crop.circle", ANDROID_ICONS.Profile),
+          tabBarMinimizeBehavior: "never",
+          ...(Platform.OS === "ios"
+            ? {
+                headerTransparent: true,
+                headerBackground: () => (
+                  <LinearGradient
+                    pointerEvents="none"
+                    colors={[colors.background, colors.background, `${colors.background}00`]}
+                    locations={[0, 0.7, 1]}
+                    style={StyleSheet.absoluteFill}
+                  />
+                ),
+                unstable_headerRightItems: () =>
+                  syncBackendType
+                    ? [
+                        {
+                          type: "button" as const,
+                          label: "Синхронизировать",
+                          accessibilityLabel: "Синхронизировать",
+                          icon: {
+                            type: "sfSymbol" as const,
+                            name: "arrow.clockwise" as const,
+                          },
+                          disabled: isSyncBusy,
+                          onPress: handleSync,
+                        },
+                      ]
+                    : [],
+              }
+            : {
+                headerRight: () => <SyncButton size={20} color={colors.mutedForeground} />,
+              }),
         }}
       />
     </Tab.Navigator>

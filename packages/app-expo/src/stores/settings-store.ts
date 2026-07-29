@@ -10,6 +10,12 @@ import {
   providerSupportsExactRequestUrl,
 } from "@readany/core/utils/api";
 import { create } from "zustand";
+import {
+  bundledOpenRouterEndpoint,
+  bundledOpenRouterModel,
+  getBundledApiKey,
+  hasBundledOpenRouterKey,
+} from "@/config/bundled-ai";
 import { deleteSecure, loadSecure, saveSecure, withPersist } from "./persist";
 
 export interface SettingsState {
@@ -62,7 +68,7 @@ const defaultTranslationConfig: TranslationConfig = {
   targetLang: "zh-CN",
 };
 
-const defaultEndpoint: AIEndpoint = {
+const configurableDefaultEndpoint: AIEndpoint = {
   id: "default",
   name: "OpenAI",
   provider: "openai",
@@ -73,22 +79,51 @@ const defaultEndpoint: AIEndpoint = {
   modelsFetched: false,
 };
 
+const defaultEndpoint = hasBundledOpenRouterKey
+  ? bundledOpenRouterEndpoint
+  : configurableDefaultEndpoint;
+
 const defaultAIConfig: AIConfig = {
   endpoints: [defaultEndpoint],
   activeEndpointId: "default",
-  activeModel: "",
+  activeModel: hasBundledOpenRouterKey ? bundledOpenRouterModel : "",
   temperature: 0.7,
   maxTokens: 8192,
   slidingWindowSize: 8,
 };
 
 function migrateSettingsState(state: SettingsState): SettingsState {
-  if (state.aiConfig.maxTokens !== 4096) return state;
+  const shouldMigrateTokens = state.aiConfig.maxTokens === 4096;
+  if (!shouldMigrateTokens && !hasBundledOpenRouterKey) return state;
+
+  let aiConfig = state.aiConfig;
+  if (hasBundledOpenRouterKey) {
+    const existingOpenRouter = aiConfig.endpoints.find(
+      (endpoint) => endpoint.provider === "openrouter",
+    );
+    const endpoint = existingOpenRouter
+      ? {
+          ...existingOpenRouter,
+          baseUrl: bundledOpenRouterEndpoint.baseUrl,
+          models: existingOpenRouter.models.includes(bundledOpenRouterModel)
+            ? existingOpenRouter.models
+            : [bundledOpenRouterModel, ...existingOpenRouter.models],
+          modelsFetched: true,
+        }
+      : bundledOpenRouterEndpoint;
+    aiConfig = {
+      ...aiConfig,
+      endpoints: [endpoint, ...aiConfig.endpoints.filter((item) => item.id !== endpoint.id)],
+      activeEndpointId: endpoint.id,
+      activeModel: bundledOpenRouterModel,
+    };
+  }
+
   return {
     ...state,
     aiConfig: {
-      ...state.aiConfig,
-      maxTokens: defaultAIConfig.maxTokens,
+      ...aiConfig,
+      maxTokens: shouldMigrateTokens ? defaultAIConfig.maxTokens : aiConfig.maxTokens,
     },
   };
 }
@@ -337,6 +372,16 @@ async function fetchLMStudioModels(endpoint: AIEndpoint): Promise<string[]> {
 // Helper to get secure key for endpoint
 const getApiKeyStorageKey = (endpointId: string) => `apikey_${endpointId}`;
 
+async function loadEndpointApiKey(endpoint: AIEndpoint): Promise<string> {
+  const bundledKey = getBundledApiKey(endpoint);
+  if (bundledKey) return bundledKey;
+  try {
+    return (await loadSecure(getApiKeyStorageKey(endpoint.id))) || "";
+  } catch {
+    return "";
+  }
+}
+
 function pickUsableEndpoint(endpoints: AIEndpoint[], activeEndpointId: string) {
   return (
     endpoints.find((endpoint) => endpoint.id === activeEndpointId) ||
@@ -415,8 +460,8 @@ export const useSettingsStore = create<SettingsState>()(
 
       const endpointsWithKeys = await Promise.all(
         state.aiConfig.endpoints.map(async (ep) => {
-          const apiKey = await loadSecure(getApiKeyStorageKey(ep.id));
-          return { ...ep, apiKey: apiKey || "" };
+          const apiKey = await loadEndpointApiKey(ep);
+          return { ...ep, apiKey };
         }),
       );
 
@@ -460,7 +505,7 @@ export const useSettingsStore = create<SettingsState>()(
 
       addEndpoint: async (endpoint) => {
         // Save API key to secure storage
-        if (endpoint.apiKey) {
+        if (endpoint.apiKey && !getBundledApiKey(endpoint)) {
           await saveSecure(getApiKeyStorageKey(endpoint.id), endpoint.apiKey);
         }
         // Add endpoint to state (apiKey will be loaded from secure storage)
@@ -477,7 +522,10 @@ export const useSettingsStore = create<SettingsState>()(
 
       updateEndpoint: async (id, updates) => {
         // If apiKey is being updated, save it to secure storage
-        if (updates.apiKey !== undefined) {
+        const currentEndpoint = get().aiConfig.endpoints.find((endpoint) => endpoint.id === id);
+        const nextProvider = updates.provider ?? currentEndpoint?.provider;
+        const usesBundledKey = nextProvider === "openrouter" && hasBundledOpenRouterKey;
+        if (updates.apiKey !== undefined && !usesBundledKey) {
           await saveSecure(getApiKeyStorageKey(id), updates.apiKey);
         }
         set((state) => ({
@@ -552,8 +600,8 @@ export const useSettingsStore = create<SettingsState>()(
         const ep = state.aiConfig.endpoints.find((ep) => ep.id === state.aiConfig.activeEndpointId);
         if (!ep) return undefined;
         // Load the actual API key from secure storage
-        const apiKey = await loadSecure(getApiKeyStorageKey(ep.id));
-        return { ...ep, apiKey: apiKey || "" };
+        const apiKey = await loadEndpointApiKey(ep);
+        return { ...ep, apiKey };
       },
 
       getEndpointById: async (id: string) => {
@@ -561,8 +609,8 @@ export const useSettingsStore = create<SettingsState>()(
         const ep = state.aiConfig.endpoints.find((ep) => ep.id === id);
         if (!ep) return undefined;
         // Load the actual API key from secure storage
-        const apiKey = await loadSecure(getApiKeyStorageKey(ep.id));
-        return { ...ep, apiKey: apiKey || "" };
+        const apiKey = await loadEndpointApiKey(ep);
+        return { ...ep, apiKey };
       },
 
       fetchModels: async (endpointId) => {
@@ -571,8 +619,8 @@ export const useSettingsStore = create<SettingsState>()(
         if (!endpoint) return [];
 
         // Load the actual API key from secure storage
-        const apiKey = await loadSecure(getApiKeyStorageKey(endpointId));
-        const endpointWithKey = { ...endpoint, apiKey: apiKey || "" };
+        const apiKey = await loadEndpointApiKey(endpoint);
+        const endpointWithKey = { ...endpoint, apiKey };
 
         set((s) => ({
           aiConfig: {
@@ -629,7 +677,7 @@ export const useSettingsStore = create<SettingsState>()(
         });
       },
     };
-  }, undefined, migrateSettingsState),
+  }, { _apiKeysLoaded: false }, migrateSettingsState),
 );
 
 // 在应用启动时加载 API keys

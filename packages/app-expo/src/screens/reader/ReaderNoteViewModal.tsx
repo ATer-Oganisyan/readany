@@ -1,3 +1,4 @@
+import { Text } from "@/components/ui/Typography";
 /**
  * ReaderNoteViewModal — modal for viewing and editing an existing highlight's note.
  */
@@ -8,7 +9,7 @@ import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { useAnnotationStore } from "@/stores";
 import { useColors } from "@/styles/theme";
 import { createSelectionNoteMutation } from "@readany/core/reader";
-import { KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { makeStyles } from "./reader-styles";

@@ -1,3 +1,5 @@
+import { Text } from "@/components/ui/Typography";
+import { NativeButton } from "@/components/ui/NativeButton";
 import { GroupPickerSheet } from "@/components/library/GroupPickerSheet";
 import {
   CheckIcon,
@@ -18,7 +20,6 @@ import {
   Modal,
   Pressable,
   StyleSheet,
-  Text,
   TouchableOpacity,
   View,
   useWindowDimensions,
@@ -227,21 +228,20 @@ export function BookCardActionSheet({
             </TouchableOpacity>
 
             <View style={styles.confirmActions}>
-              <TouchableOpacity
-                style={styles.confirmSecondary}
+              <NativeButton
+                label={t("common.cancel", "Отмена")}
+                variant="secondary"
                 onPress={() => setShowDeleteConfirm(false)}
-              >
-                <Text style={styles.confirmSecondaryText}>{t("common.cancel", "取消")}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.confirmDanger}
+              />
+              <NativeButton
+                label={t("common.remove", "Удалить")}
+                variant="destructive"
+                icon="delete"
                 onPress={() => {
                   setShowDeleteConfirm(false);
                   onDelete(book.id, { preserveData: preserveDataOnDelete });
                 }}
-              >
-                <Text style={styles.confirmDangerText}>{t("common.remove", "删除")}</Text>
-              </TouchableOpacity>
+              />
             </View>
           </Pressable>
         </Pressable>

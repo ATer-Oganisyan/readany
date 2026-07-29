@@ -1,16 +1,15 @@
-import { DarkModeSvg } from "@/components/DarkModeSvg";
-import { useTheme } from "@/styles/theme";
+import { NativeButton } from "@/components/ui/NativeButton";
 import { useSettingsStore } from "@/stores";
+import { useTheme } from "@/styles/theme";
 import { useTranslation } from "react-i18next";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import Animated, { FadeInDown, SlideInRight } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import CelebrationSvg from "../../../../assets/illustrations/celebration.svg";
 
 export function CompletePage() {
   const { t } = useTranslation();
   const { completeOnboarding } = useSettingsStore();
-  const { isDark, colors } = useTheme();
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
 
   const handleStart = () => {
@@ -21,15 +20,6 @@ export function CompletePage() {
     <View style={[styles.safeArea, { backgroundColor: colors.background }]}>
       <Animated.View entering={SlideInRight.duration(500)} style={styles.container}>
         <View style={styles.content}>
-          <Animated.View
-            entering={FadeInDown.delay(100).springify()}
-            style={[styles.iconContainer, { backgroundColor: "transparent", shadowOpacity: 0 }]}
-          >
-            <DarkModeSvg width={180} height={180}>
-              <CelebrationSvg width={180} height={180} />
-            </DarkModeSvg>
-          </Animated.View>
-
           <Animated.Text
             entering={FadeInDown.delay(200).springify()}
             style={[styles.title, { color: colors.foreground }]}
@@ -53,17 +43,13 @@ export function CompletePage() {
             { backgroundColor: colors.background, paddingBottom: 24 + insets.bottom },
           ]}
         >
-          <Pressable
+          <NativeButton
+            label={t("onboarding.complete.start", "Перейти к чтению")}
             onPress={handleStart}
-            style={[
-              styles.startBtn,
-              { backgroundColor: colors.primary, shadowColor: "transparent" },
-            ]}
-          >
-            <Text style={[styles.startText, { color: colors.primaryForeground }]}>
-              {t("onboarding.complete.start", "Start Reading")} →
-            </Text>
-          </Pressable>
+            icon="forward"
+            size="large"
+            fullWidth
+          />
         </View>
       </Animated.View>
     </View>
@@ -108,17 +94,4 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   footer: { padding: 24, paddingBottom: 0, alignItems: "center" },
-  startBtn: {
-    backgroundColor: "#6366f1",
-    paddingVertical: 18,
-    paddingHorizontal: 48,
-    borderRadius: 999,
-    shadowColor: "#6366f1",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    width: "100%",
-    alignItems: "center",
-  },
-  startText: { color: "#ffffff", fontSize: 18, fontWeight: "700", letterSpacing: 0.5 },
 });

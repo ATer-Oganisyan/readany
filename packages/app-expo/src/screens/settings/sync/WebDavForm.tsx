@@ -1,5 +1,6 @@
+import { Text, TextInput } from "@/components/ui/Typography";
 import { useTranslation } from "react-i18next";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import { TouchableOpacity, View } from "react-native";
 import { PasswordInput } from "../../../components/ui/PasswordInput";
 import { useColors } from "../../../styles/theme";
 import { makeStyles } from "./sync-styles";

@@ -1,35 +1,30 @@
-import type { RootStackParamList } from "@/navigation/RootNavigator";
-import { useLibraryStore } from "@/stores/library-store";
 import {
   BookOpenIcon,
   CheckIcon,
-  ChevronLeftIcon,
   ChevronRightIcon,
   CloudIcon,
   LibraryIcon,
   Loader2Icon,
   SearchIcon,
 } from "@/components/ui/Icon";
+import { Text, TextInput } from "@/components/ui/Typography";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
+import type { RootStackParamList } from "@/navigation/RootNavigator";
+import { useNativeHeaderActions } from "@/navigation/useNativeHeaderActions";
+import { useLibraryStore } from "@/stores/library-store";
+import { fontSize, fontWeight, radius, useColors, useTheme, withOpacity } from "@/styles/theme";
+import { useHeaderHeight } from "@react-navigation/elements";
+import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import {
-  fontSize,
-  fontWeight,
-  radius,
-  useColors,
-  useTheme,
-  withOpacity,
-} from "@/styles/theme";
-import {
+  type ImportBooksResult,
+  type WebDavImportEntry,
+  WebDavImportService,
+  type WebDavImportSource,
+  type WebDavImportSourceKind,
   createImportDuplicateIndex,
   findLikelyDuplicateBook,
   normalizeImportIdentity,
-  WebDavImportService,
-  type ImportBooksResult,
-  type WebDavImportEntry,
-  type WebDavImportSource,
-  type WebDavImportSourceKind,
 } from "@readany/core";
-import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { File, Paths } from "expo-file-system";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -38,8 +33,6 @@ import {
   Alert,
   FlatList,
   StyleSheet,
-  Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -77,7 +70,10 @@ function sanitizeFilename(name: string): string {
   return name.replace(/[\\/:*?"<>|\[\]{}#%&]/g, "_").trim() || `book-${Date.now()}`;
 }
 
-function createTempImportFile(bytes: Uint8Array, originalName: string): { uri: string; name: string } {
+function createTempImportFile(
+  bytes: Uint8Array,
+  originalName: string,
+): { uri: string; name: string } {
   const safeName = sanitizeFilename(originalName);
   const file = new File(Paths.cache, `readany-webdav-${Date.now()}-${safeName}`);
   if (file.exists) {
@@ -87,7 +83,10 @@ function createTempImportFile(bytes: Uint8Array, originalName: string): { uri: s
   return { uri: file.uri, name: safeName };
 }
 
-function getSourceLabel(kind: WebDavImportSourceKind, t: ReturnType<typeof useTranslation>["t"]): string {
+function getSourceLabel(
+  kind: WebDavImportSourceKind,
+  t: ReturnType<typeof useTranslation>["t"],
+): string {
   return kind === "saved"
     ? t("library.importSourceSavedWebDav", "我的 WebDAV")
     : t("library.importSourceTemporaryWebDav", "连接其他 WebDAV");
@@ -107,6 +106,7 @@ function formatImportResultMessage(
 export function WebDavImportBrowserScreen({ navigation, route }: Props) {
   const { t } = useTranslation();
   const colors = useColors();
+  const nativeHeaderHeight = useHeaderHeight();
   const { isDark } = useTheme();
   const layout = useResponsiveLayout();
   const source = route.params.source as WebDavImportSource;
@@ -313,6 +313,7 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
           alignItems: "center",
           justifyContent: "center",
           paddingHorizontal: 24,
+          transform: [{ translateY: -nativeHeaderHeight / 2 }],
         },
         stateTitle: {
           marginTop: 14,
@@ -417,7 +418,7 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
           color: colors.primaryForeground,
         },
       }),
-    [colors, isDark, layout.centeredContentWidth, layout.horizontalPadding],
+    [colors, isDark, layout.centeredContentWidth, layout.horizontalPadding, nativeHeaderHeight],
   );
 
   const loadEntries = useCallback(
@@ -536,26 +537,19 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
         const result = await importBooks(tempFiles);
         setImportState({ phase: "idle" });
         setSelectedPaths([]);
-        Alert.alert(
-          t("common.success", "成功！"),
-          formatImportResultMessage(t, result),
-          [
-            {
-              text: t("library.webdavImportContinue", "继续浏览"),
-              style: "cancel",
-            },
-            {
-              text: t("library.webdavImportBackToLibrary", "返回书库"),
-              onPress: () => navigation.goBack(),
-            },
-          ],
-        );
+        Alert.alert(t("common.success", "成功！"), formatImportResultMessage(t, result), [
+          {
+            text: t("library.webdavImportContinue", "继续浏览"),
+            style: "cancel",
+          },
+          {
+            text: t("library.webdavImportBackToLibrary", "返回书库"),
+            onPress: () => navigation.goBack(),
+          },
+        ]);
       } catch (err) {
         setImportState({ phase: "idle" });
-        Alert.alert(
-          t("common.failed", "失败"),
-          err instanceof Error ? err.message : String(err),
-        );
+        Alert.alert(t("common.failed", "失败"), err instanceof Error ? err.message : String(err));
       } finally {
         for (const tempFile of tempFiles) {
           try {
@@ -596,10 +590,7 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
         await runImport(targets);
       } catch (err) {
         setImportState({ phase: "idle" });
-        Alert.alert(
-          t("common.failed", "失败"),
-          err instanceof Error ? err.message : String(err),
-        );
+        Alert.alert(t("common.failed", "失败"), err instanceof Error ? err.message : String(err));
       }
     })();
   };
@@ -609,7 +600,9 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
       return (
         <View style={s.stateWrap}>
           <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={s.stateTitle}>{t("library.webdavImportLoading", "正在读取远端书库...")}</Text>
+          <Text style={s.stateTitle}>
+            {t("library.webdavImportLoading", "正在读取远端书库...")}
+          </Text>
           <Text style={s.stateDesc}>
             {t("library.webdavImportBrowserSubtitle", "浏览远端目录，挑书导入当前书架。")}
           </Text>
@@ -672,7 +665,10 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
                 {entry.isDirectory ? (
                   <LibraryIcon size={18} color={colors.primary} />
                 ) : (
-                  <BookOpenIcon size={18} color={entry.importable ? colors.primary : colors.mutedForeground} />
+                  <BookOpenIcon
+                    size={18}
+                    color={entry.importable ? colors.primary : colors.mutedForeground}
+                  />
                 )}
               </View>
               <View style={s.entryText}>
@@ -691,7 +687,7 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
                 <Text style={s.entryMeta} numberOfLines={1}>
                   {entry.isDirectory
                     ? t("library.webdavImportFolderMeta", {
-                      defaultValue: "文件夹 · {{date}}",
+                        defaultValue: "文件夹 · {{date}}",
                         date: entry.lastModified ? formatDate(entry.lastModified) : "—",
                       })
                     : t("library.webdavImportFileMeta", {
@@ -752,30 +748,29 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
 
   const importBusy = importState.phase !== "idle";
 
+  useNativeHeaderActions({
+    title: getSourceLabel(source.kind, t),
+    left: [
+      {
+        label: t("common.back", "Назад"),
+        icon: "back",
+        sfSymbol: "chevron.backward",
+        onPress: handleGoBack,
+      },
+    ],
+  });
+
   return (
-    <SafeAreaView style={s.container}>
+    <SafeAreaView style={s.container} edges={[]}>
       <View style={s.header}>
         <View style={s.headerInner}>
-          <View style={s.headerRow}>
-            <TouchableOpacity style={s.navBtn} onPress={handleGoBack} activeOpacity={0.8}>
-              <ChevronLeftIcon size={18} color={colors.foreground} />
-            </TouchableOpacity>
-            <View style={s.headerText}>
-              <Text style={s.title}>{getSourceLabel(source.kind, t)}</Text>
-              <Text style={s.subtitle} numberOfLines={1}>
-                {source.url}
-              </Text>
-            </View>
-            <View style={s.navBtn}>
-              <CloudIcon size={16} color={colors.primary} />
-            </View>
-          </View>
+          <Text style={s.subtitle} numberOfLines={1}>
+            {source.url}
+          </Text>
           <View style={s.breadcrumbRow}>
             <View style={s.breadcrumbChip}>
               <Text style={s.breadcrumbText} numberOfLines={1}>
-                {currentPath === "/"
-                  ? t("library.webdavImportRootLabel", "浏览起点")
-                  : currentPath}
+                {currentPath === "/" ? t("library.webdavImportRootLabel", "浏览起点") : currentPath}
               </Text>
             </View>
           </View>
@@ -798,7 +793,8 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
             <View style={s.summaryRow}>
               <Text style={s.summaryText}>
                 {t("library.webdavImportSummary", {
-                  defaultValue: "当前可见 {{count}} 项，其中 {{books}} 本可导入，{{duplicates}} 本可能重复",
+                  defaultValue:
+                    "当前可见 {{count}} 项，其中 {{books}} 本可导入，{{duplicates}} 本可能重复",
                   count: visibleEntries.length,
                   books: importableVisibleEntries.length,
                   duplicates: likelyDuplicateVisibleCount,
@@ -839,7 +835,9 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
                   activeOpacity={0.85}
                   disabled={importBusy}
                 >
-                  <Text style={s.footerGhostText}>{t("library.webdavImportClearSelection", "清空")}</Text>
+                  <Text style={s.footerGhostText}>
+                    {t("library.webdavImportClearSelection", "清空")}
+                  </Text>
                 </TouchableOpacity>
               ) : null}
               <TouchableOpacity
