@@ -14,7 +14,7 @@ import {
   REMOTE_BOOKS_ROOT,
 } from "./sync-types";
 
-const FALLBACK_TITLE = "未命名";
+const FALLBACK_TITLE = "Без названия";
 const MAX_TITLE_LEN = 64;
 // UUID v4 form: 8-4-4-4-12 hex chars (36 chars total).
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

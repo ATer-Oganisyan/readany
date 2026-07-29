@@ -109,6 +109,34 @@ const ko = { ...ko_common, ...ko_library, ...ko_reader, ...ko_chat, ...ko_notes,
 const fr = { ...fr_common, ...fr_library, ...fr_reader, ...fr_chat, ...fr_notes, ...fr_settings, ...fr_translation, ...fr_tts, ...fr_stats, ...fr_onboarding, ...fr_profile, ...fr_misc };
 const es = { ...es_common, ...es_library, ...es_reader, ...es_chat, ...es_notes, ...es_settings, ...es_translation, ...es_tts, ...es_stats, ...es_onboarding, ...es_profile, ...es_misc };
 
+function mergeLocale(
+  base: Record<string, unknown>,
+  overrides: Record<string, unknown>,
+): Record<string, unknown> {
+  const result = { ...base };
+  for (const [key, value] of Object.entries(overrides)) {
+    const baseValue = result[key];
+    result[key] =
+      value &&
+      baseValue &&
+      typeof value === "object" &&
+      typeof baseValue === "object" &&
+      !Array.isArray(value) &&
+      !Array.isArray(baseValue)
+        ? mergeLocale(
+            baseValue as Record<string, unknown>,
+            value as Record<string, unknown>,
+          )
+        : value;
+  }
+  return result;
+}
+
+// ReadAny still contains Chinese default strings at a number of call sites.
+// Keep the Russian catalogue authoritative and fill its missing keys from the
+// complete English catalogue, so those defaults can never leak into Narra UI.
+const ruComplete = mergeLocale(en, ru);
+
 // Initialize with default "en". Each platform should call
 // `initI18nLanguage()` after setPlatformService() to restore the saved lang.
 export const i18nReady = i18n
@@ -122,7 +150,7 @@ export const i18nReady = i18n
       ko: { translation: ko },
       fr: { translation: fr },
       es: { translation: es },
-      ru: { translation: ru },
+      ru: { translation: ruComplete },
     },
     lng: "ru",
     fallbackLng: "ru",

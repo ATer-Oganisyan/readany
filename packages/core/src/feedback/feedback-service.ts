@@ -394,7 +394,7 @@ export async function submitFeedback(
   submission: FeedbackSubmission,
 ): Promise<FeedbackSubmitResult> {
   if (getRemainingSubmissions() <= 0) {
-    throw new Error("今日反馈次数已用完，请明天再试");
+    throw new Error("Лимит обращений на сегодня исчерпан. Попробуйте завтра.");
   }
 
   let result: FeedbackSubmitResult;
@@ -426,7 +426,7 @@ export async function submitFeedback(
 
       if (!response.ok) {
         const text = await response.text().catch(() => "");
-        throw new Error(`提交失败: ${response.status} ${text}`);
+        throw new Error(`Не удалось отправить обращение: ${response.status} ${text}`);
       }
 
       result = (await response.json()) as FeedbackSubmitResult;

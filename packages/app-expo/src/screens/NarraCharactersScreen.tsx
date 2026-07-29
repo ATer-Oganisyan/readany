@@ -10,7 +10,7 @@ import { useLibraryStore, useNarraStore } from "@/stores";
 import { radius, useColors } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import * as FileSystem from "expo-file-system/legacy";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -34,7 +34,11 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
   const updateCharacter = useNarraStore((state) => state.updateCharacter);
   const [portraitLoading, setPortraitLoading] = useState<string | null>(null);
   const [analysisStage, setAnalysisStage] = useState("");
+  const [analysisFailure, setAnalysisFailure] = useState("");
   const extractorRef = useRef<ExtractorRef>(null);
+  const mountedRef = useRef(true);
+  const analysisRunRef = useRef(0);
+  const analysisActiveRef = useRef(false);
   const characters = bookState?.characters ?? [];
   const busy = analyzing || Boolean(analysisStage);
   const unlocked = useMemo(
@@ -42,8 +46,19 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
     [book?.progress, characters],
   );
 
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      analysisRunRef.current += 1;
+      analysisActiveRef.current = false;
+    };
+  }, []);
+
   const analyze = async () => {
-    if (!book) return;
+    if (!book || analysisActiveRef.current) return;
+    analysisActiveRef.current = true;
+    const runId = ++analysisRunRef.current;
+    setAnalysisFailure("");
     try {
       setAnalysisStage("Извлекаю текст…");
       const info = await inspectMobileBookForVectorize(book);
@@ -59,15 +74,14 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
       }
       setAnalysisStage("Ищу героев…");
       await analyzeBookCharacters(book, extractedText);
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Narra не смогла выполнить запрос. Попробуйте ещё раз.";
-      Alert.alert("Не удалось найти персонажей", message, [
-        { text: "Отмена", style: "cancel" },
-        { text: "Повторить", onPress: () => void analyze() },
-      ]);
+    } catch {
+      if (!mountedRef.current || analysisRunRef.current !== runId) return;
+      setAnalysisFailure("Не удалось обработать текст книги. Попробуйте ещё раз.");
     } finally {
-      setAnalysisStage("");
+      if (mountedRef.current && analysisRunRef.current === runId) {
+        analysisActiveRef.current = false;
+        setAnalysisStage("");
+      }
     }
   };
 
@@ -134,9 +148,9 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
                 </Text>
               )}
             </TouchableOpacity>
-            {bookState?.analysisError ? (
+            {analysisFailure || bookState?.analysisError ? (
               <Text style={[styles.error, { color: colors.destructive }]}>
-                {bookState.analysisError}
+                {analysisFailure || bookState?.analysisError}
               </Text>
             ) : null}
           </View>

@@ -105,14 +105,14 @@ export function VoicePickerModal({
                         : t("tts.system");
               const desc =
                 eng === "edge"
-                  ? "Microsoft · 多语言"
+                  ? "Microsoft · многоязычный"
                   : eng === "dashscope"
-                    ? "阿里云通义 · 中文优化"
+                    ? "Alibaba Cloud · оптимизирован для китайского"
                     : eng === "xiaomi"
                       ? "MiMo-V2.5-TTS"
                       : eng === "openai-compatible"
-                        ? "自定义 OpenAI 格式"
-                        : "系统内置 · 免费";
+                        ? "Пользовательский формат OpenAI"
+                        : "Системный · бесплатно";
               return (
                 <TouchableOpacity
                   key={eng}

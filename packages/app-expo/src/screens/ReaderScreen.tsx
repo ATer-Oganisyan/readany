@@ -23,6 +23,7 @@ import { SyncButton } from "@/components/ui/SyncButton";
 import { useReaderBridge } from "@/hooks/use-reader-bridge";
 import type { RelocateEvent, SelectionEvent, VisibleTTSSegment } from "@/hooks/use-reader-bridge";
 import { startFileServer, stopFileServer } from "@/lib/reader/local-file-server";
+import { userFacingError } from "@/lib/user-facing-error";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import {
   useAnnotationStore,
@@ -1155,7 +1156,7 @@ export function ReaderScreen({ route, navigation }: Props) {
         });
       } catch (err: any) {
         console.error("[ReaderScreen] Failed to load book:", err);
-        setError(err.message || "Failed to load book file");
+        setError(userFacingError(err, "Не удалось открыть книгу. Попробуйте импортировать её снова."));
         setLoading(false);
       }
     };
@@ -1212,9 +1213,10 @@ export function ReaderScreen({ route, navigation }: Props) {
     } catch (err) {
       console.error("[ReaderScreen] Failed to re-import missing book:", err);
       setError(
-        err instanceof Error
-          ? err.message
-          : t("reader.reimportFailed", "重新导入失败，请稍后再试。"),
+        userFacingError(
+          err,
+          t("reader.reimportFailed", "Не удалось импортировать книгу повторно."),
+        ),
       );
     } finally {
       setIsReimporting(false);

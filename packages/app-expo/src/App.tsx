@@ -53,6 +53,7 @@ import { UpdateDialog } from "@/components/update/UpdateDialog";
 import { useUpdateChecker } from "@/hooks/use-update-checker";
 import { createNarraGatewayFetch, setNarraDirectFetch } from "@/lib/ai/narra-gateway-fetch";
 import { navigationRef } from "@/lib/navigationRef";
+import { userFacingError } from "@/lib/user-facing-error";
 import { ExpoPlatformService } from "@/lib/platform/expo-platform-service";
 import { MobileSyncAdapter } from "@/lib/sync/sync-adapter-mobile";
 import { RootNavigator } from "@/navigation/RootNavigator";
@@ -215,7 +216,9 @@ export default function App() {
         await SplashScreen.hideAsync();
       } catch (error) {
         console.error("[App] bootstrap failed:", error);
-        setBootError(error instanceof Error ? error.message : String(error));
+        setBootError(
+          userFacingError(error, "Не удалось запустить приложение. Перезапустите его."),
+        );
         await SplashScreen.hideAsync();
       }
     }

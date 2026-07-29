@@ -489,13 +489,7 @@ export function LibraryScreen() {
           "library.importSourceSavedWebDavMissing",
           "还没有可用的 WebDAV 配置，先去同步设置里连上你的书库。",
         ),
-        [
-          { text: t("common.cancel", "取消"), style: "cancel" },
-          {
-            text: t("settings.syncTitle", "WebDAV 同步"),
-            onPress: () => nav.navigate("SyncSettings"),
-          },
-        ],
+        [{ text: t("common.confirm", "Понятно") }],
       );
       return;
     }
@@ -509,13 +503,7 @@ export function LibraryScreen() {
           "library.importSourceSavedWebDavMissingSecret",
           "已经找到 WebDAV 地址，但缺少密码。去同步设置里重新保存一次就能继续。",
         ),
-        [
-          { text: t("common.cancel", "取消"), style: "cancel" },
-          {
-            text: t("settings.syncTitle", "WebDAV 同步"),
-            onPress: () => nav.navigate("SyncSettings"),
-          },
-        ],
+        [{ text: t("common.confirm", "Понятно") }],
       );
       return;
     }

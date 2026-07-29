@@ -3,6 +3,7 @@ import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
 import { reportNarraError } from "@/lib/narra/errors";
 import { synthesizeNarraSpeech } from "@/lib/narra/media";
 import type { NarraCharacter, NarraChatMessage } from "@/lib/narra/types";
+import { userFacingError } from "@/lib/user-facing-error";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useLibraryStore, useNarraStore } from "@/stores";
 import { radius, useColors } from "@/styles/theme";
@@ -161,7 +162,10 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
         if (!response.ok) throw new Error(payload?.error || "Не удалось распознать речь");
         setInput(payload?.text?.trim() || "");
       } catch (error) {
-        Alert.alert("Ошибка диктовки", error instanceof Error ? error.message : String(error));
+        Alert.alert(
+          "Ошибка диктовки",
+          userFacingError(error, "Не удалось распознать речь. Попробуйте ещё раз."),
+        );
       } finally {
         setSending(false);
       }

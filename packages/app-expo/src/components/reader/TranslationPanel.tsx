@@ -1,5 +1,6 @@
 import { CheckIcon, ChevronDownIcon, XIcon } from "@/components/ui/Icon";
 import { useSettingsStore } from "@/stores";
+import { userFacingError } from "@/lib/user-facing-error";
 import { type ThemeColors, fontSize, fontWeight, radius, useColors } from "@/styles/theme";
 import {
   aiTranslate,
@@ -109,7 +110,7 @@ export function TranslationPanel({ text, onClose }: TranslationPanelProps) {
       }
     } catch (err) {
       console.error("[TranslationPanel] Error:", err);
-      setError(err instanceof Error ? err.message : t("translation.error", "翻译出错"));
+      setError(userFacingError(err, t("translation.failed", "Не удалось перевести текст.")));
     } finally {
       setLoading(false);
     }

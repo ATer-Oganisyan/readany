@@ -26,6 +26,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { useStreamingChat } from "@/hooks";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { resolveActiveAIConfig } from "@/lib/ai/resolve-active-ai-config";
+import { userFacingError } from "@/lib/user-facing-error";
 import { useLibraryStore } from "@/stores";
 import { useChatStore } from "@/stores/chat-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -47,7 +48,6 @@ import * as Clipboard from "expo-clipboard";
 
 import { ChatInput } from "@/components/chat/ChatInput";
 import { MessageList } from "@/components/chat/MessageList";
-import { ModelSelector } from "@/components/chat/ModelSelector";
 import {
   ChevronLeftIcon,
   CopyIcon,
@@ -250,13 +250,7 @@ export function BookChatScreen({ route, navigation }: Props) {
         Alert.alert(
           t("chat.configRequired", "需要配置 AI"),
           t("chat.configRequiredMessage", "请先在设置中配置 AI 端点和模型"),
-          [
-            { text: t("common.cancel", "取消"), style: "cancel" },
-            {
-              text: t("common.settings", "去设置"),
-              onPress: () => navigation.navigate("AISettings"),
-            },
-          ],
+          [{ text: t("common.confirm", "Понятно") }],
         );
         return;
       }
@@ -470,7 +464,6 @@ export function BookChatScreen({ route, navigation }: Props) {
             </Text>
 
             <View style={s.headerRight}>
-              <ModelSelector onNavigateToSettings={() => navigation.navigate("AISettings")} />
               {allMessages.length > 0 && (
                 <>
                   <TouchableOpacity
@@ -579,7 +572,7 @@ export function BookChatScreen({ route, navigation }: Props) {
       {error && (
         <View style={s.errorBanner}>
           <Text style={s.errorText} numberOfLines={2}>
-            {error.message}
+            {userFacingError(error, "Не удалось получить ответ. Попробуйте ещё раз.")}
           </Text>
         </View>
       )}

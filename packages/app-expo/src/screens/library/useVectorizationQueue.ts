@@ -140,13 +140,11 @@ export function useVectorizationQueue({ extractorRef, nav }: UseVectorizationQue
 
       const hasCapability = useVectorModelStore.getState().hasVectorCapability();
       if (!hasCapability) {
-        Alert.alert(t("settings.vectorModel"), t("vectorize.notConfiguredDesc"), [
-          { text: t("common.cancel"), style: "cancel" },
-          {
-            text: t("vectorize.goSettings"),
-            onPress: () => nav.navigate("VectorModelSettings"),
-          },
-        ]);
+        Alert.alert(
+          t("settings.vectorModel", "Семантический поиск"),
+          t("vectorize.notConfiguredDesc", "Семантический поиск сейчас недоступен."),
+          [{ text: t("common.confirm", "Понятно") }],
+        );
         return;
       }
 

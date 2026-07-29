@@ -6,7 +6,7 @@ import type { FontTheme } from "../types";
 export const FONT_THEMES: FontTheme[] = [
   {
     id: "system",
-    name: "系统默认",
+    name: "Системный",
     nameEn: "System Default",
     serif: "system-ui",
     sansSerif: "system-ui",
@@ -14,7 +14,7 @@ export const FONT_THEMES: FontTheme[] = [
   },
   {
     id: "literata",
-    name: "文学书卷",
+    name: "Книжный",
     nameEn: "Literata",
     serif: "Literata, Georgia, serif",
     sansSerif: "Literata, Georgia, serif",

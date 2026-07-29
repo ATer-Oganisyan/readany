@@ -21,6 +21,7 @@ import { SyncButton } from "@/components/ui/SyncButton";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { clearMobileRuntimeCache, formatCacheSize } from "@/lib/platform/mobile-cache";
 import { stopTTSPreview } from "@/lib/platform/tts-preview";
+import { userFacingError } from "@/lib/user-facing-error";
 import {
   mergeCurrentSessionIntoDailyStats,
   mergeCurrentSessionIntoOverallStats,
@@ -409,10 +410,11 @@ export function ProfileScreen({
             } catch (error) {
               console.error("[ProfileScreen] Failed to clear cache:", error);
               Alert.alert(
-                t("profile.clearCacheFailedTitle", "清除失败"),
-                error instanceof Error
-                  ? error.message
-                  : t("profile.clearCacheFailedDesc", "请稍后重试。"),
+                t("profile.clearCacheFailedTitle", "Не удалось очистить кэш"),
+                userFacingError(
+                  error,
+                  t("profile.clearCacheFailedDesc", "Попробуйте ещё раз позже."),
+                ),
               );
             } finally {
               setClearingCache(false);

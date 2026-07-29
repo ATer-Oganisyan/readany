@@ -32,10 +32,10 @@ export interface FontPreset {
 }
 
 export const SYSTEM_FONTS: FontPreset[] = [
-  { id: "system", name: "系统默认", nameEn: "System Default", fontFamily: "system-ui" },
-  { id: "serif", name: "衬线体", nameEn: "Serif", fontFamily: "Georgia, serif" },
-  { id: "sans", name: "无衬线体", nameEn: "Sans-serif", fontFamily: "Arial, sans-serif" },
-  { id: "mono", name: "等宽字体", nameEn: "Monospace", fontFamily: "Menlo, monospace" },
+  { id: "system", name: "Системный", nameEn: "System Default", fontFamily: "system-ui" },
+  { id: "serif", name: "С засечками", nameEn: "Serif", fontFamily: "Georgia, serif" },
+  { id: "sans", name: "Без засечек", nameEn: "Sans-serif", fontFamily: "Arial, sans-serif" },
+  { id: "mono", name: "Моноширинный", nameEn: "Monospace", fontFamily: "Menlo, monospace" },
 ];
 
 /** Built-in preset fonts users can add with one click */

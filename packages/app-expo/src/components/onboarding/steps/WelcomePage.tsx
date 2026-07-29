@@ -1,30 +1,20 @@
 import { NarraLogo } from "@/components/NarraLogo";
 import { useTheme } from "@/styles/theme";
-import { useNavigation } from "@react-navigation/native";
-import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useSettingsStore } from "@/stores";
-import { Bot, Languages, Search } from "lucide-react-native";
+import { Bot, Search } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import type { OnboardingStackParamList } from "../OnboardingNavigator";
-
-type NavProp = NativeStackNavigationProp<OnboardingStackParamList, "Welcome">;
 
 export function WelcomePage() {
   const { t } = useTranslation();
-  const navigation = useNavigation<NavProp>();
   const { completeOnboarding } = useSettingsStore();
   const { isDark, colors } = useTheme();
   const insets = useSafeAreaInsets();
 
-  const handleSkip = () => {
-    completeOnboarding();
-  };
-
   const handleNext = () => {
-    navigation.navigate("Appearance");
+    completeOnboarding();
   };
 
   return (
@@ -69,11 +59,6 @@ export function WelcomePage() {
               title: t("onboarding.welcome.search", "Smart Search"),
               desc: t("onboarding.welcome.searchDesc", "Semantic knowledge retrieval"),
             },
-            {
-              icon: <Languages size={24} color={colors.amber} />,
-              title: t("onboarding.welcome.translate", "Instant Translation"),
-              desc: t("onboarding.welcome.translateDesc", "Seamless bilingual reading"),
-            },
           ].map((f, i) => (
             <Animated.View
               key={i}
@@ -104,18 +89,13 @@ export function WelcomePage() {
           },
         ]}
       >
-        <TouchableOpacity onPress={handleSkip} style={styles.skipBtn} activeOpacity={0.7}>
-          <Text style={[styles.skipText, { color: colors.mutedForeground }]}>
-            {t("onboarding.skip", "Skip")}
-          </Text>
-        </TouchableOpacity>
         <TouchableOpacity
           onPress={handleNext}
           style={[styles.nextBtn, { backgroundColor: colors.primary }]}
           activeOpacity={0.7}
         >
           <Text style={[styles.nextText, { color: colors.primaryForeground }]}>
-            {t("onboarding.getStarted", "Get Started")} →
+            {t("onboarding.getStarted", "Начать")} →
           </Text>
         </TouchableOpacity>
       </View>

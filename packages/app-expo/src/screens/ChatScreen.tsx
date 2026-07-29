@@ -26,6 +26,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { useStreamingChat } from "@/hooks";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { resolveActiveAIConfig } from "@/lib/ai/resolve-active-ai-config";
+import { userFacingError } from "@/lib/user-facing-error";
 import { useChatStore } from "@/stores/chat-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { getPlatformService } from "@readany/core/services";
@@ -47,7 +48,6 @@ import { Alert } from "react-native";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { ContextPopover } from "@/components/chat/ContextPopover";
 import { MessageList } from "@/components/chat/MessageList";
-import { ModelSelector } from "@/components/chat/ModelSelector";
 import {
   BookOpenIcon,
   CopyIcon,
@@ -192,13 +192,7 @@ export function ChatScreen() {
         Alert.alert(
           t("chat.configRequired", "需要配置 AI"),
           t("chat.configRequiredMessage", "请先在设置中配置 AI 端点和模型"),
-          [
-            { text: t("common.cancel", "取消"), style: "cancel" },
-            {
-              text: t("common.settings", "去设置"),
-              onPress: () => navigation.navigate("AISettings"),
-            },
-          ],
+          [{ text: t("common.confirm", "Понятно") }],
         );
         return;
       }
@@ -402,7 +396,6 @@ export function ChatScreen() {
               )}
             </View>
             <View style={s.headerRight}>
-              <ModelSelector onNavigateToSettings={() => navigation.navigate("AISettings")} />
               <ContextPopover />
               {allMessages.length > 0 && (
                 <>
@@ -493,7 +486,7 @@ export function ChatScreen() {
       {error && (
         <View style={s.errorBanner}>
           <Text style={s.errorText} numberOfLines={2}>
-            {error.message}
+            {userFacingError(error, "Не удалось получить ответ. Попробуйте ещё раз.")}
           </Text>
         </View>
       )}

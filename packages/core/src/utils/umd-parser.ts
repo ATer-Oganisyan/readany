@@ -322,7 +322,7 @@ function assemble(a: AssembleArgs): UmdParsed {
   // Fallback: no chapters detected but we do have content — emit one chapter.
   if (chapters.length === 0 && effectiveContentLen > 0) {
     chapters.push({
-      title: a.bookTitle || "正文",
+      title: a.bookTitle || "Текст",
       content: decodeUtf16LE(contentBytes.subarray(0, effectiveContentLen)),
     });
   }

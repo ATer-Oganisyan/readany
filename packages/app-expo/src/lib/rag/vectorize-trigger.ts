@@ -26,7 +26,7 @@ export async function triggerVectorizeBook(
 
   if (vmState.vectorModelMode === "builtin") {
     throw new Error(
-      "移动端不支持本地向量模型，请在「设置 → 向量模型」中配置远程 API（如硅基流动、OpenAI 等）。",
+      "Мобильное приложение не поддерживает локальную векторную модель. Настройте удалённый API в параметрах векторной модели.",
     );
   }
 

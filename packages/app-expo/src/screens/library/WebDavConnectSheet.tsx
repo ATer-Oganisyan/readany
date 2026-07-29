@@ -7,6 +7,7 @@ import {
   type WebDavImportSource,
 } from "@readany/core";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
+import { userFacingError } from "@/lib/user-facing-error";
 import { fontSize, fontWeight, radius, useColors, withOpacity } from "@/styles/theme";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -264,7 +265,9 @@ export function WebDavConnectSheet({
         console.warn("[import] failed to persist WebDAV input", err);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(
+        userFacingError(err, "Не удалось подключиться к хранилищу. Проверьте данные и сеть."),
+      );
     } finally {
       setSubmitting(false);
     }

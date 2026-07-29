@@ -11,6 +11,7 @@ import {
   SearchIcon,
 } from "@/components/ui/Icon";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
+import { userFacingError } from "@/lib/user-facing-error";
 import {
   fontSize,
   fontWeight,
@@ -432,7 +433,7 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
           current.filter((path) => listing.entries.some((entry) => entry.relativePath === path)),
         );
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
+        setError(userFacingError(err, "Не удалось открыть папку. Проверьте подключение."));
       } finally {
         setLoading(false);
       }
@@ -554,7 +555,7 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
         setImportState({ phase: "idle" });
         Alert.alert(
           t("common.failed", "失败"),
-          err instanceof Error ? err.message : String(err),
+          userFacingError(err, "Не удалось импортировать выбранные книги."),
         );
       } finally {
         for (const tempFile of tempFiles) {
@@ -598,7 +599,7 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
         setImportState({ phase: "idle" });
         Alert.alert(
           t("common.failed", "失败"),
-          err instanceof Error ? err.message : String(err),
+          userFacingError(err, "Не удалось импортировать выбранные книги."),
         );
       }
     })();

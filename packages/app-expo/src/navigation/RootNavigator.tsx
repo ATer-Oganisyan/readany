@@ -11,16 +11,6 @@ import { NarraMomentScreen } from "@/screens/NarraMomentScreen";
 import SkillsScreen from "@/screens/SkillsScreen";
 import StatsScreen from "@/screens/StatsScreen";
 import { WebDavImportBrowserScreen } from "@/screens/library/WebDavImportBrowserScreen";
-import AISettingsScreen from "@/screens/settings/AISettingsScreen";
-import AboutScreen from "@/screens/settings/AboutScreen";
-import AppearanceSettingsScreen from "@/screens/settings/AppearanceSettingsScreen";
-import FeedbackDetailScreen from "@/screens/settings/FeedbackDetailScreen";
-import FeedbackScreen from "@/screens/settings/FeedbackScreen";
-import FontSettingsScreen from "@/screens/settings/FontSettingsScreen";
-import SyncSettingsScreen from "@/screens/settings/SyncSettingsScreen";
-import TTSSettingsScreen from "@/screens/settings/TTSSettingsScreen";
-import TranslationSettingsScreen from "@/screens/settings/TranslationSettingsScreen";
-import VectorModelSettingsScreen from "@/screens/settings/VectorModelSettingsScreen";
 import { useSettingsStore } from "@/stores";
 /**
  * RootNavigator — top-level stack matching Tauri mobile App.tsx routes exactly.
@@ -115,28 +105,6 @@ export function RootNavigator() {
             <Stack.Screen
               name="Skills"
               component={SkillsScreen}
-              options={{ animation: "slide_from_right" }}
-            />
-            <Stack.Screen
-              name="VectorModelSettings"
-              component={VectorModelSettingsScreen}
-              options={{ animation: "slide_from_right" }}
-            />
-            <Stack.Screen name="AppearanceSettings" component={AppearanceSettingsScreen} />
-            <Stack.Screen name="AISettings" component={AISettingsScreen} />
-            <Stack.Screen name="TTSSettings" component={TTSSettingsScreen} />
-            <Stack.Screen name="TranslationSettings" component={TranslationSettingsScreen} />
-            <Stack.Screen name="SyncSettings" component={SyncSettingsScreen} />
-            <Stack.Screen name="About" component={AboutScreen} />
-            <Stack.Screen name="Feedback" component={FeedbackScreen} />
-            <Stack.Screen
-              name="FeedbackDetail"
-              component={FeedbackDetailScreen}
-              options={{ animation: "slide_from_right" }}
-            />
-            <Stack.Screen
-              name="FontSettings"
-              component={FontSettingsScreen}
               options={{ animation: "slide_from_right" }}
             />
             <Stack.Screen

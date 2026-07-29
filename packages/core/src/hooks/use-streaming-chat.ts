@@ -216,8 +216,8 @@ export function useStreamingChat(options?: StreamingChatOptions) {
         if (quotes && quotes.length > 0) {
           const quotesText = quotes.map((q) => `> ${q.text.slice(0, 300)}`).join("\n\n");
           aiPrompt = content.trim()
-            ? `关于以下文本：\n${quotesText}\n\n${content.trim()}`
-            : `关于以下文本：\n${quotesText}\n\n请帮我分析这段文本。`;
+            ? `О следующем тексте:\n${quotesText}\n\n${content.trim()}`
+            : `О следующем тексте:\n${quotesText}\n\nПомоги проанализировать этот фрагмент.`;
         }
 
         const userMessageId = createMessageId();
@@ -382,7 +382,7 @@ export function useStreamingChat(options?: StreamingChatOptions) {
             }
             markRunningToolCallPartsAsError(
               currentParts,
-              i18n.t("streaming.toolNoResult", "工具没有返回结果"),
+              i18n.t("streaming.toolNoResult", "Инструмент не вернул результат"),
             );
 
             const textContent = currentParts
