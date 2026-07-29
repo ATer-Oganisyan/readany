@@ -11,7 +11,6 @@ import {
   PaletteIcon,
   PuzzleIcon,
   Trash2Icon,
-  TypeIcon,
   Volume2Icon,
 } from "@/components/ui/Icon";
 import type { MaterialIconComponent } from "@/components/ui/Icon";
@@ -67,7 +66,6 @@ type ProfileMenuIcon = MaterialIconComponent;
 type ProfileMenuRoute = Extract<
   keyof RootStackParamList,
   | "AppearanceSettings"
-  | "FontSettings"
   | "SyncSettings"
   | "AISettings"
   | "TTSSettings"
@@ -419,11 +417,6 @@ export function ProfileScreen() {
             icon: PaletteIcon,
             label: t("settings.general", "通用"),
             route: "AppearanceSettings" as const,
-          },
-          {
-            icon: TypeIcon,
-            label: t("fonts.title", "字体"),
-            route: "FontSettings" as const,
           },
           { icon: CloudIcon, label: t("settings.sync", "同步"), route: "SyncSettings" as const },
         ],
