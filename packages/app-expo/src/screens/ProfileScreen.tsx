@@ -610,7 +610,7 @@ const makeStyles = (colors: ThemeColors) =>
     statsGrid: { flexDirection: "row", flexWrap: "wrap", marginHorizontal: -6 },
     statCard: {
       backgroundColor: colors.card,
-      borderRadius: radius.xl,
+      borderRadius: radius.card,
       borderWidth: 0.5,
       borderColor: colors.border,
       paddingHorizontal: 12,
@@ -671,7 +671,7 @@ const makeStyles = (colors: ThemeColors) =>
       marginHorizontal: 16,
       marginTop: 16,
       backgroundColor: colors.card,
-      borderRadius: radius.xl,
+      borderRadius: radius.card,
       borderWidth: 0.5,
       borderColor: colors.border,
       padding: 16,
@@ -716,7 +716,7 @@ const makeStyles = (colors: ThemeColors) =>
     },
     menuCard: {
       backgroundColor: colors.card,
-      borderRadius: radius.xl,
+      borderRadius: radius.card,
       borderWidth: 0.5,
       borderColor: colors.border,
       overflow: "hidden",
