@@ -1,0 +1,28 @@
+appId: com.narra.reader.preview
+name: NARA-E2E-091 — Русский текст и количество в групповом удалении
+tags:
+  - library
+  - localization
+  - regression
+  - p0
+---
+- launchApp
+- tapOn: "Библиотека"
+- extendedWaitUntil:
+    visible: "Незримая схватка"
+    timeout: 15000
+- longPressOn: "Незримая схватка"
+- extendedWaitUntil:
+    visible: "Выбрано: 1"
+    timeout: 10000
+- tapOn:
+    point: "96%,6%"
+- extendedWaitUntil:
+    visible: "Подтвердить"
+    timeout: 10000
+- assertVisible: "Удалить выбранные книги \\(1\\)\\?"
+- assertNotVisible: "Delete the.*"
+- assertNotVisible: ".*\\{\\{count\\}\\}.*"
+- tapOn: "ОТМЕНА"
+- assertVisible: "Незримая схватка"
+- takeScreenshot: "NARA-E2E-091-batch-delete-localization"

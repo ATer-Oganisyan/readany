@@ -156,13 +156,14 @@ function bytesToBase64(bytes: Uint8Array): string {
 }
 
 const MOBILE_IMPORT_METADATA_MAX_BYTES = 32 * 1024 * 1024;
+let latestLoadBooksRequest = 0;
 
 async function getMobileFileStat(path: string): Promise<{ size: number; md5?: string }> {
   const LegacyFileSystem = await import("expo-file-system/legacy");
-  const info = await LegacyFileSystem.getInfoAsync(path);
+  const info = await LegacyFileSystem.getInfoAsync(path, { md5: true });
   return {
     size: info.exists && !info.isDirectory ? (info.size ?? 0) : 0,
-    md5: undefined,
+    md5: info.exists && !info.isDirectory ? info.md5 : undefined,
   };
 }
 
@@ -682,32 +683,39 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   activeGroupId: "",
 
   loadBooks: async (deletedTags?: string[]) => {
+    const requestId = ++latestLoadBooksRequest;
     const computeTags = (books: Book[]) => {
       const tagSet = new Set<string>();
       for (const b of books) for (const t of b.tags) tagSet.add(t);
       return [...tagSet].sort();
     };
 
-    try {
-      const cached = await loadFromFS<Book[]>("library-books");
-      const cachedGroups = await loadFromFS<BookGroup[]>("library-groups");
-      if (cached && cached.length > 0) {
-        const groups = cachedGroups ?? get().groups;
-        set((state) => ({
-          books: cached,
-          groups,
-          isLoaded: true,
-          allTags: computeTags(cached),
-          activeGroupId: keepActiveGroupId(state.activeGroupId, groups),
-        }));
+    // The filesystem cache is only a startup placeholder. Reapplying it after the
+    // database has loaded can resurrect deleted books and make the library flicker
+    // between stale cached data and the authoritative SQLite result.
+    if (!get().isLoaded) {
+      try {
+        const cached = await loadFromFS<Book[]>("library-books");
+        const cachedGroups = await loadFromFS<BookGroup[]>("library-groups");
+        if (requestId === latestLoadBooksRequest && cached && cached.length > 0) {
+          const groups = cachedGroups ?? get().groups;
+          set((state) => ({
+            books: cached,
+            groups,
+            isLoaded: true,
+            allTags: computeTags(cached),
+            activeGroupId: keepActiveGroupId(state.activeGroupId, groups),
+          }));
+        }
+      } catch (err) {
+        console.warn("[Library] Failed to load cached books:", err);
       }
-    } catch (err) {
-      console.warn("[Library] Failed to load cached books:", err);
     }
 
     try {
       await db.initDatabase();
       const [books, groups] = await Promise.all([db.getBooks(), db.getGroups()]);
+      if (requestId !== latestLoadBooksRequest) return;
       const dbTags = computeTags(books);
 
       // Load saved tags from FS (may include empty tags not assigned to any book)
@@ -780,6 +788,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       await db.insertBook(book);
     } catch (err) {
       console.error("Failed to insert book into database:", err);
+      set((state) => ({ books: state.books.filter((item) => item.id !== book.id) }));
+      debouncedSave("library-books", get().books);
+      throw err;
     }
     debouncedSave("library-books", get().books);
   },
@@ -788,11 +799,23 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     const preserveData = options.preserveData ?? false;
     const bookToRemove = get().books.find((b) => b.id === bookId);
     set((state) => ({ books: state.books.filter((b) => b.id !== bookId) }));
+    // Queue the cache update immediately so an unrelated refresh cannot restore
+    // the deleted card while database/file cleanup is still in progress.
+    debouncedSave("library-books", get().books);
     try {
       await db.initDatabase();
       await db.deleteBook(bookId, { preserveData });
     } catch (err) {
       console.error("Failed to delete book from database:", err);
+      if (bookToRemove) {
+        set((state) => ({
+          books: state.books.some((book) => book.id === bookId)
+            ? state.books
+            : [...state.books, bookToRemove],
+        }));
+        debouncedSave("library-books", get().books);
+      }
+      return;
     }
     if (bookToRemove) {
       try {
@@ -813,6 +836,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
         /* file may not exist */
       }
     }
+    // A library refresh may have raced with the SQLite delete and briefly read
+    // the old row. Enforce the authoritative post-delete state once cleanup ends.
+    set((state) => ({ books: state.books.filter((book) => book.id !== bookId) }));
     debouncedSave("library-books", get().books);
   },
 

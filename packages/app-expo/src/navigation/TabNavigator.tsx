@@ -4,6 +4,8 @@ import { LibraryScreen } from "@/screens/LibraryScreen";
 import { ProfileScreen } from "@/screens/ProfileScreen";
 import { useLibraryStore } from "@/stores";
 import { useTheme } from "@/styles/ThemeContext";
+import { getPlatformService } from "@readany/core/services";
+import type { Book } from "@readany/core/types";
 /**
  * TabNavigator — bottom tab bar matching the Tauri mobile app's 4 tabs.
  * Icons: BookOpen, MessageSquare, NotebookPen, User (matching BottomTabBar.tsx)
@@ -11,7 +13,16 @@ import { useTheme } from "@/styles/ThemeContext";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { useNavigation } from "@react-navigation/native";
 import type { NavigationProp } from "@react-navigation/native";
-import { Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Image,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { RootStackParamList } from "./RootNavigator";
@@ -29,45 +40,157 @@ export type TabParamList = {
 
 const Tab = createBottomTabNavigator<TabParamList>();
 
+function ReaderBookOption({
+  book,
+  selected,
+  onPress,
+}: {
+  book: Book;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const { colors } = useTheme();
+  const [coverUri, setCoverUri] = useState<string>();
+
+  useEffect(() => {
+    let active = true;
+    const raw = book.meta.coverUrl;
+    if (!raw) {
+      setCoverUri(undefined);
+      return () => {
+        active = false;
+      };
+    }
+    if (/^(https?:|blob:|file:)/i.test(raw)) {
+      setCoverUri(raw);
+      return () => {
+        active = false;
+      };
+    }
+    void (async () => {
+      try {
+        const platform = getPlatformService();
+        const appData = await platform.getAppDataDir();
+        const resolved = await platform.joinPath(appData, raw);
+        if (active) setCoverUri(resolved);
+      } catch {
+        if (active) setCoverUri(undefined);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [book.meta.coverUrl]);
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.8}
+      onPress={onPress}
+      style={[
+        readerHomeStyles.bookOption,
+        {
+          backgroundColor: selected ? colors.card : colors.background,
+          borderColor: selected ? colors.foreground : colors.border,
+        },
+      ]}
+    >
+      {coverUri ? (
+        <Image source={{ uri: coverUri }} style={readerHomeStyles.bookOptionCover} />
+      ) : (
+        <View style={[readerHomeStyles.bookOptionCover, { backgroundColor: colors.muted }]}>
+          <BookOpenIcon size={19} color={colors.mutedForeground} />
+        </View>
+      )}
+      <Text
+        numberOfLines={2}
+        style={[
+          readerHomeStyles.bookOptionTitle,
+          { color: selected ? colors.foreground : colors.mutedForeground },
+        ]}
+      >
+        {book.meta.title}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
 function ReaderHomeScreen() {
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
   const books = useLibraryStore((state) => state.books);
   const { colors } = useTheme();
-  const recent = [...books]
-    .filter((book) => !book.deletedAt)
-    .sort((a, b) => (b.lastOpenedAt || 0) - (a.lastOpenedAt || 0))[0];
+  const availableBooks = useMemo(
+    () =>
+      [...books]
+        .filter((book) => !book.deletedAt)
+        .sort((a, b) => (b.lastOpenedAt || 0) - (a.lastOpenedAt || 0)),
+    [books],
+  );
+  const [selectedBookId, setSelectedBookId] = useState<string>();
+  const selectedBook =
+    availableBooks.find((book) => book.id === selectedBookId) ?? availableBooks[0];
+
+  useEffect(() => {
+    if (selectedBook && selectedBook.id !== selectedBookId) {
+      setSelectedBookId(selectedBook.id);
+    }
+  }, [selectedBook, selectedBookId]);
 
   // When the library is empty, this doubles as the useful empty state/import screen.
-  if (!recent) return <LibraryScreen />;
+  if (!selectedBook) return <LibraryScreen />;
   return (
     <SafeAreaView style={[readerHomeStyles.container, { backgroundColor: colors.background }]}>
       <View style={readerHomeStyles.content}>
+        <View>
+          <Text style={[readerHomeStyles.selectorLabel, { color: colors.mutedForeground }]}>
+            ВЫБЕРИТЕ КНИГУ
+          </Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={readerHomeStyles.bookSelector}
+          >
+            {availableBooks.map((book) => (
+              <ReaderBookOption
+                key={book.id}
+                book={book}
+                selected={book.id === selectedBook.id}
+                onPress={() => setSelectedBookId(book.id)}
+              />
+            ))}
+          </ScrollView>
+        </View>
         <Text style={[readerHomeStyles.eyebrow, { color: colors.primary }]}>
           ПРОДОЛЖИТЬ ЧТЕНИЕ
         </Text>
         <Text style={[readerHomeStyles.title, { color: colors.foreground }]}>
-          {recent.meta.title}
+          {selectedBook.meta.title}
         </Text>
-        {recent.meta.author ? (
+        {selectedBook.meta.author ? (
           <Text style={[readerHomeStyles.author, { color: colors.mutedForeground }]}>
-            {recent.meta.author}
+            {selectedBook.meta.author}
           </Text>
         ) : null}
         <View style={[readerHomeStyles.progressTrack, { backgroundColor: colors.muted }]}>
           <View
             style={[
               readerHomeStyles.progressFill,
-              { backgroundColor: colors.primary, width: `${Math.round(recent.progress * 100)}%` },
+              {
+                backgroundColor: colors.primary,
+                width: `${Math.round(selectedBook.progress * 100)}%`,
+              },
             ]}
           />
         </View>
         <Text style={[readerHomeStyles.progress, { color: colors.mutedForeground }]}>
-          Прочитано {Math.round(recent.progress * 100)}%
+          Прочитано {Math.round(selectedBook.progress * 100)}%
         </Text>
         <TouchableOpacity
           style={[readerHomeStyles.button, { backgroundColor: colors.foreground }]}
           onPress={() =>
-            navigation.navigate("Reader", { bookId: recent.id, cfi: recent.currentCfi })
+            navigation.navigate("Reader", {
+              bookId: selectedBook.id,
+              cfi: selectedBook.currentCfi,
+            })
           }
         >
           <BookOpenIcon size={20} color={colors.background} />
@@ -75,7 +198,7 @@ function ReaderHomeScreen() {
         </TouchableOpacity>
         <TouchableOpacity
           style={[readerHomeStyles.narraButton, { borderColor: colors.border }]}
-          onPress={() => navigation.navigate("NarraCharacters", { bookId: recent.id })}
+          onPress={() => navigation.navigate("NarraCharacters", { bookId: selectedBook.id })}
         >
           <Text style={[readerHomeStyles.narraButtonText, { color: colors.foreground }]}>
             ✦ Герои, голоса и изображения
@@ -92,13 +215,54 @@ function JourneyScreen() {
 
 const readerHomeStyles = StyleSheet.create({
   container: { flex: 1 },
-  content: { flex: 1, justifyContent: "center", padding: 28 },
-  eyebrow: { fontSize: 11, fontWeight: "800", letterSpacing: 1.5 },
-  title: { fontSize: 32, lineHeight: 38, fontWeight: "900", marginTop: 10 },
-  author: { fontSize: 15, marginTop: 7 },
-  progressTrack: { height: 5, borderRadius: 999, overflow: "hidden", marginTop: 28 },
+  content: { flex: 1, justifyContent: "center", paddingVertical: 24 },
+  selectorLabel: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.4,
+    paddingHorizontal: 28,
+    marginBottom: 10,
+  },
+  bookSelector: { paddingHorizontal: 28, gap: 10 },
+  bookOption: {
+    width: 92,
+    minHeight: 110,
+    borderWidth: 1.5,
+    borderRadius: 16,
+    padding: 7,
+  },
+  bookOptionCover: {
+    width: 44,
+    height: 62,
+    borderRadius: 7,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bookOptionTitle: { fontSize: 10, lineHeight: 13, fontWeight: "700", marginTop: 6 },
+  eyebrow: {
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1.5,
+    marginTop: 28,
+    paddingHorizontal: 28,
+  },
+  title: {
+    fontSize: 32,
+    lineHeight: 38,
+    fontWeight: "900",
+    marginTop: 10,
+    paddingHorizontal: 28,
+  },
+  author: { fontSize: 15, marginTop: 7, paddingHorizontal: 28 },
+  progressTrack: {
+    height: 5,
+    borderRadius: 999,
+    overflow: "hidden",
+    marginTop: 28,
+    marginHorizontal: 28,
+  },
   progressFill: { height: "100%", borderRadius: 999 },
-  progress: { fontSize: 12, marginTop: 8 },
+  progress: { fontSize: 12, marginTop: 8, marginHorizontal: 28 },
   button: {
     minHeight: 52,
     borderRadius: 999,
@@ -107,6 +271,7 @@ const readerHomeStyles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginTop: 25,
+    marginHorizontal: 28,
   },
   buttonText: { fontSize: 15, fontWeight: "800" },
   narraButton: {
@@ -116,6 +281,7 @@ const readerHomeStyles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginTop: 11,
+    marginHorizontal: 28,
   },
   narraButtonText: { fontSize: 14, fontWeight: "700" },
 });

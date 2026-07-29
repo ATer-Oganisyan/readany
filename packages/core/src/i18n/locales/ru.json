@@ -79,6 +79,8 @@
     "deleteBookTitle": "Удалить эту книгу?",
     "deleteBookDescription": "Книга будет удалена с полки.",
     "preserveDeleteDataLabel": "Сохранить заметки и статистику",
+    "preserveDeleteDataHint": "Можно восстановить при повторном добавлении той же книги",
+    "batchDeleteConfirm": "Удалить выбранные книги ({{count}})?",
     "select": "Выбрать",
     "selectAll": "Выбрать все",
     "selectedCount": "Выбрано: {{count}}",

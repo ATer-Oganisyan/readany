@@ -193,7 +193,6 @@ export function LibraryScreen() {
   const localImportInFlightRef = useRef(false);
 
   const extractorRef = useRef<ExtractorRef>(null);
-  const loadSyncConfig = useSyncStore((state) => state.loadConfig);
   const syncConfig = useSyncStore((state) => state.config);
   const syncBackendType = useSyncStore((state) => state.backendType);
 
@@ -252,10 +251,6 @@ export function LibraryScreen() {
   useEffect(() => {
     loadBooks();
   }, [loadBooks]);
-  useEffect(() => {
-    void loadSyncConfig();
-  }, [loadSyncConfig]);
-
   useEffect(() => {
     setExtractorRef(extractorRef.current);
     setFallbackContentProvider({
@@ -621,7 +616,10 @@ export function LibraryScreen() {
     if (selectedBookIds.size === 0) return;
     Alert.alert(
       t("common.confirm", "确认"),
-      t("library.batchDeleteConfirm", `确定要删除选中的 ${selectedBookIds.size} 本书吗？`),
+      t("library.batchDeleteConfirm", {
+        count: selectedBookIds.size,
+        defaultValue: `Удалить выбранные книги (${selectedBookIds.size})?`,
+      }),
       [
         { text: t("common.cancel", "取消"), style: "cancel" },
         {

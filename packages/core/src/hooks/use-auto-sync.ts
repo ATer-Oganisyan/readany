@@ -24,10 +24,12 @@ export function useAutoSync(onSyncComplete?: () => void) {
   const status = useSyncStore((s) => s.status);
   const lastResult = useSyncStore((s) => s.lastResult);
   const error = useSyncStore((s) => s.error);
+  const lastSyncAt = useSyncStore((s) => s.lastSyncAt);
   const statusRef = useRef(status);
   statusRef.current = status;
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastErrorRef = useRef<string | null>(null);
+  const handledLibraryRefreshRef = useRef<number | null>(null);
   lastErrorRef.current = error;
 
   // Load config on mount
@@ -38,12 +40,15 @@ export function useAutoSync(onSyncComplete?: () => void) {
   // Refresh library after a successful download sync
   useEffect(() => {
     if (
+      lastSyncAt !== null &&
+      handledLibraryRefreshRef.current !== lastSyncAt &&
       lastResult?.success &&
       (lastResult.direction === "download" || lastResult.filesDownloaded > 0)
     ) {
+      handledLibraryRefreshRef.current = lastSyncAt;
       onSyncComplete?.();
     }
-  }, [lastResult, onSyncComplete]);
+  }, [lastResult, lastSyncAt, onSyncComplete]);
 
   // Delayed startup sync + periodic sync
   useEffect(() => {
