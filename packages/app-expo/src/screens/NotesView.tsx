@@ -8,10 +8,9 @@ import {
   ChevronLeftIcon,
   HighlighterIcon,
   NotebookPenIcon,
-  SearchIcon,
 } from "@/components/ui/Icon";
 import { NativeContextMenuButton } from "@/components/ui/NativeContextMenuButton";
-import { Text, TextInput } from "@/components/ui/Typography";
+import { Text } from "@/components/ui/Typography";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useAnnotationStore, useLibraryStore } from "@/stores";
@@ -25,7 +24,7 @@ import { sortAnnotationsByPosition } from "@readany/core/reader";
 import type { Highlight } from "@readany/core/types";
 import { eventBus } from "@readany/core/utils/event-bus";
 /** Notes list plus the existing per-book annotation detail view. */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Image, ScrollView, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -108,7 +107,6 @@ export function NotesView({
   const books = useLibraryStore((s) => s.books);
 
   const [selectedBookId, setSelectedBookId] = useState<string | null>(initialBookId || null);
-  const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [detailTab, setDetailTab] = useState<DetailTab>("notes");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -122,7 +120,6 @@ export function NotesView({
       return () => {
         setSelectedBookId(null);
         setEditingId(null);
-        setSearchQuery("");
       };
     }, [loadAllHighlightsWithBooks]),
   );
@@ -134,30 +131,10 @@ export function NotesView({
     });
   }, [loadAllHighlightsWithBooks]);
 
-  useLayoutEffect(() => {
-    nav.setOptions(
-      selectedBookId
-        ? { headerSearchBarOptions: undefined }
-        : {
-            headerSearchBarOptions: {
-              placeholder: "Поиск",
-              hideWhenScrolling: true,
-              placement: "stacked",
-              tintColor: colors.primary,
-              onChangeText: (event) => setSearchQuery(event.nativeEvent.text),
-              onCancelButtonPress: () => setSearchQuery(""),
-            },
-          },
-    );
-
-    return () => nav.setOptions({ headerSearchBarOptions: undefined });
-  }, [colors.primary, nav, selectedBookId]);
-
   // Handle incoming bookId
   useEffect(() => {
     if (initialBookId) {
       setSelectedBookId(initialBookId);
-      setSearchQuery("");
       setEditingId(null);
       setDetailTab("notes");
     }
@@ -213,22 +190,12 @@ export function NotesView({
 
   const { notesList, highlightsList } = useMemo(() => {
     if (!selectedBook) return { notesList: [], highlightsList: [] };
-    let all = selectedBook.highlights;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      all = all.filter(
-        (h) =>
-          h.text.toLowerCase().includes(q) ||
-          h.note?.toLowerCase().includes(q) ||
-          h.chapterTitle?.toLowerCase().includes(q),
-      );
-    }
-    const sorted = sortAnnotationsByPosition(all);
+    const sorted = sortAnnotationsByPosition(selectedBook.highlights);
     return {
       notesList: sorted.filter((h) => h.note),
       highlightsList: sorted.filter((h) => !h.note),
     };
-  }, [selectedBook, searchQuery]);
+  }, [selectedBook]);
 
   const currentList = detailTab === "notes" ? notesList : highlightsList;
 
@@ -239,17 +206,6 @@ export function NotesView({
         .sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt)),
     [highlightsWithBooks],
   );
-
-  const filteredNotes = useMemo(() => {
-    const query = searchQuery.trim().toLocaleLowerCase("ru-RU");
-    if (!query) return allNotes;
-
-    return allNotes.filter((highlight) =>
-      [highlight.note, highlight.text, highlight.bookTitle, highlight.chapterTitle]
-        .filter(Boolean)
-        .some((value) => value?.toLocaleLowerCase("ru-RU").includes(query)),
-    );
-  }, [allNotes, searchQuery]);
 
   const noteSections = useMemo<NativeNoteListSection[]>(() => {
     const today = startOfDay(new Date());
@@ -264,7 +220,7 @@ export function NotesView({
     return buckets
       .map((bucket) => ({
         title: bucket.title,
-        data: filteredNotes
+        data: allNotes
           .filter((highlight) => {
             const timestamp = highlight.updatedAt || highlight.createdAt;
             return timestamp >= bucket.from && timestamp < bucket.to;
@@ -272,7 +228,7 @@ export function NotesView({
           .map(noteListItem),
       }))
       .filter((section) => section.data.length > 0);
-  }, [filteredNotes]);
+  }, [allNotes]);
 
   // Group by chapter
   const itemsByChapter = useMemo(() => {
@@ -478,7 +434,7 @@ export function NotesView({
               </View>
             )}
 
-            {/* Tabs + search */}
+            {/* Tabs */}
             <View style={s.detailTabRow}>
               <View style={s.tabSwitcher}>
                 <TouchableOpacity
@@ -511,17 +467,6 @@ export function NotesView({
                   </Text>
                 </TouchableOpacity>
               </View>
-
-              <View style={s.detailSearch}>
-                <SearchIcon size={14} color={colors.mutedForeground} />
-                <TextInput
-                  style={s.detailSearchInput}
-                  placeholder={t("notes.searchPlaceholder", "搜索...")}
-                  placeholderTextColor={colors.mutedForeground}
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                />
-              </View>
             </View>
           </View>
         )}
@@ -530,11 +475,9 @@ export function NotesView({
         {currentList.length === 0 ? (
           <View style={[s.detailEmpty, { transform: [{ translateY: -nativeHeaderHeight / 2 }] }]}>
             <Text style={s.detailEmptyText}>
-              {searchQuery
-                ? t("notes.noSearchResults", "没有匹配结果")
-                : detailTab === "notes"
-                  ? t("notes.noNotes", "暂无笔记")
-                  : t("highlights.noHighlights", "暂无高亮")}
+              {detailTab === "notes"
+                ? t("notes.noNotes", "Заметок пока нет")
+                : t("highlights.noHighlights", "Выделений пока нет")}
             </Text>
           </View>
         ) : (
@@ -591,15 +534,13 @@ export function NotesView({
             const note = allNotes.find((item) => item.id === id);
             if (!note) return;
             setSelectedBookId(note.bookId);
-            setSearchQuery("");
             setEditingId(null);
             setDetailTab("notes");
           }}
         />
       ) : (
         <View style={[s.emptyWrap, { transform: [{ translateY: -nativeHeaderHeight / 2 }] }]}>
-          <Text style={s.emptyTitle}>Ничего не найдено</Text>
-          <Text style={s.emptyHint}>Попробуйте изменить запрос</Text>
+          <Text style={s.emptyTitle}>Заметок пока нет</Text>
         </View>
       )}
     </SafeAreaView>
