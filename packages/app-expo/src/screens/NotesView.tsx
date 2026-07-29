@@ -346,18 +346,6 @@ export function NotesView({
     );
   }
 
-  // Empty
-  if (!selectedBookId && allNotes.length === 0) {
-    return (
-      <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={edges}>
-        <View style={[s.emptyWrap, { transform: [{ translateY: -nativeHeaderHeight / 2 }] }]}>
-          <Text style={s.emptyTitle}>{t("notes.empty", "暂无笔记")}</Text>
-          <Text style={s.emptyHint}>{t("notes.emptyHint", "阅读时长按文字添加高亮和笔记")}</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
   // Detail view
   if (selectedBookId && selectedBook) {
     return (
@@ -538,11 +526,7 @@ export function NotesView({
             setDetailTab("notes");
           }}
         />
-      ) : (
-        <View style={[s.emptyWrap, { transform: [{ translateY: -nativeHeaderHeight / 2 }] }]}>
-          <Text style={s.emptyTitle}>Заметок пока нет</Text>
-        </View>
-      )}
+      ) : null}
     </SafeAreaView>
   );
 }

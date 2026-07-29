@@ -57,28 +57,6 @@ export const makeStyles = (colors: ThemeColors) =>
       marginTop: 10,
     },
     searchInput: { flex: 1, fontSize: fontSize.sm, color: colors.foreground, padding: 0 },
-    emptyWrap: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 24 },
-    emptyIconWrap: {
-      width: 80,
-      height: 80,
-      borderRadius: radius.full,
-      backgroundColor: colors.muted,
-      alignItems: "center",
-      justifyContent: "center",
-      marginBottom: 16,
-    },
-    emptyTitle: {
-      fontSize: fontSize.lg,
-      fontWeight: fontWeight.semibold,
-      color: colors.foreground,
-      marginBottom: 8,
-    },
-    emptyHint: {
-      fontSize: fontSize.sm,
-      color: colors.mutedForeground,
-      textAlign: "center",
-      maxWidth: 260,
-    },
     listContent: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 24 },
     notebookCard: {
       flexDirection: "row",
