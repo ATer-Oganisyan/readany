@@ -48,7 +48,6 @@ import * as Clipboard from "expo-clipboard";
 
 import { ChatInput } from "@/components/chat/ChatInput";
 import { MessageList } from "@/components/chat/MessageList";
-import { ModelSelector } from "@/components/chat/ModelSelector";
 import {
   CopyIcon,
   Download,
@@ -466,10 +465,6 @@ export function BookChatScreen({ route, navigation }: Props) {
         )}
 
         <View style={s.mainColumn}>
-          <View style={{ alignItems: "flex-end", paddingHorizontal: 12, paddingTop: 8 }}>
-            <ModelSelector onNavigateToSettings={() => navigation.navigate("AISettings")} />
-          </View>
-
           <Modal
             visible={showExportMenu}
             transparent

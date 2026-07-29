@@ -47,7 +47,6 @@ import { Alert } from "react-native";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { ContextPopover } from "@/components/chat/ContextPopover";
 import { MessageList } from "@/components/chat/MessageList";
-import { ModelSelector } from "@/components/chat/ModelSelector";
 import {
   BookOpenIcon,
   CopyIcon,
@@ -413,7 +412,6 @@ export function ChatScreen() {
 
         <View style={s.mainColumn}>
           <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8, padding: 8 }}>
-            <ModelSelector onNavigateToSettings={() => navigation.navigate("AISettings")} />
             <ContextPopover />
           </View>
 
