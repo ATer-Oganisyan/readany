@@ -79,8 +79,22 @@ export function ChatInput({
     useCallback(() => {
       if (!autoFocusOnScreenFocus) return;
 
-      const frame = requestAnimationFrame(() => inputRef.current?.focus());
-      return () => cancelAnimationFrame(frame);
+      let isActive = true;
+      let retryTimer: ReturnType<typeof setTimeout> | undefined;
+      const focusTimer = setTimeout(() => {
+        if (!isActive) return;
+
+        inputRef.current?.focus();
+        retryTimer = setTimeout(() => {
+          if (isActive && !inputRef.current?.isFocused()) inputRef.current?.focus();
+        }, 350);
+      }, 350);
+
+      return () => {
+        isActive = false;
+        clearTimeout(focusTimer);
+        if (retryTimer) clearTimeout(retryTimer);
+      };
     }, [autoFocusOnScreenFocus]),
   );
 
@@ -156,6 +170,7 @@ export function ChatInput({
           returnKeyType="default"
           blurOnSubmit={false}
           editable={!isStreaming}
+          autoFocus={autoFocusOnScreenFocus}
         />
 
         {/* Action bar: deep thinking toggle + spoiler-free toggle + send */}
