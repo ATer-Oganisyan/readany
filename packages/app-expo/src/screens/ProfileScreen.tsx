@@ -2,16 +2,11 @@ import {
   BarChart3Icon,
   ChevronRightIcon,
   CloudIcon,
-  CpuIcon,
-  DatabaseIcon,
   HelpCircleIcon,
   InfoIcon,
-  LanguagesIcon,
   MessageSquareIcon,
   PaletteIcon,
-  PuzzleIcon,
   Trash2Icon,
-  Volume2Icon,
 } from "@/components/ui/Icon";
 import type { MaterialIconComponent } from "@/components/ui/Icon";
 import { Text } from "@/components/ui/Typography";
@@ -67,11 +62,6 @@ type ProfileMenuRoute = Extract<
   keyof RootStackParamList,
   | "AppearanceSettings"
   | "SyncSettings"
-  | "AISettings"
-  | "TTSSettings"
-  | "TranslationSettings"
-  | "Skills"
-  | "VectorModelSettings"
   | "Feedback"
   | "About"
 >;
@@ -429,28 +419,6 @@ export function ProfileScreen() {
               : t("profile.clearCache", "清除缓存"),
             action: handleClearCache,
             disabled: clearingCache,
-          },
-        ],
-      },
-      {
-        title: t("settings.skills", "能力"),
-        items: [
-          {
-            icon: DatabaseIcon,
-            label: t("settings.ai_title", "AI 模型"),
-            route: "AISettings" as const,
-          },
-          { icon: Volume2Icon, label: t("tts.title", "语音朗读"), route: "TTSSettings" as const },
-          {
-            icon: LanguagesIcon,
-            label: t("settings.translationTab", "翻译"),
-            route: "TranslationSettings" as const,
-          },
-          { icon: PuzzleIcon, label: t("skills.title", "技能"), route: "Skills" as const },
-          {
-            icon: CpuIcon,
-            label: t("settings.vm_title", "向量模型"),
-            route: "VectorModelSettings" as const,
           },
         ],
       },
