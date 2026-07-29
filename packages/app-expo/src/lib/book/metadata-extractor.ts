@@ -22,6 +22,8 @@ export interface ExtractedMeta {
   subjects?: string[];
   coverBytes: Uint8Array | null;
   coverMimeType: string | null;
+  /** A short plain-text excerpt that can be used to verify incomplete metadata. */
+  textSample?: string;
 }
 
 interface SliceReadable {
@@ -35,6 +37,47 @@ interface BlobLikeFile {
 
 const EPUB_TEXT_ENTRY_MAX_BYTES = 4 * 1024 * 1024;
 const EPUB_COVER_ENTRY_MAX_BYTES = 24 * 1024 * 1024;
+const FB2_METADATA_MAX_BYTES = 2 * 1024 * 1024;
+
+// ─── FB2 extraction ────────────────────────────────────────────────
+
+export function extractFb2Metadata(fileBytes: Uint8Array, fileName = "book.fb2"): ExtractedMeta {
+  const fallbackTitle = fileName.replace(/\.fb2$/i, "") || "Untitled";
+  const xml = decodeXmlBytes(fileBytes);
+  const titleInfo = extractElementInnerXml(xml, "title-info") || xml;
+  const title = cleanXmlText(extractElementInnerXml(titleInfo, "book-title")) || fallbackTitle;
+  const authorXml = extractElementInnerXml(titleInfo, "author");
+  const author = authorXml
+    ? ["first-name", "middle-name", "last-name"]
+        .map((tag) => cleanXmlText(extractElementInnerXml(authorXml, tag)))
+        .filter(Boolean)
+        .join(" ")
+    : "";
+  const annotation = cleanXmlText(extractElementInnerXml(titleInfo, "annotation"));
+  const bodySample = cleanXmlText(extractElementInnerXml(xml, "body")).slice(0, 6000);
+
+  return {
+    title,
+    author,
+    publisher: cleanXmlText(extractElementInnerXml(xml, "publisher")),
+    language: cleanXmlText(extractElementInnerXml(titleInfo, "lang")),
+    isbn: cleanXmlText(extractElementInnerXml(xml, "isbn")),
+    publishDate: cleanXmlText(extractElementInnerXml(titleInfo, "date")),
+    description: annotation,
+    coverBytes: null,
+    coverMimeType: null,
+    textSample: [annotation, bodySample].filter(Boolean).join("\n\n").slice(0, 8000),
+  };
+}
+
+export async function extractFb2MetadataFromFile(
+  file: BlobLikeFile,
+  fileName: string,
+): Promise<ExtractedMeta> {
+  const end = Math.min(file.size || FB2_METADATA_MAX_BYTES, FB2_METADATA_MAX_BYTES);
+  const bytes = new Uint8Array(await file.slice(0, end).arrayBuffer());
+  return extractFb2Metadata(bytes, fileName);
+}
 
 // ─── EPUB extraction ────────────────────────────────────────────────
 
@@ -155,7 +198,8 @@ export async function extractBookMetadata(
     switch (format) {
       case "epub":
         return await extractEpubMetadata(fileBytes);
-      // Future: mobi/azw3/fb2 parsers can be added here
+      case "fb2":
+        return extractFb2Metadata(fileBytes, fileName);
       default:
         return fallback;
     }
@@ -185,6 +229,8 @@ export async function extractBookMetadataFromFile(
       case "azw":
       case "azw3":
         return await extractMobiMetadata(file, fileName);
+      case "fb2":
+        return await extractFb2MetadataFromFile(file, fileName);
       default:
         return fallback;
     }
@@ -833,6 +879,54 @@ function extractTagContent(xml: string, tagName: string): string {
   const regex = new RegExp(`<${escapedTag}[^>]*>([^<]*)</${escapedTag}>`, "i");
   const match = xml.match(regex);
   return match ? match[1].trim() : "";
+}
+
+function extractElementInnerXml(xml: string, tagName: string): string {
+  const escapedTag = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regex = new RegExp(
+    `<(?:[\\w.-]+:)?${escapedTag}\\b[^>]*>([\\s\\S]*?)<\\/(?:[\\w.-]+:)?${escapedTag}>`,
+    "i",
+  );
+  return xml.match(regex)?.[1] ?? "";
+}
+
+function decodeXmlBytes(bytes: Uint8Array): string {
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) {
+    return decodeUtf16(bytes.subarray(2), true);
+  }
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) {
+    return decodeUtf16(bytes.subarray(2), false);
+  }
+  return new TextDecoder("utf-8").decode(bytes);
+}
+
+function decodeUtf16(bytes: Uint8Array, littleEndian: boolean): string {
+  const chunk: string[] = [];
+  for (let offset = 0; offset + 1 < bytes.length; offset += 2) {
+    const codeUnit = littleEndian
+      ? (bytes[offset] ?? 0) | ((bytes[offset + 1] ?? 0) << 8)
+      : ((bytes[offset] ?? 0) << 8) | (bytes[offset + 1] ?? 0);
+    chunk.push(String.fromCharCode(codeUnit));
+  }
+  return chunk.join("");
+}
+
+function cleanXmlText(value: string): string {
+  if (!value) return "";
+  return value
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/gi, "$1")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) =>
+      String.fromCodePoint(Number.parseInt(hex, 16)),
+    )
+    .replace(/&#(\d+);/g, (_, decimal: string) => String.fromCodePoint(Number(decimal)))
+    .replace(/&quot;/gi, '"')
+    .replace(/&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&amp;/gi, "&")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function extractAllTagContent(xml: string, tagName: string): string[] {
