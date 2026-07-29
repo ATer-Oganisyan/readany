@@ -1,10 +1,10 @@
-import { Text } from "@/components/ui/Typography";
 import { CheckIcon, ClockIcon, Loader2Icon, MoreVerticalIcon } from "@/components/ui/Icon";
+import { Text } from "@/components/ui/Typography";
 import { useColors } from "@/styles/theme";
 import { getPlatformService } from "@readany/core/services";
 /**
  * BookCard — Touch-optimized book card matching Tauri mobile MobileBookCard exactly.
- * Cover (28:41), progress bar, vectorization overlay, tag badges, long-press action sheet.
+ * Cover (28:41), progress bar, vectorization overlay, long-press action sheet.
  */
 import type { Book } from "@readany/core/types";
 import { getBookProgressPercent } from "@readany/core/utils";
@@ -366,38 +366,6 @@ export const BookCard = memo(function BookCard({
               {book.meta.author}
             </Text>
           ) : null}
-
-          {/* Tag badges */}
-          {book.tags.length > 0 ? (
-            <View style={s.tagsRow}>
-              {book.tags.slice(0, 2).map((tag) => (
-                <View key={tag} style={s.tagBadge}>
-                  <Text style={s.tagText}>{tag}</Text>
-                </View>
-              ))}
-              {book.tags.length > 2 && <Text style={s.tagOverflow}>+{book.tags.length - 2}</Text>}
-            </View>
-          ) : (
-            <View style={s.tagsRow}>
-              <View style={s.tagBadgeUncategorized}>
-                <Text style={s.tagTextUncategorized}>{t("sidebar.uncategorized", "未分类")}</Text>
-              </View>
-            </View>
-          )}
-
-          {/* Status row */}
-          <View style={s.statusRow}>
-            {progressPct > 0 && progressPct < 100 ? (
-              <Text style={s.progressText}>{progressPct}%</Text>
-            ) : progressPct >= 100 ? (
-              <Text style={s.completeText}>{t("home.complete", "已完成")}</Text>
-            ) : (
-              <View style={s.newBadge}>
-                <Text style={s.newText}>{t("home.new", "新")}</Text>
-              </View>
-            )}
-            <Text style={s.formatText}>{book.format || "epub"}</Text>
-          </View>
         </View>
       </TouchableOpacity>
 
