@@ -61,7 +61,7 @@ export function ChatScreen() {
     navigation.setOptions({
       title: "Narra AI",
       ...(Platform.OS === "ios"
-        ? { tabBarIcon: { type: "sfSymbol", name: "message" } }
+        ? { tabBarIcon: () => ({ type: "sfSymbol", name: "message" }) }
         : undefined),
     } as never);
   }, [navigation]);
