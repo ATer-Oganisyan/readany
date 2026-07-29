@@ -10,13 +10,13 @@ import { Text, TextInput, type TextInputHandle } from "@/components/ui/Typograph
 import { useKeyboardInsets } from "@/hooks/use-keyboard-insets";
 import { fontSize as fs, radius, useColors, withOpacity } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { AttachedQuote } from "@readany/core/types";
 /**
  * ChatInput — touch-optimized chat input matching app-mobile MobileChatInput.
  * Rounded container with textarea on top, action bar (deep thinking + send) below.
  */
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Keyboard,
@@ -40,6 +40,7 @@ interface ChatInputProps {
   onRemoveQuote?: (id: string) => void;
   placeholder?: string;
   keyboardBottomOffset?: number;
+  tabBarBottomOffset?: number;
   autoFocusOnScreenFocus?: boolean;
 }
 
@@ -55,6 +56,7 @@ export function ChatInput({
   onRemoveQuote,
   placeholder,
   keyboardBottomOffset = 0,
+  tabBarBottomOffset = 0,
   autoFocusOnScreenFocus = false,
 }: ChatInputProps) {
   const [text, setText] = useState("");
@@ -65,6 +67,7 @@ export function ChatInput({
   const colors = useColors();
   const s = makeStyles(colors);
   const inputRef = useRef<TextInputHandle>(null);
+  const navigation = useNavigation();
   const keyboardInsets = useKeyboardInsets();
   const effectiveKeyboardBottomOffset = keyboardBottomOffset ?? keyboardInsets.safeAreaBottom;
   const visibleKeyboardPadding =
@@ -97,6 +100,18 @@ export function ChatInput({
       };
     }, [autoFocusOnScreenFocus]),
   );
+
+  useEffect(() => {
+    if (!autoFocusOnScreenFocus) return;
+
+    return navigation.addListener(
+      "transitionEnd" as never,
+      ((event: { data?: { closing?: boolean } }) => {
+        if (event.data?.closing !== false) return;
+        requestAnimationFrame(() => inputRef.current?.focus());
+      }) as never,
+    );
+  }, [autoFocusOnScreenFocus, navigation]);
 
   const handleSend = useCallback(() => {
     const trimmed = text.trim();
@@ -132,7 +147,15 @@ export function ChatInput({
   const canSend = text.trim().length > 0 || quotes.length > 0;
 
   return (
-    <View style={[s.wrapper, { paddingBottom: bottomPadding }]}>
+    <View
+      style={[
+        s.wrapper,
+        {
+          paddingBottom: bottomPadding,
+          marginBottom: keyboardInsets.isVisible ? 0 : tabBarBottomOffset,
+        },
+      ]}
+    >
       <View style={s.container}>
         {/* Attached quotes chips */}
         {quotes.length > 0 && (

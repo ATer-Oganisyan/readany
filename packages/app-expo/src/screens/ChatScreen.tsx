@@ -359,6 +359,7 @@ export function ChatScreen() {
               onStop={stopStream}
               isStreaming={isStreaming}
               keyboardBottomOffset={insets.bottom}
+              tabBarBottomOffset={Platform.OS === "ios" ? 49 + insets.bottom : 0}
               autoFocusOnScreenFocus
             />
           </View>
