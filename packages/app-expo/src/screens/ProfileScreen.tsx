@@ -277,14 +277,6 @@ function MiniHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
           </Text>
         </View>
       )}
-
-      <View style={s.heatmapLegend}>
-        <Text style={s.heatmapLegendText}>{t("common.less", "少")}</Text>
-        {[0, 0.25, 0.5, 0.75, 1].map((v) => (
-          <View key={v} style={[s.heatmapLegendCell, { backgroundColor: getColor(v) }]} />
-        ))}
-        <Text style={s.heatmapLegendText}>{t("common.more", "多")}</Text>
-      </View>
     </View>
   );
 }
@@ -711,15 +703,6 @@ const makeStyles = (colors: ThemeColors) =>
     },
     heatmapContainer: { width: "100%" },
     heatmapGrid: { alignSelf: "center" },
-    heatmapLegend: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "flex-end",
-      gap: 4,
-      marginTop: 8,
-    },
-    heatmapLegendText: { fontSize: 9, color: colors.mutedForeground },
-    heatmapLegendCell: { width: 8, height: 8, borderRadius: 2 },
     // Menu
     menuSection: { paddingHorizontal: 16, marginTop: 16 },
     menuSectionTitle: {
