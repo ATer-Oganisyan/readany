@@ -23,7 +23,7 @@ import TTSSettingsScreen from "@/screens/settings/TTSSettingsScreen";
 import TranslationSettingsScreen from "@/screens/settings/TranslationSettingsScreen";
 import VectorModelSettingsScreen from "@/screens/settings/VectorModelSettingsScreen";
 import { useSettingsStore } from "@/stores";
-import { fontFamily, useColors } from "@/styles/theme";
+import { titleFontFamily, useColors } from "@/styles/theme";
 /**
  * RootNavigator — top-level stack matching Tauri mobile App.tsx routes exactly.
  */
@@ -76,7 +76,7 @@ export function RootNavigator() {
           headerBackButtonDisplayMode: "minimal",
           headerTitleStyle: {
             color: colors.foreground,
-            fontFamily: fontFamily.semibold,
+            fontFamily: titleFontFamily,
             fontWeight: "600",
           },
           contentStyle: { backgroundColor: colors.background },

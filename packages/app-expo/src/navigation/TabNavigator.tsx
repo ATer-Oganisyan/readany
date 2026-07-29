@@ -5,7 +5,7 @@ import { LibraryScreen } from "@/screens/LibraryScreen";
 import { NotesScreen } from "@/screens/NotesScreen";
 import { ProfileScreen } from "@/screens/ProfileScreen";
 import { useTheme } from "@/styles/ThemeContext";
-import { fontFamily } from "@/styles/theme";
+import { fontFamily, titleFontFamily } from "@/styles/theme";
 import {
   type NativeBottomTabIcon,
   createNativeBottomTabNavigator,
@@ -71,7 +71,7 @@ export function TabNavigator() {
         headerTintColor: colors.foreground,
         headerTitleStyle: {
           color: colors.foreground,
-          fontFamily: fontFamily.semibold,
+          fontFamily: titleFontFamily,
           fontWeight: "600",
         },
         tabBarActiveTintColor: colors.primary,

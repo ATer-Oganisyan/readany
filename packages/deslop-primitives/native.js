@@ -4,6 +4,7 @@ const interfaceFontAssets = {
   "SB Sans Interface Semibold": require("./fonts/SBSansUI-Semibold.otf"),
   "SB Sans Interface Bold": require("./fonts/SBSansUI-Bold.otf"),
   "SB Sans Interface Caps": require("./fonts/SBSansUI-Caps.otf"),
+  "SB Sans Display Semibold": require("./fonts/SBSansDisplay-SemiBold.otf"),
   "Material Symbols Rounded": require("./fonts/MaterialSymbolsRounded-Variable.ttf"),
 };
 
@@ -16,5 +17,8 @@ module.exports = {
     bold: "SB Sans Interface Bold",
     caps: "SB Sans Interface Caps",
     materialSymbols: "Material Symbols Rounded",
+  },
+  displayFontFamily: {
+    semibold: "SB Sans Display Semibold",
   },
 };

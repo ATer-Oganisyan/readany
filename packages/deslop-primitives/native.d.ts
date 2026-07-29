@@ -8,3 +8,7 @@ export const interfaceFontFamily: {
   readonly caps: "SB Sans Interface Caps";
   readonly materialSymbols: "Material Symbols Rounded";
 };
+
+export const displayFontFamily: {
+  readonly semibold: "SB Sans Display Semibold";
+};

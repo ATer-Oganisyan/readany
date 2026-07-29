@@ -1,5 +1,5 @@
 import type { RootStackParamList } from "@/navigation/RootNavigator";
-import { fontFamily, useColors } from "@/styles/theme";
+import { titleFontFamily, useColors } from "@/styles/theme";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useLayoutEffect } from "react";
@@ -25,7 +25,7 @@ export function SettingsHeader({ title, right }: Props) {
       headerTintColor: colors.foreground,
       headerTitleStyle: {
         color: colors.foreground,
-        fontFamily: fontFamily.semibold,
+        fontFamily: titleFontFamily,
         fontWeight: "600",
       },
       headerRight: right ? () => <View>{right}</View> : undefined,
