@@ -11,10 +11,9 @@ import {
   createNativeBottomTabNavigator,
 } from "@react-navigation/bottom-tabs/unstable";
 import { useSyncStore } from "@readany/core/stores";
-import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { Platform, StyleSheet } from "react-native";
+import { Platform } from "react-native";
 
 export type TabParamList = {
   Library: undefined;
@@ -79,7 +78,7 @@ export function TabNavigator() {
         tabBarLabelStyle: { fontFamily: fontFamily.regular },
         tabBarStyle: { backgroundColor: colors.background },
         tabBarBlurEffect: "systemDefault",
-        tabBarControllerMode: "tabBar",
+        tabBarControllerMode: "auto",
         tabBarMinimizeBehavior: "onScrollDown",
       }}
     >
@@ -122,15 +121,17 @@ export function TabNavigator() {
               }),
         })}
       />
-      <Tab.Screen
-        name="Chat"
-        component={ChatScreen}
-        options={{
-          title: t("tabs.ai", "ИИ"),
-          tabBarLabel: t("tabs.ai", "ИИ"),
-          tabBarIcon: tabIcon("message", ANDROID_ICONS.Chat),
-        }}
-      />
+      {Platform.OS !== "ios" ? (
+        <Tab.Screen
+          name="Chat"
+          component={ChatScreen}
+          options={{
+            title: t("tabs.ai", "ИИ"),
+            tabBarLabel: t("tabs.ai", "ИИ"),
+            tabBarIcon: tabIcon("message", ANDROID_ICONS.Chat),
+          }}
+        />
+      ) : null}
       <Tab.Screen
         name="Notes"
         component={NotesScreen}
@@ -177,18 +178,11 @@ export function TabNavigator() {
           title: t("tabs.profile", "Профиль"),
           tabBarLabel: t("tabs.profile", "Профиль"),
           tabBarIcon: tabIcon("person.crop.circle", ANDROID_ICONS.Profile),
-          tabBarMinimizeBehavior: "never",
+          tabBarMinimizeBehavior: "none",
           ...(Platform.OS === "ios"
             ? {
                 headerTransparent: true,
-                headerBackground: () => (
-                  <LinearGradient
-                    pointerEvents="none"
-                    colors={[colors.background, colors.background, `${colors.background}00`]}
-                    locations={[0, 0.7, 1]}
-                    style={StyleSheet.absoluteFill}
-                  />
-                ),
+                headerStyle: { backgroundColor: "transparent" },
                 unstable_headerRightItems: () =>
                   syncBackendType
                     ? [
@@ -211,6 +205,17 @@ export function TabNavigator() {
               }),
         }}
       />
+      {Platform.OS === "ios" ? (
+        <Tab.Screen
+          name="Chat"
+          component={ChatScreen}
+          options={{
+            title: t("tabs.ai", "ИИ"),
+            tabBarLabel: t("tabs.ai", "ИИ"),
+            tabBarIcon: tabIcon("message", ANDROID_ICONS.Chat),
+          }}
+        />
+      ) : null}
     </Tab.Navigator>
   );
 }
