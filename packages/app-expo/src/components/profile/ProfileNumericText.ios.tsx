@@ -1,5 +1,4 @@
 import { useTheme } from "@/styles/theme";
-import { interfaceFontFamily } from "@deslop/primitives/native";
 import { Host, Text } from "@expo/ui/swift-ui";
 import {
   Animation,
@@ -36,7 +35,7 @@ export function ProfileNumericText({ value, color }: ProfileNumericTextProps) {
     <Host matchContents colorScheme={isDark ? "dark" : "light"}>
       <Text
         modifiers={[
-          font({ family: interfaceFontFamily.bold, size: 25 }),
+          font({ size: 25, weight: "bold", design: "rounded" }),
           foregroundStyle(color),
           contentTransition("numericText", { countsDown: false }),
           animation(Animation.easeInOut({ duration: 0.45 }), animationKey),
