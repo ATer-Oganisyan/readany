@@ -3,6 +3,7 @@ import BadgesScreen from "@/screens/BadgesScreen";
 import { BookChatScreen } from "@/screens/BookChatScreen";
 import { BookDetailsScreen } from "@/screens/BookDetailsScreen";
 import { FullScreenNotesScreen } from "@/screens/FullScreenNotesScreen";
+import { ManualNoteScreen } from "@/screens/ManualNoteScreen";
 import { ReaderScreen } from "@/screens/ReaderScreen";
 import SkillsScreen from "@/screens/SkillsScreen";
 import StatsScreen from "@/screens/StatsScreen";
@@ -50,6 +51,7 @@ export type RootStackParamList = {
   Feedback: undefined;
   FeedbackDetail: { issueNumber: number; title: string };
   FullScreenNotes: { bookId: string };
+  ManualNote: undefined;
   FontSettings: undefined;
   WebDavImportBrowser: { source: WebDavImportSource };
   Storybook: undefined;
@@ -184,6 +186,11 @@ export function RootNavigator() {
           name="FullScreenNotes"
           component={FullScreenNotesScreen}
           options={{ animation: "slide_from_right", title: t("notes.title", "Заметки") }}
+        />
+        <Stack.Screen
+          name="ManualNote"
+          component={ManualNoteScreen}
+          options={{ animation: "slide_from_right", title: "Новая заметка" }}
         />
         {__DEV__ ? (
           <>

@@ -26,7 +26,7 @@ export interface AnnotationState {
 
   // Actions
   setHighlights: (highlights: Highlight[]) => void;
-  addHighlight: (highlight: Highlight) => void;
+  addHighlight: (highlight: Highlight) => Promise<void>;
   updateHighlight: (id: string, updates: Partial<Highlight>) => void;
   removeHighlight: (id: string) => void;
   changeHighlightColor: (id: string, color: HighlightColor) => void;
@@ -69,18 +69,21 @@ export const useAnnotationStore = create<AnnotationState>((set) => ({
   stats: null,
 
   setHighlights: (highlights) => set({ highlights: sortAnnotationsByPosition(highlights) }),
-  addHighlight: (highlight) => {
+  addHighlight: async (highlight) => {
     set((state) => ({ highlights: sortAnnotationsByPosition([...state.highlights, highlight]) }));
-    db.insertHighlight(highlight)
-      .then(async () => {
-        eventBus.emit("annotation:added", {
-          bookId: highlight.bookId,
-          annotationId: highlight.id,
-          type: "highlight",
-        });
-        await refreshDerivedAnnotationState(set);
-      })
-      .catch((err) => console.error("Failed to insert highlight:", err));
+    try {
+      await db.insertHighlight(highlight);
+      eventBus.emit("annotation:added", {
+        bookId: highlight.bookId,
+        annotationId: highlight.id,
+        type: "highlight",
+      });
+      await refreshDerivedAnnotationState(set);
+    } catch (error) {
+      set((state) => ({ highlights: state.highlights.filter((item) => item.id !== highlight.id) }));
+      console.error("Failed to insert highlight:", error);
+      throw error;
+    }
   },
   updateHighlight: (id, updates) => {
     set((state) => ({

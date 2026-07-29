@@ -128,7 +128,7 @@ export function TabNavigator() {
       <Tab.Screen
         name="Notes"
         component={NotesScreen}
-        options={{
+        options={({ navigation }) => ({
           title: t("tabs.notes", "Заметки"),
           tabBarLabel: t("tabs.notes", "Заметки"),
           tabBarIcon: tabIcon("highlighter", ANDROID_ICONS.Notes),
@@ -140,9 +140,29 @@ export function TabNavigator() {
                   color: colors.foreground,
                   fontFamily: titleFontFamily,
                 },
+                unstable_headerRightItems: () => [
+                  {
+                    type: "button" as const,
+                    label: "Добавить заметку",
+                    accessibilityLabel: "Добавить заметку",
+                    icon: { type: "sfSymbol" as const, name: "plus" as const },
+                    onPress: () => navigation.getParent()?.navigate("ManualNote" as never),
+                  },
+                ],
               }
-            : {}),
-        }}
+            : {
+                headerRight: () => (
+                  <NativeButton
+                    label="Добавить"
+                    accessibilityLabel="Добавить заметку"
+                    icon="add"
+                    size="small"
+                    variant="tertiary"
+                    onPress={() => navigation.getParent()?.navigate("ManualNote" as never)}
+                  />
+                ),
+              }),
+        })}
       />
       <Tab.Screen
         name="Profile"
