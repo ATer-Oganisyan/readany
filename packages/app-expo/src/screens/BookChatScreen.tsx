@@ -14,7 +14,6 @@ import {
   Alert,
   Animated,
   Keyboard,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -48,14 +47,7 @@ import * as Clipboard from "expo-clipboard";
 
 import { ChatInput } from "@/components/chat/ChatInput";
 import { MessageList } from "@/components/chat/MessageList";
-import {
-  CopyIcon,
-  Download,
-  MessageCirclePlusIcon,
-  ScrollTextIcon,
-  Trash2Icon,
-  XIcon,
-} from "@/components/ui/Icon";
+import { MessageCirclePlusIcon, Trash2Icon, XIcon } from "@/components/ui/Icon";
 import { fontSize as fs, fontWeight as fw, radius, useColors, withOpacity } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
 
@@ -258,7 +250,6 @@ export function BookChatScreen({ route, navigation }: Props) {
     await createThread(bookId);
   }, [activeThread, bookId, createThread]);
 
-  const [showExportMenu, setShowExportMenu] = useState(false);
   const exportTitle = activeThread?.title || book?.meta?.title || t("chat.aiAssistant");
   const exportOpts = useMemo(
     () => ({
@@ -270,7 +261,6 @@ export function BookChatScreen({ route, navigation }: Props) {
   );
 
   const handleExportMarkdown = useCallback(async () => {
-    setShowExportMenu(false);
     const md = exportChatAsMarkdown(allMessages, exportOpts);
     const filename = getExportFilename("md");
     const platform = getPlatformService();
@@ -279,7 +269,6 @@ export function BookChatScreen({ route, navigation }: Props) {
   }, [allMessages, exportOpts, t]);
 
   const handleExportJSON = useCallback(async () => {
-    setShowExportMenu(false);
     const json = exportChatAsJSON(allMessages, exportOpts);
     const filename = getExportFilename("json");
     const platform = getPlatformService();
@@ -288,7 +277,6 @@ export function BookChatScreen({ route, navigation }: Props) {
   }, [allMessages, exportOpts, t]);
 
   const handleCopyAll = useCallback(async () => {
-    setShowExportMenu(false);
     const text = formatChatForClipboard(allMessages, exportOpts);
     await Clipboard.setStringAsync(text);
     Alert.alert(t("chat.copiedSuccess", "已复制到剪贴板"));
@@ -440,11 +428,28 @@ export function BookChatScreen({ route, navigation }: Props) {
           ]
         : []),
       {
+        type: "menu" as const,
         label: t("chat.export", "Экспортировать"),
         icon: "share",
         sfSymbol: "square.and.arrow.up",
         disabled: allMessages.length === 0,
-        onPress: () => setShowExportMenu(true),
+        items: [
+          {
+            label: t("chat.exportMarkdown", "Экспортировать Markdown"),
+            sfSymbol: "doc.text",
+            onPress: () => void handleExportMarkdown(),
+          },
+          {
+            label: t("chat.exportJSON", "Экспортировать JSON"),
+            sfSymbol: "arrow.down.doc",
+            onPress: () => void handleExportJSON(),
+          },
+          {
+            label: t("chat.copyAll", "Скопировать чат"),
+            sfSymbol: "doc.on.doc",
+            onPress: () => void handleCopyAll(),
+          },
+        ],
       },
       {
         label: t("chat.newChat", "Новый чат"),
@@ -465,37 +470,6 @@ export function BookChatScreen({ route, navigation }: Props) {
         )}
 
         <View style={s.mainColumn}>
-          <Modal
-            visible={showExportMenu}
-            transparent
-            animationType="fade"
-            onRequestClose={() => setShowExportMenu(false)}
-          >
-            <Pressable style={s.exportOverlay} onPress={() => setShowExportMenu(false)}>
-              <View style={s.exportMenu}>
-                <TouchableOpacity style={s.exportMenuItem} onPress={handleExportMarkdown}>
-                  <ScrollTextIcon size={18} color={colors.foreground} />
-                  <Text style={s.exportMenuText}>
-                    {t("chat.exportMarkdown", "Экспортировать Markdown")}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[s.exportMenuItem, s.exportMenuItemDivider]}
-                  onPress={handleExportJSON}
-                >
-                  <Download size={18} color={colors.foreground} />
-                  <Text style={s.exportMenuText}>
-                    {t("chat.exportJSON", "Экспортировать JSON")}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={s.exportMenuItem} onPress={handleCopyAll}>
-                  <CopyIcon size={18} color={colors.foreground} />
-                  <Text style={s.exportMenuText}>{t("chat.copyAll", "Скопировать чат")}</Text>
-                </TouchableOpacity>
-              </View>
-            </Pressable>
-          </Modal>
-
           <View style={s.content}>
             <View style={s.content}>
               {allMessages.length > 0 ? (
@@ -786,44 +760,5 @@ const makeStyles = (
     threadDeleteBtn: {
       marginTop: 2,
       padding: 4,
-    },
-    exportOverlay: {
-      flex: 1,
-      backgroundColor: "rgba(0,0,0,0.12)",
-      justifyContent: "flex-start",
-      alignItems: "stretch",
-      paddingTop: 56,
-      paddingHorizontal: 12,
-    },
-    exportMenu: {
-      alignSelf: "flex-end",
-      minWidth: 200,
-      borderRadius: radius.xl,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.card,
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 10 },
-      shadowOpacity: 0.18,
-      shadowRadius: 18,
-      elevation: 14,
-      overflow: "hidden",
-      paddingVertical: 6,
-    },
-    exportMenuItem: {
-      minHeight: 44,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 10,
-      paddingHorizontal: 14,
-    },
-    exportMenuItemDivider: {
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.border,
-    },
-    exportMenuText: {
-      fontSize: fs.sm,
-      fontWeight: fw.medium,
-      color: colors.foreground,
     },
   });

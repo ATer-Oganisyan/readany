@@ -1,4 +1,4 @@
-import { ClockIcon, Loader2Icon, MoreVerticalIcon } from "@/components/ui/Icon";
+import { ClockIcon, Loader2Icon } from "@/components/ui/Icon";
 import { Text } from "@/components/ui/Typography";
 import { useColors } from "@/styles/theme";
 import { getPlatformService } from "@readany/core/services";
@@ -8,16 +8,9 @@ import { getPlatformService } from "@readany/core/services";
  */
 import type { Book } from "@readany/core/types";
 import { getBookProgressPercent } from "@readany/core/utils";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  Animated,
-  Easing,
-  Image,
-  type LayoutRectangle,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { Animated, Easing, Image, TouchableOpacity, View } from "react-native";
 import { BookCardActionSheet } from "./BookCardActionSheet";
 import { makeStyles } from "./book-card-styles";
 
@@ -82,12 +75,7 @@ export const BookCard = memo(function BookCard({
   const s = makeStyles(colors, cardWidth);
   const { t } = useTranslation();
   const [imageError, setImageError] = useState(false);
-  const [showActions, setShowActions] = useState(false);
-  const [actionAnchor, setActionAnchor] = useState<LayoutRectangle | null>(null);
   const [resolvedCoverUrl, setResolvedCoverUrl] = useState<string | undefined>(undefined);
-  const coverRef = useRef<View>(null);
-  const menuTriggerRef = useRef<View>(null);
-  const suppressOpenUntilRef = useRef(0);
 
   // Resolve relative coverUrl to absolute path
   useEffect(() => {
@@ -121,215 +109,149 @@ export const BookCard = memo(function BookCard({
       : 0
     : 0;
 
-  const measureAnchor = useCallback(async () => {
-    const measureNode = (node: View | null, fallbackToBottomRight = false) =>
-      new Promise<LayoutRectangle | null>((resolve) => {
-        if (!node || typeof node.measureInWindow !== "function") {
-          resolve(null);
-          return;
-        }
-        requestAnimationFrame(() => {
-          node.measureInWindow((x, y, width, height) => {
-            if (!width && !height) {
-              resolve(null);
-              return;
-            }
-            resolve(
-              fallbackToBottomRight
-                ? {
-                    x: x + Math.max(0, width - 40),
-                    y: y + Math.max(0, height - 40),
-                    width: 40,
-                    height: 40,
-                  }
-                : { x, y, width, height },
-            );
-          });
-        });
-      });
-
-    return (
-      (await measureNode(menuTriggerRef.current)) ?? (await measureNode(coverRef.current, true))
-    );
-  }, []);
-
-  const openActions = useCallback(async () => {
-    suppressOpenUntilRef.current = Date.now() + 700;
-    const anchor = await measureAnchor();
-    setActionAnchor(anchor);
-    setShowActions(true);
-  }, [measureAnchor]);
-
   return (
-    <>
-      <TouchableOpacity
-        style={s.container}
-        onPress={() => {
-          if (showActions || Date.now() < suppressOpenUntilRef.current) return;
-          onOpen(book);
-        }}
-        activeOpacity={0.7}
-      >
-        {/* Cover — 28:41 aspect ratio */}
-        <View ref={coverRef} style={s.coverWrap}>
-          {resolvedCoverUrl && !imageError ? (
-            <>
-              <Image
-                source={{ uri: resolvedCoverUrl }}
-                style={s.coverImage}
-                resizeMode="cover"
-                onError={() => setImageError(true)}
-              />
-              {/* Book spine crease overlay — matches desktop .book-spine */}
-              <View style={s.spineOverlay} pointerEvents="none">
-                {/* Left edge dark line */}
-                <View style={s.spineStrip1} />
-                {/* Spine shadow dip */}
-                <View style={s.spineStrip2} />
-                {/* Highlight reflection */}
-                <View style={s.spineStrip3} />
-                {/* Transition bright */}
-                <View style={s.spineStrip4} />
-                {/* Crease dark */}
-                <View style={s.spineStrip5} />
-                {/* Deep fold */}
-                <View style={s.spineStrip6} />
-                {/* Subtle bright transition */}
-                <View style={s.spineStrip7} />
-                {/* Right edge subtle shadow */}
-                <View style={s.spineEdgeRight} />
+    <TouchableOpacity style={s.container} onPress={() => onOpen(book)} activeOpacity={0.7}>
+      {/* Cover — 28:41 aspect ratio */}
+      <View style={s.coverWrap}>
+        {resolvedCoverUrl && !imageError ? (
+          <>
+            <Image
+              source={{ uri: resolvedCoverUrl }}
+              style={s.coverImage}
+              resizeMode="cover"
+              onError={() => setImageError(true)}
+            />
+            {/* Book spine crease overlay — matches desktop .book-spine */}
+            <View style={s.spineOverlay} pointerEvents="none">
+              {/* Left edge dark line */}
+              <View style={s.spineStrip1} />
+              {/* Spine shadow dip */}
+              <View style={s.spineStrip2} />
+              {/* Highlight reflection */}
+              <View style={s.spineStrip3} />
+              {/* Transition bright */}
+              <View style={s.spineStrip4} />
+              {/* Crease dark */}
+              <View style={s.spineStrip5} />
+              {/* Deep fold */}
+              <View style={s.spineStrip6} />
+              {/* Subtle bright transition */}
+              <View style={s.spineStrip7} />
+              {/* Right edge subtle shadow */}
+              <View style={s.spineEdgeRight} />
+            </View>
+            {/* Top highlight */}
+            <View style={s.spineTopHighlight} pointerEvents="none" />
+            {/* Bottom shadow */}
+            <View style={s.spineBottomShadow} pointerEvents="none" />
+          </>
+        ) : (
+          <View style={s.fallbackCover}>
+            {/* Simulate gradient: stone-100 top half, stone-200 bottom half */}
+            <View style={s.fallbackGradientTop} />
+            <View style={s.fallbackGradientBottom} />
+            <View style={s.fallbackContentOverlay}>
+              <View style={s.fallbackTitleWrap}>
+                <Text style={s.fallbackTitle} numberOfLines={3}>
+                  {book.meta.title}
+                </Text>
               </View>
-              {/* Top highlight */}
-              <View style={s.spineTopHighlight} pointerEvents="none" />
-              {/* Bottom shadow */}
-              <View style={s.spineBottomShadow} pointerEvents="none" />
-            </>
-          ) : (
-            <View style={s.fallbackCover}>
-              {/* Simulate gradient: stone-100 top half, stone-200 bottom half */}
-              <View style={s.fallbackGradientTop} />
-              <View style={s.fallbackGradientBottom} />
-              <View style={s.fallbackContentOverlay}>
-                <View style={s.fallbackTitleWrap}>
-                  <Text style={s.fallbackTitle} numberOfLines={3}>
-                    {book.meta.title}
+              <View style={s.fallbackDivider} />
+              {book.meta.author ? (
+                <View style={s.fallbackAuthorWrap}>
+                  <Text style={s.fallbackAuthor} numberOfLines={1}>
+                    {book.meta.author}
                   </Text>
                 </View>
-                <View style={s.fallbackDivider} />
-                {book.meta.author ? (
-                  <View style={s.fallbackAuthorWrap}>
-                    <Text style={s.fallbackAuthor} numberOfLines={1}>
-                      {book.meta.author}
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
+              ) : null}
             </View>
-          )}
-
-          {/* Progress bar */}
-          {progressPct > 0 && progressPct < 100 && (
-            <View style={s.progressBarBg}>
-              <View style={[s.progressBarFill, { width: `${progressPct}%` }]} />
-            </View>
-          )}
-
-          {/* Vectorization progress overlay */}
-          {isVectorizing && (
-            <View style={s.vecOverlay}>
-              <AnimatedLoader />
-              <Text style={s.vecOverlayText}>
-                {vectorProgress?.status === "chunking"
-                  ? `${vecPct}%`
-                  : vectorProgress?.status === "embedding"
-                    ? `${vecPct}%`
-                    : vectorProgress?.status === "indexing"
-                      ? t("home.vec_indexing")
-                      : vectorProgress?.status === "completed"
-                        ? "✓"
-                        : vectorProgress?.status === "error"
-                          ? "✗"
-                          : t("home.vec_processing")}
-              </Text>
-            </View>
-          )}
-
-          {/* Queued overlay */}
-          {isQueued && !isVectorizing && (
-            <View style={s.queuedOverlay}>
-              <ClockIcon size={20} color="#fff" />
-              <Text style={s.queuedOverlayText}>{t("home.vec_queued", "排队中")}</Text>
-            </View>
-          )}
-
-          {/* Remote status overlay (on-demand download) */}
-          {book.syncStatus === "remote" && (
-            <View style={s.remoteOverlay}>
-              <Text style={s.remoteOverlayText}>{t("home.remote", "需下载")}</Text>
-            </View>
-          )}
-
-          {/* Downloading status overlay */}
-          {book.syncStatus === "downloading" && (
-            <View style={s.downloadingOverlay}>
-              <AnimatedLoader />
-              <Text style={s.downloadingOverlayText}>{t("home.downloading", "下载中")}</Text>
-              {downloadProgress && downloadProgress.total > 0 && (
-                <Text style={s.downloadingOverlayPct}>
-                  {Math.round((downloadProgress.downloaded / downloadProgress.total) * 100)}%
-                </Text>
-              )}
-            </View>
-          )}
-
-          {/* Vectorized badge */}
-          {book.isVectorized && !isVectorizing && (
-            <View style={s.vecBadge}>
-              <Text style={s.vecBadgeText}>{t("home.vec_indexed", "已索引")}</Text>
-            </View>
-          )}
-
-          <View ref={menuTriggerRef} style={s.moreButtonWrap} pointerEvents="box-none">
-            <TouchableOpacity
-              style={s.moreButton}
-              activeOpacity={0.85}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              onPress={() => {
-                suppressOpenUntilRef.current = Date.now() + 700;
-                void openActions();
-              }}
-            >
-              <MoreVerticalIcon size={14} color="#fff" />
-            </TouchableOpacity>
           </View>
-        </View>
+        )}
 
-        {/* Info below cover */}
-        <View style={s.infoWrap}>
-          <Text style={s.bookTitle} numberOfLines={1}>
-            {book.meta.title}
-          </Text>
-          {book.meta.author ? (
-            <Text style={s.bookAuthor} numberOfLines={1}>
-              {book.meta.author}
+        {/* Progress bar */}
+        {progressPct > 0 && progressPct < 100 && (
+          <View style={s.progressBarBg}>
+            <View style={[s.progressBarFill, { width: `${progressPct}%` }]} />
+          </View>
+        )}
+
+        {/* Vectorization progress overlay */}
+        {isVectorizing && (
+          <View style={s.vecOverlay}>
+            <AnimatedLoader />
+            <Text style={s.vecOverlayText}>
+              {vectorProgress?.status === "chunking"
+                ? `${vecPct}%`
+                : vectorProgress?.status === "embedding"
+                  ? `${vecPct}%`
+                  : vectorProgress?.status === "indexing"
+                    ? t("home.vec_indexing")
+                    : vectorProgress?.status === "completed"
+                      ? "✓"
+                      : vectorProgress?.status === "error"
+                        ? "✗"
+                        : t("home.vec_processing")}
             </Text>
-          ) : null}
-        </View>
-      </TouchableOpacity>
+          </View>
+        )}
 
-      <BookCardActionSheet
-        visible={showActions}
-        anchor={actionAnchor}
-        book={book}
-        onClose={() => {
-          suppressOpenUntilRef.current = Date.now() + 300;
-          setShowActions(false);
-        }}
-        onShowDetails={onShowDetails}
-        onManageTags={onManageTags}
-        onVectorize={onVectorize}
-        onDelete={onDelete}
-      />
-    </>
+        {/* Queued overlay */}
+        {isQueued && !isVectorizing && (
+          <View style={s.queuedOverlay}>
+            <ClockIcon size={20} color="#fff" />
+            <Text style={s.queuedOverlayText}>{t("home.vec_queued", "排队中")}</Text>
+          </View>
+        )}
+
+        {/* Remote status overlay (on-demand download) */}
+        {book.syncStatus === "remote" && (
+          <View style={s.remoteOverlay}>
+            <Text style={s.remoteOverlayText}>{t("home.remote", "需下载")}</Text>
+          </View>
+        )}
+
+        {/* Downloading status overlay */}
+        {book.syncStatus === "downloading" && (
+          <View style={s.downloadingOverlay}>
+            <AnimatedLoader />
+            <Text style={s.downloadingOverlayText}>{t("home.downloading", "下载中")}</Text>
+            {downloadProgress && downloadProgress.total > 0 && (
+              <Text style={s.downloadingOverlayPct}>
+                {Math.round((downloadProgress.downloaded / downloadProgress.total) * 100)}%
+              </Text>
+            )}
+          </View>
+        )}
+
+        {/* Vectorized badge */}
+        {book.isVectorized && !isVectorizing && (
+          <View style={s.vecBadge}>
+            <Text style={s.vecBadgeText}>{t("home.vec_indexed", "已索引")}</Text>
+          </View>
+        )}
+
+        <View style={[s.moreButtonWrap, s.moreButton]}>
+          <BookCardActionSheet
+            book={book}
+            onShowDetails={onShowDetails}
+            onManageTags={onManageTags}
+            onVectorize={onVectorize}
+            onDelete={onDelete}
+          />
+        </View>
+      </View>
+
+      {/* Info below cover */}
+      <View style={s.infoWrap}>
+        <Text style={s.bookTitle} numberOfLines={1}>
+          {book.meta.title}
+        </Text>
+        {book.meta.author ? (
+          <Text style={s.bookAuthor} numberOfLines={1}>
+            {book.meta.author}
+          </Text>
+        ) : null}
+      </View>
+    </TouchableOpacity>
   );
 });

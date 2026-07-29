@@ -9,8 +9,8 @@ import {
   HighlighterIcon,
   NotebookPenIcon,
   SearchIcon,
-  ShareIcon,
 } from "@/components/ui/Icon";
+import { NativeContextMenuButton } from "@/components/ui/NativeContextMenuButton";
 import { Text, TextInput } from "@/components/ui/Typography";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
@@ -27,7 +27,7 @@ import { eventBus } from "@readany/core/utils/event-bus";
 /** Notes list plus the existing per-book annotation detail view. */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Image, Modal, Pressable, ScrollView, TouchableOpacity, View } from "react-native";
+import { Alert, Image, ScrollView, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { HighlightCard } from "./notes/HighlightCard";
@@ -113,7 +113,6 @@ export function NotesView({
   const [detailTab, setDetailTab] = useState<DetailTab>("notes");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editNote, setEditNote] = useState("");
-  const [showExportMenu, setShowExportMenu] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -355,7 +354,6 @@ export function NotesView({
 
   const handleExport = useCallback(
     async (format: ExportFormat) => {
-      setShowExportMenu(false);
       if (!selectedBook) return;
 
       const book = books.find((b) => b.id === selectedBook.bookId);
@@ -443,12 +441,40 @@ export function NotesView({
                 </View>
 
                 {/* Export button */}
-                <TouchableOpacity
-                  style={s.exportBtn}
-                  onPress={() => setShowExportMenu(!showExportMenu)}
-                >
-                  <ShareIcon size={16} color={colors.foreground} />
-                </TouchableOpacity>
+                <View style={s.exportBtn}>
+                  <NativeContextMenuButton
+                    accessibilityLabel="Экспорт заметок"
+                    sfSymbol="square.and.arrow.up"
+                    size={40}
+                    color={colors.foreground}
+                    items={[
+                      {
+                        key: "markdown",
+                        label: "Markdown",
+                        sfSymbol: "doc.text",
+                        onPress: () => void handleExport("markdown"),
+                      },
+                      {
+                        key: "json",
+                        label: "JSON",
+                        sfSymbol: "arrow.down.doc",
+                        onPress: () => void handleExport("json"),
+                      },
+                      {
+                        key: "obsidian",
+                        label: "Obsidian",
+                        sfSymbol: "diamond",
+                        onPress: () => void handleExport("obsidian"),
+                      },
+                      {
+                        key: "notion",
+                        label: "Notion",
+                        sfSymbol: "doc.on.clipboard",
+                        onPress: () => void handleExport("notion"),
+                      },
+                    ]}
+                  />
+                </View>
               </View>
             )}
 
@@ -551,31 +577,6 @@ export function NotesView({
             <View style={{ height: 24 }} />
           </ScrollView>
         )}
-
-        {/* Export menu */}
-        <Modal
-          visible={showExportMenu}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setShowExportMenu(false)}
-        >
-          <Pressable style={s.exportOverlay} onPress={() => setShowExportMenu(false)} />
-          <View style={s.exportDropdown}>
-            {(["markdown", "json", "obsidian", "notion"] as const).map((fmt) => (
-              <TouchableOpacity key={fmt} style={s.exportItem} onPress={() => handleExport(fmt)}>
-                <Text style={s.exportItemText}>
-                  {fmt === "markdown"
-                    ? "Markdown"
-                    : fmt === "json"
-                      ? "JSON"
-                      : fmt === "obsidian"
-                        ? "Obsidian"
-                        : "Notion"}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </Modal>
       </SafeAreaView>
     );
   }
