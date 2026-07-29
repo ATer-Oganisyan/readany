@@ -19,12 +19,19 @@ export function formatTime(minutes: number): string {
   return m > 0 ? `${h}h${m}m` : `${h}h`;
 }
 
-export function formatTimeLocalized(minutes: number, isZh: boolean): string {
-  if (minutes <= 0) return isZh ? "0分" : "0m";
-  if (minutes < 60) return isZh ? `${Math.round(minutes)}分` : `${Math.round(minutes)}m`;
+export function formatTimeLocalized(minutes: number, isZh: boolean, isRu = false): string {
+  if (minutes <= 0) return isZh ? "0分" : isRu ? "0 мин" : "0m";
+  if (minutes < 60) {
+    return isZh
+      ? `${Math.round(minutes)}分`
+      : isRu
+        ? `${Math.round(minutes)} мин`
+        : `${Math.round(minutes)}m`;
+  }
   const h = Math.floor(minutes / 60);
   const m = Math.round(minutes % 60);
   if (isZh) return m > 0 ? `${h}时${m}分` : `${h}时`;
+  if (isRu) return m > 0 ? `${h} ч ${m} мин` : `${h} ч`;
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
@@ -37,7 +44,7 @@ export function formatCompactMinutes(minutes: number, isZh: boolean): string {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
-export function formatCharacterCount(value: number, isZh: boolean): string {
+export function formatCharacterCount(value: number, isZh: boolean, isRu = false): string {
   const rounded = Math.max(0, Math.round(value));
 
   if (isZh) {
@@ -48,6 +55,8 @@ export function formatCharacterCount(value: number, isZh: boolean): string {
     }
     return `${rounded.toLocaleString()} 字`;
   }
+
+  if (isRu) return `${rounded.toLocaleString("ru-RU")} зн.`;
 
   if (rounded >= 1000) {
     const thousands = rounded / 1000;
@@ -171,19 +180,43 @@ export function localizeInsight(
   isZh: boolean,
 ): StatsInsight {
   if (insight.id === "no-reading") {
-    return { ...insight, title: t("stats.desktop.insightTitleNoReading"), body: t("stats.desktop.insightBodyNoReading") };
+    return {
+      ...insight,
+      title: t("stats.desktop.insightTitleNoReading"),
+      body: t("stats.desktop.insightBodyNoReading"),
+    };
   }
   if (insight.id === "streak") {
-    return { ...insight, title: t("stats.desktop.insightTitleStreak"), body: t("stats.desktop.insightBodyStreak", { days: report.summary.currentStreak }) };
+    return {
+      ...insight,
+      title: t("stats.desktop.insightTitleStreak"),
+      body: t("stats.desktop.insightBodyStreak", { days: report.summary.currentStreak }),
+    };
   }
   if (insight.id === "focus") {
-    return { ...insight, title: t("stats.desktop.insightTitleFocus"), body: t("stats.desktop.insightBodyFocus", { minutes: Math.round(report.summary.longestSessionTime) }) };
+    return {
+      ...insight,
+      title: t("stats.desktop.insightTitleFocus"),
+      body: t("stats.desktop.insightBodyFocus", {
+        minutes: Math.round(report.summary.longestSessionTime),
+      }),
+    };
   }
   if (insight.id === "top-book") {
-    return { ...insight, title: t("stats.desktop.insightTitleTopBook"), body: t("stats.desktop.insightBodyTopBook", { title: report.topBooks[0]?.title ?? "—" }) };
+    return {
+      ...insight,
+      title: t("stats.desktop.insightTitleTopBook"),
+      body: t("stats.desktop.insightBodyTopBook", { title: report.topBooks[0]?.title ?? "—" }),
+    };
   }
   if (insight.id === "joined" && report.dimension === "lifetime") {
-    return { ...insight, title: t("stats.desktop.milestoneTitleJoined"), body: t("stats.desktop.milestoneBodyJoined", { date: formatDateLabel(report.context.joinedSince, isZh) }) };
+    return {
+      ...insight,
+      title: t("stats.desktop.milestoneTitleJoined"),
+      body: t("stats.desktop.milestoneBodyJoined", {
+        date: formatDateLabel(report.context.joinedSince, isZh),
+      }),
+    };
   }
   return insight;
 }

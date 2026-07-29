@@ -129,13 +129,6 @@ export default function App() {
         console.log("[App] bootstrap: register platform service");
         const platform = new ExpoPlatformService();
         setPlatformService(platform);
-        setNarraDirectFetch(
-          ((input: RequestInfo | URL, init?: RequestInit) =>
-            platform.fetch(
-              typeof input === "string" ? input : input.toString(),
-              { ...init, responseType: "text", timeoutMs: 60_000 },
-            )) as typeof globalThis.fetch,
-        );
 
         console.log("[App] bootstrap: register sync adapter");
         setSyncAdapter(new MobileSyncAdapter());
@@ -155,6 +148,7 @@ export default function App() {
 
         console.log("[App] bootstrap: import expo/fetch");
         const { fetch: expoFetch } = await import("expo/fetch");
+        setNarraDirectFetch(expoFetch as typeof globalThis.fetch);
         setStreamingFetch(createNarraGatewayFetch(expoFetch as typeof globalThis.fetch));
 
         console.log("[App] bootstrap: configure audio mode");

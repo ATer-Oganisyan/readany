@@ -1,5 +1,6 @@
 import { ChevronLeftIcon, SparklesIcon } from "@/components/ui/Icon";
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
+import { reportNarraError } from "@/lib/narra/errors";
 import { generateSceneImage } from "@/lib/narra/media";
 import { synthesizeNarraSpeech } from "@/lib/narra/media";
 import type { NarraScenarioSegment } from "@/lib/narra/types";
@@ -126,7 +127,7 @@ export function NarraMomentScreen({ route, navigation }: Props) {
       }
     } catch (error) {
       if (!cancelledRef.current) {
-        Alert.alert("Не удалось озвучить сцену", error instanceof Error ? error.message : String(error));
+        Alert.alert("Не удалось озвучить сцену", reportNarraError("scene_speech", error).message);
       }
     } finally {
       setBusy(null);
@@ -163,7 +164,7 @@ export function NarraMomentScreen({ route, navigation }: Props) {
       setLocalSummary(value);
       setSummary(bookId, chapter, value);
     } catch (error) {
-      Alert.alert("Не удалось сделать саммари", error instanceof Error ? error.message : String(error));
+      Alert.alert("Не удалось сделать саммари", reportNarraError("scene_summary", error).message);
     } finally {
       setBusy(null);
     }
@@ -174,7 +175,7 @@ export function NarraMomentScreen({ route, navigation }: Props) {
     try {
       setImageUri(await generateSceneImage(bookId, chapter, excerpt));
     } catch (error) {
-      Alert.alert("Не удалось создать сцену", error instanceof Error ? error.message : String(error));
+      Alert.alert("Не удалось создать сцену", reportNarraError("scene_image", error).message);
     } finally {
       setBusy(null);
     }

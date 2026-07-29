@@ -2,10 +2,27 @@ import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
 import { useNarraStore } from "@/stores/narra-store";
 import { getChunks } from "@readany/core/db/database";
 import type { Book } from "@readany/core/types";
+import { NarraServiceError, normalizeNarraError, reportNarraError } from "./errors";
 import type { NarraCharacter, NarraGender, NarraPassport } from "./types";
 
 const MALE_VOICES = ["She", "Ast", "Gal", "Bez", "Ego", "Izv"];
 const FEMALE_VOICES = ["Che", "Erm", "Ste", "Tso", "Chr"];
+const MAX_ANALYSIS_TEXT_LENGTH = 48_000;
+
+function analysisExcerpt(text: string): string {
+  const normalized = text.trim();
+  if (normalized.length <= MAX_ANALYSIS_TEXT_LENGTH) return normalized;
+
+  // Sample the beginning, middle, and end so long novels stay within the
+  // gateway's 60k per-message limit without losing later major characters.
+  const sectionLength = Math.floor(MAX_ANALYSIS_TEXT_LENGTH / 3);
+  const middleStart = Math.max(0, Math.floor(normalized.length / 2 - sectionLength / 2));
+  return [
+    normalized.slice(0, sectionLength),
+    normalized.slice(middleStart, middleStart + sectionLength),
+    normalized.slice(-sectionLength),
+  ].join("\n\n[…]\n\n");
+}
 
 function parseJsonObject(text: string): Record<string, unknown> {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1];
@@ -14,6 +31,34 @@ function parseJsonObject(text: string): Record<string, unknown> {
   const end = source.lastIndexOf("}");
   if (start < 0 || end <= start) throw new Error("AI не вернул описание персонажей");
   return JSON.parse(source.slice(start, end + 1)) as Record<string, unknown>;
+}
+
+function parseStreamText(body: string): string {
+  let output = "";
+  let finishReason = "";
+  for (const line of body.split(/\r?\n/)) {
+    if (!line.startsWith("data:")) continue;
+    const data = line.slice(5).trim();
+    if (!data || data === "[DONE]") continue;
+    try {
+      const event = JSON.parse(data) as {
+        choices?: Array<{
+          delta?: { content?: string };
+          text?: string;
+          finish_reason?: string;
+        }>;
+      };
+      output += event.choices?.[0]?.delta?.content || event.choices?.[0]?.text || "";
+      finishReason = event.choices?.[0]?.finish_reason || finishReason;
+    } catch {
+      // Ignore SSE comments and provider metadata that are not completion chunks.
+    }
+  }
+  console.log("[NarraAnalysis] stream completed", {
+    outputLength: output.length,
+    finishReason: finishReason || "unknown",
+  });
+  return output;
 }
 
 function slug(value: string, index: number) {
@@ -48,8 +93,7 @@ function normalizeCharacters(payload: Record<string, unknown>): NarraCharacter[]
     const fullName = String(raw.fullName || raw.name || "").trim();
     if (!fullName) return [];
     const name = String(raw.name || fullName.split(/\s+/)[0]).trim();
-    const gender: NarraGender =
-      raw.gender === "female" || /[ая]$/i.test(name) ? "female" : "male";
+    const gender: NarraGender = raw.gender === "female" || /[ая]$/i.test(name) ? "female" : "male";
     const passport = normalizePassport(raw.passport, gender);
     const voice =
       gender === "female"
@@ -88,25 +132,24 @@ export async function analyzeBookCharacters(
   store.setAnalysisError(book.id);
   try {
     const chunks = await getChunks(book.id);
-    const excerpt = (
+    const extractedContent =
       extractedText ||
       chunks
         .slice(0, 28)
         .map((chunk) => `${chunk.chapterTitle}\n${chunk.content}`)
-        .join("\n\n")
-    ).slice(0, 100_000);
+        .join("\n\n");
+    const excerpt = analysisExcerpt(extractedContent);
     if (!excerpt.trim()) throw new Error("В книге не удалось извлечь текст для анализа");
     const messages = [
       {
         role: "system",
         content:
-          "Ты анализируешь художественную книгу для Narra. Выдели до 8 главных персонажей. " +
-          "Верни только JSON: {\"characters\":[{\"id\":\"latin-slug\",\"name\":\"короткое имя\"," +
-          "\"fullName\":\"полное имя\",\"role\":\"роль\",\"gender\":\"male|female\"," +
-          "\"traits\":[\"черта\"],\"speechStyle\":\"манера речи\",\"speechExamples\":[\"пример\"]," +
-          "\"appearancePrompt\":\"внешность\",\"passport\":{\"age\":30,\"build\":\"\"," +
-          "\"hair\":\"\",\"eyes\":\"\",\"face\":\"\",\"outfit\":\"\"},\"expression\":\"\"," +
-          "\"unlockProgress\":0.0,\"greeting\":\"реплика от первого лица\",\"isNarrator\":false}]}. " +
+          "Ты анализируешь художественную книгу для Narra. Выдели до 6 главных персонажей. " +
+          'Верни только JSON: {"characters":[{"id":"latin-slug","name":"короткое имя",' +
+          '"fullName":"полное имя","role":"роль","gender":"male|female",' +
+          '"traits":["до 3 черт"],"speechStyle":"краткая манера речи",' +
+          '"appearancePrompt":"краткое описание внешности и одежды",' +
+          '"unlockProgress":0.0}]}. ' +
           "unlockProgress — доля книги первого значимого появления от 0 до 0.95. Всё текстовое — по-русски.",
       },
       {
@@ -114,7 +157,7 @@ export async function analyzeBookCharacters(
         content: `Книга «${book.meta.title}», автор ${book.meta.author || "неизвестен"}.\n\n${excerpt}`,
       },
     ];
-    const response = await narraGatewayRequest("/v2/ai/chat/complete", {
+    const response = await narraGatewayRequest("/v2/ai/chat/stream", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -126,18 +169,21 @@ export async function analyzeBookCharacters(
       }),
     });
     if (!response.ok) {
-      const error = (await response.json().catch(() => null)) as { error?: string } | null;
-      throw new Error(error?.error || `Ошибка AI (${response.status})`);
+      const error = (await response.json().catch(() => null)) as {
+        code?: string;
+        request_id?: string;
+      } | null;
+      const normalized = normalizeNarraError(error?.code || `HTTP ${response.status}`);
+      throw new NarraServiceError(normalized.code, normalized.message, error?.request_id);
     }
-    const result = (await response.json()) as { text?: string };
-    const characters = normalizeCharacters(parseJsonObject(result.text || ""));
+    const characters = normalizeCharacters(parseJsonObject(parseStreamText(await response.text())));
     if (characters.length === 0) throw new Error("Narra не нашла персонажей в книге");
     store.setCharacters(book.id, characters);
     return characters;
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    store.setAnalysisError(book.id, message);
-    throw error;
+    const normalized = reportNarraError("character_analysis", error);
+    store.setAnalysisError(book.id, normalized.message);
+    throw normalized;
   } finally {
     store.setAnalyzing(null);
   }

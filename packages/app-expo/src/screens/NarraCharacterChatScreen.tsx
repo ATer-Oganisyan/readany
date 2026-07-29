@@ -1,5 +1,6 @@
 import { ChevronLeftIcon, SendIcon, Trash2Icon, Volume2Icon } from "@/components/ui/Icon";
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
+import { reportNarraError } from "@/lib/narra/errors";
 import { synthesizeNarraSpeech } from "@/lib/narra/media";
 import type { NarraCharacter, NarraChatMessage } from "@/lib/narra/types";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
@@ -129,7 +130,7 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
       });
     } catch (error) {
       setSpeakingId(null);
-      Alert.alert("Не удалось озвучить ответ", error instanceof Error ? error.message : String(error));
+      Alert.alert("Не удалось озвучить ответ", reportNarraError("character_speech", error).message);
     }
   };
 
@@ -213,7 +214,7 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
       append(bookId, characterId, assistantMessage);
       void refreshMemory([...messages, userMessage, assistantMessage]);
     } catch (error) {
-      Alert.alert("Не удалось получить ответ", error instanceof Error ? error.message : String(error));
+      Alert.alert("Не удалось получить ответ", reportNarraError("character_chat", error).message);
     } finally {
       setSending(false);
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);

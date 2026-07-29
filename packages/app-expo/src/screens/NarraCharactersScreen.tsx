@@ -2,6 +2,7 @@ import { NarraLogo } from "@/components/NarraLogo";
 import { type ExtractorRef, ExtractorWebView } from "@/components/rag/ExtractorWebView";
 import { ChevronLeftIcon, MessageSquareIcon, SparklesIcon } from "@/components/ui/Icon";
 import { analyzeBookCharacters } from "@/lib/narra/character-analysis";
+import { reportNarraError } from "@/lib/narra/errors";
 import { generateCharacterPortrait } from "@/lib/narra/media";
 import { inspectMobileBookForVectorize } from "@/lib/rag/auto-vectorize-book";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
@@ -59,7 +60,12 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
       setAnalysisStage("Ищу героев…");
       await analyzeBookCharacters(book, extractedText);
     } catch (error) {
-      Alert.alert("Не удалось найти персонажей", error instanceof Error ? error.message : String(error));
+      const message =
+        error instanceof Error ? error.message : "Narra не смогла выполнить запрос. Попробуйте ещё раз.";
+      Alert.alert("Не удалось найти персонажей", message, [
+        { text: "Отмена", style: "cancel" },
+        { text: "Повторить", onPress: () => void analyze() },
+      ]);
     } finally {
       setAnalysisStage("");
     }
@@ -71,7 +77,11 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
       const portraitUri = await generateCharacterPortrait(bookId, character);
       updateCharacter(bookId, character.id, { portraitUri });
     } catch (error) {
-      Alert.alert("Не удалось создать портрет", error instanceof Error ? error.message : String(error));
+      const normalized = reportNarraError("character_portrait", error);
+      Alert.alert("Не удалось создать портрет", normalized.message, [
+        { text: "Отмена", style: "cancel" },
+        { text: "Повторить", onPress: () => void createPortrait(character) },
+      ]);
     } finally {
       setPortraitLoading(null);
     }

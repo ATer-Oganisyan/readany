@@ -380,6 +380,7 @@ export function ProfileScreen({
     [overall, dailyStats, currentSession],
   );
   const isZh = i18n.language.startsWith("zh");
+  const isRu = i18n.language.startsWith("ru");
   const handleClearCache = useCallback(() => {
     Alert.alert(
       t("profile.clearCacheTitle", "清除缓存"),
@@ -489,11 +490,11 @@ export function ProfileScreen({
 
   const booksRead = liveOverall?.totalBooks ?? 0;
   const totalTime = liveOverall
-    ? formatTimeLocalized(liveOverall.totalReadingTime, isZh)
-    : formatTimeLocalized(0, isZh);
+    ? formatTimeLocalized(liveOverall.totalReadingTime, isZh, isRu)
+    : formatTimeLocalized(0, isZh, isRu);
   const totalCharacters = liveOverall
-    ? formatCharacterCount(liveOverall.totalCharactersRead ?? 0, isZh)
-    : formatCharacterCount(0, isZh);
+    ? formatCharacterCount(liveOverall.totalCharactersRead ?? 0, isZh, isRu)
+    : formatCharacterCount(0, isZh, isRu);
   const streak = liveOverall?.currentStreak ?? 0;
   const overviewCards = [
     {
@@ -541,109 +542,118 @@ export function ProfileScreen({
         showsVerticalScrollIndicator={false}
       >
         {/* Stats cards */}
-        {section !== "settings" && <View style={s.statsSection}>
-          {statsLoading ? (
-            <View style={s.statsLoading}>
-              <ActivityIndicator size="small" color={colors.mutedForeground} />
-            </View>
-          ) : (
-            <View style={s.statsGrid}>
-              {overviewCards.map((card) => (
-                <View
-                  key={card.key}
-                  style={{
-                    width: statCardSlotWidth,
-                    paddingHorizontal: 6,
-                    paddingBottom: 12,
-                  }}
-                >
-                  <StatCard
-                    icon={card.icon}
-                    title={card.title}
-                    value={card.value}
-                    unit={card.unit}
-                    onPress={() => nav.navigate("Stats")}
-                    style={{ width: "100%" }}
-                  />
-                </View>
-              ))}
-            </View>
-          )}
-        </View>}
+        {section !== "settings" && (
+          <View style={s.statsSection}>
+            {statsLoading ? (
+              <View style={s.statsLoading}>
+                <ActivityIndicator size="small" color={colors.mutedForeground} />
+              </View>
+            ) : (
+              <View style={s.statsGrid}>
+                {overviewCards.map((card) => (
+                  <View
+                    key={card.key}
+                    style={{
+                      width: statCardSlotWidth,
+                      paddingHorizontal: 6,
+                      paddingBottom: 12,
+                    }}
+                  >
+                    <StatCard
+                      icon={card.icon}
+                      title={card.title}
+                      value={card.value}
+                      unit={card.unit}
+                      onPress={() => nav.navigate("Stats")}
+                      style={{ width: "100%" }}
+                    />
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
 
         {/* Compact heatmap */}
-        {section !== "settings" && <View style={s.heatmapSection}>
-          <View style={s.heatmapHeader}>
-            <Text style={s.heatmapTitle} numberOfLines={1} maxFontSizeMultiplier={1.5}>
-              {t("profile.readingActivity", "阅读活动")}
-            </Text>
-            <TouchableOpacity style={s.heatmapDetailBtn} onPress={() => nav.navigate("Stats")}>
-              <BarChart3Icon size={14} color={colors.primary} />
-              <Text style={s.heatmapDetailText} numberOfLines={1} maxFontSizeMultiplier={1.4}>
-                {t("profile.viewDetails", "查看详情")}
+        {section !== "settings" && (
+          <View style={s.heatmapSection}>
+            <View style={s.heatmapHeader}>
+              <Text style={s.heatmapTitle} numberOfLines={1} maxFontSizeMultiplier={1.5}>
+                {t("profile.readingActivity", "阅读活动")}
               </Text>
-            </TouchableOpacity>
+              <TouchableOpacity style={s.heatmapDetailBtn} onPress={() => nav.navigate("Stats")}>
+                <BarChart3Icon size={14} color={colors.primary} />
+                <Text style={s.heatmapDetailText} numberOfLines={1} maxFontSizeMultiplier={1.4}>
+                  {t("profile.viewDetails", "查看详情")}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <MiniHeatmap dailyStats={liveDailyStats} />
           </View>
-          <MiniHeatmap dailyStats={liveDailyStats} />
-        </View>}
+        )}
 
         {/* Settings menu */}
-        {section !== "journey" && menuSections.map((menuSection) => (
-          <View key={menuSection.title} style={s.menuSection}>
-            <Text style={s.menuSectionTitle} maxFontSizeMultiplier={1.5}>
-              {menuSection.title}
-            </Text>
-            <View style={s.menuCard}>
-              {menuSection.items.map((item, idx) => {
-                const Icon = item.icon;
-                const itemKey =
-                  "route" in item ? item.route : "url" in item ? item.url : item.label;
-                const handlePress = () => {
-                  if ("disabled" in item && item.disabled) {
-                    return;
-                  }
-                  if ("action" in item && item.action) {
-                    item.action();
-                  } else if ("url" in item && item.url) {
-                    Linking.openURL(item.url);
-                  } else if ("route" in item) {
-                    nav.navigate(item.route);
-                  }
-                };
-                return (
-                  <TouchableOpacity
-                    key={itemKey}
-                    style={[s.menuItem, idx < menuSection.items.length - 1 && s.menuItemBorder]}
-                    onPress={handlePress}
-                    disabled={"disabled" in item && item.disabled}
-                    activeOpacity={0.7}
-                  >
-                    <Icon size={20} color={colors.mutedForeground} />
-                    <Text style={s.menuItemLabel} maxFontSizeMultiplier={1.7}>
-                      {item.label}
-                    </Text>
-                    {"showDot" in item && item.showDot ? <View style={s.menuItemDot} /> : null}
-                    <ChevronRightIcon size={16} color={colors.mutedForeground} />
-                  </TouchableOpacity>
-                );
-              })}
+        {section !== "journey" &&
+          menuSections.map((menuSection) => (
+            <View key={menuSection.title} style={s.menuSection}>
+              <Text style={s.menuSectionTitle} maxFontSizeMultiplier={1.5}>
+                {menuSection.title}
+              </Text>
+              <View style={s.menuCard}>
+                {menuSection.items.map((item, idx) => {
+                  const Icon = item.icon;
+                  const itemKey =
+                    "route" in item ? item.route : "url" in item ? item.url : item.label;
+                  const handlePress = () => {
+                    if ("disabled" in item && item.disabled) {
+                      return;
+                    }
+                    if ("action" in item && item.action) {
+                      item.action();
+                    } else if ("url" in item && item.url) {
+                      Linking.openURL(item.url);
+                    } else if ("route" in item) {
+                      nav.navigate(item.route);
+                    }
+                  };
+                  return (
+                    <TouchableOpacity
+                      key={itemKey}
+                      style={[s.menuItem, idx < menuSection.items.length - 1 && s.menuItemBorder]}
+                      onPress={handlePress}
+                      disabled={"disabled" in item && item.disabled}
+                      activeOpacity={0.7}
+                    >
+                      <Icon size={20} color={colors.mutedForeground} />
+                      <Text style={s.menuItemLabel} maxFontSizeMultiplier={1.7}>
+                        {item.label}
+                      </Text>
+                      {"showDot" in item && item.showDot ? <View style={s.menuItemDot} /> : null}
+                      <ChevronRightIcon size={16} color={colors.mutedForeground} />
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             </View>
-          </View>
-        ))}
+          ))}
 
         {/* Version */}
-        {section !== "journey" && <Text style={s.version} maxFontSizeMultiplier={1.4}>
-          {t("profile.version", { version: Constants.expoConfig?.version ?? "1.0.0" })}
-        </Text>}
-        {section !== "journey" && <TouchableOpacity
-          style={s.icpLink}
-          onPress={() => Linking.openURL(ICP_URL)}
-          activeOpacity={0.7}
-        >
-          <Text style={s.icpText} maxFontSizeMultiplier={1.4}>
-            {ICP_NUMBER}
+        {section !== "journey" && (
+          <Text style={s.version} maxFontSizeMultiplier={1.4}>
+            {t("profile.version", { version: Constants.expoConfig?.version ?? "1.0.0" })}
           </Text>
-        </TouchableOpacity>}
+        )}
+        {section !== "journey" && (
+          <TouchableOpacity
+            style={s.icpLink}
+            onPress={() => Linking.openURL(ICP_URL)}
+            activeOpacity={0.7}
+          >
+            <Text style={s.icpText} maxFontSizeMultiplier={1.4}>
+              {ICP_NUMBER}
+            </Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
