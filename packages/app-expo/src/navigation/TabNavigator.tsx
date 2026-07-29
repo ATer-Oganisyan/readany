@@ -92,6 +92,12 @@ export function TabNavigator() {
           tabBarIcon: tabIcon("book.closed.fill", ANDROID_ICONS.Library),
           ...(Platform.OS === "ios"
             ? {
+                headerLargeTitleEnabled: true,
+                headerLargeTitleShadowVisible: false,
+                headerLargeTitleStyle: {
+                  color: colors.foreground,
+                  fontFamily: titleFontFamily,
+                },
                 unstable_headerLeftItems: () => [
                   {
                     type: "button" as const,

@@ -894,8 +894,6 @@ export function LibraryScreen() {
 
   return (
     <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={[]}>
-      <ExtractorWebView ref={extractorRef} />
-
       {/* Header */}
       {(Platform.OS !== "ios" || hasBooks || selectionMode) && (
         <View style={[s.header, { zIndex: 20 }]}>
@@ -1191,6 +1189,8 @@ export function LibraryScreen() {
             <FlatList
               data={gridItems}
               renderItem={renderGridItem}
+              contentInsetAdjustmentBehavior="automatic"
+              alwaysBounceVertical
               extraData={{ vectorProgress, vectorizingBookId }}
               keyExtractor={(item) =>
                 item.type === "group" ? `group-${item.group.id}` : item.book.id
@@ -1283,6 +1283,7 @@ export function LibraryScreen() {
         onCreateGroup={handleGroupPickerCreate}
         onClose={() => setShowGroupPicker(false)}
       />
+      <ExtractorWebView ref={extractorRef} />
     </SafeAreaView>
   );
 }
