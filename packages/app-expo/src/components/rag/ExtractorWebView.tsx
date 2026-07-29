@@ -6,6 +6,7 @@ import { WebView } from "react-native-webview";
 
 const READER_HTML_ASSET = Asset.fromModule(require("../../../assets/reader/reader.html"));
 const EXTRACTION_TIMEOUT_MS = 45_000;
+const EXTRACTOR_READY_TIMEOUT_MS = 12_000;
 
 const EXTRACTOR_EXTENSIONS_BY_MIME: Record<string, string> = {
   "application/epub+zip": "epub",
@@ -40,13 +41,15 @@ interface PendingExtraction {
 export const ExtractorWebView = forwardRef<ExtractorRef>((_, ref) => {
   const webViewRef = useRef<WebView>(null);
   const [htmlUri, setHtmlUri] = useState<string | null>(null);
-  const [ready, setReady] = useState(false);
+  const readyRef = useRef(false);
+  const mountedRef = useRef(true);
 
   // Pending extraction requests
   const pendingRequests = useRef<PendingExtraction[]>([]);
 
   useEffect(() => {
     return () => {
+      mountedRef.current = false;
       for (const pending of pendingRequests.current) {
         clearTimeout(pending.timeoutId);
         pending.reject(new Error("Extractor WebView unmounted"));
@@ -74,7 +77,7 @@ export const ExtractorWebView = forwardRef<ExtractorRef>((_, ref) => {
     try {
       const msg = JSON.parse(event.nativeEvent.data);
       if (msg.type === "ready") {
-        setReady(true);
+        readyRef.current = true;
       } else if (msg.type === "loaded") {
         // Trigger extraction once the book is fully loaded
         webViewRef.current?.injectJavaScript(`
@@ -111,10 +114,19 @@ export const ExtractorWebView = forwardRef<ExtractorRef>((_, ref) => {
   }, []);
 
   useImperativeHandle(ref, () => ({
-    extractChapters: (base64BookData: string, mimeType = "application/epub+zip") => {
+    extractChapters: async (base64BookData: string, mimeType = "application/epub+zip") => {
+      const readyDeadline = Date.now() + EXTRACTOR_READY_TIMEOUT_MS;
+      while (
+        mountedRef.current &&
+        (!readyRef.current || !webViewRef.current) &&
+        Date.now() < readyDeadline
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+
       return new Promise<ChapterData[]>((resolve, reject) => {
-        if (!ready || !webViewRef.current) {
-          return reject(new Error("Extractor WebView not ready"));
+        if (!mountedRef.current || !readyRef.current || !webViewRef.current) {
+          return reject(new Error("Extractor initialization timed out"));
         }
 
         const timeoutId = setTimeout(() => {

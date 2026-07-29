@@ -239,6 +239,11 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
             <TouchableOpacity style={styles.refreshButton} onPress={() => void analyze()}>
               <Text style={{ color: colors.mutedForeground }}>Проанализировать заново</Text>
             </TouchableOpacity>
+            {analysisFailure || bookState?.analysisError ? (
+              <Text style={[styles.error, { color: colors.destructive }]}>
+                {analysisFailure || bookState?.analysisError}
+              </Text>
+            ) : null}
           </>
         )}
       </ScrollView>

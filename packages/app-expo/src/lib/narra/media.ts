@@ -13,6 +13,9 @@ function safeKey(value: string) {
   return value.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 160);
 }
 
+// TODO(narra): Replace the long-lived synchronous image request with an async job flow:
+// POST returns a jobId, the client polls its status, persists the pending job, and resumes it
+// after navigation or an app restart. This avoids gateway/client timeouts during generation.
 export async function generateCharacterPortrait(
   bookId: string,
   character: NarraCharacter,
