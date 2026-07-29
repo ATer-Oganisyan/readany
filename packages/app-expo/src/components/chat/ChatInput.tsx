@@ -1,4 +1,3 @@
-import { Text, TextInput, type TextInputHandle } from "@/components/ui/Typography";
 import {
   BrainIcon,
   ChevronDownIcon,
@@ -7,9 +6,11 @@ import {
   StopCircleIcon,
   XIcon,
 } from "@/components/ui/Icon";
+import { Text, TextInput, type TextInputHandle } from "@/components/ui/Typography";
 import { useKeyboardInsets } from "@/hooks/use-keyboard-insets";
 import { fontSize as fs, radius, useColors, withOpacity } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
+import { useFocusEffect } from "@react-navigation/native";
 import type { AttachedQuote } from "@readany/core/types";
 /**
  * ChatInput — touch-optimized chat input matching app-mobile MobileChatInput.
@@ -39,6 +40,7 @@ interface ChatInputProps {
   onRemoveQuote?: (id: string) => void;
   placeholder?: string;
   keyboardBottomOffset?: number;
+  autoFocusOnScreenFocus?: boolean;
 }
 
 const SINGLE_LINE_INPUT_HEIGHT = 46;
@@ -53,6 +55,7 @@ export function ChatInput({
   onRemoveQuote,
   placeholder,
   keyboardBottomOffset = 0,
+  autoFocusOnScreenFocus = false,
 }: ChatInputProps) {
   const [text, setText] = useState("");
   const [deepThinking, setDeepThinking] = useState(false);
@@ -71,6 +74,15 @@ export function ChatInput({
   const bottomPadding = keyboardInsets.isVisible
     ? visibleKeyboardPadding
     : Math.max(4, Math.min(keyboardInsets.safeAreaBottom, 8));
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!autoFocusOnScreenFocus) return;
+
+      const frame = requestAnimationFrame(() => inputRef.current?.focus());
+      return () => cancelAnimationFrame(frame);
+    }, [autoFocusOnScreenFocus]),
+  );
 
   const handleSend = useCallback(() => {
     const trimmed = text.trim();

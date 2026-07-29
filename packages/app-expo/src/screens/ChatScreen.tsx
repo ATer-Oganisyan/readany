@@ -13,6 +13,7 @@ import { useTranslation } from "react-i18next";
 import {
   Animated,
   Keyboard,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -57,7 +58,12 @@ export function ChatScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   useEffect(() => {
-    navigation.setOptions({ title: "Narra AI" });
+    navigation.setOptions({
+      title: "Narra AI",
+      ...(Platform.OS === "ios"
+        ? { tabBarIcon: { type: "sfSymbol", name: "message" } }
+        : undefined),
+    } as never);
   }, [navigation]);
   const layout = useResponsiveLayout();
   const isTabletLandscape = layout.isTabletLandscape;
@@ -353,6 +359,7 @@ export function ChatScreen() {
               onStop={stopStream}
               isStreaming={isStreaming}
               keyboardBottomOffset={insets.bottom}
+              autoFocusOnScreenFocus
             />
           </View>
         </View>
