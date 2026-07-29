@@ -1,11 +1,15 @@
 import {
+  type NativeNoteListItem,
+  type NativeNoteListSection,
+  NativeNotesList,
+} from "@/components/notes/NativeNotesList";
+import {
   BookOpenIcon,
   ChevronLeftIcon,
   HighlighterIcon,
   NotebookPenIcon,
   SearchIcon,
   ShareIcon,
-  XIcon,
 } from "@/components/ui/Icon";
 import { Text, TextInput } from "@/components/ui/Typography";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
@@ -20,33 +24,68 @@ import { AnnotationExporter, type ExportFormat } from "@readany/core/export";
 import { sortAnnotationsByPosition } from "@readany/core/reader";
 import type { Highlight } from "@readany/core/types";
 import { eventBus } from "@readany/core/utils/event-bus";
-/**
- * NotesScreen — matching Tauri mobile NotesPage exactly.
- * Features: stats header, book notebooks list with covers, detail view with
- * highlights/notes tabs, chapter grouping, color dots, edit/delete, export, search.
- */
-import { useCallback, useEffect, useMemo, useState } from "react";
+/** Notes list plus the existing per-book annotation detail view. */
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  Alert,
-  FlatList,
-  Image,
-  Modal,
-  Pressable,
-  ScrollView,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { Alert, Image, Modal, Pressable, ScrollView, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { HighlightCard } from "./notes/HighlightCard";
 import { NoteCard } from "./notes/NoteCard";
-import { NotebookCard } from "./notes/NotebookCard";
 import { makeStyles } from "./notes/notes-styles";
 import { useResolvedCovers } from "./notes/useResolvedCovers";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type DetailTab = "notes" | "highlights";
+
+const DAY_MS = 24 * 60 * 60 * 1_000;
+
+function startOfDay(date: Date) {
+  const result = new Date(date);
+  result.setHours(0, 0, 0, 0);
+  return result.getTime();
+}
+
+function cleanNoteText(value: string) {
+  return value
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+    .replace(/\*\*|__|~~|`/g, "")
+    .replace(/^\s*[-*+]\s+/gm, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function noteListItem(highlight: HighlightWithBook): NativeNoteListItem {
+  const rawLines = (highlight.note || "")
+    .split(/\r?\n/)
+    .map((line) => cleanNoteText(line))
+    .filter(Boolean);
+  const title = rawLines[0] || "Заметка";
+  const noteBody = cleanNoteText(rawLines.slice(1).join(" "));
+  const quote = cleanNoteText(highlight.text || "");
+  const timestamp = highlight.updatedAt || highlight.createdAt;
+  const date = new Date(timestamp);
+  const today = startOfDay(new Date());
+  const dateStart = startOfDay(date);
+  const dateLabel =
+    dateStart === today
+      ? new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit" }).format(date)
+      : dateStart === today - DAY_MS
+        ? "Вчера"
+        : new Intl.DateTimeFormat("ru-RU", {
+            day: "numeric",
+            month: "short",
+            ...(date.getFullYear() === new Date().getFullYear() ? {} : { year: "numeric" }),
+          }).format(date);
+
+  return {
+    id: highlight.id,
+    title,
+    preview: noteBody || quote,
+    dateLabel,
+    bookTitle: highlight.bookTitle || "Книга",
+  };
+}
 
 export function NotesView({
   initialBookId,
@@ -64,19 +103,12 @@ export function NotesView({
   const nativeHeaderHeight = useHeaderHeight();
   const { t } = useTranslation();
   const nav = useNavigation<Nav>();
-  const {
-    highlightsWithBooks,
-    loadAllHighlightsWithBooks,
-    removeHighlight,
-    updateHighlight,
-    stats,
-    loadStats,
-  } = useAnnotationStore();
+  const { highlightsWithBooks, loadAllHighlightsWithBooks, removeHighlight, updateHighlight } =
+    useAnnotationStore();
   const books = useLibraryStore((s) => s.books);
 
   const [selectedBookId, setSelectedBookId] = useState<string | null>(initialBookId || null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [showSearch, setShowSearch] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [detailTab, setDetailTab] = useState<DetailTab>("notes");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -86,26 +118,41 @@ export function NotesView({
   useFocusEffect(
     useCallback(() => {
       setIsLoading(true);
-      Promise.all([loadAllHighlightsWithBooks(500), loadStats()]).finally(() =>
-        setIsLoading(false),
-      );
+      loadAllHighlightsWithBooks(500).finally(() => setIsLoading(false));
 
       return () => {
         setSelectedBookId(null);
         setEditingId(null);
         setSearchQuery("");
       };
-    }, [loadAllHighlightsWithBooks, loadStats]),
+    }, [loadAllHighlightsWithBooks]),
   );
 
   useEffect(() => {
     return eventBus.on("sync:completed", () => {
       setIsLoading(true);
-      Promise.all([loadAllHighlightsWithBooks(500), loadStats()]).finally(() =>
-        setIsLoading(false),
-      );
+      loadAllHighlightsWithBooks(500).finally(() => setIsLoading(false));
     });
-  }, [loadAllHighlightsWithBooks, loadStats]);
+  }, [loadAllHighlightsWithBooks]);
+
+  useLayoutEffect(() => {
+    nav.setOptions(
+      selectedBookId
+        ? { headerSearchBarOptions: undefined }
+        : {
+            headerSearchBarOptions: {
+              placeholder: "Поиск",
+              hideWhenScrolling: true,
+              placement: "stacked",
+              tintColor: colors.primary,
+              onChangeText: (event) => setSearchQuery(event.nativeEvent.text),
+              onCancelButtonPress: () => setSearchQuery(""),
+            },
+          },
+    );
+
+    return () => nav.setOptions({ headerSearchBarOptions: undefined });
+  }, [colors.primary, nav, selectedBookId]);
 
   // Handle incoming bookId
   useEffect(() => {
@@ -185,6 +232,48 @@ export function NotesView({
   }, [selectedBook, searchQuery]);
 
   const currentList = detailTab === "notes" ? notesList : highlightsList;
+
+  const allNotes = useMemo(
+    () =>
+      highlightsWithBooks
+        .filter((highlight) => Boolean(highlight.note?.trim()))
+        .sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt)),
+    [highlightsWithBooks],
+  );
+
+  const filteredNotes = useMemo(() => {
+    const query = searchQuery.trim().toLocaleLowerCase("ru-RU");
+    if (!query) return allNotes;
+
+    return allNotes.filter((highlight) =>
+      [highlight.note, highlight.text, highlight.bookTitle, highlight.chapterTitle]
+        .filter(Boolean)
+        .some((value) => value?.toLocaleLowerCase("ru-RU").includes(query)),
+    );
+  }, [allNotes, searchQuery]);
+
+  const noteSections = useMemo<NativeNoteListSection[]>(() => {
+    const today = startOfDay(new Date());
+    const buckets: Array<{ title: string; from: number; to: number }> = [
+      { title: "Сегодня", from: today, to: Number.POSITIVE_INFINITY },
+      { title: "Вчера", from: today - DAY_MS, to: today },
+      { title: "За последние 7 дней", from: today - 7 * DAY_MS, to: today - DAY_MS },
+      { title: "За последние 30 дней", from: today - 30 * DAY_MS, to: today - 7 * DAY_MS },
+      { title: "Раньше", from: Number.NEGATIVE_INFINITY, to: today - 30 * DAY_MS },
+    ];
+
+    return buckets
+      .map((bucket) => ({
+        title: bucket.title,
+        data: filteredNotes
+          .filter((highlight) => {
+            const timestamp = highlight.updatedAt || highlight.createdAt;
+            return timestamp >= bucket.from && timestamp < bucket.to;
+          })
+          .map(noteListItem),
+      }))
+      .filter((section) => section.data.length > 0);
+  }, [filteredNotes]);
 
   // Group by chapter
   const itemsByChapter = useMemo(() => {
@@ -291,10 +380,6 @@ export function NotesView({
     [selectedBook, books, t],
   );
 
-  const totalHighlights = stats?.totalHighlights ?? 0;
-  const totalNotes = stats?.highlightsWithNotes ?? 0;
-  const totalBooks = stats?.totalBooks ?? 0;
-
   // Loading
   if (isLoading) {
     return (
@@ -308,7 +393,7 @@ export function NotesView({
   }
 
   // Empty
-  if (bookNotebooks.length === 0) {
+  if (!selectedBookId && allNotes.length === 0) {
     return (
       <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={edges}>
         <View style={[s.emptyWrap, { transform: [{ translateY: -nativeHeaderHeight / 2 }] }]}>
@@ -498,84 +583,24 @@ export function NotesView({
   // Main list view
   return (
     <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={edges}>
-      <View style={s.header}>
-        <View style={s.headerRow}>
-          <View />
-          {bookNotebooks.length > 0 && (
-            <TouchableOpacity
-              style={s.searchToggle}
-              onPress={() => {
-                setShowSearch(!showSearch);
-                if (showSearch) setSearchQuery("");
-              }}
-            >
-              {showSearch ? (
-                <XIcon size={18} color={colors.mutedForeground} />
-              ) : (
-                <SearchIcon size={18} color={colors.mutedForeground} />
-              )}
-            </TouchableOpacity>
-          )}
+      {noteSections.length > 0 ? (
+        <NativeNotesList
+          sections={noteSections}
+          onPress={(id) => {
+            const note = allNotes.find((item) => item.id === id);
+            if (!note) return;
+            setSelectedBookId(note.bookId);
+            setSearchQuery("");
+            setEditingId(null);
+            setDetailTab("notes");
+          }}
+        />
+      ) : (
+        <View style={[s.emptyWrap, { transform: [{ translateY: -nativeHeaderHeight / 2 }] }]}>
+          <Text style={s.emptyTitle}>Ничего не найдено</Text>
+          <Text style={s.emptyHint}>Попробуйте изменить запрос</Text>
         </View>
-
-        {/* Stats row */}
-        <View style={s.statsRow}>
-          <View style={s.statBadge}>
-            <HighlighterIcon size={14} color={colors.amber} />
-            <Text style={s.statValue}>{totalHighlights}</Text>
-            <Text style={s.statLabel}>{t("notebook.highlightsSection", "高亮")}</Text>
-          </View>
-          <View style={s.statBadge}>
-            <NotebookPenIcon size={14} color={colors.blue} />
-            <Text style={s.statValue}>{totalNotes}</Text>
-            <Text style={s.statLabel}>{t("notebook.notesSection", "笔记")}</Text>
-          </View>
-          <View style={s.statBadge}>
-            <BookOpenIcon size={14} color={colors.emerald} />
-            <Text style={s.statValue}>{totalBooks}</Text>
-            <Text style={s.statLabel}>{t("profile.booksUnit", "本")}</Text>
-          </View>
-        </View>
-
-        {showSearch && (
-          <View style={s.searchBar}>
-            <SearchIcon size={14} color={colors.mutedForeground} />
-            <TextInput
-              style={s.searchInput}
-              placeholder={t("notes.searchPlaceholder", "搜索笔记...")}
-              placeholderTextColor={colors.mutedForeground}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              autoFocus
-            />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchQuery("")}>
-                <XIcon size={14} color={colors.mutedForeground} />
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
-      </View>
-
-      {/* Notebook list */}
-      <FlatList
-        data={bookNotebooks}
-        keyExtractor={(item) => item.bookId}
-        contentContainerStyle={s.listContent}
-        showsVerticalScrollIndicator={false}
-        renderItem={({ item }) => (
-          <NotebookCard
-            book={item}
-            resolvedCoverUrl={resolvedCovers.get(item.bookId)}
-            onPress={() => {
-              setSelectedBookId(item.bookId);
-              setSearchQuery("");
-              setEditingId(null);
-              setDetailTab("notes");
-            }}
-          />
-        )}
-      />
+      )}
     </SafeAreaView>
   );
 }
