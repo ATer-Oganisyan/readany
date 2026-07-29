@@ -80,37 +80,37 @@ export function ChatInput({
 
   useFocusEffect(
     useCallback(() => {
-      if (!autoFocusOnScreenFocus) return;
+      if (!autoFocusOnScreenFocus || Platform.OS === "ios") return;
 
-      let isActive = true;
-      let retryTimer: ReturnType<typeof setTimeout> | undefined;
-      const focusTimer = setTimeout(() => {
-        if (!isActive) return;
-
-        inputRef.current?.focus();
-        retryTimer = setTimeout(() => {
-          if (isActive && !inputRef.current?.isFocused()) inputRef.current?.focus();
-        }, 350);
-      }, 350);
+      inputRef.current?.focus();
 
       return () => {
-        isActive = false;
-        clearTimeout(focusTimer);
-        if (retryTimer) clearTimeout(retryTimer);
+        inputRef.current?.blur();
       };
     }, [autoFocusOnScreenFocus]),
   );
 
   useEffect(() => {
-    if (!autoFocusOnScreenFocus) return;
+    if (!autoFocusOnScreenFocus || Platform.OS !== "ios") return;
 
-    return navigation.addListener(
-      "transitionEnd" as never,
-      ((event: { data?: { closing?: boolean } }) => {
-        if (event.data?.closing !== false) return;
-        requestAnimationFrame(() => inputRef.current?.focus());
+    const unsubscribeStart = navigation.addListener(
+      "transitionStart" as never,
+      ((event: { data: { closing: boolean } }) => {
+        if (event.data.closing) inputRef.current?.blur();
       }) as never,
     );
+    const unsubscribeEnd = navigation.addListener(
+      "transitionEnd" as never,
+      ((event: { data: { closing: boolean } }) => {
+        if (!event.data.closing) inputRef.current?.focus();
+      }) as never,
+    );
+
+    return () => {
+      unsubscribeStart();
+      unsubscribeEnd();
+      inputRef.current?.blur();
+    };
   }, [autoFocusOnScreenFocus, navigation]);
 
   const handleSend = useCallback(() => {
@@ -193,7 +193,7 @@ export function ChatInput({
           returnKeyType="default"
           blurOnSubmit={false}
           editable={!isStreaming}
-          autoFocus={autoFocusOnScreenFocus}
+          autoFocus={false}
         />
 
         {/* Action bar: deep thinking toggle + spoiler-free toggle + send */}
