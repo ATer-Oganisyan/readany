@@ -132,6 +132,16 @@ export function TabNavigator() {
           title: t("tabs.notes", "Заметки"),
           tabBarLabel: t("tabs.notes", "Заметки"),
           tabBarIcon: tabIcon("highlighter", ANDROID_ICONS.Notes),
+          ...(Platform.OS === "ios"
+            ? {
+                headerLargeTitleEnabled: true,
+                headerLargeTitleShadowVisible: false,
+                headerLargeTitleStyle: {
+                  color: colors.foreground,
+                  fontFamily: titleFontFamily,
+                },
+              }
+            : {}),
         }}
       />
       <Tab.Screen
