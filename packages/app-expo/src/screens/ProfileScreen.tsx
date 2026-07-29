@@ -1,3 +1,4 @@
+import { ProfileNumericText } from "@/components/profile/ProfileNumericText";
 import {
   BarChart3Icon,
   ChevronRightIcon,
@@ -108,9 +109,7 @@ function StatCard({
         </Text>
       </View>
       <View style={s.statCardBody}>
-        <Text style={s.statCardValue} numberOfLines={1} maxFontSizeMultiplier={1.8}>
-          {value}
-        </Text>
+        <ProfileNumericText value={value} color={colors.foreground} style={s.statCardValue} />
         {unit && (
           <Text style={s.statCardUnit} maxFontSizeMultiplier={1.6}>
             {unit}
