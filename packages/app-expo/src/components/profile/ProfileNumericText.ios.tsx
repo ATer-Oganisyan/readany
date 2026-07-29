@@ -32,7 +32,11 @@ export function ProfileNumericText({ value, color }: ProfileNumericTextProps) {
   );
 
   return (
-    <Host matchContents colorScheme={isDark ? "dark" : "light"}>
+    <Host
+      matchContents={{ horizontal: true, vertical: true }}
+      colorScheme={isDark ? "dark" : "light"}
+      style={{ minHeight: 32 }}
+    >
       <Text
         modifiers={[
           font({ size: 25, weight: "bold", design: "rounded" }),

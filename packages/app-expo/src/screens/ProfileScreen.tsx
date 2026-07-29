@@ -5,8 +5,6 @@ import {
   CloudIcon,
   HelpCircleIcon,
   InfoIcon,
-  MessageSquareIcon,
-  PaletteIcon,
   Trash2Icon,
 } from "@/components/ui/Icon";
 import type { MaterialIconComponent } from "@/components/ui/Icon";
@@ -19,19 +17,20 @@ import {
   mergeCurrentSessionIntoOverallStats,
 } from "@/lib/stats/live-reading-stats";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
-import { formatTimeLocalized } from "@/screens/stats/stats-utils";
 import { useReadingSessionStore, useTTSStore } from "@/stores";
+import type { ThemeMode } from "@/styles/ThemeContext";
 import {
   type ThemeColors,
   fontSize,
   fontWeight,
   radius,
   useColors,
+  useTheme,
   withOpacity,
 } from "@/styles/theme";
+import SegmentedControl from "@expo/ui/community/segmented-control";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { refreshAndCountUnreadFeedback } from "@readany/core/feedback";
 import { readingStatsService } from "@readany/core/stats";
 import type { DailyStats, OverallStats } from "@readany/core/stats";
 import { eventBus } from "@readany/core/utils/event-bus";
@@ -44,7 +43,6 @@ import Constants from "expo-constants";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  ActivityIndicator,
   Alert,
   Linking,
   Pressable,
@@ -59,13 +57,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type ProfileMenuIcon = MaterialIconComponent;
-type ProfileMenuRoute = Extract<
-  keyof RootStackParamList,
-  | "AppearanceSettings"
-  | "SyncSettings"
-  | "Feedback"
-  | "About"
->;
+type ProfileMenuRoute = Extract<keyof RootStackParamList, "SyncSettings" | "About">;
 type ProfileMenuItem =
   | {
       icon: ProfileMenuIcon;
@@ -85,17 +77,25 @@ type ProfileMenuItem =
       disabled?: boolean;
     };
 
+const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
+
+function formatProfileReadingTime(minutes: number): string {
+  const roundedMinutes = Math.max(0, Math.round(minutes));
+  if (roundedMinutes < 60) return `${roundedMinutes}\u00a0мин`;
+
+  const hours = Math.floor(roundedMinutes / 60);
+  const remainingMinutes = roundedMinutes % 60;
+  return remainingMinutes > 0 ? `${hours}\u00a0ч ${remainingMinutes}\u00a0мин` : `${hours}\u00a0ч`;
+}
 
 function StatCard({
   title,
   value,
-  unit,
   onPress,
   style,
 }: {
   title: string;
   value: string;
-  unit?: string;
   onPress?: () => void;
   style?: StyleProp<ViewStyle>;
 }) {
@@ -110,11 +110,6 @@ function StatCard({
       </View>
       <View style={s.statCardBody}>
         <ProfileNumericText value={value} color={colors.foreground} style={s.statCardValue} />
-        {unit && (
-          <Text style={s.statCardUnit} maxFontSizeMultiplier={1.6}>
-            {unit}
-          </Text>
-        )}
       </View>
     </TouchableOpacity>
   );
@@ -242,7 +237,6 @@ function MiniHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
           ))}
         </View>
       )}
-
       {/* Selected cell tooltip */}
       {selectedCell && tooltipStyle && (
         <View
@@ -282,7 +276,7 @@ function MiniHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
 }
 
 export function ProfileScreen() {
-  const colors = useColors();
+  const { colors, mode: themeMode, setMode: setThemeMode, isDark } = useTheme();
   const s = makeStyles(colors);
   const { t, i18n } = useTranslation();
   const layout = useResponsiveLayout();
@@ -291,16 +285,19 @@ export function ProfileScreen() {
   const nav = useNavigation<Nav>();
   const [overall, setOverall] = useState<OverallStats | null>(null);
   const [dailyStats, setDailyStats] = useState<DailyStats[]>([]);
-  const [statsLoading, setStatsLoading] = useState(true);
-  const [unreadFeedback, setUnreadFeedback] = useState(0);
   const [clearingCache, setClearingCache] = useState(false);
   const saveCurrentSession = useReadingSessionStore((s) => s.saveCurrentSession);
   const currentSession = useReadingSessionStore((s) => s.currentSession);
   const stopTTS = useTTSStore((s) => s.stop);
+  const themeLabels = [
+    t("settings.system", "Системная"),
+    t("settings.light", "Светлая"),
+    t("settings.dark", "Тёмная"),
+  ];
+  const selectedThemeIndex = Math.max(0, THEME_MODES.indexOf(themeMode));
 
   const loadStats = useCallback(async () => {
     try {
-      setStatsLoading(true);
       await saveCurrentSession();
 
       const endDate = new Date();
@@ -315,17 +312,12 @@ export function ProfileScreen() {
       setOverall(overallStats);
     } catch (err) {
       console.error("[ProfileScreen] Failed to load stats:", err);
-    } finally {
-      setStatsLoading(false);
     }
   }, [saveCurrentSession]);
 
   useFocusEffect(
     useCallback(() => {
       void loadStats();
-      refreshAndCountUnreadFeedback()
-        .then(setUnreadFeedback)
-        .catch((err) => console.warn("[ProfileScreen] feedback unread refresh:", err));
     }, [loadStats]),
   );
 
@@ -343,7 +335,6 @@ export function ProfileScreen() {
     () => mergeCurrentSessionIntoOverallStats(overall, dailyStats, currentSession),
     [overall, dailyStats, currentSession],
   );
-  const isZh = i18n.language.startsWith("zh");
   const handleClearCache = useCallback(() => {
     Alert.alert(
       t("profile.clearCacheTitle", "清除缓存"),
@@ -392,11 +383,6 @@ export function ProfileScreen() {
       {
         title: t("settings.general", "通用"),
         items: [
-          {
-            icon: PaletteIcon,
-            label: t("settings.general", "通用"),
-            route: "AppearanceSettings" as const,
-          },
           { icon: CloudIcon, label: t("settings.sync", "同步"), route: "SyncSettings" as const },
         ],
       },
@@ -417,12 +403,6 @@ export function ProfileScreen() {
         title: t("settings.other", "更多"),
         items: [
           {
-            icon: MessageSquareIcon,
-            label: t("feedback.title", "反馈建议"),
-            route: "Feedback" as const,
-            showDot: unreadFeedback > 0,
-          },
-          {
             icon: HelpCircleIcon,
             label: t("about.supportCenter", "帮助中心"),
             url: `https://codedogqby.github.io/ReadAny/${i18n.language === "zh" ? "zh/" : ""}support/`,
@@ -431,13 +411,11 @@ export function ProfileScreen() {
         ],
       },
     ],
-    [t, i18n.language, unreadFeedback, clearingCache, handleClearCache],
+    [t, i18n.language, clearingCache, handleClearCache],
   );
 
   const booksRead = liveOverall?.totalBooks ?? 0;
-  const totalTime = liveOverall
-    ? formatTimeLocalized(liveOverall.totalReadingTime, isZh)
-    : formatTimeLocalized(0, isZh);
+  const totalTime = formatProfileReadingTime(liveOverall?.totalReadingTime ?? 0);
   const totalCharacters = new Intl.NumberFormat("ru-RU").format(
     Math.max(0, Math.round(liveOverall?.totalCharactersRead ?? 0)),
   );
@@ -457,13 +435,11 @@ export function ProfileScreen() {
       key: "books",
       title: t("profile.booksRead", "已读"),
       value: String(booksRead),
-      unit: t("profile.booksUnit", "本"),
     },
     {
       key: "streak",
       title: t("profile.streak", "连续阅读"),
       value: String(streak),
-      unit: t("profile.daysUnit", "天"),
     },
   ];
 
@@ -477,32 +453,25 @@ export function ProfileScreen() {
       >
         {/* Stats cards */}
         <View style={s.statsSection}>
-          {statsLoading ? (
-            <View style={s.statsLoading}>
-              <ActivityIndicator size="small" color={colors.mutedForeground} />
-            </View>
-          ) : (
-            <View style={s.statsGrid}>
-              {overviewCards.map((card) => (
-                <View
-                  key={card.key}
-                  style={{
-                    width: statCardSlotWidth,
-                    paddingHorizontal: 6,
-                    paddingBottom: 12,
-                  }}
-                >
-                  <StatCard
-                    title={card.title}
-                    value={card.value}
-                    unit={card.unit}
-                    onPress={() => nav.navigate("Stats")}
-                    style={{ width: "100%" }}
-                  />
-                </View>
-              ))}
-            </View>
-          )}
+          <View style={s.statsGrid}>
+            {overviewCards.map((card) => (
+              <View
+                key={card.key}
+                style={{
+                  width: statCardSlotWidth,
+                  paddingHorizontal: 6,
+                  paddingBottom: 12,
+                }}
+              >
+                <StatCard
+                  title={card.title}
+                  value={card.value}
+                  onPress={() => nav.navigate("Stats")}
+                  style={{ width: "100%" }}
+                />
+              </View>
+            ))}
+          </View>
         </View>
 
         {/* Compact heatmap */}
@@ -519,6 +488,22 @@ export function ProfileScreen() {
             </TouchableOpacity>
           </View>
           <MiniHeatmap dailyStats={liveDailyStats} />
+        </View>
+
+        <View style={s.menuSection}>
+          <Text style={s.menuSectionTitle} maxFontSizeMultiplier={1.5}>
+            {t("settings.theme", "Тема")}
+          </Text>
+          <SegmentedControl
+            values={themeLabels}
+            selectedIndex={selectedThemeIndex}
+            onChange={({ nativeEvent }) => {
+              setThemeMode(THEME_MODES[nativeEvent.selectedSegmentIndex] ?? "system");
+            }}
+            appearance={isDark ? "dark" : "light"}
+            tintColor={colors.primary5}
+            style={s.themeControl}
+          />
         </View>
 
         {/* Settings menu */}
@@ -606,13 +591,12 @@ const makeStyles = (colors: ThemeColors) =>
     scrollView: { flex: 1 },
     // Stats
     statsSection: { paddingHorizontal: 16, paddingTop: 16 },
-    statsLoading: { alignItems: "center", justifyContent: "center", paddingVertical: 32 },
     statsGrid: { flexDirection: "row", flexWrap: "wrap", marginHorizontal: -6 },
     statCard: {
-      backgroundColor: colors.card,
+      backgroundColor: colors.elevation1,
       borderRadius: radius.card,
       borderWidth: 0.5,
-      borderColor: colors.border,
+      borderColor: colors.primary5,
       paddingHorizontal: 12,
       paddingTop: 12,
       paddingBottom: 10,
@@ -642,12 +626,6 @@ const makeStyles = (colors: ThemeColors) =>
       color: colors.foreground,
       letterSpacing: -0.8,
     },
-    statCardUnit: {
-      fontSize: 12,
-      lineHeight: 18,
-      color: withOpacity(colors.mutedForeground, 0.78),
-      fontWeight: fontWeight.medium,
-    },
     statCardMetaRow: {
       marginTop: 6,
     },
@@ -670,10 +648,10 @@ const makeStyles = (colors: ThemeColors) =>
     heatmapSection: {
       marginHorizontal: 16,
       marginTop: 16,
-      backgroundColor: colors.card,
+      backgroundColor: colors.elevation1,
       borderRadius: radius.card,
       borderWidth: 0.5,
-      borderColor: colors.border,
+      borderColor: colors.primary5,
       padding: 16,
     },
     heatmapHeader: {
@@ -705,6 +683,7 @@ const makeStyles = (colors: ThemeColors) =>
     heatmapGrid: { alignSelf: "center" },
     // Menu
     menuSection: { paddingHorizontal: 16, marginTop: 16 },
+    themeControl: { width: "100%", minHeight: 36 },
     menuSectionTitle: {
       fontSize: fontSize.xs,
       lineHeight: fontSize.xs * 1.5,
@@ -715,10 +694,10 @@ const makeStyles = (colors: ThemeColors) =>
       marginBottom: 8,
     },
     menuCard: {
-      backgroundColor: colors.card,
+      backgroundColor: colors.elevation1,
       borderRadius: radius.card,
       borderWidth: 0.5,
-      borderColor: colors.border,
+      borderColor: colors.primary5,
       overflow: "hidden",
     },
     menuItem: {
