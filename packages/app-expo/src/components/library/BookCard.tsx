@@ -230,15 +230,14 @@ export const BookCard = memo(function BookCard({
           </View>
         )}
 
-        <View style={[s.moreButtonWrap, s.moreButton]}>
-          <BookCardActionSheet
-            book={book}
-            onShowDetails={onShowDetails}
-            onManageTags={onManageTags}
-            onVectorize={onVectorize}
-            onDelete={onDelete}
-          />
-        </View>
+        <BookCardActionSheet
+          book={book}
+          onOpen={onOpen}
+          onShowDetails={onShowDetails}
+          onManageTags={onManageTags}
+          onVectorize={onVectorize}
+          onDelete={onDelete}
+        />
       </View>
 
       {/* Info below cover */}

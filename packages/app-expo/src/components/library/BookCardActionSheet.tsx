@@ -1,11 +1,11 @@
 import { GroupPickerSheet } from "@/components/library/GroupPickerSheet";
-import { NativeContextMenuButton } from "@/components/ui/NativeContextMenuButton";
 import type { NativeContextMenuItem } from "@/components/ui/NativeContextMenuButton.types";
 import { useLibraryStore } from "@/stores/library-store";
 import type { Book } from "@readany/core/types";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert } from "react-native";
+import { BookCardContextMenu } from "./BookCardContextMenu";
 
 interface BookCardActionSheetProps {
   book: Book;
@@ -13,6 +13,7 @@ interface BookCardActionSheetProps {
   onManageTags?: (book: Book) => void;
   onVectorize?: (book: Book) => void;
   onDelete: (bookId: string, options?: { preserveData?: boolean }) => void;
+  onOpen: (book: Book) => void;
 }
 
 /**
@@ -25,6 +26,7 @@ export function BookCardActionSheet({
   onManageTags,
   onVectorize,
   onDelete,
+  onOpen,
 }: BookCardActionSheetProps) {
   const { t } = useTranslation();
   const [showGroupPicker, setShowGroupPicker] = useState(false);
@@ -125,12 +127,10 @@ export function BookCardActionSheet({
 
   return (
     <>
-      <NativeContextMenuButton
+      <BookCardContextMenu
         accessibilityLabel={t("common.actions", "Действия с книгой")}
         items={items}
-        sfSymbol="ellipsis"
-        size={32}
-        color="#fff"
+        onPress={() => onOpen(book)}
       />
       <GroupPickerSheet
         visible={showGroupPicker}
