@@ -1,24 +1,17 @@
-import { Text, TextInput } from "@/components/ui/Typography";
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
 import { BookmarkRibbon } from "@/components/reader/BookmarkRibbon";
 import { ChapterTranslationSheet } from "@/components/reader/ChapterTranslationSheet";
-import { ReadingProgressSlider } from "@/components/reader/ReadingProgressSlider";
 import { SelectionPopover } from "@/components/reader/SelectionPopover";
 import { TTSPage } from "@/components/reader/TTSPage";
 import { TranslationPanel } from "@/components/reader/TranslationPanel";
 import {
-  BookmarkFilledIcon,
-  BookmarkIcon,
-  BotIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  HeadphonesIcon,
-  LanguagesIcon,
   NotebookPenIcon,
   SearchIcon,
   XIcon,
 } from "@/components/ui/Icon";
-import { SyncButton } from "@/components/ui/SyncButton";
+import { Text, TextInput } from "@/components/ui/Typography";
 import { useReaderBridge } from "@/hooks/use-reader-bridge";
 import type { RelocateEvent, SelectionEvent, VisibleTTSSegment } from "@/hooks/use-reader-bridge";
 import { startFileServer, stopFileServer } from "@/lib/reader/local-file-server";
@@ -33,7 +26,7 @@ import {
 } from "@/stores";
 import { useMissingBookPromptStore } from "@/stores/missing-book-prompt-store";
 import { useTheme } from "@/styles/ThemeContext";
-import { useColors, withOpacity } from "@/styles/theme";
+import { useColors } from "@/styles/theme";
 import { useIsFocused } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { readingContextService } from "@readany/core/ai/reading-context-service";
@@ -51,7 +44,7 @@ import * as DocumentPicker from "expo-document-picker";
 /**
  * ReaderScreen — WebView-based reader with foliate-js engine.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
@@ -146,14 +139,12 @@ const NOTE_TOOLTIP_ABOVE_OFFSET = 2;
 const NOTE_TOOLTIP_BELOW_OFFSET = 8;
 const NOTE_TOOLTIP_TOP_THRESHOLD = 180;
 import { useRubyStore } from "@readany/core/stores/ruby-store";
+import { ReaderBottomToolbar } from "./reader/ReaderBottomToolbar";
+import { ReaderFloatingActions } from "./reader/ReaderFloatingActions";
 import { ReaderSettingsPanel } from "./reader/ReaderSettingsPanel";
 import { ReaderTOCPanel } from "./reader/ReaderTOCPanel";
-import {
-  CONTROLS_TIMEOUT,
-  SCREEN_HEIGHT,
-  SCREEN_WIDTH,
-} from "./reader/reader-constants";
-import { BatteryIcon, ListIcon, SettingsIcon } from "./reader/reader-icons";
+import { CONTROLS_TIMEOUT, SCREEN_HEIGHT, SCREEN_WIDTH } from "./reader/reader-constants";
+import { BatteryIcon } from "./reader/reader-icons";
 import { makeStyles, noteTooltipMdStyles } from "./reader/reader-styles";
 import { useReaderBookmark } from "./reader/useReaderBookmark";
 import { useReaderSearch } from "./reader/useReaderSearch";
@@ -208,8 +199,7 @@ export function ReaderScreen({ route, navigation }: Props) {
   const { mode: themeMode } = useTheme();
   const s = makeStyles(colors);
   const { bookId, cfi, highlight: shouldHighlight, openTTS } = route.params;
-  const { t, i18n } = useTranslation();
-  const isWideLayout = SCREEN_WIDTH >= 768;
+  const { t } = useTranslation();
   const isIPadLayout = Platform.OS === "ios" && Platform.isPad;
   const shouldToggleSystemStatusBar = !isIPadLayout;
   const baseTopInset = Platform.OS === "ios" ? 20 : 24;
@@ -395,6 +385,51 @@ export function ReaderScreen({ route, navigation }: Props) {
     requestPageSnippet: () => bridgeRef.current?.requestPageSnippet(),
   });
   const { isBookmarked, bookBookmarks, handleToggleBookmark } = bookmark;
+
+  useLayoutEffect(() => {
+    const headerVisible = showControls && !showSearch;
+    const headerTitle = currentChapter || bookTitle || book?.meta.title || "";
+    const headerProgress = Math.round(progress * 100);
+
+    navigation.setOptions({
+      headerShown: headerVisible,
+      headerTransparent: true,
+      headerBlurEffect: themeMode === "dark" ? "systemMaterialDark" : "systemMaterialLight",
+      headerShadowVisible: false,
+      headerBackButtonDisplayMode: "minimal",
+      headerTintColor: colors.foreground,
+      title: headerTitle,
+      headerRight: headerVisible
+        ? () => (
+            <Text
+              style={{
+                color: colors.mutedForeground,
+                fontSize: 14,
+                fontWeight: "600",
+                fontVariant: ["tabular-nums"],
+              }}
+            >
+              {currentPage > 0 && totalPages > 0
+                ? `${currentPage}/${totalPages}`
+                : `${headerProgress}%`}
+            </Text>
+          )
+        : undefined,
+    });
+  }, [
+    book?.meta.title,
+    bookTitle,
+    colors.foreground,
+    colors.mutedForeground,
+    currentChapter,
+    currentPage,
+    navigation,
+    progress,
+    showControls,
+    showSearch,
+    themeMode,
+    totalPages,
+  ]);
 
   const suppressProgressTracking = useCallback((duration = PROGRAMMATIC_NAV_GUARD_MS) => {
     progressTrackingGuardUntilRef.current = Math.max(
@@ -905,10 +940,25 @@ export function ReaderScreen({ route, navigation }: Props) {
       appActive,
     // 维护约定：任何新增遮盖正文/输入态/导航跳转，必须在此追加判定。
     [
-      readSettings.volumeButtonsPageTurn, webViewReady, loading, error, isReimporting,
-      showSearch, showTOC, showSettings, showNotebook, showTTS,
-      showTranslation, showChapterTranslation, chapterTranslation.state.status,
-      selection, noteViewHighlight, noteTooltip, ttsPlayState, isFocused, appActive,
+      readSettings.volumeButtonsPageTurn,
+      webViewReady,
+      loading,
+      error,
+      isReimporting,
+      showSearch,
+      showTOC,
+      showSettings,
+      showNotebook,
+      showTTS,
+      showTranslation,
+      showChapterTranslation,
+      chapterTranslation.state.status,
+      selection,
+      noteViewHighlight,
+      noteTooltip,
+      ttsPlayState,
+      isFocused,
+      appActive,
     ],
   );
 
@@ -1389,18 +1439,7 @@ export function ReaderScreen({ route, navigation }: Props) {
   }
 
   const layoutTopInset = stableTopInset;
-  const topToolbarRowHeight = isWideLayout ? 62 : 48;
-  const bottomDockIconSize = isWideLayout ? 24 : 22;
-  const topToolbarIconSize = isWideLayout ? 24 : 22;
   const percent = Math.round(progress * 100);
-  const topControlsTranslate = toolbarAnim.interpolate({
-    inputRange: [0, TOOLBAR_HIDE_OFFSET],
-    outputRange: [0, -10],
-  });
-  const topControlsOpacity = toolbarAnim.interpolate({
-    inputRange: [0, TOOLBAR_HIDE_OFFSET * 0.5, TOOLBAR_HIDE_OFFSET],
-    outputRange: [1, 0.28, 0],
-  });
   const bottomControlsTranslate = toolbarAnim.interpolate({
     inputRange: [0, TOOLBAR_HIDE_OFFSET],
     outputRange: [0, 12],
@@ -1522,74 +1561,6 @@ export function ReaderScreen({ route, navigation }: Props) {
 
       {/* ─── Bookmark Ribbon (top-right) ─── */}
       <BookmarkRibbon visible={isBookmarked} topOffset={0} />
-
-      {!showSearch && (
-        <Animated.View
-          pointerEvents={showControls ? "auto" : "none"}
-          style={[
-            s.topToolbar,
-            {
-              top: 0,
-              left: 0,
-              right: 0,
-              opacity: topControlsOpacity,
-              transform: [{ translateY: topControlsTranslate }],
-            },
-          ]}
-        >
-          <View
-            style={[
-              s.topToolbarBar,
-              {
-                paddingTop: layoutTopInset,
-                minHeight: layoutTopInset + topToolbarRowHeight,
-              },
-            ]}
-          >
-            <View
-              style={[
-                s.topToolbarRow,
-                {
-                  minHeight: topToolbarRowHeight,
-                  paddingLeft: insets.left + 12,
-                  paddingRight: insets.right + 16,
-                },
-              ]}
-            >
-              <View style={s.topToolbarSideSlot}>
-                <TouchableOpacity
-                  style={s.topToolbarBackBtn}
-                  onPress={() => navigation.reset({ routes: [{ name: "Tabs" }] })}
-                >
-                  <ChevronLeftIcon size={topToolbarIconSize} color={colors.foreground} />
-                </TouchableOpacity>
-              </View>
-              <View style={s.topToolbarTitleWrap}>
-                <Text style={s.topToolbarTitleText} numberOfLines={1}>
-                  {currentChapter || bookTitle}
-                </Text>
-              </View>
-              <View
-                style={[
-                  s.topToolbarSideSlot,
-                  s.topToolbarMetaWrap,
-                  { flexDirection: "row", alignItems: "center", gap: 6 },
-                ]}
-              >
-                <SyncButton size={16} color={colors.foreground} />
-                <Text style={s.topToolbarMetaText}>
-                  {currentPage > 0 && totalPages > 0
-                    ? `${currentPage}/${totalPages}`
-                    : `${percent}%`}
-                </Text>
-              </View>
-            </View>
-            <View style={s.topToolbarProgressTrack}>
-              <View style={[s.topToolbarProgressFill, { width: `${percent}%` }]} />
-            </View>
-          </View>
-        </Animated.View>
-      )}
 
       {/* Selection Popover */}
       {selectionPopoverSelection && (
@@ -1742,31 +1713,14 @@ export function ReaderScreen({ route, navigation }: Props) {
             },
           ]}
         >
-          <TouchableOpacity
-            style={[
-              s.floatingToolBtn,
-              (showChapterTranslation || chapterTranslation.state.status !== "idle") &&
-                s.floatingToolBtnActive,
-            ]}
-            onPress={() => setShowChapterTranslation(true)}
-          >
-            <LanguagesIcon size={18} color="#fff" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              s.floatingToolBtn,
-              (showTTS || ttsPlayState !== "stopped") && s.floatingToolBtnActive,
-            ]}
-            onPress={tts.handleToggleTTS}
-          >
-            <HeadphonesIcon size={20} color="#fff" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={s.floatingToolBtn}
-            onPress={() => navigation.navigate("BookChat", { bookId })}
-          >
-            <BotIcon size={20} color="#fff" />
-          </TouchableOpacity>
+          <ReaderFloatingActions
+            translationActive={showChapterTranslation || chapterTranslation.state.status !== "idle"}
+            speechActive={showTTS || ttsPlayState !== "stopped"}
+            accentColor={colors.primary}
+            onTranslate={() => setShowChapterTranslation(true)}
+            onSpeech={tts.handleToggleTTS}
+            onChat={() => navigation.navigate("BookChat", { bookId })}
+          />
         </Animated.View>
       )}
 
@@ -1810,80 +1764,42 @@ export function ReaderScreen({ route, navigation }: Props) {
             },
           ]}
         >
-          <View
-            style={[
-              s.bottomToolbarGlass,
-              {
-                paddingBottom: Math.max(insets.bottom, 8) + 6,
-                paddingLeft: insets.left + 18,
-                paddingRight: insets.right + 18,
-              },
-            ]}
-          >
-            <ReadingProgressSlider
-              progress={progress}
-              onDragStart={() => suppressProgressTracking(99999)}
-              onDragEnd={() => suppressProgressTracking(2000)}
-              onSeek={(fraction) => {
-                bridgeRef.current?.goToFraction(fraction);
-              }}
-              accentColor={colors.primary}
-              trackColor={withOpacity(colors.foreground, 0.12)}
-              textColor={withOpacity(colors.foreground, 0.6)}
-            />
-            <View style={s.bottomDockRow}>
-              <TouchableOpacity
-                style={s.bottomDockBtn}
-                onPress={() => {
-                  setTocActiveTab("toc");
-                  setShowTOC(true);
-                }}
-              >
-                <ListIcon size={bottomDockIconSize} color={colors.foreground} />
-                <Text style={s.bottomDockLabel}>{t("reader.toc", "目录")}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[s.bottomDockBtn, isBookmarked && s.bottomDockBtnActive]}
-                onPress={handleToggleBookmark}
-              >
-                {isBookmarked ? (
-                  <BookmarkFilledIcon size={bottomDockIconSize} color={colors.primary} />
-                ) : (
-                  <BookmarkIcon size={bottomDockIconSize} color={colors.foreground} />
-                )}
-                <Text style={[s.bottomDockLabel, isBookmarked && s.bottomDockLabelActive]}>
-                  {t("reader.bookmarks", "书签")}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={s.bottomDockBtn}
-                onPress={() => navigation.navigate("FullScreenNotes", { bookId })}
-              >
-                <NotebookPenIcon size={bottomDockIconSize} color={colors.foreground} />
-                <Text style={s.bottomDockLabel}>{t("notes.title", "笔记")}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={s.bottomDockBtn}
-                onPress={() => {
-                  setShowSearch(true);
-                  setShowControls(false);
-                  Animated.timing(toolbarAnim, {
-                    toValue: TOOLBAR_HIDE_OFFSET,
-                    duration: 180,
-                    easing: Easing.out(Easing.cubic),
-                    useNativeDriver: true,
-                  }).start();
-                }}
-              >
-                <SearchIcon size={bottomDockIconSize} color={colors.foreground} />
-                <Text style={s.bottomDockLabel}>{t("reader.search", "搜索")}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={s.bottomDockBtn} onPress={() => setShowSettings(true)}>
-                <SettingsIcon size={bottomDockIconSize} color={colors.foreground} />
-                <Text style={s.bottomDockLabel}>{t("common.settings", "设置")}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          <ReaderBottomToolbar
+            progress={progress}
+            isBookmarked={isBookmarked}
+            bottomInset={insets.bottom}
+            foregroundColor={colors.foreground}
+            mutedColor={colors.mutedForeground}
+            accentColor={colors.primary}
+            isDark={themeMode === "dark"}
+            labels={{
+              toc: t("reader.toc", "Оглавление"),
+              bookmarks: t("reader.bookmarks", "Закладки"),
+              notes: t("notes.title", "Заметки"),
+              search: t("reader.search", "Поиск"),
+              settings: t("common.settings", "Настройки"),
+            }}
+            onDragStart={() => suppressProgressTracking(99_999)}
+            onDragEnd={() => suppressProgressTracking(2_000)}
+            onSeek={(fraction) => bridgeRef.current?.goToFraction(fraction)}
+            onOpenToc={() => {
+              setTocActiveTab("toc");
+              setShowTOC(true);
+            }}
+            onToggleBookmark={handleToggleBookmark}
+            onOpenNotes={() => navigation.navigate("FullScreenNotes", { bookId })}
+            onOpenSearch={() => {
+              setShowSearch(true);
+              setShowControls(false);
+              Animated.timing(toolbarAnim, {
+                toValue: TOOLBAR_HIDE_OFFSET,
+                duration: 180,
+                easing: Easing.out(Easing.cubic),
+                useNativeDriver: true,
+              }).start();
+            }}
+            onOpenSettings={() => setShowSettings(true)}
+          />
         </Animated.View>
       )}
 
