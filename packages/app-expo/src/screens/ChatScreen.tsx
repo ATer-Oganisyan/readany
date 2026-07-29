@@ -13,7 +13,6 @@ import { useTranslation } from "react-i18next";
 import {
   Animated,
   Keyboard,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -28,29 +27,20 @@ import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { resolveActiveAIConfig } from "@/lib/ai/resolve-active-ai-config";
 import { useChatStore } from "@/stores/chat-store";
 import { useSettingsStore } from "@/stores/settings-store";
-import { getPlatformService } from "@readany/core/services";
 import type { AttachedQuote } from "@readany/core/types";
 import {
   convertToMessageV2,
-  exportChatAsJSON,
-  exportChatAsMarkdown,
-  formatChatForClipboard,
   formatRelativeTimeShort,
-  getExportFilename,
   getMonthLabel,
   groupThreadsByTime,
   mergeMessagesWithStreaming,
 } from "@readany/core/utils";
-import * as Clipboard from "expo-clipboard";
 import { Alert } from "react-native";
 
 import { ChatInput } from "@/components/chat/ChatInput";
-import { ContextPopover } from "@/components/chat/ContextPopover";
 import { MessageList } from "@/components/chat/MessageList";
 import {
   BookOpenIcon,
-  CopyIcon,
-  Download,
   LibraryIcon,
   LightbulbIcon,
   MessageCirclePlusIcon,
@@ -66,6 +56,9 @@ export function ChatScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  useEffect(() => {
+    navigation.setOptions({ title: "Narra AI" });
+  }, [navigation]);
   const layout = useResponsiveLayout();
   const isTabletLandscape = layout.isTabletLandscape;
   const sidebarWidth = isTabletLandscape
@@ -101,24 +94,6 @@ export function ChatScreen() {
       sidebarAnim.setValue(-sidebarWidth);
     }
   }, [backdropAnim, isTabletLandscape, sidebarAnim, sidebarWidth]);
-
-  const openSidebar = useCallback(() => {
-    if (isTabletLandscape) return;
-    setShowSidebar(true);
-    Animated.parallel([
-      Animated.spring(sidebarAnim, {
-        toValue: 0,
-        useNativeDriver: true,
-        tension: 65,
-        friction: 11,
-      }),
-      Animated.timing(backdropAnim, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [backdropAnim, isTabletLandscape, sidebarAnim]);
 
   const closeSidebar = useCallback(() => {
     if (isTabletLandscape) return;
@@ -213,42 +188,6 @@ export function ChatScreen() {
   );
 
   const formatTime = useCallback((ts: number) => formatRelativeTimeShort(ts, t), [t]);
-
-  const [showExportMenu, setShowExportMenu] = useState(false);
-  const exportTitle = activeThread?.title || t("chat.aiAssistant");
-  const exportOpts = useMemo(
-    () => ({
-      title: exportTitle,
-      userLabel: t("chat.roleUser"),
-      aiLabel: t("chat.roleAI"),
-    }),
-    [exportTitle, t],
-  );
-
-  const handleExportMarkdown = useCallback(async () => {
-    setShowExportMenu(false);
-    const md = exportChatAsMarkdown(allMessages, exportOpts);
-    const filename = getExportFilename("md");
-    const platform = getPlatformService();
-    const saved = await platform.shareOrDownloadFile(md, filename, "text/markdown");
-    if (saved) Alert.alert(t("chat.exportSuccess", "导出成功"));
-  }, [allMessages, exportOpts, t]);
-
-  const handleExportJSON = useCallback(async () => {
-    setShowExportMenu(false);
-    const json = exportChatAsJSON(allMessages, exportOpts);
-    const filename = getExportFilename("json");
-    const platform = getPlatformService();
-    const saved = await platform.shareOrDownloadFile(json, filename, "application/json");
-    if (saved) Alert.alert(t("chat.exportSuccess", "导出成功"));
-  }, [allMessages, exportOpts, t]);
-
-  const handleCopyAll = useCallback(async () => {
-    setShowExportMenu(false);
-    const text = formatChatForClipboard(allMessages, exportOpts);
-    await Clipboard.setStringAsync(text);
-    Alert.alert(t("chat.copiedSuccess", "已复制到剪贴板"));
-  }, [allMessages, exportOpts, t]);
 
   const groupedThreads = useMemo(() => {
     const grouped = groupThreadsByTime(generalThreads);
@@ -374,31 +313,8 @@ export function ChatScreen() {
   );
 
   useNativeHeaderActions({
-    left: !isTabletLandscape
-      ? [
-          {
-            label: t("chat.history", "История"),
-            icon: "back",
-            sfSymbol: "clock.arrow.circlepath",
-            onPress: openSidebar,
-          },
-        ]
-      : [],
-    right: [
-      {
-        label: t("chat.export", "Экспортировать"),
-        icon: "share",
-        sfSymbol: "square.and.arrow.up",
-        disabled: allMessages.length === 0,
-        onPress: () => setShowExportMenu(true),
-      },
-      {
-        label: t("chat.newChat", "Новый чат"),
-        icon: "add",
-        sfSymbol: "square.and.pencil",
-        onPress: handleNewThread,
-      },
-    ],
+    left: [],
+    right: [],
   });
 
   return (
@@ -411,41 +327,6 @@ export function ChatScreen() {
         )}
 
         <View style={s.mainColumn}>
-          <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8, padding: 8 }}>
-            <ContextPopover />
-          </View>
-
-          <Modal
-            visible={showExportMenu}
-            transparent
-            animationType="fade"
-            onRequestClose={() => setShowExportMenu(false)}
-          >
-            <Pressable style={s.exportOverlay} onPress={() => setShowExportMenu(false)}>
-              <View style={s.exportMenu}>
-                <TouchableOpacity style={s.exportMenuItem} onPress={handleExportMarkdown}>
-                  <ScrollTextIcon size={18} color={colors.foreground} />
-                  <Text style={s.exportMenuText}>
-                    {t("chat.exportMarkdown", "Экспортировать Markdown")}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[s.exportMenuItem, s.exportMenuItemDivider]}
-                  onPress={handleExportJSON}
-                >
-                  <Download size={18} color={colors.foreground} />
-                  <Text style={s.exportMenuText}>
-                    {t("chat.exportJSON", "Экспортировать JSON")}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={s.exportMenuItem} onPress={handleCopyAll}>
-                  <CopyIcon size={18} color={colors.foreground} />
-                  <Text style={s.exportMenuText}>{t("chat.copyAll", "Скопировать чат")}</Text>
-                </TouchableOpacity>
-              </View>
-            </Pressable>
-          </Modal>
-
           {/* Content */}
           <View style={s.content}>
             <View style={s.content}>
@@ -785,44 +666,5 @@ const makeStyles = (
     threadDeleteBtn: {
       marginTop: 2,
       padding: 4,
-    },
-    exportOverlay: {
-      flex: 1,
-      backgroundColor: "rgba(0,0,0,0.12)",
-      justifyContent: "flex-start",
-      alignItems: "stretch",
-      paddingTop: 52,
-      paddingHorizontal: 12,
-    },
-    exportMenu: {
-      alignSelf: "flex-end",
-      minWidth: 200,
-      borderRadius: radius.xl,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.card,
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 10 },
-      shadowOpacity: 0.18,
-      shadowRadius: 18,
-      elevation: 14,
-      overflow: "hidden",
-      paddingVertical: 6,
-    },
-    exportMenuItem: {
-      minHeight: 44,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 10,
-      paddingHorizontal: 14,
-    },
-    exportMenuItemDivider: {
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.border,
-    },
-    exportMenuText: {
-      fontSize: fs.sm,
-      fontWeight: fw.medium,
-      color: colors.foreground,
     },
   });
