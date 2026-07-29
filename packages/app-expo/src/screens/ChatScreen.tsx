@@ -1,7 +1,6 @@
 import { Text } from "@/components/ui/Typography";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useNativeHeaderActions } from "@/navigation/useNativeHeaderActions";
-import { useHeaderHeight } from "@react-navigation/elements";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 /**
@@ -12,13 +11,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Animated,
-  Keyboard,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -40,15 +37,7 @@ import { Alert } from "react-native";
 
 import { ChatInput } from "@/components/chat/ChatInput";
 import { MessageList } from "@/components/chat/MessageList";
-import {
-  BookOpenIcon,
-  LibraryIcon,
-  LightbulbIcon,
-  MessageCirclePlusIcon,
-  ScrollTextIcon,
-  Trash2Icon,
-  XIcon,
-} from "@/components/ui/Icon";
+import { MessageCirclePlusIcon, Trash2Icon, XIcon } from "@/components/ui/Icon";
 import { fontSize as fs, fontWeight as fw, radius, useColors, withOpacity } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
 
@@ -343,15 +332,7 @@ export function ChatScreen() {
                   currentStep={currentStep}
                 />
               ) : (
-                <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-                  <View style={s.content}>
-                    <EmptyState
-                      colors={colors}
-                      onSuggestionPress={handleSend}
-                      compact={isTabletLandscape}
-                    />
-                  </View>
-                </TouchableWithoutFeedback>
+                <View style={s.content} />
               )}
             </View>
             <ChatInput
@@ -401,75 +382,6 @@ export function ChatScreen() {
   );
 }
 
-function EmptyState({
-  colors,
-  onSuggestionPress,
-  compact = false,
-}: {
-  colors: ThemeColors;
-  onSuggestionPress: (text: string, deepThinking: boolean, spoilerFree: boolean) => void;
-  compact?: boolean;
-}) {
-  const { t } = useTranslation();
-  const nativeHeaderHeight = useHeaderHeight();
-  const s = useMemo(
-    () => makeStyles(colors, { isTabletLandscape: false, sidebarWidth: 0, horizontalPadding: 16 }),
-    [colors],
-  );
-
-  const suggestions = useMemo(
-    () => [
-      {
-        icon: <ScrollTextIcon size={18} color={colors.mutedForeground} />,
-        text: t("chat.suggestions.summarizeReading", "总结最近读过的内容"),
-      },
-      {
-        icon: <LightbulbIcon size={18} color={colors.mutedForeground} />,
-        text: t("chat.suggestions.analyzeArguments", "分析文中论点"),
-      },
-      {
-        icon: <LibraryIcon size={18} color={colors.mutedForeground} />,
-        text: t("chat.suggestions.findConcepts", "查找关键概念"),
-      },
-      {
-        icon: <BookOpenIcon size={18} color={colors.mutedForeground} />,
-        text: t("chat.suggestions.generateNotes", "生成阅读笔记"),
-      },
-    ],
-    [t, colors],
-  );
-
-  return (
-    <View
-      style={[
-        s.emptyContainer,
-        compact && s.emptyContainerCompact,
-        { transform: [{ translateY: -nativeHeaderHeight / 2 }] },
-      ]}
-    >
-      <View style={s.emptyInner}>
-        <Text style={s.emptyTitle}>{t("chat.howCanIHelp", "有什么我可以帮你的？")}</Text>
-        <Text style={s.emptySubtitle}>
-          {t("chat.askAboutBooks", "关于书籍的任何问题都可以问我")}
-        </Text>
-      </View>
-      <View style={s.suggestionsGrid}>
-        {suggestions.map(({ icon, text }) => (
-          <TouchableOpacity
-            key={text}
-            style={s.suggestionCard}
-            onPress={() => onSuggestionPress(text, false, false)}
-            activeOpacity={0.7}
-          >
-            {icon}
-            <Text style={s.suggestionText}>{text}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </View>
-  );
-}
-
 const makeStyles = (
   colors: ThemeColors,
   layout: { isTabletLandscape: boolean; sidebarWidth: number; horizontalPadding: number },
@@ -515,52 +427,6 @@ const makeStyles = (
       justifyContent: "center",
     },
     content: { flex: 1 },
-
-    // Empty state — matching mobile ChatPage
-    emptyContainer: {
-      flex: 1,
-      justifyContent: "center",
-      paddingHorizontal: 24,
-      gap: 32,
-    },
-    emptyContainerCompact: {
-      paddingHorizontal: 52,
-      gap: 24,
-    },
-    emptyInner: {
-      alignItems: "center",
-      gap: 8,
-    },
-    emptyTitle: {
-      fontSize: fs.xl,
-      fontWeight: fw.semibold,
-      color: colors.foreground,
-    },
-    emptySubtitle: {
-      fontSize: fs.sm,
-      color: colors.mutedForeground,
-      textAlign: "center",
-    },
-    suggestionsGrid: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 10,
-    },
-    suggestionCard: {
-      width: "48%",
-      flexGrow: 1,
-      backgroundColor: colors.card,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.border,
-      borderRadius: radius.xl,
-      padding: 14,
-      gap: 10,
-    },
-    suggestionText: {
-      fontSize: fs.xs,
-      lineHeight: 16,
-      color: colors.foreground,
-    },
 
     // Error
     errorBanner: {
