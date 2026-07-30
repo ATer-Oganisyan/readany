@@ -55,7 +55,7 @@ import { File as ExpoFile } from "expo-file-system";
 /**
  * LibraryScreen — matching Tauri mobile LibraryPage exactly.
  * Features: header search/sort/import, tag filter, vectorization progress banner,
- * tag management sheet, book grid (3 cols), empty/loading states.
+ * tag management sheet, responsive book grid, empty/loading states.
  */
 import {
   type RefObject,
@@ -100,8 +100,8 @@ function bytesToBase64(bytes: Uint8Array): string {
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-const NUM_COLUMNS = 3;
-const GRID_GAP = 12;
+const NUM_COLUMNS = 2;
+const GRID_GAP = 16;
 
 function splitUrlPathSegments(pathname: string): string[] {
   return pathname.split("/").filter(Boolean);
