@@ -25,7 +25,7 @@ export function MonthCalendarSection({
 }) {
   const colors = useColors();
   const s = makeStyles(colors);
-  const locale = isZh ? "zh-CN" : "en-US";
+  const locale = isZh ? "zh-CN" : "ru-RU";
 
   const weekLabels = useMemo(() => {
     const monday = new Date(2024, 0, 1); // Monday

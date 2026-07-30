@@ -21,7 +21,7 @@ export function BarChart({
 
   const yTicks = [maxVal, maxVal * 0.5, 0].map((v) => ({
     value: v,
-    label: v < 60 ? `${Math.round(v)}m` : `${(v / 60).toFixed(1)}h`,
+    label: v < 60 ? `${Math.round(v)} мин` : `${(v / 60).toFixed(1)} ч`,
   }));
 
   const handlePlotLayout = (event: LayoutChangeEvent) => {

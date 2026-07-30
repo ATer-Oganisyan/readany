@@ -57,6 +57,17 @@ module.exports = {
         },
       ],
       [
+        "react-native-audio-api",
+        {
+          iosMicrophonePermission: "Nara нужен доступ к микрофону для голосовой диктовки.",
+          iosBackgroundMode: false,
+          androidPermissions: ["android.permission.RECORD_AUDIO"],
+          androidForegroundService: false,
+          androidFSTypes: [],
+          disableFFmpeg: true,
+        },
+      ],
+      [
         "expo-build-properties",
         {
           android: {

@@ -72,7 +72,9 @@ export function TrendChart({ data }: { data: TrendPoint[] }) {
                 <G key={tick.value}>
                   <Line x1={MARGIN_LEFT} y1={tick.y} x2={containerWidth - 8} y2={tick.y} stroke={colors.border} strokeWidth={1} />
                   <SvgText x={MARGIN_LEFT - 4} y={tick.y} fontSize={9} fill={colors.mutedForeground} textAnchor="end" alignmentBaseline="middle">
-                    {tick.value < 60 ? `${Math.round(tick.value)}m` : `${(tick.value / 60).toFixed(1)}h`}
+                    {tick.value < 60
+                      ? `${Math.round(tick.value)} мин`
+                      : `${(tick.value / 60).toFixed(1)} ч`}
                   </SvgText>
                 </G>
               ))}

@@ -93,7 +93,7 @@ export function MonthHeatmap({
 }) {
   const colors = useColors();
   const s = makeStyles(colors);
-  const locale = isZh ? "zh-CN" : "en-US";
+  const locale = isZh ? "zh-CN" : "ru-RU";
 
   const valueMap = useMemo(() => {
     const map = new Map<string, number>();

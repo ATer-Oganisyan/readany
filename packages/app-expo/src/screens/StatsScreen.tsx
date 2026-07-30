@@ -81,7 +81,7 @@ function formatPeriodLabel(report: StatsReport, isZh: boolean): string {
   }
   if (report.dimension === "month") {
     const date = fromLocalDateKey(report.period.startDate);
-    return new Intl.DateTimeFormat(isZh ? "zh-CN" : "en-US", {
+    return new Intl.DateTimeFormat(isZh ? "zh-CN" : "ru-RU", {
       year: "numeric",
       month: "long",
     }).format(date);

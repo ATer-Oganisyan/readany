@@ -2,6 +2,11 @@ import { ChevronLeftIcon, SendIcon, Trash2Icon, Volume2Icon } from "@/components
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
 import { reportNarraError } from "@/lib/narra/errors";
 import { synthesizeNarraSpeech } from "@/lib/narra/media";
+import {
+  MAX_DICTATION_SECONDS,
+  PcmVoiceRecorder,
+  type PcmVoiceRecording,
+} from "@/lib/narra/pcm-voice-recorder";
 import type { NarraCharacter, NarraChatMessage } from "@/lib/narra/types";
 import { userFacingError } from "@/lib/user-facing-error";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
@@ -10,7 +15,6 @@ import { radius, useColors } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import * as Crypto from "expo-crypto";
 import { Audio } from "expo-av";
-import * as FileSystem from "expo-file-system/legacy";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -52,10 +56,12 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
   const memory = narraBook?.memories?.[characterId] ?? "";
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
-  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [recording, setRecording] = useState(false);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
+  const recorderRef = useRef<PcmVoiceRecorder | null>(null);
+  const recordingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const canSend = Boolean(input.trim() && !sending && book && character);
 
   const conversation = useMemo(
@@ -72,13 +78,14 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
     [book, character, memory, messages],
   );
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    return () => {
+      if (recordingTimeoutRef.current) clearTimeout(recordingTimeoutRef.current);
       void soundRef.current?.unloadAsync();
-      if (recording) void recording.stopAndUnloadAsync().catch(() => undefined);
-    },
-    [recording],
-  );
+      void recorderRef.current?.dispose();
+      recorderRef.current = null;
+    };
+  }, []);
 
   const refreshMemory = async (updatedMessages: NarraChatMessage[]) => {
     if (!book || !character || updatedMessages.length < 4 || updatedMessages.length % 4 !== 0) return;
@@ -135,50 +142,65 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
     }
   };
 
+  const recognizeRecording = async (
+    active: PcmVoiceRecorder,
+    recordingPromise?: Promise<PcmVoiceRecording>,
+  ) => {
+    if (recordingTimeoutRef.current) {
+      clearTimeout(recordingTimeoutRef.current);
+      recordingTimeoutRef.current = null;
+    }
+    if (recorderRef.current === active) recorderRef.current = null;
+    setRecording(false);
+    try {
+      const captured = await (recordingPromise ?? active.stop());
+      if (captured.seconds < 0.6 || captured.bytes.byteLength === 0) return;
+      setSending(true);
+      const response = await narraGatewayRequest("/v2/speech/recognize", {
+        method: "POST",
+        headers: {
+          "content-type": "application/octet-stream",
+          "x-audio-type": captured.mime,
+        },
+        body: captured.bytes.buffer as ArrayBuffer,
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | { text?: string; error?: string }
+        | null;
+      if (!response.ok) throw new Error(payload?.error || "Не удалось распознать речь");
+      setInput(payload?.text?.trim() || "");
+    } catch (error) {
+      Alert.alert(
+        "Ошибка диктовки",
+        userFacingError(error, "Не удалось распознать речь. Попробуйте ещё раз."),
+      );
+    } finally {
+      setSending(false);
+    }
+  };
+
   const toggleRecording = async () => {
     if (recording) {
-      const active = recording;
-      setRecording(null);
-      try {
-        await active.stopAndUnloadAsync();
-        const uri = active.getURI();
-        if (!uri) throw new Error("Запись не найдена");
-        setSending(true);
-        const base64 = await FileSystem.readAsStringAsync(uri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        const binary = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
-        const response = await narraGatewayRequest("/v2/speech/recognize", {
-          method: "POST",
-          headers: {
-            "content-type": "application/octet-stream",
-            "x-audio-type": "audio/mp4",
-          },
-          body: binary,
-        });
-        const payload = (await response.json().catch(() => null)) as
-          | { text?: string; error?: string }
-          | null;
-        if (!response.ok) throw new Error(payload?.error || "Не удалось распознать речь");
-        setInput(payload?.text?.trim() || "");
-      } catch (error) {
-        Alert.alert(
-          "Ошибка диктовки",
-          userFacingError(error, "Не удалось распознать речь. Попробуйте ещё раз."),
-        );
-      } finally {
-        setSending(false);
-      }
+      const active = recorderRef.current;
+      if (active) await recognizeRecording(active);
       return;
     }
-    const permission = await Audio.requestPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert("Нужен доступ к микрофону", "Разрешите запись звука в настройках Android.");
-      return;
+
+    try {
+      const active = new PcmVoiceRecorder();
+      await active.start();
+      recorderRef.current = active;
+      setRecording(true);
+      recordingTimeoutRef.current = setTimeout(() => {
+        const stopPromise = active.stop();
+        void recognizeRecording(active, stopPromise);
+      }, MAX_DICTATION_SECONDS * 1000);
+    } catch (error) {
+      Alert.alert(
+        "Нужен доступ к микрофону",
+        userFacingError(error, "Не удалось начать запись. Проверьте доступ к микрофону."),
+      );
     }
-    await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-    const created = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
-    setRecording(created.recording);
   };
 
   const send = async () => {
@@ -228,7 +250,10 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
   if (!book || !character) return null;
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={["top"]}>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      edges={["top", "bottom"]}
+    >
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
           <ChevronLeftIcon color={colors.foreground} />
