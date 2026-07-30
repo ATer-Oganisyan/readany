@@ -11,7 +11,6 @@ export interface ReaderBottomToolbarProps {
     bookmarks: string;
     notes: string;
     search: string;
-    settings: string;
   };
   onSeek: (value: number) => void;
   onDragStart: () => void;
@@ -20,5 +19,4 @@ export interface ReaderBottomToolbarProps {
   onToggleBookmark: () => void;
   onOpenNotes: () => void;
   onOpenSearch: () => void;
-  onOpenSettings: () => void;
 }

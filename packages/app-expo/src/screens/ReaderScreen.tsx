@@ -1728,7 +1728,6 @@ export function ReaderScreen({ route, navigation }: Props) {
               bookmarks: t("reader.bookmarks", "Закладки"),
               notes: t("notes.title", "Заметки"),
               search: t("reader.search", "Поиск"),
-              settings: t("common.settings", "Настройки"),
             }}
             onDragStart={() => suppressProgressTracking(99_999)}
             onDragEnd={() => suppressProgressTracking(2_000)}
@@ -1749,7 +1748,6 @@ export function ReaderScreen({ route, navigation }: Props) {
                 useNativeDriver: true,
               }).start();
             }}
-            onOpenSettings={() => setShowSettings(true)}
           />
         </Animated.View>
       )}

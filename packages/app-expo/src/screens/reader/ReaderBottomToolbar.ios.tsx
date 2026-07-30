@@ -42,7 +42,6 @@ export function ReaderBottomToolbar(props: ReaderBottomToolbarProps) {
     },
     { key: "notes", symbol: "square.and.pencil", onPress: props.onOpenNotes },
     { key: "search", symbol: "magnifyingglass", onPress: props.onOpenSearch },
-    { key: "settings", symbol: "gearshape", onPress: props.onOpenSettings },
   ];
 
   return (

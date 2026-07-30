@@ -8,8 +8,8 @@ import {
 import { Text } from "@/components/ui/Typography";
 import { withOpacity } from "@/styles/theme";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
-import { ListIcon, SettingsIcon } from "./reader-icons";
 import type { ReaderBottomToolbarProps } from "./ReaderBottomToolbar.types";
+import { ListIcon } from "./reader-icons";
 
 export function ReaderBottomToolbar(props: ReaderBottomToolbarProps) {
   const actions = [
@@ -36,11 +36,6 @@ export function ReaderBottomToolbar(props: ReaderBottomToolbarProps) {
       key: "search",
       icon: <SearchIcon size={22} color={props.foregroundColor} />,
       onPress: props.onOpenSearch,
-    },
-    {
-      key: "settings",
-      icon: <SettingsIcon size={22} color={props.foregroundColor} />,
-      onPress: props.onOpenSettings,
     },
   ] as const;
 
