@@ -390,8 +390,6 @@ export function ReaderScreen({ route, navigation }: Props) {
 
   useLayoutEffect(() => {
     const headerVisible = showControls && !showSearch;
-    const headerTitle = bookTitle || book?.meta.title || "";
-    const headerProgress = Math.round(progress * 100);
 
     navigation.setOptions({
       headerShown: headerVisible,
@@ -401,36 +399,15 @@ export function ReaderScreen({ route, navigation }: Props) {
       headerBackButtonDisplayMode: "minimal",
       headerTintColor: colors.foreground,
       headerTitleAlign: "center",
-      title: headerTitle,
-      headerRight: headerVisible
-        ? () => (
-            <Text
-              style={{
-                color: colors.mutedForeground,
-                fontSize: 14,
-                fontWeight: "600",
-                fontVariant: ["tabular-nums"],
-              }}
-            >
-              {currentPage > 0 && totalPages > 0
-                ? `${currentPage}/${totalPages}`
-                : `${headerProgress}%`}
-            </Text>
-          )
-        : undefined,
+      title: "",
+      headerRight: undefined,
     });
   }, [
-    book?.meta.title,
-    bookTitle,
     colors.foreground,
-    colors.mutedForeground,
-    currentPage,
     navigation,
-    progress,
     showControls,
     showSearch,
     themeMode,
-    totalPages,
   ]);
 
   const suppressProgressTracking = useCallback((duration = PROGRAMMATIC_NAV_GUARD_MS) => {
