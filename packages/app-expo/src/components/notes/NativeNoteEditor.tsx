@@ -5,12 +5,17 @@ import { useCallback, useState } from "react";
 export interface NativeNoteEditorProps {
   onChange: (value: string) => void;
   autoFocus?: boolean;
+  initialValue?: string;
 }
 
 /** Web fallback. Native platforms resolve their system editor implementations. */
-export function NativeNoteEditor({ onChange, autoFocus = false }: NativeNoteEditorProps) {
+export function NativeNoteEditor({
+  onChange,
+  autoFocus = false,
+  initialValue = "",
+}: NativeNoteEditorProps) {
   const colors = useColors();
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(initialValue);
   const handleChange = useCallback(
     (nextValue: string) => {
       setValue(nextValue);

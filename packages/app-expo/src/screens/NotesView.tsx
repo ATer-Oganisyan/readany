@@ -519,11 +519,7 @@ export function NotesView({
     <NativeNotesList
       sections={noteSections}
       onPress={(id) => {
-        const note = allNotes.find((item) => item.id === id);
-        if (!note) return;
-        setSelectedBookId(note.bookId);
-        setEditingId(null);
-        setDetailTab("notes");
+        nav.navigate({ name: "ManualNote", params: { noteId: id } } as never);
       }}
     />
   );

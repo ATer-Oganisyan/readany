@@ -13,7 +13,11 @@ import { useCallback } from "react";
 import type { NativeNoteEditorProps } from "./NativeNoteEditor";
 
 /** Full-screen SwiftUI multiline editor matching the system Notes composition surface. */
-export function NativeNoteEditor({ onChange, autoFocus = false }: NativeNoteEditorProps) {
+export function NativeNoteEditor({
+  onChange,
+  autoFocus = false,
+  initialValue = "",
+}: NativeNoteEditorProps) {
   const { colors, isDark } = useTheme();
   const handleChange = useCallback((value: string) => onChange(value), [onChange]);
 
@@ -25,6 +29,7 @@ export function NativeNoteEditor({ onChange, autoFocus = false }: NativeNoteEdit
       <TextField
         axis="vertical"
         placeholder="Начните писать…"
+        defaultValue={initialValue}
         autoFocus={autoFocus}
         onValueChange={handleChange}
         modifiers={[

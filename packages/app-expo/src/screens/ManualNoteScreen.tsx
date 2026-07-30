@@ -13,16 +13,31 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 type Props = NativeStackScreenProps<RootStackParamList, "ManualNote">;
 
-export function ManualNoteScreen({ navigation }: Props) {
+export function ManualNoteScreen({ navigation, route }: Props) {
   const colors = useColors();
   const { t } = useTranslation();
   const books = useLibraryStore((state) => state.books);
   const addHighlight = useAnnotationStore((state) => state.addHighlight);
-  const [bookId, setBookId] = useState("");
-  const [content, setContent] = useState("");
+  const updateHighlight = useAnnotationStore((state) => state.updateHighlight);
+  const highlightsWithBooks = useAnnotationStore((state) => state.highlightsWithBooks);
+  const noteId = (route.params as unknown as { noteId?: string } | undefined)?.noteId;
+  const existingNote = useMemo(
+    () => highlightsWithBooks.find((highlight) => highlight.id === noteId),
+    [highlightsWithBooks, noteId],
+  );
+  const existingNoteHasBook = Boolean(
+    existingNote &&
+      (existingNote.cfi || existingNote.text || existingNote.chapterTitle === "Заметка к книге"),
+  );
+  const [bookId, setBookId] = useState(existingNoteHasBook ? existingNote?.bookId || "" : "");
+  const [content, setContent] = useState(existingNote?.note || "");
   const [saving, setSaving] = useState(false);
   const selectedBook = useMemo(() => books.find((book) => book.id === bookId), [bookId, books]);
-  const storageBook = selectedBook ?? books[0];
+  const existingStorageBook = useMemo(
+    () => books.find((book) => book.id === existingNote?.bookId),
+    [books, existingNote?.bookId],
+  );
+  const storageBook = selectedBook ?? existingStorageBook ?? books[0];
 
   const chooseBook = useCallback(() => {
     Alert.alert(t("notes.chooseBook", "Выберите книгу"), undefined, [
@@ -37,11 +52,23 @@ export function ManualNoteScreen({ navigation }: Props) {
 
   const save = useCallback(async () => {
     const note = content.trim();
-    if (!storageBook || !note || saving) return;
+    if ((!existingNote && !storageBook) || !note || saving) return;
 
     setSaving(true);
     const now = Date.now();
     try {
+      if (existingNote) {
+        updateHighlight(existingNote.id, {
+          bookId: selectedBook?.id ?? existingNote.bookId,
+          note,
+          chapterTitle: selectedBook ? "Заметка к книге" : undefined,
+          updatedAt: now,
+        });
+        navigation.goBack();
+        return;
+      }
+
+      if (!storageBook) return;
       await addHighlight({
         id: generateId(),
         bookId: storageBook.id,
@@ -63,10 +90,20 @@ export function ManualNoteScreen({ navigation }: Props) {
     } finally {
       setSaving(false);
     }
-  }, [addHighlight, content, navigation, saving, selectedBook, storageBook, t]);
+  }, [
+    addHighlight,
+    content,
+    existingNote,
+    navigation,
+    saving,
+    selectedBook,
+    storageBook,
+    t,
+    updateHighlight,
+  ]);
 
   useLayoutEffect(() => {
-    const canSave = Boolean(content.trim()) && !saving && Boolean(storageBook);
+    const canSave = Boolean(content.trim()) && !saving && Boolean(existingNote || storageBook);
 
     navigation.setOptions({
       title: "",
@@ -125,7 +162,7 @@ export function ManualNoteScreen({ navigation }: Props) {
             ),
           }),
     });
-  }, [bookId, books, colors.primary, content, navigation, save, saving, storageBook]);
+  }, [bookId, books, colors.primary, content, existingNote, navigation, save, saving, storageBook]);
 
   if (!storageBook) {
     return (
@@ -158,7 +195,7 @@ export function ManualNoteScreen({ navigation }: Props) {
             style={styles.androidBookButton}
           />
         ) : null}
-        <NativeNoteEditor onChange={setContent} autoFocus />
+        <NativeNoteEditor initialValue={existingNote?.note} onChange={setContent} autoFocus />
       </View>
     </SafeAreaView>
   );
