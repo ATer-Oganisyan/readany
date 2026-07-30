@@ -54,13 +54,15 @@ function coverPrompt(input: {
   excerpt?: string;
 }) {
   return [
-    "Create a portrait book cover with the visual language of a niche independent culture, design, or photography magazine. Base it on the themes and emotional atmosphere of the book.",
-    "Interpret the source material indirectly. Avoid literal depictions of the title, plot, characters, faces, brains, eyes, flames, glowing energy, and other obvious visual metaphors.",
-    "Use confident niche-magazine art direction: an unexpected crop or scale, a conceptual still life, found materials, tactile paper, macro texture, experimental photography, restrained collage, grainy print, or a single graphic intervention. Choose only the approach that best fits this book.",
-    "The result should feel commissioned for a small-circulation contemporary editorial magazine: specific, intelligent, culturally aware, slightly unconventional, and materially real.",
-    "Prefer asymmetry, negative space, visual tension, ambiguity, subtle imperfections, and a limited color palette with one distinctive accent. Keep the composition clear and recognizable at thumbnail size.",
-    "Avoid generic stock photography, glossy hyperreal CGI, cinematic fantasy lighting, neon glow, futuristic interfaces, generic human portraits, and overly detailed scenes. Photography is welcome only when it feels observational, tactile, art-directed, and editorial.",
-    "Do not render any letters, words, logos, borders, mockups, spines, badges, or watermarks. Generate only the flat front-cover artwork.",
+    "Create an original portrait-oriented painting for a book cover.",
+    "Interpret the book through the visual language of late 19th- and 20th-century Eastern European figurative painting: psychological realism, intimate domestic scenes, restrained symbolism, social observation, monumental compositions, and atmospheric landscapes.",
+    "Choose the type of painting that best matches the book: a psychologically charged portrait, an intimate genre scene, a symbolic still life, an atmospheric landscape, or a restrained multi-figure composition.",
+    "The image must feel like a real painted canvas from a museum archive: visible brushwork, layered pigments, natural imperfections, complex muted colors, believable materials, and carefully observed light.",
+    "Do not illustrate the title literally. Express the book through mood, gesture, spatial relationships, objects, environment, and subtle visual symbolism.",
+    "Avoid fantasy art, digital illustration, glossy rendering, cinematic concept art, surreal AI imagery, neon colors, glowing objects, anatomical brains, generic smiling portraits, and decorative abstraction.",
+    "The composition should be emotionally specific and slightly enigmatic. It may feel historical, but it must not reproduce an existing artwork or imitate one identifiable artist.",
+    "Use an unusual crop suitable for a contemporary book cover. The painting should remain expressive and readable at thumbnail size.",
+    "Do not render letters, words, typography, logos, frames, mockups, spines, badges, or watermarks. Generate only the flat painted artwork.",
     `Book title: ${input.title}`,
     `Author: ${input.author || "unknown"}`,
     input.description ? `Description: ${input.description.slice(0, MAX_CONTEXT_CHARS)}` : "",
