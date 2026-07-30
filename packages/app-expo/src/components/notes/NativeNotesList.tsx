@@ -7,7 +7,7 @@ export interface NativeNoteListItem {
   title: string;
   preview: string;
   dateLabel: string;
-  bookTitle: string;
+  bookTitle?: string;
 }
 
 export interface NativeNoteListSection {
@@ -82,15 +82,17 @@ export function NativeNotesList({ sections, onPress }: NativeNotesListProps) {
                   </Text>
                 ) : null}
               </View>
-              <Text
-                numberOfLines={1}
-                style={[
-                  styles.book,
-                  { color: pressed ? colors.primaryForeground : colors.mutedForeground },
-                ]}
-              >
-                {item.bookTitle}
-              </Text>
+              {item.bookTitle ? (
+                <Text
+                  numberOfLines={1}
+                  style={[
+                    styles.book,
+                    { color: pressed ? colors.primaryForeground : colors.mutedForeground },
+                  ]}
+                >
+                  {item.bookTitle}
+                </Text>
+              ) : null}
             </View>
           )}
         </Pressable>

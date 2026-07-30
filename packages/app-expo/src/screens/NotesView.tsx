@@ -76,13 +76,15 @@ function noteListItem(highlight: HighlightWithBook): NativeNoteListItem {
             month: "short",
             ...(date.getFullYear() === new Date().getFullYear() ? {} : { year: "numeric" }),
           }).format(date);
+  const isStandaloneNote =
+    !highlight.cfi && !highlight.text && highlight.chapterTitle !== "Заметка к книге";
 
   return {
     id: highlight.id,
     title,
     preview: noteBody || quote,
     dateLabel,
-    bookTitle: highlight.bookTitle || "Книга",
+    bookTitle: isStandaloneNote ? undefined : highlight.bookTitle || undefined,
   };
 }
 

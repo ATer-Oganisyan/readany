@@ -18,15 +18,15 @@ export function ManualNoteScreen({ navigation }: Props) {
   const { t } = useTranslation();
   const books = useLibraryStore((state) => state.books);
   const addHighlight = useAnnotationStore((state) => state.addHighlight);
-  const [bookId, setBookId] = useState(books[0]?.id ?? "");
+  const [bookId, setBookId] = useState("");
   const [content, setContent] = useState("");
   const [saving, setSaving] = useState(false);
   const selectedBook = useMemo(() => books.find((book) => book.id === bookId), [bookId, books]);
+  const storageBook = selectedBook ?? books[0];
 
   const chooseBook = useCallback(() => {
-    if (books.length < 2) return;
-
     Alert.alert(t("notes.chooseBook", "Выберите книгу"), undefined, [
+      { text: "Без книги", onPress: () => setBookId("") },
       ...books.slice(0, 6).map((book) => ({
         text: book.meta.title,
         onPress: () => setBookId(book.id),
@@ -37,19 +37,19 @@ export function ManualNoteScreen({ navigation }: Props) {
 
   const save = useCallback(async () => {
     const note = content.trim();
-    if (!selectedBook || !note || saving) return;
+    if (!storageBook || !note || saving) return;
 
     setSaving(true);
     const now = Date.now();
     try {
       await addHighlight({
         id: generateId(),
-        bookId: selectedBook.id,
+        bookId: storageBook.id,
         cfi: "",
         text: "",
         color: "yellow",
         note,
-        chapterTitle: t("notes.manualSection", "Без привязки к тексту"),
+        chapterTitle: selectedBook ? "Заметка к книге" : undefined,
         createdAt: now,
         updatedAt: now,
       });
@@ -63,10 +63,10 @@ export function ManualNoteScreen({ navigation }: Props) {
     } finally {
       setSaving(false);
     }
-  }, [addHighlight, content, navigation, saving, selectedBook, t]);
+  }, [addHighlight, content, navigation, saving, selectedBook, storageBook, t]);
 
   useLayoutEffect(() => {
-    const canSave = Boolean(content.trim()) && !saving && Boolean(selectedBook);
+    const canSave = Boolean(content.trim()) && !saving && Boolean(storageBook);
 
     navigation.setOptions({
       title: "",
@@ -83,12 +83,20 @@ export function ManualNoteScreen({ navigation }: Props) {
                 menu: {
                   title: "Книга",
                   multiselectable: false,
-                  items: books.map((book) => ({
-                    type: "action" as const,
-                    label: book.meta.title,
-                    state: book.id === bookId ? ("on" as const) : ("off" as const),
-                    onPress: () => setBookId(book.id),
-                  })),
+                  items: [
+                    {
+                      type: "action" as const,
+                      label: "Без книги",
+                      state: bookId ? ("off" as const) : ("on" as const),
+                      onPress: () => setBookId(""),
+                    },
+                    ...books.map((book) => ({
+                      type: "action" as const,
+                      label: book.meta.title,
+                      state: book.id === bookId ? ("on" as const) : ("off" as const),
+                      onPress: () => setBookId(book.id),
+                    })),
+                  ],
                 },
               },
               {
@@ -117,9 +125,9 @@ export function ManualNoteScreen({ navigation }: Props) {
             ),
           }),
     });
-  }, [bookId, books, colors.primary, content, navigation, save, saving, selectedBook]);
+  }, [bookId, books, colors.primary, content, navigation, save, saving, storageBook]);
 
-  if (!selectedBook) {
+  if (!storageBook) {
     return (
       <SafeAreaView
         style={[styles.container, { backgroundColor: colors.background }]}
@@ -143,11 +151,10 @@ export function ManualNoteScreen({ navigation }: Props) {
       <View style={styles.content}>
         {Platform.OS !== "ios" ? (
           <NativeButton
-            label={selectedBook.meta.title}
+            label={selectedBook?.meta.title ?? "Без книги"}
             accessibilityLabel="Выбрать книгу"
             variant="tertiary"
             onPress={chooseBook}
-            disabled={books.length < 2}
             style={styles.androidBookButton}
           />
         ) : null}
