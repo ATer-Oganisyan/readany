@@ -233,7 +233,7 @@ export const BookCard = memo(function BookCard({
 
       {/* Info below cover */}
       <View style={s.infoWrap}>
-        <Text style={s.bookTitle}>
+        <Text style={s.bookTitle} numberOfLines={1} ellipsizeMode="tail">
           {book.meta.title}
         </Text>
         {book.meta.author ? (
