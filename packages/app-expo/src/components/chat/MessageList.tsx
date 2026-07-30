@@ -1,5 +1,5 @@
-import { Text, TextInput } from "@/components/ui/Typography";
 import { CheckIcon, ChevronDownIcon, CopyIcon } from "@/components/ui/Icon";
+import { Text, TextInput } from "@/components/ui/Typography";
 import { fontSize as fs, radius, useColors, withOpacity } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
 import type { CitationPart, MessageV2, QuotePart, TextPart } from "@readany/core/types/message";
@@ -166,19 +166,23 @@ export function MessageList({
         data={messages}
         keyExtractor={(item) => item.id}
         renderItem={renderMessage}
-        contentContainerStyle={s.listContent}
+        contentContainerStyle={[s.listContent, messages.length === 0 && s.emptyListContent]}
         onScroll={handleScroll}
         onScrollBeginDrag={Keyboard.dismiss}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+        alwaysBounceVertical={Platform.OS === "ios"}
         removeClippedSubviews={false}
         initialNumToRender={20}
         maxToRenderPerBatch={10}
         updateCellsBatchingPeriod={50}
         bounces={true}
         bouncesZoom={false}
+        ListEmptyComponent={
+          <Pressable style={s.emptyListHitTarget} onPress={Keyboard.dismiss} accessible={false} />
+        }
         ListFooterComponent={
           showStreamingIndicator && currentStep ? <StreamingIndicator step={currentStep} /> : null
         }
@@ -508,6 +512,8 @@ const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     container: { flex: 1 },
     listContent: { paddingHorizontal: 16, paddingVertical: 12, gap: 12 },
+    emptyListContent: { flexGrow: 1 },
+    emptyListHitTarget: { flex: 1 },
     userRow: {
       flexDirection: "row",
       justifyContent: "flex-end",

@@ -324,17 +324,11 @@ export function ChatScreen() {
         <View style={s.mainColumn}>
           {/* Content */}
           <View style={s.content}>
-            <View style={s.content}>
-              {allMessages.length > 0 ? (
-                <MessageList
-                  messages={allMessages}
-                  isStreaming={isStreaming}
-                  currentStep={currentStep}
-                />
-              ) : (
-                <View style={s.content} />
-              )}
-            </View>
+            <MessageList
+              messages={allMessages}
+              isStreaming={isStreaming}
+              currentStep={currentStep}
+            />
             <ChatInput
               onSend={handleSend}
               onStop={stopStream}
