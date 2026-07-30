@@ -54,8 +54,12 @@ function coverPrompt(input: {
   excerpt?: string;
 }) {
   return [
-    "Create a polished portrait book-cover illustration for a digital reading app.",
-    "Use a strong central visual metaphor derived from the book, restrained composition, editorial quality, and clear contrast at thumbnail size.",
+    "Create a portrait book cover with the visual language of a niche independent culture, design, or photography magazine. Base it on the themes and emotional atmosphere of the book.",
+    "Interpret the source material indirectly. Avoid literal depictions of the title, plot, characters, faces, brains, eyes, flames, glowing energy, and other obvious visual metaphors.",
+    "Use confident niche-magazine art direction: an unexpected crop or scale, a conceptual still life, found materials, tactile paper, macro texture, experimental photography, restrained collage, grainy print, or a single graphic intervention. Choose only the approach that best fits this book.",
+    "The result should feel commissioned for a small-circulation contemporary editorial magazine: specific, intelligent, culturally aware, slightly unconventional, and materially real.",
+    "Prefer asymmetry, negative space, visual tension, ambiguity, subtle imperfections, and a limited color palette with one distinctive accent. Keep the composition clear and recognizable at thumbnail size.",
+    "Avoid generic stock photography, glossy hyperreal CGI, cinematic fantasy lighting, neon glow, futuristic interfaces, generic human portraits, and overly detailed scenes. Photography is welcome only when it feels observational, tactile, art-directed, and editorial.",
     "Do not render any letters, words, logos, borders, mockups, spines, badges, or watermarks. Generate only the flat front-cover artwork.",
     `Book title: ${input.title}`,
     `Author: ${input.author || "unknown"}`,
