@@ -4,10 +4,9 @@ import { useColors } from "@/styles/theme";
 import { getPlatformService } from "@readany/core/services";
 /**
  * BookCard — Touch-optimized book card matching Tauri mobile MobileBookCard exactly.
- * Cover (28:41), progress bar, vectorization overlay, long-press action sheet.
+ * Cover (28:41), vectorization overlay, long-press action sheet.
  */
 import type { Book } from "@readany/core/types";
-import { getBookProgressPercent } from "@readany/core/utils";
 import { memo, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Animated, Easing, Image, TouchableOpacity, View } from "react-native";
@@ -101,8 +100,6 @@ export const BookCard = memo(function BookCard({
     })();
   }, [book.meta.coverUrl]);
 
-  const progressPct = getBookProgressPercent(book.progress);
-
   const vecPct = vectorProgress
     ? vectorProgress.totalChunks > 0
       ? Math.round((vectorProgress.processedChunks / vectorProgress.totalChunks) * 100)
@@ -165,13 +162,6 @@ export const BookCard = memo(function BookCard({
                 </View>
               ) : null}
             </View>
-          </View>
-        )}
-
-        {/* Progress bar */}
-        {progressPct > 0 && progressPct < 100 && (
-          <View style={s.progressBarBg}>
-            <View style={[s.progressBarFill, { width: `${progressPct}%` }]} />
           </View>
         )}
 
