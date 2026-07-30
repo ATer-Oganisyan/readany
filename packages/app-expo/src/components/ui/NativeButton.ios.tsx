@@ -13,6 +13,7 @@ const icons: Record<NativeButtonIcon, string> = {
   back: "chevron.backward",
   forward: "chevron.forward",
   check: "checkmark",
+  chat: "message",
   close: "xmark",
   components: "square.grid.2x2",
   delete: "trash",

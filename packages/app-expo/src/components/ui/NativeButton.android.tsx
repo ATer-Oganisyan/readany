@@ -13,6 +13,7 @@ const icons: Record<NativeButtonIcon, string> = {
   back: "rounded.ArrowBack",
   forward: "rounded.ArrowForward",
   check: "rounded.Check",
+  chat: "chat",
   close: "rounded.Close",
   components: "rounded.Widgets",
   delete: "rounded.Delete",

@@ -7,6 +7,7 @@ export type NativeButtonIcon =
   | "back"
   | "forward"
   | "check"
+  | "chat"
   | "close"
   | "components"
   | "delete"

@@ -2,6 +2,7 @@ import { MissingBookPrompt } from "@/components/shared/MissingBookPrompt";
 import BadgesScreen from "@/screens/BadgesScreen";
 import { BookChatScreen } from "@/screens/BookChatScreen";
 import { BookDetailsScreen } from "@/screens/BookDetailsScreen";
+import { ChatScreen } from "@/screens/ChatScreen";
 import { FullScreenNotesScreen } from "@/screens/FullScreenNotesScreen";
 import { ManualNoteScreen } from "@/screens/ManualNoteScreen";
 import { ReaderScreen } from "@/screens/ReaderScreen";
@@ -35,6 +36,7 @@ import { TabNavigator } from "./TabNavigator";
 
 export type RootStackParamList = {
   Tabs: undefined;
+  Chat: undefined;
   Reader: { bookId: string; cfi?: string; highlight?: boolean; openTTS?: boolean };
   BookDetails: { bookId: string };
   BookChat: { bookId: string; selectedText?: string; chapterTitle?: string };
@@ -85,6 +87,11 @@ export function RootNavigator() {
         }}
       >
         <Stack.Screen name="Tabs" component={TabNavigator} options={{ headerShown: false }} />
+        <Stack.Screen
+          name="Chat"
+          component={ChatScreen}
+          options={{ animation: "slide_from_right", title: "Narra AI" }}
+        />
         <Stack.Screen
           name="Reader"
           component={ReaderScreen}

@@ -1,6 +1,5 @@
 import { NativeButton } from "@/components/ui/NativeButton";
 import { SyncButton } from "@/components/ui/SyncButton";
-import { ChatScreen } from "@/screens/ChatScreen";
 import { LibraryScreen } from "@/screens/LibraryScreen";
 import { NotesScreen } from "@/screens/NotesScreen";
 import { ProfileScreen } from "@/screens/ProfileScreen";
@@ -17,7 +16,6 @@ import { Platform } from "react-native";
 
 export type TabParamList = {
   Library: undefined;
-  Chat: undefined;
   Notes: { bookId?: string } | undefined;
   Profile: undefined;
 };
@@ -26,7 +24,6 @@ const Tab = createNativeBottomTabNavigator<TabParamList>();
 
 const ANDROID_ICONS = {
   Library: require("../../assets/book.png"),
-  Chat: require("../../assets/think.png"),
   Notes: require("../../assets/note.png"),
   Profile: require("../../assets/icon.png"),
 } as const;
@@ -100,38 +97,27 @@ export function TabNavigator() {
                 unstable_headerLeftItems: () => [
                   {
                     type: "button" as const,
-                    label: "Компоненты",
-                    accessibilityLabel: "Открыть каталог компонентов",
-                    icon: { type: "sfSymbol" as const, name: "square.grid.2x2" as const },
-                    onPress: () => navigation.getParent()?.navigate("Storybook" as never),
+                    label: "Narra AI",
+                    accessibilityLabel: "Открыть Narra AI",
+                    icon: { type: "sfSymbol" as const, name: "message" as const },
+                    onPress: () => navigation.getParent()?.navigate("Chat" as never),
                   },
                 ],
               }
             : {
                 headerLeft: () => (
                   <NativeButton
-                    label="Компоненты"
-                    accessibilityLabel="Открыть каталог компонентов"
-                    icon="components"
+                    label="Narra AI"
+                    accessibilityLabel="Открыть Narra AI"
+                    icon="chat"
                     size="small"
                     variant="tertiary"
-                    onPress={() => navigation.getParent()?.navigate("Storybook" as never)}
+                    onPress={() => navigation.getParent()?.navigate("Chat" as never)}
                   />
                 ),
               }),
         })}
       />
-      {Platform.OS !== "ios" ? (
-        <Tab.Screen
-          name="Chat"
-          component={ChatScreen}
-          options={{
-            title: t("tabs.ai", "ИИ"),
-            tabBarLabel: t("tabs.ai", "ИИ"),
-            tabBarIcon: tabIcon("message", ANDROID_ICONS.Chat),
-          }}
-        />
-      ) : null}
       <Tab.Screen
         name="Notes"
         component={NotesScreen}
@@ -205,17 +191,6 @@ export function TabNavigator() {
               }),
         }}
       />
-      {Platform.OS === "ios" ? (
-        <Tab.Screen
-          name="Chat"
-          component={ChatScreen}
-          options={{
-            title: t("tabs.ai", "ИИ"),
-            tabBarLabel: t("tabs.ai", "ИИ"),
-            tabBarIcon: tabIcon("message", ANDROID_ICONS.Chat),
-          }}
-        />
-      ) : null}
     </Tab.Navigator>
   );
 }

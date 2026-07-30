@@ -9,15 +9,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  Animated,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { Animated, Pressable, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useStreamingChat } from "@/hooks";
@@ -47,12 +39,7 @@ export function ChatScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   useEffect(() => {
-    navigation.setOptions({
-      title: "Narra AI",
-      ...(Platform.OS === "ios"
-        ? { tabBarIcon: () => ({ type: "sfSymbol", name: "message" }) }
-        : undefined),
-    } as never);
+    navigation.setOptions({ title: "Narra AI" });
   }, [navigation]);
   const layout = useResponsiveLayout();
   const isTabletLandscape = layout.isTabletLandscape;
@@ -334,7 +321,6 @@ export function ChatScreen() {
               onStop={stopStream}
               isStreaming={isStreaming}
               keyboardBottomOffset={insets.bottom}
-              tabBarBottomOffset={Platform.OS === "ios" ? 49 + insets.bottom : 0}
               autoFocusOnScreenFocus
             />
           </View>
