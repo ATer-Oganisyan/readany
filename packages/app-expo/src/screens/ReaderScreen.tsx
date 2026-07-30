@@ -388,7 +388,7 @@ export function ReaderScreen({ route, navigation }: Props) {
 
   useLayoutEffect(() => {
     const headerVisible = showControls && !showSearch;
-    const headerTitle = currentChapter || bookTitle || book?.meta.title || "";
+    const headerTitle = bookTitle || book?.meta.title || "";
     const headerProgress = Math.round(progress * 100);
 
     navigation.setOptions({
@@ -398,6 +398,7 @@ export function ReaderScreen({ route, navigation }: Props) {
       headerShadowVisible: false,
       headerBackButtonDisplayMode: "minimal",
       headerTintColor: colors.foreground,
+      headerTitleAlign: "center",
       title: headerTitle,
       headerRight: headerVisible
         ? () => (
@@ -421,7 +422,6 @@ export function ReaderScreen({ route, navigation }: Props) {
     bookTitle,
     colors.foreground,
     colors.mutedForeground,
-    currentChapter,
     currentPage,
     navigation,
     progress,
@@ -1717,6 +1717,8 @@ export function ReaderScreen({ route, navigation }: Props) {
             translationActive={showChapterTranslation || chapterTranslation.state.status !== "idle"}
             speechActive={showTTS || ttsPlayState !== "stopped"}
             accentColor={colors.primary}
+            foregroundColor={colors.foreground}
+            isDark={themeMode === "dark"}
             onTranslate={() => setShowChapterTranslation(true)}
             onSpeech={tts.handleToggleTTS}
             onChat={() => navigation.navigate("BookChat", { bookId })}

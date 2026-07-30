@@ -2,8 +2,10 @@ import { Button, Host, VStack } from "@expo/ui/swift-ui";
 import {
   accessibilityLabel,
   buttonStyle,
+  clipShape,
   controlSize,
   frame,
+  glassEffect,
   labelStyle,
   tint,
 } from "@expo/ui/swift-ui/modifiers";
@@ -32,26 +34,47 @@ export function ReaderFloatingActions(props: ReaderFloatingActionsProps) {
   ];
 
   return (
-    <Host matchContents colorScheme="dark" style={{ width: 64 }}>
+    <Host matchContents colorScheme={props.isDark ? "dark" : "light"} style={{ width: 64 }}>
       <VStack spacing={10} alignment="center">
-        {actions.map((action) => (
-          <Button
-            key={action.label}
-            label={action.label}
-            systemImage={action.symbol}
-            onPress={action.onPress}
-            modifiers={[
-              buttonStyle(
-                supportsGlass ? (action.active ? "glassProminent" : "glass") : "bordered",
-              ),
-              controlSize("extraLarge"),
-              labelStyle("iconOnly"),
-              tint(action.active ? props.accentColor : "#FFFFFF"),
-              frame({ width: 54, height: 54 }),
-              accessibilityLabel(action.label),
-            ]}
-          />
-        ))}
+        {actions.map((action) => {
+          const modifiers = supportsGlass
+            ? [
+                buttonStyle("plain" as const),
+                controlSize("extraLarge" as const),
+                labelStyle("iconOnly" as const),
+                frame({ width: 54, height: 54 }),
+                glassEffect({
+                  glass: {
+                    variant: "regular",
+                    interactive: true,
+                    ...(action.active ? { tint: props.accentColor } : {}),
+                  },
+                  shape: "circle",
+                }),
+                clipShape("circle" as const),
+                tint(action.active ? "#FFFFFF" : props.foregroundColor),
+                accessibilityLabel(action.label),
+              ]
+            : [
+                buttonStyle(action.active ? ("borderedProminent" as const) : ("bordered" as const)),
+                controlSize("extraLarge" as const),
+                labelStyle("iconOnly" as const),
+                frame({ width: 54, height: 54 }),
+                clipShape("circle" as const),
+                tint(action.active ? props.accentColor : props.foregroundColor),
+                accessibilityLabel(action.label),
+              ];
+
+          return (
+            <Button
+              key={action.label}
+              label={action.label}
+              systemImage={action.symbol}
+              onPress={action.onPress}
+              modifiers={modifiers}
+            />
+          );
+        })}
       </VStack>
     </Host>
   );
