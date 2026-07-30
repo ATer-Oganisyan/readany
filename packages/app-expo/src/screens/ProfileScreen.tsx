@@ -24,6 +24,7 @@ import {
   fontSize,
   fontWeight,
   radius,
+  spacing,
   useColors,
   useTheme,
   withOpacity,
@@ -448,7 +449,7 @@ export function ProfileScreen() {
       <ScrollView
         style={s.scrollView}
         contentInsetAdjustmentBehavior="automatic"
-        contentContainerStyle={{ paddingTop: 20, paddingBottom: 12 }}
+        contentContainerStyle={s.scrollContent}
         showsVerticalScrollIndicator={false}
       >
         {/* Stats cards */}
@@ -460,7 +461,6 @@ export function ProfileScreen() {
                 style={{
                   width: statCardSlotWidth,
                   paddingHorizontal: 6,
-                  paddingBottom: 12,
                 }}
               >
                 <StatCard
@@ -589,9 +589,19 @@ const makeStyles = (colors: ThemeColors) =>
       color: colors.foreground,
     },
     scrollView: { flex: 1 },
+    scrollContent: {
+      paddingTop: 20,
+      paddingBottom: 12,
+      gap: spacing.xxl,
+    },
     // Stats
     statsSection: { paddingHorizontal: 16, paddingTop: 16 },
-    statsGrid: { flexDirection: "row", flexWrap: "wrap", marginHorizontal: -6 },
+    statsGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      rowGap: 12,
+      marginHorizontal: -6,
+    },
     statCard: {
       backgroundColor: colors.elevation1,
       borderRadius: radius.card,
@@ -647,7 +657,6 @@ const makeStyles = (colors: ThemeColors) =>
     // Heatmap
     heatmapSection: {
       marginHorizontal: 16,
-      marginTop: 16,
       backgroundColor: colors.elevation1,
       borderRadius: radius.card,
       borderWidth: 0.5,
@@ -682,7 +691,7 @@ const makeStyles = (colors: ThemeColors) =>
     heatmapContainer: { width: "100%" },
     heatmapGrid: { alignSelf: "center" },
     // Menu
-    menuSection: { paddingHorizontal: 16, marginTop: 16 },
+    menuSection: { paddingHorizontal: 16 },
     themeControl: { width: "100%", minHeight: 36 },
     menuSectionTitle: {
       fontSize: fontSize.xs,
@@ -725,7 +734,6 @@ const makeStyles = (colors: ThemeColors) =>
       fontSize: fontSize.xs,
       lineHeight: fontSize.xs * 1.6,
       color: colors.mutedForeground,
-      marginTop: 16,
       marginBottom: 2,
     },
   });
