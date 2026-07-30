@@ -79,6 +79,7 @@ export const BookCard = memo(function BookCard({
   // Resolve relative coverUrl to absolute path
   useEffect(() => {
     const raw = book.meta.coverUrl;
+    setImageError(false);
     if (!raw) {
       setResolvedCoverUrl(undefined);
       return;
