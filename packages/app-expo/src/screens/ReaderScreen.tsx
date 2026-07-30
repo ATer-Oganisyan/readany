@@ -965,6 +965,38 @@ export function ReaderScreen({ route, navigation }: Props) {
     const headerVisible = showControls && !showSearch;
     const readerActions = [
       {
+        label: "Оглавление",
+        sfSymbol: "list.bullet",
+        onPress: () => {
+          setTocActiveTab("toc");
+          setShowTOC(true);
+        },
+      },
+      {
+        label: isBookmarked ? "Удалить закладку" : "Добавить закладку",
+        sfSymbol: isBookmarked ? "bookmark.slash" : "bookmark",
+        onPress: handleToggleBookmark,
+      },
+      {
+        label: "Заметки",
+        sfSymbol: "square.and.pencil",
+        onPress: () => navigation.navigate("FullScreenNotes", { bookId }),
+      },
+      {
+        label: "Поиск",
+        sfSymbol: "magnifyingglass",
+        onPress: () => {
+          setShowSearch(true);
+          setShowControls(false);
+          Animated.timing(toolbarAnim, {
+            toValue: TOOLBAR_HIDE_OFFSET,
+            duration: 180,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }).start();
+        },
+      },
+      {
         label: "Язык",
         sfSymbol: "globe",
         onPress: () => setShowChapterTranslation(true),
@@ -995,7 +1027,16 @@ export function ReaderScreen({ route, navigation }: Props) {
           )
         : undefined,
     });
-  }, [bookId, navigation, showControls, showSearch, tts.handleToggleTTS]);
+  }, [
+    bookId,
+    handleToggleBookmark,
+    isBookmarked,
+    navigation,
+    showControls,
+    showSearch,
+    toolbarAnim,
+    tts.handleToggleTTS,
+  ]);
 
   // Bind mediator ref so onRelocate can fire the TTS continuation callback
   ttsPendingContinueRef.current = {
