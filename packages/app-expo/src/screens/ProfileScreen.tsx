@@ -78,18 +78,16 @@ function formatProfileReadingTime(minutes: number): string {
 function StatCard({
   title,
   value,
-  onPress,
   style,
 }: {
   title: string;
   value: string;
-  onPress?: () => void;
   style?: StyleProp<ViewStyle>;
 }) {
   const colors = useColors();
   const s = makeStyles(colors);
   return (
-    <TouchableOpacity activeOpacity={0.7} onPress={onPress} style={[s.statCard, style]}>
+    <View style={[s.statCard, style]}>
       <View style={s.statCardTitleRow}>
         <Text style={s.statCardTitle} numberOfLines={1} maxFontSizeMultiplier={1.6}>
           {title}
@@ -98,7 +96,7 @@ function StatCard({
       <View style={s.statCardBody}>
         <ProfileNumericText value={value} color={colors.foreground} style={s.statCardValue} />
       </View>
-    </TouchableOpacity>
+    </View>
   );
 }
 
@@ -438,12 +436,7 @@ export function ProfileScreen() {
                   paddingHorizontal: 6,
                 }}
               >
-                <StatCard
-                  title={card.title}
-                  value={card.value}
-                  onPress={() => nav.navigate("Stats")}
-                  style={{ width: "100%" }}
-                />
+                <StatCard title={card.title} value={card.value} style={{ width: "100%" }} />
               </View>
             ))}
           </View>
