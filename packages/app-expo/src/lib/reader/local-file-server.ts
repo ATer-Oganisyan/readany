@@ -63,11 +63,18 @@ export async function startFileServer(docRoot: string): Promise<string> {
 
   // Determine which backend to use (once)
   if (_useNative === null) {
-    try {
-      await import("@dr.pogodin/react-native-static-server");
-      _useNative = true;
-    } catch {
+    // The embedded Lighttpd module can hang during startup/invalidation in a
+    // development client. Prefer the JS TCP server there so Fast Refresh and
+    // reloads stay reliable; production builds still use the native backend.
+    if (__DEV__) {
       _useNative = false;
+    } else {
+      try {
+        await import("@dr.pogodin/react-native-static-server");
+        _useNative = true;
+      } catch {
+        _useNative = false;
+      }
     }
   }
 
@@ -112,7 +119,12 @@ async function _startNativeServer(cleanRoot: string): Promise<string> {
     );
     if (server) {
       try {
-        await server.stop?.();
+        // A timed-out start can leave the native module in an intermediate state
+        // where stop() never resolves either. Do not let cleanup block the TCP fallback.
+        await Promise.race([
+          Promise.resolve(server.stop?.()).catch(() => undefined),
+          new Promise<void>((resolve) => setTimeout(resolve, 500)),
+        ]);
       } catch {}
     }
     _nativeServer = null;
