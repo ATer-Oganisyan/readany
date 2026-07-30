@@ -144,7 +144,6 @@ import { ReaderFloatingActions } from "./reader/ReaderFloatingActions";
 import { ReaderSettingsPanel } from "./reader/ReaderSettingsPanel";
 import { ReaderTOCPanel } from "./reader/ReaderTOCPanel";
 import { CONTROLS_TIMEOUT, SCREEN_HEIGHT, SCREEN_WIDTH } from "./reader/reader-constants";
-import { BatteryIcon } from "./reader/reader-icons";
 import { makeStyles, noteTooltipMdStyles } from "./reader/reader-styles";
 import { useReaderBookmark } from "./reader/useReaderBookmark";
 import { useReaderSearch } from "./reader/useReaderSearch";
@@ -302,7 +301,6 @@ export function ReaderScreen({ route, navigation }: Props) {
   const translationConfig = useSettingsStore((s) => s.translationConfig);
   const aiConfig = useSettingsStore((s) => s.aiConfig);
   const showTopTitleProgress = readSettings.showTopTitleProgress !== false;
-  const showBottomTimeBattery = readSettings.showBottomTimeBattery !== false;
 
   // Track OS-level accessibility font scale; re-renders when the user
   // changes the system font size while the reader is open.
@@ -373,9 +371,13 @@ export function ReaderScreen({ route, navigation }: Props) {
   } = useAnnotationStore();
   const book = useMemo(() => books.find((b) => b.id === bookId), [books, bookId]);
 
-  // ── System info (clock/battery/statusBar/SafeArea) ─────────────────────────
-  const { readerClock, batteryLevel, isBatteryCharging, stableTopInset, insets } =
-    useReaderSystemInfo({ showSearch, isIPadLayout, shouldToggleSystemStatusBar, baseTopInset });
+  // ── System status bar and safe area ────────────────────────────────────────
+  const { stableTopInset, insets } = useReaderSystemInfo({
+    showSearch,
+    isIPadLayout,
+    shouldToggleSystemStatusBar,
+    baseTopInset,
+  });
 
   // ── Bookmark ───────────────────────────────────────────────────────────────
   const bookmark = useReaderBookmark({
@@ -1468,9 +1470,6 @@ export function ReaderScreen({ route, navigation }: Props) {
       ? layoutTopInset + 30
       : layoutTopInset
     : 0;
-  const readerBottomInset =
-    !showSearch && showBottomTimeBattery ? Math.max(insets.bottom, 8) + 14 : 0;
-  const batteryLabel = batteryLevel == null ? "--%" : `${Math.round(batteryLevel * 100)}%`;
   const selectionPopoverSelection = selection
     ? {
         ...selection,
@@ -1509,7 +1508,6 @@ export function ReaderScreen({ route, navigation }: Props) {
               s.webview,
               {
                 marginTop: readerTopMargin,
-                marginBottom: readerBottomInset,
               },
             ]}
             pointerEvents={isPanelOpen ? "none" : "auto"}
@@ -1724,32 +1722,6 @@ export function ReaderScreen({ route, navigation }: Props) {
             onChat={() => navigation.navigate("BookChat", { bookId })}
           />
         </Animated.View>
-      )}
-
-      {!showSearch && !showControls && showBottomTimeBattery && (
-        <View
-          pointerEvents="none"
-          style={[
-            s.bottomInfoBar,
-            {
-              left: insets.left + 18,
-              right: insets.right + 18,
-              bottom: Math.max(insets.bottom, 8) + 4,
-            },
-          ]}
-        >
-          <Text style={s.bottomInfoText}>{readerClock}</Text>
-          <View style={s.bottomInfoSide}>
-            <BatteryIcon
-              width={22}
-              height={11}
-              color={colors.mutedForeground}
-              level={batteryLevel}
-              charging={isBatteryCharging}
-            />
-            <Text style={s.bottomInfoText}>{batteryLabel}</Text>
-          </View>
-        </View>
       )}
 
       {/* ─── Bottom Toolbar ─── */}

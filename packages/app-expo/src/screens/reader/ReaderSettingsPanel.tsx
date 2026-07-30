@@ -1,18 +1,18 @@
-import { Text } from "@/components/ui/Typography";
 /**
  * ReaderSettingsPanel — bottom-sheet modal for reading display settings.
  */
 import { XIcon } from "@/components/ui/Icon";
+import { Text } from "@/components/ui/Typography";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { useColors } from "@/styles/theme";
+import { useFontStore } from "@readany/core/stores";
+import { type RubyMode, useRubyStore } from "@readany/core/stores/ruby-store";
 import type { ReadSettings } from "@readany/core/types";
+import { useCallback, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useTranslation } from "react-i18next";
 import { makeStyles } from "./reader-styles";
-import { useFontStore } from "@readany/core/stores";
-import { useRubyStore, type RubyMode } from "@readany/core/stores/ruby-store";
-import { useCallback, useState } from "react";
 
 interface Props {
   visible: boolean;
@@ -42,7 +42,6 @@ export function ReaderSettingsPanel({ visible, readSettings, bookId, onClose, on
     viewMode: settingViewMode,
     volumeButtonsPageTurn,
     showTopTitleProgress,
-    showBottomTimeBattery,
     followSystemFontScale,
   } = readSettings;
 
@@ -239,17 +238,6 @@ export function ReaderSettingsPanel({ visible, readSettings, bookId, onClose, on
             >
               <Text style={[s.settingToggleText, showTopTitleProgress !== false && s.settingToggleTextActive]}>
                 {showTopTitleProgress !== false ? t("settings.enabled") : t("settings.disabled")}
-              </Text>
-            </TouchableOpacity>
-          </View>
-          <View style={s.settingRow}>
-            <Text style={s.settingLabel}>{t("settings.showBottomTimeBattery")}</Text>
-            <TouchableOpacity
-              style={[s.settingToggleBtn, showBottomTimeBattery !== false && s.settingToggleBtnActive]}
-              onPress={() => onUpdateSetting("showBottomTimeBattery", !(showBottomTimeBattery !== false))}
-            >
-              <Text style={[s.settingToggleText, showBottomTimeBattery !== false && s.settingToggleTextActive]}>
-                {showBottomTimeBattery !== false ? t("settings.enabled") : t("settings.disabled")}
               </Text>
             </TouchableOpacity>
           </View>

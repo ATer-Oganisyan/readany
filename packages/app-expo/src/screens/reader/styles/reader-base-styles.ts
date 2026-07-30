@@ -1,7 +1,3 @@
-/**
- * Base container + toolbar styles for ReaderScreen.
- */
-import { StyleSheet } from "react-native";
 import {
   type ThemeColors,
   fontSize,
@@ -9,6 +5,10 @@ import {
   radius,
   withOpacity,
 } from "@/styles/theme";
+/**
+ * Base container + toolbar styles for ReaderScreen.
+ */
+import { StyleSheet } from "react-native";
 
 export const makeToolbarStyles = (colors: ThemeColors) =>
   StyleSheet.create({
@@ -167,15 +167,6 @@ export const makeToolbarStyles = (colors: ThemeColors) =>
     topInfoProgressFill: {
       height: "100%", borderRadius: 999,
       backgroundColor: withOpacity(colors.foreground, 0.42),
-    },
-    bottomInfoBar: {
-      flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-      position: "absolute", zIndex: 24,
-    },
-    bottomInfoSide: { flexDirection: "row", alignItems: "center", gap: 6 },
-    bottomInfoText: {
-      fontSize: fontSize.xs, color: colors.mutedForeground,
-      fontVariant: ["tabular-nums"],
     },
     footerSliderRow: { flexDirection: "row", alignItems: "center", gap: 6 },
     footerNavBtn: {
