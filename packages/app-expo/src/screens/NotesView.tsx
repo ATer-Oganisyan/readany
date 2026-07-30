@@ -516,20 +516,16 @@ export function NotesView({
 
   // Main list view
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={edges}>
-      {noteSections.length > 0 ? (
-        <NativeNotesList
-          sections={noteSections}
-          onPress={(id) => {
-            const note = allNotes.find((item) => item.id === id);
-            if (!note) return;
-            setSelectedBookId(note.bookId);
-            setEditingId(null);
-            setDetailTab("notes");
-          }}
-        />
-      ) : null}
-    </SafeAreaView>
+    <NativeNotesList
+      sections={noteSections}
+      onPress={(id) => {
+        const note = allNotes.find((item) => item.id === id);
+        if (!note) return;
+        setSelectedBookId(note.bookId);
+        setEditingId(null);
+        setDetailTab("notes");
+      }}
+    />
   );
 }
 

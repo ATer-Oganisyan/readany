@@ -26,6 +26,7 @@ export function NativeNotesList({ sections, onPress }: NativeNotesListProps) {
 
   return (
     <SectionList
+      style={{ backgroundColor: colors.background }}
       sections={sections}
       keyExtractor={(item) => item.id}
       contentInsetAdjustmentBehavior="automatic"
