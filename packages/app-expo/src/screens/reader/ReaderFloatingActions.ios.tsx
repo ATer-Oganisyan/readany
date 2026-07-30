@@ -24,7 +24,7 @@ export function ReaderFloatingActions(props: ReaderFloatingActionsProps) {
     onPress: () => void;
   }> = [
     {
-      label: "Перевести главу",
+      label: "Язык",
       symbol: "globe",
       active: props.translationActive,
       onPress: props.onTranslate,

@@ -16,7 +16,7 @@
     "deeplBaseUrlHint": "Поддерживается базовый URL и полный адрес метода /translate",
     "targetLanguage": "Целевой язык",
     "selectLanguage": "Выберите язык",
-    "translateChapter": "Перевести главу",
+    "translateChapter": "Язык",
     "translatingProgress": "Переведено {{count}} из {{total}}",
     "chapterTranslated": "Глава переведена",
     "showTranslations": "Показать переводы",

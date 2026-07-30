@@ -965,7 +965,7 @@ export function ReaderScreen({ route, navigation }: Props) {
     const headerVisible = showControls && !showSearch;
     const readerActions = [
       {
-        label: "Перевести главу",
+        label: "Язык",
         sfSymbol: "globe",
         onPress: () => setShowChapterTranslation(true),
       },
