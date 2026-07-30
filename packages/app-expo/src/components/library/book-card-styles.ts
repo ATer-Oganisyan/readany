@@ -106,7 +106,7 @@ export const makeStyles = (colors: ThemeColors, cardWidth: number) => {
       borderWidth: 1,
       borderColor: "rgba(255,255,255,0.16)",
     },
-    infoWrap: { paddingTop: 6, paddingHorizontal: 1 },
+    infoWrap: { width: coverWidth, paddingTop: 6 },
     bookTitle: {
       fontSize: 13,
       fontWeight: fontWeight.semibold,
