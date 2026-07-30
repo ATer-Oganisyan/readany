@@ -53,7 +53,6 @@ import {
   Animated,
   AppState,
   type AppStateStatus,
-  Easing,
   Modal,
   Platform,
   Pressable,
@@ -140,7 +139,6 @@ const NOTE_TOOLTIP_ABOVE_OFFSET = 2;
 const NOTE_TOOLTIP_BELOW_OFFSET = 8;
 const NOTE_TOOLTIP_TOP_THRESHOLD = 180;
 import { useRubyStore } from "@readany/core/stores/ruby-store";
-import { ReaderBottomToolbar } from "./reader/ReaderBottomToolbar";
 import { ReaderSettingsPanel } from "./reader/ReaderSettingsPanel";
 import { ReaderTOCPanel } from "./reader/ReaderTOCPanel";
 import { CONTROLS_TIMEOUT, SCREEN_HEIGHT, SCREEN_WIDTH } from "./reader/reader-constants";
@@ -328,8 +326,6 @@ export function ReaderScreen({ route, navigation }: Props) {
   );
 
   const controlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const TOOLBAR_HIDE_OFFSET = 100;
-  const toolbarAnim = useRef(new Animated.Value(TOOLBAR_HIDE_OFFSET)).current;
   const readerPullAnim = useRef(new Animated.Value(0)).current;
   const lastCfiRef = useRef<string>("");
   const progressRef = useRef(0);
@@ -547,26 +543,14 @@ export function ReaderScreen({ route, navigation }: Props) {
   const toggleControls = useCallback(() => {
     const willShow = !showControls;
     setShowControls(willShow);
-    Animated.timing(toolbarAnim, {
-      toValue: willShow ? 0 : TOOLBAR_HIDE_OFFSET,
-      duration: 180,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
 
     if (willShow) {
       if (controlsTimer.current) clearTimeout(controlsTimer.current);
       controlsTimer.current = setTimeout(() => {
         setShowControls(false);
-        Animated.timing(toolbarAnim, {
-          toValue: TOOLBAR_HIDE_OFFSET,
-          duration: 180,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }).start();
       }, CONTROLS_TIMEOUT);
     }
-  }, [showControls, toolbarAnim]);
+  }, [showControls]);
 
   // Reader bridge
   const bridge = useReaderBridge({
@@ -988,12 +972,6 @@ export function ReaderScreen({ route, navigation }: Props) {
         onPress: () => {
           setShowSearch(true);
           setShowControls(false);
-          Animated.timing(toolbarAnim, {
-            toValue: TOOLBAR_HIDE_OFFSET,
-            duration: 180,
-            easing: Easing.out(Easing.cubic),
-            useNativeDriver: true,
-          }).start();
         },
       },
       {
@@ -1034,7 +1012,6 @@ export function ReaderScreen({ route, navigation }: Props) {
     navigation,
     showControls,
     showSearch,
-    toolbarAnim,
     tts.handleToggleTTS,
   ]);
 
@@ -1489,14 +1466,6 @@ export function ReaderScreen({ route, navigation }: Props) {
 
   const layoutTopInset = stableTopInset;
   const percent = Math.round(progress * 100);
-  const bottomControlsTranslate = toolbarAnim.interpolate({
-    inputRange: [0, TOOLBAR_HIDE_OFFSET],
-    outputRange: [0, 12],
-  });
-  const bottomControlsOpacity = toolbarAnim.interpolate({
-    inputRange: [0, TOOLBAR_HIDE_OFFSET * 0.5, TOOLBAR_HIDE_OFFSET],
-    outputRange: [1, 0.28, 0],
-  });
   const isPanelOpen = showTOC || showSettings || showSearch || showNotebook || showTranslation;
   const existingSelectionHighlight = selection
     ? (highlights.find(
@@ -1736,57 +1705,6 @@ export function ReaderScreen({ route, navigation }: Props) {
         </View>
       )}
 
-      {/* ─── Bottom Toolbar ─── */}
-      {!showSearch && (
-        <Animated.View
-          pointerEvents={showControls ? "auto" : "none"}
-          style={[
-            s.bottomToolbar,
-            {
-              left: 0,
-              right: 0,
-              opacity: bottomControlsOpacity,
-              transform: [{ translateY: bottomControlsTranslate }],
-            },
-          ]}
-        >
-          <ReaderBottomToolbar
-            progress={progress}
-            isBookmarked={isBookmarked}
-            bottomInset={insets.bottom}
-            foregroundColor={colors.foreground}
-            mutedColor={colors.mutedForeground}
-            accentColor={colors.primary}
-            isDark={themeMode === "dark"}
-            labels={{
-              toc: t("reader.toc", "Оглавление"),
-              bookmarks: t("reader.bookmarks", "Закладки"),
-              notes: t("notes.title", "Заметки"),
-              search: t("reader.search", "Поиск"),
-            }}
-            onDragStart={() => suppressProgressTracking(99_999)}
-            onDragEnd={() => suppressProgressTracking(2_000)}
-            onSeek={(fraction) => bridgeRef.current?.goToFraction(fraction)}
-            onOpenToc={() => {
-              setTocActiveTab("toc");
-              setShowTOC(true);
-            }}
-            onToggleBookmark={handleToggleBookmark}
-            onOpenNotes={() => navigation.navigate("FullScreenNotes", { bookId })}
-            onOpenSearch={() => {
-              setShowSearch(true);
-              setShowControls(false);
-              Animated.timing(toolbarAnim, {
-                toValue: TOOLBAR_HIDE_OFFSET,
-                duration: 180,
-                easing: Easing.out(Easing.cubic),
-                useNativeDriver: true,
-              }).start();
-            }}
-          />
-        </Animated.View>
-      )}
-
       {/* ─── Search Bar ─── */}
       {showSearch && (
         <View style={[s.searchBarWrap, { paddingTop: layoutTopInset }]}>
@@ -1864,12 +1782,6 @@ export function ReaderScreen({ route, navigation }: Props) {
                 setShowSearch(false);
                 search.clearSearch();
                 setShowControls(true);
-                Animated.timing(toolbarAnim, {
-                  toValue: 0,
-                  duration: 180,
-                  easing: Easing.out(Easing.cubic),
-                  useNativeDriver: true,
-                }).start();
               }}
             >
               <XIcon size={16} color={colors.mutedForeground} />
