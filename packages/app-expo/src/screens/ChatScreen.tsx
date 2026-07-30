@@ -27,8 +27,7 @@ import {
 } from "@readany/core/utils";
 import { Alert } from "react-native";
 
-import { ChatInput } from "@/components/chat/ChatInput";
-import { MessageList } from "@/components/chat/MessageList";
+import { NarraChat } from "@/components/chat/NarraChat";
 import { MessageCirclePlusIcon, Trash2Icon, XIcon } from "@/components/ui/Icon";
 import { fontSize as fs, fontWeight as fw, radius, useColors, withOpacity } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
@@ -311,17 +310,13 @@ export function ChatScreen() {
         <View style={s.mainColumn}>
           {/* Content */}
           <View style={s.content}>
-            <MessageList
+            <NarraChat
               messages={allMessages}
               isStreaming={isStreaming}
               currentStep={currentStep}
-            />
-            <ChatInput
               onSend={handleSend}
               onStop={stopStream}
-              isStreaming={isStreaming}
-              keyboardBottomOffset={insets.bottom}
-              autoFocusOnScreenFocus
+              autoFocus
             />
           </View>
         </View>

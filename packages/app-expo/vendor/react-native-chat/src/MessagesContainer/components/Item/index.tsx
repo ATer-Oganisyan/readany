@@ -1,0 +1,180 @@
+import React, { useMemo } from 'react'
+import { View } from 'react-native'
+import Animated, { useAnimatedStyle, useDerivedValue } from 'react-native-reanimated'
+import { Day } from '../../../Day'
+import { Message, MessageProps } from '../../../Message'
+import { IMessage } from '../../../Models'
+import { isSameDay } from '../../../utils'
+import { DAY_HANDOFF_OFFSET, dayPositionScreenTop, findDayPosition } from '../dayLayout'
+import { ItemProps } from './types'
+
+export * from './types'
+
+const DayWrapper = <TMessage extends IMessage>(props: MessageProps<TMessage>) => {
+  const {
+    renderDay: renderDayProp,
+    currentMessage,
+    previousMessage,
+  } = props
+
+  if (!currentMessage?.createdAt || isSameDay(currentMessage, previousMessage))
+    return null
+
+  const {
+    /* eslint-disable @typescript-eslint/no-unused-vars */
+    containerStyle,
+    onMessageLayout,
+    /* eslint-enable @typescript-eslint/no-unused-vars */
+    ...rest
+  } = props
+
+  return (
+    <View>
+      {
+        renderDayProp
+          ? renderDayProp({ ...rest, createdAt: currentMessage.createdAt, isAnimated: false })
+          : <Day {...rest} createdAt={currentMessage.createdAt} isAnimated={false} />
+      }
+    </View>
+  )
+}
+
+const AnimatedDayWrapper = <TMessage extends IMessage>(props: ItemProps<TMessage>) => {
+  const {
+    scrolledY,
+    daysPositions,
+    listHeight,
+    floatingRenderedDate,
+    ...rest
+  } = props
+
+  const createdAt = useMemo(() =>
+    new Date(props.currentMessage.createdAt).getTime()
+  , [props.currentMessage.createdAt])
+
+  // On-screen Y of this day's separator. Infinity (treated as below the pin, i.e.
+  // visible) until the day has been measured.
+  const separatorScreenTop = useDerivedValue(() => {
+    'worklet'
+
+    const day = findDayPosition(daysPositions.value, createdAt)
+    if (!day)
+      return Infinity
+
+    return dayPositionScreenTop(listHeight.value + scrolledY.value, day)
+  }, [daysPositions, listHeight, scrolledY, createdAt])
+
+  const style = useAnimatedStyle(() => {
+    // The inline separator is the in-conversation date marker. It is shown while its
+    // day is below the handoff line, and hidden once its day is the one the floating
+    // header is actually rendering at the pin - a hard step (no fade) so the date
+    // goes floating(1) <-> inline(1) at the same pixel with no dip and no duplicate.
+    //
+    // Hiding on `floatingRenderedDate` (the header's *rendered* date) rather than on
+    // position alone is what kills the 1-frame flash when scrolling into a newer day:
+    // the worklet picks the new stuck day instantly but the header's text only
+    // updates ~1 frame later on the JS thread; until it does, this inline separator
+    // stays up and shows the correct date, so the header never flashes the old one.
+    const belowHandoff = separatorScreenTop.value > DAY_HANDOFF_OFFSET
+    const headerShowsThisDay = floatingRenderedDate != null && floatingRenderedDate.value === createdAt
+
+    return {
+      opacity: belowHandoff || !headerShowsThisDay ? 1 : 0,
+    }
+  }, [separatorScreenTop, floatingRenderedDate, createdAt])
+
+  return (
+    <Animated.View style={style}>
+      <DayWrapper<TMessage> {...rest as MessageProps<TMessage>} />
+    </Animated.View>
+  )
+}
+
+const ItemComponent = <TMessage extends IMessage>(props: ItemProps<TMessage>) => {
+  const {
+    renderMessage: renderMessageProp,
+    isDayAnimationEnabled,
+    reply,
+    /* eslint-disable @typescript-eslint/no-unused-vars */
+    scrolledY: _scrolledY,
+    daysPositions: _daysPositions,
+    listHeight: _listHeight,
+    /* eslint-enable @typescript-eslint/no-unused-vars */
+    ...rest
+  } = props
+
+  // Transform reply props for Message and Bubble
+  const messageProps = useMemo(() => ({
+    ...rest,
+    // Swipe to reply for Message component
+    swipeToReply: reply?.swipe,
+    // Message reply styling for Bubble component
+    messageReply: reply ? {
+      renderMessageReply: reply.renderMessageReply,
+      onPress: reply.onPress,
+      ...reply.messageStyle,
+    } : undefined,
+  }), [rest, reply])
+
+  return (
+    // do not remove key. it helps to get correct position of the day container
+    <View key={props.currentMessage._id.toString()}>
+      {isDayAnimationEnabled
+        ? <AnimatedDayWrapper<TMessage> {...props} />
+        : <DayWrapper<TMessage> {...messageProps as MessageProps<TMessage>} />}
+      {
+        renderMessageProp
+          ? renderMessageProp(messageProps as MessageProps<TMessage>)
+          : <Message<TMessage> {...messageProps as MessageProps<TMessage>} />
+      }
+    </View>
+  )
+}
+
+// Message data is deep-compared (so any content change - text, status, reactions
+// - re-renders), and every other prop is compared by reference. So the only time
+// a row is skipped is a genuine no-op: identical message data AND all other props
+// (render functions, config, styles, shared values) referentially unchanged. Any
+// new prop reference, added/removed prop, or content change forces a re-render -
+// there's no path where new props leave stale content on screen.
+const MESSAGE_KEYS: Array<keyof ItemProps<IMessage>> = ['currentMessage', 'previousMessage', 'nextMessage']
+
+function isMessageEqual (left: unknown, right: unknown): boolean {
+  if (Object.is(left, right))
+    return true
+  if (left == null || right == null || typeof left !== 'object' || typeof right !== 'object')
+    return false
+  if (left instanceof Date || right instanceof Date)
+    return left instanceof Date && right instanceof Date && left.getTime() === right.getTime()
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length)
+      return false
+    return left.every((value, index) => isMessageEqual(value, right[index]))
+  }
+
+  const leftRecord = left as Record<string, unknown>
+  const rightRecord = right as Record<string, unknown>
+  const leftKeys = Object.keys(leftRecord)
+  const rightKeys = Object.keys(rightRecord)
+  return leftKeys.length === rightKeys.length
+    && leftKeys.every((key) => Object.hasOwn(rightRecord, key) && isMessageEqual(leftRecord[key], rightRecord[key]))
+}
+
+function arePropsEqual (prev: ItemProps<IMessage>, next: ItemProps<IMessage>): boolean {
+  for (const key of MESSAGE_KEYS)
+    if (!isMessageEqual(prev[key], next[key]))
+      return false
+
+  const keys = new Set<string>([...Object.keys(prev), ...Object.keys(next)])
+  for (const key of keys) {
+    if ((MESSAGE_KEYS as string[]).includes(key))
+      continue
+
+    if (!Object.is((prev as unknown as Record<string, unknown>)[key], (next as unknown as Record<string, unknown>)[key]))
+      return false
+  }
+
+  return true
+}
+
+export const Item = React.memo(ItemComponent, arePropsEqual) as typeof ItemComponent

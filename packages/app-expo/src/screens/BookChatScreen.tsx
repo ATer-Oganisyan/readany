@@ -2,7 +2,6 @@ import { Text } from "@/components/ui/Typography";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useNativeHeaderActions } from "@/navigation/useNativeHeaderActions";
-import { useHeaderHeight } from "@react-navigation/elements";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 /**
  * BookChatScreen — book-scoped AI chat, opened from reader AI button.
@@ -13,12 +12,10 @@ import { useTranslation } from "react-i18next";
 import {
   Alert,
   Animated,
-  Keyboard,
   Pressable,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -45,8 +42,7 @@ import {
 } from "@readany/core/utils";
 import * as Clipboard from "expo-clipboard";
 
-import { ChatInput } from "@/components/chat/ChatInput";
-import { MessageList } from "@/components/chat/MessageList";
+import { NarraChat } from "@/components/chat/NarraChat";
 import { MessageCirclePlusIcon, Trash2Icon, XIcon } from "@/components/ui/Icon";
 import { fontSize as fs, fontWeight as fw, radius, useColors, withOpacity } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
@@ -54,7 +50,6 @@ import type { ThemeColors } from "@/styles/theme";
 type Props = NativeStackScreenProps<RootStackParamList, "BookChat">;
 
 export function BookChatScreen({ route, navigation }: Props) {
-  const nativeHeaderHeight = useHeaderHeight();
   const { bookId, selectedText, chapterTitle } = route.params;
   const { t } = useTranslation();
   const colors = useColors();
@@ -313,15 +308,6 @@ export function BookChatScreen({ route, navigation }: Props) {
     [bookId, closeSidebar, setBookActiveThread],
   );
 
-  const suggestions = useMemo(
-    () => [
-      t("chat.suggestions.summarizeChapter"),
-      t("chat.suggestions.explainConcepts"),
-      t("chat.suggestions.analyzeAuthor"),
-    ],
-    [t],
-  );
-
   const renderSidebarContent = useCallback(
     (closable: boolean) => (
       <>
@@ -471,53 +457,16 @@ export function BookChatScreen({ route, navigation }: Props) {
 
         <View style={s.mainColumn}>
           <View style={s.content}>
-            <View style={s.content}>
-              {allMessages.length > 0 ? (
-                <MessageList
-                  messages={allMessages}
-                  isStreaming={isStreaming}
-                  currentStep={currentStep}
-                  onCitationClick={handleCitationClick}
-                />
-              ) : (
-                <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-                  <View
-                    style={[
-                      s.emptyContainer,
-                      isTabletLandscape && s.emptyContainerCompact,
-                      { transform: [{ translateY: -nativeHeaderHeight / 2 }] },
-                    ]}
-                  >
-                    <View style={s.emptyInner}>
-                      <Text style={s.emptyTitle}>{t("chat.aiAssistant", "AI 阅读助手")}</Text>
-                      <Text style={s.emptySubtitle}>
-                        {t("chat.aiAssistantDesc", "分析内容、回答问题...")}
-                      </Text>
-                    </View>
-                    <View style={s.suggestionsContainer}>
-                      {suggestions.map((text) => (
-                        <TouchableOpacity
-                          key={text}
-                          style={s.suggestionCard}
-                          onPress={() => handleSend(text, false, false)}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={s.suggestionText}>{text}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </View>
-                </TouchableWithoutFeedback>
-              )}
-            </View>
-            <ChatInput
+            <NarraChat
+              messages={allMessages}
+              isStreaming={isStreaming}
+              currentStep={currentStep}
               onSend={handleSend}
               onStop={stopStream}
-              isStreaming={isStreaming}
               placeholder={t("chat.askAboutBook", "询问关于这本书的问题...")}
               quotes={quotes}
               onRemoveQuote={handleRemoveQuote}
-              keyboardBottomOffset={insets.bottom}
+              onCitationClick={handleCitationClick}
             />
           </View>
         </View>

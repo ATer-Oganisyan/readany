@@ -1,0 +1,25 @@
+{
+  "name": "@kesha-antonov/react-native-chat",
+  "version": "4.2.0-wip.299d337",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "sideEffects": false,
+  "license": "MIT",
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "react-native": ">=0.70.0",
+    "react-native-gesture-handler": ">=2.0.0",
+    "react-native-reanimated": ">=3.0.0",
+    "react-native-safe-area-context": ">=4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "expo-audio": { "optional": true },
+    "expo-image-picker": { "optional": true },
+    "expo-video": { "optional": true },
+    "react-native-audio-api": { "optional": true },
+    "react-native-svg": { "optional": true },
+    "react-native-vision-camera": { "optional": true },
+    "streamdown": { "optional": true }
+  }
+}
