@@ -57,6 +57,7 @@ function coverPrompt(input: {
     "Create an original portrait-oriented painting for a book cover.",
     "Interpret the book through the visual language of late 19th- and 20th-century Eastern European figurative painting: psychological realism, intimate domestic scenes, restrained symbolism, social observation, monumental compositions, and atmospheric landscapes.",
     "Choose the type of painting that best matches the book: a psychologically charged portrait, an intimate genre scene, a symbolic still life, an atmospheric landscape, or a restrained multi-figure composition.",
+    "For books about communication, relationships, emotional intelligence, society, or group behavior, strongly prefer a multi-figure social scene. Show meaning through conversation, eye contact, interrupted gestures, physical distance, alliances, tension, attention, and the way people share a space. Do not reduce a social subject to one isolated person.",
     "The image must feel like a real painted canvas from a museum archive: visible brushwork, layered pigments, natural imperfections, complex muted colors, believable materials, and carefully observed light.",
     "Do not illustrate the title literally. Express the book through mood, gesture, spatial relationships, objects, environment, and subtle visual symbolism.",
     "Avoid fantasy art, digital illustration, glossy rendering, cinematic concept art, surreal AI imagery, neon colors, glowing objects, anatomical brains, generic smiling portraits, and decorative abstraction.",
