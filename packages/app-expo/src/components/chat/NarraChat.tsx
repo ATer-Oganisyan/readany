@@ -1,24 +1,19 @@
-import { PartRenderer } from "@/components/chat/PartRenderer";
-import { StreamingIndicator } from "@/components/chat/StreamingIndicator";
-import { BrainIcon, EyeOffIcon, StopCircleIcon, XIcon } from "@/components/ui/Icon";
-import { Text } from "@/components/ui/Typography";
-import { fontSize as fs, fontFamily, radius, useTheme, withOpacity } from "@/styles/theme";
+import { fontFamily, useTheme, withOpacity } from "@/styles/theme";
+import { useHeaderHeight } from "@react-navigation/elements";
+import { useFocusEffect } from "@react-navigation/native";
+import type { AttachedQuote } from "@readany/core/types";
+import type { CitationPart, MessageV2 } from "@readany/core/types/message";
+import * as Clipboard from "expo-clipboard";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { Pressable, StyleSheet, Text, type TextInput, View } from "react-native";
 import {
   Chat,
   type IMessage,
   type MessageMenuItem,
-  type MessageTextProps,
   type PartialChatTheme,
   Send,
   type SendProps,
 } from "../../../vendor/react-native-chat/src";
-import { useHeaderHeight } from "@react-navigation/elements";
-import { useFocusEffect } from "@react-navigation/native";
-import type { AttachedQuote } from "@readany/core/types";
-import type { CitationPart, MessageV2, QuotePart, TextPart } from "@readany/core/types/message";
-import * as Clipboard from "expo-clipboard";
-import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
-import { StyleSheet, type TextInput, TouchableOpacity, View } from "react-native";
 
 const USER_ID = "narra-user";
 const ASSISTANT_ID = "narra-ai";
@@ -47,35 +42,57 @@ interface NarraChatProps {
   autoFocus?: boolean;
 }
 
-function plainText(message: MessageV2): string {
-  return message.parts
-    .flatMap((part) => {
-      if (part.type === "quote") return part.text ? [`> ${part.text}`] : [];
-      if (part.type === "text") return part.text.trim() ? [part.text] : [];
-      return [];
-    })
-    .join("\n\n");
-}
+function messageText(message: MessageV2): string {
+  const body: string[] = [];
+  const citations: CitationPart[] = [];
 
-function sortCitations(parts: MessageV2["parts"]): CitationPart[] {
-  return parts
-    .filter((part): part is CitationPart => part.type === "citation")
-    .map((citation, order) => ({ citation, order }))
-    .sort((a, b) => {
-      const ai = a.citation.citationIndex;
-      const bi = b.citation.citationIndex;
-      if (typeof ai === "number" && typeof bi === "number") return ai - bi;
-      if (typeof ai === "number") return -1;
-      if (typeof bi === "number") return 1;
-      return a.order - b.order;
-    })
-    .map(({ citation }) => citation);
+  for (const part of message.parts) {
+    switch (part.type) {
+      case "text":
+        if (part.text.trim()) body.push(part.text);
+        break;
+      case "quote": {
+        const source = part.source ? `\n> — ${part.source}` : "";
+        body.push(`> ${part.text.replaceAll("\n", "\n> ")}${source}`);
+        break;
+      }
+      case "citation":
+        citations.push(part);
+        break;
+      case "mindmap":
+        body.push(`**${part.title}**\n\n${part.markdown}`);
+        break;
+      case "mermaid":
+        body.push(`**${part.title}**\n\n\`\`\`mermaid\n${part.chart}\n\`\`\``);
+        break;
+      case "aborted":
+        body.push("_Ответ остановлен._");
+        break;
+      // The 4.2 typing and streaming states replace Narra's old visible
+      // reasoning/tool cards. Internal reasoning remains in message data.
+      case "reasoning":
+      case "tool_call":
+        break;
+    }
+  }
+
+  if (citations.length) {
+    const sources = citations
+      .sort((a, b) => (a.citationIndex ?? 0) - (b.citationIndex ?? 0))
+      .map((citation, index) => {
+        const number = citation.citationIndex ?? index + 1;
+        return `[${number}. ${citation.chapterTitle}](narra-citation://${encodeURIComponent(citation.id)})`;
+      });
+    body.push(`**Источники**\n\n${sources.join("  \n")}`);
+  }
+
+  return body.join("\n\n");
 }
 
 function toChatMessage(message: MessageV2, streamingMessageId?: string): NarraMessage {
   return {
     _id: message.id,
-    text: plainText(message),
+    text: messageText(message),
     createdAt: message.createdAt,
     user: {
       _id: message.role === "user" ? USER_ID : ASSISTANT_ID,
@@ -153,21 +170,6 @@ export function NarraChat({
         error: colors.destructive,
         inputFieldBorder: colors.border,
       },
-      radii: {
-        bubble: 18,
-        bubbleGrouped: 6,
-        inputField: 24,
-        sendButton: 999,
-        reaction: 14,
-        dayPill: 14,
-      },
-      spacing: {
-        screenEdge: 16,
-        bubblePaddingH: 12,
-        bubblePaddingV: 8,
-        withinGroup: 2,
-        betweenGroups: 8,
-      },
       typography: {
         message: { fontSize: 16, lineHeight: 22, fontWeight: "400" },
         time: { fontSize: 11, fontWeight: "400" },
@@ -175,8 +177,6 @@ export function NarraChat({
         day: { fontSize: 12, fontWeight: "600" },
         system: { fontSize: 13, fontWeight: "400" },
       },
-      composer: { minHeight: 48, maxHeight: 120, fieldPaddingH: 14, insetIconSize: 22 },
-      sendButton: { size: 36 },
     }),
     [colors],
   );
@@ -194,7 +194,7 @@ export function NarraChat({
   );
 
   const messageActions = useCallback((message: NarraMessage): MessageMenuItem[] => {
-    const text = plainText(message.source);
+    const text = messageText(message.source);
     if (!text) return [];
     return [
       {
@@ -204,64 +204,16 @@ export function NarraChat({
     ];
   }, []);
 
-  const renderMessageText = useCallback(
-    ({ currentMessage, position }: MessageTextProps<NarraMessage>) => {
-      const source = currentMessage.source;
-      if (source.role === "user") {
-        const quoteParts = source.parts.filter((part): part is QuotePart => part.type === "quote");
-        const textParts = source.parts.filter((part): part is TextPart => part.type === "text");
-        return (
-          <View style={styles.messageContent}>
-            {quoteParts.map((part) => (
-              <View key={part.id} style={styles.quoteBlock}>
-                <Text
-                  style={[styles.quoteText, { color: colors.primaryForeground }]}
-                  numberOfLines={4}
-                >
-                  {part.text}
-                </Text>
-                {part.source ? (
-                  <Text
-                    style={[
-                      styles.quoteSource,
-                      { color: withOpacity(colors.primaryForeground, 0.65) },
-                    ]}
-                  >
-                    {part.source}
-                  </Text>
-                ) : null}
-              </View>
-            ))}
-            {textParts.map((part) => (
-              <Text
-                key={part.id}
-                style={[
-                  styles.userText,
-                  { color: position === "right" ? colors.primaryForeground : colors.foreground },
-                ]}
-              >
-                {part.text}
-              </Text>
-            ))}
-          </View>
-        );
-      }
-
-      const citations = sortCitations(source.parts);
-      return (
-        <View style={styles.assistantContent}>
-          {source.parts.map((part) => (
-            <PartRenderer
-              key={part.id}
-              part={part}
-              citations={citations}
-              onCitationClick={onCitationClick}
-            />
-          ))}
-        </View>
+  const handleMessageLink = useCallback(
+    (message: NarraMessage, url: string) => {
+      if (!url.startsWith("narra-citation://")) return;
+      const citationId = decodeURIComponent(url.slice("narra-citation://".length));
+      const citation = message.source.parts.find(
+        (part): part is CitationPart => part.type === "citation" && part.id === citationId,
       );
+      if (citation) onCitationClick?.(citation);
     },
-    [colors, onCitationClick],
+    [onCitationClick],
   );
 
   const renderAccessory = useCallback(
@@ -272,9 +224,9 @@ export function NarraChat({
             <Text style={[styles.chipText, { color: colors.foreground }]} numberOfLines={1}>
               {quote.text}
             </Text>
-            <TouchableOpacity onPress={() => onRemoveQuote?.(quote.id)} hitSlop={8}>
-              <XIcon size={12} color={colors.mutedForeground} />
-            </TouchableOpacity>
+            <Pressable onPress={() => onRemoveQuote?.(quote.id)} hitSlop={8}>
+              <Text style={[styles.removeQuote, { color: colors.mutedForeground }]}>×</Text>
+            </Pressable>
           </View>
         ))}
         <View style={styles.modeRow}>
@@ -282,17 +234,11 @@ export function NarraChat({
             label="Глубокий анализ"
             active={deepThinking}
             onPress={() => setDeepThinking((value) => !value)}
-            icon={
-              <BrainIcon size={13} color={deepThinking ? colors.primary : colors.mutedForeground} />
-            }
           />
           <ModeButton
             label="Без спойлеров"
             active={spoilerFree}
             onPress={() => setSpoilerFree((value) => !value)}
-            icon={
-              <EyeOffIcon size={13} color={spoilerFree ? colors.primary : colors.mutedForeground} />
-            }
           />
         </View>
       </View>
@@ -303,26 +249,25 @@ export function NarraChat({
   const renderSend = useCallback(
     (props: SendProps<NarraMessage>) =>
       isStreaming ? (
-        <TouchableOpacity
-          style={[styles.stopButton, { backgroundColor: colors.elevation2 }]}
+        <Pressable
+          style={[styles.stopButton, { backgroundColor: colors.primary }]}
           onPress={onStop}
           accessibilityRole="button"
           accessibilityLabel="Остановить ответ"
         >
-          <StopCircleIcon size={20} color={colors.destructive} />
-        </TouchableOpacity>
+          <View style={styles.stopGlyph} />
+        </Pressable>
       ) : (
         <Send {...props} />
       ),
     [colors, isStreaming, onStop],
   );
 
+  const lastMessage = messages.at(-1);
   const showInitialStreaming =
     isStreaming &&
     currentStep !== "idle" &&
-    (!messages.at(-1) ||
-      messages.at(-1)?.role !== "assistant" ||
-      messages.at(-1)?.parts.length === 0);
+    (!lastMessage || lastMessage.role !== "assistant" || !messageText(lastMessage).trim());
 
   return (
     <Chat<NarraMessage>
@@ -334,13 +279,11 @@ export function NarraChat({
       theme={theme}
       darkTheme={theme}
       renderAvatar={null}
-      renderMessageText={renderMessageText}
       renderAccessory={renderAccessory}
       renderSend={renderSend}
-      renderChatFooter={
-        showInitialStreaming ? () => <StreamingIndicator step={currentStep} /> : undefined
-      }
+      isTyping={showInitialStreaming}
       messageActions={messageActions}
+      messageTextProps={{ markdown: true, onPress: handleMessageLink }}
       isDayAnimationEnabled
       isScrollToBottomEnabled
       textInputRef={inputRef}
@@ -366,16 +309,14 @@ function ModeButton({
   label,
   active,
   onPress,
-  icon,
 }: {
   label: string;
   active: boolean;
   onPress: () => void;
-  icon: ReactNode;
 }) {
   const { colors } = useTheme();
   return (
-    <TouchableOpacity
+    <Pressable
       style={[
         styles.modeButton,
         {
@@ -385,46 +326,14 @@ function ModeButton({
       ]}
       onPress={onPress}
     >
-      {icon}
       <Text style={[styles.modeLabel, { color: active ? colors.primary : colors.mutedForeground }]}>
         {label}
       </Text>
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  messageContent: {
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  assistantContent: {
-    minWidth: 56,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 4,
-  },
-  userText: {
-    fontFamily: fontFamily.regular,
-    fontSize: 16,
-    lineHeight: 22,
-  },
-  quoteBlock: {
-    borderLeftWidth: 2,
-    borderLeftColor: "rgba(255,255,255,0.5)",
-    paddingLeft: 8,
-  },
-  quoteText: {
-    fontFamily: fontFamily.regular,
-    fontSize: fs.sm,
-    lineHeight: 18,
-  },
-  quoteSource: {
-    fontFamily: fontFamily.regular,
-    fontSize: fs.xs,
-    marginTop: 2,
-  },
   accessory: {
     gap: 6,
     paddingHorizontal: 8,
@@ -435,14 +344,18 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    borderRadius: radius.lg,
+    borderRadius: 12,
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
   chipText: {
     flex: 1,
     fontFamily: fontFamily.regular,
-    fontSize: fs.xs,
+    fontSize: 12,
+  },
+  removeQuote: {
+    fontSize: 20,
+    lineHeight: 20,
   },
   modeRow: {
     flexDirection: "row",
@@ -453,13 +366,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 4,
     borderWidth: 0.5,
-    borderRadius: radius.full,
+    borderRadius: 14,
     paddingHorizontal: 9,
     paddingVertical: 5,
   },
   modeLabel: {
     fontFamily: fontFamily.regular,
-    fontSize: fs.xs,
+    fontSize: 12,
   },
   stopButton: {
     width: 36,
@@ -467,5 +380,11 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
+  },
+  stopGlyph: {
+    width: 10,
+    height: 10,
+    borderRadius: 2,
+    backgroundColor: "#fff",
   },
 });
