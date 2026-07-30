@@ -1,12 +1,5 @@
 import { ProfileNumericText } from "@/components/profile/ProfileNumericText";
-import {
-  BarChart3Icon,
-  ChevronRightIcon,
-  CloudIcon,
-  HelpCircleIcon,
-  InfoIcon,
-  Trash2Icon,
-} from "@/components/ui/Icon";
+import { BarChart3Icon, ChevronRightIcon, CloudIcon, Trash2Icon } from "@/components/ui/Icon";
 import type { MaterialIconComponent } from "@/components/ui/Icon";
 import { Text } from "@/components/ui/Typography";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
@@ -35,7 +28,6 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { readingStatsService } from "@readany/core/stats";
 import type { DailyStats, OverallStats } from "@readany/core/stats";
 import { eventBus } from "@readany/core/utils/event-bus";
-import Constants from "expo-constants";
 /**
  * ProfileScreen — matching Tauri mobile ProfilePage exactly.
  * Features: reading stats cards, heatmap, settings menu (general/skills/about),
@@ -45,7 +37,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Alert,
-  Linking,
   Pressable,
   ScrollView,
   type StyleProp,
@@ -58,18 +49,13 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type ProfileMenuIcon = MaterialIconComponent;
-type ProfileMenuRoute = Extract<keyof RootStackParamList, "SyncSettings" | "About">;
+type ProfileMenuRoute = Extract<keyof RootStackParamList, "SyncSettings">;
 type ProfileMenuItem =
   | {
       icon: ProfileMenuIcon;
       label: string;
       route: ProfileMenuRoute;
       showDot?: boolean;
-    }
-  | {
-      icon: ProfileMenuIcon;
-      label: string;
-      url: string;
     }
   | {
       icon: ProfileMenuIcon;
@@ -279,7 +265,7 @@ function MiniHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
 export function ProfileScreen() {
   const { colors, mode: themeMode, setMode: setThemeMode, isDark } = useTheme();
   const s = makeStyles(colors);
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const layout = useResponsiveLayout();
   const statsGridColumns = layout.isTablet ? 4 : 2;
   const statCardSlotWidth = `${100 / statsGridColumns}%` as `${number}%`;
@@ -400,19 +386,8 @@ export function ProfileScreen() {
           },
         ],
       },
-      {
-        title: t("settings.other", "更多"),
-        items: [
-          {
-            icon: HelpCircleIcon,
-            label: t("about.supportCenter", "帮助中心"),
-            url: `https://codedogqby.github.io/ReadAny/${i18n.language === "zh" ? "zh/" : ""}support/`,
-          },
-          { icon: InfoIcon, label: t("settings.about", "关于"), route: "About" as const },
-        ],
-      },
     ],
-    [t, i18n.language, clearingCache, handleClearCache],
+    [t, clearingCache, handleClearCache],
   );
 
   const booksRead = liveOverall?.totalBooks ?? 0;
@@ -515,16 +490,13 @@ export function ProfileScreen() {
             <View style={s.menuCard}>
               {section.items.map((item, idx) => {
                 const Icon = item.icon;
-                const itemKey =
-                  "route" in item ? item.route : "url" in item ? item.url : item.label;
+                const itemKey = "route" in item ? item.route : item.label;
                 const handlePress = () => {
                   if ("disabled" in item && item.disabled) {
                     return;
                   }
                   if ("action" in item && item.action) {
                     item.action();
-                  } else if ("url" in item && item.url) {
-                    Linking.openURL(item.url);
                   } else if ("route" in item) {
                     nav.navigate(item.route);
                   }
@@ -554,11 +526,6 @@ export function ProfileScreen() {
             </View>
           </View>
         ))}
-
-        {/* Version */}
-        <Text style={s.version} maxFontSizeMultiplier={1.4}>
-          {t("profile.version", { version: Constants.expoConfig?.version ?? "1.0.0" })}
-        </Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -728,12 +695,5 @@ const makeStyles = (colors: ThemeColors) =>
       height: 8,
       borderRadius: 4,
       backgroundColor: colors.destructive,
-    },
-    version: {
-      textAlign: "center",
-      fontSize: fontSize.xs,
-      lineHeight: fontSize.xs * 1.6,
-      color: colors.mutedForeground,
-      marginBottom: 2,
     },
   });
