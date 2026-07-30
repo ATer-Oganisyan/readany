@@ -6,6 +6,7 @@ import {
   contentTransition,
   font,
   foregroundStyle,
+  frame,
 } from "@expo/ui/swift-ui/modifiers";
 import { useFocusEffect } from "@react-navigation/native";
 import { useCallback, useState } from "react";
@@ -32,13 +33,10 @@ export function ProfileNumericText({ value, color }: ProfileNumericTextProps) {
   );
 
   return (
-    <Host
-      matchContents={{ horizontal: true, vertical: true }}
-      colorScheme={isDark ? "dark" : "light"}
-      style={{ minHeight: 32 }}
-    >
+    <Host colorScheme={isDark ? "dark" : "light"} style={{ width: "100%", height: 32 }}>
       <Text
         modifiers={[
+          frame({ minWidth: 0, maxWidth: 10_000, alignment: "leading" }),
           font({ size: 25, weight: "bold", design: "rounded" }),
           foregroundStyle(color),
           contentTransition("numericText", { countsDown: false }),
