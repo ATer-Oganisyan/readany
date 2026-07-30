@@ -11,6 +11,7 @@ import {
   SearchIcon,
   XIcon,
 } from "@/components/ui/Icon";
+import { NativeContextMenuButton } from "@/components/ui/NativeContextMenuButton";
 import { Text, TextInput } from "@/components/ui/Typography";
 import { useReaderBridge } from "@/hooks/use-reader-bridge";
 import type { RelocateEvent, SelectionEvent, VisibleTTSSegment } from "@/hooks/use-reader-bridge";
@@ -140,7 +141,6 @@ const NOTE_TOOLTIP_BELOW_OFFSET = 8;
 const NOTE_TOOLTIP_TOP_THRESHOLD = 180;
 import { useRubyStore } from "@readany/core/stores/ruby-store";
 import { ReaderBottomToolbar } from "./reader/ReaderBottomToolbar";
-import { ReaderFloatingActions } from "./reader/ReaderFloatingActions";
 import { ReaderSettingsPanel } from "./reader/ReaderSettingsPanel";
 import { ReaderTOCPanel } from "./reader/ReaderTOCPanel";
 import { CONTROLS_TIMEOUT, SCREEN_HEIGHT, SCREEN_WIDTH } from "./reader/reader-constants";
@@ -400,15 +400,8 @@ export function ReaderScreen({ route, navigation }: Props) {
       headerTintColor: colors.foreground,
       headerTitleAlign: "center",
       title: "",
-      headerRight: undefined,
     });
-  }, [
-    colors.foreground,
-    navigation,
-    showControls,
-    showSearch,
-    themeMode,
-  ]);
+  }, [colors.foreground, navigation, showControls, showSearch, themeMode]);
 
   const suppressProgressTracking = useCallback((duration = PROGRAMMATIC_NAV_GUARD_MS) => {
     progressTrackingGuardUntilRef.current = Math.max(
@@ -968,6 +961,42 @@ export function ReaderScreen({ route, navigation }: Props) {
     goToHref: bridge.goToHref,
   });
 
+  useLayoutEffect(() => {
+    const headerVisible = showControls && !showSearch;
+    const readerActions = [
+      {
+        label: "Перевести главу",
+        sfSymbol: "globe",
+        onPress: () => setShowChapterTranslation(true),
+      },
+      {
+        label: "Озвучить",
+        sfSymbol: "waveform",
+        onPress: () => void tts.handleToggleTTS(),
+      },
+      {
+        label: "Обсудить с ИИ",
+        sfSymbol: "message",
+        onPress: () => navigation.navigate("BookChat", { bookId }),
+      },
+    ];
+
+    navigation.setOptions({
+      unstable_headerRightItems: undefined,
+      headerRight: headerVisible
+        ? () => (
+            <NativeContextMenuButton
+              accessibilityLabel="Действия с книгой"
+              items={readerActions.map((action) => ({
+                key: action.label,
+                ...action,
+              }))}
+            />
+          )
+        : undefined,
+    });
+  }, [bookId, navigation, showControls, showSearch, tts.handleToggleTTS]);
+
   // Bind mediator ref so onRelocate can fire the TTS continuation callback
   ttsPendingContinueRef.current = {
     pendingTTSContinueCallbackRef: tts.pendingTTSContinueCallbackRef,
@@ -1427,15 +1456,6 @@ export function ReaderScreen({ route, navigation }: Props) {
     inputRange: [0, TOOLBAR_HIDE_OFFSET * 0.5, TOOLBAR_HIDE_OFFSET],
     outputRange: [1, 0.28, 0],
   });
-  const auxToolsTranslate = toolbarAnim.interpolate({
-    inputRange: [0, TOOLBAR_HIDE_OFFSET],
-    outputRange: [0, 14],
-  });
-  const auxToolsOpacity = toolbarAnim.interpolate({
-    inputRange: [0, TOOLBAR_HIDE_OFFSET * 0.55, TOOLBAR_HIDE_OFFSET],
-    outputRange: [1, 0.24, 0],
-  });
-
   const isPanelOpen = showTOC || showSettings || showSearch || showNotebook || showTranslation;
   const existingSelectionHighlight = selection
     ? (highlights.find(
@@ -1673,32 +1693,6 @@ export function ReaderScreen({ route, navigation }: Props) {
             </View>
           </Pressable>
         </View>
-      )}
-
-      {!showSearch && (
-        <Animated.View
-          pointerEvents={showControls ? "auto" : "none"}
-          style={[
-            s.floatingTools,
-            {
-              right: insets.right + 16,
-              bottom: insets.bottom + 110,
-              opacity: auxToolsOpacity,
-              transform: [{ translateY: auxToolsTranslate }],
-            },
-          ]}
-        >
-          <ReaderFloatingActions
-            translationActive={showChapterTranslation || chapterTranslation.state.status !== "idle"}
-            speechActive={showTTS || ttsPlayState !== "stopped"}
-            accentColor={colors.primary}
-            foregroundColor={colors.foreground}
-            isDark={themeMode === "dark"}
-            onTranslate={() => setShowChapterTranslation(true)}
-            onSpeech={tts.handleToggleTTS}
-            onChat={() => navigation.navigate("BookChat", { bookId })}
-          />
-        </Animated.View>
       )}
 
       {/* ─── Bottom Toolbar ─── */}
