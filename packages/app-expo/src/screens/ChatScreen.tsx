@@ -16,6 +16,7 @@ import { useStreamingChat } from "@/hooks";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { resolveActiveAIConfig } from "@/lib/ai/resolve-active-ai-config";
 import { useChatStore } from "@/stores/chat-store";
+import { useLibraryStore } from "@/stores/library-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import type { AttachedQuote } from "@readany/core/types";
 import {
@@ -37,6 +38,7 @@ export function ChatScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const books = useLibraryStore((state) => state.books);
   useEffect(() => {
     navigation.setOptions({ title: "Narra AI" });
   }, [navigation]);
@@ -111,8 +113,16 @@ export function ChatScreen() {
   const generalThreads = getThreadsForContext();
 
   // Streaming chat
-  const { isStreaming, currentMessage, currentStep, error, sendMessage, stopStream } =
-    useStreamingChat();
+  const {
+    isStreaming,
+    currentMessage,
+    currentStep,
+    error,
+    errorThreadId,
+    sendMessage,
+    retryLastMessage,
+    stopStream,
+  } = useStreamingChat();
 
   // Messages - compute directly without useMemo to ensure reactivity
   const activeThread = generalActiveThreadId
@@ -155,6 +165,28 @@ export function ChatScreen() {
     [sendMessage, navigation, t],
   );
 
+  const handleRetry = useCallback(async () => {
+    const state = useSettingsStore.getState();
+    const resolvedAIConfig = await resolveActiveAIConfig(state);
+
+    if (!resolvedAIConfig) {
+      Alert.alert(
+        t("chat.configRequired", "Настройте ИИ"),
+        t("chat.configRequiredMessage", "Добавьте адрес API, ключ и модель в настройках"),
+        [
+          { text: t("common.cancel", "Отмена"), style: "cancel" },
+          {
+            text: t("common.settings", "Настройки"),
+            onPress: () => navigation.navigate("AISettings"),
+          },
+        ],
+      );
+      return;
+    }
+
+    await retryLastMessage(resolvedAIConfig);
+  }, [navigation, retryLastMessage, t]);
+
   const handleNewThread = useCallback(() => {
     setGeneralActiveThread(null);
     closeSidebar();
@@ -166,6 +198,13 @@ export function ChatScreen() {
       closeSidebar();
     },
     [setGeneralActiveThread, closeSidebar],
+  );
+
+  const handleSelectBook = useCallback(
+    (bookId: string) => {
+      navigation.replace("BookChat", { bookId });
+    },
+    [navigation],
   );
 
   const formatTime = useCallback((ts: number) => formatRelativeTimeShort(ts, t), [t]);
@@ -295,7 +334,37 @@ export function ChatScreen() {
 
   useNativeHeaderActions({
     left: [],
-    right: [],
+    right: [
+      {
+        type: "menu",
+        label: t("chat.selectBook", "Выбрать книгу"),
+        accessibilityLabel: t("chat.selectBook", "Выбрать книгу"),
+        icon: "components",
+        sfSymbol: "book.closed",
+        disabled: isStreaming,
+        items: [
+          {
+            label: t("chat.generalChat", "Общий чат"),
+            sfSymbol: "checkmark",
+            onPress: () => {},
+            disabled: true,
+          },
+          ...(books.length > 0
+            ? books.map((book) => ({
+                label: book.meta.title,
+                sfSymbol: "book.closed",
+                onPress: () => handleSelectBook(book.id),
+              }))
+            : [
+                {
+                  label: t("chat.noBooksInLibrary", "В библиотеке нет книг"),
+                  onPress: () => {},
+                  disabled: true,
+                },
+              ]),
+        ],
+      },
+    ],
   });
 
   return (
@@ -316,20 +385,18 @@ export function ChatScreen() {
               currentStep={currentStep}
               onSend={handleSend}
               onStop={stopStream}
+              errorMessage={
+                error && activeThread?.id === errorThreadId
+                  ? t("chat.responseFailed", "Не удалось получить ответ")
+                  : undefined
+              }
+              retryLabel={t("common.retry", "Повторить")}
+              onRetry={handleRetry}
               autoFocus
             />
           </View>
         </View>
       </View>
-
-      {/* Error */}
-      {error && (
-        <View style={s.errorBanner}>
-          <Text style={s.errorText} numberOfLines={2}>
-            {error.message}
-          </Text>
-        </View>
-      )}
 
       {/* Thread sidebar overlay */}
       {!isTabletLandscape && (
@@ -402,21 +469,6 @@ const makeStyles = (
       justifyContent: "center",
     },
     content: { flex: 1 },
-
-    // Error
-    errorBanner: {
-      position: "absolute",
-      bottom: 80,
-      left: 16,
-      right: 16,
-      backgroundColor: withOpacity(colors.destructive, 0.9),
-      borderRadius: radius.lg,
-      padding: 12,
-    },
-    errorText: {
-      fontSize: fs.sm,
-      color: colors.primaryForeground,
-    },
 
     // Sidebar
     sidebarBackdrop: {

@@ -58,6 +58,8 @@
     "noThreads": "No conversations yet — tap above to create one",
     "selectAndCopy": "Long-press text to select and copy",
     "selectBooks": "Select book context",
+    "selectBook": "Select book",
+    "generalChat": "General chat",
     "threads": "Conversations",
     "untitled": "Untitled"
   },

@@ -18,7 +18,6 @@
     "techStackReact": "UI 组件库",
     "techStackTypeScript": "类型安全",
     "techStackFoliate": "电子书渲染引擎",
-    "feedback": "反馈问题",
     "supportCenter": "帮助中心",
     "license": "基于 GPL v3 许可证开源",
     "checkUpdate": "检查更新",
@@ -242,7 +241,7 @@
     "syncPassword": "密码",
     "syncRemoteRoot": "远端文件夹",
     "syncRemoteRootPlaceholder": "readany",
-    "syncRemoteRootDesc": "可自定义同步写入的远端目录，支持多级路径；测试连接和首次同步时会自动创建。该目录由 ReadAny 独占用于双向同步，不会读取你已存放在远端的书；如需导入已有 WebDAV 书库，请使用“连接其他 WebDAV”。",
+    "syncRemoteRootDesc": "可自定义同步写入的远端目录，支持多级路径；测试连接和首次同步时会自动创建。该目录由 Narra 独占用于双向同步，不会读取你已存放在远端的书；如需导入已有 WebDAV 书库，请使用“连接其他 WebDAV”。",
     "syncTestConnection": "测试连接",
     "syncTesting": "测试中...",
     "syncTestSuccess": "连接成功",
@@ -339,7 +338,7 @@
     },
     "syncLANQRPlaceholder": "二维码将显示在这里",
     "syncLANPairCode": "配对码",
-    "syncLANServerHint": "在另一台设备上打开 ReadAny，扫描此二维码或手动输入配对码，把当前设备的数据导入过去",
+    "syncLANServerHint": "在另一台设备上打开 Narra，扫描此二维码或手动输入配对码，把当前设备的数据导入过去",
     "syncLANServerStart": "启动服务",
     "syncLANServerStarting": "启动中...",
     "syncLANServerStop": "停止服务",
@@ -429,17 +428,17 @@
       "overview": {
         "title": "外部 AI 访问 Beta",
         "description": "集中检查 CLI、Skill、多客户端发现目录和 MCP 配置。修复会使用当前选中的 profile。",
-        "mcpConfigHint": "MCP config 表示常见配置文件里已经出现 ReadAny；真实客户端是否已热加载，需要重启或新建会话后验证工具是否出现。"
+        "mcpConfigHint": "MCP config 表示常见配置文件里已经出现 Narra；真实客户端是否已热加载，需要重启或新建会话后验证工具是否出现。"
       },
       "cli": {
-        "title": "ReadAny CLI",
+        "title": "Narra CLI",
         "description": "桌面端通过受限命令检测 CLI，不开放任意 shell。",
         "notInstalledOrPath": "未安装或 PATH 不可用",
         "runtimeEvidence": "运行时 / 打包证据"
       },
       "agent": {
         "title": "Agent 初始化",
-        "description": "把这条命令复制给外部 AI，它会安装 ReadAny CLI、安装 Skill，并返回 MCP 配置片段。",
+        "description": "把这条命令复制给外部 AI，它会安装 Narra CLI、安装 Skill，并返回 MCP 配置片段。",
         "clientDiscoveryStatus": "客户端发现状态",
         "clientDiscoveryEmpty": "运行诊断后显示客户端 Skill 发现状态。",
         "mcpConfigStatus": "MCP 配置状态",
@@ -479,13 +478,13 @@
         "success": "命令执行成功。",
         "exitStatus": "命令退出码 {{status}}",
         "accessUninstalled": "外部 AI 接入和 CLI 已卸载。",
-        "cliUninstalled": "ReadAny CLI 已卸载。"
+        "cliUninstalled": "Narra CLI 已卸载。"
       },
       "skillPrompt": {
-        "intro": "请你直接帮我安装并启用 ReadAny 外部 AI Skill。",
+        "intro": "请你直接帮我安装并启用 Narra 外部 AI Skill。",
         "execute": "不要只解释步骤，也不要输出安装路径表格。请直接执行：",
         "mergeConfig": "如果能修改当前 AI 客户端配置，请直接合并 MCP 配置；否则只给我最短必要配置片段。",
-        "done": "完成后只回复：ReadAny Skill 已安装，请重启或新开当前 AI 客户端会话。",
+        "done": "完成后只回复：Narra Skill 已安装，请重启或新开当前 AI 客户端会话。",
         "protectBooks": "不要修改、导出或删除我的书籍内容。"
       },
       "status": {
@@ -513,7 +512,7 @@
         "unmanaged": "非托管",
         "checked": "已检查",
         "notFound": "未找到",
-        "containsReadAny": "含 readany",
+        "containsNarra": "含 readany",
         "needsConfig": "需配置"
       },
       "actions": {
@@ -578,14 +577,14 @@
           "fail": "better-sqlite3 不可用；书库和 MCP 数据命令可能失败。"
         },
         "readanyHome": {
-          "name": "ReadAny 主目录",
-          "ok": "ReadAny 主目录可写。",
-          "fail": "ReadAny 主目录不可写。"
+          "name": "Narra 主目录",
+          "ok": "Narra 主目录可写。",
+          "fail": "Narra 主目录不可写。"
         },
         "skill": {
           "name": "技能",
-          "ok": "ReadAny Skill 已安装：{{path}}。",
-          "fail": "ReadAny Skill 未安装：{{path}}。"
+          "ok": "Narra Skill 已安装：{{path}}。",
+          "fail": "Narra Skill 未安装：{{path}}。"
         }
       }
     }

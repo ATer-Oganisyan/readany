@@ -58,6 +58,8 @@
     "noThreads": "Aún no hay conversaciones — toca arriba para crear una",
     "selectAndCopy": "Mantén presionado el texto para seleccionar y copiar",
     "selectBooks": "Seleccionar contexto de libros",
+    "selectBook": "Seleccionar libro",
+    "generalChat": "Chat general",
     "threads": "Conversaciones",
     "untitled": "Sin título"
   },

@@ -42,7 +42,13 @@ export function NativeButton({
         style,
       ]}
     >
-      <Text style={{ color: isFilled ? colors.primaryForeground : accent, fontWeight: "600" }}>
+      <Text
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.8}
+        ellipsizeMode="tail"
+        style={{ color: isFilled ? colors.primaryForeground : accent, fontWeight: "600" }}
+      >
         {label}
       </Text>
     </Pressable>

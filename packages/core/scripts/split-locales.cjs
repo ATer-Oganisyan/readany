@@ -19,7 +19,7 @@ const MODULE_MAP = {
   "tts.json": ["tts", "fonts"],
   "stats.json": ["stats"],
   "onboarding.json": ["onboarding", "tour", "readerTour", "commandPalette", "updater"],
-  "profile.json": ["profile", "skills", "about", "feedback"],
+  "profile.json": ["profile", "skills", "about"],
   "misc.json": ["vectorize"],
 };
 

@@ -18,7 +18,6 @@
     "techStackReact": "Библиотека интерфейсных компонентов",
     "techStackTypeScript": "Типобезопасность",
     "techStackFoliate": "Движок электронных книг",
-    "feedback": "Обратная связь",
     "supportCenter": "Центр поддержки",
     "license": "Открытый исходный код под лицензией GPL v3.",
     "checkUpdate": "Проверить обновления",
@@ -105,7 +104,7 @@
     "ai_testSuccessWithModel": "Подключение к модели {{model}} работает",
     "ai_testFailed": "Не получилось подключиться",
     "ai_requestUrlPreview": "Итоговый URL запроса",
-    "ai_baseUrlHint": "Для OpenAI‑совместимых сервисов ReadAny добавляет /v1. Включите точный URL, чтобы использовать адрес без изменений",
+    "ai_baseUrlHint": "Для OpenAI‑совместимых сервисов Narra добавляет /v1. Включите точный URL, чтобы использовать адрес без изменений",
     "ai_ollamaCorsHint": "Ollama не подключается? Задайте OLLAMA_ORIGINS=* и перезапустите Ollama",
     "ai_exactRequestUrl": "Использовать точный URL",
     "ai_exactRequestUrlLabel": "Точный URL запроса",
@@ -218,7 +217,7 @@
     "vm_name": "Имя",
     "vm_modelId": "Идентификатор модели",
     "vm_url": "Адрес API",
-    "vm_urlHint": "Укажите корень API, базовый адрес /v1 или полный адрес /embeddings. После сохранения ReadAny проверит и нормализует URL",
+    "vm_urlHint": "Укажите корень API, базовый адрес /v1 или полный адрес /embeddings. После сохранения Narra проверит и нормализует URL",
     "vm_apiKey": "API-ключ",
     "vm_description": "Описание",
     "vm_descriptionPlaceholder": "Дополнительное описание модели",
@@ -238,7 +237,7 @@
     "sync": "Синхронизация",
     "syncTitle": "WebDAV-синхронизация",
     "syncDesc": "Синхронизируйте данные чтения между устройствами через WebDAV.",
-    "syncLayoutMigrationNotice": "Формат удалённой папки изменился. Обновите ReadAny на всех синхронизируемых устройствах",
+    "syncLayoutMigrationNotice": "Формат удалённой папки изменился. Обновите Narra на всех синхронизируемых устройствах",
     "syncConnection": "Настройки подключения",
     "syncUrl": "Адрес сервера",
     "syncUrlPlaceholder": "https://dav.example.com",
@@ -246,7 +245,7 @@
     "syncPassword": "Пароль",
     "syncRemoteRoot": "Удаленная папка",
     "syncRemoteRootPlaceholder": "readany",
-    "syncRemoteRootDesc": "Отдельная папка для синхронизации ReadAny. Вложенные папки создаются автоматически. Книги, уже загруженные в WebDAV, импортируйте через «Подключить другой WebDAV»",
+    "syncRemoteRootDesc": "Отдельная папка для синхронизации Narra. Вложенные папки создаются автоматически. Книги из другого хранилища импортируйте через «Подключить другой WebDAV»",
     "syncTestConnection": "Проверить подключение",
     "syncTesting": "Проверяем…",
     "syncTestSuccess": "Подключение работает",
@@ -279,7 +278,7 @@
     "syncWebdavMethodNotAllowed": "Сервер не поддерживает запрос WebDAV. Проверьте, включён ли WebDAV",
     "syncWebdavTimeout": "Сервер WebDAV не ответил за {{seconds}} сек. Проверьте адрес, порт и интернет",
     "syncWebdavNetworkError": "Не получилось подключиться к WebDAV. Проверьте интернет, адрес, порт и сертификат",
-    "syncWebdavDesktopScopeError": "Эта версия приложения не разрешает указанный адрес WebDAV. Обновите ReadAny и повторите",
+    "syncWebdavDesktopScopeError": "Эта версия приложения не разрешает указанный адрес WebDAV. Обновите Narra и повторите",
     "syncWebdavTlsError": "Не удалось проверить TLS‑сертификат WebDAV. Проверьте сертификат или разрешите небезопасное подключение",
     "syncWebdavServerError": "Ошибка сервера WebDAV ({{status}}).",
     "syncWebdavHttpError": "Запрос WebDAV не выполнен ({{status}}).",
@@ -343,7 +342,7 @@
     },
     "syncLANQRPlaceholder": "Здесь появится QR‑код",
     "syncLANPairCode": "Код подключения",
-    "syncLANServerHint": "Откройте ReadAny на другом устройстве и отсканируйте QR‑код или введите код подключения",
+    "syncLANServerHint": "Откройте Narra на другом устройстве и отсканируйте QR‑код или введите код подключения",
     "syncLANServerStart": "Начать передачу",
     "syncLANServerStarting": "Запускаем…",
     "syncLANServerStop": "Остановить передачу",
@@ -393,15 +392,15 @@
     "autoSyncDesc": "Автоматическая синхронизация данных в фоновом режиме",
     "appearanceLanguage": "Оформление",
     "storageLocation": "Место хранения библиотеки",
-    "storageLocationDesc": "В этой папке хранятся книги, обложки и база данных. При смене папки ReadAny перенесёт их автоматически",
+    "storageLocationDesc": "В этой папке хранятся книги, обложки и база данных. При смене папки Narra перенесёт их автоматически",
     "storageCurrentPath": "Текущий каталог",
     "storageTargetPath": "Целевой каталог",
     "storageChooseFolder": "Выбрать папку",
     "storageMigrate": "Перенести в эту папку",
     "storageMigrating": "Переносим…",
     "storageResetDefault": "Вернуть папку по умолчанию",
-    "storageMigrationNote": "ReadAny перенесёт книги, обложки и базу данных, затем перезапустится. Новые книги и данные синхронизации будут сохраняться в выбранной папке",
-    "storageMigrationSuccess": "Перенесено файлов: {{count}}. ReadAny перезапустится",
+    "storageMigrationNote": "Narra перенесёт книги, обложки и базу данных, затем перезапустится. Новые книги и данные синхронизации будут сохраняться в выбранной папке",
+    "storageMigrationSuccess": "Перенесено файлов: {{count}}. Narra перезапустится",
     "storageMigrationFailed": "Не удалось выполнить миграцию: {{error}}",
     "storageChooseFolderFirst": "Сначала выберите целевую папку",
     "storageNoChange": "Этот каталог уже используется",
@@ -434,14 +433,14 @@
         "mcpConfigHint": "Конфигурация MCP хранится в общих настройках клиента. После изменения перезапустите клиент или откройте новую сессию"
       },
       "cli": {
-        "title": "ReadAny CLI",
+        "title": "Narra CLI",
         "description": "Приложение выполняет только разрешённые проверки CLI и не запускает произвольные команды",
         "notInstalledOrPath": "Не установлено или недоступно в PATH",
         "runtimeEvidence": "Сведения о среде и сборке"
       },
       "agent": {
         "title": "Установка через ИИ‑агента",
-        "description": "Скопируйте команду во внешний ИИ‑клиент. Он установит ReadAny CLI и навык, затем вернёт конфигурацию MCP",
+        "description": "Скопируйте команду во внешний ИИ‑клиент. Он установит Narra CLI и навык, затем вернёт конфигурацию MCP",
         "clientDiscoveryStatus": "Обнаружение клиентов",
         "clientDiscoveryEmpty": "Запустите диагностику, чтобы проверить обнаружение клиентов",
         "mcpConfigStatus": "Конфигурация MCP",
@@ -481,13 +480,13 @@
         "success": "Команда выполнена",
         "exitStatus": "Команда завершена со статусом {{status}}",
         "accessUninstalled": "Внешний доступ к ИИ и CLI удалены",
-        "cliUninstalled": "ReadAny CLI удалён"
+        "cliUninstalled": "Narra CLI удалён"
       },
       "skillPrompt": {
-        "intro": "Установи и включи навык ReadAny для внешнего доступа к ИИ",
+        "intro": "Установи и включи навык Narra для внешнего доступа к ИИ",
         "execute": "Не ограничивайся инструкцией и не выводи таблицу путей. Выполни команду:",
         "mergeConfig": "Если можешь изменить конфигурацию текущего ИИ‑клиента, добавь MCP напрямую. Иначе верни только минимальный фрагмент конфигурации",
-        "done": "После установки ответь только: «Навык ReadAny установлен». Затем предложи перезапустить клиент или открыть новую сессию",
+        "done": "После установки ответь только: «Навык Narra установлен». Затем предложи перезапустить клиент или открыть новую сессию",
         "protectBooks": "Не изменяй, не экспортируй и не удаляй содержимое моих книг"
       },
       "status": {
@@ -515,7 +514,7 @@
         "unmanaged": "Неуправляемый",
         "checked": "Проверено",
         "notFound": "Не найден",
-        "containsReadAny": "Содержит ReadAny",
+        "containsNarra": "Содержит Narra",
         "needsConfig": "Требуется настройка"
       },
       "actions": {
@@ -580,14 +579,14 @@
           "fail": "Better-sqlite3 недоступен; команды библиотеки и данных MCP могут завершиться неудачей."
         },
         "readanyHome": {
-          "name": "Папка ReadAny",
-          "ok": "Папка ReadAny доступна для записи",
-          "fail": "Папка ReadAny недоступна для записи"
+          "name": "Папка Narra",
+          "ok": "Папка Narra доступна для записи",
+          "fail": "Папка Narra недоступна для записи"
         },
         "skill": {
           "name": "Навык",
-          "ok": "Навык ReadAny установлен в {{path}}",
-          "fail": "Навык ReadAny не установлен в {{path}}"
+          "ok": "Навык Narra установлен в {{path}}",
+          "fail": "Навык Narra не установлен в {{path}}"
         }
       }
     }

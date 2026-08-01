@@ -1,0 +1,11 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["ReadAnyNativeControlsModule"],
+    "podspecPath": "ios/ReadAnyNativeControls.podspec",
+    "swiftModuleName": "ReadAnyNativeControls"
+  },
+  "android": {
+    "modules": ["expo.modules.readanynativecontrols.ReadAnyNativeControlsModule"]
+  }
+}

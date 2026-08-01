@@ -39,6 +39,9 @@ interface NarraChatProps {
     quotes?: AttachedQuote[],
   ) => void | Promise<void>;
   onStop?: () => void;
+  errorMessage?: string | null;
+  retryLabel?: string;
+  onRetry?: () => void | Promise<void>;
   autoFocus?: boolean;
 }
 
@@ -116,6 +119,9 @@ export function NarraChat({
   onCitationClick,
   onSend,
   onStop,
+  errorMessage,
+  retryLabel = "Повторить",
+  onRetry,
   autoFocus = false,
 }: NarraChatProps) {
   const { colors, isDark } = useTheme();
@@ -219,6 +225,29 @@ export function NarraChat({
   const renderAccessory = useCallback(
     () => (
       <View style={styles.accessory}>
+        {errorMessage ? (
+          <View
+            style={[
+              styles.errorState,
+              {
+                backgroundColor: withOpacity(colors.destructive, 0.08),
+                borderColor: withOpacity(colors.destructive, 0.24),
+              },
+            ]}
+            accessibilityRole="alert"
+          >
+            <Text style={[styles.errorMessage, { color: colors.foreground }]}>{errorMessage}</Text>
+            <Pressable
+              onPress={() => void onRetry?.()}
+              disabled={!onRetry}
+              accessibilityRole="button"
+              accessibilityLabel={retryLabel}
+              hitSlop={8}
+            >
+              <Text style={[styles.retryLabel, { color: colors.destructive }]}>{retryLabel}</Text>
+            </Pressable>
+          </View>
+        ) : null}
         {quotes.map((quote) => (
           <View key={quote.id} style={[styles.quoteChip, { backgroundColor: colors.elevation2 }]}>
             <Text style={[styles.chipText, { color: colors.foreground }]} numberOfLines={1}>
@@ -243,7 +272,7 @@ export function NarraChat({
         </View>
       </View>
     ),
-    [colors, deepThinking, onRemoveQuote, quotes, spoilerFree],
+    [colors, deepThinking, errorMessage, onRemoveQuote, onRetry, quotes, retryLabel, spoilerFree],
   );
 
   const renderSend = useCallback(
@@ -339,6 +368,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingTop: 6,
     paddingBottom: 2,
+  },
+  errorState: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  errorMessage: {
+    flex: 1,
+    fontFamily: fontFamily.regular,
+    fontSize: 14,
+    lineHeight: 18,
+  },
+  retryLabel: {
+    fontFamily: fontFamily.semibold,
+    fontSize: 14,
+    lineHeight: 18,
   },
   quoteChip: {
     flexDirection: "row",

@@ -8,6 +8,13 @@ const interfaceFontAssets = {
   "Material Symbols Rounded": require("./fonts/MaterialSymbolsRounded-Variable.ttf"),
 };
 
+const serifTextFontAssets = {
+  regular: require("./fonts/SBSerifText-Regular.otf"),
+  italic: require("./fonts/SBSerifText-Italic.otf"),
+  bold: require("./fonts/SBSerifText-Bold.otf"),
+  boldItalic: require("./fonts/SBSerifText-BoldItalic.otf"),
+};
+
 module.exports = {
   interfaceFontAssets,
   interfaceFontFamily: {
@@ -20,5 +27,12 @@ module.exports = {
   },
   displayFontFamily: {
     semibold: "SB Sans Display Semibold",
+  },
+  serifTextFontAssets,
+  serifTextFontFamily: {
+    regular: "SB Serif Text",
+    italic: "SB Serif Text Italic",
+    bold: "SB Serif Text Bold",
+    boldItalic: "SB Serif Text Bold Italic",
   },
 };

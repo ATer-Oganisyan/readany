@@ -108,4 +108,67 @@ describe("useChatStore streaming sessions", () => {
     expect(useChatStore.getState().isStreaming).toBe(true);
     expect(useChatStore.getState().streamingSessions[bookKey]).toBeDefined();
   });
+
+  it("keeps a failed session available for recovery without rendering a message", () => {
+    const key = getChatStreamingKey();
+
+    useChatStore.getState().startStreamingSession({
+      key,
+      threadId: "thread-1",
+      isStreaming: true,
+      currentMessage: {
+        id: "assistant-1",
+        threadId: "thread-1",
+        role: "assistant",
+        parts: [],
+        createdAt: 100,
+      },
+      currentStep: "responding",
+      errorMessage: null,
+      startedAt: 100,
+      updatedAt: 100,
+    });
+
+    useChatStore.getState().failStreamingSession(key, "Could not load bundle");
+
+    const failedSession = useChatStore.getState().streamingSessions[key];
+    expect(failedSession?.isStreaming).toBe(false);
+    expect(failedSession?.currentMessage).toBeNull();
+    expect(failedSession?.currentStep).toBe("idle");
+    expect(failedSession?.errorMessage).toBe("Could not load bundle");
+    expect(useChatStore.getState().isStreaming).toBe(false);
+  });
+
+  it("hides legacy bundle errors when loading chat history", async () => {
+    dbMocks.getThreads.mockResolvedValue([
+      {
+        id: "thread-1",
+        title: "Test",
+        messages: [
+          {
+            id: "user-1",
+            threadId: "thread-1",
+            role: "user",
+            content: "Hello",
+            createdAt: 100,
+          },
+          {
+            id: "assistant-error",
+            threadId: "thread-1",
+            role: "assistant",
+            content: "⚠️ Could not load bundle",
+            createdAt: 101,
+          },
+        ],
+        createdAt: 100,
+        updatedAt: 101,
+      },
+    ]);
+
+    await useChatStore.getState().loadAllThreads();
+
+    expect(useChatStore.getState().threads[0]?.messages.map((message) => message.id)).toEqual([
+      "user-1",
+    ]);
+  });
 });

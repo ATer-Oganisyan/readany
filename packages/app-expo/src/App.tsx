@@ -1,6 +1,6 @@
 import { Text } from "@/components/ui/Typography";
 /**
- * ReadAny Expo App — Root component
+ * Narra Expo App — Root component
  *
  * Initialises platform service, i18n, and mounts navigation.
  */
@@ -37,13 +37,12 @@ import { AnimatedSplash } from "@/components/splash/AnimatedSplash";
 import { rnSessionEventSource } from "@/hooks";
 import { setStreamingFetch } from "@readany/core/ai/llm-provider";
 import { initDatabase } from "@readany/core/db/database";
-import { installFeedbackLogCapture, setFeedbackWorkerUrl } from "@readany/core/feedback";
 import { setSessionEventSource } from "@readany/core/hooks/use-reading-session";
 import { i18nReady, initI18nLanguage } from "@readany/core/i18n";
 import i18n from "@readany/core/i18n";
 import { setPlatformService } from "@readany/core/services";
 import { setSyncAdapter } from "@readany/core/sync";
-import { Audio } from "expo-av";
+import { setAudioModeAsync } from "expo-audio";
 import { I18nextProvider } from "react-i18next";
 import TrackPlayer, {
   AppKilledPlaybackBehavior,
@@ -67,8 +66,6 @@ import {
 } from "@/styles/ThemeContext";
 import { useAutoSync } from "@readany/core/hooks/use-auto-sync";
 
-installFeedbackLogCapture();
-
 // iOS New-Arch + expo-dev-client cold-start: when dev-client swaps its boot
 // RCTInstance for the app's instance, RCTTurboModuleManager waits up to 10s for
 // every TurboModule's invalidate to return. If any module's method queue is slow
@@ -79,11 +76,6 @@ installFeedbackLogCapture();
 if (Platform.OS === "ios") {
   LogBox.ignoreLogs([/TurboModuleManager: Timed out waiting for modules to be invalidated/]);
 }
-
-const FEEDBACK_WORKER_FALLBACK = "https://feedback.readany.top";
-const feedbackWorkerUrl =
-  process.env.EXPO_PUBLIC_FEEDBACK_WORKER_URL?.trim() || FEEDBACK_WORKER_FALLBACK;
-setFeedbackWorkerUrl(feedbackWorkerUrl);
 
 // Keep the native splash screen visible while we bootstrap
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -126,10 +118,10 @@ export default function App() {
         setStreamingFetch(expoFetch as typeof globalThis.fetch);
 
         console.log("[App] bootstrap: configure audio mode");
-        await Audio.setAudioModeAsync({
-          playsInSilentModeIOS: true,
-          staysActiveInBackground: true,
-          shouldDuckAndroid: true,
+        await setAudioModeAsync({
+          playsInSilentMode: true,
+          shouldPlayInBackground: true,
+          interruptionMode: "duckOthers",
         });
 
         console.log("[App] bootstrap: init react-native-track-player");

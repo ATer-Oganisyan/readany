@@ -4,8 +4,41 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
-  <title>ReadAny Reader</title>
+  <title>Narra Reader</title>
   <style>
+    @font-face {
+      font-family: "SB Sans Interface";
+      src: url("__READANY_SB_SANS_INTERFACE_REGULAR_DATA_URL__") format("opentype");
+      font-weight: 400;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "Material Symbols Rounded";
+      src: url("__READANY_MATERIAL_SYMBOLS_ROUNDED_DATA_URL__") format("woff2");
+      font-style: normal;
+      font-weight: 100 700;
+      font-display: block;
+    }
+
+    :root {
+      /* @deslop/mini-app Snackbar + @deslop/primitives */
+      --reader-snackbar-background: #11111199;
+      --reader-snackbar-text: #ffffff;
+      --reader-snackbar-inline-inset: 16px;
+      --reader-snackbar-block-inset: 24px;
+      --reader-snackbar-padding: 16px;
+      --reader-snackbar-radius: 26px;
+      --reader-spinner-color: var(--primary, #FF8D28);
+    }
+
+    :root[data-reader-color-scheme="dark"] {
+      --reader-snackbar-background: #ffffff99;
+      --reader-snackbar-text: #111111;
+      --reader-spinner-color: var(--primary, #FF9230);
+    }
+
     * {
       margin: 0;
       padding: 0;
@@ -37,13 +70,31 @@
 
     #pull-bookmark-indicator {
       position: absolute;
-      left: 50%;
-      top: 0;
-      transform: translate(-50%, -12px) scale(0.96);
+      left: 0;
+      right: 0;
+      top: calc(env(safe-area-inset-top, 0px) + var(--reader-snackbar-block-inset));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 var(--reader-snackbar-inline-inset);
+      transform: translateY(-32px) scale(0.96);
+      transform-origin: top center;
       opacity: 0;
       pointer-events: none;
-      z-index: 30;
-      transition: opacity 140ms ease, transform 180ms ease;
+      z-index: 9000;
+      transition: opacity 150ms ease-out, transform 360ms cubic-bezier(0.23, 1, 0.32, 1);
+      transition:
+        opacity 150ms ease-out,
+        transform 360ms linear(
+          0, 0.0013 0.5%, 0.0062 1.11%, 0.0233 2.21%, 0.0518 3.42%,
+          0.0951 4.82%, 0.1855 7.23%, 0.4176 12.76%, 0.525 15.47%,
+          0.6247, 0.7105 21.1%, 0.7844, 0.8439 26.92%, 0.8695 28.43%,
+          0.8934, 0.9139, 0.9314, 0.9463 34.86%, 0.9595 36.57%,
+          0.9709 38.37%, 0.9805 40.28%, 0.9884 42.29%, 0.9948 44.5%,
+          1.003 49.42%, 1.0048 53.01%, 1.0051 55.01%, 1.0048 57.01%,
+          1.0036 59.51%, 1.0016 62.01%, 0.9995 64.01%, 0.9977 66.01%,
+          0.9972 67.01%, 0.9975 68.01%, 0.9984 68.01%
+        );
     }
 
     /* While the finger is actively dragging the indicator, kill the transition
@@ -54,24 +105,25 @@
     }
 
     #pull-bookmark-indicator .pill {
-      min-width: 164px;
-      padding: 10px 14px;
-      border-radius: 999px;
-      background: rgba(28, 28, 30, 0.88);
-      color: #f5f5f7;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: fit-content;
+      max-width: 100%;
+      min-width: 0;
+      min-height: 50px;
+      padding: var(--reader-snackbar-padding);
+      border-radius: var(--reader-snackbar-radius);
+      background: var(--reader-snackbar-background);
+      color: var(--reader-snackbar-text);
+      font-family: "SB Sans Interface", system-ui, sans-serif;
       font-size: 13px;
-      font-weight: 600;
-      letter-spacing: 0.01em;
+      font-weight: 400;
+      line-height: 18px;
+      letter-spacing: 0;
       text-align: center;
-      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-    }
-
-    #pull-bookmark-indicator[data-armed="true"] .pill {
-      background: rgba(59, 130, 246, 0.92);
-      color: white;
+      backdrop-filter: blur(25px);
+      -webkit-backdrop-filter: blur(25px);
     }
 
     #loading {
@@ -80,8 +132,6 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      flex-direction: column;
-      gap: 12px;
       z-index: 100;
     }
 
@@ -90,23 +140,40 @@
     }
 
     .spinner {
-      width: 32px;
-      height: 32px;
-      border: 3px solid rgba(99, 102, 241, 0.2);
-      border-top-color: #6366f1;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
+      display: inline-block;
+      flex: none;
+      width: 24px;
+      height: 24px;
+      color: var(--reader-spinner-color);
+      font-family: "Material Symbols Rounded";
+      font-size: 24px;
+      font-style: normal;
+      font-weight: 400;
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      font-feature-settings: "liga";
+      line-height: 1;
+      letter-spacing: normal;
+      text-rendering: optimizeLegibility;
+      white-space: nowrap;
+      transform-origin: center;
+      animation: spin 1.4s linear infinite;
+      -webkit-font-smoothing: antialiased;
     }
 
     @keyframes spin {
+      from {
+        transform: rotate(0deg);
+      }
+
       to {
         transform: rotate(360deg);
       }
     }
 
-    #loading-text {
-      font-size: 14px;
-      color: var(--muted, #7c7c82);
+    @media (prefers-reduced-motion: reduce) {
+      .spinner {
+        animation-duration: 10s;
+      }
     }
 
     .error-text {
@@ -156,8 +223,7 @@
     </div>
     <button id="footnote-tip" type="button" aria-hidden="true"></button>
     <div id="loading">
-      <div class="spinner"></div>
-      <div id="loading-text">Loading...</div>
+      <span class="spinner" aria-hidden="true">progress_activity</span>
     </div>
   </div>
 
@@ -213,10 +279,10 @@
     let activeFootnoteTipKey = null;
     let bookmarkPullStateMeta = {
       bookmarked: false,
-      pullToAdd: '下滑添加书签',
-      releaseToAdd: '松手添加书签',
-      pullToRemove: '下滑删除书签',
-      releaseToRemove: '松手删除书签',
+      pullToAdd: 'Потяните вниз, чтобы добавить закладку',
+      releaseToAdd: 'Отпустите, чтобы добавить закладку',
+      pullToRemove: 'Потяните вниз, чтобы удалить закладку',
+      releaseToRemove: 'Отпустите, чтобы удалить закладку',
     };
 
     // Store user annotations for re-rendering on page change
@@ -535,7 +601,7 @@
         indicator.dataset.armed = armed ? 'true' : 'false';
         indicator.style.opacity = String(Math.min(1, pullOffset / 18));
         indicator.style.transform =
-          `translate(-50%, ${Math.min(24, -12 + easedOffset * 0.68)}px) scale(${0.96 + Math.min(0.08, pullOffset / 360)})`;
+          `translateY(${Math.min(0, -27 + easedOffset)}px) scale(${0.96 + Math.min(0.04, pullOffset / 900)})`;
       }
       setReaderTranslateY(easedOffset, false);
       postToRN('bookmarkPull', { offset: easedOffset, armed, active: pullOffset > 0 });
@@ -549,7 +615,7 @@
         indicator.dataset.following = 'false';
         indicator.dataset.armed = 'false';
         indicator.style.opacity = '0';
-        indicator.style.transform = 'translate(-50%, -12px) scale(0.96)';
+        indicator.style.transform = 'translateY(-32px) scale(0.96)';
       }
       setReaderTranslateY(0, animated !== false);
       postToRN('bookmarkPull', { offset: 0, armed: false, active: false });
@@ -1672,10 +1738,9 @@
           totalSections = book.toc.length;
         }
 
-        // Set search indicator color (use primary theme color instead of red)
+        // Search matches use the same treatment as a saved yellow highlight.
         if (el.setSearchIndicator) {
-          const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--primary')?.trim() || '#3b82f6';
-          el.setSearchIndicator('outline', { color: primaryColor });
+          el.setSearchIndicator('highlight', { color: 'rgba(250, 204, 21, 0.4)' });
         }
 
         if (book.toc) {
@@ -2039,6 +2104,31 @@
       syncCustomFontStylesForAllDocs(css);
     }
 
+    function isDarkCssColor(color) {
+      const value = String(color || '').trim();
+      let red;
+      let green;
+      let blue;
+
+      if (/^#[0-9a-f]{3,8}$/i.test(value)) {
+        const hex = value.slice(1);
+        const normalized = hex.length === 3 || hex.length === 4
+          ? hex.slice(0, 3).split('').map((part) => part + part).join('')
+          : hex.slice(0, 6);
+        red = parseInt(normalized.slice(0, 2), 16);
+        green = parseInt(normalized.slice(2, 4), 16);
+        blue = parseInt(normalized.slice(4, 6), 16);
+      } else {
+        const rgb = value.match(/^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/i);
+        if (!rgb) return false;
+        red = Number(rgb[1]);
+        green = Number(rgb[2]);
+        blue = Number(rgb[3]);
+      }
+
+      return red * 0.2126 + green * 0.7152 + blue * 0.0722 < 128;
+    }
+
     function setThemeColors(colors) {
       const bg = colors.background || '#1c1c1e';
       const fg = colors.foreground || '#e8e8ed';
@@ -2051,6 +2141,7 @@
       document.documentElement.style.setProperty('--fg', fg);
       document.documentElement.style.setProperty('--muted', muted);
       document.documentElement.style.setProperty('--primary', primary);
+      document.documentElement.dataset.readerColorScheme = isDarkCssColor(bg) ? 'dark' : 'light';
       document.body.style.backgroundColor = bg;
       document.body.style.color = fg;
 
@@ -2062,7 +2153,7 @@
       }
 
       if (view && view.setSearchIndicator) {
-        view.setSearchIndicator('outline', { color: primary });
+        view.setSearchIndicator('highlight', { color: 'rgba(250, 204, 21, 0.4)' });
       }
     }
 

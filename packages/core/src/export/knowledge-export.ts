@@ -111,11 +111,13 @@ function groupKnowledgeByBook(
       notes: notesByBook.get(book.id) ?? [],
       highlights: highlightsByBook.get(book.id) ?? [],
     })),
-    ...Array.from(missingBookIds).sort().map((bookId) => ({
-      book: createMissingBook(bookId),
-      notes: notesByBook.get(bookId) ?? [],
-      highlights: highlightsByBook.get(bookId) ?? [],
-    })),
+    ...Array.from(missingBookIds)
+      .sort()
+      .map((bookId) => ({
+        book: createMissingBook(bookId),
+        notes: notesByBook.get(bookId) ?? [],
+        highlights: highlightsByBook.get(bookId) ?? [],
+      })),
   ].sort((a, b) => a.book.meta.title.localeCompare(b.book.meta.title));
 }
 
@@ -182,7 +184,7 @@ function renderMarkdown(
   const noteCount = books.reduce((sum, item) => sum + item.notes.length, 0);
   const highlightCount = books.reduce((sum, item) => sum + item.highlights.length, 0);
   const lines = [
-    "# ReadAny Knowledge Export",
+    "# Narra Knowledge Export",
     "",
     `**Exported:** ${options.exportedAt}`,
     `**Books:** ${options.includeBooks ? books.length : 0}`,
@@ -212,12 +214,13 @@ function renderMarkdown(
         lines.push(`#### ${note.title}`, "");
         if (note.chapterTitle) lines.push(`_Chapter: ${note.chapterTitle}_`, "");
         lines.push(note.content, "");
-        if (note.tags.length > 0) lines.push(`Tags: ${note.tags.map((tag) => `#${tag}`).join(" ")}`, "");
+        if (note.tags.length > 0)
+          lines.push(`Tags: ${note.tags.map((tag) => `#${tag}`).join(" ")}`, "");
       }
     }
   }
 
-  return lines.join("\n").trimEnd() + "\n";
+  return `${lines.join("\n").trimEnd()}\n`;
 }
 
 function renderObsidian(

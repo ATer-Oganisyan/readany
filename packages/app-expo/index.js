@@ -3,9 +3,6 @@ import "react-native-get-random-values";
 import * as ExpoCrypto from "expo-crypto";
 
 import { registerRootComponent } from "expo";
-import TrackPlayer from "react-native-track-player";
-import App from "./src/App";
-import { PlaybackService } from "./src/services/PlaybackService";
 
 function bytesToString(bytes) {
   if (typeof TextDecoder !== "undefined") {
@@ -71,10 +68,13 @@ if (!cryptoObject.subtle) {
   });
 }
 
-const RootComponent =
-  process.env.EXPO_PUBLIC_STORYBOOK_ENABLED === "true"
-    ? require("./.rnstorybook").default
-    : App;
+if (process.env.EXPO_PUBLIC_STORYBOOK_ENABLED === "true") {
+  registerRootComponent(require("./.rnstorybook").default);
+} else {
+  const App = require("./src/App").default;
+  const TrackPlayer = require("react-native-track-player").default;
+  const { PlaybackService } = require("./src/services/PlaybackService");
 
-registerRootComponent(RootComponent);
-TrackPlayer.registerPlaybackService(() => PlaybackService);
+  registerRootComponent(App);
+  TrackPlayer.registerPlaybackService(() => PlaybackService);
+}

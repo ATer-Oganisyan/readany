@@ -6,6 +6,7 @@ import { WebView } from "react-native-webview";
 
 const READER_HTML_ASSET = Asset.fromModule(require("../../../assets/reader/reader.html"));
 const EXTRACTION_TIMEOUT_MS = 45_000;
+const READINESS_TIMEOUT_MS = 30_000;
 
 const EXTRACTOR_EXTENSIONS_BY_MIME: Record<string, string> = {
   "application/epub+zip": "epub",
@@ -37,13 +38,20 @@ interface PendingExtraction {
   timeoutId: ReturnType<typeof setTimeout>;
 }
 
+interface PendingReadiness {
+  resolve: () => void;
+  reject: (err: Error) => void;
+  timeoutId: ReturnType<typeof setTimeout>;
+}
+
 export const ExtractorWebView = forwardRef<ExtractorRef>((_, ref) => {
   const webViewRef = useRef<WebView>(null);
   const [htmlUri, setHtmlUri] = useState<string | null>(null);
-  const [ready, setReady] = useState(false);
+  const readyRef = useRef(false);
 
   // Pending extraction requests
   const pendingRequests = useRef<PendingExtraction[]>([]);
+  const pendingReadiness = useRef<PendingReadiness[]>([]);
 
   useEffect(() => {
     return () => {
@@ -52,6 +60,11 @@ export const ExtractorWebView = forwardRef<ExtractorRef>((_, ref) => {
         pending.reject(new Error("Extractor WebView unmounted"));
       }
       pendingRequests.current = [];
+      for (const pending of pendingReadiness.current) {
+        clearTimeout(pending.timeoutId);
+        pending.reject(new Error("Extractor WebView unmounted"));
+      }
+      pendingReadiness.current = [];
     };
   }, []);
 
@@ -74,7 +87,12 @@ export const ExtractorWebView = forwardRef<ExtractorRef>((_, ref) => {
     try {
       const msg = JSON.parse(event.nativeEvent.data);
       if (msg.type === "ready") {
-        setReady(true);
+        readyRef.current = true;
+        for (const pending of pendingReadiness.current) {
+          clearTimeout(pending.timeoutId);
+          pending.resolve();
+        }
+        pendingReadiness.current = [];
       } else if (msg.type === "loaded") {
         // Trigger extraction once the book is fully loaded
         webViewRef.current?.injectJavaScript(`
@@ -110,37 +128,57 @@ export const ExtractorWebView = forwardRef<ExtractorRef>((_, ref) => {
     }
   }, []);
 
-  useImperativeHandle(ref, () => ({
-    extractChapters: (base64BookData: string, mimeType = "application/epub+zip") => {
-      return new Promise<ChapterData[]>((resolve, reject) => {
-        if (!ready || !webViewRef.current) {
-          return reject(new Error("Extractor WebView not ready"));
-        }
+  const waitUntilReady = useCallback(() => {
+    if (readyRef.current && webViewRef.current) return Promise.resolve();
 
-        const timeoutId = setTimeout(() => {
-          const index = pendingRequests.current.findIndex((pending) => pending.reject === reject);
-          if (index >= 0) pendingRequests.current.splice(index, 1);
-          reject(new Error("Timed out extracting book content"));
-        }, EXTRACTION_TIMEOUT_MS);
+    return new Promise<void>((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        const index = pendingReadiness.current.findIndex((pending) => pending.reject === reject);
+        if (index >= 0) pendingReadiness.current.splice(index, 1);
+        reject(new Error("Timed out waiting for the extractor WebView"));
+      }, READINESS_TIMEOUT_MS);
 
-        pendingRequests.current.push({ resolve, reject, timeoutId });
+      pendingReadiness.current.push({ resolve, reject, timeoutId });
+    });
+  }, []);
 
-        // Command the webview to open the book first.
-        // It will reply with "loaded" when it finishes rendering.
-        const cmd = {
-          type: isPDFMimeType(mimeType) ? "extractBookChapters" : "openBook",
-          base64: base64BookData,
-          mimeType,
-          fileName: getExtractorFileName(mimeType),
-        };
+  useImperativeHandle(
+    ref,
+    () => ({
+      extractChapters: async (base64BookData: string, mimeType = "application/epub+zip") => {
+        await waitUntilReady();
 
-        webViewRef.current.injectJavaScript(`
+        return new Promise<ChapterData[]>((resolve, reject) => {
+          if (!webViewRef.current) {
+            return reject(new Error("Extractor WebView not ready"));
+          }
+
+          const timeoutId = setTimeout(() => {
+            const index = pendingRequests.current.findIndex((pending) => pending.reject === reject);
+            if (index >= 0) pendingRequests.current.splice(index, 1);
+            reject(new Error("Timed out extracting book content"));
+          }, EXTRACTION_TIMEOUT_MS);
+
+          pendingRequests.current.push({ resolve, reject, timeoutId });
+
+          // Command the webview to open the book first.
+          // It will reply with "loaded" when it finishes rendering.
+          const cmd = {
+            type: isPDFMimeType(mimeType) ? "extractBookChapters" : "openBook",
+            base64: base64BookData,
+            mimeType,
+            fileName: getExtractorFileName(mimeType),
+          };
+
+          webViewRef.current.injectJavaScript(`
           window.postMessage(${JSON.stringify(JSON.stringify(cmd))}, "*");
           true;
         `);
-      });
-    },
-  }));
+        });
+      },
+    }),
+    [waitUntilReady],
+  );
 
   if (!htmlUri) return null;
 

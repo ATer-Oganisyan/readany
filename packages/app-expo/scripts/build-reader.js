@@ -12,6 +12,14 @@ const FOLIATE_DIR = path.resolve(__dirname, "../../foliate-js");
 const ASSETS_DIR = path.resolve(__dirname, "../assets/reader");
 const TEMPLATE = path.resolve(ASSETS_DIR, "reader.template.html");
 const OUTPUT = path.resolve(ASSETS_DIR, "reader.html");
+const INTERFACE_FONT = path.resolve(
+  __dirname,
+  "../../deslop-primitives/fonts/SBSansUI-Regular.otf",
+);
+const MATERIAL_SYMBOLS_FONT = path.resolve(
+  __dirname,
+  "../../deslop-primitives/fonts/MaterialSymbolsRounded-Variable.woff2",
+);
 
 async function buildReader() {
   // Create a temporary entry point
@@ -59,7 +67,16 @@ async function buildReader() {
     const bundledJS = result.outputFiles[0].text;
 
     // Read the template HTML (never modified)
-    const template = fs.readFileSync(TEMPLATE, "utf-8");
+    const template = fs
+      .readFileSync(TEMPLATE, "utf-8")
+      .replace(
+        "__READANY_SB_SANS_INTERFACE_REGULAR_DATA_URL__",
+        `data:font/otf;base64,${fs.readFileSync(INTERFACE_FONT).toString("base64")}`,
+      )
+      .replace(
+        "__READANY_MATERIAL_SYMBOLS_ROUNDED_DATA_URL__",
+        `data:font/woff2;base64,${fs.readFileSync(MATERIAL_SYMBOLS_FONT).toString("base64")}`,
+      );
 
     // Replace the placeholder with the bundled code
     // Use split/join instead of replace to avoid $ replacement patterns in JS bundle

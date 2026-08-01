@@ -7,10 +7,12 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "node": "20.18.0",
+      "node": "20.20.2",
+      "pnpm": "9.15.0",
       "env": {
         "APP_VARIANT": "development",
-        "EXPO_NO_METRO_WORKSPACE_ROOT": "1"
+        "EXPO_NO_METRO_WORKSPACE_ROOT": "1",
+        "SHARP_IGNORE_GLOBAL_LIBVIPS": "1"
       }
     },
     "development-simulator": {
@@ -19,10 +21,12 @@
       "ios": {
         "simulator": true
       },
-      "node": "20.18.0",
+      "node": "20.20.2",
+      "pnpm": "9.15.0",
       "env": {
         "APP_VARIANT": "development",
-        "EXPO_NO_METRO_WORKSPACE_ROOT": "1"
+        "EXPO_NO_METRO_WORKSPACE_ROOT": "1",
+        "SHARP_IGNORE_GLOBAL_LIBVIPS": "1"
       }
     },
     "preview": {
@@ -34,10 +38,12 @@
       "ios": {
         "simulator": false
       },
-      "node": "20.18.0",
+      "node": "20.20.2",
+      "pnpm": "9.15.0",
       "env": {
         "APP_VARIANT": "preview",
-        "EXPO_NO_METRO_WORKSPACE_ROOT": "1"
+        "EXPO_NO_METRO_WORKSPACE_ROOT": "1",
+        "SHARP_IGNORE_GLOBAL_LIBVIPS": "1"
       }
     },
     "production": {
@@ -45,10 +51,12 @@
       "android": {
         "buildType": "app-bundle"
       },
-      "node": "20.18.0",
+      "node": "20.20.2",
+      "pnpm": "9.15.0",
       "env": {
         "APP_VARIANT": "production",
-        "EXPO_NO_METRO_WORKSPACE_ROOT": "1"
+        "EXPO_NO_METRO_WORKSPACE_ROOT": "1",
+        "SHARP_IGNORE_GLOBAL_LIBVIPS": "1"
       }
     },
     "production-apk": {
@@ -58,10 +66,12 @@
         "buildType": "apk",
         "gradleCommand": ":app:assembleRelease -PreactNativeArchitectures=arm64-v8a"
       },
-      "node": "20.18.0",
+      "node": "20.20.2",
+      "pnpm": "9.15.0",
       "env": {
         "APP_VARIANT": "production",
-        "EXPO_NO_METRO_WORKSPACE_ROOT": "1"
+        "EXPO_NO_METRO_WORKSPACE_ROOT": "1",
+        "SHARP_IGNORE_GLOBAL_LIBVIPS": "1"
       }
     }
   },

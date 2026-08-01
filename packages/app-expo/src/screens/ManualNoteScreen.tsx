@@ -1,4 +1,5 @@
 import { NativeNoteEditor } from "@/components/notes/NativeNoteEditor";
+import { ChevronDownIcon } from "@/components/ui/Icon";
 import { NativeButton } from "@/components/ui/NativeButton";
 import { Text } from "@/components/ui/Typography";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
@@ -8,7 +9,7 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { generateId } from "@readany/core/utils";
 import { useCallback, useLayoutEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Platform, StyleSheet, View } from "react-native";
+import { Alert, Platform, StyleSheet, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 type Props = NativeStackScreenProps<RootStackParamList, "ManualNote">;
@@ -33,11 +34,6 @@ export function ManualNoteScreen({ navigation, route }: Props) {
   const [content, setContent] = useState(existingNote?.note || "");
   const [saving, setSaving] = useState(false);
   const selectedBook = useMemo(() => books.find((book) => book.id === bookId), [bookId, books]);
-  const existingStorageBook = useMemo(
-    () => books.find((book) => book.id === existingNote?.bookId),
-    [books, existingNote?.bookId],
-  );
-  const storageBook = selectedBook ?? existingStorageBook ?? books[0];
 
   const chooseBook = useCallback(() => {
     Alert.alert(t("notes.chooseBook", "Выберите книгу"), undefined, [
@@ -52,14 +48,14 @@ export function ManualNoteScreen({ navigation, route }: Props) {
 
   const save = useCallback(async () => {
     const note = content.trim();
-    if ((!existingNote && !storageBook) || !note || saving) return;
+    if (!note || saving) return;
 
     setSaving(true);
     const now = Date.now();
     try {
       if (existingNote) {
         updateHighlight(existingNote.id, {
-          bookId: selectedBook?.id ?? existingNote.bookId,
+          bookId: selectedBook?.id ?? "",
           note,
           chapterTitle: selectedBook ? "Заметка к книге" : undefined,
           updatedAt: now,
@@ -68,10 +64,9 @@ export function ManualNoteScreen({ navigation, route }: Props) {
         return;
       }
 
-      if (!storageBook) return;
       await addHighlight({
         id: generateId(),
-        bookId: storageBook.id,
+        bookId: selectedBook?.id ?? "",
         cfi: "",
         text: "",
         color: "yellow",
@@ -90,25 +85,17 @@ export function ManualNoteScreen({ navigation, route }: Props) {
     } finally {
       setSaving(false);
     }
-  }, [
-    addHighlight,
-    content,
-    existingNote,
-    navigation,
-    saving,
-    selectedBook,
-    storageBook,
-    t,
-    updateHighlight,
-  ]);
+  }, [addHighlight, content, existingNote, navigation, saving, selectedBook, t, updateHighlight]);
 
   useLayoutEffect(() => {
-    const canSave = Boolean(content.trim()) && !saving && Boolean(existingNote || storageBook);
+    const canSave = Boolean(content.trim()) && !saving;
 
     navigation.setOptions({
-      title: "",
-      headerTransparent: true,
-      headerStyle: { backgroundColor: "transparent" },
+      title: existingNote
+        ? t("notes.editNote", "Редактировать заметку")
+        : t("notes.newNote", "Новая заметка"),
+      headerTransparent: false,
+      headerStyle: { backgroundColor: colors.background },
       ...(Platform.OS === "ios"
         ? {
             unstable_headerRightItems: () => [
@@ -149,6 +136,23 @@ export function ManualNoteScreen({ navigation, route }: Props) {
             ],
           }
         : {
+            headerTitle: () => (
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel={t("notes.chooseBook", "Выберите книгу")}
+                style={styles.headerBookButton}
+                onPress={chooseBook}
+                activeOpacity={0.65}
+              >
+                <Text
+                  numberOfLines={1}
+                  style={[styles.headerBookTitle, { color: colors.foreground }]}
+                >
+                  {selectedBook?.meta.title ?? "Без книги"}
+                </Text>
+                <ChevronDownIcon size={18} color={colors.mutedForeground} />
+              </TouchableOpacity>
+            ),
             headerRight: () => (
               <NativeButton
                 label="Готово"
@@ -162,23 +166,22 @@ export function ManualNoteScreen({ navigation, route }: Props) {
             ),
           }),
     });
-  }, [bookId, books, colors.primary, content, existingNote, navigation, save, saving, storageBook]);
-
-  if (!storageBook) {
-    return (
-      <SafeAreaView
-        style={[styles.container, { backgroundColor: colors.background }]}
-        edges={["bottom"]}
-      >
-        <View style={styles.empty}>
-          <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Книг пока нет</Text>
-          <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-            Сначала добавьте книгу
-          </Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  }, [
+    bookId,
+    books,
+    chooseBook,
+    colors.background,
+    colors.foreground,
+    colors.mutedForeground,
+    colors.primary,
+    content,
+    existingNote,
+    navigation,
+    save,
+    saving,
+    selectedBook?.meta.title,
+    t,
+  ]);
 
   return (
     <SafeAreaView
@@ -186,15 +189,6 @@ export function ManualNoteScreen({ navigation, route }: Props) {
       edges={["bottom"]}
     >
       <View style={styles.content}>
-        {Platform.OS !== "ios" ? (
-          <NativeButton
-            label={selectedBook?.meta.title ?? "Без книги"}
-            accessibilityLabel="Выбрать книгу"
-            variant="tertiary"
-            onPress={chooseBook}
-            style={styles.androidBookButton}
-          />
-        ) : null}
         <NativeNoteEditor initialValue={existingNote?.note} onChange={setContent} autoFocus />
       </View>
     </SafeAreaView>
@@ -204,8 +198,12 @@ export function ManualNoteScreen({ navigation, route }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { flex: 1 },
-  androidBookButton: { marginHorizontal: spacing.md, marginTop: spacing.sm },
-  empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.sm },
-  emptyTitle: { fontSize: 22, fontWeight: "600" },
-  emptyText: { fontSize: 16 },
+  headerBookButton: {
+    maxWidth: 190,
+    minHeight: 40,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  headerBookTitle: { flexShrink: 1, fontSize: 18, fontWeight: "600" },
 });

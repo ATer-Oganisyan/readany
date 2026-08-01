@@ -1,34 +1,32 @@
 import { BookCard } from "@/components/library/BookCard";
 import { GroupCard } from "@/components/library/GroupCard";
 import { GroupPickerSheet } from "@/components/library/GroupPickerSheet";
+import { ImportSourceMenuButton } from "@/components/library/ImportSourceMenuButton";
 import { type ExtractorRef, ExtractorWebView } from "@/components/rag/ExtractorWebView";
 import {
-  ArrowDownAZIcon,
-  ArrowUpAZIcon,
   CheckCheckIcon,
   ChevronLeftIcon,
-  ClockIcon,
   DatabaseIcon,
   FolderInputIcon,
   FolderMinusIcon,
   HashIcon,
-  LayersIcon,
+  MoreVerticalIcon,
   PlusIcon,
   SearchIcon,
-  SortAscIcon,
   Trash2Icon,
   XIcon,
 } from "@/components/ui/Icon";
 import { NativeButton } from "@/components/ui/NativeButton";
 import { SyncButton } from "@/components/ui/SyncButton";
 import { Text, TextInput, type TextInputHandle } from "@/components/ui/Typography";
+import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
+import { queueBookForAutoVectorize } from "@/lib/rag/auto-vectorize-book";
 import { setCallback, setExtractorRef } from "@/lib/rag/auto-vectorize-service";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
-import { WebDavConnectSheet } from "@/screens/library/WebDavConnectSheet";
-import { WebDavImportSourceSheet } from "@/screens/library/WebDavImportSourceSheet";
 import { useLibraryStore } from "@/stores/library-store";
+import { useVectorModelStore } from "@/stores/vector-model-store";
 import {
   type ThemeColors,
   fontSize,
@@ -40,35 +38,21 @@ import {
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import {
-  DEFAULT_WEBDAV_IMPORT_REMOTE_ROOT,
-  type WebDavImportSource,
-  getPlatformService,
-} from "@readany/core";
+import { getPlatformService } from "@readany/core";
 import { setFallbackContentProvider } from "@readany/core/ai";
 import { onLibraryChanged } from "@readany/core/events/library-events";
 import { useSyncStore } from "@readany/core/stores";
-import { SYNC_SECRET_KEYS } from "@readany/core/sync/sync-backend";
 import type { Book, BookGroup, SortField } from "@readany/core/types";
 import * as DocumentPicker from "expo-document-picker";
-import { File as ExpoFile } from "expo-file-system";
+import { File as ExpoFile, Paths } from "expo-file-system";
 /**
  * LibraryScreen — matching Tauri mobile LibraryPage exactly.
  * Features: header search/sort/import, tag filter, vectorization progress banner,
  * tag management sheet, responsive book grid, empty/loading states.
  */
-import {
-  type RefObject,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  ActionSheetIOS,
   ActivityIndicator,
   Alert,
   Animated,
@@ -83,6 +67,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import ReadAnyNativeControls from "../../modules/native-controls";
 import { TagManagementSheet } from "./library/TagManagementSheet";
 import { useBookDownload } from "./library/useBookDownload";
 import { useVectorizationQueue } from "./library/useVectorizationQueue";
@@ -102,36 +87,30 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 const NUM_COLUMNS = 2;
 const GRID_GAP = 16;
+const URL_IMPORT_EXTENSIONS = new Set([
+  "epub",
+  "pdf",
+  "mobi",
+  "azw",
+  "azw3",
+  "cbz",
+  "cbr",
+  "fb2",
+  "fbz",
+  "txt",
+  "umd",
+]);
 
-function splitUrlPathSegments(pathname: string): string[] {
-  return pathname.split("/").filter(Boolean);
-}
+function getUrlImportFilename(url: URL): string {
+  const rawName = decodeURIComponent(url.pathname.split("/").pop() || "").trim();
+  const safeName = rawName.replace(/[\\/:*?"<>|\[\]{}#%&]/g, "_");
+  const extension = safeName.split(".").pop()?.toLowerCase();
 
-function deriveImportBaseUrl(url: string, remoteRoot?: string): string {
-  if (!remoteRoot?.trim()) return url;
-
-  try {
-    const parsed = new URL(url);
-    const baseSegments = splitUrlPathSegments(parsed.pathname.replace(/\/+$/, ""));
-    const rootSegments = splitUrlPathSegments(remoteRoot.trim());
-
-    if (
-      rootSegments.length > 0 &&
-      baseSegments.length >= rootSegments.length &&
-      rootSegments.every(
-        (segment, index) =>
-          baseSegments[baseSegments.length - rootSegments.length + index] === segment,
-      )
-    ) {
-      const nextSegments = baseSegments.slice(0, baseSegments.length - rootSegments.length);
-      parsed.pathname = nextSegments.length > 0 ? `/${nextSegments.join("/")}` : "/";
-      return parsed.toString().replace(/\/$/, parsed.pathname === "/" ? "/" : "");
-    }
-  } catch {
-    return url;
+  if (!safeName || !extension || !URL_IMPORT_EXTENSIONS.has(extension)) {
+    throw new Error("unsupported-url");
   }
 
-  return url;
+  return safeName;
 }
 
 const SORT_OPTIONS: { field: SortField; labelKey: string }[] = [
@@ -168,22 +147,13 @@ export function LibraryScreen() {
     [colors, contentWidth, gridGap, gridItemWidth, layout.horizontalPadding, layout.isTablet],
   );
   const [showSearch, setShowSearch] = useState(false);
-  const [showSort, setShowSort] = useState(false);
   const searchAnim = useRef(new Animated.Value(0)).current;
   const searchInputRef = useRef<TextInputHandle>(null);
 
   const [tagSheetOpen, setTagSheetOpen] = useState(false);
   const [tagSheetBook, setTagSheetBook] = useState<Book | null>(null);
-  const [sourceSheetOpen, setSourceSheetOpen] = useState(false);
-  const [sourceSheetAnchor, setSourceSheetAnchor] = useState<{
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  } | null>(null);
-  const [temporaryWebDavOpen, setTemporaryWebDavOpen] = useState(false);
   const [isPickingImport, setIsPickingImport] = useState(false);
-  const [pendingLocalImport, setPendingLocalImport] = useState(false);
+  const [isUrlImporting, setIsUrlImporting] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedBookIds, setSelectedBookIds] = useState<Set<string>>(new Set());
   const [showGroupPicker, setShowGroupPicker] = useState(false);
@@ -193,14 +163,9 @@ export function LibraryScreen() {
     group?: BookGroup;
   } | null>(null);
   const [groupNameInput, setGroupNameInput] = useState("");
-  const importButtonAnchorRef = useRef<View>(null);
-  const emptyImportAnchorRef = useRef<View>(null);
   const localImportInFlightRef = useRef(false);
 
   const extractorRef = useRef<ExtractorRef>(null);
-  const loadSyncConfig = useSyncStore((state) => state.loadConfig);
-  const syncConfig = useSyncStore((state) => state.config);
-  const syncBackendType = useSyncStore((state) => state.backendType);
 
   const {
     books,
@@ -229,6 +194,11 @@ export function LibraryScreen() {
     removeTag,
     renameTag,
   } = useLibraryStore();
+  const hasBooks = books.length > 0;
+  const syncNow = useSyncStore((state) => state.syncNow);
+  const syncStatus = useSyncStore((state) => state.status);
+  const syncBackendType = useSyncStore((state) => state.backendType);
+  const isSyncBusy = syncStatus !== "idle" && syncStatus !== "error";
 
   const { downloadingBookId, downloadProgress, downloadBook } = useBookDownload({
     loadBooks,
@@ -254,13 +224,53 @@ export function LibraryScreen() {
     });
   }, [searchAnim, setFilter]);
 
-  useEffect(() => {
-    loadBooks();
-  }, [loadBooks]);
-  useEffect(() => {
-    void loadSyncConfig();
-  }, [loadSyncConfig]);
+  const toggleSearch = useCallback(() => {
+    if (showSearch) {
+      closeSearch();
+      Keyboard.dismiss();
+    } else {
+      openSearch();
+    }
+  }, [closeSearch, openSearch, showSearch]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadAndRepairVectorIndex = async () => {
+      await loadBooks();
+
+      const hydrationDeadline = Date.now() + 10_000;
+      while (!useVectorModelStore.getState()._hasHydrated && Date.now() < hydrationDeadline) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 50));
+      }
+      if (cancelled) return;
+
+      const vectorState = useVectorModelStore.getState();
+      if (
+        !vectorState._hasHydrated ||
+        !vectorState.autoVectorizeOnImport ||
+        !vectorState.vectorModelEnabled ||
+        !vectorState.hasVectorCapability()
+      ) {
+        return;
+      }
+
+      const unindexedBooks = useLibraryStore.getState().books.filter((book) => !book.isVectorized);
+      for (const book of unindexedBooks) {
+        if (cancelled) return;
+        try {
+          await queueBookForAutoVectorize(book);
+        } catch (error) {
+          console.warn(`[AutoVectorize] Failed to queue existing book ${book.meta.title}:`, error);
+        }
+      }
+    };
+
+    void loadAndRepairVectorIndex();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadBooks]);
   useEffect(() => {
     setExtractorRef(extractorRef.current);
     setFallbackContentProvider({
@@ -428,14 +438,16 @@ export function LibraryScreen() {
       if (result.canceled || !result.assets || result.assets.length === 0) return;
       const files = result.assets.map((a) => ({ uri: a.uri, name: a.name }));
       const summary = await importBooks(files);
-      Alert.alert(
-        t("common.success", "成功！"),
-        t("library.importResultSummary", {
-          imported: summary.imported.length,
-          skipped: summary.skippedDuplicates.length,
-          failed: summary.failures.length,
-        }),
-      );
+      if (summary.imported.length === 0 || summary.failures.length > 0) {
+        Alert.alert(
+          t("library.importSourceUrlErrorTitle", "Не получилось добавить книгу"),
+          t("library.importResultSummary", {
+            imported: summary.imported.length,
+            skipped: summary.skippedDuplicates.length,
+            failed: summary.failures.length,
+          }),
+        );
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (!message.includes("Different document picking in progress")) {
@@ -447,210 +459,93 @@ export function LibraryScreen() {
     }
   }, [importBooks, t]);
 
-  const handlePickLocalFromSourceMenu = useCallback(() => {
-    if (localImportInFlightRef.current || pendingLocalImport) return;
-    setPendingLocalImport(true);
-    setSourceSheetOpen(false);
-  }, [pendingLocalImport]);
+  const handleUrlImport = useCallback(
+    async (rawValue: string) => {
+      const value = rawValue.trim();
+      let temporaryFile: ExpoFile | null = null;
 
-  useEffect(() => {
-    if (Platform.OS === "ios" || !pendingLocalImport || sourceSheetOpen) return;
-
-    const timer = setTimeout(() => {
-      setPendingLocalImport(false);
-      void handleLocalImport();
-    }, 180);
-
-    return () => clearTimeout(timer);
-  }, [handleLocalImport, pendingLocalImport, sourceSheetOpen]);
-
-  const handleSourceSheetDismiss = useCallback(() => {
-    if (!pendingLocalImport || Platform.OS !== "ios") return;
-
-    requestAnimationFrame(() => {
-      setPendingLocalImport(false);
-      void handleLocalImport();
-    });
-  }, [handleLocalImport, pendingLocalImport]);
-
-  const handleOpenSavedWebDav = useCallback(async () => {
-    setSourceSheetOpen(false);
-
-    if (syncBackendType !== "webdav" || syncConfig?.type !== "webdav") {
-      Alert.alert(
-        t("library.importSourceSavedWebDavMissingTitle", "还没有可用的 WebDAV 书库"),
-        t(
-          "library.importSourceSavedWebDavMissing",
-          "还没有可用的 WebDAV 配置，先去同步设置里连上你的书库。",
-        ),
-        [
-          { text: t("common.cancel", "取消"), style: "cancel" },
-          {
-            text: t("settings.syncTitle", "WebDAV 同步"),
-            onPress: () => nav.navigate("SyncSettings"),
-          },
-        ],
-      );
-      return;
-    }
-
-    const platform = getPlatformService();
-    const password = await platform.kvGetItem(SYNC_SECRET_KEYS.webdav);
-    if (!password) {
-      Alert.alert(
-        t("library.importSourceSavedWebDavMissingTitle", "还没有可用的 WebDAV 书库"),
-        t(
-          "library.importSourceSavedWebDavMissingSecret",
-          "已经找到 WebDAV 地址，但缺少密码。去同步设置里重新保存一次就能继续。",
-        ),
-        [
-          { text: t("common.cancel", "取消"), style: "cancel" },
-          {
-            text: t("settings.syncTitle", "WebDAV 同步"),
-            onPress: () => nav.navigate("SyncSettings"),
-          },
-        ],
-      );
-      return;
-    }
-
-    const source: WebDavImportSource = {
-      kind: "saved",
-      url: deriveImportBaseUrl(syncConfig.url, syncConfig.remoteRoot),
-      username: syncConfig.username,
-      password,
-      remoteRoot: DEFAULT_WEBDAV_IMPORT_REMOTE_ROOT,
-      allowInsecure: syncConfig.allowInsecure ?? false,
-    };
-    nav.navigate("WebDavImportBrowser", { source });
-  }, [nav, syncBackendType, syncConfig, t]);
-
-  const handleOpenTemporaryWebDav = useCallback(() => {
-    setSourceSheetOpen(false);
-    setTemporaryWebDavOpen(true);
-  }, []);
-
-  const handleOpenImportSources = useCallback(
-    (anchorRef?: RefObject<View | null>) => {
-      if (Platform.OS === "ios") {
-        const hasSavedWebDav = syncBackendType === "webdav" && syncConfig?.type === "webdav";
-        const cancelButtonIndex = 3;
-
-        ActionSheetIOS.showActionSheetWithOptions(
-          {
-            options: [
-              t("library.importSourceLocal", "Локальные файлы"),
-              t("library.importSourceSavedWebDav", "Мой WebDAV"),
-              t("library.importSourceTemporaryWebDav", "Подключить другой WebDAV"),
-              t("common.cancel", "Отмена"),
-            ],
-            cancelButtonIndex,
-            disabledButtonIndices: hasSavedWebDav ? [] : [1],
-          },
-          (buttonIndex) => {
-            if (buttonIndex === 0) {
-              setTimeout(() => void handleLocalImport(), 200);
-            } else if (buttonIndex === 1) {
-              void handleOpenSavedWebDav();
-            } else if (buttonIndex === 2) {
-              handleOpenTemporaryWebDav();
-            }
-          },
-        );
-        return;
-      }
-
-      const openWithFallback = () => {
-        setSourceSheetAnchor(null);
-        setSourceSheetOpen(true);
-      };
-
-      if (!anchorRef?.current || typeof anchorRef.current.measureInWindow !== "function") {
-        openWithFallback();
-        return;
-      }
-
-      anchorRef.current.measureInWindow((x, y, width, height) => {
-        if ([x, y, width, height].some((value) => Number.isNaN(value) || value <= 0)) {
-          openWithFallback();
-          return;
+      try {
+        const url = new URL(value);
+        if (url.protocol !== "https:" && url.protocol !== "http:") {
+          throw new Error("invalid-url");
         }
 
-        setSourceSheetAnchor({ x, y, width, height });
-        setSourceSheetOpen(true);
-      });
+        const fileName = getUrlImportFilename(url);
+        temporaryFile = new ExpoFile(Paths.cache, `readany-url-${Date.now()}-${fileName}`);
+        setIsUrlImporting(true);
+        const downloadedFile = await ExpoFile.downloadFileAsync(url.toString(), temporaryFile, {
+          idempotent: true,
+        });
+        const summary = await importBooks([{ uri: downloadedFile.uri, name: fileName }]);
+
+        if (summary.imported.length === 0 || summary.failures.length > 0) {
+          Alert.alert(
+            t("library.importSourceUrlErrorTitle", "Не получилось добавить книгу"),
+            t("library.importResultSummary", {
+              imported: summary.imported.length,
+              skipped: summary.skippedDuplicates.length,
+              failed: summary.failures.length,
+            }),
+          );
+        }
+      } catch (error) {
+        const isUnsupported = error instanceof Error && error.message === "unsupported-url";
+        Alert.alert(
+          t("library.importSourceUrlErrorTitle", "Не получилось добавить книгу"),
+          isUnsupported
+            ? t(
+                "library.importSourceUrlUnsupported",
+                "Нужна прямая ссылка на файл EPUB, PDF, TXT или другого поддерживаемого формата.",
+              )
+            : t(
+                "library.importSourceUrlError",
+                "Проверьте ссылку и подключение к интернету, затем попробуйте снова.",
+              ),
+        );
+      } finally {
+        setIsUrlImporting(false);
+        if (temporaryFile?.exists) {
+          temporaryFile.delete();
+        }
+      }
     },
-    [
-      handleLocalImport,
-      handleOpenSavedWebDav,
-      handleOpenTemporaryWebDav,
-      syncBackendType,
-      syncConfig?.type,
-      t,
-    ],
+    [importBooks, t],
   );
 
-  useLayoutEffect(() => {
-    if (Platform.OS !== "ios") return;
+  const handleOpenUrlImport = useCallback(async () => {
+    try {
+      const value = await ReadAnyNativeControls.promptForText(
+        t("library.importSourceUrlTitle", "Ссылка на книгу"),
+        t("library.importSourceUrlDesc", "Вставьте прямую ссылку на файл книги."),
+        t("library.importSourceUrlPlaceholder", "https://example.com/book.epub"),
+        t("common.cancel", "Отмена"),
+        t("library.importSourceUrlSubmit", "Добавить"),
+      );
+      if (value?.trim()) {
+        await handleUrlImport(value);
+      }
+    } catch (error) {
+      console.error("Native URL prompt failed:", error);
+      Alert.alert(
+        t("library.importSourceUrlErrorTitle", "Не получилось добавить книгу"),
+        t("library.importSourceUrlError", "Проверьте ссылку и попробуйте снова."),
+      );
+    }
+  }, [handleUrlImport, t]);
 
-    const hasSavedWebDav = syncBackendType === "webdav" && syncConfig?.type === "webdav";
-
-    nav.setOptions({
-      unstable_headerRightItems: () => [
-        {
-          type: "menu",
-          label: t("library.importFirst", "Добавить книгу"),
-          accessibilityLabel: t("library.importFirst", "Добавить книгу"),
-          icon: { type: "sfSymbol", name: "plus" },
-          disabled: isImporting || isPickingImport,
-          menu: {
-            items: [
-              {
-                type: "action",
-                label: t("library.importSourceLocal", "Локальные файлы"),
-                icon: { type: "sfSymbol", name: "folder" },
-                onPress: () => void handleLocalImport(),
-              },
-              {
-                type: "action",
-                label: t("library.importSourceSavedWebDav", "Мой WebDAV"),
-                icon: { type: "sfSymbol", name: "icloud" },
-                disabled: !hasSavedWebDav,
-                onPress: () => void handleOpenSavedWebDav(),
-              },
-              {
-                type: "action",
-                label: t("library.importSourceTemporaryWebDav", "Подключить другой WebDAV"),
-                icon: { type: "sfSymbol", name: "globe" },
-                onPress: handleOpenTemporaryWebDav,
-              },
-            ],
-          },
-        },
-      ],
-    });
-  }, [
-    handleLocalImport,
-    handleOpenSavedWebDav,
-    handleOpenTemporaryWebDav,
-    isImporting,
-    isPickingImport,
-    nav,
-    syncBackendType,
-    syncConfig?.type,
-    t,
-  ]);
-
-  const handleConnectTemporaryWebDav = useCallback(
-    async (source: WebDavImportSource) => {
-      const { WebDavImportService } = await import("@readany/core");
-      const service = new WebDavImportService(source);
-      await service.testConnection();
-      setTemporaryWebDavOpen(false);
-      nav.navigate("WebDavImportBrowser", { source });
-    },
-    [nav],
-  );
+  const handleOpenImportSources = useCallback(() => {
+    Alert.alert(t("library.importFirst", "Добавить книгу"), undefined, [
+      {
+        text: t("library.importSourceUrl", "Найти по ссылке"),
+        onPress: () => void handleOpenUrlImport(),
+      },
+      {
+        text: t("library.importSourceLocal", "Выбрать файл"),
+        onPress: () => void handleLocalImport(),
+      },
+      { text: t("common.cancel", "Отмена"), style: "cancel" },
+    ]);
+  }, [handleLocalImport, handleOpenUrlImport, t]);
 
   const handleOpen = useCallback(
     async (book: Book) => {
@@ -697,13 +592,214 @@ export function LibraryScreen() {
           sortOrder: field === "title" || field === "author" ? "asc" : "desc",
         });
       }
-      setShowSort(false);
     },
     [filter, setFilter],
   );
 
+  const handleOpenSortOptions = useCallback(() => {
+    Alert.alert(t("library.sort", "Сортировка"), undefined, [
+      ...SORT_OPTIONS.map(({ field, labelKey }) => ({
+        text: t(labelKey),
+        onPress: () => handleSortChange(field),
+      })),
+      { text: t("common.cancel", "Отмена"), style: "cancel" as const },
+    ]);
+  }, [handleSortChange, t]);
+
+  const toggleGroupView = useCallback(() => {
+    setActiveGroupId("");
+    setGroupView(!isGroupView);
+  }, [isGroupView, setActiveGroupId, setGroupView]);
+
+  const handleSync = useCallback(() => {
+    if (!isSyncBusy) void syncNow();
+  }, [isSyncBusy, syncNow]);
+
+  const handleOpenLibraryActions = useCallback(() => {
+    Alert.alert(t("common.more", "Ещё"), undefined, [
+      { text: t("library.sort", "Сортировка"), onPress: handleOpenSortOptions },
+      {
+        text: isGroupView
+          ? t("library.listView", "Показать списком")
+          : t("library.groupView", "Показать по группам"),
+        onPress: toggleGroupView,
+      },
+      { text: t("common.cancel", "Отмена"), style: "cancel" },
+    ]);
+  }, [handleOpenSortOptions, isGroupView, t, toggleGroupView]);
+
+  useLayoutEffect(() => {
+    if (selectionMode) {
+      nav.setOptions(
+        Platform.OS === "ios"
+          ? { unstable_headerRightItems: () => [] }
+          : { headerRight: () => null },
+      );
+      return;
+    }
+
+    if (Platform.OS === "ios") {
+      nav.setOptions({
+        unstable_headerRightItems: () => [
+          ...(syncBackendType
+            ? [
+                {
+                  type: "button" as const,
+                  label: t("sync.syncNow", "Синхронизировать"),
+                  accessibilityLabel: t("sync.syncNow", "Синхронизировать"),
+                  icon: { type: "sfSymbol" as const, name: "arrow.clockwise" as const },
+                  disabled: isSyncBusy,
+                  onPress: handleSync,
+                },
+              ]
+            : []),
+          ...(hasBooks
+            ? [
+                {
+                  type: "button" as const,
+                  label: t("library.search", "Поиск"),
+                  accessibilityLabel: t("library.search", "Поиск"),
+                  icon: { type: "sfSymbol" as const, name: "magnifyingglass" as const },
+                  selected: showSearch,
+                  onPress: toggleSearch,
+                },
+                {
+                  type: "menu" as const,
+                  label: t("common.more", "Ещё"),
+                  accessibilityLabel: t("common.more", "Ещё"),
+                  icon: { type: "sfSymbol" as const, name: "ellipsis.circle" as const },
+                  menu: {
+                    items: [
+                      {
+                        type: "submenu" as const,
+                        label: t("library.sort", "Сортировка"),
+                        icon: {
+                          type: "sfSymbol" as const,
+                          name: "arrow.up.arrow.down" as const,
+                        },
+                        items: SORT_OPTIONS.map(({ field, labelKey }) => ({
+                          type: "action" as const,
+                          label: t(labelKey),
+                          state: filter.sortField === field ? ("on" as const) : ("off" as const),
+                          onPress: () => handleSortChange(field),
+                        })),
+                      },
+                      {
+                        type: "action" as const,
+                        label: isGroupView
+                          ? t("library.listView", "Показать списком")
+                          : t("library.groupView", "Показать по группам"),
+                        icon: { type: "sfSymbol" as const, name: "square.grid.2x2" as const },
+                        onPress: toggleGroupView,
+                      },
+                    ],
+                  },
+                },
+              ]
+            : []),
+          {
+            type: "menu" as const,
+            label: t("library.importFirst", "Добавить книгу"),
+            accessibilityLabel: t("library.importFirst", "Добавить книгу"),
+            icon: { type: "sfSymbol" as const, name: "plus" as const },
+            disabled: isImporting || isPickingImport,
+            menu: {
+              items: [
+                {
+                  type: "action" as const,
+                  label: t("library.importSourceUrl", "Найти по ссылке"),
+                  icon: { type: "sfSymbol" as const, name: "link" as const },
+                  onPress: handleOpenUrlImport,
+                },
+                {
+                  type: "action" as const,
+                  label: t("library.importSourceLocal", "Выбрать файл"),
+                  icon: { type: "sfSymbol" as const, name: "folder" as const },
+                  onPress: () => void handleLocalImport(),
+                },
+              ],
+            },
+          },
+        ],
+      });
+      return;
+    }
+
+    nav.setOptions({
+      headerRight: () => (
+        <View style={s.nativeHeaderActions}>
+          {syncBackendType ? (
+            <View style={s.nativeHeaderButton}>
+              <SyncButton size={20} color={colors.mutedForeground} />
+            </View>
+          ) : null}
+          {hasBooks ? (
+            <>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel={t("library.search", "Поиск")}
+                style={s.nativeHeaderButton}
+                onPress={toggleSearch}
+                activeOpacity={0.65}
+              >
+                <SearchIcon size={22} color={showSearch ? colors.primary : colors.foreground} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel={t("common.more", "Ещё")}
+                style={s.nativeHeaderButton}
+                onPress={handleOpenLibraryActions}
+                activeOpacity={0.65}
+              >
+                <MoreVerticalIcon size={22} color={colors.foreground} />
+              </TouchableOpacity>
+            </>
+          ) : null}
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel={t("library.importFirst", "Добавить книгу")}
+            style={s.nativeHeaderButton}
+            onPress={handleOpenImportSources}
+            disabled={isImporting || isPickingImport}
+            activeOpacity={0.65}
+          >
+            {isImporting || isPickingImport ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <PlusIcon size={24} color={colors.primary} />
+            )}
+          </TouchableOpacity>
+        </View>
+      ),
+    });
+  }, [
+    colors.foreground,
+    colors.mutedForeground,
+    colors.primary,
+    filter.sortField,
+    handleLocalImport,
+    handleOpenImportSources,
+    handleOpenLibraryActions,
+    handleOpenUrlImport,
+    handleSortChange,
+    handleSync,
+    hasBooks,
+    isGroupView,
+    isImporting,
+    isPickingImport,
+    isSyncBusy,
+    nav,
+    s.nativeHeaderActions,
+    s.nativeHeaderButton,
+    selectionMode,
+    showSearch,
+    syncBackendType,
+    t,
+    toggleGroupView,
+    toggleSearch,
+  ]);
+
   const isEmpty = gridItems.length === 0;
-  const hasBooks = books.length > 0;
 
   const toggleBookSelection = useCallback((book: Book) => {
     setSelectedBookIds((prev) => {
@@ -894,8 +990,8 @@ export function LibraryScreen() {
 
   return (
     <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={[]}>
-      {/* Header */}
-      {(Platform.OS !== "ios" || hasBooks || selectionMode) && (
+      {/* Contextual bulk/group controls stay in content; primary actions live in native header. */}
+      {(selectionMode || activeGroup) && (
         <View style={[s.header, { zIndex: 20 }]}>
           <View style={s.headerInner}>
             {selectionMode ? (
@@ -933,208 +1029,113 @@ export function LibraryScreen() {
               </View>
             ) : (
               <View style={s.headerRow}>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 6,
-                    flex: 1,
-                    minWidth: 0,
-                  }}
-                >
-                  {activeGroup && (
-                    <TouchableOpacity style={s.headerBtn} onPress={() => setActiveGroupId("")}>
-                      <ChevronLeftIcon size={18} color={colors.mutedForeground} />
-                    </TouchableOpacity>
-                  )}
-                </View>
-                <View style={s.headerActions}>
-                  <SyncButton size={18} color={colors.mutedForeground} />
-                  {hasBooks && (
-                    <TouchableOpacity
-                      style={s.headerBtn}
-                      onPress={() => {
-                        if (showSearch) {
-                          closeSearch();
-                          Keyboard.dismiss();
-                        } else {
-                          openSearch();
-                        }
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <SearchIcon
-                        size={18}
-                        color={showSearch ? colors.primary : colors.mutedForeground}
-                      />
-                    </TouchableOpacity>
-                  )}
-                  {hasBooks && (
-                    <TouchableOpacity style={s.headerBtn} onPress={() => setShowSort(!showSort)}>
-                      <SortAscIcon size={18} color={colors.mutedForeground} />
-                    </TouchableOpacity>
-                  )}
-                  {hasBooks && (
-                    <TouchableOpacity
-                      style={s.headerBtn}
-                      onPress={() => {
-                        setActiveGroupId("");
-                        setGroupView(!isGroupView);
-                      }}
-                    >
-                      <LayersIcon
-                        size={18}
-                        color={isGroupView ? colors.primary : colors.mutedForeground}
-                      />
-                    </TouchableOpacity>
-                  )}
-                  {Platform.OS !== "ios" && (
-                    <View ref={importButtonAnchorRef} collapsable={false}>
-                      <TouchableOpacity
-                        style={s.importBtn}
-                        onPress={() => handleOpenImportSources(importButtonAnchorRef)}
-                        disabled={isImporting || isPickingImport}
-                        activeOpacity={0.8}
-                      >
-                        {isImporting || isPickingImport ? (
-                          <ActivityIndicator size="small" color={colors.primaryForeground} />
-                        ) : (
-                          <PlusIcon size={18} color={colors.primaryForeground} />
-                        )}
-                      </TouchableOpacity>
-                    </View>
-                  )}
-                </View>
-              </View>
-            )}
-
-            {hasBooks && ((!selectionMode && showSearch) || allTags.length > 0) && (
-              <View style={s.searchTagSection}>
-                {!selectionMode && showSearch && (
-                  <Animated.View
-                    style={[
-                      s.searchInputContainer,
-                      layout.isTablet ? s.searchInputContainerWide : null,
-                      {
-                        opacity: searchAnim,
-                        transform: [
-                          {
-                            translateY: searchAnim.interpolate({
-                              inputRange: [0, 1],
-                              outputRange: [-4, 0],
-                            }),
-                          },
-                        ],
-                      },
-                    ]}
-                  >
-                    <SearchIcon size={16} color={colors.mutedForeground} />
-                    <TextInput
-                      ref={searchInputRef}
-                      style={s.searchInput}
-                      placeholder={t("library.searchPlaceholder", "搜索...")}
-                      placeholderTextColor={colors.mutedForeground}
-                      value={filter.search}
-                      onChangeText={(text) => setFilter({ search: text })}
-                      onBlur={() => {
-                        if (!filter.search.trim()) closeSearch();
-                      }}
-                      returnKeyType="search"
-                    />
-                    {filter.search.length > 0 && (
-                      <TouchableOpacity
-                        style={s.searchClearBtn}
-                        onPress={() => {
-                          setFilter({ search: "" });
-                          searchInputRef.current?.focus();
-                        }}
-                        hitSlop={6}
-                      >
-                        <XIcon size={14} color={colors.mutedForeground} />
-                      </TouchableOpacity>
-                    )}
-                  </Animated.View>
-                )}
-                {allTags.length > 0 && (
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    style={[s.tagScroll, layout.isTablet ? s.tagScrollWide : null]}
-                    contentContainerStyle={s.tagScrollContent}
-                  >
-                    <TouchableOpacity
-                      style={[s.tagChip, !activeTag && !activeGroupId && s.tagChipActive]}
-                      onPress={() => setActiveTag("")}
-                    >
-                      <Text
-                        style={[s.tagChipText, !activeTag && !activeGroupId && s.tagChipTextActive]}
-                      >
-                        {t("library.all", "全部")}
-                      </Text>
-                    </TouchableOpacity>
-                    {allTags.map((tag) => (
-                      <TouchableOpacity
-                        key={tag}
-                        style={[s.tagChip, activeTag === tag && s.tagChipActive]}
-                        onPress={() => setActiveTag(activeTag === tag ? "" : tag)}
-                      >
-                        <Text style={[s.tagChipText, activeTag === tag && s.tagChipTextActive]}>
-                          {tag}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                    <TouchableOpacity
-                      style={[s.tagChip, activeTag === "__uncategorized__" && s.tagChipActive]}
-                      onPress={() =>
-                        setActiveTag(activeTag === "__uncategorized__" ? "" : "__uncategorized__")
-                      }
-                    >
-                      <Text
-                        style={[
-                          s.tagChipText,
-                          activeTag === "__uncategorized__" && s.tagChipTextActive,
-                        ]}
-                      >
-                        {t("sidebar.uncategorized", "未分类")}
-                      </Text>
-                    </TouchableOpacity>
-                  </ScrollView>
-                )}
+                <TouchableOpacity style={s.headerBtn} onPress={() => setActiveGroupId("")}>
+                  <ChevronLeftIcon size={18} color={colors.mutedForeground} />
+                </TouchableOpacity>
               </View>
             )}
           </View>
         </View>
       )}
 
-      {/* Sort dropdown */}
-      <Modal
-        visible={showSort}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowSort(false)}
-      >
-        <Pressable style={s.sortOverlay} onPress={() => setShowSort(false)} />
-        <View style={s.sortDropdown}>
-          {SORT_OPTIONS.map(({ field, labelKey }) => (
-            <TouchableOpacity
-              key={field}
-              style={[s.sortItem, filter.sortField === field && s.sortItemActive]}
-              onPress={() => handleSortChange(field)}
-            >
-              {field === "lastOpenedAt" ? (
-                <ClockIcon size={14} color={colors.mutedForeground} />
-              ) : filter.sortField === field && filter.sortOrder === "asc" ? (
-                <ArrowUpAZIcon size={14} color={colors.mutedForeground} />
-              ) : (
-                <ArrowDownAZIcon size={14} color={colors.mutedForeground} />
+      {hasBooks && ((!selectionMode && showSearch) || allTags.length > 0) && (
+        <View style={s.filterSection}>
+          <View style={s.headerInner}>
+            <View style={s.searchTagSection}>
+              {!selectionMode && showSearch && (
+                <Animated.View
+                  style={[
+                    s.searchInputContainer,
+                    layout.isTablet ? s.searchInputContainerWide : null,
+                    {
+                      opacity: searchAnim,
+                      transform: [
+                        {
+                          translateY: searchAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [-4, 0],
+                          }),
+                        },
+                      ],
+                    },
+                  ]}
+                >
+                  <SearchIcon size={16} color={colors.mutedForeground} />
+                  <TextInput
+                    ref={searchInputRef}
+                    style={s.searchInput}
+                    placeholder={t("library.searchPlaceholder", "搜索...")}
+                    placeholderTextColor={colors.mutedForeground}
+                    value={filter.search}
+                    onChangeText={(text) => setFilter({ search: text })}
+                    onBlur={() => {
+                      if (!filter.search.trim()) closeSearch();
+                    }}
+                    returnKeyType="search"
+                  />
+                  {filter.search.length > 0 && (
+                    <TouchableOpacity
+                      style={s.searchClearBtn}
+                      onPress={() => {
+                        setFilter({ search: "" });
+                        searchInputRef.current?.focus();
+                      }}
+                      hitSlop={6}
+                    >
+                      <XIcon size={14} color={colors.mutedForeground} />
+                    </TouchableOpacity>
+                  )}
+                </Animated.View>
               )}
-              <Text style={[s.sortText, filter.sortField === field && s.sortTextActive]}>
-                {t(labelKey)}
-              </Text>
-            </TouchableOpacity>
-          ))}
+              {allTags.length > 0 && (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={[s.tagScroll, layout.isTablet ? s.tagScrollWide : null]}
+                  contentContainerStyle={s.tagScrollContent}
+                >
+                  <TouchableOpacity
+                    style={[s.tagChip, !activeTag && !activeGroupId && s.tagChipActive]}
+                    onPress={() => setActiveTag("")}
+                  >
+                    <Text
+                      style={[s.tagChipText, !activeTag && !activeGroupId && s.tagChipTextActive]}
+                    >
+                      {t("library.all", "全部")}
+                    </Text>
+                  </TouchableOpacity>
+                  {allTags.map((tag) => (
+                    <TouchableOpacity
+                      key={tag}
+                      style={[s.tagChip, activeTag === tag && s.tagChipActive]}
+                      onPress={() => setActiveTag(activeTag === tag ? "" : tag)}
+                    >
+                      <Text style={[s.tagChipText, activeTag === tag && s.tagChipTextActive]}>
+                        {tag}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                  <TouchableOpacity
+                    style={[s.tagChip, activeTag === "__uncategorized__" && s.tagChipActive]}
+                    onPress={() =>
+                      setActiveTag(activeTag === "__uncategorized__" ? "" : "__uncategorized__")
+                    }
+                  >
+                    <Text
+                      style={[
+                        s.tagChipText,
+                        activeTag === "__uncategorized__" && s.tagChipTextActive,
+                      ]}
+                    >
+                      {t("sidebar.uncategorized", "未分类")}
+                    </Text>
+                  </TouchableOpacity>
+                </ScrollView>
+              )}
+            </View>
+          </View>
         </View>
-      </Modal>
+      )}
 
       {/* Content */}
       <View style={s.content}>
@@ -1151,26 +1152,21 @@ export function LibraryScreen() {
             </View>
           )}
           {isLoaded && books.length === 0 && (
-            <View
-              style={[
-                s.emptyWrap,
-                Platform.OS === "ios" && {
-                  transform: [{ translateY: -nativeHeaderHeight / 2 }],
-                },
-              ]}
+            <CenteredEmptyState
+              title={t("library.empty", "暂无书籍")}
+              description={t("library.emptyHint", "导入电子书开始阅读之旅")}
+              avoidNativeTabBar
             >
-              <Text style={s.emptyTitle}>{t("library.empty", "暂无书籍")}</Text>
-              <Text style={s.emptyHint}>{t("library.emptyHint", "导入电子书开始阅读之旅")}</Text>
-              <View ref={emptyImportAnchorRef} collapsable={false} style={{ alignSelf: "center" }}>
-                <NativeButton
-                  label={t("library.importFirst", "Добавить книгу")}
-                  onPress={() => handleOpenImportSources(emptyImportAnchorRef)}
-                  disabled={isPickingImport}
-                  icon="add"
-                  size="large"
-                />
-              </View>
-            </View>
+              <ImportSourceMenuButton
+                label={t("library.importFirst", "Добавить книгу")}
+                urlLabel={t("library.importSourceUrl", "Найти по ссылке")}
+                localLabel={t("library.importSourceLocal", "Выбрать файл")}
+                disabled={isPickingImport || isUrlImporting}
+                onUrlPress={handleOpenUrlImport}
+                onLocalPress={() => void handleLocalImport()}
+                onFallbackPress={handleOpenImportSources}
+              />
+            </CenteredEmptyState>
           )}
           {isLoaded && hasBooks && isEmpty && (
             <View
@@ -1260,22 +1256,6 @@ export function LibraryScreen() {
         onRemoveTag={removeTag}
         onRenameTag={renameTag}
       />
-      <WebDavImportSourceSheet
-        visible={sourceSheetOpen}
-        hasSavedWebDav={syncBackendType === "webdav" && syncConfig?.type === "webdav"}
-        anchor={sourceSheetAnchor}
-        localImportBusy={isPickingImport}
-        onClose={() => setSourceSheetOpen(false)}
-        onDismiss={handleSourceSheetDismiss}
-        onPickLocal={handlePickLocalFromSourceMenu}
-        onPickSavedWebDav={() => void handleOpenSavedWebDav()}
-        onPickTemporaryWebDav={handleOpenTemporaryWebDav}
-      />
-      <WebDavConnectSheet
-        visible={temporaryWebDavOpen}
-        onClose={() => setTemporaryWebDavOpen(false)}
-        onSubmit={handleConnectTemporaryWebDav}
-      />
       <GroupPickerSheet
         visible={showGroupPicker}
         groups={groups}
@@ -1313,12 +1293,15 @@ const makeStyles = (
       justifyContent: "space-between",
       marginBottom: 8,
     },
-    headerTitle: {
-      fontSize: fontSize["2xl"],
-      fontWeight: fontWeight.bold,
-      color: colors.foreground,
-    },
     headerActions: { flexDirection: "row", alignItems: "center", gap: 4 },
+    nativeHeaderActions: { flexDirection: "row", alignItems: "center" },
+    nativeHeaderButton: {
+      width: 40,
+      height: 40,
+      borderRadius: radius.full,
+      alignItems: "center",
+      justifyContent: "center",
+    },
     headerBtn: {
       width: 36,
       height: 36,
@@ -1326,13 +1309,10 @@ const makeStyles = (
       alignItems: "center",
       justifyContent: "center",
     },
-    importBtn: {
-      width: 36,
-      height: 36,
-      borderRadius: radius.full,
-      backgroundColor: colors.primary,
+    filterSection: {
+      paddingHorizontal: layout.horizontalPadding,
+      paddingBottom: 8,
       alignItems: "center",
-      justifyContent: "center",
     },
     searchTagSection: {
       flexDirection: layout.isWideScreen ? "row" : "column",
@@ -1382,34 +1362,6 @@ const makeStyles = (
       color: colors.mutedForeground,
     },
     tagChipTextActive: { color: colors.primaryForeground },
-    sortOverlay: { flex: 1 },
-    sortDropdown: {
-      position: "absolute",
-      top: 110,
-      right: layout.horizontalPadding,
-      minWidth: 180,
-      backgroundColor: colors.card,
-      borderRadius: radius.xl,
-      borderWidth: 0.5,
-      borderColor: colors.border,
-      padding: 4,
-      elevation: 5,
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 8,
-    },
-    sortItem: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      borderRadius: radius.lg,
-    },
-    sortItemActive: { backgroundColor: colors.muted },
-    sortText: { fontSize: fontSize.xs, color: colors.foreground },
-    sortTextActive: { fontWeight: fontWeight.medium },
     content: { flex: 1, paddingHorizontal: layout.horizontalPadding, alignItems: "center" },
     contentInner: { flex: 1, width: "100%", maxWidth: layout.contentWidth },
     loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
@@ -1448,7 +1400,6 @@ const makeStyles = (
       overflow: "hidden",
     },
     vecProgressFill: { height: 4, backgroundColor: colors.primary, borderRadius: radius.full },
-    emptyWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
     emptyIconWrap: {
       width: 80,
       height: 80,
@@ -1457,19 +1408,6 @@ const makeStyles = (
       alignItems: "center",
       justifyContent: "center",
       marginBottom: 16,
-    },
-    emptyTitle: {
-      fontSize: fontSize.lg,
-      fontWeight: fontWeight.semibold,
-      color: colors.foreground,
-      marginBottom: 8,
-    },
-    emptyHint: {
-      fontSize: fontSize.sm,
-      color: colors.mutedForeground,
-      textAlign: "center",
-      maxWidth: 240,
-      marginBottom: 24,
     },
     emptyImportBtn: {
       backgroundColor: colors.primary,

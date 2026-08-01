@@ -201,8 +201,16 @@ export function BookChatScreen({ route, navigation }: Props) {
   }, [backdropAnim, isTabletLandscape, sidebarAnim, sidebarWidth]);
 
   // Streaming chat
-  const { isStreaming, currentMessage, currentStep, error, sendMessage, stopStream } =
-    useStreamingChat({ book, bookId });
+  const {
+    isStreaming,
+    currentMessage,
+    currentStep,
+    error,
+    errorThreadId,
+    sendMessage,
+    retryLastMessage,
+    stopStream,
+  } = useStreamingChat({ book, bookId });
 
   const messagesV2: MessageV2[] = useMemo(() => {
     if (!activeThread) return [];
@@ -239,6 +247,28 @@ export function BookChatScreen({ route, navigation }: Props) {
     },
     [bookId, navigation, sendMessage, t],
   );
+
+  const handleRetry = useCallback(async () => {
+    const state = useSettingsStore.getState();
+    const resolvedAIConfig = await resolveActiveAIConfig(state);
+
+    if (!resolvedAIConfig) {
+      Alert.alert(
+        t("chat.configRequired", "Настройте ИИ"),
+        t("chat.configRequiredMessage", "Добавьте адрес API, ключ и модель в настройках"),
+        [
+          { text: t("common.cancel", "Отмена"), style: "cancel" },
+          {
+            text: t("common.settings", "Настройки"),
+            onPress: () => navigation.navigate("AISettings"),
+          },
+        ],
+      );
+      return;
+    }
+
+    await retryLastMessage(resolvedAIConfig);
+  }, [navigation, retryLastMessage, t]);
 
   const handleNewThread = useCallback(async () => {
     if (activeThread && activeThread.messages.length === 0) return;
@@ -403,6 +433,27 @@ export function BookChatScreen({ route, navigation }: Props) {
 
   useNativeHeaderActions({
     right: [
+      {
+        type: "menu" as const,
+        label: book?.meta.title || t("chat.selectBook", "Выбрать книгу"),
+        accessibilityLabel: t("chat.selectBook", "Выбрать книгу"),
+        icon: "components",
+        sfSymbol: "book.closed",
+        disabled: isStreaming,
+        items: [
+          {
+            label: t("chat.generalChat", "Общий чат"),
+            sfSymbol: "bubble.left.and.bubble.right",
+            onPress: () => navigation.replace("Chat"),
+          },
+          ...books.map((item) => ({
+            label: item.meta.title,
+            sfSymbol: item.id === bookId ? "checkmark" : "book.closed",
+            onPress: () => navigation.replace("BookChat", { bookId: item.id }),
+            disabled: item.id === bookId,
+          })),
+        ],
+      },
       ...(!isTabletLandscape
         ? [
             {
@@ -463,6 +514,13 @@ export function BookChatScreen({ route, navigation }: Props) {
               currentStep={currentStep}
               onSend={handleSend}
               onStop={stopStream}
+              errorMessage={
+                error && activeThread?.id === errorThreadId
+                  ? t("chat.responseFailed", "Не удалось получить ответ")
+                  : undefined
+              }
+              retryLabel={t("common.retry", "Повторить")}
+              onRetry={handleRetry}
               placeholder={t("chat.askAboutBook", "询问关于这本书的问题...")}
               quotes={quotes}
               onRemoveQuote={handleRemoveQuote}
@@ -471,14 +529,6 @@ export function BookChatScreen({ route, navigation }: Props) {
           </View>
         </View>
       </View>
-
-      {error && (
-        <View style={s.errorBanner}>
-          <Text style={s.errorText} numberOfLines={2}>
-            {error.message}
-          </Text>
-        </View>
-      )}
 
       {!isTabletLandscape && (
         <View
@@ -599,19 +649,6 @@ const makeStyles = (
     suggestionText: {
       fontSize: fs.sm,
       color: colors.foreground,
-    },
-    errorBanner: {
-      position: "absolute",
-      bottom: 80,
-      left: 16,
-      right: 16,
-      backgroundColor: withOpacity(colors.destructive, 0.9),
-      borderRadius: radius.lg,
-      padding: 12,
-    },
-    errorText: {
-      fontSize: fs.sm,
-      color: colors.primaryForeground,
     },
     sidebarBackdrop: {
       ...StyleSheet.absoluteFillObject,

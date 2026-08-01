@@ -54,14 +54,15 @@
     "./hooks/*": "./src/hooks/*.ts",
     "./hooks/reader": "./src/hooks/reader/index.ts",
     "./hooks/reader/*": "./src/hooks/reader/*.ts",
-    "./events/*": "./src/events/*.ts",
-    "./feedback": "./src/feedback/index.ts",
-    "./feedback/*": "./src/feedback/*.ts"
+    "./events/*": "./src/events/*.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.712.0",
+    "@smithy/protocol-http": "5.3.12",
+    "@smithy/querystring-builder": "4.2.12",
     "@xmldom/xmldom": "^0.8.11",
     "@zip.js/zip.js": "^2.7.52",
+    "buffer": "6.0.3",
     "clsx": "^2.1.1",
     "i18next": "^25.8.13",
     "pdfjs-dist": "^5.5.207",

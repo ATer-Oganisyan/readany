@@ -255,7 +255,7 @@ function parseCliJson<T>(result: CliRunResult): CommandResult<T> {
       ok: false,
       error: {
         code: "empty_cli_output",
-        message: result.stderr.trim() || "ReadAny CLI returned no JSON output.",
+        message: result.stderr.trim() || "Narra CLI returned no JSON output.",
       },
     };
   }
@@ -267,7 +267,7 @@ function parseCliJson<T>(result: CliRunResult): CommandResult<T> {
         ok: false,
         error: {
           code: "cli_failed",
-          message: result.stderr.trim() || "ReadAny CLI command failed.",
+          message: result.stderr.trim() || "Narra CLI command failed.",
           details: parsed,
         },
       };
@@ -292,7 +292,7 @@ function unwrapCommand<T>(result: CliRunResult, key: string): T {
   }
   const value = parsed.data[key];
   if (!value) {
-    throw new Error(`ReadAny CLI response did not include ${key}.`);
+    throw new Error(`Narra CLI response did not include ${key}.`);
   }
   return value;
 }
@@ -375,7 +375,8 @@ function metadataDraftToPatch(draft: EpubMetadataDraft): EpubMetadataPatch {
 }
 
 function defaultExportName(snapshot: DraftWorkspaceSnapshot) {
-  const title = snapshot.inspect?.metadata.title?.trim() || snapshot.history?.bookId || "readany-draft";
+  const title =
+    snapshot.inspect?.metadata.title?.trim() || snapshot.history?.bookId || "readany-draft";
   return `${title.replace(/[\\/:*?"<>|]+/g, "-").slice(0, 80) || "readany-draft"}.epub`;
 }
 
@@ -417,12 +418,9 @@ export function EpubDraftWorkspace({ draftId }: EpubDraftWorkspaceProps) {
           loadDraftCommand<EpubValidationResult>("epub_validate", normalizedDraftId, "validation"),
         ]);
         const inspectResult = historyResult.value?.bookId
-          ? await loadDraftCommand<EpubInspectResult>(
-              "epub_inspect",
-              normalizedDraftId,
-              "epub",
-              { bookId: historyResult.value.bookId },
-            )
+          ? await loadDraftCommand<EpubInspectResult>("epub_inspect", normalizedDraftId, "epub", {
+              bookId: historyResult.value.bookId,
+            })
           : { error: t("epubDraft.inspectNeedsHistory", "History is required before inspect.") };
 
         const errors = [
@@ -471,43 +469,35 @@ export function EpubDraftWorkspace({ draftId }: EpubDraftWorkspaceProps) {
     [snapshot.diff?.entries],
   );
 
-  const chapterOptions = useMemo(
-    () => {
-      const tocByHref = new Map(
-        snapshot.inspect?.toc.items.map((item) => [stripHrefFragment(item.href), item.label]) ?? [],
-      );
-      return (
-        snapshot.inspect?.spine.items
-          .filter((item) => item.idref && item.linear !== "no" && item.mediaType?.includes("html"))
-          .map((item, index) => ({
-            id: item.idref,
-            label: chapterTitleForItem(item, index, tocByHref),
-            href: item.href ?? "",
-          })) ?? []
-      );
-    },
-    [snapshot.inspect?.spine.items, snapshot.inspect?.toc.items],
-  );
+  const chapterOptions = useMemo(() => {
+    const tocByHref = new Map(
+      snapshot.inspect?.toc.items.map((item) => [stripHrefFragment(item.href), item.label]) ?? [],
+    );
+    return (
+      snapshot.inspect?.spine.items
+        .filter((item) => item.idref && item.linear !== "no" && item.mediaType?.includes("html"))
+        .map((item, index) => ({
+          id: item.idref,
+          label: chapterTitleForItem(item, index, tocByHref),
+          href: item.href ?? "",
+        })) ?? []
+    );
+  }, [snapshot.inspect?.spine.items, snapshot.inspect?.toc.items]);
 
-  const undoableEntries = useMemo(
-    () => {
-      const undoneOperationIds = new Set(
-        snapshot.history?.entries
-          .filter((entry) => entry.action === "epub.undo" && entry.operationId)
-          .map((entry) => entry.operationId),
-      );
-      return (
-        snapshot.history?.entries
-          .filter((entry) =>
-            ["epub.chapter.patch", "epub.metadata.patch", "epub.toc.rebuild"].includes(
-              entry.action,
-            ),
-          )
-          .filter((entry) => !undoneOperationIds.has(entry.id)) ?? []
-      );
-    },
-    [snapshot.history?.entries],
-  );
+  const undoableEntries = useMemo(() => {
+    const undoneOperationIds = new Set(
+      snapshot.history?.entries
+        .filter((entry) => entry.action === "epub.undo" && entry.operationId)
+        .map((entry) => entry.operationId),
+    );
+    return (
+      snapshot.history?.entries
+        .filter((entry) =>
+          ["epub.chapter.patch", "epub.metadata.patch", "epub.toc.rebuild"].includes(entry.action),
+        )
+        .filter((entry) => !undoneOperationIds.has(entry.id)) ?? []
+    );
+  }, [snapshot.history?.entries]);
 
   const runWorkspaceMutation = async <T,>(
     action: string,
@@ -690,7 +680,7 @@ export function EpubDraftWorkspace({ draftId }: EpubDraftWorkspaceProps) {
       !window.confirm(
         t(
           "epubDraft.exportConfirm",
-          "Export this draft as a new EPUB? ReadAny will validate first and will not overwrite the source EPUB.",
+          "Export this draft as a new EPUB? Narra will validate first and will not overwrite the source EPUB.",
         ),
       )
     ) {
@@ -937,7 +927,12 @@ export function EpubDraftWorkspace({ draftId }: EpubDraftWorkspaceProps) {
                 <Select
                   value={selectedChapterId}
                   onValueChange={(value) => {
-                    if (chapterDirty && !window.confirm(t("epubDraft.switchChapterConfirm", "Discard unsaved chapter edits?"))) {
+                    if (
+                      chapterDirty &&
+                      !window.confirm(
+                        t("epubDraft.switchChapterConfirm", "Discard unsaved chapter edits?"),
+                      )
+                    ) {
                       return;
                     }
                     setSelectedChapterId(value);
@@ -1086,7 +1081,10 @@ export function EpubDraftWorkspace({ draftId }: EpubDraftWorkspaceProps) {
                   <Textarea
                     value={metadataDraft.subjects}
                     onChange={(event) => updateMetadataDraft("subjects", event.target.value)}
-                    placeholder={t("epubDraft.subjectsPlaceholder", "One per line or comma separated")}
+                    placeholder={t(
+                      "epubDraft.subjectsPlaceholder",
+                      "One per line or comma separated",
+                    )}
                     className="min-h-24 text-xs"
                     disabled={snapshot.history?.status === "discarded"}
                   />
@@ -1132,7 +1130,10 @@ export function EpubDraftWorkspace({ draftId }: EpubDraftWorkspaceProps) {
               ) : (
                 <div className="divide-y">
                   {changedEntries.map((entry) => (
-                    <div key={entry.path} className="grid grid-cols-[96px_minmax(0,1fr)_120px] gap-3 px-3 py-2 text-xs">
+                    <div
+                      key={entry.path}
+                      className="grid grid-cols-[96px_minmax(0,1fr)_120px] gap-3 px-3 py-2 text-xs"
+                    >
                       <span
                         className={cn(
                           "w-fit rounded px-1.5 py-0.5 font-medium",
@@ -1157,7 +1158,10 @@ export function EpubDraftWorkspace({ draftId }: EpubDraftWorkspaceProps) {
           <section className="mt-5">
             <SectionTitle
               title={t("epubDraft.validationIssues", "Validation issues")}
-              desc={t("epubDraft.validationIssuesDesc", "Validate runs with publisher profile and does not modify files.")}
+              desc={t(
+                "epubDraft.validationIssuesDesc",
+                "Validate runs with publisher profile and does not modify files.",
+              )}
             />
             <div className="mt-3 overflow-hidden rounded-md border">
               {!snapshot.validation || snapshot.validation.issues.length === 0 ? (
@@ -1180,7 +1184,11 @@ export function EpubDraftWorkspace({ draftId }: EpubDraftWorkspaceProps) {
                         <span className="font-mono text-muted-foreground">{issue.code}</span>
                       </div>
                       <p className="mt-1 text-foreground">{issue.message}</p>
-                      {issue.path ? <p className="mt-1 truncate font-mono text-muted-foreground">{issue.path}</p> : null}
+                      {issue.path ? (
+                        <p className="mt-1 truncate font-mono text-muted-foreground">
+                          {issue.path}
+                        </p>
+                      ) : null}
                     </div>
                   ))}
                 </div>
@@ -1211,7 +1219,9 @@ export function EpubDraftWorkspace({ draftId }: EpubDraftWorkspaceProps) {
                         size="sm"
                         variant="ghost"
                         className="h-7 px-2 text-[11px]"
-                        disabled={loading || !!actionBusy || snapshot.history?.status === "discarded"}
+                        disabled={
+                          loading || !!actionBusy || snapshot.history?.status === "discarded"
+                        }
                         onClick={() => void handleUndo(entry.id)}
                       >
                         <RotateCcw className="size-3" />
@@ -1223,7 +1233,11 @@ export function EpubDraftWorkspace({ draftId }: EpubDraftWorkspaceProps) {
                     {formatDateTime(entry.timestamp, i18n.language)}
                   </p>
                   <p className="mt-2 truncate font-mono text-[11px] text-muted-foreground">
-                    {entry.chapterId ?? entry.href ?? entry.fields?.join(", ") ?? entry.operationId ?? entry.id}
+                    {entry.chapterId ??
+                      entry.href ??
+                      entry.fields?.join(", ") ??
+                      entry.operationId ??
+                      entry.id}
                   </p>
                 </div>
               ))

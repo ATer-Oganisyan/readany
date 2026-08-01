@@ -18,7 +18,6 @@
     "techStackReact": "UI component library",
     "techStackTypeScript": "Type safety",
     "techStackFoliate": "eBook rendering engine",
-    "feedback": "Feedback",
     "supportCenter": "Support Center",
     "license": "Open source under GPL v3 license",
     "checkUpdate": "Check for Updates",
@@ -246,7 +245,7 @@
     "syncPassword": "Password",
     "syncRemoteRoot": "Remote Folder",
     "syncRemoteRootPlaceholder": "readany",
-    "syncRemoteRootDesc": "Choose the remote folder used only for ReadAny sync. Nested paths are supported and will be created automatically during test or first sync. ReadAny does not scan books you already placed there; import an existing WebDAV library with \"Connect another WebDAV\".",
+    "syncRemoteRootDesc": "Choose the remote folder used only for Narra sync. Nested paths are supported and will be created automatically during test or first sync. Narra does not scan books you already placed there; import an existing WebDAV library with \"Connect another WebDAV\".",
     "syncTestConnection": "Test Connection",
     "syncTesting": "Testing...",
     "syncTestSuccess": "Connection successful",
@@ -343,7 +342,7 @@
     },
     "syncLANQRPlaceholder": "QR code will appear here",
     "syncLANPairCode": "Pair Code",
-    "syncLANServerHint": "Open ReadAny on another device and scan this QR code or enter the pair code to import this device's data there",
+    "syncLANServerHint": "Open Narra on another device and scan this QR code or enter the pair code to import this device's data there",
     "syncLANServerStart": "Start Server",
     "syncLANServerStarting": "Starting...",
     "syncLANServerStop": "Stop Server",
@@ -429,17 +428,17 @@
       "overview": {
         "title": "External AI Access Beta",
         "description": "Checks the CLI, Skill, client discovery folders, and MCP configuration. Repair uses the currently selected profile.",
-        "mcpConfigHint": "MCP config means ReadAny appears in common client config files. Restart or open a new session to confirm the tools are actually loaded."
+        "mcpConfigHint": "MCP config means Narra appears in common client config files. Restart or open a new session to confirm the tools are actually loaded."
       },
       "cli": {
-        "title": "ReadAny CLI",
+        "title": "Narra CLI",
         "description": "The desktop app only runs approved CLI checks, not arbitrary shell commands.",
         "notInstalledOrPath": "Not installed or unavailable in PATH",
         "runtimeEvidence": "Runtime / packaging evidence"
       },
       "agent": {
         "title": "Agent bootstrap",
-        "description": "Copy this command to an external AI. It installs the ReadAny CLI and Skill, then returns an MCP config snippet.",
+        "description": "Copy this command to an external AI. It installs the Narra CLI and Skill, then returns an MCP config snippet.",
         "clientDiscoveryStatus": "Client discovery status",
         "clientDiscoveryEmpty": "Run diagnostics to show client Skill discovery status.",
         "mcpConfigStatus": "MCP config status",
@@ -479,13 +478,13 @@
         "success": "Command completed successfully.",
         "exitStatus": "Command exited with status {{status}}",
         "accessUninstalled": "External AI access and CLI have been uninstalled.",
-        "cliUninstalled": "ReadAny CLI has been uninstalled."
+        "cliUninstalled": "Narra CLI has been uninstalled."
       },
       "skillPrompt": {
-        "intro": "Please directly install and enable the ReadAny external AI Skill for me.",
+        "intro": "Please directly install and enable the Narra external AI Skill for me.",
         "execute": "Do not only explain the steps, and do not output an installation path table. Please run:",
         "mergeConfig": "If you can modify the current AI client configuration, merge the MCP config directly; otherwise give me only the shortest necessary config snippet.",
-        "done": "When finished, reply only: ReadAny Skill is installed. Please restart or open a new session in the current AI client.",
+        "done": "When finished, reply only: Narra Skill is installed. Please restart or open a new session in the current AI client.",
         "protectBooks": "Do not modify, export, or delete my book content."
       },
       "status": {
@@ -513,7 +512,7 @@
         "unmanaged": "Unmanaged",
         "checked": "Checked",
         "notFound": "Not found",
-        "containsReadAny": "Has readany",
+        "containsNarra": "Has readany",
         "needsConfig": "Needs config"
       },
       "actions": {
@@ -578,14 +577,14 @@
           "fail": "better-sqlite3 is unavailable; library and MCP data commands may fail."
         },
         "readanyHome": {
-          "name": "ReadAny home",
-          "ok": "ReadAny home is writable.",
-          "fail": "ReadAny home is not writable."
+          "name": "Narra home",
+          "ok": "Narra home is writable.",
+          "fail": "Narra home is not writable."
         },
         "skill": {
           "name": "Skill",
-          "ok": "ReadAny Skill is installed at {{path}}.",
-          "fail": "ReadAny Skill is not installed at {{path}}."
+          "ok": "Narra Skill is installed at {{path}}.",
+          "fail": "Narra Skill is not installed at {{path}}."
         }
       }
     }

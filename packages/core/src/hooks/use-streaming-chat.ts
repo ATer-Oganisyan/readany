@@ -19,6 +19,7 @@ import type {
   CitationPart,
   MessageV2,
   Part,
+  QuotePart,
   ReasoningPart,
   SemanticContext,
   Skill,
@@ -93,6 +94,16 @@ export interface StreamingState {
 }
 
 const activeStreams = new Map<string, StreamingChat>();
+interface FailedChatRequest {
+  content: string;
+  bookId?: string;
+  deepThinking: boolean;
+  spoilerFree: boolean;
+  quotes?: AttachedQuote[];
+  reuseLastUserMessage: boolean;
+}
+
+const failedRequests = new Map<string, FailedChatRequest>();
 const STREAMING_PUBLISH_INTERVAL_MS = 160;
 
 async function resolveFreshBook(
@@ -128,6 +139,7 @@ export function useStreamingChat(options?: StreamingChatOptions) {
   const updateThreadTitle = useChatStore((s) => s.updateThreadTitle);
   const startStreamingSession = useChatStore((s) => s.startStreamingSession);
   const updateStreamingSession = useChatStore((s) => s.updateStreamingSession);
+  const failStreamingSession = useChatStore((s) => s.failStreamingSession);
   const finishStreamingSession = useChatStore((s) => s.finishStreamingSession);
 
   const aiConfig = useSettingsStore((s) => s.aiConfig);
@@ -186,6 +198,7 @@ export function useStreamingChat(options?: StreamingChatOptions) {
       spoilerFree = false,
       quotes?: AttachedQuote[],
       aiConfigOverride?: AIConfig,
+      retryExistingUserMessage = false,
     ) => {
       const bookId = overrideBookId ?? options?.bookId;
       const sessionKey = getChatStreamingKey(bookId);
@@ -203,12 +216,26 @@ export function useStreamingChat(options?: StreamingChatOptions) {
         createdAt: Date.now(),
       };
       let clearPendingPublish: (() => void) | null = null;
+      let userMessagePersisted = false;
+
+      const rememberFailedRequest = () => {
+        failedRequests.set(sessionKey, {
+          content,
+          bookId,
+          deepThinking,
+          spoilerFree,
+          quotes: quotes ? [...quotes] : undefined,
+          reuseLastUserMessage: userMessagePersisted,
+        });
+      };
+
+      failedRequests.delete(sessionKey);
 
       try {
         const thread = await getOrCreateThread(bookId);
         initialMessage.threadId = thread.id;
 
-        if (thread.messages.length === 0 && !thread.title) {
+        if (!retryExistingUserMessage && thread.messages.length === 0 && !thread.title) {
           await updateThreadTitle(thread.id, content.slice(0, 50));
         }
 
@@ -220,34 +247,48 @@ export function useStreamingChat(options?: StreamingChatOptions) {
             : `关于以下文本：\n${quotesText}\n\n请帮我分析这段文本。`;
         }
 
-        const userMessageId = createMessageId();
-        const userParts: Part[] = [];
-        if (quotes && quotes.length > 0) {
-          for (const q of quotes) {
-            userParts.push(createQuotePart(q.text, q.source));
+        const lastThreadMessage = thread.messages[thread.messages.length - 1];
+        const reusableUserMessage =
+          retryExistingUserMessage && lastThreadMessage?.role === "user" ? lastThreadMessage : null;
+        let newUserMessage: Thread["messages"][number] | null = null;
+
+        if (!reusableUserMessage) {
+          const userMessageId = createMessageId();
+          const userParts: Part[] = [];
+          if (quotes && quotes.length > 0) {
+            for (const q of quotes) {
+              userParts.push(createQuotePart(q.text, q.source));
+            }
           }
-        }
-        if (content.trim()) {
-          userParts.push(createTextPart(content.trim()));
-        }
+          if (content.trim()) {
+            userParts.push(createTextPart(content.trim()));
+          }
 
-        const userMessage = {
-          id: userMessageId,
-          threadId: thread.id,
-          role: "user" as const,
-          content: aiPrompt,
-          parts: userParts,
-          partsOrder: userParts.map((p) => ({
-            type: p.type as "text" | "quote",
-            id: p.id,
-            ...(p.type === "text" ? { text: (p as TextPart).text } : {}),
-            ...(p.type === "quote" ? { text: (p as any).text, source: (p as any).source } : {}),
-          })),
-          createdAt: Date.now(),
-        };
+          const createdUserMessage = {
+            id: userMessageId,
+            threadId: thread.id,
+            role: "user" as const,
+            content: aiPrompt,
+            parts: userParts,
+            partsOrder: userParts.map((p) => ({
+              type: p.type as "text" | "quote",
+              id: p.id,
+              ...(p.type === "text" ? { text: (p as TextPart).text } : {}),
+              ...(p.type === "quote"
+                ? { text: (p as QuotePart).text, source: (p as QuotePart).source }
+                : {}),
+            })),
+            createdAt: Date.now(),
+          };
 
-        // Add user message to store FIRST so it renders immediately
-        await addMessage(thread.id, userMessage as any);
+          // Add user message to store FIRST so it renders immediately.
+          // A retry reuses this message instead of duplicating it in history.
+          await addMessage(thread.id, createdUserMessage);
+          newUserMessage = createdUserMessage;
+        }
+        const userMessage = reusableUserMessage ?? newUserMessage;
+        if (!userMessage) throw new Error("User message was not created");
+        userMessagePersisted = true;
 
         // Then set streaming state — user message is already visible
         startStreamingSession({
@@ -267,10 +308,12 @@ export function useStreamingChat(options?: StreamingChatOptions) {
 
         const enabledSkills = await loadEnabledSkills();
 
-        const updatedThread: Thread = {
-          ...thread,
-          messages: [...thread.messages, userMessage as any],
-        };
+        const updatedThread: Thread = reusableUserMessage
+          ? thread
+          : {
+              ...thread,
+              messages: [...thread.messages, userMessage],
+            };
         const threadForStream = await maybeCompressThreadMemory(
           updatedThread,
           aiConfigOverride || aiConfig,
@@ -344,6 +387,7 @@ export function useStreamingChat(options?: StreamingChatOptions) {
         const finishCurrentSession = () => {
           clearPendingPublish?.();
           activeStreams.delete(sessionKey);
+          failedRequests.delete(sessionKey);
           finishStreamingSession(sessionKey);
         };
 
@@ -419,54 +463,15 @@ export function useStreamingChat(options?: StreamingChatOptions) {
             // Set currentStep to "idle" before addMessage to prevent
             // the "thinking" indicator from briefly flashing during persist
             flushCurrentMessage("idle");
-            await addMessage(thread.id, assistantMessage as any);
+            await addMessage(thread.id, assistantMessage);
             finishCurrentSession();
           },
           onError: async (err) => {
-            flushCurrentMessage();
-            updateStreamingSession(sessionKey, {
-              isStreaming: true,
-              errorMessage: err.message,
-              updatedAt: Date.now(),
-            });
-            markRunningToolCallPartsAsError(currentParts, err.message || "Unknown error");
-
-            const errorPart = createTextPart(`⚠️ ${err.message || "Unknown error"}`);
-            errorPart.status = "error";
-            currentParts.push(errorPart);
-
-            if (currentTextPart) {
-              currentTextPart.status = "completed";
-              currentTextPart.updatedAt = Date.now();
-            }
-            if (currentReasoningPart) {
-              currentReasoningPart.status = "completed";
-              currentReasoningPart.updatedAt = Date.now();
-            }
-
-            const textContent = currentParts
-              .filter((p) => p.type === "text")
-              .map((p) => (p as TextPart).text)
-              .join("\n");
-
-            const partsOrder = buildPartsOrder(currentParts);
-
-            const errorMessage = {
-              id: messageId,
-              threadId: thread.id,
-              role: "assistant" as const,
-              content: textContent,
-              toolCalls: currentParts
-                .filter((p) => p.type === "tool_call")
-                .map((p) => toolCallPartToMessageToolCall(p as ToolCallPart)),
-              partsOrder: partsOrder.length > 0 ? partsOrder : undefined,
-              createdAt: Date.now(),
-            };
-
-            // Persist error message FIRST, then clear streaming state
-            flushCurrentMessage("idle");
-            await addMessage(thread.id, errorMessage as any);
-            finishCurrentSession();
+            clearPendingPublish?.();
+            activeStreams.delete(sessionKey);
+            rememberFailedRequest();
+            failStreamingSession(sessionKey, err.message || "Unknown error");
+            console.error("[AI] Chat response failed:", err);
           },
           onAbort: async () => {
             for (const part of currentParts) {
@@ -515,7 +520,7 @@ export function useStreamingChat(options?: StreamingChatOptions) {
             };
 
             flushCurrentMessage("idle");
-            await addMessage(thread.id, abortedMessage as any);
+            await addMessage(thread.id, abortedMessage);
             finishCurrentSession();
           },
           onToolCall: (name, args) => {
@@ -571,14 +576,10 @@ export function useStreamingChat(options?: StreamingChatOptions) {
       } catch (err) {
         clearPendingPublish?.();
         const errorMessage = err instanceof Error ? err.message : "Unknown error";
-        updateStreamingSession(sessionKey, {
-          isStreaming: false,
-          currentMessage: null,
-          currentStep: "idle",
-          errorMessage,
-          updatedAt: Date.now(),
-        });
+        rememberFailedRequest();
+        failStreamingSession(sessionKey, errorMessage);
         activeStreams.delete(sessionKey);
+        console.error("[AI] Failed to start chat response:", err);
       }
     },
     [
@@ -587,6 +588,7 @@ export function useStreamingChat(options?: StreamingChatOptions) {
       updateThreadTitle,
       startStreamingSession,
       updateStreamingSession,
+      failStreamingSession,
       finishStreamingSession,
       aiConfig,
       loadEnabledSkills,
@@ -596,6 +598,24 @@ export function useStreamingChat(options?: StreamingChatOptions) {
     ],
   );
 
+  const retryLastMessage = useCallback(
+    async (aiConfigOverride?: AIConfig) => {
+      const failedRequest = failedRequests.get(streamingKey);
+      if (!failedRequest) return;
+
+      await sendMessage(
+        failedRequest.content,
+        failedRequest.bookId,
+        failedRequest.deepThinking,
+        failedRequest.spoilerFree,
+        failedRequest.quotes,
+        aiConfigOverride,
+        failedRequest.reuseLastUserMessage,
+      );
+    },
+    [sendMessage, streamingKey],
+  );
+
   const stopStream = useCallback(() => {
     activeStreams.get(streamingKey)?.abort();
   }, [streamingKey]);
@@ -603,7 +623,9 @@ export function useStreamingChat(options?: StreamingChatOptions) {
   return {
     ...state,
     error,
+    errorThreadId: error ? (streamingSession?.threadId ?? null) : null,
     sendMessage,
+    retryLastMessage,
     stopStream,
   };
 }

@@ -18,6 +18,7 @@ vi.mock("../db-core", () => coreMocks);
 const {
   getHighlights,
   getAllHighlights,
+  getAllHighlightsWithBooks,
   insertHighlight,
   updateHighlight,
   deleteHighlight,
@@ -124,6 +125,54 @@ describe("highlight-queries", () => {
         [50],
       );
     });
+
+    it("maps a standalone highlight's null book id to an empty id", async () => {
+      mockSelect.mockResolvedValue([
+        {
+          id: "standalone-1",
+          book_id: null,
+          cfi: "",
+          text: "",
+          color: "yellow",
+          note: "Standalone note",
+          chapter_title: null,
+          created_at: 1000,
+          updated_at: 1000,
+        },
+      ]);
+
+      const highlights = await getAllHighlights();
+      expect(highlights[0]?.bookId).toBe("");
+    });
+  });
+
+  describe("getAllHighlightsWithBooks", () => {
+    it("keeps standalone notes in the notes list", async () => {
+      mockSelect.mockResolvedValue([
+        {
+          id: "standalone-1",
+          book_id: null,
+          cfi: "",
+          text: "",
+          color: "yellow",
+          note: "Standalone note",
+          chapter_title: null,
+          created_at: 1000,
+          updated_at: 1000,
+          book_title: null,
+          book_author: null,
+          book_cover_url: null,
+        },
+      ]);
+
+      const highlights = await getAllHighlightsWithBooks();
+      expect(highlights[0]).toMatchObject({
+        id: "standalone-1",
+        bookId: "",
+        note: "Standalone note",
+        bookTitle: "",
+      });
+    });
   });
 
   describe("insertHighlight", () => {
@@ -138,6 +187,14 @@ describe("highlight-queries", () => {
       expect(params[0]).toBe("hl-1");
       expect(params[1]).toBe("book-1");
       expect(params[4]).toBe("yellow");
+    });
+
+    it("persists a standalone note without a book id", async () => {
+      mockExecute.mockResolvedValue(undefined);
+
+      await insertHighlight({ ...sampleHighlight, bookId: "", cfi: "", text: "" });
+      const [, params] = mockExecute.mock.calls[0];
+      expect(params[1]).toBeNull();
     });
   });
 
@@ -158,6 +215,16 @@ describe("highlight-queries", () => {
       await updateHighlight("hl-1", { note: undefined });
       const [, params] = mockExecute.mock.calls[0];
       expect(params).toContain(null);
+    });
+
+    it("can detach a manual note from a book", async () => {
+      mockExecute.mockResolvedValue(undefined);
+
+      await updateHighlight("hl-1", { bookId: "", chapterTitle: undefined });
+      const [sql, params] = mockExecute.mock.calls[0];
+      expect(sql).toContain("book_id = ?");
+      expect(sql).toContain("chapter_title = ?");
+      expect(params.filter((value: unknown) => value === null)).toHaveLength(2);
     });
   });
 

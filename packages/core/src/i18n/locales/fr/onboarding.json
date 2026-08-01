@@ -20,7 +20,7 @@
         "title": "Lecture bilingue",
         "desc": "Traduction en écran partagé fluide pour tout texte"
       },
-      "title": "Bienvenue dans ReadAny",
+      "title": "Bienvenue dans Narra",
       "desc": "Votre compagnon de lecture intelligent. Configurons l'environnement de lecture parfait.",
       "subtitle": "Votre compagnon de lecture intelligent. Configurons l'environnement de lecture parfait.",
       "translate": "Traduction bilingue instantanée",
@@ -34,7 +34,7 @@
     },
     "appearance": {
       "title": "Apparence et langue",
-      "desc": "Choisissez la langue d'affichage et les préférences de thème de ReadAny."
+      "desc": "Choisissez la langue d'affichage et les préférences de thème de Narra."
     },
     "sync": {
       "title": "Synchronisation cloud",

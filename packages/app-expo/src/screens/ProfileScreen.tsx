@@ -1,3 +1,4 @@
+import { NativeThemePicker } from "@/components/profile/NativeThemePicker";
 import { ProfileNumericText } from "@/components/profile/ProfileNumericText";
 import { BarChart3Icon, ChevronRightIcon, CloudIcon, Trash2Icon } from "@/components/ui/Icon";
 import type { MaterialIconComponent } from "@/components/ui/Icon";
@@ -22,7 +23,6 @@ import {
   useTheme,
   withOpacity,
 } from "@/styles/theme";
-import SegmentedControl from "@expo/ui/community/segmented-control";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { readingStatsService } from "@readany/core/stats";
@@ -390,9 +390,7 @@ export function ProfileScreen() {
 
   const booksRead = liveOverall?.totalBooks ?? 0;
   const totalTime = formatProfileReadingTime(liveOverall?.totalReadingTime ?? 0);
-  const totalCharacters = new Intl.NumberFormat("ru-RU").format(
-    Math.max(0, Math.round(liveOverall?.totalCharactersRead ?? 0)),
-  );
+  const averageDailyTime = formatProfileReadingTime(liveOverall?.avgDailyTime ?? 0);
   const streak = liveOverall?.currentStreak ?? 0;
   const overviewCards = [
     {
@@ -401,9 +399,9 @@ export function ProfileScreen() {
       value: totalTime,
     },
     {
-      key: "volume",
-      title: t("profile.readingVolume", "阅读字数"),
-      value: totalCharacters,
+      key: "average-daily-time",
+      title: t("profile.avgDaily", "В среднем за день"),
+      value: averageDailyTime,
     },
     {
       key: "books",
@@ -462,15 +460,14 @@ export function ProfileScreen() {
           <Text style={s.menuSectionTitle} maxFontSizeMultiplier={1.5}>
             {t("settings.theme", "Тема")}
           </Text>
-          <SegmentedControl
+          <NativeThemePicker
             values={themeLabels}
             selectedIndex={selectedThemeIndex}
-            onChange={({ nativeEvent }) => {
-              setThemeMode(THEME_MODES[nativeEvent.selectedSegmentIndex] ?? "system");
+            onSelect={(index) => {
+              setThemeMode(THEME_MODES[index] ?? "system");
             }}
-            appearance={isDark ? "dark" : "light"}
-            tintColor={colors.primary5}
-            style={s.themeControl}
+            colorScheme={isDark ? "dark" : "light"}
+            accessibilityLabel={t("settings.theme", "Тема")}
           />
         </View>
 
@@ -652,7 +649,6 @@ const makeStyles = (colors: ThemeColors) =>
     heatmapGrid: { alignSelf: "center" },
     // Menu
     menuSection: { paddingHorizontal: 16 },
-    themeControl: { width: "100%", minHeight: 36 },
     menuSectionTitle: {
       fontSize: fontSize.xs,
       lineHeight: fontSize.xs * 1.5,

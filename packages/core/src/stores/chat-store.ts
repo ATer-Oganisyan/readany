@@ -35,6 +35,21 @@ export function getChatStreamingKey(bookId?: string | null): string {
   return bookId ? `book:${bookId}` : "general";
 }
 
+function withoutLegacyBundleErrors(threads: Thread[]): Thread[] {
+  return threads.map((thread) => ({
+    ...thread,
+    messages: thread.messages.filter(
+      (message) =>
+        !(
+          message.role === "assistant" &&
+          /^⚠️\s*(?:Could not load bundle|LoadBundleFromServerRequestError:)/i.test(
+            message.content.trim(),
+          )
+        ),
+    ),
+  }));
+}
+
 export interface ChatState {
   threads: Thread[];
   generalActiveThreadId: string | null;
@@ -70,6 +85,7 @@ export interface ChatState {
       >
     >,
   ) => void;
+  failStreamingSession: (key: string, errorMessage: string) => void;
   finishStreamingSession: (key: string) => void;
   setStreamingContent: (content: string) => void;
   appendStreamingContent: (chunk: string) => void;
@@ -98,7 +114,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   loadThreads: async (bookId?: string) => {
     try {
-      const dbThreads = await dbGetThreads(bookId);
+      const dbThreads = withoutLegacyBundleErrors(await dbGetThreads(bookId));
       set((state) => {
         const otherThreads = state.threads.filter((t) =>
           bookId ? t.bookId !== bookId : !!t.bookId,
@@ -112,7 +128,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   loadAllThreads: async () => {
     try {
-      const dbThreads = await dbGetThreads();
+      const dbThreads = withoutLegacyBundleErrors(await dbGetThreads());
       set({ threads: dbThreads, initialized: true });
     } catch (err) {
       console.error("[chat-store] Failed to load all threads:", err);
@@ -283,6 +299,31 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return {
         isStreaming: anyStreaming,
         currentStep: nextSession.currentStep,
+        streamingSessions: sessions,
+      };
+    }),
+  failStreamingSession: (key, errorMessage) =>
+    set((state) => {
+      const existing = state.streamingSessions[key];
+      if (!existing) return {};
+
+      const failedSession: ChatStreamingSession = {
+        ...existing,
+        isStreaming: false,
+        currentMessage: null,
+        currentStep: "idle",
+        errorMessage,
+        updatedAt: Date.now(),
+      };
+      const sessions = {
+        ...state.streamingSessions,
+        [key]: failedSession,
+      };
+      const activeSessions = Object.values(sessions).filter((session) => session.isStreaming);
+
+      return {
+        isStreaming: activeSessions.length > 0,
+        currentStep: activeSessions[0]?.currentStep ?? "idle",
         streamingSessions: sessions,
       };
     }),

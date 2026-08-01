@@ -1,10 +1,10 @@
-import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { sha256Hex } from "../epub/zip";
 import type { IPlatformService } from "../services";
 import { setPlatformService } from "../services";
-import { sha256Hex } from "../epub/zip";
 
 const dbMocks = vi.hoisted(() => ({
   getBooks: vi.fn(),
@@ -145,7 +145,7 @@ describe("exportKnowledgeLibrary", () => {
     });
     const content = await readFile(outputPath, "utf8");
 
-    expect(content).toContain("# ReadAny Knowledge Export");
+    expect(content).toContain("# Narra Knowledge Export");
     expect(content).toContain("## Alpha");
     expect(content).toContain("Knowledge export keeps context together.");
     expect(exported).toMatchObject({

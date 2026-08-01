@@ -18,7 +18,6 @@
     "techStackReact": "Bibliothèque de composants UI",
     "techStackTypeScript": "Sûreté de typage",
     "techStackFoliate": "Moteur de rendu eBook",
-    "feedback": "Commentaires",
     "supportCenter": "Centre d'assistance",
     "license": "Open source sous licence GPL v3",
     "checkUpdate": "Vérifier les mises à jour",
@@ -237,7 +236,7 @@
     "syncPassword": "Mot de passe",
     "syncRemoteRoot": "Dossier distant",
     "syncRemoteRootPlaceholder": "readany",
-    "syncRemoteRootDesc": "Choisissez le dossier distant réservé à la synchronisation ReadAny. Les chemins imbriqués sont pris en charge et seront créés automatiquement lors du test ou de la première synchronisation. ReadAny n'analyse pas les livres que vous y avez déjà placés ; importez une bibliothèque WebDAV existante avec « Connecter un autre WebDAV ».",
+    "syncRemoteRootDesc": "Choisissez le dossier distant réservé à la synchronisation Narra. Les chemins imbriqués sont pris en charge et seront créés automatiquement lors du test ou de la première synchronisation. Narra n'analyse pas les livres que vous y avez déjà placés ; importez une bibliothèque WebDAV existante avec « Connecter un autre WebDAV ».",
     "syncTestConnection": "Tester la connexion",
     "syncTesting": "Test en cours...",
     "syncTestSuccess": "Connexion réussie",
@@ -334,7 +333,7 @@
     },
     "syncLANQRPlaceholder": "Le QR code apparaîtra ici",
     "syncLANPairCode": "Code d'appairage",
-    "syncLANServerHint": "Ouvrez ReadAny sur un autre appareil et scannez ce QR code ou entrez le code d'appairage pour importer les données de cet appareil",
+    "syncLANServerHint": "Ouvrez Narra sur un autre appareil et scannez ce QR code ou entrez le code d'appairage pour importer les données de cet appareil",
     "syncLANServerStart": "Démarrer le serveur",
     "syncLANServerStarting": "Démarrage...",
     "syncLANServerStop": "Arrêter le serveur",
@@ -427,17 +426,17 @@
       "overview": {
         "title": "Accès IA externe Beta",
         "description": "Vérifie la CLI, le Skill, les dossiers de découverte client et la configuration MCP. La réparation utilise le profile sélectionné.",
-        "mcpConfigHint": "MCP config signifie que ReadAny apparaît dans les fichiers de configuration courants. Redémarrez ou ouvrez une nouvelle session pour confirmer que les outils sont chargés."
+        "mcpConfigHint": "MCP config signifie que Narra apparaît dans les fichiers de configuration courants. Redémarrez ou ouvrez une nouvelle session pour confirmer que les outils sont chargés."
       },
       "cli": {
-        "title": "ReadAny CLI",
+        "title": "Narra CLI",
         "description": "L’application desktop exécute uniquement des vérifications CLI approuvées, pas de commandes shell arbitraires.",
         "notInstalledOrPath": "Non installé ou indisponible dans PATH",
         "runtimeEvidence": "Preuve runtime / packaging"
       },
       "agent": {
         "title": "Initialisation agent",
-        "description": "Copiez cette commande vers une IA externe. Elle installe ReadAny CLI et Skill, puis retourne un extrait de configuration MCP.",
+        "description": "Copiez cette commande vers une IA externe. Elle installe Narra CLI et Skill, puis retourne un extrait de configuration MCP.",
         "clientDiscoveryStatus": "État de découverte des clients",
         "clientDiscoveryEmpty": "Lancez le diagnostic pour afficher l’état de découverte du Skill.",
         "mcpConfigStatus": "État de configuration MCP",
@@ -477,13 +476,13 @@
         "success": "Commande terminée avec succès.",
         "exitStatus": "La commande s’est terminée avec le code {{status}}",
         "accessUninstalled": "L’accès IA externe a été supprimé.",
-        "cliUninstalled": "ReadAny CLI a été désinstallé."
+        "cliUninstalled": "Narra CLI a été désinstallé."
       },
       "skillPrompt": {
-        "intro": "Installez et activez directement le Skill IA externe ReadAny.",
+        "intro": "Installez et activez directement le Skill IA externe Narra.",
         "execute": "Ne vous contentez pas d’expliquer les étapes et n’affichez pas de tableau de chemins. Exécutez directement :",
         "mergeConfig": "Si vous pouvez modifier la configuration du client IA actuel, fusionnez directement la configuration MCP ; sinon donnez uniquement l’extrait minimal nécessaire.",
-        "done": "Une fois terminé, répondez seulement : ReadAny Skill est installé. Redémarrez ou ouvrez une nouvelle session dans le client IA actuel.",
+        "done": "Une fois terminé, répondez seulement : Narra Skill est installé. Redémarrez ou ouvrez une nouvelle session dans le client IA actuel.",
         "protectBooks": "Ne modifiez, n’exportez et ne supprimez pas le contenu de mes livres."
       },
       "status": {
@@ -511,7 +510,7 @@
         "unmanaged": "Non géré",
         "checked": "Vérifié",
         "notFound": "Introuvable",
-        "containsReadAny": "Contient readany",
+        "containsNarra": "Contient readany",
         "needsConfig": "Config. requise"
       },
       "actions": {
@@ -576,14 +575,14 @@
           "fail": "better-sqlite3 est indisponible ; les commandes bibliothèque et données MCP peuvent échouer."
         },
         "readanyHome": {
-          "name": "Dossier ReadAny",
-          "ok": "Le dossier ReadAny est accessible en écriture.",
-          "fail": "Le dossier ReadAny n’est pas accessible en écriture."
+          "name": "Dossier Narra",
+          "ok": "Le dossier Narra est accessible en écriture.",
+          "fail": "Le dossier Narra n’est pas accessible en écriture."
         },
         "skill": {
           "name": "Compétence",
-          "ok": "ReadAny Skill est installé dans {{path}}.",
-          "fail": "ReadAny Skill n’est pas installé dans {{path}}."
+          "ok": "Narra Skill est installé dans {{path}}.",
+          "fail": "Narra Skill n’est pas installé dans {{path}}."
         }
       }
     }

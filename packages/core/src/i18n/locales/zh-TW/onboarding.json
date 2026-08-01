@@ -4,7 +4,7 @@
     "skipForNow": "暫不設定",
     "getStarted": "開始使用",
     "welcome": {
-      "title": "歡迎來到 ReadAny",
+      "title": "歡迎來到 Narra",
       "desc": "你的智慧閱讀夥伴。讓我們一起來搭建最佳的閱讀環境吧。",
       "subtitle": "你的智慧閱讀夥伴。讓我們一起來搭建最佳的閱讀環境吧。",
       "ai": "AI 閱讀助手",
@@ -29,7 +29,7 @@
     },
     "appearance": {
       "title": "外觀與語言",
-      "desc": "選擇 ReadAny 的顯示語言和主題偏好。"
+      "desc": "選擇 Narra 的顯示語言和主題偏好。"
     },
     "ai": {
       "title": "AI 設定",

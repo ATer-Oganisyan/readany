@@ -64,7 +64,7 @@ config.resolver.extraNodeModules = {
 
 // 8. Override resolver to redirect modules that depend on Node.js built-ins
 const moduleRedirects = {
-  punycode: path.resolve(monorepoRoot, "node_modules/punycode/punycode.js"),
+  punycode: require.resolve("punycode/punycode.js", { paths: [projectRoot] }),
 };
 
 // Stub path for ONNX runtime modules (mobile doesn't use local embedding)

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
+    <title>Narra — WebView Storybook</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="storybook">
+      <aside class="sidebar">
+        <header class="sidebar-header">
+          <span class="product-mark">N</span>
+          <span>
+            <strong>WebView</strong>
+            <small>production reader</small>
+          </span>
+        </header>
+        <nav id="story-navigation" class="story-navigation" aria-label="Состояния WebView"></nav>
+      </aside>
+
+      <main class="canvas">
+        <header class="canvas-toolbar">
+          <div>
+            <h1 id="story-title">Чтение</h1>
+            <p id="story-description">Базовое состояние production WebView</p>
+          </div>
+          <div class="reader-actions" aria-label="Управление страницами">
+            <button id="previous-page" type="button" aria-label="Предыдущая страница">←</button>
+            <span id="reader-status" role="status">Загрузка</span>
+            <button id="next-page" type="button" aria-label="Следующая страница">→</button>
+          </div>
+        </header>
+
+        <section class="preview-stage" aria-label="Мобильный WebView">
+          <div class="viewport-label">393 × 852 · reader.html</div>
+          <iframe id="reader-frame" title="Production Narra WebView"></iframe>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

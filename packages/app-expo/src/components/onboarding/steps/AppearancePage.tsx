@@ -48,7 +48,7 @@ export function AppearancePage() {
               {t("onboarding.appearance.title", "Appearance & Language")}
             </Text>
             <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-              {t("onboarding.appearance.desc", "Customize ReadAny to suit your preferences.")}
+              {t("onboarding.appearance.desc", "Customize Narra to suit your preferences.")}
             </Text>
           </View>
 

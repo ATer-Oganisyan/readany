@@ -1,6 +1,7 @@
 import { Check, ChevronLeftIcon, Cloud, Plus, Trash2, X } from "@/components/ui/Icon";
 import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
 import { Text, TextInput } from "@/components/ui/Typography";
+import { BUNDLED_OPENROUTER_EMBEDDING_ID, hydrateBundledEmbeddingModel } from "@/config/bundled-ai";
 import { useVectorModelStore } from "@/stores/vector-model-store";
 import { useTheme } from "@/styles/theme";
 import { useNavigation } from "@react-navigation/native";
@@ -51,10 +52,11 @@ export function EmbeddingPage() {
   const testRemoteModel = async (model: VectorModelConfig) => {
     setTestingId(model.id);
     try {
+      const resolvedModel = hydrateBundledEmbeddingModel(model);
       const result = await testEmbeddingEndpoint({
-        url: model.url,
-        modelId: model.modelId,
-        apiKey: model.apiKey,
+        url: resolvedModel.url,
+        modelId: resolvedModel.modelId,
+        apiKey: resolvedModel.apiKey,
       });
       updateVectorModel(model.id, { dimension: result.dimension, url: result.url });
       setSelectedVectorModelId(model.id);
@@ -268,9 +270,11 @@ export function EmbeddingPage() {
                       </Text>
                     </Pressable>
                   )}
-                  <Pressable onPress={() => deleteVectorModel(m.id)}>
-                    <Trash2 size={16} color={colors.mutedForeground} />
-                  </Pressable>
+                  {m.id !== BUNDLED_OPENROUTER_EMBEDDING_ID ? (
+                    <Pressable onPress={() => deleteVectorModel(m.id)}>
+                      <Trash2 size={16} color={colors.mutedForeground} />
+                    </Pressable>
+                  ) : null}
                 </View>
               </View>
             ))}

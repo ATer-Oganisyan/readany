@@ -18,6 +18,8 @@
     "expo:ios:simulator": "pnpm --filter @readany/app-expo ios:simulator",
     "expo:android": "pnpm --filter @readany/app-expo android",
     "expo:prebuild": "pnpm --filter @readany/app-expo prebuild",
+    "storybook:reader:web": "pnpm --filter @readany/reader-storybook-web dev",
+    "storybook:reader:web:build": "pnpm --filter @readany/reader-storybook-web build",
     "eas:device:create": "pnpm --filter @readany/app-expo eas:device:create",
     "eas:build:android": "pnpm --filter @readany/app-expo eas:build:android",
     "eas:build:ios": "pnpm --filter @readany/app-expo eas:build:ios",
@@ -31,9 +33,9 @@
   },
   "pnpm": {
     "overrides": {
-      "react": "19.1.0",
-      "react-dom": "19.1.0",
-      "@types/react": "19.1.17"
+      "react": "19.2.0",
+      "react-dom": "19.2.0",
+      "@types/react": "~19.2.2"
     },
     "patchedDependencies": {
       "@langchain/core": "patches/@langchain__core.patch",

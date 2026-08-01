@@ -52,7 +52,7 @@ export function AppearancePage({ onNext, onPrev, step, totalSteps }: any) {
             {t("onboarding.appearance.title", "Appearance & Language")}
           </h2>
           <p className="text-sm text-muted-foreground">
-            {t("onboarding.appearance.desc", "Customize ReadAny to suit your preferences.")}
+            {t("onboarding.appearance.desc", "Customize Narra to suit your preferences.")}
           </p>
         </div>
 

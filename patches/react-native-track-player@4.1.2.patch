@@ -434,3 +434,108 @@ index b2409a09939164c49c0f7a16bb6d3284e8eab8fb..25de00bdec142464d4d6e1ae4e7488d3
      }
 +    }
  }
+diff --git a/android/src/main/java/com/doublesymmetry/trackplayer/service/MusicService.kt b/android/src/main/java/com/doublesymmetry/trackplayer/service/MusicService.kt
+index afa6b0f335714de0cc8741d5bbdd51b4e04bb3bb..32eab06c5f29e8fa8389b65872bf33d8809b132a 100644
+--- a/android/src/main/java/com/doublesymmetry/trackplayer/service/MusicService.kt
++++ b/android/src/main/java/com/doublesymmetry/trackplayer/service/MusicService.kt
+@@ -30,8 +30,13 @@ import com.doublesymmetry.trackplayer.module.MusicEvents.Companion.METADATA_PAYL
+ import com.doublesymmetry.trackplayer.utils.BundleUtils
+ import com.doublesymmetry.trackplayer.utils.BundleUtils.setRating
+ import com.facebook.react.HeadlessJsTaskService
++import com.facebook.react.ReactApplication
++import com.facebook.react.ReactInstanceEventListener
+ import com.facebook.react.bridge.Arguments
++import com.facebook.react.bridge.ReactContext
++import com.facebook.react.bridge.UiThreadUtil
+ import com.facebook.react.jstasks.HeadlessJsTaskConfig
++import com.facebook.react.jstasks.HeadlessJsTaskContext
+ import com.facebook.react.modules.core.DeviceEventManagerModule
+ import com.google.android.exoplayer2.ui.R as ExoPlayerR
+ import kotlinx.coroutines.*
+@@ -94,11 +99,47 @@ class MusicService : HeadlessJsTaskService() {
+     private var compactCapabilities: List<Capability> = emptyList()
+ 
+     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+-        startTask(getTaskConfig(intent))
++        startTaskWithReactHost(getTaskConfig(intent))
+         startAndStopEmptyNotificationToAvoidANR()
+         return START_STICKY
+     }
+ 
++    /**
++     * React Native 0.82+ no longer exposes ReactNativeHost in New Architecture apps.
++     * HeadlessJsTaskService can still fall back to that removed API when bridgeless
++     * mode is not enabled, so use the application's ReactHost explicitly.
++     */
++    private fun startTaskWithReactHost(taskConfig: HeadlessJsTaskConfig) {
++        val reactHost = (application as? ReactApplication)?.reactHost ?: return
++        val reactContext = reactHost.currentReactContext
++
++        if (reactContext != null) {
++            invokeStartTask(reactContext, taskConfig)
++            return
++        }
++
++        val listener = object : ReactInstanceEventListener {
++            override fun onReactContextInitialized(context: ReactContext) {
++                invokeStartTask(context, taskConfig)
++                reactHost.removeReactInstanceEventListener(this)
++            }
++        }
++
++        reactHost.addReactInstanceEventListener(listener)
++        reactHost.start()
++    }
++
++    private fun invokeStartTask(reactContext: ReactContext, taskConfig: HeadlessJsTaskConfig) {
++        val taskContext = HeadlessJsTaskContext.getInstance(reactContext)
++        taskContext.addTaskEventListener(this)
++        UiThreadUtil.runOnUiThread {
++            taskContext.startTask(taskConfig)
++        }
++    }
++
++    private fun currentReactContext(): ReactContext? =
++        (application as? ReactApplication)?.reactHost?.currentReactContext
++
+     /**
+      * Workaround for the "Context.startForegroundService() did not then call Service.startForeground()"
+      * within 5s" ANR and crash by creating an empty notification and stopping it right after. For more
+@@ -741,7 +782,7 @@ class MusicService : HeadlessJsTaskService() {
+ 
+     @MainThread
+     private fun emit(event: String, data: Bundle? = null) {
+-        reactNativeHost.reactInstanceManager.currentReactContext
++        currentReactContext()
+             ?.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+             ?.emit(event, data?.let { Arguments.fromBundle(it) })
+     }
+@@ -751,7 +792,7 @@ class MusicService : HeadlessJsTaskService() {
+         val payload = Arguments.createArray()
+         data.forEach { payload.pushMap(Arguments.fromBundle(it)) }
+ 
+-        reactNativeHost.reactInstanceManager.currentReactContext
++        currentReactContext()
+             ?.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+             ?.emit(event, payload)
+     }
+@@ -798,7 +839,18 @@ class MusicService : HeadlessJsTaskService() {
+ 
+     @MainThread
+     override fun onDestroy() {
+-        super.onDestroy()
++        currentReactContext()?.let {
++            HeadlessJsTaskContext.getInstance(it).removeTaskEventListener(this)
++        }
++
++        try {
++            super.onDestroy()
++        } catch (error: RuntimeException) {
++            if (!error.message.orEmpty().contains("ReactNativeHost directly in the New Architecture")) {
++                throw error
++            }
++        }
++
+         if (::player.isInitialized) {
+             player.destroy()
+         }

@@ -11,6 +11,8 @@ import {
 } from "@/components/ui/Icon";
 import { NativeContextMenuButton } from "@/components/ui/NativeContextMenuButton";
 import { Text } from "@/components/ui/Typography";
+import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
+import { EmptyStateActionButton } from "@/components/ui/empty-state-action-button";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useAnnotationStore, useLibraryStore } from "@/stores";
@@ -510,6 +512,27 @@ export function NotesView({
             <View style={{ height: 24 }} />
           </ScrollView>
         )}
+      </SafeAreaView>
+    );
+  }
+
+  if (noteSections.length === 0) {
+    return (
+      <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={edges}>
+        <CenteredEmptyState
+          title={t("notes.empty", "Заметок пока нет")}
+          description={t(
+            "notes.emptyHint",
+            "Добавьте заметку сейчас или выделите текст во время чтения.",
+          )}
+          avoidNativeTabBar={showBackButton}
+        >
+          <EmptyStateActionButton
+            label={t("notes.addNote", "Добавить заметку")}
+            accessibilityLabel={t("notes.addNote", "Добавить заметку")}
+            onPress={() => nav.navigate("ManualNote")}
+          />
+        </CenteredEmptyState>
       </SafeAreaView>
     );
   }

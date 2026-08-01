@@ -15,7 +15,12 @@ import { NativeContextMenuButton } from "@/components/ui/NativeContextMenuButton
 import { Text, TextInput } from "@/components/ui/Typography";
 import { useReaderBridge } from "@/hooks/use-reader-bridge";
 import type { RelocateEvent, SelectionEvent, VisibleTTSSegment } from "@/hooks/use-reader-bridge";
+import {
+  DEFAULT_READER_FONT_FAMILY,
+  getBundledReaderFontFaceCSS,
+} from "@/lib/reader/bundled-reader-font";
 import { startFileServer, stopFileServer } from "@/lib/reader/local-file-server";
+import { getReaderBookmarkCopy } from "@/lib/reader/reader-bookmark-copy";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import {
   useAnnotationStore,
@@ -197,6 +202,7 @@ export function ReaderScreen({ route, navigation }: Props) {
   const s = makeStyles(colors);
   const { bookId, cfi, highlight: shouldHighlight, openTTS } = route.params;
   const { t } = useTranslation();
+  const bookmarkCopy = useMemo(() => getReaderBookmarkCopy(t), [t]);
   const isIPadLayout = Platform.OS === "ios" && Platform.isPad;
   const shouldToggleSystemStatusBar = !isIPadLayout;
   const baseTopInset = Platform.OS === "ios" ? 20 : 24;
@@ -228,6 +234,7 @@ export function ReaderScreen({ route, navigation }: Props) {
   const [currentCfi, setCurrentCfi] = useState("");
   const [selection, setSelection] = useState<SelectionEvent | null>(null);
   const [fontServerUrl, setFontServerUrl] = useState<string | null>(null);
+  const [defaultReaderFontFaceCSS, setDefaultReaderFontFaceCSS] = useState("");
   const [noteViewHighlight, setNoteViewHighlight] = useState<{
     id: string;
     text: string;
@@ -316,13 +323,19 @@ export function ReaderScreen({ route, navigation }: Props) {
   // Custom fonts — build @font-face CSS per-font using individual filePath
   const customFonts = useFontStore((s) => s.fonts);
   const selectedFontId = useFontStore((s) => s.selectedFontId);
-  const customFontFamily = useMemo(() => {
-    if (!selectedFontId) return "";
-    return customFonts.find((f) => f.id === selectedFontId)?.fontFamily ?? "";
+  const readerFontFamily = useMemo(() => {
+    if (!selectedFontId) return DEFAULT_READER_FONT_FAMILY;
+    return (
+      customFonts.find((font) => font.id === selectedFontId)?.fontFamily ??
+      DEFAULT_READER_FONT_FAMILY
+    );
   }, [customFonts, selectedFontId]);
-  const customFontFaceCSS = useMemo(
-    () => buildCustomFontFaceCSS(customFonts, selectedFontId, fontServerUrl),
-    [customFonts, selectedFontId, fontServerUrl],
+  const readerFontFaceCSS = useMemo(
+    () =>
+      [defaultReaderFontFaceCSS, buildCustomFontFaceCSS(customFonts, selectedFontId, fontServerUrl)]
+        .filter(Boolean)
+        .join("\n"),
+    [customFonts, defaultReaderFontFaceCSS, selectedFontId, fontServerUrl],
   );
 
   const controlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -332,6 +345,7 @@ export function ReaderScreen({ route, navigation }: Props) {
   const locationHistoryRef = useRef<string[]>([]);
   const lastNavigatedCfiRef = useRef<string | undefined>(undefined);
   const fileServerRef = useRef<string | null>(null);
+  const defaultReaderFontFaceCSSRef = useRef("");
   const sessionProgressRef = useRef<{
     mode: "location" | "page" | "characters";
     current: number;
@@ -569,8 +583,15 @@ export function ReaderScreen({ route, navigation }: Props) {
       setLoading(false);
       const settings = useSettingsStore.getState().readSettings;
       const { fonts, selectedFontId: selId } = useFontStore.getState();
-      const fontCSS = buildCustomFontFaceCSS(fonts, selId, fileServerRef.current);
-      const fontFamily = selId ? fonts.find((f) => f.id === selId)?.fontFamily : "";
+      const fontCSS = [
+        defaultReaderFontFaceCSSRef.current,
+        buildCustomFontFaceCSS(fonts, selId, fileServerRef.current),
+      ]
+        .filter(Boolean)
+        .join("\n");
+      const fontFamily = selId
+        ? (fonts.find((font) => font.id === selId)?.fontFamily ?? DEFAULT_READER_FONT_FAMILY)
+        : DEFAULT_READER_FONT_FAMILY;
       console.log("[ReaderScreen][Font] selection", {
         selectedFontId: selId,
         fontFamily,
@@ -1050,8 +1071,15 @@ export function ReaderScreen({ route, navigation }: Props) {
       updateReadSettings(updates);
       const currentSettings = useSettingsStore.getState().readSettings;
       const { fonts, selectedFontId: selId } = useFontStore.getState();
-      const fontCSS = buildCustomFontFaceCSS(fonts, selId, fileServerRef.current);
-      const fontFamily = selId ? fonts.find((f) => f.id === selId)?.fontFamily : "";
+      const fontCSS = [
+        defaultReaderFontFaceCSSRef.current,
+        buildCustomFontFaceCSS(fonts, selId, fileServerRef.current),
+      ]
+        .filter(Boolean)
+        .join("\n");
+      const fontFamily = selId
+        ? (fonts.find((font) => font.id === selId)?.fontFamily ?? DEFAULT_READER_FONT_FAMILY)
+        : DEFAULT_READER_FONT_FAMILY;
       // Recompute effective fontSize after every settings change — covers
       // both stepper changes and toggling followSystemFontScale on/off.
       const merged = { ...currentSettings, ...updates };
@@ -1197,6 +1225,15 @@ export function ReaderScreen({ route, navigation }: Props) {
         const serverUrl = await startFileServer(appData);
         fileServerRef.current = serverUrl;
         setFontServerUrl(serverUrl);
+        try {
+          const bundledFontCSS = await getBundledReaderFontFaceCSS(serverUrl);
+          defaultReaderFontFaceCSSRef.current = bundledFontCSS;
+          setDefaultReaderFontFaceCSS(bundledFontCSS);
+        } catch (fontError) {
+          console.warn("[ReaderScreen] Failed to prepare SB Serif:", fontError);
+          defaultReaderFontFaceCSSRef.current = "";
+          setDefaultReaderFontFaceCSS("");
+        }
         const encodedPath = book.filePath
           .split("/")
           .map((s) => encodeURIComponent(s))
@@ -1297,6 +1334,14 @@ export function ReaderScreen({ route, navigation }: Props) {
   // Apply theme colors when theme changes
   useEffect(() => {
     if (!webViewReady) return;
+    bridge.setBookmarkPullState({
+      bookmarked: isBookmarked,
+      ...bookmarkCopy,
+    });
+  }, [bookmarkCopy, bridge, isBookmarked, webViewReady]);
+
+  useEffect(() => {
+    if (!webViewReady) return;
     bridge.setThemeColors({
       background: colors.background,
       foreground: colors.foreground,
@@ -1309,10 +1354,10 @@ export function ReaderScreen({ route, navigation }: Props) {
   useEffect(() => {
     if (!webViewReady) return;
     bridge.applySettings({
-      customFontFaceCSS: customFontFaceCSS,
-      customFontFamily: customFontFamily,
+      customFontFaceCSS: readerFontFaceCSS,
+      customFontFamily: readerFontFamily,
     });
-  }, [customFontFaceCSS, customFontFamily, webViewReady]);
+  }, [readerFontFaceCSS, readerFontFamily, webViewReady]);
 
   // Re-apply effective fontSize when the OS-level font scale changes while
   // the reader is open (e.g. user changes "Display & Brightness → Text Size"

@@ -1,3 +1,4 @@
+import { MessageSquareIcon } from "@/components/ui/Icon";
 import { NativeButton } from "@/components/ui/NativeButton";
 import { SyncButton } from "@/components/ui/SyncButton";
 import { LibraryScreen } from "@/screens/LibraryScreen";
@@ -5,14 +6,15 @@ import { NotesScreen } from "@/screens/NotesScreen";
 import { ProfileScreen } from "@/screens/ProfileScreen";
 import { useTheme } from "@/styles/ThemeContext";
 import { fontFamily, titleFontFamily } from "@/styles/theme";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import {
   type NativeBottomTabIcon,
   createNativeBottomTabNavigator,
 } from "@react-navigation/bottom-tabs/unstable";
 import { useSyncStore } from "@readany/core/stores";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Platform } from "react-native";
+import { type ImageSourcePropType, Platform, StyleSheet, TouchableOpacity } from "react-native";
 
 export type TabParamList = {
   Library: undefined;
@@ -22,19 +24,52 @@ export type TabParamList = {
 
 const Tab = createNativeBottomTabNavigator<TabParamList>();
 
-const ANDROID_ICONS = {
-  Library: require("../../assets/book.png"),
-  Notes: require("../../assets/note.png"),
-  Profile: require("../../assets/icon.png"),
-} as const;
+type AndroidTabIcons = Record<keyof TabParamList, ImageSourcePropType>;
+
+function useAndroidMaterialTabIcons() {
+  const [icons, setIcons] = useState<AndroidTabIcons | null | undefined>(
+    Platform.OS === "android" ? undefined : null,
+  );
+
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+
+    let cancelled = false;
+    void Promise.all([
+      MaterialIcons.getImageSource("local-library", 24, "#000000"),
+      MaterialIcons.getImageSource("edit-note", 24, "#000000"),
+      MaterialIcons.getImageSource("person", 24, "#000000"),
+    ])
+      .then(([library, notes, profile]) => {
+        if (cancelled) return;
+        if (!library || !notes || !profile) {
+          setIcons(null);
+          return;
+        }
+        setIcons({ Library: library, Notes: notes, Profile: profile });
+      })
+      .catch((error) => {
+        console.error("[TabNavigator] Failed to render Material tab icons", error);
+        if (!cancelled) setIcons(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return icons;
+}
 
 function tabIcon(
   sfSymbol: Extract<NativeBottomTabIcon, { type: "sfSymbol" }>["name"],
-  androidSource: number,
-): NativeBottomTabIcon {
+  androidSource: ImageSourcePropType | null | undefined,
+): NativeBottomTabIcon | undefined {
   return Platform.OS === "ios"
     ? { type: "sfSymbol", name: sfSymbol }
-    : { type: "image", source: androidSource };
+    : androidSource
+      ? { type: "image", source: androidSource }
+      : undefined;
 }
 
 export function TabNavigator() {
@@ -45,6 +80,7 @@ export function TabNavigator() {
   const syncBackendType = useSyncStore((state) => state.backendType);
   const loadSyncConfig = useSyncStore((state) => state.loadConfig);
   const isSyncBusy = syncStatus !== "idle" && syncStatus !== "error";
+  const androidTabIcons = useAndroidMaterialTabIcons();
 
   useEffect(() => {
     if (!syncBackendType) {
@@ -57,6 +93,8 @@ export function TabNavigator() {
       void syncNow();
     }
   }, [isSyncBusy, syncNow]);
+
+  if (Platform.OS === "android" && androidTabIcons === undefined) return null;
 
   return (
     <Tab.Navigator
@@ -85,7 +123,7 @@ export function TabNavigator() {
         options={({ navigation }) => ({
           title: t("tabs.library", "Библиотека"),
           tabBarLabel: t("tabs.library", "Библиотека"),
-          tabBarIcon: tabIcon("book.closed.fill", ANDROID_ICONS.Library),
+          tabBarIcon: tabIcon("book.closed.fill", androidTabIcons?.Library),
           ...(Platform.OS === "ios"
             ? {
                 headerLargeTitleEnabled: true,
@@ -106,14 +144,15 @@ export function TabNavigator() {
               }
             : {
                 headerLeft: () => (
-                  <NativeButton
-                    label="Narra AI"
+                  <TouchableOpacity
+                    accessibilityRole="button"
                     accessibilityLabel="Открыть Narra AI"
-                    icon="chat"
-                    size="small"
-                    variant="tertiary"
+                    style={styles.headerIconButton}
                     onPress={() => navigation.getParent()?.navigate("Chat" as never)}
-                  />
+                    activeOpacity={0.65}
+                  >
+                    <MessageSquareIcon size={22} color={colors.primary} />
+                  </TouchableOpacity>
                 ),
               }),
         })}
@@ -124,7 +163,7 @@ export function TabNavigator() {
         options={({ navigation }) => ({
           title: t("tabs.notes", "Заметки"),
           tabBarLabel: t("tabs.notes", "Заметки"),
-          tabBarIcon: tabIcon("highlighter", ANDROID_ICONS.Notes),
+          tabBarIcon: tabIcon("highlighter", androidTabIcons?.Notes),
           ...(Platform.OS === "ios"
             ? {
                 headerLargeTitleEnabled: true,
@@ -163,7 +202,7 @@ export function TabNavigator() {
         options={{
           title: t("tabs.profile", "Профиль"),
           tabBarLabel: t("tabs.profile", "Профиль"),
-          tabBarIcon: tabIcon("person.crop.circle", ANDROID_ICONS.Profile),
+          tabBarIcon: tabIcon("person.crop.circle", androidTabIcons?.Profile),
           tabBarMinimizeBehavior: "none",
           ...(Platform.OS === "ios"
             ? {
@@ -194,3 +233,12 @@ export function TabNavigator() {
     </Tab.Navigator>
   );
 }
+
+const styles = StyleSheet.create({
+  headerIconButton: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+});

@@ -58,6 +58,8 @@
     "noThreads": "還沒有對話，點擊上方建立",
     "selectAndCopy": "長按選取文字複製",
     "selectBooks": "選擇書籍上下文",
+    "selectBook": "選擇書籍",
+    "generalChat": "一般聊天",
     "threads": "對話列表",
     "untitled": "新對話"
   },

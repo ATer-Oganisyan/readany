@@ -10,13 +10,13 @@ import "@storybook/addon-ondevice-backgrounds/register";
 const normalizedStories = [
   {
     titlePrefix: "",
-    directory: "./src",
-    files: "**/*.stories.?(ts|tsx|js|jsx)",
-    importPathMatcher: /^\.(?:(?:^|\/|(?:(?:(?!(?:^|\/)\.).)*?)\/)(?!\.)(?=.)[^/]*?\.stories\.(?:ts|tsx|js|jsx)?)$/,
+    directory: "./src/components/reader",
+    files: "reader-interface-preview.stories.tsx",
+    importPathMatcher: /^\.[\\/](?:reader-interface-preview\.stories\.tsx)$/,
     req: require.context(
-      '../src',
-      true,
-      /^\.(?:(?:^|\/|(?:(?:(?!(?:^|\/)\.).)*?)\/)(?!\.)(?=.)[^/]*?\.stories\.(?:ts|tsx|js|jsx)?)$/
+      '../src/components/reader',
+      false,
+      /^\.[\\/](?:reader-interface-preview\.stories\.tsx)$/
     ),
   }
 ];

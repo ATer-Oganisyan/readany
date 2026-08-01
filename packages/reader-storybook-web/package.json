@@ -1,0 +1,10 @@
+{
+  "name": "@readany/reader-storybook-web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter app exec vite ../reader-storybook-web --host 127.0.0.1 --port 3210",
+    "build": "pnpm --filter app exec vite build ../reader-storybook-web"
+  }
+}

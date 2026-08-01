@@ -95,7 +95,7 @@
     "syncNotConfigured": "Veuillez d'abord configurer la synchronisation",
     "detailsAction": "Détails du livre",
     "detailsTitle": "Détails du livre",
-    "detailsDesc": "Modifiez les métadonnées utilisées par ReadAny pour l'affichage, la recherche et le nommage de synchronisation.",
+    "detailsDesc": "Modifiez les métadonnées utilisées par Narra pour l'affichage, la recherche et le nommage de synchronisation.",
     "detailsMetadata": "Métadonnées",
     "detailsOrganize": "Organiser",
     "detailsBookTitle": "Titre",
@@ -145,7 +145,7 @@
     "detailsDatePrecisionDay": "Date exacte",
     "detailsSelectedTags": "{{count}} sélectionné(s)",
     "detailsNoTagsSelected": "Aucun tag sélectionné",
-    "detailsManagedMetadataNote": "ReadAny conserve ces métadonnées pour l'affichage, la recherche et le nommage de synchronisation. Le fichier original du livre n'est pas modifié.",
+    "detailsManagedMetadataNote": "Narra conserve ces métadonnées pour l'affichage, la recherche et le nommage de synchronisation. Le fichier original du livre n'est pas modifié.",
     "bookNotFound": "Livre introuvable"
   },
   "home": {

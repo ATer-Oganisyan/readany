@@ -1,7 +1,11 @@
 import type { StorybookConfig } from "@storybook/react-native";
 
+const readerOnly = process.env.EXPO_PUBLIC_READER_STORYBOOK_ONLY === "true";
+
 const main: StorybookConfig = {
-  stories: ["../src/**/*.stories.?(ts|tsx|js|jsx)"],
+  stories: readerOnly
+    ? ["../src/components/reader/reader-interface-preview.stories.tsx"]
+    : ["../src/**/*.stories.?(ts|tsx|js|jsx)"],
   deviceAddons: [
     "@storybook/addon-ondevice-controls",
     "@storybook/addon-ondevice-actions",

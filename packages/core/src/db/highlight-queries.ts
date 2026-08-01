@@ -42,7 +42,7 @@ export async function getAllHighlights(limit = 50): Promise<Highlight[]> {
   const database = await getDB();
   const rows = await database.select<{
     id: string;
-    book_id: string;
+    book_id: string | null;
     cfi: string;
     text: string;
     color: string;
@@ -53,7 +53,7 @@ export async function getAllHighlights(limit = 50): Promise<Highlight[]> {
   }>("SELECT * FROM highlights ORDER BY created_at DESC LIMIT ?", [limit]);
   return rows.map((r) => ({
     id: r.id,
-    bookId: r.book_id,
+    bookId: r.book_id || "",
     cfi: r.cfi,
     text: r.text,
     color: r.color as Highlight["color"],
@@ -69,7 +69,7 @@ export async function getAllHighlightsWithBooks(limit = 500): Promise<HighlightW
   const database = await getDB();
   const rows = await database.select<{
     id: string;
-    book_id: string;
+    book_id: string | null;
     cfi: string;
     text: string;
     color: string;
@@ -92,7 +92,7 @@ export async function getAllHighlightsWithBooks(limit = 500): Promise<HighlightW
   );
   return rows.map((r) => ({
     id: r.id,
-    bookId: r.book_id,
+    bookId: r.book_id || "",
     cfi: r.cfi,
     text: r.text,
     color: r.color as Highlight["color"],
@@ -157,7 +157,7 @@ export async function insertHighlight(highlight: Highlight): Promise<void> {
     "INSERT INTO highlights (id, book_id, cfi, text, color, note, chapter_title, created_at, updated_at, sync_version, last_modified_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     [
       highlight.id,
-      highlight.bookId,
+      highlight.bookId || null,
       highlight.cfi,
       highlight.text,
       highlight.color,
@@ -187,6 +187,14 @@ export async function updateHighlight(id: string, updates: Partial<Highlight>): 
   if (updates.text !== undefined) {
     sets.push("text = ?");
     values.push(updates.text);
+  }
+  if (updates.bookId !== undefined) {
+    sets.push("book_id = ?");
+    values.push(updates.bookId || null);
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, "chapterTitle")) {
+    sets.push("chapter_title = ?");
+    values.push(updates.chapterTitle ?? null);
   }
   // Add sync tracking
   const deviceId = await getDeviceId();

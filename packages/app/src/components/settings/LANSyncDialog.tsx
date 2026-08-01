@@ -75,7 +75,7 @@ export function LANSyncDialog({ open, onClose, mode }: LANSyncDialogProps) {
     setShowManualIPInput(false);
 
     try {
-      const deviceName = `ReadAny Desktop`;
+      const deviceName = `Narra Desktop`;
 
       const newServer = createLANServer({
         deviceName,
@@ -112,7 +112,7 @@ export function LANSyncDialog({ open, onClose, mode }: LANSyncDialogProps) {
     setServerStatus("starting");
 
     try {
-      const deviceName = `ReadAny Desktop`;
+      const deviceName = `Narra Desktop`;
 
       const newServer = createLANServer({
         deviceName,
@@ -269,10 +269,12 @@ export function LANSyncDialog({ open, onClose, mode }: LANSyncDialogProps) {
                 </div>
                 <div className="text-center text-xs text-muted-foreground mt-2 space-y-1">
                   <p>
-                    {t("settings.syncLANIP")}: <span className="font-mono text-foreground">{qrData.ip}</span>
+                    {t("settings.syncLANIP")}:{" "}
+                    <span className="font-mono text-foreground">{qrData.ip}</span>
                   </p>
                   <p>
-                    {t("settings.syncLANPort")}: <span className="font-mono text-foreground">{qrData.port}</span>
+                    {t("settings.syncLANPort")}:{" "}
+                    <span className="font-mono text-foreground">{qrData.port}</span>
                   </p>
                 </div>
                 <p className="text-xs text-muted-foreground text-center">

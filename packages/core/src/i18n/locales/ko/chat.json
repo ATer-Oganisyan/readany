@@ -58,6 +58,8 @@
     "noThreads": "대화가 없어요 — 위를 눌러 새로 만드세요",
     "selectAndCopy": "텍스트를 길게 눌러 선택하고 복사하세요",
     "selectBooks": "책 컨텍스트 선택",
+    "selectBook": "책 선택",
+    "generalChat": "일반 채팅",
     "threads": "대화 목록",
     "untitled": "제목 없음"
   },

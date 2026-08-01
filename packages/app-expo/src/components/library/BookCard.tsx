@@ -108,7 +108,14 @@ export const BookCard = memo(function BookCard({
     : 0;
 
   return (
-    <TouchableOpacity style={s.container} onPress={() => onOpen(book)} activeOpacity={0.7}>
+    <TouchableOpacity
+      style={s.container}
+      onPress={() => onOpen(book)}
+      activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={book.meta.title}
+      accessibilityHint={t("notes.openBook", "Открыть")}
+    >
       {/* Cover — 28:41 aspect ratio */}
       <View style={s.coverWrap}>
         {resolvedCoverUrl && !imageError ? (

@@ -58,6 +58,8 @@
     "noThreads": "还没有对话，点击上方创建",
     "selectAndCopy": "长按选中文字复制",
     "selectBooks": "选择书籍上下文",
+    "selectBook": "选择书籍",
+    "generalChat": "通用聊天",
     "threads": "对话列表",
     "untitled": "新对话"
   },

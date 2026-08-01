@@ -1,5 +1,6 @@
 import { EditIcon, PlusIcon, Trash2Icon, XIcon } from "@/components/ui/Icon";
 import { Text, TextInput } from "@/components/ui/Typography";
+import { BUNDLED_OPENROUTER_EMBEDDING_ID, hydrateBundledEmbeddingModel } from "@/config/bundled-ai";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { useVectorModelStore } from "@/stores/vector-model-store";
 import {
@@ -250,10 +251,11 @@ function RemoteModelsSection() {
         updateVectorModel(model.id, { url: normalizedUrl });
       }
       try {
+        const resolvedModel = hydrateBundledEmbeddingModel(model);
         const result = await testEmbeddingEndpoint({
           url: normalizedUrl,
-          modelId: model.modelId,
-          apiKey: model.apiKey,
+          modelId: resolvedModel.modelId,
+          apiKey: resolvedModel.apiKey,
         });
         updateVectorModel(model.id, { dimension: result.dimension, url: result.url });
         setTestResults((prev) => ({
@@ -348,12 +350,16 @@ function RemoteModelsSection() {
                   : t("settings.vm_test", "测试")}
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity style={s.iconBtn} onPress={() => startEdit(model)}>
-              <EditIcon size={14} color={colors.mutedForeground} />
-            </TouchableOpacity>
-            <TouchableOpacity style={s.iconBtn} onPress={() => deleteVectorModel(model.id)}>
-              <Trash2Icon size={14} color={colors.mutedForeground} />
-            </TouchableOpacity>
+            {model.id !== BUNDLED_OPENROUTER_EMBEDDING_ID ? (
+              <>
+                <TouchableOpacity style={s.iconBtn} onPress={() => startEdit(model)}>
+                  <EditIcon size={14} color={colors.mutedForeground} />
+                </TouchableOpacity>
+                <TouchableOpacity style={s.iconBtn} onPress={() => deleteVectorModel(model.id)}>
+                  <Trash2Icon size={14} color={colors.mutedForeground} />
+                </TouchableOpacity>
+              </>
+            ) : null}
           </View>
           {testResults[model.id] ? (
             <Text

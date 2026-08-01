@@ -1,4 +1,4 @@
-import { MoreVerticalIcon, ShareIcon } from "@/components/ui/Icon";
+import { BookOpenIcon, MoreVerticalIcon, ShareIcon } from "@/components/ui/Icon";
 import { useColors } from "@/styles/theme";
 import { Alert, type AlertButton, TouchableOpacity } from "react-native";
 import type { NativeContextMenuButtonProps } from "./NativeContextMenuButton.types";
@@ -35,7 +35,9 @@ export function NativeContextMenuButton({
       activeOpacity={0.7}
       onPress={openMenu}
     >
-      {sfSymbol === "square.and.arrow.up" ? (
+      {sfSymbol.startsWith("book") ? (
+        <BookOpenIcon size={18} color={iconColor} />
+      ) : sfSymbol === "square.and.arrow.up" ? (
         <ShareIcon size={18} color={iconColor} />
       ) : (
         <MoreVerticalIcon size={18} color={iconColor} />

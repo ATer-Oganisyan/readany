@@ -169,7 +169,7 @@ export function ReaderSettingsPanel({ visible, readSettings, bookId, onClose, on
                   onPress={() => setSelectedFont(null)}
                 >
                   <Text style={[s.themeBtnText, !selectedFontId && s.themeBtnTextActive]}>
-                    {t("fonts.systemDefault", "系统默认")}
+                    {t("fonts.sbSerif", "SB Serif")}
                   </Text>
                 </TouchableOpacity>
                 {customFonts.map((font) => (

@@ -304,7 +304,7 @@ function createShareCard(
     accentMetric,
     secondaryMetrics,
     topBook,
-    footer: dimension === "lifetime" ? "ReadAny has been reading with you." : "Made with ReadAny",
+    footer: dimension === "lifetime" ? "Narra has been reading with you." : "Made with Narra",
     theme: "brand",
   };
 }
@@ -836,7 +836,7 @@ export function buildLifetimeReport(
       firstReadingDate,
       totalActiveDays,
       totalInactiveDays: Math.max(0, totalDays - totalActiveDays),
-      companionMessage: `ReadAny has been with you for ${totalDays} days.`,
+      companionMessage: `Narra has been with you for ${totalDays} days.`,
     },
     yearlyCharts: [yearlyChart],
     yearlySnapshots,
@@ -846,7 +846,7 @@ export function buildLifetimeReport(
       {
         id: "joined",
         title: "Journey started",
-        body: `You began reading with ReadAny on ${period.startDate}.`,
+        body: `You began reading with Narra on ${period.startDate}.`,
         tone: "celebration",
       },
     ],

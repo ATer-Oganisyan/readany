@@ -125,7 +125,7 @@
     "ttsEngine": "TTSエンジン",
     "voiceSelect": "音声",
     "noSystemVoices": "システム音声が検出されません",
-    "testText": "これはテスト音声です。ReadAnyがあなたのために読み上げます。",
+    "testText": "これはテスト音声です。Narraがあなたのために読み上げます。",
     "params": "パラメータ",
     "selectVoice": "音声を選択",
     "selectEngine": "TTSエンジン",

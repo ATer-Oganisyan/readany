@@ -130,7 +130,7 @@
     "ttsEngine": "Сервис озвучивания",
     "voiceSelect": "Голос",
     "noSystemVoices": "Системные голоса не обнаружены",
-    "testText": "Это тестовый голос. ReadAny читает для вас.",
+    "testText": "Это тестовый голос. Narra читает для вас.",
     "params": "Параметры",
     "selectVoice": "Выберите голос",
     "selectEngine": "Выберите сервис",

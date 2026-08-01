@@ -125,7 +125,7 @@
     "ttsEngine": "Moteur TTS",
     "voiceSelect": "Voix",
     "noSystemVoices": "Aucune voix système détectée",
-    "testText": "Ceci est une voix de test. ReadAny lit pour vous.",
+    "testText": "Ceci est une voix de test. Narra lit pour vous.",
     "params": "Paramètres",
     "selectVoice": "Sélectionner une voix",
     "selectEngine": "Moteur TTS",

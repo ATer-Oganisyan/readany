@@ -17,8 +17,6 @@ import { WebDavImportBrowserScreen } from "@/screens/library/WebDavImportBrowser
 import AISettingsScreen from "@/screens/settings/AISettingsScreen";
 import AboutScreen from "@/screens/settings/AboutScreen";
 import AppearanceSettingsScreen from "@/screens/settings/AppearanceSettingsScreen";
-import FeedbackDetailScreen from "@/screens/settings/FeedbackDetailScreen";
-import FeedbackScreen from "@/screens/settings/FeedbackScreen";
 import FontSettingsScreen from "@/screens/settings/FontSettingsScreen";
 import SyncSettingsScreen from "@/screens/settings/SyncSettingsScreen";
 import TTSSettingsScreen from "@/screens/settings/TTSSettingsScreen";
@@ -50,8 +48,6 @@ export type RootStackParamList = {
   TranslationSettings: undefined;
   SyncSettings: undefined;
   About: undefined;
-  Feedback: undefined;
-  FeedbackDetail: { issueNumber: number; title: string };
   FullScreenNotes: { bookId: string };
   ManualNote: undefined;
   FontSettings: undefined;
@@ -165,16 +161,6 @@ export function RootNavigator() {
           name="About"
           component={AboutScreen}
           options={{ title: t("about.title", "О приложении") }}
-        />
-        <Stack.Screen
-          name="Feedback"
-          component={FeedbackScreen}
-          options={{ title: t("feedback.title", "Обратная связь") }}
-        />
-        <Stack.Screen
-          name="FeedbackDetail"
-          component={FeedbackDetailScreen}
-          options={{ animation: "slide_from_right", title: t("feedback.details", "Обращение") }}
         />
         <Stack.Screen
           name="FontSettings"

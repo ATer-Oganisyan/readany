@@ -322,6 +322,57 @@ export async function insertTombstone(
   }
 }
 
+/** Allow note-only highlights to exist without a book association. */
+async function allowStandaloneHighlights(database: IDatabase): Promise<void> {
+  const columns = await database.select<{ name: string; notnull: number }>(
+    "PRAGMA table_info(highlights)",
+  );
+  const bookIdColumn = columns.find((column) => column.name === "book_id");
+  if (!bookIdColumn || bookIdColumn.notnull === 0) return;
+
+  await database.execute("BEGIN IMMEDIATE");
+  try {
+    await database.execute("DROP TABLE IF EXISTS highlights_standalone_migration");
+    await database.execute(`
+      CREATE TABLE highlights_standalone_migration (
+        id TEXT PRIMARY KEY,
+        book_id TEXT,
+        cfi TEXT NOT NULL,
+        text TEXT NOT NULL,
+        color TEXT NOT NULL DEFAULT 'yellow',
+        note TEXT,
+        chapter_title TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        sync_version INTEGER DEFAULT 0,
+        last_modified_by TEXT,
+        FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
+      )
+    `);
+    await database.execute(`
+      INSERT INTO highlights_standalone_migration (
+        id, book_id, cfi, text, color, note, chapter_title,
+        created_at, updated_at, sync_version, last_modified_by
+      )
+      SELECT
+        id, book_id, cfi, text, color, note, chapter_title,
+        created_at, updated_at, sync_version, last_modified_by
+      FROM highlights
+    `);
+    await database.execute("DROP TABLE highlights");
+    await database.execute("ALTER TABLE highlights_standalone_migration RENAME TO highlights");
+    await database.execute("CREATE INDEX IF NOT EXISTS idx_highlights_book ON highlights(book_id)");
+    await database.execute("COMMIT");
+  } catch (error) {
+    try {
+      await database.execute("ROLLBACK");
+    } catch {
+      // Preserve the original migration error.
+    }
+    throw error;
+  }
+}
+
 /** Initialize the database, creating tables if needed */
 export async function initDatabase(): Promise<void> {
   if (dbInitialized) return;
@@ -379,7 +430,7 @@ export async function initDatabase(): Promise<void> {
       await database.execute(`
     CREATE TABLE IF NOT EXISTS highlights (
       id TEXT PRIMARY KEY,
-      book_id TEXT NOT NULL,
+      book_id TEXT,
       cfi TEXT NOT NULL,
       text TEXT NOT NULL,
       color TEXT NOT NULL DEFAULT 'yellow',
@@ -608,6 +659,8 @@ export async function initDatabase(): Promise<void> {
           // Column already exists
         }
       }
+
+      await allowStandaloneHighlights(database);
 
       // Migration 8: Add updated_at to tables that need it for incremental sync
       const tablesNeedingUpdatedAt = ["bookmarks"];

@@ -130,7 +130,7 @@
     "ttsEngine": "朗读引擎",
     "voiceSelect": "语音",
     "noSystemVoices": "未检测到系统语音",
-    "testText": "这是一段测试语音，ReadAny 为你而读。",
+    "testText": "这是一段测试语音，Narra 为你而读。",
     "params": "参数",
     "selectVoice": "选择音色",
     "selectEngine": "朗读引擎",

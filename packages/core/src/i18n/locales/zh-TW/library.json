@@ -95,7 +95,7 @@
     "syncNotConfigured": "請先設定同步",
     "detailsAction": "書籍詳情",
     "detailsTitle": "書籍詳情",
-    "detailsDesc": "編輯 ReadAny 用於書架顯示、搜尋和同步命名的元資訊。",
+    "detailsDesc": "編輯 Narra 用於書架顯示、搜尋和同步命名的元資訊。",
     "detailsMetadata": "元資訊",
     "detailsOrganize": "整理",
     "detailsBookTitle": "書名",
@@ -145,7 +145,7 @@
     "detailsDatePrecisionDay": "年月日",
     "detailsSelectedTags": "已選 {{count}} 個標籤",
     "detailsNoTagsSelected": "未選擇標籤",
-    "detailsManagedMetadataNote": "ReadAny 會維護這份元資訊，用於書架顯示、搜尋和同步命名，不會修改原始書籍檔案。",
+    "detailsManagedMetadataNote": "Narra 會維護這份元資訊，用於書架顯示、搜尋和同步命名，不會修改原始書籍檔案。",
     "bookNotFound": "書籍不存在"
   },
   "home": {

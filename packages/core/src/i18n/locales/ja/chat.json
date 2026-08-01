@@ -58,6 +58,8 @@
     "noThreads": "まだ会話がありません — 上をタップして作成",
     "selectAndCopy": "テキストを長押しして選択・コピー",
     "selectBooks": "本のコンテキストを選択",
+    "selectBook": "本を選択",
+    "generalChat": "一般チャット",
     "threads": "会話一覧",
     "untitled": "無題"
   },
