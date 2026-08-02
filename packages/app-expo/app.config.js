@@ -12,12 +12,8 @@ module.exports = {
     icon: "./assets/icon.png",
     userInterfaceStyle: "automatic",
     newArchEnabled: true,
-    splash: {
-      image: "./assets/splash-icon.png",
-      resizeMode: "contain",
-      backgroundColor: "#05042B",
-    },
     ios: {
+      icon: "./assets/Narra.icon",
       supportsTablet: true,
       bundleIdentifier: variant.bundleIdentifier,
       buildNumber: "2",
@@ -33,7 +29,8 @@ module.exports = {
     android: {
       adaptiveIcon: {
         foregroundImage: "./assets/adaptive-icon.png",
-        backgroundColor: "#05042B",
+        monochromeImage: "./assets/adaptive-icon-monochrome.png",
+        backgroundColor: "#FFFFFF",
       },
       softwareKeyboardLayoutMode: "resize",
       package: variant.androidPackage,
@@ -45,6 +42,19 @@ module.exports = {
       ],
     },
     plugins: [
+      [
+        "expo-splash-screen",
+        {
+          backgroundColor: "#FFFFFF",
+          image: "./assets/splash-logo.png",
+          imageWidth: 144,
+          resizeMode: "contain",
+          dark: {
+            backgroundColor: "#000000",
+            image: "./assets/splash-logo-dark.png",
+          },
+        },
+      ],
       [
         "expo-dev-client",
         {
@@ -81,6 +91,7 @@ module.exports = {
       "expo-sqlite",
       "expo-asset",
       "./plugins/withVolumeKeyPaging",
+      "./plugins/withBottomSplashScreen",
       [
         "expo-camera",
         {

@@ -34,6 +34,7 @@
     "preprebuild": "pnpm run build:reader",
     "prebuild": "expo prebuild",
     "build:reader": "node scripts/build-reader.js",
+    "generate:icons": "node scripts/generate-app-icons.js",
     "sync:native-variant": "node scripts/configure-native-variant.js",
     "lint": "biome check .",
     "eas-build-pre-install": "bash scripts/eas-install-ios-build-tools.sh",

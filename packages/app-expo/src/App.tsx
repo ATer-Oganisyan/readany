@@ -23,13 +23,13 @@ if (typeof navigator !== "undefined" && !navigator.userAgent) {
   });
 }
 
-import { DarkTheme, DefaultTheme, NavigationContainer } from "@react-navigation/native";
 import { interfaceFontAssets } from "@deslop/primitives/native";
+import { DarkTheme, DefaultTheme, NavigationContainer } from "@react-navigation/native";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { LogBox, Platform, View } from "react-native";
+import { LogBox, Platform, View, useColorScheme } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -59,9 +59,9 @@ import { MobileSyncAdapter } from "@/lib/sync/sync-adapter-mobile";
 import { RootNavigator } from "@/navigation/RootNavigator";
 import { useLibraryStore } from "@/stores/library-store";
 import {
+  type ThemeMode,
   ThemeProvider,
   loadStoredThemeMode,
-  type ThemeMode,
   useTheme,
 } from "@/styles/ThemeContext";
 import { useAutoSync } from "@readany/core/hooks/use-auto-sync";
@@ -81,6 +81,7 @@ if (Platform.OS === "ios") {
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function App() {
+  const systemColorScheme = useColorScheme();
   const [fontsLoaded, fontError] = useFonts(interfaceFontAssets);
   const [ready, setReady] = useState(false);
   const [splashDone, setSplashDone] = useState(false);
@@ -240,10 +241,10 @@ export default function App() {
           flex: 1,
           justifyContent: "center",
           alignItems: "center",
-          backgroundColor: "#05042B",
+          backgroundColor: systemColorScheme === "dark" ? "#000000" : "#FFFFFF",
         }}
       >
-        {/* Background matches animated splash so transition is seamless */}
+        {/* Background matches the native launch screen so transition is seamless. */}
       </View>
     );
   }
