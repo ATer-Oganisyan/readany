@@ -80,21 +80,17 @@
       transform: translateY(-32px) scale(0.96);
       transform-origin: top center;
       opacity: 0;
+      filter: blur(4px);
       pointer-events: none;
       z-index: 9000;
-      transition: opacity 150ms ease-out, transform 360ms cubic-bezier(0.23, 1, 0.32, 1);
-      transition:
-        opacity 150ms ease-out,
-        transform 360ms linear(
-          0, 0.0013 0.5%, 0.0062 1.11%, 0.0233 2.21%, 0.0518 3.42%,
-          0.0951 4.82%, 0.1855 7.23%, 0.4176 12.76%, 0.525 15.47%,
-          0.6247, 0.7105 21.1%, 0.7844, 0.8439 26.92%, 0.8695 28.43%,
-          0.8934, 0.9139, 0.9314, 0.9463 34.86%, 0.9595 36.57%,
-          0.9709 38.37%, 0.9805 40.28%, 0.9884 42.29%, 0.9948 44.5%,
-          1.003 49.42%, 1.0048 53.01%, 1.0051 55.01%, 1.0048 57.01%,
-          1.0036 59.51%, 1.0016 62.01%, 0.9995 64.01%, 0.9977 66.01%,
-          0.9972 67.01%, 0.9975 68.01%, 0.9984 68.01%
-        );
+      transition-property: opacity, transform, filter;
+      transition-duration: 180ms;
+      transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+    }
+
+    #pull-bookmark-indicator[data-armed="true"] {
+      filter: blur(0);
+      transition-duration: 300ms;
     }
 
     /* While the finger is actively dragging the indicator, kill the transition
@@ -113,6 +109,7 @@
       min-width: 0;
       min-height: 50px;
       padding: var(--reader-snackbar-padding);
+      gap: 8px;
       border-radius: var(--reader-snackbar-radius);
       background: var(--reader-snackbar-background);
       color: var(--reader-snackbar-text);
@@ -124,6 +121,52 @@
       text-align: center;
       backdrop-filter: blur(25px);
       -webkit-backdrop-filter: blur(25px);
+    }
+
+    #pull-bookmark-indicator .icon {
+      display: flex;
+      width: 20px;
+      height: 20px;
+      flex: 0 0 20px;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      filter: blur(4px);
+      transform: scale(0.25);
+      transition-property: opacity, transform, filter;
+      transition-duration: 180ms;
+      transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+    }
+
+    #pull-bookmark-indicator .icon svg {
+      display: block;
+      width: 20px;
+      height: 20px;
+      fill: currentColor;
+    }
+
+    #pull-bookmark-indicator #pull-bookmark-indicator-text {
+      opacity: 0;
+      filter: blur(4px);
+      transform: translateY(4px);
+      transition-property: opacity, transform, filter;
+      transition-duration: 180ms;
+      transition-delay: 70ms;
+      transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+    }
+
+    #pull-bookmark-indicator[data-armed="true"] .icon {
+      opacity: 1;
+      filter: blur(0);
+      transform: scale(1);
+      transition-duration: 300ms;
+    }
+
+    #pull-bookmark-indicator[data-armed="true"] #pull-bookmark-indicator-text {
+      opacity: 1;
+      filter: blur(0);
+      transform: translateY(0);
+      transition-duration: 220ms;
     }
 
     #loading {
@@ -171,6 +214,14 @@
     }
 
     @media (prefers-reduced-motion: reduce) {
+      #pull-bookmark-indicator,
+      #pull-bookmark-indicator[data-armed="true"],
+      #pull-bookmark-indicator .icon,
+      #pull-bookmark-indicator #pull-bookmark-indicator-text {
+        transition-duration: 0ms;
+        transition-delay: 0ms;
+      }
+
       .spinner {
         animation-duration: 10s;
       }
@@ -219,7 +270,16 @@
 <body>
   <div id="reader-container">
     <div id="pull-bookmark-indicator" aria-hidden="true" data-armed="false">
-      <div class="pill" id="pull-bookmark-indicator-text"></div>
+      <div class="pill">
+        <span class="icon" aria-hidden="true"><!-- Material Symbols Rounded: bookmark_added, FILL=0, wght=600, GRAD=0, opsz=24. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960">
+  <g transform="scale(1,-1)">
+    <path d="M722.609 738.436 829.391 845.784Q843.803 860.61 863.619 860.61q19.816 0 34.642-14.826 14.827-14.826 14.544-34.435-.283-19.609-14.544-34.435L760.218 638.74Q744.056 622.783 722.506 622.783q-21.55 0-37.506 15.957l-53.609 53.608Q617 706.74 617 726.349q0 19.609 14.391 34.435 14.826 14.826 34.435 14.826 19.609 0 34.435-14.826ZM480 219.086 328.392 154.434Q275.391 132.347 228.087 163.522q-47.305 31.175-47.305 88.218v501.477q0 44.305 30.848 75.153 30.848 30.848 75.153 30.848h177.39q22.087 0 37.544-15.457 15.457-15.457 15.457-37.544 0-22.087-15.457-37.544-15.457-15.457-37.544-15.457H286.783V252.174L480 334.783l193.217-82.609v216.39q0 22.087 15.457 37.544 15.457 15.457 37.544 15.457 22.087 0 37.544-15.457 15.457-15.457 15.457-37.544V251.74q0-57.044-47.305-88.218-47.305-31.175-100.305-9.087Z" />
+  </g>
+</svg>
+</span>
+        <span id="pull-bookmark-indicator-text"></span>
+      </div>
     </div>
     <button id="footnote-tip" type="button" aria-hidden="true"></button>
     <div id="loading">
@@ -279,10 +339,7 @@
     let activeFootnoteTipKey = null;
     let bookmarkPullStateMeta = {
       bookmarked: false,
-      pullToAdd: 'Потяните вниз, чтобы добавить закладку',
-      releaseToAdd: 'Отпустите, чтобы добавить закладку',
-      pullToRemove: 'Потяните вниз, чтобы удалить закладку',
-      releaseToRemove: 'Отпустите, чтобы удалить закладку',
+      added: 'Добавлено в закладки',
     };
 
     // Store user annotations for re-rendering on page change
@@ -579,13 +636,6 @@
       };
     }
 
-    function getPullBookmarkLabel(armed) {
-      if (bookmarkPullStateMeta.bookmarked) {
-        return armed ? bookmarkPullStateMeta.releaseToRemove : bookmarkPullStateMeta.pullToRemove;
-      }
-      return armed ? bookmarkPullStateMeta.releaseToAdd : bookmarkPullStateMeta.pullToAdd;
-    }
-
     function setReaderTranslateY(offset, animated) {
       return;
     }
@@ -595,27 +645,54 @@
       const pullOffset = Math.max(0, Math.min(offset, 72));
       const easedOffset = Math.round(Math.min(58, pullOffset * 0.78));
       bookmarkPullGestureActive = pullOffset > 0;
-      if (text) text.textContent = getPullBookmarkLabel(armed);
+      if (text) text.textContent = bookmarkPullStateMeta.added;
       if (indicator) {
         indicator.dataset.following = 'true';
         indicator.dataset.armed = armed ? 'true' : 'false';
-        indicator.style.opacity = String(Math.min(1, pullOffset / 18));
-        indicator.style.transform =
-          `translateY(${Math.min(0, -27 + easedOffset)}px) scale(${0.96 + Math.min(0.04, pullOffset / 900)})`;
+        indicator.style.opacity = '0';
+        indicator.style.transform = 'translateY(-32px) scale(0.96)';
       }
       setReaderTranslateY(easedOffset, false);
       postToRN('bookmarkPull', { offset: easedOffset, armed, active: pullOffset > 0 });
     }
 
-    function resetPullBookmarkUI(animated) {
+    function showBookmarkAddedToast() {
       const { indicator, text } = getPullBookmarkElements();
-      bookmarkPullGestureActive = false;
-      if (text) text.textContent = getPullBookmarkLabel(false);
+      if (pullBookmarkResetTimer) clearTimeout(pullBookmarkResetTimer);
+      if (text) text.textContent = bookmarkPullStateMeta.added;
       if (indicator) {
         indicator.dataset.following = 'false';
-        indicator.dataset.armed = 'false';
-        indicator.style.opacity = '0';
-        indicator.style.transform = 'translateY(-32px) scale(0.96)';
+        indicator.dataset.armed = 'true';
+        indicator.style.opacity = '1';
+        indicator.style.transform = 'translateY(0) scale(1)';
+      }
+      pullBookmarkResetTimer = setTimeout(() => {
+        if (indicator) {
+          indicator.dataset.armed = 'false';
+          indicator.style.opacity = '0';
+          indicator.style.transform = 'translateY(-32px) scale(0.96)';
+        }
+        pullBookmarkResetTimer = null;
+      }, 1800);
+    }
+
+    function resetPullBookmarkUI(animated, preserveToast) {
+      const { indicator, text } = getPullBookmarkElements();
+      bookmarkPullGestureActive = false;
+      if (!preserveToast) {
+        if (pullBookmarkResetTimer) {
+          clearTimeout(pullBookmarkResetTimer);
+          pullBookmarkResetTimer = null;
+        }
+        if (text) text.textContent = bookmarkPullStateMeta.added;
+        if (indicator) {
+          indicator.dataset.following = 'false';
+          indicator.dataset.armed = 'false';
+          indicator.style.opacity = '0';
+          indicator.style.transform = 'translateY(-32px) scale(0.96)';
+        }
+      } else if (indicator) {
+        indicator.dataset.following = 'false';
       }
       setReaderTranslateY(0, animated !== false);
       postToRN('bookmarkPull', { offset: 0, armed: false, active: false });
@@ -2502,7 +2579,12 @@ a { color: ${primary} !important; }
       let lastTriggeredAt = 0;
 
       doc.addEventListener('touchstart', (e) => {
-        if (!view || e.touches.length !== 1 || currentViewMode === 'scroll') {
+        if (
+          !view ||
+          e.touches.length !== 1 ||
+          currentViewMode === 'scroll' ||
+          bookmarkPullStateMeta.bookmarked
+        ) {
           pullState = null;
           return;
         }
@@ -2525,6 +2607,7 @@ a { color: ${primary} !important; }
           startY: touch.clientY,
           active: false,
           armed: false,
+          completed: false,
           cancelled: false,
         };
       }, { passive: true, capture: true });
@@ -2573,7 +2656,27 @@ a { color: ${primary} !important; }
         pullState.armed = armed;
         e.preventDefault();
         e.stopPropagation();
-        updatePullBookmarkUI(Math.min(MAX_PULL_DISTANCE, deltaY), armed);
+
+        if (
+          armed &&
+          !pullState.completed &&
+          Date.now() - lastTriggeredAt >= COOLDOWN_MS
+        ) {
+          pullState.completed = true;
+          lastTriggeredAt = Date.now();
+          postToRN('toggleBookmark', {});
+          showBookmarkAddedToast();
+        }
+
+        if (pullState.completed) {
+          const pullOffset = Math.max(0, Math.min(deltaY, MAX_PULL_DISTANCE));
+          const easedOffset = Math.round(Math.min(58, pullOffset * 0.78));
+          bookmarkPullGestureActive = pullOffset > 0;
+          setReaderTranslateY(easedOffset, false);
+          postToRN('bookmarkPull', { offset: easedOffset, armed: true, active: pullOffset > 0 });
+        } else {
+          updatePullBookmarkUI(Math.min(MAX_PULL_DISTANCE, deltaY), armed);
+        }
       }, { passive: false, capture: true });
 
       doc.addEventListener('touchend', (e) => {
@@ -2591,29 +2694,18 @@ a { color: ${primary} !important; }
           e.stopPropagation();
         }
 
-        const shouldToggle =
-          !!state.active &&
-          !!state.armed &&
-          !state.cancelled &&
-          e.changedTouches.length === 1 &&
-          Date.now() - lastTriggeredAt >= COOLDOWN_MS;
-
-        resetPullBookmarkUI(true);
-
-        if (shouldToggle) {
-          lastTriggeredAt = Date.now();
-          postToRN('toggleBookmark', {});
-        }
+        resetPullBookmarkUI(true, !!state.completed);
       }, { passive: false, capture: true });
 
       doc.addEventListener('touchcancel', () => {
+        const state = pullState;
         pullState = null;
         try {
           if (typeof window.setNavigationLocked === 'function') {
             window.setNavigationLocked(false);
           }
         } catch (err) { /* no-op */ }
-        resetPullBookmarkUI(true);
+        resetPullBookmarkUI(true, !!state?.completed);
       }, { passive: true, capture: true });
     }
 
@@ -3983,7 +4075,7 @@ a { color: ${primary} !important; }
         ...(params || {}),
       };
       const { text } = getPullBookmarkElements();
-      if (text) text.textContent = getPullBookmarkLabel(false);
+      if (text) text.textContent = bookmarkPullStateMeta.added;
     };
     window.getVisibleText = function () {
       var result = doGetVisibleText();

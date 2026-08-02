@@ -295,10 +295,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
   const setBookmarkPullState = useCallback(
     (params: {
       bookmarked: boolean;
-      pullToAdd: string;
-      releaseToAdd: string;
-      pullToRemove: string;
-      releaseToRemove: string;
+      added: string;
     }) => {
       inject(`window.setBookmarkPullState(${JSON.stringify(params)})`);
     },

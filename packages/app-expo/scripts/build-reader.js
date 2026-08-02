@@ -20,6 +20,10 @@ const MATERIAL_SYMBOLS_FONT = path.resolve(
   __dirname,
   "../../deslop-primitives/fonts/MaterialSymbolsRounded-Variable.woff2",
 );
+const BOOKMARK_ADDED_ICON = path.resolve(
+  __dirname,
+  "../../deslop-primitives/icons/bookmark-added.svg",
+);
 
 async function buildReader() {
   // Create a temporary entry point
@@ -76,7 +80,8 @@ async function buildReader() {
       .replace(
         "__READANY_MATERIAL_SYMBOLS_ROUNDED_DATA_URL__",
         `data:font/woff2;base64,${fs.readFileSync(MATERIAL_SYMBOLS_FONT).toString("base64")}`,
-      );
+      )
+      .replace("__READANY_BOOKMARK_ADDED_ICON__", fs.readFileSync(BOOKMARK_ADDED_ICON, "utf-8"));
 
     // Replace the placeholder with the bundled code
     // Use split/join instead of replace to avoid $ replacement patterns in JS bundle

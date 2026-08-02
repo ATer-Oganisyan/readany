@@ -1,7 +1,5 @@
 import {
   BookmarkFilledIcon,
-  CheckIcon,
-  ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   HeadphonesIcon,
@@ -34,10 +32,7 @@ export const READER_PREVIEW_STATES = [
   "reading",
   "controls",
   "bookmarked",
-  "bookmark-pull-add",
-  "bookmark-release-add",
-  "bookmark-pull-remove",
-  "bookmark-release-remove",
+  "bookmark-added",
   "search-idle",
   "search-results",
   "search-empty",
@@ -236,25 +231,10 @@ export function ReaderInterfacePreview({
         </View>
       )}
 
-      {[
-        "bookmark-pull-add",
-        "bookmark-release-add",
-        "bookmark-pull-remove",
-        "bookmark-release-remove",
-      ].includes(state) && (
+      {state === "bookmark-added" && (
         <View style={[styles.pullPromptWrap, { top: Math.max(insets.top, 12) + 66 }]}>
           <View style={styles.pullPrompt}>
-            {state.startsWith("bookmark-release") ? (
-              <CheckIcon size={18} color="#FFFFFF" />
-            ) : (
-              <ChevronDownIcon size={18} color="#FFFFFF" />
-            )}
-            <InterfaceText style={styles.pullPromptText}>
-              {state === "bookmark-pull-add" && bookmarkCopy.pullToAdd}
-              {state === "bookmark-release-add" && bookmarkCopy.releaseToAdd}
-              {state === "bookmark-pull-remove" && bookmarkCopy.pullToRemove}
-              {state === "bookmark-release-remove" && bookmarkCopy.releaseToRemove}
-            </InterfaceText>
+            <InterfaceText style={styles.pullPromptText}>{bookmarkCopy.added}</InterfaceText>
           </View>
         </View>
       )}
@@ -776,18 +756,16 @@ const styles = StyleSheet.create({
   },
   pullPromptWrap: { position: "absolute", zIndex: 30, left: 0, right: 0, alignItems: "center" },
   pullPrompt: {
-    minWidth: 240,
-    height: 54,
-    paddingHorizontal: 20,
+    minHeight: 50,
+    padding: 16,
     borderRadius: 999,
-    backgroundColor: "#4C8BF5",
+    backgroundColor: "rgba(17,17,17,0.6)",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 9,
     boxShadow: "0 10px 24px rgba(0,0,0,0.2)",
   },
-  pullPromptText: { color: "#FFFFFF", fontSize: 15, fontFamily: interfaceFontFamily.semibold },
+  pullPromptText: { color: "#FFFFFF", fontSize: 13, fontFamily: interfaceFontFamily.regular },
   iconButton: {
     width: 42,
     height: 42,

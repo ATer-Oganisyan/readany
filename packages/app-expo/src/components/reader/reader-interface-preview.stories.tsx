@@ -33,10 +33,7 @@ function stateStory(state: ReaderPreviewState): Story {
 export const Чтение = stateStory("reading");
 export const ПанелиУправления = stateStory("controls");
 export const СтраницаВЗакладках = stateStory("bookmarked");
-export const ПотянутьДляДобавленияЗакладки = stateStory("bookmark-pull-add");
-export const ОтпуститьДляДобавленияЗакладки = stateStory("bookmark-release-add");
-export const ПотянутьДляУдаленияЗакладки = stateStory("bookmark-pull-remove");
-export const ОтпуститьДляУдаленияЗакладки = stateStory("bookmark-release-remove");
+export const ДобавленоВЗакладки = stateStory("bookmark-added");
 export const Поиск = stateStory("search-idle");
 export const РезультатыПоиска = stateStory("search-results");
 export const ПоискБезРезультатов = stateStory("search-empty");

@@ -14,13 +14,8 @@ const STORIES = [
     ],
   },
   {
-    group: "Жест закладки",
-    items: [
-      ["pull-add", "Потянуть — добавить", "Промежуточное состояние жеста"],
-      ["release-add", "Отпустить — добавить", "Порог добавления достигнут"],
-      ["pull-remove", "Потянуть — удалить", "Страница уже находится в закладках"],
-      ["release-remove", "Отпустить — удалить", "Порог удаления достигнут"],
-    ],
+    group: "Закладка",
+    items: [["bookmark-added", "Добавлено в закладки", "В момент достижения порога жеста — 60 px"]],
   },
   {
     group: "Работа с текстом",
@@ -62,10 +57,7 @@ let currentRun = 0;
 let storyApplied = false;
 
 const bookmarkCopy = {
-  pullToAdd: "Потяните вниз, чтобы добавить закладку",
-  releaseToAdd: "Отпустите, чтобы добавить закладку",
-  pullToRemove: "Потяните вниз, чтобы удалить закладку",
-  releaseToRemove: "Отпустите, чтобы удалить закладку",
+  added: "Добавлено в закладки",
 };
 
 function getStoryFromHash() {
@@ -169,9 +161,13 @@ function createStoryHelpers() {
             setTTSHighlight(result.cfi, 'rgba(255, 141, 40, 0.32)');
             return true;
           },
-          setPull: function (offset, bookmarked) {
-            window.setBookmarkPullState(Object.assign({ bookmarked: !!bookmarked }, ${JSON.stringify(bookmarkCopy)}));
-            updatePullBookmarkUI(offset, offset >= 60);
+          showBookmarkAdded: function () {
+            window.setBookmarkPullState(Object.assign({ bookmarked: false }, ${JSON.stringify(bookmarkCopy)}));
+            showBookmarkAddedToast();
+            if (pullBookmarkResetTimer) {
+              clearTimeout(pullBookmarkResetTimer);
+              pullBookmarkResetTimer = null;
+            }
           },
           showFootnote: function () {
             var tip = document.getElementById('footnote-tip');
@@ -281,17 +277,8 @@ function applyStory(readerWindow) {
         primary: "#FF9230",
       });
       break;
-    case "pull-add":
-      helpers.setPull(34, false);
-      break;
-    case "release-add":
-      helpers.setPull(72, false);
-      break;
-    case "pull-remove":
-      helpers.setPull(34, true);
-      break;
-    case "release-remove":
-      helpers.setPull(72, true);
+    case "bookmark-added":
+      helpers.showBookmarkAdded();
       break;
     case "selection":
       helpers.selectText("тишина словно отступила");

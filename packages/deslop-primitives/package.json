@@ -14,7 +14,8 @@
       "default": "./native.js"
     },
     "./fonts/*": "./fonts/*",
+    "./icons/*": "./icons/*",
     "./material-symbols.json": "./material-symbols.json"
   },
-  "files": ["*.js", "*.d.ts", "*.json", "fonts"]
+  "files": ["*.js", "*.d.ts", "*.json", "fonts", "icons"]
 }
