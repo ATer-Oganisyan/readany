@@ -172,12 +172,14 @@ function createStoryHelpers() {
           showFootnote: function () {
             var tip = document.getElementById('footnote-tip');
             if (!tip) return false;
-            tip.textContent = 'Полевые записи — короткие наблюдения, сделанные во время исследования.';
+            var content = tip.querySelector('#footnote-tip-content') || tip;
+            content.textContent = 'Полевые записи — короткие наблюдения, сделанные во время исследования.';
             tip.style.left = '24px';
             tip.style.right = '24px';
             tip.style.top = '96px';
             tip.style.maxHeight = '220px';
-            tip.dataset.visible = 'true';
+            tip.dataset.side = 'bottom';
+            tip.dataset.state = 'open';
             tip.setAttribute('aria-hidden', 'false');
             return true;
           },
@@ -304,6 +306,8 @@ function applyStory(readerWindow) {
       break;
     case "footnote":
       helpers.showFootnote();
+      // The production reader closes transient tips on the first relocation.
+      readerWindow.setTimeout(() => helpers.showFootnote(), 420);
       break;
     default:
       break;
@@ -417,12 +421,17 @@ window.addEventListener("message", (event) => {
     status.textContent = "Книга открыта";
   }
 
-  if (message.type === "relocate" && !storyApplied) {
+  if (message.type === "relocate" && (!storyApplied || activeStory.id === "footnote")) {
     const run = currentRun;
     window.setTimeout(() => {
       if (run !== currentRun) return;
       applyBaseReaderDesign(readerWindow);
       applyStory(readerWindow);
+      // reader.html hides transient tooltips on every relocation. Re-open the
+      // static footnote story after the production reader has settled.
+      if (activeStory.id === "footnote") {
+        readerWindow.__NARRA_STORYBOOK__?.showFootnote();
+      }
     }, 180);
   }
 
