@@ -24,7 +24,7 @@ const LOGO_CONTENTS = {
   },
 };
 
-module.exports = function withBottomSplashScreen(config) {
+module.exports = function withCenteredSplashScreen(config) {
   return withFinalizedMod(config, [
     "ios",
     async (cfg) => {
@@ -49,7 +49,7 @@ module.exports = function withBottomSplashScreen(config) {
       );
 
       if (!imageView) {
-        throw new Error("withBottomSplashScreen: EXPO-SplashScreen image view not found");
+        throw new Error("withCenteredSplashScreen: EXPO-SplashScreen image view not found");
       }
 
       imageView.$.image = "SplashLogo";
@@ -57,7 +57,7 @@ module.exports = function withBottomSplashScreen(config) {
       imageView.rect[0].$ = {
         key: "frame",
         x: "124.5",
-        y: "650",
+        y: "348",
         width: "144",
         height: "144",
       };
@@ -75,11 +75,10 @@ module.exports = function withBottomSplashScreen(config) {
         {
           $: {
             firstItem: "EXPO-SplashScreen",
-            firstAttribute: "bottom",
-            secondItem: "Rmq-lb-GrQ",
-            secondAttribute: "bottom",
-            constant: "-24",
-            id: "EXPO-SplashLogo-Bottom",
+            firstAttribute: "centerY",
+            secondItem: "EXPO-ContainerView",
+            secondAttribute: "centerY",
+            id: "EXPO-SplashLogo-CenterY",
           },
         },
         {

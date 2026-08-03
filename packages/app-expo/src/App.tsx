@@ -28,12 +28,11 @@ import { DarkTheme, DefaultTheme, NavigationContainer } from "@react-navigation/
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { LogBox, Platform, View, useColorScheme } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
-import { AnimatedSplash } from "@/components/splash/AnimatedSplash";
 import { rnSessionEventSource } from "@/hooks";
 import { setStreamingFetch } from "@readany/core/ai/llm-provider";
 import { initDatabase } from "@readany/core/db/database";
@@ -78,13 +77,13 @@ if (Platform.OS === "ios") {
 }
 
 // Keep the native splash screen visible while we bootstrap
+SplashScreen.setOptions({ duration: 180, fade: true });
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function App() {
   const systemColorScheme = useColorScheme();
   const [fontsLoaded, fontError] = useFonts(interfaceFontAssets);
   const [ready, setReady] = useState(false);
-  const [splashDone, setSplashDone] = useState(false);
   const [bootError, setBootError] = useState<string | null>(null);
   const [initialThemeMode, setInitialThemeMode] = useState<ThemeMode | null>(null);
 
@@ -190,22 +189,21 @@ export default function App() {
 
         console.log("[App] bootstrap: done");
         setReady(true);
-        // Hide native splash now — our animated splash takes over
-        await SplashScreen.hideAsync();
       } catch (error) {
         console.error("[App] bootstrap failed:", error);
         setBootError(error instanceof Error ? error.message : String(error));
-        await SplashScreen.hideAsync();
       }
     }
     bootstrap();
   }, []);
 
-  const handleSplashFinish = useCallback(() => {
-    setSplashDone(true);
-  }, []);
-
   const startupError = bootError ?? fontError?.message ?? null;
+  const appReady = startupError !== null || (ready && fontsLoaded && initialThemeMode !== null);
+
+  useEffect(() => {
+    if (!appReady) return;
+    SplashScreen.hideAsync().catch(() => {});
+  }, [appReady]);
 
   if (startupError) {
     return (
@@ -253,7 +251,6 @@ export default function App() {
     <I18nextProvider i18n={i18n}>
       <ThemeProvider initialMode={initialThemeMode}>
         <AppInner />
-        {!splashDone && <AnimatedSplash onFinish={handleSplashFinish} />}
       </ThemeProvider>
     </I18nextProvider>
   );
@@ -284,7 +281,7 @@ function AppInner() {
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.background }}>
       <SafeAreaProvider>
         <NavigationContainer theme={navTheme} ref={navigationRef}>
-          <StatusBar style={isDark ? "light" : "dark"} />
+          {Platform.OS !== "ios" && <StatusBar style={isDark ? "light" : "dark"} />}
           <RootNavigator />
         </NavigationContainer>
         <UpdateDialog />

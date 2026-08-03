@@ -221,13 +221,6 @@ export const BookCard = memo(function BookCard({
           </View>
         )}
 
-        {/* Vectorized badge */}
-        {book.isVectorized && !isVectorizing && (
-          <View style={s.vecBadge}>
-            <Text style={s.vecBadgeText}>{t("home.vec_indexed", "已索引")}</Text>
-          </View>
-        )}
-
         <BookCardActionSheet
           book={book}
           onOpen={onOpen}

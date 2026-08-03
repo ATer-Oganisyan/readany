@@ -1,5 +1,5 @@
-import { Button, Host, Image, Menu } from "@expo/ui/swift-ui";
-import { buttonStyle, disabled, frame, tint } from "@expo/ui/swift-ui/modifiers";
+import { Button, Host, Menu } from "@expo/ui/swift-ui";
+import { buttonStyle, disabled, frame, labelStyle, tint } from "@expo/ui/swift-ui/modifiers";
 import type { NativeContextMenuButtonProps } from "./NativeContextMenuButton.types";
 
 export function NativeContextMenuButton({
@@ -12,9 +12,11 @@ export function NativeContextMenuButton({
   return (
     <Host style={{ width: size, height: size }}>
       <Menu
-        label={<Image systemName={sfSymbol as never} size={18} color={color} />}
+        label={accessibilityLabel}
+        systemImage={sfSymbol as never}
         modifiers={[
           buttonStyle("plain"),
+          labelStyle("iconOnly"),
           frame({ width: size, height: size }),
           ...(color ? [tint(color)] : []),
         ]}

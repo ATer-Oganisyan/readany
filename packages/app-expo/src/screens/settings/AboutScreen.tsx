@@ -82,6 +82,7 @@ export default function AboutScreen() {
 
       <ScrollView
         style={styles.scroll}
+        contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={[styles.scrollContent, { alignItems: "center" }]}
       >
         <View style={{ width: "100%", maxWidth: layout.centeredContentWidth }}>

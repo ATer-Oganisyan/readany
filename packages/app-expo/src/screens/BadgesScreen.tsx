@@ -206,6 +206,7 @@ export default function BadgesScreen() {
       <SafeAreaView style={{ flex: 1, backgroundColor: "transparent" }} edges={[]}>
         <ScrollView
           style={{ flex: 1 }}
+          contentInsetAdjustmentBehavior="automatic"
           contentContainerStyle={{
             paddingHorizontal: 20,
             paddingTop: 18,

@@ -6,6 +6,8 @@ import { queueBook as queueAutoVectorize } from "./auto-vectorize-service";
 const MIME_TYPES: Record<string, string> = {
   epub: "application/epub+zip",
   pdf: "application/pdf",
+  fb2: "application/x-fictionbook+xml",
+  fbz: "application/x-zip-compressed-fb2",
   txt: "text/plain",
   // Mobile UMD imports are converted and stored as EPUB before vectorization.
   umd: "application/epub+zip",

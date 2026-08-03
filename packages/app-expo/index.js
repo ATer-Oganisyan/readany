@@ -4,6 +4,11 @@ import * as ExpoCrypto from "expo-crypto";
 
 import { registerRootComponent } from "expo";
 
+if (process.env.EXPO_OS === "ios") {
+  const { featureFlags } = require("react-native-screens");
+  featureFlags.experiment.synchronousScreenUpdatesEnabled = true;
+}
+
 function bytesToString(bytes) {
   if (typeof TextDecoder !== "undefined") {
     return new TextDecoder().decode(bytes);

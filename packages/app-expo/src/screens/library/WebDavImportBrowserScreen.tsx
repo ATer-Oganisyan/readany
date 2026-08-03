@@ -650,6 +650,7 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
     return (
       <FlatList
         data={visibleEntries}
+        contentInsetAdjustmentBehavior="automatic"
         keyExtractor={({ entry }) => entry.relativePath}
         contentContainerStyle={s.listContent}
         renderItem={({ item }) => {

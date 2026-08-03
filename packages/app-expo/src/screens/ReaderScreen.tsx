@@ -1,7 +1,6 @@
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
 import { BookmarkRibbon } from "@/components/reader/BookmarkRibbon";
 import { ChapterTranslationSheet } from "@/components/reader/ChapterTranslationSheet";
-import { SelectionPopover } from "@/components/reader/SelectionPopover";
 import { TTSPage } from "@/components/reader/TTSPage";
 import { TranslationPanel } from "@/components/reader/TranslationPanel";
 import {
@@ -11,6 +10,7 @@ import {
   SearchIcon,
   XIcon,
 } from "@/components/ui/Icon";
+import { NativeButton } from "@/components/ui/NativeButton";
 import { NativeContextMenuButton } from "@/components/ui/NativeContextMenuButton";
 import { Text, TextInput } from "@/components/ui/Typography";
 import { useReaderBridge } from "@/hooks/use-reader-bridge";
@@ -39,13 +39,13 @@ import { readingContextService } from "@readany/core/ai/reading-context-service"
 import { runWithDbRetry } from "@readany/core/db/write-retry";
 import { useChapterTranslation } from "@readany/core/hooks";
 import { useReadingSession } from "@readany/core/hooks/use-reading-session";
-import { createSelectionNoteMutation } from "@readany/core/reader";
 import { getPlatformService } from "@readany/core/services";
 import { getCSSFontFace, useFontStore } from "@readany/core/stores";
-import type { HighlightColor, ReadSettings, TOCItem } from "@readany/core/types";
+import type { ReadSettings, TOCItem } from "@readany/core/types";
 import { eventBus } from "@readany/core/utils/event-bus";
 import { throttle } from "@readany/core/utils/throttle";
 import { Asset } from "expo-asset";
+import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
 /**
  * ReaderScreen — WebView-based reader with foliate-js engine.
@@ -204,7 +204,6 @@ export function ReaderScreen({ route, navigation }: Props) {
   const { t } = useTranslation();
   const bookmarkCopy = useMemo(() => getReaderBookmarkCopy(t), [t]);
   const isIPadLayout = Platform.OS === "ios" && Platform.isPad;
-  const shouldToggleSystemStatusBar = !isIPadLayout;
   const baseTopInset = Platform.OS === "ios" ? 20 : 24;
 
   // State
@@ -233,6 +232,7 @@ export function ReaderScreen({ route, navigation }: Props) {
   const [readerHtmlUri, setReaderHtmlUri] = useState<string | null>(null);
   const [currentCfi, setCurrentCfi] = useState("");
   const [selection, setSelection] = useState<SelectionEvent | null>(null);
+  const selectionRef = useRef<SelectionEvent | null>(null);
   const [fontServerUrl, setFontServerUrl] = useState<string | null>(null);
   const [defaultReaderFontFaceCSS, setDefaultReaderFontFaceCSS] = useState("");
   const [noteViewHighlight, setNoteViewHighlight] = useState<{
@@ -371,21 +371,12 @@ export function ReaderScreen({ route, navigation }: Props) {
       });
     }, 5000),
   ).current;
-  const {
-    addHighlight,
-    updateHighlight,
-    removeHighlight,
-    loadAnnotations,
-    highlights,
-    removeBookmark,
-  } = useAnnotationStore();
+  const { loadAnnotations, highlights, removeBookmark } = useAnnotationStore();
   const book = useMemo(() => books.find((b) => b.id === bookId), [books, bookId]);
 
-  // ── System status bar and safe area ────────────────────────────────────────
+  // ── System safe area ────────────────────────────────────────────────────────
   const { stableTopInset, insets } = useReaderSystemInfo({
-    showSearch,
     isIPadLayout,
-    shouldToggleSystemStatusBar,
     baseTopInset,
   });
 
@@ -404,14 +395,13 @@ export function ReaderScreen({ route, navigation }: Props) {
     navigation.setOptions({
       headerShown: headerVisible,
       headerTransparent: true,
-      headerBlurEffect: themeMode === "dark" ? "systemMaterialDark" : "systemMaterialLight",
       headerShadowVisible: false,
       headerBackButtonDisplayMode: "minimal",
       headerTintColor: colors.foreground,
       headerTitleAlign: "center",
       title: "",
     });
-  }, [colors.foreground, navigation, showControls, showSearch, themeMode]);
+  }, [colors.foreground, navigation, showControls, showSearch]);
 
   const suppressProgressTracking = useCallback((duration = PROGRAMMATIC_NAV_GUARD_MS) => {
     progressTrackingGuardUntilRef.current = Math.max(
@@ -796,6 +786,7 @@ export function ReaderScreen({ route, navigation }: Props) {
       setToc(items);
     },
     onSelection: (detail: SelectionEvent) => {
+      selectionRef.current = detail;
       setSelection(detail);
       // Sync selection for AI tools
       if (detail.cfi) {
@@ -817,6 +808,7 @@ export function ReaderScreen({ route, navigation }: Props) {
       }
       sendEvent({ type: "activity" });
       if (selection) {
+        selectionRef.current = null;
         setSelection(null);
         return;
       }
@@ -966,6 +958,84 @@ export function ReaderScreen({ route, navigation }: Props) {
     goToHref: bridge.goToHref,
   });
 
+  const openScene = useCallback(
+    (excerpt: string, sourceKey: string) => {
+      const normalizedExcerpt = excerpt.trim();
+      if (!normalizedExcerpt) {
+        Alert.alert("Не удалось создать сцену", "На этой странице нет текста для иллюстрации.");
+        return;
+      }
+      navigation.navigate("NarraScene", {
+        bookId,
+        chapter: currentChapter || bookTitle || book?.meta.title || "Текущая страница",
+        excerpt: normalizedExcerpt,
+        sourceKey,
+      });
+    },
+    [book?.meta.title, bookId, bookTitle, currentChapter, navigation],
+  );
+
+  const handleGenerateVisibleScene = useCallback(async () => {
+    try {
+      const excerpt = await bridgeRef.current?.getVisibleText();
+      openScene(excerpt ?? "", `page:${currentCfi || currentChapter || bookId}`);
+    } catch (cause) {
+      console.warn("[Reader] Failed to read visible text for scene", cause);
+      Alert.alert("Не удалось создать сцену", "Не получилось прочитать текст страницы.");
+    }
+  }, [bookId, currentCfi, currentChapter, openScene]);
+
+  const handleSelectionMenuAction = useCallback(
+    (event: { nativeEvent: { key: string; selectedText: string } }) => {
+      const activeSelection = selectionRef.current ?? selection;
+      const selectedText = (activeSelection?.text || event.nativeEvent.selectedText).trim();
+      if (!selectedText) return;
+
+      const cfi = activeSelection?.cfi ?? "";
+      selectionRef.current = null;
+      setSelection(null);
+
+      switch (event.nativeEvent.key) {
+        case "add-note":
+          navigation.navigate("ManualNote", {
+            bookId,
+            cfi,
+            text: selectedText,
+            chapterTitle: currentChapter,
+          });
+          break;
+        case "copy":
+          void Clipboard.setStringAsync(selectedText);
+          break;
+        case "translate":
+          setTranslationText(selectedText);
+          setShowTranslation(true);
+          break;
+        case "ask-ai":
+          navigation.navigate("BookChat", {
+            bookId,
+            selectedText,
+            chapterTitle: currentChapter,
+          });
+          break;
+        case "generate-scene":
+          openScene(
+            selectedText,
+            `selection:${cfi || `${currentChapter}:${selectedText.slice(0, 120)}`}`,
+          );
+          break;
+        case "speak":
+          tts.startSelectionTTS(selectedText, cfi);
+          break;
+      }
+    },
+    [bookId, currentChapter, navigation, openScene, selection, tts.startSelectionTTS],
+  );
+
+  const handleOpenBookChat = useCallback(() => {
+    navigation.navigate("BookChat", { bookId });
+  }, [bookId, navigation]);
+
   useLayoutEffect(() => {
     const headerVisible = showControls && !showSearch;
     const readerActions = [
@@ -1006,33 +1076,92 @@ export function ReaderScreen({ route, navigation }: Props) {
         onPress: () => void tts.handleToggleTTS(),
       },
       {
-        label: "Обсудить с ИИ",
-        sfSymbol: "message",
-        onPress: () => navigation.navigate("BookChat", { bookId }),
+        label: t("narra.characters", "Персонажи"),
+        sfSymbol: "person.2",
+        onPress: () => navigation.navigate("NarraCharacters", { bookId }),
       },
     ];
 
-    navigation.setOptions({
-      unstable_headerRightItems: undefined,
-      headerRight: headerVisible
-        ? () => (
-            <NativeContextMenuButton
-              accessibilityLabel="Действия с книгой"
-              items={readerActions.map((action) => ({
-                key: action.label,
-                ...action,
-              }))}
-            />
-          )
-        : undefined,
-    });
+    navigation.setOptions(
+      Platform.OS === "ios"
+        ? {
+            headerRight: undefined,
+            unstable_headerRightItems: headerVisible
+              ? () => [
+                  {
+                    type: "button" as const,
+                    label: "Обсудить с ИИ",
+                    accessibilityLabel: "Обсудить с ИИ",
+                    icon: { type: "sfSymbol" as const, name: "message" as const },
+                    onPress: handleOpenBookChat,
+                  },
+                  {
+                    type: "button" as const,
+                    label: "Сгенерировать сцену",
+                    accessibilityLabel: "Сгенерировать сцену",
+                    icon: { type: "sfSymbol" as const, name: "photo.badge.plus" as const },
+                    onPress: () => void handleGenerateVisibleScene(),
+                  },
+                  {
+                    type: "menu" as const,
+                    label: "Действия с книгой",
+                    accessibilityLabel: "Действия с книгой",
+                    icon: { type: "sfSymbol" as const, name: "ellipsis" as const },
+                    menu: {
+                      items: readerActions.map((action) => ({
+                        type: "action" as const,
+                        label: action.label,
+                        icon: { type: "sfSymbol" as const, name: action.sfSymbol as never },
+                        onPress: action.onPress,
+                      })),
+                    },
+                  },
+                ]
+              : () => [],
+          }
+        : {
+            unstable_headerRightItems: undefined,
+            headerRight: headerVisible
+              ? () => (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
+                    <NativeButton
+                      label=""
+                      accessibilityLabel="Обсудить с ИИ"
+                      icon="chat"
+                      size="small"
+                      variant="tertiary"
+                      onPress={handleOpenBookChat}
+                    />
+                    <NativeButton
+                      label=""
+                      accessibilityLabel="Сгенерировать сцену"
+                      icon="image"
+                      size="small"
+                      variant="tertiary"
+                      onPress={() => void handleGenerateVisibleScene()}
+                    />
+                    <NativeContextMenuButton
+                      accessibilityLabel="Действия с книгой"
+                      items={readerActions.map((action) => ({
+                        key: action.label,
+                        ...action,
+                      }))}
+                    />
+                  </View>
+                )
+              : undefined,
+          },
+    );
   }, [
     bookId,
+    handleOpenBookChat,
+    handleGenerateVisibleScene,
     handleToggleBookmark,
     isBookmarked,
     navigation,
     showControls,
     showSearch,
+    t,
     tts.handleToggleTTS,
   ]);
 
@@ -1092,63 +1221,6 @@ export function ReaderScreen({ route, navigation }: Props) {
     },
     [bridge, updateReadSettings, computeEffectiveFontSize],
   );
-
-  // Selection popover handlers
-  const handleHighlight = useCallback(
-    (color: HighlightColor = readSettings.defaultHighlightColor ?? "yellow") => {
-      if (!selection) return;
-      updateReadSettings({ defaultHighlightColor: color });
-
-      const existingHighlight = highlights.find(
-        (h) => h.bookId === bookId && h.cfi === selection.cfi,
-      );
-
-      if (existingHighlight) {
-        updateHighlight(existingHighlight.id, {
-          color,
-          updatedAt: Date.now(),
-        });
-        bridge.removeAnnotation({ value: existingHighlight.cfi });
-        bridge.addAnnotation({
-          value: existingHighlight.cfi,
-          type: "highlight",
-          color,
-          note: existingHighlight.note,
-        });
-        setSelection(null);
-        return;
-      }
-
-      const highlight = {
-        id: `hl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        bookId,
-        cfi: selection.cfi,
-        text: selection.text,
-        color,
-        chapterTitle: currentChapter,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      };
-      addHighlight(highlight);
-      bridge.addAnnotation({ value: selection.cfi, type: "highlight", color });
-      setSelection(null);
-    },
-    [
-      selection,
-      readSettings.defaultHighlightColor,
-      updateReadSettings,
-      highlights,
-      bookId,
-      currentChapter,
-      addHighlight,
-      updateHighlight,
-      bridge,
-    ],
-  );
-
-  const handleDismissSelection = useCallback(() => {
-    setSelection(null);
-  }, []);
 
   useEffect(() => {
     setGoToCfiFn(() => bridge.goToCFI);
@@ -1512,27 +1584,15 @@ export function ReaderScreen({ route, navigation }: Props) {
   const layoutTopInset = stableTopInset;
   const percent = Math.round(progress * 100);
   const isPanelOpen = showTOC || showSettings || showSearch || showNotebook || showTranslation;
-  const existingSelectionHighlight = selection
-    ? (highlights.find(
-        (highlight) => highlight.bookId === bookId && highlight.cfi === selection.cfi,
-      ) ?? null)
-    : null;
+  const readerContentInset = Math.round(
+    readSettings.pageMargin *
+      (computeEffectiveFontSize(readSettings.fontSize, readSettings.followSystemFontScale) / 16),
+  );
   const readerTopMargin = !showSearch
     ? showTopTitleProgress
       ? layoutTopInset + 30
       : layoutTopInset
     : 0;
-  const selectionPopoverSelection = selection
-    ? {
-        ...selection,
-        position: {
-          ...selection.position,
-          y: selection.position.y + readerTopMargin,
-          selectionTop: selection.position.selectionTop + readerTopMargin,
-          selectionBottom: selection.position.selectionBottom + readerTopMargin,
-        },
-      }
-    : null;
   const adjustedNoteTooltip = noteTooltip
     ? {
         ...noteTooltip,
@@ -1564,6 +1624,15 @@ export function ReaderScreen({ route, navigation }: Props) {
             ]}
             pointerEvents={isPanelOpen ? "none" : "auto"}
             onMessage={bridge.handleMessage}
+            menuItems={[
+              { key: "add-note", label: "Добавить заметку" },
+              { key: "copy", label: "Скопировать" },
+              { key: "translate", label: "Перевести" },
+              { key: "ask-ai", label: "Обсудить с ИИ" },
+              { key: "generate-scene", label: "Создать иллюстрацию" },
+              { key: "speak", label: "Озвучить" },
+            ]}
+            onCustomMenuSelection={handleSelectionMenuAction}
             onError={(e) => {
               console.error("[ReaderScreen] WebView error:", e.nativeEvent);
             }}
@@ -1596,7 +1665,12 @@ export function ReaderScreen({ route, navigation }: Props) {
 
         {/* ─── Top Info Bar (always visible) ─── */}
         {!showSearch && !showControls && showTopTitleProgress && (
-          <View style={[s.topInfoBar, { top: layoutTopInset }]}>
+          <View
+            style={[
+              s.topInfoBar,
+              { top: layoutTopInset, paddingHorizontal: readerContentInset },
+            ]}
+          >
             <View style={s.topInfoRow}>
               <Text style={s.topInfoText} numberOfLines={1}>
                 {currentChapter || bookTitle}
@@ -1610,86 +1684,7 @@ export function ReaderScreen({ route, navigation }: Props) {
       </Animated.View>
 
       {/* ─── Bookmark Ribbon (top-right) ─── */}
-      <BookmarkRibbon visible={isBookmarked} topOffset={0} />
-
-      {/* Selection Popover */}
-      {selectionPopoverSelection && (
-        <SelectionPopover
-          selection={selectionPopoverSelection}
-          onHighlight={handleHighlight}
-          onDismiss={handleDismissSelection}
-          onCopy={() => {
-            setSelection(null);
-          }}
-          onSpeak={(text, cfi) => {
-            tts.startSelectionTTS(text, cfi);
-            setSelection(null);
-          }}
-          onAIChat={() => {
-            const selectedText = selectionPopoverSelection.text;
-            const chapter = currentChapter;
-            setSelection(null);
-            navigation.navigate("BookChat", {
-              bookId,
-              selectedText,
-              chapterTitle: chapter,
-            });
-          }}
-          onNote={(text, cfi) => {
-            const mutation = createSelectionNoteMutation({
-              bookId,
-              cfi,
-              text: selectionPopoverSelection.text,
-              note: text,
-              chapterTitle: currentChapter,
-              existingHighlight: existingSelectionHighlight,
-              defaultColor: readSettings.defaultHighlightColor ?? "yellow",
-            });
-
-            if (mutation.kind === "create") {
-              addHighlight(mutation.highlight);
-              bridge.addAnnotation({
-                value: cfi,
-                type: "highlight",
-                color: mutation.highlight.color,
-                note: mutation.highlight.note,
-              });
-              return;
-            }
-
-            updateHighlight(mutation.id, mutation.updates);
-            bridge.addAnnotation({
-              value: cfi,
-              type: "highlight",
-              color: existingSelectionHighlight?.color || "yellow",
-              note: mutation.updates.note,
-            });
-          }}
-          onTranslate={(text) => {
-            setShowTranslation(true);
-            setTranslationText(text);
-          }}
-          existingHighlight={
-            existingSelectionHighlight
-              ? {
-                  id: existingSelectionHighlight.id,
-                  color: existingSelectionHighlight.color,
-                  note: existingSelectionHighlight.note,
-                }
-              : null
-          }
-          defaultColor={readSettings.defaultHighlightColor ?? "yellow"}
-          onRemoveHighlight={() => {
-            const existing = highlights.find(
-              (h) => h.bookId === bookId && h.cfi === selectionPopoverSelection.cfi,
-            );
-            if (existing) {
-              removeHighlight(existing.id);
-              bridge.removeAnnotation({ value: existing.cfi });
-            }
-          }}
-        />
-      )}
+      <BookmarkRibbon visible={isBookmarked} topOffset={0} rightOffset={readerContentInset} />
 
       {/* Note Tooltip (long-press on wavy underline) */}
       {adjustedNoteTooltip && (

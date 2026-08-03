@@ -1,14 +1,11 @@
 /**
- * useReaderSystemInfo — manages the system status bar and safe area inset.
+ * useReaderSystemInfo — keeps the reader's safe area inset stable.
  */
-import { setStatusBarHidden } from "expo-status-bar";
 import { useEffect, useState } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export interface UseReaderSystemInfoOptions {
-  showSearch: boolean;
   isIPadLayout: boolean;
-  shouldToggleSystemStatusBar: boolean;
   baseTopInset: number;
 }
 
@@ -18,9 +15,7 @@ export interface UseReaderSystemInfoResult {
 }
 
 export function useReaderSystemInfo({
-  showSearch,
   isIPadLayout,
-  shouldToggleSystemStatusBar,
   baseTopInset,
 }: UseReaderSystemInfoOptions): UseReaderSystemInfoResult {
   const insets = useSafeAreaInsets();
@@ -28,21 +23,6 @@ export function useReaderSystemInfo({
   const [stableTopInset, setStableTopInset] = useState(() =>
     Math.max(insets.top, isIPadLayout ? 24 : baseTopInset),
   );
-
-  // Status bar
-  useEffect(() => {
-    if (!shouldToggleSystemStatusBar) {
-      setStatusBarHidden(false, "none");
-      return;
-    }
-    setStatusBarHidden(!showSearch, "slide");
-  }, [showSearch, shouldToggleSystemStatusBar]);
-
-  useEffect(() => {
-    return () => {
-      setStatusBarHidden(false, "slide");
-    };
-  }, []);
 
   // Stable top inset
   useEffect(() => {

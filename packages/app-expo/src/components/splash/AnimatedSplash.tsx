@@ -6,12 +6,10 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
-import { initialWindowMetrics } from "react-native-safe-area-context";
 import SplashLogoDark from "../../../assets/splash-logo-dark.svg";
 import SplashLogoLight from "../../../assets/splash-logo.svg";
 
 const LOGO_SIZE = 144;
-const BOTTOM_GAP = 24;
 
 interface Props {
   onFinish: () => void;
@@ -48,21 +46,14 @@ export function AnimatedSplash({ onFinish }: Props) {
           position: "absolute",
           inset: 0,
           zIndex: 9999,
+          alignItems: "center",
+          justifyContent: "center",
           backgroundColor: isDark ? "#000000" : "#FFFFFF",
         },
         containerStyle,
       ]}
     >
-      <SplashLogo
-        width={LOGO_SIZE}
-        height={LOGO_SIZE}
-        style={{
-          position: "absolute",
-          left: "50%",
-          bottom: (initialWindowMetrics?.insets.bottom ?? 0) + BOTTOM_GAP,
-          transform: [{ translateX: -LOGO_SIZE / 2 }],
-        }}
-      />
+      <SplashLogo width={LOGO_SIZE} height={LOGO_SIZE} />
     </Animated.View>
   );
 }

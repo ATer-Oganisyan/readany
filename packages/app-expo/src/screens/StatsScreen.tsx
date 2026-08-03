@@ -469,6 +469,7 @@ export default function StatsScreen() {
   return (
     <SafeAreaView style={s.container} edges={[]}>
       <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[
           s.scrollContent,

@@ -6,6 +6,7 @@ export type NativeButtonIcon =
   | "add"
   | "back"
   | "forward"
+  | "image"
   | "check"
   | "chat"
   | "close"

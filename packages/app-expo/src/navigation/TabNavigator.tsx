@@ -9,12 +9,18 @@ import { fontFamily, titleFontFamily } from "@/styles/theme";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import {
   type NativeBottomTabIcon,
+  type NativeBottomTabScreenProps,
   createNativeBottomTabNavigator,
 } from "@react-navigation/bottom-tabs/unstable";
+import {
+  type NativeStackNavigationOptions,
+  createNativeStackNavigator,
+} from "@react-navigation/native-stack";
 import { useSyncStore } from "@readany/core/stores";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type ImageSourcePropType, Platform, StyleSheet, TouchableOpacity } from "react-native";
+import { NATIVE_SCROLL_EDGE_EFFECTS } from "./scroll-edge-effects";
 
 export type TabParamList = {
   Library: undefined;
@@ -22,7 +28,14 @@ export type TabParamList = {
   Profile: undefined;
 };
 
+export type LibraryTabStackParamList = { LibraryHome: undefined };
+export type NotesTabStackParamList = { NotesHome: { bookId?: string } | undefined };
+export type ProfileTabStackParamList = { ProfileHome: undefined };
+
 const Tab = createNativeBottomTabNavigator<TabParamList>();
+const LibraryStack = createNativeStackNavigator<LibraryTabStackParamList>();
+const NotesStack = createNativeStackNavigator<NotesTabStackParamList>();
+const ProfileStack = createNativeStackNavigator<ProfileTabStackParamList>();
 
 type AndroidTabIcons = Record<keyof TabParamList, ImageSourcePropType>;
 
@@ -72,58 +85,39 @@ function tabIcon(
       : undefined;
 }
 
-export function TabNavigator() {
+function useTabStackScreenOptions(): NativeStackNavigationOptions {
+  const { colors } = useTheme();
+
+  return {
+    headerShown: true,
+    headerTransparent: Platform.OS === "ios",
+    headerStyle: {
+      backgroundColor: Platform.OS === "ios" ? "transparent" : colors.background,
+    },
+    headerShadowVisible: false,
+    headerTintColor: colors.foreground,
+    headerTitleStyle: {
+      color: colors.foreground,
+      fontFamily: titleFontFamily,
+      fontWeight: "600",
+    },
+    scrollEdgeEffects: NATIVE_SCROLL_EDGE_EFFECTS,
+    contentStyle: { backgroundColor: colors.background },
+  };
+}
+
+function LibraryTabStackNavigator() {
   const { t } = useTranslation();
   const { colors } = useTheme();
-  const syncNow = useSyncStore((state) => state.syncNow);
-  const syncStatus = useSyncStore((state) => state.status);
-  const syncBackendType = useSyncStore((state) => state.backendType);
-  const loadSyncConfig = useSyncStore((state) => state.loadConfig);
-  const isSyncBusy = syncStatus !== "idle" && syncStatus !== "error";
-  const androidTabIcons = useAndroidMaterialTabIcons();
-
-  useEffect(() => {
-    if (!syncBackendType) {
-      void loadSyncConfig();
-    }
-  }, [loadSyncConfig, syncBackendType]);
-
-  const handleSync = useCallback(() => {
-    if (!isSyncBusy) {
-      void syncNow();
-    }
-  }, [isSyncBusy, syncNow]);
-
-  if (Platform.OS === "android" && androidTabIcons === undefined) return null;
+  const screenOptions = useTabStackScreenOptions();
 
   return (
-    <Tab.Navigator
-      screenOptions={{
-        headerShown: true,
-        headerStyle: { backgroundColor: colors.background },
-        headerShadowVisible: false,
-        headerTintColor: colors.foreground,
-        headerTitleStyle: {
-          color: colors.foreground,
-          fontFamily: titleFontFamily,
-          fontWeight: "600",
-        },
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.mutedForeground,
-        tabBarLabelStyle: { fontFamily: fontFamily.regular },
-        tabBarStyle: { backgroundColor: colors.background },
-        tabBarBlurEffect: "systemDefault",
-        tabBarControllerMode: "auto",
-        tabBarMinimizeBehavior: "onScrollDown",
-      }}
-    >
-      <Tab.Screen
-        name="Library"
+    <LibraryStack.Navigator screenOptions={screenOptions}>
+      <LibraryStack.Screen
+        name="LibraryHome"
         component={LibraryScreen}
         options={({ navigation }) => ({
           title: t("tabs.library", "Библиотека"),
-          tabBarLabel: t("tabs.library", "Библиотека"),
-          tabBarIcon: tabIcon("book.closed.fill", androidTabIcons?.Library),
           ...(Platform.OS === "ios"
             ? {
                 headerLargeTitleEnabled: true,
@@ -138,7 +132,11 @@ export function TabNavigator() {
                     label: "Narra AI",
                     accessibilityLabel: "Открыть Narra AI",
                     icon: { type: "sfSymbol" as const, name: "message" as const },
-                    onPress: () => navigation.getParent()?.navigate("Chat" as never),
+                    onPress: () =>
+                      navigation
+                        .getParent()
+                        ?.getParent()
+                        ?.navigate("Chat" as never),
                   },
                 ],
               }
@@ -148,7 +146,12 @@ export function TabNavigator() {
                     accessibilityRole="button"
                     accessibilityLabel="Открыть Narra AI"
                     style={styles.headerIconButton}
-                    onPress={() => navigation.getParent()?.navigate("Chat" as never)}
+                    onPress={() =>
+                      navigation
+                        .getParent()
+                        ?.getParent()
+                        ?.navigate("Chat" as never)
+                    }
                     activeOpacity={0.65}
                   >
                     <MessageSquareIcon size={22} color={colors.primary} />
@@ -157,13 +160,23 @@ export function TabNavigator() {
               }),
         })}
       />
-      <Tab.Screen
-        name="Notes"
+    </LibraryStack.Navigator>
+  );
+}
+
+function NotesTabStackNavigator({ route }: NativeBottomTabScreenProps<TabParamList, "Notes">) {
+  const { t } = useTranslation();
+  const { colors } = useTheme();
+  const screenOptions = useTabStackScreenOptions();
+
+  return (
+    <NotesStack.Navigator screenOptions={screenOptions}>
+      <NotesStack.Screen
+        name="NotesHome"
         component={NotesScreen}
+        initialParams={route.params}
         options={({ navigation }) => ({
           title: t("tabs.notes", "Заметки"),
-          tabBarLabel: t("tabs.notes", "Заметки"),
-          tabBarIcon: tabIcon("highlighter", androidTabIcons?.Notes),
           ...(Platform.OS === "ios"
             ? {
                 headerLargeTitleEnabled: true,
@@ -178,7 +191,11 @@ export function TabNavigator() {
                     label: "Добавить заметку",
                     accessibilityLabel: "Добавить заметку",
                     icon: { type: "sfSymbol" as const, name: "plus" as const },
-                    onPress: () => navigation.getParent()?.navigate("ManualNote" as never),
+                    onPress: () =>
+                      navigation
+                        .getParent()
+                        ?.getParent()
+                        ?.navigate("ManualNote" as never),
                   },
                 ],
               }
@@ -190,24 +207,54 @@ export function TabNavigator() {
                     icon="add"
                     size="small"
                     variant="tertiary"
-                    onPress={() => navigation.getParent()?.navigate("ManualNote" as never)}
+                    onPress={() =>
+                      navigation
+                        .getParent()
+                        ?.getParent()
+                        ?.navigate("ManualNote" as never)
+                    }
                   />
                 ),
               }),
         })}
       />
-      <Tab.Screen
-        name="Profile"
+    </NotesStack.Navigator>
+  );
+}
+
+function ProfileTabStackNavigator() {
+  const { t } = useTranslation();
+  const { colors } = useTheme();
+  const screenOptions = useTabStackScreenOptions();
+  const syncNow = useSyncStore((state) => state.syncNow);
+  const syncStatus = useSyncStore((state) => state.status);
+  const syncBackendType = useSyncStore((state) => state.backendType);
+  const loadSyncConfig = useSyncStore((state) => state.loadConfig);
+  const isSyncBusy = syncStatus !== "idle" && syncStatus !== "error";
+
+  useEffect(() => {
+    if (!syncBackendType) void loadSyncConfig();
+  }, [loadSyncConfig, syncBackendType]);
+
+  const handleSync = useCallback(() => {
+    if (!isSyncBusy) void syncNow();
+  }, [isSyncBusy, syncNow]);
+
+  return (
+    <ProfileStack.Navigator screenOptions={screenOptions}>
+      <ProfileStack.Screen
+        name="ProfileHome"
         component={ProfileScreen}
         options={{
           title: t("tabs.profile", "Профиль"),
-          tabBarLabel: t("tabs.profile", "Профиль"),
-          tabBarIcon: tabIcon("person.crop.circle", androidTabIcons?.Profile),
-          tabBarMinimizeBehavior: "none",
           ...(Platform.OS === "ios"
             ? {
-                headerTransparent: true,
-                headerStyle: { backgroundColor: "transparent" },
+                headerLargeTitleEnabled: true,
+                headerLargeTitleShadowVisible: false,
+                headerLargeTitleStyle: {
+                  color: colors.foreground,
+                  fontFamily: titleFontFamily,
+                },
                 unstable_headerRightItems: () =>
                   syncBackendType
                     ? [
@@ -228,6 +275,58 @@ export function TabNavigator() {
             : {
                 headerRight: () => <SyncButton size={20} color={colors.mutedForeground} />,
               }),
+        }}
+      />
+    </ProfileStack.Navigator>
+  );
+}
+
+export function TabNavigator() {
+  const { t } = useTranslation();
+  const { colors } = useTheme();
+  const androidTabIcons = useAndroidMaterialTabIcons();
+
+  if (Platform.OS === "android" && androidTabIcons === undefined) return null;
+
+  return (
+    <Tab.Navigator
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.mutedForeground,
+        tabBarLabelStyle: { fontFamily: fontFamily.regular },
+        tabBarStyle: Platform.OS === "ios" ? undefined : { backgroundColor: colors.background },
+        tabBarBlurEffect: "systemDefault",
+        tabBarControllerMode: "auto",
+        tabBarMinimizeBehavior: "onScrollDown",
+      }}
+    >
+      <Tab.Screen
+        name="Library"
+        component={LibraryTabStackNavigator}
+        options={{
+          title: t("tabs.library", "Библиотека"),
+          tabBarLabel: t("tabs.library", "Библиотека"),
+          tabBarIcon: tabIcon("book.closed.fill", androidTabIcons?.Library),
+        }}
+      />
+      <Tab.Screen
+        name="Notes"
+        component={NotesTabStackNavigator}
+        options={{
+          title: t("tabs.notes", "Заметки"),
+          tabBarLabel: t("tabs.notes", "Заметки"),
+          tabBarIcon: tabIcon("highlighter", androidTabIcons?.Notes),
+        }}
+      />
+      <Tab.Screen
+        name="Profile"
+        component={ProfileTabStackNavigator}
+        options={{
+          title: t("tabs.profile", "Профиль"),
+          tabBarLabel: t("tabs.profile", "Профиль"),
+          tabBarIcon: tabIcon("person.crop.circle", androidTabIcons?.Profile),
+          tabBarMinimizeBehavior: "none",
         }}
       />
     </Tab.Navigator>

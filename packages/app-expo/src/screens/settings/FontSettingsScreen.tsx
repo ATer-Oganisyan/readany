@@ -270,6 +270,7 @@ export default function FontSettingsScreen() {
 
       <ScrollView
         style={s.scroll}
+        contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={[s.scrollContent, { alignItems: "center" }]}
       >
         <View style={{ width: "100%", maxWidth: layout.centeredContentWidth }}>

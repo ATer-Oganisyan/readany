@@ -271,6 +271,7 @@ export default function SkillsScreen() {
     <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={[]}>
       <ScrollView
         style={s.scrollView}
+        contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={s.scrollContent}
         showsVerticalScrollIndicator={false}
       >

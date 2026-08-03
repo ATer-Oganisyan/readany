@@ -56,6 +56,7 @@ export default function VectorModelSettingsScreen() {
       >
         <ScrollView
           style={s.scrollView}
+          contentInsetAdjustmentBehavior="automatic"
           contentContainerStyle={s.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"

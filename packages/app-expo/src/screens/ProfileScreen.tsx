@@ -1,7 +1,8 @@
 import { NativeThemePicker } from "@/components/profile/NativeThemePicker";
 import { ProfileNumericText } from "@/components/profile/ProfileNumericText";
-import { BarChart3Icon, ChevronRightIcon, CloudIcon, Trash2Icon } from "@/components/ui/Icon";
+import { ChevronRightIcon, CloudIcon, Trash2Icon } from "@/components/ui/Icon";
 import type { MaterialIconComponent } from "@/components/ui/Icon";
+import { ScrollViewMarker } from "@/components/ui/ScrollViewMarker";
 import { Text } from "@/components/ui/Typography";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { clearMobileRuntimeCache, formatCacheSize } from "@/lib/platform/mobile-cache";
@@ -11,6 +12,7 @@ import {
   mergeCurrentSessionIntoOverallStats,
 } from "@/lib/stats/live-reading-stats";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
+import { NATIVE_SCROLL_EDGE_EFFECTS } from "@/navigation/scroll-edge-effects";
 import { useReadingSessionStore, useTTSStore } from "@/stores";
 import type { ThemeMode } from "@/styles/ThemeContext";
 import {
@@ -45,7 +47,6 @@ import {
   View,
   type ViewStyle,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type ProfileMenuIcon = MaterialIconComponent;
@@ -416,12 +417,13 @@ export function ProfileScreen() {
   ];
 
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={[]}>
+    <ScrollViewMarker style={s.scrollView} scrollEdgeEffects={NATIVE_SCROLL_EDGE_EFFECTS}>
       <ScrollView
-        style={s.scrollView}
+        style={[s.scrollView, { backgroundColor: colors.background }]}
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={s.scrollContent}
         showsVerticalScrollIndicator={false}
+        alwaysBounceVertical
       >
         {/* Stats cards */}
         <View style={s.statsSection}>
@@ -446,12 +448,6 @@ export function ProfileScreen() {
             <Text style={s.heatmapTitle} numberOfLines={1} maxFontSizeMultiplier={1.5}>
               {t("profile.readingActivity", "阅读活动")}
             </Text>
-            <TouchableOpacity style={s.heatmapDetailBtn} onPress={() => nav.navigate("Stats")}>
-              <BarChart3Icon size={14} color={colors.primary} />
-              <Text style={s.heatmapDetailText} numberOfLines={1} maxFontSizeMultiplier={1.4}>
-                {t("profile.viewDetails", "查看详情")}
-              </Text>
-            </TouchableOpacity>
           </View>
           <MiniHeatmap dailyStats={liveDailyStats} />
         </View>
@@ -517,7 +513,7 @@ export function ProfileScreen() {
           </View>
         ))}
       </ScrollView>
-    </SafeAreaView>
+    </ScrollViewMarker>
   );
 }
 
@@ -547,7 +543,6 @@ const makeStyles = (colors: ThemeColors) =>
     },
     scrollView: { flex: 1 },
     scrollContent: {
-      paddingTop: 20,
       paddingBottom: 12,
       gap: spacing.xxl,
     },
@@ -633,17 +628,6 @@ const makeStyles = (colors: ThemeColors) =>
       lineHeight: fontSize.sm * 1.5,
       fontWeight: fontWeight.medium,
       color: colors.mutedForeground,
-    },
-    heatmapDetailBtn: {
-      flexShrink: 0,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 4,
-    },
-    heatmapDetailText: {
-      fontSize: fontSize.xs,
-      lineHeight: fontSize.xs * 1.5,
-      color: colors.primary,
     },
     heatmapContainer: { width: "100%" },
     heatmapGrid: { alignSelf: "center" },

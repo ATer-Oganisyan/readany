@@ -1,7 +1,8 @@
 import { Text } from "@/components/ui/Typography";
+import { openMobileBook } from "@/lib/library/open-mobile-book";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
-import { useNativeHeaderActions } from "@/navigation/useNativeHeaderActions";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useRoute } from "@react-navigation/native";
+import type { RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 /**
  * ChatScreen — full AI chat matching app-mobile ChatPage layout.
@@ -9,16 +10,25 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Animated, Pressable, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  Alert,
+  Animated,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useStreamingChat } from "@/hooks";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { resolveActiveAIConfig } from "@/lib/ai/resolve-active-ai-config";
+import { useLibraryStore } from "@/stores";
 import { useChatStore } from "@/stores/chat-store";
-import { useLibraryStore } from "@/stores/library-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import type { AttachedQuote } from "@readany/core/types";
+import type { CitationPart } from "@readany/core/types/message";
 import {
   convertToMessageV2,
   formatRelativeTimeShort,
@@ -26,22 +36,43 @@ import {
   groupThreadsByTime,
   mergeMessagesWithStreaming,
 } from "@readany/core/utils";
-import { Alert } from "react-native";
 
 import { NarraChat } from "@/components/chat/NarraChat";
 import { MessageCirclePlusIcon, Trash2Icon, XIcon } from "@/components/ui/Icon";
 import { fontSize as fs, fontWeight as fw, radius, useColors, withOpacity } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
 
+type ChatRoute = RouteProp<RootStackParamList, "Chat"> | RouteProp<RootStackParamList, "BookChat">;
+
 export function ChatScreen() {
   const { t } = useTranslation();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const route = useRoute<ChatRoute>();
+  const bookParams = route.name === "BookChat" ? route.params : undefined;
+  const bookId = bookParams?.bookId;
   const books = useLibraryStore((state) => state.books);
+  const book = useMemo(
+    () => (bookId ? books.find((item) => item.id === bookId) : undefined),
+    [bookId, books],
+  );
+  const [quotes, setQuotes] = useState<AttachedQuote[]>([]);
+
   useEffect(() => {
     navigation.setOptions({ title: "Narra AI" });
   }, [navigation]);
+
+  useEffect(() => {
+    if (!bookParams?.selectedText || quotes.length > 0) return;
+    setQuotes([
+      {
+        id: `quote-${Date.now()}`,
+        text: bookParams.selectedText,
+        source: bookParams.chapterTitle || undefined,
+      },
+    ]);
+  }, [bookParams?.chapterTitle, bookParams?.selectedText, quotes.length]);
   const layout = useResponsiveLayout();
   const isTabletLandscape = layout.isTabletLandscape;
   const sidebarWidth = isTabletLandscape
@@ -102,15 +133,30 @@ export function ChatScreen() {
   const generalActiveThreadId = useChatStore((s) => s.generalActiveThreadId);
   const initialized = useChatStore((s) => s.initialized);
   const loadAllThreads = useChatStore((s) => s.loadAllThreads);
+  const loadThreads = useChatStore((s) => s.loadThreads);
   const removeThread = useChatStore((s) => s.removeThread);
   const setGeneralActiveThread = useChatStore((s) => s.setGeneralActiveThread);
+  const setBookActiveThread = useChatStore((s) => s.setBookActiveThread);
+  const getActiveThreadId = useChatStore((s) => s.getActiveThreadId);
   const getThreadsForContext = useChatStore((s) => s.getThreadsForContext);
 
   useEffect(() => {
-    if (!initialized) loadAllThreads();
-  }, [initialized, loadAllThreads]);
+    if (bookId) {
+      void loadThreads(bookId);
+    } else if (!initialized) {
+      void loadAllThreads();
+    }
+  }, [bookId, initialized, loadAllThreads, loadThreads]);
 
-  const generalThreads = getThreadsForContext();
+  const contextThreads = getThreadsForContext(bookId);
+  const activeThreadId = bookId ? getActiveThreadId(bookId) : generalActiveThreadId;
+  const firstContextThreadId = contextThreads[0]?.id;
+
+  useEffect(() => {
+    if (bookId && !activeThreadId && firstContextThreadId) {
+      setBookActiveThread(bookId, firstContextThreadId);
+    }
+  }, [activeThreadId, bookId, firstContextThreadId, setBookActiveThread]);
 
   // Streaming chat
   const {
@@ -122,11 +168,11 @@ export function ChatScreen() {
     sendMessage,
     retryLastMessage,
     stopStream,
-  } = useStreamingChat();
+  } = useStreamingChat(bookId ? { book, bookId } : undefined);
 
   // Messages - compute directly without useMemo to ensure reactivity
-  const activeThread = generalActiveThreadId
-    ? threads.find((th) => th.id === generalActiveThreadId)
+  const activeThread = activeThreadId
+    ? threads.find((thread) => thread.id === activeThreadId)
     : null;
 
   const activeCurrentMessage =
@@ -160,9 +206,9 @@ export function ChatScreen() {
         return;
       }
 
-      await sendMessage(text, undefined, deepThinking, spoilerFree, quotes, resolvedAIConfig);
+      await sendMessage(text, bookId, deepThinking, spoilerFree, quotes, resolvedAIConfig);
     },
-    [sendMessage, navigation, t],
+    [bookId, navigation, sendMessage, t],
   );
 
   const handleRetry = useCallback(async () => {
@@ -188,37 +234,56 @@ export function ChatScreen() {
   }, [navigation, retryLastMessage, t]);
 
   const handleNewThread = useCallback(() => {
-    setGeneralActiveThread(null);
+    if (bookId) {
+      setBookActiveThread(bookId, null);
+    } else {
+      setGeneralActiveThread(null);
+    }
     closeSidebar();
-  }, [setGeneralActiveThread, closeSidebar]);
+  }, [bookId, closeSidebar, setBookActiveThread, setGeneralActiveThread]);
 
   const handleSelectThread = useCallback(
     (threadId: string) => {
-      setGeneralActiveThread(threadId);
+      if (bookId) {
+        setBookActiveThread(bookId, threadId);
+      } else {
+        setGeneralActiveThread(threadId);
+      }
       closeSidebar();
     },
-    [setGeneralActiveThread, closeSidebar],
+    [bookId, closeSidebar, setBookActiveThread, setGeneralActiveThread],
   );
 
-  const handleSelectBook = useCallback(
-    (bookId: string) => {
-      navigation.replace("BookChat", { bookId });
+  const handleRemoveQuote = useCallback((id: string) => {
+    setQuotes((current) => current.filter((quote) => quote.id !== id));
+  }, []);
+
+  const handleCitationClick = useCallback(
+    (citation: CitationPart) => {
+      if (!citation.bookId) return;
+      void openMobileBook({
+        bookId: citation.bookId,
+        navigation,
+        t,
+        cfi: citation.cfi,
+        highlight: true,
+      });
     },
-    [navigation],
+    [navigation, t],
   );
 
   const formatTime = useCallback((ts: number) => formatRelativeTimeShort(ts, t), [t]);
 
   const groupedThreads = useMemo(() => {
-    const grouped = groupThreadsByTime(generalThreads);
-    const sections: { key: string; label: string; threads: typeof generalThreads }[] = [
+    const grouped = groupThreadsByTime(contextThreads);
+    const sections: { key: string; label: string; threads: typeof contextThreads }[] = [
       { key: "today", label: t("chat.today", "今天"), threads: grouped.today },
       { key: "yesterday", label: t("chat.yesterday", "昨天"), threads: grouped.yesterday },
       { key: "last7Days", label: t("chat.last7Days", "7 天内"), threads: grouped.last7Days },
       { key: "last30Days", label: t("chat.last30Days", "30 天内"), threads: grouped.last30Days },
     ];
 
-    const olderByMonth = new Map<string, typeof generalThreads>();
+    const olderByMonth = new Map<string, typeof contextThreads>();
     for (const thread of grouped.older) {
       const monthLabel = getMonthLabel(thread.updatedAt);
       let monthThreads = olderByMonth.get(monthLabel);
@@ -237,7 +302,7 @@ export function ChatScreen() {
     }
 
     return sections;
-  }, [generalThreads, t]);
+  }, [contextThreads, t]);
 
   const renderSidebarContent = useCallback(
     (closable: boolean) => (
@@ -256,10 +321,11 @@ export function ChatScreen() {
         </View>
         <ScrollView
           style={{ flex: 1 }}
+          contentInsetAdjustmentBehavior="automatic"
           contentContainerStyle={{ paddingBottom: 20 }}
           showsVerticalScrollIndicator={false}
         >
-          {generalThreads.length === 0 ? (
+          {contextThreads.length === 0 ? (
             <View style={s.sidebarEmpty}>
               <Text style={s.sidebarEmptyText}>{t("chat.noConversations", "暂无对话")}</Text>
             </View>
@@ -270,7 +336,7 @@ export function ChatScreen() {
                 <View key={key}>
                   <Text style={s.sectionLabel}>{label}</Text>
                   {threads.map((thread) => {
-                    const isActive = thread.id === generalActiveThreadId;
+                    const isActive = thread.id === activeThreadId;
                     const lastMsg =
                       thread.messages.length > 0
                         ? thread.messages[thread.messages.length - 1]
@@ -320,9 +386,9 @@ export function ChatScreen() {
       closeSidebar,
       colors.foreground,
       colors.mutedForeground,
+      activeThreadId,
+      contextThreads.length,
       formatTime,
-      generalActiveThreadId,
-      generalThreads.length,
       groupedThreads,
       handleNewThread,
       handleSelectThread,
@@ -332,43 +398,8 @@ export function ChatScreen() {
     ],
   );
 
-  useNativeHeaderActions({
-    left: [],
-    right: [
-      {
-        type: "menu",
-        label: t("chat.selectBook", "Выбрать книгу"),
-        accessibilityLabel: t("chat.selectBook", "Выбрать книгу"),
-        icon: "components",
-        sfSymbol: "book.closed",
-        disabled: isStreaming,
-        items: [
-          {
-            label: t("chat.generalChat", "Общий чат"),
-            sfSymbol: "checkmark",
-            onPress: () => {},
-            disabled: true,
-          },
-          ...(books.length > 0
-            ? books.map((book) => ({
-                label: book.meta.title,
-                sfSymbol: "book.closed",
-                onPress: () => handleSelectBook(book.id),
-              }))
-            : [
-                {
-                  label: t("chat.noBooksInLibrary", "В библиотеке нет книг"),
-                  onPress: () => {},
-                  disabled: true,
-                },
-              ]),
-        ],
-      },
-    ],
-  });
-
   return (
-    <SafeAreaView style={s.container} edges={[]}>
+    <View style={[s.container, { paddingBottom: insets.bottom }]}>
       <View style={s.shell}>
         {isTabletLandscape && (
           <View style={[s.sidebarDocked, { paddingTop: insets.top }]}>
@@ -392,6 +423,9 @@ export function ChatScreen() {
               }
               retryLabel={t("common.retry", "Повторить")}
               onRetry={handleRetry}
+              quotes={quotes}
+              onRemoveQuote={handleRemoveQuote}
+              onCitationClick={handleCitationClick}
               autoFocus
             />
           </View>
@@ -420,7 +454,7 @@ export function ChatScreen() {
           </Animated.View>
         </View>
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 

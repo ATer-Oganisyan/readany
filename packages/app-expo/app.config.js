@@ -18,6 +18,7 @@ module.exports = {
       bundleIdentifier: variant.bundleIdentifier,
       buildNumber: "2",
       infoPlist: {
+        UIViewControllerBasedStatusBarAppearance: true,
         UIBackgroundModes: ["audio"],
         NSCameraUsageDescription:
           "Камера нужна Narra для сканирования QR‑кодов синхронизации и настройки.",
@@ -90,6 +91,8 @@ module.exports = {
       "expo-secure-store",
       "expo-sqlite",
       "expo-asset",
+      "./plugins/withIosSceneLifecycle",
+      "./plugins/withReactNativeScreensGamma",
       "./plugins/withVolumeKeyPaging",
       "./plugins/withBottomSplashScreen",
       [

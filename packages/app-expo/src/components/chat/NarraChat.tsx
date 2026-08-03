@@ -1,6 +1,5 @@
 import { fontFamily, useTheme, withOpacity } from "@/styles/theme";
 import { useHeaderHeight } from "@react-navigation/elements";
-import { useFocusEffect } from "@react-navigation/native";
 import type { AttachedQuote } from "@readany/core/types";
 import type { CitationPart, MessageV2 } from "@readany/core/types/message";
 import * as Clipboard from "expo-clipboard";
@@ -135,17 +134,6 @@ export function NarraChat({
   const chatMessages = useMemo(
     () => messages.map((message) => toChatMessage(message, streamingMessageId)).reverse(),
     [messages, streamingMessageId],
-  );
-
-  useFocusEffect(
-    useCallback(() => {
-      if (!autoFocus) return;
-      const timer = setTimeout(() => inputRef.current?.focus(), 250);
-      return () => {
-        clearTimeout(timer);
-        inputRef.current?.blur();
-      };
-    }, [autoFocus]),
   );
 
   const theme = useMemo<PartialChatTheme>(
@@ -317,6 +305,7 @@ export function NarraChat({
       isScrollToBottomEnabled
       textInputRef={inputRef}
       textInputProps={{
+        autoFocus,
         placeholder,
         placeholderTextColor: colors.mutedForeground,
         editable: !isStreaming,

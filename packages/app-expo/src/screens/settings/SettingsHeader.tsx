@@ -3,7 +3,7 @@ import { titleFontFamily, useColors } from "@/styles/theme";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useLayoutEffect } from "react";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 
 interface Props {
   title: string;
@@ -20,7 +20,10 @@ export function SettingsHeader({ title, right }: Props) {
     nav.setOptions({
       headerShown: true,
       title,
-      headerStyle: { backgroundColor: colors.background },
+      headerTransparent: Platform.OS === "ios",
+      headerStyle: {
+        backgroundColor: Platform.OS === "ios" ? "transparent" : colors.background,
+      },
       headerShadowVisible: false,
       headerTintColor: colors.foreground,
       headerTitleStyle: {

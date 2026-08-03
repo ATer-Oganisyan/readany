@@ -1,10 +1,12 @@
 import { MissingBookPrompt } from "@/components/shared/MissingBookPrompt";
 import BadgesScreen from "@/screens/BadgesScreen";
-import { BookChatScreen } from "@/screens/BookChatScreen";
 import { BookDetailsScreen } from "@/screens/BookDetailsScreen";
 import { ChatScreen } from "@/screens/ChatScreen";
 import { FullScreenNotesScreen } from "@/screens/FullScreenNotesScreen";
 import { ManualNoteScreen } from "@/screens/ManualNoteScreen";
+import { NarraCharacterChatScreen } from "@/screens/NarraCharacterChatScreen";
+import { NarraCharactersScreen } from "@/screens/NarraCharactersScreen";
+import { NarraSceneScreen } from "@/screens/NarraSceneScreen";
 import { ReaderScreen } from "@/screens/ReaderScreen";
 import SkillsScreen from "@/screens/SkillsScreen";
 import StatsScreen from "@/screens/StatsScreen";
@@ -23,14 +25,16 @@ import TTSSettingsScreen from "@/screens/settings/TTSSettingsScreen";
 import TranslationSettingsScreen from "@/screens/settings/TranslationSettingsScreen";
 import VectorModelSettingsScreen from "@/screens/settings/VectorModelSettingsScreen";
 import { useSettingsStore } from "@/stores";
-import { titleFontFamily, useColors } from "@/styles/theme";
+import { titleFontFamily, useColors, useTheme } from "@/styles/theme";
 /**
  * RootNavigator — top-level stack matching Tauri mobile App.tsx routes exactly.
  */
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import type { WebDavImportSource } from "@readany/core";
 import { useTranslation } from "react-i18next";
+import { Platform } from "react-native";
 import { TabNavigator } from "./TabNavigator";
+import { NATIVE_SCROLL_EDGE_EFFECTS } from "./scroll-edge-effects";
 
 export type RootStackParamList = {
   Tabs: undefined;
@@ -38,6 +42,14 @@ export type RootStackParamList = {
   Reader: { bookId: string; cfi?: string; highlight?: boolean; openTTS?: boolean };
   BookDetails: { bookId: string };
   BookChat: { bookId: string; selectedText?: string; chapterTitle?: string };
+  NarraCharacters: { bookId: string };
+  NarraCharacterChat: { bookId: string; characterId: string };
+  NarraScene: {
+    bookId: string;
+    chapter: string;
+    excerpt: string;
+    sourceKey: string;
+  };
   Stats: undefined;
   Badges: undefined;
   Skills: undefined;
@@ -49,7 +61,15 @@ export type RootStackParamList = {
   SyncSettings: undefined;
   About: undefined;
   FullScreenNotes: { bookId: string };
-  ManualNote: undefined;
+  ManualNote:
+    | {
+        noteId?: string;
+        bookId?: string;
+        cfi?: string;
+        text?: string;
+        chapterTitle?: string;
+      }
+    | undefined;
   FontSettings: undefined;
   WebDavImportBrowser: { source: WebDavImportSource };
   Storybook: undefined;
@@ -61,6 +81,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 export function RootNavigator() {
   const { _hasHydrated } = useSettingsStore();
   const colors = useColors();
+  const { isDark } = useTheme();
   const { t } = useTranslation();
 
   if (!_hasHydrated) return null;
@@ -70,7 +91,10 @@ export function RootNavigator() {
       <Stack.Navigator
         screenOptions={{
           headerShown: true,
-          headerStyle: { backgroundColor: colors.background },
+          headerTransparent: Platform.OS === "ios",
+          headerStyle: {
+            backgroundColor: Platform.OS === "ios" ? "transparent" : colors.background,
+          },
           headerShadowVisible: false,
           headerTintColor: colors.foreground,
           headerBackButtonDisplayMode: "minimal",
@@ -79,19 +103,34 @@ export function RootNavigator() {
             fontFamily: titleFontFamily,
             fontWeight: "600",
           },
+          scrollEdgeEffects: NATIVE_SCROLL_EDGE_EFFECTS,
           contentStyle: { backgroundColor: colors.background },
+          statusBarHidden: false,
+          statusBarStyle: isDark ? "light" : "dark",
         }}
       >
         <Stack.Screen name="Tabs" component={TabNavigator} options={{ headerShown: false }} />
         <Stack.Screen
           name="Chat"
           component={ChatScreen}
-          options={{ animation: "slide_from_right", title: "Narra AI" }}
+          options={{
+            presentation: "formSheet",
+            title: "Narra AI",
+            sheetAllowedDetents: [0.9, 1],
+            sheetInitialDetentIndex: 0,
+            sheetGrabberVisible: true,
+            sheetExpandsWhenScrolledToEdge: true,
+          }}
         />
         <Stack.Screen
           name="Reader"
           component={ReaderScreen}
-          options={{ animation: "slide_from_right", headerShown: false }}
+          options={{
+            animation: "slide_from_right",
+            headerShown: false,
+            statusBarHidden: true,
+            statusBarAnimation: "fade",
+          }}
         />
         <Stack.Screen
           name="BookDetails"
@@ -103,8 +142,41 @@ export function RootNavigator() {
         />
         <Stack.Screen
           name="BookChat"
-          component={BookChatScreen}
-          options={{ animation: "slide_from_right", title: t("chat.bookChat", "Чат о книге") }}
+          component={ChatScreen}
+          options={{
+            presentation: "formSheet",
+            title: "Narra AI",
+            sheetAllowedDetents: [0.9, 1],
+            sheetInitialDetentIndex: 0,
+            sheetGrabberVisible: true,
+            sheetExpandsWhenScrolledToEdge: true,
+          }}
+        />
+        <Stack.Screen
+          name="NarraCharacters"
+          component={NarraCharactersScreen}
+          options={{
+            animation: "slide_from_right",
+            title: t("narra.characters", "Персонажи"),
+          }}
+        />
+        <Stack.Screen
+          name="NarraCharacterChat"
+          component={NarraCharacterChatScreen}
+          options={{
+            animation: "slide_from_right",
+            title: t("narra.characterChat", "Чат с персонажем"),
+          }}
+        />
+        <Stack.Screen
+          name="NarraScene"
+          component={NarraSceneScreen}
+          options={{
+            animation: "slide_from_right",
+            title: "Сцена",
+            headerRight: undefined,
+            unstable_headerRightItems: () => [],
+          }}
         />
         <Stack.Screen
           name="Stats"

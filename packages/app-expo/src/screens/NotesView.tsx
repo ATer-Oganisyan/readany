@@ -10,11 +10,13 @@ import {
   NotebookPenIcon,
 } from "@/components/ui/Icon";
 import { NativeContextMenuButton } from "@/components/ui/NativeContextMenuButton";
+import { ScrollViewMarker } from "@/components/ui/ScrollViewMarker";
 import { Text } from "@/components/ui/Typography";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { EmptyStateActionButton } from "@/components/ui/empty-state-action-button";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
+import { NATIVE_SCROLL_EDGE_EFFECTS } from "@/navigation/scroll-edge-effects";
 import { useAnnotationStore, useLibraryStore } from "@/stores";
 import { useColors } from "@/styles/theme";
 import { useHeaderHeight } from "@react-navigation/elements";
@@ -473,44 +475,51 @@ export function NotesView({
             </Text>
           </View>
         ) : (
-          <ScrollView style={s.detailList} showsVerticalScrollIndicator={false}>
-            {itemsByChapter.map(({ chapter, items }) => (
-              <View key={chapter} style={s.chapterGroup}>
-                {/* Chapter divider */}
-                <View style={s.chapterDivider}>
-                  <View style={s.chapterLine} />
-                  <Text style={s.chapterName}>{chapter}</Text>
-                  <View style={s.chapterLine} />
-                </View>
+          <ScrollViewMarker style={s.detailList} scrollEdgeEffects={NATIVE_SCROLL_EDGE_EFFECTS}>
+            <ScrollView
+              style={s.detailList}
+              contentInsetAdjustmentBehavior="automatic"
+              showsVerticalScrollIndicator={false}
+              alwaysBounceVertical
+            >
+              {itemsByChapter.map(({ chapter, items }) => (
+                <View key={chapter} style={s.chapterGroup}>
+                  {/* Chapter divider */}
+                  <View style={s.chapterDivider}>
+                    <View style={s.chapterLine} />
+                    <Text style={s.chapterName}>{chapter}</Text>
+                    <View style={s.chapterLine} />
+                  </View>
 
-                {items.map((item) =>
-                  detailTab === "notes" ? (
-                    <NoteCard
-                      key={item.id}
-                      highlight={item}
-                      isEditing={editingId === item.id}
-                      editNote={editNote}
-                      setEditNote={setEditNote}
-                      onStartEdit={() => startEditNote(item)}
-                      onSaveNote={() => saveNote(item.id)}
-                      onCancelEdit={cancelEdit}
-                      onDeleteNote={() => handleDeleteNote(item)}
-                      onNavigate={() => handleOpenBook(selectedBook.bookId, item.cfi)}
-                      t={t}
-                    />
-                  ) : (
-                    <HighlightCard
-                      key={item.id}
-                      highlight={item}
-                      onDelete={() => handleDeleteHighlight(item)}
-                      onNavigate={() => handleOpenBook(selectedBook.bookId, item.cfi)}
-                    />
-                  ),
-                )}
-              </View>
-            ))}
-            <View style={{ height: 24 }} />
-          </ScrollView>
+                  {items.map((item) =>
+                    detailTab === "notes" ? (
+                      <NoteCard
+                        key={item.id}
+                        highlight={item}
+                        isEditing={editingId === item.id}
+                        editNote={editNote}
+                        setEditNote={setEditNote}
+                        onStartEdit={() => startEditNote(item)}
+                        onSaveNote={() => saveNote(item.id)}
+                        onCancelEdit={cancelEdit}
+                        onDeleteNote={() => handleDeleteNote(item)}
+                        onNavigate={() => handleOpenBook(selectedBook.bookId, item.cfi)}
+                        t={t}
+                      />
+                    ) : (
+                      <HighlightCard
+                        key={item.id}
+                        highlight={item}
+                        onDelete={() => handleDeleteHighlight(item)}
+                        onNavigate={() => handleOpenBook(selectedBook.bookId, item.cfi)}
+                      />
+                    ),
+                  )}
+                </View>
+              ))}
+              <View style={{ height: 24 }} />
+            </ScrollView>
+          </ScrollViewMarker>
         )}
       </SafeAreaView>
     );
@@ -519,20 +528,30 @@ export function NotesView({
   if (noteSections.length === 0) {
     return (
       <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={edges}>
-        <CenteredEmptyState
-          title={t("notes.empty", "Заметок пока нет")}
-          description={t(
-            "notes.emptyHint",
-            "Добавьте заметку сейчас или выделите текст во время чтения.",
-          )}
-          avoidNativeTabBar={showBackButton}
-        >
-          <EmptyStateActionButton
-            label={t("notes.addNote", "Добавить заметку")}
-            accessibilityLabel={t("notes.addNote", "Добавить заметку")}
-            onPress={() => nav.navigate("ManualNote")}
-          />
-        </CenteredEmptyState>
+        <ScrollViewMarker style={{ flex: 1 }} scrollEdgeEffects={NATIVE_SCROLL_EDGE_EFFECTS}>
+          <ScrollView
+            style={{ flex: 1 }}
+            contentInsetAdjustmentBehavior="automatic"
+            contentContainerStyle={{ flexGrow: 1 }}
+            alwaysBounceVertical
+            showsVerticalScrollIndicator={false}
+          >
+            <CenteredEmptyState
+              title={t("notes.empty", "Заметок пока нет")}
+              description={t(
+                "notes.emptyHint",
+                "Добавьте заметку сейчас или выделите текст во время чтения.",
+              )}
+              avoidNativeTabBar={showBackButton}
+            >
+              <EmptyStateActionButton
+                label={t("notes.addNote", "Добавить заметку")}
+                accessibilityLabel={t("notes.addNote", "Добавить заметку")}
+                onPress={() => nav.navigate("ManualNote")}
+              />
+            </CenteredEmptyState>
+          </ScrollView>
+        </ScrollViewMarker>
       </SafeAreaView>
     );
   }

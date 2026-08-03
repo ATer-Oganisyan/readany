@@ -30,6 +30,7 @@ export function NativeNotesList({ sections, onPress }: NativeNotesListProps) {
       sections={sections}
       keyExtractor={(item) => item.id}
       contentInsetAdjustmentBehavior="automatic"
+      alwaysBounceVertical
       stickySectionHeadersEnabled={false}
       showsVerticalScrollIndicator={false}
       contentContainerStyle={styles.content}

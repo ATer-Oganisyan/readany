@@ -1,8 +1,8 @@
-import type { TabParamList } from "@/navigation/TabNavigator";
-import type { NativeBottomTabScreenProps } from "@react-navigation/bottom-tabs/unstable";
+import type { NotesTabStackParamList } from "@/navigation/TabNavigator";
+import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { NotesView } from "./NotesView";
 
-type Props = NativeBottomTabScreenProps<TabParamList, "Notes">;
+type Props = NativeStackScreenProps<NotesTabStackParamList, "NotesHome">;
 
 /**
  * NotesScreen — Tab version of the notes list.

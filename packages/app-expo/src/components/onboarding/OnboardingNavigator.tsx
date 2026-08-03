@@ -26,6 +26,12 @@ export function OnboardingNavigator() {
         screenOptions={{
           headerShown: false,
           animation: "slide_from_right",
+          scrollEdgeEffects: {
+            top: "soft",
+            bottom: "soft",
+            left: "soft",
+            right: "soft",
+          },
           contentStyle: { backgroundColor: "transparent" },
         }}
       >

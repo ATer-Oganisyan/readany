@@ -12,6 +12,7 @@ const icons: Record<NativeButtonIcon, string> = {
   add: "plus",
   back: "chevron.backward",
   forward: "chevron.forward",
+  image: "photo.badge.plus",
   check: "checkmark",
   chat: "message",
   close: "xmark",

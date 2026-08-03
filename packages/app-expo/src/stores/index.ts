@@ -7,6 +7,8 @@ export type { Tab, TabType, SidebarTab, SettingsTab, AppState } from "./app-stor
 
 export { useReaderStore } from "./reader-store";
 export type { NavigationHistoryItem, ReaderTab, ReaderState } from "./reader-store";
+export { useNarraStore } from "./narra-store";
+export type { NarraState } from "./narra-store";
 
 export { useSettingsStore } from "./settings-store";
 export type { SettingsState } from "./settings-store";

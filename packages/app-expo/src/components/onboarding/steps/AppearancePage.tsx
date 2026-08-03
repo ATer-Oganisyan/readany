@@ -42,7 +42,11 @@ export function AppearancePage() {
   return (
     <View style={[styles.safeArea, { backgroundColor: colors.background }]}>
       <Animated.View entering={SlideInRight.duration(500)} style={styles.container}>
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+        <ScrollView
+          style={styles.scroll}
+          contentInsetAdjustmentBehavior="automatic"
+          contentContainerStyle={styles.scrollContent}
+        >
           <View style={styles.header}>
             <Text style={[styles.title, { color: colors.foreground }]}>
               {t("onboarding.appearance.title", "Appearance & Language")}

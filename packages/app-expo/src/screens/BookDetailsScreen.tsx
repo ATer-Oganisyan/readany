@@ -1,18 +1,21 @@
-import { Text, TextInput, type TextInputHandle } from "@/components/ui/Typography";
 import {
   CalendarIcon,
   CheckIcon,
   ChevronRightIcon,
   EditIcon,
   PlusIcon,
+  SparklesIcon,
+  Star,
   Trash2Icon,
 } from "@/components/ui/Icon";
+import { Text, TextInput, type TextInputHandle } from "@/components/ui/Typography";
 import { useKeyboardInsets } from "@/hooks/use-keyboard-insets";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { extractLocalBookMetadata } from "@/lib/book/auto-metadata";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { SettingsHeader } from "@/screens/settings/SettingsHeader";
 import { useLibraryStore } from "@/stores/library-store";
+import { useNarraStore } from "@/stores/narra-store";
 import {
   type ThemeColors,
   fontSize,
@@ -38,7 +41,6 @@ import {
 } from "@readany/core/utils";
 import * as ImagePicker from "expo-image-picker";
 import type { TFunction } from "i18next";
-import { Star } from "@/components/ui/Icon";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -272,7 +274,7 @@ async function pickCoverFromPhotoLibrary(): Promise<PickedCoverSource | null> {
   };
 }
 
-export function BookDetailsScreen({ route }: Props) {
+export function BookDetailsScreen({ route, navigation }: Props) {
   const { bookId } = route.params;
   const colors = useColors();
   const layout = useResponsiveLayout();
@@ -286,6 +288,7 @@ export function BookDetailsScreen({ route }: Props) {
   const loadBooks = useLibraryStore((state) => state.loadBooks);
   const updateBook = useLibraryStore((state) => state.updateBook);
   const book = books.find((item) => item.id === bookId) ?? null;
+  const narraBook = useNarraStore((state) => state.books[bookId]);
   const [values, setValues] = useState<BookMetadataFormValues | null>(null);
   const [coverSrc, setCoverSrc] = useState<string | undefined>();
   const [newTag, setNewTag] = useState("");
@@ -488,10 +491,7 @@ export function BookDetailsScreen({ route }: Props) {
 
   if (!book || !values) {
     return (
-      <SafeAreaView
-        style={[styles.container, { backgroundColor: colors.background }]}
-        edges={[]}
-      >
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={[]}>
         <SettingsHeader title={t("library.detailsTitle", "书籍详情")} />
         <View style={styles.missingWrap}>
           <Text style={styles.missingText}>{t("library.bookNotFound", "书籍不存在")}</Text>
@@ -505,14 +505,12 @@ export function BookDetailsScreen({ route }: Props) {
   const reviewCount = values.reviews.filter((review) => review.content.trim()).length;
 
   return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: colors.background }]}
-      edges={[]}
-    >
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={[]}>
       <SettingsHeader title={t("library.detailsTitle", "书籍详情")} />
       <View style={styles.flex}>
         <ScrollView
           style={styles.flex}
+          contentInsetAdjustmentBehavior="automatic"
           automaticallyAdjustKeyboardInsets={false}
           contentContainerStyle={[
             styles.scrollContent,
@@ -633,6 +631,34 @@ export function BookDetailsScreen({ route }: Props) {
               last
             />
           </View>
+
+          <TouchableOpacity
+            accessibilityRole="button"
+            activeOpacity={0.82}
+            onPress={() => navigation.navigate("NarraCharacters", { bookId })}
+            style={styles.narraPanel}
+          >
+            <View style={styles.narraMark}>
+              <SparklesIcon size={22} color={colors.primaryForeground} />
+            </View>
+            <View style={styles.narraPanelCopy}>
+              <Text style={styles.narraPanelEyebrow}>NARRA</Text>
+              <Text style={styles.narraPanelTitle}>
+                {narraBook?.characters.length
+                  ? t("narra.charactersReady", "Персонажи готовы: {{count}}", {
+                      count: narraBook.characters.length,
+                    })
+                  : t("narra.bringBookToLife", "Найти персонажей")}
+              </Text>
+              <Text style={styles.narraPanelDescription} numberOfLines={2}>
+                {t(
+                  "narra.bookDetailsDescription",
+                  "Общайтесь с героями без спойлеров и создавайте их статичные портреты.",
+                )}
+              </Text>
+            </View>
+            <ChevronRightIcon size={22} color={colors.mutedForeground} />
+          </TouchableOpacity>
 
           <View style={styles.tabBar}>
             <DetailsTabButton
@@ -1906,6 +1932,42 @@ const makeStyles = (colors: ThemeColors) =>
       borderTopWidth: StyleSheet.hairlineWidth,
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderColor: withOpacity(colors.border, 0.8),
+    },
+    narraPanel: {
+      minHeight: 92,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.md,
+      padding: spacing.lg,
+      borderRadius: radius.card,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
+    },
+    narraMark: {
+      width: 44,
+      height: 44,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.xl,
+      backgroundColor: colors.primary,
+    },
+    narraPanelCopy: { flex: 1, gap: 3 },
+    narraPanelEyebrow: {
+      color: colors.primary,
+      fontSize: 10,
+      fontWeight: fontWeight.bold,
+      letterSpacing: 1.2,
+    },
+    narraPanelTitle: {
+      color: colors.foreground,
+      fontSize: fontSize.base,
+      fontWeight: fontWeight.semibold,
+    },
+    narraPanelDescription: {
+      color: colors.mutedForeground,
+      fontSize: fontSize.xs,
+      lineHeight: 17,
     },
     metaItem: {
       flex: 1,

@@ -21,7 +21,7 @@ export function ManualNoteScreen({ navigation, route }: Props) {
   const addHighlight = useAnnotationStore((state) => state.addHighlight);
   const updateHighlight = useAnnotationStore((state) => state.updateHighlight);
   const highlightsWithBooks = useAnnotationStore((state) => state.highlightsWithBooks);
-  const noteId = (route.params as unknown as { noteId?: string } | undefined)?.noteId;
+  const noteId = route.params?.noteId;
   const existingNote = useMemo(
     () => highlightsWithBooks.find((highlight) => highlight.id === noteId),
     [highlightsWithBooks, noteId],
@@ -30,7 +30,9 @@ export function ManualNoteScreen({ navigation, route }: Props) {
     existingNote &&
       (existingNote.cfi || existingNote.text || existingNote.chapterTitle === "Заметка к книге"),
   );
-  const [bookId, setBookId] = useState(existingNoteHasBook ? existingNote?.bookId || "" : "");
+  const [bookId, setBookId] = useState(
+    existingNoteHasBook ? existingNote?.bookId || "" : route.params?.bookId || "",
+  );
   const [content, setContent] = useState(existingNote?.note || "");
   const [saving, setSaving] = useState(false);
   const selectedBook = useMemo(() => books.find((book) => book.id === bookId), [bookId, books]);
@@ -67,11 +69,11 @@ export function ManualNoteScreen({ navigation, route }: Props) {
       await addHighlight({
         id: generateId(),
         bookId: selectedBook?.id ?? "",
-        cfi: "",
-        text: "",
+        cfi: route.params?.cfi ?? "",
+        text: route.params?.text ?? "",
         color: "yellow",
         note,
-        chapterTitle: selectedBook ? "Заметка к книге" : undefined,
+        chapterTitle: route.params?.chapterTitle ?? (selectedBook ? "Заметка к книге" : undefined),
         createdAt: now,
         updatedAt: now,
       });
@@ -85,7 +87,19 @@ export function ManualNoteScreen({ navigation, route }: Props) {
     } finally {
       setSaving(false);
     }
-  }, [addHighlight, content, existingNote, navigation, saving, selectedBook, t, updateHighlight]);
+  }, [
+    addHighlight,
+    content,
+    existingNote,
+    navigation,
+    route.params?.cfi,
+    route.params?.chapterTitle,
+    route.params?.text,
+    saving,
+    selectedBook,
+    t,
+    updateHighlight,
+  ]);
 
   useLayoutEffect(() => {
     const canSave = Boolean(content.trim()) && !saving;
@@ -94,8 +108,10 @@ export function ManualNoteScreen({ navigation, route }: Props) {
       title: existingNote
         ? t("notes.editNote", "Редактировать заметку")
         : t("notes.newNote", "Новая заметка"),
-      headerTransparent: false,
-      headerStyle: { backgroundColor: colors.background },
+      headerTransparent: Platform.OS === "ios",
+      headerStyle: {
+        backgroundColor: Platform.OS === "ios" ? "transparent" : colors.background,
+      },
       ...(Platform.OS === "ios"
         ? {
             unstable_headerRightItems: () => [

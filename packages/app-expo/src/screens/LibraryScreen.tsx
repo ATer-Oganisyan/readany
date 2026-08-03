@@ -10,13 +10,13 @@ import {
   FolderInputIcon,
   FolderMinusIcon,
   HashIcon,
-  MoreVerticalIcon,
   PlusIcon,
   SearchIcon,
   Trash2Icon,
   XIcon,
 } from "@/components/ui/Icon";
 import { NativeButton } from "@/components/ui/NativeButton";
+import { ScrollViewMarker } from "@/components/ui/ScrollViewMarker";
 import { SyncButton } from "@/components/ui/SyncButton";
 import { Text, TextInput, type TextInputHandle } from "@/components/ui/Typography";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
@@ -25,6 +25,7 @@ import { openMobileBook } from "@/lib/library/open-mobile-book";
 import { queueBookForAutoVectorize } from "@/lib/rag/auto-vectorize-book";
 import { setCallback, setExtractorRef } from "@/lib/rag/auto-vectorize-service";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
+import { NATIVE_SCROLL_EDGE_EFFECTS } from "@/navigation/scroll-edge-effects";
 import { useLibraryStore } from "@/stores/library-store";
 import { useVectorModelStore } from "@/stores/vector-model-store";
 import {
@@ -42,7 +43,7 @@ import { getPlatformService } from "@readany/core";
 import { setFallbackContentProvider } from "@readany/core/ai";
 import { onLibraryChanged } from "@readany/core/events/library-events";
 import { useSyncStore } from "@readany/core/stores";
-import type { Book, BookGroup, SortField } from "@readany/core/types";
+import type { Book, BookGroup } from "@readany/core/types";
 import * as DocumentPicker from "expo-document-picker";
 import { File as ExpoFile, Paths } from "expo-file-system";
 /**
@@ -112,14 +113,6 @@ function getUrlImportFilename(url: URL): string {
 
   return safeName;
 }
-
-const SORT_OPTIONS: { field: SortField; labelKey: string }[] = [
-  { field: "lastOpenedAt", labelKey: "library.sortRecent" },
-  { field: "addedAt", labelKey: "library.sortAdded" },
-  { field: "title", labelKey: "library.sortTitle" },
-  { field: "author", labelKey: "library.sortAuthor" },
-  { field: "progress", labelKey: "library.sortProgress" },
-];
 
 type LibraryGridItem =
   | { type: "group"; group: BookGroup; books: Book[] }
@@ -582,51 +575,9 @@ export function LibraryScreen() {
     [nav, searchAnim, setFilter, showSearch],
   );
 
-  const handleSortChange = useCallback(
-    (field: SortField) => {
-      if (filter.sortField === field) {
-        setFilter({ sortOrder: filter.sortOrder === "asc" ? "desc" : "asc" });
-      } else {
-        setFilter({
-          sortField: field,
-          sortOrder: field === "title" || field === "author" ? "asc" : "desc",
-        });
-      }
-    },
-    [filter, setFilter],
-  );
-
-  const handleOpenSortOptions = useCallback(() => {
-    Alert.alert(t("library.sort", "Сортировка"), undefined, [
-      ...SORT_OPTIONS.map(({ field, labelKey }) => ({
-        text: t(labelKey),
-        onPress: () => handleSortChange(field),
-      })),
-      { text: t("common.cancel", "Отмена"), style: "cancel" as const },
-    ]);
-  }, [handleSortChange, t]);
-
-  const toggleGroupView = useCallback(() => {
-    setActiveGroupId("");
-    setGroupView(!isGroupView);
-  }, [isGroupView, setActiveGroupId, setGroupView]);
-
   const handleSync = useCallback(() => {
     if (!isSyncBusy) void syncNow();
   }, [isSyncBusy, syncNow]);
-
-  const handleOpenLibraryActions = useCallback(() => {
-    Alert.alert(t("common.more", "Ещё"), undefined, [
-      { text: t("library.sort", "Сортировка"), onPress: handleOpenSortOptions },
-      {
-        text: isGroupView
-          ? t("library.listView", "Показать списком")
-          : t("library.groupView", "Показать по группам"),
-        onPress: toggleGroupView,
-      },
-      { text: t("common.cancel", "Отмена"), style: "cancel" },
-    ]);
-  }, [handleOpenSortOptions, isGroupView, t, toggleGroupView]);
 
   useLayoutEffect(() => {
     if (selectionMode) {
@@ -650,50 +601,6 @@ export function LibraryScreen() {
                   icon: { type: "sfSymbol" as const, name: "arrow.clockwise" as const },
                   disabled: isSyncBusy,
                   onPress: handleSync,
-                },
-              ]
-            : []),
-          ...(hasBooks
-            ? [
-                {
-                  type: "button" as const,
-                  label: t("library.search", "Поиск"),
-                  accessibilityLabel: t("library.search", "Поиск"),
-                  icon: { type: "sfSymbol" as const, name: "magnifyingglass" as const },
-                  selected: showSearch,
-                  onPress: toggleSearch,
-                },
-                {
-                  type: "menu" as const,
-                  label: t("common.more", "Ещё"),
-                  accessibilityLabel: t("common.more", "Ещё"),
-                  icon: { type: "sfSymbol" as const, name: "ellipsis.circle" as const },
-                  menu: {
-                    items: [
-                      {
-                        type: "submenu" as const,
-                        label: t("library.sort", "Сортировка"),
-                        icon: {
-                          type: "sfSymbol" as const,
-                          name: "arrow.up.arrow.down" as const,
-                        },
-                        items: SORT_OPTIONS.map(({ field, labelKey }) => ({
-                          type: "action" as const,
-                          label: t(labelKey),
-                          state: filter.sortField === field ? ("on" as const) : ("off" as const),
-                          onPress: () => handleSortChange(field),
-                        })),
-                      },
-                      {
-                        type: "action" as const,
-                        label: isGroupView
-                          ? t("library.listView", "Показать списком")
-                          : t("library.groupView", "Показать по группам"),
-                        icon: { type: "sfSymbol" as const, name: "square.grid.2x2" as const },
-                        onPress: toggleGroupView,
-                      },
-                    ],
-                  },
                 },
               ]
             : []),
@@ -733,28 +640,6 @@ export function LibraryScreen() {
               <SyncButton size={20} color={colors.mutedForeground} />
             </View>
           ) : null}
-          {hasBooks ? (
-            <>
-              <TouchableOpacity
-                accessibilityRole="button"
-                accessibilityLabel={t("library.search", "Поиск")}
-                style={s.nativeHeaderButton}
-                onPress={toggleSearch}
-                activeOpacity={0.65}
-              >
-                <SearchIcon size={22} color={showSearch ? colors.primary : colors.foreground} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                accessibilityRole="button"
-                accessibilityLabel={t("common.more", "Ещё")}
-                style={s.nativeHeaderButton}
-                onPress={handleOpenLibraryActions}
-                activeOpacity={0.65}
-              >
-                <MoreVerticalIcon size={22} color={colors.foreground} />
-              </TouchableOpacity>
-            </>
-          ) : null}
           <TouchableOpacity
             accessibilityRole="button"
             accessibilityLabel={t("library.importFirst", "Добавить книгу")}
@@ -773,18 +658,12 @@ export function LibraryScreen() {
       ),
     });
   }, [
-    colors.foreground,
     colors.mutedForeground,
     colors.primary,
-    filter.sortField,
     handleLocalImport,
     handleOpenImportSources,
-    handleOpenLibraryActions,
     handleOpenUrlImport,
-    handleSortChange,
     handleSync,
-    hasBooks,
-    isGroupView,
     isImporting,
     isPickingImport,
     isSyncBusy,
@@ -792,11 +671,8 @@ export function LibraryScreen() {
     s.nativeHeaderActions,
     s.nativeHeaderButton,
     selectionMode,
-    showSearch,
     syncBackendType,
     t,
-    toggleGroupView,
-    toggleSearch,
   ]);
 
   const isEmpty = gridItems.length === 0;
@@ -1152,29 +1028,60 @@ export function LibraryScreen() {
             </View>
           )}
           {isLoaded && books.length === 0 && (
-            <CenteredEmptyState
-              title={t("library.empty", "暂无书籍")}
-              description={t("library.emptyHint", "导入电子书开始阅读之旅")}
-              avoidNativeTabBar
+            <ScrollViewMarker
+              style={s.primaryScrollMarker}
+              scrollEdgeEffects={NATIVE_SCROLL_EDGE_EFFECTS}
             >
-              <ImportSourceMenuButton
-                label={t("library.importFirst", "Добавить книгу")}
-                urlLabel={t("library.importSourceUrl", "Найти по ссылке")}
-                localLabel={t("library.importSourceLocal", "Выбрать файл")}
-                disabled={isPickingImport || isUrlImporting}
-                onUrlPress={handleOpenUrlImport}
-                onLocalPress={() => void handleLocalImport()}
-                onFallbackPress={handleOpenImportSources}
-              />
-            </CenteredEmptyState>
+              <ScrollView
+                style={s.primaryScroll}
+                contentInsetAdjustmentBehavior="automatic"
+                contentContainerStyle={s.emptyScrollContent}
+                alwaysBounceVertical
+                showsVerticalScrollIndicator={false}
+              >
+                <CenteredEmptyState
+                  title={t("library.empty", "暂无书籍")}
+                  description={t("library.emptyHint", "导入电子书开始阅读之旅")}
+                  avoidNativeTabBar
+                >
+                  <ImportSourceMenuButton
+                    label={t("library.importFirst", "Добавить книгу")}
+                    urlLabel={t("library.importSourceUrl", "Найти по ссылке")}
+                    localLabel={t("library.importSourceLocal", "Выбрать файл")}
+                    disabled={isPickingImport || isUrlImporting}
+                    onUrlPress={handleOpenUrlImport}
+                    onLocalPress={() => void handleLocalImport()}
+                    onFallbackPress={handleOpenImportSources}
+                  />
+                </CenteredEmptyState>
+              </ScrollView>
+            </ScrollViewMarker>
           )}
           {isLoaded && hasBooks && isEmpty && (
-            <View
-              style={[s.noResultsWrap, { transform: [{ translateY: -nativeHeaderHeight / 2 }] }]}
+            <ScrollViewMarker
+              style={s.primaryScrollMarker}
+              scrollEdgeEffects={NATIVE_SCROLL_EDGE_EFFECTS}
             >
-              <SearchIcon size={40} color={withOpacity(colors.mutedForeground, 0.3)} />
-              <Text style={s.noResultsText}>{t("library.noResults", "没有找到匹配的书籍")}</Text>
-            </View>
+              <ScrollView
+                style={s.primaryScroll}
+                contentInsetAdjustmentBehavior="automatic"
+                contentContainerStyle={s.emptyScrollContent}
+                alwaysBounceVertical
+                showsVerticalScrollIndicator={false}
+              >
+                <View
+                  style={[
+                    s.noResultsWrap,
+                    { transform: [{ translateY: -nativeHeaderHeight / 2 }] },
+                  ]}
+                >
+                  <SearchIcon size={40} color={withOpacity(colors.mutedForeground, 0.3)} />
+                  <Text style={s.noResultsText}>
+                    {t("library.noResults", "没有找到匹配的书籍")}
+                  </Text>
+                </View>
+              </ScrollView>
+            </ScrollViewMarker>
           )}
           {isLoaded && hasBooks && filter.search && !isEmpty && (
             <Text style={s.resultsCount}>
@@ -1182,23 +1089,28 @@ export function LibraryScreen() {
             </Text>
           )}
           {isLoaded && !isEmpty && (
-            <FlatList
-              data={gridItems}
-              renderItem={renderGridItem}
-              contentInsetAdjustmentBehavior="automatic"
-              alwaysBounceVertical
-              extraData={{ vectorProgress, vectorizingBookId }}
-              keyExtractor={(item) =>
-                item.type === "group" ? `group-${item.group.id}` : item.book.id
-              }
-              key={`library-grid-${columnCount}`}
-              numColumns={columnCount}
-              columnWrapperStyle={s.gridRow}
-              contentContainerStyle={s.gridContent}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="on-drag"
-            />
+            <ScrollViewMarker
+              style={s.primaryScrollMarker}
+              scrollEdgeEffects={NATIVE_SCROLL_EDGE_EFFECTS}
+            >
+              <FlatList
+                data={gridItems}
+                renderItem={renderGridItem}
+                contentInsetAdjustmentBehavior="automatic"
+                alwaysBounceVertical
+                extraData={{ vectorProgress, vectorizingBookId }}
+                keyExtractor={(item) =>
+                  item.type === "group" ? `group-${item.group.id}` : item.book.id
+                }
+                key={`library-grid-${columnCount}`}
+                numColumns={columnCount}
+                columnWrapperStyle={s.gridRow}
+                contentContainerStyle={s.gridContent}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
+              />
+            </ScrollViewMarker>
           )}
         </View>
       </View>
@@ -1364,6 +1276,9 @@ const makeStyles = (
     tagChipTextActive: { color: colors.primaryForeground },
     content: { flex: 1, paddingHorizontal: layout.horizontalPadding, alignItems: "center" },
     contentInner: { flex: 1, width: "100%", maxWidth: layout.contentWidth },
+    primaryScrollMarker: { flex: 1 },
+    primaryScroll: { flex: 1 },
+    emptyScrollContent: { flexGrow: 1 },
     loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
     importBanner: {
       flexDirection: "row",
@@ -1424,7 +1339,7 @@ const makeStyles = (
     noResultsText: { fontSize: fontSize.sm, color: colors.mutedForeground, marginTop: 12 },
     resultsCount: { fontSize: fontSize.xs, color: colors.mutedForeground, marginBottom: 8 },
     gridRow: { gap: layout.gridGap, justifyContent: "flex-start" },
-    gridContent: { paddingBottom: 24, paddingTop: 4, width: "100%" },
+    gridContent: { paddingBottom: 24, paddingTop: 24, width: "100%" },
     gridItem: { width: layout.gridItemWidth, marginBottom: layout.gridGap },
     groupModalOverlay: {
       flex: 1,

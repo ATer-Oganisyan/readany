@@ -21,6 +21,7 @@ const icons: Record<NativeButtonIcon, string> = {
   add: "add",
   back: "arrow_back",
   forward: "arrow_forward",
+  image: "add_photo_alternate",
   check: "check",
   chat: "chat",
   close: "close",
