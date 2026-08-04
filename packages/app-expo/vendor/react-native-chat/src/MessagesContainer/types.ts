@@ -73,6 +73,8 @@ export interface MessagesContainerProps<TMessage extends IMessage = IMessage>
   scrollToBottomOffset?: number
   /** Custom component to render when messages are empty */
   renderChatEmpty?: () => React.ReactNode
+  /** Decorative chat background rendered behind the virtualized list. */
+  renderBackground?: () => React.ReactNode
   /** Custom footer component on the ListView, e.g. 'User is typing...' */
   renderFooter?: (props: MessagesContainerProps<TMessage>) => React.ReactNode
   /** Custom message container */

@@ -35,12 +35,12 @@ const createStyles = (theme: ChatTheme): Styles => {
 
   return {
     left: StyleSheet.create({
-      container: { marginRight: 8 },
+      container: { marginRight: 4 },
       onTop: { alignSelf: 'flex-start' },
       image,
     }),
     right: StyleSheet.create({
-      container: { marginLeft: 8 },
+      container: { marginLeft: 4 },
       onTop: { alignSelf: 'flex-start' },
       image,
     }),

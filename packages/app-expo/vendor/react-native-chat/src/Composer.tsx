@@ -22,8 +22,8 @@ export interface ComposerProps {
 // padding is derived from the bar height (see createStyles) so a single line of
 // text is vertically centered in the field.
 const TEXT_INPUT_METRICS = {
-  fontSize: 16,
-  lineHeight: 21,
+  fontSize: 17,
+  lineHeight: 22,
 }
 
 export function Composer ({
@@ -87,7 +87,10 @@ export function Composer ({
 const createStyles = (theme: ChatTheme) => {
   // Center a single line vertically: split the leftover space (bar height minus
   // one line of text) into equal top/bottom padding.
-  const paddingVertical = Math.max(4, (theme.composer.minHeight - TEXT_INPUT_METRICS.lineHeight) / 2)
+  // Telegram's text view uses 4.5pt above / 5.5pt below the 17pt baseline.
+  // RN rounds subpixels per density, preserving the optical 1pt lower bias.
+  const paddingTop = 4.5
+  const paddingBottom = 5.5
 
   return StyleSheet.create({
     // Transparent slot: the rounded pill is provided by the InputToolbar field
@@ -100,8 +103,8 @@ const createStyles = (theme: ChatTheme) => {
     textInput: {
       fontSize: TEXT_INPUT_METRICS.fontSize,
       lineHeight: TEXT_INPUT_METRICS.lineHeight,
-      paddingTop: paddingVertical,
-      paddingBottom: paddingVertical,
+      paddingTop,
+      paddingBottom,
       paddingHorizontal: 0,
       color: theme.colors.inputText,
     },

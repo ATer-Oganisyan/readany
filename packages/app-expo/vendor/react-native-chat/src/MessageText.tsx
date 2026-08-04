@@ -15,6 +15,8 @@ import { LinkParser, LinkMatcher, LinkType } from './linkParser'
 import { LeftRightStyle, IMessage } from './Models'
 import { ChatTheme } from './Theme'
 
+const MARKDOWN_MARKUP = /(^|\n)\s{0,3}(#{1,6}\s|[-*+]\s|\d+\.\s|>\s?|```)|\*\*|__|~~|`|\[[^\]]+\]\([^)]+\)/
+
 export type MessageTextProps<TMessage extends IMessage> = {
   position?: 'left' | 'right'
   currentMessage: TMessage
@@ -96,8 +98,12 @@ export function MessageText<TMessage extends IMessage>({
   // react-native-streamdown when installed (best streaming-incomplete handling),
   // otherwise fall back to the built-in dependency-free renderer.
   const wantMarkdown = markdown !== false && (markdown === true || isStreaming)
+  // A plain streamed sentence should stay in one native Text run so the caret
+  // shares its final baseline. Structured Markdown still uses the block
+  // renderer, including incomplete markers while a response is arriving.
+  const hasMarkdownMarkup = MARKDOWN_MARKUP.test(currentMessage?.text ?? '')
 
-  if (wantMarkdown && isMarkdownAvailable)
+  if (wantMarkdown && hasMarkdownMarkup && isMarkdownAvailable)
     return (
       <MarkdownMessageText
         text={currentMessage!.text}
@@ -108,7 +114,7 @@ export function MessageText<TMessage extends IMessage>({
       />
     )
 
-  if (wantMarkdown)
+  if (wantMarkdown && hasMarkdownMarkup)
     return (
       <View style={[styles.container, containerStyle?.[position]]}>
         <BasicMarkdown
@@ -167,7 +173,8 @@ export function MessageText<TMessage extends IMessage>({
 
 const createStyles = (theme: ChatTheme) => StyleSheet.create({
   container: {
-    marginVertical: theme.spacing.bubblePaddingV,
+    marginTop: theme.spacing.bubblePaddingV + StyleSheet.hairlineWidth,
+    marginBottom: theme.spacing.bubblePaddingV - StyleSheet.hairlineWidth,
     marginHorizontal: theme.spacing.bubblePaddingH,
   },
   text: {

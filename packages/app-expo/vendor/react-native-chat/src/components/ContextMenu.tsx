@@ -5,11 +5,12 @@ import { useThemedStyles } from '../hooks/useTheme'
 import { MessageMenuItem } from '../Models'
 import { ChatTheme } from '../Theme'
 
-const MENU_WIDTH = 240
-const ROW_HEIGHT = 48
-const REACTION_ROW_HEIGHT = 52
+const MENU_WIDTH = 250
+const ROW_HEIGHT = 44
+const REACTION_ROW_HEIGHT = 50
 const VERTICAL_OFFSET = 8
 const EDGE = 8
+const GROUP_SEPARATOR_HEIGHT = 8
 
 export interface ContextMenuReactions {
   emojis: string[]
@@ -48,7 +49,9 @@ export const ContextMenu = ({
   const styles = useThemedStyles(createStyles)
   const { width: screenWidth, height: screenHeight } = Dimensions.get('window')
 
-  const menuHeight = items.length * ROW_HEIGHT + (reactions ? REACTION_ROW_HEIGHT + VERTICAL_OFFSET : 0)
+  const menuHeight = items.length * ROW_HEIGHT +
+    items.filter(item => item.separatorBefore).length * GROUP_SEPARATOR_HEIGHT +
+    (reactions ? REACTION_ROW_HEIGHT + VERTICAL_OFFSET : 0)
 
   const showAbove = pageY >= menuHeight + VERTICAL_OFFSET && pageY + bubbleHeight + menuHeight > screenHeight
   const top = showAbove
@@ -74,7 +77,7 @@ export const ContextMenu = ({
 
   return (
     <Modal transparent visible={visible} animationType='fade' onRequestClose={onDismiss} statusBarTranslucent>
-      <Pressable style={StyleSheet.absoluteFill} onPress={onDismiss} />
+      <Pressable style={[StyleSheet.absoluteFill, styles.backdrop]} onPress={onDismiss} />
 
       <View style={[styles.anchor, { top, left, width: MENU_WIDTH }]} pointerEvents='box-none'>
         {reactions && reactions.emojis.length > 0 && (
@@ -93,26 +96,30 @@ export const ContextMenu = ({
 
         <View style={styles.menu}>
           {items.map((item, index) => (
-            <Pressable
-              key={`${item.label}-${index}`}
-              onPress={() => handlePress(item.onPress)}
-              style={({ pressed }) => [
-                styles.row,
-                index > 0 && styles.rowDivider,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text
-                style={[styles.rowLabel, item.destructive && styles.destructive]}
-                numberOfLines={1}
+            <React.Fragment key={`${item.label}-${index}`}>
+              {item.separatorBefore && <View style={styles.groupSeparator} />}
+              <Pressable
+                onPress={() => handlePress(item.onPress)}
+                accessibilityRole='button'
+                accessibilityLabel={item.label}
+                style={({ pressed }) => [
+                  styles.row,
+                  index > 0 && !item.separatorBefore && styles.rowDivider,
+                  pressed && styles.pressed,
+                ]}
               >
-                {item.label}
-              </Text>
-              {item.icon?.({
-                color: item.destructive ? styles.destructive.color : styles.rowLabel.color,
-                size: 20,
-              })}
-            </Pressable>
+                <Text
+                  style={[styles.rowLabel, item.destructive && styles.destructive]}
+                  numberOfLines={1}
+                >
+                  {item.label}
+                </Text>
+                {item.icon?.({
+                  color: item.destructive ? styles.destructive.color : styles.rowLabel.color,
+                  size: 20,
+                })}
+              </Pressable>
+            </React.Fragment>
           ))}
         </View>
       </View>
@@ -121,16 +128,19 @@ export const ContextMenu = ({
 }
 
 const createStyles = (theme: ChatTheme) => StyleSheet.create({
+  backdrop: {
+    backgroundColor: 'rgba(0, 0, 0, 0.08)',
+  },
   anchor: {
     position: 'absolute',
   },
   reactionPill: {
     flexDirection: 'row',
     alignSelf: 'flex-start',
-    backgroundColor: theme.colors.surface,
-    borderRadius: 24,
-    paddingHorizontal: 6,
-    paddingVertical: 4,
+    backgroundColor: theme.colors.menuBackground,
+    borderRadius: 25,
+    height: REACTION_ROW_HEIGHT,
+    paddingHorizontal: 5,
     marginBottom: VERTICAL_OFFSET,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -145,10 +155,10 @@ const createStyles = (theme: ChatTheme) => StyleSheet.create({
     justifyContent: 'center',
   },
   reactionEmoji: {
-    fontSize: 24,
+    fontSize: 25,
   },
   menu: {
-    backgroundColor: theme.colors.surface,
+    backgroundColor: theme.colors.menuBackground,
     borderRadius: 14,
     overflow: 'hidden',
     shadowColor: '#000',
@@ -166,14 +176,22 @@ const createStyles = (theme: ChatTheme) => StyleSheet.create({
   },
   rowDivider: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: theme.colors.separator,
+    borderTopColor: theme.colors.menuSeparator,
+  },
+  groupSeparator: {
+    height: GROUP_SEPARATOR_HEIGHT,
+    backgroundColor: theme.colors.menuPressed,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.menuSeparator,
   },
   pressed: {
-    backgroundColor: theme.colors.reactionBackground,
+    backgroundColor: theme.colors.menuPressed,
   },
   rowLabel: {
-    fontSize: 16,
-    color: theme.colors.incomingText,
+    fontSize: 17,
+    lineHeight: 20,
+    color: theme.colors.menuText,
   },
   destructive: {
     color: theme.colors.error,
