@@ -1,8 +1,8 @@
 /**
  * Centralized design tokens for the chat UI.
  *
- * The defaults below produce a modern, Telegram-inspired look (azure accent,
- * soft 18px bubbles, rounded composer, inline time + vector ticks). Consumers
+ * The defaults below mirror Telegram iOS chat geometry and its Classic day /
+ * default night palettes. Consumers
  * can override any subset through the `theme` / `darkTheme` props on `Chat`;
  * overrides are deep-merged over these defaults, and explicit per-component
  * style props still win over the theme. Components read the resolved theme via
@@ -58,6 +58,11 @@ export interface ChatThemeColors {
   error: string
   /** Optional border around the composer field (default transparent). */
   inputFieldBorder: string
+  /** Context-menu material. Kept separate from chat surfaces for fidelity. */
+  menuBackground: string
+  menuPressed: string
+  menuText: string
+  menuSeparator: string
 }
 
 export interface ChatThemeAvatar {
@@ -150,23 +155,23 @@ export type PartialChatTheme = {
   voice?: Partial<ChatThemeVoice>
 }
 
-// Decorative palette for initials avatars (flatuicolors.com), shared by themes.
-const avatarPalette = ['#E67E22', '#2ECC71', '#3498DB', '#8E44AD', '#E74C3C', '#1ABC9C', '#2C3E50']
+// Telegram's seven deterministic peer-name/avatar hues.
+const avatarPalette = ['#FC5C51', '#FA790F', '#895DD5', '#0FB297', '#00C0C2', '#3CA5EC', '#3D72ED']
 
 const sharedRadii: ChatThemeRadii = {
-  bubble: 18,
-  bubbleGrouped: 6,
-  inputField: 18,
-  sendButton: 18,
-  reaction: 14,
+  bubble: 16,
+  bubbleGrouped: 8,
+  inputField: 20,
+  sendButton: 20,
+  reaction: 15,
   dayPill: 14,
 }
 
 const sharedComposer: ChatThemeComposer = {
-  minHeight: 44,
+  minHeight: 40,
   maxHeight: 120,
   fieldPaddingH: 12,
-  insetIconSize: 24,
+  insetIconSize: 23,
 }
 
 const sharedVoice: ChatThemeVoice = {
@@ -176,88 +181,99 @@ const sharedVoice: ChatThemeVoice = {
 
 const sharedSpacing: ChatThemeSpacing = {
   bubblePaddingV: 6,
-  bubblePaddingH: 12,
-  withinGroup: 2,
-  betweenGroups: 8,
+  bubblePaddingH: 11,
+  withinGroup: 0,
+  betweenGroups: 2.333,
   screenEdge: 8,
 }
 
 const sharedTypography: ChatThemeTypography = {
-  message: { fontSize: 16, lineHeight: 21, fontWeight: '400' },
-  time: { fontSize: 12, fontWeight: '400' },
-  senderName: { fontSize: 13, fontWeight: '600' },
-  day: { fontSize: 13, fontWeight: '600' },
+  message: { fontSize: 17, lineHeight: 22, fontWeight: '400' },
+  time: { fontSize: 11, lineHeight: 13, fontWeight: '400' },
+  senderName: { fontSize: 14, lineHeight: 17, fontWeight: '600' },
+  day: { fontSize: 12, lineHeight: 15, fontWeight: '600' },
   system: { fontSize: 13, fontWeight: '400' },
 }
 
 export const defaultLightTheme: ChatTheme = {
   colors: {
-    accent: '#3390EC',
-    background: '#EFEFF4',
+    accent: '#0088FF',
+    // Solid fallback under Narra's code-generated wallpaper pattern.
+    background: '#DDE5E4',
     incomingBubble: '#FFFFFF',
-    outgoingBubble: '#3390EC',
+    outgoingBubble: '#E1FFC7',
     incomingText: '#000000',
-    outgoingText: '#FFFFFF',
-    incomingMeta: '#8E8E93',
-    outgoingMeta: 'rgba(255, 255, 255, 0.7)',
-    senderName: '#3390EC',
-    ticksSent: 'rgba(255, 255, 255, 0.6)',
-    ticksRead: '#FFFFFF',
-    separator: 'rgba(0, 0, 0, 0.08)',
-    inputBackground: '#F2F2F7',
+    outgoingText: '#000000',
+    incomingMeta: 'rgba(82, 82, 82, 0.60)',
+    outgoingMeta: 'rgba(0, 140, 9, 0.80)',
+    senderName: '#0088FF',
+    ticksSent: 'rgba(0, 140, 9, 0.80)',
+    ticksRead: '#00A700',
+    separator: '#BEC2C6',
+    inputBackground: 'rgba(255, 255, 255, 0.80)',
     inputBarBackground: '#FFFFFF',
     inputText: '#000000',
-    placeholder: '#8E8E93',
-    dayPillBackground: 'rgba(0, 0, 0, 0.3)',
+    placeholder: 'rgba(0, 0, 0, 0.40)',
+    dayPillBackground: 'rgba(116, 131, 145, 0.45)',
     dayPillText: '#FFFFFF',
     surface: '#FFFFFF',
-    reactionBackground: 'rgba(0, 0, 0, 0.06)',
-    reactionActiveBackground: 'rgba(51, 144, 236, 0.15)',
-    outgoingOverlay: 'rgba(255, 255, 255, 0.15)',
-    error: '#E74C3C',
-    inputFieldBorder: 'transparent',
+    reactionBackground: 'rgba(255, 255, 255, 0.88)',
+    reactionActiveBackground: 'rgba(0, 136, 255, 0.15)',
+    outgoingOverlay: 'rgba(0, 140, 9, 0.08)',
+    error: '#FF3B30',
+    inputFieldBorder: 'rgba(0, 0, 0, 0.10)',
+    menuBackground: 'rgba(248, 248, 248, 0.96)',
+    menuPressed: 'rgba(0, 0, 0, 0.08)',
+    menuText: '#000000',
+    menuSeparator: 'rgba(60, 60, 67, 0.20)',
   },
   radii: sharedRadii,
   spacing: sharedSpacing,
   typography: sharedTypography,
   avatar: { size: 34, palette: avatarPalette, textColor: '#FFFFFF' },
-  sendButton: { size: 36 },
+  sendButton: { size: 40 },
   composer: sharedComposer,
   voice: sharedVoice,
 }
 
 export const defaultDarkTheme: ChatTheme = {
   colors: {
-    accent: '#3390EC',
-    background: '#0E1621',
-    incomingBubble: '#182533',
-    outgoingBubble: '#2B5278',
+    accent: '#0088FF',
+    background: '#000000',
+    incomingBubble: 'rgba(29, 29, 29, 0.90)',
+    // Telegram uses a #61BCF9 -> #0088FF gradient. This is the documented
+    // single-colour fallback used where a gradient surface is unavailable.
+    outgoingBubble: '#0088FF',
     incomingText: '#FFFFFF',
     outgoingText: '#FFFFFF',
-    incomingMeta: '#6D7F8F',
-    outgoingMeta: 'rgba(255, 255, 255, 0.55)',
-    senderName: '#6FB2F0',
-    ticksSent: 'rgba(255, 255, 255, 0.55)',
-    ticksRead: '#59ABE8',
-    separator: 'rgba(255, 255, 255, 0.1)',
-    inputBackground: '#243140',
-    inputBarBackground: '#17212B',
+    incomingMeta: 'rgba(255, 255, 255, 0.50)',
+    outgoingMeta: 'rgba(255, 255, 255, 0.70)',
+    senderName: '#61BCF9',
+    ticksSent: 'rgba(255, 255, 255, 0.70)',
+    ticksRead: '#FFFFFF',
+    separator: 'rgba(84, 84, 88, 0.55)',
+    inputBackground: 'rgba(36, 36, 36, 0.95)',
+    inputBarBackground: '#000000',
     inputText: '#FFFFFF',
-    placeholder: '#708499',
-    dayPillBackground: 'rgba(255, 255, 255, 0.12)',
+    placeholder: 'rgba(255, 255, 255, 0.48)',
+    dayPillBackground: 'rgba(0, 0, 0, 0.20)',
     dayPillText: '#FFFFFF',
-    surface: '#17212B',
-    reactionBackground: 'rgba(255, 255, 255, 0.08)',
-    reactionActiveBackground: 'rgba(51, 144, 236, 0.22)',
+    surface: '#242424',
+    reactionBackground: 'rgba(255, 255, 255, 0.10)',
+    reactionActiveBackground: 'rgba(0, 136, 255, 0.28)',
     outgoingOverlay: 'rgba(255, 255, 255, 0.1)',
-    error: '#E74C3C',
-    inputFieldBorder: 'transparent',
+    error: '#FF453A',
+    inputFieldBorder: 'rgba(255, 255, 255, 0.10)',
+    menuBackground: 'rgba(44, 44, 46, 0.96)',
+    menuPressed: 'rgba(255, 255, 255, 0.10)',
+    menuText: '#FFFFFF',
+    menuSeparator: 'rgba(84, 84, 88, 0.65)',
   },
   radii: sharedRadii,
   spacing: sharedSpacing,
   typography: sharedTypography,
   avatar: { size: 34, palette: avatarPalette, textColor: '#FFFFFF' },
-  sendButton: { size: 36 },
+  sendButton: { size: 40 },
   composer: sharedComposer,
   voice: sharedVoice,
 }

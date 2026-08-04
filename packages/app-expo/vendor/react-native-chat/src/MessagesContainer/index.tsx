@@ -43,6 +43,7 @@ export const MessagesContainer = <TMessage extends IMessage>(props: MessagesCont
     user,
     isTyping = false,
     renderChatEmpty: renderChatEmptyProp,
+    renderBackground,
     isInverted = true,
     listProps,
     isScrollToBottomEnabled = false,
@@ -536,6 +537,7 @@ export const MessagesContainer = <TMessage extends IMessage>(props: MessagesCont
         isAlignedTop ? styles.containerAlignTop : stylesCommon.fill,
       ]}
     >
+      {renderBackground?.()}
       {isFlashList
         ? (
           <AnimatedFlashList

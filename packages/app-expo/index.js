@@ -4,7 +4,6 @@ import * as ExpoCrypto from "expo-crypto";
 
 import { registerRootComponent } from "expo";
 import TrackPlayer from "react-native-track-player";
-import App from "./src/App";
 import { PlaybackService } from "./src/services/PlaybackService";
 
 function bytesToString(bytes) {
@@ -74,7 +73,7 @@ if (!cryptoObject.subtle) {
 const RootComponent =
   process.env.EXPO_PUBLIC_STORYBOOK_ENABLED === "true"
     ? require("./.rnstorybook").default
-    : App;
+    : require("./src/App").default;
 
 registerRootComponent(RootComponent);
 TrackPlayer.registerPlaybackService(() => PlaybackService);

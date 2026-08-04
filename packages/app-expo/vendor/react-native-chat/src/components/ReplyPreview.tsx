@@ -29,7 +29,7 @@ import { CloseIcon, PencilIcon, ReplyArrowIcon } from './MediaControls'
 
 const ANIMATION_DURATION = 200
 const ANIMATION_EASING = Easing.bezier(0.25, 0.1, 0.25, 1)
-const DEFAULT_HEIGHT = 68
+const DEFAULT_HEIGHT = 48
 
 export interface ReplyPreviewProps {
   /** The reply message to preview */
@@ -52,7 +52,7 @@ const createStyles = (theme: ChatTheme) => StyleSheet.create({
     borderRadius: 2,
     width: 3,
     alignSelf: 'stretch',
-    marginVertical: 8,
+    marginVertical: 6,
   },
   clearButton: {
     alignItems: 'center',
@@ -78,12 +78,12 @@ const createStyles = (theme: ChatTheme) => StyleSheet.create({
     borderBottomColor: theme.colors.separator,
   },
   leadingIcon: {
-    marginRight: 8,
+    marginRight: 6,
   },
   content: {
     flex: 1,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 5,
   },
   image: {
     borderRadius: 4,

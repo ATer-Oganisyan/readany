@@ -3,7 +3,7 @@ import { ChatTheme } from '../Theme'
 
 export const createTypingIndicatorStyles = (theme: ChatTheme) => StyleSheet.create({
   container: {
-    marginLeft: 8,
+    marginLeft: 3,
     width: 45,
     borderRadius: theme.radii.bubble,
     backgroundColor: theme.colors.incomingBubble,
@@ -12,11 +12,11 @@ export const createTypingIndicatorStyles = (theme: ChatTheme) => StyleSheet.crea
     flexDirection: 'row',
   },
   dot: {
-    marginLeft: 2,
-    marginRight: 2,
+    marginLeft: 1.5,
+    marginRight: 1.5,
     borderRadius: 4,
-    width: 8,
-    height: 8,
+    width: 7,
+    height: 7,
     backgroundColor: theme.colors.incomingMeta,
   },
 })
