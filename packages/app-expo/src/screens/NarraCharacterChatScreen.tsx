@@ -1,5 +1,6 @@
-import { Trash2Icon, Volume2Icon } from "@/components/ui/Icon";
-import { Text, TextInput } from "@/components/ui/Typography";
+import { NarraChat } from "@/components/chat/NarraChat";
+import { Trash2Icon } from "@/components/ui/Icon";
+import { Text } from "@/components/ui/Typography";
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
 import { NarraAudioPlayer } from "@/lib/narra/audio-player";
 import { isCharacterUnlocked, normalizeReadingProgress } from "@/lib/narra/domain";
@@ -8,28 +9,13 @@ import { synthesizeNarraSpeech } from "@/lib/narra/media";
 import type { NarraCharacter, NarraChatMessage } from "@/lib/narra/types";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useLibraryStore, useNarraStore } from "@/stores";
-import {
-  type ThemeColors,
-  fontSize,
-  fontWeight,
-  radius,
-  spacing,
-  useColors,
-  withOpacity,
-} from "@/styles/theme";
+import { type ThemeColors, fontSize, fontWeight, spacing, useColors } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import type { MessageV2 } from "@readany/core/types/message";
 import * as Crypto from "expo-crypto";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { Alert, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 
 type Props = NativeStackScreenProps<RootStackParamList, "NarraCharacterChat">;
 
@@ -62,6 +48,24 @@ async function readCompletion(response: Response): Promise<string> {
   }
 }
 
+function toMessageV2(message: NarraChatMessage, threadId: string): MessageV2 {
+  return {
+    id: message.id,
+    threadId,
+    role: message.role,
+    createdAt: message.createdAt,
+    parts: [
+      {
+        id: `${message.id}-text`,
+        type: "text",
+        text: message.content,
+        status: "completed",
+        createdAt: message.createdAt,
+      },
+    ],
+  };
+}
+
 export function NarraCharacterChatScreen({ route, navigation }: Props) {
   const { bookId, characterId } = route.params;
   const colors = useColors();
@@ -75,11 +79,10 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
   const character = narraBook?.characters.find((item) => item.id === characterId);
   const messages = narraBook?.chats?.[characterId] ?? [];
   const memory = narraBook?.memories?.[characterId] ?? "";
-  const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
-  const scrollRef = useRef<ScrollView>(null);
   const audioRef = useRef(new NarraAudioPlayer());
+  const greetingCreatedAt = useRef(Date.now()).current;
   const unlocked = Boolean(book && character && isCharacterUnlocked(book.progress, character));
 
   const clearConversation = useCallback(() => {
@@ -136,6 +139,30 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
     [book, character, memory, messages],
   );
 
+  const chatMessages = useMemo(() => {
+    const threadId = `narra-character-${bookId}-${characterId}`;
+    if (messages.length > 0) return messages.map((message) => toMessageV2(message, threadId));
+    if (!character?.greeting) return [];
+
+    return [
+      {
+        id: `${threadId}-greeting`,
+        threadId,
+        role: "assistant",
+        createdAt: greetingCreatedAt,
+        parts: [
+          {
+            id: `${threadId}-greeting-text`,
+            type: "text",
+            text: character.greeting,
+            status: "completed",
+            createdAt: greetingCreatedAt,
+          },
+        ],
+      } satisfies MessageV2,
+    ];
+  }, [bookId, character?.greeting, characterId, greetingCreatedAt, messages]);
+
   const refreshMemory = useCallback(
     async (updatedMessages: NarraChatMessage[]) => {
       if (!character || updatedMessages.length < 4 || updatedMessages.length % 4 !== 0) return;
@@ -177,11 +204,18 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
   );
 
   const speak = useCallback(
-    async (message: NarraChatMessage) => {
+    async (message: MessageV2) => {
       if (!character || speakingId) return;
+      const content = message.parts
+        .filter((part) => part.type === "text")
+        .map((part) => part.text)
+        .join("\n")
+        .trim();
+      if (!content) return;
+
       setSpeakingId(message.id);
       try {
-        const uri = await synthesizeNarraSpeech(message.content, character.voice);
+        const uri = await synthesizeNarraSpeech(content, character.voice);
         audioRef.current.play(uri, () => setSpeakingId(null));
       } catch (error) {
         setSpeakingId(null);
@@ -194,62 +228,62 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
     [character, speakingId, t],
   );
 
-  const send = useCallback(async () => {
-    const text = input.trim();
-    if (!text || !book || !character || !unlocked || sending) return;
-    setInput("");
-    setSending(true);
-    const userMessage: NarraChatMessage = {
-      id: Crypto.randomUUID(),
-      role: "user",
-      content: text,
-      createdAt: Date.now(),
-    };
-    append(bookId, characterId, userMessage);
-    try {
-      const response = await narraGatewayRequest("/v2/ai/chat/complete", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          messages: [...conversation, { role: "user", content: text }],
-          temperature: 0.85,
-          purpose: "character_chat",
-          origin: "user",
-          analytics_tier: "essential",
-        }),
-      });
-      const content = await readCompletion(response);
-      const assistantMessage: NarraChatMessage = {
+  const send = useCallback(
+    async (value: string) => {
+      const text = value.trim();
+      if (!text || !book || !character || !unlocked || sending) return;
+      setSending(true);
+      const userMessage: NarraChatMessage = {
         id: Crypto.randomUUID(),
-        role: "assistant",
-        content: content || t("narra.emptyAnswer", "Мне нечего добавить."),
+        role: "user",
+        content: text,
         createdAt: Date.now(),
       };
-      append(bookId, characterId, assistantMessage);
-      void refreshMemory([...messages, userMessage, assistantMessage]);
-    } catch (error) {
-      Alert.alert(
-        t("narra.chatFailedTitle", "Не удалось получить ответ"),
-        reportNarraError("character_chat", error).message,
-      );
-    } finally {
-      setSending(false);
-      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
-    }
-  }, [
-    append,
-    book,
-    bookId,
-    character,
-    characterId,
-    conversation,
-    input,
-    messages,
-    refreshMemory,
-    sending,
-    t,
-    unlocked,
-  ]);
+      append(bookId, characterId, userMessage);
+      try {
+        const response = await narraGatewayRequest("/v2/ai/chat/complete", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            messages: [...conversation, { role: "user", content: text }],
+            temperature: 0.85,
+            purpose: "character_chat",
+            origin: "user",
+            analytics_tier: "essential",
+          }),
+        });
+        const content = await readCompletion(response);
+        const assistantMessage: NarraChatMessage = {
+          id: Crypto.randomUUID(),
+          role: "assistant",
+          content: content || t("narra.emptyAnswer", "Мне нечего добавить."),
+          createdAt: Date.now(),
+        };
+        append(bookId, characterId, assistantMessage);
+        void refreshMemory([...messages, userMessage, assistantMessage]);
+      } catch (error) {
+        Alert.alert(
+          t("narra.chatFailedTitle", "Не удалось получить ответ"),
+          reportNarraError("character_chat", error).message,
+        );
+      } finally {
+        setSending(false);
+      }
+    },
+    [
+      append,
+      book,
+      bookId,
+      character,
+      characterId,
+      conversation,
+      messages,
+      refreshMemory,
+      sending,
+      t,
+      unlocked,
+    ],
+  );
 
   if (!book || !character) {
     return (
@@ -277,86 +311,28 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
     );
   }
 
-  const canSend = Boolean(input.trim() && !sending);
+  const assistantMessageAction = speakingId
+    ? undefined
+    : {
+        label: t("narra.playAnswer", "Озвучить ответ"),
+        onPress: speak,
+      };
+
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={process.env.EXPO_OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={88}
-    >
-      <ScrollView
-        ref={scrollRef}
-        contentInsetAdjustmentBehavior="automatic"
-        contentContainerStyle={styles.messages}
-        keyboardDismissMode="interactive"
-        keyboardShouldPersistTaps="handled"
-        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
-      >
-        {messages.length === 0 ? (
-          <View style={styles.greeting}>
-            <Text style={styles.greetingText}>{character.greeting}</Text>
-          </View>
-        ) : null}
-        {messages.map((message) => (
-          <View
-            key={message.id}
-            style={message.role === "user" ? styles.userRow : styles.characterRow}
-          >
-            <View
-              style={[
-                styles.bubble,
-                message.role === "user" ? styles.userBubble : styles.characterBubble,
-              ]}
-            >
-              <Text style={message.role === "user" ? styles.userMessage : styles.characterMessage}>
-                {message.content}
-              </Text>
-            </View>
-            {message.role === "assistant" ? (
-              <TouchableOpacity
-                accessibilityRole="button"
-                accessibilityLabel={t("narra.playAnswer", "Озвучить ответ")}
-                disabled={Boolean(speakingId)}
-                onPress={() => void speak(message)}
-                style={styles.speakButton}
-              >
-                {speakingId === message.id ? (
-                  <ActivityIndicator size="small" color={colors.primary} />
-                ) : (
-                  <Volume2Icon size={17} color={colors.mutedForeground} />
-                )}
-              </TouchableOpacity>
-            ) : null}
-          </View>
-        ))}
-        {sending ? <ActivityIndicator style={styles.loading} color={colors.primary} /> : null}
-      </ScrollView>
-      <View style={styles.composer}>
-        <TextInput
-          value={input}
-          onChangeText={setInput}
-          placeholder={t("narra.messagePlaceholder", "Написать {{name}}…", {
-            name: character.name,
-          })}
-          placeholderTextColor={colors.mutedForeground}
-          multiline
-          style={styles.input}
-        />
-        <TouchableOpacity
-          accessibilityRole="button"
-          activeOpacity={0.82}
-          disabled={!canSend}
-          onPress={() => void send()}
-          style={[styles.sendButton, !canSend && styles.sendButtonDisabled]}
-        >
-          {sending ? (
-            <ActivityIndicator size="small" color={colors.primaryForeground} />
-          ) : (
-            <Text style={styles.sendButtonText}>{t("narra.send", "Отправить")}</Text>
-          )}
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+    <View style={styles.container}>
+      <NarraChat
+        messages={chatMessages}
+        isStreaming={sending}
+        currentStep={sending ? "responding" : "idle"}
+        placeholder={t("narra.messagePlaceholder", "Написать {{name}}…", {
+          name: character.name,
+        })}
+        onSend={send}
+        assistantName={character.name}
+        showModeControls={false}
+        assistantMessageAction={assistantMessageAction}
+      />
+    </View>
   );
 }
 
@@ -364,73 +340,6 @@ const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
     headerButton: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
-    messages: { padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.sm },
-    greeting: {
-      alignSelf: "flex-start",
-      maxWidth: "88%",
-      padding: spacing.lg,
-      borderRadius: radius.card,
-      backgroundColor: colors.card,
-    },
-    greetingText: { color: colors.foreground, fontSize: fontSize.sm, lineHeight: 21 },
-    userRow: { alignSelf: "flex-end", maxWidth: "86%" },
-    characterRow: {
-      alignSelf: "flex-start",
-      maxWidth: "94%",
-      flexDirection: "row",
-      alignItems: "flex-end",
-    },
-    bubble: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderRadius: 20 },
-    userBubble: { backgroundColor: colors.primary, borderBottomRightRadius: radius.sm },
-    characterBubble: {
-      maxWidth: "90%",
-      backgroundColor: colors.card,
-      borderBottomLeftRadius: radius.sm,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.border,
-    },
-    userMessage: { color: colors.primaryForeground, fontSize: fontSize.sm, lineHeight: 21 },
-    characterMessage: { color: colors.foreground, fontSize: fontSize.sm, lineHeight: 21 },
-    speakButton: { width: 38, height: 38, alignItems: "center", justifyContent: "center" },
-    loading: { margin: spacing.lg },
-    composer: {
-      flexDirection: "row",
-      alignItems: "flex-end",
-      gap: spacing.sm,
-      padding: spacing.md,
-      paddingBottom: spacing.lg,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: colors.border,
-      backgroundColor: withOpacity(colors.background, 0.96),
-    },
-    input: {
-      flex: 1,
-      minHeight: 46,
-      maxHeight: 120,
-      paddingHorizontal: spacing.lg,
-      paddingTop: 12,
-      paddingBottom: 10,
-      borderRadius: 22,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.border,
-      backgroundColor: colors.card,
-      color: colors.foreground,
-      fontSize: fontSize.sm,
-    },
-    sendButton: {
-      minHeight: 46,
-      alignItems: "center",
-      justifyContent: "center",
-      paddingHorizontal: spacing.lg,
-      borderRadius: radius.full,
-      backgroundColor: colors.primary,
-    },
-    sendButtonDisabled: { opacity: 0.42 },
-    sendButtonText: {
-      color: colors.primaryForeground,
-      fontSize: fontSize.sm,
-      fontWeight: fontWeight.semibold,
-    },
     centered: {
       flexGrow: 1,
       alignItems: "center",

@@ -50,7 +50,7 @@ export const MessageReactions = <TMessage extends IMessage = IMessage>(
             ]}
           >
             <Text style={[styles.emoji, reactionTextStyle]}>{reaction.emoji}</Text>
-            {count > 0 && (
+            {count > 1 && (
               <Text
                 style={[
                   styles.count,
@@ -73,29 +73,28 @@ const createStyles = (theme: ChatTheme) =>
     container: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      marginTop: 2,
-      gap: 3,
+      marginTop: 3,
+      gap: 4,
     },
     containerLeft: {
       justifyContent: 'flex-start',
-      paddingLeft: 3,
+      paddingLeft: 4,
     },
     containerRight: {
       justifyContent: 'flex-end',
-      paddingRight: 3,
+      paddingRight: 4,
     },
     pill: {
       flexDirection: 'row',
       alignItems: 'center',
       borderRadius: theme.radii.reaction,
-      minHeight: 30,
-      paddingHorizontal: 7,
-      paddingVertical: 3,
-      borderWidth: StyleSheet.hairlineWidth,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderWidth: 1,
     },
     pillInactive: {
       backgroundColor: theme.colors.reactionBackground,
-      borderColor: theme.colors.separator,
+      borderColor: 'transparent',
     },
     pillActive: {
       backgroundColor: theme.colors.reactionActiveBackground,

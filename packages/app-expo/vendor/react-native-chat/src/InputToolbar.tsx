@@ -277,7 +277,6 @@ export function InputToolbar<TMessage extends IMessage = IMessage> (
   return (
     <View style={containerStyles}>
       {replyPreviewFragment}
-      {accessoryFragment}
       <View style={primaryStyles}>
         {voiceState.active
           ? (
@@ -316,6 +315,7 @@ export function InputToolbar<TMessage extends IMessage = IMessage> (
           )}
         {rightControl}
       </View>
+      {accessoryFragment}
     </View>
   )
 }
@@ -329,10 +329,9 @@ const createStyles = (theme: ChatTheme) => StyleSheet.create({
   primary: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    paddingTop: 3,
-    paddingBottom: 2,
+    paddingVertical: 8,
     paddingHorizontal: theme.spacing.screenEdge,
-    gap: 6,
+    gap: theme.spacing.screenEdge,
     // positioned parent for the voice recorder's overlay bar
     position: 'relative',
   },

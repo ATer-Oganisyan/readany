@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useMemo, useRef, useState } from 'react'
 import {
   View,
   Pressable,
@@ -44,9 +44,9 @@ interface PickerAnchor {
   bubbleHeight: number
 }
 
-const SCALE_PRESSED = 0.94
-const SCALE_DURATION_IN = 160
-const SCALE_DURATION_OUT = 140
+const SCALE_PRESSED = 0.85
+const SCALE_DURATION_IN = 400
+const SCALE_DURATION_OUT = 200
 const SCALE_EASING = Easing.inOut(Easing.quad)
 
 export const Bubble = <TMessage extends IMessage = IMessage>(props: BubbleProps<TMessage>): React.ReactElement => {
@@ -96,9 +96,7 @@ export const Bubble = <TMessage extends IMessage = IMessage>(props: BubbleProps<
 
   const bubbleContainerRef = useRef<View>(null)
 
-  const [isPickerVisible, setIsPickerVisible] = useState(
-    () => !!currentMessage?.initialContextMenuVisible
-  )
+  const [isPickerVisible, setIsPickerVisible] = useState(false)
   const [pickerAnchor, setPickerAnchor] = useState<PickerAnchor>({
     pageX: 0,
     pageY: 0,
@@ -132,19 +130,6 @@ export const Bubble = <TMessage extends IMessage = IMessage>(props: BubbleProps<
     })
   }, [])
 
-  useEffect(() => {
-    if (!isPickerVisible)
-      return
-
-    const frame = requestAnimationFrame(measureBubble)
-    return () => cancelAnimationFrame(frame)
-  }, [isPickerVisible, measureBubble])
-
-  useEffect(() => {
-    if (currentMessage?.initialContextMenuVisible)
-      setIsPickerVisible(true)
-  }, [currentMessage?.initialContextMenuVisible])
-
   const tapGesture = useMemo(
     () =>
       Gesture.Tap()
@@ -172,7 +157,6 @@ export const Bubble = <TMessage extends IMessage = IMessage>(props: BubbleProps<
           runOnJS(measureBubble)()
         })
         .onStart(() => {
-          runOnJS(onLongPress)()
           runOnJS(setIsPickerVisible)(true)
         })
         .onFinalize(() => {
@@ -182,17 +166,7 @@ export const Bubble = <TMessage extends IMessage = IMessage>(props: BubbleProps<
             reduceMotion: ReduceMotion.System,
           })
         }),
-    [messageScale, measureBubble, onLongPress]
-  )
-
-  const isGroupBottom = useMemo(
-    () => !(
-      currentMessage &&
-      nextMessage &&
-      isSameUser(currentMessage, nextMessage) &&
-      isSameDay(currentMessage, nextMessage)
-    ),
-    [currentMessage, nextMessage]
+    [messageScale, measureBubble]
   )
 
   // Exclusive composition: a long-press wins over the tap when held long
@@ -303,10 +277,6 @@ export const Bubble = <TMessage extends IMessage = IMessage>(props: BubbleProps<
       const combinedProps = {
         ...messageTextPropsRest,
         ...messageTextProps,
-        containerStyle: {
-          left: [messageTextProps?.containerStyle?.left, isGroupBottom && styles.messageTextWithMeta],
-          right: [messageTextProps?.containerStyle?.right, isGroupBottom && styles.messageTextWithMeta],
-        },
       } as RenderMessageTextProps<TMessage>
 
       if (props.renderMessageText)
@@ -316,7 +286,7 @@ export const Bubble = <TMessage extends IMessage = IMessage>(props: BubbleProps<
     }
 
     return null
-  }, [props, currentMessage, isGroupBottom, styles.messageTextWithMeta])
+  }, [props, currentMessage])
 
   const renderMessageImage = useCallback(() => {
     if (currentMessage?.image) {
@@ -552,52 +522,23 @@ export const Bubble = <TMessage extends IMessage = IMessage>(props: BubbleProps<
     props.isCustomViewBottom,
   ])
 
-  // A pure video note (round video, no text) drops the bubble background so the
-  // circle floats like in Telegram.
-  const isVideoNote = !!currentMessage?.videoNote && !!currentMessage?.video && !currentMessage?.text
-  const hasTail = isGroupBottom && !currentMessage?.reactions?.length
-
   const renderBubbleBody = useCallback(() => (
     <>
-      {hasTail && !isVideoNote && (
-        <View
-          pointerEvents='none'
-          style={[styles.tail, position === 'right' && styles.tailRight]}
-        >
-          <View
-            style={[
-              styles.tailBubble,
-              position === 'left' ? styles.tailBubbleLeft : styles.tailBubbleRight,
-            ]}
-          />
-          <View
-            style={[
-              styles.tailCutout,
-              position === 'left' ? styles.tailCutoutLeft : styles.tailCutoutRight,
-            ]}
-          />
-        </View>
-      )}
       {renderUsername()}
       {renderBubbleContent()}
-      {isGroupBottom && (
-        <View
-          style={[
-            styles.bottom,
-            bottomContainerStyle?.[position],
-          ]}
-        >
-          <View style={styles.messageTimeAndStatusContainer}>
-            {renderTime()}
-            {renderTicks()}
-          </View>
+      <View
+        style={[
+          styles.bottom,
+          bottomContainerStyle?.[position],
+        ]}
+      >
+        <View style={styles.messageTimeAndStatusContainer}>
+          {renderTime()}
+          {renderTicks()}
         </View>
-      )}
+      </View>
     </>
   ), [
-    hasTail,
-    isVideoNote,
-    isGroupBottom,
     position,
     bottomContainerStyle,
     renderBubbleContent,
@@ -606,6 +547,10 @@ export const Bubble = <TMessage extends IMessage = IMessage>(props: BubbleProps<
     renderTicks,
     styles,
   ])
+
+  // A pure video note (round video, no text) drops the bubble background so the
+  // circle floats like in Telegram.
+  const isVideoNote = !!currentMessage?.videoNote && !!currentMessage?.video && !currentMessage?.text
 
   const wrapperStyleList = useMemo(() => [
     getStyleWithPosition(styles, 'wrapper', position),

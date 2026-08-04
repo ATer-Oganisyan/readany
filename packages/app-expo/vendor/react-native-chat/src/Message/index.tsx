@@ -79,7 +79,6 @@ export const Message = <TMessage extends IMessage = IMessage>(props: MessageProp
   const swipeToReplyActionContainerStyle = swipeToReply?.actionContainerStyle
 
   const theme = useTheme()
-  const localStyles = useThemedStyles(createLocalStyles)
 
   const swipeableRef = useRef<SwipeableMethods>(null)
 
@@ -183,24 +182,10 @@ export const Message = <TMessage extends IMessage = IMessage>(props: MessageProp
       <View
         style={[
           getStyleWithPosition(styles, 'container', position),
-          currentMessage?.selected && localStyles.selectedRow,
           { marginBottom: sameUser ? theme.spacing.withinGroup : theme.spacing.betweenGroups },
           containerStyle?.[position],
         ]}
       >
-        {currentMessage?.selectionMode && (
-          <View
-            pointerEvents='none'
-            style={[
-              localStyles.selectionCheck,
-              currentMessage.selected
-                ? localStyles.selectionCheckSelected
-                : localStyles.selectionCheckIdle,
-            ]}
-          >
-            {currentMessage.selected && <View style={localStyles.selectionTick} />}
-          </View>
-        )}
         {position === 'left' && renderAvatar()}
         {renderBubble()}
         {position === 'right' && renderAvatar()}
@@ -246,37 +231,6 @@ export const Message = <TMessage extends IMessage = IMessage>(props: MessageProp
 }
 
 const createLocalStyles = (theme: ChatTheme) => StyleSheet.create({
-  selectionCheck: {
-    position: 'absolute',
-    left: 5,
-    top: '50%',
-    marginTop: -12,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 3,
-  },
-  selectionCheckIdle: {
-    borderWidth: 1.5,
-    borderColor: theme.colors.incomingMeta,
-    backgroundColor: theme.colors.background,
-  },
-  selectionCheckSelected: {
-    backgroundColor: theme.colors.accent,
-  },
-  selectionTick: {
-    width: 10,
-    height: 6,
-    borderLeftWidth: 2,
-    borderBottomWidth: 2,
-    borderColor: '#fff',
-    transform: [{ rotate: '-45deg' }, { translateY: -1 }],
-  },
-  selectedRow: {
-    backgroundColor: 'rgba(0, 136, 255, 0.12)',
-  },
   swipeActionContainer: {
     width: 40,
     justifyContent: 'center',

@@ -11,8 +11,6 @@ export interface MessageMenuItem {
   onPress: () => void
   /** Render the label in the destructive (error) color. */
   destructive?: boolean
-  /** Insert Telegram's 8pt grouped separator before this action. */
-  separatorBefore?: boolean
 }
 
 export interface LeftRightStyle<T> {
@@ -68,12 +66,6 @@ export interface IMessage {
   quickReplies?: QuickReplies
   replyMessage?: ReplyMessage
   reactions?: MessageReaction[]
-  /** Consumer-controlled multi-selection state. */
-  selected?: boolean
-  /** Show selection affordances for all rows without changing bubble geometry. */
-  selectionMode?: boolean
-  /** Open the real context-menu component on first render (visual-test harnesses). */
-  initialContextMenuVisible?: boolean
   location?: {
     latitude: number
     longitude: number

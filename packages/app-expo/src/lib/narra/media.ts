@@ -153,6 +153,7 @@ export async function generateSceneImage(
       prompt: buildSceneImagePrompt(chapter, excerpt, characters),
       width: 1024,
       height: 1024,
+      engine: "kandinsky",
     }),
   });
   const payload = imagePayload(await response.json().catch(() => null));

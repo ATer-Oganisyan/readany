@@ -22,9 +22,9 @@ const DotsAnimation = () => {
   const dot2 = useSharedValue(0)
   const dot3 = useSharedValue(0)
 
-  const topY = useMemo(() => -2, [])
-  const bottomY = useMemo(() => 2, [])
-  const duration = useMemo(() => 400, [])
+  const topY = useMemo(() => -5, [])
+  const bottomY = useMemo(() => 5, [])
+  const duration = useMemo(() => 500, [])
 
   const dot1Style = useAnimatedStyle(() => ({
     transform: [{

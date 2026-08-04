@@ -53,22 +53,12 @@ export function isSameUser (
   currentMessage: IMessage,
   diffMessage: IMessage | null | undefined
 ) {
-  const samePeer = !!(
+  return !!(
     diffMessage &&
     diffMessage.user &&
     currentMessage.user &&
     diffMessage.user._id === currentMessage.user._id
   )
-
-  if (!samePeer || !diffMessage)
-    return false
-
-  if (!isValidDate(currentMessage.createdAt) || !isValidDate(diffMessage.createdAt))
-    return samePeer
-
-  // Telegram only merges consecutive messages by the same author inside a
-  // ten-minute window; a longer pause starts a fresh bubble group/avatar.
-  return Math.abs(new Date(currentMessage.createdAt).getTime() - new Date(diffMessage.createdAt).getTime()) <= 10 * 60 * 1000
 }
 
 function processCallbackArguments (args: unknown[]): unknown[] {

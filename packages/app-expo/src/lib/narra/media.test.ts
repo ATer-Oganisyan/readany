@@ -4,7 +4,12 @@ import type { NarraCharacter } from "./types";
 vi.mock("expo-file-system/legacy", () => ({ documentDirectory: "file:///documents/" }));
 vi.mock("@/lib/ai/narra-gateway-fetch", () => ({ narraGatewayRequest: vi.fn() }));
 
-import { buildSceneImagePrompt, normalizePersistedNarraMediaUri } from "./media";
+import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
+import {
+  buildSceneImagePrompt,
+  generateSceneImage,
+  normalizePersistedNarraMediaUri,
+} from "./media";
 
 const anna: NarraCharacter = {
   id: "anna",
@@ -57,6 +62,26 @@ describe("scene image prompt", () => {
     expect(prompt).toContain("тёмные волосы");
     expect(prompt).not.toContain("Алексей Вронский");
     expect(prompt).toContain("Не добавляй отсутствующих героев");
+  });
+
+  it("routes square scene illustrations through Kandinsky", async () => {
+    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "stop after request inspection" }), {
+        status: 500,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    await expect(generateSceneImage("book-1", "Бал", "Анна вошла в зал.", [anna])).rejects.toThrow(
+      "stop after request inspection",
+    );
+
+    const [, request] = vi.mocked(narraGatewayRequest).mock.calls[0] ?? [];
+    expect(JSON.parse(String(request?.body))).toMatchObject({
+      width: 1024,
+      height: 1024,
+      engine: "kandinsky",
+    });
   });
 });
 

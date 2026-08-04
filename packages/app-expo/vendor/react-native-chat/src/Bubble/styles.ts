@@ -31,10 +31,8 @@ export const createBubbleStyles = (theme: ChatTheme) => {
 
     wrapper: {
       borderRadius: radii.bubble,
-      minWidth: 40,
-      minHeight: 35,
-      maxWidth: '85%',
-      position: 'relative',
+      minHeight: 20,
+      maxWidth: '70%',
     },
     wrapper_left: {
       backgroundColor: colors.incomingBubble,
@@ -50,66 +48,11 @@ export const createBubbleStyles = (theme: ChatTheme) => {
     },
 
     bottom: {
-      position: 'absolute',
-      right: 0,
-      bottom: 0,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'flex-end',
-      paddingRight: 7,
-      paddingBottom: 3,
-    },
-
-    // Reserve the trailing baseline occupied by the 11pt timestamp and ticks.
-    // Telegram measures the final line and only consumes this width there; RN
-    // cannot inspect a Markdown line fragment, so the equivalent reservation is
-    // applied to the message container's trailing edge.
-    messageTextWithMeta: {
-      paddingRight: 48,
-    },
-
-    // Curved tail built from two circles: the bubble-coloured lobe is carved by
-    // a chat-background circle. This reproduces Telegram's crescent principle
-    // without copying its CoreGraphics path.
-    tail: {
-      position: 'absolute',
-      left: -6,
-      bottom: 0,
-      width: 12,
-      height: 15,
-    },
-    tailRight: {
-      left: undefined,
-      right: -6,
-    },
-    tailBubble: {
-      position: 'absolute',
-      bottom: 0,
-      width: 14,
-      height: 14,
-      borderRadius: 7,
-    },
-    tailBubbleLeft: {
-      right: -5,
-      backgroundColor: colors.incomingBubble,
-    },
-    tailBubbleRight: {
-      left: -5,
-      backgroundColor: colors.outgoingBubble,
-    },
-    tailCutout: {
-      position: 'absolute',
-      bottom: 4,
-      width: 14,
-      height: 14,
-      borderRadius: 7,
-      backgroundColor: colors.background,
-    },
-    tailCutoutLeft: {
-      left: -7,
-    },
-    tailCutoutRight: {
-      right: -7,
+      paddingHorizontal: spacing.bubblePaddingH,
+      paddingBottom: spacing.bubblePaddingV,
     },
 
     // Soften the inner corners of grouped messages instead of squaring them off.

@@ -43,21 +43,19 @@ export interface MessageReplyProps<TMessage extends IMessage = IMessage> {
 
 const createStyles = (theme: ChatTheme) => StyleSheet.create({
   container: {
-    marginHorizontal: 11,
-    marginTop: 6,
-    marginBottom: -1,
-    paddingLeft: 8,
-    paddingRight: 3,
-    paddingVertical: 3,
+    borderRadius: 8,
+    marginBottom: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
   },
   containerLeft: {
-    backgroundColor: 'transparent',
+    backgroundColor: theme.colors.reactionBackground,
     borderLeftColor: theme.colors.accent,
     borderLeftWidth: 3,
   },
   containerRight: {
-    backgroundColor: 'transparent',
-    borderLeftColor: theme.colors.ticksRead,
+    backgroundColor: theme.colors.outgoingOverlay,
+    borderLeftColor: theme.colors.outgoingMeta,
     borderLeftWidth: 3,
   },
   image: {
@@ -67,8 +65,7 @@ const createStyles = (theme: ChatTheme) => StyleSheet.create({
     width: 40,
   },
   text: {
-    fontSize: 14,
-    lineHeight: 17,
+    fontSize: 13,
   },
   textLeft: {
     color: theme.colors.incomingText,
@@ -79,14 +76,12 @@ const createStyles = (theme: ChatTheme) => StyleSheet.create({
   username: {
     fontWeight: '600',
     marginBottom: 2,
-    fontSize: 14,
-    lineHeight: 17,
   },
   usernameLeft: {
     color: theme.colors.accent,
   },
   usernameRight: {
-    color: theme.colors.ticksRead,
+    color: theme.colors.outgoingText,
   },
 })
 

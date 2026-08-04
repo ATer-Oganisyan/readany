@@ -7,7 +7,7 @@ export default StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    marginHorizontal: 3,
+    marginHorizontal: 8,
   },
   container_left: {
     justifyContent: 'flex-start',
