@@ -25,7 +25,7 @@ import TTSSettingsScreen from "@/screens/settings/TTSSettingsScreen";
 import TranslationSettingsScreen from "@/screens/settings/TranslationSettingsScreen";
 import VectorModelSettingsScreen from "@/screens/settings/VectorModelSettingsScreen";
 import { useSettingsStore } from "@/stores";
-import { titleFontFamily, useColors, useTheme } from "@/styles/theme";
+import { titleFontFamily, useColors } from "@/styles/theme";
 /**
  * RootNavigator — top-level stack matching Tauri mobile App.tsx routes exactly.
  */
@@ -81,7 +81,6 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 export function RootNavigator() {
   const { _hasHydrated } = useSettingsStore();
   const colors = useColors();
-  const { isDark } = useTheme();
   const { t } = useTranslation();
 
   if (!_hasHydrated) return null;
@@ -105,8 +104,6 @@ export function RootNavigator() {
           },
           scrollEdgeEffects: NATIVE_SCROLL_EDGE_EFFECTS,
           contentStyle: { backgroundColor: colors.background },
-          statusBarHidden: false,
-          statusBarStyle: isDark ? "light" : "dark",
         }}
       >
         <Stack.Screen name="Tabs" component={TabNavigator} options={{ headerShown: false }} />
@@ -128,8 +125,6 @@ export function RootNavigator() {
           options={{
             animation: "slide_from_right",
             headerShown: false,
-            statusBarHidden: true,
-            statusBarAnimation: "fade",
           }}
         />
         <Stack.Screen

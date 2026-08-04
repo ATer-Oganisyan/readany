@@ -1,18 +1,18 @@
 import { type ExtractorRef, ExtractorWebView } from "@/components/rag/ExtractorWebView";
-import { ChevronRightIcon, RefreshCwIcon } from "@/components/ui/Icon";
+import { ChevronRightIcon } from "@/components/ui/Icon";
 import { Text } from "@/components/ui/Typography";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { analyzeBookCharacters } from "@/lib/narra/character-analysis";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
 import { reportNarraError } from "@/lib/narra/errors";
-import { generateCharacterPortrait } from "@/lib/narra/media";
+import { generateCharacterPortrait, normalizePersistedNarraMediaUri } from "@/lib/narra/media";
 import { inspectMobileBookForVectorize } from "@/lib/rag/auto-vectorize-book";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useLibraryStore, useNarraStore } from "@/stores";
 import { type ThemeColors, fontSize, fontWeight, radius, spacing, useColors } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import * as FileSystem from "expo-file-system/legacy";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
@@ -38,10 +38,39 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
   const extractorRef = useRef<ExtractorRef>(null);
   const analysisActiveRef = useRef(false);
   const portraitAttemptsRef = useRef(new Set<string>());
+  const validatedPortraitsRef = useRef(new Set<string>());
+  const validatedBookIdRef = useRef(bookId);
   const [analysisStage, setAnalysisStage] = useState("");
   const [portraitLoading, setPortraitLoading] = useState<string | null>(null);
   const characters = bookState?.characters ?? [];
   const busy = analyzing || Boolean(analysisStage);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (validatedBookIdRef.current !== bookId) {
+      validatedBookIdRef.current = bookId;
+      validatedPortraitsRef.current.clear();
+    }
+    for (const character of characters) {
+      const persistedUri = character.portraitUri;
+      if (!persistedUri?.startsWith("file://")) continue;
+      const normalizedUri = normalizePersistedNarraMediaUri(persistedUri);
+      const validationKey = `${character.id}:${normalizedUri}`;
+      if (validatedPortraitsRef.current.has(validationKey)) continue;
+      validatedPortraitsRef.current.add(validationKey);
+      void FileSystem.getInfoAsync(normalizedUri).then((info) => {
+        if (cancelled) return;
+        if (!info.exists) {
+          updateCharacter(bookId, character.id, { portraitUri: undefined });
+        } else if (normalizedUri !== persistedUri) {
+          updateCharacter(bookId, character.id, { portraitUri: normalizedUri });
+        }
+      });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [bookId, characters, updateCharacter]);
 
   const analyze = useCallback(async () => {
     if (!book || analysisActiveRef.current) return;
@@ -78,49 +107,6 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
       setAnalysisStage("");
     }
   }, [book, t]);
-
-  useLayoutEffect(() => {
-    const label = t("narra.analyzeAgain", "Проанализировать заново");
-    if (process.env.EXPO_OS === "ios") {
-      navigation.setOptions({
-        unstable_headerRightItems: () =>
-          characters.length > 0
-            ? [
-                {
-                  type: "button" as const,
-                  label,
-                  accessibilityLabel: label,
-                  icon: {
-                    type: "sfSymbol" as const,
-                    name: "arrow.counterclockwise" as const,
-                  },
-                  disabled: busy,
-                  onPress: () => void analyze(),
-                },
-              ]
-            : [],
-      });
-      return;
-    }
-
-    navigation.setOptions({
-      headerRight:
-        characters.length > 0
-          ? () => (
-              <TouchableOpacity
-                accessibilityRole="button"
-                accessibilityLabel={label}
-                activeOpacity={0.65}
-                disabled={busy}
-                onPress={() => void analyze()}
-                style={[styles.headerButton, busy && styles.disabled]}
-              >
-                <RefreshCwIcon size={20} color={colors.primary} />
-              </TouchableOpacity>
-            )
-          : undefined,
-    });
-  }, [analyze, busy, characters.length, colors.primary, navigation, styles, t]);
 
   useEffect(() => {
     if (!book || busy || portraitLoading) return;
@@ -199,7 +185,13 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
                 >
                   <View style={styles.avatar}>
                     {character.portraitUri ? (
-                      <Image source={{ uri: character.portraitUri }} style={styles.avatarImage} />
+                      <Image
+                        source={{ uri: normalizePersistedNarraMediaUri(character.portraitUri) }}
+                        style={styles.avatarImage}
+                        onError={() =>
+                          updateCharacter(bookId, character.id, { portraitUri: undefined })
+                        }
+                      />
                     ) : portraitBusy ? (
                       <ActivityIndicator color={colors.primaryForeground} />
                     ) : (
@@ -296,12 +288,5 @@ const makeStyles = (colors: ThemeColors) =>
       height: StyleSheet.hairlineWidth,
       marginLeft: 56 + spacing.sm,
       backgroundColor: colors.border,
-    },
-    headerButton: {
-      width: 40,
-      height: 40,
-      borderRadius: radius.full,
-      alignItems: "center",
-      justifyContent: "center",
     },
   });

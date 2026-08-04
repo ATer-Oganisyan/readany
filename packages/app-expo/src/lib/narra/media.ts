@@ -3,6 +3,16 @@ import * as FileSystem from "expo-file-system/legacy";
 import type { NarraCharacter } from "./types";
 
 const MEDIA_DIR = `${FileSystem.documentDirectory}narra-media`;
+const MEDIA_PATH_MARKER = "/Documents/narra-media/";
+
+/** Rehomes persisted iOS file URIs after the app data-container UUID changes. */
+export function normalizePersistedNarraMediaUri(uri: string): string {
+  if (!uri.startsWith("file://")) return uri;
+  const markerIndex = uri.indexOf(MEDIA_PATH_MARKER);
+  if (markerIndex === -1) return uri;
+  const filename = uri.slice(markerIndex + MEDIA_PATH_MARKER.length);
+  return `${MEDIA_DIR}/${filename}`;
+}
 
 async function ensureMediaDir(): Promise<void> {
   const info = await FileSystem.getInfoAsync(MEDIA_DIR);

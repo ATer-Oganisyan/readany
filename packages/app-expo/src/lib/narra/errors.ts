@@ -50,6 +50,7 @@ export function reportNarraError(scope: string, error: unknown): NarraServiceErr
   console.warn("[NarraError]", {
     scope,
     code: normalized.code,
+    detail: error instanceof Error ? error.message : String(error),
     requestId: normalized.requestId,
   });
   return normalized;

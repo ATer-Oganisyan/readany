@@ -23,6 +23,7 @@ function readSvgBody(filePath) {
 
 function colorizeSplashLogo(svg, color) {
   return svg
+    .replaceAll("#4E4E4E", color)
     .replaceAll("#A1A1A1", color)
     .replace(/(<svg[^>]*>)/, '$1\n<g opacity="0.3019607843">')
     .replace("</svg>", "</g>\n</svg>");

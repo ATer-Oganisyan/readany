@@ -151,7 +151,7 @@ function MiniHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
   }, [dailyStats]);
 
   const getColor = (intensity: number) => {
-    if (intensity <= 0) return themeColors.muted;
+    if (intensity <= 0) return themeColors.primary10;
     if (intensity < 0.25) return withOpacity(themeColors.primary, 0.3);
     if (intensity < 0.5) return withOpacity(themeColors.primary, 0.5);
     if (intensity < 0.75) return withOpacity(themeColors.primary, 0.7);

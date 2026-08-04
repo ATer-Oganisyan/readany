@@ -10,6 +10,7 @@ import SplashLogoDark from "../../../assets/splash-logo-dark.svg";
 import SplashLogoLight from "../../../assets/splash-logo.svg";
 
 const LOGO_SIZE = 144;
+const LOGO_BOTTOM_GAP = 24;
 
 interface Props {
   onFinish: () => void;
@@ -47,7 +48,8 @@ export function AnimatedSplash({ onFinish }: Props) {
           inset: 0,
           zIndex: 9999,
           alignItems: "center",
-          justifyContent: "center",
+          justifyContent: "flex-end",
+          paddingBottom: LOGO_BOTTOM_GAP,
           backgroundColor: isDark ? "#000000" : "#FFFFFF",
         },
         containerStyle,

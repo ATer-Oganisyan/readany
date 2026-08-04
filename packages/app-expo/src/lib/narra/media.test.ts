@@ -4,7 +4,7 @@ import type { NarraCharacter } from "./types";
 vi.mock("expo-file-system/legacy", () => ({ documentDirectory: "file:///documents/" }));
 vi.mock("@/lib/ai/narra-gateway-fetch", () => ({ narraGatewayRequest: vi.fn() }));
 
-import { buildSceneImagePrompt } from "./media";
+import { buildSceneImagePrompt, normalizePersistedNarraMediaUri } from "./media";
 
 const anna: NarraCharacter = {
   id: "anna",
@@ -57,5 +57,24 @@ describe("scene image prompt", () => {
     expect(prompt).toContain("тёмные волосы");
     expect(prompt).not.toContain("Алексей Вронский");
     expect(prompt).toContain("Не добавляй отсутствующих героев");
+  });
+});
+
+describe("persisted Narra media URI", () => {
+  it("moves an iOS URI from an old app container into the current document directory", () => {
+    expect(
+      normalizePersistedNarraMediaUri(
+        "file:///var/mobile/Containers/Data/Application/OLD/Documents/narra-media/book-hero.png",
+      ),
+    ).toBe("file:///documents/narra-media/book-hero.png");
+  });
+
+  it("leaves remote and unrelated local URIs untouched", () => {
+    expect(normalizePersistedNarraMediaUri("https://cdn.example/hero.png")).toBe(
+      "https://cdn.example/hero.png",
+    );
+    expect(normalizePersistedNarraMediaUri("file:///documents/covers/book.png")).toBe(
+      "file:///documents/covers/book.png",
+    );
   });
 });

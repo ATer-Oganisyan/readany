@@ -25,6 +25,7 @@ if (typeof navigator !== "undefined" && !navigator.userAgent) {
 
 import { interfaceFontAssets } from "@deslop/primitives/native";
 import { DarkTheme, DefaultTheme, NavigationContainer } from "@react-navigation/native";
+import Constants from "expo-constants";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
@@ -281,7 +282,7 @@ function AppInner() {
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.background }}>
       <SafeAreaProvider>
         <NavigationContainer theme={navTheme} ref={navigationRef}>
-          {Platform.OS !== "ios" && <StatusBar style={isDark ? "light" : "dark"} />}
+          {usesAppControlledStatusBar && <StatusBar style={isDark ? "light" : "dark"} />}
           <RootNavigator />
         </NavigationContainer>
         <UpdateDialog />
@@ -290,3 +291,5 @@ function AppInner() {
     </GestureHandlerRootView>
   );
 }
+const usesAppControlledStatusBar =
+  Platform.OS !== "ios" || Number(Constants.platform?.ios?.buildNumber ?? 0) >= 6;

@@ -26,6 +26,7 @@ export interface ThemeColors {
   border: string;
   primary: string;
   primary5: string;
+  primary10: string;
   primaryForeground: string;
   destructive: string;
   destructiveForeground: string;
@@ -106,6 +107,7 @@ function makeThemeColors(mode: ResolvedThemeMode): ThemeColors {
     border: mixHex(foreground, backgroundSecondary, 0.1),
     primary,
     primary5: primaryScale("Primary 5"),
+    primary10: primaryScale("Primary 10"),
     primaryForeground: base("Black"),
     destructive: accentScale("Red"),
     destructiveForeground: base("White"),

@@ -16,9 +16,9 @@ module.exports = {
       icon: "./assets/Narra.icon",
       supportsTablet: true,
       bundleIdentifier: variant.bundleIdentifier,
-      buildNumber: "2",
+      buildNumber: "6",
       infoPlist: {
-        UIViewControllerBasedStatusBarAppearance: true,
+        UIViewControllerBasedStatusBarAppearance: false,
         UIBackgroundModes: ["audio"],
         NSCameraUsageDescription:
           "Камера нужна Narra для сканирования QR‑кодов синхронизации и настройки.",
