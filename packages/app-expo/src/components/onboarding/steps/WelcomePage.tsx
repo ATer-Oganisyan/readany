@@ -39,7 +39,7 @@ export function WelcomePage() {
           entering={FadeInDown.delay(200).springify()}
           style={[styles.title, { color: colors.foreground }]}
         >
-          {t("onboarding.welcome.title", "Welcome to ReadAny")}
+          {t("onboarding.welcome.title", "Welcome to Narra")}
         </Animated.Text>
         <Animated.Text
           entering={FadeInDown.delay(300).springify()}

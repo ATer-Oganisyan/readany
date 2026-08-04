@@ -95,7 +95,7 @@
     "syncNotConfigured": "Configura la sincronización primero",
     "detailsAction": "Detalles del libro",
     "detailsTitle": "Detalles del libro",
-    "detailsDesc": "Edita los metadatos que ReadAny usa para mostrar, buscar y nombrar en la sincronización.",
+    "detailsDesc": "Edita los metadatos que Narra usa para mostrar, buscar y nombrar en la sincronización.",
     "detailsMetadata": "Metadatos",
     "detailsOrganize": "Organizar",
     "detailsBookTitle": "Título",
@@ -145,7 +145,7 @@
     "detailsDatePrecisionDay": "Fecha exacta",
     "detailsSelectedTags": "{{count}} seleccionadas",
     "detailsNoTagsSelected": "Sin etiquetas seleccionadas",
-    "detailsManagedMetadataNote": "ReadAny mantiene estos metadatos para mostrar, buscar y nombrar en la sincronización. El archivo original del libro no se modifica.",
+    "detailsManagedMetadataNote": "Narra mantiene estos metadatos para mostrar, buscar y nombrar en la sincronización. El archivo original del libro no se modifica.",
     "bookNotFound": "Libro no encontrado"
   },
   "home": {

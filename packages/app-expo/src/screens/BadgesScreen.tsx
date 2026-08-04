@@ -824,7 +824,7 @@ const BadgeSharePosterCard = React.forwardRef<
                 letterSpacing: 0.3,
               }}
             >
-              ReadAny
+              Narra
             </Text>
           </View>
         </View>

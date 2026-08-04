@@ -24,9 +24,9 @@ module.exports = {
       infoPlist: {
         UIBackgroundModes: ["audio"],
         NSCameraUsageDescription:
-          "Камера нужна ReadAny для сканирования QR‑кодов синхронизации и настройки.",
+          "Камера нужна Narra для сканирования QR‑кодов синхронизации и настройки.",
         NSLocalNetworkUsageDescription:
-          "Локальная сеть нужна ReadAny для синхронизации с другими устройствами и подключения к серверу разработки.",
+          "Локальная сеть нужна Narra для синхронизации с другими устройствами и подключения к серверу разработки.",
         ITSAppUsesNonExemptEncryption: false,
       },
     },
@@ -52,9 +52,11 @@ module.exports = {
         },
       ],
       [
-        "expo-av",
+        "expo-audio",
         {
           microphonePermission: false,
+          recordAudioAndroid: false,
+          enableBackgroundPlayback: true,
         },
       ],
       [
@@ -72,7 +74,7 @@ module.exports = {
       [
         "expo-image-picker",
         {
-          photosPermission: "Доступ к медиатеке нужен ReadAny, чтобы выбирать обложки книг.",
+          photosPermission: "Доступ к медиатеке нужен Narra, чтобы выбирать обложки книг.",
         },
       ],
       "expo-secure-store",
@@ -83,7 +85,7 @@ module.exports = {
         "expo-camera",
         {
           cameraPermission:
-            "Разрешите ReadAny доступ к камере, чтобы сканировать QR‑коды синхронизации.",
+            "Разрешите Narra доступ к камере, чтобы сканировать QR‑коды синхронизации.",
         },
       ],
     ],

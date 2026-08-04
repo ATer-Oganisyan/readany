@@ -122,10 +122,10 @@ export function AboutSettings() {
       <div className="mb-6 flex flex-col items-center">
         <img
           src="/logo.svg"
-          alt="ReadAny Logo"
+          alt="Narra Logo"
           className="mb-4 h-24 w-24 rounded-[22%] drop-shadow-lg"
         />
-        <h1 className="text-2xl font-bold text-foreground">ReadAny</h1>
+        <h1 className="text-2xl font-bold text-foreground">Narra</h1>
         <p className="mt-1 text-sm text-muted-foreground">{t("settings.aboutDesc")}</p>
       </div>
 
@@ -274,19 +274,6 @@ export function AboutSettings() {
           <div className="flex items-center gap-3">
             <Github className="h-5 w-5 text-muted-foreground" />
             <span className="text-sm font-medium text-foreground">GitHub</span>
-          </div>
-          <ExternalLink className="h-4 w-4 text-muted-foreground" />
-        </a>
-
-        <a
-          href="https://github.com/codedogQBY/ReadAny/issues"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center justify-between rounded-lg bg-muted/60 p-3 transition-colors hover:bg-muted"
-        >
-          <div className="flex items-center gap-3">
-            <BookOpen className="h-5 w-5 text-muted-foreground" />
-            <span className="text-sm font-medium text-foreground">{t("settings.feedback")}</span>
           </div>
           <ExternalLink className="h-4 w-4 text-muted-foreground" />
         </a>

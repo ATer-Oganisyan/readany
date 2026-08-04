@@ -18,6 +18,7 @@ export interface VectorModelState {
   selectedVectorModelId: string | null;
   vectorModelEnabled: boolean;
   autoVectorizeOnImport: boolean;
+  autoVectorizeDefaultApplied: boolean;
   vectorModelMode: "remote" | "builtin";
   selectedBuiltinModelId: string | null;
   builtinModelStates: Record<string, BuiltinModelState>;
@@ -36,64 +37,76 @@ export interface VectorModelState {
 }
 
 export const useVectorModelStore = create<VectorModelState>()(
-  withPersist("vector-model", (set, get) => ({
-    vectorModels: [],
-    selectedVectorModelId: null,
-    vectorModelEnabled: true,
-    autoVectorizeOnImport: false,
-    vectorModelMode: "remote",
-    selectedBuiltinModelId: null,
-    builtinModelStates: {},
+  withPersist(
+    "vector-model",
+    (set, get) => ({
+      vectorModels: [],
+      selectedVectorModelId: null,
+      vectorModelEnabled: true,
+      autoVectorizeOnImport: true,
+      autoVectorizeDefaultApplied: true,
+      vectorModelMode: "remote",
+      selectedBuiltinModelId: null,
+      builtinModelStates: {},
 
-    setVectorModelEnabled: (vectorModelEnabled) => set({ vectorModelEnabled }),
-    setAutoVectorizeOnImport: (autoVectorizeOnImport) => set({ autoVectorizeOnImport }),
-    setVectorModelMode: (vectorModelMode) => set({ vectorModelMode }),
+      setVectorModelEnabled: (vectorModelEnabled) => set({ vectorModelEnabled }),
+      setAutoVectorizeOnImport: (autoVectorizeOnImport) => set({ autoVectorizeOnImport }),
+      setVectorModelMode: (vectorModelMode) => set({ vectorModelMode }),
 
-    addVectorModel: (model) => {
-      const { vectorModels } = get();
-      set({ vectorModels: [...vectorModels, model] });
-    },
+      addVectorModel: (model) => {
+        const { vectorModels } = get();
+        set({ vectorModels: [...vectorModels, model] });
+      },
 
-    updateVectorModel: (id, updates) => {
-      const { vectorModels } = get();
-      set({
-        vectorModels: vectorModels.map((m) => (m.id === id ? { ...m, ...updates } : m)),
-      });
-    },
+      updateVectorModel: (id, updates) => {
+        const { vectorModels } = get();
+        set({
+          vectorModels: vectorModels.map((m) => (m.id === id ? { ...m, ...updates } : m)),
+        });
+      },
 
-    deleteVectorModel: (id) => {
-      const { vectorModels, selectedVectorModelId } = get();
-      const newModels = vectorModels.filter((m) => m.id !== id);
-      const newSelected = selectedVectorModelId === id ? null : selectedVectorModelId;
-      set({ vectorModels: newModels, selectedVectorModelId: newSelected });
-    },
+      deleteVectorModel: (id) => {
+        const { vectorModels, selectedVectorModelId } = get();
+        const newModels = vectorModels.filter((m) => m.id !== id);
+        const newSelected = selectedVectorModelId === id ? null : selectedVectorModelId;
+        set({ vectorModels: newModels, selectedVectorModelId: newSelected });
+      },
 
-    setSelectedVectorModelId: (selectedVectorModelId) => set({ selectedVectorModelId }),
+      setSelectedVectorModelId: (selectedVectorModelId) => set({ selectedVectorModelId }),
 
-    getSelectedVectorModel: () => {
-      const { vectorModels, selectedVectorModelId } = get();
-      return vectorModels.find((m) => m.id === selectedVectorModelId) || null;
-    },
+      getSelectedVectorModel: () => {
+        const { vectorModels, selectedVectorModelId } = get();
+        return vectorModels.find((m) => m.id === selectedVectorModelId) || null;
+      },
 
-    setSelectedBuiltinModelId: (selectedBuiltinModelId) => set({ selectedBuiltinModelId }),
+      setSelectedBuiltinModelId: (selectedBuiltinModelId) => set({ selectedBuiltinModelId }),
 
-    updateBuiltinModelState: (id, state) =>
-      set((s) => ({
-        builtinModelStates: {
-          ...s.builtinModelStates,
-          [id]: { ...s.builtinModelStates[id], ...state } as BuiltinModelState,
-        },
-      })),
+      updateBuiltinModelState: (id, state) =>
+        set((s) => ({
+          builtinModelStates: {
+            ...s.builtinModelStates,
+            [id]: { ...s.builtinModelStates[id], ...state } as BuiltinModelState,
+          },
+        })),
 
-    hasVectorCapability: () => {
-      const { vectorModelEnabled, vectorModelMode } = get();
-      if (!vectorModelEnabled) return false;
-      if (vectorModelMode === "builtin") {
-        const { selectedBuiltinModelId } = get();
-        return !!selectedBuiltinModelId;
-      }
-      const selected = get().getSelectedVectorModel();
-      return selected != null;
-    },
-  })),
+      hasVectorCapability: () => {
+        const { vectorModelEnabled, vectorModelMode } = get();
+        if (!vectorModelEnabled) return false;
+        if (vectorModelMode === "builtin") {
+          const { selectedBuiltinModelId } = get();
+          return !!selectedBuiltinModelId;
+        }
+        const selected = get().getSelectedVectorModel();
+        return selected != null;
+      },
+    }),
+    undefined,
+    (persisted) => ({
+      ...persisted,
+      autoVectorizeOnImport: persisted.autoVectorizeDefaultApplied
+        ? persisted.autoVectorizeOnImport
+        : true,
+      autoVectorizeDefaultApplied: true,
+    }),
+  ),
 );

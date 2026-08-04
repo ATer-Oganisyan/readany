@@ -59,9 +59,9 @@ export function WelcomePage({ onNext, onPrev: _onPrev, step, totalSteps }: any) 
       <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 flex-1 flex flex-col justify-center">
         <div className="space-y-2 text-center mb-6">
           <h1 className="text-3xl font-extrabold tracking-tight">
-            {t("onboarding.welcome.title", "Welcome to ReadAny").split(" ").slice(0, 2).join(" ")}{" "}
+            {t("onboarding.welcome.title", "Welcome to Narra").split(" ").slice(0, 2).join(" ")}{" "}
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-blue-500">
-              {t("onboarding.welcome.title", "Welcome to ReadAny").split(" ").slice(2).join(" ")}
+              {t("onboarding.welcome.title", "Welcome to Narra").split(" ").slice(2).join(" ")}
             </span>
           </h1>
           <p className="text-sm text-muted-foreground">

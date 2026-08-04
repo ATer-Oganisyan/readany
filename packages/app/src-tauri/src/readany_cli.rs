@@ -99,7 +99,7 @@ fn args_for_action(action: &str, options: &ReadAnyCliRunOptions) -> Result<Vec<S
         "epub_toc_rebuild" => epub_toc_rebuild_args(options),
         "epub_undo" => epub_undo_args(options),
         "epub_draft_discard" => epub_draft_discard_args(options),
-        _ => Err(format!("Unsupported ReadAny CLI action: {}", action)),
+        _ => Err(format!("Unsupported Narra CLI action: {}", action)),
     }
 }
 
@@ -679,14 +679,14 @@ fn command_display(cli_command: &CliCommand) -> String {
 fn format_cli_spawn_error(cli_command: &CliCommand, error: &std::io::Error) -> String {
     if cli_command.source == "bundle" && error.kind() == std::io::ErrorKind::NotFound {
         return format!(
-            "Failed to run bundled ReadAny CLI because Node.js was not found. Install Node.js or make it available in PATH, then try again. Tried command: {}. Original error: {}",
+            "Failed to run bundled Narra CLI because Node.js was not found. Install Node.js or make it available in PATH, then try again. Tried command: {}. Original error: {}",
             command_display(cli_command),
             error
         );
     }
 
     format!(
-        "Failed to run ReadAny CLI via {}: {}",
+        "Failed to run Narra CLI via {}: {}",
         cli_command.source, error
     )
 }
@@ -772,7 +772,7 @@ pub async fn readany_cli_run(
         })
     })
     .await
-    .map_err(|error| format!("ReadAny CLI task failed: {}", error))?
+    .map_err(|error| format!("Narra CLI task failed: {}", error))?
 }
 
 #[cfg(test)]
@@ -1452,7 +1452,7 @@ mod tests {
         let error = io::Error::from(io::ErrorKind::NotFound);
         let message = format_cli_spawn_error(&command, &error);
 
-        assert!(message.contains("bundled ReadAny CLI"));
+        assert!(message.contains("bundled Narra CLI"));
         assert!(message.contains("Node.js was not found"));
         assert!(message.contains("readany.js"));
     }

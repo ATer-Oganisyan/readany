@@ -6,14 +6,7 @@ import Constants from "expo-constants";
 import { Scan } from "@/components/ui/Icon";
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  Alert,
-  Animated,
-  Modal,
-  StyleSheet,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { Alert, Animated, Modal, StyleSheet, TouchableOpacity, View } from "react-native";
 import QRCode from "react-native-qrcode-svg";
 import { useColors } from "../../../styles/theme";
 import { makeStyles } from "./sync-styles";
@@ -86,7 +79,7 @@ export function LanSection({
     setLanServerStatus("starting");
     setShowManualIPInput(false);
     try {
-      const deviceName = "ReadAny Mobile";
+      const deviceName = "Narra Mobile";
       const server = createLANServer({
         deviceName,
         events: {
@@ -119,7 +112,7 @@ export function LanSection({
     setLanError("");
     setLanServerStatus("starting");
     try {
-      const deviceName = "ReadAny Mobile";
+      const deviceName = "Narra Mobile";
       const server = createLANServer({
         deviceName,
         events: {
@@ -332,19 +325,11 @@ export function LanSection({
                   <View style={{ marginTop: 12, alignItems: "center", gap: 4 }}>
                     <Text style={styles.lanAddress}>
                       {t("settings.syncLANIP")}:{" "}
-                      <Text
-                        style={{ color: colors.foreground }}
-                      >
-                        {lanQrData.ip}
-                      </Text>
+                      <Text style={{ color: colors.foreground }}>{lanQrData.ip}</Text>
                     </Text>
                     <Text style={styles.lanAddress}>
                       {t("settings.syncLANPort")}:{" "}
-                      <Text
-                        style={{ color: colors.foreground }}
-                      >
-                        {lanQrData.port}
-                      </Text>
+                      <Text style={{ color: colors.foreground }}>{lanQrData.port}</Text>
                     </Text>
                   </View>
                 </View>

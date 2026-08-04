@@ -95,7 +95,7 @@
     "syncNotConfigured": "Please configure sync first",
     "detailsAction": "Book Details",
     "detailsTitle": "Book Details",
-    "detailsDesc": "Edit the metadata ReadAny uses for library display, search, and sync naming.",
+    "detailsDesc": "Edit the metadata Narra uses for library display, search, and sync naming.",
     "detailsMetadata": "Metadata",
     "detailsOrganize": "Organize",
     "detailsBookTitle": "Title",
@@ -158,7 +158,7 @@
     "detailsDatePrecisionDay": "Exact date",
     "detailsSelectedTags": "{{count}} selected",
     "detailsNoTagsSelected": "No tags selected",
-    "detailsManagedMetadataNote": "ReadAny maintains this metadata for library display, search, and sync naming. The original book file is not modified.",
+    "detailsManagedMetadataNote": "Narra maintains this metadata for library display, search, and sync naming. The original book file is not modified.",
     "bookNotFound": "Book not found"
   },
   "home": {

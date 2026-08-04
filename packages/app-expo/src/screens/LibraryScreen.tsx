@@ -1,6 +1,7 @@
 import { BookCard } from "@/components/library/BookCard";
 import { GroupCard } from "@/components/library/GroupCard";
 import { GroupPickerSheet } from "@/components/library/GroupPickerSheet";
+import { ImportSourceMenuButton } from "@/components/library/ImportSourceMenuButton";
 import { type ExtractorRef, ExtractorWebView } from "@/components/rag/ExtractorWebView";
 import {
   ArrowDownAZIcon,
@@ -26,8 +27,6 @@ import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
 import { setCallback, setExtractorRef } from "@/lib/rag/auto-vectorize-service";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
-import { WebDavConnectSheet } from "@/screens/library/WebDavConnectSheet";
-import { WebDavImportSourceSheet } from "@/screens/library/WebDavImportSourceSheet";
 import { useLibraryStore } from "@/stores/library-store";
 import {
   type ThemeColors,
@@ -40,25 +39,19 @@ import {
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import {
-  DEFAULT_WEBDAV_IMPORT_REMOTE_ROOT,
-  type WebDavImportSource,
-  getPlatformService,
-} from "@readany/core";
 import { setFallbackContentProvider } from "@readany/core/ai";
 import { onLibraryChanged } from "@readany/core/events/library-events";
-import { useSyncStore } from "@readany/core/stores";
-import { SYNC_SECRET_KEYS } from "@readany/core/sync/sync-backend";
+import { getPlatformService } from "@readany/core";
 import type { Book, BookGroup, SortField } from "@readany/core/types";
+import ReadAnyNativeControls from "../../modules/native-controls";
 import * as DocumentPicker from "expo-document-picker";
-import { File as ExpoFile } from "expo-file-system";
+import { File as ExpoFile, Paths } from "expo-file-system";
 /**
  * LibraryScreen — matching Tauri mobile LibraryPage exactly.
  * Features: header search/sort/import, tag filter, vectorization progress banner,
  * tag management sheet, responsive book grid, empty/loading states.
  */
 import {
-  type RefObject,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -68,7 +61,6 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  ActionSheetIOS,
   ActivityIndicator,
   Alert,
   Animated,
@@ -102,36 +94,30 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 const NUM_COLUMNS = 2;
 const GRID_GAP = 16;
+const URL_IMPORT_EXTENSIONS = new Set([
+  "epub",
+  "pdf",
+  "mobi",
+  "azw",
+  "azw3",
+  "cbz",
+  "cbr",
+  "fb2",
+  "fbz",
+  "txt",
+  "umd",
+]);
 
-function splitUrlPathSegments(pathname: string): string[] {
-  return pathname.split("/").filter(Boolean);
-}
+function getUrlImportFilename(url: URL): string {
+  const rawName = decodeURIComponent(url.pathname.split("/").pop() || "").trim();
+  const safeName = rawName.replace(/[\\/:*?"<>|\[\]{}#%&]/g, "_");
+  const extension = safeName.split(".").pop()?.toLowerCase();
 
-function deriveImportBaseUrl(url: string, remoteRoot?: string): string {
-  if (!remoteRoot?.trim()) return url;
-
-  try {
-    const parsed = new URL(url);
-    const baseSegments = splitUrlPathSegments(parsed.pathname.replace(/\/+$/, ""));
-    const rootSegments = splitUrlPathSegments(remoteRoot.trim());
-
-    if (
-      rootSegments.length > 0 &&
-      baseSegments.length >= rootSegments.length &&
-      rootSegments.every(
-        (segment, index) =>
-          baseSegments[baseSegments.length - rootSegments.length + index] === segment,
-      )
-    ) {
-      const nextSegments = baseSegments.slice(0, baseSegments.length - rootSegments.length);
-      parsed.pathname = nextSegments.length > 0 ? `/${nextSegments.join("/")}` : "/";
-      return parsed.toString().replace(/\/$/, parsed.pathname === "/" ? "/" : "");
-    }
-  } catch {
-    return url;
+  if (!safeName || !extension || !URL_IMPORT_EXTENSIONS.has(extension)) {
+    throw new Error("unsupported-url");
   }
 
-  return url;
+  return safeName;
 }
 
 const SORT_OPTIONS: { field: SortField; labelKey: string }[] = [
@@ -174,16 +160,8 @@ export function LibraryScreen() {
 
   const [tagSheetOpen, setTagSheetOpen] = useState(false);
   const [tagSheetBook, setTagSheetBook] = useState<Book | null>(null);
-  const [sourceSheetOpen, setSourceSheetOpen] = useState(false);
-  const [sourceSheetAnchor, setSourceSheetAnchor] = useState<{
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  } | null>(null);
-  const [temporaryWebDavOpen, setTemporaryWebDavOpen] = useState(false);
   const [isPickingImport, setIsPickingImport] = useState(false);
-  const [pendingLocalImport, setPendingLocalImport] = useState(false);
+  const [isUrlImporting, setIsUrlImporting] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedBookIds, setSelectedBookIds] = useState<Set<string>>(new Set());
   const [showGroupPicker, setShowGroupPicker] = useState(false);
@@ -193,14 +171,9 @@ export function LibraryScreen() {
     group?: BookGroup;
   } | null>(null);
   const [groupNameInput, setGroupNameInput] = useState("");
-  const importButtonAnchorRef = useRef<View>(null);
-  const emptyImportAnchorRef = useRef<View>(null);
   const localImportInFlightRef = useRef(false);
 
   const extractorRef = useRef<ExtractorRef>(null);
-  const loadSyncConfig = useSyncStore((state) => state.loadConfig);
-  const syncConfig = useSyncStore((state) => state.config);
-  const syncBackendType = useSyncStore((state) => state.backendType);
 
   const {
     books,
@@ -257,10 +230,6 @@ export function LibraryScreen() {
   useEffect(() => {
     loadBooks();
   }, [loadBooks]);
-  useEffect(() => {
-    void loadSyncConfig();
-  }, [loadSyncConfig]);
-
   useEffect(() => {
     setExtractorRef(extractorRef.current);
     setFallbackContentProvider({
@@ -447,153 +416,91 @@ export function LibraryScreen() {
     }
   }, [importBooks, t]);
 
-  const handlePickLocalFromSourceMenu = useCallback(() => {
-    if (localImportInFlightRef.current || pendingLocalImport) return;
-    setPendingLocalImport(true);
-    setSourceSheetOpen(false);
-  }, [pendingLocalImport]);
+  const handleUrlImport = useCallback(async (rawValue: string) => {
+    const value = rawValue.trim();
+    let temporaryFile: ExpoFile | null = null;
 
-  useEffect(() => {
-    if (Platform.OS === "ios" || !pendingLocalImport || sourceSheetOpen) return;
-
-    const timer = setTimeout(() => {
-      setPendingLocalImport(false);
-      void handleLocalImport();
-    }, 180);
-
-    return () => clearTimeout(timer);
-  }, [handleLocalImport, pendingLocalImport, sourceSheetOpen]);
-
-  const handleSourceSheetDismiss = useCallback(() => {
-    if (!pendingLocalImport || Platform.OS !== "ios") return;
-
-    requestAnimationFrame(() => {
-      setPendingLocalImport(false);
-      void handleLocalImport();
-    });
-  }, [handleLocalImport, pendingLocalImport]);
-
-  const handleOpenSavedWebDav = useCallback(async () => {
-    setSourceSheetOpen(false);
-
-    if (syncBackendType !== "webdav" || syncConfig?.type !== "webdav") {
-      Alert.alert(
-        t("library.importSourceSavedWebDavMissingTitle", "还没有可用的 WebDAV 书库"),
-        t(
-          "library.importSourceSavedWebDavMissing",
-          "还没有可用的 WebDAV 配置，先去同步设置里连上你的书库。",
-        ),
-        [
-          { text: t("common.cancel", "取消"), style: "cancel" },
-          {
-            text: t("settings.syncTitle", "WebDAV 同步"),
-            onPress: () => nav.navigate("SyncSettings"),
-          },
-        ],
-      );
-      return;
-    }
-
-    const platform = getPlatformService();
-    const password = await platform.kvGetItem(SYNC_SECRET_KEYS.webdav);
-    if (!password) {
-      Alert.alert(
-        t("library.importSourceSavedWebDavMissingTitle", "还没有可用的 WebDAV 书库"),
-        t(
-          "library.importSourceSavedWebDavMissingSecret",
-          "已经找到 WebDAV 地址，但缺少密码。去同步设置里重新保存一次就能继续。",
-        ),
-        [
-          { text: t("common.cancel", "取消"), style: "cancel" },
-          {
-            text: t("settings.syncTitle", "WebDAV 同步"),
-            onPress: () => nav.navigate("SyncSettings"),
-          },
-        ],
-      );
-      return;
-    }
-
-    const source: WebDavImportSource = {
-      kind: "saved",
-      url: deriveImportBaseUrl(syncConfig.url, syncConfig.remoteRoot),
-      username: syncConfig.username,
-      password,
-      remoteRoot: DEFAULT_WEBDAV_IMPORT_REMOTE_ROOT,
-      allowInsecure: syncConfig.allowInsecure ?? false,
-    };
-    nav.navigate("WebDavImportBrowser", { source });
-  }, [nav, syncBackendType, syncConfig, t]);
-
-  const handleOpenTemporaryWebDav = useCallback(() => {
-    setSourceSheetOpen(false);
-    setTemporaryWebDavOpen(true);
-  }, []);
-
-  const handleOpenImportSources = useCallback(
-    (anchorRef?: RefObject<View | null>) => {
-      if (Platform.OS === "ios") {
-        const hasSavedWebDav = syncBackendType === "webdav" && syncConfig?.type === "webdav";
-        const cancelButtonIndex = 3;
-
-        ActionSheetIOS.showActionSheetWithOptions(
-          {
-            options: [
-              t("library.importSourceLocal", "Локальные файлы"),
-              t("library.importSourceSavedWebDav", "Мой WebDAV"),
-              t("library.importSourceTemporaryWebDav", "Подключить другой WebDAV"),
-              t("common.cancel", "Отмена"),
-            ],
-            cancelButtonIndex,
-            disabledButtonIndices: hasSavedWebDav ? [] : [1],
-          },
-          (buttonIndex) => {
-            if (buttonIndex === 0) {
-              setTimeout(() => void handleLocalImport(), 200);
-            } else if (buttonIndex === 1) {
-              void handleOpenSavedWebDav();
-            } else if (buttonIndex === 2) {
-              handleOpenTemporaryWebDav();
-            }
-          },
-        );
-        return;
+    try {
+      const url = new URL(value);
+      if (url.protocol !== "https:" && url.protocol !== "http:") {
+        throw new Error("invalid-url");
       }
 
-      const openWithFallback = () => {
-        setSourceSheetAnchor(null);
-        setSourceSheetOpen(true);
-      };
-
-      if (!anchorRef?.current || typeof anchorRef.current.measureInWindow !== "function") {
-        openWithFallback();
-        return;
-      }
-
-      anchorRef.current.measureInWindow((x, y, width, height) => {
-        if ([x, y, width, height].some((value) => Number.isNaN(value) || value <= 0)) {
-          openWithFallback();
-          return;
-        }
-
-        setSourceSheetAnchor({ x, y, width, height });
-        setSourceSheetOpen(true);
+      const fileName = getUrlImportFilename(url);
+      temporaryFile = new ExpoFile(Paths.cache, `readany-url-${Date.now()}-${fileName}`);
+      setIsUrlImporting(true);
+      const downloadedFile = await ExpoFile.downloadFileAsync(url.toString(), temporaryFile, {
+        idempotent: true,
       });
-    },
-    [
-      handleLocalImport,
-      handleOpenSavedWebDav,
-      handleOpenTemporaryWebDav,
-      syncBackendType,
-      syncConfig?.type,
-      t,
-    ],
-  );
+      const summary = await importBooks([{ uri: downloadedFile.uri, name: fileName }]);
+
+      Alert.alert(
+        t("common.success", "Готово"),
+        t("library.importResultSummary", {
+          imported: summary.imported.length,
+          skipped: summary.skippedDuplicates.length,
+          failed: summary.failures.length,
+        }),
+      );
+    } catch (error) {
+      const isUnsupported = error instanceof Error && error.message === "unsupported-url";
+      Alert.alert(
+        t("library.importSourceUrlErrorTitle", "Не получилось добавить книгу"),
+        isUnsupported
+          ? t(
+              "library.importSourceUrlUnsupported",
+              "Нужна прямая ссылка на файл EPUB, PDF, TXT или другого поддерживаемого формата.",
+            )
+          : t(
+              "library.importSourceUrlError",
+              "Проверьте ссылку и подключение к интернету, затем попробуйте снова.",
+            ),
+      );
+    } finally {
+      setIsUrlImporting(false);
+      if (temporaryFile?.exists) {
+        temporaryFile.delete();
+      }
+    }
+  }, [importBooks, t]);
+
+  const handleOpenUrlImport = useCallback(async () => {
+    try {
+      const value = await ReadAnyNativeControls.promptForText(
+        t("library.importSourceUrlTitle", "Ссылка на книгу"),
+        t("library.importSourceUrlDesc", "Вставьте прямую ссылку на файл книги."),
+        t("library.importSourceUrlPlaceholder", "https://example.com/book.epub"),
+        t("common.cancel", "Отмена"),
+        t("library.importSourceUrlSubmit", "Добавить"),
+      );
+      if (value?.trim()) {
+        await handleUrlImport(value);
+      }
+    } catch (error) {
+      console.error("Native URL prompt failed:", error);
+      Alert.alert(
+        t("library.importSourceUrlErrorTitle", "Не получилось добавить книгу"),
+        t("library.importSourceUrlError", "Проверьте ссылку и попробуйте снова."),
+      );
+    }
+  }, [handleUrlImport, t]);
+
+  const handleOpenImportSources = useCallback(() => {
+    Alert.alert(t("library.importFirst", "Добавить книгу"), undefined, [
+      {
+        text: t("library.importSourceUrl", "Найти по ссылке"),
+        onPress: () => void handleOpenUrlImport(),
+      },
+      {
+        text: t("library.importSourceLocal", "Выбрать файл"),
+        onPress: () => void handleLocalImport(),
+      },
+      { text: t("common.cancel", "Отмена"), style: "cancel" },
+    ]);
+  }, [handleLocalImport, handleOpenUrlImport, t]);
 
   useLayoutEffect(() => {
     if (Platform.OS !== "ios") return;
-
-    const hasSavedWebDav = syncBackendType === "webdav" && syncConfig?.type === "webdav";
 
     nav.setOptions({
       unstable_headerRightItems: () => [
@@ -607,22 +514,15 @@ export function LibraryScreen() {
             items: [
               {
                 type: "action",
-                label: t("library.importSourceLocal", "Локальные файлы"),
+                label: t("library.importSourceUrl", "Найти по ссылке"),
+                icon: { type: "sfSymbol", name: "link" },
+                onPress: handleOpenUrlImport,
+              },
+              {
+                type: "action",
+                label: t("library.importSourceLocal", "Выбрать файл"),
                 icon: { type: "sfSymbol", name: "folder" },
                 onPress: () => void handleLocalImport(),
-              },
-              {
-                type: "action",
-                label: t("library.importSourceSavedWebDav", "Мой WebDAV"),
-                icon: { type: "sfSymbol", name: "icloud" },
-                disabled: !hasSavedWebDav,
-                onPress: () => void handleOpenSavedWebDav(),
-              },
-              {
-                type: "action",
-                label: t("library.importSourceTemporaryWebDav", "Подключить другой WebDAV"),
-                icon: { type: "sfSymbol", name: "globe" },
-                onPress: handleOpenTemporaryWebDav,
               },
             ],
           },
@@ -631,26 +531,12 @@ export function LibraryScreen() {
     });
   }, [
     handleLocalImport,
-    handleOpenSavedWebDav,
-    handleOpenTemporaryWebDav,
+    handleOpenUrlImport,
     isImporting,
     isPickingImport,
     nav,
-    syncBackendType,
-    syncConfig?.type,
     t,
   ]);
-
-  const handleConnectTemporaryWebDav = useCallback(
-    async (source: WebDavImportSource) => {
-      const { WebDavImportService } = await import("@readany/core");
-      const service = new WebDavImportService(source);
-      await service.testConnection();
-      setTemporaryWebDavOpen(false);
-      nav.navigate("WebDavImportBrowser", { source });
-    },
-    [nav],
-  );
 
   const handleOpen = useCallback(
     async (book: Book) => {
@@ -989,10 +875,10 @@ export function LibraryScreen() {
                     </TouchableOpacity>
                   )}
                   {Platform.OS !== "ios" && (
-                    <View ref={importButtonAnchorRef} collapsable={false}>
+                    <View>
                       <TouchableOpacity
                         style={s.importBtn}
-                        onPress={() => handleOpenImportSources(importButtonAnchorRef)}
+                        onPress={handleOpenImportSources}
                         disabled={isImporting || isPickingImport}
                         activeOpacity={0.8}
                       >
@@ -1161,13 +1047,15 @@ export function LibraryScreen() {
             >
               <Text style={s.emptyTitle}>{t("library.empty", "暂无书籍")}</Text>
               <Text style={s.emptyHint}>{t("library.emptyHint", "导入电子书开始阅读之旅")}</Text>
-              <View ref={emptyImportAnchorRef} collapsable={false} style={{ alignSelf: "center" }}>
-                <NativeButton
+              <View style={{ alignSelf: "center" }}>
+                <ImportSourceMenuButton
                   label={t("library.importFirst", "Добавить книгу")}
-                  onPress={() => handleOpenImportSources(emptyImportAnchorRef)}
-                  disabled={isPickingImport}
-                  icon="add"
-                  size="large"
+                  urlLabel={t("library.importSourceUrl", "Найти по ссылке")}
+                  localLabel={t("library.importSourceLocal", "Выбрать файл")}
+                  disabled={isPickingImport || isUrlImporting}
+                  onUrlPress={handleOpenUrlImport}
+                  onLocalPress={() => void handleLocalImport()}
+                  onFallbackPress={handleOpenImportSources}
                 />
               </View>
             </View>
@@ -1259,22 +1147,6 @@ export function LibraryScreen() {
         onRemoveTagFromBook={removeTagFromBook}
         onRemoveTag={removeTag}
         onRenameTag={renameTag}
-      />
-      <WebDavImportSourceSheet
-        visible={sourceSheetOpen}
-        hasSavedWebDav={syncBackendType === "webdav" && syncConfig?.type === "webdav"}
-        anchor={sourceSheetAnchor}
-        localImportBusy={isPickingImport}
-        onClose={() => setSourceSheetOpen(false)}
-        onDismiss={handleSourceSheetDismiss}
-        onPickLocal={handlePickLocalFromSourceMenu}
-        onPickSavedWebDav={() => void handleOpenSavedWebDav()}
-        onPickTemporaryWebDav={handleOpenTemporaryWebDav}
-      />
-      <WebDavConnectSheet
-        visible={temporaryWebDavOpen}
-        onClose={() => setTemporaryWebDavOpen(false)}
-        onSubmit={handleConnectTemporaryWebDav}
       />
       <GroupPickerSheet
         visible={showGroupPicker}

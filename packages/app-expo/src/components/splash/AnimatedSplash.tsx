@@ -134,7 +134,7 @@ export function AnimatedSplash({ onFinish }: Props) {
       </View>
 
       {/* Title */}
-      <Animated.Text style={[styles.title, titleStyle]}>ReadAny</Animated.Text>
+      <Animated.Text style={[styles.title, titleStyle]}>Narra</Animated.Text>
       <Animated.Text style={[styles.subtitle, titleStyle]}>Read Any, Understand More</Animated.Text>
     </Animated.View>
   );

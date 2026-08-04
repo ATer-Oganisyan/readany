@@ -18,7 +18,6 @@
     "techStackReact": "UI 컴포넌트 라이브러리",
     "techStackTypeScript": "타입 안전성",
     "techStackFoliate": "eBook 렌더링 엔진",
-    "feedback": "피드백",
     "supportCenter": "지원 센터",
     "license": "GPL v3 라이선스로 오픈소스 공개",
     "checkUpdate": "업데이트 확인",
@@ -239,7 +238,7 @@
     "syncPassword": "비밀번호",
     "syncRemoteRoot": "원격 폴더",
     "syncRemoteRootPlaceholder": "readany",
-    "syncRemoteRootDesc": "ReadAny 동기화 전용으로 사용할 원격 폴더를 선택하세요. 중첩 경로도 지원되며, 테스트 또는 첫 동기화 시 자동으로 생성돼요. ReadAny는 여기에 이미 올려둔 책을 스캔하지 않아요. 기존 WebDAV 서재를 가져오려면 \"다른 WebDAV 연결\"을 사용하세요.",
+    "syncRemoteRootDesc": "Narra 동기화 전용으로 사용할 원격 폴더를 선택하세요. 중첩 경로도 지원되며, 테스트 또는 첫 동기화 시 자동으로 생성돼요. Narra는 여기에 이미 올려둔 책을 스캔하지 않아요. 기존 WebDAV 서재를 가져오려면 \"다른 WebDAV 연결\"을 사용하세요.",
     "syncTestConnection": "연결 테스트",
     "syncTesting": "테스트 중...",
     "syncTestSuccess": "연결 성공",
@@ -336,7 +335,7 @@
     },
     "syncLANQRPlaceholder": "여기에 QR 코드가 표시돼요",
     "syncLANPairCode": "페어링 코드",
-    "syncLANServerHint": "다른 기기에서 ReadAny를 열고 이 QR 코드를 스캔하거나 페어링 코드를 입력하여 이 기기의 데이터를 가져가세요",
+    "syncLANServerHint": "다른 기기에서 Narra를 열고 이 QR 코드를 스캔하거나 페어링 코드를 입력하여 이 기기의 데이터를 가져가세요",
     "syncLANServerStart": "서버 시작",
     "syncLANServerStarting": "시작 중...",
     "syncLANServerStop": "서버 중지",
@@ -429,17 +428,17 @@
       "overview": {
         "title": "외부 AI 액세스 Beta",
         "description": "CLI, Skill, 클라이언트 검색 폴더, MCP 설정을 확인해요. 복구는 현재 선택한 profile을 사용해요.",
-        "mcpConfigHint": "MCP config는 일반 설정 파일에 ReadAny가 있다는 뜻이에요. 실제 클라이언트에 로드됐는지는 재시작하거나 새 세션에서 확인하세요."
+        "mcpConfigHint": "MCP config는 일반 설정 파일에 Narra가 있다는 뜻이에요. 실제 클라이언트에 로드됐는지는 재시작하거나 새 세션에서 확인하세요."
       },
       "cli": {
-        "title": "ReadAny CLI",
+        "title": "Narra CLI",
         "description": "데스크톱 앱은 승인된 CLI 검사만 실행하고 임의 shell 명령은 열지 않아요.",
         "notInstalledOrPath": "설치되지 않았거나 PATH에서 사용할 수 없음",
         "runtimeEvidence": "런타임 / 패키징 증거"
       },
       "agent": {
         "title": "Agent 초기화",
-        "description": "이 명령을 외부 AI에 복사하세요. ReadAny CLI와 Skill을 설치하고 MCP 설정 조각을 반환해요.",
+        "description": "이 명령을 외부 AI에 복사하세요. Narra CLI와 Skill을 설치하고 MCP 설정 조각을 반환해요.",
         "clientDiscoveryStatus": "클라이언트 검색 상태",
         "clientDiscoveryEmpty": "진단을 실행하면 클라이언트 Skill 검색 상태가 표시돼요.",
         "mcpConfigStatus": "MCP 설정 상태",
@@ -479,13 +478,13 @@
         "success": "명령이 성공적으로 완료됐어요.",
         "exitStatus": "명령 종료 코드 {{status}}",
         "accessUninstalled": "외부 AI 접속이 제거되었습니다.",
-        "cliUninstalled": "ReadAny CLI가 제거되었습니다."
+        "cliUninstalled": "Narra CLI가 제거되었습니다."
       },
       "skillPrompt": {
-        "intro": "ReadAny 외부 AI Skill을 바로 설치하고 활성화해 주세요.",
+        "intro": "Narra 외부 AI Skill을 바로 설치하고 활성화해 주세요.",
         "execute": "단계 설명만 하지 말고 설치 경로 표도 출력하지 말고, 다음을 직접 실행해 주세요:",
         "mergeConfig": "현재 AI 클라이언트 설정을 수정할 수 있으면 MCP 설정을 직접 병합하세요. 아니면 필요한 최소 설정 조각만 주세요.",
-        "done": "완료 후에는 다음만 답하세요: ReadAny Skill이 설치되었습니다. 현재 AI 클라이언트를 재시작하거나 새 세션을 열어 주세요.",
+        "done": "완료 후에는 다음만 답하세요: Narra Skill이 설치되었습니다. 현재 AI 클라이언트를 재시작하거나 새 세션을 열어 주세요.",
         "protectBooks": "내 책 내용을 수정, 내보내기, 삭제하지 마세요."
       },
       "status": {
@@ -513,7 +512,7 @@
         "unmanaged": "비관리",
         "checked": "확인됨",
         "notFound": "찾을 수 없음",
-        "containsReadAny": "readany 포함",
+        "containsNarra": "readany 포함",
         "needsConfig": "설정 필요"
       },
       "actions": {
@@ -578,14 +577,14 @@
           "fail": "better-sqlite3를 사용할 수 없어 라이브러리와 MCP 데이터 명령이 실패할 수 있어요."
         },
         "readanyHome": {
-          "name": "ReadAny 홈",
-          "ok": "ReadAny 홈에 쓸 수 있어요.",
-          "fail": "ReadAny 홈에 쓸 수 없어요."
+          "name": "Narra 홈",
+          "ok": "Narra 홈에 쓸 수 있어요.",
+          "fail": "Narra 홈에 쓸 수 없어요."
         },
         "skill": {
           "name": "스킬",
-          "ok": "ReadAny 스킬이 {{path}}에 설치되어 있어요.",
-          "fail": "ReadAny 스킬이 {{path}}에 설치되어 있지 않아요."
+          "ok": "Narra 스킬이 {{path}}에 설치되어 있어요.",
+          "fail": "Narra 스킬이 {{path}}에 설치되어 있지 않아요."
         }
       }
     }

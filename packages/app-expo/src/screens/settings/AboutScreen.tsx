@@ -77,20 +77,24 @@ export default function AboutScreen() {
   }, [t, setCheckResult, showDialog]);
 
   return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: colors.background }]}
-      edges={[]}
-    >
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={[]}>
       <SettingsHeader title={t("about.title", "关于")} />
 
-      <ScrollView style={styles.scroll} contentContainerStyle={[styles.scrollContent, { alignItems: "center" }]}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[styles.scrollContent, { alignItems: "center" }]}
+      >
         <View style={{ width: "100%", maxWidth: layout.centeredContentWidth }}>
           {/* Logo & Version */}
           <View style={styles.logoSection}>
             <View style={styles.logoBadge}>
-              <Image source={AppIcon} style={{ width: 80, height: 80, borderRadius: 18 }} resizeMode="contain" />
+              <Image
+                source={AppIcon}
+                style={{ width: 80, height: 80, borderRadius: 18 }}
+                resizeMode="contain"
+              />
             </View>
-            <Text style={styles.appName}>ReadAny</Text>
+            <Text style={styles.appName}>Narra</Text>
             <Text style={styles.version}>v{version}</Text>
             <Text style={styles.desc}>
               {t("about.desc", "一个跨平台的智能电子书阅读器，支持 AI 对话、TTS 朗读、多语言翻译")}
@@ -152,14 +156,6 @@ export default function AboutScreen() {
                   <Text style={styles.linkArrow}>→</Text>
                 </TouchableOpacity>
               ))}
-              <TouchableOpacity
-                style={styles.linkItem}
-                onPress={() => Linking.openURL("https://github.com/nicepkg/ReadAny/issues")}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.linkText}>{t("about.feedback", "问题反馈")}</Text>
-                <Text style={styles.linkArrow}>→</Text>
-              </TouchableOpacity>
             </View>
           </View>
 

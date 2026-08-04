@@ -125,7 +125,7 @@
     "ttsEngine": "TTS 엔진",
     "voiceSelect": "음성",
     "noSystemVoices": "시스템 음성이 감지되지 않았어요",
-    "testText": "테스트 음성입니다. ReadAny가 읽어드려요.",
+    "testText": "테스트 음성입니다. Narra가 읽어드려요.",
     "params": "매개변수",
     "selectVoice": "음성 선택",
     "selectEngine": "TTS 엔진",

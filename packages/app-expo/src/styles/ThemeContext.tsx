@@ -88,7 +88,8 @@ function makeThemeColors(mode: ResolvedThemeMode): ThemeColors {
   const backgroundSecondary = base("Background Secondary");
   const elevation1 = base("Elevation 1");
   const elevation2 = base("Elevation 2");
-  const primary = primaryScale("Primary");
+  const foreground = primaryScale("Primary");
+  const primary = accentScale("Orange");
 
   return {
     backgroundPrimary,
@@ -97,22 +98,22 @@ function makeThemeColors(mode: ResolvedThemeMode): ThemeColors {
     elevation2,
     // Existing semantic aliases keep screens on the Primitives surface scale.
     background: backgroundSecondary,
-    foreground: primary,
+    foreground,
     card: elevation1,
-    cardForeground: primary,
-    muted: mixHex(primary, backgroundSecondary, 0.05),
-    mutedForeground: mixHex(primary, backgroundSecondary, 0.5),
-    border: mixHex(primary, backgroundSecondary, 0.1),
+    cardForeground: foreground,
+    muted: mixHex(foreground, backgroundSecondary, 0.05),
+    mutedForeground: mixHex(foreground, backgroundSecondary, 0.5),
+    border: mixHex(foreground, backgroundSecondary, 0.1),
     primary,
     primary5: primaryScale("Primary 5"),
-    primaryForeground: mode === "light" ? base("White") : base("Black"),
+    primaryForeground: base("Black"),
     destructive: accentScale("Red"),
     destructiveForeground: base("White"),
     accent: mixHex(primary, elevation1, 0.08),
     accentForeground: primary,
     indigo: accentScale("Indigo"),
     emerald: accentScale("Green"),
-    amber: accentScale("Orange"),
+    amber: primary,
     blue: accentScale("Blue"),
     violet: accentScale("Purple"),
     highlightYellow: mixHex(accentScale("Yellow"), elevation1, 0.28),
@@ -120,11 +121,11 @@ function makeThemeColors(mode: ResolvedThemeMode): ThemeColors {
     highlightBlue: mixHex(accentScale("Blue"), elevation1, 0.22),
     highlightPink: mixHex(accentScale("Pink"), elevation1, 0.22),
     highlightPurple: mixHex(accentScale("Purple"), elevation1, 0.22),
-    stone100: mixHex(primary, backgroundSecondary, 0.05),
-    stone200: mixHex(primary, backgroundSecondary, 0.1),
-    stone300: mixHex(primary, backgroundSecondary, 0.2),
-    stone400: mixHex(primary, backgroundSecondary, 0.4),
-    stone500: mixHex(primary, backgroundSecondary, 0.6),
+    stone100: mixHex(foreground, backgroundSecondary, 0.05),
+    stone200: mixHex(foreground, backgroundSecondary, 0.1),
+    stone300: mixHex(foreground, backgroundSecondary, 0.2),
+    stone400: mixHex(foreground, backgroundSecondary, 0.4),
+    stone500: mixHex(foreground, backgroundSecondary, 0.6),
   };
 }
 

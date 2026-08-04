@@ -11,7 +11,6 @@ import "./styles/globals.css";
 import { setEmbeddingWorkerFactory, setStreamingFetch } from "@readany/core/ai";
 import { BUILTIN_EMBEDDING_MODELS } from "@readany/core/ai/builtin-embedding-models";
 import { onLibraryChanged } from "@readany/core/events/library-events";
-import { installFeedbackLogCapture, setFeedbackWorkerUrl } from "@readany/core/feedback";
 import { setVectorDB } from "@readany/core/rag";
 import { setPlatformService } from "@readany/core/services";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
@@ -22,12 +21,6 @@ import { registerDesktopFallbackContentProvider } from "./lib/rag/fallback-conte
 import { useLibraryStore } from "./stores/library-store";
 import { flushAllWrites } from "./stores/persist";
 import { useVectorModelStore } from "./stores/vector-model-store";
-
-installFeedbackLogCapture();
-
-const FEEDBACK_WORKER_FALLBACK = "https://feedback.readany.top";
-const feedbackWorkerUrl = import.meta.env.VITE_FEEDBACK_WORKER_URL?.trim() || FEEDBACK_WORKER_FALLBACK;
-setFeedbackWorkerUrl(feedbackWorkerUrl);
 
 // Register platform service before any database/core operations
 const tauriPlatform = new TauriPlatformService();

@@ -1,3 +1,18 @@
 packages:
   - "packages/*"
   - "website"
+allowBuilds:
+  '@biomejs/biome': set this to true or false
+  dtrace-provider: set this to true or false
+  esbuild: set this to true or false
+  onnxruntime-node: set this to true or false
+  protobufjs: set this to true or false
+  sharp: set this to true or false
+overrides:
+  react: 19.2.0
+  react-dom: 19.2.0
+  "@types/react": ~19.2.2
+patchedDependencies:
+  "@langchain/core": patches/@langchain__core.patch
+  react-native-track-player@4.1.2: patches/react-native-track-player@4.1.2.patch
+  react-native-screens@4.25.2: patches/react-native-screens@4.25.2.patch

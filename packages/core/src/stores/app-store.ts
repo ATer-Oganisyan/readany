@@ -29,7 +29,6 @@ export type SettingsTab =
   | "translation"
   | "sync"
   | "externalAi"
-  | "feedback"
   | "about";
 
 export interface AppState {

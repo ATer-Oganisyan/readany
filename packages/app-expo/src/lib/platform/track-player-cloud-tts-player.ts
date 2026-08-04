@@ -14,7 +14,7 @@ const CHUNK_MAX_CHARS = 500;
 const PREFETCH_AHEAD_CHUNKS = 2;
 const END_ADVANCE_TOLERANCE_SECONDS = 0.35;
 const END_WATCHDOG_INTERVAL_MS = 700;
-const MEDIA_ARTIST = "ReadAny";
+const MEDIA_ARTIST = "Narra";
 const DEFAULT_ARTWORK = (() => {
   try {
     return Image.resolveAssetSource(require("../../../assets/icon.png"))?.uri || "";
@@ -159,7 +159,7 @@ export class TrackPlayerCloudTTSPlayer implements ITTSPlayer {
       await TrackPlayer.add({
         id: `cloud-tts-${index}`,
         url: uri,
-        title: this._getTitle?.() || "ReadAny",
+        title: this._getTitle?.() || "Narra",
         artist: MEDIA_ARTIST,
         artwork: this._getArtwork?.() || DEFAULT_ARTWORK,
       });

@@ -8,7 +8,7 @@ import { chunkIndexFromTrackId, trackIdForChunkIndex } from "./track-player-chun
 import { ensureSilenceFile } from "./tts-silence-keeper";
 
 const CHUNK_MAX_CHARS = 500;
-const MEDIA_ARTIST = "ReadAny";
+const MEDIA_ARTIST = "Narra";
 const DEFAULT_ARTWORK = (() => {
   try {
     return Image.resolveAssetSource(require("../../../assets/icon.png"))?.uri || "";
@@ -331,7 +331,7 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
       url: audioUri,
       title: this._currentTitle || `Segment ${index + 1}`,
       artist: MEDIA_ARTIST,
-      album: this._currentTitle || "ReadAny TTS",
+      album: this._currentTitle || "Narra TTS",
       description: this._chunks[index]?.slice(0, 240),
       artwork: this._currentArtwork,
     });

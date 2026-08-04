@@ -124,7 +124,7 @@ export function withPersist<T extends object>(
       }
 
       // Dispatch event to notify that persist is loaded
-      if (typeof window !== "undefined") {
+      if (typeof window !== "undefined" && typeof CustomEvent !== "undefined") {
         window.dispatchEvent(new CustomEvent("persist:loaded", { detail: { key } }));
       }
     });

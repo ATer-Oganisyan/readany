@@ -1,6 +1,6 @@
 # Storybook для мобильных компонентов
 
-Каталог работает внутри `ReadAny Dev`, поэтому на iOS он показывает настоящие SwiftUI-компоненты, а на Android — Jetpack Compose. Обычное приложение и Storybook используют один dev build; отличается только JS-вход Metro.
+Каталог работает внутри `Narra Dev`, поэтому на iOS он показывает настоящие SwiftUI-компоненты, а на Android — Jetpack Compose. Обычное приложение и Storybook используют один dev build; отличается только JS-вход Metro.
 
 ## Запуск Storybook
 

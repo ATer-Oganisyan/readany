@@ -2,8 +2,7 @@ import { Text } from "@/components/ui/Typography";
 import {
   BookOpenIcon,
   ChevronRightIcon,
-  CloudIcon,
-  GlobeIcon,
+  LinkIcon,
 } from "@/components/ui/Icon";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { fontSize, fontWeight, radius, useColors, withOpacity } from "@/styles/theme";
@@ -27,26 +26,22 @@ type PopoverAnchor = {
 
 interface WebDavImportSourceSheetProps {
   visible: boolean;
-  hasSavedWebDav: boolean;
   anchor: PopoverAnchor | null;
   localImportBusy?: boolean;
   onClose: () => void;
   onDismiss?: () => void;
+  onPickUrl: () => void;
   onPickLocal: () => void;
-  onPickSavedWebDav: () => void;
-  onPickTemporaryWebDav: () => void;
 }
 
 export function WebDavImportSourceSheet({
   visible,
-  hasSavedWebDav,
   anchor,
   localImportBusy = false,
   onClose,
   onDismiss,
+  onPickUrl,
   onPickLocal,
-  onPickSavedWebDav,
-  onPickTemporaryWebDav,
 }: WebDavImportSourceSheetProps) {
   const { t } = useTranslation();
   const colors = useColors();
@@ -150,6 +145,23 @@ export function WebDavImportSourceSheet({
           <View style={s.sheet}>
             <ScrollView style={s.options} bounces={false}>
               <TouchableOpacity
+                style={s.optionCard}
+                onPress={onPickUrl}
+                activeOpacity={0.85}
+              >
+                <View style={s.iconWrap}>
+                  <LinkIcon size={18} color={colors.primary} />
+                </View>
+                <View style={s.optionText}>
+                  <Text style={s.optionTitle}>
+                    {t("library.importSourceUrl", "Найти по ссылке")}
+                  </Text>
+                </View>
+                <ChevronRightIcon size={16} color={colors.mutedForeground} />
+              </TouchableOpacity>
+              <View style={s.separator} />
+
+              <TouchableOpacity
                 style={[s.optionCard, localImportBusy && s.optionDisabled]}
                 onPress={onPickLocal}
                 activeOpacity={0.85}
@@ -160,40 +172,6 @@ export function WebDavImportSourceSheet({
                 </View>
                 <View style={s.optionText}>
                   <Text style={s.optionTitle}>{t("library.importSourceLocal", "本地文件")}</Text>
-                </View>
-                <ChevronRightIcon size={16} color={colors.mutedForeground} />
-              </TouchableOpacity>
-              <View style={s.separator} />
-
-              <TouchableOpacity
-                style={[s.optionCard, !hasSavedWebDav && s.optionDisabled]}
-                onPress={onPickSavedWebDav}
-                activeOpacity={0.85}
-              >
-                <View style={s.iconWrap}>
-                  <CloudIcon size={18} color={colors.primary} />
-                </View>
-                <View style={s.optionText}>
-                  <Text style={s.optionTitle}>
-                    {t("library.importSourceSavedWebDav", "我的 WebDAV")}
-                  </Text>
-                </View>
-                <ChevronRightIcon size={16} color={colors.mutedForeground} />
-              </TouchableOpacity>
-              <View style={s.separator} />
-
-              <TouchableOpacity
-                style={s.optionCard}
-                onPress={onPickTemporaryWebDav}
-                activeOpacity={0.85}
-              >
-                <View style={s.iconWrap}>
-                  <GlobeIcon size={18} color={colors.primary} />
-                </View>
-                <View style={s.optionText}>
-                  <Text style={s.optionTitle}>
-                    {t("library.importSourceTemporaryWebDav", "连接其他 WebDAV")}
-                  </Text>
                 </View>
                 <ChevronRightIcon size={16} color={colors.mutedForeground} />
               </TouchableOpacity>

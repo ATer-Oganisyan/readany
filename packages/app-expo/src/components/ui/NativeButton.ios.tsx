@@ -82,7 +82,7 @@ export function NativeButton({
         : color;
   const estimatedWidth = Math.max(
     height,
-    Math.ceil(label.length * (size === "large" ? 9.5 : size === "small" ? 7.5 : 8.5)) +
+    Math.ceil(label.length * (size === "large" ? 11.5 : size === "small" ? 9.5 : 10.5)) +
       (icon ? 58 : 34),
   );
 
