@@ -4,6 +4,7 @@ import type { NarraCharacter } from "./types";
 
 const MEDIA_DIR = `${FileSystem.documentDirectory}narra-media`;
 const MEDIA_PATH_MARKER = "/Documents/narra-media/";
+let speechFileSequence = 0;
 
 /** Rehomes persisted iOS file URIs after the app data-container UUID changes. */
 export function normalizePersistedNarraMediaUri(uri: string): string {
@@ -176,7 +177,7 @@ export async function synthesizeNarraSpeech(text: string, voice: string): Promis
     throw new Error(payload?.error || `Speech synthesis failed (${response.status})`);
   }
   await ensureMediaDir();
-  const path = `${MEDIA_DIR}/speech-${Date.now()}.wav`;
+  const path = `${MEDIA_DIR}/speech-${Date.now()}-${speechFileSequence++}.wav`;
   const bytes = new Uint8Array(await response.arrayBuffer());
   let binary = "";
   for (let index = 0; index < bytes.length; index += 0x8000) {

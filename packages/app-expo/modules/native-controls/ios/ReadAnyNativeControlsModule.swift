@@ -52,6 +52,49 @@ public final class ReadAnyNativeControlsModule: Module {
       }
     }
 
+    View(ReadAnyReaderToolbar.self) {
+      Events("onSpeechPress", "onChatPress", "onCharactersPress", "onScenePress")
+
+      Prop("tintColor") { (view, value: UIColor) in view.toolbarTintColor = value }
+      Prop("isDark") { (view, value: Bool) in view.isDark = value }
+      Prop("speechActive") { (view, value: Bool) in view.speechActive = value }
+      Prop("speechLabel") { (view, value: String) in view.speechLabel = value }
+      Prop("chatLabel") { (view, value: String) in view.chatLabel = value }
+      Prop("charactersLabel") { (view, value: String) in view.charactersLabel = value }
+      Prop("sceneLabel") { (view, value: String) in view.sceneLabel = value }
+
+      OnViewDidUpdateProps { view in
+        view.updateConfiguration()
+      }
+    }
+
+    View(ReadAnyTTSPlayerToolbar.self) {
+      Events("onBackwardPress", "onPlayPausePress", "onForwardPress")
+
+      Prop("tintColor") { (view, value: UIColor) in view.toolbarTintColor = value }
+      Prop("primaryColor") { (view, value: UIColor) in view.primaryColor = value }
+      Prop("primaryForegroundColor") { (view, value: UIColor) in
+        view.primaryForegroundColor = value
+      }
+      Prop("isDark") { (view, value: Bool) in view.isDark = value }
+      Prop("isPlaying") { (view, value: Bool) in view.isPlaying = value }
+      Prop("isLoading") { (view, value: Bool) in view.isLoading = value }
+      Prop("seekEnabled") { (view, value: Bool) in view.seekEnabled = value }
+
+      OnViewDidUpdateProps { view in
+        view.updateConfiguration()
+      }
+    }
+
+    View(ReadAnySheetNavigationBar.self) {
+      Events("onClosePress")
+      Prop("isDark") { (view, value: Bool) in view.isDark = value }
+
+      OnViewDidUpdateProps { view in
+        view.updateConfiguration()
+      }
+    }
+
   }
 }
 
@@ -149,5 +192,278 @@ final class ReadAnyImportMenuButton: ExpoView {
           )
         ])
       : nil
+  }
+}
+
+final class ReadAnyReaderToolbar: ExpoView {
+  let onSpeechPress = EventDispatcher()
+  let onChatPress = EventDispatcher()
+  let onCharactersPress = EventDispatcher()
+  let onScenePress = EventDispatcher()
+
+  var toolbarTintColor = UIColor.label
+  var isDark = true
+  var speechActive = false
+  var speechLabel = "Озвучить"
+  var chatLabel = "Открыть чат"
+  var charactersLabel = "Персонажи"
+  var sceneLabel = "Создать сцену"
+
+  private let toolbar = UIToolbar()
+
+  required init(appContext: AppContext? = nil) {
+    super.init(appContext: appContext)
+
+    toolbar.translatesAutoresizingMaskIntoConstraints = false
+    toolbar.isTranslucent = true
+    addSubview(toolbar)
+
+    NSLayoutConstraint.activate([
+      toolbar.topAnchor.constraint(equalTo: topAnchor),
+      toolbar.bottomAnchor.constraint(equalTo: bottomAnchor),
+      toolbar.leadingAnchor.constraint(equalTo: leadingAnchor),
+      toolbar.trailingAnchor.constraint(equalTo: trailingAnchor)
+    ])
+
+    updateConfiguration()
+  }
+
+  @objc private func handleSpeechPress() {
+    onSpeechPress()
+  }
+
+  @objc private func handleChatPress() {
+    onChatPress()
+  }
+
+  @objc private func handleCharactersPress() {
+    onCharactersPress()
+  }
+
+  @objc private func handleScenePress() {
+    onScenePress()
+  }
+
+  func updateConfiguration() {
+    toolbar.tintColor = toolbarTintColor
+    toolbar.barStyle = isDark ? .black : .default
+
+    if #available(iOS 15.0, *) {
+      let appearance = UIToolbarAppearance()
+      appearance.configureWithDefaultBackground()
+      toolbar.standardAppearance = appearance
+      toolbar.scrollEdgeAppearance = appearance
+      toolbar.compactAppearance = appearance
+    }
+
+    let speech = makeItem(
+      symbol: "speaker.wave.2",
+      label: speechActive ? "Остановить озвучку" : speechLabel,
+      action: #selector(handleSpeechPress)
+    )
+    let chat = makeItem(
+      symbol: "message",
+      label: chatLabel,
+      action: #selector(handleChatPress)
+    )
+    let characters = makeItem(
+      symbol: "person.2",
+      label: charactersLabel,
+      action: #selector(handleCharactersPress)
+    )
+    let scene = makeItem(
+      symbol: "paintpalette",
+      label: sceneLabel,
+      action: #selector(handleScenePress)
+    )
+    let spacer = { UIBarButtonItem(systemItem: .flexibleSpace) }
+
+    if #available(iOS 26.0, *) {
+      [speech, chat, characters, scene].forEach { $0.sharesBackground = true }
+    }
+
+    toolbar.setItems(
+      [spacer(), speech, chat, characters, scene, spacer()],
+      animated: false
+    )
+  }
+
+  private func makeItem(symbol: String, label: String, action: Selector) -> UIBarButtonItem {
+    let item = UIBarButtonItem(
+      image: UIImage(systemName: symbol),
+      style: .plain,
+      target: self,
+      action: action
+    )
+    item.accessibilityLabel = label
+    item.accessibilityHint = "Выполняет действие в текущей книге"
+    return item
+  }
+}
+
+final class ReadAnyTTSPlayerToolbar: ExpoView {
+  let onBackwardPress = EventDispatcher()
+  let onPlayPausePress = EventDispatcher()
+  let onForwardPress = EventDispatcher()
+
+  var toolbarTintColor = UIColor.label
+  var primaryColor = UIColor.systemOrange
+  var primaryForegroundColor = UIColor.white
+  var isDark = true
+  var isPlaying = false
+  var isLoading = false
+  var seekEnabled = false
+
+  private let toolbar = UIToolbar()
+  private let playButton = UIButton(type: .system)
+
+  required init(appContext: AppContext? = nil) {
+    super.init(appContext: appContext)
+
+    toolbar.translatesAutoresizingMaskIntoConstraints = false
+    toolbar.isTranslucent = true
+    playButton.translatesAutoresizingMaskIntoConstraints = false
+    playButton.addTarget(self, action: #selector(handlePlayPausePress), for: .touchUpInside)
+    addSubview(toolbar)
+
+    NSLayoutConstraint.activate([
+      toolbar.topAnchor.constraint(equalTo: topAnchor),
+      toolbar.bottomAnchor.constraint(equalTo: bottomAnchor),
+      toolbar.leadingAnchor.constraint(equalTo: leadingAnchor),
+      toolbar.trailingAnchor.constraint(equalTo: trailingAnchor),
+      playButton.widthAnchor.constraint(equalToConstant: 44),
+      playButton.heightAnchor.constraint(equalToConstant: 44)
+    ])
+
+    updateConfiguration()
+  }
+
+  @objc private func handleBackwardPress() {
+    onBackwardPress()
+  }
+
+  @objc private func handlePlayPausePress() {
+    onPlayPausePress()
+  }
+
+  @objc private func handleForwardPress() {
+    onForwardPress()
+  }
+
+  func updateConfiguration() {
+    toolbar.tintColor = toolbarTintColor
+    toolbar.barStyle = isDark ? .black : .default
+    toolbar.overrideUserInterfaceStyle = isDark ? .dark : .light
+
+    if #available(iOS 15.0, *) {
+      let appearance = UIToolbarAppearance()
+      appearance.configureWithDefaultBackground()
+      toolbar.standardAppearance = appearance
+      toolbar.scrollEdgeAppearance = appearance
+      toolbar.compactAppearance = appearance
+    }
+
+    let backward = UIBarButtonItem(
+      image: UIImage(systemName: "gobackward.15"),
+      style: .plain,
+      target: self,
+      action: #selector(handleBackwardPress)
+    )
+    backward.accessibilityLabel = "Назад на 15 секунд"
+    backward.isEnabled = seekEnabled
+
+    let forward = UIBarButtonItem(
+      image: UIImage(systemName: "goforward.15"),
+      style: .plain,
+      target: self,
+      action: #selector(handleForwardPress)
+    )
+    forward.accessibilityLabel = "Вперёд на 15 секунд"
+    forward.isEnabled = seekEnabled
+
+    var configuration: UIButton.Configuration
+    if #available(iOS 26.0, *) {
+      configuration = .prominentGlass()
+    } else {
+      configuration = .filled()
+    }
+    configuration.cornerStyle = .capsule
+    configuration.baseBackgroundColor = primaryColor
+    configuration.baseForegroundColor = primaryForegroundColor
+    configuration.showsActivityIndicator = isLoading
+    configuration.image = isLoading
+      ? nil
+      : UIImage(systemName: isPlaying ? "pause.fill" : "play.fill")
+    playButton.configuration = configuration
+    playButton.accessibilityLabel = isLoading
+      ? "Остановить загрузку"
+      : (isPlaying ? "Пауза" : "Воспроизвести")
+
+    let play = UIBarButtonItem(customView: playButton)
+    let spacer = { UIBarButtonItem(systemItem: .flexibleSpace) }
+
+    if #available(iOS 26.0, *) {
+      backward.sharesBackground = true
+      forward.sharesBackground = true
+    }
+
+    toolbar.setItems(
+      [spacer(), backward, spacer(), play, spacer(), forward, spacer()],
+      animated: false
+    )
+  }
+}
+
+final class ReadAnySheetNavigationBar: ExpoView {
+  let onClosePress = EventDispatcher()
+
+  var isDark = true
+
+  private let navigationBar = UINavigationBar()
+  private let navigationItem = UINavigationItem()
+
+  required init(appContext: AppContext? = nil) {
+    super.init(appContext: appContext)
+
+    navigationBar.translatesAutoresizingMaskIntoConstraints = false
+    navigationBar.isTranslucent = true
+    navigationBar.backgroundColor = .clear
+    backgroundColor = .clear
+    addSubview(navigationBar)
+
+    NSLayoutConstraint.activate([
+      navigationBar.topAnchor.constraint(equalTo: topAnchor),
+      navigationBar.bottomAnchor.constraint(equalTo: bottomAnchor),
+      navigationBar.leadingAnchor.constraint(equalTo: leadingAnchor),
+      navigationBar.trailingAnchor.constraint(equalTo: trailingAnchor)
+    ])
+
+    let closeItem = UIBarButtonItem(
+      barButtonSystemItem: .close,
+      target: self,
+      action: #selector(handleClosePress)
+    )
+    closeItem.accessibilityLabel = "Закрыть озвучку"
+    navigationItem.rightBarButtonItem = closeItem
+    navigationBar.setItems([navigationItem], animated: false)
+    updateConfiguration()
+  }
+
+  @objc private func handleClosePress() {
+    onClosePress()
+  }
+
+  func updateConfiguration() {
+    overrideUserInterfaceStyle = isDark ? .dark : .light
+
+    if #available(iOS 15.0, *) {
+      let appearance = UINavigationBarAppearance()
+      appearance.configureWithTransparentBackground()
+      appearance.shadowColor = .clear
+      navigationBar.standardAppearance = appearance
+      navigationBar.scrollEdgeAppearance = appearance
+      navigationBar.compactAppearance = appearance
+      navigationBar.compactScrollEdgeAppearance = appearance
+    }
   }
 }

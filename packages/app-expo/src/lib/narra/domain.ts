@@ -4,7 +4,15 @@ export const MAX_NARRA_CHARACTERS = 8;
 export const MAX_NARRA_CHAT_MESSAGES = 80;
 
 export function emptyNarraBookState(bookId: string): NarraBookState {
-  return { bookId, characters: [], memories: {}, chats: {}, scenes: {} };
+  return {
+    bookId,
+    characters: [],
+    memories: {},
+    chats: {},
+    scenes: {},
+    sceneAudios: {},
+    summaries: {},
+  };
 }
 
 export function normalizeReadingProgress(progress: number): number {

@@ -89,6 +89,29 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
 `;
 
+const STATUS_BAR_ROOT_CONTROLLER_FACTORY = `
+  override func createRootViewController() -> UIViewController {
+    NarraRootViewController()
+  }
+
+`;
+
+const STATUS_BAR_ROOT_CONTROLLER = `
+private final class NarraRootViewController: UIViewController {
+  override var childForStatusBarHidden: UIViewController? {
+    children.last
+  }
+
+  override var childForStatusBarStyle: UIViewController? {
+    children.last
+  }
+
+  override var preferredStatusBarUpdateAnimation: UIStatusBarAnimation {
+    children.last?.preferredStatusBarUpdateAnimation ?? .fade
+  }
+}
+`;
+
 module.exports = function withIosSceneLifecycle(config) {
   const withSceneManifest = withInfoPlist(config, (mod) => {
     mod.modResults.UIApplicationSceneManifest = {
@@ -127,6 +150,15 @@ module.exports = function withIosSceneLifecycle(config) {
         "class ReactNativeDelegate: ExpoReactNativeFactoryDelegate {",
         `${SCENE_DELEGATE}class ReactNativeDelegate: ExpoReactNativeFactoryDelegate {`,
       );
+    }
+    if (!contents.includes("NarraRootViewController()")) {
+      contents = contents.replace(
+        "class ReactNativeDelegate: ExpoReactNativeFactoryDelegate {\n  // Extension point for config-plugins\n",
+        `class ReactNativeDelegate: ExpoReactNativeFactoryDelegate {\n  // Extension point for config-plugins\n${STATUS_BAR_ROOT_CONTROLLER_FACTORY}`,
+      );
+    }
+    if (!contents.includes("private final class NarraRootViewController")) {
+      contents = `${contents.trimEnd()}\n${STATUS_BAR_ROOT_CONTROLLER}\n`;
     }
 
     mod.modResults.contents = contents;

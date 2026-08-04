@@ -1,11 +1,14 @@
-import { NarraServiceError } from "@/lib/narra/errors";
 import * as Crypto from "expo-crypto";
 import * as SecureStore from "expo-secure-store";
+import { fetch as expoFetch } from "expo/fetch";
+import { NarraServiceError } from "../narra/errors";
 
 const INSTALLATION_ID_KEY = "narra.gateway.installation-id";
 const INSTALLATION_SECRET_KEY = "narra.gateway.installation-secret";
 const TOKEN_EXPIRY_SKEW_MS = 30_000;
 const DEFAULT_TIMEOUT_MS = 60_000;
+const IMAGE_TIMEOUT_MS = 150_000;
+const INSTALLATION_TIMEOUT_MS = 15_000;
 
 type NarraGatewayAdapter = (path: string, init: RequestInit) => Promise<Response>;
 
@@ -20,7 +23,7 @@ interface GatewayToken {
 }
 
 let configuredAdapter: NarraGatewayAdapter | null = null;
-let configuredFetch: typeof globalThis.fetch = globalThis.fetch;
+let configuredFetch: typeof globalThis.fetch = expoFetch as typeof globalThis.fetch;
 let cachedIdentity: InstallationIdentity | null = null;
 let cachedToken: GatewayToken | null = null;
 let tokenPromise: Promise<string> | null = null;
@@ -89,37 +92,95 @@ async function getInstallationIdentity(): Promise<InstallationIdentity> {
   return cachedIdentity;
 }
 
-async function readGatewayError(response: Response): Promise<string> {
+async function resetInstallationIdentity(): Promise<void> {
+  cachedIdentity = null;
+  cachedToken = null;
+  await Promise.all([
+    SecureStore.deleteItemAsync(INSTALLATION_ID_KEY),
+    SecureStore.deleteItemAsync(INSTALLATION_SECRET_KEY),
+  ]);
+}
+
+interface GatewayErrorPayload {
+  message: string;
+  code?: string;
+}
+
+async function readGatewayError(response: Response): Promise<GatewayErrorPayload> {
   const payload = (await response
     .clone()
     .json()
     .catch(() => null)) as { error?: string; message?: string; code?: string } | null;
-  return payload?.error || payload?.message || payload?.code || `HTTP ${response.status}`;
+  return {
+    message: payload?.error || payload?.message || payload?.code || `HTTP ${response.status}`,
+    code: payload?.code,
+  };
 }
 
-async function requestInstallationToken(mode: "register" | "refresh"): Promise<string> {
+function canResetRejectedIdentity(response: Response, error: GatewayErrorPayload): boolean {
+  if (
+    response.status === 403 &&
+    error.code === "AUTH" &&
+    error.message === "Installation proof отклонён"
+  ) {
+    return true;
+  }
+  return (
+    response.status === 400 &&
+    error.code === "VALIDATION" &&
+    error.message === "Некорректный installation secret"
+  );
+}
+
+function isInstallationTokenRejection(response: Response, error: GatewayErrorPayload): boolean {
+  return (
+    response.status === 401 &&
+    error.code === "AUTH" &&
+    error.message === "Нужен действующий installation token"
+  );
+}
+
+async function requestInstallationToken(
+  mode: "register" | "refresh",
+  allowIdentityReset = true,
+): Promise<string> {
   const identity = await getInstallationIdentity();
-  const response = await configuredFetch(`${requireGatewayUrl()}/v2/installations/${mode}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(
-      mode === "register"
-        ? {
-            installation_id: identity.installationId,
-            installation_secret: identity.installationSecret,
-            app_version: "narra-expo",
-            platform: process.env.EXPO_OS || "react-native",
-            arch: "react-native",
-          }
-        : {
-            installation_id: identity.installationId,
-            installation_secret: identity.installationSecret,
-          },
-    ),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), INSTALLATION_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await configuredFetch(`${requireGatewayUrl()}/v2/installations/${mode}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(
+        mode === "register"
+          ? {
+              installation_id: identity.installationId,
+              installation_secret: identity.installationSecret,
+              app_version: "narra-expo",
+              platform: process.env.EXPO_OS || "react-native",
+              arch: "react-native",
+            }
+          : {
+              installation_id: identity.installationId,
+              installation_secret: identity.installationSecret,
+            },
+      ),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
   if (!response.ok) {
-    if (mode === "refresh" && response.status === 404) return requestInstallationToken("register");
-    throw new NarraServiceError("AUTH", await readGatewayError(response));
+    if (mode === "refresh" && response.status === 404) {
+      return requestInstallationToken("register", allowIdentityReset);
+    }
+    const error = await readGatewayError(response);
+    if (allowIdentityReset && canResetRejectedIdentity(response, error)) {
+      await resetInstallationIdentity();
+      return requestInstallationToken("register", false);
+    }
+    throw new NarraServiceError("AUTH", error.message);
   }
   const payload = (await response.json()) as { token?: string; expires_in?: number };
   if (!payload.token) throw new NarraServiceError("AUTH", "Gateway returned no token");
@@ -153,7 +214,10 @@ async function directGatewayRequest(path: string, init: RequestInit): Promise<Re
       headers.set("authorization", `Bearer ${await getInstallationToken(forceRefresh)}`);
     }
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+    const requestTimeout = path.startsWith("/v2/media/images")
+      ? IMAGE_TIMEOUT_MS
+      : DEFAULT_TIMEOUT_MS;
+    const timeout = setTimeout(() => controller.abort(), requestTimeout);
     try {
       return await configuredFetch(url, { ...init, headers, signal: controller.signal });
     } finally {
@@ -161,7 +225,10 @@ async function directGatewayRequest(path: string, init: RequestInit): Promise<Re
     }
   };
   let response = await send();
-  if (config.authMode === "installation" && response.status === 401) response = await send(true);
+  if (config.authMode === "installation" && response.status === 401) {
+    const error = await readGatewayError(response);
+    if (isInstallationTokenRejection(response, error)) response = await send(true);
+  }
   return response;
 }
 

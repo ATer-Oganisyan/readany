@@ -1,12 +1,13 @@
 import { Text } from "@/components/ui/Typography";
 import { useColors } from "@/styles/theme";
 import { useTranslation } from "react-i18next";
-import { ActivityIndicator, StyleSheet, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Image, StyleSheet, TouchableOpacity, View } from "react-native";
 import { makeStyles } from "./book-card-styles";
 
 interface CatalogBookCardProps {
   title: string;
   author: string;
+  coverAssetModule: number;
   cardWidth: number;
   isImporting: boolean;
   isInLibrary: boolean;
@@ -16,6 +17,7 @@ interface CatalogBookCardProps {
 export function CatalogBookCard({
   title,
   author,
+  coverAssetModule,
   cardWidth,
   isImporting,
   isInLibrary,
@@ -40,33 +42,11 @@ export function CatalogBookCard({
       style={styles.container}
     >
       <View style={styles.coverWrap}>
-        <View style={styles.fallbackCover}>
-          <View style={styles.fallbackGradientTop} />
-          <View style={styles.fallbackGradientBottom} />
-          <View style={styles.fallbackContentOverlay}>
-            <View style={styles.fallbackTitleWrap}>
-              <Text style={styles.fallbackTitle} numberOfLines={4}>
-                {title}
-              </Text>
-            </View>
-            <View style={styles.fallbackDivider} />
-            <View style={styles.fallbackAuthorWrap}>
-              <Text style={styles.fallbackAuthor} numberOfLines={2}>
-                {author}
-              </Text>
-            </View>
-          </View>
-        </View>
+        <Image source={coverAssetModule} style={styles.coverImage} resizeMode="cover" />
 
         {isImporting ? (
           <View style={localStyles.loadingOverlay}>
             <ActivityIndicator color="#fff" />
-          </View>
-        ) : isInLibrary ? (
-          <View style={[localStyles.statusBadge, { backgroundColor: colors.primary }]}>
-            <Text style={[localStyles.statusText, { color: colors.primaryForeground }]}>
-              {t("library.catalogAdded", "Добавлено")}
-            </Text>
           </View>
         ) : null}
       </View>
@@ -90,13 +70,4 @@ const localStyles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "rgba(0,0,0,0.38)",
   },
-  statusBadge: {
-    position: "absolute",
-    right: 8,
-    bottom: 8,
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  statusText: { fontSize: 10, fontWeight: "600" },
 });

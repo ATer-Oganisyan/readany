@@ -7,6 +7,7 @@ import { ManualNoteScreen } from "@/screens/ManualNoteScreen";
 import { NarraCharacterChatScreen } from "@/screens/NarraCharacterChatScreen";
 import { NarraCharactersScreen } from "@/screens/NarraCharactersScreen";
 import { NarraSceneScreen } from "@/screens/NarraSceneScreen";
+import { NarraSummaryScreen } from "@/screens/NarraSummaryScreen";
 import { ReaderScreen } from "@/screens/ReaderScreen";
 import SkillsScreen from "@/screens/SkillsScreen";
 import StatsScreen from "@/screens/StatsScreen";
@@ -45,6 +46,12 @@ export type RootStackParamList = {
   NarraCharacters: { bookId: string };
   NarraCharacterChat: { bookId: string; characterId: string };
   NarraScene: {
+    bookId: string;
+    chapter: string;
+    excerpt: string;
+    sourceKey: string;
+  };
+  NarraSummary: {
     bookId: string;
     chapter: string;
     excerpt: string;
@@ -111,12 +118,11 @@ export function RootNavigator() {
           name="Chat"
           component={ChatScreen}
           options={{
-            presentation: "formSheet",
+            presentation: "card",
+            animation: "slide_from_right",
             title: "Narra AI",
-            sheetAllowedDetents: [0.9, 1],
-            sheetInitialDetentIndex: 0,
-            sheetGrabberVisible: true,
-            sheetExpandsWhenScrolledToEdge: true,
+            headerTransparent: false,
+            headerStyle: { backgroundColor: colors.background },
           }}
         />
         <Stack.Screen
@@ -124,7 +130,13 @@ export function RootNavigator() {
           component={ReaderScreen}
           options={{
             animation: "slide_from_right",
+            animationMatchesGesture: true,
+            gestureEnabled: true,
+            fullScreenGestureEnabled: true,
+            gestureResponseDistance: { start: 48 },
             headerShown: false,
+            statusBarAnimation: "fade",
+            statusBarHidden: true,
           }}
         />
         <Stack.Screen
@@ -139,12 +151,11 @@ export function RootNavigator() {
           name="BookChat"
           component={ChatScreen}
           options={{
-            presentation: "formSheet",
+            presentation: "card",
+            animation: "slide_from_right",
             title: "Narra AI",
-            sheetAllowedDetents: [0.9, 1],
-            sheetInitialDetentIndex: 0,
-            sheetGrabberVisible: true,
-            sheetExpandsWhenScrolledToEdge: true,
+            headerTransparent: false,
+            headerStyle: { backgroundColor: colors.background },
           }}
         />
         <Stack.Screen
@@ -161,6 +172,8 @@ export function RootNavigator() {
           options={{
             animation: "slide_from_right",
             title: t("narra.characterChat", "Чат с персонажем"),
+            headerRight: undefined,
+            unstable_headerRightItems: () => [],
           }}
         />
         <Stack.Screen
@@ -172,6 +185,11 @@ export function RootNavigator() {
             headerRight: undefined,
             unstable_headerRightItems: () => [],
           }}
+        />
+        <Stack.Screen
+          name="NarraSummary"
+          component={NarraSummaryScreen}
+          options={{ animation: "slide_from_right", title: "Краткий пересказ" }}
         />
         <Stack.Screen
           name="Stats"

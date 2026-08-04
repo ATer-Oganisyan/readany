@@ -2,6 +2,7 @@ import { useTheme } from "@/styles/theme";
 import { interfaceFontFamily } from "@deslop/primitives/native";
 import {
   Button,
+  CircularProgressIndicator,
   Text as ComposeText,
   Host,
   OutlinedButton,
@@ -50,6 +51,7 @@ export function NativeButton({
   size = "medium",
   icon,
   disabled = false,
+  loading = false,
   fullWidth = false,
   accessibilityLabel,
   style,
@@ -78,7 +80,7 @@ export function NativeButton({
       >
         <ButtonComponent
           onClick={onPress}
-          enabled={!disabled}
+          enabled={!disabled && !loading}
           modifiers={[height(buttonHeight), ...(fullWidth ? [fillMaxWidth()] : [])]}
           contentPadding={{ start: 16, end: icon ? 24 : 16, top: 0, bottom: 0 }}
           colors={{
@@ -92,7 +94,13 @@ export function NativeButton({
             disabledContentColor: colors.mutedForeground,
           }}
         >
-          {icon ? (
+          {loading ? (
+            <CircularProgressIndicator
+              color={content}
+              modifiers={[composeSize(20, 20)]}
+              strokeWidth={2.5}
+            />
+          ) : icon ? (
             <>
               <ComposeText
                 color={content}
@@ -103,15 +111,17 @@ export function NativeButton({
               <Spacer modifiers={[composeSize(8, 1)]} />
             </>
           ) : null}
-          <ComposeText
-            color={content}
-            maxLines={1}
-            softWrap={false}
-            overflow="ellipsis"
-            style={{ fontFamily: interfaceFontFamily.semibold, typography: "labelLarge" }}
-          >
-            {label}
-          </ComposeText>
+          {loading ? null : (
+            <ComposeText
+              color={content}
+              maxLines={1}
+              softWrap={false}
+              overflow="ellipsis"
+              style={{ fontFamily: interfaceFontFamily.semibold, typography: "labelLarge" }}
+            >
+              {label}
+            </ComposeText>
+          )}
         </ButtonComponent>
       </Host>
     </View>

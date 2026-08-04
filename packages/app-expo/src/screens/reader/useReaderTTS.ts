@@ -13,6 +13,7 @@ import type { VisibleTTSSegment } from "@/hooks/use-reader-bridge";
 import { useTTSStore } from "@/stores";
 import { getPlatformService } from "@readany/core/services";
 import { type TTSConfig, normalizeTTSConfig, splitNarrationText } from "@readany/core/tts";
+import type { TOCItem } from "@readany/core/types";
 import { eventBus } from "@readany/core/utils/event-bus";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppState, type AppStateStatus } from "react-native";
@@ -39,6 +40,11 @@ export type TTSBridgeRef = {
     after?: number,
   ) => Promise<{ before: TTSSegment[]; after: TTSSegment[] }>;
   getHrefTTSSegments?: (href: string, count?: number) => Promise<TTSSegment[]>;
+  getChapterTTSSegments?: (
+    startHref: string,
+    endHref?: string,
+    count?: number,
+  ) => Promise<TTSSegment[]>;
   getSectionTTSSegments?: (sectionIndex: number, count?: number) => Promise<TTSSegment[]>;
   goToSection?: (sectionIndex: number) => void;
   goToCFI: (cfi: string) => void;
@@ -51,6 +57,7 @@ export interface UseReaderTTSOptions {
   bookId: string;
   bookTitle: string;
   currentChapter: string;
+  currentChapterHref: string;
   currentSectionIndex: number;
   currentCfi: string;
   webViewReady: boolean;
@@ -58,7 +65,7 @@ export interface UseReaderTTSOptions {
   setShowTTS: (v: boolean) => void;
   setShowControls: (v: boolean) => void;
   bridgeRef: React.RefObject<TTSBridgeRef | null>;
-  toc: Array<{ title: string; href?: string }>;
+  toc: TOCItem[];
   bookCoverUrl?: string;
   colors: { primary: string };
   goToHref: (href: string) => void;
@@ -72,6 +79,7 @@ export interface UseReaderTTSResult {
   ttsSegments: TTSSegment[];
   ttsPrevPageSegments: TTSSegment[];
   ttsFutureSegments: TTSSegment[];
+  ttsChapterSegments: TTSSegment[];
   ttsChunkOffset: number;
   ttsSourceKind: "page" | "selection";
   ttsContinuousEnabled: boolean;
@@ -84,6 +92,7 @@ export interface UseReaderTTSResult {
   resolvedTTSSegmentCfi: string | null;
   ttsHighlightColor: string;
   localTTSChunkIndex: number;
+  currentTTSChapterSegmentIndex: number;
 
   // Handlers
   handleToggleTTS: () => Promise<void>;
@@ -98,6 +107,7 @@ export interface UseReaderTTSResult {
     segment: { text: string; cfi?: string | null },
     offsetFromCurrent: number,
   ) => void;
+  handleSeekTTSChapterSegment: (index: number) => void;
   handleLoadMoreAboveTTSLyrics: () => Promise<void>;
   handleLoadMoreBelowTTSLyrics: () => Promise<void>;
   handleTTSPrevChapter: () => void;
@@ -115,6 +125,16 @@ const TTS_CONTEXT_WINDOW = 12;
 const TTS_DYNAMIC_APPEND_THRESHOLD = 18;
 const TTS_DYNAMIC_APPEND_SEGMENTS = 72;
 const TTS_NEXT_CHAPTER_PREFETCH_SEGMENTS = 500;
+const TTS_CHAPTER_PROGRESS_SEGMENTS = 10_000;
+
+function flattenTocItems(items: TOCItem[]): TOCItem[] {
+  const flattened: TOCItem[] = [];
+  for (const item of items) {
+    flattened.push(item);
+    if (item.subitems?.length) flattened.push(...flattenTocItems(item.subitems));
+  }
+  return flattened;
+}
 
 function normalizeTTSSegmentIdentityText(text?: string | null) {
   return (text || "").replace(/\s+/g, " ").trim();
@@ -155,6 +175,7 @@ export function useReaderTTS({
   bookId,
   bookTitle,
   currentChapter,
+  currentChapterHref,
   currentSectionIndex,
   currentCfi,
   webViewReady,
@@ -193,6 +214,7 @@ export function useReaderTTS({
   const [ttsSegments, setTtsSegments] = useState<TTSSegment[]>([]);
   const [ttsPrevPageSegments, setTtsPrevPageSegments] = useState<TTSSegment[]>([]);
   const [ttsFutureSegments, setTtsFutureSegments] = useState<TTSSegment[]>([]);
+  const [ttsChapterSegments, setTtsChapterSegments] = useState<TTSSegment[]>([]);
   const [ttsChunkOffset, setTtsChunkOffset] = useState(0);
   const [ttsSourceKind, setTtsSourceKind] = useState<"page" | "selection">("page");
   const [ttsContinuousEnabled, setTtsContinuousEnabled] = useState(true);
@@ -296,6 +318,7 @@ export function useReaderTTS({
     setTtsSegments([]);
     setTtsPrevPageSegments([]);
     setTtsFutureSegments([]);
+    setTtsChapterSegments([]);
     setTtsChunkOffset(0);
     setTtsSourceKind("page");
     ttsSegmentsRef.current = [];
@@ -413,6 +436,28 @@ export function useReaderTTS({
     return ttsCurrentLocationCfi || null;
   }, [bookId, currentTTSSegment?.cfi, ttsCurrentBookId, ttsCurrentLocationCfi]);
 
+  const currentTTSChapterSegmentIndex = useMemo(() => {
+    if (ttsChapterSegments.length === 0) return 0;
+
+    const currentIdentity = getTTSSegmentIdentity(currentTTSSegment);
+    if (currentIdentity !== "::") {
+      const exactIndex = ttsChapterSegments.findIndex(
+        (segment) => getTTSSegmentIdentity(segment) === currentIdentity,
+      );
+      if (exactIndex >= 0) return exactIndex;
+    }
+
+    const currentCfiIdentity = getTTSCfiStartIdentity(resolvedTTSSegmentCfi);
+    if (currentCfiIdentity) {
+      const cfiIndex = ttsChapterSegments.findIndex(
+        (segment) => getTTSCfiStartIdentity(segment.cfi) === currentCfiIdentity,
+      );
+      if (cfiIndex >= 0) return cfiIndex;
+    }
+
+    return 0;
+  }, [currentTTSSegment, getTTSSegmentIdentity, resolvedTTSSegmentCfi, ttsChapterSegments]);
+
   const ttsSourceLabel = ttsSourceKind === "selection" ? "来自选中文本" : "从当前页开始";
 
   // ─── Utility callbacks ──────────────────────────────────────────────────────
@@ -500,6 +545,66 @@ export function useReaderTTS({
       ),
     [dedupeTTSSegments],
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    const sectionIndex = currentSectionIndex;
+    const bridge = bridgeRef.current;
+    const flatToc = flattenTocItems(toc);
+    let currentTocIndex = currentChapterHref
+      ? flatToc.findIndex((item) => item.href === currentChapterHref)
+      : -1;
+    if (currentTocIndex < 0 && currentChapter) {
+      currentTocIndex = flatToc.findIndex((item) => item.title === currentChapter);
+    }
+    const startHref =
+      (currentTocIndex >= 0 ? flatToc[currentTocIndex]?.href : undefined) || currentChapterHref;
+    const endHref =
+      currentTocIndex >= 0
+        ? flatToc.slice(currentTocIndex + 1).find((item) => item.href && item.href !== startHref)
+            ?.href
+        : undefined;
+    const canLoadSemanticChapter = Boolean(startHref && bridge?.getChapterTTSSegments);
+    const canLoadSection = sectionIndex >= 0 && Boolean(bridge?.getSectionTTSSegments);
+
+    if (!showTTS || !webViewReady || (!canLoadSemanticChapter && !canLoadSection)) {
+      setTtsChapterSegments([]);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setTtsChapterSegments([]);
+    const request =
+      canLoadSemanticChapter && startHref && bridge?.getChapterTTSSegments
+        ? bridge.getChapterTTSSegments(startHref, endHref, TTS_CHAPTER_PROGRESS_SEGMENTS)
+        : (bridge?.getSectionTTSSegments?.(sectionIndex, TTS_CHAPTER_PROGRESS_SEGMENTS) ??
+          Promise.resolve([]));
+    void request
+      .then((segments) => normalizeExtractedTTSSegments(segments))
+      .then((segments) => {
+        if (!cancelled) setTtsChapterSegments(segments);
+      })
+      .catch((error) => {
+        if (__DEV__) {
+          console.warn("[ReaderScreen][TTS] failed to load chapter progress", error);
+        }
+        if (!cancelled) setTtsChapterSegments([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    bridgeRef,
+    currentChapter,
+    currentChapterHref,
+    currentSectionIndex,
+    normalizeExtractedTTSSegments,
+    showTTS,
+    toc,
+    webViewReady,
+  ]);
 
   const findReadableSectionTTSSegments = useCallback(
     async (
@@ -1355,6 +1460,19 @@ export function useReaderTTS({
   useEffect(() => {
     startPageTTSFromCfiRef.current = startPageTTSFromCfi;
   }, [startPageTTSFromCfi]);
+
+  const handleSeekTTSChapterSegment = useCallback(
+    (index: number) => {
+      if (ttsChapterSegments.length === 0) return;
+      const targetIndex = Math.max(0, Math.min(Math.round(index), ttsChapterSegments.length - 1));
+      const targetSegment = ttsChapterSegments[targetIndex];
+      if (!targetSegment?.cfi) return;
+
+      ttsSetCurrentLocation(targetSegment.cfi);
+      void startPageTTSFromCfi(targetSegment.cfi, targetSegment.text);
+    },
+    [startPageTTSFromCfi, ttsChapterSegments, ttsSetCurrentLocation],
+  );
 
   // ─── startPageTTS ─────────────────────────────────────────────────────────
   const startPageTTS = useCallback(
@@ -2678,6 +2796,7 @@ export function useReaderTTS({
     ttsSegments,
     ttsPrevPageSegments,
     ttsFutureSegments,
+    ttsChapterSegments,
     ttsChunkOffset,
     ttsSourceKind,
     ttsContinuousEnabled,
@@ -2690,6 +2809,7 @@ export function useReaderTTS({
     resolvedTTSSegmentCfi,
     ttsHighlightColor,
     localTTSChunkIndex,
+    currentTTSChapterSegmentIndex,
 
     // Handlers
     handleToggleTTS,
@@ -2701,6 +2821,7 @@ export function useReaderTTS({
     handleToggleTTSContinuous,
     handleJumpToTTSSegment,
     handleJumpToTTSLyricSegment,
+    handleSeekTTSChapterSegment,
     handleLoadMoreAboveTTSLyrics,
     handleLoadMoreBelowTTSLyrics,
     handleTTSPrevChapter,

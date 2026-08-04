@@ -24,6 +24,7 @@ import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import {
   BUNDLED_CATALOG_BOOKS,
   type BundledCatalogBook,
+  installBundledCatalogCover,
   normalizeCatalogIdentity,
   resolveBundledCatalogBookUri,
 } from "@/lib/catalog/bundled-books";
@@ -537,6 +538,7 @@ export function LibraryScreen() {
         const result = await importBooks([{ uri, name: catalogBook.fileName }]);
         const importedBook = result.imported[0] ?? result.skippedDuplicates[0]?.existingBook;
         if (!importedBook) throw new Error("catalog-import-failed");
+        const coverUrl = await installBundledCatalogCover(importedBook.id, catalogBook);
 
         const normalizedBook: Book = {
           ...importedBook,
@@ -544,6 +546,7 @@ export function LibraryScreen() {
             ...importedBook.meta,
             title: catalogBook.title,
             author: catalogBook.author,
+            coverUrl,
           },
         };
         await updateBook(importedBook.id, { meta: normalizedBook.meta });
@@ -1068,6 +1071,7 @@ export function LibraryScreen() {
                             <CatalogBookCard
                               title={catalogBook.title}
                               author={catalogBook.author}
+                              coverAssetModule={catalogBook.coverAssetModule}
                               cardWidth={gridItemWidth}
                               isImporting={catalogImportingId === catalogBook.id}
                               isInLibrary={catalogBooksInLibrary.has(catalogBook.id)}

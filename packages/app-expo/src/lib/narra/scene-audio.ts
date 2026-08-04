@@ -1,0 +1,89 @@
+import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
+import type { NarraCharacter, NarraSceneAudioSegment } from "./types";
+
+const MAX_SCENE_TEXT_CHARS = 12_000;
+const MAX_SCENE_SEGMENTS = 24;
+export const NARRATOR_VOICE = "Shi";
+
+type ScenarioResponse = { text?: string; content?: string; error?: string };
+
+function normalizeCharacterKey(value: string): string {
+  return value.toLocaleLowerCase("ru-RU").replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+function resolveCharacter(value: unknown, characters: NarraCharacter[]): NarraCharacter | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const key = normalizeCharacterKey(value);
+  return (
+    characters.find((character) =>
+      [character.id, character.name, character.fullName].some(
+        (candidate) => normalizeCharacterKey(candidate) === key,
+      ),
+    ) ?? null
+  );
+}
+
+export function parseNarraAudioScenario(
+  value: string,
+  characters: NarraCharacter[],
+): NarraSceneAudioSegment[] {
+  const fenced = value.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1] || value;
+  const start = fenced.indexOf("[");
+  const end = fenced.lastIndexOf("]");
+  if (start < 0 || end <= start) throw new Error("Gateway returned no audio scenario");
+
+  const raw = JSON.parse(fenced.slice(start, end + 1)) as Array<Record<string, unknown>>;
+  return raw
+    .filter((item) => typeof item.text === "string" && item.text.trim())
+    .slice(0, MAX_SCENE_SEGMENTS)
+    .map((item) => {
+      const character = resolveCharacter(item.character, characters);
+      return {
+        type: item.type === "speech" ? "speech" : "narration",
+        characterId: character?.id ?? null,
+        speaker: character?.name ?? "Рассказчик",
+        voice: character?.voice ?? NARRATOR_VOICE,
+        text: String(item.text).trim(),
+      };
+    });
+}
+
+export async function generateNarraAudioScenario(
+  excerpt: string,
+  characters: NarraCharacter[],
+): Promise<NarraSceneAudioSegment[]> {
+  const roster = characters.map((character) => `${character.id}: ${character.fullName}`).join("; ");
+  const response = await narraGatewayRequest("/v2/ai/chat/complete", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      messages: [
+        {
+          role: "system",
+          content: `Разбей фрагмент на сценарий аудиокниги. Верни только JSON-массив [{"type":"narration|speech","character":"id|null","text":"дословный текст"}]. Сохрани текст и порядок. Не добавляй новые реплики. Используй только эти id персонажей: ${roster || "персонажи не определены"}.`,
+        },
+        { role: "user", content: excerpt.slice(0, MAX_SCENE_TEXT_CHARS) },
+      ],
+      temperature: 0.15,
+      purpose: "structured_task",
+      origin: "user",
+      analytics_tier: "essential",
+    }),
+  });
+
+  const body = await response.text();
+  let payload: ScenarioResponse | null = null;
+  try {
+    payload = JSON.parse(body) as ScenarioResponse;
+  } catch {
+    // Some gateway adapters return plain text for chat completions.
+  }
+  if (!response.ok) {
+    throw new Error(payload?.error || body || `AI request failed (${response.status})`);
+  }
+
+  const scenarioText = (payload ? payload.text || payload.content || "" : body).trim();
+  const segments = parseNarraAudioScenario(scenarioText, characters);
+  if (segments.length === 0) throw new Error("Gateway returned an empty audio scenario");
+  return segments;
+}

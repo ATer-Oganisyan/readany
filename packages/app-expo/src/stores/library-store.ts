@@ -9,6 +9,10 @@ import {
   extractBookMetadata,
   extractBookMetadataFromFile,
 } from "@/lib/book/metadata-extractor";
+import {
+  findBundledCatalogBookByTitle,
+  installBundledCatalogCover,
+} from "@/lib/catalog/bundled-books";
 import { queueBook as queueAutoVectorize } from "@/lib/rag/auto-vectorize-service";
 import {
   type ImportBooksResult,
@@ -302,6 +306,18 @@ async function ensureGeneratedBookCover(
   if (book.meta.coverUrl) return;
 
   try {
+    const catalogBook = findBundledCatalogBookByTitle(book.meta.title);
+    if (catalogBook) {
+      const coverUrl = await installBundledCatalogCover(book.id, catalogBook);
+      const currentBook = useLibraryStore.getState().books.find((item) => item.id === book.id);
+      if (!currentBook || currentBook.meta.coverUrl) return;
+      await useLibraryStore.getState().updateBook(book.id, {
+        meta: { ...currentBook.meta, coverUrl },
+        updatedAt: Date.now(),
+      });
+      return;
+    }
+
     const generated = await generateBookCoverWithOpenRouter({
       title: book.meta.title,
       author: book.meta.author,

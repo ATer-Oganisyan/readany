@@ -211,12 +211,12 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
                     <Text style={styles.characterName} numberOfLines={1}>
                       {character.fullName}
                     </Text>
-                    <Text style={styles.characterRole} numberOfLines={1}>
+                    <Text style={styles.characterDescription} numberOfLines={1}>
                       {character.role}
                     </Text>
                     {character.traits.length > 0 ? (
-                      <Text style={styles.traits} numberOfLines={1}>
-                        {character.traits.join(" · ")}
+                      <Text style={styles.characterDescription} numberOfLines={1}>
+                        {character.traits.join(", ")}
                       </Text>
                     ) : null}
                   </View>
@@ -257,7 +257,7 @@ const makeStyles = (colors: ThemeColors) =>
       minHeight: 80,
       flexDirection: "row",
       alignItems: "center",
-      gap: spacing.sm,
+      gap: spacing.lg,
       paddingVertical: spacing.md,
     },
     avatar: {
@@ -278,14 +278,17 @@ const makeStyles = (colors: ThemeColors) =>
     characterCopy: { flex: 1, gap: 2 },
     characterName: {
       color: colors.foreground,
-      fontSize: fontSize.md,
+      fontSize: fontSize.base,
       fontWeight: fontWeight.semibold,
     },
-    characterRole: { color: colors.mutedForeground, fontSize: fontSize.xs, lineHeight: 18 },
-    traits: { color: colors.mutedForeground, fontSize: 11, lineHeight: 16 },
+    characterDescription: {
+      color: colors.mutedForeground,
+      fontSize: fontSize.base,
+      lineHeight: 20,
+    },
     separator: {
       height: StyleSheet.hairlineWidth,
-      marginLeft: 56 + spacing.sm,
+      marginLeft: 56 + spacing.lg,
       backgroundColor: colors.border,
     },
   });

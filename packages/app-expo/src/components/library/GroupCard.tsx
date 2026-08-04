@@ -1,5 +1,5 @@
-import { Text } from "@/components/ui/Typography";
 import { FolderIcon, MoreVerticalIcon } from "@/components/ui/Icon";
+import { Text } from "@/components/ui/Typography";
 import { type ThemeColors, radius, useColors } from "@/styles/theme";
 import { getPlatformService } from "@readany/core/services";
 import type { Book, BookGroup } from "@readany/core/types";
@@ -117,23 +117,9 @@ function GroupCoverLayer({
         </>
       ) : (
         <View style={bookStyles.fallbackCover}>
-          <View style={bookStyles.fallbackGradientTop} />
-          <View style={bookStyles.fallbackGradientBottom} />
-          <View style={bookStyles.fallbackContentOverlay}>
-            <View style={bookStyles.fallbackTitleWrap}>
-              <Text style={bookStyles.fallbackTitle} numberOfLines={3}>
-                {book.meta.title}
-              </Text>
-            </View>
-            <View style={bookStyles.fallbackDivider} />
-            {book.meta.author ? (
-              <View style={bookStyles.fallbackAuthorWrap}>
-                <Text style={bookStyles.fallbackAuthor} numberOfLines={1}>
-                  {book.meta.author}
-                </Text>
-              </View>
-            ) : null}
-          </View>
+          <Text style={bookStyles.fallbackTitle} numberOfLines={6}>
+            {book.meta.title}
+          </Text>
         </View>
       )}
     </View>

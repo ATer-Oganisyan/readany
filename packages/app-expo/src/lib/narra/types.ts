@@ -45,12 +45,37 @@ export interface NarraSceneImage {
   generatedAt: number;
 }
 
+export interface NarraSceneAudioSegment {
+  type: "narration" | "speech";
+  characterId: string | null;
+  speaker: string;
+  voice: string;
+  text: string;
+  audioUri?: string;
+}
+
+export interface NarraSceneAudio {
+  sourceKey: string;
+  segments: NarraSceneAudioSegment[];
+  createdAt: number;
+}
+
+export interface NarraSummary {
+  sourceKey: string;
+  chapter: string;
+  excerpt: string;
+  text: string;
+  generatedAt: number;
+}
+
 export interface NarraBookState {
   bookId: string;
   characters: NarraCharacter[];
   memories: Record<string, string>;
   chats: Record<string, NarraChatMessage[]>;
   scenes: Record<string, NarraSceneImage>;
+  sceneAudios: Record<string, NarraSceneAudio>;
+  summaries: Record<string, NarraSummary>;
   analyzedAt?: number;
   analysisError?: string;
 }

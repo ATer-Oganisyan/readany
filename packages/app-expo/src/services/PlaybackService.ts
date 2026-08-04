@@ -11,6 +11,7 @@
  * handler hasn't loaded yet.
  */
 import TrackPlayer, { Event } from "react-native-track-player";
+import { seekActiveTTS, seekActiveTTSBy } from "../lib/platform/tts-track-controls";
 import { useTTSStore } from "../stores/tts-store";
 
 export async function PlaybackService() {
@@ -45,6 +46,14 @@ export async function PlaybackService() {
   });
 
   TrackPlayer.addEventListener(Event.RemoteSeek, (event) => {
-    TrackPlayer.seekTo(event.position);
+    void seekActiveTTS(event.position);
+  });
+
+  TrackPlayer.addEventListener(Event.RemoteJumpBackward, (event) => {
+    void seekActiveTTSBy(-event.interval);
+  });
+
+  TrackPlayer.addEventListener(Event.RemoteJumpForward, (event) => {
+    void seekActiveTTSBy(event.interval);
   });
 }

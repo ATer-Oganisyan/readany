@@ -542,6 +542,7 @@ export function NotesView({
                 "Добавьте заметку сейчас или выделите текст во время чтения.",
               )}
               avoidNativeTabBar={showBackButton}
+              style={{ transform: [{ translateY: -nativeHeaderHeight / 2 }] }}
             >
               <EmptyStateActionButton
                 label={t("notes.addNote", "Добавить заметку")}

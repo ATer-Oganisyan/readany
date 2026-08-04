@@ -46,9 +46,7 @@ import { eventBus } from "@readany/core/utils/event-bus";
 import { throttle } from "@readany/core/utils/throttle";
 import { Asset } from "expo-asset";
 import * as Clipboard from "expo-clipboard";
-import Constants from "expo-constants";
 import * as DocumentPicker from "expo-document-picker";
-import { StatusBar } from "expo-status-bar";
 /**
  * ReaderScreen — WebView-based reader with foliate-js engine.
  */
@@ -69,11 +67,14 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { runOnJS } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 
 // ── Extracted modules ──
 import { ReaderNoteViewModal } from "./reader/ReaderNoteViewModal";
+import { ReaderToolbar, TOOLBAR_HEIGHT } from "./reader/ReaderToolbar";
 
 const REFLOWABLE_CHARACTERS_PER_LOCATION = 1500;
 const MAX_TRACKED_LOCATION_DELTA = 20;
@@ -81,8 +82,6 @@ const MAX_TRACKED_PAGE_DELTA = 20;
 const MAX_TRACKED_FRACTION_DELTA = 0.08;
 const INITIAL_PROGRESS_RESTORE_GUARD_MS = 1800;
 const PROGRAMMATIC_NAV_GUARD_MS = 1200;
-const usesAppControlledStatusBar =
-  Platform.OS !== "ios" || Number(Constants.platform?.ios?.buildNumber ?? 0) >= 6;
 const BOOK_MIME_TYPES = [
   "application/epub+zip",
   "application/pdf",
@@ -213,7 +212,7 @@ export function ReaderScreen({ route, navigation }: Props) {
   // State
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showControls, setShowControls] = useState(false);
+  const [showControls, setShowControls] = useState(true);
   const [showTOC, setShowTOC] = useState(false);
   const [tocActiveTab, setTocActiveTab] = useState<"toc" | "bookmarks">("toc");
   const [showSettings, setShowSettings] = useState(false);
@@ -227,6 +226,7 @@ export function ReaderScreen({ route, navigation }: Props) {
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [progress, setProgress] = useState(0);
   const [currentChapter, setCurrentChapter] = useState("");
+  const [currentChapterHref, setCurrentChapterHref] = useState("");
   const [currentPage, setCurrentPage] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [toc, setToc] = useState<TOCItem[]>([]);
@@ -278,6 +278,11 @@ export function ReaderScreen({ route, navigation }: Props) {
       after?: number,
     ) => Promise<{ before: TTSSegment[]; after: TTSSegment[] }>;
     getHrefTTSSegments?: (href: string, count?: number) => Promise<TTSSegment[]>;
+    getChapterTTSSegments?: (
+      startHref: string,
+      endHref?: string,
+      count?: number,
+    ) => Promise<TTSSegment[]>;
     getSectionTTSSegments?: (sectionIndex: number, count?: number) => Promise<TTSSegment[]>;
     goToFraction: (fraction: number) => void;
     goToSection: (sectionIndex: number) => void;
@@ -521,6 +526,25 @@ export function ReaderScreen({ route, navigation }: Props) {
   // Focus & foreground state for volume paging whitelist
   const isFocused = useIsFocused();
   const [appActive, setAppActive] = useState(true);
+
+  useEffect(() => {
+    if (!isFocused) return;
+
+    setShowControls(true);
+    if (controlsTimer.current) clearTimeout(controlsTimer.current);
+    controlsTimer.current = setTimeout(() => {
+      setShowControls(false);
+      controlsTimer.current = null;
+    }, CONTROLS_TIMEOUT);
+
+    return () => {
+      if (controlsTimer.current) {
+        clearTimeout(controlsTimer.current);
+        controlsTimer.current = null;
+      }
+    };
+  }, [isFocused]);
+
   useEffect(() => {
     const sub = AppState.addEventListener("change", (s: AppStateStatus) =>
       setAppActive(s === "active"),
@@ -552,13 +576,40 @@ export function ReaderScreen({ route, navigation }: Props) {
     const willShow = !showControls;
     setShowControls(willShow);
 
+    if (controlsTimer.current) {
+      clearTimeout(controlsTimer.current);
+      controlsTimer.current = null;
+    }
+
     if (willShow) {
-      if (controlsTimer.current) clearTimeout(controlsTimer.current);
       controlsTimer.current = setTimeout(() => {
         setShowControls(false);
+        controlsTimer.current = null;
       }, CONTROLS_TIMEOUT);
     }
   }, [showControls]);
+
+  const handleReaderBackSwipe = useCallback(() => {
+    if (navigation.canGoBack()) {
+      navigation.popTo("Tabs");
+      return;
+    }
+    navigation.navigate("Tabs");
+  }, [navigation]);
+
+  const readerBackSwipeGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(Platform.OS === "ios")
+        .activeOffsetX(18)
+        .failOffsetY([-24, 24])
+        .onEnd((event) => {
+          if (event.translationX >= 72 || event.velocityX >= 520) {
+            runOnJS(handleReaderBackSwipe)();
+          }
+        }),
+    [handleReaderBackSwipe],
+  );
 
   // Reader bridge
   const bridge = useReaderBridge({
@@ -737,6 +788,7 @@ export function ReaderScreen({ route, navigation }: Props) {
         sessionProgressRef.current = { mode: "page", current: detail.section.current };
       }
       if (detail.tocItem?.label) setCurrentChapter(detail.tocItem.label);
+      if (detail.tocItem?.href) setCurrentChapterHref(detail.tocItem.href);
       if (detail.cfi) {
         if (lastCfiRef.current && detail.cfi !== lastCfiRef.current) {
           const fractionDiff = Math.abs((detail.fraction ?? 0) - progress);
@@ -949,6 +1001,7 @@ export function ReaderScreen({ route, navigation }: Props) {
     bookId,
     bookTitle: bookTitle || book?.meta.title || "",
     currentChapter,
+    currentChapterHref,
     currentSectionIndex,
     currentCfi,
     webViewReady,
@@ -1022,6 +1075,14 @@ export function ReaderScreen({ route, navigation }: Props) {
             chapterTitle: currentChapter,
           });
           break;
+        case "summarize":
+          navigation.navigate("NarraSummary", {
+            bookId,
+            chapter: currentChapter || bookTitle || book?.meta.title || "Текущий фрагмент",
+            excerpt: selectedText,
+            sourceKey: `selection:${cfi || `${currentChapter}:${selectedText.slice(0, 120)}`}`,
+          });
+          break;
         case "generate-scene":
           openScene(
             selectedText,
@@ -1033,7 +1094,16 @@ export function ReaderScreen({ route, navigation }: Props) {
           break;
       }
     },
-    [bookId, currentChapter, navigation, openScene, selection, tts.startSelectionTTS],
+    [
+      book?.meta.title,
+      bookId,
+      bookTitle,
+      currentChapter,
+      navigation,
+      openScene,
+      selection,
+      tts.startSelectionTTS,
+    ],
   );
 
   const handleOpenBookChat = useCallback(() => {
@@ -1074,16 +1144,6 @@ export function ReaderScreen({ route, navigation }: Props) {
         sfSymbol: "globe",
         onPress: () => setShowChapterTranslation(true),
       },
-      {
-        label: "Озвучить",
-        sfSymbol: "waveform",
-        onPress: () => void tts.handleToggleTTS(),
-      },
-      {
-        label: t("narra.characters", "Персонажи"),
-        sfSymbol: "person.2",
-        onPress: () => navigation.navigate("NarraCharacters", { bookId }),
-      },
     ];
 
     navigation.setOptions(
@@ -1092,20 +1152,6 @@ export function ReaderScreen({ route, navigation }: Props) {
             headerRight: undefined,
             unstable_headerRightItems: headerVisible
               ? () => [
-                  {
-                    type: "button" as const,
-                    label: "Обсудить с ИИ",
-                    accessibilityLabel: "Обсудить с ИИ",
-                    icon: { type: "sfSymbol" as const, name: "message" as const },
-                    onPress: handleOpenBookChat,
-                  },
-                  {
-                    type: "button" as const,
-                    label: "Сгенерировать сцену",
-                    accessibilityLabel: "Сгенерировать сцену",
-                    icon: { type: "sfSymbol" as const, name: "photo.badge.plus" as const },
-                    onPress: () => void handleGenerateVisibleScene(),
-                  },
                   {
                     type: "menu" as const,
                     label: "Действия с книгой",
@@ -1146,10 +1192,19 @@ export function ReaderScreen({ route, navigation }: Props) {
                     />
                     <NativeContextMenuButton
                       accessibilityLabel="Действия с книгой"
-                      items={readerActions.map((action) => ({
-                        key: action.label,
-                        ...action,
-                      }))}
+                      items={[
+                        ...readerActions,
+                        {
+                          label: "Озвучить",
+                          sfSymbol: "waveform",
+                          onPress: () => void tts.handleToggleTTS(),
+                        },
+                        {
+                          label: t("narra.characters", "Персонажи"),
+                          sfSymbol: "person.2",
+                          onPress: () => navigation.navigate("NarraCharacters", { bookId }),
+                        },
+                      ].map((action) => ({ key: action.label, ...action }))}
                     />
                   </View>
                 )
@@ -1520,14 +1575,9 @@ export function ReaderScreen({ route, navigation }: Props) {
     };
   }, [bookId, currentCfi, goToCFISafely, loading, navigation, openTTS, webViewReady]);
 
-  const readerStatusBar = usesAppControlledStatusBar ? (
-    <StatusBar hidden={isFocused} style={isDark ? "light" : "dark"} animated />
-  ) : null;
-
   if (loading && !webViewReady && !readerHtmlUri) {
     return (
       <>
-        {readerStatusBar}
         <SafeAreaView style={[s.container, { backgroundColor: colors.background }]}>
           <View style={s.loadingWrap}>
             <ActivityIndicator size="large" color={colors.primary} />
@@ -1541,7 +1591,6 @@ export function ReaderScreen({ route, navigation }: Props) {
   if (error) {
     return (
       <>
-        {readerStatusBar}
         <SafeAreaView style={[s.container, { backgroundColor: colors.background }]}>
           <View style={s.loadingWrap}>
             <Text style={s.errorText}>{t("reader.loadFailed", "加载失败")}</Text>
@@ -1591,7 +1640,6 @@ export function ReaderScreen({ route, navigation }: Props) {
   if (!readerHtmlUri) {
     return (
       <>
-        {readerStatusBar}
         <View style={s.container}>
           <View style={s.loadingWrap}>
             <ActivityIndicator size="large" color={colors.primary} />
@@ -1628,7 +1676,6 @@ export function ReaderScreen({ route, navigation }: Props) {
 
   return (
     <>
-      {readerStatusBar}
       <View style={[s.container, { paddingBottom: insets.bottom }]}>
         <Animated.View
           style={[s.readerStage, { transform: [{ translateY: readerPullAnim }] }]}
@@ -1652,6 +1699,7 @@ export function ReaderScreen({ route, navigation }: Props) {
                 { key: "copy", label: "Скопировать" },
                 { key: "translate", label: "Перевести" },
                 { key: "ask-ai", label: "Обсудить с ИИ" },
+                { key: "summarize", label: "Кратко пересказать" },
                 { key: "generate-scene", label: "Создать иллюстрацию" },
                 { key: "speak", label: "Озвучить" },
               ]}
@@ -1704,6 +1752,49 @@ export function ReaderScreen({ route, navigation }: Props) {
             </View>
           )}
         </Animated.View>
+
+        {Platform.OS === "ios" && (
+          <GestureDetector gesture={readerBackSwipeGesture}>
+            <View
+              collapsable={false}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+              style={{
+                position: "absolute",
+                top: 0,
+                bottom: 0,
+                left: 0,
+                width: 24,
+                zIndex: 20,
+              }}
+            />
+          </GestureDetector>
+        )}
+
+        {Platform.OS === "ios" && showControls && !showSearch && (
+          <View
+            style={{
+              position: "absolute",
+              right: 0,
+              bottom: 0,
+              left: 0,
+              zIndex: 30,
+              height: TOOLBAR_HEIGHT + insets.bottom,
+              paddingBottom: insets.bottom,
+              backgroundColor: colors.background,
+            }}
+          >
+            <ReaderToolbar
+              tintColor={colors.foreground}
+              isDark={isDark}
+              speechActive={ttsPlayState === "playing" || ttsPlayState === "loading"}
+              onSpeechPress={() => void tts.handleToggleTTS()}
+              onChatPress={handleOpenBookChat}
+              onCharactersPress={() => navigation.navigate("NarraCharacters", { bookId })}
+              onScenePress={() => void handleGenerateVisibleScene()}
+            />
+          </View>
+        )}
 
         {/* ─── Bookmark Ribbon (top-right) ─── */}
         <BookmarkRibbon visible={isBookmarked} topOffset={0} rightOffset={readerContentInset} />
@@ -2034,6 +2125,8 @@ export function ReaderScreen({ route, navigation }: Props) {
           currentSegmentText={tts.currentTTSSegment?.text || null}
           currentChunkIndex={tts.localTTSChunkIndex}
           totalChunks={tts.ttsDisplaySegments.length}
+          chapterCurrentIndex={tts.currentTTSChapterSegmentIndex}
+          chapterTotalChunks={tts.ttsChapterSegments.length}
           onClose={() => setShowTTS(false)}
           onReturnToReading={tts.handleTTSReturnToReading}
           onReplay={tts.handleTTSReplay}
@@ -2042,6 +2135,7 @@ export function ReaderScreen({ route, navigation }: Props) {
           onJumpToLyricSegment={tts.handleJumpToTTSLyricSegment}
           onLoadMoreAbove={tts.handleLoadMoreAboveTTSLyrics}
           onLoadMoreBelow={tts.handleLoadMoreBelowTTSLyrics}
+          onSeekChapterChunk={tts.handleSeekTTSChapterSegment}
           onStop={tts.handleTTSStop}
           onAdjustRate={tts.handleAdjustTTSRate}
           onAdjustPitch={tts.handleAdjustTTSPitch}

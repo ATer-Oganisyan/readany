@@ -25,7 +25,6 @@ if (typeof navigator !== "undefined" && !navigator.userAgent) {
 
 import { interfaceFontAssets } from "@deslop/primitives/native";
 import { DarkTheme, DefaultTheme, NavigationContainer } from "@react-navigation/native";
-import Constants from "expo-constants";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
@@ -50,11 +49,11 @@ import TrackPlayer, {
   Capability,
 } from "react-native-track-player";
 
-import { FloatingTTSBubble } from "@/components/tts/FloatingTTSBubble";
 import { UpdateDialog } from "@/components/update/UpdateDialog";
 import { useUpdateChecker } from "@/hooks/use-update-checker";
 import { navigationRef } from "@/lib/navigationRef";
 import { ExpoPlatformService } from "@/lib/platform/expo-platform-service";
+import { seekActiveTTS, seekActiveTTSBy } from "@/lib/platform/tts-track-controls";
 import { MobileSyncAdapter } from "@/lib/sync/sync-adapter-mobile";
 import { RootNavigator } from "@/navigation/RootNavigator";
 import { useLibraryStore } from "@/stores/library-store";
@@ -144,11 +143,16 @@ export default function App() {
             appKilledPlaybackBehavior: AppKilledPlaybackBehavior.ContinuePlayback,
             alwaysPauseOnInterruption: false,
           },
+          backwardJumpInterval: 15,
+          forwardJumpInterval: 15,
           stoppingAppPausesPlayback: false,
           capabilities: [
             Capability.Play,
             Capability.Pause,
             Capability.Stop,
+            Capability.SeekTo,
+            Capability.JumpBackward,
+            Capability.JumpForward,
             Capability.SkipToNext,
             Capability.SkipToPrevious,
           ],
@@ -157,6 +161,9 @@ export default function App() {
             Capability.Play,
             Capability.Pause,
             Capability.Stop,
+            Capability.SeekTo,
+            Capability.JumpBackward,
+            Capability.JumpForward,
             Capability.SkipToNext,
             Capability.SkipToPrevious,
           ],
@@ -172,6 +179,15 @@ export default function App() {
         });
         TrackPlayer.addEventListener(TrackEvent.RemoteStop, () => {
           ttsStore.getState().stop();
+        });
+        TrackPlayer.addEventListener(TrackEvent.RemoteSeek, ({ position }) => {
+          void seekActiveTTS(position);
+        });
+        TrackPlayer.addEventListener(TrackEvent.RemoteJumpBackward, ({ interval }) => {
+          void seekActiveTTSBy(-interval);
+        });
+        TrackPlayer.addEventListener(TrackEvent.RemoteJumpForward, ({ interval }) => {
+          void seekActiveTTSBy(interval);
         });
         TrackPlayer.addEventListener(TrackEvent.RemoteNext, () => {
           const { jumpToChunk, currentChunkIndex, totalChunks } = ttsStore.getState();
@@ -281,15 +297,12 @@ function AppInner() {
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.background }}>
       <SafeAreaProvider>
+        {Platform.OS !== "ios" && <StatusBar style={isDark ? "light" : "dark"} />}
         <NavigationContainer theme={navTheme} ref={navigationRef}>
-          {usesAppControlledStatusBar && <StatusBar style={isDark ? "light" : "dark"} />}
           <RootNavigator />
         </NavigationContainer>
         <UpdateDialog />
-        <FloatingTTSBubble />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }
-const usesAppControlledStatusBar =
-  Platform.OS !== "ios" || Number(Constants.platform?.ios?.buildNumber ?? 0) >= 6;

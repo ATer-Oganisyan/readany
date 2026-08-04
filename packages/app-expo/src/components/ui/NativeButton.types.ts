@@ -27,6 +27,7 @@ export interface NativeButtonProps {
   size?: NativeButtonSize;
   icon?: NativeButtonIcon;
   disabled?: boolean;
+  loading?: boolean;
   fullWidth?: boolean;
   accessibilityLabel?: string;
   style?: StyleProp<ViewStyle>;

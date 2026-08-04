@@ -5,7 +5,7 @@ import { Dimensions } from "react-native";
 
 export const SCREEN_WIDTH = Dimensions.get("window").width;
 export const SCREEN_HEIGHT = Dimensions.get("window").height;
-export const CONTROLS_TIMEOUT = 4000;
+export const CONTROLS_TIMEOUT = 3000;
 
 export const FONT_THEMES = [
   { id: "system", labelKey: "reader.fontThemeSystem", fallback: "System" },

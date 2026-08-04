@@ -18,7 +18,7 @@ module.exports = {
       bundleIdentifier: variant.bundleIdentifier,
       buildNumber: "6",
       infoPlist: {
-        UIViewControllerBasedStatusBarAppearance: false,
+        UIViewControllerBasedStatusBarAppearance: true,
         UIBackgroundModes: ["audio"],
         NSCameraUsageDescription:
           "Камера нужна Narra для сканирования QR‑кодов синхронизации и настройки.",

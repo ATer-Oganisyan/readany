@@ -1,9 +1,10 @@
 import type { ITTSPlayer, TTSConfig } from "@readany/core/tts";
-import { fetchEdgeTTSAudio, splitIntoChunks } from "@readany/core/tts";
-import { File, Paths } from "expo-file-system";
+import { splitIntoChunks } from "@readany/core/tts";
+import { File } from "expo-file-system";
 import { AppState, type AppStateStatus, Image, Platform } from "react-native";
 import TrackPlayer, { Event, State } from "react-native-track-player";
 
+import { synthesizeNarraSpeech } from "../narra/media";
 import { chunkIndexFromTrackId, trackIdForChunkIndex } from "./track-player-chunk-id";
 import { ensureSilenceFile } from "./tts-silence-keeper";
 
@@ -180,7 +181,7 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
           );
           TrackPlayer.retry().catch((err) => console.warn("[TTS] TrackPlayer retry failed:", err));
         } else {
-          console.error("[TrackPlayerEdgeTTSPlayer] playback error, max retries reached");
+          console.log("[TTS] Playback stopped after retries");
           this._stopped = true;
           this.onStateChange?.("stopped");
         }
@@ -274,7 +275,7 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
       }
     } catch (err) {
       if (!this._stopped && (err as Error)?.message !== "aborted") {
-        console.error("[TrackPlayerEdgeTTSPlayer] download error:", err);
+        console.log("[TTS] Speech synthesis stopped after retries");
         this._stopped = true;
         this.onStateChange?.("stopped");
       }
@@ -659,25 +660,11 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
   private async _fetchChunkFile(index: number, gen: number): Promise<string> {
     if (this._stopped || gen !== this._speakGen || !this._config) throw new Error("aborted");
 
-    const config = this._config;
-    const voice = config.edgeVoice || "zh-CN-XiaoxiaoNeural";
-    const lang = voice.split("-").slice(0, 2).join("-");
-
-    const mp3Data = await fetchEdgeTTSAudio({
-      text: this._chunks[index],
-      voice,
-      lang,
-      rate: config.rate,
-      pitch: config.pitch,
-    });
+    const audioUri = await synthesizeNarraSpeech(this._chunks[index], "Shi");
 
     if (this._stopped || gen !== this._speakGen) throw new Error("aborted");
 
-    const tmpName = `tts_track_${index}_${Date.now()}.mp3`;
-    const tmpFile = new File(Paths.cache, tmpName);
-    const audioUri = tmpFile.uri;
     this._tempFiles.push(audioUri);
-    tmpFile.write(new Uint8Array(mp3Data));
     return audioUri;
   }
 

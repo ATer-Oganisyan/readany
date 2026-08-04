@@ -34,6 +34,7 @@ interface ReadAnyNativeButtonViewProps {
   color: string;
   foregroundColor: string;
   disabled: boolean;
+  loading: boolean;
   accessibilityLabel?: string;
   testID?: string;
   onPress: () => void;
@@ -62,6 +63,7 @@ export function NativeButton({
   size = "medium",
   icon,
   disabled = false,
+  loading = false,
   fullWidth = false,
   accessibilityLabel,
   style,
@@ -95,7 +97,8 @@ export function NativeButton({
         variant={variant}
         color={color}
         foregroundColor={foregroundColor}
-        disabled={disabled}
+        disabled={disabled || loading}
+        loading={loading}
         accessibilityLabel={accessibilityLabel ?? label}
         testID={testID}
         onPress={onPress}

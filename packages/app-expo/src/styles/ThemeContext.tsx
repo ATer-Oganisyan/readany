@@ -27,6 +27,7 @@ export interface ThemeColors {
   primary: string;
   primary5: string;
   primary10: string;
+  primary30: string;
   primaryForeground: string;
   destructive: string;
   destructiveForeground: string;
@@ -108,6 +109,7 @@ function makeThemeColors(mode: ResolvedThemeMode): ThemeColors {
     primary,
     primary5: primaryScale("Primary 5"),
     primary10: primaryScale("Primary 10"),
+    primary30: primaryScale("Primary 30"),
     primaryForeground: base("Black"),
     destructive: accentScale("Red"),
     destructiveForeground: base("White"),

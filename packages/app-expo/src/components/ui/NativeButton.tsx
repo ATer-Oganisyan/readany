@@ -1,5 +1,5 @@
 import { useTheme } from "@/styles/theme";
-import { Pressable, StyleSheet } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet } from "react-native";
 import { type NativeButtonProps, nativeButtonHeights } from "./NativeButton.types";
 import { Text } from "./Typography";
 
@@ -10,6 +10,7 @@ export function NativeButton({
   variant = "primary",
   size = "medium",
   disabled = false,
+  loading = false,
   fullWidth = false,
   accessibilityLabel,
   style,
@@ -25,7 +26,7 @@ export function NativeButton({
       accessibilityLabel={accessibilityLabel}
       testID={testID}
       onPress={onPress}
-      disabled={disabled}
+      disabled={disabled || loading}
       style={({ pressed }) => [
         styles.button,
         {
@@ -42,15 +43,19 @@ export function NativeButton({
         style,
       ]}
     >
-      <Text
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        minimumFontScale={0.8}
-        ellipsizeMode="tail"
-        style={{ color: isFilled ? colors.primaryForeground : accent, fontWeight: "600" }}
-      >
-        {label}
-      </Text>
+      {loading ? (
+        <ActivityIndicator color={isFilled ? colors.primaryForeground : accent} />
+      ) : (
+        <Text
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.8}
+          ellipsizeMode="tail"
+          style={{ color: isFilled ? colors.primaryForeground : accent, fontWeight: "600" }}
+        >
+          {label}
+        </Text>
+      )}
     </Pressable>
   );
 }

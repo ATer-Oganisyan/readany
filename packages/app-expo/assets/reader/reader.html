@@ -3648,7 +3648,31 @@ a { color: ${primary} !important; }
       }
     }
 
-    function extractTTSSegmentsFromDocument(doc, sectionIndex, maxCount, anchorRange) {
+    function getTTSSegmentBoundaryNode(range, docNode) {
+      if (!range || !range.startContainer) return null;
+      const container = range.startContainer;
+      if (container.nodeType === docNode.TEXT_NODE) {
+        return container.parentElement;
+      }
+      if (
+        container.childNodes &&
+        Number.isInteger(range.startOffset) &&
+        range.startOffset >= 0 &&
+        range.startOffset < container.childNodes.length
+      ) {
+        const child = container.childNodes[range.startOffset];
+        return child.nodeType === docNode.TEXT_NODE ? child.parentElement : child;
+      }
+      return container;
+    }
+
+    function extractTTSSegmentsFromDocument(
+      doc,
+      sectionIndex,
+      maxCount,
+      anchorRange,
+      endAnchorRange,
+    ) {
       try {
         if (!doc || !view || typeof view.getCFI !== 'function') return [];
         const blocks = getReadableBlocksForTTS(doc);
@@ -3666,12 +3690,8 @@ a { color: ${primary} !important; }
         const segments = [];
         const seen = new Set();
         const docNode = doc.defaultView && doc.defaultView.Node ? doc.defaultView.Node : Node;
-        const anchorNode =
-          anchorRange && anchorRange.startContainer
-            ? (anchorRange.startContainer.nodeType === docNode.TEXT_NODE
-                ? anchorRange.startContainer.parentElement
-                : anchorRange.startContainer)
-            : null;
+        const anchorNode = getTTSSegmentBoundaryNode(anchorRange, docNode);
+        const endAnchorNode = getTTSSegmentBoundaryNode(endAnchorRange, docNode);
         let started = !anchorNode;
 
         for (const block of blocks) {
@@ -3686,6 +3706,17 @@ a { color: ${primary} !important; }
             }
           }
           if (!started) continue;
+          if (endAnchorNode) {
+            const reachedEndAnchor =
+              block === endAnchorNode ||
+              block.contains(endAnchorNode) ||
+              (endAnchorNode.contains && endAnchorNode.contains(block));
+            const passedEndAnchor =
+              endAnchorNode.compareDocumentPosition &&
+              (endAnchorNode.compareDocumentPosition(block) &
+                docNode.DOCUMENT_POSITION_FOLLOWING);
+            if (reachedEndAnchor || passedEndAnchor) break;
+          }
 
           const textNodes = getTTSTextNodes(block).map((node) => {
             const text = node.nodeValue || '';
@@ -3759,28 +3790,44 @@ a { color: ${primary} !important; }
       }
     }
 
-    async function getHrefTTSSegmentsFromBook(href, maxCount) {
-      try {
-        if (!href || !currentBook || !currentBook.sections || !view) return [];
-        let resolved = null;
-        try {
-          if (typeof view.resolveNavigation === 'function') {
-            resolved = await Promise.resolve(view.resolveNavigation(href));
-          } else if (typeof currentBook.resolveHref === 'function') {
-            resolved = await Promise.resolve(currentBook.resolveHref(href));
-          }
-        } catch (e) {
-          console.log('[hrefTTSSegments] failed to resolve href:', href, e);
-        }
+    async function resolveHrefForTTSSegments(href) {
+      if (!href || !currentBook || !currentBook.sections || !view) {
+        return { resolved: null, sectionIndex: -1 };
+      }
 
-        let sectionIndex = Number.isInteger(resolved && resolved.index) ? resolved.index : -1;
-        if (sectionIndex < 0) {
-          const hrefWithoutHash = String(href).split('#')[0];
-          sectionIndex = Array.from(currentBook.sections).findIndex(function(section) {
-            const sectionHref = String(section && section.href || '').split('#')[0];
-            return sectionHref === href || sectionHref === hrefWithoutHash || sectionHref.endsWith('/' + hrefWithoutHash);
-          });
+      let resolved = null;
+      try {
+        if (typeof view.resolveNavigation === 'function') {
+          resolved = await Promise.resolve(view.resolveNavigation(href));
+        } else if (typeof currentBook.resolveHref === 'function') {
+          resolved = await Promise.resolve(currentBook.resolveHref(href));
         }
+      } catch (e) {
+        console.log('[hrefTTSSegments] failed to resolve href:', href, e);
+      }
+
+      let sectionIndex = Number.isInteger(resolved && resolved.index) ? resolved.index : -1;
+      if (sectionIndex < 0) {
+        const hrefWithoutHash = String(href).split('#')[0];
+        sectionIndex = Array.from(currentBook.sections).findIndex(function(section) {
+          const sectionHref = String(section && section.href || '').split('#')[0];
+          return (
+            sectionHref === href ||
+            sectionHref === hrefWithoutHash ||
+            sectionHref.endsWith('/' + hrefWithoutHash)
+          );
+        });
+      }
+
+      return { resolved, sectionIndex };
+    }
+
+    async function getChapterTTSSegmentsFromBook(startHref, endHref, maxCount) {
+      try {
+        if (!startHref || !currentBook || !currentBook.sections || !view) return [];
+        const startLocation = await resolveHrefForTTSSegments(startHref);
+        const resolved = startLocation.resolved;
+        const sectionIndex = startLocation.sectionIndex;
         if (sectionIndex < 0 || sectionIndex >= currentBook.sections.length) return [];
         const section = currentBook.sections[sectionIndex];
         if (!section || typeof section.createDocument !== 'function') return [];
@@ -3795,11 +3842,37 @@ a { color: ${primary} !important; }
           }
         }
 
-        return extractTTSSegmentsFromDocument(doc, sectionIndex, maxCount, anchorRange);
+        let endAnchorRange = null;
+        if (endHref && String(endHref) !== String(startHref)) {
+          const endLocation = await resolveHrefForTTSSegments(endHref);
+          if (
+            endLocation.sectionIndex === sectionIndex &&
+            endLocation.resolved &&
+            typeof endLocation.resolved.anchor === 'function'
+          ) {
+            try {
+              endAnchorRange = anchorToRange(doc, endLocation.resolved.anchor(doc));
+            } catch (e) {
+              endAnchorRange = null;
+            }
+          }
+        }
+
+        return extractTTSSegmentsFromDocument(
+          doc,
+          sectionIndex,
+          maxCount,
+          anchorRange,
+          endAnchorRange,
+        );
       } catch (e) {
-        console.log('[hrefTTSSegments] error:', e);
+        console.log('[chapterTTSSegments] error:', e);
         return [];
       }
+    }
+
+    async function getHrefTTSSegmentsFromBook(href, maxCount) {
+      return getChapterTTSSegmentsFromBook(href, null, maxCount);
     }
 
     async function getSectionTTSSegmentsFromBook(sectionIndex, maxCount) {
@@ -3814,7 +3887,7 @@ a { color: ${primary} !important; }
         if (!section || typeof section.createDocument !== 'function') return [];
 
         const doc = await section.createDocument();
-        return extractTTSSegmentsFromDocument(doc, index, maxCount, null);
+        return extractTTSSegmentsFromDocument(doc, index, maxCount, null, null);
       } catch (e) {
         console.log('[sectionTTSSegments] error:', e);
         return [];
@@ -4205,6 +4278,10 @@ a { color: ${primary} !important; }
     window.doGetHrefTTSSegments = async function (href, count, requestId) {
       const segments = await getHrefTTSSegmentsFromBook(href, count);
       postToRN('hrefTTSSegments', { requestId: requestId || null, segments });
+    };
+    window.doGetChapterTTSSegments = async function (startHref, endHref, count, requestId) {
+      const segments = await getChapterTTSSegmentsFromBook(startHref, endHref || null, count);
+      postToRN('chapterTTSSegments', { requestId: requestId || null, segments });
     };
     window.doGetSectionTTSSegments = async function (sectionIndex, count, requestId) {
       const segments = await getSectionTTSSegmentsFromBook(sectionIndex, count);

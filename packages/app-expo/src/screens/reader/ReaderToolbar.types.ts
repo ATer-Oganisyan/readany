@@ -1,0 +1,9 @@
+export interface ReaderToolbarProps {
+  tintColor: string;
+  isDark: boolean;
+  speechActive: boolean;
+  onSpeechPress: () => void;
+  onChatPress: () => void;
+  onCharactersPress: () => void;
+  onScenePress: () => void;
+}

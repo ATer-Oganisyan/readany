@@ -8,7 +8,9 @@ import type {
   NarraBookState,
   NarraCharacter,
   NarraChatMessage,
+  NarraSceneAudio,
   NarraSceneImage,
+  NarraSummary,
 } from "@/lib/narra/types";
 import { create } from "zustand";
 import { withPersist } from "./persist";
@@ -25,6 +27,8 @@ export interface NarraState {
   setMemory: (bookId: string, characterId: string, memory: string) => void;
   appendChatMessage: (bookId: string, characterId: string, message: NarraChatMessage) => void;
   setScene: (bookId: string, scene: NarraSceneImage) => void;
+  setSceneAudio: (bookId: string, sceneAudio: NarraSceneAudio) => void;
+  setSummary: (bookId: string, summary: NarraSummary) => void;
   clearChat: (bookId: string, characterId: string) => void;
   clearBook: (bookId: string) => void;
 }
@@ -89,6 +93,35 @@ export const useNarraStore = create<NarraState>()(
               [bookId]: {
                 ...book,
                 scenes: { ...(book.scenes ?? {}), [scene.sourceKey]: scene },
+              },
+            },
+          };
+        }),
+      setSceneAudio: (bookId, sceneAudio) =>
+        set((state) => {
+          const book = state.books[bookId] ?? emptyNarraBookState(bookId);
+          return {
+            books: {
+              ...state.books,
+              [bookId]: {
+                ...book,
+                sceneAudios: {
+                  ...(book.sceneAudios ?? {}),
+                  [sceneAudio.sourceKey]: sceneAudio,
+                },
+              },
+            },
+          };
+        }),
+      setSummary: (bookId, summary) =>
+        set((state) => {
+          const book = state.books[bookId] ?? emptyNarraBookState(bookId);
+          return {
+            books: {
+              ...state.books,
+              [bookId]: {
+                ...book,
+                summaries: { ...(book.summaries ?? {}), [summary.sourceKey]: summary },
               },
             },
           };

@@ -1,5 +1,6 @@
 import { ClockIcon, Loader2Icon } from "@/components/ui/Icon";
 import { Text } from "@/components/ui/Typography";
+import { findBundledCatalogBookByTitle } from "@/lib/catalog/bundled-books";
 import { useColors } from "@/styles/theme";
 import { getPlatformService } from "@readany/core/services";
 /**
@@ -75,6 +76,7 @@ export const BookCard = memo(function BookCard({
   const { t } = useTranslation();
   const [imageError, setImageError] = useState(false);
   const [resolvedCoverUrl, setResolvedCoverUrl] = useState<string | undefined>(undefined);
+  const bundledCatalogBook = findBundledCatalogBookByTitle(book.meta.title);
 
   // Resolve relative coverUrl to absolute path
   useEffect(() => {
@@ -150,26 +152,17 @@ export const BookCard = memo(function BookCard({
             {/* Bottom shadow */}
             <View style={s.spineBottomShadow} pointerEvents="none" />
           </>
+        ) : bundledCatalogBook ? (
+          <Image
+            source={bundledCatalogBook.coverAssetModule}
+            style={s.coverImage}
+            resizeMode="cover"
+          />
         ) : (
           <View style={s.fallbackCover}>
-            {/* Simulate gradient: stone-100 top half, stone-200 bottom half */}
-            <View style={s.fallbackGradientTop} />
-            <View style={s.fallbackGradientBottom} />
-            <View style={s.fallbackContentOverlay}>
-              <View style={s.fallbackTitleWrap}>
-                <Text style={s.fallbackTitle} numberOfLines={3}>
-                  {book.meta.title}
-                </Text>
-              </View>
-              <View style={s.fallbackDivider} />
-              {book.meta.author ? (
-                <View style={s.fallbackAuthorWrap}>
-                  <Text style={s.fallbackAuthor} numberOfLines={1}>
-                    {book.meta.author}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
+            <Text style={s.fallbackTitle} numberOfLines={6}>
+              {book.meta.title}
+            </Text>
           </View>
         )}
 

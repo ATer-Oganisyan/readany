@@ -1,5 +1,4 @@
 import { NarraChat } from "@/components/chat/NarraChat";
-import { Trash2Icon } from "@/components/ui/Icon";
 import { Text } from "@/components/ui/Typography";
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
 import { NarraAudioPlayer } from "@/lib/narra/audio-player";
@@ -10,12 +9,13 @@ import type { NarraCharacter, NarraChatMessage } from "@/lib/narra/types";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useLibraryStore, useNarraStore } from "@/stores";
 import { type ThemeColors, fontSize, fontWeight, spacing, useColors } from "@/styles/theme";
+import { useHeaderHeight } from "@react-navigation/elements";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { MessageV2 } from "@readany/core/types/message";
 import * as Crypto from "expo-crypto";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
+import { Alert, ScrollView, StyleSheet, View } from "react-native";
 
 type Props = NativeStackScreenProps<RootStackParamList, "NarraCharacterChat">;
 
@@ -70,11 +70,11 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
   const { bookId, characterId } = route.params;
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const headerHeight = useHeaderHeight();
   const { t } = useTranslation();
   const book = useLibraryStore((state) => state.books.find((item) => item.id === bookId));
   const narraBook = useNarraStore((state) => state.books[bookId]);
   const append = useNarraStore((state) => state.appendChatMessage);
-  const clear = useNarraStore((state) => state.clearChat);
   const setMemory = useNarraStore((state) => state.setMemory);
   const character = narraBook?.characters.find((item) => item.id === characterId);
   const messages = narraBook?.chats?.[characterId] ?? [];
@@ -85,38 +85,13 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
   const greetingCreatedAt = useRef(Date.now()).current;
   const unlocked = Boolean(book && character && isCharacterUnlocked(book.progress, character));
 
-  const clearConversation = useCallback(() => {
-    Alert.alert(
-      t("narra.clearChatTitle", "Очистить диалог?"),
-      t("narra.memoryWillRemain", "Память персонажа сохранится."),
-      [
-        { text: t("common.cancel", "Отмена"), style: "cancel" },
-        {
-          text: t("narra.clear", "Очистить"),
-          style: "destructive",
-          onPress: () => clear(bookId, characterId),
-        },
-      ],
-    );
-  }, [bookId, characterId, clear, t]);
-
   useLayoutEffect(() => {
     navigation.setOptions({
       title: character?.name || t("narra.characterChat", "Чат с персонажем"),
-      headerRight: character
-        ? () => (
-            <TouchableOpacity
-              accessibilityRole="button"
-              accessibilityLabel={t("narra.clear", "Очистить")}
-              onPress={clearConversation}
-              style={styles.headerButton}
-            >
-              <Trash2Icon size={20} color={colors.mutedForeground} />
-            </TouchableOpacity>
-          )
-        : undefined,
+      headerRight: undefined,
+      unstable_headerRightItems: () => [],
     });
-  }, [character, clearConversation, colors.mutedForeground, navigation, styles.headerButton, t]);
+  }, [character, navigation, t]);
 
   useEffect(() => () => audioRef.current.stop(), []);
 
@@ -319,7 +294,9 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
       };
 
   return (
-    <View style={styles.container}>
+    <View
+      style={[styles.container, { paddingTop: process.env.EXPO_OS === "ios" ? headerHeight : 0 }]}
+    >
       <NarraChat
         messages={chatMessages}
         isStreaming={sending}
@@ -339,7 +316,6 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
 const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
-    headerButton: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
     centered: {
       flexGrow: 1,
       alignItems: "center",
