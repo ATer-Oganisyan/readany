@@ -11,14 +11,13 @@ import {
   FolderMinusIcon,
   HashIcon,
   PlusIcon,
-  SearchIcon,
   Trash2Icon,
   XIcon,
 } from "@/components/ui/Icon";
 import { NativeButton } from "@/components/ui/NativeButton";
 import { ScrollViewMarker } from "@/components/ui/ScrollViewMarker";
 import { SyncButton } from "@/components/ui/SyncButton";
-import { Text, TextInput, type TextInputHandle } from "@/components/ui/Typography";
+import { Text, TextInput } from "@/components/ui/Typography";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
@@ -28,14 +27,7 @@ import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { NATIVE_SCROLL_EDGE_EFFECTS } from "@/navigation/scroll-edge-effects";
 import { useLibraryStore } from "@/stores/library-store";
 import { useVectorModelStore } from "@/stores/vector-model-store";
-import {
-  type ThemeColors,
-  fontSize,
-  fontWeight,
-  radius,
-  useColors,
-  withOpacity,
-} from "@/styles/theme";
+import { type ThemeColors, fontSize, fontWeight, radius, useColors } from "@/styles/theme";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -48,7 +40,7 @@ import * as DocumentPicker from "expo-document-picker";
 import { File as ExpoFile, Paths } from "expo-file-system";
 /**
  * LibraryScreen — matching Tauri mobile LibraryPage exactly.
- * Features: header search/sort/import, tag filter, vectorization progress banner,
+ * Features: header sort/import, tag filter, vectorization progress banner,
  * tag management sheet, responsive book grid, empty/loading states.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -56,9 +48,7 @@ import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
   Alert,
-  Animated,
   FlatList,
-  Keyboard,
   Modal,
   Platform,
   Pressable,
@@ -139,10 +129,6 @@ export function LibraryScreen() {
       }),
     [colors, contentWidth, gridGap, gridItemWidth, layout.horizontalPadding, layout.isTablet],
   );
-  const [showSearch, setShowSearch] = useState(false);
-  const searchAnim = useRef(new Animated.Value(0)).current;
-  const searchInputRef = useRef<TextInputHandle>(null);
-
   const [tagSheetOpen, setTagSheetOpen] = useState(false);
   const [tagSheetBook, setTagSheetBook] = useState<Book | null>(null);
   const [isPickingImport, setIsPickingImport] = useState(false);
@@ -173,7 +159,6 @@ export function LibraryScreen() {
     loadBooks,
     importBooks,
     removeBook,
-    setFilter,
     setGroupView,
     setActiveGroupId,
     setActiveTag,
@@ -202,29 +187,6 @@ export function LibraryScreen() {
   const { vectorQueue, vectorizingBookId, vectorProgress, handleVectorize } = useVectorizationQueue(
     { extractorRef, nav },
   );
-
-  const openSearch = useCallback(() => {
-    setShowSearch(true);
-    Animated.timing(searchAnim, { toValue: 1, duration: 300, useNativeDriver: false }).start(() => {
-      searchInputRef.current?.focus();
-    });
-  }, [searchAnim]);
-
-  const closeSearch = useCallback(() => {
-    Animated.timing(searchAnim, { toValue: 0, duration: 250, useNativeDriver: false }).start(() => {
-      setShowSearch(false);
-      setFilter({ search: "" });
-    });
-  }, [searchAnim, setFilter]);
-
-  const toggleSearch = useCallback(() => {
-    if (showSearch) {
-      closeSearch();
-      Keyboard.dismiss();
-    } else {
-      openSearch();
-    }
-  }, [closeSearch, openSearch, showSearch]);
 
   useEffect(() => {
     let cancelled = false;
@@ -330,15 +292,6 @@ export function LibraryScreen() {
     if (activeGroupId) {
       result = result.filter((b) => b.groupId === activeGroupId);
     }
-    const search = filter.search.toLowerCase().trim();
-    if (search) {
-      result = result.filter(
-        (b) =>
-          b.meta.title.toLowerCase().includes(search) ||
-          b.meta.author?.toLowerCase().includes(search) ||
-          b.tags.some((tag) => tag.toLowerCase().includes(search)),
-      );
-    }
     const { sortField, sortOrder } = filter;
     result.sort((a, b) => {
       let cmp = 0;
@@ -380,32 +333,27 @@ export function LibraryScreen() {
     });
   }, [activeGroup?.name, nav, selectedBookIds.size, selectionMode, t]);
 
-  const hasSearch = filter.search.trim().length > 0;
-
   const groupedEntries = useMemo(() => {
-    if (hasSearch) return [];
     return groups
       .map((group) => {
         const groupBooks = filteredBooks.filter((book) => book.groupId === group.id);
         return { type: "group" as const, group, books: groupBooks };
       })
       .filter((item) => item.books.length > 0);
-  }, [filteredBooks, groups, hasSearch]);
+  }, [filteredBooks, groups]);
 
   const visibleBooks = useMemo(
     () =>
-      isGroupView && !activeGroupId && !hasSearch
-        ? filteredBooks.filter((book) => !book.groupId)
-        : filteredBooks,
-    [activeGroupId, filteredBooks, isGroupView, hasSearch],
+      isGroupView && !activeGroupId ? filteredBooks.filter((book) => !book.groupId) : filteredBooks,
+    [activeGroupId, filteredBooks, isGroupView],
   );
 
   const gridItems = useMemo<LibraryGridItem[]>(
     () =>
-      isGroupView && !activeGroupId && !hasSearch
+      isGroupView && !activeGroupId
         ? [...groupedEntries, ...visibleBooks.map((book) => ({ type: "book" as const, book }))]
         : visibleBooks.map((book) => ({ type: "book" as const, book })),
-    [activeGroupId, groupedEntries, isGroupView, visibleBooks, hasSearch],
+    [activeGroupId, groupedEntries, isGroupView, visibleBooks],
   );
 
   const handleLocalImport = useCallback(async () => {
@@ -542,19 +490,13 @@ export function LibraryScreen() {
 
   const handleOpen = useCallback(
     async (book: Book) => {
-      if (showSearch) {
-        searchAnim.setValue(0);
-        setShowSearch(false);
-        setFilter({ search: "" });
-        Keyboard.dismiss();
-      }
       if (book.syncStatus === "remote") {
         await downloadBook(book);
         return;
       }
       await openMobileBook({ bookId: book.id, navigation: nav, t });
     },
-    [downloadBook, nav, t, showSearch, searchAnim, setFilter],
+    [downloadBook, nav, t],
   );
 
   const handleManageTags = useCallback((book: Book) => {
@@ -564,15 +506,9 @@ export function LibraryScreen() {
 
   const handleShowDetails = useCallback(
     (book: Book) => {
-      if (showSearch) {
-        searchAnim.setValue(0);
-        setShowSearch(false);
-        setFilter({ search: "" });
-        Keyboard.dismiss();
-      }
       nav.navigate("BookDetails", { bookId: book.id });
     },
-    [nav, searchAnim, setFilter, showSearch],
+    [nav],
   );
 
   const handleSync = useCallback(() => {
@@ -592,13 +528,6 @@ export function LibraryScreen() {
     if (Platform.OS === "ios") {
       nav.setOptions({
         unstable_headerRightItems: () => [
-          {
-            type: "button" as const,
-            label: t("common.search"),
-            accessibilityLabel: t("common.search"),
-            icon: { type: "sfSymbol" as const, name: "magnifyingglass" as const },
-            onPress: toggleSearch,
-          },
           ...(syncBackendType
             ? [
                 {
@@ -642,15 +571,6 @@ export function LibraryScreen() {
     nav.setOptions({
       headerRight: () => (
         <View style={s.nativeHeaderActions}>
-          <TouchableOpacity
-            accessibilityRole="button"
-            accessibilityLabel={t("common.search")}
-            style={s.nativeHeaderButton}
-            onPress={toggleSearch}
-            activeOpacity={0.65}
-          >
-            <SearchIcon size={22} color={colors.primary} />
-          </TouchableOpacity>
           {syncBackendType ? (
             <View style={s.nativeHeaderButton}>
               <SyncButton size={20} color={colors.mutedForeground} />
@@ -689,7 +609,6 @@ export function LibraryScreen() {
     selectionMode,
     syncBackendType,
     t,
-    toggleSearch,
   ]);
 
   const isEmpty = gridItems.length === 0;
@@ -931,55 +850,10 @@ export function LibraryScreen() {
         </View>
       )}
 
-      {hasBooks && ((!selectionMode && showSearch) || allTags.length > 0) && (
+      {hasBooks && allTags.length > 0 && (
         <View style={s.filterSection}>
           <View style={s.headerInner}>
-            <View style={s.searchTagSection}>
-              {!selectionMode && showSearch && (
-                <Animated.View
-                  style={[
-                    s.searchInputContainer,
-                    layout.isTablet ? s.searchInputContainerWide : null,
-                    {
-                      opacity: searchAnim,
-                      transform: [
-                        {
-                          translateY: searchAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [-4, 0],
-                          }),
-                        },
-                      ],
-                    },
-                  ]}
-                >
-                  <SearchIcon size={16} color={colors.mutedForeground} />
-                  <TextInput
-                    ref={searchInputRef}
-                    style={s.searchInput}
-                    placeholder={t("library.searchPlaceholder", "搜索...")}
-                    placeholderTextColor={colors.mutedForeground}
-                    value={filter.search}
-                    onChangeText={(text) => setFilter({ search: text })}
-                    onBlur={() => {
-                      if (!filter.search.trim()) closeSearch();
-                    }}
-                    returnKeyType="search"
-                  />
-                  {filter.search.length > 0 && (
-                    <TouchableOpacity
-                      style={s.searchClearBtn}
-                      onPress={() => {
-                        setFilter({ search: "" });
-                        searchInputRef.current?.focus();
-                      }}
-                      hitSlop={6}
-                    >
-                      <XIcon size={14} color={colors.mutedForeground} />
-                    </TouchableOpacity>
-                  )}
-                </Animated.View>
-              )}
+            <View style={s.tagSection}>
               {allTags.length > 0 && (
                 <ScrollView
                   horizontal
@@ -1092,18 +966,12 @@ export function LibraryScreen() {
                     { transform: [{ translateY: -nativeHeaderHeight / 2 }] },
                   ]}
                 >
-                  <SearchIcon size={40} color={withOpacity(colors.mutedForeground, 0.3)} />
                   <Text style={s.noResultsText}>
                     {t("library.noResults", "没有找到匹配的书籍")}
                   </Text>
                 </View>
               </ScrollView>
             </ScrollViewMarker>
-          )}
-          {isLoaded && hasBooks && filter.search && !isEmpty && (
-            <Text style={s.resultsCount}>
-              {t("library.resultsCount", { count: gridItems.length })}
-            </Text>
           )}
           {isLoaded && !isEmpty && (
             <ScrollViewMarker
@@ -1243,37 +1111,8 @@ const makeStyles = (
       paddingBottom: 8,
       alignItems: "center",
     },
-    searchTagSection: {
-      flexDirection: layout.isWideScreen ? "row" : "column",
-      alignItems: layout.isWideScreen ? "center" : "stretch",
-      gap: layout.isWideScreen ? 12 : 6,
+    tagSection: {
       marginBottom: 4,
-    },
-    searchInputContainer: {
-      flexDirection: "row",
-      alignItems: "center",
-      height: 36,
-      paddingHorizontal: 10,
-      gap: 6,
-      borderRadius: radius.full,
-      backgroundColor: colors.muted,
-    },
-    searchInputContainerWide: {
-      width: 280,
-    },
-    searchInput: {
-      flex: 1,
-      fontSize: fontSize.sm,
-      color: colors.foreground,
-      padding: 0,
-      minWidth: 0,
-    },
-    searchClearBtn: {
-      width: 22,
-      height: 22,
-      borderRadius: 11,
-      alignItems: "center",
-      justifyContent: "center",
     },
     tagScroll: { marginBottom: 4 },
     tagScrollWide: { flex: 1, minWidth: 0, marginBottom: 0 },
@@ -1354,7 +1193,6 @@ const makeStyles = (
     },
     noResultsWrap: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 80 },
     noResultsText: { fontSize: fontSize.sm, color: colors.mutedForeground, marginTop: 12 },
-    resultsCount: { fontSize: fontSize.xs, color: colors.mutedForeground, marginBottom: 8 },
     gridRow: { gap: layout.gridGap, justifyContent: "flex-start" },
     gridContent: { paddingBottom: 24, paddingTop: 24, width: "100%" },
     gridItem: { width: layout.gridItemWidth, marginBottom: layout.gridGap },
