@@ -592,6 +592,13 @@ export function LibraryScreen() {
     if (Platform.OS === "ios") {
       nav.setOptions({
         unstable_headerRightItems: () => [
+          {
+            type: "button" as const,
+            label: t("common.search"),
+            accessibilityLabel: t("common.search"),
+            icon: { type: "sfSymbol" as const, name: "magnifyingglass" as const },
+            onPress: toggleSearch,
+          },
           ...(syncBackendType
             ? [
                 {
@@ -635,6 +642,15 @@ export function LibraryScreen() {
     nav.setOptions({
       headerRight: () => (
         <View style={s.nativeHeaderActions}>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel={t("common.search")}
+            style={s.nativeHeaderButton}
+            onPress={toggleSearch}
+            activeOpacity={0.65}
+          >
+            <SearchIcon size={22} color={colors.primary} />
+          </TouchableOpacity>
           {syncBackendType ? (
             <View style={s.nativeHeaderButton}>
               <SyncButton size={20} color={colors.mutedForeground} />
@@ -673,6 +689,7 @@ export function LibraryScreen() {
     selectionMode,
     syncBackendType,
     t,
+    toggleSearch,
   ]);
 
   const isEmpty = gridItems.length === 0;
