@@ -35,7 +35,7 @@ config.resolver.sourceExts = [...config.resolver.sourceExts, "ts", "tsx"];
 
 // 5. Add .html to asset extensions so WebView can load local HTML files
 // Add .bin, .ort, .wasm for ONNX models
-config.resolver.assetExts = [...config.resolver.assetExts, "html", "bin", "ort", "wasm"];
+config.resolver.assetExts = [...config.resolver.assetExts, "html", "bin", "ort", "wasm", "epub"];
 
 // 6. Configure SVG transformer
 config.transformer = {

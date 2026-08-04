@@ -1,4 +1,5 @@
 import { BookCard } from "@/components/library/BookCard";
+import { CatalogBookCard } from "@/components/library/CatalogBookCard";
 import { GroupCard } from "@/components/library/GroupCard";
 import { GroupPickerSheet } from "@/components/library/GroupPickerSheet";
 import { ImportSourceMenuButton } from "@/components/library/ImportSourceMenuButton";
@@ -20,6 +21,12 @@ import { SyncButton } from "@/components/ui/SyncButton";
 import { Text, TextInput } from "@/components/ui/Typography";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
+import {
+  BUNDLED_CATALOG_BOOKS,
+  type BundledCatalogBook,
+  normalizeCatalogIdentity,
+  resolveBundledCatalogBookUri,
+} from "@/lib/catalog/bundled-books";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
 import { queueBookForAutoVectorize } from "@/lib/rag/auto-vectorize-book";
 import { setCallback, setExtractorRef } from "@/lib/rag/auto-vectorize-service";
@@ -133,6 +140,7 @@ export function LibraryScreen() {
   const [tagSheetBook, setTagSheetBook] = useState<Book | null>(null);
   const [isPickingImport, setIsPickingImport] = useState(false);
   const [isUrlImporting, setIsUrlImporting] = useState(false);
+  const [catalogImportingId, setCatalogImportingId] = useState<string | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedBookIds, setSelectedBookIds] = useState<Set<string>>(new Set());
   const [showGroupPicker, setShowGroupPicker] = useState(false);
@@ -158,6 +166,7 @@ export function LibraryScreen() {
     isGroupView,
     loadBooks,
     importBooks,
+    updateBook,
     removeBook,
     setGroupView,
     setActiveGroupId,
@@ -356,6 +365,20 @@ export function LibraryScreen() {
     [activeGroupId, groupedEntries, isGroupView, visibleBooks],
   );
 
+  const catalogBooksInLibrary = useMemo(() => {
+    const result = new Map<string, Book>();
+    for (const catalogBook of BUNDLED_CATALOG_BOOKS) {
+      const catalogTitle = normalizeCatalogIdentity(catalogBook.title);
+      const existingBook = books.find(
+        (book) => normalizeCatalogIdentity(book.meta.title) === catalogTitle,
+      );
+      if (existingBook) result.set(catalogBook.id, existingBook);
+    }
+    return result;
+  }, [books]);
+
+  const showCatalog = !activeTag && !activeGroupId && !selectionMode;
+
   const handleLocalImport = useCallback(async () => {
     if (localImportInFlightRef.current) return;
     localImportInFlightRef.current = true;
@@ -497,6 +520,45 @@ export function LibraryScreen() {
       await openMobileBook({ bookId: book.id, navigation: nav, t });
     },
     [downloadBook, nav, t],
+  );
+
+  const handleCatalogOpen = useCallback(
+    async (catalogBook: BundledCatalogBook) => {
+      const existingBook = catalogBooksInLibrary.get(catalogBook.id);
+      if (existingBook) {
+        await handleOpen(existingBook);
+        return;
+      }
+      if (catalogImportingId) return;
+
+      setCatalogImportingId(catalogBook.id);
+      try {
+        const uri = await resolveBundledCatalogBookUri(catalogBook);
+        const result = await importBooks([{ uri, name: catalogBook.fileName }]);
+        const importedBook = result.imported[0] ?? result.skippedDuplicates[0]?.existingBook;
+        if (!importedBook) throw new Error("catalog-import-failed");
+
+        const normalizedBook: Book = {
+          ...importedBook,
+          meta: {
+            ...importedBook.meta,
+            title: catalogBook.title,
+            author: catalogBook.author,
+          },
+        };
+        await updateBook(importedBook.id, { meta: normalizedBook.meta });
+        await handleOpen(normalizedBook);
+      } catch (error) {
+        console.error(`[Catalog] Failed to add ${catalogBook.id}:`, error);
+        Alert.alert(
+          t("library.catalogImportErrorTitle", "Не получилось добавить книгу"),
+          t("library.catalogImportErrorDescription", "Попробуйте ещё раз."),
+        );
+      } finally {
+        setCatalogImportingId(null);
+      }
+    },
+    [catalogBooksInLibrary, catalogImportingId, handleOpen, importBooks, t, updateBook],
   );
 
   const handleManageTags = useCallback((book: Book) => {
@@ -918,7 +980,7 @@ export function LibraryScreen() {
               <Text style={s.importBannerText}>{t("library.importing", "正在导入...")}</Text>
             </View>
           )}
-          {isLoaded && books.length === 0 && (
+          {isLoaded && books.length === 0 && !showCatalog && (
             <ScrollViewMarker
               style={s.primaryScrollMarker}
               scrollEdgeEffects={NATIVE_SCROLL_EDGE_EFFECTS}
@@ -948,7 +1010,7 @@ export function LibraryScreen() {
               </ScrollView>
             </ScrollViewMarker>
           )}
-          {isLoaded && hasBooks && isEmpty && (
+          {isLoaded && hasBooks && isEmpty && !showCatalog && (
             <ScrollViewMarker
               style={s.primaryScrollMarker}
               scrollEdgeEffects={NATIVE_SCROLL_EDGE_EFFECTS}
@@ -973,7 +1035,7 @@ export function LibraryScreen() {
               </ScrollView>
             </ScrollViewMarker>
           )}
-          {isLoaded && !isEmpty && (
+          {isLoaded && (!isEmpty || showCatalog) && (
             <ScrollViewMarker
               style={s.primaryScrollMarker}
               scrollEdgeEffects={NATIVE_SCROLL_EDGE_EFFECTS}
@@ -991,6 +1053,32 @@ export function LibraryScreen() {
                 numColumns={columnCount}
                 columnWrapperStyle={s.gridRow}
                 contentContainerStyle={s.gridContent}
+                ListFooterComponent={
+                  showCatalog ? (
+                    <View
+                      style={[
+                        s.catalogSection,
+                        gridItems.length === 0 ? s.catalogSectionFirst : null,
+                      ]}
+                    >
+                      <Text style={s.catalogTitle}>{t("library.catalog", "Каталог")}</Text>
+                      <View style={s.catalogGrid}>
+                        {BUNDLED_CATALOG_BOOKS.map((catalogBook) => (
+                          <View key={catalogBook.id} style={s.gridItem}>
+                            <CatalogBookCard
+                              title={catalogBook.title}
+                              author={catalogBook.author}
+                              cardWidth={gridItemWidth}
+                              isImporting={catalogImportingId === catalogBook.id}
+                              isInLibrary={catalogBooksInLibrary.has(catalogBook.id)}
+                              onPress={() => void handleCatalogOpen(catalogBook)}
+                            />
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  ) : null
+                }
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode="on-drag"
@@ -1196,6 +1284,19 @@ const makeStyles = (
     gridRow: { gap: layout.gridGap, justifyContent: "flex-start" },
     gridContent: { paddingBottom: 24, paddingTop: 24, width: "100%" },
     gridItem: { width: layout.gridItemWidth, marginBottom: layout.gridGap },
+    catalogSection: { paddingTop: 32 },
+    catalogSectionFirst: { paddingTop: 0 },
+    catalogTitle: {
+      color: colors.foreground,
+      fontSize: fontSize.xl,
+      fontWeight: fontWeight.bold,
+      marginBottom: 20,
+    },
+    catalogGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      columnGap: layout.gridGap,
+    },
     groupModalOverlay: {
       flex: 1,
       backgroundColor: "rgba(0,0,0,0.24)",

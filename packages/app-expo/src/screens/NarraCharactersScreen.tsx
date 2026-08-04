@@ -1,5 +1,4 @@
 import { type ExtractorRef, ExtractorWebView } from "@/components/rag/ExtractorWebView";
-import { ChevronRightIcon } from "@/components/ui/Icon";
 import { Text } from "@/components/ui/Typography";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { analyzeBookCharacters } from "@/lib/narra/character-analysis";
@@ -43,6 +42,10 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
   const [analysisStage, setAnalysisStage] = useState("");
   const [portraitLoading, setPortraitLoading] = useState<string | null>(null);
   const characters = bookState?.characters ?? [];
+  const visibleCharacters = useMemo(
+    () => characters.filter((character) => isCharacterUnlocked(book?.progress ?? 0, character)),
+    [book?.progress, characters],
+  );
   const busy = analyzing || Boolean(analysisStage);
 
   useEffect(() => {
@@ -128,7 +131,7 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
 
   return (
     <ScrollView
-      contentInsetAdjustmentBehavior={characters.length === 0 ? "never" : "automatic"}
+      contentInsetAdjustmentBehavior={visibleCharacters.length === 0 ? "never" : "automatic"}
       contentContainerStyle={styles.content}
       style={styles.container}
     >
@@ -157,31 +160,35 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
             </TouchableOpacity>
           </View>
         </CenteredEmptyState>
+      ) : visibleCharacters.length === 0 ? (
+        <CenteredEmptyState
+          title={t("narra.noUnlockedCharacters", "Персонажей пока нет")}
+          description={t(
+            "narra.keepReadingForCharacters",
+            "Продолжайте читать — герои появятся здесь",
+          )}
+        >
+          {null}
+        </CenteredEmptyState>
       ) : (
         <View style={styles.list}>
-          {characters.map((character, index) => {
-            const unlocked = isCharacterUnlocked(book?.progress ?? 0, character);
+          {visibleCharacters.map((character, index) => {
             const portraitBusy = portraitLoading === character.id;
             return (
               <View key={character.id}>
                 <TouchableOpacity
                   accessibilityRole="button"
-                  accessibilityLabel={
-                    unlocked
-                      ? t("narra.openCharacterChat", "Открыть чат с {{character}}", {
-                          character: character.name,
-                        })
-                      : t("narra.characterLocked", "Персонаж ещё не открыт")
-                  }
-                  activeOpacity={unlocked ? 0.62 : 1}
-                  disabled={!unlocked}
+                  accessibilityLabel={t("narra.openCharacterChat", "Открыть чат с {{character}}", {
+                    character: character.name,
+                  })}
+                  activeOpacity={0.62}
                   onPress={() =>
                     navigation.navigate("NarraCharacterChat", {
                       bookId,
                       characterId: character.id,
                     })
                   }
-                  style={[styles.characterRow, !unlocked && styles.locked]}
+                  style={styles.characterRow}
                 >
                   <View style={styles.avatar}>
                     {character.portraitUri ? (
@@ -196,32 +203,25 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
                       <ActivityIndicator color={colors.primaryForeground} />
                     ) : (
                       <Text style={styles.avatarLetter}>
-                        {unlocked ? character.name.slice(0, 1).toUpperCase() : "?"}
+                        {character.name.slice(0, 1).toUpperCase()}
                       </Text>
                     )}
                   </View>
                   <View style={styles.characterCopy}>
                     <Text style={styles.characterName} numberOfLines={1}>
-                      {unlocked
-                        ? character.fullName
-                        : t("narra.unknownCharacter", "Неизвестный герой")}
+                      {character.fullName}
                     </Text>
                     <Text style={styles.characterRole} numberOfLines={1}>
-                      {unlocked
-                        ? character.role
-                        : t("narra.unlockAt", "Откроется после {{progress}}% книги", {
-                            progress: Math.round(character.unlockProgress * 100),
-                          })}
+                      {character.role}
                     </Text>
-                    {unlocked && character.traits.length > 0 ? (
+                    {character.traits.length > 0 ? (
                       <Text style={styles.traits} numberOfLines={1}>
                         {character.traits.join(" · ")}
                       </Text>
                     ) : null}
                   </View>
-                  {unlocked ? <ChevronRightIcon size={18} color={colors.mutedForeground} /> : null}
                 </TouchableOpacity>
-                {index < characters.length - 1 ? <View style={styles.separator} /> : null}
+                {index < visibleCharacters.length - 1 ? <View style={styles.separator} /> : null}
               </View>
             );
           })}
@@ -260,7 +260,6 @@ const makeStyles = (colors: ThemeColors) =>
       gap: spacing.sm,
       paddingVertical: spacing.md,
     },
-    locked: { opacity: 0.52 },
     avatar: {
       width: 56,
       height: 56,

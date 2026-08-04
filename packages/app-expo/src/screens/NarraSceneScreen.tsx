@@ -55,13 +55,16 @@ export function NarraSceneScreen({ route, navigation }: Props) {
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => null,
+      headerTintColor: "#fff",
+      headerTitleStyle: { color: "#fff" },
+      statusBarStyle: "light",
       unstable_headerRightItems: () => [],
     });
   }, [navigation]);
 
   return (
     <ScrollView
-      contentInsetAdjustmentBehavior={imageUri ? "automatic" : "never"}
+      contentInsetAdjustmentBehavior="never"
       contentContainerStyle={styles.content}
       style={{ backgroundColor: colors.background }}
     >
@@ -96,13 +99,9 @@ export function NarraSceneScreen({ route, navigation }: Props) {
       )}
 
       {imageUri ? (
-        <View style={[styles.caption, { backgroundColor: colors.card }]}>
-          <Text style={[styles.chapter, { color: colors.foreground }]} numberOfLines={1}>
-            {chapter}
-          </Text>
-          <Text style={[styles.excerpt, { color: colors.mutedForeground }]} numberOfLines={4}>
-            {excerpt}
-          </Text>
+        <View style={styles.caption}>
+          <Text style={[styles.chapter, { color: colors.foreground }]}>{chapter}</Text>
+          <Text style={[styles.excerpt, { color: colors.mutedForeground }]}>{excerpt}</Text>
           {error ? <Text style={{ color: colors.mutedForeground }}>{error}</Text> : null}
         </View>
       ) : null}
@@ -111,17 +110,16 @@ export function NarraSceneScreen({ route, navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  content: { flexGrow: 1, padding: 20, gap: 16 },
+  content: { flexGrow: 1, paddingBottom: 32 },
   imageWrap: { position: "relative", width: "100%", aspectRatio: 1 },
-  image: { width: "100%", height: "100%", borderRadius: 24 },
+  image: { width: "100%", height: "100%" },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    borderRadius: 24,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(0,0,0,0.38)",
   },
-  caption: { padding: 18, gap: 8, borderRadius: 20 },
+  caption: { paddingHorizontal: 20, paddingTop: 20, gap: 8 },
   chapter: { fontSize: 17, fontWeight: "700" },
   excerpt: { fontSize: 15, lineHeight: 22 },
 });
