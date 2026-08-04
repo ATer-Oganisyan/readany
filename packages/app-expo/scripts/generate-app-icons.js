@@ -21,14 +21,6 @@ function readSvgBody(filePath) {
   return match[1].trim();
 }
 
-function colorizeSplashLogo(svg, color) {
-  return svg
-    .replaceAll("#4E4E4E", color)
-    .replaceAll("#A1A1A1", color)
-    .replace(/(<svg[^>]*>)/, '$1\n<g opacity="0.3019607843">')
-    .replace("</svg>", "</g>\n</svg>");
-}
-
 function opacityFor(appearance) {
   if (appearance === "default") {
     return [{ value: 1 }, { appearance: "dark", value: 0 }, { appearance: "tinted", value: 0 }];
@@ -156,9 +148,8 @@ async function main() {
   </g>
 </svg>\n`;
   const monochromeSvg = adaptiveSvg.replaceAll("#A1A1A1", "#000000");
-  const splashLogoTemplateSvg = fs.readFileSync(splashSource, "utf8");
-  const splashLogoSvg = colorizeSplashLogo(splashLogoTemplateSvg, "#111111");
-  const splashLogoDarkSvg = colorizeSplashLogo(splashLogoTemplateSvg, "#FFFFFF");
+  const splashLogoSvg = fs.readFileSync(splashSource, "utf8");
+  const splashLogoDarkSvg = splashLogoSvg.replaceAll("#A1A1A1", "#D9D9D9");
   const splashSvg = `<svg width="512" height="512" viewBox="0 0 250 250" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <clipPath id="splash-icon-mask">

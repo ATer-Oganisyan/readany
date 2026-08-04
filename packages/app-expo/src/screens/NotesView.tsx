@@ -32,7 +32,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Image, ScrollView, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-
 import { HighlightCard } from "./notes/HighlightCard";
 import { NoteCard } from "./notes/NoteCard";
 import { makeStyles } from "./notes/notes-styles";

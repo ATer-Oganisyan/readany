@@ -37,6 +37,9 @@ tauri-signing-key.key.pub
 npm-debug.log*
 pnpm-debug.log*
 
+# Local visual verification captures
+.cua-*.png
+
 # Python
 __pycache__/
 *.py[cod]
