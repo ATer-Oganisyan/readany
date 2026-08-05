@@ -52,10 +52,15 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
     [book],
   );
   const characters = storedCharacters.length > 0 ? storedCharacters : (bundledCharacters ?? []);
-  const visibleCharacters = useMemo(
-    () => characters.filter((character) => isCharacterUnlocked(book?.progress ?? 0, character)),
-    [book?.progress, characters],
-  );
+  // Открытые — в порядке значимости из анализа; запертые — по порогу открытия
+  const orderedCharacters = useMemo(() => {
+    const progress = book?.progress ?? 0;
+    const unlocked = characters.filter((character) => isCharacterUnlocked(progress, character));
+    const locked = characters
+      .filter((character) => !isCharacterUnlocked(progress, character))
+      .sort((a, b) => a.unlockProgress - b.unlockProgress);
+    return [...unlocked, ...locked];
+  }, [book?.progress, characters]);
   const busy = analyzing || Boolean(analysisStage);
 
   useEffect(() => {
@@ -229,57 +234,85 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
             </Text>
           </View>
         </TouchableOpacity>
-        {visibleCharacters.length > 0 ? <View style={styles.separator} /> : null}
-        {visibleCharacters.map((character, index) => {
+        {orderedCharacters.length > 0 ? <View style={styles.separator} /> : null}
+        {orderedCharacters.map((character, index) => {
           const portraitBusy = portraitLoading === character.id;
+          const unlocked = isCharacterUnlocked(book?.progress ?? 0, character);
+          const unlockPercent = Math.round(
+            Math.min(1, Math.max(0, character.unlockProgress)) * 100,
+          );
+          const avatar = (
+            <View style={styles.avatar}>
+              {character.portraitUri ? (
+                <Image
+                  source={{ uri: normalizePersistedNarraMediaUri(character.portraitUri) }}
+                  style={styles.avatarImage}
+                  onError={() => updateCharacter(bookId, character.id, { portraitUri: undefined })}
+                />
+              ) : portraitBusy ? (
+                <ActivityIndicator color={colors.primaryForeground} />
+              ) : (
+                <Text style={styles.avatarLetter}>{character.name.slice(0, 1).toUpperCase()}</Text>
+              )}
+            </View>
+          );
           return (
             <View key={character.id}>
-              <TouchableOpacity
-                accessibilityRole="button"
-                accessibilityLabel={t("narra.openCharacterChat", "Открыть чат с {{character}}", {
-                  character: character.name,
-                })}
-                activeOpacity={0.62}
-                onPress={() =>
-                  navigation.navigate("NarraCharacterChat", {
-                    bookId,
-                    characterId: character.id,
-                  })
-                }
-                style={styles.characterRow}
-              >
-                <View style={styles.avatar}>
-                  {character.portraitUri ? (
-                    <Image
-                      source={{ uri: normalizePersistedNarraMediaUri(character.portraitUri) }}
-                      style={styles.avatarImage}
-                      onError={() =>
-                        updateCharacter(bookId, character.id, { portraitUri: undefined })
-                      }
-                    />
-                  ) : portraitBusy ? (
-                    <ActivityIndicator color={colors.primaryForeground} />
-                  ) : (
-                    <Text style={styles.avatarLetter}>
-                      {character.name.slice(0, 1).toUpperCase()}
+              {unlocked ? (
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel={t("narra.openCharacterChat", "Открыть чат с {{character}}", {
+                    character: character.name,
+                  })}
+                  activeOpacity={0.62}
+                  onPress={() =>
+                    navigation.navigate("NarraCharacterChat", {
+                      bookId,
+                      characterId: character.id,
+                    })
+                  }
+                  style={styles.characterRow}
+                >
+                  {avatar}
+                  <View style={styles.characterCopy}>
+                    <Text style={styles.characterName} numberOfLines={1}>
+                      {character.fullName}
                     </Text>
-                  )}
-                </View>
-                <View style={styles.characterCopy}>
-                  <Text style={styles.characterName} numberOfLines={1}>
-                    {character.fullName}
-                  </Text>
-                  <Text style={styles.characterDescription} numberOfLines={1}>
-                    {character.role}
-                  </Text>
-                  {character.traits.length > 0 ? (
                     <Text style={styles.characterDescription} numberOfLines={1}>
-                      {character.traits.join(", ")}
+                      {character.role}
                     </Text>
-                  ) : null}
+                    {character.traits.length > 0 ? (
+                      <Text style={styles.characterDescription} numberOfLines={1}>
+                        {character.traits.join(", ")}
+                      </Text>
+                    ) : null}
+                  </View>
+                </TouchableOpacity>
+              ) : (
+                // Запертый герой: приглушён, без описания и черт (антиспойлер), не кликабелен
+                <View
+                  accessible
+                  accessibilityLabel={t(
+                    "narra.lockedCharacterLabel",
+                    "{{character}} откроется на {{percent}}%",
+                    { character: character.name, percent: unlockPercent },
+                  )}
+                  style={[styles.characterRow, styles.characterRowLocked]}
+                >
+                  {avatar}
+                  <View style={styles.characterCopy}>
+                    <Text style={styles.characterName} numberOfLines={1}>
+                      {character.name}
+                    </Text>
+                    <Text style={styles.characterDescription} numberOfLines={1}>
+                      {t("narra.unlocksAtPercent", "откроется на {{percent}}%", {
+                        percent: unlockPercent,
+                      })}
+                    </Text>
+                  </View>
                 </View>
-              </TouchableOpacity>
-              {index < visibleCharacters.length - 1 ? <View style={styles.separator} /> : null}
+              )}
+              {index < orderedCharacters.length - 1 ? <View style={styles.separator} /> : null}
             </View>
           );
         })}
@@ -305,30 +338,6 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
                   {t("narra.findCharacters", "Найти героев")}
                 </Text>
               )}
-            </TouchableOpacity>
-          </View>
-        </CenteredEmptyState>
-      ) : visibleCharacters.length === 0 ? (
-        <CenteredEmptyState
-          title={t("narra.noUnlockedCharacters", "Персонажей пока нет")}
-          description={t(
-            "narra.keepReadingForCharacters",
-            "Нашли героев: {{count}}. Они появятся здесь по мере чтения",
-            { count: characters.length },
-          )}
-        >
-          <View style={styles.emptyActions}>
-            <TouchableOpacity
-              accessibilityRole="button"
-              accessibilityLabel={t("narra.reanalyzeCharacters", "Найти заново")}
-              activeOpacity={0.82}
-              disabled={busy || !book}
-              onPress={() => void analyze(true)}
-              style={[styles.primaryButton, (busy || !book) && styles.disabled]}
-            >
-              <Text style={styles.primaryButtonText}>
-                {t("narra.reanalyzeCharacters", "Найти заново")}
-              </Text>
             </TouchableOpacity>
           </View>
         </CenteredEmptyState>
@@ -366,6 +375,7 @@ const makeStyles = (colors: ThemeColors) =>
       gap: spacing.lg,
       paddingVertical: spacing.md,
     },
+    characterRowLocked: { opacity: 0.45 },
     avatar: {
       width: 56,
       height: 56,

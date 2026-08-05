@@ -1251,6 +1251,11 @@ export function ReaderScreen({ route, navigation }: Props) {
         onPress: () => openNavPanel("search"),
       },
       {
+        label: t("narra.characters", "Персонажи"),
+        sfSymbol: "person.2",
+        onPress: handleOpenCharacters,
+      },
+      {
         label: "Оформление",
         sfSymbol: "textformat.size",
         onPress: () => setShowSettings(true),

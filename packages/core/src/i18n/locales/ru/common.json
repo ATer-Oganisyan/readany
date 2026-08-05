@@ -97,6 +97,8 @@
     "analysisFailedTitle": "Не получилось найти героев",
     "unknownCharacter": "Неизвестный герой",
     "unlockAt": "Откроется после {{progress}}% книги",
+    "unlocksAtPercent": "откроется на {{percent}}%",
+    "lockedCharacterLabel": "{{character}} откроется на {{percent}}%",
     "chat": "Чат",
     "createPortrait": "Создать портрет",
     "refreshPortrait": "Обновить портрет",
