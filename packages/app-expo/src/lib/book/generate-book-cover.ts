@@ -2,6 +2,7 @@ import { useSettingsStore } from "@/stores/settings-store";
 import type { AIEndpoint } from "@readany/core/types";
 import { providerRequiresApiKey } from "@readany/core/utils";
 import { fetch } from "expo/fetch";
+import { budgetPrompt } from "../narra/art-style";
 
 const DEFAULT_IMAGE_MODEL = "google/gemini-3.1-flash-lite-image";
 const MAX_CONTEXT_CHARS = 3_000;
@@ -47,30 +48,20 @@ function decodeBase64(value: string): Uint8Array {
   return bytes;
 }
 
-function coverPrompt(input: {
+export function coverPrompt(input: {
   title: string;
   author?: string;
   description?: string;
   excerpt?: string;
 }) {
-  return [
-    "Create an original portrait-oriented painting for a book cover.",
-    "Interpret the book through the visual language of late 19th- and 20th-century Eastern European figurative painting: psychological realism, intimate domestic scenes, restrained symbolism, social observation, monumental compositions, and atmospheric landscapes.",
-    "Choose the type of painting that best matches the book: a psychologically charged portrait, an intimate genre scene, a symbolic still life, an atmospheric landscape, or a restrained multi-figure composition.",
-    "For books about communication, relationships, emotional intelligence, society, or group behavior, strongly prefer a multi-figure social scene. Show meaning through conversation, eye contact, interrupted gestures, physical distance, alliances, tension, attention, and the way people share a space. Do not reduce a social subject to one isolated person.",
-    "The image must feel like a real painted canvas from a museum archive: visible brushwork, layered pigments, natural imperfections, complex muted colors, believable materials, and carefully observed light.",
-    "Do not illustrate the title literally. Express the book through mood, gesture, spatial relationships, objects, environment, and subtle visual symbolism.",
-    "Avoid fantasy art, digital illustration, glossy rendering, cinematic concept art, surreal AI imagery, neon colors, glowing objects, anatomical brains, generic smiling portraits, and decorative abstraction.",
-    "The composition should be emotionally specific and slightly enigmatic. It may feel historical, but it must not reproduce an existing artwork or imitate one identifiable artist.",
-    "Use an unusual crop suitable for a contemporary book cover. The painting should remain expressive and readable at thumbnail size.",
-    "Do not render letters, words, typography, logos, frames, mockups, spines, badges, or watermarks. Generate only the flat painted artwork.",
-    `Book title: ${input.title}`,
-    `Author: ${input.author || "unknown"}`,
-    input.description ? `Description: ${input.description.slice(0, MAX_CONTEXT_CHARS)}` : "",
-    input.excerpt ? `Book excerpt: ${input.excerpt.slice(0, MAX_CONTEXT_CHARS)}` : "",
-  ]
-    .filter(Boolean)
-    .join("\n\n");
+  return budgetPrompt([
+    "Вертикальная обложка книги: единая иллюстрация занимает весь кадр.",
+    "Не иллюстрируй название буквально: передай книгу через настроение, жесты, среду и детали. Композиция выразительная и читается в миниатюре.",
+    "Без текста, надписей, рамок, макетов, корешков и водяных знаков — только сама иллюстрация.",
+    `Книга: «${input.title}». Автор: ${input.author || "неизвестен"}.`,
+    input.description ? `О книге: ${input.description.slice(0, MAX_CONTEXT_CHARS)}` : "",
+    input.excerpt ? `Фрагмент: ${input.excerpt.slice(0, MAX_CONTEXT_CHARS)}` : "",
+  ]);
 }
 
 export async function generateBookCoverWithOpenRouter(input: {

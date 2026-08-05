@@ -5,11 +5,13 @@ vi.mock("expo-file-system/legacy", () => ({ documentDirectory: "file:///document
 vi.mock("@/lib/ai/narra-gateway-fetch", () => ({ narraGatewayRequest: vi.fn() }));
 
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
+import { ART_STYLE, PROMPT_CHAR_LIMIT } from "./art-style";
 import {
   buildSafetyFallbackSceneImagePrompt,
   buildSceneImagePrompt,
   generateSceneImage,
   normalizePersistedNarraMediaUri,
+  portraitPrompt,
 } from "./media";
 
 beforeEach(() => {
@@ -56,7 +58,29 @@ const vronsky: NarraCharacter = {
   },
 };
 
+describe("portrait prompt", () => {
+  it("follows the narra canon and ends with the full art style", () => {
+    const prompt = portraitPrompt(anna);
+
+    expect(prompt).toContain("Погрудный портрет: голова и плечи, строго анфас");
+    expect(prompt).toContain("Внешность (соблюдать точно):");
+    expect(prompt).toContain("тёмные волосы");
+    expect(prompt.endsWith(`Стиль: ${ART_STYLE}.`)).toBe(true);
+    expect(prompt.length).toBeLessThanOrEqual(PROMPT_CHAR_LIMIT);
+  });
+});
+
 describe("scene image prompt", () => {
+  it("fits the Kandinsky budget with the full style on a long excerpt", () => {
+    const excerpt = `Анна вошла в зал. ${"Свет свечей дрожал на паркете, гости расступались. ".repeat(60)}`;
+    const prompt = buildSceneImagePrompt("Бал", excerpt, [anna, vronsky]);
+
+    expect(prompt.length).toBeLessThanOrEqual(PROMPT_CHAR_LIMIT);
+    expect(prompt).toContain(ART_STYLE);
+    expect(prompt.endsWith(`Стиль: ${ART_STYLE}.`)).toBe(true);
+    expect(prompt).toContain("Анна Каренина");
+  });
+
   it("adds passport canon only for characters mentioned in the excerpt", () => {
     const prompt = buildSceneImagePrompt("Бал", "Анна вошла в зал и остановилась у двери.", [
       anna,

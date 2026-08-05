@@ -1,5 +1,6 @@
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
 import * as FileSystem from "expo-file-system/legacy";
+import { budgetPrompt } from "./art-style";
 import type { NarraCharacter } from "./types";
 
 const MEDIA_DIR = `${FileSystem.documentDirectory}narra-media`;
@@ -25,19 +26,13 @@ function safeKey(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 160);
 }
 
-function portraitPrompt(character: NarraCharacter): string {
-  const passport = character.passport;
-  return [
-    `Кинематографичный статичный портрет персонажа ${character.fullName}.`,
-    character.appearancePrompt,
-    passport
-      ? `${passport.age} лет, ${passport.build}, ${passport.hair}, ${passport.eyes}, ${passport.face}, ${passport.outfit}.`
-      : "",
-    `Выражение: ${character.expression || "естественное, в характере"}.`,
-    "Один человек, по пояс, взгляд в камеру, мягкий драматический свет, без текста, рамок и анимации.",
-  ]
-    .filter(Boolean)
-    .join(" ");
+export function portraitPrompt(character: NarraCharacter): string {
+  return budgetPrompt([
+    "Погрудный портрет: голова и плечи, строго анфас, ровный светлый однотонный фон.",
+    `Выражение лица: ${character.expression || "естественное, в характере"}.`,
+    `Внешность (соблюдать точно): ${passportDescription(character)}.`,
+    "Один человек в кадре, взгляд в камеру.",
+  ]);
 }
 
 function imagePayload(payload: unknown): { base64?: string; url?: string; error?: string } {
@@ -123,16 +118,15 @@ export function buildSceneImagePrompt(
 ): string {
   const canon = mentionedCharacters(excerpt, characters)
     .map((character) => `${character.fullName}: ${passportDescription(character)}`)
-    .join("\n");
-  return [
-    `Кинематографичная книжная иллюстрация к сцене из главы «${chapter}».`,
-    excerpt.slice(0, 3500),
-    canon ? `Канон внешности участвующих персонажей:\n${canon}` : "",
-    "Строго следуй тексту и канону персонажей. Не добавляй отсутствующих героев.",
-    "Атмосферная композиция, эпоха и одежда по книге, без надписей, рамок и водяных знаков.",
-  ]
-    .filter(Boolean)
-    .join("\n\n");
+    .join("; ");
+  return budgetPrompt([
+    `Иллюстрация сцены из главы «${chapter}».`,
+    canon
+      ? `В кадре только эти герои, внешность соблюдать точно: ${canon}. Одежда из сцены важнее паспортной.`
+      : "",
+    `Сцена: ${excerpt}`,
+    "Широкая общая композиция в едином пространстве, НЕ коллаж. Не добавляй отсутствующих героев.",
+  ]);
 }
 
 export function buildSafetyFallbackSceneImagePrompt(
@@ -141,15 +135,13 @@ export function buildSafetyFallbackSceneImagePrompt(
 ): string {
   const canon = mentionedCharacters(excerpt, characters)
     .map((character) => `${character.fullName}: ${passportDescription(character)}`)
-    .join("\n");
-  return [
-    "Нейтральная кинематографичная книжная иллюстрация.",
-    neutralizeSensitiveSceneText(excerpt).slice(0, 2200),
-    canon ? `Внешность персонажей:\n${canon}` : "",
-    "Покажи спокойный момент, окружение, свет и одежду персонажей. Без надписей и символики.",
-  ]
-    .filter(Boolean)
-    .join("\n\n");
+    .join("; ");
+  return budgetPrompt([
+    "Нейтральная книжная иллюстрация спокойного момента.",
+    canon ? `В кадре только эти герои, внешность соблюдать точно: ${canon}.` : "",
+    `Сцена: ${neutralizeSensitiveSceneText(excerpt)}`,
+    "Покажи окружение, свет и одежду персонажей. Без символики.",
+  ]);
 }
 
 function isKandinskySafetyRejection(error?: string): boolean {
