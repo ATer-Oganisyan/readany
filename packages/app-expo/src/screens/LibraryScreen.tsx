@@ -454,6 +454,33 @@ export function LibraryScreen() {
           throw new Error("invalid-url");
         }
 
+        // Фанфики Фикбука качаются и собираются в EPUB отдельным модулем (P11);
+        // динамический импорт, чтобы не грузить парсер при обычном импорте.
+        const ficbook = await import("@/lib/book/import-ficbook");
+        if (ficbook.parseFicbookUrl(value)) {
+          setIsUrlImporting(true);
+          const fanfic = await ficbook.importFicbookFromUrl(value);
+          temporaryFile = new ExpoFile(Paths.cache, `readany-ficbook-${Date.now()}.epub`);
+          if (temporaryFile.exists) {
+            temporaryFile.delete();
+          }
+          temporaryFile.write(fanfic.epubBytes);
+          const ficbookSummary = await importBooks([
+            { uri: temporaryFile.uri, name: fanfic.fileName },
+          ]);
+          if (ficbookSummary.imported.length === 0 || ficbookSummary.failures.length > 0) {
+            Alert.alert(
+              t("library.importSourceUrlErrorTitle", "Не получилось добавить книгу"),
+              t("library.importResultSummary", {
+                imported: ficbookSummary.imported.length,
+                skipped: ficbookSummary.skippedDuplicates.length,
+                failed: ficbookSummary.failures.length,
+              }),
+            );
+          }
+          return;
+        }
+
         const fileName = getUrlImportFilename(url);
         temporaryFile = new ExpoFile(Paths.cache, `readany-url-${Date.now()}-${fileName}`);
         setIsUrlImporting(true);
@@ -473,18 +500,30 @@ export function LibraryScreen() {
           );
         }
       } catch (error) {
-        const isUnsupported = error instanceof Error && error.message === "unsupported-url";
+        const errorCode = error instanceof Error ? error.message : "";
+        const message =
+          errorCode === "ficbook-blocked"
+            ? t(
+                "library.importSourceUrlFicbookBlocked",
+                "Фикбук временно блокирует автоматический доступ — попробуйте позже.",
+              )
+            : errorCode === "ficbook-not-found"
+              ? t(
+                  "library.importSourceUrlFicbookNotFound",
+                  "Фанфик по этой ссылке не найден. Проверьте адрес и попробуйте снова.",
+                )
+              : errorCode === "unsupported-url"
+                ? t(
+                    "library.importSourceUrlUnsupported",
+                    "Нужна прямая ссылка на файл EPUB, PDF, TXT или другого поддерживаемого формата — либо ссылка на фанфик Фикбука.",
+                  )
+                : t(
+                    "library.importSourceUrlError",
+                    "Проверьте ссылку и подключение к интернету, затем попробуйте снова.",
+                  );
         Alert.alert(
           t("library.importSourceUrlErrorTitle", "Не получилось добавить книгу"),
-          isUnsupported
-            ? t(
-                "library.importSourceUrlUnsupported",
-                "Нужна прямая ссылка на файл EPUB, PDF, TXT или другого поддерживаемого формата.",
-              )
-            : t(
-                "library.importSourceUrlError",
-                "Проверьте ссылку и подключение к интернету, затем попробуйте снова.",
-              ),
+          message,
         );
       } finally {
         setIsUrlImporting(false);
@@ -500,8 +539,8 @@ export function LibraryScreen() {
     try {
       const value = await ReadAnyNativeControls.promptForText(
         t("library.importSourceUrlTitle", "Ссылка на книгу"),
-        t("library.importSourceUrlDesc", "Вставьте прямую ссылку на файл книги."),
-        t("library.importSourceUrlPlaceholder", "https://example.com/book.epub"),
+        t("library.importSourceUrlDesc", "Вставьте ссылку на файл книги или на фанфик Фикбука."),
+        t("library.importSourceUrlPlaceholder", "Ссылка на файл или фанфик Фикбука"),
         t("common.cancel", "Отмена"),
         t("library.importSourceUrlSubmit", "Добавить"),
       );
