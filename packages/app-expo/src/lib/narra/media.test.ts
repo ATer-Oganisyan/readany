@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NarraCharacter } from "./types";
 
 vi.mock("expo-file-system/legacy", () => ({ documentDirectory: "file:///documents/" }));
@@ -13,7 +13,9 @@ import {
   generateSceneImage,
   normalizePersistedNarraMediaUri,
   portraitPrompt,
+  synthesizeNarraSpeech,
 } from "./media";
+import { applyActiveStressMarkup, primeCharacterStressForms } from "./stress-markup";
 
 beforeEach(() => {
   vi.mocked(narraGatewayRequest).mockReset();
@@ -201,5 +203,41 @@ describe("speech SSML (просодия и скорость)", () => {
     expect(ssml).toContain('rate="200%"');
     expect(ssml).toContain('pitch="+40%"');
     expect(ssml).toContain("&quot;меньше &amp; лучше&quot; &lt;тихо&gt;");
+  });
+
+  it("экранирует апостроф-ударение как &apos;, не ломая теги", () => {
+    const marked = applyActiveStressMarkup("Базаров звонит");
+    expect(marked).toBe("База'ров звони'т");
+    const ssml = buildNarraSpeechSsml(marked, { pitch: 2 });
+    expect(ssml).toBe(
+      '<speak><prosody rate="100%" pitch="+8%">База&apos;ров звони&apos;т</prosody></speak>',
+    );
+  });
+});
+
+describe("synthesizeNarraSpeech — разметка ударений (P9)", () => {
+  afterEach(() => {
+    primeCharacterStressForms([]);
+  });
+
+  it("применяет активный словарь к тексту запроса в /v2/speech/synthesize", async () => {
+    primeCharacterStressForms([{ ...anna, stressedName: "А'нна" }]);
+    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "stop after request inspection" }), {
+        status: 500,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    await expect(synthesizeNarraSpeech("Анна звонит Хлестакову.", "Che")).rejects.toThrow(
+      "stop after request inspection",
+    );
+
+    const [path, request] = vi.mocked(narraGatewayRequest).mock.calls[0] ?? [];
+    expect(path).toBe("/v2/speech/synthesize");
+    expect(JSON.parse(String(request?.body))).toEqual({
+      text: "А'нна звони'т Хлестако'ву.",
+      voice: "Che",
+    });
   });
 });

@@ -45,8 +45,11 @@ export interface CharacterNameMatch {
 
 export const MIN_NAME_STEM_LENGTH = 4;
 
-/** Русские падежные окончания, которые допускаются после основы имени. */
-const NAME_ENDINGS: readonly string[] = [
+/**
+ * Русские падежные окончания, которые допускаются после основы имени.
+ * Экспорт использует stress-markup (P9) для генерации словоформ с ударением.
+ */
+export const NAME_ENDINGS: readonly string[] = [
   "",
   "а",
   "я",

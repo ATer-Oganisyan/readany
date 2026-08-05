@@ -49,6 +49,10 @@ export function withNarraCharacters(
       if (previous.voiceOverride && !character.voiceOverride) {
         merged.voiceOverride = previous.voiceOverride;
       }
+      // Ударение имени (P9) не теряется, если новый анализ его не вернул.
+      if (previous.stressedName && !character.stressedName) {
+        merged.stressedName = previous.stressedName;
+      }
       return merged;
     }),
     analyzedAt,

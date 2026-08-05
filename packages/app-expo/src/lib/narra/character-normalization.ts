@@ -197,6 +197,9 @@ export function normalizeCharacterAnalysisResponse(
     const fullName = String(raw.fullName || raw.name || "").trim();
     if (!fullName) return [];
     const name = String(raw.name || fullName.split(/\s+/)[0]).trim();
+    // Ударение имени для озвучки (P9): поле опциональное, валидация формы —
+    // в stress-markup при построении словаря.
+    const stressedName = typeof raw.stressedName === "string" ? raw.stressedName.trim() : "";
     const gender = normalizeGender(raw.gender, name);
     const rawUnlock = Number(raw.unlockProgress);
     const unlockProgress = Math.min(
@@ -208,6 +211,7 @@ export function normalizeCharacterAnalysisResponse(
         id: slug(String(raw.id || name), index),
         name,
         fullName,
+        stressedName: stressedName && stressedName !== "null" ? stressedName : undefined,
         role: String(raw.role || "Персонаж истории"),
         gender,
         voice: "",

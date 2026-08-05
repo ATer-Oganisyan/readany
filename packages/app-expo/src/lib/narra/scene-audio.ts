@@ -1,5 +1,6 @@
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
 import { useNarraStore } from "@/stores/narra-store";
+import { primeCharacterStressForms } from "./stress-markup";
 import type { NarraCharacter, NarraSceneAudioSegment } from "./types";
 import { narratorVoiceFor } from "./voice-rules";
 
@@ -61,6 +62,9 @@ export async function generateNarraAudioScenario(
   excerpt: string,
   characters: NarraCharacter[],
 ): Promise<NarraSceneAudioSegment[]> {
+  // Словарь ударений имён книги (P9) — синтез сегментов сцены пойдёт через
+  // synthesizeNarraSpeech, который читает активный словарь.
+  primeCharacterStressForms(characters);
   const roster = characters.map((character) => `${character.id}: ${character.fullName}`).join("; ");
   const response = await narraGatewayRequest("/v2/ai/chat/complete", {
     method: "POST",

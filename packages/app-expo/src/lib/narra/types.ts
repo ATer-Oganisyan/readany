@@ -21,6 +21,8 @@ export interface NarraCharacter {
   voiceProsody?: { pitch?: number; rate?: number };
   /** Ручной выбор голоса в карточке героя — приоритет над автоназначением (правило 3). */
   voiceOverride?: string;
+  /** Имя с ударением: апостроф сразу после ударной гласной (SaluteSpeech, P9). */
+  stressedName?: string;
   traits: string[];
   speechStyle: string;
   speechExamples: string[];

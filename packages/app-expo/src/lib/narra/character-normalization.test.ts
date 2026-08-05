@@ -28,6 +28,16 @@ describe("Narra analysis normalization", () => {
     expect(characters[1]).toMatchObject({ id: "анна", unlockProgress: 0, voice: "Ste" });
   });
 
+  it("сохраняет опциональный stressedName и не требует его (P9)", () => {
+    const characters = normalizeCharacterAnalysisResponse(
+      '{"characters":[{"name":"Одинцова","fullName":"Анна Одинцова","gender":"female","stressedName":"Одинцо\'ва"},{"name":"Фенечка","gender":"female"},{"name":"Пустой","gender":"male","stressedName":"null"}]}',
+    );
+
+    expect(characters[0].stressedName).toBe("Одинцо'ва");
+    expect(characters[1].stressedName).toBeUndefined();
+    expect(characters[2].stressedName).toBeUndefined();
+  });
+
   it("drops invalid entries and clamps unlockProgress to Arsen's 0.95 ceiling", () => {
     const characters = normalizeCharacterAnalysisResponse({
       characters: [

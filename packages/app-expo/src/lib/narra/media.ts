@@ -1,6 +1,7 @@
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
 import * as FileSystem from "expo-file-system/legacy";
 import { budgetPrompt } from "./art-style";
+import { applyActiveStressMarkup } from "./stress-markup";
 import type { NarraCharacter } from "./types";
 import type { NarraProsody } from "./voice-rules";
 
@@ -291,7 +292,9 @@ export async function synthesizeNarraSpeech(
   voice: string,
   options?: NarraSpeechOptions,
 ): Promise<string> {
-  const trimmed = text.slice(0, 12_000);
+  // Ударения (P9) размечаются здесь — в единой точке всей озвучки (книга,
+  // сцены, чат) — до сборки SSML, чтобы работать и в {text}, и в {ssml}.
+  const trimmed = applyActiveStressMarkup(text.slice(0, 12_000));
   const ssml = buildNarraSpeechSsml(trimmed, options?.prosody, options?.rate);
   const response = await narraGatewayRequest("/v2/speech/synthesize", {
     method: "POST",

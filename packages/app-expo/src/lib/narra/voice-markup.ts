@@ -22,6 +22,7 @@ import {
   buildCharacterNameMatcherSpec,
   findCharacterNameMatches,
 } from "./character-name-matcher";
+import { primeCharacterStressForms } from "./stress-markup";
 import type { NarraCharacter } from "./types";
 import { type NarraProsody, VOICES } from "./voice-rules";
 
@@ -253,6 +254,9 @@ export function primeReaderVoicePlan(
   narratorVoice: string,
   options?: { append?: boolean },
 ): void {
+  // Заодно активируем словарь ударений имён этой книги (P9) — его читает
+  // synthesizeNarraSpeech при синтезе каждого чанка.
+  primeCharacterStressForms(characters);
   const assignments = markupVoiceSegments(texts, characters, narratorVoice);
   const next = options?.append ? activeVoicePlan : new Map<string, ChunkVoiceAssignment>();
   assignments.forEach((assignment, index) => {
