@@ -4,6 +4,8 @@
 import { XIcon } from "@/components/ui/Icon";
 import { Text } from "@/components/ui/Typography";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
+import { SCENE_SUGGESTION_INTERVALS } from "@/lib/narra/scene-suggestion";
+import { useNarraStore } from "@/stores";
 import { useColors } from "@/styles/theme";
 import { useFontStore } from "@readany/core/stores";
 import { type RubyMode, useRubyStore } from "@readany/core/stores/ruby-store";
@@ -295,6 +297,9 @@ export function ReaderSettingsPanel({
             </TouchableOpacity>
           </View>
 
+          {/* Частота врезок «нарисовать сцену» */}
+          <SceneFrequencyRow styles={s} />
+
           {/* Ruby Annotation */}
           {bookId && (
             <RubySettingsRow
@@ -307,6 +312,39 @@ export function ReaderSettingsPanel({
         </ScrollView>
       </View>
     </Modal>
+  );
+}
+
+/** Частота врезок «нарисовать сцену»: страниц между предложениями, 0 — выкл */
+function SceneFrequencyRow({ styles: s }: { styles: ReturnType<typeof makeStyles> }) {
+  const { t } = useTranslation();
+  const interval = useNarraStore((st) => st.sceneSuggestionInterval);
+  const setInterval = useNarraStore((st) => st.setSceneSuggestionInterval);
+
+  return (
+    <View style={[s.settingRow, { flexDirection: "column", alignItems: "stretch", gap: 10 }]}>
+      <View>
+        <Text style={s.settingLabel}>{t("narra.sceneFrequencyTitle", "Частота врезок")}</Text>
+        <Text style={[s.settingLabel, { fontSize: 11, opacity: 0.6, marginTop: 2 }]}>
+          {t("narra.sceneFrequencyDesc", "Как часто предлагать нарисовать сцену")}
+        </Text>
+      </View>
+      <View style={s.viewModeRow}>
+        {SCENE_SUGGESTION_INTERVALS.map((value) => (
+          <TouchableOpacity
+            key={value}
+            style={[s.viewModeBtn, interval === value && s.viewModeBtnActive]}
+            onPress={() => setInterval(value)}
+          >
+            <Text style={[s.viewModeBtnText, interval === value && s.viewModeBtnTextActive]}>
+              {value > 0
+                ? t("narra.sceneFrequencyPages", "{{count}} стр.", { count: value })
+                : t("narra.sceneFrequencyOff", "Выкл")}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
   );
 }
 

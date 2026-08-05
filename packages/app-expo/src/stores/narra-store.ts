@@ -4,6 +4,7 @@ import {
   withNarraChatMessage,
   withNarraMemory,
 } from "@/lib/narra/domain";
+import { DEFAULT_SCENE_SUGGESTION_INTERVAL } from "@/lib/narra/scene-suggestion";
 import type {
   NarraBookState,
   NarraCharacter,
@@ -21,8 +22,11 @@ export interface NarraState {
   analyzingBookId: string | null;
   /** Выбор пользователя для голоса нарратора: мужской (Сбер) или женский (Афина). */
   narratorVoicePreference: NarraNarratorPreference;
+  /** Частота врезок «нарисовать сцену»: страниц между предложениями, 0 — выкл. */
+  sceneSuggestionInterval: number;
   _hasHydrated: boolean;
   setNarratorVoicePreference: (preference: NarraNarratorPreference) => void;
+  setSceneSuggestionInterval: (interval: number) => void;
   getBookState: (bookId: string) => NarraBookState;
   setAnalyzing: (bookId: string | null) => void;
   setCharacters: (bookId: string, characters: NarraCharacter[]) => void;
@@ -44,8 +48,10 @@ export const useNarraStore = create<NarraState>()(
       books: {},
       analyzingBookId: null,
       narratorVoicePreference: DEFAULT_NARRATOR_PREFERENCE,
+      sceneSuggestionInterval: DEFAULT_SCENE_SUGGESTION_INTERVAL,
       _hasHydrated: false,
       setNarratorVoicePreference: (narratorVoicePreference) => set({ narratorVoicePreference }),
+      setSceneSuggestionInterval: (sceneSuggestionInterval) => set({ sceneSuggestionInterval }),
       getBookState: (bookId) => get().books[bookId] ?? emptyNarraBookState(bookId),
       setAnalyzing: (analyzingBookId) => set({ analyzingBookId }),
       setCharacters: (bookId, characters) =>

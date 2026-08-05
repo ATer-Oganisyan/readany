@@ -16,6 +16,7 @@ import { useNarraStore } from "@/stores";
 import { useColors } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
   Animated,
@@ -36,6 +37,7 @@ function sceneChapterTitle(chapter: string): string {
 
 export function NarraSceneScreen({ route, navigation }: Props) {
   const { bookId, chapter, excerpt, sourceKey } = route.params;
+  const { t } = useTranslation();
   const colors = useColors();
   const { width: viewportWidth } = useWindowDimensions();
   const displayChapter = sceneChapterTitle(chapter);
@@ -271,6 +273,25 @@ export function NarraSceneScreen({ route, navigation }: Props) {
               onPress={() => void playScene()}
               variant={audioStatus === "playing" ? "secondary" : "primary"}
             />
+            {/* Перегенерация с тем же контекстом (глава, отрывок, паспорта героев) */}
+            <NativeButton
+              accessibilityLabel={t("narra.sceneRegenerate", "Нарисовать заново")}
+              fullWidth
+              icon="refresh"
+              label={t("narra.sceneRegenerate", "Нарисовать заново")}
+              loading={loading}
+              onPress={() => void generate()}
+              variant="secondary"
+            />
+            {navigation.canGoBack() ? (
+              <NativeButton
+                accessibilityLabel={t("narra.sceneBackToReading", "Вернуться к чтению")}
+                fullWidth
+                label={t("narra.sceneBackToReading", "Вернуться к чтению")}
+                onPress={() => navigation.goBack()}
+                variant="tertiary"
+              />
+            ) : null}
           </View>
         </View>
       ) : null}

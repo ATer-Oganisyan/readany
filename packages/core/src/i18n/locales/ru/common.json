@@ -118,7 +118,16 @@
     "messagePlaceholder": "Написать {{name}}…",
     "send": "Отправить",
     "openCharacterChat": "Открыть чат с {{character}}",
-    "characterCardOpenChat": "Перейти в чат"
+    "characterCardOpenChat": "Перейти в чат",
+    "sceneSuggestionDraw": "Нарисовать сцену",
+    "sceneSuggestionHint": "Иллюстрация этой страницы",
+    "sceneSuggestionDismiss": "Скрыть предложение",
+    "sceneFrequencyTitle": "Частота врезок",
+    "sceneFrequencyDesc": "Как часто предлагать нарисовать сцену",
+    "sceneFrequencyPages": "{{count}} стр.",
+    "sceneFrequencyOff": "Выкл",
+    "sceneRegenerate": "Нарисовать заново",
+    "sceneBackToReading": "Вернуться к чтению"
   },
   "window": {
     "minimize": "Свернуть",

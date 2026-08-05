@@ -8,6 +8,7 @@ import {
   ChevronRightIcon,
   NotebookPenIcon,
   SearchIcon,
+  SparklesIcon,
   XIcon,
 } from "@/components/ui/Icon";
 import { NativeButton } from "@/components/ui/NativeButton";
@@ -18,6 +19,10 @@ import type { RelocateEvent, SelectionEvent, VisibleTTSSegment } from "@/hooks/u
 import { getBundledCatalogCharactersByTitle } from "@/lib/narra/bundled-catalog-characters";
 import { buildCharacterNameMatcherSpec } from "@/lib/narra/character-name-matcher";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
+import {
+  INITIAL_SCENE_SUGGESTION_STATE,
+  advanceSceneSuggestion,
+} from "@/lib/narra/scene-suggestion";
 import type { NarraCharacter } from "@/lib/narra/types";
 import {
   DEFAULT_READER_FONT_FAMILY,
@@ -419,6 +424,16 @@ export function ReaderScreen({ route, navigation }: Props) {
   }, [characters, unlockedCharacterIdsKey]);
   const [characterCard, setCharacterCard] = useState<NarraCharacter | null>(null);
 
+  // ── Narra: врезки «нарисовать сцену» раз в N страниц (P6) ───────────────────
+  const sceneSuggestionInterval = useNarraStore((state) => state.sceneSuggestionInterval);
+  const sceneSuggestionStateRef = useRef(INITIAL_SCENE_SUGGESTION_STATE);
+  const [sceneSuggestionVisible, setSceneSuggestionVisible] = useState(false);
+
+  // Выключили частоту в настройках — прячем уже показанную плашку
+  useEffect(() => {
+    if (sceneSuggestionInterval <= 0) setSceneSuggestionVisible(false);
+  }, [sceneSuggestionInterval]);
+
   const handleOpenCharacterChat = useCallback(
     (character: NarraCharacter) => {
       // Чат ищет персонажа в narra-store — bundled-каталог сначала фиксируем там
@@ -504,6 +519,8 @@ export function ReaderScreen({ route, navigation }: Props) {
   useEffect(() => {
     sessionProgressRef.current = null;
     totalBookCharactersRef.current = null;
+    sceneSuggestionStateRef.current = INITIAL_SCENE_SUGGESTION_STATE;
+    setSceneSuggestionVisible(false);
     suppressProgressTracking(INITIAL_PROGRESS_RESTORE_GUARD_MS);
   }, [bookId]);
   const chapterTranslation = useChapterTranslation({
@@ -853,6 +870,22 @@ export function ReaderScreen({ route, navigation }: Props) {
         throttledSaveProgress(bookId, detail.fraction ?? 0, detail.cfi);
       }
 
+      // Врезки «нарисовать сцену»: перелистывания считает foliate relocate,
+      // собственной пагинации нет (логика — scene-suggestion.ts)
+      const sceneAdvance = advanceSceneSuggestion(
+        sceneSuggestionStateRef.current,
+        detail,
+        sceneSuggestionInterval,
+        trackingSuppressed,
+      );
+      sceneSuggestionStateRef.current = sceneAdvance.state;
+      if (sceneAdvance.suggest) {
+        setSceneSuggestionVisible(true);
+      } else if (sceneAdvance.moved && sceneSuggestionVisible) {
+        // Читатель листает дальше — предложение не навязываем
+        setSceneSuggestionVisible(false);
+      }
+
       // Mark translation ready after first successful relocate (CFI navigation done)
       if (!translationReady) setTranslationReady(true);
 
@@ -1112,6 +1145,16 @@ export function ReaderScreen({ route, navigation }: Props) {
       Alert.alert("Не удалось создать сцену", "Не получилось прочитать текст страницы.");
     }
   }, [bookId, currentCfi, currentChapter, openScene]);
+
+  // Генерация только по явному тапу по плашке — автогенерации нет
+  const handleSceneSuggestionAccept = useCallback(() => {
+    setSceneSuggestionVisible(false);
+    void handleGenerateVisibleScene();
+  }, [handleGenerateVisibleScene]);
+
+  const handleSceneSuggestionDismiss = useCallback(() => {
+    setSceneSuggestionVisible(false);
+  }, []);
 
   const handleSelectionMenuAction = useCallback(
     (event: { nativeEvent: { key: string; selectedText: string } }) => {
@@ -1850,6 +1893,70 @@ export function ReaderScreen({ route, navigation }: Props) {
               onChatPress={handleOpenCharacters}
               onScenePress={() => void handleGenerateVisibleScene()}
             />
+          </View>
+        )}
+
+        {/* ─── Плашка «Нарисовать сцену» (врезка раз в N страниц, P6) ─── */}
+        {sceneSuggestionVisible && !loading && !isPanelOpen && !showTTS && (
+          <View
+            pointerEvents="box-none"
+            style={{
+              position: "absolute",
+              left: 16,
+              right: 16,
+              bottom:
+                (Platform.OS === "ios" && showControls && !showSearch ? TOOLBAR_HEIGHT : 0) +
+                (insets.bottom || 12) +
+                12,
+              alignItems: "center",
+              zIndex: 25,
+            }}
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 4,
+                paddingLeft: 14,
+                paddingRight: 4,
+                paddingVertical: 6,
+                borderRadius: 24,
+                backgroundColor: colors.card,
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: colors.border,
+                shadowColor: "#000",
+                shadowOpacity: 0.15,
+                shadowRadius: 12,
+                shadowOffset: { width: 0, height: 4 },
+                elevation: 4,
+              }}
+            >
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel={t("narra.sceneSuggestionDraw", "Нарисовать сцену")}
+                onPress={handleSceneSuggestionAccept}
+                style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 4 }}
+              >
+                <SparklesIcon size={18} color={colors.primary} />
+                <View>
+                  <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: "600" }}>
+                    {t("narra.sceneSuggestionDraw", "Нарисовать сцену")}
+                  </Text>
+                  <Text style={{ color: colors.mutedForeground, fontSize: 11 }}>
+                    {t("narra.sceneSuggestionHint", "Иллюстрация этой страницы")}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel={t("narra.sceneSuggestionDismiss", "Скрыть предложение")}
+                onPress={handleSceneSuggestionDismiss}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={{ padding: 8 }}
+              >
+                <XIcon size={16} color={colors.mutedForeground} />
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
