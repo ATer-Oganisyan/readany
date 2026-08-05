@@ -1,8 +1,6 @@
 import { MAX_NARRA_CHARACTERS } from "./domain";
 import type { NarraCharacter, NarraGender, NarraPassport } from "./types";
-
-const MALE_VOICES = ["She", "Ast", "Gal", "Bez", "Ego", "Izv"];
-const FEMALE_VOICES = ["Che", "Erm", "Ste", "Tso", "Chr"];
+import { type AssignVoicesOptions, assignVoices } from "./voice-rules";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -188,10 +186,11 @@ function normalizePassport(raw: unknown, gender: NarraGender): NarraPassport | u
   };
 }
 
-export function normalizeCharacterAnalysisResponse(input: unknown): NarraCharacter[] {
+export function normalizeCharacterAnalysisResponse(
+  input: unknown,
+  voiceOptions: AssignVoicesOptions = {},
+): NarraCharacter[] {
   const candidates = parseCharacterCandidates(input);
-  let male = 0;
-  let female = 0;
   const characters = candidates.slice(0, MAX_NARRA_CHARACTERS).flatMap((candidate, index) => {
     if (!candidate || typeof candidate !== "object") return [];
     const raw = candidate as Record<string, unknown>;
@@ -211,10 +210,7 @@ export function normalizeCharacterAnalysisResponse(input: unknown): NarraCharact
         fullName,
         role: String(raw.role || "Персонаж истории"),
         gender,
-        voice:
-          gender === "female"
-            ? FEMALE_VOICES[female++ % FEMALE_VOICES.length]
-            : MALE_VOICES[male++ % MALE_VOICES.length],
+        voice: "",
         traits: Array.isArray(raw.traits) ? raw.traits.slice(0, 5).map(String) : [],
         speechStyle: String(raw.speechStyle || ""),
         speechExamples: Array.isArray(raw.speechExamples)
@@ -237,5 +233,22 @@ export function normalizeCharacterAnalysisResponse(input: unknown): NarraCharact
     );
     characters[earliestIndex] = { ...characters[earliestIndex], unlockProgress: 0 };
   }
-  return characters;
+  // Порядок ответа анализа — уже посчитанный rank по убыванию значимости.
+  const plan = assignVoices(
+    characters.map((character, index) => ({
+      id: character.id,
+      gender: character.gender,
+      rank: characters.length - index,
+      isNarrator: character.isNarrator,
+    })),
+    voiceOptions,
+  );
+  return characters.map((character) => {
+    const assignment = plan.assignments[character.id];
+    return {
+      ...character,
+      voice: assignment?.voice ?? plan.narratorVoice,
+      voiceProsody: assignment?.prosody,
+    };
+  });
 }

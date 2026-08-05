@@ -22,8 +22,10 @@ describe("Narra analysis normalization", () => {
     \`\`\``);
 
     expect(characters).toHaveLength(2);
+    // Нарратор по умолчанию — Афина (Che); главный герой (Пьер, м) — Сбер (She);
+    // Анна уходит в актёрский пул: первая женская — Стремпаржевская (Ste).
     expect(characters[0]).toMatchObject({ id: "пьер", unlockProgress: 0.2, voice: "She" });
-    expect(characters[1]).toMatchObject({ id: "анна", unlockProgress: 0, voice: "Che" });
+    expect(characters[1]).toMatchObject({ id: "анна", unlockProgress: 0, voice: "Ste" });
   });
 
   it("drops invalid entries and clamps unlockProgress to Arsen's 0.95 ceiling", () => {

@@ -1,5 +1,6 @@
 import { findBundledCatalogBookDefinitionByTitle } from "../catalog/bundled-book-definitions";
 import type { NarraCharacter, NarraGender } from "./types";
+import { type AssignVoicesOptions, assignVoices } from "./voice-rules";
 
 type CharacterDefinition = {
   id: string;
@@ -11,22 +12,27 @@ type CharacterDefinition = {
   appearance: string;
 };
 
-const MALE_VOICES = ["She", "Ast", "Gal", "Bez", "Ego", "Izv"];
-const FEMALE_VOICES = ["Che", "Erm", "Ste", "Tso", "Chr"];
-
-function characters(definitions: CharacterDefinition[]): NarraCharacter[] {
-  let maleVoice = 0;
-  let femaleVoice = 0;
+function characters(
+  definitions: CharacterDefinition[],
+  voiceOptions: AssignVoicesOptions = {},
+): NarraCharacter[] {
+  // Порядок определений — уже посчитанный rank по убыванию значимости.
+  const plan = assignVoices(
+    definitions.map((definition, index) => ({
+      id: definition.id,
+      gender: definition.gender,
+      rank: definitions.length - index,
+    })),
+    voiceOptions,
+  );
   return definitions.map((definition) => ({
     id: definition.id,
     name: definition.name,
     fullName: definition.fullName,
     role: definition.role,
     gender: definition.gender,
-    voice:
-      definition.gender === "female"
-        ? FEMALE_VOICES[femaleVoice++ % FEMALE_VOICES.length]
-        : MALE_VOICES[maleVoice++ % MALE_VOICES.length],
+    voice: plan.assignments[definition.id]?.voice ?? plan.narratorVoice,
+    voiceProsody: plan.assignments[definition.id]?.prosody,
     traits: definition.traits,
     speechStyle: "Говорит в характере персонажа и в манере своей эпохи.",
     speechExamples: [],
@@ -613,67 +619,71 @@ const BUNDLED_CATALOG_CHARACTERS: Readonly<Record<string, NarraCharacter[]>> = {
         "Темноволосая красивая женщина около сорока восьми лет с тёмным пушком над губой, в красной кофточке",
     },
   ]),
-  "golden-key": characters([
-    {
-      id: "buratino",
-      name: "Буратино",
-      fullName: "Буратино",
-      role: "Деревянный мальчик и искатель золотого ключика",
-      gender: "male",
-      traits: ["любопытный", "смелый", "озорной"],
-      appearance:
-        "Деревянный мальчик с длинным носом, в полосатом колпачке, красной курточке и коротких штанишках",
-    },
-    {
-      id: "papa-carlo",
-      name: "Папа Карло",
-      fullName: "Папа Карло",
-      role: "Бедный шарманщик, создавший Буратино",
-      gender: "male",
-      traits: ["добрый", "бедный", "заботливый"],
-      appearance:
-        "Пожилой добрый шарманщик с седыми волосами и усами, в потёртой одежде и фартуке столяра",
-    },
-    {
-      id: "malvina",
-      name: "Мальвина",
-      fullName: "Мальвина",
-      role: "Кукла с голубыми волосами",
-      gender: "female",
-      traits: ["воспитанная", "строгая", "заботливая"],
-      appearance:
-        "Маленькая фарфоровая кукла с длинными голубыми волосами, в нарядном голубом платье",
-    },
-    {
-      id: "pierrot",
-      name: "Пьеро",
-      fullName: "Пьеро",
-      role: "Грустный поэт, влюблённый в Мальвину",
-      gender: "male",
-      traits: ["печальный", "романтичный", "преданный"],
-      appearance:
-        "Тонкая бледная кукла в длинной белой рубахе с чёрными пуговицами и белом колпаке",
-    },
-    {
-      id: "karabas-barabas",
-      name: "Карабас-Барабас",
-      fullName: "Карабас-Барабас",
-      role: "Жестокий хозяин кукольного театра",
-      gender: "male",
-      traits: ["властный", "жадный", "грозный"],
-      appearance:
-        "Огромный толстый директор театра с очень длинной чёрной бородой и кнутом, в ярком камзоле",
-    },
-    {
-      id: "artemon",
-      name: "Артемон",
-      fullName: "Артемон",
-      role: "Верный пудель Мальвины",
-      gender: "male",
-      traits: ["верный", "храбрый", "учтивый"],
-      appearance: "Большой ухоженный чёрный пудель с выстриженной шерстью и нарядными бантами",
-    },
-  ]),
+  "golden-key": characters(
+    [
+      {
+        id: "buratino",
+        name: "Буратино",
+        fullName: "Буратино",
+        role: "Деревянный мальчик и искатель золотого ключика",
+        gender: "male",
+        traits: ["любопытный", "смелый", "озорной"],
+        appearance:
+          "Деревянный мальчик с длинным носом, в полосатом колпачке, красной курточке и коротких штанишках",
+      },
+      {
+        id: "papa-carlo",
+        name: "Папа Карло",
+        fullName: "Папа Карло",
+        role: "Бедный шарманщик, создавший Буратино",
+        gender: "male",
+        traits: ["добрый", "бедный", "заботливый"],
+        appearance:
+          "Пожилой добрый шарманщик с седыми волосами и усами, в потёртой одежде и фартуке столяра",
+      },
+      {
+        id: "malvina",
+        name: "Мальвина",
+        fullName: "Мальвина",
+        role: "Кукла с голубыми волосами",
+        gender: "female",
+        traits: ["воспитанная", "строгая", "заботливая"],
+        appearance:
+          "Маленькая фарфоровая кукла с длинными голубыми волосами, в нарядном голубом платье",
+      },
+      {
+        id: "pierrot",
+        name: "Пьеро",
+        fullName: "Пьеро",
+        role: "Грустный поэт, влюблённый в Мальвину",
+        gender: "male",
+        traits: ["печальный", "романтичный", "преданный"],
+        appearance:
+          "Тонкая бледная кукла в длинной белой рубахе с чёрными пуговицами и белом колпаке",
+      },
+      {
+        id: "karabas-barabas",
+        name: "Карабас-Барабас",
+        fullName: "Карабас-Барабас",
+        role: "Жестокий хозяин кукольного театра",
+        gender: "male",
+        traits: ["властный", "жадный", "грозный"],
+        appearance:
+          "Огромный толстый директор театра с очень длинной чёрной бородой и кнутом, в ярком камзоле",
+      },
+      {
+        id: "artemon",
+        name: "Артемон",
+        fullName: "Артемон",
+        role: "Верный пудель Мальвины",
+        gender: "male",
+        traits: ["верный", "храбрый", "учтивый"],
+        appearance: "Большой ухоженный чёрный пудель с выстриженной шерстью и нарядными бантами",
+      },
+    ],
+    // «Золотой ключик» — сказка: Сафронова получает приоритет в женском пуле.
+    { childrensBook: true },
+  ),
   "twelve-chairs": characters([
     {
       id: "ostap-bender",

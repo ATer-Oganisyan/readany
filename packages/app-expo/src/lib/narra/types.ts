@@ -17,6 +17,8 @@ export interface NarraCharacter {
   role: string;
   gender: NarraGender;
   voice: string;
+  /** Просодия при повторе голоса из исчерпанного пула (pitch — полутоны, rate — множитель). */
+  voiceProsody?: { pitch?: number; rate?: number };
   traits: string[];
   speechStyle: string;
   speechExamples: string[];

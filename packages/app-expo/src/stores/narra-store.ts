@@ -12,13 +12,17 @@ import type {
   NarraSceneImage,
   NarraSummary,
 } from "@/lib/narra/types";
+import { DEFAULT_NARRATOR_PREFERENCE, type NarraNarratorPreference } from "@/lib/narra/voice-rules";
 import { create } from "zustand";
 import { withPersist } from "./persist";
 
 export interface NarraState {
   books: Record<string, NarraBookState>;
   analyzingBookId: string | null;
+  /** Выбор пользователя для голоса нарратора: мужской (Сбер) или женский (Афина). */
+  narratorVoicePreference: NarraNarratorPreference;
   _hasHydrated: boolean;
+  setNarratorVoicePreference: (preference: NarraNarratorPreference) => void;
   getBookState: (bookId: string) => NarraBookState;
   setAnalyzing: (bookId: string | null) => void;
   setCharacters: (bookId: string, characters: NarraCharacter[]) => void;
@@ -39,7 +43,9 @@ export const useNarraStore = create<NarraState>()(
     (set, get) => ({
       books: {},
       analyzingBookId: null,
+      narratorVoicePreference: DEFAULT_NARRATOR_PREFERENCE,
       _hasHydrated: false,
+      setNarratorVoicePreference: (narratorVoicePreference) => set({ narratorVoicePreference }),
       getBookState: (bookId) => get().books[bookId] ?? emptyNarraBookState(bookId),
       setAnalyzing: (analyzingBookId) => set({ analyzingBookId }),
       setCharacters: (bookId, characters) =>

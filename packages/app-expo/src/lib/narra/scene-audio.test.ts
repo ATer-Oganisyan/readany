@@ -4,6 +4,9 @@ import { generateNarraAudioScenario, parseNarraAudioScenario } from "./scene-aud
 import type { NarraCharacter } from "./types";
 
 vi.mock("@/lib/ai/narra-gateway-fetch", () => ({ narraGatewayRequest: vi.fn() }));
+vi.mock("@/stores/narra-store", () => ({
+  useNarraStore: { getState: () => ({ narratorVoicePreference: "female" }) },
+}));
 
 const character: NarraCharacter = {
   id: "shi-qiang",
@@ -30,8 +33,9 @@ describe("Narra scene audio", () => {
 
     expect(segments).toEqual([
       expect.objectContaining({ characterId: "shi-qiang", speaker: "Ши Цян", voice: "Che" }),
-      expect.objectContaining({ characterId: null, speaker: "Рассказчик", voice: "Shi" }),
-      expect.objectContaining({ characterId: null, speaker: "Рассказчик", voice: "Shi" }),
+      // Нарратор по настройке пользователя (женский дефолт — Афина).
+      expect.objectContaining({ characterId: null, speaker: "Рассказчик", voice: "Che" }),
+      expect.objectContaining({ characterId: null, speaker: "Рассказчик", voice: "Che" }),
     ]);
   });
 

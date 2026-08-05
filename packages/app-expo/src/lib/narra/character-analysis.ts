@@ -13,6 +13,7 @@ import {
   createNarraMockMessages,
 } from "./mock-characters";
 import type { NarraCharacter } from "./types";
+import { detectFirstPerson } from "./voice-rules";
 
 const MAX_ANALYSIS_TEXT_LENGTH = 48_000;
 
@@ -120,7 +121,11 @@ export async function analyzeBookCharacters(
       throw new NarraServiceError(normalized.code, normalized.message, error?.request_id);
     }
     const rawAnalysis = await responseText(response);
-    const characters = normalizeCharacterAnalysisResponse(rawAnalysis);
+    const characters = normalizeCharacterAnalysisResponse(rawAnalysis, {
+      bookId: book.id,
+      narratorPreference: useNarraStore.getState().narratorVoicePreference,
+      firstPerson: detectFirstPerson(content),
+    });
     if (characters.length === 0) {
       throw new Error(
         `Narra found no characters in the response: ${rawAnalysis.slice(0, 800) || "<empty>"}`,

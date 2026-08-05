@@ -1,9 +1,15 @@
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
+import { useNarraStore } from "@/stores/narra-store";
 import type { NarraCharacter, NarraSceneAudioSegment } from "./types";
+import { narratorVoiceFor } from "./voice-rules";
 
 const MAX_SCENE_TEXT_CHARS = 12_000;
 const MAX_SCENE_SEGMENTS = 24;
-export const NARRATOR_VOICE = "Shi";
+
+/** Голос нарратора — из настройки пользователя (м — Сбер, ж — Афина, дефолт женский). */
+export function getNarratorVoice(): string {
+  return narratorVoiceFor(useNarraStore.getState().narratorVoicePreference);
+}
 
 type ScenarioResponse = { text?: string; content?: string; error?: string };
 
@@ -33,6 +39,7 @@ export function parseNarraAudioScenario(
   if (start < 0 || end <= start) throw new Error("Gateway returned no audio scenario");
 
   const raw = JSON.parse(fenced.slice(start, end + 1)) as Array<Record<string, unknown>>;
+  const narratorVoice = getNarratorVoice();
   return raw
     .filter((item) => typeof item.text === "string" && item.text.trim())
     .slice(0, MAX_SCENE_SEGMENTS)
@@ -42,7 +49,8 @@ export function parseNarraAudioScenario(
         type: item.type === "speech" ? "speech" : "narration",
         characterId: character?.id ?? null,
         speaker: character?.name ?? "Рассказчик",
-        voice: character?.voice ?? NARRATOR_VOICE,
+        // Безымянные эпизодники и повествование — голос нарратора.
+        voice: character?.voice || narratorVoice,
         text: String(item.text).trim(),
       };
     });

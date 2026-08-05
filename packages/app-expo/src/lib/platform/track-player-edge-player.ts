@@ -5,6 +5,7 @@ import { AppState, type AppStateStatus, Image, Platform } from "react-native";
 import TrackPlayer, { Event, State } from "react-native-track-player";
 
 import { synthesizeNarraSpeech } from "../narra/media";
+import { getNarratorVoice } from "../narra/scene-audio";
 import { chunkIndexFromTrackId, trackIdForChunkIndex } from "./track-player-chunk-id";
 import { ensureSilenceFile } from "./tts-silence-keeper";
 
@@ -660,7 +661,7 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
   private async _fetchChunkFile(index: number, gen: number): Promise<string> {
     if (this._stopped || gen !== this._speakGen || !this._config) throw new Error("aborted");
 
-    const audioUri = await synthesizeNarraSpeech(this._chunks[index], "Shi");
+    const audioUri = await synthesizeNarraSpeech(this._chunks[index], getNarratorVoice());
 
     if (this._stopped || gen !== this._speakGen) throw new Error("aborted");
 
