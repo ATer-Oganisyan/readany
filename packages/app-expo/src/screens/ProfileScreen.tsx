@@ -1,6 +1,6 @@
 import { NativeThemePicker } from "@/components/profile/NativeThemePicker";
 import { ProfileNumericText } from "@/components/profile/ProfileNumericText";
-import { ChevronRightIcon, CloudIcon, Trash2Icon } from "@/components/ui/Icon";
+import { ChevronRightIcon, CloudIcon, NotebookPenIcon, Trash2Icon } from "@/components/ui/Icon";
 import type { MaterialIconComponent } from "@/components/ui/Icon";
 import { ScrollViewMarker } from "@/components/ui/ScrollViewMarker";
 import { Text } from "@/components/ui/Typography";
@@ -12,6 +12,7 @@ import {
   mergeCurrentSessionIntoOverallStats,
 } from "@/lib/stats/live-reading-stats";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
+import type { ProfileTabStackParamList } from "@/navigation/TabNavigator";
 import { NATIVE_SCROLL_EDGE_EFFECTS } from "@/navigation/scroll-edge-effects";
 import { useReadingSessionStore, useTTSStore } from "@/stores";
 import type { ThemeMode } from "@/styles/ThemeContext";
@@ -48,7 +49,8 @@ import {
   type ViewStyle,
 } from "react-native";
 
-type Nav = NativeStackNavigationProp<RootStackParamList>;
+// Профильный стек + корневой стек: navigate по неизвестному маршруту всплывает к родителю
+type Nav = NativeStackNavigationProp<RootStackParamList & ProfileTabStackParamList>;
 type ProfileMenuIcon = MaterialIconComponent;
 type ProfileMenuRoute = Extract<keyof RootStackParamList, "SyncSettings">;
 type ProfileMenuItem =
@@ -369,7 +371,16 @@ export function ProfileScreen() {
       {
         title: t("settings.general", "通用"),
         items: [
+          // Бывший таб «Заметки» — теперь строка меню в стеке Профиля
+          {
+            icon: NotebookPenIcon,
+            label: t("tabs.notes", "Заметки"),
+            action: () => nav.navigate("ProfileNotes"),
+          },
           { icon: CloudIcon, label: t("settings.sync", "同步"), route: "SyncSettings" as const },
+          // TODO(P3): «Поиск по книгам» — готового поиска библиотеки в мобильном
+          // приложении нет (LibraryScreen ищет только оригинальный файл книги);
+          // добавить пункт, когда появится полноценный поиск по библиотеке.
         ],
       },
       {
@@ -386,7 +397,7 @@ export function ProfileScreen() {
         ],
       },
     ],
-    [t, clearingCache, handleClearCache],
+    [t, clearingCache, handleClearCache, nav],
   );
 
   const booksRead = liveOverall?.totalBooks ?? 0;

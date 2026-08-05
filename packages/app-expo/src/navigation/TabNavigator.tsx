@@ -2,14 +2,15 @@ import { MessageSquareIcon } from "@/components/ui/Icon";
 import { NativeButton } from "@/components/ui/NativeButton";
 import { SyncButton } from "@/components/ui/SyncButton";
 import { LibraryScreen } from "@/screens/LibraryScreen";
+import { MyPathScreen } from "@/screens/MyPathScreen";
 import { NotesScreen } from "@/screens/NotesScreen";
 import { ProfileScreen } from "@/screens/ProfileScreen";
+import { ReadingTabScreen } from "@/screens/ReadingTabScreen";
 import { useTheme } from "@/styles/ThemeContext";
 import { fontFamily, titleFontFamily } from "@/styles/theme";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import {
   type NativeBottomTabIcon,
-  type NativeBottomTabScreenProps,
   createNativeBottomTabNavigator,
 } from "@react-navigation/bottom-tabs/unstable";
 import {
@@ -24,17 +25,23 @@ import { NATIVE_SCROLL_EDGE_EFFECTS } from "./scroll-edge-effects";
 
 export type TabParamList = {
   Library: undefined;
-  Notes: { bookId?: string } | undefined;
+  Reading: undefined;
+  MyPath: undefined;
   Profile: undefined;
 };
 
 export type LibraryTabStackParamList = { LibraryHome: undefined };
-export type NotesTabStackParamList = { NotesHome: { bookId?: string } | undefined };
-export type ProfileTabStackParamList = { ProfileHome: undefined };
+export type ReadingTabStackParamList = { ReadingHome: undefined };
+export type MyPathTabStackParamList = { MyPathHome: undefined };
+export type ProfileTabStackParamList = {
+  ProfileHome: undefined;
+  ProfileNotes: { bookId?: string } | undefined;
+};
 
 const Tab = createNativeBottomTabNavigator<TabParamList>();
 const LibraryStack = createNativeStackNavigator<LibraryTabStackParamList>();
-const NotesStack = createNativeStackNavigator<NotesTabStackParamList>();
+const ReadingStack = createNativeStackNavigator<ReadingTabStackParamList>();
+const MyPathStack = createNativeStackNavigator<MyPathTabStackParamList>();
 const ProfileStack = createNativeStackNavigator<ProfileTabStackParamList>();
 
 type AndroidTabIcons = Record<keyof TabParamList, ImageSourcePropType>;
@@ -50,16 +57,17 @@ function useAndroidMaterialTabIcons() {
     let cancelled = false;
     void Promise.all([
       MaterialIcons.getImageSource("local-library", 24, "#000000"),
-      MaterialIcons.getImageSource("edit-note", 24, "#000000"),
+      MaterialIcons.getImageSource("menu-book", 24, "#000000"),
+      MaterialIcons.getImageSource("groups", 24, "#000000"),
       MaterialIcons.getImageSource("person", 24, "#000000"),
     ])
-      .then(([library, notes, profile]) => {
+      .then(([library, reading, myPath, profile]) => {
         if (cancelled) return;
-        if (!library || !notes || !profile) {
+        if (!library || !reading || !myPath || !profile) {
           setIcons(null);
           return;
         }
-        setIcons({ Library: library, Notes: notes, Profile: profile });
+        setIcons({ Library: library, Reading: reading, MyPath: myPath, Profile: profile });
       })
       .catch((error) => {
         console.error("[TabNavigator] Failed to render Material tab icons", error);
@@ -106,10 +114,27 @@ function useTabStackScreenOptions(): NativeStackNavigationOptions {
   };
 }
 
+/** iOS large-title options shared by the tab stack home screens. */
+function useLargeTitleOptions(): NativeStackNavigationOptions {
+  const { colors } = useTheme();
+
+  return Platform.OS === "ios"
+    ? {
+        headerLargeTitleEnabled: true,
+        headerLargeTitleShadowVisible: false,
+        headerLargeTitleStyle: {
+          color: colors.foreground,
+          fontFamily: titleFontFamily,
+        },
+      }
+    : {};
+}
+
 function LibraryTabStackNavigator() {
   const { t } = useTranslation();
   const { colors } = useTheme();
   const screenOptions = useTabStackScreenOptions();
+  const largeTitleOptions = useLargeTitleOptions();
 
   return (
     <LibraryStack.Navigator screenOptions={screenOptions}>
@@ -118,14 +143,9 @@ function LibraryTabStackNavigator() {
         component={LibraryScreen}
         options={({ navigation }) => ({
           title: t("tabs.library", "Библиотека"),
+          ...largeTitleOptions,
           ...(Platform.OS === "ios"
             ? {
-                headerLargeTitleEnabled: true,
-                headerLargeTitleShadowVisible: false,
-                headerLargeTitleStyle: {
-                  color: colors.foreground,
-                  fontFamily: titleFontFamily,
-                },
                 unstable_headerLeftItems: () => [
                   {
                     type: "button" as const,
@@ -164,27 +184,102 @@ function LibraryTabStackNavigator() {
   );
 }
 
-function NotesTabStackNavigator({ route }: NativeBottomTabScreenProps<TabParamList, "Notes">) {
+function ReadingTabStackNavigator() {
+  const { t } = useTranslation();
+  const screenOptions = useTabStackScreenOptions();
+  const largeTitleOptions = useLargeTitleOptions();
+
+  return (
+    <ReadingStack.Navigator screenOptions={screenOptions}>
+      <ReadingStack.Screen
+        name="ReadingHome"
+        component={ReadingTabScreen}
+        options={{
+          title: t("tabs.reading", "Читалка"),
+          ...largeTitleOptions,
+        }}
+      />
+    </ReadingStack.Navigator>
+  );
+}
+
+function MyPathTabStackNavigator() {
+  const { t } = useTranslation();
+  const screenOptions = useTabStackScreenOptions();
+  const largeTitleOptions = useLargeTitleOptions();
+
+  return (
+    <MyPathStack.Navigator screenOptions={screenOptions}>
+      <MyPathStack.Screen
+        name="MyPathHome"
+        component={MyPathScreen}
+        options={{
+          title: t("tabs.myPath", "Мой путь"),
+          ...largeTitleOptions,
+        }}
+      />
+    </MyPathStack.Navigator>
+  );
+}
+
+function ProfileTabStackNavigator() {
   const { t } = useTranslation();
   const { colors } = useTheme();
   const screenOptions = useTabStackScreenOptions();
+  const largeTitleOptions = useLargeTitleOptions();
+  const syncNow = useSyncStore((state) => state.syncNow);
+  const syncStatus = useSyncStore((state) => state.status);
+  const syncBackendType = useSyncStore((state) => state.backendType);
+  const loadSyncConfig = useSyncStore((state) => state.loadConfig);
+  const isSyncBusy = syncStatus !== "idle" && syncStatus !== "error";
+
+  useEffect(() => {
+    if (!syncBackendType) void loadSyncConfig();
+  }, [loadSyncConfig, syncBackendType]);
+
+  const handleSync = useCallback(() => {
+    if (!isSyncBusy) void syncNow();
+  }, [isSyncBusy, syncNow]);
 
   return (
-    <NotesStack.Navigator screenOptions={screenOptions}>
-      <NotesStack.Screen
-        name="NotesHome"
+    <ProfileStack.Navigator screenOptions={screenOptions}>
+      <ProfileStack.Screen
+        name="ProfileHome"
+        component={ProfileScreen}
+        options={{
+          title: t("tabs.profile", "Профиль"),
+          ...largeTitleOptions,
+          ...(Platform.OS === "ios"
+            ? {
+                unstable_headerRightItems: () =>
+                  syncBackendType
+                    ? [
+                        {
+                          type: "button" as const,
+                          label: "Синхронизировать",
+                          accessibilityLabel: "Синхронизировать",
+                          icon: {
+                            type: "sfSymbol" as const,
+                            name: "arrow.clockwise" as const,
+                          },
+                          disabled: isSyncBusy,
+                          onPress: handleSync,
+                        },
+                      ]
+                    : [],
+              }
+            : {
+                headerRight: () => <SyncButton size={20} color={colors.mutedForeground} />,
+              }),
+        }}
+      />
+      <ProfileStack.Screen
+        name="ProfileNotes"
         component={NotesScreen}
-        initialParams={route.params}
         options={({ navigation }) => ({
           title: t("tabs.notes", "Заметки"),
           ...(Platform.OS === "ios"
             ? {
-                headerLargeTitleEnabled: true,
-                headerLargeTitleShadowVisible: false,
-                headerLargeTitleStyle: {
-                  color: colors.foreground,
-                  fontFamily: titleFontFamily,
-                },
                 unstable_headerRightItems: () => [
                   {
                     type: "button" as const,
@@ -217,65 +312,6 @@ function NotesTabStackNavigator({ route }: NativeBottomTabScreenProps<TabParamLi
                 ),
               }),
         })}
-      />
-    </NotesStack.Navigator>
-  );
-}
-
-function ProfileTabStackNavigator() {
-  const { t } = useTranslation();
-  const { colors } = useTheme();
-  const screenOptions = useTabStackScreenOptions();
-  const syncNow = useSyncStore((state) => state.syncNow);
-  const syncStatus = useSyncStore((state) => state.status);
-  const syncBackendType = useSyncStore((state) => state.backendType);
-  const loadSyncConfig = useSyncStore((state) => state.loadConfig);
-  const isSyncBusy = syncStatus !== "idle" && syncStatus !== "error";
-
-  useEffect(() => {
-    if (!syncBackendType) void loadSyncConfig();
-  }, [loadSyncConfig, syncBackendType]);
-
-  const handleSync = useCallback(() => {
-    if (!isSyncBusy) void syncNow();
-  }, [isSyncBusy, syncNow]);
-
-  return (
-    <ProfileStack.Navigator screenOptions={screenOptions}>
-      <ProfileStack.Screen
-        name="ProfileHome"
-        component={ProfileScreen}
-        options={{
-          title: t("tabs.profile", "Профиль"),
-          ...(Platform.OS === "ios"
-            ? {
-                headerLargeTitleEnabled: true,
-                headerLargeTitleShadowVisible: false,
-                headerLargeTitleStyle: {
-                  color: colors.foreground,
-                  fontFamily: titleFontFamily,
-                },
-                unstable_headerRightItems: () =>
-                  syncBackendType
-                    ? [
-                        {
-                          type: "button" as const,
-                          label: "Синхронизировать",
-                          accessibilityLabel: "Синхронизировать",
-                          icon: {
-                            type: "sfSymbol" as const,
-                            name: "arrow.clockwise" as const,
-                          },
-                          disabled: isSyncBusy,
-                          onPress: handleSync,
-                        },
-                      ]
-                    : [],
-              }
-            : {
-                headerRight: () => <SyncButton size={20} color={colors.mutedForeground} />,
-              }),
-        }}
       />
     </ProfileStack.Navigator>
   );
@@ -311,12 +347,21 @@ export function TabNavigator() {
         }}
       />
       <Tab.Screen
-        name="Notes"
-        component={NotesTabStackNavigator}
+        name="Reading"
+        component={ReadingTabStackNavigator}
         options={{
-          title: t("tabs.notes", "Заметки"),
-          tabBarLabel: t("tabs.notes", "Заметки"),
-          tabBarIcon: tabIcon("highlighter", androidTabIcons?.Notes),
+          title: t("tabs.reading", "Читалка"),
+          tabBarLabel: t("tabs.reading", "Читалка"),
+          tabBarIcon: tabIcon("book.fill", androidTabIcons?.Reading),
+        }}
+      />
+      <Tab.Screen
+        name="MyPath"
+        component={MyPathTabStackNavigator}
+        options={{
+          title: t("tabs.myPath", "Мой путь"),
+          tabBarLabel: t("tabs.myPath", "Мой путь"),
+          tabBarIcon: tabIcon("person.2.fill", androidTabIcons?.MyPath),
         }}
       />
       <Tab.Screen

@@ -65,8 +65,22 @@
   "tabs": {
     "library": "Library",
     "ai": "AI",
+    "reading": "Reading",
+    "myPath": "My Path",
     "notes": "Notes",
     "profile": "Me"
+  },
+  "readingTab": {
+    "emptyTitle": "No opened books yet",
+    "emptyDescription": "Open a book in the library — it will appear here and resume right where you left off",
+    "goToLibrary": "Go to Library",
+    "continueReading": "Continue reading"
+  },
+  "myPath": {
+    "emptyTitle": "Characters are ahead",
+    "emptyDescription": "Keep reading — characters unlock as you progress and will appear here",
+    "lockedCharacter": "{{character}} unlocks at {{percent}}%",
+    "unlocksAt": "unlocks at {{percent}}%"
   },
   "window": {
     "minimize": "Minimize",

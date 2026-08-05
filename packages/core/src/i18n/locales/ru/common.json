@@ -68,8 +68,22 @@
   "tabs": {
     "library": "Библиотека",
     "ai": "ИИ",
+    "reading": "Читалка",
+    "myPath": "Мой путь",
     "notes": "Заметки",
     "profile": "Профиль"
+  },
+  "readingTab": {
+    "emptyTitle": "Нет открытых книг",
+    "emptyDescription": "Откройте книгу в библиотеке — она появится здесь и будет открываться сразу на нужной странице",
+    "goToLibrary": "В библиотеку",
+    "continueReading": "Продолжить чтение"
+  },
+  "myPath": {
+    "emptyTitle": "Герои ещё впереди",
+    "emptyDescription": "Читайте книги — герои будут открываться по мере прогресса и появятся здесь",
+    "lockedCharacter": "{{character}} откроется на {{percent}}%",
+    "unlocksAt": "откроется на {{percent}}%"
   },
   "narra": {
     "characters": "Персонажи",
