@@ -135,6 +135,12 @@ export function RootNavigator() {
             fullScreenGestureEnabled: true,
             gestureResponseDistance: { start: 48 },
             headerShown: false,
+            scrollEdgeEffects: {
+              top: "hidden",
+              bottom: "hidden",
+              left: "hidden",
+              right: "hidden",
+            },
             statusBarAnimation: "fade",
             statusBarHidden: true,
           }}

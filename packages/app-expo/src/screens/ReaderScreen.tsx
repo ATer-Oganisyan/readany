@@ -82,6 +82,7 @@ import { WebView } from "react-native-webview";
 // ── Extracted modules ──
 import { ReaderNoteViewModal } from "./reader/ReaderNoteViewModal";
 import { ReaderToolbar, TOOLBAR_HEIGHT } from "./reader/ReaderToolbar";
+import { ReaderBottomToolbar } from "./reader/ReaderBottomToolbar";
 
 const REFLOWABLE_CHARACTERS_PER_LOCATION = 1500;
 const MAX_TRACKED_LOCATION_DELTA = 20;
@@ -1831,6 +1832,42 @@ export function ReaderScreen({ route, navigation }: Props) {
               onSpeechPress={() => void tts.handleToggleTTS()}
               onChatPress={handleOpenCharacters}
               onScenePress={() => void handleGenerateVisibleScene()}
+            />
+          </View>
+        )}
+
+        {Platform.OS === "android" && showControls && !showSearch && (
+          <View style={{ position: "absolute", right: 0, bottom: 0, left: 0, zIndex: 30 }}>
+            <ReaderBottomToolbar
+              progress={progress}
+              isBookmarked={isBookmarked}
+              bottomInset={insets.bottom}
+              foregroundColor={colors.foreground}
+              mutedColor={colors.elevation1}
+              accentColor={colors.primary}
+              isDark={isDark}
+              labels={{
+                toc: "Оглавление",
+                bookmarks: isBookmarked ? "Удалить закладку" : "Добавить закладку",
+                notes: "Заметки",
+                search: "Поиск",
+              }}
+              onSeek={(value) => {
+                suppressProgressTracking();
+                bridge.goToFraction(value);
+              }}
+              onDragStart={() => suppressProgressTracking()}
+              onDragEnd={() => suppressProgressTracking()}
+              onOpenToc={() => {
+                setTocActiveTab("toc");
+                setShowTOC(true);
+              }}
+              onToggleBookmark={handleToggleBookmark}
+              onOpenNotes={() => navigation.navigate("FullScreenNotes", { bookId })}
+              onOpenSearch={() => {
+                setShowSearch(true);
+                setShowControls(false);
+              }}
             />
           </View>
         )}

@@ -570,6 +570,11 @@ export function LibraryScreen() {
         temporarySource = await downloadBackendCatalogSource(catalogBook);
         const fileName = `${catalogBook.catalogKey}.${catalogBook.format}`;
         const result = await importBooks([{ uri: temporarySource, name: fileName }]);
+        console.log(`[Catalog] Import result for ${catalogBook.catalogKey}:`, {
+          imported: result.imported.length,
+          skippedDuplicates: result.skippedDuplicates.length,
+          failures: result.failures,
+        });
         const importedBook = result.imported[0] ?? result.skippedDuplicates[0]?.existingBook;
         if (!importedBook) throw new Error("catalog-import-failed");
         const coverUrl =
@@ -587,9 +592,15 @@ export function LibraryScreen() {
         };
         await updateBook(importedBook.id, { meta: normalizedBook.meta });
         useNarraStore.getState().setBackendBinding(importedBook.id, catalogBook);
+        console.log(
+          `[Catalog] Opening imported book ${catalogBook.catalogKey} (${importedBook.id})`,
+        );
         await handleOpen(normalizedBook);
       } catch (error) {
-        console.error(`[Catalog] Failed to add ${catalogBook.catalogKey}:`, error);
+        console.error(`[Catalog] Failed to add ${catalogBook.catalogKey}:`, error, {
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        });
         Alert.alert(
           t("library.catalogImportErrorTitle", "Не получилось добавить книгу"),
           t("library.catalogImportErrorDescription", "Попробуйте ещё раз."),

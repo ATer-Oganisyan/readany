@@ -1,6 +1,6 @@
-import { MaterialIcon } from "@/components/ui/Icon";
 import { Text } from "@/components/ui/Typography";
 import { useTheme } from "@/styles/theme";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { ActivityIndicator, Pressable, StyleSheet } from "react-native";
 import {
   type NativeButtonIcon,
@@ -10,22 +10,22 @@ import {
 
 const icons: Record<NativeButtonIcon, string> = {
   add: "add",
-  back: "arrow_back",
-  forward: "arrow_forward",
-  image: "add_photo_alternate",
+  back: "arrow-back",
+  forward: "arrow-forward",
+  image: "add-photo-alternate",
   check: "check",
   chat: "chat",
   close: "close",
   components: "apps",
   delete: "delete",
   edit: "edit",
-  play: "play_arrow",
+  play: "play-arrow",
   refresh: "refresh",
   search: "search",
   send: "send",
   settings: "settings",
   share: "share",
-  sparkles: "auto_awesome",
+  sparkles: "auto-awesome",
 };
 
 export function NativeButton({
@@ -78,7 +78,13 @@ export function NativeButton({
         <ActivityIndicator color={content} />
       ) : (
         <>
-          {icon ? <MaterialIcon name={icons[icon]} size={20} color={content} /> : null}
+          {icon ? (
+            <MaterialIcons
+              name={icons[icon] as keyof typeof MaterialIcons.glyphMap}
+              size={20}
+              color={content}
+            />
+          ) : null}
           <Text
             numberOfLines={1}
             adjustsFontSizeToFit
