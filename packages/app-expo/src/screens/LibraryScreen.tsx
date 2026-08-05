@@ -392,6 +392,13 @@ export function LibraryScreen() {
   const showReadingNow =
     !activeTag && !activeGroupId && !selectionMode && readingNowBooks.length > 0;
 
+  // Книги из «Читаю сейчас» не дублируем в сетке ниже
+  const displayGridItems = useMemo(() => {
+    if (!showReadingNow) return gridItems;
+    const readingIds = new Set(readingNowBooks.map((book) => book.id));
+    return gridItems.filter((item) => item.type !== "book" || !readingIds.has(item.book.id));
+  }, [gridItems, readingNowBooks, showReadingNow]);
+
   const handleLocalImport = useCallback(async () => {
     if (localImportInFlightRef.current) return;
     localImportInFlightRef.current = true;
@@ -1056,7 +1063,7 @@ export function LibraryScreen() {
               scrollEdgeEffects={NATIVE_SCROLL_EDGE_EFFECTS}
             >
               <FlatList
-                data={gridItems}
+                data={displayGridItems}
                 renderItem={renderGridItem}
                 contentInsetAdjustmentBehavior="automatic"
                 alwaysBounceVertical
@@ -1083,7 +1090,9 @@ export function LibraryScreen() {
                     >
                       <Text style={s.catalogTitle}>{t("library.catalog", "Каталог")}</Text>
                       <View style={s.catalogGrid}>
-                        {BUNDLED_CATALOG_BOOKS.map((catalogBook) => (
+                        {BUNDLED_CATALOG_BOOKS.filter(
+                          (catalogBook) => !catalogBooksInLibrary.has(catalogBook.id),
+                        ).map((catalogBook) => (
                           <View key={catalogBook.id} style={s.gridItem}>
                             <CatalogBookCard
                               title={catalogBook.title}

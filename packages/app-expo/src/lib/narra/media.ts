@@ -28,9 +28,22 @@ function safeKey(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 160);
 }
 
-export function portraitPrompt(character: NarraCharacter): string {
+/** «Название» (Автор) — контекст эпохи/мира книги для промптов генерации. */
+function bookContextDescription(bookId: string): string | undefined {
+  // Ленивый импорт, чтобы не тянуть стор в юнит-тесты чистых промптов
+  const { useLibraryStore } = require("@/stores") as typeof import("@/stores");
+  const book = useLibraryStore.getState().books.find((item) => item.id === bookId);
+  if (!book) return undefined;
+  const author = book.meta.author ? ` (${book.meta.author})` : "";
+  return `«${book.meta.title}»${author}`;
+}
+
+export function portraitPrompt(character: NarraCharacter, bookContext?: string): string {
   return budgetPrompt([
     "Погрудный портрет: голова и плечи, строго анфас, ровный светлый однотонный фон.",
+    bookContext
+      ? `Персонаж книги ${bookContext}: одежда, причёска и антураж строго соответствуют эпохе и миру книги, без современной одежды.`
+      : "Одежда и причёска строго соответствуют эпохе и миру книги, без современной одежды.",
     `Выражение лица: ${character.expression || "естественное, в характере"}.`,
     `Внешность (соблюдать точно): ${passportDescription(character)}.`,
     "Один человек в кадре, взгляд в камеру.",
@@ -196,7 +209,11 @@ export async function generateCharacterPortrait(
   const response = await narraGatewayRequest("/v2/media/images", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ prompt: portraitPrompt(character), width: 768, height: 1024 }),
+    body: JSON.stringify({
+      prompt: portraitPrompt(character, bookContextDescription(bookId)),
+      width: 768,
+      height: 1024,
+    }),
   });
   const payload = imagePayload(await response.json().catch(() => null));
   if (!response.ok || (!payload.base64 && !payload.url)) {

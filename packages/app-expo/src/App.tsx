@@ -23,7 +23,7 @@ if (typeof navigator !== "undefined" && !navigator.userAgent) {
   });
 }
 
-import { interfaceFontAssets } from "@deslop/primitives/native";
+import { interfaceFontAssets, serifTextFontAssets } from "@deslop/primitives/native";
 import { DarkTheme, DefaultTheme, NavigationContainer } from "@react-navigation/native";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
@@ -84,7 +84,11 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function App() {
   const systemColorScheme = useColorScheme();
-  const [fontsLoaded, fontError] = useFonts(interfaceFontAssets);
+  const [fontsLoaded, fontError] = useFonts({
+    ...interfaceFontAssets,
+    "SB Serif Text": serifTextFontAssets.regular,
+    "SB Serif Text Bold": serifTextFontAssets.bold,
+  });
   const [ready, setReady] = useState(false);
   const [bootError, setBootError] = useState<string | null>(null);
   const [initialThemeMode, setInitialThemeMode] = useState<ThemeMode | null>(null);

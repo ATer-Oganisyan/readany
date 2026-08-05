@@ -8,10 +8,17 @@ import { type ThemeColors, fontSize, fontWeight, radius, spacing, useTheme } fro
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { Book } from "@readany/core/types";
+import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Image, ScrollView, StyleSheet, View } from "react-native";
+import { Image, Platform, ScrollView, StyleSheet, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useResolvedCovers } from "./notes/useResolvedCovers";
+
+const COVER_WIDTH = 148;
+const CURL_SIZE = Math.round(COVER_WIDTH * 0.3);
+/** Цвета «бумаги» отвёрнутого уголка — как в ReadingNowShelf. */
+const CURL_PAPER_COLORS = ["#fbfaf5", "#ece9de", "#d3cfc0"] as const;
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -25,7 +32,11 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
  */
 export function ReadingTabScreen() {
   const { colors } = useTheme();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
+  // Плавающий нативный таббар перекрывает низ — добавляем его высоту в отступ
+  const tabBarSpace =
+    (Platform.OS === "android" ? 80 : Platform.OS === "ios" ? 49 : 0) + insets.bottom;
+  const styles = useMemo(() => makeStyles(colors, tabBarSpace), [colors, tabBarSpace]);
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
   const isFocused = useIsFocused();
@@ -122,6 +133,14 @@ export function ReadingTabScreen() {
           ) : (
             <Text style={styles.coverLetter}>{lastBook.meta.title.slice(0, 1).toUpperCase()}</Text>
           )}
+          <View style={styles.curlShadow} pointerEvents="none" />
+          <LinearGradient
+            colors={CURL_PAPER_COLORS}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.curlPage}
+            pointerEvents="none"
+          />
         </View>
         <Text style={styles.title} numberOfLines={2}>
           {lastBook.meta.title}
@@ -148,20 +167,46 @@ export function ReadingTabScreen() {
   );
 }
 
-const makeStyles = (colors: ThemeColors) =>
+const makeStyles = (colors: ThemeColors, tabBarSpace: number) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
-    content: { flexGrow: 1, alignItems: "center", justifyContent: "center", padding: spacing.xl },
+    content: {
+      flexGrow: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      padding: spacing.xl,
+      paddingBottom: spacing.xl + tabBarSpace,
+    },
     card: { alignItems: "center", gap: spacing.md, maxWidth: 320, width: "100%" },
     cover: {
-      width: 148,
+      width: COVER_WIDTH,
       height: 212,
       borderRadius: radius.card,
       overflow: "hidden",
+      position: "relative",
       alignItems: "center",
       justifyContent: "center",
       backgroundColor: colors.elevation2,
       marginBottom: spacing.sm,
+    },
+    curlShadow: {
+      position: "absolute",
+      right: -CURL_SIZE / 2,
+      bottom: -CURL_SIZE / 2,
+      width: CURL_SIZE + 8,
+      height: CURL_SIZE + 8,
+      backgroundColor: "rgba(0,0,0,0.28)",
+      transform: [{ rotate: "45deg" }],
+      borderRadius: 3,
+    },
+    curlPage: {
+      position: "absolute",
+      right: -CURL_SIZE / 2,
+      bottom: -CURL_SIZE / 2,
+      width: CURL_SIZE,
+      height: CURL_SIZE,
+      transform: [{ rotate: "45deg" }],
+      borderRadius: 2,
     },
     coverImage: { width: "100%", height: "100%" },
     coverLetter: {

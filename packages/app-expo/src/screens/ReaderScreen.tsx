@@ -884,10 +884,9 @@ export function ReaderScreen({ route, navigation }: Props) {
       );
       sceneSuggestionStateRef.current = sceneAdvance.state;
       if (sceneAdvance.suggest) {
+        // Плашка висит до явного закрытия или тапа — при быстром листании
+        // авто-скрытие делало её невидимой
         setSceneSuggestionVisible(true);
-      } else if (sceneAdvance.moved && sceneSuggestionVisible) {
-        // Читатель листает дальше — предложение не навязываем
-        setSceneSuggestionVisible(false);
       }
 
       // Mark translation ready after first successful relocate (CFI navigation done)

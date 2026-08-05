@@ -3,9 +3,9 @@ import { Text } from "@/components/ui/Typography";
 import { reportNarraError } from "@/lib/narra/errors";
 import { ensureCharacterPortrait, normalizePersistedNarraMediaUri } from "@/lib/narra/media";
 import type { NarraCharacter } from "@/lib/narra/types";
-import { VOICES } from "@/lib/narra/voice-rules";
 import { useNarraStore } from "@/stores";
 import { type ThemeColors, fontSize, fontWeight, radius, spacing, useTheme } from "@/styles/theme";
+import { interfaceFontFamily, serifTextFontFamily } from "@deslop/primitives/native";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ActivityIndicator, Image, Modal, Pressable, ScrollView, View } from "react-native";
@@ -21,9 +21,9 @@ interface ReaderCharacterCardProps {
 }
 
 /**
- * Компактная карточка героя в ридере: открывается по тапу на имя персонажа
- * в тексте. Портрет (генерируется штатным механизмом media.ts, если ещё нет),
- * роль и черты — и переход в чат с героем.
+ * Карточка героя в ридере (по образцу карточки narra): крупный портрет с
+ * регенерацией, имя, раскрытое досье (роль), черты, манера речи и переход в чат.
+ * Голос назначается автоматически по правилам voice-rules — пикер не показываем.
  */
 export function ReaderCharacterCard({
   visible,
@@ -37,7 +37,7 @@ export function ReaderCharacterCard({
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const updateCharacter = useNarraStore((state) => state.updateCharacter);
-  // Живой персонаж из стора: после смены голоса проп-снимок устаревает.
+  // Живой персонаж из стора: после регенерации портрета проп-снимок устаревает.
   const storedCharacter = useNarraStore((state) =>
     character
       ? state.books[bookId]?.characters.find((item) => item.id === character.id)
@@ -47,13 +47,19 @@ export function ReaderCharacterCard({
   const [portraitLoading, setPortraitLoading] = useState(false);
   const portraitAttemptsRef = useRef(new Set<string>());
 
-  // Ручной выбор голоса (правило 3): полный список, включая пасхалки
-  // Марков/Пират; Фокин скрыт, пока синтез Efo сломан на gateway.
-  const voiceOptions = useMemo(() => Object.entries(VOICES).filter(([code]) => code !== "Efo"), []);
-
   const portraitUri = liveCharacter?.portraitUri
     ? normalizePersistedNarraMediaUri(liveCharacter.portraitUri)
     : undefined;
+
+  const generatePortrait = (force: boolean) => {
+    if (!character || portraitLoading) return;
+    setPortraitLoading(true);
+    const target = force ? { ...character, portraitUri: undefined } : character;
+    void ensureCharacterPortrait(bookId, target)
+      .then((uri) => updateCharacter(bookId, character.id, { portraitUri: uri }))
+      .catch((error) => reportNarraError("character_portrait_reader_card", error))
+      .finally(() => setPortraitLoading(false));
+  };
 
   // Портрет по требованию — тот же механизм, что и в NarraCharactersScreen
   useEffect(() => {
@@ -69,11 +75,6 @@ export function ReaderCharacterCard({
 
   if (!character || !liveCharacter) return null;
 
-  const autoVoiceName = VOICES[liveCharacter.voice]?.name;
-  const setVoiceOverride = (voiceOverride?: string) => {
-    updateCharacter(bookId, liveCharacter.id, { voiceOverride });
-  };
-
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable
@@ -84,87 +85,63 @@ export function ReaderCharacterCard({
       />
       <View style={[styles.sheet, { paddingBottom: (insets.bottom || spacing.md) + spacing.md }]}>
         <View style={styles.grabber} />
-        <View style={styles.headerRow}>
-          <View style={styles.portrait}>
-            {portraitUri ? (
-              <Image
-                source={{ uri: portraitUri }}
-                style={styles.portraitImage}
-                onError={() => updateCharacter(bookId, character.id, { portraitUri: undefined })}
-              />
-            ) : portraitLoading ? (
-              <ActivityIndicator color={colors.primaryForeground} />
-            ) : (
-              <Text style={styles.portraitLetter}>{character.name.slice(0, 1).toUpperCase()}</Text>
-            )}
-          </View>
-          <View style={styles.headerCopy}>
-            <Text style={styles.name} numberOfLines={2}>
-              {character.fullName || character.name}
-            </Text>
-            <Text style={styles.role} numberOfLines={2}>
-              {character.role}
-            </Text>
-          </View>
-        </View>
-        {character.traits.length > 0 ? (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.traitsRow}
-          >
-            {character.traits.map((trait) => (
-              <View key={trait} style={styles.traitChip}>
-                <Text style={styles.traitText}>{trait}</Text>
-              </View>
-            ))}
-          </ScrollView>
-        ) : null}
-        {/* Голос озвучки: авто по правилам или ручной выбор (включая пасхалки) */}
-        <View style={styles.voiceSection}>
-          <Text style={styles.voiceLabel}>{t("narra.voiceTitle", "Голос героя")}</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.traitsRow}
-          >
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ selected: !liveCharacter.voiceOverride }}
-              accessibilityLabel={t("narra.voiceAuto", "Авто")}
-              onPress={() => setVoiceOverride(undefined)}
-              style={[styles.voiceChip, !liveCharacter.voiceOverride && styles.voiceChipActive]}
-            >
-              <Text
-                style={[
-                  styles.voiceChipText,
-                  !liveCharacter.voiceOverride && styles.voiceChipTextActive,
-                ]}
-              >
-                {autoVoiceName
-                  ? t("narra.voiceAutoNamed", "Авто · {{voice}}", { voice: autoVoiceName })
-                  : t("narra.voiceAuto", "Авто")}
-              </Text>
-            </Pressable>
-            {voiceOptions.map(([code, info]) => {
-              const active = liveCharacter.voiceOverride === code;
-              return (
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          {/* Крупный портрет в рамке, как в карточке narra */}
+          <View style={styles.portraitFrame}>
+            <View style={styles.portrait}>
+              {portraitUri ? (
+                <Image
+                  source={{ uri: portraitUri }}
+                  style={styles.portraitImage}
+                  resizeMode="cover"
+                  onError={() => updateCharacter(bookId, character.id, { portraitUri: undefined })}
+                />
+              ) : portraitLoading ? (
+                <ActivityIndicator color={colors.primary} />
+              ) : (
+                <Text style={styles.portraitLetter}>
+                  {character.name.slice(0, 1).toUpperCase()}
+                </Text>
+              )}
+              {portraitUri && !portraitLoading ? (
                 <Pressable
-                  key={code}
                   accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  accessibilityLabel={info.name}
-                  onPress={() => setVoiceOverride(code)}
-                  style={[styles.voiceChip, active && styles.voiceChipActive]}
+                  accessibilityLabel={t("narra.regeneratePortrait", "Сгенерировать портрет заново")}
+                  onPress={() => generatePortrait(true)}
+                  style={styles.regenButton}
                 >
-                  <Text style={[styles.voiceChipText, active && styles.voiceChipTextActive]}>
-                    {info.name}
-                  </Text>
+                  <Text style={styles.regenIcon}>↻</Text>
                 </Pressable>
-              );
-            })}
-          </ScrollView>
-        </View>
+              ) : null}
+              {portraitLoading && portraitUri ? (
+                <View style={styles.portraitOverlay}>
+                  <ActivityIndicator color={colors.primaryForeground} />
+                </View>
+              ) : null}
+            </View>
+          </View>
+          <Text style={styles.name}>{character.fullName || character.name}</Text>
+          {/* Досье: роль/описание раскрыто целиком */}
+          {character.role ? <Text style={styles.description}>{character.role}</Text> : null}
+          {character.traits.length > 0 ? (
+            <View style={styles.traitsWrap}>
+              {character.traits.map((trait) => (
+                <View key={trait} style={styles.traitChip}>
+                  <Text style={styles.traitText}>{trait}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+          {liveCharacter.speechStyle ? (
+            <View style={styles.speechSection}>
+              <Text style={styles.sectionLabel}>{t("narra.speechStyle", "Манера речи")}</Text>
+              <Text style={styles.description}>{liveCharacter.speechStyle}</Text>
+            </View>
+          ) : null}
+        </ScrollView>
         <NativeButton
           label={t("narra.characterCardOpenChat", "Перейти в чат")}
           accessibilityLabel={t("narra.openCharacterChat", "Открыть чат с {{character}}", {
@@ -191,6 +168,7 @@ const makeStyles = (colors: ThemeColors) =>
       borderTopLeftRadius: radius.card,
       borderTopRightRadius: radius.card,
       backgroundColor: colors.background,
+      maxHeight: "82%",
     },
     grabber: {
       alignSelf: "center",
@@ -199,43 +177,74 @@ const makeStyles = (colors: ThemeColors) =>
       borderRadius: radius.full,
       backgroundColor: colors.primary10,
     },
-    headerRow: {
-      flexDirection: "row",
-      alignItems: "center",
+    scrollContent: {
       gap: spacing.md,
+      paddingBottom: spacing.sm,
+    },
+    portraitFrame: {
+      alignSelf: "center",
+      padding: 5,
+      borderRadius: radius.card + 5,
+      backgroundColor: colors.primary,
     },
     portrait: {
-      width: 72,
-      height: 72,
+      width: 224,
+      height: 280,
       overflow: "hidden",
       alignItems: "center",
       justifyContent: "center",
-      borderRadius: radius.full,
-      backgroundColor: colors.primary,
+      borderRadius: radius.card,
+      backgroundColor: colors.elevation2,
+      position: "relative",
     },
     portraitImage: { width: "100%", height: "100%" },
     portraitLetter: {
-      color: colors.primaryForeground,
-      fontSize: fontSize.xl,
+      color: colors.mutedForeground,
+      fontSize: fontSize["2xl"],
       fontWeight: fontWeight.bold,
     },
-    headerCopy: { flex: 1, gap: 2 },
+    portraitOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "rgba(0,0,0,0.3)",
+    },
+    regenButton: {
+      position: "absolute",
+      bottom: spacing.sm,
+      alignSelf: "center",
+      width: 40,
+      height: 40,
+      borderRadius: radius.full,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "rgba(0,0,0,0.55)",
+    },
+    regenIcon: {
+      color: "#fff",
+      fontSize: fontSize.lg,
+      fontWeight: fontWeight.bold,
+    },
     name: {
       color: colors.foreground,
-      fontSize: fontSize.lg,
-      fontWeight: fontWeight.semibold,
+      fontFamily: serifTextFontFamily.bold,
+      fontSize: fontSize["2xl"],
+      textAlign: "center",
     },
-    role: {
-      color: colors.mutedForeground,
-      fontSize: fontSize.sm,
+    description: {
+      color: colors.foreground,
+      fontFamily: interfaceFontFamily.regular,
+      fontSize: fontSize.md,
+      lineHeight: 22,
     },
-    traitsRow: {
+    traitsWrap: {
       flexDirection: "row",
+      flexWrap: "wrap",
       gap: spacing.xs,
     },
     traitChip: {
       paddingHorizontal: spacing.sm,
-      paddingVertical: 4,
+      paddingVertical: 5,
       borderRadius: radius.full,
       backgroundColor: colors.elevation1,
       borderWidth: 0.5,
@@ -245,34 +254,14 @@ const makeStyles = (colors: ThemeColors) =>
       color: colors.foreground,
       fontSize: fontSize.xs,
     },
-    voiceSection: {
+    speechSection: {
       gap: spacing.xs,
     },
-    voiceLabel: {
+    sectionLabel: {
       color: colors.mutedForeground,
+      fontFamily: interfaceFontFamily.caps,
       fontSize: fontSize.xs,
-      fontWeight: fontWeight.semibold,
       textTransform: "uppercase",
       letterSpacing: 0.4,
-    },
-    voiceChip: {
-      paddingHorizontal: spacing.sm,
-      paddingVertical: 6,
-      borderRadius: radius.full,
-      backgroundColor: colors.elevation1,
-      borderWidth: 0.5,
-      borderColor: colors.primary5,
-    },
-    voiceChipActive: {
-      backgroundColor: colors.primary,
-      borderColor: colors.primary,
-    },
-    voiceChipText: {
-      color: colors.foreground,
-      fontSize: fontSize.xs,
-    },
-    voiceChipTextActive: {
-      color: colors.primaryForeground,
-      fontWeight: fontWeight.semibold,
     },
   });
