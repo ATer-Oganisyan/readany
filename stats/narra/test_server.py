@@ -89,6 +89,7 @@ class NarraStatsTest(unittest.TestCase):
             server._db.execute("DELETE FROM events")
             server._db.execute("DELETE FROM monitor_samples")
             server._db.commit()
+        server._clear_dashboard_cache()
 
     def test_railway_config_pins_launcher_healthcheck_and_restart_policy(self):
         config = json.loads((Path(__file__).with_name("railway.json")).read_text())
@@ -417,6 +418,14 @@ class NarraStatsTest(unittest.TestCase):
             max(90, server.MONITOR_INTERVAL_SECONDS * 3),
         )
 
+    def test_dashboard_endpoint_collapses_repeated_reads_and_reports_timing(self):
+        add("app_opened", properties={"channel": "production"})
+        first = server.dashboard_data(request_for("/dashboard"), 1)
+        second = server.dashboard_data(request_for("/dashboard"), 1)
+        self.assertEqual(first.headers["x-narra-stats-cache"], "MISS")
+        self.assertEqual(second.headers["x-narra-stats-cache"], "HIT")
+        self.assertRegex(second.headers["server-timing"], r"^dashboard;dur=\d+\.\d$")
+
     def test_canonical_six_count_value_not_app_open_and_dedupe_requests(self):
         session_one = str(uuid.uuid4())
         session_two = str(uuid.uuid4())
@@ -431,28 +440,31 @@ class NarraStatsTest(unittest.TestCase):
         add("app_opened", actor=ACTOR_B, session=str(uuid.uuid4()), properties={"channel": "production"})
         data = server.compute_dashboard(1)
         self.assertEqual(data["installs"], 2)
-        self.assertEqual(data["overview"]["ever_used"], 1)
+        self.assertEqual(data["overview"]["ever_used"], 2)
         self.assertEqual(data["overview"]["dau"], 1)
         self.assertEqual(data["overview"]["sessions_per_dau"], 1.0)
         self.assertEqual(data["overview"]["tools_per_dau"], 1.0)
         self.assertEqual(data["ai"]["requests"], 1)
         self.assertEqual(data["ai"]["attempts"], 1)
 
-    def test_ever_used_requires_book_open_and_ratios_omit_without_dau(self):
+    def test_known_users_count_any_observed_actor_and_ratios_omit_without_dau(self):
         empty = server.compute_dashboard(1)["overview"]
         self.assertNotIn("sessions_per_dau", empty)
         self.assertNotIn("tools_per_dau", empty)
         add("book_import_started", session=str(uuid.uuid4()), properties={"format": "epub", "source_class": "file"})
-        imported = server.compute_dashboard(1)["overview"]
-        self.assertEqual(imported["ever_used"], 0)
+        imported = server.compute_dashboard(1)
+        self.assertEqual(imported["overview"]["ever_used"], 1)
+        self.assertEqual(imported["audience"]["book_openers"], 0)
         add("book_opened", session=str(uuid.uuid4()), properties={"book_kind": "imported"})
-        self.assertEqual(server.compute_dashboard(1)["overview"]["ever_used"], 1)
+        opened = server.compute_dashboard(1)
+        self.assertEqual(opened["overview"]["ever_used"], 1)
+        self.assertEqual(opened["audience"]["book_openers"], 1)
 
     def test_server_owned_ai_request_is_active_and_has_tools_denominator(self):
         add("ai_request_started", properties={"request_id": str(uuid.uuid4()), "purpose": "summary"})
         overview = server.compute_dashboard(1)["overview"]
         self.assertEqual(overview["dau"], 1)
-        self.assertEqual(overview["ever_used"], 0)
+        self.assertEqual(overview["ever_used"], 1)
         self.assertEqual(overview["tools_per_dau"], 1.0)
 
     def test_background_ai_is_diagnostic_not_dau_session_or_tool(self):
@@ -686,6 +698,11 @@ class NarraStatsTest(unittest.TestCase):
         self.assertEqual(data["ai"]["token_coverage"], 100.0)
         self.assertEqual(data["ai"]["input_tokens"], 300)
         self.assertEqual(data["ai"]["output_tokens"], 60)
+        self.assertEqual(data["ai"]["tokens_per_request"], 180.0)
+        self.assertEqual(data["ai"]["input_tokens_per_request"], 150.0)
+        self.assertEqual(data["ai"]["output_tokens_per_request"], 30.0)
+        self.assertEqual(data["ai"]["known_cost_per_request"], 0.25)
+        self.assertEqual(len(data["ai"]["slowest"]), 2)
         self.assertEqual(data["ai"]["attempt_error_rate"], 33.3)
         self.assertEqual(data["ai"]["fallback_rate"], 50.0)
         self.assertEqual(data["ai"]["providers"][0]["name"], "openrouter")
@@ -732,10 +749,10 @@ class NarraStatsTest(unittest.TestCase):
         self.assertEqual(selected[0]["value"], data["overview"]["tools_per_dau"])
         self.assertEqual(tools["provider_attempts_calendar_day_dau"]["value"], 2.0)
         self.assertEqual(tools["logical_ai_requests_calendar_day_dau"]["value"], 1.0)
-        self.assertEqual(len(data["diagnostics"]), 10)
+        self.assertEqual(len(data["diagnostics"]), 11)
         self.assertEqual(data["quality"]["token_coverage"], 100.0)
         feature_names = {row["name"] for row in data["features"]}
-        self.assertIn("Summary", feature_names)
+        self.assertIn("Book summary", feature_names)
         classification = next(
             row for row in data["diagnostics"] if row["label"] == "Feature classification"
         )
@@ -768,19 +785,22 @@ class NarraStatsTest(unittest.TestCase):
 
     def test_dashboard_copy_explains_tools_and_observed_only_quality(self):
         html = (server.HERE / "index.html").read_text()
-        self.assertIn("What should count as “Tools”?", html)
+        self.assertIn("Tools / DAU metric definitions", html)
         self.assertIn("Overview KPI", html)
         self.assertIn("Product and data diagnostics", html)
-        self.assertIn("Only directly observed events", html)
-        self.assertIn("Total tokens", html)
+        self.assertIn("Privacy-safe observed events", html)
+        self.assertIn("Token consumption", html)
+        self.assertIn("Tokens / request", html)
         self.assertIn("diagnosticValue", html)
-        self.assertIn("outcome coverage", html)
+        self.assertIn("outcome-eligible", html)
         self.assertIn("Domains and critical endpoints", html)
-        self.assertIn("Narra product value", html)
+        self.assertIn("Product value", html)
         self.assertIn("purposeRows", html)
-        self.assertIn("TLS left", html)
-        self.assertIn('data-days="1" class="active">Today</button>', html)
-        self.assertIn('data-days="7">7 dates</button>', html)
+        self.assertIn("TLS remaining", html)
+        self.assertIn("vertical scale starts at zero", html)
+        self.assertIn("of ${fmt(x.active_users)} active users", html)
+        self.assertIn('data-days="1" class="active" aria-pressed="true">Today</button>', html)
+        self.assertIn('data-days="7" aria-pressed="false">7 dates</button>', html)
 
     def test_request_success_counts_overdue_pending_and_excludes_orphans(self):
         old = time.time() - server.AI_OUTCOME_GRACE_SECONDS - 10

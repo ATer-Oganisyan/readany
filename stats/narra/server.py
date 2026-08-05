@@ -85,6 +85,9 @@ MONITOR_STALE_AFTER_SECONDS = max(
 MONITOR_RETENTION_DAYS = max(
     1, min(int(os.environ.get("STATS_MONITOR_RETENTION_DAYS", "30")), 90)
 )
+DASHBOARD_CACHE_TTL_SECONDS = max(
+    1.0, min(float(os.environ.get("STATS_DASHBOARD_CACHE_TTL_SECONDS", "15")), 60.0)
+)
 VERSION_FILE = HERE / "VERSION"
 VERSION = VERSION_FILE.read_text().strip() if VERSION_FILE.exists() else "dev"
 REPORTING_TZ = ZoneInfo("Europe/Moscow")
@@ -239,7 +242,6 @@ ACTIVE_EVENTS = {
     "answer_feedback_submitted", "book_analysis_started", "ai_request_started",
     "media_job_enqueued", "tts_playback_started",
 }
-EVER_USED_EVENTS = {"book_opened"}
 # A product session is qualified reading (>=60 focused seconds) or an explicit
 # AI tool request. Merely opening/importing a book is activity, not a session.
 SESSION_EVENTS = {
@@ -299,10 +301,37 @@ MONITOR_RUNNER = MonitorRunner(
 )
 RATE_LOCK = threading.Lock()
 RATE: dict[str, deque[float]] = defaultdict(deque)
+DASHBOARD_CACHE_LOCK = threading.RLock()
+DASHBOARD_CACHE: dict[int, tuple[float, dict[str, Any]]] = {}
 
 
-def _response(value: object, status: int = 200) -> JSONResponse:
-    return JSONResponse(value, status_code=status, headers={"Cache-Control": "no-store"})
+def _response(
+    value: object,
+    status: int = 200,
+    headers: dict[str, str] | None = None,
+) -> JSONResponse:
+    response_headers = {"Cache-Control": "no-store"}
+    response_headers.update(headers or {})
+    return JSONResponse(value, status_code=status, headers=response_headers)
+
+
+def _clear_dashboard_cache() -> None:
+    with DASHBOARD_CACHE_LOCK:
+        DASHBOARD_CACHE.clear()
+
+
+def _cached_dashboard(days: float) -> tuple[dict[str, Any], bool, float]:
+    """Collapse repeated hub/browser reads without hiding newly ingested data."""
+    key = max(1, min(int(math.ceil(float(days))), 365))
+    started = time.perf_counter()
+    now = time.monotonic()
+    with DASHBOARD_CACHE_LOCK:
+        cached = DASHBOARD_CACHE.get(key)
+        if cached and cached[0] > now:
+            return cached[1], True, (time.perf_counter() - started) * 1000
+        data = compute_dashboard(key)
+        DASHBOARD_CACHE[key] = (now + DASHBOARD_CACHE_TTL_SECONDS, data)
+    return data, False, (time.perf_counter() - started) * 1000
 
 
 def _read_authorized(header: str) -> bool:
@@ -553,9 +582,9 @@ def _feature_for_event(row: dict[str, Any]) -> str | None:
     if row["name"] == "ai_request_started":
         return {
             "character_chat": "Character chat",
-            "summary": "Summary",
+            "summary": "Book summary",
             "scenario": "Scene scenario",
-            "structured_task": "Structured Narra task",
+            "structured_task": "Narra analysis",
         }.get(str(row["properties"].get("purpose")), "AI tools")
     if row["name"].startswith("media_job_"):
         return {
@@ -707,6 +736,12 @@ def compute_dashboard(days: float = 1.0) -> dict[str, Any]:
         for row in completed_requests
         if isinstance(row["properties"].get("latency_ms"), (int, float))
     ]
+    slow_request_threshold_ms = 10_000
+    slow_request_rows = [
+        row for row in completed_requests
+        if isinstance(row["properties"].get("latency_ms"), (int, float))
+        and float(row["properties"]["latency_ms"]) >= slow_request_threshold_ms
+    ]
     exact_cost_rows = [
         row for row in completed_requests
         if isinstance(row["properties"].get("exact_cost"), (int, float))
@@ -734,6 +769,11 @@ def compute_dashboard(days: float = 1.0) -> dict[str, Any]:
     # Input + output is comparable across providers. A conflicting upstream
     # total must not make the aggregate internally inconsistent.
     total_tokens = input_tokens + output_tokens
+    request_token_totals = [
+        float(row["properties"]["input_tokens"])
+        + float(row["properties"]["output_tokens"])
+        for row in token_rows
+    ]
     terminal_attempt_errors = sum(
         row["name"] in {"provider_attempt_failed", "provider_attempt_not_configured"}
         for row in attempts
@@ -818,7 +858,21 @@ def compute_dashboard(days: float = 1.0) -> dict[str, Any]:
     if completed_requests and token_coverage < 100:
         warnings.append(f"Input/output tokens are available for {token_coverage}% of completed requests.")
 
-    ever_ids = {row["device_id"] for row in rows if row["name"] in EVER_USED_EVENTS}
+    # `overview.ever_used` is a legacy field name in the fleet contract. Its
+    # documented meaning is lifetime distinct actors, so it must use the same
+    # population as top-level `installs`. Book-open telemetry is a separate
+    # activation measure and may lag while older clients are still installed.
+    known_ids = {row["device_id"] for row in rows}
+    app_open_ids = {row["device_id"] for row in rows if row["name"] == "app_opened"}
+    book_open_ids = {row["device_id"] for row in rows if row["name"] == "book_opened"}
+    client_telemetry_coverage = (
+        _percent(len(app_open_ids), len(known_ids)) if known_ids else None
+    )
+    if known_ids and client_telemetry_coverage is not None and client_telemetry_coverage < 95:
+        warnings.append(
+            f"Client lifecycle telemetry covers {client_telemetry_coverage}% of known users; "
+            "book activation and reading metrics undercount older clients."
+        )
     calendar_day = [
         row for row in rows if period_starts["dau"] <= row["ts"] <= now
     ]
@@ -833,7 +887,7 @@ def compute_dashboard(days: float = 1.0) -> dict[str, Any]:
         and row["properties"].get("request_id")
     }
     overview = {
-        "ever_used": len(ever_ids),
+        "ever_used": len(known_ids),
         "dau": len(dau_ids),
         "wau": len(_active_ids(rows, period_starts["wau"], now)),
         "mau": len(_active_ids(rows, period_starts["mau"], now)),
@@ -961,18 +1015,60 @@ def compute_dashboard(days: float = 1.0) -> dict[str, Any]:
             ).timestamp()
             chunk = [row for row in rows if lo <= row["ts"] < hi]
             daily_active = len({row["device_id"] for row in chunk if _is_active_event(row)})
+            daily_request_ids = {
+                (row["device_id"], str(row["properties"].get("request_id")))
+                for row in chunk
+                if row["name"] == "ai_request_started"
+                and not _is_background_event(row)
+                and row["properties"].get("request_id")
+            }
+            daily_completed = [
+                row for row in rows
+                if row["name"] == "ai_request_completed"
+                and (
+                    row["device_id"],
+                    str(row["properties"].get("request_id")),
+                ) in daily_request_ids
+            ]
+            daily_failed = [
+                row for row in rows
+                if row["name"] == "ai_request_failed"
+                and (
+                    row["device_id"],
+                    str(row["properties"].get("request_id")),
+                ) in daily_request_ids
+            ]
+            daily_latencies = [
+                float(row["properties"]["latency_ms"])
+                for row in daily_completed
+                if isinstance(row["properties"].get("latency_ms"), (int, float))
+            ]
+            daily_token_rows = [
+                row for row in daily_completed
+                if isinstance(row["properties"].get("input_tokens"), (int, float))
+                and isinstance(row["properties"].get("output_tokens"), (int, float))
+            ]
+            daily_resolved = len({
+                (row["device_id"], str(row["properties"].get("request_id")))
+                for row in daily_completed + daily_failed
+            })
             daily_active_counts.append(daily_active)
             series.append({
                 "label": day.strftime("%d.%m"),
                 "active": daily_active,
                 "sessions": _sessions(chunk),
-                "tools": len({
-                    (row["device_id"], row["properties"].get("request_id"))
-                    for row in chunk
-                    if row["name"] == "ai_request_started"
-                    and not _is_background_event(row)
-                    and row["properties"].get("request_id")
-                }),
+                "tools": len(daily_request_ids),
+                "ai_requests": len(daily_request_ids),
+                "ai_success_rate": (
+                    _percent(len(daily_completed), daily_resolved)
+                    if daily_resolved else None
+                ),
+                "ai_latency_p95_ms": _percentile(daily_latencies, 0.95),
+                "ai_tokens": int(sum(
+                    float(row["properties"]["input_tokens"])
+                    + float(row["properties"]["output_tokens"])
+                    for row in daily_token_rows
+                )),
             })
             day += timedelta(days=1)
 
@@ -1040,6 +1136,13 @@ def compute_dashboard(days: float = 1.0) -> dict[str, Any]:
             "note": f"{sum(bool(row['properties'].get('request_id')) for row in request_eligible)} of {len(request_eligible)} AI request events",
             "help": "Below 95%, request reliability and retry/fallback deduplication should be treated as provisional.",
         },
+        {
+            "label": "Client telemetry coverage",
+            "value": _percent(len(app_open_ids), len(known_ids)) if known_ids else None,
+            "unit": "%",
+            "note": f"{len(app_open_ids)} of {len(known_ids)} known users sent app-open events",
+            "help": "Low coverage means older clients are visible through server-side AI traffic but activation and reading metrics undercount them.",
+        },
     ]
 
     import_started = {row["device_id"] for row in selected if row["name"] == "book_import_started"}
@@ -1076,7 +1179,7 @@ def compute_dashboard(days: float = 1.0) -> dict[str, Any]:
     metric_cards = [
         {"label": label, "value": str(overview[key])}
         for label, key in (
-            ("Ever used", "ever_used"), ("DAU", "dau"), ("WAU", "wau"),
+            ("Known users", "ever_used"), ("DAU", "dau"), ("WAU", "wau"),
             ("MAU", "mau"), ("Sessions / DAU", "sessions_per_dau"),
             ("Tools / DAU", "tools_per_dau"),
         ) if key in overview
@@ -1119,7 +1222,7 @@ def compute_dashboard(days: float = 1.0) -> dict[str, Any]:
     return {
         "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "window_days": window_days,
-        "installs": len({row["device_id"] for row in rows}),
+        "installs": len(known_ids),
         "dau": len(actors),
         "events": len(selected),
         "errors": len(failed_only_ids) + sum(row["name"] == "book_import_failed" for row in selected),
@@ -1129,7 +1232,7 @@ def compute_dashboard(days: float = 1.0) -> dict[str, Any]:
         "primary": [
             {"label": label, "value": overview[key], "note": note}
             for label, key, note in (
-                ("Ever used", "ever_used", "opened a book at least once"),
+                ("Known users", "ever_used", "distinct pseudonymous users observed across all history"),
                 ("DAU", "dau", "active today in Moscow time"),
                 ("WAU", "wau", "active in the current Moscow ISO week"),
                 ("MAU", "mau", "active in the rolling last 30 Moscow dates"),
@@ -1137,6 +1240,18 @@ def compute_dashboard(days: float = 1.0) -> dict[str, Any]:
                 ("Tools / DAU", "tools_per_dau", "AI requests today MSK, retries excluded"),
             ) if key in overview
         ],
+        "audience": {
+            "known_users": len(known_ids),
+            "client_observed_users": len(app_open_ids),
+            "client_telemetry_coverage": (
+                client_telemetry_coverage
+            ),
+            "book_openers": len(book_open_ids),
+            "book_open_rate": (
+                _percent(len(book_open_ids), len(known_ids)) if known_ids else None
+            ),
+            "active_users": len(actors),
+        },
         "tool_definitions": tool_definitions,
         "diagnostics": diagnostics,
         "funnels": [
@@ -1147,7 +1262,12 @@ def compute_dashboard(days: float = 1.0) -> dict[str, Any]:
             {"label": "Update installed", "unit": "actor/version pairs", "started": len(update_verified), "completed": len(update_installed & update_verified), "rate": _percent(len(update_installed & update_verified), len(update_verified)) if update_verified else None},
         ],
         "features": [
-            {"name": name, "users": len(users), "adoption": _percent(len(users), len(actors)) if actors else 0.0}
+            {
+                "name": name,
+                "users": len(users),
+                "active_users": len(actors),
+                "adoption": _percent(len(users), len(actors)) if actors else 0.0,
+            }
             for name, users in sorted(feature_users.items(), key=lambda item: (-len(item[1]), item[0]))
         ],
         "ai": {
@@ -1177,11 +1297,33 @@ def compute_dashboard(days: float = 1.0) -> dict[str, Any]:
             "fallback_rate": _percent(len(fallback_request_ids), len(request_ids)) if request_ids else None,
             "latency_p50_ms": _percentile(request_latencies, 0.50),
             "latency_p95_ms": _percentile(request_latencies, 0.95),
+            "latency_p99_ms": _percentile(request_latencies, 0.99),
+            "slow_request_threshold_ms": slow_request_threshold_ms,
+            "slow_requests": len(slow_request_rows),
+            "slow_request_rate": (
+                _percent(len(slow_request_rows), len(request_latencies))
+                if request_latencies else None
+            ),
             "input_tokens": int(input_tokens),
             "output_tokens": int(output_tokens),
             "total_tokens": int(total_tokens),
+            "input_tokens_per_request": (
+                round(input_tokens / len(token_rows), 1) if token_rows else None
+            ),
+            "output_tokens_per_request": (
+                round(output_tokens / len(token_rows), 1) if token_rows else None
+            ),
+            "tokens_per_request": (
+                round(total_tokens / len(token_rows), 1) if token_rows else None
+            ),
+            "tokens_p50_per_request": _percentile(request_token_totals, 0.50),
+            "tokens_p95_per_request": _percentile(request_token_totals, 0.95),
             "token_coverage": token_coverage,
             "known_cost": round(sum(exact_costs), 6) if exact_costs else None,
+            "known_cost_per_request": (
+                round(sum(exact_costs) / len(exact_costs), 6)
+                if exact_costs else None
+            ),
             "cost_currency": COST_CURRENCY,
             "cost_known_requests": len(exact_costs),
             "cost_eligible_requests": len(completed_requests),
@@ -1189,6 +1331,30 @@ def compute_dashboard(days: float = 1.0) -> dict[str, Any]:
             "cost_sources": dict(sorted(cost_sources.items())),
             "helpful_rate": _percent(helpful, len(feedback)) if feedback else None,
             "feedback_count": len(feedback),
+            "slowest": [
+                {
+                    "request_ref": str(row["properties"].get("request_id") or "")[-8:],
+                    "occurred_at": datetime.fromtimestamp(
+                        row["ts"], timezone.utc
+                    ).isoformat(timespec="seconds"),
+                    "purpose": str(row["properties"].get("purpose") or "unreported"),
+                    "route": str(row["properties"].get("route") or "unreported"),
+                    "latency_ms": float(row["properties"]["latency_ms"]),
+                    "tokens": (
+                        int(row["properties"]["input_tokens"])
+                        + int(row["properties"]["output_tokens"])
+                        if isinstance(row["properties"].get("input_tokens"), (int, float))
+                        and isinstance(row["properties"].get("output_tokens"), (int, float))
+                        else None
+                    ),
+                }
+                for row in sorted(
+                    completed_requests,
+                    key=lambda item: float(item["properties"].get("latency_ms", -1)),
+                    reverse=True,
+                )[:8]
+                if isinstance(row["properties"].get("latency_ms"), (int, float))
+            ],
             "purposes": purpose_metrics,
             "providers": [
                 {
@@ -1345,6 +1511,8 @@ async def ingest(request: Request) -> JSONResponse:
         )
         _db.commit()
         accepted = _db.total_changes - before
+    if accepted:
+        _clear_dashboard_cache()
     if contract_fixture:
         return _response({"ingested": len(records)}, 200)
     return _response({"accepted": accepted, "duplicates": len(records) - accepted}, 202)
@@ -1373,6 +1541,8 @@ async def delete_actor(request: Request) -> JSONResponse:
     with DB_LOCK:
         cursor = _db.execute("DELETE FROM events WHERE device_id = ?", (actor_id,))
         _db.commit()
+    if cursor.rowcount:
+        _clear_dashboard_cache()
     return _response({"ok": True, "deleted": max(0, cursor.rowcount)})
 
 
@@ -1380,15 +1550,31 @@ async def delete_actor(request: Request) -> JSONResponse:
 def summary(request: Request, days: float = 1.0) -> JSONResponse:
     if error := _read_auth_error(request):
         return error
-    data = compute_dashboard(days)
-    return _response({key: data[key] for key in ("updated_at", "window_days", "installs", "dau", "events", "errors", "overview", "metrics")})
+    data, cache_hit, duration_ms = _cached_dashboard(days)
+    return _response(
+        {key: data[key] for key in (
+            "updated_at", "window_days", "installs", "dau", "events", "errors",
+            "overview", "metrics",
+        )},
+        headers={
+            "Server-Timing": f"dashboard;dur={duration_ms:.1f}",
+            "X-Narra-Stats-Cache": "HIT" if cache_hit else "MISS",
+        },
+    )
 
 
 @app.get("/dashboard")
 def dashboard_data(request: Request, days: float = 1.0) -> JSONResponse:
     if error := _read_auth_error(request):
         return error
-    return _response(compute_dashboard(days))
+    data, cache_hit, duration_ms = _cached_dashboard(days)
+    return _response(
+        data,
+        headers={
+            "Server-Timing": f"dashboard;dur={duration_ms:.1f}",
+            "X-Narra-Stats-Cache": "HIT" if cache_hit else "MISS",
+        },
+    )
 
 
 @app.get("/monitors")

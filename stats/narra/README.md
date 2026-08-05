@@ -117,6 +117,11 @@ database after rollback.
 
 The Traction Overview keeps the canonical six-field contract:
 `ever_used`, `dau`, `wau`, `mau`, `sessions_per_dau` and `tools_per_dau`.
+`ever_used` is a legacy field name whose fleet meaning is lifetime distinct
+pseudonymous actors. The dashboard labels it **Known users** and keeps it equal
+to top-level `installs`, so it cannot be lower than DAU. Observed book openers
+and seven-day activation are separate product metrics; they may undercount while
+older clients are visible only through server-side AI traffic.
 DAU uses the current `Europe/Moscow` calendar date, WAU the current Moscow ISO
 week and MAU the rolling last 30 Moscow dates. Both ratios use numerators from
 the same current Moscow date as the DAU denominator, regardless of the period
@@ -143,10 +148,12 @@ result; provider retries and fallbacks never create additional value events.
 
 The diagnostic section is separate from Overview. It includes average DAU over
 available days, depth per user-day, feature-classification coverage, freshness,
-ingest lag p50/p95, explicit errors and request-ID coverage. Input/output tokens,
-total tokens, fallback, provider/model attempts and exact cost coverage live in the AI
-section. They are guardrails and debugging measures, not headline adoption
-KPIs.
+ingest lag p50/p95, explicit errors, request-ID coverage and client telemetry
+coverage. The AI section leads with tokens and known cost per completed request,
+plus p50/p95 token distribution. The growing selected-window token total remains
+a compact capacity/cost diagnostic with its exact value available on hover; it
+is not a headline adoption KPI. Slow-request rate, p99 latency and an opaque
+request-suffix table support log correlation without exposing prompts or output.
 
 Request success uses matched `ai_request_started` identities. Completed or
 failed outcomes enter immediately; a start without a terminal outcome enters
@@ -218,10 +225,13 @@ control. `/health` stays public for Railway and `/events` keeps its independent
 write-only ingest token. Production Traction may terminate the same Basic Auth
 at its reverse proxy, but direct access to this service must remain protected.
 
-Current pre-release dashboard reads the bounded analytics history into memory
-for rolling retention. Before public/high-volume traffic, replace this with
-SQL aggregates plus an explicit raw-event retention/pruning policy; the 512 MiB
-service limit is a safety stop, not a scaling design.
+The dashboard reads the bounded analytics history into memory for rolling
+retention. Browser and hub bursts are collapsed by a 15-second in-process cache,
+which is invalidated immediately after event ingestion or privacy deletion.
+Responses expose `Server-Timing` and `X-Narra-Stats-Cache` for performance
+diagnosis. Before high-volume traffic, replace the raw-history calculation with
+SQL aggregates plus an explicit retention/pruning policy; the 512 MiB service
+limit is a safety stop, not a scaling design.
 
 The deploy script keeps application code and its virtualenv root-owned; only
 `/srv/stats/narra/data` is writable by `gigatool`. Before a high-availability
