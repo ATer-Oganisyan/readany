@@ -16,6 +16,7 @@ import math
 import os
 import re
 import sqlite3
+import statistics
 import threading
 import time
 from collections import Counter, defaultdict, deque
@@ -1230,14 +1231,33 @@ def compute_dashboard(days: float = 1.0) -> dict[str, Any]:
         "metrics": metric_cards,
         "product_kpis": product_kpis,
         "primary": [
-            {"label": label, "value": overview[key], "note": note}
-            for label, key, note in (
-                ("Known users", "ever_used", "distinct pseudonymous users observed across all history"),
-                ("DAU", "dau", "active today in Moscow time"),
-                ("WAU", "wau", "active in the current Moscow ISO week"),
-                ("MAU", "mau", "active in the rolling last 30 Moscow dates"),
-                ("Sessions / DAU", "sessions_per_dau", "today MSK / DAU today"),
-                ("Tools / DAU", "tools_per_dau", "AI requests today MSK, retries excluded"),
+            {"label": label, "value": overview[key], "note": note, "help": help_text}
+            for label, key, note, help_text in (
+                (
+                    "Known users", "ever_used",
+                    "distinct pseudonymous users observed across all history",
+                    "Lifetime reach. A user counts after any accepted client or server event; this is not the number of book readers.",
+                ),
+                (
+                    "DAU", "dau", "active today in Moscow time",
+                    "Distinct users with at least one active event since 00:00 Moscow time.",
+                ),
+                (
+                    "WAU", "wau", "active in the current Moscow ISO week",
+                    "Distinct users active since Monday 00:00 Moscow time.",
+                ),
+                (
+                    "MAU", "mau", "active in the rolling last 30 Moscow dates",
+                    "Distinct users active during the latest 30 Moscow calendar dates.",
+                ),
+                (
+                    "Sessions / DAU", "sessions_per_dau", "today MSK / DAU today",
+                    "Qualified product sessions since 00:00 Moscow time divided by today's active users.",
+                ),
+                (
+                    "Tools / DAU", "tools_per_dau", "AI requests today MSK, retries excluded",
+                    "Logical user-origin AI requests since 00:00 Moscow time divided by today's active users. Retry and fallback attempts do not increase the numerator.",
+                ),
             ) if key in overview
         ],
         "audience": {
@@ -1295,9 +1315,18 @@ def compute_dashboard(days: float = 1.0) -> dict[str, Any]:
             ),
             "fallback_requests": len(fallback_request_ids),
             "fallback_rate": _percent(len(fallback_request_ids), len(request_ids)) if request_ids else None,
+            "latency_average_ms": (
+                round(sum(request_latencies) / len(request_latencies), 1)
+                if request_latencies else None
+            ),
+            "latency_median_ms": (
+                round(float(statistics.median(request_latencies)), 1)
+                if request_latencies else None
+            ),
             "latency_p50_ms": _percentile(request_latencies, 0.50),
             "latency_p95_ms": _percentile(request_latencies, 0.95),
             "latency_p99_ms": _percentile(request_latencies, 0.99),
+            "latency_sample_size": len(request_latencies),
             "slow_request_threshold_ms": slow_request_threshold_ms,
             "slow_requests": len(slow_request_rows),
             "slow_request_rate": (
@@ -1316,8 +1345,13 @@ def compute_dashboard(days: float = 1.0) -> dict[str, Any]:
             "tokens_per_request": (
                 round(total_tokens / len(token_rows), 1) if token_rows else None
             ),
+            "tokens_median_per_request": (
+                round(float(statistics.median(request_token_totals)), 1)
+                if request_token_totals else None
+            ),
             "tokens_p50_per_request": _percentile(request_token_totals, 0.50),
             "tokens_p95_per_request": _percentile(request_token_totals, 0.95),
+            "token_sample_size": len(token_rows),
             "token_coverage": token_coverage,
             "known_cost": round(sum(exact_costs), 6) if exact_costs else None,
             "known_cost_per_request": (
@@ -1340,6 +1374,16 @@ def compute_dashboard(days: float = 1.0) -> dict[str, Any]:
                     "purpose": str(row["properties"].get("purpose") or "unreported"),
                     "route": str(row["properties"].get("route") or "unreported"),
                     "latency_ms": float(row["properties"]["latency_ms"]),
+                    "input_tokens": (
+                        int(row["properties"]["input_tokens"])
+                        if isinstance(row["properties"].get("input_tokens"), (int, float))
+                        else None
+                    ),
+                    "output_tokens": (
+                        int(row["properties"]["output_tokens"])
+                        if isinstance(row["properties"].get("output_tokens"), (int, float))
+                        else None
+                    ),
                     "tokens": (
                         int(row["properties"]["input_tokens"])
                         + int(row["properties"]["output_tokens"])

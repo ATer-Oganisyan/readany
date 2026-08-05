@@ -149,11 +149,15 @@ result; provider retries and fallbacks never create additional value events.
 The diagnostic section is separate from Overview. It includes average DAU over
 available days, depth per user-day, feature-classification coverage, freshness,
 ingest lag p50/p95, explicit errors, request-ID coverage and client telemetry
-coverage. The AI section leads with tokens and known cost per completed request,
-plus p50/p95 token distribution. The growing selected-window token total remains
-a compact capacity/cost diagnostic with its exact value available on hover; it
-is not a headline adoption KPI. Slow-request rate, p99 latency and an opaque
-request-suffix table support log correlation without exposing prompts or output.
+coverage. The AI section shows average, median and p95 for both completed-request
+latency and input-plus-output tokens, alongside the measured sample size and
+coverage. Average supports capacity planning, median describes a typical request,
+and p95 exposes the slow or deep tail. The growing selected-window token total
+remains a compact capacity/cost diagnostic with its exact value visible in the
+card; it is not a headline adoption KPI. Slow-request rate, p99 latency and a
+copyable opaque request-suffix table support log correlation without exposing
+prompts or output. The table also separates input, output and total tokens and
+highlights the most common task/route pair in the displayed slowest sample.
 
 Request success uses matched `ai_request_started` identities. Completed or
 failed outcomes enter immediately; a start without a terminal outcome enters
