@@ -34,3 +34,51 @@ npm test
 
 Copy `.env.example` to `.env` only for local development. Secrets belong in the
 deployment environment and must never be committed or shipped to the Expo app.
+
+## i167 production
+
+Production is a single Docker replica behind Caddy on `127.0.0.1:8788`. The
+file-backed installation registry and analytics outbox live in the external
+`narra_gateway-data` volume. Two production writers must never mount that volume
+at the same time.
+
+The first migration from the legacy `/srv/nara` deployment creates a filtered,
+root-only environment file and keeps all stable installation secrets:
+
+```bash
+REMOTE=max@158.160.163.167 ./bootstrap-i167.sh
+```
+
+Deploy only a clean, reviewed commit and pin the exact currently running image
+ID as a compare-and-swap precondition:
+
+```bash
+EXPECTED_REMOTE_IMAGE_ID="$(ssh max@158.160.163.167 \
+  "sudo docker inspect --format '{{.Image}}' narra-gateway-1")"
+
+REMOTE=max@158.160.163.167 \
+EXPECTED_REMOTE_IMAGE_ID="$EXPECTED_REMOTE_IMAGE_ID" \
+REVIEWED_COMMIT="$(git rev-parse HEAD)" \
+./deploy-i167.sh
+```
+
+The deploy builds an immutable image tagged by commit, creates and validates a
+volume backup, runs the candidate against a cloned volume on localhost port
+`8789`, and only then replaces the container on port `8788`. Caddy and the
+public hostname do not change. A failed production probe restarts the previous
+image automatically.
+
+`narra-gateway-backup.timer` creates daily root-only volume archives with
+14-day retention. A restore must be performed while the gateway is stopped:
+
+```bash
+sudo docker run --rm --network none --user 0:0 --entrypoint sh \
+  -v narra_gateway-data:/data \
+  -v /srv/backups/narra-gateway:/backup:ro \
+  readany/narra-gateway:<reviewed-commit> \
+  -c 'tar -xzf /backup/<archive>.tar.gz -C /data && chown -R 1000:1000 /data'
+```
+
+The secret file is `/etc/narra-gateway.env` with mode `0600`. Do not reuse the
+gateway signing secret as the analytics HMAC secret and do not copy Stats read
+credentials into the gateway container.

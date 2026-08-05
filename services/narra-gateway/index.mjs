@@ -20,7 +20,7 @@ import { parseEventBatch } from './events.mjs'
 import { createEventStore } from './event-store.mjs'
 import { fetchWithRedirectPolicy, readBoundedBody } from './safe-fetch.mjs'
 import { createConcurrencyGate, requestAbortSignal, withTimeout } from './concurrency.mjs'
-import { parseEnvInt } from './env.mjs'
+import { parseEnvBool, parseEnvInt } from './env.mjs'
 import {
   analyticsRoute,
   completionProperties,
@@ -49,16 +49,19 @@ import {
   resolveTokenSecret
 } from './security.mjs'
 import { createInstallationRegistry } from './installation-registry.mjs'
+import { gatewayReadiness } from './readiness.mjs'
 
 // ================= Конфигурация =================
 const PORT = process.env.PORT || 8787
 const INSECURE = process.env.ALLOW_INSECURE_TLS === 'true'
 const PRODUCTION = process.env.NODE_ENV === 'production'
+const BUILD_VERSION = String(process.env.GATEWAY_BUILD_VERSION || 'development').slice(0, 120)
 if (PRODUCTION && INSECURE) throw new Error('ALLOW_INSECURE_TLS is forbidden in production')
 const ANALYTICS_ENV = process.env.ANALYTICS_ENV || (PRODUCTION ? 'production' : 'development')
 if (!['production', 'staging', 'development', 'test'].includes(ANALYTICS_ENV)) {
   throw new Error('ANALYTICS_ENV must be production, staging, development or test')
 }
+const VIDEO_REQUIRED = parseEnvBool(process.env, 'VIDEO_REQUIRED', false)
 const ALLOW_INSECURE_VIDEO_HTTP = process.env.ALLOW_INSECURE_VIDEO_HTTP === 'true'
 const INSECURE_VIDEO_ENV_ALLOWED = insecureVideoEnvironmentAllowed({
   production: PRODUCTION,
@@ -68,6 +71,11 @@ if (ALLOW_INSECURE_VIDEO_HTTP && !INSECURE_VIDEO_ENV_ALLOWED) {
   throw new Error('ALLOW_INSECURE_VIDEO_HTTP is forbidden outside staging or local development/test')
 }
 const VIDEO_INSECURE_HTTP_HOSTS = String(process.env.VIDEO_INSECURE_HTTP_HOSTS || '')
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean)
+const ALLOW_INSECURE_LLM_HTTP = parseEnvBool(process.env, 'ALLOW_INSECURE_LLM_HTTP', false)
+const LLM_INSECURE_HTTP_HOSTS = String(process.env.LLM_INSECURE_HTTP_HOSTS || '')
   .split(',')
   .map((value) => value.trim())
   .filter(Boolean)
@@ -143,7 +151,15 @@ const SALUTE_KEY = _saluteSecret
       process.env.SALUTESPEECH_CLIENT_SECRET
     )
 // LiteLLM-шлюз для чата (уже держит ключи Сбера у команды).
-const LLM_BASE_URL = serviceUrl('LLM_BASE_URL', process.env.LLM_BASE_URL, { allowPrivateHttp: true })
+const LLM_BASE_URL = serviceUrl('LLM_BASE_URL', process.env.LLM_BASE_URL, {
+  allowPrivateHttp: true,
+  allowInsecureHttp: ALLOW_INSECURE_LLM_HTTP,
+  allowedInsecureHosts: LLM_INSECURE_HTTP_HOSTS
+})
+const LLM_TRANSPORT_SECURE = isSecureServiceUrl(LLM_BASE_URL)
+if (LLM_BASE_URL && !LLM_TRANSPORT_SECURE) {
+  console.warn('[security] LLM_BASE_URL uses explicitly allowed plaintext HTTP; prompts and bearer credentials are not encrypted in transit')
+}
 const LLM_API_KEY = (process.env.LLM_API_KEY || '').trim() // виртуальный ключ LiteLLM (sk-...)
 const LLM_MODEL = (process.env.LLM_MODEL || 'gigachat-3-ultra').trim()
 
@@ -685,6 +701,8 @@ app.get('/health', (_req, res) => {
   const llm = llmRouteReadiness()
   res.json({
     ok: true,
+    version: BUILD_VERSION,
+    environment: ANALYTICS_ENV,
     services: {
       gigachat: llm.ready,
       salutespeech: !!SALUTE_KEY && SBER_CA_VERIFIED,
@@ -692,6 +710,8 @@ app.get('/health', (_req, res) => {
       video: !!KANDINSKY_TOKEN && !!VIDEO_BASE_URL
     },
     media_transport: {
+      llm_https: LLM_TRANSPORT_SECURE,
+      llm_insecure_http_allowed: Boolean(LLM_BASE_URL && !LLM_TRANSPORT_SECURE && ALLOW_INSECURE_LLM_HTTP),
       video_https: VIDEO_TRANSPORT_SECURE,
       video_insecure_http_allowed: Boolean(VIDEO_BASE_URL && !VIDEO_TRANSPORT_SECURE && ALLOW_INSECURE_VIDEO_HTTP),
       sber_ca_verified: SBER_CA_VERIFIED
@@ -708,24 +728,32 @@ app.get('/health', (_req, res) => {
 
 app.get('/ready', (_req, res) => {
   const llm = llmRouteReadiness()
+  const registryStatus = installationRegistry.status()
   const videoConfigured = !!KANDINSKY_TOKEN && !!VIDEO_BASE_URL
   const videoTransportAccepted =
     VIDEO_TRANSPORT_SECURE ||
     Boolean(ALLOW_INSECURE_VIDEO_HTTP && INSECURE_VIDEO_ENV_ALLOWED)
-  const degraded = videoConfigured && !VIDEO_TRANSPORT_SECURE
-    ? [{ code: 'VIDEO_PLAINTEXT_HTTP', environment: ANALYTICS_ENV }]
-    : []
-  const ready =
-    llm.ready &&
-    !!SALUTE_KEY &&
-    SBER_CA_VERIFIED &&
-    !!KANDINSKY_TOKEN &&
-    videoConfigured &&
-    videoTransportAccepted
-  res.status(ready ? 200 : 503).json({
-    ok: ready,
-    degraded,
+  const readiness = gatewayReadiness({
+    llmReady: llm.ready,
+    speechReady: !!SALUTE_KEY && SBER_CA_VERIFIED,
+    imageReady: !!KANDINSKY_TOKEN,
+    storageReady: registryStatus.storage_verified,
+    videoConfigured,
+    videoTransportAccepted,
+    videoRequired: VIDEO_REQUIRED,
+    videoTransportSecure: VIDEO_TRANSPORT_SECURE,
+    llmTransportSecure: LLM_TRANSPORT_SECURE,
+    environment: ANALYTICS_ENV
+  })
+  res.status(readiness.ready ? 200 : 503).json({
+    ok: readiness.ready,
+    version: BUILD_VERSION,
+    environment: ANALYTICS_ENV,
+    degraded: readiness.degraded,
+    checks: readiness.checks,
     media_transport: {
+      llm_https: LLM_TRANSPORT_SECURE,
+      llm_insecure_http_allowed: Boolean(LLM_BASE_URL && !LLM_TRANSPORT_SECURE && ALLOW_INSECURE_LLM_HTTP),
       video_https: VIDEO_TRANSPORT_SECURE,
       video_insecure_http_allowed: Boolean(
         videoConfigured && !VIDEO_TRANSPORT_SECURE && ALLOW_INSECURE_VIDEO_HTTP
@@ -734,7 +762,7 @@ app.get('/ready', (_req, res) => {
     },
     llm_routes: llm.purposes,
     installation_registry: {
-      storage_verified: installationRegistry.status().storage_verified
+      storage_verified: registryStatus.storage_verified
     }
   })
 })

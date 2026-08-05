@@ -1,0 +1,40 @@
+name: narra
+
+services:
+  gateway:
+    image: ${NARRA_GATEWAY_IMAGE:?NARRA_GATEWAY_IMAGE must contain an immutable image tag}
+    env_file:
+      - /etc/narra-gateway.env
+    environment:
+      NODE_ENV: production
+      PORT: "8787"
+      DATA_DIR: /data
+      PERSISTENT_DATA_MOUNT_PATH: /data
+      INSTALLATION_SINGLE_REPLICA_ACK: "true"
+    ports:
+      - "127.0.0.1:8788:8787"
+    volumes:
+      - gateway-data:/data
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 30s
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 1g
+    cpus: 1.5
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
+volumes:
+  gateway-data:
+    external: true
+    name: narra_gateway-data
