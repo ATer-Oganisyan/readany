@@ -1,11 +1,84 @@
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
+import { recordTelemetry } from "@/lib/analytics/telemetry";
 import * as FileSystem from "expo-file-system/legacy";
+import { normalizeNarraError } from "./errors";
 import type { NarraCharacter } from "./types";
 
 const MEDIA_DIR = `${FileSystem.documentDirectory}narra-media`;
 const MEDIA_PATH_MARKER = "/Documents/narra-media/";
 let speechFileSequence = 0;
 const portraitRequests = new Map<string, Promise<string>>();
+
+type MediaJobType = "image" | "tts" | "avatar";
+type MediaJobOrigin = "user" | "background";
+
+function mediaLatencyBucket(durationMs: number): string {
+  if (durationMs < 1_000) return "<1s";
+  if (durationMs < 5_000) return "1-4s";
+  if (durationMs < 15_000) return "5-14s";
+  if (durationMs < 60_000) return "15-59s";
+  if (durationMs < 5 * 60_000) return "1-4m";
+  return "5m+";
+}
+
+function firstAudioLatencyBucket(durationMs: number): string {
+  if (durationMs < 1_000) return "<1s";
+  if (durationMs < 5_000) return "1-4s";
+  if (durationMs < 15_000) return "5-14s";
+  return "15s+";
+}
+
+async function trackMediaJob<T>(
+  jobType: MediaJobType,
+  origin: MediaJobOrigin,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const startedAt = Date.now();
+  const provider = jobType === "tts" ? "salutespeech" : "kandinsky";
+  const model = jobType === "tts" ? "salutespeech-yourvoice" : "k6-image-t2i";
+  recordTelemetry("media_job_enqueued", {
+    job_type: jobType,
+    provider,
+    model,
+    quality: "unknown",
+    queue_depth_bucket: "0",
+    origin,
+  });
+  recordTelemetry("media_job_started", {
+    job_type: jobType,
+    queue_wait_bucket: "<1s",
+    origin,
+  });
+  try {
+    const result = await operation();
+    recordTelemetry("media_job_completed", {
+      job_type: jobType,
+      job_latency_bucket: mediaLatencyBucket(Date.now() - startedAt),
+      cache_hit: false,
+      origin,
+    });
+    return result;
+  } catch (error) {
+    const code = normalizeNarraError(error).code;
+    const safeErrorCode = {
+      AUTH: "AUTH",
+      CONFIG: "NO_PROXY",
+      CONNECTION: "NETWORK",
+      RATE: "RATE",
+      REQUEST: "VALIDATION",
+      SERVICE: "UNKNOWN",
+      TIMEOUT: "TIMEOUT",
+    }[code];
+    recordTelemetry("media_job_failed", {
+      job_type: jobType,
+      stage: "provider",
+      safe_error_code: safeErrorCode,
+      retry_count_bucket: "0",
+      origin,
+    });
+    throw error;
+  }
+}
 
 /** Rehomes persisted iOS file URIs after the app data-container UUID changes. */
 export function normalizePersistedNarraMediaUri(uri: string): string {
@@ -195,7 +268,7 @@ async function persistGeneratedImage(
   return path;
 }
 
-export async function generateCharacterPortrait(
+async function generateCharacterPortraitRequest(
   bookId: string,
   character: NarraCharacter,
 ): Promise<string> {
@@ -211,6 +284,15 @@ export async function generateCharacterPortrait(
   await ensureMediaDir();
   const path = `${MEDIA_DIR}/${safeKey(`${bookId}-${character.id}-portrait`)}.png`;
   return persistGeneratedImage(path, payload);
+}
+
+export function generateCharacterPortrait(
+  bookId: string,
+  character: NarraCharacter,
+): Promise<string> {
+  return trackMediaJob("avatar", "background", () =>
+    generateCharacterPortraitRequest(bookId, character),
+  );
 }
 
 /** Shares portrait work between background catalog preloading and the chat screen. */
@@ -233,7 +315,7 @@ export function ensureCharacterPortrait(
   return request;
 }
 
-export async function generateSceneImage(
+async function generateSceneImageRequest(
   bookId: string,
   chapter: string,
   excerpt: string,
@@ -255,7 +337,19 @@ export async function generateSceneImage(
   return persistGeneratedImage(path, payload);
 }
 
-export async function synthesizeNarraSpeech(text: string, voice: string): Promise<string> {
+export function generateSceneImage(
+  bookId: string,
+  chapter: string,
+  excerpt: string,
+  characters: NarraCharacter[],
+): Promise<string> {
+  return trackMediaJob("image", "user", () =>
+    generateSceneImageRequest(bookId, chapter, excerpt, characters),
+  );
+}
+
+async function synthesizeNarraSpeechRequest(text: string, voice: string): Promise<string> {
+  const startedAt = Date.now();
   const response = await narraGatewayRequest("/v2/speech/synthesize", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -264,6 +358,14 @@ export async function synthesizeNarraSpeech(text: string, voice: string): Promis
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as { error?: string } | null;
     throw new Error(payload?.error || `Speech synthesis failed (${response.status})`);
+  }
+  const sampleRate = Number(response.headers.get("x-audio-sample-rate"));
+  if (sampleRate === 24_000 || sampleRate === 48_000) {
+    recordTelemetry("tts_first_audio_ready", {
+      sample_rate: sampleRate,
+      first_audio_latency_bucket: firstAudioLatencyBucket(Date.now() - startedAt),
+      origin: "user",
+    });
   }
   await ensureMediaDir();
   const path = `${MEDIA_DIR}/speech-${Date.now()}-${speechFileSequence++}.wav`;
@@ -276,4 +378,8 @@ export async function synthesizeNarraSpeech(text: string, voice: string): Promis
     encoding: FileSystem.EncodingType.Base64,
   });
   return path;
+}
+
+export function synthesizeNarraSpeech(text: string, voice: string): Promise<string> {
+  return trackMediaJob("tts", "user", () => synthesizeNarraSpeechRequest(text, voice));
 }

@@ -15,6 +15,9 @@ import { NativeContextMenuButton } from "@/components/ui/NativeContextMenuButton
 import { Text, TextInput } from "@/components/ui/Typography";
 import { useReaderBridge } from "@/hooks/use-reader-bridge";
 import type { RelocateEvent, SelectionEvent, VisibleTTSSegment } from "@/hooks/use-reader-bridge";
+import { durationBucket } from "@/lib/analytics/contract";
+import { recordTelemetry } from "@/lib/analytics/telemetry";
+import { findBundledCatalogBookByTitle } from "@/lib/catalog/bundled-books";
 import {
   DEFAULT_READER_FONT_FAMILY,
   getBundledReaderFontFaceCSS,
@@ -367,6 +370,10 @@ export function ReaderScreen({ route, navigation }: Props) {
 
   const incrementPagesRead = useReadingSessionStore((s) => s.incrementPagesRead);
   const incrementCharactersRead = useReadingSessionStore((s) => s.incrementCharactersRead);
+  const readingActiveTime = useReadingSessionStore(
+    (state) => state.currentSession?.totalActiveTime ?? 0,
+  );
+  const qualifiedReadingRecordedRef = useRef(false);
   const { sendEvent } = useReadingSession(bookId); // Added useReadingSession hook
   const { books, updateBook } = useLibraryStore();
   const setGoToCfiFn = useReaderStore((s) => s.setGoToCfiFn);
@@ -382,6 +389,16 @@ export function ReaderScreen({ route, navigation }: Props) {
   ).current;
   const { loadAnnotations, highlights, removeBookmark } = useAnnotationStore();
   const book = useMemo(() => books.find((b) => b.id === bookId), [books, bookId]);
+
+  useEffect(() => {
+    if (qualifiedReadingRecordedRef.current || readingActiveTime < 60_000) return;
+    qualifiedReadingRecordedRef.current = true;
+    recordTelemetry("reading_session_qualified", {
+      book_kind: book && findBundledCatalogBookByTitle(book.meta.title) ? "builtin" : "imported",
+      duration_seconds: Math.round(readingActiveTime / 1_000),
+      duration_bucket: durationBucket(readingActiveTime),
+    });
+  }, [book, readingActiveTime]);
 
   // ── System safe area ────────────────────────────────────────────────────────
   const { stableTopInset, insets } = useReaderSystemInfo({
@@ -1292,6 +1309,9 @@ export function ReaderScreen({ route, navigation }: Props) {
       return;
     }
     setBookTitle(book.meta.title);
+    recordTelemetry("book_opened", {
+      book_kind: findBundledCatalogBookByTitle(book.meta.title) ? "builtin" : "imported",
+    });
     updateBook(bookId, { lastOpenedAt: Date.now() });
     loadAnnotations(bookId);
 

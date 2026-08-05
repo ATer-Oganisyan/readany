@@ -1,7 +1,9 @@
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
+import { recordTelemetry } from "@/lib/analytics/telemetry";
 import { useNarraStore } from "@/stores/narra-store";
 import { getChunks } from "@readany/core/db/database";
 import type { Book } from "@readany/core/types";
+import { characterCountBucket, durationBucket } from "../analytics/contract";
 import {
   normalizeCharacterAnalysisResponse,
   parseNarraStreamText,
@@ -47,9 +49,11 @@ export async function analyzeBookCharacters(
   book: Book,
   textFallback?: CharacterAnalysisTextFallback,
 ): Promise<NarraCharacter[]> {
+  const startedAt = Date.now();
   const store = useNarraStore.getState();
   store.setAnalyzing(book.id);
   store.setAnalysisError(book.id);
+  recordTelemetry("book_analysis_started", { analysis_version: "v1", origin: "user" });
   try {
     if (__DEV__ && process.env.EXPO_PUBLIC_NARRA_USE_MOCKS === "1") {
       store.setCharacters(book.id, NARRA_MOCK_CHARACTERS);
@@ -64,6 +68,14 @@ export async function analyzeBookCharacters(
         NARRA_MOCK_CHARACTER_ID,
         "Читатель старается проверять необычные наблюдения и не торопится с выводами.",
       );
+      recordTelemetry("book_analysis_completed", {
+        analysis_version: "v1",
+        character_count_bucket: characterCountBucket(NARRA_MOCK_CHARACTERS.length),
+        duration_bucket: durationBucket(Date.now() - startedAt),
+        pov: "unknown",
+        confidence_bucket: "unknown",
+        origin: "user",
+      });
       return NARRA_MOCK_CHARACTERS;
     }
     const chunks = await getChunks(book.id);
@@ -127,9 +139,32 @@ export async function analyzeBookCharacters(
       );
     }
     store.setCharacters(book.id, characters);
+    recordTelemetry("book_analysis_completed", {
+      analysis_version: "v1",
+      character_count_bucket: characterCountBucket(characters.length),
+      duration_bucket: durationBucket(Date.now() - startedAt),
+      pov: "unknown",
+      confidence_bucket: "unknown",
+      origin: "user",
+    });
     return characters;
   } catch (error) {
     const normalized = reportNarraError("character_analysis", error);
+    const safeErrorCode = {
+      AUTH: "AUTH",
+      CONFIG: "NO_PROXY",
+      CONNECTION: "NETWORK",
+      RATE: "RATE",
+      REQUEST: "VALIDATION",
+      SERVICE: "UNKNOWN",
+      TIMEOUT: "TIMEOUT",
+    }[normalized.code];
+    recordTelemetry("book_analysis_failed", {
+      analysis_version: "v1",
+      stage: "character_markup",
+      safe_error_code: safeErrorCode,
+      origin: "user",
+    });
     store.setAnalysisError(book.id, normalized.message);
     throw normalized;
   } finally {

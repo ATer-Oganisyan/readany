@@ -1,6 +1,7 @@
 import { NarraChat } from "@/components/chat/NarraChat";
 import { Text } from "@/components/ui/Typography";
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
+import { recordTelemetry } from "@/lib/analytics/telemetry";
 import { NarraAudioPlayer } from "@/lib/narra/audio-player";
 import { isCharacterUnlocked, normalizeReadingProgress } from "@/lib/narra/domain";
 import { reportNarraError } from "@/lib/narra/errors";
@@ -84,6 +85,10 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
   const audioRef = useRef(new NarraAudioPlayer());
   const greetingCreatedAt = useRef(Date.now()).current;
   const unlocked = Boolean(book && character && isCharacterUnlocked(book.progress, character));
+
+  useEffect(() => {
+    recordTelemetry("chat_opened", { feature: "chat" });
+  }, []);
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -192,6 +197,11 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
       try {
         const uri = await synthesizeNarraSpeech(content, character.voice);
         audioRef.current.play(uri, () => setSpeakingId(null));
+        recordTelemetry("tts_playback_started", {
+          source: "character",
+          cache_hit: false,
+          origin: "user",
+        });
       } catch (error) {
         setSpeakingId(null);
         Alert.alert(

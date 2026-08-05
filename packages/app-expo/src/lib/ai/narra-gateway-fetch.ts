@@ -253,5 +253,21 @@ async function directGatewayRequest(path: string, init: RequestInit): Promise<Re
 }
 
 export async function narraGatewayRequest(path: string, init: RequestInit = {}): Promise<Response> {
-  return configuredAdapter ? configuredAdapter(path, init) : directGatewayRequest(path, init);
+  const request = withLogicalRequestId(path, init);
+  return configuredAdapter ? configuredAdapter(path, request) : directGatewayRequest(path, request);
+}
+
+/**
+ * One client action keeps one identity across provider retries and fallbacks.
+ * The gateway owns provider telemetry; callers cannot select provider/model.
+ */
+function withLogicalRequestId(path: string, init: RequestInit): RequestInit {
+  if (!path.startsWith("/v2/ai/chat/") || typeof init.body !== "string") return init;
+  try {
+    const payload = JSON.parse(init.body) as Record<string, unknown>;
+    if (typeof payload.request_id === "string") return init;
+    return { ...init, body: JSON.stringify({ ...payload, request_id: Crypto.randomUUID() }) };
+  } catch {
+    return init;
+  }
 }

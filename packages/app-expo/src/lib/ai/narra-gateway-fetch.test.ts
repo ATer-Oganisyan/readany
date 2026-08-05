@@ -201,3 +201,24 @@ describe("Narra gateway build configuration", () => {
     });
   });
 });
+
+describe("Narra logical request identity", () => {
+  it("adds one opaque request id before a request reaches an adapter", async () => {
+    vi.resetModules();
+    const gateway = await import("./narra-gateway-fetch");
+    const adapter = vi.fn(async (_path: string, _init: RequestInit) =>
+      jsonResponse(200, { ok: true }),
+    );
+    gateway.setNarraGatewayAdapter(adapter);
+
+    await gateway.narraGatewayRequest("/v2/ai/chat/complete", {
+      method: "POST",
+      body: JSON.stringify({ purpose: "summary", messages: [] }),
+    });
+
+    const payload = JSON.parse(String(adapter.mock.calls[0]?.[1]?.body));
+    expect(payload.request_id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+  });
+});

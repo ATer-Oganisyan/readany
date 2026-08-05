@@ -53,6 +53,7 @@ import { CatalogCharacterPortraitPreloader } from "@/components/catalog/CatalogC
 import { AnimatedSplash } from "@/components/splash/AnimatedSplash";
 import { UpdateDialog } from "@/components/update/UpdateDialog";
 import { useUpdateChecker } from "@/hooks/use-update-checker";
+import { startTelemetry } from "@/lib/analytics/telemetry";
 import { navigationRef } from "@/lib/navigationRef";
 import { ExpoPlatformService } from "@/lib/platform/expo-platform-service";
 import { seekActiveTTS, seekActiveTTSBy } from "@/lib/platform/tts-track-controls";
@@ -89,6 +90,8 @@ export default function App() {
   const [bootError, setBootError] = useState<string | null>(null);
   const [initialThemeMode, setInitialThemeMode] = useState<ThemeMode | null>(null);
   const [splashFinished, setSplashFinished] = useState(false);
+
+  useEffect(() => startTelemetry(), []);
 
   // The first React frame contains the same centered artwork as the native
   // launch screen, so it is safe to reveal the animated handoff immediately.
