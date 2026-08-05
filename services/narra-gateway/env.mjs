@@ -5,3 +5,10 @@ export function parseEnvInt(env, name, fallback, max) {
   }
   return value
 }
+
+export function parseEnvBool(env, name, fallback = false) {
+  const value = String(env[name] ?? fallback).trim().toLowerCase()
+  if (value === 'true') return true
+  if (value === 'false') return false
+  throw new Error(`${name} must be true or false`)
+}

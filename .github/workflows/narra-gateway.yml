@@ -1,0 +1,58 @@
+name: Narra Gateway
+
+on:
+  pull_request:
+    paths:
+      - "services/narra-gateway/**"
+      - "stats/narra/**"
+      - ".github/workflows/narra-gateway.yml"
+  push:
+    branches: [main]
+    paths:
+      - "services/narra-gateway/**"
+      - "stats/narra/**"
+      - ".github/workflows/narra-gateway.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: services/narra-gateway/package-lock.json
+
+      - name: Install dependencies
+        working-directory: services/narra-gateway
+        run: npm ci
+
+      - name: Test gateway
+        working-directory: services/narra-gateway
+        run: npm test
+
+      - name: Test Stats contract
+        working-directory: stats/narra
+        run: |
+          python3 -m pip install -r requirements.txt
+          python3 -m unittest test_server.py
+
+      - name: Validate operations scripts
+        run: bash -n services/narra-gateway/*.sh
+
+      - name: Validate production Compose
+        run: |
+          sudo install -m 0644 /dev/null /etc/narra-gateway.env
+          NARRA_GATEWAY_IMAGE=readany/narra-gateway:ci \
+            docker compose -f services/narra-gateway/compose.i167.yml config >/dev/null
+
+      - name: Build production image
+        working-directory: services/narra-gateway
+        run: docker build --build-arg GATEWAY_BUILD_VERSION=ci -t readany/narra-gateway:ci .
