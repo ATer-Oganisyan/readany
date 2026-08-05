@@ -39,6 +39,12 @@ export interface VisibleTTSSegment {
   cfi: string;
 }
 
+export interface CharacterTapEvent {
+  characterId: string;
+  /** Словоформа имени, по которой тапнули (для диагностики). */
+  name: string;
+}
+
 export interface VisibleTTSContext {
   before: VisibleTTSSegment[];
   after: VisibleTTSSegment[];
@@ -80,6 +86,7 @@ export interface ReaderBridgeCallbacks {
   onBookmarkSnippet?: (text: string) => void;
   onToggleBookmark?: () => void;
   onBookmarkPull?: (detail: BookmarkPullEvent) => void;
+  onCharacterTap?: (detail: CharacterTapEvent) => void;
 }
 
 export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
@@ -704,6 +711,20 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       `);
   }, []);
 
+  // ─── Character Name Markup Commands ───
+  /** Спека матчера имён персонажей (JSON) либо null — убрать разметку. */
+  const setCharacterNames = useCallback((specJson: string | null) => {
+    const arg = specJson ? JSON.stringify(specJson) : "null";
+    webViewRef.current?.injectJavaScript(`
+        (function() {
+          try {
+            if (window.setCharacterNames) window.setCharacterNames(${arg});
+          } catch(e) { console.error('[WebView] setCharacterNames error:', e); }
+        })();
+        true;
+      `);
+  }, []);
+
   const removeRuby = useCallback(() => {
     webViewRef.current?.injectJavaScript(`
       (function() {
@@ -794,6 +815,14 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
             armed: !!msg.armed,
             active: !!msg.active,
           });
+          break;
+        case "characterTap":
+          if (msg.characterId) {
+            cb.onCharacterTap?.({
+              characterId: String(msg.characterId),
+              name: typeof msg.name === "string" ? msg.name : "",
+            });
+          }
           break;
         case "visibleText":
           console.log(
@@ -999,6 +1028,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       setRubyDicts,
       injectRuby,
       removeRuby,
+      setCharacterNames,
     }),
     [
       handleMessage,
@@ -1036,6 +1066,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       setRubyDicts,
       injectRuby,
       removeRuby,
+      setCharacterNames,
     ],
   );
 }

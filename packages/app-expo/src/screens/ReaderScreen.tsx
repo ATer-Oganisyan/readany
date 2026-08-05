@@ -15,6 +15,10 @@ import { NativeContextMenuButton } from "@/components/ui/NativeContextMenuButton
 import { Text, TextInput } from "@/components/ui/Typography";
 import { useReaderBridge } from "@/hooks/use-reader-bridge";
 import type { RelocateEvent, SelectionEvent, VisibleTTSSegment } from "@/hooks/use-reader-bridge";
+import { getBundledCatalogCharactersByTitle } from "@/lib/narra/bundled-catalog-characters";
+import { buildCharacterNameMatcherSpec } from "@/lib/narra/character-name-matcher";
+import { isCharacterUnlocked } from "@/lib/narra/domain";
+import type { NarraCharacter } from "@/lib/narra/types";
 import {
   DEFAULT_READER_FONT_FAMILY,
   getBundledReaderFontFaceCSS,
@@ -25,6 +29,7 @@ import type { RootStackParamList } from "@/navigation/RootNavigator";
 import {
   useAnnotationStore,
   useLibraryStore,
+  useNarraStore,
   useReaderStore,
   useReadingSessionStore,
   useSettingsStore,
@@ -73,6 +78,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 
 // ── Extracted modules ──
+import { ReaderCharacterCard } from "./reader/ReaderCharacterCard";
 import { ReaderNoteViewModal } from "./reader/ReaderNoteViewModal";
 import { ReaderToolbar, TOOLBAR_HEIGHT } from "./reader/ReaderToolbar";
 
@@ -382,6 +388,48 @@ export function ReaderScreen({ route, navigation }: Props) {
   ).current;
   const { loadAnnotations, highlights, removeBookmark } = useAnnotationStore();
   const book = useMemo(() => books.find((b) => b.id === bookId), [books, bookId]);
+
+  // ── Narra: кликабельные имена персонажей ────────────────────────────────────
+  const narraBookCharacters = useNarraStore((state) => state.books[bookId]?.characters);
+  const setNarraCharacters = useNarraStore((state) => state.setCharacters);
+  const bundledCharacters = useMemo(
+    () => (book ? getBundledCatalogCharactersByTitle(book.meta.title) : undefined),
+    [book],
+  );
+  const characters = useMemo<NarraCharacter[]>(
+    () => (narraBookCharacters?.length ? narraBookCharacters : (bundledCharacters ?? [])),
+    [narraBookCharacters, bundledCharacters],
+  );
+  const charactersFromBundledCatalog = !narraBookCharacters?.length;
+  // Ключ состава открытых персонажей: спека пересобирается только при unlock,
+  // а не на каждом изменении прогресса
+  const unlockedCharacterIdsKey = useMemo(
+    () =>
+      characters
+        .filter((character) => isCharacterUnlocked(progress, character))
+        .map((character) => character.id)
+        .join(","),
+    [characters, progress],
+  );
+  const characterNameSpecJson = useMemo(() => {
+    const unlockedIds = new Set(unlockedCharacterIdsKey.split(",").filter(Boolean));
+    if (unlockedIds.size === 0) return null;
+    const unlocked = characters.filter((character) => unlockedIds.has(character.id));
+    return JSON.stringify(buildCharacterNameMatcherSpec(unlocked));
+  }, [characters, unlockedCharacterIdsKey]);
+  const [characterCard, setCharacterCard] = useState<NarraCharacter | null>(null);
+
+  const handleOpenCharacterChat = useCallback(
+    (character: NarraCharacter) => {
+      // Чат ищет персонажа в narra-store — bundled-каталог сначала фиксируем там
+      if (charactersFromBundledCatalog && bundledCharacters?.length) {
+        setNarraCharacters(bookId, bundledCharacters);
+      }
+      setCharacterCard(null);
+      navigation.navigate("NarraCharacterChat", { bookId, characterId: character.id });
+    },
+    [bookId, bundledCharacters, charactersFromBundledCatalog, navigation, setNarraCharacters],
+  );
 
   // ── System safe area ────────────────────────────────────────────────────────
   const { stableTopInset, insets } = useReaderSystemInfo({
@@ -885,6 +933,13 @@ export function ReaderScreen({ route, navigation }: Props) {
         useNativeDriver: true,
       }).start();
     },
+    onCharacterTap: ({ characterId }) => {
+      const character = characters.find((item) => item.id === characterId);
+      // Запертые персонажи не размечаются, но на случай гонки — двойная проверка
+      if (!character || !isCharacterUnlocked(progress, character)) return;
+      suppressReaderTapUntilRef.current = Date.now() + 400;
+      setCharacterCard(character);
+    },
     onSearchResult: (index: number, count: number) => {
       search.onSearchResult(index, count);
     },
@@ -995,6 +1050,14 @@ export function ReaderScreen({ route, navigation }: Props) {
 
   bridgeRef.current = bridge;
   chapterTranslationBridgeRef.current = bridge;
+
+  // Спека имён персонажей: отправляем при готовности WebView и при unlock новых героев;
+  // разметку по секциям WebView делает сам (лениво, по мере загрузки секций)
+  const sendCharacterNames = bridge.setCharacterNames;
+  useEffect(() => {
+    if (!webViewReady) return;
+    sendCharacterNames(characterNameSpecJson);
+  }, [webViewReady, characterNameSpecJson, sendCharacterNames]);
 
   // ── useReaderTTS ──
   const tts = useReaderTTS({
@@ -2137,6 +2200,15 @@ export function ReaderScreen({ route, navigation }: Props) {
           onUpdateConfig={tts.handleUpdateTTSConfig}
           onPrevChapter={toc.length > 0 ? tts.handleTTSPrevChapter : undefined}
           onNextChapter={toc.length > 0 ? tts.handleTTSNextChapter : undefined}
+        />
+
+        {/* ─── Карточка героя (тап по имени в тексте) ─── */}
+        <ReaderCharacterCard
+          visible={!!characterCard}
+          character={characterCard}
+          bookId={bookId}
+          onClose={() => setCharacterCard(null)}
+          onOpenChat={handleOpenCharacterChat}
         />
       </View>
     </>

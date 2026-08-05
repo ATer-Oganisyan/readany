@@ -9,6 +9,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const FOLIATE_DIR = path.resolve(__dirname, "../../foliate-js");
+const CHARACTER_NAME_MATCHER = path.resolve(
+  __dirname,
+  "../src/lib/narra/character-name-matcher.ts",
+);
 const ASSETS_DIR = path.resolve(__dirname, "../assets/reader");
 const TEMPLATE = path.resolve(ASSETS_DIR, "reader.template.html");
 const OUTPUT = path.resolve(ASSETS_DIR, "reader.html");
@@ -34,8 +38,11 @@ async function buildReader() {
     import { configure, ZipReader, BlobReader, TextWriter, BlobWriter } from "${FOLIATE_DIR.replace(/\\/g, "/")}/vendor/zip.js";
     import { EPUB } from "${FOLIATE_DIR.replace(/\\/g, "/")}/epub.js";
     import { extractPDFChapters, makePDFFromURL } from "${FOLIATE_DIR.replace(/\\/g, "/")}/pdf.js";
+    import { findCharacterNameMatches } from "${CHARACTER_NAME_MATCHER.replace(/\\/g, "/")}";
 
     window.makeBook = makeBook;
+    // Матчер имён персонажей Narra — единая логика с RN-стороной (юниты рядом с модулем)
+    window._readanyFindCharacterNameMatches = findCharacterNameMatches;
     window.Overlayer = Overlayer;
     window.CFI = CFI;
 

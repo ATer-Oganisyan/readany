@@ -1778,6 +1778,10 @@
           if (_rubyMode && (_rubyWordDict || _rubyCharDict)) {
             try { doInjectRubyAnnotations(doc, _rubyMode); } catch(e) {}
           }
+          // Разметка имён персонажей — лениво, по мере загрузки секций
+          if (_characterNameSpec) {
+            try { scheduleCharacterNameMarkup(doc); } catch(e) {}
+          }
         });
 
         var snippetTimer = null;
@@ -2634,6 +2638,21 @@ a { color: ${primary} !important; }
         }
 
         const target = e.target || state.target;
+
+        // Тап по имени персонажа → карточка героя в RN
+        const characterTarget = target && target.closest
+          ? target.closest('[' + CHARACTER_NAME_ATTR + ']')
+          : null;
+        if (characterTarget) {
+          e.preventDefault();
+          e.stopPropagation();
+          postToRN('characterTap', {
+            characterId: characterTarget.getAttribute(CHARACTER_NAME_ATTR) || '',
+            name: (characterTarget.textContent || '').trim(),
+          });
+          return;
+        }
+
         const interactiveTarget = target && target.closest
           ? target.closest('a[href], audio, video, button, input, select, textarea')
           : null;
@@ -5158,6 +5177,152 @@ a { color: ${primary} !important; }
         }
       }
       if (doc) doRemoveRubyAnnotations(doc);
+    };
+
+    // ─── Кликабельные имена персонажей (Narra) ───
+    // Спека приходит из RN (window.setCharacterNames), матчинг делает
+    // window._readanyFindCharacterNameMatches из бандла (общий модуль с RN).
+    var _characterNameSpec = null;
+    var CHARACTER_NAME_STYLE_ID = 'readany-character-name-style';
+    var CHARACTER_NAME_CLASS = 'readany-character-name';
+    var CHARACTER_NAME_ATTR = 'data-readany-character-id';
+    var CHARACTER_NAME_BLOCK_ATTR = 'data-readany-charnames';
+    var CHARACTER_NAME_CHUNK = 24;
+
+    function characterNameInjectStyles(doc) {
+      if (!doc || doc.getElementById(CHARACTER_NAME_STYLE_ID)) return;
+      var style = doc.createElement('style');
+      style.id = CHARACTER_NAME_STYLE_ID;
+      // Ненавязчиво: тонкий пунктир под именем, цвет текста не меняется,
+      // раскладка не сдвигается (text-decoration вместо border).
+      style.textContent = [
+        '.' + CHARACTER_NAME_CLASS + ' {',
+        '  text-decoration: underline;',
+        '  text-decoration-style: dashed;',
+        '  text-decoration-thickness: 1px;',
+        '  text-decoration-color: rgba(127, 127, 127, 0.65);',
+        '  text-underline-offset: 0.18em;',
+        '  -webkit-tap-highlight-color: rgba(127, 127, 127, 0.18);',
+        '}'
+      ].join('\n');
+      if (doc.head) doc.head.appendChild(style);
+    }
+
+    function characterNameShouldSkip(el) {
+      if (!el || !el.closest) return false;
+      if (el.closest('.' + CHARACTER_NAME_CLASS)) return true;
+      if (el.closest('.readany-translation')) return true;
+      if (el.closest('a[href], script, style, rt, rp, button, input, select, textarea')) return true;
+      return false;
+    }
+
+    function markCharacterNamesInBlock(doc, block) {
+      block.setAttribute(CHARACTER_NAME_BLOCK_ATTR, '1');
+      var walker = doc.createTreeWalker(block, NodeFilter.SHOW_TEXT, {
+        acceptNode: function(node) {
+          if (!node.nodeValue || !/[A-ZА-ЯЁ]/.test(node.nodeValue)) return NodeFilter.FILTER_SKIP;
+          var parent = node.parentElement;
+          if (parent && characterNameShouldSkip(parent)) return NodeFilter.FILTER_REJECT;
+          return NodeFilter.FILTER_ACCEPT;
+        }
+      });
+      var textNodes = [];
+      var current = walker.nextNode();
+      while (current) { textNodes.push(current); current = walker.nextNode(); }
+
+      for (var ni = 0; ni < textNodes.length; ni++) {
+        var node = textNodes[ni];
+        var text = node.nodeValue || '';
+        var matches;
+        try {
+          matches = window._readanyFindCharacterNameMatches(text, _characterNameSpec);
+        } catch (e) {
+          matches = [];
+        }
+        if (!matches || !matches.length) continue;
+        var fragment = doc.createDocumentFragment();
+        var cursor = 0;
+        for (var mi = 0; mi < matches.length; mi++) {
+          var match = matches[mi];
+          if (match.start > cursor) {
+            fragment.appendChild(doc.createTextNode(text.slice(cursor, match.start)));
+          }
+          var span = doc.createElement('span');
+          span.className = CHARACTER_NAME_CLASS;
+          span.setAttribute(CHARACTER_NAME_ATTR, match.characterId);
+          span.textContent = text.slice(match.start, match.end);
+          fragment.appendChild(span);
+          cursor = match.end;
+        }
+        if (cursor < text.length) {
+          fragment.appendChild(doc.createTextNode(text.slice(cursor)));
+        }
+        if (node.parentNode) node.parentNode.replaceChild(fragment, node);
+      }
+    }
+
+    // Разметка порциями через setTimeout, чтобы не блокировать рендер страницы.
+    function scheduleCharacterNameMarkup(doc) {
+      if (!doc || !_characterNameSpec || !window._readanyFindCharacterNameMatches) return;
+      var spec = _characterNameSpec;
+      characterNameInjectStyles(doc);
+      var blocks = doc.querySelectorAll(
+        'p, h1, h2, h3, h4, h5, h6, li, blockquote, dd, dt, figcaption'
+      );
+      var pending = [];
+      for (var bi = 0; bi < blocks.length; bi++) {
+        var block = blocks[bi];
+        if (!block.textContent || !block.textContent.trim()) continue;
+        if (block.hasAttribute(CHARACTER_NAME_BLOCK_ATTR)) continue;
+        if (characterNameShouldSkip(block)) continue;
+        pending.push(block);
+      }
+      if (!pending.length) return;
+      var index = 0;
+      function step() {
+        // Спека сменилась (unlock/новая книга) — этот проход устарел
+        if (_characterNameSpec !== spec) return;
+        if (!doc.defaultView) return; // секция выгружена
+        var limit = Math.min(index + CHARACTER_NAME_CHUNK, pending.length);
+        for (; index < limit; index++) {
+          try { markCharacterNamesInBlock(doc, pending[index]); } catch (e) {}
+        }
+        if (index < pending.length) setTimeout(step, 0);
+      }
+      setTimeout(step, 0);
+    }
+
+    function doRemoveCharacterNames(doc) {
+      if (!doc) return;
+      var spans = doc.querySelectorAll('.' + CHARACTER_NAME_CLASS);
+      for (var i = 0; i < spans.length; i++) {
+        var span = spans[i];
+        if (!span.parentNode) continue;
+        span.parentNode.replaceChild(doc.createTextNode(span.textContent || ''), span);
+      }
+      var blocksMarked = doc.querySelectorAll('[' + CHARACTER_NAME_BLOCK_ATTR + ']');
+      for (var b = 0; b < blocksMarked.length; b++) {
+        blocksMarked[b].removeAttribute(CHARACTER_NAME_BLOCK_ATTR);
+      }
+    }
+
+    // Вызывается из RN: спека матчера (JSON или объект) либо null — снять разметку
+    window.setCharacterNames = function(specJson) {
+      try {
+        _characterNameSpec = specJson
+          ? (typeof specJson === 'string' ? JSON.parse(specJson) : specJson)
+          : null;
+      } catch (e) {
+        console.error('[CharacterNames] Failed to parse spec:', e);
+        _characterNameSpec = null;
+      }
+      var contents = getRendererContents();
+      for (var i = 0; i < contents.length; i++) {
+        var doc = contents[i].doc;
+        if (!doc) continue;
+        doRemoveCharacterNames(doc);
+        if (_characterNameSpec) scheduleCharacterNameMarkup(doc);
+      }
     };
   </script>
 

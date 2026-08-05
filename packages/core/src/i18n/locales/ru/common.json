@@ -116,7 +116,9 @@
     "keepReading": "Продолжайте читать — герой появится позже по ходу книги.",
     "playAnswer": "Озвучить ответ",
     "messagePlaceholder": "Написать {{name}}…",
-    "send": "Отправить"
+    "send": "Отправить",
+    "openCharacterChat": "Открыть чат с {{character}}",
+    "characterCardOpenChat": "Перейти в чат"
   },
   "window": {
     "minimize": "Свернуть",
