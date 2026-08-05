@@ -1,18 +1,10 @@
-import { type ThemeColors, fontSize, fontWeight, radius, withOpacity } from "@/styles/theme";
+import { type ThemeColors, fontSize, fontWeight, radius } from "@/styles/theme";
 import { StyleSheet } from "react-native";
 
 export const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
     loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
-    spinner: {
-      width: 32,
-      height: 32,
-      borderRadius: 16,
-      borderWidth: 2,
-      borderColor: withOpacity(colors.primary, 0.3),
-      borderTopColor: colors.primary,
-    },
     loadingText: { fontSize: fontSize.sm, color: colors.mutedForeground },
     header: {
       paddingHorizontal: 16,

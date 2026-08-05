@@ -49,6 +49,8 @@ import TrackPlayer, {
   Capability,
 } from "react-native-track-player";
 
+import { CatalogCharacterPortraitPreloader } from "@/components/catalog/CatalogCharacterPortraitPreloader";
+import { AnimatedSplash } from "@/components/splash/AnimatedSplash";
 import { UpdateDialog } from "@/components/update/UpdateDialog";
 import { useUpdateChecker } from "@/hooks/use-update-checker";
 import { navigationRef } from "@/lib/navigationRef";
@@ -86,6 +88,13 @@ export default function App() {
   const [ready, setReady] = useState(false);
   const [bootError, setBootError] = useState<string | null>(null);
   const [initialThemeMode, setInitialThemeMode] = useState<ThemeMode | null>(null);
+  const [splashFinished, setSplashFinished] = useState(false);
+
+  // The first React frame contains the same centered artwork as the native
+  // launch screen, so it is safe to reveal the animated handoff immediately.
+  useEffect(() => {
+    SplashScreen.hideAsync().catch(() => {});
+  }, []);
 
   useEffect(() => {
     async function bootstrap() {
@@ -216,35 +225,42 @@ export default function App() {
 
   const startupError = bootError ?? fontError?.message ?? null;
   const appReady = startupError !== null || (ready && fontsLoaded && initialThemeMode !== null);
-
-  useEffect(() => {
-    if (!appReady) return;
-    SplashScreen.hideAsync().catch(() => {});
-  }, [appReady]);
+  const splash = splashFinished ? null : (
+    <AnimatedSplash appReady={appReady} onFinish={() => setSplashFinished(true)} />
+  );
 
   if (startupError) {
     return (
       <View
         style={{
           flex: 1,
-          justifyContent: "center",
-          alignItems: "center",
           backgroundColor: "#1c1c1e",
-          padding: 24,
         }}
       >
-        <Text
+        <View
           style={{
-            color: "#ffffff",
-            fontSize: 18,
-            fontWeight: "600",
-            marginBottom: 12,
-            textAlign: "center",
+            flex: 1,
+            justifyContent: "center",
+            alignItems: "center",
+            padding: 24,
           }}
         >
-          Не удалось запустить приложение
-        </Text>
-        <Text style={{ color: "#fca5a5", fontSize: 14, textAlign: "center" }}>{startupError}</Text>
+          <Text
+            style={{
+              color: "#ffffff",
+              fontSize: 18,
+              fontWeight: "600",
+              marginBottom: 12,
+              textAlign: "center",
+            }}
+          >
+            Не удалось запустить приложение
+          </Text>
+          <Text style={{ color: "#fca5a5", fontSize: 14, textAlign: "center" }}>
+            {startupError}
+          </Text>
+        </View>
+        {splash}
       </View>
     );
   }
@@ -260,16 +276,25 @@ export default function App() {
         }}
       >
         {/* Background matches the native launch screen so transition is seamless. */}
+        {splash}
       </View>
     );
   }
 
   return (
-    <I18nextProvider i18n={i18n}>
-      <ThemeProvider initialMode={initialThemeMode}>
-        <AppInner />
-      </ThemeProvider>
-    </I18nextProvider>
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: systemColorScheme === "dark" ? "#000000" : "#FFFFFF",
+      }}
+    >
+      <I18nextProvider i18n={i18n}>
+        <ThemeProvider initialMode={initialThemeMode}>
+          <AppInner />
+        </ThemeProvider>
+      </I18nextProvider>
+      {splash}
+    </View>
   );
 }
 
@@ -297,6 +322,7 @@ function AppInner() {
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.background }}>
       <SafeAreaProvider>
+        <CatalogCharacterPortraitPreloader />
         {Platform.OS !== "ios" && <StatusBar style={isDark ? "light" : "dark"} />}
         <NavigationContainer theme={navTheme} ref={navigationRef}>
           <RootNavigator />

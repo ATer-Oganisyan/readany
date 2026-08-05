@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { NarraCharacter } from "./types";
 
 vi.mock("expo-file-system/legacy", () => ({ documentDirectory: "file:///documents/" }));
@@ -6,10 +6,15 @@ vi.mock("@/lib/ai/narra-gateway-fetch", () => ({ narraGatewayRequest: vi.fn() })
 
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
 import {
+  buildSafetyFallbackSceneImagePrompt,
   buildSceneImagePrompt,
   generateSceneImage,
   normalizePersistedNarraMediaUri,
 } from "./media";
+
+beforeEach(() => {
+  vi.mocked(narraGatewayRequest).mockReset();
+});
 
 const anna: NarraCharacter = {
   id: "anna",
@@ -82,6 +87,53 @@ describe("scene image prompt", () => {
       height: 1024,
       engine: "kandinsky",
     });
+  });
+
+  it("retries a safety rejection with a neutral visual prompt", async () => {
+    vi.mocked(narraGatewayRequest)
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: "Kandinsky: запрос или результат отклонён политикой безопасности",
+          }),
+          { status: 422, headers: { "content-type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: "fallback inspected" }), {
+          status: 500,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+
+    const excerpt = [
+      "— Мы должны продолжать борьбу!",
+      "— Восстание откроет миру глаза.",
+      "Ван поднял глаза. Мир стал черно-белым, и в зал вошла Е Вэньцзе.",
+      "Окруженная спутниками, она остановилась посередине прохода.",
+    ].join("\n");
+
+    await expect(generateSceneImage("book-1", "Отступники", excerpt, [])).rejects.toThrow(
+      "fallback inspected",
+    );
+
+    expect(narraGatewayRequest).toHaveBeenCalledTimes(2);
+    const [, fallbackRequest] = vi.mocked(narraGatewayRequest).mock.calls[1] ?? [];
+    const fallbackPrompt = JSON.parse(String(fallbackRequest?.body)).prompt as string;
+    expect(fallbackPrompt).toContain("Ван поднял глаза");
+    expect(fallbackPrompt).not.toContain("борьбу");
+    expect(fallbackPrompt).not.toContain("Восстание");
+  });
+
+  it("builds a neutral fallback from narration while keeping character canon", () => {
+    const prompt = buildSafetyFallbackSceneImagePrompt(
+      "— Поднять восстание!\nАнна вошла в зал и спокойно остановилась у двери.",
+      [anna],
+    );
+
+    expect(prompt).toContain("Анна Каренина");
+    expect(prompt).toContain("Анна вошла в зал");
+    expect(prompt).not.toContain("восстание");
   });
 });
 

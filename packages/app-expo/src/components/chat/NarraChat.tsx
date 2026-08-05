@@ -49,6 +49,7 @@ interface NarraChatProps {
   onRetry?: () => void | Promise<void>;
   autoFocus?: boolean;
   assistantName?: string;
+  assistantAvatar?: IMessage["user"]["avatar"];
   showModeControls?: boolean;
   assistantMessageAction?: AssistantMessageAction;
 }
@@ -103,6 +104,7 @@ function messageText(message: MessageV2): string {
 function toChatMessage(
   message: MessageV2,
   assistantName: string,
+  assistantAvatar?: IMessage["user"]["avatar"],
   streamingMessageId?: string,
 ): NarraMessage {
   return {
@@ -112,6 +114,7 @@ function toChatMessage(
     user: {
       _id: message.role === "user" ? USER_ID : ASSISTANT_ID,
       name: message.role === "user" ? "Вы" : assistantName,
+      avatar: message.role === "user" ? undefined : assistantAvatar,
     },
     system: message.role === "system",
     sent: message.role === "user",
@@ -136,6 +139,7 @@ export function NarraChat({
   onRetry,
   autoFocus = false,
   assistantName = "Narra AI",
+  assistantAvatar,
   showModeControls = true,
   assistantMessageAction,
 }: NarraChatProps) {
@@ -150,9 +154,11 @@ export function NarraChat({
   const chatMessages = useMemo(
     () =>
       messages
-        .map((message) => toChatMessage(message, assistantName, streamingMessageId))
+        .map((message) =>
+          toChatMessage(message, assistantName, assistantAvatar, streamingMessageId),
+        )
         .reverse(),
-    [assistantName, messages, streamingMessageId],
+    [assistantAvatar, assistantName, messages, streamingMessageId],
   );
 
   useFocusEffect(

@@ -6,13 +6,25 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE": "installation",
+        "EXPO_PUBLIC_NARRA_GATEWAY_URL": "https://api.narra.disrupt.builders"
+      }
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE": "installation",
+        "EXPO_PUBLIC_NARRA_GATEWAY_URL": "https://api.narra.disrupt.builders"
+      }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE": "installation",
+        "EXPO_PUBLIC_NARRA_GATEWAY_URL": "https://api.narra.disrupt.builders"
+      }
     }
   },
   "submit": {

@@ -5,6 +5,7 @@ import type { NarraCharacter } from "./types";
 const MEDIA_DIR = `${FileSystem.documentDirectory}narra-media`;
 const MEDIA_PATH_MARKER = "/Documents/narra-media/";
 let speechFileSequence = 0;
+const portraitRequests = new Map<string, Promise<string>>();
 
 /** Rehomes persisted iOS file URIs after the app data-container UUID changes. */
 export function normalizePersistedNarraMediaUri(uri: string): string {
@@ -85,6 +86,36 @@ function mentionedCharacters(excerpt: string, characters: NarraCharacter[]): Nar
   );
 }
 
+const KANDINSKY_SAFETY_REJECTION =
+  /политик[А-Яа-яЁё]* безопасности|safety|content policy|moderation/iu;
+
+function neutralizeSensitiveSceneText(excerpt: string): string {
+  const narration = excerpt
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("—"))
+    .join(" ");
+  const visualSource = narration.length >= 120 ? narration : excerpt;
+  return visualSource
+    .replace(/восстани[А-Яа-яЁё]*/giu, "собрание")
+    .replace(/борьб[А-Яа-яЁё]*/giu, "настойчивые усилия")
+    .replace(/перебьют/giu, "остановят")
+    .replace(/командующ[А-Яа-яЁё]*/giu, "руководитель")
+    .replace(/подпольн[А-Яа-яЁё]*/giu, "закрытого")
+    .replace(/революц[А-Яа-яЁё]*/giu, "общественного")
+    .replace(/политич[А-Яа-яЁё]*/giu, "общественного")
+    .replace(/убий[А-Яа-яЁё]*/giu, "конфликт")
+    .replace(/убил[А-Яа-яЁё]*/giu, "остановил")
+    .replace(/оруж[А-Яа-яЁё]*/giu, "предметы")
+    .replace(/выстрел[А-Яа-яЁё]*/giu, "резкие звуки")
+    .replace(/кров[А-Яа-яЁё]*/giu, "следы")
+    .replace(/террор[А-Яа-яЁё]*/giu, "опасность")
+    .replace(/насили[А-Яа-яЁё]*/giu, "конфликт")
+    .replace(/кулак/giu, "руку")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function buildSceneImagePrompt(
   chapter: string,
   excerpt: string,
@@ -102,6 +133,47 @@ export function buildSceneImagePrompt(
   ]
     .filter(Boolean)
     .join("\n\n");
+}
+
+export function buildSafetyFallbackSceneImagePrompt(
+  excerpt: string,
+  characters: NarraCharacter[],
+): string {
+  const canon = mentionedCharacters(excerpt, characters)
+    .map((character) => `${character.fullName}: ${passportDescription(character)}`)
+    .join("\n");
+  return [
+    "Нейтральная кинематографичная книжная иллюстрация.",
+    neutralizeSensitiveSceneText(excerpt).slice(0, 2200),
+    canon ? `Внешность персонажей:\n${canon}` : "",
+    "Покажи спокойный момент, окружение, свет и одежду персонажей. Без надписей и символики.",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function isKandinskySafetyRejection(error?: string): boolean {
+  return !!error && KANDINSKY_SAFETY_REJECTION.test(error);
+}
+
+async function requestSceneImage(prompt: string): Promise<{
+  response: Response;
+  payload: { base64?: string; url?: string; error?: string };
+}> {
+  const response = await narraGatewayRequest("/v2/media/images", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      prompt,
+      width: 1024,
+      height: 1024,
+      engine: "kandinsky",
+    }),
+  });
+  return {
+    response,
+    payload: imagePayload(await response.json().catch(() => null)),
+  };
 }
 
 async function persistGeneratedImage(
@@ -141,23 +213,40 @@ export async function generateCharacterPortrait(
   return persistGeneratedImage(path, payload);
 }
 
+/** Shares portrait work between background catalog preloading and the chat screen. */
+export function ensureCharacterPortrait(
+  bookId: string,
+  character: NarraCharacter,
+): Promise<string> {
+  if (character.portraitUri) {
+    return Promise.resolve(normalizePersistedNarraMediaUri(character.portraitUri));
+  }
+
+  const key = `${bookId}:${character.id}`;
+  const inFlight = portraitRequests.get(key);
+  if (inFlight) return inFlight;
+
+  const request = generateCharacterPortrait(bookId, character).finally(() => {
+    portraitRequests.delete(key);
+  });
+  portraitRequests.set(key, request);
+  return request;
+}
+
 export async function generateSceneImage(
   bookId: string,
   chapter: string,
   excerpt: string,
   characters: NarraCharacter[],
 ): Promise<string> {
-  const response = await narraGatewayRequest("/v2/media/images", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      prompt: buildSceneImagePrompt(chapter, excerpt, characters),
-      width: 1024,
-      height: 1024,
-      engine: "kandinsky",
-    }),
-  });
-  const payload = imagePayload(await response.json().catch(() => null));
+  let { response, payload } = await requestSceneImage(
+    buildSceneImagePrompt(chapter, excerpt, characters),
+  );
+  if (!response.ok && isKandinskySafetyRejection(payload.error)) {
+    ({ response, payload } = await requestSceneImage(
+      buildSafetyFallbackSceneImagePrompt(excerpt, characters),
+    ));
+  }
   if (!response.ok || (!payload.base64 && !payload.url)) {
     throw new Error(payload.error || `Scene generation failed (${response.status})`);
   }

@@ -130,6 +130,8 @@ export default function StatsScreen() {
   const [report, setReport] = useState<StatsReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorKey, setErrorKey] = useState<string | null>(null);
+  const latestReportRequestRef = useRef(0);
+  const activeReportLoadsRef = useRef(0);
 
   const resolvedCovers = useResolvedCovers(report?.topBooks);
 
@@ -154,6 +156,9 @@ export default function StatsScreen() {
 
   /* ── Data loading ── */
   const loadReport = useCallback(async () => {
+    const requestId = latestReportRequestRef.current + 1;
+    latestReportRequestRef.current = requestId;
+    activeReportLoadsRef.current += 1;
     setLoading(true);
     setErrorKey(null);
     try {
@@ -167,12 +172,19 @@ export default function StatsScreen() {
       else if (dimension === "year")
         r = await readingReportsService.getYearReport(anchorDate, currentSession);
       else r = await readingReportsService.getLifetimeReport(currentSession);
-      setReport(r);
+      if (requestId === latestReportRequestRef.current) {
+        setReport(r);
+      }
     } catch (err) {
       console.error("[StatsScreen] Failed to load report", err);
-      setErrorKey("stats.loadFailed");
+      if (requestId === latestReportRequestRef.current) {
+        setErrorKey("stats.loadFailed");
+      }
     } finally {
-      setLoading(false);
+      activeReportLoadsRef.current = Math.max(0, activeReportLoadsRef.current - 1);
+      if (activeReportLoadsRef.current === 0) {
+        setLoading(false);
+      }
     }
   }, [anchorDate, currentSession, dimension]);
 

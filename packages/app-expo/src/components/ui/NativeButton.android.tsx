@@ -1,20 +1,10 @@
+import { MaterialIcon } from "@/components/ui/Icon";
+import { Text } from "@/components/ui/Typography";
 import { useTheme } from "@/styles/theme";
-import { interfaceFontFamily } from "@deslop/primitives/native";
-import {
-  Button,
-  CircularProgressIndicator,
-  Text as ComposeText,
-  Host,
-  OutlinedButton,
-  Spacer,
-  TextButton,
-} from "@expo/ui/jetpack-compose";
-import { size as composeSize, fillMaxWidth, height } from "@expo/ui/jetpack-compose/modifiers";
-import { StyleSheet, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet } from "react-native";
 import {
   type NativeButtonIcon,
   type NativeButtonProps,
-  type NativeButtonVariant,
   nativeButtonHeights,
 } from "./NativeButton.types";
 
@@ -35,13 +25,7 @@ const icons: Record<NativeButtonIcon, string> = {
   send: "send",
   settings: "settings",
   share: "share",
-};
-
-const variants: Record<NativeButtonVariant, typeof Button> = {
-  primary: Button,
-  secondary: OutlinedButton,
-  tertiary: TextButton,
-  destructive: Button,
+  sparkles: "auto_awesome",
 };
 
 export function NativeButton({
@@ -58,79 +42,69 @@ export function NativeButton({
   testID,
 }: NativeButtonProps) {
   const { colors } = useTheme();
-  const isPrimary = variant === "primary" || variant === "destructive";
+  const isFilled = variant === "primary" || variant === "destructive";
   const accent = variant === "destructive" ? colors.destructive : colors.primary;
-  const content = isPrimary
+  const content = isFilled
     ? variant === "destructive"
       ? colors.destructiveForeground
       : colors.primaryForeground
     : accent;
-  const ButtonComponent = variants[variant];
   const buttonHeight = nativeButtonHeights[size];
 
   return (
-    <View
-      style={[fullWidth ? styles.fullWidth : styles.intrinsic, style]}
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
       testID={testID}
-      accessibilityLabel={accessibilityLabel}
+      onPress={onPress}
+      disabled={disabled || loading}
+      style={({ pressed }) => [
+        styles.button,
+        {
+          minHeight: buttonHeight,
+          alignSelf: fullWidth ? "stretch" : "flex-start",
+          backgroundColor: isFilled
+            ? accent
+            : variant === "secondary"
+              ? colors.muted
+              : "transparent",
+          borderColor: variant === "secondary" ? colors.border : "transparent",
+          opacity: disabled ? 0.45 : pressed ? 0.72 : 1,
+        },
+        style,
+      ]}
     >
-      <Host
-        matchContents={fullWidth ? { vertical: true } : true}
-        style={fullWidth ? styles.fullWidth : undefined}
-      >
-        <ButtonComponent
-          onClick={onPress}
-          enabled={!disabled && !loading}
-          modifiers={[height(buttonHeight), ...(fullWidth ? [fillMaxWidth()] : [])]}
-          contentPadding={{ start: 16, end: icon ? 24 : 16, top: 0, bottom: 0 }}
-          colors={{
-            containerColor: isPrimary
-              ? accent
-              : variant === "secondary"
-                ? colors.muted
-                : "transparent",
-            contentColor: content,
-            disabledContainerColor: colors.muted,
-            disabledContentColor: colors.mutedForeground,
-          }}
-        >
-          {loading ? (
-            <CircularProgressIndicator
-              color={content}
-              modifiers={[composeSize(20, 20)]}
-              strokeWidth={2.5}
-            />
-          ) : icon ? (
-            <>
-              <ComposeText
-                color={content}
-                style={{ fontFamily: interfaceFontFamily.materialSymbols, fontSize: 20 }}
-              >
-                {icons[icon]}
-              </ComposeText>
-              <Spacer modifiers={[composeSize(8, 1)]} />
-            </>
-          ) : null}
-          {loading ? null : (
-            <ComposeText
-              color={content}
-              maxLines={1}
-              softWrap={false}
-              overflow="ellipsis"
-              style={{ fontFamily: interfaceFontFamily.semibold, typography: "labelLarge" }}
-            >
-              {label}
-            </ComposeText>
-          )}
-        </ButtonComponent>
-      </Host>
-    </View>
+      {loading ? (
+        <ActivityIndicator color={content} />
+      ) : (
+        <>
+          {icon ? <MaterialIcon name={icons[icon]} size={20} color={content} /> : null}
+          <Text
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
+            ellipsizeMode="tail"
+            style={[styles.label, { color: content }]}
+          >
+            {label}
+          </Text>
+        </>
+      )}
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  fullWidth: { alignSelf: "stretch" },
-  intrinsic: { alignSelf: "flex-start" },
+  button: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 18,
+  },
+  label: { fontWeight: "600" },
 });
 
 export type { NativeButtonProps } from "./NativeButton.types";

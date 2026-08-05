@@ -30,7 +30,7 @@ import { eventBus } from "@readany/core/utils/event-bus";
 /** Notes list plus the existing per-book annotation detail view. */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Image, ScrollView, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Image, ScrollView, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { HighlightCard } from "./notes/HighlightCard";
 import { NoteCard } from "./notes/NoteCard";
@@ -344,7 +344,7 @@ export function NotesView({
     return (
       <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={edges}>
         <View style={[s.loadingWrap, { transform: [{ translateY: -nativeHeaderHeight / 2 }] }]}>
-          <View style={s.spinner} />
+          <ActivityIndicator color={colors.primary} />
           <Text style={s.loadingText}>{t("common.loading", "加载中...")}</Text>
         </View>
       </SafeAreaView>

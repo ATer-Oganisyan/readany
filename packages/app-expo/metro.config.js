@@ -19,6 +19,8 @@ config.resolver.nodeModulesPaths = [
 
 // 3. Block large unused modules from being bundled
 config.resolver.blockList = [
+  /packages\/app-expo\/ios\/build\/.*/,
+  /packages\/app-expo\/android\/(?:app\/build|\.gradle)\/.*/,
   /node_modules\/onnxruntime-node\/.*/,
   /node_modules\/onnxruntime-web\/.*/,
   /node_modules\/@pagefind\/.*/,

@@ -41,8 +41,11 @@ import { NarraChat } from "@/components/chat/NarraChat";
 import { MessageCirclePlusIcon, Trash2Icon, XIcon } from "@/components/ui/Icon";
 import { fontSize as fs, fontWeight as fw, radius, useColors, withOpacity } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
+import NarraFace from "../../assets/narra-face.svg";
 
 type ChatRoute = RouteProp<RootStackParamList, "Chat"> | RouteProp<RootStackParamList, "BookChat">;
+
+const renderNarraAvatar = () => <NarraFace width={27} height={28} />;
 
 export function ChatScreen() {
   const { t } = useTranslation();
@@ -60,8 +63,8 @@ export function ChatScreen() {
   const [quotes, setQuotes] = useState<AttachedQuote[]>([]);
 
   useEffect(() => {
-    navigation.setOptions({ title: "Narra AI" });
-  }, [navigation]);
+    navigation.setOptions({ title: bookId ? "Нарра" : "Narra AI" });
+  }, [bookId, navigation]);
 
   useEffect(() => {
     if (!bookParams?.selectedText || quotes.length > 0) return;
@@ -412,6 +415,7 @@ export function ChatScreen() {
           <View style={s.content}>
             <NarraChat
               messages={allMessages}
+              assistantAvatar={renderNarraAvatar}
               isStreaming={isStreaming}
               currentStep={currentStep}
               onSend={handleSend}

@@ -149,7 +149,7 @@ async function main() {
 </svg>\n`;
   const monochromeSvg = adaptiveSvg.replaceAll("#A1A1A1", "#000000");
   const splashLogoSvg = fs.readFileSync(splashSource, "utf8");
-  const splashLogoDarkSvg = splashLogoSvg.replaceAll("#A1A1A1", "#D9D9D9");
+  const splashLogoDarkSvg = splashLogoSvg.replaceAll("#1111114D", "#FFFFFF4D");
   const splashSvg = `<svg width="512" height="512" viewBox="0 0 250 250" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <clipPath id="splash-icon-mask">

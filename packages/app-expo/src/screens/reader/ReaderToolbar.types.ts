@@ -4,6 +4,5 @@ export interface ReaderToolbarProps {
   speechActive: boolean;
   onSpeechPress: () => void;
   onChatPress: () => void;
-  onCharactersPress: () => void;
   onScenePress: () => void;
 }

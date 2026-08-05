@@ -1034,8 +1034,16 @@ export function ReaderScreen({ route, navigation }: Props) {
 
   const handleGenerateVisibleScene = useCallback(async () => {
     try {
-      const excerpt = await bridgeRef.current?.getVisibleText();
-      openScene(excerpt ?? "", `page:${currentCfi || currentChapter || bookId}`);
+      const bridge = bridgeRef.current;
+      let excerpt = (await bridge?.getVisibleText())?.trim() ?? "";
+      if (!excerpt) {
+        const visibleSegments = await bridge?.getVisibleTTSSegments(currentCfi || null);
+        excerpt = (visibleSegments ?? [])
+          .map((segment) => segment.text.trim())
+          .filter(Boolean)
+          .join(" ");
+      }
+      openScene(excerpt, `page:${currentCfi || currentChapter || bookId}`);
     } catch (cause) {
       console.warn("[Reader] Failed to read visible text for scene", cause);
       Alert.alert("Не удалось создать сцену", "Не получилось прочитать текст страницы.");
@@ -1068,13 +1076,6 @@ export function ReaderScreen({ route, navigation }: Props) {
           setTranslationText(selectedText);
           setShowTranslation(true);
           break;
-        case "ask-ai":
-          navigation.navigate("BookChat", {
-            bookId,
-            selectedText,
-            chapterTitle: currentChapter,
-          });
-          break;
         case "summarize":
           navigation.navigate("NarraSummary", {
             bookId,
@@ -1106,8 +1107,8 @@ export function ReaderScreen({ route, navigation }: Props) {
     ],
   );
 
-  const handleOpenBookChat = useCallback(() => {
-    navigation.navigate("BookChat", { bookId });
+  const handleOpenCharacters = useCallback(() => {
+    navigation.navigate("NarraCharacters", { bookId });
   }, [bookId, navigation]);
 
   useLayoutEffect(() => {
@@ -1176,16 +1177,16 @@ export function ReaderScreen({ route, navigation }: Props) {
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
                     <NativeButton
                       label=""
-                      accessibilityLabel="Обсудить с ИИ"
+                      accessibilityLabel="Чат"
                       icon="chat"
                       size="small"
                       variant="tertiary"
-                      onPress={handleOpenBookChat}
+                      onPress={handleOpenCharacters}
                     />
                     <NativeButton
                       label=""
                       accessibilityLabel="Сгенерировать сцену"
-                      icon="image"
+                      icon="sparkles"
                       size="small"
                       variant="tertiary"
                       onPress={() => void handleGenerateVisibleScene()}
@@ -1199,11 +1200,6 @@ export function ReaderScreen({ route, navigation }: Props) {
                           sfSymbol: "waveform",
                           onPress: () => void tts.handleToggleTTS(),
                         },
-                        {
-                          label: t("narra.characters", "Персонажи"),
-                          sfSymbol: "person.2",
-                          onPress: () => navigation.navigate("NarraCharacters", { bookId }),
-                        },
                       ].map((action) => ({ key: action.label, ...action }))}
                     />
                   </View>
@@ -1213,7 +1209,7 @@ export function ReaderScreen({ route, navigation }: Props) {
     );
   }, [
     bookId,
-    handleOpenBookChat,
+    handleOpenCharacters,
     handleGenerateVisibleScene,
     handleToggleBookmark,
     isBookmarked,
@@ -1698,7 +1694,6 @@ export function ReaderScreen({ route, navigation }: Props) {
                 { key: "add-note", label: "Добавить заметку" },
                 { key: "copy", label: "Скопировать" },
                 { key: "translate", label: "Перевести" },
-                { key: "ask-ai", label: "Обсудить с ИИ" },
                 { key: "summarize", label: "Кратко пересказать" },
                 { key: "generate-scene", label: "Создать иллюстрацию" },
                 { key: "speak", label: "Озвучить" },
@@ -1789,8 +1784,7 @@ export function ReaderScreen({ route, navigation }: Props) {
               isDark={isDark}
               speechActive={ttsPlayState === "playing" || ttsPlayState === "loading"}
               onSpeechPress={() => void tts.handleToggleTTS()}
-              onChatPress={handleOpenBookChat}
-              onCharactersPress={() => navigation.navigate("NarraCharacters", { bookId })}
+              onChatPress={handleOpenCharacters}
               onScenePress={() => void handleGenerateVisibleScene()}
             />
           </View>

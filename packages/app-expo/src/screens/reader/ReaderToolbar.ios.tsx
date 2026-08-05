@@ -8,7 +8,6 @@ const TOOLBAR_HEIGHT = 50;
 interface NativeReaderToolbarProps extends ReaderToolbarProps {
   speechLabel: string;
   chatLabel: string;
-  charactersLabel: string;
   sceneLabel: string;
   style: { width: "100%"; height: number };
 }
@@ -23,10 +22,9 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
     <View style={{ width: "100%", height: TOOLBAR_HEIGHT }}>
       <NativeReaderToolbar
         {...props}
-        speechLabel="Озвучить"
-        chatLabel="Открыть чат"
-        charactersLabel="Персонажи"
-        sceneLabel="Создать сцену"
+        speechLabel="Слушать"
+        chatLabel="Чат"
+        sceneLabel="Сцена"
         style={{ width: "100%", height: TOOLBAR_HEIGHT }}
       />
     </View>

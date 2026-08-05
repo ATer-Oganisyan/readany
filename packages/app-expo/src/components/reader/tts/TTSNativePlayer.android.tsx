@@ -16,6 +16,7 @@ import type { TTSNativePlayerProps } from "./TTSNativePlayer.types";
 import { useTTSNativePlayer } from "./useTTSNativePlayer";
 
 const PLAYER_HEIGHT = 132;
+const PROGRESS_SECTION_HEIGHT = 68;
 
 function PlayerIcon({ children, color }: { children: string; color: string }) {
   return (

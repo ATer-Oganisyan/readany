@@ -53,14 +53,13 @@ public final class ReadAnyNativeControlsModule: Module {
     }
 
     View(ReadAnyReaderToolbar.self) {
-      Events("onSpeechPress", "onChatPress", "onCharactersPress", "onScenePress")
+      Events("onSpeechPress", "onChatPress", "onScenePress")
 
       Prop("tintColor") { (view, value: UIColor) in view.toolbarTintColor = value }
       Prop("isDark") { (view, value: Bool) in view.isDark = value }
       Prop("speechActive") { (view, value: Bool) in view.speechActive = value }
       Prop("speechLabel") { (view, value: String) in view.speechLabel = value }
       Prop("chatLabel") { (view, value: String) in view.chatLabel = value }
-      Prop("charactersLabel") { (view, value: String) in view.charactersLabel = value }
       Prop("sceneLabel") { (view, value: String) in view.sceneLabel = value }
 
       OnViewDidUpdateProps { view in
@@ -198,16 +197,14 @@ final class ReadAnyImportMenuButton: ExpoView {
 final class ReadAnyReaderToolbar: ExpoView {
   let onSpeechPress = EventDispatcher()
   let onChatPress = EventDispatcher()
-  let onCharactersPress = EventDispatcher()
   let onScenePress = EventDispatcher()
 
   var toolbarTintColor = UIColor.label
   var isDark = true
   var speechActive = false
-  var speechLabel = "Озвучить"
-  var chatLabel = "Открыть чат"
-  var charactersLabel = "Персонажи"
-  var sceneLabel = "Создать сцену"
+  var speechLabel = "Слушать"
+  var chatLabel = "Чат"
+  var sceneLabel = "Сцена"
 
   private let toolbar = UIToolbar()
 
@@ -236,10 +233,6 @@ final class ReadAnyReaderToolbar: ExpoView {
     onChatPress()
   }
 
-  @objc private func handleCharactersPress() {
-    onCharactersPress()
-  }
-
   @objc private func handleScenePress() {
     onScenePress()
   }
@@ -258,44 +251,43 @@ final class ReadAnyReaderToolbar: ExpoView {
 
     let speech = makeItem(
       symbol: "speaker.wave.2",
-      label: speechActive ? "Остановить озвучку" : speechLabel,
+      accessibilityLabel: speechActive ? "Остановить озвучку" : speechLabel,
       action: #selector(handleSpeechPress)
     )
     let chat = makeItem(
       symbol: "message",
-      label: chatLabel,
+      accessibilityLabel: chatLabel,
       action: #selector(handleChatPress)
     )
-    let characters = makeItem(
-      symbol: "person.2",
-      label: charactersLabel,
-      action: #selector(handleCharactersPress)
-    )
     let scene = makeItem(
-      symbol: "paintpalette",
-      label: sceneLabel,
+      symbol: "wand.and.rays",
+      accessibilityLabel: sceneLabel,
       action: #selector(handleScenePress)
     )
     let spacer = { UIBarButtonItem(systemItem: .flexibleSpace) }
 
     if #available(iOS 26.0, *) {
-      [speech, chat, characters, scene].forEach { $0.sharesBackground = true }
+      [speech, chat, scene].forEach { $0.sharesBackground = true }
     }
 
     toolbar.setItems(
-      [spacer(), speech, chat, characters, scene, spacer()],
+      [spacer(), speech, chat, scene, spacer()],
       animated: false
     )
   }
 
-  private func makeItem(symbol: String, label: String, action: Selector) -> UIBarButtonItem {
+  private func makeItem(
+    symbol: String,
+    accessibilityLabel: String,
+    action: Selector
+  ) -> UIBarButtonItem {
     let item = UIBarButtonItem(
       image: UIImage(systemName: symbol),
       style: .plain,
       target: self,
       action: action
     )
-    item.accessibilityLabel = label
+    item.accessibilityLabel = accessibilityLabel
     item.accessibilityHint = "Выполняет действие в текущей книге"
     return item
   }
@@ -390,7 +382,9 @@ final class ReadAnyTTSPlayerToolbar: ExpoView {
     configuration.cornerStyle = .capsule
     configuration.baseBackgroundColor = primaryColor
     configuration.baseForegroundColor = primaryForegroundColor
-    configuration.showsActivityIndicator = isLoading
+    // The React layer overlays the shared book-page loader so every loading
+    // state uses the same cross-platform animation.
+    configuration.showsActivityIndicator = false
     configuration.image = isLoading
       ? nil
       : UIImage(systemName: isPlaying ? "pause.fill" : "play.fill")

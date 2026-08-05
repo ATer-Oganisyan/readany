@@ -717,6 +717,8 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
     );
   };
 
+  const importBusy = importState.phase !== "idle";
+
   const footerTitle =
     importState.phase === "downloading"
       ? t("library.webdavImportDownloadingProgress", {
@@ -729,25 +731,27 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
             defaultValue: "正在导入 {{total}} 本书",
             total: importState.total,
           })
-        : selectedCount > 0
-          ? t("library.webdavImportSelectedCount", {
-              defaultValue: "已选 {{count}} 本",
-              count: selectedCount,
-            })
-          : t("library.webdavImportReady", "挑几本书带进当前书架");
+        : importBusy
+          ? t("library.importing", "正在导入...")
+          : selectedCount > 0
+            ? t("library.webdavImportSelectedCount", {
+                defaultValue: "已选 {{count}} 本",
+                count: selectedCount,
+              })
+            : t("library.webdavImportReady", "挑几本书带进当前书架");
 
   const footerMeta =
     importState.phase === "downloading"
       ? importState.currentName
-      : selectedCount > 0
-        ? t("library.webdavImportSelectionHint", "可以继续多选，或直接导入所选")
-        : t("library.webdavImportFolderHint", {
-            defaultValue: "本层 {{count}} 本可导入，{{duplicates}} 本可能已在书库",
-            count: importableVisibleEntries.length,
-            duplicates: likelyDuplicateVisibleCount,
-          });
-
-  const importBusy = importState.phase !== "idle";
+      : importBusy
+        ? ""
+        : selectedCount > 0
+          ? t("library.webdavImportSelectionHint", "可以继续多选，或直接导入所选")
+          : t("library.webdavImportFolderHint", {
+              defaultValue: "本层 {{count}} 本可导入，{{duplicates}} 本可能已在书库",
+              count: importableVisibleEntries.length,
+              duplicates: likelyDuplicateVisibleCount,
+            });
 
   useNativeHeaderActions({
     title: getSourceLabel(source.kind, t),

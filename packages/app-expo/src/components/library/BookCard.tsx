@@ -62,9 +62,6 @@ export const BookCard = memo(function BookCard({
   book,
   onOpen,
   onDelete,
-  onShowDetails,
-  onManageTags,
-  onVectorize,
   isVectorizing,
   isQueued,
   vectorProgress,
@@ -214,14 +211,7 @@ export const BookCard = memo(function BookCard({
           </View>
         )}
 
-        <BookCardActionSheet
-          book={book}
-          onOpen={onOpen}
-          onShowDetails={onShowDetails}
-          onManageTags={onManageTags}
-          onVectorize={onVectorize}
-          onDelete={onDelete}
-        />
+        <BookCardActionSheet book={book} onOpen={onOpen} onDelete={onDelete} />
       </View>
 
       {/* Info below cover */}

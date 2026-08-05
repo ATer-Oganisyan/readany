@@ -9,6 +9,7 @@ const TOKEN_EXPIRY_SKEW_MS = 30_000;
 const DEFAULT_TIMEOUT_MS = 60_000;
 const IMAGE_TIMEOUT_MS = 150_000;
 const INSTALLATION_TIMEOUT_MS = 15_000;
+const DEFAULT_NARRA_GATEWAY_URL = "https://api.narra.disrupt.builders";
 
 type NarraGatewayAdapter = (path: string, init: RequestInit) => Promise<Response>;
 
@@ -34,9 +35,10 @@ export interface NarraGatewayConfig {
 }
 
 export function getNarraGatewayConfig(): NarraGatewayConfig {
-  const baseUrl = process.env.EXPO_PUBLIC_NARRA_GATEWAY_URL?.trim().replace(/\/+$/, "") ?? "";
+  const configuredUrl = process.env.EXPO_PUBLIC_NARRA_GATEWAY_URL?.trim().replace(/\/+$/, "");
+  const baseUrl = configuredUrl || DEFAULT_NARRA_GATEWAY_URL;
   const authMode =
-    process.env.EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE === "installation" ? "installation" : "none";
+    process.env.EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE === "none" ? "none" : "installation";
   return { baseUrl, authMode };
 }
 
@@ -104,16 +106,34 @@ async function resetInstallationIdentity(): Promise<void> {
 interface GatewayErrorPayload {
   message: string;
   code?: string;
+  authError?: string;
+  response: Response;
 }
 
 async function readGatewayError(response: Response): Promise<GatewayErrorPayload> {
-  const payload = (await response
-    .clone()
-    .json()
-    .catch(() => null)) as { error?: string; message?: string; code?: string } | null;
+  // expo/fetch currently throws from Response.clone() on native. Read the
+  // error body once and recreate a response for callers that still need it.
+  const body = await response.text().catch(() => "");
+  let payload: { error?: string; message?: string; code?: string } | null = null;
+  try {
+    payload = JSON.parse(body) as { error?: string; message?: string; code?: string };
+  } catch {
+    // Non-JSON provider errors still fall back to the raw body below.
+  }
   return {
-    message: payload?.error || payload?.message || payload?.code || `HTTP ${response.status}`,
+    message:
+      payload?.error ||
+      payload?.message ||
+      payload?.code ||
+      body.trim() ||
+      `HTTP ${response.status}`,
     code: payload?.code,
+    authError: response.headers.get("x-narra-auth-error") ?? undefined,
+    response: new Response(body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    }),
   };
 }
 
@@ -135,8 +155,8 @@ function canResetRejectedIdentity(response: Response, error: GatewayErrorPayload
 function isInstallationTokenRejection(response: Response, error: GatewayErrorPayload): boolean {
   return (
     response.status === 401 &&
-    error.code === "AUTH" &&
-    error.message === "Нужен действующий installation token"
+    (error.authError === "installation_token" ||
+      (error.code === "AUTH" && error.message === "Нужен действующий installation token"))
   );
 }
 
@@ -227,7 +247,7 @@ async function directGatewayRequest(path: string, init: RequestInit): Promise<Re
   let response = await send();
   if (config.authMode === "installation" && response.status === 401) {
     const error = await readGatewayError(response);
-    if (isInstallationTokenRejection(response, error)) response = await send(true);
+    response = isInstallationTokenRejection(response, error) ? await send(true) : error.response;
   }
   return response;
 }

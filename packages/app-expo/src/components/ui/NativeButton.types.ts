@@ -18,7 +18,8 @@ export type NativeButtonIcon =
   | "search"
   | "send"
   | "settings"
-  | "share";
+  | "share"
+  | "sparkles";
 
 export interface NativeButtonProps {
   label: string;

@@ -77,7 +77,11 @@ module.exports = {
             enableProguardInReleaseBuilds: true,
             enableShrinkResourcesInReleaseBuilds: true,
             enableMinifyInReleaseBuilds: true,
+            networkInspector: false,
             usesCleartextTraffic: true,
+          },
+          ios: {
+            networkInspector: false,
           },
         },
       ],
@@ -94,7 +98,6 @@ module.exports = {
       "./plugins/withIosSceneLifecycle",
       "./plugins/withReactNativeScreensGamma",
       "./plugins/withVolumeKeyPaging",
-      "./plugins/withBottomSplashScreen",
       [
         "expo-camera",
         {

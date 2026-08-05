@@ -1,60 +1,32 @@
+import { MaterialIcon } from "@/components/ui/Icon";
+import { Text } from "@/components/ui/Typography";
 import { useTheme } from "@/styles/theme";
-import type { ComponentType } from "react";
-import { UIManager, View, requireNativeComponent } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet } from "react-native";
 import {
   type NativeButtonIcon,
   type NativeButtonProps,
-  type NativeButtonVariant,
   nativeButtonHeights,
 } from "./NativeButton.types";
 
 const icons: Record<NativeButtonIcon, string> = {
-  add: "plus",
-  back: "chevron.backward",
-  forward: "chevron.forward",
-  image: "photo.badge.plus",
-  check: "checkmark",
-  chat: "message",
-  close: "xmark",
-  components: "square.grid.2x2",
-  delete: "trash",
-  edit: "pencil",
-  play: "play.fill",
-  refresh: "arrow.clockwise",
-  search: "magnifyingglass",
-  send: "paperplane.fill",
-  settings: "gearshape",
-  share: "square.and.arrow.up",
+  add: "add",
+  back: "arrow_back",
+  forward: "arrow_forward",
+  image: "add_photo_alternate",
+  check: "check",
+  chat: "chat",
+  close: "close",
+  components: "apps",
+  delete: "delete",
+  edit: "edit",
+  play: "play_arrow",
+  refresh: "refresh",
+  search: "search",
+  send: "send",
+  settings: "settings",
+  share: "share",
+  sparkles: "auto_awesome",
 };
-
-interface ReadAnyNativeButtonViewProps {
-  label: string;
-  icon?: string;
-  variant: NativeButtonVariant;
-  color: string;
-  foregroundColor: string;
-  disabled: boolean;
-  loading: boolean;
-  accessibilityLabel?: string;
-  testID?: string;
-  onPress: () => void;
-  style: { width: number | `${number}%`; height: number };
-}
-
-const nativeButtonRegistry = globalThis as typeof globalThis & {
-  __readAnyNativeButtonView?: ComponentType<ReadAnyNativeButtonViewProps>;
-};
-
-const ReadAnyNativeButtonView =
-  nativeButtonRegistry.__readAnyNativeButtonView ??
-  requireNativeComponent<ReadAnyNativeButtonViewProps>("ReadAnyNativeButton");
-
-nativeButtonRegistry.__readAnyNativeButtonView = ReadAnyNativeButtonView;
-
-const nativeButtonConfig = UIManager.getViewManagerConfig("ReadAnyNativeButton") as {
-  NativeProps?: Record<string, unknown>;
-} | null;
-const supportsForegroundColor = Boolean(nativeButtonConfig?.NativeProps?.foregroundColor);
 
 export function NativeButton({
   label,
@@ -69,43 +41,70 @@ export function NativeButton({
   style,
   testID,
 }: NativeButtonProps) {
-  const { colors, isDark } = useTheme();
-  const height = nativeButtonHeights[size];
-  const color =
-    variant === "destructive"
-      ? colors.destructive
-      : variant === "primary" && isDark && !supportsForegroundColor
-        ? colors.elevation2
-        : colors.primary;
-  const foregroundColor =
-    variant === "destructive"
+  const { colors } = useTheme();
+  const isFilled = variant === "primary" || variant === "destructive";
+  const accent = variant === "destructive" ? colors.destructive : colors.primary;
+  const content = isFilled
+    ? variant === "destructive"
       ? colors.destructiveForeground
-      : variant === "primary"
-        ? colors.primaryForeground
-        : color;
-  const estimatedWidth = Math.max(
-    height,
-    Math.ceil(label.length * (size === "large" ? 11.5 : size === "small" ? 9.5 : 10.5)) +
-      (icon ? 58 : 34),
-  );
+      : colors.primaryForeground
+    : accent;
+  const buttonHeight = nativeButtonHeights[size];
 
   return (
-    <View style={[{ height, alignSelf: fullWidth ? "stretch" : "flex-start" }, style]}>
-      <ReadAnyNativeButtonView
-        label={label}
-        icon={icon ? icons[icon] : undefined}
-        variant={variant}
-        color={color}
-        foregroundColor={foregroundColor}
-        disabled={disabled || loading}
-        loading={loading}
-        accessibilityLabel={accessibilityLabel ?? label}
-        testID={testID}
-        onPress={onPress}
-        style={{ width: fullWidth ? "100%" : estimatedWidth, height }}
-      />
-    </View>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
+      testID={testID}
+      onPress={onPress}
+      disabled={disabled || loading}
+      style={({ pressed }) => [
+        styles.button,
+        {
+          minHeight: buttonHeight,
+          alignSelf: fullWidth ? "stretch" : "flex-start",
+          backgroundColor: isFilled
+            ? accent
+            : variant === "secondary"
+              ? colors.muted
+              : "transparent",
+          borderColor: variant === "secondary" ? colors.border : "transparent",
+          opacity: disabled ? 0.45 : pressed ? 0.72 : 1,
+        },
+        style,
+      ]}
+    >
+      {loading ? (
+        <ActivityIndicator color={content} />
+      ) : (
+        <>
+          {icon ? <MaterialIcon name={icons[icon]} size={20} color={content} /> : null}
+          <Text
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
+            ellipsizeMode="tail"
+            style={[styles.label, { color: content }]}
+          >
+            {label}
+          </Text>
+        </>
+      )}
+    </Pressable>
   );
 }
+
+const styles = StyleSheet.create({
+  button: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 18,
+  },
+  label: { fontWeight: "600" },
+});
 
 export type { NativeButtonProps } from "./NativeButton.types";

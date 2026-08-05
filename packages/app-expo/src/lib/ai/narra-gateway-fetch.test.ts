@@ -29,6 +29,16 @@ function jsonResponse(status: number, payload: object): Response {
   });
 }
 
+function expoJsonResponse(status: number, payload: object): Response {
+  const response = jsonResponse(status, payload);
+  Object.defineProperty(response, "clone", {
+    value: () => {
+      throw new Error("Not implemented");
+    },
+  });
+  return response;
+}
+
 describe("Narra gateway installation recovery", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -91,6 +101,30 @@ describe("Narra gateway installation recovery", () => {
     );
   });
 
+  it("uses the gateway auth header when the human-readable error text changes", async () => {
+    const tokenRejection = jsonResponse(401, {
+      code: "AUTH",
+      error: "Token expired",
+    });
+    tokenRejection.headers.set("x-narra-auth-error", "installation_token");
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(201, { token: "first-token", expires_in: 900 }))
+      .mockResolvedValueOnce(tokenRejection)
+      .mockResolvedValueOnce(jsonResponse(201, { token: "second-token", expires_in: 900 }))
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
+    const gateway = await import("./narra-gateway-fetch");
+    gateway.setNarraGatewayFetch(fetchMock);
+
+    const response = await gateway.narraGatewayRequest("/v2/media/images", { method: "POST" });
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(new Headers(fetchMock.mock.calls[3]?.[1]?.headers).get("authorization")).toBe(
+      "Bearer second-token",
+    );
+  });
+
   it("does not keep rotating identities after the recovery attempt fails", async () => {
     secureValues.set(INSTALLATION_ID_KEY, "11111111-1111-4111-8111-111111111111");
     secureValues.set(INSTALLATION_SECRET_KEY, "stale-secret");
@@ -133,7 +167,10 @@ describe("Narra gateway installation recovery", () => {
       .fn<typeof fetch>()
       .mockResolvedValueOnce(jsonResponse(201, { token: "valid-token", expires_in: 900 }))
       .mockResolvedValueOnce(
-        jsonResponse(401, { code: "AUTH", error: "Провайдер изображений отклонил ключ" }),
+        expoJsonResponse(401, {
+          code: "AUTH",
+          error: "Провайдер изображений отклонил ключ",
+        }),
       );
     const gateway = await import("./narra-gateway-fetch");
     gateway.setNarraGatewayFetch(fetchMock);
@@ -141,7 +178,26 @@ describe("Narra gateway installation recovery", () => {
     const response = await gateway.narraGatewayRequest("/v2/media/images", { method: "POST" });
 
     expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "AUTH",
+      error: "Провайдер изображений отклонил ключ",
+    });
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(secureStore.deleteItemAsync).not.toHaveBeenCalled();
+  });
+});
+
+describe("Narra gateway build configuration", () => {
+  it("uses the production gateway when a native build has no Expo environment", async () => {
+    vi.resetModules();
+    process.env.EXPO_PUBLIC_NARRA_GATEWAY_URL = "";
+    process.env.EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE = "";
+
+    const gateway = await import("./narra-gateway-fetch");
+
+    expect(gateway.getNarraGatewayConfig()).toEqual({
+      baseUrl: "https://api.narra.disrupt.builders",
+      authMode: "installation",
+    });
   });
 });

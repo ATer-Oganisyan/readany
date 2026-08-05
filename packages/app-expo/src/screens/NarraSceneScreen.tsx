@@ -44,7 +44,9 @@ export function NarraSceneScreen({ route, navigation }: Props) {
   const cachedAudio = useNarraStore((state) => state.books[bookId]?.sceneAudios?.[sourceKey]);
   const setScene = useNarraStore((state) => state.setScene);
   const setSceneAudio = useNarraStore((state) => state.setSceneAudio);
-  const [imageUri, setImageUri] = useState(cachedScene?.imageUri ?? null);
+  const [imageUri, setImageUri] = useState(() =>
+    cachedScene?.imageUri ? normalizePersistedNarraMediaUri(cachedScene.imageUri) : null,
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [audioStatus, setAudioStatus] = useState<AudioStatus>("idle");
@@ -221,6 +223,7 @@ export function NarraSceneScreen({ route, navigation }: Props) {
             accessibilityLabel={`Иллюстрация к главе ${displayChapter}`}
             source={{ uri: imageUri }}
             style={[styles.image, { backgroundColor: colors.card }]}
+            onError={() => setImageUri(null)}
           />
           {loading ? (
             <View style={styles.loadingOverlay}>

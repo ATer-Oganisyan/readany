@@ -1,14 +1,14 @@
 import { Text, TextInput } from "@/components/ui/Typography";
+import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
+import { fontSize, fontWeight, radius, useColors, withOpacity } from "@/styles/theme";
 import {
   DEFAULT_WEBDAV_IMPORT_REMOTE_ROOT,
-  getPlatformService,
   type PersistedWebDavImportInput,
   WEBDAV_IMPORT_TEMPORARY_CONFIG_KEY,
   WEBDAV_IMPORT_TEMPORARY_SECRET_KEY,
   type WebDavImportSource,
+  getPlatformService,
 } from "@readany/core";
-import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
-import { fontSize, fontWeight, radius, useColors, withOpacity } from "@/styles/theme";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -31,11 +31,7 @@ interface WebDavConnectSheetProps {
   onSubmit: (source: WebDavImportSource) => Promise<void>;
 }
 
-export function WebDavConnectSheet({
-  visible,
-  onClose,
-  onSubmit,
-}: WebDavConnectSheetProps) {
+export function WebDavConnectSheet({ visible, onClose, onSubmit }: WebDavConnectSheetProps) {
   const { t } = useTranslation();
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -82,7 +78,10 @@ export function WebDavConnectSheet({
   }, [visible]);
 
   const canSubmit =
-    url.trim().length > 0 && username.trim().length > 0 && password.trim().length > 0 && !submitting;
+    url.trim().length > 0 &&
+    username.trim().length > 0 &&
+    password.trim().length > 0 &&
+    !submitting;
 
   const s = useMemo(
     () =>

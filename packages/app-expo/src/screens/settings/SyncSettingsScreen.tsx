@@ -452,10 +452,7 @@ export default function SyncSettingsScreen() {
   }, [setSyncIntervalMins, syncIntervalInput]);
 
   return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: colors.background }]}
-      edges={[]}
-    >
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={[]}>
       <SettingsHeader title={t("settings.syncTitle")} />
 
       <KeyboardAvoidingView

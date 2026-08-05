@@ -13,10 +13,11 @@ const LOGO_SIZE = 144;
 const LOGO_BOTTOM_GAP = 24;
 
 interface Props {
+  appReady: boolean;
   onFinish: () => void;
 }
 
-export function AnimatedSplash({ onFinish }: Props) {
+export function AnimatedSplash({ appReady, onFinish }: Props) {
   const isDark = useColorScheme() === "dark";
   const SplashLogo = isDark ? SplashLogoDark : SplashLogoLight;
   const containerOpacity = useSharedValue(1);
@@ -26,6 +27,7 @@ export function AnimatedSplash({ onFinish }: Props) {
   }, [onFinish]);
 
   useEffect(() => {
+    if (!appReady) return;
     const timer = setTimeout(() => {
       containerOpacity.value = withTiming(0, { duration: 180 }, (finished) => {
         if (finished) runOnJS(handleFinish)();
@@ -33,7 +35,7 @@ export function AnimatedSplash({ onFinish }: Props) {
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [containerOpacity, handleFinish]);
+  }, [appReady, containerOpacity, handleFinish]);
 
   const containerStyle = useAnimatedStyle(() => ({
     opacity: containerOpacity.value,

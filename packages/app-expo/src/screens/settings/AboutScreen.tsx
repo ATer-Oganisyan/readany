@@ -1,7 +1,8 @@
 import { Text } from "@/components/ui/Typography";
+import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
+import { useUpdateStore } from "@/stores/update-store";
 import { getPlatformService } from "@readany/core/services";
 import { checkForUpdate } from "@readany/core/update";
-import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -15,6 +16,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import AppIcon from "../../../assets/icon.png";
 import {
   type ThemeColors,
   fontSize,
@@ -23,9 +25,7 @@ import {
   spacing,
   useColors,
 } from "../../styles/theme";
-import { useUpdateStore } from "@/stores/update-store";
 import { SettingsHeader } from "./SettingsHeader";
-import AppIcon from "../../../assets/icon.png";
 
 const TECH_STACK = [
   { label: "Expo SDK 55", descKey: "about.nativeContainer" },

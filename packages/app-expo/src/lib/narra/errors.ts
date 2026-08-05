@@ -12,6 +12,7 @@ export class NarraServiceError extends Error {
     public readonly code: NarraErrorCode,
     message: string,
     public readonly requestId?: string,
+    public readonly technicalDetail?: string,
   ) {
     super(message);
     this.name = "NarraServiceError";
@@ -42,16 +43,38 @@ export function normalizeNarraError(error: unknown): NarraServiceError {
   if (/^VALIDATION$|validation|400\b/i.test(detail)) {
     return new NarraServiceError("REQUEST", "Не удалось подготовить запрос.");
   }
+  if (
+    /No text could be extracted|extracting a book text sample|book contains no readable|Failed to fetch|Load failed|No book data/i.test(
+      detail,
+    )
+  ) {
+    return new NarraServiceError("REQUEST", "Не удалось прочитать текст книги. Попробуйте снова.");
+  }
+  if (/AI response contains no character JSON|found no characters/i.test(detail)) {
+    return new NarraServiceError(
+      "SERVICE",
+      "Сервис не распознал персонажей в ответе. Попробуйте снова.",
+    );
+  }
+  if (/политик[А-Яа-яЁё]* безопасности|safety|content policy|moderation/iu.test(detail)) {
+    return new NarraServiceError(
+      "SERVICE",
+      "Сервис отклонил эту сцену по правилам безопасности. Попробуйте другую страницу.",
+    );
+  }
   return new NarraServiceError("SERVICE", "Не получилось. Попробуйте снова.");
 }
 
 export function reportNarraError(scope: string, error: unknown): NarraServiceError {
   const normalized = normalizeNarraError(error);
+  const detail = error instanceof Error ? error.message : String(error);
   console.warn("[NarraError]", {
     scope,
     code: normalized.code,
-    detail: error instanceof Error ? error.message : String(error),
+    detail,
     requestId: normalized.requestId,
   });
-  return normalized;
+  return normalized.technicalDetail || error === normalized
+    ? normalized
+    : new NarraServiceError(normalized.code, normalized.message, normalized.requestId, detail);
 }

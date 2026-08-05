@@ -30,6 +30,12 @@ function isPDFMimeType(mimeType: string) {
 
 export interface ExtractorRef {
   extractChapters: (base64BookData: string, mimeType?: string) => Promise<ChapterData[]>;
+  extractTextSample: (params: {
+    uri: string;
+    mimeType?: string;
+    fileName?: string;
+    maxChars?: number;
+  }) => Promise<string>;
 }
 
 interface PendingExtraction {
@@ -44,6 +50,12 @@ interface PendingReadiness {
   timeoutId: ReturnType<typeof setTimeout>;
 }
 
+interface PendingTextSample {
+  resolve: (text: string) => void;
+  reject: (err: Error) => void;
+  timeoutId: ReturnType<typeof setTimeout>;
+}
+
 export const ExtractorWebView = forwardRef<ExtractorRef>((_, ref) => {
   const webViewRef = useRef<WebView>(null);
   const [htmlUri, setHtmlUri] = useState<string | null>(null);
@@ -51,6 +63,7 @@ export const ExtractorWebView = forwardRef<ExtractorRef>((_, ref) => {
 
   // Pending extraction requests
   const pendingRequests = useRef<PendingExtraction[]>([]);
+  const pendingTextSamples = useRef<PendingTextSample[]>([]);
   const pendingReadiness = useRef<PendingReadiness[]>([]);
 
   useEffect(() => {
@@ -60,6 +73,11 @@ export const ExtractorWebView = forwardRef<ExtractorRef>((_, ref) => {
         pending.reject(new Error("Extractor WebView unmounted"));
       }
       pendingRequests.current = [];
+      for (const pending of pendingTextSamples.current) {
+        clearTimeout(pending.timeoutId);
+        pending.reject(new Error("Extractor WebView unmounted"));
+      }
+      pendingTextSamples.current = [];
       for (const pending of pendingReadiness.current) {
         clearTimeout(pending.timeoutId);
         pending.reject(new Error("Extractor WebView unmounted"));
@@ -113,6 +131,16 @@ export const ExtractorWebView = forwardRef<ExtractorRef>((_, ref) => {
         } else if (msg.chapters) {
           pending.resolve(msg.chapters);
         }
+      } else if (msg.type === "textSampleExtracted") {
+        const pending = pendingTextSamples.current.shift();
+        if (!pending) return;
+
+        clearTimeout(pending.timeoutId);
+        if (msg.error) {
+          pending.reject(new Error(msg.error));
+        } else {
+          pending.resolve(typeof msg.text === "string" ? msg.text : "");
+        }
       } else if (msg.type === "debug") {
         console.log("[ExtractorWebView]", msg.message);
       } else if (msg.type === "error") {
@@ -121,6 +149,11 @@ export const ExtractorWebView = forwardRef<ExtractorRef>((_, ref) => {
         if (pending) {
           clearTimeout(pending.timeoutId);
           pending.reject(new Error(msg.message));
+        }
+        const pendingTextSample = pendingTextSamples.current.shift();
+        if (pendingTextSample) {
+          clearTimeout(pendingTextSample.timeoutId);
+          pendingTextSample.reject(new Error(msg.message));
         }
       }
     } catch (err) {
@@ -168,6 +201,43 @@ export const ExtractorWebView = forwardRef<ExtractorRef>((_, ref) => {
             base64: base64BookData,
             mimeType,
             fileName: getExtractorFileName(mimeType),
+          };
+
+          webViewRef.current.injectJavaScript(`
+          window.postMessage(${JSON.stringify(JSON.stringify(cmd))}, "*");
+          true;
+          `);
+        });
+      },
+      extractTextSample: async ({
+        uri,
+        mimeType = "application/epub+zip",
+        fileName,
+        maxChars = 48_000,
+      }) => {
+        await waitUntilReady();
+
+        return new Promise<string>((resolve, reject) => {
+          if (!webViewRef.current) {
+            reject(new Error("Extractor WebView not ready"));
+            return;
+          }
+
+          const timeoutId = setTimeout(() => {
+            const index = pendingTextSamples.current.findIndex(
+              (pending) => pending.reject === reject,
+            );
+            if (index >= 0) pendingTextSamples.current.splice(index, 1);
+            reject(new Error("Timed out extracting a book text sample"));
+          }, EXTRACTION_TIMEOUT_MS);
+
+          pendingTextSamples.current.push({ resolve, reject, timeoutId });
+          const cmd = {
+            type: "extractBookTextSample",
+            uri,
+            mimeType,
+            fileName: fileName || getExtractorFileName(mimeType),
+            maxChars: Math.min(48_000, Math.max(1, Math.floor(maxChars))),
           };
 
           webViewRef.current.injectJavaScript(`

@@ -16,6 +16,8 @@ import type { NarraCharacter } from "./types";
 
 const MAX_ANALYSIS_TEXT_LENGTH = 48_000;
 
+export type CharacterAnalysisTextFallback = string | (() => Promise<string>);
+
 export function createAnalysisExcerpt(text: string): string {
   const normalized = text.trim();
   if (normalized.length <= MAX_ANALYSIS_TEXT_LENGTH) return normalized;
@@ -25,7 +27,9 @@ export function createAnalysisExcerpt(text: string): string {
     normalized.slice(0, sectionLength),
     normalized.slice(middleStart, middleStart + sectionLength),
     normalized.slice(-sectionLength),
-  ].join("\n\n[…]\n\n");
+  ]
+    .join("\n\n[…]\n\n")
+    .slice(0, MAX_ANALYSIS_TEXT_LENGTH);
 }
 
 async function responseText(response: Response): Promise<string> {
@@ -41,7 +45,7 @@ async function responseText(response: Response): Promise<string> {
 
 export async function analyzeBookCharacters(
   book: Book,
-  extractedText?: string,
+  textFallback?: CharacterAnalysisTextFallback,
 ): Promise<NarraCharacter[]> {
   const store = useNarraStore.getState();
   store.setAnalyzing(book.id);
@@ -62,18 +66,26 @@ export async function analyzeBookCharacters(
       );
       return NARRA_MOCK_CHARACTERS;
     }
-    const chunks = extractedText ? [] : await getChunks(book.id);
-    const content =
-      extractedText ||
-      chunks
-        .slice(0, 28)
-        .map((chunk) => `${chunk.chapterTitle}\n${chunk.content}`)
-        .join("\n\n");
+    const chunks = await getChunks(book.id);
+    const chunkText = chunks
+      .slice(0, 28)
+      .map((chunk) => `${chunk.chapterTitle}\n${chunk.content}`.trim())
+      .filter(Boolean)
+      .join("\n\n");
+    let fallbackText = "";
+    if (!chunkText) {
+      fallbackText =
+        typeof textFallback === "function" ? await textFallback() : (textFallback ?? "");
+    }
+    const content = chunkText || fallbackText;
     const excerpt = createAnalysisExcerpt(content);
     if (!excerpt) throw new Error("No text could be extracted from the book");
     const response = await narraGatewayRequest("/v2/ai/chat/stream", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        accept: "text/event-stream",
+        "content-type": "application/json",
+      },
       body: JSON.stringify({
         messages: [
           {
@@ -82,10 +94,7 @@ export async function analyzeBookCharacters(
               "Ты анализируешь художественную книгу для Narra. Выдели до 6 главных персонажей. " +
               'Верни только JSON: {"characters":[{"id":"latin-slug","name":"короткое имя",' +
               '"fullName":"полное имя","role":"роль","gender":"male|female",' +
-              '"traits":["до 3 черт"],"speechStyle":"краткая манера речи",' +
-              '"speechExamples":["до 3 характерных реплик без сюжетных спойлеров"],' +
-              '"appearancePrompt":"описание внешности и одежды",' +
-              '"passport":{"age":30,"build":"...","hair":"...","eyes":"...","face":"...","outfit":"..."},' +
+              '"traits":["до 3 коротких черт"],' +
               '"unlockProgress":0.0}]}. unlockProgress — примерная доля книги первого значимого появления от 0 до 0.95, не номер главы. Всё текстовое — по-русски.',
           },
           {
@@ -100,17 +109,23 @@ export async function analyzeBookCharacters(
       }),
     });
     if (!response.ok) {
-      const error = (await response
-        .clone()
-        .json()
-        .catch(() => null)) as { code?: string; error?: string; request_id?: string } | null;
+      const error = (await response.json().catch(() => null)) as {
+        code?: string;
+        error?: string;
+        request_id?: string;
+      } | null;
       const normalized = normalizeNarraError(
         error?.code || error?.error || `HTTP ${response.status}`,
       );
       throw new NarraServiceError(normalized.code, normalized.message, error?.request_id);
     }
-    const characters = normalizeCharacterAnalysisResponse(await responseText(response));
-    if (characters.length === 0) throw new Error("Narra found no characters in the response");
+    const rawAnalysis = await responseText(response);
+    const characters = normalizeCharacterAnalysisResponse(rawAnalysis);
+    if (characters.length === 0) {
+      throw new Error(
+        `Narra found no characters in the response: ${rawAnalysis.slice(0, 800) || "<empty>"}`,
+      );
+    }
     store.setCharacters(book.id, characters);
     return characters;
   } catch (error) {

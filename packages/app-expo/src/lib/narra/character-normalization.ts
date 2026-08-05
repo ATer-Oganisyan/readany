@@ -4,27 +4,156 @@ import type { NarraCharacter, NarraGender, NarraPassport } from "./types";
 const MALE_VOICES = ["She", "Ast", "Gal", "Bez", "Ego", "Izv"];
 const FEMALE_VOICES = ["Che", "Erm", "Ste", "Tso", "Chr"];
 
-function parseJsonObject(text: string): Record<string, unknown> {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function parseJsonFragments(text: string): unknown[] {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1];
-  const source = fenced || text;
-  const start = source.indexOf("{");
-  const end = source.lastIndexOf("}");
-  if (start < 0 || end <= start) throw new Error("AI response contains no character JSON");
-  return JSON.parse(source.slice(start, end + 1)) as Record<string, unknown>;
+  const sources = fenced ? [fenced, text] : [text];
+  const parsed: unknown[] = [];
+
+  for (const source of sources) {
+    const trimmed = source.trim();
+    if (!trimmed) continue;
+    try {
+      parsed.push(JSON.parse(trimmed));
+      continue;
+    } catch {
+      // The model may wrap otherwise valid JSON in a short explanation.
+    }
+
+    for (let start = 0; start < source.length; start += 1) {
+      const opening = source[start];
+      if (opening !== "{" && opening !== "[") continue;
+      const stack: string[] = [opening];
+      let inString = false;
+      let escaped = false;
+
+      for (let end = start + 1; end < source.length; end += 1) {
+        const character = source[end];
+        if (inString) {
+          if (escaped) escaped = false;
+          else if (character === "\\") escaped = true;
+          else if (character === '"') inString = false;
+          continue;
+        }
+        if (character === '"') {
+          inString = true;
+          continue;
+        }
+        if (character === "{" || character === "[") stack.push(character);
+        else if (character === "}" || character === "]") {
+          const expected = character === "}" ? "{" : "[";
+          if (stack.at(-1) !== expected) break;
+          stack.pop();
+          if (stack.length > 0) continue;
+          try {
+            parsed.push(JSON.parse(source.slice(start, end + 1)));
+          } catch {
+            // Keep scanning for another complete JSON value.
+          }
+          start = end;
+          break;
+        }
+      }
+    }
+  }
+
+  return parsed;
+}
+
+function extractCharacterCandidates(value: unknown): unknown[] | undefined {
+  if (Array.isArray(value)) return value;
+  if (!isRecord(value)) return undefined;
+  if (Array.isArray(value.characters)) return value.characters;
+  if (isRecord(value.data) && Array.isArray(value.data.characters)) {
+    return value.data.characters;
+  }
+
+  const firstChoice = Array.isArray(value.choices) ? value.choices[0] : undefined;
+  if (isRecord(firstChoice)) {
+    const message = isRecord(firstChoice.message) ? firstChoice.message : undefined;
+    const content = typeof message?.content === "string" ? message.content : firstChoice.text;
+    if (typeof content === "string") {
+      for (const parsed of parseJsonFragments(content)) {
+        const candidates = extractCharacterCandidates(parsed);
+        if (candidates !== undefined) return candidates;
+      }
+    }
+  }
+
+  for (const content of [value.content, value.text]) {
+    if (typeof content !== "string") continue;
+    for (const parsed of parseJsonFragments(content)) {
+      const candidates = extractCharacterCandidates(parsed);
+      if (candidates !== undefined) return candidates;
+    }
+  }
+
+  return undefined;
+}
+
+function parseCharacterCandidates(input: unknown): unknown[] {
+  if (typeof input !== "string") return extractCharacterCandidates(input) ?? [];
+  const parsed = parseJsonFragments(input);
+  if (parsed.length === 0) throw new Error("AI response contains no character JSON");
+  for (const value of parsed) {
+    const candidates = extractCharacterCandidates(value);
+    if (candidates !== undefined) return candidates;
+  }
+
+  // Providers can stop at their output-token limit after emitting complete
+  // character objects but before closing the outer JSON array.
+  return parsed.filter(
+    (value) =>
+      isRecord(value) && (typeof value.name === "string" || typeof value.fullName === "string"),
+  );
+}
+
+function isMetadataEvent(event: Record<string, unknown>, eventName?: string): boolean {
+  const type = typeof event.type === "string" ? event.type : "";
+  return [eventName || "", type].some((value) =>
+    /(^|[._-])(metadata|usage|ping)([._-]|$)/i.test(value),
+  );
+}
+
+function getCompletionChunk(event: Record<string, unknown>, eventName?: string): string {
+  if (isMetadataEvent(event, eventName)) return "";
+  const firstChoice = Array.isArray(event.choices) ? event.choices[0] : undefined;
+  if (isRecord(firstChoice)) {
+    const choiceDelta = firstChoice.delta;
+    if (typeof choiceDelta === "string") return choiceDelta;
+    if (isRecord(choiceDelta) && typeof choiceDelta.content === "string") {
+      return choiceDelta.content;
+    }
+    if (typeof firstChoice.text === "string") return firstChoice.text;
+  }
+  if (typeof event.text === "string") return event.text;
+  if (typeof event.content === "string") return event.content;
+  if (typeof event.delta === "string") return event.delta;
+  if (isRecord(event.delta) && typeof event.delta.text === "string") return event.delta.text;
+  return "";
 }
 
 export function parseNarraStreamText(body: string): string {
   let output = "";
+  let eventName: string | undefined;
   for (const line of body.split(/\r?\n/)) {
+    if (!line) {
+      eventName = undefined;
+      continue;
+    }
+    if (line.startsWith("event:")) {
+      eventName = line.slice(6).trim();
+      continue;
+    }
     if (!line.startsWith("data:")) continue;
     const data = line.slice(5).trim();
     if (!data || data === "[DONE]") continue;
     try {
-      const event = JSON.parse(data) as {
-        text?: string;
-        choices?: Array<{ delta?: { content?: string }; text?: string }>;
-      };
-      output += event.choices?.[0]?.delta?.content || event.choices?.[0]?.text || event.text || "";
+      const event = JSON.parse(data) as unknown;
+      if (isRecord(event)) output += getCompletionChunk(event, eventName);
     } catch {
       // Provider comments and metadata are not completion chunks.
     }
@@ -59,14 +188,11 @@ function normalizePassport(raw: unknown, gender: NarraGender): NarraPassport | u
   };
 }
 
-export function normalizeCharacterAnalysisResponse(
-  input: string | Record<string, unknown>,
-): NarraCharacter[] {
-  const payload = typeof input === "string" ? parseJsonObject(input) : input;
-  const candidates = Array.isArray(payload.characters) ? payload.characters : [];
+export function normalizeCharacterAnalysisResponse(input: unknown): NarraCharacter[] {
+  const candidates = parseCharacterCandidates(input);
   let male = 0;
   let female = 0;
-  return candidates.slice(0, MAX_NARRA_CHARACTERS).flatMap((candidate, index) => {
+  const characters = candidates.slice(0, MAX_NARRA_CHARACTERS).flatMap((candidate, index) => {
     if (!candidate || typeof candidate !== "object") return [];
     const raw = candidate as Record<string, unknown>;
     const fullName = String(raw.fullName || raw.name || "").trim();
@@ -103,4 +229,13 @@ export function normalizeCharacterAnalysisResponse(
       },
     ];
   });
+  if (characters.length > 0 && !characters.some((character) => character.unlockProgress === 0)) {
+    const earliestIndex = characters.reduce(
+      (earliest, character, index) =>
+        character.unlockProgress < characters[earliest].unlockProgress ? index : earliest,
+      0,
+    );
+    characters[earliestIndex] = { ...characters[earliestIndex], unlockProgress: 0 };
+  }
+  return characters;
 }
