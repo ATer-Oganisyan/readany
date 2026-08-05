@@ -35,7 +35,6 @@ import type { WebDavImportSource } from "@readany/core";
 import { useTranslation } from "react-i18next";
 import { Platform } from "react-native";
 import { TabNavigator } from "./TabNavigator";
-import { NATIVE_SCROLL_EDGE_EFFECTS } from "./scroll-edge-effects";
 
 export type RootStackParamList = {
   Tabs: undefined;
@@ -109,7 +108,6 @@ export function RootNavigator() {
             fontFamily: titleFontFamily,
             fontWeight: "600",
           },
-          scrollEdgeEffects: NATIVE_SCROLL_EDGE_EFFECTS,
           contentStyle: { backgroundColor: colors.background },
         }}
       >
@@ -135,12 +133,6 @@ export function RootNavigator() {
             fullScreenGestureEnabled: true,
             gestureResponseDistance: { start: 48 },
             headerShown: false,
-            scrollEdgeEffects: {
-              top: "hidden",
-              bottom: "hidden",
-              left: "hidden",
-              right: "hidden",
-            },
             statusBarAnimation: "fade",
             statusBarHidden: true,
           }}

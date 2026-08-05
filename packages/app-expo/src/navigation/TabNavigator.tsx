@@ -20,7 +20,6 @@ import { useSyncStore } from "@readany/core/stores";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type ImageSourcePropType, Platform, StyleSheet, TouchableOpacity } from "react-native";
-import { NATIVE_SCROLL_EDGE_EFFECTS } from "./scroll-edge-effects";
 
 export type TabParamList = {
   Library: undefined;
@@ -101,7 +100,6 @@ function useTabStackScreenOptions(): NativeStackNavigationOptions {
       fontFamily: titleFontFamily,
       fontWeight: "600",
     },
-    scrollEdgeEffects: NATIVE_SCROLL_EDGE_EFFECTS,
     contentStyle: { backgroundColor: colors.background },
   };
 }
