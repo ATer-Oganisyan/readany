@@ -60,6 +60,14 @@ export interface ReaderInitialSettings {
   paginatedLayout?: "single" | "double";
 }
 
+/** Совпадение поиска по книге: CFI + фрагмент с контекстом (из foliate search) */
+export interface ReaderSearchResultItem {
+  cfi: string;
+  pre: string;
+  match: string;
+  post: string;
+}
+
 export interface ReaderBridgeCallbacks {
   onRelocate?: (detail: RelocateEvent) => void;
   onBookTextMetrics?: (detail: { totalCharacters: number }) => void;
@@ -68,7 +76,7 @@ export interface ReaderBridgeCallbacks {
   onSelectionCleared?: () => void;
   onTap?: () => void;
   onSearchResult?: (index: number, count: number) => void;
-  onSearchComplete?: (count: number) => void;
+  onSearchComplete?: (count: number, results?: ReaderSearchResultItem[]) => void;
   onError?: (message: string) => void;
   onReady?: () => void;
   onLoaded?: () => void;
@@ -774,7 +782,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
           cb.onSearchResult?.(msg.index || 0, msg.count || 0);
           break;
         case "searchComplete":
-          cb.onSearchComplete?.(msg.count || 0);
+          cb.onSearchComplete?.(msg.count || 0, Array.isArray(msg.results) ? msg.results : []);
           break;
         case "error":
           console.error("[ReaderBridge] Error from WebView:", msg.message);

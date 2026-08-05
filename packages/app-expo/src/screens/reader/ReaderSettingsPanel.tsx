@@ -5,6 +5,7 @@ import { XIcon } from "@/components/ui/Icon";
 import { Text } from "@/components/ui/Typography";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { SCENE_SUGGESTION_INTERVALS } from "@/lib/narra/scene-suggestion";
+import { READER_PAGE_THEMES } from "@/lib/reader/reader-themes";
 import { useNarraStore } from "@/stores";
 import { useColors } from "@/styles/theme";
 import { useFontStore } from "@readany/core/stores";
@@ -81,6 +82,35 @@ export function ReaderSettingsPanel({
           </TouchableOpacity>
         </View>
         <ScrollView showsVerticalScrollIndicator={false}>
+          {/* Тема страницы (пресеты фона/текста, образец narra) */}
+          <View style={[s.settingRow, { flexDirection: "column", alignItems: "stretch", gap: 10 }]}>
+            <Text style={s.settingLabel}>{t("reader.pageTheme", "Тема страницы")}</Text>
+            <View style={s.pageThemeRow}>
+              {READER_PAGE_THEMES.map((preset) => {
+                const active = (readSettings.readerTheme ?? "original") === preset.id;
+                const bg = preset.preview?.bg ?? colors.background;
+                const ink = preset.preview?.ink ?? colors.foreground;
+                return (
+                  <TouchableOpacity
+                    key={preset.id}
+                    style={[
+                      s.pageThemeTile,
+                      { backgroundColor: bg },
+                      active && s.pageThemeTileActive,
+                    ]}
+                    onPress={() => onUpdateSetting("readerTheme", preset.id)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                  >
+                    <Text style={[s.pageThemeTileAa, { color: ink }]}>Aa</Text>
+                    <Text style={[s.pageThemeTileLabel, { color: ink }]}>
+                      {t(preset.labelKey, preset.labelDefault)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
           {/* Font Size */}
           <View style={s.settingRow}>
             <Text style={s.settingLabel}>{t("reader.fontSize", "字号")}</Text>

@@ -407,6 +407,8 @@
     let searchGenerator = null;
     let searchResults = [];
     let searchIndex = 0;
+    // Сколько совпадений с контекстом отдаётся в RN-панель поиска
+    const MAX_SEARCH_RESULT_ITEMS = 100;
     let currentSectionIndex = 0;
     let totalSections = 0;
     let currentThemeColors = { bg: '#1c1c1e', fg: '#e8e8ed', muted: '#7c7c82', primary: '#3b82f6' };
@@ -2022,12 +2024,18 @@
             postToRN('searchProgress', { progress: result.progress });
           }
         }
-        postToRN('searchComplete', { count: totalResults });
-        // Navigate to first result
-        if (searchResults.length > 0) {
-          await view.goTo(searchResults[0].cfi);
-          postToRN('searchResult', { index: 0, count: totalResults });
-        }
+        // Панель поиска показывает список совпадений с контекстом — отдаём
+        // фрагменты (pre/match/post) вместе с итогом. Без автоперехода к первому
+        // результату: страница не должна прыгать под открытой панелью.
+        postToRN('searchComplete', {
+          count: totalResults,
+          results: searchResults.slice(0, MAX_SEARCH_RESULT_ITEMS).map((r) => ({
+            cfi: r.cfi,
+            pre: (r.excerpt && r.excerpt.pre) || '',
+            match: (r.excerpt && r.excerpt.match) || '',
+            post: (r.excerpt && r.excerpt.post) || '',
+          })),
+        });
       } catch (err) {
         postToRN('error', { message: 'Search failed: ' + String(err) });
       }

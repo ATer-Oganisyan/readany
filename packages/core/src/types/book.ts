@@ -102,6 +102,12 @@ export interface ReadSettings extends ViewSettings {
    * existing persisted settings deserialize cleanly.
    */
   followSystemFontScale?: boolean;
+  /**
+   * Тема страницы читалки (пресет фона/текста в стиле Apple Books):
+   * "original" — цвета темы приложения, "sepia", "dark". Опциональное поле,
+   * старые сохранённые настройки читаются как "original".
+   */
+  readerTheme?: "original" | "sepia" | "dark";
 }
 
 export type SortField = "title" | "author" | "addedAt" | "lastOpenedAt" | "progress";

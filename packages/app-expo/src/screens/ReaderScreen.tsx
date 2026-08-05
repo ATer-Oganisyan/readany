@@ -3,17 +3,10 @@ import { BookmarkRibbon } from "@/components/reader/BookmarkRibbon";
 import { ChapterTranslationSheet } from "@/components/reader/ChapterTranslationSheet";
 import { TTSPage } from "@/components/reader/TTSPage";
 import { TranslationPanel } from "@/components/reader/TranslationPanel";
-import {
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  NotebookPenIcon,
-  SearchIcon,
-  SparklesIcon,
-  XIcon,
-} from "@/components/ui/Icon";
+import { NotebookPenIcon, SparklesIcon, XIcon } from "@/components/ui/Icon";
 import { NativeButton } from "@/components/ui/NativeButton";
 import { NativeContextMenuButton } from "@/components/ui/NativeContextMenuButton";
-import { Text, TextInput } from "@/components/ui/Typography";
+import { Text } from "@/components/ui/Typography";
 import { useReaderBridge } from "@/hooks/use-reader-bridge";
 import type { RelocateEvent, SelectionEvent, VisibleTTSSegment } from "@/hooks/use-reader-bridge";
 import { getBundledCatalogCharactersByTitle } from "@/lib/narra/bundled-catalog-characters";
@@ -157,9 +150,10 @@ const NOTE_TOOLTIP_SIDE_PADDING = 12;
 const NOTE_TOOLTIP_ABOVE_OFFSET = 2;
 const NOTE_TOOLTIP_BELOW_OFFSET = 8;
 const NOTE_TOOLTIP_TOP_THRESHOLD = 180;
+import { resolveReaderThemeColors } from "@/lib/reader/reader-themes";
 import { useRubyStore } from "@readany/core/stores/ruby-store";
 import { ReaderSettingsPanel } from "./reader/ReaderSettingsPanel";
-import { ReaderTOCPanel } from "./reader/ReaderTOCPanel";
+import { type ReaderNavTab, ReaderTOCPanel } from "./reader/ReaderTOCPanel";
 import { CONTROLS_TIMEOUT, SCREEN_HEIGHT, SCREEN_WIDTH } from "./reader/reader-constants";
 import { makeStyles, noteTooltipMdStyles } from "./reader/reader-styles";
 import { useReaderBookmark } from "./reader/useReaderBookmark";
@@ -225,9 +219,8 @@ export function ReaderScreen({ route, navigation }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [showControls, setShowControls] = useState(true);
   const [showTOC, setShowTOC] = useState(false);
-  const [tocActiveTab, setTocActiveTab] = useState<"toc" | "bookmarks">("toc");
+  const [tocActiveTab, setTocActiveTab] = useState<ReaderNavTab>("toc");
   const [showSettings, setShowSettings] = useState(false);
-  const [showSearch, setShowSearch] = useState(false);
   const [showNotebook, setShowNotebook] = useState(false);
   const [showTranslation, setShowTranslation] = useState(false);
   const [translationText, setTranslationText] = useState("");
@@ -326,6 +319,21 @@ export function ReaderScreen({ route, navigation }: Props) {
   const translationConfig = useSettingsStore((s) => s.translationConfig);
   const aiConfig = useSettingsStore((s) => s.aiConfig);
   const showTopTitleProgress = readSettings.showTopTitleProgress !== false;
+
+  // Тема страницы (пресет Aa-панели): «Оригинал» — цвета приложения,
+  // «Сепия»/«Тёмная» — собственные палитры только внутри WebView
+  const readerThemeColors = useMemo(
+    () =>
+      resolveReaderThemeColors(readSettings.readerTheme, {
+        background: colors.background,
+        foreground: colors.foreground,
+        muted: colors.mutedForeground,
+        primary: colors.primary,
+      }),
+    [readSettings.readerTheme, colors],
+  );
+  const readerThemeColorsRef = useRef(readerThemeColors);
+  readerThemeColorsRef.current = readerThemeColors;
 
   // Track OS-level accessibility font scale; re-renders when the user
   // changes the system font size while the reader is open.
@@ -462,10 +470,8 @@ export function ReaderScreen({ route, navigation }: Props) {
   const { isBookmarked, bookBookmarks, handleToggleBookmark } = bookmark;
 
   useLayoutEffect(() => {
-    const headerVisible = showControls && !showSearch;
-
     navigation.setOptions({
-      headerShown: headerVisible,
+      headerShown: showControls,
       headerTransparent: true,
       headerShadowVisible: false,
       headerBackButtonDisplayMode: "minimal",
@@ -473,7 +479,7 @@ export function ReaderScreen({ route, navigation }: Props) {
       headerTitleAlign: "center",
       title: "",
     });
-  }, [colors.foreground, navigation, showControls, showSearch]);
+  }, [colors.foreground, navigation, showControls]);
 
   const suppressProgressTracking = useCallback((duration = PROGRAMMATIC_NAV_GUARD_MS) => {
     progressTrackingGuardUntilRef.current = Math.max(
@@ -500,14 +506,12 @@ export function ReaderScreen({ route, navigation }: Props) {
     [suppressProgressTracking],
   );
 
-  // ── Search ─────────────────────────────────────────────────────────────────
+  // ── Search (вкладка «Поиск» единой панели) ─────────────────────────────────
   // Use bridgeRef for lazy access (bridge is initialized later)
   const search = useReaderSearch({
-    currentCfi,
     bridge: {
       search: (q) => bridgeRef.current?.search?.(q),
       clearSearch: () => bridgeRef.current?.clearSearch?.(),
-      navigateSearch: (idx) => bridgeRef.current?.navigateSearch?.(idx),
       goToCFI: (cfi) => goToCFISafely(cfi),
     },
   });
@@ -978,11 +982,8 @@ export function ReaderScreen({ route, navigation }: Props) {
       suppressReaderTapUntilRef.current = Date.now() + 400;
       setCharacterCard(character);
     },
-    onSearchResult: (index: number, count: number) => {
-      search.onSearchResult(index, count);
-    },
-    onSearchComplete: (count: number) => {
-      search.onSearchComplete(count);
+    onSearchComplete: (count, results) => {
+      search.onSearchComplete(count, results);
     },
     onError: (message: string) => {
       console.error("[Reader] WebView error:", message);
@@ -1042,7 +1043,6 @@ export function ReaderScreen({ route, navigation }: Props) {
       !loading &&
       !error &&
       !isReimporting &&
-      !showSearch &&
       !showTOC &&
       !showSettings &&
       !showNotebook &&
@@ -1063,7 +1063,6 @@ export function ReaderScreen({ route, navigation }: Props) {
       loading,
       error,
       isReimporting,
-      showSearch,
       showTOC,
       showSettings,
       showNotebook,
@@ -1224,15 +1223,17 @@ export function ReaderScreen({ route, navigation }: Props) {
   }, [bookId, navigation]);
 
   useLayoutEffect(() => {
-    const headerVisible = showControls && !showSearch;
+    const headerVisible = showControls;
+    // Единая панель (оглавление/закладки/поиск) + Aa-настройки — один вход с тулбара
+    const openNavPanel = (tab: ReaderNavTab) => {
+      setTocActiveTab(tab);
+      setShowTOC(true);
+    };
     const readerActions = [
       {
         label: "Оглавление",
         sfSymbol: "list.bullet",
-        onPress: () => {
-          setTocActiveTab("toc");
-          setShowTOC(true);
-        },
+        onPress: () => openNavPanel("toc"),
       },
       {
         label: isBookmarked ? "Удалить закладку" : "Добавить закладку",
@@ -1240,17 +1241,24 @@ export function ReaderScreen({ route, navigation }: Props) {
         onPress: handleToggleBookmark,
       },
       {
-        label: "Заметки",
-        sfSymbol: "square.and.pencil",
-        onPress: () => navigation.navigate("FullScreenNotes", { bookId }),
+        label: "Закладки",
+        sfSymbol: "bookmark.fill",
+        onPress: () => openNavPanel("bookmarks"),
       },
       {
         label: "Поиск",
         sfSymbol: "magnifyingglass",
-        onPress: () => {
-          setShowSearch(true);
-          setShowControls(false);
-        },
+        onPress: () => openNavPanel("search"),
+      },
+      {
+        label: "Оформление",
+        sfSymbol: "textformat.size",
+        onPress: () => setShowSettings(true),
+      },
+      {
+        label: "Заметки",
+        sfSymbol: "square.and.pencil",
+        onPress: () => navigation.navigate("FullScreenNotes", { bookId }),
       },
       {
         label: "Язык",
@@ -1327,7 +1335,6 @@ export function ReaderScreen({ route, navigation }: Props) {
     isBookmarked,
     navigation,
     showControls,
-    showSearch,
     t,
     tts.handleToggleTTS,
   ]);
@@ -1496,12 +1503,7 @@ export function ReaderScreen({ route, navigation }: Props) {
           },
         });
 
-        bridge.setThemeColors({
-          background: colors.background,
-          foreground: colors.foreground,
-          muted: colors.mutedForeground,
-          primary: colors.primary,
-        });
+        bridge.setThemeColors(readerThemeColorsRef.current);
       } catch (err: any) {
         console.error("[ReaderScreen] Failed to load book:", err);
         setError(err.message || "Failed to load book file");
@@ -1581,13 +1583,8 @@ export function ReaderScreen({ route, navigation }: Props) {
 
   useEffect(() => {
     if (!webViewReady) return;
-    bridge.setThemeColors({
-      background: colors.background,
-      foreground: colors.foreground,
-      muted: colors.mutedForeground,
-      primary: colors.primary,
-    });
-  }, [themeMode, webViewReady]);
+    bridge.setThemeColors(readerThemeColors);
+  }, [themeMode, readerThemeColors, webViewReady]);
 
   // Re-apply font settings when custom fonts or selected font changes
   useEffect(() => {
@@ -1760,16 +1757,12 @@ export function ReaderScreen({ route, navigation }: Props) {
 
   const layoutTopInset = stableTopInset;
   const percent = Math.round(progress * 100);
-  const isPanelOpen = showTOC || showSettings || showSearch || showNotebook || showTranslation;
+  const isPanelOpen = showTOC || showSettings || showNotebook || showTranslation;
   const readerContentInset = Math.round(
     readSettings.pageMargin *
       (computeEffectiveFontSize(readSettings.fontSize, readSettings.followSystemFontScale) / 16),
   );
-  const readerTopMargin = !showSearch
-    ? showTopTitleProgress
-      ? layoutTopInset + 30
-      : layoutTopInset
-    : 0;
+  const readerTopMargin = showTopTitleProgress ? layoutTopInset + 30 : layoutTopInset;
   const adjustedNoteTooltip = noteTooltip
     ? {
         ...noteTooltip,
@@ -1842,7 +1835,7 @@ export function ReaderScreen({ route, navigation }: Props) {
           )}
 
           {/* ─── Top Info Bar (always visible) ─── */}
-          {!showSearch && !showControls && showTopTitleProgress && (
+          {!showControls && showTopTitleProgress && (
             <View
               style={[s.topInfoBar, { top: layoutTopInset, paddingHorizontal: readerContentInset }]}
             >
@@ -1878,7 +1871,7 @@ export function ReaderScreen({ route, navigation }: Props) {
           </GestureDetector>
         )}
 
-        {Platform.OS === "ios" && showControls && !showSearch && (
+        {Platform.OS === "ios" && showControls && (
           <View
             style={{
               position: "absolute",
@@ -1911,7 +1904,7 @@ export function ReaderScreen({ route, navigation }: Props) {
               left: 16,
               right: 16,
               bottom:
-                (Platform.OS === "ios" && showControls && !showSearch ? TOOLBAR_HEIGHT : 0) +
+                (Platform.OS === "ios" && showControls ? TOOLBAR_HEIGHT : 0) +
                 (insets.bottom || 12) +
                 12,
               alignItems: "center",
@@ -2029,98 +2022,18 @@ export function ReaderScreen({ route, navigation }: Props) {
           </View>
         )}
 
-        {/* ─── Search Bar ─── */}
-        {showSearch && (
-          <View style={[s.searchBarWrap, { paddingTop: layoutTopInset }]}>
-            <View style={s.searchBarRow}>
-              <View style={s.searchInputWrap}>
-                <SearchIcon size={16} color={colors.mutedForeground} />
-                <TextInput
-                  style={s.searchInput}
-                  placeholder={t("reader.searchInBook", "在书中搜索")}
-                  placeholderTextColor={colors.mutedForeground}
-                  value={search.searchQuery}
-                  onChangeText={search.handleSearchInput}
-                  autoFocus
-                  returnKeyType="search"
-                />
-              </View>
-              <View style={s.searchMetaRow}>
-                {search.isSearching ? (
-                  <ActivityIndicator size="small" color={colors.mutedForeground} />
-                ) : search.searchQuery && search.searchResultCount > 0 ? (
-                  <Text style={s.searchCount}>
-                    {search.searchIndex + 1} / {search.searchResultCount}
-                  </Text>
-                ) : search.searchQuery && !search.isSearching ? (
-                  <Text style={s.searchCount}>0</Text>
-                ) : null}
-              </View>
-              <TouchableOpacity
-                style={s.searchNavBtn}
-                onPress={() => search.navigateSearch("prev")}
-                disabled={search.searchResultCount === 0}
-              >
-                <ChevronLeftIcon
-                  size={16}
-                  color={search.searchResultCount > 0 ? colors.foreground : colors.mutedForeground}
-                />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={s.searchNavBtn}
-                onPress={() => search.navigateSearch("next")}
-                disabled={search.searchResultCount === 0}
-              >
-                <ChevronRightIcon
-                  size={16}
-                  color={search.searchResultCount > 0 ? colors.foreground : colors.mutedForeground}
-                />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={s.searchNavBtn}
-                onPress={() => {
-                  if (search.searchStartCfi && search.searchResultCount > 0) {
-                    Alert.alert(
-                      t("reader.searchComplete", "搜索完成"),
-                      t("reader.returnToOriginal", "是否返回搜索前的位置？"),
-                      [
-                        {
-                          text: t("common.cancel", "取消"),
-                          style: "cancel",
-                          onPress: () => {
-                            search.setSearchStartCfi(null);
-                          },
-                        },
-                        {
-                          text: t("common.confirm", "确定"),
-                          onPress: () => {
-                            goToCFISafely(search.searchStartCfi!);
-                            search.setSearchStartCfi(null);
-                          },
-                        },
-                      ],
-                    );
-                  } else {
-                    search.setSearchStartCfi(null);
-                  }
-                  setShowSearch(false);
-                  search.clearSearch();
-                  setShowControls(true);
-                }}
-              >
-                <XIcon size={16} color={colors.mutedForeground} />
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-
-        {/* ─── TOC & Bookmarks Panel ─── */}
+        {/* ─── Единая панель: оглавление · закладки · поиск ─── */}
         <ReaderTOCPanel
           visible={showTOC}
           activeTab={tocActiveTab}
           toc={toc}
           bookmarks={bookBookmarks}
           currentChapter={currentChapter}
+          isBookmarked={isBookmarked}
+          searchQuery={search.searchQuery}
+          searchResults={search.searchResults}
+          searchResultCount={search.searchResultCount}
+          isSearching={search.isSearching}
           onClose={() => setShowTOC(false)}
           onTabChange={setTocActiveTab}
           onSelectTocItem={goToTocItem}
@@ -2129,6 +2042,13 @@ export function ReaderScreen({ route, navigation }: Props) {
             setShowTOC(false);
           }}
           onDeleteBookmark={(id) => removeBookmark(id)}
+          onToggleBookmark={handleToggleBookmark}
+          onSearchInput={search.handleSearchInput}
+          onSelectSearchResult={(cfi) => {
+            // Переход к совпадению; подсветка найденного остаётся в тексте
+            search.selectResult(cfi);
+            setShowTOC(false);
+          }}
         />
 
         {/* ─── Settings Panel ─── */}
