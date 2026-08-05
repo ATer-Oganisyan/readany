@@ -73,6 +73,9 @@ export async function analyzeBookCharacters(
       .map((chunk) => `${chunk.chapterTitle}\n${chunk.content}`.trim())
       .filter(Boolean)
       .join("\n\n");
+    // Число глав книги — для перевода appearanceChapter в долю открытия героя.
+    const totalChapters =
+      new Set(chunks.map((chunk) => chunk.chapterTitle).filter(Boolean)).size || undefined;
     let fallbackText = "";
     if (!chunkText) {
       fallbackText =
@@ -95,8 +98,14 @@ export async function analyzeBookCharacters(
               "Ты анализируешь художественную книгу для Narra. Выдели до 6 главных персонажей. " +
               'Верни только JSON: {"characters":[{"id":"latin-slug","name":"короткое имя",' +
               '"fullName":"полное имя","stressedName":"имя с ударением","role":"роль","gender":"male|female",' +
-              '"traits":["до 3 коротких черт"],"greeting":"приветствие читателю",' +
-              '"unlockProgress":0.0}]}. unlockProgress — примерная доля книги первого значимого появления от 0 до 0.95, не номер главы. ' +
+              '"traits":["до 3 коротких черт"],"speechStyle":"манера речи","speechExamples":["2–3 реплики"],' +
+              '"greeting":"приветствие читателю","appearanceChapter":1,"unlockFraction":0.0}]}. ' +
+              "speechStyle — живая манера речи именно этого героя: темп, лексика, интонации, 1–2 предложения " +
+              "(например «Говорит быстро, по делу, чеканя аргументы; на сантименты язвит»); " +
+              "без общих формул вроде «говорит в манере эпохи». " +
+              "speechExamples — 2–3 короткие реплики, звучащие в точности как он. " +
+              "appearanceChapter — номер главы первого значимого появления героя (1 — первая глава); " +
+              "unlockFraction — доля книги до этого места от 0 до 0.95 (0 — герой есть с самого начала). " +
               "stressedName — то же короткое имя, но с апострофом сразу после ударной гласной " +
               '(например "Одинцо\'ва"); если в ударении не уверен — опусти это поле. ' +
               "greeting — первое сообщение героя читателю от первого лица, в его характере и манере речи, 1–2 предложения, без спойлеров. Всё текстовое — по-русски.",
@@ -128,6 +137,7 @@ export async function analyzeBookCharacters(
       bookId: book.id,
       narratorPreference: useNarraStore.getState().narratorVoicePreference,
       firstPerson: detectFirstPerson(content),
+      totalChapters,
     });
     if (characters.length === 0) {
       throw new Error(

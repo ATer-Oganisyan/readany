@@ -34,7 +34,9 @@ function characters(
     voice: plan.assignments[definition.id]?.voice ?? plan.narratorVoice,
     voiceProsody: plan.assignments[definition.id]?.prosody,
     traits: definition.traits,
-    speechStyle: "Говорит в характере персонажа и в манере своей эпохи.",
+    // Настоящей манеры речи у bundled-героев нет — пустая строка честнее
+    // шаблонной заглушки; секция «Манера речи» в карточке скрывается сама.
+    speechStyle: "",
     speechExamples: [],
     appearancePrompt: definition.appearance,
     unlockProgress: 0,

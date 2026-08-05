@@ -1,14 +1,19 @@
-import { NativeButton } from "@/components/ui/NativeButton";
 import { Text } from "@/components/ui/Typography";
+import { NarraAudioPlayer } from "@/lib/narra/audio-player";
+import { isCharacterUnlocked } from "@/lib/narra/domain";
 import { reportNarraError } from "@/lib/narra/errors";
-import { ensureCharacterPortrait, normalizePersistedNarraMediaUri } from "@/lib/narra/media";
+import {
+  ensureCharacterPortrait,
+  normalizePersistedNarraMediaUri,
+  synthesizeNarraSpeech,
+} from "@/lib/narra/media";
 import type { NarraCharacter } from "@/lib/narra/types";
-import { useNarraStore } from "@/stores";
-import { type ThemeColors, fontSize, fontWeight, radius, spacing, useTheme } from "@/styles/theme";
+import { useLibraryStore, useNarraStore } from "@/stores";
+import { type ThemeColors, fontSize, radius, spacing, useTheme } from "@/styles/theme";
 import { interfaceFontFamily, serifTextFontFamily } from "@deslop/primitives/native";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ActivityIndicator, Image, Modal, Pressable, ScrollView, View } from "react-native";
+import { ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, View } from "react-native";
 import { StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -18,11 +23,17 @@ interface ReaderCharacterCardProps {
   bookId: string;
   onClose: () => void;
   onOpenChat: (character: NarraCharacter) => void;
+  /** Переход в ридер книги из заглушки запертого героя («Продолжить чтение»). */
+  onContinueReading?: () => void;
 }
 
+type VoiceSampleState = "idle" | "loading" | "playing";
+
 /**
- * Карточка героя в ридере (по образцу карточки narra): крупный портрет с
- * регенерацией, имя, раскрытое досье (роль), черты, манера речи и переход в чат.
+ * Карточка героя (по образцу CharacterCard из десктопной narra): крупный портрет
+ * с регенерацией, имя серифом, роль, черты-чипсы с тонкой рамкой, манера речи
+ * caps-лейблом и ряд кнопок «Поговорить» / «Послушать голос». Запертый герой —
+ * тизер без портрета и досье (антиспойлер) с кнопкой «Продолжить чтение».
  * Голос назначается автоматически по правилам voice-rules — пикер не показываем.
  */
 export function ReaderCharacterCard({
@@ -31,12 +42,16 @@ export function ReaderCharacterCard({
   bookId,
   onClose,
   onOpenChat,
+  onContinueReading,
 }: ReaderCharacterCardProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const updateCharacter = useNarraStore((state) => state.updateCharacter);
+  const bookProgress = useLibraryStore(
+    (state) => state.books.find((item) => item.id === bookId)?.progress ?? 0,
+  );
   // Живой персонаж из стора: после регенерации портрета проп-снимок устаревает.
   const storedCharacter = useNarraStore((state) =>
     character
@@ -44,12 +59,34 @@ export function ReaderCharacterCard({
       : undefined,
   );
   const liveCharacter = storedCharacter ?? character;
+  const unlocked = liveCharacter ? isCharacterUnlocked(bookProgress, liveCharacter) : true;
   const [portraitLoading, setPortraitLoading] = useState(false);
   const portraitAttemptsRef = useRef(new Set<string>());
+  const [voiceState, setVoiceState] = useState<VoiceSampleState>("idle");
+  const audioRef = useRef(new NarraAudioPlayer());
+  // Растущий id запроса синтеза: устаревший ответ не должен заиграть после отмены.
+  const voiceRequestRef = useRef(0);
 
   const portraitUri = liveCharacter?.portraitUri
     ? normalizePersistedNarraMediaUri(liveCharacter.portraitUri)
     : undefined;
+
+  const stopVoiceSample = () => {
+    voiceRequestRef.current += 1;
+    audioRef.current.stop();
+    setVoiceState("idle");
+  };
+
+  useEffect(() => () => audioRef.current.stop(), []);
+
+  // Закрытие карточки или смена героя останавливают пробу голоса.
+  const characterId = character?.id;
+  useEffect(() => {
+    if (visible && characterId) return;
+    voiceRequestRef.current += 1;
+    audioRef.current.stop();
+    setVoiceState("idle");
+  }, [visible, characterId]);
 
   const generatePortrait = (force: boolean) => {
     if (!character || portraitLoading) return;
@@ -61,9 +98,10 @@ export function ReaderCharacterCard({
       .finally(() => setPortraitLoading(false));
   };
 
-  // Портрет по требованию — тот же механизм, что и в NarraCharactersScreen
+  // Портрет по требованию — тот же механизм, что и в NarraCharactersScreen;
+  // для запертого героя не генерируем (антиспойлер и лишний расход).
   useEffect(() => {
-    if (!visible || !character || character.portraitUri) return;
+    if (!visible || !unlocked || !character || character.portraitUri) return;
     if (portraitAttemptsRef.current.has(character.id)) return;
     portraitAttemptsRef.current.add(character.id);
     setPortraitLoading(true);
@@ -71,9 +109,59 @@ export function ReaderCharacterCard({
       .then((uri) => updateCharacter(bookId, character.id, { portraitUri: uri }))
       .catch((error) => reportNarraError("character_portrait_reader_card", error))
       .finally(() => setPortraitLoading(false));
-  }, [visible, character, bookId, updateCharacter]);
+  }, [visible, unlocked, character, bookId, updateCharacter]);
 
   if (!character || !liveCharacter) return null;
+
+  // Проба голоса — существующий синтез ответа чата (synthesizeNarraSpeech):
+  // фраза героя его назначенным голосом; повторный тап останавливает.
+  const samplePhrase = (
+    liveCharacter.greeting ||
+    liveCharacter.speechExamples[0] ||
+    liveCharacter.role ||
+    ""
+  ).trim();
+  const sampleVoice = liveCharacter.voiceOverride || liveCharacter.voice;
+  const canSample = Boolean(samplePhrase && sampleVoice);
+
+  const toggleVoiceSample = () => {
+    if (voiceState !== "idle") {
+      stopVoiceSample();
+      return;
+    }
+    if (!canSample) return;
+    const requestId = ++voiceRequestRef.current;
+    setVoiceState("loading");
+    void synthesizeNarraSpeech(samplePhrase, sampleVoice, {
+      prosody: liveCharacter.voiceOverride ? undefined : liveCharacter.voiceProsody,
+    })
+      .then((uri) => {
+        if (voiceRequestRef.current !== requestId) return;
+        setVoiceState("playing");
+        audioRef.current.play(uri, () => setVoiceState("idle"));
+      })
+      .catch((error) => {
+        const normalized = reportNarraError("character_voice_sample", error);
+        if (voiceRequestRef.current !== requestId) return;
+        setVoiceState("idle");
+        Alert.alert(
+          t("narra.voiceSampleFailedTitle", "Не удалось озвучить героя"),
+          normalized.message,
+        );
+      });
+  };
+
+  const lockedHint = liveCharacter.appearanceChapter
+    ? t(
+        "narra.lockedCharacterChapterHint",
+        "Появится в главе {{chapter}}. Дочитай — и герой откроется: портрет, характер и живой разговор.",
+        { chapter: liveCharacter.appearanceChapter },
+      )
+    : t(
+        "narra.lockedCharacterProgressHint",
+        "Откроется на {{percent}}% книги. Дочитай — и герой откроется: портрет, характер и живой разговор.",
+        { percent: Math.round(Math.min(1, Math.max(0, liveCharacter.unlockProgress)) * 100) },
+      );
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -85,71 +173,134 @@ export function ReaderCharacterCard({
       />
       <View style={[styles.sheet, { paddingBottom: (insets.bottom || spacing.md) + spacing.md }]}>
         <View style={styles.grabber} />
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
-        >
-          {/* Крупный портрет в рамке, как в карточке narra */}
-          <View style={styles.portraitFrame}>
-            <View style={styles.portrait}>
-              {portraitUri ? (
-                <Image
-                  source={{ uri: portraitUri }}
-                  style={styles.portraitImage}
-                  resizeMode="cover"
-                  onError={() => updateCharacter(bookId, character.id, { portraitUri: undefined })}
-                />
-              ) : portraitLoading ? (
-                <ActivityIndicator color={colors.primary} />
-              ) : (
-                <Text style={styles.portraitLetter}>
-                  {character.name.slice(0, 1).toUpperCase()}
+        {!unlocked ? (
+          // Тизер запертого героя — как char-teaser в narra: имя и обещание без спойлеров
+          <View style={styles.teaser}>
+            <View style={styles.teaserMark}>
+              <Text style={styles.teaserMarkText}>?</Text>
+            </View>
+            <Text style={styles.name}>{liveCharacter.name}</Text>
+            <Text style={styles.teaserHint}>{lockedHint}</Text>
+            {onContinueReading ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t("narra.continueReading", "Продолжить чтение")}
+                onPress={onContinueReading}
+                style={({ pressed }) => [
+                  styles.primaryPill,
+                  styles.teaserButton,
+                  pressed && styles.pillPressed,
+                ]}
+              >
+                <Text style={styles.primaryPillText}>
+                  {t("narra.continueReading", "Продолжить чтение")}
                 </Text>
-              )}
-              {portraitUri && !portraitLoading ? (
+              </Pressable>
+            ) : null}
+          </View>
+        ) : (
+          <>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.scrollContent}
+            >
+              {/* Крупный портрет в рамке, как в карточке narra */}
+              <View style={styles.portraitFrame}>
+                <View style={styles.portrait}>
+                  {portraitUri ? (
+                    <Image
+                      source={{ uri: portraitUri }}
+                      style={styles.portraitImage}
+                      resizeMode="cover"
+                      onError={() =>
+                        updateCharacter(bookId, character.id, { portraitUri: undefined })
+                      }
+                    />
+                  ) : portraitLoading ? (
+                    <ActivityIndicator color={colors.primary} />
+                  ) : (
+                    <Text style={styles.portraitLetter}>
+                      {character.name.slice(0, 1).toUpperCase()}
+                    </Text>
+                  )}
+                  {portraitUri && !portraitLoading ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={t(
+                        "narra.regeneratePortrait",
+                        "Сгенерировать портрет заново",
+                      )}
+                      onPress={() => generatePortrait(true)}
+                      style={styles.regenButton}
+                    >
+                      <Text style={styles.regenIcon}>↻</Text>
+                    </Pressable>
+                  ) : null}
+                  {portraitLoading && portraitUri ? (
+                    <View style={styles.portraitOverlay}>
+                      <ActivityIndicator color={colors.background} />
+                    </View>
+                  ) : null}
+                </View>
+              </View>
+              <Text style={styles.name}>{character.fullName || character.name}</Text>
+              {/* Досье: роль/описание раскрыто целиком */}
+              {character.role ? <Text style={styles.description}>{character.role}</Text> : null}
+              {character.traits.length > 0 ? (
+                <View style={styles.traitsWrap}>
+                  {character.traits.map((trait) => (
+                    <View key={trait} style={styles.traitChip}>
+                      <Text style={styles.traitText}>{trait}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+              {liveCharacter.speechStyle ? (
+                <View style={styles.speechSection}>
+                  <Text style={styles.sectionLabel}>{t("narra.speechStyle", "Манера речи")}</Text>
+                  <Text style={styles.description}>{liveCharacter.speechStyle}</Text>
+                </View>
+              ) : null}
+            </ScrollView>
+            {/* Кнопки в один ряд, как в narra: чёрная пилюля + белая с рамкой */}
+            <View style={styles.actionsRow}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t("narra.openCharacterChat", "Открыть чат с {{character}}", {
+                  character: character.name,
+                })}
+                onPress={() => onOpenChat(character)}
+                style={({ pressed }) => [styles.primaryPill, pressed && styles.pillPressed]}
+              >
+                <Text style={styles.primaryPillText}>
+                  {t("narra.talkToCharacter", "Поговорить")}
+                </Text>
+              </Pressable>
+              {canSample ? (
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={t("narra.regeneratePortrait", "Сгенерировать портрет заново")}
-                  onPress={() => generatePortrait(true)}
-                  style={styles.regenButton}
+                  accessibilityLabel={
+                    voiceState === "idle"
+                      ? t("narra.listenVoice", "Послушать голос")
+                      : t("narra.stopVoiceSample", "Остановить озвучку")
+                  }
+                  onPress={toggleVoiceSample}
+                  style={({ pressed }) => [styles.ghostPill, pressed && styles.pillPressed]}
                 >
-                  <Text style={styles.regenIcon}>↻</Text>
+                  {voiceState === "loading" ? (
+                    <ActivityIndicator size="small" color={colors.foreground} />
+                  ) : (
+                    <Text style={styles.ghostPillText}>
+                      {voiceState === "playing"
+                        ? t("narra.stopVoiceSample", "Остановить озвучку")
+                        : t("narra.listenVoice", "Послушать голос")}
+                    </Text>
+                  )}
                 </Pressable>
               ) : null}
-              {portraitLoading && portraitUri ? (
-                <View style={styles.portraitOverlay}>
-                  <ActivityIndicator color={colors.primaryForeground} />
-                </View>
-              ) : null}
             </View>
-          </View>
-          <Text style={styles.name}>{character.fullName || character.name}</Text>
-          {/* Досье: роль/описание раскрыто целиком */}
-          {character.role ? <Text style={styles.description}>{character.role}</Text> : null}
-          {character.traits.length > 0 ? (
-            <View style={styles.traitsWrap}>
-              {character.traits.map((trait) => (
-                <View key={trait} style={styles.traitChip}>
-                  <Text style={styles.traitText}>{trait}</Text>
-                </View>
-              ))}
-            </View>
-          ) : null}
-          {liveCharacter.speechStyle ? (
-            <View style={styles.speechSection}>
-              <Text style={styles.sectionLabel}>{t("narra.speechStyle", "Манера речи")}</Text>
-              <Text style={styles.description}>{liveCharacter.speechStyle}</Text>
-            </View>
-          ) : null}
-        </ScrollView>
-        <NativeButton
-          label={t("narra.characterCardOpenChat", "Перейти в чат")}
-          accessibilityLabel={t("narra.openCharacterChat", "Открыть чат с {{character}}", {
-            character: character.name,
-          })}
-          size="large"
-          onPress={() => onOpenChat(character)}
-        />
+          </>
+        )}
       </View>
     </Modal>
   );
@@ -200,8 +351,8 @@ const makeStyles = (colors: ThemeColors) =>
     portraitImage: { width: "100%", height: "100%" },
     portraitLetter: {
       color: colors.mutedForeground,
+      fontFamily: serifTextFontFamily.bold,
       fontSize: fontSize["2xl"],
-      fontWeight: fontWeight.bold,
     },
     portraitOverlay: {
       ...StyleSheet.absoluteFillObject,
@@ -222,36 +373,41 @@ const makeStyles = (colors: ThemeColors) =>
     },
     regenIcon: {
       color: "#fff",
+      fontFamily: interfaceFontFamily.semibold,
       fontSize: fontSize.lg,
-      fontWeight: fontWeight.bold,
     },
+    // Имя — крупно серифом (SB Serif Text Bold), как cardv2__name в narra
     name: {
       color: colors.foreground,
       fontFamily: serifTextFontFamily.bold,
       fontSize: fontSize["2xl"],
+      lineHeight: 32,
       textAlign: "center",
     },
+    // Роль и манера речи — SB Sans, спокойный тёмно-серый (cardv2__role)
     description: {
-      color: colors.foreground,
+      color: colors.mutedForeground,
       fontFamily: interfaceFontFamily.regular,
-      fontSize: fontSize.md,
+      fontSize: fontSize.sm,
       lineHeight: 22,
     },
     traitsWrap: {
       flexDirection: "row",
       flexWrap: "wrap",
-      gap: spacing.xs,
+      gap: spacing.sm,
     },
+    // Чипсы черт: прозрачный фон + тонкая серая рамка + полное скругление (.chip)
     traitChip: {
-      paddingHorizontal: spacing.sm,
-      paddingVertical: 5,
+      paddingHorizontal: 13,
+      paddingVertical: 6,
       borderRadius: radius.full,
-      backgroundColor: colors.elevation1,
-      borderWidth: 0.5,
-      borderColor: colors.primary5,
+      backgroundColor: "transparent",
+      borderWidth: StyleSheet.hairlineWidth * 2,
+      borderColor: colors.border,
     },
     traitText: {
-      color: colors.foreground,
+      color: colors.mutedForeground,
+      fontFamily: interfaceFontFamily.regular,
       fontSize: fontSize.xs,
     },
     speechSection: {
@@ -262,6 +418,75 @@ const makeStyles = (colors: ThemeColors) =>
       fontFamily: interfaceFontFamily.caps,
       fontSize: fontSize.xs,
       textTransform: "uppercase",
-      letterSpacing: 0.4,
+      letterSpacing: 0.8,
+    },
+    actionsRow: {
+      flexDirection: "row",
+      gap: spacing.sm,
+    },
+    // «Поговорить» — чёрная пилюля с белым текстом (btn--primary, var(--ink));
+    // в тёмной теме инвертируется вместе с foreground/background.
+    primaryPill: {
+      flex: 1,
+      minHeight: 48,
+      paddingHorizontal: spacing.lg,
+      borderRadius: radius.full,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.foreground,
+    },
+    primaryPillText: {
+      color: colors.background,
+      fontFamily: interfaceFontFamily.semibold,
+      fontSize: fontSize.sm,
+    },
+    // «Послушать голос» — белая пилюля с тонкой рамкой (btn--ghost)
+    ghostPill: {
+      flex: 1,
+      minHeight: 48,
+      paddingHorizontal: spacing.lg,
+      borderRadius: radius.full,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.background,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    ghostPillText: {
+      color: colors.foreground,
+      fontFamily: interfaceFontFamily.semibold,
+      fontSize: fontSize.sm,
+    },
+    pillPressed: { opacity: 0.72 },
+    teaser: {
+      alignItems: "center",
+      gap: spacing.md,
+      paddingVertical: spacing.xl,
+    },
+    teaserMark: {
+      width: 72,
+      height: 72,
+      borderRadius: radius.full,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.elevation2,
+    },
+    teaserMarkText: {
+      color: colors.mutedForeground,
+      fontFamily: serifTextFontFamily.bold,
+      fontSize: fontSize["2xl"],
+    },
+    teaserHint: {
+      color: colors.mutedForeground,
+      fontFamily: interfaceFontFamily.regular,
+      fontSize: fontSize.sm,
+      lineHeight: 22,
+      textAlign: "center",
+      paddingHorizontal: spacing.md,
+    },
+    teaserButton: {
+      alignSelf: "stretch",
+      flex: 0,
+      marginTop: spacing.sm,
     },
   });

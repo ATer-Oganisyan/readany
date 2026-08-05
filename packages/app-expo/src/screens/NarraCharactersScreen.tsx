@@ -1,6 +1,7 @@
 import { type ExtractorRef, ExtractorWebView } from "@/components/rag/ExtractorWebView";
 import { Text } from "@/components/ui/Typography";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
+import { openMobileBook } from "@/lib/library/open-mobile-book";
 import { getBundledCatalogCharactersByTitle } from "@/lib/narra/bundled-catalog-characters";
 import { analyzeBookCharacters } from "@/lib/narra/character-analysis";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
@@ -230,19 +231,11 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
     [bookId, navigation],
   );
 
-  /** Перегенерация «кривого» портрета кнопкой ↻ на аватарке строки. */
-  const regeneratePortrait = useCallback(
-    (character: NarraCharacter) => {
-      if (portraitLoading) return;
-      portraitAttemptsRef.current.add(character.id);
-      setPortraitLoading(character.id);
-      void ensureCharacterPortrait(bookId, { ...character, portraitUri: undefined })
-        .then((portraitUri) => updateCharacter(bookId, character.id, { portraitUri }))
-        .catch((error) => reportNarraError("character_portrait_regenerate", error))
-        .finally(() => setPortraitLoading(null));
-    },
-    [bookId, portraitLoading, updateCharacter],
-  );
+  /** «Продолжить чтение» из тизера запертого героя — в ридер этой книги. */
+  const continueReading = useCallback(() => {
+    setSelectedCharacter(null);
+    void openMobileBook({ bookId, navigation, t });
+  }, [bookId, navigation, t]);
 
   return (
     <>
@@ -279,43 +272,28 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
             const unlockPercent = Math.round(
               Math.min(1, Math.max(0, character.unlockProgress)) * 100,
             );
+            // Регенерация портрета живёт только в карточке героя (ReaderCharacterCard)
             const avatar = (
-              <View style={styles.avatarWrap}>
-                <View style={styles.avatar}>
-                  {character.portraitUri ? (
-                    <Image
-                      source={{ uri: normalizePersistedNarraMediaUri(character.portraitUri) }}
-                      style={styles.avatarImage}
-                      onError={() =>
-                        updateCharacter(bookId, character.id, { portraitUri: undefined })
-                      }
-                    />
-                  ) : portraitBusy ? (
-                    <ActivityIndicator color={colors.primaryForeground} />
-                  ) : (
-                    <Text style={styles.avatarLetter}>
-                      {character.name.slice(0, 1).toUpperCase()}
-                    </Text>
-                  )}
-                  {portraitBusy && character.portraitUri ? (
-                    <View style={styles.avatarOverlay}>
-                      <ActivityIndicator size="small" color={colors.primaryForeground} />
-                    </View>
-                  ) : null}
-                </View>
-                {unlocked && character.portraitUri && !portraitBusy ? (
-                  <TouchableOpacity
-                    accessibilityRole="button"
-                    accessibilityLabel={t(
-                      "narra.regeneratePortrait",
-                      "Сгенерировать портрет заново",
-                    )}
-                    hitSlop={{ top: 6, right: 6, bottom: 6, left: 6 }}
-                    onPress={() => regeneratePortrait(character)}
-                    style={styles.regenBadge}
-                  >
-                    <Text style={styles.regenBadgeIcon}>↻</Text>
-                  </TouchableOpacity>
+              <View style={styles.avatar}>
+                {character.portraitUri ? (
+                  <Image
+                    source={{ uri: normalizePersistedNarraMediaUri(character.portraitUri) }}
+                    style={styles.avatarImage}
+                    onError={() =>
+                      updateCharacter(bookId, character.id, { portraitUri: undefined })
+                    }
+                  />
+                ) : portraitBusy ? (
+                  <ActivityIndicator color={colors.primaryForeground} />
+                ) : (
+                  <Text style={styles.avatarLetter}>
+                    {character.name.slice(0, 1).toUpperCase()}
+                  </Text>
+                )}
+                {portraitBusy && character.portraitUri ? (
+                  <View style={styles.avatarOverlay}>
+                    <ActivityIndicator size="small" color={colors.primaryForeground} />
+                  </View>
                 ) : null}
               </View>
             );
@@ -351,14 +329,25 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
                     </View>
                   </TouchableOpacity>
                 ) : (
-                  // Запертый герой: приглушён, без описания и черт (антиспойлер), не кликабелен
-                  <View
-                    accessible
-                    accessibilityLabel={t(
-                      "narra.lockedCharacterLabel",
-                      "{{character}} откроется на {{percent}}%",
-                      { character: character.name, percent: unlockPercent },
-                    )}
+                  // Запертый герой: приглушён, без описания и черт (антиспойлер);
+                  // тап открывает тизер «Появится в главе N» с кнопкой «Продолжить чтение»
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      character.appearanceChapter
+                        ? t(
+                            "narra.lockedCharacterChapterLabel",
+                            "{{character}} появится в главе {{chapter}}",
+                            { character: character.name, chapter: character.appearanceChapter },
+                          )
+                        : t(
+                            "narra.lockedCharacterLabel",
+                            "{{character}} откроется на {{percent}}%",
+                            { character: character.name, percent: unlockPercent },
+                          )
+                    }
+                    activeOpacity={0.62}
+                    onPress={() => openCharacterCard(character)}
                     style={[styles.characterRow, styles.characterRowLocked]}
                   >
                     {avatar}
@@ -367,12 +356,16 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
                         {character.name}
                       </Text>
                       <Text style={styles.characterDescription} numberOfLines={1}>
-                        {t("narra.unlocksAtPercent", "откроется на {{percent}}%", {
-                          percent: unlockPercent,
-                        })}
+                        {character.appearanceChapter
+                          ? t("narra.appearsInChapter", "появится в главе {{chapter}}", {
+                              chapter: character.appearanceChapter,
+                            })
+                          : t("narra.unlocksAtPercent", "откроется на {{percent}}%", {
+                              percent: unlockPercent,
+                            })}
                       </Text>
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 )}
                 {index < orderedCharacters.length - 1 ? <View style={styles.separator} /> : null}
               </View>
@@ -414,6 +407,7 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
         bookId={bookId}
         onClose={() => setSelectedCharacter(null)}
         onOpenChat={openCharacterChat}
+        onContinueReading={continueReading}
       />
     </>
   );
@@ -449,28 +443,11 @@ const makeStyles = (colors: ThemeColors) =>
       paddingVertical: spacing.md,
     },
     characterRowLocked: { opacity: 0.45 },
-    avatarWrap: { position: "relative" },
     avatarOverlay: {
       ...StyleSheet.absoluteFillObject,
       alignItems: "center",
       justifyContent: "center",
       backgroundColor: "rgba(0,0,0,0.3)",
-    },
-    regenBadge: {
-      position: "absolute",
-      right: -2,
-      bottom: -2,
-      width: 24,
-      height: 24,
-      borderRadius: radius.full,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: "rgba(0,0,0,0.55)",
-    },
-    regenBadgeIcon: {
-      color: "#fff",
-      fontSize: fontSize.sm,
-      fontWeight: fontWeight.bold,
     },
     avatar: {
       width: 56,

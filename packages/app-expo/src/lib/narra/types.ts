@@ -31,6 +31,8 @@ export interface NarraCharacter {
   expression?: string;
   /** Fraction of the book (0…0.95) at which the character becomes available. */
   unlockProgress: number;
+  /** Глава первого значимого появления (1 — первая); для заглушки запертого героя. */
+  appearanceChapter?: number;
   greeting?: string;
   isNarrator?: boolean;
   portraitUri?: string;

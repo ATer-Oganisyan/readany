@@ -48,6 +48,36 @@ describe("Narra analysis normalization", () => {
     expect(characters[2].greeting).toBeUndefined();
   });
 
+  it("выставляет пороги открытия из appearanceChapter: первая глава — 0, дальше по числу глав", () => {
+    const characters = normalizeCharacterAnalysisResponse(
+      '{"characters":[{"name":"Ранний","gender":"male","appearanceChapter":1},{"name":"Поздняя","gender":"female","appearanceChapter":11}]}',
+      { totalChapters: 20 },
+    );
+
+    expect(characters[0]).toMatchObject({ unlockProgress: 0, appearanceChapter: 1 });
+    expect(characters[1]).toMatchObject({ unlockProgress: 0.5, appearanceChapter: 11 });
+  });
+
+  it("предпочитает unlockFraction, но сохраняет appearanceChapter для заглушки", () => {
+    const characters = normalizeCharacterAnalysisResponse(
+      '{"characters":[{"name":"Первый","gender":"male","appearanceChapter":1},{"name":"Вторая","gender":"female","appearanceChapter":4,"unlockFraction":0.3}]}',
+      { totalChapters: 30 },
+    );
+
+    expect(characters[1]).toMatchObject({ unlockProgress: 0.3, appearanceChapter: 4 });
+  });
+
+  it("лояльно парсит главу («глава 3») и по умолчанию оставляет героя открытым", () => {
+    const characters = normalizeCharacterAnalysisResponse(
+      '{"characters":[{"name":"Первый","gender":"male","appearanceChapter":1},{"name":"Расплывчатый","gender":"male","appearanceChapter":"глава 3"},{"name":"Без данных","gender":"female","appearanceChapter":"неизвестно"}]}',
+    );
+
+    // Без числа глав знаменатель — консервативные 12 глав
+    expect(characters[1].unlockProgress).toBeCloseTo(2 / 12);
+    expect(characters[1].appearanceChapter).toBe(3);
+    expect(characters[2]).toMatchObject({ unlockProgress: 0, appearanceChapter: undefined });
+  });
+
   it("drops invalid entries and clamps unlockProgress to Arsen's 0.95 ceiling", () => {
     const characters = normalizeCharacterAnalysisResponse({
       characters: [

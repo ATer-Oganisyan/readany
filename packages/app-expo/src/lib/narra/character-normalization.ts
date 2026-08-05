@@ -186,10 +186,47 @@ function normalizePassport(raw: unknown, gender: NarraGender): NarraPassport | u
   };
 }
 
+/**
+ * Порог открытия героя: доля книги (unlockFraction / legacy unlockProgress),
+ * а без неё — глава первого появления. Лояльный парсинг («глава 3», "3"),
+ * дефолт 0 — сомнительные данные не должны запирать героя.
+ */
+function parseUnlockThreshold(
+  raw: Record<string, unknown>,
+  totalChapters?: number,
+): { unlockProgress: number; appearanceChapter?: number } {
+  const chapterNumber = Number(String(raw.appearanceChapter ?? "").replace(/[^\d.]/g, ""));
+  const appearanceChapter =
+    Number.isFinite(chapterNumber) && chapterNumber >= 1 ? Math.round(chapterNumber) : undefined;
+  for (const value of [raw.unlockFraction, raw.unlockProgress]) {
+    const fraction = Number(value);
+    if (Number.isFinite(fraction) && fraction > 0) {
+      return { unlockProgress: Math.min(0.95, fraction), appearanceChapter };
+    }
+    if (fraction === 0) return { unlockProgress: 0, appearanceChapter };
+  }
+  if (appearanceChapter === undefined || appearanceChapter <= 1) {
+    return { unlockProgress: 0, appearanceChapter };
+  }
+  // Глава → доля книги: делим на известное число глав; когда оно неизвестно,
+  // берём консервативные 12 глав, чтобы поздние герои всё же запирались.
+  const denominator = Math.max(totalChapters ?? 12, appearanceChapter);
+  return {
+    unlockProgress: Math.min(0.95, (appearanceChapter - 1) / denominator),
+    appearanceChapter,
+  };
+}
+
+export interface NormalizeCharacterOptions extends AssignVoicesOptions {
+  /** Число глав книги — для перевода appearanceChapter в долю unlockProgress. */
+  totalChapters?: number;
+}
+
 export function normalizeCharacterAnalysisResponse(
   input: unknown,
-  voiceOptions: AssignVoicesOptions = {},
+  options: NormalizeCharacterOptions = {},
 ): NarraCharacter[] {
+  const { totalChapters, ...voiceOptions } = options;
   const candidates = parseCharacterCandidates(input);
   const characters = candidates.slice(0, MAX_NARRA_CHARACTERS).flatMap((candidate, index) => {
     if (!candidate || typeof candidate !== "object") return [];
@@ -201,11 +238,7 @@ export function normalizeCharacterAnalysisResponse(
     // в stress-markup при построении словаря.
     const stressedName = typeof raw.stressedName === "string" ? raw.stressedName.trim() : "";
     const gender = normalizeGender(raw.gender, name);
-    const rawUnlock = Number(raw.unlockProgress);
-    const unlockProgress = Math.min(
-      0.95,
-      Math.max(0, Number.isFinite(rawUnlock) ? rawUnlock : index * 0.08),
-    );
+    const { unlockProgress, appearanceChapter } = parseUnlockThreshold(raw, totalChapters);
     return [
       {
         id: slug(String(raw.id || name), index),
@@ -224,6 +257,7 @@ export function normalizeCharacterAnalysisResponse(
         passport: normalizePassport(raw.passport, gender),
         expression: raw.expression ? String(raw.expression) : undefined,
         unlockProgress,
+        appearanceChapter,
         // Без шаблонного фолбэка: нет своего приветствия — первое сообщение
         // сгенерирует чат в характере героя (NarraCharacterChatScreen).
         greeting:
