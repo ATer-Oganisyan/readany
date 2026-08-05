@@ -1,42 +1,29 @@
 import { NativeButton } from "@/components/ui/NativeButton";
-import { Text } from "@/components/ui/Typography";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useLibraryStore } from "@/stores";
-import { type ThemeColors, fontSize, fontWeight, radius, spacing, useTheme } from "@/styles/theme";
+import { useTheme } from "@/styles/theme";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { Book } from "@readany/core/types";
-import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Image, Platform, ScrollView, StyleSheet, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useResolvedCovers } from "./notes/useResolvedCovers";
-
-const COVER_WIDTH = 148;
-const CURL_SIZE = Math.round(COVER_WIDTH * 0.3);
-/** Цвета «бумаги» отвёрнутого уголка — как в ReadingNowShelf. */
-const CURL_PAPER_COLORS = ["#fbfaf5", "#ece9de", "#d3cfc0"] as const;
+import { View } from "react-native";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 /**
- * ReadingTabScreen — вкладка «Читалка»: сразу продолжает последнюю открытую книгу.
+ * ReadingTabScreen — вкладка «Читалка»: всегда открывает текст последней книги
+ * на месте остановки, без промежуточной карточки.
  *
- * Логика resume: берём книгу с максимальным `lastOpenedAt` (library-store);
- * Reader сам открывает сохранённую позицию `book.currentCfi`, поэтому cfi не передаём.
- * После возврата из ридера показываем карточку «Читаю сейчас», повторный тап
- * по табу или повторный вход на вкладку снова открывает книгу.
+ * Логика: при фокусе вкладки сразу вызываем канонический `openMobileBook()`
+ * (Reader сам открывает сохранённую позицию `book.currentCfi`). Когда пользователь
+ * выходит из ридера стрелкой назад и фокус возвращается на вкладку, немедленно
+ * переводим его на таб «Библиотека» — вкладка не задерживается на экране.
  */
 export function ReadingTabScreen() {
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
-  // Плавающий нативный таббар перекрывает низ — добавляем его высоту в отступ
-  const tabBarSpace =
-    (Platform.OS === "android" ? 80 : Platform.OS === "ios" ? 49 : 0) + insets.bottom;
-  const styles = useMemo(() => makeStyles(colors, tabBarSpace), [colors, tabBarSpace]);
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
   const isFocused = useIsFocused();
@@ -53,17 +40,13 @@ export function ReadingTabScreen() {
   const lastBookRef = useRef(lastBook);
   lastBookRef.current = lastBook;
 
-  const coverItems = useMemo(
-    () =>
-      lastBook ? [{ bookId: lastBook.id, coverUrl: lastBook.meta.coverUrl ?? null }] : undefined,
-    [lastBook],
-  );
-  const covers = useResolvedCovers(coverItems);
-  const coverUri = lastBook ? covers.get(lastBook.id) : undefined;
-
-  // true — только что вернулись из ридера, автопереход один раз пропускаем
+  // true — только что вернулись из ридера: вместо повторного открытия уходим в Библиотеку
   const returnedFromReaderRef = useRef(false);
   const openInFlightRef = useRef(false);
+
+  const goToLibrary = useCallback(() => {
+    navigation.getParent()?.navigate("Library" as never);
+  }, [navigation]);
 
   const openLastBook = useCallback(() => {
     const book = lastBookRef.current;
@@ -72,21 +55,24 @@ export function ReadingTabScreen() {
     void openMobileBook({ bookId: book.id, navigation, t })
       .then((opened) => {
         if (opened) returnedFromReaderRef.current = true;
+        // Книга не открылась (файл потерян и т.п.) — не оставляем пустую вкладку
+        else goToLibrary();
       })
       .finally(() => {
         openInFlightRef.current = false;
       });
-  }, [navigation, t]);
+  }, [goToLibrary, navigation, t]);
 
-  // Автопереход в ридер при входе на вкладку (и когда стор догрузил книги)
+  // Фокус вкладки: возврат из ридера → сразу в Библиотеку, иначе → открыть книгу
   useEffect(() => {
     if (!isFocused || !lastBook) return;
     if (returnedFromReaderRef.current) {
       returnedFromReaderRef.current = false;
+      goToLibrary();
       return;
     }
     openLastBook();
-  }, [isFocused, lastBook, openLastBook]);
+  }, [isFocused, lastBook, goToLibrary, openLastBook]);
 
   // Повторный тап по табу «Читалка» снова открывает книгу
   useEffect(() => {
@@ -112,135 +98,12 @@ export function ReadingTabScreen() {
           label={t("readingTab.goToLibrary", "В библиотеку")}
           accessibilityLabel={t("readingTab.goToLibrary", "В библиотеку")}
           size="large"
-          onPress={() => navigation.getParent()?.navigate("Library" as never)}
+          onPress={goToLibrary}
         />
       </CenteredEmptyState>
     );
   }
 
-  const progressPercent = Math.round(Math.min(1, Math.max(0, lastBook.progress ?? 0)) * 100);
-
-  return (
-    <ScrollView
-      contentInsetAdjustmentBehavior="automatic"
-      style={styles.container}
-      contentContainerStyle={styles.content}
-    >
-      <View style={styles.card}>
-        <View style={styles.cover}>
-          {coverUri ? (
-            <Image source={{ uri: coverUri }} style={styles.coverImage} resizeMode="cover" />
-          ) : (
-            <Text style={styles.coverLetter}>{lastBook.meta.title.slice(0, 1).toUpperCase()}</Text>
-          )}
-          <View style={styles.curlShadow} pointerEvents="none" />
-          <LinearGradient
-            colors={CURL_PAPER_COLORS}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.curlPage}
-            pointerEvents="none"
-          />
-        </View>
-        <Text style={styles.title} numberOfLines={2}>
-          {lastBook.meta.title}
-        </Text>
-        {lastBook.meta.author ? (
-          <Text style={styles.author} numberOfLines={1}>
-            {lastBook.meta.author}
-          </Text>
-        ) : null}
-        <View style={styles.progressRow}>
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
-          </View>
-          <Text style={styles.progressLabel}>{progressPercent}%</Text>
-        </View>
-        <NativeButton
-          label={t("readingTab.continueReading", "Продолжить чтение")}
-          accessibilityLabel={t("readingTab.continueReading", "Продолжить чтение")}
-          size="large"
-          onPress={openLastBook}
-        />
-      </View>
-    </ScrollView>
-  );
+  // Пока открывается ридер (или идёт переброс в Библиотеку) — просто фон, без карточки
+  return <View style={{ flex: 1, backgroundColor: colors.background }} />;
 }
-
-const makeStyles = (colors: ThemeColors, tabBarSpace: number) =>
-  StyleSheet.create({
-    container: { flex: 1, backgroundColor: colors.background },
-    content: {
-      flexGrow: 1,
-      alignItems: "center",
-      justifyContent: "center",
-      padding: spacing.xl,
-      paddingBottom: spacing.xl + tabBarSpace,
-    },
-    card: { alignItems: "center", gap: spacing.md, maxWidth: 320, width: "100%" },
-    cover: {
-      width: COVER_WIDTH,
-      height: 212,
-      borderRadius: radius.card,
-      overflow: "hidden",
-      position: "relative",
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: colors.elevation2,
-      marginBottom: spacing.sm,
-    },
-    curlShadow: {
-      position: "absolute",
-      right: -CURL_SIZE / 2,
-      bottom: -CURL_SIZE / 2,
-      width: CURL_SIZE + 8,
-      height: CURL_SIZE + 8,
-      backgroundColor: "rgba(0,0,0,0.28)",
-      transform: [{ rotate: "45deg" }],
-      borderRadius: 3,
-    },
-    curlPage: {
-      position: "absolute",
-      right: -CURL_SIZE / 2,
-      bottom: -CURL_SIZE / 2,
-      width: CURL_SIZE,
-      height: CURL_SIZE,
-      transform: [{ rotate: "45deg" }],
-      borderRadius: 2,
-    },
-    coverImage: { width: "100%", height: "100%" },
-    coverLetter: {
-      color: colors.mutedForeground,
-      fontSize: fontSize["2xl"],
-      fontWeight: fontWeight.bold,
-    },
-    title: {
-      color: colors.foreground,
-      fontSize: fontSize.lg,
-      fontWeight: fontWeight.semibold,
-      textAlign: "center",
-    },
-    author: { color: colors.mutedForeground, fontSize: fontSize.sm, textAlign: "center" },
-    progressRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: spacing.sm,
-      alignSelf: "stretch",
-      marginBottom: spacing.sm,
-    },
-    progressTrack: {
-      flex: 1,
-      height: 5,
-      borderRadius: radius.full,
-      backgroundColor: colors.primary10,
-      overflow: "hidden",
-    },
-    progressFill: { height: "100%", borderRadius: radius.full, backgroundColor: colors.primary },
-    progressLabel: {
-      color: colors.mutedForeground,
-      fontSize: fontSize.xs,
-      fontWeight: fontWeight.medium,
-      minWidth: 36,
-      textAlign: "right",
-    },
-  });

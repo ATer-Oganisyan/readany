@@ -1,5 +1,5 @@
 import { Text } from "@/components/ui/Typography";
-import { useColors } from "@/styles/theme";
+import { radius, useColors } from "@/styles/theme";
 import { useTranslation } from "react-i18next";
 import { ActivityIndicator, Image, StyleSheet, TouchableOpacity, View } from "react-native";
 import { makeStyles } from "./book-card-styles";
@@ -41,7 +41,7 @@ export function CatalogBookCard({
       onPress={onPress}
       style={styles.container}
     >
-      <View style={styles.coverWrap}>
+      <View style={[styles.coverWrap, localStyles.coverWrapRounded]}>
         <Image source={coverAssetModule} style={styles.coverImage} resizeMode="cover" />
 
         {isImporting ? (
@@ -64,6 +64,8 @@ export function CatalogBookCard({
 }
 
 const localStyles = StyleSheet.create({
+  // Скругление обложек каталога — как у остальных обложек приложения (radius из темы)
+  coverWrapRounded: { borderRadius: radius.sm },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",

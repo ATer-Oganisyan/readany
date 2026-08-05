@@ -80,7 +80,10 @@
     "emptyTitle": "Characters are ahead",
     "emptyDescription": "Keep reading — characters unlock as you progress and will appear here",
     "lockedCharacter": "{{character}} unlocks at {{percent}}%",
-    "unlocksAt": "unlocks at {{percent}}%"
+    "unlocksAt": "unlocks at {{percent}}%",
+    "notMetYet": "not met yet",
+    "messagesShort": "{{count}} messages",
+    "openCharacter": "Open {{character}}'s card"
   },
   "window": {
     "minimize": "Minimize",

@@ -83,7 +83,10 @@
     "emptyTitle": "Герои ещё впереди",
     "emptyDescription": "Читайте книги — герои будут открываться по мере прогресса и появятся здесь",
     "lockedCharacter": "{{character}} откроется на {{percent}}%",
-    "unlocksAt": "откроется на {{percent}}%"
+    "unlocksAt": "откроется на {{percent}}%",
+    "notMetYet": "ещё не знакомы",
+    "messagesShort": "{{count}} сообщ.",
+    "openCharacter": "Открыть карточку {{character}}"
   },
   "narra": {
     "characters": "Персонажи",

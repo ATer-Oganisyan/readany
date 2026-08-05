@@ -15,6 +15,7 @@ export const makeStyles = (colors: ThemeColors, cardWidth: number) => {
     coverWrap: {
       width: coverWidth,
       height: coverHeight,
+      borderRadius: radius.sm,
       overflow: "hidden",
       position: "relative",
     },
