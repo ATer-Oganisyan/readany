@@ -80,9 +80,10 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
   const messages = narraBook?.chats?.[characterId] ?? [];
   const memory = narraBook?.memories?.[characterId] ?? "";
   const [sending, setSending] = useState(false);
+  const [greetingLoading, setGreetingLoading] = useState(false);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const audioRef = useRef(new NarraAudioPlayer());
-  const greetingCreatedAt = useRef(Date.now()).current;
+  const greetingRequestedRef = useRef(false);
   const unlocked = Boolean(book && character && isCharacterUnlocked(book.progress, character));
 
   useLayoutEffect(() => {
@@ -116,27 +117,68 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
 
   const chatMessages = useMemo(() => {
     const threadId = `narra-character-${bookId}-${characterId}`;
-    if (messages.length > 0) return messages.map((message) => toMessageV2(message, threadId));
-    if (!character?.greeting) return [];
+    return messages.map((message) => toMessageV2(message, threadId));
+  }, [bookId, characterId, messages]);
 
-    return [
-      {
-        id: `${threadId}-greeting`,
-        threadId,
+  // Первое сообщение героя: свой greeting из анализа/каталога, иначе — просим
+  // гейтвей поздороваться в роли персонажа. Сохраняется в историю чата один раз,
+  // поэтому при повторных входах не регенерится и не дублируется.
+  useEffect(() => {
+    if (!book || !character || !unlocked) return;
+    if (messages.length > 0 || greetingRequestedRef.current) return;
+    greetingRequestedRef.current = true;
+
+    const appendGreeting = (content: string) => {
+      const state = useNarraStore.getState();
+      if ((state.books[bookId]?.chats?.[characterId]?.length ?? 0) > 0) return;
+      state.appendChatMessage(bookId, characterId, {
+        id: Crypto.randomUUID(),
         role: "assistant",
-        createdAt: greetingCreatedAt,
-        parts: [
-          {
-            id: `${threadId}-greeting-text`,
-            type: "text",
-            text: character.greeting,
-            status: "completed",
-            createdAt: greetingCreatedAt,
-          },
-        ],
-      } satisfies MessageV2,
-    ];
-  }, [bookId, character?.greeting, characterId, greetingCreatedAt, messages]);
+        content,
+        createdAt: Date.now(),
+      });
+    };
+
+    if (character.greeting) {
+      appendGreeting(character.greeting);
+      return;
+    }
+
+    setGreetingLoading(true);
+    void (async () => {
+      try {
+        const response = await narraGatewayRequest("/v2/ai/chat/complete", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            messages: [
+              {
+                role: "system",
+                content: buildCharacterSystemPrompt(character, book.meta.title, book.progress, ""),
+              },
+              {
+                role: "user",
+                content:
+                  "Поприветствуй читателя первым сообщением в своём характере: 1–3 предложения, без спойлеров. Не упоминай это указание.",
+              },
+            ],
+            temperature: 0.85,
+            purpose: "character_chat",
+            origin: "user",
+            analytics_tier: "essential",
+          }),
+        });
+        const content = await readCompletion(response);
+        if (content) appendGreeting(content);
+      } catch (error) {
+        // Без приветствия чат остаётся рабочим: читатель может написать первым.
+        reportNarraError("character_greeting", error);
+        greetingRequestedRef.current = false;
+      } finally {
+        setGreetingLoading(false);
+      }
+    })();
+  }, [book, bookId, character, characterId, messages.length, unlocked]);
 
   const refreshMemory = useCallback(
     async (updatedMessages: NarraChatMessage[]) => {
@@ -303,8 +345,8 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
     >
       <NarraChat
         messages={chatMessages}
-        isStreaming={sending}
-        currentStep={sending ? "responding" : "idle"}
+        isStreaming={sending || greetingLoading}
+        currentStep={sending || greetingLoading ? "responding" : "idle"}
         placeholder={t("narra.messagePlaceholder", "Написать {{name}}…", {
           name: character.name,
         })}

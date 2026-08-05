@@ -38,7 +38,7 @@ function characters(
     speechExamples: [],
     appearancePrompt: definition.appearance,
     unlockProgress: 0,
-    greeting: `Здравствуйте. Я ${definition.name}. О чём вы хотите поговорить?`,
+    // Приветствие не шаблонное: первое сообщение генерирует чат в характере героя
   }));
 }
 

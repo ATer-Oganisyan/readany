@@ -38,6 +38,16 @@ describe("Narra analysis normalization", () => {
     expect(characters[2].stressedName).toBeUndefined();
   });
 
+  it("берёт своё приветствие героя и не подставляет шаблон, когда его нет", () => {
+    const characters = normalizeCharacterAnalysisResponse(
+      '{"characters":[{"name":"Анна","gender":"female","greeting":"Вы тоже не любите поезда?"},{"name":"Вронский","gender":"male"},{"name":"Каренин","gender":"male","greeting":"  "}]}',
+    );
+
+    expect(characters[0].greeting).toBe("Вы тоже не любите поезда?");
+    expect(characters[1].greeting).toBeUndefined();
+    expect(characters[2].greeting).toBeUndefined();
+  });
+
   it("drops invalid entries and clamps unlockProgress to Arsen's 0.95 ceiling", () => {
     const characters = normalizeCharacterAnalysisResponse({
       characters: [

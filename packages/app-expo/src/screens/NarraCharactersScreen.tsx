@@ -6,8 +6,10 @@ import { analyzeBookCharacters } from "@/lib/narra/character-analysis";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
 import { NarraServiceError, reportNarraError } from "@/lib/narra/errors";
 import { ensureCharacterPortrait, normalizePersistedNarraMediaUri } from "@/lib/narra/media";
+import type { NarraCharacter } from "@/lib/narra/types";
 import { inspectMobileBookForVectorize } from "@/lib/rag/auto-vectorize-book";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
+import { ReaderCharacterCard } from "@/screens/reader/ReaderCharacterCard";
 import { useLibraryStore, useNarraStore } from "@/stores";
 import { type ThemeColors, fontSize, fontWeight, radius, spacing, useTheme } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -46,6 +48,8 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
   const autoAnalysisStartedRef = useRef(false);
   const [analysisStage, setAnalysisStage] = useState("");
   const [portraitLoading, setPortraitLoading] = useState<string | null>(null);
+  /** Герой, чья карточка открыта в bottom-sheet (тап → карточка → чат, как в «Моём пути»). */
+  const [selectedCharacter, setSelectedCharacter] = useState<NarraCharacter | null>(null);
   const storedCharacters = bookState?.characters ?? [];
   const bundledCharacters = useMemo(
     () => (book ? getBundledCatalogCharactersByTitle(book.meta.title) : undefined),
@@ -207,142 +211,211 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
       .finally(() => setPortraitLoading(null));
   }, [book, bookId, busy, characters, portraitLoading, updateCharacter]);
 
+  const openCharacterCard = useCallback(
+    (character: NarraCharacter) => {
+      // Карточка и чат ищут героя в narra-store — bundled-фолбэк сначала фиксируем там
+      if (storedCharacters.length === 0 && bundledCharacters?.length) {
+        setCharacters(bookId, bundledCharacters);
+      }
+      setSelectedCharacter(character);
+    },
+    [bookId, bundledCharacters, setCharacters, storedCharacters.length],
+  );
+
+  const openCharacterChat = useCallback(
+    (character: NarraCharacter) => {
+      setSelectedCharacter(null);
+      navigation.navigate("NarraCharacterChat", { bookId, characterId: character.id });
+    },
+    [bookId, navigation],
+  );
+
+  /** Перегенерация «кривого» портрета кнопкой ↻ на аватарке строки. */
+  const regeneratePortrait = useCallback(
+    (character: NarraCharacter) => {
+      if (portraitLoading) return;
+      portraitAttemptsRef.current.add(character.id);
+      setPortraitLoading(character.id);
+      void ensureCharacterPortrait(bookId, { ...character, portraitUri: undefined })
+        .then((portraitUri) => updateCharacter(bookId, character.id, { portraitUri }))
+        .catch((error) => reportNarraError("character_portrait_regenerate", error))
+        .finally(() => setPortraitLoading(null));
+    },
+    [bookId, portraitLoading, updateCharacter],
+  );
+
   return (
-    <ScrollView
-      contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={styles.content}
-      style={styles.container}
-    >
-      <ExtractorWebView ref={extractorRef} />
-      <View style={styles.list}>
-        <TouchableOpacity
-          accessibilityRole="button"
-          accessibilityLabel="Открыть чат с Наррой о книге"
-          activeOpacity={0.62}
-          onPress={() => navigation.navigate("BookChat", { bookId })}
-          style={styles.characterRow}
-        >
-          <View style={[styles.avatar, styles.narraAvatar]}>
-            <NarraFace width={38} height={40} />
-          </View>
-          <View style={styles.characterCopy}>
-            <Text style={styles.characterName} numberOfLines={1}>
-              Нарра
-            </Text>
-            <Text style={styles.characterDescription} numberOfLines={1}>
-              Спросите что угодно о книге
-            </Text>
-          </View>
-        </TouchableOpacity>
-        {orderedCharacters.length > 0 ? <View style={styles.separator} /> : null}
-        {orderedCharacters.map((character, index) => {
-          const portraitBusy = portraitLoading === character.id;
-          const unlocked = isCharacterUnlocked(book?.progress ?? 0, character);
-          const unlockPercent = Math.round(
-            Math.min(1, Math.max(0, character.unlockProgress)) * 100,
-          );
-          const avatar = (
-            <View style={styles.avatar}>
-              {character.portraitUri ? (
-                <Image
-                  source={{ uri: normalizePersistedNarraMediaUri(character.portraitUri) }}
-                  style={styles.avatarImage}
-                  onError={() => updateCharacter(bookId, character.id, { portraitUri: undefined })}
-                />
-              ) : portraitBusy ? (
-                <ActivityIndicator color={colors.primaryForeground} />
-              ) : (
-                <Text style={styles.avatarLetter}>{character.name.slice(0, 1).toUpperCase()}</Text>
-              )}
+    <>
+      <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
+        contentContainerStyle={styles.content}
+        style={styles.container}
+      >
+        <ExtractorWebView ref={extractorRef} />
+        <View style={styles.list}>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Открыть чат с Наррой о книге"
+            activeOpacity={0.62}
+            onPress={() => navigation.navigate("BookChat", { bookId })}
+            style={styles.characterRow}
+          >
+            <View style={[styles.avatar, styles.narraAvatar]}>
+              <NarraFace width={38} height={40} />
             </View>
-          );
-          return (
-            <View key={character.id}>
-              {unlocked ? (
-                <TouchableOpacity
-                  accessibilityRole="button"
-                  accessibilityLabel={t("narra.openCharacterChat", "Открыть чат с {{character}}", {
-                    character: character.name,
-                  })}
-                  activeOpacity={0.62}
-                  onPress={() =>
-                    navigation.navigate("NarraCharacterChat", {
-                      bookId,
-                      characterId: character.id,
-                    })
-                  }
-                  style={styles.characterRow}
-                >
-                  {avatar}
-                  <View style={styles.characterCopy}>
-                    <Text style={styles.characterName} numberOfLines={1}>
-                      {character.fullName}
+            <View style={styles.characterCopy}>
+              <Text style={styles.characterName} numberOfLines={1}>
+                Нарра
+              </Text>
+              <Text style={styles.characterDescription} numberOfLines={1}>
+                Спросите что угодно о книге
+              </Text>
+            </View>
+          </TouchableOpacity>
+          {orderedCharacters.length > 0 ? <View style={styles.separator} /> : null}
+          {orderedCharacters.map((character, index) => {
+            const portraitBusy = portraitLoading === character.id;
+            const unlocked = isCharacterUnlocked(book?.progress ?? 0, character);
+            const unlockPercent = Math.round(
+              Math.min(1, Math.max(0, character.unlockProgress)) * 100,
+            );
+            const avatar = (
+              <View style={styles.avatarWrap}>
+                <View style={styles.avatar}>
+                  {character.portraitUri ? (
+                    <Image
+                      source={{ uri: normalizePersistedNarraMediaUri(character.portraitUri) }}
+                      style={styles.avatarImage}
+                      onError={() =>
+                        updateCharacter(bookId, character.id, { portraitUri: undefined })
+                      }
+                    />
+                  ) : portraitBusy ? (
+                    <ActivityIndicator color={colors.primaryForeground} />
+                  ) : (
+                    <Text style={styles.avatarLetter}>
+                      {character.name.slice(0, 1).toUpperCase()}
                     </Text>
-                    <Text style={styles.characterDescription} numberOfLines={1}>
-                      {character.role}
-                    </Text>
-                    {character.traits.length > 0 ? (
-                      <Text style={styles.characterDescription} numberOfLines={1}>
-                        {character.traits.join(", ")}
-                      </Text>
-                    ) : null}
-                  </View>
-                </TouchableOpacity>
-              ) : (
-                // Запертый герой: приглушён, без описания и черт (антиспойлер), не кликабелен
-                <View
-                  accessible
-                  accessibilityLabel={t(
-                    "narra.lockedCharacterLabel",
-                    "{{character}} откроется на {{percent}}%",
-                    { character: character.name, percent: unlockPercent },
                   )}
-                  style={[styles.characterRow, styles.characterRowLocked]}
-                >
-                  {avatar}
-                  <View style={styles.characterCopy}>
-                    <Text style={styles.characterName} numberOfLines={1}>
-                      {character.name}
-                    </Text>
-                    <Text style={styles.characterDescription} numberOfLines={1}>
-                      {t("narra.unlocksAtPercent", "откроется на {{percent}}%", {
-                        percent: unlockPercent,
-                      })}
-                    </Text>
-                  </View>
+                  {portraitBusy && character.portraitUri ? (
+                    <View style={styles.avatarOverlay}>
+                      <ActivityIndicator size="small" color={colors.primaryForeground} />
+                    </View>
+                  ) : null}
                 </View>
-              )}
-              {index < orderedCharacters.length - 1 ? <View style={styles.separator} /> : null}
+                {unlocked && character.portraitUri && !portraitBusy ? (
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel={t(
+                      "narra.regeneratePortrait",
+                      "Сгенерировать портрет заново",
+                    )}
+                    hitSlop={{ top: 6, right: 6, bottom: 6, left: 6 }}
+                    onPress={() => regeneratePortrait(character)}
+                    style={styles.regenBadge}
+                  >
+                    <Text style={styles.regenBadgeIcon}>↻</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            );
+            return (
+              <View key={character.id}>
+                {unlocked ? (
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel={t(
+                      "myPath.openCharacter",
+                      "Открыть карточку {{character}}",
+                      {
+                        character: character.name,
+                      },
+                    )}
+                    activeOpacity={0.62}
+                    onPress={() => openCharacterCard(character)}
+                    style={styles.characterRow}
+                  >
+                    {avatar}
+                    <View style={styles.characterCopy}>
+                      <Text style={styles.characterName} numberOfLines={1}>
+                        {character.fullName}
+                      </Text>
+                      <Text style={styles.characterDescription} numberOfLines={1}>
+                        {character.role}
+                      </Text>
+                      {character.traits.length > 0 ? (
+                        <Text style={styles.characterDescription} numberOfLines={1}>
+                          {character.traits.join(", ")}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </TouchableOpacity>
+                ) : (
+                  // Запертый герой: приглушён, без описания и черт (антиспойлер), не кликабелен
+                  <View
+                    accessible
+                    accessibilityLabel={t(
+                      "narra.lockedCharacterLabel",
+                      "{{character}} откроется на {{percent}}%",
+                      { character: character.name, percent: unlockPercent },
+                    )}
+                    style={[styles.characterRow, styles.characterRowLocked]}
+                  >
+                    {avatar}
+                    <View style={styles.characterCopy}>
+                      <Text style={styles.characterName} numberOfLines={1}>
+                        {character.name}
+                      </Text>
+                      <Text style={styles.characterDescription} numberOfLines={1}>
+                        {t("narra.unlocksAtPercent", "откроется на {{percent}}%", {
+                          percent: unlockPercent,
+                        })}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+                {index < orderedCharacters.length - 1 ? <View style={styles.separator} /> : null}
+              </View>
+            );
+          })}
+        </View>
+        {characters.length === 0 ? (
+          <CenteredEmptyState
+            title={t("narra.meetCharacters", "Персонажей пока нет")}
+            description={t("narra.analysisDescription", "Найдём их в тексте книги")}
+          >
+            <View style={styles.emptyActions}>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel={
+                  busy ? analysisStage : t("narra.findCharacters", "Найти героев")
+                }
+                activeOpacity={0.82}
+                disabled={busy || !book}
+                onPress={() => void analyze()}
+                style={[styles.primaryButton, (busy || !book) && styles.disabled]}
+              >
+                {busy ? (
+                  <ActivityIndicator size="small" color={colors.primaryForeground} />
+                ) : (
+                  <Text style={styles.primaryButtonText}>
+                    {t("narra.findCharacters", "Найти героев")}
+                  </Text>
+                )}
+              </TouchableOpacity>
             </View>
-          );
-        })}
-      </View>
-      {characters.length === 0 ? (
-        <CenteredEmptyState
-          title={t("narra.meetCharacters", "Персонажей пока нет")}
-          description={t("narra.analysisDescription", "Найдём их в тексте книги")}
-        >
-          <View style={styles.emptyActions}>
-            <TouchableOpacity
-              accessibilityRole="button"
-              accessibilityLabel={busy ? analysisStage : t("narra.findCharacters", "Найти героев")}
-              activeOpacity={0.82}
-              disabled={busy || !book}
-              onPress={() => void analyze()}
-              style={[styles.primaryButton, (busy || !book) && styles.disabled]}
-            >
-              {busy ? (
-                <ActivityIndicator size="small" color={colors.primaryForeground} />
-              ) : (
-                <Text style={styles.primaryButtonText}>
-                  {t("narra.findCharacters", "Найти героев")}
-                </Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        </CenteredEmptyState>
-      ) : null}
-    </ScrollView>
+          </CenteredEmptyState>
+        ) : null}
+      </ScrollView>
+      {/* Карточка героя — тот же bottom-sheet, что в ридере и «Моём пути»: тап → карточка → чат */}
+      <ReaderCharacterCard
+        visible={!!selectedCharacter}
+        character={selectedCharacter}
+        bookId={bookId}
+        onClose={() => setSelectedCharacter(null)}
+        onOpenChat={openCharacterChat}
+      />
+    </>
   );
 }
 
@@ -376,6 +449,29 @@ const makeStyles = (colors: ThemeColors) =>
       paddingVertical: spacing.md,
     },
     characterRowLocked: { opacity: 0.45 },
+    avatarWrap: { position: "relative" },
+    avatarOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "rgba(0,0,0,0.3)",
+    },
+    regenBadge: {
+      position: "absolute",
+      right: -2,
+      bottom: -2,
+      width: 24,
+      height: 24,
+      borderRadius: radius.full,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "rgba(0,0,0,0.55)",
+    },
+    regenBadgeIcon: {
+      color: "#fff",
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.bold,
+    },
     avatar: {
       width: 56,
       height: 56,

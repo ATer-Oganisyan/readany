@@ -224,7 +224,10 @@ export function normalizeCharacterAnalysisResponse(
         passport: normalizePassport(raw.passport, gender),
         expression: raw.expression ? String(raw.expression) : undefined,
         unlockProgress,
-        greeting: raw.greeting ? String(raw.greeting) : `Привет. Я ${name}.`,
+        // Без шаблонного фолбэка: нет своего приветствия — первое сообщение
+        // сгенерирует чат в характере героя (NarraCharacterChatScreen).
+        greeting:
+          typeof raw.greeting === "string" && raw.greeting.trim() ? raw.greeting.trim() : undefined,
         isNarrator: Boolean(raw.isNarrator),
       },
     ];

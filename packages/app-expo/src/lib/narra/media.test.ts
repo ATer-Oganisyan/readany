@@ -71,6 +71,25 @@ describe("portrait prompt", () => {
     expect(prompt.endsWith(`Стиль: ${ART_STYLE}.`)).toBe(true);
     expect(prompt.length).toBeLessThanOrEqual(PROMPT_CHAR_LIMIT);
   });
+
+  it("demands exactly one named person first and keeps it within budget", () => {
+    const prompt = portraitPrompt(vronsky);
+
+    expect(prompt.startsWith("Ровно один человек в кадре — Алексей Вронский, никого больше")).toBe(
+      true,
+    );
+    expect(prompt).toContain("без второстепенных персонажей");
+    expect(prompt.length).toBeLessThanOrEqual(PROMPT_CHAR_LIMIT);
+
+    const verbose: NarraCharacter = {
+      ...vronsky,
+      appearancePrompt: `статный офицер, ${"выразительные детали мундира и осанки, ".repeat(40)}`,
+    };
+    const longPrompt = portraitPrompt(verbose, "«Анна Каренина» (Лев Толстой)");
+    expect(longPrompt).toContain("Ровно один человек в кадре — Алексей Вронский");
+    expect(longPrompt.endsWith(`Стиль: ${ART_STYLE}.`)).toBe(true);
+    expect(longPrompt.length).toBeLessThanOrEqual(PROMPT_CHAR_LIMIT);
+  });
 });
 
 describe("scene image prompt", () => {
@@ -161,6 +180,7 @@ describe("scene image prompt", () => {
     expect(prompt).toContain("Анна Каренина");
     expect(prompt).toContain("Анна вошла в зал");
     expect(prompt).not.toContain("восстание");
+    expect(prompt).toContain("Не добавляй отсутствующих героев и лишних людей");
   });
 });
 
