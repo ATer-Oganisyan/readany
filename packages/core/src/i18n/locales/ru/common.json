@@ -127,7 +127,12 @@
     "sceneFrequencyPages": "{{count}} стр.",
     "sceneFrequencyOff": "Выкл",
     "sceneRegenerate": "Нарисовать заново",
-    "sceneBackToReading": "Вернуться к чтению"
+    "sceneBackToReading": "Вернуться к чтению",
+    "voiceTitle": "Голос героя",
+    "voiceAuto": "Авто",
+    "voiceAutoNamed": "Авто · {{voice}}",
+    "ttsSpeedValue": "Скорость {{value}}×",
+    "ttsStop": "Стоп"
   },
   "window": {
     "minimize": "Свернуть",

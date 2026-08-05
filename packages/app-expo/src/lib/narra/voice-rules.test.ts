@@ -117,6 +117,33 @@ describe("assignVoices, pool exhaustion and extras", () => {
   });
 });
 
+describe("assignVoices, manual voice override (правило 3)", () => {
+  it("wins over auto assignment and allows easter eggs", () => {
+    const plan = assignVoices(cast(["male", "male"], [{ voiceOverride: "Mar" }, {}]));
+
+    // Марков доступен только вручную — override его разрешает.
+    expect(plan.assignments["char-1"]).toEqual({ voice: "Mar" });
+  });
+
+  it("does not consume assistant slots: the next major still gets one", () => {
+    const plan = assignVoices(cast(["male", "male"], [{ voiceOverride: "Gal" }, {}]));
+
+    // Главный герой переопределён вручную — ассистентский Сбер уходит следующему.
+    expect(plan.assignments["char-1"]).toEqual({ voice: "Gal" });
+    expect(plan.assignments["char-2"]).toEqual({ voice: "She" });
+  });
+
+  it("overrides even minor characters and ignores unknown codes", () => {
+    const plan = assignVoices(
+      cast(["male", "male"], [{ isMinor: true, voiceOverride: "Kas" }, { voiceOverride: "Nope" }]),
+    );
+
+    expect(plan.assignments["char-1"]).toEqual({ voice: "Kas" });
+    // Неизвестный код — обычное автоназначение.
+    expect(plan.assignments["char-2"]).toEqual({ voice: "She" });
+  });
+});
+
 describe("assignVoices, determinism and caching", () => {
   beforeEach(() => clearVoicePlanCache());
 

@@ -2,6 +2,7 @@ import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
 import * as FileSystem from "expo-file-system/legacy";
 import { budgetPrompt } from "./art-style";
 import type { NarraCharacter } from "./types";
+import type { NarraProsody } from "./voice-rules";
 
 const MEDIA_DIR = `${FileSystem.documentDirectory}narra-media`;
 const MEDIA_PATH_MARKER = "/Documents/narra-media/";
@@ -247,11 +248,55 @@ export async function generateSceneImage(
   return persistGeneratedImage(path, payload);
 }
 
-export async function synthesizeNarraSpeech(text: string, voice: string): Promise<string> {
+export interface NarraSpeechOptions {
+  /** Просодия голоса персонажа из voice-rules (pitch — полутоны, rate — множитель). */
+  prosody?: NarraProsody;
+  /** Пользовательская скорость воспроизведения (0.5–2, дефолт 1). */
+  rate?: number;
+}
+
+function escapeSsmlText(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+/**
+ * SSML для /v2/speech/synthesize (SaluteSpeech поддерживает <prosody rate pitch>,
+ * см. синтез в narra). Скорость пользователя и просодия персонажа перемножаются;
+ * pitch в полутонах переводится в проценты (~4% на полутон). Без отклонений от
+ * дефолта возвращается null — синтез идёт обычным текстом.
+ */
+export function buildNarraSpeechSsml(
+  text: string,
+  prosody?: NarraProsody,
+  rate?: number,
+): string | null {
+  const ratePercent = clamp(Math.round((rate ?? 1) * (prosody?.rate ?? 1) * 100), 50, 200);
+  const pitchPercent = clamp(Math.round((prosody?.pitch ?? 0) * 4), -40, 40);
+  if (ratePercent === 100 && pitchPercent === 0) return null;
+  const pitch = `${pitchPercent >= 0 ? "+" : ""}${pitchPercent}%`;
+  return `<speak><prosody rate="${ratePercent}%" pitch="${pitch}">${escapeSsmlText(text)}</prosody></speak>`;
+}
+
+export async function synthesizeNarraSpeech(
+  text: string,
+  voice: string,
+  options?: NarraSpeechOptions,
+): Promise<string> {
+  const trimmed = text.slice(0, 12_000);
+  const ssml = buildNarraSpeechSsml(trimmed, options?.prosody, options?.rate);
   const response = await narraGatewayRequest("/v2/speech/synthesize", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ text: text.slice(0, 12_000), voice }),
+    body: JSON.stringify(ssml ? { ssml, voice } : { text: trimmed, voice }),
   });
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as { error?: string } | null;

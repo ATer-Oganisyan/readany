@@ -970,6 +970,11 @@ export function ReaderScreen({ route, navigation }: Props) {
       const character = characters.find((item) => item.id === characterId);
       // Запертые персонажи не размечаются, но на случай гонки — двойная проверка
       if (!character || !isCharacterUnlocked(progress, character)) return;
+      // Карточка пишет в narra-store (портрет, выбор голоса) — bundled-каталог
+      // сначала фиксируем там, как это делает переход в чат.
+      if (charactersFromBundledCatalog && bundledCharacters?.length) {
+        setNarraCharacters(bookId, bundledCharacters);
+      }
       suppressReaderTapUntilRef.current = Date.now() + 400;
       setCharacterCard(character);
     },
@@ -1109,6 +1114,7 @@ export function ReaderScreen({ route, navigation }: Props) {
     bookCoverUrl: book?.meta.coverUrl,
     colors,
     goToHref: bridge.goToHref,
+    characters,
   });
 
   const openScene = useCallback(

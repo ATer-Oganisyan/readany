@@ -49,8 +49,9 @@ export function parseNarraAudioScenario(
         type: item.type === "speech" ? "speech" : "narration",
         characterId: character?.id ?? null,
         speaker: character?.name ?? "Рассказчик",
-        // Безымянные эпизодники и повествование — голос нарратора.
-        voice: character?.voice || narratorVoice,
+        // Безымянные эпизодники и повествование — голос нарратора;
+        // ручной выбор голоса в карточке героя приоритетнее автоназначения.
+        voice: character?.voiceOverride || character?.voice || narratorVoice,
         text: String(item.text).trim(),
       };
     });

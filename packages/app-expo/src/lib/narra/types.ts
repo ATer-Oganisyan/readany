@@ -19,6 +19,8 @@ export interface NarraCharacter {
   voice: string;
   /** Просодия при повторе голоса из исчерпанного пула (pitch — полутоны, rate — множитель). */
   voiceProsody?: { pitch?: number; rate?: number };
+  /** Ручной выбор голоса в карточке героя — приоритет над автоназначением (правило 3). */
+  voiceOverride?: string;
   traits: string[];
   speechStyle: string;
   speechExamples: string[];

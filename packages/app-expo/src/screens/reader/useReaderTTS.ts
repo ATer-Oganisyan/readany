@@ -10,7 +10,10 @@
  */
 
 import type { VisibleTTSSegment } from "@/hooks/use-reader-bridge";
-import { useTTSStore } from "@/stores";
+import type { NarraCharacter } from "@/lib/narra/types";
+import { clearReaderVoicePlan, primeReaderVoicePlan } from "@/lib/narra/voice-markup";
+import { narratorVoiceFor } from "@/lib/narra/voice-rules";
+import { useNarraStore, useTTSStore } from "@/stores";
 import { getPlatformService } from "@readany/core/services";
 import { type TTSConfig, normalizeTTSConfig, splitNarrationText } from "@readany/core/tts";
 import type { TOCItem } from "@readany/core/types";
@@ -69,6 +72,8 @@ export interface UseReaderTTSOptions {
   bookCoverUrl?: string;
   colors: { primary: string };
   goToHref: (href: string) => void;
+  /** Персонажи книги (narra-store или bundled-фолбэк) — для разметки по голосам. */
+  characters?: NarraCharacter[];
 }
 
 // ─── Hook outputs ───────────────────────────────────────────────────────────
@@ -187,10 +192,11 @@ export function useReaderTTS({
   bookCoverUrl,
   colors,
   goToHref,
+  characters,
 }: UseReaderTTSOptions): UseReaderTTSResult {
   // ─── TTS Store ─────────────────────────────────────────────────────────────
-  const ttsPlay = useTTSStore((s) => s.play);
-  const ttsAppend = useTTSStore((s) => s.append);
+  const ttsPlayRaw = useTTSStore((s) => s.play);
+  const ttsAppendRaw = useTTSStore((s) => s.append);
   const ttsPause = useTTSStore((s) => s.pause);
   const ttsResume = useTTSStore((s) => s.resume);
   const ttsStop = useTTSStore((s) => s.stop);
@@ -272,6 +278,43 @@ export function useReaderTTS({
   ttsCurrentLocationCfiRef.current = ttsCurrentLocationCfi;
   ttsTotalChunksRef.current = ttsTotalChunks;
 
+  // ─── Разметка очереди по голосам (P7) ──────────────────────────────────────
+  // Перед каждым play/append активный план голосов пересобирается синхронно —
+  // edge-плеер читает его при синтезе каждого чанка (voice-markup.ts).
+  const charactersRef = useRef<NarraCharacter[]>(characters ?? []);
+  charactersRef.current = characters ?? [];
+
+  const primeVoicePlanForTexts = useCallback((texts: string[], append: boolean) => {
+    try {
+      primeReaderVoicePlan(
+        texts,
+        charactersRef.current,
+        narratorVoiceFor(useNarraStore.getState().narratorVoicePreference),
+        { append },
+      );
+    } catch (error) {
+      // Ошибка разметки не должна ломать озвучку — фолбэк на голос нарратора.
+      console.warn("[ReaderScreen][TTS] voice markup failed", error);
+      if (!append) clearReaderVoicePlan();
+    }
+  }, []);
+
+  const ttsPlay = useCallback(
+    (text: string | string[]) => {
+      primeVoicePlanForTexts(Array.isArray(text) ? text : splitNarrationText(text), false);
+      ttsPlayRaw(text);
+    },
+    [primeVoicePlanForTexts, ttsPlayRaw],
+  );
+
+  const ttsAppend = useCallback(
+    (text: string | string[]) => {
+      primeVoicePlanForTexts(Array.isArray(text) ? text : splitNarrationText(text), true);
+      return ttsAppendRaw(text);
+    },
+    [primeVoicePlanForTexts, ttsAppendRaw],
+  );
+
   // ─── Cover URI resolution ───────────────────────────────────────────────────
   useEffect(() => {
     const raw = bookCoverUrl;
@@ -345,6 +388,7 @@ export function useReaderTTS({
       clearTimeout(pendingTTSContinueSafetyTimerRef.current);
       pendingTTSContinueSafetyTimerRef.current = null;
     }
+    clearReaderVoicePlan();
     if (switchedBook) {
       setShowTTS(false);
       bridgeRef.current?.setTTSHighlight(null);

@@ -190,7 +190,11 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
 
       setSpeakingId(message.id);
       try {
-        const uri = await synthesizeNarraSpeech(content, character.voice);
+        const uri = await synthesizeNarraSpeech(
+          content,
+          character.voiceOverride || character.voice,
+          { prosody: character.voiceOverride ? undefined : character.voiceProsody },
+        );
         audioRef.current.play(uri, () => setSpeakingId(null));
       } catch (error) {
         setSpeakingId(null);

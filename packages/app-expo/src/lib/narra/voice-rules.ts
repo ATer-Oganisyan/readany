@@ -105,6 +105,12 @@ export interface VoiceAssignmentCharacter {
   isMinor?: boolean;
   /** Персонаж-рассказчик — получает голос нарратора вне очереди. */
   isNarrator?: boolean;
+  /**
+   * Ручной выбор голоса пользователем (правило 3): приоритет над любым
+   * автоназначением, слоты ассистентов и актёрского пула не расходует.
+   * Допустимы и пасхалки (Марков/Пират). Неизвестный код игнорируется.
+   */
+  voiceOverride?: string;
 }
 
 export interface AssignVoicesOptions {
@@ -138,19 +144,34 @@ function actorPool(gender: NarraGender, childrensBook: boolean): string[] {
   return pool;
 }
 
+function resolveOverride(character: VoiceAssignmentCharacter): string | undefined {
+  return character.voiceOverride && VOICES[character.voiceOverride]
+    ? character.voiceOverride
+    : undefined;
+}
+
 function buildPlan(characters: VoiceAssignmentCharacter[], opts: AssignVoicesOptions): VoicePlan {
   const narratorVoice = narratorVoiceFor(opts.narratorPreference);
   const assignments: Record<string, VoiceAssignment> = {};
 
+  // Ручное переопределение — приоритет над всем; такие герои выходят из
+  // автоочереди и не расходуют ассистентские/актёрские слоты.
+  for (const character of characters) {
+    const override = resolveOverride(character);
+    if (override) assignments[character.id] = { voice: override };
+  }
+
   const majors = characters
     .map((character, index) => ({ character, index }))
-    .filter(({ character }) => !character.isMinor && !character.isNarrator)
+    .filter(
+      ({ character }) => !character.isMinor && !character.isNarrator && !resolveOverride(character),
+    )
     .sort((a, b) => (b.character.rank ?? 0) - (a.character.rank ?? 0) || a.index - b.index)
     .map(({ character }) => character);
 
   // Эпизодники и персонаж-рассказчик — голос нарратора.
   for (const character of characters) {
-    if (character.isMinor || character.isNarrator) {
+    if ((character.isMinor || character.isNarrator) && !assignments[character.id]) {
       assignments[character.id] = { voice: narratorVoice };
     }
   }
@@ -207,7 +228,14 @@ const planCache = new Map<string, { signature: string; plan: VoicePlan }>();
 
 function planSignature(characters: VoiceAssignmentCharacter[], opts: AssignVoicesOptions): string {
   return JSON.stringify([
-    characters.map((c) => [c.id, c.gender, c.rank ?? 0, Boolean(c.isMinor), Boolean(c.isNarrator)]),
+    characters.map((c) => [
+      c.id,
+      c.gender,
+      c.rank ?? 0,
+      Boolean(c.isMinor),
+      Boolean(c.isNarrator),
+      c.voiceOverride ?? "",
+    ]),
     opts.narratorPreference ?? DEFAULT_NARRATOR_PREFERENCE,
     Boolean(opts.firstPerson),
     Boolean(opts.childrensBook),

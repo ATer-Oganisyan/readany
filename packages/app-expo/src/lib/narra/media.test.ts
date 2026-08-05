@@ -7,6 +7,7 @@ vi.mock("@/lib/ai/narra-gateway-fetch", () => ({ narraGatewayRequest: vi.fn() })
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
 import { ART_STYLE, PROMPT_CHAR_LIMIT } from "./art-style";
 import {
+  buildNarraSpeechSsml,
   buildSafetyFallbackSceneImagePrompt,
   buildSceneImagePrompt,
   generateSceneImage,
@@ -177,5 +178,28 @@ describe("persisted Narra media URI", () => {
     expect(normalizePersistedNarraMediaUri("file:///documents/covers/book.png")).toBe(
       "file:///documents/covers/book.png",
     );
+  });
+});
+
+describe("speech SSML (просодия и скорость)", () => {
+  it("returns null for default rate and pitch — plain text synthesis", () => {
+    expect(buildNarraSpeechSsml("Привет.")).toBeNull();
+    expect(buildNarraSpeechSsml("Привет.", {}, 1)).toBeNull();
+  });
+
+  it("multiplies user rate by character prosody and converts pitch to percent", () => {
+    expect(buildNarraSpeechSsml("Привет.", { pitch: 2, rate: 0.9 }, 1.5)).toBe(
+      '<speak><prosody rate="135%" pitch="+8%">Привет.</prosody></speak>',
+    );
+    expect(buildNarraSpeechSsml("Привет.", { pitch: -2 })).toBe(
+      '<speak><prosody rate="100%" pitch="-8%">Привет.</prosody></speak>',
+    );
+  });
+
+  it("clamps extreme values and escapes XML", () => {
+    const ssml = buildNarraSpeechSsml('Он сказал: "меньше & лучше" <тихо>.', { pitch: 20 }, 3);
+    expect(ssml).toContain('rate="200%"');
+    expect(ssml).toContain('pitch="+40%"');
+    expect(ssml).toContain("&quot;меньше &amp; лучше&quot; &lt;тихо&gt;");
   });
 });

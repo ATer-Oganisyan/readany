@@ -68,10 +68,14 @@ interface TTSPageProps {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
+/** Пресеты скорости озвучки в мини-панели плеера (P7). */
+const TTS_SPEED_PRESETS: readonly number[] = [0.75, 1, 1.25, 1.5];
+
 export function TTSPage({
   visible,
   playState,
   currentText,
+  config,
   continuousEnabled,
   narrationSegments = [],
   prevNarrationSegments = [],
@@ -82,6 +86,8 @@ export function TTSPage({
   chapterTotalChunks,
   onClose,
   onPlayPause,
+  onStop,
+  onUpdateConfig,
   onJumpToSegment,
   onJumpToLyricSegment,
   onLoadMoreAbove,
@@ -561,6 +567,39 @@ export function TTSPage({
           </View>
 
           <View style={{ paddingBottom: chromeBottomInset + 4 }}>
+            {/* Мини-панель: пресеты скорости и стоп (play/пауза — в нативном плеере ниже) */}
+            <View style={s.speedRow}>
+              {TTS_SPEED_PRESETS.map((preset) => {
+                const active = Math.abs(config.rate - preset) < 0.05;
+                return (
+                  <Pressable
+                    key={preset}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    accessibilityLabel={t("narra.ttsSpeedValue", "Скорость {{value}}×", {
+                      value: preset,
+                    })}
+                    onPress={() => onUpdateConfig?.({ rate: preset })}
+                    style={[s.speedChip, active && s.speedChipActive]}
+                  >
+                    <Text style={[s.speedChipTxt, active && s.speedChipTxtActive]}>
+                      {`${preset}×`}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t("narra.ttsStop", "Стоп")}
+                onPress={() => {
+                  onStop();
+                  onClose();
+                }}
+                style={s.stopChip}
+              >
+                <Text style={s.stopChipTxt}>{t("narra.ttsStop", "Стоп")}</Text>
+              </Pressable>
+            </View>
             <TTSNativePlayer
               playState={playState}
               onPlayPause={onPlayPause}

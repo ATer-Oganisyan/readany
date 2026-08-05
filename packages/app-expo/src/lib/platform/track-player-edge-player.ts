@@ -6,6 +6,7 @@ import TrackPlayer, { Event, State } from "react-native-track-player";
 
 import { synthesizeNarraSpeech } from "../narra/media";
 import { getNarratorVoice } from "../narra/scene-audio";
+import { resolveReaderVoiceForChunk } from "../narra/voice-markup";
 import { chunkIndexFromTrackId, trackIdForChunkIndex } from "./track-player-chunk-id";
 import { ensureSilenceFile } from "./tts-silence-keeper";
 
@@ -661,7 +662,18 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
   private async _fetchChunkFile(index: number, gen: number): Promise<string> {
     if (this._stopped || gen !== this._speakGen || !this._config) throw new Error("aborted");
 
-    const audioUri = await synthesizeNarraSpeech(this._chunks[index], getNarratorVoice());
+    // Голос чанка — из активного плана разметки по ролям (voice-markup P7);
+    // сегменты вне плана (и весь нарратив) — голосом нарратора.
+    const chunkText = this._chunks[index];
+    const assignment = resolveReaderVoiceForChunk(chunkText);
+    const audioUri = await synthesizeNarraSpeech(
+      chunkText,
+      assignment?.voice || getNarratorVoice(),
+      {
+        prosody: assignment?.prosody,
+        rate: this._config?.rate,
+      },
+    );
 
     if (this._stopped || gen !== this._speakGen) throw new Error("aborted");
 

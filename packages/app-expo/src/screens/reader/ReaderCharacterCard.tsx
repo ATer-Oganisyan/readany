@@ -3,6 +3,7 @@ import { Text } from "@/components/ui/Typography";
 import { reportNarraError } from "@/lib/narra/errors";
 import { ensureCharacterPortrait, normalizePersistedNarraMediaUri } from "@/lib/narra/media";
 import type { NarraCharacter } from "@/lib/narra/types";
+import { VOICES } from "@/lib/narra/voice-rules";
 import { useNarraStore } from "@/stores";
 import { type ThemeColors, fontSize, fontWeight, radius, spacing, useTheme } from "@/styles/theme";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -36,11 +37,22 @@ export function ReaderCharacterCard({
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const updateCharacter = useNarraStore((state) => state.updateCharacter);
+  // Живой персонаж из стора: после смены голоса проп-снимок устаревает.
+  const storedCharacter = useNarraStore((state) =>
+    character
+      ? state.books[bookId]?.characters.find((item) => item.id === character.id)
+      : undefined,
+  );
+  const liveCharacter = storedCharacter ?? character;
   const [portraitLoading, setPortraitLoading] = useState(false);
   const portraitAttemptsRef = useRef(new Set<string>());
 
-  const portraitUri = character?.portraitUri
-    ? normalizePersistedNarraMediaUri(character.portraitUri)
+  // Ручной выбор голоса (правило 3): полный список, включая пасхалки
+  // Марков/Пират; Фокин скрыт, пока синтез Efo сломан на gateway.
+  const voiceOptions = useMemo(() => Object.entries(VOICES).filter(([code]) => code !== "Efo"), []);
+
+  const portraitUri = liveCharacter?.portraitUri
+    ? normalizePersistedNarraMediaUri(liveCharacter.portraitUri)
     : undefined;
 
   // Портрет по требованию — тот же механизм, что и в NarraCharactersScreen
@@ -55,7 +67,12 @@ export function ReaderCharacterCard({
       .finally(() => setPortraitLoading(false));
   }, [visible, character, bookId, updateCharacter]);
 
-  if (!character) return null;
+  if (!character || !liveCharacter) return null;
+
+  const autoVoiceName = VOICES[liveCharacter.voice]?.name;
+  const setVoiceOverride = (voiceOverride?: string) => {
+    updateCharacter(bookId, liveCharacter.id, { voiceOverride });
+  };
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -103,6 +120,51 @@ export function ReaderCharacterCard({
             ))}
           </ScrollView>
         ) : null}
+        {/* Голос озвучки: авто по правилам или ручной выбор (включая пасхалки) */}
+        <View style={styles.voiceSection}>
+          <Text style={styles.voiceLabel}>{t("narra.voiceTitle", "Голос героя")}</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.traitsRow}
+          >
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ selected: !liveCharacter.voiceOverride }}
+              accessibilityLabel={t("narra.voiceAuto", "Авто")}
+              onPress={() => setVoiceOverride(undefined)}
+              style={[styles.voiceChip, !liveCharacter.voiceOverride && styles.voiceChipActive]}
+            >
+              <Text
+                style={[
+                  styles.voiceChipText,
+                  !liveCharacter.voiceOverride && styles.voiceChipTextActive,
+                ]}
+              >
+                {autoVoiceName
+                  ? t("narra.voiceAutoNamed", "Авто · {{voice}}", { voice: autoVoiceName })
+                  : t("narra.voiceAuto", "Авто")}
+              </Text>
+            </Pressable>
+            {voiceOptions.map(([code, info]) => {
+              const active = liveCharacter.voiceOverride === code;
+              return (
+                <Pressable
+                  key={code}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={info.name}
+                  onPress={() => setVoiceOverride(code)}
+                  style={[styles.voiceChip, active && styles.voiceChipActive]}
+                >
+                  <Text style={[styles.voiceChipText, active && styles.voiceChipTextActive]}>
+                    {info.name}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
         <NativeButton
           label={t("narra.characterCardOpenChat", "Перейти в чат")}
           accessibilityLabel={t("narra.openCharacterChat", "Открыть чат с {{character}}", {
@@ -182,5 +244,35 @@ const makeStyles = (colors: ThemeColors) =>
     traitText: {
       color: colors.foreground,
       fontSize: fontSize.xs,
+    },
+    voiceSection: {
+      gap: spacing.xs,
+    },
+    voiceLabel: {
+      color: colors.mutedForeground,
+      fontSize: fontSize.xs,
+      fontWeight: fontWeight.semibold,
+      textTransform: "uppercase",
+      letterSpacing: 0.4,
+    },
+    voiceChip: {
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 6,
+      borderRadius: radius.full,
+      backgroundColor: colors.elevation1,
+      borderWidth: 0.5,
+      borderColor: colors.primary5,
+    },
+    voiceChipActive: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    voiceChipText: {
+      color: colors.foreground,
+      fontSize: fontSize.xs,
+    },
+    voiceChipTextActive: {
+      color: colors.primaryForeground,
+      fontWeight: fontWeight.semibold,
     },
   });

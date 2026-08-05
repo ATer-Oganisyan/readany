@@ -448,4 +448,43 @@ export const makeStyles = (colors: ThemeColors) =>
       fontWeight: fontWeight.semibold,
       color: colors.foreground,
     },
+    // ─── Мини-панель: скорость 0.75–1.5× и стоп (P7) ───────────────────────
+    speedRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      paddingHorizontal: 20,
+      paddingTop: 4,
+      paddingBottom: 2,
+    },
+    speedChip: {
+      minWidth: 52,
+      alignItems: "center",
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 14,
+      backgroundColor: colors.muted,
+    },
+    speedChipActive: { backgroundColor: colors.primary },
+    speedChipTxt: {
+      fontSize: 13,
+      fontWeight: fontWeight.semibold,
+      color: colors.foreground,
+      fontVariant: ["tabular-nums"],
+    },
+    speedChipTxtActive: { color: colors.primaryForeground },
+    stopChip: {
+      minWidth: 52,
+      alignItems: "center",
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 14,
+      backgroundColor: withOpacity(colors.destructive, 0.12),
+    },
+    stopChipTxt: {
+      fontSize: 13,
+      fontWeight: fontWeight.semibold,
+      color: colors.destructive,
+    },
   });

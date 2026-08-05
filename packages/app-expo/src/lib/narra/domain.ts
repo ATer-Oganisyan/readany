@@ -40,9 +40,16 @@ export function withNarraCharacters(
     ...state,
     characters: characters.map((character) => {
       const previous = state.characters.find((item) => item.id === character.id);
-      return previous?.portraitUri && !character.portraitUri
-        ? { ...character, portraitUri: previous.portraitUri }
-        : character;
+      if (!previous) return character;
+      const merged = { ...character };
+      // Портрет и ручной выбор голоса переживают повторный анализ книги.
+      if (previous.portraitUri && !character.portraitUri) {
+        merged.portraitUri = previous.portraitUri;
+      }
+      if (previous.voiceOverride && !character.voiceOverride) {
+        merged.voiceOverride = previous.voiceOverride;
+      }
+      return merged;
     }),
     analyzedAt,
     analysisError: undefined,
