@@ -1,5 +1,9 @@
 # Narra module for Traction
 
+The current production inventory, Railway retirement state and staging policy
+are recorded in [`docs/narra-infrastructure.md`](../../docs/narra-infrastructure.md).
+This directory is the canonical Narra analytics source.
+
 Independent FastAPI + SQLite product analytics module for `stats.multitool.works/p/narra/`.
 
 - `GET /health` — liveness and deployed version
