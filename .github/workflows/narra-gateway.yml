@@ -49,7 +49,7 @@ jobs:
 
       - name: Validate production Compose
         run: |
-          sudo install -m 0600 /dev/null /etc/narra-gateway.env
+          sudo install -m 0644 /dev/null /etc/narra-gateway.env
           NARRA_GATEWAY_IMAGE=readany/narra-gateway:ci \
             docker compose -f services/narra-gateway/compose.i167.yml config >/dev/null
 
