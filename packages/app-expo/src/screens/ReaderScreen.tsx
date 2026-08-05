@@ -3,7 +3,7 @@ import { BookmarkRibbon } from "@/components/reader/BookmarkRibbon";
 import { ChapterTranslationSheet } from "@/components/reader/ChapterTranslationSheet";
 import { TTSPage } from "@/components/reader/TTSPage";
 import { TranslationPanel } from "@/components/reader/TranslationPanel";
-import { NotebookPenIcon, SparklesIcon, XIcon } from "@/components/ui/Icon";
+import { NotebookPenIcon, XIcon } from "@/components/ui/Icon";
 import { NativeButton } from "@/components/ui/NativeButton";
 import { NativeContextMenuButton } from "@/components/ui/NativeContextMenuButton";
 import { Text } from "@/components/ui/Typography";
@@ -12,6 +12,13 @@ import type { RelocateEvent, SelectionEvent, VisibleTTSSegment } from "@/hooks/u
 import { getBundledCatalogCharactersByTitle } from "@/lib/narra/bundled-catalog-characters";
 import { buildCharacterNameMatcherSpec } from "@/lib/narra/character-name-matcher";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
+import { reportNarraError } from "@/lib/narra/errors";
+import { generateSceneImage, normalizePersistedNarraMediaUri } from "@/lib/narra/media";
+import {
+  sceneImageDataUri,
+  sceneInsertAnchors,
+  sceneSourceKeyForAnchor,
+} from "@/lib/narra/scene-inserts";
 import {
   INITIAL_SCENE_SUGGESTION_STATE,
   advanceSceneSuggestion,
@@ -50,6 +57,7 @@ import { throttle } from "@readany/core/utils/throttle";
 import { Asset } from "expo-asset";
 import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
 /**
  * ReaderScreen — WebView-based reader with foliate-js engine.
  */
@@ -301,6 +309,9 @@ export function ReaderScreen({ route, navigation }: Props) {
     }) => void;
     removeAnnotation: (annotation: { value: string; type?: string }) => void;
     setTTSHighlight: (cfi: string | null, color?: string, force?: boolean) => void;
+    insertSceneSlot: () => void;
+    replaceSceneSlot: (anchor: string, imageDataUri: string) => void;
+    setSceneSlotState: (anchor: string, state: "idle" | "loading" | "error") => void;
   } | null>(null);
 
   // Chapter translation state
@@ -432,15 +443,103 @@ export function ReaderScreen({ route, navigation }: Props) {
   }, [characters, unlockedCharacterIdsKey]);
   const [characterCard, setCharacterCard] = useState<NarraCharacter | null>(null);
 
-  // ── Narra: врезки «нарисовать сцену» раз в N страниц (P6) ───────────────────
+  // ── Narra: врезки сцен внутри текста раз в N страниц (P6 → P14) ─────────────
+  // Счётчик перелистываний прежний (scene-suggestion.ts); по сигналу в конец
+  // видимого фрагмента WebView вставляет слот «Показать сцену», тап по нему
+  // запускает генерацию, готовая картинка встаёт в текст на место слота.
   const sceneSuggestionInterval = useNarraStore((state) => state.sceneSuggestionInterval);
   const sceneSuggestionStateRef = useRef(INITIAL_SCENE_SUGGESTION_STATE);
-  const [sceneSuggestionVisible, setSceneSuggestionVisible] = useState(false);
+  const narraScenes = useNarraStore((state) => state.books[bookId]?.scenes);
+  const setNarraScene = useNarraStore((state) => state.setScene);
+  const sceneSlotBusyRef = useRef(new Set<string>());
 
-  // Выключили частоту в настройках — прячем уже показанную плашку
-  useEffect(() => {
-    if (sceneSuggestionInterval <= 0) setSceneSuggestionVisible(false);
-  }, [sceneSuggestionInterval]);
+  // Видимый текст страницы — контекст для промпта сцены (как в P6)
+  const collectVisibleSceneExcerpt = useCallback(async () => {
+    const bridge = bridgeRef.current;
+    let excerpt = (await bridge?.getVisibleText())?.trim() ?? "";
+    if (!excerpt) {
+      const visibleSegments = await bridge?.getVisibleTTSSegments(currentCfi || null);
+      excerpt = (visibleSegments ?? [])
+        .map((segment) => segment.text.trim())
+        .filter(Boolean)
+        .join(" ");
+    }
+    return excerpt.trim();
+  }, [currentCfi]);
+
+  // Генерация (или перегенерация) сцены для врезки: слот уже показывает
+  // плейсхолдер «Рисуем сцену…» — сюда приходим по событию из WebView.
+  const runSceneSlotGeneration = useCallback(
+    async (anchor: string) => {
+      if (sceneSlotBusyRef.current.has(anchor)) return;
+      sceneSlotBusyRef.current.add(anchor);
+      try {
+        const sourceKey = sceneSourceKeyForAnchor(anchor);
+        const cached = useNarraStore.getState().books[bookId]?.scenes?.[sourceKey];
+        // Перегенерация — тот же контекст, что у сохранённой сцены
+        const excerpt = cached?.excerpt?.trim() || (await collectVisibleSceneExcerpt());
+        if (!excerpt) {
+          bridgeRef.current?.setSceneSlotState(anchor, "error");
+          return;
+        }
+        const chapter =
+          cached?.chapter || currentChapter || bookTitle || book?.meta.title || "Текущая страница";
+        const imageUri = await generateSceneImage(bookId, chapter, excerpt, characters);
+        setNarraScene(bookId, {
+          sourceKey,
+          chapter,
+          excerpt,
+          imageUri,
+          generatedAt: Date.now(),
+          anchor,
+        });
+        // Файл читается в RN и передаётся data-URI — WebView не ходит в ФС
+        const base64 = await FileSystem.readAsStringAsync(
+          normalizePersistedNarraMediaUri(imageUri),
+          { encoding: FileSystem.EncodingType.Base64 },
+        );
+        bridgeRef.current?.replaceSceneSlot(anchor, sceneImageDataUri(base64, imageUri));
+      } catch (cause) {
+        reportNarraError("scene_image", cause);
+        bridgeRef.current?.setSceneSlotState(anchor, "error");
+      } finally {
+        sceneSlotBusyRef.current.delete(anchor);
+      }
+    },
+    [
+      book?.meta.title,
+      bookId,
+      bookTitle,
+      characters,
+      collectVisibleSceneExcerpt,
+      currentChapter,
+      setNarraScene,
+    ],
+  );
+
+  // Врезка восстановлена при загрузке секции — вернуть сохранённую картинку
+  const handleSceneSlotRestored = useCallback(
+    async (anchor: string) => {
+      try {
+        const sourceKey = sceneSourceKeyForAnchor(anchor);
+        const cached = useNarraStore.getState().books[bookId]?.scenes?.[sourceKey];
+        if (!cached?.imageUri) {
+          bridgeRef.current?.setSceneSlotState(anchor, "idle");
+          return;
+        }
+        const uri = normalizePersistedNarraMediaUri(cached.imageUri);
+        const base64 = await FileSystem.readAsStringAsync(uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        bridgeRef.current?.replaceSceneSlot(anchor, sceneImageDataUri(base64, uri));
+      } catch (cause) {
+        // Файл картинки потерян — слот возвращается в состояние «Показать сцену»
+        console.warn("[Reader] Failed to restore scene insert", cause);
+        bridgeRef.current?.setSceneSlotState(anchor, "idle");
+      }
+    },
+    [bookId],
+  );
 
   const handleOpenCharacterChat = useCallback(
     (character: NarraCharacter) => {
@@ -524,7 +623,6 @@ export function ReaderScreen({ route, navigation }: Props) {
     sessionProgressRef.current = null;
     totalBookCharactersRef.current = null;
     sceneSuggestionStateRef.current = INITIAL_SCENE_SUGGESTION_STATE;
-    setSceneSuggestionVisible(false);
     suppressProgressTracking(INITIAL_PROGRESS_RESTORE_GUARD_MS);
   }, [bookId]);
   const chapterTranslation = useChapterTranslation({
@@ -874,8 +972,9 @@ export function ReaderScreen({ route, navigation }: Props) {
         throttledSaveProgress(bookId, detail.fraction ?? 0, detail.cfi);
       }
 
-      // Врезки «нарисовать сцену»: перелистывания считает foliate relocate,
-      // собственной пагинации нет (логика — scene-suggestion.ts)
+      // Врезки сцен: перелистывания считает foliate relocate, собственной
+      // пагинации нет (логика — scene-suggestion.ts). По сигналу счётчика
+      // WebView вставляет слот «Показать сцену» в конец видимого фрагмента.
       const sceneAdvance = advanceSceneSuggestion(
         sceneSuggestionStateRef.current,
         detail,
@@ -884,9 +983,7 @@ export function ReaderScreen({ route, navigation }: Props) {
       );
       sceneSuggestionStateRef.current = sceneAdvance.state;
       if (sceneAdvance.suggest) {
-        // Плашка висит до явного закрытия или тапа — при быстром листании
-        // авто-скрытие делало её невидимой
-        setSceneSuggestionVisible(true);
+        bridgeRef.current?.insertSceneSlot();
       }
 
       // Mark translation ready after first successful relocate (CFI navigation done)
@@ -980,6 +1077,16 @@ export function ReaderScreen({ route, navigation }: Props) {
       }
       suppressReaderTapUntilRef.current = Date.now() + 400;
       setCharacterCard(character);
+    },
+    // Врезки сцен: генерация только по явному тапу, перегенерация — «↻ Заново»
+    onSceneSlotTap: ({ anchor }) => {
+      void runSceneSlotGeneration(anchor);
+    },
+    onSceneSlotRegenerate: ({ anchor }) => {
+      void runSceneSlotGeneration(anchor);
+    },
+    onSceneSlotRestored: ({ anchor }) => {
+      void handleSceneSlotRestored(anchor);
     },
     onSearchComplete: (count, results) => {
       search.onSearchComplete(count, results);
@@ -1095,6 +1202,34 @@ export function ReaderScreen({ route, navigation }: Props) {
     sendCharacterNames(characterNameSpecJson);
   }, [webViewReady, characterNameSpecJson, sendCharacterNames]);
 
+  // Подписи врезок сцен — локализованные строки внутрь WebView
+  const configureSceneSlots = bridge.configureSceneSlots;
+  useEffect(() => {
+    if (!webViewReady) return;
+    configureSceneSlots(
+      JSON.stringify({
+        idle: t("narra.sceneSlotShow", "Показать сцену"),
+        loading: t("narra.sceneSlotDrawing", "Рисуем сцену…"),
+        loadingHint: t("narra.sceneSlotDrawingHint", "Обычно 20–60 секунд"),
+        caption: t("narra.sceneSlotCaption", "Сцена — сгенерировано ИИ"),
+        regen: t("narra.sceneSlotRegen", "Заново"),
+        error: t("narra.sceneSlotError", "Не получилось — попробовать ещё раз"),
+      }),
+    );
+  }, [webViewReady, configureSceneSlots, t]);
+
+  // Якоря сохранённых сцен: WebView восстанавливает врезки при загрузке
+  // секций и просит картинки событием sceneSlotRestored
+  const sceneAnchorsJson = useMemo(() => {
+    const anchors = sceneInsertAnchors(narraScenes);
+    return anchors.length ? JSON.stringify(anchors) : null;
+  }, [narraScenes]);
+  const setSceneAnchors = bridge.setSceneAnchors;
+  useEffect(() => {
+    if (!webViewReady) return;
+    setSceneAnchors(sceneAnchorsJson);
+  }, [webViewReady, sceneAnchorsJson, setSceneAnchors]);
+
   // ── useReaderTTS ──
   const tts = useReaderTTS({
     bookId,
@@ -1134,31 +1269,13 @@ export function ReaderScreen({ route, navigation }: Props) {
 
   const handleGenerateVisibleScene = useCallback(async () => {
     try {
-      const bridge = bridgeRef.current;
-      let excerpt = (await bridge?.getVisibleText())?.trim() ?? "";
-      if (!excerpt) {
-        const visibleSegments = await bridge?.getVisibleTTSSegments(currentCfi || null);
-        excerpt = (visibleSegments ?? [])
-          .map((segment) => segment.text.trim())
-          .filter(Boolean)
-          .join(" ");
-      }
+      const excerpt = await collectVisibleSceneExcerpt();
       openScene(excerpt, `page:${currentCfi || currentChapter || bookId}`);
     } catch (cause) {
       console.warn("[Reader] Failed to read visible text for scene", cause);
       Alert.alert("Не удалось создать сцену", "Не получилось прочитать текст страницы.");
     }
-  }, [bookId, currentCfi, currentChapter, openScene]);
-
-  // Генерация только по явному тапу по плашке — автогенерации нет
-  const handleSceneSuggestionAccept = useCallback(() => {
-    setSceneSuggestionVisible(false);
-    void handleGenerateVisibleScene();
-  }, [handleGenerateVisibleScene]);
-
-  const handleSceneSuggestionDismiss = useCallback(() => {
-    setSceneSuggestionVisible(false);
-  }, []);
+  }, [bookId, collectVisibleSceneExcerpt, currentCfi, currentChapter, openScene]);
 
   const handleSelectionMenuAction = useCallback(
     (event: { nativeEvent: { key: string; selectedText: string } }) => {
@@ -1314,6 +1431,14 @@ export function ReaderScreen({ route, navigation }: Props) {
                       size="small"
                       variant="tertiary"
                       onPress={() => void handleGenerateVisibleScene()}
+                    />
+                    {/* Явный вход в настройки оформления (шрифт, тема, прокрутка) */}
+                    <NativeButton
+                      label="Aa"
+                      accessibilityLabel={t("narra.readerAppearance", "Оформление")}
+                      size="small"
+                      variant="tertiary"
+                      onPress={() => setShowSettings(true)}
                     />
                     <NativeContextMenuButton
                       accessibilityLabel="Действия с книгой"
@@ -1895,71 +2020,8 @@ export function ReaderScreen({ route, navigation }: Props) {
               onSpeechPress={() => void tts.handleToggleTTS()}
               onChatPress={handleOpenCharacters}
               onScenePress={() => void handleGenerateVisibleScene()}
+              onSettingsPress={() => setShowSettings(true)}
             />
-          </View>
-        )}
-
-        {/* ─── Плашка «Нарисовать сцену» (врезка раз в N страниц, P6) ─── */}
-        {sceneSuggestionVisible && !loading && !isPanelOpen && !showTTS && (
-          <View
-            pointerEvents="box-none"
-            style={{
-              position: "absolute",
-              left: 16,
-              right: 16,
-              bottom:
-                (Platform.OS === "ios" && showControls ? TOOLBAR_HEIGHT : 0) +
-                (insets.bottom || 12) +
-                12,
-              alignItems: "center",
-              zIndex: 25,
-            }}
-          >
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 4,
-                paddingLeft: 14,
-                paddingRight: 4,
-                paddingVertical: 6,
-                borderRadius: 24,
-                backgroundColor: colors.card,
-                borderWidth: StyleSheet.hairlineWidth,
-                borderColor: colors.border,
-                shadowColor: "#000",
-                shadowOpacity: 0.15,
-                shadowRadius: 12,
-                shadowOffset: { width: 0, height: 4 },
-                elevation: 4,
-              }}
-            >
-              <TouchableOpacity
-                accessibilityRole="button"
-                accessibilityLabel={t("narra.sceneSuggestionDraw", "Нарисовать сцену")}
-                onPress={handleSceneSuggestionAccept}
-                style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 4 }}
-              >
-                <SparklesIcon size={18} color={colors.primary} />
-                <View>
-                  <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: "600" }}>
-                    {t("narra.sceneSuggestionDraw", "Нарисовать сцену")}
-                  </Text>
-                  <Text style={{ color: colors.mutedForeground, fontSize: 11 }}>
-                    {t("narra.sceneSuggestionHint", "Иллюстрация этой страницы")}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-              <TouchableOpacity
-                accessibilityRole="button"
-                accessibilityLabel={t("narra.sceneSuggestionDismiss", "Скрыть предложение")}
-                onPress={handleSceneSuggestionDismiss}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                style={{ padding: 8 }}
-              >
-                <XIcon size={16} color={colors.mutedForeground} />
-              </TouchableOpacity>
-            </View>
           </View>
         )}
 

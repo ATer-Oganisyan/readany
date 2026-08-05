@@ -9,6 +9,7 @@ interface NativeReaderToolbarProps extends ReaderToolbarProps {
   speechLabel: string;
   chatLabel: string;
   sceneLabel: string;
+  settingsLabel: string;
   style: { width: "100%"; height: number };
 }
 
@@ -25,6 +26,7 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
         speechLabel="Слушать"
         chatLabel="Чат"
         sceneLabel="Сцена"
+        settingsLabel="Оформление"
         style={{ width: "100%", height: TOOLBAR_HEIGHT }}
       />
     </View>

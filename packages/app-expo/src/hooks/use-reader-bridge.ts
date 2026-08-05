@@ -45,6 +45,13 @@ export interface CharacterTapEvent {
   name: string;
 }
 
+/** Событие врезки сцены в тексте; anchor — CFI блока-якоря вставки. */
+export interface SceneSlotEvent {
+  anchor: string;
+}
+
+export type SceneSlotState = "idle" | "loading" | "error";
+
 export interface VisibleTTSContext {
   before: VisibleTTSSegment[];
   after: VisibleTTSSegment[];
@@ -95,6 +102,12 @@ export interface ReaderBridgeCallbacks {
   onToggleBookmark?: () => void;
   onBookmarkPull?: (detail: BookmarkPullEvent) => void;
   onCharacterTap?: (detail: CharacterTapEvent) => void;
+  /** Тап по слоту «Показать сцену» (или по слоту в состоянии ошибки). */
+  onSceneSlotTap?: (detail: SceneSlotEvent) => void;
+  /** Тап по «↻ Заново» на готовой карточке сцены. */
+  onSceneSlotRegenerate?: (detail: SceneSlotEvent) => void;
+  /** Врезка восстановлена при загрузке секции — RN должен прислать картинку. */
+  onSceneSlotRestored?: (detail: SceneSlotEvent) => void;
 }
 
 export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
@@ -733,6 +746,72 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       `);
   }, []);
 
+  // ─── Scene Insert Commands (врезки сцен в тексте) ───
+  /** Вставить слот «Показать сцену» в конец видимого фрагмента текста. */
+  const insertSceneSlot = useCallback(() => {
+    webViewRef.current?.injectJavaScript(`
+        (function() {
+          try {
+            if (window.insertSceneSlot) window.insertSceneSlot();
+          } catch(e) { console.error('[WebView] insertSceneSlot error:', e); }
+        })();
+        true;
+      `);
+  }, []);
+
+  /** Якоря сохранённых сцен книги (JSON-массив строк) либо null — очистить. */
+  const setSceneAnchors = useCallback((anchorsJson: string | null) => {
+    const arg = anchorsJson ? JSON.stringify(anchorsJson) : "null";
+    webViewRef.current?.injectJavaScript(`
+        (function() {
+          try {
+            if (window.setSceneAnchors) window.setSceneAnchors(${arg});
+          } catch(e) { console.error('[WebView] setSceneAnchors error:', e); }
+        })();
+        true;
+      `);
+  }, []);
+
+  /** Локализованные подписи врезок (JSON-объект). */
+  const configureSceneSlots = useCallback((labelsJson: string) => {
+    webViewRef.current?.injectJavaScript(`
+        (function() {
+          try {
+            if (window.configureSceneSlots) window.configureSceneSlots(${JSON.stringify(labelsJson)});
+          } catch(e) { console.error('[WebView] configureSceneSlots error:', e); }
+        })();
+        true;
+      `);
+  }, []);
+
+  /** Плейсхолдер → готовая картинка сцены (data-URI, файл читает RN). */
+  const replaceSceneSlot = useCallback((anchor: string, imageDataUri: string) => {
+    webViewRef.current?.injectJavaScript(`
+        (function() {
+          try {
+            if (window.replaceSceneSlot) {
+              window.replaceSceneSlot(${JSON.stringify(anchor)}, ${JSON.stringify(imageDataUri)});
+            }
+          } catch(e) { console.error('[WebView] replaceSceneSlot error:', e); }
+        })();
+        true;
+      `);
+  }, []);
+
+  /** Сменить состояние слота (idle / loading / error). */
+  const setSceneSlotState = useCallback((anchor: string, state: SceneSlotState) => {
+    webViewRef.current?.injectJavaScript(`
+        (function() {
+          try {
+            if (window.setSceneSlotState) {
+              window.setSceneSlotState(${JSON.stringify(anchor)}, ${JSON.stringify(state)});
+            }
+          } catch(e) { console.error('[WebView] setSceneSlotState error:', e); }
+        })();
+        true;
+      `);
+  }, []);
+
   const removeRuby = useCallback(() => {
     webViewRef.current?.injectJavaScript(`
       (function() {
@@ -830,6 +909,21 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
               characterId: String(msg.characterId),
               name: typeof msg.name === "string" ? msg.name : "",
             });
+          }
+          break;
+        case "sceneSlotTap":
+          if (typeof msg.anchor === "string" && msg.anchor) {
+            cb.onSceneSlotTap?.({ anchor: msg.anchor });
+          }
+          break;
+        case "sceneSlotRegenerate":
+          if (typeof msg.anchor === "string" && msg.anchor) {
+            cb.onSceneSlotRegenerate?.({ anchor: msg.anchor });
+          }
+          break;
+        case "sceneSlotRestored":
+          if (typeof msg.anchor === "string" && msg.anchor) {
+            cb.onSceneSlotRestored?.({ anchor: msg.anchor });
           }
           break;
         case "visibleText":
@@ -1037,6 +1131,11 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       injectRuby,
       removeRuby,
       setCharacterNames,
+      insertSceneSlot,
+      setSceneAnchors,
+      configureSceneSlots,
+      replaceSceneSlot,
+      setSceneSlotState,
     }),
     [
       handleMessage,
@@ -1075,6 +1174,11 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       injectRuby,
       removeRuby,
       setCharacterNames,
+      insertSceneSlot,
+      setSceneAnchors,
+      configureSceneSlots,
+      replaceSceneSlot,
+      setSceneSlotState,
     ],
   );
 }

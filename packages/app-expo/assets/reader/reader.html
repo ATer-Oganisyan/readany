@@ -1790,6 +1790,8 @@
           if (_characterNameSpec) {
             try { scheduleCharacterNameMarkup(doc); } catch(e) {}
           }
+          // Восстановление врезок сцен по якорям (список приходит из RN)
+          try { applySceneInserts(doc, index); } catch(e) {}
         });
 
         var snippetTimer = null;
@@ -2370,6 +2372,9 @@
       if (view && view.setSearchIndicator) {
         view.setSearchIndicator('highlight', { color: 'rgba(250, 204, 21, 0.4)' });
       }
+
+      // Врезки сцен рисуются в цветах темы — обновить их стили в секциях
+      try { sceneSlotSyncStyles(); } catch (e) {}
     }
 
     function injectThemeIntoStyles(baseStyles, bg, fg, primary) {
@@ -2664,6 +2669,27 @@ a { color: ${primary} !important; }
             characterId: characterTarget.getAttribute(CHARACTER_NAME_ATTR) || '',
             name: (characterTarget.textContent || '').trim(),
           });
+          return;
+        }
+
+        // Тап по врезке сцены: слот/ошибка → генерация, «↻ Заново» —
+        // перегенерация; тапы по готовой картинке не листают страницу.
+        const sceneInsertTarget = target && target.closest
+          ? target.closest('.' + SCENE_INSERT_CLASS)
+          : null;
+        if (sceneInsertTarget) {
+          e.preventDefault();
+          e.stopPropagation();
+          const sceneAnchor = sceneInsertTarget.getAttribute(SCENE_ANCHOR_ATTR) || '';
+          const sceneState = sceneInsertTarget.getAttribute(SCENE_STATE_ATTR) || '';
+          if (!sceneAnchor) return;
+          if (sceneState === 'idle' || sceneState === 'error') {
+            renderSceneInsert(sceneInsertTarget, 'loading', null);
+            postToRN('sceneSlotTap', { anchor: sceneAnchor });
+          } else if (sceneState === 'image' && target.closest('.readany-scene-regen')) {
+            renderSceneInsert(sceneInsertTarget, 'loading', null);
+            postToRN('sceneSlotRegenerate', { anchor: sceneAnchor });
+          }
           return;
         }
 
@@ -3509,6 +3535,7 @@ a { color: ${primary} !important; }
       'rp',
       'sup',
       '.readany-translation',
+      '.readany-scene-insert',
       '[role="doc-noteref"]',
       '[role="doc-footnote"]',
       '[epub\\:type~="noteref"]',
@@ -5226,6 +5253,7 @@ a { color: ${primary} !important; }
       if (!el || !el.closest) return false;
       if (el.closest('.' + CHARACTER_NAME_CLASS)) return true;
       if (el.closest('.readany-translation')) return true;
+      if (el.closest('.readany-scene-insert')) return true;
       if (el.closest('a[href], script, style, rt, rp, button, input, select, textarea')) return true;
       return false;
     }
@@ -5337,6 +5365,385 @@ a { color: ${primary} !important; }
         doRemoveCharacterNames(doc);
         if (_characterNameSpec) scheduleCharacterNameMarkup(doc);
       }
+    };
+
+    // ─── Врезки сцен внутри текста (Narra) ───
+    // Поток: RN шлёт insertSceneSlot → в конец видимого фрагмента встаёт блок
+    // «✦ Показать сцену» (пунктирная рамка). Тап → блок сам переключается в
+    // плейсхолдер «Рисуем сцену…» и шлёт sceneSlotTap в RN; RN генерирует
+    // картинку и возвращает её data-URI командой replaceSceneSlot. Кнопка
+    // «↻ Заново» на готовой карточке шлёт sceneSlotRegenerate. Якорь врезки —
+    // CFI блока, после которого она вставлена; по списку якорей из RN
+    // (setSceneAnchors) врезки восстанавливаются при загрузке секции.
+    var SCENE_INSERT_CLASS = 'readany-scene-insert';
+    var SCENE_INSERT_STYLE_ID = 'readany-scene-insert-style';
+    var SCENE_ANCHOR_ATTR = 'data-readany-scene-anchor';
+    var SCENE_STATE_ATTR = 'data-readany-scene-state';
+    var SCENE_BLOCK_SELECTOR =
+      'p, h1, h2, h3, h4, h5, h6, li, blockquote, dd, dt, figcaption, .__readany_br_paragraph';
+    var _sceneRestoreAnchors = [];
+    var _sceneSlotLabels = {
+      idle: 'Показать сцену',
+      loading: 'Рисуем сцену…',
+      loadingHint: 'Обычно 20–60 секунд',
+      caption: 'Сцена — сгенерировано ИИ',
+      regen: 'Заново',
+      error: 'Не получилось — попробовать ещё раз',
+    };
+
+    // Фильтр адресации CFI: свои вставки не участвуют вовсе, спаны имён
+    // персонажей «прозрачны» (их дети считаются детьми родителя) — якорь
+    // совпадает с CFI «чистого» документа до любой нашей разметки.
+    function sceneCfiFilter(node) {
+      if (node.nodeType !== 1 || !node.classList) return NodeFilter.FILTER_ACCEPT;
+      if (node.classList.contains(SCENE_INSERT_CLASS)) return NodeFilter.FILTER_REJECT;
+      if (node.classList.contains(CHARACTER_NAME_CLASS)) return NodeFilter.FILTER_SKIP;
+      if (node.classList.contains('readany-translation')) return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    }
+
+    // Стили в цветах темы читалки (currentThemeColors обновляет setThemeColors)
+    function sceneSlotStyleText() {
+      var muted = currentThemeColors.muted;
+      var fg = currentThemeColors.fg;
+      return [
+        '.' + SCENE_INSERT_CLASS + ' {',
+        '  margin: 1.1em 0;',
+        '  -webkit-column-break-inside: avoid;',
+        '  break-inside: avoid;',
+        '  -webkit-user-select: none;',
+        '  user-select: none;',
+        '  -webkit-tap-highlight-color: rgba(127, 127, 127, 0.12);',
+        '}',
+        '.' + SCENE_INSERT_CLASS + ' .readany-scene-box {',
+        '  border: 1.5px dashed ' + muted + ';',
+        '  border-radius: 12px;',
+        '  padding: 14px 12px;',
+        '  text-align: center;',
+        '  color: ' + muted + ';',
+        '  font-size: 0.85em;',
+        '  line-height: 1.5;',
+        '}',
+        '.' + SCENE_INSERT_CLASS + '[' + SCENE_STATE_ATTR + '="loading"] .readany-scene-box {',
+        '  border-color: transparent;',
+        '  background: rgba(127, 127, 127, 0.12);',
+        '}',
+        '.' + SCENE_INSERT_CLASS + ' .readany-scene-hint {',
+        '  display: block;',
+        '  font-size: 0.85em;',
+        '  opacity: 0.75;',
+        '  margin-top: 2px;',
+        '}',
+        '.' + SCENE_INSERT_CLASS + ' img {',
+        '  display: block;',
+        '  width: 100%;',
+        '  border-radius: 12px;',
+        '}',
+        '.' + SCENE_INSERT_CLASS + ' .readany-scene-meta {',
+        '  display: flex;',
+        '  align-items: center;',
+        '  justify-content: space-between;',
+        '  gap: 12px;',
+        '  margin-top: 6px;',
+        '  color: ' + muted + ';',
+        '  font-size: 0.75em;',
+        '  line-height: 1.4;',
+        '}',
+        '.' + SCENE_INSERT_CLASS + ' .readany-scene-regen {',
+        '  color: ' + fg + ';',
+        '  opacity: 0.75;',
+        '  white-space: nowrap;',
+        '  padding: 4px 0 4px 12px;',
+        '}',
+      ].join('\n');
+    }
+
+    function sceneSlotInjectStyles(doc) {
+      if (!doc) return;
+      var style = doc.getElementById(SCENE_INSERT_STYLE_ID);
+      if (!style) {
+        style = doc.createElement('style');
+        style.id = SCENE_INSERT_STYLE_ID;
+        if (doc.head) doc.head.appendChild(style);
+      }
+      style.textContent = sceneSlotStyleText();
+    }
+
+    // Смена темы читалки — перегенерировать стили во всех загруженных секциях
+    function sceneSlotSyncStyles() {
+      var contents = getRendererContents();
+      for (var i = 0; i < contents.length; i++) {
+        var doc = contents[i].doc;
+        if (doc && doc.getElementById(SCENE_INSERT_STYLE_ID)) sceneSlotInjectStyles(doc);
+      }
+    }
+
+    function renderSceneInsert(el, state, payload) {
+      var doc = el.ownerDocument;
+      el.setAttribute(SCENE_STATE_ATTR, state);
+      while (el.firstChild) el.removeChild(el.firstChild);
+
+      if (state === 'image') {
+        var img = doc.createElement('img');
+        img.src = (payload && payload.imageDataUri) || '';
+        img.alt = _sceneSlotLabels.caption;
+        el.appendChild(img);
+        var meta = doc.createElement('div');
+        meta.className = 'readany-scene-meta';
+        var caption = doc.createElement('span');
+        caption.textContent = _sceneSlotLabels.caption;
+        var regen = doc.createElement('span');
+        regen.className = 'readany-scene-regen';
+        regen.textContent = '↻ ' + _sceneSlotLabels.regen;
+        meta.appendChild(caption);
+        meta.appendChild(regen);
+        el.appendChild(meta);
+        return;
+      }
+
+      var box = doc.createElement('div');
+      box.className = 'readany-scene-box';
+      if (state === 'loading') {
+        box.appendChild(doc.createTextNode('✦ ' + _sceneSlotLabels.loading));
+        var hint = doc.createElement('span');
+        hint.className = 'readany-scene-hint';
+        hint.textContent = _sceneSlotLabels.loadingHint;
+        box.appendChild(hint);
+      } else if (state === 'error') {
+        box.appendChild(doc.createTextNode('✦ ' + _sceneSlotLabels.error));
+      } else {
+        box.appendChild(doc.createTextNode('✦ ' + _sceneSlotLabels.idle));
+      }
+      el.appendChild(box);
+    }
+
+    function createSceneInsert(doc, anchor, state) {
+      var el = doc.createElement('div');
+      el.className = SCENE_INSERT_CLASS;
+      el.setAttribute(SCENE_ANCHOR_ATTR, anchor);
+      renderSceneInsert(el, state || 'idle', null);
+      sceneSlotInjectStyles(doc);
+      return el;
+    }
+
+    // Поиск по значению атрибута вручную: CFI содержит спецсимволы селекторов
+    function findSceneInsertInDoc(doc, anchor) {
+      if (!doc || !doc.querySelectorAll) return null;
+      var els = doc.querySelectorAll('.' + SCENE_INSERT_CLASS);
+      for (var i = 0; i < els.length; i++) {
+        if (els[i].getAttribute(SCENE_ANCHOR_ATTR) === anchor) return els[i];
+      }
+      return null;
+    }
+
+    function findSceneInsert(anchor) {
+      var contents = getRendererContents();
+      for (var i = 0; i < contents.length; i++) {
+        var found = findSceneInsertInDoc(contents[i].doc, anchor);
+        if (found) return found;
+      }
+      return null;
+    }
+
+    // Врезка встаёт после самостоятельного блока: пункт списка поднимаем
+    // до списка целиком, чтобы не ломать разметку ul/ol/dl.
+    function sceneInsertHostForBlock(block) {
+      if (!block) return null;
+      var tag = block.localName ? block.localName.toLowerCase() : '';
+      if ((tag === 'li' || tag === 'dd' || tag === 'dt') && block.parentElement) {
+        var parent = block.parentElement;
+        var parentTag = parent.localName ? parent.localName.toLowerCase() : '';
+        if (parentTag === 'ul' || parentTag === 'ol' || parentTag === 'dl') return parent;
+      }
+      return block;
+    }
+
+    // Последний видимый блок текста — логика видимости как в getVisibleTextSnippet
+    function findLastVisibleSceneBlock(doc, win) {
+      var renderer = view && view.renderer;
+      if (!renderer) return null;
+      var isPaginated = !renderer.scrolled;
+      var pSize = renderer.size;
+      var pStart = renderer.start;
+      var blocks = doc.querySelectorAll(SCENE_BLOCK_SELECTOR);
+      var best = null;
+      for (var i = 0; i < blocks.length; i++) {
+        var block = blocks[i];
+        if (!block.textContent || !block.textContent.trim()) continue;
+        if (block.closest && block.closest('.' + SCENE_INSERT_CLASS)) continue;
+        var rect = block.getBoundingClientRect();
+        var visible;
+        if (isPaginated && pSize > 0) {
+          var visibleLeft = pStart - pSize;
+          var visibleRight = pStart;
+          visible = rect.right > visibleLeft && rect.left < visibleRight && rect.width > 0;
+        } else {
+          visible = rect.width > 0 && rect.height > 0 &&
+            rect.right > 0 && rect.left < win.innerWidth &&
+            rect.bottom > 0 && rect.top < win.innerHeight;
+        }
+        if (visible) best = block;
+      }
+      return best;
+    }
+
+    // CFI блока — та же схема, что view.getCFI, но с фильтром вставок:
+    // якорь ссылается на начало текста блока и переживает нашу разметку.
+    function computeSceneAnchor(doc, index, block) {
+      try {
+        if (!view || !window.CFI) return null;
+        var walker = doc.createTreeWalker(block, NodeFilter.SHOW_TEXT, {
+          acceptNode: function (node) {
+            return node.nodeValue && node.nodeValue.trim()
+              ? NodeFilter.FILTER_ACCEPT
+              : NodeFilter.FILTER_SKIP;
+          },
+        });
+        var textNode = walker.nextNode();
+        var range = doc.createRange();
+        if (textNode) {
+          range.setStart(textNode, 0);
+          range.setEnd(textNode, 0);
+        } else {
+          range.selectNodeContents(block);
+          range.collapse(true);
+        }
+        var book = view.book || currentBook;
+        var baseCFI = (book && book.sections && book.sections[index] && book.sections[index].cfi)
+          || window.CFI.fake.fromIndex(index);
+        return window.CFI.joinIndir(baseCFI, window.CFI.fromRange(range, sceneCfiFilter));
+      } catch (e) {
+        console.error('[SceneSlots] computeSceneAnchor error:', e);
+        return null;
+      }
+    }
+
+    // Блок для вставки из resolved-диапазона якоря
+    function sceneHostFromRange(doc, range) {
+      var node = range.startContainer;
+      if (node && node.nodeType === 1 && node.childNodes.length > range.startOffset) {
+        node = node.childNodes[range.startOffset];
+      }
+      var el = node && node.nodeType === 1 ? node : (node ? node.parentElement : null);
+      if (!el) return null;
+      var block = el.closest ? el.closest(SCENE_BLOCK_SELECTOR) : null;
+      if (!block) {
+        if (el === doc.body || el === doc.documentElement) return null;
+        block = el;
+      }
+      return sceneInsertHostForBlock(block);
+    }
+
+    // Восстановление врезок в секции: сначала резолвим все якоря, потом
+    // вставляем — свои вставки не сдвигают адресацию соседних якорей.
+    function applySceneInserts(doc, index) {
+      if (!doc || !view || !_sceneRestoreAnchors.length) return;
+      var resolvedEntries = [];
+      for (var i = 0; i < _sceneRestoreAnchors.length; i++) {
+        var anchor = _sceneRestoreAnchors[i];
+        if (findSceneInsertInDoc(doc, anchor)) continue;
+        var resolved = null;
+        try { resolved = view.resolveCFI(anchor); } catch (e) { resolved = null; }
+        if (!resolved || resolved.index !== index) continue;
+        var range = null;
+        try { range = resolved.anchor(doc); } catch (e) { range = null; }
+        if (!range) continue;
+        resolvedEntries.push({ anchor: anchor, range: range });
+      }
+      for (var r = 0; r < resolvedEntries.length; r++) {
+        var entry = resolvedEntries[r];
+        try {
+          var host = sceneHostFromRange(doc, entry.range);
+          if (!host || !host.parentNode) continue;
+          var el = createSceneInsert(doc, entry.anchor, 'loading');
+          host.parentNode.insertBefore(el, host.nextSibling);
+          // RN пришлёт картинку командой replaceSceneSlot
+          postToRN('sceneSlotRestored', { anchor: entry.anchor });
+        } catch (e) {
+          console.error('[SceneSlots] restore error:', e);
+        }
+      }
+    }
+
+    // Вызывается из RN по сигналу счётчика страниц (scene-suggestion.ts)
+    window.insertSceneSlot = function () {
+      try {
+        if (!view || !view.renderer) return;
+        var contents = getRendererContents();
+        if (!contents.length || !contents[0].doc) return;
+        var doc = contents[0].doc;
+        var win = doc.defaultView;
+        if (!win) return;
+        var block = findLastVisibleSceneBlock(doc, win);
+        if (!block) return;
+        var anchor = computeSceneAnchor(doc, contents[0].index, block);
+        if (!anchor) return;
+        // На этом месте уже есть врезка или сохранённая сцена — не дублируем
+        if (findSceneInsertInDoc(doc, anchor)) return;
+        if (_sceneRestoreAnchors.indexOf(anchor) >= 0) return;
+        var host = sceneInsertHostForBlock(block);
+        if (!host || !host.parentNode) return;
+        var el = createSceneInsert(doc, anchor, 'idle');
+        host.parentNode.insertBefore(el, host.nextSibling);
+      } catch (e) {
+        console.error('[SceneSlots] insertSceneSlot error:', e);
+      }
+    };
+
+    // Список якорей сохранённых сцен книги (JSON-массив строк) — из RN
+    window.setSceneAnchors = function (anchorsJson) {
+      try {
+        var list = anchorsJson
+          ? (typeof anchorsJson === 'string' ? JSON.parse(anchorsJson) : anchorsJson)
+          : [];
+        _sceneRestoreAnchors = Array.isArray(list)
+          ? list.filter(function (item) { return typeof item === 'string' && item; })
+          : [];
+      } catch (e) {
+        console.error('[SceneSlots] Failed to parse anchors:', e);
+        _sceneRestoreAnchors = [];
+      }
+      var contents = getRendererContents();
+      for (var i = 0; i < contents.length; i++) {
+        if (contents[i].doc) applySceneInserts(contents[i].doc, contents[i].index);
+      }
+    };
+
+    // Локализованные подписи врезок — из RN при готовности WebView
+    window.configureSceneSlots = function (labelsJson) {
+      try {
+        var labels = labelsJson
+          ? (typeof labelsJson === 'string' ? JSON.parse(labelsJson) : labelsJson)
+          : null;
+        if (!labels) return;
+        for (var key in _sceneSlotLabels) {
+          if (typeof labels[key] === 'string' && labels[key]) {
+            _sceneSlotLabels[key] = labels[key];
+          }
+        }
+      } catch (e) {
+        console.error('[SceneSlots] Failed to parse labels:', e);
+      }
+    };
+
+    // Плейсхолдер → готовая картинка (data-URI прислал RN)
+    window.replaceSceneSlot = function (anchor, imageDataUri) {
+      var el = findSceneInsert(anchor);
+      if (!el) return;
+      renderSceneInsert(el, 'image', { imageDataUri: imageDataUri });
+    };
+
+    // Откат состояния слота (ошибка генерации, потерянный файл картинки)
+    window.setSceneSlotState = function (anchor, state) {
+      var el = findSceneInsert(anchor);
+      if (!el) return;
+      var next = state === 'loading' ? 'loading' : state === 'error' ? 'error' : 'idle';
+      renderSceneInsert(el, next, null);
+    };
+
+    window.removeSceneSlot = function (anchor) {
+      var el = findSceneInsert(anchor);
+      if (el && el.parentNode) el.parentNode.removeChild(el);
     };
   </script>
 

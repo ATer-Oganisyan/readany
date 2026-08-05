@@ -53,7 +53,7 @@ public final class ReadAnyNativeControlsModule: Module {
     }
 
     View(ReadAnyReaderToolbar.self) {
-      Events("onSpeechPress", "onChatPress", "onScenePress")
+      Events("onSpeechPress", "onChatPress", "onScenePress", "onSettingsPress")
 
       Prop("tintColor") { (view, value: UIColor) in view.toolbarTintColor = value }
       Prop("isDark") { (view, value: Bool) in view.isDark = value }
@@ -61,6 +61,7 @@ public final class ReadAnyNativeControlsModule: Module {
       Prop("speechLabel") { (view, value: String) in view.speechLabel = value }
       Prop("chatLabel") { (view, value: String) in view.chatLabel = value }
       Prop("sceneLabel") { (view, value: String) in view.sceneLabel = value }
+      Prop("settingsLabel") { (view, value: String) in view.settingsLabel = value }
 
       OnViewDidUpdateProps { view in
         view.updateConfiguration()
@@ -198,6 +199,7 @@ final class ReadAnyReaderToolbar: ExpoView {
   let onSpeechPress = EventDispatcher()
   let onChatPress = EventDispatcher()
   let onScenePress = EventDispatcher()
+  let onSettingsPress = EventDispatcher()
 
   var toolbarTintColor = UIColor.label
   var isDark = true
@@ -205,6 +207,7 @@ final class ReadAnyReaderToolbar: ExpoView {
   var speechLabel = "Слушать"
   var chatLabel = "Чат"
   var sceneLabel = "Сцена"
+  var settingsLabel = "Оформление"
 
   private let toolbar = UIToolbar()
 
@@ -237,6 +240,10 @@ final class ReadAnyReaderToolbar: ExpoView {
     onScenePress()
   }
 
+  @objc private func handleSettingsPress() {
+    onSettingsPress()
+  }
+
   func updateConfiguration() {
     toolbar.tintColor = toolbarTintColor
     toolbar.barStyle = isDark ? .black : .default
@@ -264,14 +271,20 @@ final class ReadAnyReaderToolbar: ExpoView {
       accessibilityLabel: sceneLabel,
       action: #selector(handleScenePress)
     )
+    // Явный вход в оформление читалки (Aa): шрифты, тема, прокрутка
+    let settings = makeItem(
+      symbol: "textformat.size",
+      accessibilityLabel: settingsLabel,
+      action: #selector(handleSettingsPress)
+    )
     let spacer = { UIBarButtonItem(systemItem: .flexibleSpace) }
 
     if #available(iOS 26.0, *) {
-      [speech, chat, scene].forEach { $0.sharesBackground = true }
+      [speech, chat, scene, settings].forEach { $0.sharesBackground = true }
     }
 
     toolbar.setItems(
-      [spacer(), speech, chat, scene, spacer()],
+      [spacer(), speech, chat, scene, settings, spacer()],
       animated: false
     )
   }

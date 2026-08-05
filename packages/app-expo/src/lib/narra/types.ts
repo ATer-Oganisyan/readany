@@ -49,6 +49,12 @@ export interface NarraSceneImage {
   excerpt: string;
   imageUri: string;
   generatedAt: number;
+  /**
+   * CFI-якорь врезки в тексте читалки: блок, после которого сцена вставлена
+   * в секцию. Есть только у сцен, созданных из врезок (scene-inserts.ts);
+   * по нему картинка возвращается на то же место при повторном открытии.
+   */
+  anchor?: string;
 }
 
 export interface NarraSceneAudioSegment {
