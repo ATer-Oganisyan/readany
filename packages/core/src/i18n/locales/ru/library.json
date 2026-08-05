@@ -7,6 +7,8 @@
     "sortProgress": "Прогресс",
     "searchPlaceholder": "Поиск книг…",
     "all": "Все",
+    "readingNow": "Читаю сейчас",
+    "readingProgress": "Прочитано {{percent}}%",
     "empty": "Книг пока нет",
     "emptyHint": "Нажмите кнопку +, чтобы импортировать свою первую книгу.",
     "importFirst": "Добавить книгу",

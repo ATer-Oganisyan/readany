@@ -106,6 +106,8 @@ export const BookCard = memo(function BookCard({
       : 0
     : 0;
 
+  const readingPct = Math.min(100, Math.round((book.progress ?? 0) * 100));
+
   return (
     <TouchableOpacity
       style={s.container}
@@ -223,6 +225,21 @@ export const BookCard = memo(function BookCard({
           <Text style={s.bookAuthor} numberOfLines={1}>
             {book.meta.author}
           </Text>
+        ) : null}
+        {/* Прогресс чтения: полоска + процент (book.progress — доля 0–1 из library-store) */}
+        {readingPct > 0 ? (
+          <View
+            style={s.progressRow}
+            accessibilityLabel={t("library.readingProgress", {
+              percent: readingPct,
+              defaultValue: "Прочитано {{percent}}%",
+            })}
+          >
+            <View style={s.progressTrack}>
+              <View style={[s.progressFill, { width: `${readingPct}%` }]} />
+            </View>
+            <Text style={s.progressText}>{readingPct}%</Text>
+          </View>
         ) : null}
       </View>
     </TouchableOpacity>

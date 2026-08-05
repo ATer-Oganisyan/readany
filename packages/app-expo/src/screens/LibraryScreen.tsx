@@ -3,6 +3,7 @@ import { CatalogBookCard } from "@/components/library/CatalogBookCard";
 import { GroupCard } from "@/components/library/GroupCard";
 import { GroupPickerSheet } from "@/components/library/GroupPickerSheet";
 import { ImportSourceMenuButton } from "@/components/library/ImportSourceMenuButton";
+import { ReadingNowShelf } from "@/components/library/ReadingNowShelf";
 import { type ExtractorRef, ExtractorWebView } from "@/components/rag/ExtractorWebView";
 import {
   CheckCheckIcon,
@@ -379,6 +380,17 @@ export function LibraryScreen() {
   }, [books]);
 
   const showCatalog = !activeTag && !activeGroupId && !selectionMode;
+
+  // «Читаю сейчас»: книги с начатым, но не законченным прогрессом, свежие сверху.
+  const readingNowBooks = useMemo(
+    () =>
+      books
+        .filter((book) => !book.deletedAt && book.progress > 0 && book.progress < 1)
+        .sort((a, b) => (b.lastOpenedAt ?? 0) - (a.lastOpenedAt ?? 0)),
+    [books],
+  );
+  const showReadingNow =
+    !activeTag && !activeGroupId && !selectionMode && readingNowBooks.length > 0;
 
   const handleLocalImport = useCallback(async () => {
     if (localImportInFlightRef.current) return;
@@ -1056,6 +1068,11 @@ export function LibraryScreen() {
                 numColumns={columnCount}
                 columnWrapperStyle={s.gridRow}
                 contentContainerStyle={s.gridContent}
+                ListHeaderComponent={
+                  showReadingNow ? (
+                    <ReadingNowShelf books={readingNowBooks} onOpen={handleOpen} />
+                  ) : null
+                }
                 ListFooterComponent={
                   showCatalog ? (
                     <View

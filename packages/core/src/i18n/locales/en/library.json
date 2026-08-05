@@ -7,6 +7,8 @@
     "sortProgress": "Progress",
     "searchPlaceholder": "Search books...",
     "all": "All",
+    "readingNow": "Reading now",
+    "readingProgress": "{{percent}}% read",
     "empty": "No books yet",
     "emptyHint": "Tap the + button to import your first book",
     "importFirst": "Import Book",

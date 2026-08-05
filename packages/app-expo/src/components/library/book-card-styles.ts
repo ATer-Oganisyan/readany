@@ -177,6 +177,24 @@ export const makeStyles = (colors: ThemeColors, cardWidth: number) => {
     },
     tagTextUncategorized: { fontSize: 8, color: `${colors.mutedForeground}99` },
     tagOverflow: { fontSize: 8, color: `${colors.mutedForeground}99`, alignSelf: "center" },
+    progressRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      marginTop: 4,
+    },
+    progressTrack: {
+      flex: 1,
+      height: 3,
+      borderRadius: radius.full,
+      backgroundColor: colors.primary10,
+      overflow: "hidden",
+    },
+    progressFill: {
+      height: "100%",
+      borderRadius: radius.full,
+      backgroundColor: colors.primary,
+    },
     statusRow: {
       flexDirection: "row",
       alignItems: "center",
