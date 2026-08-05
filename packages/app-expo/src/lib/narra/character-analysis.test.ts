@@ -14,6 +14,7 @@ const store = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/ai/narra-gateway-fetch", () => ({ narraGatewayRequest: vi.fn() }));
+vi.mock("@/lib/analytics/telemetry", () => ({ recordTelemetry: vi.fn() }));
 vi.mock("@/stores/narra-store", () => ({
   useNarraStore: { getState: () => store },
 }));

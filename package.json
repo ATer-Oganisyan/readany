@@ -7,6 +7,8 @@
     "build": "pnpm --filter app build",
     "test": "pnpm --filter @readany/core test",
     "test:core": "pnpm --filter @readany/core test",
+    "test:narra:gateway": "node --test services/narra-gateway/test/*.test.mjs",
+    "test:narra:stats": "python3 stats/narra/test_server.py",
     "cli": "pnpm --filter @readany/cli dev",
     "cli:build": "pnpm --filter @readany/cli build",
     "cli:test": "pnpm --filter @readany/cli test",

@@ -1,10 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NarraCharacter } from "./types";
 
-vi.mock("expo-file-system/legacy", () => ({ documentDirectory: "file:///documents/" }));
+vi.mock("expo-file-system/legacy", () => ({
+  documentDirectory: "file:///documents/",
+  EncodingType: { Base64: "base64" },
+  getInfoAsync: vi.fn(async () => ({ exists: true })),
+  makeDirectoryAsync: vi.fn(),
+  writeAsStringAsync: vi.fn(),
+}));
 vi.mock("@/lib/ai/narra-gateway-fetch", () => ({ narraGatewayRequest: vi.fn() }));
+vi.mock("@/lib/analytics/telemetry", () => ({ recordTelemetry: vi.fn() }));
 
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
+import { recordTelemetry } from "@/lib/analytics/telemetry";
 import { ART_STYLE, PROMPT_CHAR_LIMIT } from "./art-style";
 import {
   buildNarraSpeechSsml,
@@ -18,7 +26,7 @@ import {
 import { applyActiveStressMarkup, primeCharacterStressForms } from "./stress-markup";
 
 beforeEach(() => {
-  vi.mocked(narraGatewayRequest).mockReset();
+  vi.clearAllMocks();
 });
 
 const anna: NarraCharacter = {
@@ -259,5 +267,25 @@ describe("synthesizeNarraSpeech — разметка ударений (P9)", () 
       text: "А'нна звони'т Хлестако'ву.",
       voice: "Che",
     });
+  });
+});
+
+describe("speech telemetry", () => {
+  it("records first-audio readiness from the gateway sample-rate contract", async () => {
+    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
+      new Response(new Uint8Array([1, 2, 3]), {
+        status: 200,
+        headers: { "x-audio-sample-rate": "48000" },
+      }),
+    );
+
+    await expect(synthesizeNarraSpeech("Привет", "Che")).resolves.toContain(
+      "file:///documents/narra-media/speech-",
+    );
+
+    expect(recordTelemetry).toHaveBeenCalledWith(
+      "tts_first_audio_ready",
+      expect.objectContaining({ sample_rate: 48_000, origin: "user" }),
+    );
   });
 });

@@ -1,0 +1,13 @@
+[Unit]
+Description=Backup Narra gateway persistent volume
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/srv/narra-gateway/current/backup-i167.sh
+User=root
+Group=root
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

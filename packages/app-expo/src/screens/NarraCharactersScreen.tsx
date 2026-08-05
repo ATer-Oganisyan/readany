@@ -1,6 +1,7 @@
 import { type ExtractorRef, ExtractorWebView } from "@/components/rag/ExtractorWebView";
 import { Text } from "@/components/ui/Typography";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
+import { recordTelemetry } from "@/lib/analytics/telemetry";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
 import { getBundledCatalogCharactersByTitle } from "@/lib/narra/bundled-catalog-characters";
 import { analyzeBookCharacters } from "@/lib/narra/character-analysis";
@@ -67,6 +68,10 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
     return [...unlocked, ...locked];
   }, [book?.progress, characters]);
   const busy = analyzing || Boolean(analysisStage);
+
+  useEffect(() => {
+    recordTelemetry("character_opened", { feature: "character" });
+  }, []);
 
   useEffect(() => {
     if (!narraStoreHydrated || !book || storedCharacters.length > 0 || !bundledCharacters?.length) {

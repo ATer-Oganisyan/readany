@@ -1,6 +1,8 @@
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
+import { recordTelemetry } from "@/lib/analytics/telemetry";
 import * as FileSystem from "expo-file-system/legacy";
 import { budgetPrompt } from "./art-style";
+import { normalizeNarraError } from "./errors";
 import { applyActiveStressMarkup } from "./stress-markup";
 import type { NarraCharacter } from "./types";
 import type { NarraProsody } from "./voice-rules";
@@ -9,6 +11,77 @@ const MEDIA_DIR = `${FileSystem.documentDirectory}narra-media`;
 const MEDIA_PATH_MARKER = "/Documents/narra-media/";
 let speechFileSequence = 0;
 const portraitRequests = new Map<string, Promise<string>>();
+
+type MediaJobType = "image" | "tts" | "avatar";
+type MediaJobOrigin = "user" | "background";
+
+function mediaLatencyBucket(durationMs: number): string {
+  if (durationMs < 1_000) return "<1s";
+  if (durationMs < 5_000) return "1-4s";
+  if (durationMs < 15_000) return "5-14s";
+  if (durationMs < 60_000) return "15-59s";
+  if (durationMs < 5 * 60_000) return "1-4m";
+  return "5m+";
+}
+
+function firstAudioLatencyBucket(durationMs: number): string {
+  if (durationMs < 1_000) return "<1s";
+  if (durationMs < 5_000) return "1-4s";
+  if (durationMs < 15_000) return "5-14s";
+  return "15s+";
+}
+
+async function trackMediaJob<T>(
+  jobType: MediaJobType,
+  origin: MediaJobOrigin,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const startedAt = Date.now();
+  const provider = jobType === "tts" ? "salutespeech" : "kandinsky";
+  const model = jobType === "tts" ? "salutespeech-yourvoice" : "k6-image-t2i";
+  recordTelemetry("media_job_enqueued", {
+    job_type: jobType,
+    provider,
+    model,
+    quality: "unknown",
+    queue_depth_bucket: "0",
+    origin,
+  });
+  recordTelemetry("media_job_started", {
+    job_type: jobType,
+    queue_wait_bucket: "<1s",
+    origin,
+  });
+  try {
+    const result = await operation();
+    recordTelemetry("media_job_completed", {
+      job_type: jobType,
+      job_latency_bucket: mediaLatencyBucket(Date.now() - startedAt),
+      cache_hit: false,
+      origin,
+    });
+    return result;
+  } catch (error) {
+    const code = normalizeNarraError(error).code;
+    const safeErrorCode = {
+      AUTH: "AUTH",
+      CONFIG: "NO_PROXY",
+      CONNECTION: "NETWORK",
+      RATE: "RATE",
+      REQUEST: "VALIDATION",
+      SERVICE: "UNKNOWN",
+      TIMEOUT: "TIMEOUT",
+    }[code];
+    recordTelemetry("media_job_failed", {
+      job_type: jobType,
+      stage: "provider",
+      safe_error_code: safeErrorCode,
+      retry_count_bucket: "0",
+      origin,
+    });
+    throw error;
+  }
+}
 
 /** Rehomes persisted iOS file URIs after the app data-container UUID changes. */
 export function normalizePersistedNarraMediaUri(uri: string): string {
@@ -202,7 +275,7 @@ async function persistGeneratedImage(
   return path;
 }
 
-export async function generateCharacterPortrait(
+async function generateCharacterPortraitRequest(
   bookId: string,
   character: NarraCharacter,
 ): Promise<string> {
@@ -222,6 +295,15 @@ export async function generateCharacterPortrait(
   await ensureMediaDir();
   const path = `${MEDIA_DIR}/${safeKey(`${bookId}-${character.id}-portrait`)}.png`;
   return persistGeneratedImage(path, payload);
+}
+
+export function generateCharacterPortrait(
+  bookId: string,
+  character: NarraCharacter,
+): Promise<string> {
+  return trackMediaJob("avatar", "background", () =>
+    generateCharacterPortraitRequest(bookId, character),
+  );
 }
 
 /** Shares portrait work between background catalog preloading and the chat screen. */
@@ -244,7 +326,7 @@ export function ensureCharacterPortrait(
   return request;
 }
 
-export async function generateSceneImage(
+async function generateSceneImageRequest(
   bookId: string,
   chapter: string,
   excerpt: string,
@@ -264,6 +346,17 @@ export async function generateSceneImage(
   await ensureMediaDir();
   const path = `${MEDIA_DIR}/${safeKey(`${bookId}-scene-${Date.now()}`)}.png`;
   return persistGeneratedImage(path, payload);
+}
+
+export function generateSceneImage(
+  bookId: string,
+  chapter: string,
+  excerpt: string,
+  characters: NarraCharacter[],
+): Promise<string> {
+  return trackMediaJob("image", "user", () =>
+    generateSceneImageRequest(bookId, chapter, excerpt, characters),
+  );
 }
 
 export interface NarraSpeechOptions {
@@ -304,11 +397,12 @@ export function buildNarraSpeechSsml(
   return `<speak><prosody rate="${ratePercent}%" pitch="${pitch}">${escapeSsmlText(text)}</prosody></speak>`;
 }
 
-export async function synthesizeNarraSpeech(
+async function synthesizeNarraSpeechRequest(
   text: string,
   voice: string,
   options?: NarraSpeechOptions,
 ): Promise<string> {
+  const startedAt = Date.now();
   // Ударения (P9) размечаются здесь — в единой точке всей озвучки (книга,
   // сцены, чат) — до сборки SSML, чтобы работать и в {text}, и в {ssml}.
   const trimmed = applyActiveStressMarkup(text.slice(0, 12_000));
@@ -322,6 +416,14 @@ export async function synthesizeNarraSpeech(
     const payload = (await response.json().catch(() => null)) as { error?: string } | null;
     throw new Error(payload?.error || `Speech synthesis failed (${response.status})`);
   }
+  const sampleRate = Number(response.headers.get("x-audio-sample-rate"));
+  if (sampleRate === 24_000 || sampleRate === 48_000) {
+    recordTelemetry("tts_first_audio_ready", {
+      sample_rate: sampleRate,
+      first_audio_latency_bucket: firstAudioLatencyBucket(Date.now() - startedAt),
+      origin: "user",
+    });
+  }
   await ensureMediaDir();
   const path = `${MEDIA_DIR}/speech-${Date.now()}-${speechFileSequence++}.wav`;
   const bytes = new Uint8Array(await response.arrayBuffer());
@@ -333,4 +435,12 @@ export async function synthesizeNarraSpeech(
     encoding: FileSystem.EncodingType.Base64,
   });
   return path;
+}
+
+export function synthesizeNarraSpeech(
+  text: string,
+  voice: string,
+  options?: NarraSpeechOptions,
+): Promise<string> {
+  return trackMediaJob("tts", "user", () => synthesizeNarraSpeechRequest(text, voice, options));
 }
