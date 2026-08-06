@@ -1,9 +1,13 @@
+import {
+  displayFontFamily,
+  interfaceFontFamily,
+  serifCondensedFontFamily,
+} from "@deslop/primitives/native";
 /**
  * Theme constants — re-exports dark colors as default for backward compat.
  * Use `useTheme()` from ThemeContext for reactive theme colors.
  */
 import { darkColors, useTheme } from "./ThemeContext";
-import { displayFontFamily, interfaceFontFamily } from "@deslop/primitives/native";
 export type { ThemeColors } from "./ThemeContext";
 export { useTheme } from "./ThemeContext";
 
@@ -77,3 +81,4 @@ export const fontWeight = {
 
 export const fontFamily = interfaceFontFamily;
 export const titleFontFamily = displayFontFamily.semibold;
+export const largeTitleFontFamily = serifCondensedFontFamily.regular;

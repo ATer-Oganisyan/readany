@@ -9,6 +9,7 @@ import {
   extractBookMetadata,
   extractBookMetadataFromFile,
 } from "@/lib/book/metadata-extractor";
+import { shouldRefreshBundledCatalogCover } from "@/lib/catalog/bundled-book-definitions";
 import {
   findBundledCatalogBookByTitle,
   installBundledCatalogCover,
@@ -381,8 +382,33 @@ async function repairMissingBookCovers(books: Book[]): Promise<void> {
   }
 }
 
+async function repairBundledCatalogCovers(books: Book[]): Promise<void> {
+  for (const originalBook of books) {
+    const book =
+      useLibraryStore.getState().books.find((item) => item.id === originalBook.id) || originalBook;
+    const catalogBook = findBundledCatalogBookByTitle(book.meta.title);
+    if (!catalogBook) continue;
+
+    const previousCoverUrl = book.meta.coverUrl;
+    if (!shouldRefreshBundledCatalogCover(book.id, previousCoverUrl)) continue;
+
+    try {
+      const installedCoverUrl = await installBundledCatalogCover(book.id, catalogBook);
+      const latestBook = useLibraryStore.getState().books.find((item) => item.id === book.id);
+      if (!latestBook || latestBook.meta.coverUrl !== previousCoverUrl) continue;
+      await useLibraryStore.getState().updateBook(book.id, {
+        meta: { ...latestBook.meta, coverUrl: installedCoverUrl },
+        updatedAt: Date.now(),
+      });
+    } catch (error) {
+      console.warn(`[Catalog] Failed to refresh cover ${catalogBook.id}:`, error);
+    }
+  }
+}
+
 async function repairImportedBookMetadata(books: Book[]): Promise<void> {
   await repairSuspiciousBookTitles(books);
+  await repairBundledCatalogCovers(books);
   await repairMissingBookCovers(books);
 }
 

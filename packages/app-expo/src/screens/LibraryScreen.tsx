@@ -25,9 +25,7 @@ import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import {
   BUNDLED_CATALOG_BOOKS,
   type BundledCatalogBook,
-  installBundledCatalogCover,
   normalizeCatalogIdentity,
-  resolveBundledCatalogBookUri,
 } from "@/lib/catalog/bundled-books";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
 import { queueBookForAutoVectorize } from "@/lib/rag/auto-vectorize-book";
@@ -55,7 +53,6 @@ import { File as ExpoFile, Paths } from "expo-file-system";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  ActivityIndicator,
   Alert,
   FlatList,
   Modal,
@@ -66,7 +63,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import ReadAnyNativeControls from "../../modules/native-controls";
 import { TagManagementSheet } from "./library/TagManagementSheet";
 import { useBookDownload } from "./library/useBookDownload";
@@ -142,7 +138,6 @@ export function LibraryScreen() {
   const [tagSheetBook, setTagSheetBook] = useState<Book | null>(null);
   const [isPickingImport, setIsPickingImport] = useState(false);
   const [isUrlImporting, setIsUrlImporting] = useState(false);
-  const [catalogImportingId, setCatalogImportingId] = useState<string | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedBookIds, setSelectedBookIds] = useState<Set<string>>(new Set());
   const [showGroupPicker, setShowGroupPicker] = useState(false);
@@ -334,13 +329,16 @@ export function LibraryScreen() {
   );
 
   useLayoutEffect(() => {
+    const title = selectionMode
+      ? t("library.selectedCount", {
+          count: selectedBookIds.size,
+          defaultValue: "Выбрано: {{count}}",
+        })
+      : activeGroup?.name || t("tabs.library", "Библиотека");
+
     nav.setOptions({
-      title: selectionMode
-        ? t("library.selectedCount", {
-            count: selectedBookIds.size,
-            defaultValue: "Выбрано: {{count}}",
-          })
-        : activeGroup?.name || t("tabs.library", "Библиотека"),
+      title,
+      headerTitle: title,
     });
   }, [activeGroup?.name, nav, selectedBookIds.size, selectionMode, t]);
 
@@ -381,11 +379,13 @@ export function LibraryScreen() {
 
   const showCatalog = !activeTag && !activeGroupId && !selectionMode;
 
-  // «Читаю сейчас»: книги с начатым, но не законченным прогрессом, свежие сверху.
+  // «Читаю сейчас»: все незаконченные книги, включая только что открытые с 0%.
+  // ReaderScreen обновляет lastOpenedAt при открытии, поэтому открытая книга
+  // автоматически перемещается в начало карусели.
   const readingNowBooks = useMemo(
     () =>
       books
-        .filter((book) => !book.deletedAt && book.progress > 0 && book.progress < 1)
+        .filter((book) => !book.deletedAt && book.progress < 1)
         .sort((a, b) => (b.lastOpenedAt ?? 0) - (a.lastOpenedAt ?? 0)),
     [books],
   );
@@ -588,51 +588,18 @@ export function LibraryScreen() {
         await handleOpen(existingBook);
         return;
       }
-      if (catalogImportingId) return;
-
-      setCatalogImportingId(catalogBook.id);
-      try {
-        const uri = await resolveBundledCatalogBookUri(catalogBook);
-        const result = await importBooks([{ uri, name: catalogBook.fileName }]);
-        const importedBook = result.imported[0] ?? result.skippedDuplicates[0]?.existingBook;
-        if (!importedBook) throw new Error("catalog-import-failed");
-        const coverUrl = await installBundledCatalogCover(importedBook.id, catalogBook);
-
-        const normalizedBook: Book = {
-          ...importedBook,
-          meta: {
-            ...importedBook.meta,
-            title: catalogBook.title,
-            author: catalogBook.author,
-            coverUrl,
-          },
-        };
-        await updateBook(importedBook.id, { meta: normalizedBook.meta });
-        await handleOpen(normalizedBook);
-      } catch (error) {
-        console.error(`[Catalog] Failed to add ${catalogBook.id}:`, error);
-        Alert.alert(
-          t("library.catalogImportErrorTitle", "Не получилось добавить книгу"),
-          t("library.catalogImportErrorDescription", "Попробуйте ещё раз."),
-        );
-      } finally {
-        setCatalogImportingId(null);
-      }
+      nav.navigate("Reader", {
+        bookId: `catalog:${catalogBook.id}`,
+        catalogBookId: catalogBook.id,
+      });
     },
-    [catalogBooksInLibrary, catalogImportingId, handleOpen, importBooks, t, updateBook],
+    [catalogBooksInLibrary, handleOpen, nav],
   );
 
   const handleManageTags = useCallback((book: Book) => {
     setTagSheetBook(book);
     setTagSheetOpen(true);
   }, []);
-
-  const handleShowDetails = useCallback(
-    (book: Book) => {
-      nav.navigate("BookDetails", { bookId: book.id });
-    },
-    [nav],
-  );
 
   const handleSync = useCallback(() => {
     if (!isSyncBusy) void syncNow();
@@ -707,11 +674,7 @@ export function LibraryScreen() {
             disabled={isImporting || isPickingImport}
             activeOpacity={0.65}
           >
-            {isImporting || isPickingImport ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : (
-              <PlusIcon size={24} color={colors.primary} />
-            )}
+            <PlusIcon size={24} color={colors.primary} />
           </TouchableOpacity>
         </View>
       ),
@@ -886,7 +849,6 @@ export function LibraryScreen() {
             cardWidth={gridItemWidth}
             onOpen={handleOpen}
             onDelete={removeBook}
-            onShowDetails={handleShowDetails}
             onManageTags={handleManageTags}
             onVectorize={handleVectorize}
             isVectorizing={vectorizingBookId === item.book.id}
@@ -906,7 +868,6 @@ export function LibraryScreen() {
       gridItemWidth,
       handleGroupLongPress,
       handleManageTags,
-      handleShowDetails,
       handleOpen,
       handleVectorize,
       removeBook,
@@ -923,8 +884,8 @@ export function LibraryScreen() {
     ],
   );
 
-  return (
-    <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={[]}>
+  const listHeader = (
+    <>
       {/* Contextual bulk/group controls stay in content; primary actions live in native header. */}
       {(selectionMode || activeGroup) && (
         <View style={[s.header, { zIndex: 20 }]}>
@@ -977,185 +938,138 @@ export function LibraryScreen() {
         <View style={s.filterSection}>
           <View style={s.headerInner}>
             <View style={s.tagSection}>
-              {allTags.length > 0 && (
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  style={[s.tagScroll, layout.isTablet ? s.tagScrollWide : null]}
-                  contentContainerStyle={s.tagScrollContent}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={[s.tagScroll, layout.isTablet ? s.tagScrollWide : null]}
+                contentContainerStyle={s.tagScrollContent}
+              >
+                <TouchableOpacity
+                  style={[s.tagChip, !activeTag && !activeGroupId && s.tagChipActive]}
+                  onPress={() => setActiveTag("")}
                 >
-                  <TouchableOpacity
-                    style={[s.tagChip, !activeTag && !activeGroupId && s.tagChipActive]}
-                    onPress={() => setActiveTag("")}
+                  <Text
+                    style={[s.tagChipText, !activeTag && !activeGroupId && s.tagChipTextActive]}
                   >
-                    <Text
-                      style={[s.tagChipText, !activeTag && !activeGroupId && s.tagChipTextActive]}
-                    >
-                      {t("library.all", "全部")}
+                    {t("library.all", "全部")}
+                  </Text>
+                </TouchableOpacity>
+                {allTags.map((tag) => (
+                  <TouchableOpacity
+                    key={tag}
+                    style={[s.tagChip, activeTag === tag && s.tagChipActive]}
+                    onPress={() => setActiveTag(activeTag === tag ? "" : tag)}
+                  >
+                    <Text style={[s.tagChipText, activeTag === tag && s.tagChipTextActive]}>
+                      {tag}
                     </Text>
                   </TouchableOpacity>
-                  {allTags.map((tag) => (
-                    <TouchableOpacity
-                      key={tag}
-                      style={[s.tagChip, activeTag === tag && s.tagChipActive]}
-                      onPress={() => setActiveTag(activeTag === tag ? "" : tag)}
-                    >
-                      <Text style={[s.tagChipText, activeTag === tag && s.tagChipTextActive]}>
-                        {tag}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                  <TouchableOpacity
-                    style={[s.tagChip, activeTag === "__uncategorized__" && s.tagChipActive]}
-                    onPress={() =>
-                      setActiveTag(activeTag === "__uncategorized__" ? "" : "__uncategorized__")
-                    }
+                ))}
+                <TouchableOpacity
+                  style={[s.tagChip, activeTag === "__uncategorized__" && s.tagChipActive]}
+                  onPress={() =>
+                    setActiveTag(activeTag === "__uncategorized__" ? "" : "__uncategorized__")
+                  }
+                >
+                  <Text
+                    style={[
+                      s.tagChipText,
+                      activeTag === "__uncategorized__" && s.tagChipTextActive,
+                    ]}
                   >
-                    <Text
-                      style={[
-                        s.tagChipText,
-                        activeTag === "__uncategorized__" && s.tagChipTextActive,
-                      ]}
-                    >
-                      {t("sidebar.uncategorized", "未分类")}
-                    </Text>
-                  </TouchableOpacity>
-                </ScrollView>
-              )}
+                    {t("sidebar.uncategorized", "未分类")}
+                  </Text>
+                </TouchableOpacity>
+              </ScrollView>
             </View>
           </View>
         </View>
       )}
 
-      {/* Content */}
-      <View style={s.content}>
-        <View style={s.contentInner}>
-          {!isLoaded && (
-            <View style={s.loadingWrap}>
-              <ActivityIndicator size="large" color={colors.mutedForeground} />
-            </View>
-          )}
-          {isImporting && (
-            <View style={s.importBanner}>
-              <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={s.importBannerText}>{t("library.importing", "正在导入...")}</Text>
-            </View>
-          )}
-          {isLoaded && books.length === 0 && !showCatalog && (
-            <ScrollViewMarker
-              style={s.primaryScrollMarker}
-              scrollEdgeEffects={NATIVE_SCROLL_EDGE_EFFECTS}
-            >
-              <ScrollView
-                style={s.primaryScroll}
-                contentInsetAdjustmentBehavior="automatic"
-                contentContainerStyle={s.emptyScrollContent}
-                alwaysBounceVertical
-                showsVerticalScrollIndicator={false}
+      {isLoaded && showReadingNow ? (
+        <ReadingNowShelf
+          books={readingNowBooks}
+          edgeInset={layout.horizontalPadding}
+          catalogCardWidth={gridItemWidth}
+          onOpen={handleOpen}
+        />
+      ) : null}
+    </>
+  );
+
+  return (
+    <>
+      <ScrollViewMarker style={s.container} scrollEdgeEffects={NATIVE_SCROLL_EDGE_EFFECTS}>
+        <FlatList
+          data={isLoaded ? displayGridItems : []}
+          renderItem={renderGridItem}
+          style={s.primaryScroll}
+          removeClippedSubviews={false}
+          contentInsetAdjustmentBehavior="automatic"
+          alwaysBounceVertical
+          extraData={{ vectorProgress, vectorizingBookId }}
+          keyExtractor={(item) => (item.type === "group" ? `group-${item.group.id}` : item.book.id)}
+          key={`library-grid-${columnCount}`}
+          numColumns={columnCount}
+          columnWrapperStyle={s.gridRow}
+          contentContainerStyle={
+            isLoaded && (!isEmpty || showCatalog) ? s.gridContent : s.emptyScrollContent
+          }
+          ListEmptyComponent={
+            !isLoaded ? null : books.length === 0 && !showCatalog ? (
+              <CenteredEmptyState
+                title={t("library.empty", "暂无书籍")}
+                description={t("library.emptyHint", "导入电子书开始阅读之旅")}
+                avoidNativeTabBar
               >
-                <CenteredEmptyState
-                  title={t("library.empty", "暂无书籍")}
-                  description={t("library.emptyHint", "导入电子书开始阅读之旅")}
-                  avoidNativeTabBar
-                >
-                  <ImportSourceMenuButton
-                    label={t("library.importFirst", "Добавить книгу")}
-                    urlLabel={t("library.importSourceUrl", "Найти по ссылке")}
-                    localLabel={t("library.importSourceLocal", "Выбрать файл")}
-                    disabled={isPickingImport || isUrlImporting}
-                    onUrlPress={handleOpenUrlImport}
-                    onLocalPress={() => void handleLocalImport()}
-                    onFallbackPress={handleOpenImportSources}
-                  />
-                </CenteredEmptyState>
-              </ScrollView>
-            </ScrollViewMarker>
-          )}
-          {isLoaded && hasBooks && isEmpty && !showCatalog && (
-            <ScrollViewMarker
-              style={s.primaryScrollMarker}
-              scrollEdgeEffects={NATIVE_SCROLL_EDGE_EFFECTS}
-            >
-              <ScrollView
-                style={s.primaryScroll}
-                contentInsetAdjustmentBehavior="automatic"
-                contentContainerStyle={s.emptyScrollContent}
-                alwaysBounceVertical
-                showsVerticalScrollIndicator={false}
+                <ImportSourceMenuButton
+                  label={t("library.importFirst", "Добавить книгу")}
+                  urlLabel={t("library.importSourceUrl", "Найти по ссылке")}
+                  localLabel={t("library.importSourceLocal", "Выбрать файл")}
+                  disabled={isPickingImport || isUrlImporting}
+                  onUrlPress={handleOpenUrlImport}
+                  onLocalPress={() => void handleLocalImport()}
+                  onFallbackPress={handleOpenImportSources}
+                />
+              </CenteredEmptyState>
+            ) : hasBooks && isEmpty && !showCatalog ? (
+              <View
+                style={[s.noResultsWrap, { transform: [{ translateY: -nativeHeaderHeight / 2 }] }]}
               >
-                <View
-                  style={[
-                    s.noResultsWrap,
-                    { transform: [{ translateY: -nativeHeaderHeight / 2 }] },
-                  ]}
-                >
-                  <Text style={s.noResultsText}>
-                    {t("library.noResults", "没有找到匹配的书籍")}
-                  </Text>
-                </View>
-              </ScrollView>
-            </ScrollViewMarker>
-          )}
-          {isLoaded && (!isEmpty || showCatalog) && (
-            <ScrollViewMarker
-              style={s.primaryScrollMarker}
-              scrollEdgeEffects={NATIVE_SCROLL_EDGE_EFFECTS}
-            >
-              <FlatList
-                data={displayGridItems}
-                renderItem={renderGridItem}
-                contentInsetAdjustmentBehavior="automatic"
-                alwaysBounceVertical
-                extraData={{ vectorProgress, vectorizingBookId }}
-                keyExtractor={(item) =>
-                  item.type === "group" ? `group-${item.group.id}` : item.book.id
-                }
-                key={`library-grid-${columnCount}`}
-                numColumns={columnCount}
-                columnWrapperStyle={s.gridRow}
-                contentContainerStyle={s.gridContent}
-                ListHeaderComponent={
-                  showReadingNow ? (
-                    <ReadingNowShelf books={readingNowBooks} onOpen={handleOpen} />
-                  ) : null
-                }
-                ListFooterComponent={
-                  showCatalog ? (
-                    <View
-                      style={[
-                        s.catalogSection,
-                        gridItems.length === 0 ? s.catalogSectionFirst : null,
-                      ]}
-                    >
-                      <Text style={s.catalogTitle}>{t("library.catalog", "Каталог")}</Text>
-                      <View style={s.catalogGrid}>
-                        {BUNDLED_CATALOG_BOOKS.filter(
-                          (catalogBook) => !catalogBooksInLibrary.has(catalogBook.id),
-                        ).map((catalogBook) => (
-                          <View key={catalogBook.id} style={s.gridItem}>
-                            <CatalogBookCard
-                              title={catalogBook.title}
-                              author={catalogBook.author}
-                              coverAssetModule={catalogBook.coverAssetModule}
-                              cardWidth={gridItemWidth}
-                              isImporting={catalogImportingId === catalogBook.id}
-                              isInLibrary={catalogBooksInLibrary.has(catalogBook.id)}
-                              onPress={() => void handleCatalogOpen(catalogBook)}
-                            />
-                          </View>
-                        ))}
-                      </View>
+                <Text style={s.noResultsText}>{t("library.noResults", "没有找到匹配的书籍")}</Text>
+              </View>
+            ) : null
+          }
+          ListHeaderComponent={listHeader}
+          ListFooterComponent={
+            isLoaded && showCatalog ? (
+              <View
+                style={[s.catalogSection, gridItems.length === 0 ? s.catalogSectionFirst : null]}
+              >
+                <Text style={s.catalogTitle}>{t("library.catalog", "Каталог")}</Text>
+                <View style={s.catalogGrid}>
+                  {BUNDLED_CATALOG_BOOKS.map((catalogBook) => (
+                    <View key={catalogBook.id} style={s.gridItem}>
+                      <CatalogBookCard
+                        title={catalogBook.title}
+                        author={catalogBook.author}
+                        coverAssetModule={catalogBook.coverAssetModule}
+                        cardWidth={gridItemWidth}
+                        isImporting={false}
+                        isInLibrary={catalogBooksInLibrary.has(catalogBook.id)}
+                        onPress={() => void handleCatalogOpen(catalogBook)}
+                      />
                     </View>
-                  ) : null
-                }
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-                keyboardDismissMode="on-drag"
-              />
-            </ScrollViewMarker>
-          )}
-        </View>
-      </View>
+                  ))}
+                </View>
+              </View>
+            ) : null
+          }
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+        />
+      </ScrollViewMarker>
 
       <Modal
         visible={!!groupNameModal}
@@ -1218,7 +1132,7 @@ export function LibraryScreen() {
         onClose={() => setShowGroupPicker(false)}
       />
       <ExtractorWebView ref={extractorRef} />
-    </SafeAreaView>
+    </>
   );
 }
 
@@ -1235,7 +1149,6 @@ const makeStyles = (
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
     header: {
-      paddingHorizontal: layout.horizontalPadding,
       paddingTop: 12,
       paddingBottom: 8,
       alignItems: "center",
@@ -1264,7 +1177,6 @@ const makeStyles = (
       justifyContent: "center",
     },
     filterSection: {
-      paddingHorizontal: layout.horizontalPadding,
       paddingBottom: 8,
       alignItems: "center",
     },
@@ -1287,23 +1199,14 @@ const makeStyles = (
       color: colors.mutedForeground,
     },
     tagChipTextActive: { color: colors.primaryForeground },
-    content: { flex: 1, paddingHorizontal: layout.horizontalPadding, alignItems: "center" },
-    contentInner: { flex: 1, width: "100%", maxWidth: layout.contentWidth },
-    primaryScrollMarker: { flex: 1 },
-    primaryScroll: { flex: 1 },
-    emptyScrollContent: { flexGrow: 1 },
-    loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
-    importBanner: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-      backgroundColor: `${colors.muted}0D`,
-      borderRadius: radius.lg,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      marginBottom: 12,
+    primaryScroll: { flex: 1, overflow: "visible" },
+    emptyScrollContent: {
+      flexGrow: 1,
+      width: "100%",
+      maxWidth: layout.contentWidth + layout.horizontalPadding * 2,
+      alignSelf: "center",
+      paddingHorizontal: layout.horizontalPadding,
     },
-    importBannerText: { fontSize: fontSize.xs, color: colors.primary },
     vecBanner: {
       backgroundColor: `${colors.muted}0D`,
       borderRadius: radius.lg,
@@ -1351,13 +1254,25 @@ const makeStyles = (
     noResultsWrap: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 80 },
     noResultsText: { fontSize: fontSize.sm, color: colors.mutedForeground, marginTop: 12 },
     gridRow: { gap: layout.gridGap, justifyContent: "flex-start" },
-    gridContent: { paddingBottom: 24, paddingTop: 24, width: "100%" },
-    gridItem: { width: layout.gridItemWidth, marginBottom: layout.gridGap },
-    catalogSection: { paddingTop: 32 },
+    gridContent: {
+      width: "100%",
+      maxWidth: layout.contentWidth + layout.horizontalPadding * 2,
+      alignSelf: "center",
+      paddingHorizontal: layout.horizontalPadding,
+      paddingTop: 24,
+      paddingBottom: 24,
+    },
+    gridItem: {
+      width: layout.gridItemWidth,
+      marginBottom: layout.gridGap,
+      overflow: "visible",
+    },
+    catalogSection: { paddingTop: 32, overflow: "visible" },
     catalogSectionFirst: { paddingTop: 0 },
     catalogTitle: {
       color: colors.foreground,
-      fontSize: fontSize.xl,
+      fontSize: fontSize.lg,
+      lineHeight: 24,
       fontWeight: fontWeight.bold,
       marginBottom: 20,
     },
@@ -1365,6 +1280,7 @@ const makeStyles = (
       flexDirection: "row",
       flexWrap: "wrap",
       columnGap: layout.gridGap,
+      overflow: "visible",
     },
     groupModalOverlay: {
       flex: 1,

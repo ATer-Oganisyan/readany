@@ -11,7 +11,13 @@ import { useReaderBridge } from "@/hooks/use-reader-bridge";
 import type { RelocateEvent, SelectionEvent, VisibleTTSSegment } from "@/hooks/use-reader-bridge";
 import { durationBucket } from "@/lib/analytics/contract";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
-import { findBundledCatalogBookByTitle } from "@/lib/catalog/bundled-books";
+import {
+  BUNDLED_CATALOG_BOOKS,
+  findBundledCatalogBookByTitle,
+  installBundledCatalogCover,
+  normalizeCatalogIdentity,
+  resolveBundledCatalogBookUri,
+} from "@/lib/catalog/bundled-books";
 import { getBundledCatalogCharactersByTitle } from "@/lib/narra/bundled-catalog-characters";
 import { buildCharacterNameMatcherSpec } from "@/lib/narra/character-name-matcher";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
@@ -83,7 +89,7 @@ import {
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { runOnJS } from "react-native-reanimated";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 
 // ── Extracted modules ──
@@ -163,7 +169,7 @@ const NOTE_TOOLTIP_BELOW_OFFSET = 8;
 const NOTE_TOOLTIP_TOP_THRESHOLD = 180;
 import { resolveReaderThemeColors } from "@/lib/reader/reader-themes";
 import { useRubyStore } from "@readany/core/stores/ruby-store";
-import { ReaderSettingsPanel } from "./reader/ReaderSettingsPanel";
+import { ReaderSettingsPanel } from "./reader/ReaderSettingsPanel.entry";
 import { type ReaderNavTab, ReaderTOCPanel } from "./reader/ReaderTOCPanel";
 import { CONTROLS_TIMEOUT, SCREEN_HEIGHT, SCREEN_WIDTH } from "./reader/reader-constants";
 import { makeStyles, noteTooltipMdStyles } from "./reader/reader-styles";
@@ -215,7 +221,159 @@ function buildCustomFontFaceCSS(
 }
 
 // ──────────────────────────── ReaderScreen ────────────────────────────
-export function ReaderScreen({ route, navigation }: Props) {
+export function ReaderScreen(props: Props) {
+  const { t } = useTranslation();
+  const importBooks = useLibraryStore((state) => state.importBooks);
+  const updateBook = useLibraryStore((state) => state.updateBook);
+  const requestedBookId = props.route.params.bookId;
+  const catalogBookId = props.route.params.catalogBookId;
+  const [resolvedBookId, setResolvedBookId] = useState<string | null>(
+    catalogBookId ? null : requestedBookId,
+  );
+
+  useEffect(() => {
+    if (!catalogBookId) {
+      setResolvedBookId(requestedBookId);
+      return;
+    }
+
+    const catalogBook = BUNDLED_CATALOG_BOOKS.find((book) => book.id === catalogBookId);
+    if (!catalogBook) {
+      Alert.alert(
+        t("library.catalogImportErrorTitle", "Не получилось добавить книгу"),
+        t("library.catalogImportErrorDescription", "Попробуйте ещё раз."),
+        [{ text: t("common.ok", "OK"), onPress: () => props.navigation.goBack() }],
+      );
+      return;
+    }
+
+    let cancelled = false;
+    const prepareCatalogBook = async () => {
+      const existingBook = useLibraryStore
+        .getState()
+        .books.find(
+          (book) =>
+            !book.deletedAt &&
+            normalizeCatalogIdentity(book.meta.title) ===
+              normalizeCatalogIdentity(catalogBook.title),
+        );
+      if (existingBook) return existingBook.id;
+
+      const uri = await resolveBundledCatalogBookUri(catalogBook);
+      const result = await importBooks([{ uri, name: catalogBook.fileName }]);
+      const importedBook = result.imported[0] ?? result.skippedDuplicates[0]?.existingBook;
+      if (!importedBook) throw new Error("catalog-import-failed");
+
+      const normalizedMeta = {
+        ...importedBook.meta,
+        title: catalogBook.title,
+        author: catalogBook.author,
+      };
+      await updateBook(importedBook.id, { meta: normalizedMeta });
+      void installBundledCatalogCover(importedBook.id, catalogBook)
+        .then((coverUrl) => updateBook(importedBook.id, { meta: { ...normalizedMeta, coverUrl } }))
+        .catch((error) =>
+          console.warn(`[Catalog] Failed to install cover ${catalogBook.id}:`, error),
+        );
+      return importedBook.id;
+    };
+
+    void prepareCatalogBook()
+      .then((bookId) => {
+        if (!cancelled) setResolvedBookId(bookId);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error(`[Catalog] Failed to add ${catalogBook.id}:`, error);
+        Alert.alert(
+          t("library.catalogImportErrorTitle", "Не получилось добавить книгу"),
+          t("library.catalogImportErrorDescription", "Попробуйте ещё раз."),
+          [{ text: t("common.ok", "OK"), onPress: () => props.navigation.goBack() }],
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [catalogBookId, importBooks, props.navigation, requestedBookId, t, updateBook]);
+
+  if (!resolvedBookId) {
+    return <ReaderLoadingChrome navigation={props.navigation} />;
+  }
+
+  return (
+    <ReaderContent
+      {...props}
+      route={{
+        ...props.route,
+        params: { ...props.route.params, bookId: resolvedBookId, catalogBookId: undefined },
+      }}
+    />
+  );
+}
+
+function ReaderLoadingChrome({ navigation }: { navigation: Props["navigation"] }) {
+  const colors = useColors();
+  const { isDark } = useTheme();
+  const insets = useSafeAreaInsets();
+  const ignorePress = () => undefined;
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerShown: true,
+      headerTransparent: true,
+      headerShadowVisible: false,
+      headerBackButtonDisplayMode: "minimal",
+      headerTintColor: colors.foreground,
+      headerTitleAlign: "center",
+      title: "",
+      unstable_headerRightItems: undefined,
+      headerRight: () => (
+        <View pointerEvents="none">
+          <NativeContextMenuButton
+            accessibilityLabel="Действия с книгой"
+            items={[]}
+            color={colors.foreground}
+          />
+        </View>
+      ),
+    });
+  }, [colors.foreground, navigation]);
+
+  return (
+    <View style={{ flex: 1, paddingBottom: insets.bottom, backgroundColor: colors.background }}>
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+      {Platform.OS === "ios" && (
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            right: 0,
+            bottom: 0,
+            left: 0,
+            height: TOOLBAR_HEIGHT + insets.bottom,
+            paddingBottom: insets.bottom,
+            backgroundColor: colors.background,
+          }}
+        >
+          <ReaderToolbar
+            tintColor={colors.foreground}
+            isDark={isDark}
+            speechActive={false}
+            onSpeechPress={ignorePress}
+            onChatPress={ignorePress}
+            onScenePress={ignorePress}
+            onSettingsPress={ignorePress}
+          />
+        </View>
+      )}
+    </View>
+  );
+}
+
+function ReaderContent({ route, navigation }: Props) {
   const colors = useColors();
   const { mode: themeMode, isDark } = useTheme();
   const s = makeStyles(colors);
@@ -1829,23 +1987,51 @@ export function ReaderScreen({ route, navigation }: Props) {
     };
   }, [bookId, currentCfi, goToCFISafely, loading, navigation, openTTS, webViewReady]);
 
+  const readerToolbarDock =
+    Platform.OS === "ios" ? (
+      <View
+        pointerEvents={loading || !showControls ? "none" : "auto"}
+        style={{
+          position: "absolute",
+          right: 0,
+          bottom: 0,
+          left: 0,
+          zIndex: 30,
+          height: TOOLBAR_HEIGHT + insets.bottom,
+          paddingBottom: insets.bottom,
+          backgroundColor: colors.background,
+          transform: [{ translateY: showControls ? 0 : TOOLBAR_HEIGHT + insets.bottom }],
+        }}
+      >
+        <ReaderToolbar
+          tintColor={colors.foreground}
+          isDark={isDark}
+          speechActive={ttsPlayState === "playing" || ttsPlayState === "loading"}
+          onSpeechPress={() => void tts.handleToggleTTS()}
+          onChatPress={handleOpenCharacters}
+          onScenePress={() => void handleGenerateVisibleScene()}
+          onSettingsPress={() => setShowSettings(true)}
+        />
+      </View>
+    ) : null;
+
   if (loading && !webViewReady && !readerHtmlUri) {
     return (
-      <>
-        <SafeAreaView style={[s.container, { backgroundColor: colors.background }]}>
+      <View style={[s.container, { paddingBottom: insets.bottom }]}>
+        <View style={s.readerStage}>
           <View style={s.loadingWrap}>
             <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={s.loadingText}>{t("reader.loading", "正在加载...")}</Text>
           </View>
-        </SafeAreaView>
-      </>
+        </View>
+        {readerToolbarDock}
+      </View>
     );
   }
 
   if (error) {
     return (
-      <>
-        <SafeAreaView style={[s.container, { backgroundColor: colors.background }]}>
+      <View style={[s.container, { paddingBottom: insets.bottom }]}>
+        <View style={s.readerStage}>
           <View style={s.loadingWrap}>
             <Text style={s.errorText}>{t("reader.loadFailed", "加载失败")}</Text>
             <Text style={[s.loadingText, { textAlign: "center", maxWidth: 320 }]}>{error}</Text>
@@ -1886,21 +2072,22 @@ export function ReaderScreen({ route, navigation }: Props) {
               </TouchableOpacity>
             </View>
           </View>
-        </SafeAreaView>
-      </>
+        </View>
+        {readerToolbarDock}
+      </View>
     );
   }
 
   if (!readerHtmlUri) {
     return (
-      <>
-        <View style={s.container}>
+      <View style={[s.container, { paddingBottom: insets.bottom }]}>
+        <View style={s.readerStage}>
           <View style={s.loadingWrap}>
             <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={s.loadingText}>{t("reader.loading", "加载阅读器...")}</Text>
           </View>
         </View>
-      </>
+        {readerToolbarDock}
+      </View>
     );
   }
 
@@ -2020,30 +2207,7 @@ export function ReaderScreen({ route, navigation }: Props) {
           </GestureDetector>
         )}
 
-        {Platform.OS === "ios" && showControls && (
-          <View
-            style={{
-              position: "absolute",
-              right: 0,
-              bottom: 0,
-              left: 0,
-              zIndex: 30,
-              height: TOOLBAR_HEIGHT + insets.bottom,
-              paddingBottom: insets.bottom,
-              backgroundColor: colors.background,
-            }}
-          >
-            <ReaderToolbar
-              tintColor={colors.foreground}
-              isDark={isDark}
-              speechActive={ttsPlayState === "playing" || ttsPlayState === "loading"}
-              onSpeechPress={() => void tts.handleToggleTTS()}
-              onChatPress={handleOpenCharacters}
-              onScenePress={() => void handleGenerateVisibleScene()}
-              onSettingsPress={() => setShowSettings(true)}
-            />
-          </View>
-        )}
+        {readerToolbarDock}
 
         {/* ─── Bookmark Ribbon (top-right) ─── */}
         <BookmarkRibbon visible={isBookmarked} topOffset={0} rightOffset={readerContentInset} />
@@ -2141,27 +2305,8 @@ export function ReaderScreen({ route, navigation }: Props) {
         <ReaderSettingsPanel
           visible={showSettings}
           readSettings={readSettings}
-          bookId={bookId}
           onClose={() => setShowSettings(false)}
           onUpdateSetting={updateSetting}
-          onRubyModeChange={async (mode) => {
-            if (mode) {
-              // Load dicts into WebView if not already done
-              try {
-                const { readDictStrings } = await import("@/lib/ruby/dict-service-mobile");
-                const { wordDict, charDict } = await readDictStrings();
-                if (wordDict || charDict) {
-                  bridge.setRubyDicts(wordDict, charDict);
-                  // Small delay to let WebView process the dict
-                  setTimeout(() => bridge.injectRuby(mode), 100);
-                }
-              } catch (err) {
-                console.error("[ReaderScreen] Ruby dict load failed:", err);
-              }
-            } else {
-              bridge.removeRuby();
-            }
-          }}
         />
 
         {/* ─── Notebook Panel ─── */}

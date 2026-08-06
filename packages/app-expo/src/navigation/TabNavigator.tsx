@@ -1,13 +1,12 @@
-import { MessageSquareIcon } from "@/components/ui/Icon";
 import { NativeButton } from "@/components/ui/NativeButton";
 import { SyncButton } from "@/components/ui/SyncButton";
+import { ChatsScreen } from "@/screens/ChatsScreen";
 import { LibraryScreen } from "@/screens/LibraryScreen";
-import { MyPathScreen } from "@/screens/MyPathScreen";
 import { NotesScreen } from "@/screens/NotesScreen";
 import { ProfileScreen } from "@/screens/ProfileScreen";
-import { ReadingTabScreen } from "@/screens/ReadingTabScreen";
+import { SearchScreen } from "@/screens/SearchScreen";
 import { useTheme } from "@/styles/ThemeContext";
-import { fontFamily, titleFontFamily } from "@/styles/theme";
+import { fontFamily, largeTitleFontFamily, titleFontFamily } from "@/styles/theme";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import {
   type NativeBottomTabIcon,
@@ -20,19 +19,19 @@ import {
 import { useSyncStore } from "@readany/core/stores";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { type ImageSourcePropType, Platform, StyleSheet, TouchableOpacity } from "react-native";
+import { type ImageSourcePropType, Platform } from "react-native";
 import { NATIVE_SCROLL_EDGE_EFFECTS } from "./scroll-edge-effects";
 
 export type TabParamList = {
   Library: undefined;
-  Reading: undefined;
-  MyPath: undefined;
+  Chats: undefined;
   Profile: undefined;
+  Search: undefined;
 };
 
 export type LibraryTabStackParamList = { LibraryHome: undefined };
-export type ReadingTabStackParamList = { ReadingHome: undefined };
-export type MyPathTabStackParamList = { MyPathHome: undefined };
+export type ChatsTabStackParamList = { ChatsHome: undefined };
+export type SearchTabStackParamList = { SearchHome: undefined };
 export type ProfileTabStackParamList = {
   ProfileHome: undefined;
   ProfileNotes: { bookId?: string } | undefined;
@@ -40,8 +39,8 @@ export type ProfileTabStackParamList = {
 
 const Tab = createNativeBottomTabNavigator<TabParamList>();
 const LibraryStack = createNativeStackNavigator<LibraryTabStackParamList>();
-const ReadingStack = createNativeStackNavigator<ReadingTabStackParamList>();
-const MyPathStack = createNativeStackNavigator<MyPathTabStackParamList>();
+const ChatsStack = createNativeStackNavigator<ChatsTabStackParamList>();
+const SearchStack = createNativeStackNavigator<SearchTabStackParamList>();
 const ProfileStack = createNativeStackNavigator<ProfileTabStackParamList>();
 
 type AndroidTabIcons = Record<keyof TabParamList, ImageSourcePropType>;
@@ -57,17 +56,17 @@ function useAndroidMaterialTabIcons() {
     let cancelled = false;
     void Promise.all([
       MaterialIcons.getImageSource("local-library", 24, "#000000"),
-      MaterialIcons.getImageSource("menu-book", 24, "#000000"),
-      MaterialIcons.getImageSource("groups", 24, "#000000"),
+      MaterialIcons.getImageSource("chat", 24, "#000000"),
       MaterialIcons.getImageSource("person", 24, "#000000"),
+      MaterialIcons.getImageSource("search", 24, "#000000"),
     ])
-      .then(([library, reading, myPath, profile]) => {
+      .then(([library, chats, profile, search]) => {
         if (cancelled) return;
-        if (!library || !reading || !myPath || !profile) {
+        if (!library || !chats || !profile || !search) {
           setIcons(null);
           return;
         }
-        setIcons({ Library: library, Reading: reading, MyPath: myPath, Profile: profile });
+        setIcons({ Library: library, Chats: chats, Profile: profile, Search: search });
       })
       .catch((error) => {
         console.error("[TabNavigator] Failed to render Material tab icons", error);
@@ -124,7 +123,9 @@ function useLargeTitleOptions(): NativeStackNavigationOptions {
         headerLargeTitleShadowVisible: false,
         headerLargeTitleStyle: {
           color: colors.foreground,
-          fontFamily: titleFontFamily,
+          fontFamily: largeTitleFontFamily,
+          fontSize: 40,
+          fontWeight: "400",
         },
       }
     : {};
@@ -132,7 +133,6 @@ function useLargeTitleOptions(): NativeStackNavigationOptions {
 
 function LibraryTabStackNavigator() {
   const { t } = useTranslation();
-  const { colors } = useTheme();
   const screenOptions = useTabStackScreenOptions();
   const largeTitleOptions = useLargeTitleOptions();
 
@@ -141,84 +141,49 @@ function LibraryTabStackNavigator() {
       <LibraryStack.Screen
         name="LibraryHome"
         component={LibraryScreen}
-        options={({ navigation }) => ({
+        options={{
           title: t("tabs.library", "Библиотека"),
           ...largeTitleOptions,
-          ...(Platform.OS === "ios"
-            ? {
-                unstable_headerLeftItems: () => [
-                  {
-                    type: "button" as const,
-                    label: "Narra AI",
-                    accessibilityLabel: "Открыть Narra AI",
-                    icon: { type: "sfSymbol" as const, name: "message" as const },
-                    onPress: () =>
-                      navigation
-                        .getParent()
-                        ?.getParent()
-                        ?.navigate("Chat" as never),
-                  },
-                ],
-              }
-            : {
-                headerLeft: () => (
-                  <TouchableOpacity
-                    accessibilityRole="button"
-                    accessibilityLabel="Открыть Narra AI"
-                    style={styles.headerIconButton}
-                    onPress={() =>
-                      navigation
-                        .getParent()
-                        ?.getParent()
-                        ?.navigate("Chat" as never)
-                    }
-                    activeOpacity={0.65}
-                  >
-                    <MessageSquareIcon size={22} color={colors.primary} />
-                  </TouchableOpacity>
-                ),
-              }),
-        })}
+        }}
       />
     </LibraryStack.Navigator>
   );
 }
 
-function ReadingTabStackNavigator() {
+function ChatsTabStackNavigator() {
   const { t } = useTranslation();
   const screenOptions = useTabStackScreenOptions();
   const largeTitleOptions = useLargeTitleOptions();
 
   return (
-    <ReadingStack.Navigator screenOptions={screenOptions}>
-      <ReadingStack.Screen
-        name="ReadingHome"
-        component={ReadingTabScreen}
+    <ChatsStack.Navigator screenOptions={screenOptions}>
+      <ChatsStack.Screen
+        name="ChatsHome"
+        component={ChatsScreen}
         options={{
-          title: t("tabs.reading", "Читалка"),
+          title: t("tabs.chats", "Чаты"),
           ...largeTitleOptions,
         }}
       />
-    </ReadingStack.Navigator>
+    </ChatsStack.Navigator>
   );
 }
 
-function MyPathTabStackNavigator() {
-  const { t } = useTranslation();
+function SearchTabStackNavigator() {
   const screenOptions = useTabStackScreenOptions();
-  const largeTitleOptions = useLargeTitleOptions();
 
   return (
-    <MyPathStack.Navigator screenOptions={screenOptions}>
-      <MyPathStack.Screen
-        name="MyPathHome"
-        component={MyPathScreen}
+    <SearchStack.Navigator screenOptions={screenOptions}>
+      <SearchStack.Screen
+        name="SearchHome"
+        component={SearchScreen}
         options={{
-          title: t("tabs.myPath", "Мой путь"),
-          ...largeTitleOptions,
+          title: "",
+          headerTitle: "",
+          headerLargeTitleEnabled: false,
         }}
       />
-    </MyPathStack.Navigator>
+    </SearchStack.Navigator>
   );
 }
 
@@ -334,7 +299,7 @@ export function TabNavigator() {
         tabBarStyle: Platform.OS === "ios" ? undefined : { backgroundColor: colors.background },
         tabBarBlurEffect: "systemDefault",
         tabBarControllerMode: "auto",
-        tabBarMinimizeBehavior: "onScrollDown",
+        tabBarMinimizeBehavior: "none",
       }}
     >
       <Tab.Screen
@@ -347,21 +312,12 @@ export function TabNavigator() {
         }}
       />
       <Tab.Screen
-        name="Reading"
-        component={ReadingTabStackNavigator}
+        name="Chats"
+        component={ChatsTabStackNavigator}
         options={{
-          title: t("tabs.reading", "Читалка"),
-          tabBarLabel: t("tabs.reading", "Читалка"),
-          tabBarIcon: tabIcon("book.fill", androidTabIcons?.Reading),
-        }}
-      />
-      <Tab.Screen
-        name="MyPath"
-        component={MyPathTabStackNavigator}
-        options={{
-          title: t("tabs.myPath", "Мой путь"),
-          tabBarLabel: t("tabs.myPath", "Мой путь"),
-          tabBarIcon: tabIcon("person.2.fill", androidTabIcons?.MyPath),
+          title: t("tabs.chats", "Чаты"),
+          tabBarLabel: t("tabs.chats", "Чаты"),
+          tabBarIcon: tabIcon("message.fill", androidTabIcons?.Chats),
         }}
       />
       <Tab.Screen
@@ -374,15 +330,18 @@ export function TabNavigator() {
           tabBarMinimizeBehavior: "none",
         }}
       />
+      <Tab.Screen
+        name="Search"
+        component={SearchTabStackNavigator}
+        options={{
+          title: t("tabs.search", "Поиск"),
+          tabBarSystemItem: Platform.OS === "ios" ? "search" : undefined,
+          tabBarLabel: Platform.OS === "ios" ? undefined : t("tabs.search", "Поиск"),
+          tabBarIcon:
+            Platform.OS === "ios" ? undefined : tabIcon("magnifyingglass", androidTabIcons?.Search),
+          tabBarMinimizeBehavior: "none",
+        }}
+      />
     </Tab.Navigator>
   );
 }
-
-const styles = StyleSheet.create({
-  headerIconButton: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-});

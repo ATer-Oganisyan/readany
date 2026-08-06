@@ -5,6 +5,25 @@ export interface BundledCatalogBookDefinition {
   fileName: string;
 }
 
+export const BUNDLED_CATALOG_COVER_VERSION = 6;
+
+export function getBundledCatalogCoverPath(bookId: string): string {
+  return `covers/${bookId}-catalog-v${BUNDLED_CATALOG_COVER_VERSION}.jpg`;
+}
+
+export function isBundledCatalogCoverPath(bookId: string, coverUrl?: string): boolean {
+  if (!coverUrl) return false;
+  const escapedBookId = bookId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^covers/${escapedBookId}-catalog(?:-v\\d+)?\\.jpg$`).test(coverUrl);
+}
+
+export function shouldRefreshBundledCatalogCover(bookId: string, coverUrl?: string): boolean {
+  return (
+    !coverUrl ||
+    (coverUrl !== getBundledCatalogCoverPath(bookId) && isBundledCatalogCoverPath(bookId, coverUrl))
+  );
+}
+
 export const BUNDLED_CATALOG_BOOK_DEFINITIONS: readonly BundledCatalogBookDefinition[] = [
   {
     id: "fathers-and-sons",

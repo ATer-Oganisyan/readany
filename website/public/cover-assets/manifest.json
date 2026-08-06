@@ -1,0 +1,381 @@
+{
+  "generatedAt": "2026-08-06T17:21:20.810Z",
+  "promptTemplate": "Create the complete front-cover artwork for a contemporary intellectual book.\n\nBOOK SUBJECT:\n{{BOOK_SUBJECT}}\n\nREQUIRED DOMINANT BACKGROUND COLOR:\n{{BACKGROUND_COLOR}}\n\nTranslate the book’s central idea into one bold, intelligent and slightly unexpected visual metaphor. Do not illustrate the plot literally. The image should feel like an art director’s conceptual solution: restrained, cultured, memorable, subtly strange and open to interpretation.\n\nVisual language: independent European art publishing, late modernist editorial design, Soviet and Central European book graphics, constructivist composition, archival visual culture, experimental museum catalogues and small intellectual publishing houses.\n\nUse a distinctive combination of no more than two techniques: archival photography, hand-drawn illustration, engraving, photocopy, paper collage, flat geometric shapes, found imagery, halftone screening, risograph or imperfect offset printing. Combine analogue materiality with a precise contemporary composition.\n\nCreate one dominant graphic element or conceptual object. It must be the only primary focal point.\n\nPlace this dominant element within the lower two-thirds of the vertical canvas, from approximately 35% of the canvas height down to the bottom edge. Its visual center should sit approximately 60–72% down from the top edge. Let the object occupy a substantial part of the lower two-thirds instead of compressing it into the bottom third. It may extend through the middle and lower regions, approach, touch or be partially cropped by the bottom edge.\n\nKeep the upper third visually quiet and subordinate. Fill this area with the required dominant background color, continuous paper texture, delicate print grain and subtle tonal variation. Quiet means low-detail, not blank, white, cream or beige. The upper area must remain part of the finished full-bleed artwork, but it must not contain a separate object, face, figure, symbol, strong geometric shape, high-contrast detail or secondary focal point.\n\nThe viewer’s eye must be drawn unmistakably into the lower two-thirds of the cover. The composition should feel deliberately weighted below the upper third: approximately 30% quiet visual field above and 70% active composition below.\n\nAvoid centered, vertically balanced, symmetrical or evenly distributed compositions. Do not place the dominant element in the top third; it may occupy both the middle and bottom thirds as one continuous focal form. Do not repeat the primary object elsewhere in the image. Avoid decorative clutter. Every element must support the central metaphor.\n\nUse radical cropping, unexpected scale, controlled asymmetry and visual tension. Prefer one clear visual gesture over a collection of small details.\n\nUse the REQUIRED DOMINANT BACKGROUND COLOR as the unmistakable base color across the entire canvas. Add only 1–3 restrained supporting ink colors chosen for controlled contrast. Do not default to warm off-white, beige, cream, ivory, parchment, yellowed paper or natural kraft paper. Any visible paper texture must be dyed or printed in the required background color.\n\nAdd subtle analogue materiality: matte uncoated paper, paper grain, ink bleed, uneven registration, halftone dots, photocopy noise, worn printed texture or slightly irregular hand-cut edges. The result should feel physically printed rather than digitally rendered. Keep the texture refined and intentional, not dirty or excessively distressed.\n\nThe artwork must cover the entire vertical canvas from edge to edge. Full bleed, including the upper area. No exterior margins, frame, white border, passe-partout, separate title panel or unfinished background.\n\nThe quiet upper third must not look like an empty white margin or a reserved title box. It should be a deliberately composed field of color, paper texture and subtle printed variation, continuous with the rest of the artwork.\n\nCRITICAL BACKGROUND RULE: the required background color must cover the complete canvas edge-to-edge and remain clearly visible across the quiet upper third and around the main object below. It must read as an intentional colored field, not as aging, discoloration or a small accent. Do not replace it with beige, cream, ivory, warm off-white or yellowed paper.\n\nFlat, front-facing 2D artwork only. Generate the artwork itself, not a photograph or mockup of a physical book. No spine, perspective, hands, table, surrounding objects, realistic shadows or presentation scene.\n\nABSOLUTELY NO TEXT: no title, no author name, no publisher name, no logo, no letters from any alphabet, no words, no numbers, no captions, no labels, no handwriting, no typographic symbols, no fake text, no text-like marks, no signatures, no stamps and no barcode anywhere in the image.\n\nDo not create abstract shapes resembling letters, numbers or writing. Replace any possible writing, document fragments or printed inscriptions with pure nonverbal texture.\n\nAvoid glossy commercial illustration, cinematic lighting, photorealistic advertising, fantasy concept art, generic surrealism, polished 3D rendering, digital gradients, neon effects, stock-photo aesthetics and obvious AI-generated details.\n\nCRITICAL COMPOSITION RULE: the main graphic element must not be confined to the bottom third. It must occupy the lower two-thirds of the canvas, beginning around 35% from the top and extending through the middle toward the bottom edge. No dominant element may appear in the upper third.\n\nCRITICAL OUTPUT RULE: generate only the complete full-bleed cover artwork. Zero visible text. No mockup, no border and no reserved typography area.\n\nVertical book-cover format, 2:3 aspect ratio, high resolution, print-ready visual quality.",
+  "providers": [
+    {
+      "id": "nano-banana",
+      "label": "Nano Banana 2",
+      "model": "google/gemini-3.1-flash-image",
+      "parameters": {
+        "resolution": "1K"
+      }
+    },
+    {
+      "id": "gpt-image",
+      "label": "GPT Image 2",
+      "model": "openai/gpt-image-2",
+      "parameters": {
+        "quality": "high"
+      }
+    }
+  ],
+  "books": [
+    {
+      "id": "fathers-and-sons",
+      "title": "Отцы и дети",
+      "author": "Иван Тургенев",
+      "background": "cool pale blue-grey, clearly blue rather than beige",
+      "subject": "A novel about generational conflict, nihilism and the fragile bond between parents and children in 1860s Russia. Central visual metaphor: two large overlapping forms from different eras, divided by a narrow wedge. Mood: restrained, tense, intellectually severe.",
+      "outputs": {
+        "nano-banana": {
+          "status": "ready",
+          "path": "/cover-assets/nano-banana/fathers-and-sons.jpg",
+          "cached": false,
+          "cost": 0.069125
+        },
+        "gpt-image": {
+          "status": "ready",
+          "path": "/cover-assets/gpt-image/fathers-and-sons.jpg",
+          "cached": false,
+          "cost": 0.170535
+        }
+      }
+    },
+    {
+      "id": "anna-karenina",
+      "title": "Анна Каренина",
+      "author": "Лев Толстой",
+      "background": "muted powder pink with a cool undertone",
+      "subject": "A tragic novel about desire, social judgment, isolation and irreversible choice in 1870s Russia. Central visual metaphor: a pale oval crossed and permanently split by a black diagonal. Mood: elegant, cold, intimate and fatal.",
+      "outputs": {
+        "nano-banana": {
+          "status": "ready",
+          "path": "/cover-assets/nano-banana/anna-karenina.png",
+          "cached": false,
+          "cost": 0.0677955
+        },
+        "gpt-image": {
+          "status": "ready",
+          "path": "/cover-assets/gpt-image/anna-karenina.jpg",
+          "cached": false,
+          "cost": 0.17051
+        }
+      }
+    },
+    {
+      "id": "war-and-peace",
+      "title": "Война и мир",
+      "author": "Лев Толстой",
+      "background": "pale lavender-grey, clearly violet rather than beige",
+      "subject": "An epic novel about private life, history, war and the search for meaning during the Napoleonic era. Central visual metaphor: one circle, half built from an orderly grid and half fractured. Mood: monumental yet humane, full of motion and reflection.",
+      "outputs": {
+        "nano-banana": {
+          "status": "ready",
+          "path": "/cover-assets/nano-banana/war-and-peace.jpg",
+          "cached": false,
+          "cost": 0.0692315
+        },
+        "gpt-image": {
+          "status": "ready",
+          "path": "/cover-assets/gpt-image/war-and-peace.jpg",
+          "cached": false,
+          "cost": 0.17054
+        }
+      }
+    },
+    {
+      "id": "crime-and-punishment",
+      "title": "Преступление и наказание",
+      "author": "Фёдор Достоевский",
+      "background": "smoky medium cool grey with a faint blue undertone",
+      "subject": "A psychological novel about guilt, moral pride, poverty and possible redemption in 1860s Saint Petersburg. Central visual metaphor: a heavy black square with a constricted inner void, cut by a thin arc. Mood: oppressive, feverish and morally charged.",
+      "outputs": {
+        "nano-banana": {
+          "status": "ready",
+          "path": "/cover-assets/nano-banana/crime-and-punishment.png",
+          "cached": false,
+          "cost": 0.0678015
+        },
+        "gpt-image": {
+          "status": "ready",
+          "path": "/cover-assets/gpt-image/crime-and-punishment.jpg",
+          "cached": false,
+          "cost": 0.17058
+        }
+      }
+    },
+    {
+      "id": "government-inspector",
+      "title": "Ревизор",
+      "author": "Николай Гоголь",
+      "background": "muted mustard yellow, saturated enough to avoid parchment",
+      "subject": "A satirical play about corruption, fear and collective self-deception in a provincial Russian bureaucracy. Central visual metaphor: a regimented sequence of identical circles invaded by one absurdly rotated empty circle. Mood: comic, anxious and grotesque.",
+      "outputs": {
+        "nano-banana": {
+          "status": "ready",
+          "path": "/cover-assets/nano-banana/government-inspector.png",
+          "cached": false,
+          "cost": 0.0677945
+        },
+        "gpt-image": {
+          "status": "ready",
+          "path": "/cover-assets/gpt-image/government-inspector.jpg",
+          "cached": false,
+          "cost": 0.170525
+        }
+      }
+    },
+    {
+      "id": "dead-souls",
+      "title": "Мёртвые души",
+      "author": "Николай Гоголь",
+      "background": "dusty terracotta red, earthy but distinctly red",
+      "subject": "A darkly comic journey through provincial Russia about greed, spiritual emptiness and identities reduced to entries in a ledger. Central visual metaphor: a grid of empty rectangular cells, with black emptiness protruding from one cell. Mood: earthy, absurd and unsettling.",
+      "outputs": {
+        "nano-banana": {
+          "status": "ready",
+          "path": "/cover-assets/nano-banana/dead-souls.jpg",
+          "cached": false,
+          "cost": 0.0696565
+        },
+        "gpt-image": {
+          "status": "ready",
+          "path": "/cover-assets/gpt-image/dead-souls.jpg",
+          "cached": false,
+          "cost": 0.17055
+        }
+      }
+    },
+    {
+      "id": "hero-of-our-time",
+      "title": "Герой нашего времени",
+      "author": "Михаил Лермонтов",
+      "background": "desaturated mountain-sky blue",
+      "subject": "A fragmented psychological portrait of a detached young officer in the Caucasus, exploring boredom, freedom and self-destruction. Central visual metaphor: a solitary tall black vertical at the intersection of two distant diagonal fields. Mood: austere, mountainous and alienated.",
+      "outputs": {
+        "nano-banana": {
+          "status": "ready",
+          "path": "/cover-assets/nano-banana/hero-of-our-time.png",
+          "cached": false,
+          "cost": 0.0677945
+        },
+        "gpt-image": {
+          "status": "ready",
+          "path": "/cover-assets/gpt-image/hero-of-our-time.jpg",
+          "cached": false,
+          "cost": 0.170535
+        }
+      }
+    },
+    {
+      "id": "captains-daughter",
+      "title": "Капитанская дочка",
+      "author": "Александр Пушкин",
+      "background": "icy pale cyan-blue",
+      "subject": "A historical novel about honor, loyalty and love during the Pugachev rebellion in 1770s Russia. Central visual metaphor: a small pale diamond held between two large opposing wedges. Mood: wintry, courageous and precarious.",
+      "outputs": {
+        "nano-banana": {
+          "status": "ready",
+          "path": "/cover-assets/nano-banana/captains-daughter.png",
+          "cached": false,
+          "cost": 0.067793
+        },
+        "gpt-image": {
+          "status": "ready",
+          "path": "/cover-assets/gpt-image/captains-daughter.jpg",
+          "cached": false,
+          "cost": 0.1705
+        }
+      }
+    },
+    {
+      "id": "eugene-onegin",
+      "title": "Евгений Онегин",
+      "author": "Александр Пушкин",
+      "background": "muted lilac with a cool grey undertone",
+      "subject": "A novel in verse about boredom, timing, missed intimacy and social ritual in 1820s Russia. Central visual metaphor: two mismatched forms that almost touch but depart along different axes. Mood: elegant, ironic and quietly regretful.",
+      "outputs": {
+        "nano-banana": {
+          "status": "ready",
+          "path": "/cover-assets/nano-banana/eugene-onegin.png",
+          "cached": false,
+          "cost": 0.1349965
+        },
+        "gpt-image": {
+          "status": "ready",
+          "path": "/cover-assets/gpt-image/eugene-onegin.jpg",
+          "cached": false,
+          "cost": 0.170535
+        }
+      }
+    },
+    {
+      "id": "gentleman-from-san-francisco",
+      "title": "Господин из Сан-Франциско",
+      "author": "Иван Бунин",
+      "background": "pale desaturated olive green",
+      "subject": "A story about wealth, mortality and the indifference hidden beneath luxury in the early twentieth century. Central visual metaphor: a heavy black oval of luxury suspended above a thin collapsing horizon. Mood: polished, cold and ominous.",
+      "outputs": {
+        "nano-banana": {
+          "status": "ready",
+          "path": "/cover-assets/nano-banana/gentleman-from-san-francisco.jpg",
+          "cached": false,
+          "cost": 0.0690925
+        },
+        "gpt-image": {
+          "status": "ready",
+          "path": "/cover-assets/gpt-image/gentleman-from-san-francisco.jpg",
+          "cached": false,
+          "cost": 0.170515
+        }
+      }
+    },
+    {
+      "id": "dark-avenues",
+      "title": "Тёмные аллеи",
+      "author": "Иван Бунин",
+      "background": "dusty mauve-plum, medium-light and subdued",
+      "subject": "Stories about memory, sensual love, separation and encounters that return too late. Central visual metaphor: two dark ribbons briefly crossing before disappearing through opposite edges. Mood: autumnal, intimate and melancholic.",
+      "outputs": {
+        "nano-banana": {
+          "status": "ready",
+          "path": "/cover-assets/nano-banana/dark-avenues.jpg",
+          "cached": false,
+          "cost": 0.06908
+        },
+        "gpt-image": {
+          "status": "ready",
+          "path": "/cover-assets/gpt-image/dark-avenues.jpg",
+          "cached": false,
+          "cost": 0.17049
+        }
+      }
+    },
+    {
+      "id": "golden-key",
+      "title": "Золотой ключик, или Приключения Буратино",
+      "author": "Алексей Толстой",
+      "background": "clear muted turquoise, playful and distinctly blue-green",
+      "subject": "A playful adventure about a lively wooden boy, friendship, theatre and a small key that opens a hidden possibility. Central visual metaphor: a radically simplified golden key assembled from a circle and two rectangles. Mood: mischievous, theatrical and bright.",
+      "outputs": {
+        "nano-banana": {
+          "status": "ready",
+          "path": "/cover-assets/nano-banana/golden-key.jpg",
+          "cached": false,
+          "cost": 0.069302
+        },
+        "gpt-image": {
+          "status": "ready",
+          "path": "/cover-assets/gpt-image/golden-key.jpg",
+          "cached": false,
+          "cost": 0.17057
+        }
+      }
+    },
+    {
+      "id": "twelve-chairs",
+      "title": "Двенадцать стульев",
+      "author": "Илья Ильф и Евгений Петров",
+      "background": "pale mint green, clearly green rather than cream",
+      "subject": "A satirical chase through 1920s Soviet life in search of jewels hidden inside one chair. Central visual metaphor: a rhythm of twelve identical rectangular modules with one sharply displaced. Mood: brisk, absurd and opportunistic.",
+      "outputs": {
+        "nano-banana": {
+          "status": "ready",
+          "path": "/cover-assets/nano-banana/twelve-chairs.jpg",
+          "cached": false,
+          "cost": 0.0693275
+        },
+        "gpt-image": {
+          "status": "ready",
+          "path": "/cover-assets/gpt-image/twelve-chairs.jpg",
+          "cached": false,
+          "cost": 0.17056
+        }
+      }
+    },
+    {
+      "id": "three-sisters",
+      "title": "Три сестры",
+      "author": "Антон Чехов",
+      "background": "faded coral pink",
+      "subject": "A play about three sisters longing for another life while time quietly passes in a provincial town. Central visual metaphor: three elongated ovals at different depths, connected by one thin horizontal. Mood: dusky, suspended and tenderly unresolved.",
+      "outputs": {
+        "nano-banana": {
+          "status": "ready",
+          "path": "/cover-assets/nano-banana/three-sisters.png",
+          "cached": false,
+          "cost": 0.067791
+        },
+        "gpt-image": {
+          "status": "ready",
+          "path": "/cover-assets/gpt-image/three-sisters.jpg",
+          "cached": false,
+          "cost": 0.170485
+        }
+      }
+    },
+    {
+      "id": "seagull",
+      "title": "Чайка",
+      "author": "Антон Чехов",
+      "background": "cool pale seafoam green",
+      "subject": "A play about art, ambition, unreturned love and the harm people cause while trying to be seen. Central visual metaphor: a single white wing-shaped cut crossing a heavy black disc. Mood: lakeside, fragile and sharply tragic.",
+      "outputs": {
+        "nano-banana": {
+          "status": "ready",
+          "path": "/cover-assets/nano-banana/seagull.png",
+          "cached": false,
+          "cost": 0.067792
+        },
+        "gpt-image": {
+          "status": "ready",
+          "path": "/cover-assets/gpt-image/seagull.jpg",
+          "cached": false,
+          "cost": 0.170485
+        }
+      }
+    },
+    {
+      "id": "cherry-orchard",
+      "title": "Вишнёвый сад",
+      "author": "Антон Чехов",
+      "background": "soft cherry-blossom pink, luminous but not white",
+      "subject": "A play about beauty, debt, social change and a family unable to prevent the loss of its estate. Central visual metaphor: a fragile cluster of pale blossom-circles cut by a rigid vertical. Mood: luminous, nostalgic and already disappearing.",
+      "outputs": {
+        "nano-banana": {
+          "status": "ready",
+          "path": "/cover-assets/nano-banana/cherry-orchard.png",
+          "cached": false,
+          "cost": 0.067797
+        },
+        "gpt-image": {
+          "status": "ready",
+          "path": "/cover-assets/gpt-image/cherry-orchard.jpg",
+          "cached": false,
+          "cost": 0.17054
+        }
+      }
+    },
+    {
+      "id": "thunderstorm",
+      "title": "Гроза",
+      "author": "Александр Островский",
+      "background": "stormy medium blue-grey, clearly blue and dramatic",
+      "subject": "A drama about confinement, desire, public morality and a young woman's resolve in a nineteenth-century Volga merchant town. Central visual metaphor: a massive broken black wedge tearing through a compressed horizontal grid. Mood: electrically charged, oppressive and defiant.",
+      "outputs": {
+        "nano-banana": {
+          "status": "ready",
+          "path": "/cover-assets/nano-banana/thunderstorm.jpg",
+          "cached": false,
+          "cost": 0.0692525
+        },
+        "gpt-image": {
+          "status": "ready",
+          "path": "/cover-assets/gpt-image/thunderstorm.jpg",
+          "cached": false,
+          "cost": 0.17052
+        }
+      }
+    }
+  ]
+}

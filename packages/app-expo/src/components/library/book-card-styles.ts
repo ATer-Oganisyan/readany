@@ -19,6 +19,7 @@ export const makeStyles = (colors: ThemeColors, cardWidth: number) => {
       overflow: "hidden",
       position: "relative",
     },
+    coverCanvas: { width: "100%", height: "100%", position: "relative" },
     coverImage: { width: "100%", height: "100%" },
     spineOverlay: {
       position: "absolute",

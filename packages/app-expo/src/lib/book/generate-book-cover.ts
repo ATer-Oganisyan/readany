@@ -2,11 +2,12 @@ import { useSettingsStore } from "@/stores/settings-store";
 import type { AIEndpoint } from "@readany/core/types";
 import { providerRequiresApiKey } from "@readany/core/utils";
 import { fetch } from "expo/fetch";
-import { budgetPrompt } from "../narra/art-style";
+import coverGenerationConfig from "./cover-generation-config.json";
 
-const DEFAULT_IMAGE_MODEL = "google/gemini-3.1-flash-lite-image";
-const MAX_CONTEXT_CHARS = 3_000;
-const REQUEST_TIMEOUT_MS = 90_000;
+const DEFAULT_IMAGE_MODEL = coverGenerationConfig.openRouterModel;
+const MAX_THEME_CHARS = 1_200;
+const REQUEST_TIMEOUT_MS = 180_000;
+const COVER_PROMPT_TEMPLATE = coverGenerationConfig.promptParagraphs.join("\n\n");
 
 export interface GeneratedBookCover {
   bytes: Uint8Array;
@@ -53,15 +54,37 @@ export function coverPrompt(input: {
   author?: string;
   description?: string;
   excerpt?: string;
+  metaphor?: string;
+  imageType?: string;
+  accentColor1?: string;
+  accentColor2?: string;
 }) {
-  return budgetPrompt([
-    "Вертикальная обложка книги: единая иллюстрация занимает весь кадр.",
-    "Не иллюстрируй название буквально: передай книгу через настроение, жесты, среду и детали. Композиция выразительная и читается в миниатюре.",
-    "Без текста, надписей, рамок, макетов, корешков и водяных знаков — только сама иллюстрация.",
-    `Книга: «${input.title}». Автор: ${input.author || "неизвестен"}.`,
-    input.description ? `О книге: ${input.description.slice(0, MAX_CONTEXT_CHARS)}` : "",
-    input.excerpt ? `Фрагмент: ${input.excerpt.slice(0, MAX_CONTEXT_CHARS)}` : "",
-  ]);
+  const title = input.title.trim() || "Untitled book";
+  const author = input.author?.trim() || "Unknown author";
+  const themeSource = input.description?.trim() || input.excerpt?.trim();
+  const theme = themeSource
+    ? themeSource.replace(/\s+/gu, " ").slice(0, MAX_THEME_CHARS)
+    : "Infer the central idea, mood, symbols and historical context from the title and author without reproducing their names as text.";
+
+  const colorSeed = Array.from(`${title}:${author}`).reduce(
+    (hash, character) => (hash * 31 + (character.codePointAt(0) || 0)) >>> 0,
+    0,
+  );
+  const backgroundColor =
+    input.accentColor1?.trim() ||
+    coverGenerationConfig.backgroundColors[colorSeed % coverGenerationConfig.backgroundColors.length];
+
+  const replacements: Record<string, string> = {
+    "{{BOOK_TITLE}}": title,
+    "{{AUTHOR}}": author,
+    "{{BOOK_DESCRIPTION}}": theme,
+    "{{BACKGROUND_COLOR}}": backgroundColor,
+  };
+
+  return Object.entries(replacements).reduce(
+    (prompt, [placeholder, value]) => prompt.replaceAll(placeholder, value),
+    COVER_PROMPT_TEMPLATE,
+  );
 }
 
 export async function generateBookCoverWithOpenRouter(input: {
@@ -89,6 +112,9 @@ export async function generateBookCoverWithOpenRouter(input: {
         model,
         prompt: coverPrompt(input),
         aspect_ratio: "2:3",
+        quality: "high",
+        output_format: "jpeg",
+        output_compression: 90,
         n: 1,
       }),
       signal: controller.signal,

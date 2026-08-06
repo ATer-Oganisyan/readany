@@ -4,4 +4,5 @@ export interface NativeThemePickerProps {
   onSelect: (index: number) => void;
   colorScheme: "light" | "dark";
   accessibilityLabel: string;
+  scrollable?: boolean;
 }

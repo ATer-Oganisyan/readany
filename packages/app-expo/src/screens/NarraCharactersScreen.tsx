@@ -1,6 +1,7 @@
 import { type ExtractorRef, ExtractorWebView } from "@/components/rag/ExtractorWebView";
 import { Text } from "@/components/ui/Typography";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
+import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
 import { getBundledCatalogCharactersByTitle } from "@/lib/narra/bundled-catalog-characters";
@@ -288,12 +289,12 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
                       updateCharacter(bookId, character.id, { portraitUri: undefined })
                     }
                   />
-                ) : portraitBusy ? (
-                  <ActivityIndicator color={colors.primaryForeground} />
                 ) : (
-                  <Text style={styles.avatarLetter}>
-                    {character.name.slice(0, 1).toUpperCase()}
-                  </Text>
+                  <InitialsAvatar
+                    size={56}
+                    userId={`${bookId}:${character.id}`}
+                    name={character.fullName || character.name}
+                  />
                 )}
                 {portraitBusy && character.portraitUri ? (
                   <View style={styles.avatarOverlay}>
@@ -326,11 +327,6 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
                       <Text style={styles.characterDescription} numberOfLines={1}>
                         {character.role}
                       </Text>
-                      {character.traits.length > 0 ? (
-                        <Text style={styles.characterDescription} numberOfLines={1}>
-                          {character.traits.join(", ")}
-                        </Text>
-                      ) : null}
                     </View>
                   </TouchableOpacity>
                 ) : (
@@ -468,11 +464,6 @@ const makeStyles = (colors: ThemeColors) =>
       alignItems: "center",
       justifyContent: "center",
       backgroundColor: colors.elevation2,
-    },
-    avatarLetter: {
-      color: colors.primaryForeground,
-      fontSize: fontSize.xl,
-      fontWeight: fontWeight.bold,
     },
     characterCopy: { flex: 1, gap: 2 },
     characterName: {

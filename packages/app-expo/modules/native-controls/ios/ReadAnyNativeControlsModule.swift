@@ -1,4 +1,5 @@
 import ExpoModulesCore
+import SwiftUI
 import UIKit
 
 public final class ReadAnyNativeControlsModule: Module {
@@ -64,7 +65,7 @@ public final class ReadAnyNativeControlsModule: Module {
       Prop("settingsLabel") { (view, value: String) in view.settingsLabel = value }
 
       OnViewDidUpdateProps { view in
-        view.updateConfiguration()
+        view.applyProps()
       }
     }
 
@@ -88,12 +89,18 @@ public final class ReadAnyNativeControlsModule: Module {
 
     View(ReadAnySheetNavigationBar.self) {
       Events("onClosePress")
+      Prop("title") { (view, value: String) in view.title = value }
+      Prop("closeAccessibilityLabel") { (view, value: String) in
+        view.closeAccessibilityLabel = value
+      }
       Prop("isDark") { (view, value: Bool) in view.isDark = value }
 
       OnViewDidUpdateProps { view in
         view.updateConfiguration()
       }
     }
+
+    View(ReadAnyNavigationStack.self)
 
   }
 }
@@ -216,6 +223,7 @@ final class ReadAnyReaderToolbar: ExpoView {
 
     toolbar.translatesAutoresizingMaskIntoConstraints = false
     toolbar.isTranslucent = true
+    toolbar.alpha = 0
     addSubview(toolbar)
 
     NSLayoutConstraint.activate([
@@ -225,7 +233,6 @@ final class ReadAnyReaderToolbar: ExpoView {
       toolbar.trailingAnchor.constraint(equalTo: trailingAnchor)
     ])
 
-    updateConfiguration()
   }
 
   @objc private func handleSpeechPress() {
@@ -242,6 +249,14 @@ final class ReadAnyReaderToolbar: ExpoView {
 
   @objc private func handleSettingsPress() {
     onSettingsPress()
+  }
+
+  func applyProps() {
+    UIView.performWithoutAnimation {
+      updateConfiguration()
+      layoutIfNeeded()
+      toolbar.alpha = 1
+    }
   }
 
   func updateConfiguration() {
@@ -421,13 +436,59 @@ final class ReadAnyTTSPlayerToolbar: ExpoView {
   }
 }
 
+public final class ReadAnyNavigationStackProps: ExpoSwiftUI.ViewProps {
+  @Field var title = ""
+  @Field var closeAccessibilityLabel = "Закрыть"
+  var onClosePress = EventDispatcher()
+}
+
+public struct ReadAnyNavigationStack: ExpoSwiftUI.View {
+  @ObservedObject public var props: ReadAnyNavigationStackProps
+
+  public init(props: ReadAnyNavigationStackProps) {
+    self.props = props
+  }
+
+  public var body: some SwiftUI.View {
+    if #available(iOS 16.0, *) {
+      NavigationStack {
+        navigationContent
+      }
+    } else {
+      NavigationView {
+        navigationContent
+      }
+      .navigationViewStyle(.stack)
+    }
+  }
+
+  private var navigationContent: some SwiftUI.View {
+    Children()
+      .navigationTitle(props.title)
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .navigationBarTrailing) {
+          SwiftUI.Button {
+            props.onClosePress()
+          } label: {
+            Image(systemName: "xmark")
+          }
+          .accessibilityLabel(props.closeAccessibilityLabel)
+        }
+      }
+  }
+}
+
 final class ReadAnySheetNavigationBar: ExpoView {
   let onClosePress = EventDispatcher()
 
+  var title = ""
+  var closeAccessibilityLabel = "Закрыть"
   var isDark = true
 
   private let navigationBar = UINavigationBar()
   private let navigationItem = UINavigationItem()
+  private var closeItem: UIBarButtonItem!
 
   required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
@@ -445,12 +506,12 @@ final class ReadAnySheetNavigationBar: ExpoView {
       navigationBar.trailingAnchor.constraint(equalTo: trailingAnchor)
     ])
 
-    let closeItem = UIBarButtonItem(
+    navigationBar.prefersLargeTitles = false
+    closeItem = UIBarButtonItem(
       barButtonSystemItem: .close,
       target: self,
       action: #selector(handleClosePress)
     )
-    closeItem.accessibilityLabel = "Закрыть озвучку"
     navigationItem.rightBarButtonItem = closeItem
     navigationBar.setItems([navigationItem], animated: false)
     updateConfiguration()
@@ -462,11 +523,18 @@ final class ReadAnySheetNavigationBar: ExpoView {
 
   func updateConfiguration() {
     overrideUserInterfaceStyle = isDark ? .dark : .light
+    navigationBar.overrideUserInterfaceStyle = isDark ? .dark : .light
+    navigationItem.title = title
+    closeItem.accessibilityLabel = closeAccessibilityLabel
 
     if #available(iOS 15.0, *) {
       let appearance = UINavigationBarAppearance()
-      appearance.configureWithTransparentBackground()
-      appearance.shadowColor = .clear
+      appearance.configureWithOpaqueBackground()
+      appearance.backgroundColor = isDark ? .black : .systemBackground
+      appearance.titleTextAttributes = [
+        .foregroundColor: isDark ? UIColor.white : UIColor.label
+      ]
+      navigationBar.tintColor = isDark ? .white : .label
       navigationBar.standardAppearance = appearance
       navigationBar.scrollEdgeAppearance = appearance
       navigationBar.compactAppearance = appearance

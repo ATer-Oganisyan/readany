@@ -1,8 +1,9 @@
-import { Text } from "@/components/ui/Typography";
-import { radius, useColors } from "@/styles/theme";
+import { useColors } from "@/styles/theme";
 import { useTranslation } from "react-i18next";
-import { ActivityIndicator, Image, StyleSheet, TouchableOpacity, View } from "react-native";
+import { Image, View } from "react-native";
 import { makeStyles } from "./book-card-styles";
+import { BookCoverTypography } from "./book-cover-typography";
+import { PerspectiveBook } from "./perspective-book";
 
 interface CatalogBookCardProps {
   title: string;
@@ -28,48 +29,23 @@ export function CatalogBookCard({
   const { t } = useTranslation();
 
   return (
-    <TouchableOpacity
-      accessibilityRole="button"
+    <PerspectiveBook
+      width={cardWidth}
+      height={cardWidth * (41 / 28)}
       accessibilityLabel={title}
       accessibilityHint={
         isInLibrary
           ? t("notes.openBook", "Открыть книгу")
           : t("library.catalogAdd", "Добавить в библиотеку")
       }
-      activeOpacity={0.7}
       disabled={isImporting}
       onPress={onPress}
-      style={styles.container}
-    >
-      <View style={[styles.coverWrap, localStyles.coverWrapRounded]}>
-        <Image source={coverAssetModule} style={styles.coverImage} resizeMode="cover" />
-
-        {isImporting ? (
-          <View style={localStyles.loadingOverlay}>
-            <ActivityIndicator color="#fff" />
-          </View>
-        ) : null}
-      </View>
-
-      <View style={styles.infoWrap}>
-        <Text style={styles.bookTitle} numberOfLines={1}>
-          {title}
-        </Text>
-        <Text style={styles.bookAuthor} numberOfLines={1}>
-          {author}
-        </Text>
-      </View>
-    </TouchableOpacity>
+      cover={
+        <View style={styles.coverCanvas}>
+          <Image source={coverAssetModule} style={styles.coverImage} resizeMode="cover" />
+          <BookCoverTypography title={title} author={author} width={cardWidth} />
+        </View>
+      }
+    />
   );
 }
-
-const localStyles = StyleSheet.create({
-  // Скругление обложек каталога — как у остальных обложек приложения (radius из темы)
-  coverWrapRounded: { borderRadius: radius.sm },
-  loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.38)",
-  },
-});

@@ -23,7 +23,12 @@ if (typeof navigator !== "undefined" && !navigator.userAgent) {
   });
 }
 
-import { interfaceFontAssets, serifTextFontAssets } from "@deslop/primitives/native";
+import {
+  interfaceFontAssets,
+  sansCondensedFontAssets,
+  serifCondensedFontAssets,
+  serifTextFontAssets,
+} from "@deslop/primitives/native";
 import { DarkTheme, DefaultTheme, NavigationContainer } from "@react-navigation/native";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
@@ -50,7 +55,6 @@ import TrackPlayer, {
 } from "react-native-track-player";
 
 import { CatalogCharacterPortraitPreloader } from "@/components/catalog/CatalogCharacterPortraitPreloader";
-import { AnimatedSplash } from "@/components/splash/AnimatedSplash";
 import { UpdateDialog } from "@/components/update/UpdateDialog";
 import { useUpdateChecker } from "@/hooks/use-update-checker";
 import { startTelemetry } from "@/lib/analytics/telemetry";
@@ -87,21 +91,17 @@ export default function App() {
   const systemColorScheme = useColorScheme();
   const [fontsLoaded, fontError] = useFonts({
     ...interfaceFontAssets,
+    "SB Sans Text Cond": sansCondensedFontAssets.regular,
+    "SB Sans Text Cond Bold": sansCondensedFontAssets.bold,
+    "SB Serif Condensed": serifCondensedFontAssets.regular,
     "SB Serif Text": serifTextFontAssets.regular,
     "SB Serif Text Bold": serifTextFontAssets.bold,
   });
   const [ready, setReady] = useState(false);
   const [bootError, setBootError] = useState<string | null>(null);
   const [initialThemeMode, setInitialThemeMode] = useState<ThemeMode | null>(null);
-  const [splashFinished, setSplashFinished] = useState(false);
 
   useEffect(() => startTelemetry(), []);
-
-  // The first React frame contains the same centered artwork as the native
-  // launch screen, so it is safe to reveal the animated handoff immediately.
-  useEffect(() => {
-    SplashScreen.hideAsync().catch(() => {});
-  }, []);
 
   useEffect(() => {
     async function bootstrap() {
@@ -232,9 +232,11 @@ export default function App() {
 
   const startupError = bootError ?? fontError?.message ?? null;
   const appReady = startupError !== null || (ready && fontsLoaded && initialThemeMode !== null);
-  const splash = splashFinished ? null : (
-    <AnimatedSplash appReady={appReady} onFinish={() => setSplashFinished(true)} />
-  );
+
+  useEffect(() => {
+    if (!appReady) return;
+    SplashScreen.hideAsync().catch(() => {});
+  }, [appReady]);
 
   if (startupError) {
     return (
@@ -267,7 +269,6 @@ export default function App() {
             {startupError}
           </Text>
         </View>
-        {splash}
       </View>
     );
   }
@@ -281,10 +282,7 @@ export default function App() {
           alignItems: "center",
           backgroundColor: systemColorScheme === "dark" ? "#000000" : "#FFFFFF",
         }}
-      >
-        {/* Background matches the native launch screen so transition is seamless. */}
-        {splash}
-      </View>
+      />
     );
   }
 
@@ -300,7 +298,6 @@ export default function App() {
           <AppInner />
         </ThemeProvider>
       </I18nextProvider>
-      {splash}
     </View>
   );
 }

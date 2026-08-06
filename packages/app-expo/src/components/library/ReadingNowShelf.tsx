@@ -1,32 +1,32 @@
 import { Text } from "@/components/ui/Typography";
 import { findBundledCatalogBookByTitle } from "@/lib/catalog/bundled-books";
 import { useResolvedCovers } from "@/screens/notes/useResolvedCovers";
-import { type ThemeColors, fontSize, fontWeight, radius, spacing, useColors } from "@/styles/theme";
+import { type ThemeColors, fontSize, fontWeight, spacing, useColors } from "@/styles/theme";
 import type { Book } from "@readany/core/types";
-import { LinearGradient } from "expo-linear-gradient";
 /**
- * ReadingNowShelf — секция «Читаю сейчас» в библиотеке: горизонтальный ряд книг
- * с прогрессом чтения (0 < progress < 1), отсортированных по lastOpenedAt.
- * У обложек — эффект «скрученного уголка» страницы (page curl) в правом нижнем углу.
+ * ReadingNowShelf — секция «Читаю сейчас» в библиотеке: нативный горизонтальный
+ * ряд книг, отсортированных по lastOpenedAt.
  */
 import { memo, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Image, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
+import { Image, ScrollView, StyleSheet, View } from "react-native";
+import { BookCoverTypography } from "./book-cover-typography";
+import { PerspectiveBook } from "./perspective-book";
 
 const CARD_WIDTH = 104;
 const COVER_HEIGHT = Math.round(CARD_WIDTH * (41 / 28));
-const CURL_SIZE = Math.round(CARD_WIDTH * 0.34);
-
-/** Цвета «бумаги» отвёрнутого уголка: от светлого сгиба к затенённому краю. */
-const CURL_PAPER_COLORS = ["#fbfaf5", "#ece9de", "#d3cfc0"] as const;
 
 interface ReadingNowShelfProps {
   books: Book[];
+  edgeInset: number;
+  catalogCardWidth: number;
   onOpen: (book: Book) => void;
 }
 
 export const ReadingNowShelf = memo(function ReadingNowShelf({
   books,
+  edgeInset,
+  catalogCardWidth,
   onOpen,
 }: ReadingNowShelfProps) {
   const colors = useColors();
@@ -44,63 +44,57 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
   return (
     <View style={s.section}>
       <Text style={s.sectionTitle}>{t("library.readingNow", "Читаю сейчас")}</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.row}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        alwaysBounceHorizontal={books.length > 1}
+        contentInsetAdjustmentBehavior="never"
+        removeClippedSubviews={false}
+        style={[s.carousel, { marginHorizontal: -edgeInset }]}
+        contentContainerStyle={[s.row, { paddingHorizontal: edgeInset }]}
+      >
         {books.map((book) => {
-          const progressPercent = Math.min(100, Math.round((book.progress ?? 0) * 100));
           const coverUri = covers.get(book.id);
           const bundledCatalogBook = coverUri
             ? undefined
             : findBundledCatalogBookByTitle(book.meta.title);
           return (
-            <TouchableOpacity
+            <PerspectiveBook
               key={book.id}
-              style={s.card}
+              width={CARD_WIDTH}
+              height={COVER_HEIGHT}
               onPress={() => onOpen(book)}
-              activeOpacity={0.7}
-              accessibilityRole="button"
               accessibilityLabel={book.meta.title}
-              accessibilityHint={t("library.readingProgress", {
-                percent: progressPercent,
-                defaultValue: "Прочитано {{percent}}%",
-              })}
-            >
-              <View style={s.coverWrap}>
-                {coverUri ? (
-                  <Image source={{ uri: coverUri }} style={s.coverImage} resizeMode="cover" />
-                ) : bundledCatalogBook ? (
-                  <Image
-                    source={bundledCatalogBook.coverAssetModule}
-                    style={s.coverImage}
-                    resizeMode="cover"
+              accessibilityHint={t("notes.openBook", "Открыть книгу")}
+              cover={
+                <View style={s.coverCanvas}>
+                  {coverUri ? (
+                    <Image source={{ uri: coverUri }} style={s.coverImage} resizeMode="cover" />
+                  ) : bundledCatalogBook ? (
+                    <Image
+                      source={bundledCatalogBook.coverAssetModule}
+                      style={s.coverImage}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={s.fallbackCover} />
+                  )}
+                  <BookCoverTypography
+                    title={book.meta.title}
+                    author={book.meta.author}
+                    width={CARD_WIDTH}
+                    referenceWidth={catalogCardWidth}
                   />
-                ) : (
-                  <View style={s.fallbackCover}>
-                    <Text style={s.fallbackTitle} numberOfLines={4}>
-                      {book.meta.title}
-                    </Text>
-                  </View>
-                )}
-                {/* Page curl: тень под отвёрнутым уголком… */}
-                <View style={s.curlShadow} pointerEvents="none" />
-                {/* …и сама «бумага» уголка градиентом, обрезается рамкой обложки */}
-                <LinearGradient
-                  colors={CURL_PAPER_COLORS}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={s.curlPage}
-                  pointerEvents="none"
-                />
-              </View>
-              <Text style={s.cardTitle} numberOfLines={1} ellipsizeMode="tail">
-                {book.meta.title}
-              </Text>
-              <View style={s.progressRow}>
-                <View style={s.progressTrack}>
-                  <View style={[s.progressFill, { width: `${progressPercent}%` }]} />
                 </View>
-                <Text style={s.progressLabel}>{progressPercent}%</Text>
-              </View>
-            </TouchableOpacity>
+              }
+              footer={
+                <View style={s.cardFooter}>
+                  <Text style={[s.cardText, s.cardProgress]} numberOfLines={1}>
+                    {`${Math.round(Math.max(0, Math.min(1, book.progress ?? 0)) * 100)}%`}
+                  </Text>
+                </View>
+              }
+            />
           );
         })}
       </ScrollView>
@@ -113,20 +107,14 @@ const makeStyles = (colors: ThemeColors) =>
     section: { marginBottom: spacing.xxl },
     sectionTitle: {
       color: colors.foreground,
-      fontSize: fontSize.xl,
+      fontSize: fontSize.lg,
+      lineHeight: 24,
       fontWeight: fontWeight.bold,
       marginBottom: spacing.lg,
     },
-    row: { gap: spacing.lg, paddingRight: spacing.sm },
-    card: { width: CARD_WIDTH },
-    coverWrap: {
-      width: CARD_WIDTH,
-      height: COVER_HEIGHT,
-      borderRadius: radius.sm,
-      overflow: "hidden",
-      position: "relative",
-      backgroundColor: colors.elevation2,
-    },
+    carousel: { overflow: "visible" },
+    row: { gap: spacing.lg },
+    coverCanvas: { width: "100%", height: "100%", position: "relative" },
     coverImage: { width: "100%", height: "100%" },
     fallbackCover: {
       flex: 1,
@@ -134,60 +122,19 @@ const makeStyles = (colors: ThemeColors) =>
       padding: spacing.md,
       backgroundColor: colors.primary10,
     },
-    fallbackTitle: {
-      fontSize: fontSize.sm,
-      fontWeight: fontWeight.bold,
-      color: colors.primary30,
-      lineHeight: 18,
-    },
-    // Квадрат, повернутый на 45° с центром в правом нижнем углу обложки:
-    // видимая внутри рамки половина выглядит как отвёрнутый уголок страницы.
-    curlShadow: {
-      position: "absolute",
-      right: -CURL_SIZE / 2,
-      bottom: -CURL_SIZE / 2,
-      width: CURL_SIZE + 8,
-      height: CURL_SIZE + 8,
-      backgroundColor: "rgba(0,0,0,0.28)",
-      transform: [{ rotate: "45deg" }],
-      borderRadius: 3,
-    },
-    curlPage: {
-      position: "absolute",
-      right: -CURL_SIZE / 2,
-      bottom: -CURL_SIZE / 2,
-      width: CURL_SIZE,
-      height: CURL_SIZE,
-      transform: [{ rotate: "45deg" }],
-      borderRadius: 2,
-    },
-    cardTitle: {
+    cardFooter: {
       marginTop: 6,
+      alignItems: "flex-start",
+    },
+    cardText: {
       fontSize: 13,
       fontWeight: fontWeight.semibold,
-      color: colors.foreground,
       lineHeight: 18,
     },
-    progressRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: spacing.xs + 2,
-      marginTop: spacing.xs,
-    },
-    progressTrack: {
-      flex: 1,
-      height: 4,
-      borderRadius: radius.full,
-      backgroundColor: colors.primary10,
-      overflow: "hidden",
-    },
-    progressFill: { height: "100%", borderRadius: radius.full, backgroundColor: colors.primary },
-    progressLabel: {
+    cardProgress: {
+      flexShrink: 0,
       color: colors.mutedForeground,
-      fontSize: fontSize.xs,
-      fontWeight: fontWeight.medium,
+      textAlign: "left",
       fontVariant: ["tabular-nums"],
-      minWidth: 34,
-      textAlign: "right",
     },
   });

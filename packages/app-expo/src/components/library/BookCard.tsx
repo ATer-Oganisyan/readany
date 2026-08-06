@@ -1,4 +1,3 @@
-import { ClockIcon, Loader2Icon } from "@/components/ui/Icon";
 import { Text } from "@/components/ui/Typography";
 import { findBundledCatalogBookByTitle } from "@/lib/catalog/bundled-books";
 import { useColors } from "@/styles/theme";
@@ -8,43 +7,17 @@ import { getPlatformService } from "@readany/core/services";
  * Cover (28:41), vectorization overlay, long-press action sheet.
  */
 import type { Book } from "@readany/core/types";
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Animated, Easing, Image, TouchableOpacity, View } from "react-native";
+import { Image, TouchableOpacity, View } from "react-native";
 import { BookCardActionSheet } from "./BookCardActionSheet";
 import { makeStyles } from "./book-card-styles";
-
-const AnimatedLoader = () => {
-  const spinValue = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.loop(
-      Animated.timing(spinValue, {
-        toValue: 1,
-        duration: 1000,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-    ).start();
-  }, [spinValue]);
-
-  const spin = spinValue.interpolate({
-    inputRange: [0, 1],
-    outputRange: ["0deg", "360deg"],
-  });
-
-  return (
-    <Animated.View style={{ transform: [{ rotate: spin }] }}>
-      <Loader2Icon size={24} color="#fff" />
-    </Animated.View>
-  );
-};
+import { BookCoverTypography } from "./book-cover-typography";
 
 interface BookCardProps {
   book: Book;
   onOpen: (book: Book) => void;
   onDelete: (bookId: string, options?: { preserveData?: boolean }) => void;
-  onShowDetails?: (book: Book) => void;
   onManageTags?: (book: Book) => void;
   onVectorize?: (book: Book) => void;
   isVectorizing?: boolean;
@@ -62,10 +35,6 @@ export const BookCard = memo(function BookCard({
   book,
   onOpen,
   onDelete,
-  isVectorizing,
-  isQueued,
-  vectorProgress,
-  downloadProgress,
   cardWidth = 96,
 }: BookCardProps) {
   const colors = useColors();
@@ -99,12 +68,6 @@ export const BookCard = memo(function BookCard({
       }
     })();
   }, [book.meta.coverUrl]);
-
-  const vecPct = vectorProgress
-    ? vectorProgress.totalChunks > 0
-      ? Math.round((vectorProgress.processedChunks / vectorProgress.totalChunks) * 100)
-      : 0
-    : 0;
 
   const readingPct = Math.min(100, Math.round((book.progress ?? 0) * 100));
 
@@ -158,40 +121,10 @@ export const BookCard = memo(function BookCard({
             resizeMode="cover"
           />
         ) : (
-          <View style={s.fallbackCover}>
-            <Text style={s.fallbackTitle} numberOfLines={6}>
-              {book.meta.title}
-            </Text>
-          </View>
+          <View style={s.fallbackCover} />
         )}
 
-        {/* Vectorization progress overlay */}
-        {isVectorizing && (
-          <View style={s.vecOverlay}>
-            <AnimatedLoader />
-            <Text style={s.vecOverlayText}>
-              {vectorProgress?.status === "chunking"
-                ? `${vecPct}%`
-                : vectorProgress?.status === "embedding"
-                  ? `${vecPct}%`
-                  : vectorProgress?.status === "indexing"
-                    ? t("home.vec_indexing")
-                    : vectorProgress?.status === "completed"
-                      ? "✓"
-                      : vectorProgress?.status === "error"
-                        ? "✗"
-                        : t("home.vec_processing")}
-            </Text>
-          </View>
-        )}
-
-        {/* Queued overlay */}
-        {isQueued && !isVectorizing && (
-          <View style={s.queuedOverlay}>
-            <ClockIcon size={20} color="#fff" />
-            <Text style={s.queuedOverlayText}>{t("home.vec_queued", "排队中")}</Text>
-          </View>
-        )}
+        <BookCoverTypography title={book.meta.title} author={book.meta.author} width={cardWidth} />
 
         {/* Remote status overlay (on-demand download) */}
         {book.syncStatus === "remote" && (
@@ -200,34 +133,12 @@ export const BookCard = memo(function BookCard({
           </View>
         )}
 
-        {/* Downloading status overlay */}
-        {book.syncStatus === "downloading" && (
-          <View style={s.downloadingOverlay}>
-            <AnimatedLoader />
-            <Text style={s.downloadingOverlayText}>{t("home.downloading", "下载中")}</Text>
-            {downloadProgress && downloadProgress.total > 0 && (
-              <Text style={s.downloadingOverlayPct}>
-                {Math.round((downloadProgress.downloaded / downloadProgress.total) * 100)}%
-              </Text>
-            )}
-          </View>
-        )}
-
         <BookCardActionSheet book={book} onOpen={onOpen} onDelete={onDelete} />
       </View>
 
-      {/* Info below cover */}
-      <View style={s.infoWrap}>
-        <Text style={s.bookTitle} numberOfLines={1} ellipsizeMode="tail">
-          {book.meta.title}
-        </Text>
-        {book.meta.author ? (
-          <Text style={s.bookAuthor} numberOfLines={1}>
-            {book.meta.author}
-          </Text>
-        ) : null}
-        {/* Прогресс чтения: полоска + процент (book.progress — доля 0–1 из library-store) */}
-        {readingPct > 0 ? (
+      {/* Прогресс чтения: полоска + процент (book.progress — доля 0–1 из library-store) */}
+      {readingPct > 0 ? (
+        <View style={s.infoWrap}>
           <View
             style={s.progressRow}
             accessibilityLabel={t("library.readingProgress", {
@@ -240,8 +151,8 @@ export const BookCard = memo(function BookCard({
             </View>
             <Text style={s.progressText}>{readingPct}%</Text>
           </View>
-        ) : null}
-      </View>
+        </View>
+      ) : null}
     </TouchableOpacity>
   );
 });

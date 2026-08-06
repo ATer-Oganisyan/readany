@@ -1,6 +1,5 @@
 import { MissingBookPrompt } from "@/components/shared/MissingBookPrompt";
 import BadgesScreen from "@/screens/BadgesScreen";
-import { BookDetailsScreen } from "@/screens/BookDetailsScreen";
 import { ChatScreen } from "@/screens/ChatScreen";
 import { FullScreenNotesScreen } from "@/screens/FullScreenNotesScreen";
 import { ManualNoteScreen } from "@/screens/ManualNoteScreen";
@@ -40,8 +39,13 @@ import { NATIVE_SCROLL_EDGE_EFFECTS } from "./scroll-edge-effects";
 export type RootStackParamList = {
   Tabs: undefined;
   Chat: undefined;
-  Reader: { bookId: string; cfi?: string; highlight?: boolean; openTTS?: boolean };
-  BookDetails: { bookId: string };
+  Reader: {
+    bookId: string;
+    catalogBookId?: string;
+    cfi?: string;
+    highlight?: boolean;
+    openTTS?: boolean;
+  };
   BookChat: { bookId: string; selectedText?: string; chapterTitle?: string };
   NarraCharacters: { bookId: string };
   NarraCharacterChat: { bookId: string; characterId: string };
@@ -137,14 +141,6 @@ export function RootNavigator() {
             headerShown: false,
             statusBarAnimation: "fade",
             statusBarHidden: true,
-          }}
-        />
-        <Stack.Screen
-          name="BookDetails"
-          component={BookDetailsScreen}
-          options={{
-            animation: "slide_from_right",
-            title: t("library.detailsTitle", "О книге"),
           }}
         />
         <Stack.Screen

@@ -9,39 +9,20 @@ import { READER_PAGE_THEMES } from "@/lib/reader/reader-themes";
 import { useNarraStore } from "@/stores";
 import { useColors } from "@/styles/theme";
 import { useFontStore } from "@readany/core/stores";
-import { type RubyMode, useRubyStore } from "@readany/core/stores/ruby-store";
 import type { ReadSettings } from "@readany/core/types";
-import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  ActivityIndicator,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { Modal, Platform, Pressable, ScrollView, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { makeStyles } from "./reader-styles";
 
 interface Props {
   visible: boolean;
   readSettings: ReadSettings;
-  bookId?: string;
   onClose: () => void;
   onUpdateSetting: <K extends keyof ReadSettings>(key: K, value: ReadSettings[K]) => void;
-  onRubyModeChange?: (mode: RubyMode) => void;
 }
 
-export function ReaderSettingsPanel({
-  visible,
-  readSettings,
-  bookId,
-  onClose,
-  onUpdateSetting,
-  onRubyModeChange,
-}: Props) {
+export function ReaderSettingsPanel({ visible, readSettings, onClose, onUpdateSetting }: Props) {
   const colors = useColors();
   const s = makeStyles(colors);
   const insets = useSafeAreaInsets();
@@ -60,7 +41,6 @@ export function ReaderSettingsPanel({
     viewMode: settingViewMode,
     volumeButtonsPageTurn,
     showTopTitleProgress,
-    followSystemFontScale,
   } = readSettings;
 
   return (
@@ -306,39 +286,8 @@ export function ReaderSettingsPanel({
               </Text>
             </TouchableOpacity>
           </View>
-          <View style={s.settingRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={s.settingLabel}>
-                {t("settings.followSystemFontScale", "跟随系统字号")}
-              </Text>
-              <Text style={[s.settingLabel, { fontSize: 11, opacity: 0.6, marginTop: 2 }]}>
-                {t("settings.followSystemFontScaleDesc", "按系统辅助功能字号自动放大")}
-              </Text>
-            </View>
-            <TouchableOpacity
-              style={[s.settingToggleBtn, !!followSystemFontScale && s.settingToggleBtnActive]}
-              onPress={() => onUpdateSetting("followSystemFontScale", !followSystemFontScale)}
-            >
-              <Text
-                style={[s.settingToggleText, !!followSystemFontScale && s.settingToggleTextActive]}
-              >
-                {followSystemFontScale ? t("settings.enabled") : t("settings.disabled")}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
           {/* Частота врезок «нарисовать сцену» */}
           <SceneFrequencyRow styles={s} />
-
-          {/* Ruby Annotation */}
-          {bookId && (
-            <RubySettingsRow
-              bookId={bookId}
-              colors={colors}
-              styles={s}
-              onModeChange={onRubyModeChange}
-            />
-          )}
         </ScrollView>
       </View>
     </Modal>
@@ -374,120 +323,6 @@ function SceneFrequencyRow({ styles: s }: { styles: ReturnType<typeof makeStyles
           </TouchableOpacity>
         ))}
       </View>
-    </View>
-  );
-}
-
-/** Ruby annotation settings row */
-function RubySettingsRow({
-  bookId,
-  colors,
-  styles: s,
-  onModeChange,
-}: {
-  bookId: string;
-  colors: ReturnType<typeof useColors>;
-  styles: ReturnType<typeof makeStyles>;
-  onModeChange?: (mode: RubyMode) => void;
-}) {
-  const { t } = useTranslation();
-  const dictStatus = useRubyStore((st) => st.dictStates.zh.status);
-  const dictProgress = useRubyStore((st) => st.dictStates.zh.progress);
-  const currentMode = useRubyStore((st) => st.bookRubySettings[bookId] ?? null);
-  const setBookRuby = useRubyStore((st) => st.setBookRuby);
-  const [downloading, setDownloading] = useState(false);
-
-  const zhReady = dictStatus === "ready";
-
-  const handleDownload = useCallback(async () => {
-    setDownloading(true);
-    try {
-      const { downloadChineseDictMobile } = await import("@/lib/ruby/dict-service-mobile");
-      await downloadChineseDictMobile();
-    } catch (err) {
-      console.error("[Ruby] Download failed:", err);
-    } finally {
-      setDownloading(false);
-    }
-  }, []);
-
-  const handleDelete = useCallback(async () => {
-    try {
-      const { deleteChineseDictMobile } = await import("@/lib/ruby/dict-service-mobile");
-      await deleteChineseDictMobile();
-    } catch (err) {
-      console.error("[Ruby] Delete failed:", err);
-    }
-  }, []);
-
-  const handleModeChange = useCallback(
-    (mode: RubyMode) => {
-      setBookRuby(bookId, mode);
-      onModeChange?.(mode);
-    },
-    [bookId, setBookRuby, onModeChange],
-  );
-
-  const modes: Array<{ value: RubyMode; label: string }> = [
-    { value: null, label: t("ruby.off", "关闭") },
-    { value: "zh-pinyin", label: t("ruby.pinyin", "拼音") },
-    { value: "zh-zhuyin", label: t("ruby.zhuyin", "注音") },
-  ];
-
-  return (
-    <View style={[s.settingRow, { flexDirection: "column", alignItems: "stretch", gap: 10 }]}>
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 12,
-        }}
-      >
-        <View style={{ flex: 1 }}>
-          <Text style={s.settingLabel}>{t("ruby.title", "注音")}</Text>
-          <Text style={[s.settingLabel, { fontSize: 11, opacity: 0.6, marginTop: 2 }]}>
-            {t("ruby.desc", "在汉字上方显示拼音读音")}
-          </Text>
-        </View>
-        {!zhReady ? (
-          <TouchableOpacity
-            style={[s.settingToggleBtn, s.settingToggleBtnActive]}
-            disabled={downloading || dictStatus === "downloading"}
-            onPress={handleDownload}
-          >
-            {downloading || dictStatus === "downloading" ? (
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                <ActivityIndicator size="small" color={colors.primaryForeground} />
-                <Text style={s.settingToggleTextActive}>
-                  {dictProgress ? `${dictProgress}%` : "..."}
-                </Text>
-              </View>
-            ) : (
-              <Text style={s.settingToggleTextActive}>{t("ruby.download", "下载")}</Text>
-            )}
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity style={s.settingToggleBtn} onPress={handleDelete}>
-            <Text style={s.settingToggleText}>{t("common.delete", "删除")}</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-      {zhReady && (
-        <View style={s.viewModeRow}>
-          {modes.map((m) => (
-            <TouchableOpacity
-              key={m.value ?? "off"}
-              style={[s.viewModeBtn, currentMode === m.value && s.viewModeBtnActive]}
-              onPress={() => handleModeChange(m.value)}
-            >
-              <Text style={[s.viewModeBtnText, currentMode === m.value && s.viewModeBtnTextActive]}>
-                {m.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
     </View>
   );
 }

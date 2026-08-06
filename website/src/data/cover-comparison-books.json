@@ -1,0 +1,121 @@
+[
+  {
+    "id": "fathers-and-sons",
+    "title": "Отцы и дети",
+    "author": "Иван Тургенев",
+    "background": "cool pale blue-grey, clearly blue rather than beige",
+    "subject": "A novel about generational conflict, nihilism and the fragile bond between parents and children in 1860s Russia. Central visual metaphor: two large overlapping forms from different eras, divided by a narrow wedge. Mood: restrained, tense, intellectually severe."
+  },
+  {
+    "id": "anna-karenina",
+    "title": "Анна Каренина",
+    "author": "Лев Толстой",
+    "background": "muted powder pink with a cool undertone",
+    "subject": "A tragic novel about desire, social judgment, isolation and irreversible choice in 1870s Russia. Central visual metaphor: a pale oval crossed and permanently split by a black diagonal. Mood: elegant, cold, intimate and fatal."
+  },
+  {
+    "id": "war-and-peace",
+    "title": "Война и мир",
+    "author": "Лев Толстой",
+    "background": "pale lavender-grey, clearly violet rather than beige",
+    "subject": "An epic novel about private life, history, war and the search for meaning during the Napoleonic era. Central visual metaphor: one circle, half built from an orderly grid and half fractured. Mood: monumental yet humane, full of motion and reflection."
+  },
+  {
+    "id": "crime-and-punishment",
+    "title": "Преступление и наказание",
+    "author": "Фёдор Достоевский",
+    "background": "smoky medium cool grey with a faint blue undertone",
+    "subject": "A psychological novel about guilt, moral pride, poverty and possible redemption in 1860s Saint Petersburg. Central visual metaphor: a heavy black square with a constricted inner void, cut by a thin arc. Mood: oppressive, feverish and morally charged."
+  },
+  {
+    "id": "government-inspector",
+    "title": "Ревизор",
+    "author": "Николай Гоголь",
+    "background": "muted mustard yellow, saturated enough to avoid parchment",
+    "subject": "A satirical play about corruption, fear and collective self-deception in a provincial Russian bureaucracy. Central visual metaphor: a regimented sequence of identical circles invaded by one absurdly rotated empty circle. Mood: comic, anxious and grotesque."
+  },
+  {
+    "id": "dead-souls",
+    "title": "Мёртвые души",
+    "author": "Николай Гоголь",
+    "background": "dusty terracotta red, earthy but distinctly red",
+    "subject": "A darkly comic journey through provincial Russia about greed, spiritual emptiness and identities reduced to entries in a ledger. Central visual metaphor: a grid of empty rectangular cells, with black emptiness protruding from one cell. Mood: earthy, absurd and unsettling."
+  },
+  {
+    "id": "hero-of-our-time",
+    "title": "Герой нашего времени",
+    "author": "Михаил Лермонтов",
+    "background": "desaturated mountain-sky blue",
+    "subject": "A fragmented psychological portrait of a detached young officer in the Caucasus, exploring boredom, freedom and self-destruction. Central visual metaphor: a solitary tall black vertical at the intersection of two distant diagonal fields. Mood: austere, mountainous and alienated."
+  },
+  {
+    "id": "captains-daughter",
+    "title": "Капитанская дочка",
+    "author": "Александр Пушкин",
+    "background": "icy pale cyan-blue",
+    "subject": "A historical novel about honor, loyalty and love during the Pugachev rebellion in 1770s Russia. Central visual metaphor: a small pale diamond held between two large opposing wedges. Mood: wintry, courageous and precarious."
+  },
+  {
+    "id": "eugene-onegin",
+    "title": "Евгений Онегин",
+    "author": "Александр Пушкин",
+    "background": "muted lilac with a cool grey undertone",
+    "subject": "A novel in verse about boredom, timing, missed intimacy and social ritual in 1820s Russia. Central visual metaphor: two mismatched forms that almost touch but depart along different axes. Mood: elegant, ironic and quietly regretful."
+  },
+  {
+    "id": "gentleman-from-san-francisco",
+    "title": "Господин из Сан-Франциско",
+    "author": "Иван Бунин",
+    "background": "pale desaturated olive green",
+    "subject": "A story about wealth, mortality and the indifference hidden beneath luxury in the early twentieth century. Central visual metaphor: a heavy black oval of luxury suspended above a thin collapsing horizon. Mood: polished, cold and ominous."
+  },
+  {
+    "id": "dark-avenues",
+    "title": "Тёмные аллеи",
+    "author": "Иван Бунин",
+    "background": "dusty mauve-plum, medium-light and subdued",
+    "subject": "Stories about memory, sensual love, separation and encounters that return too late. Central visual metaphor: two dark ribbons briefly crossing before disappearing through opposite edges. Mood: autumnal, intimate and melancholic."
+  },
+  {
+    "id": "golden-key",
+    "title": "Золотой ключик, или Приключения Буратино",
+    "author": "Алексей Толстой",
+    "background": "clear muted turquoise, playful and distinctly blue-green",
+    "subject": "A playful adventure about a lively wooden boy, friendship, theatre and a small key that opens a hidden possibility. Central visual metaphor: a radically simplified golden key assembled from a circle and two rectangles. Mood: mischievous, theatrical and bright."
+  },
+  {
+    "id": "twelve-chairs",
+    "title": "Двенадцать стульев",
+    "author": "Илья Ильф и Евгений Петров",
+    "background": "pale mint green, clearly green rather than cream",
+    "subject": "A satirical chase through 1920s Soviet life in search of jewels hidden inside one chair. Central visual metaphor: a rhythm of twelve identical rectangular modules with one sharply displaced. Mood: brisk, absurd and opportunistic."
+  },
+  {
+    "id": "three-sisters",
+    "title": "Три сестры",
+    "author": "Антон Чехов",
+    "background": "faded coral pink",
+    "subject": "A play about three sisters longing for another life while time quietly passes in a provincial town. Central visual metaphor: three elongated ovals at different depths, connected by one thin horizontal. Mood: dusky, suspended and tenderly unresolved."
+  },
+  {
+    "id": "seagull",
+    "title": "Чайка",
+    "author": "Антон Чехов",
+    "background": "cool pale seafoam green",
+    "subject": "A play about art, ambition, unreturned love and the harm people cause while trying to be seen. Central visual metaphor: a single white wing-shaped cut crossing a heavy black disc. Mood: lakeside, fragile and sharply tragic."
+  },
+  {
+    "id": "cherry-orchard",
+    "title": "Вишнёвый сад",
+    "author": "Антон Чехов",
+    "background": "soft cherry-blossom pink, luminous but not white",
+    "subject": "A play about beauty, debt, social change and a family unable to prevent the loss of its estate. Central visual metaphor: a fragile cluster of pale blossom-circles cut by a rigid vertical. Mood: luminous, nostalgic and already disappearing."
+  },
+  {
+    "id": "thunderstorm",
+    "title": "Гроза",
+    "author": "Александр Островский",
+    "background": "stormy medium blue-grey, clearly blue and dramatic",
+    "subject": "A drama about confinement, desire, public morality and a young woman's resolve in a nineteenth-century Volga merchant town. Central visual metaphor: a massive broken black wedge tearing through a compressed horizontal grid. Mood: electrically charged, oppressive and defiant."
+  }
+]

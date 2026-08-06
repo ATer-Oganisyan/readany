@@ -15,6 +15,15 @@ const serifTextFontAssets = {
   boldItalic: require("./fonts/SBSerifText-BoldItalic.otf"),
 };
 
+const serifCondensedFontAssets = {
+  regular: require("./fonts/SBSerifCondensed.otf"),
+};
+
+const sansCondensedFontAssets = {
+  regular: require("./fonts/SBSansTextCond-Regular.ttf"),
+  bold: require("./fonts/SBSansTextCond-Bold.ttf"),
+};
+
 module.exports = {
   interfaceFontAssets,
   interfaceFontFamily: {
@@ -28,11 +37,25 @@ module.exports = {
   displayFontFamily: {
     semibold: "SB Sans Display Semibold",
   },
+  sansCondensedFontAssets,
+  sansCondensedFontFamily: {
+    regular: "SB Sans Text Cond",
+    bold: "SB Sans Text Cond Bold",
+  },
+  roundedFontFamily: {
+    regular: "SF Pro Rounded",
+    semibold: "SF Pro Rounded",
+    bold: "SF Pro Rounded",
+  },
   serifTextFontAssets,
   serifTextFontFamily: {
     regular: "SB Serif Text",
     italic: "SB Serif Text Italic",
     bold: "SB Serif Text Bold",
     boldItalic: "SB Serif Text Bold Italic",
+  },
+  serifCondensedFontAssets,
+  serifCondensedFontFamily: {
+    regular: "SB Serif Condensed",
   },
 };

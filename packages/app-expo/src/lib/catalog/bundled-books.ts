@@ -3,6 +3,7 @@ import { Asset } from "expo-asset";
 import {
   BUNDLED_CATALOG_BOOK_DEFINITIONS,
   type BundledCatalogBookDefinition,
+  getBundledCatalogCoverPath,
   normalizeCatalogIdentity,
 } from "./bundled-book-definitions";
 
@@ -117,7 +118,7 @@ export async function installBundledCatalogCover(
   const appData = await platform.getAppDataDir();
   const coversDir = await platform.joinPath(appData, "covers");
   await platform.mkdir(coversDir);
-  const relativePath = `covers/${bookId}-catalog.jpg`;
+  const relativePath = getBundledCatalogCoverPath(bookId);
   await platform.writeFile(await platform.joinPath(appData, relativePath), bytes);
   return relativePath;
 }
