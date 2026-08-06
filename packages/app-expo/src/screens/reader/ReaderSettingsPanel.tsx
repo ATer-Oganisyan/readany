@@ -6,6 +6,7 @@ import { Text } from "@/components/ui/Typography";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { SCENE_SUGGESTION_INTERVALS } from "@/lib/narra/scene-suggestion";
 import { READER_PAGE_THEMES } from "@/lib/reader/reader-themes";
+import { SB_SANS_READER_FONT_ID } from "@/lib/reader/bundled-reader-font";
 import { useNarraStore } from "@/stores";
 import { useColors } from "@/styles/theme";
 import { useFontStore } from "@readany/core/stores";
@@ -192,6 +193,22 @@ export function ReaderSettingsPanel({ visible, readSettings, onClose, onUpdateSe
                 >
                   <Text style={[s.themeBtnText, !selectedFontId && s.themeBtnTextActive]}>
                     {t("fonts.sbSerif", "SB Serif")}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    s.themeBtn,
+                    selectedFontId === SB_SANS_READER_FONT_ID && s.themeBtnActive,
+                  ]}
+                  onPress={() => setSelectedFont(SB_SANS_READER_FONT_ID)}
+                >
+                  <Text
+                    style={[
+                      s.themeBtnText,
+                      selectedFontId === SB_SANS_READER_FONT_ID && s.themeBtnTextActive,
+                    ]}
+                  >
+                    SB Sans
                   </Text>
                 </TouchableOpacity>
                 {customFonts.map((font) => (

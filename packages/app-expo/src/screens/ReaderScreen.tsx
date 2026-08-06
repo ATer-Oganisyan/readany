@@ -36,6 +36,7 @@ import type { NarraCharacter } from "@/lib/narra/types";
 import {
   DEFAULT_READER_FONT_FAMILY,
   getBundledReaderFontFaceCSS,
+  getBundledReaderFontFamily,
 } from "@/lib/reader/bundled-reader-font";
 import { startFileServer, stopFileServer } from "@/lib/reader/local-file-server";
 import { getReaderBookmarkCopy } from "@/lib/reader/reader-bookmark-copy";
@@ -218,6 +219,17 @@ function buildCustomFontFaceCSS(
     })
     .filter(Boolean)
     .join("\n");
+}
+
+function resolveReaderFontFamily(
+  fonts: import("@readany/core/types/font").CustomFont[],
+  selectedFontId: string | null,
+): string {
+  return (
+    getBundledReaderFontFamily(selectedFontId) ??
+    fonts.find((font) => font.id === selectedFontId)?.fontFamily ??
+    DEFAULT_READER_FONT_FAMILY
+  );
 }
 
 // ──────────────────────────── ReaderScreen ────────────────────────────
@@ -523,13 +535,10 @@ function ReaderContent({ route, navigation }: Props) {
   // Custom fonts — build @font-face CSS per-font using individual filePath
   const customFonts = useFontStore((s) => s.fonts);
   const selectedFontId = useFontStore((s) => s.selectedFontId);
-  const readerFontFamily = useMemo(() => {
-    if (!selectedFontId) return DEFAULT_READER_FONT_FAMILY;
-    return (
-      customFonts.find((font) => font.id === selectedFontId)?.fontFamily ??
-      DEFAULT_READER_FONT_FAMILY
-    );
-  }, [customFonts, selectedFontId]);
+  const readerFontFamily = useMemo(
+    () => resolveReaderFontFamily(customFonts, selectedFontId),
+    [customFonts, selectedFontId],
+  );
   const readerFontFaceCSS = useMemo(
     () =>
       [defaultReaderFontFaceCSS, buildCustomFontFaceCSS(customFonts, selectedFontId, fontServerUrl)]
@@ -976,9 +985,7 @@ function ReaderContent({ route, navigation }: Props) {
       ]
         .filter(Boolean)
         .join("\n");
-      const fontFamily = selId
-        ? (fonts.find((font) => font.id === selId)?.fontFamily ?? DEFAULT_READER_FONT_FAMILY)
-        : DEFAULT_READER_FONT_FAMILY;
+      const fontFamily = resolveReaderFontFamily(fonts, selId);
       console.log("[ReaderScreen][Font] selection", {
         selectedFontId: selId,
         fontFamily,
@@ -1684,9 +1691,7 @@ function ReaderContent({ route, navigation }: Props) {
       ]
         .filter(Boolean)
         .join("\n");
-      const fontFamily = selId
-        ? (fonts.find((font) => font.id === selId)?.fontFamily ?? DEFAULT_READER_FONT_FAMILY)
-        : DEFAULT_READER_FONT_FAMILY;
+      const fontFamily = resolveReaderFontFamily(fonts, selId);
       // Recompute effective fontSize after every settings change — covers
       // both stepper changes and toggling followSystemFontScale on/off.
       const merged = { ...currentSettings, ...updates };

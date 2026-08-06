@@ -1,5 +1,6 @@
 import { SCENE_SUGGESTION_INTERVALS } from "@/lib/narra/scene-suggestion";
 import { READER_PAGE_THEMES } from "@/lib/reader/reader-themes";
+import { SB_SANS_READER_FONT_ID } from "@/lib/reader/bundled-reader-font";
 import { useNarraStore } from "@/stores";
 import { useTheme } from "@/styles/theme";
 import {
@@ -9,7 +10,6 @@ import {
   Host,
   Picker,
   Section,
-  Stepper,
   Text,
   Toggle,
 } from "@expo/ui/swift-ui";
@@ -47,6 +47,23 @@ const NativeNavigationStack = requireNativeView(
   "ReadAnyNativeControls",
   "ReadAnyNavigationStack",
 ) as ComponentType<NativeNavigationStackProps>;
+
+interface NativeValueStepperProps {
+  label: string;
+  value: number;
+  valueLabel: string;
+  min: number;
+  max: number;
+  step: number;
+  decrementAccessibilityLabel: string;
+  incrementAccessibilityLabel: string;
+  onValueChange: (event: { nativeEvent: { value: number } }) => void;
+}
+
+const NativeValueStepper = requireNativeView(
+  "ReadAnyNativeControls",
+  "ReadAnyValueStepper",
+) as ComponentType<NativeValueStepperProps>;
 
 export function ReaderSettingsPanel({ visible, readSettings, onClose, onUpdateSetting }: Props) {
   const { colors, isDark } = useTheme();
@@ -93,37 +110,57 @@ export function ReaderSettingsPanel({ visible, readSettings, onClose, onUpdateSe
               </Section>
 
               <Section title={t("reader.textSettings", "Текст")}>
-                <Stepper
-                  label={`${t("reader.fontSize", "Размер шрифта")} · ${readSettings.fontSize}`}
+                <NativeValueStepper
+                  label={t("reader.fontSize", "Размер шрифта")}
                   value={readSettings.fontSize}
+                  valueLabel={String(readSettings.fontSize)}
                   min={12}
                   max={64}
                   step={1}
-                  onValueChange={(value) => onUpdateSetting("fontSize", value)}
+                  decrementAccessibilityLabel={t("common.decrease", "Уменьшить")}
+                  incrementAccessibilityLabel={t("common.increase", "Увеличить")}
+                  onValueChange={({ nativeEvent }) =>
+                    onUpdateSetting("fontSize", nativeEvent.value)
+                  }
                 />
-                <Stepper
-                  label={`${t("reader.lineHeight", "Высота линии")} · ${readSettings.lineHeight.toFixed(1)}`}
+                <NativeValueStepper
+                  label={t("reader.lineHeight", "Высота линии")}
                   value={Math.round(readSettings.lineHeight * 10)}
+                  valueLabel={readSettings.lineHeight.toFixed(1)}
                   min={12}
                   max={25}
                   step={1}
-                  onValueChange={(value) => onUpdateSetting("lineHeight", value / 10)}
+                  decrementAccessibilityLabel={t("common.decrease", "Уменьшить")}
+                  incrementAccessibilityLabel={t("common.increase", "Увеличить")}
+                  onValueChange={({ nativeEvent }) =>
+                    onUpdateSetting("lineHeight", nativeEvent.value / 10)
+                  }
                 />
-                <Stepper
-                  label={`${t("reader.paragraphSpacing", "Расстояние между абзацами")} · ${readSettings.paragraphSpacing}`}
+                <NativeValueStepper
+                  label={t("reader.paragraphSpacing", "Расстояние между абзацами")}
                   value={readSettings.paragraphSpacing}
+                  valueLabel={String(readSettings.paragraphSpacing)}
                   min={0}
                   max={24}
                   step={2}
-                  onValueChange={(value) => onUpdateSetting("paragraphSpacing", value)}
+                  decrementAccessibilityLabel={t("common.decrease", "Уменьшить")}
+                  incrementAccessibilityLabel={t("common.increase", "Увеличить")}
+                  onValueChange={({ nativeEvent }) =>
+                    onUpdateSetting("paragraphSpacing", nativeEvent.value)
+                  }
                 />
-                <Stepper
-                  label={`${t("reader.pageMargin", "Поле страницы")} · ${readSettings.pageMargin}`}
+                <NativeValueStepper
+                  label={t("reader.pageMargin", "Поле страницы")}
                   value={readSettings.pageMargin}
+                  valueLabel={String(readSettings.pageMargin)}
                   min={0}
                   max={48}
                   step={4}
-                  onValueChange={(value) => onUpdateSetting("pageMargin", value)}
+                  decrementAccessibilityLabel={t("common.decrease", "Уменьшить")}
+                  incrementAccessibilityLabel={t("common.increase", "Увеличить")}
+                  onValueChange={({ nativeEvent }) =>
+                    onUpdateSetting("pageMargin", nativeEvent.value)
+                  }
                 />
               </Section>
 
@@ -137,6 +174,7 @@ export function ReaderSettingsPanel({ visible, readSettings, onClose, onUpdateSe
                   modifiers={[pickerStyle("menu")]}
                 >
                   <Text modifiers={[tag(DEFAULT_FONT_ID)]}>{t("fonts.sbSerif", "SB Serif")}</Text>
+                  <Text modifiers={[tag(SB_SANS_READER_FONT_ID)]}>SB Sans</Text>
                   {customFonts.map((customFont) => (
                     <Text key={customFont.id} modifiers={[tag(customFont.id)]}>
                       {customFont.name}
@@ -148,7 +186,7 @@ export function ReaderSettingsPanel({ visible, readSettings, onClose, onUpdateSe
                   label={t("reader.viewMode", "Режим чтения")}
                   selection={readSettings.viewMode}
                   onSelectionChange={(value) => onUpdateSetting("viewMode", value)}
-                  modifiers={[pickerStyle("segmented")]}
+                  modifiers={[pickerStyle("menu")]}
                 >
                   <Text modifiers={[tag("paginated")]}>
                     {t("reader.paginated", "Перелистывание")}

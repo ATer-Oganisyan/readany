@@ -101,6 +101,7 @@ public final class ReadAnyNativeControlsModule: Module {
     }
 
     View(ReadAnyNavigationStack.self)
+    View(ReadAnyValueStepper.self)
 
   }
 }
@@ -476,6 +477,78 @@ public struct ReadAnyNavigationStack: ExpoSwiftUI.View {
           .accessibilityLabel(props.closeAccessibilityLabel)
         }
       }
+  }
+}
+
+public final class ReadAnyValueStepperProps: ExpoSwiftUI.ViewProps {
+  @Field var label = ""
+  @Field var value = 0
+  @Field var valueLabel = ""
+  @Field var min = 0
+  @Field var max = 100
+  @Field var step = 1
+  @Field var decrementAccessibilityLabel = "Уменьшить"
+  @Field var incrementAccessibilityLabel = "Увеличить"
+  var onValueChange = EventDispatcher()
+}
+
+public struct ReadAnyValueStepper: ExpoSwiftUI.View {
+  @ObservedObject public var props: ReadAnyValueStepperProps
+
+  public init(props: ReadAnyValueStepperProps) {
+    self.props = props
+  }
+
+  public var body: some SwiftUI.View {
+    HStack {
+      Text(props.label)
+      Spacer(minLength: 12)
+      HStack(spacing: 0) {
+        stepButton(
+          systemName: "minus",
+          accessibilityLabel: props.decrementAccessibilityLabel,
+          disabled: props.value <= props.min,
+          nextValue: max(props.min, props.value - props.step)
+        )
+        Divider().frame(height: 22)
+        Text(props.valueLabel)
+          .font(.body.monospacedDigit())
+          .lineLimit(1)
+          .minimumScaleFactor(0.8)
+          .frame(minWidth: 42)
+          .accessibilityLabel(props.valueLabel)
+        Divider().frame(height: 22)
+        stepButton(
+          systemName: "plus",
+          accessibilityLabel: props.incrementAccessibilityLabel,
+          disabled: props.value >= props.max,
+          nextValue: min(props.max, props.value + props.step)
+        )
+      }
+      .background(Color(uiColor: .tertiarySystemFill))
+      .clipShape(Capsule())
+    }
+    .frame(minHeight: 44)
+  }
+
+  private func stepButton(
+    systemName: String,
+    accessibilityLabel: String,
+    disabled: Bool,
+    nextValue: Int
+  ) -> some SwiftUI.View {
+    Button {
+      props.onValueChange(["value": nextValue])
+    } label: {
+      Image(systemName: systemName)
+        .font(.body.weight(.medium))
+        .frame(width: 48, height: 44)
+        .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .disabled(disabled)
+    .accessibilityLabel(accessibilityLabel)
+    .accessibilityValue(props.valueLabel)
   }
 }
 
