@@ -48,15 +48,9 @@ def default_targets(env: Mapping[str, str] = os.environ) -> tuple[MonitorTarget,
             "Production gateway",
             env.get(
                 "STATS_MONITOR_PRODUCTION_GATEWAY_URL",
-                "https://api.narra.disrupt.builders/health",
+                "https://narra.multitool.works/health",
             ),
             "production_gateway",
-        ),
-        MonitorTarget(
-            "staging_gateway",
-            "Staging gateway readiness",
-            env.get("STATS_MONITOR_STAGING_GATEWAY_URL", "https://narra-staging.multitool.works/ready"),
-            "gateway_ready",
         ),
         MonitorTarget(
             "production_analytics",
@@ -64,15 +58,6 @@ def default_targets(env: Mapping[str, str] = os.environ) -> tuple[MonitorTarget,
             env.get(
                 "STATS_MONITOR_PRODUCTION_ANALYTICS_URL",
                 "https://stats.multitool.works/p/narra/health",
-            ),
-            "health",
-        ),
-        MonitorTarget(
-            "staging_analytics",
-            "Staging analytics",
-            env.get(
-                "STATS_MONITOR_STAGING_ANALYTICS_URL",
-                "https://stats-narra-staging-staging.up.railway.app/health",
             ),
             "health",
         ),

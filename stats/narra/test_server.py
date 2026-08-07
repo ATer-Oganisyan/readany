@@ -186,10 +186,16 @@ class NarraStatsTest(unittest.TestCase):
             target for target in server.MONITOR_TARGETS
             if target.identifier == "production_gateway"
         )
-        self.assertEqual(production.url, "https://api.narra.disrupt.builders/health")
-        staging = next(
-            target for target in server.MONITOR_TARGETS
-            if target.identifier == "staging_gateway"
+        self.assertEqual(production.url, "https://narra.multitool.works/health")
+        self.assertEqual(
+            {target.identifier for target in server.MONITOR_TARGETS},
+            {"production_gateway", "production_analytics"},
+        )
+        readiness = monitoring.MonitorTarget(
+            "future_staging_gateway",
+            "Staging gateway readiness",
+            "https://staging.example.com/ready",
+            "gateway_ready",
         )
         self.assertEqual(
             monitoring.classify_response(
@@ -209,14 +215,14 @@ class NarraStatsTest(unittest.TestCase):
         )
         self.assertEqual(
             monitoring.classify_response(
-                staging,
+                readiness,
                 200,
                 b'{"ok":true,"degraded":[{"code":"VIDEO_PLAINTEXT_HTTP"}]}',
             ),
             ("degraded", "UPSTREAM_DEGRADED"),
         )
         self.assertEqual(
-            monitoring.classify_response(staging, 302, b"{}"),
+            monitoring.classify_response(readiness, 302, b"{}"),
             ("down", "HTTP_302"),
         )
         with self.assertRaises(RuntimeError):
@@ -245,7 +251,7 @@ class NarraStatsTest(unittest.TestCase):
                     "error_code": None,
                 },
                 {
-                    "target_id": "staging_gateway",
+                    "target_id": "production_analytics",
                     "checked_at": now - 30,
                     "state": "down",
                     "http_status": 502,
@@ -261,7 +267,7 @@ class NarraStatsTest(unittest.TestCase):
         rows = {row["id"]: row for row in report["targets"]}
         self.assertEqual(report["overall"], "down")
         self.assertEqual(rows["production_gateway"]["windows"]["1h"]["availability"], 100.0)
-        self.assertEqual(rows["staging_gateway"]["windows"]["1h"]["availability"], 0.0)
+        self.assertEqual(rows["production_analytics"]["windows"]["1h"]["availability"], 0.0)
         self.assertEqual(rows["production_gateway"]["tls_days_remaining"], 80)
 
     def test_monitor_report_marks_old_samples_stale(self):
@@ -400,9 +406,7 @@ class NarraStatsTest(unittest.TestCase):
             {row["id"] for row in data["monitoring"]["targets"]},
             {
                 "production_gateway",
-                "staging_gateway",
                 "production_analytics",
-                "staging_analytics",
             },
         )
         health = server.health().body.decode()

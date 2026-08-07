@@ -70,14 +70,15 @@ verification.
 
 Default targets:
 
-- `https://api.narra.disrupt.builders/health` — production gateway;
-- `https://narra-staging.multitool.works/ready` — staging gateway readiness;
-- `https://stats.multitool.works/p/narra/health` — production analytics;
-- `https://stats-narra-staging-staging.up.railway.app/health` — staging analytics.
+- `https://narra.multitool.works/health` — production gateway (cut over to the
+  live gateway on 7 August 2026; `api.narra.disrupt.builders` remains an alias
+  for released clients);
+- `https://stats.multitool.works/p/narra/health` — production analytics.
 
-The reviewed production placeholder is deliberately classified as `standby`
-only when it returns the exact reviewed `503` JSON contract; it remains
-available but not live. Staging `/ready` with a non-empty `degraded` list is shown as
+The retired Railway staging targets were removed from the defaults on
+7 August 2026; while a placeholder-era classifier remains, a parked hostname
+returning the exact reviewed `503` JSON contract is still classified as
+`standby`, and a `/ready` body with a non-empty `degraded` list is shown as
 `degraded`, not falsely green. Every target exposes current HTTP/latency/TLS
 data plus 1-hour, 24-hour and 7-day availability, scheduled-probe coverage and
 p95 latency. Missed scheduled checks reduce availability, so one fresh probe
@@ -87,9 +88,7 @@ Targets may be changed only through root-owned environment configuration:
 
 ```text
 STATS_MONITOR_PRODUCTION_GATEWAY_URL
-STATS_MONITOR_STAGING_GATEWAY_URL
 STATS_MONITOR_PRODUCTION_ANALYTICS_URL
-STATS_MONITOR_STAGING_ANALYTICS_URL
 STATS_MONITOR_INTERVAL_SECONDS=60
 STATS_MONITOR_TIMEOUT_SECONDS=5
 STATS_MONITOR_STALE_AFTER_SECONDS=180
