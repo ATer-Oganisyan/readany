@@ -175,12 +175,71 @@ class NarraStatsTest(unittest.TestCase):
                 server.monitors(request_for("/monitors")).status_code, 401
             )
             self.assertEqual(
+                server.uptime(request_for("/uptime")).status_code, 401
+            )
+            self.assertEqual(
                 server.summary(
                     request_for("/summary", f"Basic {encoded}")
                 ).status_code,
                 200,
             )
             self.assertEqual(server.health().status_code, 200)
+
+    def test_uptime_report_disabled_without_key(self):
+        with patch.object(server, "UPTIMEROBOT_API_KEY", ""):
+            self.assertEqual(
+                server._uptime_report(), {"configured": False, "monitors": []}
+            )
+
+    def test_uptime_monitors_are_filtered_trimmed_and_sorted(self):
+        raw = [
+            {
+                "id": 2, "friendly_name": "Narra stats (prod)",
+                "url": "https://stats.multitool.works/p/narra/health",
+                "status": 2, "custom_uptime_ratio": "100.000-99.5-98.76543",
+                "alert_contacts": [{"id": "secret"}],
+            },
+            {
+                "id": 3, "friendly_name": "MultiTool GW Primary",
+                "url": "https://gw.multitool.works/health",
+                "status": 2, "custom_uptime_ratio": "100-100-100",
+            },
+            {
+                "id": 1, "friendly_name": "Narra GW (prod)",
+                "url": "https://narra.multitool.works/health",
+                "status": 9, "custom_uptime_ratio": "",
+            },
+        ]
+        rows = server._select_uptime_monitors(raw, "narra")
+        self.assertEqual([row["name"] for row in rows], [
+            "Narra GW (prod)", "Narra stats (prod)",
+        ])
+        self.assertEqual(rows[0]["status"], 9)
+        self.assertEqual(rows[0]["availability"], {"d1": None, "d7": None, "d30": None})
+        self.assertEqual(rows[1]["availability"], {"d1": 100.0, "d7": 99.5, "d30": 98.765})
+        self.assertNotIn("alert_contacts", rows[1])
+
+    def test_uptime_report_caches_and_serves_stale_on_failure(self):
+        raw = [{
+            "id": 1, "friendly_name": "Narra GW (prod)",
+            "url": "https://narra.multitool.works/health",
+            "status": 2, "custom_uptime_ratio": "100-100-100",
+        }]
+        with patch.object(server, "UPTIMEROBOT_API_KEY", "ur-test"), patch.object(
+            server, "UPTIME_CACHE", {"data": None, "claimed_at": 0.0}
+        ), patch.object(
+            server, "_fetch_uptimerobot_monitors", return_value=raw
+        ) as fetch:
+            first = server._uptime_report(now=1000.0)
+            self.assertTrue(first["configured"])
+            self.assertEqual(len(first["monitors"]), 1)
+            second = server._uptime_report(now=1010.0)
+            self.assertEqual(fetch.call_count, 1)
+            self.assertEqual(second["monitors"], first["monitors"])
+            fetch.side_effect = RuntimeError("down")
+            stale = server._uptime_report(now=5000.0)
+            self.assertTrue(stale.get("stale"))
+            self.assertEqual(stale["monitors"], first["monitors"])
 
     def test_monitor_targets_are_fixed_https_and_classify_expected_states(self):
         monitoring.validate_targets(server.MONITOR_TARGETS)

@@ -99,9 +99,24 @@ All overrides must remain public, credential-free HTTPS URLs on the default
 port, without query strings or redirects. Production monitoring is
 enabled by default; staging is disabled by default to avoid duplicate probes
 and may be enabled explicitly for an isolated test. This in-dashboard monitor
-does not replace an external alerting service: UptimeRobot or another
-out-of-process monitor should still watch production gateway and analytics
-health so an outage of the stats process itself is observable.
+does not replace an external alerting service: UptimeRobot watches the
+production gateway, analytics and LLM endpoints out-of-process so an outage
+of the stats process itself is observable.
+
+The dashboard also shows that external availability. `GET /uptime` is a
+read-authenticated server-side proxy to the UptimeRobot `getMonitors` API
+(1/7/30-day ratios, ~60 s cache, last successful payload served on API
+failure); the account API key never reaches the browser and monitors outside
+the configured name prefix are filtered out:
+
+```text
+UPTIMEROBOT_API_KEY=<read-capable UptimeRobot API key, root-owned env only>
+UPTIMEROBOT_MONITOR_PREFIX=Narra
+UPTIMEROBOT_CACHE_TTL_SECONDS=60
+```
+
+Leaving `UPTIMEROBOT_API_KEY` empty disables the integration; the dashboard
+then labels the external-uptime panel as not configured.
 
 The stale threshold defaults to three configured probe intervals. If the
 runner stops and a sample ages past that threshold, the target becomes `down`
