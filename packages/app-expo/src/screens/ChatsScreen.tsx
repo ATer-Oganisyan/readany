@@ -1,3 +1,4 @@
+import { AnimatedNarraFace } from "@/components/chat/animated-narra-face";
 import {
   CharacterChatAvatar,
   CharacterChatList,
@@ -130,6 +131,14 @@ export function ChatsScreen() {
     [navigation, setCharacters],
   );
 
+  const openNarraChat = useCallback(() => {
+    if (selectedBookId === "all") {
+      navigation.navigate("Chat");
+      return;
+    }
+    navigation.navigate("BookChat", { bookId: selectedBookId });
+  }, [navigation, selectedBookId]);
+
   useEffect(() => {
     if (portraitLoadingKey) return;
     const nextRow = rows.find((row) => {
@@ -165,39 +174,55 @@ export function ChatsScreen() {
     );
   }
 
-  const listItems: CharacterChatListItem[] = rows.map((row) => {
-    const rowKey = `${row.book.id}:${row.character.id}`;
-    const portraitUri = row.character.portraitUri
-      ? normalizePersistedNarraMediaUri(row.character.portraitUri)
-      : undefined;
-
-    return {
-      key: rowKey,
-      accessibilityLabel: `${row.character.name}, ${row.book.meta.title}`,
-      title: row.character.fullName || row.character.name,
-      subtitle: row.character.role,
-      onPress: () => openChat(row),
+  const listItems: CharacterChatListItem[] = [
+    {
+      key: "narra",
+      accessibilityLabel:
+        selectedBookId === "all" ? "Открыть чат с Наррой" : "Открыть чат с Наррой об этой книге",
+      title: "Нарра",
+      subtitle:
+        selectedBookId === "all" ? "Спросите что угодно о книгах" : "Спросите что угодно о книге",
+      onPress: openNarraChat,
       avatar: (
-        <CharacterChatAvatar>
-          {portraitUri ? (
-            <Image
-              source={{ uri: portraitUri }}
-              style={styles.avatarImage}
-              onError={() =>
-                updateCharacter(row.book.id, row.character.id, { portraitUri: undefined })
-              }
-            />
-          ) : (
-            <InitialsAvatar
-              size={56}
-              userId={rowKey}
-              name={row.character.fullName || row.character.name}
-            />
-          )}
+        <CharacterChatAvatar muted>
+          <AnimatedNarraFace width={38} height={40} />
         </CharacterChatAvatar>
       ),
-    };
-  });
+    },
+    ...rows.map((row): CharacterChatListItem => {
+      const rowKey = `${row.book.id}:${row.character.id}`;
+      const portraitUri = row.character.portraitUri
+        ? normalizePersistedNarraMediaUri(row.character.portraitUri)
+        : undefined;
+
+      return {
+        key: rowKey,
+        accessibilityLabel: `${row.character.name}, ${row.book.meta.title}`,
+        title: row.character.fullName || row.character.name,
+        subtitle: row.character.role,
+        onPress: () => openChat(row),
+        avatar: (
+          <CharacterChatAvatar>
+            {portraitUri ? (
+              <Image
+                source={{ uri: portraitUri }}
+                style={styles.avatarImage}
+                onError={() =>
+                  updateCharacter(row.book.id, row.character.id, { portraitUri: undefined })
+                }
+              />
+            ) : (
+              <InitialsAvatar
+                size={56}
+                userId={rowKey}
+                name={row.character.fullName || row.character.name}
+              />
+            )}
+          </CharacterChatAvatar>
+        ),
+      };
+    }),
+  ];
 
   return (
     <ScrollView
