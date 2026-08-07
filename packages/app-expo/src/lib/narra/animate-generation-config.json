@@ -1,0 +1,8 @@
+{
+  "openRouterModel": "google/veo-3.1-lite",
+  "durationSeconds": 4,
+  "resolution": "720p",
+  "landscapeAspectRatio": "16:9",
+  "portraitAspectRatio": "9:16",
+  "generateAudio": false
+}

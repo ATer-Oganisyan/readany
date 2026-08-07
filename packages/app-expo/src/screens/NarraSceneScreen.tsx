@@ -1,12 +1,16 @@
+import { NarraLoopVideo } from "@/components/narra/NarraLoopVideo";
 import { ChevronRightIcon } from "@/components/ui/Icon";
 import { ScrollViewMarker } from "@/components/ui/ScrollViewMarker";
 import { Text } from "@/components/ui/Typography";
+import { hasBundledOpenRouterKey } from "@/config/bundled-ai";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
+import { animateNarraImage } from "@/lib/narra/animate-openrouter";
+import { buildSceneMotionPrompt } from "@/lib/narra/animate-prompt";
 import { NarraAudioPlayer } from "@/lib/narra/audio-player";
 import { reportNarraError } from "@/lib/narra/errors";
 import { normalizePersistedNarraMediaUri, synthesizeNarraSpeech } from "@/lib/narra/media";
-import { generateNarraSceneImage as generateSceneImage } from "@/lib/narra/scene-image-openrouter";
 import { generateNarraAudioScenario } from "@/lib/narra/scene-audio";
+import { generateNarraSceneImage as generateSceneImage } from "@/lib/narra/scene-image-openrouter";
 import type { NarraCharacter, NarraSceneAudioSegment } from "@/lib/narra/types";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { NATIVE_SCROLL_EDGE_EFFECTS } from "@/navigation/scroll-edge-effects";
@@ -73,16 +77,26 @@ export function NarraSceneScreen({ route, navigation }: Props) {
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [animating, setAnimating] = useState(false);
+  const [showVideo, setShowVideo] = useState(false);
   const [audioStatus, setAudioStatus] = useState<AudioStatus>("idle");
   const [textExpanded, setTextExpanded] = useState(false);
   const startedRef = useRef(false);
   const audioRef = useRef(new NarraAudioPlayer());
   const audioRunRef = useRef(0);
 
+  // Кэш «ожившей» сцены из стора: повторный тап играет без генерации.
+  const videoUri = cachedScene?.videoUri
+    ? normalizePersistedNarraMediaUri(cachedScene.videoUri)
+    : null;
+
   const generate = useCallback(async () => {
     if (loading) return;
     setLoading(true);
     setError(null);
+    // Новая картинка обесценивает старое видео: setScene ниже пишет сцену
+    // без videoUri, а показ возвращается к статичному кадру.
+    setShowVideo(false);
     try {
       const nextImageUri = await generateSceneImage(bookId, chapter, excerpt, characters);
       setImageUri(nextImageUri);
@@ -216,10 +230,66 @@ export function NarraSceneScreen({ route, navigation }: Props) {
     });
   }, [navigation]);
 
-  // Видео-генерации в бэкенде пока нет: кнопка видима, но честно говорит об этом.
+  // «Оживление» сцены (P18): image-to-video через OpenRouter Veo. Генерация
+  // ТОЛЬКО по явному тапу (платные вызовы), готовое видео кэшируется в сцене.
+  const runAnimation = useCallback(async () => {
+    if (!imageUri || animating || loading) return;
+    setAnimating(true);
+    try {
+      const nextVideoUri = await animateNarraImage({
+        imageUri,
+        motionPrompt: buildSceneMotionPrompt(excerpt),
+        cacheKey: `${bookId}-scene-video`,
+      });
+      setScene(bookId, {
+        sourceKey,
+        chapter,
+        excerpt,
+        imageUri: cachedScene?.imageUri ?? imageUri,
+        generatedAt: cachedScene?.generatedAt ?? Date.now(),
+        anchor: cachedScene?.anchor,
+        videoUri: nextVideoUri,
+      });
+      setShowVideo(true);
+    } catch (cause) {
+      const normalized = reportNarraError("scene_animate", cause);
+      Alert.alert(
+        t("narra.sceneAnimateFailedTitle", "Не удалось оживить сцену"),
+        normalized.message,
+      );
+    } finally {
+      setAnimating(false);
+    }
+  }, [animating, bookId, cachedScene, chapter, excerpt, imageUri, loading, setScene, sourceKey, t]);
+
+  // Тап: показ кэшированного видео / возврат к картинке / первая генерация.
   const animateScene = useCallback(() => {
-    Alert.alert(t("narra.sceneAnimateSoon", "Оживление сцен скоро появится"));
-  }, [t]);
+    if (animating) return;
+    if (showVideo) {
+      setShowVideo(false);
+      return;
+    }
+    if (!hasBundledOpenRouterKey) {
+      Alert.alert(t("narra.animateNeedKey", "Нужен ключ OpenRouter"));
+      return;
+    }
+    if (videoUri) {
+      setShowVideo(true);
+      return;
+    }
+    void runAnimation();
+  }, [animating, runAnimation, showVideo, t, videoUri]);
+
+  // Долгий тап — регенерация видео даже при наличии кэша.
+  const regenerateAnimation = useCallback(() => {
+    if (animating) return;
+    if (!hasBundledOpenRouterKey) {
+      Alert.alert(t("narra.animateNeedKey", "Нужен ключ OpenRouter"));
+      return;
+    }
+    setShowVideo(false);
+    void runAnimation();
+  }, [animating, runAnimation, t]);
 
   return (
     <ScrollViewMarker
@@ -234,22 +304,39 @@ export function NarraSceneScreen({ route, navigation }: Props) {
         <View style={styles.imageCard}>
           {imageUri ? (
             <>
-              <Image
-                accessibilityLabel={t(
-                  "narra.sceneIllustrationLabel",
-                  "Иллюстрация к главе {{chapter}}",
-                  {
-                    chapter: displayChapter,
-                  },
-                )}
-                source={{ uri: imageUri }}
-                style={styles.image}
-                resizeMode="cover"
-                onError={() => setImageUri(null)}
-              />
+              {showVideo && videoUri ? (
+                // «Ожившая» сцена — зацикленное видео НА МЕСТЕ картинки
+                <NarraLoopVideo
+                  accessibilityLabel={t("narra.sceneVideoLabel", "Ожившая сцена")}
+                  uri={videoUri}
+                  style={styles.image}
+                />
+              ) : (
+                <Image
+                  accessibilityLabel={t(
+                    "narra.sceneIllustrationLabel",
+                    "Иллюстрация к главе {{chapter}}",
+                    {
+                      chapter: displayChapter,
+                    },
+                  )}
+                  source={{ uri: imageUri }}
+                  style={styles.image}
+                  resizeMode="cover"
+                  onError={() => setImageUri(null)}
+                />
+              )}
               {loading ? (
                 <View style={styles.imageOverlay}>
                   <ActivityIndicator size="large" color="#fff" />
+                </View>
+              ) : null}
+              {animating ? (
+                <View style={styles.imageOverlay}>
+                  <ActivityIndicator size="large" color="#fff" />
+                  <Text style={styles.overlayHint}>
+                    {t("narra.sceneAnimating", "Оживляем… 1–3 минуты")}
+                  </Text>
                 </View>
               ) : null}
             </>
@@ -299,11 +386,25 @@ export function NarraSceneScreen({ route, navigation }: Props) {
           </Pressable>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={t("narra.sceneAnimate", "Оживить")}
+            accessibilityLabel={
+              showVideo
+                ? t("narra.sceneShowImage", "Показать картинку")
+                : t("narra.sceneAnimate", "Оживить")
+            }
+            disabled={animating || loading || !imageUri}
             onPress={animateScene}
+            onLongPress={regenerateAnimation}
             style={({ pressed }) => [styles.ghostPill, pressed && styles.pillPressed]}
           >
-            <Text style={styles.ghostPillText}>{t("narra.sceneAnimate", "Оживить")}</Text>
+            {animating ? (
+              <ActivityIndicator size="small" color={colors.foreground} />
+            ) : (
+              <Text style={styles.ghostPillText}>
+                {showVideo
+                  ? t("narra.sceneShowImageShort", "Картинка")
+                  : t("narra.sceneAnimate", "Оживить")}
+              </Text>
+            )}
           </Pressable>
           <Pressable
             accessibilityRole="button"
@@ -370,7 +471,15 @@ const makeStyles = (colors: ThemeColors) =>
       ...StyleSheet.absoluteFillObject,
       alignItems: "center",
       justifyContent: "center",
+      gap: spacing.sm,
       backgroundColor: "rgba(0,0,0,0.38)",
+    },
+    // Подпись прогресса оживления поверх затемнённой картинки
+    overlayHint: {
+      color: "#fff",
+      fontFamily: interfaceFontFamily.regular,
+      fontSize: fontSize.xs,
+      textAlign: "center",
     },
     placeholder: {
       flex: 1,

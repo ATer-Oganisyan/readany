@@ -13,7 +13,7 @@ const MEDIA_PATH_MARKER = "/Documents/narra-media/";
 let speechFileSequence = 0;
 const portraitRequests = new Map<string, Promise<string>>();
 
-type MediaJobType = "image" | "tts" | "avatar";
+type MediaJobType = "image" | "tts" | "avatar" | "video";
 type MediaJobOrigin = "user" | "background";
 
 function mediaLatencyBucket(durationMs: number): string {
@@ -258,6 +258,16 @@ async function persistGeneratedImage(
   await FileSystem.deleteAsync(path, { idempotent: true });
   await FileSystem.moveAsync({ from: temporaryPath, to: path });
   return path;
+}
+
+/**
+ * Абсолютный file://-путь нового файла в narra-media (каталог создаётся при
+ * необходимости). Используется видео-оживлением (animate-openrouter.ts):
+ * downloadAsync пишет напрямую в целевой путь, единое именование с картинками.
+ */
+export async function narraMediaTargetPath(key: string, extension: string): Promise<string> {
+  await ensureMediaDir();
+  return `${MEDIA_DIR}/${safeKey(key)}.${extension}`;
 }
 
 /**

@@ -1,4 +1,8 @@
+import { NarraLoopVideo } from "@/components/narra/NarraLoopVideo";
 import { Text } from "@/components/ui/Typography";
+import { hasBundledOpenRouterKey } from "@/config/bundled-ai";
+import { animateNarraImage } from "@/lib/narra/animate-openrouter";
+import { buildPortraitMotionPrompt } from "@/lib/narra/animate-prompt";
 import { NarraAudioPlayer } from "@/lib/narra/audio-player";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
 import { reportNarraError } from "@/lib/narra/errors";
@@ -61,6 +65,8 @@ export function ReaderCharacterCard({
   const liveCharacter = storedCharacter ?? character;
   const unlocked = liveCharacter ? isCharacterUnlocked(bookProgress, liveCharacter) : true;
   const [portraitLoading, setPortraitLoading] = useState(false);
+  const [portraitAnimating, setPortraitAnimating] = useState(false);
+  const [showPortraitVideo, setShowPortraitVideo] = useState(false);
   const portraitAttemptsRef = useRef(new Set<string>());
   const [voiceState, setVoiceState] = useState<VoiceSampleState>("idle");
   const audioRef = useRef(new NarraAudioPlayer());
@@ -69,6 +75,10 @@ export function ReaderCharacterCard({
 
   const portraitUri = liveCharacter?.portraitUri
     ? normalizePersistedNarraMediaUri(liveCharacter.portraitUri)
+    : undefined;
+  // Кэш «ожившего» портрета: повторный тап играет без генерации (P18).
+  const portraitVideoUri = liveCharacter?.portraitVideoUri
+    ? normalizePersistedNarraMediaUri(liveCharacter.portraitVideoUri)
     : undefined;
 
   const stopVoiceSample = () => {
@@ -79,23 +89,70 @@ export function ReaderCharacterCard({
 
   useEffect(() => () => audioRef.current.stop(), []);
 
-  // Закрытие карточки или смена героя останавливают пробу голоса.
+  // Закрытие карточки или смена героя останавливают пробу голоса и видео.
   const characterId = character?.id;
   useEffect(() => {
     if (visible && characterId) return;
     voiceRequestRef.current += 1;
     audioRef.current.stop();
     setVoiceState("idle");
+    setShowPortraitVideo(false);
   }, [visible, characterId]);
 
   const generatePortrait = (force: boolean) => {
     if (!character || portraitLoading) return;
     setPortraitLoading(true);
+    // Новый портрет обесценивает старое «ожившее» видео
+    setShowPortraitVideo(false);
     const target = force ? { ...character, portraitUri: undefined } : character;
     void ensureCharacterPortrait(bookId, target)
-      .then((uri) => updateCharacter(bookId, character.id, { portraitUri: uri }))
+      .then((uri) =>
+        updateCharacter(bookId, character.id, {
+          portraitUri: uri,
+          ...(force ? { portraitVideoUri: undefined } : null),
+        }),
+      )
       .catch((error) => reportNarraError("character_portrait_reader_card", error))
       .finally(() => setPortraitLoading(false));
+  };
+
+  // «Оживление» портрета (P18): image-to-video тем же модулем, что и сцены.
+  // Генерация ТОЛЬКО по явному тапу (платные вызовы), кэш — в персонаже.
+  const runPortraitAnimation = () => {
+    if (!character || !portraitUri || portraitAnimating || portraitLoading) return;
+    setPortraitAnimating(true);
+    void animateNarraImage({
+      imageUri: portraitUri,
+      motionPrompt: buildPortraitMotionPrompt(),
+      cacheKey: `${bookId}-${character.id}-portrait-video`,
+    })
+      .then((uri) => {
+        updateCharacter(bookId, character.id, { portraitVideoUri: uri });
+        setShowPortraitVideo(true);
+      })
+      .catch((error) => {
+        const normalized = reportNarraError("character_portrait_animate", error);
+        Alert.alert(
+          t("narra.animatePortraitFailedTitle", "Не удалось оживить портрет"),
+          normalized.message,
+        );
+      })
+      .finally(() => setPortraitAnimating(false));
+  };
+
+  // Тап: кэшированное видео играет сразу; долгий тап — регенерация.
+  const animatePortrait = (regenerate: boolean) => {
+    if (portraitAnimating) return;
+    if (!hasBundledOpenRouterKey) {
+      Alert.alert(t("narra.animateNeedKey", "Нужен ключ OpenRouter"));
+      return;
+    }
+    if (!regenerate && portraitVideoUri) {
+      setShowPortraitVideo(true);
+      return;
+    }
+    setShowPortraitVideo(false);
+    runPortraitAnimation();
   };
 
   // Портрет по требованию — тот же механизм, что и в NarraCharactersScreen;
@@ -207,7 +264,14 @@ export function ReaderCharacterCard({
               {/* Крупный портрет в рамке, как в карточке narra */}
               <View style={styles.portraitFrame}>
                 <View style={styles.portrait}>
-                  {portraitUri ? (
+                  {showPortraitVideo && portraitVideoUri ? (
+                    // «Оживший» портрет — зацикленное видео НА МЕСТЕ картинки
+                    <NarraLoopVideo
+                      accessibilityLabel={t("narra.portraitVideoLabel", "Оживший портрет")}
+                      uri={portraitVideoUri}
+                      style={styles.portraitImage}
+                    />
+                  ) : portraitUri ? (
                     <Image
                       source={{ uri: portraitUri }}
                       style={styles.portraitImage}
@@ -224,21 +288,60 @@ export function ReaderCharacterCard({
                     </Text>
                   )}
                   {portraitUri && !portraitLoading ? (
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={t(
-                        "narra.regeneratePortrait",
-                        "Сгенерировать портрет заново",
+                    <View style={styles.portraitButtonsRow}>
+                      {showPortraitVideo && portraitVideoUri ? (
+                        // Возврат к статичному портрету
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={t("narra.portraitVideoStop", "Показать портрет")}
+                          onPress={() => setShowPortraitVideo(false)}
+                          style={styles.regenButton}
+                        >
+                          <Text style={styles.regenIcon}>■</Text>
+                        </Pressable>
+                      ) : (
+                        <>
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel={t(
+                              "narra.regeneratePortrait",
+                              "Сгенерировать портрет заново",
+                            )}
+                            disabled={portraitAnimating}
+                            onPress={() => generatePortrait(true)}
+                            style={styles.regenButton}
+                          >
+                            <Text style={styles.regenIcon}>↻</Text>
+                          </Pressable>
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel={t("narra.animatePortrait", "Оживить портрет")}
+                            disabled={portraitAnimating}
+                            onPress={() => animatePortrait(false)}
+                            onLongPress={() => animatePortrait(true)}
+                            style={styles.regenButton}
+                          >
+                            {portraitAnimating ? (
+                              <ActivityIndicator size="small" color="#fff" />
+                            ) : (
+                              <Text style={styles.regenIcon}>▶</Text>
+                            )}
+                          </Pressable>
+                        </>
                       )}
-                      onPress={() => generatePortrait(true)}
-                      style={styles.regenButton}
-                    >
-                      <Text style={styles.regenIcon}>↻</Text>
-                    </Pressable>
+                    </View>
                   ) : null}
                   {portraitLoading && portraitUri ? (
                     <View style={styles.portraitOverlay}>
                       <ActivityIndicator color={colors.background} />
+                    </View>
+                  ) : null}
+                  {portraitAnimating ? (
+                    <View style={styles.portraitOverlay}>
+                      <ActivityIndicator color={colors.background} />
+                      <Text style={styles.portraitOverlayHint}>
+                        {t("narra.portraitAnimating", "Оживляем…")}
+                      </Text>
                     </View>
                   ) : null}
                 </View>
@@ -358,12 +461,24 @@ const makeStyles = (colors: ThemeColors) =>
       ...StyleSheet.absoluteFillObject,
       alignItems: "center",
       justifyContent: "center",
+      gap: spacing.xs,
       backgroundColor: "rgba(0,0,0,0.3)",
     },
-    regenButton: {
+    portraitOverlayHint: {
+      color: "#fff",
+      fontFamily: interfaceFontFamily.regular,
+      fontSize: fontSize.xs,
+      textAlign: "center",
+    },
+    // Ряд круглых кнопок на портрете: ↻ регенерация и ▶ «Оживить» (P18)
+    portraitButtonsRow: {
       position: "absolute",
       bottom: spacing.sm,
       alignSelf: "center",
+      flexDirection: "row",
+      gap: spacing.sm,
+    },
+    regenButton: {
       width: 40,
       height: 40,
       borderRadius: radius.full,
