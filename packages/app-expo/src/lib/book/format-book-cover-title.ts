@@ -1,10 +1,19 @@
 const NON_BREAKING_SPACE = "\u00A0";
-const WORD_JOINER = "\u2060";
 const ONE_LETTER_SERVICE_WORDS = new Set(["а", "в", "и", "к", "о", "с", "у"]);
+const SENTENCE_BOUNDARY_WITH_CONTINUATION = /[.!?…]+(?=\s+\S)/u;
 
-/** Keeps one-letter Russian prepositions and conjunctions with the following word. */
+function keepOnlyFirstSentence(title: string): string {
+  const trimmedTitle = title.trim();
+  const firstBoundaryIndex = trimmedTitle.search(SENTENCE_BOUNDARY_WITH_CONTINUATION);
+
+  return firstBoundaryIndex >= 0
+    ? trimmedTitle.slice(0, firstBoundaryIndex).trimEnd()
+    : trimmedTitle;
+}
+
+/** Shortens multi-sentence titles and keeps one-letter service words with the following word. */
 export function formatBookCoverTitle(title: string): string {
-  const tokens = title.split(/(\s+)/u);
+  const tokens = keepOnlyFirstSentence(title).split(/(\s+)/u);
 
   for (let index = 0; index < tokens.length - 2; index += 1) {
     const token = tokens[index];
@@ -20,5 +29,5 @@ export function formatBookCoverTitle(title: string): string {
     }
   }
 
-  return tokens.join("").replace(/\S+/gu, (word) => Array.from(word).join(WORD_JOINER));
+  return tokens.join("");
 }

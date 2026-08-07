@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "pnpm --filter app exec vite ../reader-storybook-web --host 127.0.0.1 --port 3210",
-    "build": "pnpm --filter app exec vite build ../reader-storybook-web"
+    "build": "pnpm --filter app exec vite build ../reader-storybook-web",
+    "generate:genre-covers": "node scripts/generate-genre-cover-pack.mjs"
   }
 }

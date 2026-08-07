@@ -69,6 +69,22 @@ public final class ReadAnyNativeControlsModule: Module {
       }
     }
 
+    View(ReadAnySceneToolbar.self) {
+      Events("onSpeechPress", "onRegeneratePress")
+
+      Prop("tintColor") { (view, value: UIColor) in view.toolbarTintColor = value }
+      Prop("isDark") { (view, value: Bool) in view.isDark = value }
+      Prop("speechActive") { (view, value: Bool) in view.speechActive = value }
+      Prop("speechDisabled") { (view, value: Bool) in view.speechDisabled = value }
+      Prop("regenerateDisabled") { (view, value: Bool) in view.regenerateDisabled = value }
+      Prop("speechLabel") { (view, value: String) in view.speechLabel = value }
+      Prop("regenerateLabel") { (view, value: String) in view.regenerateLabel = value }
+
+      OnViewDidUpdateProps { view in
+        view.applyProps()
+      }
+    }
+
     View(ReadAnyTTSPlayerToolbar.self) {
       Events("onBackwardPress", "onPlayPausePress", "onForwardPress")
 
@@ -318,6 +334,104 @@ final class ReadAnyReaderToolbar: ExpoView {
     )
     item.accessibilityLabel = accessibilityLabel
     item.accessibilityHint = "Выполняет действие в текущей книге"
+    return item
+  }
+}
+
+final class ReadAnySceneToolbar: ExpoView {
+  let onSpeechPress = EventDispatcher()
+  let onRegeneratePress = EventDispatcher()
+
+  var toolbarTintColor = UIColor.label
+  var isDark = true
+  var speechActive = false
+  var speechDisabled = false
+  var regenerateDisabled = false
+  var speechLabel = "Озвучить по ролям"
+  var regenerateLabel = "Нарисовать заново"
+
+  private let toolbar = UIToolbar()
+
+  required init(appContext: AppContext? = nil) {
+    super.init(appContext: appContext)
+
+    toolbar.translatesAutoresizingMaskIntoConstraints = false
+    toolbar.isTranslucent = true
+    toolbar.alpha = 0
+    addSubview(toolbar)
+
+    NSLayoutConstraint.activate([
+      toolbar.topAnchor.constraint(equalTo: topAnchor),
+      toolbar.bottomAnchor.constraint(equalTo: bottomAnchor),
+      toolbar.leadingAnchor.constraint(equalTo: leadingAnchor),
+      toolbar.trailingAnchor.constraint(equalTo: trailingAnchor)
+    ])
+  }
+
+  @objc private func handleSpeechPress() {
+    onSpeechPress()
+  }
+
+  @objc private func handleRegeneratePress() {
+    onRegeneratePress()
+  }
+
+  func applyProps() {
+    UIView.performWithoutAnimation {
+      updateConfiguration()
+      layoutIfNeeded()
+      toolbar.alpha = 1
+    }
+  }
+
+  private func updateConfiguration() {
+    toolbar.tintColor = toolbarTintColor
+    toolbar.barStyle = isDark ? .black : .default
+
+    if #available(iOS 15.0, *) {
+      let appearance = UIToolbarAppearance()
+      appearance.configureWithDefaultBackground()
+      toolbar.standardAppearance = appearance
+      toolbar.scrollEdgeAppearance = appearance
+      toolbar.compactAppearance = appearance
+    }
+
+    let speech = makeItem(
+      symbol: "speaker.wave.2",
+      accessibilityLabel: speechActive ? "Остановить озвучку" : speechLabel,
+      action: #selector(handleSpeechPress),
+      enabled: !speechDisabled
+    )
+    let regenerate = makeItem(
+      symbol: "arrow.counterclockwise",
+      accessibilityLabel: regenerateLabel,
+      action: #selector(handleRegeneratePress),
+      enabled: !regenerateDisabled
+    )
+    let spacer = { UIBarButtonItem(systemItem: .flexibleSpace) }
+
+    if #available(iOS 26.0, *) {
+      [speech, regenerate].forEach { $0.sharesBackground = true }
+    }
+
+    toolbar.setItems([spacer(), speech, regenerate, spacer()], animated: false)
+  }
+
+  private func makeItem(
+    symbol: String,
+    accessibilityLabel: String,
+    action: Selector,
+    enabled: Bool
+  ) -> UIBarButtonItem {
+    let item = UIBarButtonItem(
+      image: UIImage(systemName: symbol),
+      style: .plain,
+      target: self,
+      action: action
+    )
+    item.accessibilityLabel = accessibilityLabel
+    item.accessibilityHint = "Выполняет действие с текущей сценой"
+    item.isEnabled = enabled
     return item
   }
 }

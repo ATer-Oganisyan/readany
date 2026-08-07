@@ -47,11 +47,11 @@ Use a distinctive combination of no more than two techniques: archival photograp
 
 Create one dominant graphic element or conceptual object. It must be the only primary focal point.
 
-Place this dominant element within the lower two-thirds of the vertical canvas, from approximately 35% of the canvas height down to the bottom edge. Its visual center should sit approximately 60–72% down from the top edge. Let the object occupy a substantial part of the lower two-thirds instead of compressing it into the bottom third. It may extend through the middle and lower regions, approach, touch or be partially cropped by the bottom edge.
+Place this dominant element in the lower portion of the vertical canvas. Its bounding box should occupy approximately two-fifths of the total canvas height (about 38–42%), slightly less than half. Its visual center should sit approximately 68–72% down from the top edge, with the element generally spanning from around 48–52% to 88–94% of the canvas height. It may approach, touch or be partially cropped by the bottom edge, but it must not expand to fill the entire lower two-thirds.
 
 Keep the upper third visually quiet and subordinate. Fill this area with the required dominant background color, continuous paper texture, delicate print grain and subtle tonal variation. Quiet means low-detail, not blank, white, cream or beige. The upper area must remain part of the finished full-bleed artwork, but it must not contain a separate object, face, figure, symbol, strong geometric shape, high-contrast detail or secondary focal point.
 
-The viewer’s eye must be drawn unmistakably into the lower two-thirds of the cover. The composition should feel deliberately weighted below the upper third: approximately 30% quiet visual field above and 70% active composition below.
+The viewer’s eye must be drawn unmistakably to the compact focal element in the lower portion of the cover. Keep approximately 30% quiet visual field above, generous supporting negative space around the object, and only about 40% of the canvas height occupied by the primary element.
 
 Avoid centered, vertically balanced, symmetrical or evenly distributed compositions. Do not place the dominant element in the top third; it may occupy both the middle and bottom thirds as one continuous focal form. Do not repeat the primary object elsewhere in the image. Avoid decorative clutter. Every element must support the central metaphor.
 
@@ -75,7 +75,7 @@ Do not create abstract shapes resembling letters, numbers or writing. Replace an
 
 Avoid glossy commercial illustration, cinematic lighting, photorealistic advertising, fantasy concept art, generic surrealism, polished 3D rendering, digital gradients, neon effects, stock-photo aesthetics and obvious AI-generated details.
 
-CRITICAL COMPOSITION RULE: the main graphic element must not be confined to the bottom third. It must occupy the lower two-thirds of the canvas, beginning around 35% from the top and extending through the middle toward the bottom edge. No dominant element may appear in the upper third.
+CRITICAL COMPOSITION RULE: the main graphic element must occupy roughly two-fifths of the canvas height (38–42%) and must never exceed about 45%. Position it in the lower portion, generally beginning around 48–52% from the top and ending around 88–94%. No dominant element may appear in the upper third.
 
 CRITICAL OUTPUT RULE: generate only the complete full-bleed cover artwork. Zero visible text. No mockup, no border and no reserved typography area.
 

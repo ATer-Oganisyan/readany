@@ -76,6 +76,7 @@
     "expo-asset": "~55.0.18",
     "expo-audio": "~55.0.16",
     "expo-battery": "~55.0.15",
+    "expo-blur": "~55.0.16",
     "expo-build-properties": "55.0.16",
     "expo-camera": "~55.0.21",
     "expo-clipboard": "~55.0.15",

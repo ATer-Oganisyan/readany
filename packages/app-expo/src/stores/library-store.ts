@@ -73,6 +73,7 @@ export interface LibraryState {
   viewMode: LibraryViewMode;
   isGroupView: boolean;
   isImporting: boolean;
+  generatingCoverBookIds: string[];
   isLoaded: boolean;
   allTags: string[];
   activeTag: string;
@@ -253,6 +254,16 @@ const titleRepairAttempted = new Set<string>();
 const coverGenerationAttempted = new Set<string>();
 let coverGenerationQueue: Promise<void> = Promise.resolve();
 
+function setCoverGenerationActive(bookId: string, active: boolean): void {
+  useLibraryStore.setState((state) => ({
+    generatingCoverBookIds: active
+      ? state.generatingCoverBookIds.includes(bookId)
+        ? state.generatingCoverBookIds
+        : [...state.generatingCoverBookIds, bookId]
+      : state.generatingCoverBookIds.filter((id) => id !== bookId),
+  }));
+}
+
 async function repairSuspiciousBookTitles(books: Book[]): Promise<void> {
   for (const book of books) {
     const fileName = book.filePath.split("/").pop() || `${book.meta.title}.${book.format}`;
@@ -302,7 +313,7 @@ async function repairSuspiciousBookTitles(books: Book[]): Promise<void> {
 
 async function ensureGeneratedBookCover(
   book: Book,
-  context?: { description?: string; textSample?: string },
+  context?: { description?: string; textSample?: string; subjects?: string[] },
 ): Promise<void> {
   if (book.meta.coverUrl) return;
 
@@ -324,6 +335,7 @@ async function ensureGeneratedBookCover(
       author: book.meta.author,
       description: context?.description || book.meta.description,
       excerpt: context?.textSample,
+      subjects: context?.subjects || book.meta.subjects,
     });
     if (!generated) return;
 
@@ -342,12 +354,15 @@ async function ensureGeneratedBookCover(
 
 function queueGeneratedBookCover(
   book: Book,
-  context?: { description?: string; textSample?: string },
+  context?: { description?: string; textSample?: string; subjects?: string[] },
 ): Promise<void> {
   if (book.meta.coverUrl || coverGenerationAttempted.has(book.id)) return Promise.resolve();
   coverGenerationAttempted.add(book.id);
+  setCoverGenerationActive(book.id, true);
 
-  const task = coverGenerationQueue.then(() => ensureGeneratedBookCover(book, context));
+  const task = coverGenerationQueue
+    .then(() => ensureGeneratedBookCover(book, context))
+    .finally(() => setCoverGenerationActive(book.id, false));
   coverGenerationQueue = task.catch(() => undefined);
   return task;
 }
@@ -358,7 +373,7 @@ async function repairMissingBookCovers(books: Book[]): Promise<void> {
       useLibraryStore.getState().books.find((item) => item.id === originalBook.id) || originalBook;
     if (book.meta.coverUrl || coverGenerationAttempted.has(book.id)) continue;
 
-    let context: { description?: string; textSample?: string } | undefined;
+    let context: { description?: string; textSample?: string; subjects?: string[] } | undefined;
     if (book.format === "epub" || book.format === "fb2") {
       try {
         const filePath = isRelativeAppPath(book.filePath)
@@ -372,7 +387,11 @@ async function repairMissingBookCovers(books: Book[]): Promise<void> {
           fileName,
           fileSize: size,
         });
-        context = { description: metadata.description, textSample: metadata.textSample };
+        context = {
+          description: metadata.description,
+          textSample: metadata.textSample,
+          subjects: metadata.subjects,
+        };
       } catch (error) {
         console.warn(`[Library] Could not read cover context for ${book.id}:`, error);
       }
@@ -689,6 +708,8 @@ async function restoreDeletedMobileBook(
   let title = originalBook.meta.title || fileName.replace(/\.\w+$/i, "") || "Untitled";
   let author = originalBook.meta.author || "";
   let coverUrl = originalBook.meta.coverUrl;
+  let description = originalBook.meta.description;
+  let subjects = originalBook.meta.subjects;
 
   try {
     const meta = await extractMobileImportMetadata({
@@ -699,6 +720,8 @@ async function restoreDeletedMobileBook(
     });
     if (meta.title) title = meta.title;
     if (meta.author) author = meta.author;
+    if (meta.description) description = meta.description;
+    if (meta.subjects?.length) subjects = meta.subjects;
 
     if (meta.coverBytes && meta.coverBytes.length > 0) {
       const mimeType = meta.coverMimeType || "image/jpeg";
@@ -720,6 +743,8 @@ async function restoreDeletedMobileBook(
       ...originalBook.meta,
       title,
       author,
+      description,
+      subjects,
       coverUrl,
     },
     deletedAt: undefined,
@@ -888,6 +913,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   viewMode: "grid",
   isGroupView: true,
   isImporting: false,
+  generatingCoverBookIds: [],
   isLoaded: false,
   allTags: [],
   activeTag: "",
@@ -1109,6 +1135,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
               // Hermes only supports UTF-8 in TextDecoder. Convert GBK/GB18030
               // etc. to UTF-8 using text-encoding polyfill before passing to converter.
               const bytes = ensureUtf8Bytes(sourceBytes);
+              const textSample = new TextDecoder("utf-8").decode(bytes).slice(0, 8000);
 
               // React Native Blob/File constructor doesn't support ArrayBuffer/Uint8Array.
               // Create a File-like shim that provides the methods TxtToEpubConverter needs.
@@ -1200,7 +1227,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
               }
               result.imported.push(book);
               if (!book.meta.coverUrl) {
-                void queueGeneratedBookCover(book);
+                void queueGeneratedBookCover(book, { textSample });
               }
               if (fileHash) {
                 duplicateIndex.byHash.set(fileHash, book);
@@ -1364,7 +1391,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           let title = fileName.replace(/\.\w+$/i, "") || "Untitled";
           let author = "";
           let coverUrl: string | undefined;
-          let coverContext: { description?: string; textSample?: string } | undefined;
+          let coverContext:
+            | { description?: string; textSample?: string; subjects?: string[] }
+            | undefined;
           const shouldGenerateIdentity = isTechnicalBookTitle(title);
 
           try {
@@ -1380,7 +1409,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             );
             if (meta.title) title = meta.title;
             if (meta.author) author = meta.author;
-            coverContext = { description: meta.description, textSample: meta.textSample };
+            coverContext = {
+              description: meta.description,
+              textSample: meta.textSample,
+              subjects: meta.subjects,
+            };
 
             const identity = await resolveImportedBookIdentity({
               fileName,
@@ -1426,6 +1459,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
               title,
               author,
               description: coverContext?.description || deletedMatch?.meta.description,
+              subjects: coverContext?.subjects?.length
+                ? coverContext.subjects
+                : deletedMatch?.meta.subjects,
               coverUrl: coverUrl || deletedMatch?.meta.coverUrl,
             },
             groupId: deletedMatch?.groupId,

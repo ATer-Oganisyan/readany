@@ -18,8 +18,14 @@ export const makeStyles = (colors: ThemeColors, cardWidth: number) => {
       borderRadius: radius.sm,
       overflow: "hidden",
       position: "relative",
+      isolation: "isolate",
     },
-    coverCanvas: { width: "100%", height: "100%", position: "relative" },
+    coverCanvas: {
+      width: "100%",
+      height: "100%",
+      position: "relative",
+      isolation: "isolate",
+    },
     coverImage: { width: "100%", height: "100%" },
     spineOverlay: {
       position: "absolute",
@@ -52,15 +58,6 @@ export const makeStyles = (colors: ThemeColors, cardWidth: number) => {
       right: 0,
       height: "3%",
       backgroundColor: "rgba(240,240,240,0.15)",
-      zIndex: 3,
-    },
-    spineBottomShadow: {
-      position: "absolute",
-      bottom: 0,
-      left: 0,
-      right: 0,
-      height: "8%",
-      backgroundColor: "rgba(15,15,15,0.15)",
       zIndex: 3,
     },
     fallbackCover: {
@@ -179,24 +176,6 @@ export const makeStyles = (colors: ThemeColors, cardWidth: number) => {
     },
     tagTextUncategorized: { fontSize: 8, color: `${colors.mutedForeground}99` },
     tagOverflow: { fontSize: 8, color: `${colors.mutedForeground}99`, alignSelf: "center" },
-    progressRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      marginTop: 4,
-    },
-    progressTrack: {
-      flex: 1,
-      height: 3,
-      borderRadius: radius.full,
-      backgroundColor: colors.primary10,
-      overflow: "hidden",
-    },
-    progressFill: {
-      height: "100%",
-      borderRadius: radius.full,
-      backgroundColor: colors.primary,
-    },
     statusRow: {
       flexDirection: "row",
       alignItems: "center",
@@ -204,7 +183,6 @@ export const makeStyles = (colors: ThemeColors, cardWidth: number) => {
       marginTop: 3,
       minHeight: 14,
     },
-    progressText: { fontSize: 9, color: colors.mutedForeground, fontVariant: ["tabular-nums"] },
     completeText: { fontSize: 9, fontWeight: fontWeight.medium, color: "#16a34a" },
     newBadge: {
       backgroundColor: `${colors.primary}14`,

@@ -113,6 +113,8 @@ type LibraryGridItem =
   | { type: "group"; group: BookGroup; books: Book[] }
   | { type: "book"; book: Book };
 
+type LibrarySection = "catalog" | "my-books";
+
 export function LibraryScreen() {
   const colors = useColors();
   const { t } = useTranslation();
@@ -138,6 +140,7 @@ export function LibraryScreen() {
   const [tagSheetBook, setTagSheetBook] = useState<Book | null>(null);
   const [isPickingImport, setIsPickingImport] = useState(false);
   const [isUrlImporting, setIsUrlImporting] = useState(false);
+  const [librarySection, setLibrarySection] = useState<LibrarySection>("catalog");
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedBookIds, setSelectedBookIds] = useState<Set<string>>(new Set());
   const [showGroupPicker, setShowGroupPicker] = useState(false);
@@ -163,7 +166,6 @@ export function LibraryScreen() {
     isGroupView,
     loadBooks,
     importBooks,
-    updateBook,
     removeBook,
     setGroupView,
     setActiveGroupId,
@@ -398,6 +400,11 @@ export function LibraryScreen() {
     const readingIds = new Set(readingNowBooks.map((book) => book.id));
     return gridItems.filter((item) => item.type !== "book" || !readingIds.has(item.book.id));
   }, [gridItems, readingNowBooks, showReadingNow]);
+
+  const visibleGridItems = useMemo(() => {
+    if (!showCatalog) return displayGridItems;
+    return librarySection === "my-books" ? gridItems : [];
+  }, [displayGridItems, gridItems, librarySection, showCatalog]);
 
   const handleLocalImport = useCallback(async () => {
     if (localImportInFlightRef.current) return;
@@ -994,6 +1001,47 @@ export function LibraryScreen() {
           onOpen={handleOpen}
         />
       ) : null}
+
+      {isLoaded && showCatalog ? (
+        <View accessibilityRole="tablist" style={s.librarySectionTabs}>
+          <Pressable
+            accessible
+            accessibilityLabel={t("library.catalog", "Каталог")}
+            accessibilityRole="button"
+            accessibilityState={{ selected: librarySection === "catalog" }}
+            hitSlop={8}
+            onPress={() => setLibrarySection("catalog")}
+            style={({ pressed }) => pressed && s.librarySectionTabPressed}
+          >
+            <Text
+              style={[
+                s.librarySectionTabText,
+                librarySection === "catalog" && s.librarySectionTabTextActive,
+              ]}
+            >
+              {t("library.catalog", "Каталог")}
+            </Text>
+          </Pressable>
+          <Pressable
+            accessible
+            accessibilityLabel={t("library.myBooks", "Мои книги")}
+            accessibilityRole="button"
+            accessibilityState={{ selected: librarySection === "my-books" }}
+            hitSlop={8}
+            onPress={() => setLibrarySection("my-books")}
+            style={({ pressed }) => pressed && s.librarySectionTabPressed}
+          >
+            <Text
+              style={[
+                s.librarySectionTabText,
+                librarySection === "my-books" && s.librarySectionTabTextActive,
+              ]}
+            >
+              {t("library.myBooks", "Мои книги")}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
     </>
   );
 
@@ -1001,7 +1049,7 @@ export function LibraryScreen() {
     <>
       <ScrollViewMarker style={s.container} scrollEdgeEffects={NATIVE_SCROLL_EDGE_EFFECTS}>
         <FlatList
-          data={isLoaded ? displayGridItems : []}
+          data={isLoaded ? visibleGridItems : []}
           renderItem={renderGridItem}
           style={s.primaryScroll}
           removeClippedSubviews={false}
@@ -1042,11 +1090,8 @@ export function LibraryScreen() {
           }
           ListHeaderComponent={listHeader}
           ListFooterComponent={
-            isLoaded && showCatalog ? (
-              <View
-                style={[s.catalogSection, gridItems.length === 0 ? s.catalogSectionFirst : null]}
-              >
-                <Text style={s.catalogTitle}>{t("library.catalog", "Каталог")}</Text>
+            isLoaded && showCatalog && librarySection === "catalog" ? (
+              <View style={s.catalogSection}>
                 <View style={s.catalogGrid}>
                   {BUNDLED_CATALOG_BOOKS.map((catalogBook) => (
                     <View key={catalogBook.id} style={s.gridItem}>
@@ -1267,15 +1312,21 @@ const makeStyles = (
       marginBottom: layout.gridGap,
       overflow: "visible",
     },
-    catalogSection: { paddingTop: 32, overflow: "visible" },
-    catalogSectionFirst: { paddingTop: 0 },
-    catalogTitle: {
-      color: colors.foreground,
+    librarySectionTabs: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 16,
+      marginBottom: 20,
+    },
+    librarySectionTabPressed: { opacity: 0.7 },
+    librarySectionTabText: {
+      color: colors.mutedForeground,
       fontSize: fontSize.lg,
       lineHeight: 24,
       fontWeight: fontWeight.bold,
-      marginBottom: 20,
     },
+    librarySectionTabTextActive: { color: colors.foreground },
+    catalogSection: { overflow: "visible" },
     catalogGrid: {
       flexDirection: "row",
       flexWrap: "wrap",

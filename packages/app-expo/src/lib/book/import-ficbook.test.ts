@@ -13,7 +13,7 @@ import {
   parseFicbookUrl,
   parseFicbookWorkPage,
 } from "./import-ficbook";
-import { extractEpubMetadata } from "./metadata-extractor";
+import { extractEpubMetadata, extractFb2Metadata } from "./metadata-extractor";
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "__fixtures__");
 const workMultiHtml = readFileSync(join(fixturesDir, "ficbook-work-multi.html"), "utf-8");
@@ -171,6 +171,7 @@ describe("buildFicbookEpub", () => {
     expect(meta.title).toBe("Удивительные приключения «Фоксглав»");
     expect(meta.author).toBe("Yuliya Yako");
     expect(meta.description).toContain("Аннотация фанфика.");
+    expect(meta.textSample).toContain("Первый абзац.");
     expect(meta.language).toBe("ru");
     expect(meta.coverBytes).toEqual(input.cover.bytes);
   });
@@ -188,6 +189,20 @@ describe("buildFicbookEpub", () => {
   it("без обложки в манифесте нет cover-image", () => {
     const text = new TextDecoder().decode(buildFicbookEpub({ ...input, cover: null }));
     expect(text).not.toContain("cover-image");
+  });
+});
+
+describe("extractFb2Metadata", () => {
+  it("читает и дедуплицирует жанры из title-info", () => {
+    const xml = `<?xml version="1.0" encoding="utf-8"?>
+      <FictionBook><description><title-info>
+        <genre>sf_fantasy</genre><genre>sf_fantasy</genre><genre>adventure</genre>
+        <book-title>Книга</book-title>
+      </title-info></description><body><section><p>Текст.</p></section></body></FictionBook>`;
+
+    const meta = extractFb2Metadata(new TextEncoder().encode(xml));
+
+    expect(meta.subjects).toEqual(["sf_fantasy", "adventure"]);
   });
 });
 

@@ -25,7 +25,7 @@ import TTSSettingsScreen from "@/screens/settings/TTSSettingsScreen";
 import TranslationSettingsScreen from "@/screens/settings/TranslationSettingsScreen";
 import VectorModelSettingsScreen from "@/screens/settings/VectorModelSettingsScreen";
 import { useSettingsStore } from "@/stores";
-import { titleFontFamily, useColors } from "@/styles/theme";
+import { largeTitleFontFamily, titleFontFamily, useTheme } from "@/styles/theme";
 /**
  * RootNavigator — top-level stack matching Tauri mobile App.tsx routes exactly.
  */
@@ -91,7 +91,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export function RootNavigator() {
   const { _hasHydrated } = useSettingsStore();
-  const colors = useColors();
+  const { colors, isDark } = useTheme();
   const { t } = useTranslation();
 
   if (!_hasHydrated) return null;
@@ -117,7 +117,15 @@ export function RootNavigator() {
           contentStyle: { backgroundColor: colors.background },
         }}
       >
-        <Stack.Screen name="Tabs" component={TabNavigator} options={{ headerShown: false }} />
+        <Stack.Screen
+          name="Tabs"
+          component={TabNavigator}
+          options={{
+            headerShown: false,
+            statusBarHidden: false,
+            statusBarStyle: isDark ? "light" : "dark",
+          }}
+        />
         <Stack.Screen
           name="Chat"
           component={ChatScreen}
@@ -159,7 +167,17 @@ export function RootNavigator() {
           component={NarraCharactersScreen}
           options={{
             animation: "slide_from_right",
-            title: "Чат",
+            title: "Чаты",
+            statusBarHidden: false,
+            statusBarStyle: isDark ? "light" : "dark",
+            headerLargeTitleEnabled: Platform.OS === "ios",
+            headerLargeTitleShadowVisible: false,
+            headerLargeTitleStyle: {
+              color: colors.foreground,
+              fontFamily: largeTitleFontFamily,
+              fontSize: 40,
+              fontWeight: "400",
+            },
           }}
         />
         <Stack.Screen

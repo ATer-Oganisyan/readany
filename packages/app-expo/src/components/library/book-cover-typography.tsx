@@ -1,6 +1,6 @@
 import { Text } from "@/components/ui/Typography";
 import { formatBookCoverTitle } from "@/lib/book/format-book-cover-title";
-import { interfaceFontFamily } from "@deslop/primitives/native";
+import { interfaceFontFamily, serifTextFontFamily } from "@deslop/primitives/native";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import {
   type NativeSyntheticEvent,
@@ -16,15 +16,20 @@ interface BookCoverTypographyProps {
   referenceWidth?: number;
   titleFontSize?: number;
   authorFontSize?: number;
+  leftInsetAdjustment?: number;
   bottomAccessory?: ReactNode;
 }
 
+function normalizeLayoutText(value: string) {
+  return value.replaceAll("\u00A0", " ").replaceAll("\u2060", "");
+}
+
 function hasBrokenWord(title: string, renderedLines: readonly string[]) {
-  const plainTitle = title.replaceAll("\u2060", "");
+  const plainTitle = normalizeLayoutText(title);
   let searchOffset = 0;
 
   for (const renderedLine of renderedLines.slice(0, -1)) {
-    const line = renderedLine.replaceAll("\u2060", "").trim();
+    const line = normalizeLayoutText(renderedLine).trim();
     if (!line) continue;
 
     const lineStart = plainTitle.indexOf(line, searchOffset);
@@ -49,15 +54,16 @@ export function BookCoverTypography({
   referenceWidth = width,
   titleFontSize,
   authorFontSize,
+  leftInsetAdjustment = 4,
   bottomAccessory,
 }: BookCoverTypographyProps) {
   const scale = Math.min(1, width / referenceWidth);
   const titleSize = titleFontSize ?? Math.max(12, Math.min(18, referenceWidth * 0.12)) * scale;
   const authorSize = authorFontSize ?? 13 * scale;
-  const [fittedTitleSize, setFittedTitleSize] = useState(titleSize);
   const formattedTitle = formatBookCoverTitle(title);
+  const [fittedTitleSize, setFittedTitleSize] = useState(titleSize);
 
-  useEffect(() => setFittedTitleSize(titleSize), [title, titleSize, width]);
+  useEffect(() => setFittedTitleSize(titleSize), [titleSize]);
 
   const handleTitleLayout = useCallback(
     ({ nativeEvent }: NativeSyntheticEvent<TextLayoutEventData>) => {
@@ -68,78 +74,98 @@ export function BookCoverTypography({
           nativeEvent.lines.map((line) => line.text),
         )
       ) {
-        setFittedTitleSize((currentSize) => Math.max(6, currentSize - 0.5));
+        setFittedTitleSize((currentSize) =>
+          currentSize === fittedTitleSize ? Math.max(6, currentSize - 0.5) : currentSize,
+        );
       }
     },
     [fittedTitleSize, formattedTitle],
   );
 
   return (
-    <View
-      pointerEvents="none"
-      style={[
-        styles.overlay,
-        {
-          padding: 20 * scale,
-          paddingTop: 16 * scale,
-          gap: 4 * scale,
-        },
-      ]}
-    >
-      <Text
-        adjustsFontSizeToFit
-        minimumFontScale={0.72}
-        numberOfLines={3}
-        onTextLayout={handleTitleLayout}
+    <>
+      <View
+        pointerEvents="none"
         style={[
-          styles.title,
+          styles.typographyLayer,
           {
-            fontFamily: interfaceFontFamily.bold,
-            fontSize: fittedTitleSize,
-            lineHeight: fittedTitleSize * 1.05,
+            padding: 20 * scale,
+            paddingLeft: 20 * scale + leftInsetAdjustment,
+            paddingTop: 16 * scale,
+            gap: 4 * scale,
           },
         ]}
       >
-        {formattedTitle}
-      </Text>
-      {author ? (
         <Text
-          adjustsFontSizeToFit
-          minimumFontScale={0.74}
-          numberOfLines={2}
+          numberOfLines={6}
+          onTextLayout={handleTitleLayout}
           style={[
-            styles.author,
+            styles.title,
             {
               fontFamily: interfaceFontFamily.bold,
-              fontSize: authorSize,
-              lineHeight: authorSize * (14 / 13),
+              fontSize: fittedTitleSize,
+              lineHeight: fittedTitleSize * 1.05,
             },
           ]}
         >
-          {author}
+          {formattedTitle}
         </Text>
+        {author ? (
+          <Text
+            adjustsFontSizeToFit
+            minimumFontScale={0.74}
+            numberOfLines={2}
+            style={[
+              styles.author,
+              {
+                fontFamily: serifTextFontFamily.regular,
+                fontSize: authorSize,
+                lineHeight: authorSize * (14 / 13),
+              },
+            ]}
+          >
+            {author}
+          </Text>
+        ) : null}
+      </View>
+      {bottomAccessory ? (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.accessoryLayer,
+            {
+              padding: 20 * scale,
+              paddingLeft: 20 * scale + leftInsetAdjustment,
+              paddingTop: 16 * scale,
+            },
+          ]}
+        >
+          <View style={styles.bottomAccessory}>{bottomAccessory}</View>
+        </View>
       ) : null}
-      {bottomAccessory ? <View style={styles.bottomAccessory}>{bottomAccessory}</View> : null}
-    </View>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
+  typographyLayer: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 12,
+    mixBlendMode: "multiply",
+  },
+  accessoryLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 13,
   },
   title: {
     flexShrink: 1,
     color: "#151515",
     letterSpacing: -0.2,
-    mixBlendMode: "overlay",
   },
   author: {
     flexShrink: 1,
-    color: "rgba(21,21,21,0.72)",
+    color: "rgba(21,21,21,1)",
     letterSpacing: -0.1,
-    mixBlendMode: "overlay",
   },
   bottomAccessory: {
     alignItems: "flex-start",

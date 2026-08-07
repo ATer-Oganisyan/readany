@@ -1,9 +1,16 @@
 import readerUrl from "../app-expo/assets/reader/reader.html?url";
 import serifBoldUrl from "../deslop-primitives/fonts/SBSerifText-Bold.otf?url";
 import serifRegularUrl from "../deslop-primitives/fonts/SBSerifText-Regular.otf?url";
+import genreCoverBooks from "./genre-cover-books.json";
 import sampleBook from "./sample-book.fb2?raw";
 
 const STORIES = [
+  {
+    group: "Обложки",
+    items: [
+      ["genre-covers", "Жанровый пак", "OpenRouter · GPT Image 2 · манга и Ficbook включены"],
+    ],
+  },
   {
     group: "Чтение",
     items: [
@@ -51,6 +58,10 @@ const description = document.querySelector("#story-description");
 const status = document.querySelector("#reader-status");
 const previousPage = document.querySelector("#previous-page");
 const nextPage = document.querySelector("#next-page");
+const readerActions = document.querySelector(".reader-actions");
+const previewStage = document.querySelector(".preview-stage");
+const viewportLabel = document.querySelector(".viewport-label");
+const coverGallery = document.querySelector("#genre-cover-gallery");
 
 let activeStory = getStoryFromHash();
 let currentRun = 0;
@@ -104,6 +115,63 @@ function renderNavigation() {
       return section;
     }),
   );
+}
+
+async function renderCoverGallery() {
+  if (coverGallery.childElementCount > 0) return;
+
+  const manifest = await fetch("/genre-covers/manifest.json")
+    .then((response) => (response.ok ? response.json() : null))
+    .catch(() => null);
+  const readyIds = new Set(
+    manifest?.books?.filter((book) => book.output?.status === "ready").map((book) => book.id) ??
+      genreCoverBooks.map((book) => book.id),
+  );
+  const priority = new Map([
+    ["after-last-train", 0],
+    ["seventh-floor-letters", 1],
+  ]);
+  const visibleBooks = genreCoverBooks
+    .filter((book) => readyIds.has(book.id))
+    .sort((a, b) => (priority.get(a.id) ?? 99) - (priority.get(b.id) ?? 99));
+
+  const heading = document.createElement("header");
+  heading.className = "cover-pack-header";
+  heading.innerHTML = `
+    <div>
+      <span class="cover-pack-kicker">OpenRouter / openai/gpt-image-2 / ${visibleBooks.length} ready</span>
+      <h2>Единый фон.<br>Разные иллюстрации.</h2>
+    </div>
+    <p>У всех обложек одинаковая система фона: полноформатное цветное поле, спокойная верхняя треть и матовая печатная фактура. Жанр меняет только технику и характер главной иллюстрации.</p>
+  `;
+
+  const grid = document.createElement("div");
+  grid.className = "cover-pack-grid";
+  grid.replaceChildren(
+    ...visibleBooks.map((book, index) => {
+      const article = document.createElement("article");
+      article.className = "cover-pack-card";
+      article.innerHTML = `
+        <figure class="cover-pack-art">
+          <img src="/genre-covers/${book.id}.jpg" alt="Обложка ${book.title}" loading="lazy">
+          <figcaption>${String(index + 1).padStart(2, "0")}</figcaption>
+        </figure>
+        <div class="cover-pack-copy">
+          <span class="cover-pack-genre">${book.genre}</span>
+          <h3>${book.title}</h3>
+          <p class="cover-pack-author">${book.author}</p>
+          <p class="cover-pack-description">${book.description}</p>
+          <details>
+            <summary>Промпт стилистики</summary>
+            <p>${book.stylePrompt}</p>
+          </details>
+        </div>
+      `;
+      return article;
+    }),
+  );
+
+  coverGallery.append(heading, grid);
 }
 
 function createStoryHelpers() {
@@ -396,6 +464,18 @@ function startStory() {
   description.textContent = activeStory.description;
   status.textContent = "Загрузка";
   renderNavigation();
+
+  const isCoverGallery = activeStory.id === "genre-covers";
+  frame.hidden = isCoverGallery;
+  viewportLabel.hidden = isCoverGallery;
+  coverGallery.hidden = !isCoverGallery;
+  readerActions.hidden = isCoverGallery;
+  previewStage.classList.toggle("cover-pack-mode", isCoverGallery);
+  if (isCoverGallery) {
+    void renderCoverGallery();
+    return;
+  }
+
   const separator = readerUrl.includes("?") ? "&" : "?";
   frame.src = `${readerUrl}${separator}story=${currentRun}`;
 }

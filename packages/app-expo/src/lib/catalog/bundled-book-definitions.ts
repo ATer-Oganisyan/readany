@@ -5,7 +5,7 @@ export interface BundledCatalogBookDefinition {
   fileName: string;
 }
 
-export const BUNDLED_CATALOG_COVER_VERSION = 6;
+export const BUNDLED_CATALOG_COVER_VERSION = 7;
 
 export function getBundledCatalogCoverPath(bookId: string): string {
   return `covers/${bookId}-catalog-v${BUNDLED_CATALOG_COVER_VERSION}.jpg`;

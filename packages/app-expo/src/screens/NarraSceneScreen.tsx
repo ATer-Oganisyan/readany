@@ -1,4 +1,4 @@
-import { NativeButton } from "@/components/ui/NativeButton";
+import { ScrollViewMarker } from "@/components/ui/ScrollViewMarker";
 import { Text } from "@/components/ui/Typography";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { EmptyStateActionButton } from "@/components/ui/empty-state-action-button";
@@ -13,11 +13,13 @@ import {
 import { generateNarraAudioScenario } from "@/lib/narra/scene-audio";
 import type { NarraCharacter, NarraSceneAudioSegment } from "@/lib/narra/types";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
+import { NATIVE_SCROLL_EDGE_EFFECTS } from "@/navigation/scroll-edge-effects";
+import { SCENE_TOOLBAR_HEIGHT, SceneToolbar } from "@/screens/narra/SceneToolbar";
 import { useNarraStore } from "@/stores";
+import { useTheme } from "@/styles/ThemeContext";
 import { useColors } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
   Animated,
@@ -26,6 +28,7 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type Props = NativeStackScreenProps<RootStackParamList, "NarraScene">;
 const EMPTY_CHARACTERS: NarraCharacter[] = [];
@@ -38,8 +41,9 @@ function sceneChapterTitle(chapter: string): string {
 
 export function NarraSceneScreen({ route, navigation }: Props) {
   const { bookId, chapter, excerpt, sourceKey } = route.params;
-  const { t } = useTranslation();
   const colors = useColors();
+  const { isDark } = useTheme();
+  const insets = useSafeAreaInsets();
   const { width: viewportWidth } = useWindowDimensions();
   const displayChapter = sceneChapterTitle(chapter);
   const characters = useNarraStore((state) => state.books[bookId]?.characters ?? EMPTY_CHARACTERS);
@@ -215,98 +219,89 @@ export function NarraSceneScreen({ route, navigation }: Props) {
   }, [navigation]);
 
   return (
-    <Animated.ScrollView
-      alwaysBounceVertical
-      contentInsetAdjustmentBehavior="never"
-      contentContainerStyle={styles.content}
-      onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
-        useNativeDriver: true,
-      })}
-      scrollEventThrottle={16}
-      style={{ backgroundColor: colors.background }}
+    <ScrollViewMarker
+      scrollEdgeEffects={NATIVE_SCROLL_EDGE_EFFECTS}
+      style={{ flex: 1, backgroundColor: colors.background }}
     >
-      {imageUri ? (
-        <Animated.View style={[styles.imageWrap, imageStretchStyle]}>
-          <Image
-            accessibilityLabel={`Иллюстрация к главе ${displayChapter}`}
-            source={{ uri: imageUri }}
-            style={[styles.image, { backgroundColor: colors.card }]}
-            onError={() => setImageUri(null)}
-          />
-          {loading ? (
-            <View style={styles.loadingOverlay}>
-              <ActivityIndicator size="large" color="#fff" />
-            </View>
-          ) : null}
-        </Animated.View>
-      ) : loading ? (
-        <CenteredEmptyState title="Создаём сцену" description="Это может занять немного времени">
-          <ActivityIndicator size="small" color={colors.primary} />
-        </CenteredEmptyState>
-      ) : (
-        <CenteredEmptyState
-          title="Не удалось создать сцену"
-          description={error || "Попробуйте снова"}
-        >
-          <EmptyStateActionButton
-            label="Попробовать снова"
-            disabled={loading}
-            onPress={() => void generate()}
-          />
-        </CenteredEmptyState>
-      )}
+      <Animated.ScrollView
+        alwaysBounceVertical
+        contentInsetAdjustmentBehavior="never"
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: SCENE_TOOLBAR_HEIGHT + insets.bottom + 16 },
+        ]}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
+          useNativeDriver: true,
+        })}
+        scrollEventThrottle={16}
+      >
+        {imageUri ? (
+          <Animated.View style={[styles.imageWrap, imageStretchStyle]}>
+            <Image
+              accessibilityLabel={`Иллюстрация к главе ${displayChapter}`}
+              source={{ uri: imageUri }}
+              style={[styles.image, { backgroundColor: colors.card }]}
+              onError={() => setImageUri(null)}
+            />
+            {loading ? (
+              <View style={styles.loadingOverlay}>
+                <ActivityIndicator size="large" color="#fff" />
+              </View>
+            ) : null}
+          </Animated.View>
+        ) : loading ? (
+          <CenteredEmptyState title="Создаём сцену" description="Это может занять немного времени">
+            <ActivityIndicator size="small" color={colors.primary} />
+          </CenteredEmptyState>
+        ) : (
+          <CenteredEmptyState
+            title="Не удалось создать сцену"
+            description={error || "Попробуйте снова"}
+          >
+            <EmptyStateActionButton
+              label="Попробовать снова"
+              disabled={loading}
+              onPress={() => void generate()}
+            />
+          </CenteredEmptyState>
+        )}
+
+        {imageUri ? (
+          <View style={styles.caption}>
+            <Text style={[styles.chapter, { color: colors.foreground }]}>{displayChapter}</Text>
+            <Text style={[styles.excerpt, { color: colors.mutedForeground }]}>{excerpt}</Text>
+            {error ? <Text style={{ color: colors.mutedForeground }}>{error}</Text> : null}
+          </View>
+        ) : null}
+      </Animated.ScrollView>
 
       {imageUri ? (
-        <View style={styles.caption}>
-          <Text style={[styles.chapter, { color: colors.foreground }]}>{displayChapter}</Text>
-          <Text style={[styles.excerpt, { color: colors.mutedForeground }]}>{excerpt}</Text>
-          {error ? <Text style={{ color: colors.mutedForeground }}>{error}</Text> : null}
-          <View style={styles.audioControls}>
-            <NativeButton
-              accessibilityLabel={
-                audioStatus === "preparing"
-                  ? "Готовим озвучку"
-                  : audioStatus === "idle"
-                    ? "Озвучить сцену по ролям"
-                    : "Остановить озвучку"
-              }
-              fullWidth
-              icon={
-                audioStatus === "preparing" ? undefined : audioStatus === "idle" ? "play" : "close"
-              }
-              label={audioStatus === "idle" ? "Озвучить по ролям" : "Остановить"}
-              loading={audioStatus === "preparing"}
-              onPress={() => void playScene()}
-              variant={audioStatus === "playing" ? "secondary" : "primary"}
-            />
-            {/* Перегенерация с тем же контекстом (глава, отрывок, паспорта героев) */}
-            <NativeButton
-              accessibilityLabel={t("narra.sceneRegenerate", "Нарисовать заново")}
-              fullWidth
-              icon="refresh"
-              label={t("narra.sceneRegenerate", "Нарисовать заново")}
-              loading={loading}
-              onPress={() => void generate()}
-              variant="secondary"
-            />
-            {navigation.canGoBack() ? (
-              <NativeButton
-                accessibilityLabel={t("narra.sceneBackToReading", "Вернуться к чтению")}
-                fullWidth
-                label={t("narra.sceneBackToReading", "Вернуться к чтению")}
-                onPress={() => navigation.goBack()}
-                variant="tertiary"
-              />
-            ) : null}
-          </View>
+        <View
+          style={[
+            styles.toolbarDock,
+            {
+              height: SCENE_TOOLBAR_HEIGHT + insets.bottom,
+              paddingBottom: insets.bottom,
+            },
+          ]}
+        >
+          <SceneToolbar
+            tintColor={colors.foreground}
+            isDark={isDark}
+            speechActive={audioStatus !== "idle"}
+            speechDisabled={audioStatus === "preparing"}
+            regenerateDisabled={loading}
+            onSpeechPress={() => void playScene()}
+            onRegeneratePress={() => void generate()}
+          />
         </View>
       ) : null}
-    </Animated.ScrollView>
+    </ScrollViewMarker>
   );
 }
 
 const styles = StyleSheet.create({
-  content: { flexGrow: 1, paddingBottom: 32 },
+  content: { flexGrow: 1 },
   imageWrap: { position: "relative", width: "100%", aspectRatio: 1, overflow: "hidden" },
   image: { width: "100%", height: "100%" },
   loadingOverlay: {
@@ -318,5 +313,5 @@ const styles = StyleSheet.create({
   caption: { paddingHorizontal: 20, paddingTop: 20, gap: 8 },
   chapter: { fontSize: 17, fontWeight: "700" },
   excerpt: { fontSize: 15, lineHeight: 22 },
-  audioControls: { gap: 10, paddingTop: 16 },
+  toolbarDock: { position: "absolute", right: 0, bottom: 0, left: 0, zIndex: 30 },
 });

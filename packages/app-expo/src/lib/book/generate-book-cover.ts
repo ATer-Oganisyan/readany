@@ -3,9 +3,10 @@ import type { AIEndpoint } from "@readany/core/types";
 import { providerRequiresApiKey } from "@readany/core/utils";
 import { fetch } from "expo/fetch";
 import coverGenerationConfig from "./cover-generation-config.json";
+import { resolveCoverGenreProfile } from "./cover-genre";
 
 const DEFAULT_IMAGE_MODEL = coverGenerationConfig.openRouterModel;
-const MAX_THEME_CHARS = 1_200;
+const MAX_THEME_CHARS = 800;
 const REQUEST_TIMEOUT_MS = 180_000;
 const COVER_PROMPT_TEMPLATE = coverGenerationConfig.promptParagraphs.join("\n\n");
 
@@ -54,6 +55,7 @@ export function coverPrompt(input: {
   author?: string;
   description?: string;
   excerpt?: string;
+  subjects?: string[];
   metaphor?: string;
   imageType?: string;
   accentColor1?: string;
@@ -65,6 +67,7 @@ export function coverPrompt(input: {
   const theme = themeSource
     ? themeSource.replace(/\s+/gu, " ").slice(0, MAX_THEME_CHARS)
     : "Infer the central idea, mood, symbols and historical context from the title and author without reproducing their names as text.";
+  const genre = resolveCoverGenreProfile(input);
 
   const colorSeed = Array.from(`${title}:${author}`).reduce(
     (hash, character) => (hash * 31 + (character.codePointAt(0) || 0)) >>> 0,
@@ -72,12 +75,16 @@ export function coverPrompt(input: {
   );
   const backgroundColor =
     input.accentColor1?.trim() ||
-    coverGenerationConfig.backgroundColors[colorSeed % coverGenerationConfig.backgroundColors.length];
+    coverGenerationConfig.backgroundColors[
+      colorSeed % coverGenerationConfig.backgroundColors.length
+    ];
 
   const replacements: Record<string, string> = {
     "{{BOOK_TITLE}}": title,
     "{{AUTHOR}}": author,
     "{{BOOK_DESCRIPTION}}": theme,
+    "{{BOOK_GENRE}}": genre.label,
+    "{{GENRE_ART_DIRECTION}}": genre.artDirection,
     "{{BACKGROUND_COLOR}}": backgroundColor,
   };
 
@@ -92,6 +99,7 @@ export async function generateBookCoverWithOpenRouter(input: {
   author?: string;
   description?: string;
   excerpt?: string;
+  subjects?: string[];
 }): Promise<GeneratedBookCover | null> {
   const endpoint = await resolveConnectedOpenRouter();
   if (!endpoint?.apiKey) return null;

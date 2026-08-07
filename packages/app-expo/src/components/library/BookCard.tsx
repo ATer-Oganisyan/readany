@@ -1,5 +1,6 @@
 import { Text } from "@/components/ui/Typography";
 import { findBundledCatalogBookByTitle } from "@/lib/catalog/bundled-books";
+import { useLibraryStore } from "@/stores/library-store";
 import { useColors } from "@/styles/theme";
 import { getPlatformService } from "@readany/core/services";
 /**
@@ -13,6 +14,7 @@ import { Image, TouchableOpacity, View } from "react-native";
 import { BookCardActionSheet } from "./BookCardActionSheet";
 import { makeStyles } from "./book-card-styles";
 import { BookCoverTypography } from "./book-cover-typography";
+import { CoverGenerationShimmer } from "./cover-generation-shimmer";
 
 interface BookCardProps {
   book: Book;
@@ -40,6 +42,9 @@ export const BookCard = memo(function BookCard({
   const colors = useColors();
   const s = makeStyles(colors, cardWidth);
   const { t } = useTranslation();
+  const isGeneratingCover = useLibraryStore((state) =>
+    state.generatingCoverBookIds.includes(book.id),
+  );
   const [imageError, setImageError] = useState(false);
   const [resolvedCoverUrl, setResolvedCoverUrl] = useState<string | undefined>(undefined);
   const bundledCatalogBook = findBundledCatalogBookByTitle(book.meta.title);
@@ -68,8 +73,6 @@ export const BookCard = memo(function BookCard({
       }
     })();
   }, [book.meta.coverUrl]);
-
-  const readingPct = Math.min(100, Math.round((book.progress ?? 0) * 100));
 
   return (
     <TouchableOpacity
@@ -111,8 +114,6 @@ export const BookCard = memo(function BookCard({
             </View>
             {/* Top highlight */}
             <View style={s.spineTopHighlight} pointerEvents="none" />
-            {/* Bottom shadow */}
-            <View style={s.spineBottomShadow} pointerEvents="none" />
           </>
         ) : bundledCatalogBook ? (
           <Image
@@ -125,6 +126,7 @@ export const BookCard = memo(function BookCard({
         )}
 
         <BookCoverTypography title={book.meta.title} author={book.meta.author} width={cardWidth} />
+        {isGeneratingCover ? <CoverGenerationShimmer /> : null}
 
         {/* Remote status overlay (on-demand download) */}
         {book.syncStatus === "remote" && (
@@ -135,24 +137,6 @@ export const BookCard = memo(function BookCard({
 
         <BookCardActionSheet book={book} onOpen={onOpen} onDelete={onDelete} />
       </View>
-
-      {/* Прогресс чтения: полоска + процент (book.progress — доля 0–1 из library-store) */}
-      {readingPct > 0 ? (
-        <View style={s.infoWrap}>
-          <View
-            style={s.progressRow}
-            accessibilityLabel={t("library.readingProgress", {
-              percent: readingPct,
-              defaultValue: "Прочитано {{percent}}%",
-            })}
-          >
-            <View style={s.progressTrack}>
-              <View style={[s.progressFill, { width: `${readingPct}%` }]} />
-            </View>
-            <Text style={s.progressText}>{readingPct}%</Text>
-          </View>
-        </View>
-      ) : null}
     </TouchableOpacity>
   );
 });

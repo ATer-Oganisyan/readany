@@ -1,0 +1,122 @@
+[
+  {
+    "id": "alice",
+    "title": "Алиса в Стране чудес",
+    "author": "Льюис Кэрролл",
+    "description": "Любопытная путешественница попадает в мир с неустойчивыми правилами, масштабом и идентичностью.",
+    "genre": "Детская литература",
+    "genreLabel": "children's literature",
+    "background": "dusty turquoise",
+    "stylePrompt": "Render a playful original character or creature as bold naïve cut-paper illustration mixed with a simple woodblock texture: chunky tactile shapes, imperfect edges, bright flat inks and a strong readable silhouette. Avoid licensed-character imitation, glossy cartoons and sugary styling."
+  },
+  {
+    "id": "leaves-of-grass",
+    "title": "Листья травы",
+    "author": "Уолт Уитмен",
+    "description": "Поэзия о демократии, природе и присоединении индивидуального «я» к большому живому целому.",
+    "genre": "Поэзия",
+    "genreLabel": "poetry",
+    "background": "dark forest green",
+    "stylePrompt": "Render the focal illustration as one sparse monotype or wet-brush ink gesture with visible pressure, pauses and dry edges, optionally intersecting one small photographic fragment. Translate rhythm and compression rather than plot; avoid pens, pages and decorative calligraphy."
+  },
+  {
+    "id": "hamlet",
+    "title": "Гамлет",
+    "author": "Уильям Шекспир",
+    "description": "Трагедия скорби, сомнения, мести и разложения власти, где роль трудно отличить от правды.",
+    "genre": "Драма",
+    "genreLabel": "drama and plays",
+    "background": "deep plum purple",
+    "stylePrompt": "Render a single figure or opposing pair as stark expressionist screenprint: elongated gesture, hard side-light shapes, deep black ink and one abrupt crop, like an experimental theatre photograph translated into print. Build around conflict and presence; avoid masks, curtains, skulls and literal stage scenery."
+  },
+  {
+    "id": "hound-of-the-baskervilles",
+    "title": "Собака Баскервилей",
+    "author": "Артур Конан Дойл",
+    "description": "Рациональное расследование сталкивается с наследуемой легендой, управляемым страхом и фрагментами улик.",
+    "genre": "Детектив",
+    "genreLabel": "mystery, crime or thriller",
+    "background": "charcoal black",
+    "stylePrompt": "Render the focal illustration as high-contrast noir xerox collage: an anonymous cropped figure or familiar object broken by one missing fragment, overprint or hard shadow. Create suspense through omission and visual uncertainty; avoid depicting a creature or object named in the title, guns, magnifying glasses and crime-tape clichés."
+  },
+  {
+    "id": "time-machine",
+    "title": "Машина времени",
+    "author": "Герберт Уэллс",
+    "description": "Путешествие во времени раскрывает цену прогресса, социальное расслоение и масштаб человеческого упадка.",
+    "genre": "Научная фантастика",
+    "genreLabel": "science fiction",
+    "background": "deep cobalt blue",
+    "stylePrompt": "Render the focal illustration in 1960s–1970s retro-science airbrush combined with precise geometric screenprint: an original human silhouette, machine fragment or impossible scale relation with soft sprayed edges and flat technical shapes. Avoid clocks and dials with numbers, spaceships, neon cyberpunk skylines and glossy concept art."
+  },
+  {
+    "id": "treasure-island",
+    "title": "Остров сокровищ",
+    "author": "Роберт Льюис Стивенсон",
+    "description": "Путешествие, в котором риск, изменчивая верность и жадность разрушают обещание лёгкого открытия.",
+    "genre": "Приключения",
+    "genreLabel": "adventure",
+    "background": "burnt orange",
+    "stylePrompt": "Render an original figure in motion as a rough pulp-era linocut with an extreme diagonal crop, wind-swept gesture and one interrupted trajectory. Keep it raw, physical and kinetic rather than cinematic; avoid heroic poses, vehicles, weapons and treasure-map clichés."
+  },
+  {
+    "id": "dracula",
+    "title": "Дракула",
+    "author": "Брэм Стокер",
+    "description": "Древняя сила превращает гостеприимство и рациональный порядок в механизм заражения и страха.",
+    "genre": "Хоррор",
+    "genreLabel": "horror",
+    "background": "mustard yellow",
+    "stylePrompt": "Render an uncanny original figure, garment or domestic object through damaged photographic emulsion and coarse photocopy grain, with one anatomically or materially impossible interruption. Create unease without spectacle; avoid gore, monsters, vampires, skulls and shock-poster imagery."
+  },
+  {
+    "id": "pride-and-prejudice",
+    "title": "Гордость и предубеждение",
+    "author": "Джейн Остин",
+    "description": "Близость возникает сквозь гордость, ошибочные чтения друг друга, классовые ожидания и пересмотр первого впечатления.",
+    "genre": "Романтика",
+    "genreLabel": "romance",
+    "background": "dusty turquoise",
+    "stylePrompt": "Render two original anonymous figures in the manner of a restrained 1960s fashion-editorial illustration: elegant ink contours, cropped profiles, fabric-like flat shapes and deliberate space between them. Focus on intimacy and social pressure; avoid embraces, hearts and sentimental glamour."
+  },
+  {
+    "id": "tale-of-two-cities",
+    "title": "Повесть о двух городах",
+    "author": "Чарльз Диккенс",
+    "description": "Частные жизни, двойники и жертва оказываются между двумя городами во время революционного разлома.",
+    "genre": "Историческая проза",
+    "genreLabel": "historical fiction",
+    "background": "muted vermilion red",
+    "stylePrompt": "Render the focal illustration as an era-specific engraved figure or architectural fragment interrupted by one torn archival photograph or modern flat shape. Let print registration visibly collide across periods; avoid costume tableaux, battle scenes and heritage-poster nostalgia."
+  },
+  {
+    "id": "walden",
+    "title": "Уолден",
+    "author": "Генри Дэвид Торо",
+    "description": "Размышление о простоте, одиночестве, независимости и сознательном отношении к материальным потребностям.",
+    "genre": "Философия",
+    "genreLabel": "philosophy",
+    "background": "dark forest green",
+    "stylePrompt": "Render the focal illustration as a severe Bauhaus-style geometric paradox: two or three flat forms, one impossible spatial relation and crisp screenprinted edges with slight misregistration. Make the argument visible without narrative illustration; avoid statues, thinker portraits, brains and classical symbols."
+  },
+  {
+    "id": "after-last-train",
+    "title": "После последнего поезда",
+    "author": "Экспериментальная манга",
+    "description": "Ночная смена, пустой поезд и воспоминание, которое при каждом прибытии принимает новую форму.",
+    "genre": "Манга",
+    "genreLabel": "manga or anime graphic fiction",
+    "background": "mustard yellow",
+    "stylePrompt": "Render one or two original characters as hand-painted 1990s cel anime: decisive ink contours, expressive faces, flat shadow shapes, limited cel colors and subtle analogue frame grain. Use a cinematic crop and strong silhouette; never imitate a named artist, studio or franchise, and avoid logos, speed-line clichés and crowded manga panels."
+  },
+  {
+    "id": "seventh-floor-letters",
+    "title": "Письма с седьмого этажа",
+    "author": "Эксперимент для Ficbook",
+    "description": "Два человека общаются через анонимные записки, возникающие на невозможном этаже знакомого здания.",
+    "genre": "Ficbook / фанфик",
+    "genreLabel": "fanfiction or transformative fiction",
+    "background": "deep plum purple",
+    "stylePrompt": "Render the focal illustration as an energetic editorial character collage: one or two original anonymous figures, expressive gesture, photocopied contours and a single flat ink shape. Emphasize relationship dynamics or an altered premise; never reproduce recognizable copyrighted faces, costumes, franchise logos, canonical props or official key art."
+  }
+]

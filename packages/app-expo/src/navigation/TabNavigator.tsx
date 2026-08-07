@@ -93,10 +93,12 @@ function tabIcon(
 }
 
 function useTabStackScreenOptions(): NativeStackNavigationOptions {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
 
   return {
     headerShown: true,
+    statusBarHidden: false,
+    statusBarStyle: isDark ? "light" : "dark",
     headerTransparent: Platform.OS === "ios",
     headerStyle: {
       backgroundColor: Platform.OS === "ios" ? "transparent" : colors.background,

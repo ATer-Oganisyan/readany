@@ -55,6 +55,7 @@ export function extractFb2Metadata(fileBytes: Uint8Array, fileName = "book.fb2")
     : "";
   const annotation = cleanXmlText(extractElementInnerXml(titleInfo, "annotation"));
   const bodySample = cleanXmlText(extractElementInnerXml(xml, "body")).slice(0, 6000);
+  const subjects = uniqueMetadataValues(extractAllTagContent(titleInfo, "genre").map(cleanXmlText));
 
   return {
     title,
@@ -64,6 +65,7 @@ export function extractFb2Metadata(fileBytes: Uint8Array, fileName = "book.fb2")
     isbn: cleanXmlText(extractElementInnerXml(xml, "isbn")),
     publishDate: cleanXmlText(extractElementInnerXml(titleInfo, "date")),
     description: annotation,
+    subjects,
     coverBytes: null,
     coverMimeType: null,
     textSample: [annotation, bodySample].filter(Boolean).join("\n\n").slice(0, 8000),
@@ -138,11 +140,30 @@ async function extractEpubMetadataFromReaders({
   const publishDate = extractOpfPublishDate(opfXml);
   const description =
     extractTagContent(opfXml, "dc:description") || extractTagContent(opfXml, "description") || "";
-  const subjects = [
-    ...extractAllTagContent(opfXml, "dc:subject"),
-    ...extractAllTagContent(opfXml, "subject"),
-  ];
+  const subjects = uniqueMetadataValues(
+    [...extractAllTagContent(opfXml, "dc:subject"), ...extractAllTagContent(opfXml, "subject")].map(
+      cleanXmlText,
+    ),
+  );
   const isbn = extractOpfIsbn(opfXml);
+
+  let textSample = "";
+  try {
+    const firstTextHref = findFirstSpineTextHref(opfXml);
+    if (firstTextHref) {
+      const decoded = decodeURIComponent(firstTextHref);
+      const candidates = [opfDir + decoded, opfDir + firstTextHref, decoded, firstTextHref];
+      for (const candidate of candidates) {
+        const chapterXml = await readText(candidate);
+        if (chapterXml) {
+          textSample = cleanXmlText(chapterXml).slice(0, 6000);
+          break;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn(`[${logPrefix}] text sample extraction error:`, err);
+  }
 
   // 3. Extract cover image (only decompress the cover entry)
   let coverBytes: Uint8Array | null = null;
@@ -175,6 +196,7 @@ async function extractEpubMetadataFromReaders({
     publishDate,
     description: description.trim(),
     subjects,
+    textSample: [description.trim(), textSample].filter(Boolean).join("\n\n").slice(0, 8000),
     coverBytes,
     coverMimeType,
   };
@@ -940,6 +962,42 @@ function extractAllTagContent(xml: string, tagName: string): string[] {
     match = regex.exec(xml);
   }
   return values;
+}
+
+function uniqueMetadataValues(values: string[]): string[] {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    const normalized = value.trim();
+    const key = normalized.toLocaleLowerCase();
+    if (!normalized || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function findFirstSpineTextHref(opfXml: string): string | null {
+  const firstIdRef = opfXml.match(/<itemref\b[^>]*\bidref=["']([^"']+)["'][^>]*>/i)?.[1];
+  const items = Array.from(opfXml.matchAll(/<item\b([^>]*)\/?\s*>/gi)).map((match) => {
+    const attrs = match[1] || "";
+    return {
+      id: getAttr(attrs, "id"),
+      href: getAttr(attrs, "href"),
+      mediaType: getAttr(attrs, "media-type"),
+      properties: getAttr(attrs, "properties"),
+    };
+  });
+
+  const spineItem = firstIdRef ? items.find((item) => item.id === firstIdRef) : undefined;
+  if (spineItem?.href) return spineItem.href;
+
+  return (
+    items.find(
+      (item) =>
+        item.href &&
+        /(?:application\/xhtml\+xml|text\/html)/i.test(item.mediaType) &&
+        !/(?:^|\s)nav(?:\s|$)/i.test(item.properties),
+    )?.href ?? null
+  );
 }
 
 function extractOpfIsbn(opfXml: string): string {

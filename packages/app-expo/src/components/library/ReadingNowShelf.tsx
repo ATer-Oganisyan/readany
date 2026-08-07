@@ -1,8 +1,10 @@
 import { Text } from "@/components/ui/Typography";
 import { findBundledCatalogBookByTitle } from "@/lib/catalog/bundled-books";
 import { useResolvedCovers } from "@/screens/notes/useResolvedCovers";
-import { type ThemeColors, fontSize, fontWeight, spacing, useColors } from "@/styles/theme";
+import { useLibraryStore } from "@/stores/library-store";
+import { type ThemeColors, fontWeight, radius, spacing, useColors } from "@/styles/theme";
 import type { Book } from "@readany/core/types";
+import { BlurView } from "expo-blur";
 /**
  * ReadingNowShelf — секция «Читаю сейчас» в библиотеке: нативный горизонтальный
  * ряд книг, отсортированных по lastOpenedAt.
@@ -11,6 +13,7 @@ import { memo, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Image, ScrollView, StyleSheet, View } from "react-native";
 import { BookCoverTypography } from "./book-cover-typography";
+import { CoverGenerationShimmer } from "./cover-generation-shimmer";
 import { PerspectiveBook } from "./perspective-book";
 
 const CARD_WIDTH = 104;
@@ -32,6 +35,11 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
   const colors = useColors();
   const s = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
+  const generatingCoverBookIds = useLibraryStore((state) => state.generatingCoverBookIds);
+  const generatingCoverIds = useMemo(
+    () => new Set(generatingCoverBookIds),
+    [generatingCoverBookIds],
+  );
 
   const coverItems = useMemo(
     () => books.map((book) => ({ bookId: book.id, coverUrl: book.meta.coverUrl ?? null })),
@@ -43,7 +51,6 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
 
   return (
     <View style={s.section}>
-      <Text style={s.sectionTitle}>{t("library.readingNow", "Читаю сейчас")}</Text>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -81,17 +88,19 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
                   )}
                   <BookCoverTypography
                     title={book.meta.title}
-                    author={book.meta.author}
                     width={CARD_WIDTH}
                     referenceWidth={catalogCardWidth}
+                    titleFontSize={15}
+                    leftInsetAdjustment={2}
+                    bottomAccessory={
+                      <BlurView tint="dark" intensity={50} style={s.progressChip}>
+                        <Text style={s.cardProgress} numberOfLines={1}>
+                          {`${Math.round(Math.max(0, Math.min(1, book.progress ?? 0)) * 100)}%`}
+                        </Text>
+                      </BlurView>
+                    }
                   />
-                </View>
-              }
-              footer={
-                <View style={s.cardFooter}>
-                  <Text style={[s.cardText, s.cardProgress]} numberOfLines={1}>
-                    {`${Math.round(Math.max(0, Math.min(1, book.progress ?? 0)) * 100)}%`}
-                  </Text>
+                  {generatingCoverIds.has(book.id) ? <CoverGenerationShimmer /> : null}
                 </View>
               }
             />
@@ -104,17 +113,15 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
 
 const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
-    section: { marginBottom: spacing.xxl },
-    sectionTitle: {
-      color: colors.foreground,
-      fontSize: fontSize.lg,
-      lineHeight: 24,
-      fontWeight: fontWeight.bold,
-      marginBottom: spacing.lg,
-    },
+    section: { marginBottom: 32 },
     carousel: { overflow: "visible" },
     row: { gap: spacing.lg },
-    coverCanvas: { width: "100%", height: "100%", position: "relative" },
+    coverCanvas: {
+      width: "100%",
+      height: "100%",
+      position: "relative",
+      isolation: "isolate",
+    },
     coverImage: { width: "100%", height: "100%" },
     fallbackCover: {
       flex: 1,
@@ -122,18 +129,19 @@ const makeStyles = (colors: ThemeColors) =>
       padding: spacing.md,
       backgroundColor: colors.primary10,
     },
-    cardFooter: {
-      marginTop: 6,
-      alignItems: "flex-start",
+    progressChip: {
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: radius.full,
+      overflow: "hidden",
+      backgroundColor: "rgba(0,0,0,0.5)",
     },
-    cardText: {
+    cardProgress: {
       fontSize: 13,
       fontWeight: fontWeight.semibold,
       lineHeight: 18,
-    },
-    cardProgress: {
       flexShrink: 0,
-      color: colors.mutedForeground,
+      color: "rgba(255,255,255,0.92)",
       textAlign: "left",
       fontVariant: ["tabular-nums"],
     },

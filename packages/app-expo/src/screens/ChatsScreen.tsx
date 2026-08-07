@@ -1,5 +1,9 @@
+import {
+  CharacterChatAvatar,
+  CharacterChatList,
+  type CharacterChatListItem,
+} from "@/components/chats/character-chat-list";
 import { NativeThemePicker } from "@/components/profile/NativeThemePicker";
-import { Text } from "@/components/ui/Typography";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { getBundledCatalogCharactersByTitle } from "@/lib/narra/bundled-catalog-characters";
@@ -9,13 +13,13 @@ import { ensureCharacterPortrait, normalizePersistedNarraMediaUri } from "@/lib/
 import type { NarraCharacter } from "@/lib/narra/types";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useLibraryStore, useNarraStore } from "@/stores";
-import { type ThemeColors, fontSize, fontWeight, radius, spacing, useTheme } from "@/styles/theme";
+import { type ThemeColors, spacing, useTheme } from "@/styles/theme";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { Book } from "@readany/core/types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Image, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
+import { Image, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -161,6 +165,40 @@ export function ChatsScreen() {
     );
   }
 
+  const listItems: CharacterChatListItem[] = rows.map((row) => {
+    const rowKey = `${row.book.id}:${row.character.id}`;
+    const portraitUri = row.character.portraitUri
+      ? normalizePersistedNarraMediaUri(row.character.portraitUri)
+      : undefined;
+
+    return {
+      key: rowKey,
+      accessibilityLabel: `${row.character.name}, ${row.book.meta.title}`,
+      title: row.character.fullName || row.character.name,
+      subtitle: row.character.role,
+      onPress: () => openChat(row),
+      avatar: (
+        <CharacterChatAvatar>
+          {portraitUri ? (
+            <Image
+              source={{ uri: portraitUri }}
+              style={styles.avatarImage}
+              onError={() =>
+                updateCharacter(row.book.id, row.character.id, { portraitUri: undefined })
+              }
+            />
+          ) : (
+            <InitialsAvatar
+              size={56}
+              userId={rowKey}
+              name={row.character.fullName || row.character.name}
+            />
+          )}
+        </CharacterChatAvatar>
+      ),
+    };
+  });
+
   return (
     <ScrollView
       contentInsetAdjustmentBehavior="automatic"
@@ -180,54 +218,7 @@ export function ChatsScreen() {
         />
       </View>
 
-      <View style={styles.list}>
-        {rows.map((row, index) => {
-          const rowKey = `${row.book.id}:${row.character.id}`;
-          const portraitUri = row.character.portraitUri
-            ? normalizePersistedNarraMediaUri(row.character.portraitUri)
-            : undefined;
-          return (
-            <View key={rowKey}>
-              <TouchableOpacity
-                accessibilityRole="button"
-                accessibilityLabel={`${row.character.name}, ${row.book.meta.title}`}
-                activeOpacity={0.62}
-                onPress={() => openChat(row)}
-                style={styles.row}
-              >
-                <View style={styles.avatar}>
-                  {portraitUri ? (
-                    <Image
-                      source={{ uri: portraitUri }}
-                      style={styles.avatarImage}
-                      onError={() =>
-                        updateCharacter(row.book.id, row.character.id, { portraitUri: undefined })
-                      }
-                    />
-                  ) : (
-                    <InitialsAvatar
-                      size={56}
-                      userId={rowKey}
-                      name={row.character.fullName || row.character.name}
-                    />
-                  )}
-                </View>
-                <View style={styles.rowBody}>
-                  <Text style={styles.characterName} numberOfLines={1}>
-                    {row.character.fullName || row.character.name}
-                  </Text>
-                  {row.character.role ? (
-                    <Text style={styles.characterMeta} numberOfLines={1}>
-                      {row.character.role}
-                    </Text>
-                  ) : null}
-                </View>
-              </TouchableOpacity>
-              {index < rows.length - 1 ? <View style={styles.separator} /> : null}
-            </View>
-          );
-        })}
-      </View>
+      <CharacterChatList items={listItems} />
     </ScrollView>
   );
 }
@@ -244,38 +235,5 @@ const makeStyles = (colors: ThemeColors, bottomInset: number) =>
       marginHorizontal: -spacing.lg,
       paddingBottom: spacing.lg,
     },
-    list: {},
-    row: {
-      minHeight: 80,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: spacing.lg,
-      paddingVertical: spacing.md,
-    },
-    avatar: {
-      width: 56,
-      height: 56,
-      overflow: "hidden",
-      alignItems: "center",
-      justifyContent: "center",
-      borderRadius: radius.full,
-      backgroundColor: colors.primary,
-    },
     avatarImage: { width: "100%", height: "100%" },
-    rowBody: { flex: 1, gap: 2 },
-    characterName: {
-      color: colors.foreground,
-      fontSize: fontSize.base,
-      fontWeight: fontWeight.semibold,
-    },
-    characterMeta: {
-      color: colors.mutedForeground,
-      fontSize: fontSize.base,
-      lineHeight: 20,
-    },
-    separator: {
-      height: StyleSheet.hairlineWidth,
-      marginLeft: 56 + spacing.lg,
-      backgroundColor: colors.border,
-    },
   });
