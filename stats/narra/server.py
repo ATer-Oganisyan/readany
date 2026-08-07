@@ -99,6 +99,7 @@ UPTIMEROBOT_MONITOR_PREFIX = os.environ.get("UPTIMEROBOT_MONITOR_PREFIX", "Narra
 UPTIMEROBOT_CACHE_TTL_SECONDS = max(
     30.0, min(float(os.environ.get("UPTIMEROBOT_CACHE_TTL_SECONDS", "60")), 600.0)
 )
+UPTIMEROBOT_STATUS_PAGE_URL = os.environ.get("UPTIMEROBOT_STATUS_PAGE_URL", "").strip()
 VERSION_FILE = HERE / "VERSION"
 VERSION = VERSION_FILE.read_text().strip() if VERSION_FILE.exists() else "dev"
 REPORTING_TZ = ZoneInfo("Europe/Moscow")
@@ -446,6 +447,8 @@ def _uptime_report(now: float | None = None) -> dict[str, Any]:
         "fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "monitors": _select_uptime_monitors(monitors_raw, UPTIMEROBOT_MONITOR_PREFIX),
     }
+    if UPTIMEROBOT_STATUS_PAGE_URL:
+        data["status_page"] = UPTIMEROBOT_STATUS_PAGE_URL
     with UPTIME_CACHE_LOCK:
         UPTIME_CACHE["data"] = data
         UPTIME_CACHE["claimed_at"] = current
