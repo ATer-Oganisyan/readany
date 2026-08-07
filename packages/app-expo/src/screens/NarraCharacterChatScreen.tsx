@@ -1,11 +1,12 @@
 import { NarraChat } from "@/components/chat/NarraChat";
 import { Text } from "@/components/ui/Typography";
+import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import { NarraAudioPlayer } from "@/lib/narra/audio-player";
 import { isCharacterUnlocked, normalizeReadingProgress } from "@/lib/narra/domain";
 import { reportNarraError } from "@/lib/narra/errors";
-import { synthesizeNarraSpeech } from "@/lib/narra/media";
+import { normalizePersistedNarraMediaUri, synthesizeNarraSpeech } from "@/lib/narra/media";
 import type { NarraCharacter, NarraChatMessage } from "@/lib/narra/types";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useLibraryStore, useNarraStore } from "@/stores";
@@ -16,7 +17,7 @@ import type { MessageV2 } from "@readany/core/types/message";
 import * as Crypto from "expo-crypto";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, ScrollView, StyleSheet, View } from "react-native";
+import { Alert, Image, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 type Props = NativeStackScreenProps<RootStackParamList, "NarraCharacterChat">;
 
@@ -86,18 +87,62 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
   const audioRef = useRef(new NarraAudioPlayer());
   const greetingRequestedRef = useRef(false);
   const unlocked = Boolean(book && character && isCharacterUnlocked(book.progress, character));
+  const portraitUri = character?.portraitUri
+    ? normalizePersistedNarraMediaUri(character.portraitUri)
+    : undefined;
 
   useEffect(() => {
     recordTelemetry("chat_opened", { feature: "chat" });
   }, []);
 
   useLayoutEffect(() => {
+    const profileButton = character ? (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={t("narra.openCharacterProfile", "Открыть профиль {{character}}", {
+          character: character.name,
+        })}
+        hitSlop={8}
+        onPress={() => navigation.navigate("NarraCharacterProfile", { bookId, characterId })}
+        style={({ pressed }) => [styles.headerAvatarButton, pressed && styles.headerAvatarPressed]}
+      >
+        {portraitUri ? (
+          <Image
+            source={{ uri: portraitUri }}
+            resizeMode="cover"
+            style={styles.headerAvatarImage}
+          />
+        ) : (
+          <InitialsAvatar
+            size={32}
+            userId={`${bookId}:${character.id}`}
+            name={character.fullName || character.name}
+          />
+        )}
+      </Pressable>
+    ) : null;
+
     navigation.setOptions({
       title: character?.name || t("narra.characterChat", "Чат с персонажем"),
-      headerRight: undefined,
-      unstable_headerRightItems: () => [],
+      ...(Platform.OS === "ios"
+        ? {
+            headerRight: undefined,
+            unstable_headerRightItems: () =>
+              profileButton
+                ? [
+                    {
+                      type: "custom" as const,
+                      element: profileButton,
+                    },
+                  ]
+                : [],
+          }
+        : {
+            unstable_headerRightItems: undefined,
+            headerRight: () => profileButton,
+          }),
     });
-  }, [character, navigation, t]);
+  }, [bookId, character, characterId, navigation, portraitUri, styles, t]);
 
   useEffect(() => () => audioRef.current.stop(), []);
 
@@ -392,4 +437,17 @@ const makeStyles = (colors: ThemeColors) =>
       lineHeight: 21,
       textAlign: "center",
     },
+    headerAvatarButton: {
+      width: 34,
+      height: 34,
+      overflow: "hidden",
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: 17,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      backgroundColor: colors.elevation2,
+    },
+    headerAvatarPressed: { opacity: 0.62 },
+    headerAvatarImage: { width: "100%", height: "100%" },
   });

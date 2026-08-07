@@ -4,6 +4,7 @@ import { ChatScreen } from "@/screens/ChatScreen";
 import { FullScreenNotesScreen } from "@/screens/FullScreenNotesScreen";
 import { ManualNoteScreen } from "@/screens/ManualNoteScreen";
 import { NarraCharacterChatScreen } from "@/screens/NarraCharacterChatScreen";
+import { NarraCharacterProfileScreen } from "@/screens/NarraCharacterProfileScreen";
 import { NarraCharactersScreen } from "@/screens/NarraCharactersScreen";
 import { NarraSceneScreen } from "@/screens/NarraSceneScreen";
 import { NarraSummaryScreen } from "@/screens/NarraSummaryScreen";
@@ -49,6 +50,7 @@ export type RootStackParamList = {
   BookChat: { bookId: string; selectedText?: string; chapterTitle?: string };
   NarraCharacters: { bookId: string };
   NarraCharacterChat: { bookId: string; characterId: string };
+  NarraCharacterProfile: { bookId: string; characterId: string };
   NarraScene: {
     bookId: string;
     chapter: string;
@@ -188,6 +190,22 @@ export function RootNavigator() {
             title: t("narra.characterChat", "Чат с персонажем"),
             headerRight: undefined,
             unstable_headerRightItems: () => [],
+          }}
+        />
+        <Stack.Screen
+          name="NarraCharacterProfile"
+          component={NarraCharacterProfileScreen}
+          options={{
+            presentation: "formSheet",
+            animation: "slide_from_bottom",
+            title: t("narra.characterProfile", "Профиль персонажа"),
+            headerTransparent: false,
+            headerStyle: { backgroundColor: colors.background },
+            headerBackVisible: false,
+            sheetAllowedDetents: [0.78, 1],
+            sheetInitialDetentIndex: 0,
+            sheetGrabberVisible: true,
+            sheetExpandsWhenScrolledToEdge: true,
           }}
         />
         <Stack.Screen

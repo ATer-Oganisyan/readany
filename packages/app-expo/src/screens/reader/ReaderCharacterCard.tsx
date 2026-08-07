@@ -20,6 +20,7 @@ import { useTranslation } from "react-i18next";
 import { ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, View } from "react-native";
 import { StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ReaderCharacterActions } from "./ReaderCharacterActions";
 
 interface ReaderCharacterCardProps {
   visible: boolean;
@@ -27,6 +28,9 @@ interface ReaderCharacterCardProps {
   bookId: string;
   onClose: () => void;
   onOpenChat: (character: NarraCharacter) => void;
+  /** Контент без собственного Modal — для системного native-stack formSheet. */
+  embedded?: boolean;
+  showActions?: boolean;
   /** Переход в ридер книги из заглушки запертого героя («Продолжить чтение»). */
   onContinueReading?: () => void;
 }
@@ -47,8 +51,10 @@ export function ReaderCharacterCard({
   onClose,
   onOpenChat,
   onContinueReading,
+  embedded = false,
+  showActions = true,
 }: ReaderCharacterCardProps) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
@@ -220,6 +226,176 @@ export function ReaderCharacterCard({
         { percent: Math.round(Math.min(1, Math.max(0, liveCharacter.unlockProgress)) * 100) },
       );
 
+  const content = (
+    <View
+      style={[
+        styles.sheet,
+        embedded && styles.embedded,
+        { paddingBottom: (insets.bottom || spacing.md) + spacing.md },
+      ]}
+    >
+      {!embedded ? <View style={styles.grabber} /> : null}
+      {!unlocked ? (
+        // Тизер запертого героя — как char-teaser в narra: имя и обещание без спойлеров
+        <View style={styles.teaser}>
+          <View style={styles.teaserMark}>
+            <Text style={styles.teaserMarkText}>?</Text>
+          </View>
+          <Text style={styles.name}>{liveCharacter.name}</Text>
+          <Text style={styles.teaserHint}>{lockedHint}</Text>
+          {onContinueReading ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t("narra.continueReading", "Продолжить чтение")}
+              onPress={onContinueReading}
+              style={({ pressed }) => [
+                styles.primaryPill,
+                styles.teaserButton,
+                pressed && styles.pillPressed,
+              ]}
+            >
+              <Text style={styles.primaryPillText}>
+                {t("narra.continueReading", "Продолжить чтение")}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : (
+        <>
+          <ScrollView
+            style={
+              embedded ? [styles.embeddedScroll, { transform: [{ translateX: 14 }] }] : undefined
+            }
+            contentInsetAdjustmentBehavior="never"
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={[styles.scrollContent, embedded && styles.embeddedScrollContent]}
+          >
+            {/* Крупный портрет в рамке, как в карточке narra */}
+            <View style={styles.portraitFrame}>
+              <View style={styles.portrait}>
+                {showPortraitVideo && portraitVideoUri ? (
+                  // «Оживший» портрет — зацикленное видео НА МЕСТЕ картинки
+                  <NarraLoopVideo
+                    accessibilityLabel={t("narra.portraitVideoLabel", "Оживший портрет")}
+                    uri={portraitVideoUri}
+                    style={styles.portraitImage}
+                  />
+                ) : portraitUri ? (
+                  <Image
+                    source={{ uri: portraitUri }}
+                    style={styles.portraitImage}
+                    resizeMode="cover"
+                    onError={() =>
+                      updateCharacter(bookId, character.id, { portraitUri: undefined })
+                    }
+                  />
+                ) : portraitLoading ? (
+                  <ActivityIndicator color={colors.primary} />
+                ) : (
+                  <Text style={styles.portraitLetter}>
+                    {character.name.slice(0, 1).toUpperCase()}
+                  </Text>
+                )}
+                {portraitUri && !portraitLoading ? (
+                  <View style={styles.portraitButtonsRow}>
+                    {showPortraitVideo && portraitVideoUri ? (
+                      // Возврат к статичному портрету
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={t("narra.portraitVideoStop", "Показать портрет")}
+                        onPress={() => setShowPortraitVideo(false)}
+                        style={styles.regenButton}
+                      >
+                        <Text style={styles.regenIcon}>■</Text>
+                      </Pressable>
+                    ) : (
+                      <>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={t(
+                            "narra.regeneratePortrait",
+                            "Сгенерировать портрет заново",
+                          )}
+                          disabled={portraitAnimating}
+                          onPress={() => generatePortrait(true)}
+                          style={styles.regenButton}
+                        >
+                          <Text style={styles.regenIcon}>↻</Text>
+                        </Pressable>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={t("narra.animatePortrait", "Оживить портрет")}
+                          disabled={portraitAnimating}
+                          onPress={() => animatePortrait(false)}
+                          onLongPress={() => animatePortrait(true)}
+                          style={styles.regenButton}
+                        >
+                          {portraitAnimating ? (
+                            <ActivityIndicator size="small" color="#fff" />
+                          ) : (
+                            <Text style={styles.regenIcon}>▶</Text>
+                          )}
+                        </Pressable>
+                      </>
+                    )}
+                  </View>
+                ) : null}
+                {portraitLoading && portraitUri ? (
+                  <View style={styles.portraitOverlay}>
+                    <ActivityIndicator color={colors.background} />
+                  </View>
+                ) : null}
+                {portraitAnimating ? (
+                  <View style={styles.portraitOverlay}>
+                    <ActivityIndicator color={colors.background} />
+                    <Text style={styles.portraitOverlayHint}>
+                      {t("narra.portraitAnimating", "Оживляем…")}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            </View>
+            <Text style={styles.name}>{character.fullName || character.name}</Text>
+            {/* Досье: роль/описание раскрыто целиком */}
+            {character.role ? <Text style={styles.description}>{character.role}</Text> : null}
+            {character.traits.length > 0 ? (
+              <View style={styles.traitsWrap}>
+                {character.traits.map((trait) => (
+                  <View key={trait} style={styles.traitChip}>
+                    <Text style={styles.traitText}>{trait}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+            {liveCharacter.speechStyle ? (
+              <View style={styles.speechSection}>
+                <Text style={styles.sectionLabel}>{t("narra.speechStyle", "Манера речи")}</Text>
+                <Text style={styles.description}>{liveCharacter.speechStyle}</Text>
+              </View>
+            ) : null}
+          </ScrollView>
+          {showActions ? (
+            <View style={styles.nativeActionsContainer}>
+              <ReaderCharacterActions
+                talkLabel={t("narra.talkToCharacter", "Поговорить")}
+                listenLabel={t("narra.listenVoice", "Послушать голос")}
+                stopLabel={t("narra.stopVoiceSample", "Остановить озвучку")}
+                onTalk={() => onOpenChat(character)}
+                onToggleVoice={toggleVoiceSample}
+                canSample={canSample}
+                voiceState={voiceState}
+                isDark={isDark}
+                foregroundColor={colors.foreground}
+              />
+            </View>
+          ) : null}
+        </>
+      )}
+    </View>
+  );
+
+  if (embedded) return content;
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable
@@ -228,183 +404,7 @@ export function ReaderCharacterCard({
         accessibilityLabel={t("common.close", "Закрыть")}
         onPress={onClose}
       />
-      <View style={[styles.sheet, { paddingBottom: (insets.bottom || spacing.md) + spacing.md }]}>
-        <View style={styles.grabber} />
-        {!unlocked ? (
-          // Тизер запертого героя — как char-teaser в narra: имя и обещание без спойлеров
-          <View style={styles.teaser}>
-            <View style={styles.teaserMark}>
-              <Text style={styles.teaserMarkText}>?</Text>
-            </View>
-            <Text style={styles.name}>{liveCharacter.name}</Text>
-            <Text style={styles.teaserHint}>{lockedHint}</Text>
-            {onContinueReading ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={t("narra.continueReading", "Продолжить чтение")}
-                onPress={onContinueReading}
-                style={({ pressed }) => [
-                  styles.primaryPill,
-                  styles.teaserButton,
-                  pressed && styles.pillPressed,
-                ]}
-              >
-                <Text style={styles.primaryPillText}>
-                  {t("narra.continueReading", "Продолжить чтение")}
-                </Text>
-              </Pressable>
-            ) : null}
-          </View>
-        ) : (
-          <>
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.scrollContent}
-            >
-              {/* Крупный портрет в рамке, как в карточке narra */}
-              <View style={styles.portraitFrame}>
-                <View style={styles.portrait}>
-                  {showPortraitVideo && portraitVideoUri ? (
-                    // «Оживший» портрет — зацикленное видео НА МЕСТЕ картинки
-                    <NarraLoopVideo
-                      accessibilityLabel={t("narra.portraitVideoLabel", "Оживший портрет")}
-                      uri={portraitVideoUri}
-                      style={styles.portraitImage}
-                    />
-                  ) : portraitUri ? (
-                    <Image
-                      source={{ uri: portraitUri }}
-                      style={styles.portraitImage}
-                      resizeMode="cover"
-                      onError={() =>
-                        updateCharacter(bookId, character.id, { portraitUri: undefined })
-                      }
-                    />
-                  ) : portraitLoading ? (
-                    <ActivityIndicator color={colors.primary} />
-                  ) : (
-                    <Text style={styles.portraitLetter}>
-                      {character.name.slice(0, 1).toUpperCase()}
-                    </Text>
-                  )}
-                  {portraitUri && !portraitLoading ? (
-                    <View style={styles.portraitButtonsRow}>
-                      {showPortraitVideo && portraitVideoUri ? (
-                        // Возврат к статичному портрету
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel={t("narra.portraitVideoStop", "Показать портрет")}
-                          onPress={() => setShowPortraitVideo(false)}
-                          style={styles.regenButton}
-                        >
-                          <Text style={styles.regenIcon}>■</Text>
-                        </Pressable>
-                      ) : (
-                        <>
-                          <Pressable
-                            accessibilityRole="button"
-                            accessibilityLabel={t(
-                              "narra.regeneratePortrait",
-                              "Сгенерировать портрет заново",
-                            )}
-                            disabled={portraitAnimating}
-                            onPress={() => generatePortrait(true)}
-                            style={styles.regenButton}
-                          >
-                            <Text style={styles.regenIcon}>↻</Text>
-                          </Pressable>
-                          <Pressable
-                            accessibilityRole="button"
-                            accessibilityLabel={t("narra.animatePortrait", "Оживить портрет")}
-                            disabled={portraitAnimating}
-                            onPress={() => animatePortrait(false)}
-                            onLongPress={() => animatePortrait(true)}
-                            style={styles.regenButton}
-                          >
-                            {portraitAnimating ? (
-                              <ActivityIndicator size="small" color="#fff" />
-                            ) : (
-                              <Text style={styles.regenIcon}>▶</Text>
-                            )}
-                          </Pressable>
-                        </>
-                      )}
-                    </View>
-                  ) : null}
-                  {portraitLoading && portraitUri ? (
-                    <View style={styles.portraitOverlay}>
-                      <ActivityIndicator color={colors.background} />
-                    </View>
-                  ) : null}
-                  {portraitAnimating ? (
-                    <View style={styles.portraitOverlay}>
-                      <ActivityIndicator color={colors.background} />
-                      <Text style={styles.portraitOverlayHint}>
-                        {t("narra.portraitAnimating", "Оживляем…")}
-                      </Text>
-                    </View>
-                  ) : null}
-                </View>
-              </View>
-              <Text style={styles.name}>{character.fullName || character.name}</Text>
-              {/* Досье: роль/описание раскрыто целиком */}
-              {character.role ? <Text style={styles.description}>{character.role}</Text> : null}
-              {character.traits.length > 0 ? (
-                <View style={styles.traitsWrap}>
-                  {character.traits.map((trait) => (
-                    <View key={trait} style={styles.traitChip}>
-                      <Text style={styles.traitText}>{trait}</Text>
-                    </View>
-                  ))}
-                </View>
-              ) : null}
-              {liveCharacter.speechStyle ? (
-                <View style={styles.speechSection}>
-                  <Text style={styles.sectionLabel}>{t("narra.speechStyle", "Манера речи")}</Text>
-                  <Text style={styles.description}>{liveCharacter.speechStyle}</Text>
-                </View>
-              ) : null}
-            </ScrollView>
-            {/* Кнопки в один ряд, как в narra: чёрная пилюля + белая с рамкой */}
-            <View style={styles.actionsRow}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={t("narra.openCharacterChat", "Открыть чат с {{character}}", {
-                  character: character.name,
-                })}
-                onPress={() => onOpenChat(character)}
-                style={({ pressed }) => [styles.primaryPill, pressed && styles.pillPressed]}
-              >
-                <Text style={styles.primaryPillText}>
-                  {t("narra.talkToCharacter", "Поговорить")}
-                </Text>
-              </Pressable>
-              {canSample ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={
-                    voiceState === "idle"
-                      ? t("narra.listenVoice", "Послушать голос")
-                      : t("narra.stopVoiceSample", "Остановить озвучку")
-                  }
-                  onPress={toggleVoiceSample}
-                  style={({ pressed }) => [styles.ghostPill, pressed && styles.pillPressed]}
-                >
-                  {voiceState === "loading" ? (
-                    <ActivityIndicator size="small" color={colors.foreground} />
-                  ) : (
-                    <Text style={styles.ghostPillText}>
-                      {voiceState === "playing"
-                        ? t("narra.stopVoiceSample", "Остановить озвучку")
-                        : t("narra.listenVoice", "Послушать голос")}
-                    </Text>
-                  )}
-                </Pressable>
-              ) : null}
-            </View>
-          </>
-        )}
-      </View>
+      {content}
     </Modal>
   );
 }
@@ -424,6 +424,15 @@ const makeStyles = (colors: ThemeColors) =>
       backgroundColor: colors.background,
       maxHeight: "82%",
     },
+    embedded: {
+      flex: 1,
+      maxHeight: "100%",
+      paddingTop: spacing.lg,
+      borderTopLeftRadius: 0,
+      borderTopRightRadius: 0,
+    },
+    embeddedScroll: { flex: 1, width: "100%", alignSelf: "stretch" },
+    embeddedScrollContent: { paddingTop: spacing.md, paddingBottom: 84 },
     grabber: {
       alignSelf: "center",
       width: 36,
@@ -432,14 +441,15 @@ const makeStyles = (colors: ThemeColors) =>
       backgroundColor: colors.primary10,
     },
     scrollContent: {
+      width: "100%",
+      alignItems: "center",
       gap: spacing.md,
       paddingBottom: spacing.sm,
     },
     portraitFrame: {
       alignSelf: "center",
-      padding: 5,
-      borderRadius: radius.card + 5,
-      backgroundColor: colors.primary,
+      borderRadius: radius.card,
+      backgroundColor: "transparent",
     },
     portrait: {
       width: 224,
@@ -505,10 +515,13 @@ const makeStyles = (colors: ThemeColors) =>
       fontFamily: interfaceFontFamily.regular,
       fontSize: fontSize.sm,
       lineHeight: 22,
+      textAlign: "center",
     },
     traitsWrap: {
+      alignSelf: "stretch",
       flexDirection: "row",
       flexWrap: "wrap",
+      justifyContent: "center",
       gap: spacing.sm,
     },
     // Чипсы черт: прозрачный фон + тонкая серая рамка + полное скругление (.chip)
@@ -526,18 +539,17 @@ const makeStyles = (colors: ThemeColors) =>
       fontSize: fontSize.xs,
     },
     speechSection: {
+      alignSelf: "stretch",
+      alignItems: "center",
       gap: spacing.xs,
     },
+    nativeActionsContainer: { width: "100%", height: 52 },
     sectionLabel: {
       color: colors.mutedForeground,
       fontFamily: interfaceFontFamily.caps,
       fontSize: fontSize.xs,
       textTransform: "uppercase",
       letterSpacing: 0.8,
-    },
-    actionsRow: {
-      flexDirection: "row",
-      gap: spacing.sm,
     },
     // «Поговорить» — чёрная пилюля с белым текстом (btn--primary, var(--ink));
     // в тёмной теме инвертируется вместе с foreground/background.
