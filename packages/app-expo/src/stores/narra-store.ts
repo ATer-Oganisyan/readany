@@ -4,7 +4,10 @@ import {
   withNarraChatMessage,
   withNarraMemory,
 } from "@/lib/narra/domain";
-import { DEFAULT_SCENE_SUGGESTION_INTERVAL } from "@/lib/narra/scene-suggestion";
+import {
+  DEFAULT_SCENE_SUGGESTION_INTERVAL,
+  SCENE_SUGGESTION_INTERVALS,
+} from "@/lib/narra/scene-suggestion";
 import type {
   NarraBookState,
   NarraCharacter,
@@ -156,5 +159,10 @@ export const useNarraStore = create<NarraState>()(
         }),
     }),
     { analyzingBookId: null },
+    // Ушедшие варианты частоты врезок (5/15 стр.) приводим к новому дефолту
+    (persisted) =>
+      (SCENE_SUGGESTION_INTERVALS as readonly number[]).includes(persisted.sceneSuggestionInterval)
+        ? persisted
+        : { ...persisted, sceneSuggestionInterval: DEFAULT_SCENE_SUGGESTION_INTERVAL },
   ),
 );

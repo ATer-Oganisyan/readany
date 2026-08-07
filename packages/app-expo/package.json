@@ -36,6 +36,7 @@
     "build:reader": "node scripts/build-reader.js",
     "generate:icons": "node scripts/generate-app-icons.js",
     "generate:catalog-covers": "node scripts/generate-catalog-covers.mjs",
+    "clean:catalog-books": "node scripts/clean-catalog-books.mjs",
     "sync:catalog-covers:nano": "node scripts/sync-nano-banana-covers.mjs",
     "sync:storybook-covers:nano": "node scripts/sync-nano-storybook-covers.mjs",
     "sync:native-variant": "node scripts/configure-native-variant.js",

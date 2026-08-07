@@ -36,6 +36,8 @@ export interface NarraCharacter {
   greeting?: string;
   isNarrator?: boolean;
   portraitUri?: string;
+  /** «Оживший» портрет (P18): зацикленное mp4-видео в narra-media. */
+  portraitVideoUri?: string;
 }
 
 export interface NarraChatMessage {
@@ -50,6 +52,8 @@ export interface NarraSceneImage {
   chapter: string;
   excerpt: string;
   imageUri: string;
+  /** «Ожившая» сцена (P18): зацикленное mp4-видео этой картинки в narra-media. */
+  videoUri?: string;
   generatedAt: number;
   /**
    * CFI-якорь врезки в тексте читалки: блок, после которого сцена вставлена

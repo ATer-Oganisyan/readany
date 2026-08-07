@@ -3,6 +3,7 @@ import { recordTelemetry } from "@/lib/analytics/telemetry";
 import * as FileSystem from "expo-file-system/legacy";
 import { budgetPrompt } from "./art-style";
 import { normalizeNarraError } from "./errors";
+import { mentionedCharacters, passportDescription } from "./scene-prompt";
 import { applyActiveStressMarkup } from "./stress-markup";
 import type { NarraCharacter } from "./types";
 import type { NarraProsody } from "./voice-rules";
@@ -12,7 +13,7 @@ const MEDIA_PATH_MARKER = "/Documents/narra-media/";
 let speechFileSequence = 0;
 const portraitRequests = new Map<string, Promise<string>>();
 
-type MediaJobType = "image" | "cover" | "tts" | "avatar";
+type MediaJobType = "image" | "cover" | "tts" | "avatar" | "video";
 type MediaJobOrigin = "user" | "background";
 
 const MEDIA_JOB_ROUTES: Record<MediaJobType, { provider: string; model: string }> = {
@@ -20,6 +21,7 @@ const MEDIA_JOB_ROUTES: Record<MediaJobType, { provider: string; model: string }
   cover: { provider: "openrouter", model: "gpt-image-2" },
   tts: { provider: "salutespeech", model: "salutespeech-yourvoice" },
   avatar: { provider: "kandinsky", model: "k6-image-t2i" },
+  video: { provider: "openrouter", model: "veo-3.1-lite" },
 };
 
 function mediaLatencyBucket(durationMs: number): string {
@@ -38,13 +40,21 @@ function firstAudioLatencyBucket(durationMs: number): string {
   return "15s+";
 }
 
-async function trackMediaJob<T>(
+/**
+ * Единая телеметрия медиа-генераций. По умолчанию provider/model гейтвейные
+ * (Kandinsky/SaluteSpeech); OpenRouter-путь сцен (scene-image-openrouter.ts)
+ * передаёт свои через meta, сами события и поля не меняются.
+ */
+export async function trackNarraMediaJob<T>(
   jobType: MediaJobType,
   origin: MediaJobOrigin,
   operation: () => Promise<T>,
+  meta?: { provider: string; model: string },
 ): Promise<T> {
   const startedAt = Date.now();
-  const { provider, model } = MEDIA_JOB_ROUTES[jobType];
+  const route = MEDIA_JOB_ROUTES[jobType];
+  const provider = meta?.provider ?? route.provider;
+  const model = meta?.model ?? route.model;
   recordTelemetry("media_job_enqueued", {
     job_type: jobType,
     provider,
@@ -150,30 +160,8 @@ function imagePayload(payload: unknown): { base64?: string; url?: string; error?
   };
 }
 
-function passportDescription(character: NarraCharacter): string {
-  const passport = character.passport;
-  if (!passport) return character.appearancePrompt;
-  return [
-    character.appearancePrompt,
-    `${passport.age} лет`,
-    passport.build,
-    passport.hair,
-    passport.eyes,
-    passport.face,
-    passport.outfit,
-  ]
-    .filter(Boolean)
-    .join(", ");
-}
-
-function mentionedCharacters(excerpt: string, characters: NarraCharacter[]): NarraCharacter[] {
-  const normalizedExcerpt = excerpt.toLocaleLowerCase("ru");
-  return characters.filter((character) =>
-    [character.name, character.fullName]
-      .filter((name) => name.trim().length > 1)
-      .some((name) => normalizedExcerpt.includes(name.toLocaleLowerCase("ru"))),
-  );
-}
+// passportDescription/mentionedCharacters переехали в scene-prompt.ts (P16) —
+// единый источник для гейтвей- и OpenRouter-промптов.
 
 const KANDINSKY_SAFETY_REJECTION =
   /политик[А-Яа-яЁё]* безопасности|safety|content policy|moderation/iu;
@@ -281,6 +269,31 @@ async function persistGeneratedImage(
   return path;
 }
 
+/**
+ * Абсолютный file://-путь нового файла в narra-media (каталог создаётся при
+ * необходимости). Используется видео-оживлением (animate-openrouter.ts):
+ * downloadAsync пишет напрямую в целевой путь, единое именование с картинками.
+ */
+export async function narraMediaTargetPath(key: string, extension: string): Promise<string> {
+  await ensureMediaDir();
+  return `${MEDIA_DIR}/${safeKey(key)}.${extension}`;
+}
+
+/**
+ * Сохраняет base64-картинку сцены в narra-media и возвращает file://-путь.
+ * Используется OpenRouter-путём (scene-image-openrouter.ts); именование файла
+ * то же, что у гейтвей-сцен, чтобы restore/normalize работали одинаково.
+ */
+export async function persistSceneImageBase64(
+  bookId: string,
+  base64: string,
+  extension: "png" | "jpg" = "jpg",
+): Promise<string> {
+  await ensureMediaDir();
+  const path = `${MEDIA_DIR}/${safeKey(`${bookId}-scene-${Date.now()}`)}.${extension}`;
+  return persistGeneratedImage(path, { base64 });
+}
+
 async function generateCharacterPortraitRequest(
   bookId: string,
   character: NarraCharacter,
@@ -307,7 +320,7 @@ export function generateCharacterPortrait(
   bookId: string,
   character: NarraCharacter,
 ): Promise<string> {
-  return trackMediaJob("avatar", "background", () =>
+  return trackNarraMediaJob("avatar", "background", () =>
     generateCharacterPortraitRequest(bookId, character),
   );
 }
@@ -360,7 +373,7 @@ export function generateSceneImage(
   excerpt: string,
   characters: NarraCharacter[],
 ): Promise<string> {
-  return trackMediaJob("image", "user", () =>
+  return trackNarraMediaJob("image", "user", () =>
     generateSceneImageRequest(bookId, chapter, excerpt, characters),
   );
 }
@@ -389,7 +402,7 @@ async function generateBookCoverImageRequest(prompt: string): Promise<GeneratedC
 
 /** Обложка книги: сервер сам выбирает image-модель и фолбэк (/v2/media/cover). */
 export function generateBookCoverImage(prompt: string): Promise<GeneratedCoverImage> {
-  return trackMediaJob("cover", "background", () => generateBookCoverImageRequest(prompt));
+  return trackNarraMediaJob("cover", "background", () => generateBookCoverImageRequest(prompt));
 }
 
 export interface NarraSpeechOptions {
@@ -475,5 +488,7 @@ export function synthesizeNarraSpeech(
   voice: string,
   options?: NarraSpeechOptions,
 ): Promise<string> {
-  return trackMediaJob("tts", "user", () => synthesizeNarraSpeechRequest(text, voice, options));
+  return trackNarraMediaJob("tts", "user", () =>
+    synthesizeNarraSpeechRequest(text, voice, options),
+  );
 }
