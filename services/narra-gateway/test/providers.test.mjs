@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { llmRouteReadiness, requestChat, routeForPurpose } from '../providers.mjs'
+import {
+  coverRouteReadiness,
+  llmRouteReadiness,
+  requestChat,
+  requestCoverImage,
+  routeForPurpose
+} from '../providers.mjs'
 
 test('provider route is selected only from server environment', () => {
   const route = routeForPurpose('summary', {
@@ -151,5 +157,78 @@ for (const [name, response, expected] of [
     }), (error) => error?.code === expected)
     assert.equal(calls, 1)
     assert.equal(events.at(-1).error_code, expected)
+  })
+}
+
+test('cover route readiness and model come only from server environment', () => {
+  assert.equal(coverRouteReadiness({}).ready, false)
+  const configured = coverRouteReadiness({ OPENROUTER_API_KEY: 'or-key' })
+  assert.equal(configured.ready, true)
+  assert.equal(configured.model, 'openai/gpt-image-2')
+  assert.equal(
+    coverRouteReadiness({ OPENROUTER_API_KEY: 'or-key', OPENROUTER_IMAGE_MODEL: 'other/image' }).model,
+    'other/image'
+  )
+})
+
+test('cover request sends the server-side image contract to OpenRouter', async () => {
+  const calls = []
+  const result = await requestCoverImage({
+    prompt: 'front cover artwork',
+    fetchImpl: async (url, init) => {
+      calls.push({ url, init, body: JSON.parse(init.body) })
+      return new Response(
+        JSON.stringify({ data: [{ b64_json: 'aGVsbG8=', media_type: 'image/jpeg' }] }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    },
+    env: {
+      OPENROUTER_BASE_URL: 'https://openrouter.test/v1',
+      OPENROUTER_API_KEY: 'or-key',
+      OPENROUTER_APP_NAME: 'Narra'
+    }
+  })
+  assert.deepEqual(result, { image: 'aGVsbG8=', mimeType: 'image/jpeg', model: 'openai/gpt-image-2' })
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].url, 'https://openrouter.test/v1/images')
+  assert.equal(new Headers(calls[0].init.headers).get('authorization'), 'Bearer or-key')
+  assert.equal(new Headers(calls[0].init.headers).get('x-title'), 'Narra')
+  assert.deepEqual(calls[0].body, {
+    model: 'openai/gpt-image-2',
+    prompt: 'front cover artwork',
+    aspect_ratio: '2:3',
+    quality: 'high',
+    output_format: 'jpeg',
+    output_compression: 90,
+    n: 1
+  })
+})
+
+test('unconfigured cover route fails with NO_KEY before any network call', async () => {
+  await assert.rejects(
+    requestCoverImage({
+      prompt: 'cover',
+      env: {},
+      fetchImpl: async () => { throw new Error('no calls expected') }
+    }),
+    (error) => error?.code === 'NO_KEY'
+  )
+})
+
+for (const [name, response, expected] of [
+  ['rate limit', () => new Response('rate limited', { status: 429 }), 'RATE'],
+  ['moderation', () => new Response('content moderation blocked', { status: 422 }), 'CENSOR'],
+  ['upstream outage', () => new Response('bad gateway', { status: 502 }), 'NETWORK'],
+  ['empty result', () => new Response(JSON.stringify({ data: [] }), { status: 200 }), 'UNKNOWN']
+]) {
+  test(`cover ${name} is classified for the shared image fallback policy`, async () => {
+    await assert.rejects(
+      requestCoverImage({
+        prompt: 'cover',
+        fetchImpl: async () => response(),
+        env: { OPENROUTER_API_KEY: 'or-key' }
+      }),
+      (error) => error?.code === expected
+    )
   })
 }

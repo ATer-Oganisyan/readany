@@ -6,12 +6,18 @@ import { httpsRequest } from './http.mjs'
 import {
   parseAvatarBody,
   parseChatBody,
+  parseCoverBody,
   parseImageBody,
   parsePortraitBody,
   parseSynthesisBody,
   validationErrors
 } from './contracts.mjs'
-import { llmRouteReadiness, requestChat } from './providers.mjs'
+import {
+  coverRouteReadiness,
+  llmRouteReadiness,
+  requestChat,
+  requestCoverImage
+} from './providers.mjs'
 import {
   settleProviderResponse,
   validateChatCompletionPayload
@@ -104,6 +110,9 @@ const SPEECH_GLOBAL_DAILY_LIMIT = envInt('SPEECH_GLOBAL_LIMIT_PER_DAY', 50_000, 
 const IMAGE_LIMIT = envInt('IMAGE_LIMIT_PER_HOUR', 30, 2_000)
 const IMAGE_DAILY_LIMIT = envInt('IMAGE_LIMIT_PER_DAY', 100, 10_000)
 const IMAGE_GLOBAL_DAILY_LIMIT = envInt('IMAGE_GLOBAL_LIMIT_PER_DAY', 5_000, 1_000_000)
+const COVER_LIMIT = envInt('COVER_LIMIT_PER_HOUR', 20, 2_000)
+const COVER_DAILY_LIMIT = envInt('COVER_LIMIT_PER_DAY', 60, 10_000)
+const COVER_GLOBAL_DAILY_LIMIT = envInt('COVER_GLOBAL_LIMIT_PER_DAY', 3_000, 1_000_000)
 const VIDEO_LIMIT = envInt('VIDEO_LIMIT_PER_HOUR', 8, 500)
 const VIDEO_DAILY_LIMIT = envInt('VIDEO_LIMIT_PER_DAY', 20, 2_000)
 const VIDEO_GLOBAL_DAILY_LIMIT = envInt('VIDEO_GLOBAL_LIMIT_PER_DAY', 500, 100_000)
@@ -125,9 +134,12 @@ const SPEECH_CONCURRENCY = envInt('SPEECH_CONCURRENCY', 5, 5)
 const SPEECH_QUEUE_LIMIT = envInt('SPEECH_QUEUE_LIMIT', 16, 500)
 const IMAGE_CONCURRENCY = envInt('IMAGE_CONCURRENCY', 4, 50)
 const IMAGE_QUEUE_LIMIT = envInt('IMAGE_QUEUE_LIMIT', 12, 200)
+const COVER_CONCURRENCY = envInt('COVER_CONCURRENCY', 2, 20)
+const COVER_QUEUE_LIMIT = envInt('COVER_QUEUE_LIMIT', 8, 100)
 const llmGate = createConcurrencyGate({ limit: LLM_CONCURRENCY, queueLimit: LLM_QUEUE_LIMIT, name: 'LLM' })
 const speechGate = createConcurrencyGate({ limit: SPEECH_CONCURRENCY, queueLimit: SPEECH_QUEUE_LIMIT, name: 'Speech' })
 const imageGate = createConcurrencyGate({ limit: IMAGE_CONCURRENCY, queueLimit: IMAGE_QUEUE_LIMIT, name: 'Image' })
+const coverGate = createConcurrencyGate({ limit: COVER_CONCURRENCY, queueLimit: COVER_QUEUE_LIMIT, name: 'Cover' })
 const importGate = createConcurrencyGate({ limit: IMPORT_CONCURRENCY, queueLimit: IMPORT_QUEUE_LIMIT, name: 'Import' })
 // Собирает Basic key из готового значения либо client id + secret.
 function buildBasicKey(direct, clientId, clientSecret) {
@@ -682,6 +694,17 @@ const imageDailyLimit = createPersistentBudgetMiddleware({
   perInstallationLimit: IMAGE_DAILY_LIMIT,
   globalLimit: IMAGE_GLOBAL_DAILY_LIMIT
 })
+const coverLimit = createFixedWindowLimiter({
+  windowMs: 60 * 60 * 1000,
+  limit: COVER_LIMIT,
+  key: installationKey
+})
+const coverDailyLimit = createPersistentBudgetMiddleware({
+  registry: installationRegistry,
+  metric: 'cover_requests',
+  perInstallationLimit: COVER_DAILY_LIMIT,
+  globalLimit: COVER_GLOBAL_DAILY_LIMIT
+})
 const importLimit = createFixedWindowLimiter({ windowMs: 60 * 1000, limit: IMPORT_LIMIT, key: installationKey })
 const importDailyLimit = createPersistentBudgetMiddleware({
   registry: installationRegistry,
@@ -707,6 +730,7 @@ app.get('/health', (_req, res) => {
       gigachat: llm.ready,
       salutespeech: !!SALUTE_KEY && SBER_CA_VERIFIED,
       kandinsky: !!KANDINSKY_TOKEN,
+      cover: coverRouteReadiness().ready,
       video: !!KANDINSKY_TOKEN && !!VIDEO_BASE_URL
     },
     media_transport: {
@@ -722,7 +746,7 @@ app.get('/health', (_req, res) => {
       storage_verified: installationRegistry.status().storage_verified,
       capacity_remaining: installationRegistry.status().capacity_remaining
     },
-    concurrency: { llm: llmGate.status(), speech: speechGate.status(), image: imageGate.status(), import: importGate.status() }
+    concurrency: { llm: llmGate.status(), speech: speechGate.status(), image: imageGate.status(), cover: coverGate.status(), import: importGate.status() }
   })
 })
 
@@ -1343,6 +1367,31 @@ app.post('/v2/media/images', imageLimit, imageDailyLimit, express.json({ limit: 
     }
     if (!KANDINSKY_TOKEN) return res.status(400).json({ error: 'Нет ключей для картинок', code: 'NO_KEY' })
     res.json({ image: await kandinskyQueued(prompt, width, height, signal) })
+  } catch (e) {
+    res.status(statusFor(e.code)).json({ error: e.message, code: e.code || 'UNKNOWN' })
+  } finally {
+    release?.()
+  }
+})
+
+// --- Обложки книг: OpenRouter image-модель (осн.), Kandinsky (фолбэк) ---
+// Отдельное назначение со своими лимитами: обложки генерируются фоново при
+// импорте книги и не должны съедать бюджет сцен и портретов.
+app.post('/v2/media/cover', coverLimit, coverDailyLimit, express.json({ limit: '64kb' }), async (req, res) => {
+  const signal = requestAbortSignal(req, res)
+  let release
+  try {
+    release = await coverGate.acquire(signal)
+    const { prompt } = parseCoverBody(req.body)
+    try {
+      const cover = await requestCoverImage({ prompt, signal })
+      return res.json({ image: cover.image, mime_type: cover.mimeType })
+    } catch (e) {
+      if (!shouldFallbackAfterImageError(e) || !KANDINSKY_TOKEN) throw e
+      console.error('[cover] OpenRouter не удалось, фолбэк на Kandinsky:', e.message)
+    }
+    // Вертикальный формат 2:3 → Kandinsky отдаёт 768x1280 PNG.
+    res.json({ image: await kandinskyQueued(prompt, 768, 1280, signal), mime_type: 'image/png' })
   } catch (e) {
     res.status(statusFor(e.code)).json({ error: e.message, code: e.code || 'UNKNOWN' })
   } finally {

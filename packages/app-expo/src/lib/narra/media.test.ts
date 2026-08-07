@@ -18,6 +18,7 @@ import {
   buildNarraSpeechSsml,
   buildSafetyFallbackSceneImagePrompt,
   buildSceneImagePrompt,
+  generateBookCoverImage,
   generateSceneImage,
   normalizePersistedNarraMediaUri,
   portraitPrompt,
@@ -189,6 +190,57 @@ describe("scene image prompt", () => {
     expect(prompt).toContain("Анна вошла в зал");
     expect(prompt).not.toContain("восстание");
     expect(prompt).toContain("Не добавляй отсутствующих героев и лишних людей");
+  });
+});
+
+describe("book cover generation", () => {
+  it("sends only the prompt to /v2/media/cover and records cover telemetry", async () => {
+    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
+      new Response(JSON.stringify({ image: "aGVsbG8=", mime_type: "image/jpeg" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    await expect(generateBookCoverImage("front cover artwork")).resolves.toEqual({
+      base64: "aGVsbG8=",
+      mimeType: "image/jpeg",
+    });
+
+    const [path, request] = vi.mocked(narraGatewayRequest).mock.calls[0] ?? [];
+    expect(path).toBe("/v2/media/cover");
+    expect(JSON.parse(String(request?.body))).toEqual({ prompt: "front cover artwork" });
+    expect(recordTelemetry).toHaveBeenCalledWith(
+      "media_job_enqueued",
+      expect.objectContaining({
+        job_type: "cover",
+        provider: "openrouter",
+        model: "gpt-image-2",
+        origin: "background",
+      }),
+    );
+    expect(recordTelemetry).toHaveBeenCalledWith(
+      "media_job_completed",
+      expect.objectContaining({ job_type: "cover", origin: "background" }),
+    );
+  });
+
+  it("surfaces the gateway error text and reports a failed cover job", async () => {
+    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "Обложки: лимит на сегодня исчерпан", code: "RATE" }), {
+        status: 429,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    await expect(generateBookCoverImage("front cover artwork")).rejects.toThrow(
+      "Обложки: лимит на сегодня исчерпан",
+    );
+
+    expect(recordTelemetry).toHaveBeenCalledWith(
+      "media_job_failed",
+      expect.objectContaining({ job_type: "cover", origin: "background" }),
+    );
   });
 });
 

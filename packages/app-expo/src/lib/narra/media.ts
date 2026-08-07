@@ -12,8 +12,15 @@ const MEDIA_PATH_MARKER = "/Documents/narra-media/";
 let speechFileSequence = 0;
 const portraitRequests = new Map<string, Promise<string>>();
 
-type MediaJobType = "image" | "tts" | "avatar";
+type MediaJobType = "image" | "cover" | "tts" | "avatar";
 type MediaJobOrigin = "user" | "background";
+
+const MEDIA_JOB_ROUTES: Record<MediaJobType, { provider: string; model: string }> = {
+  image: { provider: "kandinsky", model: "k6-image-t2i" },
+  cover: { provider: "openrouter", model: "gpt-image-2" },
+  tts: { provider: "salutespeech", model: "salutespeech-yourvoice" },
+  avatar: { provider: "kandinsky", model: "k6-image-t2i" },
+};
 
 function mediaLatencyBucket(durationMs: number): string {
   if (durationMs < 1_000) return "<1s";
@@ -37,8 +44,7 @@ async function trackMediaJob<T>(
   operation: () => Promise<T>,
 ): Promise<T> {
   const startedAt = Date.now();
-  const provider = jobType === "tts" ? "salutespeech" : "kandinsky";
-  const model = jobType === "tts" ? "salutespeech-yourvoice" : "k6-image-t2i";
+  const { provider, model } = MEDIA_JOB_ROUTES[jobType];
   recordTelemetry("media_job_enqueued", {
     job_type: jobType,
     provider,
@@ -357,6 +363,33 @@ export function generateSceneImage(
   return trackMediaJob("image", "user", () =>
     generateSceneImageRequest(bookId, chapter, excerpt, characters),
   );
+}
+
+export interface GeneratedCoverImage {
+  base64: string;
+  mimeType: string;
+}
+
+async function generateBookCoverImageRequest(prompt: string): Promise<GeneratedCoverImage> {
+  const response = await narraGatewayRequest("/v2/media/cover", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ prompt }),
+  });
+  const payload = (await response.json().catch(() => null)) as {
+    image?: string;
+    mime_type?: string;
+    error?: string;
+  } | null;
+  if (!response.ok || !payload?.image) {
+    throw new Error(payload?.error || `Cover generation failed (${response.status})`);
+  }
+  return { base64: payload.image, mimeType: payload.mime_type || "image/jpeg" };
+}
+
+/** Обложка книги: сервер сам выбирает image-модель и фолбэк (/v2/media/cover). */
+export function generateBookCoverImage(prompt: string): Promise<GeneratedCoverImage> {
+  return trackMediaJob("cover", "background", () => generateBookCoverImageRequest(prompt));
 }
 
 export interface NarraSpeechOptions {

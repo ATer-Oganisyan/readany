@@ -1,4 +1,4 @@
-import { generateBookCoverWithOpenRouter } from "@/lib/book/generate-book-cover";
+import { generateBookCover } from "@/lib/book/generate-book-cover";
 import {
   generateBookIdentityWithGemini,
   isSuspiciousBookTitle,
@@ -330,14 +330,13 @@ async function ensureGeneratedBookCover(
       return;
     }
 
-    const generated = await generateBookCoverWithOpenRouter({
+    const generated = await generateBookCover({
       title: book.meta.title,
       author: book.meta.author,
       description: context?.description || book.meta.description,
       excerpt: context?.textSample,
       subjects: context?.subjects || book.meta.subjects,
     });
-    if (!generated) return;
 
     const coverUrl = await saveCoverBytesToAppData(book.id, generated.bytes, generated.mimeType);
     const currentBook = useLibraryStore.getState().books.find((item) => item.id === book.id);
@@ -346,9 +345,9 @@ async function ensureGeneratedBookCover(
       meta: { ...currentBook.meta, coverUrl },
       updatedAt: Date.now(),
     });
-    console.log(`[Library] Generated OpenRouter cover for "${currentBook.meta.title}"`);
+    console.log(`[Library] Generated Narra gateway cover for "${currentBook.meta.title}"`);
   } catch (error) {
-    console.warn(`[Library] OpenRouter could not generate a cover for ${book.id}:`, error);
+    console.warn(`[Library] Narra gateway could not generate a cover for ${book.id}:`, error);
   }
 }
 

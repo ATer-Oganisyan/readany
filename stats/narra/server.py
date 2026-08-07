@@ -224,7 +224,7 @@ PROPERTY_ENUMS = {
     "origin": {"user", "background"},
     "stage": {"import", "character_markup", "chapter_markup", "character_or_chapter_markup", "provider", "cache", "playback"},
     "safe_error_code": {"UNKNOWN", "VALIDATION", "NETWORK", "AUTH", "TIMEOUT", "RATE", "NO_KEY", "NO_PROXY", "PARSE", "CENSOR", "CANCELLED"},
-    "job_type": {"image", "tts", "avatar", "portrait_animation", "chapter_markup"},
+    "job_type": {"image", "cover", "tts", "avatar", "portrait_animation", "chapter_markup"},
     "quality": {"standard", "lite", "hd", "24000", "48000", "unknown"},
     "queue_depth_bucket": {"0", "1-4", "5-9", "10+"},
     "queue_wait_bucket": {"<1s", "1-4s", "5-14s", "15s+"},
@@ -590,6 +590,7 @@ def _feature_for_event(row: dict[str, Any]) -> str | None:
     if row["name"].startswith("media_job_"):
         return {
             "image": "Scene images",
+            "cover": "Book covers",
             "avatar": "Character portraits",
             "tts": "Speech synthesis",
             "portrait_animation": "Portrait animation",
