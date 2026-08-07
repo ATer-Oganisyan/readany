@@ -113,6 +113,7 @@ the configured name prefix are filtered out:
 UPTIMEROBOT_API_KEY=<read-capable UptimeRobot API key, root-owned env only>
 UPTIMEROBOT_MONITOR_PREFIX=Narra
 UPTIMEROBOT_CACHE_TTL_SECONDS=60
+UPTIMEROBOT_STATUS_PAGE_URL=<optional public status page link shown in the widget>
 ```
 
 Leaving `UPTIMEROBOT_API_KEY` empty disables the integration; the dashboard
