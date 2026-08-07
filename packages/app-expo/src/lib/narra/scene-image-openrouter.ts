@@ -15,24 +15,14 @@
  * поэтому консистентность героев держим паспортами внешности в промпте.
  */
 
-import {
-  bundledOpenRouterEndpoint,
-  getBundledApiKey,
-  hasBundledOpenRouterKey,
-} from "@/config/bundled-ai";
-import { fetch } from "expo/fetch";
+import { hasBundledOpenRouterKey } from "@/config/bundled-ai";
+import { type OpenRouterImageRequest, generateOpenRouterImage } from "@/lib/ai/openrouter-image";
 import { generateSceneImage, persistSceneImageBase64, trackNarraMediaJob } from "./media";
 import sceneGenerationConfig from "./scene-generation-config.json";
 import { buildScenePrompt } from "./scene-prompt";
 import type { NarraCharacter } from "./types";
 
 const DEFAULT_SCENE_MODEL = sceneGenerationConfig.openRouterModel;
-const REQUEST_TIMEOUT_MS = 180_000;
-
-interface OpenRouterImageResponse {
-  data?: Array<{ b64_json?: string; media_type?: string }>;
-  error?: { message?: string };
-}
 
 function sceneModel(): string {
   return process.env.EXPO_PUBLIC_OPENROUTER_SCENE_IMAGE_MODEL?.trim() || DEFAULT_SCENE_MODEL;
@@ -76,8 +66,6 @@ async function generateSceneImageViaOpenRouter(
   excerpt: string,
   characters: NarraCharacter[],
 ): Promise<string> {
-  const apiKey = getBundledApiKey(bundledOpenRouterEndpoint);
-  const baseUrl = bundledOpenRouterEndpoint.baseUrl.replace(/\/+$/, "");
   const book = bookMetaForPrompt(bookId);
   const prompt = buildScenePrompt({
     bookTitle: book.title,
@@ -90,39 +78,16 @@ async function generateSceneImageViaOpenRouter(
     previousExcerpts: previousSceneExcerpts(bookId, excerpt),
   });
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  try {
-    const response = await fetch(`${baseUrl}/images`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: sceneModel(),
-        prompt,
-        aspect_ratio: sceneGenerationConfig.aspectRatio,
-        quality: sceneGenerationConfig.quality,
-        output_format: sceneGenerationConfig.outputFormat,
-        output_compression: sceneGenerationConfig.outputCompression,
-        n: 1,
-      }),
-      signal: controller.signal,
-    });
-    const payload = (await response.json()) as OpenRouterImageResponse;
-    if (!response.ok) {
-      throw new Error(
-        payload.error?.message || `OpenRouter scene image request failed (${response.status})`,
-      );
-    }
-    const image = payload.data?.[0];
-    if (!image?.b64_json) throw new Error("OpenRouter scene image response is empty");
-    const extension = image.media_type === "image/png" ? "png" : "jpg";
-    return persistSceneImageBase64(bookId, image.b64_json, extension);
-  } finally {
-    clearTimeout(timeout);
-  }
+  const image = await generateOpenRouterImage({
+    model: sceneModel(),
+    prompt,
+    aspectRatio: sceneGenerationConfig.aspectRatio as OpenRouterImageRequest["aspectRatio"],
+    quality: sceneGenerationConfig.quality as OpenRouterImageRequest["quality"],
+    outputFormat: sceneGenerationConfig.outputFormat as OpenRouterImageRequest["outputFormat"],
+    outputCompression: sceneGenerationConfig.outputCompression,
+  });
+  const extension = image.mimeType === "image/png" ? "png" : "jpg";
+  return persistSceneImageBase64(bookId, image.base64, extension);
 }
 
 /**

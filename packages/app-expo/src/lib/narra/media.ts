@@ -1,6 +1,8 @@
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
+import { generateOpenRouterImage } from "@/lib/ai/openrouter-image";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import * as FileSystem from "expo-file-system/legacy";
+import coverGenerationConfig from "../book/cover-generation-config.json";
 import { budgetPrompt } from "./art-style";
 import { normalizeNarraError } from "./errors";
 import { mentionedCharacters, passportDescription } from "./scene-prompt";
@@ -10,6 +12,7 @@ import type { NarraProsody } from "./voice-rules";
 
 const MEDIA_DIR = `${FileSystem.documentDirectory}narra-media`;
 const MEDIA_PATH_MARKER = "/Documents/narra-media/";
+const OPENROUTER_IMAGE_MODEL = coverGenerationConfig.openRouterModel;
 let speechFileSequence = 0;
 const portraitRequests = new Map<string, Promise<string>>();
 
@@ -20,7 +23,7 @@ const MEDIA_JOB_ROUTES: Record<MediaJobType, { provider: string; model: string }
   image: { provider: "kandinsky", model: "k6-image-t2i" },
   cover: { provider: "openrouter", model: "gpt-image-2" },
   tts: { provider: "salutespeech", model: "salutespeech-yourvoice" },
-  avatar: { provider: "kandinsky", model: "k6-image-t2i" },
+  avatar: { provider: "openrouter", model: "gpt-image-2" },
   video: { provider: "openrouter", model: "veo-3.1-lite" },
 };
 
@@ -119,12 +122,16 @@ function safeKey(value: string): string {
 
 /** «Название» (Автор) — контекст эпохи/мира книги для промптов генерации. */
 function bookContextDescription(bookId: string): string | undefined {
-  // Ленивый импорт, чтобы не тянуть стор в юнит-тесты чистых промптов
-  const { useLibraryStore } = require("@/stores") as typeof import("@/stores");
-  const book = useLibraryStore.getState().books.find((item) => item.id === bookId);
-  if (!book) return undefined;
-  const author = book.meta.author ? ` (${book.meta.author})` : "";
-  return `«${book.meta.title}»${author}`;
+  try {
+    // Ленивый импорт, чтобы не тянуть стор в юнит-тесты чистых промптов
+    const { useLibraryStore } = require("@/stores") as typeof import("@/stores");
+    const book = useLibraryStore.getState().books.find((item) => item.id === bookId);
+    if (!book) return undefined;
+    const author = book.meta.author ? ` (${book.meta.author})` : "";
+    return `«${book.meta.title}»${author}`;
+  } catch {
+    return undefined;
+  }
 }
 
 export function portraitPrompt(character: NarraCharacter, bookContext?: string): string {
@@ -298,22 +305,16 @@ async function generateCharacterPortraitRequest(
   bookId: string,
   character: NarraCharacter,
 ): Promise<string> {
-  const response = await narraGatewayRequest("/v2/media/images", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      prompt: portraitPrompt(character, bookContextDescription(bookId)),
-      width: 768,
-      height: 1024,
-    }),
+  const image = await generateOpenRouterImage({
+    model: OPENROUTER_IMAGE_MODEL,
+    prompt: portraitPrompt(character, bookContextDescription(bookId)),
+    aspectRatio: "3:4",
+    quality: "high",
+    outputFormat: "png",
   });
-  const payload = imagePayload(await response.json().catch(() => null));
-  if (!response.ok || (!payload.base64 && !payload.url)) {
-    throw new Error(payload.error || `Portrait generation failed (${response.status})`);
-  }
   await ensureMediaDir();
   const path = `${MEDIA_DIR}/${safeKey(`${bookId}-${character.id}-portrait`)}.png`;
-  return persistGeneratedImage(path, payload);
+  return persistGeneratedImage(path, { base64: image.base64 });
 }
 
 export function generateCharacterPortrait(
@@ -384,23 +385,18 @@ export interface GeneratedCoverImage {
 }
 
 async function generateBookCoverImageRequest(prompt: string): Promise<GeneratedCoverImage> {
-  const response = await narraGatewayRequest("/v2/media/cover", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ prompt }),
+  const image = await generateOpenRouterImage({
+    model: OPENROUTER_IMAGE_MODEL,
+    prompt,
+    aspectRatio: "2:3",
+    quality: "high",
+    outputFormat: "jpeg",
+    outputCompression: 90,
   });
-  const payload = (await response.json().catch(() => null)) as {
-    image?: string;
-    mime_type?: string;
-    error?: string;
-  } | null;
-  if (!response.ok || !payload?.image) {
-    throw new Error(payload?.error || `Cover generation failed (${response.status})`);
-  }
-  return { base64: payload.image, mimeType: payload.mime_type || "image/jpeg" };
+  return { base64: image.base64, mimeType: image.mimeType };
 }
 
-/** Обложка книги: сервер сам выбирает image-модель и фолбэк (/v2/media/cover). */
+/** Обложка книги через встроенный OpenRouter Images API. */
 export function generateBookCoverImage(prompt: string): Promise<GeneratedCoverImage> {
   return trackNarraMediaJob("cover", "background", () => generateBookCoverImageRequest(prompt));
 }

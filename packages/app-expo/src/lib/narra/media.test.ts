@@ -7,11 +7,18 @@ vi.mock("expo-file-system/legacy", () => ({
   getInfoAsync: vi.fn(async () => ({ exists: true })),
   makeDirectoryAsync: vi.fn(),
   writeAsStringAsync: vi.fn(),
+  deleteAsync: vi.fn(),
+  moveAsync: vi.fn(),
 }));
 vi.mock("@/lib/ai/narra-gateway-fetch", () => ({ narraGatewayRequest: vi.fn() }));
+vi.mock("@/lib/ai/openrouter-image", () => ({ generateOpenRouterImage: vi.fn() }));
 vi.mock("@/lib/analytics/telemetry", () => ({ recordTelemetry: vi.fn() }));
+vi.mock("@/stores", () => ({
+  useLibraryStore: { getState: () => ({ books: [] }) },
+}));
 
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
+import { generateOpenRouterImage } from "@/lib/ai/openrouter-image";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import { ART_STYLE, PROMPT_CHAR_LIMIT } from "./art-style";
 import {
@@ -19,6 +26,7 @@ import {
   buildSafetyFallbackSceneImagePrompt,
   buildSceneImagePrompt,
   generateBookCoverImage,
+  generateCharacterPortrait,
   generateSceneImage,
   normalizePersistedNarraMediaUri,
   portraitPrompt,
@@ -98,6 +106,25 @@ describe("portrait prompt", () => {
     expect(longPrompt).toContain("Ровно один человек в кадре — Алексей Вронский");
     expect(longPrompt.endsWith(`Стиль: ${ART_STYLE}.`)).toBe(true);
     expect(longPrompt.length).toBeLessThanOrEqual(PROMPT_CHAR_LIMIT);
+  });
+
+  it("routes character portraits through OpenRouter GPT Image 2", async () => {
+    vi.mocked(generateOpenRouterImage).mockResolvedValueOnce({
+      base64: "AQID",
+      mimeType: "image/png",
+    });
+
+    await expect(generateCharacterPortrait("book-1", anna)).resolves.toContain(
+      "book-1-anna-portrait.png",
+    );
+    expect(generateOpenRouterImage).toHaveBeenCalledWith({
+      model: "openai/gpt-image-2",
+      prompt: expect.stringContaining("Анна Каренина"),
+      aspectRatio: "3:4",
+      quality: "high",
+      outputFormat: "png",
+    });
+    expect(narraGatewayRequest).not.toHaveBeenCalled();
   });
 });
 
@@ -194,22 +221,26 @@ describe("scene image prompt", () => {
 });
 
 describe("book cover generation", () => {
-  it("sends only the prompt to /v2/media/cover and records cover telemetry", async () => {
-    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
-      new Response(JSON.stringify({ image: "aGVsbG8=", mime_type: "image/jpeg" }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
-    );
+  it("routes covers through OpenRouter GPT Image 2 and records telemetry", async () => {
+    vi.mocked(generateOpenRouterImage).mockResolvedValueOnce({
+      base64: "aGVsbG8=",
+      mimeType: "image/jpeg",
+    });
 
     await expect(generateBookCoverImage("front cover artwork")).resolves.toEqual({
       base64: "aGVsbG8=",
       mimeType: "image/jpeg",
     });
 
-    const [path, request] = vi.mocked(narraGatewayRequest).mock.calls[0] ?? [];
-    expect(path).toBe("/v2/media/cover");
-    expect(JSON.parse(String(request?.body))).toEqual({ prompt: "front cover artwork" });
+    expect(generateOpenRouterImage).toHaveBeenCalledWith({
+      model: "openai/gpt-image-2",
+      prompt: "front cover artwork",
+      aspectRatio: "2:3",
+      quality: "high",
+      outputFormat: "jpeg",
+      outputCompression: 90,
+    });
+    expect(narraGatewayRequest).not.toHaveBeenCalled();
     expect(recordTelemetry).toHaveBeenCalledWith(
       "media_job_enqueued",
       expect.objectContaining({
@@ -225,16 +256,13 @@ describe("book cover generation", () => {
     );
   });
 
-  it("surfaces the gateway error text and reports a failed cover job", async () => {
-    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
-      new Response(JSON.stringify({ error: "Обложки: лимит на сегодня исчерпан", code: "RATE" }), {
-        status: 429,
-        headers: { "content-type": "application/json" },
-      }),
+  it("surfaces the OpenRouter error and reports a failed cover job", async () => {
+    vi.mocked(generateOpenRouterImage).mockRejectedValueOnce(
+      new Error("OpenRouter: лимит на сегодня исчерпан"),
     );
 
     await expect(generateBookCoverImage("front cover artwork")).rejects.toThrow(
-      "Обложки: лимит на сегодня исчерпан",
+      "OpenRouter: лимит на сегодня исчерпан",
     );
 
     expect(recordTelemetry).toHaveBeenCalledWith(
