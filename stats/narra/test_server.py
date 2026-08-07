@@ -185,6 +185,50 @@ class NarraStatsTest(unittest.TestCase):
             )
             self.assertEqual(server.health().status_code, 200)
 
+    def test_telegram_alerter_reports_transitions_only(self):
+        alerter = monitoring.TelegramAlerter(
+            token="tg-test",
+            chat_ids="-5569378785",
+            labels={"production_gateway": "Production gateway"},
+            environment="test",
+        )
+        sent: list[str] = []
+        with patch.object(alerter, "_deliver", side_effect=sent.append):
+            baseline = [{"target_id": "production_gateway", "state": "up"}]
+            alerter.observe(baseline)
+            self.assertEqual(sent, [])
+            alerter.observe([{
+                "target_id": "production_gateway", "state": "down",
+                "error_code": "HTTP_503", "http_status": 503, "latency_ms": 120.4,
+            }])
+            self.assertEqual(len(sent), 1)
+            self.assertIn("🔴 Narra · Production gateway: up → down (test)", sent[0])
+            self.assertIn("HTTP_503 · HTTP 503 · 120 ms", sent[0])
+            alerter.observe([{"target_id": "production_gateway", "state": "down"}])
+            self.assertEqual(len(sent), 1)
+            alerter.observe([{"target_id": "production_gateway", "state": "up"}])
+            self.assertEqual(len(sent), 2)
+            self.assertIn("✅ Narra · Production gateway: down → up", sent[1])
+
+    def test_telegram_alerter_disabled_without_token_or_chats(self):
+        for token, chats in (("", "-1"), ("tg", ""), ("", "")):
+            alerter = monitoring.TelegramAlerter(token=token, chat_ids=chats)
+            self.assertFalse(alerter.enabled)
+            with patch.object(alerter, "_deliver") as deliver:
+                alerter.observe([{"target_id": "a", "state": "up"}])
+                alerter.observe([{"target_id": "a", "state": "down"}])
+                deliver.assert_not_called()
+        with self.assertRaises(RuntimeError):
+            monitoring.TelegramAlerter(
+                token="tg", chat_ids="-1", api_origin="http://api.telegram.org"
+            )
+
+    def test_monitor_runner_alerts_survive_delivery_failure(self):
+        alerter = monitoring.TelegramAlerter(token="tg-test", chat_ids="-1")
+        alerter.observe([{"target_id": "a", "state": "up"}])
+        with patch.object(alerter, "_post", side_effect=OSError("net")):
+            alerter.observe([{"target_id": "a", "state": "down"}])
+
     def test_uptime_report_disabled_without_key(self):
         with patch.object(server, "UPTIMEROBOT_API_KEY", ""):
             self.assertEqual(

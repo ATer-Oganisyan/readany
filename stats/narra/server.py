@@ -32,6 +32,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from monitoring import (
     MonitorRunner,
+    TelegramAlerter,
     default_targets,
     ensure_schema as ensure_monitor_schema,
     monitor_report,
@@ -301,6 +302,14 @@ DB_LOCK = threading.RLock()
 MONITOR_TARGETS = default_targets()
 validate_targets(MONITOR_TARGETS)
 ensure_monitor_schema(_db, DB_LOCK)
+MONITOR_ALERTER = TelegramAlerter(
+    token=os.environ.get("STATS_ALERT_TELEGRAM_BOT_TOKEN", ""),
+    chat_ids=os.environ.get("STATS_ALERT_TELEGRAM_CHAT_IDS", ""),
+    api_origin=os.environ.get("STATS_ALERT_TELEGRAM_API_ORIGIN", "https://api.telegram.org"),
+    connect_host=os.environ.get("STATS_ALERT_TELEGRAM_CONNECT_HOST", ""),
+    labels={target.identifier: target.label for target in MONITOR_TARGETS},
+    environment=ENVIRONMENT,
+)
 MONITOR_RUNNER = MonitorRunner(
     _db,
     DB_LOCK,
@@ -308,6 +317,7 @@ MONITOR_RUNNER = MonitorRunner(
     interval_seconds=MONITOR_INTERVAL_SECONDS,
     timeout_seconds=MONITOR_TIMEOUT_SECONDS,
     retention_days=MONITOR_RETENTION_DAYS,
+    alerter=MONITOR_ALERTER if MONITOR_ALERTER.enabled else None,
 )
 RATE_LOCK = threading.Lock()
 RATE: dict[str, deque[float]] = defaultdict(deque)

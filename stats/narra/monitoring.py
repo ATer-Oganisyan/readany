@@ -19,6 +19,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -498,6 +499,111 @@ def _percentile(values: list[float], percentile: float) -> float | None:
     return round(ordered[index], 1)
 
 
+class TelegramAlerter:
+    """Алерты о смене состояния целей в Telegram — та же схема, что у
+    мультитула/AIWA: бот-токен и чаты живут только в root-env, сообщение
+    шлётся server-side. На i167 api.telegram.org доступен через loopback-relay
+    (stunnel), поэтому поддерживается `connect_host`: TCP идёт на relay, а SNI
+    и проверка сертификата остаются на настоящем hostname — TLS сквозной до
+    Telegram, отключать проверку не нужно."""
+
+    STATE_ICONS = {"up": "✅", "down": "🔴", "degraded": "🟡", "standby": "⏸", "unknown": "❔"}
+
+    def __init__(
+        self,
+        *,
+        token: str,
+        chat_ids: str,
+        api_origin: str = "https://api.telegram.org",
+        connect_host: str = "",
+        timeout: float = 10.0,
+        labels: Mapping[str, str] | None = None,
+        environment: str = "production",
+    ):
+        self.token = token.strip()
+        self.chat_ids = [chat.strip() for chat in chat_ids.split(",") if chat.strip()]
+        origin = api_origin.strip() or "https://api.telegram.org"
+        parsed = urlsplit(origin if "://" in origin else f"https://{origin}")
+        if parsed.scheme != "https" or not parsed.hostname:
+            raise RuntimeError("telegram alert origin must be an HTTPS origin")
+        self.host = parsed.hostname
+        self.port = parsed.port or 443
+        self.connect_host = connect_host.strip()
+        self.timeout = max(3.0, min(float(timeout), 30.0))
+        self.labels = dict(labels or {})
+        self.environment = environment
+        self._last_states: dict[str, str] = {}
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.token and self.chat_ids)
+
+    def observe(self, samples: list[dict[str, Any]]) -> None:
+        """Первый цикл — базовая линия без алертов; дальше только переходы,
+        поэтому залипший down не спамит каждую минуту."""
+        if not self.enabled:
+            return
+        for sample in samples:
+            target_id = str(sample.get("target_id", ""))
+            state = str(sample.get("state", "unknown"))
+            previous = self._last_states.get(target_id)
+            self._last_states[target_id] = state
+            if previous is None or previous == state:
+                continue
+            self._deliver(self._format(target_id, previous, state, sample))
+
+    def _format(
+        self, target_id: str, previous: str, state: str, sample: Mapping[str, Any]
+    ) -> str:
+        icon = self.STATE_ICONS.get(state, "❔")
+        label = self.labels.get(target_id, target_id)
+        lines = [f"{icon} Narra · {label}: {previous} → {state} ({self.environment})"]
+        details = []
+        if sample.get("error_code"):
+            details.append(str(sample["error_code"]))
+        if sample.get("http_status") is not None:
+            details.append(f"HTTP {sample['http_status']}")
+        if sample.get("latency_ms") is not None:
+            details.append(f"{round(float(sample['latency_ms']))} ms")
+        if details:
+            lines.append(" · ".join(details))
+        return "\n".join(lines)
+
+    def _deliver(self, text: str) -> None:
+        for chat_id in self.chat_ids:
+            try:
+                self._post(chat_id, text)
+            except Exception as error:
+                print(
+                    f"[monitor] telegram alert failed: {type(error).__name__}",
+                    flush=True,
+                )
+
+    def _post(self, chat_id: str, text: str) -> None:
+        payload = urllib.parse.urlencode({"chat_id": chat_id, "text": text}).encode()
+        connect_to = self.connect_host or self.host
+        context = ssl.create_default_context()
+        with socket.create_connection((connect_to, self.port), timeout=self.timeout) as raw:
+            with context.wrap_socket(raw, server_hostname=self.host) as tls:
+                connection = http.client.HTTPConnection(self.host, self.port, timeout=self.timeout)
+                connection.sock = tls
+                connection.request(
+                    "POST",
+                    f"/bot{self.token}/sendMessage",
+                    body=payload,
+                    headers={
+                        "Content-Type": "application/x-www-form-urlencoded",
+                        "Host": self.host,
+                    },
+                )
+                response = connection.getresponse()
+                body = response.read(65536)
+                if response.status != 200:
+                    raise RuntimeError(f"telegram sendMessage HTTP {response.status}")
+                if b'"ok":true' not in body.replace(b" ", b""):
+                    raise RuntimeError("telegram sendMessage rejected")
+
+
 class MonitorRunner:
     def __init__(
         self,
@@ -508,6 +614,7 @@ class MonitorRunner:
         interval_seconds: int = 60,
         timeout_seconds: float = 5.0,
         retention_days: int = 30,
+        alerter: TelegramAlerter | None = None,
     ):
         validate_targets(targets)
         self.connection = connection
@@ -516,6 +623,7 @@ class MonitorRunner:
         self.interval_seconds = max(30, min(int(interval_seconds), 3600))
         self.timeout_seconds = max(1.0, min(float(timeout_seconds), 15.0))
         self.retention_days = max(1, min(int(retention_days), 90))
+        self.alerter = alerter
         self.stop_event = threading.Event()
         self.thread: threading.Thread | None = None
 
@@ -541,6 +649,11 @@ class MonitorRunner:
             samples,
             retention_days=self.retention_days,
         )
+        if self.alerter is not None:
+            try:
+                self.alerter.observe(samples)
+            except Exception as error:  # pragma: no cover - defensive service boundary
+                print(f"[monitor] alerting failed: {type(error).__name__}", flush=True)
 
     def start(self) -> None:
         if self.thread and self.thread.is_alive():

@@ -118,6 +118,28 @@ UPTIMEROBOT_CACHE_TTL_SECONDS=60
 Leaving `UPTIMEROBOT_API_KEY` empty disables the integration; the dashboard
 then labels the external-uptime panel as not configured.
 
+## Telegram alerts on monitor state changes
+
+The internal monitor sends a Telegram message when a target changes state
+(`up → down`, recovery, `degraded`, …) — the same server-side pattern the
+MultiTool and AIWA modules use. The first probe cycle is a baseline; a target
+that stays down does not repeat the alert every minute. Delivery failures are
+logged and never affect probing or ingestion.
+
+```text
+STATS_ALERT_TELEGRAM_BOT_TOKEN=<bot token, root-owned env only>
+STATS_ALERT_TELEGRAM_CHAT_IDS=<comma-separated chat ids, e.g. -5569378785>
+STATS_ALERT_TELEGRAM_API_ORIGIN=https://api.telegram.org
+STATS_ALERT_TELEGRAM_CONNECT_HOST=
+```
+
+On `i167` the Telegram API is not directly reachable; the AIWA stunnel relay
+listens on loopback and forwards raw TLS end-to-end. Set
+`STATS_ALERT_TELEGRAM_API_ORIGIN=https://api.telegram.org:18443` and
+`STATS_ALERT_TELEGRAM_CONNECT_HOST=127.0.0.1`: TCP goes to the relay while SNI
+and certificate verification stay pinned to the real hostname, so certificate
+checking is never disabled. Empty token or chat list disables alerting.
+
 The stale threshold defaults to three configured probe intervals. If the
 runner stops and a sample ages past that threshold, the target becomes `down`
 with `STALE`; `/health` exposes monitor state, freshness and oldest sample age
