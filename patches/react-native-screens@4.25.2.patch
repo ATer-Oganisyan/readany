@@ -60,7 +60,7 @@ index 289c9d958eb913a451161da11bda7fd44aeca377..83ab4dc9aefe15b3d93e4bcab3c0eed0
  - (BOOL)tabBarController:(UITabBarController *)tabBarController
      shouldSelectViewController:(UIViewController *)viewController
  {
-@@ -488,7 +532,40 @@ - (void)updateReactChildrenControllers
+@@ -488,7 +532,39 @@ - (void)updateReactChildrenControllers
      return;
    }
  
@@ -88,7 +88,6 @@ index 289c9d958eb913a451161da11bda7fd44aeca377..83ab4dc9aefe15b3d93e4bcab3c0eed0
 +                   viewControllerProvider:^UIViewController *_Nonnull(__kindof UITab *_Nonnull providedTab) {
 +                     return viewController;
 +                   }];
-+        tab.selectedImage = item.selectedImage;
 +      }
 +
 +      tab.badgeValue = viewController.tabBarItem.badgeValue;
