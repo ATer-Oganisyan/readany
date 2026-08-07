@@ -97,6 +97,7 @@ module.exports = {
       "expo-sqlite",
       "expo-asset",
       "./plugins/withIosSceneLifecycle",
+      "./plugins/withIosPodsDeploymentTarget",
       "./plugins/withReactNativeScreensGamma",
       "./plugins/withVolumeKeyPaging",
       [
