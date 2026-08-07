@@ -37,6 +37,11 @@ deployment environment and must never be committed or shipped to the Expo app.
 
 ## i167 production
 
+The current production inventory, Railway retirement state and staging policy
+are recorded in [`docs/narra-infrastructure.md`](../../docs/narra-infrastructure.md).
+This directory is the canonical gateway source; do not redeploy the historical
+copy from the standalone Narra repository.
+
 Production is a single Docker replica behind Caddy on `127.0.0.1:8788`. The
 file-backed installation registry and analytics outbox live in the external
 `narra_gateway-data` volume. Two production writers must never mount that volume
