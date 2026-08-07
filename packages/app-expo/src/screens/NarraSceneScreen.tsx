@@ -84,6 +84,7 @@ export function NarraSceneScreen({ route, navigation }: Props) {
   const startedRef = useRef(false);
   const audioRef = useRef(new NarraAudioPlayer());
   const audioRunRef = useRef(0);
+  const sceneMediaOperationRef = useRef<"idle" | "image" | "video">("idle");
 
   // Кэш «ожившей» сцены из стора: повторный тап играет без генерации.
   const videoUri = cachedScene?.videoUri
@@ -91,7 +92,8 @@ export function NarraSceneScreen({ route, navigation }: Props) {
     : null;
 
   const generate = useCallback(async () => {
-    if (loading) return;
+    if (loading || animating || sceneMediaOperationRef.current !== "idle") return;
+    sceneMediaOperationRef.current = "image";
     setLoading(true);
     setError(null);
     // Новая картинка обесценивает старое видео: setScene ниже пишет сцену
@@ -110,9 +112,10 @@ export function NarraSceneScreen({ route, navigation }: Props) {
     } catch (cause) {
       setError(reportNarraError("scene_image", cause).message);
     } finally {
+      sceneMediaOperationRef.current = "idle";
       setLoading(false);
     }
-  }, [bookId, chapter, characters, excerpt, loading, setScene, sourceKey]);
+  }, [animating, bookId, chapter, characters, excerpt, loading, setScene, sourceKey]);
 
   useEffect(() => {
     if (startedRef.current || imageUri) return;
@@ -233,7 +236,8 @@ export function NarraSceneScreen({ route, navigation }: Props) {
   // «Оживление» сцены (P18): image-to-video через OpenRouter Veo. Генерация
   // ТОЛЬКО по явному тапу (платные вызовы), готовое видео кэшируется в сцене.
   const runAnimation = useCallback(async () => {
-    if (!imageUri || animating || loading) return;
+    if (!imageUri || animating || loading || sceneMediaOperationRef.current !== "idle") return;
+    sceneMediaOperationRef.current = "video";
     setAnimating(true);
     try {
       const nextVideoUri = await animateNarraImage({
@@ -258,6 +262,7 @@ export function NarraSceneScreen({ route, navigation }: Props) {
         normalized.message,
       );
     } finally {
+      sceneMediaOperationRef.current = "idle";
       setAnimating(false);
     }
   }, [animating, bookId, cachedScene, chapter, excerpt, imageUri, loading, setScene, sourceKey, t]);
@@ -374,7 +379,7 @@ export function NarraSceneScreen({ route, navigation }: Props) {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t("narra.sceneRegenerate", "Нарисовать заново")}
-            disabled={loading}
+            disabled={loading || animating}
             onPress={() => void generate()}
             style={({ pressed }) => [styles.primaryPill, pressed && styles.pillPressed]}
           >
