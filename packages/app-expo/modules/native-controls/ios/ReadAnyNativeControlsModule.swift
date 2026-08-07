@@ -54,14 +54,13 @@ public final class ReadAnyNativeControlsModule: Module {
     }
 
     View(ReadAnyReaderToolbar.self) {
-      Events("onSpeechPress", "onChatPress", "onScenePress", "onSettingsPress")
+      Events("onSpeechPress", "onChatPress", "onSettingsPress")
 
       Prop("tintColor") { (view, value: UIColor) in view.toolbarTintColor = value }
       Prop("isDark") { (view, value: Bool) in view.isDark = value }
       Prop("speechActive") { (view, value: Bool) in view.speechActive = value }
       Prop("speechLabel") { (view, value: String) in view.speechLabel = value }
       Prop("chatLabel") { (view, value: String) in view.chatLabel = value }
-      Prop("sceneLabel") { (view, value: String) in view.sceneLabel = value }
       Prop("settingsLabel") { (view, value: String) in view.settingsLabel = value }
 
       OnViewDidUpdateProps { view in
@@ -222,7 +221,6 @@ final class ReadAnyImportMenuButton: ExpoView {
 final class ReadAnyReaderToolbar: ExpoView {
   let onSpeechPress = EventDispatcher()
   let onChatPress = EventDispatcher()
-  let onScenePress = EventDispatcher()
   let onSettingsPress = EventDispatcher()
 
   var toolbarTintColor = UIColor.label
@@ -230,7 +228,6 @@ final class ReadAnyReaderToolbar: ExpoView {
   var speechActive = false
   var speechLabel = "Слушать"
   var chatLabel = "Чат"
-  var sceneLabel = "Сцена"
   var settingsLabel = "Оформление"
 
   private let toolbar = UIToolbar()
@@ -258,10 +255,6 @@ final class ReadAnyReaderToolbar: ExpoView {
 
   @objc private func handleChatPress() {
     onChatPress()
-  }
-
-  @objc private func handleScenePress() {
-    onScenePress()
   }
 
   @objc private func handleSettingsPress() {
@@ -298,11 +291,6 @@ final class ReadAnyReaderToolbar: ExpoView {
       accessibilityLabel: chatLabel,
       action: #selector(handleChatPress)
     )
-    let scene = makeItem(
-      symbol: "wand.and.rays",
-      accessibilityLabel: sceneLabel,
-      action: #selector(handleScenePress)
-    )
     // Явный вход в оформление читалки (Aa): шрифты, тема, прокрутка
     let settings = makeItem(
       symbol: "textformat.size",
@@ -312,11 +300,11 @@ final class ReadAnyReaderToolbar: ExpoView {
     let spacer = { UIBarButtonItem(systemItem: .flexibleSpace) }
 
     if #available(iOS 26.0, *) {
-      [speech, chat, scene, settings].forEach { $0.sharesBackground = true }
+      [speech, chat, settings].forEach { $0.sharesBackground = true }
     }
 
     toolbar.setItems(
-      [spacer(), speech, chat, scene, settings, spacer()],
+      [spacer(), speech, chat, settings, spacer()],
       animated: false
     )
   }

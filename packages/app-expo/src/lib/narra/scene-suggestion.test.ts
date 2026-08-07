@@ -40,9 +40,9 @@ function run(
 }
 
 describe("настройка частоты врезок", () => {
-  it("дефолт — 8 страниц, варианты содержат выкл", () => {
-    expect(DEFAULT_SCENE_SUGGESTION_INTERVAL).toBe(8);
-    expect(SCENE_SUGGESTION_INTERVALS).toContain(0);
+  it("дефолт — 4 страницы, варианты 3/4/8/выкл", () => {
+    expect(DEFAULT_SCENE_SUGGESTION_INTERVAL).toBe(4);
+    expect(SCENE_SUGGESTION_INTERVALS).toEqual([3, 4, 8, 0]);
     expect(SCENE_SUGGESTION_INTERVALS).toContain(DEFAULT_SCENE_SUGGESTION_INTERVAL);
   });
 
@@ -128,6 +128,20 @@ describe("счётчик перелистываний", () => {
     expect(state.pagesTurned).toBe(2);
   });
 
+  it("быстрый свайп (relocate с шагом 2–3 страницы) считается чтением вперёд", () => {
+    // foliate коалесцирует быстрые перелистывания в один relocate; раньше это
+    // было «прыжком» и счётчик обнулялся — врезка могла не наступить никогда
+    const events = [pageRelocate(0, 1), pageRelocate(0, 3), pageRelocate(0, 6)];
+    const { state } = run(events, 8, ONGOING_STATE);
+    expect(state.pagesTurned).toBe(2);
+  });
+
+  it("шаг назад на 2–3 страницы не считается и не сбрасывает счётчик", () => {
+    const forward = [pageRelocate(0, 1), pageRelocate(0, 2), pageRelocate(0, 3)];
+    const { state } = run([...forward, pageRelocate(0, 1)], 5, ONGOING_STATE);
+    expect(state.pagesTurned).toBe(2);
+  });
+
   it("прыжок (оглавление/поиск) сбрасывает счётчик", () => {
     const forward = Array.from({ length: 5 }, (_, index) => pageRelocate(0, index + 1));
     const { state, suggestions } = run([...forward, pageRelocate(7, 3)], 8, ONGOING_STATE);
@@ -142,8 +156,21 @@ describe("счётчик перелистываний", () => {
     state = advanceSceneSuggestion(state, pageRelocate(0, 2), 5).state;
     const result = advanceSceneSuggestion(state, pageRelocate(0, 3), 5, true);
     expect(result.suggest).toBe(false);
-    expect(result.state.pagesTurned).toBe(0);
+    // Сам переход страницей не считается, но накопленный счётчик сохраняется
+    expect(result.state.pagesTurned).toBe(1);
     expect(result.state.step).toEqual({ mode: "page", section: 0, page: 3 });
+  });
+
+  it("suppressed-переход не съедает прогресс: счёт продолжается после guard-окна", () => {
+    let state = ONGOING_STATE;
+    state = advanceSceneSuggestion(state, pageRelocate(0, 1), 4).state;
+    state = advanceSceneSuggestion(state, pageRelocate(0, 2), 4).state; // 1
+    state = advanceSceneSuggestion(state, pageRelocate(0, 3), 4).state; // 2
+    // Восстановление позиции / программный переход
+    state = advanceSceneSuggestion(state, pageRelocate(2, 5), 4, true).state;
+    state = advanceSceneSuggestion(state, pageRelocate(2, 6), 4).state; // 3
+    const result = advanceSceneSuggestion(state, pageRelocate(2, 7), 4); // 4 → suggest
+    expect(result.suggest).toBe(true);
   });
 
   it("moved=true при смене страницы — плашка скрывается при перелистывании", () => {

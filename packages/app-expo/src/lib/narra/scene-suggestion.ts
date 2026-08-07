@@ -8,8 +8,8 @@
  */
 
 /** Варианты настройки «Частота врезок»: страниц между предложениями, 0 — выкл. */
-export const SCENE_SUGGESTION_INTERVALS = [5, 8, 15, 0] as const;
-export const DEFAULT_SCENE_SUGGESTION_INTERVAL = 8;
+export const SCENE_SUGGESTION_INTERVALS = [3, 4, 8, 0] as const;
+export const DEFAULT_SCENE_SUGGESTION_INTERVAL = 4;
 
 /**
  * Первая врезка сессии книги показывается раньше обычного интервала — после
@@ -55,6 +55,14 @@ export const INITIAL_SCENE_SUGGESTION_STATE: SceneSuggestionState = {
 /** Максимальный прирост доли книги, который ещё похож на одну страницу. */
 const MAX_FRACTION_PAGE_STEP = 0.08;
 
+/**
+ * Максимальный шаг страниц renderer'а, который считаем «перелистнул вперёд».
+ * Быстрые свайпы коалесцируются debounce'ом foliate в один relocate с шагом
+ * 2–3 страницы — раньше это классифицировалось как «прыжок» и обнуляло
+ * счётчик, из-за чего врезка могла не наступить никогда.
+ */
+const MAX_PAGE_TURN_STEP = 3;
+
 function stepFromRelocate(detail: SceneSuggestionRelocate): SceneSuggestionStep | null {
   if (detail.page && detail.section) {
     return { mode: "page", section: detail.section.current, page: detail.page.current };
@@ -86,8 +94,10 @@ function classifyMove(
 ): "forward" | "backward" | "jump" {
   if (previous.mode === "page" && next.mode === "page") {
     if (next.section === previous.section) {
-      if (next.page === previous.page + 1) return "forward";
-      if (next.page === previous.page - 1) return "backward";
+      const delta = next.page - previous.page;
+      // Быстрые свайпы приходят одним relocate с шагом 2–3 — это чтение вперёд
+      if (delta >= 1 && delta <= MAX_PAGE_TURN_STEP) return "forward";
+      if (delta <= -1 && delta >= -MAX_PAGE_TURN_STEP) return "backward";
       return "jump";
     }
     if (next.section === previous.section + 1) return "forward";
@@ -140,8 +150,15 @@ export function advanceSceneSuggestion(
   }
 
   if (suppressed) {
-    // Программный переход: перепривязываемся к новой позиции, счётчик заново
-    return { state: { step, pagesTurned: 0, firstSuggested }, suggest: false, moved: true };
+    // Программный переход (восстановление позиции, оглавление): перепривязываемся
+    // к новой позиции, сам переход страницей не считаем, но накопленный счётчик
+    // НЕ обнуляем — иначе guard-окно после каждой программной навигации
+    // (и серии relocate при открытии книги) съедало прогресс до врезки.
+    return {
+      state: { step, pagesTurned: state.pagesTurned, firstSuggested },
+      suggest: false,
+      moved: true,
+    };
   }
 
   const move = classifyMove(previous, step);

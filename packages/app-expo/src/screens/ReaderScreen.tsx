@@ -377,7 +377,6 @@ function ReaderLoadingChrome({ navigation }: { navigation: Props["navigation"] }
             speechActive={false}
             onSpeechPress={ignorePress}
             onChatPress={ignorePress}
-            onScenePress={ignorePress}
             onSettingsPress={ignorePress}
           />
         </View>
@@ -415,6 +414,8 @@ function ReaderContent({ route, navigation }: Props) {
   const [currentChapterHref, setCurrentChapterHref] = useState("");
   const [currentPage, setCurrentPage] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
+  // Позиция по всей книге (foliate location, как «стр. N из M» в Apple Books)
+  const [bookLocation, setBookLocation] = useState<{ current: number; total: number } | null>(null);
   const [toc, setToc] = useState<TOCItem[]>([]);
   const [bookTitle, setBookTitle] = useState("");
   const [webViewReady, setWebViewReady] = useState(false);
@@ -675,6 +676,7 @@ function ReaderContent({ route, navigation }: Props) {
         );
         bridgeRef.current?.replaceSceneSlot(anchor, sceneImageDataUri(base64, imageUri));
       } catch (cause) {
+        console.log("[SceneSlot] generation failed", { anchor, cause: String(cause) });
         reportNarraError("scene_image", cause);
         bridgeRef.current?.setSceneSlotState(anchor, "error");
       } finally {
@@ -1063,6 +1065,13 @@ function ReaderContent({ route, navigation }: Props) {
         setTotalPages(0);
       }
 
+      // «стр. N из M» по всей книге — из foliate location (нет в scrolled/fixed)
+      setBookLocation(
+        detail.location?.total
+          ? { current: detail.location.current, total: detail.location.total }
+          : null,
+      );
+
       const trackingSuppressed = Date.now() < progressTrackingGuardUntilRef.current;
 
       if (detail.location?.total) {
@@ -1166,7 +1175,17 @@ function ReaderContent({ route, navigation }: Props) {
       );
       sceneSuggestionStateRef.current = sceneAdvance.state;
       if (sceneAdvance.suggest) {
+        console.log("[SceneSlot] suggest → insertSceneSlot", {
+          interval: sceneSuggestionInterval,
+          step: sceneAdvance.state.step,
+        });
         bridgeRef.current?.insertSceneSlot();
+      } else if (sceneAdvance.moved) {
+        console.log("[SceneSlot] move counted", {
+          pagesTurned: sceneAdvance.state.pagesTurned,
+          interval: sceneSuggestionInterval,
+          suppressed: trackingSuppressed,
+        });
       }
 
       // Mark translation ready after first successful relocate (CFI navigation done)
@@ -1263,9 +1282,11 @@ function ReaderContent({ route, navigation }: Props) {
     },
     // Врезки сцен: генерация только по явному тапу, перегенерация — «↻ Заново»
     onSceneSlotTap: ({ anchor }) => {
+      console.log("[SceneSlot] tap → generate", { anchor });
       void runSceneSlotGeneration(anchor);
     },
     onSceneSlotRegenerate: ({ anchor }) => {
+      console.log("[SceneSlot] regenerate", { anchor });
       void runSceneSlotGeneration(anchor);
     },
     onSceneSlotRestored: ({ anchor }) => {
@@ -1450,16 +1471,6 @@ function ReaderContent({ route, navigation }: Props) {
     [book?.meta.title, bookId, bookTitle, currentChapter, navigation],
   );
 
-  const handleGenerateVisibleScene = useCallback(async () => {
-    try {
-      const excerpt = await collectVisibleSceneExcerpt();
-      openScene(excerpt, `page:${currentCfi || currentChapter || bookId}`);
-    } catch (cause) {
-      console.warn("[Reader] Failed to read visible text for scene", cause);
-      Alert.alert("Не удалось создать сцену", "Не получилось прочитать текст страницы.");
-    }
-  }, [bookId, collectVisibleSceneExcerpt, currentCfi, currentChapter, openScene]);
-
   const handleSelectionMenuAction = useCallback(
     (event: { nativeEvent: { key: string; selectedText: string } }) => {
       const activeSelection = selectionRef.current ?? selection;
@@ -1607,14 +1618,6 @@ function ReaderContent({ route, navigation }: Props) {
                       variant="tertiary"
                       onPress={handleOpenCharacters}
                     />
-                    <NativeButton
-                      label=""
-                      accessibilityLabel="Сгенерировать сцену"
-                      icon="sparkles"
-                      size="small"
-                      variant="tertiary"
-                      onPress={() => void handleGenerateVisibleScene()}
-                    />
                     {/* Явный вход в настройки оформления (шрифт, тема, прокрутка) */}
                     <NativeButton
                       label="Aa"
@@ -1642,7 +1645,6 @@ function ReaderContent({ route, navigation }: Props) {
   }, [
     bookId,
     handleOpenCharacters,
-    handleGenerateVisibleScene,
     handleToggleBookmark,
     isBookmarked,
     navigation,
@@ -2015,7 +2017,6 @@ function ReaderContent({ route, navigation }: Props) {
           speechActive={ttsPlayState === "playing" || ttsPlayState === "loading"}
           onSpeechPress={() => void tts.handleToggleTTS()}
           onChatPress={handleOpenCharacters}
-          onScenePress={() => void handleGenerateVisibleScene()}
           onSettingsPress={() => setShowSettings(true)}
         />
       </View>
@@ -2142,7 +2143,7 @@ function ReaderContent({ route, navigation }: Props) {
                 { key: "copy", label: "Скопировать" },
                 { key: "translate", label: "Перевести" },
                 { key: "summarize", label: "Кратко пересказать" },
-                { key: "generate-scene", label: "Создать иллюстрацию" },
+                { key: "generate-scene", label: "Нарисовать сцену" },
                 { key: "speak", label: "Озвучить" },
               ]}
               onCustomMenuSelection={handleSelectionMenuAction}
@@ -2185,11 +2186,18 @@ function ReaderContent({ route, navigation }: Props) {
                 <Text style={s.topInfoText} numberOfLines={1}>
                   {currentChapter || bookTitle}
                 </Text>
-                <Text style={s.topInfoPageText}>
-                  {currentPage > 0 && totalPages > 0
-                    ? `${currentPage}/${totalPages}`
-                    : `${percent}%`}
-                </Text>
+                {/* Номер страницы по всей книге (как в Apple Books); без
+                    location (scrolled/fixed-layout) — процент прогресса */}
+                {bookLocation ? (
+                  <Text style={s.topInfoPageText}>
+                    {t("reader.pageOfBook", "стр. {{current}} из {{total}}", {
+                      current: Math.min(bookLocation.current + 1, bookLocation.total),
+                      total: bookLocation.total,
+                    })}
+                  </Text>
+                ) : (
+                  <Text style={s.topInfoPageText}>{`${percent}%`}</Text>
+                )}
               </View>
             </View>
           )}
