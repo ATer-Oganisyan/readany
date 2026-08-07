@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { withTimeout } from './concurrency.mjs'
+import { imageUpstreamError } from './image-policy.mjs'
 
 const RETRYABLE = new Set([408, 409, 429, 500, 502, 503, 504])
 const PURPOSES = ['character_chat', 'structured_task', 'summary', 'scenario', 'memory']
@@ -221,4 +222,81 @@ export async function requestChat({
   error.requestId = id
   error.attempts = attempts
   throw error
+}
+
+// ================= Обложки книг (OpenRouter image API) =================
+// Модель и ключ живут только на сервере: клиент не выбирает provider/model.
+export function coverImageConfig(env = process.env) {
+  return {
+    baseUrl: String(env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1').replace(/\/+$/, ''),
+    apiKey: String(env.OPENROUTER_API_KEY || '').trim(),
+    model: String(env.OPENROUTER_IMAGE_MODEL || 'openai/gpt-image-2').trim(),
+    headers: {
+      ...(env.OPENROUTER_HTTP_REFERER ? { 'HTTP-Referer': env.OPENROUTER_HTTP_REFERER } : {}),
+      ...(env.OPENROUTER_APP_NAME ? { 'X-Title': env.OPENROUTER_APP_NAME } : {})
+    }
+  }
+}
+
+export function coverRouteReadiness(env = process.env) {
+  const config = coverImageConfig(env)
+  return { ready: Boolean(config.apiKey && config.baseUrl && config.model), model: config.model }
+}
+
+export async function requestCoverImage({ prompt, env = process.env, fetchImpl = fetch, signal }) {
+  const config = coverImageConfig(env)
+  if (!config.apiKey || !config.baseUrl || !config.model) {
+    const error = new Error('Обложки: OpenRouter image route не настроен')
+    error.status = 503
+    error.code = 'NO_KEY'
+    throw error
+  }
+  const response = await fetchImpl(`${config.baseUrl}/images`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      'Content-Type': 'application/json',
+      ...config.headers
+    },
+    body: JSON.stringify({
+      model: config.model,
+      prompt,
+      aspect_ratio: '2:3',
+      quality: 'high',
+      output_format: 'jpeg',
+      output_compression: 90,
+      n: 1
+    }),
+    signal: withTimeout(signal, 150_000)
+  })
+  if (!response.ok) {
+    const detail = (await response.text().catch(() => '')).slice(0, 4_000)
+    throw imageUpstreamError({
+      provider: 'OpenRouter',
+      phase: 'create',
+      status: response.status,
+      detail
+    })
+  }
+  let payload
+  try {
+    payload = await response.json()
+  } catch (error) {
+    throw Object.assign(new Error('OpenRouter: некорректный JSON ответа'), {
+      code: 'PARSE',
+      status: 502,
+      cause: error
+    })
+  }
+  const image = payload?.data?.[0]
+  if (!image?.b64_json) {
+    const error = new Error(payload?.error?.message || 'OpenRouter: пустой результат')
+    error.code = 'UNKNOWN'
+    throw error
+  }
+  return {
+    image: image.b64_json,
+    mimeType: image.media_type || 'image/jpeg',
+    model: config.model
+  }
 }

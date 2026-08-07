@@ -1,43 +1,13 @@
-import { useSettingsStore } from "@/stores/settings-store";
-import type { AIEndpoint } from "@readany/core/types";
-import { providerRequiresApiKey } from "@readany/core/utils";
-import { fetch } from "expo/fetch";
+import { generateBookCoverImage } from "@/lib/narra/media";
 import coverGenerationConfig from "./cover-generation-config.json";
 import { resolveCoverGenreProfile } from "./cover-genre";
 
-const DEFAULT_IMAGE_MODEL = coverGenerationConfig.openRouterModel;
 const MAX_THEME_CHARS = 800;
-const REQUEST_TIMEOUT_MS = 180_000;
 const COVER_PROMPT_TEMPLATE = coverGenerationConfig.promptParagraphs.join("\n\n");
 
 export interface GeneratedBookCover {
   bytes: Uint8Array;
   mimeType: string;
-}
-
-interface OpenRouterImageResponse {
-  data?: Array<{ b64_json?: string; media_type?: string }>;
-  error?: { message?: string };
-}
-
-async function resolveConnectedOpenRouter(): Promise<AIEndpoint | null> {
-  const state = useSettingsStore.getState();
-  await state.loadApiKeys();
-  const refreshed = useSettingsStore.getState();
-  const config = refreshed.aiConfig;
-  const endpoints = [...config.endpoints].sort(
-    (a, b) => Number(b.id === config.activeEndpointId) - Number(a.id === config.activeEndpointId),
-  );
-
-  for (const endpoint of endpoints) {
-    if (endpoint.provider !== "openrouter") continue;
-    const hydrated = await refreshed.getEndpointById(endpoint.id);
-    if (!hydrated) continue;
-    if (providerRequiresApiKey(hydrated.provider) && !hydrated.apiKey) continue;
-    return hydrated;
-  }
-
-  return null;
 }
 
 function decodeBase64(value: string): Uint8Array {
@@ -94,53 +64,20 @@ export function coverPrompt(input: {
   );
 }
 
-export async function generateBookCoverWithOpenRouter(input: {
+/**
+ * Генерация обложки через Narra gateway (/v2/media/cover, installation auth).
+ * Клиент отправляет только промпт: ключи, модель и фолбэк живут на сервере.
+ */
+export async function generateBookCover(input: {
   title: string;
   author?: string;
   description?: string;
   excerpt?: string;
   subjects?: string[];
-}): Promise<GeneratedBookCover | null> {
-  const endpoint = await resolveConnectedOpenRouter();
-  if (!endpoint?.apiKey) return null;
-
-  const baseUrl = endpoint.baseUrl.replace(/\/+$/, "");
-  const model = process.env.EXPO_PUBLIC_OPENROUTER_IMAGE_MODEL?.trim() || DEFAULT_IMAGE_MODEL;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(`${baseUrl}/images`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${endpoint.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        prompt: coverPrompt(input),
-        aspect_ratio: "2:3",
-        quality: "high",
-        output_format: "jpeg",
-        output_compression: 90,
-        n: 1,
-      }),
-      signal: controller.signal,
-    });
-    const payload = (await response.json()) as OpenRouterImageResponse;
-    if (!response.ok) {
-      throw new Error(
-        payload.error?.message || `OpenRouter image request failed (${response.status})`,
-      );
-    }
-
-    const image = payload.data?.[0];
-    if (!image?.b64_json) return null;
-    return {
-      bytes: decodeBase64(image.b64_json),
-      mimeType: image.media_type || "image/png",
-    };
-  } finally {
-    clearTimeout(timeout);
-  }
+}): Promise<GeneratedBookCover> {
+  const generated = await generateBookCoverImage(coverPrompt(input));
+  return {
+    bytes: decodeBase64(generated.base64),
+    mimeType: generated.mimeType,
+  };
 }

@@ -30,6 +30,7 @@ Expected contract (adapted from `nara/customize`):
 - `POST /v2/ai/chat/stream` for character analysis (SSE or `{ "text": "..." }` response);
 - `POST /v2/ai/chat/complete` for character chat and memory (`{ "text": "..." }` response);
 - `POST /v2/media/images` for static portraits and scene illustrations (base64 or URL response);
+- `POST /v2/media/cover` for generated book covers (`{ "image": "<base64>", "mime_type": "..." }` response);
 - `POST /v2/speech/synthesize` for optional response playback.
 
 The current repository does not define or deploy this backend contract. Until a URL is supplied by

@@ -1,3 +1,4 @@
+import { AnimatedNarraFace } from "@/components/chat/animated-narra-face";
 import {
   CharacterChatAvatar,
   CharacterChatList,
@@ -33,7 +34,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import NarraFace from "../../assets/narra-face.svg";
 
 type Props = NativeStackScreenProps<RootStackParamList, "NarraCharacters">;
 
@@ -257,7 +257,7 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
       onPress: () => navigation.navigate("BookChat", { bookId }),
       avatar: (
         <CharacterChatAvatar muted>
-          <NarraFace width={38} height={40} />
+          <AnimatedNarraFace width={38} height={40} />
         </CharacterChatAvatar>
       ),
     },
@@ -373,7 +373,12 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
 const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
-    content: { flexGrow: 1, padding: spacing.lg },
+    content: {
+      flexGrow: 1,
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.sm,
+      paddingBottom: spacing.xxl,
+    },
     emptyActions: { alignItems: "center", gap: spacing.md },
     primaryButton: {
       minHeight: 46,

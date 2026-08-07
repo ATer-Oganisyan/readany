@@ -91,17 +91,11 @@ class NarraStatsTest(unittest.TestCase):
             server._db.commit()
         server._clear_dashboard_cache()
 
-    def test_railway_config_pins_launcher_healthcheck_and_restart_policy(self):
-        config = json.loads((Path(__file__).with_name("railway.json")).read_text())
-        self.assertEqual(config["build"]["builder"], "RAILPACK")
-        self.assertEqual(config["deploy"]["startCommand"], "python server.py")
-        self.assertEqual(config["deploy"]["healthcheckPath"], "/health")
-        self.assertEqual(config["deploy"]["healthcheckTimeout"], 30)
-        self.assertEqual(config["deploy"]["restartPolicyType"], "ON_FAILURE")
-        self.assertEqual(config["deploy"]["restartPolicyMaxRetries"], 10)
+    def test_railway_rudiments_are_removed(self):
+        self.assertFalse(Path(__file__).with_name("railway.json").exists())
         readme = Path(__file__).with_name("README.md").read_text()
-        self.assertIn("railway up stats/narra --path-as-root", readme)
-        self.assertIn("/stats/narra/railway.json", readme)
+        self.assertNotIn("railway up", readme)
+        self.assertNotIn("railway.json", readme)
 
     def test_i167_deploy_is_reviewed_staged_and_rollback_capable(self):
         deploy = Path(__file__).with_name("deploy.sh").read_text()
@@ -133,6 +127,8 @@ class NarraStatsTest(unittest.TestCase):
         self.assertGreaterEqual(deploy.count("EXPECTED_REMOTE_SERVER_SHA256"), 4)
         self.assertLess(deploy.index("rollback()"), deploy.index('mv "$REMOTE_DIR" "$REMOTE_ROLLBACK"'))
         self.assertIn('data.get("fresh") is True', deploy)
+        self.assertIn('len(checks) == len(data.get("targets", []))', deploy)
+        self.assertNotIn("len(checks) == 4", deploy)
         self.assertIn('min(checks) >= cutoff', deploy)
         self.assertIn('deploy_started_at="$(date +%s)"', deploy)
         self.assertIn("REMOTE_UNIT_BACKUP", deploy)
@@ -179,6 +175,9 @@ class NarraStatsTest(unittest.TestCase):
                 server.monitors(request_for("/monitors")).status_code, 401
             )
             self.assertEqual(
+                server.uptime(request_for("/uptime")).status_code, 401
+            )
+            self.assertEqual(
                 server.summary(
                     request_for("/summary", f"Basic {encoded}")
                 ).status_code,
@@ -186,16 +185,125 @@ class NarraStatsTest(unittest.TestCase):
             )
             self.assertEqual(server.health().status_code, 200)
 
+    def test_telegram_alerter_reports_transitions_only(self):
+        alerter = monitoring.TelegramAlerter(
+            token="tg-test",
+            chat_ids="-5569378785",
+            labels={"production_gateway": "Production gateway"},
+            environment="test",
+        )
+        sent: list[str] = []
+        with patch.object(alerter, "_deliver", side_effect=sent.append):
+            baseline = [{"target_id": "production_gateway", "state": "up"}]
+            alerter.observe(baseline)
+            self.assertEqual(sent, [])
+            alerter.observe([{
+                "target_id": "production_gateway", "state": "down",
+                "error_code": "HTTP_503", "http_status": 503, "latency_ms": 120.4,
+            }])
+            self.assertEqual(len(sent), 1)
+            self.assertIn("🔴 Narra · Production gateway: up → down (test)", sent[0])
+            self.assertIn("HTTP_503 · HTTP 503 · 120 ms", sent[0])
+            alerter.observe([{"target_id": "production_gateway", "state": "down"}])
+            self.assertEqual(len(sent), 1)
+            alerter.observe([{"target_id": "production_gateway", "state": "up"}])
+            self.assertEqual(len(sent), 2)
+            self.assertIn("✅ Narra · Production gateway: down → up", sent[1])
+
+    def test_telegram_alerter_disabled_without_token_or_chats(self):
+        for token, chats in (("", "-1"), ("tg", ""), ("", "")):
+            alerter = monitoring.TelegramAlerter(token=token, chat_ids=chats)
+            self.assertFalse(alerter.enabled)
+            with patch.object(alerter, "_deliver") as deliver:
+                alerter.observe([{"target_id": "a", "state": "up"}])
+                alerter.observe([{"target_id": "a", "state": "down"}])
+                deliver.assert_not_called()
+        with self.assertRaises(RuntimeError):
+            monitoring.TelegramAlerter(
+                token="tg", chat_ids="-1", api_origin="http://api.telegram.org"
+            )
+
+    def test_monitor_runner_alerts_survive_delivery_failure(self):
+        alerter = monitoring.TelegramAlerter(token="tg-test", chat_ids="-1")
+        alerter.observe([{"target_id": "a", "state": "up"}])
+        with patch.object(alerter, "_post", side_effect=OSError("net")):
+            alerter.observe([{"target_id": "a", "state": "down"}])
+
+    def test_uptime_report_disabled_without_key(self):
+        with patch.object(server, "UPTIMEROBOT_API_KEY", ""):
+            self.assertEqual(
+                server._uptime_report(), {"configured": False, "monitors": []}
+            )
+
+    def test_uptime_monitors_are_filtered_trimmed_and_sorted(self):
+        raw = [
+            {
+                "id": 2, "friendly_name": "Narra stats (prod)",
+                "url": "https://stats.multitool.works/p/narra/health",
+                "status": 2, "custom_uptime_ratio": "100.000-99.5-98.76543",
+                "alert_contacts": [{"id": "secret"}],
+                "response_times": [{"datetime": 1, "value": 666.4}],
+            },
+            {
+                "id": 3, "friendly_name": "MultiTool GW Primary",
+                "url": "https://gw.multitool.works/health",
+                "status": 2, "custom_uptime_ratio": "100-100-100",
+            },
+            {
+                "id": 1, "friendly_name": "Narra GW (prod)",
+                "url": "https://narra.multitool.works/health",
+                "status": 9, "custom_uptime_ratio": "",
+            },
+        ]
+        rows = server._select_uptime_monitors(raw, "narra")
+        self.assertEqual([row["name"] for row in rows], [
+            "Narra GW (prod)", "Narra stats (prod)",
+        ])
+        self.assertEqual(rows[0]["status"], 9)
+        self.assertEqual(rows[0]["availability"], {"d1": None, "d7": None, "d30": None})
+        self.assertEqual(rows[1]["availability"], {"d1": 100.0, "d7": 99.5, "d30": 98.765})
+        self.assertEqual(rows[1]["latency_ms"], 666)
+        self.assertIsNone(rows[0]["latency_ms"])
+        self.assertNotIn("alert_contacts", rows[1])
+
+    def test_uptime_report_caches_and_serves_stale_on_failure(self):
+        raw = [{
+            "id": 1, "friendly_name": "Narra GW (prod)",
+            "url": "https://narra.multitool.works/health",
+            "status": 2, "custom_uptime_ratio": "100-100-100",
+        }]
+        with patch.object(server, "UPTIMEROBOT_API_KEY", "ur-test"), patch.object(
+            server, "UPTIME_CACHE", {"data": None, "claimed_at": 0.0}
+        ), patch.object(
+            server, "_fetch_uptimerobot_monitors", return_value=raw
+        ) as fetch:
+            first = server._uptime_report(now=1000.0)
+            self.assertTrue(first["configured"])
+            self.assertEqual(len(first["monitors"]), 1)
+            second = server._uptime_report(now=1010.0)
+            self.assertEqual(fetch.call_count, 1)
+            self.assertEqual(second["monitors"], first["monitors"])
+            fetch.side_effect = RuntimeError("down")
+            stale = server._uptime_report(now=5000.0)
+            self.assertTrue(stale.get("stale"))
+            self.assertEqual(stale["monitors"], first["monitors"])
+
     def test_monitor_targets_are_fixed_https_and_classify_expected_states(self):
         monitoring.validate_targets(server.MONITOR_TARGETS)
         production = next(
             target for target in server.MONITOR_TARGETS
             if target.identifier == "production_gateway"
         )
-        self.assertEqual(production.url, "https://api.narra.disrupt.builders/health")
-        staging = next(
-            target for target in server.MONITOR_TARGETS
-            if target.identifier == "staging_gateway"
+        self.assertEqual(production.url, "https://narra.multitool.works/health")
+        self.assertEqual(
+            {target.identifier for target in server.MONITOR_TARGETS},
+            {"production_gateway", "production_analytics"},
+        )
+        readiness = monitoring.MonitorTarget(
+            "future_staging_gateway",
+            "Staging gateway readiness",
+            "https://staging.example.com/ready",
+            "gateway_ready",
         )
         self.assertEqual(
             monitoring.classify_response(
@@ -215,14 +323,14 @@ class NarraStatsTest(unittest.TestCase):
         )
         self.assertEqual(
             monitoring.classify_response(
-                staging,
+                readiness,
                 200,
                 b'{"ok":true,"degraded":[{"code":"VIDEO_PLAINTEXT_HTTP"}]}',
             ),
             ("degraded", "UPSTREAM_DEGRADED"),
         )
         self.assertEqual(
-            monitoring.classify_response(staging, 302, b"{}"),
+            monitoring.classify_response(readiness, 302, b"{}"),
             ("down", "HTTP_302"),
         )
         with self.assertRaises(RuntimeError):
@@ -251,7 +359,7 @@ class NarraStatsTest(unittest.TestCase):
                     "error_code": None,
                 },
                 {
-                    "target_id": "staging_gateway",
+                    "target_id": "production_analytics",
                     "checked_at": now - 30,
                     "state": "down",
                     "http_status": 502,
@@ -267,7 +375,7 @@ class NarraStatsTest(unittest.TestCase):
         rows = {row["id"]: row for row in report["targets"]}
         self.assertEqual(report["overall"], "down")
         self.assertEqual(rows["production_gateway"]["windows"]["1h"]["availability"], 100.0)
-        self.assertEqual(rows["staging_gateway"]["windows"]["1h"]["availability"], 0.0)
+        self.assertEqual(rows["production_analytics"]["windows"]["1h"]["availability"], 0.0)
         self.assertEqual(rows["production_gateway"]["tls_days_remaining"], 80)
 
     def test_monitor_report_marks_old_samples_stale(self):
@@ -406,9 +514,7 @@ class NarraStatsTest(unittest.TestCase):
             {row["id"] for row in data["monitoring"]["targets"]},
             {
                 "production_gateway",
-                "staging_gateway",
                 "production_analytics",
-                "staging_analytics",
             },
         )
         health = server.health().body.decode()

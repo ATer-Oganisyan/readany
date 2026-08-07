@@ -8,6 +8,9 @@ const INSTALLATION_SECRET_KEY = "narra.gateway.installation-secret";
 const TOKEN_EXPIRY_SKEW_MS = 30_000;
 const DEFAULT_TIMEOUT_MS = 60_000;
 const IMAGE_TIMEOUT_MS = 150_000;
+// Обложки (gpt-image-2 high quality) заметно дольше Kandinsky-сцен;
+// запас над серверным upstream-таймаутом 150 секунд.
+const COVER_TIMEOUT_MS = 180_000;
 const INSTALLATION_TIMEOUT_MS = 15_000;
 const DEFAULT_NARRA_GATEWAY_URL = "https://api.narra.disrupt.builders";
 
@@ -234,9 +237,11 @@ async function directGatewayRequest(path: string, init: RequestInit): Promise<Re
       headers.set("authorization", `Bearer ${await getInstallationToken(forceRefresh)}`);
     }
     const controller = new AbortController();
-    const requestTimeout = path.startsWith("/v2/media/images")
-      ? IMAGE_TIMEOUT_MS
-      : DEFAULT_TIMEOUT_MS;
+    const requestTimeout = path.startsWith("/v2/media/cover")
+      ? COVER_TIMEOUT_MS
+      : path.startsWith("/v2/media/images")
+        ? IMAGE_TIMEOUT_MS
+        : DEFAULT_TIMEOUT_MS;
     const timeout = setTimeout(() => controller.abort(), requestTimeout);
     try {
       return await configuredFetch(url, { ...init, headers, signal: controller.signal });

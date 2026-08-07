@@ -192,7 +192,12 @@ checks=[
     for row in data.get("targets", [])
     if row.get("checked_at")
 ]
-ok=data.get("fresh") is True and len(checks) == 4 and min(checks) >= cutoff
+ok=(
+    data.get("fresh") is True
+    and len(checks) > 0
+    and len(checks) == len(data.get("targets", []))
+    and min(checks) >= cutoff
+)
 raise SystemExit(0 if ok else 1)' "$deploy_started_at"; then
     fresh=1
     break

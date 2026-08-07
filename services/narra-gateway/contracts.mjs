@@ -86,6 +86,13 @@ export function parseImageBody(input) {
   return { prompt, width, height, engine: body.engine }
 }
 
+// Обложки: клиент присылает только готовый промпт; модель и провайдер — серверные.
+export function parseCoverBody(input) {
+  const body = object(input)
+  onlyKeys(body, new Set(['prompt']))
+  return { prompt: string(body.prompt, 'prompt', { max: 8_000 }) }
+}
+
 export function parseSynthesisBody(input) {
   const body = object(input)
   onlyKeys(body, new Set(['text', 'ssml', 'voice']))

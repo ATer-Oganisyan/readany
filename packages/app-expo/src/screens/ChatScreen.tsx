@@ -38,14 +38,14 @@ import {
 } from "@readany/core/utils";
 
 import { NarraChat } from "@/components/chat/NarraChat";
+import { AnimatedNarraFace } from "@/components/chat/animated-narra-face";
 import { MessageCirclePlusIcon, Trash2Icon, XIcon } from "@/components/ui/Icon";
 import { fontSize as fs, fontWeight as fw, radius, useColors, withOpacity } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
-import NarraFace from "../../assets/narra-face.svg";
 
 type ChatRoute = RouteProp<RootStackParamList, "Chat"> | RouteProp<RootStackParamList, "BookChat">;
 
-const renderNarraAvatar = () => <NarraFace width={27} height={28} />;
+const renderNarraAvatar = () => <AnimatedNarraFace width={27} height={28} />;
 
 export function ChatScreen() {
   const { t } = useTranslation();

@@ -140,10 +140,11 @@ const ENUMS: Readonly<Record<string, ReadonlySet<SafeAnalyticsValue>>> = {
     "CANCELLED",
   ]),
   feature: new Set(["bookmark", "note", "character", "chat"]),
-  job_type: new Set(["image", "tts", "avatar", "portrait_animation", "chapter_markup"]),
+  job_type: new Set(["image", "cover", "tts", "avatar", "portrait_animation", "chapter_markup"]),
   provider: new Set(["kandinsky", "salutespeech", "video", "openrouter", "browser"]),
   model: new Set([
     "k6-image-t2i",
+    "gpt-image-2",
     "salutespeech-yourvoice",
     "k5-avatar",
     "k5-i2v-lite",

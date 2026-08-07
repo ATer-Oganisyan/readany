@@ -47,11 +47,11 @@ the unit but preserves that environment file.
 The canonical i167 service binds to `127.0.0.1` and may set
 `STATS_TRUST_LOOPBACK_PROXY=1`, because Caddy is the only network entry and
 already enforces Traction's shared Basic Auth. Startup rejects this mode on a
-non-loopback bind. Any directly reachable deployment, including Railway, must
+non-loopback bind. Any directly reachable deployment must
 leave this flag off and set `STATS_READ_USERNAME` plus a random
 `STATS_READ_PASSWORD` of at least 32 characters.
 
-The Railway gateway receives matching `TRACTION_INGEST_URL` and
+The gateway receives matching `TRACTION_INGEST_URL` and
 `TRACTION_INGEST_TOKEN`. There is intentionally no legacy analytics import:
 the module accepts only events produced through the new closed contract and
 does not read data or source code from the retired Narra repository.
@@ -70,26 +70,25 @@ verification.
 
 Default targets:
 
-- `https://api.narra.disrupt.builders/health` — production gateway;
-- `https://narra-staging.multitool.works/ready` — staging gateway readiness;
-- `https://stats.multitool.works/p/narra/health` — production analytics;
-- `https://stats-narra-staging-staging.up.railway.app/health` — staging analytics.
+- `https://narra.multitool.works/health` — production gateway (cut over to the
+  live gateway on 7 August 2026; `api.narra.disrupt.builders` remains an alias
+  for released clients);
+- `https://stats.multitool.works/p/narra/health` — production analytics.
 
-The reviewed production placeholder is deliberately classified as `standby`
-only when it returns the exact reviewed `503` JSON contract; it remains
-available but not live. Staging `/ready` with a non-empty `degraded` list is shown as
+The retired Railway staging targets were removed from the defaults on
+7 August 2026; while a placeholder-era classifier remains, a parked hostname
+returning the exact reviewed `503` JSON contract is still classified as
+`standby`, and a `/ready` body with a non-empty `degraded` list is shown as
 `degraded`, not falsely green. Every target exposes current HTTP/latency/TLS
 data plus 1-hour, 24-hour and 7-day availability, scheduled-probe coverage and
 p95 latency. Missed scheduled checks reduce availability, so one fresh probe
 after monitor downtime cannot make an unobserved window look 100% healthy.
 
-Targets may be changed only through root/Railway environment configuration:
+Targets may be changed only through root-owned environment configuration:
 
 ```text
 STATS_MONITOR_PRODUCTION_GATEWAY_URL
-STATS_MONITOR_STAGING_GATEWAY_URL
 STATS_MONITOR_PRODUCTION_ANALYTICS_URL
-STATS_MONITOR_STAGING_ANALYTICS_URL
 STATS_MONITOR_INTERVAL_SECONDS=60
 STATS_MONITOR_TIMEOUT_SECONDS=5
 STATS_MONITOR_STALE_AFTER_SECONDS=180
@@ -100,9 +99,46 @@ All overrides must remain public, credential-free HTTPS URLs on the default
 port, without query strings or redirects. Production monitoring is
 enabled by default; staging is disabled by default to avoid duplicate probes
 and may be enabled explicitly for an isolated test. This in-dashboard monitor
-does not replace an external alerting service: UptimeRobot or another
-out-of-process monitor should still watch production gateway and analytics
-health so an outage of the stats process itself is observable.
+does not replace an external alerting service: UptimeRobot watches the
+production gateway, analytics and LLM endpoints out-of-process so an outage
+of the stats process itself is observable.
+
+The dashboard also shows that external availability. `GET /uptime` is a
+read-authenticated server-side proxy to the UptimeRobot `getMonitors` API
+(1/7/30-day ratios, ~60 s cache, last successful payload served on API
+failure); the account API key never reaches the browser and monitors outside
+the configured name prefix are filtered out:
+
+```text
+UPTIMEROBOT_API_KEY=<read-capable UptimeRobot API key, root-owned env only>
+UPTIMEROBOT_MONITOR_PREFIX=Narra
+UPTIMEROBOT_CACHE_TTL_SECONDS=60
+```
+
+Leaving `UPTIMEROBOT_API_KEY` empty disables the integration; the dashboard
+then labels the external-uptime panel as not configured.
+
+## Telegram alerts on monitor state changes
+
+The internal monitor sends a Telegram message when a target changes state
+(`up → down`, recovery, `degraded`, …) — the same server-side pattern the
+MultiTool and AIWA modules use. The first probe cycle is a baseline; a target
+that stays down does not repeat the alert every minute. Delivery failures are
+logged and never affect probing or ingestion.
+
+```text
+STATS_ALERT_TELEGRAM_BOT_TOKEN=<bot token, root-owned env only>
+STATS_ALERT_TELEGRAM_CHAT_IDS=<comma-separated chat ids, e.g. -5569378785>
+STATS_ALERT_TELEGRAM_API_ORIGIN=https://api.telegram.org
+STATS_ALERT_TELEGRAM_CONNECT_HOST=
+```
+
+On `i167` the Telegram API is not directly reachable; the AIWA stunnel relay
+listens on loopback and forwards raw TLS end-to-end. Set
+`STATS_ALERT_TELEGRAM_API_ORIGIN=https://api.telegram.org:18443` and
+`STATS_ALERT_TELEGRAM_CONNECT_HOST=127.0.0.1`: TCP goes to the relay while SNI
+and certificate verification stay pinned to the real hostname, so certificate
+checking is never disabled. Empty token or chat list disables alerting.
 
 The stale threshold defaults to three configured probe intervals. If the
 runner stops and a sample ages past that threshold, the target becomes `down`
@@ -191,45 +227,17 @@ Staging uses a separate endpoint/database/token with
 server-controlled header; a mismatch is rejected before storage so staging
 cannot silently pollute production metrics.
 
-For the separate Railway staging service, first inspect `railway status --json`
-and confirm the Narra project, `stats-narra-staging` service and `staging`
-environment. Then deploy this directory with the target stated explicitly:
-
-```bash
-railway up stats/narra --path-as-root \
-  --service stats-narra-staging \
-  --environment staging
-```
-
-Never rely on the directory's current Railway link: this monorepo also deploys
-the Narra gateway. `--path-as-root` makes `stats/narra` the uploaded root, so
-`railway.json` pins the launcher and `/health` probe instead of letting
-Railpack guess an ASGI module name. If the service is later connected directly
-to GitHub, set its Config File Path to `/stats/narra/railway.json` explicitly; Railway
-does not resolve that path relative to the service Root Directory.
-
-Use a dedicated Volume mounted at `/data` and set:
-
-```text
-STATS_HOST=0.0.0.0
-PORT=9905
-STATS_ENVIRONMENT=staging
-STATS_DB=/data/events.db
-STATS_INGEST_TOKEN=<staging-only random token, at least 32 characters>
-STATS_READ_USERNAME=<staging dashboard operator>
-STATS_READ_PASSWORD=<staging-only random password, at least 32 characters>
-STATS_COST_CURRENCY=USD
-STATS_ALLOW_UNAUTHENTICATED_INGEST=0
-```
-
-Railway may assign `PORT`; it takes precedence over `STATS_PORT`, which remains
-the fallback for non-Railway hosts. The public domain must route to the actual
-listen port. The staging token, database and Volume must never be shared with
-production.
+The Railway staging service was retired on 5 August 2026 together with the
+rest of the Railway project (see `docs/narra-infrastructure.md`). There is no
+staging runtime at the moment. If staging is recreated, follow the staging
+policy in that document: an isolated database, token and backup policy, with
+`127.0.0.1:9911` reserved for staging analytics on `i167`, and the same
+environment-mismatch rejection described above. A staging token, database or
+volume must never be shared with production.
 
 The app itself protects `/`, `/summary` and `/dashboard` with HTTP Basic Auth;
-this prevents the direct Railway domain from bypassing Traction's access
-control. `/health` stays public for Railway and `/events` keeps its independent
+this prevents any direct service domain from bypassing Traction's access
+control. `/health` stays public for probes and `/events` keeps its independent
 write-only ingest token. Production Traction may terminate the same Basic Auth
 at its reverse proxy, but direct access to this service must remain protected.
 

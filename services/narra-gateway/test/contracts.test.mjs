@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   parseAvatarBody,
   parseChatBody,
+  parseCoverBody,
   parseImageBody,
   parsePortraitBody,
   parseSynthesisBody
@@ -96,6 +97,16 @@ test('media and speech contracts reject unknown or oversized inputs', () => {
   assert.throws(() => parsePortraitBody({ image: 'a', quality: '4k' }), /lite или hd/)
 })
 
+test('cover contract accepts only a bounded prompt and no provider hints', () => {
+  assert.deepEqual(parseCoverBody({ prompt: 'front cover artwork' }), {
+    prompt: 'front cover artwork'
+  })
+  assert.throws(() => parseCoverBody({ prompt: 'cover', model: 'gpt-image-2' }), /неизвестное поле/)
+  assert.throws(() => parseCoverBody({ prompt: 'cover', width: 768 }), /неизвестное поле/)
+  assert.throws(() => parseCoverBody({}), /строка длиной/)
+  assert.throws(() => parseCoverBody({ prompt: 'x'.repeat(8_001) }), /строка длиной/)
+})
+
 test('analytics accepts only allowlisted events and properties', () => {
   const event = {
     eventId: '123e4567-e89b-42d3-a456-426614174000',
@@ -165,6 +176,21 @@ test('extended import and media telemetry accepts buckets but rejects book conte
     }]
   })[0]
   assert.equal(completed.properties.cache_hit, true)
+  const coverEnqueued = parseEventBatch({
+    events: [{
+      ...base,
+      name: 'media_job_enqueued',
+      properties: {
+        job_type: 'cover',
+        provider: 'openrouter',
+        model: 'gpt-image-2',
+        quality: 'unknown',
+        queue_depth_bucket: '0',
+        origin: 'background'
+      }
+    }]
+  })[0]
+  assert.equal(coverEnqueued.properties.job_type, 'cover')
   assert.throws(
     () => parseEventBatch({
       events: [{

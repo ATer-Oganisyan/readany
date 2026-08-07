@@ -19,6 +19,8 @@ import sqlite3
 import statistics
 import threading
 import time
+import urllib.parse
+import urllib.request
 from collections import Counter, defaultdict, deque
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -30,6 +32,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from monitoring import (
     MonitorRunner,
+    TelegramAlerter,
     default_targets,
     ensure_schema as ensure_monitor_schema,
     monitor_report,
@@ -88,6 +91,13 @@ MONITOR_RETENTION_DAYS = max(
 )
 DASHBOARD_CACHE_TTL_SECONDS = max(
     1.0, min(float(os.environ.get("STATS_DASHBOARD_CACHE_TTL_SECONDS", "15")), 60.0)
+)
+# Внешняя доступность (UptimeRobot): read-only ключ живёт только на сервере,
+# дашборд ходит через /uptime-прокси. Пустой ключ выключает интеграцию.
+UPTIMEROBOT_API_KEY = os.environ.get("UPTIMEROBOT_API_KEY", "").strip()
+UPTIMEROBOT_MONITOR_PREFIX = os.environ.get("UPTIMEROBOT_MONITOR_PREFIX", "Narra").strip()
+UPTIMEROBOT_CACHE_TTL_SECONDS = max(
+    30.0, min(float(os.environ.get("UPTIMEROBOT_CACHE_TTL_SECONDS", "60")), 600.0)
 )
 VERSION_FILE = HERE / "VERSION"
 VERSION = VERSION_FILE.read_text().strip() if VERSION_FILE.exists() else "dev"
@@ -224,7 +234,7 @@ PROPERTY_ENUMS = {
     "origin": {"user", "background"},
     "stage": {"import", "character_markup", "chapter_markup", "character_or_chapter_markup", "provider", "cache", "playback"},
     "safe_error_code": {"UNKNOWN", "VALIDATION", "NETWORK", "AUTH", "TIMEOUT", "RATE", "NO_KEY", "NO_PROXY", "PARSE", "CENSOR", "CANCELLED"},
-    "job_type": {"image", "tts", "avatar", "portrait_animation", "chapter_markup"},
+    "job_type": {"image", "cover", "tts", "avatar", "portrait_animation", "chapter_markup"},
     "quality": {"standard", "lite", "hd", "24000", "48000", "unknown"},
     "queue_depth_bucket": {"0", "1-4", "5-9", "10+"},
     "queue_wait_bucket": {"<1s", "1-4s", "5-14s", "15s+"},
@@ -292,6 +302,14 @@ DB_LOCK = threading.RLock()
 MONITOR_TARGETS = default_targets()
 validate_targets(MONITOR_TARGETS)
 ensure_monitor_schema(_db, DB_LOCK)
+MONITOR_ALERTER = TelegramAlerter(
+    token=os.environ.get("STATS_ALERT_TELEGRAM_BOT_TOKEN", ""),
+    chat_ids=os.environ.get("STATS_ALERT_TELEGRAM_CHAT_IDS", ""),
+    api_origin=os.environ.get("STATS_ALERT_TELEGRAM_API_ORIGIN", "https://api.telegram.org"),
+    connect_host=os.environ.get("STATS_ALERT_TELEGRAM_CONNECT_HOST", ""),
+    labels={target.identifier: target.label for target in MONITOR_TARGETS},
+    environment=ENVIRONMENT,
+)
 MONITOR_RUNNER = MonitorRunner(
     _db,
     DB_LOCK,
@@ -299,11 +317,14 @@ MONITOR_RUNNER = MonitorRunner(
     interval_seconds=MONITOR_INTERVAL_SECONDS,
     timeout_seconds=MONITOR_TIMEOUT_SECONDS,
     retention_days=MONITOR_RETENTION_DAYS,
+    alerter=MONITOR_ALERTER if MONITOR_ALERTER.enabled else None,
 )
 RATE_LOCK = threading.Lock()
 RATE: dict[str, deque[float]] = defaultdict(deque)
 DASHBOARD_CACHE_LOCK = threading.RLock()
 DASHBOARD_CACHE: dict[int, tuple[float, dict[str, Any]]] = {}
+UPTIME_CACHE_LOCK = threading.Lock()
+UPTIME_CACHE: dict[str, Any] = {"data": None, "claimed_at": 0.0}
 
 
 def _response(
@@ -333,6 +354,102 @@ def _cached_dashboard(days: float) -> tuple[dict[str, Any], bool, float]:
         data = compute_dashboard(key)
         DASHBOARD_CACHE[key] = (now + DASHBOARD_CACHE_TTL_SECONDS, data)
     return data, False, (time.perf_counter() - started) * 1000
+
+
+def _select_uptime_monitors(raw: list[dict[str, Any]], prefix: str) -> list[dict[str, Any]]:
+    """Только свои мониторы (по префиксу имени) и только коарс-поля:
+    имя, статус и доступность за 1/7/30 дней. Ключ и чужие мониторы
+    аккаунта наружу не выходят."""
+    wanted = prefix.strip().lower()
+
+    def ratio(parts: list[str], index: int) -> float | None:
+        try:
+            return round(float(parts[index]), 3)
+        except (IndexError, ValueError):
+            return None
+
+    selected = []
+    for monitor in raw:
+        name = str(monitor.get("friendly_name", ""))
+        if wanted and not name.lower().startswith(wanted):
+            continue
+        parts = str(monitor.get("custom_uptime_ratio", "") or "").split("-")
+        try:
+            status = int(monitor.get("status", 0) or 0)
+        except (TypeError, ValueError):
+            status = 0
+        latency_ms = None
+        response_times = monitor.get("response_times")
+        if isinstance(response_times, list) and response_times:
+            try:
+                latency_ms = round(float(response_times[0].get("value")))
+            except (AttributeError, TypeError, ValueError):
+                latency_ms = None
+        selected.append({
+            "id": monitor.get("id"),
+            "name": name,
+            "url": str(monitor.get("url", "")),
+            "status": status,
+            "latency_ms": latency_ms,
+            "availability": {
+                "d1": ratio(parts, 0),
+                "d7": ratio(parts, 1),
+                "d30": ratio(parts, 2),
+            },
+        })
+    selected.sort(key=lambda row: row["name"].lower())
+    return selected
+
+
+def _fetch_uptimerobot_monitors() -> list[dict[str, Any]]:
+    body = urllib.parse.urlencode({
+        "api_key": UPTIMEROBOT_API_KEY,
+        "format": "json",
+        "custom_uptime_ratios": "1-7-30",
+        "response_times": "1",
+        "response_times_limit": "1",
+    }).encode()
+    api_request = urllib.request.Request(
+        "https://api.uptimerobot.com/v2/getMonitors",
+        data=body,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    with urllib.request.urlopen(api_request, timeout=10) as api_response:
+        payload = json.loads(api_response.read(2_000_000).decode("utf-8"))
+    monitors_raw = payload.get("monitors")
+    if payload.get("stat") != "ok" or not isinstance(monitors_raw, list):
+        raise RuntimeError("uptimerobot request failed")
+    return monitors_raw
+
+
+def _uptime_report(now: float | None = None) -> dict[str, Any]:
+    """Кэш на UPTIMEROBOT_CACHE_TTL_SECONDS; слот обновления захватывается до
+    сетевого вызова, поэтому и ошибки не чаще раза за TTL; при ошибке отдаём
+    последние успешные данные."""
+    if not UPTIMEROBOT_API_KEY:
+        return {"configured": False, "monitors": []}
+    current = time.time() if now is None else now
+    with UPTIME_CACHE_LOCK:
+        fresh = current - UPTIME_CACHE["claimed_at"] < UPTIMEROBOT_CACHE_TTL_SECONDS
+        if UPTIME_CACHE["data"] is not None and fresh:
+            return UPTIME_CACHE["data"]
+        UPTIME_CACHE["claimed_at"] = current
+    try:
+        monitors_raw = _fetch_uptimerobot_monitors()
+    except Exception:
+        with UPTIME_CACHE_LOCK:
+            if UPTIME_CACHE["data"] is not None:
+                return {**UPTIME_CACHE["data"], "stale": True}
+        return {"configured": True, "monitors": [], "error": "unavailable"}
+    data = {
+        "configured": True,
+        "fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "monitors": _select_uptime_monitors(monitors_raw, UPTIMEROBOT_MONITOR_PREFIX),
+    }
+    with UPTIME_CACHE_LOCK:
+        UPTIME_CACHE["data"] = data
+        UPTIME_CACHE["claimed_at"] = current
+    return data
 
 
 def _read_authorized(header: str) -> bool:
@@ -590,6 +707,7 @@ def _feature_for_event(row: dict[str, Any]) -> str | None:
     if row["name"].startswith("media_job_"):
         return {
             "image": "Scene images",
+            "cover": "Book covers",
             "avatar": "Character portraits",
             "tts": "Speech synthesis",
             "portrait_animation": "Portrait animation",
@@ -1634,6 +1752,13 @@ def monitors(request: Request) -> JSONResponse:
             interval_seconds=MONITOR_INTERVAL_SECONDS,
         )
     )
+
+
+@app.get("/uptime")
+def uptime(request: Request) -> JSONResponse:
+    if error := _read_auth_error(request):
+        return error
+    return _response(_uptime_report())
 
 
 @app.get("/")

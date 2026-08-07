@@ -1,11 +1,14 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/stores/settings-store", () => ({ useSettingsStore: { getState: vi.fn() } }));
-vi.mock("@readany/core/utils", () => ({ providerRequiresApiKey: vi.fn(() => true) }));
-vi.mock("expo/fetch", () => ({ fetch: vi.fn() }));
+vi.mock("@/lib/narra/media", () => ({ generateBookCoverImage: vi.fn() }));
 
+import { generateBookCoverImage } from "@/lib/narra/media";
 import coverGenerationConfig from "./cover-generation-config.json";
-import { coverPrompt } from "./generate-book-cover";
+import { coverPrompt, generateBookCover } from "./generate-book-cover";
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 describe("coverPrompt", () => {
   it("builds the approved GPT Image 2 cover prompt with book context", () => {
@@ -36,7 +39,7 @@ describe("coverPrompt", () => {
     expect(prompt).not.toContain("{{GENRE_ART_DIRECTION}}");
   });
 
-  it("uses GPT Image 2 through the configured OpenRouter endpoint", () => {
+  it("keeps the catalog-scripts model config aligned with the gateway default", () => {
     expect(coverGenerationConfig.openRouterModel).toBe("openai/gpt-image-2");
   });
 
@@ -81,5 +84,37 @@ describe("coverPrompt", () => {
     expect(prompt).toContain("BOOK GENRE:\nmanga or anime graphic fiction");
     expect(prompt).toContain("1990s cel anime");
     expect(prompt).toContain("Genre variation belongs only inside the compact focal illustration");
+  });
+});
+
+describe("generateBookCover", () => {
+  it("sends only the assembled prompt to the gateway and decodes the returned image", async () => {
+    vi.mocked(generateBookCoverImage).mockResolvedValueOnce({
+      base64: btoa("jpeg-bytes"),
+      mimeType: "image/jpeg",
+    });
+
+    const generated = await generateBookCover({
+      title: "Анна Каренина",
+      author: "Лев Толстой",
+      description: "Роман о семье, любви и давлении общества.",
+    });
+
+    expect(generateBookCoverImage).toHaveBeenCalledTimes(1);
+    const [prompt] = vi.mocked(generateBookCoverImage).mock.calls[0] ?? [];
+    expect(prompt).toContain("Create the complete front-cover artwork");
+    expect(prompt).toContain("“Анна Каренина”");
+    expect(generated.mimeType).toBe("image/jpeg");
+    expect(new TextDecoder().decode(generated.bytes)).toBe("jpeg-bytes");
+  });
+
+  it("propagates gateway failures to the caller for retry bookkeeping", async () => {
+    vi.mocked(generateBookCoverImage).mockRejectedValueOnce(
+      new Error("Cover generation failed (429)"),
+    );
+
+    await expect(generateBookCover({ title: "Книга" })).rejects.toThrow(
+      "Cover generation failed (429)",
+    );
   });
 });
