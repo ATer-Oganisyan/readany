@@ -1,32 +1,29 @@
+import { ChevronRightIcon } from "@/components/ui/Icon";
 import { ScrollViewMarker } from "@/components/ui/ScrollViewMarker";
 import { Text } from "@/components/ui/Typography";
-import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
-import { EmptyStateActionButton } from "@/components/ui/empty-state-action-button";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import { NarraAudioPlayer } from "@/lib/narra/audio-player";
 import { reportNarraError } from "@/lib/narra/errors";
-import {
-  generateSceneImage,
-  normalizePersistedNarraMediaUri,
-  synthesizeNarraSpeech,
-} from "@/lib/narra/media";
+import { normalizePersistedNarraMediaUri, synthesizeNarraSpeech } from "@/lib/narra/media";
+import { generateNarraSceneImage as generateSceneImage } from "@/lib/narra/scene-image-openrouter";
 import { generateNarraAudioScenario } from "@/lib/narra/scene-audio";
 import type { NarraCharacter, NarraSceneAudioSegment } from "@/lib/narra/types";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { NATIVE_SCROLL_EDGE_EFFECTS } from "@/navigation/scroll-edge-effects";
-import { SCENE_TOOLBAR_HEIGHT, SceneToolbar } from "@/screens/narra/SceneToolbar";
 import { useNarraStore } from "@/stores";
-import { useTheme } from "@/styles/ThemeContext";
-import { useColors } from "@/styles/theme";
+import { type ThemeColors, fontSize, radius, spacing, useTheme } from "@/styles/theme";
+import { interfaceFontFamily } from "@deslop/primitives/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
-  Animated,
+  Alert,
   Image,
+  Pressable,
+  ScrollView,
   StyleSheet,
   View,
-  useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -39,13 +36,33 @@ function sceneChapterTitle(chapter: string): string {
   return title || chapter.trim();
 }
 
+/**
+ * Короткая подпись под картинкой: первое предложение отрывка либо его
+ * обрезка до ~120 знаков с «…» — вместо простыни текста (фидбек PO).
+ */
+function sceneCaption(excerpt: string): string {
+  const text = excerpt.replace(/\s+/g, " ").trim();
+  const sentence = (text.match(/^.{1,160}?[.!?…]+(?=\s|$)/)?.[0] ?? text).trim();
+  if (sentence.length <= 132) return sentence;
+  const cut = sentence.slice(0, 120);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${cut.slice(0, lastSpace > 60 ? lastSpace : cut.length).trimEnd()}…`;
+}
+
+/**
+ * Экран «Сцена»: картинка — главная (во всю ширину, скругление из темы),
+ * под ней короткая подпись и ряд пилюль «Заново» / «Оживить» / «Озвучить»
+ * (по образцу пары «Поговорить/Послушать голос» в карточке героя).
+ * Полный отрывок спрятан в свёрнутый блок «Показать текст сцены».
+ */
 export function NarraSceneScreen({ route, navigation }: Props) {
   const { bookId, chapter, excerpt, sourceKey } = route.params;
-  const colors = useColors();
-  const { isDark } = useTheme();
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
-  const { width: viewportWidth } = useWindowDimensions();
   const displayChapter = sceneChapterTitle(chapter);
+  const caption = useMemo(() => sceneCaption(excerpt), [excerpt]);
   const characters = useNarraStore((state) => state.books[bookId]?.characters ?? EMPTY_CHARACTERS);
   const cachedScene = useNarraStore((state) => state.books[bookId]?.scenes?.[sourceKey]);
   const cachedAudio = useNarraStore((state) => state.books[bookId]?.sceneAudios?.[sourceKey]);
@@ -57,29 +74,10 @@ export function NarraSceneScreen({ route, navigation }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [audioStatus, setAudioStatus] = useState<AudioStatus>("idle");
+  const [textExpanded, setTextExpanded] = useState(false);
   const startedRef = useRef(false);
   const audioRef = useRef(new NarraAudioPlayer());
   const audioRunRef = useRef(0);
-  const scrollY = useRef(new Animated.Value(0)).current;
-  const imageStretchStyle = {
-    transformOrigin: "top center" as const,
-    transform: [
-      {
-        translateY: scrollY.interpolate({
-          inputRange: [-viewportWidth, 0, viewportWidth],
-          outputRange: [-viewportWidth, 0, 0],
-          extrapolate: "clamp" as const,
-        }),
-      },
-      {
-        scale: scrollY.interpolate({
-          inputRange: [-viewportWidth, 0],
-          outputRange: [2, 1],
-          extrapolate: "clamp" as const,
-        }),
-      },
-    ],
-  };
 
   const generate = useCallback(async () => {
     if (loading) return;
@@ -108,6 +106,7 @@ export function NarraSceneScreen({ route, navigation }: Props) {
     void generate();
   }, [generate, imageUri]);
 
+  // Уход с экрана останавливает озвучку и отменяет незавершённую подготовку.
   useEffect(
     () => () => {
       audioRunRef.current += 1;
@@ -130,6 +129,8 @@ export function NarraSceneScreen({ route, navigation }: Props) {
     [],
   );
 
+  // Озвучка по ролям — как на старом экране: генерация аудио-сценария,
+  // синтез сегментов с префетчем следующего и последовательное воспроизведение.
   const playScene = useCallback(async () => {
     if (audioStatus !== "idle") {
       stopAudio();
@@ -211,107 +212,257 @@ export function NarraSceneScreen({ route, navigation }: Props) {
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => null,
-      headerTintColor: "#fff",
-      headerTitleStyle: { color: "#fff" },
-      statusBarStyle: "light",
       unstable_headerRightItems: () => [],
     });
   }, [navigation]);
+
+  // Видео-генерации в бэкенде пока нет: кнопка видима, но честно говорит об этом.
+  const animateScene = useCallback(() => {
+    Alert.alert(t("narra.sceneAnimateSoon", "Оживление сцен скоро появится"));
+  }, [t]);
 
   return (
     <ScrollViewMarker
       scrollEdgeEffects={NATIVE_SCROLL_EDGE_EFFECTS}
       style={{ flex: 1, backgroundColor: colors.background }}
     >
-      <Animated.ScrollView
-        alwaysBounceVertical
-        contentInsetAdjustmentBehavior="never"
-        contentContainerStyle={[
-          styles.content,
-          { paddingBottom: SCENE_TOOLBAR_HEIGHT + insets.bottom + 16 },
-        ]}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
-          useNativeDriver: true,
-        })}
-        scrollEventThrottle={16}
+      <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + spacing.xl }]}
       >
-        {imageUri ? (
-          <Animated.View style={[styles.imageWrap, imageStretchStyle]}>
-            <Image
-              accessibilityLabel={`Иллюстрация к главе ${displayChapter}`}
-              source={{ uri: imageUri }}
-              style={[styles.image, { backgroundColor: colors.card }]}
-              onError={() => setImageUri(null)}
-            />
-            {loading ? (
-              <View style={styles.loadingOverlay}>
-                <ActivityIndicator size="large" color="#fff" />
-              </View>
-            ) : null}
-          </Animated.View>
-        ) : loading ? (
-          <CenteredEmptyState title="Создаём сцену" description="Это может занять немного времени">
-            <ActivityIndicator size="small" color={colors.primary} />
-          </CenteredEmptyState>
-        ) : (
-          <CenteredEmptyState
-            title="Не удалось создать сцену"
-            description={error || "Попробуйте снова"}
-          >
-            <EmptyStateActionButton
-              label="Попробовать снова"
-              disabled={loading}
-              onPress={() => void generate()}
-            />
-          </CenteredEmptyState>
-        )}
-
-        {imageUri ? (
-          <View style={styles.caption}>
-            <Text style={[styles.chapter, { color: colors.foreground }]}>{displayChapter}</Text>
-            <Text style={[styles.excerpt, { color: colors.mutedForeground }]}>{excerpt}</Text>
-            {error ? <Text style={{ color: colors.mutedForeground }}>{error}</Text> : null}
-          </View>
-        ) : null}
-      </Animated.ScrollView>
-
-      {imageUri ? (
-        <View
-          style={[
-            styles.toolbarDock,
-            {
-              height: SCENE_TOOLBAR_HEIGHT + insets.bottom,
-              paddingBottom: insets.bottom,
-            },
-          ]}
-        >
-          <SceneToolbar
-            tintColor={colors.foreground}
-            isDark={isDark}
-            speechActive={audioStatus !== "idle"}
-            speechDisabled={audioStatus === "preparing"}
-            regenerateDisabled={loading}
-            onSpeechPress={() => void playScene()}
-            onRegeneratePress={() => void generate()}
-          />
+        {/* Картинка — главная: во всю ширину, скругление из темы */}
+        <View style={styles.imageCard}>
+          {imageUri ? (
+            <>
+              <Image
+                accessibilityLabel={t(
+                  "narra.sceneIllustrationLabel",
+                  "Иллюстрация к главе {{chapter}}",
+                  {
+                    chapter: displayChapter,
+                  },
+                )}
+                source={{ uri: imageUri }}
+                style={styles.image}
+                resizeMode="cover"
+                onError={() => setImageUri(null)}
+              />
+              {loading ? (
+                <View style={styles.imageOverlay}>
+                  <ActivityIndicator size="large" color="#fff" />
+                </View>
+              ) : null}
+            </>
+          ) : loading ? (
+            // Спокойный плейсхолдер на время генерации — по образцу врезок в тексте
+            <View style={styles.placeholder}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={styles.placeholderTitle}>
+                {t("narra.sceneSlotDrawing", "Рисуем сцену…")}
+              </Text>
+              <Text style={styles.placeholderHint}>
+                {t("narra.sceneSlotDrawingHint", "Обычно 20–60 секунд")}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.placeholder}>
+              <Text style={styles.placeholderTitle}>
+                {t("narra.sceneFailedTitle", "Не удалось создать сцену")}
+              </Text>
+              {error ? <Text style={styles.placeholderHint}>{error}</Text> : null}
+            </View>
+          )}
         </View>
-      ) : null}
+
+        {/* Короткая подпись вместо простыни текста */}
+        <View style={styles.captionBlock}>
+          {displayChapter ? <Text style={styles.chapterLabel}>{displayChapter}</Text> : null}
+          <Text style={styles.caption} numberOfLines={2}>
+            {caption}
+          </Text>
+        </View>
+
+        {/* Ряд пилюль — как «Поговорить/Послушать голос» в карточке героя */}
+        <View style={styles.actionsRow}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t("narra.sceneRegenerate", "Нарисовать заново")}
+            disabled={loading}
+            onPress={() => void generate()}
+            style={({ pressed }) => [styles.primaryPill, pressed && styles.pillPressed]}
+          >
+            {loading ? (
+              <ActivityIndicator size="small" color={colors.background} />
+            ) : (
+              <Text style={styles.primaryPillText}>{t("narra.sceneSlotRegen", "Заново")}</Text>
+            )}
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t("narra.sceneAnimate", "Оживить")}
+            onPress={animateScene}
+            style={({ pressed }) => [styles.ghostPill, pressed && styles.pillPressed]}
+          >
+            <Text style={styles.ghostPillText}>{t("narra.sceneAnimate", "Оживить")}</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={
+              audioStatus === "idle"
+                ? t("narra.sceneVoice", "Озвучить")
+                : t("narra.stopVoiceSample", "Остановить озвучку")
+            }
+            disabled={audioStatus === "preparing"}
+            onPress={() => void playScene()}
+            style={({ pressed }) => [styles.ghostPill, pressed && styles.pillPressed]}
+          >
+            {audioStatus === "preparing" ? (
+              <ActivityIndicator size="small" color={colors.foreground} />
+            ) : (
+              <Text style={styles.ghostPillText}>
+                {audioStatus === "playing"
+                  ? t("narra.ttsStop", "Стоп")
+                  : t("narra.sceneVoice", "Озвучить")}
+              </Text>
+            )}
+          </Pressable>
+        </View>
+
+        {/* Полный отрывок — свёрнут по умолчанию */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded: textExpanded }}
+          onPress={() => setTextExpanded((value) => !value)}
+          style={({ pressed }) => [styles.disclosureRow, pressed && styles.pillPressed]}
+        >
+          <Text style={styles.disclosureLabel}>
+            {textExpanded
+              ? t("narra.sceneHideText", "Скрыть текст сцены")
+              : t("narra.sceneShowText", "Показать текст сцены")}
+          </Text>
+          <View style={textExpanded ? styles.chevronOpen : styles.chevronClosed}>
+            <ChevronRightIcon color={colors.mutedForeground} size={16} />
+          </View>
+        </Pressable>
+        {textExpanded ? <Text style={styles.excerpt}>{excerpt.trim()}</Text> : null}
+      </ScrollView>
     </ScrollViewMarker>
   );
 }
 
-const styles = StyleSheet.create({
-  content: { flexGrow: 1 },
-  imageWrap: { position: "relative", width: "100%", aspectRatio: 1, overflow: "hidden" },
-  image: { width: "100%", height: "100%" },
-  loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.38)",
-  },
-  caption: { paddingHorizontal: 20, paddingTop: 20, gap: 8 },
-  chapter: { fontSize: 17, fontWeight: "700" },
-  excerpt: { fontSize: 15, lineHeight: 22 },
-  toolbarDock: { position: "absolute", right: 0, bottom: 0, left: 0, zIndex: 30 },
-});
+const makeStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    content: {
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.lg,
+      gap: spacing.lg,
+    },
+    imageCard: {
+      position: "relative",
+      width: "100%",
+      aspectRatio: 1,
+      overflow: "hidden",
+      borderRadius: radius.card,
+      backgroundColor: colors.elevation2,
+    },
+    image: { width: "100%", height: "100%" },
+    imageOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "rgba(0,0,0,0.38)",
+    },
+    placeholder: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: spacing.sm,
+      paddingHorizontal: spacing.xl,
+    },
+    placeholderTitle: {
+      color: colors.foreground,
+      fontFamily: interfaceFontFamily.semibold,
+      fontSize: fontSize.sm,
+      textAlign: "center",
+    },
+    placeholderHint: {
+      color: colors.mutedForeground,
+      fontFamily: interfaceFontFamily.regular,
+      fontSize: fontSize.xs,
+      lineHeight: 18,
+      textAlign: "center",
+    },
+    captionBlock: { gap: spacing.xs },
+    // Заголовок главы — мелкий caps-лейбл над подписью
+    chapterLabel: {
+      color: colors.mutedForeground,
+      fontFamily: interfaceFontFamily.caps,
+      fontSize: fontSize.xs,
+      textTransform: "uppercase",
+      letterSpacing: 0.8,
+    },
+    // Подпись 1–2 строки — SB Sans, спокойный mutedForeground
+    caption: {
+      color: colors.mutedForeground,
+      fontFamily: interfaceFontFamily.regular,
+      fontSize: fontSize.sm,
+      lineHeight: 22,
+    },
+    actionsRow: {
+      flexDirection: "row",
+      gap: spacing.sm,
+    },
+    // Горизонтальный паддинг компактнее, чем в карточке героя (spacing.md
+    // вместо spacing.lg): три пилюли должны помещаться в ряд на iPhone.
+    primaryPill: {
+      flex: 1,
+      minHeight: 48,
+      paddingHorizontal: spacing.md,
+      borderRadius: radius.full,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.foreground,
+    },
+    primaryPillText: {
+      color: colors.background,
+      fontFamily: interfaceFontFamily.semibold,
+      fontSize: fontSize.sm,
+    },
+    ghostPill: {
+      flex: 1,
+      minHeight: 48,
+      paddingHorizontal: spacing.md,
+      borderRadius: radius.full,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.background,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    ghostPillText: {
+      color: colors.foreground,
+      fontFamily: interfaceFontFamily.semibold,
+      fontSize: fontSize.sm,
+    },
+    pillPressed: { opacity: 0.72 },
+    disclosureRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: spacing.xs,
+      minHeight: 44,
+    },
+    disclosureLabel: {
+      color: colors.mutedForeground,
+      fontFamily: interfaceFontFamily.semibold,
+      fontSize: fontSize.sm,
+    },
+    chevronClosed: { transform: [{ rotate: "90deg" }] },
+    chevronOpen: { transform: [{ rotate: "-90deg" }] },
+    excerpt: {
+      color: colors.mutedForeground,
+      fontFamily: interfaceFontFamily.regular,
+      fontSize: fontSize.sm,
+      lineHeight: 22,
+    },
+  });

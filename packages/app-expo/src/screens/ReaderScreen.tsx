@@ -22,7 +22,8 @@ import { getBundledCatalogCharactersByTitle } from "@/lib/narra/bundled-catalog-
 import { buildCharacterNameMatcherSpec } from "@/lib/narra/character-name-matcher";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
 import { reportNarraError } from "@/lib/narra/errors";
-import { generateSceneImage, normalizePersistedNarraMediaUri } from "@/lib/narra/media";
+import { normalizePersistedNarraMediaUri } from "@/lib/narra/media";
+import { generateNarraSceneImage } from "@/lib/narra/scene-image-openrouter";
 import {
   sceneImageDataUri,
   sceneInsertAnchors,
@@ -658,7 +659,7 @@ function ReaderContent({ route, navigation }: Props) {
         }
         const chapter =
           cached?.chapter || currentChapter || bookTitle || book?.meta.title || "Текущая страница";
-        const imageUri = await generateSceneImage(bookId, chapter, excerpt, characters);
+        const imageUri = await generateNarraSceneImage(bookId, chapter, excerpt, characters);
         setNarraScene(bookId, {
           sourceKey,
           chapter,
@@ -1392,7 +1393,7 @@ function ReaderContent({ route, navigation }: Props) {
       JSON.stringify({
         idle: t("narra.sceneSlotShow", "Показать сцену"),
         loading: t("narra.sceneSlotDrawing", "Рисуем сцену…"),
-        loadingHint: t("narra.sceneSlotDrawingHint", "Обычно 20–60 секунд"),
+        loadingHint: t("narra.sceneSlotDrawingHint", "20–60 секунд"),
         caption: t("narra.sceneSlotCaption", "Сцена — сгенерировано ИИ"),
         regen: t("narra.sceneSlotRegen", "Заново"),
         error: t("narra.sceneSlotError", "Не получилось — попробовать ещё раз"),

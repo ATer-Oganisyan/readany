@@ -3,6 +3,7 @@ import { recordTelemetry } from "@/lib/analytics/telemetry";
 import * as FileSystem from "expo-file-system/legacy";
 import { budgetPrompt } from "./art-style";
 import { normalizeNarraError } from "./errors";
+import { mentionedCharacters, passportDescription } from "./scene-prompt";
 import { applyActiveStressMarkup } from "./stress-markup";
 import type { NarraCharacter } from "./types";
 import type { NarraProsody } from "./voice-rules";
@@ -31,14 +32,20 @@ function firstAudioLatencyBucket(durationMs: number): string {
   return "15s+";
 }
 
-async function trackMediaJob<T>(
+/**
+ * Единая телеметрия медиа-генераций. По умолчанию provider/model гейтвейные
+ * (Kandinsky/SaluteSpeech); OpenRouter-путь сцен (scene-image-openrouter.ts)
+ * передаёт свои через meta, сами события и поля не меняются.
+ */
+export async function trackNarraMediaJob<T>(
   jobType: MediaJobType,
   origin: MediaJobOrigin,
   operation: () => Promise<T>,
+  meta?: { provider: string; model: string },
 ): Promise<T> {
   const startedAt = Date.now();
-  const provider = jobType === "tts" ? "salutespeech" : "kandinsky";
-  const model = jobType === "tts" ? "salutespeech-yourvoice" : "k6-image-t2i";
+  const provider = meta?.provider ?? (jobType === "tts" ? "salutespeech" : "kandinsky");
+  const model = meta?.model ?? (jobType === "tts" ? "salutespeech-yourvoice" : "k6-image-t2i");
   recordTelemetry("media_job_enqueued", {
     job_type: jobType,
     provider,
@@ -144,30 +151,8 @@ function imagePayload(payload: unknown): { base64?: string; url?: string; error?
   };
 }
 
-function passportDescription(character: NarraCharacter): string {
-  const passport = character.passport;
-  if (!passport) return character.appearancePrompt;
-  return [
-    character.appearancePrompt,
-    `${passport.age} лет`,
-    passport.build,
-    passport.hair,
-    passport.eyes,
-    passport.face,
-    passport.outfit,
-  ]
-    .filter(Boolean)
-    .join(", ");
-}
-
-function mentionedCharacters(excerpt: string, characters: NarraCharacter[]): NarraCharacter[] {
-  const normalizedExcerpt = excerpt.toLocaleLowerCase("ru");
-  return characters.filter((character) =>
-    [character.name, character.fullName]
-      .filter((name) => name.trim().length > 1)
-      .some((name) => normalizedExcerpt.includes(name.toLocaleLowerCase("ru"))),
-  );
-}
+// passportDescription/mentionedCharacters переехали в scene-prompt.ts (P16) —
+// единый источник для гейтвей- и OpenRouter-промптов.
 
 const KANDINSKY_SAFETY_REJECTION =
   /политик[А-Яа-яЁё]* безопасности|safety|content policy|moderation/iu;
@@ -275,6 +260,21 @@ async function persistGeneratedImage(
   return path;
 }
 
+/**
+ * Сохраняет base64-картинку сцены в narra-media и возвращает file://-путь.
+ * Используется OpenRouter-путём (scene-image-openrouter.ts); именование файла
+ * то же, что у гейтвей-сцен, чтобы restore/normalize работали одинаково.
+ */
+export async function persistSceneImageBase64(
+  bookId: string,
+  base64: string,
+  extension: "png" | "jpg" = "jpg",
+): Promise<string> {
+  await ensureMediaDir();
+  const path = `${MEDIA_DIR}/${safeKey(`${bookId}-scene-${Date.now()}`)}.${extension}`;
+  return persistGeneratedImage(path, { base64 });
+}
+
 async function generateCharacterPortraitRequest(
   bookId: string,
   character: NarraCharacter,
@@ -301,7 +301,7 @@ export function generateCharacterPortrait(
   bookId: string,
   character: NarraCharacter,
 ): Promise<string> {
-  return trackMediaJob("avatar", "background", () =>
+  return trackNarraMediaJob("avatar", "background", () =>
     generateCharacterPortraitRequest(bookId, character),
   );
 }
@@ -354,7 +354,7 @@ export function generateSceneImage(
   excerpt: string,
   characters: NarraCharacter[],
 ): Promise<string> {
-  return trackMediaJob("image", "user", () =>
+  return trackNarraMediaJob("image", "user", () =>
     generateSceneImageRequest(bookId, chapter, excerpt, characters),
   );
 }
@@ -442,5 +442,7 @@ export function synthesizeNarraSpeech(
   voice: string,
   options?: NarraSpeechOptions,
 ): Promise<string> {
-  return trackMediaJob("tts", "user", () => synthesizeNarraSpeechRequest(text, voice, options));
+  return trackNarraMediaJob("tts", "user", () =>
+    synthesizeNarraSpeechRequest(text, voice, options),
+  );
 }
