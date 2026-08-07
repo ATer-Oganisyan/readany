@@ -81,6 +81,7 @@ module.exports = {
             usesCleartextTraffic: true,
           },
           ios: {
+            deploymentTarget: "15.1",
             networkInspector: false,
           },
         },
