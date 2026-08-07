@@ -28,6 +28,17 @@
     .period button{appearance:none;border:0;background:transparent;border-radius:10px;padding:9px 13px;color:var(--ink-50);font-size:13px;font-weight:700;cursor:pointer}
     .period button:hover{color:var(--ink)}.period button.active{background:var(--ink);color:#fff}.period button:focus-visible{outline:3px solid #0088ff55;outline-offset:2px}
     .loading-note{font-size:13px;color:var(--ink-50);min-height:18px;margin:-12px 0 12px;text-align:right}
+    .ext-checks{display:flex;flex-direction:column;align-items:flex-end;gap:8px;margin:-8px 0 14px}
+    .ext-toggle{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--ink-10);border-radius:999px;background:#fff;padding:7px 13px;font:inherit;font-size:12px;font-weight:700;color:var(--ink-70);cursor:pointer}
+    .ext-toggle .ext-ok{color:#17652b}.ext-toggle .ext-bad{color:#a01c1c}
+    .ext-toggle .chev{font-size:10px;color:var(--ink-50);transition:transform .15s}
+    .ext-toggle[aria-expanded="true"] .chev{transform:rotate(180deg)}
+    .ext-chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}.ext-chips[hidden]{display:none}
+    .ext-chip{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--ink-10);border-radius:999px;background:#fff;padding:6px 12px;font-size:12px;color:var(--ink)}
+    .ext-chip i{width:8px;height:8px;border-radius:50%;background:var(--ink-10)}
+    .ext-chip.up i{background:#22a04b}.ext-chip.down i{background:#d22}.ext-chip.paused i{background:#e0a800}
+    .ext-chip b{font-weight:800}.ext-chip .lat{color:var(--ink-50)}
+    @media(max-width:780px){.ext-checks{align-items:stretch}.ext-chips{justify-content:flex-start}}
     .grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}
     .metric-card,.panel{background:var(--card);border:1px solid var(--ink-10);border-radius:var(--radius);box-shadow:var(--shadow)}
     .metric-card{padding:18px;min-width:0}.metric-card .label,.mini .label{display:flex;align-items:center;gap:5px;color:var(--ink-50);font-size:13px;line-height:18px}
@@ -67,6 +78,10 @@
 </head>
 <body><main>
   <header class="top"><div class="brand"><img src="logo.svg" alt="Narra"><div><div class="eyebrow">Traction · Product analytics</div><h1>Narra reading health</h1></div></div><nav class="period" aria-label="Reporting period"><button data-days="1" class="active" aria-pressed="true">Today</button><button data-days="7" aria-pressed="false">7 dates</button><button data-days="30" aria-pressed="false">30 dates</button></nav></header>
+  <div class="ext-checks" id="ext-checks" hidden>
+    <button type="button" class="ext-toggle" id="ext-toggle" aria-expanded="true" aria-controls="ext-chips"><span id="ext-summary">Ext checks</span><span class="chev">▲</span></button>
+    <div class="ext-chips" id="ext-chips"></div>
+  </div>
   <div id="loading-note" class="loading-note" aria-live="polite"></div>
   <div id="app" aria-busy="true"><div class="skeleton-grid" aria-label="Loading analytics"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton wide"></div><div class="skeleton wide"></div></div></div>
 </main><script>
@@ -140,7 +155,12 @@ function render(d,meta={}){
 let uptimeData=null;
 const uptimeStateClass=s=>s===2?'up':(s===8||s===9)?'down':s===0?'standby':'unknown';
 const uptimeStateText=s=>s===2?'up':(s===8||s===9)?'down':s===0?'paused':'pending';
-function renderUptime(){const grid=document.getElementById('uptime-grid');if(!grid)return;
+function renderExtChecks(){const bar=document.getElementById('ext-checks');const chips=document.getElementById('ext-chips');const summary=document.getElementById('ext-summary');if(!bar||!chips||!summary)return;const monitors=(uptimeData&&uptimeData.monitors)||[];if(!uptimeData||uptimeData.configured===false||!monitors.length){bar.hidden=true;return}
+  bar.hidden=false;const up=monitors.filter(m=>m.status===2).length;const total=monitors.length;const ok=up===total;
+  summary.innerHTML=`<span class="${ok?'ext-ok':'ext-bad'}">${ok?'✓':'✕'}</span>&nbsp;Ext checks <b>${up}/${total}</b>`;
+  chips.innerHTML=monitors.map(m=>{const a=m.availability||{};const cls=m.status===2?'up':(m.status===8||m.status===9)?'down':'paused';const ratio=a.d30==null?'—':`${a.d30.toFixed(2)}%`;const lat=m.latency_ms==null?'—':`${fmt(m.latency_ms)}ms`;return`<span class="ext-chip ${cls}" title="${esc(m.url)}"><i></i>${esc(m.name)}&nbsp;<b>${ratio}</b>&nbsp;<span class="lat">${lat}</span></span>`}).join('')}
+document.getElementById('ext-toggle')?.addEventListener('click',()=>{const toggle=document.getElementById('ext-toggle');const chips=document.getElementById('ext-chips');const expanded=toggle.getAttribute('aria-expanded')==='true';toggle.setAttribute('aria-expanded',String(!expanded));chips.hidden=expanded});
+function renderUptime(){renderExtChecks();const grid=document.getElementById('uptime-grid');if(!grid)return;
   if(!uptimeData){grid.innerHTML='<div class="note">Loading external uptime…</div>';return}
   if(uptimeData.configured===false){grid.innerHTML='<div class="note">UptimeRobot is not configured on this deployment (UPTIMEROBOT_API_KEY).</div>';return}
   const rows=(uptimeData.monitors||[]).map(m=>{const a=m.availability||{};const p=v=>v==null?'—':`${fmt(v)}%`;return`<article class="monitor"><div class="monitor-head"><b>${esc(m.name)}</b><span class="monitor-state ${uptimeStateClass(m.status)}">${esc(uptimeStateText(m.status))}</span></div><a class="monitor-url" href="${esc(m.url)}" target="_blank" rel="noopener noreferrer">${esc(m.url)}</a><div class="monitor-facts"><span>Availability · 24h<b>${p(a.d1)}</b></span><span>Availability · 7d<b>${p(a.d7)}</b></span><span>Availability · 30d<b>${p(a.d30)}</b></span></div></article>`}).join('');

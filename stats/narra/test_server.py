@@ -242,6 +242,7 @@ class NarraStatsTest(unittest.TestCase):
                 "url": "https://stats.multitool.works/p/narra/health",
                 "status": 2, "custom_uptime_ratio": "100.000-99.5-98.76543",
                 "alert_contacts": [{"id": "secret"}],
+                "response_times": [{"datetime": 1, "value": 666.4}],
             },
             {
                 "id": 3, "friendly_name": "MultiTool GW Primary",
@@ -261,6 +262,8 @@ class NarraStatsTest(unittest.TestCase):
         self.assertEqual(rows[0]["status"], 9)
         self.assertEqual(rows[0]["availability"], {"d1": None, "d7": None, "d30": None})
         self.assertEqual(rows[1]["availability"], {"d1": 100.0, "d7": 99.5, "d30": 98.765})
+        self.assertEqual(rows[1]["latency_ms"], 666)
+        self.assertIsNone(rows[0]["latency_ms"])
         self.assertNotIn("alert_contacts", rows[1])
 
     def test_uptime_report_caches_and_serves_stale_on_failure(self):

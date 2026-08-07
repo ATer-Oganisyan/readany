@@ -378,11 +378,19 @@ def _select_uptime_monitors(raw: list[dict[str, Any]], prefix: str) -> list[dict
             status = int(monitor.get("status", 0) or 0)
         except (TypeError, ValueError):
             status = 0
+        latency_ms = None
+        response_times = monitor.get("response_times")
+        if isinstance(response_times, list) and response_times:
+            try:
+                latency_ms = round(float(response_times[0].get("value")))
+            except (AttributeError, TypeError, ValueError):
+                latency_ms = None
         selected.append({
             "id": monitor.get("id"),
             "name": name,
             "url": str(monitor.get("url", "")),
             "status": status,
+            "latency_ms": latency_ms,
             "availability": {
                 "d1": ratio(parts, 0),
                 "d7": ratio(parts, 1),
@@ -398,6 +406,8 @@ def _fetch_uptimerobot_monitors() -> list[dict[str, Any]]:
         "api_key": UPTIMEROBOT_API_KEY,
         "format": "json",
         "custom_uptime_ratios": "1-7-30",
+        "response_times": "1",
+        "response_times_limit": "1",
     }).encode()
     api_request = urllib.request.Request(
         "https://api.uptimerobot.com/v2/getMonitors",
