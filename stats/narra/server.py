@@ -695,6 +695,11 @@ def _is_active_event(row: dict[str, Any]) -> bool:
     return row["name"] in ACTIVE_EVENTS and not _is_background_event(row)
 
 
+# Fleet decision (Tsevdn, 07.08.2026): a session ends after 5 minutes of
+# user inactivity, the same timeout across every product.
+SESSION_GAP_SECONDS = 5 * 60
+
+
 def _is_session_event(row: dict[str, Any]) -> bool:
     return row["name"] in SESSION_EVENTS and not _is_background_event(row)
 
@@ -745,9 +750,9 @@ def _sessions(rows: list[dict[str, Any]]) -> int:
     for actor, timestamps in missing.items():
         previous = None
         for timestamp in sorted(timestamps):
-            if any(abs(timestamp - known) <= 1800 for known in explicit_times[actor]):
+            if any(abs(timestamp - known) <= SESSION_GAP_SECONDS for known in explicit_times[actor]):
                 continue
-            if previous is None or timestamp - previous > 1800:
+            if previous is None or timestamp - previous > SESSION_GAP_SECONDS:
                 inferred += 1
             previous = timestamp
     return len(explicit) + inferred
