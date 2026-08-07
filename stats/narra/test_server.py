@@ -127,6 +127,8 @@ class NarraStatsTest(unittest.TestCase):
         self.assertGreaterEqual(deploy.count("EXPECTED_REMOTE_SERVER_SHA256"), 4)
         self.assertLess(deploy.index("rollback()"), deploy.index('mv "$REMOTE_DIR" "$REMOTE_ROLLBACK"'))
         self.assertIn('data.get("fresh") is True', deploy)
+        self.assertIn('len(checks) == len(data.get("targets", []))', deploy)
+        self.assertNotIn("len(checks) == 4", deploy)
         self.assertIn('min(checks) >= cutoff', deploy)
         self.assertIn('deploy_started_at="$(date +%s)"', deploy)
         self.assertIn("REMOTE_UNIT_BACKUP", deploy)
