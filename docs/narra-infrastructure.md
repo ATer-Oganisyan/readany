@@ -70,6 +70,16 @@ For gateway deploy, backup, restore and compare-and-swap instructions, use
 `services/narra-gateway/README.md`. For analytics deploy and rollback, use
 `stats/narra/README.md`.
 
+Operational runbooks migrated from the standalone Narra repository live in
+`ops/narra/`:
+
+- `ops/narra/caddy/` — the reviewed Caddy fragments and change procedure for
+  the production hostname `narra.multitool.works` (i167) and the reserved
+  video hostname `narra-video.multitool.works` (i46), including the
+  compare-and-swap validate/reload workflow.
+- `ops/narra/installations/` — the operator runbook for the no-invite
+  installation registry (registration, revocation, budget overrides).
+
 After an infrastructure change, verify:
 
 1. local gateway `/health` and `/ready`;

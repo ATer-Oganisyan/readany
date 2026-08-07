@@ -47,11 +47,11 @@ the unit but preserves that environment file.
 The canonical i167 service binds to `127.0.0.1` and may set
 `STATS_TRUST_LOOPBACK_PROXY=1`, because Caddy is the only network entry and
 already enforces Traction's shared Basic Auth. Startup rejects this mode on a
-non-loopback bind. Any directly reachable deployment, including Railway, must
+non-loopback bind. Any directly reachable deployment must
 leave this flag off and set `STATS_READ_USERNAME` plus a random
 `STATS_READ_PASSWORD` of at least 32 characters.
 
-The Railway gateway receives matching `TRACTION_INGEST_URL` and
+The gateway receives matching `TRACTION_INGEST_URL` and
 `TRACTION_INGEST_TOKEN`. There is intentionally no legacy analytics import:
 the module accepts only events produced through the new closed contract and
 does not read data or source code from the retired Narra repository.
@@ -83,7 +83,7 @@ data plus 1-hour, 24-hour and 7-day availability, scheduled-probe coverage and
 p95 latency. Missed scheduled checks reduce availability, so one fresh probe
 after monitor downtime cannot make an unobserved window look 100% healthy.
 
-Targets may be changed only through root/Railway environment configuration:
+Targets may be changed only through root-owned environment configuration:
 
 ```text
 STATS_MONITOR_PRODUCTION_GATEWAY_URL
@@ -191,45 +191,17 @@ Staging uses a separate endpoint/database/token with
 server-controlled header; a mismatch is rejected before storage so staging
 cannot silently pollute production metrics.
 
-For the separate Railway staging service, first inspect `railway status --json`
-and confirm the Narra project, `stats-narra-staging` service and `staging`
-environment. Then deploy this directory with the target stated explicitly:
-
-```bash
-railway up stats/narra --path-as-root \
-  --service stats-narra-staging \
-  --environment staging
-```
-
-Never rely on the directory's current Railway link: this monorepo also deploys
-the Narra gateway. `--path-as-root` makes `stats/narra` the uploaded root, so
-`railway.json` pins the launcher and `/health` probe instead of letting
-Railpack guess an ASGI module name. If the service is later connected directly
-to GitHub, set its Config File Path to `/stats/narra/railway.json` explicitly; Railway
-does not resolve that path relative to the service Root Directory.
-
-Use a dedicated Volume mounted at `/data` and set:
-
-```text
-STATS_HOST=0.0.0.0
-PORT=9905
-STATS_ENVIRONMENT=staging
-STATS_DB=/data/events.db
-STATS_INGEST_TOKEN=<staging-only random token, at least 32 characters>
-STATS_READ_USERNAME=<staging dashboard operator>
-STATS_READ_PASSWORD=<staging-only random password, at least 32 characters>
-STATS_COST_CURRENCY=USD
-STATS_ALLOW_UNAUTHENTICATED_INGEST=0
-```
-
-Railway may assign `PORT`; it takes precedence over `STATS_PORT`, which remains
-the fallback for non-Railway hosts. The public domain must route to the actual
-listen port. The staging token, database and Volume must never be shared with
-production.
+The Railway staging service was retired on 5 August 2026 together with the
+rest of the Railway project (see `docs/narra-infrastructure.md`). There is no
+staging runtime at the moment. If staging is recreated, follow the staging
+policy in that document: an isolated database, token and backup policy, with
+`127.0.0.1:9911` reserved for staging analytics on `i167`, and the same
+environment-mismatch rejection described above. A staging token, database or
+volume must never be shared with production.
 
 The app itself protects `/`, `/summary` and `/dashboard` with HTTP Basic Auth;
-this prevents the direct Railway domain from bypassing Traction's access
-control. `/health` stays public for Railway and `/events` keeps its independent
+this prevents any direct service domain from bypassing Traction's access
+control. `/health` stays public for probes and `/events` keeps its independent
 write-only ingest token. Production Traction may terminate the same Basic Auth
 at its reverse proxy, but direct access to this service must remain protected.
 

@@ -91,17 +91,11 @@ class NarraStatsTest(unittest.TestCase):
             server._db.commit()
         server._clear_dashboard_cache()
 
-    def test_railway_config_pins_launcher_healthcheck_and_restart_policy(self):
-        config = json.loads((Path(__file__).with_name("railway.json")).read_text())
-        self.assertEqual(config["build"]["builder"], "RAILPACK")
-        self.assertEqual(config["deploy"]["startCommand"], "python server.py")
-        self.assertEqual(config["deploy"]["healthcheckPath"], "/health")
-        self.assertEqual(config["deploy"]["healthcheckTimeout"], 30)
-        self.assertEqual(config["deploy"]["restartPolicyType"], "ON_FAILURE")
-        self.assertEqual(config["deploy"]["restartPolicyMaxRetries"], 10)
+    def test_railway_rudiments_are_removed(self):
+        self.assertFalse(Path(__file__).with_name("railway.json").exists())
         readme = Path(__file__).with_name("README.md").read_text()
-        self.assertIn("railway up stats/narra --path-as-root", readme)
-        self.assertIn("/stats/narra/railway.json", readme)
+        self.assertNotIn("railway up", readme)
+        self.assertNotIn("railway.json", readme)
 
     def test_i167_deploy_is_reviewed_staged_and_rollback_capable(self):
         deploy = Path(__file__).with_name("deploy.sh").read_text()
