@@ -5,6 +5,7 @@ import {
   buttonStyle,
   controlSize,
   font,
+  foregroundStyle,
   frame,
   tint,
 } from "@expo/ui/swift-ui/modifiers";
@@ -31,7 +32,9 @@ export function ReaderCharacterActions(props: ReaderCharacterActionsProps) {
             accessibilityLabel(props.talkLabel),
           ]}
         >
-          <Text modifiers={labelModifiers}>{props.talkLabel}</Text>
+          <Text modifiers={[...labelModifiers, foregroundStyle(props.primaryForegroundColor)]}>
+            {props.talkLabel}
+          </Text>
         </Button>
         {props.canSample ? (
           <Button
@@ -43,7 +46,7 @@ export function ReaderCharacterActions(props: ReaderCharacterActionsProps) {
               accessibilityLabel(props.voiceState !== "idle" ? props.stopLabel : props.listenLabel),
             ]}
           >
-            <Text modifiers={labelModifiers}>
+            <Text modifiers={[...labelModifiers, foregroundStyle(props.foregroundColor)]}>
               {props.voiceState !== "idle" ? props.stopLabel : props.listenLabel}
             </Text>
           </Button>

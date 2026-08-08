@@ -995,10 +995,18 @@ export function getBundledCatalogCharactersByTitle(title: string): NarraCharacte
   const catalogBook = findBundledCatalogBookDefinitionByTitle(title);
   if (!catalogBook) return undefined;
   const bundled = BUNDLED_CATALOG_CHARACTERS[catalogBook.id];
-  return bundled?.map((character) => ({ ...character, traits: [...character.traits] }));
+  return bundled?.map((character) => ({
+    ...character,
+    portraitAssetId: `${catalogBook.id}/${character.id}`,
+    traits: [...character.traits],
+  }));
 }
 
 export function getBundledCatalogCharactersById(id: string): NarraCharacter[] | undefined {
   const bundled = BUNDLED_CATALOG_CHARACTERS[id];
-  return bundled?.map((character) => ({ ...character, traits: [...character.traits] }));
+  return bundled?.map((character) => ({
+    ...character,
+    portraitAssetId: `${id}/${character.id}`,
+    traits: [...character.traits],
+  }));
 }

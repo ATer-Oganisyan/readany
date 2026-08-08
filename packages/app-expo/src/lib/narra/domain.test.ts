@@ -20,6 +20,7 @@ const character: NarraCharacter = {
   speechExamples: [],
   appearancePrompt: "тёмные волосы",
   unlockProgress: 0.35,
+  portraitAssetId: "anna-karenina/anna-karenina",
   portraitUri: "file:///portrait.png",
 };
 
@@ -42,7 +43,7 @@ describe("Narra persisted book state", () => {
     const firstAnalysis = withNarraCharacters(emptyNarraBookState("book-1"), [character], 100);
     const withCharacters = withNarraCharacters(
       firstAnalysis,
-      [{ ...character, portraitUri: undefined }],
+      [{ ...character, portraitAssetId: undefined, portraitUri: undefined }],
       123,
     );
     const withMemory = withNarraMemory(withCharacters, character.id, "Любит чай без сахара");
@@ -56,6 +57,7 @@ describe("Narra persisted book state", () => {
 
     expect(restored.characters[0]).toMatchObject({
       id: "anna",
+      portraitAssetId: "anna-karenina/anna-karenina",
       portraitUri: "file:///portrait.png",
     });
     expect(restored.memories.anna).toBe("Любит чай без сахара");

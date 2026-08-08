@@ -50,6 +50,19 @@ describe("character portrait backfill", () => {
     ]);
   });
 
+  it("does not regenerate a portrait bundled with a catalog character", () => {
+    const bundledCharacter = {
+      ...character("anna", 0),
+      portraitAssetId: "anna-karenina/anna-karenina",
+    };
+
+    expect(
+      collectPortraitBackfillJobs([{ id: "catalog", progress: 0 }], {
+        catalog: narraBook("catalog", [bundledCharacter]),
+      }),
+    ).toEqual([]);
+  });
+
   it("retries transient failures and returns the successful portrait", async () => {
     const operation = vi
       .fn<() => Promise<string>>()

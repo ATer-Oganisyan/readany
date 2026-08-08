@@ -198,7 +198,10 @@ export function RootNavigator() {
           options={{
             presentation: "formSheet",
             animation: "slide_from_bottom",
-            title: t("narra.characterProfile", "Профиль персонажа"),
+            title: "",
+            headerTitle: "",
+            unstable_headerLeftItems: () => [],
+            unstable_headerRightItems: () => [],
             headerTransparent: false,
             headerStyle: { backgroundColor: colors.background },
             headerBackVisible: false,

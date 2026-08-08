@@ -24,6 +24,7 @@ describe("bundled catalog characters", () => {
             character.fullName.trim() &&
             character.role.trim() &&
             character.appearancePrompt.trim() &&
+            character.portraitAssetId === `${book.id}/${character.id}` &&
             character.unlockProgress === 0,
         ),
         book.title,

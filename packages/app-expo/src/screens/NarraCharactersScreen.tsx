@@ -12,6 +12,7 @@ import { recordTelemetry } from "@/lib/analytics/telemetry";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
 import { getBundledCatalogCharactersByTitle } from "@/lib/narra/bundled-catalog-characters";
 import { analyzeBookCharacters } from "@/lib/narra/character-analysis";
+import { hasCharacterPortrait, resolveCharacterPortraitUri } from "@/lib/narra/character-portrait";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
 import { NarraServiceError, reportNarraError } from "@/lib/narra/errors";
 import { ensureCharacterPortrait, normalizePersistedNarraMediaUri } from "@/lib/narra/media";
@@ -210,7 +211,7 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
     const nextCharacter = characters.find(
       (character) =>
         isCharacterUnlocked(book.progress, character) &&
-        !character.portraitUri &&
+        !hasCharacterPortrait(character) &&
         !portraitAttemptsRef.current.has(character.id),
     );
     if (!nextCharacter) return;
@@ -263,6 +264,7 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
     },
     ...orderedCharacters.map((character): CharacterChatListItem => {
       const portraitBusy = portraitLoading === character.id;
+      const portraitUri = resolveCharacterPortraitUri(character);
       const unlocked = isCharacterUnlocked(book?.progress ?? 0, character);
       const unlockPercent = Math.round(Math.min(1, Math.max(0, character.unlockProgress)) * 100);
       const lockedSubtitle = character.appearanceChapter
@@ -296,16 +298,20 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
         avatar: (
           <CharacterChatAvatar
             overlay={
-              portraitBusy && character.portraitUri ? (
+              portraitBusy && hasCharacterPortrait(character) ? (
                 <ActivityIndicator size="small" color={colors.primaryForeground} />
               ) : undefined
             }
           >
-            {character.portraitUri ? (
+            {portraitUri ? (
               <Image
-                source={{ uri: normalizePersistedNarraMediaUri(character.portraitUri) }}
+                source={{ uri: portraitUri }}
                 style={styles.avatarImage}
-                onError={() => updateCharacter(bookId, character.id, { portraitUri: undefined })}
+                onError={
+                  character.portraitUri
+                    ? () => updateCharacter(bookId, character.id, { portraitUri: undefined })
+                    : undefined
+                }
               />
             ) : (
               <InitialsAvatar
