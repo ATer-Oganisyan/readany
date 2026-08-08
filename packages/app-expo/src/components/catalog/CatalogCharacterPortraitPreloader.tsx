@@ -1,16 +1,15 @@
 import { getBundledCatalogCharactersByTitle } from "@/lib/narra/bundled-catalog-characters";
 import { ensureCharacterPortrait } from "@/lib/narra/media";
-import type { NarraCharacter } from "@/lib/narra/types";
+import {
+  type PortraitBackfillJob,
+  collectPortraitBackfillJobs,
+  runPortraitBackfillWithRetry,
+} from "@/lib/narra/portrait-backfill";
 import { useLibraryStore } from "@/stores/library-store";
 import { useNarraStore } from "@/stores/narra-store";
 import { useEffect } from "react";
 
-interface PortraitJob {
-  bookId: string;
-  character: NarraCharacter;
-}
-
-const portraitQueue = new Map<string, PortraitJob>();
+const portraitQueue = new Map<string, PortraitBackfillJob>();
 const attemptedPortraits = new Set<string>();
 let drainingPortraitQueue = false;
 
@@ -23,17 +22,21 @@ async function drainPortraitQueue(): Promise<void> {
   drainingPortraitQueue = true;
   try {
     while (portraitQueue.size > 0) {
-      const entry = portraitQueue.entries().next().value as [string, PortraitJob] | undefined;
+      const entry = portraitQueue.entries().next().value as
+        | [string, PortraitBackfillJob]
+        | undefined;
       if (!entry) break;
       const [key, job] = entry;
       portraitQueue.delete(key);
       attemptedPortraits.add(key);
 
       try {
-        const portraitUri = await ensureCharacterPortrait(job.bookId, job.character);
+        const portraitUri = await runPortraitBackfillWithRetry(() =>
+          ensureCharacterPortrait(job.bookId, job.character),
+        );
         useNarraStore.getState().updateCharacter(job.bookId, job.character.id, { portraitUri });
       } catch (error) {
-        console.warn("[Narra] Catalog portrait preload failed", {
+        console.warn("[Narra] Character portrait backfill failed", {
           bookId: job.bookId,
           characterId: job.character.id,
           error: error instanceof Error ? error.message : String(error),
@@ -45,7 +48,7 @@ async function drainPortraitQueue(): Promise<void> {
   }
 }
 
-function enqueuePortraits(jobs: PortraitJob[]): void {
+function enqueuePortraits(jobs: PortraitBackfillJob[]): void {
   for (const job of jobs) {
     const key = portraitJobKey(job.bookId, job.character.id);
     if (!job.character.portraitUri && !attemptedPortraits.has(key) && !portraitQueue.has(key)) {
@@ -55,7 +58,7 @@ function enqueuePortraits(jobs: PortraitJob[]): void {
   void drainPortraitQueue();
 }
 
-/** Seeds catalog characters and starts their portraits before the user opens the chat. */
+/** Seeds catalog characters and backfills missing portraits before the user opens the chat. */
 export function CatalogCharacterPortraitPreloader() {
   const books = useLibraryStore((state) => state.books);
   const libraryLoaded = useLibraryStore((state) => state.isLoaded);
@@ -76,14 +79,7 @@ export function CatalogCharacterPortraitPreloader() {
 
   useEffect(() => {
     if (!libraryLoaded || !narraHydrated) return;
-    const jobs: PortraitJob[] = [];
-    for (const book of books) {
-      if (!getBundledCatalogCharactersByTitle(book.meta.title)) continue;
-      for (const character of narraBooks[book.id]?.characters ?? []) {
-        if (!character.portraitUri) jobs.push({ bookId: book.id, character });
-      }
-    }
-    enqueuePortraits(jobs);
+    enqueuePortraits(collectPortraitBackfillJobs(books, narraBooks));
   }, [books, libraryLoaded, narraBooks, narraHydrated]);
 
   return null;
