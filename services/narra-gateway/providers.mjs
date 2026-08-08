@@ -15,6 +15,16 @@ function httpErrorCode(status, detail) {
   return 'NETWORK'
 }
 
+// Reasoning-модели (gpt-5.6-luna и родня) принимают только температуру по
+// умолчанию и отвечают 400 на любое явное значение. Клиентский контракт при
+// этом температуру шлёт, поэтому убираем её на выходе из шлюза, а не у клиента.
+export function omitsTemperature(providerName, env = process.env) {
+  const raw = providerName === 'openrouter'
+    ? env.OPENROUTER_OMIT_TEMPERATURE
+    : env.LLM_OMIT_TEMPERATURE
+  return String(raw ?? '').trim().toLowerCase() === 'true'
+}
+
 function providerConfig(name, purpose, env) {
   if (name === 'openrouter') {
     return {
@@ -139,7 +149,7 @@ export async function requestChat({
         body: JSON.stringify({
           model: config.model,
           messages,
-          temperature,
+          ...(omitsTemperature(providerName, env) ? {} : { temperature }),
           max_tokens: maxTokensFor(purpose, stream, env),
           stream,
           ...(stream && providerName === 'giga'
@@ -195,6 +205,15 @@ export async function requestChat({
       }
       const detail = (await response.text().catch(() => '')).slice(0, 180)
       const errorCode = httpErrorCode(response.status, detail)
+      // Самая частая причина внезапного 400 после смены модели: провайдер не
+      // принимает явную температуру. Подсказываем конкретный флаг, иначе
+      // отказ выглядит как загадочный сбой всех AI-запросов сразу.
+      if (response.status === 400 && /temperature/i.test(detail)) {
+        console.error(
+          `[llm] ${providerName}/${config.model} не принимает temperature; ` +
+          `выставьте ${providerName === 'openrouter' ? 'OPENROUTER_OMIT_TEMPERATURE' : 'LLM_OMIT_TEMPERATURE'}=true`
+        )
+      }
       const failedAttempt = {
         ...terminalAttempt,
         event_id: randomUUID(),

@@ -4,6 +4,7 @@ import {
   coverRouteReadiness,
   llmRouteReadiness,
   maxTokensFor,
+  omitsTemperature,
   requestChat,
   requestCoverImage,
   routeForPurpose
@@ -67,6 +68,45 @@ test('llm max_tokens has safe defaults and env overrides with bounds', async () 
   })
   await result.finalizeAttempt()
   assert.equal(bodies[0].max_tokens, 8000)
+})
+
+test('temperature is dropped only for providers that reject it', async () => {
+  assert.equal(omitsTemperature('giga', {}), false)
+  assert.equal(omitsTemperature('giga', { LLM_OMIT_TEMPERATURE: 'true' }), true)
+  assert.equal(omitsTemperature('giga', { LLM_OMIT_TEMPERATURE: 'TRUE' }), true)
+  assert.equal(omitsTemperature('giga', { LLM_OMIT_TEMPERATURE: 'yes' }), false)
+  assert.equal(omitsTemperature('openrouter', { LLM_OMIT_TEMPERATURE: 'true' }), false)
+  assert.equal(omitsTemperature('openrouter', { OPENROUTER_OMIT_TEMPERATURE: 'true' }), true)
+
+  const bodies = []
+  const fetchImpl = async (url, init) => {
+    bodies.push(JSON.parse(init.body))
+    return new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    })
+  }
+  const baseEnv = {
+    LLM_ROUTE_SUMMARY: 'giga',
+    LLM_BASE_URL: 'https://giga.test',
+    LLM_API_KEY: 'key',
+    LLM_MODEL: 'model'
+  }
+  const call = async (env) => {
+    const result = await requestChat({
+      messages: [{ role: 'user', content: 'hi' }],
+      temperature: 0.25,
+      purpose: 'summary',
+      stream: false,
+      fetchImpl,
+      env
+    })
+    await result.finalizeAttempt()
+  }
+  await call(baseEnv)
+  assert.equal(bodies[0].temperature, 0.25)
+  await call({ ...baseEnv, LLM_OMIT_TEMPERATURE: 'true' })
+  assert.ok(!('temperature' in bodies[1]), 'temperature must be absent, not null')
 })
 
 test('retryable primary failure falls back and keeps one request identity', async () => {
