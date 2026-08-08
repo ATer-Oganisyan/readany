@@ -197,6 +197,12 @@ export function LibraryScreen() {
   );
 
   useEffect(() => {
+    if (isLoaded && !hasBooks && librarySection !== "catalog") {
+      setLibrarySection("catalog");
+    }
+  }, [hasBooks, isLoaded, librarySection]);
+
+  useEffect(() => {
     let cancelled = false;
 
     const loadAndRepairVectorIndex = async () => {
@@ -1022,24 +1028,26 @@ export function LibraryScreen() {
               {t("library.catalog", "Каталог")}
             </Text>
           </Pressable>
-          <Pressable
-            accessible
-            accessibilityLabel={t("library.myBooks", "Мои книги")}
-            accessibilityRole="button"
-            accessibilityState={{ selected: librarySection === "my-books" }}
-            hitSlop={8}
-            onPress={() => setLibrarySection("my-books")}
-            style={({ pressed }) => pressed && s.librarySectionTabPressed}
-          >
-            <Text
-              style={[
-                s.librarySectionTabText,
-                librarySection === "my-books" && s.librarySectionTabTextActive,
-              ]}
+          {hasBooks ? (
+            <Pressable
+              accessible
+              accessibilityLabel={t("library.myBooks", "Мои книги")}
+              accessibilityRole="button"
+              accessibilityState={{ selected: librarySection === "my-books" }}
+              hitSlop={8}
+              onPress={() => setLibrarySection("my-books")}
+              style={({ pressed }) => pressed && s.librarySectionTabPressed}
             >
-              {t("library.myBooks", "Мои книги")}
-            </Text>
-          </Pressable>
+              <Text
+                style={[
+                  s.librarySectionTabText,
+                  librarySection === "my-books" && s.librarySectionTabTextActive,
+                ]}
+              >
+                {t("library.myBooks", "Мои книги")}
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
       ) : null}
     </>

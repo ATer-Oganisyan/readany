@@ -8,4 +8,5 @@ export interface ReaderCharacterActionsProps {
   voiceState: "idle" | "loading" | "playing";
   isDark: boolean;
   foregroundColor: string;
+  primaryForegroundColor: string;
 }

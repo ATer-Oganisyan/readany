@@ -4,6 +4,7 @@ import { hasBundledOpenRouterKey } from "@/config/bundled-ai";
 import { animateNarraImage } from "@/lib/narra/animate-openrouter";
 import { buildPortraitMotionPrompt } from "@/lib/narra/animate-prompt";
 import { NarraAudioPlayer } from "@/lib/narra/audio-player";
+import { hasCharacterPortrait, resolveCharacterPortraitUri } from "@/lib/narra/character-portrait";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
 import { reportNarraError } from "@/lib/narra/errors";
 import {
@@ -79,9 +80,7 @@ export function ReaderCharacterCard({
   // Растущий id запроса синтеза: устаревший ответ не должен заиграть после отмены.
   const voiceRequestRef = useRef(0);
 
-  const portraitUri = liveCharacter?.portraitUri
-    ? normalizePersistedNarraMediaUri(liveCharacter.portraitUri)
-    : undefined;
+  const portraitUri = resolveCharacterPortraitUri(liveCharacter);
   // Кэш «ожившего» портрета: повторный тап играет без генерации (P18).
   const portraitVideoUri = liveCharacter?.portraitVideoUri
     ? normalizePersistedNarraMediaUri(liveCharacter.portraitVideoUri)
@@ -110,7 +109,9 @@ export function ReaderCharacterCard({
     setPortraitLoading(true);
     // Новый портрет обесценивает старое «ожившее» видео
     setShowPortraitVideo(false);
-    const target = force ? { ...character, portraitUri: undefined } : character;
+    const target = force
+      ? { ...character, portraitAssetId: undefined, portraitUri: undefined }
+      : character;
     void ensureCharacterPortrait(bookId, target)
       .then((uri) =>
         updateCharacter(bookId, character.id, {
@@ -164,7 +165,7 @@ export function ReaderCharacterCard({
   // Портрет по требованию — тот же механизм, что и в NarraCharactersScreen;
   // для запертого героя не генерируем (антиспойлер и лишний расход).
   useEffect(() => {
-    if (!visible || !unlocked || !character || character.portraitUri) return;
+    if (!visible || !unlocked || !character || hasCharacterPortrait(character)) return;
     if (portraitAttemptsRef.current.has(character.id)) return;
     portraitAttemptsRef.current.add(character.id);
     setPortraitLoading(true);
@@ -263,9 +264,7 @@ export function ReaderCharacterCard({
       ) : (
         <>
           <ScrollView
-            style={
-              embedded ? [styles.embeddedScroll, { transform: [{ translateX: 14 }] }] : undefined
-            }
+            style={embedded ? styles.embeddedScroll : undefined}
             contentInsetAdjustmentBehavior="never"
             showsVerticalScrollIndicator={false}
             contentContainerStyle={[styles.scrollContent, embedded && styles.embeddedScrollContent]}
@@ -285,8 +284,10 @@ export function ReaderCharacterCard({
                     source={{ uri: portraitUri }}
                     style={styles.portraitImage}
                     resizeMode="cover"
-                    onError={() =>
-                      updateCharacter(bookId, character.id, { portraitUri: undefined })
+                    onError={
+                      liveCharacter?.portraitUri
+                        ? () => updateCharacter(bookId, character.id, { portraitUri: undefined })
+                        : undefined
                     }
                   />
                 ) : portraitLoading ? (
@@ -386,6 +387,7 @@ export function ReaderCharacterCard({
                 voiceState={voiceState}
                 isDark={isDark}
                 foregroundColor={colors.foreground}
+                primaryForegroundColor={colors.background}
               />
             </View>
           ) : null}
@@ -427,12 +429,17 @@ const makeStyles = (colors: ThemeColors) =>
     embedded: {
       flex: 1,
       maxHeight: "100%",
+      paddingHorizontal: 0,
       paddingTop: spacing.lg,
       borderTopLeftRadius: 0,
       borderTopRightRadius: 0,
     },
-    embeddedScroll: { flex: 1, width: "100%", alignSelf: "stretch" },
-    embeddedScrollContent: { paddingTop: spacing.md, paddingBottom: 84 },
+    embeddedScroll: { flex: 1, alignSelf: "stretch" },
+    embeddedScrollContent: {
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.md,
+      paddingBottom: 84,
+    },
     grabber: {
       alignSelf: "center",
       width: 36,
@@ -441,7 +448,7 @@ const makeStyles = (colors: ThemeColors) =>
       backgroundColor: colors.primary10,
     },
     scrollContent: {
-      width: "100%",
+      alignSelf: "stretch",
       alignItems: "center",
       gap: spacing.md,
       paddingBottom: spacing.sm,

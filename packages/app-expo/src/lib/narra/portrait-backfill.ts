@@ -20,7 +20,11 @@ export function collectPortraitBackfillJobs(
   const jobs: PortraitBackfillJob[] = [];
   for (const book of books) {
     for (const character of narraBooks[book.id]?.characters ?? []) {
-      if (!character.portraitUri && isCharacterUnlocked(book.progress, character)) {
+      if (
+        !character.portraitUri &&
+        !character.portraitAssetId &&
+        isCharacterUnlocked(book.progress, character)
+      ) {
         jobs.push({ bookId: book.id, character });
       }
     }

@@ -35,6 +35,8 @@ export interface NarraCharacter {
   appearanceChapter?: number;
   greeting?: string;
   isNarrator?: boolean;
+  /** Stable key of a portrait bundled with a catalog book. */
+  portraitAssetId?: string;
   portraitUri?: string;
   /** «Оживший» портрет (P18): зацикленное mp4-видео в narra-media. */
   portraitVideoUri?: string;

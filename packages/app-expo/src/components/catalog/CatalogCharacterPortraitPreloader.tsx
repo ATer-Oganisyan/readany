@@ -71,7 +71,11 @@ export function CatalogCharacterPortraitPreloader() {
     for (const book of books) {
       const bundledCharacters = getBundledCatalogCharactersByTitle(book.meta.title);
       if (!bundledCharacters?.length) continue;
-      if (!(narraBooks[book.id]?.characters.length ?? 0)) {
+      const storedCharacters = narraBooks[book.id]?.characters ?? [];
+      if (
+        storedCharacters.length === 0 ||
+        storedCharacters.some((character) => !character.portraitAssetId)
+      ) {
         setCharacters(book.id, bundledCharacters);
       }
     }

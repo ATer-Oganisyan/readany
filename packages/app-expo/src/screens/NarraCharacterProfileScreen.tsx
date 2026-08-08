@@ -8,9 +8,9 @@ import { ReaderCharacterCard } from "@/screens/reader/ReaderCharacterCard";
 import { useNarraStore } from "@/stores";
 import { type ThemeColors, fontSize, spacing, useTheme } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Platform, Pressable, StyleSheet, View } from "react-native";
+import { Alert, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type Props = NativeStackScreenProps<RootStackParamList, "NarraCharacterProfile">;
@@ -66,46 +66,6 @@ export function NarraCharacterProfileScreen({ route, navigation }: Props) {
       });
   };
 
-  useLayoutEffect(() => {
-    const close = () => navigation.goBack();
-
-    navigation.setOptions({
-      title: character?.name || t("narra.characterProfile", "Профиль персонажа"),
-      ...(Platform.OS === "ios"
-        ? {
-            headerRight: undefined,
-            unstable_headerLeftItems: () => [
-              {
-                type: "button" as const,
-                label: "",
-                width: 64,
-                disabled: true,
-                hidesSharedBackground: true,
-                onPress: () => {},
-              },
-            ],
-            unstable_headerRightItems: () => [
-              {
-                type: "button" as const,
-                label: t("common.done", "Готово"),
-                accessibilityLabel: t("common.close", "Закрыть"),
-                variant: "done" as const,
-                onPress: close,
-              },
-            ],
-          }
-        : {
-            unstable_headerLeftItems: undefined,
-            unstable_headerRightItems: undefined,
-            headerRight: () => (
-              <Pressable accessibilityRole="button" onPress={close} hitSlop={8}>
-                <Text style={styles.doneLabel}>{t("common.done", "Готово")}</Text>
-              </Pressable>
-            ),
-          }),
-    });
-  }, [character?.name, navigation, styles.doneLabel, t]);
-
   if (!character) {
     return (
       <View style={styles.emptyState}>
@@ -138,6 +98,7 @@ export function NarraCharacterProfileScreen({ route, navigation }: Props) {
           voiceState={voiceState}
           isDark={isDark}
           foregroundColor={colors.foreground}
+          primaryForegroundColor={colors.background}
         />
       </View>
     </View>
@@ -164,9 +125,5 @@ const makeStyles = (colors: ThemeColors) =>
       color: colors.mutedForeground,
       fontSize: fontSize.sm,
       textAlign: "center",
-    },
-    doneLabel: {
-      color: colors.primary,
-      fontSize: fontSize.sm,
     },
   });

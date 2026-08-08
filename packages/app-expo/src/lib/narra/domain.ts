@@ -46,6 +46,9 @@ export function withNarraCharacters(
       if (previous.portraitUri && !character.portraitUri) {
         merged.portraitUri = previous.portraitUri;
       }
+      if (previous.portraitAssetId && !character.portraitAssetId) {
+        merged.portraitAssetId = previous.portraitAssetId;
+      }
       if (previous.voiceOverride && !character.voiceOverride) {
         merged.voiceOverride = previous.voiceOverride;
       }

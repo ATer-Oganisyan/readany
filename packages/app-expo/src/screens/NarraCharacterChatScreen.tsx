@@ -4,9 +4,10 @@ import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import { NarraAudioPlayer } from "@/lib/narra/audio-player";
+import { resolveCharacterPortraitUri } from "@/lib/narra/character-portrait";
 import { isCharacterUnlocked, normalizeReadingProgress } from "@/lib/narra/domain";
 import { reportNarraError } from "@/lib/narra/errors";
-import { normalizePersistedNarraMediaUri, synthesizeNarraSpeech } from "@/lib/narra/media";
+import { synthesizeNarraSpeech } from "@/lib/narra/media";
 import type { NarraCharacter, NarraChatMessage } from "@/lib/narra/types";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useLibraryStore, useNarraStore } from "@/stores";
@@ -87,9 +88,7 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
   const audioRef = useRef(new NarraAudioPlayer());
   const greetingRequestedRef = useRef(false);
   const unlocked = Boolean(book && character && isCharacterUnlocked(book.progress, character));
-  const portraitUri = character?.portraitUri
-    ? normalizePersistedNarraMediaUri(character.portraitUri)
-    : undefined;
+  const portraitUri = resolveCharacterPortraitUri(character);
 
   useEffect(() => {
     recordTelemetry("chat_opened", { feature: "chat" });

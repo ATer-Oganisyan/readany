@@ -8,9 +8,10 @@ import { NativeThemePicker } from "@/components/profile/NativeThemePicker";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { getBundledCatalogCharactersByTitle } from "@/lib/narra/bundled-catalog-characters";
+import { hasCharacterPortrait, resolveCharacterPortraitUri } from "@/lib/narra/character-portrait";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
 import { reportNarraError } from "@/lib/narra/errors";
-import { ensureCharacterPortrait, normalizePersistedNarraMediaUri } from "@/lib/narra/media";
+import { ensureCharacterPortrait } from "@/lib/narra/media";
 import type { NarraCharacter } from "@/lib/narra/types";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useLibraryStore, useNarraStore } from "@/stores";
@@ -143,7 +144,11 @@ export function ChatsScreen() {
     if (portraitLoadingKey) return;
     const nextRow = rows.find((row) => {
       const key = `${row.book.id}:${row.character.id}`;
-      return row.unlocked && !row.character.portraitUri && !portraitAttemptsRef.current.has(key);
+      return (
+        row.unlocked &&
+        !hasCharacterPortrait(row.character) &&
+        !portraitAttemptsRef.current.has(key)
+      );
     });
     if (!nextRow) return;
 
@@ -191,9 +196,7 @@ export function ChatsScreen() {
     },
     ...rows.map((row): CharacterChatListItem => {
       const rowKey = `${row.book.id}:${row.character.id}`;
-      const portraitUri = row.character.portraitUri
-        ? normalizePersistedNarraMediaUri(row.character.portraitUri)
-        : undefined;
+      const portraitUri = resolveCharacterPortraitUri(row.character);
 
       return {
         key: rowKey,
@@ -207,8 +210,11 @@ export function ChatsScreen() {
               <Image
                 source={{ uri: portraitUri }}
                 style={styles.avatarImage}
-                onError={() =>
-                  updateCharacter(row.book.id, row.character.id, { portraitUri: undefined })
+                onError={
+                  row.character.portraitUri
+                    ? () =>
+                        updateCharacter(row.book.id, row.character.id, { portraitUri: undefined })
+                    : undefined
                 }
               />
             ) : (
