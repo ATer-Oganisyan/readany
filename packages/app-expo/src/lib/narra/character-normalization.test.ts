@@ -13,6 +13,25 @@ describe("Narra analysis normalization", () => {
     expect(characters.map((character) => character.name)).toEqual(["Стива", "Анна"]);
   });
 
+  it("keeps book-derived passport values and replaces unknown markers", () => {
+    const [character] = normalizeCharacterAnalysisResponse(
+      '{"characters":[{"name":"Наташа","fullName":"Наталья Ростова","gender":"female",' +
+        '"appearancePrompt":"тринадцатилетняя девочка",' +
+        '"passport":{"age":13,"build":"хрупкое","hair":"не указано","eyes":"—","face":"","outfit":"платье"}}]}',
+    );
+
+    expect(character.passport).toMatchObject({
+      age: 13,
+      build: "хрупкое",
+      outfit: "платье",
+      // Признаки, которых нет в тексте, не должны утекать в промпт портрета.
+      hair: "тёмные волосы",
+      eyes: "карие глаза",
+      face: "выразительные черты",
+    });
+    expect(character.appearancePrompt).toBe("тринадцатилетняя девочка");
+  });
+
   it("normalizes fenced JSON and preserves an explicit zero unlockProgress", () => {
     const characters = normalizeCharacterAnalysisResponse(`Ответ:\n\`\`\`json
       {"characters":[

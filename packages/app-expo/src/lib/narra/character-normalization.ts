@@ -172,17 +172,28 @@ function normalizeGender(value: unknown, name: string): NarraGender {
   return /[ая]$/i.test(name) ? "female" : "male";
 }
 
+/**
+ * Модель отвечает «не указано» для признаков, которых нет в отрывке. В промпт
+ * портрета такое значение попадать не должно — подставляем нейтральный дефолт.
+ */
+const UNKNOWN_PASSPORT_VALUE = /^(не\s*указан[оаы]?|неизвестн[оаы]|нет\s*данных|н\/д|—|-|\?)$/i;
+
+function passportField(value: unknown, fallback: string): string {
+  const text = String(value ?? "").trim();
+  return !text || UNKNOWN_PASSPORT_VALUE.test(text) ? fallback : text;
+}
+
 function normalizePassport(raw: unknown, gender: NarraGender): NarraPassport | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const passport = raw as Record<string, unknown>;
   return {
     age: Math.max(1, Number(passport.age) || 30),
     gender,
-    build: String(passport.build || "обычное телосложение"),
-    hair: String(passport.hair || "тёмные волосы"),
-    eyes: String(passport.eyes || "карие глаза"),
-    face: String(passport.face || "выразительные черты"),
-    outfit: String(passport.outfit || "одежда по эпохе книги"),
+    build: passportField(passport.build, "обычное телосложение"),
+    hair: passportField(passport.hair, "тёмные волосы"),
+    eyes: passportField(passport.eyes, "карие глаза"),
+    face: passportField(passport.face, "выразительные черты"),
+    outfit: passportField(passport.outfit, "одежда по эпохе книги"),
   };
 }
 

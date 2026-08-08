@@ -59,6 +59,21 @@ describe("Narra character analysis", () => {
     expect(request?.headers).toMatchObject({ accept: "text/event-stream" });
   });
 
+  it("asks for appearance and age from the book text, not from adaptations", async () => {
+    vi.mocked(getChunks).mockResolvedValueOnce([
+      { chapterTitle: "Глава", content: "Текст" },
+    ] as Awaited<ReturnType<typeof getChunks>>);
+
+    await analyzeBookCharacters(book);
+
+    const [, request] = vi.mocked(narraGatewayRequest).mock.calls[0] ?? [];
+    const systemPrompt = String(JSON.parse(String(request?.body)).messages[0].content);
+    for (const field of ["appearancePrompt", "passport", "age", "build", "hair", "eyes", "face", "outfit"]) {
+      expect(systemPrompt).toContain(field);
+    }
+    expect(systemPrompt).toContain("экранизаци");
+  });
+
   it("loads and bounds a fallback sample when chunks are unavailable", async () => {
     vi.mocked(getChunks).mockResolvedValueOnce([]);
     const fallback = vi.fn(async () => "Начало ".repeat(10_000));
