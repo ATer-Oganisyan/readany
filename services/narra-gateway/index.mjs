@@ -1031,11 +1031,12 @@ app.post('/v2/ai/chat/stream', aiLimit, aiDailyLimit, express.json({ limit: '1mb
     res.setHeader('Connection', 'keep-alive')
     res.setHeader('X-Request-Id', requestId)
     res.setHeader('X-Narra-Route', analyticsRoute(provider, model))
+    let usageCollector
     const usage = await settleProviderResponse({
       finalizeAttempt,
       consume: async () => {
         let streamedBytes = 0
-        const usageCollector = createSseUsageCollector()
+        usageCollector = createSseUsageCollector()
         for await (const chunk of upstream.body) {
           streamedBytes += Buffer.byteLength(chunk)
           if (streamedBytes > LLM_RESPONSE_MAX_BYTES) {
@@ -1049,6 +1050,10 @@ app.post('/v2/ai/chat/stream', aiLimit, aiDailyLimit, express.json({ limit: '1mb
       }
     })
     res.end()
+    const finishReason = usageCollector?.finishReason()
+    if (finishReason === 'length') {
+      console.warn(`[llm] ответ обрезан лимитом max_tokens: purpose=${input.purpose} request_id=${requestId}`)
+    }
     if (recordActorAnalytics) {
       await appendInternalEvent(req, 'ai_request_completed', completionProperties({
         requestId,
@@ -1058,7 +1063,8 @@ app.post('/v2/ai/chat/stream', aiLimit, aiDailyLimit, express.json({ limit: '1mb
         latencyMs: Date.now() - startedAt,
         usage,
         responseCost,
-        origin: input.origin
+        origin: input.origin,
+        finishReason
       }))
     }
   } catch (e) {
@@ -1142,6 +1148,10 @@ app.post('/v2/ai/chat/complete', aiLimit, aiDailyLimit, express.json({ limit: '1
         return validateChatCompletionPayload(payload)
       }
     })
+    const finishReason = j?.choices?.[0]?.finish_reason
+    if (finishReason === 'length') {
+      console.warn(`[llm] ответ обрезан лимитом max_tokens: purpose=${input.purpose} request_id=${requestId}`)
+    }
     if (recordActorAnalytics) {
       await appendInternalEvent(req, 'ai_request_completed', completionProperties({
         requestId,
@@ -1151,7 +1161,8 @@ app.post('/v2/ai/chat/complete', aiLimit, aiDailyLimit, express.json({ limit: '1
         latencyMs: Date.now() - startedAt,
         usage: j?.usage,
         responseCost,
-        origin: input.origin
+        origin: input.origin,
+        finishReason
       }))
     }
     res.json({

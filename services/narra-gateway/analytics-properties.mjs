@@ -40,16 +40,27 @@ export function providerAttemptProperties(requestId, purpose, attempt) {
   return Object.fromEntries(Object.entries(properties).filter(([, value]) => value !== undefined))
 }
 
+// Закрытый словарь finish_reason: content_filter до аналитики не доживает
+// (перехватывается как CENSOR), но нормализуем на случай смены политики.
+const FINISH_REASONS = new Set(['stop', 'length', 'tool_calls', 'content_filter'])
+
+export function normalizeFinishReason(value) {
+  if (value === undefined || value === null || value === '') return undefined
+  return FINISH_REASONS.has(String(value)) ? String(value) : 'other'
+}
+
 export function completionProperties({
-  requestId, purpose, provider, model, latencyMs, usage, responseCost, origin = 'user'
+  requestId, purpose, provider, model, latencyMs, usage, responseCost, origin = 'user', finishReason
 }) {
+  const normalizedFinish = normalizeFinishReason(finishReason)
   const properties = {
     request_id: requestId,
     purpose,
     route: analyticsRoute(provider, model),
     latency_ms: boundedNumber(latencyMs, { integer: true }),
     success: true,
-    origin
+    origin,
+    ...(normalizedFinish ? { finish_reason: normalizedFinish } : {})
   }
   const usageCost = boundedNumber(usage?.cost)
   const headerCost = boundedNumber(responseCost)
@@ -82,6 +93,7 @@ export function createSseUsageCollector({ maxBufferedBytes = 512 * 1024 } = {}) 
   const decoder = new TextDecoder()
   let buffered = ''
   let usage
+  let finishReason
   let sawJsonEvent = false
   let done = false
 
@@ -125,6 +137,11 @@ export function createSseUsageCollector({ maxBufferedBytes = 512 * 1024 } = {}) 
       ) {
         throw protocolError('CENSOR', 'LLM stream was blocked by content safety', 422)
       }
+      if (Array.isArray(parsed?.choices)) {
+        for (const choice of parsed.choices) {
+          if (choice?.finish_reason) finishReason = choice.finish_reason
+        }
+      }
       if (parsed && typeof parsed.usage === 'object' && !Array.isArray(parsed.usage)) {
         usage = parsed.usage
       }
@@ -145,6 +162,9 @@ export function createSseUsageCollector({ maxBufferedBytes = 512 * 1024 } = {}) 
       if (!sawJsonEvent) throw protocolError('PARSE', 'LLM stream did not contain a JSON event')
       if (!done) throw protocolError('PARSE', 'LLM stream ended before [DONE]')
       return usage
+    },
+    finishReason() {
+      return finishReason
     }
   }
 }

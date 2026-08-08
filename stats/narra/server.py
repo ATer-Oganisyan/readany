@@ -183,7 +183,7 @@ EVENT_PROPERTIES = {
     "ai_request_completed": {
         "request_id", "purpose", "route", "latency_ms", "success",
         "input_tokens", "output_tokens", "total_tokens", "exact_cost",
-        "cost_currency", "cost_source", "origin",
+        "cost_currency", "cost_source", "origin", "finish_reason",
     },
     "ai_request_failed": {
         "request_id", "purpose", "route", "latency_ms", "success", "error_code", "origin",
@@ -858,6 +858,10 @@ def compute_dashboard(days: float = 1.0) -> dict[str, Any]:
             str(row["properties"].get("request_id")),
         ) in completed_ids
     ]
+    truncated_requests = sum(
+        1 for row in completed_requests
+        if row["properties"].get("finish_reason") == "length"
+    )
     request_latencies = [
         float(row["properties"]["latency_ms"])
         for row in completed_requests
@@ -1257,6 +1261,11 @@ def compute_dashboard(days: float = 1.0) -> dict[str, Any]:
             "value": round(explicit_errors * 100 / active_user_days, 2) if active_user_days else None,
             "unit": "ratio", "note": f"{explicit_errors} explicit request/import errors",
             "help": "Final user-visible AI/import failures. Individual provider-attempt failures remain in the AI block.",
+        },
+        {
+            "label": "Truncated LLM replies", "value": truncated_requests, "unit": "events",
+            "note": f"of {len(completed_requests)} completed AI requests",
+            "help": "Completed requests whose reply hit the gateway max_tokens ceiling (finish_reason=length). Truncated JSON breaks client parsing even though the request reports success; raise LLM_MAX_TOKENS_* on the gateway if this is above zero.",
         },
         {
             "label": "Request ID coverage", "value": request_coverage, "unit": "%",

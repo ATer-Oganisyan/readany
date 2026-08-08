@@ -4,6 +4,7 @@ import {
   analyticsRoute,
   completionProperties,
   createSseUsageCollector,
+  normalizeFinishReason,
   providerAttemptProperties
 } from '../analytics-properties.mjs'
 
@@ -42,6 +43,33 @@ test('LiteLLM response header is used only as an exact fallback cost source', ()
   assert.equal(result.exact_cost, 0.125)
   assert.equal(result.cost_currency, 'USD')
   assert.equal(result.cost_source, 'litellm_response_header')
+})
+
+test('finish_reason is normalized to the closed vocabulary and omitted when absent', () => {
+  assert.equal(normalizeFinishReason('length'), 'length')
+  assert.equal(normalizeFinishReason('stop'), 'stop')
+  assert.equal(normalizeFinishReason('weird_reason_from_provider'), 'other')
+  assert.equal(normalizeFinishReason(undefined), undefined)
+  assert.equal(normalizeFinishReason(''), undefined)
+  const truncated = completionProperties({
+    requestId: '123e4567-e89b-42d3-a456-426614174001', purpose: 'structured_task',
+    provider: 'giga', model: 'giga', latencyMs: 5, usage: {}, finishReason: 'length'
+  })
+  assert.equal(truncated.finish_reason, 'length')
+  const missing = completionProperties({
+    requestId: '123e4567-e89b-42d3-a456-426614174001', purpose: 'structured_task',
+    provider: 'giga', model: 'giga', latencyMs: 5, usage: {}
+  })
+  assert.ok(!('finish_reason' in missing))
+})
+
+test('stream usage collector captures the terminal finish_reason', () => {
+  const collector = createSseUsageCollector()
+  collector.push(Buffer.from('data: {"choices":[{"delta":{"content":"a"},"finish_reason":null}]}\n\n'))
+  collector.push(Buffer.from('data: {"choices":[{"delta":{},"finish_reason":"length"}]}\n\n'))
+  collector.push(Buffer.from('data: {"choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}\n\ndata: [DONE]\n\n'))
+  collector.value()
+  assert.equal(collector.finishReason(), 'length')
 })
 
 test('stream usage collector handles split SSE chunks without retaining content', () => {

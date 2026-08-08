@@ -507,6 +507,25 @@ class NarraStatsTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 monitoring._public_addresses("example.com", 443)
 
+    def test_truncated_llm_replies_tile_counts_finish_reason_length(self):
+        truncated_id, ok_id = str(uuid.uuid4()), str(uuid.uuid4())
+        add("ai_request_started", properties={"request_id": truncated_id, "purpose": "structured_task"})
+        add("ai_request_completed", properties={
+            "request_id": truncated_id, "purpose": "structured_task",
+            "latency_ms": 120, "finish_reason": "length",
+        })
+        add("ai_request_started", properties={"request_id": ok_id, "purpose": "summary"})
+        add("ai_request_completed", properties={
+            "request_id": ok_id, "purpose": "summary",
+            "latency_ms": 90, "finish_reason": "stop",
+        })
+        data = server.compute_dashboard(1)
+        tile = next(
+            entry for entry in data["diagnostics"]
+            if entry["label"] == "Truncated LLM replies"
+        )
+        self.assertEqual(tile["value"], 1)
+
     def test_dashboard_includes_operational_monitoring_without_product_events(self):
         data = server.compute_dashboard(1)
         self.assertEqual(data["monitoring"]["overall"], "unknown")
@@ -864,7 +883,7 @@ class NarraStatsTest(unittest.TestCase):
         self.assertEqual(selected[0]["value"], data["overview"]["tools_per_dau"])
         self.assertEqual(tools["provider_attempts_calendar_day_dau"]["value"], 2.0)
         self.assertEqual(tools["logical_ai_requests_calendar_day_dau"]["value"], 1.0)
-        self.assertEqual(len(data["diagnostics"]), 11)
+        self.assertEqual(len(data["diagnostics"]), 12)
         self.assertEqual(data["quality"]["token_coverage"], 100.0)
         feature_names = {row["name"] for row in data["features"]}
         self.assertIn("Book summary", feature_names)
