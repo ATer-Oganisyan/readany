@@ -5,6 +5,7 @@ import { LibraryScreen } from "@/screens/LibraryScreen";
 import { NotesScreen } from "@/screens/NotesScreen";
 import { ProfileScreen } from "@/screens/ProfileScreen";
 import { SearchScreen } from "@/screens/SearchScreen";
+import { useLibraryStore } from "@/stores/library-store";
 import { useTheme } from "@/styles/ThemeContext";
 import { fontFamily, largeTitleFontFamily, titleFontFamily } from "@/styles/theme";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
@@ -288,6 +289,7 @@ export function TabNavigator() {
   const { t } = useTranslation();
   const { colors } = useTheme();
   const androidTabIcons = useAndroidMaterialTabIcons();
+  const shouldShowChats = useLibraryStore((state) => state.isLoaded && state.books.length > 0);
 
   if (Platform.OS === "android" && androidTabIcons === undefined) return null;
 
@@ -313,15 +315,17 @@ export function TabNavigator() {
           tabBarIcon: tabIcon("book.closed.fill", androidTabIcons?.Library),
         }}
       />
-      <Tab.Screen
-        name="Chats"
-        component={ChatsTabStackNavigator}
-        options={{
-          title: t("tabs.chats", "Чаты"),
-          tabBarLabel: t("tabs.chats", "Чаты"),
-          tabBarIcon: tabIcon("message.fill", androidTabIcons?.Chats),
-        }}
-      />
+      {shouldShowChats ? (
+        <Tab.Screen
+          name="Chats"
+          component={ChatsTabStackNavigator}
+          options={{
+            title: t("tabs.chats", "Чаты"),
+            tabBarLabel: t("tabs.chats", "Чаты"),
+            tabBarIcon: tabIcon("message.fill", androidTabIcons?.Chats),
+          }}
+        />
+      ) : null}
       <Tab.Screen
         name="Profile"
         component={ProfileTabStackNavigator}
