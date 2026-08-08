@@ -507,6 +507,37 @@ class NarraStatsTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 monitoring._public_addresses("example.com", 443)
 
+    def test_every_event_property_is_also_globally_safe(self):
+        """Свойство проходит ingest только если оно в ОБОИХ списках. Раздельные
+        списки уже роняли ai_request_completed в dead-letter: finish_reason был
+        добавлен в EVENT_PROPERTIES и забыт в SAFE_PROPERTIES."""
+        for name, properties in server.EVENT_PROPERTIES.items():
+            missing = set(properties) - server.SAFE_PROPERTIES
+            self.assertEqual(missing, set(), f"{name}: свойства вне SAFE_PROPERTIES: {missing}")
+
+    def test_ingest_accepts_ai_request_completed_with_finish_reason(self):
+        event = {
+            "event_id": str(uuid.uuid4()),
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "device_id": ACTOR_A,
+            "name": "ai_request_completed",
+            "session_id": None,
+            "schema_version": 1,
+            "properties": {
+                "request_id": str(uuid.uuid4()), "purpose": "character_chat",
+                "route": "giga:gpt-5.6-luna", "latency_ms": 1819, "success": True,
+                "origin": "user", "finish_reason": "stop",
+            },
+        }
+        with patch.object(server, "INGEST_TOKEN", "ingest-test-token"), patch.object(
+            server, "ENVIRONMENT", ""
+        ):
+            response = asyncio.run(
+                server.ingest(json_request("/events", {"events": [event]}, "ingest-test-token"))
+            )
+        self.assertEqual(response.status_code, 202, response.body)
+        self.assertEqual(json.loads(response.body)["accepted"], 1)
+
     def test_truncated_llm_replies_tile_counts_finish_reason_length(self):
         truncated_id, ok_id = str(uuid.uuid4()), str(uuid.uuid4())
         add("ai_request_started", properties={"request_id": truncated_id, "purpose": "structured_task"})

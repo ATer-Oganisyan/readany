@@ -158,6 +158,7 @@ SAFE_PROPERTIES = {
     "job_latency_bucket", "cache_hit", "result_size_bucket",
     "retry_count_bucket", "queue_or_running", "sample_rate",
     "first_audio_latency_bucket", "source", "listened_fraction_bucket",
+    "finish_reason",
 }
 EVENT_PROPERTIES = {
     "app_opened": {"app_version", "os_major", "arch", "channel"},
@@ -228,6 +229,7 @@ PROPERTY_ENUMS = {
     "error_code": {"UNKNOWN", "VALIDATION", "NETWORK", "AUTH", "TIMEOUT", "RATE", "NO_KEY", "NO_PROXY", "PARSE", "CENSOR", "CANCELLED"},
     "cost_currency": {"USD"},
     "cost_source": {"openrouter_usage", "litellm_usage", "litellm_response_header"},
+    "finish_reason": {"stop", "length", "tool_calls", "content_filter", "other"},
     "analysis_version": {"v1"},
     "character_count_bucket": {"0", "1-3", "4-8", "9+"},
     "pov": {"first_person", "third_person", "unknown"},
