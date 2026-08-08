@@ -43,6 +43,21 @@ function providerConfig(name, purpose, env) {
   }
 }
 
+// Потолок ответа LLM. Жёсткие 1024 токена на стриме обрезали structured-ответы
+// (анализ героев рвался на середине JSON — «Сервис не распознал персонажей»),
+// поэтому лимиты конфигурируются: LLM_MAX_TOKENS_<PURPOSE> точечно,
+// LLM_MAX_TOKENS_STREAM / LLM_MAX_TOKENS_COMPLETE по умолчанию для режима.
+export function maxTokensFor(purpose, stream, env = process.env) {
+  const fallback = stream ? 4096 : 8000
+  const raw =
+    env[`LLM_MAX_TOKENS_${String(purpose || '').toUpperCase()}`] ||
+    env[stream ? 'LLM_MAX_TOKENS_STREAM' : 'LLM_MAX_TOKENS_COMPLETE'] ||
+    ''
+  const value = Number(String(raw).trim() || fallback)
+  if (!Number.isFinite(value) || value < 256) return fallback
+  return Math.min(Math.round(value), 32_000)
+}
+
 export function routeForPurpose(purpose, env = process.env) {
   const suffix = purpose.toUpperCase()
   const primary = String(env[`LLM_ROUTE_${suffix}`] || env.LLM_ROUTE_DEFAULT || 'giga').toLowerCase()
@@ -125,7 +140,7 @@ export async function requestChat({
           model: config.model,
           messages,
           temperature,
-          max_tokens: stream ? 1024 : 6000,
+          max_tokens: maxTokensFor(purpose, stream, env),
           stream,
           ...(stream && providerName === 'giga'
             ? { stream_options: { include_usage: true } }

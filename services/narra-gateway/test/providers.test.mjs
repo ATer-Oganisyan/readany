@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   coverRouteReadiness,
   llmRouteReadiness,
+  maxTokensFor,
   requestChat,
   requestCoverImage,
   routeForPurpose
@@ -25,6 +26,47 @@ test('readiness requires a complete configured route for every purpose', () => {
     LLM_API_KEY: 'key', LLM_MODEL: 'model'
   })
   assert.equal(ready.ready, true)
+})
+
+test('llm max_tokens has safe defaults and env overrides with bounds', async () => {
+  assert.equal(maxTokensFor('structured_task', true, {}), 4096)
+  assert.equal(maxTokensFor('structured_task', false, {}), 8000)
+  assert.equal(maxTokensFor('summary', true, { LLM_MAX_TOKENS_STREAM: '2048' }), 2048)
+  assert.equal(maxTokensFor('summary', false, { LLM_MAX_TOKENS_COMPLETE: '12000' }), 12000)
+  assert.equal(
+    maxTokensFor('structured_task', true, {
+      LLM_MAX_TOKENS_STREAM: '2048',
+      LLM_MAX_TOKENS_STRUCTURED_TASK: '9000'
+    }),
+    9000
+  )
+  assert.equal(maxTokensFor('summary', true, { LLM_MAX_TOKENS_STREAM: '10' }), 4096)
+  assert.equal(maxTokensFor('summary', false, { LLM_MAX_TOKENS_COMPLETE: 'мусор' }), 8000)
+  assert.equal(maxTokensFor('summary', false, { LLM_MAX_TOKENS_COMPLETE: '900000' }), 32000)
+
+  const bodies = []
+  const fetchImpl = async (url, init) => {
+    bodies.push(JSON.parse(init.body))
+    return new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    })
+  }
+  const result = await requestChat({
+    messages: [{ role: 'user', content: 'hi' }],
+    temperature: 0.2,
+    purpose: 'structured_task',
+    stream: false,
+    fetchImpl,
+    env: {
+      LLM_ROUTE_STRUCTURED_TASK: 'giga',
+      LLM_BASE_URL: 'https://giga.test',
+      LLM_API_KEY: 'key',
+      LLM_MODEL: 'model'
+    }
+  })
+  await result.finalizeAttempt()
+  assert.equal(bodies[0].max_tokens, 8000)
 })
 
 test('retryable primary failure falls back and keeps one request identity', async () => {
