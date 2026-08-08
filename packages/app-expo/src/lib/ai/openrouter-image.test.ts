@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/config/bundled-ai", () => ({
   bundledOpenRouterEndpoint: {
@@ -14,6 +14,10 @@ import { generateOpenRouterImage } from "./openrouter-image";
 
 beforeEach(() => {
   vi.clearAllMocks();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("generateOpenRouterImage", () => {
@@ -65,5 +69,34 @@ describe("generateOpenRouterImage", () => {
         outputFormat: "jpeg",
       }),
     ).rejects.toThrow("User not found.");
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries transient provider failures before returning the image", async () => {
+    vi.useFakeTimers();
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: { message: "Provider temporarily unavailable" } }), {
+          status: 503,
+          headers: { "content-type": "application/json" },
+        }) as never,
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: [{ b64_json: "AQID" }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }) as never,
+      );
+
+    const result = generateOpenRouterImage({
+      model: "openai/gpt-image-2",
+      prompt: "scene",
+      aspectRatio: "3:2",
+      outputFormat: "jpeg",
+    });
+    await vi.runAllTimersAsync();
+
+    await expect(result).resolves.toEqual({ base64: "AQID", mimeType: "image/jpeg" });
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 });
