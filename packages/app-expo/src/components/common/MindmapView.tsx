@@ -536,7 +536,7 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
   },
   loading: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     justifyContent: "center",
     alignItems: "center",
     zIndex: 1,

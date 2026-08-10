@@ -1,6 +1,6 @@
 import { useTheme } from "@/styles/theme";
 import { interfaceFontFamily } from "@deslop/primitives/native";
-import { Host, TextField } from "@expo/ui/swift-ui";
+import { Host, TextField, useNativeState } from "@expo/ui/swift-ui";
 import {
   font,
   foregroundStyle,
@@ -19,6 +19,7 @@ export function NativeNoteEditor({
   initialValue = "",
 }: NativeNoteEditorProps) {
   const { colors, isDark } = useTheme();
+  const text = useNativeState(initialValue);
   const handleChange = useCallback((value: string) => onChange(value), [onChange]);
 
   return (
@@ -29,9 +30,9 @@ export function NativeNoteEditor({
       <TextField
         axis="vertical"
         placeholder="Начните писать…"
-        defaultValue={initialValue}
+        text={text}
         autoFocus={autoFocus}
-        onValueChange={handleChange}
+        onTextChange={handleChange}
         modifiers={[
           frame({
             minWidth: 0,

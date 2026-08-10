@@ -72,7 +72,7 @@ export function VoicePickerModal({
       onRequestClose={onClose}
     >
       <View style={s.voicePickerContainer}>
-        <Pressable style={StyleSheet.absoluteFillObject} onPress={onClose} />
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <View
           style={[
             s.voicePickerSheet,

@@ -47,7 +47,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   initialsFrame: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "center",
     justifyContent: "center",
   },

@@ -1,4 +1,4 @@
-const { withPodfile } = require("@expo/config-plugins");
+const { withPodfile } = require("expo/config-plugins");
 
 const GAMMA_FLAG = "ENV['RNS_GAMMA_ENABLED'] = '1'";
 

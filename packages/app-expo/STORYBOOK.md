@@ -5,7 +5,7 @@
 ## Запуск Storybook
 
 ```bash
-pnpm --filter @readany/app-expo storybook -- --tunnel
+pnpm --filter @readany/app-expo storybook:start
 ```
 
 Откройте появившийся QR-код через камеру iPhone или Android. Если dev build уже открыт, нажмите `r` в терминале Metro.

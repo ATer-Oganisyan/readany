@@ -58,7 +58,7 @@ export function MissingBookPrompt() {
 const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     overlay: {
-      ...StyleSheet.absoluteFillObject,
+      ...StyleSheet.absoluteFill,
       backgroundColor: "rgba(0,0,0,0.32)",
       justifyContent: "center",
       alignItems: "center",

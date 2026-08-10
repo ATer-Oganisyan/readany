@@ -331,7 +331,7 @@ import { fontSize as fs, fontWeight as fw } from "@/styles/theme";
 const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     overlay: {
-      ...StyleSheet.absoluteFillObject,
+      ...StyleSheet.absoluteFill,
       zIndex: 100,
     },
     popover: {

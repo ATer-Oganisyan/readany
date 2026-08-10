@@ -119,5 +119,5 @@ export function AnimatedNarraFace({ width = 27, height = 28 }: AnimatedNarraFace
 }
 
 const styles = StyleSheet.create({
-  layer: StyleSheet.absoluteFillObject,
+  layer: StyleSheet.absoluteFill,
 });

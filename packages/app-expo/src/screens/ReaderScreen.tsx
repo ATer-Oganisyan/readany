@@ -169,7 +169,7 @@ const NOTE_TOOLTIP_SIDE_PADDING = 12;
 const NOTE_TOOLTIP_ABOVE_OFFSET = 2;
 const NOTE_TOOLTIP_BELOW_OFFSET = 8;
 const NOTE_TOOLTIP_TOP_THRESHOLD = 180;
-import { resolveReaderThemeColors } from "@/lib/reader/reader-themes";
+import { getAppSyncedReaderTheme, resolveReaderThemeColors } from "@/lib/reader/reader-themes";
 import { useRubyStore } from "@readany/core/stores/ruby-store";
 import { ReaderSettingsPanel } from "./reader/ReaderSettingsPanel.entry";
 import { type ReaderNavTab, ReaderTOCPanel } from "./reader/ReaderTOCPanel";
@@ -507,13 +507,22 @@ function ReaderContent({ route, navigation }: Props) {
   const aiConfig = useSettingsStore((s) => s.aiConfig);
   const showTopTitleProgress = readSettings.showTopTitleProgress !== false;
 
+  // При открытии ридера и при смене темы приложения начинаем с той же темы.
+  // После этого пользователь может выбрать сепию или другую тему для текущей сессии.
+  useEffect(() => {
+    const readerTheme = getAppSyncedReaderTheme(isDark);
+    if (useSettingsStore.getState().readSettings.readerTheme !== readerTheme) {
+      updateReadSettings({ readerTheme });
+    }
+  }, [isDark, updateReadSettings]);
+
   // Тема страницы (пресет Aa-панели): «Оригинал» — цвета приложения,
-  // «Сепия»/«Тёмная» — собственные палитры только внутри WebView
+  // «Сепия»/«Тёмная» — собственные палитры страницы и окружающих полей.
   const readerThemeColors = useMemo(
     () =>
       resolveReaderThemeColors(readSettings.readerTheme, {
-        background: colors.background,
-        foreground: colors.foreground,
+        background: colors.primary10,
+        foreground: colors.primary80,
         muted: colors.mutedForeground,
         primary: colors.primary,
       }),
@@ -521,6 +530,9 @@ function ReaderContent({ route, navigation }: Props) {
   );
   const readerThemeColorsRef = useRef(readerThemeColors);
   readerThemeColorsRef.current = readerThemeColors;
+  const isReaderThemeDark =
+    readSettings.readerTheme === "dark" ||
+    ((readSettings.readerTheme === "original" || !readSettings.readerTheme) && isDark);
 
   // Track OS-level accessibility font scale; re-renders when the user
   // changes the system font size while the reader is open.
@@ -764,11 +776,12 @@ function ReaderContent({ route, navigation }: Props) {
       headerTransparent: true,
       headerShadowVisible: false,
       headerBackButtonDisplayMode: "minimal",
-      headerTintColor: colors.foreground,
+      headerTintColor: readerThemeColors.foreground,
+      statusBarStyle: isReaderThemeDark ? "light" : "dark",
       headerTitleAlign: "center",
       title: "",
     });
-  }, [actionsMenuOpen, colors.foreground, navigation, showControls]);
+  }, [actionsMenuOpen, isReaderThemeDark, navigation, readerThemeColors.foreground, showControls]);
 
   const suppressProgressTracking = useCallback((duration = PROGRAMMATIC_NAV_GUARD_MS) => {
     progressTrackingGuardUntilRef.current = Math.max(
@@ -2014,13 +2027,13 @@ function ReaderContent({ route, navigation }: Props) {
           zIndex: 30,
           height: TOOLBAR_HEIGHT + insets.bottom,
           paddingBottom: insets.bottom,
-          backgroundColor: colors.background,
+          backgroundColor: readerThemeColors.background,
           transform: [{ translateY: showControls ? 0 : TOOLBAR_HEIGHT + insets.bottom }],
         }}
       >
         <ReaderToolbar
-          tintColor={colors.foreground}
-          isDark={isDark}
+          tintColor={readerThemeColors.foreground}
+          isDark={isReaderThemeDark}
           speechActive={ttsPlayState === "playing" || ttsPlayState === "loading"}
           onSpeechPress={() => void tts.handleToggleTTS()}
           onChatPress={handleOpenCharacters}
@@ -2127,13 +2140,24 @@ function ReaderContent({ route, navigation }: Props) {
 
   return (
     <>
-      <View style={[s.container, { paddingBottom: insets.bottom }]}>
+      <View
+        style={[
+          s.container,
+          { paddingBottom: insets.bottom, backgroundColor: readerThemeColors.background },
+        ]}
+      >
         <Animated.View
-          style={[s.readerStage, { transform: [{ translateY: readerPullAnim }] }]}
+          style={[
+            s.readerStage,
+            {
+              backgroundColor: readerThemeColors.background,
+              transform: [{ translateY: readerPullAnim }],
+            },
+          ]}
           pointerEvents="box-none"
         >
           {/* WebView with foliate-js */}
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, backgroundColor: readerThemeColors.background }}>
             <WebView
               ref={bridge.webViewRef}
               source={{ uri: readerHtmlUri }}
@@ -2141,6 +2165,7 @@ function ReaderContent({ route, navigation }: Props) {
                 s.webview,
                 {
                   marginTop: readerTopMargin,
+                  backgroundColor: readerThemeColors.background,
                 },
               ]}
               pointerEvents={isPanelOpen ? "none" : "auto"}
@@ -2190,20 +2215,22 @@ function ReaderContent({ route, navigation }: Props) {
               style={[s.topInfoBar, { top: layoutTopInset, paddingHorizontal: readerContentInset }]}
             >
               <View style={s.topInfoRow}>
-                <Text style={s.topInfoText} numberOfLines={1}>
+                <Text style={[s.topInfoText, { color: readerThemeColors.muted }]} numberOfLines={1}>
                   {currentChapter || bookTitle}
                 </Text>
                 {/* Номер страницы по всей книге (как в Apple Books); без
                     location (scrolled/fixed-layout) — процент прогресса */}
                 {bookLocation ? (
-                  <Text style={s.topInfoPageText}>
+                  <Text style={[s.topInfoPageText, { color: readerThemeColors.muted }]}>
                     {t("reader.pageOfBook", "стр. {{current}} из {{total}}", {
                       current: Math.min(bookLocation.current + 1, bookLocation.total),
                       total: bookLocation.total,
                     })}
                   </Text>
                 ) : (
-                  <Text style={s.topInfoPageText}>{`${percent}%`}</Text>
+                  <Text
+                    style={[s.topInfoPageText, { color: readerThemeColors.muted }]}
+                  >{`${percent}%`}</Text>
                 )}
               </View>
             </View>

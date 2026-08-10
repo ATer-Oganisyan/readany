@@ -74,7 +74,7 @@ export function PerspectiveBook({
             colors={["rgba(255,255,255,0.13)", "rgba(255,255,255,0)", "rgba(0,0,0,0.18)"]}
             locations={[0, 0.52, 1]}
             pointerEvents="none"
-            style={StyleSheet.absoluteFillObject}
+            style={StyleSheet.absoluteFill}
           />
           <View pointerEvents="none" style={styles.coverFinish} />
         </View>
@@ -107,7 +107,7 @@ const styles = StyleSheet.create({
     opacity: 0.72,
   },
   coverFinish: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(255,255,255,0.11)",
     borderRadius: radius.sm,

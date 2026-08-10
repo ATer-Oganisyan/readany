@@ -1,6 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
-const { withFinalizedMod } = require("@expo/config-plugins");
+const { withFinalizedMod } = require("expo/config-plugins");
 const { Builder, Parser } = require("xml2js");
 
 const LOGO_CONTENTS = {

@@ -1,5 +1,5 @@
 import { useTheme } from "@/styles/theme";
-import { Text as ComposeText, Host, TextField } from "@expo/ui/jetpack-compose";
+import { Text as ComposeText, Host, TextField, useNativeState } from "@expo/ui/jetpack-compose";
 import { fillMaxSize } from "@expo/ui/jetpack-compose/modifiers";
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
@@ -14,13 +14,14 @@ export function RichTextEditor({
 }: RichTextEditorProps) {
   const { colors } = useTheme();
   const { t } = useTranslation();
+  const text = useNativeState(initialContent);
   const resolvedPlaceholder = placeholder ?? t("common.writeYourThoughts", "Запишите мысль");
   const handleChange = useCallback((value: string) => onChange?.(value), [onChange]);
 
   return (
     <Host style={{ flex: 1 }}>
       <TextField
-        defaultValue={initialContent}
+        value={text}
         autoFocus={autoFocus}
         singleLine={false}
         minLines={6}

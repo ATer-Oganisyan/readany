@@ -164,7 +164,7 @@ export function TTSMiniPlayer({ visible, onClose, anchorLayout }: TTSMiniPlayerP
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={StyleSheet.absoluteFillObject} onPress={onClose} accessible={false} />
+      <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessible={false} />
       <View
         style={[
           styles.container,

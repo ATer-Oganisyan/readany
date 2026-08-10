@@ -473,7 +473,7 @@ const makeStyles = (colors: ThemeColors) =>
     },
     image: { width: "100%", height: "100%" },
     imageOverlay: {
-      ...StyleSheet.absoluteFillObject,
+      ...StyleSheet.absoluteFill,
       alignItems: "center",
       justifyContent: "center",
       gap: spacing.sm,

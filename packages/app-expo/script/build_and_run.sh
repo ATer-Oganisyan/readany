@@ -85,6 +85,7 @@ run_metro_prepared() {
   log "Starting Metro on localhost:$METRO_PORT"
   cd "$APP_ROOT"
   EXPO_NO_METRO_LAZY=1 APP_VARIANT=development \
+    NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--dns-result-order=ipv4first" \
     pnpm exec expo start --dev-client --scheme readany-dev --localhost --port "$METRO_PORT"
 }
 

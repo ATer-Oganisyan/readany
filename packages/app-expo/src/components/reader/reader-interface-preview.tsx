@@ -846,7 +846,7 @@ const styles = StyleSheet.create({
   },
   colorDot: { width: 24, height: 24, borderRadius: 999 },
   selectionDivider: { width: StyleSheet.hairlineWidth, height: 24 },
-  backdrop: { ...StyleSheet.absoluteFillObject, zIndex: 45, backgroundColor: "rgba(0,0,0,0.32)" },
+  backdrop: { ...StyleSheet.absoluteFill, zIndex: 45, backgroundColor: "rgba(0,0,0,0.32)" },
   noteSheet: {
     position: "absolute",
     zIndex: 50,

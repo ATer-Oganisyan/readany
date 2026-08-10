@@ -47,7 +47,7 @@ export function CoverGenerationShimmer() {
 
 const styles = StyleSheet.create({
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 20,
     backgroundColor: "rgba(255,255,255,0.10)",
   },

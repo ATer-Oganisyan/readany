@@ -32,8 +32,8 @@ const SEPIA_COLORS: ReaderThemeColors = {
 };
 
 const DARK_COLORS: ReaderThemeColors = {
-  background: "#1c1c1e",
-  foreground: "#c9c7c2",
+  background: "#ffffff1a",
+  foreground: "#ffffffcc",
   muted: "#8e8e93",
   primary: "#6ea8fe",
 };
@@ -53,6 +53,11 @@ export const READER_PAGE_THEMES: ReaderPageThemePreset[] = [
     preview: { bg: DARK_COLORS.background, ink: DARK_COLORS.foreground },
   },
 ];
+
+/** Тема, с которой ридер открывается в соответствии с темой приложения. */
+export function getAppSyncedReaderTheme(isAppDark: boolean): ReaderPageTheme {
+  return isAppDark ? "dark" : "original";
+}
 
 /**
  * Цвета страницы для выбранного пресета. Неизвестное или пустое значение

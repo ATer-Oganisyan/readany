@@ -475,7 +475,7 @@ const makeStyles = (colors: ThemeColors) =>
       fontSize: fontSize["2xl"],
     },
     portraitOverlay: {
-      ...StyleSheet.absoluteFillObject,
+      ...StyleSheet.absoluteFill,
       alignItems: "center",
       justifyContent: "center",
       gap: spacing.xs,

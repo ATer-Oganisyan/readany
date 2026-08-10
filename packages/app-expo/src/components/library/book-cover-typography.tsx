@@ -149,12 +149,12 @@ export function BookCoverTypography({
 
 const styles = StyleSheet.create({
   typographyLayer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 12,
     mixBlendMode: "multiply",
   },
   accessoryLayer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 13,
   },
   title: {

@@ -510,7 +510,7 @@ const makeStyles = (
 
     // Sidebar
     sidebarBackdrop: {
-      ...StyleSheet.absoluteFillObject,
+      ...StyleSheet.absoluteFill,
       backgroundColor: "rgba(0,0,0,0.2)",
     },
     sidebar: {

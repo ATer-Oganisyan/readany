@@ -92,7 +92,7 @@ const makeStyles = (colors: ThemeColors) =>
     },
     avatarMuted: { backgroundColor: colors.elevation2 },
     avatarOverlay: {
-      ...StyleSheet.absoluteFillObject,
+      ...StyleSheet.absoluteFill,
       alignItems: "center",
       justifyContent: "center",
       backgroundColor: "rgba(0,0,0,0.3)",

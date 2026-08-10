@@ -1,4 +1,4 @@
-const { withMainActivity } = require("@expo/config-plugins");
+const { withMainActivity } = require("expo/config-plugins");
 
 const MARKER = "// volume-key-paging:dispatchKeyEvent";
 

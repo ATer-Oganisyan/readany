@@ -38,8 +38,8 @@ export function BookCoverImage({
     <View style={{ width, height, borderRadius, overflow: "hidden", backgroundColor: colors.muted }}>
       {coverUri ? (
         <>
-          <Image source={{ uri: coverUri }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
-          <View style={[StyleSheet.absoluteFillObject, { flexDirection: "row" }]} pointerEvents="none">
+          <Image source={{ uri: coverUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+          <View style={[StyleSheet.absoluteFill, { flexDirection: "row" }]} pointerEvents="none">
             <View style={{ width: "6%", height: "100%", backgroundColor: "rgba(0,0,0,0.10)" }} />
             <View style={{ width: "8%", height: "100%", backgroundColor: "rgba(20,20,20,0.20)" }} />
             <View style={{ width: "5%", height: "100%", backgroundColor: "rgba(240,240,240,0.40)" }} />

@@ -152,7 +152,7 @@ export function ThreadSidebar({
 const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     backdrop: {
-      ...StyleSheet.absoluteFillObject,
+      ...StyleSheet.absoluteFill,
       backgroundColor: "rgba(0,0,0,0.2)",
     },
     sidebar: {

@@ -9,11 +9,11 @@ import { Pressable, StyleSheet, Text, type TextInput, View } from "react-native"
 import {
   Chat,
   type IMessage,
+  type InputToolbarProps,
   type MessageMenuItem,
   type PartialChatTheme,
-  Send,
-  type SendProps,
 } from "../../../vendor/react-native-chat/src";
+import { NarraChatComposer } from "./narra-chat-composer";
 
 const USER_ID = "narra-user";
 const ASSISTANT_ID = "narra-ai";
@@ -325,23 +325,16 @@ export function NarraChat({
     spoilerFree,
   ]);
 
-  const renderSend = useCallback(
-    (props: SendProps<NarraMessage>) =>
-      isStreaming && onStop ? (
-        <Pressable
-          style={[styles.stopButton, { backgroundColor: colors.primary }]}
-          onPress={onStop}
-          accessibilityRole="button"
-          accessibilityLabel="Остановить ответ"
-        >
-          <View style={styles.stopGlyph} />
-        </Pressable>
-      ) : isStreaming ? (
-        <View style={styles.sendPlaceholder} />
-      ) : (
-        <Send {...props} />
-      ),
-    [colors, isStreaming, onStop],
+  const renderInputToolbar = useCallback(
+    (props: InputToolbarProps<NarraMessage>) => (
+      <NarraChatComposer
+        {...props}
+        allowSendWithoutText={quotes.length > 0}
+        isStreaming={isStreaming}
+        onStop={onStop}
+      />
+    ),
+    [isStreaming, onStop, quotes.length],
   );
 
   const lastMessage = messages.at(-1);
@@ -361,7 +354,7 @@ export function NarraChat({
       darkTheme={theme}
       renderAvatar={null}
       renderAccessory={renderAccessory}
-      renderSend={renderSend}
+      renderInputToolbar={renderInputToolbar}
       isTyping={showInitialStreaming}
       messageActions={messageActions}
       messageTextProps={{ markdown: true, onPress: handleMessageLink }}
@@ -475,22 +468,5 @@ const styles = StyleSheet.create({
   modeLabel: {
     fontFamily: fontFamily.regular,
     fontSize: 12,
-  },
-  stopButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  sendPlaceholder: {
-    width: 36,
-    height: 36,
-  },
-  stopGlyph: {
-    width: 10,
-    height: 10,
-    borderRadius: 2,
-    backgroundColor: "#fff",
   },
 });

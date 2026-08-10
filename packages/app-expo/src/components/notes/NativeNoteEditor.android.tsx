@@ -1,5 +1,5 @@
 import { useTheme } from "@/styles/theme";
-import { Text as ComposeText, Host, TextField } from "@expo/ui/jetpack-compose";
+import { Text as ComposeText, Host, TextField, useNativeState } from "@expo/ui/jetpack-compose";
 import { fillMaxSize } from "@expo/ui/jetpack-compose/modifiers";
 import { useCallback } from "react";
 import type { NativeNoteEditorProps } from "./NativeNoteEditor";
@@ -11,12 +11,13 @@ export function NativeNoteEditor({
   initialValue = "",
 }: NativeNoteEditorProps) {
   const { colors } = useTheme();
+  const text = useNativeState(initialValue);
   const handleChange = useCallback((value: string) => onChange(value), [onChange]);
 
   return (
     <Host style={{ flex: 1, backgroundColor: colors.background }}>
       <TextField
-        defaultValue={initialValue}
+        value={text}
         autoFocus={autoFocus}
         singleLine={false}
         minLines={12}

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   READER_PAGE_THEMES,
   type ReaderThemeColors,
+  getAppSyncedReaderTheme,
   resolveReaderThemeColors,
 } from "./reader-themes";
 
@@ -29,6 +30,13 @@ describe("resolveReaderThemeColors", () => {
     }
   });
 
+  it("тёмная тема использует Primary 10 и Primary 80", () => {
+    expect(resolveReaderThemeColors("dark", appColors)).toMatchObject({
+      background: "#ffffff1a",
+      foreground: "#ffffffcc",
+    });
+  });
+
   it("каждый пресет из списка разрешается без ошибок", () => {
     for (const preset of READER_PAGE_THEMES) {
       const resolved = resolveReaderThemeColors(preset.id, appColors);
@@ -44,5 +52,15 @@ describe("resolveReaderThemeColors", () => {
       expect(preset.preview.bg).toBe(resolved.background);
       expect(preset.preview.ink).toBe(resolved.foreground);
     }
+  });
+});
+
+describe("getAppSyncedReaderTheme", () => {
+  it("открывает светлую тему приложения как оригинальную тему ридера", () => {
+    expect(getAppSyncedReaderTheme(false)).toBe("original");
+  });
+
+  it("открывает тёмную тему приложения как тёмную тему ридера", () => {
+    expect(getAppSyncedReaderTheme(true)).toBe("dark");
   });
 });

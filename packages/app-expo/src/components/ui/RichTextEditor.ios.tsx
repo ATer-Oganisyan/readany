@@ -1,6 +1,6 @@
 import { radius, useTheme } from "@/styles/theme";
 import { interfaceFontFamily } from "@deslop/primitives/native";
-import { Host, TextField } from "@expo/ui/swift-ui";
+import { Host, TextField, useNativeState } from "@expo/ui/swift-ui";
 import {
   font,
   foregroundStyle,
@@ -22,6 +22,7 @@ export function RichTextEditor({
 }: RichTextEditorProps) {
   const { colors, isDark } = useTheme();
   const { t } = useTranslation();
+  const text = useNativeState(initialContent);
   const resolvedPlaceholder = placeholder ?? t("common.writeYourThoughts", "Запишите мысль");
   const handleChange = useCallback((value: string) => onChange?.(value), [onChange]);
 
@@ -37,10 +38,10 @@ export function RichTextEditor({
     >
       <TextField
         axis="vertical"
-        defaultValue={initialContent}
+        text={text}
         placeholder={resolvedPlaceholder}
         autoFocus={autoFocus}
-        onValueChange={handleChange}
+        onTextChange={handleChange}
         modifiers={[
           frame({
             minWidth: 0,
