@@ -16,9 +16,11 @@ import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { useColors } from "@/styles/theme";
 import { fontSize } from "@/styles/theme";
 import type { TOCItem } from "@readany/core/types";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -55,6 +57,7 @@ interface Props {
   searchResults: ReaderSearchResultItem[];
   searchResultCount: number;
   isSearching: boolean;
+  searchTimedOut: boolean;
   onClose: () => void;
   onTabChange: (tab: ReaderNavTab) => void;
   onSelectTocItem: (href: string) => void;
@@ -62,6 +65,7 @@ interface Props {
   onDeleteBookmark: (id: string) => void;
   onToggleBookmark: () => void;
   onSearchInput: (query: string) => void;
+  onSubmitSearch: () => void;
   onSelectSearchResult: (cfi: string) => void;
 }
 
@@ -76,6 +80,7 @@ export function ReaderTOCPanel({
   searchResults,
   searchResultCount,
   isSearching,
+  searchTimedOut,
   onClose,
   onTabChange,
   onSelectTocItem,
@@ -83,6 +88,7 @@ export function ReaderTOCPanel({
   onDeleteBookmark,
   onToggleBookmark,
   onSearchInput,
+  onSubmitSearch,
   onSelectSearchResult,
 }: Props) {
   const colors = useColors();
@@ -124,6 +130,27 @@ export function ReaderTOCPanel({
 
   const trimmedQuery = searchQuery.trim();
 
+  // На Android KeyboardAvoidingView внутри Modal не работает: модалка — отдельное
+  // окно, и adjustResize к нему не применяется, поэтому клавиатура накрывала поле
+  // поиска. Поднимаем лист руками на фактическую высоту клавиатуры.
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const onShow = Keyboard.addListener("keyboardDidShow", (event) =>
+      setKeyboardHeight(event.endCoordinates?.height ?? 0),
+    );
+    const onHide = Keyboard.addListener("keyboardDidHide", () => setKeyboardHeight(0));
+    return () => {
+      onShow.remove();
+      onHide.remove();
+    };
+  }, []);
+  useEffect(() => {
+    if (!visible) setKeyboardHeight(0);
+  }, [visible]);
+
+  const sheetMaxHeight = Math.max(240, (SCREEN_HEIGHT - keyboardHeight) * 0.7);
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView
@@ -134,7 +161,11 @@ export function ReaderTOCPanel({
         <View
           style={[
             s.bottomSheet,
-            { maxHeight: SCREEN_HEIGHT * 0.7, paddingBottom: insets.bottom || 16 },
+            {
+              maxHeight: sheetMaxHeight,
+              paddingBottom: keyboardHeight > 0 ? 16 : insets.bottom || 16,
+              marginBottom: keyboardHeight,
+            },
             layout.isTablet && {
               width: "100%",
             },
@@ -276,6 +307,7 @@ export function ReaderTOCPanel({
                   onChangeText={onSearchInput}
                   autoFocus
                   returnKeyType="search"
+                  onSubmitEditing={onSubmitSearch}
                 />
                 {isSearching ? (
                   <ActivityIndicator size="small" color={colors.mutedForeground} />
@@ -283,7 +315,14 @@ export function ReaderTOCPanel({
                   <Text style={s.navSearchCount}>{searchResultCount}</Text>
                 ) : null}
               </View>
-              {trimmedQuery && !isSearching && searchResultCount === 0 ? (
+              {searchTimedOut ? (
+                <Text style={s.sheetEmpty}>
+                  {t(
+                    "reader.searchTimedOut",
+                    "Поиск занял слишком долго. Попробуйте фразу покороче.",
+                  )}
+                </Text>
+              ) : trimmedQuery && !isSearching && searchResultCount === 0 ? (
                 <Text style={s.sheetEmpty}>{t("reader.noSearchResults", "Нет результатов")}</Text>
               ) : !trimmedQuery ? (
                 <Text style={s.sheetEmpty}>
