@@ -10,6 +10,27 @@ test('provider route is selected only from server environment', () => {
   assert.deepEqual(route, ['openrouter', 'giga'])
 })
 
+test('provider request omits temperature when the caller leaves it unset', async () => {
+  let body
+  const result = await requestChat({
+    messages: [{ role: 'user', content: 'hello' }],
+    purpose: 'structured_task',
+    stream: false,
+    fetchImpl: async (_url, init) => {
+      body = JSON.parse(init.body)
+      return new Response('{"choices":[{"message":{"content":"{}"}}]}', { status: 200 })
+    },
+    env: {
+      LLM_ROUTE_STRUCTURED_TASK: 'giga',
+      LLM_BASE_URL: 'https://giga.test',
+      LLM_API_KEY: 'giga-key',
+      LLM_MODEL_STRUCTURED_TASK: 'gpt-5.6-luna'
+    }
+  })
+  assert.equal(Object.hasOwn(body, 'temperature'), false)
+  await result.finalizeAttempt()
+})
+
 test('readiness requires a complete configured route for every purpose', () => {
   const broken = llmRouteReadiness({ OPENROUTER_API_KEY: 'key', LLM_ROUTE_DEFAULT: 'openrouter' })
   assert.equal(broken.ready, false)

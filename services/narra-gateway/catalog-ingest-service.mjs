@@ -15,6 +15,17 @@ function result(edition, extra = {}) {
   }
 }
 
+function coverResult(cover, extra = {}) {
+  return {
+    bookEditionId: cover.bookEditionId,
+    contentSha256: cover.contentHash,
+    mimeType: cover.mimeType,
+    byteSize: cover.byteSize,
+    ready: cover.status === 'ready',
+    ...extra
+  }
+}
+
 export function createCatalogIngestService({ repository, storage, idFactory = randomUUID }) {
   if (!repository || !storage) throw new TypeError('catalog repository and storage are required')
   return {
@@ -72,6 +83,61 @@ export function createCatalogIngestService({ repository, storage, idFactory = ra
       if (!edition) throw serviceError('NOT_FOUND', 'Каталожная книга не найдена', 404)
       const job = await repository.enqueueBookMarkup({ bookEditionId })
       return result(edition, { jobId: job.id, jobStatus: job.status })
+    },
+
+    async beginCover(bookEditionId, input) {
+      const objectKey = `books/catalog/${bookEditionId}/cover/${input.contentSha256}`
+      const prepared = await repository.beginCatalogCoverUpload({
+        bookEditionId,
+        objectKey,
+        ...input
+      })
+      if (!prepared) throw serviceError('NOT_FOUND', 'Каталожная книга не найдена', 404)
+      return coverResult(prepared.cover, {
+        uploadRequired: prepared.uploadRequired,
+        uploadPath: prepared.uploadRequired
+          ? `/v2/admin/catalog/books/${bookEditionId}/cover/content`
+          : undefined,
+        completePath: prepared.uploadRequired
+          ? `/v2/admin/catalog/books/${bookEditionId}/cover/upload-complete`
+          : undefined
+      })
+    },
+
+    async uploadCover(bookEditionId, bytes, contentType) {
+      const upload = await repository.getCatalogCoverUpload({ bookEditionId })
+      if (!upload) throw serviceError('NOT_FOUND', 'Загрузка обложки не найдена', 404)
+      if (contentType !== upload.mimeType) {
+        throw serviceError('UPLOAD_INTEGRITY', 'Content-Type обложки не совпадает', 409)
+      }
+      if (bytes.byteLength !== upload.byteSize) {
+        throw serviceError('UPLOAD_INTEGRITY', 'Размер обложки не совпадает', 409)
+      }
+      const contentHash = createHash('sha256').update(bytes).digest('hex')
+      if (contentHash !== upload.contentHash) {
+        throw serviceError('UPLOAD_INTEGRITY', 'SHA-256 обложки не совпадает', 409)
+      }
+      const stored = await storage.putBytes({
+        objectKey: upload.objectKey,
+        bytes,
+        mimeType: upload.mimeType
+      })
+      if (stored.contentHash !== upload.contentHash) {
+        throw serviceError('UPLOAD_INTEGRITY', 'Хранилище вернуло другой checksum', 409)
+      }
+      return coverResult(upload)
+    },
+
+    async completeCover(bookEditionId) {
+      const upload = await repository.getCatalogCoverUpload({ bookEditionId })
+      if (!upload) throw serviceError('NOT_FOUND', 'Загрузка обложки не найдена', 404)
+      await storage.verifyUpload({
+        ...upload,
+        contentSha256: upload.contentHash
+      })
+      const cover = await repository.completeCatalogCoverUpload({ bookEditionId })
+      if (!cover) throw serviceError('NOT_FOUND', 'Обложка каталога не найдена', 404)
+      return coverResult(cover)
     }
   }
 }

@@ -234,7 +234,7 @@ function asyncRoute(operation) {
 }
 
 function bookJson(book) {
-  return {
+  const value = {
     resolution: book.resolution,
     book_edition_id: book.bookEditionId,
     catalog_key: book.catalogKey,
@@ -247,6 +247,15 @@ function bookJson(book) {
     source_download_path: book.sourceDownloadPath,
     expires_at: book.expiresAt
   }
+  if (book.cover) {
+    value.cover = {
+      content_hash: book.cover.contentHash,
+      mime_type: book.cover.mimeType,
+      byte_size: book.cover.byteSize,
+      download_path: book.cover.downloadPath
+    }
+  }
+  return value
 }
 
 function manifestJson(manifest) {
@@ -335,6 +344,14 @@ export function createBookCatalogRouter({ repository, storage = null }) {
 
   router.get('/:bookEditionId/source/download', asyncRoute(async (req, res) => {
     const result = await service.sourceDownload(
+      subject(req),
+      uuid(req.params.bookEditionId, 'bookEditionId')
+    )
+    res.json({ download_url: result.url, expires_at: result.expiresAt })
+  }))
+
+  router.get('/:bookEditionId/cover/download', asyncRoute(async (req, res) => {
+    const result = await service.coverDownload(
       subject(req),
       uuid(req.params.bookEditionId, 'bookEditionId')
     )

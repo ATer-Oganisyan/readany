@@ -311,7 +311,6 @@ export function createInternalGenerationService({
               content: `Книга: ${input.title}\nАвтор: ${input.author || 'не указан'}\n\n${selection.sample}`
             }
           ],
-          temperature: 0.2,
           signal
         })
         const parsed = parseJsonObject(response)

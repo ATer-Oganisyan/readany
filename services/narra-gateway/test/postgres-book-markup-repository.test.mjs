@@ -125,3 +125,13 @@ test('local-only migration removes private source metadata and adds expiring obj
   assert.match(migration, /CREATE TABLE IF NOT EXISTS book_object_deletions/)
   assert.match(migration, /expires_at TIMESTAMPTZ/)
 })
+
+test('catalog cover migration stores one verified presentation asset per edition', async () => {
+  const migration = await readFile(
+    new URL('../migrations/004_catalog_covers.sql', import.meta.url),
+    'utf8'
+  )
+  assert.match(migration, /book_edition_id UUID PRIMARY KEY/)
+  assert.match(migration, /mime_type IN \('image\/jpeg', 'image\/png', 'image\/webp'\)/)
+  assert.match(migration, /status IN \('staging', 'ready', 'failed'\)/)
+})

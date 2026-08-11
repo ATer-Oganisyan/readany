@@ -94,3 +94,51 @@ test('catalog ingestion rejects source bytes with a different checksum', async (
     (error) => error.code === 'UPLOAD_INTEGRITY'
   )
 })
+
+test('catalog cover ingestion verifies and stores cover bytes independently', async () => {
+  const coverBytes = Buffer.from('jpeg cover bytes')
+  const coverHash = createHash('sha256').update(coverBytes).digest('hex')
+  const calls = []
+  const cover = {
+    bookEditionId: 'book-1',
+    objectKey: `books/catalog/book-1/cover/${coverHash}`,
+    contentHash: coverHash,
+    mimeType: 'image/jpeg',
+    byteSize: coverBytes.byteLength,
+    status: 'staging'
+  }
+  const service = createCatalogIngestService({
+    repository: {
+      async beginCatalogCoverUpload(input) {
+        calls.push(['begin-cover', input])
+        return { cover, uploadRequired: true }
+      },
+      async getCatalogCoverUpload() { return cover },
+      async completeCatalogCoverUpload() {
+        calls.push(['complete-cover'])
+        return { ...cover, status: 'ready' }
+      }
+    },
+    storage: {
+      async putBytes(input) {
+        calls.push(['put-cover', input])
+        return { contentHash: coverHash, byteSize: coverBytes.byteLength }
+      },
+      async verifyUpload(input) {
+        calls.push(['verify-cover', input])
+      }
+    }
+  })
+  const begun = await service.beginCover('book-1', {
+    contentSha256: coverHash,
+    mimeType: 'image/jpeg',
+    byteSize: coverBytes.byteLength
+  })
+  assert.equal(begun.uploadPath, '/v2/admin/catalog/books/book-1/cover/content')
+  await service.uploadCover('book-1', coverBytes, 'image/jpeg')
+  const completed = await service.completeCover('book-1')
+  assert.equal(completed.ready, true)
+  assert.deepEqual(calls.map(([name]) => name), [
+    'begin-cover', 'put-cover', 'verify-cover', 'complete-cover'
+  ])
+})

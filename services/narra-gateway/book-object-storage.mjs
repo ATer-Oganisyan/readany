@@ -56,12 +56,16 @@ async function responseBodyBuffer(body, maxBytes) {
 
 export function createBookObjectStorage({
   client,
+  signingClient = client,
   bucket,
   uploadExpiresSeconds = 900,
   downloadExpiresSeconds = 300,
   getSignedUrlImpl = getSignedUrl
 }) {
   if (!client || typeof client.send !== 'function') throw new TypeError('S3 client is required')
+  if (!signingClient || typeof signingClient.send !== 'function') {
+    throw new TypeError('S3 signing client is required')
+  }
   if (typeof bucket !== 'string' || !/^[a-z0-9][a-z0-9.-]{1,62}$/.test(bucket)) {
     throw new Error('BOOK_STORAGE_BUCKET is invalid')
   }
@@ -83,7 +87,7 @@ export function createBookObjectStorage({
         ChecksumSHA256: checksum,
         Metadata: { content_sha256: contentSha256 }
       })
-      const url = await getSignedUrlImpl(client, command, {
+      const url = await getSignedUrlImpl(signingClient, command, {
         expiresIn: uploadExpiresSeconds,
         signableHeaders: new Set(['content-type']),
         unhoistableHeaders: new Set([
@@ -135,7 +139,7 @@ export function createBookObjectStorage({
           : undefined
       })
       return {
-        url: await getSignedUrlImpl(client, command, { expiresIn: downloadExpiresSeconds }),
+        url: await getSignedUrlImpl(signingClient, command, { expiresIn: downloadExpiresSeconds }),
         expiresAt: new Date(Date.now() + downloadExpiresSeconds * 1_000).toISOString()
       }
     },
@@ -209,19 +213,28 @@ export function createBookObjectStorageFromEnv(env = process.env) {
     allowPrivateHttp: true,
     production: env.NODE_ENV === 'production'
   })
+  const publicEndpoint = serviceUrl(
+    'BOOK_STORAGE_PUBLIC_ENDPOINT',
+    env.BOOK_STORAGE_PUBLIC_ENDPOINT,
+    { production: env.NODE_ENV === 'production' }
+  )
   const accessKeyId = String(env.BOOK_STORAGE_ACCESS_KEY_ID || '').trim()
   const secretAccessKey = String(env.BOOK_STORAGE_SECRET_ACCESS_KEY || '').trim()
   if (Boolean(accessKeyId) !== Boolean(secretAccessKey)) {
     throw new Error('BOOK_STORAGE_ACCESS_KEY_ID and BOOK_STORAGE_SECRET_ACCESS_KEY are required together')
   }
-  const client = new S3Client({
+  const clientOptions = {
     region: String(env.BOOK_STORAGE_REGION || 'us-east-1'),
-    endpoint: endpoint || undefined,
     forcePathStyle: parseEnvBool(env, 'BOOK_STORAGE_FORCE_PATH_STYLE', false),
     credentials: accessKeyId ? { accessKeyId, secretAccessKey } : undefined
-  })
+  }
+  const client = new S3Client({ ...clientOptions, endpoint: endpoint || undefined })
+  const signingClient = publicEndpoint
+    ? new S3Client({ ...clientOptions, endpoint: publicEndpoint })
+    : client
   return createBookObjectStorage({
     client,
+    signingClient,
     bucket,
     uploadExpiresSeconds: parseEnvInt(env, 'BOOK_UPLOAD_URL_TTL_SECONDS', 900, 3_600),
     downloadExpiresSeconds: parseEnvInt(env, 'BOOK_DOWNLOAD_URL_TTL_SECONDS', 300, 3_600)

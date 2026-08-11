@@ -105,10 +105,14 @@ test('object storage never treats client-controlled metadata as a verified check
 
 test('object storage signs short-lived downloads without exposing object keys to clients', async () => {
   let command
+  let signer
+  const signingClient = { async send() { return {} } }
   const storage = createBookObjectStorage({
     client: { async send() { return {} } },
+    signingClient,
     bucket: 'readany-books',
-    async getSignedUrlImpl(_client, candidate) {
+    async getSignedUrlImpl(client, candidate) {
+      signer = client
       command = candidate
       return 'https://storage.example/signed'
     }
@@ -119,6 +123,7 @@ test('object storage signs short-lived downloads without exposing object keys to
     filename: 'portrait.png'
   })
   assert.equal(result.url, 'https://storage.example/signed')
+  assert.equal(signer, signingClient)
   assert.equal(command.input.Key, 'books/catalog/book/media/portrait')
   assert.match(command.input.ResponseContentDisposition, /filename\*=UTF-8/)
 })

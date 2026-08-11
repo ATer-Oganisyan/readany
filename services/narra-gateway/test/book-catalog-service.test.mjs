@@ -158,7 +158,18 @@ test('local hash reuses a ready catalog edition and otherwise requests local reg
 })
 
 test('catalog listing never receives processing editions from the service contract', async () => {
-  const catalog = { ...EDITION, id: 'catalog-1', scope: 'catalog', catalogKey: 'book' }
+  const catalog = {
+    ...EDITION,
+    id: 'catalog-1',
+    scope: 'catalog',
+    catalogKey: 'book',
+    cover: {
+      objectKey: 'catalog/book/cover',
+      contentHash: HASH,
+      mimeType: 'image/jpeg',
+      byteSize: 42
+    }
+  }
   const service = createBookCatalogService({
     repository: repository({
       async listCatalogBooks() {
@@ -171,7 +182,34 @@ test('catalog listing never receives processing editions from the service contra
   })
   const result = await service.listCatalog({ limit: 1, cursor: null })
   assert.equal(result.items[0].ready, true)
+  assert.deepEqual(result.items[0].cover, {
+    contentHash: HASH,
+    mimeType: 'image/jpeg',
+    byteSize: 42,
+    downloadPath: '/v2/books/catalog-1/cover/download'
+  })
   assert.deepEqual(result.nextCursor, { createdAt: catalog.createdAt, id: catalog.id })
+})
+
+test('catalog cover download is authorized before storage signing', async () => {
+  const calls = []
+  const service = createBookCatalogService({
+    repository: repository({
+      async getCatalogBookCover(input) {
+        calls.push(['authorize-cover', input])
+        return { objectKey: 'catalog/cover', mimeType: 'image/jpeg' }
+      }
+    }),
+    storage: {
+      async createDownload(input) {
+        calls.push(['sign-cover', input])
+        return { url: 'https://storage/cover', expiresAt: '' }
+      }
+    }
+  })
+  assert.equal((await service.coverDownload('reader', 'book')).url, 'https://storage/cover')
+  assert.equal(calls[0][0], 'authorize-cover')
+  assert.equal(calls[1][0], 'sign-cover')
 })
 
 test('local registration and markup store only metadata and derived character profiles', async () => {

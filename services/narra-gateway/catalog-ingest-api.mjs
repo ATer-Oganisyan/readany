@@ -11,6 +11,7 @@ const FORMATS = Object.freeze({
   txt: 'text/plain',
   pdf: 'application/pdf'
 })
+const COVER_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
 
 function validation(message) {
   throw Object.assign(new Error(message), { code: 'VALIDATION', status: 400 })
@@ -55,6 +56,19 @@ export function parseCatalogUploadBody(body, maxBytes = 50 * 1024 * 1024) {
   }
 }
 
+export function parseCatalogCoverUploadBody(body, maxBytes = 10 * 1024 * 1024) {
+  exactKeys(body, ['content_sha256', 'mime_type', 'byte_size'], 'body')
+  if (typeof body.content_sha256 !== 'string' || !SHA256.test(body.content_sha256)) {
+    validation('content_sha256: invalid SHA-256')
+  }
+  const mimeType = text(body.mime_type, 'mime_type', 64)
+  if (!COVER_MIME_TYPES.has(mimeType)) validation('mime_type: unsupported cover format')
+  if (!Number.isSafeInteger(body.byte_size) || body.byte_size < 1 || body.byte_size > maxBytes) {
+    validation(`byte_size: expected 1-${maxBytes}`)
+  }
+  return { contentSha256: body.content_sha256, mimeType, byteSize: body.byte_size }
+}
+
 function uuid(value) {
   if (typeof value !== 'string' || !UUID.test(value)) validation('bookEditionId: invalid UUID')
   return value
@@ -77,6 +91,19 @@ function responseJson(value) {
     byte_size: value.byteSize,
     job_id: value.jobId,
     job_status: value.jobStatus
+  }
+}
+
+function coverResponseJson(value) {
+  return {
+    book_edition_id: value.bookEditionId,
+    content_sha256: value.contentSha256,
+    mime_type: value.mimeType,
+    byte_size: value.byteSize,
+    ready: value.ready,
+    upload_required: value.uploadRequired,
+    upload_path: value.uploadPath,
+    complete_path: value.completePath
   }
 }
 
@@ -106,6 +133,42 @@ export function createCatalogIngestRouter({
         String(req.headers['content-type'] || '').split(';', 1)[0].trim().toLowerCase()
       )
       res.status(201).json(responseJson(value))
+    })
+  )
+
+  router.post(
+    '/books/:bookEditionId/cover/uploads',
+    express.json({ limit: '16kb' }),
+    asyncRoute(async (req, res) => {
+      const value = await service.beginCover(
+        uuid(req.params.bookEditionId),
+        parseCatalogCoverUploadBody(req.body)
+      )
+      res.status(value.uploadRequired ? 201 : 200).json(coverResponseJson(value))
+    })
+  )
+
+  router.post(
+    '/books/:bookEditionId/cover/content',
+    express.raw({ type: () => true, limit: '10mb' }),
+    asyncRoute(async (req, res) => {
+      if (!Buffer.isBuffer(req.body) || !req.body.byteLength) validation('cover content: required')
+      const value = await service.uploadCover(
+        uuid(req.params.bookEditionId),
+        req.body,
+        String(req.headers['content-type'] || '').split(';', 1)[0].trim().toLowerCase()
+      )
+      res.status(201).json(coverResponseJson(value))
+    })
+  )
+
+  router.post(
+    '/books/:bookEditionId/cover/upload-complete',
+    express.json({ limit: '1kb' }),
+    asyncRoute(async (req, res) => {
+      exactKeys(req.body ?? {}, [], 'body')
+      const value = await service.completeCover(uuid(req.params.bookEditionId))
+      res.json(coverResponseJson(value))
     })
   )
 

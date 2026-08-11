@@ -25,7 +25,7 @@ function requiredRepository(repository) {
 }
 
 function bookBinding(edition) {
-  return {
+  const binding = {
     resolution: edition.scope,
     bookEditionId: edition.id,
     catalogKey: edition.catalogKey ?? undefined,
@@ -40,6 +40,15 @@ function bookBinding(edition) {
       : undefined,
     expiresAt: edition.expiresAt ?? undefined
   }
+  if (edition.cover) {
+    binding.cover = {
+      contentHash: edition.cover.contentHash,
+      mimeType: edition.cover.mimeType,
+      byteSize: edition.cover.byteSize,
+      downloadPath: `/v2/books/${edition.id}/cover/download`
+    }
+  }
+  return binding
 }
 
 function publicAsset(asset) {
@@ -138,6 +147,16 @@ export function createBookCatalogService({
       const source = await store.getReaderBookSource({ subjectId, bookEditionId })
       if (!source) throw serviceError('NOT_FOUND', 'Файл книги не найден', 404)
       return storage.createDownload(source)
+    },
+
+    async coverDownload(subjectId, bookEditionId) {
+      if (typeof store.getCatalogBookCover !== 'function') {
+        throw new TypeError('repository.getCatalogBookCover is required')
+      }
+      if (!storage) throw serviceError('DOWNLOAD_UNAVAILABLE', 'Скачивание временно недоступно', 503)
+      const cover = await store.getCatalogBookCover({ subjectId, bookEditionId })
+      if (!cover) throw serviceError('NOT_FOUND', 'Обложка книги не найдена', 404)
+      return storage.createDownload(cover)
     },
 
     async mediaDownload(subjectId, bookEditionId, assetId) {

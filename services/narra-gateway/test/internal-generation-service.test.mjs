@@ -36,12 +36,14 @@ test('internal generation service extracts markup once and returns an idempotent
   const contentSha256 = createHash('sha256').update(source).digest('hex')
   const storage = memoryStorage({ source: { bytes: source, mimeType: 'text/plain' } })
   let chatCalls = 0
+  let chatRequest
   const lines = []
   const service = createInternalGenerationService({
     storage,
     logger: { info(line) { lines.push(line) }, error(line) { lines.push(line) } },
-    async completeChat() {
+    async completeChat(input) {
       chatCalls += 1
+      chatRequest = input
       return JSON.stringify({ characters: [{
         name: 'Анна', fullName: 'Анна', aliases: [], gender: 'female',
         description: 'Главная героиня', appearancePrompt: 'portrait of Anna', greeting: 'Здравствуйте'
@@ -61,6 +63,7 @@ test('internal generation service extracts markup once and returns an idempotent
   const second = await service.generateBookMarkup(request)
   assert.deepEqual(second, first)
   assert.equal(chatCalls, 1)
+  assert.equal(Object.hasOwn(chatRequest, 'temperature'), false)
   assert.equal(first.textLength, source.toString('utf8').length)
   assert.equal(first.characters[0].firstAppearanceTextOffset, 0)
   assert.equal(lines.filter((line) => line.includes('event="markup.chunk_selected"')).length, 3)

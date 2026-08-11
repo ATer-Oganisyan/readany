@@ -45,7 +45,7 @@ function jobRow(row) {
 
 function editionRow(row) {
   if (!row) return null
-  return {
+  const edition = {
     id: row.id,
     scope: row.scope,
     catalogKey: row.catalog_key ?? undefined,
@@ -61,6 +61,27 @@ function editionRow(row) {
     createdAt: row.created_at instanceof Date
       ? row.created_at.toISOString()
       : String(row.created_at)
+  }
+  if (row.cover_status === 'ready') {
+    edition.cover = {
+      objectKey: row.cover_object_key,
+      contentHash: row.cover_content_hash,
+      mimeType: row.cover_mime_type,
+      byteSize: Number(row.cover_byte_size)
+    }
+  }
+  return edition
+}
+
+function catalogCoverRow(row) {
+  if (!row) return null
+  return {
+    bookEditionId: row.book_edition_id,
+    objectKey: row.object_key,
+    contentHash: row.content_hash,
+    mimeType: row.mime_type,
+    byteSize: Number(row.byte_size),
+    status: row.status
   }
 }
 
@@ -463,6 +484,84 @@ export function createPostgresBookMarkupRepository(pool, {
       })
     },
 
+    async beginCatalogCoverUpload({
+      bookEditionId,
+      objectKey,
+      contentSha256,
+      mimeType,
+      byteSize
+    }) {
+      return transaction(pool, async (client) => {
+        const edition = await client.query(
+          `SELECT id FROM book_editions
+           WHERE id = $1 AND scope = 'catalog'
+           FOR UPDATE`,
+          [bookEditionId]
+        )
+        if (!edition.rows[0]) return null
+        const currentResult = await client.query(
+          'SELECT * FROM catalog_book_covers WHERE book_edition_id = $1 FOR UPDATE',
+          [bookEditionId]
+        )
+        const current = currentResult.rows[0]
+        if (
+          current?.status === 'ready' &&
+          current.content_hash === contentSha256 &&
+          current.mime_type === mimeType &&
+          Number(current.byte_size) === byteSize
+        ) {
+          return { cover: catalogCoverRow(current), uploadRequired: false }
+        }
+        if (current?.object_key && current.object_key !== objectKey) {
+          await client.query(
+            `INSERT INTO book_object_deletions (object_key)
+             VALUES ($1) ON CONFLICT (object_key) DO NOTHING`,
+            [current.object_key]
+          )
+        }
+        const result = await client.query(
+          `INSERT INTO catalog_book_covers (
+             book_edition_id, object_key, content_hash, mime_type, byte_size, status
+           ) VALUES ($1, $2, $3, $4, $5, 'staging')
+           ON CONFLICT (book_edition_id) DO UPDATE SET
+             object_key = EXCLUDED.object_key,
+             content_hash = EXCLUDED.content_hash,
+             mime_type = EXCLUDED.mime_type,
+             byte_size = EXCLUDED.byte_size,
+             status = 'staging',
+             updated_at = now()
+           RETURNING *`,
+          [bookEditionId, objectKey, contentSha256, mimeType, byteSize]
+        )
+        return { cover: catalogCoverRow(result.rows[0]), uploadRequired: true }
+      })
+    },
+
+    async getCatalogCoverUpload({ bookEditionId }) {
+      const result = await pool.query(
+        `SELECT cover.*
+         FROM catalog_book_covers AS cover
+         JOIN book_editions AS edition ON edition.id = cover.book_edition_id
+         WHERE cover.book_edition_id = $1 AND edition.scope = 'catalog'`,
+        [bookEditionId]
+      )
+      return catalogCoverRow(result.rows[0])
+    },
+
+    async completeCatalogCoverUpload({ bookEditionId }) {
+      const result = await pool.query(
+        `UPDATE catalog_book_covers AS cover
+         SET status = 'ready', updated_at = now()
+         FROM book_editions AS edition
+         WHERE cover.book_edition_id = $1
+           AND edition.id = cover.book_edition_id
+           AND edition.scope = 'catalog'
+         RETURNING cover.*`,
+        [bookEditionId]
+      )
+      return catalogCoverRow(result.rows[0])
+    },
+
     async getReaderBookSource({ bookEditionId }) {
       const result = await pool.query(
         `SELECT file.object_key, file.mime_type, file.byte_size, file.content_hash,
@@ -481,6 +580,28 @@ export function createPostgresBookMarkupRepository(pool, {
         byteSize: Number(row.byte_size),
         contentHash: row.content_hash,
         filename: `${row.title || 'book'}.${row.format}`
+      }
+    },
+
+    async getCatalogBookCover({ bookEditionId }) {
+      const result = await pool.query(
+        `SELECT cover.object_key, cover.mime_type, cover.byte_size, cover.content_hash
+         FROM catalog_book_covers AS cover
+         JOIN book_editions AS edition ON edition.id = cover.book_edition_id
+         WHERE cover.book_edition_id = $1
+           AND cover.status = 'ready'
+           AND edition.scope = 'catalog'
+           AND edition.status IN ('base_ready', 'published')`,
+        [bookEditionId]
+      )
+      const row = result.rows[0]
+      if (!row) return null
+      return {
+        objectKey: row.object_key,
+        mimeType: row.mime_type,
+        byteSize: Number(row.byte_size),
+        contentHash: row.content_hash,
+        filename: `cover.${row.mime_type === 'image/png' ? 'png' : row.mime_type === 'image/webp' ? 'webp' : 'jpg'}`
       }
     },
 
@@ -533,15 +654,25 @@ export function createPostgresBookMarkupRepository(pool, {
 
     async listCatalogBooks({ limit, cursor = null }) {
       const result = await pool.query(
-        `SELECT id, scope, catalog_key, content_sha256, title, author, format,
-                status, source_storage, expires_at, created_at
-         FROM book_editions
-         WHERE scope = 'catalog' AND status IN ('base_ready', 'published')
+        `SELECT edition.id, edition.scope, edition.catalog_key,
+                edition.content_sha256, edition.title, edition.author,
+                edition.format, edition.status, edition.source_storage,
+                edition.expires_at, edition.created_at,
+                cover.object_key AS cover_object_key,
+                cover.content_hash AS cover_content_hash,
+                cover.mime_type AS cover_mime_type,
+                cover.byte_size AS cover_byte_size,
+                cover.status AS cover_status
+         FROM book_editions AS edition
+         LEFT JOIN catalog_book_covers AS cover
+           ON cover.book_edition_id = edition.id AND cover.status = 'ready'
+         WHERE edition.scope = 'catalog'
+           AND edition.status IN ('base_ready', 'published')
            AND (
              $1::timestamptz IS NULL OR
-             (created_at, id) < ($1::timestamptz, $2::uuid)
+             (edition.created_at, edition.id) < ($1::timestamptz, $2::uuid)
            )
-         ORDER BY created_at DESC, id DESC
+         ORDER BY edition.created_at DESC, edition.id DESC
          LIMIT $3`,
         [cursor?.createdAt ?? null, cursor?.id ?? null, limit + 1]
       )

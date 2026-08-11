@@ -132,9 +132,19 @@ a short local MP4 animation from the generated portrait.
 Catalog source books are the only books uploaded to backend storage. An operator
 uses `POST /v2/admin/catalog/books/uploads`, uploads the exact bytes through the
 returned Gateway path, then calls the returned completion path. These routes
-require the independent `CATALOG_INGEST_TOKEN`. The checked-in catalog manifest
-can be ingested idempotently with `npm run seed:catalog`; completion queues full
-book markup for the worker.
+require the independent `CATALOG_INGEST_TOKEN`. An operator-owned manifest
+outside the repository can be ingested idempotently with
+`CATALOG_MANIFEST=/secure/path/catalog.json npm run seed:catalog`; completion
+queues full book markup for the worker. Source books and the ingest manifest
+must not be bundled with the mobile application or committed to this repository.
+Catalog covers use a separate checksum-bound upload attached to the edition and
+are returned as authenticated download metadata by `GET /v2/books/catalog`.
+
+The mobile catalog is offline-first: it renders the last persisted catalog,
+refreshes it from Gateway, caches verified covers, and imports a selected source
+into the app's local library. Published character manifests and their atomic
+portrait/audio/animation bundles are cached under the book ID. No checked-in
+catalog profiles or presentation assets are used as runtime fallbacks.
 
 ## Stage 5 canonical progress and rollout
 

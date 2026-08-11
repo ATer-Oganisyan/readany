@@ -95,12 +95,32 @@ route is available only for catalog books.
 
 Catalog uploads require the independent `CATALOG_INGEST_TOKEN`:
 `POST /v2/admin/catalog/books/uploads`, the returned raw content path, and the
-returned completion path. To ingest the 17 bundled catalog EPUBs idempotently:
+returned completion path. Catalog source files must be kept outside the
+repository and supplied through an operator-owned manifest:
 
 ```bash
 CATALOG_BASE_URL=https://api-test.narra.disrupt.builders \
-CATALOG_INGEST_TOKEN='<secret>' npm run seed:catalog
+CATALOG_INGEST_TOKEN='<secret>' \
+CATALOG_MANIFEST=/secure/path/catalog.json npm run seed:catalog
 ```
+
+Paths in that manifest are resolved relative to the manifest itself. Neither
+the manifest nor the source books are shipped with the application. A manifest
+book may include `cover` and `cover_mime_type`; the seeder uploads that image
+through the separate cover prepare/content/complete flow. Public clients receive
+only checksum, size, MIME type and an authenticated cover download path.
+
+When MinIO is reachable only inside Compose, keep `BOOK_STORAGE_ENDPOINT` on
+the internal service address and set `BOOK_STORAGE_PUBLIC_ENDPOINT` to the HTTPS
+origin exposed by Caddy. Gateway uses the internal client for object operations
+and the public client only for short-lived signed URLs.
+
+The Expo client persists the last successful catalog response and verified
+covers under its Documents directory. Selecting a catalog item downloads the
+source through a short-lived signed URL, verifies SHA-256, imports it into the
+local library and removes the temporary download. Reader-visible character
+profiles and their complete media bundles are likewise cached after manifest
+materialization, so already fetched data remains available offline.
 
 Completion queues full markup jobs, so run this only when provider usage is
 intended. S3/MinIO credentials remain server-side.

@@ -22,6 +22,7 @@ services:
       BOOK_STORAGE_BUCKET: ${NARRA_STORAGE_BUCKET:-narra-books}
       BOOK_STORAGE_REGION: us-east-1
       BOOK_STORAGE_ENDPOINT: http://minio.railway.internal:9000
+      BOOK_STORAGE_PUBLIC_ENDPOINT: ${NARRA_STORAGE_PUBLIC_ENDPOINT:-}
       BOOK_STORAGE_FORCE_PATH_STYLE: "true"
       BOOK_STORAGE_ACCESS_KEY_ID: ${NARRA_STORAGE_ACCESS_KEY_ID:-narra-gateway}
       BOOK_STORAGE_SECRET_ACCESS_KEY: ${NARRA_STORAGE_SECRET_ACCESS_KEY:?NARRA_STORAGE_SECRET_ACCESS_KEY is required}
@@ -100,6 +101,8 @@ services:
       MINIO_ROOT_PASSWORD: ${NARRA_MINIO_ROOT_PASSWORD:?NARRA_MINIO_ROOT_PASSWORD is required}
     volumes:
       - book-object-data:/data
+    ports:
+      - "127.0.0.1:${NARRA_MINIO_HOST_PORT:-19000}:9000"
     networks:
       default:
         aliases:

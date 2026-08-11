@@ -7,9 +7,11 @@ import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url))
-const manifestPath = path.resolve(
-  process.env.CATALOG_MANIFEST || path.join(scriptDirectory, 'book-catalog-seed.json')
-)
+const configuredManifestPath = String(process.env.CATALOG_MANIFEST || '').trim()
+if (!configuredManifestPath) {
+  throw new Error('CATALOG_MANIFEST must point to an external catalog manifest')
+}
+const manifestPath = path.resolve(scriptDirectory, configuredManifestPath)
 const baseUrl = String(process.env.CATALOG_BASE_URL || 'http://127.0.0.1:8787').replace(/\/$/, '')
 const token = String(process.env.CATALOG_INGEST_TOKEN || '').trim()
 if (token.length < 32) throw new Error('CATALOG_INGEST_TOKEN must contain at least 32 characters')
@@ -48,17 +50,50 @@ for (const book of manifest.books) {
   })
   if (!prepared.upload_required) {
     console.log(`[catalog] ${book.catalog_key}: already uploaded (${prepared.generation_status})`)
-    continue
+  } else {
+    await request(prepared.upload_path, {
+      method: 'POST',
+      headers: { 'content-type': book.mime_type },
+      body: bytes
+    })
+    const completed = await request(prepared.complete_path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}'
+    })
+    console.log(`[catalog] ${book.catalog_key}: queued (${completed.job_id})`)
   }
-  await request(prepared.upload_path, {
-    method: 'POST',
-    headers: { 'content-type': book.mime_type },
-    body: bytes
-  })
-  const completed = await request(prepared.complete_path, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: '{}'
-  })
-  console.log(`[catalog] ${book.catalog_key}: queued (${completed.job_id})`)
+
+  if (book.cover) {
+    const coverFilename = path.resolve(path.dirname(manifestPath), book.cover)
+    const coverBytes = await readFile(coverFilename)
+    const coverHash = createHash('sha256').update(coverBytes).digest('hex')
+    const cover = await request(
+      `/v2/admin/catalog/books/${prepared.book_edition_id}/cover/uploads`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          content_sha256: coverHash,
+          mime_type: book.cover_mime_type,
+          byte_size: coverBytes.byteLength
+        })
+      }
+    )
+    if (cover.upload_required) {
+      await request(cover.upload_path, {
+        method: 'POST',
+        headers: { 'content-type': book.cover_mime_type },
+        body: coverBytes
+      })
+      await request(cover.complete_path, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}'
+      })
+      console.log(`[catalog] ${book.catalog_key}: cover uploaded`)
+    } else {
+      console.log(`[catalog] ${book.catalog_key}: cover already uploaded`)
+    }
+  }
 }
