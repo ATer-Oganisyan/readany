@@ -118,6 +118,16 @@ The storage bucket must allow signed `PUT` and `GET` requests from the deployed
 clients and preserve the `Content-Type`, `x-amz-checksum-sha256` and
 `x-amz-meta-content_sha256` request headers. Production must set the
 `BOOK_STORAGE_*` variables and must not ship storage credentials in the app.
+On i167 this contract is provided by an internal-only MinIO service with a
+persistent Docker volume. Its root credential is used only by the one-shot
+bucket initializer; Gateway receives a separate application credential.
+
+The generator is not a separate deployment. Gateway owns the existing LLM,
+image, speech and video integrations and exposes two service-token-protected
+routes on the private Docker network. The second process is only
+`book-markup-worker.mjs`; it claims durable PostgreSQL jobs and calls those
+internal routes. If the external idle-video provider is absent, Gateway creates
+a short local MP4 animation from the generated portrait.
 
 ## Stage 5 canonical progress and rollout
 
@@ -155,7 +165,7 @@ npm run retry:book-generation
 Production rollout order:
 
 1. deploy Gateway and migration with `BOOK_BACKEND_REQUIRED=false`;
-2. configure PostgreSQL, Generator and all `BOOK_STORAGE_*` variables;
+2. configure PostgreSQL, the Gateway service token and all `BOOK_STORAGE_*` variables;
 3. run the v2 backfill and start `npm run worker:book-markup`;
 4. set `BOOK_BACKEND_REQUIRED=true` and require `/ready` to pass.
 

@@ -5,6 +5,7 @@ import {
   PutObjectCommand,
   S3Client
 } from '@aws-sdk/client-s3'
+import { createHash } from 'node:crypto'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { parseEnvBool, parseEnvInt } from './env.mjs'
 import { serviceUrl } from './service-url.mjs'
@@ -26,6 +27,30 @@ function objectKey(value) {
 function checksumBase64(hex) {
   if (typeof hex !== 'string' || !SHA256.test(hex)) invalid('contentSha256: invalid SHA-256')
   return Buffer.from(hex, 'hex').toString('base64')
+}
+
+async function responseBodyBuffer(body, maxBytes) {
+  if (!body) throw new Error('object storage returned an empty body')
+  let buffer
+  if (typeof body.transformToByteArray === 'function') {
+    buffer = Buffer.from(await body.transformToByteArray())
+  } else if (Buffer.isBuffer(body) || body instanceof Uint8Array) {
+    buffer = Buffer.from(body)
+  } else if (body[Symbol.asyncIterator]) {
+    const chunks = []
+    let total = 0
+    for await (const chunk of body) {
+      const bytes = Buffer.from(chunk)
+      total += bytes.byteLength
+      if (total > maxBytes) invalid('object exceeds the allowed read size')
+      chunks.push(bytes)
+    }
+    buffer = Buffer.concat(chunks, total)
+  } else {
+    throw new Error('object storage returned an unsupported body')
+  }
+  if (buffer.byteLength > maxBytes) invalid('object exceeds the allowed read size')
+  return buffer
 }
 
 export function createBookObjectStorage({
@@ -111,6 +136,45 @@ export function createBookObjectStorage({
       return {
         url: await getSignedUrlImpl(client, command, { expiresIn: downloadExpiresSeconds }),
         expiresAt: new Date(Date.now() + downloadExpiresSeconds * 1_000).toISOString()
+      }
+    },
+
+    async getBytes({ objectKey: rawObjectKey, maxBytes = 64 * 1024 * 1024 }) {
+      const key = objectKey(rawObjectKey)
+      if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > 512 * 1024 * 1024) {
+        throw new RangeError('maxBytes must be between 1 byte and 512 MiB')
+      }
+      const result = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }))
+      if (Number(result.ContentLength || 0) > maxBytes) invalid('object exceeds the allowed read size')
+      return {
+        bytes: await responseBodyBuffer(result.Body, maxBytes),
+        mimeType: result.ContentType || 'application/octet-stream',
+        metadata: result.Metadata || {}
+      }
+    },
+
+    async putBytes({ objectKey: rawObjectKey, bytes: rawBytes, mimeType }) {
+      const key = objectKey(rawObjectKey)
+      const bytes = Buffer.from(rawBytes)
+      if (!bytes.byteLength) invalid('bytes: generated object is empty')
+      if (typeof mimeType !== 'string' || !/^[a-z0-9.+-]+\/[a-z0-9.+-]+$/i.test(mimeType)) {
+        invalid('mimeType: invalid media type')
+      }
+      const contentHash = createHash('sha256').update(bytes).digest('hex')
+      await client.send(new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: bytes,
+        ContentLength: bytes.byteLength,
+        ContentType: mimeType,
+        ChecksumSHA256: checksumBase64(contentHash),
+        Metadata: { content_sha256: contentHash }
+      }))
+      return {
+        objectKey: key,
+        contentHash,
+        mimeType,
+        byteSize: bytes.byteLength
       }
     }
   }

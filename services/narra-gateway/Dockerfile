@@ -5,6 +5,7 @@ ENV NODE_ENV=production \
     GATEWAY_BUILD_VERSION=${GATEWAY_BUILD_VERSION}
 
 WORKDIR /app
+RUN apk add --no-cache ffmpeg poppler-utils
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts \
     && npm cache clean --force

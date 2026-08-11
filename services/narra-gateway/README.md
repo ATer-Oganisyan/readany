@@ -56,9 +56,12 @@ the provider or configuration failure, retry a bounded batch explicitly:
 npm run retry:book-generation
 ```
 
-They require `DATABASE_URL`, `GENERATOR_BASE_URL` and an independent
-`GENERATOR_SERVICE_TOKEN`; see `.env.example`. The worker runs migrations again
-at startup safely, so parallel starts do not apply the same migration twice.
+They require `DATABASE_URL`, the Gateway's private Docker URL in
+`GENERATOR_BASE_URL`, and an independent `GENERATOR_SERVICE_TOKEN`; see
+`.env.example`. The same Gateway exposes `/internal/v1/book-markup` and
+`/internal/v1/character-bundles`; these routes do not accept installation
+tokens. The worker runs migrations again at startup safely, so parallel starts
+do not apply the same migration twice.
 
 When `DATABASE_URL` is configured, Gateway enables the authenticated book API:
 `GET /v2/books/catalog`, `POST /v2/books/resolve`,
@@ -79,10 +82,12 @@ Reader progress now uses `progress_fraction`; Gateway derives the canonical
 text offset from the v2 markup's `text_length`. Legacy `text_offset` requests
 remain valid but the two fields cannot be sent together.
 
-Set `BOOK_BACKEND_REQUIRED=true` only after PostgreSQL, storage and Generator are
-configured and the worker is running. `/ready` then probes both PostgreSQL and
-bucket access. The i167 deployment starts the `book-backend` worker profile when
-that flag is enabled. Railway needs a separate service using
+Set `BOOK_BACKEND_REQUIRED=true` only after PostgreSQL, storage, the internal
+Gateway token and the worker are configured. `/ready` then probes PostgreSQL,
+bucket access and the presence of the internal generator. The i167 Compose file
+runs a private MinIO service, creates its bucket and non-root application user,
+and starts the `book-backend` worker profile when that flag is enabled. Railway
+needs a separate worker process using
 `node book-markup-worker.mjs`; its HTTP health check should target `/ready` on
 the Gateway service.
 

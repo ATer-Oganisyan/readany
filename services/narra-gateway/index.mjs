@@ -54,6 +54,11 @@ import { createBookCatalogRouter } from './book-catalog-api.mjs'
 import { createPostgresBookMarkupRepository } from './postgres-book-markup-repository.mjs'
 import { createPostgresPoolFromEnv, runBookMarkupMigrations } from './postgres-runtime.mjs'
 import { createBookObjectStorageFromEnv } from './book-object-storage.mjs'
+import {
+  createInternalGenerationRouter,
+  createInternalGenerationService
+} from './internal-generation-service.mjs'
+import { createLocalIdleAnimation } from './local-idle-animation.mjs'
 
 // ================= Конфигурация =================
 const PORT = process.env.PORT || 8787
@@ -490,6 +495,117 @@ async function animatePortrait(image, query, quality, signal) {
   return videoTask(model, params, signal)
 }
 
+async function completeInternalChat({ messages, temperature, signal }) {
+  let release
+  try {
+    release = await llmGate.acquire(signal)
+    const { response, finalizeAttempt } = await requestChat({
+      messages,
+      temperature,
+      purpose: 'structured_task',
+      stream: false,
+      requestId: randomUUID(),
+      signal
+    })
+    const payload = await settleProviderResponse({
+      finalizeAttempt,
+      consume: async () => {
+        const bytes = await readBoundedBody(response, LLM_RESPONSE_MAX_BYTES, signal)
+        let json
+        try {
+          json = JSON.parse(bytes.toString('utf8'))
+        } catch (error) {
+          throw Object.assign(error, { code: 'PARSE', status: 502 })
+        }
+        return validateChatCompletionPayload(json)
+      }
+    })
+    return payload?.choices?.[0]?.message?.content || ''
+  } finally {
+    release?.()
+  }
+}
+
+async function generateInternalPortrait(prompt, signal) {
+  let release
+  try {
+    release = await imageGate.acquire(signal)
+    let base64
+    if (LLM_API_KEY) {
+      try {
+        base64 = await gigachatImage(prompt, signal)
+      } catch (error) {
+        if (!shouldFallbackAfterImageError(error) || !KANDINSKY_TOKEN) throw error
+        console.error('[internal-generation] portrait fallback to Kandinsky:', error.message)
+      }
+    }
+    if (!base64 && KANDINSKY_TOKEN) base64 = await kandinskyQueued(prompt, 1024, 1024, signal)
+    if (!base64) throw httpErr('NO_KEY', 'No image provider is configured')
+    const bytes = Buffer.from(base64, 'base64')
+    if (!bytes.byteLength || bytes.byteLength > 18 * 1024 * 1024) {
+      throw httpErr('NETWORK', 'Image provider returned an invalid portrait')
+    }
+    return { bytes, mimeType: 'image/png' }
+  } finally {
+    release?.()
+  }
+}
+
+async function synthesizeInternalSpeech(text, voice, signal) {
+  let release
+  try {
+    release = await speechGate.acquire(signal)
+    const { providerVoice } = parseSynthesisBody({ text, voice })
+    const token = await getToken('SALUTE_SPEECH_PERS', SALUTE_KEY, SALUTE_OAUTH_URL)
+    const response = await httpsRequest(
+      `${SALUTE_SYNTH_URL}?format=wav16&voice=${encodeURIComponent(providerVoice)}`,
+      {
+        method: 'POST',
+        insecure: INSECURE,
+        ca: sberCaBundle,
+        timeoutMs: 60_000,
+        maxResponseBytes: 16 * 1024 * 1024,
+        signal,
+        binary: true,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/text'
+        },
+        body: Buffer.from(text, 'utf8')
+      }
+    )
+    if (response.status === 401) {
+      delete tokenCache['SALUTE_SPEECH_PERS']
+      throw httpErr('AUTH', 'SaluteSpeech rejected the service token')
+    }
+    if (response.status === 429) throw httpErr('RATE', 'SaluteSpeech rate limit')
+    if (response.status !== 200 || !response.body?.length) {
+      throw httpErr('NETWORK', `SaluteSpeech returned ${response.status}`)
+    }
+    return { bytes: Buffer.from(response.body), mimeType: 'audio/wav' }
+  } finally {
+    release?.()
+  }
+}
+
+async function generateInternalIdleAnimation(portraitBytes, signal) {
+  if (KANDINSKY_TOKEN && VIDEO_BASE_URL) {
+    try {
+      const base64 = await animatePortrait(
+        Buffer.from(portraitBytes).toString('base64'),
+        'the character stays still, blinks slowly and breathes subtly, locked camera, no zoom',
+        'lite',
+        signal
+      )
+      const bytes = Buffer.from(base64, 'base64')
+      if (bytes.byteLength) return { bytes, mimeType: 'video/mp4' }
+    } catch (error) {
+      console.error('[internal-generation] video provider failed, using local idle animation:', error.message)
+    }
+  }
+  return createLocalIdleAnimation(portraitBytes, signal)
+}
+
 
 // Долгие задачи: отвечаем сразу и шлём keep-alive пробелы, чтобы fetch клиента
 // не обрывался по таймауту (undici ждёт первых байт максимум 5 минут).
@@ -604,6 +720,20 @@ eventStore.start()
 let bookMarkupPool = null
 let bookMarkupRepository = null
 const bookObjectStorage = createBookObjectStorageFromEnv(process.env)
+const generatorServiceToken = String(process.env.GENERATOR_SERVICE_TOKEN || '').trim()
+const internalGenerationService = bookObjectStorage && generatorServiceToken
+  ? createInternalGenerationService({
+      storage: bookObjectStorage,
+      completeChat: completeInternalChat,
+      generatePortrait: generateInternalPortrait,
+      synthesizeSpeech: synthesizeInternalSpeech,
+      generateIdleAnimation: generateInternalIdleAnimation,
+      maxBookBytes: BOOK_UPLOAD_MAX_BYTES
+    })
+  : null
+if (!internalGenerationService) {
+  console.warn('[internal-generation] storage or GENERATOR_SERVICE_TOKEN is not configured; internal API is disabled')
+}
 if (process.env.DATABASE_URL) {
   bookMarkupPool = await createPostgresPoolFromEnv(process.env)
   await runBookMarkupMigrations(bookMarkupPool)
@@ -613,7 +743,7 @@ if (process.env.DATABASE_URL) {
 }
 
 async function checkBookBackendReady() {
-  if (!bookMarkupPool || !bookObjectStorage) return false
+  if (!bookMarkupPool || !bookObjectStorage || !internalGenerationService) return false
   try {
     await Promise.all([
       bookMarkupPool.query('SELECT 1'),
@@ -740,6 +870,7 @@ app.get('/health', (_req, res) => {
       video: !!KANDINSKY_TOKEN && !!VIDEO_BASE_URL,
       book_markup: Boolean(bookMarkupRepository),
       book_storage: Boolean(bookObjectStorage),
+      internal_generation: Boolean(internalGenerationService),
       book_backend_required: BOOK_BACKEND_REQUIRED
     },
     media_transport: {
@@ -959,6 +1090,13 @@ app.use('/v2/updates/files', express.static(new URL('./updates', import.meta.url
   }
 }))
 app.use('/v2/updates/files', (_req, res) => res.status(404).json({ error: 'Update artifact not found' }))
+
+if (internalGenerationService) {
+  app.use('/internal', createInternalGenerationRouter({
+    token: generatorServiceToken,
+    service: internalGenerationService
+  }))
+}
 
 app.use('/v2', requireGatewayAuth(tokenService, installationRegistry), apiLimit)
 // Parsers deliberately live after bearer auth/rate limiting. Large unauthenticated
