@@ -1,10 +1,10 @@
 import { NarraChat } from "@/components/chat/NarraChat";
+import { CharacterPortraitImage } from "@/components/narra/character-portrait-image";
 import { Text } from "@/components/ui/Typography";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import { NarraAudioPlayer } from "@/lib/narra/audio-player";
-import { resolveCharacterPortraitUri } from "@/lib/narra/character-portrait";
 import { normalizeCharacterChatPlaceholder } from "@/lib/narra/chat-placeholder";
 import { isCharacterUnlocked, normalizeReadingProgress } from "@/lib/narra/domain";
 import { reportNarraError } from "@/lib/narra/errors";
@@ -19,7 +19,7 @@ import type { MessageV2 } from "@readany/core/types/message";
 import * as Crypto from "expo-crypto";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Image, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 type Props = NativeStackScreenProps<RootStackParamList, "NarraCharacterChat">;
 
@@ -92,7 +92,6 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
   const greetingRequestedRef = useRef(false);
   const placeholderRequestedRef = useRef<string | null>(null);
   const unlocked = Boolean(book && character && isCharacterUnlocked(book.progress, character));
-  const portraitUri = resolveCharacterPortraitUri(character);
 
   useEffect(() => {
     recordTelemetry("chat_opened", { feature: "chat" });
@@ -115,19 +114,17 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
         }
         style={({ pressed }) => [styles.headerAvatarButton, pressed && styles.headerAvatarPressed]}
       >
-        {portraitUri ? (
-          <Image
-            source={{ uri: portraitUri }}
-            resizeMode="cover"
-            style={styles.headerAvatarImage}
-          />
-        ) : (
-          <InitialsAvatar
-            size={32}
-            userId={`${bookId}:${character.id}`}
-            name={character.fullName || character.name}
-          />
-        )}
+        <CharacterPortraitImage
+          character={character}
+          style={styles.headerAvatarImage}
+          fallback={
+            <InitialsAvatar
+              size={32}
+              userId={`${bookId}:${character.id}`}
+              name={character.fullName || character.name}
+            />
+          }
+        />
       </Pressable>
     ) : null;
 
@@ -151,7 +148,7 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
             headerRight: () => profileButton,
           }),
     });
-  }, [bookId, character, characterId, navigation, portraitUri, styles, t]);
+  }, [bookId, character, characterId, navigation, styles, t]);
 
   useEffect(() => () => audioRef.current.stop(), []);
 

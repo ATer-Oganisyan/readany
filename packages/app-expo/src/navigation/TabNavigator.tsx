@@ -6,7 +6,12 @@ import { NotesScreen } from "@/screens/NotesScreen";
 import { ProfileScreen } from "@/screens/ProfileScreen";
 import { SearchScreen } from "@/screens/SearchScreen";
 import { useTheme } from "@/styles/ThemeContext";
-import { fontFamily, largeTitleFontFamily, titleFontFamily } from "@/styles/theme";
+import {
+  fontFamily,
+  largeTitleFontFamily,
+  largeTitleFontSize,
+  titleFontFamily,
+} from "@/styles/theme";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import {
   type NativeBottomTabIcon,
@@ -126,7 +131,7 @@ function useLargeTitleOptions(): NativeStackNavigationOptions {
         headerLargeTitleStyle: {
           color: colors.foreground,
           fontFamily: largeTitleFontFamily,
-          fontSize: 40,
+          fontSize: largeTitleFontSize,
           fontWeight: "400",
         },
       }

@@ -5,7 +5,6 @@ import {
   HeadphonesIcon,
   PauseIcon,
   PlayIcon,
-  ScrollTextIcon,
   SquareIcon,
 } from "@/components/ui/Icon";
 import { pushRoute } from "@/lib/navigationRef";
@@ -86,19 +85,6 @@ export function TTSMiniPlayer({ visible, onClose, anchorLayout }: TTSMiniPlayerP
     }
     onClose();
   }, [currentBookId, currentLocationCfi, goToCfiFn, onClose]);
-
-  const handleOpenLyricsPage = useCallback(() => {
-    if (!currentBookId) return;
-    let handled = false;
-    eventBus.emit("tts:open-lyrics-page", {
-      bookId: currentBookId,
-      respond: () => { handled = true; },
-    });
-    if (!handled) {
-      pushRoute("Reader", { bookId: currentBookId, openTTS: true });
-    }
-    onClose();
-  }, [currentBookId, onClose]);
 
   const handlePlayPause = useCallback(() => {
     if (playState === "playing" || playState === "loading") pause();
@@ -274,16 +260,6 @@ export function TTSMiniPlayer({ visible, onClose, anchorLayout }: TTSMiniPlayerP
             </TouchableOpacity>
           )}
 
-          {!!currentBookId && (
-            <TouchableOpacity
-              style={[styles.iconBtn, { backgroundColor: colors.muted }]}
-              onPress={handleOpenLyricsPage}
-              accessibilityRole="button"
-              accessibilityLabel={t("tts.openLyricsPage", "跳到歌词页")}
-            >
-              <ScrollTextIcon size={16} color={colors.foreground} />
-            </TouchableOpacity>
-          )}
         </View>
       </View>
       <TTSSleepTimerSheet visible={timerSheetVisible} onClose={() => setTimerSheetVisible(false)} />

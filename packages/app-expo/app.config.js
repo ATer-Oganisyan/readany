@@ -16,7 +16,7 @@ module.exports = {
       icon: "./assets/Narra.icon",
       supportsTablet: true,
       bundleIdentifier: variant.bundleIdentifier,
-      buildNumber: "6",
+      buildNumber: "32",
       infoPlist: {
         UIViewControllerBasedStatusBarAppearance: true,
         UIBackgroundModes: ["audio"],
@@ -47,12 +47,12 @@ module.exports = {
         "expo-splash-screen",
         {
           backgroundColor: "#FFFFFF",
-          image: "./assets/splash-logo.png",
-          imageWidth: 144,
+          image: "./assets/narra-face.png",
+          imageWidth: 58,
           resizeMode: "contain",
           dark: {
             backgroundColor: "#000000",
-            image: "./assets/splash-logo-dark.png",
+            image: "./assets/narra-face.png",
           },
         },
       ],

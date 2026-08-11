@@ -79,13 +79,15 @@ const vronsky: NarraCharacter = {
 };
 
 describe("portrait prompt", () => {
-  it("follows the narra canon and ends with the full art style", () => {
+  it("follows the narra canon, genre and portrait framing", () => {
     const prompt = portraitPrompt(anna);
 
-    expect(prompt).toContain("Погрудный портрет: голова и плечи, строго анфас");
+    expect(prompt).toContain("Вертикальный портрет по пояс, строго анфас");
+    expect(prompt).toContain("занимает не более 50% высоты изображения");
+    expect(prompt).toContain("классический живописный портрет");
     expect(prompt).toContain("Внешность (соблюдать точно):");
     expect(prompt).toContain("тёмные волосы");
-    expect(prompt.endsWith(`Стиль: ${ART_STYLE}.`)).toBe(true);
+    expect(prompt).not.toContain("semi-realistic anime");
     expect(prompt.length).toBeLessThanOrEqual(PROMPT_CHAR_LIMIT);
   });
 
@@ -104,7 +106,7 @@ describe("portrait prompt", () => {
     };
     const longPrompt = portraitPrompt(verbose, "«Анна Каренина» (Лев Толстой)");
     expect(longPrompt).toContain("Ровно один человек в кадре — Алексей Вронский");
-    expect(longPrompt.endsWith(`Стиль: ${ART_STYLE}.`)).toBe(true);
+    expect(longPrompt).toContain("классический живописный портрет");
     expect(longPrompt.length).toBeLessThanOrEqual(PROMPT_CHAR_LIMIT);
   });
 

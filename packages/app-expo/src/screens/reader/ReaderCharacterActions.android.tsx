@@ -1,51 +1,61 @@
 import { interfaceFontFamily } from "@deslop/primitives/native";
-import { Button, Host, OutlinedButton, Row, Text } from "@expo/ui/jetpack-compose";
-import { fillMaxWidth, height, weight } from "@expo/ui/jetpack-compose/modifiers";
+import { FilledTonalIconButton, Host, Row, Spacer, Text } from "@expo/ui/jetpack-compose";
+import { fillMaxWidth, height, size } from "@expo/ui/jetpack-compose/modifiers";
+import { Fragment } from "react";
 import { StyleSheet } from "react-native";
 import type { ReaderCharacterActionsProps } from "./ReaderCharacterActions.types";
 
-const labelStyle = {
-  fontFamily: interfaceFontFamily.semibold,
-  fontSize: 14,
-  fontWeight: "600" as const,
-};
-
 export function ReaderCharacterActions(props: ReaderCharacterActionsProps) {
-  const secondaryLabel = props.voiceState !== "idle" ? props.stopLabel : props.listenLabel;
+  const actions = [
+    { icon: "chat", onPress: props.onTalk, enabled: true },
+    {
+      icon:
+        props.voiceState === "loading"
+          ? "hourglass_empty"
+          : props.voiceState === "playing"
+            ? "stop"
+            : "volume_up",
+      onPress: props.onToggleVoice,
+      enabled: props.canSample,
+    },
+    {
+      icon: props.regenerating ? "hourglass_empty" : "refresh",
+      onPress: props.onRegenerate,
+      enabled: !props.regenerating,
+    },
+  ];
 
   return (
     <Host colorScheme={props.isDark ? "dark" : "light"} style={styles.host}>
       <Row
-        horizontalArrangement={{ spacedBy: 8 }}
+        horizontalArrangement="center"
         verticalAlignment="center"
-        modifiers={[fillMaxWidth(), height(52)]}
+        modifiers={[fillMaxWidth(), height(68)]}
       >
-        <Button
-          onClick={props.onTalk}
-          colors={{
-            containerColor: props.foregroundColor,
-            contentColor: props.primaryForegroundColor,
-          }}
-          modifiers={[weight(1), height(48)]}
-        >
-          <Text color={props.primaryForegroundColor} maxLines={1} style={labelStyle}>
-            {props.talkLabel}
-          </Text>
-        </Button>
-        {props.canSample ? (
-          <OutlinedButton
-            onClick={props.onToggleVoice}
-            colors={{ contentColor: props.foregroundColor }}
-            modifiers={[weight(1), height(48)]}
-          >
-            <Text color={props.foregroundColor} maxLines={1} style={labelStyle}>
-              {secondaryLabel}
-            </Text>
-          </OutlinedButton>
-        ) : null}
+        {actions.map((action, index) => (
+          <Fragment key={`${action.icon}-${index}`}>
+            {index > 0 ? <Spacer modifiers={[size(16, 1)]} /> : null}
+            <FilledTonalIconButton
+              onClick={action.onPress}
+              enabled={action.enabled}
+              colors={{
+                containerColor: props.primaryForegroundColor,
+                contentColor: props.foregroundColor,
+              }}
+              modifiers={[size(64, 64)]}
+            >
+              <Text
+                color={props.foregroundColor}
+                style={{ fontFamily: interfaceFontFamily.materialSymbols, fontSize: 28 }}
+              >
+                {action.icon}
+              </Text>
+            </FilledTonalIconButton>
+          </Fragment>
+        ))}
       </Row>
     </Host>
   );
 }
 
-const styles = StyleSheet.create({ host: { width: "100%", height: 52 } });
+const styles = StyleSheet.create({ host: { width: "100%", height: 68 } });

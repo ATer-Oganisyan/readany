@@ -29,8 +29,13 @@ export function ReaderFloatingActions(props: ReaderFloatingActionsProps) {
       active: props.translationActive,
       onPress: props.onTranslate,
     },
-    { label: "Озвучить", symbol: "waveform", active: props.speechActive, onPress: props.onSpeech },
-    { label: "Обсудить с ИИ", symbol: "message.badge", active: false, onPress: props.onChat },
+    {
+      label: "Озвучить",
+      symbol: "airpods.max",
+      active: props.speechActive,
+      onPress: props.onSpeech,
+    },
+    { label: "Обсудить с ИИ", symbol: "message.fill", active: false, onPress: props.onChat },
   ];
 
   return (

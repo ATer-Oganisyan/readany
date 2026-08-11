@@ -206,7 +206,7 @@ export function ReaderSettingsPanel({ visible, readSettings, onClose, onUpdateSe
                   onPress={() => setSelectedFont(null)}
                 >
                   <Text style={[s.themeBtnText, !selectedFontId && s.themeBtnTextActive]}>
-                    {t("fonts.sbSerif", "SB Serif")}
+                    {t("fonts.serif", "С засечками")}
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -222,7 +222,7 @@ export function ReaderSettingsPanel({ visible, readSettings, onClose, onUpdateSe
                       selectedFontId === SB_SANS_READER_FONT_ID && s.themeBtnTextActive,
                     ]}
                   >
-                    SB Sans
+                    {t("fonts.sansSerif", "Без засечек")}
                   </Text>
                 </TouchableOpacity>
                 {customFonts.map((font) => (

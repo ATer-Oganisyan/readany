@@ -4,6 +4,7 @@ import {
   CharacterChatList,
   type CharacterChatListItem,
 } from "@/components/chats/character-chat-list";
+import { CharacterPortraitImage } from "@/components/narra/character-portrait-image";
 import { type ExtractorRef, ExtractorWebView } from "@/components/rag/ExtractorWebView";
 import { Text } from "@/components/ui/Typography";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
@@ -11,7 +12,7 @@ import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import { getBundledCatalogCharactersByTitle } from "@/lib/narra/bundled-catalog-characters";
 import { analyzeBookCharacters } from "@/lib/narra/character-analysis";
-import { hasCharacterPortrait, resolveCharacterPortraitUri } from "@/lib/narra/character-portrait";
+import { hasCharacterPortrait } from "@/lib/narra/character-portrait";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
 import { NarraServiceError, reportNarraError } from "@/lib/narra/errors";
 import { ensureCharacterPortrait, normalizePersistedNarraMediaUri } from "@/lib/narra/media";
@@ -27,7 +28,6 @@ import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
   Alert,
-  Image,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
@@ -249,7 +249,6 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
     },
     ...orderedCharacters.map((character): CharacterChatListItem => {
       const portraitBusy = portraitLoading === character.id;
-      const portraitUri = resolveCharacterPortraitUri(character);
       const unlocked = isCharacterUnlocked(book?.progress ?? 0, character);
       const unlockPercent = Math.round(Math.min(1, Math.max(0, character.unlockProgress)) * 100);
       const lockedSubtitle = character.appearanceChapter
@@ -288,23 +287,17 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
               ) : undefined
             }
           >
-            {portraitUri ? (
-              <Image
-                source={{ uri: portraitUri }}
-                style={styles.avatarImage}
-                onError={
-                  character.portraitUri
-                    ? () => updateCharacter(bookId, character.id, { portraitUri: undefined })
-                    : undefined
-                }
-              />
-            ) : (
-              <InitialsAvatar
-                size={56}
-                userId={`${bookId}:${character.id}`}
-                name={character.fullName || character.name}
-              />
-            )}
+            <CharacterPortraitImage
+              character={character}
+              style={styles.avatarImage}
+              fallback={
+                <InitialsAvatar
+                  size={56}
+                  userId={`${bookId}:${character.id}`}
+                  name={character.fullName || character.name}
+                />
+              }
+            />
           </CharacterChatAvatar>
         ),
       };

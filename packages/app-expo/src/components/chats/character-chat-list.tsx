@@ -90,7 +90,7 @@ const makeStyles = (colors: ThemeColors) =>
       borderRadius: radius.full,
       backgroundColor: colors.primary,
     },
-    avatarMuted: { backgroundColor: colors.elevation2 },
+    avatarMuted: { backgroundColor: colors.primary5 },
     avatarOverlay: {
       ...StyleSheet.absoluteFill,
       alignItems: "center",

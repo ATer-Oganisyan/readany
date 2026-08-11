@@ -55,6 +55,7 @@ import TrackPlayer, {
 } from "react-native-track-player";
 
 import { CatalogCharacterPortraitPreloader } from "@/components/catalog/CatalogCharacterPortraitPreloader";
+import { AnimatedNarraFace } from "@/components/chat/animated-narra-face";
 import { UpdateDialog } from "@/components/update/UpdateDialog";
 import { useUpdateChecker } from "@/hooks/use-update-checker";
 import { startTelemetry } from "@/lib/analytics/telemetry";
@@ -231,16 +232,14 @@ export default function App() {
   }, []);
 
   const startupError = bootError ?? fontError?.message ?? null;
-  const appReady = startupError !== null || (ready && fontsLoaded && initialThemeMode !== null);
-
-  useEffect(() => {
-    if (!appReady) return;
+  const hideNativeSplash = () => {
     SplashScreen.hideAsync().catch(() => {});
-  }, [appReady]);
+  };
 
   if (startupError) {
     return (
       <View
+        onLayout={hideNativeSplash}
         style={{
           flex: 1,
           backgroundColor: "#1c1c1e",
@@ -276,18 +275,22 @@ export default function App() {
   if (!ready || !fontsLoaded || initialThemeMode === null) {
     return (
       <View
+        onLayout={hideNativeSplash}
         style={{
           flex: 1,
           justifyContent: "center",
           alignItems: "center",
           backgroundColor: systemColorScheme === "dark" ? "#000000" : "#FFFFFF",
         }}
-      />
+      >
+        <AnimatedNarraFace width={56} height={58} color="#A1A1A1" animated={false} />
+      </View>
     );
   }
 
   return (
     <View
+      onLayout={hideNativeSplash}
       style={{
         flex: 1,
         backgroundColor: systemColorScheme === "dark" ? "#000000" : "#FFFFFF",

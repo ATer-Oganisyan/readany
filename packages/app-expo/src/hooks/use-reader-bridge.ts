@@ -104,8 +104,6 @@ export interface ReaderBridgeCallbacks {
   onCharacterTap?: (detail: CharacterTapEvent) => void;
   /** Тап по слоту «Показать сцену» (или по слоту в состоянии ошибки). */
   onSceneSlotTap?: (detail: SceneSlotEvent) => void;
-  /** Тап по «↻ Заново» на готовой карточке сцены. */
-  onSceneSlotRegenerate?: (detail: SceneSlotEvent) => void;
   /** Врезка восстановлена при загрузке секции — RN должен прислать картинку. */
   onSceneSlotRestored?: (detail: SceneSlotEvent) => void;
 }
@@ -121,9 +119,13 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
   const lastTTSHighlightRef = useRef<{
     cfi: string | null;
     color: string | null;
+    wordIndex: number | null;
+    text: string | null;
   }>({
     cfi: null,
     color: null,
+    wordIndex: null,
+    text: null,
   });
   const pendingTTSContextResolveRef = useRef(
     new Map<string, (context: VisibleTTSContext) => void>(),
@@ -216,6 +218,13 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
   const goToCFI = useCallback(
     (cfi: string) => {
       inject(`window.goToCFI(${JSON.stringify(cfi)})`);
+    },
+    [inject],
+  );
+
+  const followTTSLocation = useCallback(
+    (cfi: string) => {
+      inject(`window.followTTSLocation(${JSON.stringify(cfi)})`);
     },
     [inject],
   );
@@ -538,70 +547,68 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
     [createRequestId],
   );
 
-  const setTTSHighlight = useCallback((cfi: string | null, color?: string, force = false) => {
-    const previousCfi = lastTTSHighlightRef.current.cfi;
-    const previousColor = lastTTSHighlightRef.current.color;
-    const nextColor = color || null;
-    if (
-      !force &&
-      lastTTSHighlightRef.current.cfi === cfi &&
-      lastTTSHighlightRef.current.color === nextColor
-    ) {
-      return;
-    }
-    lastTTSHighlightRef.current = { cfi, color: nextColor };
+  const setTTSHighlight = useCallback(
+    (
+      cfi: string | null,
+      color?: string,
+      force = false,
+      wordIndex?: number | null,
+      text?: string | null,
+    ) => {
+      const nextColor = color || null;
+      const nextWordIndex = cfi
+        ? wordIndex != null
+          ? Math.max(0, wordIndex)
+          : lastTTSHighlightRef.current.cfi === cfi
+            ? (lastTTSHighlightRef.current.wordIndex ?? 0)
+            : 0
+        : null;
+      const nextText = cfi
+        ? text !== undefined
+          ? text || null
+          : lastTTSHighlightRef.current.cfi === cfi
+            ? lastTTSHighlightRef.current.text
+            : null
+        : null;
+      if (
+        !force &&
+        lastTTSHighlightRef.current.cfi === cfi &&
+        lastTTSHighlightRef.current.color === nextColor &&
+        lastTTSHighlightRef.current.wordIndex === nextWordIndex &&
+        lastTTSHighlightRef.current.text === nextText
+      ) {
+        return;
+      }
+      lastTTSHighlightRef.current = {
+        cfi,
+        color: nextColor,
+        wordIndex: nextWordIndex,
+        text: nextText,
+      };
 
-    const previousCfiStr = JSON.stringify(previousCfi);
-    const previousColorStr = JSON.stringify(previousColor);
-    const cfiStr = JSON.stringify(cfi);
-    const colorStr = JSON.stringify(nextColor);
-    if (!cfi) {
+      const cfiStr = JSON.stringify(cfi);
+      const colorStr = JSON.stringify(nextColor);
+      const wordIndexStr = JSON.stringify(nextWordIndex);
+      const textStr = JSON.stringify(nextText);
       webViewRef.current?.injectJavaScript(`
-          (function() {
-            try {
-              if (typeof handleCommand === 'function' && ${previousCfiStr}) {
-                handleCommand({
-                  type: 'removeAnnotation',
-                  annotation: { value: ${previousCfiStr}, type: 'tts-highlight' },
-                });
-              }
-            } catch (e) {}
-          })();
-          true;
-        `);
-      return;
-    }
-
-    webViewRef.current?.injectJavaScript(`
         (function() {
           try {
-            var removePrevious = function() {
-              if (typeof handleCommand !== 'function' || !${previousCfiStr}) return Promise.resolve();
-              return Promise.resolve(handleCommand({
-                type: 'removeAnnotation',
-                annotation: { value: ${previousCfiStr}, type: 'tts-highlight' },
-              }));
-            };
-            var apply = function() {
-              if (typeof handleCommand !== 'function') return Promise.resolve();
-              return Promise.resolve(handleCommand({
-                type: 'addAnnotation',
-                annotation: {
-                  value: ${cfiStr},
-                  type: 'tts-highlight',
-                  color: ${colorStr},
-                },
-              }));
-            };
-            var shouldReplace =
-              ${force ? "true" : "false"} ||
-              (!!${previousCfiStr} && (${previousCfiStr} !== ${cfiStr} || ${previousColorStr} !== ${colorStr}));
-            (shouldReplace ? removePrevious() : Promise.resolve()).finally(apply);
+            if (typeof handleCommand === 'function') {
+              handleCommand({
+                type: 'setTTSHighlight',
+                cfi: ${cfiStr},
+                color: ${colorStr},
+                wordIndex: ${wordIndexStr},
+                text: ${textStr},
+              });
+            }
           } catch (e) {}
         })();
         true;
       `);
-  }, []);
+    },
+    [],
+  );
 
   const flashHighlight = useCallback(
     (cfi: string, color?: string, duration?: number) => {
@@ -916,11 +923,6 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
             cb.onSceneSlotTap?.({ anchor: msg.anchor });
           }
           break;
-        case "sceneSlotRegenerate":
-          if (typeof msg.anchor === "string" && msg.anchor) {
-            cb.onSceneSlotRegenerate?.({ anchor: msg.anchor });
-          }
-          break;
         case "sceneSlotRestored":
           if (typeof msg.anchor === "string" && msg.anchor) {
             cb.onSceneSlotRestored?.({ anchor: msg.anchor });
@@ -1105,6 +1107,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       goToHref,
       goToSection,
       goToCFI,
+      followTTSLocation,
       search,
       clearSearch,
       navigateSearch,
@@ -1148,6 +1151,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       goToHref,
       goToSection,
       goToCFI,
+      followTTSLocation,
       search,
       clearSearch,
       navigateSearch,

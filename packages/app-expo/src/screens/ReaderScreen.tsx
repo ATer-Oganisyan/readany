@@ -1,7 +1,7 @@
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
+import { AnimatedNarraFace } from "@/components/chat/animated-narra-face";
 import { BookmarkRibbon } from "@/components/reader/BookmarkRibbon";
 import { ChapterTranslationSheet } from "@/components/reader/ChapterTranslationSheet";
-import { TTSPage } from "@/components/reader/TTSPage";
 import { TranslationPanel } from "@/components/reader/TranslationPanel";
 import { NotebookPenIcon, XIcon } from "@/components/ui/Icon";
 import { NativeButton } from "@/components/ui/NativeButton";
@@ -75,7 +75,6 @@ import * as FileSystem from "expo-file-system/legacy";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  ActivityIndicator,
   Alert,
   Animated,
   AppState,
@@ -90,7 +89,12 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import { runOnJS } from "react-native-reanimated";
+import Reanimated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 
@@ -104,6 +108,7 @@ const MAX_TRACKED_PAGE_DELTA = 20;
 const MAX_TRACKED_FRACTION_DELTA = 0.08;
 const INITIAL_PROGRESS_RESTORE_GUARD_MS = 1800;
 const PROGRAMMATIC_NAV_GUARD_MS = 1200;
+const CONTROLS_VISIBILITY_ANIMATION_MS = 220;
 const BOOK_MIME_TYPES = [
   "application/epub+zip",
   "application/pdf",
@@ -187,6 +192,12 @@ type Props = NativeStackScreenProps<RootStackParamList, "Reader">;
 type TTSSegment = VisibleTTSSegment;
 
 // ──────────────────────────── helpers ────────────────────────────
+
+function ReaderLoadingIndicator({ color }: { color: string }) {
+  return <AnimatedNarraFace width={56} height={58} color={color} />;
+}
+
+const keepTTSInReader = (_visible: boolean) => undefined;
 
 function buildCustomFontFaceCSS(
   fonts: import("@readany/core/types/font").CustomFont[],
@@ -355,7 +366,7 @@ function ReaderLoadingChrome({ navigation }: { navigation: Props["navigation"] }
   return (
     <View style={{ flex: 1, paddingBottom: insets.bottom, backgroundColor: colors.background }}>
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ReaderLoadingIndicator color={colors.primary20} />
       </View>
       {Platform.OS === "ios" && (
         <View
@@ -376,7 +387,6 @@ function ReaderLoadingChrome({ navigation }: { navigation: Props["navigation"] }
             speechActive={false}
             onSpeechPress={ignorePress}
             onChatPress={ignorePress}
-            onSettingsPress={ignorePress}
           />
         </View>
       )}
@@ -405,15 +415,12 @@ function ReaderContent({ route, navigation }: Props) {
   const [showNotebook, setShowNotebook] = useState(false);
   const [showTranslation, setShowTranslation] = useState(false);
   const [translationText, setTranslationText] = useState("");
-  const [showTTS, setShowTTS] = useState(false);
   const [showChapterTranslation, setShowChapterTranslation] = useState(false);
   const [isReimporting, setIsReimporting] = useState(false);
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [progress, setProgress] = useState(0);
   const [currentChapter, setCurrentChapter] = useState("");
   const [currentChapterHref, setCurrentChapterHref] = useState("");
-  const [currentPage, setCurrentPage] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
   // Позиция по всей книге (foliate location, как «стр. N из M» в Apple Books)
   const [bookLocation, setBookLocation] = useState<{ current: number; total: number } | null>(null);
   const [toc, setToc] = useState<TOCItem[]>([]);
@@ -474,6 +481,7 @@ function ReaderContent({ route, navigation }: Props) {
     goToFraction: (fraction: number) => void;
     goToSection: (sectionIndex: number) => void;
     goToCFI: (cfi: string) => void;
+    followTTSLocation: (cfi: string) => void;
     goToHref: (href: string) => void;
     flashHighlight: (cfi: string, color?: string, duration?: number) => void;
     addAnnotation: (annotation: {
@@ -483,7 +491,13 @@ function ReaderContent({ route, navigation }: Props) {
       note?: string;
     }) => void;
     removeAnnotation: (annotation: { value: string; type?: string }) => void;
-    setTTSHighlight: (cfi: string | null, color?: string, force?: boolean) => void;
+    setTTSHighlight: (
+      cfi: string | null,
+      color?: string,
+      force?: boolean,
+      wordIndex?: number | null,
+      text?: string | null,
+    ) => void;
     insertSceneSlot: () => void;
     replaceSceneSlot: (anchor: string, imageDataUri: string) => void;
     setSceneSlotState: (anchor: string, state: "idle" | "loading" | "error") => void;
@@ -572,6 +586,10 @@ function ReaderContent({ route, navigation }: Props) {
 
   const controlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const readerPullAnim = useRef(new Animated.Value(0)).current;
+  const controlsVisibility = useSharedValue(1);
+  const controlsAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: controlsVisibility.value,
+  }));
   const lastCfiRef = useRef<string>("");
   const progressRef = useRef(0);
   const locationHistoryRef = useRef<string[]>([]);
@@ -886,7 +904,6 @@ function ReaderContent({ route, navigation }: Props) {
 
   // Also read ttsPlayState from store for volume paging guard
   const ttsPlayState = useTTSStore((s) => s.playState);
-  const ttsConfig = useTTSStore((s) => s.config);
 
   // Focus & foreground state for volume paging whitelist
   const isFocused = useIsFocused();
@@ -953,6 +970,12 @@ function ReaderContent({ route, navigation }: Props) {
       }, CONTROLS_TIMEOUT);
     }
   }, [showControls]);
+
+  useEffect(() => {
+    controlsVisibility.value = withTiming(showControls ? 1 : 0, {
+      duration: CONTROLS_VISIBILITY_ANIMATION_MS,
+    });
+  }, [controlsVisibility, showControls]);
 
   const handleReaderBackSwipe = useCallback(() => {
     if (navigation.canGoBack()) {
@@ -1062,19 +1085,6 @@ function ReaderContent({ route, navigation }: Props) {
       }
 
       if (detail.fraction != null) setProgress(detail.fraction);
-
-      if (detail.page) {
-        setCurrentPage(Math.max(1, detail.page.current));
-        setTotalPages(Math.max(1, detail.page.total));
-      } else if (detail.section?.total && !detail.location?.total) {
-        // Fixed-layout documents can still expose stable section pages.
-        setCurrentPage(Math.max(1, detail.section.current + 1));
-        setTotalPages(Math.max(1, detail.section.total));
-      } else {
-        // Reflowable books without renderer-backed pagination should fall back to percent.
-        setCurrentPage(0);
-        setTotalPages(0);
-      }
 
       // «стр. N из M» по всей книге — из foliate location (нет в scrolled/fixed)
       setBookLocation(
@@ -1294,13 +1304,9 @@ function ReaderContent({ route, navigation }: Props) {
         characterId: character.id,
       });
     },
-    // Врезки сцен: генерация только по явному тапу, перегенерация — «↻ Заново»
+    // Врезки сцен генерируются только по явному тапу.
     onSceneSlotTap: ({ anchor }) => {
       console.log("[SceneSlot] tap → generate", { anchor });
-      void runSceneSlotGeneration(anchor);
-    },
-    onSceneSlotRegenerate: ({ anchor }) => {
-      console.log("[SceneSlot] regenerate", { anchor });
       void runSceneSlotGeneration(anchor);
     },
     onSceneSlotRestored: ({ anchor }) => {
@@ -1370,7 +1376,6 @@ function ReaderContent({ route, navigation }: Props) {
       !showTOC &&
       !showSettings &&
       !showNotebook &&
-      !showTTS &&
       !showTranslation &&
       !showChapterTranslation &&
       chapterTranslation.state.status === "idle" &&
@@ -1390,7 +1395,6 @@ function ReaderContent({ route, navigation }: Props) {
       showTOC,
       showSettings,
       showNotebook,
-      showTTS,
       showTranslation,
       showChapterTranslation,
       chapterTranslation.state.status,
@@ -1430,7 +1434,6 @@ function ReaderContent({ route, navigation }: Props) {
         loading: t("narra.sceneSlotDrawing", "Рисуем сцену…"),
         loadingHint: t("narra.sceneSlotDrawingHint", "20–60 секунд"),
         caption: t("narra.sceneSlotCaption", "Сцена — сгенерировано ИИ"),
-        regen: t("narra.sceneSlotRegen", "Заново"),
         error: t("narra.sceneSlotError", "Не получилось — попробовать ещё раз"),
       }),
     );
@@ -1457,8 +1460,8 @@ function ReaderContent({ route, navigation }: Props) {
     currentSectionIndex,
     currentCfi,
     webViewReady,
-    showTTS,
-    setShowTTS,
+    showTTS: false,
+    setShowTTS: keepTTSInReader,
     setShowControls,
     bridgeRef,
     toc,
@@ -1550,7 +1553,7 @@ function ReaderContent({ route, navigation }: Props) {
     // Пока открыто меню действий, шапку прятать нельзя: headerRight с ней
     // размонтируется, а вместе с ним исчезает и само меню — оно живёт внутри.
     const headerVisible = showControls || actionsMenuOpen;
-    // Единая панель (оглавление/закладки/поиск) + Aa-настройки — один вход с тулбара
+    // Единая панель для оглавления, закладок и поиска открывается из меню действий.
     const openNavPanel = (tab: ReaderNavTab) => {
       setTocActiveTab(tab);
       setShowTOC(true);
@@ -1582,11 +1585,6 @@ function ReaderContent({ route, navigation }: Props) {
         onPress: handleOpenCharacters,
       },
       {
-        label: "Оформление",
-        sfSymbol: "textformat.size",
-        onPress: () => setShowSettings(true),
-      },
-      {
         label: "Заметки",
         sfSymbol: "square.and.pencil",
         onPress: () => navigation.navigate("FullScreenNotes", { bookId }),
@@ -1604,6 +1602,13 @@ function ReaderContent({ route, navigation }: Props) {
             headerRight: undefined,
             unstable_headerRightItems: headerVisible
               ? () => [
+                  {
+                    type: "button" as const,
+                    label: "Оформление",
+                    accessibilityLabel: t("narra.readerAppearance", "Оформление"),
+                    icon: { type: "sfSymbol" as const, name: "textformat.size" as const },
+                    onPress: () => setShowSettings(true),
+                  },
                   {
                     type: "menu" as const,
                     label: "Действия с книгой",
@@ -1649,7 +1654,7 @@ function ReaderContent({ route, navigation }: Props) {
                         ...readerActions,
                         {
                           label: "Озвучить",
-                          sfSymbol: "waveform",
+                          sfSymbol: "airpods.max",
                           onPress: () => void tts.handleToggleTTS(),
                         },
                       ].map((action) => ({ key: action.label, ...action }))}
@@ -1989,12 +1994,12 @@ function ReaderContent({ route, navigation }: Props) {
     }
   }, [webViewReady, loading, cfi, shouldHighlight, goToCFISafely, navigation, bookId]);
 
-  // Open TTS lyrics page when navigating from notification
+  // Return to the active narration fragment when navigating from the mini player.
   useEffect(() => {
     if (!openTTS || !webViewReady || loading) return;
 
     let cancelled = false;
-    const openLyricsPage = async () => {
+    const returnToNarration = async () => {
       const targetCfi =
         tts.resolvedTTSSegmentCfi || tts.ttsDisplaySegments[0]?.cfi || currentCfi || null;
       if (targetCfi && targetCfi !== currentCfi) {
@@ -2002,12 +2007,11 @@ function ReaderContent({ route, navigation }: Props) {
         await new Promise((resolve) => setTimeout(resolve, 320));
       }
       if (cancelled) return;
-      setShowControls(false);
-      setShowTTS(true);
+      setShowControls(true);
       navigation.setParams({ bookId, openTTS: undefined });
     };
 
-    void openLyricsPage();
+    void returnToNarration();
     return () => {
       cancelled = true;
     };
@@ -2015,19 +2019,21 @@ function ReaderContent({ route, navigation }: Props) {
 
   const readerToolbarDock =
     Platform.OS === "ios" ? (
-      <View
+      <Reanimated.View
         pointerEvents={loading || !showControls ? "none" : "auto"}
-        style={{
-          position: "absolute",
-          right: 0,
-          bottom: 0,
-          left: 0,
-          zIndex: 30,
-          height: TOOLBAR_HEIGHT + insets.bottom,
-          paddingBottom: insets.bottom,
-          backgroundColor: "transparent",
-          transform: [{ translateY: showControls ? 0 : TOOLBAR_HEIGHT + insets.bottom }],
-        }}
+        style={[
+          {
+            position: "absolute",
+            right: 0,
+            bottom: 0,
+            left: 0,
+            zIndex: 30,
+            height: TOOLBAR_HEIGHT + insets.bottom,
+            paddingBottom: insets.bottom,
+            backgroundColor: "transparent",
+          },
+          controlsAnimatedStyle,
+        ]}
       >
         <ReaderToolbar
           tintColor={readerThemeColors.foreground}
@@ -2035,9 +2041,8 @@ function ReaderContent({ route, navigation }: Props) {
           speechActive={ttsPlayState === "playing" || ttsPlayState === "loading"}
           onSpeechPress={() => void tts.handleToggleTTS()}
           onChatPress={handleOpenCharacters}
-          onSettingsPress={() => setShowSettings(true)}
         />
-      </View>
+      </Reanimated.View>
     ) : null;
 
   if (loading && !webViewReady && !readerHtmlUri) {
@@ -2050,7 +2055,7 @@ function ReaderContent({ route, navigation }: Props) {
       >
         <View style={s.readerStage}>
           <View style={s.loadingWrap}>
-            <ActivityIndicator size="large" color={colors.primary} />
+            <ReaderLoadingIndicator color={colors.primary20} />
           </View>
         </View>
         {readerToolbarDock}
@@ -2123,7 +2128,7 @@ function ReaderContent({ route, navigation }: Props) {
       >
         <View style={s.readerStage}>
           <View style={s.loadingWrap}>
-            <ActivityIndicator size="large" color={colors.primary} />
+            <ReaderLoadingIndicator color={colors.primary20} />
           </View>
         </View>
         {readerToolbarDock}
@@ -2219,7 +2224,7 @@ function ReaderContent({ route, navigation }: Props) {
           {/* Loading overlay */}
           {loading && (
             <View style={s.loadingOverlay}>
-              <ActivityIndicator size="large" color={colors.primary} />
+              <ReaderLoadingIndicator color={colors.primary20} />
             </View>
           )}
 
@@ -2489,45 +2494,6 @@ function ReaderContent({ route, navigation }: Props) {
           onToggleOriginalVisible={chapterTranslation.toggleOriginalVisible}
           onToggleTranslationVisible={chapterTranslation.toggleTranslationVisible}
           onReset={chapterTranslation.reset}
-        />
-
-        <TTSPage
-          visible={showTTS}
-          bookTitle={bookTitle || book?.meta.title || ""}
-          chapterTitle={currentChapter}
-          coverUri={tts.ttsCoverUri}
-          playState={ttsPlayState}
-          currentText={tts.currentTTSSegment?.text || tts.ttsLastText}
-          config={ttsConfig}
-          readingProgress={progress}
-          currentPage={currentPage}
-          totalPages={totalPages}
-          sourceLabel={tts.ttsSourceLabel}
-          continuousEnabled={tts.ttsContinuousEnabled}
-          narrationSegments={tts.ttsDisplaySegments}
-          prevNarrationSegments={tts.ttsPrevPageSegments}
-          currentSegmentCfi={tts.resolvedTTSSegmentCfi}
-          currentSegmentText={tts.currentTTSSegment?.text || null}
-          currentChunkIndex={tts.localTTSChunkIndex}
-          totalChunks={tts.ttsDisplaySegments.length}
-          chapterCurrentIndex={tts.currentTTSChapterSegmentIndex}
-          chapterTotalChunks={tts.ttsChapterSegments.length}
-          onClose={() => setShowTTS(false)}
-          onReturnToReading={tts.handleTTSReturnToReading}
-          onReplay={tts.handleTTSReplay}
-          onPlayPause={tts.handleTTSPlayPause}
-          onJumpToSegment={tts.handleJumpToTTSSegment}
-          onJumpToLyricSegment={tts.handleJumpToTTSLyricSegment}
-          onLoadMoreAbove={tts.handleLoadMoreAboveTTSLyrics}
-          onLoadMoreBelow={tts.handleLoadMoreBelowTTSLyrics}
-          onSeekChapterChunk={tts.handleSeekTTSChapterSegment}
-          onStop={tts.handleTTSStop}
-          onAdjustRate={tts.handleAdjustTTSRate}
-          onAdjustPitch={tts.handleAdjustTTSPitch}
-          onToggleContinuous={tts.handleToggleTTSContinuous}
-          onUpdateConfig={tts.handleUpdateTTSConfig}
-          onPrevChapter={toc.length > 0 ? tts.handleTTSPrevChapter : undefined}
-          onNextChapter={toc.length > 0 ? tts.handleTTSNextChapter : undefined}
         />
       </View>
     </>

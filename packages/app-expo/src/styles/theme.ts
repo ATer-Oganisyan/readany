@@ -1,3 +1,4 @@
+import { typographyStyles } from "@deslop/primitives";
 import {
   displayFontFamily,
   interfaceFontFamily,
@@ -16,7 +17,9 @@ export { useTheme } from "./ThemeContext";
  * Accepts 3-digit (#abc) or 6-digit (#aabbcc) hex values.
  */
 export function withOpacity(hex: string, opacity: number): string {
-  let r: number, g: number, b: number;
+  let r: number;
+  let g: number;
+  let b: number;
   const h = hex.replace("#", "");
   if (h.length === 3) {
     r = Number.parseInt(h[0] + h[0], 16);
@@ -78,6 +81,38 @@ export const fontWeight = {
   semibold: "600" as const,
   bold: "700" as const,
 };
+
+function primitiveTypography(name: string) {
+  const style = typographyStyles.find((item) => item.name === name);
+  if (!style) {
+    throw new Error(`@deslop/primitives: typography style "${name}" is missing`);
+  }
+  return {
+    fontSize: Number.parseFloat(String(style.fontSize)),
+    letterSpacing: Number.parseFloat(String(style.letterSpacing)),
+    lineHeight: Number.parseFloat(String(style.lineHeight)),
+  };
+}
+
+/** Размер и интерлиньяж Title 40 из mishanaer/deslop/primitives. */
+const largeTitleTypography = primitiveTypography("Title 40");
+export const largeTitleFontSize = largeTitleTypography.fontSize;
+export const largeTitleLineHeight = largeTitleTypography.lineHeight;
+
+/** Семантические текстовые стили mishanaer/deslop/primitives для React Native. */
+export const bodyTypography = {
+  ...primitiveTypography("Body"),
+  fontFamily: interfaceFontFamily.regular,
+} as const;
+export const captionTypography = {
+  ...primitiveTypography("Caption"),
+  fontFamily: interfaceFontFamily.caps,
+  textTransform: "uppercase",
+} as const;
+export const subtitleTypography = {
+  ...primitiveTypography("Subtitle"),
+  fontFamily: interfaceFontFamily.regular,
+} as const;
 
 export const fontFamily = interfaceFontFamily;
 export const titleFontFamily = displayFontFamily.semibold;

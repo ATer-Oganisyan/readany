@@ -1,3 +1,5 @@
+import { NativeCharacterDetailsCells } from "@/components/narra/NativeCharacterDetailsCells";
+import { CharacterPortraitImage } from "@/components/narra/character-portrait-image";
 import { Text } from "@/components/ui/Typography";
 import { NarraAudioPlayer } from "@/lib/narra/audio-player";
 import { hasCharacterPortrait, resolveCharacterPortraitUri } from "@/lib/narra/character-portrait";
@@ -6,17 +8,45 @@ import { reportNarraError } from "@/lib/narra/errors";
 import { ensureCharacterPortrait, synthesizeNarraSpeech } from "@/lib/narra/media";
 import type { NarraCharacter } from "@/lib/narra/types";
 import { useLibraryStore, useNarraStore } from "@/stores";
-import { type ThemeColors, fontSize, radius, spacing, useTheme } from "@/styles/theme";
+import {
+  type ThemeColors,
+  fontSize,
+  largeTitleFontSize,
+  largeTitleLineHeight,
+  radius,
+  spacing,
+  useTheme,
+} from "@/styles/theme";
 import {
   interfaceFontFamily,
   serifCondensedFontFamily,
   serifTextFontFamily,
 } from "@deslop/primitives/native";
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useId,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
-import { ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, View } from "react-native";
+import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, View } from "react-native";
 import { StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  Defs,
+  FeGaussianBlur,
+  Filter,
+  LinearGradient,
+  Mask,
+  Rect,
+  Stop,
+  Svg,
+  Image as SvgImage,
+} from "react-native-svg";
+import ReadAnyNativeControls from "../../../modules/native-controls";
 import { ReaderCharacterActions } from "./ReaderCharacterActions";
 
 interface ReaderCharacterCardProps {
@@ -37,6 +67,132 @@ type VoiceSampleState = "idle" | "loading" | "playing";
 export type ReaderCharacterCardHandle = {
   regeneratePortrait: () => void;
 };
+
+const DEFAULT_PORTRAIT_BACKGROUND = "#2c2219";
+const PORTRAIT_BACKGROUND_SAMPLE_FRACTION = 0.1;
+const PROGRESSIVE_TRANSITION_START = 0.35;
+const PROGRESSIVE_TRANSITION_STOPS = [
+  { offset: 0, opacity: 0 },
+  { offset: 0.15, opacity: 0.03 },
+  { offset: 0.3, opacity: 0.1 },
+  { offset: 0.45, opacity: 0.22 },
+  { offset: 0.6, opacity: 0.4 },
+  { offset: 0.75, opacity: 0.62 },
+  { offset: 0.9, opacity: 0.85 },
+  { offset: 1, opacity: 1 },
+] as const;
+const portraitBackgroundCache = new Map<string, string>();
+
+function formatCharacterTraits(traits: readonly string[]): string {
+  const value = traits
+    .map((trait) => trait.trim())
+    .filter(Boolean)
+    .join(", ");
+
+  return value ? `${value[0].toLocaleUpperCase("ru-RU")}${value.slice(1)}` : "";
+}
+
+function splitNameIntoTwoBalancedLines(name: string): string {
+  const words = name.trim().split(/\s+/);
+  if (words.length < 2) return name;
+
+  let bestBreak = 1;
+  let smallestDifference = Number.POSITIVE_INFINITY;
+  for (let index = 1; index < words.length; index += 1) {
+    const firstLineLength = words.slice(0, index).join(" ").length;
+    const secondLineLength = words.slice(index).join(" ").length;
+    const difference = Math.abs(firstLineLength - secondLineLength);
+    if (difference < smallestDifference) {
+      bestBreak = index;
+      smallestDifference = difference;
+    }
+  }
+
+  return `${words.slice(0, bestBreak).join(" ")}\n${words.slice(bestBreak).join(" ")}`;
+}
+
+function foregroundForBackground(color: string): {
+  isDark: boolean;
+  primary: string;
+  secondary: string;
+} {
+  const red = Number.parseInt(color.slice(1, 3), 16) / 255;
+  const green = Number.parseInt(color.slice(3, 5), 16) / 255;
+  const blue = Number.parseInt(color.slice(5, 7), 16) / 255;
+  const luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+  return luminance > 0.58
+    ? {
+        isDark: false,
+        primary: "rgba(0,0,0,0.9)",
+        secondary: "rgba(0,0,0,0.62)",
+      }
+    : {
+        isDark: true,
+        primary: "rgba(255,255,255,0.96)",
+        secondary: "rgba(255,255,255,0.72)",
+      };
+}
+
+function ProgressivePortraitTransition({
+  backgroundColor,
+  uri,
+}: {
+  backgroundColor: string;
+  uri: string;
+}) {
+  const id = useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const blurId = `portrait-blur-${id}`;
+  const blurMaskId = `portrait-blur-mask-${id}`;
+  const blurMaskGradientId = `portrait-blur-mask-gradient-${id}`;
+  const colorFadeId = `portrait-color-fade-${id}`;
+
+  return (
+    <Svg pointerEvents="none" style={StyleSheet.absoluteFill} viewBox="0 0 75 100">
+      <Defs>
+        <Filter id={blurId} x="-20%" y="-20%" width="140%" height="140%">
+          <FeGaussianBlur stdDeviation={3.2} edgeMode="duplicate" />
+        </Filter>
+        <LinearGradient id={blurMaskGradientId} x1="0" y1="0" x2="0" y2="1">
+          {PROGRESSIVE_TRANSITION_STOPS.map(({ offset, opacity }) => (
+            <Stop key={offset} offset={String(offset)} stopColor="#fff" stopOpacity={opacity} />
+          ))}
+        </LinearGradient>
+        <Mask id={blurMaskId} x="0" y="0" width="75" height="100">
+          <Rect
+            x="0"
+            y={PROGRESSIVE_TRANSITION_START * 100}
+            width="75"
+            height={(1 - PROGRESSIVE_TRANSITION_START) * 100}
+            fill={`url(#${blurMaskGradientId})`}
+          />
+        </Mask>
+        <LinearGradient id={colorFadeId} x1="0" y1="0" x2="0" y2="1">
+          {PROGRESSIVE_TRANSITION_STOPS.map(({ offset, opacity }) => (
+            <Stop
+              key={offset}
+              offset={String(
+                PROGRESSIVE_TRANSITION_START + offset * (1 - PROGRESSIVE_TRANSITION_START),
+              )}
+              stopColor={backgroundColor}
+              stopOpacity={opacity}
+            />
+          ))}
+        </LinearGradient>
+      </Defs>
+      <SvgImage
+        x="0"
+        y="0"
+        width="75"
+        height="100"
+        href={{ uri }}
+        preserveAspectRatio="xMidYMid slice"
+        filter={`url(#${blurId})`}
+        mask={`url(#${blurMaskId})`}
+      />
+      <Rect x="0" y="0" width="75" height="100" fill={`url(#${colorFadeId})`} />
+    </Svg>
+  );
+}
 
 /**
  * Карточка героя (по образцу CharacterCard из десктопной narra): крупный портрет
@@ -78,11 +234,52 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
     const [portraitLoading, setPortraitLoading] = useState(false);
     const portraitAttemptsRef = useRef(new Set<string>());
     const [voiceState, setVoiceState] = useState<VoiceSampleState>("idle");
+    const [nameFit, setNameFit] = useState<{
+      name: string;
+      needsFitting: boolean;
+    } | null>(null);
     const audioRef = useRef(new NarraAudioPlayer());
     // Растущий id запроса синтеза: устаревший ответ не должен заиграть после отмены.
     const voiceRequestRef = useRef(0);
 
     const portraitUri = resolveCharacterPortraitUri(liveCharacter);
+    const [portraitBackgroundColor, setPortraitBackgroundColor] = useState(
+      portraitUri
+        ? (portraitBackgroundCache.get(portraitUri) ?? DEFAULT_PORTRAIT_BACKGROUND)
+        : colors.background,
+    );
+    const portraitForeground = useMemo(
+      () => foregroundForBackground(portraitBackgroundColor),
+      [portraitBackgroundColor],
+    );
+
+    useEffect(() => {
+      if (!embedded || !portraitUri) return;
+      const cached = portraitBackgroundCache.get(portraitUri);
+      if (cached) {
+        setPortraitBackgroundColor(cached);
+        return;
+      }
+
+      let cancelled = false;
+      setPortraitBackgroundColor(DEFAULT_PORTRAIT_BACKGROUND);
+      void Promise.resolve()
+        .then(() =>
+          ReadAnyNativeControls.averageBottomImageColor(
+            portraitUri,
+            PORTRAIT_BACKGROUND_SAMPLE_FRACTION,
+          ),
+        )
+        .then((color) => {
+          if (cancelled || !/^#[0-9a-f]{6}$/i.test(color)) return;
+          portraitBackgroundCache.set(portraitUri, color);
+          setPortraitBackgroundColor(color);
+        })
+        .catch(() => undefined);
+      return () => {
+        cancelled = true;
+      };
+    }, [embedded, portraitUri]);
 
     const stopVoiceSample = () => {
       voiceRequestRef.current += 1;
@@ -108,7 +305,12 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
         ? { ...character, portraitAssetId: undefined, portraitUri: undefined }
         : character;
       void ensureCharacterPortrait(bookId, target)
-        .then((uri) => updateCharacter(bookId, character.id, { portraitUri: uri }))
+        .then((uri) =>
+          updateCharacter(bookId, character.id, {
+            portraitUri: uri,
+            portraitUriOverridesAsset: force,
+          }),
+        )
         .catch((error) => reportNarraError("character_portrait_reader_card", error))
         .finally(() => setPortraitLoading(false));
     };
@@ -131,6 +333,12 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
     }, [visible, unlocked, character, bookId, updateCharacter]);
 
     if (!character || !liveCharacter) return null;
+
+    const displayName = character.fullName || character.name;
+    const nameNeedsFitting = nameFit?.name === displayName && nameFit.needsFitting;
+    const fittedDisplayName = nameNeedsFitting
+      ? splitNameIntoTwoBalancedLines(displayName)
+      : displayName;
 
     // Проба голоса — существующий синтез ответа чата (synthesizeNarraSpeech):
     // фраза героя его назначенным голосом; повторный тап останавливает.
@@ -182,15 +390,170 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
           { percent: Math.round(Math.min(1, Math.max(0, liveCharacter.unlockProgress)) * 100) },
         );
 
+    const portraitContent = (
+      <View style={[styles.portraitFrame, embedded && styles.embeddedPortraitFrame]}>
+        <View style={[styles.portrait, embedded && styles.embeddedPortrait]}>
+          <CharacterPortraitImage
+            character={liveCharacter}
+            style={styles.portraitImage}
+            fallback={
+              portraitLoading ? (
+                <ActivityIndicator color={colors.primary} />
+              ) : (
+                <Text style={styles.portraitLetter}>
+                  {character.name.slice(0, 1).toUpperCase()}
+                </Text>
+              )
+            }
+          />
+          {embedded && portraitUri ? (
+            <ProgressivePortraitTransition
+              uri={portraitUri}
+              backgroundColor={portraitBackgroundColor}
+            />
+          ) : null}
+          {portraitUri && !portraitLoading && !embedded ? (
+            <View style={styles.portraitButtonsRow}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t("narra.regeneratePortrait", "Сгенерировать портрет заново")}
+                onPress={() => generatePortrait(true)}
+                style={styles.regenButton}
+              >
+                <Text style={styles.regenIcon}>↻</Text>
+              </Pressable>
+            </View>
+          ) : null}
+          {portraitLoading && portraitUri ? (
+            <View style={styles.portraitOverlay}>
+              <ActivityIndicator color={colors.background} />
+            </View>
+          ) : null}
+        </View>
+      </View>
+    );
+
+    const characterDetails = (
+      <View
+        collapsable={false}
+        style={[
+          styles.characterSection,
+          embedded && portraitUri && styles.embeddedCharacterSection,
+        ]}
+      >
+        <View style={[styles.characterInfo, embedded && styles.embeddedCharacterInfo]}>
+          {embedded ? (
+            <Text
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+              onTextLayout={({ nativeEvent }) => {
+                const needsFitting = nativeEvent.lines.length > 2;
+                setNameFit((current) =>
+                  current?.name === displayName && current.needsFitting === needsFitting
+                    ? current
+                    : { name: displayName, needsFitting },
+                );
+              }}
+              pointerEvents="none"
+              style={[styles.name, styles.embeddedName, styles.embeddedNameMeasurement]}
+            >
+              {displayName}
+            </Text>
+          ) : null}
+          <Text
+            adjustsFontSizeToFit={embedded && nameNeedsFitting}
+            minimumFontScale={embedded && nameNeedsFitting ? 0.5 : undefined}
+            numberOfLines={embedded ? 2 : undefined}
+            style={[
+              styles.name,
+              embedded && portraitUri && styles.embeddedName,
+              embedded && portraitUri && { color: portraitForeground.primary },
+            ]}
+          >
+            {fittedDisplayName}
+          </Text>
+          {embedded && showActions ? (
+            <View style={styles.embeddedActionsBlock}>
+              <View style={styles.nativeActionsContainer}>
+                <ReaderCharacterActions
+                  talkLabel={t("narra.writeToCharacter", "Написать")}
+                  listenLabel={t("narra.voiceCharacter", "Озвучить")}
+                  stopLabel={t("narra.stopVoiceSample", "Остановить озвучку")}
+                  regenerateLabel={t("narra.regeneratePortrait", "Перегенерировать портрет")}
+                  onTalk={() => onOpenChat(character)}
+                  onToggleVoice={toggleVoiceSample}
+                  onRegenerate={() => generatePortrait(true)}
+                  canSample={canSample}
+                  regenerating={portraitLoading}
+                  voiceState={voiceState}
+                  isDark={portraitForeground.isDark}
+                  foregroundColor={portraitForeground.primary}
+                  primaryForegroundColor={colors.primary5}
+                />
+              </View>
+            </View>
+          ) : null}
+          {embedded ? (
+            <View style={styles.embeddedDetailsBlock}>
+              {portraitUri ? (
+                <NativeCharacterDetailsCells
+                  bio={character.role || "—"}
+                  bioLabel={t("narra.bio", "Био")}
+                  cellBackgroundColor={colors.primary10}
+                  character={formatCharacterTraits(character.traits) || "—"}
+                  characterLabel={t("narra.character", "Характер")}
+                  isDark={portraitForeground.isDark}
+                />
+              ) : character.role ? (
+                <Text style={styles.description}>{character.role}</Text>
+              ) : null}
+            </View>
+          ) : character.role ? (
+            <Text style={styles.description}>{character.role}</Text>
+          ) : null}
+          {!embedded && character.traits.length > 0 ? (
+            <Text style={styles.description}>{formatCharacterTraits(character.traits)}</Text>
+          ) : null}
+          {!embedded && liveCharacter.speechStyle ? (
+            <View style={styles.speechSection}>
+              <Text
+                style={[
+                  styles.sectionLabel,
+                  embedded && portraitUri && { color: portraitForeground.secondary },
+                ]}
+              >
+                {t("narra.speechStyle", "Манера речи")}
+              </Text>
+              <Text
+                style={[
+                  styles.description,
+                  embedded && portraitUri && { color: portraitForeground.secondary },
+                ]}
+              >
+                {liveCharacter.speechStyle}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      </View>
+    );
+
     const content = (
       <View
+        collapsable={false}
         style={[
           styles.sheet,
           embedded && styles.embedded,
-          { paddingBottom: (insets.bottom || spacing.md) + spacing.md },
+          { paddingBottom: embedded ? 0 : (insets.bottom || spacing.md) + spacing.md },
         ]}
       >
         {!embedded ? <View style={styles.grabber} /> : null}
+        {embedded && unlocked && portraitUri ? (
+          <View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFill, { backgroundColor: portraitBackgroundColor }]}
+          />
+        ) : null}
         {!unlocked ? (
           // Тизер запертого героя — как char-teaser в narra: имя и обещание без спойлеров
           <View style={styles.teaser}>
@@ -218,80 +581,38 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
           </View>
         ) : (
           <>
-            <ScrollView
-              style={embedded ? styles.embeddedScroll : undefined}
-              contentInsetAdjustmentBehavior="never"
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={[
-                styles.scrollContent,
-                embedded && styles.embeddedScrollContent,
-              ]}
-            >
-              {/* Крупный портрет в рамке, как в карточке narra */}
-              <View style={styles.portraitFrame}>
-                <View style={styles.portrait}>
-                  {portraitUri ? (
-                    <Image
-                      source={{ uri: portraitUri }}
-                      style={styles.portraitImage}
-                      resizeMode="cover"
-                      onError={
-                        liveCharacter?.portraitUri
-                          ? () => updateCharacter(bookId, character.id, { portraitUri: undefined })
-                          : undefined
-                      }
-                    />
-                  ) : portraitLoading ? (
-                    <ActivityIndicator color={colors.primary} />
-                  ) : (
-                    <Text style={styles.portraitLetter}>
-                      {character.name.slice(0, 1).toUpperCase()}
-                    </Text>
-                  )}
-                  {portraitUri && !portraitLoading && !embedded ? (
-                    <View style={styles.portraitButtonsRow}>
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={t(
-                          "narra.regeneratePortrait",
-                          "Сгенерировать портрет заново",
-                        )}
-                        onPress={() => generatePortrait(true)}
-                        style={styles.regenButton}
-                      >
-                        <Text style={styles.regenIcon}>↻</Text>
-                      </Pressable>
-                    </View>
-                  ) : null}
-                  {portraitLoading && portraitUri ? (
-                    <View style={styles.portraitOverlay}>
-                      <ActivityIndicator color={colors.background} />
-                    </View>
-                  ) : null}
-                </View>
-              </View>
-              <Text style={styles.name}>{character.fullName || character.name}</Text>
-              {/* Досье: роль/описание раскрыто целиком */}
-              {character.role ? <Text style={styles.description}>{character.role}</Text> : null}
-              {character.traits.length > 0 ? (
-                <Text style={styles.description}>{character.traits.join(" · ")}</Text>
-              ) : null}
-              {liveCharacter.speechStyle ? (
-                <View style={styles.speechSection}>
-                  <Text style={styles.sectionLabel}>{t("narra.speechStyle", "Манера речи")}</Text>
-                  <Text style={styles.description}>{liveCharacter.speechStyle}</Text>
-                </View>
-              ) : null}
-            </ScrollView>
-            {showActions ? (
+            {embedded ? (
+              <ScrollView
+                style={styles.embeddedDetailsScroll}
+                contentInsetAdjustmentBehavior="never"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.embeddedDetailsScrollContent}
+              >
+                {portraitContent}
+                {characterDetails}
+              </ScrollView>
+            ) : (
+              <ScrollView
+                contentInsetAdjustmentBehavior="never"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.scrollContent}
+              >
+                {portraitContent}
+                {characterDetails}
+              </ScrollView>
+            )}
+            {showActions && !embedded ? (
               <View style={styles.nativeActionsContainer}>
                 <ReaderCharacterActions
-                  talkLabel={t("narra.talkToCharacter", "Поговорить")}
-                  listenLabel={t("narra.listenVoice", "Послушать голос")}
+                  talkLabel={t("narra.writeToCharacter", "Написать")}
+                  listenLabel={t("narra.voiceCharacter", "Озвучить")}
                   stopLabel={t("narra.stopVoiceSample", "Остановить озвучку")}
+                  regenerateLabel={t("narra.regeneratePortrait", "Перегенерировать портрет")}
                   onTalk={() => onOpenChat(character)}
                   onToggleVoice={toggleVoiceSample}
+                  onRegenerate={() => generatePortrait(true)}
                   canSample={canSample}
+                  regenerating={portraitLoading}
                   voiceState={voiceState}
                   isDark={isDark}
                   foregroundColor={colors.foreground}
@@ -338,16 +659,20 @@ const makeStyles = (colors: ThemeColors) =>
     embedded: {
       flex: 1,
       maxHeight: "100%",
+      gap: 0,
       paddingHorizontal: 0,
-      paddingTop: spacing.lg,
+      paddingTop: 0,
       borderTopLeftRadius: 0,
       borderTopRightRadius: 0,
     },
-    embeddedScroll: { flex: 1, alignSelf: "stretch" },
-    embeddedScrollContent: {
-      paddingHorizontal: spacing.lg,
-      paddingTop: spacing.md,
-      paddingBottom: 84,
+    embeddedDetailsScroll: {
+      flex: 1,
+      alignSelf: "stretch",
+      zIndex: 1,
+    },
+    embeddedDetailsScrollContent: {
+      flexGrow: 1,
+      paddingBottom: 0,
     },
     grabber: {
       alignSelf: "center",
@@ -367,6 +692,11 @@ const makeStyles = (colors: ThemeColors) =>
       borderRadius: radius.card,
       backgroundColor: "transparent",
     },
+    embeddedPortraitFrame: {
+      alignSelf: "stretch",
+      width: "100%",
+      borderRadius: 0,
+    },
     portrait: {
       width: 224,
       height: 280,
@@ -376,6 +706,12 @@ const makeStyles = (colors: ThemeColors) =>
       borderRadius: radius.card,
       backgroundColor: colors.elevation2,
       position: "relative",
+    },
+    embeddedPortrait: {
+      width: "100%",
+      height: undefined,
+      aspectRatio: 3 / 4,
+      borderRadius: 0,
     },
     portraitImage: { width: "100%", height: "100%" },
     portraitLetter: {
@@ -411,14 +747,50 @@ const makeStyles = (colors: ThemeColors) =>
       fontFamily: interfaceFontFamily.semibold,
       fontSize: fontSize.lg,
     },
-    // Тот же SB Serif Condensed, что у large title на главной, но меньшего размера.
+    // Тот же SB Serif Condensed и тот же Title 40, что у large title на главной.
     name: {
       color: colors.foreground,
       fontFamily: serifCondensedFontFamily.regular,
-      fontSize: fontSize["3xl"],
+      fontSize: largeTitleFontSize,
       fontWeight: "400",
-      lineHeight: 34,
+      lineHeight: largeTitleLineHeight,
       textAlign: "center",
+    },
+    embeddedName: {
+      alignSelf: "stretch",
+      maxWidth: "100%",
+      paddingHorizontal: spacing.xxl,
+      textShadowColor: "rgba(0, 0, 0, 0.5)",
+      textShadowOffset: { width: 0, height: 2 },
+      textShadowRadius: 20,
+    },
+    embeddedNameMeasurement: {
+      position: "absolute",
+      top: 0,
+      right: 0,
+      left: 0,
+      opacity: 0,
+    },
+    characterInfo: {
+      width: "100%",
+      alignItems: "center",
+      gap: spacing.xxl,
+    },
+    characterSection: {
+      width: "100%",
+      alignItems: "center",
+    },
+    embeddedCharacterSection: {
+      minHeight: 340,
+      overflow: "hidden",
+      marginTop: "-32%",
+      paddingTop: spacing.xl,
+      paddingBottom: 40,
+      zIndex: 1,
+    },
+    embeddedCharacterInfo: {
+      zIndex: 1,
+      gap: 0,
     },
     // Роль и манера речи — SB Sans, спокойный тёмно-серый (cardv2__role)
     description: {
@@ -433,7 +805,14 @@ const makeStyles = (colors: ThemeColors) =>
       alignItems: "center",
       gap: spacing.xs,
     },
-    nativeActionsContainer: { width: "100%", height: 52 },
+    nativeActionsContainer: { width: "100%", height: 68 },
+    embeddedActionsBlock: {
+      width: "100%",
+      paddingTop: spacing.xxl,
+    },
+    embeddedDetailsBlock: {
+      width: "100%",
+    },
     sectionLabel: {
       color: colors.mutedForeground,
       fontFamily: interfaceFontFamily.caps,

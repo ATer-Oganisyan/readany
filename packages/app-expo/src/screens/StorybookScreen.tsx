@@ -52,7 +52,7 @@ function ButtonPreview() {
 
 const iconNames = [
   { name: "books.vertical", fallback: "book_2" },
-  { name: "bubble.left.and.bubble.right", fallback: "chat" },
+  { name: "message.fill", fallback: "chat" },
   { name: "square.and.pencil", fallback: "edit" },
   { name: "person.crop.circle", fallback: "person" },
   { name: "plus", fallback: "add" },
@@ -227,7 +227,7 @@ const pageItems: CatalogItem[] = [
     title: "ИИ",
     subtitle: "Диалоги и помощник по чтению",
     icon: "chat",
-    sfSymbol: "bubble.left.and.bubble.right",
+    sfSymbol: "message.fill",
     preview: ChatScreen,
   },
   {

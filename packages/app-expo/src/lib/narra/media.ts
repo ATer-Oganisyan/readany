@@ -3,8 +3,11 @@ import { generateOpenRouterImage } from "@/lib/ai/openrouter-image";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import * as FileSystem from "expo-file-system/legacy";
 import coverGenerationConfig from "../book/cover-generation-config.json";
+import { resolveCoverGenreProfile } from "../book/cover-genre";
+import { findBundledCatalogBookDefinitionByTitle } from "../catalog/bundled-book-definitions";
 import { budgetPrompt } from "./art-style";
 import { normalizeNarraError } from "./errors";
+import { buildCharacterPortraitPrompt } from "./portrait-prompt";
 import { mentionedCharacters, passportDescription } from "./scene-prompt";
 import { applyActiveStressMarkup } from "./stress-markup";
 import type { NarraCharacter } from "./types";
@@ -120,30 +123,47 @@ function safeKey(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 160);
 }
 
-/** «Название» (Автор) — контекст эпохи/мира книги для промптов генерации. */
-function bookContextDescription(bookId: string): string | undefined {
+interface PortraitBookContext {
+  description: string;
+  genreId: string;
+  genreLabel: string;
+}
+
+/** Контекст книги и жанр для портретов персонажей. */
+function portraitBookContext(bookId: string): PortraitBookContext | undefined {
   try {
     // Ленивый импорт, чтобы не тянуть стор в юнит-тесты чистых промптов
     const { useLibraryStore } = require("@/stores") as typeof import("@/stores");
     const book = useLibraryStore.getState().books.find((item) => item.id === bookId);
     if (!book) return undefined;
     const author = book.meta.author ? ` (${book.meta.author})` : "";
-    return `«${book.meta.title}»${author}`;
+    const explicitlyClassic =
+      Boolean(findBundledCatalogBookDefinitionByTitle(book.meta.title)) ||
+      book.meta.subjects?.some((subject) => /(?:classic|классик)/iu.test(subject));
+    const genre = explicitlyClassic
+      ? { id: "classic", label: "классическая литература" }
+      : resolveCoverGenreProfile({
+          subjects: book.meta.subjects,
+          title: book.meta.title,
+          description: book.meta.description,
+        });
+    return {
+      description: `«${book.meta.title}»${author}`,
+      genreId: genre.id,
+      genreLabel: genre.label,
+    };
   } catch {
     return undefined;
   }
 }
 
-export function portraitPrompt(character: NarraCharacter, bookContext?: string): string {
-  return budgetPrompt([
-    `Ровно один человек в кадре — ${character.fullName || character.name}, никого больше: без второстепенных персонажей, без силуэтов и людей на фоне.`,
-    "Погрудный портрет: голова и плечи, строго анфас, взгляд в камеру, ровный светлый однотонный фон.",
-    bookContext
-      ? `Персонаж книги ${bookContext}: одежда, причёска и антураж строго соответствуют эпохе и миру книги, без современной одежды.`
-      : "Одежда и причёска строго соответствуют эпохе и миру книги, без современной одежды.",
-    `Выражение лица: ${character.expression || "естественное, в характере"}.`,
-    `Внешность (соблюдать точно): ${passportDescription(character)}.`,
-  ]);
+export function portraitPrompt(
+  character: NarraCharacter,
+  bookContext?: string,
+  genreId = "classic",
+  genreLabel = "классическая литература",
+): string {
+  return buildCharacterPortraitPrompt(character, { bookContext, genreId, genreLabel });
 }
 
 function imagePayload(payload: unknown): { base64?: string; url?: string; error?: string } {
@@ -305,9 +325,10 @@ async function generateCharacterPortraitRequest(
   bookId: string,
   character: NarraCharacter,
 ): Promise<string> {
+  const book = portraitBookContext(bookId);
   const image = await generateOpenRouterImage({
     model: OPENROUTER_IMAGE_MODEL,
-    prompt: portraitPrompt(character, bookContextDescription(bookId)),
+    prompt: portraitPrompt(character, book?.description, book?.genreId, book?.genreLabel),
     aspectRatio: "3:4",
     quality: "high",
     outputFormat: "png",

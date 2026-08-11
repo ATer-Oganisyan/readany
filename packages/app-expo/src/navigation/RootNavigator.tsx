@@ -26,7 +26,12 @@ import TTSSettingsScreen from "@/screens/settings/TTSSettingsScreen";
 import TranslationSettingsScreen from "@/screens/settings/TranslationSettingsScreen";
 import VectorModelSettingsScreen from "@/screens/settings/VectorModelSettingsScreen";
 import { useSettingsStore } from "@/stores";
-import { largeTitleFontFamily, titleFontFamily, useTheme } from "@/styles/theme";
+import {
+  largeTitleFontFamily,
+  largeTitleFontSize,
+  titleFontFamily,
+  useTheme,
+} from "@/styles/theme";
 /**
  * RootNavigator — top-level stack matching Tauri mobile App.tsx routes exactly.
  */
@@ -182,7 +187,7 @@ export function RootNavigator() {
             headerLargeTitleStyle: {
               color: colors.foreground,
               fontFamily: largeTitleFontFamily,
-              fontSize: 40,
+              fontSize: largeTitleFontSize,
               fontWeight: "400",
             },
           }}
@@ -203,13 +208,7 @@ export function RootNavigator() {
           options={{
             presentation: "formSheet",
             animation: "slide_from_bottom",
-            title: "",
-            headerTitle: "",
-            unstable_headerLeftItems: () => [],
-            unstable_headerRightItems: () => [],
-            headerTransparent: false,
-            headerStyle: { backgroundColor: colors.background },
-            headerBackVisible: false,
+            headerShown: false,
             sheetAllowedDetents: [0.78, 1],
             sheetInitialDetentIndex: 0,
             sheetGrabberVisible: true,

@@ -19,3 +19,4 @@ modules/*/android/build/
 *.mobileprovision
 *.orig.*
 web-build/
+build/
