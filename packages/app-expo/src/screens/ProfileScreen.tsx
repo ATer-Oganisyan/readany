@@ -1,7 +1,6 @@
 import { NativeThemePicker } from "@/components/profile/NativeThemePicker";
 import { ProfileNumericText } from "@/components/profile/ProfileNumericText";
-import { ChevronRightIcon, CloudIcon, NotebookPenIcon, Trash2Icon } from "@/components/ui/Icon";
-import type { MaterialIconComponent } from "@/components/ui/Icon";
+import { NativeSymbol } from "@/components/ui/NativeSymbol";
 import { ScrollViewMarker } from "@/components/ui/ScrollViewMarker";
 import { Text } from "@/components/ui/Typography";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
@@ -51,7 +50,10 @@ import {
 
 // Профильный стек + корневой стек: navigate по неизвестному маршруту всплывает к родителю
 type Nav = NativeStackNavigationProp<RootStackParamList & ProfileTabStackParamList>;
-type ProfileMenuIcon = MaterialIconComponent;
+type ProfileMenuIcon = {
+  name: string;
+  fallback: string;
+};
 type ProfileMenuRoute = Extract<keyof RootStackParamList, "SyncSettings">;
 type ProfileMenuItem =
   | {
@@ -373,11 +375,15 @@ export function ProfileScreen() {
         items: [
           // Бывший таб «Заметки» — теперь строка меню в стеке Профиля
           {
-            icon: NotebookPenIcon,
+            icon: { name: "square.and.pencil", fallback: "edit" },
             label: t("tabs.notes", "Заметки"),
             action: () => nav.navigate("ProfileNotes"),
           },
-          { icon: CloudIcon, label: t("settings.sync", "同步"), route: "SyncSettings" as const },
+          {
+            icon: { name: "icloud", fallback: "cloud" },
+            label: t("settings.sync", "同步"),
+            route: "SyncSettings" as const,
+          },
           // TODO(P3): «Поиск по книгам» — готового поиска библиотеки в мобильном
           // приложении нет (LibraryScreen ищет только оригинальный файл книги);
           // добавить пункт, когда появится полноценный поиск по библиотеке.
@@ -387,7 +393,7 @@ export function ProfileScreen() {
         title: t("profile.storage", "存储"),
         items: [
           {
-            icon: Trash2Icon,
+            icon: { name: "trash", fallback: "delete" },
             label: clearingCache
               ? t("profile.clearingCache", "清除中...")
               : t("profile.clearCache", "清除缓存"),
@@ -486,7 +492,6 @@ export function ProfileScreen() {
             </Text>
             <View style={s.menuCard}>
               {section.items.map((item, idx) => {
-                const Icon = item.icon;
                 const itemKey = "route" in item ? item.route : item.label;
                 const handlePress = () => {
                   if ("disabled" in item && item.disabled) {
@@ -511,12 +516,22 @@ export function ProfileScreen() {
                     android_ripple={{ color: colors.primary5 }}
                     accessibilityRole="button"
                   >
-                    <Icon size={20} color={colors.mutedForeground} />
+                    <NativeSymbol
+                      name={item.icon.name}
+                      fallback={item.icon.fallback}
+                      size={20}
+                      color={colors.mutedForeground}
+                    />
                     <Text style={s.menuItemLabel} maxFontSizeMultiplier={1.7}>
                       {item.label}
                     </Text>
                     {"showDot" in item && item.showDot ? <View style={s.menuItemDot} /> : null}
-                    <ChevronRightIcon size={16} color={colors.mutedForeground} />
+                    <NativeSymbol
+                      name="chevron.forward"
+                      fallback="chevron_right"
+                      size={16}
+                      color={colors.mutedForeground}
+                    />
                   </Pressable>
                 );
               })}

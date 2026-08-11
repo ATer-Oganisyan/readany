@@ -220,13 +220,13 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
       .finally(() => setPortraitLoading(null));
   }, [book, bookId, busy, characters, portraitLoading, updateCharacter]);
 
-  const openCharacterCard = useCallback(
+  const openCharacterChat = useCallback(
     (character: NarraCharacter) => {
-      // Нативный профиль ищет героя в narra-store — bundled-фолбэк сначала фиксируем там.
+      // Чат ищет героя в narra-store — bundled-фолбэк сначала фиксируем там.
       if (storedCharacters.length === 0 && bundledCharacters?.length) {
         setCharacters(bookId, bundledCharacters);
       }
-      navigation.navigate("NarraCharacterProfile", {
+      navigation.navigate("NarraCharacterChat", {
         bookId,
         characterId: character.id,
       });
@@ -260,7 +260,7 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
             percent: unlockPercent,
           });
       const accessibilityLabel = unlocked
-        ? t("myPath.openCharacter", "Открыть карточку {{character}}", {
+        ? t("narra.openCharacterChat", "Открыть чат с {{character}}", {
             character: character.name,
           })
         : character.appearanceChapter
@@ -279,7 +279,7 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
         title: unlocked ? character.fullName : character.name,
         subtitle: unlocked ? character.role : lockedSubtitle,
         dimmed: !unlocked,
-        onPress: () => openCharacterCard(character),
+        onPress: () => openCharacterChat(character),
         avatar: (
           <CharacterChatAvatar
             overlay={
