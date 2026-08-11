@@ -7,7 +7,7 @@ import { makeStyles } from "./book-card-styles";
 interface CatalogBookCardProps {
   title: string;
   author: string;
-  coverAssetModule: number;
+  coverUri?: string;
   cardWidth: number;
   isImporting: boolean;
   isInLibrary: boolean;
@@ -17,7 +17,7 @@ interface CatalogBookCardProps {
 export function CatalogBookCard({
   title,
   author,
-  coverAssetModule,
+  coverUri,
   cardWidth,
   isImporting,
   isInLibrary,
@@ -42,7 +42,15 @@ export function CatalogBookCard({
       style={styles.container}
     >
       <View style={styles.coverWrap}>
-        <Image source={coverAssetModule} style={styles.coverImage} resizeMode="cover" />
+        {coverUri ? (
+          <Image source={{ uri: coverUri }} style={styles.coverImage} resizeMode="cover" />
+        ) : (
+          <View style={styles.fallbackCover}>
+            <Text style={styles.fallbackTitle} numberOfLines={6}>
+              {title}
+            </Text>
+          </View>
+        )}
 
         {isImporting ? (
           <View style={localStyles.loadingOverlay}>

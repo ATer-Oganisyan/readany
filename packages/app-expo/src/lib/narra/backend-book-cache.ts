@@ -5,6 +5,7 @@ import { normalizeCharacterAnalysisResponse } from "./character-normalization";
 import type { NarraCharacter } from "./types";
 
 const CACHE_ROOT = `${FileSystem.documentDirectory}narra-backend-books`;
+const CACHE_PATH_MARKER = "/Documents/narra-backend-books/";
 
 interface CachedBackendBook {
   manifest: BackendBookManifest;
@@ -13,6 +14,13 @@ interface CachedBackendBook {
 
 function safeKey(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 160);
+}
+
+function normalizedCacheUri(value: string | undefined): string | undefined {
+  if (!value?.startsWith("file://")) return value;
+  const markerIndex = value.indexOf(CACHE_PATH_MARKER);
+  if (markerIndex === -1) return value;
+  return `${CACHE_ROOT}/${value.slice(markerIndex + CACHE_PATH_MARKER.length)}`;
 }
 
 function extension(mimeType: string): string {
@@ -167,7 +175,13 @@ export async function loadCachedBackendCharacters(bookId: string): Promise<Narra
     const value = JSON.parse(
       await FileSystem.readAsStringAsync(`${directory}/manifest.json`),
     ) as CachedBackendBook;
-    return Array.isArray(value.characters) ? value.characters : [];
+    if (!Array.isArray(value.characters)) return [];
+    return value.characters.map((character) => ({
+      ...character,
+      portraitUri: normalizedCacheUri(character.portraitUri),
+      greetingAudioUri: normalizedCacheUri(character.greetingAudioUri),
+      idleAnimationUri: normalizedCacheUri(character.idleAnimationUri),
+    }));
   } catch {
     return [];
   }

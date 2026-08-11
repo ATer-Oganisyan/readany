@@ -49,7 +49,6 @@ import TrackPlayer, {
   Capability,
 } from "react-native-track-player";
 
-import { CatalogCharacterPortraitPreloader } from "@/components/catalog/CatalogCharacterPortraitPreloader";
 import { AnimatedSplash } from "@/components/splash/AnimatedSplash";
 import { UpdateDialog } from "@/components/update/UpdateDialog";
 import { useUpdateChecker } from "@/hooks/use-update-checker";
@@ -325,7 +324,6 @@ function AppInner() {
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.background }}>
       <SafeAreaProvider>
-        <CatalogCharacterPortraitPreloader />
         {Platform.OS !== "ios" && <StatusBar style={isDark ? "light" : "dark"} />}
         <NavigationContainer theme={navTheme} ref={navigationRef}>
           <RootNavigator />

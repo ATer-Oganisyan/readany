@@ -2,7 +2,7 @@ import { type ExtractorRef, ExtractorWebView } from "@/components/rag/ExtractorW
 import { Text } from "@/components/ui/Typography";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
-import { getBundledCatalogCharactersByTitle } from "@/lib/narra/bundled-catalog-characters";
+import { openBackendBookSync } from "@/lib/narra/backend-book-coordinator";
 import { analyzeBookCharacters } from "@/lib/narra/character-analysis";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
 import { NarraServiceError, reportNarraError } from "@/lib/narra/errors";
@@ -37,7 +37,6 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
   const bookState = useNarraStore((state) => state.books[bookId]);
   const analyzing = useNarraStore((state) => state.analyzingBookId === bookId);
   const narraStoreHydrated = useNarraStore((state) => state._hasHydrated);
-  const setCharacters = useNarraStore((state) => state.setCharacters);
   const updateCharacter = useNarraStore((state) => state.updateCharacter);
   const extractorRef = useRef<ExtractorRef>(null);
   const analysisActiveRef = useRef(false);
@@ -48,11 +47,7 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
   const [analysisStage, setAnalysisStage] = useState("");
   const [portraitLoading, setPortraitLoading] = useState<string | null>(null);
   const storedCharacters = bookState?.characters ?? [];
-  const bundledCharacters = useMemo(
-    () => (book ? getBundledCatalogCharactersByTitle(book.meta.title) : undefined),
-    [book],
-  );
-  const characters = storedCharacters.length > 0 ? storedCharacters : (bundledCharacters ?? []);
+  const characters = storedCharacters;
   const visibleCharacters = useMemo(
     () => characters.filter((character) => isCharacterUnlocked(book?.progress ?? 0, character)),
     [book?.progress, characters],
@@ -64,11 +59,9 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
   }, []);
 
   useEffect(() => {
-    if (!narraStoreHydrated || !book || storedCharacters.length > 0 || !bundledCharacters?.length) {
-      return;
-    }
-    setCharacters(bookId, bundledCharacters);
-  }, [book, bookId, bundledCharacters, narraStoreHydrated, setCharacters, storedCharacters.length]);
+    if (!narraStoreHydrated || !book) return;
+    void openBackendBookSync(book);
+  }, [book, narraStoreHydrated]);
 
   useEffect(() => {
     let cancelled = false;
@@ -168,7 +161,6 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
     if (
       !narraStoreHydrated ||
       !book ||
-      Boolean(bundledCharacters?.length) ||
       characters.length > 0 ||
       bookState?.backendBinding ||
       bookState?.analyzedAt ||
@@ -186,7 +178,6 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
     bookState?.analysisError,
     bookState?.analyzedAt,
     bookState?.backendBinding,
-    bundledCharacters?.length,
     characters.length,
     narraStoreHydrated,
   ]);

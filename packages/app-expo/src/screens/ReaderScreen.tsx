@@ -17,7 +17,6 @@ import { useReaderBridge } from "@/hooks/use-reader-bridge";
 import type { RelocateEvent, SelectionEvent, VisibleTTSSegment } from "@/hooks/use-reader-bridge";
 import { durationBucket } from "@/lib/analytics/contract";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
-import { findBundledCatalogBookByTitle } from "@/lib/catalog/bundled-books";
 import {
   openBackendBookSync,
   queueBackendReaderProgress,
@@ -32,6 +31,7 @@ import type { RootStackParamList } from "@/navigation/RootNavigator";
 import {
   useAnnotationStore,
   useLibraryStore,
+  useNarraStore,
   useReaderStore,
   useReadingSessionStore,
   useSettingsStore,
@@ -393,16 +393,19 @@ export function ReaderScreen({ route, navigation }: Props) {
   ).current;
   const { loadAnnotations, highlights, removeBookmark } = useAnnotationStore();
   const book = useMemo(() => books.find((b) => b.id === bookId), [books, bookId]);
+  const backendResolution = useNarraStore(
+    (state) => state.books[bookId]?.backendBinding?.resolution,
+  );
 
   useEffect(() => {
     if (qualifiedReadingRecordedRef.current || readingActiveTime < 60_000) return;
     qualifiedReadingRecordedRef.current = true;
     recordTelemetry("reading_session_qualified", {
-      book_kind: book && findBundledCatalogBookByTitle(book.meta.title) ? "builtin" : "imported",
+      book_kind: backendResolution === "catalog" ? "builtin" : "imported",
       duration_seconds: Math.round(readingActiveTime / 1_000),
       duration_bucket: durationBucket(readingActiveTime),
     });
-  }, [book, readingActiveTime]);
+  }, [backendResolution, readingActiveTime]);
 
   // ── System safe area ────────────────────────────────────────────────────────
   const { stableTopInset, insets } = useReaderSystemInfo({
@@ -1332,7 +1335,7 @@ export function ReaderScreen({ route, navigation }: Props) {
     }
     setBookTitle(book.meta.title);
     recordTelemetry("book_opened", {
-      book_kind: findBundledCatalogBookByTitle(book.meta.title) ? "builtin" : "imported",
+      book_kind: backendResolution === "catalog" ? "builtin" : "imported",
     });
     updateBook(bookId, { lastOpenedAt: Date.now() });
     loadAnnotations(bookId);
@@ -1340,7 +1343,7 @@ export function ReaderScreen({ route, navigation }: Props) {
     return () => {
       readingContextService.clearContext();
     };
-  }, [bookId]);
+  }, [backendResolution, bookId]);
 
   useEffect(() => {
     return eventBus.on("sync:completed", () => {

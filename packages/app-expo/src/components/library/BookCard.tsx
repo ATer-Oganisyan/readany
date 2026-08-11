@@ -1,6 +1,5 @@
 import { ClockIcon, Loader2Icon } from "@/components/ui/Icon";
 import { Text } from "@/components/ui/Typography";
-import { findBundledCatalogBookByTitle } from "@/lib/catalog/bundled-books";
 import { useColors } from "@/styles/theme";
 import { getPlatformService } from "@readany/core/services";
 /**
@@ -73,7 +72,6 @@ export const BookCard = memo(function BookCard({
   const { t } = useTranslation();
   const [imageError, setImageError] = useState(false);
   const [resolvedCoverUrl, setResolvedCoverUrl] = useState<string | undefined>(undefined);
-  const bundledCatalogBook = findBundledCatalogBookByTitle(book.meta.title);
 
   // Resolve relative coverUrl to absolute path
   useEffect(() => {
@@ -149,12 +147,6 @@ export const BookCard = memo(function BookCard({
             {/* Bottom shadow */}
             <View style={s.spineBottomShadow} pointerEvents="none" />
           </>
-        ) : bundledCatalogBook ? (
-          <Image
-            source={bundledCatalogBook.coverAssetModule}
-            style={s.coverImage}
-            resizeMode="cover"
-          />
         ) : (
           <View style={s.fallbackCover}>
             <Text style={s.fallbackTitle} numberOfLines={6}>

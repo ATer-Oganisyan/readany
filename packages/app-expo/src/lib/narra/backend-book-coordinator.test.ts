@@ -159,4 +159,19 @@ describe("backend book coordinator", () => {
     await createBackendBookCoordinator(value).open(BOOK);
     expect(value.calls[0]).toBe("set-characters");
   });
+
+  it("drops legacy local profiles after a book is identified as catalog content", async () => {
+    const value = fixture();
+    const setCharacters = vi.fn();
+    value.state.getCharacters = () => [{ id: "legacy" } as NarraCharacter];
+    value.state.setCharacters = setCharacters;
+    value.state.setBinding("local-book", {
+      resolution: "catalog",
+      bookEditionId: "catalog-edition",
+      contentSha256: HASH,
+      ready: true,
+    });
+    await createBackendBookCoordinator(value).open({ ...BOOK, fileHash: HASH });
+    expect(setCharacters).toHaveBeenCalledWith("local-book", []);
+  });
 });

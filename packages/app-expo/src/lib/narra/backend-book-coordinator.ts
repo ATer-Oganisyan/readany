@@ -112,6 +112,12 @@ export function createBackendBookCoordinator({
       const bookEditionId = binding.bookEditionId;
       if (!bookEditionId) throw new Error("Backend binding has no edition id");
       const localCharacters = state.getCharacters(book.id);
+      if (
+        binding.resolution === "catalog" &&
+        localCharacters.some((character) => character.mediaSource !== "backend")
+      ) {
+        state.setCharacters(book.id, []);
+      }
       if (binding.resolution === "private" && localCharacters.length) {
         state.setBinding(book.id, await api.publish(bookEditionId, localCharacters));
       }

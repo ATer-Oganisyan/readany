@@ -3,16 +3,77 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   advanceBackendReaderProgress,
   fetchBackendBookManifest,
+  fetchBackendCatalogBooks,
   publishLocalBackendMarkup,
   registerLocalBackendBook,
   resolveLocalBackendBook,
 } from "./backend-book-api";
+import type { NarraServiceError } from "./errors";
 import type { NarraCharacter } from "./types";
 
 vi.mock("@/lib/ai/narra-gateway-fetch", () => ({ narraGatewayRequest: vi.fn() }));
 
 describe("backend book API", () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it("loads only complete downloadable records from the backend catalog", async () => {
+    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          items: [
+            {
+              resolution: "catalog",
+              book_edition_id: "book-1",
+              catalog_key: "seagull",
+              title: "Чайка",
+              author: "Антон Чехов",
+              format: "epub",
+              content_sha256: "a".repeat(64),
+              ready: true,
+              source_download_path: "/v2/books/book-1/source/download",
+              cover: {
+                content_hash: "b".repeat(64),
+                mime_type: "image/jpeg",
+                byte_size: 42,
+                download_path: "/v2/books/book-1/cover/download",
+              },
+            },
+            { resolution: "catalog", catalog_key: "incomplete" },
+          ],
+        }),
+      ),
+    );
+
+    await expect(fetchBackendCatalogBooks()).resolves.toEqual([
+      expect.objectContaining({
+        bookEditionId: "book-1",
+        catalogKey: "seagull",
+        title: "Чайка",
+        sourceDownloadPath: "/v2/books/book-1/source/download",
+        cover: {
+          contentHash: "b".repeat(64),
+          mimeType: "image/jpeg",
+          byteSize: 42,
+          downloadPath: "/v2/books/book-1/cover/download",
+        },
+      }),
+    ]);
+    expect(vi.mocked(narraGatewayRequest)).toHaveBeenCalledWith("/v2/books/catalog?limit=100", {});
+  });
+
+  it("reports response metadata when the backend body is not JSON", async () => {
+    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
+      new Response("upstream unavailable", {
+        status: 502,
+        headers: { "content-type": "text/plain", "content-encoding": "identity" },
+      }),
+    );
+
+    await expect(fetchBackendCatalogBooks()).rejects.toMatchObject({
+      code: "SERVICE",
+      technicalDetail: expect.stringContaining("HTTP 502; type=text/plain"),
+    } satisfies Partial<NarraServiceError>);
+  });
 
   it("resolves a local SHA-256 without sending book text", async () => {
     vi.mocked(narraGatewayRequest).mockResolvedValueOnce(

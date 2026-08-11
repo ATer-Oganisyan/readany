@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   requestDownload: vi.fn(async () => "https://storage/signed"),
   hash: vi.fn(async () => "a".repeat(64)),
   downloads: vi.fn(),
+  readText: vi.fn(),
 }));
 
 vi.mock("expo-file-system/legacy", () => ({
@@ -38,12 +39,12 @@ vi.mock("expo-file-system/legacy", () => ({
     mocks.files.delete(from);
   },
   writeAsStringAsync: vi.fn(),
-  readAsStringAsync: vi.fn(),
+  readAsStringAsync: mocks.readText,
 }));
 vi.mock("./backend-file-hash", () => ({ sha256BackendFile: mocks.hash }));
 vi.mock("./backend-book-api", () => ({ requestBackendDownloadUrl: mocks.requestDownload }));
 
-import { materializeBackendManifest } from "./backend-book-cache";
+import { loadCachedBackendCharacters, materializeBackendManifest } from "./backend-book-cache";
 
 function manifest(assetTypes: string[]): BackendBookManifest {
   return {
@@ -80,6 +81,7 @@ describe("backend book media cache", () => {
   beforeEach(() => {
     mocks.files.clear();
     vi.clearAllMocks();
+    mocks.readText.mockRejectedValue(new Error("missing cache"));
   });
 
   it("publishes all three cached media paths together", async () => {
@@ -105,5 +107,25 @@ describe("backend book media cache", () => {
     expect(character).toMatchObject({ mediaSource: "backend", mediaState: "preparing" });
     expect(character?.portraitUri).toBeUndefined();
     expect(mocks.downloads).not.toHaveBeenCalled();
+  });
+
+  it("re-homes persisted media paths after an iOS container change", async () => {
+    mocks.readText.mockResolvedValueOnce(
+      JSON.stringify({
+        manifest: manifest([]),
+        characters: [
+          {
+            id: "anna",
+            portraitUri:
+              "file:///old/container/Documents/narra-backend-books/book-1/primary_portrait-a.png",
+          },
+        ],
+      }),
+    );
+    await expect(loadCachedBackendCharacters("book-1")).resolves.toEqual([
+      expect.objectContaining({
+        portraitUri: "file:///documents/narra-backend-books/book-1/primary_portrait-a.png",
+      }),
+    ]);
   });
 });
