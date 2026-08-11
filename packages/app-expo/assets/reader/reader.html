@@ -57,7 +57,7 @@
       -webkit-text-size-adjust: none;
       -webkit-user-select: text;
       user-select: text;
-      background: var(--bg, #1c1c1e);
+      background: transparent;
       color: var(--fg, #e8e8ed);
     }
 
@@ -2374,7 +2374,7 @@
       document.documentElement.style.setProperty('--muted', muted);
       document.documentElement.style.setProperty('--primary', primary);
       document.documentElement.dataset.readerColorScheme = isDarkCssColor(bg) ? 'dark' : 'light';
-      document.body.style.backgroundColor = bg;
+      document.body.style.backgroundColor = 'transparent';
       document.body.style.color = fg;
 
       if (view && view.renderer && view.renderer.setStyles) {
@@ -2399,7 +2399,7 @@
       );
       const themeBlock = `/* __theme_colors__ */
 html, body {
-  background-color: ${bg} !important;
+  background-color: transparent !important;
   color: ${fg} !important;
 }
 p, div, span, blockquote, li, dd, dt, h1, h2, h3, h4, h5, h6, td, th, caption, figcaption, label, a {
@@ -2553,7 +2553,7 @@ a { color: ${primary} !important; }
       const { bg, fg, primary } = currentThemeColors;
       style.textContent = `
         * { -webkit-touch-callout: none !important; -webkit-user-select: text !important; user-select: text !important; }
-        html, body { background-color: ${bg} !important; color: ${fg} !important; }
+        html, body { background-color: transparent !important; color: ${fg} !important; }
         img, picture, svg, image, canvas {
           -webkit-user-drag: none !important;
           touch-action: manipulation !important;

@@ -1,56 +1,51 @@
 import { describe, expect, it } from "vitest";
 import {
   READER_PAGE_THEMES,
-  type ReaderThemeColors,
+  type ReaderThemeTokenPalette,
   getAppSyncedReaderTheme,
   resolveReaderThemeColors,
 } from "./reader-themes";
 
-const appColors: ReaderThemeColors = {
-  background: "#ffffff",
-  foreground: "#111111",
+const lightTokens: ReaderThemeTokenPalette = {
+  background: "#1111111a",
+  foreground: "#111111cc",
   muted: "#777777",
   primary: "#3b82f6",
 };
 
+const darkTokens: ReaderThemeTokenPalette = {
+  background: "#ffffff1a",
+  foreground: "#ffffffcc",
+  muted: "#888888",
+  primary: "#6ea8fe",
+};
+
 describe("resolveReaderThemeColors", () => {
   it("«Оригинал», пустое и неизвестное значение — цвета приложения", () => {
-    expect(resolveReaderThemeColors("original", appColors)).toEqual(appColors);
-    expect(resolveReaderThemeColors(undefined, appColors)).toEqual(appColors);
-    expect(resolveReaderThemeColors("legacy-value", appColors)).toEqual(appColors);
+    expect(resolveReaderThemeColors("original", lightTokens, darkTokens)).toEqual(lightTokens);
+    expect(resolveReaderThemeColors(undefined, lightTokens, darkTokens)).toEqual(lightTokens);
+    expect(resolveReaderThemeColors("legacy-value", lightTokens, darkTokens)).toEqual(lightTokens);
   });
 
-  it("«Сепия» и «Тёмная» — собственные палитры, не совпадающие с приложением", () => {
-    for (const theme of ["sepia", "dark"] as const) {
-      const resolved = resolveReaderThemeColors(theme, appColors);
-      expect(resolved.background).not.toBe(appColors.background);
-      expect(resolved.foreground).not.toBe(appColors.foreground);
-      // Фон и текст обязаны различаться — страница остаётся читаемой
-      expect(resolved.background).not.toBe(resolved.foreground);
-    }
-  });
-
-  it("тёмная тема использует Primary 10 и Primary 80", () => {
-    expect(resolveReaderThemeColors("dark", appColors)).toMatchObject({
+  it("тёмная тема без преобразования использует тёмные Primary 10 и Primary 80", () => {
+    expect(resolveReaderThemeColors("dark", lightTokens, darkTokens)).toMatchObject({
       background: "#ffffff1a",
       foreground: "#ffffffcc",
     });
   });
 
-  it("каждый пресет из списка разрешается без ошибок", () => {
-    for (const preset of READER_PAGE_THEMES) {
-      const resolved = resolveReaderThemeColors(preset.id, appColors);
-      expect(resolved.background).toMatch(/^#/);
-      expect(resolved.foreground).toMatch(/^#/);
-    }
+  it("светлая тема без преобразования использует светлые Primary 10 и Primary 80", () => {
+    expect(resolveReaderThemeColors("original", lightTokens, darkTokens)).toMatchObject({
+      background: "#1111111a",
+      foreground: "#111111cc",
+    });
   });
 
-  it("плитки-превью пресетов совпадают с фактическими цветами страницы", () => {
+  it("каждый пресет из списка разрешается без ошибок", () => {
     for (const preset of READER_PAGE_THEMES) {
-      if (!preset.preview) continue;
-      const resolved = resolveReaderThemeColors(preset.id, appColors);
-      expect(preset.preview.bg).toBe(resolved.background);
-      expect(preset.preview.ink).toBe(resolved.foreground);
+      const resolved = resolveReaderThemeColors(preset.id, lightTokens, darkTokens);
+      expect(resolved.background).toMatch(/^#/);
+      expect(resolved.foreground).toMatch(/^#/);
     }
   });
 });

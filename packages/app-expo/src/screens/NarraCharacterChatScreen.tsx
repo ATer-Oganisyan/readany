@@ -5,6 +5,7 @@ import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import { NarraAudioPlayer } from "@/lib/narra/audio-player";
 import { resolveCharacterPortraitUri } from "@/lib/narra/character-portrait";
+import { normalizeCharacterChatPlaceholder } from "@/lib/narra/chat-placeholder";
 import { isCharacterUnlocked, normalizeReadingProgress } from "@/lib/narra/domain";
 import { reportNarraError } from "@/lib/narra/errors";
 import { synthesizeNarraSpeech } from "@/lib/narra/media";
@@ -80,6 +81,7 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
   const narraBook = useNarraStore((state) => state.books[bookId]);
   const append = useNarraStore((state) => state.appendChatMessage);
   const setMemory = useNarraStore((state) => state.setMemory);
+  const updateCharacter = useNarraStore((state) => state.updateCharacter);
   const character = narraBook?.characters.find((item) => item.id === characterId);
   const messages = narraBook?.chats?.[characterId] ?? [];
   const memory = narraBook?.memories?.[characterId] ?? "";
@@ -88,6 +90,7 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const audioRef = useRef(new NarraAudioPlayer());
   const greetingRequestedRef = useRef(false);
+  const placeholderRequestedRef = useRef<string | null>(null);
   const unlocked = Boolean(book && character && isCharacterUnlocked(book.progress, character));
   const portraitUri = resolveCharacterPortraitUri(character);
 
@@ -103,7 +106,13 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
           character: character.name,
         })}
         hitSlop={8}
-        onPress={() => navigation.navigate("NarraCharacterProfile", { bookId, characterId })}
+        onPress={() =>
+          navigation.navigate("NarraCharacterProfile", {
+            bookId,
+            characterId,
+            openedFromChat: true,
+          })
+        }
         style={({ pressed }) => [styles.headerAvatarButton, pressed && styles.headerAvatarPressed]}
       >
         {portraitUri ? (
@@ -145,6 +154,43 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
   }, [bookId, character, characterId, navigation, portraitUri, styles, t]);
 
   useEffect(() => () => audioRef.current.stop(), []);
+
+  useEffect(() => {
+    if (!book || !character || character.chatPlaceholder) return;
+    if (placeholderRequestedRef.current === character.id) return;
+    placeholderRequestedRef.current = character.id;
+
+    void (async () => {
+      try {
+        const response = await narraGatewayRequest("/v2/ai/chat/complete", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            messages: [
+              {
+                role: "system",
+                content:
+                  "Ты — редактор русского интерфейса. Верни только короткий placeholder без кавычек в формате «Написать <имя в дательном падеже>…». Используй только переданное короткое имя, не добавляй фамилию, имя или отчество. Никаких пояснений.",
+              },
+              {
+                role: "user",
+                content: `Короткое имя персонажа: ${character.name}\nПолное имя для понимания контекста: ${character.fullName}`,
+              },
+            ],
+            temperature: 0,
+            purpose: "character_chat",
+            origin: "background",
+            analytics_tier: "none",
+          }),
+        });
+        const placeholder = normalizeCharacterChatPlaceholder(await readCompletion(response));
+        if (placeholder) updateCharacter(bookId, characterId, { chatPlaceholder: placeholder });
+      } catch (error) {
+        // Generic fallback stays grammatically correct and keeps chat usable offline.
+        reportNarraError("character_chat_placeholder", error);
+      }
+    })();
+  }, [book, bookId, character, characterId, updateCharacter]);
 
   const conversation = useMemo(
     () =>
@@ -402,9 +448,9 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
         messages={chatMessages}
         isStreaming={sending || greetingLoading}
         currentStep={sending || greetingLoading ? "responding" : "idle"}
-        placeholder={t("narra.messagePlaceholder", "Написать {{name}}…", {
-          name: character.name,
-        })}
+        placeholder={
+          character.chatPlaceholder || t("narra.genericMessagePlaceholder", "Написать сообщение…")
+        }
         onSend={send}
         assistantName={character.name}
         showModeControls={false}

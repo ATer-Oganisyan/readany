@@ -1,4 +1,5 @@
 import { NativeSymbol } from "@/components/ui/NativeSymbol";
+import { useKeyboardInsets } from "@/hooks/use-keyboard-insets";
 import { fontFamily, useTheme } from "@/styles/theme";
 import { radiusPixels, spacingPixels } from "@deslop/primitives";
 import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
@@ -13,7 +14,6 @@ import {
   type TextInputContentSizeChangeEvent,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { IMessage, InputToolbarProps } from "../../../vendor/react-native-chat/src";
 
 type RuntimeToolbarProps<TMessage extends IMessage> = InputToolbarProps<TMessage> & {
@@ -38,7 +38,7 @@ export function NarraChatComposer<TMessage extends IMessage>({
   ...props
 }: RuntimeToolbarProps<TMessage>) {
   const { colors, isDark } = useTheme();
-  const insets = useSafeAreaInsets();
+  const keyboardInsets = useKeyboardInsets();
   const [inputHeight, setInputHeight] = useState(controlSize);
   const text = props.text ?? "";
   const inputProps = props.textInputProps;
@@ -72,6 +72,7 @@ export function NarraChatComposer<TMessage extends IMessage>({
       <TextInput
         {...inputProps}
         accessibilityLabel={inputProps?.placeholder}
+        caretHidden={false}
         enablesReturnKeyAutomatically
         keyboardAppearance={isDark ? "dark" : "light"}
         maxFontSizeMultiplier={2}
@@ -81,7 +82,7 @@ export function NarraChatComposer<TMessage extends IMessage>({
         placeholderTextColor={inputProps?.placeholderTextColor ?? colors.mutedForeground}
         scrollEnabled={inputHeight >= maxInputHeight}
         style={[styles.input, { color: colors.foreground, height: inputHeight }, inputProps?.style]}
-        textAlignVertical="top"
+        textAlignVertical={inputHeight > controlSize ? "top" : "center"}
         value={text}
       />
 
@@ -121,7 +122,8 @@ export function NarraChatComposer<TMessage extends IMessage>({
         styles.container,
         {
           backgroundColor: colors.backgroundSecondary,
-          paddingBottom: insets.bottom + spacingPixels[8],
+          paddingBottom:
+            spacingPixels[8] + (keyboardInsets.isVisible ? 0 : keyboardInsets.safeAreaBottom),
         },
       ]}
     >
@@ -178,9 +180,8 @@ const styles = StyleSheet.create({
     maxHeight: maxInputHeight,
     minHeight: controlSize,
     minWidth: 0,
-    paddingBottom: spacingPixels[8],
     paddingHorizontal: spacingPixels[10],
-    paddingTop: spacingPixels[4],
+    paddingVertical: spacingPixels[8],
   },
   send: {
     alignItems: "center",

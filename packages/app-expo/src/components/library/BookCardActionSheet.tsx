@@ -1,11 +1,13 @@
 import type { NativeContextMenuItem } from "@/components/ui/NativeContextMenuButton.types";
 import type { Book } from "@readany/core/types";
+import type { ReactElement } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert } from "react-native";
 import { BookCardContextMenu } from "./BookCardContextMenu";
 
 interface BookCardActionSheetProps {
   book: Book;
+  children: ReactElement;
   onDelete: (bookId: string, options?: { preserveData?: boolean }) => void;
   onOpen: (book: Book) => void;
 }
@@ -14,7 +16,12 @@ interface BookCardActionSheetProps {
  * The historical name is kept to avoid a noisy migration. The visible control
  * is now a platform menu: SwiftUI Menu/UIMenu on iOS and a native dialog on Android.
  */
-export function BookCardActionSheet({ book, onDelete, onOpen }: BookCardActionSheetProps) {
+export function BookCardActionSheet({
+  book,
+  children,
+  onDelete,
+  onOpen,
+}: BookCardActionSheetProps) {
   const { t } = useTranslation();
 
   const confirmDelete = () => {
@@ -55,6 +62,8 @@ export function BookCardActionSheet({ book, onDelete, onOpen }: BookCardActionSh
       accessibilityLabel={t("common.actions", "Действия с книгой")}
       items={items}
       onPress={() => onOpen(book)}
-    />
+    >
+      {children}
+    </BookCardContextMenu>
   );
 }

@@ -50,7 +50,12 @@ export type RootStackParamList = {
   BookChat: { bookId: string; selectedText?: string; chapterTitle?: string };
   NarraCharacters: { bookId: string };
   NarraCharacterChat: { bookId: string; characterId: string };
-  NarraCharacterProfile: { bookId: string; characterId: string };
+  NarraCharacterProfile: {
+    bookId: string;
+    characterId: string;
+    /** Профиль открыт поверх уже существующего чата — кнопка «Поговорить» лишь закрывает sheet. */
+    openedFromChat?: boolean;
+  };
   NarraScene: {
     bookId: string;
     chapter: string;

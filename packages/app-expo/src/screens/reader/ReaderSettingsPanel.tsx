@@ -5,9 +5,10 @@ import { XIcon } from "@/components/ui/Icon";
 import { Text } from "@/components/ui/Typography";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { SCENE_SUGGESTION_INTERVALS } from "@/lib/narra/scene-suggestion";
-import { READER_PAGE_THEMES } from "@/lib/reader/reader-themes";
 import { SB_SANS_READER_FONT_ID } from "@/lib/reader/bundled-reader-font";
+import { READER_PAGE_THEMES, resolveReaderThemeColors } from "@/lib/reader/reader-themes";
 import { useNarraStore } from "@/stores";
+import { darkColors } from "@/styles/ThemeContext";
 import { useColors } from "@/styles/theme";
 import { useFontStore } from "@readany/core/stores";
 import type { ReadSettings } from "@readany/core/types";
@@ -69,22 +70,35 @@ export function ReaderSettingsPanel({ visible, readSettings, onClose, onUpdateSe
             <View style={s.pageThemeRow}>
               {READER_PAGE_THEMES.map((preset) => {
                 const active = (readSettings.readerTheme ?? "original") === preset.id;
-                const bg = preset.preview?.bg ?? colors.background;
-                const ink = preset.preview?.ink ?? colors.foreground;
+                const preview = resolveReaderThemeColors(
+                  preset.id,
+                  {
+                    background: colors.primary10,
+                    foreground: colors.primary80,
+                    muted: colors.mutedForeground,
+                    primary: colors.primary,
+                  },
+                  {
+                    background: darkColors.primary10,
+                    foreground: darkColors.primary80,
+                    muted: darkColors.mutedForeground,
+                    primary: darkColors.primary,
+                  },
+                );
                 return (
                   <TouchableOpacity
                     key={preset.id}
                     style={[
                       s.pageThemeTile,
-                      { backgroundColor: bg },
+                      { backgroundColor: preview.background },
                       active && s.pageThemeTileActive,
                     ]}
                     onPress={() => onUpdateSetting("readerTheme", preset.id)}
                     accessibilityRole="button"
                     accessibilityState={{ selected: active }}
                   >
-                    <Text style={[s.pageThemeTileAa, { color: ink }]}>Aa</Text>
-                    <Text style={[s.pageThemeTileLabel, { color: ink }]}>
+                    <Text style={[s.pageThemeTileAa, { color: preview.foreground }]}>Aa</Text>
+                    <Text style={[s.pageThemeTileLabel, { color: preview.foreground }]}>
                       {t(preset.labelKey, preset.labelDefault)}
                     </Text>
                   </TouchableOpacity>

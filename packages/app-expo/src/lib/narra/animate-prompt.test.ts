@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   MOTION_SUMMARY_CHAR_LIMIT,
-  buildPortraitMotionPrompt,
   buildSceneMotionPrompt,
   sceneActionSummary,
 } from "./animate-prompt";
@@ -55,15 +54,5 @@ describe("buildSceneMotionPrompt", () => {
   it("без выжимки промпт остаётся валидным", () => {
     const prompt = buildSceneMotionPrompt("");
     expect(prompt.startsWith("Оживи иллюстрацию.")).toBe(true);
-  });
-});
-
-describe("buildPortraitMotionPrompt", () => {
-  it("описывает живой портрет без речи", () => {
-    const prompt = buildPortraitMotionPrompt();
-    expect(prompt).toContain("дыхание, моргание");
-    expect(prompt).toContain("НЕ говорит");
-    expect(prompt).toContain("взгляд остаётся на зрителе");
-    expect(prompt).toContain("без появления новых персонажей");
   });
 });

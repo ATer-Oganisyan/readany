@@ -3,8 +3,7 @@
  * (образец — панель «Темы и настройки» narra).
  *
  * «Оригинал» следует теме приложения; «Сепия» и «Тёмная» переопределяют
- * цвета только внутри WebView (через setThemeColors), интерфейс вокруг
- * страницы остаётся в теме приложения.
+ * цвета всей поверхности ридера и содержимого WebView.
  */
 
 export type ReaderPageTheme = "original" | "sepia" | "dark";
@@ -16,12 +15,19 @@ export interface ReaderThemeColors {
   primary: string;
 }
 
+export interface ReaderThemeTokenPalette {
+  /** Адаптивный токен Primary 10 из @deslop/primitives. */
+  background: string;
+  /** Адаптивный токен Primary 80 из @deslop/primitives. */
+  foreground: string;
+  muted: string;
+  primary: string;
+}
+
 interface ReaderPageThemePreset {
   id: ReaderPageTheme;
   labelKey: string;
   labelDefault: string;
-  /** Цвета плитки-превью; у «Оригинала» берутся из темы приложения */
-  preview?: { bg: string; ink: string };
 }
 
 const SEPIA_COLORS: ReaderThemeColors = {
@@ -31,26 +37,17 @@ const SEPIA_COLORS: ReaderThemeColors = {
   primary: "#8a5a2b",
 };
 
-const DARK_COLORS: ReaderThemeColors = {
-  background: "#ffffff1a",
-  foreground: "#ffffffcc",
-  muted: "#8e8e93",
-  primary: "#6ea8fe",
-};
-
 export const READER_PAGE_THEMES: ReaderPageThemePreset[] = [
   { id: "original", labelKey: "reader.pageThemeOriginal", labelDefault: "Оригинал" },
   {
     id: "sepia",
     labelKey: "reader.pageThemeSepia",
     labelDefault: "Сепия",
-    preview: { bg: SEPIA_COLORS.background, ink: SEPIA_COLORS.foreground },
   },
   {
     id: "dark",
     labelKey: "reader.pageThemeDark",
     labelDefault: "Тёмная",
-    preview: { bg: DARK_COLORS.background, ink: DARK_COLORS.foreground },
   },
 ];
 
@@ -60,19 +57,29 @@ export function getAppSyncedReaderTheme(isAppDark: boolean): ReaderPageTheme {
 }
 
 /**
- * Цвета страницы для выбранного пресета. Неизвестное или пустое значение
- * (старые сохранённые настройки) — это «Оригинал», то есть цвета приложения.
+ * Передаёт адаптивные токены primitives без преобразования: Primary 10
+ * остаётся фоном, Primary 80 — текстом.
  */
+export function resolveReaderThemeTokens(tokens: ReaderThemeTokenPalette): ReaderThemeColors {
+  return {
+    background: tokens.background,
+    foreground: tokens.foreground,
+    muted: tokens.muted,
+    primary: tokens.primary,
+  };
+}
+
 export function resolveReaderThemeColors(
   theme: string | undefined,
-  appColors: ReaderThemeColors,
+  appTokens: ReaderThemeTokenPalette,
+  darkTokens: ReaderThemeTokenPalette,
 ): ReaderThemeColors {
   switch (theme) {
     case "sepia":
       return SEPIA_COLORS;
     case "dark":
-      return DARK_COLORS;
+      return resolveReaderThemeTokens(darkTokens);
     default:
-      return appColors;
+      return resolveReaderThemeTokens(appTokens);
   }
 }

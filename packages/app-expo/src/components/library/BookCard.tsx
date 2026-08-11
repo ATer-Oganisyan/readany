@@ -75,68 +75,72 @@ export const BookCard = memo(function BookCard({
   }, [book.meta.coverUrl]);
 
   return (
-    <TouchableOpacity
-      style={s.container}
-      onPress={() => onOpen(book)}
-      activeOpacity={0.7}
-      accessibilityRole="button"
-      accessibilityLabel={book.meta.title}
-      accessibilityHint={t("notes.openBook", "Открыть")}
-    >
-      {/* Cover — 28:41 aspect ratio */}
-      <View style={s.coverWrap}>
-        {resolvedCoverUrl && !imageError ? (
-          <>
+    <BookCardActionSheet book={book} onOpen={onOpen} onDelete={onDelete}>
+      <TouchableOpacity
+        style={s.container}
+        onPress={() => onOpen(book)}
+        activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel={book.meta.title}
+        accessibilityHint={t("notes.openBook", "Открыть")}
+      >
+        {/* Cover — 28:41 aspect ratio */}
+        <View style={s.coverWrap}>
+          {resolvedCoverUrl && !imageError ? (
+            <>
+              <Image
+                source={{ uri: resolvedCoverUrl }}
+                style={s.coverImage}
+                resizeMode="cover"
+                onError={() => setImageError(true)}
+              />
+              {/* Book spine crease overlay — matches desktop .book-spine */}
+              <View style={s.spineOverlay} pointerEvents="none">
+                {/* Left edge dark line */}
+                <View style={s.spineStrip1} />
+                {/* Spine shadow dip */}
+                <View style={s.spineStrip2} />
+                {/* Highlight reflection */}
+                <View style={s.spineStrip3} />
+                {/* Transition bright */}
+                <View style={s.spineStrip4} />
+                {/* Crease dark */}
+                <View style={s.spineStrip5} />
+                {/* Deep fold */}
+                <View style={s.spineStrip6} />
+                {/* Subtle bright transition */}
+                <View style={s.spineStrip7} />
+                {/* Right edge subtle shadow */}
+                <View style={s.spineEdgeRight} />
+              </View>
+              {/* Top highlight */}
+              <View style={s.spineTopHighlight} pointerEvents="none" />
+            </>
+          ) : bundledCatalogBook ? (
             <Image
-              source={{ uri: resolvedCoverUrl }}
+              source={bundledCatalogBook.coverAssetModule}
               style={s.coverImage}
               resizeMode="cover"
-              onError={() => setImageError(true)}
             />
-            {/* Book spine crease overlay — matches desktop .book-spine */}
-            <View style={s.spineOverlay} pointerEvents="none">
-              {/* Left edge dark line */}
-              <View style={s.spineStrip1} />
-              {/* Spine shadow dip */}
-              <View style={s.spineStrip2} />
-              {/* Highlight reflection */}
-              <View style={s.spineStrip3} />
-              {/* Transition bright */}
-              <View style={s.spineStrip4} />
-              {/* Crease dark */}
-              <View style={s.spineStrip5} />
-              {/* Deep fold */}
-              <View style={s.spineStrip6} />
-              {/* Subtle bright transition */}
-              <View style={s.spineStrip7} />
-              {/* Right edge subtle shadow */}
-              <View style={s.spineEdgeRight} />
-            </View>
-            {/* Top highlight */}
-            <View style={s.spineTopHighlight} pointerEvents="none" />
-          </>
-        ) : bundledCatalogBook ? (
-          <Image
-            source={bundledCatalogBook.coverAssetModule}
-            style={s.coverImage}
-            resizeMode="cover"
+          ) : (
+            <View style={s.fallbackCover} />
+          )}
+
+          <BookCoverTypography
+            title={book.meta.title}
+            author={book.meta.author}
+            width={cardWidth}
           />
-        ) : (
-          <View style={s.fallbackCover} />
-        )}
+          {isGeneratingCover ? <CoverGenerationShimmer /> : null}
 
-        <BookCoverTypography title={book.meta.title} author={book.meta.author} width={cardWidth} />
-        {isGeneratingCover ? <CoverGenerationShimmer /> : null}
-
-        {/* Remote status overlay (on-demand download) */}
-        {book.syncStatus === "remote" && (
-          <View style={s.remoteOverlay}>
-            <Text style={s.remoteOverlayText}>{t("home.remote", "需下载")}</Text>
-          </View>
-        )}
-
-        <BookCardActionSheet book={book} onOpen={onOpen} onDelete={onDelete} />
-      </View>
-    </TouchableOpacity>
+          {/* Remote status overlay (on-demand download) */}
+          {book.syncStatus === "remote" && (
+            <View style={s.remoteOverlay}>
+              <Text style={s.remoteOverlayText}>{t("home.remote", "需下载")}</Text>
+            </View>
+          )}
+        </View>
+      </TouchableOpacity>
+    </BookCardActionSheet>
   );
 });

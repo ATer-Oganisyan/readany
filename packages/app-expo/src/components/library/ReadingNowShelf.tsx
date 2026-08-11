@@ -12,6 +12,7 @@ import { BlurView } from "expo-blur";
 import { memo, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Image, ScrollView, StyleSheet, View } from "react-native";
+import { BookCardActionSheet } from "./BookCardActionSheet";
 import { BookCoverTypography } from "./book-cover-typography";
 import { CoverGenerationShimmer } from "./cover-generation-shimmer";
 import { PerspectiveBook } from "./perspective-book";
@@ -23,6 +24,7 @@ interface ReadingNowShelfProps {
   books: Book[];
   edgeInset: number;
   catalogCardWidth: number;
+  onDelete: (bookId: string, options?: { preserveData?: boolean }) => void;
   onOpen: (book: Book) => void;
 }
 
@@ -30,6 +32,7 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
   books,
   edgeInset,
   catalogCardWidth,
+  onDelete,
   onOpen,
 }: ReadingNowShelfProps) {
   const colors = useColors();
@@ -66,44 +69,45 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
             ? undefined
             : findBundledCatalogBookByTitle(book.meta.title);
           return (
-            <PerspectiveBook
-              key={book.id}
-              width={CARD_WIDTH}
-              height={COVER_HEIGHT}
-              onPress={() => onOpen(book)}
-              accessibilityLabel={book.meta.title}
-              accessibilityHint={t("notes.openBook", "Открыть книгу")}
-              cover={
-                <View style={s.coverCanvas}>
-                  {coverUri ? (
-                    <Image source={{ uri: coverUri }} style={s.coverImage} resizeMode="cover" />
-                  ) : bundledCatalogBook ? (
-                    <Image
-                      source={bundledCatalogBook.coverAssetModule}
-                      style={s.coverImage}
-                      resizeMode="cover"
+            <BookCardActionSheet key={book.id} book={book} onDelete={onDelete} onOpen={onOpen}>
+              <PerspectiveBook
+                width={CARD_WIDTH}
+                height={COVER_HEIGHT}
+                onPress={() => onOpen(book)}
+                accessibilityLabel={book.meta.title}
+                accessibilityHint={t("notes.openBook", "Открыть книгу")}
+                cover={
+                  <View style={s.coverCanvas}>
+                    {coverUri ? (
+                      <Image source={{ uri: coverUri }} style={s.coverImage} resizeMode="cover" />
+                    ) : bundledCatalogBook ? (
+                      <Image
+                        source={bundledCatalogBook.coverAssetModule}
+                        style={s.coverImage}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View style={s.fallbackCover} />
+                    )}
+                    <BookCoverTypography
+                      title={book.meta.title}
+                      width={CARD_WIDTH}
+                      referenceWidth={catalogCardWidth}
+                      titleFontSize={15}
+                      leftInsetAdjustment={2}
+                      bottomAccessory={
+                        <BlurView tint="dark" intensity={50} style={s.progressChip}>
+                          <Text style={s.cardProgress} numberOfLines={1}>
+                            {`${Math.round(Math.max(0, Math.min(1, book.progress ?? 0)) * 100)}%`}
+                          </Text>
+                        </BlurView>
+                      }
                     />
-                  ) : (
-                    <View style={s.fallbackCover} />
-                  )}
-                  <BookCoverTypography
-                    title={book.meta.title}
-                    width={CARD_WIDTH}
-                    referenceWidth={catalogCardWidth}
-                    titleFontSize={15}
-                    leftInsetAdjustment={2}
-                    bottomAccessory={
-                      <BlurView tint="dark" intensity={50} style={s.progressChip}>
-                        <Text style={s.cardProgress} numberOfLines={1}>
-                          {`${Math.round(Math.max(0, Math.min(1, book.progress ?? 0)) * 100)}%`}
-                        </Text>
-                      </BlurView>
-                    }
-                  />
-                  {generatingCoverIds.has(book.id) ? <CoverGenerationShimmer /> : null}
-                </View>
-              }
-            />
+                    {generatingCoverIds.has(book.id) ? <CoverGenerationShimmer /> : null}
+                  </View>
+                }
+              />
+            </BookCardActionSheet>
           );
         })}
       </ScrollView>

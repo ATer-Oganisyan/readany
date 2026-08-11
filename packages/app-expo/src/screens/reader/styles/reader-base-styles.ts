@@ -41,7 +41,7 @@ export const makeToolbarStyles = (colors: ThemeColors) =>
       top: 0, left: 0, right: 0, bottom: 0,
       alignItems: "center",
       justifyContent: "center",
-      backgroundColor: colors.background,
+      backgroundColor: "transparent",
       zIndex: 20,
     },
 

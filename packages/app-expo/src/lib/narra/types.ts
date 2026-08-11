@@ -34,12 +34,12 @@ export interface NarraCharacter {
   /** Глава первого значимого появления (1 — первая); для заглушки запертого героя. */
   appearanceChapter?: number;
   greeting?: string;
+  /** Сгенерированный моделью placeholder с корректно склонённым обращением. */
+  chatPlaceholder?: string;
   isNarrator?: boolean;
   /** Stable key of a portrait bundled with a catalog book. */
   portraitAssetId?: string;
   portraitUri?: string;
-  /** «Оживший» портрет (P18): зацикленное mp4-видео в narra-media. */
-  portraitVideoUri?: string;
 }
 
 export interface NarraChatMessage {

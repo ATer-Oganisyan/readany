@@ -38,7 +38,7 @@ export function CharacterChatList({ items }: CharacterChatListProps) {
                 {item.title}
               </Text>
               {item.subtitle ? (
-                <Text style={styles.subtitle} numberOfLines={1}>
+                <Text style={styles.subtitle} numberOfLines={2}>
                   {item.subtitle}
                 </Text>
               ) : null}
@@ -76,7 +76,7 @@ const makeStyles = (colors: ThemeColors) =>
     row: {
       minHeight: 80,
       flexDirection: "row",
-      alignItems: "center",
+      alignItems: "flex-start",
       gap: spacing.lg,
       paddingVertical: spacing.md,
     },
@@ -111,6 +111,6 @@ const makeStyles = (colors: ThemeColors) =>
     separator: {
       height: StyleSheet.hairlineWidth,
       marginLeft: 56 + spacing.lg,
-      backgroundColor: colors.border,
+      backgroundColor: colors.primary20,
     },
   });

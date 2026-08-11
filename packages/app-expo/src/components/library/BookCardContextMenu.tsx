@@ -1,8 +1,9 @@
-import { Alert, type AlertButton, Pressable, StyleSheet } from "react-native";
+import { Alert, type AlertButton, Pressable, StyleSheet, View } from "react-native";
 import type { BookCardContextMenuProps } from "./BookCardContextMenu.types";
 
 export function BookCardContextMenu({
   accessibilityLabel,
+  children,
   items,
   onPress,
 }: BookCardContextMenuProps) {
@@ -21,14 +22,17 @@ export function BookCardContextMenu({
   };
 
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      accessibilityHint="Удерживайте, чтобы открыть меню"
-      style={StyleSheet.absoluteFill}
-      onPress={onPress}
-      onLongPress={openMenu}
-    />
+    <View>
+      {children}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+        accessibilityHint="Удерживайте, чтобы открыть меню"
+        style={StyleSheet.absoluteFill}
+        onPress={onPress}
+        onLongPress={openMenu}
+      />
+    </View>
   );
 }
 

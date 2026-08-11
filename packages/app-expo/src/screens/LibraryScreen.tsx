@@ -1004,6 +1004,7 @@ export function LibraryScreen() {
           books={readingNowBooks}
           edgeInset={layout.horizontalPadding}
           catalogCardWidth={gridItemWidth}
+          onDelete={removeBook}
           onOpen={handleOpen}
         />
       ) : null}

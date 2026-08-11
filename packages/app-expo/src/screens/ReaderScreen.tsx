@@ -52,7 +52,7 @@ import {
   useTTSStore,
 } from "@/stores";
 import { useMissingBookPromptStore } from "@/stores/missing-book-prompt-store";
-import { useTheme } from "@/styles/ThemeContext";
+import { darkColors, useTheme } from "@/styles/ThemeContext";
 import { useColors } from "@/styles/theme";
 import { useIsFocused } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -95,7 +95,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 
 // ── Extracted modules ──
-import { ReaderCharacterCard } from "./reader/ReaderCharacterCard";
 import { ReaderNoteViewModal } from "./reader/ReaderNoteViewModal";
 import { ReaderToolbar, TOOLBAR_HEIGHT } from "./reader/ReaderToolbar";
 
@@ -520,12 +519,21 @@ function ReaderContent({ route, navigation }: Props) {
   // «Сепия»/«Тёмная» — собственные палитры страницы и окружающих полей.
   const readerThemeColors = useMemo(
     () =>
-      resolveReaderThemeColors(readSettings.readerTheme, {
-        background: colors.primary10,
-        foreground: colors.primary80,
-        muted: colors.mutedForeground,
-        primary: colors.primary,
-      }),
+      resolveReaderThemeColors(
+        readSettings.readerTheme,
+        {
+          background: colors.primary10,
+          foreground: colors.primary80,
+          muted: colors.mutedForeground,
+          primary: colors.primary,
+        },
+        {
+          background: darkColors.primary10,
+          foreground: darkColors.primary80,
+          muted: darkColors.mutedForeground,
+          primary: darkColors.primary,
+        },
+      ),
     [readSettings.readerTheme, colors],
   );
   const readerThemeColorsRef = useRef(readerThemeColors);
@@ -630,7 +638,6 @@ function ReaderContent({ route, navigation }: Props) {
     const unlocked = characters.filter((character) => unlockedIds.has(character.id));
     return JSON.stringify(buildCharacterNameMatcherSpec(unlocked));
   }, [characters, unlockedCharacterIdsKey]);
-  const [characterCard, setCharacterCard] = useState<NarraCharacter | null>(null);
 
   // ── Narra: врезки сцен внутри текста раз в N страниц (P6 → P14) ─────────────
   // Счётчик перелистываний прежний (scene-suggestion.ts); по сигналу в конец
@@ -729,18 +736,6 @@ function ReaderContent({ route, navigation }: Props) {
       }
     },
     [bookId],
-  );
-
-  const handleOpenCharacterChat = useCallback(
-    (character: NarraCharacter) => {
-      // Чат ищет персонажа в narra-store — bundled-каталог сначала фиксируем там
-      if (charactersFromBundledCatalog && bundledCharacters?.length) {
-        setNarraCharacters(bookId, bundledCharacters);
-      }
-      setCharacterCard(null);
-      navigation.navigate("NarraCharacterChat", { bookId, characterId: character.id });
-    },
-    [bookId, bundledCharacters, charactersFromBundledCatalog, navigation, setNarraCharacters],
   );
 
   useEffect(() => {
@@ -1288,13 +1283,16 @@ function ReaderContent({ route, navigation }: Props) {
       const character = characters.find((item) => item.id === characterId);
       // Запертые персонажи не размечаются, но на случай гонки — двойная проверка
       if (!character || !isCharacterUnlocked(progress, character)) return;
-      // Карточка пишет в narra-store (портрет, выбор голоса) — bundled-каталог
+      // Нативный профиль пишет в narra-store (портрет, выбор голоса) — bundled-каталог
       // сначала фиксируем там, как это делает переход в чат.
       if (charactersFromBundledCatalog && bundledCharacters?.length) {
         setNarraCharacters(bookId, bundledCharacters);
       }
       suppressReaderTapUntilRef.current = Date.now() + 400;
-      setCharacterCard(character);
+      navigation.navigate("NarraCharacterProfile", {
+        bookId,
+        characterId: character.id,
+      });
     },
     // Врезки сцен: генерация только по явному тапу, перегенерация — «↻ Заново»
     onSceneSlotTap: ({ anchor }) => {
@@ -2027,7 +2025,7 @@ function ReaderContent({ route, navigation }: Props) {
           zIndex: 30,
           height: TOOLBAR_HEIGHT + insets.bottom,
           paddingBottom: insets.bottom,
-          backgroundColor: readerThemeColors.background,
+          backgroundColor: "transparent",
           transform: [{ translateY: showControls ? 0 : TOOLBAR_HEIGHT + insets.bottom }],
         }}
       >
@@ -2044,7 +2042,12 @@ function ReaderContent({ route, navigation }: Props) {
 
   if (loading && !webViewReady && !readerHtmlUri) {
     return (
-      <View style={[s.container, { paddingBottom: insets.bottom }]}>
+      <View
+        style={[
+          s.container,
+          { paddingBottom: insets.bottom, backgroundColor: readerThemeColors.background },
+        ]}
+      >
         <View style={s.readerStage}>
           <View style={s.loadingWrap}>
             <ActivityIndicator size="large" color={colors.primary} />
@@ -2057,7 +2060,12 @@ function ReaderContent({ route, navigation }: Props) {
 
   if (error) {
     return (
-      <View style={[s.container, { paddingBottom: insets.bottom }]}>
+      <View
+        style={[
+          s.container,
+          { paddingBottom: insets.bottom, backgroundColor: readerThemeColors.background },
+        ]}
+      >
         <View style={s.readerStage}>
           <View style={s.loadingWrap}>
             <Text style={s.errorText}>{t("reader.loadFailed", "加载失败")}</Text>
@@ -2107,7 +2115,12 @@ function ReaderContent({ route, navigation }: Props) {
 
   if (!readerHtmlUri) {
     return (
-      <View style={[s.container, { paddingBottom: insets.bottom }]}>
+      <View
+        style={[
+          s.container,
+          { paddingBottom: insets.bottom, backgroundColor: readerThemeColors.background },
+        ]}
+      >
         <View style={s.readerStage}>
           <View style={s.loadingWrap}>
             <ActivityIndicator size="large" color={colors.primary} />
@@ -2150,22 +2163,23 @@ function ReaderContent({ route, navigation }: Props) {
           style={[
             s.readerStage,
             {
-              backgroundColor: readerThemeColors.background,
+              backgroundColor: "transparent",
               transform: [{ translateY: readerPullAnim }],
             },
           ]}
           pointerEvents="box-none"
         >
           {/* WebView with foliate-js */}
-          <View style={{ flex: 1, backgroundColor: readerThemeColors.background }}>
+          <View style={{ flex: 1, backgroundColor: "transparent" }}>
             <WebView
               ref={bridge.webViewRef}
               source={{ uri: readerHtmlUri }}
+              containerStyle={{ backgroundColor: "transparent" }}
               style={[
                 s.webview,
                 {
                   marginTop: readerTopMargin,
-                  backgroundColor: readerThemeColors.background,
+                  backgroundColor: "transparent",
                 },
               ]}
               pointerEvents={isPanelOpen ? "none" : "auto"}
@@ -2514,15 +2528,6 @@ function ReaderContent({ route, navigation }: Props) {
           onUpdateConfig={tts.handleUpdateTTSConfig}
           onPrevChapter={toc.length > 0 ? tts.handleTTSPrevChapter : undefined}
           onNextChapter={toc.length > 0 ? tts.handleTTSNextChapter : undefined}
-        />
-
-        {/* ─── Карточка героя (тап по имени в тексте) ─── */}
-        <ReaderCharacterCard
-          visible={!!characterCard}
-          character={characterCard}
-          bookId={bookId}
-          onClose={() => setCharacterCard(null)}
-          onOpenChat={handleOpenCharacterChat}
         />
       </View>
     </>

@@ -39,6 +39,10 @@ pnpm-debug.log*
 
 # Local visual verification captures
 .cua-*.png
+.codex-*.png
+
+# Local source books and EPUB research materials
+books_epub/
 
 # Python
 __pycache__/

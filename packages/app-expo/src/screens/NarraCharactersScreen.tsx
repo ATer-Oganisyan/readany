@@ -9,7 +9,6 @@ import { Text } from "@/components/ui/Typography";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
-import { openMobileBook } from "@/lib/library/open-mobile-book";
 import { getBundledCatalogCharactersByTitle } from "@/lib/narra/bundled-catalog-characters";
 import { analyzeBookCharacters } from "@/lib/narra/character-analysis";
 import { hasCharacterPortrait, resolveCharacterPortraitUri } from "@/lib/narra/character-portrait";
@@ -19,7 +18,6 @@ import { ensureCharacterPortrait, normalizePersistedNarraMediaUri } from "@/lib/
 import type { NarraCharacter } from "@/lib/narra/types";
 import { inspectMobileBookForVectorize } from "@/lib/rag/auto-vectorize-book";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
-import { ReaderCharacterCard } from "@/screens/reader/ReaderCharacterCard";
 import { useLibraryStore, useNarraStore } from "@/stores";
 import { type ThemeColors, fontSize, fontWeight, radius, spacing, useTheme } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -57,8 +55,6 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
   const autoAnalysisStartedRef = useRef(false);
   const [analysisStage, setAnalysisStage] = useState("");
   const [portraitLoading, setPortraitLoading] = useState<string | null>(null);
-  /** Герой, чья карточка открыта в bottom-sheet (тап → карточка → чат, как в «Моём пути»). */
-  const [selectedCharacter, setSelectedCharacter] = useState<NarraCharacter | null>(null);
   const storedCharacters = bookState?.characters ?? [];
   const bundledCharacters = useMemo(
     () => (book ? getBundledCatalogCharactersByTitle(book.meta.title) : undefined),
@@ -226,28 +222,17 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
 
   const openCharacterCard = useCallback(
     (character: NarraCharacter) => {
-      // Карточка и чат ищут героя в narra-store — bundled-фолбэк сначала фиксируем там
+      // Нативный профиль ищет героя в narra-store — bundled-фолбэк сначала фиксируем там.
       if (storedCharacters.length === 0 && bundledCharacters?.length) {
         setCharacters(bookId, bundledCharacters);
       }
-      setSelectedCharacter(character);
+      navigation.navigate("NarraCharacterProfile", {
+        bookId,
+        characterId: character.id,
+      });
     },
-    [bookId, bundledCharacters, setCharacters, storedCharacters.length],
+    [bookId, bundledCharacters, navigation, setCharacters, storedCharacters.length],
   );
-
-  const openCharacterChat = useCallback(
-    (character: NarraCharacter) => {
-      setSelectedCharacter(null);
-      navigation.navigate("NarraCharacterChat", { bookId, characterId: character.id });
-    },
-    [bookId, navigation],
-  );
-
-  /** «Продолжить чтение» из тизера запертого героя — в ридер этой книги. */
-  const continueReading = useCallback(() => {
-    setSelectedCharacter(null);
-    void openMobileBook({ bookId, navigation, t });
-  }, [bookId, navigation, t]);
 
   const listItems: CharacterChatListItem[] = [
     {
@@ -327,52 +312,39 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
   ];
 
   return (
-    <>
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        contentContainerStyle={styles.content}
-        style={styles.container}
-      >
-        <ExtractorWebView ref={extractorRef} />
-        <CharacterChatList items={listItems} />
-        {characters.length === 0 ? (
-          <CenteredEmptyState
-            title={t("narra.meetCharacters", "Персонажей пока нет")}
-            description={t("narra.analysisDescription", "Найдём их в тексте книги")}
-          >
-            <View style={styles.emptyActions}>
-              <TouchableOpacity
-                accessibilityRole="button"
-                accessibilityLabel={
-                  busy ? analysisStage : t("narra.findCharacters", "Найти героев")
-                }
-                activeOpacity={0.82}
-                disabled={busy || !book}
-                onPress={() => void analyze()}
-                style={[styles.primaryButton, (busy || !book) && styles.disabled]}
-              >
-                {busy ? (
-                  <ActivityIndicator size="small" color={colors.primaryForeground} />
-                ) : (
-                  <Text style={styles.primaryButtonText}>
-                    {t("narra.findCharacters", "Найти героев")}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </CenteredEmptyState>
-        ) : null}
-      </ScrollView>
-      {/* Карточка героя — тот же bottom-sheet, что в ридере и «Моём пути»: тап → карточка → чат */}
-      <ReaderCharacterCard
-        visible={!!selectedCharacter}
-        character={selectedCharacter}
-        bookId={bookId}
-        onClose={() => setSelectedCharacter(null)}
-        onOpenChat={openCharacterChat}
-        onContinueReading={continueReading}
-      />
-    </>
+    <ScrollView
+      contentInsetAdjustmentBehavior="automatic"
+      contentContainerStyle={styles.content}
+      style={styles.container}
+    >
+      <ExtractorWebView ref={extractorRef} />
+      <CharacterChatList items={listItems} />
+      {characters.length === 0 ? (
+        <CenteredEmptyState
+          title={t("narra.meetCharacters", "Персонажей пока нет")}
+          description={t("narra.analysisDescription", "Найдём их в тексте книги")}
+        >
+          <View style={styles.emptyActions}>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel={busy ? analysisStage : t("narra.findCharacters", "Найти героев")}
+              activeOpacity={0.82}
+              disabled={busy || !book}
+              onPress={() => void analyze()}
+              style={[styles.primaryButton, (busy || !book) && styles.disabled]}
+            >
+              {busy ? (
+                <ActivityIndicator size="small" color={colors.primaryForeground} />
+              ) : (
+                <Text style={styles.primaryButtonText}>
+                  {t("narra.findCharacters", "Найти героев")}
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </CenteredEmptyState>
+      ) : null}
+    </ScrollView>
   );
 }
 

@@ -1,24 +1,16 @@
-import { Button, ContextMenu, Host, Rectangle } from "@expo/ui/swift-ui";
-import { foregroundStyle, frame, onTapGesture } from "@expo/ui/swift-ui/modifiers";
-import { StyleSheet } from "react-native";
+import { Button, ContextMenu, Host, RNHostView } from "@expo/ui/swift-ui";
 import type { BookCardContextMenuProps } from "./BookCardContextMenu.types";
 
 export function BookCardContextMenu({
   accessibilityLabel,
+  children,
   items,
-  onPress,
 }: BookCardContextMenuProps) {
   return (
-    <Host style={StyleSheet.absoluteFill}>
+    <Host matchContents ignoreSafeArea="all">
       <ContextMenu testID={accessibilityLabel}>
         <ContextMenu.Trigger>
-          <Rectangle
-            modifiers={[
-              frame({ maxWidth: 10_000, maxHeight: 10_000 }),
-              foregroundStyle("#00000001"),
-              onTapGesture(onPress),
-            ]}
-          />
+          <RNHostView matchContents>{children}</RNHostView>
         </ContextMenu.Trigger>
         <ContextMenu.Items>
           {items.map((item) => (

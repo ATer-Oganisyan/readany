@@ -2,12 +2,15 @@ import { spacing, useTheme } from "@/styles/theme";
 import { interfaceFontFamily } from "@deslop/primitives/native";
 import { Button, HStack, Host, Picker, ScrollView, Text } from "@expo/ui/swift-ui";
 import {
+  background,
   buttonStyle,
   controlSize,
   font,
+  foregroundStyle,
   frame,
   padding,
   pickerStyle,
+  shapes,
   tag,
   tint,
 } from "@expo/ui/swift-ui/modifiers";
@@ -57,7 +60,14 @@ export function NativeThemePicker({
                   controlSize("regular"),
                   font({ family: interfaceFontFamily.semibold, size: 17 }),
                   tint(selectedIndex === index ? colors.primary : colors.mutedForeground),
-                  buttonStyle(selectedIndex === index ? "borderedProminent" : "bordered"),
+                  buttonStyle(selectedIndex === index ? "borderedProminent" : "plain"),
+                  ...(selectedIndex === index
+                    ? []
+                    : [
+                        foregroundStyle(colors.mutedForeground),
+                        padding({ horizontal: 16, vertical: 8 }),
+                        background(colors.primary5, shapes.capsule()),
+                      ]),
                 ]}
               />
             ))}

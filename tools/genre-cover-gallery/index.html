@@ -1,0 +1,710 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Narra — жанровые обложки</title>
+    <style>
+      @font-face {
+        font-family: "SB Sans Interface";
+        src: url("../../packages/deslop-primitives/fonts/SBSansUI-Regular.otf") format("opentype");
+        font-weight: 400;
+      }
+
+      @font-face {
+        font-family: "SB Sans Interface";
+        src: url("../../packages/deslop-primitives/fonts/SBSansUI-Semibold.otf") format("opentype");
+        font-weight: 600;
+      }
+
+      @font-face {
+        font-family: "SB Serif Text";
+        src: url("../../packages/deslop-primitives/fonts/SBSerifText-Regular.otf") format("opentype");
+        font-weight: 400;
+      }
+
+      :root {
+        color-scheme: dark;
+        --background-primary: #111111;
+        --elevation-1: #1d1d1d;
+        --primary: #ffffff;
+        --primary-70: #ffffffb3;
+        --primary-50: #ffffff80;
+        --primary-20: #ffffff33;
+        --primary-10: #ffffff1a;
+        --accent: #ff9230;
+        --content-inset: 16px;
+        --section-gap: 24px;
+        --radius-10: 10px;
+        --radius-full: 9999px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        background: var(--background-primary);
+      }
+
+      body {
+        margin: 0;
+        min-width: 320px;
+        color: var(--primary);
+        background:
+          linear-gradient(var(--primary-10) 1px, transparent 1px),
+          linear-gradient(90deg, var(--primary-10) 1px, transparent 1px),
+          var(--background-primary);
+        background-size: 32px 32px;
+        font-family: "SB Sans Interface", sans-serif;
+      }
+
+      body::before {
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        background: radial-gradient(circle at 82% 0%, #ff923016, transparent 32rem);
+        content: "";
+        pointer-events: none;
+      }
+
+      main {
+        width: min(1440px, calc(100% - 48px));
+        margin: 0 auto;
+        padding: 56px 0 96px;
+      }
+
+      .masthead {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: end;
+        gap: 32px;
+        margin-bottom: 44px;
+      }
+
+      .eyebrow,
+      th,
+      .index,
+      .genre,
+      .count {
+        font-size: 11px;
+        line-height: 13px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .eyebrow {
+        margin: 0 0 12px;
+        color: var(--accent);
+      }
+
+      h1 {
+        max-width: 900px;
+        margin: 0;
+        font-family: "SB Serif Text", serif;
+        font-size: clamp(42px, 6.2vw, 88px);
+        font-weight: 400;
+        line-height: 0.92;
+        letter-spacing: -0.045em;
+      }
+
+      .intro {
+        max-width: 500px;
+        margin: 24px 0 0;
+        color: var(--primary-70);
+        font-size: 16px;
+        line-height: 22px;
+      }
+
+      .count {
+        display: grid;
+        width: 112px;
+        height: 112px;
+        place-items: center;
+        border: 1px solid var(--primary-20);
+        border-radius: 50%;
+        color: var(--primary-70);
+        text-align: center;
+        transform: rotate(7deg);
+      }
+
+      .count strong {
+        display: block;
+        color: var(--primary);
+        font-family: "SB Serif Text", serif;
+        font-size: 42px;
+        font-weight: 400;
+        line-height: 38px;
+        letter-spacing: -0.04em;
+      }
+
+      .toolbar {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 16px;
+      }
+
+      .search,
+      .filter {
+        height: 44px;
+        border: 1px solid var(--primary-20);
+        border-radius: var(--radius-full);
+        outline: none;
+        color: var(--primary);
+        background: #111111d9;
+        font: inherit;
+      }
+
+      .search {
+        width: min(420px, 100%);
+        padding: 0 18px;
+      }
+
+      .filter {
+        padding: 0 36px 0 16px;
+      }
+
+      .search:focus,
+      .filter:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px #ff923024;
+      }
+
+      .table-shell {
+        overflow: clip;
+        border: 1px solid var(--primary-20);
+        border-radius: var(--radius-10);
+        background: #111111e8;
+        backdrop-filter: blur(24px);
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+      }
+
+      col.book { width: 19%; }
+      col.description { width: 23%; }
+      col.genre-col { width: 13%; }
+      col.prompt-col { width: 29%; }
+      col.poster { width: 16%; }
+
+      thead {
+        position: sticky;
+        z-index: 2;
+        top: 0;
+        background: #1d1d1df2;
+        backdrop-filter: blur(18px);
+      }
+
+      th {
+        height: 52px;
+        padding: 0 20px;
+        color: var(--primary-50);
+        font-weight: 400;
+        text-align: left;
+      }
+
+      tbody tr {
+        border-top: 1px solid var(--primary-20);
+        transition: background-color 180ms ease;
+      }
+
+      tbody tr:hover {
+        background: var(--primary-10);
+      }
+
+      td {
+        padding: 24px 20px;
+        vertical-align: top;
+      }
+
+      .book-cell {
+        display: grid;
+        grid-template-columns: 28px minmax(0, 1fr);
+        gap: 12px;
+      }
+
+      .index {
+        padding-top: 5px;
+        color: var(--primary-50);
+      }
+
+      .title {
+        margin: 0;
+        font-family: "SB Serif Text", serif;
+        font-size: 24px;
+        line-height: 27px;
+        letter-spacing: -0.02em;
+      }
+
+      .author {
+        margin: 8px 0 0;
+        color: var(--primary-50);
+        font-size: 13px;
+        line-height: 18px;
+      }
+
+      .description-text {
+        max-width: 560px;
+        margin: 1px 0 0;
+        color: var(--primary-70);
+        font-size: 15px;
+        line-height: 21px;
+      }
+
+      .prompt-text {
+        margin: 0;
+        padding-left: 14px;
+        border-left: 2px solid var(--accent);
+        color: var(--primary-70);
+        font-size: 12px;
+        line-height: 17px;
+      }
+
+      .experimental {
+        color: var(--accent);
+      }
+
+      .genre {
+        display: inline-flex;
+        min-height: 28px;
+        align-items: center;
+        padding: 6px 10px;
+        border: 1px solid var(--primary-20);
+        border-radius: var(--radius-full);
+        color: var(--primary-70);
+        background: var(--primary-10);
+      }
+
+      .poster-button {
+        display: block;
+        width: min(176px, 100%);
+        margin-left: auto;
+        padding: 0;
+        overflow: hidden;
+        border: 0;
+        border-radius: 8px;
+        background: transparent;
+        box-shadow: 0 16px 32px #0000004d;
+        cursor: zoom-in;
+        transform-origin: bottom right;
+        transition: transform 220ms ease, box-shadow 220ms ease;
+      }
+
+      .poster-button:hover {
+        box-shadow: 0 22px 44px #00000080;
+        transform: rotate(1deg) scale(1.025);
+      }
+
+      .poster-button:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 4px;
+      }
+
+      .poster-button img {
+        display: block;
+        width: 100%;
+        aspect-ratio: 2 / 3;
+        object-fit: cover;
+      }
+
+      .empty {
+        display: none;
+        padding: 48px 20px;
+        color: var(--primary-50);
+        text-align: center;
+      }
+
+      dialog {
+        width: min(660px, calc(100% - 32px));
+        max-height: calc(100vh - 32px);
+        padding: 0;
+        overflow: hidden;
+        border: 1px solid var(--primary-20);
+        border-radius: 12px;
+        color: var(--primary);
+        background: var(--elevation-1);
+        box-shadow: 0 40px 100px #000000cc;
+      }
+
+      dialog::backdrop {
+        background: #000000c7;
+        backdrop-filter: blur(18px);
+      }
+
+      .dialog-image {
+        display: block;
+        width: 100%;
+        max-height: calc(100vh - 100px);
+        object-fit: contain;
+        background: #080808;
+      }
+
+      .dialog-bar {
+        display: flex;
+        min-height: 60px;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 12px 16px;
+      }
+
+      .dialog-caption {
+        margin: 0;
+        font-size: 13px;
+        line-height: 18px;
+      }
+
+      .close {
+        width: 36px;
+        height: 36px;
+        flex: 0 0 auto;
+        border: 0;
+        border-radius: 50%;
+        color: var(--primary);
+        background: var(--primary-10);
+        font-size: 22px;
+        cursor: pointer;
+      }
+
+      @media (max-width: 860px) {
+        main {
+          width: min(100% - 24px, 680px);
+          padding-top: 32px;
+        }
+
+        .masthead {
+          grid-template-columns: 1fr;
+        }
+
+        .count {
+          display: none;
+        }
+
+        .toolbar {
+          flex-direction: column;
+        }
+
+        .search,
+        .filter {
+          width: 100%;
+        }
+
+        .table-shell {
+          border: 0;
+          background: transparent;
+          backdrop-filter: none;
+        }
+
+        table,
+        tbody,
+        tr,
+        td {
+          display: block;
+          width: 100%;
+        }
+
+        thead {
+          display: none;
+        }
+
+        tbody {
+          display: grid;
+          gap: 16px;
+        }
+
+        tbody tr {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) 132px;
+          overflow: hidden;
+          border: 1px solid var(--primary-20);
+          border-radius: var(--radius-10);
+          background: #111111f0;
+        }
+
+        td {
+          padding: 16px;
+        }
+
+        td:nth-child(1),
+        td:nth-child(2),
+        td:nth-child(3),
+        td:nth-child(4) {
+          grid-column: 1;
+        }
+
+        td:nth-child(2) {
+          padding-top: 0;
+        }
+
+        td:nth-child(3) {
+          padding-top: 0;
+        }
+
+        td:nth-child(4) {
+          padding-top: 0;
+        }
+
+        td:nth-child(5) {
+          grid-column: 2;
+          grid-row: 1 / span 4;
+          padding: 0;
+        }
+
+        .title {
+          font-size: 20px;
+          line-height: 23px;
+        }
+
+        .description-text {
+          font-size: 13px;
+          line-height: 18px;
+        }
+
+        .prompt-text {
+          font-size: 11px;
+          line-height: 16px;
+        }
+
+        .poster-button {
+          width: 100%;
+          height: 100%;
+          min-height: 260px;
+          border-radius: 0;
+          box-shadow: none;
+        }
+
+        .poster-button img {
+          height: 100%;
+          object-position: center;
+        }
+      }
+
+      @media (max-width: 520px) {
+        tbody tr {
+          grid-template-columns: minmax(0, 1fr) 108px;
+        }
+
+        .book-cell {
+          grid-template-columns: 1fr;
+        }
+
+        .index {
+          display: none;
+        }
+
+        .poster-button {
+          min-height: 236px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          scroll-behavior: auto !important;
+          transition: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header class="masthead">
+        <div>
+          <p class="eyebrow">Narra / Genre cover study / 01</p>
+          <h1>Одна система.<br />Двенадцать жанров.</h1>
+          <p class="intro">
+            Сравнение жанровых направлений внутри общего промпта: одинаковая композиционная система,
+            но разные метафоры, материалы и визуальное напряжение.
+          </p>
+        </div>
+        <div class="count"><span><strong>12</strong>постеров</span></div>
+      </header>
+
+      <section aria-labelledby="table-title">
+        <h2 id="table-title" hidden>Таблица жанровых обложек</h2>
+        <div class="toolbar">
+          <input class="search" id="search" type="search" placeholder="Найти книгу или автора" aria-label="Найти книгу или автора" />
+          <select class="filter" id="genre-filter" aria-label="Фильтр по жанру">
+            <option value="">Все жанры</option>
+            <option>Детская литература</option>
+            <option>Поэзия</option>
+            <option>Драма</option>
+            <option>Детектив</option>
+            <option>Научная фантастика</option>
+            <option>Приключения</option>
+            <option>Хоррор</option>
+            <option>Романтика</option>
+            <option>Историческая проза</option>
+            <option>Философия</option>
+            <option>Манга</option>
+            <option>Фанфик</option>
+          </select>
+        </div>
+
+        <div class="table-shell">
+          <table>
+            <colgroup>
+              <col class="book" />
+              <col class="description" />
+              <col class="genre-col" />
+              <col class="prompt-col" />
+              <col class="poster" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>Книга</th>
+                <th>Описание</th>
+                <th>Жанр</th>
+                <th>Промпт стилистики</th>
+                <th>Постер</th>
+              </tr>
+            </thead>
+            <tbody id="cover-table">
+              <tr data-genre="Детская литература" data-search="алиса в стране чудес льюис кэрролл">
+                <td><div class="book-cell"><span class="index">01</span><div><h3 class="title">Алиса в Стране чудес</h3><p class="author">Льюис Кэрролл</p></div></div></td>
+                <td><p class="description-text">Ребёнок попадает из знакомого мира в пространство с неустойчивыми правилами, масштабом и идентичностью.</p></td>
+                <td><span class="genre">Детская литература</span></td>
+                <td><p class="prompt-text">Use lucid, playful visual logic, tactile shapes and a strong readable silhouette; avoid licensed-character imitation and sugary cartoon styling.</p></td>
+                <td><button class="poster-button" data-title="Алиса в Стране чудес — Льюис Кэрролл"><img src="assets/alice.png" alt="Жанровый постер для книги Алиса в Стране чудес" /></button></td>
+              </tr>
+              <tr data-genre="Поэзия" data-search="листья травы уолт уитмен">
+                <td><div class="book-cell"><span class="index">02</span><div><h3 class="title">Листья травы</h3><p class="author">Уолт Уитмен</p></div></div></td>
+                <td><p class="description-text">Поэзия о теле, демократии, природе и растворении индивидуального «я» в большом живом целом.</p></td>
+                <td><span class="genre">Поэзия</span></td>
+                <td><p class="prompt-text">Translate rhythm, pause and verbal compression into one sparse visual gesture; avoid literal pens, pages and decorative calligraphy.</p></td>
+                <td><button class="poster-button" data-title="Листья травы — Уолт Уитмен"><img src="assets/leaves-of-grass.png" alt="Жанровый постер для книги Листья травы" /></button></td>
+              </tr>
+              <tr data-genre="Драма" data-search="гамлет уильям шекспир">
+                <td><div class="book-cell"><span class="index">03</span><div><h3 class="title">Гамлет</h3><p class="author">Уильям Шекспир</p></div></div></td>
+                <td><p class="description-text">Трагедия скорби, сомнения и мести, где власть разлагается, а граница между ролью и правдой исчезает.</p></td>
+                <td><span class="genre">Драма</span></td>
+                <td><p class="prompt-text">Build the metaphor around conflict, staging, presence and absence; avoid theatre masks, curtains and literal stage imagery.</p></td>
+                <td><button class="poster-button" data-title="Гамлет — Уильям Шекспир"><img src="assets/hamlet.png" alt="Жанровый постер для книги Гамлет" /></button></td>
+              </tr>
+              <tr data-genre="Детектив" data-search="собака баскервилей артур конан дойл">
+                <td><div class="book-cell"><span class="index">04</span><div><h3 class="title">Собака Баскервилей</h3><p class="author">Артур Конан Дойл</p></div></div></td>
+                <td><p class="description-text">Рациональное расследование сталкивается с наследуемым страхом, легендой и намеренно искажёнными уликами.</p></td>
+                <td><span class="genre">Детектив</span></td>
+                <td><p class="prompt-text">Create controlled suspense through omission, fragmented evidence and visual uncertainty; avoid guns, magnifying glasses, crime tape and cinematic thriller clichés.</p></td>
+                <td><button class="poster-button" data-title="Собака Баскервилей — Артур Конан Дойл"><img src="assets/hound-of-the-baskervilles.png" alt="Жанровый постер для книги Собака Баскервилей" /></button></td>
+              </tr>
+              <tr data-genre="Научная фантастика" data-search="машина времени герберт уэллс">
+                <td><div class="book-cell"><span class="index">05</span><div><h3 class="title">Машина времени</h3><p class="author">Герберт Уэллс</p></div></div></td>
+                <td><p class="description-text">Путешествие во времени раскрывает последствия прогресса, социальное расслоение и масштаб человеческого упадка.</p></td>
+                <td><span class="genre">Научная фантастика</span></td>
+                <td><p class="prompt-text">Express systems, altered scale, time or technological consequence with an editorial metaphor; avoid spaceships, neon cyberpunk skylines and glossy concept art.</p></td>
+                <td><button class="poster-button" data-title="Машина времени — Герберт Уэллс"><img src="assets/time-machine.png" alt="Жанровый постер для книги Машина времени" /></button></td>
+              </tr>
+              <tr data-genre="Приключения" data-search="остров сокровищ роберт льюис стивенсон">
+                <td><div class="book-cell"><span class="index">06</span><div><h3 class="title">Остров сокровищ</h3><p class="author">Роберт Льюис Стивенсон</p></div></div></td>
+                <td><p class="description-text">Путешествие, в котором риск, изменчивая верность и жадность разрушают обещание лёгкого открытия.</p></td>
+                <td><span class="genre">Приключения</span></td>
+                <td><p class="prompt-text">Express movement, risk and discovery through one unstable object or interrupted trajectory; avoid heroic poses, vehicles, weapons and cinematic action-poster composition.</p></td>
+                <td><button class="poster-button" data-title="Остров сокровищ — Роберт Льюис Стивенсон"><img src="assets/treasure-island.png" alt="Жанровый постер для книги Остров сокровищ" /></button></td>
+              </tr>
+              <tr data-genre="Хоррор" data-search="дракула брэм стокер">
+                <td><div class="book-cell"><span class="index">07</span><div><h3 class="title">Дракула</h3><p class="author">Брэм Стокер</p></div></div></td>
+                <td><p class="description-text">Древняя сила превращает гостеприимство, желание и современный рациональный порядок в механизм заражения и страха.</p></td>
+                <td><span class="genre">Хоррор</span></td>
+                <td><p class="prompt-text">Create unease through absence, material distortion and a disturbed familiar object; avoid gore, monsters, skulls and poster-like shock imagery.</p></td>
+                <td><button class="poster-button" data-title="Дракула — Брэм Стокер"><img src="assets/dracula.png" alt="Жанровый постер для книги Дракула" /></button></td>
+              </tr>
+              <tr data-genre="Романтика" data-search="гордость и предубеждение джейн остин">
+                <td><div class="book-cell"><span class="index">08</span><div><h3 class="title">Гордость и предубеждение</h3><p class="author">Джейн Остин</p></div></div></td>
+                <td><p class="description-text">Близость возникает сквозь гордость, ошибочные чтения друг друга, классовые ожидания и пересмотр первых впечатлений.</p></td>
+                <td><span class="genre">Романтика</span></td>
+                <td><p class="prompt-text">Focus on intimacy, distance, attachment or social pressure through objects and spatial tension; avoid couples, embraces, hearts and sentimental illustration.</p></td>
+                <td><button class="poster-button" data-title="Гордость и предубеждение — Джейн Остин"><img src="assets/pride-and-prejudice.png" alt="Жанровый постер для книги Гордость и предубеждение" /></button></td>
+              </tr>
+              <tr data-genre="Историческая проза" data-search="повесть о двух городах чарльз диккенс">
+                <td><div class="book-cell"><span class="index">09</span><div><h3 class="title">Повесть о двух городах</h3><p class="author">Чарльз Диккенс</p></div></div></td>
+                <td><p class="description-text">Частные жизни, двойники и жертва оказываются зажаты между двумя городами во время революционного разлома.</p></td>
+                <td><span class="genre">Историческая проза</span></td>
+                <td><p class="prompt-text">Use an era-specific material trace, archival fragment or anachronistic collision; avoid costume tableaux, battle scenes and heritage-poster nostalgia.</p></td>
+                <td><button class="poster-button" data-title="Повесть о двух городах — Чарльз Диккенс"><img src="assets/tale-of-two-cities.png" alt="Жанровый постер для книги Повесть о двух городах" /></button></td>
+              </tr>
+              <tr data-genre="Философия" data-search="уолден генри дэвид торо">
+                <td><div class="book-cell"><span class="index">10</span><div><h3 class="title">Уолден</h3><p class="author">Генри Дэвид Торо</p></div></div></td>
+                <td><p class="description-text">Исследование простоты, одиночества, нравственной независимости и сознательного отношения к материальным потребностям.</p></td>
+                <td><span class="genre">Философия</span></td>
+                <td><p class="prompt-text">Turn the central argument into a precise visual paradox or impossible relation; avoid statues, thinker portraits, brains and generic classical symbols.</p></td>
+                <td><button class="poster-button" data-title="Уолден — Генри Дэвид Торо"><img src="assets/walden.png" alt="Жанровый постер для книги Уолден" /></button></td>
+              </tr>
+              <tr data-genre="Манга" data-search="после последнего поезда манга эксперимент">
+                <td><div class="book-cell"><span class="index">11</span><div><h3 class="title">После последнего поезда</h3><p class="author">Экспериментальный пример</p></div></div></td>
+                <td><p class="description-text">Ночная смена, пустой поезд и воспоминание, которое при каждом прибытии принимает новую форму.</p></td>
+                <td><span class="genre experimental">Манга · эксперимент</span></td>
+                <td><p class="prompt-text">Use decisive black-ink rhythm, cinematic panel-like cropping and expressive negative space translated into one editorial symbol; avoid imitating any living artist, recognizable franchise aesthetics, character close-ups, speed-line clichés and crowded sequential panels.</p></td>
+                <td><button class="poster-button" data-title="После последнего поезда — экспериментальная манга"><img src="assets/manga-after-last-train.png" alt="Экспериментальный жанровый постер для манги После последнего поезда" /></button></td>
+              </tr>
+              <tr data-genre="Фанфик" data-search="письма с седьмого этажа фанфик эксперимент">
+                <td><div class="book-cell"><span class="index">12</span><div><h3 class="title">Письма с седьмого этажа</h3><p class="author">Экспериментальный пример</p></div></div></td>
+                <td><p class="description-text">Два человека общаются через анонимные записки, возникающие на невозможном этаже знакомого здания.</p></td>
+                <td><span class="genre experimental">Фанфик · эксперимент</span></td>
+                <td><p class="prompt-text">Focus on the emotional premise, altered relationship dynamics and the tension between familiar and newly imagined worlds; use anonymous symbolic objects, and avoid copyrighted character likenesses, franchise logos, recognizable costumes, canonical props and imitation of official key art.</p></td>
+                <td><button class="poster-button" data-title="Письма с седьмого этажа — экспериментальный фанфик"><img src="assets/fanfic-seventh-floor-letters.png" alt="Экспериментальный жанровый постер для фанфика Письма с седьмого этажа" /></button></td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="empty" id="empty">Ничего не найдено. Попробуйте изменить запрос.</p>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="poster-dialog">
+      <img class="dialog-image" id="dialog-image" alt="" />
+      <div class="dialog-bar">
+        <p class="dialog-caption" id="dialog-caption"></p>
+        <button class="close" id="dialog-close" type="button" aria-label="Закрыть">×</button>
+      </div>
+    </dialog>
+
+    <script>
+      const search = document.querySelector("#search");
+      const genreFilter = document.querySelector("#genre-filter");
+      const rows = [...document.querySelectorAll("#cover-table tr")];
+      const empty = document.querySelector("#empty");
+      const dialog = document.querySelector("#poster-dialog");
+      const dialogImage = document.querySelector("#dialog-image");
+      const dialogCaption = document.querySelector("#dialog-caption");
+
+      function filterRows() {
+        const query = search.value.trim().toLocaleLowerCase("ru");
+        const genre = genreFilter.value;
+        let visible = 0;
+
+        for (const row of rows) {
+          const matchesQuery = !query || row.dataset.search.includes(query);
+          const matchesGenre = !genre || row.dataset.genre === genre;
+          const matches = matchesQuery && matchesGenre;
+          row.hidden = !matches;
+          if (matches) visible += 1;
+        }
+
+        empty.style.display = visible ? "none" : "block";
+      }
+
+      search.addEventListener("input", filterRows);
+      genreFilter.addEventListener("change", filterRows);
+
+      for (const button of document.querySelectorAll(".poster-button")) {
+        button.addEventListener("click", () => {
+          const image = button.querySelector("img");
+          dialogImage.src = image.src;
+          dialogImage.alt = image.alt;
+          dialogCaption.textContent = button.dataset.title;
+          dialog.showModal();
+        });
+      }
+
+      document.querySelector("#dialog-close").addEventListener("click", () => dialog.close());
+      dialog.addEventListener("click", (event) => {
+        if (event.target === dialog) dialog.close();
+      });
+    </script>
+  </body>
+</html>
