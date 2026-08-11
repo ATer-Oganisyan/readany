@@ -1,0 +1,173 @@
+import { normalizeCharacterAnchor, REQUIRED_CHARACTER_MEDIA } from './book-markup.mjs'
+
+const JOB_TYPES = new Set(['book_markup', 'character_bundle'])
+
+function invalidResult(message) {
+  const error = new Error(message)
+  error.code = 'GENERATION_RESULT_INVALID'
+  return error
+}
+
+function safeErrorCode(error) {
+  const candidate = typeof error?.code === 'string' ? error.code : 'UNKNOWN'
+  return /^[A-Z][A-Z0-9_]{1,48}$/.test(candidate) ? candidate : 'UNKNOWN'
+}
+
+export function normalizeBookMarkupResult(value) {
+  if (!value || typeof value !== 'object' || !Array.isArray(value.characters)) {
+    throw invalidResult('book markup must contain characters')
+  }
+  if (value.characters.length < 1 || value.characters.length > 32) {
+    throw invalidResult('book markup must contain 1-32 characters')
+  }
+  if (!Number.isSafeInteger(value.textLength) || value.textLength < 1) {
+    throw invalidResult('book markup must contain a positive textLength')
+  }
+  const seen = new Set()
+  const characters = value.characters.map((candidate, index) => {
+    const anchor = normalizeCharacterAnchor(candidate)
+    if (seen.has(anchor.characterKey)) {
+      throw invalidResult(`duplicate character key: ${anchor.characterKey}`)
+    }
+    seen.add(anchor.characterKey)
+    if (typeof candidate.name !== 'string' || !candidate.name.trim()) {
+      throw invalidResult(`characters[${index}].name is required`)
+    }
+    if (typeof candidate.fullName !== 'string' || !candidate.fullName.trim()) {
+      throw invalidResult(`characters[${index}].fullName is required`)
+    }
+    if (anchor.firstAppearanceTextOffset > value.textLength) {
+      throw invalidResult(`characters[${index}] appears after textLength`)
+    }
+    return {
+      ...candidate,
+      ...anchor,
+      name: candidate.name.trim(),
+      fullName: candidate.fullName.trim()
+    }
+  })
+  return { ...value, characters }
+}
+
+export function normalizeCharacterBundleResult(value) {
+  if (!value || typeof value !== 'object' || !Array.isArray(value.assets)) {
+    throw invalidResult('character bundle must contain assets')
+  }
+  const byType = new Map()
+  for (const asset of value.assets) {
+    if (!asset || typeof asset !== 'object' || typeof asset.type !== 'string') {
+      throw invalidResult('character bundle contains an invalid asset')
+    }
+    if (byType.has(asset.type)) throw invalidResult(`duplicate asset type: ${asset.type}`)
+    if (
+      typeof asset.objectKey !== 'string' || !asset.objectKey ||
+      typeof asset.contentHash !== 'string' || !/^[0-9a-f]{64}$/.test(asset.contentHash) ||
+      typeof asset.mimeType !== 'string' || !asset.mimeType ||
+      !Number.isSafeInteger(asset.byteSize) || asset.byteSize < 0
+    ) {
+      throw invalidResult(`asset ${asset.type} has invalid storage metadata`)
+    }
+    byType.set(asset.type, { ...asset })
+  }
+  for (const type of REQUIRED_CHARACTER_MEDIA) {
+    if (!byType.has(type)) throw invalidResult(`character bundle is missing ${type}`)
+  }
+  return { assets: REQUIRED_CHARACTER_MEDIA.map((type) => byType.get(type)) }
+}
+
+/**
+ * A single-claim worker. The repository owns leases and durable transactions;
+ * the generator owns provider calls and object-storage writes.
+ */
+export function createGenerationWorker({
+  repository,
+  generator,
+  workerId,
+  logger = console,
+  leaseRenewMs = 60_000
+}) {
+  if (!repository || !generator) throw new TypeError('repository and generator are required')
+  if (typeof workerId !== 'string' || !workerId) throw new TypeError('workerId is required')
+
+  async function runBookMarkup(job) {
+    const input = await repository.getBookMarkupInput(job)
+    const markup = normalizeBookMarkupResult(await generator.generateBookMarkup(input))
+    if (typeof input.contentSha256 !== 'string' || !/^[0-9a-f]{64}$/.test(input.contentSha256)) {
+      throw invalidResult('book markup input requires contentSha256')
+    }
+    markup.inputHash = input.contentSha256
+    await repository.publishBookMarkup(job, markup)
+    if (input.scope === 'catalog') {
+      const bundleRequests = await Promise.allSettled(markup.characters.map((character) =>
+        repository.ensureCharacterBundle({
+          bookEditionId: job.bookEditionId,
+          characterKey: character.characterKey
+        })
+      ))
+      const failedBundleRequests = bundleRequests.filter((result) => result.status === 'rejected')
+      if (failedBundleRequests.length) {
+        logger.error?.('[generation-worker] catalog bundle enqueue incomplete', {
+          jobId: job.id,
+          failedCount: failedBundleRequests.length
+        })
+      }
+    }
+    return { characterCount: markup.characters.length }
+  }
+
+  async function runCharacterBundle(job) {
+    const input = await repository.getCharacterBundleInput(job)
+    const bundle = normalizeCharacterBundleResult(
+      await generator.generateCharacterBundle(input, [...REQUIRED_CHARACTER_MEDIA])
+    )
+    await repository.publishCharacterBundle(job, bundle)
+    return { assetCount: bundle.assets.length }
+  }
+
+  async function withLeaseHeartbeat(job, operation) {
+    if (typeof repository.renewGenerationLease !== 'function') return operation()
+    const timer = setInterval(() => {
+      void repository.renewGenerationLease(job).catch((error) => {
+        logger.error?.('[generation-worker] lease renewal failed', {
+          jobId: job.id,
+          errorCode: safeErrorCode(error)
+        })
+      })
+    }, leaseRenewMs)
+    timer.unref?.()
+    try {
+      return await operation()
+    } finally {
+      clearInterval(timer)
+    }
+  }
+
+  return {
+    async runOnce() {
+      const job = await repository.claimGenerationJob(workerId)
+      if (!job) return { status: 'idle' }
+      if (!JOB_TYPES.has(job.type)) {
+        const error = Object.assign(new Error(`unsupported job type: ${job.type}`), {
+          code: 'UNSUPPORTED_JOB'
+        })
+        await repository.failGenerationJob(job, error.code)
+        return { status: 'failed', jobId: job.id, errorCode: error.code }
+      }
+      try {
+        const result = await withLeaseHeartbeat(job, () =>
+          job.type === 'book_markup' ? runBookMarkup(job) : runCharacterBundle(job)
+        )
+        return { status: 'completed', jobId: job.id, result }
+      } catch (error) {
+        const errorCode = safeErrorCode(error)
+        await repository.failGenerationJob(job, errorCode)
+        logger.error?.('[generation-worker] job failed', {
+          jobId: job.id,
+          type: job.type,
+          errorCode
+        })
+        return { status: 'failed', jobId: job.id, errorCode }
+      }
+    }
+  }
+}

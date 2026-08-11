@@ -1,0 +1,189 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { REQUIRED_CHARACTER_MEDIA } from '../book-markup.mjs'
+import {
+  createGenerationWorker,
+  normalizeBookMarkupResult,
+  normalizeCharacterBundleResult
+} from '../generation-worker.mjs'
+
+const HASH = 'a'.repeat(64)
+
+function generatedAssets() {
+  return REQUIRED_CHARACTER_MEDIA.map((type) => ({
+    type,
+    objectKey: `books/book-1/characters/anna/${type}`,
+    contentHash: HASH,
+    mimeType: type === 'primary_portrait' ? 'image/png' : 'application/octet-stream',
+    byteSize: 100
+  }))
+}
+
+test('worker publishes full markup and queues catalog character bundles', async () => {
+  const ensured = []
+  let published
+  const repository = {
+    async claimGenerationJob() {
+      return { id: 'job-1', type: 'book_markup', bookEditionId: 'book-1', leaseToken: 'lease-1' }
+    },
+    async getBookMarkupInput() {
+      return { scope: 'catalog', objectKey: 'books/book-1/source.epub', contentSha256: HASH }
+    },
+    async publishBookMarkup(job, markup) {
+      published = { job, markup }
+    },
+    async ensureCharacterBundle(input) {
+      ensured.push(input)
+      return { status: 'queued' }
+    },
+    async failGenerationJob() {
+      assert.fail('job must not fail')
+    }
+  }
+  const generator = {
+    async generateBookMarkup() {
+      return {
+        textLength: 200_000,
+        characters: [
+          {
+            characterKey: 'anna',
+            name: 'Anna',
+            fullName: 'Anna Karenina',
+            warmupTextOffset: 95_000,
+            firstAppearanceTextOffset: 120_000
+          },
+          {
+            characterKey: 'vronsky',
+            name: 'Vronsky',
+            fullName: 'Alexey Vronsky',
+            warmupTextOffset: 110_000,
+            firstAppearanceTextOffset: 135_000
+          }
+        ]
+      }
+    }
+  }
+  const worker = createGenerationWorker({
+    repository,
+    generator,
+    workerId: 'worker-1',
+    logger: { error: assert.fail }
+  })
+  assert.deepEqual(await worker.runOnce(), {
+    status: 'completed',
+    jobId: 'job-1',
+    result: { characterCount: 2 }
+  })
+  assert.equal(published.markup.characters.length, 2)
+  assert.deepEqual(ensured.map((entry) => entry.characterKey), ['anna', 'vronsky'])
+})
+
+test('private markup does not eagerly queue every character bundle', async () => {
+  let ensureCount = 0
+  const repository = {
+    async claimGenerationJob() {
+      return { id: 'job-2', type: 'book_markup', bookEditionId: 'book-2', leaseToken: 'lease-2' }
+    },
+    async getBookMarkupInput() {
+      return { scope: 'private', objectKey: 'books/book-2/source.epub', contentSha256: HASH }
+    },
+    async publishBookMarkup() {},
+    async ensureCharacterBundle() { ensureCount += 1 },
+    async failGenerationJob() { assert.fail('job must not fail') }
+  }
+  const generator = {
+    async generateBookMarkup() {
+      return { textLength: 100, characters: [{
+        characterKey: 'hero', name: 'Hero', fullName: 'The Hero',
+        warmupTextOffset: 0, firstAppearanceTextOffset: 10
+      }] }
+    }
+  }
+  const worker = createGenerationWorker({ repository, generator, workerId: 'worker-1' })
+  assert.equal((await worker.runOnce()).status, 'completed')
+  assert.equal(ensureCount, 0)
+})
+
+test('worker publishes a character bundle only when all required media are present', async () => {
+  let published
+  const repository = {
+    async claimGenerationJob() {
+      return {
+        id: 'job-3', type: 'character_bundle', bookEditionId: 'book-1',
+        characterKey: 'anna', leaseToken: 'lease-3'
+      }
+    },
+    async getCharacterBundleInput() { return { characterKey: 'anna' } },
+    async publishCharacterBundle(job, bundle) { published = { job, bundle } },
+    async failGenerationJob() { assert.fail('job must not fail') }
+  }
+  const generator = {
+    async generateCharacterBundle() { return { assets: generatedAssets() } }
+  }
+  const worker = createGenerationWorker({ repository, generator, workerId: 'worker-1' })
+  assert.deepEqual(await worker.runOnce(), {
+    status: 'completed', jobId: 'job-3', result: { assetCount: 3 }
+  })
+  assert.deepEqual(published.bundle.assets.map((asset) => asset.type), REQUIRED_CHARACTER_MEDIA)
+})
+
+test('invalid generated media fails the leased job without partial publication', async () => {
+  let failed
+  let publishCount = 0
+  const repository = {
+    async claimGenerationJob() {
+      return {
+        id: 'job-4', type: 'character_bundle', bookEditionId: 'book-1',
+        characterKey: 'anna', leaseToken: 'lease-4'
+      }
+    },
+    async getCharacterBundleInput() { return { characterKey: 'anna' } },
+    async publishCharacterBundle() { publishCount += 1 },
+    async failGenerationJob(job, code) { failed = { job, code } }
+  }
+  const generator = {
+    async generateCharacterBundle() {
+      return { assets: generatedAssets().slice(0, 1) }
+    }
+  }
+  const worker = createGenerationWorker({
+    repository,
+    generator,
+    workerId: 'worker-1',
+    logger: { error() {} }
+  })
+  assert.deepEqual(await worker.runOnce(), {
+    status: 'failed', jobId: 'job-4', errorCode: 'GENERATION_RESULT_INVALID'
+  })
+  assert.equal(publishCount, 0)
+  assert.equal(failed.code, 'GENERATION_RESULT_INVALID')
+})
+
+test('normalizers reject duplicate characters and incomplete bundles', () => {
+  const duplicate = {
+    textLength: 10,
+    characters: [
+      { characterKey: 'hero', name: 'A', fullName: 'A', warmupTextOffset: 0, firstAppearanceTextOffset: 1 },
+      { characterKey: 'hero', name: 'B', fullName: 'B', warmupTextOffset: 0, firstAppearanceTextOffset: 2 }
+    ]
+  }
+  assert.throws(() => normalizeBookMarkupResult(duplicate), /duplicate character key/)
+  assert.throws(
+    () => normalizeBookMarkupResult({ characters: duplicate.characters }),
+    /positive textLength/
+  )
+  assert.throws(
+    () => normalizeBookMarkupResult({
+      textLength: 1,
+      characters: [{
+        characterKey: 'late', name: 'Late', fullName: 'Late Hero',
+        warmupTextOffset: 1, firstAppearanceTextOffset: 2
+      }]
+    }),
+    /appears after textLength/
+  )
+  assert.throws(
+    () => normalizeCharacterBundleResult({ assets: generatedAssets().slice(0, 2) }),
+    /missing idle_animation/
+  )
+})

@@ -68,6 +68,7 @@ export function CatalogCharacterPortraitPreloader() {
     for (const book of books) {
       const bundledCharacters = getBundledCatalogCharactersByTitle(book.meta.title);
       if (!bundledCharacters?.length) continue;
+      if (narraBooks[book.id]?.backendBinding) continue;
       if (!(narraBooks[book.id]?.characters.length ?? 0)) {
         setCharacters(book.id, bundledCharacters);
       }
@@ -79,6 +80,7 @@ export function CatalogCharacterPortraitPreloader() {
     const jobs: PortraitJob[] = [];
     for (const book of books) {
       if (!getBundledCatalogCharactersByTitle(book.meta.title)) continue;
+      if (narraBooks[book.id]?.backendBinding) continue;
       for (const character of narraBooks[book.id]?.characters ?? []) {
         if (!character.portraitUri) jobs.push({ bookId: book.id, character });
       }

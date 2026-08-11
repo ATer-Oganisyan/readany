@@ -50,6 +50,10 @@ import {
 } from './security.mjs'
 import { createInstallationRegistry } from './installation-registry.mjs'
 import { gatewayReadiness } from './readiness.mjs'
+import { createBookCatalogRouter } from './book-catalog-api.mjs'
+import { createPostgresBookMarkupRepository } from './postgres-book-markup-repository.mjs'
+import { createPostgresPoolFromEnv, runBookMarkupMigrations } from './postgres-runtime.mjs'
+import { createBookObjectStorageFromEnv } from './book-object-storage.mjs'
 
 // ================= Конфигурация =================
 const PORT = process.env.PORT || 8787
@@ -62,6 +66,7 @@ if (!['production', 'staging', 'development', 'test'].includes(ANALYTICS_ENV)) {
   throw new Error('ANALYTICS_ENV must be production, staging, development or test')
 }
 const VIDEO_REQUIRED = parseEnvBool(process.env, 'VIDEO_REQUIRED', false)
+const BOOK_BACKEND_REQUIRED = parseEnvBool(process.env, 'BOOK_BACKEND_REQUIRED', false)
 const ALLOW_INSECURE_VIDEO_HTTP = process.env.ALLOW_INSECURE_VIDEO_HTTP === 'true'
 const INSECURE_VIDEO_ENV_ALLOWED = insecureVideoEnvironmentAllowed({
   production: PRODUCTION,
@@ -114,6 +119,7 @@ const IMPORT_DAILY_BYTES_MB = envInt('IMPORT_LIMIT_MIB_PER_DAY', 300, 30_000)
 const IMPORT_GLOBAL_DAILY_BYTES_MB = envInt('IMPORT_GLOBAL_LIMIT_MIB_PER_DAY', 10_000, 300_000)
 const IMPORT_CONCURRENCY = envInt('IMPORT_CONCURRENCY', 2, 20)
 const IMPORT_QUEUE_LIMIT = envInt('IMPORT_QUEUE_LIMIT', 2, 50)
+const BOOK_UPLOAD_MAX_BYTES = envInt('BOOK_UPLOAD_MAX_MIB', 50, 500) * 1024 * 1024
 const LLM_RESPONSE_MAX_BYTES = envInt('LLM_RESPONSE_MAX_MIB', 8, 64) * 1024 * 1024
 const KANDINSKY_QUEUE_LIMIT = envInt('KANDINSKY_QUEUE_LIMIT', 6, 100)
 const VIDEO_QUEUE_LIMIT = envInt('VIDEO_QUEUE_LIMIT', 4, 100)
@@ -595,6 +601,30 @@ const eventStore = createEventStore({
 })
 eventStore.start()
 
+let bookMarkupPool = null
+let bookMarkupRepository = null
+const bookObjectStorage = createBookObjectStorageFromEnv(process.env)
+if (process.env.DATABASE_URL) {
+  bookMarkupPool = await createPostgresPoolFromEnv(process.env)
+  await runBookMarkupMigrations(bookMarkupPool)
+  bookMarkupRepository = createPostgresBookMarkupRepository(bookMarkupPool)
+} else {
+  console.warn('[book-markup] DATABASE_URL is not configured; catalog API is disabled')
+}
+
+async function checkBookBackendReady() {
+  if (!bookMarkupPool || !bookObjectStorage) return false
+  try {
+    await Promise.all([
+      bookMarkupPool.query('SELECT 1'),
+      bookObjectStorage.checkReady({ signal: AbortSignal.timeout(3_000) })
+    ])
+    return true
+  } catch {
+    return false
+  }
+}
+
 function actorIdFor(req) {
   return createHmac('sha256', analyticsSecret).update(req.installation.sub).digest('hex')
 }
@@ -707,7 +737,10 @@ app.get('/health', (_req, res) => {
       gigachat: llm.ready,
       salutespeech: !!SALUTE_KEY && SBER_CA_VERIFIED,
       kandinsky: !!KANDINSKY_TOKEN,
-      video: !!KANDINSKY_TOKEN && !!VIDEO_BASE_URL
+      video: !!KANDINSKY_TOKEN && !!VIDEO_BASE_URL,
+      book_markup: Boolean(bookMarkupRepository),
+      book_storage: Boolean(bookObjectStorage),
+      book_backend_required: BOOK_BACKEND_REQUIRED
     },
     media_transport: {
       llm_https: LLM_TRANSPORT_SECURE,
@@ -726,9 +759,10 @@ app.get('/health', (_req, res) => {
   })
 })
 
-app.get('/ready', (_req, res) => {
+app.get('/ready', async (_req, res) => {
   const llm = llmRouteReadiness()
   const registryStatus = installationRegistry.status()
+  const bookBackendReady = await checkBookBackendReady()
   const videoConfigured = !!KANDINSKY_TOKEN && !!VIDEO_BASE_URL
   const videoTransportAccepted =
     VIDEO_TRANSPORT_SECURE ||
@@ -743,7 +777,9 @@ app.get('/ready', (_req, res) => {
     videoRequired: VIDEO_REQUIRED,
     videoTransportSecure: VIDEO_TRANSPORT_SECURE,
     llmTransportSecure: LLM_TRANSPORT_SECURE,
-    environment: ANALYTICS_ENV
+    environment: ANALYTICS_ENV,
+    bookBackendRequired: BOOK_BACKEND_REQUIRED,
+    bookBackendReady
   })
   res.status(readiness.ready ? 200 : 503).json({
     ok: readiness.ready,
@@ -929,6 +965,13 @@ app.use('/v2', requireGatewayAuth(tokenService, installationRegistry), apiLimit)
 // bodies are rejected before Express buffers or parses them. Endpoint quotas
 // are attached directly before each parser so Express path normalization cannot
 // bypass them with case or trailing-slash variants.
+if (bookMarkupRepository) {
+  app.use('/v2/books', createBookCatalogRouter({
+    repository: bookMarkupRepository,
+    storage: bookObjectStorage,
+    uploadMaxBytes: BOOK_UPLOAD_MAX_BYTES
+  }))
+}
 
 app.post('/v2/events/batch', eventLimit, express.json({ limit: '1mb' }), async (req, res) => {
   try {
@@ -1398,7 +1441,11 @@ async function shutdown(signal) {
   force.unref?.()
   httpServer.close(async (error) => {
     try {
-      await Promise.all([eventStore.stop(), installationRegistry.stop()])
+      await Promise.all([
+        eventStore.stop(),
+        installationRegistry.stop(),
+        bookMarkupPool?.end()
+      ])
       if (error) throw error
       clearTimeout(force)
       process.exit(0)

@@ -40,9 +40,18 @@ export function withNarraCharacters(
     ...state,
     characters: characters.map((character) => {
       const previous = state.characters.find((item) => item.id === character.id);
-      return previous?.portraitUri && !character.portraitUri
-        ? { ...character, portraitUri: previous.portraitUri }
-        : character;
+      const preservePreviousMedia = character.mediaSource !== "backend";
+      return {
+        ...character,
+        portraitUri:
+          character.portraitUri ?? (preservePreviousMedia ? previous?.portraitUri : undefined),
+        greetingAudioUri:
+          character.greetingAudioUri ??
+          (preservePreviousMedia ? previous?.greetingAudioUri : undefined),
+        idleAnimationUri:
+          character.idleAnimationUri ??
+          (preservePreviousMedia ? previous?.idleAnimationUri : undefined),
+      };
     }),
     analyzedAt,
     analysisError: undefined,

@@ -1,0 +1,124 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { createBookObjectStorage } from '../book-object-storage.mjs'
+
+const HASH = 'a'.repeat(64)
+
+test('object storage readiness verifies access to the configured bucket', async () => {
+  let command
+  const storage = createBookObjectStorage({
+    client: {
+      async send(candidate) {
+        command = candidate
+        return {}
+      }
+    },
+    bucket: 'readany-books'
+  })
+  assert.deepEqual(await storage.checkReady(), { ready: true })
+  assert.equal(command.input.Bucket, 'readany-books')
+})
+
+test('object storage signs checksum-bound uploads and verifies the provider checksum', async () => {
+  const commands = []
+  let signingOptions
+  const client = {
+    async send(command) {
+      commands.push(command)
+      return {
+        ContentLength: 128,
+        ContentType: 'application/epub+zip',
+        ChecksumSHA256: Buffer.from(HASH, 'hex').toString('base64'),
+        Metadata: { content_sha256: HASH }
+      }
+    }
+  }
+  const storage = createBookObjectStorage({
+    client,
+    bucket: 'readany-books',
+    async getSignedUrlImpl(_client, command, options) {
+      commands.push(command)
+      signingOptions = options
+      return `https://storage.example/${options.expiresIn}`
+    }
+  })
+  const upload = await storage.createUpload({
+    objectKey: 'books/private/reader/hash/source',
+    contentSha256: HASH,
+    mimeType: 'application/epub+zip',
+    byteSize: 128
+  })
+  assert.equal(upload.method, 'PUT')
+  assert.equal(upload.headers['x-amz-checksum-sha256'], Buffer.from(HASH, 'hex').toString('base64'))
+  assert.equal(commands[0].input.ChecksumSHA256, upload.headers['x-amz-checksum-sha256'])
+  assert.equal(signingOptions.signableHeaders.has('content-type'), true)
+  assert.equal(signingOptions.unhoistableHeaders.has('x-amz-checksum-sha256'), true)
+  assert.deepEqual(await storage.verifyUpload({
+    objectKey: 'books/private/reader/hash/source',
+    contentSha256: HASH,
+    mimeType: 'application/epub+zip',
+    byteSize: 128
+  }), { verified: true })
+})
+
+test('object storage rejects an upload whose bytes do not match the binding', async () => {
+  const storage = createBookObjectStorage({
+    client: {
+      async send() {
+        return {
+          ContentLength: 127,
+          ContentType: 'application/epub+zip',
+          Metadata: { content_sha256: HASH }
+        }
+      }
+    },
+    bucket: 'readany-books'
+  })
+  await assert.rejects(() => storage.verifyUpload({
+    objectKey: 'books/private/reader/hash/source',
+    contentSha256: HASH,
+    mimeType: 'application/epub+zip',
+    byteSize: 128
+  }), (error) => error.code === 'UPLOAD_INTEGRITY' && error.status === 409)
+})
+
+test('object storage never treats client-controlled metadata as a verified checksum', async () => {
+  const storage = createBookObjectStorage({
+    client: {
+      async send() {
+        return {
+          ContentLength: 128,
+          ContentType: 'application/epub+zip',
+          Metadata: { content_sha256: HASH }
+        }
+      }
+    },
+    bucket: 'readany-books'
+  })
+  await assert.rejects(() => storage.verifyUpload({
+    objectKey: 'books/private/reader/hash/source',
+    contentSha256: HASH,
+    mimeType: 'application/epub+zip',
+    byteSize: 128
+  }), (error) => error.code === 'UPLOAD_INTEGRITY')
+})
+
+test('object storage signs short-lived downloads without exposing object keys to clients', async () => {
+  let command
+  const storage = createBookObjectStorage({
+    client: { async send() { return {} } },
+    bucket: 'readany-books',
+    async getSignedUrlImpl(_client, candidate) {
+      command = candidate
+      return 'https://storage.example/signed'
+    }
+  })
+  const result = await storage.createDownload({
+    objectKey: 'books/catalog/book/media/portrait',
+    mimeType: 'image/png',
+    filename: 'portrait.png'
+  })
+  assert.equal(result.url, 'https://storage.example/signed')
+  assert.equal(command.input.Key, 'books/catalog/book/media/portrait')
+  assert.match(command.input.ResponseContentDisposition, /filename\*=UTF-8/)
+})

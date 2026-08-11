@@ -4,6 +4,10 @@ The server-side Narra boundary for ReadAny. It owns installation authentication,
 provider credentials and routing, logical request telemetry, provider-attempt
 telemetry, and the durable outbox to the Narra Traction module.
 
+The staged book-markup backend contract is documented in
+[`docs/book-markup-backend.md`](../../docs/book-markup-backend.md). Its first
+PostgreSQL schema is in [`migrations/001_book_markup.sql`](migrations/001_book_markup.sql).
+
 ## Analytics delivery contract
 
 Set both variables together:
@@ -31,6 +35,56 @@ until `configured` is true and a canary event reaches the stats module.
 npm install
 npm test
 ```
+
+The book-markup migration and worker are separate processes:
+
+```bash
+npm run migrate:book-markup
+npm run worker:book-markup
+```
+
+After deploying markup schema v2, enqueue legacy editions once with:
+
+```bash
+npm run backfill:book-markup
+```
+
+Permanently failed jobs are not duplicated by reader traffic. After correcting
+the provider or configuration failure, retry a bounded batch explicitly:
+
+```bash
+npm run retry:book-generation
+```
+
+They require `DATABASE_URL`, `GENERATOR_BASE_URL` and an independent
+`GENERATOR_SERVICE_TOKEN`; see `.env.example`. The worker runs migrations again
+at startup safely, so parallel starts do not apply the same migration twice.
+
+When `DATABASE_URL` is configured, Gateway enables the authenticated book API:
+`GET /v2/books/catalog`, `POST /v2/books/resolve`,
+`GET /v2/books/:bookEditionId/manifest` and
+`POST /v2/books/:bookEditionId/progress`. Future characters and partial media
+are never included in a reader manifest.
+
+Private book delivery additionally requires `BOOK_STORAGE_BUCKET` and the
+`BOOK_STORAGE_*` S3-compatible settings. The client prepares an upload with
+`POST /v2/books/private/uploads`, sends the source directly to the signed URL,
+and confirms it with `POST /v2/books/:bookEditionId/upload-complete`. Authorized
+source and media URLs are issued by
+`GET /v2/books/:bookEditionId/source/download` and
+`GET /v2/books/:bookEditionId/media/:assetId/download`. Upload and download
+credentials are short-lived; permanent storage credentials remain server-side.
+
+Reader progress now uses `progress_fraction`; Gateway derives the canonical
+text offset from the v2 markup's `text_length`. Legacy `text_offset` requests
+remain valid but the two fields cannot be sent together.
+
+Set `BOOK_BACKEND_REQUIRED=true` only after PostgreSQL, storage and Generator are
+configured and the worker is running. `/ready` then probes both PostgreSQL and
+bucket access. The i167 deployment starts the `book-backend` worker profile when
+that flag is enabled. Railway needs a separate service using
+`node book-markup-worker.mjs`; its HTTP health check should target `/ready` on
+the Gateway service.
 
 Copy `.env.example` to `.env` only for local development. Secrets belong in the
 deployment environment and must never be committed or shipped to the Expo app.

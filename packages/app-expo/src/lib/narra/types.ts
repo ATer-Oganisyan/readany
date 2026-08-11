@@ -28,6 +28,19 @@ export interface NarraCharacter {
   greeting?: string;
   isNarrator?: boolean;
   portraitUri?: string;
+  greetingAudioUri?: string;
+  idleAnimationUri?: string;
+  mediaSource?: "local" | "backend";
+  mediaState?: "preparing" | "ready";
+}
+
+export interface NarraBackendBinding {
+  resolution: "catalog" | "private" | "private_upload_required";
+  bookEditionId?: string;
+  contentSha256: string;
+  generationStatus?: string;
+  ready: boolean;
+  sourceDownloadPath?: string;
 }
 
 export interface NarraChatMessage {
@@ -78,4 +91,5 @@ export interface NarraBookState {
   summaries: Record<string, NarraSummary>;
   analyzedAt?: number;
   analysisError?: string;
+  backendBinding?: NarraBackendBinding;
 }

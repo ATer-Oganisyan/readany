@@ -10,6 +10,7 @@ RUN npm ci --omit=dev --ignore-scripts \
     && npm cache clean --force
 
 COPY --chown=node:node *.mjs *.pem ./
+COPY --chown=node:node migrations ./migrations
 
 USER node
 EXPOSE 8787

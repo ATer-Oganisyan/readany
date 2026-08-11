@@ -19,6 +19,10 @@ import { durationBucket } from "@/lib/analytics/contract";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import { findBundledCatalogBookByTitle } from "@/lib/catalog/bundled-books";
 import {
+  openBackendBookSync,
+  queueBackendReaderProgress,
+} from "@/lib/narra/backend-book-coordinator";
+import {
   DEFAULT_READER_FONT_FAMILY,
   getBundledReaderFontFaceCSS,
 } from "@/lib/reader/bundled-reader-font";
@@ -470,6 +474,17 @@ export function ReaderScreen({ route, navigation }: Props) {
     progressRef.current = progress;
   }, [progress]);
 
+  const backendBookSyncRef = useRef(book);
+  backendBookSyncRef.current = book;
+  const backendBookSyncKey = book
+    ? `${book.id}\u0000${book.filePath}\u0000${book.fileHash ?? ""}`
+    : "";
+  useEffect(() => {
+    if (!backendBookSyncKey) return;
+    const currentBook = backendBookSyncRef.current;
+    if (currentBook) void openBackendBookSync(currentBook);
+  }, [backendBookSyncKey]);
+
   useEffect(() => {
     sessionProgressRef.current = null;
     totalBookCharactersRef.current = null;
@@ -803,6 +818,13 @@ export function ReaderScreen({ route, navigation }: Props) {
           }
         }
         sessionProgressRef.current = { mode: "page", current: detail.section.current };
+      }
+      if (book && detail.fraction != null) {
+        queueBackendReaderProgress(
+          book,
+          detail.fraction,
+          detail.tocItem?.href || `section:${detail.section?.current ?? 0}`,
+        );
       }
       if (detail.tocItem?.label) setCurrentChapter(detail.tocItem.label);
       if (detail.tocItem?.href) setCurrentChapterHref(detail.tocItem.href);

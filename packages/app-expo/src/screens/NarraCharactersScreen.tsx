@@ -170,6 +170,7 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
       !book ||
       Boolean(bundledCharacters?.length) ||
       characters.length > 0 ||
+      bookState?.backendBinding ||
       bookState?.analyzedAt ||
       bookState?.analysisError ||
       autoAnalysisStartedRef.current
@@ -184,6 +185,7 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
     book,
     bookState?.analysisError,
     bookState?.analyzedAt,
+    bookState?.backendBinding,
     bundledCharacters?.length,
     characters.length,
     narraStoreHydrated,
@@ -194,6 +196,7 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
     const nextCharacter = characters.find(
       (character) =>
         isCharacterUnlocked(book.progress, character) &&
+        character.mediaSource !== "backend" &&
         !character.portraitUri &&
         !portraitAttemptsRef.current.has(character.id),
     );

@@ -32,6 +32,8 @@ export interface FetchOptions extends RequestInit {
 export interface FileTransferOptions {
   headers?: Record<string, string>;
   allowInsecure?: boolean;
+  /** Let the native platform continue the transfer while the app is backgrounded. */
+  background?: boolean;
   onProgress?: (loaded: number, total: number) => void;
 }
 

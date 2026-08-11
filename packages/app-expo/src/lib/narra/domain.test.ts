@@ -62,4 +62,23 @@ describe("Narra persisted book state", () => {
     expect(restored.chats.anna[0]?.content).toBe("Запомни это");
     expect(restored.analyzedAt).toBe(123);
   });
+
+  it("does not expose stale partial media for a backend character", () => {
+    const local = withNarraCharacters(emptyNarraBookState("book-1"), [character]);
+    const backend = withNarraCharacters(local, [
+      {
+        ...character,
+        portraitUri: undefined,
+        mediaSource: "backend",
+        mediaState: "preparing",
+      },
+    ]);
+
+    expect(backend.characters[0]).toMatchObject({
+      id: "anna",
+      mediaSource: "backend",
+      mediaState: "preparing",
+    });
+    expect(backend.characters[0]?.portraitUri).toBeUndefined();
+  });
 });

@@ -5,6 +5,7 @@ import {
   withNarraMemory,
 } from "@/lib/narra/domain";
 import type {
+  NarraBackendBinding,
   NarraBookState,
   NarraCharacter,
   NarraChatMessage,
@@ -22,6 +23,7 @@ export interface NarraState {
   getBookState: (bookId: string) => NarraBookState;
   setAnalyzing: (bookId: string | null) => void;
   setCharacters: (bookId: string, characters: NarraCharacter[]) => void;
+  setBackendBinding: (bookId: string, binding: NarraBackendBinding) => void;
   updateCharacter: (bookId: string, characterId: string, updates: Partial<NarraCharacter>) => void;
   setAnalysisError: (bookId: string, error?: string) => void;
   setMemory: (bookId: string, characterId: string, memory: string) => void;
@@ -46,6 +48,11 @@ export const useNarraStore = create<NarraState>()(
         set((state) => {
           const book = state.books[bookId] ?? emptyNarraBookState(bookId);
           return { books: { ...state.books, [bookId]: withNarraCharacters(book, characters) } };
+        }),
+      setBackendBinding: (bookId, backendBinding) =>
+        set((state) => {
+          const book = state.books[bookId] ?? emptyNarraBookState(bookId);
+          return { books: { ...state.books, [bookId]: { ...book, backendBinding } } };
         }),
       updateCharacter: (bookId, characterId, updates) =>
         set((state) => {

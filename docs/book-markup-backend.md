@@ -1,0 +1,171 @@
+# Book markup backend
+
+This document fixes the implementation boundaries for server-side book markup.
+
+## Domain rules
+
+- A full markup revision discovers every character and records exact text anchors.
+- `warmup_text_offset` may trigger shared generation work before a character appears.
+- `first_appearance_text_offset` gates reader access and must never be inferred from
+  the global maximum reading progress.
+- A warmed character means one versioned, atomic media bundle is complete.
+- A ready bundle remains hidden from a reader until that reader crosses the first
+  appearance anchor.
+- Generation is idempotent by book edition, stable character key and bundle version.
+
+## Character bundle v1
+
+The first bundle version requires:
+
+- primary portrait;
+- greeting audio;
+- idle portrait animation.
+
+Voice configuration is structured markup rather than a media asset. Dynamic chat
+speech, arbitrary scenes and chapter TTS are not part of the finite bundle.
+
+## Delivery stages
+
+1. Domain contract, PostgreSQL schema and idempotency semantics.
+2. Durable PostgreSQL repository and markup worker pipeline.
+3. Catalog resolution, reader-aware manifest and warmup APIs.
+4. Mobile binding, local cache and progress coordinator.
+5. Integration, migration and operational acceptance.
+
+## Stage 2 runtime
+
+The durable queue and all published revisions live in PostgreSQL. Run migrations
+before serving or processing jobs; the worker also runs them under a PostgreSQL
+advisory lock at startup. Applied migration checksums are immutable.
+
+The worker claims one job with `FOR UPDATE SKIP LOCKED`, renews its lease while a
+Generator call is active, and retries failures with bounded exponential backoff.
+Book markup is published in one transaction. Character media becomes `ready` only
+after every required bundle asset is stored and linked in one transaction.
+
+The internal Generator contract has two authenticated operations:
+
+- `POST /internal/v1/book-markup`;
+- `POST /internal/v1/character-bundles`.
+
+Both receive a stable idempotency key. The Generator must finish object-storage
+writes before returning asset metadata to the worker.
+
+`book-markup-v2` results must include `textLength` and express every warmup and
+first-appearance offset against that exact normalized text stream.
+
+## Stage 3 gateway API
+
+All routes below require the existing installation bearer token:
+
+- `GET /v2/books/catalog` returns only catalog editions in `base_ready` or
+  `published` state and uses an opaque keyset cursor;
+- `POST /v2/books/resolve` resolves a catalog key or a local SHA-256. A local
+  hash reuses a ready catalog edition first, then the caller's private edition;
+  otherwise the result is `private_upload_required`;
+- `GET /v2/books/:bookEditionId/manifest` returns the published markup and only
+  characters already visible to that reader;
+- `POST /v2/books/:bookEditionId/progress` advances the reader's text watermark
+  and requests all bundles whose markup-defined warmup offsets were crossed.
+
+The server stores a monotonic per-reader text watermark. Moving backwards in the
+UI does not lock an already revealed character again. Every progress call
+re-evaluates all due characters, so an interrupted enqueue is healed by the next
+call while the character-level generation key remains idempotent.
+
+Warmup and visibility are intentionally independent. A bundle may be globally
+ready before first appearance, but the manifest omits that character completely.
+Once visible, the manifest returns either `preparing` with no assets or `ready`
+with the complete finite bundle. It never returns partial media.
+
+Private access is scoped to the installation subject until account identity is
+introduced. A private book owned by another subject resolves as not found.
+
+## Stage 4 private books and mobile delivery
+
+The app identifies a local book by the SHA-256 of its exact source bytes. It
+first calls `POST /v2/books/resolve`; this reuses a ready catalog edition or an
+existing private edition without uploading the book again. For a new private
+book the transfer is:
+
+1. `POST /v2/books/private/uploads` with metadata, byte size and SHA-256;
+2. native background `PUT` directly to a short-lived S3-compatible signed URL;
+3. `POST /v2/books/:bookEditionId/upload-complete`;
+4. full markup is queued and the manifest returns `processing` until published.
+
+The signed PUT binds content type and S3 checksum. Completion uses `HeadObject`
+to verify the exact stored byte size and accepts only the storage-provider
+checksum, not client-controlled object metadata. The gateway never proxies
+source book bytes and object keys are never exposed to the app.
+
+Source and media downloads use short-lived reader-authorized URLs:
+
+- `GET /v2/books/:bookEditionId/source/download`;
+- `GET /v2/books/:bookEditionId/media/:assetId/download`.
+
+Media authorization repeats the per-reader first-appearance check at download
+time, so a leaked asset ID is insufficient to reveal a future character.
+
+The mobile reader restores its cached manifest immediately, then synchronizes
+in the background. Relocations are coalesced into a monotonic reading fraction
+and sent after a short debounce. The resulting manifest downloads portrait,
+greeting audio and idle animation in native background sessions. Files are
+verified by size and SHA-256 and the UI publishes the three local paths only as
+one complete bundle. A failed or incomplete download remains `preparing` and
+cannot expose partial media.
+
+The storage bucket must allow signed `PUT` and `GET` requests from the deployed
+clients and preserve the `Content-Type`, `x-amz-checksum-sha256` and
+`x-amz-meta-content_sha256` request headers. Production must set the
+`BOOK_STORAGE_*` variables and must not ship storage credentials in the app.
+
+## Stage 5 canonical progress and rollout
+
+Markup schema v2 adds `text_length`, measured in the same normalized text stream
+used to produce every character anchor. Mobile clients send
+`progress_fraction` from `0` to `1`; PostgreSQL converts it to
+`round(text_length * progress_fraction)` before evaluating warmup and visibility.
+This removes the previous dependency on the renderer's approximate character
+count. `text_offset` remains accepted as a mutually exclusive legacy input.
+
+Both the fraction and derived text watermark are monotonic per reader. If a
+reader reports progress before markup is published, the fraction is retained;
+publishing the v2 revision derives the canonical offset in the same transaction.
+
+Migration `002_canonical_reader_progress.sql` is additive: legacy markup rows
+keep a nullable `text_length` until regenerated. Queue those revisions with:
+
+```bash
+npm run migrate:book-markup
+npm run backfill:book-markup
+```
+
+The backfill uses the new `book-markup-v2` idempotency key and never replaces a
+currently published revision until the new result is complete. Run it before
+shipping fraction-only clients for a catalog containing v1 markup.
+
+Jobs exhaust their bounded automatic retries into `failed`. Recovery is an
+explicit operator action that reuses the same idempotency keys and resets both
+the job and character bundle state:
+
+```bash
+npm run retry:book-generation
+```
+
+Production rollout order:
+
+1. deploy Gateway and migration with `BOOK_BACKEND_REQUIRED=false`;
+2. configure PostgreSQL, Generator and all `BOOK_STORAGE_*` variables;
+3. run the v2 backfill and start `npm run worker:book-markup`;
+4. set `BOOK_BACKEND_REQUIRED=true` and require `/ready` to pass.
+
+When required, readiness performs live PostgreSQL and bucket-access probes. The
+i167 Compose file enables a separate, resource-bounded worker profile
+automatically during deploy. On Railway, create a second service from the same
+image with start command `node book-markup-worker.mjs`.
+
+The opt-in end-to-end test exercises a real PostgreSQL and S3-compatible store:
+signed upload, integrity verification, markup publication, fraction-to-offset
+conversion, private warmup, visibility gating and authorized media/source
+downloads. Its environment variables are listed in
+`test/book-backend.e2e.test.mjs`.

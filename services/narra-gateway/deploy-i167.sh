@@ -152,12 +152,25 @@ printf 'NARRA_GATEWAY_IMAGE=%s\n' "$IMAGE" > "$REMOTE_ROOT/deployment.env.next"
 chmod 0644 "$REMOTE_ROOT/deployment.env.next"
 mv -f "$REMOTE_ROOT/deployment.env.next" "$REMOTE_ROOT/deployment.env"
 
+compose_profiles=()
+rollback_profiles=()
+book_backend_enabled=0
+if test -n "$(docker ps -aq \
+  --filter label=com.docker.compose.project=narra \
+  --filter label=com.docker.compose.service=book-markup-worker)"; then
+  rollback_profiles+=(--profile book-backend)
+fi
+if grep -qx 'BOOK_BACKEND_REQUIRED=true' "$TARGET_ENV"; then
+  compose_profiles+=(--profile book-backend)
+  book_backend_enabled=1
+fi
+
 mutating=1
 rollback() {
   trap - ERR
   set +e
   NARRA_GATEWAY_IMAGE="$current_image_ref" docker compose -p narra \
-    -f "$REMOTE_STAGE/compose.i167.yml" up -d --remove-orphans
+    -f "$REMOTE_STAGE/compose.i167.yml" "${rollback_profiles[@]}" up -d --remove-orphans
   if test -n "$previous_target" && test -d "$previous_target"; then
     ln -sfn "$previous_target" "$REMOTE_ROOT/current.rollback"
     mv -Tf "$REMOTE_ROOT/current.rollback" "$REMOTE_ROOT/current"
@@ -168,7 +181,16 @@ rollback() {
 trap 'if [ "$mutating" = 1 ]; then rollback; fi' ERR
 
 NARRA_GATEWAY_IMAGE="$IMAGE" docker compose -p narra \
-  -f "$REMOTE_STAGE/compose.i167.yml" up -d --remove-orphans
+  -f "$REMOTE_STAGE/compose.i167.yml" "${compose_profiles[@]}" up -d --remove-orphans
+
+if test "$book_backend_enabled" = 1; then
+  worker_id="$(NARRA_GATEWAY_IMAGE="$IMAGE" docker compose -p narra \
+    -f "$REMOTE_STAGE/compose.i167.yml" --profile book-backend ps -q book-markup-worker)"
+  test -n "$worker_id"
+  sleep 3
+  test "$(docker inspect --format '{{.State.Running}}' "$worker_id")" = true
+  test "$(docker inspect --format '{{.RestartCount}}' "$worker_id")" = 0
+fi
 
 production_ready=0
 for _attempt in $(seq 1 45); do
