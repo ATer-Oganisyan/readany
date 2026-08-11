@@ -1,6 +1,16 @@
 import { normalizeCharacterAnchor, REQUIRED_CHARACTER_MEDIA } from './book-markup.mjs'
+import { createOperationalLogger } from './operational-log.mjs'
 
 const JOB_TYPES = new Set(['book_markup', 'character_bundle'])
+const JOB_LABELS = {
+  book_markup: 'разметка книги',
+  character_bundle: 'пакет персонажа'
+}
+const ASSET_LABELS = {
+  primary_portrait: 'портрет',
+  greeting_audio: 'голосовое приветствие',
+  idle_animation: 'idle-анимация'
+}
 
 function invalidResult(message) {
   const error = new Error(message)
@@ -88,15 +98,41 @@ export function createGenerationWorker({
 }) {
   if (!repository || !generator) throw new TypeError('repository and generator are required')
   if (typeof workerId !== 'string' || !workerId) throw new TypeError('workerId is required')
+  const log = createOperationalLogger({ component: 'book-worker', logger })
 
   async function runBookMarkup(job) {
+    const startedAt = Date.now()
     const input = await repository.getBookMarkupInput(job)
+    log.info('markup.started', 'Начинаю разметку книги', {
+      job: job.id,
+      edition: job.bookEditionId,
+      book: input.title,
+      scope: input.scope,
+      format: input.format,
+      source_bytes: input.byteSize
+    })
     const markup = normalizeBookMarkupResult(await generator.generateBookMarkup(input))
+    log.info('markup.generated', 'Разметка сформирована, сохраняю результат', {
+      job: job.id,
+      edition: job.bookEditionId,
+      book: input.title,
+      characters: markup.characters.map((character) => character.name),
+      character_count: markup.characters.length,
+      text_chars: markup.textLength,
+      duration_ms: Date.now() - startedAt
+    })
     if (typeof input.contentSha256 !== 'string' || !/^[0-9a-f]{64}$/.test(input.contentSha256)) {
       throw invalidResult('book markup input requires contentSha256')
     }
     markup.inputHash = input.contentSha256
     await repository.publishBookMarkup(job, markup)
+    log.info('markup.published', 'Разметка книги опубликована и доступна клиенту', {
+      job: job.id,
+      edition: job.bookEditionId,
+      book: input.title,
+      character_count: markup.characters.length,
+      duration_ms: Date.now() - startedAt
+    })
     if (input.scope === 'catalog') {
       const bundleRequests = await Promise.allSettled(markup.characters.map((character) =>
         repository.ensureCharacterBundle({
@@ -106,9 +142,17 @@ export function createGenerationWorker({
       ))
       const failedBundleRequests = bundleRequests.filter((result) => result.status === 'rejected')
       if (failedBundleRequests.length) {
-        logger.error?.('[generation-worker] catalog bundle enqueue incomplete', {
-          jobId: job.id,
-          failedCount: failedBundleRequests.length
+        log.error('bundle.enqueue_incomplete', 'Не все персонажи добавлены в очередь генерации', {
+          job: job.id,
+          edition: job.bookEditionId,
+          queued: bundleRequests.length - failedBundleRequests.length,
+          failed: failedBundleRequests.length
+        })
+      } else {
+        log.info('bundle.enqueued', 'Все персонажи добавлены в очередь генерации', {
+          job: job.id,
+          edition: job.bookEditionId,
+          character_count: bundleRequests.length
         })
       }
     }
@@ -116,11 +160,37 @@ export function createGenerationWorker({
   }
 
   async function runCharacterBundle(job) {
+    const startedAt = Date.now()
     const input = await repository.getCharacterBundleInput(job)
+    log.info('bundle.started', 'Начинаю формировать пакет персонажа', {
+      job: job.id,
+      edition: job.bookEditionId,
+      book: input.bookTitle,
+      character: input.name,
+      character_key: input.characterKey,
+      scope: input.scope
+    })
     const bundle = normalizeCharacterBundleResult(
       await generator.generateCharacterBundle(input, [...REQUIRED_CHARACTER_MEDIA])
     )
+    for (const asset of bundle.assets) {
+      log.info('bundle.asset_ready', 'Артефакт персонажа готов', {
+        job: job.id,
+        edition: job.bookEditionId,
+        character: input.name,
+        asset: ASSET_LABELS[asset.type] || asset.type,
+        bytes: asset.byteSize
+      })
+    }
     await repository.publishCharacterBundle(job, bundle)
+    log.info('bundle.published', 'Пакет персонажа опубликован целиком', {
+      job: job.id,
+      edition: job.bookEditionId,
+      book: input.bookTitle,
+      character: input.name,
+      asset_count: bundle.assets.length,
+      duration_ms: Date.now() - startedAt
+    })
     return { assetCount: bundle.assets.length }
   }
 
@@ -128,9 +198,10 @@ export function createGenerationWorker({
     if (typeof repository.renewGenerationLease !== 'function') return operation()
     const timer = setInterval(() => {
       void repository.renewGenerationLease(job).catch((error) => {
-        logger.error?.('[generation-worker] lease renewal failed', {
-          jobId: job.id,
-          errorCode: safeErrorCode(error)
+        log.error('job.lease_failed', 'Не удалось продлить аренду задания', {
+          job: job.id,
+          edition: job.bookEditionId,
+          error_code: safeErrorCode(error)
         })
       })
     }, leaseRenewMs)
@@ -146,26 +217,55 @@ export function createGenerationWorker({
     async runOnce() {
       const job = await repository.claimGenerationJob(workerId)
       if (!job) return { status: 'idle' }
+      const startedAt = Date.now()
+      log.info('job.claimed', 'Получено новое задание', {
+        job: job.id,
+        type: JOB_LABELS[job.type] || job.type,
+        edition: job.bookEditionId,
+        character_key: job.characterKey,
+        attempt: job.attempts,
+        worker: workerId
+      })
       if (!JOB_TYPES.has(job.type)) {
         const error = Object.assign(new Error(`unsupported job type: ${job.type}`), {
           code: 'UNSUPPORTED_JOB'
         })
         await repository.failGenerationJob(job, error.code)
+        log.error('job.unsupported', 'Задание отклонено: неизвестный тип', {
+          job: job.id,
+          type: job.type,
+          edition: job.bookEditionId
+        })
         return { status: 'failed', jobId: job.id, errorCode: error.code }
       }
       try {
         const result = await withLeaseHeartbeat(job, () =>
           job.type === 'book_markup' ? runBookMarkup(job) : runCharacterBundle(job)
         )
+        log.info('job.completed', 'Задание успешно завершено', {
+          job: job.id,
+          type: JOB_LABELS[job.type],
+          edition: job.bookEditionId,
+          character_key: job.characterKey,
+          duration_ms: Date.now() - startedAt
+        })
         return { status: 'completed', jobId: job.id, result }
       } catch (error) {
         const errorCode = safeErrorCode(error)
-        await repository.failGenerationJob(job, errorCode)
-        logger.error?.('[generation-worker] job failed', {
-          jobId: job.id,
-          type: job.type,
-          errorCode
-        })
+        const failure = await repository.failGenerationJob(job, errorCode)
+        const fields = {
+          job: job.id,
+          type: JOB_LABELS[job.type] || job.type,
+          edition: job.bookEditionId,
+          character_key: job.characterKey,
+          error_code: errorCode,
+          duration_ms: Date.now() - startedAt
+        }
+        if (failure?.status === 'queued') {
+          log.warn('job.retry_scheduled', 'Задание завершилось ошибкой; запланирована повторная попытка', fields)
+        } else {
+          log.error('job.failed', 'Задание завершилось ошибкой; автоматические попытки исчерпаны', fields)
+        }
         return { status: 'failed', jobId: job.id, errorCode }
       }
     }

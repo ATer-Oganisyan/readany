@@ -1,12 +1,24 @@
 import express from 'express'
 import { createHash, timingSafeEqual } from 'node:crypto'
-import { extractBookText, representativeTextSample } from './book-source-text.mjs'
+import { extractBookText, representativeTextSelection } from './book-source-text.mjs'
 import { REQUIRED_CHARACTER_MEDIA } from './book-markup.mjs'
+import { createOperationalLogger } from './operational-log.mjs'
 import { isSupportedVoice } from './voices.mjs'
 
 const IDENTIFIER = /^[a-z0-9][a-z0-9._-]{0,127}$/i
 const SHA256 = /^[0-9a-f]{64}$/
 const SCOPES = new Set(['catalog', 'private'])
+const CHUNK_LABELS = {
+  whole: 'вся книга',
+  beginning: 'начало',
+  middle: 'середина',
+  ending: 'конец'
+}
+const ASSET_LABELS = {
+  primary_portrait: 'портрет',
+  greeting_audio: 'голосовое приветствие',
+  idle_animation: 'idle-анимация'
+}
 
 function invalid(message, code = 'VALIDATION') {
   throw Object.assign(new Error(message), { code, status: 400 })
@@ -193,7 +205,7 @@ function normalizeBundleRequest(input) {
   }
 }
 
-async function cached(storage, idempotencyKey, request, operation) {
+async function cached(storage, idempotencyKey, request, operation, { onHit, onStored } = {}) {
   const cacheObjectKey = `generated/cache/${sha256(idempotencyKey)}.json`
   const requestHash = sha256(JSON.stringify(canonical(request)))
   try {
@@ -204,6 +216,7 @@ async function cached(storage, idempotencyKey, request, operation) {
         code: 'IDEMPOTENCY_CONFLICT', status: 409
       })
     }
+    onHit?.(document.result)
     return document.result
   } catch (error) {
     if (!notFound(error)) throw error
@@ -214,6 +227,7 @@ async function cached(storage, idempotencyKey, request, operation) {
     bytes: Buffer.from(JSON.stringify({ version: 1, requestHash, result })),
     mimeType: 'application/json'
   })
+  onStored?.(result)
   return result
 }
 
@@ -223,28 +237,69 @@ export function createInternalGenerationService({
   generatePortrait,
   synthesizeSpeech,
   generateIdleAnimation,
-  maxBookBytes = 64 * 1024 * 1024
+  maxBookBytes = 64 * 1024 * 1024,
+  logger = console
 }) {
   if (!storage || !completeChat || !generatePortrait || !synthesizeSpeech || !generateIdleAnimation) {
     throw new TypeError('storage and all generation providers are required')
   }
+  const log = createOperationalLogger({ component: 'book-generator', logger })
   return {
     async generateBookMarkup(rawInput, signal) {
       const input = normalizeBookRequest(rawInput)
+      const startedAt = Date.now()
+      const common = {
+        edition: input.bookEditionId,
+        book: input.title,
+        scope: input.scope,
+        format: input.format
+      }
+      log.info('markup.requested', 'Получен запрос на разметку книги', {
+        ...common,
+        source_bytes: input.byteSize,
+        analysis_version: input.analysisVersion
+      })
       return cached(storage, input.idempotencyKey, input, async () => {
+        const downloadStartedAt = Date.now()
         const stored = await storage.getBytes({ objectKey: input.objectKey, maxBytes: Math.min(maxBookBytes, 512 * 1024 * 1024) })
+        log.info('markup.source_loaded', 'Файл книги загружен из хранилища', {
+          ...common,
+          bytes: stored.bytes.byteLength,
+          duration_ms: Date.now() - downloadStartedAt
+        })
         if (stored.bytes.byteLength !== input.byteSize || sha256(stored.bytes) !== input.contentSha256) {
           throw Object.assign(new Error('stored book does not match its immutable metadata'), {
             code: 'BOOK_INTEGRITY', status: 409
           })
         }
+        const extractionStartedAt = Date.now()
         const text = await extractBookText({
           bytes: stored.bytes,
           format: input.format,
           mimeType: input.mimeType,
           signal
         })
-        const sample = representativeTextSample(text)
+        log.info('markup.text_extracted', 'Текст книги извлечён и проверен', {
+          ...common,
+          text_chars: text.length,
+          duration_ms: Date.now() - extractionStartedAt
+        })
+        const selection = representativeTextSelection(text)
+        for (const [index, chunk] of selection.chunks.entries()) {
+          log.info('markup.chunk_selected', 'Фрагмент книги подготовлен для анализа', {
+            ...common,
+            chunk: `${index + 1}/${selection.chunks.length}`,
+            section: CHUNK_LABELS[chunk.section] || chunk.section,
+            range: `${chunk.start}-${chunk.end}`,
+            chars: chunk.end - chunk.start
+          })
+        }
+        const llmStartedAt = Date.now()
+        log.info('markup.llm_started', 'Отправляю подготовленные фрагменты на анализ', {
+          ...common,
+          chunk_count: selection.chunks.length,
+          sample_chars: selection.sample.length
+        })
         const response = await completeChat({
           messages: [
             {
@@ -253,19 +308,58 @@ export function createInternalGenerationService({
             },
             {
               role: 'user',
-              content: `Книга: ${input.title}\nАвтор: ${input.author || 'не указан'}\n\n${sample}`
+              content: `Книга: ${input.title}\nАвтор: ${input.author || 'не указан'}\n\n${selection.sample}`
             }
           ],
           temperature: 0.2,
           signal
         })
         const parsed = parseJsonObject(response)
-        return { textLength: text.length, characters: normalizeCharacters(parsed.characters, text) }
+        const characters = normalizeCharacters(parsed.characters, text)
+        log.info('markup.llm_completed', 'Анализ книги завершён', {
+          ...common,
+          character_count: characters.length,
+          duration_ms: Date.now() - llmStartedAt
+        })
+        for (const character of characters) {
+          log.info('markup.character_found', 'Персонаж добавлен в разметку', {
+            ...common,
+            character: character.name,
+            character_key: character.characterKey,
+            first_offset: character.firstAppearanceTextOffset,
+            warmup_offset: character.warmupTextOffset
+          })
+        }
+        return { textLength: text.length, characters }
+      }, {
+        onHit(result) {
+          log.info('markup.cache_hit', 'Готовая разметка найдена в кэше', {
+            ...common,
+            character_count: result?.characters?.length,
+            duration_ms: Date.now() - startedAt
+          })
+        },
+        onStored(result) {
+          log.info('markup.cached', 'Разметка сохранена в кэше генератора', {
+            ...common,
+            character_count: result?.characters?.length,
+            duration_ms: Date.now() - startedAt
+          })
+        }
       })
     },
 
     async generateCharacterBundle(rawInput, signal) {
       const input = normalizeBundleRequest(rawInput)
+      const startedAt = Date.now()
+      const common = {
+        edition: input.bookEditionId,
+        book: input.bookTitle,
+        character: input.name,
+        character_key: input.characterKey,
+        scope: input.scope
+      }
+      log.info('bundle.requested', 'Получен запрос на пакет персонажа', common)
       return cached(storage, input.idempotencyKey, input, async () => {
         const character = input.character
         const portraitPrompt = [
@@ -273,24 +367,81 @@ export function createInternalGenerationService({
           `Character from the book “${input.bookTitle}”${input.bookAuthor ? ` by ${input.bookAuthor}` : ''}.`,
           'Single character, waist-up literary illustration, expressive face, neutral background, no typography, no watermark.'
         ].join(' ')
+        const portraitStartedAt = Date.now()
+        log.info('bundle.portrait_started', 'Начинаю генерацию портрета', common)
         const portrait = await generatePortrait(portraitPrompt.slice(0, 4_000), signal)
+        log.info('bundle.portrait_ready', 'Портрет готов', {
+          ...common,
+          provider: portrait.provider,
+          bytes: portrait.bytes.byteLength,
+          duration_ms: Date.now() - portraitStartedAt
+        })
         const greeting = typeof character.greeting === 'string' && character.greeting.trim()
           ? character.greeting.trim().slice(0, 2_000)
           : `Здравствуйте. Я ${input.name}.`
         const voice = typeof character.voice === 'string' ? character.voice :
           character.gender === 'male' ? 'She' : character.gender === 'female' ? 'Che' : 'Erm'
-        const [audio, animation] = await Promise.all([
-          synthesizeSpeech(greeting, voice, signal),
-          generateIdleAnimation(portrait.bytes, signal)
-        ])
+        const audioStartedAt = Date.now()
+        const animationStartedAt = Date.now()
+        log.info('bundle.audio_started', 'Начинаю синтез голосового приветствия', { ...common, voice })
+        log.info('bundle.animation_started', 'Начинаю генерацию idle-анимации', common)
+        const audioPromise = synthesizeSpeech(greeting, voice, signal).then((audio) => {
+          log.info('bundle.audio_ready', 'Голосовое приветствие готово', {
+            ...common,
+            provider: audio.provider,
+            voice,
+            bytes: audio.bytes.byteLength,
+            duration_ms: Date.now() - audioStartedAt
+          })
+          return audio
+        })
+        const animationPromise = generateIdleAnimation(portrait.bytes, signal).then((animation) => {
+          log.info('bundle.animation_ready', 'Idle-анимация готова', {
+            ...common,
+            provider: animation.provider,
+            bytes: animation.bytes.byteLength,
+            duration_ms: Date.now() - animationStartedAt
+          })
+          return animation
+        })
+        const [audio, animation] = await Promise.all([audioPromise, animationPromise])
         const prefix = `generated/${input.scope}/${input.bookEditionId}/characters/${input.characterKey}/${input.bundleVersion}`
+        const storageStartedAt = Date.now()
+        log.info('bundle.storage_started', 'Сохраняю артефакты персонажа в хранилище', common)
         const assets = await Promise.all([
           storage.putBytes({ objectKey: `${prefix}/primary-portrait.png`, bytes: portrait.bytes, mimeType: portrait.mimeType }),
           storage.putBytes({ objectKey: `${prefix}/greeting.wav`, bytes: audio.bytes, mimeType: audio.mimeType }),
           storage.putBytes({ objectKey: `${prefix}/idle-animation.mp4`, bytes: animation.bytes, mimeType: animation.mimeType })
         ])
+        for (const [index, asset] of assets.entries()) {
+          log.info('bundle.asset_stored', 'Артефакт сохранён', {
+            ...common,
+            asset: ASSET_LABELS[REQUIRED_CHARACTER_MEDIA[index]],
+            bytes: asset.byteSize
+          })
+        }
+        log.info('bundle.storage_completed', 'Все артефакты персонажа сохранены', {
+          ...common,
+          asset_count: assets.length,
+          duration_ms: Date.now() - storageStartedAt
+        })
         return {
           assets: REQUIRED_CHARACTER_MEDIA.map((type, index) => ({ type, ...assets[index] }))
+        }
+      }, {
+        onHit(result) {
+          log.info('bundle.cache_hit', 'Готовый пакет персонажа найден в кэше', {
+            ...common,
+            asset_count: result?.assets?.length,
+            duration_ms: Date.now() - startedAt
+          })
+        },
+        onStored(result) {
+          log.info('bundle.cached', 'Пакет персонажа полностью сформирован', {
+            ...common,
+            asset_count: result?.assets?.length,
+            duration_ms: Date.now() - startedAt
+          })
         }
       })
     }
@@ -314,9 +465,11 @@ export function requireGenerationServiceToken(token) {
 export function createInternalGenerationRouter({ token, service, logger = console }) {
   if (!service) throw new TypeError('internal generation service is required')
   const router = express.Router()
+  const log = createOperationalLogger({ component: 'book-generator', logger })
   router.use(requireGenerationServiceToken(token))
   router.use(express.json({ limit: '128kb' }))
   const endpoint = (operation) => async (req, res) => {
+    const startedAt = Date.now()
     const controller = new AbortController()
     const abort = () => controller.abort(new Error('internal generation client disconnected'))
     req.once('aborted', abort)
@@ -328,7 +481,15 @@ export function createInternalGenerationRouter({ token, service, logger = consol
         ? error.status
         : 502
       const code = typeof error?.code === 'string' ? error.code : 'GENERATION_FAILED'
-      logger.error?.('[internal-generation] request failed', { path: req.path, code })
+      log.error('request.failed', 'Внутренний запрос генерации завершился ошибкой', {
+        route: req.path,
+        edition: req.body?.bookEditionId,
+        book: req.body?.title || req.body?.bookTitle,
+        character: req.body?.name,
+        character_key: req.body?.characterKey,
+        error_code: code,
+        duration_ms: Date.now() - startedAt
+      })
       res.status(status).json({ error: error.message, code })
     } finally {
       req.removeListener('aborted', abort)

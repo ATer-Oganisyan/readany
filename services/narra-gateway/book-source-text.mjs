@@ -164,17 +164,39 @@ export async function extractBookText({ bytes: rawBytes, format, mimeType, signa
   return text
 }
 
-export function representativeTextSample(text, maxChars = 42_000) {
-  if (text.length <= maxChars) return text
+export function representativeTextSelection(text, maxChars = 42_000) {
+  if (text.length <= maxChars) {
+    return {
+      sample: text,
+      chunks: [{ section: 'whole', start: 0, end: text.length, text }]
+    }
+  }
   const first = Math.floor(maxChars * 0.52)
   const middle = Math.floor(maxChars * 0.24)
   const last = maxChars - first - middle
   const middleStart = Math.max(first, Math.floor((text.length - middle) / 2))
-  return [
-    text.slice(0, first),
-    '\n\n[ФРАГМЕНТ ИЗ СЕРЕДИНЫ КНИГИ]\n\n',
-    text.slice(middleStart, middleStart + middle),
-    '\n\n[ФРАГМЕНТ ИЗ КОНЦА КНИГИ]\n\n',
-    text.slice(-last)
-  ].join('')
+  const chunks = [
+    { section: 'beginning', start: 0, end: first, text: text.slice(0, first) },
+    {
+      section: 'middle',
+      start: middleStart,
+      end: middleStart + middle,
+      text: text.slice(middleStart, middleStart + middle)
+    },
+    { section: 'ending', start: text.length - last, end: text.length, text: text.slice(-last) }
+  ]
+  return {
+    sample: [
+      chunks[0].text,
+      '\n\n[ФРАГМЕНТ ИЗ СЕРЕДИНЫ КНИГИ]\n\n',
+      chunks[1].text,
+      '\n\n[ФРАГМЕНТ ИЗ КОНЦА КНИГИ]\n\n',
+      chunks[2].text
+    ].join(''),
+    chunks
+  }
+}
+
+export function representativeTextSample(text, maxChars = 42_000) {
+  return representativeTextSelection(text, maxChars).sample
 }

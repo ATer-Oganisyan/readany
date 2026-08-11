@@ -32,12 +32,14 @@ function memoryStorage(initial = {}) {
 }
 
 test('internal generation service extracts markup once and returns an idempotent cached result', async () => {
-  const source = Buffer.from('Анна вошла в комнату. Позже Анна встретила Бориса.')
+  const source = Buffer.from(`Анна вошла в комнату. ${'текст '.repeat(9_000)}В конце книги снова появилась Анна.`)
   const contentSha256 = createHash('sha256').update(source).digest('hex')
   const storage = memoryStorage({ source: { bytes: source, mimeType: 'text/plain' } })
   let chatCalls = 0
+  const lines = []
   const service = createInternalGenerationService({
     storage,
+    logger: { info(line) { lines.push(line) }, error(line) { lines.push(line) } },
     async completeChat() {
       chatCalls += 1
       return JSON.stringify({ characters: [{
@@ -61,16 +63,29 @@ test('internal generation service extracts markup once and returns an idempotent
   assert.equal(chatCalls, 1)
   assert.equal(first.textLength, source.toString('utf8').length)
   assert.equal(first.characters[0].firstAppearanceTextOffset, 0)
+  assert.equal(lines.filter((line) => line.includes('event="markup.chunk_selected"')).length, 3)
+  assert.ok(lines.some((line) => line.includes('chunk="1/3"') && line.includes('section="начало"')))
+  assert.ok(lines.some((line) => line.includes('event="markup.character_found"') && line.includes('character="Анна"')))
+  assert.ok(lines.some((line) => line.includes('event="markup.cached"')))
+  assert.ok(lines.some((line) => line.includes('event="markup.cache_hit"')))
 })
 
 test('internal generation service creates all three required bundle assets', async () => {
   const storage = memoryStorage()
+  const lines = []
   const service = createInternalGenerationService({
     storage,
+    logger: { info(line) { lines.push(line) }, error(line) { lines.push(line) } },
     async completeChat() { throw new Error('unused') },
-    async generatePortrait() { return { bytes: Buffer.from('png'), mimeType: 'image/png' } },
-    async synthesizeSpeech() { return { bytes: Buffer.from('wav'), mimeType: 'audio/wav' } },
-    async generateIdleAnimation() { return { bytes: Buffer.from('mp4'), mimeType: 'video/mp4' } }
+    async generatePortrait() {
+      return { bytes: Buffer.from('png'), mimeType: 'image/png', provider: 'gigachat-image' }
+    },
+    async synthesizeSpeech() {
+      return { bytes: Buffer.from('wav'), mimeType: 'audio/wav', provider: 'salute-speech' }
+    },
+    async generateIdleAnimation() {
+      return { bytes: Buffer.from('mp4'), mimeType: 'video/mp4', provider: 'local-ffmpeg' }
+    }
   })
   const result = await service.generateCharacterBundle({
     idempotencyKey: '11111111-1111-4111-8111-111111111111:anna:character-bundle-v1',
@@ -88,6 +103,11 @@ test('internal generation service creates all three required bundle assets', asy
     'primary_portrait', 'greeting_audio', 'idle_animation'
   ])
   assert.deepEqual(result.assets.map((asset) => asset.mimeType), ['image/png', 'audio/wav', 'video/mp4'])
+  assert.ok(lines.some((line) => line.includes('event="bundle.portrait_ready"') && line.includes('provider="gigachat-image"')))
+  assert.ok(lines.some((line) => line.includes('event="bundle.audio_ready"') && line.includes('provider="salute-speech"')))
+  assert.ok(lines.some((line) => line.includes('event="bundle.animation_ready"') && line.includes('provider="local-ffmpeg"')))
+  assert.equal(lines.filter((line) => line.includes('event="bundle.asset_stored"')).length, 3)
+  assert.ok(lines.some((line) => line.includes('event="bundle.cached"')))
 })
 
 test('internal service auth rejects public bearer tokens and accepts only its own token', () => {

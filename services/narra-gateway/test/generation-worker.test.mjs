@@ -8,6 +8,7 @@ import {
 } from '../generation-worker.mjs'
 
 const HASH = 'a'.repeat(64)
+const silentLogger = { info() {}, warn() {}, error() {} }
 
 function generatedAssets() {
   return REQUIRED_CHARACTER_MEDIA.map((type) => ({
@@ -99,7 +100,7 @@ test('private markup does not eagerly queue every character bundle', async () =>
       }] }
     }
   }
-  const worker = createGenerationWorker({ repository, generator, workerId: 'worker-1' })
+  const worker = createGenerationWorker({ repository, generator, workerId: 'worker-1', logger: silentLogger })
   assert.equal((await worker.runOnce()).status, 'completed')
   assert.equal(ensureCount, 0)
 })
@@ -120,7 +121,7 @@ test('worker publishes a character bundle only when all required media are prese
   const generator = {
     async generateCharacterBundle() { return { assets: generatedAssets() } }
   }
-  const worker = createGenerationWorker({ repository, generator, workerId: 'worker-1' })
+  const worker = createGenerationWorker({ repository, generator, workerId: 'worker-1', logger: silentLogger })
   assert.deepEqual(await worker.runOnce(), {
     status: 'completed', jobId: 'job-3', result: { assetCount: 3 }
   })
@@ -186,4 +187,89 @@ test('normalizers reject duplicate characters and incomplete bundles', () => {
     () => normalizeCharacterBundleResult({ assets: generatedAssets().slice(0, 2) }),
     /missing idle_animation/
   )
+})
+
+test('worker emits readable lifecycle logs for a completed book markup', async () => {
+  const lines = []
+  const repository = {
+    async claimGenerationJob() {
+      return {
+        id: 'job-log-1', type: 'book_markup', bookEditionId: 'book-log-1',
+        leaseToken: 'lease-log-1', attempts: 1
+      }
+    },
+    async getBookMarkupInput() {
+      return {
+        scope: 'private', title: 'Анна Каренина', format: 'epub', byteSize: 1234,
+        objectKey: 'books/book-log-1/source.epub', contentSha256: HASH
+      }
+    },
+    async publishBookMarkup() {},
+    async failGenerationJob() { assert.fail('job must not fail') }
+  }
+  const generator = {
+    async generateBookMarkup() {
+      return {
+        textLength: 1000,
+        characters: [{
+          characterKey: 'anna', name: 'Анна', fullName: 'Анна Каренина',
+          warmupTextOffset: 0, firstAppearanceTextOffset: 10
+        }]
+      }
+    }
+  }
+  const worker = createGenerationWorker({
+    repository,
+    generator,
+    workerId: 'worker-log-1',
+    logger: {
+      info(line) { lines.push(line) },
+      error(line) { lines.push(line) }
+    }
+  })
+  assert.equal((await worker.runOnce()).status, 'completed')
+  assert.ok(lines.some((line) => line.includes('event="job.claimed"') && line.includes('attempt=1')))
+  assert.ok(lines.some((line) => line.includes('event="markup.started"') && line.includes('book="Анна Каренина"')))
+  assert.ok(lines.some((line) => line.includes('event="markup.generated"') && line.includes('characters="Анна"')))
+  assert.ok(lines.some((line) => line.includes('event="markup.published"')))
+  assert.ok(lines.some((line) => line.includes('event="job.completed"')))
+})
+
+test('worker distinguishes a scheduled retry from an exhausted failure', async () => {
+  for (const [failureStatus, expectedEvent] of [
+    ['queued', 'job.retry_scheduled'],
+    ['failed', 'job.failed']
+  ]) {
+    const lines = []
+    const repository = {
+      async claimGenerationJob() {
+        return {
+          id: `job-${failureStatus}`, type: 'book_markup', bookEditionId: 'book-1',
+          leaseToken: `lease-${failureStatus}`, attempts: 2
+        }
+      },
+      async getBookMarkupInput() {
+        return { scope: 'private', title: 'Книга', contentSha256: HASH }
+      },
+      async failGenerationJob() { return { status: failureStatus } }
+    }
+    const generator = {
+      async generateBookMarkup() {
+        throw Object.assign(new Error('provider unavailable'), { code: 'PROVIDER_UNAVAILABLE' })
+      }
+    }
+    const worker = createGenerationWorker({
+      repository,
+      generator,
+      workerId: 'worker-log-1',
+      logger: {
+        info(line) { lines.push(line) },
+        warn(line) { lines.push(line) },
+        error(line) { lines.push(line) }
+      }
+    })
+
+    assert.equal((await worker.runOnce()).status, 'failed')
+    assert.ok(lines.some((line) => line.includes(`event="${expectedEvent}"`)))
+  }
 })

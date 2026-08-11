@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { strToU8, zipSync } from 'fflate'
-import { extractBookText, representativeTextSample } from '../book-source-text.mjs'
+import {
+  extractBookText,
+  representativeTextSample,
+  representativeTextSelection
+} from '../book-source-text.mjs'
 
 test('extractBookText reads EPUB spine order and normalizes markup', async () => {
   const epub = zipSync({
@@ -26,4 +30,9 @@ test('representativeTextSample keeps beginning, middle and ending within its bou
   assert.match(sample, /ФРАГМЕНТ ИЗ СЕРЕДИНЫ/)
   assert.match(sample, /ENDING$/)
   assert.ok(sample.length < 1_200)
+  const selection = representativeTextSelection(text, 1_000)
+  assert.deepEqual(selection.chunks.map((chunk) => chunk.section), ['beginning', 'middle', 'ending'])
+  assert.deepEqual(selection.chunks.map((chunk) => chunk.end - chunk.start), [520, 240, 240])
+  assert.equal(selection.chunks[0].start, 0)
+  assert.equal(selection.chunks[2].end, text.length)
 })

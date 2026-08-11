@@ -531,21 +531,26 @@ async function generateInternalPortrait(prompt, signal) {
   try {
     release = await imageGate.acquire(signal)
     let base64
+    let provider
     if (LLM_API_KEY) {
       try {
         base64 = await gigachatImage(prompt, signal)
+        provider = 'gigachat-image'
       } catch (error) {
         if (!shouldFallbackAfterImageError(error) || !KANDINSKY_TOKEN) throw error
         console.error('[internal-generation] portrait fallback to Kandinsky:', error.message)
       }
     }
-    if (!base64 && KANDINSKY_TOKEN) base64 = await kandinskyQueued(prompt, 1024, 1024, signal)
+    if (!base64 && KANDINSKY_TOKEN) {
+      base64 = await kandinskyQueued(prompt, 1024, 1024, signal)
+      provider = 'kandinsky'
+    }
     if (!base64) throw httpErr('NO_KEY', 'No image provider is configured')
     const bytes = Buffer.from(base64, 'base64')
     if (!bytes.byteLength || bytes.byteLength > 18 * 1024 * 1024) {
       throw httpErr('NETWORK', 'Image provider returned an invalid portrait')
     }
-    return { bytes, mimeType: 'image/png' }
+    return { bytes, mimeType: 'image/png', provider }
   } finally {
     release?.()
   }
@@ -582,7 +587,7 @@ async function synthesizeInternalSpeech(text, voice, signal) {
     if (response.status !== 200 || !response.body?.length) {
       throw httpErr('NETWORK', `SaluteSpeech returned ${response.status}`)
     }
-    return { bytes: Buffer.from(response.body), mimeType: 'audio/wav' }
+    return { bytes: Buffer.from(response.body), mimeType: 'audio/wav', provider: 'salute-speech' }
   } finally {
     release?.()
   }
@@ -598,12 +603,12 @@ async function generateInternalIdleAnimation(portraitBytes, signal) {
         signal
       )
       const bytes = Buffer.from(base64, 'base64')
-      if (bytes.byteLength) return { bytes, mimeType: 'video/mp4' }
+      if (bytes.byteLength) return { bytes, mimeType: 'video/mp4', provider: 'kandinsky-video' }
     } catch (error) {
       console.error('[internal-generation] video provider failed, using local idle animation:', error.message)
     }
   }
-  return createLocalIdleAnimation(portraitBytes, signal)
+  return { ...(await createLocalIdleAnimation(portraitBytes, signal)), provider: 'local-ffmpeg' }
 }
 
 

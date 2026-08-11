@@ -63,6 +63,23 @@ They require `DATABASE_URL`, the Gateway's private Docker URL in
 tokens. The worker runs migrations again at startup safely, so parallel starts
 do not apply the same migration twice.
 
+Worker and internal generator logs are single-line operational messages. They
+show the book/job identifiers, title, selected analysis chunk ranges, character
+names, media stages, providers, byte sizes and durations without logging source
+text, prompts, credentials or generated payloads. Follow both processes on i167:
+
+```bash
+docker compose --env-file /srv/narra-stagging/compose.env \
+  -f /srv/narra-stagging/compose.yml --profile book-backend \
+  logs -f --tail=200 gateway book-markup-worker
+```
+
+Stable `event` values such as `markup.chunk_selected`, `markup.published`,
+`bundle.asset_ready`, `job.retry_scheduled` and `job.failed` can be filtered with
+ordinary log tools.
+An idle worker reports that it is alive at `BOOK_MARKUP_IDLE_LOG_MS` intervals
+(five minutes by default), without writing a line on every queue poll.
+
 When `DATABASE_URL` is configured, Gateway enables the authenticated book API:
 `GET /v2/books/catalog`, `POST /v2/books/resolve`,
 `GET /v2/books/:bookEditionId/manifest` and
