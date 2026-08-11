@@ -3,6 +3,9 @@ name: narra
 services:
   gateway:
     image: ${NARRA_GATEWAY_IMAGE:?NARRA_GATEWAY_IMAGE must contain an immutable image tag}
+    depends_on:
+      postgres:
+        condition: service_healthy
     env_file:
       - /etc/narra-gateway.env
     environment:
@@ -11,6 +14,8 @@ services:
       DATA_DIR: /data
       PERSISTENT_DATA_MOUNT_PATH: /data
       INSTALLATION_SINGLE_REPLICA_ACK: "true"
+      DATABASE_URL: "postgresql://${NARRA_POSTGRES_USER:-readany}:${NARRA_POSTGRES_PASSWORD:?NARRA_POSTGRES_PASSWORD is required}@postgres.railway.internal:5432/${NARRA_POSTGRES_DB:-readany}"
+      DATABASE_SSL_MODE: disable
     ports:
       - "127.0.0.1:8788:8787"
     volumes:
@@ -34,14 +39,54 @@ services:
         max-size: 10m
         max-file: "5"
 
+  postgres:
+    image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+    environment:
+      POSTGRES_DB: ${NARRA_POSTGRES_DB:-readany}
+      POSTGRES_USER: ${NARRA_POSTGRES_USER:-readany}
+      POSTGRES_PASSWORD: ${NARRA_POSTGRES_PASSWORD:?NARRA_POSTGRES_PASSWORD is required}
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - book-postgres-data:/var/lib/postgresql/data
+    networks:
+      default:
+        aliases:
+          - postgres.railway.internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 60s
+    shm_size: 256m
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 1g
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
   book-markup-worker:
     profiles: ["book-backend"]
     image: ${NARRA_GATEWAY_IMAGE:?NARRA_GATEWAY_IMAGE must contain an immutable image tag}
     command: ["node", "book-markup-worker.mjs"]
+    depends_on:
+      postgres:
+        condition: service_healthy
     env_file:
       - /etc/narra-gateway.env
     environment:
       NODE_ENV: production
+      DATABASE_URL: "postgresql://${NARRA_POSTGRES_USER:-readany}:${NARRA_POSTGRES_PASSWORD:?NARRA_POSTGRES_PASSWORD is required}@postgres.railway.internal:5432/${NARRA_POSTGRES_DB:-readany}"
+      DATABASE_SSL_MODE: disable
     init: true
     restart: unless-stopped
     stop_grace_period: 30s
@@ -65,3 +110,4 @@ volumes:
   gateway-data:
     external: true
     name: narra_gateway-data
+  book-postgres-data:
