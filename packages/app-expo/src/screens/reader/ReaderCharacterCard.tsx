@@ -7,7 +7,11 @@ import { ensureCharacterPortrait, synthesizeNarraSpeech } from "@/lib/narra/medi
 import type { NarraCharacter } from "@/lib/narra/types";
 import { useLibraryStore, useNarraStore } from "@/stores";
 import { type ThemeColors, fontSize, radius, spacing, useTheme } from "@/styles/theme";
-import { interfaceFontFamily, serifTextFontFamily } from "@deslop/primitives/native";
+import {
+  interfaceFontFamily,
+  serifCondensedFontFamily,
+  serifTextFontFamily,
+} from "@deslop/primitives/native";
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, View } from "react-native";
@@ -407,12 +411,13 @@ const makeStyles = (colors: ThemeColors) =>
       fontFamily: interfaceFontFamily.semibold,
       fontSize: fontSize.lg,
     },
-    // Имя — крупно серифом (SB Serif Text Bold), как cardv2__name в narra
+    // Тот же SB Serif Condensed, что у large title на главной, но меньшего размера.
     name: {
       color: colors.foreground,
-      fontFamily: serifTextFontFamily.bold,
-      fontSize: fontSize["2xl"],
-      lineHeight: 32,
+      fontFamily: serifCondensedFontFamily.regular,
+      fontSize: fontSize["3xl"],
+      fontWeight: "400",
+      lineHeight: 34,
       textAlign: "center",
     },
     // Роль и манера речи — SB Sans, спокойный тёмно-серый (cardv2__role)
