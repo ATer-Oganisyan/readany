@@ -51,6 +51,7 @@ import {
 import { createInstallationRegistry } from './installation-registry.mjs'
 import { gatewayReadiness } from './readiness.mjs'
 import { createBookCatalogRouter } from './book-catalog-api.mjs'
+import { createCatalogIngestRouter } from './catalog-ingest-api.mjs'
 import { createPostgresBookMarkupRepository } from './postgres-book-markup-repository.mjs'
 import { createPostgresPoolFromEnv, runBookMarkupMigrations } from './postgres-runtime.mjs'
 import { createBookObjectStorageFromEnv } from './book-object-storage.mjs'
@@ -59,6 +60,7 @@ import {
   createInternalGenerationService
 } from './internal-generation-service.mjs'
 import { createLocalIdleAnimation } from './local-idle-animation.mjs'
+import { createPrivateMaterialCleanup } from './private-material-cleanup.mjs'
 
 // ================= Конфигурация =================
 const PORT = process.env.PORT || 8787
@@ -125,6 +127,13 @@ const IMPORT_GLOBAL_DAILY_BYTES_MB = envInt('IMPORT_GLOBAL_LIMIT_MIB_PER_DAY', 1
 const IMPORT_CONCURRENCY = envInt('IMPORT_CONCURRENCY', 2, 20)
 const IMPORT_QUEUE_LIMIT = envInt('IMPORT_QUEUE_LIMIT', 2, 50)
 const BOOK_UPLOAD_MAX_BYTES = envInt('BOOK_UPLOAD_MAX_MIB', 50, 500) * 1024 * 1024
+const PRIVATE_MATERIAL_TTL_DAYS = envInt('PRIVATE_MATERIAL_TTL_DAYS', 7, 365)
+const PRIVATE_MATERIAL_CLEANUP_MS = envInt(
+  'PRIVATE_MATERIAL_CLEANUP_MS',
+  60 * 60 * 1_000,
+  24 * 60 * 60 * 1_000
+)
+const PRIVATE_MATERIAL_CLEANUP_BATCH_SIZE = envInt('PRIVATE_MATERIAL_CLEANUP_BATCH_SIZE', 100, 1_000)
 const LLM_RESPONSE_MAX_BYTES = envInt('LLM_RESPONSE_MAX_MIB', 8, 64) * 1024 * 1024
 const KANDINSKY_QUEUE_LIMIT = envInt('KANDINSKY_QUEUE_LIMIT', 6, 100)
 const VIDEO_QUEUE_LIMIT = envInt('VIDEO_QUEUE_LIMIT', 4, 100)
@@ -205,6 +214,10 @@ if (PRODUCTION && TRACTION_INGEST_TOKEN && TRACTION_INGEST_TOKEN.length < 32) {
 const INSTALLATION_OPERATOR_TOKEN = String(process.env.INSTALLATION_OPERATOR_TOKEN || '').trim()
 if (PRODUCTION && INSTALLATION_OPERATOR_TOKEN.length < 32) {
   throw new Error('INSTALLATION_OPERATOR_TOKEN must contain at least 32 characters in production')
+}
+const CATALOG_INGEST_TOKEN = String(process.env.CATALOG_INGEST_TOKEN || '').trim()
+if (PRODUCTION && CATALOG_INGEST_TOKEN.length < 32) {
+  throw new Error('CATALOG_INGEST_TOKEN must contain at least 32 characters in production')
 }
 
 // ================= Токены (кэш ~30 мин) =================
@@ -671,10 +684,11 @@ if (
     tokenSecret,
     analyticsSecret,
     installationSecretPepper,
-    INSTALLATION_OPERATOR_TOKEN
-  ]).size !== 4
+    INSTALLATION_OPERATOR_TOKEN,
+    CATALOG_INGEST_TOKEN
+  ]).size !== 5
 ) {
-  throw new Error('Gateway, analytics, installation pepper and operator secrets must all differ')
+  throw new Error('Gateway, analytics, installation pepper, operator and catalog secrets must all differ')
 }
 const dataDir = process.env.DATA_DIR || (process.env.NODE_ENV === 'production'
   ? '/data'
@@ -724,6 +738,8 @@ eventStore.start()
 
 let bookMarkupPool = null
 let bookMarkupRepository = null
+let privateMaterialCleanupTimer = null
+let privateMaterialCleanupInitialTimer = null
 const bookObjectStorage = createBookObjectStorageFromEnv(process.env)
 const generatorServiceToken = String(process.env.GENERATOR_SERVICE_TOKEN || '').trim()
 const internalGenerationService = bookObjectStorage && generatorServiceToken
@@ -742,7 +758,23 @@ if (!internalGenerationService) {
 if (process.env.DATABASE_URL) {
   bookMarkupPool = await createPostgresPoolFromEnv(process.env)
   await runBookMarkupMigrations(bookMarkupPool)
-  bookMarkupRepository = createPostgresBookMarkupRepository(bookMarkupPool)
+  bookMarkupRepository = createPostgresBookMarkupRepository(bookMarkupPool, {
+    privateMaterialTtlDays: PRIVATE_MATERIAL_TTL_DAYS
+  })
+  if (bookObjectStorage) {
+    const cleanup = createPrivateMaterialCleanup({
+      repository: bookMarkupRepository,
+      storage: bookObjectStorage,
+      batchSize: PRIVATE_MATERIAL_CLEANUP_BATCH_SIZE
+    })
+    const runCleanup = () => void cleanup.runOnce().catch((error) => {
+      console.error('[book-cleanup] cleanup loop failed', error)
+    })
+    privateMaterialCleanupInitialTimer = setTimeout(runCleanup, 5_000)
+    privateMaterialCleanupInitialTimer.unref?.()
+    privateMaterialCleanupTimer = setInterval(runCleanup, PRIVATE_MATERIAL_CLEANUP_MS)
+    privateMaterialCleanupTimer.unref?.()
+  }
 } else {
   console.warn('[book-markup] DATABASE_URL is not configured; catalog API is disabled')
 }
@@ -1085,6 +1117,15 @@ app.post(
   }
 )
 
+if (bookMarkupRepository && bookObjectStorage) {
+  app.use('/v2/admin/catalog', createCatalogIngestRouter({
+    token: CATALOG_INGEST_TOKEN,
+    repository: bookMarkupRepository,
+    storage: bookObjectStorage,
+    uploadMaxBytes: BOOK_UPLOAD_MAX_BYTES
+  }))
+}
+
 // Public generic update feed. Integrity comes from electron-builder SHA-512
 // metadata plus the required Developer ID signature of the macOS app. Keeping
 // it before /v2 auth is required because electron-updater does not hold an
@@ -1111,8 +1152,7 @@ app.use('/v2', requireGatewayAuth(tokenService, installationRegistry), apiLimit)
 if (bookMarkupRepository) {
   app.use('/v2/books', createBookCatalogRouter({
     repository: bookMarkupRepository,
-    storage: bookObjectStorage,
-    uploadMaxBytes: BOOK_UPLOAD_MAX_BYTES
+    storage: bookObjectStorage
   }))
 }
 
@@ -1579,6 +1619,8 @@ let shuttingDown = false
 async function shutdown(signal) {
   if (shuttingDown) return
   shuttingDown = true
+  if (privateMaterialCleanupTimer) clearInterval(privateMaterialCleanupTimer)
+  if (privateMaterialCleanupInitialTimer) clearTimeout(privateMaterialCleanupInitialTimer)
   console.log(`[narra-proxy] ${signal}: draining HTTP and analytics outbox`)
   const force = setTimeout(() => process.exit(1), 25_000)
   force.unref?.()

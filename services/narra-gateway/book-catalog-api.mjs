@@ -3,13 +3,8 @@ import { createBookCatalogService } from './book-catalog-service.mjs'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const SHA256 = /^[0-9a-f]{64}$/
+const CHARACTER_KEY = /^[a-z0-9][a-z0-9._-]{0,127}$/i
 const BOOK_FORMATS = new Set(['epub', 'fb2', 'txt', 'pdf'])
-const BOOK_MIME_TYPES = Object.freeze({
-  epub: 'application/epub+zip',
-  fb2: 'application/x-fictionbook+xml',
-  txt: 'text/plain',
-  pdf: 'application/pdf'
-})
 
 function validation(message) {
   throw Object.assign(new Error(message), { code: 'VALIDATION', status: 400 })
@@ -93,20 +88,108 @@ function boundedText(value, name, max, { allowEmpty = false } = {}) {
   return normalized
 }
 
-export function parsePrivateUploadBody(body, maxBytes = 50 * 1024 * 1024) {
-  exactKeys(body, ['content_sha256', 'title', 'author', 'format', 'byte_size'], 'body')
+export function parseLocalBookBody(body) {
+  exactKeys(body, ['content_sha256', 'title', 'author', 'format'], 'body')
   const format = boundedText(body.format, 'format', 16)
   if (!BOOK_FORMATS.has(format)) validation('format: unsupported book format')
-  if (!Number.isSafeInteger(body.byte_size) || body.byte_size < 1 || body.byte_size > maxBytes) {
-    validation(`byte_size: expected 1-${maxBytes}`)
-  }
   return {
     contentSha256: sha256(body.content_sha256),
     title: boundedText(body.title, 'title', 500),
     author: boundedText(body.author ?? '', 'author', 500, { allowEmpty: true }),
-    format,
-    mimeType: BOOK_MIME_TYPES[format],
-    byteSize: body.byte_size
+    format
+  }
+}
+
+function fraction(value, name) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) {
+    validation(`${name}: expected a finite number from 0 to 1`)
+  }
+  return value
+}
+
+function stringArray(value, name, maxItems, maxLength) {
+  if (value === undefined) return []
+  if (!Array.isArray(value) || value.length > maxItems) validation(`${name}: invalid array`)
+  return value.map((item, index) => boundedText(item, `${name}[${index}]`, maxLength))
+}
+
+function localCharacterProfile(value) {
+  exactKeys(value, [
+    'clientCharacterId', 'role', 'gender', 'voice', 'traits', 'speechStyle', 'speechExamples',
+    'appearancePrompt', 'passport', 'expression', 'greeting', 'isNarrator',
+    'unlockProgress'
+  ], 'profile')
+  const profile = {
+    clientCharacterId: boundedText(
+      value.clientCharacterId ?? '',
+      'profile.clientCharacterId',
+      200,
+      { allowEmpty: true }
+    ),
+    role: boundedText(value.role ?? 'Персонаж истории', 'profile.role', 500),
+    gender: value.gender === 'female' ? 'female' : 'male',
+    voice: boundedText(value.voice ?? 'She', 'profile.voice', 32),
+    traits: stringArray(value.traits, 'profile.traits', 5, 120),
+    speechStyle: boundedText(value.speechStyle ?? '', 'profile.speechStyle', 1_000, { allowEmpty: true }),
+    speechExamples: stringArray(value.speechExamples, 'profile.speechExamples', 3, 500),
+    appearancePrompt: boundedText(value.appearancePrompt ?? '', 'profile.appearancePrompt', 4_000, { allowEmpty: true }),
+    expression: boundedText(value.expression ?? '', 'profile.expression', 300, { allowEmpty: true }),
+    greeting: boundedText(value.greeting ?? '', 'profile.greeting', 2_000, { allowEmpty: true }),
+    isNarrator: value.isNarrator === true,
+    unlockProgress: fraction(value.unlockProgress ?? 0, 'profile.unlockProgress')
+  }
+  if (value.passport !== undefined) {
+    exactKeys(value.passport, ['age', 'gender', 'build', 'hair', 'eyes', 'face', 'outfit'], 'profile.passport')
+    profile.passport = {
+      age: Math.max(1, Math.min(150, Number(value.passport.age) || 30)),
+      gender: value.passport.gender === 'female' ? 'female' : 'male',
+      build: boundedText(value.passport.build ?? '', 'profile.passport.build', 300, { allowEmpty: true }),
+      hair: boundedText(value.passport.hair ?? '', 'profile.passport.hair', 300, { allowEmpty: true }),
+      eyes: boundedText(value.passport.eyes ?? '', 'profile.passport.eyes', 300, { allowEmpty: true }),
+      face: boundedText(value.passport.face ?? '', 'profile.passport.face', 500, { allowEmpty: true }),
+      outfit: boundedText(value.passport.outfit ?? '', 'profile.passport.outfit', 500, { allowEmpty: true })
+    }
+  }
+  return profile
+}
+
+export function parseLocalMarkupBody(body) {
+  exactKeys(body, ['characters'], 'body')
+  if (!Array.isArray(body.characters) || body.characters.length < 1 || body.characters.length > 12) {
+    validation('characters: expected 1-12 items')
+  }
+  const seen = new Set()
+  return {
+    characters: body.characters.map((candidate, index) => {
+      exactKeys(candidate, [
+        'character_key', 'name', 'full_name', 'first_appearance_fraction',
+        'warmup_fraction', 'profile'
+      ], `characters[${index}]`)
+      const characterKey = boundedText(candidate.character_key, `characters[${index}].character_key`, 128)
+      if (!CHARACTER_KEY.test(characterKey) || seen.has(characterKey)) {
+        validation(`characters[${index}].character_key: invalid or duplicate`)
+      }
+      seen.add(characterKey)
+      const firstAppearanceFraction = fraction(
+        candidate.first_appearance_fraction,
+        `characters[${index}].first_appearance_fraction`
+      )
+      const warmupFraction = fraction(
+        candidate.warmup_fraction,
+        `characters[${index}].warmup_fraction`
+      )
+      if (warmupFraction > firstAppearanceFraction) {
+        validation(`characters[${index}].warmup_fraction: must not be after first appearance`)
+      }
+      return {
+        characterKey,
+        name: boundedText(candidate.name, `characters[${index}].name`, 300),
+        fullName: boundedText(candidate.full_name, `characters[${index}].full_name`, 500),
+        firstAppearanceFraction,
+        warmupFraction,
+        profile: localCharacterProfile(candidate.profile)
+      }
+    })
   }
 }
 
@@ -161,7 +244,8 @@ function bookJson(book) {
     content_sha256: book.contentSha256,
     generation_status: book.generationStatus,
     ready: book.ready,
-    source_download_path: book.sourceDownloadPath
+    source_download_path: book.sourceDownloadPath,
+    expires_at: book.expiresAt
   }
 }
 
@@ -200,11 +284,7 @@ function manifestJson(manifest) {
   }
 }
 
-export function createBookCatalogRouter({
-  repository,
-  storage = null,
-  uploadMaxBytes = 50 * 1024 * 1024
-}) {
+export function createBookCatalogRouter({ repository, storage = null }) {
   const router = express.Router()
   const service = createBookCatalogService({ repository, storage })
   const subject = (req) => uuid(req.installation?.sub, 'installation subject')
@@ -226,35 +306,30 @@ export function createBookCatalogRouter({
   }))
 
   router.post(
-    '/private/uploads',
+    '/local',
     express.json({ limit: '16kb' }),
     asyncRoute(async (req, res) => {
-      const result = await service.beginPrivateUpload(
+      const result = await service.registerLocalBook(
         subject(req),
-        parsePrivateUploadBody(req.body, uploadMaxBytes)
+        parseLocalBookBody(req.body)
       )
-      res.status(result.upload ? 201 : 200).json({
-        ...bookJson(result),
-        upload: result.upload && {
-          url: result.upload.url,
-          method: result.upload.method,
-          headers: result.upload.headers,
-          expires_at: result.upload.expiresAt
-        }
-      })
+      res.status(result.resolution === 'catalog' ? 200 : 201).json(bookJson(result))
     })
   )
 
   router.post(
-    '/:bookEditionId/upload-complete',
-    express.json({ limit: '1kb' }),
+    '/:bookEditionId/local-markup',
+    express.json({ limit: '128kb' }),
     asyncRoute(async (req, res) => {
-      if (req.body !== undefined && req.body !== null) exactKeys(req.body, [], 'body')
-      const result = await service.completePrivateUpload(
+      const result = await service.publishLocalMarkup(
         subject(req),
-        uuid(req.params.bookEditionId, 'bookEditionId')
+        uuid(req.params.bookEditionId, 'bookEditionId'),
+        parseLocalMarkupBody(req.body)
       )
-      res.status(202).json(bookJson(result))
+      res.status(result.created ? 201 : 200).json({
+        ...bookJson(result),
+        markup_revision: result.markupRevision
+      })
     })
   )
 

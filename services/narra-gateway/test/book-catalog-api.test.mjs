@@ -4,7 +4,8 @@ import {
   decodeCatalogCursor,
   encodeCatalogCursor,
   parseBookResolveBody,
-  parsePrivateUploadBody,
+  parseLocalBookBody,
+  parseLocalMarkupBody,
   parseReaderProgressBody
 } from '../book-catalog-api.mjs'
 
@@ -46,25 +47,44 @@ test('reader progress contract prefers a fraction but keeps legacy text offsets'
   assert.throws(() => parseReaderProgressBody({ text_offset: 1.5 }), /safe integer/)
 })
 
-test('private upload contract derives MIME type and enforces the size ceiling', () => {
-  assert.deepEqual(parsePrivateUploadBody({
+test('local book registration accepts metadata and rejects source-file fields', () => {
+  assert.deepEqual(parseLocalBookBody({
     content_sha256: 'a'.repeat(64),
     title: 'Book',
     author: 'Author',
-    format: 'epub',
-    byte_size: 128
+    format: 'epub'
   }), {
     contentSha256: 'a'.repeat(64),
     title: 'Book',
     author: 'Author',
-    format: 'epub',
-    mimeType: 'application/epub+zip',
-    byteSize: 128
+    format: 'epub'
   })
-  assert.throws(() => parsePrivateUploadBody({
-    content_sha256: 'a'.repeat(64), title: 'Book', author: '', format: 'mobi', byte_size: 10
+  assert.throws(() => parseLocalBookBody({
+    content_sha256: 'a'.repeat(64), title: 'Book', author: '', format: 'mobi'
   }), /unsupported book format/)
-  assert.throws(() => parsePrivateUploadBody({
-    content_sha256: 'a'.repeat(64), title: 'Book', author: '', format: 'epub', byte_size: 129
-  }, 128), /expected 1-128/)
+  assert.throws(() => parseLocalBookBody({
+    content_sha256: 'a'.repeat(64), title: 'Book', author: '', format: 'epub', bytes: 'leak'
+  }), /unknown field/)
+})
+
+test('local markup accepts derived profiles but rejects text excerpts', () => {
+  const parsed = parseLocalMarkupBody({
+    characters: [{
+      character_key: 'hero',
+      name: 'Hero',
+      full_name: 'The Hero',
+      first_appearance_fraction: 0.2,
+      warmup_fraction: 0.15,
+      profile: { role: 'protagonist', unlockProgress: 0.2 }
+    }]
+  })
+  assert.equal(parsed.characters[0].characterKey, 'hero')
+  assert.equal(parsed.characters[0].firstAppearanceFraction, 0.2)
+  assert.throws(() => parseLocalMarkupBody({
+    characters: [{
+      character_key: 'hero', name: 'Hero', full_name: 'Hero',
+      first_appearance_fraction: 0, warmup_fraction: 0,
+      profile: { role: 'hero' }, excerpt: 'source text'
+    }]
+  }), /unknown field/)
 })

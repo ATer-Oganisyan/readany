@@ -35,12 +35,13 @@ export interface NarraCharacter {
 }
 
 export interface NarraBackendBinding {
-  resolution: "catalog" | "private" | "private_upload_required";
+  resolution: "catalog" | "private" | "local_registration_required";
   bookEditionId?: string;
   contentSha256: string;
   generationStatus?: string;
   ready: boolean;
   sourceDownloadPath?: string;
+  expiresAt?: string;
 }
 
 export interface NarraChatMessage {

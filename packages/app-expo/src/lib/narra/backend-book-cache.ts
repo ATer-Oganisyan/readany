@@ -75,11 +75,16 @@ async function downloadedAsset(
 }
 
 function baseCharacter(character: BackendBookManifest["characters"][number]): NarraCharacter {
+  const clientCharacterId =
+    typeof character.profile.clientCharacterId === "string" &&
+    character.profile.clientCharacterId.trim()
+      ? character.profile.clientCharacterId
+      : character.characterKey;
   const normalized = normalizeCharacterAnalysisResponse({
     characters: [
       {
         ...character.profile,
-        id: character.characterKey,
+        id: clientCharacterId,
         name: character.name,
         fullName: character.fullName,
         unlockProgress: 0,
@@ -100,7 +105,7 @@ function baseCharacter(character: BackendBookManifest["characters"][number]): Na
       appearancePrompt: "",
       unlockProgress: 0,
     }),
-    id: character.characterKey,
+    id: clientCharacterId,
     name: character.name,
     fullName: character.fullName,
     unlockProgress: 0,

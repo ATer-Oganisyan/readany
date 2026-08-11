@@ -1,8 +1,9 @@
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
 import type { Book } from "@readany/core/types";
 import { NarraServiceError } from "./errors";
+import type { NarraCharacter } from "./types";
 
-export type BackendBookResolution = "catalog" | "private" | "private_upload_required";
+export type BackendBookResolution = "catalog" | "private" | "local_registration_required";
 
 export interface BackendBookBinding {
   resolution: BackendBookResolution;
@@ -11,13 +12,7 @@ export interface BackendBookBinding {
   generationStatus?: string;
   ready: boolean;
   sourceDownloadPath?: string;
-}
-
-export interface BackendUploadInstruction {
-  url: string;
-  method: "PUT";
-  headers: Record<string, string>;
-  expiresAt: string;
+  expiresAt?: string;
 }
 
 export interface BackendManifestAsset {
@@ -50,6 +45,22 @@ export interface BackendBookManifest {
 
 type JsonRecord = Record<string, unknown>;
 
+function backendCharacterKey(value: string, index: number): string {
+  const ascii = value
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 96);
+  if (ascii) return ascii;
+  let hash = 2_166_136_261;
+  for (const character of value) {
+    hash ^= character.codePointAt(0) ?? 0;
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return `character-${index + 1}-${(hash >>> 0).toString(16)}`;
+}
+
 async function gatewayJson(path: string, init: RequestInit = {}): Promise<JsonRecord> {
   const response = await narraGatewayRequest(path, init);
   const text = await response.text();
@@ -78,6 +89,7 @@ function binding(value: JsonRecord): BackendBookBinding {
     ready: value.ready === true,
     sourceDownloadPath:
       typeof value.source_download_path === "string" ? value.source_download_path : undefined,
+    expiresAt: typeof value.expires_at === "string" ? value.expires_at : undefined,
   };
 }
 
@@ -91,51 +103,57 @@ export async function resolveLocalBackendBook(contentSha256: string): Promise<Ba
   );
 }
 
-export async function beginPrivateBackendUpload(
+export async function registerLocalBackendBook(
   book: Book,
   contentSha256: string,
-  byteSize: number,
-): Promise<BackendBookBinding & { upload?: BackendUploadInstruction }> {
-  const payload = await gatewayJson("/v2/books/private/uploads", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      content_sha256: contentSha256,
-      title: book.meta.title,
-      author: book.meta.author || "",
-      format: book.format,
-      byte_size: byteSize,
-    }),
-  });
-  const result = binding(payload) as BackendBookBinding & { upload?: BackendUploadInstruction };
-  if (payload.upload && typeof payload.upload === "object") {
-    const upload = payload.upload as JsonRecord;
-    result.upload = {
-      url: String(upload.url),
-      method: "PUT",
-      headers:
-        upload.headers && typeof upload.headers === "object"
-          ? Object.fromEntries(
-              Object.entries(upload.headers as JsonRecord).map(([key, value]) => [
-                key,
-                String(value),
-              ]),
-            )
-          : {},
-      expiresAt: String(upload.expires_at || ""),
-    };
-  }
-  return result;
-}
-
-export async function completePrivateBackendUpload(
-  bookEditionId: string,
 ): Promise<BackendBookBinding> {
   return binding(
-    await gatewayJson(`/v2/books/${encodeURIComponent(bookEditionId)}/upload-complete`, {
+    await gatewayJson("/v2/books/local", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: "{}",
+      body: JSON.stringify({
+        content_sha256: contentSha256,
+        title: book.meta.title,
+        author: book.meta.author || "",
+        format: book.format,
+      }),
+    }),
+  );
+}
+
+export async function publishLocalBackendMarkup(
+  bookEditionId: string,
+  characters: NarraCharacter[],
+): Promise<BackendBookBinding> {
+  return binding(
+    await gatewayJson(`/v2/books/${encodeURIComponent(bookEditionId)}/local-markup`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        characters: characters.map((character, index) => ({
+          character_key: backendCharacterKey(character.id, index),
+          name: character.name,
+          full_name: character.fullName,
+          first_appearance_fraction: character.unlockProgress,
+          warmup_fraction:
+            Math.round(Math.max(0, character.unlockProgress - 0.05) * 1_000_000) / 1_000_000,
+          profile: {
+            clientCharacterId: character.id,
+            role: character.role,
+            gender: character.gender,
+            voice: character.voice,
+            traits: character.traits,
+            speechStyle: character.speechStyle,
+            speechExamples: character.speechExamples,
+            appearancePrompt: character.appearancePrompt,
+            passport: character.passport,
+            expression: character.expression,
+            greeting: character.greeting,
+            isNarrator: character.isNarrator,
+            unlockProgress: character.unlockProgress,
+          },
+        })),
+      }),
     }),
   );
 }

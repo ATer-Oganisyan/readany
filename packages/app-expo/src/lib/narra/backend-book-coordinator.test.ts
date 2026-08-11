@@ -55,26 +55,25 @@ function fixture() {
   const api: BackendBookCoordinatorApi = {
     async resolve() {
       calls.push("resolve");
-      return { resolution: "private_upload_required", contentSha256: HASH, ready: false };
+      return { resolution: "local_registration_required", contentSha256: HASH, ready: false };
     },
-    async beginUpload() {
-      calls.push("begin");
+    async register() {
+      calls.push("register");
       return {
         resolution: "private",
         bookEditionId: "edition-1",
         contentSha256: HASH,
         ready: false,
-        upload: { url: "https://storage/upload", headers: { checksum: HASH } },
       };
     },
-    async completeUpload() {
-      calls.push("complete");
+    async publish() {
+      calls.push("publish");
       return {
         resolution: "private",
         bookEditionId: "edition-1",
         contentSha256: HASH,
-        generationStatus: "marking_up",
-        ready: false,
+        generationStatus: "base_ready",
+        ready: true,
       };
     },
     async advance(_editionId, offset) {
@@ -88,10 +87,7 @@ function fixture() {
   const files: BackendBookCoordinatorFiles = {
     async describe() {
       calls.push("describe");
-      return { path: "file:///book.epub", byteSize: 128, contentSha256: HASH };
-    },
-    async upload() {
-      calls.push("upload");
+      return { contentSha256: HASH };
     },
     async loadCached() {
       return [];
@@ -104,6 +100,9 @@ function fixture() {
   const state: BackendBookCoordinatorState = {
     getBinding() {
       return binding;
+    },
+    getCharacters() {
+      return characters;
     },
     setBinding(_bookId, value) {
       binding = value;
@@ -123,7 +122,7 @@ function fixture() {
 }
 
 describe("backend book coordinator", () => {
-  it("shares concurrent binding and uploads a private book only once", async () => {
+  it("shares concurrent binding and registers a local-only book only once", async () => {
     const value = fixture();
     const coordinator = createBackendBookCoordinator(value);
     const [left, right] = await Promise.all([
@@ -133,15 +132,15 @@ describe("backend book coordinator", () => {
     expect(left.bookEditionId).toBe("edition-1");
     expect(right).toEqual(left);
     expect(value.calls.filter((call) => call === "describe")).toHaveLength(1);
-    expect(value.calls).toEqual([
-      "describe",
-      "set-hash",
-      "resolve",
-      "begin",
-      "upload",
-      "complete",
-      "set-binding",
-    ]);
+    expect(value.calls).toEqual(["describe", "set-hash", "resolve", "register", "set-binding"]);
+  });
+
+  it("publishes derived characters without uploading the source book", async () => {
+    const value = fixture();
+    const coordinator = createBackendBookCoordinator(value);
+    await coordinator.syncLocalMarkup(BOOK, [{ id: "anna" } as NarraCharacter]);
+    expect(value.calls).toContain("publish");
+    expect(value.calls).not.toContain("upload");
   });
 
   it("coalesces reader events to the greatest reading fraction", async () => {

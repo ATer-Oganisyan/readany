@@ -1,6 +1,8 @@
 export const BOOK_MARKUP_ANALYSIS_VERSION = 'book-markup-v2'
 export const BOOK_MARKUP_SCHEMA_VERSION = 2
 export const CHARACTER_BUNDLE_VERSION = 'character-bundle-v1'
+export const LOCAL_MARKUP_ANALYSIS_VERSION = 'local-character-v1'
+export const LOCAL_MARKUP_PROGRESS_SCALE = 1_000_000
 
 export const REQUIRED_CHARACTER_MEDIA = Object.freeze([
   'primary_portrait',

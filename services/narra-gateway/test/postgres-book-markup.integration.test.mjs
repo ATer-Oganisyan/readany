@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import test from 'node:test'
 import { REQUIRED_CHARACTER_MEDIA } from '../book-markup.mjs'
 import { createPostgresBookMarkupRepository } from '../postgres-book-markup-repository.mjs'
@@ -16,7 +16,7 @@ test('PostgreSQL persists an idempotent catalog markup and atomic character bund
   const subjectId = randomUUID()
   const otherSubjectId = randomUUID()
   const privateEditionId = randomUUID()
-  const uploadEditionId = randomUUID()
+  let localEditionId
   const legacyEditionId = randomUUID()
   const hash = 'a'.repeat(64)
   try {
@@ -154,8 +154,12 @@ test('PostgreSQL persists an idempotent catalog markup and atomic character bund
     const privateHash = 'b'.repeat(64)
     await pool.query(
       `INSERT INTO book_editions (
-         id, scope, owner_subject_id, content_sha256, title, author, format, status
-       ) VALUES ($1, 'private', $2, $3, 'Private Book', '', 'fb2', 'base_ready')`,
+         id, scope, owner_subject_id, content_sha256, title, author, format,
+         status, source_storage, expires_at
+       ) VALUES (
+         $1, 'private', $2, $3, 'Private Book', '', 'fb2',
+         'base_ready', 'local_only', now() + interval '7 days'
+       )`,
       [privateEditionId, subjectId, privateHash]
     )
     assert.equal((await repository.resolveBook({
@@ -179,42 +183,48 @@ test('PostgreSQL persists an idempotent catalog markup and atomic character bund
       progressFraction: 0.01
     }), null)
 
-    const uploadHash = 'c'.repeat(64)
-    const prepared = await repository.beginPrivateBookUpload({
-      subjectId,
-      proposedBookEditionId: uploadEditionId,
-      contentSha256: uploadHash,
-      title: 'Uploaded Book',
-      author: 'Reader',
-      format: 'epub',
-      objectKey: `integration/private/${uploadEditionId}/source`,
-      mimeType: 'application/epub+zip',
-      byteSize: 256
-    })
-    assert.equal(prepared.uploadRequired, true)
-    assert.equal((await repository.getPrivateBookUpload({
-      subjectId,
-      bookEditionId: uploadEditionId
-    })).file.status, 'staging')
-    assert.equal(await repository.getPrivateBookUpload({
-      subjectId: otherSubjectId,
-      bookEditionId: uploadEditionId
-    }), null)
-    assert.equal((await repository.completePrivateBookUpload({
-      subjectId,
-      bookEditionId: uploadEditionId
-    })).status, 'marking_up')
-    assert.equal((await repository.beginPrivateBookUpload({
+    const localHash = 'c'.repeat(64)
+    const prepared = await repository.registerLocalBook({
       subjectId,
       proposedBookEditionId: randomUUID(),
-      contentSha256: uploadHash,
-      title: 'Uploaded Book',
+      contentSha256: localHash,
+      title: 'Local Book',
       author: 'Reader',
-      format: 'epub',
-      objectKey: `integration/private/${uploadEditionId}/source`,
-      mimeType: 'application/epub+zip',
-      byteSize: 256
-    })).uploadRequired, false)
+      format: 'epub'
+    })
+    localEditionId = prepared.id
+    assert.equal(prepared.sourceStorage, 'local_only')
+    assert.equal(await repository.getReaderBookSource({
+      bookEditionId: prepared.id
+    }), null)
+    const published = await repository.publishLocalBookMarkup({
+      subjectId,
+      bookEditionId: prepared.id,
+      analysisVersion: 'local-character-v1',
+      inputHash: localHash,
+      textLength: 1_000_000,
+      characters: [{
+        characterKey: 'local-hero', name: 'Hero', fullName: 'Local Hero',
+        firstAppearanceTextOffset: 100_000, warmupTextOffset: 50_000,
+        profile: { role: 'hero' }
+      }]
+    })
+    assert.equal(published.edition.status, 'base_ready')
+    const localBundleJob = await repository.ensureCharacterBundle({
+      bookEditionId: prepared.id,
+      characterKey: 'local-hero'
+    })
+    await pool.query(
+      `UPDATE book_editions SET expires_at = now() - interval '1 second' WHERE id = $1`,
+      [prepared.id]
+    )
+    assert.equal((await repository.purgeExpiredPrivateEditions()).deletedEditions, 1)
+    const cacheKey = `generated/cache/${createHash('sha256')
+      .update(localBundleJob.idempotencyKey)
+      .digest('hex')}.json`
+    assert.equal((await repository.listBookObjectDeletions()).includes(cacheKey), true)
+    await repository.acknowledgeBookObjectDeletions([cacheKey])
+    localEditionId = null
 
     const legacyHash = 'd'.repeat(64)
     const legacyMarkupId = randomUUID()
@@ -245,7 +255,9 @@ test('PostgreSQL persists an idempotent catalog markup and atomic character bund
   } finally {
     await pool.query('DELETE FROM book_editions WHERE id = $1', [bookEditionId]).catch(() => {})
     await pool.query('DELETE FROM book_editions WHERE id = $1', [privateEditionId]).catch(() => {})
-    await pool.query('DELETE FROM book_editions WHERE id = $1', [uploadEditionId]).catch(() => {})
+    if (localEditionId) {
+      await pool.query('DELETE FROM book_editions WHERE id = $1', [localEditionId]).catch(() => {})
+    }
     await pool.query('DELETE FROM book_editions WHERE id = $1', [legacyEditionId]).catch(() => {})
     await pool.end()
   }

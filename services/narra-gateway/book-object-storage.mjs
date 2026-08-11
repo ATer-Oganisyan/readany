@@ -1,4 +1,5 @@
 import {
+  DeleteObjectsCommand,
   GetObjectCommand,
   HeadBucketCommand,
   HeadObjectCommand,
@@ -176,6 +177,27 @@ export function createBookObjectStorage({
         mimeType,
         byteSize: bytes.byteLength
       }
+    },
+
+    async deleteObjects(rawObjectKeys) {
+      if (!Array.isArray(rawObjectKeys)) throw new TypeError('object keys must be an array')
+      const keys = [...new Set(rawObjectKeys.map((key) => objectKey(key)))]
+      let deleted = 0
+      for (let index = 0; index < keys.length; index += 1_000) {
+        const batch = keys.slice(index, index + 1_000)
+        if (!batch.length) continue
+        const result = await client.send(new DeleteObjectsCommand({
+          Bucket: bucket,
+          Delete: { Objects: batch.map((Key) => ({ Key })), Quiet: true }
+        }))
+        if (result.Errors?.length) {
+          throw Object.assign(new Error('object storage failed to delete generated materials'), {
+            code: 'STORAGE_DELETE'
+          })
+        }
+        deleted += batch.length
+      }
+      return { deleted }
     }
   }
 }

@@ -82,18 +82,28 @@ An idle worker reports that it is alive at `BOOK_MARKUP_IDLE_LOG_MS` intervals
 
 When `DATABASE_URL` is configured, Gateway enables the authenticated book API:
 `GET /v2/books/catalog`, `POST /v2/books/resolve`,
+`POST /v2/books/local`, `POST /v2/books/:bookEditionId/local-markup`,
 `GET /v2/books/:bookEditionId/manifest` and
 `POST /v2/books/:bookEditionId/progress`. Future characters and partial media
 are never included in a reader manifest.
 
-Private book delivery additionally requires `BOOK_STORAGE_BUCKET` and the
-`BOOK_STORAGE_*` S3-compatible settings. The client prepares an upload with
-`POST /v2/books/private/uploads`, sends the source directly to the signed URL,
-and confirms it with `POST /v2/books/:bookEditionId/upload-complete`. Authorized
-source and media URLs are issued by
-`GET /v2/books/:bookEditionId/source/download` and
-`GET /v2/books/:bookEditionId/media/:assetId/download`. Upload and download
-credentials are short-lived; permanent storage credentials remain server-side.
+User book sources remain on-device. Registration sends only hash and metadata;
+local analysis publishes only derived character profiles. Generated private
+media is served through `GET /v2/books/:bookEditionId/media/:assetId/download`
+and expires after `PRIVATE_MATERIAL_TTL_DAYS` of inactivity. The source download
+route is available only for catalog books.
+
+Catalog uploads require the independent `CATALOG_INGEST_TOKEN`:
+`POST /v2/admin/catalog/books/uploads`, the returned raw content path, and the
+returned completion path. To ingest the 17 bundled catalog EPUBs idempotently:
+
+```bash
+CATALOG_BASE_URL=https://api-test.narra.disrupt.builders \
+CATALOG_INGEST_TOKEN='<secret>' npm run seed:catalog
+```
+
+Completion queues full markup jobs, so run this only when provider usage is
+intended. S3/MinIO credentials remain server-side.
 
 Reader progress now uses `progress_fraction`; Gateway derives the canonical
 text offset from the v2 markup's `text_length`. Legacy `text_offset` requests

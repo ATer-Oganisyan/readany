@@ -1,0 +1,140 @@
+{
+  "books": [
+    {
+      "catalog_key": "fathers-and-sons",
+      "title": "Отцы и дети",
+      "author": "Иван Тургенев",
+      "format": "epub",
+      "mime_type": "application/epub+zip",
+      "file": "../../packages/app-expo/assets/catalog/fathers-and-sons.epub"
+    },
+    {
+      "catalog_key": "anna-karenina",
+      "title": "Анна Каренина",
+      "author": "Лев Толстой",
+      "format": "epub",
+      "mime_type": "application/epub+zip",
+      "file": "../../packages/app-expo/assets/catalog/anna-karenina.epub"
+    },
+    {
+      "catalog_key": "war-and-peace",
+      "title": "Война и мир",
+      "author": "Лев Толстой",
+      "format": "epub",
+      "mime_type": "application/epub+zip",
+      "file": "../../packages/app-expo/assets/catalog/war-and-peace.epub"
+    },
+    {
+      "catalog_key": "crime-and-punishment",
+      "title": "Преступление и наказание",
+      "author": "Фёдор Достоевский",
+      "format": "epub",
+      "mime_type": "application/epub+zip",
+      "file": "../../packages/app-expo/assets/catalog/crime-and-punishment.epub"
+    },
+    {
+      "catalog_key": "government-inspector",
+      "title": "Ревизор",
+      "author": "Николай Гоголь",
+      "format": "epub",
+      "mime_type": "application/epub+zip",
+      "file": "../../packages/app-expo/assets/catalog/government-inspector.epub"
+    },
+    {
+      "catalog_key": "dead-souls",
+      "title": "Мёртвые души",
+      "author": "Николай Гоголь",
+      "format": "epub",
+      "mime_type": "application/epub+zip",
+      "file": "../../packages/app-expo/assets/catalog/dead-souls.epub"
+    },
+    {
+      "catalog_key": "hero-of-our-time",
+      "title": "Герой нашего времени",
+      "author": "Михаил Лермонтов",
+      "format": "epub",
+      "mime_type": "application/epub+zip",
+      "file": "../../packages/app-expo/assets/catalog/hero-of-our-time.epub"
+    },
+    {
+      "catalog_key": "captains-daughter",
+      "title": "Капитанская дочка",
+      "author": "Александр Пушкин",
+      "format": "epub",
+      "mime_type": "application/epub+zip",
+      "file": "../../packages/app-expo/assets/catalog/captains-daughter.epub"
+    },
+    {
+      "catalog_key": "eugene-onegin",
+      "title": "Евгений Онегин",
+      "author": "Александр Пушкин",
+      "format": "epub",
+      "mime_type": "application/epub+zip",
+      "file": "../../packages/app-expo/assets/catalog/eugene-onegin.epub"
+    },
+    {
+      "catalog_key": "gentleman-from-san-francisco",
+      "title": "Господин из Сан-Франциско",
+      "author": "Иван Бунин",
+      "format": "epub",
+      "mime_type": "application/epub+zip",
+      "file": "../../packages/app-expo/assets/catalog/gentleman-from-san-francisco.epub"
+    },
+    {
+      "catalog_key": "dark-avenues",
+      "title": "Тёмные аллеи",
+      "author": "Иван Бунин",
+      "format": "epub",
+      "mime_type": "application/epub+zip",
+      "file": "../../packages/app-expo/assets/catalog/dark-avenues.epub"
+    },
+    {
+      "catalog_key": "golden-key",
+      "title": "Золотой ключик, или Приключения Буратино",
+      "author": "Алексей Толстой",
+      "format": "epub",
+      "mime_type": "application/epub+zip",
+      "file": "../../packages/app-expo/assets/catalog/golden-key.epub"
+    },
+    {
+      "catalog_key": "twelve-chairs",
+      "title": "Двенадцать стульев",
+      "author": "Илья Ильф и Евгений Петров",
+      "format": "epub",
+      "mime_type": "application/epub+zip",
+      "file": "../../packages/app-expo/assets/catalog/twelve-chairs.epub"
+    },
+    {
+      "catalog_key": "three-sisters",
+      "title": "Три сестры",
+      "author": "Антон Чехов",
+      "format": "epub",
+      "mime_type": "application/epub+zip",
+      "file": "../../packages/app-expo/assets/catalog/three-sisters.epub"
+    },
+    {
+      "catalog_key": "seagull",
+      "title": "Чайка",
+      "author": "Антон Чехов",
+      "format": "epub",
+      "mime_type": "application/epub+zip",
+      "file": "../../packages/app-expo/assets/catalog/seagull.epub"
+    },
+    {
+      "catalog_key": "cherry-orchard",
+      "title": "Вишнёвый сад",
+      "author": "Антон Чехов",
+      "format": "epub",
+      "mime_type": "application/epub+zip",
+      "file": "../../packages/app-expo/assets/catalog/cherry-orchard.epub"
+    },
+    {
+      "catalog_key": "thunderstorm",
+      "title": "Гроза",
+      "author": "Александр Островский",
+      "format": "epub",
+      "mime_type": "application/epub+zip",
+      "file": "../../packages/app-expo/assets/catalog/thunderstorm.epub"
+    }
+  ]
+}

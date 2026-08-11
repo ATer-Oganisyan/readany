@@ -43,7 +43,7 @@ test('object storage signs checksum-bound uploads and verifies the provider chec
     }
   })
   const upload = await storage.createUpload({
-    objectKey: 'books/private/reader/hash/source',
+    objectKey: 'books/catalog/book/hash/source',
     contentSha256: HASH,
     mimeType: 'application/epub+zip',
     byteSize: 128
@@ -54,7 +54,7 @@ test('object storage signs checksum-bound uploads and verifies the provider chec
   assert.equal(signingOptions.signableHeaders.has('content-type'), true)
   assert.equal(signingOptions.unhoistableHeaders.has('x-amz-checksum-sha256'), true)
   assert.deepEqual(await storage.verifyUpload({
-    objectKey: 'books/private/reader/hash/source',
+    objectKey: 'books/catalog/book/hash/source',
     contentSha256: HASH,
     mimeType: 'application/epub+zip',
     byteSize: 128
@@ -75,7 +75,7 @@ test('object storage rejects an upload whose bytes do not match the binding', as
     bucket: 'readany-books'
   })
   await assert.rejects(() => storage.verifyUpload({
-    objectKey: 'books/private/reader/hash/source',
+    objectKey: 'books/catalog/book/hash/source',
     contentSha256: HASH,
     mimeType: 'application/epub+zip',
     byteSize: 128
@@ -96,7 +96,7 @@ test('object storage never treats client-controlled metadata as a verified check
     bucket: 'readany-books'
   })
   await assert.rejects(() => storage.verifyUpload({
-    objectKey: 'books/private/reader/hash/source',
+    objectKey: 'books/catalog/book/hash/source',
     contentSha256: HASH,
     mimeType: 'application/epub+zip',
     byteSize: 128
@@ -166,4 +166,21 @@ test('object storage refuses to buffer an oversized object', async () => {
     () => storage.getBytes({ objectKey: 'books/private/source.txt', maxBytes: 10 }),
     /allowed read size/
   )
+})
+
+test('object storage deletes generated materials in one explicit batch', async () => {
+  let command
+  const storage = createBookObjectStorage({
+    client: { async send(candidate) { command = candidate; return {} } },
+    bucket: 'readany-books'
+  })
+  assert.deepEqual(await storage.deleteObjects([
+    'generated/private/portrait.png',
+    'generated/private/voice.mp3',
+    'generated/private/portrait.png'
+  ]), { deleted: 2 })
+  assert.deepEqual(command.input.Delete.Objects, [
+    { Key: 'generated/private/portrait.png' },
+    { Key: 'generated/private/voice.mp3' }
+  ])
 })

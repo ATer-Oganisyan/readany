@@ -6,9 +6,9 @@ import {
   type BackendBookBinding,
   type BackendBookManifest,
   advanceBackendReaderProgress,
-  beginPrivateBackendUpload,
-  completePrivateBackendUpload,
   fetchBackendBookManifest,
+  publishLocalBackendMarkup,
+  registerLocalBackendBook,
   resolveLocalBackendBook,
 } from "./backend-book-api";
 import { loadCachedBackendCharacters, materializeBackendManifest } from "./backend-book-cache";
@@ -20,29 +20,21 @@ const SUPPORTED_FORMATS = new Set(["epub", "fb2", "txt", "pdf"]);
 
 export interface BackendBookCoordinatorApi {
   resolve(contentSha256: string): Promise<BackendBookBinding>;
-  beginUpload(
-    book: Book,
-    contentSha256: string,
-    byteSize: number,
-  ): Promise<
-    BackendBookBinding & {
-      upload?: { url: string; headers: Record<string, string> };
-    }
-  >;
-  completeUpload(bookEditionId: string): Promise<BackendBookBinding>;
+  register(book: Book, contentSha256: string): Promise<BackendBookBinding>;
+  publish(bookEditionId: string, characters: NarraCharacter[]): Promise<BackendBookBinding>;
   advance(bookEditionId: string, progressFraction: number, chapterKey?: string): Promise<void>;
   manifest(bookEditionId: string): Promise<BackendBookManifest>;
 }
 
 export interface BackendBookCoordinatorFiles {
-  describe(book: Book): Promise<{ path: string; byteSize: number; contentSha256: string }>;
-  upload(url: string, path: string, headers: Record<string, string>): Promise<void>;
+  describe(book: Book): Promise<{ contentSha256: string }>;
   loadCached(bookId: string): Promise<NarraCharacter[]>;
   materialize(bookId: string, manifest: BackendBookManifest): Promise<NarraCharacter[]>;
 }
 
 export interface BackendBookCoordinatorState {
   getBinding(bookId: string): BackendBookBinding | undefined;
+  getCharacters(bookId: string): NarraCharacter[];
   setBinding(bookId: string, binding: BackendBookBinding): void;
   setCharacters(bookId: string, characters: NarraCharacter[]): void;
   updateBookHash(bookId: string, contentSha256: string): Promise<void>;
@@ -76,7 +68,10 @@ export function createBackendBookCoordinator({
     if (
       current?.bookEditionId &&
       SHA256.test(current.contentSha256) &&
-      book.fileHash === current.contentSha256
+      book.fileHash === current.contentSha256 &&
+      (current.resolution === "catalog" ||
+        !current.expiresAt ||
+        Date.parse(current.expiresAt) > Date.now())
     ) {
       return current;
     }
@@ -92,15 +87,8 @@ export function createBackendBookCoordinator({
         await state.updateBookHash(book.id, file.contentSha256);
       }
       let resolved = await api.resolve(file.contentSha256);
-      if (resolved.resolution === "private_upload_required") {
-        const prepared = await api.beginUpload(book, file.contentSha256, file.byteSize);
-        if (prepared.upload) {
-          await files.upload(prepared.upload.url, file.path, prepared.upload.headers);
-          if (!prepared.bookEditionId) throw new Error("Backend upload returned no edition id");
-          resolved = await api.completeUpload(prepared.bookEditionId);
-        } else {
-          resolved = prepared;
-        }
+      if (resolved.resolution === "local_registration_required") {
+        resolved = await api.register(book, file.contentSha256);
       }
       if (!resolved.bookEditionId) throw new Error("Backend resolve returned no edition id");
       state.setBinding(book.id, resolved);
@@ -123,6 +111,10 @@ export function createBackendBookCoordinator({
       const binding = await ensureBinding(book);
       const bookEditionId = binding.bookEditionId;
       if (!bookEditionId) throw new Error("Backend binding has no edition id");
+      const localCharacters = state.getCharacters(book.id);
+      if (binding.resolution === "private" && localCharacters.length) {
+        state.setBinding(book.id, await api.publish(bookEditionId, localCharacters));
+      }
       await applyManifest(book.id, await api.manifest(bookEditionId));
     } catch (error) {
       state.reportError("book_open", error);
@@ -139,6 +131,14 @@ export function createBackendBookCoordinator({
     if (!bookEditionId) throw new Error("Backend binding has no edition id");
     await api.advance(bookEditionId, progressFraction, chapterKey);
     await applyManifest(book.id, await api.manifest(bookEditionId));
+  }
+
+  async function syncLocalMarkup(book: Book, characters: NarraCharacter[]): Promise<void> {
+    if (!characters.length) return;
+    const binding = await ensureBinding(book);
+    if (binding.resolution !== "private") return;
+    if (!binding.bookEditionId) throw new Error("Backend binding has no edition id");
+    state.setBinding(book.id, await api.publish(binding.bookEditionId, characters));
   }
 
   function flush(bookId: string): Promise<void> {
@@ -173,13 +173,13 @@ export function createBackendBookCoordinator({
     pending.set(book.id, next);
   }
 
-  return { ensureBinding, open, syncProgress, queueProgress, flush };
+  return { ensureBinding, open, syncLocalMarkup, syncProgress, queueProgress, flush };
 }
 
 const defaultApi: BackendBookCoordinatorApi = {
   resolve: resolveLocalBackendBook,
-  beginUpload: beginPrivateBackendUpload,
-  completeUpload: completePrivateBackendUpload,
+  register: registerLocalBackendBook,
+  publish: publishLocalBackendMarkup,
   advance: advanceBackendReaderProgress,
   manifest: fetchBackendBookManifest,
 };
@@ -194,12 +194,7 @@ const defaultFiles: BackendBookCoordinatorFiles = {
     const LegacyFileSystem = await import("expo-file-system/legacy");
     const info = await LegacyFileSystem.getInfoAsync(path);
     if (!info.exists || info.isDirectory || !info.size) throw new Error("Book file is unavailable");
-    return { path, byteSize: info.size, contentSha256: await sha256BackendFile(path) };
-  },
-  async upload(url, path, headers) {
-    const platform = getPlatformService();
-    if (!platform.uploadFile) throw new Error("Background upload is unavailable");
-    await platform.uploadFile(url, path, { headers, background: true });
+    return { contentSha256: await sha256BackendFile(path) };
   },
   loadCached: loadCachedBackendCharacters,
   materialize: materializeBackendManifest,
@@ -208,6 +203,9 @@ const defaultFiles: BackendBookCoordinatorFiles = {
 const defaultState: BackendBookCoordinatorState = {
   getBinding(bookId) {
     return useNarraStore.getState().books[bookId]?.backendBinding;
+  },
+  getCharacters(bookId) {
+    return useNarraStore.getState().books[bookId]?.characters ?? [];
   },
   setBinding(bookId, binding) {
     useNarraStore.getState().setBackendBinding(bookId, binding);
@@ -234,6 +232,10 @@ const coordinator = createBackendBookCoordinator({
 
 export function openBackendBookSync(book: Book): Promise<void> {
   return coordinator.open(book);
+}
+
+export function syncLocalBookMarkup(book: Book, characters: NarraCharacter[]): Promise<void> {
+  return coordinator.syncLocalMarkup(book, characters);
 }
 
 export function queueBackendReaderProgress(

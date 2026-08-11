@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import {
   BOOK_MARKUP_ANALYSIS_VERSION,
   BOOK_MARKUP_SCHEMA_VERSION,
@@ -54,6 +54,10 @@ function editionRow(row) {
     author: row.author,
     format: row.format,
     status: row.status,
+    sourceStorage: row.source_storage || 'stored',
+    expiresAt: row.expires_at == null
+      ? null
+      : row.expires_at instanceof Date ? row.expires_at.toISOString() : String(row.expires_at),
     createdAt: row.created_at instanceof Date
       ? row.created_at.toISOString()
       : String(row.created_at)
@@ -75,9 +79,64 @@ async function requireLeasedJob(client, job) {
  * PostgreSQL implementation without a hard dependency on one driver. Pass a
  * pg-compatible Pool exposing connect(), query() and client.release().
  */
-export function createPostgresBookMarkupRepository(pool, { idFactory = randomUUID } = {}) {
+export function createPostgresBookMarkupRepository(pool, {
+  idFactory = randomUUID,
+  privateMaterialTtlDays = 7
+} = {}) {
   if (!pool || typeof pool.connect !== 'function' || typeof pool.query !== 'function') {
     throw new TypeError('a pg-compatible pool is required')
+  }
+  if (!Number.isSafeInteger(privateMaterialTtlDays) || privateMaterialTtlDays < 1 || privateMaterialTtlDays > 365) {
+    throw new RangeError('privateMaterialTtlDays must be between 1 and 365')
+  }
+
+  async function touchPrivateRetention(client, bookEditionId) {
+    await client.query(
+      `WITH touched AS (
+         UPDATE book_editions
+         SET expires_at = now() + make_interval(days => $2), updated_at = now()
+         WHERE id = $1 AND scope = 'private' AND source_storage = 'local_only'
+         RETURNING id, expires_at
+       ), markup AS (
+         UPDATE book_markup_versions AS value
+         SET expires_at = touched.expires_at
+         FROM touched WHERE value.book_edition_id = touched.id
+       ), bundles AS (
+         UPDATE character_media_bundles AS value
+         SET expires_at = touched.expires_at, updated_at = now()
+         FROM touched WHERE value.book_edition_id = touched.id
+       )
+       UPDATE media_assets AS value
+       SET expires_at = touched.expires_at
+       FROM touched WHERE value.book_edition_id = touched.id`,
+      [bookEditionId, privateMaterialTtlDays]
+    )
+  }
+
+  async function queueBookObjectDeletions(client, bookEditionIds) {
+    const media = await client.query(
+      'SELECT object_key FROM media_assets WHERE book_edition_id = ANY($1::uuid[])',
+      [bookEditionIds]
+    )
+    const jobs = await client.query(
+      'SELECT idempotency_key FROM generation_jobs WHERE book_edition_id = ANY($1::uuid[])',
+      [bookEditionIds]
+    )
+    const objectKeys = [...new Set([
+      ...media.rows.map((row) => row.object_key),
+      ...jobs.rows.map((row) =>
+        `generated/cache/${createHash('sha256').update(row.idempotency_key).digest('hex')}.json`
+      )
+    ])]
+    if (!objectKeys.length) return 0
+    const queued = await client.query(
+      `INSERT INTO book_object_deletions (object_key)
+       SELECT unnest($1::text[])
+       ON CONFLICT (object_key) DO NOTHING
+       RETURNING object_key`,
+      [objectKeys]
+    )
+    return queued.rows.length
   }
 
   async function ensureJob({
@@ -113,9 +172,173 @@ export function createPostgresBookMarkupRepository(pool, { idFactory = randomUUI
   }
 
   return {
-    async beginPrivateBookUpload({
+    async registerLocalBook({
       subjectId,
       proposedBookEditionId,
+      contentSha256,
+      title,
+      author,
+      format
+    }) {
+      return transaction(pool, async (client) => {
+        const catalog = await client.query(
+          `SELECT id, scope, catalog_key, content_sha256, title, author, format,
+                  status, source_storage, expires_at, created_at
+           FROM book_editions
+           WHERE scope = 'catalog' AND content_sha256 = $1
+             AND status IN ('base_ready', 'published')
+           LIMIT 1`,
+          [contentSha256]
+        )
+        if (catalog.rows[0]) return editionRow(catalog.rows[0])
+
+        const existing = await client.query(
+          `SELECT id, expires_at
+           FROM book_editions
+           WHERE scope = 'private' AND owner_subject_id = $1::uuid
+             AND content_sha256 = $2
+           FOR UPDATE`,
+          [subjectId, contentSha256]
+        )
+        if (existing.rows[0]?.expires_at && new Date(existing.rows[0].expires_at) <= new Date()) {
+          await queueBookObjectDeletions(client, [existing.rows[0].id])
+          await client.query('DELETE FROM book_editions WHERE id = $1', [existing.rows[0].id])
+        }
+
+        await client.query(
+          `INSERT INTO book_editions (
+             id, scope, owner_subject_id, content_sha256, title, author, format,
+             status, source_storage, expires_at
+           ) VALUES (
+             $1, 'private', $2::uuid, $3, $4, $5, $6,
+             'marking_up', 'local_only', now() + make_interval(days => $7)
+           )
+           ON CONFLICT (owner_subject_id, content_sha256) WHERE scope = 'private'
+           DO UPDATE SET
+             title = EXCLUDED.title,
+             author = EXCLUDED.author,
+             format = EXCLUDED.format,
+             source_storage = 'local_only',
+             expires_at = now() + make_interval(days => $7),
+             updated_at = now()`,
+          [
+            proposedBookEditionId, subjectId, contentSha256, title, author, format,
+            privateMaterialTtlDays
+          ]
+        )
+        const result = await client.query(
+          `SELECT id, scope, catalog_key, content_sha256, title, author, format,
+                  status, source_storage, expires_at, created_at
+           FROM book_editions
+           WHERE scope = 'private' AND owner_subject_id = $1::uuid
+             AND content_sha256 = $2`,
+          [subjectId, contentSha256]
+        )
+        await touchPrivateRetention(client, result.rows[0].id)
+        return editionRow(result.rows[0])
+      })
+    },
+
+    async publishLocalBookMarkup({
+      subjectId,
+      bookEditionId,
+      analysisVersion,
+      inputHash,
+      textLength,
+      characters
+    }) {
+      return transaction(pool, async (client) => {
+        const editionResult = await client.query(
+          `SELECT id, scope, catalog_key, content_sha256, title, author, format,
+                  status, source_storage, expires_at, created_at
+           FROM book_editions
+           WHERE id = $1 AND scope = 'private' AND owner_subject_id = $2::uuid
+             AND source_storage = 'local_only' AND expires_at > now()
+           FOR UPDATE`,
+          [bookEditionId, subjectId]
+        )
+        if (!editionResult.rows[0]) return null
+        const existing = await client.query(
+          `SELECT id, revision
+           FROM book_markup_versions
+           WHERE book_edition_id = $1 AND status = 'published'
+             AND analysis_version = $2 AND input_hash = $3
+           LIMIT 1`,
+          [bookEditionId, analysisVersion, inputHash]
+        )
+        if (existing.rows[0]) {
+          await touchPrivateRetention(client, bookEditionId)
+          return {
+            edition: editionRow(editionResult.rows[0]),
+            markupId: existing.rows[0].id,
+            revision: Number(existing.rows[0].revision),
+            created: false
+          }
+        }
+
+        const revisionResult = await client.query(
+          `SELECT COALESCE(MAX(revision), 0) + 1 AS revision
+           FROM book_markup_versions WHERE book_edition_id = $1`,
+          [bookEditionId]
+        )
+        const revision = Number(revisionResult.rows[0].revision)
+        const markupId = idFactory()
+        await client.query(
+          `UPDATE book_markup_versions SET status = 'ready'
+           WHERE book_edition_id = $1 AND status = 'published'`,
+          [bookEditionId]
+        )
+        await client.query(
+          `INSERT INTO book_markup_versions (
+             id, book_edition_id, schema_version, analysis_version, revision,
+             status, input_hash, text_length, published_at, expires_at
+           ) VALUES (
+             $1, $2, $3, $4, $5, 'published', $6, $7, now(),
+             now() + make_interval(days => $8)
+           )`,
+          [
+            markupId, bookEditionId, BOOK_MARKUP_SCHEMA_VERSION, analysisVersion,
+            revision, inputHash, textLength, privateMaterialTtlDays
+          ]
+        )
+        for (const [index, character] of characters.entries()) {
+          await client.query(
+            `INSERT INTO book_characters (
+               id, markup_version_id, character_key, sort_order, name, full_name,
+               first_appearance_text_offset, warmup_text_offset, data
+             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)`,
+            [
+              idFactory(), markupId, character.characterKey, index,
+              character.name, character.fullName,
+              character.firstAppearanceTextOffset, character.warmupTextOffset,
+              JSON.stringify(character.profile)
+            ]
+          )
+        }
+        await client.query(
+          `UPDATE book_editions
+           SET status = 'base_ready', expires_at = now() + make_interval(days => $2),
+               updated_at = now()
+           WHERE id = $1`,
+          [bookEditionId, privateMaterialTtlDays]
+        )
+        await touchPrivateRetention(client, bookEditionId)
+        return {
+          edition: editionRow({
+            ...editionResult.rows[0],
+            status: 'base_ready',
+            expires_at: new Date(Date.now() + privateMaterialTtlDays * 86_400_000)
+          }),
+          markupId,
+          revision,
+          created: true
+        }
+      })
+    },
+
+    async beginCatalogBookUpload({
+      proposedBookEditionId,
+      catalogKey,
       contentSha256,
       title,
       author,
@@ -125,44 +348,36 @@ export function createPostgresBookMarkupRepository(pool, { idFactory = randomUUI
       byteSize
     }) {
       return transaction(pool, async (client) => {
-        const catalog = await client.query(
+        const existingResult = await client.query(
           `SELECT id, scope, catalog_key, content_sha256, title, author, format,
-                  status, created_at
+                  status, source_storage, expires_at, created_at
            FROM book_editions
-           WHERE scope = 'catalog' AND content_sha256 = $1
-             AND status IN ('base_ready', 'published')
-           LIMIT 1`,
-          [contentSha256]
-        )
-        if (catalog.rows[0]) {
-          return { edition: editionRow(catalog.rows[0]), uploadRequired: false, fileReady: true }
-        }
-        await client.query(
-          `INSERT INTO book_editions (
-             id, scope, owner_subject_id, content_sha256, title, author, format, status
-           ) VALUES ($1, 'private', $2::uuid, $3, $4, $5, $6, 'uploading')
-           ON CONFLICT (owner_subject_id, content_sha256) WHERE scope = 'private'
-           DO NOTHING`,
-          [proposedBookEditionId, subjectId, contentSha256, title, author, format]
-        )
-        const editionResult = await client.query(
-          `SELECT id, scope, catalog_key, content_sha256, title, author, format,
-                  status, created_at
-           FROM book_editions
-           WHERE scope = 'private' AND owner_subject_id = $1::uuid
-             AND content_sha256 = $2
+           WHERE scope = 'catalog' AND catalog_key = $1
            FOR UPDATE`,
-          [subjectId, contentSha256]
+          [catalogKey]
         )
-        const edition = editionRow(editionResult.rows[0])
-        if (!edition) throw new Error('private book upload disappeared')
+        const existing = existingResult.rows[0]
+        if (existing && existing.content_sha256 !== contentSha256) {
+          throw Object.assign(new Error('catalog key already belongs to different source bytes'), {
+            code: 'CATALOG_CONFLICT', status: 409
+          })
+        }
+        if (!existing) {
+          await client.query(
+            `INSERT INTO book_editions (
+               id, scope, catalog_key, content_sha256, title, author, format,
+               status, source_storage
+             ) VALUES ($1, 'catalog', $2, $3, $4, $5, $6, 'uploading', 'stored')`,
+            [proposedBookEditionId, catalogKey, contentSha256, title, author, format]
+          )
+        }
+        const editionId = existing?.id || proposedBookEditionId
         const fileResult = await client.query(
-          `SELECT object_key, mime_type, byte_size, content_hash, status
-           FROM book_files WHERE book_edition_id = $1`,
-          [edition.id]
+          'SELECT status FROM book_files WHERE book_edition_id = $1',
+          [editionId]
         )
         if (fileResult.rows[0]?.status === 'ready') {
-          return { edition, uploadRequired: false, fileReady: true }
+          return { edition: editionRow(existing), uploadRequired: false, fileReady: true }
         }
         await client.query(
           `INSERT INTO book_files (
@@ -174,15 +389,16 @@ export function createPostgresBookMarkupRepository(pool, { idFactory = randomUUI
              byte_size = EXCLUDED.byte_size,
              content_hash = EXCLUDED.content_hash,
              status = 'staging'`,
-          [edition.id, objectKey, mimeType, byteSize, contentSha256]
+          [editionId, objectKey, mimeType, byteSize, contentSha256]
         )
-        await client.query(
-          `UPDATE book_editions SET status = 'uploading', updated_at = now()
-           WHERE id = $1`,
-          [edition.id]
+        const editionResult = await client.query(
+          `SELECT id, scope, catalog_key, content_sha256, title, author, format,
+                  status, source_storage, expires_at, created_at
+           FROM book_editions WHERE id = $1`,
+          [editionId]
         )
         return {
-          edition: { ...edition, status: 'uploading' },
+          edition: editionRow(editionResult.rows[0]),
           uploadRequired: true,
           fileReady: false,
           file: { objectKey, mimeType, byteSize, contentSha256 }
@@ -190,18 +406,18 @@ export function createPostgresBookMarkupRepository(pool, { idFactory = randomUUI
       })
     },
 
-    async getPrivateBookUpload({ subjectId, bookEditionId }) {
+    async getCatalogBookUpload({ bookEditionId }) {
       const result = await pool.query(
         `SELECT edition.id, edition.scope, edition.catalog_key,
                 edition.content_sha256, edition.title, edition.author,
-                edition.format, edition.status, edition.created_at,
+                edition.format, edition.status, edition.source_storage,
+                edition.expires_at, edition.created_at,
                 file.object_key, file.mime_type, file.byte_size,
                 file.content_hash, file.status AS file_status
          FROM book_editions AS edition
          JOIN book_files AS file ON file.book_edition_id = edition.id
-         WHERE edition.id = $1 AND edition.scope = 'private'
-           AND edition.owner_subject_id = $2::uuid`,
-        [bookEditionId, subjectId]
+         WHERE edition.id = $1 AND edition.scope = 'catalog'`,
+        [bookEditionId]
       )
       const row = result.rows[0]
       if (!row) return null
@@ -217,16 +433,15 @@ export function createPostgresBookMarkupRepository(pool, { idFactory = randomUUI
       }
     },
 
-    async completePrivateBookUpload({ subjectId, bookEditionId }) {
+    async completeCatalogBookUpload({ bookEditionId }) {
       return transaction(pool, async (client) => {
         const result = await client.query(
-          `SELECT edition.id, file.status AS file_status
+          `SELECT edition.id
            FROM book_editions AS edition
            JOIN book_files AS file ON file.book_edition_id = edition.id
-           WHERE edition.id = $1 AND edition.scope = 'private'
-             AND edition.owner_subject_id = $2::uuid
+           WHERE edition.id = $1 AND edition.scope = 'catalog'
            FOR UPDATE OF edition, file`,
-          [bookEditionId, subjectId]
+          [bookEditionId]
         )
         if (!result.rows[0]) return null
         await client.query(
@@ -234,17 +449,13 @@ export function createPostgresBookMarkupRepository(pool, { idFactory = randomUUI
           [bookEditionId]
         )
         await client.query(
-          `UPDATE book_editions
-           SET status = CASE
-             WHEN status IN ('uploading', 'failed', 'draft') THEN 'marking_up'
-             ELSE status
-           END, updated_at = now()
-           WHERE id = $1`,
+          `UPDATE book_editions SET status = 'marking_up', updated_at = now()
+           WHERE id = $1 AND status IN ('draft', 'uploading', 'failed')`,
           [bookEditionId]
         )
         const edition = await client.query(
           `SELECT id, scope, catalog_key, content_sha256, title, author, format,
-                  status, created_at
+                  status, source_storage, expires_at, created_at
            FROM book_editions WHERE id = $1`,
           [bookEditionId]
         )
@@ -252,17 +463,15 @@ export function createPostgresBookMarkupRepository(pool, { idFactory = randomUUI
       })
     },
 
-    async getReaderBookSource({ subjectId, bookEditionId }) {
+    async getReaderBookSource({ bookEditionId }) {
       const result = await pool.query(
         `SELECT file.object_key, file.mime_type, file.byte_size, file.content_hash,
                 edition.title, edition.format
          FROM book_editions AS edition
          JOIN book_files AS file ON file.book_edition_id = edition.id AND file.status = 'ready'
-         WHERE edition.id = $1 AND (
-           (edition.scope = 'catalog' AND edition.status IN ('base_ready', 'published')) OR
-           (edition.scope = 'private' AND edition.owner_subject_id = $2::uuid)
-         )`,
-        [bookEditionId, subjectId]
+         WHERE edition.id = $1 AND edition.scope = 'catalog'
+           AND edition.status IN ('base_ready', 'published')`,
+        [bookEditionId]
       )
       const row = result.rows[0]
       if (!row) return null
@@ -281,47 +490,51 @@ export function createPostgresBookMarkupRepository(pool, { idFactory = randomUUI
       assetId,
       bundleVersion = CHARACTER_BUNDLE_VERSION
     }) {
-      const result = await pool.query(
-        `SELECT asset.id, asset.object_key, asset.type, asset.content_hash,
-                asset.mime_type, asset.byte_size
-         FROM book_editions AS edition
-         JOIN book_markup_versions AS markup
-           ON markup.book_edition_id = edition.id AND markup.status = 'published'
-         JOIN book_characters AS character ON character.markup_version_id = markup.id
-         JOIN character_media_bundles AS bundle
-           ON bundle.book_edition_id = edition.id
-          AND bundle.character_key = character.character_key
-          AND bundle.bundle_version = $4
-          AND bundle.status = 'ready'
-         JOIN character_bundle_assets AS link ON link.bundle_id = bundle.id
-         JOIN media_assets AS asset
-           ON asset.id = link.asset_id AND asset.status = 'ready'
-         LEFT JOIN reader_book_positions AS position
-           ON position.subject_id = $2::uuid AND position.book_edition_id = edition.id
-         WHERE edition.id = $1 AND asset.id = $3::uuid
-           AND COALESCE(position.text_offset, 0) >= character.first_appearance_text_offset
-           AND (
-             (edition.scope = 'catalog' AND edition.status IN ('base_ready', 'published')) OR
-             (edition.scope = 'private' AND edition.owner_subject_id = $2::uuid)
-           )`,
-        [bookEditionId, subjectId, assetId, bundleVersion]
-      )
-      const row = result.rows[0]
-      if (!row) return null
-      return {
-        assetId: row.id,
-        objectKey: row.object_key,
-        type: row.type,
-        contentHash: row.content_hash,
-        mimeType: row.mime_type,
-        byteSize: Number(row.byte_size)
-      }
+      return transaction(pool, async (client) => {
+        const result = await client.query(
+          `SELECT asset.id, asset.object_key, asset.type, asset.content_hash,
+                  asset.mime_type, asset.byte_size, edition.scope
+           FROM book_editions AS edition
+           JOIN book_markup_versions AS markup
+             ON markup.book_edition_id = edition.id AND markup.status = 'published'
+           JOIN book_characters AS character ON character.markup_version_id = markup.id
+           JOIN character_media_bundles AS bundle
+             ON bundle.book_edition_id = edition.id
+            AND bundle.character_key = character.character_key
+            AND bundle.bundle_version = $4
+            AND bundle.status = 'ready'
+           JOIN character_bundle_assets AS link ON link.bundle_id = bundle.id
+           JOIN media_assets AS asset
+             ON asset.id = link.asset_id AND asset.status = 'ready'
+           LEFT JOIN reader_book_positions AS position
+             ON position.subject_id = $2::uuid AND position.book_edition_id = edition.id
+           WHERE edition.id = $1 AND asset.id = $3::uuid
+             AND COALESCE(position.text_offset, 0) >= character.first_appearance_text_offset
+             AND (
+               (edition.scope = 'catalog' AND edition.status IN ('base_ready', 'published')) OR
+               (edition.scope = 'private' AND edition.owner_subject_id = $2::uuid
+                 AND edition.source_storage = 'local_only' AND edition.expires_at > now())
+             )`,
+          [bookEditionId, subjectId, assetId, bundleVersion]
+        )
+        const row = result.rows[0]
+        if (!row) return null
+        if (row.scope === 'private') await touchPrivateRetention(client, bookEditionId)
+        return {
+          assetId: row.id,
+          objectKey: row.object_key,
+          type: row.type,
+          contentHash: row.content_hash,
+          mimeType: row.mime_type,
+          byteSize: Number(row.byte_size)
+        }
+      })
     },
 
     async listCatalogBooks({ limit, cursor = null }) {
       const result = await pool.query(
         `SELECT id, scope, catalog_key, content_sha256, title, author, format,
-                status, created_at
+                status, source_storage, expires_at, created_at
          FROM book_editions
          WHERE scope = 'catalog' AND status IN ('base_ready', 'published')
            AND (
@@ -347,45 +560,52 @@ export function createPostgresBookMarkupRepository(pool, { idFactory = randomUUI
       if (source === 'catalog') {
         const result = await pool.query(
           `SELECT id, scope, catalog_key, content_sha256, title, author, format,
-                  status, created_at
+                  status, source_storage, expires_at, created_at
            FROM book_editions
            WHERE scope = 'catalog' AND catalog_key = $1
-             AND status IN ('base_ready', 'published')
+             AND status <> 'failed'
            LIMIT 1`,
           [catalogKey]
         )
         return editionRow(result.rows[0])
       }
-      const result = await pool.query(
-        `SELECT id, scope, catalog_key, content_sha256, title, author, format,
-                status, created_at
-         FROM book_editions
-         WHERE content_sha256 = $2 AND (
-           (scope = 'catalog' AND status IN ('base_ready', 'published')) OR
-           (scope = 'private' AND owner_subject_id = $1::uuid)
-         )
-         ORDER BY CASE WHEN scope = 'catalog' THEN 0 ELSE 1 END, created_at DESC
-         LIMIT 1`,
-        [subjectId, contentSha256]
-      )
-      return editionRow(result.rows[0])
+      return transaction(pool, async (client) => {
+        const result = await client.query(
+          `SELECT id, scope, catalog_key, content_sha256, title, author, format,
+                  status, source_storage, expires_at, created_at
+           FROM book_editions
+           WHERE content_sha256 = $2 AND (
+             (scope = 'catalog' AND status IN ('base_ready', 'published')) OR
+             (scope = 'private' AND owner_subject_id = $1::uuid
+               AND source_storage = 'local_only' AND expires_at > now())
+           )
+           ORDER BY CASE WHEN scope = 'catalog' THEN 0 ELSE 1 END, created_at DESC
+           LIMIT 1`,
+          [subjectId, contentSha256]
+        )
+        const edition = editionRow(result.rows[0])
+        if (edition?.scope === 'private') await touchPrivateRetention(client, edition.id)
+        return edition
+      })
     },
 
     async getReaderBookManifest({ subjectId, bookEditionId, bundleVersion }) {
       return transaction(pool, async (client) => {
         const editionResult = await client.query(
           `SELECT id, scope, catalog_key, content_sha256, title, author, format,
-                  status, created_at
+                  status, source_storage, expires_at, created_at
            FROM book_editions
            WHERE id = $1 AND (
              (scope = 'catalog' AND status IN ('base_ready', 'published')) OR
-             (scope = 'private' AND owner_subject_id = $2::uuid)
+             (scope = 'private' AND owner_subject_id = $2::uuid
+               AND source_storage = 'local_only' AND expires_at > now())
            )
            FOR SHARE`,
           [bookEditionId, subjectId]
         )
         const edition = editionRow(editionResult.rows[0])
         if (!edition) return null
+        if (edition.scope === 'private') await touchPrivateRetention(client, edition.id)
         const positionResult = await client.query(
           `SELECT text_offset, reading_fraction
            FROM reader_book_positions
@@ -493,12 +713,14 @@ export function createPostgresBookMarkupRepository(pool, { idFactory = randomUUI
              ON markup.book_edition_id = edition.id AND markup.status = 'published'
            WHERE edition.id = $1 AND (
              (edition.scope = 'catalog' AND edition.status IN ('base_ready', 'published')) OR
-             (edition.scope = 'private' AND edition.owner_subject_id = $2::uuid)
+             (edition.scope = 'private' AND edition.owner_subject_id = $2::uuid
+               AND edition.source_storage = 'local_only' AND edition.expires_at > now())
            )
            FOR SHARE OF edition`,
           [bookEditionId, subjectId]
         )
         if (!edition.rows[0]) return null
+        await touchPrivateRetention(client, bookEditionId)
         const textLength = edition.rows[0].text_length == null
           ? null
           : Number(edition.rows[0].text_length)
@@ -642,12 +864,17 @@ export function createPostgresBookMarkupRepository(pool, { idFactory = randomUUI
       })
       await pool.query(
         `INSERT INTO character_media_bundles (
-           id, book_edition_id, character_key, bundle_version, job_id, status
-         ) VALUES ($1, $2, $3, $4, $5, $6)
+           id, book_edition_id, character_key, bundle_version, job_id, status, expires_at
+         ) VALUES (
+           $1, $2, $3, $4, $5, $6,
+           CASE WHEN EXISTS (
+             SELECT 1 FROM book_editions WHERE id = $2 AND scope = 'private'
+           ) THEN now() + make_interval(days => $7) ELSE NULL END
+         )
          ON CONFLICT (book_edition_id, character_key, bundle_version) DO NOTHING`,
         [
           idFactory(), bookEditionId, characterKey, bundleVersion,
-          ensured.row.id, ensured.row.status
+          ensured.row.id, ensured.row.status, privateMaterialTtlDays
         ]
       )
       return { ...jobRow(ensured.row), created: ensured.created, idempotencyKey }
@@ -687,6 +914,66 @@ export function createPostgresBookMarkupRepository(pool, { idFactory = randomUUI
         }
         return retried.rows.map((row) => jobRow(row))
       })
+    },
+
+    async purgeExpiredPrivateEditions({ limit = 100 } = {}) {
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1_000) {
+        throw new RangeError('cleanup limit must be between 1 and 1000')
+      }
+      return transaction(pool, async (client) => {
+        const candidates = await client.query(
+          `SELECT id
+           FROM book_editions
+           WHERE scope = 'private' AND source_storage = 'local_only'
+             AND expires_at <= now()
+           ORDER BY expires_at, id
+           FOR UPDATE SKIP LOCKED
+           LIMIT $1`,
+          [limit]
+        )
+        const ids = candidates.rows.map((row) => row.id)
+        if (!ids.length) return { deletedEditions: 0, queuedObjects: 0 }
+        const queuedObjects = await queueBookObjectDeletions(client, ids)
+        await client.query(
+          'DELETE FROM book_editions WHERE id = ANY($1::uuid[])',
+          [ids]
+        )
+        return { deletedEditions: ids.length, queuedObjects }
+      })
+    },
+
+    async listBookObjectDeletions({ limit = 100 } = {}) {
+      const result = await pool.query(
+        `SELECT object_key
+         FROM book_object_deletions
+         ORDER BY requested_at, object_key
+         LIMIT $1`,
+        [limit]
+      )
+      return result.rows.map((row) => row.object_key)
+    },
+
+    async acknowledgeBookObjectDeletions(objectKeys) {
+      if (!Array.isArray(objectKeys) || !objectKeys.length) return 0
+      const result = await pool.query(
+        `DELETE FROM book_object_deletions
+         WHERE object_key = ANY($1::text[])
+         RETURNING object_key`,
+        [objectKeys]
+      )
+      return result.rows.length
+    },
+
+    async failBookObjectDeletions(objectKeys, errorCode) {
+      if (!Array.isArray(objectKeys) || !objectKeys.length) return 0
+      const result = await pool.query(
+        `UPDATE book_object_deletions
+         SET attempts = attempts + 1, last_error_code = $2, updated_at = now()
+         WHERE object_key = ANY($1::text[])
+         RETURNING object_key`,
+        [objectKeys, errorCode]
+      )
+      return result.rows.length
     },
 
     async claimGenerationJob(workerId, { leaseSeconds = 300 } = {}) {
@@ -881,17 +1168,25 @@ export function createPostgresBookMarkupRepository(pool, { idFactory = randomUUI
           const inserted = await client.query(
             `INSERT INTO media_assets (
                id, book_edition_id, visibility, type, object_key, content_hash,
-               mime_type, byte_size, status
-             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'ready')
+               mime_type, byte_size, status, expires_at
+             ) VALUES (
+               $1, $2, $3, $4, $5, $6, $7, $8, 'ready',
+               CASE WHEN $3 = 'private'
+                 THEN now() + make_interval(days => $9)
+                 ELSE NULL
+               END
+             )
              ON CONFLICT (object_key) DO UPDATE SET
                content_hash = EXCLUDED.content_hash,
                mime_type = EXCLUDED.mime_type,
                byte_size = EXCLUDED.byte_size,
-               status = 'ready'
+               status = 'ready',
+               expires_at = EXCLUDED.expires_at
              RETURNING id`,
             [
               assetId, job.bookEditionId, target.scope, asset.type,
-              asset.objectKey, asset.contentHash, asset.mimeType, asset.byteSize
+              asset.objectKey, asset.contentHash, asset.mimeType, asset.byteSize,
+              privateMaterialTtlDays
             ]
           )
           await client.query(
@@ -913,10 +1208,15 @@ export function createPostgresBookMarkupRepository(pool, { idFactory = randomUUI
         }
         await client.query(
           `UPDATE character_media_bundles
-           SET status = 'ready', published_at = now(), updated_at = now()
+           SET status = 'ready', published_at = now(), updated_at = now(),
+               expires_at = CASE WHEN $2 = 'private'
+                 THEN now() + make_interval(days => $3)
+                 ELSE NULL
+               END
            WHERE id = $1`,
-          [target.id]
+          [target.id, target.scope, privateMaterialTtlDays]
         )
+        if (target.scope === 'private') await touchPrivateRetention(client, job.bookEditionId)
         const missing = await client.query(
           `SELECT COUNT(*)::int AS count
            FROM book_markup_versions AS markup

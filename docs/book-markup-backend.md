@@ -62,7 +62,10 @@ All routes below require the existing installation bearer token:
   `published` state and uses an opaque keyset cursor;
 - `POST /v2/books/resolve` resolves a catalog key or a local SHA-256. A local
   hash reuses a ready catalog edition first, then the caller's private edition;
-  otherwise the result is `private_upload_required`;
+  otherwise the result is `local_registration_required`;
+- `POST /v2/books/local` registers only the local book's hash and metadata;
+- `POST /v2/books/:bookEditionId/local-markup` accepts only derived character
+  profiles and appearance fractions produced by the client;
 - `GET /v2/books/:bookEditionId/manifest` returns the published markup and only
   characters already visible to that reader;
 - `POST /v2/books/:bookEditionId/progress` advances the reader's text watermark
@@ -81,27 +84,23 @@ with the complete finite bundle. It never returns partial media.
 Private access is scoped to the installation subject until account identity is
 introduced. A private book owned by another subject resolves as not found.
 
-## Stage 4 private books and mobile delivery
+## Stage 4 local books and mobile delivery
 
 The app identifies a local book by the SHA-256 of its exact source bytes. It
-first calls `POST /v2/books/resolve`; this reuses a ready catalog edition or an
-existing private edition without uploading the book again. For a new private
-book the transfer is:
+first calls `POST /v2/books/resolve`; this reuses a catalog edition or the same
+installation's local-only edition. For a new user book the app registers hash,
+title, author and format with `POST /v2/books/local`. It keeps the source file
+and extracted chunks on-device. Character analysis uses the existing Gateway AI
+route, then `POST /v2/books/:bookEditionId/local-markup` publishes only derived
+profiles and fractional appearance anchors. Source bytes and extracted prose
+are not accepted by either endpoint and no `book_files` row exists for a
+private edition.
 
-1. `POST /v2/books/private/uploads` with metadata, byte size and SHA-256;
-2. native background `PUT` directly to a short-lived S3-compatible signed URL;
-3. `POST /v2/books/:bookEditionId/upload-complete`;
-4. full markup is queued and the manifest returns `processing` until published.
-
-The signed PUT binds content type and S3 checksum. Completion uses `HeadObject`
-to verify the exact stored byte size and accepts only the storage-provider
-checksum, not client-controlled object metadata. The gateway never proxies
-source book bytes and object keys are never exposed to the app.
-
-Source and media downloads use short-lived reader-authorized URLs:
-
-- `GET /v2/books/:bookEditionId/source/download`;
-- `GET /v2/books/:bookEditionId/media/:assetId/download`.
+The worker therefore never runs full book markup for local-only editions. It
+only creates character media after reader progress crosses a published warmup
+anchor. Media downloads use short-lived reader-authorized URLs at
+`GET /v2/books/:bookEditionId/media/:assetId/download`. The source download
+endpoint is catalog-only.
 
 Media authorization repeats the per-reader first-appearance check at download
 time, so a leaked asset ID is insufficient to reveal a future character.
@@ -114,10 +113,11 @@ verified by size and SHA-256 and the UI publishes the three local paths only as
 one complete bundle. A failed or incomplete download remains `preparing` and
 cannot expose partial media.
 
-The storage bucket must allow signed `PUT` and `GET` requests from the deployed
-clients and preserve the `Content-Type`, `x-amz-checksum-sha256` and
-`x-amz-meta-content_sha256` request headers. Production must set the
-`BOOK_STORAGE_*` variables and must not ship storage credentials in the app.
+Generated private markup, bundles and S3 objects have a sliding retention period
+(`PRIVATE_MATERIAL_TTL_DAYS`, seven days by default). Reader access extends it;
+an hourly cleanup transaction queues object deletions, removes expired database
+rows and retries failed S3 deletions. Production must set the `BOOK_STORAGE_*`
+variables and must not ship storage credentials in the app.
 On i167 this contract is provided by an internal-only MinIO service with a
 persistent Docker volume. Its root credential is used only by the one-shot
 bucket initializer; Gateway receives a separate application credential.
@@ -128,6 +128,13 @@ routes on the private Docker network. The second process is only
 `book-markup-worker.mjs`; it claims durable PostgreSQL jobs and calls those
 internal routes. If the external idle-video provider is absent, Gateway creates
 a short local MP4 animation from the generated portrait.
+
+Catalog source books are the only books uploaded to backend storage. An operator
+uses `POST /v2/admin/catalog/books/uploads`, uploads the exact bytes through the
+returned Gateway path, then calls the returned completion path. These routes
+require the independent `CATALOG_INGEST_TOKEN`. The checked-in catalog manifest
+can be ingested idempotently with `npm run seed:catalog`; completion queues full
+book markup for the worker.
 
 ## Stage 5 canonical progress and rollout
 
@@ -175,7 +182,7 @@ automatically during deploy. On Railway, create a second service from the same
 image with start command `node book-markup-worker.mjs`.
 
 The opt-in end-to-end test exercises a real PostgreSQL and S3-compatible store:
-signed upload, integrity verification, markup publication, fraction-to-offset
-conversion, private warmup, visibility gating and authorized media/source
-downloads. Its environment variables are listed in
+local-only registration, derived markup publication, fraction-to-offset
+conversion, private warmup, visibility gating and authorized temporary media.
+Its environment variables are listed in
 `test/book-backend.e2e.test.mjs`.

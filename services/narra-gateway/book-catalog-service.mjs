@@ -1,9 +1,11 @@
 import {
   CHARACTER_BUNDLE_VERSION,
+  LOCAL_MARKUP_ANALYSIS_VERSION,
+  LOCAL_MARKUP_PROGRESS_SCALE,
   ensureCharacterBundle,
   readerCharacterState
 } from './book-markup.mjs'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 
 function serviceError(code, message, status) {
   return Object.assign(new Error(message), { code, status })
@@ -33,7 +35,10 @@ function bookBinding(edition) {
     contentSha256: edition.contentSha256,
     generationStatus: edition.status,
     ready: ['base_ready', 'published'].includes(edition.status),
-    sourceDownloadPath: `/v2/books/${edition.id}/source/download`
+    sourceDownloadPath: edition.sourceStorage === 'stored'
+      ? `/v2/books/${edition.id}/source/download`
+      : undefined,
+    expiresAt: edition.expiresAt ?? undefined
   }
 }
 
@@ -72,7 +77,7 @@ export function createBookCatalogService({
       }
       if (!edition) {
         return {
-          resolution: 'private_upload_required',
+          resolution: 'local_registration_required',
           contentSha256: input.contentSha256,
           ready: false
         }
@@ -80,56 +85,49 @@ export function createBookCatalogService({
       return bookBinding(edition)
     },
 
-    async beginPrivateUpload(subjectId, input) {
-      if (typeof store.beginPrivateBookUpload !== 'function') {
-        throw new TypeError('repository.beginPrivateBookUpload is required')
+    async registerLocalBook(subjectId, input) {
+      if (typeof store.registerLocalBook !== 'function') {
+        throw new TypeError('repository.registerLocalBook is required')
       }
       const proposedBookEditionId = idFactory()
-      const objectKey = `books/private/${subjectId}/${input.contentSha256}/source`
-      const prepared = await store.beginPrivateBookUpload({
+      const edition = await store.registerLocalBook({
         subjectId,
         proposedBookEditionId,
-        objectKey,
         ...input
       })
-      const binding = bookBinding(prepared.edition)
-      if (!prepared.uploadRequired) {
-        if (
-          prepared.edition.scope === 'private' &&
-          prepared.fileReady &&
-          !binding.ready &&
-          typeof store.enqueueBookMarkup === 'function'
-        ) {
-          await store.enqueueBookMarkup({ bookEditionId: prepared.edition.id })
-        }
-        return { ...binding, upload: null }
-      }
-      if (!storage) {
-        throw serviceError('UPLOAD_UNAVAILABLE', 'Загрузка личных книг временно недоступна', 503)
-      }
-      return {
-        ...binding,
-        upload: await storage.createUpload(prepared.file)
-      }
+      return bookBinding(edition)
     },
 
-    async completePrivateUpload(subjectId, bookEditionId) {
-      if (
-        typeof store.getPrivateBookUpload !== 'function' ||
-        typeof store.completePrivateBookUpload !== 'function'
-      ) {
-        throw new TypeError('private upload repository methods are required')
+    async publishLocalMarkup(subjectId, bookEditionId, input) {
+      if (typeof store.publishLocalBookMarkup !== 'function') {
+        throw new TypeError('repository.publishLocalBookMarkup is required')
       }
-      if (!storage) {
-        throw serviceError('UPLOAD_UNAVAILABLE', 'Загрузка личных книг временно недоступна', 503)
+      const canonical = JSON.stringify({
+        analysisVersion: LOCAL_MARKUP_ANALYSIS_VERSION,
+        characters: input.characters
+      })
+      const published = await store.publishLocalBookMarkup({
+        subjectId,
+        bookEditionId,
+        analysisVersion: LOCAL_MARKUP_ANALYSIS_VERSION,
+        inputHash: createHash('sha256').update(canonical).digest('hex'),
+        textLength: LOCAL_MARKUP_PROGRESS_SCALE,
+        characters: input.characters.map((character) => ({
+          ...character,
+          firstAppearanceTextOffset: Math.round(
+            LOCAL_MARKUP_PROGRESS_SCALE * character.firstAppearanceFraction
+          ),
+          warmupTextOffset: Math.round(
+            LOCAL_MARKUP_PROGRESS_SCALE * character.warmupFraction
+          )
+        }))
+      })
+      if (!published) throw serviceError('NOT_FOUND', 'Локальная книга не найдена', 404)
+      return {
+        ...bookBinding(published.edition),
+        markupRevision: published.revision,
+        created: published.created
       }
-      const upload = await store.getPrivateBookUpload({ subjectId, bookEditionId })
-      if (!upload) throw serviceError('NOT_FOUND', 'Личная книга не найдена', 404)
-      await storage.verifyUpload(upload.file)
-      const edition = await store.completePrivateBookUpload({ subjectId, bookEditionId })
-      if (!edition) throw serviceError('NOT_FOUND', 'Личная книга не найдена', 404)
-      await store.enqueueBookMarkup({ bookEditionId })
-      return bookBinding(edition)
     },
 
     async sourceDownload(subjectId, bookEditionId) {

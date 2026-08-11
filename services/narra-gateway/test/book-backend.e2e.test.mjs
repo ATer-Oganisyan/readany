@@ -26,7 +26,7 @@ function sha256(value) {
   return createHash('sha256').update(value).digest('hex')
 }
 
-test('private book flows through upload, markup, warmup and authorized media download', {
+test('local-only book flows through derived markup, warmup and temporary media download', {
   skip: !enabled
 }, async () => {
   const { default: pg } = await import('pg')
@@ -39,8 +39,7 @@ test('private book flows through upload, markup, warmup and authorized media dow
   })
   const bucket = `readany-e2e-${randomUUID()}`
   const subjectId = randomUUID()
-  const source = Buffer.from('A deterministic private EPUB fixture for backend E2E testing.')
-  const contentSha256 = sha256(source)
+  const contentSha256 = sha256('A deterministic local-only EPUB fixture for backend E2E testing.')
   let bookEditionId
   try {
     await client.send(new CreateBucketCommand({ Bucket: bucket }))
@@ -53,38 +52,29 @@ test('private book flows through upload, markup, warmup and authorized media dow
       downloadExpiresSeconds: 60
     })
     const service = createBookCatalogService({ repository, storage })
-    const prepared = await service.beginPrivateUpload(subjectId, {
+    const prepared = await service.registerLocalBook(subjectId, {
       contentSha256,
       title: 'E2E Book',
       author: 'ReadAny',
-      format: 'epub',
-      mimeType: 'application/epub+zip',
-      byteSize: source.byteLength
+      format: 'epub'
     })
     bookEditionId = prepared.bookEditionId
     assert.ok(bookEditionId)
-    assert.ok(prepared.upload)
-    const upload = await fetch(prepared.upload.url, {
-      method: 'PUT',
-      headers: prepared.upload.headers,
-      body: source
-    })
-    assert.equal(upload.status, 200, await upload.text())
-    assert.equal((await service.completePrivateUpload(subjectId, bookEditionId)).ready, false)
+    assert.equal(prepared.sourceDownloadPath, undefined)
+    assert.equal((await service.publishLocalMarkup(subjectId, bookEditionId, {
+      characters: [{
+        characterKey: 'hero',
+        name: 'Hero',
+        fullName: 'The Hero',
+        firstAppearanceFraction: 0.15,
+        warmupFraction: 0.1,
+        profile: { role: 'protagonist' }
+      }]
+    })).ready, true)
 
     const generator = {
       async generateBookMarkup() {
-        return {
-          textLength: 1_000,
-          characters: [{
-            characterKey: 'hero',
-            name: 'Hero',
-            fullName: 'The Hero',
-            warmupTextOffset: 100,
-            firstAppearanceTextOffset: 150,
-            role: 'protagonist'
-          }]
-        }
+        throw new Error('local source must never be processed by the backend')
       },
       async generateCharacterBundle(input) {
         const assets = []
@@ -117,14 +107,13 @@ test('private book flows through upload, markup, warmup and authorized media dow
       logger: { error() {} },
       leaseRenewMs: 60_000
     })
-    assert.equal((await worker.runOnce()).status, 'completed')
 
     const warmed = await service.advanceProgress(subjectId, bookEditionId, {
       progressFraction: 0.11,
       textOffset: null,
       chapterKey: 'chapter-1'
     })
-    assert.equal(warmed.readerTextOffset, 110)
+    assert.equal(warmed.readerTextOffset, 110_000)
     assert.equal(warmed.warmup.requested, 1)
     assert.equal((await worker.runOnce()).status, 'completed')
     assert.deepEqual((await service.manifest(subjectId, bookEditionId)).characters, [])
@@ -135,9 +124,9 @@ test('private book flows through upload, markup, warmup and authorized media dow
       chapterKey: 'chapter-2'
     })
     const manifest = await service.manifest(subjectId, bookEditionId)
-    assert.equal(manifest.readerTextOffset, 160)
+    assert.equal(manifest.readerTextOffset, 160_000)
     assert.equal(manifest.readingFraction, 0.16)
-    assert.equal(manifest.markup.textLength, 1_000)
+    assert.equal(manifest.markup.textLength, 1_000_000)
     assert.equal(manifest.characters[0].bundle.assets.length, REQUIRED_CHARACTER_MEDIA.length)
 
     const media = await service.mediaDownload(
@@ -149,9 +138,10 @@ test('private book flows through upload, markup, warmup and authorized media dow
     assert.equal(mediaResponse.status, 200)
     assert.ok((await mediaResponse.arrayBuffer()).byteLength > 0)
 
-    const sourceDownload = await service.sourceDownload(subjectId, bookEditionId)
-    const sourceResponse = await fetch(sourceDownload.url)
-    assert.equal(Buffer.compare(Buffer.from(await sourceResponse.arrayBuffer()), source), 0)
+    await assert.rejects(
+      service.sourceDownload(subjectId, bookEditionId),
+      (error) => error.code === 'NOT_FOUND'
+    )
   } finally {
     if (bookEditionId) {
       await pool.query('DELETE FROM book_editions WHERE id = $1', [bookEditionId]).catch(() => {})

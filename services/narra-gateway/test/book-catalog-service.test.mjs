@@ -136,7 +136,7 @@ test('progress requests every character behind the markup warmup frontier', asyn
   assert.deepEqual(result.warmup, { requested: 2, ready: 1, pending: 1, failed: 0 })
 })
 
-test('local hash reuses a ready catalog edition and otherwise requests private upload', async () => {
+test('local hash reuses a ready catalog edition and otherwise requests local registration', async () => {
   const catalog = { ...EDITION, id: 'catalog-1', scope: 'catalog', catalogKey: 'book' }
   const service = createBookCatalogService({
     repository: repository({
@@ -151,7 +151,7 @@ test('local hash reuses a ready catalog edition and otherwise requests private u
   assert.deepEqual(await service.resolve('reader-1', {
     source: 'local', contentSha256: 'b'.repeat(64)
   }), {
-    resolution: 'private_upload_required',
+    resolution: 'local_registration_required',
     contentSha256: 'b'.repeat(64),
     ready: false
   })
@@ -174,67 +174,52 @@ test('catalog listing never receives processing editions from the service contra
   assert.deepEqual(result.nextCursor, { createdAt: catalog.createdAt, id: catalog.id })
 })
 
-test('private upload is checksum-bound and completion idempotently queues full markup', async () => {
+test('local registration and markup store only metadata and derived character profiles', async () => {
   const calls = []
-  const privateEdition = { ...EDITION, id: 'book-private', status: 'uploading' }
+  const privateEdition = {
+    ...EDITION,
+    id: 'book-private',
+    status: 'draft',
+    sourceStorage: 'local_only',
+    expiresAt: '2026-08-17T00:00:00.000Z'
+  }
   const store = repository({
-    async beginPrivateBookUpload(input) {
-      calls.push(['begin', input])
+    async registerLocalBook(input) {
+      calls.push(['register', input])
+      return privateEdition
+    },
+    async publishLocalBookMarkup(input) {
+      calls.push(['publish', input])
       return {
-        edition: privateEdition,
-        uploadRequired: true,
-        fileReady: false,
-        file: {
-          objectKey: input.objectKey,
-          contentSha256: input.contentSha256,
-          mimeType: input.mimeType,
-          byteSize: input.byteSize
-        }
+        edition: { ...privateEdition, status: 'base_ready' },
+        revision: 1,
+        created: true
       }
-    },
-    async getPrivateBookUpload() {
-      return {
-        edition: privateEdition,
-        file: {
-          objectKey: 'books/private/reader/hash/source', contentSha256: HASH,
-          mimeType: 'application/epub+zip', byteSize: 128, status: 'staging'
-        }
-      }
-    },
-    async completePrivateBookUpload() {
-      calls.push(['complete'])
-      return { ...privateEdition, status: 'marking_up' }
-    },
-    async enqueueBookMarkup(input) {
-      calls.push(['enqueue', input])
-      return { status: 'queued' }
     }
   })
-  const storage = {
-    async createUpload(file) {
-      calls.push(['sign', file])
-      return { url: 'https://storage/upload', method: 'PUT', headers: {}, expiresAt: '' }
-    },
-    async verifyUpload(file) {
-      calls.push(['verify', file])
-      return { verified: true }
-    }
-  }
   const service = createBookCatalogService({
     repository: store,
-    storage,
     idFactory: () => 'edition-proposed'
   })
-  const started = await service.beginPrivateUpload('reader', {
+  const registered = await service.registerLocalBook('reader', {
     contentSha256: HASH,
-    title: 'Book', author: 'Author', format: 'epub',
-    mimeType: 'application/epub+zip', byteSize: 128
+    title: 'Book', author: 'Author', format: 'epub'
   })
-  assert.equal(started.upload.url, 'https://storage/upload')
-  assert.equal(calls[0][1].objectKey, `books/private/reader/${HASH}/source`)
-  const completed = await service.completePrivateUpload('reader', 'book-private')
-  assert.equal(completed.generationStatus, 'marking_up')
-  assert.deepEqual(calls.at(-1), ['enqueue', { bookEditionId: 'book-private' }])
+  assert.equal(registered.sourceDownloadPath, undefined)
+  assert.equal(calls[0][1].proposedBookEditionId, 'edition-proposed')
+
+  const published = await service.publishLocalMarkup('reader', 'book-private', {
+    characters: [{
+      characterKey: 'hero', name: 'Hero', fullName: 'The Hero',
+      firstAppearanceFraction: 0.2, warmupFraction: 0.15,
+      profile: { role: 'protagonist' }
+    }]
+  })
+  assert.equal(published.ready, true)
+  const payload = calls.at(-1)[1]
+  assert.equal(payload.characters[0].firstAppearanceTextOffset, 200_000)
+  assert.equal(payload.characters[0].warmupTextOffset, 150_000)
+  assert.equal('source' in payload, false)
 })
 
 test('media download is authorized by the repository before storage signing', async () => {

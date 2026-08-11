@@ -35,12 +35,13 @@ Expected contract (adapted from `nara/customize`):
 The repository also defines the server-side book contract:
 
 - `POST /v2/books/resolve` to bind a local SHA-256 to a catalog or private edition;
-- `POST /v2/books/private/uploads` and `/:bookEditionId/upload-complete` for a checksum-bound,
-  direct-to-storage background upload;
+- `POST /v2/books/local` to register local-only metadata without uploading source bytes;
+- `POST /v2/books/:bookEditionId/local-markup` to publish derived character profiles and
+  fractional appearance anchors without extracted prose;
 - `POST /v2/books/:bookEditionId/progress` with `progress_fraction`; the backend converts it to
   a canonical text watermark using the markup's normalized `text_length`;
 - `GET /v2/books/:bookEditionId/manifest` for reader-visible characters and atomic media bundles;
-- reader-authorized source and media download URL endpoints.
+- reader-authorized media downloads; source download is catalog-only.
 
 The gateway implementation is in `services/narra-gateway`; deployment still requires a configured
 URL, PostgreSQL, Generator and S3-compatible storage. Until a URL is supplied by the build

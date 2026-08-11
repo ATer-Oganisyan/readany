@@ -114,3 +114,14 @@ test('canonical progress migration is additive for existing markup rows', async 
   assert.match(migration, /ADD COLUMN IF NOT EXISTS reading_fraction DOUBLE PRECISION/)
   assert.match(migration, /reading_fraction >= 0 AND reading_fraction <= 1/)
 })
+
+test('local-only migration removes private source metadata and adds expiring object cleanup', async () => {
+  const migration = await readFile(
+    new URL('../migrations/003_local_books_and_retention.sql', import.meta.url),
+    'utf8'
+  )
+  assert.match(migration, /DELETE FROM book_files[\s\S]*edition\.scope = 'private'/)
+  assert.match(migration, /scope = 'private' AND source_storage = 'local_only'/)
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS book_object_deletions/)
+  assert.match(migration, /expires_at TIMESTAMPTZ/)
+})
