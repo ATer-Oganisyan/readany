@@ -1,12 +1,6 @@
 import { useColors } from "@/styles/theme";
+import { Box, DropdownMenu, DropdownMenuItem, Host, Text } from "@expo/ui/jetpack-compose";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import {
-  Box,
-  DropdownMenu,
-  DropdownMenuItem,
-  Host,
-  Text,
-} from "@expo/ui/jetpack-compose";
 import { useState } from "react";
 import { TouchableOpacity, View } from "react-native";
 import type { NativeContextMenuButtonProps } from "./NativeContextMenuButton.types";

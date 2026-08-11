@@ -577,9 +577,18 @@ export function LibraryScreen() {
         });
         const importedBook = result.imported[0] ?? result.skippedDuplicates[0]?.existingBook;
         if (!importedBook) throw new Error("catalog-import-failed");
-        const coverUrl =
-          (await installBackendCatalogCover(importedBook.id, catalogBook)) ??
-          importedBook.meta.coverUrl;
+
+        // The source import has already succeeded, so a temporary cover failure
+        // must not block the first open or discard the local library entry.
+        let coverUrl = importedBook.meta.coverUrl;
+        try {
+          coverUrl = (await installBackendCatalogCover(importedBook.id, catalogBook)) ?? coverUrl;
+        } catch (coverError) {
+          console.warn(
+            `[Catalog] Keeping imported cover for ${catalogBook.catalogKey}:`,
+            coverError,
+          );
+        }
 
         const normalizedBook: Book = {
           ...importedBook,

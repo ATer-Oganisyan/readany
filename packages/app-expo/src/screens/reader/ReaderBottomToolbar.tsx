@@ -6,15 +6,30 @@ import type { ReaderBottomToolbarProps } from "./ReaderBottomToolbar.types";
 
 export function ReaderBottomToolbar(props: ReaderBottomToolbarProps) {
   const actions = [
-    { key: "toc", icon: "format-list-bulleted" as const, label: props.labels.toc, onPress: props.onOpenToc },
+    {
+      key: "toc",
+      icon: "format-list-bulleted" as const,
+      label: props.labels.toc,
+      onPress: props.onOpenToc,
+    },
     {
       key: "bookmark",
       icon: props.isBookmarked ? "bookmark" : "bookmark-border",
       label: props.labels.bookmarks,
       onPress: props.onToggleBookmark,
     },
-    { key: "notes", icon: "edit-note" as const, label: props.labels.notes, onPress: props.onOpenNotes },
-    { key: "search", icon: "search" as const, label: props.labels.search, onPress: props.onOpenSearch },
+    {
+      key: "notes",
+      icon: "edit-note" as const,
+      label: props.labels.notes,
+      onPress: props.onOpenNotes,
+    },
+    {
+      key: "search",
+      icon: "search" as const,
+      label: props.labels.search,
+      onPress: props.onOpenSearch,
+    },
   ];
 
   return (
