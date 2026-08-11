@@ -69,7 +69,7 @@ names, media stages, providers, byte sizes and durations without logging source
 text, prompts, credentials or generated payloads. Follow both processes on i167:
 
 ```bash
-docker compose --env-file /srv/narra-stagging/compose.env \
+sudo docker compose --env-file /srv/narra-stagging/compose.env \
   -f /srv/narra-stagging/compose.yml --profile book-backend \
   logs -f --tail=200 gateway book-markup-worker
 ```
