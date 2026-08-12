@@ -1181,6 +1181,7 @@ export function createPostgresBookMarkupRepository(pool, {
     async getCharacterBundleInput(job) {
       const result = await pool.query(
         `SELECT character.character_key, character.name, character.full_name,
+                character.first_appearance_text_offset, character.warmup_text_offset,
                 character.data, edition.scope, edition.title, edition.author
          FROM generation_jobs AS job
          JOIN book_editions AS edition ON edition.id = job.book_edition_id
@@ -1198,6 +1199,8 @@ export function createPostgresBookMarkupRepository(pool, {
         characterKey: row.character_key,
         name: row.name,
         fullName: row.full_name,
+        firstAppearanceTextOffset: Number(row.first_appearance_text_offset),
+        warmupTextOffset: Number(row.warmup_text_offset),
         character: row.data,
         scope: row.scope,
         bookTitle: row.title,

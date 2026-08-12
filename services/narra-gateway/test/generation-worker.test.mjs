@@ -4,6 +4,7 @@ import { REQUIRED_CHARACTER_MEDIA } from '../book-markup.mjs'
 import {
   createGenerationWorker,
   normalizeBookMarkupResult,
+  normalizeCharacterBundleInput,
   normalizeCharacterBundleResult
 } from '../generation-worker.mjs'
 
@@ -128,6 +129,69 @@ test('worker publishes a character bundle only when all required media are prese
   assert.deepEqual(published.bundle.assets.map((asset) => asset.type), REQUIRED_CHARACTER_MEDIA)
 })
 
+test('worker adapts legacy local profiles to the strict character bundle contract', async () => {
+  let generatorInput
+  const repository = {
+    async claimGenerationJob() {
+      return {
+        id: 'job-local', type: 'character_bundle', bookEditionId: 'book-local',
+        characterKey: 'anna', leaseToken: 'lease-local'
+      }
+    },
+    async getCharacterBundleInput() {
+      return {
+        bookEditionId: 'book-local',
+        characterKey: 'anna',
+        name: 'Анна',
+        fullName: 'Анна Сергеевна',
+        firstAppearanceTextOffset: 200_000,
+        warmupTextOffset: 150_000,
+        scope: 'private',
+        bookTitle: 'Книга',
+        bookAuthor: 'Автор',
+        bundleVersion: 'character-bundle-v1',
+        character: {
+          clientCharacterId: 'анна',
+          role: 'Героиня',
+          gender: 'female',
+          voice: 'unsupported',
+          traits: ['смелая', 'наблюдательная'],
+          speechStyle: 'говорит коротко',
+          speechExamples: ['Пример исходного текста'],
+          appearancePrompt: 'портрет Анны',
+          passport: { age: 27, hair: 'тёмные волосы' },
+          expression: 'спокойная',
+          greeting: 'Здравствуйте',
+          isNarrator: false,
+          unlockProgress: 0.2
+        }
+      }
+    },
+    async publishCharacterBundle() {},
+    async failGenerationJob() { assert.fail('job must not fail') }
+  }
+  const generator = {
+    async generateCharacterBundle(input) {
+      generatorInput = input
+      return { assets: generatedAssets() }
+    }
+  }
+  const worker = createGenerationWorker({ repository, generator, workerId: 'worker-1', logger: silentLogger })
+  assert.equal((await worker.runOnce()).status, 'completed')
+  assert.deepEqual(Object.keys(generatorInput.character), [
+    'characterKey', 'name', 'fullName', 'aliases', 'gender', 'age', 'role', 'description',
+    'appearancePrompt', 'greeting', 'voice', 'firstAppearanceTextOffset', 'warmupTextOffset'
+  ])
+  assert.equal(generatorInput.character.voice, 'Che')
+  assert.equal(generatorInput.name, 'Анна')
+  assert.equal(generatorInput.fullName, 'Анна Сергеевна')
+  assert.equal(generatorInput.character.firstAppearanceTextOffset, 200_000)
+  assert.equal(generatorInput.character.warmupTextOffset, 150_000)
+  assert.match(generatorInput.character.description, /смелая/)
+  assert.equal('clientCharacterId' in generatorInput.character, false)
+  assert.equal('firstAppearanceTextOffset' in generatorInput, false)
+})
+
 test('invalid generated media fails the leased job without partial publication', async () => {
   let failed
   let publishCount = 0
@@ -186,6 +250,10 @@ test('normalizers reject duplicate characters and incomplete bundles', () => {
   assert.throws(
     () => normalizeCharacterBundleResult({ assets: generatedAssets().slice(0, 2) }),
     /missing idle_animation/
+  )
+  assert.throws(
+    () => normalizeCharacterBundleInput(null),
+    /character bundle input must be an object/
   )
 })
 

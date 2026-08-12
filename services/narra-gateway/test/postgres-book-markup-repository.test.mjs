@@ -70,6 +70,36 @@ test('claim query uses skip locked and assigns a unique lease token', async () =
   assert.match(pool.queries[0].sql, /lease_token = \$3::uuid/)
 })
 
+test('character bundle input includes durable appearance offsets for legacy profiles', async () => {
+  const pool = scriptedPool([
+    (sql) => {
+      assert.match(sql, /character\.first_appearance_text_offset/)
+      assert.match(sql, /character\.warmup_text_offset/)
+      return { rows: [{
+        character_key: 'hero',
+        name: 'Герой',
+        full_name: 'Главный герой',
+        first_appearance_text_offset: '120000',
+        warmup_text_offset: '70000',
+        data: { role: 'Главный герой' },
+        scope: 'private',
+        title: 'Книга',
+        author: 'Автор'
+      }] }
+    }
+  ])
+  const repository = createPostgresBookMarkupRepository(pool)
+  const input = await repository.getCharacterBundleInput({
+    id: 'job-1',
+    bookEditionId: 'book-1',
+    targetVersion: 'character-bundle-v1',
+    leaseToken: '123e4567-e89b-42d3-a456-426614174001'
+  })
+  assert.equal(input.firstAppearanceTextOffset, 120_000)
+  assert.equal(input.warmupTextOffset, 70_000)
+  assert.deepEqual(input.character, { role: 'Главный герой' })
+})
+
 test('failed generation retry preserves the idempotent job and resets its bundle', async () => {
   const row = {
     id: 'job-failed', job_type: 'character_bundle', book_edition_id: 'book-1',

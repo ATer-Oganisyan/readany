@@ -1,5 +1,6 @@
-import { normalizeCharacterAnchor, REQUIRED_CHARACTER_MEDIA } from './book-markup.mjs'
+import { REQUIRED_CHARACTER_MEDIA, normalizeCharacterAnchor } from './book-markup.mjs'
 import { createOperationalLogger } from './operational-log.mjs'
+import { isSupportedVoice } from './voices.mjs'
 
 const JOB_TYPES = new Set(['book_markup', 'character_bundle'])
 const JOB_LABELS = {
@@ -21,6 +22,102 @@ function invalidResult(message) {
 function safeErrorCode(error) {
   const candidate = typeof error?.code === 'string' ? error.code : 'UNKNOWN'
   return /^[A-Z][A-Z0-9_]{1,48}$/.test(candidate) ? candidate : 'UNKNOWN'
+}
+
+function stringValue(value, maxLength) {
+  return typeof value === 'string' ? value.trim().slice(0, maxLength) : ''
+}
+
+function stringValues(value, maxItems, maxLength) {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter((item) => typeof item === 'string' && item.trim())
+    .map((item) => item.trim().slice(0, maxLength))
+    .slice(0, maxItems)
+}
+
+function safeTextOffset(value, fallback = 0) {
+  return Number.isSafeInteger(value) && value >= 0 ? value : fallback
+}
+
+/**
+ * Converts both server markup and legacy local-character-v1 profiles into the
+ * exact character shape accepted by the internal generator. Source text and
+ * local-only profile fields deliberately never cross this service boundary.
+ */
+export function normalizeCharacterBundleInput(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw invalidResult('character bundle input must be an object')
+  }
+  const {
+    character: rawCharacter,
+    firstAppearanceTextOffset: rawFirstAppearanceTextOffset,
+    warmupTextOffset: rawWarmupTextOffset,
+    ...request
+  } = input
+  const source = rawCharacter && typeof rawCharacter === 'object' && !Array.isArray(rawCharacter)
+    ? rawCharacter
+    : {}
+  const passport = source.passport && typeof source.passport === 'object' && !Array.isArray(source.passport)
+    ? source.passport
+    : {}
+  const gender = ['male', 'female', 'unspecified'].includes(source.gender)
+    ? source.gender
+    : 'unspecified'
+  const name = stringValue(request.name, 160)
+  const fullName = stringValue(request.fullName, 240) || name
+  const firstAppearanceTextOffset = safeTextOffset(
+    rawFirstAppearanceTextOffset,
+    safeTextOffset(source.firstAppearanceTextOffset)
+  )
+  const warmupTextOffset = Math.min(
+    firstAppearanceTextOffset,
+    safeTextOffset(rawWarmupTextOffset, safeTextOffset(source.warmupTextOffset))
+  )
+  const role = stringValue(source.role, 400)
+  const traits = stringValues(source.traits, 5, 120)
+  const speechStyle = stringValue(source.speechStyle, 1_000)
+  const description = stringValue(source.description, 2_000) || [
+    role,
+    traits.length ? `Черты: ${traits.join(', ')}` : '',
+    speechStyle ? `Манера речи: ${speechStyle}` : ''
+  ].filter(Boolean).join('. ').slice(0, 2_000)
+  const appearancePrompt = stringValue(source.appearancePrompt, 3_000) || [
+    stringValue(passport.build, 300),
+    stringValue(passport.hair, 300),
+    stringValue(passport.eyes, 300),
+    stringValue(passport.face, 500),
+    stringValue(passport.outfit, 500)
+  ].filter(Boolean).join(', ').slice(0, 3_000)
+  const requestedVoice = stringValue(source.voice, 32)
+  const voice = isSupportedVoice(requestedVoice)
+    ? requestedVoice
+    : gender === 'male' ? 'She' : gender === 'female' ? 'Che' : 'Erm'
+
+  return {
+    ...request,
+    name,
+    fullName,
+    character: {
+      characterKey: request.characterKey,
+      name,
+      fullName,
+      aliases: stringValues(source.aliases, 10, 160),
+      gender,
+      age: stringValue(source.age, 120) || (
+        typeof passport.age === 'number' && Number.isFinite(passport.age)
+          ? String(passport.age)
+          : ''
+      ),
+      role,
+      description,
+      appearancePrompt,
+      greeting: stringValue(source.greeting, 2_000),
+      voice,
+      firstAppearanceTextOffset,
+      warmupTextOffset
+    }
+  }
 }
 
 export function normalizeBookMarkupResult(value) {
@@ -161,7 +258,7 @@ export function createGenerationWorker({
 
   async function runCharacterBundle(job) {
     const startedAt = Date.now()
-    const input = await repository.getCharacterBundleInput(job)
+    const input = normalizeCharacterBundleInput(await repository.getCharacterBundleInput(job))
     log.info('bundle.started', 'Начинаю формировать пакет персонажа', {
       job: job.id,
       edition: job.bookEditionId,
