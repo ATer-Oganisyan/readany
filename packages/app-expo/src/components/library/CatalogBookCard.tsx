@@ -1,3 +1,4 @@
+import { findBundledCatalogBookByTitle } from "@/lib/catalog/bundled-books";
 import { useColors } from "@/styles/theme";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -51,7 +52,12 @@ export function CatalogBookCard({
           ) : (
             <View style={styles.fallbackCover} />
           )}
-          <BookCoverTypography title={title} author={author} width={cardWidth} />
+          <BookCoverTypography
+            title={title}
+            author={author}
+            width={cardWidth}
+            textTone={findBundledCatalogBookByTitle(title)?.coverTextTone ?? "dark"}
+          />
         </View>
       }
     />

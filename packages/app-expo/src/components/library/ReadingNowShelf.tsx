@@ -1,5 +1,7 @@
 import { Text } from "@/components/ui/Typography";
-import { shouldRenderCoverTypography } from "@/lib/book/cover-display";
+import { isGeneratedBookCoverPath, shouldRenderCoverTypography } from "@/lib/book/cover-display";
+import { generatedCoverTextTone } from "@/lib/book/cover-text-contrast";
+import { loadingCoverColorForBook } from "@/lib/book/loading-cover-placeholder";
 import { findBundledCatalogBookByTitle } from "@/lib/catalog/bundled-books";
 import { useResolvedCovers } from "@/screens/notes/useResolvedCovers";
 import { useLibraryStore } from "@/stores/library-store";
@@ -16,7 +18,6 @@ import { Image, ScrollView, StyleSheet, View } from "react-native";
 import { BookCardActionSheet } from "./BookCardActionSheet";
 import { BookCoverTypography } from "./book-cover-typography";
 import { BookSpineOverlay } from "./book-spine-overlay";
-import { CoverGenerationShimmer } from "./cover-generation-shimmer";
 import { PerspectiveBook } from "./perspective-book";
 import { useResolvedAssetUris } from "./use-resolved-asset-uris";
 
@@ -87,8 +88,15 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
           const bundledCoverUri = bundledCatalogBook
             ? bundledCoverUris.get(bundledCatalogBook.coverAssetModule)
             : undefined;
+          const showsLoadingPlaceholder =
+            generatingCoverIds.has(book.id) && !hasUsableCover && !bundledCoverUri;
           const showCoverTypography =
             !hasUsableCover || shouldRenderCoverTypography(book.id, book.meta.coverUrl);
+          const coverTextTone = showsLoadingPlaceholder
+            ? "light"
+            : isGeneratedBookCoverPath(book.id, book.meta.coverUrl)
+              ? generatedCoverTextTone({ title: book.meta.title, author: book.meta.author })
+              : (bundledCatalogBook?.coverTextTone ?? "dark");
           return (
             <BookCardActionSheet key={book.id} book={book} onDelete={onDelete} onOpen={onOpen}>
               <PerspectiveBook
@@ -121,7 +129,14 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
                         resizeMode="cover"
                       />
                     ) : (
-                      <View style={s.fallbackCover} />
+                      <View
+                        style={[
+                          s.fallbackCover,
+                          showsLoadingPlaceholder
+                            ? { backgroundColor: loadingCoverColorForBook(book.id) }
+                            : null,
+                        ]}
+                      />
                     )}
                     <BookSpineOverlay coverWidth={CARD_WIDTH} />
                     <BookCoverTypography
@@ -131,6 +146,7 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
                       titleFontSize={15}
                       leftInsetAdjustment={2}
                       showText={showCoverTypography}
+                      textTone={coverTextTone}
                       bottomAccessory={
                         progressPercent > 0 ? (
                           <BlurView tint="dark" intensity={50} style={s.progressChip}>
@@ -141,7 +157,6 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
                         ) : null
                       }
                     />
-                    {generatingCoverIds.has(book.id) ? <CoverGenerationShimmer /> : null}
                   </View>
                 }
               />

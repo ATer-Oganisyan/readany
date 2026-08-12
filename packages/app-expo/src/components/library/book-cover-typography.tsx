@@ -1,4 +1,5 @@
 import { Text } from "@/components/ui/Typography";
+import type { CoverTextTone } from "@/lib/book/cover-text-contrast";
 import { formatBookCoverTitle } from "@/lib/book/format-book-cover-title";
 import { sansCondensedFontFamily, serifTextFontFamily } from "@deslop/primitives/native";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
@@ -19,6 +20,7 @@ interface BookCoverTypographyProps {
   leftInsetAdjustment?: number;
   showText?: boolean;
   bottomAccessory?: ReactNode;
+  textTone?: CoverTextTone;
 }
 
 function normalizeLayoutText(value: string) {
@@ -58,12 +60,14 @@ export function BookCoverTypography({
   leftInsetAdjustment = 4,
   showText = true,
   bottomAccessory,
+  textTone = "dark",
 }: BookCoverTypographyProps) {
   const scale = Math.min(1, width / referenceWidth);
   const titleSize = titleFontSize ?? Math.max(12, Math.min(18, referenceWidth * 0.12)) * scale;
   const authorSize = authorFontSize ?? 13 * scale;
   const formattedTitle = formatBookCoverTitle(title);
   const [fittedTitleSize, setFittedTitleSize] = useState(titleSize);
+  const textColor = textTone === "light" ? "#F7F5F0" : "#151515";
 
   useEffect(() => setFittedTitleSize(titleSize), [titleSize]);
 
@@ -109,6 +113,7 @@ export function BookCoverTypography({
                 fontWeight: "600",
                 fontSize: fittedTitleSize,
                 lineHeight: fittedTitleSize * 1.05,
+                color: textColor,
               },
             ]}
           >
@@ -125,6 +130,7 @@ export function BookCoverTypography({
                   fontFamily: serifTextFontFamily.regular,
                   fontSize: authorSize,
                   lineHeight: authorSize * (14 / 13),
+                  color: textColor,
                 },
               ]}
             >
@@ -156,7 +162,6 @@ const styles = StyleSheet.create({
   typographyLayer: {
     ...StyleSheet.absoluteFill,
     zIndex: 12,
-    mixBlendMode: "multiply",
   },
   accessoryLayer: {
     ...StyleSheet.absoluteFill,
@@ -164,12 +169,10 @@ const styles = StyleSheet.create({
   },
   title: {
     flexShrink: 1,
-    color: "#151515",
     letterSpacing: -0.2,
   },
   author: {
     flexShrink: 1,
-    color: "rgba(21,21,21,1)",
     letterSpacing: -0.1,
   },
   bottomAccessory: {

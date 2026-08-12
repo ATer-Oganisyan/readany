@@ -3,6 +3,7 @@ import { generateId } from "@readany/core/utils";
 import coverGenerationConfig from "./cover-generation-config.json";
 import { resolveCoverGenreProfile } from "./cover-genre";
 import { deleteLocalCoverJob, getOrCreateLocalCoverJob } from "./cover-job-repository";
+import { generatedCoverBackgroundColor } from "./cover-text-contrast";
 
 const MAX_THEME_CHARS = 800;
 const COVER_PROMPT_TEMPLATE = coverGenerationConfig.promptParagraphs.join("\n\n");
@@ -42,15 +43,8 @@ export function coverPrompt(input: {
     : "Infer the central idea, mood, symbols and historical context from the title and author without reproducing their names as text.";
   const genre = resolveCoverGenreProfile(input);
 
-  const colorSeed = Array.from(`${title}:${author}`).reduce(
-    (hash, character) => (hash * 31 + (character.codePointAt(0) || 0)) >>> 0,
-    0,
-  );
   const backgroundColor =
-    input.accentColor1?.trim() ||
-    coverGenerationConfig.backgroundColors[
-      colorSeed % coverGenerationConfig.backgroundColors.length
-    ];
+    input.accentColor1?.trim() || generatedCoverBackgroundColor({ title, author });
 
   const replacements: Record<string, string> = {
     "{{BOOK_TITLE}}": title,

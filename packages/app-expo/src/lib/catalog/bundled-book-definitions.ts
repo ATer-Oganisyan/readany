@@ -3,6 +3,7 @@ export interface BundledCatalogBookDefinition {
   title: string;
   author: string;
   fileName: string;
+  coverTextTone: "dark" | "light";
 }
 
 export const BUNDLED_CATALOG_COVER_VERSION = 7;
@@ -30,97 +31,119 @@ export const BUNDLED_CATALOG_BOOK_DEFINITIONS: readonly BundledCatalogBookDefini
     title: "Отцы и дети",
     author: "Иван Тургенев",
     fileName: "fathers-and-sons.epub",
+    coverTextTone: "dark",
   },
   {
     id: "anna-karenina",
     title: "Анна Каренина",
     author: "Лев Толстой",
     fileName: "anna-karenina.epub",
+    coverTextTone: "dark",
   },
   {
     id: "war-and-peace",
     title: "Война и мир",
     author: "Лев Толстой",
     fileName: "war-and-peace.epub",
+    coverTextTone: "dark",
   },
   {
     id: "crime-and-punishment",
     title: "Преступление и наказание",
     author: "Фёдор Достоевский",
     fileName: "crime-and-punishment.epub",
+    coverTextTone: "dark",
   },
   {
     id: "government-inspector",
     title: "Ревизор",
     author: "Николай Гоголь",
     fileName: "government-inspector.epub",
+    coverTextTone: "dark",
   },
   {
     id: "dead-souls",
     title: "Мёртвые души",
     author: "Николай Гоголь",
     fileName: "dead-souls.epub",
+    coverTextTone: "light",
   },
   {
     id: "hero-of-our-time",
     title: "Герой нашего времени",
     author: "Михаил Лермонтов",
     fileName: "hero-of-our-time.epub",
+    coverTextTone: "light",
   },
   {
     id: "captains-daughter",
     title: "Капитанская дочка",
     author: "Александр Пушкин",
     fileName: "captains-daughter.epub",
+    coverTextTone: "dark",
   },
   {
     id: "eugene-onegin",
     title: "Евгений Онегин",
     author: "Александр Пушкин",
     fileName: "eugene-onegin.epub",
+    coverTextTone: "dark",
   },
   {
     id: "gentleman-from-san-francisco",
     title: "Господин из Сан-Франциско",
     author: "Иван Бунин",
     fileName: "gentleman-from-san-francisco.epub",
+    coverTextTone: "dark",
   },
   {
     id: "dark-avenues",
     title: "Тёмные аллеи",
     author: "Иван Бунин",
     fileName: "dark-avenues.epub",
+    coverTextTone: "light",
   },
   {
     id: "golden-key",
     title: "Золотой ключик, или Приключения Буратино",
     author: "Алексей Толстой",
     fileName: "golden-key.epub",
+    coverTextTone: "dark",
   },
   {
     id: "twelve-chairs",
     title: "Двенадцать стульев",
     author: "Илья Ильф и Евгений Петров",
     fileName: "twelve-chairs.epub",
+    coverTextTone: "dark",
   },
   {
     id: "three-sisters",
     title: "Три сестры",
     author: "Антон Чехов",
     fileName: "three-sisters.epub",
+    coverTextTone: "dark",
   },
-  { id: "seagull", title: "Чайка", author: "Антон Чехов", fileName: "seagull.epub" },
+  {
+    id: "seagull",
+    title: "Чайка",
+    author: "Антон Чехов",
+    fileName: "seagull.epub",
+    coverTextTone: "dark",
+  },
   {
     id: "cherry-orchard",
     title: "Вишнёвый сад",
     author: "Антон Чехов",
     fileName: "cherry-orchard.epub",
+    coverTextTone: "dark",
   },
   {
     id: "thunderstorm",
     title: "Гроза",
     author: "Александр Островский",
     fileName: "thunderstorm.epub",
+    coverTextTone: "light",
   },
 ] as const;
 

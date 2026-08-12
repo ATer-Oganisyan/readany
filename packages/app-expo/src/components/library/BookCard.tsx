@@ -1,5 +1,7 @@
 import { Text } from "@/components/ui/Typography";
-import { shouldRenderCoverTypography } from "@/lib/book/cover-display";
+import { isGeneratedBookCoverPath, shouldRenderCoverTypography } from "@/lib/book/cover-display";
+import { generatedCoverTextTone } from "@/lib/book/cover-text-contrast";
+import { loadingCoverColorForBook } from "@/lib/book/loading-cover-placeholder";
 import { findBundledCatalogBookByTitle } from "@/lib/catalog/bundled-books";
 import { useResolvedCovers } from "@/screens/notes/useResolvedCovers";
 import { useLibraryStore } from "@/stores/library-store";
@@ -16,7 +18,6 @@ import { BookCardActionSheet } from "./BookCardActionSheet";
 import { makeStyles } from "./book-card-styles";
 import { BookCoverTypography } from "./book-cover-typography";
 import { BookSpineOverlay } from "./book-spine-overlay";
-import { CoverGenerationShimmer } from "./cover-generation-shimmer";
 import { useResolvedAssetUris } from "./use-resolved-asset-uris";
 
 interface BookCardProps {
@@ -64,8 +65,14 @@ export const BookCard = memo(function BookCard({
     ? bundledCoverUris.get(bundledCatalogBook.coverAssetModule)
     : undefined;
   const hasUsableSavedCover = Boolean(resolvedCoverUrl) && resolvedCoverUrl !== failedCoverUrl;
+  const showsLoadingPlaceholder = isGeneratingCover && !hasUsableSavedCover && !bundledCoverUri;
   const showCoverTypography =
     !hasUsableSavedCover || shouldRenderCoverTypography(book.id, book.meta.coverUrl);
+  const coverTextTone = showsLoadingPlaceholder
+    ? "light"
+    : isGeneratedBookCoverPath(book.id, book.meta.coverUrl)
+      ? generatedCoverTextTone({ title: book.meta.title, author: book.meta.author })
+      : (bundledCatalogBook?.coverTextTone ?? "dark");
 
   return (
     <BookCardActionSheet book={book} onOpen={onOpen} onDelete={onDelete}>
@@ -89,7 +96,14 @@ export const BookCard = memo(function BookCard({
           ) : bundledCoverUri ? (
             <Image source={{ uri: bundledCoverUri }} style={s.coverImage} resizeMode="cover" />
           ) : (
-            <View style={s.fallbackCover} />
+            <View
+              style={[
+                s.fallbackCover,
+                showsLoadingPlaceholder
+                  ? { backgroundColor: loadingCoverColorForBook(book.id) }
+                  : null,
+              ]}
+            />
           )}
 
           {/* Корешок остаётся видимым и на собственной обложке, и на заглушке. */}
@@ -100,10 +114,9 @@ export const BookCard = memo(function BookCard({
               title={book.meta.title}
               author={book.meta.author}
               width={cardWidth}
+              textTone={coverTextTone}
             />
           ) : null}
-          {isGeneratingCover ? <CoverGenerationShimmer /> : null}
-
           {/* Remote status overlay (on-demand download) */}
           {book.syncStatus === "remote" && (
             <View style={s.remoteOverlay}>
