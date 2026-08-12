@@ -346,6 +346,31 @@ function scanText(value, name, maxLength, { verbatim = false } = {}) {
   return verbatim ? value : value.trim()
 }
 
+function resolveEvidenceOffsets(contextText, quote, rawStartOffset, rawEndOffset, name) {
+  const startOffset = Number(rawStartOffset)
+  const endOffset = Number(rawEndOffset)
+  if (
+    Number.isSafeInteger(startOffset) && startOffset >= 0 &&
+    Number.isSafeInteger(endOffset) && endOffset > startOffset &&
+    endOffset <= contextText.length &&
+    contextText.slice(startOffset, endOffset) === quote
+  ) {
+    return { startOffset, endOffset }
+  }
+
+  const exactStartOffset = contextText.indexOf(quote)
+  const duplicateStartOffset = exactStartOffset < 0
+    ? -1
+    : contextText.indexOf(quote, exactStartOffset + 1)
+  if (exactStartOffset < 0 || duplicateStartOffset >= 0) {
+    invalid(`${name}.quote: does not have one exact match in contextText`, 'EVIDENCE_MISMATCH')
+  }
+  return {
+    startOffset: exactStartOffset,
+    endOffset: exactStartOffset + quote.length
+  }
+}
+
 function normalizeScanChunkResult(value, contextText) {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {}
   if (!Array.isArray(source.observations)) {
@@ -374,21 +399,16 @@ function normalizeScanChunkResult(value, contextText) {
       const evidence = exactKeys(observation.evidence, new Set([
         'quote', 'startOffset', 'endOffset'
       ]), `${name}.evidence`)
-      const startOffset = Number(evidence.startOffset)
-      const endOffset = Number(evidence.endOffset)
-      if (
-        !Number.isSafeInteger(startOffset) || startOffset < 0 ||
-        !Number.isSafeInteger(endOffset) || endOffset <= startOffset ||
-        endOffset > contextText.length
-      ) {
-        invalid(`${name}.evidence: invalid offsets`, 'GENERATION_RESULT_INVALID')
-      }
       const quote = scanText(evidence.quote, `${name}.evidence.quote`, 8_000, {
         verbatim: true
       })
-      if (contextText.slice(startOffset, endOffset) !== quote) {
-        invalid(`${name}.evidence.quote: does not match contextText`, 'EVIDENCE_MISMATCH')
-      }
+      const { startOffset, endOffset } = resolveEvidenceOffsets(
+        contextText,
+        quote,
+        evidence.startOffset,
+        evidence.endOffset,
+        `${name}.evidence`
+      )
       if (
         typeof observation.confidence !== 'number' ||
         !Number.isFinite(observation.confidence) ||

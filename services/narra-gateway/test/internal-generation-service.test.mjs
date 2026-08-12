@@ -159,6 +159,82 @@ test('internal generation service gives the provider exactly one scan chunk', as
   assert.equal(chatRequest.messages[1].content.includes('normalized'), false)
 })
 
+test('internal generation service repairs wrong offsets for one exact quote match', async () => {
+  const storage = memoryStorage()
+  const contextText = ' Анна вошла в комнату. '
+  const quote = 'Анна вошла в комнату.'
+  const service = createInternalGenerationService({
+    storage,
+    logger: { info() {}, error() {} },
+    async completeChat() {
+      return JSON.stringify({ observations: [{
+        type: 'character_action',
+        entityKind: 'character',
+        entityCandidate: 'Анна',
+        relatedEntityCandidates: [],
+        fact: 'Анна вошла в комнату',
+        evidence: { quote, startOffset: 0, endOffset: quote.length },
+        confidence: 0.95
+      }] })
+    },
+    async generatePortrait() { throw new Error('unused') },
+    async synthesizeSpeech() { throw new Error('unused') },
+    async generateIdleAnimation() { throw new Error('unused') }
+  })
+  const result = await service.scanBookChunk({
+    idempotencyKey: 'run-repair:scan:chunk-repair:book-scan-v1',
+    runId: 'run-repair',
+    chunkId: 'chunk-repair',
+    extractorVersion: 'book-scan-v1',
+    bookTitle: 'Книга',
+    bookAuthor: 'Автор',
+    contextText,
+    coreLocalStartOffset: 1,
+    coreLocalEndOffset: contextText.length - 1
+  })
+  assert.deepEqual(result.observations[0].evidence, {
+    quote,
+    startOffset: contextText.indexOf(quote),
+    endOffset: contextText.indexOf(quote) + quote.length
+  })
+})
+
+test('internal generation service rejects offset repair for an ambiguous exact quote', async () => {
+  const storage = memoryStorage()
+  const contextText = 'Анна вошла. Потом Анна вошла.'
+  const quote = 'Анна вошла.'
+  const service = createInternalGenerationService({
+    storage,
+    logger: { info() {}, error() {} },
+    async completeChat() {
+      return JSON.stringify({ observations: [{
+        type: 'character_action',
+        entityKind: 'character',
+        entityCandidate: 'Анна',
+        relatedEntityCandidates: [],
+        fact: 'Анна вошла',
+        evidence: { quote, startOffset: 1, endOffset: quote.length + 1 },
+        confidence: 0.9
+      }] })
+    },
+    async generatePortrait() { throw new Error('unused') },
+    async synthesizeSpeech() { throw new Error('unused') },
+    async generateIdleAnimation() { throw new Error('unused') }
+  })
+  await assert.rejects(() => service.scanBookChunk({
+    idempotencyKey: 'run-ambiguous:scan:chunk-ambiguous:book-scan-v1',
+    runId: 'run-ambiguous',
+    chunkId: 'chunk-ambiguous',
+    extractorVersion: 'book-scan-v1',
+    bookTitle: 'Книга',
+    bookAuthor: '',
+    contextText,
+    coreLocalStartOffset: 0,
+    coreLocalEndOffset: contextText.length
+  }), (error) => error.code === 'EVIDENCE_MISMATCH')
+  assert.equal(storage.objects.size, 0)
+})
+
 test('internal generation service does not cache an ungrounded scan result', async () => {
   const storage = memoryStorage()
   let chatCalls = 0
