@@ -155,13 +155,14 @@ describe("portrait prompt", () => {
       "fanfiction or transformative fiction",
     );
 
-    expect(fanfictionPrompt).toContain("размер 5 или больше");
-    expect(fanfictionPrompt).toContain("допускается обнажение и эротическая поза");
-    expect(fanfictionPrompt).not.toContain("персонаж полностью одет");
-    expect(mangaPrompt).toContain("размер 5 или больше");
-    expect(classicPrompt).toContain("размер 5 или больше");
-    expect(malePrompt).not.toContain("размер 5 или больше");
-    expect(minorPrompt).not.toContain("размер 5 или больше");
+    expect(fanfictionPrompt).toContain("очень большой грудью");
+    expect(fanfictionPrompt).toContain("тело полностью прикрыто одеждой");
+    expect(fanfictionPrompt).toContain("образ несексуализированный");
+    expect(fanfictionPrompt).not.toContain("эротическая поза");
+    expect(mangaPrompt).toContain("очень большой грудью");
+    expect(classicPrompt).toContain("очень большой грудью");
+    expect(malePrompt).not.toContain("очень большой грудью");
+    expect(minorPrompt).not.toContain("очень большой грудью");
   });
 
   it("routes character portraits directly through OpenRouter", async () => {

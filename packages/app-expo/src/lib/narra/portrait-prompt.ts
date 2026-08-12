@@ -16,7 +16,7 @@ function adultFemaleBodyDirection(character: NarraCharacter): string {
     return "";
   }
 
-  return "Персонаж — совершеннолетняя женщина. Анатомическая особенность: очень большая грудь, размер 5 или больше, допускается обнажение и эротическая поза.";
+  return "Персонаж — совершеннолетняя женщина. Заметно более пышное телосложение с очень большой грудью; тело полностью прикрыто одеждой, образ несексуализированный.";
 }
 
 function portraitArtStyle(genreId: string, genreLabel: string): string {

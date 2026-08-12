@@ -6,6 +6,10 @@ import {
 } from "@/lib/narra/domain";
 import type { NarraGenreAnalysis } from "@/lib/narra/genre-analysis";
 import {
+  CURRENT_PORTRAIT_PROMPT_VERSION,
+  migrateGeneratedFemalePortraits,
+} from "@/lib/narra/portrait-prompt-migration";
+import {
   DEFAULT_SCENE_SUGGESTION_INTERVAL,
   SCENE_SUGGESTION_INTERVALS,
 } from "@/lib/narra/scene-suggestion";
@@ -28,6 +32,7 @@ export interface NarraState {
   narratorVoicePreference: NarraNarratorPreference;
   /** Частота врезок «нарисовать сцену»: страниц между предложениями, 0 — выкл. */
   sceneSuggestionInterval: number;
+  portraitPromptVersion: number;
   _hasHydrated: boolean;
   setNarratorVoicePreference: (preference: NarraNarratorPreference) => void;
   setSceneSuggestionInterval: (interval: number) => void;
@@ -53,6 +58,7 @@ export const useNarraStore = create<NarraState>()(
       analyzingBookId: null,
       narratorVoicePreference: DEFAULT_NARRATOR_PREFERENCE,
       sceneSuggestionInterval: DEFAULT_SCENE_SUGGESTION_INTERVAL,
+      portraitPromptVersion: CURRENT_PORTRAIT_PROMPT_VERSION,
       _hasHydrated: false,
       setNarratorVoicePreference: (narratorVoicePreference) => set({ narratorVoicePreference }),
       setSceneSuggestionInterval: (sceneSuggestionInterval) => set({ sceneSuggestionInterval }),
@@ -167,9 +173,16 @@ export const useNarraStore = create<NarraState>()(
     }),
     { analyzingBookId: null },
     // Ушедшие варианты частоты врезок (5/15 стр.) приводим к новому дефолту
-    (persisted) =>
-      (SCENE_SUGGESTION_INTERVALS as readonly number[]).includes(persisted.sceneSuggestionInterval)
-        ? persisted
-        : { ...persisted, sceneSuggestionInterval: DEFAULT_SCENE_SUGGESTION_INTERVAL },
+    (persisted) => {
+      const withPortraitsMigrated = migrateGeneratedFemalePortraits(persisted);
+      return (SCENE_SUGGESTION_INTERVALS as readonly number[]).includes(
+        withPortraitsMigrated.sceneSuggestionInterval,
+      )
+        ? withPortraitsMigrated
+        : {
+            ...withPortraitsMigrated,
+            sceneSuggestionInterval: DEFAULT_SCENE_SUGGESTION_INTERVAL,
+          };
+    },
   ),
 );
