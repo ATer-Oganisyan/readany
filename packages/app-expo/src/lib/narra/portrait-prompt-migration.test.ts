@@ -44,6 +44,19 @@ function book(characters: NarraCharacter[]): NarraBookState {
 }
 
 describe("portrait prompt migration", () => {
+  it("does not depend on Object.fromEntries in Hermes", () => {
+    const originalFromEntries = Object.fromEntries;
+    Object.fromEntries = undefined as never;
+    try {
+      const migrated = migrateGeneratedFemalePortraits({
+        books: { book: book([character({ portraitUri: "file:///old.jpg" })]) },
+      });
+      expect(migrated.books.book?.characters[0]?.portraitUri).toBeUndefined();
+    } finally {
+      Object.fromEntries = originalFromEntries;
+    }
+  });
+
   it("resets old generated adult female portraits only once", () => {
     const generated = character({ portraitUri: "file:///old.jpg" });
     const male = character({ id: "male", gender: "male", portraitUri: "file:///male.jpg" });
