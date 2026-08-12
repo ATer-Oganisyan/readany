@@ -4,6 +4,7 @@ import {
   fontSize,
   fontWeight,
   radius,
+  secondLevelTitleFontFamily,
   spacing,
   withOpacity,
 } from "../../../styles/theme";
@@ -60,7 +61,7 @@ export const makeStyles = (colors: ThemeColors) =>
     endpointNameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
     endpointName: {
       fontSize: fontSize.base,
-      fontWeight: fontWeight.semibold,
+      fontWeight: fontWeight.normal,
       color: colors.foreground,
     },
     currentBadge: {
@@ -296,6 +297,7 @@ export const makeStyles = (colors: ThemeColors) =>
       gap: spacing.lg,
     },
     sectionTitle: {
+      fontFamily: secondLevelTitleFontFamily,
       fontSize: fontSize.base,
       fontWeight: fontWeight.semibold,
       color: colors.foreground,

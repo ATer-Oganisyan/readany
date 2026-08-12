@@ -1,6 +1,6 @@
 import { Text } from "@/components/ui/Typography";
 import { Download, Maximize2, Minimize2, RotateCcw } from "@/components/ui/Icon";
-import { useColors } from "@/styles/theme";
+import { headingFontFamily, useColors } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
@@ -456,6 +456,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   title: {
+    fontFamily: headingFontFamily,
     fontSize: 13,
     flex: 1,
   },
@@ -502,6 +503,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   fullscreenTitle: {
+    fontFamily: headingFontFamily,
     flex: 1,
     fontSize: 15,
     fontWeight: "500",

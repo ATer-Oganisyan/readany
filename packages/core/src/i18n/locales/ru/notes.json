@@ -52,6 +52,20 @@
     "copiedToClipboard": "Скопировано в буфер обмена",
     "downloaded": "Скачано",
     "deleteHighlightConfirm": "Удалить это выделение?",
-    "deleteNoteConfirm": "Удалить эту заметку?"
+    "deleteNoteConfirm": "Удалить эту заметку?",
+    "newNote": "Новая заметка",
+    "saveNote": "Сохранить заметку",
+    "saving": "Сохраняем",
+    "startWriting": "Начните писать…",
+    "openNote": "Открыть заметку «{{title}}»",
+    "exportAccessibility": "Экспорт заметок",
+    "today": "Сегодня",
+    "yesterday": "Вчера",
+    "last30Days": "За последние 30 дней",
+    "earlier": "Раньше",
+    "noteFallback": "Заметка",
+    "chooseBook": "Выберите книгу",
+    "saveFailed": "Не получилось сохранить заметку",
+    "editNote": "Редактировать заметку"
   }
 }

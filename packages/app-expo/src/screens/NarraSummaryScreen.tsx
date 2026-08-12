@@ -7,6 +7,7 @@ import { useNarraStore } from "@/stores";
 import { fontSize, fontWeight, spacing, useColors } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
 
 type Props = NativeStackScreenProps<RootStackParamList, "NarraSummary">;
@@ -14,7 +15,12 @@ type Props = NativeStackScreenProps<RootStackParamList, "NarraSummary">;
 export function NarraSummaryScreen({ route }: Props) {
   const { bookId, chapter, excerpt, sourceKey } = route.params;
   const colors = useColors();
-  const cachedSummary = useNarraStore((state) => state.books[bookId]?.summaries?.[sourceKey]);
+  const { t, i18n } = useTranslation();
+  const interfaceLanguage = i18n.resolvedLanguage === "en" ? "en" : "ru";
+  const localizedSourceKey = `${sourceKey}:${interfaceLanguage}`;
+  const cachedSummary = useNarraStore(
+    (state) => state.books[bookId]?.summaries?.[localizedSourceKey],
+  );
   const setSummary = useNarraStore((state) => state.setSummary);
   const [summary, setLocalSummary] = useState(cachedSummary?.text ?? "");
   const [loading, setLoading] = useState(false);
@@ -26,15 +32,21 @@ export function NarraSummaryScreen({ route }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const text = await generateNarraSummary(chapter, excerpt);
+      const text = await generateNarraSummary(chapter, excerpt, interfaceLanguage);
       setLocalSummary(text);
-      setSummary(bookId, { sourceKey, chapter, excerpt, text, generatedAt: Date.now() });
+      setSummary(bookId, {
+        sourceKey: localizedSourceKey,
+        chapter,
+        excerpt,
+        text,
+        generatedAt: Date.now(),
+      });
     } catch (cause) {
       setError(reportNarraError("selection_summary", cause).message);
     } finally {
       setLoading(false);
     }
-  }, [bookId, chapter, excerpt, loading, setSummary, sourceKey]);
+  }, [bookId, chapter, excerpt, interfaceLanguage, loading, localizedSourceKey, setSummary]);
 
   useEffect(() => {
     if (startedRef.current || summary) return;
@@ -49,14 +61,18 @@ export function NarraSummaryScreen({ route }: Props) {
       style={{ backgroundColor: colors.background }}
     >
       <View style={styles.section}>
-        <Text style={[styles.label, { color: colors.mutedForeground }]}>Фрагмент</Text>
+        <Text style={[styles.label, { color: colors.mutedForeground }]}>
+          {t("narra.summaryExcerpt", "Фрагмент")}
+        </Text>
         <Text selectable style={[styles.source, { color: colors.foreground }]}>
           {excerpt}
         </Text>
       </View>
 
       <View style={styles.section}>
-        <Text style={[styles.label, { color: colors.mutedForeground }]}>Краткий пересказ</Text>
+        <Text style={[styles.label, { color: colors.mutedForeground }]}>
+          {t("narra.summary", "Краткий пересказ")}
+        </Text>
         {summary ? (
           <>
             <Text selectable style={[styles.result, { color: colors.foreground }]}>
@@ -65,7 +81,9 @@ export function NarraSummaryScreen({ route }: Props) {
             {loading ? (
               <View style={styles.status}>
                 <ActivityIndicator color={colors.primary} />
-                <Text style={{ color: colors.mutedForeground }}>Обновляем пересказ…</Text>
+                <Text style={{ color: colors.mutedForeground }}>
+                  {t("narra.summaryUpdating", "Обновляем пересказ…")}
+                </Text>
               </View>
             ) : null}
             {error ? (
@@ -77,22 +95,32 @@ export function NarraSummaryScreen({ route }: Props) {
         ) : loading ? (
           <View style={styles.status}>
             <ActivityIndicator color={colors.primary} />
-            <Text style={{ color: colors.mutedForeground }}>Составляем пересказ…</Text>
+            <Text style={{ color: colors.mutedForeground }}>
+              {t("narra.summaryGenerating", "Составляем пересказ…")}
+            </Text>
           </View>
         ) : (
           <Text selectable style={[styles.result, { color: colors.mutedForeground }]}>
-            {error || "Не удалось составить пересказ."}
+            {error || t("narra.summaryFailed", "Не удалось составить пересказ.")}
           </Text>
         )}
       </View>
 
       {summary || error ? (
         <NativeButton
-          accessibilityLabel={summary ? "Составить пересказ заново" : "Попробовать снова"}
+          accessibilityLabel={
+            summary
+              ? t("narra.summaryRegenerate", "Составить пересказ заново")
+              : t("common.retry", "Попробовать снова")
+          }
           disabled={loading}
           fullWidth
           icon="refresh"
-          label={summary ? "Составить заново" : "Попробовать снова"}
+          label={
+            summary
+              ? t("narra.summaryRegenerateShort", "Составить заново")
+              : t("common.retry", "Попробовать снова")
+          }
           onPress={() => void generate()}
           variant={summary ? "secondary" : "primary"}
         />

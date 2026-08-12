@@ -12,7 +12,7 @@ import {
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { NativeButton } from "@/components/ui/NativeButton";
 import type { SelectionEvent } from "@/hooks/use-reader-bridge";
-import { radius, spacing, useColors, withOpacity } from "@/styles/theme";
+import { headingFontFamily, radius, spacing, useColors, withOpacity } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
 import { HIGHLIGHT_COLORS, HIGHLIGHT_COLOR_HEX } from "@readany/core/types";
 import type { HighlightColor } from "@readany/core/types";
@@ -414,6 +414,7 @@ const makeStyles = (colors: ThemeColors) =>
       marginBottom: spacing.sm,
     },
     noteModalTitle: {
+      fontFamily: headingFontFamily,
       fontSize: fs.lg,
       fontWeight: fw.semibold,
       color: colors.foreground,

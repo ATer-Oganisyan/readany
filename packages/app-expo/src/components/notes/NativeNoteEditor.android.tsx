@@ -2,6 +2,7 @@ import { useTheme } from "@/styles/theme";
 import { Text as ComposeText, Host, TextField, useNativeState } from "@expo/ui/jetpack-compose";
 import { fillMaxSize } from "@expo/ui/jetpack-compose/modifiers";
 import { useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import type { NativeNoteEditorProps } from "./NativeNoteEditor";
 
 /** Full-screen native Jetpack Compose note editor. */
@@ -11,6 +12,7 @@ export function NativeNoteEditor({
   initialValue = "",
 }: NativeNoteEditorProps) {
   const { colors } = useTheme();
+  const { t } = useTranslation();
   const text = useNativeState(initialValue);
   const handleChange = useCallback((value: string) => onChange(value), [onChange]);
 
@@ -37,7 +39,9 @@ export function NativeNoteEditor({
         }}
       >
         <TextField.Placeholder>
-          <ComposeText color={colors.mutedForeground}>Начните писать…</ComposeText>
+          <ComposeText color={colors.mutedForeground}>
+            {t("notes.startWriting", "Начните писать…")}
+          </ComposeText>
         </TextField.Placeholder>
       </TextField>
     </Host>

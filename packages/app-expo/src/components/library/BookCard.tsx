@@ -1,4 +1,5 @@
 import { Text } from "@/components/ui/Typography";
+import { shouldRenderCoverTypography } from "@/lib/book/cover-display";
 import { findBundledCatalogBookByTitle } from "@/lib/catalog/bundled-books";
 import { useLibraryStore } from "@/stores/library-store";
 import { useColors } from "@/styles/theme";
@@ -48,6 +49,8 @@ export const BookCard = memo(function BookCard({
   const [imageError, setImageError] = useState(false);
   const [resolvedCoverUrl, setResolvedCoverUrl] = useState<string | undefined>(undefined);
   const bundledCatalogBook = findBundledCatalogBookByTitle(book.meta.title);
+  const showCoverTypography =
+    !resolvedCoverUrl || imageError || shouldRenderCoverTypography(book.id, book.meta.coverUrl);
 
   // Resolve relative coverUrl to absolute path
   useEffect(() => {
@@ -87,35 +90,12 @@ export const BookCard = memo(function BookCard({
         {/* Cover — 28:41 aspect ratio */}
         <View style={s.coverWrap}>
           {resolvedCoverUrl && !imageError ? (
-            <>
-              <Image
-                source={{ uri: resolvedCoverUrl }}
-                style={s.coverImage}
-                resizeMode="cover"
-                onError={() => setImageError(true)}
-              />
-              {/* Book spine crease overlay — matches desktop .book-spine */}
-              <View style={s.spineOverlay} pointerEvents="none">
-                {/* Left edge dark line */}
-                <View style={s.spineStrip1} />
-                {/* Spine shadow dip */}
-                <View style={s.spineStrip2} />
-                {/* Highlight reflection */}
-                <View style={s.spineStrip3} />
-                {/* Transition bright */}
-                <View style={s.spineStrip4} />
-                {/* Crease dark */}
-                <View style={s.spineStrip5} />
-                {/* Deep fold */}
-                <View style={s.spineStrip6} />
-                {/* Subtle bright transition */}
-                <View style={s.spineStrip7} />
-                {/* Right edge subtle shadow */}
-                <View style={s.spineEdgeRight} />
-              </View>
-              {/* Top highlight */}
-              <View style={s.spineTopHighlight} pointerEvents="none" />
-            </>
+            <Image
+              source={{ uri: resolvedCoverUrl }}
+              style={s.coverImage}
+              resizeMode="cover"
+              onError={() => setImageError(true)}
+            />
           ) : bundledCatalogBook ? (
             <Image
               source={bundledCatalogBook.coverAssetModule}
@@ -126,11 +106,25 @@ export const BookCard = memo(function BookCard({
             <View style={s.fallbackCover} />
           )}
 
-          <BookCoverTypography
-            title={book.meta.title}
-            author={book.meta.author}
-            width={cardWidth}
-          />
+          {/* Корешок остаётся видимым и на временной заглушке во время генерации. */}
+          <View style={s.spineOverlay} pointerEvents="none">
+            <View style={s.spineStrip1} />
+            <View style={s.spineStrip2} />
+            <View style={s.spineStrip3} />
+            <View style={s.spineStrip4} />
+            <View style={s.spineStrip5} />
+            <View style={s.spineStrip6} />
+            <View style={s.spineStrip7} />
+            <View style={s.spineEdgeRight} />
+          </View>
+
+          {showCoverTypography ? (
+            <BookCoverTypography
+              title={book.meta.title}
+              author={book.meta.author}
+              width={cardWidth}
+            />
+          ) : null}
           {isGeneratingCover ? <CoverGenerationShimmer /> : null}
 
           {/* Remote status overlay (on-demand download) */}

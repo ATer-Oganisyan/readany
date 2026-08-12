@@ -1,7 +1,7 @@
 import { typographyStyles } from "@deslop/primitives";
 import {
-  displayFontFamily,
   interfaceFontFamily,
+  sansCondensedFontFamily,
   serifCondensedFontFamily,
 } from "@deslop/primitives/native";
 /**
@@ -115,5 +115,7 @@ export const subtitleTypography = {
 } as const;
 
 export const fontFamily = interfaceFontFamily;
-export const titleFontFamily = displayFontFamily.semibold;
+export const headingFontFamily = sansCondensedFontFamily.regular;
+export const secondLevelTitleFontFamily = sansCondensedFontFamily.bold;
+export const titleFontFamily = secondLevelTitleFontFamily;
 export const largeTitleFontFamily = serifCondensedFontFamily.regular;

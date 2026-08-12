@@ -12,7 +12,15 @@ import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useNativeHeaderActions } from "@/navigation/useNativeHeaderActions";
 import { useLibraryStore } from "@/stores/library-store";
-import { fontSize, fontWeight, radius, useColors, useTheme, withOpacity } from "@/styles/theme";
+import {
+  fontSize,
+  fontWeight,
+  headingFontFamily,
+  radius,
+  useColors,
+  useTheme,
+  withOpacity,
+} from "@/styles/theme";
 import { useHeaderHeight } from "@react-navigation/elements";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import {
@@ -172,6 +180,7 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
           minWidth: 0,
         },
         title: {
+          fontFamily: headingFontFamily,
           fontSize: fontSize.xl,
           fontWeight: fontWeight.semibold,
           color: colors.foreground,
@@ -265,6 +274,7 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
           minWidth: 0,
         },
         entryTitle: {
+          fontFamily: headingFontFamily,
           fontSize: fontSize.base,
           fontWeight: fontWeight.medium,
           color: colors.foreground,
@@ -316,6 +326,7 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
           transform: [{ translateY: -nativeHeaderHeight / 2 }],
         },
         stateTitle: {
+          fontFamily: headingFontFamily,
           marginTop: 14,
           fontSize: fontSize.lg,
           fontWeight: fontWeight.semibold,
@@ -374,6 +385,7 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
           minWidth: 0,
         },
         footerTitle: {
+          fontFamily: headingFontFamily,
           fontSize: fontSize.sm,
           fontWeight: fontWeight.semibold,
           color: colors.foreground,

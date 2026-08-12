@@ -1,6 +1,6 @@
 import { Text } from "@/components/ui/Typography";
 import { MermaidView } from "@/components/common/MermaidView";
-import { fontSize as fs, radius, useColors } from "@/styles/theme";
+import { fontSize as fs, headingFontFamily, radius, useColors } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
 import type { CitationPart } from "@readany/core/types/message";
 import * as Clipboard from "expo-clipboard";
@@ -261,6 +261,7 @@ const makeMarkdownStyles = (colors: ThemeColors) =>
     },
     heading1: {
       color: colors.foreground,
+      fontFamily: headingFontFamily,
       fontSize: fs.lg,
       fontWeight: "700",
       marginBottom: 8,
@@ -268,6 +269,7 @@ const makeMarkdownStyles = (colors: ThemeColors) =>
     },
     heading2: {
       color: colors.foreground,
+      fontFamily: headingFontFamily,
       fontSize: fs.md,
       fontWeight: "600",
       marginBottom: 6,
@@ -275,6 +277,7 @@ const makeMarkdownStyles = (colors: ThemeColors) =>
     },
     heading3: {
       color: colors.foreground,
+      fontFamily: headingFontFamily,
       fontSize: fs.base,
       fontWeight: "600",
       marginBottom: 4,

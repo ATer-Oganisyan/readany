@@ -2,7 +2,13 @@
  * Note view modal + tooltip + Markdown render styles for ReaderScreen.
  */
 import { Dimensions, StyleSheet } from "react-native";
-import { type ThemeColors, fontSize, fontWeight, radius } from "@/styles/theme";
+import {
+  type ThemeColors,
+  fontSize,
+  fontWeight,
+  headingFontFamily,
+  radius,
+} from "@/styles/theme";
 
 const SCREEN_HEIGHT = Dimensions.get("window").height;
 
@@ -15,9 +21,9 @@ export const noteTooltipMdStyles = {
   textgroup: { color: TOOLTIP_FG, fontSize: 13, lineHeight: 19 },
   text: { color: TOOLTIP_FG, fontSize: 13, lineHeight: 19 },
   paragraph: { color: TOOLTIP_FG, fontSize: 13, lineHeight: 19, marginBottom: 4, marginTop: 0 },
-  heading1: { color: "#fff", fontSize: 15, fontWeight: "600" as const, marginBottom: 4, marginTop: 4 },
-  heading2: { color: "#fff", fontSize: 14, fontWeight: "600" as const, marginBottom: 3, marginTop: 3 },
-  heading3: { color: "#fff", fontSize: 13, fontWeight: "600" as const, marginBottom: 2, marginTop: 2 },
+  heading1: { color: "#fff", fontFamily: headingFontFamily, fontSize: 15, fontWeight: "600" as const, marginBottom: 4, marginTop: 4 },
+  heading2: { color: "#fff", fontFamily: headingFontFamily, fontSize: 14, fontWeight: "600" as const, marginBottom: 3, marginTop: 3 },
+  heading3: { color: "#fff", fontFamily: headingFontFamily, fontSize: 13, fontWeight: "600" as const, marginBottom: 2, marginTop: 2 },
   strong: { fontWeight: "700" as const, color: "#fff" },
   em: { fontStyle: "italic" as const, color: "#e2e8f0" },
   link: { color: "#60a5fa" },
@@ -57,7 +63,12 @@ export const makeNoteStyles = (colors: ThemeColors) =>
       flexDirection: "row", alignItems: "center",
       justifyContent: "space-between", marginBottom: 12,
     },
-    noteViewTitle: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.foreground },
+    noteViewTitle: {
+      fontFamily: headingFontFamily,
+      fontSize: fontSize.md,
+      fontWeight: fontWeight.semibold,
+      color: colors.foreground,
+    },
     noteViewCloseBtn: {
       width: 32, height: 32, borderRadius: 16,
       alignItems: "center", justifyContent: "center",

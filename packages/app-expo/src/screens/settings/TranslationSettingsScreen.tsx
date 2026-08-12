@@ -22,7 +22,9 @@ import {
   type ThemeColors,
   fontSize,
   fontWeight,
+  headingFontFamily,
   radius,
+  secondLevelTitleFontFamily,
   spacing,
   useColors,
 } from "../../styles/theme";
@@ -300,8 +302,9 @@ const makeStyles = (colors: ThemeColors) =>
       marginTop: spacing.xl,
     },
     sectionTitle: {
+      fontFamily: secondLevelTitleFontFamily,
       fontSize: fontSize.base,
-      fontWeight: fontWeight.semibold,
+      fontWeight: fontWeight.normal,
       color: colors.foreground,
       marginBottom: 10,
     },
@@ -354,6 +357,7 @@ const makeStyles = (colors: ThemeColors) =>
       lineHeight: 20,
     },
     subSectionTitle: {
+      fontFamily: headingFontFamily,
       marginTop: 16,
       marginBottom: 10,
     },
@@ -411,6 +415,7 @@ const makeStyles = (colors: ThemeColors) =>
       overflow: "hidden",
     },
     modalTitle: {
+      fontFamily: headingFontFamily,
       fontSize: fontSize.base,
       fontWeight: fontWeight.semibold,
       color: colors.foreground,

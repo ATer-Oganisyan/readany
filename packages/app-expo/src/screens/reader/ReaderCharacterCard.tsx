@@ -246,7 +246,9 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
     const [portraitBackgroundColor, setPortraitBackgroundColor] = useState(
       portraitUri
         ? (portraitBackgroundCache.get(portraitUri) ?? DEFAULT_PORTRAIT_BACKGROUND)
-        : colors.background,
+        : embedded
+          ? DEFAULT_PORTRAIT_BACKGROUND
+          : colors.background,
     );
     const portraitForeground = useMemo(
       () => foregroundForBackground(portraitBackgroundColor),
@@ -436,10 +438,7 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
     const characterDetails = (
       <View
         collapsable={false}
-        style={[
-          styles.characterSection,
-          embedded && portraitUri && styles.embeddedCharacterSection,
-        ]}
+        style={[styles.characterSection, embedded && styles.embeddedCharacterSection]}
       >
         <View style={[styles.characterInfo, embedded && styles.embeddedCharacterInfo]}>
           {embedded ? (
@@ -466,8 +465,8 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
             numberOfLines={embedded ? 2 : undefined}
             style={[
               styles.name,
-              embedded && portraitUri && styles.embeddedName,
-              embedded && portraitUri && { color: portraitForeground.primary },
+              embedded && styles.embeddedName,
+              embedded && { color: portraitForeground.primary },
             ]}
           >
             {fittedDisplayName}
@@ -495,18 +494,14 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
           ) : null}
           {embedded ? (
             <View style={styles.embeddedDetailsBlock}>
-              {portraitUri ? (
-                <NativeCharacterDetailsCells
-                  bio={character.role || "—"}
-                  bioLabel={t("narra.bio", "Био")}
-                  cellBackgroundColor={colors.primary10}
-                  character={formatCharacterTraits(character.traits) || "—"}
-                  characterLabel={t("narra.character", "Характер")}
-                  isDark={portraitForeground.isDark}
-                />
-              ) : character.role ? (
-                <Text style={styles.description}>{character.role}</Text>
-              ) : null}
+              <NativeCharacterDetailsCells
+                bio={character.role || "—"}
+                bioLabel={t("narra.bio", "Био")}
+                cellBackgroundColor={colors.primary10}
+                character={formatCharacterTraits(character.traits) || "—"}
+                characterLabel={t("narra.character", "Характер")}
+                isDark={portraitForeground.isDark}
+              />
             </View>
           ) : character.role ? (
             <Text style={styles.description}>{character.role}</Text>
@@ -548,7 +543,7 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
         ]}
       >
         {!embedded ? <View style={styles.grabber} /> : null}
-        {embedded && unlocked && portraitUri ? (
+        {embedded && unlocked ? (
           <View
             pointerEvents="none"
             style={[StyleSheet.absoluteFill, { backgroundColor: portraitBackgroundColor }]}

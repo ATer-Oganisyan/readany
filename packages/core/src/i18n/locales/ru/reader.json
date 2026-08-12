@@ -81,7 +81,20 @@
     "returnToOriginal": "Вернуться на позицию до поиска?",
     "searchComplete": "Поиск завершен",
     "unknownBook": "Книга без названия",
-    "viewNote": "Посмотреть заметку"
+    "viewNote": "Посмотреть заметку",
+    "bookActions": "Действия с книгой",
+    "currentPage": "Текущая страница",
+    "currentExcerpt": "Текущий фрагмент",
+    "appearance": "Оформление",
+    "speak": "Озвучить",
+    "copySelection": "Скопировать",
+    "summarize": "Кратко пересказать",
+    "drawScene": "Нарисовать сцену",
+    "language": "Язык",
+    "discussWithAI": "Обсудить с ИИ",
+    "listen": "Слушать",
+    "textSettings": "Текст",
+    "searchTimedOut": "Поиск занял слишком долго. Попробуйте фразу покороче."
   },
   "bookmarks": {
     "title": "Закладки",

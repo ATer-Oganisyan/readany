@@ -42,8 +42,7 @@ import { rnSessionEventSource } from "@/hooks";
 import { setStreamingFetch } from "@readany/core/ai/llm-provider";
 import { initDatabase } from "@readany/core/db/database";
 import { setSessionEventSource } from "@readany/core/hooks/use-reading-session";
-import { i18nReady, initI18nLanguage } from "@readany/core/i18n";
-import i18n from "@readany/core/i18n";
+import i18n, { i18nReady, initI18nLanguage } from "@readany/core/i18n";
 import { setPlatformService } from "@readany/core/services";
 import { setSyncAdapter } from "@readany/core/sync";
 import { setAudioModeAsync } from "expo-audio";
@@ -262,7 +261,7 @@ export default function App() {
               textAlign: "center",
             }}
           >
-            Не удалось запустить приложение
+            {i18n.t("common.startupFailed", "Не удалось запустить приложение")}
           </Text>
           <Text style={{ color: "#fca5a5", fontSize: 14, textAlign: "center" }}>
             {startupError}

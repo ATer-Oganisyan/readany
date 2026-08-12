@@ -22,6 +22,7 @@ import {
   fontSize,
   fontWeight,
   radius,
+  secondLevelTitleFontFamily,
   spacing,
   useColors,
 } from "../../styles/theme";
@@ -213,8 +214,9 @@ const makeStyles = (colors: ThemeColors) =>
       gap: 12,
     },
     sectionTitle: {
+      fontFamily: secondLevelTitleFontFamily,
       fontSize: fontSize.base,
-      fontWeight: fontWeight.semibold,
+      fontWeight: fontWeight.normal,
       color: colors.foreground,
     },
     updateBtn: {

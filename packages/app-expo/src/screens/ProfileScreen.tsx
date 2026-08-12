@@ -19,6 +19,7 @@ import {
   type ThemeColors,
   fontSize,
   fontWeight,
+  headingFontFamily,
   radius,
   spacing,
   useColors,
@@ -29,6 +30,7 @@ import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { readingStatsService } from "@readany/core/stats";
 import type { DailyStats, OverallStats } from "@readany/core/stats";
+import { changeAndPersistLanguage } from "@readany/core/i18n";
 import { eventBus } from "@readany/core/utils/event-bus";
 /**
  * ProfileScreen — matching Tauri mobile ProfilePage exactly.
@@ -71,13 +73,25 @@ type ProfileMenuItem =
 
 const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
 
-function formatProfileReadingTime(minutes: number): string {
+function formatProfileReadingTime(
+  minutes: number,
+  minuteLabel: string,
+  minutesLabel: string,
+  hourLabel: string,
+  hoursLabel: string,
+): string {
   const roundedMinutes = Math.max(0, Math.round(minutes));
-  if (roundedMinutes < 60) return `${roundedMinutes}\u00a0мин`;
+  if (roundedMinutes < 60) {
+    return `${roundedMinutes}\u00a0${roundedMinutes === 1 ? minuteLabel : minutesLabel}`;
+  }
 
   const hours = Math.floor(roundedMinutes / 60);
   const remainingMinutes = roundedMinutes % 60;
-  return remainingMinutes > 0 ? `${hours}\u00a0ч ${remainingMinutes}\u00a0мин` : `${hours}\u00a0ч`;
+  return remainingMinutes > 0
+    ? `${hours}\u00a0${hours === 1 ? hourLabel : hoursLabel} ${remainingMinutes}\u00a0${
+        remainingMinutes === 1 ? minuteLabel : minutesLabel
+      }`
+    : `${hours}\u00a0${hours === 1 ? hourLabel : hoursLabel}`;
 }
 
 function StatCard({
@@ -268,7 +282,7 @@ function MiniHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
 export function ProfileScreen() {
   const { colors, mode: themeMode, setMode: setThemeMode, isDark } = useTheme();
   const s = makeStyles(colors);
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const layout = useResponsiveLayout();
   const statsGridColumns = layout.isTablet ? 4 : 2;
   const statCardSlotWidth = `${100 / statsGridColumns}%` as `${number}%`;
@@ -285,6 +299,8 @@ export function ProfileScreen() {
     t("settings.dark", "Тёмная"),
   ];
   const selectedThemeIndex = Math.max(0, THEME_MODES.indexOf(themeMode));
+  const interfaceLanguageValues = ["Русский", "English"];
+  const selectedLanguageIndex = i18n.resolvedLanguage === "en" ? 1 : 0;
 
   const loadStats = useCallback(async () => {
     try {
@@ -407,8 +423,24 @@ export function ProfileScreen() {
   );
 
   const booksRead = liveOverall?.totalBooks ?? 0;
-  const totalTime = formatProfileReadingTime(liveOverall?.totalReadingTime ?? 0);
-  const averageDailyTime = formatProfileReadingTime(liveOverall?.avgDailyTime ?? 0);
+  const minuteLabel = t("common.minute", "мин");
+  const minutesLabel = t("common.minutes", "мин");
+  const hourLabel = t("common.hour", "ч");
+  const hoursLabel = t("common.hours", "ч");
+  const totalTime = formatProfileReadingTime(
+    liveOverall?.totalReadingTime ?? 0,
+    minuteLabel,
+    minutesLabel,
+    hourLabel,
+    hoursLabel,
+  );
+  const averageDailyTime = formatProfileReadingTime(
+    liveOverall?.avgDailyTime ?? 0,
+    minuteLabel,
+    minutesLabel,
+    hourLabel,
+    hoursLabel,
+  );
   const streak = liveOverall?.currentStreak ?? 0;
   const overviewCards = [
     {
@@ -481,6 +513,21 @@ export function ProfileScreen() {
             }}
             colorScheme={isDark ? "dark" : "light"}
             accessibilityLabel={t("settings.theme", "Тема")}
+          />
+        </View>
+
+        <View style={s.menuSection}>
+          <Text style={s.menuSectionTitle} maxFontSizeMultiplier={1.5}>
+            {t("settings.language", "Язык")}
+          </Text>
+          <NativeThemePicker
+            values={interfaceLanguageValues}
+            selectedIndex={selectedLanguageIndex}
+            onSelect={(index) => {
+              void changeAndPersistLanguage(index === 1 ? "en" : "ru");
+            }}
+            colorScheme={isDark ? "dark" : "light"}
+            accessibilityLabel={t("settings.language", "Язык")}
           />
         </View>
 
@@ -562,6 +609,7 @@ const makeStyles = (colors: ThemeColors) =>
       marginRight: 12,
     },
     headerTitle: {
+      fontFamily: headingFontFamily,
       fontSize: fontSize["2xl"],
       lineHeight: fontSize["2xl"] * 1.4,
       fontWeight: fontWeight.bold,
@@ -599,6 +647,7 @@ const makeStyles = (colors: ThemeColors) =>
       minWidth: 0,
     },
     statCardTitle: {
+      fontFamily: headingFontFamily,
       flex: 1,
       fontSize: 11,
       lineHeight: 16,
@@ -648,6 +697,7 @@ const makeStyles = (colors: ThemeColors) =>
       marginBottom: 12,
     },
     heatmapTitle: {
+      fontFamily: headingFontFamily,
       flex: 1,
       minWidth: 0,
       fontSize: fontSize.sm,
@@ -660,6 +710,7 @@ const makeStyles = (colors: ThemeColors) =>
     // Menu
     menuSection: { paddingHorizontal: 16 },
     menuSectionTitle: {
+      fontFamily: headingFontFamily,
       fontSize: fontSize.xs,
       lineHeight: fontSize.xs * 1.5,
       fontWeight: fontWeight.medium,

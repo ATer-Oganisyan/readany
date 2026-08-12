@@ -817,6 +817,24 @@ export async function initLocalDatabase(): Promise<void> {
     )
   `);
 
+      // Device-local durable media work. These rows intentionally live outside
+      // the sync database: a gateway job belongs to one installation only.
+      await database.execute(`
+    CREATE TABLE IF NOT EXISTS cover_jobs (
+      book_id TEXT PRIMARY KEY,
+      request_id TEXT NOT NULL UNIQUE,
+      job_id TEXT UNIQUE,
+      prompt TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'submitting',
+      next_poll_at INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      expires_at INTEGER,
+      last_error_code TEXT,
+      last_error_message TEXT
+    )
+  `);
+
       try {
         await database.execute(
           "ALTER TABLE chunks ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0",
@@ -827,6 +845,9 @@ export async function initLocalDatabase(): Promise<void> {
 
       // Create indexes
       await database.execute("CREATE INDEX IF NOT EXISTS idx_chunks_book ON chunks(book_id)");
+      await database.execute(
+        "CREATE INDEX IF NOT EXISTS idx_cover_jobs_due ON cover_jobs(status, next_poll_at)",
+      );
 
       localDbInitialized = true;
 

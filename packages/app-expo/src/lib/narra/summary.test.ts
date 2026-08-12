@@ -36,4 +36,19 @@ describe("Narra summary", () => {
       "Gateway returned an empty summary",
     );
   });
+
+  it("requests an English summary for the English interface", async () => {
+    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
+      new Response(JSON.stringify({ text: "The characters meet by the window." }), { status: 200 }),
+    );
+
+    await generateNarraSummary("Chapter 1", "The characters met by the window.", "en");
+
+    const [, request] = vi.mocked(narraGatewayRequest).mock.calls[0] ?? [];
+    const payload = JSON.parse(String(request?.body));
+    expect(payload.messages[0].content).toContain("in English");
+    expect(payload.messages[1].content).toBe(
+      "Chapter “Chapter 1”:\nThe characters met by the window.",
+    );
+  });
 });

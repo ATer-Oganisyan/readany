@@ -10,12 +10,14 @@ import {
   tint,
 } from "@expo/ui/swift-ui/modifiers";
 import type { ComponentProps } from "react";
+import { useTranslation } from "react-i18next";
 import { Platform } from "react-native";
 import type { ReaderFloatingActionsProps } from "./ReaderFloatingActions.types";
 
 type SFSymbol = NonNullable<ComponentProps<typeof Button>["systemImage"]>;
 
 export function ReaderFloatingActions(props: ReaderFloatingActionsProps) {
+  const { t } = useTranslation();
   const supportsGlass = Number.parseInt(String(Platform.Version), 10) >= 26;
   const actions: Array<{
     label: string;
@@ -24,18 +26,23 @@ export function ReaderFloatingActions(props: ReaderFloatingActionsProps) {
     onPress: () => void;
   }> = [
     {
-      label: "Язык",
+      label: t("reader.language", "Язык"),
       symbol: "globe",
       active: props.translationActive,
       onPress: props.onTranslate,
     },
     {
-      label: "Озвучить",
+      label: t("reader.speak", "Озвучить"),
       symbol: "airpods.max",
       active: props.speechActive,
       onPress: props.onSpeech,
     },
-    { label: "Обсудить с ИИ", symbol: "message.fill", active: false, onPress: props.onChat },
+    {
+      label: t("reader.discussWithAI", "Обсудить с ИИ"),
+      symbol: "message.fill",
+      active: false,
+      onPress: props.onChat,
+    },
   ];
 
   return (

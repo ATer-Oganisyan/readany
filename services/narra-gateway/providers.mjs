@@ -1,10 +1,14 @@
 import { randomUUID } from 'node:crypto'
 import { withTimeout } from './concurrency.mjs'
-import { imageUpstreamError } from './image-policy.mjs'
+import { imageUpstreamError, shouldFallbackAfterImageError } from './image-policy.mjs'
 
 const RETRYABLE = new Set([408, 409, 429, 500, 502, 503, 504])
 const PURPOSES = ['character_chat', 'structured_task', 'summary', 'scenario', 'memory']
 const MODERATION_RESPONSE = /content.?filter|moderation|safety|unsafe|censor|blocked|bad_[a-z_]*lemmas|запрещ|цензур|безопасност/i
+const IMAGE_ERROR_CODES = new Set([
+  'AUTH', 'NO_KEY', 'NETWORK', 'RATE', 'TIMEOUT', 'VALIDATION',
+  'CENSOR', 'PARSE', 'UNKNOWN', 'CANCELLED'
+])
 
 function httpErrorCode(status, detail) {
   if (MODERATION_RESPONSE.test(String(detail || ''))) return 'CENSOR'
@@ -261,10 +265,17 @@ export async function requestChat({
 // ================= Обложки книг (OpenRouter image API) =================
 // Модель и ключ живут только на сервере: клиент не выбирает provider/model.
 export function coverImageConfig(env = process.env) {
+  const configuredTimeout = Number(env.OPENROUTER_IMAGE_TIMEOUT_MS || 15 * 60_000)
   return {
     baseUrl: String(env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1').replace(/\/+$/, ''),
     apiKey: String(env.OPENROUTER_API_KEY || '').trim(),
     model: String(env.OPENROUTER_IMAGE_MODEL || 'openai/gpt-image-2').trim(),
+    fallbackModel: String(
+      env.OPENROUTER_IMAGE_FALLBACK_MODEL || 'google/gemini-2.5-flash-image'
+    ).trim(),
+    timeoutMs: Number.isSafeInteger(configuredTimeout) && configuredTimeout >= 30_000
+      ? Math.min(configuredTimeout, 30 * 60_000)
+      : 15 * 60_000,
     headers: {
       ...(env.OPENROUTER_HTTP_REFERER ? { 'HTTP-Referer': env.OPENROUTER_HTTP_REFERER } : {}),
       ...(env.OPENROUTER_APP_NAME ? { 'X-Title': env.OPENROUTER_APP_NAME } : {})
@@ -272,37 +283,80 @@ export function coverImageConfig(env = process.env) {
   }
 }
 
-export function coverRouteReadiness(env = process.env) {
-  const config = coverImageConfig(env)
-  return { ready: Boolean(config.apiKey && config.baseUrl && config.model), model: config.model }
+export function normalizeImageTransportError(error, provider = 'OpenRouter') {
+  if (IMAGE_ERROR_CODES.has(error?.code)) return error
+  const fingerprint = `${error?.name || ''} ${error?.code || ''} ${error?.message || ''}`.toLowerCase()
+  let code = 'NETWORK'
+  let status = 502
+  if (
+    error?.name === 'TimeoutError' ||
+    /\b(?:e?timedout|timeout)|timed out|und_err_[a-z_]*timeout/.test(fingerprint)
+  ) {
+    code = 'TIMEOUT'
+    status = 504
+  } else if (
+    error?.name === 'AbortError' ||
+    /client disconnected|cancelled|canceled|aborted/.test(fingerprint)
+  ) {
+    code = 'CANCELLED'
+    status = 499
+  }
+  return Object.assign(
+    new Error(`${provider}: ${code === 'TIMEOUT' ? 'таймаут запроса' : code === 'CANCELLED' ? 'запрос отменён' : 'сетевая ошибка'}`),
+    { code, status, cause: error }
+  )
 }
 
-export async function requestCoverImage({ prompt, env = process.env, fetchImpl = fetch, signal }) {
+export function coverRouteReadiness(env = process.env) {
   const config = coverImageConfig(env)
-  if (!config.apiKey || !config.baseUrl || !config.model) {
+  return {
+    ready: Boolean(config.apiKey && config.baseUrl && config.model),
+    model: config.model,
+    fallbackModel: config.fallbackModel
+  }
+}
+
+export async function requestCoverImage({
+  prompt,
+  aspectRatio = '2:3',
+  model,
+  requestId,
+  env = process.env,
+  fetchImpl = fetch,
+  signal
+}) {
+  const config = coverImageConfig(env)
+  const selectedModel = String(model || config.model).trim()
+  if (!config.apiKey || !config.baseUrl || !selectedModel) {
     const error = new Error('Обложки: OpenRouter image route не настроен')
     error.status = 503
     error.code = 'NO_KEY'
     throw error
   }
-  const response = await fetchImpl(`${config.baseUrl}/images`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${config.apiKey}`,
-      'Content-Type': 'application/json',
-      ...config.headers
-    },
-    body: JSON.stringify({
-      model: config.model,
-      prompt,
-      aspect_ratio: '2:3',
-      quality: 'high',
-      output_format: 'jpeg',
-      output_compression: 90,
-      n: 1
-    }),
-    signal: withTimeout(signal, 150_000)
-  })
+  let response
+  try {
+    response = await fetchImpl(`${config.baseUrl}/images`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${config.apiKey}`,
+        'Content-Type': 'application/json',
+        ...(requestId ? { 'X-Request-ID': requestId } : {}),
+        ...config.headers
+      },
+      body: JSON.stringify({
+        model: selectedModel,
+        prompt,
+        aspect_ratio: aspectRatio,
+        quality: 'high',
+        output_format: 'jpeg',
+        output_compression: 90,
+        n: 1
+      }),
+      signal: withTimeout(signal, config.timeoutMs)
+    })
+  } catch (error) {
+    throw normalizeImageTransportError(error)
+  }
   if (!response.ok) {
     const detail = (await response.text().catch(() => '')).slice(0, 4_000)
     throw imageUpstreamError({
@@ -331,6 +385,27 @@ export async function requestCoverImage({ prompt, env = process.env, fetchImpl =
   return {
     image: image.b64_json,
     mimeType: image.media_type || 'image/jpeg',
-    model: config.model
+    model: selectedModel
   }
+}
+
+export async function requestCoverImageWithFallback(options) {
+  const config = coverImageConfig(options.env)
+  try {
+    return await requestCoverImage(options)
+  } catch (error) {
+    if (
+      !shouldFallbackAfterImageError(error) ||
+      !config.fallbackModel ||
+      config.fallbackModel === config.model
+    ) {
+      throw error
+    }
+    console.error(
+      `[image] ${config.model} не удалось, фоллбэк на Nano Banana (${config.fallbackModel}):`,
+      error.message
+    )
+  }
+
+  return requestCoverImage({ ...options, model: config.fallbackModel })
 }

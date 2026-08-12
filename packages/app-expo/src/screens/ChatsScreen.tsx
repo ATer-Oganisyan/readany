@@ -8,6 +8,7 @@ import { CharacterPortraitImage } from "@/components/narra/character-portrait-im
 import { NativeThemePicker } from "@/components/profile/NativeThemePicker";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
+import { getBookTabLabel } from "@/lib/book/book-tab-label";
 import { getBundledCatalogCharactersByTitle } from "@/lib/narra/bundled-catalog-characters";
 import { hasCharacterPortrait } from "@/lib/narra/character-portrait";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
@@ -26,11 +27,6 @@ import { ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
-
-const getBookTabLabel = (title: string) => {
-  const normalizedTitle = title.trim();
-  return normalizedTitle.split(/[.!?…]+(?=\s|$)/u)[0]?.trim() || normalizedTitle;
-};
 
 interface ChatBook {
   book: Book;
@@ -172,8 +168,8 @@ export function ChatsScreen() {
     return (
       <CenteredEmptyState
         avoidNativeTabBar
-        title={t("chats.emptyTitle", "Диалогов пока нет")}
-        description={t("chats.emptyDescription", "Персонажи появятся здесь после добавления книг")}
+        title={t("chats.emptyTitle", "Здесь появятся её персонажи из книг")}
+        description={t("chats.emptyDescription", "С ними можно будет поговорить")}
       >
         {null}
       </CenteredEmptyState>
@@ -184,10 +180,14 @@ export function ChatsScreen() {
     {
       key: "narra",
       accessibilityLabel:
-        selectedBookId === "all" ? "Открыть чат с Наррой" : "Открыть чат с Наррой об этой книге",
+        selectedBookId === "all"
+          ? t("narra.openNarraChat", "Открыть чат с Наррой")
+          : t("narra.openNarraBookChat", "Открыть чат с Наррой об этой книге"),
       title: "Нарра",
       subtitle:
-        selectedBookId === "all" ? "Спросите что угодно о книгах" : "Спросите что угодно о книге",
+        selectedBookId === "all"
+          ? t("narra.askAboutBooks", "Спросите что угодно о книгах")
+          : t("narra.askAboutBook", "Спросите что угодно о книге"),
       onPress: openNarraChat,
       avatar: (
         <CharacterChatAvatar muted>

@@ -29,7 +29,7 @@ export function SettingsHeader({ title, right }: Props) {
       headerTitleStyle: {
         color: colors.foreground,
         fontFamily: titleFontFamily,
-        fontWeight: "600",
+        fontWeight: "400",
       },
       headerRight: right ? () => <View>{right}</View> : undefined,
     });

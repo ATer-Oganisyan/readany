@@ -113,6 +113,7 @@ docker run -d --name "$candidate" --init \
   -e DATA_DIR=/data \
   -e PERSISTENT_DATA_MOUNT_PATH=/data \
   -e INSTALLATION_SINGLE_REPLICA_ACK=true \
+  -e COVER_JOB_WORKER_ENABLED=false \
   -p 127.0.0.1:8789:8787 \
   -v "$candidate_volume:/data" \
   --read-only --tmpfs /tmp:size=64m,mode=1777 \
@@ -137,8 +138,10 @@ assert data["ok"] is True
 assert data["version"] == expected
 assert data["services"]["gigachat"] is True
 assert data["services"]["salutespeech"] is True
-assert data["services"]["kandinsky"] is True
+assert data["services"]["cover"] is True
 assert data["installation_registry"]["storage_verified"] is True
+assert data["cover_jobs"]["storage_verified"] is True
+assert data["cover_jobs"]["worker"]["enabled"] is False
 assert data["analytics_delivery"]["configured"] is True
 ' "$VERSION"
 

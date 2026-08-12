@@ -5,11 +5,13 @@ import { NarraServiceError } from "../narra/errors";
 
 const INSTALLATION_ID_KEY = "narra.gateway.installation-id";
 const INSTALLATION_SECRET_KEY = "narra.gateway.installation-secret";
+const INSTALLATION_TOKEN_KEY = "narra.gateway.installation-token";
+const INSTALLATION_TOKEN_EXPIRY_KEY = "narra.gateway.installation-token-expires-at";
 const TOKEN_EXPIRY_SKEW_MS = 30_000;
 const DEFAULT_TIMEOUT_MS = 60_000;
 const IMAGE_TIMEOUT_MS = 150_000;
-// Обложки (gpt-image-2 high quality) заметно дольше Kandinsky-сцен;
-// запас над серверным upstream-таймаутом 150 секунд.
+// Только legacy synchronous cover route держит длинное соединение. Durable
+// cover-job POST/GET короткие и используют обычный сетевой таймаут.
 const COVER_TIMEOUT_MS = 180_000;
 const INSTALLATION_TIMEOUT_MS = 15_000;
 const DEFAULT_NARRA_GATEWAY_URL = "https://api.narra.disrupt.builders";
@@ -29,7 +31,11 @@ interface GatewayToken {
 let configuredAdapter: NarraGatewayAdapter | null = null;
 let configuredFetch: typeof globalThis.fetch = expoFetch as typeof globalThis.fetch;
 let cachedIdentity: InstallationIdentity | null = null;
+let cachedIdentityNeedsRegistration = false;
+let identityPromise: Promise<InstallationIdentity> | null = null;
 let cachedToken: GatewayToken | null = null;
+let tokenHydrated = false;
+let tokenHydrationPromise: Promise<void> | null = null;
 let tokenPromise: Promise<string> | null = null;
 
 export interface NarraGatewayConfig {
@@ -83,26 +89,77 @@ function base64Url(bytes: Uint8Array): string {
 
 async function getInstallationIdentity(): Promise<InstallationIdentity> {
   if (cachedIdentity) return cachedIdentity;
-  let installationId = await SecureStore.getItemAsync(INSTALLATION_ID_KEY);
-  let installationSecret = await SecureStore.getItemAsync(INSTALLATION_SECRET_KEY);
-  if (!installationId || !installationSecret) {
-    installationId = Crypto.randomUUID();
-    installationSecret = base64Url(await Crypto.getRandomBytesAsync(32));
-    await Promise.all([
-      SecureStore.setItemAsync(INSTALLATION_ID_KEY, installationId),
-      SecureStore.setItemAsync(INSTALLATION_SECRET_KEY, installationSecret),
-    ]);
+  if (!identityPromise) {
+    identityPromise = (async () => {
+      let installationId = await SecureStore.getItemAsync(INSTALLATION_ID_KEY);
+      let installationSecret = await SecureStore.getItemAsync(INSTALLATION_SECRET_KEY);
+      cachedIdentityNeedsRegistration = !installationId || !installationSecret;
+      if (!installationId || !installationSecret) {
+        installationId = Crypto.randomUUID();
+        installationSecret = base64Url(await Crypto.getRandomBytesAsync(32));
+        await Promise.all([
+          SecureStore.setItemAsync(INSTALLATION_ID_KEY, installationId),
+          SecureStore.setItemAsync(INSTALLATION_SECRET_KEY, installationSecret),
+        ]);
+      }
+      const identity = { installationId, installationSecret };
+      cachedIdentity = identity;
+      return identity;
+    })().finally(() => {
+      identityPromise = null;
+    });
   }
-  cachedIdentity = { installationId, installationSecret };
-  return cachedIdentity;
+  return identityPromise;
+}
+
+async function hydrateInstallationToken(): Promise<void> {
+  if (tokenHydrated) return;
+  if (!tokenHydrationPromise) {
+    tokenHydrationPromise = (async () => {
+      const [value, rawExpiresAt] = await Promise.all([
+        SecureStore.getItemAsync(INSTALLATION_TOKEN_KEY),
+        SecureStore.getItemAsync(INSTALLATION_TOKEN_EXPIRY_KEY),
+      ]);
+      const expiresAt = Number(rawExpiresAt);
+      cachedToken =
+        value && Number.isFinite(expiresAt) && expiresAt > 0 ? { value, expiresAt } : null;
+      tokenHydrated = true;
+    })().finally(() => {
+      tokenHydrationPromise = null;
+    });
+  }
+  await tokenHydrationPromise;
+}
+
+async function persistInstallationToken(token: GatewayToken): Promise<void> {
+  await Promise.all([
+    SecureStore.setItemAsync(INSTALLATION_TOKEN_KEY, token.value),
+    SecureStore.setItemAsync(INSTALLATION_TOKEN_EXPIRY_KEY, String(token.expiresAt)),
+  ]);
+  cachedToken = token;
+  tokenHydrated = true;
+}
+
+async function clearInstallationToken(): Promise<void> {
+  cachedToken = null;
+  tokenHydrated = true;
+  await Promise.all([
+    SecureStore.deleteItemAsync(INSTALLATION_TOKEN_KEY),
+    SecureStore.deleteItemAsync(INSTALLATION_TOKEN_EXPIRY_KEY),
+  ]);
 }
 
 async function resetInstallationIdentity(): Promise<void> {
   cachedIdentity = null;
+  cachedIdentityNeedsRegistration = false;
+  identityPromise = null;
   cachedToken = null;
+  tokenHydrated = true;
   await Promise.all([
     SecureStore.deleteItemAsync(INSTALLATION_ID_KEY),
     SecureStore.deleteItemAsync(INSTALLATION_SECRET_KEY),
+    SecureStore.deleteItemAsync(INSTALLATION_TOKEN_KEY),
+    SecureStore.deleteItemAsync(INSTALLATION_TOKEN_EXPIRY_KEY),
   ]);
 }
 
@@ -110,6 +167,8 @@ interface GatewayErrorPayload {
   message: string;
   code?: string;
   authError?: string;
+  retryAfter?: string;
+  rateLimitReset?: string;
   response: Response;
 }
 
@@ -132,6 +191,8 @@ async function readGatewayError(response: Response): Promise<GatewayErrorPayload
       `HTTP ${response.status}`,
     code: payload?.code,
     authError: response.headers.get("x-narra-auth-error") ?? undefined,
+    retryAfter: response.headers.get("retry-after") ?? undefined,
+    rateLimitReset: response.headers.get("ratelimit-reset") ?? undefined,
     response: new Response(body, {
       status: response.status,
       statusText: response.statusText,
@@ -153,6 +214,14 @@ function canResetRejectedIdentity(response: Response, error: GatewayErrorPayload
     error.code === "VALIDATION" &&
     error.message === "Некорректный installation secret"
   );
+}
+
+function rateLimitTechnicalDetail(error: GatewayErrorPayload): string | undefined {
+  const values = [
+    error.retryAfter ? `retry-after=${error.retryAfter}` : "",
+    error.rateLimitReset ? `ratelimit-reset=${error.rateLimitReset}` : "",
+  ].filter(Boolean);
+  return values.length > 0 ? values.join("; ") : undefined;
 }
 
 function isInstallationTokenRejection(response: Response, error: GatewayErrorPayload): boolean {
@@ -199,29 +268,43 @@ async function requestInstallationToken(
       return requestInstallationToken("register", allowIdentityReset);
     }
     const error = await readGatewayError(response);
-    if (allowIdentityReset && canResetRejectedIdentity(response, error)) {
+    if (mode === "register" && allowIdentityReset && canResetRejectedIdentity(response, error)) {
       await resetInstallationIdentity();
       return requestInstallationToken("register", false);
     }
-    throw new NarraServiceError("AUTH", error.message);
+    const code = response.status === 429 || error.code === "RATE" ? "RATE" : "AUTH";
+    throw new NarraServiceError(
+      code,
+      error.message,
+      undefined,
+      code === "RATE" ? rateLimitTechnicalDetail(error) : undefined,
+    );
   }
   const payload = (await response.json()) as { token?: string; expires_in?: number };
   if (!payload.token) throw new NarraServiceError("AUTH", "Gateway returned no token");
-  cachedToken = {
+  const configuredExpiresIn = Number(payload.expires_in);
+  const expiresIn = Number.isFinite(configuredExpiresIn) ? Math.max(60, configuredExpiresIn) : 900;
+  const token = {
     value: payload.token,
-    expiresAt: Date.now() + Math.max(60, payload.expires_in ?? 900) * 1000,
+    expiresAt: Date.now() + expiresIn * 1000,
   };
-  return payload.token;
+  await persistInstallationToken(token);
+  cachedIdentityNeedsRegistration = false;
+  return token.value;
 }
 
 async function getInstallationToken(forceRefresh = false): Promise<string> {
+  await getInstallationIdentity();
+  await hydrateInstallationToken();
+  if (cachedIdentityNeedsRegistration && cachedToken) {
+    await clearInstallationToken();
+  }
   if (!forceRefresh && cachedToken && cachedToken.expiresAt - TOKEN_EXPIRY_SKEW_MS > Date.now()) {
     return cachedToken.value;
   }
   if (!tokenPromise) {
-    tokenPromise = requestInstallationToken(
-      cachedToken || forceRefresh ? "refresh" : "register",
-    ).finally(() => {
+    const mode = forceRefresh || !cachedIdentityNeedsRegistration ? "refresh" : "register";
+    tokenPromise = requestInstallationToken(mode).finally(() => {
       tokenPromise = null;
     });
   }
@@ -237,7 +320,7 @@ async function directGatewayRequest(path: string, init: RequestInit): Promise<Re
       headers.set("authorization", `Bearer ${await getInstallationToken(forceRefresh)}`);
     }
     const controller = new AbortController();
-    const requestTimeout = path.startsWith("/v2/media/cover")
+    const requestTimeout = path === "/v2/media/cover"
       ? COVER_TIMEOUT_MS
       : path.startsWith("/v2/media/images")
         ? IMAGE_TIMEOUT_MS
@@ -252,7 +335,12 @@ async function directGatewayRequest(path: string, init: RequestInit): Promise<Re
   let response = await send();
   if (config.authMode === "installation" && response.status === 401) {
     const error = await readGatewayError(response);
-    response = isInstallationTokenRejection(response, error) ? await send(true) : error.response;
+    if (isInstallationTokenRejection(response, error)) {
+      await clearInstallationToken();
+      response = await send(true);
+    } else {
+      response = error.response;
+    }
   }
   return response;
 }

@@ -20,6 +20,11 @@ import { detectFirstPerson } from "./voice-rules";
 const MAX_ANALYSIS_TEXT_LENGTH = 48_000;
 
 export type CharacterAnalysisTextFallback = string | (() => Promise<string>);
+export interface CharacterAnalysisOptions {
+  origin?: "user" | "background";
+}
+
+const activeAnalyses = new Map<string, Promise<NarraCharacter[]>>();
 
 export function createAnalysisExcerpt(text: string): string {
   const normalized = text.trim();
@@ -46,15 +51,17 @@ async function responseText(response: Response): Promise<string> {
   }
 }
 
-export async function analyzeBookCharacters(
+async function runBookCharacterAnalysis(
   book: Book,
   textFallback?: CharacterAnalysisTextFallback,
+  options: CharacterAnalysisOptions = {},
 ): Promise<NarraCharacter[]> {
+  const origin = options.origin ?? "user";
   const startedAt = Date.now();
   const store = useNarraStore.getState();
   store.setAnalyzing(book.id);
   store.setAnalysisError(book.id);
-  recordTelemetry("book_analysis_started", { analysis_version: "v1", origin: "user" });
+  recordTelemetry("book_analysis_started", { analysis_version: "v1", origin });
   try {
     if (__DEV__ && process.env.EXPO_PUBLIC_NARRA_USE_MOCKS === "1") {
       store.setCharacters(book.id, NARRA_MOCK_CHARACTERS);
@@ -75,7 +82,7 @@ export async function analyzeBookCharacters(
         duration_bucket: durationBucket(Date.now() - startedAt),
         pov: "unknown",
         confidence_bucket: "unknown",
-        origin: "user",
+        origin,
       });
       return NARRA_MOCK_CHARACTERS;
     }
@@ -137,8 +144,8 @@ export async function analyzeBookCharacters(
         ],
         temperature: 0.3,
         purpose: "structured_task",
-        origin: "user",
-        analytics_tier: "essential",
+        origin,
+        analytics_tier: origin === "background" ? "none" : "essential",
       }),
     });
     if (!response.ok) {
@@ -171,7 +178,7 @@ export async function analyzeBookCharacters(
       duration_bucket: durationBucket(Date.now() - startedAt),
       pov: "unknown",
       confidence_bucket: "unknown",
-      origin: "user",
+      origin,
     });
     return characters;
   } catch (error) {
@@ -189,11 +196,26 @@ export async function analyzeBookCharacters(
       analysis_version: "v1",
       stage: "character_markup",
       safe_error_code: safeErrorCode,
-      origin: "user",
+      origin,
     });
     store.setAnalysisError(book.id, normalized.message);
     throw normalized;
   } finally {
     store.setAnalyzing(null);
   }
+}
+
+export function analyzeBookCharacters(
+  book: Book,
+  textFallback?: CharacterAnalysisTextFallback,
+  options: CharacterAnalysisOptions = {},
+): Promise<NarraCharacter[]> {
+  const active = activeAnalyses.get(book.id);
+  if (active) return active;
+
+  const analysis = runBookCharacterAnalysis(book, textFallback, options).finally(() => {
+    if (activeAnalyses.get(book.id) === analysis) activeAnalyses.delete(book.id);
+  });
+  activeAnalyses.set(book.id, analysis);
+  return analysis;
 }

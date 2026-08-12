@@ -1,4 +1,5 @@
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
+import { recordTelemetry } from "@/lib/analytics/telemetry";
 import { getChunks } from "@readany/core/db/database";
 import type { Book } from "@readany/core/types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -68,7 +69,16 @@ describe("Narra character analysis", () => {
 
     const [, request] = vi.mocked(narraGatewayRequest).mock.calls[0] ?? [];
     const systemPrompt = String(JSON.parse(String(request?.body)).messages[0].content);
-    for (const field of ["appearancePrompt", "passport", "age", "build", "hair", "eyes", "face", "outfit"]) {
+    for (const field of [
+      "appearancePrompt",
+      "passport",
+      "age",
+      "build",
+      "hair",
+      "eyes",
+      "face",
+      "outfit",
+    ]) {
       expect(systemPrompt).toContain(field);
     }
     expect(systemPrompt).toContain("экранизаци");
@@ -100,5 +110,36 @@ describe("Narra character analysis", () => {
     await expect(analyzeBookCharacters(book)).rejects.toThrow();
 
     expect(clone).not.toHaveBeenCalled();
+  });
+
+  it("sends gateway-compatible analytics for background analysis", async () => {
+    vi.mocked(getChunks).mockResolvedValueOnce([
+      { chapterTitle: "Глава", content: "Анна вошла в комнату." },
+    ] as Awaited<ReturnType<typeof getChunks>>);
+
+    await analyzeBookCharacters(book, undefined, { origin: "background" });
+
+    const [, request] = vi.mocked(narraGatewayRequest).mock.calls[0] ?? [];
+    expect(JSON.parse(String(request?.body))).toMatchObject({
+      origin: "background",
+      analytics_tier: "none",
+    });
+    expect(vi.mocked(recordTelemetry)).toHaveBeenCalledWith(
+      "book_analysis_started",
+      expect.objectContaining({ origin: "background" }),
+    );
+  });
+
+  it("reuses an active analysis for the same book", async () => {
+    vi.mocked(getChunks).mockResolvedValueOnce([
+      { chapterTitle: "Глава", content: "Анна вошла в комнату." },
+    ] as Awaited<ReturnType<typeof getChunks>>);
+
+    const first = analyzeBookCharacters(book);
+    const second = analyzeBookCharacters(book);
+
+    expect(second).toBe(first);
+    await first;
+    expect(narraGatewayRequest).toHaveBeenCalledOnce();
   });
 });

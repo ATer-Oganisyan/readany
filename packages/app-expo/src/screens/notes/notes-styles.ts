@@ -1,4 +1,10 @@
-import { type ThemeColors, fontSize, fontWeight, radius } from "@/styles/theme";
+import {
+  type ThemeColors,
+  fontSize,
+  fontWeight,
+  headingFontFamily,
+  radius,
+} from "@/styles/theme";
 import { StyleSheet } from "react-native";
 
 export const makeStyles = (colors: ThemeColors) =>
@@ -15,6 +21,7 @@ export const makeStyles = (colors: ThemeColors) =>
     },
     headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
     headerTitle: {
+      fontFamily: headingFontFamily,
       fontSize: fontSize["2xl"],
       fontWeight: fontWeight.bold,
       color: colors.foreground,
@@ -77,6 +84,7 @@ export const makeStyles = (colors: ThemeColors) =>
     },
     notebookInfo: { flex: 1, gap: 4 },
     notebookTitle: {
+      fontFamily: headingFontFamily,
       fontSize: fontSize.sm,
       fontWeight: fontWeight.medium,
       color: colors.foreground,
@@ -118,6 +126,7 @@ export const makeStyles = (colors: ThemeColors) =>
     },
     detailHeaderInfo: { flex: 1, minWidth: 0 },
     detailTitle: {
+      fontFamily: headingFontFamily,
       fontSize: fontSize.sm,
       fontWeight: fontWeight.semibold,
       color: colors.foreground,

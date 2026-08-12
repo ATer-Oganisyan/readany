@@ -7,16 +7,18 @@ import {
   parseAvatarBody,
   parseChatBody,
   parseCoverBody,
+  parseCoverJobBody,
   parseImageBody,
   parsePortraitBody,
   parseSynthesisBody,
   validationErrors
 } from './contracts.mjs'
 import {
+  coverImageConfig,
   coverRouteReadiness,
   llmRouteReadiness,
   requestChat,
-  requestCoverImage
+  requestCoverImageWithFallback
 } from './providers.mjs'
 import {
   settleProviderResponse,
@@ -56,6 +58,8 @@ import {
 } from './security.mjs'
 import { createInstallationRegistry } from './installation-registry.mjs'
 import { gatewayReadiness } from './readiness.mjs'
+import { createCoverJobStore } from './cover-job-store.mjs'
+import { createCoverJobRunner } from './cover-job-runner.mjs'
 
 // ================= Конфигурация =================
 const PORT = process.env.PORT || 8787
@@ -107,10 +111,8 @@ const AI_GLOBAL_DAILY_LIMIT = envInt('AI_GLOBAL_LIMIT_PER_DAY', 25_000, 10_000_0
 const SPEECH_LIMIT = envInt('SPEECH_LIMIT_PER_MINUTE', 60, 2_000)
 const SPEECH_DAILY_LIMIT = envInt('SPEECH_LIMIT_PER_DAY', 1_000, 100_000)
 const SPEECH_GLOBAL_DAILY_LIMIT = envInt('SPEECH_GLOBAL_LIMIT_PER_DAY', 50_000, 10_000_000)
-const IMAGE_LIMIT = envInt('IMAGE_LIMIT_PER_HOUR', 30, 2_000)
 const IMAGE_DAILY_LIMIT = envInt('IMAGE_LIMIT_PER_DAY', 100, 10_000)
 const IMAGE_GLOBAL_DAILY_LIMIT = envInt('IMAGE_GLOBAL_LIMIT_PER_DAY', 5_000, 1_000_000)
-const COVER_LIMIT = envInt('COVER_LIMIT_PER_HOUR', 20, 2_000)
 const COVER_DAILY_LIMIT = envInt('COVER_LIMIT_PER_DAY', 60, 10_000)
 const COVER_GLOBAL_DAILY_LIMIT = envInt('COVER_GLOBAL_LIMIT_PER_DAY', 3_000, 1_000_000)
 const VIDEO_LIMIT = envInt('VIDEO_LIMIT_PER_HOUR', 8, 500)
@@ -136,6 +138,22 @@ const IMAGE_CONCURRENCY = envInt('IMAGE_CONCURRENCY', 4, 50)
 const IMAGE_QUEUE_LIMIT = envInt('IMAGE_QUEUE_LIMIT', 12, 200)
 const COVER_CONCURRENCY = envInt('COVER_CONCURRENCY', 2, 20)
 const COVER_QUEUE_LIMIT = envInt('COVER_QUEUE_LIMIT', 8, 100)
+const COVER_JOB_MAX = envInt('COVER_JOB_MAX', 1_000, 10_000)
+const COVER_JOB_TTL_HOURS = envInt('COVER_JOB_TTL_HOURS', 24, 168)
+const COVER_JOB_MAX_RESULT_MIB = envInt('COVER_JOB_MAX_RESULT_MIB', 16, 64)
+const COVER_JOB_MAX_ATTEMPTS = envInt('COVER_JOB_MAX_ATTEMPTS', 3, 10)
+const COVER_JOB_ATTEMPT_TIMEOUT_SECONDS = envInt('COVER_JOB_ATTEMPT_TIMEOUT_SECONDS', 32 * 60, 2 * 60 * 60)
+const COVER_JOB_WORKER_ENABLED = parseEnvBool(process.env, 'COVER_JOB_WORKER_ENABLED', true)
+const coverProviderConfig = coverImageConfig()
+const coverProviderCallsPerAttempt =
+  coverProviderConfig.fallbackModel && coverProviderConfig.fallbackModel !== coverProviderConfig.model ? 2 : 1
+const minimumCoverAttemptTimeoutMs =
+  coverProviderConfig.timeoutMs * coverProviderCallsPerAttempt + 15_000
+if (COVER_JOB_ATTEMPT_TIMEOUT_SECONDS * 1_000 < minimumCoverAttemptTimeoutMs) {
+  throw new Error(
+    'COVER_JOB_ATTEMPT_TIMEOUT_SECONDS must cover every configured OpenRouter image model timeout plus 15 seconds'
+  )
+}
 const llmGate = createConcurrencyGate({ limit: LLM_CONCURRENCY, queueLimit: LLM_QUEUE_LIMIT, name: 'LLM' })
 const speechGate = createConcurrencyGate({ limit: SPEECH_CONCURRENCY, queueLimit: SPEECH_QUEUE_LIMIT, name: 'Speech' })
 const imageGate = createConcurrencyGate({ limit: IMAGE_CONCURRENCY, queueLimit: IMAGE_QUEUE_LIMIT, name: 'Image' })
@@ -606,6 +624,27 @@ const eventStore = createEventStore({
   tractionToken: TRACTION_INGEST_TOKEN
 })
 eventStore.start()
+const coverJobStore = createCoverJobStore({
+  dataDir,
+  environment: ANALYTICS_ENV,
+  maxJobs: COVER_JOB_MAX,
+  resultTtlMs: COVER_JOB_TTL_HOURS * 60 * 60 * 1000,
+  maxResultBytes: COVER_JOB_MAX_RESULT_MIB * 1024 * 1024
+})
+await coverJobStore.start()
+const coverJobRunner = createCoverJobRunner({
+  store: coverJobStore,
+  enabled: COVER_JOB_WORKER_ENABLED,
+  concurrency: COVER_CONCURRENCY,
+  maxAttempts: COVER_JOB_MAX_ATTEMPTS,
+  attemptTimeoutMs: COVER_JOB_ATTEMPT_TIMEOUT_SECONDS * 1000,
+  generate: ({ prompt, requestId, signal }) => requestCoverImageWithFallback({
+    prompt,
+    requestId,
+    signal
+  })
+})
+coverJobRunner.start()
 
 function actorIdFor(req) {
   return createHmac('sha256', analyticsSecret).update(req.installation.sub).digest('hex')
@@ -661,11 +700,6 @@ const aiDailyLimit = createPersistentBudgetMiddleware({
   perInstallationLimit: AI_DAILY_LIMIT,
   globalLimit: AI_GLOBAL_DAILY_LIMIT
 })
-const imageLimit = createFixedWindowLimiter({
-  windowMs: 60 * 60 * 1000,
-  limit: IMAGE_LIMIT,
-  key: installationKey
-})
 const videoLimit = createFixedWindowLimiter({
   windowMs: 60 * 60 * 1000,
   limit: VIDEO_LIMIT,
@@ -693,11 +727,6 @@ const imageDailyLimit = createPersistentBudgetMiddleware({
   metric: 'image_requests',
   perInstallationLimit: IMAGE_DAILY_LIMIT,
   globalLimit: IMAGE_GLOBAL_DAILY_LIMIT
-})
-const coverLimit = createFixedWindowLimiter({
-  windowMs: 60 * 60 * 1000,
-  limit: COVER_LIMIT,
-  key: installationKey
 })
 const coverDailyLimit = createPersistentBudgetMiddleware({
   registry: installationRegistry,
@@ -746,13 +775,19 @@ app.get('/health', (_req, res) => {
       storage_verified: installationRegistry.status().storage_verified,
       capacity_remaining: installationRegistry.status().capacity_remaining
     },
+    cover_jobs: {
+      ...coverJobStore.status(),
+      worker: coverJobRunner.status()
+    },
     concurrency: { llm: llmGate.status(), speech: speechGate.status(), image: imageGate.status(), cover: coverGate.status(), import: importGate.status() }
   })
 })
 
 app.get('/ready', (_req, res) => {
   const llm = llmRouteReadiness()
+  const coverReady = coverRouteReadiness().ready
   const registryStatus = installationRegistry.status()
+  const coverJobStatus = coverJobStore.status()
   const videoConfigured = !!KANDINSKY_TOKEN && !!VIDEO_BASE_URL
   const videoTransportAccepted =
     VIDEO_TRANSPORT_SECURE ||
@@ -760,8 +795,8 @@ app.get('/ready', (_req, res) => {
   const readiness = gatewayReadiness({
     llmReady: llm.ready,
     speechReady: !!SALUTE_KEY && SBER_CA_VERIFIED,
-    imageReady: !!KANDINSKY_TOKEN,
-    storageReady: registryStatus.storage_verified,
+    imageReady: coverReady || !!KANDINSKY_TOKEN,
+    storageReady: registryStatus.storage_verified && coverJobStatus.storage_verified,
     videoConfigured,
     videoTransportAccepted,
     videoRequired: VIDEO_REQUIRED,
@@ -787,6 +822,10 @@ app.get('/ready', (_req, res) => {
     llm_routes: llm.purposes,
     installation_registry: {
       storage_verified: registryStatus.storage_verified
+    },
+    cover_jobs: {
+      storage_verified: coverJobStatus.storage_verified,
+      worker_enabled: coverJobRunner.status().enabled
     }
   })
 })
@@ -1345,12 +1384,23 @@ app.get('/v2/import/fetch', importLimit, importDailyLimit, importByteBudget, asy
   }
 })
 
-app.post('/v2/media/images', imageLimit, imageDailyLimit, express.json({ limit: '1mb' }), async (req, res) => {
+// Пиковую нагрузку регулирует imageGate внутри обработчика, а расходы — суточный
+// бюджет. Почасовой middleware здесь нельзя ставить: он возвращает 429 раньше,
+// чем основной image-провайдер успевает переключиться на fallback.
+app.post('/v2/media/images', imageDailyLimit, express.json({ limit: '1mb' }), async (req, res) => {
   const signal = requestAbortSignal(req, res)
   let release
   try {
     release = await imageGate.acquire(signal)
     const { prompt, width, height, engine } = parseImageBody(req.body)
+    // OpenRouter выбирается клиентом только по назначению (портрет); ключ и
+    // модель по-прежнему остаются на сервере. Provider fallback — Nano Banana;
+    // Kandinsky в этот путь не входит.
+    if (engine === 'openrouter') {
+      const aspectRatio = width * 4 === height * 3 ? '3:4' : width === height ? '1:1' : width > height ? '3:2' : '2:3'
+      const image = await requestCoverImageWithFallback({ prompt, aspectRatio, signal })
+      return res.json({ image: image.image, mime_type: image.mimeType })
+    }
     // Вертикальные изображения (обложки) и явный engine='kandinsky' (сцены) — Kandinsky:
     // он соблюдает состав кадра, одежду и размер. Портреты — gigachat-image: быстро.
     // Взаимные фолбэки.
@@ -1385,26 +1435,125 @@ app.post('/v2/media/images', imageLimit, imageDailyLimit, express.json({ limit: 
   }
 })
 
-// --- Обложки книг: OpenRouter image-модель (осн.), Kandinsky (фолбэк) ---
-// Отдельное назначение со своими лимитами: обложки генерируются фоново при
-// импорте книги и не должны съедать бюджет сцен и портретов.
-app.post('/v2/media/cover', coverLimit, coverDailyLimit, express.json({ limit: '64kb' }), async (req, res) => {
+function coverJobPollAfter(job) {
+  if (job.status === 'retry_wait') {
+    return Math.min(60_000, Math.max(3_000, job.next_attempt_at - Date.now()))
+  }
+  return ['queued', 'running'].includes(job.status) ? 3_000 : 0
+}
+
+async function coverJobPayload(job, { includeImage = false } = {}) {
+  const payload = {
+    job_id: job.job_id,
+    status: job.status,
+    poll_after_ms: coverJobPollAfter(job),
+    attempt_count: job.attempt_count,
+    expires_at: job.expires_at
+  }
+  if (job.status === 'failed') {
+    payload.code = job.error_code || 'UNKNOWN'
+    payload.error = job.error_message || 'Не удалось создать обложку'
+  }
+  if (includeImage && job.status === 'completed') {
+    const result = await coverJobStore.readResult(job)
+    payload.image = result?.toString('base64')
+    payload.mime_type = job.mime_type || 'image/jpeg'
+    payload.model = job.model || undefined
+  }
+  return payload
+}
+
+async function reserveCoverJobBudget(installationId) {
+  const reservation = await installationRegistry.reserve({
+    installationId,
+    metric: 'cover_requests',
+    perInstallationLimit: COVER_DAILY_LIMIT,
+    globalLimit: COVER_GLOBAL_DAILY_LIMIT
+  })
+  if (!reservation.ok) {
+    const error = new Error(
+      reservation.scope === 'global'
+        ? 'Общий дневной бюджет сервиса исчерпан'
+        : 'Дневной лимит установки исчерпан'
+    )
+    error.code = 'RATE'
+    error.status = 429
+    error.resetAt = reservation.resetAt
+    throw error
+  }
+  return reservation
+}
+
+// Durable cover jobs: the HTTP request ends immediately, while the worker keeps
+// GPT Image → Nano Banana running on the persistent gateway volume.
+app.post('/v2/media/cover/jobs', express.json({ limit: '64kb' }), async (req, res) => {
+  let reservation
+  try {
+    const { prompt, requestId } = parseCoverJobBody(req.body)
+    const result = await coverJobStore.createOrGet({
+      installationId: req.installation.sub,
+      requestId,
+      prompt,
+      beforeCreate: async () => {
+        reservation = await reserveCoverJobBudget(req.installation.sub)
+      }
+    })
+    if (reservation) {
+      res.setHeader('RateLimit-Daily-Limit', String(COVER_DAILY_LIMIT))
+      res.setHeader('RateLimit-Daily-Remaining', String(reservation.installationRemaining))
+      res.setHeader('RateLimit-Global-Remaining', String(reservation.globalRemaining))
+      res.setHeader('RateLimit-Reset', String(Math.ceil(reservation.resetAt / 1000)))
+    }
+    if (result.created) coverJobRunner.notify()
+    const status = ['completed', 'failed'].includes(result.job.status) ? 200 : 202
+    res.status(status).json(await coverJobPayload(result.job))
+  } catch (error) {
+    if (error.resetAt) res.setHeader('RateLimit-Reset', String(Math.ceil(error.resetAt / 1000)))
+    res.status(error.status || statusFor(error.code)).json({
+      error: error.message,
+      code: error.code || 'UNKNOWN'
+    })
+  }
+})
+
+app.get('/v2/media/cover/jobs/:jobId', async (req, res) => {
+  try {
+    const job = coverJobStore.getForInstallation(req.params.jobId, req.installation.sub)
+    if (!job) return res.status(404).json({ error: 'Задача обложки не найдена', code: 'NOT_FOUND' })
+    res.json(await coverJobPayload(job, { includeImage: true }))
+  } catch (error) {
+    res.status(error.status || statusFor(error.code)).json({
+      error: error.message,
+      code: error.code || 'UNKNOWN'
+    })
+  }
+})
+
+app.post('/v2/media/cover/jobs/:jobId/ack', async (req, res) => {
+  try {
+    const acknowledged = await coverJobStore.acknowledge(req.params.jobId, req.installation.sub)
+    if (!acknowledged) return res.status(404).json({ error: 'Задача обложки не найдена', code: 'NOT_FOUND' })
+    res.status(204).end()
+  } catch (error) {
+    res.status(error.status || statusFor(error.code)).json({
+      error: error.message,
+      code: error.code || 'UNKNOWN'
+    })
+  }
+})
+
+// Compatibility route for already released clients. Kandinsky is deliberately
+// not part of the cover path; new clients use the durable job endpoints above.
+app.post('/v2/media/cover', coverDailyLimit, express.json({ limit: '64kb' }), async (req, res) => {
   const signal = requestAbortSignal(req, res)
   let release
   try {
     release = await coverGate.acquire(signal)
     const { prompt } = parseCoverBody(req.body)
-    try {
-      const cover = await requestCoverImage({ prompt, signal })
-      return res.json({ image: cover.image, mime_type: cover.mimeType })
-    } catch (e) {
-      if (!shouldFallbackAfterImageError(e) || !KANDINSKY_TOKEN) throw e
-      console.error('[cover] OpenRouter не удалось, фолбэк на Kandinsky:', e.message)
-    }
-    // Вертикальный формат 2:3 → Kandinsky отдаёт 768x1280 PNG.
-    res.json({ image: await kandinskyQueued(prompt, 768, 1280, signal), mime_type: 'image/png' })
+    const cover = await requestCoverImageWithFallback({ prompt, signal })
+    res.json({ image: cover.image, mime_type: cover.mimeType })
   } catch (e) {
-    res.status(statusFor(e.code)).json({ error: e.message, code: e.code || 'UNKNOWN' })
+    res.status(e.status || statusFor(e.code)).json({ error: e.message, code: e.code || 'UNKNOWN' })
   } finally {
     release?.()
   }
@@ -1458,7 +1607,8 @@ async function shutdown(signal) {
   force.unref?.()
   httpServer.close(async (error) => {
     try {
-      await Promise.all([eventStore.stop(), installationRegistry.stop()])
+      await coverJobRunner.stop()
+      await Promise.all([eventStore.stop(), installationRegistry.stop(), coverJobStore.stop()])
       if (error) throw error
       clearTimeout(force)
       process.exit(0)

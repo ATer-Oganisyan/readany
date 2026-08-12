@@ -1,4 +1,9 @@
-import { generateBookCover } from "@/lib/book/generate-book-cover";
+import { isLegacyGeneratedBookCover } from "@/lib/book/cover-display";
+import {
+  acknowledgeGeneratedBookCover,
+  generateBookCover,
+} from "@/lib/book/generate-book-cover";
+import { deleteLocalCoverJob, getLocalCoverJob } from "@/lib/book/cover-job-repository";
 import {
   generateBookIdentityWithGemini,
   isSuspiciousBookTitle,
@@ -14,6 +19,7 @@ import {
   findBundledCatalogBookByTitle,
   installBundledCatalogCover,
 } from "@/lib/catalog/bundled-books";
+import { queueBookCharacterAnalysis } from "@/lib/narra/character-analysis-queue";
 import { queueBook as queueAutoVectorize } from "@/lib/rag/auto-vectorize-service";
 import {
   type ImportBooksResult,
@@ -144,7 +150,7 @@ async function ensureAppSubDir(subDir: string): Promise<void> {
   }
 }
 
-async function saveCoverBytesToAppData(
+async function saveGeneratedCoverBytesToAppData(
   bookId: string,
   bytes: Uint8Array,
   mimeType: string,
@@ -152,9 +158,13 @@ async function saveCoverBytesToAppData(
   const platform = getPlatformService();
   await ensureAppSubDir("covers");
   const ext = mimeType.includes("webp") ? "webp" : mimeType.includes("jpeg") ? "jpg" : "png";
-  const relativePath = `covers/${bookId}.${ext}`;
+  const relativePath = `covers/${bookId}-generated.${ext}`;
   const absolutePath = await resolveAppPath(relativePath);
-  await platform.writeFile(absolutePath, bytes);
+  const temporaryPath = `${absolutePath}.${Date.now()}.tmp`;
+  await platform.writeFile(temporaryPath, bytes);
+  const FileSystem = await import("expo-file-system/legacy");
+  await FileSystem.deleteAsync(absolutePath, { idempotent: true });
+  await FileSystem.moveAsync({ from: temporaryPath, to: absolutePath });
   return relativePath;
 }
 
@@ -172,12 +182,18 @@ function bytesToBase64(bytes: Uint8Array): string {
 
 const MOBILE_IMPORT_METADATA_MAX_BYTES = 32 * 1024 * 1024;
 
-async function getMobileFileStat(path: string): Promise<{ size: number; md5?: string }> {
+async function getMobileFileStat(
+  path: string,
+): Promise<{ size: number; md5?: string; modificationTime?: number }> {
   const LegacyFileSystem = await import("expo-file-system/legacy");
   const info = await LegacyFileSystem.getInfoAsync(path);
   return {
     size: info.exists && !info.isDirectory ? (info.size ?? 0) : 0,
     md5: undefined,
+    modificationTime:
+      info.exists && !info.isDirectory && typeof info.modificationTime === "number"
+        ? info.modificationTime * 1000
+        : undefined,
   };
 }
 
@@ -251,7 +267,7 @@ async function resolveImportedBookIdentity(params: {
 }
 
 const titleRepairAttempted = new Set<string>();
-const coverGenerationAttempted = new Set<string>();
+const coverGenerationInFlight = new Set<string>();
 let coverGenerationQueue: Promise<void> = Promise.resolve();
 
 function setCoverGenerationActive(bookId: string, active: boolean): void {
@@ -317,51 +333,66 @@ async function ensureGeneratedBookCover(
 ): Promise<void> {
   if (book.meta.coverUrl) return;
 
-  try {
-    const catalogBook = findBundledCatalogBookByTitle(book.meta.title);
-    if (catalogBook) {
-      const coverUrl = await installBundledCatalogCover(book.id, catalogBook);
-      const currentBook = useLibraryStore.getState().books.find((item) => item.id === book.id);
-      if (!currentBook || currentBook.meta.coverUrl) return;
-      await useLibraryStore.getState().updateBook(book.id, {
-        meta: { ...currentBook.meta, coverUrl },
-        updatedAt: Date.now(),
-      });
-      return;
-    }
-
-    const generated = await generateBookCover({
-      title: book.meta.title,
-      author: book.meta.author,
-      description: context?.description || book.meta.description,
-      excerpt: context?.textSample,
-      subjects: context?.subjects || book.meta.subjects,
-    });
-
-    const coverUrl = await saveCoverBytesToAppData(book.id, generated.bytes, generated.mimeType);
+  const catalogBook = findBundledCatalogBookByTitle(book.meta.title);
+  if (catalogBook) {
+    const coverUrl = await installBundledCatalogCover(book.id, catalogBook);
     const currentBook = useLibraryStore.getState().books.find((item) => item.id === book.id);
     if (!currentBook || currentBook.meta.coverUrl) return;
     await useLibraryStore.getState().updateBook(book.id, {
       meta: { ...currentBook.meta, coverUrl },
       updatedAt: Date.now(),
     });
-    console.log(`[Library] Generated Narra gateway cover for "${currentBook.meta.title}"`);
-  } catch (error) {
-    console.warn(`[Library] Narra gateway could not generate a cover for ${book.id}:`, error);
+    return;
   }
+
+  const generated = await generateBookCover({
+    bookId: book.id,
+    title: book.meta.title,
+    author: book.meta.author,
+    description: context?.description || book.meta.description,
+    excerpt: context?.textSample,
+    subjects: context?.subjects || book.meta.subjects,
+  });
+
+  const coverUrl = await saveGeneratedCoverBytesToAppData(
+    book.id,
+    generated.bytes,
+    generated.mimeType,
+  );
+  const currentBook = useLibraryStore.getState().books.find((item) => item.id === book.id);
+  if (!currentBook || currentBook.meta.coverUrl) {
+    await acknowledgeGeneratedBookCover(book.id, generated.jobId);
+    return;
+  }
+  await useLibraryStore.getState().updateBook(book.id, {
+    meta: { ...currentBook.meta, coverUrl },
+    updatedAt: Date.now(),
+  });
+  const persistedBook = await db.getBook(book.id);
+  if (persistedBook?.meta.coverUrl !== coverUrl) {
+    throw new Error("Generated cover was not persisted in the library database");
+  }
+  await acknowledgeGeneratedBookCover(book.id, generated.jobId);
+  console.log(`[Library] Generated Narra gateway cover for "${currentBook.meta.title}"`);
 }
 
 function queueGeneratedBookCover(
   book: Book,
   context?: { description?: string; textSample?: string; subjects?: string[] },
 ): Promise<void> {
-  if (book.meta.coverUrl || coverGenerationAttempted.has(book.id)) return Promise.resolve();
-  coverGenerationAttempted.add(book.id);
+  if (book.meta.coverUrl || coverGenerationInFlight.has(book.id)) return Promise.resolve();
+  coverGenerationInFlight.add(book.id);
   setCoverGenerationActive(book.id, true);
 
   const task = coverGenerationQueue
     .then(() => ensureGeneratedBookCover(book, context))
-    .finally(() => setCoverGenerationActive(book.id, false));
+    .catch((error) => {
+      console.warn(`[Library] Narra gateway could not generate a cover for ${book.id}:`, error);
+    })
+    .finally(() => {
+      coverGenerationInFlight.delete(book.id);
+      setCoverGenerationActive(book.id, false);
+    });
   coverGenerationQueue = task.catch(() => undefined);
   return task;
 }
@@ -370,7 +401,25 @@ async function repairMissingBookCovers(books: Book[]): Promise<void> {
   for (const originalBook of books) {
     const book =
       useLibraryStore.getState().books.find((item) => item.id === originalBook.id) || originalBook;
-    if (book.meta.coverUrl || coverGenerationAttempted.has(book.id)) continue;
+    if (book.meta.coverUrl) {
+      const localJob = await getLocalCoverJob(book.id).catch(() => null);
+      if (localJob) {
+        const persistedBook = await db.getBook(book.id).catch(() => null);
+        if (persistedBook?.meta.coverUrl === book.meta.coverUrl) {
+          if (localJob.status === "completed" || localJob.status === "failed") {
+            await acknowledgeGeneratedBookCover(book.id, localJob.jobId).catch((error) =>
+              console.warn(`[Library] Could not acknowledge cover job ${book.id}:`, error),
+            );
+          } else {
+            // An original or catalog cover won the race. Stop polling the now
+            // irrelevant remote job; the gateway will remove its result by TTL.
+            await deleteLocalCoverJob(book.id);
+          }
+        }
+      }
+      continue;
+    }
+    if (coverGenerationInFlight.has(book.id)) continue;
 
     let context: { description?: string; textSample?: string; subjects?: string[] } | undefined;
     if (book.format === "epub" || book.format === "fb2") {
@@ -397,6 +446,47 @@ async function repairMissingBookCovers(books: Book[]): Promise<void> {
     }
 
     await queueGeneratedBookCover(book, context);
+  }
+}
+
+async function migrateLegacyGeneratedBookCovers(books: Book[]): Promise<void> {
+  for (const originalBook of books) {
+    const coverUrl = originalBook.meta.coverUrl;
+    if (!coverUrl) continue;
+
+    try {
+      const platform = getPlatformService();
+      const absolutePath = await resolveAppPath(coverUrl);
+      const { modificationTime } = await getMobileFileStat(absolutePath);
+      if (
+        !isLegacyGeneratedBookCover({
+          bookId: originalBook.id,
+          coverUrl,
+          bookAddedAt: originalBook.addedAt,
+          coverModifiedAt: modificationTime,
+        })
+      ) {
+        continue;
+      }
+
+      const extension = coverUrl.split(".").pop()?.toLowerCase() || "jpg";
+      const generatedCoverUrl = `covers/${originalBook.id}-generated.${extension}`;
+      await platform.writeFile(
+        await resolveAppPath(generatedCoverUrl),
+        await platform.readFile(absolutePath),
+      );
+
+      const latestBook = useLibraryStore
+        .getState()
+        .books.find((book) => book.id === originalBook.id);
+      if (!latestBook || latestBook.meta.coverUrl !== coverUrl) continue;
+      await useLibraryStore.getState().updateBook(originalBook.id, {
+        meta: { ...latestBook.meta, coverUrl: generatedCoverUrl },
+        updatedAt: Date.now(),
+      });
+    } catch (error) {
+      console.warn(`[Library] Could not migrate legacy generated cover ${originalBook.id}:`, error);
+    }
   }
 }
 
@@ -427,6 +517,7 @@ async function repairBundledCatalogCovers(books: Book[]): Promise<void> {
 async function repairImportedBookMetadata(books: Book[]): Promise<void> {
   await repairSuspiciousBookTitles(books);
   await repairBundledCatalogCovers(books);
+  await migrateLegacyGeneratedBookCovers(books);
   await repairMissingBookCovers(books);
 }
 
@@ -674,7 +765,7 @@ async function restoreDeletedMobileBook(
     if (conversion.coverBytes && conversion.coverBytes.length > 0) {
       try {
         await ensureAppSubDir("covers");
-        const coverRelPath = `covers/${bookId}.jpg`;
+        const coverRelPath = `covers/${bookId}-original.jpg`;
         await platform.writeFile(await resolveAppPath(coverRelPath), conversion.coverBytes);
         coverUrl = coverRelPath;
       } catch (coverErr) {
@@ -726,7 +817,7 @@ async function restoreDeletedMobileBook(
       const mimeType = meta.coverMimeType || "image/jpeg";
       const coverExt = mimeType.includes("png") ? "png" : "jpg";
       await ensureAppSubDir("covers");
-      const coverRelPath = `covers/${bookId}.${coverExt}`;
+      const coverRelPath = `covers/${bookId}-original.${coverExt}`;
       await platform.writeFile(await resolveAppPath(coverRelPath), meta.coverBytes);
       coverUrl = coverRelPath;
     }
@@ -1029,6 +1120,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     try {
       await db.initDatabase();
       await db.deleteBook(bookId, { preserveData });
+      await deleteLocalCoverJob(bookId);
     } catch (err) {
       console.error("Failed to delete book from database:", err);
     }
@@ -1225,6 +1317,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
                 await get().addBook(book);
               }
               result.imported.push(book);
+              void queueBookCharacterAnalysis(book, textSample);
               if (!book.meta.coverUrl) {
                 void queueGeneratedBookCover(book, { textSample });
               }
@@ -1296,7 +1389,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
               if (conversion.coverBytes && conversion.coverBytes.length > 0) {
                 try {
                   await ensureAppSubDir("covers");
-                  const coverRelPath = `covers/${bookId}.jpg`;
+                  const coverRelPath = `covers/${bookId}-original.jpg`;
                   const coverAbsPath = await resolveAppPath(coverRelPath);
                   await platform.writeFile(coverAbsPath, conversion.coverBytes);
                   coverUrl = coverRelPath;
@@ -1351,6 +1444,14 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
                 await get().addBook(book);
               }
               result.imported.push(book);
+              void queueBookCharacterAnalysis(book, async () => {
+                const metadata = await extractBookMetadata(
+                  conversion.epubBytes,
+                  "epub",
+                  `${title}.epub`,
+                );
+                return metadata.textSample ?? "";
+              });
               if (!book.meta.coverUrl) {
                 void queueGeneratedBookCover(book);
               }
@@ -1431,7 +1532,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
                 const mimeType = meta.coverMimeType || "image/jpeg";
                 const coverExt = mimeType.includes("png") ? "png" : "jpg";
                 await ensureAppSubDir("covers");
-                const coverRelPath = `covers/${bookId}.${coverExt}`;
+                const coverRelPath = `covers/${bookId}-original.${coverExt}`;
                 const coverAbsPath = await resolveAppPath(coverRelPath);
                 console.log(`[importBooks] Saving cover to: ${coverAbsPath}`);
                 const platform = getPlatformService();
@@ -1496,6 +1597,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             await get().addBook(book);
           }
           result.imported.push(book);
+          void queueBookCharacterAnalysis(book, coverContext?.textSample);
           if (!book.meta.coverUrl) {
             void queueGeneratedBookCover(book, coverContext);
           }

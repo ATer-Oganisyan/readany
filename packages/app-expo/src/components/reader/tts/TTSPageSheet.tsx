@@ -1,11 +1,13 @@
 import { XIcon } from "@/components/ui/Icon";
 import { useColors } from "@/styles/theme";
+import { useTranslation } from "react-i18next";
 import { Modal, Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { TTSPageSheetProps } from "./TTSPageSheet.types";
 
 export function TTSPageSheet({ visible, onClose, children }: TTSPageSheetProps) {
   const colors = useColors();
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
 
   return (
@@ -24,7 +26,7 @@ export function TTSPageSheet({ visible, onClose, children }: TTSPageSheetProps) 
             onPress={onClose}
             style={styles.closeButton}
             accessibilityRole="button"
-            accessibilityLabel="Закрыть озвучку"
+            accessibilityLabel={t("tts.closePlayer", "Закрыть озвучку")}
           >
             <XIcon size={20} color={colors.foreground} />
           </Pressable>

@@ -15,7 +15,14 @@ import type { NarraCharacter, NarraSceneAudioSegment } from "@/lib/narra/types";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { NATIVE_SCROLL_EDGE_EFFECTS } from "@/navigation/scroll-edge-effects";
 import { useNarraStore } from "@/stores";
-import { type ThemeColors, fontSize, radius, spacing, useTheme } from "@/styles/theme";
+import {
+  type ThemeColors,
+  fontSize,
+  headingFontFamily,
+  radius,
+  spacing,
+  useTheme,
+} from "@/styles/theme";
 import { interfaceFontFamily } from "@deslop/primitives/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -495,7 +502,7 @@ const makeStyles = (colors: ThemeColors) =>
     },
     placeholderTitle: {
       color: colors.foreground,
-      fontFamily: interfaceFontFamily.semibold,
+      fontFamily: headingFontFamily,
       fontSize: fontSize.sm,
       textAlign: "center",
     },

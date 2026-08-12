@@ -237,9 +237,9 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
   const listItems: CharacterChatListItem[] = [
     {
       key: "narra",
-      accessibilityLabel: "Открыть чат с Наррой о книге",
+      accessibilityLabel: t("narra.openNarraBookChat", "Открыть чат с Наррой об этой книге"),
       title: "Нарра",
-      subtitle: "Спросите что угодно о книге",
+      subtitle: t("narra.askAboutBook", "Спросите что угодно о книге"),
       onPress: () => navigation.navigate("BookChat", { bookId }),
       avatar: (
         <CharacterChatAvatar muted>

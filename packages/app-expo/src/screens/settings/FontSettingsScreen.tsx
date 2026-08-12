@@ -1,7 +1,14 @@
 import { Text, TextInput } from "@/components/ui/Typography";
 import { GlobeIcon, LinkIcon, PlusIcon, Trash2Icon, TypeIcon } from "@/components/ui/Icon";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
-import { fontSize, fontWeight, radius, spacing, useColors } from "@/styles/theme";
+import {
+  fontSize,
+  fontWeight,
+  headingFontFamily,
+  radius,
+  spacing,
+  useColors,
+} from "@/styles/theme";
 /**
  * FontSettingsScreen — custom font management for mobile
  */
@@ -713,7 +720,12 @@ function makeStyles(_colors: ReturnType<typeof useColors>) {
       alignItems: "center",
     },
     modalContent: { borderRadius: radius.xl, padding: 20, width: "85%", maxWidth: 340 },
-    modalTitle: { fontSize: fontSize.lg, fontWeight: fontWeight.semibold, marginBottom: 8 },
+    modalTitle: {
+      fontFamily: headingFontFamily,
+      fontSize: fontSize.lg,
+      fontWeight: fontWeight.semibold,
+      marginBottom: 8,
+    },
     modalDesc: { fontSize: fontSize.sm, marginBottom: 16 },
     inputLabel: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, marginBottom: 4 },
     modalInput: {

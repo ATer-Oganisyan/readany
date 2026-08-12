@@ -11,6 +11,7 @@ import {
   tint,
 } from "@expo/ui/swift-ui/modifiers";
 import type { ComponentProps } from "react";
+import { useTranslation } from "react-i18next";
 import { Platform } from "react-native";
 import type { ReaderToolbarProps } from "./ReaderToolbar.types";
 
@@ -21,6 +22,7 @@ const NAVIGATION_HORIZONTAL_INSET = 20;
 type SFSymbol = NonNullable<ComponentProps<typeof Button>["systemImage"]>;
 
 export function ReaderToolbar(props: ReaderToolbarProps) {
+  const { t } = useTranslation();
   const supportsGlass = Number.parseInt(String(Platform.Version), 10) >= 26;
   const makeModifiers = (label: string) =>
     supportsGlass
@@ -48,7 +50,7 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
           accessibilityLabel(label),
         ];
 
-  const speechLabel = props.speechActive ? "Стоп" : "Слушать";
+  const speechLabel = props.speechActive ? t("common.stop", "Стоп") : t("reader.listen", "Слушать");
   const speechSymbol: SFSymbol = props.speechActive ? "stop.fill" : "airpods.max";
 
   return (
@@ -72,10 +74,10 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
         />
         <Spacer />
         <Button
-          label="Чат"
+          label={t("narra.chat", "Чат")}
           systemImage="message.fill"
           onPress={props.onChatPress}
-          modifiers={makeModifiers("Чат")}
+          modifiers={makeModifiers(t("narra.chat", "Чат"))}
         />
       </HStack>
     </Host>

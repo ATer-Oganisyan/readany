@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Alert, type AlertButton, Pressable, StyleSheet, View } from "react-native";
 import type { BookCardContextMenuProps } from "./BookCardContextMenu.types";
 
@@ -7,6 +8,7 @@ export function BookCardContextMenu({
   items,
   onPress,
 }: BookCardContextMenuProps) {
+  const { t } = useTranslation();
   const openMenu = () => {
     const buttons: AlertButton[] = [
       ...items.map(
@@ -16,7 +18,7 @@ export function BookCardContextMenu({
           onPress: item.onPress,
         }),
       ),
-      { text: "Отмена", style: "cancel" },
+      { text: t("common.cancel", "Отмена"), style: "cancel" },
     ];
     Alert.alert(accessibilityLabel, undefined, buttons);
   };
@@ -27,7 +29,7 @@ export function BookCardContextMenu({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel}
-        accessibilityHint="Удерживайте, чтобы открыть меню"
+        accessibilityHint={t("common.holdForMenu", "Удерживайте, чтобы открыть меню")}
         style={StyleSheet.absoluteFill}
         onPress={onPress}
         onLongPress={openMenu}

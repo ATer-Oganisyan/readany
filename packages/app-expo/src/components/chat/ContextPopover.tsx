@@ -1,7 +1,14 @@
 import { Text } from "@/components/ui/Typography";
 import { BookOpenIcon, CheckIcon } from "@/components/ui/Icon";
 import { useLibraryStore } from "@/stores/library-store";
-import { fontSize as fs, fontWeight as fw, radius, useColors, withOpacity } from "@/styles/theme";
+import {
+  fontSize as fs,
+  fontWeight as fw,
+  headingFontFamily,
+  radius,
+  useColors,
+  withOpacity,
+} from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
 import { useChatReaderStore } from "@readany/core/stores";
 import { useMemo, useState } from "react";
@@ -137,6 +144,7 @@ const makeStyles = (colors: ThemeColors) =>
       marginBottom: 8,
     },
     title: {
+      fontFamily: headingFontFamily,
       fontSize: fs.md,
       fontWeight: fw.semibold,
       color: colors.foreground,
@@ -162,6 +170,7 @@ const makeStyles = (colors: ThemeColors) =>
     },
     bookInfo: { flex: 1, minWidth: 0, gap: 2 },
     bookTitle: {
+      fontFamily: headingFontFamily,
       fontSize: fs.sm,
       fontWeight: fw.medium,
       color: colors.foreground,

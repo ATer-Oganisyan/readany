@@ -11,14 +11,12 @@ vi.mock("expo-file-system/legacy", () => ({
   moveAsync: vi.fn(),
 }));
 vi.mock("@/lib/ai/narra-gateway-fetch", () => ({ narraGatewayRequest: vi.fn() }));
-vi.mock("@/lib/ai/openrouter-image", () => ({ generateOpenRouterImage: vi.fn() }));
 vi.mock("@/lib/analytics/telemetry", () => ({ recordTelemetry: vi.fn() }));
 vi.mock("@/stores", () => ({
   useLibraryStore: { getState: () => ({ books: [] }) },
 }));
 
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
-import { generateOpenRouterImage } from "@/lib/ai/openrouter-image";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import { ART_STYLE, PROMPT_CHAR_LIMIT } from "./art-style";
 import {
@@ -110,23 +108,29 @@ describe("portrait prompt", () => {
     expect(longPrompt.length).toBeLessThanOrEqual(PROMPT_CHAR_LIMIT);
   });
 
-  it("routes character portraits through OpenRouter GPT Image 2", async () => {
-    vi.mocked(generateOpenRouterImage).mockResolvedValueOnce({
-      base64: "AQID",
-      mimeType: "image/png",
-    });
+  it("routes character portraits through Narra Gateway", async () => {
+    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
+      new Response(JSON.stringify({ image: "AQID" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
 
     await expect(generateCharacterPortrait("book-1", anna)).resolves.toContain(
       "book-1-anna-portrait.png",
     );
-    expect(generateOpenRouterImage).toHaveBeenCalledWith({
-      model: "openai/gpt-image-2",
-      prompt: expect.stringContaining("Анна Каренина"),
-      aspectRatio: "3:4",
-      quality: "high",
-      outputFormat: "png",
+    expect(narraGatewayRequest).toHaveBeenCalledWith("/v2/media/images", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: expect.any(String),
     });
-    expect(narraGatewayRequest).not.toHaveBeenCalled();
+    const [, request] = vi.mocked(narraGatewayRequest).mock.calls[0] ?? [];
+    expect(JSON.parse(String(request?.body))).toMatchObject({
+      prompt: expect.stringContaining("Анна Каренина"),
+      width: 768,
+      height: 1024,
+      engine: "openrouter",
+    });
   });
 });
 
@@ -223,26 +227,32 @@ describe("scene image prompt", () => {
 });
 
 describe("book cover generation", () => {
-  it("routes covers through OpenRouter GPT Image 2 and records telemetry", async () => {
-    vi.mocked(generateOpenRouterImage).mockResolvedValueOnce({
+  it("routes covers through Narra Gateway and records telemetry", async () => {
+    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          job_id: "job-1",
+          status: "completed",
+          image: "aGVsbG8=",
+          mime_type: "image/jpeg",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    await expect(
+      generateBookCoverImage("front cover artwork", { requestId: "request-1" }),
+    ).resolves.toEqual({
       base64: "aGVsbG8=",
       mimeType: "image/jpeg",
+      jobId: "job-1",
     });
 
-    await expect(generateBookCoverImage("front cover artwork")).resolves.toEqual({
-      base64: "aGVsbG8=",
-      mimeType: "image/jpeg",
+    expect(narraGatewayRequest).toHaveBeenCalledWith("/v2/media/cover/jobs", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt: "front cover artwork", request_id: "request-1" }),
     });
-
-    expect(generateOpenRouterImage).toHaveBeenCalledWith({
-      model: "openai/gpt-image-2",
-      prompt: "front cover artwork",
-      aspectRatio: "2:3",
-      quality: "high",
-      outputFormat: "jpeg",
-      outputCompression: 90,
-    });
-    expect(narraGatewayRequest).not.toHaveBeenCalled();
     expect(recordTelemetry).toHaveBeenCalledWith(
       "media_job_enqueued",
       expect.objectContaining({
@@ -258,19 +268,59 @@ describe("book cover generation", () => {
     );
   });
 
-  it("surfaces the OpenRouter error and reports a failed cover job", async () => {
-    vi.mocked(generateOpenRouterImage).mockRejectedValueOnce(
-      new Error("OpenRouter: лимит на сегодня исчерпан"),
+  it("surfaces the Gateway error and reports a failed cover job", async () => {
+    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "Лимит на сегодня исчерпан" }), {
+        status: 429,
+        headers: { "content-type": "application/json" },
+      }),
     );
 
-    await expect(generateBookCoverImage("front cover artwork")).rejects.toThrow(
-      "OpenRouter: лимит на сегодня исчерпан",
-    );
+    await expect(
+      generateBookCoverImage("front cover artwork", { requestId: "request-1" }),
+    ).rejects.toThrow("Лимит на сегодня исчерпан");
 
     expect(recordTelemetry).toHaveBeenCalledWith(
       "media_job_failed",
       expect.objectContaining({ job_type: "cover", origin: "background" }),
     );
+  });
+
+  it("polls an accepted durable job until the result is ready", async () => {
+    vi.useFakeTimers();
+    const onJob = vi.fn();
+    vi.mocked(narraGatewayRequest)
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ job_id: "job-1", status: "queued", poll_after_ms: 250 }),
+          { status: 202, headers: { "content-type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            job_id: "job-1",
+            status: "completed",
+            image: "aGVsbG8=",
+            mime_type: "image/jpeg",
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      );
+
+    try {
+      const result = generateBookCoverImage("front cover artwork", {
+        requestId: "request-1",
+        onJob,
+      });
+      await vi.advanceTimersByTimeAsync(250);
+
+      await expect(result).resolves.toMatchObject({ jobId: "job-1", base64: "aGVsbG8=" });
+      expect(narraGatewayRequest).toHaveBeenNthCalledWith(2, "/v2/media/cover/jobs/job-1");
+      expect(onJob).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

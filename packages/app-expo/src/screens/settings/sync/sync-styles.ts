@@ -4,6 +4,7 @@ import {
   fontSize,
   fontWeight,
   radius,
+  secondLevelTitleFontFamily,
   spacing,
   withOpacity,
 } from "../../../styles/theme";
@@ -25,8 +26,9 @@ export const makeStyles = (colors: ThemeColors) =>
       marginTop: spacing.xl,
     },
     sectionTitle: {
+      fontFamily: secondLevelTitleFontFamily,
       fontSize: fontSize.base,
-      fontWeight: fontWeight.semibold,
+      fontWeight: fontWeight.normal,
       color: colors.foreground,
       marginBottom: 10,
     },
@@ -53,6 +55,7 @@ export const makeStyles = (colors: ThemeColors) =>
       gap: 12,
     },
     conflictTitle: {
+      fontFamily: secondLevelTitleFontFamily,
       fontSize: fontSize.sm,
       fontWeight: fontWeight.medium,
       color: colors.foreground,

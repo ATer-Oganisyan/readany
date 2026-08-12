@@ -112,7 +112,6 @@ function GroupCoverLayer({
             <View style={bookStyles.spineStrip6} />
             <View style={bookStyles.spineStrip7} />
           </View>
-          <View style={bookStyles.spineTopHighlight} pointerEvents="none" />
         </>
       ) : (
         <View style={bookStyles.fallbackCover}>

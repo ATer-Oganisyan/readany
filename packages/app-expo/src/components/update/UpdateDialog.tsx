@@ -13,6 +13,7 @@ import {
   type ThemeColors,
   fontSize,
   fontWeight,
+  headingFontFamily,
   radius,
   spacing,
   useColors,
@@ -157,6 +158,7 @@ const makeStyles = (colors: ThemeColors) =>
       fontWeight: fontWeight.semibold,
     },
     title: {
+      fontFamily: headingFontFamily,
       fontSize: fontSize.lg,
       fontWeight: fontWeight.bold,
       color: colors.foreground,

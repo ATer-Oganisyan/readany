@@ -123,7 +123,7 @@ export function RootNavigator() {
           headerTitleStyle: {
             color: colors.foreground,
             fontFamily: titleFontFamily,
-            fontWeight: "600",
+            fontWeight: "400",
           },
           scrollEdgeEffects: NATIVE_SCROLL_EDGE_EFFECTS,
           contentStyle: { backgroundColor: colors.background },
@@ -179,7 +179,7 @@ export function RootNavigator() {
           component={NarraCharactersScreen}
           options={{
             animation: "slide_from_right",
-            title: "Чаты",
+            title: t("tabs.chats", "Чаты"),
             statusBarHidden: false,
             statusBarStyle: isDark ? "light" : "dark",
             headerLargeTitleEnabled: Platform.OS === "ios",
@@ -220,7 +220,7 @@ export function RootNavigator() {
           component={NarraSceneScreen}
           options={{
             animation: "slide_from_right",
-            title: "Сцена",
+            title: t("narra.scene", "Сцена"),
             headerRight: undefined,
             unstable_headerRightItems: () => [],
           }}
@@ -228,7 +228,7 @@ export function RootNavigator() {
         <Stack.Screen
           name="NarraSummary"
           component={NarraSummaryScreen}
-          options={{ animation: "slide_from_right", title: "Краткий пересказ" }}
+          options={{ animation: "slide_from_right", title: t("narra.summary", "Краткий пересказ") }}
         />
         <Stack.Screen
           name="Stats"
@@ -307,14 +307,14 @@ export function RootNavigator() {
         <Stack.Screen
           name="ManualNote"
           component={ManualNoteScreen}
-          options={{ animation: "slide_from_right", title: "Новая заметка" }}
+          options={{ animation: "slide_from_right", title: t("notes.newNote", "Новая заметка") }}
         />
         {__DEV__ ? (
           <>
             <Stack.Screen
               name="Storybook"
               component={StorybookScreen}
-              options={{ title: "Каталог", animation: "slide_from_right" }}
+              options={{ title: t("common.catalog", "Каталог"), animation: "slide_from_right" }}
             />
             <Stack.Screen
               name="StorybookPreview"

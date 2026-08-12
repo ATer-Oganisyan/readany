@@ -33,7 +33,9 @@
     "success": "Готово",
     "failed": "Не удалось",
     "testing": "Проверяем…",
+    "minute": "мин",
     "minutes": "мин",
+    "hour": "ч",
     "hours": "ч",
     "collapse": "Свернуть",
     "copyAll": "Скопировать все",
@@ -47,7 +49,18 @@
     "paste": "Вставить",
     "rename": "Переименовать",
     "reset": "Сброс",
-    "writeYourThoughts": "Заметка"
+    "writeYourThoughts": "Заметка",
+    "sync": "Синхронизировать",
+    "book": "Книга",
+    "noBook": "Без книги",
+    "catalog": "Каталог",
+    "startupFailed": "Не удалось запустить приложение",
+    "holdForMenu": "Удерживайте, чтобы открыть меню",
+    "all": "Все",
+    "actions": "Действия с книгой",
+    "tryAgain": "Попробуйте ещё раз",
+    "decrease": "Уменьшить",
+    "increase": "Увеличить"
   },
   "sidebar": {
     "library": "Библиотека",
@@ -71,7 +84,9 @@
     "reading": "Читалка",
     "myPath": "Мой путь",
     "notes": "Заметки",
-    "profile": "Профиль"
+    "profile": "Профиль",
+    "chats": "Чаты",
+    "search": "Поиск"
   },
   "readingTab": {
     "emptyTitle": "Нет открытых книг",
@@ -158,7 +173,45 @@
     "ttsSpeedValue": "Скорость {{value}}×",
     "ttsStop": "Стоп",
     "regeneratePortrait": "Сгенерировать портрет заново",
-    "speechStyle": "Манера речи"
+    "speechStyle": "Манера речи",
+    "openNarraChat": "Открыть чат с Наррой",
+    "openNarraBookChat": "Открыть чат с Наррой об этой книге",
+    "askAboutBooks": "Спросите что угодно о книгах",
+    "askAboutBook": "Спросите что угодно о книге",
+    "scene": "Сцена",
+    "summary": "Краткий пересказ",
+    "summaryExcerpt": "Фрагмент",
+    "summaryUpdating": "Обновляем пересказ…",
+    "summaryGenerating": "Составляем пересказ…",
+    "summaryFailed": "Не удалось составить пересказ.",
+    "summaryRegenerate": "Составить пересказ заново",
+    "summaryRegenerateShort": "Составить заново",
+    "openCharacterProfile": "Открыть профиль {{character}}",
+    "genericMessagePlaceholder": "Написать сообщение…",
+    "appearsInChapter": "появится в главе {{chapter}}",
+    "lockedCharacterChapterLabel": "{{character}} появится в главе {{chapter}}",
+    "stopVoiceSample": "Остановить озвучку",
+    "voiceSampleFailedTitle": "Не удалось озвучить героя",
+    "lockedCharacterChapterHint": "Появится в главе {{chapter}}. Дочитай — и герой откроется: портрет, характер и живой разговор.",
+    "lockedCharacterProgressHint": "Откроется на {{percent}}% книги. Дочитай — и герой откроется: портрет, характер и живой разговор.",
+    "writeToCharacter": "Написать",
+    "voiceCharacter": "Озвучить",
+    "bio": "Био",
+    "character": "Характер",
+    "continueReading": "Продолжить чтение"
+  },
+  "chats": {
+    "emptyTitle": "Здесь появятся её персонажи из книг",
+    "emptyDescription": "С ними можно будет поговорить",
+    "bookFilter": "Фильтр по книге"
+  },
+  "search": {
+    "booksPlaceholder": "Книги и авторы",
+    "hint": "Найдите книгу по названию или автору",
+    "empty": "Ничего не найдено"
+  },
+  "sync": {
+    "syncNow": "Синхронизировать"
   },
   "window": {
     "minimize": "Свернуть",

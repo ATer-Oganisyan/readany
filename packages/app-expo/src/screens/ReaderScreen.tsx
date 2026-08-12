@@ -338,6 +338,7 @@ export function ReaderScreen(props: Props) {
 function ReaderLoadingChrome({ navigation }: { navigation: Props["navigation"] }) {
   const colors = useColors();
   const { isDark } = useTheme();
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const ignorePress = () => undefined;
 
@@ -354,14 +355,14 @@ function ReaderLoadingChrome({ navigation }: { navigation: Props["navigation"] }
       headerRight: () => (
         <View pointerEvents="none">
           <NativeContextMenuButton
-            accessibilityLabel="Действия с книгой"
+            accessibilityLabel={t("reader.bookActions", "Действия с книгой")}
             items={[]}
             color={colors.foreground}
           />
         </View>
       ),
     });
-  }, [colors.foreground, navigation]);
+  }, [colors.foreground, navigation, t]);
 
   return (
     <View style={{ flex: 1, paddingBottom: insets.bottom, backgroundColor: colors.background }}>
@@ -697,7 +698,11 @@ function ReaderContent({ route, navigation }: Props) {
           return;
         }
         const chapter =
-          cached?.chapter || currentChapter || bookTitle || book?.meta.title || "Текущая страница";
+          cached?.chapter ||
+          currentChapter ||
+          bookTitle ||
+          book?.meta.title ||
+          t("reader.currentPage", "Текущая страница");
         const imageUri = await generateNarraSceneImage(bookId, chapter, excerpt, characters);
         setNarraScene(bookId, {
           sourceKey,
@@ -1480,7 +1485,11 @@ function ReaderContent({ route, navigation }: Props) {
       }
       navigation.navigate("NarraScene", {
         bookId,
-        chapter: currentChapter || bookTitle || book?.meta.title || "Текущая страница",
+        chapter:
+          currentChapter ||
+          bookTitle ||
+          book?.meta.title ||
+          t("reader.currentPage", "Текущая страница"),
         excerpt: normalizedExcerpt,
         sourceKey,
       });
@@ -1517,7 +1526,11 @@ function ReaderContent({ route, navigation }: Props) {
         case "summarize":
           navigation.navigate("NarraSummary", {
             bookId,
-            chapter: currentChapter || bookTitle || book?.meta.title || "Текущий фрагмент",
+            chapter:
+              currentChapter ||
+              bookTitle ||
+              book?.meta.title ||
+              t("reader.currentExcerpt", "Текущий фрагмент"),
             excerpt: selectedText,
             sourceKey: `selection:${cfi || `${currentChapter}:${selectedText.slice(0, 120)}`}`,
           });
@@ -1560,22 +1573,24 @@ function ReaderContent({ route, navigation }: Props) {
     };
     const readerActions = [
       {
-        label: "Оглавление",
+        label: t("reader.toc", "Оглавление"),
         sfSymbol: "list.bullet",
         onPress: () => openNavPanel("toc"),
       },
       {
-        label: isBookmarked ? "Удалить закладку" : "Добавить закладку",
+        label: isBookmarked
+          ? t("bookmarks.removeCurrent", "Удалить закладку")
+          : t("bookmarks.addCurrent", "Добавить закладку"),
         sfSymbol: isBookmarked ? "bookmark.slash" : "bookmark",
         onPress: handleToggleBookmark,
       },
       {
-        label: "Закладки",
+        label: t("bookmarks.title", "Закладки"),
         sfSymbol: "bookmark.fill",
         onPress: () => openNavPanel("bookmarks"),
       },
       {
-        label: "Поиск",
+        label: t("reader.search", "Поиск"),
         sfSymbol: "magnifyingglass",
         onPress: () => openNavPanel("search"),
       },
@@ -1585,12 +1600,12 @@ function ReaderContent({ route, navigation }: Props) {
         onPress: handleOpenCharacters,
       },
       {
-        label: "Заметки",
+        label: t("reader.notebook", "Заметки"),
         sfSymbol: "square.and.pencil",
         onPress: () => navigation.navigate("FullScreenNotes", { bookId }),
       },
       {
-        label: "Язык",
+        label: t("reader.language", "Язык"),
         sfSymbol: "globe",
         onPress: () => setShowChapterTranslation(true),
       },
@@ -1604,15 +1619,15 @@ function ReaderContent({ route, navigation }: Props) {
               ? () => [
                   {
                     type: "button" as const,
-                    label: "Оформление",
+                    label: t("reader.appearance", "Оформление"),
                     accessibilityLabel: t("narra.readerAppearance", "Оформление"),
                     icon: { type: "sfSymbol" as const, name: "textformat.size" as const },
                     onPress: () => setShowSettings(true),
                   },
                   {
                     type: "menu" as const,
-                    label: "Действия с книгой",
-                    accessibilityLabel: "Действия с книгой",
+                    label: t("reader.bookActions", "Действия с книгой"),
+                    accessibilityLabel: t("reader.bookActions", "Действия с книгой"),
                     icon: { type: "sfSymbol" as const, name: "ellipsis" as const },
                     menu: {
                       items: readerActions.map((action) => ({
@@ -1633,7 +1648,7 @@ function ReaderContent({ route, navigation }: Props) {
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
                     <NativeButton
                       label=""
-                      accessibilityLabel="Чат"
+                      accessibilityLabel={t("narra.chat", "Чат")}
                       icon="chat"
                       size="small"
                       variant="tertiary"
@@ -1648,12 +1663,12 @@ function ReaderContent({ route, navigation }: Props) {
                       onPress={() => setShowSettings(true)}
                     />
                     <NativeContextMenuButton
-                      accessibilityLabel="Действия с книгой"
+                      accessibilityLabel={t("reader.bookActions", "Действия с книгой")}
                       onOpenChange={setActionsMenuOpen}
                       items={[
                         ...readerActions,
                         {
-                          label: "Озвучить",
+                          label: t("reader.speak", "Озвучить"),
                           sfSymbol: "airpods.max",
                           onPress: () => void tts.handleToggleTTS(),
                         },
@@ -2190,12 +2205,12 @@ function ReaderContent({ route, navigation }: Props) {
               pointerEvents={isPanelOpen ? "none" : "auto"}
               onMessage={bridge.handleMessage}
               menuItems={[
-                { key: "add-note", label: "Добавить заметку" },
-                { key: "copy", label: "Скопировать" },
-                { key: "translate", label: "Перевести" },
-                { key: "summarize", label: "Кратко пересказать" },
-                { key: "generate-scene", label: "Нарисовать сцену" },
-                { key: "speak", label: "Озвучить" },
+                { key: "add-note", label: t("reader.addNote", "Добавить заметку") },
+                { key: "copy", label: t("reader.copySelection", "Скопировать") },
+                { key: "translate", label: t("reader.translate", "Перевести") },
+                { key: "summarize", label: t("reader.summarize", "Кратко пересказать") },
+                { key: "generate-scene", label: t("reader.drawScene", "Нарисовать сцену") },
+                { key: "speak", label: t("reader.speak", "Озвучить") },
               ]}
               onCustomMenuSelection={handleSelectionMenuAction}
               onError={(e) => {

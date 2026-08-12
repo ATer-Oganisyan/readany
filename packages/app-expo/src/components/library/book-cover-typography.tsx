@@ -1,6 +1,6 @@
 import { Text } from "@/components/ui/Typography";
 import { formatBookCoverTitle } from "@/lib/book/format-book-cover-title";
-import { interfaceFontFamily, serifTextFontFamily } from "@deslop/primitives/native";
+import { sansCondensedFontFamily, serifTextFontFamily } from "@deslop/primitives/native";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import {
   type NativeSyntheticEvent,
@@ -17,6 +17,7 @@ interface BookCoverTypographyProps {
   titleFontSize?: number;
   authorFontSize?: number;
   leftInsetAdjustment?: number;
+  showText?: boolean;
   bottomAccessory?: ReactNode;
 }
 
@@ -55,6 +56,7 @@ export function BookCoverTypography({
   titleFontSize,
   authorFontSize,
   leftInsetAdjustment = 4,
+  showText = true,
   bottomAccessory,
 }: BookCoverTypographyProps) {
   const scale = Math.min(1, width / referenceWidth);
@@ -84,50 +86,53 @@ export function BookCoverTypography({
 
   return (
     <>
-      <View
-        pointerEvents="none"
-        style={[
-          styles.typographyLayer,
-          {
-            padding: 20 * scale,
-            paddingLeft: 20 * scale + leftInsetAdjustment,
-            paddingTop: 16 * scale,
-            gap: 4 * scale,
-          },
-        ]}
-      >
-        <Text
-          numberOfLines={6}
-          onTextLayout={handleTitleLayout}
+      {showText ? (
+        <View
+          pointerEvents="none"
           style={[
-            styles.title,
+            styles.typographyLayer,
             {
-              fontFamily: interfaceFontFamily.bold,
-              fontSize: fittedTitleSize,
-              lineHeight: fittedTitleSize * 1.05,
+              padding: 20 * scale,
+              paddingLeft: 20 * scale + leftInsetAdjustment,
+              paddingTop: 16 * scale,
+              gap: 4 * scale,
             },
           ]}
         >
-          {formattedTitle}
-        </Text>
-        {author ? (
           <Text
-            adjustsFontSizeToFit
-            minimumFontScale={0.74}
-            numberOfLines={2}
+            numberOfLines={6}
+            onTextLayout={handleTitleLayout}
             style={[
-              styles.author,
+              styles.title,
               {
-                fontFamily: serifTextFontFamily.regular,
-                fontSize: authorSize,
-                lineHeight: authorSize * (14 / 13),
+                fontFamily: sansCondensedFontFamily.regular,
+                fontWeight: "600",
+                fontSize: fittedTitleSize,
+                lineHeight: fittedTitleSize * 1.05,
               },
             ]}
           >
-            {author}
+            {formattedTitle}
           </Text>
-        ) : null}
-      </View>
+          {author ? (
+            <Text
+              adjustsFontSizeToFit
+              minimumFontScale={0.74}
+              numberOfLines={2}
+              style={[
+                styles.author,
+                {
+                  fontFamily: serifTextFontFamily.regular,
+                  fontSize: authorSize,
+                  lineHeight: authorSize * (14 / 13),
+                },
+              ]}
+            >
+              {author}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
       {bottomAccessory ? (
         <View
           pointerEvents="none"

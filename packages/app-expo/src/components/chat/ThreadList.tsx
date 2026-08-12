@@ -1,6 +1,13 @@
 import { Text } from "@/components/ui/Typography";
 import { HistoryIcon, MessageCirclePlusIcon, Trash2Icon } from "@/components/ui/Icon";
-import { fontSize as fs, fontWeight as fw, radius, useColors, withOpacity } from "@/styles/theme";
+import {
+  fontSize as fs,
+  fontWeight as fw,
+  headingFontFamily,
+  radius,
+  useColors,
+  withOpacity,
+} from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
 import type { Thread } from "@readany/core/types";
 /**
@@ -149,6 +156,7 @@ const makeStyles = (colors: ThemeColors) =>
       gap: 6,
     },
     headerTitle: {
+      fontFamily: headingFontFamily,
       fontSize: fs.md,
       fontWeight: fw.semibold,
       color: colors.foreground,
@@ -185,6 +193,7 @@ const makeStyles = (colors: ThemeColors) =>
       justifyContent: "space-between",
     },
     itemTitle: {
+      fontFamily: headingFontFamily,
       fontSize: fs.sm,
       fontWeight: fw.medium,
       color: colors.foreground,

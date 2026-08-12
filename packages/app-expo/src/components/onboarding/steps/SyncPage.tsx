@@ -1,7 +1,11 @@
 import { AlertCircle, CheckCircle2, ChevronLeftIcon, Eye, EyeOff } from "@/components/ui/Icon";
 import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
 import { Text, TextInput } from "@/components/ui/Typography";
-import { useTheme } from "@/styles/theme";
+import {
+  largeTitleFontFamily,
+  secondLevelTitleFontFamily,
+  useTheme,
+} from "@/styles/theme";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { getPlatformService } from "@readany/core/services";
@@ -298,6 +302,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   title: {
+    fontFamily: largeTitleFontFamily,
     fontSize: 28,
     fontWeight: "800",
     color: "#0f172a",
@@ -307,8 +312,9 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 16, color: "#64748b", textAlign: "center" },
   section: { marginBottom: 24 },
   sectionTitle: {
+    fontFamily: secondLevelTitleFontFamily,
     fontSize: 14,
-    fontWeight: "600",
+    fontWeight: "400",
     color: "#64748b",
     textTransform: "uppercase",
     letterSpacing: 1,

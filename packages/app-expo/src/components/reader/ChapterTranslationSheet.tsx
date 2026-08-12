@@ -11,7 +11,7 @@ import { Text } from "@/components/ui/Typography";
 
 import { CheckIcon, EyeIcon, EyeOffIcon, LanguagesIcon, Trash2Icon } from "@/components/ui/Icon";
 import { useSettingsStore } from "@/stores";
-import { type ThemeColors, fontSize, useColors } from "@/styles/theme";
+import { type ThemeColors, fontSize, headingFontFamily, useColors } from "@/styles/theme";
 import type { ChapterTranslationState } from "@readany/core/hooks";
 import type { TranslationTargetLang } from "@readany/core/types/translation";
 import { TRANSLATOR_LANGS } from "@readany/core/types/translation";
@@ -356,6 +356,7 @@ function makeStyles(colors: ThemeColors) {
       marginBottom: 4,
     },
     sheetTitle: {
+      fontFamily: headingFontFamily,
       fontSize: fontSize.base,
       fontWeight: "600",
       color: colors.foreground,
@@ -506,6 +507,7 @@ function makeStyles(colors: ThemeColors) {
       paddingHorizontal: 4,
     },
     langModalTitle: {
+      fontFamily: headingFontFamily,
       fontSize: fontSize.sm,
       fontWeight: "600",
       color: colors.foreground,

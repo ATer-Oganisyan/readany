@@ -1,10 +1,37 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/narra/media", () => ({ generateBookCoverImage: vi.fn() }));
+vi.mock("@/lib/narra/media", () => ({
+  acknowledgeBookCoverJob: vi.fn(),
+  generateBookCoverImage: vi.fn(),
+}));
+vi.mock("@readany/core/utils", () => ({ generateId: () => "request-1" }));
+vi.mock("./cover-job-repository", () => ({
+  deleteLocalCoverJob: vi.fn(),
+  getLocalCoverJob: vi.fn(),
+  getOrCreateLocalCoverJob: vi.fn(async ({ bookId, requestId, prompt }) => ({
+    bookId,
+    requestId,
+    prompt,
+    status: "submitting",
+    nextPollAt: 0,
+    createdAt: 1,
+    updatedAt: 1,
+  })),
+  updateLocalCoverJob: vi.fn(),
+}));
 
-import { generateBookCoverImage } from "@/lib/narra/media";
+import { acknowledgeBookCoverJob, generateBookCoverImage } from "@/lib/narra/media";
+import {
+  deleteLocalCoverJob,
+  getLocalCoverJob,
+  getOrCreateLocalCoverJob,
+} from "./cover-job-repository";
 import coverGenerationConfig from "./cover-generation-config.json";
-import { coverPrompt, generateBookCover } from "./generate-book-cover";
+import {
+  acknowledgeGeneratedBookCover,
+  coverPrompt,
+  generateBookCover,
+} from "./generate-book-cover";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -92,19 +119,23 @@ describe("generateBookCover", () => {
     vi.mocked(generateBookCoverImage).mockResolvedValueOnce({
       base64: btoa("jpeg-bytes"),
       mimeType: "image/jpeg",
+      jobId: "job-1",
     });
 
     const generated = await generateBookCover({
+      bookId: "book-1",
       title: "Анна Каренина",
       author: "Лев Толстой",
       description: "Роман о семье, любви и давлении общества.",
     });
 
     expect(generateBookCoverImage).toHaveBeenCalledTimes(1);
-    const [prompt] = vi.mocked(generateBookCoverImage).mock.calls[0] ?? [];
+    const [prompt, options] = vi.mocked(generateBookCoverImage).mock.calls[0] ?? [];
     expect(prompt).toContain("Create the complete front-cover artwork");
     expect(prompt).toContain("“Анна Каренина”");
+    expect(options).toMatchObject({ requestId: "request-1" });
     expect(generated.mimeType).toBe("image/jpeg");
+    expect(generated.jobId).toBe("job-1");
     expect(new TextDecoder().decode(generated.bytes)).toBe("jpeg-bytes");
   });
 
@@ -113,8 +144,87 @@ describe("generateBookCover", () => {
       new Error("Cover generation failed (429)"),
     );
 
-    await expect(generateBookCover({ title: "Книга" })).rejects.toThrow(
+    await expect(generateBookCover({ bookId: "book-1", title: "Книга" })).rejects.toThrow(
       "Cover generation failed (429)",
     );
+  });
+
+  it("resumes the persisted server job after a JS reload", async () => {
+    vi.mocked(getOrCreateLocalCoverJob).mockResolvedValueOnce({
+      bookId: "book-1",
+      requestId: "request-1",
+      jobId: "job-existing",
+      prompt: "persisted prompt",
+      status: "running",
+      nextPollAt: 0,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    vi.mocked(generateBookCoverImage).mockResolvedValueOnce({
+      base64: btoa("jpeg-bytes"),
+      mimeType: "image/jpeg",
+      jobId: "job-existing",
+    });
+
+    await generateBookCover({ bookId: "book-1", title: "Changed title" });
+
+    expect(generateBookCoverImage).toHaveBeenCalledWith(
+      "persisted prompt",
+      expect.objectContaining({ requestId: "request-1", jobId: "job-existing" }),
+    );
+  });
+
+  it("recreates only an expired server job", async () => {
+    vi.mocked(getOrCreateLocalCoverJob)
+      .mockResolvedValueOnce({
+        bookId: "book-1",
+        requestId: "old-request",
+        jobId: "expired-job",
+        prompt: "old prompt",
+        status: "running",
+        nextPollAt: 0,
+        createdAt: 1,
+        updatedAt: 1,
+      })
+      .mockResolvedValueOnce({
+        bookId: "book-1",
+        requestId: "request-1",
+        prompt: "new prompt",
+        status: "submitting",
+        nextPollAt: 0,
+        createdAt: 2,
+        updatedAt: 2,
+      });
+    vi.mocked(generateBookCoverImage)
+      .mockRejectedValueOnce(Object.assign(new Error("not found"), { status: 404 }))
+      .mockResolvedValueOnce({
+        base64: btoa("jpeg-bytes"),
+        mimeType: "image/jpeg",
+        jobId: "new-job",
+      });
+
+    await expect(
+      generateBookCover({ bookId: "book-1", title: "Книга" }),
+    ).resolves.toMatchObject({ jobId: "new-job" });
+    expect(deleteLocalCoverJob).toHaveBeenCalledWith("book-1");
+    expect(generateBookCoverImage).toHaveBeenCalledTimes(2);
+  });
+
+  it("acks and deletes a durable result after local persistence", async () => {
+    vi.mocked(getLocalCoverJob).mockResolvedValueOnce({
+      bookId: "book-1",
+      requestId: "request-1",
+      jobId: "job-1",
+      prompt: "prompt",
+      status: "completed",
+      nextPollAt: 0,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+
+    await acknowledgeGeneratedBookCover("book-1");
+
+    expect(acknowledgeBookCoverJob).toHaveBeenCalledWith("job-1");
+    expect(deleteLocalCoverJob).toHaveBeenCalledWith("book-1");
   });
 });

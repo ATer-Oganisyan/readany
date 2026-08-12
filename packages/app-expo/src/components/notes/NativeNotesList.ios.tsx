@@ -1,13 +1,15 @@
 import { ScrollViewMarker } from "@/components/ui/ScrollViewMarker";
 import { Text } from "@/components/ui/Typography";
 import { NATIVE_SCROLL_EDGE_EFFECTS } from "@/navigation/scroll-edge-effects";
-import { radius, useColors } from "@/styles/theme";
+import { radius, secondLevelTitleFontFamily, useColors } from "@/styles/theme";
+import { useTranslation } from "react-i18next";
 import { Pressable, SectionList, StyleSheet, View } from "react-native";
 import type { NativeNotesListProps } from "./NativeNotesList";
 
 /** Native RN list keeps UINavigationBar large-title transitions connected to scrolling. */
 export function NativeNotesList({ sections, onPress }: NativeNotesListProps) {
   const colors = useColors();
+  const { t } = useTranslation();
 
   return (
     <ScrollViewMarker style={styles.marker} scrollEdgeEffects={NATIVE_SCROLL_EDGE_EFFECTS}>
@@ -32,7 +34,9 @@ export function NativeNotesList({ sections, onPress }: NativeNotesListProps) {
           return (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`Открыть заметку «${item.title}»`}
+              accessibilityLabel={t("notes.openNote", "Открыть заметку «{{title}}»", {
+                title: item.title,
+              })}
               onPress={() => onPress(item.id)}
               style={({ pressed }) => [
                 styles.row,
@@ -88,7 +92,13 @@ export type {
 const styles = StyleSheet.create({
   marker: { flex: 1 },
   content: { paddingHorizontal: 16, paddingBottom: 28 },
-  sectionTitle: { fontSize: 20, fontWeight: "600", paddingTop: 22, paddingBottom: 8 },
+  sectionTitle: {
+    fontFamily: secondLevelTitleFontFamily,
+    fontSize: 20,
+    fontWeight: "400",
+    paddingTop: 22,
+    paddingBottom: 8,
+  },
   row: { overflow: "hidden", paddingHorizontal: 16, borderLeftWidth: 0.5, borderRightWidth: 0.5 },
   rowContent: { paddingVertical: 12 },
   title: { fontSize: 17, fontWeight: "600" },

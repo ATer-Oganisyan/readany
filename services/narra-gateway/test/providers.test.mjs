@@ -4,9 +4,11 @@ import {
   coverRouteReadiness,
   llmRouteReadiness,
   maxTokensFor,
+  normalizeImageTransportError,
   omitsTemperature,
   requestChat,
   requestCoverImage,
+  requestCoverImageWithFallback,
   routeForPurpose
 } from '../providers.mjs'
 
@@ -247,10 +249,104 @@ test('cover route readiness and model come only from server environment', () => 
   const configured = coverRouteReadiness({ OPENROUTER_API_KEY: 'or-key' })
   assert.equal(configured.ready, true)
   assert.equal(configured.model, 'openai/gpt-image-2')
+  assert.equal(configured.fallbackModel, 'google/gemini-2.5-flash-image')
   assert.equal(
     coverRouteReadiness({ OPENROUTER_API_KEY: 'or-key', OPENROUTER_IMAGE_MODEL: 'other/image' }).model,
     'other/image'
   )
+})
+
+test('temporary primary image failure falls back to Nano Banana', async () => {
+  const models = []
+  const result = await requestCoverImageWithFallback({
+    prompt: 'character portrait',
+    fetchImpl: async (_url, init) => {
+      const body = JSON.parse(init.body)
+      models.push(body.model)
+      if (models.length === 1) return new Response('rate limited', { status: 429 })
+      return new Response(
+        JSON.stringify({ data: [{ b64_json: 'bmFuby1iYW5hbmE=', media_type: 'image/png' }] }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    },
+    env: { OPENROUTER_API_KEY: 'or-key' }
+  })
+
+  assert.deepEqual(models, ['openai/gpt-image-2', 'google/gemini-2.5-flash-image'])
+  assert.equal(result.model, 'google/gemini-2.5-flash-image')
+})
+
+test('Nano Banana fallback can be overridden by the server environment', async () => {
+  const models = []
+  await requestCoverImageWithFallback({
+    prompt: 'cover',
+    fetchImpl: async (_url, init) => {
+      const body = JSON.parse(init.body)
+      models.push(body.model)
+      if (models.length === 1) return new Response('bad gateway', { status: 502 })
+      return new Response(JSON.stringify({ data: [{ b64_json: 'aW1hZ2U=' }] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    },
+    env: {
+      OPENROUTER_API_KEY: 'or-key',
+      OPENROUTER_IMAGE_FALLBACK_MODEL: 'google/custom-nano-banana'
+    }
+  })
+
+  assert.deepEqual(models, ['openai/gpt-image-2', 'google/custom-nano-banana'])
+})
+
+test('moderation rejection does not fall back to Nano Banana', async () => {
+  let calls = 0
+  await assert.rejects(
+    requestCoverImageWithFallback({
+      prompt: 'cover',
+      fetchImpl: async () => {
+        calls += 1
+        return new Response('content moderation blocked', { status: 422 })
+      },
+      env: { OPENROUTER_API_KEY: 'or-key' }
+    }),
+    (error) => error?.code === 'CENSOR'
+  )
+  assert.equal(calls, 1)
+})
+
+test('raw AbortSignal timeout is normalized and falls back to Nano Banana', async () => {
+  const models = []
+  const timeout = new DOMException('The operation was aborted due to timeout', 'TimeoutError')
+  assert.equal(typeof timeout.code, 'number')
+  const result = await requestCoverImageWithFallback({
+    prompt: 'cover',
+    fetchImpl: async (_url, init) => {
+      const model = JSON.parse(init.body).model
+      models.push(model)
+      if (models.length === 1) throw timeout
+      return new Response(JSON.stringify({ data: [{ b64_json: 'aW1hZ2U=' }] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    },
+    env: { OPENROUTER_API_KEY: 'or-key' }
+  })
+  assert.deepEqual(models, ['openai/gpt-image-2', 'google/gemini-2.5-flash-image'])
+  assert.equal(result.model, 'google/gemini-2.5-flash-image')
+})
+
+test('native transport codes are normalized to the closed image error vocabulary', () => {
+  const network = normalizeImageTransportError(
+    Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' })
+  )
+  assert.equal(network.code, 'NETWORK')
+  assert.equal(network.status, 502)
+
+  const timeout = normalizeImageTransportError(
+    Object.assign(new Error('connect ETIMEDOUT'), { code: 'ETIMEDOUT' })
+  )
+  assert.equal(timeout.code, 'TIMEOUT')
+  assert.equal(timeout.status, 504)
 })
 
 test('cover request sends the server-side image contract to OpenRouter', async () => {
@@ -284,6 +380,23 @@ test('cover request sends the server-side image contract to OpenRouter', async (
     output_compression: 90,
     n: 1
   })
+})
+
+test('OpenRouter image request accepts a server-selected portrait aspect ratio', async () => {
+  const calls = []
+  await requestCoverImage({
+    prompt: 'character portrait',
+    aspectRatio: '3:4',
+    fetchImpl: async (_url, init) => {
+      calls.push(JSON.parse(init.body))
+      return new Response(
+        JSON.stringify({ data: [{ b64_json: 'aGVsbG8=', media_type: 'image/jpeg' }] }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    },
+    env: { OPENROUTER_API_KEY: 'or-key' }
+  })
+  assert.equal(calls[0].aspect_ratio, '3:4')
 })
 
 test('unconfigured cover route fails with NO_KEY before any network call', async () => {

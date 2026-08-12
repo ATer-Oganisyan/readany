@@ -8,6 +8,7 @@ import {
   fontSize,
   fontWeight,
   radius,
+  secondLevelTitleFontFamily,
   useColors,
   withOpacity,
 } from "@/styles/theme";
@@ -477,6 +478,7 @@ const makeStyles = (colors: ThemeColors) =>
     },
     backBtn: { padding: 4 },
     headerTitle: {
+      fontFamily: secondLevelTitleFontFamily,
       fontSize: fontSize.lg,
       fontWeight: fontWeight.semibold,
       color: colors.foreground,
@@ -489,8 +491,9 @@ const makeStyles = (colors: ThemeColors) =>
     },
     section: { paddingHorizontal: 16, paddingTop: 16 },
     sectionTitle: {
+      fontFamily: secondLevelTitleFontFamily,
       fontSize: fontSize.sm,
-      fontWeight: fontWeight.medium,
+      fontWeight: fontWeight.normal,
       color: colors.foreground,
     },
     sectionDesc: {
@@ -511,10 +514,16 @@ const makeStyles = (colors: ThemeColors) =>
       padding: 16,
     },
     enableInfo: { flex: 1, marginRight: 12 },
-    enableTitle: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.foreground },
+    enableTitle: {
+      fontFamily: secondLevelTitleFontFamily,
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.medium,
+      color: colors.foreground,
+    },
     enableDesc: { fontSize: fontSize.xs, color: colors.mutedForeground, marginTop: 2 },
     // Mode
     modeTitle: {
+      fontFamily: secondLevelTitleFontFamily,
       fontSize: fontSize.sm,
       fontWeight: fontWeight.medium,
       color: colors.foreground,
@@ -531,6 +540,7 @@ const makeStyles = (colors: ThemeColors) =>
     },
     modeCardActive: { borderColor: colors.primary, backgroundColor: colors.accent },
     modeCardTitle: {
+      fontFamily: secondLevelTitleFontFamily,
       fontSize: fontSize.sm,
       fontWeight: fontWeight.medium,
       color: colors.foreground,
@@ -654,7 +664,12 @@ const makeStyles = (colors: ThemeColors) =>
       justifyContent: "space-between",
       marginBottom: 12,
     },
-    formTitle: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.foreground },
+    formTitle: {
+      fontFamily: secondLevelTitleFontFamily,
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.medium,
+      color: colors.foreground,
+    },
     fieldLabel: {
       fontSize: fontSize.xs,
       color: colors.mutedForeground,

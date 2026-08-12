@@ -1,7 +1,15 @@
 import { Text, TextInput } from "@/components/ui/Typography";
 import { NativeButton } from "@/components/ui/NativeButton";
 import { FolderPlusIcon } from "@/components/ui/Icon";
-import { type ThemeColors, fontSize, fontWeight, radius, spacing, useColors } from "@/styles/theme";
+import {
+  type ThemeColors,
+  fontSize,
+  fontWeight,
+  headingFontFamily,
+  radius,
+  spacing,
+  useColors,
+} from "@/styles/theme";
 import type { BookGroup } from "@readany/core/types";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -159,6 +167,7 @@ const makeStyles = (colors: ThemeColors, bottomInset: number) =>
       marginBottom: spacing.md,
     },
     title: {
+      fontFamily: headingFontFamily,
       fontSize: fontSize.lg,
       fontWeight: fontWeight.semibold,
       color: colors.foreground,

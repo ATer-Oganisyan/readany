@@ -57,12 +57,17 @@ function cleanNoteText(value: string) {
     .trim();
 }
 
-function noteListItem(highlight: HighlightWithBook): NativeNoteListItem {
+function noteListItem(
+  highlight: HighlightWithBook,
+  locale: string,
+  yesterdayLabel: string,
+  noteFallback: string,
+): NativeNoteListItem {
   const rawLines = (highlight.note || "")
     .split(/\r?\n/)
     .map((line) => cleanNoteText(line))
     .filter(Boolean);
-  const title = rawLines[0] || "Заметка";
+  const title = rawLines[0] || noteFallback;
   const noteBody = cleanNoteText(rawLines.slice(1).join(" "));
   const quote = cleanNoteText(highlight.text || "");
   const timestamp = highlight.updatedAt || highlight.createdAt;
@@ -71,10 +76,10 @@ function noteListItem(highlight: HighlightWithBook): NativeNoteListItem {
   const dateStart = startOfDay(date);
   const dateLabel =
     dateStart === today
-      ? new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit" }).format(date)
+      ? new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(date)
       : dateStart === today - DAY_MS
-        ? "Вчера"
-        : new Intl.DateTimeFormat("ru-RU", {
+        ? yesterdayLabel
+        : new Intl.DateTimeFormat(locale, {
             day: "numeric",
             month: "short",
             ...(date.getFullYear() === new Date().getFullYear() ? {} : { year: "numeric" }),
@@ -105,7 +110,7 @@ export function NotesView({
   const colors = useColors();
   const s = makeStyles(colors);
   const nativeHeaderHeight = useHeaderHeight();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const nav = useNavigation<Nav>();
   const { highlightsWithBooks, loadAllHighlightsWithBooks, removeHighlight, updateHighlight } =
     useAnnotationStore();
@@ -214,12 +219,25 @@ export function NotesView({
 
   const noteSections = useMemo<NativeNoteListSection[]>(() => {
     const today = startOfDay(new Date());
+    const locale = i18n.resolvedLanguage === "en" ? "en-US" : "ru-RU";
     const buckets: Array<{ title: string; from: number; to: number }> = [
-      { title: "Сегодня", from: today, to: Number.POSITIVE_INFINITY },
-      { title: "Вчера", from: today - DAY_MS, to: today },
-      { title: "За последние 7 дней", from: today - 7 * DAY_MS, to: today - DAY_MS },
-      { title: "За последние 30 дней", from: today - 30 * DAY_MS, to: today - 7 * DAY_MS },
-      { title: "Раньше", from: Number.NEGATIVE_INFINITY, to: today - 30 * DAY_MS },
+      { title: t("notes.today", "Сегодня"), from: today, to: Number.POSITIVE_INFINITY },
+      { title: t("notes.yesterday", "Вчера"), from: today - DAY_MS, to: today },
+      {
+        title: t("notes.last7Days", "За последние 7 дней"),
+        from: today - 7 * DAY_MS,
+        to: today - DAY_MS,
+      },
+      {
+        title: t("notes.last30Days", "За последние 30 дней"),
+        from: today - 30 * DAY_MS,
+        to: today - 7 * DAY_MS,
+      },
+      {
+        title: t("notes.earlier", "Раньше"),
+        from: Number.NEGATIVE_INFINITY,
+        to: today - 30 * DAY_MS,
+      },
     ];
 
     return buckets
@@ -230,10 +248,17 @@ export function NotesView({
             const timestamp = highlight.updatedAt || highlight.createdAt;
             return timestamp >= bucket.from && timestamp < bucket.to;
           })
-          .map(noteListItem),
+          .map((highlight) =>
+            noteListItem(
+              highlight,
+              locale,
+              t("notes.yesterday", "Вчера"),
+              t("notes.noteFallback", "Заметка"),
+            ),
+          ),
       }))
       .filter((section) => section.data.length > 0);
-  }, [allNotes]);
+  }, [allNotes, i18n.resolvedLanguage, t]);
 
   // Group by chapter
   const itemsByChapter = useMemo(() => {
@@ -392,7 +417,7 @@ export function NotesView({
                 {/* Export button */}
                 <View style={s.exportBtn}>
                   <NativeContextMenuButton
-                    accessibilityLabel="Экспорт заметок"
+                    accessibilityLabel={t("notes.exportAccessibility", "Экспорт заметок")}
                     sfSymbol="square.and.arrow.up"
                     size={40}
                     color={colors.foreground}

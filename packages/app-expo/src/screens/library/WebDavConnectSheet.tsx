@@ -1,6 +1,13 @@
 import { Text, TextInput } from "@/components/ui/Typography";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
-import { fontSize, fontWeight, radius, useColors, withOpacity } from "@/styles/theme";
+import {
+  fontSize,
+  fontWeight,
+  headingFontFamily,
+  radius,
+  useColors,
+  withOpacity,
+} from "@/styles/theme";
 import {
   DEFAULT_WEBDAV_IMPORT_REMOTE_ROOT,
   type PersistedWebDavImportInput,
@@ -113,6 +120,7 @@ export function WebDavConnectSheet({ visible, onClose, onSubmit }: WebDavConnect
           backgroundColor: withOpacity(colors.border, 0.9),
         },
         title: {
+          fontFamily: headingFontFamily,
           fontSize: fontSize.xl,
           fontWeight: fontWeight.semibold,
           color: colors.foreground,
@@ -172,6 +180,7 @@ export function WebDavConnectSheet({ visible, onClose, onSubmit }: WebDavConnect
           minWidth: 0,
         },
         switchTitle: {
+          fontFamily: headingFontFamily,
           fontSize: fontSize.sm,
           fontWeight: fontWeight.medium,
           color: colors.foreground,
