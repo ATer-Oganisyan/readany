@@ -150,7 +150,7 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
 
 const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
-    section: { marginBottom: 32 },
+    section: { marginBottom: spacing.xxl },
     carousel: { overflow: "visible" },
     row: { gap: spacing.lg },
     coverCanvas: {
