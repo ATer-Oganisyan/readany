@@ -169,7 +169,7 @@ const makeStyles = (colors: ThemeColors) =>
       flex: 1,
       overflow: "hidden",
       padding: spacing.md,
-      backgroundColor: colors.primary10,
+      backgroundColor: colors.bookCoverSurface,
     },
     progressChip: {
       paddingHorizontal: 10,

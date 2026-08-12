@@ -1,3 +1,4 @@
+import { useTheme, withOpacity } from "@/styles/theme";
 import { useEffect } from "react";
 import { StyleSheet } from "react-native";
 import Animated, {
@@ -13,6 +14,7 @@ import Animated, {
 const PHASE_DURATION_MS = 1_000;
 
 export function CoverGenerationShimmer() {
+  const { colors } = useTheme();
   const opacity = useSharedValue(0);
 
   useEffect(() => {
@@ -39,7 +41,11 @@ export function CoverGenerationShimmer() {
   return (
     <Animated.View
       pointerEvents="none"
-      style={[styles.overlay, animatedStyle]}
+      style={[
+        styles.overlay,
+        { backgroundColor: withOpacity(colors.foreground, 0.18) },
+        animatedStyle,
+      ]}
       testID="cover-generation-shimmer"
     />
   );
@@ -49,6 +55,5 @@ const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFill,
     zIndex: 20,
-    backgroundColor: "rgba(255,255,255,0.10)",
   },
 });

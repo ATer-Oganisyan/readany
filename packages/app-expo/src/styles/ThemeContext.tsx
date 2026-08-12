@@ -53,6 +53,8 @@ export interface ThemeColors {
   stone300: string;
   stone400: string;
   stone500: string;
+  /** Светлая бумажная поверхность заглушки: типографика обложки всегда тёмная. */
+  bookCoverSurface: string;
 }
 
 function adaptiveToken(
@@ -134,6 +136,7 @@ function makeThemeColors(mode: ResolvedThemeMode): ThemeColors {
     stone300: mixHex(foreground, backgroundSecondary, 0.2),
     stone400: mixHex(foreground, backgroundSecondary, 0.4),
     stone500: mixHex(foreground, backgroundSecondary, 0.6),
+    bookCoverSurface: mixHex(foreground, backgroundSecondary, mode === "dark" ? 0.78 : 0.08),
   };
 }
 

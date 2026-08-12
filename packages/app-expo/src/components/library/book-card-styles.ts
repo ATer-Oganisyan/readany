@@ -31,7 +31,7 @@ export const makeStyles = (colors: ThemeColors, cardWidth: number) => {
       flex: 1,
       overflow: "hidden",
       padding: 16,
-      backgroundColor: colors.primary10,
+      backgroundColor: colors.bookCoverSurface,
     },
     fallbackTitle: {
       fontFamily: headingFontFamily,
