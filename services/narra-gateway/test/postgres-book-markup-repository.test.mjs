@@ -184,4 +184,14 @@ test('parallel analysis migration isolates durable jobs and whole-book barriers'
   assert.match(migration, /CREATE TABLE IF NOT EXISTS book_analysis_snapshots/)
   assert.match(migration, /analysis stage % is incomplete/)
   assert.match(migration, /publish stage is incomplete/)
+  const synthesisMigration = await readFile(
+    new URL('../migrations/006_book_analysis_synthesis_and_shadow.sql', import.meta.url),
+    'utf8'
+  )
+  assert.match(synthesisMigration, /'character_role', 'character_age', 'character_gender'/)
+  assert.match(synthesisMigration, /'character_profile', 'book_markup', 'validation_report'/)
+  assert.match(synthesisMigration, /CREATE TABLE book_analysis_publications/)
+  assert.match(synthesisMigration, /channel = 'shadow'/)
+  assert.match(synthesisMigration, /book_analysis_artifacts content is immutable/)
+  assert.match(synthesisMigration, /book_analysis_publications_immutable/)
 })

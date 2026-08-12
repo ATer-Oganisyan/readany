@@ -136,12 +136,14 @@ test('resolve completion freezes evidence before advancing to synthesize', async
     () => ({ rows: [] }),
     () => ({ rows: [] }),
     () => ({ rows: [] }),
+    () => ({ rows: [] }),
     () => ({ rows: [] })
   ])
   const ids = [
     '41111111-1111-4111-8111-111111111111',
     '51111111-1111-4111-8111-111111111111',
-    '61111111-1111-4111-8111-111111111111'
+    '61111111-1111-4111-8111-111111111111',
+    '81111111-1111-4111-8111-111111111111'
   ]
   const repository = createPostgresBookAnalysisRepository(pool, {
     idFactory: () => ids.shift()
@@ -177,13 +179,16 @@ test('resolve completion freezes evidence before advancing to synthesize', async
   })
   assert.equal(result.stage, 'synthesize')
   assert.equal(result.entityCount, 1)
+  assert.equal(result.characterJobCount, 1)
   const sql = pool.queries.map(({ sql }) => sql)
   const insertEntity = sql.findIndex((value) => /INSERT INTO book_analysis_entities/.test(value))
   const linkEvidence = sql.findIndex((value) => /INSERT INTO book_analysis_entity_evidence/.test(value))
   const insertSnapshot = sql.findIndex((value) => /INSERT INTO book_analysis_snapshots/.test(value))
   const completeJob = sql.findIndex((value) => /UPDATE book_analysis_jobs[\s\S]*status = 'ready'/.test(value))
+  const insertCharacterSynthesize = sql.findIndex((value) => /'synthesize', \$3/.test(value))
   const insertSynthesize = sql.findIndex((value) => /'synthesize', 'book'/.test(value))
   const advance = sql.findIndex((value) => /SET stage = 'synthesize'/.test(value))
   assert.ok(insertEntity < linkEvidence && linkEvidence < insertSnapshot)
-  assert.ok(insertSnapshot < completeJob && completeJob < insertSynthesize && insertSynthesize < advance)
+  assert.ok(insertSnapshot < completeJob && completeJob < insertCharacterSynthesize)
+  assert.ok(insertCharacterSynthesize < insertSynthesize && insertSynthesize < advance)
 })

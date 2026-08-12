@@ -1,8 +1,9 @@
 export const BOOK_ANALYSIS_PIPELINE_VERSION = 'book-analysis-v3'
 export const BOOK_ANALYSIS_MARKUP_VERSION = 'book-markup-v3'
 export const BOOK_ANALYSIS_SCHEMA_VERSION = 3
-export const BOOK_ANALYSIS_PROMPT_VERSION = 'book-scan-v1'
-export const BOOK_ANALYSIS_EXTRACTOR_VERSION = 'book-scan-v1'
+export const BOOK_ANALYSIS_PROMPT_VERSION = 'book-scan-v2'
+export const BOOK_ANALYSIS_EXTRACTOR_VERSION = 'book-scan-v2'
+export const BOOK_ANALYSIS_SYNTHESIS_VERSION = 'character-profile-v1'
 
 export const BOOK_ANALYSIS_STAGES = Object.freeze([
   'prepare',
@@ -49,6 +50,9 @@ export const BOOK_ANALYSIS_OBSERVATION_TYPES = Object.freeze([
   'character_dialogue',
   'character_trait',
   'character_appearance',
+  'character_role',
+  'character_age',
+  'character_gender',
   'event',
   'location',
   'relationship'
@@ -67,6 +71,9 @@ const OBSERVATION_ENTITY_KIND = new Map([
   ['character_dialogue', 'character'],
   ['character_trait', 'character'],
   ['character_appearance', 'character'],
+  ['character_role', 'character'],
+  ['character_age', 'character'],
+  ['character_gender', 'character'],
   ['event', 'event'],
   ['location', 'location'],
   ['relationship', 'relationship']
@@ -138,6 +145,12 @@ function identifierValues(value, name, options = {}) {
   return stringValues(value, name, options).map((item, index) =>
     identifier(item, `${name}[${index}]`)
   )
+}
+
+function boundedObjects(value, name, maxItems) {
+  if (!Array.isArray(value)) invalid(`${name}: expected an array`)
+  if (value.length > maxItems) invalid(`${name}: exceeds ${maxItems} items`)
+  return value
 }
 
 function optionalClaim(value, name) {
@@ -319,6 +332,30 @@ function normalizeCharacter(input, index, textLength) {
   }
 }
 
+/** Binds a generated factual profile to an already resolved character identity. */
+export function normalizeBookAnalysisCharacterProfile(input, { entity, textLength }) {
+  const source = objectValue(input, 'profile')
+  const resolved = normalizeBookAnalysisResolvedEntity(entity)
+  if (resolved.entityKind !== 'character') invalid('entity.entityKind: expected character')
+  const firstAppearanceTextOffset = textOffset(
+    resolved.data.firstEvidenceStartOffset,
+    'entity.data.firstEvidenceStartOffset'
+  )
+  return normalizeCharacter({
+    ...source,
+    characterKey: resolved.entityKey,
+    name: resolved.canonicalName,
+    fullName: resolved.canonicalName,
+    aliases: resolved.aliases.slice(0, 32),
+    identityEvidenceIds: resolved.evidenceIds.slice(0, 64),
+    firstAppearanceTextOffset,
+    warmupTextOffset: Math.max(
+      0,
+      firstAppearanceTextOffset - Math.max(2_000, Math.round(textLength * 0.02))
+    )
+  }, 0, textLength)
+}
+
 function normalizeLocation(input, index) {
   const name = `locations[${index}]`
   const source = objectValue(input, name)
@@ -396,18 +433,22 @@ export function normalizeBookMarkupV3(input) {
     'characters'
   )
   const locations = uniqueKeys(
-    (source.locations ?? []).map(normalizeLocation),
+    boundedObjects(source.locations ?? [], 'locations', 2_048).map(normalizeLocation),
     'locationKey',
     'locations'
   )
-  const events = uniqueKeys((source.events ?? []).map(normalizeEvent), 'eventKey', 'events')
+  const events = uniqueKeys(
+    boundedObjects(source.events ?? [], 'events', 2_048).map(normalizeEvent),
+    'eventKey',
+    'events'
+  )
   const relationships = uniqueKeys(
-    (source.relationships ?? []).map(normalizeRelationship),
+    boundedObjects(source.relationships ?? [], 'relationships', 2_048).map(normalizeRelationship),
     'relationshipKey',
     'relationships'
   )
   const storyArcs = uniqueKeys(
-    (source.storyArcs ?? []).map(normalizeStoryArc),
+    boundedObjects(source.storyArcs ?? [], 'storyArcs', 2_048).map(normalizeStoryArc),
     'storyArcKey',
     'storyArcs'
   )

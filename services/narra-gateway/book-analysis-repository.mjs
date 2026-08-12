@@ -1,9 +1,14 @@
 import { createHash, randomUUID } from 'node:crypto'
 import {
+  BOOK_ANALYSIS_MARKUP_VERSION,
+  BOOK_ANALYSIS_SCHEMA_VERSION,
   BOOK_ANALYSIS_PIPELINE_VERSION,
   BOOK_ANALYSIS_PROMPT_VERSION,
+  normalizeBookAnalysisCharacterProfile,
+  normalizeBookMarkupV3,
   normalizeBookAnalysisResolvedEntity
 } from './book-analysis-contracts.mjs'
+import { isSupportedVoice } from './voices.mjs'
 
 const SHA256 = /^[0-9a-f]{64}$/
 const STAGES = new Set(['prepare', 'scan', 'resolve', 'synthesize', 'validate', 'publish'])
@@ -133,8 +138,84 @@ function contentHash(value) {
   return createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex')
 }
 
+function artifactRow(row) {
+  if (!row) return null
+  return {
+    id: row.id,
+    runId: row.run_id,
+    snapshotId: row.snapshot_id,
+    kind: row.artifact_kind,
+    key: row.artifact_key,
+    schemaVersion: Number(row.schema_version),
+    status: row.status,
+    contentHash: row.content_hash,
+    data: row.data,
+    publishedAt: row.published_at ?? undefined
+  }
+}
+
 function hashObservationSet(observations) {
   return contentHash(observations)
+}
+
+function snapshotRow(row) {
+  if (!row) return null
+  return {
+    id: row.id,
+    runId: row.run_id,
+    version: Number(row.snapshot_version),
+    contentHash: row.content_hash,
+    evidenceCount: Number(row.evidence_count),
+    data: row.data
+  }
+}
+
+async function loadOrderedObservations(client, runId) {
+  const stored = await client.query(
+    `SELECT observation.*, chunk.chapter_key
+     FROM book_analysis_observations AS observation
+     JOIN book_analysis_chunks AS chunk
+       ON chunk.run_id = observation.run_id AND chunk.id = observation.chunk_id
+     WHERE observation.run_id = $1
+     ORDER BY observation.evidence_start_offset,
+              observation.evidence_end_offset, observation.id`,
+    [runId]
+  )
+  return stored.rows.map(observationRow)
+}
+
+async function loadOrderedObservationsByIds(client, runId, observationIds) {
+  if (!Array.isArray(observationIds) || !observationIds.length) return []
+  const stored = await client.query(
+    `SELECT observation.*, chunk.chapter_key
+     FROM book_analysis_observations AS observation
+     JOIN book_analysis_chunks AS chunk
+       ON chunk.run_id = observation.run_id AND chunk.id = observation.chunk_id
+     WHERE observation.run_id = $1 AND observation.id = ANY($2::uuid[])
+     ORDER BY observation.evidence_start_offset,
+              observation.evidence_end_offset, observation.id`,
+    [runId, observationIds]
+  )
+  return stored.rows.map(observationRow)
+}
+
+async function requireStageInput(pool, job, stage) {
+  const result = await pool.query(
+    `SELECT run.id AS run_id, run.book_edition_id, run.normalized_text_object_key,
+            run.normalized_text_hash, run.text_length, edition.title, edition.author,
+            job.payload, job.shard_key, snapshot.*
+     FROM book_analysis_jobs AS job
+     JOIN book_analysis_runs AS run ON run.id = job.run_id
+     JOIN book_editions AS edition ON edition.id = run.book_edition_id
+     JOIN book_analysis_snapshots AS snapshot
+       ON snapshot.run_id = run.id AND snapshot.id = (job.payload->>'snapshotId')::uuid
+     WHERE job.id = $1 AND job.run_id = $2 AND job.stage = $4
+       AND job.status = 'running' AND job.lease_token = $3::uuid
+       AND run.stage = $4 AND run.status = 'running'`,
+    [job.id, job.runId, job.leaseToken, stage]
+  )
+  if (!result.rows[0]) throw repositoryError('LEASE_LOST', `analysis job lease lost: ${job.id}`)
+  return result.rows[0]
 }
 
 async function transaction(pool, operation) {
@@ -301,7 +382,17 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
                AND job.attempts < job.max_attempts
                AND (
                  (job.status = 'queued' AND job.available_at <= now()) OR
-                 (job.status = 'running' AND job.lease_expires_at <= now())
+               (job.status = 'running' AND job.lease_expires_at <= now())
+               )
+               AND (
+                 job.stage <> 'synthesize' OR job.shard_key <> 'book' OR
+                 NOT EXISTS (
+                   SELECT 1 FROM book_analysis_jobs AS dependency
+                   WHERE dependency.run_id = job.run_id
+                     AND dependency.stage = 'synthesize'
+                     AND dependency.required AND dependency.shard_key <> 'book'
+                     AND dependency.status <> 'ready'
+                 )
                )
              ORDER BY job.priority DESC, job.available_at, job.created_at
              FOR UPDATE OF job SKIP LOCKED
@@ -810,12 +901,31 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
             })
           ]
         )
+        const characterEntities = entityRecords.filter((entity) =>
+          entity.entityKind === 'character' && entity.resolutionStatus === 'confirmed'
+        ).slice(0, 128)
+        for (const entity of characterEntities) {
+          await client.query(
+            `INSERT INTO book_analysis_jobs (
+               id, run_id, stage, shard_key, required, priority, payload
+             ) VALUES ($1, $2, 'synthesize', $3, true, $4, $5::jsonb)
+             ON CONFLICT (run_id, stage, shard_key) DO NOTHING`,
+            [
+              idFactory(), job.runId, `character:${entity.entityKey}`,
+              synthesizePriority,
+              JSON.stringify({ mode: 'character_profile', snapshotId, entityId: entity.id })
+            ]
+          )
+        }
         await client.query(
           `INSERT INTO book_analysis_jobs (
              id, run_id, stage, shard_key, required, priority, payload
            ) VALUES ($1, $2, 'synthesize', 'book', true, $3, $4::jsonb)
            ON CONFLICT (run_id, stage, shard_key) DO NOTHING`,
-          [idFactory(), job.runId, synthesizePriority, JSON.stringify({ snapshotId })]
+          [
+            idFactory(), job.runId, synthesizePriority,
+            JSON.stringify({ mode: 'assemble_book', snapshotId })
+          ]
         )
         await client.query(
           `UPDATE book_analysis_runs SET stage = 'synthesize' WHERE id = $1`,
@@ -824,9 +934,456 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
         return {
           observationCount: observations.length,
           entityCount: normalizedEntities.length,
+          characterJobCount: characterEntities.length,
           snapshotId,
           stage: 'synthesize'
         }
+      })
+    },
+
+    async getSynthesizeInput(job) {
+      const row = await requireStageInput(pool, job, 'synthesize')
+      const snapshot = snapshotRow(row)
+      const mode = row.payload?.mode
+      if (mode === 'character_profile') {
+        const entity = snapshot.data.entities.find(({ id }) => id === row.payload.entityId)
+        if (!entity || entity.entityKind !== 'character') {
+          throw repositoryError('SYNTHESIS_INPUT_INVALID', 'character entity is absent from snapshot')
+        }
+        return {
+          mode,
+          runId: row.run_id,
+          title: row.title,
+          author: row.author,
+          textLength: Number(row.text_length),
+          snapshot,
+          entity,
+          observations: await loadOrderedObservationsByIds(pool, job.runId, entity.evidenceIds)
+        }
+      }
+      if (mode === 'assemble_book') {
+        const observations = await loadOrderedObservations(pool, job.runId)
+        const artifacts = await pool.query(
+          `SELECT * FROM book_analysis_artifacts
+           WHERE run_id = $1 AND snapshot_id = $2
+             AND artifact_kind = 'character_profile' AND status = 'valid'
+           ORDER BY artifact_key`,
+          [job.runId, snapshot.id]
+        )
+        return {
+          mode,
+          runId: row.run_id,
+          title: row.title,
+          author: row.author,
+          textLength: Number(row.text_length),
+          snapshot,
+          observations,
+          characterProfiles: artifacts.rows.map(({ data }) => data.profile)
+        }
+      }
+      throw repositoryError('SYNTHESIS_INPUT_INVALID', 'unsupported synthesize payload mode')
+    },
+
+    async completeCharacterSynthesis(job, {
+      snapshotId,
+      synthesisVersion,
+      selectedEvidenceIds,
+      profile
+    }) {
+      validateIdentifier(snapshotId, 'snapshotId')
+      validateIdentifier(synthesisVersion, 'synthesisVersion', 128)
+      if (
+        !Array.isArray(selectedEvidenceIds) || !selectedEvidenceIds.length ||
+        selectedEvidenceIds.length > 240 ||
+        new Set(selectedEvidenceIds).size !== selectedEvidenceIds.length
+      ) {
+        throw new TypeError('selectedEvidenceIds must contain 1 to 240 unique items')
+      }
+      return transaction(pool, async (client) => {
+        const leased = await requireLeasedJob(client, job, 'synthesize')
+        const run = await client.query(
+          `SELECT * FROM book_analysis_runs
+           WHERE id = $1 AND stage = 'synthesize' AND status = 'running'
+           FOR UPDATE`,
+          [job.runId]
+        )
+        if (!run.rows[0]) throw repositoryError('RUN_STATE_CHANGED', 'analysis run is not synthesizing')
+        if (leased.payload?.mode !== 'character_profile' || leased.payload?.snapshotId !== snapshotId) {
+          throw repositoryError('SYNTHESIS_INPUT_CHANGED', 'character job payload changed')
+        }
+        const snapshot = await client.query(
+          `SELECT * FROM book_analysis_snapshots WHERE id = $1 AND run_id = $2`,
+          [snapshotId, job.runId]
+        )
+        const entity = snapshot.rows[0]?.data?.entities?.find(({ id }) =>
+          id === leased.payload.entityId
+        )
+        if (!entity) throw repositoryError('SYNTHESIS_INPUT_CHANGED', 'entity is absent from snapshot')
+        const allowedEvidenceIds = new Set(entity.evidenceIds)
+        if (selectedEvidenceIds.some((id) => !allowedEvidenceIds.has(id))) {
+          throw repositoryError('SYNTHESIS_OUTPUT_INVALID', 'profile used evidence from another entity')
+        }
+        const normalizedProfile = normalizeBookAnalysisCharacterProfile(profile, {
+          entity,
+          textLength: Number(run.rows[0].text_length)
+        })
+        if (normalizedProfile.creative.voice && !isSupportedVoice(normalizedProfile.creative.voice)) {
+          throw repositoryError('SYNTHESIS_OUTPUT_INVALID', 'profile creative voice is unsupported')
+        }
+        const usedEvidenceIds = new Set()
+        const claims = [
+          normalizedProfile.role, normalizedProfile.age, normalizedProfile.gender,
+          normalizedProfile.description, ...normalizedProfile.traits,
+          ...normalizedProfile.appearance, normalizedProfile.speechStyle,
+          ...normalizedProfile.speechExamples
+        ].filter(Boolean)
+        for (const claim of claims) {
+          for (const evidenceId of claim.evidenceIds) {
+            if (!selectedEvidenceIds.includes(evidenceId)) {
+              throw repositoryError('SYNTHESIS_OUTPUT_INVALID', `unknown selected evidence: ${evidenceId}`)
+            }
+            usedEvidenceIds.add(evidenceId)
+          }
+        }
+        const artifactData = {
+          synthesisVersion,
+          selectedEvidenceIds,
+          usedEvidenceIds: [...usedEvidenceIds].sort(),
+          profile: normalizedProfile
+        }
+        const artifactHash = contentHash(artifactData)
+        const artifactId = idFactory()
+        await client.query(
+          `INSERT INTO book_analysis_artifacts (
+             id, run_id, snapshot_id, artifact_kind, artifact_key,
+             schema_version, status, content_hash, data
+           ) VALUES ($1, $2, $3, 'character_profile', $4, 1, 'valid', $5, $6::jsonb)`,
+          [
+            artifactId, job.runId, snapshotId, entity.entityKey,
+            artifactHash, JSON.stringify(artifactData)
+          ]
+        )
+        await client.query(
+          `UPDATE book_analysis_jobs
+           SET status = 'ready', result = $3::jsonb,
+               locked_at = NULL, lease_expires_at = NULL,
+               locked_by = NULL, lease_token = NULL, updated_at = now()
+           WHERE id = $1 AND lease_token = $2::uuid`,
+          [
+            job.id, job.leaseToken,
+            JSON.stringify({ artifactId, usedEvidenceCount: usedEvidenceIds.size })
+          ]
+        )
+        return { artifactId, stage: 'synthesize' }
+      })
+    },
+
+    async completeBookSynthesis(job, { snapshotId, markup, validatePriority = 50 }) {
+      validateIdentifier(snapshotId, 'snapshotId')
+      const normalizedMarkup = normalizeBookMarkupV3(markup)
+      if (normalizedMarkup.snapshotId !== snapshotId) {
+        throw repositoryError('SYNTHESIS_OUTPUT_INVALID', 'markup references another snapshot')
+      }
+      return transaction(pool, async (client) => {
+        const leased = await requireLeasedJob(client, job, 'synthesize')
+        const run = await client.query(
+          `SELECT * FROM book_analysis_runs
+           WHERE id = $1 AND stage = 'synthesize' AND status = 'running'
+           FOR UPDATE`,
+          [job.runId]
+        )
+        if (!run.rows[0]) throw repositoryError('RUN_STATE_CHANGED', 'analysis run is not synthesizing')
+        if (leased.shard_key !== 'book' || leased.payload?.snapshotId !== snapshotId) {
+          throw repositoryError('SYNTHESIS_INPUT_CHANGED', 'book synthesis payload changed')
+        }
+        const incomplete = await client.query(
+          `SELECT count(*)::integer AS count FROM book_analysis_jobs
+           WHERE run_id = $1 AND stage = 'synthesize' AND required
+             AND shard_key <> 'book' AND status <> 'ready'`,
+          [job.runId]
+        )
+        if (Number(incomplete.rows[0].count) > 0) {
+          throw repositoryError('SYNTHESIS_BARRIER_INCOMPLETE', 'character profiles are incomplete')
+        }
+        const artifactId = idFactory()
+        const artifactHash = contentHash(normalizedMarkup)
+        await client.query(
+          `INSERT INTO book_analysis_artifacts (
+             id, run_id, snapshot_id, artifact_kind, artifact_key,
+             schema_version, status, content_hash, data
+           ) VALUES ($1, $2, $3, 'book_markup', 'primary', $4, 'draft', $5, $6::jsonb)`,
+          [
+            artifactId, job.runId, snapshotId, BOOK_ANALYSIS_SCHEMA_VERSION,
+            artifactHash, JSON.stringify(normalizedMarkup)
+          ]
+        )
+        await client.query(
+          `UPDATE book_analysis_jobs
+           SET status = 'ready', result = $3::jsonb,
+               locked_at = NULL, lease_expires_at = NULL,
+               locked_by = NULL, lease_token = NULL, updated_at = now()
+           WHERE id = $1 AND lease_token = $2::uuid`,
+          [job.id, job.leaseToken, JSON.stringify({ artifactId })]
+        )
+        await client.query(
+          `INSERT INTO book_analysis_jobs (
+             id, run_id, stage, shard_key, required, priority, payload
+           ) VALUES ($1, $2, 'validate', 'book', true, $3, $4::jsonb)
+           ON CONFLICT (run_id, stage, shard_key) DO NOTHING`,
+          [
+            idFactory(), job.runId, validatePriority,
+            JSON.stringify({ snapshotId, artifactId })
+          ]
+        )
+        await client.query(`UPDATE book_analysis_runs SET stage = 'validate' WHERE id = $1`, [job.runId])
+        return { artifactId, stage: 'validate' }
+      })
+    },
+
+    async getValidationInput(job) {
+      const row = await requireStageInput(pool, job, 'validate')
+      const artifact = await pool.query(
+        `SELECT * FROM book_analysis_artifacts
+         WHERE id = $1 AND run_id = $2 AND snapshot_id = $3
+           AND artifact_kind = 'book_markup' AND status = 'draft'`,
+        [row.payload.artifactId, job.runId, row.id]
+      )
+      if (!artifact.rows[0]) throw repositoryError('VALIDATION_INPUT_INVALID', 'draft markup is unavailable')
+      return {
+        runId: row.run_id,
+        snapshot: snapshotRow(row),
+        artifact: artifactRow(artifact.rows[0]),
+        normalizedTextObjectKey: row.normalized_text_object_key,
+        normalizedTextHash: row.normalized_text_hash,
+        textLength: Number(row.text_length),
+        observations: await loadOrderedObservations(pool, job.runId)
+      }
+    },
+
+    async completeValidation(job, { report, publishPriority = 50 }) {
+      if (
+        !report || typeof report !== 'object' || Array.isArray(report) ||
+        typeof report.valid !== 'boolean' || !Array.isArray(report.errors) ||
+        report.errors.length > 1_000 ||
+        !report.checks || typeof report.checks !== 'object' || Array.isArray(report.checks) ||
+        !['schema', 'sourceHash', 'evidence', 'references'].every((key) =>
+          typeof report.checks[key] === 'boolean'
+        )
+      ) {
+        throw new TypeError('report must be a normalized validation report')
+      }
+      if (
+        report.valid !== (report.errors.length === 0) ||
+        (report.valid && Object.values(report.checks).some((value) => value !== true))
+      ) {
+        throw new TypeError('report validity does not match its errors and checks')
+      }
+      return transaction(pool, async (client) => {
+        const leased = await requireLeasedJob(client, job, 'validate')
+        const run = await client.query(
+          `SELECT * FROM book_analysis_runs
+           WHERE id = $1 AND stage = 'validate' AND status = 'running'
+           FOR UPDATE`,
+          [job.runId]
+        )
+        if (!run.rows[0]) throw repositoryError('RUN_STATE_CHANGED', 'analysis run is not validating')
+        const markup = await client.query(
+          `SELECT * FROM book_analysis_artifacts
+           WHERE id = $1 AND run_id = $2 AND artifact_kind = 'book_markup'
+           FOR UPDATE`,
+          [leased.payload.artifactId, job.runId]
+        )
+        if (!markup.rows[0] || markup.rows[0].status !== 'draft') {
+          throw repositoryError('VALIDATION_INPUT_CHANGED', 'draft markup is unavailable')
+        }
+        const snapshot = await client.query(
+          `SELECT * FROM book_analysis_snapshots
+           WHERE id = $1 AND run_id = $2`,
+          [markup.rows[0].snapshot_id, job.runId]
+        )
+        const expectedBindings = {
+          snapshotId: markup.rows[0].snapshot_id,
+          snapshotContentHash: snapshot.rows[0]?.content_hash,
+          normalizedTextHash: run.rows[0].normalized_text_hash,
+          markupArtifactId: markup.rows[0].id,
+          markupContentHash: markup.rows[0].content_hash
+        }
+        if (
+          !snapshot.rows[0] || !report.bindings ||
+          Object.entries(expectedBindings).some(([key, value]) => report.bindings[key] !== value)
+        ) {
+          throw repositoryError('VALIDATION_OUTPUT_INVALID', 'validation report bindings do not match inputs')
+        }
+        const reportId = idFactory()
+        const reportHash = contentHash(report)
+        await client.query(
+          `INSERT INTO book_analysis_artifacts (
+             id, run_id, snapshot_id, artifact_kind, artifact_key,
+             schema_version, status, content_hash, data
+           ) VALUES ($1, $2, $3, 'validation_report', 'primary', 1, $4, $5, $6::jsonb)`,
+          [
+            reportId, job.runId, markup.rows[0].snapshot_id,
+            report.valid ? 'valid' : 'invalid', reportHash, JSON.stringify(report)
+          ]
+        )
+        await client.query(
+          `UPDATE book_analysis_artifacts SET status = $2 WHERE id = $1`,
+          [markup.rows[0].id, report.valid ? 'valid' : 'invalid']
+        )
+        if (!report.valid) {
+          await client.query(
+            `UPDATE book_analysis_jobs
+             SET status = 'failed', result = $3::jsonb,
+                 last_error_code = 'MARKUP_VALIDATION_FAILED',
+                 locked_at = NULL, lease_expires_at = NULL,
+                 locked_by = NULL, lease_token = NULL, updated_at = now()
+             WHERE id = $1 AND lease_token = $2::uuid`,
+            [job.id, job.leaseToken, JSON.stringify({ reportId })]
+          )
+          await client.query(
+            `UPDATE book_analysis_runs
+             SET status = 'failed', last_error_code = 'MARKUP_VALIDATION_FAILED'
+             WHERE id = $1`,
+            [job.runId]
+          )
+          return { reportId, stage: 'validate', status: 'failed' }
+        }
+        await client.query(
+          `UPDATE book_analysis_jobs
+           SET status = 'ready', result = $3::jsonb,
+               locked_at = NULL, lease_expires_at = NULL,
+               locked_by = NULL, lease_token = NULL, updated_at = now()
+           WHERE id = $1 AND lease_token = $2::uuid`,
+          [job.id, job.leaseToken, JSON.stringify({ reportId })]
+        )
+        await client.query(
+          `INSERT INTO book_analysis_jobs (
+             id, run_id, stage, shard_key, required, priority, payload
+           ) VALUES ($1, $2, 'publish', 'shadow', true, $3, $4::jsonb)
+           ON CONFLICT (run_id, stage, shard_key) DO NOTHING`,
+          [
+            idFactory(), job.runId, publishPriority,
+            JSON.stringify({
+              snapshotId: markup.rows[0].snapshot_id,
+              artifactId: markup.rows[0].id,
+              reportId,
+              channel: 'shadow'
+            })
+          ]
+        )
+        await client.query(`UPDATE book_analysis_runs SET stage = 'publish' WHERE id = $1`, [job.runId])
+        return { reportId, stage: 'publish' }
+      })
+    },
+
+    async getPublishInput(job) {
+      const result = await pool.query(
+        `SELECT run.id AS run_id, run.book_edition_id, job.payload,
+                markup.*, report.status AS report_status, report.data AS report_data
+         FROM book_analysis_jobs AS job
+         JOIN book_analysis_runs AS run ON run.id = job.run_id
+         JOIN book_analysis_artifacts AS markup
+           ON markup.id = (job.payload->>'artifactId')::uuid AND markup.run_id = run.id
+         JOIN book_analysis_artifacts AS report
+           ON report.id = (job.payload->>'reportId')::uuid AND report.run_id = run.id
+         WHERE job.id = $1 AND job.run_id = $2 AND job.stage = 'publish'
+           AND job.status = 'running' AND job.lease_token = $3::uuid
+           AND run.stage = 'publish' AND run.status = 'running'
+           AND job.payload->>'channel' = 'shadow'
+           AND markup.artifact_kind = 'book_markup' AND markup.status = 'valid'
+           AND report.artifact_kind = 'validation_report' AND report.status = 'valid'`,
+        [job.id, job.runId, job.leaseToken]
+      )
+      if (!result.rows[0]) throw repositoryError('LEASE_LOST', `analysis job lease lost: ${job.id}`)
+      return {
+        runId: result.rows[0].run_id,
+        bookEditionId: result.rows[0].book_edition_id,
+        channel: 'shadow',
+        artifact: artifactRow(result.rows[0]),
+        validationReport: result.rows[0].report_data
+      }
+    },
+
+    async completeShadowPublish(job, { artifactId }) {
+      validateIdentifier(artifactId, 'artifactId')
+      return transaction(pool, async (client) => {
+        const leased = await requireLeasedJob(client, job, 'publish')
+        const run = await client.query(
+          `SELECT * FROM book_analysis_runs
+           WHERE id = $1 AND stage = 'publish' AND status = 'running'
+           FOR UPDATE`,
+          [job.runId]
+        )
+        if (!run.rows[0]) throw repositoryError('RUN_STATE_CHANGED', 'analysis run is not publishing')
+        if (leased.payload?.channel !== 'shadow' || leased.payload?.artifactId !== artifactId) {
+          throw repositoryError('PUBLISH_INPUT_CHANGED', 'publish payload changed')
+        }
+        const artifact = await client.query(
+          `SELECT * FROM book_analysis_artifacts
+           WHERE id = $1 AND run_id = $2 AND artifact_kind = 'book_markup'
+             AND status = 'valid' FOR UPDATE`,
+          [artifactId, job.runId]
+        )
+        if (!artifact.rows[0]) throw repositoryError('PUBLISH_INPUT_INVALID', 'valid markup is unavailable')
+        const validation = await client.query(
+          `SELECT * FROM book_analysis_artifacts
+           WHERE id = $1 AND run_id = $2 AND artifact_kind = 'validation_report'
+             AND status = 'valid' FOR KEY SHARE`,
+          [leased.payload.reportId, job.runId]
+        )
+        const bindings = validation.rows[0]?.data?.bindings
+        const snapshot = await client.query(
+          `SELECT content_hash FROM book_analysis_snapshots
+           WHERE id = $1 AND run_id = $2`,
+          [artifact.rows[0].snapshot_id, job.runId]
+        )
+        if (
+          !validation.rows[0] || validation.rows[0].data?.valid !== true ||
+          bindings?.snapshotId !== artifact.rows[0].snapshot_id ||
+          bindings?.snapshotContentHash !== snapshot.rows[0]?.content_hash ||
+          bindings?.normalizedTextHash !== run.rows[0].normalized_text_hash ||
+          bindings?.markupArtifactId !== artifact.rows[0].id ||
+          bindings?.markupContentHash !== artifact.rows[0].content_hash
+        ) {
+          throw repositoryError('PUBLISH_INPUT_INVALID', 'validation report is not bound to this markup')
+        }
+        const publicationId = idFactory()
+        const publicationData = {
+          schemaVersion: BOOK_ANALYSIS_SCHEMA_VERSION,
+          analysisVersion: BOOK_ANALYSIS_MARKUP_VERSION,
+          artifactId,
+          snapshotId: artifact.rows[0].snapshot_id,
+          markup: artifact.rows[0].data
+        }
+        await client.query(
+          `INSERT INTO book_analysis_publications (
+             id, run_id, book_edition_id, artifact_id, channel,
+             analysis_version, content_hash, data
+           ) VALUES ($1, $2, $3, $4, 'shadow', $5, $6, $7::jsonb)`,
+          [
+            publicationId, job.runId, run.rows[0].book_edition_id, artifactId,
+            BOOK_ANALYSIS_MARKUP_VERSION, artifact.rows[0].content_hash,
+            JSON.stringify(publicationData)
+          ]
+        )
+        await client.query(
+          `UPDATE book_analysis_artifacts
+           SET status = 'published', published_at = now() WHERE id = $1`,
+          [artifactId]
+        )
+        await client.query(
+          `UPDATE book_analysis_jobs
+           SET status = 'ready', result = $3::jsonb,
+               locked_at = NULL, lease_expires_at = NULL,
+               locked_by = NULL, lease_token = NULL, updated_at = now()
+           WHERE id = $1 AND lease_token = $2::uuid`,
+          [job.id, job.leaseToken, JSON.stringify({ publicationId, channel: 'shadow' })]
+        )
+        await client.query(
+          `UPDATE book_analysis_runs SET status = 'ready' WHERE id = $1`,
+          [job.runId]
+        )
+        return { publicationId, channel: 'shadow', status: 'ready' }
       })
     },
 

@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import test from 'node:test'
+import { assembleBookMarkupV3 } from '../book-analysis-assembler.mjs'
 import { createPostgresBookAnalysisRepository } from '../book-analysis-repository.mjs'
 import { resolveBookAnalysisEntities } from '../book-analysis-resolver.mjs'
+import { validateBookMarkupV3 } from '../book-analysis-validator.mjs'
 import { runBookMarkupMigrations } from '../postgres-runtime.mjs'
 
 const connectionString = process.env.BOOK_MARKUP_TEST_DATABASE_URL
@@ -74,6 +76,8 @@ test('PostgreSQL analysis workers claim different scan shards and reclaim an exp
   const pool = new pg.Pool({ connectionString, ssl: false, max: 4 })
   const bookEditionId = randomUUID()
   const hash = 'e'.repeat(64)
+  const normalizedText = `${' '.repeat(10)}test${' '.repeat(46)}test${' '.repeat(36)}`
+  const normalizedTextHash = createHash('sha256').update(normalizedText).digest('hex')
   try {
     await runBookMarkupMigrations(pool, { logger: { info() {} } })
     await pool.query(
@@ -100,7 +104,7 @@ test('PostgreSQL analysis workers claim different scan shards and reclaim an exp
     assert.equal(prepare.id, ensured.prepareJob.id)
     assert.deepEqual(await repository.completePrepare(prepare, {
       normalizedTextObjectKey: `analysis/${runId}/normalized-text-v1.txt`,
-      normalizedTextHash: 'f'.repeat(64),
+      normalizedTextHash,
       textLength: 100,
       sections: [
         { key: 'chapter-1', title: 'One', startOffset: 0, endOffset: 50 },
@@ -167,11 +171,11 @@ test('PostgreSQL analysis workers claim different scan shards and reclaim an exp
 
     const completionResults = await Promise.all([
       repository.completeScan(second, {
-        extractorVersion: 'book-scan-v1',
+        extractorVersion: 'book-scan-v2',
         observations: [scanObservation(second)]
       }),
       repository.completeScan(reclaimed, {
-        extractorVersion: 'book-scan-v1',
+        extractorVersion: 'book-scan-v2',
         observations: [scanObservation(reclaimed)]
       })
     ])
@@ -204,7 +208,7 @@ test('PostgreSQL analysis workers claim different scan shards and reclaim an exp
     assert.equal(storedObservations.rows[0].count, 2)
     await assert.rejects(
       repository.completeScan(first, {
-        extractorVersion: 'book-scan-v1',
+        extractorVersion: 'book-scan-v2',
         observations: [scanObservation(first)]
       }),
       (error) => ['LEASE_LOST', 'RUN_STATE_CHANGED'].includes(error.code)
@@ -274,7 +278,7 @@ test('PostgreSQL analysis workers claim different scan shards and reclaim an exp
       entities: 2,
       linked_observations: 2,
       snapshots: 1,
-      synthesize_jobs: 1
+      synthesize_jobs: 3
     })
     const snapshot = await pool.query(
       `SELECT evidence_count, data FROM book_analysis_snapshots WHERE id = $1`,
@@ -283,6 +287,110 @@ test('PostgreSQL analysis workers claim different scan shards and reclaim an exp
     assert.equal(snapshot.rows[0].evidence_count, 2)
     assert.equal(snapshot.rows[0].data.observationIds.length, 2)
     assert.equal(snapshot.rows[0].data.entities.length, 2)
+
+    const firstCharacter = await repository.claimAnalysisJob('synthesis-worker-1', {
+      stages: ['synthesize'], leaseSeconds: 60
+    })
+    const secondCharacter = await repository.claimAnalysisJob('synthesis-worker-2', {
+      stages: ['synthesize'], leaseSeconds: 60
+    })
+    assert.equal(firstCharacter.payload.mode, 'character_profile')
+    assert.equal(secondCharacter.payload.mode, 'character_profile')
+    assert.notEqual(firstCharacter.id, secondCharacter.id)
+    assert.equal(await repository.claimAnalysisJob('synthesis-worker-3', {
+      stages: ['synthesize'], leaseSeconds: 60
+    }), null)
+    for (const characterJob of [firstCharacter, secondCharacter]) {
+      const input = await repository.getSynthesizeInput(characterJob)
+      assert.equal(input.observations.length, 1)
+      await repository.completeCharacterSynthesis(characterJob, {
+        snapshotId: input.snapshot.id,
+        synthesisVersion: 'character-profile-v1',
+        selectedEvidenceIds: input.observations.map(({ id }) => id),
+        profile: {
+          role: null,
+          age: null,
+          gender: null,
+          description: null,
+          traits: [],
+          appearance: [],
+          speechStyle: null,
+          speechExamples: [],
+          creative: { greeting: '', appearancePrompt: '', voice: '' }
+        }
+      })
+    }
+    const assembleJob = await repository.claimAnalysisJob('assembly-worker-1', {
+      stages: ['synthesize'], leaseSeconds: 60
+    })
+    assert.equal(assembleJob.shardKey, 'book')
+    const assemblyInput = await repository.getSynthesizeInput(assembleJob)
+    assert.equal(assemblyInput.characterProfiles.length, 2)
+    const markup = assembleBookMarkupV3({
+      snapshotId: assemblyInput.snapshot.id,
+      textLength: assemblyInput.textLength,
+      entities: assemblyInput.snapshot.data.entities,
+      observations: assemblyInput.observations,
+      characterProfiles: assemblyInput.characterProfiles
+    })
+    assert.equal(markup.characters.length, 2)
+    const synthesisResult = await repository.completeBookSynthesis(assembleJob, {
+      snapshotId: assemblyInput.snapshot.id,
+      markup
+    })
+    assert.equal(synthesisResult.stage, 'validate')
+
+    const validateJob = await repository.claimAnalysisJob('validate-worker-1', {
+      stages: ['validate'], leaseSeconds: 60
+    })
+    const validationInput = await repository.getValidationInput(validateJob)
+    const validation = validateBookMarkupV3({
+      markup: validationInput.artifact.data,
+      snapshot: validationInput.snapshot,
+      observations: validationInput.observations,
+      normalizedText,
+      normalizedTextHash: validationInput.normalizedTextHash
+    })
+    assert.equal(validation.valid, true)
+    const validationResult = await repository.completeValidation(validateJob, {
+      report: {
+        ...validation,
+        bindings: {
+          snapshotId: validationInput.snapshot.id,
+          snapshotContentHash: validationInput.snapshot.contentHash,
+          normalizedTextHash: validationInput.normalizedTextHash,
+          markupArtifactId: validationInput.artifact.id,
+          markupContentHash: validationInput.artifact.contentHash
+        }
+      }
+    })
+    assert.equal(validationResult.stage, 'publish')
+
+    const publishJob = await repository.claimAnalysisJob('publish-worker-1', {
+      stages: ['publish'], leaseSeconds: 60
+    })
+    const publishInput = await repository.getPublishInput(publishJob)
+    assert.equal(publishInput.channel, 'shadow')
+    assert.equal(publishInput.validationReport.valid, true)
+    const publication = await repository.completeShadowPublish(publishJob, {
+      artifactId: publishInput.artifact.id
+    })
+    assert.equal(publication.status, 'ready')
+    const finalState = await pool.query(
+      `SELECT run.stage, run.status,
+              (SELECT count(*)::integer FROM book_analysis_publications
+               WHERE run_id = run.id AND channel = 'shadow') AS shadow_publications,
+              (SELECT count(*)::integer FROM book_markup_versions
+               WHERE book_edition_id = run.book_edition_id) AS visible_v2_markups
+       FROM book_analysis_runs AS run WHERE run.id = $1`,
+      [runId]
+    )
+    assert.deepEqual(finalState.rows[0], {
+      stage: 'publish',
+      status: 'ready',
+      shadow_publications: 1,
+      visible_v2_markups: 0
+    })
     const existingObservation = resolveInput.observations[0]
     await assert.rejects(
       pool.query(
@@ -292,7 +400,7 @@ test('PostgreSQL analysis workers claim different scan shards and reclaim an exp
            related_entity_candidates, fact, evidence_quote,
            evidence_start_offset, evidence_end_offset, confidence
          ) VALUES (
-           $1, $2, $3, $4, 'book-scan-v1', 'obs:late',
+           $1, $2, $3, $4, 'book-scan-v2', 'obs:late',
            'character_mention', 'character', 'Поздний герой',
            '[]'::jsonb, 'Поздний факт', 'late', 11, 15, 0.9
          )`,

@@ -21,9 +21,9 @@ The pipeline stages are:
 1. `prepare`: extract normalized text, chapter boundaries and stable chunks;
 2. `scan`: process every chunk with independently scalable workers;
 3. `resolve`: merge aliases and candidates into canonical entities;
-4. `synthesize`: create one result from a frozen whole-book evidence snapshot;
+4. `synthesize`: create parallel character profiles and assemble one result from a frozen whole-book evidence snapshot;
 5. `validate`: verify evidence, offsets, references and schema;
-6. `publish`: atomically replace the visible markup revision.
+6. `publish`: atomically publish the validated result to an isolated shadow channel.
 
 Every stage has a durable barrier. A run can advance only when it has at least
 one required job for the current stage and all required jobs are `ready`.
@@ -38,7 +38,8 @@ The `book_analysis_*` tables form an independent control plane:
 - `book_analysis_observations` is an append-only evidence stream;
 - `book_analysis_entities` stores canonical resolved entities;
 - `book_analysis_snapshots` freezes the whole-book evidence input;
-- `book_analysis_artifacts` stores synthesis and validation outputs.
+- `book_analysis_artifacts` stores immutable synthesis content and validation outputs;
+- `book_analysis_publications` stores only independently validated shadow revisions.
 
 Workers claim different jobs with `FOR UPDATE SKIP LOCKED`. A job is unique by
 `run_id`, `stage` and `shard_key`, while scan observations are unique by run,
@@ -55,9 +56,8 @@ Greeting text, portrait prompts and voice selection live under `creative`.
 They are generated from factual profiles but are never presented as facts from
 the book.
 
-The first implementation milestone adds only contracts, storage boundaries and
-database invariants. It does not call a model, change public APIs, publish v3
-markup or alter the mobile client.
+The v3 control plane does not change public APIs or the mobile client. Its
+publication is shadow-only and does not update the existing v2 markup tables.
 
 ## Prepare runtime
 
@@ -116,8 +116,8 @@ Resolve completion rechecks a hash of the full observation set, stores entity
 links and freezes the ordered observation IDs plus resolved entity data in
 immutable snapshot version 1. Observation rows are themselves immutable, and a
 database trigger rejects any new observation outside a running scan job. The
-same transaction completes resolve, creates one `synthesize` job and advances
-the run:
+same transaction completes resolve, creates one `synthesize` job per confirmed
+character plus a dependent book assembly job, and advances the run:
 
 ```bash
 npm run worker:book-analysis-resolve
@@ -125,5 +125,45 @@ npm run worker:book-analysis-resolve
 
 Multiple resolve processes can work on different books. A single book keeps
 one resolve shard because identity decisions require the complete evidence set.
-Final profiles, character traits and visible markup are still not produced at
-this stage.
+Final profiles, character traits and markup are still not produced at this
+stage.
+
+## Synthesize runtime
+
+Character jobs can run concurrently across both books and characters. Each job
+reads only evidence linked to its resolved character. A deterministic selector
+keeps the model request bounded while retaining observations from the beginning,
+middle and end of the book and preserving each available fact type. Identity is
+not regenerated: the resulting profile is rebound to the frozen resolved entity.
+The markup contract includes at most the first 128 confirmed characters by
+first appearance.
+
+The book assembly job cannot be claimed until every required character profile
+is ready. It then joins the profiles, locations, events and relationships from
+the same snapshot without another whole-book model request:
+
+```bash
+npm run worker:book-analysis-synthesize
+```
+
+Run multiple copies of this worker to parallelize profile formation.
+
+## Validate and shadow publish runtime
+
+Validation is a separate non-LLM stage. It rereads normalized text, verifies its
+hash, exact evidence quotes and offsets, snapshot membership, entity ownership,
+claim-to-observation type compatibility and all markup references. The report is
+bound to the snapshot hash, source hash and markup artifact hash. Invalid markup
+fails the run and never creates a publish job.
+
+```bash
+npm run worker:book-analysis-validate
+```
+
+The publish worker accepts only a valid bound report and writes an immutable
+`shadow` publication. It intentionally does not touch v2 `book_markups` or make
+v3 visible to readers:
+
+```bash
+npm run worker:book-analysis-publish
+```

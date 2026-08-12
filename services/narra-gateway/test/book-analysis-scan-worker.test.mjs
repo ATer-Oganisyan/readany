@@ -15,7 +15,7 @@ function scanInput(text = 'OVERLAP Анна вошла в комнату. Бор
     runId: 'run-1',
     title: 'Книга',
     author: 'Автор',
-    extractorVersion: 'book-scan-v1',
+    extractorVersion: 'book-scan-v2',
     normalizedTextObjectKey: 'analysis/run-1/normalized-text-v1.txt',
     chunk: {
       id: 'chunk-1',
@@ -181,7 +181,7 @@ test('scan worker retries its job when the stored chunk hash is wrong', async ()
 test('scan worker refuses a job created for another extractor version', async () => {
   const text = 'OVERLAP Анна вошла в комнату. Борис ответил ей. TAIL'
   const input = scanInput(text)
-  input.extractorVersion = 'book-scan-v2'
+  input.extractorVersion = 'book-scan-v1'
   let failedCode
   const worker = createBookAnalysisScanWorker({
     repository: {

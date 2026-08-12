@@ -59,6 +59,18 @@ export function createGenerationServiceClient({
   }
 
   return {
+    synthesizeCharacterProfile(input) {
+      return post('internal/v1/book-analysis/synthesize-character', {
+        idempotencyKey: [
+          input.runId,
+          'synthesize',
+          input.snapshotId,
+          input.entity.entityKey,
+          input.synthesisVersion
+        ].join(':'),
+        ...input
+      })
+    },
     scanBookChunk(input) {
       return post('internal/v1/book-analysis/scan-chunk', {
         idempotencyKey: [

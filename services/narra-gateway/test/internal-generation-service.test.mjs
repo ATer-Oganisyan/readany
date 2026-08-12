@@ -203,6 +203,68 @@ test('internal generation service does not cache an ungrounded scan result', asy
   assert.equal(storage.objects.size, 0)
 })
 
+test('internal generation service builds a grounded profile for one resolved character', async () => {
+  const storage = memoryStorage()
+  let chatCalls = 0
+  let chatRequest
+  const service = createInternalGenerationService({
+    storage,
+    logger: { info() {}, error() {} },
+    async completeChat(input) {
+      chatCalls += 1
+      chatRequest = input
+      return JSON.stringify({
+        role: {
+          value: 'Врач',
+          evidenceIds: ['22222222-2222-4222-8222-222222222222'],
+          confidence: 0.96
+        },
+        creative: { greeting: 'Здравствуйте.', appearancePrompt: 'Портрет Анны', voice: 'Che' }
+      })
+    },
+    async generatePortrait() { throw new Error('unused') },
+    async synthesizeSpeech() { throw new Error('unused') },
+    async generateIdleAnimation() { throw new Error('unused') }
+  })
+  const request = {
+    idempotencyKey: 'run-1:synthesize:snapshot-1:character:anna:character-profile-v1',
+    runId: 'run-1',
+    snapshotId: 'snapshot-1',
+    synthesisVersion: 'character-profile-v1',
+    bookTitle: 'Книга',
+    bookAuthor: 'Автор',
+    textLength: 1_000,
+    entity: {
+      entityKey: 'character:anna',
+      entityKind: 'character',
+      canonicalName: 'Анна',
+      aliases: ['Аня'],
+      resolutionStatus: 'confirmed',
+      confidence: 0.95,
+      evidenceIds: ['22222222-2222-4222-8222-222222222222'],
+      data: { firstEvidenceStartOffset: 100 }
+    },
+    evidence: [{
+      id: '22222222-2222-4222-8222-222222222222',
+      type: 'character_role',
+      fact: 'Анна работает врачом',
+      quote: 'Анна — врач',
+      startOffset: 100,
+      endOffset: 111,
+      confidence: 0.96
+    }]
+  }
+  const first = await service.synthesizeCharacterProfile(request)
+  const second = await service.synthesizeCharacterProfile(request)
+  assert.deepEqual(second, first)
+  assert.equal(chatCalls, 1)
+  assert.equal(chatRequest.temperature, 0.1)
+  assert.equal(first.profile.characterKey, 'character:anna')
+  assert.equal(first.profile.name, 'Анна')
+  assert.equal(first.profile.role.value, 'Врач')
+  assert.deepEqual(first.profile.role.evidenceIds, request.entity.evidenceIds)
+})
+
 test('internal service auth rejects public bearer tokens and accepts only its own token', () => {
   const token = 's'.repeat(48)
   const auth = requireGenerationServiceToken(token)
@@ -226,13 +288,15 @@ test('internal router exposes all worker endpoints', () => {
     service: {
       async generateBookMarkup() { return { ok: true } },
       async generateCharacterBundle() { return { ok: true } },
-      async scanBookChunk() { return { observations: [] } }
+      async scanBookChunk() { return { observations: [] } },
+      async synthesizeCharacterProfile() { return { profile: {} } }
     }
   })
   const paths = router.stack.map((layer) => layer.route?.path).filter(Boolean)
   assert.deepEqual(paths, [
     '/v1/book-markup',
     '/v1/character-bundles',
-    '/v1/book-analysis/scan-chunk'
+    '/v1/book-analysis/scan-chunk',
+    '/v1/book-analysis/synthesize-character'
   ])
 })
