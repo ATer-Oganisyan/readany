@@ -346,7 +346,7 @@ function scanText(value, name, maxLength, { verbatim = false } = {}) {
   return verbatim ? value : value.trim()
 }
 
-function resolveEvidenceOffsets(contextText, quote, rawStartOffset, rawEndOffset, name) {
+function resolveEvidenceOffsets(contextText, quote, rawStartOffset, rawEndOffset) {
   const startOffset = Number(rawStartOffset)
   const endOffset = Number(rawEndOffset)
   if (
@@ -363,15 +363,83 @@ function resolveEvidenceOffsets(contextText, quote, rawStartOffset, rawEndOffset
     ? -1
     : contextText.indexOf(quote, exactStartOffset + 1)
   if (exactStartOffset < 0 || duplicateStartOffset >= 0) {
-    invalid(`${name}.quote: does not have one exact match in contextText`, 'EVIDENCE_MISMATCH')
+    return null
   }
   return {
     startOffset: exactStartOffset,
-    endOffset: exactStartOffset + quote.length
+    endOffset: exactStartOffset + quote.length,
+    repaired: true
   }
 }
 
-function normalizeScanChunkResult(value, contextText) {
+function normalizeScanObservation(
+  observation,
+  index,
+  contextText,
+  coreLocalStartOffset,
+  coreLocalEndOffset
+) {
+  const name = `observations[${index}]`
+  if (!observation || typeof observation !== 'object' || Array.isArray(observation)) {
+    invalid(`${name}: expected object`, 'GENERATION_RESULT_INVALID')
+  }
+  exactKeys(observation, new Set([
+    'type', 'entityKind', 'entityCandidate', 'relatedEntityCandidates',
+    'fact', 'evidence', 'confidence'
+  ]), name)
+  if (SCAN_TYPE_ENTITY_KIND.get(observation.type) !== observation.entityKind) {
+    invalid(`${name}: type and entityKind do not match`, 'GENERATION_RESULT_INVALID')
+  }
+  if (!Array.isArray(observation.relatedEntityCandidates) ||
+      observation.relatedEntityCandidates.length > 32) {
+    invalid(`${name}.relatedEntityCandidates: invalid array`, 'GENERATION_RESULT_INVALID')
+  }
+  const evidence = exactKeys(observation.evidence, new Set([
+    'quote', 'startOffset', 'endOffset'
+  ]), `${name}.evidence`)
+  const quote = scanText(evidence.quote, `${name}.evidence.quote`, 8_000, {
+    verbatim: true
+  })
+  const resolvedEvidence = resolveEvidenceOffsets(
+    contextText,
+    quote,
+    evidence.startOffset,
+    evidence.endOffset
+  )
+  if (
+    !resolvedEvidence ||
+    resolvedEvidence.startOffset < coreLocalStartOffset ||
+    resolvedEvidence.startOffset >= coreLocalEndOffset
+  ) return null
+  const { startOffset, endOffset, repaired = false } = resolvedEvidence
+  if (
+    typeof observation.confidence !== 'number' ||
+    !Number.isFinite(observation.confidence) ||
+    observation.confidence < 0 || observation.confidence > 1
+  ) {
+    invalid(`${name}.confidence: invalid value`, 'GENERATION_RESULT_INVALID')
+  }
+  return {
+    repaired,
+    observation: {
+      type: observation.type,
+      entityKind: observation.entityKind,
+      entityCandidate: scanText(
+        observation.entityCandidate,
+        `${name}.entityCandidate`,
+        512
+      ),
+      relatedEntityCandidates: observation.relatedEntityCandidates.map((candidate, candidateIndex) =>
+        scanText(candidate, `${name}.relatedEntityCandidates[${candidateIndex}]`, 512)
+      ),
+      fact: scanText(observation.fact, `${name}.fact`, 4_000),
+      evidence: { quote, startOffset, endOffset },
+      confidence: observation.confidence
+    }
+  }
+}
+
+function normalizeScanChunkResult(value, contextText, coreLocalStartOffset, coreLocalEndOffset) {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {}
   if (!Array.isArray(source.observations)) {
     invalid('LLM scan result has no observations', 'GENERATION_RESULT_INVALID')
@@ -379,59 +447,37 @@ function normalizeScanChunkResult(value, contextText) {
   if (source.observations.length > 160) {
     invalid('LLM scan result contains too many observations', 'GENERATION_RESULT_INVALID')
   }
-  return {
-    observations: source.observations.map((observation, index) => {
-      const name = `observations[${index}]`
-      if (!observation || typeof observation !== 'object' || Array.isArray(observation)) {
-        invalid(`${name}: expected object`, 'GENERATION_RESULT_INVALID')
-      }
-      exactKeys(observation, new Set([
-        'type', 'entityKind', 'entityCandidate', 'relatedEntityCandidates',
-        'fact', 'evidence', 'confidence'
-      ]), name)
-      if (SCAN_TYPE_ENTITY_KIND.get(observation.type) !== observation.entityKind) {
-        invalid(`${name}: type and entityKind do not match`, 'GENERATION_RESULT_INVALID')
-      }
-      if (!Array.isArray(observation.relatedEntityCandidates) ||
-          observation.relatedEntityCandidates.length > 32) {
-        invalid(`${name}.relatedEntityCandidates: invalid array`, 'GENERATION_RESULT_INVALID')
-      }
-      const evidence = exactKeys(observation.evidence, new Set([
-        'quote', 'startOffset', 'endOffset'
-      ]), `${name}.evidence`)
-      const quote = scanText(evidence.quote, `${name}.evidence.quote`, 8_000, {
-        verbatim: true
-      })
-      const { startOffset, endOffset } = resolveEvidenceOffsets(
+  const observations = []
+  let repairedObservationCount = 0
+  let droppedObservationCount = 0
+  for (const [index, candidate] of source.observations.entries()) {
+    try {
+      const normalized = normalizeScanObservation(
+        candidate,
+        index,
         contextText,
-        quote,
-        evidence.startOffset,
-        evidence.endOffset,
-        `${name}.evidence`
+        coreLocalStartOffset,
+        coreLocalEndOffset
       )
-      if (
-        typeof observation.confidence !== 'number' ||
-        !Number.isFinite(observation.confidence) ||
-        observation.confidence < 0 || observation.confidence > 1
-      ) {
-        invalid(`${name}.confidence: invalid value`, 'GENERATION_RESULT_INVALID')
+      if (!normalized) {
+        droppedObservationCount += 1
+        continue
       }
-      return {
-        type: observation.type,
-        entityKind: observation.entityKind,
-        entityCandidate: scanText(
-          observation.entityCandidate,
-          `${name}.entityCandidate`,
-          512
-        ),
-        relatedEntityCandidates: observation.relatedEntityCandidates.map((candidate, candidateIndex) =>
-          scanText(candidate, `${name}.relatedEntityCandidates[${candidateIndex}]`, 512)
-        ),
-        fact: scanText(observation.fact, `${name}.fact`, 4_000),
-        evidence: { quote, startOffset, endOffset },
-        confidence: observation.confidence
+      if (normalized.repaired) repairedObservationCount += 1
+      observations.push(normalized.observation)
+    } catch (error) {
+      if (['VALIDATION', 'GENERATION_RESULT_INVALID', 'EVIDENCE_MISMATCH'].includes(error?.code)) {
+        droppedObservationCount += 1
+        continue
       }
-    })
+      throw error
+    }
+  }
+  return {
+    observations,
+    providerObservationCount: source.observations.length,
+    repairedObservationCount,
+    droppedObservationCount
   }
 }
 
@@ -601,12 +647,30 @@ export function createInternalGenerationService({
           ],
           signal
         })
-        const result = normalizeScanChunkResult(parseJsonObject(response), input.contextText)
+        const normalized = normalizeScanChunkResult(
+          parseJsonObject(response),
+          input.contextText,
+          input.coreLocalStartOffset,
+          input.coreLocalEndOffset
+        )
+        const counters = {
+          provider_observation_count: normalized.providerObservationCount,
+          accepted_observation_count: normalized.observations.length,
+          repaired_observation_count: normalized.repairedObservationCount,
+          dropped_observation_count: normalized.droppedObservationCount
+        }
+        if (!normalized.observations.length) {
+          log.warn('scan.llm_rejected', 'Модель не вернула ни одного доказанного факта', {
+            ...common,
+            ...counters
+          })
+          invalid('LLM scan result has no grounded observations', 'EVIDENCE_MISMATCH')
+        }
         log.info('scan.llm_completed', 'Извлечение фактов из фрагмента завершено', {
           ...common,
-          observation_count: result.observations.length
+          ...counters
         })
-        return result
+        return { observations: normalized.observations }
       })
     },
 

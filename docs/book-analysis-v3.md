@@ -1,169 +1,576 @@
-# Parallel book analysis v3
+# Параллельный анализ книги: архитектура и эксплуатация
 
-## Development baseline
+Этот документ описывает полный серверный контур разметки книги и формирования
+персонажей: от исходного файла до изолированной `shadow`-публикации. Он является
+спецификацией архитектуры, инвариантов доказательности и операторских процедур.
 
-`codex/book-markup-backend-ui` is the stable source-of-truth branch for the
-Android and backend integration. Tag `Android.Backend.Stable.1` identifies the
-baseline commit. Development of the parallel analysis pipeline is isolated on
+## 1. Версии и исходная точка разработки
+
+Текущие версии контракта:
+
+| Компонент | Версия | Назначение |
+| --- | --- | --- |
+| Pipeline | `book-analysis-v3` | Стадии, задания и барьеры полного прогона |
+| Scan prompt и extractor | `book-scan-v4` | Извлечение и фильтрация доказанных наблюдений |
+| Итоговая разметка | `book-markup-v3` | Доказательная схема книги и персонажей |
+| Синтез профиля | `character-profile-v1` | Профиль одного разрешённого персонажа |
+| Схема артефакта | `3` | Структура хранимой итоговой разметки |
+
+Стабильным источником правды для Android и backend-интеграции остаётся ветка
+`codex/book-markup-backend-ui`. Тег `Android.Backend.Stable.1` фиксирует её
+базовое состояние. Параллельный анализ разрабатывается изолированно в ветке
 `codex/parallel-book-analysis`.
 
-The v2 generation queue and published markup remain untouched until v3 passes
-shadow evaluation and is explicitly enabled.
+Старый контур `book-markup-v2` продолжает обслуживать мобильное приложение.
+Новый pipeline не записывает результаты в таблицы v2 и не меняет публичный API.
 
-## Pipeline invariant
+## 2. Цель и основные инварианты
 
-Final markup and character profiles are created only after the complete book
-has been scanned. A chunk worker never edits final markup. It appends grounded
-observations containing an exact quote and offsets in the normalized source.
+Pipeline должен сформировать разметку и профили персонажей на основании всей
+книги, не отправляя всю книгу модели одним запросом.
 
-The pipeline stages are:
+Обязательные инварианты:
 
-1. `prepare`: extract normalized text, chapter boundaries and stable chunks;
-2. `scan`: process every chunk with independently scalable workers;
-3. `resolve`: merge aliases and candidates into canonical entities;
-4. `synthesize`: create parallel character profiles and assemble one result from a frozen whole-book evidence snapshot;
-5. `validate`: verify evidence, offsets, references and schema;
-6. `publish`: atomically publish the validated result to an isolated shadow channel.
+1. Финальная разметка создаётся только после обработки всех частей книги.
+2. Один scan-worker получает только ограниченный фрагмент, а не всю книгу.
+3. Каждый факт в итоговой разметке связан с дословной цитатой и координатами в
+   нормализованном тексте.
+4. Выдуманная, изменённая или неоднозначно найденная цитата не записывается в
+   поток доказательств.
+5. Персонажи разрешаются по совокупности наблюдений всей книги, а не по одному
+   фрагменту.
+6. Факты книги отделены от творческих полей персонажа.
+7. Стадии изолированы устойчивыми заданиями и могут масштабироваться независимо.
+8. Непроверенный результат не публикуется даже в `shadow`.
+9. Повторный запуск с теми же входом и версиями идемпотентен.
+10. Изменение смысла промпта требует новой версии extractor и нового прогона.
 
-Every stage has a durable barrier. A run can advance only when it has at least
-one required job for the current stage and all required jobs are `ready`.
+## 3. Общий поток данных
 
-## Isolation and parallelism
-
-The `book_analysis_*` tables form an independent control plane:
-
-- `book_analysis_runs` owns one idempotent pipeline execution;
-- `book_analysis_chunks` stores stable core and context boundaries;
-- `book_analysis_jobs` provides stage-specific leases and retries;
-- `book_analysis_observations` is an append-only evidence stream;
-- `book_analysis_entities` stores canonical resolved entities;
-- `book_analysis_snapshots` freezes the whole-book evidence input;
-- `book_analysis_artifacts` stores immutable synthesis content and validation outputs;
-- `book_analysis_publications` stores only independently validated shadow revisions.
-
-Workers claim different jobs with `FOR UPDATE SKIP LOCKED`. A job is unique by
-`run_id`, `stage` and `shard_key`, while scan observations are unique by run,
-chunk, extractor version and observation key. Reclaiming an expired lease must
-therefore repeat work safely without duplicating facts.
-
-## Markup contract
-
-`book-markup-v3` separates factual and creative character data. Factual claims
-such as role, traits, appearance and speech style require one or more evidence
-IDs and a confidence value. Character identity also requires evidence.
-
-Greeting text, portrait prompts and voice selection live under `creative`.
-They are generated from factual profiles but are never presented as facts from
-the book.
-
-The v3 control plane does not change public APIs or the mobile client. Its
-publication is shadow-only and does not update the existing v2 markup tables.
-
-## Prepare runtime
-
-The coordinator creates one idempotent run and one `prepare` job. The prepare
-worker verifies the immutable source checksum, extracts normalized text with
-stable section offsets, stores that text at
-`analysis/{runId}/normalized-text-v1.txt`, and creates all scan shards in the
-same transaction that completes the prepare barrier.
-
-Core chunk ranges cover the normalized text exactly once. Context ranges overlap
-for model quality, but observations will be owned by the core range to avoid
-duplicates. Chunk identity is deterministic for one run and binds its offsets
-and content hash.
-
-Run a prepare-only worker with:
-
-```bash
-npm run worker:book-analysis
+```mermaid
+flowchart LR
+  A["Исходный файл книги"] --> B["prepare: текст, главы, chunks"]
+  B --> C1["scan worker 1"]
+  B --> C2["scan worker 2"]
+  B --> CN["scan worker N"]
+  C1 --> D["Доказанные наблюдения"]
+  C2 --> D
+  CN --> D
+  D --> E["resolve: персонажи, места, события, связи"]
+  E --> F["Замороженный snapshot всей книги"]
+  F --> G1["synthesize: персонаж 1"]
+  F --> G2["synthesize: персонаж 2"]
+  F --> GN["synthesize: персонаж N"]
+  G1 --> H["Сборка book-markup-v3"]
+  G2 --> H
+  GN --> H
+  H --> I["validate: независимая проверка"]
+  I --> J["publish: immutable shadow"]
 ```
 
-The process is not part of the existing deployment profile and does not change
-v2 until it is explicitly deployed and a run is created by the coordinator.
+Модель видит данные на двух стадиях:
 
-## Scan runtime
+- `scan` — один ограниченный фрагмент книги;
+- `synthesize` — ограниченный набор уже доказанных наблюдений одного персонажа.
 
-Each scan worker claims one chunk lease, reads only that chunk's UTF-8 byte
-range from normalized storage and verifies its immutable content hash. The
-generation service receives that bounded context plus its owned core range; it
-does not receive the source object key or the complete normalized book.
+Стадия `resolve` работает со всеми наблюдениями книги, но детерминированно и без
+LLM. Стадия `validate` также не использует LLM.
 
-The model returns candidate observations with local UTF-16 offsets. Before any
-write, the worker verifies that every quote is an exact slice of the chunk,
-converts offsets to the normalized book coordinate space and discards evidence
-whose start belongs only to an overlap. Accepted observations are appended in
-the same transaction that completes the scan job.
+## 4. Стадии pipeline
 
-The final scan completion is a durable barrier: under a run lock it creates
-exactly one `resolve` job and advances the run from `scan` to `resolve`. Multiple
-processes may run the scan executable concurrently:
+### 4.1. `prepare`
 
-```bash
-npm run worker:book-analysis-scan
+Coordinator создаёт один идемпотентный run и одно задание `prepare`. Worker:
+
+1. читает проверенный исходный объект книги;
+2. сверяет размер и SHA-256 с неизменяемыми метаданными издания;
+3. извлекает нормализованный текст и карту разделов;
+4. сохраняет текст в
+   `analysis/{runId}/normalized-text-v1.txt`;
+5. строит детерминированные chunks;
+6. в одной транзакции создаёт scan-задания и завершает барьер `prepare`.
+
+Нормализованный текст сохраняется один раз. Scan-workers читают нужные байтовые
+диапазоны из object storage и не загружают исходный EPUB целиком.
+
+### 4.2. `scan`
+
+Каждый scan-worker:
+
+1. получает lease одного scan-задания;
+2. читает только UTF-8 диапазон своего chunk;
+3. проверяет длину и SHA-256 фрагмента;
+4. отправляет `CONTEXT_TEXT` и `CORE_LOCAL_RANGE` внутреннему generation service;
+5. принимает ответ модели и проверяет каждое наблюдение независимо;
+6. переводит локальные UTF-16 координаты в абсолютные координаты книги;
+7. записывает только доказанные наблюдения;
+8. завершает своё задание в той же транзакции.
+
+Последний завершённый scan-job под блокировкой run создаёт ровно одно задание
+`resolve` и переводит run на следующую стадию.
+
+### 4.3. `resolve`
+
+Один resolve-job читает полный упорядоченный поток наблюдений книги. Resolver:
+
+- объединяет одинаковые нормализованные имена;
+- использует только явные высокоуверенные `character_alias` для связи разных
+  имён;
+- не объединяет алиас, который относится к нескольким персонажам;
+- оставляет слабые и одноразовые обозначения кандидатами;
+- назначает каждое наблюдение одной сущности того же типа.
+
+Результат и полный набор evidence IDs фиксируются в неизменяемом snapshot.
+Именно этот snapshot является входом для всех последующих профилей.
+
+### 4.4. `synthesize`
+
+Для каждого подтверждённого персонажа создаётся отдельное задание. Такие задания
+можно выполнять параллельно между книгами и персонажами.
+
+Worker получает только evidence этого персонажа. Детерминированный selector
+ограничивает размер запроса, но сохраняет:
+
+- наблюдения из начала, середины и конца книги;
+- все доступные типы фактов;
+- ссылки на исходные evidence IDs.
+
+После всех профилей становится доступно зависимое book assembly-задание. Оно без
+нового запроса всей книги объединяет персонажей, места, события и связи из одного
+snapshot в `book-markup-v3`.
+
+### 4.5. `validate`
+
+Независимый validator повторно читает нормализованный текст и проверяет:
+
+- SHA-256 текста;
+- дословность каждой цитаты и её координаты;
+- принадлежность evidence замороженному snapshot;
+- принадлежность фактов своим сущностям;
+- совместимость типа факта с полем профиля;
+- ссылки между объектами итоговой разметки;
+- версию и схему артефакта.
+
+Невалидный артефакт завершает run ошибкой и не создаёт publish-задание.
+
+### 4.6. `publish`
+
+Publish-worker принимает только артефакт с валидным, криптографически связанным
+отчётом проверки. Он атомарно создаёт неизменяемую публикацию с каналом
+`shadow`.
+
+`shadow` не обновляет `book_markups` v2 и не становится видимым читателям.
+Продвижение v3 в публичный контракт является отдельным продуктовым решением.
+
+## 5. Нарезка книги: core и overlap
+
+Параметры по умолчанию:
+
+| Параметр | Значение | Назначение |
+| --- | ---: | --- |
+| `targetChars` | 14 000 | Предпочтительная длина core |
+| `minChars` | 8 000 | Минимальная длина core |
+| `maxChars` | 18 000 | Максимальная длина core |
+| `overlapChars` | 1 800 | Контекст слева и справа |
+
+Core-диапазоны покрывают нормализованный текст целиком и без пересечений.
+Context-диапазоны пересекаются, чтобы модель понимала начало и продолжение сцены.
+
+Для каждого chunk хранятся одновременно:
+
+- абсолютные UTF-16 координаты core и context;
+- точные UTF-8 byte ranges для object storage;
+- SHA-256 контекстного текста;
+- связанные главы и их названия.
+
+Модель обязана извлекать факты только тогда, когда начало evidence находится
+внутри `CORE_LOCAL_RANGE`. Overlap разрешено использовать только как контекст.
+Worker повторно применяет это правило серверно, поэтому соседние chunks не
+владеют одним и тем же фактом.
+
+## 6. Доказательная валидация `book-scan-v4`
+
+### 6.1. Контракт ответа модели
+
+Модель возвращает не профиль персонажа, а массив атомарных наблюдений:
+
+```json
+{
+  "observations": [
+    {
+      "type": "character_action",
+      "entityKind": "character",
+      "entityCandidate": "имя персонажа",
+      "relatedEntityCandidates": [],
+      "fact": "краткий факт без домыслов",
+      "evidence": {
+        "quote": "дословная непрерывная цитата",
+        "startOffset": 100,
+        "endOffset": 140
+      },
+      "confidence": 0.95
+    }
+  ]
+}
 ```
 
-## Resolve runtime
+Координаты локальны относительно `CONTEXT_TEXT` и измеряются в UTF-16 code
+units, как JavaScript `String.slice`. `endOffset` не включается.
 
-After every required scan shard is ready, one resolve job reads the complete,
-ordered observation set. Resolution is deterministic and conservative: exact
-normalized candidates are grouped, while only high-confidence
-`character_alias` observations may connect different names. An alias claimed
-for more than one canonical character is left separate instead of merging two
-people. Pronouns and other weak one-off character labels remain candidates.
+### 6.2. Проверка одного наблюдения
 
-Every observation must be assigned to exactly one entity of the same kind.
-Resolve completion rechecks a hash of the full observation set, stores entity
-links and freezes the ordered observation IDs plus resolved entity data in
-immutable snapshot version 1. Observation rows are themselves immutable, and a
-database trigger rejects any new observation outside a running scan job. The
-same transaction completes resolve, creates one `synthesize` job per confirmed
-character plus a dependent book assembly job, and advances the run:
+Каждое наблюдение проходит проверку независимо:
 
-```bash
-npm run worker:book-analysis-resolve
+1. Проверяется закрытая схема полей, тип сущности и диапазон confidence.
+2. Если `contextText.slice(startOffset, endOffset) === quote`, координаты
+   принимаются как есть.
+3. Иначе выполняется точный посимвольный `contextText.indexOf(quote)`.
+4. Если цитата встретилась ровно один раз, сервер восстанавливает координаты.
+5. Если цитата отсутствует или встречается несколько раз, наблюдение
+   отбрасывается.
+6. Если начало доказательства находится вне core, наблюдение отбрасывается как
+   принадлежащее overlap.
+7. В БД передаются только оставшиеся наблюдения.
+
+Это не полнотекстовый, нечёткий или векторный поиск. Пересказ и похожая фраза не
+считаются доказательством.
+
+### 6.3. Частично валидный ответ
+
+Ответ модели может содержать одновременно корректные и выдуманные цитаты.
+`book-scan-v4` сохраняет доказанные элементы и отбрасывает только проблемные.
+Один плохой элемент больше не уничтожает остальные валидные факты и не заставляет
+повторять весь дорогой запрос.
+
+Если после фильтрации не осталось ни одного наблюдения, запрос считается
+`EVIDENCE_MISMATCH`:
+
+- scan-job возвращается в очередь с backoff;
+- результат не кэшируется;
+- после исчерпания попыток run завершается ошибкой;
+- пустой результат не может незаметно пройти барьер.
+
+Верхнеуровневые ошибки ответа — отсутствие JSON-объекта, отсутствие массива
+`observations` или более 160 элементов — также не кэшируются.
+
+## 7. Версии, идемпотентность и кэш
+
+Уникальность run связывает:
+
+```text
+bookEditionId + inputHash + pipelineVersion + promptVersion
 ```
 
-Multiple resolve processes can work on different books. A single book keeps
-one resolve shard because identity decisions require the complete evidence set.
-Final profiles, character traits and markup are still not produced at this
-stage.
+Ключ scan-запроса связывает:
 
-## Synthesize runtime
-
-Character jobs can run concurrently across both books and characters. Each job
-reads only evidence linked to its resolved character. A deterministic selector
-keeps the model request bounded while retaining observations from the beginning,
-middle and end of the book and preserving each available fact type. Identity is
-not regenerated: the resulting profile is rebound to the frozen resolved entity.
-The markup contract includes at most the first 128 confirmed characters by
-first appearance.
-
-The book assembly job cannot be claimed until every required character profile
-is ready. It then joins the profiles, locations, events and relationships from
-the same snapshot without another whole-book model request:
-
-```bash
-npm run worker:book-analysis-synthesize
+```text
+runId + "scan" + chunkId + extractorVersion
 ```
 
-Run multiple copies of this worker to parallelize profile formation.
+Кэш generation service хранит одновременно hash запроса и результат. Повторное
+использование ключа с другим телом отклоняется как `IDEMPOTENCY_CONFLICT`.
 
-## Validate and shadow publish runtime
+Правила изменения версии:
 
-Validation is a separate non-LLM stage. It rereads normalized text, verifies its
-hash, exact evidence quotes and offsets, snapshot membership, entity ownership,
-claim-to-observation type compatibility and all markup references. The report is
-bound to the snapshot hash, source hash and markup artifact hash. Invalid markup
-fails the run and never creates a publish job.
+1. Любое смысловое изменение scan-промпта или нормализации требует новой версии
+   `BOOK_ANALYSIS_PROMPT_VERSION` и `BOOK_ANALYSIS_EXTRACTOR_VERSION`.
+2. Обе константы должны быть равны.
+3. Новая версия создаёт новый run и новые cache keys.
+4. Старый активный run нельзя продолжать worker другой версии.
+5. Изменение только реализации без изменения результата может не повышать
+   версию, но это решение должно быть явно зафиксировано в review.
+
+Переходы в этой серии:
+
+- `book-scan-v2` — первоначальный scan; модель концентрировалась на overlap;
+- `book-scan-v3` — явный `CORE_LOCAL_RANGE` и просмотр всего core;
+- `book-scan-v4` — поэлементная доказательная фильтрация смешанного ответа.
+
+## 8. Изоляция данных
+
+Таблицы `book_analysis_*` образуют отдельный control plane:
+
+| Таблица | Назначение |
+| --- | --- |
+| `book_analysis_runs` | Один версионированный прогон книги |
+| `book_analysis_chunks` | Неизменяемые core/context границы |
+| `book_analysis_jobs` | Очередь, lease, attempts и shard каждой стадии |
+| `book_analysis_observations` | Append-only поток доказанных фактов |
+| `book_analysis_entities` | Разрешённые персонажи и другие сущности |
+| `book_analysis_entity_evidence` | Связь сущностей с наблюдениями |
+| `book_analysis_snapshots` | Замороженный вход синтеза |
+| `book_analysis_artifacts` | Профили, разметка и отчёты проверки |
+| `book_analysis_publications` | Неизменяемые `shadow`-ревизии |
+
+Observation rows неизменяемы. Триггер запрещает добавлять их вне активного
+scan-job. Уникальность включает run, chunk, extractor version и observation key,
+поэтому повтор lease не создаёт дубликаты.
+
+## 9. Задания, lease, повторы и барьеры
+
+Workers получают задания через `FOR UPDATE SKIP LOCKED`. Это позволяет нескольким
+репликам одной стадии брать разные shards без центрального диспетчера.
+
+Текущие значения по умолчанию:
+
+- lease: 300 секунд;
+- heartbeat lease: каждые 60 секунд;
+- polling: раз в 1 секунду;
+- максимум попыток job: 5;
+- backoff: экспоненциальный, но не более 300 секунд.
+
+Если worker исчез, истёкший lease может забрать другая реплика. Если лимит
+попыток исчерпан, job и run становятся `failed`.
+
+Run может перейти на следующую стадию только если:
+
+- у текущей стадии есть хотя бы одно required-задание;
+- все required-задания текущей стадии имеют статус `ready`;
+- переход выполняется ровно на одну стадию вперёд.
+
+Статусы `ready` и `cancelled` терминальны и неизменяемы. `failed` можно вернуть в
+`queued` только осознанной операторской процедурой после устранения причины.
+
+## 10. Параллелизм и масштабирование
+
+Compose profile `book-analysis-shadow` выключен по умолчанию и содержит отдельный
+service для каждой стадии:
+
+| Service | Типичная репликация | Ограничение |
+| --- | ---: | --- |
+| `book-analysis-prepare` | 1 | Один job на книгу |
+| `book-analysis-scan` | 2–N | Независимые chunks |
+| `book-analysis-resolve` | 1 | Один полный evidence set книги |
+| `book-analysis-synthesize` | 2–N | Независимые персонажи |
+| `book-analysis-validate` | 1 | Один итоговый артефакт |
+| `book-analysis-publish` | 1 | Одна атомарная публикация |
+
+Реплики можно менять без изменения схемы или публичного API. Общая фактическая
+параллельность дополнительно ограничена gateway concurrency gate и лимитами
+LLM-провайдера.
+
+Рекомендуемый безопасный запуск нового релиза:
+
+1. `prepare=1`, `scan=1`, остальные workers остановлены.
+2. Проверить первый готовый scan-job: число фактов, распределение offsets и
+   отсутствие terminal errors.
+3. Поднять `scan` до 2–3 реплик.
+4. Запустить `resolve=1`, `synthesize=2–3`, `validate=1`, `publish=1`.
+5. Не увеличивать replicas только ради скорости, если растут rate limits или
+   ошибки provider response.
+
+## 11. Контракты с мобильным приложением
+
+Текущий shadow pipeline не меняет контракты Android/Expo и публичные маршруты
+gateway. Мобильное приложение продолжает получать v2 markup.
+
+`book-markup-v3` разделяет:
+
+- `grounded` — роль, возраст, пол, характер, внешность, речь и другие факты с
+  evidence IDs и confidence;
+- `creative` — приветствие, prompt портрета и выбор голоса.
+
+Creative-поля создаются на основе профиля, но никогда не выдаются за цитируемые
+факты книги.
+
+## 12. Наблюдаемость и безопасные логи
+
+Логи не содержат текст книги, prompts, цитаты, токены или ответы модели.
+
+Для каждого успешного scan-запроса пишутся счётчики:
+
+- `provider_observation_count` — сколько элементов вернула модель;
+- `accepted_observation_count` — сколько прошло доказательную проверку;
+- `repaired_observation_count` — скольким восстановлены точные координаты;
+- `dropped_observation_count` — сколько отброшено.
+
+Если не принято ничего, событие `scan.llm_rejected` содержит те же счётчики.
+Успешный запрос пишет `scan.llm_completed`. Worker отдельно пишет
+`scan.completed` или `scan.failed` с безопасным error code.
+
+Ключевые метрики качества shadow-прогона:
+
+- доля scan-jobs, завершившихся с первой попытки;
+- доля отброшенных наблюдений;
+- число наблюдений и уникальных кандидатов на chunk;
+- распределение evidence offsets внутри core;
+- число подтверждённых и candidate-персонажей;
+- заполненность доказательных полей профилей;
+- ошибки независимого validator;
+- отсутствие публикаций в v2.
+
+Высокая доля `dropped_observation_count` не нарушает доказательность, но указывает
+на снижение полноты и требует анализа prompt/model до публичного продвижения.
+
+## 13. Операторский runbook
+
+### 13.1. Создание и просмотр run
 
 ```bash
-npm run worker:book-analysis-validate
+docker compose exec gateway npm run book-analysis -- \
+  start --book-edition-id <book-edition-uuid>
+
+docker compose exec gateway npm run book-analysis -- \
+  status --run-id <analysis-run-uuid>
+
+docker compose exec gateway npm run book-analysis -- \
+  result --run-id <analysis-run-uuid>
 ```
 
-The publish worker accepts only a valid bound report and writes an immutable
-`shadow` publication. It intentionally does not touch v2 `book_markups` or make
-v3 visible to readers:
+`start` только создаёт идемпотентный run. Само наличие запущенных workers не
+ставит книги в очередь.
+
+### 13.2. Запуск workers
 
 ```bash
-npm run worker:book-analysis-publish
+docker compose --profile book-analysis-shadow up -d \
+  --scale book-analysis-prepare=1 \
+  --scale book-analysis-scan=2 \
+  --scale book-analysis-resolve=1 \
+  --scale book-analysis-synthesize=2 \
+  --scale book-analysis-validate=1 \
+  --scale book-analysis-publish=1
 ```
+
+### 13.3. Остановка без потери прогресса
+
+```bash
+docker compose stop \
+  book-analysis-prepare \
+  book-analysis-scan \
+  book-analysis-resolve \
+  book-analysis-synthesize \
+  book-analysis-validate \
+  book-analysis-publish
+```
+
+Готовые jobs и observations сохраняются. Running-jobs после истечения lease
+можно забрать повторно. Gateway, legacy worker, PostgreSQL и object storage для
+этого останавливать не требуется.
+
+### 13.4. Смена prompt/extractor version
+
+Порядок обязателен:
+
+1. Остановить все shadow-workers.
+2. Развернуть один и тот же новый immutable image на gateway и workers.
+3. Пометить старые активные runs `cancelled`; не удалять диагностические данные.
+4. Создать новый run той же книги — новая prompt version изменит idempotency key.
+5. Запустить prepare и один scan-worker как canary.
+6. После проверки масштабировать остальные стадии.
+
+Старые активные runs нельзя оставлять рядом с workers новой extractor version:
+новый worker может подобрать старый job, получить
+`EXTRACTOR_VERSION_MISMATCH` и напрасно израсходовать attempts.
+
+Текущая CLI не содержит команды cancel. До её появления отмена выполняется
+только после остановки workers, одной транзакцией и с точным `run_id`:
+
+```sql
+BEGIN;
+
+UPDATE book_analysis_jobs
+SET status = 'cancelled',
+    locked_at = NULL,
+    lease_expires_at = NULL,
+    locked_by = NULL,
+    lease_token = NULL,
+    updated_at = now()
+WHERE run_id = '<run-uuid>'::uuid
+  AND status IN ('queued', 'running', 'failed');
+
+UPDATE book_analysis_runs
+SET status = 'cancelled',
+    last_error_code = 'SUPERSEDED_PROMPT_VERSION'
+WHERE id = '<run-uuid>'::uuid
+  AND status IN ('queued', 'running', 'failed');
+
+COMMIT;
+```
+
+### 13.5. Сброс попыток после инфраструктурной ошибки
+
+Attempts можно обнулить только для одного известного run и одного доказанного
+инфраструктурного error code, например ошибки несовместимой настройки модели.
+Нельзя массово обнулять ошибки доказательности или validator: это скрывает дефект
+качества, а не исправляет его.
+
+Перед операцией workers должны быть остановлены. После неё сначала запускается
+одна canary-реплика.
+
+## 14. Проверка качества перед публикацией
+
+Минимальные критерии завершённого shadow-прогона:
+
+1. Все required jobs имеют статус `ready`.
+2. Run завершён на `publish/ready` без ручного пропуска стадий.
+3. Независимый validation report валиден.
+4. В v2-таблицах и публичном manifest нет изменений от shadow-run.
+5. Главные персонажи книги присутствуют и имеют доказательства из разных частей.
+6. Характер, роль, внешность и речь не заполнены без совместимых типов evidence.
+7. Evidence quotes дословно совпадают с нормализованным текстом.
+8. Случайная выборка персонажей и фактов проверена человеком по книге.
+9. Оценена полнота: низкая доля принятых наблюдений не маскируется техническим
+   успехом pipeline.
+10. Зафиксированы версия image, run ID, input hash, prompt version и итоговые
+    счётчики.
+
+## 15. Отказы и ожидаемая реакция
+
+| Ошибка | Реакция |
+| --- | --- |
+| Неверный checksum книги/chunk | Job retry, публикации нет |
+| Provider HTTP/rate/timeout | Job retry с backoff |
+| Невалидный JSON верхнего уровня | Job retry, кэш не создаётся |
+| Часть наблюдений без доказательств | Плохие элементы отбрасываются |
+| Ни одного доказанного наблюдения | `EVIDENCE_MISMATCH`, job retry |
+| Истёкший lease | Другой worker повторно забирает job |
+| Несовпадение extractor version | Job не выполняется; нужен правильный image/run |
+| Resolve не может однозначно объединить имя | Сущности остаются раздельными кандидатами |
+| Невалидный итоговый артефакт | Run failed до publish |
+| Worker остановлен | Данные сохраняются, lease восстанавливается |
+
+## 16. Безопасность и приватность
+
+- Токен internal generation service не совпадает с installation token.
+- Provider credentials остаются только на gateway.
+- Resolve и publish workers не получают provider или storage credentials.
+- Scan worker читает только свой byte range.
+- В модель не отправляется source object key или вся нормализованная книга.
+- Текст книги, цитаты и ответы модели не пишутся в operational logs.
+- Runtime workers read-only, без Linux capabilities и с
+  `no-new-privileges`.
+
+Для catalog-книг нормализованный текст хранится серверно в закрытом object
+storage. Контур локальных пользовательских книг и его правила хранения остаются
+отдельными и не должны автоматически переводиться на полный server-side scan.
+
+## 17. Тестирование
+
+Обязательные группы проверок:
+
+- unit: chunks, UTF-8/UTF-16 границы и детерминированные IDs;
+- unit: точные, восстановленные, неоднозначные и отсутствующие цитаты;
+- unit: смешанный ответ сохраняет валидные и отбрасывает плохие элементы;
+- unit: полностью неподтверждённый ответ не кэшируется;
+- unit: prompt явно ограничивает владение `CORE_LOCAL_RANGE`;
+- unit: prompt/extractor versions совпадают;
+- repository: leases, `SKIP LOCKED`, attempts и барьеры;
+- integration PostgreSQL: конкурирующие scan-workers и полный путь до shadow;
+- deployment contract: каждая стадия — отдельный масштабируемый service;
+- shadow E2E: реальная книга, ручная проверка главных персонажей и фактов.
+
+## 18. Известные ограничения
+
+- Точная доказательность не гарантирует полноту: модель может пропустить факт.
+- Уникальное восстановление координат невозможно для повторяющейся цитаты с
+  неверными offsets; такое наблюдение отбрасывается.
+- Поэлементная фильтрация сохраняет доказанные данные, но высокий процент
+  отброшенных элементов требует улучшения prompt/model.
+- Один resolve-job на книгу ограничивает параллелизм этой стадии, но сохраняет
+  целостность решения об идентичности персонажей.
+- В операторской CLI пока нет cancel/retry команд для analysis runs.
+- `shadow` не заменяет продуктовую оценку и ручную проверку качества персонажей.
+
+Эти ограничения должны оцениваться по метрикам и shadow-прогонам до любого
+изменения публичного контракта.

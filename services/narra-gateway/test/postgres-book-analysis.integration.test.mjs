@@ -175,11 +175,11 @@ test('PostgreSQL analysis workers claim different scan shards and reclaim an exp
 
     const completionResults = await Promise.all([
       repository.completeScan(second, {
-        extractorVersion: 'book-scan-v3',
+        extractorVersion: 'book-scan-v4',
         observations: [scanObservation(second)]
       }),
       repository.completeScan(reclaimed, {
-        extractorVersion: 'book-scan-v3',
+        extractorVersion: 'book-scan-v4',
         observations: [scanObservation(reclaimed)]
       })
     ])
@@ -212,7 +212,7 @@ test('PostgreSQL analysis workers claim different scan shards and reclaim an exp
     assert.equal(storedObservations.rows[0].count, 2)
     await assert.rejects(
       repository.completeScan(first, {
-        extractorVersion: 'book-scan-v3',
+        extractorVersion: 'book-scan-v4',
         observations: [scanObservation(first)]
       }),
       (error) => ['LEASE_LOST', 'RUN_STATE_CHANGED'].includes(error.code)
@@ -415,7 +415,7 @@ test('PostgreSQL analysis workers claim different scan shards and reclaim an exp
            related_entity_candidates, fact, evidence_quote,
            evidence_start_offset, evidence_end_offset, confidence
          ) VALUES (
-           $1, $2, $3, $4, 'book-scan-v3', 'obs:late',
+           $1, $2, $3, $4, 'book-scan-v4', 'obs:late',
            'character_mention', 'character', 'Поздний герой',
            '[]'::jsonb, 'Поздний факт', 'late', 11, 15, 0.9
          )`,

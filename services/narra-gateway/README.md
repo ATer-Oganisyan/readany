@@ -81,6 +81,10 @@ markup. Start one idempotent run for a verified stored book directly in the
 Gateway container, inspect its stage/job counters, and read the final shadow
 publication:
 
+The complete architecture, evidence filtering rules, versioning contract,
+failure handling, scaling guidance and operator runbook are documented in
+[`docs/book-analysis-v3.md`](../../docs/book-analysis-v3.md).
+
 ```bash
 docker compose exec gateway npm run book-analysis -- \
   start --book-edition-id <book-edition-uuid>

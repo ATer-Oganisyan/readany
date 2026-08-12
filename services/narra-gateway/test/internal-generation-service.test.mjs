@@ -211,6 +211,82 @@ test('internal generation service repairs wrong offsets for one exact quote matc
   })
 })
 
+test('internal generation service keeps grounded observations and drops invented evidence', async () => {
+  const storage = memoryStorage()
+  const lines = []
+  let chatCalls = 0
+  const contextText = 'ПРЕФИКС Анна вошла в комнату. ХВОСТ'
+  const quote = 'Анна вошла в комнату.'
+  const service = createInternalGenerationService({
+    storage,
+    logger: {
+      info(line) { lines.push(line) },
+      warn(line) { lines.push(line) },
+      error(line) { lines.push(line) }
+    },
+    async completeChat() {
+      chatCalls += 1
+      return JSON.stringify({ observations: [{
+        type: 'character_action',
+        entityKind: 'character',
+        entityCandidate: 'Анна',
+        relatedEntityCandidates: [],
+        fact: 'Анна вошла в комнату',
+        evidence: { quote, startOffset: 0, endOffset: quote.length },
+        confidence: 0.95
+      }, {
+        type: 'character_action',
+        entityKind: 'character',
+        entityCandidate: 'Анна',
+        relatedEntityCandidates: [],
+        fact: 'Анна убежала',
+        evidence: { quote: 'Анна убежала.', startOffset: 0, endOffset: 14 },
+        confidence: 0.8
+      }, {
+        type: 'unknown_fact',
+        entityKind: 'character',
+        entityCandidate: 'Анна',
+        relatedEntityCandidates: [],
+        fact: 'Неподдерживаемый тип',
+        evidence: { quote, startOffset: 7, endOffset: 7 + quote.length },
+        confidence: 0.7
+      }] })
+    },
+    async generatePortrait() { throw new Error('unused') },
+    async synthesizeSpeech() { throw new Error('unused') },
+    async generateIdleAnimation() { throw new Error('unused') }
+  })
+  const request = {
+    idempotencyKey: 'run-mixed:scan:chunk-mixed:book-scan-v4',
+    runId: 'run-mixed',
+    chunkId: 'chunk-mixed',
+    extractorVersion: 'book-scan-v4',
+    bookTitle: 'Книга',
+    bookAuthor: 'Автор',
+    contextText,
+    coreLocalStartOffset: 7,
+    coreLocalEndOffset: contextText.length
+  }
+  const first = await service.scanBookChunk(request)
+  const second = await service.scanBookChunk(request)
+  assert.deepEqual(second, first)
+  assert.equal(chatCalls, 1)
+  assert.equal(first.observations.length, 1)
+  assert.deepEqual(first.observations[0].evidence, {
+    quote,
+    startOffset: contextText.indexOf(quote),
+    endOffset: contextText.indexOf(quote) + quote.length
+  })
+  assert.ok(lines.some((line) =>
+    line.includes('event="scan.llm_completed"') &&
+    line.includes('provider_observation_count=3') &&
+    line.includes('accepted_observation_count=1') &&
+    line.includes('repaired_observation_count=1') &&
+    line.includes('dropped_observation_count=2')
+  ))
+  assert.equal(lines.some((line) => line.includes('Анна убежала')), false)
+})
+
 test('internal generation service rejects offset repair for an ambiguous exact quote', async () => {
   const storage = memoryStorage()
   const contextText = 'Анна вошла. Потом Анна вошла.'
@@ -250,10 +326,15 @@ test('internal generation service rejects offset repair for an ambiguous exact q
 test('internal generation service does not cache an ungrounded scan result', async () => {
   const storage = memoryStorage()
   let chatCalls = 0
+  const lines = []
   const contextText = ' Анна вошла. '
   const service = createInternalGenerationService({
     storage,
-    logger: { info() {}, error() {} },
+    logger: {
+      info(line) { lines.push(line) },
+      warn(line) { lines.push(line) },
+      error(line) { lines.push(line) }
+    },
     async completeChat() {
       chatCalls += 1
       return JSON.stringify({ observations: [{
@@ -289,6 +370,8 @@ test('internal generation service does not cache an ungrounded scan result', asy
   )
   assert.equal(chatCalls, 2)
   assert.equal(storage.objects.size, 0)
+  assert.equal(lines.filter((line) => line.includes('event="scan.llm_rejected"')).length, 2)
+  assert.ok(lines.every((line) => !line.includes('Анна убежала')))
 })
 
 test('internal generation service builds a grounded profile for one resolved character', async () => {
