@@ -175,6 +175,10 @@ async function main(): Promise<void> {
   const requestedCharacterId = process.argv
     .find((arg) => arg.startsWith("--character="))
     ?.slice(12);
+  const requestedGender = process.argv.find((arg) => arg.startsWith("--gender="))?.slice(9);
+  if (requestedGender && requestedGender !== "female" && requestedGender !== "male") {
+    throw new Error(`Invalid --gender value: ${requestedGender}`);
+  }
   const assumeAdultFemale = process.argv.includes("--assume-adult-female");
   const excludedCharacterIds = new Set(
     process.argv
@@ -196,6 +200,7 @@ async function main(): Promise<void> {
   ).flatMap((book) =>
     (getBundledCatalogCharactersById(book.id) ?? [])
       .filter((character) => !requestedCharacterId || character.id === requestedCharacterId)
+      .filter((character) => !requestedGender || character.gender === requestedGender)
       .filter((character) => !excludedCharacterIds.has(character.id))
       .map((character) => ({
         book,

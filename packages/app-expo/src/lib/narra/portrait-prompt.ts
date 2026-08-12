@@ -13,8 +13,13 @@ export interface CharacterPortraitPromptContext {
 /** Портреты идут через GPT Image и не ограничены коротким лимитом Kandinsky. */
 export const PORTRAIT_PROMPT_CHAR_LIMIT = 1_600;
 
-function femaleBodyDirection(character: NarraCharacter, assumeAdultFemale = false): string {
+function femaleBodyDirection(
+  character: NarraCharacter,
+  genreId: string,
+  assumeAdultFemale = false,
+): string {
   if (
+    (genreId !== "manga" && genreId !== "fanfiction") ||
     character.gender !== "female" ||
     (!assumeAdultFemale && (!character.passport || character.passport.age < 18))
   ) {
@@ -60,7 +65,7 @@ export function buildCharacterPortraitPrompt(
         ? `Персонаж книги ${context.bookContext}: одежда, причёска и антураж строго соответствуют эпохе и миру книги, без современной одежды.`
         : "Одежда и причёска строго соответствуют эпохе и миру книги, без современной одежды.",
       `Выражение лица: ${character.expression || "естественное, в характере"}.`,
-      femaleBodyDirection(character, context.assumeAdultFemale),
+      femaleBodyDirection(character, genreId, context.assumeAdultFemale),
       `Внешность (соблюдать точно): ${passportDescription(character)}.`,
     ],
     PORTRAIT_PROMPT_CHAR_LIMIT,

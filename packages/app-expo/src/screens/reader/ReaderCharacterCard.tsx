@@ -777,7 +777,6 @@ const makeStyles = (colors: ThemeColors) =>
     },
     embeddedCharacterSection: {
       minHeight: 340,
-      overflow: "hidden",
       marginTop: "-32%",
       paddingTop: spacing.xl,
       paddingBottom: 40,

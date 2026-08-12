@@ -140,7 +140,7 @@ describe("portrait prompt", () => {
     expect(longPrompt.length).toBeLessThanOrEqual(PORTRAIT_PROMPT_CHAR_LIMIT);
   });
 
-  it("adds the non-sexual female body direction for confirmed adults in every genre", () => {
+  it("adds the non-sexual female body direction only for adult manga and fanfiction heroines", () => {
     const fanfictionPrompt = portraitPrompt(
       anna,
       "«Фанфик»",
@@ -160,20 +160,27 @@ describe("portrait prompt", () => {
     expect(fanfictionPrompt).toContain("под полностью закрытой одеждой");
     expect(fanfictionPrompt).toContain("строго несексуализированный");
     expect(mangaPrompt).toContain("огромной грудью");
-    expect(classicPrompt).toContain("огромной грудью");
+    expect(classicPrompt).not.toContain("огромной грудью");
     expect(withoutPassportPrompt).not.toContain("огромной грудью");
     expect(minorPrompt).not.toContain("огромной грудью");
     expect(malePrompt).not.toContain("огромной грудью");
   });
 
-  it("supports an explicit adult override for controlled catalog review generation", () => {
+  it("keeps the genre restriction with an explicit adult override", () => {
     const catalogHeroine = { ...anna, passport: undefined };
-    const prompt = buildCharacterPortraitPrompt(catalogHeroine, {
+    const classicPrompt = buildCharacterPortraitPrompt(catalogHeroine, {
       bookContext: "«Анна Каренина» (Лев Толстой)",
       assumeAdultFemale: true,
     });
+    const mangaPrompt = buildCharacterPortraitPrompt(catalogHeroine, {
+      bookContext: "«Манга»",
+      genreId: "manga",
+      genreLabel: "манга",
+      assumeAdultFemale: true,
+    });
 
-    expect(prompt).toContain("огромной грудью");
+    expect(classicPrompt).not.toContain("огромной грудью");
+    expect(mangaPrompt).toContain("огромной грудью");
   });
 
   it("routes character portraits directly through OpenRouter", async () => {
