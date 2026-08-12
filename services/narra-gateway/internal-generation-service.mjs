@@ -467,7 +467,6 @@ export function createInternalGenerationService({
       return cached(storage, input.idempotencyKey, input, async () => {
         log.info('synthesis.character_started', 'Формирую доказательный профиль персонажа', common)
         const response = await completeChat({
-          temperature: 0.1,
           messages: [
             {
               role: 'system',
@@ -545,7 +544,6 @@ export function createInternalGenerationService({
       return cached(storage, input.idempotencyKey, input, async () => {
         log.info('scan.llm_started', 'Отправляю один фрагмент книги на извлечение фактов', common)
         const response = await completeChat({
-          temperature: 0.1,
           messages: [
             {
               role: 'system',

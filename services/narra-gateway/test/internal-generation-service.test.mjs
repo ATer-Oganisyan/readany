@@ -152,7 +152,7 @@ test('internal generation service gives the provider exactly one scan chunk', as
     coreLocalEndOffset: contextText.length - 1
   })
   assert.equal(result.observations.length, 1)
-  assert.equal(chatRequest.temperature, 0.1)
+  assert.equal(Object.hasOwn(chatRequest, 'temperature'), false)
   assert.equal(chatRequest.messages.length, 2)
   assert.ok(chatRequest.messages[1].content.includes(contextText))
   assert.equal(chatRequest.messages[1].content.includes('objectKey'), false)
@@ -258,7 +258,7 @@ test('internal generation service builds a grounded profile for one resolved cha
   const second = await service.synthesizeCharacterProfile(request)
   assert.deepEqual(second, first)
   assert.equal(chatCalls, 1)
-  assert.equal(chatRequest.temperature, 0.1)
+  assert.equal(Object.hasOwn(chatRequest, 'temperature'), false)
   assert.equal(first.profile.characterKey, 'character:anna')
   assert.equal(first.profile.name, 'Анна')
   assert.equal(first.profile.role.value, 'Врач')
