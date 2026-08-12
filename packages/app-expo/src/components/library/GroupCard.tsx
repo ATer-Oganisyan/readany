@@ -7,6 +7,7 @@ import { memo, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Image, StyleSheet, TouchableOpacity, View } from "react-native";
 import { makeStyles as makeBookCardStyles } from "./book-card-styles";
+import { BookSpineOverlay } from "./book-spine-overlay";
 
 interface GroupCardProps {
   group: BookGroup;
@@ -103,15 +104,7 @@ function GroupCoverLayer({
             resizeMode="cover"
             onError={() => setError(true)}
           />
-          <View style={bookStyles.spineOverlay} pointerEvents="none">
-            <View style={bookStyles.spineStrip1} />
-            <View style={bookStyles.spineStrip2} />
-            <View style={bookStyles.spineStrip3} />
-            <View style={bookStyles.spineStrip4} />
-            <View style={bookStyles.spineStrip5} />
-            <View style={bookStyles.spineStrip6} />
-            <View style={bookStyles.spineStrip7} />
-          </View>
+          <BookSpineOverlay showForeEdge={false} />
         </>
       ) : (
         <View style={bookStyles.fallbackCover}>

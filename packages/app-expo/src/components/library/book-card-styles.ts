@@ -1,10 +1,4 @@
-import {
-  type ThemeColors,
-  fontSize,
-  fontWeight,
-  headingFontFamily,
-  radius,
-} from "@/styles/theme";
+import { type ThemeColors, fontSize, fontWeight, headingFontFamily, radius } from "@/styles/theme";
 import { StyleSheet } from "react-native";
 
 export function getBookCardMetrics(cardWidth: number) {
@@ -33,30 +27,6 @@ export const makeStyles = (colors: ThemeColors, cardWidth: number) => {
       isolation: "isolate",
     },
     coverImage: { width: "100%", height: "100%" },
-    spineOverlay: {
-      position: "absolute",
-      top: 0,
-      left: 0,
-      bottom: 0,
-      width: "8%",
-      flexDirection: "row",
-      zIndex: 2,
-    },
-    spineStrip1: { width: "6%", height: "100%", backgroundColor: "rgba(0,0,0,0.10)" },
-    spineStrip2: { width: "8%", height: "100%", backgroundColor: "rgba(20,20,20,0.20)" },
-    spineStrip3: { width: "5%", height: "100%", backgroundColor: "rgba(240,240,240,0.40)" },
-    spineStrip4: { width: "18%", height: "100%", backgroundColor: "rgba(215,215,215,0.35)" },
-    spineStrip5: { width: "12%", height: "100%", backgroundColor: "rgba(150,150,150,0.25)" },
-    spineStrip6: { width: "20%", height: "100%", backgroundColor: "rgba(100,100,100,0.18)" },
-    spineStrip7: { width: "31%", height: "100%", backgroundColor: "rgba(175,175,175,0.12)" },
-    spineEdgeRight: {
-      position: "absolute",
-      top: 0,
-      right: -coverWidth * 0.92,
-      bottom: 0,
-      width: coverWidth * 0.02,
-      backgroundColor: "rgba(30,30,30,0.12)",
-    },
     fallbackCover: {
       flex: 1,
       overflow: "hidden",

@@ -1028,7 +1028,6 @@ export function LibraryScreen() {
         <ReadingNowShelf
           books={readingNowBooks}
           edgeInset={layout.horizontalPadding}
-          catalogCardWidth={gridItemWidth}
           onDelete={removeBook}
           onOpen={handleOpen}
         />

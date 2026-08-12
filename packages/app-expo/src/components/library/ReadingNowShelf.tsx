@@ -15,6 +15,7 @@ import { useTranslation } from "react-i18next";
 import { Image, ScrollView, StyleSheet, View } from "react-native";
 import { BookCardActionSheet } from "./BookCardActionSheet";
 import { BookCoverTypography } from "./book-cover-typography";
+import { BookSpineOverlay } from "./book-spine-overlay";
 import { CoverGenerationShimmer } from "./cover-generation-shimmer";
 import { PerspectiveBook } from "./perspective-book";
 import { useResolvedAssetUris } from "./use-resolved-asset-uris";
@@ -25,7 +26,6 @@ const COVER_HEIGHT = Math.round(CARD_WIDTH * (41 / 28));
 interface ReadingNowShelfProps {
   books: Book[];
   edgeInset: number;
-  catalogCardWidth: number;
   onDelete: (bookId: string, options?: { preserveData?: boolean }) => void;
   onOpen: (book: Book) => void;
 }
@@ -33,7 +33,6 @@ interface ReadingNowShelfProps {
 export const ReadingNowShelf = memo(function ReadingNowShelf({
   books,
   edgeInset,
-  catalogCardWidth,
   onDelete,
   onOpen,
 }: ReadingNowShelfProps) {
@@ -122,12 +121,10 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
                     ) : (
                       <View style={s.fallbackCover} />
                     )}
+                    <BookSpineOverlay coverWidth={CARD_WIDTH} />
                     <BookCoverTypography
                       title={book.meta.title}
                       width={CARD_WIDTH}
-                      referenceWidth={catalogCardWidth}
-                      titleFontSize={15}
-                      leftInsetAdjustment={2}
                       showText={showCoverTypography}
                       bottomAccessory={
                         progressPercent > 0 ? (

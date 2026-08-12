@@ -15,6 +15,7 @@ import { Image, TouchableOpacity, View } from "react-native";
 import { BookCardActionSheet } from "./BookCardActionSheet";
 import { makeStyles } from "./book-card-styles";
 import { BookCoverTypography } from "./book-cover-typography";
+import { BookSpineOverlay } from "./book-spine-overlay";
 import { CoverGenerationShimmer } from "./cover-generation-shimmer";
 import { useResolvedAssetUris } from "./use-resolved-asset-uris";
 
@@ -91,17 +92,8 @@ export const BookCard = memo(function BookCard({
             <View style={s.fallbackCover} />
           )}
 
-          {/* Корешок остаётся видимым и на временной заглушке во время генерации. */}
-          <View style={s.spineOverlay} pointerEvents="none">
-            <View style={s.spineStrip1} />
-            <View style={s.spineStrip2} />
-            <View style={s.spineStrip3} />
-            <View style={s.spineStrip4} />
-            <View style={s.spineStrip5} />
-            <View style={s.spineStrip6} />
-            <View style={s.spineStrip7} />
-            <View style={s.spineEdgeRight} />
-          </View>
+          {/* Корешок остаётся видимым и на собственной обложке, и на заглушке. */}
+          <BookSpineOverlay coverWidth={cardWidth} />
 
           {showCoverTypography ? (
             <BookCoverTypography
