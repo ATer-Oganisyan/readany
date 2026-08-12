@@ -57,6 +57,13 @@ export function CatalogBookCard({
             <ActivityIndicator color="#fff" />
           </View>
         ) : null}
+        {isInLibrary && !isImporting ? (
+          <View style={[localStyles.libraryBadge, { backgroundColor: colors.primary }]}>
+            <Text style={[localStyles.libraryBadgeText, { color: colors.primaryForeground }]}>
+              {t("library.catalogInLibrary", "В библиотеке")}
+            </Text>
+          </View>
+        ) : null}
       </View>
 
       <View style={styles.infoWrap}>
@@ -77,5 +84,17 @@ const localStyles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(0,0,0,0.38)",
+  },
+  libraryBadge: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  libraryBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
   },
 });

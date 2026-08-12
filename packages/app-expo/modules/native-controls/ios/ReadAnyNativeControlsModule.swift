@@ -203,7 +203,7 @@ final class ReadAnyReaderToolbar: ExpoView {
   var isDark = true
   var speechActive = false
   var speechLabel = "Слушать"
-  var chatLabel = "Чат"
+  var chatLabel = "Персонажи"
   var sceneLabel = "Сцена"
 
   private let toolbar = UIToolbar()
@@ -255,7 +255,7 @@ final class ReadAnyReaderToolbar: ExpoView {
       action: #selector(handleSpeechPress)
     )
     let chat = makeItem(
-      symbol: "message",
+      symbol: "person.2",
       accessibilityLabel: chatLabel,
       action: #selector(handleChatPress)
     )

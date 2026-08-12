@@ -15,6 +15,7 @@ const icons: Record<NativeButtonIcon, string> = {
   image: "add-photo-alternate",
   check: "check",
   chat: "chat",
+  characters: "groups",
   close: "close",
   components: "apps",
   delete: "delete",

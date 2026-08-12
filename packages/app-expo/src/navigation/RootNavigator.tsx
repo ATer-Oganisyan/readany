@@ -161,7 +161,7 @@ export function RootNavigator() {
           component={NarraCharactersScreen}
           options={{
             animation: "slide_from_right",
-            title: "Чат",
+            title: "Персонажи",
           }}
         />
         <Stack.Screen

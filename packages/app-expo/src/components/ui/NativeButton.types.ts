@@ -9,6 +9,7 @@ export type NativeButtonIcon =
   | "image"
   | "check"
   | "chat"
+  | "characters"
   | "close"
   | "components"
   | "delete"

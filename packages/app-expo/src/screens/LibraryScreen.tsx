@@ -1116,6 +1116,16 @@ export function LibraryScreen() {
                 numColumns={columnCount}
                 columnWrapperStyle={s.gridRow}
                 contentContainerStyle={s.gridContent}
+                ListHeaderComponent={
+                  showCatalog && gridItems.length > 0 ? (
+                    <View style={s.librarySectionHeader}>
+                      <Text style={s.sectionTitle}>{t("library.myLibrary", "Моя библиотека")}</Text>
+                      <Text style={s.sectionDescription}>
+                        {t("library.myLibraryDescription", "Книги, сохранённые на устройстве")}
+                      </Text>
+                    </View>
+                  ) : null
+                }
                 ListFooterComponent={
                   showCatalog ? (
                     <View
@@ -1124,7 +1134,13 @@ export function LibraryScreen() {
                         gridItems.length === 0 ? s.catalogSectionFirst : null,
                       ]}
                     >
-                      <Text style={s.catalogTitle}>{t("library.catalog", "Каталог")}</Text>
+                      <Text style={s.sectionTitle}>{t("library.catalog", "Каталог Narra")}</Text>
+                      <Text style={s.sectionDescription}>
+                        {t(
+                          "library.catalogDescription",
+                          "Книги, которые можно добавить в свою библиотеку",
+                        )}
+                      </Text>
                       <View style={s.catalogGrid}>
                         {isCatalogLoading ? (
                           <ActivityIndicator color={colors.primary} />
@@ -1354,13 +1370,25 @@ const makeStyles = (
     gridRow: { gap: layout.gridGap, justifyContent: "flex-start" },
     gridContent: { paddingBottom: 24, paddingTop: 24, width: "100%" },
     gridItem: { width: layout.gridItemWidth, marginBottom: layout.gridGap },
-    catalogSection: { paddingTop: 32 },
-    catalogSectionFirst: { paddingTop: 0 },
-    catalogTitle: {
+    librarySectionHeader: { paddingBottom: 20 },
+    catalogSection: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+      marginTop: 8,
+      paddingTop: 28,
+    },
+    catalogSectionFirst: { borderTopWidth: 0, marginTop: 0, paddingTop: 0 },
+    sectionTitle: {
       color: colors.foreground,
       fontSize: fontSize.xl,
       fontWeight: fontWeight.bold,
-      marginBottom: 20,
+      marginBottom: 4,
+    },
+    sectionDescription: {
+      color: colors.mutedForeground,
+      fontSize: fontSize.sm,
+      lineHeight: 20,
+      marginBottom: 16,
     },
     catalogGrid: {
       flexDirection: "row",

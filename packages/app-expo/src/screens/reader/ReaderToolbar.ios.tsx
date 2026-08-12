@@ -23,7 +23,7 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
       <NativeReaderToolbar
         {...props}
         speechLabel="Слушать"
-        chatLabel="Чат"
+        chatLabel="Персонажи"
         sceneLabel="Сцена"
         style={{ width: "100%", height: TOOLBAR_HEIGHT }}
       />

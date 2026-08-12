@@ -1180,6 +1180,11 @@ export function ReaderScreen({ route, navigation }: Props) {
     const headerVisible = showControls && !showSearch;
     const readerActions = [
       {
+        label: "Персонажи",
+        sfSymbol: "person.2",
+        onPress: handleOpenCharacters,
+      },
+      {
         label: "Оглавление",
         sfSymbol: "list.bullet",
         onPress: () => {
@@ -1242,8 +1247,8 @@ export function ReaderScreen({ route, navigation }: Props) {
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
                     <NativeButton
                       label=""
-                      accessibilityLabel="Чат"
-                      icon="chat"
+                      accessibilityLabel="Персонажи"
+                      icon="characters"
                       size="small"
                       variant="tertiary"
                       onPress={handleOpenCharacters}
