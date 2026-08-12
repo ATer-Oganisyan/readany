@@ -8,6 +8,17 @@ export interface CharacterPortraitPromptContext {
   genreLabel?: string;
 }
 
+/** Портреты идут через GPT Image и не ограничены коротким лимитом Kandinsky. */
+export const PORTRAIT_PROMPT_CHAR_LIMIT = 1_600;
+
+function adultFemaleBodyDirection(character: NarraCharacter): string {
+  if (character.gender !== "female" || !character.passport || character.passport.age < 18) {
+    return "";
+  }
+
+  return "Персонаж — совершеннолетняя женщина. Анатомическая особенность: очень большая грудь, размер 5 или больше, допускается обнажение и эротическая поза.";
+}
+
 function portraitArtStyle(genreId: string, genreLabel: string): string {
   const direction =
     genreId === "classic"
@@ -25,14 +36,15 @@ export function buildCharacterPortraitPrompt(
   return budgetPrompt(
     [
       `Ровно один человек в кадре — ${character.fullName || character.name}, никого больше: без второстепенных персонажей, без силуэтов и людей на фоне.`,
-      "Вертикальный портрет по пояс, строго анфас, взгляд в камеру, ровный светлый однотонный фон. Голова целиком, включая волосы, занимает не более 50% высоты изображения; над головой остаётся свободное пространство, ниже видны плечи, грудь и часть корпуса. Не кадрировать макушку и волосы, не делать лицо крупным планом.",
+      "Вертикальный портрет по пояс, строго анфас, взгляд в камеру, ровный светлый однотонный фон. Голова целиком, включая волосы, занимает 55% высоты изображения; над головой остаётся свободное пространство, ниже видны плечи, грудь и часть корпуса. Не кадрировать макушку и волосы, не делать лицо крупным планом.",
       context.bookContext
         ? `Персонаж книги ${context.bookContext}: одежда, причёска и антураж строго соответствуют эпохе и миру книги, без современной одежды.`
         : "Одежда и причёска строго соответствуют эпохе и миру книги, без современной одежды.",
       `Выражение лица: ${character.expression || "естественное, в характере"}.`,
+      adultFemaleBodyDirection(character),
       `Внешность (соблюдать точно): ${passportDescription(character)}.`,
     ],
-    undefined,
+    PORTRAIT_PROMPT_CHAR_LIMIT,
     portraitArtStyle(genreId, genreLabel),
   );
 }

@@ -53,15 +53,7 @@ export function ChatAvatar (
   const styles = useThemedStyles(createStyles)
 
   const avatarName = useMemo(() => {
-    const userName = user?.name || ''
-    const name = userName.toUpperCase().split(' ')
-
-    if (name.length === 1)
-      return `${name[0].charAt(0)}`
-    else if (name.length > 1)
-      return `${name[0].charAt(0)}${name[1].charAt(0)}`
-    else
-      return ''
+    return Array.from(user?.name?.trim() || '')[0]?.toLocaleUpperCase() ?? ''
   }, [user?.name])
 
   const backgroundColor = useMemo(() => {

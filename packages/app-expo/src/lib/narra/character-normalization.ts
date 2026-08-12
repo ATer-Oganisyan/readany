@@ -1,4 +1,5 @@
 import { MAX_NARRA_CHARACTERS } from "./domain";
+import { type NarraGenreAnalysis, normalizeNarraGenreAnalysis } from "./genre-analysis";
 import type { NarraCharacter, NarraGender, NarraPassport } from "./types";
 import { type AssignVoicesOptions, assignVoices } from "./voice-rules";
 
@@ -107,6 +108,47 @@ function parseCharacterCandidates(input: unknown): unknown[] {
     (value) =>
       isRecord(value) && (typeof value.name === "string" || typeof value.fullName === "string"),
   );
+}
+
+function extractGenreCandidate(value: unknown): unknown {
+  if (!isRecord(value)) return undefined;
+  if ("primary" in value && "confidence" in value) return value;
+  if (isRecord(value.genre)) return value.genre;
+  if (isRecord(value.data)) {
+    const nested = extractGenreCandidate(value.data);
+    if (nested) return nested;
+  }
+
+  const firstChoice = Array.isArray(value.choices) ? value.choices[0] : undefined;
+  if (isRecord(firstChoice)) {
+    const message = isRecord(firstChoice.message) ? firstChoice.message : undefined;
+    const content = typeof message?.content === "string" ? message.content : firstChoice.text;
+    if (typeof content === "string") {
+      const nested = normalizeGenreAnalysisResponse(content);
+      if (nested) return nested;
+    }
+  }
+
+  for (const content of [value.content, value.text]) {
+    if (typeof content !== "string") continue;
+    const nested = normalizeGenreAnalysisResponse(content);
+    if (nested) return nested;
+  }
+
+  return undefined;
+}
+
+/** Принимает жанр только из фиксированного списка и только с уверенностью от 0.6. */
+export function normalizeGenreAnalysisResponse(input: unknown): NarraGenreAnalysis | undefined {
+  if (typeof input !== "string") {
+    return normalizeNarraGenreAnalysis(extractGenreCandidate(input));
+  }
+
+  for (const value of parseJsonFragments(input)) {
+    const genre = normalizeNarraGenreAnalysis(extractGenreCandidate(value));
+    if (genre) return genre;
+  }
+  return undefined;
 }
 
 function isMetadataEvent(event: Record<string, unknown>, eventName?: string): boolean {

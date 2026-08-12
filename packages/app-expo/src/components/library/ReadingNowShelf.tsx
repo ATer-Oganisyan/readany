@@ -17,6 +17,7 @@ import { BookCardActionSheet } from "./BookCardActionSheet";
 import { BookCoverTypography } from "./book-cover-typography";
 import { CoverGenerationShimmer } from "./cover-generation-shimmer";
 import { PerspectiveBook } from "./perspective-book";
+import { useResolvedAssetUris } from "./use-resolved-asset-uris";
 
 const CARD_WIDTH = 104;
 const COVER_HEIGHT = Math.round(CARD_WIDTH * (41 / 28));
@@ -51,6 +52,15 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
     [books],
   );
   const covers = useResolvedCovers(coverItems);
+  const bundledCoverAssetModules = useMemo(
+    () =>
+      books.flatMap((book) => {
+        const bundledBook = findBundledCatalogBookByTitle(book.meta.title);
+        return bundledBook ? [bundledBook.coverAssetModule] : [];
+      }),
+    [books],
+  );
+  const bundledCoverUris = useResolvedAssetUris(bundledCoverAssetModules);
 
   if (books.length === 0) return null;
 
@@ -73,6 +83,9 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
           const bundledCatalogBook = hasUsableCover
             ? undefined
             : findBundledCatalogBookByTitle(book.meta.title);
+          const bundledCoverUri = bundledCatalogBook
+            ? bundledCoverUris.get(bundledCatalogBook.coverAssetModule)
+            : undefined;
           const showCoverTypography =
             !hasUsableCover || shouldRenderCoverTypography(book.id, book.meta.coverUrl);
           return (
@@ -100,9 +113,9 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
                           })
                         }
                       />
-                    ) : bundledCatalogBook ? (
+                    ) : bundledCoverUri ? (
                       <Image
-                        source={bundledCatalogBook.coverAssetModule}
+                        source={{ uri: bundledCoverUri }}
                         style={s.coverImage}
                         resizeMode="cover"
                       />
@@ -111,11 +124,9 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
                     )}
                     <BookCoverTypography
                       title={book.meta.title}
-                      author={book.meta.author}
                       width={CARD_WIDTH}
                       referenceWidth={catalogCardWidth}
                       titleFontSize={15}
-                      authorFontSize={10}
                       leftInsetAdjustment={2}
                       showText={showCoverTypography}
                       bottomAccessory={

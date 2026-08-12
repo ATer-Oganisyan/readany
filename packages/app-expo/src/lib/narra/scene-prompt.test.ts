@@ -164,6 +164,27 @@ describe("buildScenePrompt — схема из 5 блоков", () => {
     expect(prompt).not.toContain("ранее в книге");
   });
 
+  it("предпочитает сохранённый LLM-жанр метаданным", () => {
+    const prompt = buildScenePrompt({
+      bookTitle: "Запятая",
+      bookAuthor: "Gooos",
+      bookSubjects: ["classic"],
+      analyzedGenre: {
+        primary: "fanfiction",
+        secondary: ["romance"],
+        confidence: 0.94,
+        evidence: "Публичные люди в новом вымышленном сюжете",
+      },
+      chapter: "Глава 1",
+      excerpt: "Чонли встретила Чонгука после долгой разлуки.",
+      characters: [],
+    });
+
+    expect(prompt).toContain("ЖАНР И СТИЛЬ (фанфик или трансформативная проза)");
+    expect(prompt).toContain("полуреалистичная аниме-иллюстрация момента");
+    expect(prompt).not.toContain("ЖАНР И СТИЛЬ (classics / general literature)");
+  });
+
   it("промпт превышает старый лимит Кандинского и не цензурит текст сцены", () => {
     const prompt = buildScenePrompt({
       bookTitle: "Как закалялась сталь",

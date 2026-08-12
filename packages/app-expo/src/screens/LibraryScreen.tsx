@@ -60,6 +60,7 @@ import { File as ExpoFile, Paths } from "expo-file-system";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   Modal,
@@ -187,6 +188,7 @@ export function LibraryScreen() {
     removeTag,
     renameTag,
   } = useLibraryStore();
+  const isBookImporting = isImporting || isPickingImport || isUrlImporting;
   const hasBooks = books.length > 0;
   const syncNow = useSyncStore((state) => state.syncNow);
   const syncStatus = useSyncStore((state) => state.status);
@@ -650,29 +652,41 @@ export function LibraryScreen() {
                 },
               ]
             : []),
-          {
-            type: "menu" as const,
-            label: t("library.importFirst", "Добавить книгу"),
-            accessibilityLabel: t("library.importFirst", "Добавить книгу"),
-            icon: { type: "sfSymbol" as const, name: "plus" as const },
-            disabled: isImporting || isPickingImport,
-            menu: {
-              items: [
-                {
-                  type: "action" as const,
-                  label: t("library.importSourceUrl", "Найти по ссылке"),
-                  icon: { type: "sfSymbol" as const, name: "link" as const },
-                  onPress: handleOpenUrlImport,
+          isBookImporting
+            ? {
+                type: "custom" as const,
+                element: (
+                  <View
+                    accessibilityRole="progressbar"
+                    accessibilityLabel={t("common.loading", "Загрузка")}
+                    style={[s.nativeHeaderButton, s.importLoaderButton]}
+                  >
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  </View>
+                ),
+              }
+            : {
+                type: "menu" as const,
+                label: t("library.importFirst", "Добавить книгу"),
+                accessibilityLabel: t("library.importFirst", "Добавить книгу"),
+                icon: { type: "sfSymbol" as const, name: "plus" as const },
+                menu: {
+                  items: [
+                    {
+                      type: "action" as const,
+                      label: t("library.importSourceUrl", "Найти по ссылке"),
+                      icon: { type: "sfSymbol" as const, name: "link" as const },
+                      onPress: handleOpenUrlImport,
+                    },
+                    {
+                      type: "action" as const,
+                      label: t("library.importSourceLocal", "Выбрать файл"),
+                      icon: { type: "sfSymbol" as const, name: "folder" as const },
+                      onPress: () => void handleLocalImport(),
+                    },
+                  ],
                 },
-                {
-                  type: "action" as const,
-                  label: t("library.importSourceLocal", "Выбрать файл"),
-                  icon: { type: "sfSymbol" as const, name: "folder" as const },
-                  onPress: () => void handleLocalImport(),
-                },
-              ],
-            },
-          },
+              },
         ],
       });
       return;
@@ -691,10 +705,14 @@ export function LibraryScreen() {
             accessibilityLabel={t("library.importFirst", "Добавить книгу")}
             style={s.nativeHeaderButton}
             onPress={handleOpenImportSources}
-            disabled={isImporting || isPickingImport}
+            disabled={isBookImporting}
             activeOpacity={0.65}
           >
-            <PlusIcon size={24} color={colors.primary} />
+            {isBookImporting ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <PlusIcon size={24} color={colors.primary} />
+            )}
           </TouchableOpacity>
         </View>
       ),
@@ -706,12 +724,12 @@ export function LibraryScreen() {
     handleOpenImportSources,
     handleOpenUrlImport,
     handleSync,
-    isImporting,
-    isPickingImport,
+    isBookImporting,
     isSyncBusy,
     nav,
     s.nativeHeaderActions,
     s.nativeHeaderButton,
+    s.importLoaderButton,
     selectionMode,
     syncBackendType,
     t,
@@ -1229,6 +1247,11 @@ const makeStyles = (
       borderRadius: radius.full,
       alignItems: "center",
       justifyContent: "center",
+    },
+    importLoaderButton: {
+      backgroundColor: colors.card,
+      borderWidth: 0.5,
+      borderColor: colors.border,
     },
     headerBtn: {
       width: 36,

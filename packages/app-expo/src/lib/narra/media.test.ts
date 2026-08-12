@@ -1,6 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NarraCharacter } from "./types";
 
+const appStoreState = vi.hoisted(() => ({
+  libraryBooks: [] as Array<{
+    id: string;
+    meta: { title: string; author?: string; subjects?: string[]; description?: string };
+  }>,
+  narraBooks: {} as Record<
+    string,
+    {
+      genre?: {
+        primary: "fanfiction";
+        secondary: ["romance"];
+        confidence: number;
+        evidence: string;
+      };
+    }
+  >,
+}));
+
 vi.mock("expo-file-system/legacy", () => ({
   documentDirectory: "file:///documents/",
   EncodingType: { Base64: "base64" },
@@ -14,7 +32,8 @@ vi.mock("@/lib/ai/narra-gateway-fetch", () => ({ narraGatewayRequest: vi.fn() })
 vi.mock("../ai/openrouter-image", () => ({ generateOpenRouterImageWithFallback: vi.fn() }));
 vi.mock("@/lib/analytics/telemetry", () => ({ recordTelemetry: vi.fn() }));
 vi.mock("@/stores", () => ({
-  useLibraryStore: { getState: () => ({ books: [] }) },
+  useLibraryStore: { getState: () => ({ books: appStoreState.libraryBooks }) },
+  useNarraStore: { getState: () => ({ books: appStoreState.narraBooks }) },
 }));
 
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
@@ -30,12 +49,18 @@ import {
   generateSceneImage,
   normalizePersistedNarraMediaUri,
   portraitPrompt,
+  resolvePortraitGenre,
   synthesizeNarraSpeech,
 } from "./media";
+import { PORTRAIT_PROMPT_CHAR_LIMIT } from "./portrait-prompt";
 import { applyActiveStressMarkup, primeCharacterStressForms } from "./stress-markup";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  appStoreState.libraryBooks.length = 0;
+  for (const bookId of Object.keys(appStoreState.narraBooks)) {
+    delete appStoreState.narraBooks[bookId];
+  }
 });
 
 const anna: NarraCharacter = {
@@ -83,12 +108,12 @@ describe("portrait prompt", () => {
     const prompt = portraitPrompt(anna);
 
     expect(prompt).toContain("Вертикальный портрет по пояс, строго анфас");
-    expect(prompt).toContain("занимает не более 50% высоты изображения");
+    expect(prompt).toContain("занимает 55% высоты изображения");
     expect(prompt).toContain("классический живописный портрет");
     expect(prompt).toContain("Внешность (соблюдать точно):");
     expect(prompt).toContain("тёмные волосы");
     expect(prompt).not.toContain("semi-realistic anime");
-    expect(prompt.length).toBeLessThanOrEqual(PROMPT_CHAR_LIMIT);
+    expect(prompt.length).toBeLessThanOrEqual(PORTRAIT_PROMPT_CHAR_LIMIT);
   });
 
   it("demands exactly one named person first and keeps it within budget", () => {
@@ -98,7 +123,7 @@ describe("portrait prompt", () => {
       true,
     );
     expect(prompt).toContain("без второстепенных персонажей");
-    expect(prompt.length).toBeLessThanOrEqual(PROMPT_CHAR_LIMIT);
+    expect(prompt.length).toBeLessThanOrEqual(PORTRAIT_PROMPT_CHAR_LIMIT);
 
     const verbose: NarraCharacter = {
       ...vronsky,
@@ -107,7 +132,36 @@ describe("portrait prompt", () => {
     const longPrompt = portraitPrompt(verbose, "«Анна Каренина» (Лев Толстой)");
     expect(longPrompt).toContain("Ровно один человек в кадре — Алексей Вронский");
     expect(longPrompt).toContain("классический живописный портрет");
-    expect(longPrompt.length).toBeLessThanOrEqual(PROMPT_CHAR_LIMIT);
+    expect(longPrompt.length).toBeLessThanOrEqual(PORTRAIT_PROMPT_CHAR_LIMIT);
+  });
+
+  it("adds the adult female body direction for every genre", () => {
+    const annaPassport = anna.passport;
+    if (!annaPassport) throw new Error("Anna test fixture must have a passport");
+
+    const fanfictionPrompt = portraitPrompt(
+      anna,
+      "«Фанфик»",
+      "fanfiction",
+      "fanfiction or transformative fiction",
+    );
+    const mangaPrompt = portraitPrompt(anna, "«Манга»", "manga", "manga");
+    const classicPrompt = portraitPrompt(anna);
+    const malePrompt = portraitPrompt(vronsky);
+    const minorPrompt = portraitPrompt(
+      { ...anna, passport: { ...annaPassport, age: 17 } },
+      "«Фанфик»",
+      "fanfiction",
+      "fanfiction or transformative fiction",
+    );
+
+    expect(fanfictionPrompt).toContain("размер 5 или больше");
+    expect(fanfictionPrompt).toContain("допускается обнажение и эротическая поза");
+    expect(fanfictionPrompt).not.toContain("персонаж полностью одет");
+    expect(mangaPrompt).toContain("размер 5 или больше");
+    expect(classicPrompt).toContain("размер 5 или больше");
+    expect(malePrompt).not.toContain("размер 5 или больше");
+    expect(minorPrompt).not.toContain("размер 5 или больше");
   });
 
   it("routes character portraits directly through OpenRouter", async () => {
@@ -130,6 +184,22 @@ describe("portrait prompt", () => {
       },
       "google/gemini-2.5-flash-image",
     );
+  });
+
+  it("prefers the persisted LLM genre for a character portrait", () => {
+    const genre = resolvePortraitGenre(
+      { title: "Запятая" },
+      {
+        primary: "fanfiction",
+        secondary: ["romance"],
+        confidence: 0.94,
+        evidence: "Публичные люди в новом вымышленном сюжете",
+      },
+    );
+    const prompt = portraitPrompt(anna, "«Запятая» (Gooos)", genre.id, genre.label);
+
+    expect(prompt).toContain("жанра «фанфик или трансформативная проза»");
+    expect(prompt).toContain("полуреалистичная аниме-иллюстрация момента");
   });
 });
 

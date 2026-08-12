@@ -4,6 +4,7 @@ import {
   withNarraChatMessage,
   withNarraMemory,
 } from "@/lib/narra/domain";
+import type { NarraGenreAnalysis } from "@/lib/narra/genre-analysis";
 import {
   DEFAULT_SCENE_SUGGESTION_INTERVAL,
   SCENE_SUGGESTION_INTERVALS,
@@ -32,7 +33,7 @@ export interface NarraState {
   setSceneSuggestionInterval: (interval: number) => void;
   getBookState: (bookId: string) => NarraBookState;
   setAnalyzing: (bookId: string | null) => void;
-  setCharacters: (bookId: string, characters: NarraCharacter[]) => void;
+  setCharacters: (bookId: string, characters: NarraCharacter[], genre?: NarraGenreAnalysis) => void;
   updateCharacter: (bookId: string, characterId: string, updates: Partial<NarraCharacter>) => void;
   setAnalysisError: (bookId: string, error?: string) => void;
   setMemory: (bookId: string, characterId: string, memory: string) => void;
@@ -57,10 +58,16 @@ export const useNarraStore = create<NarraState>()(
       setSceneSuggestionInterval: (sceneSuggestionInterval) => set({ sceneSuggestionInterval }),
       getBookState: (bookId) => get().books[bookId] ?? emptyNarraBookState(bookId),
       setAnalyzing: (analyzingBookId) => set({ analyzingBookId }),
-      setCharacters: (bookId, characters) =>
+      setCharacters: (bookId, characters, genre) =>
         set((state) => {
           const book = state.books[bookId] ?? emptyNarraBookState(bookId);
-          return { books: { ...state.books, [bookId]: withNarraCharacters(book, characters) } };
+          const analyzedBook = withNarraCharacters(book, characters);
+          return {
+            books: {
+              ...state.books,
+              [bookId]: genre ? { ...analyzedBook, genre } : analyzedBook,
+            },
+          };
         }),
       updateCharacter: (bookId, characterId, updates) =>
         set((state) => {

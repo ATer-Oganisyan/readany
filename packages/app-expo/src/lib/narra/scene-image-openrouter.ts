@@ -17,6 +17,7 @@
 
 import { hasBundledOpenRouterKey } from "@/config/bundled-ai";
 import { type OpenRouterImageRequest, generateOpenRouterImage } from "@/lib/ai/openrouter-image";
+import type { NarraGenreAnalysis } from "./genre-analysis";
 import { generateSceneImage, persistSceneImageBase64, trackNarraMediaJob } from "./media";
 import sceneGenerationConfig from "./scene-generation-config.json";
 import { buildScenePrompt } from "./scene-prompt";
@@ -34,14 +35,16 @@ function bookMetaForPrompt(bookId: string): {
   author?: string;
   description?: string;
   subjects?: string[];
+  analyzedGenre?: NarraGenreAnalysis;
 } {
-  const { useLibraryStore } = require("@/stores") as typeof import("@/stores");
+  const { useLibraryStore, useNarraStore } = require("@/stores") as typeof import("@/stores");
   const book = useLibraryStore.getState().books.find((item) => item.id === bookId);
   return {
     title: book?.meta.title ?? "",
     author: book?.meta.author || undefined,
     description: book?.meta.description || undefined,
     subjects: book?.meta.subjects,
+    analyzedGenre: useNarraStore.getState().books[bookId]?.genre,
   };
 }
 
@@ -72,6 +75,7 @@ async function generateSceneImageViaOpenRouter(
     bookAuthor: book.author,
     bookDescription: book.description,
     bookSubjects: book.subjects,
+    analyzedGenre: book.analyzedGenre,
     chapter,
     excerpt,
     characters,

@@ -1,21 +1,22 @@
 import { Text } from "@/components/ui/Typography";
 import { shouldRenderCoverTypography } from "@/lib/book/cover-display";
 import { findBundledCatalogBookByTitle } from "@/lib/catalog/bundled-books";
+import { useResolvedCovers } from "@/screens/notes/useResolvedCovers";
 import { useLibraryStore } from "@/stores/library-store";
 import { useColors } from "@/styles/theme";
-import { getPlatformService } from "@readany/core/services";
 /**
  * BookCard — Touch-optimized book card matching Tauri mobile MobileBookCard exactly.
  * Cover (28:41), vectorization overlay, long-press action sheet.
  */
 import type { Book } from "@readany/core/types";
-import { memo, useEffect, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Image, TouchableOpacity, View } from "react-native";
 import { BookCardActionSheet } from "./BookCardActionSheet";
 import { makeStyles } from "./book-card-styles";
 import { BookCoverTypography } from "./book-cover-typography";
 import { CoverGenerationShimmer } from "./cover-generation-shimmer";
+import { useResolvedAssetUris } from "./use-resolved-asset-uris";
 
 interface BookCardProps {
   book: Book;
@@ -46,36 +47,24 @@ export const BookCard = memo(function BookCard({
   const isGeneratingCover = useLibraryStore((state) =>
     state.generatingCoverBookIds.includes(book.id),
   );
-  const [imageError, setImageError] = useState(false);
-  const [resolvedCoverUrl, setResolvedCoverUrl] = useState<string | undefined>(undefined);
+  const [failedCoverUrl, setFailedCoverUrl] = useState<string>();
   const bundledCatalogBook = findBundledCatalogBookByTitle(book.meta.title);
+  const coverItems = useMemo(
+    () => [{ bookId: book.id, coverUrl: book.meta.coverUrl ?? null }],
+    [book.id, book.meta.coverUrl],
+  );
+  const resolvedCoverUrl = useResolvedCovers(coverItems).get(book.id);
+  const bundledCoverAssetModules = useMemo(
+    () => (bundledCatalogBook ? [bundledCatalogBook.coverAssetModule] : []),
+    [bundledCatalogBook],
+  );
+  const bundledCoverUris = useResolvedAssetUris(bundledCoverAssetModules);
+  const bundledCoverUri = bundledCatalogBook
+    ? bundledCoverUris.get(bundledCatalogBook.coverAssetModule)
+    : undefined;
+  const hasUsableSavedCover = Boolean(resolvedCoverUrl) && resolvedCoverUrl !== failedCoverUrl;
   const showCoverTypography =
-    !resolvedCoverUrl || imageError || shouldRenderCoverTypography(book.id, book.meta.coverUrl);
-
-  // Resolve relative coverUrl to absolute path
-  useEffect(() => {
-    const raw = book.meta.coverUrl;
-    setImageError(false);
-    if (!raw) {
-      setResolvedCoverUrl(undefined);
-      return;
-    }
-    if (raw.startsWith("http") || raw.startsWith("blob") || raw.startsWith("file")) {
-      setResolvedCoverUrl(raw);
-      return;
-    }
-    (async () => {
-      try {
-        const platform = getPlatformService();
-        const appData = await platform.getAppDataDir();
-        const absPath = await platform.joinPath(appData, raw);
-        setResolvedCoverUrl(absPath);
-      } catch (err) {
-        console.warn("[Library] Failed to resolve cover URL:", err);
-        setResolvedCoverUrl(undefined);
-      }
-    })();
-  }, [book.meta.coverUrl]);
+    !hasUsableSavedCover || shouldRenderCoverTypography(book.id, book.meta.coverUrl);
 
   return (
     <BookCardActionSheet book={book} onOpen={onOpen} onDelete={onDelete}>
@@ -89,19 +78,15 @@ export const BookCard = memo(function BookCard({
       >
         {/* Cover — 28:41 aspect ratio */}
         <View style={s.coverWrap}>
-          {resolvedCoverUrl && !imageError ? (
+          {hasUsableSavedCover && resolvedCoverUrl ? (
             <Image
               source={{ uri: resolvedCoverUrl }}
               style={s.coverImage}
               resizeMode="cover"
-              onError={() => setImageError(true)}
+              onError={() => setFailedCoverUrl(resolvedCoverUrl)}
             />
-          ) : bundledCatalogBook ? (
-            <Image
-              source={bundledCatalogBook.coverAssetModule}
-              style={s.coverImage}
-              resizeMode="cover"
-            />
+          ) : bundledCoverUri ? (
+            <Image source={{ uri: bundledCoverUri }} style={s.coverImage} resizeMode="cover" />
           ) : (
             <View style={s.fallbackCover} />
           )}

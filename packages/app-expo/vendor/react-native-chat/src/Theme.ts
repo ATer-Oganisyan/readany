@@ -48,6 +48,8 @@ export interface ChatThemeColors {
   dayPillText: string
   /** Surface color for floating elements (scroll-to-bottom button, picker). */
   surface: string
+  /** Optional translucent tint layered over floating surfaces. */
+  surfaceOverlay: string
   /** Inactive reaction pill background. */
   reactionBackground: string
   /** Active (selected) reaction pill background. */
@@ -211,6 +213,7 @@ export const defaultLightTheme: ChatTheme = {
     dayPillBackground: 'rgba(0, 0, 0, 0.3)',
     dayPillText: '#FFFFFF',
     surface: '#FFFFFF',
+    surfaceOverlay: 'transparent',
     reactionBackground: 'rgba(0, 0, 0, 0.06)',
     reactionActiveBackground: 'rgba(51, 144, 236, 0.15)',
     outgoingOverlay: 'rgba(255, 255, 255, 0.15)',
@@ -247,6 +250,7 @@ export const defaultDarkTheme: ChatTheme = {
     dayPillBackground: 'rgba(255, 255, 255, 0.12)',
     dayPillText: '#FFFFFF',
     surface: '#17212B',
+    surfaceOverlay: 'transparent',
     reactionBackground: 'rgba(255, 255, 255, 0.08)',
     reactionActiveBackground: 'rgba(51, 144, 236, 0.22)',
     outgoingOverlay: 'rgba(255, 255, 255, 0.1)',

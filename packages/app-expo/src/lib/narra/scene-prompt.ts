@@ -13,6 +13,7 @@
 // Относительный импорт вместо алиаса: vitest резолвит без алиасов, а
 // cover-genre чист от зависимостей — правила жанров едины с обложками.
 import { resolveCoverGenreProfile } from "../book/cover-genre";
+import { type NarraGenreAnalysis, narraGenreLabel } from "./genre-analysis";
 import type { NarraCharacter } from "./types";
 
 /** Разумный потолок промпта сцены для GPT Image (не лимит провайдера). */
@@ -112,6 +113,7 @@ export interface ScenePromptInput {
   bookAuthor?: string;
   bookDescription?: string;
   bookSubjects?: string[];
+  analyzedGenre?: NarraGenreAnalysis;
   chapter: string;
   excerpt: string;
   characters: NarraCharacter[];
@@ -141,12 +143,17 @@ function assemble(blocks: string[]): string {
  * в OpenRouter-пути не применяется).
  */
 export function buildScenePrompt(input: ScenePromptInput): string {
-  const genre = resolveCoverGenreProfile({
-    subjects: input.bookSubjects,
-    title: input.bookTitle,
-    description: input.bookDescription,
-    excerpt: input.excerpt,
-  });
+  const genre = input.analyzedGenre
+    ? {
+        id: input.analyzedGenre.primary,
+        label: narraGenreLabel(input.analyzedGenre.primary),
+      }
+    : resolveCoverGenreProfile({
+        subjects: input.bookSubjects,
+        title: input.bookTitle,
+        description: input.bookDescription,
+        excerpt: input.excerpt,
+      });
 
   const author = input.bookAuthor?.trim();
   const bookRef = `«${input.bookTitle.trim() || "Без названия"}»${author ? ` (${author})` : ""}`;

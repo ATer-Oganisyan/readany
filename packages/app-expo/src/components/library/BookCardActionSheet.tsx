@@ -2,7 +2,6 @@ import type { NativeContextMenuItem } from "@/components/ui/NativeContextMenuBut
 import type { Book } from "@readany/core/types";
 import type { ReactElement } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert } from "react-native";
 import { BookCardContextMenu } from "./BookCardContextMenu";
 
 interface BookCardActionSheetProps {
@@ -24,36 +23,13 @@ export function BookCardActionSheet({
 }: BookCardActionSheetProps) {
   const { t } = useTranslation();
 
-  const confirmDelete = () => {
-    Alert.alert(
-      t("library.deleteBookTitle", "Удалить книгу?"),
-      t(
-        "library.deleteBookDescription",
-        "Можно сохранить заметки и статистику чтения для повторного импорта.",
-      ),
-      [
-        { text: t("common.cancel", "Отмена"), style: "cancel" },
-        {
-          text: t("library.deleteBookKeepData", "Удалить, сохранив данные"),
-          style: "destructive",
-          onPress: () => onDelete(book.id, { preserveData: true }),
-        },
-        {
-          text: t("library.deleteBookWithData", "Удалить всё"),
-          style: "destructive",
-          onPress: () => onDelete(book.id, { preserveData: false }),
-        },
-      ],
-    );
-  };
-
   const items: NativeContextMenuItem[] = [
     {
       key: "delete",
       label: t("common.remove", "Удалить"),
       sfSymbol: "trash",
       destructive: true,
-      onPress: confirmDelete,
+      onPress: () => onDelete(book.id),
     },
   ];
 

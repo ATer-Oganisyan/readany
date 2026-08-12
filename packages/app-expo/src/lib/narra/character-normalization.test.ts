@@ -1,10 +1,45 @@
 import { describe, expect, it } from "vitest";
 import {
   normalizeCharacterAnalysisResponse,
+  normalizeGenreAnalysisResponse,
   parseNarraStreamText,
 } from "./character-normalization";
 
 describe("Narra analysis normalization", () => {
+  it("validates the LLM genre from the shared analysis response", () => {
+    const genre = normalizeGenreAnalysisResponse(
+      JSON.stringify({
+        genre: {
+          primary: "fanfiction",
+          secondary: ["romance", "fanfiction", "unknown"],
+          confidence: 0.94,
+          evidence: "Реальные публичные люди помещены в вымышленный сюжет",
+        },
+        characters: [{ name: "Чонли" }],
+      }),
+    );
+
+    expect(genre).toEqual({
+      primary: "fanfiction",
+      secondary: ["romance"],
+      confidence: 0.94,
+      evidence: "Реальные публичные люди помещены в вымышленный сюжет",
+    });
+  });
+
+  it("rejects an unknown or low-confidence LLM genre", () => {
+    expect(
+      normalizeGenreAnalysisResponse({
+        genre: { primary: "romantasy", secondary: [], confidence: 0.99 },
+      }),
+    ).toBeUndefined();
+    expect(
+      normalizeGenreAnalysisResponse({
+        genre: { primary: "fanfiction", secondary: [], confidence: 0.59 },
+      }),
+    ).toBeUndefined();
+  });
+
   it("keeps complete characters when the outer JSON array is truncated", () => {
     const characters = normalizeCharacterAnalysisResponse(
       '{"characters":[{"id":"stiva","name":"Стива","fullName":"Степан Облонский","gender":"male"},{"id":"anna","name":"Анна","fullName":"Анна Каренина","gender":"female"},{"id":"cut',

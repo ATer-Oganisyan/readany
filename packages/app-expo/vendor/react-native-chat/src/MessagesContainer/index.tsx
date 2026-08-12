@@ -325,6 +325,7 @@ export const MessagesContainer = <TMessage extends IMessage>(props: MessagesCont
           scrollToBottomStyleAnim,
         ]}
       >
+        <View pointerEvents='none' style={themedStyles.scrollSurfaceOverlay} />
         {renderScrollBottomComponent()}
       </Animated.View>
     )

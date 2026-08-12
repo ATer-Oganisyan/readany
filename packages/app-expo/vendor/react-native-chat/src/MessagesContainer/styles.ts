@@ -9,6 +9,11 @@ export const createThemedStyles = (theme: ChatTheme) => StyleSheet.create({
   scrollSurface: {
     backgroundColor: theme.colors.surface,
   },
+  scrollSurfaceOverlay: {
+    ...StyleSheet.absoluteFill,
+    borderRadius: 999,
+    backgroundColor: theme.colors.surfaceOverlay,
+  },
   scrollChevron: {
     width: 10,
     height: 10,

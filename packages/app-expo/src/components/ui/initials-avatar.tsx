@@ -20,8 +20,7 @@ function numericUserId(userId: string | number): number {
 }
 
 function getInitials(name: string): string {
-  const [firstName = "", lastName = ""] = name.trim().split(/\s+/u);
-  return `${firstName.charAt(0)}${lastName.charAt(0)}`.toLocaleUpperCase();
+  return Array.from(name.trim())[0]?.toLocaleUpperCase() ?? "";
 }
 
 export function InitialsAvatar({ name, userId, size = 40 }: InitialsAvatarProps) {

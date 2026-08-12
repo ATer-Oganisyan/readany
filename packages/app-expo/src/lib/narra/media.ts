@@ -6,6 +6,7 @@ import { resolveCoverGenreProfile } from "../book/cover-genre";
 import { findBundledCatalogBookDefinitionByTitle } from "../catalog/bundled-book-definitions";
 import { budgetPrompt } from "./art-style";
 import { normalizeNarraError } from "./errors";
+import { type NarraGenreAnalysis, narraGenreLabel } from "./genre-analysis";
 import { buildCharacterPortraitPrompt } from "./portrait-prompt";
 import { mentionedCharacters, passportDescription } from "./scene-prompt";
 import { applyActiveStressMarkup } from "./stress-markup";
@@ -129,24 +130,41 @@ interface PortraitBookContext {
   genreLabel: string;
 }
 
+interface PortraitGenreBookMeta {
+  title: string;
+  description?: string;
+  subjects?: string[];
+}
+
+export function resolvePortraitGenre(
+  meta: PortraitGenreBookMeta,
+  analyzedGenre?: NarraGenreAnalysis,
+): { id: string; label: string } {
+  if (analyzedGenre) {
+    return {
+      id: analyzedGenre.primary,
+      label: narraGenreLabel(analyzedGenre.primary),
+    };
+  }
+
+  const explicitlyClassic =
+    Boolean(findBundledCatalogBookDefinitionByTitle(meta.title)) ||
+    meta.subjects?.some((subject) => /(?:classic|классик)/iu.test(subject));
+  return explicitlyClassic
+    ? { id: "classic", label: "классическая литература" }
+    : resolveCoverGenreProfile(meta);
+}
+
 /** Контекст книги и жанр для портретов персонажей. */
 function portraitBookContext(bookId: string): PortraitBookContext | undefined {
   try {
     // Ленивый импорт, чтобы не тянуть стор в юнит-тесты чистых промптов
-    const { useLibraryStore } = require("@/stores") as typeof import("@/stores");
+    const { useLibraryStore, useNarraStore } = require("@/stores") as typeof import("@/stores");
     const book = useLibraryStore.getState().books.find((item) => item.id === bookId);
     if (!book) return undefined;
+    const analyzedGenre = useNarraStore.getState().books[bookId]?.genre;
     const author = book.meta.author ? ` (${book.meta.author})` : "";
-    const explicitlyClassic =
-      Boolean(findBundledCatalogBookDefinitionByTitle(book.meta.title)) ||
-      book.meta.subjects?.some((subject) => /(?:classic|классик)/iu.test(subject));
-    const genre = explicitlyClassic
-      ? { id: "classic", label: "классическая литература" }
-      : resolveCoverGenreProfile({
-          subjects: book.meta.subjects,
-          title: book.meta.title,
-          description: book.meta.description,
-        });
+    const genre = resolvePortraitGenre(book.meta, analyzedGenre);
     return {
       description: `«${book.meta.title}»${author}`,
       genreId: genre.id,

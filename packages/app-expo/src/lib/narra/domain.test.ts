@@ -41,7 +41,15 @@ describe("Narra character unlock", () => {
 
 describe("Narra persisted book state", () => {
   it("keeps characters, portrait, memory and chat in a serializable state", () => {
-    const firstAnalysis = withNarraCharacters(emptyNarraBookState("book-1"), [character], 100);
+    const firstAnalysis = {
+      ...withNarraCharacters(emptyNarraBookState("book-1"), [character], 100),
+      genre: {
+        primary: "fanfiction" as const,
+        secondary: ["romance" as const],
+        confidence: 0.94,
+        evidence: "Публичные люди в вымышленном сюжете",
+      },
+    };
     const withCharacters = withNarraCharacters(
       firstAnalysis,
       [{ ...character, portraitAssetId: undefined, portraitUri: undefined }],
@@ -65,5 +73,6 @@ describe("Narra persisted book state", () => {
     expect(restored.memories.anna).toBe("Любит чай без сахара");
     expect(restored.chats.anna[0]?.content).toBe("Запомни это");
     expect(restored.analyzedAt).toBe(123);
+    expect(restored.genre).toMatchObject({ primary: "fanfiction", secondary: ["romance"] });
   });
 });

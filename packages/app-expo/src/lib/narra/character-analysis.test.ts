@@ -30,6 +30,12 @@ function successfulCharacterResponse() {
   return new Response(
     JSON.stringify({
       text: JSON.stringify({
+        genre: {
+          primary: "fanfiction",
+          secondary: ["romance"],
+          confidence: 0.94,
+          evidence: "Персонажи публичных людей в вымышленном сюжете",
+        },
         characters: [{ name: "Анна", fullName: "Анна", unlockProgress: 0.1 }],
       }),
     }),
@@ -82,6 +88,13 @@ describe("Narra character analysis", () => {
       expect(systemPrompt).toContain(field);
     }
     expect(systemPrompt).toContain("экранизаци");
+    expect(systemPrompt).toContain("primary и secondary выбирай только из");
+    expect(systemPrompt).toContain("реальных публичных людей");
+    expect(store.setCharacters).toHaveBeenCalledWith(
+      book.id,
+      expect.any(Array),
+      expect.objectContaining({ primary: "fanfiction", secondary: ["romance"] }),
+    );
   });
 
   it("loads and bounds a fallback sample when chunks are unavailable", async () => {

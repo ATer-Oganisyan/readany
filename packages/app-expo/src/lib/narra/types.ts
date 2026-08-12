@@ -1,3 +1,5 @@
+import type { NarraGenreAnalysis } from "./genre-analysis";
+
 export type NarraGender = "male" | "female";
 
 export interface NarraPassport {
@@ -92,6 +94,8 @@ export interface NarraSummary {
 
 export interface NarraBookState {
   bookId: string;
+  /** Проверенная жанровая разметка из того же LLM-анализа, что и персонажи. */
+  genre?: NarraGenreAnalysis;
   characters: NarraCharacter[];
   memories: Record<string, string>;
   chats: Record<string, NarraChatMessage[]>;

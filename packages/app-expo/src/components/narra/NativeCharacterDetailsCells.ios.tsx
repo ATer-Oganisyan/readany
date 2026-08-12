@@ -17,7 +17,6 @@ import { Platform } from "react-native";
 import type { NativeCharacterDetailsCellsProps } from "./NativeCharacterDetailsCells.types";
 
 const WHITE_20 = "rgba(255,255,255,0.2)";
-const WHITE_40 = "rgba(255,255,255,0.4)";
 // Both Liquid Glass surfaces overdraw their layout bounds by 8 pt.
 const DETAILS_SECTION_GAP = spacingPixels[24] + spacingPixels[16];
 
@@ -37,7 +36,7 @@ function DetailsRow({
       <Text
         modifiers={[
           font({ family: interfaceFontFamily.regular, size: 13 }),
-          foregroundStyle(WHITE_40),
+          foregroundStyle({ type: "hierarchical", style: "primary" }),
         ]}
       >
         {label}

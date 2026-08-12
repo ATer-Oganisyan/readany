@@ -6,6 +6,7 @@ import type { Book } from "@readany/core/types";
 import { characterCountBucket, durationBucket } from "../analytics/contract";
 import {
   normalizeCharacterAnalysisResponse,
+  normalizeGenreAnalysisResponse,
   parseNarraStreamText,
 } from "./character-normalization";
 import { NarraServiceError, normalizeNarraError, reportNarraError } from "./errors";
@@ -115,13 +116,18 @@ async function runBookCharacterAnalysis(
             role: "system",
             content:
               "Ты анализируешь художественную книгу для Narra. Выдели до 6 главных персонажей. " +
-              'Верни только JSON: {"characters":[{"id":"latin-slug","name":"короткое имя",' +
+              'Верни только JSON: {"genre":{"primary":"fanfiction","secondary":["romance"],"confidence":0.94,"evidence":"краткое основание по тексту"},' +
+              '"characters":[{"id":"latin-slug","name":"короткое имя",' +
               '"fullName":"полное имя","stressedName":"имя с ударением","role":"роль","gender":"male|female",' +
               '"traits":["до 3 коротких черт"],"speechStyle":"манера речи","speechExamples":["2–3 реплики"],' +
               '"greeting":"приветствие читателю","appearanceChapter":1,"unlockFraction":0.0,' +
               '"appearancePrompt":"внешность одной фразой",' +
               '"passport":{"age":25,"build":"телосложение","hair":"волосы","eyes":"глаза",' +
               '"face":"черты лица","outfit":"одежда"}}]}. ' +
+              "Жанр определяй по самому тексту, а не только по названию и метаданным. " +
+              "primary и secondary выбирай только из: classic, manga, fanfiction, children, poetry, drama, mystery-thriller, science-fiction, adventure, fantasy, horror, romance, historical-fiction, biography-memoir, philosophy, psychology-self-help, business-economics, science-technology, history-politics, literary-fiction. " +
+              "Если текст использует персонажей, реальных публичных людей или мир уже существующего произведения в новом вымышленном сюжете, выбирай fanfiction основным жанром, даже если слово «фанфик» отсутствует. Manga выбирай для манги и произведений, явно построенных в традиции манги/аниме. " +
+              "confidence — число от 0 до 1, evidence — одно короткое основание без спойлеров. " +
               "appearancePrompt и passport — внешность строго по тексту книги: возраст и приметы бери из " +
               "прямых описаний, обращений и деталей повествования. Если возраст прямо не назван — оцени его " +
               "по тексту (положение, род занятий, как о герое говорят другие), а не по экранизациям и " +
@@ -160,6 +166,7 @@ async function runBookCharacterAnalysis(
       throw new NarraServiceError(normalized.code, normalized.message, error?.request_id);
     }
     const rawAnalysis = await responseText(response);
+    const genre = normalizeGenreAnalysisResponse(rawAnalysis);
     const characters = normalizeCharacterAnalysisResponse(rawAnalysis, {
       bookId: book.id,
       narratorPreference: useNarraStore.getState().narratorVoicePreference,
@@ -171,7 +178,7 @@ async function runBookCharacterAnalysis(
         `Narra found no characters in the response: ${rawAnalysis.slice(0, 800) || "<empty>"}`,
       );
     }
-    store.setCharacters(book.id, characters);
+    store.setCharacters(book.id, characters, genre);
     recordTelemetry("book_analysis_completed", {
       analysis_version: "v1",
       character_count_bucket: characterCountBucket(characters.length),
