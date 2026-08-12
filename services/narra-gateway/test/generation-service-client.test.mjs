@@ -58,6 +58,42 @@ test('generator client sends one idempotent request for an atomic character bund
   ])
 })
 
+test('generator client sends one bounded scan chunk with a stable idempotency key', async () => {
+  let request
+  const client = createGenerationServiceClient({
+    baseUrl: 'http://localhost:8790',
+    token: TOKEN,
+    production: false,
+    async fetchImpl(url, options) {
+      request = { url: String(url), body: JSON.parse(options.body) }
+      return new Response(JSON.stringify({ result: { observations: [] } }), { status: 200 })
+    }
+  })
+  const contextText = ' Анна вошла в комнату. '
+  assert.deepEqual(await client.scanBookChunk({
+    runId: 'run-1',
+    chunkId: 'chunk-2',
+    extractorVersion: 'book-scan-v1',
+    bookTitle: 'Книга',
+    bookAuthor: 'Автор',
+    contextText,
+    coreLocalStartOffset: 1,
+    coreLocalEndOffset: contextText.length - 1
+  }), { observations: [] })
+  assert.equal(request.url, 'http://localhost:8790/internal/v1/book-analysis/scan-chunk')
+  assert.deepEqual(request.body, {
+    idempotencyKey: 'run-1:scan:chunk-2:book-scan-v1',
+    runId: 'run-1',
+    chunkId: 'chunk-2',
+    extractorVersion: 'book-scan-v1',
+    bookTitle: 'Книга',
+    bookAuthor: 'Автор',
+    contextText,
+    coreLocalStartOffset: 1,
+    coreLocalEndOffset: contextText.length - 1
+  })
+})
+
 test('generator client rejects weak auth and unsafe production URLs', () => {
   assert.throws(() => createGenerationServiceClient({
     baseUrl: 'https://generator.example.com', token: 'short', production: true

@@ -165,3 +165,23 @@ test('catalog cover migration stores one verified presentation asset per edition
   assert.match(migration, /mime_type IN \('image\/jpeg', 'image\/png', 'image\/webp'\)/)
   assert.match(migration, /status IN \('staging', 'ready', 'failed'\)/)
 })
+
+test('parallel analysis migration isolates durable jobs and whole-book barriers', async () => {
+  const migration = await readFile(
+    new URL('../migrations/005_parallel_book_analysis.sql', import.meta.url),
+    'utf8'
+  )
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS book_analysis_runs/)
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS book_analysis_chunks/)
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS book_analysis_jobs/)
+  assert.match(migration, /UNIQUE \(run_id, stage, shard_key\)/)
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS book_analysis_observations/)
+  assert.match(migration, /UNIQUE \(run_id, chunk_id, extractor_version, observation_key\)/)
+  assert.match(migration, /observation_type IN \([\s\S]*entity_kind = 'character'/)
+  assert.match(migration, /observations may be inserted only by a running scan job/)
+  assert.match(migration, /REFERENCES book_analysis_observations\(run_id, id\)/)
+  assert.match(migration, /UNIQUE \(run_id, observation_id\)/)
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS book_analysis_snapshots/)
+  assert.match(migration, /analysis stage % is incomplete/)
+  assert.match(migration, /publish stage is incomplete/)
+})

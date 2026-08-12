@@ -113,6 +113,96 @@ test('internal generation service creates all three required bundle assets', asy
   assert.ok(lines.some((line) => line.includes('event="bundle.cached"')))
 })
 
+test('internal generation service gives the provider exactly one scan chunk', async () => {
+  const storage = memoryStorage()
+  let chatRequest
+  const contextText = ' Анна вошла в комнату. '
+  const service = createInternalGenerationService({
+    storage,
+    logger: { info() {}, error() {} },
+    async completeChat(input) {
+      chatRequest = input
+      const startOffset = contextText.indexOf('Анна')
+      const quote = 'Анна вошла в комнату.'
+      return JSON.stringify({
+        observations: [{
+          type: 'character_action',
+          entityKind: 'character',
+          entityCandidate: 'Анна',
+          relatedEntityCandidates: [],
+          fact: 'Анна вошла в комнату',
+          evidence: { quote, startOffset, endOffset: startOffset + quote.length },
+          confidence: 0.95
+        }]
+      })
+    },
+    async generatePortrait() { throw new Error('unused') },
+    async synthesizeSpeech() { throw new Error('unused') },
+    async generateIdleAnimation() { throw new Error('unused') }
+  })
+  const result = await service.scanBookChunk({
+    idempotencyKey: 'run-1:scan:chunk-1:book-scan-v1',
+    runId: 'run-1',
+    chunkId: 'chunk-1',
+    extractorVersion: 'book-scan-v1',
+    bookTitle: 'Книга',
+    bookAuthor: 'Автор',
+    contextText,
+    coreLocalStartOffset: 1,
+    coreLocalEndOffset: contextText.length - 1
+  })
+  assert.equal(result.observations.length, 1)
+  assert.equal(chatRequest.temperature, 0.1)
+  assert.equal(chatRequest.messages.length, 2)
+  assert.ok(chatRequest.messages[1].content.includes(contextText))
+  assert.equal(chatRequest.messages[1].content.includes('objectKey'), false)
+  assert.equal(chatRequest.messages[1].content.includes('normalized'), false)
+})
+
+test('internal generation service does not cache an ungrounded scan result', async () => {
+  const storage = memoryStorage()
+  let chatCalls = 0
+  const contextText = ' Анна вошла. '
+  const service = createInternalGenerationService({
+    storage,
+    logger: { info() {}, error() {} },
+    async completeChat() {
+      chatCalls += 1
+      return JSON.stringify({ observations: [{
+        type: 'character_action',
+        entityKind: 'character',
+        entityCandidate: 'Анна',
+        relatedEntityCandidates: [],
+        fact: 'Анна убежала',
+        evidence: { quote: 'Анна убежала.', startOffset: 1, endOffset: 5 },
+        confidence: 0.9
+      }] })
+    },
+    async generatePortrait() { throw new Error('unused') },
+    async synthesizeSpeech() { throw new Error('unused') },
+    async generateIdleAnimation() { throw new Error('unused') }
+  })
+  const request = {
+    idempotencyKey: 'run-2:scan:chunk-2:book-scan-v1',
+    runId: 'run-2',
+    chunkId: 'chunk-2',
+    extractorVersion: 'book-scan-v1',
+    bookTitle: 'Книга',
+    bookAuthor: '',
+    contextText,
+    coreLocalStartOffset: 1,
+    coreLocalEndOffset: contextText.length - 1
+  }
+  await assert.rejects(() => service.scanBookChunk(request), (error) =>
+    error.code === 'EVIDENCE_MISMATCH'
+  )
+  await assert.rejects(() => service.scanBookChunk(request), (error) =>
+    error.code === 'EVIDENCE_MISMATCH'
+  )
+  assert.equal(chatCalls, 2)
+  assert.equal(storage.objects.size, 0)
+})
+
 test('internal service auth rejects public bearer tokens and accepts only its own token', () => {
   const token = 's'.repeat(48)
   const auth = requireGenerationServiceToken(token)
@@ -130,14 +220,19 @@ test('internal service auth rejects public bearer tokens and accepts only its ow
   assert.equal(nextCalls, 1)
 })
 
-test('internal router exposes both worker endpoints', () => {
+test('internal router exposes all worker endpoints', () => {
   const router = createInternalGenerationRouter({
     token: 's'.repeat(48),
     service: {
       async generateBookMarkup() { return { ok: true } },
-      async generateCharacterBundle() { return { ok: true } }
+      async generateCharacterBundle() { return { ok: true } },
+      async scanBookChunk() { return { observations: [] } }
     }
   })
   const paths = router.stack.map((layer) => layer.route?.path).filter(Boolean)
-  assert.deepEqual(paths, ['/v1/book-markup', '/v1/character-bundles'])
+  assert.deepEqual(paths, [
+    '/v1/book-markup',
+    '/v1/character-bundles',
+    '/v1/book-analysis/scan-chunk'
+  ])
 })

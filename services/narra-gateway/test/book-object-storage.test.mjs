@@ -173,6 +173,28 @@ test('object storage refuses to buffer an oversized object', async () => {
   )
 })
 
+test('object storage reads one exact byte range for a scan worker', async () => {
+  let command
+  const expected = Buffer.from('hello')
+  const storage = createBookObjectStorage({
+    client: {
+      async send(candidate) {
+        command = candidate
+        return { ContentLength: expected.length, Body: expected }
+      }
+    },
+    bucket: 'readany-books'
+  })
+  const result = await storage.getBytesRange({
+    objectKey: 'analysis/run-1/normalized-text-v1.txt',
+    startByte: 10,
+    endByteExclusive: 15,
+    maxBytes: 10
+  })
+  assert.equal(result.bytes.toString(), 'hello')
+  assert.equal(command.input.Range, 'bytes=10-14')
+})
+
 test('object storage deletes generated materials in one explicit batch', async () => {
   let command
   const storage = createBookObjectStorage({

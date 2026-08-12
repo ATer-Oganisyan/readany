@@ -158,6 +158,44 @@ export function createBookObjectStorage({
       }
     },
 
+    async getBytesRange({
+      objectKey: rawObjectKey,
+      startByte,
+      endByteExclusive,
+      maxBytes = 64 * 1024 * 1024
+    }) {
+      const key = objectKey(rawObjectKey)
+      if (
+        !Number.isSafeInteger(startByte) || startByte < 0 ||
+        !Number.isSafeInteger(endByteExclusive) || endByteExclusive <= startByte
+      ) {
+        invalid('byte range is invalid')
+      }
+      const expectedBytes = endByteExclusive - startByte
+      if (
+        !Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > 512 * 1024 * 1024 ||
+        expectedBytes > maxBytes
+      ) {
+        invalid('object range exceeds the allowed read size')
+      }
+      const result = await client.send(new GetObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Range: `bytes=${startByte}-${endByteExclusive - 1}`
+      }))
+      const bytes = await responseBodyBuffer(result.Body, maxBytes)
+      if (bytes.byteLength !== expectedBytes) {
+        throw Object.assign(new Error('object storage returned an unexpected byte range'), {
+          code: 'STORAGE_RANGE_INTEGRITY'
+        })
+      }
+      return {
+        bytes,
+        mimeType: result.ContentType || 'application/octet-stream',
+        metadata: result.Metadata || {}
+      }
+    },
+
     async putBytes({ objectKey: rawObjectKey, bytes: rawBytes, mimeType }) {
       const key = objectKey(rawObjectKey)
       const bytes = Buffer.from(rawBytes)

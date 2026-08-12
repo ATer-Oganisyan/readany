@@ -59,6 +59,17 @@ export function createGenerationServiceClient({
   }
 
   return {
+    scanBookChunk(input) {
+      return post('internal/v1/book-analysis/scan-chunk', {
+        idempotencyKey: [
+          input.runId,
+          'scan',
+          input.chunkId,
+          input.extractorVersion
+        ].join(':'),
+        ...input
+      })
+    },
     generateBookMarkup(input) {
       return post('internal/v1/book-markup', {
         idempotencyKey: `${input.bookEditionId}:book-markup:${input.analysisVersion}`,

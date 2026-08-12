@@ -58,7 +58,84 @@ function safeZipPath(base, relative) {
   return resolved
 }
 
-function epubText(bytes) {
+function sectionTitle(markup, fallback) {
+  const heading = String(markup).match(/<(?:h1|h2|title)\b[^>]*>([\s\S]*?)<\/(?:h1|h2|title)>/i)?.[1]
+  const normalized = heading ? markupToText(heading) : ''
+  return (normalized || fallback || '').slice(0, 500)
+}
+
+function joinStructuredSections(rawSections) {
+  const textParts = []
+  const sections = []
+  let offset = 0
+  const readable = rawSections.filter((section) => section.text)
+  for (const [index, section] of readable.entries()) {
+    const startOffset = offset
+    textParts.push(section.text)
+    offset += section.text.length
+    if (index < readable.length - 1) {
+      textParts.push('\n\n')
+      offset += 2
+    }
+    sections.push({
+      key: section.key,
+      title: section.title || '',
+      startOffset,
+      endOffset: offset
+    })
+  }
+  return { text: textParts.join(''), sections }
+}
+
+function wholeDocument(text, key = 'document', title = '') {
+  return {
+    text,
+    sections: [{ key, title, startOffset: 0, endOffset: text.length }]
+  }
+}
+
+function sectionsFromOffsets(text, candidates, prefix) {
+  const byOffset = new Map()
+  for (const candidate of candidates) {
+    if (
+      Number.isSafeInteger(candidate.startOffset) &&
+      candidate.startOffset > 0 &&
+      candidate.startOffset < text.length &&
+      !byOffset.has(candidate.startOffset)
+    ) {
+      byOffset.set(candidate.startOffset, String(candidate.title || '').trim().slice(0, 500))
+    }
+  }
+  const starts = [0, ...byOffset.keys()].sort((left, right) => left - right)
+  return starts.map((startOffset, index) => ({
+    key: `${prefix}:${index + 1}`,
+    title: byOffset.get(startOffset) || (index === 0 && starts.length > 1 ? 'Начало' : ''),
+    startOffset,
+    endOffset: starts[index + 1] ?? text.length
+  }))
+}
+
+function headingSections(text, prefix) {
+  const candidates = []
+  const heading = /^(?:глава|часть|книга|пролог|эпилог)(?:\s+[\p{L}\p{N}IVXLCDMivxlcdm._-]+)?(?:[.:\s—-].*)?$/gimu
+  for (const match of text.matchAll(heading)) {
+    candidates.push({ startOffset: match.index, title: match[0] })
+  }
+  return sectionsFromOffsets(text, candidates, prefix)
+}
+
+function pdfSections(text) {
+  const candidates = []
+  for (const match of text.matchAll(/\f+/g)) {
+    const startOffset = match.index + match[0].length
+    if (startOffset < text.length) {
+      candidates.push({ startOffset, title: `Страница ${candidates.length + 2}` })
+    }
+  }
+  return sectionsFromOffsets(text, candidates, 'pdf-page')
+}
+
+function epubStructuredText(bytes) {
   let entries
   try {
     entries = unzipSync(new Uint8Array(bytes), {
@@ -105,9 +182,16 @@ function epubText(bytes) {
   if (!orderedNames.length) {
     orderedNames.push(...entryNames.filter((name) => EPUB_TEXT_ENTRY.test(name)).sort())
   }
-  const text = orderedNames.map((name) => markupToText(strFromU8(entries[name]))).filter(Boolean).join('\n\n')
-  if (!text) throw generationError('BOOK_PARSE_FAILED', 'EPUB contains no readable text')
-  return text
+  const result = joinStructuredSections(orderedNames.map((name) => {
+    const markup = strFromU8(entries[name])
+    return {
+      key: `epub:${name}`,
+      title: sectionTitle(markup, path.posix.basename(name, path.posix.extname(name))),
+      text: markupToText(markup)
+    }
+  }))
+  if (!result.text) throw generationError('BOOK_PARSE_FAILED', 'EPUB contains no readable text')
+  return result
 }
 
 function processOutput(command, args, input, signal) {
@@ -140,28 +224,50 @@ function processOutput(command, args, input, signal) {
   })
 }
 
-export async function extractBookText({ bytes: rawBytes, format, mimeType, signal }) {
+export async function extractStructuredBookText({ bytes: rawBytes, format, mimeType, signal }) {
   const bytes = Buffer.from(rawBytes)
   if (!bytes.byteLength) throw generationError('BOOK_PARSE_FAILED', 'book source is empty')
   const normalizedFormat = String(format || '').toLowerCase()
   const normalizedMime = String(mimeType || '').split(';')[0].trim().toLowerCase()
-  let text
+  let result
   if (normalizedFormat === 'epub' || normalizedMime === 'application/epub+zip') {
-    text = epubText(bytes)
+    result = epubStructuredText(bytes)
   } else if (normalizedFormat === 'pdf' || normalizedMime === 'application/pdf') {
-    text = (await processOutput('pdftotext', ['-enc', 'UTF-8', '-', '-'], bytes, signal)).trim()
+    const text = (await processOutput('pdftotext', ['-enc', 'UTF-8', '-', '-'], bytes, signal)).trim()
+    result = { text, sections: pdfSections(text) }
   } else if (normalizedFormat === 'fb2' || /(?:xml|fb2)/.test(normalizedMime)) {
-    text = markupToText(bytes.toString('utf8'))
+    const markup = bytes.toString('utf8')
+    const text = markupToText(markup)
+    const sections = headingSections(text, 'fb2-section')
+    result = {
+      text,
+      sections: sections.length > 1
+        ? sections
+        : wholeDocument(text, 'fb2:document', sectionTitle(markup, '')).sections
+    }
   } else if (normalizedFormat === 'txt' || normalizedMime.startsWith('text/')) {
-    text = bytes.toString('utf8').replace(/\r/g, '').trim()
+    const text = bytes.toString('utf8').replace(/\r/g, '').trim()
+    const sections = headingSections(text, 'text-section')
+    result = {
+      text,
+      sections: sections.length > 1 ? sections : wholeDocument(text, 'text:document').sections
+    }
   } else {
     throw generationError('BOOK_FORMAT_UNSUPPORTED', `unsupported book format: ${normalizedFormat || normalizedMime}`)
   }
-  if (!text) throw generationError('BOOK_PARSE_FAILED', 'book contains no readable text')
-  if (Buffer.byteLength(text, 'utf8') > MAX_EXTRACTED_BYTES) {
+  if (!result.text) throw generationError('BOOK_PARSE_FAILED', 'book contains no readable text')
+  if (Buffer.byteLength(result.text, 'utf8') > MAX_EXTRACTED_BYTES) {
     throw generationError('BOOK_TOO_LARGE', 'extracted text exceeds 64 MiB')
   }
-  return text
+  return {
+    text: result.text,
+    textLength: result.text.length,
+    sections: result.sections
+  }
+}
+
+export async function extractBookText(input) {
+  return (await extractStructuredBookText(input)).text
 }
 
 export function representativeTextSelection(text, maxChars = 42_000) {
