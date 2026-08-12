@@ -26,6 +26,7 @@ const COVER_HEIGHT = Math.round(CARD_WIDTH * (41 / 28));
 interface ReadingNowShelfProps {
   books: Book[];
   edgeInset: number;
+  catalogCardWidth: number;
   onDelete: (bookId: string, options?: { preserveData?: boolean }) => void;
   onOpen: (book: Book) => void;
 }
@@ -33,6 +34,7 @@ interface ReadingNowShelfProps {
 export const ReadingNowShelf = memo(function ReadingNowShelf({
   books,
   edgeInset,
+  catalogCardWidth,
   onDelete,
   onOpen,
 }: ReadingNowShelfProps) {
@@ -125,6 +127,9 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
                     <BookCoverTypography
                       title={book.meta.title}
                       width={CARD_WIDTH}
+                      referenceWidth={catalogCardWidth}
+                      titleFontSize={15}
+                      leftInsetAdjustment={2}
                       showText={showCoverTypography}
                       bottomAccessory={
                         progressPercent > 0 ? (
