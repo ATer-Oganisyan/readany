@@ -4,16 +4,23 @@ import type { NarraCharacter } from "@/lib/narra/types";
 import { ReaderCharacterCard } from "@/screens/reader/ReaderCharacterCard";
 import { spacing } from "@/styles/theme";
 import { interfaceFontFamily, serifTextFontFamily } from "@deslop/primitives/native";
+import { NavigationContainer } from "@react-navigation/native";
+import {
+  type NativeStackScreenProps,
+  createNativeStackNavigator,
+} from "@react-navigation/native-stack";
 import { useEffect, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export type ReaderCharacterCardPreviewTheme = "light" | "sepia" | "dark";
+export type ReaderCharacterAvatarState = "ready" | "generating";
 
 interface ReaderCharacterCardPreviewProps {
   readerTheme?: ReaderCharacterCardPreviewTheme;
   fontSize?: number;
   initiallyOpen?: boolean;
+  avatarState?: ReaderCharacterAvatarState;
 }
 
 const READER_COLORS = {
@@ -35,6 +42,11 @@ const READER_COLORS = {
 } as const;
 
 const STORYBOOK_BOOK_ID = "storybook-anna-karenina";
+type ProfilePreviewStackParamList = {
+  Reader: undefined;
+  CharacterProfile: undefined;
+};
+const ProfilePreviewStack = createNativeStackNavigator<ProfilePreviewStackParamList>();
 const bundledAnna = getBundledCatalogCharactersById("anna-karenina")?.[0];
 
 if (!bundledAnna) {
@@ -49,16 +61,98 @@ const STORYBOOK_CHARACTER: NarraCharacter = {
   speechExamples: [],
 };
 
+const STORYBOOK_CHARACTER_WITHOUT_AVATAR: NarraCharacter = {
+  ...STORYBOOK_CHARACTER,
+  portraitAssetId: undefined,
+  portraitUri: undefined,
+  portraitUriOverridesAsset: false,
+};
+
+function ProfilePreviewReader({
+  navigation,
+}: NativeStackScreenProps<ProfilePreviewStackParamList, "Reader">) {
+  useEffect(() => {
+    navigation.navigate("CharacterProfile");
+  }, [navigation]);
+
+  return (
+    <View
+      style={[styles.profilePreviewBackground, { backgroundColor: READER_COLORS.light.background }]}
+    >
+      <InterfaceText style={[styles.eyebrow, { color: READER_COLORS.light.muted }]}>
+        ЛЕВ ТОЛСТОЙ
+      </InterfaceText>
+      <Text style={[styles.chapterTitle, { color: READER_COLORS.light.foreground }]}>
+        Анна Каренина
+      </Text>
+    </View>
+  );
+}
+
+export function NarraCharacterProfileGeneratingPreview() {
+  return (
+    <NavigationContainer>
+      <ProfilePreviewStack.Navigator
+        initialRouteName="Reader"
+        screenOptions={{ headerShown: false }}
+      >
+        <ProfilePreviewStack.Screen name="Reader" component={ProfilePreviewReader} />
+        <ProfilePreviewStack.Screen
+          name="CharacterProfile"
+          options={{
+            presentation: "formSheet",
+            animation: "slide_from_bottom",
+            headerShown: false,
+            sheetAllowedDetents: "fitToContents",
+            sheetInitialDetentIndex: 0,
+            sheetGrabberVisible: true,
+            sheetExpandsWhenScrolledToEdge: false,
+            sheetResizeAnimationEnabled: true,
+            contentStyle: { backgroundColor: "#2C2219" },
+          }}
+        >
+          {() => (
+            <View style={styles.profilePreviewCompactContent}>
+              <ReaderCharacterCard
+                embedded
+                visible
+                character={STORYBOOK_CHARACTER_WITHOUT_AVATAR}
+                bookId={STORYBOOK_BOOK_ID}
+                onClose={() => undefined}
+                onOpenChat={() => undefined}
+                portraitLoadingPreview
+              />
+            </View>
+          )}
+        </ProfilePreviewStack.Screen>
+      </ProfilePreviewStack.Navigator>
+    </NavigationContainer>
+  );
+}
+
 export function ReaderCharacterCardPreview({
   readerTheme = "light",
   fontSize = 21,
   initiallyOpen = false,
+  avatarState = "ready",
 }: ReaderCharacterCardPreviewProps) {
   const insets = useSafeAreaInsets();
   const colors = READER_COLORS[readerTheme];
   const [visible, setVisible] = useState(initiallyOpen);
   const [noticeVisible, setNoticeVisible] = useState(false);
   const lineHeight = Math.round(fontSize * 1.58);
+  const character = useMemo<NarraCharacter>(
+    () =>
+      avatarState === "generating"
+        ? {
+            ...STORYBOOK_CHARACTER,
+            portraitAssetId: undefined,
+            portraitUri: undefined,
+            portraitUriOverridesAsset: false,
+          }
+        : STORYBOOK_CHARACTER,
+    [avatarState],
+  );
 
   useEffect(() => {
     setVisible(initiallyOpen);
@@ -160,10 +254,11 @@ export function ReaderCharacterCardPreview({
 
       <ReaderCharacterCard
         visible={visible}
-        character={STORYBOOK_CHARACTER}
+        character={character}
         bookId={STORYBOOK_BOOK_ID}
         onClose={() => setVisible(false)}
         onOpenChat={openChat}
+        portraitLoadingPreview={avatarState === "generating"}
       />
     </View>
   );
@@ -229,5 +324,14 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontFamily: interfaceFontFamily.semibold,
     fontSize: 13,
+  },
+  profilePreviewBackground: {
+    flex: 1,
+    alignItems: "center",
+    paddingTop: 120,
+    gap: spacing.sm,
+  },
+  profilePreviewCompactContent: {
+    backgroundColor: "#2C2219",
   },
 });

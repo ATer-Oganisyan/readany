@@ -61,14 +61,9 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
     [book],
   );
   const characters = storedCharacters.length > 0 ? storedCharacters : (bundledCharacters ?? []);
-  // Открытые — в порядке значимости из анализа; запертые — по порогу открытия
-  const orderedCharacters = useMemo(() => {
+  const visibleCharacters = useMemo(() => {
     const progress = book?.progress ?? 0;
-    const unlocked = characters.filter((character) => isCharacterUnlocked(progress, character));
-    const locked = characters
-      .filter((character) => !isCharacterUnlocked(progress, character))
-      .sort((a, b) => a.unlockProgress - b.unlockProgress);
-    return [...unlocked, ...locked];
+    return characters.filter((character) => isCharacterUnlocked(progress, character));
   }, [book?.progress, characters]);
   const busy = analyzing || Boolean(analysisStage);
 
@@ -247,37 +242,16 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
         </CharacterChatAvatar>
       ),
     },
-    ...orderedCharacters.map((character): CharacterChatListItem => {
+    ...visibleCharacters.map((character): CharacterChatListItem => {
       const portraitBusy = portraitLoading === character.id;
-      const unlocked = isCharacterUnlocked(book?.progress ?? 0, character);
-      const unlockPercent = Math.round(Math.min(1, Math.max(0, character.unlockProgress)) * 100);
-      const lockedSubtitle = character.appearanceChapter
-        ? t("narra.appearsInChapter", "появится в главе {{chapter}}", {
-            chapter: character.appearanceChapter,
-          })
-        : t("narra.unlocksAtPercent", "откроется на {{percent}}%", {
-            percent: unlockPercent,
-          });
-      const accessibilityLabel = unlocked
-        ? t("narra.openCharacterChat", "Открыть чат с {{character}}", {
-            character: character.name,
-          })
-        : character.appearanceChapter
-          ? t("narra.lockedCharacterChapterLabel", "{{character}} появится в главе {{chapter}}", {
-              character: character.name,
-              chapter: character.appearanceChapter,
-            })
-          : t("narra.lockedCharacterLabel", "{{character}} откроется на {{percent}}%", {
-              character: character.name,
-              percent: unlockPercent,
-            });
 
       return {
         key: character.id,
-        accessibilityLabel,
-        title: unlocked ? character.fullName : character.name,
-        subtitle: unlocked ? character.role : lockedSubtitle,
-        dimmed: !unlocked,
+        accessibilityLabel: t("narra.openCharacterChat", "Открыть чат с {{character}}", {
+          character: character.name,
+        }),
+        title: character.fullName || character.name,
+        subtitle: character.role,
         onPress: () => openCharacterChat(character),
         avatar: (
           <CharacterChatAvatar

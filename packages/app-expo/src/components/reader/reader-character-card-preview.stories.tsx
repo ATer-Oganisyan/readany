@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-native";
 import {
+  NarraCharacterProfileGeneratingPreview,
   ReaderCharacterCardPreview,
   type ReaderCharacterCardPreviewTheme,
 } from "./reader-character-card-preview";
@@ -11,11 +12,13 @@ const meta = {
     readerTheme: "light",
     fontSize: 21,
     initiallyOpen: false,
+    avatarState: "ready",
   },
   argTypes: {
     readerTheme: { control: "select", options: ["light", "sepia", "dark"] },
     fontSize: { control: { type: "range", min: 16, max: 34, step: 1 } },
     initiallyOpen: { control: "boolean" },
+    avatarState: { control: "select", options: ["ready", "generating"] },
   },
   parameters: { layout: "fullscreen" },
 } satisfies Meta<typeof ReaderCharacterCardPreview>;
@@ -27,6 +30,10 @@ export const НажатиеНаИмя: Story = {};
 
 export const КарточкаОткрыта: Story = {
   args: { initiallyOpen: true },
+};
+
+export const АватарГенерируется: Story = {
+  render: () => <NarraCharacterProfileGeneratingPreview />,
 };
 
 function themeStory(readerTheme: ReaderCharacterCardPreviewTheme): Story {

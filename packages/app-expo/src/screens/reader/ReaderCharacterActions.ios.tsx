@@ -40,13 +40,16 @@ export function ReaderCharacterActions(props: ReaderCharacterActionsProps) {
       onPress: props.onToggleVoice,
       disabled: !props.canSample,
     },
-    {
+  ];
+
+  if (props.showRegenerate) {
+    actions.push({
       label: props.regenerateLabel,
       symbol: props.regenerating ? "hourglass" : "arrow.clockwise",
       onPress: props.onRegenerate,
       disabled: props.regenerating,
-    },
-  ];
+    });
+  }
 
   const buttons = (
     <HStack spacing={16} alignment="center">

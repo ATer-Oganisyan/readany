@@ -23,16 +23,18 @@ export function ReaderCharacterActions(props: ReaderCharacterActionsProps) {
         onPress={props.onToggleVoice}
         style={styles.button}
       />
-      <NativeButton
-        label={props.regenerateLabel}
-        icon="refresh"
-        loading={props.regenerating}
-        disabled={props.regenerating}
-        variant="secondary"
-        size="large"
-        onPress={props.onRegenerate}
-        style={styles.button}
-      />
+      {props.showRegenerate ? (
+        <NativeButton
+          label={props.regenerateLabel}
+          icon="refresh"
+          loading={props.regenerating}
+          disabled={props.regenerating}
+          variant="secondary"
+          size="large"
+          onPress={props.onRegenerate}
+          style={styles.button}
+        />
+      ) : null}
     </View>
   );
 }

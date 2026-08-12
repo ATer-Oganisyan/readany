@@ -8,6 +8,7 @@ export interface ReaderCharacterActionsProps {
   onRegenerate: () => void;
   canSample: boolean;
   regenerating: boolean;
+  showRegenerate: boolean;
   voiceState: "idle" | "loading" | "playing";
   isDark: boolean;
   foregroundColor: string;

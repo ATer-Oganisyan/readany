@@ -1,11 +1,12 @@
 import { Text } from "@/components/ui/Typography";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
+import { hasCharacterPortrait } from "@/lib/narra/character-portrait";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { ReaderCharacterCard } from "@/screens/reader/ReaderCharacterCard";
 import { useNarraStore } from "@/stores";
 import { type ThemeColors, fontSize, spacing, useTheme } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useMemo } from "react";
+import { useLayoutEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, View } from "react-native";
 
@@ -19,6 +20,19 @@ export function NarraCharacterProfileScreen({ route, navigation }: Props) {
   const character = useNarraStore((state) =>
     state.books[bookId]?.characters.find((item) => item.id === characterId),
   );
+  const portraitReady = Boolean(character && hasCharacterPortrait(character));
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      contentStyle: {
+        backgroundColor: portraitReady ? colors.background : "#2C2219",
+      },
+      sheetAllowedDetents: portraitReady ? [0.78, 1] : "fitToContents",
+      sheetInitialDetentIndex: 0,
+      sheetExpandsWhenScrolledToEdge: portraitReady,
+      sheetResizeAnimationEnabled: true,
+    });
+  }, [colors.background, navigation, portraitReady]);
   const openChat = () => {
     if (openedFromChat) {
       navigation.goBack();
@@ -43,7 +57,7 @@ export function NarraCharacterProfileScreen({ route, navigation }: Props) {
   }
 
   return (
-    <View collapsable={false} style={styles.container}>
+    <View collapsable={false} style={[styles.container, !portraitReady && styles.compactContainer]}>
       <ReaderCharacterCard
         embedded
         visible
@@ -60,6 +74,7 @@ export function NarraCharacterProfileScreen({ route, navigation }: Props) {
 const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
+    compactContainer: { flex: 0, backgroundColor: "#2C2219" },
     emptyState: {
       flex: 1,
       alignItems: "center",

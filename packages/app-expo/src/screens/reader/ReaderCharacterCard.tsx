@@ -58,6 +58,8 @@ interface ReaderCharacterCardProps {
   /** Контент без собственного Modal — для системного native-stack formSheet. */
   embedded?: boolean;
   showActions?: boolean;
+  /** Storybook-only loading state without starting a real image request. */
+  portraitLoadingPreview?: boolean;
   /** Переход в ридер книги из заглушки запертого героя («Продолжить чтение»). */
   onContinueReading?: () => void;
 }
@@ -212,6 +214,7 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
       onContinueReading,
       embedded = false,
       showActions = true,
+      portraitLoadingPreview = false,
     },
     ref,
   ) {
@@ -229,9 +232,10 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
         ? state.books[bookId]?.characters.find((item) => item.id === character.id)
         : undefined,
     );
-    const liveCharacter = storedCharacter ?? character;
+    const liveCharacter = portraitLoadingPreview ? character : (storedCharacter ?? character);
     const unlocked = liveCharacter ? isCharacterUnlocked(bookProgress, liveCharacter) : true;
     const [portraitLoading, setPortraitLoading] = useState(false);
+    const portraitBusy = portraitLoadingPreview || portraitLoading;
     const portraitAttemptsRef = useRef(new Set<string>());
     const [voiceState, setVoiceState] = useState<VoiceSampleState>("idle");
     const [nameFit, setNameFit] = useState<{
@@ -243,6 +247,7 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
     const voiceRequestRef = useRef(0);
 
     const portraitUri = resolveCharacterPortraitUri(liveCharacter);
+    const portraitPending = embedded && !portraitUri;
     const [portraitBackgroundColor, setPortraitBackgroundColor] = useState(
       portraitUri
         ? (portraitBackgroundCache.get(portraitUri) ?? DEFAULT_PORTRAIT_BACKGROUND)
@@ -301,7 +306,7 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
     }, [visible, characterId]);
 
     const generatePortrait = (force: boolean) => {
-      if (!character || portraitLoading) return;
+      if (!character || portraitBusy) return;
       setPortraitLoading(true);
       const target = force
         ? { ...character, portraitAssetId: undefined, portraitUri: undefined }
@@ -324,7 +329,14 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
     // Портрет по требованию — тот же механизм, что и в NarraCharactersScreen;
     // для запертого героя не генерируем (антиспойлер и лишний расход).
     useEffect(() => {
-      if (!visible || !unlocked || !character || hasCharacterPortrait(character)) return;
+      if (
+        portraitLoadingPreview ||
+        !visible ||
+        !unlocked ||
+        !character ||
+        hasCharacterPortrait(character)
+      )
+        return;
       if (portraitAttemptsRef.current.has(character.id)) return;
       portraitAttemptsRef.current.add(character.id);
       setPortraitLoading(true);
@@ -332,7 +344,7 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
         .then((uri) => updateCharacter(bookId, character.id, { portraitUri: uri }))
         .catch((error) => reportNarraError("character_portrait_reader_card", error))
         .finally(() => setPortraitLoading(false));
-    }, [visible, unlocked, character, bookId, updateCharacter]);
+    }, [visible, unlocked, character, bookId, portraitLoadingPreview, updateCharacter]);
 
     if (!character || !liveCharacter) return null;
 
@@ -399,7 +411,7 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
             character={liveCharacter}
             style={styles.portraitImage}
             fallback={
-              portraitLoading ? (
+              portraitBusy ? (
                 <ActivityIndicator color={colors.primary} />
               ) : (
                 <Text style={styles.portraitLetter}>
@@ -414,7 +426,7 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
               backgroundColor={portraitBackgroundColor}
             />
           ) : null}
-          {portraitUri && !portraitLoading && !embedded ? (
+          {portraitUri && !portraitBusy && !embedded ? (
             <View style={styles.portraitButtonsRow}>
               <Pressable
                 accessibilityRole="button"
@@ -426,7 +438,7 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
               </Pressable>
             </View>
           ) : null}
-          {portraitLoading && portraitUri ? (
+          {portraitBusy && portraitUri ? (
             <View style={styles.portraitOverlay}>
               <ActivityIndicator color={colors.background} />
             </View>
@@ -438,7 +450,11 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
     const characterDetails = (
       <View
         collapsable={false}
-        style={[styles.characterSection, embedded && styles.embeddedCharacterSection]}
+        style={[
+          styles.characterSection,
+          embedded && !portraitPending && styles.embeddedCharacterSection,
+          portraitPending && styles.embeddedPendingCharacterSection,
+        ]}
       >
         <View style={[styles.characterInfo, embedded && styles.embeddedCharacterInfo]}>
           {embedded ? (
@@ -483,7 +499,8 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
                   onToggleVoice={toggleVoiceSample}
                   onRegenerate={() => generatePortrait(true)}
                   canSample={canSample}
-                  regenerating={portraitLoading}
+                  regenerating={portraitBusy}
+                  showRegenerate={Boolean(portraitUri)}
                   voiceState={voiceState}
                   isDark={portraitForeground.isDark}
                   foregroundColor={portraitForeground.primary}
@@ -539,6 +556,7 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
         style={[
           styles.sheet,
           embedded && styles.embedded,
+          portraitPending && styles.embeddedPending,
           { paddingBottom: embedded ? 0 : (insets.bottom || spacing.md) + spacing.md },
         ]}
       >
@@ -576,7 +594,9 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
           </View>
         ) : (
           <>
-            {embedded ? (
+            {portraitPending ? (
+              <View style={styles.embeddedPendingContent}>{characterDetails}</View>
+            ) : embedded ? (
               <ScrollView
                 style={styles.embeddedDetailsScroll}
                 contentInsetAdjustmentBehavior="never"
@@ -607,7 +627,8 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
                   onToggleVoice={toggleVoiceSample}
                   onRegenerate={() => generatePortrait(true)}
                   canSample={canSample}
-                  regenerating={portraitLoading}
+                  regenerating={portraitBusy}
+                  showRegenerate={Boolean(portraitUri)}
                   voiceState={voiceState}
                   isDark={isDark}
                   foregroundColor={colors.foreground}
@@ -659,6 +680,14 @@ const makeStyles = (colors: ThemeColors) =>
       paddingTop: 0,
       borderTopLeftRadius: 0,
       borderTopRightRadius: 0,
+    },
+    embeddedPending: {
+      flex: 0,
+      alignSelf: "stretch",
+      backgroundColor: DEFAULT_PORTRAIT_BACKGROUND,
+    },
+    embeddedPendingContent: {
+      alignSelf: "stretch",
     },
     embeddedDetailsScroll: {
       flex: 1,
@@ -747,7 +776,6 @@ const makeStyles = (colors: ThemeColors) =>
       color: colors.foreground,
       fontFamily: serifCondensedFontFamily.regular,
       fontSize: largeTitleFontSize,
-      fontWeight: "400",
       lineHeight: largeTitleLineHeight,
       textAlign: "center",
     },
@@ -781,6 +809,12 @@ const makeStyles = (colors: ThemeColors) =>
       paddingTop: spacing.xl,
       paddingBottom: 40,
       zIndex: 1,
+    },
+    embeddedPendingCharacterSection: {
+      minHeight: 0,
+      // Reserve the native grabber area, then keep 20 pt before the heading.
+      paddingTop: spacing.xxl + spacing.md,
+      paddingBottom: spacing.xl,
     },
     embeddedCharacterInfo: {
       zIndex: 1,

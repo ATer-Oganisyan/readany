@@ -13,17 +13,16 @@ export function NativeCharacterDetailsCells({
   isDark,
 }: NativeCharacterDetailsCellsProps) {
   const primaryColor = isDark ? "rgba(255,255,255,0.96)" : "rgba(0,0,0,0.9)";
-  const secondaryColor = primaryColor;
 
   return (
     <View style={[styles.group, { backgroundColor: cellBackgroundColor }]}>
       <View style={styles.row}>
-        <Text style={[styles.label, { color: secondaryColor }]}>{bioLabel}</Text>
+        <Text style={[styles.label, { color: primaryColor }]}>{bioLabel}</Text>
         <Text style={[styles.value, { color: primaryColor }]}>{bio}</Text>
       </View>
       <View style={styles.divider} />
       <View style={styles.row}>
-        <Text style={[styles.label, { color: secondaryColor }]}>{characterLabel}</Text>
+        <Text style={[styles.label, { color: primaryColor }]}>{characterLabel}</Text>
         <Text style={[styles.value, { color: primaryColor }]}>{character}</Text>
       </View>
     </View>
@@ -44,6 +43,7 @@ const styles = StyleSheet.create({
   },
   label: {
     ...subtitleTypography,
+    opacity: 0.6,
   },
   value: {
     ...bodyTypography,

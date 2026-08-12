@@ -9,6 +9,7 @@ import {
   frame,
   glassEffect,
   lineLimit,
+  opacity,
   overlay,
   padding,
   shapes,
@@ -37,6 +38,7 @@ function DetailsRow({
         modifiers={[
           font({ family: interfaceFontFamily.regular, size: 13 }),
           foregroundStyle({ type: "hierarchical", style: "primary" }),
+          opacity(0.6),
         ]}
       >
         {label}

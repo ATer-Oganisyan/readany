@@ -60,7 +60,7 @@ export function NativeCharacterDetailsCells({
   isDark,
 }: NativeCharacterDetailsCellsProps) {
   const primaryColor = isDark ? "rgba(255,255,255,0.96)" : "rgba(0,0,0,0.9)";
-  const secondaryColor = primaryColor;
+  const secondaryColor = isDark ? "rgba(255,255,255,0.6)" : "rgba(0,0,0,0.6)";
 
   return (
     <Host

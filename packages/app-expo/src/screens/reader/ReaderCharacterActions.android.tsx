@@ -18,11 +18,15 @@ export function ReaderCharacterActions(props: ReaderCharacterActionsProps) {
       onPress: props.onToggleVoice,
       enabled: props.canSample,
     },
-    {
-      icon: props.regenerating ? "hourglass_empty" : "refresh",
-      onPress: props.onRegenerate,
-      enabled: !props.regenerating,
-    },
+    ...(props.showRegenerate
+      ? [
+          {
+            icon: props.regenerating ? "hourglass_empty" : "refresh",
+            onPress: props.onRegenerate,
+            enabled: !props.regenerating,
+          },
+        ]
+      : []),
   ];
 
   return (
