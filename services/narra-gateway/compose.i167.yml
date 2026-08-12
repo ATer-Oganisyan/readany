@@ -1,5 +1,52 @@
 name: ${NARRA_COMPOSE_PROJECT:-narra}
 
+x-book-analysis-database-environment: &book-analysis-database-environment
+  NODE_ENV: production
+  DATABASE_URL: "postgresql://${NARRA_POSTGRES_USER:-readany}:${NARRA_POSTGRES_PASSWORD:?NARRA_POSTGRES_PASSWORD is required}@postgres.railway.internal:5432/${NARRA_POSTGRES_DB:-readany}"
+  DATABASE_SSL_MODE: disable
+
+x-book-analysis-generator-environment: &book-analysis-generator-environment
+  GENERATOR_BASE_URL: http://gateway.railway.internal:8787
+  GENERATOR_SERVICE_TOKEN: ${GENERATOR_SERVICE_TOKEN:?GENERATOR_SERVICE_TOKEN is required}
+  GENERATOR_TIMEOUT_MS: ${BOOK_ANALYSIS_GENERATOR_TIMEOUT_MS:-600000}
+
+x-book-analysis-storage-environment: &book-analysis-storage-environment
+  BOOK_STORAGE_BUCKET: ${NARRA_STORAGE_BUCKET:-narra-books}
+  BOOK_STORAGE_REGION: us-east-1
+  BOOK_STORAGE_ENDPOINT: http://minio.railway.internal:9000
+  BOOK_STORAGE_FORCE_PATH_STYLE: "true"
+  BOOK_STORAGE_ACCESS_KEY_ID: ${NARRA_STORAGE_ACCESS_KEY_ID:-narra-gateway}
+  BOOK_STORAGE_SECRET_ACCESS_KEY: ${NARRA_STORAGE_SECRET_ACCESS_KEY:?NARRA_STORAGE_SECRET_ACCESS_KEY is required}
+
+x-book-analysis-worker: &book-analysis-worker
+  profiles: ["book-analysis-shadow"]
+  image: ${NARRA_GATEWAY_IMAGE:?NARRA_GATEWAY_IMAGE must contain an immutable image tag}
+  healthcheck:
+    disable: true
+  depends_on:
+    postgres:
+      condition: service_healthy
+    gateway:
+      condition: service_healthy
+  init: true
+  restart: unless-stopped
+  stop_grace_period: 30s
+  read_only: true
+  tmpfs:
+    - /tmp:size=64m,mode=1777
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  pids_limit: 128
+  mem_limit: 1g
+  cpus: 1.0
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "5"
+
 services:
   gateway:
     image: ${NARRA_GATEWAY_IMAGE:?NARRA_GATEWAY_IMAGE must contain an immutable image tag}
@@ -198,6 +245,42 @@ services:
       options:
         max-size: 10m
         max-file: "5"
+
+  book-analysis-prepare:
+    <<: *book-analysis-worker
+    command: ["node", "book-analysis-worker.mjs"]
+    environment:
+      <<: [*book-analysis-database-environment, *book-analysis-storage-environment]
+
+  book-analysis-scan:
+    <<: *book-analysis-worker
+    command: ["node", "book-analysis-scan-worker-runner.mjs"]
+    environment:
+      <<: [*book-analysis-database-environment, *book-analysis-storage-environment, *book-analysis-generator-environment]
+
+  book-analysis-resolve:
+    <<: *book-analysis-worker
+    command: ["node", "book-analysis-resolve-worker-runner.mjs"]
+    environment:
+      <<: *book-analysis-database-environment
+
+  book-analysis-synthesize:
+    <<: *book-analysis-worker
+    command: ["node", "book-analysis-stage-worker-runner.mjs", "synthesize"]
+    environment:
+      <<: [*book-analysis-database-environment, *book-analysis-generator-environment]
+
+  book-analysis-validate:
+    <<: *book-analysis-worker
+    command: ["node", "book-analysis-stage-worker-runner.mjs", "validate"]
+    environment:
+      <<: [*book-analysis-database-environment, *book-analysis-storage-environment]
+
+  book-analysis-publish:
+    <<: *book-analysis-worker
+    command: ["node", "book-analysis-stage-worker-runner.mjs", "publish"]
+    environment:
+      <<: *book-analysis-database-environment
 
 volumes:
   gateway-data:

@@ -58,7 +58,50 @@ function runRow(row) {
     normalizedTextHash: row.normalized_text_hash ?? undefined,
     textLength: row.text_length == null ? undefined : Number(row.text_length),
     sections: row.sections ?? undefined,
-    lastErrorCode: row.last_error_code ?? undefined
+    lastErrorCode: row.last_error_code ?? undefined,
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+    updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
+    startedAt: row.started_at instanceof Date ? row.started_at.toISOString() : row.started_at ?? undefined,
+    completedAt: row.completed_at instanceof Date
+      ? row.completed_at.toISOString()
+      : row.completed_at ?? undefined
+  }
+}
+
+function analysisSourceRow(row) {
+  if (!row) return null
+  return {
+    id: row.id,
+    scope: row.scope,
+    catalogKey: row.catalog_key ?? undefined,
+    contentSha256: row.content_sha256,
+    title: row.title,
+    author: row.author,
+    format: row.format,
+    status: row.status,
+    source: {
+      objectKey: row.object_key,
+      mimeType: row.mime_type,
+      byteSize: Number(row.byte_size),
+      contentHash: row.content_hash
+    }
+  }
+}
+
+function publicationRow(row, { includeData = true } = {}) {
+  if (!row) return null
+  return {
+    id: row.id,
+    runId: row.run_id,
+    bookEditionId: row.book_edition_id,
+    artifactId: row.artifact_id,
+    channel: row.channel,
+    analysisVersion: row.analysis_version,
+    contentHash: row.content_hash,
+    publishedAt: row.published_at instanceof Date
+      ? row.published_at.toISOString()
+      : row.published_at,
+    ...(includeData ? { data: row.data } : {})
   }
 }
 
@@ -266,6 +309,23 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
   }
 
   return {
+    async getReadyAnalysisSource(bookEditionId) {
+      const result = await pool.query(
+        `SELECT edition.id, edition.scope, edition.catalog_key,
+                edition.content_sha256, edition.title, edition.author,
+                edition.format, edition.status, file.object_key, file.mime_type,
+                file.byte_size, file.content_hash
+         FROM book_editions AS edition
+         JOIN book_files AS file
+           ON file.book_edition_id = edition.id
+          AND file.status = 'ready'
+          AND file.content_hash = edition.content_sha256
+         WHERE edition.id = $1`,
+        [validateIdentifier(bookEditionId, 'bookEditionId')]
+      )
+      return analysisSourceRow(result.rows[0])
+    },
+
     async ensureAnalysisRun({
       bookEditionId,
       inputHash,
@@ -290,7 +350,9 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
            SELECT $1, $2, edition.id, $4, $5, $3
            FROM book_editions AS edition
            JOIN book_files AS file
-             ON file.book_edition_id = edition.id AND file.status = 'ready'
+             ON file.book_edition_id = edition.id
+            AND file.status = 'ready'
+            AND file.content_hash = edition.content_sha256
            WHERE edition.id = $6 AND edition.content_sha256 = $3
            ON CONFLICT (book_edition_id, input_hash, pipeline_version, prompt_version)
            DO NOTHING
@@ -342,6 +404,70 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
         [runId]
       )
       return runRow(result.rows[0])
+    },
+
+    async getAnalysisRunDetails(runId) {
+      const safeRunId = validateIdentifier(runId, 'runId')
+      const run = await pool.query(
+        `SELECT analysis.*, edition.title, edition.author, edition.scope,
+                edition.catalog_key
+         FROM book_analysis_runs AS analysis
+         JOIN book_editions AS edition ON edition.id = analysis.book_edition_id
+         WHERE analysis.id = $1`,
+        [safeRunId]
+      )
+      if (!run.rows[0]) return null
+      const [jobs, publication] = await Promise.all([
+        pool.query(
+          `SELECT stage, status, count(*)::integer AS count
+           FROM book_analysis_jobs
+           WHERE run_id = $1
+           GROUP BY stage, status
+           ORDER BY stage, status`,
+          [safeRunId]
+        ),
+        pool.query(
+          `SELECT * FROM book_analysis_publications
+           WHERE run_id = $1 AND channel = 'shadow'`,
+          [safeRunId]
+        )
+      ])
+      const jobCounts = {}
+      for (const row of jobs.rows) {
+        const stage = jobCounts[row.stage] ?? {
+          total: 0,
+          queued: 0,
+          running: 0,
+          ready: 0,
+          failed: 0,
+          cancelled: 0
+        }
+        stage[row.status] = Number(row.count)
+        stage.total += Number(row.count)
+        jobCounts[row.stage] = stage
+      }
+      return {
+        run: runRow(run.rows[0]),
+        book: {
+          id: run.rows[0].book_edition_id,
+          scope: run.rows[0].scope,
+          catalogKey: run.rows[0].catalog_key ?? undefined,
+          title: run.rows[0].title,
+          author: run.rows[0].author
+        },
+        jobs: jobCounts,
+        publication: publicationRow(publication.rows[0], { includeData: false })
+      }
+    },
+
+    async getShadowAnalysisPublication(runId) {
+      const result = await pool.query(
+        `SELECT publication.*
+         FROM book_analysis_publications AS publication
+         WHERE publication.run_id = $1 AND publication.channel = 'shadow'`,
+        [validateIdentifier(runId, 'runId')]
+      )
+      return publicationRow(result.rows[0])
     },
 
     async claimAnalysisJob(workerId, {

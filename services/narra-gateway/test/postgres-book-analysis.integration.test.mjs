@@ -93,6 +93,10 @@ test('PostgreSQL analysis workers claim different scan shards and reclaim an exp
       [bookEditionId, `parallel/${bookEditionId}/source`, hash]
     )
     const repository = createPostgresBookAnalysisRepository(pool)
+    const source = await repository.getReadyAnalysisSource(bookEditionId)
+    assert.equal(source.id, bookEditionId)
+    assert.equal(source.contentSha256, hash)
+    assert.equal(source.source.contentHash, hash)
     const ensured = await repository.ensureAnalysisRun({ bookEditionId, inputHash: hash })
     assert.equal(ensured.created, true)
     const runId = ensured.run.id
@@ -391,6 +395,17 @@ test('PostgreSQL analysis workers claim different scan shards and reclaim an exp
       shadow_publications: 1,
       visible_v2_markups: 0
     })
+    const details = await repository.getAnalysisRunDetails(runId)
+    assert.equal(details.run.status, 'ready')
+    assert.equal(details.book.id, bookEditionId)
+    assert.equal(details.jobs.scan.ready, 2)
+    assert.equal(details.jobs.synthesize.ready, 3)
+    assert.equal(details.publication.channel, 'shadow')
+    assert.equal('data' in details.publication, false)
+    const shadowResult = await repository.getShadowAnalysisPublication(runId)
+    assert.equal(shadowResult.runId, runId)
+    assert.equal(shadowResult.channel, 'shadow')
+    assert.deepEqual(shadowResult.data.markup, markup)
     const existingObservation = resolveInput.observations[0]
     await assert.rejects(
       pool.query(

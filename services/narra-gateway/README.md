@@ -74,6 +74,41 @@ sudo docker compose --env-file /srv/narra-stagging/compose.env \
   logs -f --tail=200 gateway book-markup-worker
 ```
 
+### Parallel book analysis shadow pipeline
+
+The v3 analysis is operator-only and does not replace the reader-visible v2
+markup. Start one idempotent run for a verified stored book directly in the
+Gateway container, inspect its stage/job counters, and read the final shadow
+publication:
+
+```bash
+docker compose exec gateway npm run book-analysis -- \
+  start --book-edition-id <book-edition-uuid>
+docker compose exec gateway npm run book-analysis -- \
+  status --run-id <analysis-run-uuid>
+docker compose exec gateway npm run book-analysis -- \
+  result --run-id <analysis-run-uuid>
+```
+
+The isolated `book-analysis-shadow` profile has one service per pipeline stage.
+Each service claims only its own PostgreSQL jobs, so replicas can be changed
+independently without changing the Gateway or the mobile contract. For a test
+environment, a typical initial allocation is:
+
+```bash
+docker compose --profile book-analysis-shadow up -d \
+  --scale book-analysis-prepare=1 \
+  --scale book-analysis-scan=3 \
+  --scale book-analysis-resolve=1 \
+  --scale book-analysis-synthesize=3 \
+  --scale book-analysis-validate=1 \
+  --scale book-analysis-publish=1
+```
+
+The profile is disabled by default. Starting its workers does not enqueue books;
+only the explicit `start` command does that. The resulting publication remains
+in the immutable `shadow` channel and is not exposed by the public book API.
+
 Stable `event` values such as `markup.chunk_selected`, `markup.published`,
 `bundle.asset_ready`, `job.retry_scheduled` and `job.failed` can be filtered with
 ordinary log tools.
