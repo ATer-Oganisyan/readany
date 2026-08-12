@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  BOOK_ANALYSIS_EXTRACTOR_VERSION,
   BOOK_ANALYSIS_MARKUP_VERSION,
+  BOOK_ANALYSIS_PROMPT_VERSION,
   BOOK_ANALYSIS_SCHEMA_VERSION,
   assertBookAnalysisRunTransition,
   normalizeBookAnalysisObservation,
@@ -11,6 +13,11 @@ import {
 } from '../book-analysis-contracts.mjs'
 
 const evidenceId = '11111111-1111-4111-8111-111111111111'
+
+test('scan prompt and extractor share the cache-isolating v3 version', () => {
+  assert.equal(BOOK_ANALYSIS_PROMPT_VERSION, 'book-scan-v3')
+  assert.equal(BOOK_ANALYSIS_EXTRACTOR_VERSION, BOOK_ANALYSIS_PROMPT_VERSION)
+})
 
 test('scan observations require exact evidence coordinates', () => {
   const observation = normalizeBookAnalysisObservation({

@@ -154,7 +154,19 @@ test('internal generation service gives the provider exactly one scan chunk', as
   assert.equal(result.observations.length, 1)
   assert.equal(Object.hasOwn(chatRequest, 'temperature'), false)
   assert.equal(chatRequest.messages.length, 2)
+  assert.ok(chatRequest.messages[0].content.includes(
+    'только если evidence.startOffset находится внутри CORE_LOCAL_RANGE'
+  ))
+  assert.ok(chatRequest.messages[0].content.includes(
+    'текст за пределами диапазона используй только как контекст'
+  ))
+  assert.ok(chatRequest.messages[0].content.includes(
+    'Последовательно просмотри весь CORE_LOCAL_RANGE от начала до конца'
+  ))
   assert.ok(chatRequest.messages[1].content.includes(contextText))
+  assert.ok(chatRequest.messages[1].content.includes(
+    `CORE_LOCAL_RANGE: 1-${contextText.length - 1}`
+  ))
   assert.equal(chatRequest.messages[1].content.includes('objectKey'), false)
   assert.equal(chatRequest.messages[1].content.includes('normalized'), false)
 })

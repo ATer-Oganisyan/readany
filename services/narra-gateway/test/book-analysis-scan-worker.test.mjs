@@ -15,7 +15,7 @@ function scanInput(text = 'OVERLAP Анна вошла в комнату. Бор
     runId: 'run-1',
     title: 'Книга',
     author: 'Автор',
-    extractorVersion: 'book-scan-v2',
+    extractorVersion: 'book-scan-v3',
     normalizedTextObjectKey: 'analysis/run-1/normalized-text-v1.txt',
     chunk: {
       id: 'chunk-1',
