@@ -11,6 +11,7 @@ vi.mock("expo-file-system/legacy", () => ({
   moveAsync: vi.fn(),
 }));
 vi.mock("@/lib/ai/narra-gateway-fetch", () => ({ narraGatewayRequest: vi.fn() }));
+vi.mock("../ai/openrouter-image", () => ({ generateOpenRouterImageWithFallback: vi.fn() }));
 vi.mock("@/lib/analytics/telemetry", () => ({ recordTelemetry: vi.fn() }));
 vi.mock("@/stores", () => ({
   useLibraryStore: { getState: () => ({ books: [] }) },
@@ -18,6 +19,7 @@ vi.mock("@/stores", () => ({
 
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
+import { generateOpenRouterImageWithFallback } from "../ai/openrouter-image";
 import { ART_STYLE, PROMPT_CHAR_LIMIT } from "./art-style";
 import {
   buildNarraSpeechSsml,
@@ -108,29 +110,26 @@ describe("portrait prompt", () => {
     expect(longPrompt.length).toBeLessThanOrEqual(PROMPT_CHAR_LIMIT);
   });
 
-  it("routes character portraits through Narra Gateway", async () => {
-    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
-      new Response(JSON.stringify({ image: "AQID" }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
-    );
+  it("routes character portraits directly through OpenRouter", async () => {
+    vi.mocked(generateOpenRouterImageWithFallback).mockResolvedValueOnce({
+      base64: "AQID",
+      mimeType: "image/jpeg",
+    });
 
     await expect(generateCharacterPortrait("book-1", anna)).resolves.toContain(
-      "book-1-anna-portrait.png",
+      "book-1-anna-portrait.jpg",
     );
-    expect(narraGatewayRequest).toHaveBeenCalledWith("/v2/media/images", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: expect.any(String),
-    });
-    const [, request] = vi.mocked(narraGatewayRequest).mock.calls[0] ?? [];
-    expect(JSON.parse(String(request?.body))).toMatchObject({
-      prompt: expect.stringContaining("Анна Каренина"),
-      width: 768,
-      height: 1024,
-      engine: "openrouter",
-    });
+    expect(generateOpenRouterImageWithFallback).toHaveBeenCalledWith(
+      {
+        model: "openai/gpt-image-2",
+        prompt: expect.stringContaining("Анна Каренина"),
+        aspectRatio: "3:4",
+        quality: "high",
+        outputFormat: "jpeg",
+        outputCompression: 88,
+      },
+      "google/gemini-2.5-flash-image",
+    );
   });
 });
 
@@ -227,32 +226,28 @@ describe("scene image prompt", () => {
 });
 
 describe("book cover generation", () => {
-  it("routes covers through Narra Gateway and records telemetry", async () => {
-    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          job_id: "job-1",
-          status: "completed",
-          image: "aGVsbG8=",
-          mime_type: "image/jpeg",
-        }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      ),
-    );
+  it("routes covers directly through OpenRouter and records telemetry", async () => {
+    vi.mocked(generateOpenRouterImageWithFallback).mockResolvedValueOnce({
+      base64: "aGVsbG8=",
+      mimeType: "image/jpeg",
+    });
 
     await expect(
       generateBookCoverImage("front cover artwork", { requestId: "request-1" }),
     ).resolves.toEqual({
       base64: "aGVsbG8=",
       mimeType: "image/jpeg",
-      jobId: "job-1",
+      jobId: "request-1",
     });
 
-    expect(narraGatewayRequest).toHaveBeenCalledWith("/v2/media/cover/jobs", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ prompt: "front cover artwork", request_id: "request-1" }),
-    });
+    expect(generateOpenRouterImageWithFallback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: "openai/gpt-image-2",
+        prompt: "front cover artwork",
+        aspectRatio: "2:3",
+      }),
+      "google/gemini-2.5-flash-image",
+    );
     expect(recordTelemetry).toHaveBeenCalledWith(
       "media_job_enqueued",
       expect.objectContaining({
@@ -268,12 +263,9 @@ describe("book cover generation", () => {
     );
   });
 
-  it("surfaces the Gateway error and reports a failed cover job", async () => {
-    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
-      new Response(JSON.stringify({ error: "Лимит на сегодня исчерпан" }), {
-        status: 429,
-        headers: { "content-type": "application/json" },
-      }),
+  it("surfaces the OpenRouter error and reports a failed cover job", async () => {
+    vi.mocked(generateOpenRouterImageWithFallback).mockRejectedValueOnce(
+      new Error("Лимит на сегодня исчерпан"),
     );
 
     await expect(
@@ -284,43 +276,6 @@ describe("book cover generation", () => {
       "media_job_failed",
       expect.objectContaining({ job_type: "cover", origin: "background" }),
     );
-  });
-
-  it("polls an accepted durable job until the result is ready", async () => {
-    vi.useFakeTimers();
-    const onJob = vi.fn();
-    vi.mocked(narraGatewayRequest)
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({ job_id: "job-1", status: "queued", poll_after_ms: 250 }),
-          { status: 202, headers: { "content-type": "application/json" } },
-        ),
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            job_id: "job-1",
-            status: "completed",
-            image: "aGVsbG8=",
-            mime_type: "image/jpeg",
-          }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        ),
-      );
-
-    try {
-      const result = generateBookCoverImage("front cover artwork", {
-        requestId: "request-1",
-        onJob,
-      });
-      await vi.advanceTimersByTimeAsync(250);
-
-      await expect(result).resolves.toMatchObject({ jobId: "job-1", base64: "aGVsbG8=" });
-      expect(narraGatewayRequest).toHaveBeenNthCalledWith(2, "/v2/media/cover/jobs/job-1");
-      expect(onJob).toHaveBeenCalledTimes(2);
-    } finally {
-      vi.useRealTimers();
-    }
   });
 });
 

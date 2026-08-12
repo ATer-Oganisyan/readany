@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/narra/media", () => ({
-  acknowledgeBookCoverJob: vi.fn(),
   generateBookCoverImage: vi.fn(),
 }));
 vi.mock("@readany/core/utils", () => ({ generateId: () => "request-1" }));
@@ -20,13 +19,9 @@ vi.mock("./cover-job-repository", () => ({
   updateLocalCoverJob: vi.fn(),
 }));
 
-import { acknowledgeBookCoverJob, generateBookCoverImage } from "@/lib/narra/media";
-import {
-  deleteLocalCoverJob,
-  getLocalCoverJob,
-  getOrCreateLocalCoverJob,
-} from "./cover-job-repository";
+import { generateBookCoverImage } from "@/lib/narra/media";
 import coverGenerationConfig from "./cover-generation-config.json";
+import { deleteLocalCoverJob, getOrCreateLocalCoverJob } from "./cover-job-repository";
 import {
   acknowledgeGeneratedBookCover,
   coverPrompt,
@@ -149,7 +144,7 @@ describe("generateBookCover", () => {
     );
   });
 
-  it("resumes the persisted server job after a JS reload", async () => {
+  it("reuses the persisted local prompt after a JS reload", async () => {
     vi.mocked(getOrCreateLocalCoverJob).mockResolvedValueOnce({
       bookId: "book-1",
       requestId: "request-1",
@@ -168,63 +163,14 @@ describe("generateBookCover", () => {
 
     await generateBookCover({ bookId: "book-1", title: "Changed title" });
 
-    expect(generateBookCoverImage).toHaveBeenCalledWith(
-      "persisted prompt",
-      expect.objectContaining({ requestId: "request-1", jobId: "job-existing" }),
-    );
-  });
-
-  it("recreates only an expired server job", async () => {
-    vi.mocked(getOrCreateLocalCoverJob)
-      .mockResolvedValueOnce({
-        bookId: "book-1",
-        requestId: "old-request",
-        jobId: "expired-job",
-        prompt: "old prompt",
-        status: "running",
-        nextPollAt: 0,
-        createdAt: 1,
-        updatedAt: 1,
-      })
-      .mockResolvedValueOnce({
-        bookId: "book-1",
-        requestId: "request-1",
-        prompt: "new prompt",
-        status: "submitting",
-        nextPollAt: 0,
-        createdAt: 2,
-        updatedAt: 2,
-      });
-    vi.mocked(generateBookCoverImage)
-      .mockRejectedValueOnce(Object.assign(new Error("not found"), { status: 404 }))
-      .mockResolvedValueOnce({
-        base64: btoa("jpeg-bytes"),
-        mimeType: "image/jpeg",
-        jobId: "new-job",
-      });
-
-    await expect(
-      generateBookCover({ bookId: "book-1", title: "Книга" }),
-    ).resolves.toMatchObject({ jobId: "new-job" });
-    expect(deleteLocalCoverJob).toHaveBeenCalledWith("book-1");
-    expect(generateBookCoverImage).toHaveBeenCalledTimes(2);
-  });
-
-  it("acks and deletes a durable result after local persistence", async () => {
-    vi.mocked(getLocalCoverJob).mockResolvedValueOnce({
-      bookId: "book-1",
+    expect(generateBookCoverImage).toHaveBeenCalledWith("persisted prompt", {
       requestId: "request-1",
-      jobId: "job-1",
-      prompt: "prompt",
-      status: "completed",
-      nextPollAt: 0,
-      createdAt: 1,
-      updatedAt: 1,
     });
+  });
 
+  it("deletes the local intent after local persistence", async () => {
     await acknowledgeGeneratedBookCover("book-1");
 
-    expect(acknowledgeBookCoverJob).toHaveBeenCalledWith("job-1");
     expect(deleteLocalCoverJob).toHaveBeenCalledWith("book-1");
   });
 });

@@ -7,6 +7,7 @@ interface PerspectiveBookProps {
   width: number;
   height: number;
   cover: ReactNode;
+  coverEffects?: boolean;
   footer?: ReactNode;
   onPress: () => void;
   disabled?: boolean;
@@ -18,6 +19,7 @@ export function PerspectiveBook({
   width,
   height,
   cover,
+  coverEffects = true,
   footer,
   onPress,
   disabled = false,
@@ -34,49 +36,55 @@ export function PerspectiveBook({
       style={[{ width }, disabled && styles.disabled]}
     >
       <View style={[styles.book, { width, height }]}>
-        <View style={[styles.cover, { width, height }]}>
+        <View
+          style={[styles.cover, !coverEffects && styles.coverWithoutEffects, { width, height }]}
+        >
           {cover}
 
-          <LinearGradient
-            colors={[
-              "rgba(255,255,255,0)",
-              "rgba(255,255,255,0)",
-              "rgba(255,255,255,0.25)",
-              "rgba(255,255,255,0)",
-              "rgba(255,255,255,0)",
-              "rgba(255,255,255,0.22)",
-              "rgba(255,255,255,0)",
-            ]}
-            locations={[0, 0.12, 0.2925, 0.505, 0.7525, 0.91, 1]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            pointerEvents="none"
-            style={styles.spine}
-          />
-          <LinearGradient
-            colors={[
-              "rgba(0,0,0,0.03)",
-              "rgba(0,0,0,0.10)",
-              "rgba(0,0,0,0)",
-              "rgba(0,0,0,0.02)",
-              "rgba(0,0,0,0.20)",
-              "rgba(0,0,0,0.50)",
-              "rgba(0,0,0,0.15)",
-              "rgba(0,0,0,0)",
-            ]}
-            locations={[0, 0.12, 0.3, 0.5, 0.735, 0.7525, 0.8525, 1]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            pointerEvents="none"
-            style={styles.spine}
-          />
-          <LinearGradient
-            colors={["rgba(255,255,255,0.13)", "rgba(255,255,255,0)", "rgba(0,0,0,0.18)"]}
-            locations={[0, 0.52, 1]}
-            pointerEvents="none"
-            style={StyleSheet.absoluteFill}
-          />
-          <View pointerEvents="none" style={styles.coverFinish} />
+          {coverEffects ? (
+            <>
+              <LinearGradient
+                colors={[
+                  "rgba(255,255,255,0)",
+                  "rgba(255,255,255,0)",
+                  "rgba(255,255,255,0.25)",
+                  "rgba(255,255,255,0)",
+                  "rgba(255,255,255,0)",
+                  "rgba(255,255,255,0.22)",
+                  "rgba(255,255,255,0)",
+                ]}
+                locations={[0, 0.12, 0.2925, 0.505, 0.7525, 0.91, 1]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                pointerEvents="none"
+                style={styles.spine}
+              />
+              <LinearGradient
+                colors={[
+                  "rgba(0,0,0,0.03)",
+                  "rgba(0,0,0,0.10)",
+                  "rgba(0,0,0,0)",
+                  "rgba(0,0,0,0.02)",
+                  "rgba(0,0,0,0.20)",
+                  "rgba(0,0,0,0.50)",
+                  "rgba(0,0,0,0.15)",
+                  "rgba(0,0,0,0)",
+                ]}
+                locations={[0, 0.12, 0.3, 0.5, 0.735, 0.7525, 0.8525, 1]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                pointerEvents="none"
+                style={styles.spine}
+              />
+              <LinearGradient
+                colors={["rgba(255,255,255,0.13)", "rgba(255,255,255,0)", "rgba(0,0,0,0.18)"]}
+                locations={[0, 0.52, 1]}
+                pointerEvents="none"
+                style={StyleSheet.absoluteFill}
+              />
+              <View pointerEvents="none" style={styles.coverFinish} />
+            </>
+          ) : null}
         </View>
       </View>
       {footer}
@@ -97,6 +105,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     borderCurve: "continuous",
     backgroundColor: "#1f1f1f",
+  },
+  coverWithoutEffects: {
+    backgroundColor: "transparent",
   },
   spine: {
     position: "absolute",

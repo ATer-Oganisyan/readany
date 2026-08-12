@@ -9,7 +9,7 @@ const REQUEST_TIMEOUT_MS = 180_000;
 const MAX_REQUEST_ATTEMPTS = 3;
 const RETRY_DELAYS_MS = [750, 2_000] as const;
 
-class OpenRouterImageRequestError extends Error {
+export class OpenRouterImageRequestError extends Error {
   constructor(
     message: string,
     readonly status: number,
@@ -19,7 +19,7 @@ class OpenRouterImageRequestError extends Error {
   }
 }
 
-function isRetryableImageError(cause: unknown): boolean {
+export function isRetryableImageError(cause: unknown): boolean {
   if (cause instanceof OpenRouterImageRequestError) {
     return cause.status === 408 || cause.status === 429 || cause.status >= 500;
   }
@@ -42,6 +42,7 @@ export interface OpenRouterImageRequest {
   outputFormat: "jpeg" | "png";
   quality?: "high" | "medium" | "low";
   outputCompression?: number;
+  maxAttempts?: number;
 }
 
 interface OpenRouterImageResponse {
@@ -60,7 +61,11 @@ export async function generateOpenRouterImage(
   const apiKey = getBundledApiKey(bundledOpenRouterEndpoint);
   const baseUrl = bundledOpenRouterEndpoint.baseUrl.replace(/\/+$/, "");
   let lastError: unknown;
-  for (let attempt = 0; attempt < MAX_REQUEST_ATTEMPTS; attempt += 1) {
+  const maxAttempts = Math.max(
+    1,
+    Math.min(MAX_REQUEST_ATTEMPTS, request.maxAttempts ?? MAX_REQUEST_ATTEMPTS),
+  );
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
@@ -102,7 +107,7 @@ export async function generateOpenRouterImage(
       };
     } catch (cause) {
       lastError = cause;
-      if (attempt === MAX_REQUEST_ATTEMPTS - 1 || !isRetryableImageError(cause)) throw cause;
+      if (attempt === maxAttempts - 1 || !isRetryableImageError(cause)) throw cause;
       await wait(RETRY_DELAYS_MS[attempt] ?? RETRY_DELAYS_MS.at(-1) ?? 0);
     } finally {
       clearTimeout(timeout);
@@ -110,4 +115,17 @@ export async function generateOpenRouterImage(
   }
 
   throw lastError;
+}
+
+/** Direct mobile fallback: try the primary once, then retry through Nano Banana. */
+export async function generateOpenRouterImageWithFallback(
+  request: OpenRouterImageRequest,
+  fallbackModel: string,
+): Promise<OpenRouterGeneratedImage> {
+  try {
+    return await generateOpenRouterImage({ ...request, maxAttempts: 1 });
+  } catch (error) {
+    if (!isRetryableImageError(error)) throw error;
+    return generateOpenRouterImage({ ...request, model: fallbackModel });
+  }
 }

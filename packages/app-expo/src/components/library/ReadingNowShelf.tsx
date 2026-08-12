@@ -10,7 +10,7 @@ import { BlurView } from "expo-blur";
  * ReadingNowShelf — секция «Читаю сейчас» в библиотеке: нативный горизонтальный
  * ряд книг, отсортированных по lastOpenedAt.
  */
-import { memo, useMemo } from "react";
+import { memo, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Image, ScrollView, StyleSheet, View } from "react-native";
 import { BookCardActionSheet } from "./BookCardActionSheet";
@@ -44,6 +44,7 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
     () => new Set(generatingCoverBookIds),
     [generatingCoverBookIds],
   );
+  const [failedCoverKeys, setFailedCoverKeys] = useState<Set<string>>(() => new Set());
 
   const coverItems = useMemo(
     () => books.map((book) => ({ bookId: book.id, coverUrl: book.meta.coverUrl ?? null })),
@@ -66,23 +67,39 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
       >
         {books.map((book) => {
           const coverUri = covers.get(book.id);
+          const coverKey = `${book.id}:${book.meta.coverUrl ?? ""}`;
+          const hasUsableCover = Boolean(coverUri) && !failedCoverKeys.has(coverKey);
           const progressPercent = Math.round(Math.max(0, Math.min(1, book.progress ?? 0)) * 100);
-          const bundledCatalogBook = coverUri
+          const bundledCatalogBook = hasUsableCover
             ? undefined
             : findBundledCatalogBookByTitle(book.meta.title);
-          const showCoverTypography = shouldRenderCoverTypography(book.id, book.meta.coverUrl);
+          const showCoverTypography =
+            !hasUsableCover || shouldRenderCoverTypography(book.id, book.meta.coverUrl);
           return (
             <BookCardActionSheet key={book.id} book={book} onDelete={onDelete} onOpen={onOpen}>
               <PerspectiveBook
                 width={CARD_WIDTH}
                 height={COVER_HEIGHT}
+                coverEffects={false}
                 onPress={() => onOpen(book)}
                 accessibilityLabel={book.meta.title}
                 accessibilityHint={t("notes.openBook", "Открыть книгу")}
                 cover={
                   <View style={s.coverCanvas}>
-                    {coverUri ? (
-                      <Image source={{ uri: coverUri }} style={s.coverImage} resizeMode="cover" />
+                    {hasUsableCover && coverUri ? (
+                      <Image
+                        source={{ uri: coverUri }}
+                        style={s.coverImage}
+                        resizeMode="cover"
+                        onError={() =>
+                          setFailedCoverKeys((current) => {
+                            if (current.has(coverKey)) return current;
+                            const next = new Set(current);
+                            next.add(coverKey);
+                            return next;
+                          })
+                        }
+                      />
                     ) : bundledCatalogBook ? (
                       <Image
                         source={bundledCatalogBook.coverAssetModule}
@@ -94,9 +111,11 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
                     )}
                     <BookCoverTypography
                       title={book.meta.title}
+                      author={book.meta.author}
                       width={CARD_WIDTH}
                       referenceWidth={catalogCardWidth}
                       titleFontSize={15}
+                      authorFontSize={10}
                       leftInsetAdjustment={2}
                       showText={showCoverTypography}
                       bottomAccessory={

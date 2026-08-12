@@ -1,9 +1,6 @@
 import { isLegacyGeneratedBookCover } from "@/lib/book/cover-display";
-import {
-  acknowledgeGeneratedBookCover,
-  generateBookCover,
-} from "@/lib/book/generate-book-cover";
 import { deleteLocalCoverJob, getLocalCoverJob } from "@/lib/book/cover-job-repository";
+import { acknowledgeGeneratedBookCover, generateBookCover } from "@/lib/book/generate-book-cover";
 import {
   generateBookIdentityWithGemini,
   isSuspiciousBookTitle,
@@ -373,7 +370,7 @@ async function ensureGeneratedBookCover(
     throw new Error("Generated cover was not persisted in the library database");
   }
   await acknowledgeGeneratedBookCover(book.id, generated.jobId);
-  console.log(`[Library] Generated Narra gateway cover for "${currentBook.meta.title}"`);
+  console.log(`[Library] Generated OpenRouter cover for "${currentBook.meta.title}"`);
 }
 
 function queueGeneratedBookCover(
@@ -387,7 +384,7 @@ function queueGeneratedBookCover(
   const task = coverGenerationQueue
     .then(() => ensureGeneratedBookCover(book, context))
     .catch((error) => {
-      console.warn(`[Library] Narra gateway could not generate a cover for ${book.id}:`, error);
+      console.warn(`[Library] OpenRouter could not generate a cover for ${book.id}:`, error);
     })
     .finally(() => {
       coverGenerationInFlight.delete(book.id);

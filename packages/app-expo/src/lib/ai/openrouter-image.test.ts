@@ -10,7 +10,7 @@ vi.mock("@/config/bundled-ai", () => ({
 vi.mock("expo/fetch", () => ({ fetch: vi.fn() }));
 
 import { fetch } from "expo/fetch";
-import { generateOpenRouterImage } from "./openrouter-image";
+import { generateOpenRouterImage, generateOpenRouterImageWithFallback } from "./openrouter-image";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -98,5 +98,36 @@ describe("generateOpenRouterImage", () => {
 
     await expect(result).resolves.toEqual({ base64: "AQID", mimeType: "image/jpeg" });
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("falls back to Nano Banana after a transient primary failure", async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: { message: "Primary unavailable" } }), {
+          status: 503,
+          headers: { "content-type": "application/json" },
+        }) as never,
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: [{ b64_json: "AQID" }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }) as never,
+      );
+
+    await expect(
+      generateOpenRouterImageWithFallback(
+        {
+          model: "openai/gpt-image-2",
+          prompt: "cover",
+          aspectRatio: "2:3",
+          outputFormat: "jpeg",
+        },
+        "google/gemini-2.5-flash-image",
+      ),
+    ).resolves.toEqual({ base64: "AQID", mimeType: "image/jpeg" });
+
+    const secondRequest = vi.mocked(fetch).mock.calls[1]?.[1];
+    expect(JSON.parse(String(secondRequest?.body)).model).toBe("google/gemini-2.5-flash-image");
   });
 });

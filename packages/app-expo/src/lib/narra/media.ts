@@ -1,6 +1,7 @@
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import * as FileSystem from "expo-file-system/legacy";
+import { generateOpenRouterImageWithFallback } from "../ai/openrouter-image";
 import { resolveCoverGenreProfile } from "../book/cover-genre";
 import { findBundledCatalogBookDefinitionByTitle } from "../catalog/bundled-book-definitions";
 import { budgetPrompt } from "./art-style";
@@ -15,6 +16,8 @@ const MEDIA_DIR = `${FileSystem.documentDirectory}narra-media`;
 const MEDIA_PATH_MARKER = "/Documents/narra-media/";
 let speechFileSequence = 0;
 const portraitRequests = new Map<string, Promise<string>>();
+const OPENROUTER_IMAGE_MODEL = "openai/gpt-image-2";
+const OPENROUTER_IMAGE_FALLBACK_MODEL = "google/gemini-2.5-flash-image";
 
 type MediaJobType = "image" | "cover" | "tts" | "avatar" | "video";
 type MediaJobOrigin = "user" | "background";
@@ -323,23 +326,20 @@ async function generateCharacterPortraitRequest(
   character: NarraCharacter,
 ): Promise<string> {
   const book = portraitBookContext(bookId);
-  const response = await narraGatewayRequest("/v2/media/images", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
+  const generated = await generateOpenRouterImageWithFallback(
+    {
+      model: OPENROUTER_IMAGE_MODEL,
       prompt: portraitPrompt(character, book?.description, book?.genreId, book?.genreLabel),
-      width: 768,
-      height: 1024,
-      engine: "openrouter",
-    }),
-  });
-  const payload = imagePayload(await response.json().catch(() => null));
-  if (!response.ok || (!payload.base64 && !payload.url)) {
-    throw new Error(payload.error || `Portrait generation failed (${response.status})`);
-  }
+      aspectRatio: "3:4",
+      quality: "high",
+      outputFormat: "jpeg",
+      outputCompression: 88,
+    },
+    OPENROUTER_IMAGE_FALLBACK_MODEL,
+  );
   await ensureMediaDir();
-  const path = `${MEDIA_DIR}/${safeKey(`${bookId}-${character.id}-portrait`)}.png`;
-  return persistGeneratedImage(path, payload);
+  const path = `${MEDIA_DIR}/${safeKey(`${bookId}-${character.id}-portrait`)}.jpg`;
+  return persistGeneratedImage(path, { base64: generated.base64 });
 }
 
 export function generateCharacterPortrait(
@@ -410,141 +410,35 @@ export interface GeneratedCoverImage {
   jobId: string;
 }
 
-export type RemoteCoverJobStatus =
-  | "queued"
-  | "running"
-  | "retry_wait"
-  | "completed"
-  | "failed";
-
-export interface RemoteCoverJob {
-  jobId: string;
-  status: RemoteCoverJobStatus;
-  pollAfterMs: number;
-  attemptCount: number;
-  expiresAt?: number;
-  image?: string;
-  mimeType?: string;
-  error?: string;
-  code?: string;
-}
-
-interface CoverJobPayload {
-  job_id?: string;
-  status?: RemoteCoverJobStatus;
-  poll_after_ms?: number;
-  attempt_count?: number;
-  expires_at?: number;
-  image?: string;
-  b64_json?: string;
-  mime_type?: string;
-  error?: string;
-  code?: string;
-}
-
-function coverJobFromPayload(payload: CoverJobPayload | null): RemoteCoverJob | null {
-  if (!payload?.job_id || !payload.status) return null;
-  return {
-    jobId: payload.job_id,
-    status: payload.status,
-    pollAfterMs: Math.max(0, Math.min(60_000, payload.poll_after_ms ?? 3_000)),
-    attemptCount: Math.max(0, payload.attempt_count ?? 0),
-    expiresAt: payload.expires_at,
-    image: payload.image ?? payload.b64_json,
-    mimeType: payload.mime_type,
-    error: payload.error,
-    code: payload.code,
-  };
-}
-
-function coverJobError(response: Response, payload: CoverJobPayload | null): Error {
-  const error = new Error(payload?.error || `Cover job request failed (${response.status})`);
-  Object.assign(error, {
-    code: payload?.code,
-    status: response.status,
-    resetAt: Number(response.headers.get("ratelimit-reset") || 0) * 1_000 || undefined,
-  });
-  return error;
-}
-
-async function readCoverJobResponse(response: Response): Promise<RemoteCoverJob> {
-  const payload = (await response.json().catch(() => null)) as CoverJobPayload | null;
-  if (!response.ok) throw coverJobError(response, payload);
-  const job = coverJobFromPayload(payload);
-  if (!job) throw new Error("Gateway returned an invalid cover job");
-  return job;
-}
-
-export async function createBookCoverJob(
-  prompt: string,
-  requestId: string,
-): Promise<RemoteCoverJob> {
-  const response = await narraGatewayRequest("/v2/media/cover/jobs", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ prompt, request_id: requestId }),
-  });
-  return readCoverJobResponse(response);
-}
-
-export async function getBookCoverJob(jobId: string): Promise<RemoteCoverJob> {
-  const response = await narraGatewayRequest(`/v2/media/cover/jobs/${encodeURIComponent(jobId)}`);
-  return readCoverJobResponse(response);
-}
-
-export async function acknowledgeBookCoverJob(jobId: string): Promise<void> {
-  const response = await narraGatewayRequest(
-    `/v2/media/cover/jobs/${encodeURIComponent(jobId)}/ack`,
-    { method: "POST" },
-  );
-  if (response.ok) return;
-  const payload = (await response.json().catch(() => null)) as CoverJobPayload | null;
-  throw coverJobError(response, payload);
-}
-
-function coverPollDelay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, Math.max(250, ms)));
-}
-
 async function generateBookCoverImageRequest(
   prompt: string,
   options: {
     requestId: string;
-    jobId?: string;
-    onJob?: (job: RemoteCoverJob) => void | Promise<void>;
   },
 ): Promise<GeneratedCoverImage> {
-  let job = options.jobId
-    ? await getBookCoverJob(options.jobId)
-    : await createBookCoverJob(prompt, options.requestId);
-  await options.onJob?.(job);
-
-  while (job.status !== "completed" && job.status !== "failed") {
-    await coverPollDelay(job.pollAfterMs || 3_000);
-    job = await getBookCoverJob(job.jobId);
-    await options.onJob?.(job);
-  }
-
-  if (job.status === "failed") {
-    const error = new Error(job.error || "Не удалось создать обложку");
-    Object.assign(error, { code: job.code || "UNKNOWN" });
-    throw error;
-  }
-  if (!job.image) throw new Error("Gateway returned an empty cover result");
+  const generated = await generateOpenRouterImageWithFallback(
+    {
+      model: OPENROUTER_IMAGE_MODEL,
+      prompt,
+      aspectRatio: "2:3",
+      quality: "high",
+      outputFormat: "jpeg",
+      outputCompression: 90,
+    },
+    OPENROUTER_IMAGE_FALLBACK_MODEL,
+  );
   return {
-    base64: job.image,
-    mimeType: job.mimeType || "image/jpeg",
-    jobId: job.jobId,
+    base64: generated.base64,
+    mimeType: generated.mimeType,
+    jobId: options.requestId,
   };
 }
 
-/** Durable cover job: the gateway owns provider fallback and survives disconnects. */
+/** Personal dev mode: OpenRouter runs directly in the mobile app. */
 export function generateBookCoverImage(
   prompt: string,
   options: {
     requestId: string;
-    jobId?: string;
-    onJob?: (job: RemoteCoverJob) => void | Promise<void>;
   },
 ): Promise<GeneratedCoverImage> {
   return trackNarraMediaJob("cover", "background", () =>
