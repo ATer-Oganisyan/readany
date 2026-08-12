@@ -69,7 +69,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import ReadAnyNativeControls from "../../modules/native-controls";
 import { TagManagementSheet } from "./library/TagManagementSheet";
 import { useBookDownload } from "./library/useBookDownload";
@@ -87,6 +87,8 @@ function bytesToBase64(bytes: Uint8Array): string {
 }
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+
+const ANDROID_NATIVE_TAB_BAR_HEIGHT = 80;
 
 const NUM_COLUMNS = 2;
 const GRID_GAP = 16;
@@ -129,6 +131,7 @@ export function LibraryScreen() {
   const { t } = useTranslation();
   const nav = useNavigation<Nav>();
   const nativeHeaderHeight = useHeaderHeight();
+  const insets = useSafeAreaInsets();
   const layout = useResponsiveLayout();
   const gridGap = layout.isTablet ? 16 : GRID_GAP;
   const columnCount = layout.isTabletLandscape ? 5 : layout.isTablet ? 4 : NUM_COLUMNS;
@@ -1115,7 +1118,12 @@ export function LibraryScreen() {
                 key={`library-grid-${columnCount}`}
                 numColumns={columnCount}
                 columnWrapperStyle={s.gridRow}
-                contentContainerStyle={s.gridContent}
+                contentContainerStyle={[
+                  s.gridContent,
+                  Platform.OS === "android" && {
+                    paddingBottom: 24 + ANDROID_NATIVE_TAB_BAR_HEIGHT + insets.bottom,
+                  },
+                ]}
                 ListHeaderComponent={
                   showCatalog && gridItems.length > 0 ? (
                     <View style={s.librarySectionHeader}>
