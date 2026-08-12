@@ -20,3 +20,4 @@ modules/*/android/build/
 *.orig.*
 web-build/
 build/
+.tmp/

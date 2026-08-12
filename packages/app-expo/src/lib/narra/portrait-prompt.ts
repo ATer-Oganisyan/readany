@@ -6,17 +6,22 @@ export interface CharacterPortraitPromptContext {
   bookContext?: string;
   genreId?: string;
   genreLabel?: string;
+  /** Только для контролируемой генерации известных взрослых каталожных героинь. */
+  assumeAdultFemale?: boolean;
 }
 
 /** Портреты идут через GPT Image и не ограничены коротким лимитом Kandinsky. */
 export const PORTRAIT_PROMPT_CHAR_LIMIT = 1_600;
 
-function adultFemaleBodyDirection(character: NarraCharacter): string {
-  if (character.gender !== "female" || !character.passport || character.passport.age < 18) {
+function femaleBodyDirection(character: NarraCharacter, assumeAdultFemale = false): string {
+  if (
+    character.gender !== "female" ||
+    (!assumeAdultFemale && (!character.passport || character.passport.age < 18))
+  ) {
     return "";
   }
 
-  return "Персонаж — совершеннолетняя женщина. Заметно более пышное телосложение с очень большой грудью; тело полностью прикрыто одеждой, образ несексуализированный.";
+  return "Персонаж — взрослая женщина с огромной грудью, которая явно формирует объёмный силуэт под полностью закрытой одеждой. Образ строго несексуализированный: нейтральная поза, без декольте, наготы и эротического акцента.";
 }
 
 function portraitArtStyle(genreId: string, genreLabel: string): string {
@@ -33,15 +38,29 @@ export function buildCharacterPortraitPrompt(
 ): string {
   const genreId = context.genreId ?? "classic";
   const genreLabel = context.genreLabel ?? "классическая литература";
+  if (character.id === "buratino") {
+    return budgetPrompt(
+      [
+        "Ровно одна неодушевлённая театральная деревянная марионетка в кадре — Буратино. Это не человек и не ребёнок: окрашенная резная кукла без возраста и без реалистичной человеческой анатомии.",
+        "Вертикальный портрет куклы до талии в среднем плане, строго анфас. Между верхним краем изображения и макушкой ровно 10% высоты кадра. Светлый однотонный фон.",
+        context.bookContext
+          ? `Кукольный персонаж книги ${context.bookContext}; простой костюм сказочного театра.`
+          : "Кукольный персонаж сказочного театра в простом костюме.",
+        "Без других персонажей, без текста, букв, логотипов и водяных знаков.",
+      ],
+      PORTRAIT_PROMPT_CHAR_LIMIT,
+      portraitArtStyle(genreId, genreLabel),
+    );
+  }
   return budgetPrompt(
     [
       `Ровно один человек в кадре — ${character.fullName || character.name}, никого больше: без второстепенных персонажей, без силуэтов и людей на фоне.`,
-      "Вертикальный портрет по пояс, строго анфас, взгляд в камеру, ровный светлый однотонный фон. Голова целиком, включая волосы, занимает 55% высоты изображения; над головой остаётся свободное пространство, ниже видны плечи, грудь и часть корпуса. Не кадрировать макушку и волосы, не делать лицо крупным планом.",
+      "Вертикальный портрет до талии в среднем плане, строго анфас, взгляд в камеру, ровный светлый однотонный фон. Камера отдалена: персонаж целиком показан от макушки до линии талии, полностью видны голова, плечи, грудь и весь торс; лицо не доминирует в кадре. Свободное пространство между верхним краем изображения и макушкой составляет ровно 10% высоты кадра. По сторонам плеч остаётся спокойное свободное пространство. Локти могут обрезаться боковыми краями, кисти рук не обязательны. Не делать headshot, крупный план лица или тесный погрудный кадр; не показывать человека в полный рост.",
       context.bookContext
         ? `Персонаж книги ${context.bookContext}: одежда, причёска и антураж строго соответствуют эпохе и миру книги, без современной одежды.`
         : "Одежда и причёска строго соответствуют эпохе и миру книги, без современной одежды.",
       `Выражение лица: ${character.expression || "естественное, в характере"}.`,
-      adultFemaleBodyDirection(character),
+      femaleBodyDirection(character, context.assumeAdultFemale),
       `Внешность (соблюдать точно): ${passportDescription(character)}.`,
     ],
     PORTRAIT_PROMPT_CHAR_LIMIT,

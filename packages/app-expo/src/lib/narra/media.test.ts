@@ -52,7 +52,7 @@ import {
   resolvePortraitGenre,
   synthesizeNarraSpeech,
 } from "./media";
-import { PORTRAIT_PROMPT_CHAR_LIMIT } from "./portrait-prompt";
+import { PORTRAIT_PROMPT_CHAR_LIMIT, buildCharacterPortraitPrompt } from "./portrait-prompt";
 import { applyActiveStressMarkup, primeCharacterStressForms } from "./stress-markup";
 
 beforeEach(() => {
@@ -107,8 +107,13 @@ describe("portrait prompt", () => {
   it("follows the narra canon, genre and portrait framing", () => {
     const prompt = portraitPrompt(anna);
 
-    expect(prompt).toContain("Вертикальный портрет по пояс, строго анфас");
-    expect(prompt).toContain("занимает 55% высоты изображения");
+    expect(prompt).toContain("Вертикальный портрет до талии в среднем плане, строго анфас");
+    expect(prompt).toContain("Камера отдалена");
+    expect(prompt).toContain("лицо не доминирует в кадре");
+    expect(prompt).toContain("ровно 10% высоты кадра");
+    expect(prompt).toContain("По сторонам плеч остаётся спокойное свободное пространство");
+    expect(prompt).toContain("Не делать headshot");
+    expect(prompt).not.toContain("55%");
     expect(prompt).toContain("классический живописный портрет");
     expect(prompt).toContain("Внешность (соблюдать точно):");
     expect(prompt).toContain("тёмные волосы");
@@ -135,10 +140,7 @@ describe("portrait prompt", () => {
     expect(longPrompt.length).toBeLessThanOrEqual(PORTRAIT_PROMPT_CHAR_LIMIT);
   });
 
-  it("adds the adult female body direction for every genre", () => {
-    const annaPassport = anna.passport;
-    if (!annaPassport) throw new Error("Anna test fixture must have a passport");
-
+  it("adds the non-sexual female body direction for confirmed adults in every genre", () => {
     const fanfictionPrompt = portraitPrompt(
       anna,
       "«Фанфик»",
@@ -148,21 +150,30 @@ describe("portrait prompt", () => {
     const mangaPrompt = portraitPrompt(anna, "«Манга»", "manga", "manga");
     const classicPrompt = portraitPrompt(anna);
     const malePrompt = portraitPrompt(vronsky);
-    const minorPrompt = portraitPrompt(
-      { ...anna, passport: { ...annaPassport, age: 17 } },
-      "«Фанфик»",
-      "fanfiction",
-      "fanfiction or transformative fiction",
-    );
+    const withoutPassportPrompt = portraitPrompt({ ...anna, passport: undefined });
+    const minorPrompt = portraitPrompt({
+      ...anna,
+      passport: anna.passport ? { ...anna.passport, age: 17 } : undefined,
+    });
 
-    expect(fanfictionPrompt).toContain("очень большой грудью");
-    expect(fanfictionPrompt).toContain("тело полностью прикрыто одеждой");
-    expect(fanfictionPrompt).toContain("образ несексуализированный");
-    expect(fanfictionPrompt).not.toContain("эротическая поза");
-    expect(mangaPrompt).toContain("очень большой грудью");
-    expect(classicPrompt).toContain("очень большой грудью");
-    expect(malePrompt).not.toContain("очень большой грудью");
-    expect(minorPrompt).not.toContain("очень большой грудью");
+    expect(fanfictionPrompt).toContain("огромной грудью");
+    expect(fanfictionPrompt).toContain("под полностью закрытой одеждой");
+    expect(fanfictionPrompt).toContain("строго несексуализированный");
+    expect(mangaPrompt).toContain("огромной грудью");
+    expect(classicPrompt).toContain("огромной грудью");
+    expect(withoutPassportPrompt).not.toContain("огромной грудью");
+    expect(minorPrompt).not.toContain("огромной грудью");
+    expect(malePrompt).not.toContain("огромной грудью");
+  });
+
+  it("supports an explicit adult override for controlled catalog review generation", () => {
+    const catalogHeroine = { ...anna, passport: undefined };
+    const prompt = buildCharacterPortraitPrompt(catalogHeroine, {
+      bookContext: "«Анна Каренина» (Лев Толстой)",
+      assumeAdultFemale: true,
+    });
+
+    expect(prompt).toContain("огромной грудью");
   });
 
   it("routes character portraits directly through OpenRouter", async () => {

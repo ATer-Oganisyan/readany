@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -18,10 +18,44 @@ const REGISTRY_FILE = path.join(
   "narra",
   "catalog-character-portrait-assets.ts",
 );
+const CONFIRMED_ADULT_FEMALE_CHARACTER_IDS = new Set([
+  "anna-odintsova",
+  "fenichka",
+  "anna-karenina",
+  "kitty-shcherbatskaya",
+  "marya-bolkonskaya",
+  "helene-bezukhova",
+  "avdotya-raskolnikova",
+  "anna-andreyevna",
+  "nastasya-korobochka",
+  "vera",
+  "gentlemans-wife",
+  "nadezhda",
+  "ellohka-shchukina",
+  "madame-gritsatsuyeva",
+  "liza-kalachova",
+  "olga-prozorova",
+  "masha-kulygina",
+  "irina-prozorova",
+  "natalya-prozorova",
+  "irina-arkadina",
+  "masha-shamrayeva",
+  "lyubov-ranevskaya",
+  "varya",
+  "katerina-kabanova",
+  "marfa-kabanova",
+]);
 const DEFAULT_ENV_FILE = path.join(APP_DIR, ".env.local");
 const CONFIG_FILE = path.join(APP_DIR, "src", "lib", "book", "cover-generation-config.json");
 const REQUEST_TIMEOUT_MS = 180_000;
 const CONCURRENCY = 8;
+
+interface GenerationFailure {
+  bookId: string;
+  characterId: string;
+  femaleBodyDirection: boolean;
+  message: string;
+}
 
 function parseEnv(source: string): Record<string, string> {
   return Object.fromEntries(
@@ -95,6 +129,14 @@ async function exists(filePath: string): Promise<boolean> {
   }
 }
 
+async function modifiedAtOrAfter(filePath: string, timestamp: number): Promise<boolean> {
+  try {
+    return (await stat(filePath)).mtimeMs >= timestamp;
+  } catch {
+    return false;
+  }
+}
+
 async function writeAssetRegistry(): Promise<void> {
   const entries = BUNDLED_CATALOG_BOOK_DEFINITIONS.flatMap((book) =>
     (getBundledCatalogCharactersById(book.id) ?? []).map(
@@ -107,9 +149,7 @@ async function writeAssetRegistry(): Promise<void> {
     [
       'import type { ImageSourcePropType } from "react-native";',
       "",
-      "export const CATALOG_CHARACTER_PORTRAIT_ASSETS: Readonly<",
-      "  Record<string, ImageSourcePropType>",
-      "> = {",
+      "export const CATALOG_CHARACTER_PORTRAIT_ASSETS: Readonly<Record<string, ImageSourcePropType>> = {",
       ...entries,
       "};",
       "",
@@ -129,37 +169,61 @@ async function main(): Promise<void> {
     process.env.OPENROUTER_IMAGE_MODEL ||
     localEnv.EXPO_PUBLIC_OPENROUTER_IMAGE_MODEL ||
     config.openRouterModel;
-  const requestedBookId = process.argv.find((arg) => arg.startsWith("--book="))?.slice(7);
+  const requestedBookIds = process.argv
+    .filter((arg) => arg.startsWith("--book="))
+    .map((arg) => arg.slice(7));
   const requestedCharacterId = process.argv
     .find((arg) => arg.startsWith("--character="))
     ?.slice(12);
+  const assumeAdultFemale = process.argv.includes("--assume-adult-female");
+  const excludedCharacterIds = new Set(
+    process.argv
+      .filter((arg) => arg.startsWith("--exclude-character="))
+      .map((arg) => arg.slice(20)),
+  );
   const force = process.argv.includes("--force");
+  const resumeSinceArgument = process.argv
+    .find((arg) => arg.startsWith("--resume-since="))
+    ?.slice(15);
+  const resumeSince = resumeSinceArgument ? Date.parse(resumeSinceArgument) : Number.NaN;
+  if (resumeSinceArgument && !Number.isFinite(resumeSince)) {
+    throw new Error(`Invalid --resume-since timestamp: ${resumeSinceArgument}`);
+  }
   if (!apiKey) throw new Error("OpenRouter API key is not configured");
 
   const jobs = BUNDLED_CATALOG_BOOK_DEFINITIONS.filter(
-    (book) => !requestedBookId || book.id === requestedBookId,
+    (book) => requestedBookIds.length === 0 || requestedBookIds.includes(book.id),
   ).flatMap((book) =>
     (getBundledCatalogCharactersById(book.id) ?? [])
       .filter((character) => !requestedCharacterId || character.id === requestedCharacterId)
+      .filter((character) => !excludedCharacterIds.has(character.id))
       .map((character) => ({
         book,
         character,
         outputPath: path.join(OUTPUT_DIR, book.id, `${character.id}.jpg`),
       })),
   );
-  if ((requestedBookId || requestedCharacterId) && jobs.length === 0)
+  if ((requestedBookIds.length > 0 || requestedCharacterId) && jobs.length === 0)
     throw new Error(
-      `Unknown catalog selection: book=${requestedBookId ?? "*"}, character=${requestedCharacterId ?? "*"}`,
+      `Unknown catalog selection: book=${requestedBookIds.join(",") || "*"}, character=${requestedCharacterId ?? "*"}`,
     );
 
   let cursor = 0;
   let completed = 0;
+  const failures: GenerationFailure[] = [];
   async function worker(): Promise<void> {
     while (cursor < jobs.length) {
       const index = cursor++;
       const job = jobs[index];
       if (!job) return;
       await mkdir(path.dirname(job.outputPath), { recursive: true });
+      if (Number.isFinite(resumeSince) && (await modifiedAtOrAfter(job.outputPath, resumeSince))) {
+        completed += 1;
+        process.stdout.write(
+          `[${completed}/${jobs.length}] ${job.book.id}/${job.character.id}: уже готово в этом прогоне\n`,
+        );
+        continue;
+      }
       if (!force && (await exists(job.outputPath))) {
         completed += 1;
         process.stdout.write(
@@ -168,6 +232,9 @@ async function main(): Promise<void> {
         continue;
       }
       const temporaryPath = `${job.outputPath}.${process.pid}.tmp`;
+      const femaleBodyDirection =
+        job.character.gender === "female" &&
+        (assumeAdultFemale || CONFIRMED_ADULT_FEMALE_CHARACTER_IDS.has(job.character.id));
       try {
         const jpeg = await generatePortrait({
           apiKey,
@@ -177,6 +244,7 @@ async function main(): Promise<void> {
             bookContext: `«${job.book.title}» (${job.book.author})`,
             genreId: "classic",
             genreLabel: "классическая литература",
+            assumeAdultFemale: femaleBodyDirection,
           }),
         });
         await writeFile(temporaryPath, jpeg);
@@ -187,13 +255,26 @@ async function main(): Promise<void> {
         );
       } catch (error) {
         await rm(temporaryPath, { force: true });
-        throw error;
+        const message = error instanceof Error ? error.message : String(error);
+        failures.push({
+          bookId: job.book.id,
+          characterId: job.character.id,
+          femaleBodyDirection,
+          message,
+        });
+        process.stderr.write(
+          `[отказ] ${job.book.id}/${job.character.id}${femaleBodyDirection ? " [женский блок]" : ""}: ${message}\n`,
+        );
       }
     }
   }
 
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, jobs.length) }, () => worker()));
-  if (!requestedBookId) await writeAssetRegistry();
+  if (requestedBookIds.length === 0) await writeAssetRegistry();
+  process.stdout.write(
+    `Итог: готово ${completed}/${jobs.length}, отказов ${failures.length}, отказов с женским блоком ${failures.filter((failure) => failure.femaleBodyDirection).length}.\n`,
+  );
+  if (failures.length > 0) process.exitCode = 2;
 }
 
 void main().catch((error: unknown) => {
