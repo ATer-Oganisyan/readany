@@ -1,7 +1,7 @@
 import { useColors } from "@/styles/theme";
 import { Box, DropdownMenu, DropdownMenuItem, Host, Text } from "@expo/ui/jetpack-compose";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { TouchableOpacity, View } from "react-native";
 import type { NativeContextMenuButtonProps } from "./NativeContextMenuButton.types";
 
@@ -11,15 +11,23 @@ export function NativeContextMenuButton({
   sfSymbol = "ellipsis",
   size = 40,
   color,
+  onOpenChange,
 }: NativeContextMenuButtonProps) {
   const colors = useColors();
   const iconColor = color ?? colors.foreground;
   const [expanded, setExpanded] = useState(false);
+  const setMenuExpanded = useCallback(
+    (open: boolean) => {
+      setExpanded(open);
+      onOpenChange?.(open);
+    },
+    [onOpenChange],
+  );
 
   return (
     <View style={{ width: size, height: size }}>
       <Host style={{ position: "absolute", right: 0, top: size / 2, width: 1, height: 1 }}>
-        <DropdownMenu expanded={expanded} onDismissRequest={() => setExpanded(false)}>
+        <DropdownMenu expanded={expanded} onDismissRequest={() => setMenuExpanded(false)}>
           <Box />
 
           <DropdownMenu.Items>
@@ -29,7 +37,7 @@ export function NativeContextMenuButton({
                 enabled={!item.disabled}
                 elementColors={item.destructive ? { textColor: colors.destructive } : undefined}
                 onClick={() => {
-                  setExpanded(false);
+                  setMenuExpanded(false);
                   item.onPress();
                 }}
               >
@@ -47,7 +55,7 @@ export function NativeContextMenuButton({
         accessibilityLabel={accessibilityLabel}
         style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}
         activeOpacity={0.7}
-        onPress={() => setExpanded(true)}
+        onPress={() => setMenuExpanded(true)}
       >
         <MaterialIcons
           name={

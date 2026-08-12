@@ -13,4 +13,5 @@ export type NativeContextMenuButtonProps = {
   sfSymbol?: string;
   size?: number;
   color?: string;
+  onOpenChange?: (open: boolean) => void;
 };

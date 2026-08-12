@@ -221,6 +221,7 @@ export function ReaderScreen({ route, navigation }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showControls, setShowControls] = useState(true);
+  const [isReaderMenuOpen, setIsReaderMenuOpen] = useState(false);
   const [showTOC, setShowTOC] = useState(false);
   const [tocActiveTab, setTocActiveTab] = useState<"toc" | "bookmarks">("toc");
   const [showSettings, setShowSettings] = useState(false);
@@ -588,6 +589,25 @@ export function ReaderScreen({ route, navigation }: Props) {
     return () => sub.remove();
   }, []);
 
+  const handleReaderMenuOpenChange = useCallback((open: boolean) => {
+    setIsReaderMenuOpen(open);
+
+    if (controlsTimer.current) {
+      clearTimeout(controlsTimer.current);
+      controlsTimer.current = null;
+    }
+
+    if (open) {
+      setShowControls(true);
+      return;
+    }
+
+    controlsTimer.current = setTimeout(() => {
+      setShowControls(false);
+      controlsTimer.current = null;
+    }, CONTROLS_TIMEOUT);
+  }, []);
+
   // Load reader HTML asset
   useEffect(() => {
     if (assetLoadedRef.current) return;
@@ -609,6 +629,8 @@ export function ReaderScreen({ route, navigation }: Props) {
 
   // Controls toggle — declared before bridge so onTap can reference it without TS error
   const toggleControls = useCallback(() => {
+    if (isReaderMenuOpen) return;
+
     const willShow = !showControls;
     setShowControls(willShow);
 
@@ -623,7 +645,7 @@ export function ReaderScreen({ route, navigation }: Props) {
         controlsTimer.current = null;
       }, CONTROLS_TIMEOUT);
     }
-  }, [showControls]);
+  }, [isReaderMenuOpen, showControls]);
 
   const handleReaderBackSwipe = useCallback(() => {
     if (navigation.canGoBack()) {
@@ -1236,6 +1258,7 @@ export function ReaderScreen({ route, navigation }: Props) {
                     />
                     <NativeContextMenuButton
                       accessibilityLabel="Действия с книгой"
+                      onOpenChange={handleReaderMenuOpenChange}
                       items={[
                         ...readerActions,
                         {
@@ -1254,6 +1277,7 @@ export function ReaderScreen({ route, navigation }: Props) {
     bookId,
     handleOpenCharacters,
     handleGenerateVisibleScene,
+    handleReaderMenuOpenChange,
     handleToggleBookmark,
     isBookmarked,
     navigation,
@@ -1873,7 +1897,11 @@ export function ReaderScreen({ route, navigation }: Props) {
         )}
 
         {/* ─── Bookmark Ribbon (top-right) ─── */}
-        <BookmarkRibbon visible={isBookmarked} topOffset={0} rightOffset={readerContentInset} />
+        <BookmarkRibbon
+          visible={isBookmarked && !showControls && !isReaderMenuOpen}
+          topOffset={0}
+          rightOffset={readerContentInset}
+        />
 
         {/* Note Tooltip (long-press on wavy underline) */}
         {adjustedNoteTooltip && (
