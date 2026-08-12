@@ -4,7 +4,9 @@ import { useFocusEffect } from "@react-navigation/native";
 import type { AttachedQuote } from "@readany/core/types";
 import type { CitationPart, MessageV2 } from "@readany/core/types/message";
 import * as Clipboard from "expo-clipboard";
+import type { TFunction } from "i18next";
 import { useCallback, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Pressable, StyleSheet, Text, type TextInput, View } from "react-native";
 import {
   Chat,
@@ -54,7 +56,7 @@ interface NarraChatProps {
   assistantMessageAction?: AssistantMessageAction;
 }
 
-function messageText(message: MessageV2): string {
+function messageText(message: MessageV2, t: TFunction): string {
   const body: string[] = [];
   const citations: CitationPart[] = [];
 
@@ -78,7 +80,7 @@ function messageText(message: MessageV2): string {
         body.push(`**${part.title}**\n\n\`\`\`mermaid\n${part.chart}\n\`\`\``);
         break;
       case "aborted":
-        body.push("_Ответ остановлен._");
+        body.push(`_${t("chat.responseStopped", "Ответ остановлен.")}_`);
         break;
       // The 4.2 typing and streaming states replace Narra's old visible
       // reasoning/tool cards. Internal reasoning remains in message data.
@@ -95,7 +97,7 @@ function messageText(message: MessageV2): string {
         const number = citation.citationIndex ?? index + 1;
         return `[${number}. ${citation.chapterTitle}](narra-citation://${encodeURIComponent(citation.id)})`;
       });
-    body.push(`**Источники**\n\n${sources.join("  \n")}`);
+    body.push(`**${t("chat.sources", "Источники")}**\n\n${sources.join("  \n")}`);
   }
 
   return body.join("\n\n");
@@ -104,16 +106,17 @@ function messageText(message: MessageV2): string {
 function toChatMessage(
   message: MessageV2,
   assistantName: string,
+  t: TFunction,
   assistantAvatar?: IMessage["user"]["avatar"],
   streamingMessageId?: string,
 ): NarraMessage {
   return {
     _id: message.id,
-    text: messageText(message),
+    text: messageText(message, t),
     createdAt: message.createdAt,
     user: {
       _id: message.role === "user" ? USER_ID : ASSISTANT_ID,
-      name: message.role === "user" ? "Вы" : assistantName,
+      name: message.role === "user" ? t("chat.roleUser", "Вы") : assistantName,
       avatar: message.role === "user" ? undefined : assistantAvatar,
     },
     system: message.role === "system",
@@ -128,14 +131,14 @@ export function NarraChat({
   messages,
   isStreaming = false,
   currentStep = "idle",
-  placeholder = "Сообщение",
+  placeholder,
   quotes = [],
   onRemoveQuote,
   onCitationClick,
   onSend,
   onStop,
   errorMessage,
-  retryLabel = "Повторить",
+  retryLabel,
   onRetry,
   autoFocus = false,
   assistantName = "Narra AI",
@@ -144,6 +147,9 @@ export function NarraChat({
   assistantMessageAction,
 }: NarraChatProps) {
   const { colors, isDark } = useTheme();
+  const { t, i18n } = useTranslation();
+  const effectivePlaceholder = placeholder || t("chat.inputPlaceholder", "Сообщение");
+  const effectiveRetryLabel = retryLabel || t("common.retry", "Повторить");
   const headerHeight = useHeaderHeight();
   const inputRef = useRef<TextInput>(null);
   const [deepThinking, setDeepThinking] = useState(false);
@@ -155,10 +161,10 @@ export function NarraChat({
     () =>
       messages
         .map((message) =>
-          toChatMessage(message, assistantName, assistantAvatar, streamingMessageId),
+          toChatMessage(message, assistantName, t, assistantAvatar, streamingMessageId),
         )
         .reverse(),
-    [assistantAvatar, assistantName, messages, streamingMessageId],
+    [assistantAvatar, assistantName, messages, streamingMessageId, t],
   );
 
   useFocusEffect(
@@ -225,7 +231,7 @@ export function NarraChat({
 
   const messageActions = useCallback(
     (message: NarraMessage): MessageMenuItem[] => {
-      const text = messageText(message.source);
+      const text = messageText(message.source, t);
       const actions: MessageMenuItem[] = [];
 
       if (message.source.role === "assistant" && assistantMessageAction) {
@@ -237,14 +243,14 @@ export function NarraChat({
 
       if (text) {
         actions.push({
-          label: "Скопировать",
+          label: t("common.copy", "Скопировать"),
           onPress: () => void Clipboard.setStringAsync(text),
         });
       }
 
       return actions;
     },
-    [assistantMessageAction],
+    [assistantMessageAction, t],
   );
 
   const handleMessageLink = useCallback(
@@ -280,10 +286,12 @@ export function NarraChat({
               onPress={() => void onRetry?.()}
               disabled={!onRetry}
               accessibilityRole="button"
-              accessibilityLabel={retryLabel}
+              accessibilityLabel={effectiveRetryLabel}
               hitSlop={8}
             >
-              <Text style={[styles.retryLabel, { color: colors.destructive }]}>{retryLabel}</Text>
+              <Text style={[styles.retryLabel, { color: colors.destructive }]}>
+                {effectiveRetryLabel}
+              </Text>
             </Pressable>
           </View>
         ) : null}
@@ -300,12 +308,12 @@ export function NarraChat({
         {showModeControls ? (
           <View style={styles.modeRow}>
             <ModeButton
-              label="Глубокий анализ"
+              label={t("chat.deepThinking", "Глубокий анализ")}
               active={deepThinking}
               onPress={() => setDeepThinking((value) => !value)}
             />
             <ModeButton
-              label="Без спойлеров"
+              label={t("chat.spoilerFree", "Без спойлеров")}
               active={spoilerFree}
               onPress={() => setSpoilerFree((value) => !value)}
             />
@@ -320,9 +328,10 @@ export function NarraChat({
     onRemoveQuote,
     onRetry,
     quotes,
-    retryLabel,
+    effectiveRetryLabel,
     showModeControls,
     spoilerFree,
+    t,
   ]);
 
   const renderInputToolbar = useCallback(
@@ -341,14 +350,14 @@ export function NarraChat({
   const showInitialStreaming =
     isStreaming &&
     currentStep !== "idle" &&
-    (!lastMessage || lastMessage.role !== "assistant" || !messageText(lastMessage).trim());
+    (!lastMessage || lastMessage.role !== "assistant" || !messageText(lastMessage, t).trim());
 
   return (
     <Chat<NarraMessage>
       messages={chatMessages}
-      user={{ _id: USER_ID, name: "Вы" }}
+      user={{ _id: USER_ID, name: t("chat.roleUser", "Вы") }}
       onSend={handleSend}
-      locale="ru"
+      locale={i18n.resolvedLanguage === "en" ? "en" : "ru"}
       colorScheme={isDark ? "dark" : "light"}
       theme={theme}
       darkTheme={theme}
@@ -362,7 +371,7 @@ export function NarraChat({
       isScrollToBottomEnabled
       textInputRef={inputRef}
       textInputProps={{
-        placeholder,
+        placeholder: effectivePlaceholder,
         placeholderTextColor: colors.mutedForeground,
         editable: !isStreaming,
         multiline: true,

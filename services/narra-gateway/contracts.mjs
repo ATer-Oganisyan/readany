@@ -82,7 +82,7 @@ export function parseImageBody(input) {
   const height = body.height === undefined ? 1024 : Number(body.height)
   if (!Number.isInteger(width) || width < 256 || width > 2048) fail('width: целое число 256–2048')
   if (!Number.isInteger(height) || height < 256 || height > 2048) fail('height: целое число 256–2048')
-  if (body.engine !== undefined && body.engine !== 'kandinsky') fail('engine: неизвестный движок')
+  if (body.engine !== undefined && !['kandinsky', 'openrouter'].includes(body.engine)) fail('engine: неизвестный движок')
   return { prompt, width, height, engine: body.engine }
 }
 
@@ -91,6 +91,17 @@ export function parseCoverBody(input) {
   const body = object(input)
   onlyKeys(body, new Set(['prompt']))
   return { prompt: string(body.prompt, 'prompt', { max: 8_000 }) }
+}
+
+export function parseCoverJobBody(input) {
+  const body = object(input)
+  onlyKeys(body, new Set(['prompt', 'request_id']))
+  const requestId = string(body.request_id, 'request_id', { max: 36 })
+  if (!UUID_V4.test(requestId)) fail('request_id: нужен UUID v4')
+  return {
+    prompt: string(body.prompt, 'prompt', { max: 8_000 }),
+    requestId
+  }
 }
 
 export function parseSynthesisBody(input) {

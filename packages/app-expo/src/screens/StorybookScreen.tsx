@@ -16,7 +16,7 @@ import SyncSettingsScreen from "@/screens/settings/SyncSettingsScreen";
 import TTSSettingsScreen from "@/screens/settings/TTSSettingsScreen";
 import TranslationSettingsScreen from "@/screens/settings/TranslationSettingsScreen";
 import VectorModelSettingsScreen from "@/screens/settings/VectorModelSettingsScreen";
-import { useColors } from "@/styles/theme";
+import { secondLevelTitleFontFamily, useColors } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { ComponentType } from "react";
 import { Platform, Pressable, ScrollView, SectionList, StyleSheet, View } from "react-native";
@@ -52,7 +52,7 @@ function ButtonPreview() {
 
 const iconNames = [
   { name: "books.vertical", fallback: "book_2" },
-  { name: "bubble.left.and.bubble.right", fallback: "chat" },
+  { name: "message.fill", fallback: "chat" },
   { name: "square.and.pencil", fallback: "edit" },
   { name: "person.crop.circle", fallback: "person" },
   { name: "plus", fallback: "add" },
@@ -227,7 +227,7 @@ const pageItems: CatalogItem[] = [
     title: "ИИ",
     subtitle: "Диалоги и помощник по чтению",
     icon: "chat",
-    sfSymbol: "bubble.left.and.bubble.right",
+    sfSymbol: "message.fill",
     preview: ChatScreen,
   },
   {
@@ -406,11 +406,12 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
   },
   catalogSectionTitle: {
+    fontFamily: secondLevelTitleFontFamily,
     marginTop: 24,
     marginBottom: 8,
     paddingHorizontal: 4,
     fontSize: 13,
-    fontWeight: "600",
+    fontWeight: "400",
     textTransform: "uppercase",
   },
   catalogCell: {
@@ -436,6 +437,7 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   catalogTitle: {
+    fontFamily: secondLevelTitleFontFamily,
     fontSize: 16,
     fontWeight: "600",
   },
@@ -449,14 +451,17 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   previewHeading: {
+    fontFamily: secondLevelTitleFontFamily,
     fontSize: 22,
     fontWeight: "700",
   },
   displayTitle: {
+    fontFamily: secondLevelTitleFontFamily,
     fontSize: 32,
     fontWeight: "700",
   },
   sectionTitle: {
+    fontFamily: secondLevelTitleFontFamily,
     fontSize: 22,
     fontWeight: "600",
   },

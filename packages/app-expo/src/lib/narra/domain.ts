@@ -45,6 +45,7 @@ export function withNarraCharacters(
       // Портрет и ручной выбор голоса переживают повторный анализ книги.
       if (previous.portraitUri && !character.portraitUri) {
         merged.portraitUri = previous.portraitUri;
+        merged.portraitUriOverridesAsset = previous.portraitUriOverridesAsset;
       }
       if (previous.portraitAssetId && !character.portraitAssetId) {
         merged.portraitAssetId = previous.portraitAssetId;

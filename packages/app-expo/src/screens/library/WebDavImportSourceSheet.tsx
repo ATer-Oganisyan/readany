@@ -5,7 +5,14 @@ import {
   LinkIcon,
 } from "@/components/ui/Icon";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
-import { fontSize, fontWeight, radius, useColors, withOpacity } from "@/styles/theme";
+import {
+  fontSize,
+  fontWeight,
+  headingFontFamily,
+  radius,
+  useColors,
+  withOpacity,
+} from "@/styles/theme";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -116,6 +123,7 @@ export function WebDavImportSourceSheet({
           minWidth: 0,
         },
         optionTitle: {
+          fontFamily: headingFontFamily,
           fontSize: fontSize.sm,
           fontWeight: fontWeight.semibold,
           color: colors.foreground,

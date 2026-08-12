@@ -173,8 +173,10 @@ export function ReaderSettingsPanel({ visible, readSettings, onClose, onUpdateSe
                   }
                   modifiers={[pickerStyle("menu")]}
                 >
-                  <Text modifiers={[tag(DEFAULT_FONT_ID)]}>{t("fonts.sbSerif", "SB Serif")}</Text>
-                  <Text modifiers={[tag(SB_SANS_READER_FONT_ID)]}>SB Sans</Text>
+                  <Text modifiers={[tag(DEFAULT_FONT_ID)]}>{t("fonts.serif", "С засечками")}</Text>
+                  <Text modifiers={[tag(SB_SANS_READER_FONT_ID)]}>
+                    {t("fonts.sansSerif", "Без засечек")}
+                  </Text>
                   {customFonts.map((customFont) => (
                     <Text key={customFont.id} modifiers={[tag(customFont.id)]}>
                       {customFont.name}

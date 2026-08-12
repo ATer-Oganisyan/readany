@@ -6,7 +6,12 @@ import { NotesScreen } from "@/screens/NotesScreen";
 import { ProfileScreen } from "@/screens/ProfileScreen";
 import { SearchScreen } from "@/screens/SearchScreen";
 import { useTheme } from "@/styles/ThemeContext";
-import { fontFamily, largeTitleFontFamily, titleFontFamily } from "@/styles/theme";
+import {
+  fontFamily,
+  largeTitleFontFamily,
+  largeTitleFontSize,
+  titleFontFamily,
+} from "@/styles/theme";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import {
   type NativeBottomTabIcon,
@@ -108,7 +113,7 @@ function useTabStackScreenOptions(): NativeStackNavigationOptions {
     headerTitleStyle: {
       color: colors.foreground,
       fontFamily: titleFontFamily,
-      fontWeight: "600",
+      fontWeight: "400",
     },
     scrollEdgeEffects: NATIVE_SCROLL_EDGE_EFFECTS,
     contentStyle: { backgroundColor: colors.background },
@@ -126,7 +131,7 @@ function useLargeTitleOptions(): NativeStackNavigationOptions {
         headerLargeTitleStyle: {
           color: colors.foreground,
           fontFamily: largeTitleFontFamily,
-          fontSize: 40,
+          fontSize: largeTitleFontSize,
           fontWeight: "400",
         },
       }
@@ -223,8 +228,8 @@ function ProfileTabStackNavigator() {
                     ? [
                         {
                           type: "button" as const,
-                          label: "Синхронизировать",
-                          accessibilityLabel: "Синхронизировать",
+                          label: t("common.sync", "Синхронизировать"),
+                          accessibilityLabel: t("common.sync", "Синхронизировать"),
                           icon: {
                             type: "sfSymbol" as const,
                             name: "arrow.clockwise" as const,
@@ -250,8 +255,8 @@ function ProfileTabStackNavigator() {
                 unstable_headerRightItems: () => [
                   {
                     type: "button" as const,
-                    label: "Добавить заметку",
-                    accessibilityLabel: "Добавить заметку",
+                    label: t("notes.addNote", "Добавить заметку"),
+                    accessibilityLabel: t("notes.addNote", "Добавить заметку"),
                     icon: { type: "sfSymbol" as const, name: "plus" as const },
                     onPress: () =>
                       navigation
@@ -264,8 +269,8 @@ function ProfileTabStackNavigator() {
             : {
                 headerRight: () => (
                   <NativeButton
-                    label="Добавить"
-                    accessibilityLabel="Добавить заметку"
+                    label={t("common.add", "Добавить")}
+                    accessibilityLabel={t("notes.addNote", "Добавить заметку")}
                     icon="add"
                     size="small"
                     variant="tertiary"

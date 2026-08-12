@@ -4,7 +4,7 @@ import { NativeButton } from "@/components/ui/NativeButton";
 import { Text } from "@/components/ui/Typography";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useAnnotationStore, useLibraryStore } from "@/stores";
-import { spacing, useColors } from "@/styles/theme";
+import { headingFontFamily, spacing, useColors } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { generateId } from "@readany/core/utils";
 import { useCallback, useLayoutEffect, useMemo, useState } from "react";
@@ -39,7 +39,7 @@ export function ManualNoteScreen({ navigation, route }: Props) {
 
   const chooseBook = useCallback(() => {
     Alert.alert(t("notes.chooseBook", "Выберите книгу"), undefined, [
-      { text: "Без книги", onPress: () => setBookId("") },
+      { text: t("common.noBook", "Без книги"), onPress: () => setBookId("") },
       ...books.slice(0, 6).map((book) => ({
         text: book.meta.title,
         onPress: () => setBookId(book.id),
@@ -117,16 +117,16 @@ export function ManualNoteScreen({ navigation, route }: Props) {
             unstable_headerRightItems: () => [
               {
                 type: "menu" as const,
-                label: "Книга",
-                accessibilityLabel: "Выбрать книгу",
+                label: t("common.book", "Книга"),
+                accessibilityLabel: t("notes.chooseBook", "Выбрать книгу"),
                 icon: { type: "sfSymbol" as const, name: "book.closed" as const },
                 menu: {
-                  title: "Книга",
+                  title: t("common.book", "Книга"),
                   multiselectable: false,
                   items: [
                     {
                       type: "action" as const,
-                      label: "Без книги",
+                      label: t("common.noBook", "Без книги"),
                       state: bookId ? ("off" as const) : ("on" as const),
                       onPress: () => setBookId(""),
                     },
@@ -141,8 +141,8 @@ export function ManualNoteScreen({ navigation, route }: Props) {
               },
               {
                 type: "button" as const,
-                label: saving ? "Сохраняем" : "Готово",
-                accessibilityLabel: "Сохранить заметку",
+                label: saving ? t("notes.saving", "Сохраняем") : t("common.done", "Готово"),
+                accessibilityLabel: t("notes.saveNote", "Сохранить заметку"),
                 icon: { type: "sfSymbol" as const, name: "checkmark" as const },
                 disabled: !canSave,
                 variant: "prominent" as const,
@@ -164,15 +164,15 @@ export function ManualNoteScreen({ navigation, route }: Props) {
                   numberOfLines={1}
                   style={[styles.headerBookTitle, { color: colors.foreground }]}
                 >
-                  {selectedBook?.meta.title ?? "Без книги"}
+                  {selectedBook?.meta.title ?? t("common.noBook", "Без книги")}
                 </Text>
                 <ChevronDownIcon size={18} color={colors.mutedForeground} />
               </TouchableOpacity>
             ),
             headerRight: () => (
               <NativeButton
-                label="Готово"
-                accessibilityLabel="Сохранить заметку"
+                label={t("common.done", "Готово")}
+                accessibilityLabel={t("notes.saveNote", "Сохранить заметку")}
                 icon="check"
                 size="small"
                 variant="tertiary"
@@ -221,5 +221,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.xs,
   },
-  headerBookTitle: { flexShrink: 1, fontSize: 18, fontWeight: "600" },
+  headerBookTitle: {
+    flexShrink: 1,
+    fontFamily: headingFontFamily,
+    fontSize: 18,
+    fontWeight: "600",
+  },
 });

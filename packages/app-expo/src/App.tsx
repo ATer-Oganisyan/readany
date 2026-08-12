@@ -42,8 +42,7 @@ import { rnSessionEventSource } from "@/hooks";
 import { setStreamingFetch } from "@readany/core/ai/llm-provider";
 import { initDatabase } from "@readany/core/db/database";
 import { setSessionEventSource } from "@readany/core/hooks/use-reading-session";
-import { i18nReady, initI18nLanguage } from "@readany/core/i18n";
-import i18n from "@readany/core/i18n";
+import i18n, { i18nReady, initI18nLanguage } from "@readany/core/i18n";
 import { setPlatformService } from "@readany/core/services";
 import { setSyncAdapter } from "@readany/core/sync";
 import { setAudioModeAsync } from "expo-audio";
@@ -55,6 +54,7 @@ import TrackPlayer, {
 } from "react-native-track-player";
 
 import { CatalogCharacterPortraitPreloader } from "@/components/catalog/CatalogCharacterPortraitPreloader";
+import { AnimatedNarraFace } from "@/components/chat/animated-narra-face";
 import { UpdateDialog } from "@/components/update/UpdateDialog";
 import { useUpdateChecker } from "@/hooks/use-update-checker";
 import { startTelemetry } from "@/lib/analytics/telemetry";
@@ -231,16 +231,14 @@ export default function App() {
   }, []);
 
   const startupError = bootError ?? fontError?.message ?? null;
-  const appReady = startupError !== null || (ready && fontsLoaded && initialThemeMode !== null);
-
-  useEffect(() => {
-    if (!appReady) return;
+  const hideNativeSplash = () => {
     SplashScreen.hideAsync().catch(() => {});
-  }, [appReady]);
+  };
 
   if (startupError) {
     return (
       <View
+        onLayout={hideNativeSplash}
         style={{
           flex: 1,
           backgroundColor: "#1c1c1e",
@@ -263,7 +261,7 @@ export default function App() {
               textAlign: "center",
             }}
           >
-            Не удалось запустить приложение
+            {i18n.t("common.startupFailed", "Не удалось запустить приложение")}
           </Text>
           <Text style={{ color: "#fca5a5", fontSize: 14, textAlign: "center" }}>
             {startupError}
@@ -276,18 +274,22 @@ export default function App() {
   if (!ready || !fontsLoaded || initialThemeMode === null) {
     return (
       <View
+        onLayout={hideNativeSplash}
         style={{
           flex: 1,
           justifyContent: "center",
           alignItems: "center",
           backgroundColor: systemColorScheme === "dark" ? "#000000" : "#FFFFFF",
         }}
-      />
+      >
+        <AnimatedNarraFace width={56} height={58} color="#A1A1A1" animated={false} />
+      </View>
     );
   }
 
   return (
     <View
+      onLayout={hideNativeSplash}
       style={{
         flex: 1,
         backgroundColor: systemColorScheme === "dark" ? "#000000" : "#FFFFFF",

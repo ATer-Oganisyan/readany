@@ -1,10 +1,11 @@
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
-import { generateOpenRouterImage } from "@/lib/ai/openrouter-image";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import * as FileSystem from "expo-file-system/legacy";
-import coverGenerationConfig from "../book/cover-generation-config.json";
+import { resolveCoverGenreProfile } from "../book/cover-genre";
+import { findBundledCatalogBookDefinitionByTitle } from "../catalog/bundled-book-definitions";
 import { budgetPrompt } from "./art-style";
 import { normalizeNarraError } from "./errors";
+import { buildCharacterPortraitPrompt } from "./portrait-prompt";
 import { mentionedCharacters, passportDescription } from "./scene-prompt";
 import { applyActiveStressMarkup } from "./stress-markup";
 import type { NarraCharacter } from "./types";
@@ -12,7 +13,6 @@ import type { NarraProsody } from "./voice-rules";
 
 const MEDIA_DIR = `${FileSystem.documentDirectory}narra-media`;
 const MEDIA_PATH_MARKER = "/Documents/narra-media/";
-const OPENROUTER_IMAGE_MODEL = coverGenerationConfig.openRouterModel;
 let speechFileSequence = 0;
 const portraitRequests = new Map<string, Promise<string>>();
 
@@ -120,30 +120,47 @@ function safeKey(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 160);
 }
 
-/** «Название» (Автор) — контекст эпохи/мира книги для промптов генерации. */
-function bookContextDescription(bookId: string): string | undefined {
+interface PortraitBookContext {
+  description: string;
+  genreId: string;
+  genreLabel: string;
+}
+
+/** Контекст книги и жанр для портретов персонажей. */
+function portraitBookContext(bookId: string): PortraitBookContext | undefined {
   try {
     // Ленивый импорт, чтобы не тянуть стор в юнит-тесты чистых промптов
     const { useLibraryStore } = require("@/stores") as typeof import("@/stores");
     const book = useLibraryStore.getState().books.find((item) => item.id === bookId);
     if (!book) return undefined;
     const author = book.meta.author ? ` (${book.meta.author})` : "";
-    return `«${book.meta.title}»${author}`;
+    const explicitlyClassic =
+      Boolean(findBundledCatalogBookDefinitionByTitle(book.meta.title)) ||
+      book.meta.subjects?.some((subject) => /(?:classic|классик)/iu.test(subject));
+    const genre = explicitlyClassic
+      ? { id: "classic", label: "классическая литература" }
+      : resolveCoverGenreProfile({
+          subjects: book.meta.subjects,
+          title: book.meta.title,
+          description: book.meta.description,
+        });
+    return {
+      description: `«${book.meta.title}»${author}`,
+      genreId: genre.id,
+      genreLabel: genre.label,
+    };
   } catch {
     return undefined;
   }
 }
 
-export function portraitPrompt(character: NarraCharacter, bookContext?: string): string {
-  return budgetPrompt([
-    `Ровно один человек в кадре — ${character.fullName || character.name}, никого больше: без второстепенных персонажей, без силуэтов и людей на фоне.`,
-    "Погрудный портрет: голова и плечи, строго анфас, взгляд в камеру, ровный светлый однотонный фон.",
-    bookContext
-      ? `Персонаж книги ${bookContext}: одежда, причёска и антураж строго соответствуют эпохе и миру книги, без современной одежды.`
-      : "Одежда и причёска строго соответствуют эпохе и миру книги, без современной одежды.",
-    `Выражение лица: ${character.expression || "естественное, в характере"}.`,
-    `Внешность (соблюдать точно): ${passportDescription(character)}.`,
-  ]);
+export function portraitPrompt(
+  character: NarraCharacter,
+  bookContext?: string,
+  genreId = "classic",
+  genreLabel = "классическая литература",
+): string {
+  return buildCharacterPortraitPrompt(character, { bookContext, genreId, genreLabel });
 }
 
 function imagePayload(payload: unknown): { base64?: string; url?: string; error?: string } {
@@ -305,16 +322,24 @@ async function generateCharacterPortraitRequest(
   bookId: string,
   character: NarraCharacter,
 ): Promise<string> {
-  const image = await generateOpenRouterImage({
-    model: OPENROUTER_IMAGE_MODEL,
-    prompt: portraitPrompt(character, bookContextDescription(bookId)),
-    aspectRatio: "3:4",
-    quality: "high",
-    outputFormat: "png",
+  const book = portraitBookContext(bookId);
+  const response = await narraGatewayRequest("/v2/media/images", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      prompt: portraitPrompt(character, book?.description, book?.genreId, book?.genreLabel),
+      width: 768,
+      height: 1024,
+      engine: "openrouter",
+    }),
   });
+  const payload = imagePayload(await response.json().catch(() => null));
+  if (!response.ok || (!payload.base64 && !payload.url)) {
+    throw new Error(payload.error || `Portrait generation failed (${response.status})`);
+  }
   await ensureMediaDir();
   const path = `${MEDIA_DIR}/${safeKey(`${bookId}-${character.id}-portrait`)}.png`;
-  return persistGeneratedImage(path, { base64: image.base64 });
+  return persistGeneratedImage(path, payload);
 }
 
 export function generateCharacterPortrait(
@@ -382,23 +407,149 @@ export function generateSceneImage(
 export interface GeneratedCoverImage {
   base64: string;
   mimeType: string;
+  jobId: string;
 }
 
-async function generateBookCoverImageRequest(prompt: string): Promise<GeneratedCoverImage> {
-  const image = await generateOpenRouterImage({
-    model: OPENROUTER_IMAGE_MODEL,
-    prompt,
-    aspectRatio: "2:3",
-    quality: "high",
-    outputFormat: "jpeg",
-    outputCompression: 90,
+export type RemoteCoverJobStatus =
+  | "queued"
+  | "running"
+  | "retry_wait"
+  | "completed"
+  | "failed";
+
+export interface RemoteCoverJob {
+  jobId: string;
+  status: RemoteCoverJobStatus;
+  pollAfterMs: number;
+  attemptCount: number;
+  expiresAt?: number;
+  image?: string;
+  mimeType?: string;
+  error?: string;
+  code?: string;
+}
+
+interface CoverJobPayload {
+  job_id?: string;
+  status?: RemoteCoverJobStatus;
+  poll_after_ms?: number;
+  attempt_count?: number;
+  expires_at?: number;
+  image?: string;
+  b64_json?: string;
+  mime_type?: string;
+  error?: string;
+  code?: string;
+}
+
+function coverJobFromPayload(payload: CoverJobPayload | null): RemoteCoverJob | null {
+  if (!payload?.job_id || !payload.status) return null;
+  return {
+    jobId: payload.job_id,
+    status: payload.status,
+    pollAfterMs: Math.max(0, Math.min(60_000, payload.poll_after_ms ?? 3_000)),
+    attemptCount: Math.max(0, payload.attempt_count ?? 0),
+    expiresAt: payload.expires_at,
+    image: payload.image ?? payload.b64_json,
+    mimeType: payload.mime_type,
+    error: payload.error,
+    code: payload.code,
+  };
+}
+
+function coverJobError(response: Response, payload: CoverJobPayload | null): Error {
+  const error = new Error(payload?.error || `Cover job request failed (${response.status})`);
+  Object.assign(error, {
+    code: payload?.code,
+    status: response.status,
+    resetAt: Number(response.headers.get("ratelimit-reset") || 0) * 1_000 || undefined,
   });
-  return { base64: image.base64, mimeType: image.mimeType };
+  return error;
 }
 
-/** Обложка книги через встроенный OpenRouter Images API. */
-export function generateBookCoverImage(prompt: string): Promise<GeneratedCoverImage> {
-  return trackNarraMediaJob("cover", "background", () => generateBookCoverImageRequest(prompt));
+async function readCoverJobResponse(response: Response): Promise<RemoteCoverJob> {
+  const payload = (await response.json().catch(() => null)) as CoverJobPayload | null;
+  if (!response.ok) throw coverJobError(response, payload);
+  const job = coverJobFromPayload(payload);
+  if (!job) throw new Error("Gateway returned an invalid cover job");
+  return job;
+}
+
+export async function createBookCoverJob(
+  prompt: string,
+  requestId: string,
+): Promise<RemoteCoverJob> {
+  const response = await narraGatewayRequest("/v2/media/cover/jobs", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ prompt, request_id: requestId }),
+  });
+  return readCoverJobResponse(response);
+}
+
+export async function getBookCoverJob(jobId: string): Promise<RemoteCoverJob> {
+  const response = await narraGatewayRequest(`/v2/media/cover/jobs/${encodeURIComponent(jobId)}`);
+  return readCoverJobResponse(response);
+}
+
+export async function acknowledgeBookCoverJob(jobId: string): Promise<void> {
+  const response = await narraGatewayRequest(
+    `/v2/media/cover/jobs/${encodeURIComponent(jobId)}/ack`,
+    { method: "POST" },
+  );
+  if (response.ok) return;
+  const payload = (await response.json().catch(() => null)) as CoverJobPayload | null;
+  throw coverJobError(response, payload);
+}
+
+function coverPollDelay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, Math.max(250, ms)));
+}
+
+async function generateBookCoverImageRequest(
+  prompt: string,
+  options: {
+    requestId: string;
+    jobId?: string;
+    onJob?: (job: RemoteCoverJob) => void | Promise<void>;
+  },
+): Promise<GeneratedCoverImage> {
+  let job = options.jobId
+    ? await getBookCoverJob(options.jobId)
+    : await createBookCoverJob(prompt, options.requestId);
+  await options.onJob?.(job);
+
+  while (job.status !== "completed" && job.status !== "failed") {
+    await coverPollDelay(job.pollAfterMs || 3_000);
+    job = await getBookCoverJob(job.jobId);
+    await options.onJob?.(job);
+  }
+
+  if (job.status === "failed") {
+    const error = new Error(job.error || "Не удалось создать обложку");
+    Object.assign(error, { code: job.code || "UNKNOWN" });
+    throw error;
+  }
+  if (!job.image) throw new Error("Gateway returned an empty cover result");
+  return {
+    base64: job.image,
+    mimeType: job.mimeType || "image/jpeg",
+    jobId: job.jobId,
+  };
+}
+
+/** Durable cover job: the gateway owns provider fallback and survives disconnects. */
+export function generateBookCoverImage(
+  prompt: string,
+  options: {
+    requestId: string;
+    jobId?: string;
+    onJob?: (job: RemoteCoverJob) => void | Promise<void>;
+  },
+): Promise<GeneratedCoverImage> {
+  return trackNarraMediaJob("cover", "background", () =>
+    generateBookCoverImageRequest(prompt, options),
+  );
 }
 
 export interface NarraSpeechOptions {

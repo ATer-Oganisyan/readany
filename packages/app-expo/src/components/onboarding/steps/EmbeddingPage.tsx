@@ -3,7 +3,7 @@ import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView
 import { Text, TextInput } from "@/components/ui/Typography";
 import { BUNDLED_OPENROUTER_EMBEDDING_ID, hydrateBundledEmbeddingModel } from "@/config/bundled-ai";
 import { useVectorModelStore } from "@/stores/vector-model-store";
-import { useTheme } from "@/styles/theme";
+import { headingFontFamily, largeTitleFontFamily, useTheme } from "@/styles/theme";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { VectorModelConfig } from "@readany/core/types";
@@ -345,6 +345,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   title: {
+    fontFamily: largeTitleFontFamily,
     fontSize: 28,
     fontWeight: "800",
     color: "#0f172a",
@@ -374,7 +375,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   modeContent: { flex: 1, marginLeft: 16 },
-  modeTitle: { fontSize: 16, fontWeight: "600", marginBottom: 2 },
+  modeTitle: {
+    fontFamily: headingFontFamily,
+    fontSize: 16,
+    fontWeight: "600",
+    marginBottom: 2,
+  },
   modeDesc: { fontSize: 13 },
   remoteSection: { marginTop: 24, gap: 12 },
   addBtn: {
@@ -399,7 +405,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
-  formTitle: { fontSize: 16, fontWeight: "600" },
+  formTitle: { fontFamily: headingFontFamily, fontSize: 16, fontWeight: "600" },
   formField: { gap: 6 },
   fieldLabel: { fontSize: 12, fontWeight: "500" },
   fieldHint: { fontSize: 11, lineHeight: 15 },

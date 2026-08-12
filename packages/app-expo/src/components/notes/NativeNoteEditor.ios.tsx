@@ -10,6 +10,7 @@ import {
   tint,
 } from "@expo/ui/swift-ui/modifiers";
 import { useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import type { NativeNoteEditorProps } from "./NativeNoteEditor";
 
 /** Full-screen SwiftUI multiline editor matching the system Notes composition surface. */
@@ -19,6 +20,7 @@ export function NativeNoteEditor({
   initialValue = "",
 }: NativeNoteEditorProps) {
   const { colors, isDark } = useTheme();
+  const { t } = useTranslation();
   const text = useNativeState(initialValue);
   const handleChange = useCallback((value: string) => onChange(value), [onChange]);
 
@@ -29,7 +31,7 @@ export function NativeNoteEditor({
     >
       <TextField
         axis="vertical"
-        placeholder="Начните писать…"
+        placeholder={t("notes.startWriting", "Начните писать…")}
         text={text}
         autoFocus={autoFocus}
         onTextChange={handleChange}

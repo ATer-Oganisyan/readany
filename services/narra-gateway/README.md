@@ -32,6 +32,24 @@ npm install
 npm test
 ```
 
+## Durable cover jobs
+
+Book covers use an authenticated, installation-owned job API:
+
+- `POST /v2/media/cover/jobs` creates or reuses a job by `request_id`;
+- `GET /v2/media/cover/jobs/:jobId` polls status and returns the completed image;
+- `POST /v2/media/cover/jobs/:jobId/ack` deletes a terminal job after the client persists it.
+
+Job metadata and result files live under `DATA_DIR/cover-jobs-<environment>` on
+the persistent volume. Running jobs return to the queue after a restart, result
+retention defaults to 24 hours, and expired records are removed before capacity
+checks and by the worker. The production worker must have a single writer;
+deployment candidates start with `COVER_JOB_WORKER_ENABLED=false`.
+
+The cover provider chain is OpenRouter GPT Image followed by Nano Banana for
+retryable provider failures. Kandinsky is deliberately not part of cover jobs or
+the compatibility `/v2/media/cover` route.
+
 Copy `.env.example` to `.env` only for local development. Secrets belong in the
 deployment environment and must never be committed or shipped to the Expo app.
 

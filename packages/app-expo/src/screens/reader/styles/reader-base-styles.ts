@@ -2,6 +2,7 @@ import {
   type ThemeColors,
   fontSize,
   fontWeight,
+  headingFontFamily,
   radius,
   withOpacity,
 } from "@/styles/theme";
@@ -144,6 +145,7 @@ export const makeToolbarStyles = (colors: ThemeColors) =>
     toolbarBtnDisabled: { opacity: 0.4 },
     toolbarCenter: { flex: 1, paddingHorizontal: 8, alignItems: "center" },
     toolbarTitle: {
+      fontFamily: headingFontFamily,
       fontSize: fontSize.sm, fontWeight: fontWeight.semibold,
       color: "#fff", letterSpacing: 0.3,
     },

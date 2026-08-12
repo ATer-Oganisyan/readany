@@ -2,7 +2,7 @@ import { Bot, Languages, Search } from "@/components/ui/Icon";
 import { NativeButton } from "@/components/ui/NativeButton";
 import { Text } from "@/components/ui/Typography";
 import { useSettingsStore } from "@/stores";
-import { useTheme } from "@/styles/theme";
+import { headingFontFamily, largeTitleFontFamily, useTheme } from "@/styles/theme";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useTranslation } from "react-i18next";
@@ -125,7 +125,13 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
   },
   iconContainer: { marginBottom: 24 },
-  title: { fontSize: 28, fontWeight: "800", textAlign: "center", marginBottom: 12 },
+  title: {
+    fontFamily: largeTitleFontFamily,
+    fontSize: 28,
+    fontWeight: "800",
+    textAlign: "center",
+    marginBottom: 12,
+  },
   subtitle: {
     fontSize: 16,
     textAlign: "center",
@@ -144,7 +150,12 @@ const styles = StyleSheet.create({
     marginRight: 16,
   },
   featureText: { flex: 1 },
-  featureTitle: { fontSize: 15, fontWeight: "600", marginBottom: 4 },
+  featureTitle: {
+    fontFamily: headingFontFamily,
+    fontSize: 15,
+    fontWeight: "600",
+    marginBottom: 4,
+  },
   featureDesc: { fontSize: 13, lineHeight: 18 },
   footer: {
     flexDirection: "row",

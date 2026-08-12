@@ -1,0 +1,48 @@
+# Repository metadata and agent-local files
+/.git
+/.agents
+/.claude
+/.codex
+/.github
+
+# Dependencies are installed by EAS
+node_modules
+**/node_modules
+/.pnpm-store
+
+# Large source/reference materials that are not application assets
+/admarginem-book-covers
+/books_epub
+/readese
+
+# Workspaces and repository materials not used by the iOS app
+/packages/app
+/packages/cli
+/packages/reader-storybook-web
+/website
+/tools
+/assets
+/docs
+/ops
+/services
+/stats
+
+# Generated native projects and build outputs
+packages/app-expo/ios/
+packages/app-expo/android/
+packages/app-expo/dist/
+packages/app-expo/.expo/
+**/build/
+**/.gradle/
+*.xcarchive
+DerivedData/
+
+# Local development output
+.DS_Store
+*.log
+*.tmp
+coverage/
+.cua-*.png
+.codex-*.png
+EPUB_CONVERSION_PLAN.md
+README*.md

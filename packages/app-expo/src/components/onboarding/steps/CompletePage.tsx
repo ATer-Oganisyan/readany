@@ -1,6 +1,6 @@
 import { NativeButton } from "@/components/ui/NativeButton";
 import { useSettingsStore } from "@/stores";
-import { useTheme } from "@/styles/theme";
+import { largeTitleFontFamily, useTheme } from "@/styles/theme";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, View } from "react-native";
 import Animated, { FadeInDown, SlideInRight } from "react-native-reanimated";
@@ -80,6 +80,7 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
   },
   title: {
+    fontFamily: largeTitleFontFamily,
     fontSize: 36,
     fontWeight: "800",
     color: "#0f172a",

@@ -1,4 +1,5 @@
 import { Text } from "@/components/ui/Typography";
+import { shouldRenderCoverTypography } from "@/lib/book/cover-display";
 import { findBundledCatalogBookByTitle } from "@/lib/catalog/bundled-books";
 import { useResolvedCovers } from "@/screens/notes/useResolvedCovers";
 import { useLibraryStore } from "@/stores/library-store";
@@ -65,9 +66,11 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
       >
         {books.map((book) => {
           const coverUri = covers.get(book.id);
+          const progressPercent = Math.round(Math.max(0, Math.min(1, book.progress ?? 0)) * 100);
           const bundledCatalogBook = coverUri
             ? undefined
             : findBundledCatalogBookByTitle(book.meta.title);
+          const showCoverTypography = shouldRenderCoverTypography(book.id, book.meta.coverUrl);
           return (
             <BookCardActionSheet key={book.id} book={book} onDelete={onDelete} onOpen={onOpen}>
               <PerspectiveBook
@@ -95,12 +98,15 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
                       referenceWidth={catalogCardWidth}
                       titleFontSize={15}
                       leftInsetAdjustment={2}
+                      showText={showCoverTypography}
                       bottomAccessory={
-                        <BlurView tint="dark" intensity={50} style={s.progressChip}>
-                          <Text style={s.cardProgress} numberOfLines={1}>
-                            {`${Math.round(Math.max(0, Math.min(1, book.progress ?? 0)) * 100)}%`}
-                          </Text>
-                        </BlurView>
+                        progressPercent > 0 ? (
+                          <BlurView tint="dark" intensity={50} style={s.progressChip}>
+                            <Text style={s.cardProgress} numberOfLines={1}>
+                              {`${progressPercent}%`}
+                            </Text>
+                          </BlurView>
+                        ) : null
                       }
                     />
                     {generatingCoverIds.has(book.id) ? <CoverGenerationShimmer /> : null}

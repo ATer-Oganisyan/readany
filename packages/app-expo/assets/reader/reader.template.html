@@ -450,11 +450,16 @@
     // Store user annotations for re-rendering on page change
     const userAnnotations = new Map();
     const TTS_HIGHLIGHT_KEY = 'readany-tts-highlight';
+    const TTS_CSS_HIGHLIGHT_NAME = 'readany-tts-active';
+    const TTS_CSS_HIGHLIGHT_STYLE_ID = 'readany-tts-active-style';
     const TTS_ANNOTATION_PREFIX = 'foliate-tts:';
     let ttsHighlightState = {
       cfi: null,
       color: null,
+      wordIndex: null,
+      text: null,
       annotationValue: null,
+      drawn: false,
     };
 
     function emitTTSDebug(message, detail) {
@@ -497,7 +502,10 @@
         }
 
         if (ttsHighlightState.cfi) {
-          setTTSHighlight(ttsHighlightState.cfi, ttsHighlightState.color);
+          const { cfi, color, wordIndex, text } = ttsHighlightState;
+          ttsHighlightState.annotationValue = null;
+          ttsHighlightState.drawn = false;
+          setTTSHighlight(cfi, color, wordIndex, text);
         }
       }, delay == null ? 100 : delay);
     }
@@ -869,7 +877,17 @@
       return getRendererContents().filter((content) => content.overlayer);
     }
 
+    function removeAllTTSCSSHighlights() {
+      for (const content of getRendererContents()) {
+        const css = content?.doc?.defaultView?.CSS;
+        try {
+          css?.highlights?.delete(TTS_CSS_HIGHLIGHT_NAME);
+        } catch {}
+      }
+    }
+
     function removeAllTTSHighlights() {
+      removeAllTTSCSSHighlights();
       const contexts = getAllTTSOverlayerContexts();
       for (const context of contexts) {
         try {
@@ -985,8 +1003,15 @@
       if (!color) return 'rgba(96, 165, 250, 0.35)';
       // If it's already an rgba/rgb value, use as-is
       if (color.startsWith('rgba(') || color.startsWith('rgb(')) return color;
-      // If it's a plain hex color, apply 35% opacity for a soft blue-tinted highlight
-      if (/^#[0-9a-fA-F]{3,8}$/.test(color)) {
+      // Preserve the alpha channel from primitives tokens such as Primary 5 (#RRGGBBAA).
+      if (/^#[0-9a-fA-F]{8}$/.test(color)) {
+        const r = parseInt(color.slice(1, 3), 16);
+        const g = parseInt(color.slice(3, 5), 16);
+        const b = parseInt(color.slice(5, 7), 16);
+        const a = parseInt(color.slice(7, 9), 16) / 255;
+        return `rgba(${r}, ${g}, ${b}, ${a})`;
+      }
+      if (/^#[0-9a-fA-F]{6}$/.test(color)) {
         const r = parseInt(color.slice(1, 3), 16);
         const g = parseInt(color.slice(3, 5), 16);
         const b = parseInt(color.slice(5, 7), 16);
@@ -995,10 +1020,43 @@
       return color;
     }
 
+    function drawTTSHighlightWithCSS(range, color) {
+      if (!range || range.collapsed) return false;
+      const doc = range.startContainer?.nodeType === Node.DOCUMENT_NODE
+        ? range.startContainer
+        : range.startContainer?.ownerDocument;
+      const win = doc?.defaultView;
+      const highlightRegistry = win?.CSS?.highlights;
+      const HighlightConstructor = win?.Highlight;
+      if (!doc || !highlightRegistry || typeof HighlightConstructor !== 'function') return false;
+
+      try {
+        let style = doc.getElementById(TTS_CSS_HIGHLIGHT_STYLE_ID);
+        if (!style) {
+          style = doc.createElement('style');
+          style.id = TTS_CSS_HIGHLIGHT_STYLE_ID;
+          (doc.head || doc.documentElement).append(style);
+        }
+        style.textContent = `::highlight(${TTS_CSS_HIGHLIGHT_NAME}) { background-color: ${resolveTTSHighlightColor(color)} !important; color: inherit !important; }`;
+        highlightRegistry.set(TTS_CSS_HIGHLIGHT_NAME, new HighlightConstructor(range.cloneRange()));
+        return true;
+      } catch (error) {
+        emitTTSDebug('css highlight error', { error: String(error) });
+        return false;
+      }
+    }
+
     function clearTTSHighlight() {
       const previousValue = ttsHighlightState.annotationValue;
       if (!previousValue && !ttsHighlightState.cfi) return;
-      ttsHighlightState = { cfi: null, color: null, annotationValue: null };
+      ttsHighlightState = {
+        cfi: null,
+        color: null,
+        wordIndex: null,
+        text: null,
+        annotationValue: null,
+        drawn: false,
+      };
       removeAllTTSHighlights();
       if (view && previousValue) {
         try {
@@ -1061,15 +1119,25 @@
       if (!view || !view.renderer || !cfi) return;
       const resolved = resolveRangeForCfi(cfi);
       if (!resolved) {
+        // A missing range is not proof that the user is on another page: the
+        // WebView may still be attaching the active iframe. Navigate only when
+        // the CFI explicitly belongs to a different spine section.
         try {
-          await view.goTo(cfi);
+          const location = view.resolveCFI ? view.resolveCFI(cfi) : null;
+          const current = getPrimaryRendererContent();
+          if (
+            location?.index != null &&
+            current?.index != null &&
+            location.index !== current.index
+          ) {
+            await view.goTo(cfi);
+          }
         } catch (e) {}
         return;
       }
 
       const { range, doc, index } = resolved;
-      const contents = getRendererContents();
-      const current = contents[0] || null;
+      const current = getPrimaryRendererContent();
       const currentIndex = current && current.index != null ? current.index : null;
 
       if (currentIndex != null && index !== currentIndex) {
@@ -1093,22 +1161,122 @@
       }
     }
 
-    async function setTTSHighlight(cfi, color) {
-      postToRN('debug', { message: '[ttsHighlight] setTTSHighlight called: cfi=' + (cfi || 'null') + ' color=' + (color || 'null') });
+    function getTTSWordRange(sourceRange, requestedWordIndex) {
+      if (!sourceRange || requestedWordIndex == null) return null;
+      const doc = sourceRange.startContainer && sourceRange.startContainer.ownerDocument;
+      if (!doc) return null;
+
+      const root = sourceRange.commonAncestorContainer;
+      const textNodes = [];
+      if (root.nodeType === Node.TEXT_NODE) {
+        textNodes.push(root);
+      } else {
+        const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        let node;
+        while ((node = walker.nextNode())) {
+          try {
+            if (sourceRange.intersectsNode(node)) textNodes.push(node);
+          } catch {}
+        }
+      }
+
+      let text = '';
+      const positions = [];
+      for (const node of textNodes) {
+        const start = node === sourceRange.startContainer ? sourceRange.startOffset : 0;
+        const end = node === sourceRange.endContainer ? sourceRange.endOffset : node.nodeValue.length;
+        if (end <= start) continue;
+        const absoluteStart = text.length;
+        text += node.nodeValue.slice(start, end);
+        positions.push({ node, nodeStart: start, start: absoluteStart, end: text.length });
+      }
+      if (!text || !positions.length) return null;
+
+      const lang = doc.documentElement && doc.documentElement.lang || undefined;
+      const segments = typeof Intl !== 'undefined' && Intl.Segmenter
+        ? Array.from(new Intl.Segmenter(lang, { granularity: 'word' }).segment(text))
+        : Array.from(text.matchAll(/[\p{L}\p{N}]+(?:['’\-][\p{L}\p{N}]+)*/gu)).map((match) => ({
+            segment: match[0],
+            index: match.index,
+            isWordLike: true,
+          }));
+      const words = segments.filter((segment) =>
+        segment.isWordLike === true || /[\p{L}\p{N}]/u.test(segment.segment)
+      );
+      if (!words.length) return null;
+
+      const word = words[Math.max(0, Math.min(requestedWordIndex, words.length - 1))];
+      const wordStart = word.index;
+      const wordEnd = word.index + word.segment.length;
+      const startPosition = positions.find((position) => wordStart < position.end);
+      const endPosition = positions.find((position) => wordEnd <= position.end) || positions[positions.length - 1];
+      if (!startPosition || !endPosition) return null;
+
+      const range = doc.createRange();
+      range.setStart(
+        startPosition.node,
+        startPosition.nodeStart + Math.max(0, wordStart - startPosition.start)
+      );
+      range.setEnd(
+        endPosition.node,
+        endPosition.nodeStart + Math.max(0, wordEnd - endPosition.start)
+      );
+      return range;
+    }
+
+    function findTTSRangeByText(doc, requestedText) {
+      const targetText = normalizeTTSText(requestedText);
+      if (!doc?.body || !targetText) return null;
+
+      for (const block of getReadableBlocksForTTS(doc)) {
+        const textNodes = getTTSTextNodes(block);
+        let normalized = '';
+        const positions = [];
+
+        for (const node of textNodes) {
+          const value = node.nodeValue || '';
+          for (let offset = 0; offset < value.length; offset += 1) {
+            const character = value[offset];
+            if (/\s/u.test(character)) {
+              if (normalized && !normalized.endsWith(' ')) {
+                normalized += ' ';
+                positions.push({ node, offset });
+              }
+              continue;
+            }
+            normalized += character;
+            positions.push({ node, offset });
+          }
+        }
+
+        const start = normalized.indexOf(targetText);
+        if (start < 0 || !positions[start] || !positions[start + targetText.length - 1]) continue;
+
+        const startPosition = positions[start];
+        const endPosition = positions[start + targetText.length - 1];
+        const range = doc.createRange();
+        range.setStart(startPosition.node, startPosition.offset);
+        range.setEnd(endPosition.node, endPosition.offset + 1);
+        return range;
+      }
+
+      return null;
+    }
+
+    async function setTTSHighlight(cfi, color, wordIndex, text) {
       const previousValue = ttsHighlightState.annotationValue;
-      const annotationValue = cfi ? `${TTS_ANNOTATION_PREFIX}${cfi}` : null;
       const normalizedColor = color || null;
+      const normalizedWordIndex = cfi ? Math.max(0, Number(wordIndex) || 0) : null;
+      const normalizedText = cfi ? normalizeTTSText(text) || null : null;
       if (
-        ttsHighlightState.annotationValue === annotationValue &&
-        ttsHighlightState.color === normalizedColor
+        ttsHighlightState.cfi === cfi &&
+        ttsHighlightState.color === normalizedColor &&
+        ttsHighlightState.wordIndex === normalizedWordIndex &&
+        ttsHighlightState.text === normalizedText &&
+        ttsHighlightState.drawn
       ) {
         return;
       }
-      ttsHighlightState = {
-        cfi: cfi || null,
-        color: normalizedColor,
-        annotationValue,
-      };
       if (!view) {
         postToRN('debug', { message: '[ttsHighlight] no view, aborting' });
         return;
@@ -1124,20 +1292,98 @@
       }
       removeAllTTSHighlights();
 
-      if (!cfi) return;
+      if (!cfi) {
+        ttsHighlightState = {
+          cfi: null,
+          color: null,
+          wordIndex: null,
+          text: null,
+          annotationValue: null,
+          drawn: false,
+        };
+        return;
+      }
 
-      // Only draw the active TTS highlight here.
-      // Reader-level sentence following is controlled in React so this layer
-      // does not accidentally trigger extra relocates while simply repainting.
+      let resolved = resolveRangeForCfi(cfi);
+      const resolvedText = resolved?.range ? normalizeTTSText(resolved.range.toString()) : '';
+      if (normalizedText && (!resolved?.range || resolved.range.collapsed || !resolvedText.includes(normalizedText))) {
+        const preferredContents = resolved?.doc
+          ? [getRendererContentForDoc(resolved.doc), ...getRendererContents()]
+          : getRendererContents();
+        const seenDocs = new Set();
+        for (const content of preferredContents) {
+          if (!content?.doc || seenDocs.has(content.doc)) continue;
+          seenDocs.add(content.doc);
+          const textRange = findTTSRangeByText(content.doc, normalizedText);
+          if (!textRange) continue;
+          resolved = { range: textRange, doc: content.doc, index: content.index ?? 0 };
+          break;
+        }
+      }
+      const wordRange = resolved && getTTSWordRange(resolved.range, normalizedWordIndex);
+      if (resolved) {
+        const target = getRendererContentForDoc(resolved.doc) || getRendererContentForCfi(cfi);
+        const renderRange = wordRange || resolved.range;
+        const hasRenderableRects = renderRange && Array.from(renderRange.getClientRects?.() || [])
+          .some((rect) => rect.width > 0 && rect.height > 0);
+        if (target?.overlayer && renderRange && hasRenderableRects) {
+          try {
+            target.overlayer.add(
+              TTS_HIGHLIGHT_KEY,
+              renderRange,
+              drawTTSHighlight,
+              { color: resolveTTSHighlightColor(normalizedColor) }
+            );
+            ttsHighlightState = {
+              cfi,
+              color: normalizedColor,
+              wordIndex: normalizedWordIndex,
+              text: normalizedText,
+              annotationValue: null,
+              drawn: true,
+            };
+            return;
+          } catch (e) {
+            emitTTSDebug('direct highlight error', { error: String(e) });
+          }
+        }
+        // Keep the platform Highlight API only as a fallback. Foliate's own
+        // overlayer is deterministic across arbitrary EPUB CSS, while WebKit
+        // can accept CSS.highlights.set() without painting in some layouts.
+        if (hasRenderableRects && drawTTSHighlightWithCSS(renderRange, normalizedColor)) {
+          ttsHighlightState = {
+            cfi,
+            color: normalizedColor,
+            wordIndex: normalizedWordIndex,
+            text: normalizedText,
+            annotationValue: null,
+            drawn: true,
+          };
+          return;
+        }
+      }
+
+      // Some EPUBs expose the active sentence before its section is attached to
+      // the renderer. Keep a sentence annotation as a fallback until it appears.
+      const annotationValue = `${TTS_ANNOTATION_PREFIX}${cfi}`;
+      ttsHighlightState = {
+        cfi,
+        color: normalizedColor,
+        wordIndex: normalizedWordIndex,
+        text: normalizedText,
+        annotationValue,
+        drawn: true,
+      };
       try {
         await view.addAnnotation({
           value: annotationValue,
           type: 'tts-highlight',
-          color: color || null,
+          color: normalizedColor,
         });
-        postToRN('debug', { message: '[ttsHighlight] addAnnotation success for: ' + cfi.slice(0, 40) });
+        emitTTSDebug('sentence annotation fallback added');
       } catch (e) {
-        postToRN('debug', { message: '[ttsHighlight] addAnnotation error: ' + String(e) });
+        ttsHighlightState.drawn = false;
+        emitTTSDebug('sentence annotation fallback error', { error: String(e) });
       }
     }
 
@@ -1540,6 +1786,9 @@
         case 'goToCFI':
           if (view && msg.cfi) await view.goTo(msg.cfi);
           break;
+        case 'followTTSLocation':
+          await followTTSLocation(msg.cfi);
+          break;
         case 'search':
           await handleSearch(msg.query);
           break;
@@ -1606,7 +1855,7 @@
           if (view && msg.settings) applySettings(msg.settings);
           break;
         case 'setTTSHighlight':
-          await setTTSHighlight(msg.cfi, msg.color);
+          await setTTSHighlight(msg.cfi, msg.color, msg.wordIndex, msg.text);
           break;
         case 'clearTTSHighlight':
           await clearTTSHighlight();
@@ -1643,7 +1892,6 @@
     async function openBook(msg) {
       const container = document.getElementById('reader-container');
       const loading = document.getElementById('loading');
-      const loadingShownAt = performance.now();
       if (loading) loading.classList.remove('hidden');
       bookTextMetricsJobId += 1;
       if (bookTextMetricsTimer) {
@@ -1656,11 +1904,8 @@
         const markLoaded = () => {
           if (hasSignalledLoaded) return;
           hasSignalledLoaded = true;
-          const remaining = Math.max(0, 500 - (performance.now() - loadingShownAt));
-          window.setTimeout(() => {
-            if (loading) loading.classList.add('hidden');
-            postToRN('loaded', {});
-          }, remaining);
+          if (loading) loading.classList.add('hidden');
+          postToRN('loaded', {});
         };
 
         let file;
@@ -1881,7 +2126,6 @@
                 text: range && typeof range.toString === 'function' ? range.toString().slice(0, 48) : '',
               })}`,
             });
-            draw(Overlayer.highlight, { color: resolveTTSHighlightColor(annotation.color) });
             draw(drawTTSHighlight, { color: resolveTTSHighlightColor(annotation.color) });
           } else if (annotation.note) {
             console.log('[draw-annotation] has note:', annotation.note);
@@ -2681,8 +2925,8 @@ a { color: ${primary} !important; }
           return;
         }
 
-        // Тап по врезке сцены: слот/ошибка → генерация, «↻ Заново» —
-        // перегенерация; тапы по готовой картинке не листают страницу.
+        // Тап по врезке сцены: слот/ошибка → генерация;
+        // тапы по готовой картинке не листают страницу.
         const sceneInsertTarget = target && target.closest
           ? target.closest('.' + SCENE_INSERT_CLASS)
           : null;
@@ -2695,9 +2939,6 @@ a { color: ${primary} !important; }
           if (sceneState === 'idle' || sceneState === 'error') {
             renderSceneInsert(sceneInsertTarget, 'loading', null);
             postToRN('sceneSlotTap', { anchor: sceneAnchor });
-          } else if (sceneState === 'image' && target.closest('.readany-scene-regen')) {
-            renderSceneInsert(sceneInsertTarget, 'loading', null);
-            postToRN('sceneSlotRegenerate', { anchor: sceneAnchor });
           }
           return;
         }
@@ -3064,8 +3305,9 @@ a { color: ${primary} !important; }
         if (!view || !view.renderer) return '';
         var renderer = view.renderer;
         var contents = renderer.getContents && renderer.getContents();
-        if (!contents || !contents[0] || !contents[0].doc) return '';
-        var doc = contents[0].doc;
+        var primaryContent = getPrimaryRendererContent() || (contents && contents[0]);
+        if (!primaryContent || !primaryContent.doc) return '';
+        var doc = primaryContent.doc;
         var win = doc.defaultView;
         if (!win) return '';
 
@@ -3075,7 +3317,8 @@ a { color: ${primary} !important; }
         // Check if we're in paginated mode (CSS columns)
         var isPaginated = !renderer.scrolled;
         var pSize = renderer.size;   // container visible width (one page)
-        var pStart = renderer.start; // abs(scrollLeft)
+        var pStart = renderer.start;
+        var pEnd = renderer.end;
 
         var walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
           acceptNode: function(node) {
@@ -3094,10 +3337,11 @@ a { color: ${primary} !important; }
           
           var isVisible = false;
           if (isPaginated && pSize > 0) {
-            // In paginated mode, first page starts at scroll offset = pSize
-            // So visible range in iframe coords is [start - size, end - size]
-            var visibleLeft = pStart - pSize;
-            var visibleRight = pStart;
+            // Paginator exposes current iframe-local viewport bounds directly.
+            var visibleLeft = pStart;
+            var visibleRight = Number.isFinite(pEnd) && pEnd > pStart
+              ? pEnd
+              : pStart + pSize;
             isVisible = rect.right > visibleLeft && rect.left < visibleRight && rect.width > 0;
           } else {
             // Scrolled mode: use iframe viewport dimensions
@@ -3127,10 +3371,11 @@ a { color: ${primary} !important; }
         }
         var renderer = view.renderer;
         var contents = renderer.getContents && renderer.getContents();
-        if (!contents || !contents[0] || !contents[0].doc) {
+        var primaryContent = getPrimaryRendererContent() || (contents && contents[0]);
+        if (!primaryContent || !primaryContent.doc) {
           return { text: '', error: 'no contents or doc' };
         }
-        var doc = contents[0].doc;
+        var doc = primaryContent.doc;
         var win = doc.defaultView;
         if (!win) {
           return { text: '', error: 'no win' };
@@ -3141,7 +3386,8 @@ a { color: ${primary} !important; }
         // Check if we're in paginated mode (CSS columns)
         var isPaginated = !renderer.scrolled;
         var pSize = renderer.size;   // container visible width (one page)
-        var pStart = renderer.start; // abs(scrollLeft)
+        var pStart = renderer.start;
+        var pEnd = renderer.end;
 
         var walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
           acceptNode: function(node) {
@@ -3168,12 +3414,10 @@ a { color: ${primary} !important; }
           
           var isVisible = false;
           if (isPaginated && pSize > 0) {
-            // In paginated mode, the iframe is expanded to the full content width.
-            // The outer container scrolls to show the current "page".
-            // First page starts at scroll offset = pSize (page 0 is padding).
-            // So visible range in iframe coords is [start - size, end - size].
-            var visibleLeft = pStart - pSize;
-            var visibleRight = pStart;
+            var visibleLeft = pStart;
+            var visibleRight = Number.isFinite(pEnd) && pEnd > pStart
+              ? pEnd
+              : pStart + pSize;
             isVisible = rect.right > visibleLeft && rect.left < visibleRight && rect.width > 0;
           } else {
             // Scrolled mode: use iframe viewport dimensions
@@ -3199,6 +3443,7 @@ a { color: ${primary} !important; }
             isPaginated: isPaginated,
             pSize: pSize,
             pStart: pStart,
+            pEnd: pEnd,
             nodeCount: nodeCount,
             visibleCount: visibleCount,
             firstRect: firstRectInfo
@@ -3216,11 +3461,21 @@ a { color: ${primary} !important; }
 
     function anchorToRange(doc, anchor) {
       if (!doc || !anchor) return null;
-      if (anchor instanceof Range) return anchor;
-      if (!(anchor instanceof Node)) return null;
+      // EPUB content lives in renderer iframes. A Range/Node created there is
+      // not an instanceof the outer reader window's Range/Node constructors,
+      // even though it is perfectly valid for the iframe document.
+      if (
+        anchor.startContainer &&
+        anchor.endContainer &&
+        typeof anchor.cloneRange === 'function'
+      ) {
+        return anchor;
+      }
+      if (typeof anchor.nodeType !== 'number') return null;
       try {
         const range = doc.createRange();
-        if (anchor.nodeType === Node.TEXT_NODE) {
+        const textNodeType = doc.defaultView?.Node?.TEXT_NODE ?? 3;
+        if (anchor.nodeType === textNodeType) {
           range.selectNodeContents(anchor);
         } else {
           range.selectNode(anchor);
@@ -3273,13 +3528,12 @@ a { color: ${primary} !important; }
       const size = Number(renderer && renderer.size || 0);
       const candidates = [];
 
-      if (Number.isFinite(start) && Number.isFinite(size) && size > 0) {
-        candidates.push({ left: start - size, right: start, source: 'legacy-offset' });
-        candidates.push({ left: start, right: start + size, source: 'size-fallback' });
-      }
-
       if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
         candidates.push({ left: start, right: end, source: 'renderer' });
+      }
+
+      if (Number.isFinite(start) && Number.isFinite(size) && size > 0) {
+        candidates.push({ left: start, right: start + size, source: 'size-fallback' });
       }
 
       return candidates.filter((candidate, index, list) => {
@@ -3329,16 +3583,13 @@ a { color: ${primary} !important; }
       const candidates = getPaginatedVisibleRangeCandidates(renderer);
       if (candidates.length <= 1) return candidates[0] || null;
 
-      const legacyRange = candidates.find((range) => range.source === 'legacy-offset') || null;
-      if (legacyRange && scorePaginatedVisibleRange(doc, legacyRange) > 0) return legacyRange;
-
       const rendererRange = candidates.find((range) => range.source === 'renderer') || null;
       if (rendererRange && scorePaginatedVisibleRange(doc, rendererRange) > 0) return rendererRange;
 
       const fallbackRange = candidates.find((range) => range.source === 'size-fallback') || null;
       if (fallbackRange && scorePaginatedVisibleRange(doc, fallbackRange) > 0) return fallbackRange;
 
-      return legacyRange || rendererRange || fallbackRange || candidates[0] || null;
+      return rendererRange || fallbackRange || candidates[0] || null;
     }
 
     let ttsVisibleRangeByDoc = new WeakMap();
@@ -3428,9 +3679,22 @@ a { color: ${primary} !important; }
     }
 
     function getVisibleContentsForTTS(contents, renderer) {
-      if (!renderer || !renderer.scrolled) return contents;
-      return (contents || [])
-        .filter(function(content) { return !!(content && content.doc); })
+      if (!renderer) return [];
+      const validContents = (contents || []).filter(function(content) {
+        return !!(content && content.doc);
+      });
+
+      // Paginated renderers keep neighbouring spine items mounted for fast
+      // turns. Their iframe-local rectangles can look "visible" even though
+      // the section is only preloaded, so starting TTS from every mounted
+      // document can make Play jump to a different page/chapter. The renderer
+      // already exposes its primary section; use that as the source document.
+      if (!renderer.scrolled) {
+        const primary = getPrimaryRendererContent();
+        return primary && primary.doc ? [primary] : validContents.slice(0, 1);
+      }
+
+      return validContents
         .map(function(content) {
           return { content: content, rect: getContentHostRect(content) };
         })
@@ -3772,6 +4036,7 @@ a { color: ${primary} !important; }
       maxCount,
       anchorRange,
       endAnchorRange,
+      visibilityRange,
     ) {
       try {
         if (!doc || !view || typeof view.getCFI !== 'function') return [];
@@ -3792,6 +4057,13 @@ a { color: ${primary} !important; }
         const docNode = doc.defaultView && doc.defaultView.Node ? doc.defaultView.Node : Node;
         const anchorNode = getTTSSegmentBoundaryNode(anchorRange, docNode);
         const endAnchorNode = getTTSSegmentBoundaryNode(endAnchorRange, docNode);
+        const visibilityStart = visibilityRange ? visibilityRange.cloneRange() : null;
+        const visibilityEnd = visibilityRange ? visibilityRange.cloneRange() : null;
+        if (visibilityStart) visibilityStart.collapse(true);
+        if (visibilityEnd) visibilityEnd.collapse(false);
+        const rangeCtor = doc.defaultView && doc.defaultView.Range
+          ? doc.defaultView.Range
+          : Range;
         let started = !anchorNode;
 
         for (const block of blocks) {
@@ -3866,6 +4138,21 @@ a { color: ${primary} !important; }
             const range = doc.createRange();
             range.setStart(startPos.node, startPos.offset);
             range.setEnd(endPos.node, endPos.offset);
+
+            if (visibilityStart && visibilityEnd) {
+              const sentenceStart = range.cloneRange();
+              sentenceStart.collapse(true);
+              if (
+                sentenceStart.compareBoundaryPoints(rangeCtor.START_TO_START, visibilityStart) < 0
+              ) {
+                continue;
+              }
+              if (
+                sentenceStart.compareBoundaryPoints(rangeCtor.START_TO_START, visibilityEnd) >= 0
+              ) {
+                return segments;
+              }
+            }
 
             const text = normalizeTTSText(absoluteText.slice(start, end));
             if (!text) continue;
@@ -3999,6 +4286,45 @@ a { color: ${primary} !important; }
         const renderer = view && view.renderer;
         const contents = getRendererContents();
         if (!renderer || !contents.length) return [];
+
+        // Relocation CFIs are ranges spanning the page that is actually on
+        // screen. Prefer that exact DOM range when the native reader supplies
+        // it: it remains correct across paginator implementations and avoids
+        // accidentally selecting an adjacent mounted column.
+        const resolvedVisiblePage = alignCfi ? resolveRangeForCfi(alignCfi) : null;
+        if (
+          resolvedVisiblePage?.doc &&
+          resolvedVisiblePage.range &&
+          !resolvedVisiblePage.range.collapsed
+        ) {
+          const rangeSegments = extractTTSSegmentsFromDocument(
+            resolvedVisiblePage.doc,
+            resolvedVisiblePage.index,
+            500,
+            resolvedVisiblePage.range,
+            null,
+            resolvedVisiblePage.range,
+          );
+          if (rangeSegments.length > 0) {
+            window.__lastVisibleTTSDiagnostics = {
+              alignCfi: alignCfi,
+              firstVisibleCfi: rangeSegments[0]?.cfi || null,
+              firstVisibleText: rangeSegments[0]?.text || null,
+              directCount: rangeSegments.length,
+              alignedCount: rangeSegments.length,
+              filteredAlignedCount: rangeSegments.length,
+              returnedCount: rangeSegments.length,
+              returnSource: 'relocation-page-range',
+              stats: { startVisibilityMode: 'relocation-page-range' },
+              directPreview: summarizeTTSSegmentsForLog(rangeSegments, 8),
+              alignedPreview: summarizeTTSSegmentsForLog(rangeSegments, 8),
+              filteredAlignedPreview: summarizeTTSSegmentsForLog(rangeSegments, 8),
+              returnedPreview: summarizeTTSSegmentsForLog(rangeSegments, 8),
+            };
+            return rangeSegments;
+          }
+        }
+
         ttsVisibleRangeByDoc = new WeakMap();
         const scanContents = getVisibleContentsForTTS(contents, renderer);
         const segments = [];
@@ -4255,6 +4581,7 @@ a { color: ${primary} !important; }
       }
     };
     window.goToCFI = function (cfi) { if (view) view.goTo(cfi); };
+    window.followTTSLocation = followTTSLocation;
     window.goToProgress = function (p) { if (view) view.goToFraction(p); };
     window.search = function (q) { handleSearch(q); };
     window.navigateSearch = function (idx) { navigateToSearchResult(idx); };
@@ -4268,8 +4595,8 @@ a { color: ${primary} !important; }
     window.setPaginatedLayout = function (m) { applySettings({ paginatedLayout: m }); };
     window.addAnnotation = function (a) { if (view) view.addAnnotation(a); };
     window.removeAnnotation = function (a) { if (view) view.deleteAnnotation(a); };
-    window.setTTSHighlight = function (cfi, color) { return setTTSHighlight(cfi, color); };
-    window.clearTTSHighlight = function () { return clearTTSHighlight(); };
+    window.setTTSHighlight = setTTSHighlight;
+    window.clearTTSHighlight = clearTTSHighlight;
     
     // Flash highlight for AI citation - temporarily hide existing annotation, show flash, then restore
     window.flashHighlight = async function(cfi, color, duration) {
@@ -5380,8 +5707,7 @@ a { color: ${primary} !important; }
     // Поток: RN шлёт insertSceneSlot → в конец видимого фрагмента встаёт блок
     // «✦ Показать сцену» (пунктирная рамка). Тап → блок сам переключается в
     // плейсхолдер «Рисуем сцену…» и шлёт sceneSlotTap в RN; RN генерирует
-    // картинку и возвращает её data-URI командой replaceSceneSlot. Кнопка
-    // «↻ Заново» на готовой карточке шлёт sceneSlotRegenerate. Якорь врезки —
+    // картинку и возвращает её data-URI командой replaceSceneSlot. Якорь врезки —
     // CFI блока, после которого она вставлена; по списку якорей из RN
     // (setSceneAnchors) врезки восстанавливаются при загрузке секции.
     var SCENE_INSERT_CLASS = 'readany-scene-insert';
@@ -5396,7 +5722,6 @@ a { color: ${primary} !important; }
       loading: 'Рисуем сцену…',
       loadingHint: '20–60 секунд',
       caption: 'Сцена — сгенерировано ИИ',
-      regen: 'Заново',
       error: 'Не получилось — попробовать ещё раз',
     };
 
@@ -5420,7 +5745,6 @@ a { color: ${primary} !important; }
     // Стили в цветах темы читалки (currentThemeColors обновляет setThemeColors)
     function sceneSlotStyleText() {
       var muted = currentThemeColors.muted;
-      var fg = currentThemeColors.fg;
       return [
         '.' + SCENE_INSERT_CLASS + ' {',
         '  margin: 1.1em 0;',
@@ -5488,22 +5812,6 @@ a { color: ${primary} !important; }
         '  width: 100%;',
         '  border-radius: 12px;',
         '}',
-        '.' + SCENE_INSERT_CLASS + ' .readany-scene-meta {',
-        '  display: flex;',
-        '  align-items: center;',
-        '  justify-content: space-between;',
-        '  gap: 12px;',
-        '  margin-top: 6px;',
-        '  color: ' + muted + ';',
-        '  font-size: 0.75em;',
-        '  line-height: 1.4;',
-        '}',
-        '.' + SCENE_INSERT_CLASS + ' .readany-scene-regen {',
-        '  color: ' + fg + ';',
-        '  opacity: 0.75;',
-        '  white-space: nowrap;',
-        '  padding: 4px 0 4px 12px;',
-        '}',
       ].join('\n');
     }
 
@@ -5537,16 +5845,6 @@ a { color: ${primary} !important; }
         img.src = (payload && payload.imageDataUri) || '';
         img.alt = _sceneSlotLabels.caption;
         el.appendChild(img);
-        var meta = doc.createElement('div');
-        meta.className = 'readany-scene-meta';
-        var caption = doc.createElement('span');
-        caption.textContent = _sceneSlotLabels.caption;
-        var regen = doc.createElement('span');
-        regen.className = 'readany-scene-regen';
-        regen.textContent = '↻ ' + _sceneSlotLabels.regen;
-        meta.appendChild(caption);
-        meta.appendChild(regen);
-        el.appendChild(meta);
         return;
       }
 
@@ -5619,6 +5917,7 @@ a { color: ${primary} !important; }
       var isPaginated = !renderer.scrolled;
       var pSize = renderer.size;
       var pStart = renderer.start;
+      var pEnd = renderer.end;
       var blocks = doc.querySelectorAll(SCENE_BLOCK_SELECTOR);
       var best = null;
       for (var i = 0; i < blocks.length; i++) {
@@ -5628,8 +5927,10 @@ a { color: ${primary} !important; }
         var rect = block.getBoundingClientRect();
         var visible;
         if (isPaginated && pSize > 0) {
-          var visibleLeft = pStart - pSize;
-          var visibleRight = pStart;
+          var visibleLeft = pStart;
+          var visibleRight = Number.isFinite(pEnd) && pEnd > pStart
+            ? pEnd
+            : pStart + pSize;
           visible = rect.right > visibleLeft && rect.left < visibleRight && rect.width > 0;
         } else {
           visible = rect.width > 0 && rect.height > 0 &&

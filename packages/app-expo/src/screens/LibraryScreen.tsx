@@ -34,7 +34,14 @@ import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { NATIVE_SCROLL_EDGE_EFFECTS } from "@/navigation/scroll-edge-effects";
 import { useLibraryStore } from "@/stores/library-store";
 import { useVectorModelStore } from "@/stores/vector-model-store";
-import { type ThemeColors, fontSize, fontWeight, radius, useColors } from "@/styles/theme";
+import {
+  type ThemeColors,
+  fontSize,
+  fontWeight,
+  radius,
+  secondLevelTitleFontFamily,
+  useColors,
+} from "@/styles/theme";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -1276,7 +1283,12 @@ const makeStyles = (
       fontWeight: fontWeight.medium,
       color: colors.primary,
     },
-    vecBannerTitle: { fontSize: 12, color: colors.mutedForeground, marginTop: 2 },
+    vecBannerTitle: {
+      fontFamily: secondLevelTitleFontFamily,
+      fontSize: 12,
+      color: colors.mutedForeground,
+      marginTop: 2,
+    },
     vecProgressBg: {
       height: 4,
       backgroundColor: `${colors.muted}1A`,
@@ -1330,9 +1342,10 @@ const makeStyles = (
     librarySectionTabPressed: { opacity: 0.7 },
     librarySectionTabText: {
       color: colors.mutedForeground,
+      fontFamily: secondLevelTitleFontFamily,
       fontSize: fontSize.lg,
       lineHeight: 24,
-      fontWeight: fontWeight.bold,
+      fontWeight: fontWeight.normal,
     },
     librarySectionTabTextActive: { color: colors.foreground },
     catalogSection: { overflow: "visible" },
@@ -1364,6 +1377,7 @@ const makeStyles = (
       elevation: 12,
     },
     groupModalTitle: {
+      fontFamily: secondLevelTitleFontFamily,
       fontSize: fontSize.base,
       fontWeight: fontWeight.semibold,
       color: colors.foreground,

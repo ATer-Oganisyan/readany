@@ -4,11 +4,13 @@ import {
   CharacterChatList,
   type CharacterChatListItem,
 } from "@/components/chats/character-chat-list";
+import { CharacterPortraitImage } from "@/components/narra/character-portrait-image";
 import { NativeThemePicker } from "@/components/profile/NativeThemePicker";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
+import { getBookTabLabel } from "@/lib/book/book-tab-label";
 import { getBundledCatalogCharactersByTitle } from "@/lib/narra/bundled-catalog-characters";
-import { hasCharacterPortrait, resolveCharacterPortraitUri } from "@/lib/narra/character-portrait";
+import { hasCharacterPortrait } from "@/lib/narra/character-portrait";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
 import { reportNarraError } from "@/lib/narra/errors";
 import { ensureCharacterPortrait } from "@/lib/narra/media";
@@ -21,15 +23,10 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { Book } from "@readany/core/types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Image, ScrollView, StyleSheet, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
-
-const getBookTabLabel = (title: string) => {
-  const normalizedTitle = title.trim();
-  return normalizedTitle.split(/[.!?…]+(?=\s|$)/u)[0]?.trim() || normalizedTitle;
-};
 
 interface ChatBook {
   book: Book;
@@ -171,8 +168,8 @@ export function ChatsScreen() {
     return (
       <CenteredEmptyState
         avoidNativeTabBar
-        title={t("chats.emptyTitle", "Диалогов пока нет")}
-        description={t("chats.emptyDescription", "Персонажи появятся здесь после добавления книг")}
+        title={t("chats.emptyTitle", "Здесь появятся её персонажи из книг")}
+        description={t("chats.emptyDescription", "С ними можно будет поговорить")}
       >
         {null}
       </CenteredEmptyState>
@@ -183,10 +180,14 @@ export function ChatsScreen() {
     {
       key: "narra",
       accessibilityLabel:
-        selectedBookId === "all" ? "Открыть чат с Наррой" : "Открыть чат с Наррой об этой книге",
+        selectedBookId === "all"
+          ? t("narra.openNarraChat", "Открыть чат с Наррой")
+          : t("narra.openNarraBookChat", "Открыть чат с Наррой об этой книге"),
       title: "Нарра",
       subtitle:
-        selectedBookId === "all" ? "Спросите что угодно о книгах" : "Спросите что угодно о книге",
+        selectedBookId === "all"
+          ? t("narra.askAboutBooks", "Спросите что угодно о книгах")
+          : t("narra.askAboutBook", "Спросите что угодно о книге"),
       onPress: openNarraChat,
       avatar: (
         <CharacterChatAvatar muted>
@@ -196,7 +197,6 @@ export function ChatsScreen() {
     },
     ...rows.map((row): CharacterChatListItem => {
       const rowKey = `${row.book.id}:${row.character.id}`;
-      const portraitUri = resolveCharacterPortraitUri(row.character);
 
       return {
         key: rowKey,
@@ -206,24 +206,17 @@ export function ChatsScreen() {
         onPress: () => openChat(row),
         avatar: (
           <CharacterChatAvatar>
-            {portraitUri ? (
-              <Image
-                source={{ uri: portraitUri }}
-                style={styles.avatarImage}
-                onError={
-                  row.character.portraitUri
-                    ? () =>
-                        updateCharacter(row.book.id, row.character.id, { portraitUri: undefined })
-                    : undefined
-                }
-              />
-            ) : (
-              <InitialsAvatar
-                size={56}
-                userId={rowKey}
-                name={row.character.fullName || row.character.name}
-              />
-            )}
+            <CharacterPortraitImage
+              character={row.character}
+              style={styles.avatarImage}
+              fallback={
+                <InitialsAvatar
+                  size={56}
+                  userId={rowKey}
+                  name={row.character.fullName || row.character.name}
+                />
+              }
+            />
           </CharacterChatAvatar>
         ),
       };

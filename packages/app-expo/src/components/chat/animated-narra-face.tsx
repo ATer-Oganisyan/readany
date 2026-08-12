@@ -38,29 +38,37 @@ const BROW_PATH =
 interface AnimatedNarraFaceProps {
   width?: number;
   height?: number;
+  color?: string;
+  animated?: boolean;
 }
 
-function FaceLayer({ children }: { children: ReactNode }) {
+function FaceLayer({ children, color }: { children: ReactNode; color: string }) {
   return (
     <Svg width="100%" height="100%" viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}>
-      <G fill={FACE_COLOR}>{children}</G>
+      <G fill={color}>{children}</G>
     </Svg>
   );
 }
 
-export function AnimatedNarraFace({ width = 27, height = 28 }: AnimatedNarraFaceProps) {
+export function AnimatedNarraFace({
+  width = 27,
+  height = 28,
+  color = FACE_COLOR,
+  animated = true,
+}: AnimatedNarraFaceProps) {
   const progress = useSharedValue(0);
   const scaleX = width / VIEWBOX_WIDTH;
   const scaleY = height / VIEWBOX_HEIGHT;
 
   useEffect(() => {
+    if (!animated) return;
     progress.value = withRepeat(
       withTiming(1, { duration: LOOP_DURATION_MS, easing: Easing.linear }),
       -1,
       false,
     );
     return () => cancelAnimation(progress);
-  }, [progress]);
+  }, [animated, progress]);
 
   const noseStyle = useAnimatedStyle(() => {
     const turn = interpolate(progress.value, TURN_TIMES, TURN_VALUES, Extrapolation.CLAMP);
@@ -99,18 +107,18 @@ export function AnimatedNarraFace({ width = 27, height = 28 }: AnimatedNarraFace
       style={{ width, height }}
     >
       <Animated.View style={[styles.layer, noseStyle]}>
-        <FaceLayer>
+        <FaceLayer color={color}>
           <Path d={NOSE_PATH} />
         </FaceLayer>
       </Animated.View>
       <Animated.View style={[styles.layer, eyesStyle]}>
-        <FaceLayer>
+        <FaceLayer color={color}>
           <Path d={LEFT_EYE_PATH} />
           <Path d={RIGHT_EYE_PATH} />
         </FaceLayer>
       </Animated.View>
       <Animated.View style={[styles.layer, browStyle]}>
-        <FaceLayer>
+        <FaceLayer color={color}>
           <Path d={BROW_PATH} />
         </FaceLayer>
       </Animated.View>

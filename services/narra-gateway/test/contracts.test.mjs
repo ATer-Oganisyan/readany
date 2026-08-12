@@ -4,6 +4,7 @@ import {
   parseAvatarBody,
   parseChatBody,
   parseCoverBody,
+  parseCoverJobBody,
   parseImageBody,
   parsePortraitBody,
   parseSynthesisBody
@@ -75,7 +76,9 @@ test('media and speech contracts reject unknown or oversized inputs', () => {
   assert.deepEqual(parseImageBody({ prompt: 'scene' }), {
     prompt: 'scene', width: 768, height: 1024, engine: undefined
   })
+  assert.equal(parseImageBody({ prompt: 'portrait', engine: 'openrouter' }).engine, 'openrouter')
   assert.throws(() => parseImageBody({ prompt: 'scene', provider: 'x' }), /неизвестное поле/)
+  assert.throws(() => parseImageBody({ prompt: 'scene', engine: 'unknown' }), /неизвестный движок/)
   assert.throws(() => parseSynthesisBody({ text: 'a', ssml: '<speak>a</speak>' }), /ровно одно/)
   assert.deepEqual(parseSynthesisBody({ text: 'hello', voice: 'Che' }), {
     text: 'hello',
@@ -105,6 +108,27 @@ test('cover contract accepts only a bounded prompt and no provider hints', () =>
   assert.throws(() => parseCoverBody({ prompt: 'cover', width: 768 }), /неизвестное поле/)
   assert.throws(() => parseCoverBody({}), /строка длиной/)
   assert.throws(() => parseCoverBody({ prompt: 'x'.repeat(8_001) }), /строка длиной/)
+})
+
+test('durable cover job contract requires a UUID idempotency key and no provider hints', () => {
+  const requestId = '123e4567-e89b-42d3-a456-426614174001'
+  assert.deepEqual(parseCoverJobBody({ prompt: 'front cover artwork', request_id: requestId }), {
+    prompt: 'front cover artwork',
+    requestId
+  })
+  assert.throws(() => parseCoverJobBody({ prompt: 'cover' }), /request_id/)
+  assert.throws(
+    () => parseCoverJobBody({ prompt: 'cover', request_id: 'book-title' }),
+    /UUID v4/
+  )
+  assert.throws(
+    () => parseCoverJobBody({ prompt: 'cover', request_id: requestId, model: 'gpt-image-2' }),
+    /неизвестное поле/
+  )
+  assert.throws(
+    () => parseCoverJobBody({ prompt: 'x'.repeat(8_001), request_id: requestId }),
+    /строка длиной/
+  )
 })
 
 test('analytics accepts only allowlisted events and properties', () => {

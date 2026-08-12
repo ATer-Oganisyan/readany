@@ -5,12 +5,12 @@
     "getStarted": "Get Started",
     "welcome": {
       "ai": "AI Reading Assistant",
-      "aiDesc": "Natural conversations with books and characters",
-      "search": "Smart Semantic Search",
-      "searchDesc": "Find any concept in books precisely",
+      "aiDesc": "Chat naturally about books and with their characters",
+      "search": "Semantic search",
+      "searchDesc": "Find ideas and passages, not just exact keywords",
       "f1": {
         "title": "AI Reading Assistant",
-        "desc": "Direct conversation with book characters and viewpoints"
+        "desc": "Chat with characters and explore different perspectives"
       },
       "f2": {
         "title": "Semantic Search",
@@ -21,28 +21,28 @@
         "desc": "Seamless split-screen translation for any text"
       },
       "title": "Welcome to Narra",
-      "desc": "Your intelligent reading companion. Let's set up the perfect reading environment.",
-      "subtitle": "Your intelligent reading companion. Let's set up the perfect reading environment.",
-      "translate": "Instant Bilingual Translation",
-      "translateDesc": "Seamless side-by-side reading",
-      "start": "Start Experience"
+      "desc": "Your reading companion for books, ideas, and characters.",
+      "subtitle": "Your reading companion for books, ideas, and characters.",
+      "translate": "Instant translation",
+      "translateDesc": "Read the original and translation side by side",
+      "start": "Get started"
     },
     "ai": {
-      "title": "AI Configuration",
-      "desc": "Set up your AI provider to enable smart dialogue and summarization.",
-      "test": "Test Connection"
+      "title": "Connect AI",
+      "desc": "Set up an AI provider for chat, summaries, and character features.",
+      "test": "Test connection"
     },
     "appearance": {
-      "title": "Appearance & Language",
-      "desc": "Choose Narra's display language and theme preferences."
+      "title": "Appearance and language",
+      "desc": "Choose the interface language and theme."
     },
     "sync": {
-      "title": "Cloud Sync",
-      "desc": "Keep your reading progress perfectly synced across devices via WebDAV."
+      "title": "Cloud sync",
+      "desc": "Keep your books, notes, and reading progress in sync across devices with WebDAV."
     },
     "translation": {
-      "title": "Translation Engine",
-      "desc": "Configure your preferred translation engine for seamless bilingual reading.",
+      "title": "Translation",
+      "desc": "Choose how Narra translates text while you read.",
       "aiProvider": "AI Translation",
       "aiProviderDesc": "Free",
       "deeplProviderName": "DeepL Pro",
@@ -50,18 +50,18 @@
       "apiKeyPlaceholder": "Enter your DeepL API key"
     },
     "embedding": {
-      "title": "Smart Retrieval",
-      "desc": "Configure vector model to enable powerful semantic search",
-      "localMode": "Local Built-in Mode",
+      "title": "Book search",
+      "desc": "Set up a vector model to search books by meaning.",
+      "localMode": "Built-in model",
       "localDesc": "Runs completely offline on your device",
-      "remoteMode": "Remote API Mode",
-      "remoteDesc": "Uses configured server-side computation",
-      "remoteInfo": "Remote API Configuration",
-      "remoteInfoDesc": "Remote mode uses the embedding API of your configured AI provider. Please ensure you have configured an AI provider in the previous step."
+      "remoteMode": "Remote API",
+      "remoteDesc": "Uses an external embedding service",
+      "remoteInfo": "Remote API settings",
+      "remoteInfoDesc": "Remote mode uses the embedding API from the AI provider you configured in the previous step."
     },
     "complete": {
-      "title": "You're All Set!",
-      "desc": "All configurations are ready. You can modify these options anytime in Settings. Now you can import books, chat with AI, or start exploring!",
+      "title": "You're all set",
+      "desc": "You can change these options later in Settings. Now add a book and start reading.",
       "start": "Start Reading",
       "feature1": "AI Chat",
       "feature2": "Translation",
@@ -76,11 +76,11 @@
     "progress": "{{current}} of {{total}}",
     "addBook": {
       "title": "Add Your First Book",
-      "desc": "Click here to import EPUB, PDF, and other supported formats."
+      "desc": "Select this button to import EPUB, PDF, and other supported formats."
     },
     "bookList": {
       "title": "Your Library",
-      "desc": "All your imported books will appear here. Click any book to start reading."
+      "desc": "Your imported books will appear here. Select a book to start reading."
     },
     "vectorize": {
       "title": "Smart Vectorization",
@@ -98,19 +98,19 @@
   "readerTour": {
     "prevPage": {
       "title": "Previous Page",
-      "desc": "Click or tap the left area to go to the previous page."
+        "desc": "Select the left side to go to the previous page."
     },
     "toolbar": {
       "title": "Toggle Toolbar",
-      "desc": "Click or tap the center area to show/hide the toolbar. You can also hover at the top or bottom edge."
+        "desc": "Select the center to show or hide the toolbar. On desktop, you can also move the pointer to the top or bottom edge."
     },
     "nextPage": {
       "title": "Next Page",
-      "desc": "Click or tap the right area to go to the next page."
+        "desc": "Select the right side to go to the next page."
     }
   },
   "commandPalette": {
-    "placeholder": "Type to search commands...",
+      "placeholder": "Search commands…",
     "noResults": "No results found for \"{{query}}\"",
     "hint": "Type to search settings and actions",
     "recent": "Recent",
@@ -122,7 +122,7 @@
     "newVersion": "New version available",
     "isReady": "is ready to install",
     "install": "Download & Install",
-    "downloading": "Downloading...",
+      "downloading": "Downloading…",
     "relaunch": "Restart to update"
   }
 }

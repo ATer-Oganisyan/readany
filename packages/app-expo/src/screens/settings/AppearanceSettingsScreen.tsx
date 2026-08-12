@@ -3,7 +3,14 @@ import { Text } from "@/components/ui/Typography";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { useTheme } from "@/styles/ThemeContext";
 import type { ThemeMode } from "@/styles/ThemeContext";
-import { fontSize, fontWeight, radius, spacing } from "@/styles/theme";
+import {
+  fontSize,
+  fontWeight,
+  headingFontFamily,
+  radius,
+  secondLevelTitleFontFamily,
+  spacing,
+} from "@/styles/theme";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -24,25 +31,20 @@ const THEMES: { id: ThemeMode; labelKey: string; fallback: string; Icon: typeof 
 ];
 
 const LANGUAGES = [
-  { code: "zh", label: "简体中文" },
-  { code: "zh-TW", label: "繁體中文" },
+  { code: "ru", label: "Русский" },
   { code: "en", label: "English" },
-  { code: "ja", label: "日本語" },
-  { code: "ko", label: "한국어" },
-  { code: "fr", label: "Français" },
-  { code: "es", label: "Español" },
 ] as const;
 
 export default function AppearanceSettingsScreen() {
   const { t, i18n } = useTranslation();
   const { mode, setMode, colors } = useTheme();
   const layout = useResponsiveLayout();
-  const [lang, setLang] = useState(() => i18n.language || "en");
+  const [lang, setLang] = useState(() => i18n.resolvedLanguage || i18n.language || "ru");
   const [showLangPicker, setShowLangPicker] = useState(false);
 
   useEffect(() => {
-    setLang(i18n.language || "en");
-  }, [i18n.language]);
+    setLang(i18n.resolvedLanguage || i18n.language || "ru");
+  }, [i18n.language, i18n.resolvedLanguage]);
 
   const handleLangChange = useCallback(async (code: string) => {
     setLang(code);
@@ -202,8 +204,9 @@ function makeStyles(colors: ReturnType<typeof useTheme>["colors"]) {
     },
     section: { gap: 12 },
     sectionTitle: {
+      fontFamily: secondLevelTitleFontFamily,
       fontSize: fontSize.base,
-      fontWeight: fontWeight.semibold,
+      fontWeight: fontWeight.normal,
     },
     themeGrid: { flexDirection: "row", gap: 12 },
     themeCard: {
@@ -249,6 +252,7 @@ function makeStyles(colors: ReturnType<typeof useTheme>["colors"]) {
       borderRadius: 2,
     },
     modalTitle: {
+      fontFamily: headingFontFamily,
       fontSize: fontSize.lg,
       fontWeight: fontWeight.semibold,
       textAlign: "center",

@@ -6,6 +6,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { BUNDLED_CATALOG_BOOK_DEFINITIONS } from "../src/lib/catalog/bundled-book-definitions";
 import { getBundledCatalogCharactersById } from "../src/lib/narra/bundled-catalog-characters";
+import { buildCharacterPortraitPrompt } from "../src/lib/narra/portrait-prompt";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const APP_DIR = path.resolve(SCRIPT_DIR, "..");
@@ -44,27 +45,6 @@ async function readLocalEnv(): Promise<Record<string, string>> {
   }
 }
 
-function buildPrompt(input: {
-  bookTitle: string;
-  author: string;
-  fullName: string;
-  role: string;
-  appearance: string;
-}): string {
-  return [
-    "Use case: historical-scene",
-    "Asset type: bundled square character portrait for a mobile reading app",
-    `Primary request: create a distinctive portrait of ${input.fullName}, a character from \"${input.bookTitle}\" by ${input.author}.`,
-    `Character role: ${input.role}.`,
-    `Appearance: ${input.appearance}.`,
-    "Style/medium: refined realistic painted portrait with natural skin texture; visually consistent with a serious literary edition, not a photo of an actor.",
-    "Composition/framing: one person only, centered head-and-shoulders, face fully visible, looking toward camera, square crop with safe margins.",
-    "Scene/backdrop: understated period-appropriate interior or neutral painterly background.",
-    "Lighting/mood: soft directional museum portrait lighting, emotionally true to the character.",
-    "Constraints: historically accurate clothing for the book; no modern objects; no text; no letters; no frame; no border; no watermark.",
-  ].join("\n");
-}
-
 async function generatePortrait(input: {
   apiKey: string;
   baseUrl: string;
@@ -83,7 +63,7 @@ async function generatePortrait(input: {
       body: JSON.stringify({
         model: input.model,
         prompt: input.prompt,
-        aspect_ratio: "1:1",
+        aspect_ratio: "3:4",
         quality: "high",
         output_format: "jpeg",
         output_compression: 82,
@@ -150,20 +130,27 @@ async function main(): Promise<void> {
     localEnv.EXPO_PUBLIC_OPENROUTER_IMAGE_MODEL ||
     config.openRouterModel;
   const requestedBookId = process.argv.find((arg) => arg.startsWith("--book="))?.slice(7);
+  const requestedCharacterId = process.argv
+    .find((arg) => arg.startsWith("--character="))
+    ?.slice(12);
   const force = process.argv.includes("--force");
   if (!apiKey) throw new Error("OpenRouter API key is not configured");
 
   const jobs = BUNDLED_CATALOG_BOOK_DEFINITIONS.filter(
     (book) => !requestedBookId || book.id === requestedBookId,
   ).flatMap((book) =>
-    (getBundledCatalogCharactersById(book.id) ?? []).map((character) => ({
-      book,
-      character,
-      outputPath: path.join(OUTPUT_DIR, book.id, `${character.id}.jpg`),
-    })),
+    (getBundledCatalogCharactersById(book.id) ?? [])
+      .filter((character) => !requestedCharacterId || character.id === requestedCharacterId)
+      .map((character) => ({
+        book,
+        character,
+        outputPath: path.join(OUTPUT_DIR, book.id, `${character.id}.jpg`),
+      })),
   );
-  if (requestedBookId && jobs.length === 0)
-    throw new Error(`Unknown catalog book: ${requestedBookId}`);
+  if ((requestedBookId || requestedCharacterId) && jobs.length === 0)
+    throw new Error(
+      `Unknown catalog selection: book=${requestedBookId ?? "*"}, character=${requestedCharacterId ?? "*"}`,
+    );
 
   let cursor = 0;
   let completed = 0;
@@ -186,12 +173,10 @@ async function main(): Promise<void> {
           apiKey,
           baseUrl,
           model,
-          prompt: buildPrompt({
-            bookTitle: job.book.title,
-            author: job.book.author,
-            fullName: job.character.fullName,
-            role: job.character.role,
-            appearance: job.character.appearancePrompt,
+          prompt: buildCharacterPortraitPrompt(job.character, {
+            bookContext: `«${job.book.title}» (${job.book.author})`,
+            genreId: "classic",
+            genreLabel: "классическая литература",
           }),
         });
         await writeFile(temporaryPath, jpeg);

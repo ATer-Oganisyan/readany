@@ -7,7 +7,14 @@ import {
   XIcon,
 } from "@/components/ui/Icon";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
-import { useColors, fontSize, fontWeight, radius, withOpacity } from "@/styles/theme";
+import {
+  fontSize,
+  fontWeight,
+  headingFontFamily,
+  radius,
+  useColors,
+  withOpacity,
+} from "@/styles/theme";
 import { useTranslation } from "react-i18next";
 import {
   Alert,
@@ -240,6 +247,7 @@ const makeStyles = (colors: ReturnType<typeof useColors>, bottomInset: number) =
       marginBottom: 8,
     },
     title: {
+      fontFamily: headingFontFamily,
       fontSize: fontSize.md,
       fontWeight: fontWeight.semibold,
       color: colors.foreground,

@@ -40,7 +40,14 @@ import {
 import { NarraChat } from "@/components/chat/NarraChat";
 import { AnimatedNarraFace } from "@/components/chat/animated-narra-face";
 import { MessageCirclePlusIcon, Trash2Icon, XIcon } from "@/components/ui/Icon";
-import { fontSize as fs, fontWeight as fw, radius, useColors, withOpacity } from "@/styles/theme";
+import {
+  fontSize as fs,
+  fontWeight as fw,
+  headingFontFamily,
+  radius,
+  useColors,
+  withOpacity,
+} from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
 
 type ChatRoute = RouteProp<RootStackParamList, "Chat"> | RouteProp<RootStackParamList, "BookChat">;
@@ -545,6 +552,7 @@ const makeStyles = (
       paddingVertical: 12,
     },
     sidebarTitle: {
+      fontFamily: headingFontFamily,
       fontSize: fs.sm,
       fontWeight: fw.semibold,
       color: colors.foreground,
@@ -585,6 +593,7 @@ const makeStyles = (
       gap: 6,
     },
     threadTitle: {
+      fontFamily: headingFontFamily,
       fontSize: fs.sm,
       fontWeight: fw.medium,
       color: colors.foreground,

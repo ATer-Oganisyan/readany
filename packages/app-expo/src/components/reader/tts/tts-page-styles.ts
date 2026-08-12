@@ -1,4 +1,4 @@
-import { type ThemeColors, fontWeight, withOpacity } from "@/styles/theme";
+import { type ThemeColors, fontWeight, headingFontFamily, withOpacity } from "@/styles/theme";
 import { Dimensions, StyleSheet } from "react-native";
 
 const { height: SH, width: SW } = Dimensions.get("window");
@@ -59,6 +59,7 @@ export const makeStyles = (colors: ThemeColors) =>
     },
     bookInfo: { alignItems: "center", paddingHorizontal: 36, paddingTop: 4, paddingBottom: 8 },
     bookTitle: {
+      fontFamily: headingFontFamily,
       fontSize: 18,
       fontWeight: fontWeight.bold,
       color: colors.foreground,
@@ -362,6 +363,7 @@ export const makeStyles = (colors: ThemeColors) =>
     },
     voicePickerHeader: { paddingHorizontal: 20, paddingTop: 14, paddingBottom: 8 },
     voicePickerTitle: {
+      fontFamily: headingFontFamily,
       fontSize: 11,
       fontWeight: fontWeight.semibold,
       color: colors.mutedForeground,

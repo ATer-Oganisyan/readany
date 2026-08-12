@@ -1,3 +1,4 @@
+import CoreImage
 import ExpoModulesCore
 import SwiftUI
 import UIKit
@@ -5,6 +6,13 @@ import UIKit
 public final class ReadAnyNativeControlsModule: Module {
   public func definition() -> ModuleDefinition {
     Name("ReadAnyNativeControls")
+
+    AsyncFunction("averageBottomImageColor") { (
+      uri: URL,
+      bottomFraction: Double
+    ) -> String in
+      try Self.averageBottomImageColor(uri: uri, bottomFraction: bottomFraction)
+    }
 
     AsyncFunction("promptForText") { (
       title: String,
@@ -119,11 +127,60 @@ public final class ReadAnyNativeControlsModule: Module {
     View(ReadAnyValueStepper.self)
 
   }
+
+  private static func averageBottomImageColor(
+    uri: URL,
+    bottomFraction: Double
+  ) throws -> String {
+    let data = try Data(contentsOf: uri)
+    guard let image = UIImage(data: data), let cgImage = image.cgImage else {
+      throw NativeImageColorException()
+    }
+
+    let fraction = min(max(bottomFraction, 0.05), 1)
+    let source = CIImage(cgImage: cgImage)
+    let sampleRect = CGRect(
+      x: source.extent.minX,
+      y: source.extent.minY,
+      width: source.extent.width,
+      height: source.extent.height * fraction
+    )
+    let sample = source.cropped(to: sampleRect)
+
+    guard
+      let filter = CIFilter(name: "CIAreaAverage"),
+      let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)
+    else {
+      throw NativeImageColorException()
+    }
+    filter.setValue(sample, forKey: kCIInputImageKey)
+    filter.setValue(CIVector(cgRect: sample.extent), forKey: kCIInputExtentKey)
+    guard let output = filter.outputImage else {
+      throw NativeImageColorException()
+    }
+
+    var rgba = [UInt8](repeating: 0, count: 4)
+    CIContext().render(
+      output,
+      toBitmap: &rgba,
+      rowBytes: 4,
+      bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
+      format: .RGBA8,
+      colorSpace: colorSpace
+    )
+    return String(format: "#%02x%02x%02x", rgba[0], rgba[1], rgba[2])
+  }
 }
 
 private final class NativePromptUnavailableException: Exception {
   override var reason: String {
     "Не удалось открыть системный диалог"
+  }
+}
+
+private final class NativeImageColorException: Exception {
+  override var reason: String {
+    "Не удалось определить цвет изображения"
   }
 }
 
@@ -282,12 +339,12 @@ final class ReadAnyReaderToolbar: ExpoView {
     }
 
     let speech = makeItem(
-      symbol: "speaker.wave.2",
+      symbol: speechActive ? "stop.fill" : "airpods.max",
       accessibilityLabel: speechActive ? "Остановить озвучку" : speechLabel,
       action: #selector(handleSpeechPress)
     )
     let chat = makeItem(
-      symbol: "message",
+      symbol: "message.fill",
       accessibilityLabel: chatLabel,
       action: #selector(handleChatPress)
     )

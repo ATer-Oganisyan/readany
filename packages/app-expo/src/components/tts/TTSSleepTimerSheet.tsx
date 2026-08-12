@@ -3,7 +3,14 @@ import { NativeButton } from "@/components/ui/NativeButton";
 import { ClockIcon } from "@/components/ui/Icon";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { useTTSStore } from "@/stores";
-import { fontSize, fontWeight, radius, useColors, withOpacity } from "@/styles/theme";
+import {
+  fontSize,
+  fontWeight,
+  headingFontFamily,
+  radius,
+  useColors,
+  withOpacity,
+} from "@/styles/theme";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -92,6 +99,7 @@ export function TTSSleepTimerSheet({ visible, onClose }: TTSSleepTimerSheetProps
           gap: 10,
         },
         title: {
+          fontFamily: headingFontFamily,
           fontSize: fontSize.lg,
           fontWeight: fontWeight.semibold,
           color: colors.foreground,

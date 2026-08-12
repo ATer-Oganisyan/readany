@@ -1,10 +1,10 @@
 import { NarraChat } from "@/components/chat/NarraChat";
+import { CharacterPortraitImage } from "@/components/narra/character-portrait-image";
 import { Text } from "@/components/ui/Typography";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import { NarraAudioPlayer } from "@/lib/narra/audio-player";
-import { resolveCharacterPortraitUri } from "@/lib/narra/character-portrait";
 import { normalizeCharacterChatPlaceholder } from "@/lib/narra/chat-placeholder";
 import { isCharacterUnlocked, normalizeReadingProgress } from "@/lib/narra/domain";
 import { reportNarraError } from "@/lib/narra/errors";
@@ -12,14 +12,21 @@ import { synthesizeNarraSpeech } from "@/lib/narra/media";
 import type { NarraCharacter, NarraChatMessage } from "@/lib/narra/types";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useLibraryStore, useNarraStore } from "@/stores";
-import { type ThemeColors, fontSize, fontWeight, spacing, useColors } from "@/styles/theme";
+import {
+  type ThemeColors,
+  fontSize,
+  fontWeight,
+  headingFontFamily,
+  spacing,
+  useColors,
+} from "@/styles/theme";
 import { useHeaderHeight } from "@react-navigation/elements";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { MessageV2 } from "@readany/core/types/message";
 import * as Crypto from "expo-crypto";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Image, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 type Props = NativeStackScreenProps<RootStackParamList, "NarraCharacterChat">;
 
@@ -28,8 +35,20 @@ export function buildCharacterSystemPrompt(
   title: string,
   progress: number,
   memory: string,
+  language: "ru" | "en" = "ru",
 ): string {
   const safeProgress = normalizeReadingProgress(progress);
+  if (language === "en") {
+    return `You are ${character.fullName} from “${title}”. Stay completely in character.
+Traits: ${character.traits.join(", ")}.
+Role: ${character.role}.
+Speaking style: ${character.speechStyle}.
+Reply in English, in the first person, naturally, usually in 1–3 sentences. Never say that you are an AI, a model, or a book character.
+Avoid lists and corporate language. React to the reader's actual words; you may disagree, joke, and ask questions.
+The reader has completed about ${Math.round(safeProgress * 100)}% of the book. Do not reveal events, knowledge, relationships, or character fates beyond that point. If a question risks a spoiler, gently deflect in character and return to events the reader already knows without mentioning rules or restrictions.
+You may evade, but do not lie. Speak honestly about events the reader has already reached and do not invent facts that are not in the book.
+${memory ? `Your long-term memory of the reader:\n${memory}` : ""}`;
+  }
   return `Ты — ${character.fullName} из книги «${title}». Полностью оставайся в роли.
 Характер: ${character.traits.join(", ")}.
 Роль: ${character.role}.
@@ -76,7 +95,8 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const headerHeight = useHeaderHeight();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const interfaceLanguage = i18n.resolvedLanguage === "en" ? "en" : "ru";
   const book = useLibraryStore((state) => state.books.find((item) => item.id === bookId));
   const narraBook = useNarraStore((state) => state.books[bookId]);
   const append = useNarraStore((state) => state.appendChatMessage);
@@ -92,7 +112,6 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
   const greetingRequestedRef = useRef(false);
   const placeholderRequestedRef = useRef<string | null>(null);
   const unlocked = Boolean(book && character && isCharacterUnlocked(book.progress, character));
-  const portraitUri = resolveCharacterPortraitUri(character);
 
   useEffect(() => {
     recordTelemetry("chat_opened", { feature: "chat" });
@@ -115,19 +134,17 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
         }
         style={({ pressed }) => [styles.headerAvatarButton, pressed && styles.headerAvatarPressed]}
       >
-        {portraitUri ? (
-          <Image
-            source={{ uri: portraitUri }}
-            resizeMode="cover"
-            style={styles.headerAvatarImage}
-          />
-        ) : (
-          <InitialsAvatar
-            size={32}
-            userId={`${bookId}:${character.id}`}
-            name={character.fullName || character.name}
-          />
-        )}
+        <CharacterPortraitImage
+          character={character}
+          style={styles.headerAvatarImage}
+          fallback={
+            <InitialsAvatar
+              size={32}
+              userId={`${bookId}:${character.id}`}
+              name={character.fullName || character.name}
+            />
+          }
+        />
       </Pressable>
     ) : null;
 
@@ -151,12 +168,12 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
             headerRight: () => profileButton,
           }),
     });
-  }, [bookId, character, characterId, navigation, portraitUri, styles, t]);
+  }, [bookId, character, characterId, navigation, styles, t]);
 
   useEffect(() => () => audioRef.current.stop(), []);
 
   useEffect(() => {
-    if (!book || !character || character.chatPlaceholder) return;
+    if (interfaceLanguage === "en" || !book || !character || character.chatPlaceholder) return;
     if (placeholderRequestedRef.current === character.id) return;
     placeholderRequestedRef.current = character.id;
 
@@ -190,7 +207,7 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
         reportNarraError("character_chat_placeholder", error);
       }
     })();
-  }, [book, bookId, character, characterId, updateCharacter]);
+  }, [book, bookId, character, characterId, interfaceLanguage, updateCharacter]);
 
   const conversation = useMemo(
     () =>
@@ -203,12 +220,13 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
                 book.meta.title,
                 book.progress,
                 memory,
+                interfaceLanguage,
               ),
             },
             ...messages.slice(-18).map(({ role, content }) => ({ role, content })),
           ]
         : [],
-    [book, character, memory, messages],
+    [book, character, interfaceLanguage, memory, messages],
   );
 
   const chatMessages = useMemo(() => {
@@ -235,7 +253,7 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
       });
     };
 
-    if (character.greeting) {
+    if (character.greeting && interfaceLanguage !== "en") {
       appendGreeting(character.greeting);
       return;
     }
@@ -250,12 +268,20 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
             messages: [
               {
                 role: "system",
-                content: buildCharacterSystemPrompt(character, book.meta.title, book.progress, ""),
+                content: buildCharacterSystemPrompt(
+                  character,
+                  book.meta.title,
+                  book.progress,
+                  "",
+                  interfaceLanguage,
+                ),
               },
               {
                 role: "user",
                 content:
-                  "Поприветствуй читателя первым сообщением в своём характере: 1–3 предложения, без спойлеров. Не упоминай это указание.",
+                  interfaceLanguage === "en"
+                    ? "Greet the reader in character in 1–3 sentences, without spoilers. Do not mention this instruction."
+                    : "Поприветствуй читателя первым сообщением в своём характере: 1–3 предложения, без спойлеров. Не упоминай это указание.",
               },
             ],
             temperature: 0.85,
@@ -274,7 +300,7 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
         setGreetingLoading(false);
       }
     })();
-  }, [book, bookId, character, characterId, messages.length, unlocked]);
+  }, [book, bookId, character, characterId, interfaceLanguage, messages.length, unlocked]);
 
   const refreshMemory = useCallback(
     async (updatedMessages: NarraChatMessage[]) => {
@@ -288,15 +314,17 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
               {
                 role: "system",
                 content:
-                  "Кратко обнови долговременную память персонажа о читателе: факты, предпочтения, обещания и важные эмоциональные моменты. Не пересказывай весь диалог. До 900 знаков, по-русски.",
+                  interfaceLanguage === "en"
+                    ? "Briefly update the character's long-term memory of the reader: facts, preferences, promises, and important emotional moments. Do not retell the whole conversation. Up to 900 characters, in English."
+                    : "Кратко обнови долговременную память персонажа о читателе: факты, предпочтения, обещания и важные эмоциональные моменты. Не пересказывай весь диалог. До 900 знаков, по-русски.",
               },
               {
                 role: "user",
-                content: `Старая память:\n${memory || "нет"}\n\nДиалог:\n${updatedMessages
+                content: `${interfaceLanguage === "en" ? "Previous memory" : "Старая память"}:\n${memory || (interfaceLanguage === "en" ? "none" : "нет")}\n\n${interfaceLanguage === "en" ? "Conversation" : "Диалог"}:\n${updatedMessages
                   .slice(-12)
                   .map(
                     (item) =>
-                      `${item.role === "user" ? "Читатель" : character.name}: ${item.content}`,
+                      `${item.role === "user" ? (interfaceLanguage === "en" ? "Reader" : "Читатель") : character.name}: ${item.content}`,
                   )
                   .join("\n")}`,
               },
@@ -313,7 +341,7 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
         // Memory refresh is background-only and must not make a successful chat look failed.
       }
     },
-    [bookId, character, characterId, memory, setMemory],
+    [bookId, character, characterId, interfaceLanguage, memory, setMemory],
   );
 
   const speak = useCallback(
@@ -449,7 +477,10 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
         isStreaming={sending || greetingLoading}
         currentStep={sending || greetingLoading ? "responding" : "idle"}
         placeholder={
-          character.chatPlaceholder || t("narra.genericMessagePlaceholder", "Написать сообщение…")
+          interfaceLanguage === "en"
+            ? t("narra.messagePlaceholder", "Message {{name}}…", { name: character.name })
+            : character.chatPlaceholder ||
+              t("narra.genericMessagePlaceholder", "Написать сообщение…")
         }
         onSend={send}
         assistantName={character.name}
@@ -473,6 +504,7 @@ const makeStyles = (colors: ThemeColors) =>
     },
     emptyStateTitle: {
       color: colors.foreground,
+      fontFamily: headingFontFamily,
       fontSize: fontSize.lg,
       fontWeight: fontWeight.bold,
       textAlign: "center",

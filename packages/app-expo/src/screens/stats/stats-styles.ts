@@ -3,7 +3,9 @@ import {
   type ThemeColors,
   fontSize,
   fontWeight,
+  headingFontFamily,
   radius,
+  secondLevelTitleFontFamily,
   withOpacity,
 } from "@/styles/theme";
 
@@ -37,8 +39,9 @@ export const makeStyles = (colors: ThemeColors) =>
       justifyContent: "center",
     },
     headerTitle: {
+      fontFamily: headingFontFamily,
       fontSize: fontSize.lg,
-      fontWeight: fontWeight.semibold,
+      fontWeight: fontWeight.normal,
       color: colors.foreground,
     },
 
@@ -103,6 +106,7 @@ export const makeStyles = (colors: ThemeColors) =>
       letterSpacing: 1.5,
     },
     heroLifetimeTitle: {
+      fontFamily: headingFontFamily,
       fontSize: 24,
       lineHeight: 32,
       fontWeight: fontWeight.bold,
@@ -206,6 +210,7 @@ export const makeStyles = (colors: ThemeColors) =>
       gap: 8,
     },
     statCardTitle: {
+      fontFamily: headingFontFamily,
       fontSize: 11,
       fontWeight: fontWeight.medium,
       color: withOpacity(colors.mutedForeground, 0.66),
@@ -240,6 +245,7 @@ export const makeStyles = (colors: ThemeColors) =>
       borderColor: withOpacity(colors.primary, 0.1),
     },
     sectionTitle: {
+      fontFamily: secondLevelTitleFontFamily,
       fontSize: 15,
       fontWeight: fontWeight.semibold,
       color: withOpacity(colors.foreground, 0.9),
@@ -433,7 +439,12 @@ export const makeStyles = (colors: ThemeColors) =>
       letterSpacing: 1,
       marginBottom: 2,
     },
-    bookTitle: { fontSize: 13, fontWeight: fontWeight.semibold, color: withOpacity(colors.foreground, 0.8) },
+    bookTitle: {
+      fontFamily: headingFontFamily,
+      fontSize: 13,
+      fontWeight: fontWeight.semibold,
+      color: withOpacity(colors.foreground, 0.8),
+    },
     bookTitleFirst: { fontSize: 14 },
     bookAuthor: { fontSize: 11, color: withOpacity(colors.mutedForeground, 0.58), marginTop: 2 },
     bookStatsRow: { flexDirection: "row", alignItems: "baseline", gap: 6, marginTop: 6 },
@@ -494,7 +505,12 @@ export const makeStyles = (colors: ThemeColors) =>
     insightDotWarning: { backgroundColor: withOpacity(colors.destructive, 0.45) },
     insightDotPositive: { backgroundColor: withOpacity(colors.primary, 0.45) },
     insightDotDefault: { backgroundColor: withOpacity(colors.border, 0.6) },
-    insightTitle: { fontSize: 13, fontWeight: fontWeight.semibold, color: withOpacity(colors.foreground, 0.75) },
+    insightTitle: {
+      fontFamily: headingFontFamily,
+      fontSize: 13,
+      fontWeight: fontWeight.semibold,
+      color: withOpacity(colors.foreground, 0.75),
+    },
     insightBody: { fontSize: 13, color: withOpacity(colors.mutedForeground, 0.62), lineHeight: 18, marginTop: 2 },
 
     /* ── Streak ── */
@@ -534,7 +550,12 @@ export const makeStyles = (colors: ThemeColors) =>
       justifyContent: "center",
       marginBottom: 12,
     },
-    emptyTitle: { fontSize: 16, fontWeight: fontWeight.semibold, color: withOpacity(colors.foreground, 0.75) },
+    emptyTitle: {
+      fontFamily: headingFontFamily,
+      fontSize: 16,
+      fontWeight: fontWeight.semibold,
+      color: withOpacity(colors.foreground, 0.75),
+    },
     emptyDesc: { fontSize: 13, color: withOpacity(colors.mutedForeground, 0.5), textAlign: "center", marginTop: 4, maxWidth: 240, lineHeight: 18 },
 
     /* ── Day summary ── */
@@ -610,6 +631,7 @@ export const makeStyles = (colors: ThemeColors) =>
       color: withOpacity(colors.mutedForeground, 0.52),
     },
     daySummaryBookTitle: {
+      fontFamily: headingFontFamily,
       fontSize: 17,
       fontWeight: fontWeight.semibold,
       color: withOpacity(colors.foreground, 0.88),
@@ -835,6 +857,7 @@ export const makeStyles = (colors: ThemeColors) =>
     },
     /* ── Rhythm profile ── */
     rhythmSubTitle: {
+      fontFamily: headingFontFamily,
       fontSize: 14,
       fontWeight: fontWeight.semibold,
       color: withOpacity(colors.foreground, 0.85),
@@ -892,6 +915,7 @@ export const makeStyles = (colors: ThemeColors) =>
       color: withOpacity(colors.mutedForeground, 0.6),
     },
     snapshotTopBookTitle: {
+      fontFamily: headingFontFamily,
       fontSize: 11,
       color: withOpacity(colors.foreground, 0.66),
     },

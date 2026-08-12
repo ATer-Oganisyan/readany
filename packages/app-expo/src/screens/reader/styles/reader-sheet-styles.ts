@@ -1,4 +1,11 @@
-import { type ThemeColors, fontSize, fontWeight, radius, withOpacity } from "@/styles/theme";
+import {
+  type ThemeColors,
+  fontSize,
+  fontWeight,
+  headingFontFamily,
+  radius,
+  withOpacity,
+} from "@/styles/theme";
 /**
  * Bottom sheet + TOC/Bookmark/Settings panel styles for ReaderScreen.
  */
@@ -23,6 +30,7 @@ export const makeSheetStyles = (colors: ThemeColors) =>
       marginBottom: 12,
     },
     sheetTitle: {
+      fontFamily: headingFontFamily,
       fontSize: fontSize.md,
       fontWeight: fontWeight.semibold,
       color: colors.foreground,

@@ -5,6 +5,14 @@
 .gitignore
 .easignore
 
+# Local dependency and native build artifacts. EAS installs dependencies and
+# regenerates native projects in the cloud from app.config.js.
+node_modules/
+ios/
+android/
+dist/
+.expo/
+
 # Documentation
 *.md
 LICENSE

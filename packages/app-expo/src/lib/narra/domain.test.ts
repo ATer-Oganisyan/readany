@@ -22,6 +22,7 @@ const character: NarraCharacter = {
   unlockProgress: 0.35,
   portraitAssetId: "anna-karenina/anna-karenina",
   portraitUri: "file:///portrait.png",
+  portraitUriOverridesAsset: true,
 };
 
 describe("Narra character unlock", () => {
@@ -59,6 +60,7 @@ describe("Narra persisted book state", () => {
       id: "anna",
       portraitAssetId: "anna-karenina/anna-karenina",
       portraitUri: "file:///portrait.png",
+      portraitUriOverridesAsset: true,
     });
     expect(restored.memories.anna).toBe("Любит чай без сахара");
     expect(restored.chats.anna[0]?.content).toBe("Запомни это");

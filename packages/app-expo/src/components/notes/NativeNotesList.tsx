@@ -1,5 +1,6 @@
 import { Text } from "@/components/ui/Typography";
-import { useColors } from "@/styles/theme";
+import { secondLevelTitleFontFamily, useColors } from "@/styles/theme";
+import { useTranslation } from "react-i18next";
 import { Pressable, SectionList, StyleSheet, View } from "react-native";
 
 export interface NativeNoteListItem {
@@ -23,6 +24,7 @@ export interface NativeNotesListProps {
 /** Cross-platform fallback. iOS replaces this with a real SwiftUI inset-grouped List. */
 export function NativeNotesList({ sections, onPress }: NativeNotesListProps) {
   const colors = useColors();
+  const { t } = useTranslation();
 
   return (
     <SectionList
@@ -40,7 +42,9 @@ export function NativeNotesList({ sections, onPress }: NativeNotesListProps) {
       renderItem={({ item, index, section }) => (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`Открыть заметку «${item.title}»`}
+          accessibilityLabel={t("notes.openNote", "Открыть заметку «{{title}}»", {
+            title: item.title,
+          })}
           onPress={() => onPress(item.id)}
           style={({ pressed }) => [
             styles.row,
@@ -105,7 +109,13 @@ export function NativeNotesList({ sections, onPress }: NativeNotesListProps) {
 
 const styles = StyleSheet.create({
   content: { paddingHorizontal: 16, paddingBottom: 28 },
-  sectionTitle: { fontSize: 20, fontWeight: "600", marginTop: 22, marginBottom: 8 },
+  sectionTitle: {
+    fontFamily: secondLevelTitleFontFamily,
+    fontSize: 20,
+    fontWeight: "400",
+    marginTop: 22,
+    marginBottom: 8,
+  },
   row: { overflow: "hidden", paddingHorizontal: 16 },
   rowContent: { paddingVertical: 12 },
   title: { fontSize: 17, fontWeight: "600" },

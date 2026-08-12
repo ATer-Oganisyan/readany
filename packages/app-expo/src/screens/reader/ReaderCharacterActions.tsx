@@ -7,25 +7,32 @@ export function ReaderCharacterActions(props: ReaderCharacterActionsProps) {
   return (
     <View style={styles.row}>
       <NativeButton
-        fullWidth
         label={props.talkLabel}
         icon="chat"
         size="large"
         onPress={props.onTalk}
         style={styles.button}
       />
-      {props.canSample ? (
-        <NativeButton
-          fullWidth
-          label={props.voiceState === "playing" ? props.stopLabel : props.listenLabel}
-          icon="play"
-          loading={props.voiceState === "loading"}
-          variant="secondary"
-          size="large"
-          onPress={props.onToggleVoice}
-          style={styles.button}
-        />
-      ) : null}
+      <NativeButton
+        label={props.voiceState === "playing" ? props.stopLabel : props.listenLabel}
+        icon="play"
+        loading={props.voiceState === "loading"}
+        disabled={!props.canSample}
+        variant="secondary"
+        size="large"
+        onPress={props.onToggleVoice}
+        style={styles.button}
+      />
+      <NativeButton
+        label={props.regenerateLabel}
+        icon="refresh"
+        loading={props.regenerating}
+        disabled={props.regenerating}
+        variant="secondary"
+        size="large"
+        onPress={props.onRegenerate}
+        style={styles.button}
+      />
     </View>
   );
 }

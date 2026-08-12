@@ -1,6 +1,13 @@
 import { Text } from "@/components/ui/Typography";
 import { XIcon, Trash2Icon } from "@/components/ui/Icon";
-import { fontSize as fs, fontWeight as fw, radius, useColors, withOpacity } from "@/styles/theme";
+import {
+  fontSize as fs,
+  fontWeight as fw,
+  headingFontFamily,
+  radius,
+  useColors,
+  withOpacity,
+} from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
 import {
   formatRelativeTimeShort,
@@ -178,7 +185,12 @@ const makeStyles = (colors: ThemeColors) =>
       justifyContent: "space-between",
       paddingVertical: 12,
     },
-    title: { fontSize: fs.sm, fontWeight: fw.semibold, color: colors.foreground },
+    title: {
+      fontFamily: headingFontFamily,
+      fontSize: fs.sm,
+      fontWeight: fw.semibold,
+      color: colors.foreground,
+    },
     iconBtn: { width: 32, height: 32, borderRadius: radius.full, alignItems: "center", justifyContent: "center" },
     empty: { paddingVertical: 40, alignItems: "center" },
     emptyText: { fontSize: fs.xs, color: colors.mutedForeground },
@@ -200,7 +212,13 @@ const makeStyles = (colors: ThemeColors) =>
     itemActive: { backgroundColor: withOpacity(colors.primary, 0.08) },
     itemContent: { flex: 1, gap: 2 },
     itemTitleRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-    itemTitle: { fontSize: fs.sm, fontWeight: fw.medium, color: colors.foreground, flex: 1 },
+    itemTitle: {
+      fontFamily: headingFontFamily,
+      fontSize: fs.sm,
+      fontWeight: fw.medium,
+      color: colors.foreground,
+      flex: 1,
+    },
     itemTitleActive: { color: colors.primary },
     itemTime: { fontSize: 11, color: colors.mutedForeground, opacity: 0.5 },
     itemPreview: { fontSize: 13, color: colors.mutedForeground },

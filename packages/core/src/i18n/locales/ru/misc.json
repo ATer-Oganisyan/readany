@@ -19,6 +19,8 @@
     "notConfiguredDesc": "Скачайте локальную модель или настройте удалённую",
     "goSettings": "Перейти к настройкам",
     "prepareFailed": "Не получилось подготовить книгу к векторизации",
-    "unsupportedFormatTitle": "Формат не поддерживается"
+    "unsupportedFormatTitle": "Формат не поддерживается",
+    "unsupportedFormatDesc": "На телефоне поддерживаются EPUB, PDF, TXT и UMD.",
+    "missingFileDesc": "Локальный файл книги не найден. Скачайте или импортируйте книгу заново."
   }
 }

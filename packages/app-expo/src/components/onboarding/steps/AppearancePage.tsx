@@ -2,6 +2,7 @@ import { Moon, PaletteIcon, Sun } from "@/components/ui/Icon";
 import { NativeButton } from "@/components/ui/NativeButton";
 import { Text } from "@/components/ui/Typography";
 import { type ThemeMode, useTheme } from "@/styles/ThemeContext";
+import { headingFontFamily, largeTitleFontFamily } from "@/styles/theme";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useTranslation } from "react-i18next";
@@ -149,6 +150,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   title: {
+    fontFamily: largeTitleFontFamily,
     fontSize: 28,
     fontWeight: "800",
     color: "#0f172a",
@@ -159,6 +161,7 @@ const styles = StyleSheet.create({
   grid: { gap: 16 },
   card: { borderRadius: 16, borderWidth: 1, padding: 16 },
   cardTitle: {
+    fontFamily: headingFontFamily,
     fontSize: 11,
     fontWeight: "600",
     textTransform: "uppercase",

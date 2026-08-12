@@ -1,4 +1,10 @@
-import { type ThemeColors, fontSize, fontWeight, radius } from "@/styles/theme";
+import {
+  type ThemeColors,
+  fontSize,
+  fontWeight,
+  headingFontFamily,
+  radius,
+} from "@/styles/theme";
 import { StyleSheet } from "react-native";
 
 export function getBookCardMetrics(cardWidth: number) {
@@ -51,15 +57,6 @@ export const makeStyles = (colors: ThemeColors, cardWidth: number) => {
       width: coverWidth * 0.02,
       backgroundColor: "rgba(30,30,30,0.12)",
     },
-    spineTopHighlight: {
-      position: "absolute",
-      top: 0,
-      left: 0,
-      right: 0,
-      height: "3%",
-      backgroundColor: "rgba(240,240,240,0.15)",
-      zIndex: 3,
-    },
     fallbackCover: {
       flex: 1,
       overflow: "hidden",
@@ -67,6 +64,7 @@ export const makeStyles = (colors: ThemeColors, cardWidth: number) => {
       backgroundColor: colors.primary10,
     },
     fallbackTitle: {
+      fontFamily: headingFontFamily,
       textAlign: "left",
       fontSize: fontSize.lg,
       fontWeight: fontWeight.bold,
@@ -149,6 +147,7 @@ export const makeStyles = (colors: ThemeColors, cardWidth: number) => {
     },
     infoWrap: { width: coverWidth, paddingTop: 6 },
     bookTitle: {
+      fontFamily: headingFontFamily,
       fontSize: 13,
       fontWeight: fontWeight.semibold,
       color: colors.foreground,

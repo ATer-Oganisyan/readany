@@ -2,7 +2,14 @@ import { EditIcon, PlusIcon, PuzzleIcon, Trash2Icon } from "@/components/ui/Icon
 import { Text, TextInput } from "@/components/ui/Typography";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { useNativeHeaderActions } from "@/navigation/useNativeHeaderActions";
-import { type ThemeColors, fontSize, fontWeight, radius, useColors } from "@/styles/theme";
+import {
+  type ThemeColors,
+  fontSize,
+  fontWeight,
+  radius,
+  secondLevelTitleFontFamily,
+  useColors,
+} from "@/styles/theme";
 import { builtinSkills } from "@readany/core/ai/skills/builtin-skills";
 import { deleteSkill, getSkills, insertSkill, upsertSkill } from "@readany/core/db";
 import type { Skill } from "@readany/core/types";
@@ -375,6 +382,7 @@ const makeStyles = (colors: ThemeColors) =>
     headerLeft: { flexDirection: "row", alignItems: "center", gap: 12 },
     backBtn: { padding: 4 },
     headerTitle: {
+      fontFamily: secondLevelTitleFontFamily,
       fontSize: fontSize.lg,
       fontWeight: fontWeight.semibold,
       color: colors.foreground,
@@ -396,8 +404,9 @@ const makeStyles = (colors: ThemeColors) =>
     sectionColumn: { flex: 1, minWidth: 0 },
     section: { paddingHorizontal: 16, paddingTop: 16 },
     sectionTitle: {
+      fontFamily: secondLevelTitleFontFamily,
       fontSize: fontSize.sm,
-      fontWeight: fontWeight.medium,
+      fontWeight: fontWeight.normal,
       color: colors.mutedForeground,
       textTransform: "uppercase",
       letterSpacing: 0.8,
@@ -465,6 +474,7 @@ const makeStyles = (colors: ThemeColors) =>
       marginBottom: 8,
     },
     editorTitle: {
+      fontFamily: secondLevelTitleFontFamily,
       fontSize: fontSize.md,
       fontWeight: fontWeight.semibold,
       color: colors.foreground,

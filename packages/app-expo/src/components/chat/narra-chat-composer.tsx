@@ -5,6 +5,7 @@ import { radiusPixels, spacingPixels } from "@deslop/primitives";
 import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 import { useCallback, useEffect, useState } from "react";
 import type { ComponentPropsWithRef } from "react";
+import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
   Platform,
@@ -38,6 +39,7 @@ export function NarraChatComposer<TMessage extends IMessage>({
   ...props
 }: RuntimeToolbarProps<TMessage>) {
   const { colors, isDark } = useTheme();
+  const { t } = useTranslation();
   const keyboardInsets = useKeyboardInsets();
   const [inputHeight, setInputHeight] = useState(controlSize);
   const text = props.text ?? "";
@@ -87,7 +89,9 @@ export function NarraChatComposer<TMessage extends IMessage>({
       />
 
       <Pressable
-        accessibilityLabel={isStreaming ? "Остановить ответ" : "Отправить"}
+        accessibilityLabel={
+          isStreaming ? t("chat.stopResponse", "Остановить ответ") : t("narra.send", "Отправить")
+        }
         accessibilityRole="button"
         accessibilityState={{ disabled: !canSend && !(isStreaming && onStop) }}
         disabled={!canSend && !(isStreaming && onStop)}

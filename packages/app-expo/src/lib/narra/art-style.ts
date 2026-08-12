@@ -12,8 +12,6 @@ export const ART_STYLE =
 /** Лимит промпта Kandinsky в символах. */
 export const PROMPT_CHAR_LIMIT = 950;
 
-const STYLE_TAIL = `Стиль: ${ART_STYLE}.`;
-
 function shrinkPart(part: string, maxLength: number): string {
   if (part.length <= maxLength) return part;
   if (maxLength < 2) return "";
@@ -29,9 +27,14 @@ function shrinkPart(part: string, maxLength: number): string {
  * При переполнении лимита сокращаются части (сначала самые длинные — паспорта
  * и отрывок сцены); стиль всегда остаётся в конце целиком.
  */
-export function budgetPrompt(parts: string[], limit = PROMPT_CHAR_LIMIT): string {
+export function budgetPrompt(
+  parts: string[],
+  limit = PROMPT_CHAR_LIMIT,
+  artStyle = ART_STYLE,
+): string {
+  const styleTail = `Стиль: ${artStyle}.`;
   const body = parts.map((part) => part.replace(/\s+/gu, " ").trim()).filter(Boolean);
-  const assemble = () => [...body.filter(Boolean), STYLE_TAIL].join(" ");
+  const assemble = () => [...body.filter(Boolean), styleTail].join(" ");
   let prompt = assemble();
   while (prompt.length > limit && body.some(Boolean)) {
     const overflow = prompt.length - limit;

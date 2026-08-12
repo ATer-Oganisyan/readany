@@ -1,6 +1,7 @@
 import { TextInput } from "@/components/ui/Typography";
 import { useColors } from "@/styles/theme";
 import { useCallback, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 export interface NativeNoteEditorProps {
   onChange: (value: string) => void;
@@ -15,6 +16,7 @@ export function NativeNoteEditor({
   initialValue = "",
 }: NativeNoteEditorProps) {
   const colors = useColors();
+  const { t } = useTranslation();
   const [value, setValue] = useState(initialValue);
   const handleChange = useCallback(
     (nextValue: string) => {
@@ -28,7 +30,7 @@ export function NativeNoteEditor({
     <TextInput
       value={value}
       onChangeText={handleChange}
-      placeholder="Начните писать…"
+      placeholder={t("notes.startWriting", "Начните писать…")}
       placeholderTextColor={colors.mutedForeground}
       autoFocus={autoFocus}
       multiline
