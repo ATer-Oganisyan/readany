@@ -8,6 +8,29 @@ The staged book-markup backend contract is documented in
 [`docs/book-markup-backend.md`](../../docs/book-markup-backend.md). Its first
 PostgreSQL schema is in [`migrations/001_book_markup.sql`](migrations/001_book_markup.sql).
 
+## LLM request parameters
+
+The Gateway, not the client, owns model sampling and reasoning parameters. The
+legacy `temperature` field is still accepted by `/v2/ai/chat/stream` and
+`/v2/ai/chat/complete` for mobile compatibility, but its value is ignored.
+
+[`model-request-config.mjs`](model-request-config.mjs) is the source of truth for
+provider/model capabilities and purpose-specific defaults. Unknown models get
+no optional sampling parameters. The currently configured GPT-5.6 Luna routes
+use `temperature: 0.85` together with `reasoning_effort: none` for
+`character_chat`; structured analysis, summaries, scenarios and memory omit
+temperature and keep the model's default reasoning behavior.
+
+The configuration covers both current model identifiers:
+
+- `giga:gpt-5.6-luna`;
+- `openrouter:openai/gpt-5.6-luna`.
+
+GPT-5.6 Luna's model and reasoning modes are documented by
+[OpenAI](https://developers.openai.com/api/docs/models/gpt-5.6-luna), while
+OpenRouter documents its OpenAI-style `reasoning_effort` shorthand in the
+[chat-completions contract](https://openrouter.ai/docs/api/api-reference/presets/create-presets-chat-completions).
+
 ## Analytics delivery contract
 
 Set both variables together:

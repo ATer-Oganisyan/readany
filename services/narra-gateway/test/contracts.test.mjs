@@ -9,13 +9,14 @@ import {
 } from '../contracts.mjs'
 import { parseEventBatch } from '../events.mjs'
 
-test('chat contract accepts purpose but rejects client-selected provider', () => {
+test('chat contract accepts purpose, ignores client temperature and rejects client-selected provider', () => {
   const parsed = parseChatBody({
     messages: [{ role: 'user', content: 'hello' }],
     purpose: 'summary',
-    temperature: 0.2
+    temperature: 'not-a-server-setting'
   })
   assert.equal(parsed.purpose, 'summary')
+  assert.equal(Object.hasOwn(parsed, 'temperature'), false)
   assert.throws(
     () => parseChatBody({ messages: [{ role: 'user', content: 'hello' }], provider: 'openrouter' }),
     /неизвестное поле/
@@ -33,7 +34,6 @@ test('background chat analytics is explicit and can be actorless after opt-out',
     }),
     {
       messages,
-      temperature: 0.7,
       purpose: 'structured_task',
       requestId: undefined,
       origin: 'background',

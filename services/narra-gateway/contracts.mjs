@@ -47,8 +47,6 @@ export function parseChatBody(input, { stream = false } = {}) {
     return { role: message.role, content }
   })
   if (total > 180_000) fail('messages: суммарный текст больше 180000 символов')
-  const temperature = body.temperature === undefined ? (stream ? 0.8 : 0.7) : Number(body.temperature)
-  if (!Number.isFinite(temperature) || temperature < 0 || temperature > 2) fail('temperature: число от 0 до 2')
   const defaultPurpose = stream ? 'character_chat' : 'structured_task'
   const purpose = body.purpose === undefined ? defaultPurpose : String(body.purpose)
   if (!PURPOSES.has(purpose)) fail('purpose: неизвестное назначение запроса')
@@ -71,7 +69,7 @@ export function parseChatBody(input, { stream = false } = {}) {
   if (origin === 'background' && analyticsTier === 'essential') {
     fail('analytics_tier: background-запрос не может быть essential')
   }
-  return { messages, temperature, purpose, requestId, origin, analyticsTier }
+  return { messages, purpose, requestId, origin, analyticsTier }
 }
 
 export function parseImageBody(input) {

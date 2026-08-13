@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { withTimeout } from './concurrency.mjs'
+import { requestOptionsForModel } from './model-request-config.mjs'
 
 const RETRYABLE = new Set([408, 409, 429, 500, 502, 503, 504])
 const PURPOSES = ['character_chat', 'structured_task', 'summary', 'scenario', 'memory']
@@ -73,7 +74,6 @@ export function llmRouteReadiness(env = process.env) {
 
 export async function requestChat({
   messages,
-  temperature,
   purpose,
   stream,
   requestId,
@@ -113,6 +113,11 @@ export async function requestChat({
     }
     await onAttempt(startedAttempt)
     try {
+      const modelRequestOptions = requestOptionsForModel({
+        provider: providerName,
+        model: config.model,
+        purpose
+      })
       const response = await fetchImpl(`${config.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
@@ -123,9 +128,9 @@ export async function requestChat({
         body: JSON.stringify({
           model: config.model,
           messages,
-          temperature,
           max_tokens: stream ? 1024 : 6000,
           stream,
+          ...modelRequestOptions,
           ...(stream && providerName === 'giga'
             ? { stream_options: { include_usage: true } }
             : {}),

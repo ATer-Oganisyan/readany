@@ -508,13 +508,12 @@ async function animatePortrait(image, query, quality, signal) {
   return videoTask(model, params, signal)
 }
 
-async function completeInternalChat({ messages, temperature, signal }) {
+async function completeInternalChat({ messages, signal }) {
   let release
   try {
     release = await llmGate.acquire(signal)
     const { response, finalizeAttempt } = await requestChat({
       messages,
-      temperature,
       purpose: 'structured_task',
       stream: false,
       requestId: randomUUID(),

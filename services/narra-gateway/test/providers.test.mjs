@@ -31,6 +31,62 @@ test('provider request omits temperature when the caller leaves it unset', async
   await result.finalizeAttempt()
 })
 
+test('character chat uses model-aware server sampling and ignores caller temperature', async () => {
+  for (const provider of ['giga', 'openrouter']) {
+    let body
+    const isOpenRouter = provider === 'openrouter'
+    const result = await requestChat({
+      messages: [{ role: 'user', content: 'hello' }],
+      temperature: 0.1,
+      purpose: 'character_chat',
+      stream: false,
+      fetchImpl: async (_url, init) => {
+        body = JSON.parse(init.body)
+        return new Response('{"choices":[{"message":{"content":"hello"}}]}', { status: 200 })
+      },
+      env: isOpenRouter
+        ? {
+            LLM_ROUTE_CHARACTER_CHAT: 'openrouter',
+            OPENROUTER_BASE_URL: 'https://openrouter.test/v1',
+            OPENROUTER_API_KEY: 'or-key',
+            OPENROUTER_MODEL_CHARACTER_CHAT: 'openai/gpt-5.6-luna'
+          }
+        : {
+            LLM_ROUTE_CHARACTER_CHAT: 'giga',
+            LLM_BASE_URL: 'https://giga.test',
+            LLM_API_KEY: 'giga-key',
+            LLM_MODEL_CHARACTER_CHAT: 'gpt-5.6-luna'
+          }
+    })
+    assert.equal(body.temperature, 0.85)
+    assert.equal(body.reasoning_effort, 'none')
+    await result.finalizeAttempt()
+  }
+})
+
+test('unknown models receive no optional sampling parameters', async () => {
+  let body
+  const result = await requestChat({
+    messages: [{ role: 'user', content: 'hello' }],
+    temperature: 0.1,
+    purpose: 'character_chat',
+    stream: false,
+    fetchImpl: async (_url, init) => {
+      body = JSON.parse(init.body)
+      return new Response('{"choices":[{"message":{"content":"hello"}}]}', { status: 200 })
+    },
+    env: {
+      LLM_ROUTE_CHARACTER_CHAT: 'giga',
+      LLM_BASE_URL: 'https://giga.test',
+      LLM_API_KEY: 'giga-key',
+      LLM_MODEL_CHARACTER_CHAT: 'future-model'
+    }
+  })
+  assert.equal(Object.hasOwn(body, 'temperature'), false)
+  assert.equal(Object.hasOwn(body, 'reasoning_effort'), false)
+  await result.finalizeAttempt()
+})
+
 test('readiness requires a complete configured route for every purpose', () => {
   const broken = llmRouteReadiness({ OPENROUTER_API_KEY: 'key', LLM_ROUTE_DEFAULT: 'openrouter' })
   assert.equal(broken.ready, false)
