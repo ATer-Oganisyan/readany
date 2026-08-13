@@ -204,6 +204,130 @@ test('resolver keeps repeated descriptive character labels out of synthesis', ()
   assert.equal(result[0].resolutionStatus, 'candidate')
 })
 
+test('resolver keeps capitalized descriptive phrases out of synthesis', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111111119',
+      candidate: 'Пьяная девушка',
+      startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222229',
+      candidate: 'Пьяная девушка',
+      type: 'character_action',
+      startOffset: 200
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333339',
+      candidate: 'Невеста Свидригайлова',
+      confidence: 0.99,
+      startOffset: 300
+    })
+  ]
+  const result = resolveBookAnalysisEntities({ observations })
+  assert.deepEqual(result.map(({ resolutionStatus }) => resolutionStatus), [
+    'candidate', 'candidate'
+  ])
+})
+
+test('resolver merges a full name through a unique patronymic and nickname bridge', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111111120',
+      candidate: 'Авдотья Романовна Раскольникова',
+      related: ['Дуня'],
+      startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222230',
+      candidate: 'Авдотья Романовна',
+      startOffset: 200
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333340',
+      candidate: 'Авдотья Романовна Дуня',
+      startOffset: 300
+    }),
+    observation({
+      id: '44444444-4444-4444-8444-444444444450',
+      candidate: 'Дуня',
+      related: ['Авдотья Романовна'],
+      startOffset: 400
+    })
+  ]
+  const result = resolveBookAnalysisEntities({ observations })
+  assert.equal(result.length, 1)
+  assert.equal(result[0].canonicalName, 'Авдотья Романовна Раскольникова')
+  assert.deepEqual(result[0].aliases, [
+    'Авдотья Романовна', 'Авдотья Романовна Дуня', 'Дуня'
+  ])
+})
+
+test('resolver does not treat one-way related mentions as aliases', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111111122',
+      candidate: 'Лизавета',
+      related: ['Алена Ивановна'],
+      startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222232',
+      candidate: 'Алена Ивановна',
+      startOffset: 200
+    })
+  ]
+  const result = resolveBookAnalysisEntities({ observations })
+  assert.deepEqual(result.map(({ canonicalName }) => canonicalName), [
+    'Лизавета', 'Алена Ивановна'
+  ])
+})
+
+test('resolver does not merge reciprocal mentions without a composite name bridge', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111111123',
+      candidate: 'Анна Сергеевна',
+      related: ['Борис Иванович'],
+      startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222233',
+      candidate: 'Борис Иванович',
+      related: ['Анна Сергеевна'],
+      startOffset: 200
+    })
+  ]
+  const result = resolveBookAnalysisEntities({ observations })
+  assert.deepEqual(result.map(({ canonicalName }) => canonicalName), [
+    'Анна Сергеевна', 'Борис Иванович'
+  ])
+})
+
+test('resolver merges a unique surname after joining colloquial patronymic variants', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111111121',
+      candidate: 'Андрей Семеныч Лебезятников',
+      startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222231',
+      candidate: 'Андрей Семенович Лебезятников',
+      startOffset: 200
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333341',
+      candidate: 'Лебезятников',
+      startOffset: 300
+    })
+  ]
+  const result = resolveBookAnalysisEntities({ observations })
+  assert.equal(result.length, 1)
+  assert.equal(result[0].canonicalName, 'Андрей Семенович Лебезятников')
+  assert.deepEqual(result[0].aliases, ['Андрей Семеныч Лебезятников', 'Лебезятников'])
+})
+
 test('resolver output is stable regardless of scan completion order', () => {
   const observations = [
     observation({

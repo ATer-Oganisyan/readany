@@ -26,6 +26,16 @@ const GENERIC_CHARACTER_CANDIDATES = new Set([
   'young man', 'unknown man', 'unknown woman', 'man', 'woman', 'girl',
   'servant', 'policeman', 'policewoman'
 ])
+const DESCRIPTIVE_CHARACTER_TOKENS = new Set([
+  'человек', 'мужчина', 'женщина', 'девушка', 'девочка', 'мальчик',
+  'господин', 'госпожа', 'дама', 'старик', 'старуха', 'старушонка',
+  'дочь', 'сын', 'мать', 'отец', 'брат', 'сестра', 'жена', 'муж',
+  'вдова', 'невеста', 'жених', 'мещанин', 'городовой', 'письмоводитель',
+  'артельщик', 'дворник', 'лакей', 'слуга', 'служанка', 'полицейский',
+  'полицейская', 'man', 'woman', 'girl', 'boy', 'gentleman', 'lady',
+  'daughter', 'son', 'mother', 'father', 'brother', 'sister', 'wife',
+  'husband', 'widow', 'bride', 'groom', 'servant', 'policeman', 'policewoman'
+])
 
 function resolutionError(code, message) {
   return Object.assign(new Error(message), { code })
@@ -178,28 +188,128 @@ function isOrderedSubset(shorter, longer) {
 
 function hasProperNameForm(node) {
   if (GENERIC_CHARACTER_CANDIDATES.has(node.normalized)) return false
+  if (nameTokens(node.normalized).some((token) => DESCRIPTIVE_CHARACTER_TOKENS.has(token))) {
+    return false
+  }
   return [...node.forms.values()].some(({ display }) =>
-    display.split(/\s+/u).some((token) => /^\p{Lu}[\p{L}'’.-]*$/u.test(token))
+    /^\p{Lu}[\p{L}'’.-]*(?:\s|$)/u.test(display)
   )
+}
+
+function compositeNameParts(node, nodes) {
+  const tokens = nameTokens(node.normalized)
+  if (tokens.length < 3) return null
+  const prefixKey = `character\u0000${tokens.slice(0, -1).join(' ')}`
+  const suffixKey = `character\u0000${tokens.at(-1)}`
+  if (!nodes.has(prefixKey) || !nodes.has(suffixKey)) return null
+  const competingSuffix = [...nodes.values()].some((candidate) => {
+    if (candidate === node || !candidate.key.startsWith('character\u0000')) return false
+    const candidateTokens = nameTokens(candidate.normalized)
+    return candidateTokens.length >= 3 &&
+      candidateTokens.slice(0, -1).join(' ') === tokens.slice(0, -1).join(' ') &&
+      candidateTokens.at(-1) !== tokens.at(-1)
+  })
+  return competingSuffix ? { prefixKey, suffixKey } : null
+}
+
+function mergeResolvedCompositeNames(sets, nodes) {
+  for (const node of nodes.values()) {
+    if (!node.key.startsWith('character\u0000') || !hasProperNameForm(node)) continue
+    const parts = compositeNameParts(node, nodes)
+    if (!parts) continue
+    const prefixRoot = sets.find(parts.prefixKey)
+    const suffixRoot = sets.find(parts.suffixKey)
+    if (prefixRoot === suffixRoot) sets.union(node.key, prefixRoot)
+  }
+}
+
+function mergeReciprocalMentionAliases(sets, nodes, mentionClaims) {
+  const edges = new Set()
+  for (const { primaryKey, relatedKey } of mentionClaims) {
+    if (!nodes.has(relatedKey)) continue
+    if (!hasProperNameForm(nodes.get(primaryKey)) || !hasProperNameForm(nodes.get(relatedKey))) {
+      continue
+    }
+    const primaryRoot = sets.find(primaryKey)
+    const relatedRoot = sets.find(relatedKey)
+    if (primaryRoot !== relatedRoot) edges.add(`${primaryRoot}\u0000${relatedRoot}`)
+  }
+  const pairs = []
+  for (const edge of edges) {
+    const splitAt = edge.indexOf('\u0000character\u0000')
+    if (splitAt < 0) continue
+    const left = edge.slice(0, splitAt)
+    const right = edge.slice(splitAt + 1)
+    if (edges.has(`${right}\u0000${left}`)) pairs.push([left, right])
+  }
+  for (const [left, right] of pairs) {
+    const bridged = [...nodes.values()].some((node) => {
+      const parts = compositeNameParts(node, nodes)
+      if (!parts) return false
+      const roots = new Set([sets.find(parts.prefixKey), sets.find(parts.suffixKey)])
+      return roots.size === 2 && roots.has(left) && roots.has(right)
+    })
+    if (bridged) sets.union(left, right)
+  }
+}
+
+function commonPrefixLength(left, right) {
+  let index = 0
+  while (index < left.length && index < right.length && left[index] === right[index]) index += 1
+  return index
+}
+
+function isPatronymicVariant(left, right) {
+  if (left.length !== 3 || right.length !== 3) return false
+  if (left[0] !== right[0] || left[2] !== right[2] || left[1] === right[1]) return false
+  return Math.min(left[1].length, right[1].length) >= 6 &&
+    Math.abs(left[1].length - right[1].length) <= 3 &&
+    commonPrefixLength(left[1], right[1]) >= 5
+}
+
+function mergePatronymicVariants(sets, nodes) {
+  const candidates = [...nodes.values()].filter((node) =>
+    node.key.startsWith('character\u0000') && hasProperNameForm(node)
+  )
+  for (const [index, node] of candidates.entries()) {
+    const tokens = nameTokens(node.normalized)
+    for (const other of candidates.slice(index + 1)) {
+      if (isPatronymicVariant(tokens, nameTokens(other.normalized))) {
+        sets.union(node.key, other.key)
+      }
+    }
+  }
 }
 
 function mergeUnambiguousNameFragments(sets, nodes) {
   const nameNodes = [...nodes.values()].filter((node) =>
-    node.key.startsWith('character\u0000') && hasProperNameForm(node)
+    node.key.startsWith('character\u0000') &&
+    hasProperNameForm(node) &&
+    !compositeNameParts(node, nodes)
   )
   const tokensByKey = new Map(nameNodes.map((node) => [node.key, nameTokens(node.normalized)]))
-  for (const node of nameNodes) {
-    const tokens = tokensByKey.get(node.key)
-    const supersets = nameNodes.filter((candidate) =>
-      candidate !== node && isOrderedSubset(tokens, tokensByKey.get(candidate.key))
-    )
-    const maximalSupersets = supersets.filter((candidate) =>
-      !supersets.some((other) =>
-        other !== candidate &&
-        isOrderedSubset(tokensByKey.get(candidate.key), tokensByKey.get(other.key))
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const node of nameNodes) {
+      const sourceRoot = sets.find(node.key)
+      const tokens = tokensByKey.get(node.key)
+      const supersets = nameNodes.filter((candidate) =>
+        sets.find(candidate.key) !== sourceRoot &&
+        isOrderedSubset(tokens, tokensByKey.get(candidate.key))
       )
-    )
-    if (maximalSupersets.length === 1) sets.union(node.key, maximalSupersets[0].key)
+      const maximalSupersets = supersets.filter((candidate) =>
+        !supersets.some((other) =>
+          other !== candidate &&
+          sets.find(other.key) !== sets.find(candidate.key) &&
+          isOrderedSubset(tokensByKey.get(candidate.key), tokensByKey.get(other.key))
+        )
+      )
+      const targetRoots = [...new Set(maximalSupersets.map(({ key }) => sets.find(key)))]
+      if (targetRoots.length !== 1) continue
+      sets.union(node.key, targetRoots[0])
+      changed = true
+    }
   }
 }
 
@@ -239,6 +349,7 @@ export function resolveBookAnalysisEntities({ observations: rawObservations }) {
   const nodes = new Map()
   const primaryNodeByObservationId = new Map()
   const aliasClaims = []
+  const mentionClaims = []
 
   for (const observation of observations) {
     const primaryKey = stableNodeKey(observation.entityKind, observation.entityCandidate)
@@ -251,9 +362,15 @@ export function resolveBookAnalysisEntities({ observations: rawObservations }) {
       observation.evidence.startOffset,
       { primary: true, confidence: observation.confidence }
     )
-    if (observation.type !== 'character_alias' || observation.confidence < ALIAS_CONFIDENCE) {
-      continue
+    if (observation.type === 'character_mention' && observation.confidence >= ALIAS_CONFIDENCE) {
+      for (const related of observation.relatedEntityCandidates) {
+        mentionClaims.push({
+          primaryKey,
+          relatedKey: stableNodeKey('character', related)
+        })
+      }
     }
+    if (observation.type !== 'character_alias' || observation.confidence < ALIAS_CONFIDENCE) continue
     primaryNode.anchorConfidence = Math.max(primaryNode.anchorConfidence, observation.confidence)
     for (const alias of observation.relatedEntityCandidates) {
       const aliasKey = stableNodeKey('character', alias)
@@ -276,6 +393,10 @@ export function resolveBookAnalysisEntities({ observations: rawObservations }) {
   for (const [aliasKey, anchors] of anchorsByAlias) {
     if (anchors.size === 1) sets.union([...anchors][0], aliasKey)
   }
+  mergePatronymicVariants(sets, nodes)
+  mergeUnambiguousNameFragments(sets, nodes)
+  mergeReciprocalMentionAliases(sets, nodes, mentionClaims)
+  mergeResolvedCompositeNames(sets, nodes)
   mergeUnambiguousNameFragments(sets, nodes)
 
   const groupedNodes = new Map()
