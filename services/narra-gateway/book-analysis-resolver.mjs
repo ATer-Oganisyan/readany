@@ -239,6 +239,38 @@ function mergeNicknameComposites(sets, nodes) {
   }
 }
 
+function diminutiveEchkaBase(tokens) {
+  if (tokens.length !== 1 || tokens[0].length < 4) return null
+  const [value] = tokens
+  return value.endsWith('ечка') && value.length >= 6
+    ? `${value.slice(0, -4)}я`
+    : null
+}
+
+function mergeDiminutiveNicknames(sets, nodes) {
+  for (const node of nodes.values()) {
+    if (!node.key.startsWith('character\u0000') || !hasProperNameForm(node)) continue
+    const base = diminutiveEchkaBase(nameTokens(node.normalized))
+    if (!base) continue
+    const baseKey = `character\u0000${base}`
+    const baseNode = nodes.get(baseKey)
+    if (baseNode && hasProperNameForm(baseNode)) sets.union(node.key, baseKey)
+  }
+}
+
+function mergeReorderedFullNames(sets, nodes) {
+  const namesByTokenSet = new Map()
+  for (const node of nodes.values()) {
+    if (!node.key.startsWith('character\u0000') || !hasProperNameForm(node)) continue
+    const tokens = nameTokens(node.normalized)
+    if (tokens.length !== 3 || new Set(tokens).size !== 3) continue
+    const tokenSet = [...tokens].sort(compareText).join('\u0000')
+    const existing = namesByTokenSet.get(tokenSet)
+    if (existing) sets.union(existing, node.key)
+    else namesByTokenSet.set(tokenSet, node.key)
+  }
+}
+
 function mergeResolvedCompositeNames(sets, nodes) {
   for (const node of nodes.values()) {
     if (!node.key.startsWith('character\u0000') || !hasProperNameForm(node)) continue
@@ -421,8 +453,10 @@ export function resolveBookAnalysisEntities({ observations: rawObservations }) {
     if (anchors.size === 1) sets.union([...anchors][0], aliasKey)
   }
   mergePatronymicVariants(sets, nodes)
+  mergeReorderedFullNames(sets, nodes)
   mergeUnambiguousNameFragments(sets, nodes)
   mergeNicknameComposites(sets, nodes)
+  mergeDiminutiveNicknames(sets, nodes)
   mergeReciprocalMentionAliases(sets, nodes, mentionClaims)
   mergeResolvedCompositeNames(sets, nodes)
   mergeUnambiguousNameFragments(sets, nodes)

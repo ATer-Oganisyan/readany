@@ -76,7 +76,7 @@ sudo docker compose --env-file /srv/narra-stagging/compose.env \
 
 ### Parallel book analysis shadow pipeline
 
-The v7 analysis pipeline is operator-only and produces v3 markup without
+The v8 analysis pipeline is operator-only and produces v3 markup without
 replacing the reader-visible v2 markup. Start one idempotent run for a verified stored book directly in the
 Gateway container, inspect its stage/job counters, and read the final shadow
 publication:

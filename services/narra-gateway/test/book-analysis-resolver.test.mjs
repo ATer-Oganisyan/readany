@@ -294,6 +294,97 @@ test('resolver uses a Russian patronymic composite as a nickname bridge without 
   ])
 })
 
+test('resolver merges a Russian ya-name with its echka diminutive', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111111126',
+      candidate: 'Дуня',
+      startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222236',
+      candidate: 'Дунечка',
+      startOffset: 200
+    })
+  ]
+  const result = resolveBookAnalysisEntities({ observations })
+  assert.equal(result.length, 1)
+  assert.equal(result[0].canonicalName, 'Дунечка')
+  assert.deepEqual(result[0].aliases, ['Дуня'])
+})
+
+test('resolver does not merge unrelated diminutives without the exact ya-echka form', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111111127',
+      candidate: 'Анна',
+      startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222237',
+      candidate: 'Анечка',
+      startOffset: 200
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333347',
+      candidate: 'Манечка',
+      startOffset: 300
+    })
+  ]
+  const result = resolveBookAnalysisEntities({ observations })
+  assert.deepEqual(result.map(({ canonicalName }) => canonicalName), [
+    'Анна', 'Анечка', 'Манечка'
+  ])
+})
+
+test('resolver merges the same three-part full name in a different token order', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111111128',
+      candidate: 'Родион Романович Раскольников',
+      startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222238',
+      candidate: 'Раскольников Родион Романович',
+      startOffset: 200
+    })
+  ]
+  const result = resolveBookAnalysisEntities({ observations })
+  assert.equal(result.length, 1)
+  assert.equal(result[0].canonicalName, 'Родион Романович Раскольников')
+  assert.deepEqual(result[0].aliases, ['Раскольников Родион Романович'])
+})
+
+test('resolver does not merge partially overlapping or two-part reordered names', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111111129',
+      candidate: 'Анна Мария Иванова',
+      startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222239',
+      candidate: 'Мария Анна Петрова',
+      startOffset: 200
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333349',
+      candidate: 'Иван Иванов',
+      startOffset: 300
+    }),
+    observation({
+      id: '44444444-4444-4444-8444-444444444459',
+      candidate: 'Иванов Иван',
+      startOffset: 400
+    })
+  ]
+  const result = resolveBookAnalysisEntities({ observations })
+  assert.deepEqual(result.map(({ canonicalName }) => canonicalName), [
+    'Анна Мария Иванова', 'Мария Анна Петрова', 'Иван Иванов', 'Иванов Иван'
+  ])
+})
+
 test('resolver does not treat a regular surname after a patronymic as a nickname bridge', () => {
   const observations = [
     observation({
