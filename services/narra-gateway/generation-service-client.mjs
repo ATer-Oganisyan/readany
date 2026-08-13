@@ -52,7 +52,9 @@ export function createGenerationServiceClient({
     const payload = await readJson(response)
     if (!response.ok) {
       const error = new Error(`generator request failed with HTTP ${response.status}`)
-      error.code = `GENERATOR_HTTP_${response.status}`
+      error.code = payload?.code === 'EVIDENCE_MISMATCH'
+        ? 'EVIDENCE_MISMATCH'
+        : `GENERATOR_HTTP_${response.status}`
       throw error
     }
     return payload.result ?? payload

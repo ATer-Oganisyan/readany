@@ -204,3 +204,87 @@ test('scan worker refuses a job created for another extractor version', async ()
   assert.equal(result.errorCode, 'EXTRACTOR_VERSION_MISMATCH')
   assert.equal(failedCode, 'EXTRACTOR_VERSION_MISMATCH')
 })
+
+test('scan worker completes the final evidence mismatch attempt with an empty grounded result', async () => {
+  const text = 'OVERLAP Анна вошла в комнату. Борис ответил ей. TAIL'
+  const input = scanInput(text)
+  const job = {
+    id: 'job-4',
+    runId: 'run-1',
+    stage: 'scan',
+    leaseToken: 'lease-4',
+    attempts: 5,
+    maxAttempts: 5
+  }
+  let completed
+  const worker = createBookAnalysisScanWorker({
+    repository: {
+      async claimAnalysisJob() { return job },
+      async getScanInput() { return input },
+      async renewAnalysisJobLease() {},
+      async completeScan(candidate, value) {
+        completed = { candidate, value }
+        return { observationCount: 0, stage: 'resolve' }
+      },
+      async failAnalysisJob() { assert.fail('final evidence mismatch must not fail the run') }
+    },
+    storage: { async getBytesRange() { return { bytes: Buffer.from(text) } } },
+    generator: {
+      async scanBookChunk() {
+        throw Object.assign(new Error('no grounded observations'), { code: 'EVIDENCE_MISMATCH' })
+      }
+    },
+    workerId: 'scan-worker-4',
+    leaseSeconds: 60,
+    leaseRenewMs: 10_000,
+    logger: { info() {}, warn() {}, error() {} }
+  })
+  const result = await worker.runOnce()
+  assert.equal(result.status, 'completed')
+  assert.equal(result.result.stage, 'resolve')
+  assert.equal(completed.candidate, job)
+  assert.deepEqual(completed.value, {
+    extractorVersion: 'book-scan-v4',
+    observations: []
+  })
+})
+
+test('scan worker still retries an evidence mismatch before the final attempt', async () => {
+  const text = 'OVERLAP Анна вошла в комнату. Борис ответил ей. TAIL'
+  const input = scanInput(text)
+  const job = {
+    id: 'job-5',
+    runId: 'run-1',
+    stage: 'scan',
+    leaseToken: 'lease-5',
+    attempts: 4,
+    maxAttempts: 5
+  }
+  let failedCode
+  const worker = createBookAnalysisScanWorker({
+    repository: {
+      async claimAnalysisJob() { return job },
+      async getScanInput() { return input },
+      async renewAnalysisJobLease() {},
+      async completeScan() { assert.fail('non-final evidence mismatch must retry') },
+      async failAnalysisJob(_candidate, code) {
+        failedCode = code
+        return { status: 'queued' }
+      }
+    },
+    storage: { async getBytesRange() { return { bytes: Buffer.from(text) } } },
+    generator: {
+      async scanBookChunk() {
+        throw Object.assign(new Error('no grounded observations'), { code: 'EVIDENCE_MISMATCH' })
+      }
+    },
+    workerId: 'scan-worker-5',
+    leaseSeconds: 60,
+    leaseRenewMs: 10_000,
+    logger: { info() {}, warn() {}, error() {} }
+  })
+  const result = await worker.runOnce()
+  assert.equal(result.status, 'failed')
+  assert.equal(result.errorCode, 'EVIDENCE_MISMATCH')
+  assert.equal(failedCode, 'EVIDENCE_MISMATCH')
+})

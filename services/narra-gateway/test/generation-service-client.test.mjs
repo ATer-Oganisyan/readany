@@ -149,3 +149,25 @@ test('generator client maps non-success responses to a safe worker error code', 
     (error) => error.code === 'GENERATOR_HTTP_503'
   )
 })
+
+test('generator client preserves a grounded evidence mismatch for scan retry policy', async () => {
+  const client = createGenerationServiceClient({
+    baseUrl: 'http://localhost:8790',
+    token: TOKEN,
+    production: false,
+    async fetchImpl() {
+      return new Response(JSON.stringify({
+        error: 'internal details stay inside the generation service',
+        code: 'EVIDENCE_MISMATCH'
+      }), { status: 400 })
+    }
+  })
+  await assert.rejects(
+    () => client.scanBookChunk({
+      runId: 'run-1',
+      chunkId: 'chunk-1',
+      extractorVersion: 'book-scan-v4'
+    }),
+    (error) => error.code === 'EVIDENCE_MISMATCH'
+  )
+})

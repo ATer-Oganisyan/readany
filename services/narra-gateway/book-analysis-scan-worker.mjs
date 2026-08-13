@@ -227,6 +227,24 @@ export function createBookAnalysisScanWorker({
         return { status: 'completed', jobId: job.id, runId: job.runId, result }
       } catch (error) {
         const errorCode = safeErrorCode(error)
+        if (
+          errorCode === 'EVIDENCE_MISMATCH' &&
+          Number.isSafeInteger(job.attempts) &&
+          Number.isSafeInteger(job.maxAttempts) &&
+          job.attempts >= job.maxAttempts
+        ) {
+          const result = await repository.completeScan(job, {
+            extractorVersion,
+            observations: []
+          })
+          log.warn('scan.empty_completed', 'Фрагмент завершён без доказанных наблюдений', {
+            job: job.id,
+            run: job.runId,
+            attempts: job.attempts,
+            next_stage: result.stage
+          })
+          return { status: 'completed', jobId: job.id, runId: job.runId, result }
+        }
         const failure = await repository.failAnalysisJob(job, errorCode)
         log.error('scan.failed', 'Анализ фрагмента завершился ошибкой', {
           job: job.id,
