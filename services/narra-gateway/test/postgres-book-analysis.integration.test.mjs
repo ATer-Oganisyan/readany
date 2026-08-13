@@ -29,7 +29,7 @@ test('PostgreSQL analysis barriers reject incomplete or skipped stages', {
     await pool.query(
       `INSERT INTO book_analysis_runs (
          id, idempotency_key, book_edition_id, pipeline_version, prompt_version, input_hash
-       ) VALUES ($1, $2, $3, 'book-analysis-v6', 'scan-v1', $4)`,
+       ) VALUES ($1, $2, $3, 'book-analysis-v7', 'scan-v1', $4)`,
       [runId, `analysis:${bookEditionId}:v3`, bookEditionId, hash]
     )
     await pool.query(

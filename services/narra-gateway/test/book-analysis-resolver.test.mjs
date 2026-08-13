@@ -263,6 +263,68 @@ test('resolver merges a full name through a unique patronymic and nickname bridg
   ])
 })
 
+test('resolver uses a Russian patronymic composite as a nickname bridge without related links', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111111124',
+      candidate: 'Авдотья Романовна Раскольникова',
+      startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222234',
+      candidate: 'Авдотья Романовна',
+      startOffset: 200
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333344',
+      candidate: 'Авдотья Романовна Дуня',
+      startOffset: 300
+    }),
+    observation({
+      id: '44444444-4444-4444-8444-444444444454',
+      candidate: 'Дуня',
+      startOffset: 400
+    })
+  ]
+  const result = resolveBookAnalysisEntities({ observations })
+  assert.equal(result.length, 1)
+  assert.equal(result[0].canonicalName, 'Авдотья Романовна Раскольникова')
+  assert.deepEqual(result[0].aliases, [
+    'Авдотья Романовна', 'Авдотья Романовна Дуня', 'Дуня'
+  ])
+})
+
+test('resolver does not treat a regular surname after a patronymic as a nickname bridge', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111111125',
+      candidate: 'Анна Сергеевна',
+      startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222235',
+      candidate: 'Анна Сергеевна Иванова',
+      startOffset: 200
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333345',
+      candidate: 'Иванова',
+      startOffset: 300
+    }),
+    observation({
+      id: '44444444-4444-4444-8444-444444444455',
+      candidate: 'Анна Сергеевна Петрова',
+      startOffset: 400
+    })
+  ]
+  const result = resolveBookAnalysisEntities({ observations })
+  assert.deepEqual(result.map(({ canonicalName, aliases }) => ({ canonicalName, aliases })), [
+    { canonicalName: 'Анна Сергеевна', aliases: [] },
+    { canonicalName: 'Анна Сергеевна Иванова', aliases: ['Иванова'] },
+    { canonicalName: 'Анна Сергеевна Петрова', aliases: [] }
+  ])
+})
+
 test('resolver does not treat one-way related mentions as aliases', () => {
   const observations = [
     observation({

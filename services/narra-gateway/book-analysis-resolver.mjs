@@ -212,6 +212,33 @@ function compositeNameParts(node, nodes) {
   return competingSuffix ? { prefixKey, suffixKey } : null
 }
 
+function isRussianPatronymic(value) {
+  return /(?:ович|евич|ич|овна|евна|ична|инична|оглы|кызы)$/u.test(value)
+}
+
+function isLikelyRussianSurname(value) {
+  return /(?:ов|ев|ин|ын|ский|цкий|ской|ая|яя|ова|ева|ина|ына)$/u.test(value)
+}
+
+function isNicknameComposite(node, nodes) {
+  const parts = compositeNameParts(node, nodes)
+  if (!parts) return null
+  const tokens = nameTokens(node.normalized)
+  if (tokens.length !== 3) return null
+  if (!isRussianPatronymic(tokens[1]) || isLikelyRussianSurname(tokens[2])) return null
+  return parts
+}
+
+function mergeNicknameComposites(sets, nodes) {
+  for (const node of nodes.values()) {
+    if (!node.key.startsWith('character\u0000') || !hasProperNameForm(node)) continue
+    const parts = isNicknameComposite(node, nodes)
+    if (!parts) continue
+    sets.union(node.key, parts.prefixKey)
+    sets.union(node.key, parts.suffixKey)
+  }
+}
+
 function mergeResolvedCompositeNames(sets, nodes) {
   for (const node of nodes.values()) {
     if (!node.key.startsWith('character\u0000') || !hasProperNameForm(node)) continue
@@ -285,7 +312,7 @@ function mergeUnambiguousNameFragments(sets, nodes) {
   const nameNodes = [...nodes.values()].filter((node) =>
     node.key.startsWith('character\u0000') &&
     hasProperNameForm(node) &&
-    !compositeNameParts(node, nodes)
+    !isNicknameComposite(node, nodes)
   )
   const tokensByKey = new Map(nameNodes.map((node) => [node.key, nameTokens(node.normalized)]))
   let changed = true
@@ -395,6 +422,7 @@ export function resolveBookAnalysisEntities({ observations: rawObservations }) {
   }
   mergePatronymicVariants(sets, nodes)
   mergeUnambiguousNameFragments(sets, nodes)
+  mergeNicknameComposites(sets, nodes)
   mergeReciprocalMentionAliases(sets, nodes, mentionClaims)
   mergeResolvedCompositeNames(sets, nodes)
   mergeUnambiguousNameFragments(sets, nodes)
