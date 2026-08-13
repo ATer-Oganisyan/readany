@@ -1,7 +1,7 @@
 import express from 'express'
 import { createHash, timingSafeEqual } from 'node:crypto'
-import { extractBookText, representativeTextSelection } from './book-source-text.mjs'
-import { REQUIRED_CHARACTER_MEDIA } from './book-markup.mjs'
+import { extractStructuredBookText, representativeTextSelection } from './book-source-text.mjs'
+import { REQUIRED_CHARACTER_MEDIA, sectionAnchorForTextOffset } from './book-markup.mjs'
 import { createOperationalLogger } from './operational-log.mjs'
 import { isSupportedVoice } from './voices.mjs'
 import {
@@ -119,7 +119,7 @@ function locateFirstAppearance(text, names) {
   return offset
 }
 
-function normalizeCharacters(rawCharacters, text) {
+function normalizeCharacters(rawCharacters, text, sections) {
   if (!Array.isArray(rawCharacters)) invalid('LLM result has no characters', 'GENERATION_RESULT_INVALID')
   const characters = []
   const usedKeys = new Set()
@@ -155,7 +155,8 @@ function normalizeCharacters(rawCharacters, text) {
         : `Здравствуйте. Я ${name}.`,
       voice,
       firstAppearanceTextOffset,
-      warmupTextOffset: Math.max(0, firstAppearanceTextOffset - Math.max(2_000, Math.round(text.length * 0.02)))
+      warmupTextOffset: Math.max(0, firstAppearanceTextOffset - Math.max(2_000, Math.round(text.length * 0.02))),
+      ...sectionAnchorForTextOffset(sections, firstAppearanceTextOffset)
     })
   }
   characters.sort((left, right) =>
@@ -784,12 +785,13 @@ export function createInternalGenerationService({
           })
         }
         const extractionStartedAt = Date.now()
-        const text = await extractBookText({
+        const extracted = await extractStructuredBookText({
           bytes: stored.bytes,
           format: input.format,
           mimeType: input.mimeType,
           signal
         })
+        const { text, sections } = extracted
         log.info('markup.text_extracted', 'Текст книги извлечён и проверен', {
           ...common,
           text_chars: text.length,
@@ -825,7 +827,7 @@ export function createInternalGenerationService({
           signal
         })
         const parsed = parseJsonObject(response)
-        const characters = normalizeCharacters(parsed.characters, text)
+        const characters = normalizeCharacters(parsed.characters, text, sections)
         log.info('markup.llm_completed', 'Анализ книги завершён', {
           ...common,
           character_count: characters.length,

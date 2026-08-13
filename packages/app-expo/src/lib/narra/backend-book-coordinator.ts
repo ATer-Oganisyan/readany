@@ -5,6 +5,7 @@ import type { Book } from "@readany/core/types";
 import {
   type BackendBookBinding,
   type BackendBookManifest,
+  type BackendReaderSectionPosition,
   advanceBackendReaderProgress,
   fetchBackendBookManifest,
   publishLocalBackendMarkup,
@@ -22,7 +23,12 @@ export interface BackendBookCoordinatorApi {
   resolve(contentSha256: string): Promise<BackendBookBinding>;
   register(book: Book, contentSha256: string): Promise<BackendBookBinding>;
   publish(bookEditionId: string, characters: NarraCharacter[]): Promise<BackendBookBinding>;
-  advance(bookEditionId: string, progressFraction: number, chapterKey?: string): Promise<void>;
+  advance(
+    bookEditionId: string,
+    progressFraction: number,
+    chapterKey?: string,
+    sectionPosition?: BackendReaderSectionPosition,
+  ): Promise<void>;
   manifest(bookEditionId: string): Promise<BackendBookManifest>;
 }
 
@@ -45,6 +51,7 @@ interface PendingProgress {
   book: Book;
   progressFraction: number;
   chapterKey?: string;
+  sectionPosition?: BackendReaderSectionPosition;
   timer?: ReturnType<typeof setTimeout>;
 }
 
@@ -131,11 +138,12 @@ export function createBackendBookCoordinator({
     book: Book,
     progressFraction: number,
     chapterKey?: string,
+    sectionPosition?: BackendReaderSectionPosition,
   ): Promise<void> {
     const binding = await ensureBinding(book);
     const bookEditionId = binding.bookEditionId;
     if (!bookEditionId) throw new Error("Backend binding has no edition id");
-    await api.advance(bookEditionId, progressFraction, chapterKey);
+    await api.advance(bookEditionId, progressFraction, chapterKey, sectionPosition);
     await applyManifest(book.id, await api.manifest(bookEditionId));
   }
 
@@ -155,7 +163,14 @@ export function createBackendBookCoordinator({
     const previous = syncChains.get(bookId) ?? Promise.resolve();
     const next = previous
       .catch(() => undefined)
-      .then(() => syncProgress(queued.book, queued.progressFraction, queued.chapterKey))
+      .then(() =>
+        syncProgress(
+          queued.book,
+          queued.progressFraction,
+          queued.chapterKey,
+          queued.sectionPosition,
+        ),
+      )
       .catch((error) => state.reportError("reader_progress", error))
       .finally(() => {
         if (syncChains.get(bookId) === next) syncChains.delete(bookId);
@@ -164,7 +179,12 @@ export function createBackendBookCoordinator({
     return next;
   }
 
-  function queueProgress(book: Book, progressFraction: number, chapterKey?: string): void {
+  function queueProgress(
+    book: Book,
+    progressFraction: number,
+    chapterKey?: string,
+    sectionPosition?: BackendReaderSectionPosition,
+  ): void {
     if (!SUPPORTED_FORMATS.has(book.format)) return;
     if (!Number.isFinite(progressFraction) || progressFraction < 0 || progressFraction > 1) return;
     const previous = pending.get(book.id);
@@ -174,6 +194,10 @@ export function createBackendBookCoordinator({
       progressFraction: Math.max(previous?.progressFraction ?? 0, progressFraction),
       chapterKey:
         progressFraction >= (previous?.progressFraction ?? -1) ? chapterKey : previous?.chapterKey,
+      sectionPosition:
+        progressFraction >= (previous?.progressFraction ?? -1)
+          ? sectionPosition
+          : previous?.sectionPosition,
     };
     next.timer = setTimeout(() => void flush(book.id), debounceMs);
     pending.set(book.id, next);
@@ -248,6 +272,7 @@ export function queueBackendReaderProgress(
   book: Book,
   progressFraction: number,
   chapterKey?: string,
+  sectionPosition?: BackendReaderSectionPosition,
 ): void {
-  coordinator.queueProgress(book, progressFraction, chapterKey);
+  coordinator.queueProgress(book, progressFraction, chapterKey, sectionPosition);
 }

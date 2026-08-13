@@ -187,6 +187,8 @@ export function createBookCatalogService({
           availability: 'processing',
           readerTextOffset: snapshot.readerTextOffset,
           readingFraction: snapshot.readingFraction,
+          readerSectionIndex: snapshot.readerSectionIndex,
+          readerSectionFraction: snapshot.readerSectionFraction,
           markup: null,
           characters: []
         }
@@ -197,7 +199,11 @@ export function createBookCatalogService({
         const state = readerCharacterState(
           character,
           character.bundle,
-          snapshot.readerTextOffset
+          {
+            textOffset: snapshot.readerTextOffset,
+            sectionIndex: snapshot.readerSectionIndex,
+            sectionFraction: snapshot.readerSectionFraction
+          }
         )
         if (state === 'hidden') continue
         characters.push({
@@ -223,6 +229,8 @@ export function createBookCatalogService({
         availability: 'ready',
         readerTextOffset: snapshot.readerTextOffset,
         readingFraction: snapshot.readingFraction,
+        readerSectionIndex: snapshot.readerSectionIndex,
+        readerSectionFraction: snapshot.readerSectionFraction,
         markup: {
           schemaVersion: snapshot.markup.schemaVersion,
           analysisVersion: snapshot.markup.analysisVersion,
@@ -237,14 +245,16 @@ export function createBookCatalogService({
     async advanceProgress(
       subjectId,
       bookEditionId,
-      { progressFraction, textOffset, chapterKey }
+      { progressFraction, textOffset, chapterKey, sectionIndex, sectionFraction }
     ) {
       const progress = await store.advanceReaderPosition({
         subjectId,
         bookEditionId,
         progressFraction,
         textOffset,
-        chapterKey
+        chapterKey,
+        sectionIndex,
+        sectionFraction
       })
       if (!progress) throw serviceError('NOT_FOUND', 'Книга не найдена', 404)
 
@@ -266,6 +276,8 @@ export function createBookCatalogService({
         readerTextOffset: progress.readerTextOffset,
         readingFraction: progress.readingFraction,
         chapterKey: progress.chapterKey,
+        readerSectionIndex: progress.readerSectionIndex,
+        readerSectionFraction: progress.readerSectionFraction,
         warmup: {
           requested: requests.length,
           ...warmed

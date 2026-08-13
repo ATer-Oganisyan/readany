@@ -18,6 +18,7 @@
     "book-analysis": "node book-analysis-operator.mjs",
     "migrate:book-markup": "node migrate-book-markup.mjs",
     "backfill:book-markup": "node backfill-book-markup.mjs",
+    "backfill:character-sections": "node backfill-character-section-anchors.mjs",
     "seed:catalog": "node seed-book-catalog.mjs",
     "retry:book-generation": "node retry-failed-book-generation.mjs",
     "test": "node --test"

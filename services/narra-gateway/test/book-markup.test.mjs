@@ -8,7 +8,8 @@ import {
   ensureCharacterBundle,
   isCompleteCharacterBundle,
   normalizeCharacterAnchor,
-  readerCharacterState
+  readerCharacterState,
+  sectionAnchorForTextOffset
 } from '../book-markup.mjs'
 
 function readyBundle(characterKey = 'anna-karenina') {
@@ -56,6 +57,34 @@ test('markup anchors keep warmup and reader visibility independent', () => {
     () => normalizeCharacterAnchor({ ...character, warmupTextOffset: 130_000 }),
     /must not be after/
   )
+})
+
+test('section anchors prevent a small global offset mismatch from revealing a future character', () => {
+  const anchor = sectionAnchorForTextOffset([
+    { key: 'title', sourceIndex: 1, startOffset: 0, endOffset: 100 },
+    { key: 'chapter-1', sourceIndex: 2, startOffset: 100, endOffset: 1_000 }
+  ], 138)
+  assert.deepEqual(anchor, {
+    firstAppearanceSectionIndex: 2,
+    firstAppearanceSectionKey: 'chapter-1',
+    firstAppearanceSectionFraction: 38 / 900
+  })
+  const character = {
+    characterKey: 'raskolnikov',
+    warmupTextOffset: 0,
+    firstAppearanceTextOffset: 138,
+    ...anchor
+  }
+  assert.equal(readerCharacterState(character, readyBundle(), {
+    textOffset: 333,
+    sectionIndex: 0,
+    sectionFraction: 0.9
+  }), 'hidden')
+  assert.equal(readerCharacterState(character, readyBundle(), {
+    textOffset: 333,
+    sectionIndex: 2,
+    sectionFraction: anchor.firstAppearanceSectionFraction
+  }), 'ready')
 })
 
 test('warmup selection uses markup text offsets and catches up after an offline gap', () => {

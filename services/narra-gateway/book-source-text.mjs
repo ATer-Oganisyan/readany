@@ -68,7 +68,9 @@ function joinStructuredSections(rawSections) {
   const textParts = []
   const sections = []
   let offset = 0
-  const readable = rawSections.filter((section) => section.text)
+  const readable = rawSections
+    .map((section, sourceIndex) => ({ ...section, sourceIndex }))
+    .filter((section) => section.text)
   for (const [index, section] of readable.entries()) {
     const startOffset = offset
     textParts.push(section.text)
@@ -80,6 +82,7 @@ function joinStructuredSections(rawSections) {
     sections.push({
       key: section.key,
       title: section.title || '',
+      sourceIndex: section.sourceIndex,
       startOffset,
       endOffset: offset
     })

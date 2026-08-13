@@ -145,6 +145,17 @@ test('canonical progress migration is additive for existing markup rows', async 
   assert.match(migration, /reading_fraction >= 0 AND reading_fraction <= 1/)
 })
 
+test('section-aware progress migration adds bounded optional coordinates', async () => {
+  const migration = await readFile(
+    new URL('../migrations/007_section_aware_reader_progress.sql', import.meta.url),
+    'utf8'
+  )
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS section_index INTEGER/)
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS section_fraction DOUBLE PRECISION/)
+  assert.match(migration, /section_index IS NULL OR section_index >= 0/)
+  assert.match(migration, /section_fraction >= 0 AND section_fraction <= 1/)
+})
+
 test('local-only migration removes private source metadata and adds expiring object cleanup', async () => {
   const migration = await readFile(
     new URL('../migrations/003_local_books_and_retention.sql', import.meta.url),

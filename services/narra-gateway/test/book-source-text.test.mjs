@@ -31,9 +31,10 @@ test('structured EPUB extraction preserves spine sections and absolute offsets',
       '<?xml version="1.0"?><container><rootfiles><rootfile full-path="OPS/book.opf"/></rootfiles></container>'
     ),
     'OPS/book.opf': strToU8(
-      '<package><manifest><item id="one" href="one.xhtml"/><item id="two" href="two.xhtml"/></manifest>' +
-      '<spine><itemref idref="one"/><itemref idref="two"/></spine></package>'
+      '<package><manifest><item id="cover" href="cover.xhtml"/><item id="one" href="one.xhtml"/><item id="two" href="two.xhtml"/></manifest>' +
+      '<spine><itemref idref="cover"/><itemref idref="one"/><itemref idref="two"/></spine></package>'
     ),
+    'OPS/cover.xhtml': strToU8('<html><body><img src="cover.jpg"/></body></html>'),
     'OPS/one.xhtml': strToU8('<html><body><h1>Глава первая</h1><p>Первый текст.</p></body></html>'),
     'OPS/two.xhtml': strToU8('<html><body><h2>Глава вторая</h2><p>Второй текст.</p></body></html>')
   })
@@ -44,6 +45,7 @@ test('structured EPUB extraction preserves spine sections and absolute offsets',
   })
   assert.equal(structured.textLength, structured.text.length)
   assert.equal(structured.sections.length, 2)
+  assert.deepEqual(structured.sections.map(({ sourceIndex }) => sourceIndex), [1, 2])
   assert.equal(structured.sections[0].startOffset, 0)
   assert.equal(structured.sections[0].endOffset, structured.sections[1].startOffset)
   assert.equal(structured.sections[1].endOffset, structured.textLength)

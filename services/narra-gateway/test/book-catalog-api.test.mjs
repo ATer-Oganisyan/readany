@@ -35,16 +35,30 @@ test('reader progress contract prefers a fraction but keeps legacy text offsets'
     progress_fraction: 0.42,
     chapter_key: 'chapter-1'
   }), {
-    progressFraction: 0.42, textOffset: null, chapterKey: 'chapter-1'
+    progressFraction: 0.42, textOffset: null, chapterKey: 'chapter-1',
+    sectionIndex: null, sectionFraction: null
   })
   assert.deepEqual(parseReaderProgressBody({ text_offset: 42, chapter_key: 'chapter-1' }), {
-    progressFraction: null, textOffset: 42, chapterKey: 'chapter-1'
+    progressFraction: null, textOffset: 42, chapterKey: 'chapter-1',
+    sectionIndex: null, sectionFraction: null
+  })
+  assert.deepEqual(parseReaderProgressBody({
+    progress_fraction: 0.42,
+    section_index: 3,
+    section_fraction: 0.25
+  }), {
+    progressFraction: 0.42, textOffset: null, chapterKey: null,
+    sectionIndex: 3, sectionFraction: 0.25
   })
   assert.throws(() => parseReaderProgressBody({}), /exactly one/)
   assert.throws(() => parseReaderProgressBody({ progress_fraction: 1.1 }), /from 0 to 1/)
   assert.throws(() => parseReaderProgressBody({ progress_fraction: 0.1, text_offset: 42 }), /exactly one/)
   assert.throws(() => parseReaderProgressBody({ text_offset: -1 }), /non-negative/)
   assert.throws(() => parseReaderProgressBody({ text_offset: 1.5 }), /safe integer/)
+  assert.throws(
+    () => parseReaderProgressBody({ progress_fraction: 0.1, section_index: 1 }),
+    /provided together/
+  )
 })
 
 test('local book registration accepts metadata and rejects source-file fields', () => {

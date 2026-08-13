@@ -48,7 +48,9 @@ export function parseBookResolveBody(body) {
 }
 
 export function parseReaderProgressBody(body) {
-  exactKeys(body, ['progress_fraction', 'text_offset', 'chapter_key'], 'body')
+  exactKeys(body, [
+    'progress_fraction', 'text_offset', 'chapter_key', 'section_index', 'section_fraction'
+  ], 'body')
   const hasFraction = body.progress_fraction !== undefined
   const hasTextOffset = body.text_offset !== undefined
   if (hasFraction === hasTextOffset) {
@@ -66,6 +68,23 @@ export function parseReaderProgressBody(body) {
   if (hasTextOffset && (!Number.isSafeInteger(body.text_offset) || body.text_offset < 0)) {
     validation('text_offset: expected a non-negative safe integer')
   }
+  const hasSectionIndex = body.section_index !== undefined
+  const hasSectionFraction = body.section_fraction !== undefined
+  if (hasSectionIndex !== hasSectionFraction) {
+    validation('body: section_index and section_fraction must be provided together')
+  }
+  if (hasSectionIndex && (!Number.isSafeInteger(body.section_index) || body.section_index < 0)) {
+    validation('section_index: expected a non-negative safe integer')
+  }
+  if (
+    hasSectionFraction &&
+    (typeof body.section_fraction !== 'number' ||
+      !Number.isFinite(body.section_fraction) ||
+      body.section_fraction < 0 ||
+      body.section_fraction > 1)
+  ) {
+    validation('section_fraction: expected a finite number from 0 to 1')
+  }
   if (
     body.chapter_key !== undefined &&
     (typeof body.chapter_key !== 'string' || body.chapter_key.length > 200 || /[\u0000-\u001f]/.test(body.chapter_key))
@@ -75,7 +94,9 @@ export function parseReaderProgressBody(body) {
   return {
     progressFraction: hasFraction ? body.progress_fraction : null,
     textOffset: hasTextOffset ? body.text_offset : null,
-    chapterKey: body.chapter_key?.trim() || null
+    chapterKey: body.chapter_key?.trim() || null,
+    sectionIndex: hasSectionIndex ? body.section_index : null,
+    sectionFraction: hasSectionFraction ? body.section_fraction : null
   }
 }
 
@@ -264,6 +285,8 @@ function manifestJson(manifest) {
     availability: manifest.availability,
     reader_text_offset: manifest.readerTextOffset,
     reading_fraction: manifest.readingFraction,
+    reader_section_index: manifest.readerSectionIndex,
+    reader_section_fraction: manifest.readerSectionFraction,
     markup: manifest.markup && {
       schema_version: manifest.markup.schemaVersion,
       analysis_version: manifest.markup.analysisVersion,
@@ -389,6 +412,8 @@ export function createBookCatalogRouter({ repository, storage = null }) {
         reader_text_offset: result.readerTextOffset,
         reading_fraction: result.readingFraction,
         chapter_key: result.chapterKey,
+        section_index: result.readerSectionIndex,
+        section_fraction: result.readerSectionFraction,
         warmup: result.warmup
       })
     })

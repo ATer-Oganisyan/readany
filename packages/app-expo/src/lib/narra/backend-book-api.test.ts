@@ -208,11 +208,16 @@ describe("backend book API", () => {
 
   it("sends a clamped reading fraction for backend canonicalization", async () => {
     vi.mocked(narraGatewayRequest).mockResolvedValueOnce(new Response("{}"));
-    await advanceBackendReaderProgress("book-1", 1.2, "chapter-2");
+    await advanceBackendReaderProgress("book-1", 1.2, "chapter-2", {
+      sectionIndex: 4,
+      sectionFraction: 0.25,
+    });
     const [, request] = vi.mocked(narraGatewayRequest).mock.calls[0] ?? [];
     expect(JSON.parse(String(request?.body))).toEqual({
       progress_fraction: 1,
       chapter_key: "chapter-2",
+      section_index: 4,
+      section_fraction: 0.25,
     });
   });
 });

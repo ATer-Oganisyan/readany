@@ -63,6 +63,11 @@ export interface BackendBookManifest {
   characters: BackendManifestCharacter[];
 }
 
+export interface BackendReaderSectionPosition {
+  sectionIndex: number;
+  sectionFraction: number;
+}
+
 type JsonRecord = Record<string, unknown>;
 
 function backendCharacterKey(value: string, index: number): string {
@@ -249,6 +254,7 @@ export async function advanceBackendReaderProgress(
   bookEditionId: string,
   progressFraction: number,
   chapterKey?: string,
+  sectionPosition?: BackendReaderSectionPosition,
 ): Promise<void> {
   await gatewayJson(`/v2/books/${encodeURIComponent(bookEditionId)}/progress`, {
     method: "POST",
@@ -256,6 +262,8 @@ export async function advanceBackendReaderProgress(
     body: JSON.stringify({
       progress_fraction: Math.min(1, Math.max(0, progressFraction)),
       chapter_key: chapterKey || undefined,
+      section_index: sectionPosition?.sectionIndex,
+      section_fraction: sectionPosition?.sectionFraction,
     }),
   });
 }

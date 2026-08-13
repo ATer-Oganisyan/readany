@@ -4,7 +4,8 @@ import {
   BOOK_MARKUP_SCHEMA_VERSION,
   CHARACTER_BUNDLE_VERSION,
   REQUIRED_CHARACTER_MEDIA,
-  characterBundleIdempotencyKey
+  characterBundleIdempotencyKey,
+  hasReaderReachedCharacter
 } from './book-markup.mjs'
 
 function leaseLost(jobId) {
@@ -614,7 +615,12 @@ export function createPostgresBookMarkupRepository(pool, {
       return transaction(pool, async (client) => {
         const result = await client.query(
           `SELECT asset.id, asset.object_key, asset.type, asset.content_hash,
-                  asset.mime_type, asset.byte_size, edition.scope
+                  asset.mime_type, asset.byte_size, edition.scope,
+                  character.character_key, character.first_appearance_text_offset,
+                  character.warmup_text_offset, character.data,
+                  position.text_offset AS reader_text_offset,
+                  position.section_index AS reader_section_index,
+                  position.section_fraction AS reader_section_fraction
            FROM book_editions AS edition
            JOIN book_markup_versions AS markup
              ON markup.book_edition_id = edition.id AND markup.status = 'published'
@@ -630,7 +636,6 @@ export function createPostgresBookMarkupRepository(pool, {
            LEFT JOIN reader_book_positions AS position
              ON position.subject_id = $2::uuid AND position.book_edition_id = edition.id
            WHERE edition.id = $1 AND asset.id = $3::uuid
-             AND COALESCE(position.text_offset, 0) >= character.first_appearance_text_offset
              AND (
                (edition.scope = 'catalog' AND edition.status IN ('base_ready', 'published')) OR
                (edition.scope = 'private' AND edition.owner_subject_id = $2::uuid
@@ -640,6 +645,20 @@ export function createPostgresBookMarkupRepository(pool, {
         )
         const row = result.rows[0]
         if (!row) return null
+        if (!hasReaderReachedCharacter({
+          characterKey: row.character_key,
+          firstAppearanceTextOffset: Number(row.first_appearance_text_offset),
+          warmupTextOffset: Number(row.warmup_text_offset),
+          data: row.data
+        }, {
+          textOffset: Number(row.reader_text_offset ?? 0),
+          sectionIndex: row.reader_section_index == null
+            ? null
+            : Number(row.reader_section_index),
+          sectionFraction: row.reader_section_fraction == null
+            ? null
+            : Number(row.reader_section_fraction)
+        })) return null
         if (row.scope === 'private') await touchPrivateRetention(client, bookEditionId)
         return {
           assetId: row.id,
@@ -738,7 +757,7 @@ export function createPostgresBookMarkupRepository(pool, {
         if (!edition) return null
         if (edition.scope === 'private') await touchPrivateRetention(client, edition.id)
         const positionResult = await client.query(
-          `SELECT text_offset, reading_fraction
+          `SELECT text_offset, reading_fraction, section_index, section_fraction
            FROM reader_book_positions
            WHERE subject_id = $1::uuid AND book_edition_id = $2`,
           [subjectId, bookEditionId]
@@ -747,6 +766,12 @@ export function createPostgresBookMarkupRepository(pool, {
         const readingFraction = positionResult.rows[0]?.reading_fraction == null
           ? null
           : Number(positionResult.rows[0].reading_fraction)
+        const readerSectionIndex = positionResult.rows[0]?.section_index == null
+          ? null
+          : Number(positionResult.rows[0].section_index)
+        const readerSectionFraction = positionResult.rows[0]?.section_fraction == null
+          ? null
+          : Number(positionResult.rows[0].section_fraction)
         const markupResult = await client.query(
           `SELECT id, schema_version, analysis_version, revision, text_length, published_at
            FROM book_markup_versions
@@ -756,7 +781,15 @@ export function createPostgresBookMarkupRepository(pool, {
         )
         const markupRow = markupResult.rows[0]
         if (!markupRow) {
-          return { edition, readerTextOffset, readingFraction, markup: null, characters: [] }
+          return {
+            edition,
+            readerTextOffset,
+            readingFraction,
+            readerSectionIndex,
+            readerSectionFraction,
+            markup: null,
+            characters: []
+          }
         }
         const characterResult = await client.query(
           `SELECT character.character_key, character.name, character.full_name,
@@ -815,6 +848,8 @@ export function createPostgresBookMarkupRepository(pool, {
           edition,
           readerTextOffset,
           readingFraction,
+          readerSectionIndex,
+          readerSectionFraction,
           markup: {
             schemaVersion: Number(markupRow.schema_version),
             analysisVersion: markupRow.analysis_version,
@@ -834,7 +869,9 @@ export function createPostgresBookMarkupRepository(pool, {
       bookEditionId,
       progressFraction = null,
       textOffset = null,
-      chapterKey = null
+      chapterKey = null,
+      sectionIndex = null,
+      sectionFraction = null
     }) {
       return transaction(pool, async (client) => {
         const edition = await client.query(
@@ -860,9 +897,10 @@ export function createPostgresBookMarkupRepository(pool, {
           : 0
         const proposedTextOffset = Math.max(textOffset ?? 0, canonicalOffset)
         const position = await client.query(
-          `INSERT INTO reader_book_positions (
-             subject_id, book_edition_id, text_offset, reading_fraction, chapter_key
-           ) VALUES ($1::uuid, $2, $3, $4, $5)
+           `INSERT INTO reader_book_positions (
+             subject_id, book_edition_id, text_offset, reading_fraction, chapter_key,
+             section_index, section_fraction
+           ) VALUES ($1::uuid, $2, $3, $4, $5, $6, $7)
            ON CONFLICT (subject_id, book_edition_id) DO UPDATE SET
              chapter_key = CASE
                WHEN EXCLUDED.text_offset > reader_book_positions.text_offset OR (
@@ -882,14 +920,55 @@ export function createPostgresBookMarkupRepository(pool, {
                  EXCLUDED.reading_fraction
                )
              END,
+             section_index = CASE
+               WHEN EXCLUDED.section_index IS NULL AND (
+                 EXCLUDED.text_offset > reader_book_positions.text_offset OR
+                 COALESCE(EXCLUDED.reading_fraction, -1) >
+                   COALESCE(reader_book_positions.reading_fraction, -1)
+               ) THEN NULL
+               WHEN EXCLUDED.section_index IS NOT NULL AND (
+                 reader_book_positions.section_index IS NULL OR
+                 EXCLUDED.section_index > reader_book_positions.section_index OR (
+                   EXCLUDED.section_index = reader_book_positions.section_index AND
+                   COALESCE(EXCLUDED.section_fraction, 0) >=
+                     COALESCE(reader_book_positions.section_fraction, 0)
+                 )
+               ) THEN EXCLUDED.section_index
+               ELSE reader_book_positions.section_index
+             END,
+             section_fraction = CASE
+               WHEN EXCLUDED.section_index IS NULL AND (
+                 EXCLUDED.text_offset > reader_book_positions.text_offset OR
+                 COALESCE(EXCLUDED.reading_fraction, -1) >
+                   COALESCE(reader_book_positions.reading_fraction, -1)
+               ) THEN NULL
+               WHEN EXCLUDED.section_index IS NOT NULL AND (
+                 reader_book_positions.section_index IS NULL OR
+                 EXCLUDED.section_index > reader_book_positions.section_index OR (
+                   EXCLUDED.section_index = reader_book_positions.section_index AND
+                   COALESCE(EXCLUDED.section_fraction, 0) >=
+                     COALESCE(reader_book_positions.section_fraction, 0)
+                 )
+               ) THEN EXCLUDED.section_fraction
+               ELSE reader_book_positions.section_fraction
+             END,
              updated_at = now()
-           RETURNING text_offset, reading_fraction, chapter_key`,
-          [subjectId, bookEditionId, proposedTextOffset, progressFraction, chapterKey]
+           RETURNING text_offset, reading_fraction, chapter_key, section_index, section_fraction`,
+          [
+            subjectId, bookEditionId, proposedTextOffset, progressFraction, chapterKey,
+            sectionIndex, sectionFraction
+          ]
         )
         const readerTextOffset = Number(position.rows[0].text_offset)
         const readingFraction = position.rows[0].reading_fraction == null
           ? null
           : Number(position.rows[0].reading_fraction)
+        const readerSectionIndex = position.rows[0].section_index == null
+          ? null
+          : Number(position.rows[0].section_index)
+        const readerSectionFraction = position.rows[0].section_fraction == null
+          ? null
+          : Number(position.rows[0].section_fraction)
         const due = await client.query(
           `SELECT character.character_key,
                   character.first_appearance_text_offset,
@@ -907,6 +986,8 @@ export function createPostgresBookMarkupRepository(pool, {
           readerTextOffset,
           readingFraction,
           chapterKey: position.rows[0].chapter_key,
+          readerSectionIndex,
+          readerSectionFraction,
           charactersDue: due.rows.map((row) => ({
             characterKey: row.character_key,
             firstAppearanceTextOffset: Number(row.first_appearance_text_offset),

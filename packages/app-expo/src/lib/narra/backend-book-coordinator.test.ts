@@ -76,8 +76,10 @@ function fixture() {
         ready: true,
       };
     },
-    async advance(_editionId, offset) {
-      calls.push(`advance:${offset}`);
+    async advance(_editionId, offset, _chapterKey, sectionPosition) {
+      calls.push(
+        `advance:${offset}:${sectionPosition?.sectionIndex ?? "legacy"}:${sectionPosition?.sectionFraction ?? "legacy"}`,
+      );
     },
     async manifest() {
       calls.push("manifest");
@@ -146,11 +148,14 @@ describe("backend book coordinator", () => {
   it("coalesces reader events to the greatest reading fraction", async () => {
     const value = fixture();
     const coordinator = createBackendBookCoordinator({ ...value, debounceMs: 60_000 });
-    coordinator.queueProgress(BOOK, 0.12, "chapter-2");
+    coordinator.queueProgress(BOOK, 0.12, "chapter-2", {
+      sectionIndex: 2,
+      sectionFraction: 0.5,
+    });
     coordinator.queueProgress(BOOK, 0.08, "chapter-1");
     await coordinator.flush(BOOK.id);
-    expect(value.calls).toContain("advance:0.12");
-    expect(value.calls.indexOf("advance:0.12")).toBeLessThan(value.calls.indexOf("manifest"));
+    expect(value.calls).toContain("advance:0.12:2:0.5");
+    expect(value.calls.indexOf("advance:0.12:2:0.5")).toBeLessThan(value.calls.indexOf("manifest"));
   });
 
   it("restores cached characters before a network refresh", async () => {

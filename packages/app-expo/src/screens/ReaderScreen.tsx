@@ -22,6 +22,11 @@ import {
   queueBackendReaderProgress,
 } from "@/lib/narra/backend-book-coordinator";
 import {
+  isForwardReaderRelocation,
+  readerRelocationMarker,
+  type ReaderRelocationMarker,
+} from "@/lib/narra/reader-progress";
+import {
   DEFAULT_READER_FONT_FAMILY,
   getBundledReaderFontFaceCSS,
 } from "@/lib/reader/bundled-reader-font";
@@ -373,6 +378,8 @@ export function ReaderScreen({ route, navigation }: Props) {
   } | null>(null);
   const totalBookCharactersRef = useRef<number | null>(null);
   const progressTrackingGuardUntilRef = useRef(0);
+  const backendRelocationRef = useRef<ReaderRelocationMarker | null>(null);
+  const backendInitialCalibrationRef = useRef(true);
 
   const incrementPagesRead = useReadingSessionStore((s) => s.incrementPagesRead);
   const incrementCharactersRead = useReadingSessionStore((s) => s.incrementCharactersRead);
@@ -492,6 +499,8 @@ export function ReaderScreen({ route, navigation }: Props) {
 
   useEffect(() => {
     sessionProgressRef.current = null;
+    backendRelocationRef.current = null;
+    backendInitialCalibrationRef.current = true;
     totalBookCharactersRef.current = null;
     suppressProgressTracking(INITIAL_PROGRESS_RESTORE_GUARD_MS);
   }, [bookId]);
@@ -772,6 +781,13 @@ export function ReaderScreen({ route, navigation }: Props) {
       }
 
       const trackingSuppressed = Date.now() < progressTrackingGuardUntilRef.current;
+      const backendRelocation = readerRelocationMarker(detail);
+      const previousBackendRelocation = backendRelocationRef.current;
+      backendRelocationRef.current = backendRelocation;
+      const initialBackendCalibration = backendInitialCalibrationRef.current;
+      if (initialBackendCalibration && !trackingSuppressed) {
+        backendInitialCalibrationRef.current = false;
+      }
 
       if (detail.location?.total) {
         const totalBookCharacters = totalBookCharactersRef.current;
@@ -845,11 +861,22 @@ export function ReaderScreen({ route, navigation }: Props) {
         }
         sessionProgressRef.current = { mode: "page", current: detail.section.current };
       }
-      if (book && detail.fraction != null) {
+      if (
+        book &&
+        detail.fraction != null &&
+        backendRelocation.sectionIndex != null &&
+        (initialBackendCalibration ||
+          (!trackingSuppressed &&
+            isForwardReaderRelocation(previousBackendRelocation, backendRelocation)))
+      ) {
         queueBackendReaderProgress(
           book,
           detail.fraction,
           detail.tocItem?.href || `section:${detail.section?.current ?? 0}`,
+          {
+            sectionIndex: backendRelocation.sectionIndex,
+            sectionFraction: backendRelocation.sectionFraction ?? 0,
+          },
         );
       }
       if (detail.tocItem?.label) setCurrentChapter(detail.tocItem.label);

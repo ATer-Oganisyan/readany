@@ -107,8 +107,10 @@ time, so a leaked asset ID is insufficient to reveal a future character.
 
 The mobile reader restores its cached manifest immediately, then synchronizes
 in the background. Relocations are coalesced into a monotonic reading fraction
-and sent after a short debounce. The resulting manifest downloads portrait,
-greeting audio and idle animation in native background sessions. Files are
+plus the current source section and the start fraction of the visible page.
+Startup and CFI-restoration events calibrate this section coordinate; after
+startup only actual forward movement is synchronized. The resulting manifest
+downloads portrait, greeting audio and idle animation in native background sessions. Files are
 verified by size and SHA-256 and the UI publishes the three local paths only as
 one complete bundle. A failed or incomplete download remains `preparing` and
 cannot expose partial media.
@@ -155,8 +157,23 @@ used to produce every character anchor. Mobile clients send
 This removes the previous dependency on the renderer's approximate character
 count. `text_offset` remains accepted as a mutually exclusive legacy input.
 
-Both the fraction and derived text watermark are monotonic per reader. If a
-reader reports progress before markup is published, the fraction is retained;
+The renderer fraction and the normalized text stream are close but are not the
+same coordinate system: title pages, navigation documents and markup removed
+during text extraction can produce different offsets near the beginning of a
+book. Therefore catalog character visibility additionally uses:
+
+- `firstAppearanceSectionIndex` and `firstAppearanceSectionFraction` in the
+  published character data;
+- `section_index` and `section_fraction` in reader progress and
+  `reader_book_positions`.
+
+When both sides have section coordinates, section order and within-section
+fraction are authoritative for manifest and media-download authorization. The
+global text offset remains the warmup coordinate and the compatibility fallback
+for older clients or local markup without section anchors.
+
+The fraction, derived text watermark and section coordinate are monotonic per
+reader. If a reader reports progress before markup is published, the fraction is retained;
 publishing the v2 revision derives the canonical offset in the same transaction.
 
 Migration `002_canonical_reader_progress.sql` is additive: legacy markup rows
@@ -165,11 +182,21 @@ keep a nullable `text_length` until regenerated. Queue those revisions with:
 ```bash
 npm run migrate:book-markup
 npm run backfill:book-markup
+npm run backfill:character-sections
 ```
 
 The backfill uses the new `book-markup-v2` idempotency key and never replaces a
 currently published revision until the new result is complete. Run it before
 shipping fraction-only clients for a catalog containing v1 markup.
+The character-section backfill is deterministic: it downloads the immutable
+catalog source, repeats the normal text extraction, verifies `text_length`, and
+adds section anchors to existing character JSON. It does not call an LLM or
+regenerate character media. When an existing reader position has a matching
+`chapter_key`, the same transaction conservatively calibrates it to the start
+of that source section, removing previously over-reported startup offsets.
+Migration `007_section_aware_reader_progress.sql` is additive and keeps old
+progress requests valid; a later legacy request without section coordinates
+falls back to the text watermark when it advances.
 
 Jobs exhaust their bounded automatic retries into `failed`. Recovery is an
 explicit operator action that reuses the same idempotency keys and resets both
