@@ -1,9 +1,9 @@
-export const BOOK_ANALYSIS_PIPELINE_VERSION = 'book-analysis-v3'
+export const BOOK_ANALYSIS_PIPELINE_VERSION = 'book-analysis-v4'
 export const BOOK_ANALYSIS_MARKUP_VERSION = 'book-markup-v3'
 export const BOOK_ANALYSIS_SCHEMA_VERSION = 3
 export const BOOK_ANALYSIS_PROMPT_VERSION = 'book-scan-v4'
 export const BOOK_ANALYSIS_EXTRACTOR_VERSION = 'book-scan-v4'
-export const BOOK_ANALYSIS_SYNTHESIS_VERSION = 'character-profile-v1'
+export const BOOK_ANALYSIS_SYNTHESIS_VERSION = 'character-profile-v2'
 
 export const BOOK_ANALYSIS_STAGES = Object.freeze([
   'prepare',

@@ -29,7 +29,7 @@ test('PostgreSQL analysis barriers reject incomplete or skipped stages', {
     await pool.query(
       `INSERT INTO book_analysis_runs (
          id, idempotency_key, book_edition_id, pipeline_version, prompt_version, input_hash
-       ) VALUES ($1, $2, $3, 'book-analysis-v3', 'scan-v1', $4)`,
+       ) VALUES ($1, $2, $3, 'book-analysis-v4', 'scan-v1', $4)`,
       [runId, `analysis:${bookEditionId}:v3`, bookEditionId, hash]
     )
     await pool.query(
@@ -309,7 +309,7 @@ test('PostgreSQL analysis workers claim different scan shards and reclaim an exp
       assert.equal(input.observations.length, 1)
       await repository.completeCharacterSynthesis(characterJob, {
         snapshotId: input.snapshot.id,
-        synthesisVersion: 'character-profile-v1',
+        synthesisVersion: 'character-profile-v2',
         selectedEvidenceIds: input.observations.map(({ id }) => id),
         profile: {
           role: null,

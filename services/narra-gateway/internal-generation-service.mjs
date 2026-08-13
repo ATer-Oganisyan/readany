@@ -6,7 +6,8 @@ import { createOperationalLogger } from './operational-log.mjs'
 import { isSupportedVoice } from './voices.mjs'
 import {
   normalizeBookAnalysisCharacterProfile,
-  normalizeBookAnalysisResolvedEntity
+  normalizeBookAnalysisResolvedEntity,
+  normalizeEvidenceClaim
 } from './book-analysis-contracts.mjs'
 
 const IDENTIFIER = /^[a-z0-9][a-z0-9._:-]{0,127}$/i
@@ -481,6 +482,113 @@ function normalizeScanChunkResult(value, contextText, coreLocalStartOffset, core
   }
 }
 
+function profileClaimCount(value, { array = false } = {}) {
+  if (array) return Array.isArray(value) ? value.length : value == null ? 0 : 1
+  return value == null ? 0 : 1
+}
+
+function normalizeGroundedProfileClaim(rawClaim, name, evidenceById, allowedTypes) {
+  try {
+    const claim = normalizeEvidenceClaim(rawClaim, name)
+    if (!claim.evidenceIds.every((id) => evidenceById.has(id))) return null
+    if (
+      allowedTypes &&
+      !claim.evidenceIds.every((id) => allowedTypes.has(evidenceById.get(id).type))
+    ) return null
+    return claim
+  } catch (error) {
+    if (error?.code === 'VALIDATION') return null
+    throw error
+  }
+}
+
+function normalizeGroundedProfileClaims(rawClaims, name, evidenceById, allowedTypes) {
+  if (!Array.isArray(rawClaims)) return { claims: [], dropped: rawClaims == null ? 0 : 1 }
+  const claims = []
+  let dropped = Math.max(0, rawClaims.length - 32)
+  for (const [index, rawClaim] of rawClaims.slice(0, 32).entries()) {
+    const claim = normalizeGroundedProfileClaim(
+      rawClaim,
+      `${name}[${index}]`,
+      evidenceById,
+      allowedTypes
+    )
+    if (claim) claims.push(claim)
+    else dropped += 1
+  }
+  return { claims, dropped }
+}
+
+function creativeText(value, maxLength) {
+  return typeof value === 'string' ? value.trim().slice(0, maxLength) : ''
+}
+
+function normalizeCharacterProfileResult(value, { entity, textLength, evidence }) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : null
+  if (!source) invalid('LLM profile result is not an object', 'GENERATION_RESULT_INVALID')
+  const evidenceById = new Map(evidence.map((item) => [item.id, item]))
+  const compatibleTypes = {
+    role: new Set(['character_role']),
+    age: new Set(['character_age']),
+    gender: new Set(['character_gender']),
+    traits: new Set(['character_trait']),
+    appearance: new Set(['character_appearance']),
+    speechStyle: new Set(['character_dialogue']),
+    speechExamples: new Set(['character_dialogue'])
+  }
+  let droppedClaimCount = 0
+  const one = (field, allowedTypes = null) => {
+    if (source[field] == null) return null
+    const claim = normalizeGroundedProfileClaim(
+      source[field],
+      `profile.${field}`,
+      evidenceById,
+      allowedTypes
+    )
+    if (!claim) droppedClaimCount += 1
+    return claim
+  }
+  const many = (field, allowedTypes) => {
+    const result = normalizeGroundedProfileClaims(
+      source[field],
+      `profile.${field}`,
+      evidenceById,
+      allowedTypes
+    )
+    droppedClaimCount += result.dropped
+    return result.claims
+  }
+  const creativeSource = source.creative && typeof source.creative === 'object' &&
+    !Array.isArray(source.creative) ? source.creative : {}
+  const voice = creativeText(creativeSource.voice, 64)
+  const profile = normalizeBookAnalysisCharacterProfile({
+    role: one('role', compatibleTypes.role),
+    age: one('age', compatibleTypes.age),
+    gender: one('gender', compatibleTypes.gender),
+    description: one('description'),
+    traits: many('traits', compatibleTypes.traits),
+    appearance: many('appearance', compatibleTypes.appearance),
+    speechStyle: one('speechStyle', compatibleTypes.speechStyle),
+    speechExamples: many('speechExamples', compatibleTypes.speechExamples),
+    creative: {
+      greeting: creativeText(creativeSource.greeting, 2_000),
+      appearancePrompt: creativeText(creativeSource.appearancePrompt, 4_000),
+      voice: isSupportedVoice(voice) ? voice : ''
+    }
+  }, { entity, textLength })
+  const providerClaimCount = [
+    'role', 'age', 'gender', 'description', 'speechStyle'
+  ].reduce((total, field) => total + profileClaimCount(source[field]), 0) + [
+    'traits', 'appearance', 'speechExamples'
+  ].reduce((total, field) => total + profileClaimCount(source[field], { array: true }), 0)
+  return {
+    profile,
+    providerClaimCount,
+    acceptedClaimCount: providerClaimCount - droppedClaimCount,
+    droppedClaimCount
+  }
+}
+
 async function cached(storage, idempotencyKey, request, operation, { onHit, onStored } = {}) {
   const cacheObjectKey = `generated/cache/${sha256(idempotencyKey)}.json`
   const requestHash = sha256(JSON.stringify(canonical(request)))
@@ -558,44 +666,18 @@ export function createInternalGenerationService({
           ],
           signal
         })
-        const profile = normalizeBookAnalysisCharacterProfile(parseJsonObject(response), {
+        const normalized = normalizeCharacterProfileResult(parseJsonObject(response), {
           entity: input.entity,
-          textLength: input.textLength
+          textLength: input.textLength,
+          evidence: input.evidence
         })
-        if (profile.creative.voice && !isSupportedVoice(profile.creative.voice)) {
-          invalid('profile creative voice is unsupported', 'GENERATION_RESULT_INVALID')
-        }
-        const evidenceById = new Map(input.evidence.map((item) => [item.id, item]))
-        const allowedIds = new Set(evidenceById.keys())
-        const claims = [
-          profile.role, profile.age, profile.gender, profile.description,
-          ...profile.traits, ...profile.appearance,
-          profile.speechStyle, ...profile.speechExamples
-        ].filter(Boolean)
-        for (const claim of claims) {
-          for (const evidenceId of claim.evidenceIds) {
-            if (!allowedIds.has(evidenceId)) {
-              invalid(`profile references unknown evidence: ${evidenceId}`, 'GENERATION_RESULT_INVALID')
-            }
-          }
-        }
-        const compatible = [
-          [[profile.role].filter(Boolean), new Set(['character_role'])],
-          [[profile.age].filter(Boolean), new Set(['character_age'])],
-          [[profile.gender].filter(Boolean), new Set(['character_gender'])],
-          [profile.traits, new Set(['character_trait'])],
-          [profile.appearance, new Set(['character_appearance'])],
-          [[profile.speechStyle, ...profile.speechExamples].filter(Boolean), new Set(['character_dialogue'])]
-        ]
-        for (const [values, allowedTypes] of compatible) {
-          for (const claim of values) {
-            if (!claim.evidenceIds.every((id) => allowedTypes.has(evidenceById.get(id).type))) {
-              invalid('profile claim uses incompatible evidence type', 'GENERATION_RESULT_INVALID')
-            }
-          }
-        }
-        log.info('synthesis.character_completed', 'Доказательный профиль персонажа готов', common)
-        return { profile }
+        log.info('synthesis.character_completed', 'Доказательный профиль персонажа готов', {
+          ...common,
+          provider_claim_count: normalized.providerClaimCount,
+          accepted_claim_count: normalized.acceptedClaimCount,
+          dropped_claim_count: normalized.droppedClaimCount
+        })
+        return { profile: normalized.profile }
       })
     },
 

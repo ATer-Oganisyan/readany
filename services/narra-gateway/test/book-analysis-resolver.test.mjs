@@ -111,6 +111,99 @@ test('resolver keeps weak one-off character references as candidates', () => {
   assert.equal(result[0].resolutionStatus, 'candidate')
 })
 
+test('resolver merges one unambiguous chain of full-name fragments', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111111115',
+      candidate: 'Раскольников',
+      startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222225',
+      candidate: 'Родион Раскольников',
+      startOffset: 200
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333335',
+      candidate: 'Родион Романович Раскольников',
+      startOffset: 300
+    }),
+    observation({
+      id: '44444444-4444-4444-8444-444444444445',
+      candidate: 'Родион Романович',
+      startOffset: 400
+    })
+  ]
+  const result = resolveBookAnalysisEntities({ observations })
+  assert.equal(result.length, 1)
+  assert.equal(result[0].canonicalName, 'Родион Романович Раскольников')
+  assert.deepEqual(result[0].aliases, [
+    'Раскольников', 'Родион Раскольников', 'Родион Романович'
+  ])
+  assert.deepEqual(result[0].evidenceIds, observations.map(({ id }) => id))
+})
+
+test('resolver does not merge an ambiguous surname into two full names', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111111116',
+      candidate: 'Иванов',
+      startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222226',
+      candidate: 'Петр Иванов',
+      startOffset: 200
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333336',
+      candidate: 'Сергей Иванов',
+      startOffset: 300
+    })
+  ]
+  const result = resolveBookAnalysisEntities({ observations })
+  assert.deepEqual(result.map(({ canonicalName }) => canonicalName), [
+    'Иванов', 'Петр Иванов', 'Сергей Иванов'
+  ])
+})
+
+test('resolver does not infer that one given name is a unique full-name alias', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111111118',
+      candidate: 'Анна',
+      startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222228',
+      candidate: 'Анна Сергеевна',
+      startOffset: 200
+    })
+  ]
+  const result = resolveBookAnalysisEntities({ observations })
+  assert.deepEqual(result.map(({ canonicalName }) => canonicalName), [
+    'Анна', 'Анна Сергеевна'
+  ])
+})
+
+test('resolver keeps repeated descriptive character labels out of synthesis', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111111117',
+      candidate: 'молодой человек',
+      startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222227',
+      candidate: 'молодой человек',
+      startOffset: 200
+    })
+  ]
+  const result = resolveBookAnalysisEntities({ observations })
+  assert.equal(result.length, 1)
+  assert.equal(result[0].resolutionStatus, 'candidate')
+})
+
 test('resolver output is stable regardless of scan completion order', () => {
   const observations = [
     observation({

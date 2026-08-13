@@ -398,10 +398,10 @@ test('internal generation service builds a grounded profile for one resolved cha
     async generateIdleAnimation() { throw new Error('unused') }
   })
   const request = {
-    idempotencyKey: 'run-1:synthesize:snapshot-1:character:anna:character-profile-v1',
+    idempotencyKey: 'run-1:synthesize:snapshot-1:character:anna:character-profile-v2',
     runId: 'run-1',
     snapshotId: 'snapshot-1',
-    synthesisVersion: 'character-profile-v1',
+    synthesisVersion: 'character-profile-v2',
     bookTitle: 'Книга',
     bookAuthor: 'Автор',
     textLength: 1_000,
@@ -434,6 +434,97 @@ test('internal generation service builds a grounded profile for one resolved cha
   assert.equal(first.profile.name, 'Анна')
   assert.equal(first.profile.role.value, 'Врач')
   assert.deepEqual(first.profile.role.evidenceIds, request.entity.evidenceIds)
+})
+
+test('internal generation service keeps compatible profile claims and drops only incompatible ones', async () => {
+  const storage = memoryStorage()
+  const lines = []
+  let chatCalls = 0
+  const roleEvidenceId = '22222222-2222-4222-8222-222222222223'
+  const actionEvidenceId = '33333333-3333-4333-8333-333333333334'
+  const service = createInternalGenerationService({
+    storage,
+    logger: {
+      info(line) { lines.push(line) },
+      warn(line) { lines.push(line) },
+      error(line) { lines.push(line) }
+    },
+    async completeChat() {
+      chatCalls += 1
+      return JSON.stringify({
+        role: {
+          value: 'Врач',
+          evidenceIds: [roleEvidenceId],
+          confidence: 0.96
+        },
+        traits: [{
+          value: 'Смелая',
+          evidenceIds: [actionEvidenceId],
+          confidence: 0.8
+        }, {
+          value: 'Несуществующее доказательство',
+          evidenceIds: ['44444444-4444-4444-8444-444444444445'],
+          confidence: 0.7
+        }],
+        appearance: [{ value: '', evidenceIds: [roleEvidenceId], confidence: 0.4 }],
+        creative: { greeting: 'Здравствуйте.', appearancePrompt: 'Портрет Анны', voice: 'Che' }
+      })
+    },
+    async generatePortrait() { throw new Error('unused') },
+    async synthesizeSpeech() { throw new Error('unused') },
+    async generateIdleAnimation() { throw new Error('unused') }
+  })
+  const request = {
+    idempotencyKey: 'run-2:synthesize:snapshot-2:character:anna:character-profile-v2',
+    runId: 'run-2',
+    snapshotId: 'snapshot-2',
+    synthesisVersion: 'character-profile-v2',
+    bookTitle: 'Книга',
+    bookAuthor: 'Автор',
+    textLength: 1_000,
+    entity: {
+      entityKey: 'character:anna',
+      entityKind: 'character',
+      canonicalName: 'Анна',
+      aliases: [],
+      resolutionStatus: 'confirmed',
+      confidence: 0.95,
+      evidenceIds: [roleEvidenceId, actionEvidenceId],
+      data: { firstEvidenceStartOffset: 100 }
+    },
+    evidence: [{
+      id: roleEvidenceId,
+      type: 'character_role',
+      fact: 'Анна работает врачом',
+      quote: 'Анна — врач',
+      startOffset: 100,
+      endOffset: 111,
+      confidence: 0.96
+    }, {
+      id: actionEvidenceId,
+      type: 'character_action',
+      fact: 'Анна вошла',
+      quote: 'Анна вошла',
+      startOffset: 200,
+      endOffset: 211,
+      confidence: 0.9
+    }]
+  }
+  const first = await service.synthesizeCharacterProfile(request)
+  const second = await service.synthesizeCharacterProfile(request)
+  assert.deepEqual(second, first)
+  assert.equal(chatCalls, 1)
+  assert.equal(first.profile.role.value, 'Врач')
+  assert.deepEqual(first.profile.traits, [])
+  assert.deepEqual(first.profile.appearance, [])
+  assert.equal(first.profile.creative.voice, 'Che')
+  assert.ok(lines.some((line) =>
+    line.includes('event="synthesis.character_completed"') &&
+    line.includes('provider_claim_count=4') &&
+    line.includes('accepted_claim_count=1') &&
+    line.includes('dropped_claim_count=3')
+  ))
+  assert.equal(lines.some((line) => line.includes('Смелая')), false)
 })
 
 test('internal service auth rejects public bearer tokens and accepts only its own token', () => {

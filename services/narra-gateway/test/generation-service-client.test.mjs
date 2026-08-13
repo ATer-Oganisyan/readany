@@ -108,7 +108,7 @@ test('generator client sends one idempotent character profile request', async ()
     }
   })
   const input = {
-    runId: 'run-1', snapshotId: 'snapshot-1', synthesisVersion: 'character-profile-v1',
+    runId: 'run-1', snapshotId: 'snapshot-1', synthesisVersion: 'character-profile-v2',
     bookTitle: 'Книга', bookAuthor: 'Автор', textLength: 100,
     entity: { entityKey: 'character:anna' }, evidence: [{ id: 'evidence-1' }]
   }
@@ -118,7 +118,7 @@ test('generator client sends one idempotent character profile request', async ()
   assert.equal(request.url, 'http://localhost:8790/internal/v1/book-analysis/synthesize-character')
   assert.equal(
     request.body.idempotencyKey,
-    'run-1:synthesize:snapshot-1:character:anna:character-profile-v1'
+    'run-1:synthesize:snapshot-1:character:anna:character-profile-v2'
   )
   assert.deepEqual({ ...request.body, idempotencyKey: undefined }, {
     ...input,

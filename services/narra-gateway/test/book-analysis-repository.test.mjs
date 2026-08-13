@@ -28,9 +28,9 @@ test('analysis run key binds source and both pipeline versions', () => {
   assert.equal(bookAnalysisRunIdempotencyKey({
     bookEditionId: 'book-1',
     inputHash: 'a'.repeat(64),
-    pipelineVersion: 'book-analysis-v3',
+    pipelineVersion: 'book-analysis-v4',
     promptVersion: 'scan-v1'
-  }), `book-analysis:book-1:${'a'.repeat(64)}:book-analysis-v3:scan-v1`)
+  }), `book-analysis:book-1:${'a'.repeat(64)}:book-analysis-v4:scan-v1`)
 })
 
 test('analysis jobs are claimed with stage isolation, skip locked and expiring leases', async () => {

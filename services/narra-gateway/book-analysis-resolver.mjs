@@ -18,6 +18,14 @@ const WEAK_CHARACTER_CANDIDATES = new Set([
   'мы', 'я', 'ты', 'вы', 'кто то', 'ктото', 'некто',
   'he', 'she', 'it', 'they', 'him', 'her', 'them', 'i', 'you', 'we', 'someone'
 ])
+const GENERIC_CHARACTER_CANDIDATES = new Set([
+  'молодой человек', 'неизвестный человек', 'неизвестная девушка',
+  'мужчина', 'женщина', 'девушка', 'человек', 'старик', 'старуха',
+  'мещанин', 'городовой', 'письмоводитель', 'артельщик', 'дворник',
+  'лакей', 'слуга', 'служанка', 'полицейский', 'полицейская',
+  'young man', 'unknown man', 'unknown woman', 'man', 'woman', 'girl',
+  'servant', 'policeman', 'policewoman'
+])
 
 function resolutionError(code, message) {
   return Object.assign(new Error(message), { code })
@@ -153,6 +161,48 @@ function tokenCount(value) {
   return value.split(' ').filter(Boolean).length
 }
 
+function nameTokens(value) {
+  return value.split(' ').filter(Boolean)
+}
+
+function isOrderedSubset(shorter, longer) {
+  if (shorter.length >= longer.length) return false
+  if (shorter.length === 1) return shorter[0] === longer.at(-1)
+  let shorterIndex = 0
+  for (const token of longer) {
+    if (token === shorter[shorterIndex]) shorterIndex += 1
+    if (shorterIndex === shorter.length) return true
+  }
+  return false
+}
+
+function hasProperNameForm(node) {
+  if (GENERIC_CHARACTER_CANDIDATES.has(node.normalized)) return false
+  return [...node.forms.values()].some(({ display }) =>
+    display.split(/\s+/u).some((token) => /^\p{Lu}[\p{L}'’.-]*$/u.test(token))
+  )
+}
+
+function mergeUnambiguousNameFragments(sets, nodes) {
+  const nameNodes = [...nodes.values()].filter((node) =>
+    node.key.startsWith('character\u0000') && hasProperNameForm(node)
+  )
+  const tokensByKey = new Map(nameNodes.map((node) => [node.key, nameTokens(node.normalized)]))
+  for (const node of nameNodes) {
+    const tokens = tokensByKey.get(node.key)
+    const supersets = nameNodes.filter((candidate) =>
+      candidate !== node && isOrderedSubset(tokens, tokensByKey.get(candidate.key))
+    )
+    const maximalSupersets = supersets.filter((candidate) =>
+      !supersets.some((other) =>
+        other !== candidate &&
+        isOrderedSubset(tokensByKey.get(candidate.key), tokensByKey.get(other.key))
+      )
+    )
+    if (maximalSupersets.length === 1) sets.union(node.key, maximalSupersets[0].key)
+  }
+}
+
 function canonicalNode(groupNodes) {
   return [...groupNodes].sort((left, right) =>
     right.anchorConfidence - left.anchorConfidence ||
@@ -169,7 +219,11 @@ function roundConfidence(value) {
   return Math.round(value * 1_000_000) / 1_000_000
 }
 
-function isConfirmed(kind, canonical, observations, anchorConfidence, confidence) {
+function isConfirmed(kind, canonical, observations, anchorConfidence, confidence, groupNodes) {
+  if (
+    kind === 'character' &&
+    !groupNodes.some(hasProperNameForm)
+  ) return false
   if (anchorConfidence >= ALIAS_CONFIDENCE || observations.length >= 2) return true
   if (confidence < ALIAS_CONFIDENCE) return false
   return kind !== 'character' || !WEAK_CHARACTER_CANDIDATES.has(normalizedCandidate(canonical))
@@ -222,6 +276,7 @@ export function resolveBookAnalysisEntities({ observations: rawObservations }) {
   for (const [aliasKey, anchors] of anchorsByAlias) {
     if (anchors.size === 1) sets.union([...anchors][0], aliasKey)
   }
+  mergeUnambiguousNameFragments(sets, nodes)
 
   const groupedNodes = new Map()
   for (const [key, node] of nodes) {
@@ -276,7 +331,8 @@ export function resolveBookAnalysisEntities({ observations: rawObservations }) {
         canonicalName,
         groupObservations,
         canonical.anchorConfidence,
-        confidence
+        confidence,
+        groupNodes
       ) ? 'confirmed' : 'candidate',
       confidence,
       evidenceIds,
