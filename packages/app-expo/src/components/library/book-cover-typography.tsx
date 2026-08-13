@@ -39,7 +39,15 @@ function hasBrokenWord(title: string, renderedLines: readonly string[]) {
     if (lineStart < 0) continue;
 
     const lineEnd = lineStart + line.length;
-    if (lineEnd < plainTitle.length && !/\s/u.test(plainTitle[lineEnd])) return true;
+    const previousCharacter = plainTitle[lineEnd - 1];
+    const endsAtAllowedWordBreak = /[-‐‒–—]/u.test(previousCharacter);
+    if (
+      lineEnd < plainTitle.length &&
+      !/\s/u.test(plainTitle[lineEnd]) &&
+      !endsAtAllowedWordBreak
+    ) {
+      return true;
+    }
 
     searchOffset = lineEnd;
     while (searchOffset < plainTitle.length && /\s/u.test(plainTitle[searchOffset])) {
@@ -64,6 +72,7 @@ export function BookCoverTypography({
 }: BookCoverTypographyProps) {
   const scale = Math.min(1, width / referenceWidth);
   const titleSize = titleFontSize ?? Math.max(12, Math.min(18, referenceWidth * 0.12)) * scale;
+  const minimumTitleSize = Math.min(titleSize, 12);
   const authorSize = authorFontSize ?? 13 * scale;
   const formattedTitle = formatBookCoverTitle(title);
   const [fittedTitleSize, setFittedTitleSize] = useState(titleSize);
@@ -74,18 +83,20 @@ export function BookCoverTypography({
   const handleTitleLayout = useCallback(
     ({ nativeEvent }: NativeSyntheticEvent<TextLayoutEventData>) => {
       if (
-        fittedTitleSize > 6 &&
+        fittedTitleSize > minimumTitleSize &&
         hasBrokenWord(
           formattedTitle,
           nativeEvent.lines.map((line) => line.text),
         )
       ) {
         setFittedTitleSize((currentSize) =>
-          currentSize === fittedTitleSize ? Math.max(6, currentSize - 0.5) : currentSize,
+          currentSize === fittedTitleSize
+            ? Math.max(minimumTitleSize, currentSize - 0.5)
+            : currentSize,
         );
       }
     },
-    [fittedTitleSize, formattedTitle],
+    [fittedTitleSize, formattedTitle, minimumTitleSize],
   );
 
   return (

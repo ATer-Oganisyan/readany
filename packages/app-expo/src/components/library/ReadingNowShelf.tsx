@@ -4,7 +4,6 @@ import { generatedCoverTextTone } from "@/lib/book/cover-text-contrast";
 import { loadingCoverColorForBook } from "@/lib/book/loading-cover-placeholder";
 import { findBundledCatalogBookByTitle } from "@/lib/catalog/bundled-books";
 import { useResolvedCovers } from "@/screens/notes/useResolvedCovers";
-import { useLibraryStore } from "@/stores/library-store";
 import { type ThemeColors, fontWeight, radius, spacing, useColors } from "@/styles/theme";
 import type { Book } from "@readany/core/types";
 import { BlurView } from "expo-blur";
@@ -42,11 +41,6 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
   const colors = useColors();
   const s = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
-  const generatingCoverBookIds = useLibraryStore((state) => state.generatingCoverBookIds);
-  const generatingCoverIds = useMemo(
-    () => new Set(generatingCoverBookIds),
-    [generatingCoverBookIds],
-  );
   const [failedCoverKeys, setFailedCoverKeys] = useState<Set<string>>(() => new Set());
 
   const coverItems = useMemo(
@@ -88,11 +82,10 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
           const bundledCoverUri = bundledCatalogBook
             ? bundledCoverUris.get(bundledCatalogBook.coverAssetModule)
             : undefined;
-          const showsLoadingPlaceholder =
-            generatingCoverIds.has(book.id) && !hasUsableCover && !bundledCoverUri;
+          const showsColorPlaceholder = !hasUsableCover && !bundledCoverUri;
           const showCoverTypography =
             !hasUsableCover || shouldRenderCoverTypography(book.id, book.meta.coverUrl);
-          const coverTextTone = showsLoadingPlaceholder
+          const coverTextTone = showsColorPlaceholder
             ? "light"
             : isGeneratedBookCoverPath(book.id, book.meta.coverUrl)
               ? generatedCoverTextTone({ title: book.meta.title, author: book.meta.author })
@@ -132,9 +125,7 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
                       <View
                         style={[
                           s.fallbackCover,
-                          showsLoadingPlaceholder
-                            ? { backgroundColor: loadingCoverColorForBook(book.id) }
-                            : null,
+                          { backgroundColor: loadingCoverColorForBook(book.id) },
                         ]}
                       />
                     )}

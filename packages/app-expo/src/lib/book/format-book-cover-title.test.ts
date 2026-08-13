@@ -2,15 +2,19 @@ import { describe, expect, it } from "vitest";
 import { formatBookCoverTitle } from "./format-book-cover-title";
 
 describe("formatBookCoverTitle", () => {
-  it.each(["а", "в", "и", "к", "о", "с", "у"])(
-    "binds '%s' to the following word",
-    (serviceWord) => {
-      expect(formatBookCoverTitle(`${serviceWord} море`)).toBe(`${serviceWord}\u00A0море`);
+  it.each(["а", "в", "и", "к", "о", "с", "у", "до", "из", "на", "of", "to"])(
+    "binds the short word '%s' to the following word",
+    (shortWord) => {
+      expect(formatBookCoverTitle(`${shortWord} море`)).toBe(`${shortWord}\u00A0море`);
     },
   );
 
   it("binds consecutive one-letter words", () => {
     expect(formatBookCoverTitle("и в мире")).toBe("и\u00A0в\u00A0мире");
+  });
+
+  it("binds short words in non-Russian titles", () => {
+    expect(formatBookCoverTitle("Machines of Loving Grace")).toBe("Machines of\u00A0Loving Grace");
   });
 
   it("preserves ordinary spaces between regular words", () => {

@@ -21,5 +21,5 @@ export function NativeThemePicker({
 }
 
 const styles = StyleSheet.create({
-  control: { width: "100%", minHeight: 36 },
+  control: { width: "100%", height: 44 },
 });

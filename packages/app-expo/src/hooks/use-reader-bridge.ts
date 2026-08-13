@@ -65,6 +65,8 @@ export interface ReaderInitialSettings {
   fontTheme?: string;
   viewMode?: "paginated" | "scroll";
   paginatedLayout?: "single" | "double";
+  customFontFaceCSS?: string;
+  customFontFamily?: string;
 }
 
 /** Совпадение поиска по книге: CFI + фрагмент с контекстом (из foliate search) */

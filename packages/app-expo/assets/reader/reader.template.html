@@ -2022,15 +2022,31 @@
         el.style.height = '100%';
         resetPullBookmarkUI(false);
 
-        el.addEventListener('load', (e) => {
+        el.addEventListener('load', async (e) => {
           const { doc, index, primary } = e.detail;
-          markLoaded();
           normalizeBrOnlyParagraphs(doc);
           if (primary !== false) {
             currentSectionUsesVerticalWriting = !el.isFixedLayout && isVerticalDoc(doc);
             applyRendererFlowMode(el.renderer);
           }
+          // The first chapter can paint as soon as Foliate emits `load`.
+          // Apply the complete saved typography before waiting for the font,
+          // otherwise the EPUB font is visible for one frame and then reflows.
+          if (msg.settings) {
+            applySettings(msg.settings);
+          }
           applyDocStyles(doc);
+          try {
+            if (doc.fonts && doc.fonts.ready) {
+              await Promise.race([
+                doc.fonts.ready,
+                new Promise((resolve) => setTimeout(resolve, 1200)),
+              ]);
+            }
+          } catch (fontError) {
+            console.warn('[Reader] Failed to await initial fonts:', fontError);
+          }
+          markLoaded();
           attachTapListener(doc);
           attachPullBookmarkListener(doc);
           attachSelectionListener(doc);
@@ -2050,7 +2066,6 @@
 
         var snippetTimer = null;
         el.addEventListener('relocate', (e) => {
-          markLoaded();
           hideFootnoteTip();
           const detail = e.detail;
           const previousSectionIndex = currentSectionIndex;
@@ -2194,6 +2209,12 @@
         view = el;
         currentSectionUsesVerticalWriting = false;
 
+        // Prime font and layout state before the first book document is created.
+        // The load handler can then style its first frame with the saved font.
+        if (msg.settings) {
+          updateSettingsState(msg.settings);
+        }
+
         await el.open(book);
 
         if (book.sections) {
@@ -2308,10 +2329,7 @@
     }
 
     // ─── Settings ───
-    function applySettings(settings) {
-      if (!view || !view.renderer) return;
-      const renderer = view.renderer;
-
+    function updateSettingsState(settings) {
       // Update custom font state
       if (settings.customFontFaceCSS !== undefined) {
         currentCustomFontFaceCSS = settings.customFontFaceCSS || '';
@@ -2337,6 +2355,12 @@
         currentPaginatedLayout =
           settings.paginatedLayout === 'single' ? 'single' : 'double';
       }
+    }
+
+    function applySettings(settings) {
+      updateSettingsState(settings);
+      if (!view || !view.renderer) return;
+      const renderer = view.renderer;
 
       if (settings.fontSize !== undefined || settings.lineHeight !== undefined || settings.fontTheme !== undefined || settings.paragraphSpacing !== undefined
           || settings.customFontFamily !== undefined || settings.customFontFaceCSS !== undefined) {
@@ -2385,7 +2409,7 @@
           :root:not(.vrtl):not(.vltr) body *:not(svg):not(svg *):not(math):not(math *):not(pre):not(pre *):not(code):not(code *):not(kbd):not(kbd *):not(samp):not(samp *) {
             font-family: var(--readany-font-family) !important;
           }
-          :root:not(.vrtl):not(.vltr) body *:not(svg):not(svg *):not(math):not(math *):not(pre):not(pre *):not(code):not(code *):not(kbd):not(kbd *):not(samp):not(samp *):not(rt):not(rp) {
+          :root:not(.vrtl):not(.vltr) body *:not(h1):not(h2):not(h3):not(h4):not(h5):not(h6):not(svg):not(svg *):not(math):not(math *):not(pre):not(pre *):not(code):not(code *):not(kbd):not(kbd *):not(samp):not(samp *):not(rt):not(rp) {
             font-size: ${fSize}px !important;
           }
           :root:is(.vrtl, .vltr),

@@ -11,10 +11,12 @@ function firstExistingPath(...candidates) {
 const iosProjectPath = firstExistingPath(
   path.join(appRoot, "ios", "ReadAnyDev.xcodeproj", "project.pbxproj"),
   path.join(appRoot, "ios", "ReadAny.xcodeproj", "project.pbxproj"),
+  path.join(appRoot, "ios", "Narra.xcodeproj", "project.pbxproj"),
 );
 const iosInfoPlistPath = firstExistingPath(
   path.join(appRoot, "ios", "ReadAnyDev", "Info.plist"),
   path.join(appRoot, "ios", "ReadAny", "Info.plist"),
+  path.join(appRoot, "ios", "Narra", "Info.plist"),
 );
 
 function replaceAll(content, pattern, replacement) {

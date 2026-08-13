@@ -1,3 +1,4 @@
+import { useSwipePressGuard } from "@/components/ui/swipe-press-guard";
 import { findBundledCatalogBookByTitle } from "@/lib/catalog/bundled-books";
 import { useColors } from "@/styles/theme";
 import { useMemo } from "react";
@@ -30,6 +31,7 @@ export function CatalogBookCard({
   const colors = useColors();
   const styles = makeStyles(colors, cardWidth);
   const { t } = useTranslation();
+  const swipePressGuard = useSwipePressGuard();
   const coverAssetModules = useMemo(() => [coverAssetModule], [coverAssetModule]);
   const coverUri = useResolvedAssetUris(coverAssetModules).get(coverAssetModule);
 
@@ -44,7 +46,10 @@ export function CatalogBookCard({
           : t("library.catalogAdd", "Добавить в библиотеку")
       }
       disabled={isImporting}
-      onPress={onPress}
+      onPress={() => {
+        if (swipePressGuard?.canPress() === false) return;
+        onPress();
+      }}
       cover={
         <View style={styles.coverCanvas}>
           {coverUri ? (

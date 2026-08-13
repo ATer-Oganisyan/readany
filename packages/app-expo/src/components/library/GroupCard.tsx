@@ -1,5 +1,6 @@
 import { FolderIcon, MoreVerticalIcon } from "@/components/ui/Icon";
 import { Text } from "@/components/ui/Typography";
+import { useSwipePressGuard } from "@/components/ui/swipe-press-guard";
 import { type ThemeColors, radius, useColors } from "@/styles/theme";
 import { getPlatformService } from "@readany/core/services";
 import type { Book, BookGroup } from "@readany/core/types";
@@ -126,6 +127,7 @@ export const GroupCard = memo(function GroupCard({
 }: GroupCardProps) {
   const colors = useColors();
   const { t } = useTranslation();
+  const swipePressGuard = useSwipePressGuard();
   const bookStyles = makeBookCardStyles(colors, cardWidth);
   const previewBooks = useMemo(
     () =>
@@ -140,8 +142,14 @@ export const GroupCard = memo(function GroupCard({
     <TouchableOpacity
       style={bookStyles.container}
       activeOpacity={0.76}
-      onPress={() => onOpen(group.id)}
-      onLongPress={() => onLongPress?.(group)}
+      onPress={() => {
+        if (swipePressGuard?.canPress() === false) return;
+        onOpen(group.id);
+      }}
+      onLongPress={() => {
+        if (swipePressGuard?.canPress() === false) return;
+        onLongPress?.(group);
+      }}
       delayLongPress={450}
     >
       <View style={[bookStyles.coverWrap, { backgroundColor: colors.muted }]}>
@@ -169,6 +177,7 @@ export const GroupCard = memo(function GroupCard({
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               onPress={(event) => {
                 event.stopPropagation();
+                if (swipePressGuard?.canPress() === false) return;
                 onLongPress(group);
               }}
             >

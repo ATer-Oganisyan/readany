@@ -1,6 +1,8 @@
-import { Button, HStack, Host, Spacer } from "@expo/ui/swift-ui";
+import { Button, HStack, Host, ProgressView, Spacer } from "@expo/ui/swift-ui";
 import {
+  Animation,
   accessibilityLabel,
+  animation,
   buttonStyle,
   clipShape,
   controlSize,
@@ -8,6 +10,7 @@ import {
   glassEffect,
   labelStyle,
   padding,
+  progressViewStyle,
   tint,
 } from "@expo/ui/swift-ui/modifiers";
 import type { ComponentProps } from "react";
@@ -24,14 +27,18 @@ type SFSymbol = NonNullable<ComponentProps<typeof Button>["systemImage"]>;
 export function ReaderToolbar(props: ReaderToolbarProps) {
   const { t } = useTranslation();
   const supportsGlass = Number.parseInt(String(Platform.Version), 10) >= 26;
-  const makeModifiers = (label: string) =>
+  const makeModifiers = (label: string, compact = false) =>
     supportsGlass
       ? [
           buttonStyle("plain" as const),
           controlSize("extraLarge" as const),
-          labelStyle("titleAndIcon" as const),
-          frame({ height: CONTROL_SIZE }),
-          padding({ horizontal: 14 }),
+          ...(compact
+            ? [frame({ width: CONTROL_SIZE, height: CONTROL_SIZE })]
+            : [
+                labelStyle("titleAndIcon" as const),
+                frame({ height: CONTROL_SIZE }),
+                padding({ horizontal: 14 }),
+              ]),
           glassEffect({
             glass: { variant: "regular", interactive: true },
             shape: "capsule",
@@ -43,15 +50,19 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
       : [
           buttonStyle("bordered" as const),
           controlSize("extraLarge" as const),
-          labelStyle("titleAndIcon" as const),
-          frame({ height: CONTROL_SIZE }),
+          ...(compact
+            ? [frame({ width: CONTROL_SIZE, height: CONTROL_SIZE })]
+            : [labelStyle("titleAndIcon" as const), frame({ height: CONTROL_SIZE })]),
           clipShape("capsule" as const),
           tint(props.tintColor),
           accessibilityLabel(label),
         ];
 
-  const speechLabel = props.speechActive ? t("common.stop", "Стоп") : t("reader.listen", "Слушать");
-  const speechSymbol: SFSymbol = props.speechActive ? "stop.fill" : "airpods.max";
+  const speechLoading = props.speechState === "loading";
+  const speechActive = props.speechState === "playing";
+  const speechLabel = speechActive ? t("common.stop", "Стоп") : t("reader.listen", "Слушать");
+  const speechSymbol: SFSymbol = speechActive ? "stop.fill" : "airpods.max";
+  const speechLoadingLabel = t("reader.audioLoading", "Загрузка аудио");
 
   return (
     <Host
@@ -64,14 +75,30 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
         modifiers={[
           frame({ maxWidth: 10_000, height: TOOLBAR_HEIGHT }),
           padding({ horizontal: NAVIGATION_HORIZONTAL_INSET }),
+          animation(
+            Animation.spring({ duration: 0.28, bounce: 0 }),
+            speechLoading ? 1 : speechActive ? 2 : 0,
+          ),
         ]}
       >
-        <Button
-          label={speechLabel}
-          systemImage={speechSymbol}
-          onPress={props.onSpeechPress}
-          modifiers={makeModifiers(speechLabel)}
-        />
+        {speechLoading ? (
+          <Button onPress={props.onSpeechPress} modifiers={makeModifiers(speechLoadingLabel, true)}>
+            <ProgressView
+              modifiers={[
+                controlSize("small"),
+                progressViewStyle("circular"),
+                tint(props.tintColor),
+              ]}
+            />
+          </Button>
+        ) : (
+          <Button
+            label={speechLabel}
+            systemImage={speechSymbol}
+            onPress={props.onSpeechPress}
+            modifiers={makeModifiers(speechLabel)}
+          />
+        )}
         <Spacer />
         <Button
           label={t("narra.chat", "Чат")}

@@ -1,4 +1,5 @@
 import type { NativeContextMenuItem } from "@/components/ui/NativeContextMenuButton.types";
+import { useSwipePressGuard } from "@/components/ui/swipe-press-guard";
 import type { Book } from "@readany/core/types";
 import type { ReactElement } from "react";
 import { useTranslation } from "react-i18next";
@@ -22,6 +23,7 @@ export function BookCardActionSheet({
   onOpen,
 }: BookCardActionSheetProps) {
   const { t } = useTranslation();
+  const swipePressGuard = useSwipePressGuard();
 
   const items: NativeContextMenuItem[] = [
     {
@@ -37,7 +39,10 @@ export function BookCardActionSheet({
     <BookCardContextMenu
       accessibilityLabel={t("common.actions", "Действия с книгой")}
       items={items}
-      onPress={() => onOpen(book)}
+      onPress={() => {
+        if (swipePressGuard?.canPress() === false) return;
+        onOpen(book);
+      }}
     >
       {children}
     </BookCardContextMenu>

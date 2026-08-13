@@ -33,6 +33,22 @@ export const makeStyles = (colors: ThemeColors, cardWidth: number) => {
       padding: 16,
       backgroundColor: colors.bookCoverSurface,
     },
+    progressChip: {
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: radius.full,
+      overflow: "hidden",
+      backgroundColor: "rgba(0,0,0,0.5)",
+    },
+    cardProgress: {
+      fontSize: 13,
+      fontWeight: fontWeight.semibold,
+      lineHeight: 18,
+      flexShrink: 0,
+      color: "rgba(255,255,255,0.92)",
+      textAlign: "left",
+      fontVariant: ["tabular-nums"],
+    },
     fallbackTitle: {
       fontFamily: headingFontFamily,
       textAlign: "left",

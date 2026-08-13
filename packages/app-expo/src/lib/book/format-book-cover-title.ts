@@ -1,6 +1,12 @@
 const NON_BREAKING_SPACE = "\u00A0";
-const ONE_LETTER_SERVICE_WORDS = new Set(["а", "в", "и", "к", "о", "с", "у"]);
 const SENTENCE_BOUNDARY_WITH_CONTINUATION = /[.!?…]+(?=\s+\S)/u;
+
+function isShortWord(value: string): boolean {
+  const normalizedWord = value.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
+  const characterCount = Array.from(normalizedWord).length;
+
+  return characterCount >= 1 && characterCount <= 2;
+}
 
 function keepOnlyFirstSentence(title: string): string {
   const trimmedTitle = title.trim();
@@ -11,7 +17,7 @@ function keepOnlyFirstSentence(title: string): string {
     : trimmedTitle;
 }
 
-/** Shortens multi-sentence titles and keeps one-letter service words with the following word. */
+/** Shortens multi-sentence titles and keeps one- or two-character words with the following word. */
 export function formatBookCoverTitle(title: string): string {
   const tokens = keepOnlyFirstSentence(title).split(/(\s+)/u);
 
@@ -20,11 +26,7 @@ export function formatBookCoverTitle(title: string): string {
     const separator = tokens[index + 1];
     const nextToken = tokens[index + 2];
 
-    if (
-      ONE_LETTER_SERVICE_WORDS.has(token.toLocaleLowerCase("ru-RU")) &&
-      /^\s+$/u.test(separator) &&
-      nextToken.length > 0
-    ) {
+    if (isShortWord(token) && /^\s+$/u.test(separator) && nextToken.length > 0) {
       tokens[index + 1] = NON_BREAKING_SPACE;
     }
   }

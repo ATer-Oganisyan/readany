@@ -1,7 +1,7 @@
 export interface ReaderToolbarProps {
   tintColor: string;
   isDark: boolean;
-  speechActive: boolean;
+  speechState: "idle" | "loading" | "playing";
   onSpeechPress: () => void;
   onChatPress: () => void;
 }

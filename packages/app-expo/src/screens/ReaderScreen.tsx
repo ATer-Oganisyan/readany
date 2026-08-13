@@ -385,7 +385,7 @@ function ReaderLoadingChrome({ navigation }: { navigation: Props["navigation"] }
           <ReaderToolbar
             tintColor={colors.foreground}
             isDark={isDark}
-            speechActive={false}
+            speechState="idle"
             onSpeechPress={ignorePress}
             onChatPress={ignorePress}
           />
@@ -573,6 +573,7 @@ function ReaderContent({ route, navigation }: Props) {
   // Custom fonts — build @font-face CSS per-font using individual filePath
   const customFonts = useFontStore((s) => s.fonts);
   const selectedFontId = useFontStore((s) => s.selectedFontId);
+  const fontsHydrated = useFontStore((s) => s._hasHydrated);
   const readerFontFamily = useMemo(
     () => resolveReaderFontFamily(customFonts, selectedFontId),
     [customFonts, selectedFontId],
@@ -1803,7 +1804,7 @@ function ReaderContent({ route, navigation }: Props) {
 
   // When WebView is ready and book is available, send the open command
   useEffect(() => {
-    if (!webViewReady || !book?.filePath) {
+    if (!webViewReady || !book?.filePath || !fontsHydrated) {
       return;
     }
 
@@ -1833,6 +1834,14 @@ function ReaderContent({ route, navigation }: Props) {
           defaultReaderFontFaceCSSRef.current = "";
           setDefaultReaderFontFaceCSS("");
         }
+        const { fonts, selectedFontId: initialSelectedFontId } = useFontStore.getState();
+        const initialFontCSS = [
+          defaultReaderFontFaceCSSRef.current,
+          buildCustomFontFaceCSS(fonts, initialSelectedFontId, serverUrl),
+        ]
+          .filter(Boolean)
+          .join("\n");
+        const initialFontFamily = resolveReaderFontFamily(fonts, initialSelectedFontId);
         const encodedPath = book.filePath
           .split("/")
           .map((s) => encodeURIComponent(s))
@@ -1846,13 +1855,18 @@ function ReaderContent({ route, navigation }: Props) {
           pageMargin: readSettings.pageMargin,
           paginatedLayout: readSettings.paginatedLayout,
           settings: {
-            fontSize: readSettings.fontSize,
+            fontSize: computeEffectiveFontSize(
+              readSettings.fontSize,
+              readSettings.followSystemFontScale,
+            ),
             lineHeight: readSettings.lineHeight,
             paragraphSpacing: readSettings.paragraphSpacing,
             pageMargin: readSettings.pageMargin,
             fontTheme: readSettings.fontTheme,
             viewMode: readSettings.viewMode,
             paginatedLayout: readSettings.paginatedLayout,
+            customFontFaceCSS: initialFontCSS,
+            customFontFamily: initialFontFamily ?? "",
           },
         });
 
@@ -1865,7 +1879,7 @@ function ReaderContent({ route, navigation }: Props) {
     };
 
     loadBook();
-  }, [bookId, book?.filePath, loadAttempt, webViewReady]);
+  }, [bookId, book?.filePath, fontsHydrated, loadAttempt, webViewReady]);
 
   const handleReimportMissingBook = useCallback(async () => {
     if (isReimporting) return;
@@ -2053,7 +2067,13 @@ function ReaderContent({ route, navigation }: Props) {
         <ReaderToolbar
           tintColor={readerThemeColors.foreground}
           isDark={isReaderThemeDark}
-          speechActive={ttsPlayState === "playing" || ttsPlayState === "loading"}
+          speechState={
+            ttsPlayState === "loading"
+              ? "loading"
+              : ttsPlayState === "playing"
+                ? "playing"
+                : "idle"
+          }
           onSpeechPress={() => void tts.handleToggleTTS()}
           onChatPress={handleOpenCharacters}
         />
@@ -2238,7 +2258,10 @@ function ReaderContent({ route, navigation }: Props) {
 
           {/* Loading overlay */}
           {loading && (
-            <View style={s.loadingOverlay}>
+            <View
+              style={[s.loadingOverlay, { backgroundColor: colors.background }]}
+              pointerEvents="none"
+            >
               <ReaderLoadingIndicator color={colors.primary20} />
             </View>
           )}

@@ -5,9 +5,9 @@ import {
   type CharacterChatListItem,
 } from "@/components/chats/character-chat-list";
 import { CharacterPortraitImage } from "@/components/narra/character-portrait-image";
-import { NativeThemePicker } from "@/components/profile/NativeThemePicker";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
+import { NativeSegmentedPager } from "@/components/ui/native-segmented-pager";
 import { getBookTabLabel } from "@/lib/book/book-tab-label";
 import { getBundledCatalogCharactersByTitle } from "@/lib/narra/bundled-catalog-characters";
 import { hasCharacterPortrait } from "@/lib/narra/character-portrait";
@@ -23,7 +23,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { Book } from "@readany/core/types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -45,6 +45,7 @@ interface ChatRow {
 export function ChatsScreen() {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
+  const { height: viewportHeight } = useWindowDimensions();
   const styles = useMemo(() => makeStyles(colors, insets.bottom), [colors, insets.bottom]);
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
@@ -89,13 +90,8 @@ export function ChatsScreen() {
     }
   }, [chatBooks, selectedBookId]);
 
-  const rows = useMemo<ChatRow[]>(() => {
-    const visibleBooks =
-      selectedBookId === "all"
-        ? chatBooks
-        : chatBooks.filter(({ book }) => book.id === selectedBookId);
-
-    return visibleBooks.flatMap(({ book, characters, fromBundledCatalog }) => {
+  const allRows = useMemo<ChatRow[]>(() => {
+    return chatBooks.flatMap(({ book, characters, fromBundledCatalog }) => {
       const chats = narraBooks[book.id]?.chats ?? {};
       return characters
         .map((character) => ({
@@ -112,7 +108,13 @@ export function ChatsScreen() {
             a.character.unlockProgress - b.character.unlockProgress,
         );
     });
-  }, [chatBooks, narraBooks, selectedBookId]);
+  }, [chatBooks, narraBooks]);
+
+  const rows = useMemo(
+    () =>
+      selectedBookId === "all" ? allRows : allRows.filter(({ book }) => book.id === selectedBookId),
+    [allRows, selectedBookId],
+  );
 
   const openChat = useCallback(
     (row: ChatRow) => {
@@ -129,14 +131,80 @@ export function ChatsScreen() {
     [navigation, setCharacters],
   );
 
-  const openNarraChat = useCallback(() => {
-    if (selectedBookId === "all") {
-      navigation.navigate("Chat");
-      return;
-    }
-    navigation.navigate("BookChat", { bookId: selectedBookId });
-  }, [navigation, selectedBookId]);
+  const openNarraChat = useCallback(
+    (bookId: string) => {
+      if (bookId === "all") {
+        navigation.navigate("Chat");
+        return;
+      }
+      navigation.navigate("BookChat", { bookId });
+    },
+    [navigation],
+  );
 
+  const selectChatPage = useCallback(
+    (index: number) => {
+      setSelectedBookId(index === 0 ? "all" : (chatBooks[index - 1]?.book.id ?? "all"));
+    },
+    [chatBooks],
+  );
+
+  const buildListItems = (pageBookId: string): CharacterChatListItem[] => {
+    const pageRows =
+      pageBookId === "all" ? allRows : allRows.filter(({ book }) => book.id === pageBookId);
+
+    return [
+      {
+        key: "narra",
+        accessibilityLabel:
+          pageBookId === "all"
+            ? t("narra.openNarraChat", "Открыть чат с Наррой")
+            : t("narra.openNarraBookChat", "Открыть чат с Наррой об этой книге"),
+        title: "Нарра",
+        subtitle:
+          pageBookId === "all"
+            ? t("narra.askAboutBooks", "Спросите что угодно о книгах")
+            : t("narra.askAboutBook", "Спросите что угодно о книге"),
+        onPress: () => openNarraChat(pageBookId),
+        avatar: (
+          <CharacterChatAvatar muted>
+            <AnimatedNarraFace width={38} height={40} />
+          </CharacterChatAvatar>
+        ),
+      },
+      ...pageRows.map((row): CharacterChatListItem => {
+        const rowKey = `${row.book.id}:${row.character.id}`;
+
+        return {
+          key: rowKey,
+          accessibilityLabel: `${row.character.name}, ${row.book.meta.title}`,
+          title: row.character.fullName || row.character.name,
+          subtitle: row.character.role,
+          onPress: () => openChat(row),
+          avatar: (
+            <CharacterChatAvatar>
+              <CharacterPortraitImage
+                character={row.character}
+                style={styles.avatarImage}
+                fallback={
+                  <InitialsAvatar
+                    size={56}
+                    userId={rowKey}
+                    name={row.character.fullName || row.character.name}
+                  />
+                }
+              />
+            </CharacterChatAvatar>
+          ),
+        };
+      }),
+    ];
+  };
+
+  /*
+   * Portrait generation stays scoped to the selected page so horizontal paging
+   * does not start background work for every book at once.
+   */
   useEffect(() => {
     if (portraitLoadingKey) return;
     const nextRow = rows.find((row) => {
@@ -168,60 +236,13 @@ export function ChatsScreen() {
     return (
       <CenteredEmptyState
         avoidNativeTabBar
-        title={t("chats.emptyTitle", "Здесь появятся её персонажи из книг")}
-        description={t("chats.emptyDescription", "С ними можно будет поговорить")}
+        title={t("chats.emptyTitle", "Персонажи из ваших книг появятся здесь")}
+        description={t("chats.emptyDescription", "С ними можно будет общаться")}
       >
         {null}
       </CenteredEmptyState>
     );
   }
-
-  const listItems: CharacterChatListItem[] = [
-    {
-      key: "narra",
-      accessibilityLabel:
-        selectedBookId === "all"
-          ? t("narra.openNarraChat", "Открыть чат с Наррой")
-          : t("narra.openNarraBookChat", "Открыть чат с Наррой об этой книге"),
-      title: "Нарра",
-      subtitle:
-        selectedBookId === "all"
-          ? t("narra.askAboutBooks", "Спросите что угодно о книгах")
-          : t("narra.askAboutBook", "Спросите что угодно о книге"),
-      onPress: openNarraChat,
-      avatar: (
-        <CharacterChatAvatar muted>
-          <AnimatedNarraFace width={38} height={40} />
-        </CharacterChatAvatar>
-      ),
-    },
-    ...rows.map((row): CharacterChatListItem => {
-      const rowKey = `${row.book.id}:${row.character.id}`;
-
-      return {
-        key: rowKey,
-        accessibilityLabel: `${row.character.name}, ${row.book.meta.title}`,
-        title: row.character.fullName || row.character.name,
-        subtitle: row.character.role,
-        onPress: () => openChat(row),
-        avatar: (
-          <CharacterChatAvatar>
-            <CharacterPortraitImage
-              character={row.character}
-              style={styles.avatarImage}
-              fallback={
-                <InitialsAvatar
-                  size={56}
-                  userId={rowKey}
-                  name={row.character.fullName || row.character.name}
-                />
-              }
-            />
-          </CharacterChatAvatar>
-        ),
-      };
-    }),
-  ];
 
   return (
     <ScrollView
@@ -229,20 +250,25 @@ export function ChatsScreen() {
       style={styles.container}
       contentContainerStyle={styles.content}
     >
-      <View style={styles.tabs}>
-        <NativeThemePicker
-          values={segmentValues}
-          selectedIndex={selectedSegmentIndex}
-          onSelect={(index) =>
-            setSelectedBookId(index === 0 ? "all" : (chatBooks[index - 1]?.book.id ?? "all"))
-          }
-          colorScheme={isDark ? "dark" : "light"}
-          accessibilityLabel={t("chats.bookFilter", "Фильтр по книге")}
-          scrollable
-        />
-      </View>
-
-      <CharacterChatList items={listItems} />
+      <NativeSegmentedPager
+        values={segmentValues}
+        selectedIndex={selectedSegmentIndex}
+        onSelect={selectChatPage}
+        colorScheme={isDark ? "dark" : "light"}
+        accessibilityLabel={t("chats.bookFilter", "Фильтр по книге")}
+        scrollableSegments
+        controlsStyle={styles.tabs}
+        minimumPageHeight={Math.max(1, viewportHeight - insets.top - insets.bottom - 120)}
+      >
+        {segmentValues.map((_, index) => {
+          const pageBookId = index === 0 ? "all" : chatBooks[index - 1]?.book.id;
+          return (
+            <View key={pageBookId ?? `chat-page-${index}`}>
+              <CharacterChatList items={buildListItems(pageBookId ?? "all")} />
+            </View>
+          );
+        })}
+      </NativeSegmentedPager>
     </ScrollView>
   );
 }

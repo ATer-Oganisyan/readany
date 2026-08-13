@@ -1,16 +1,17 @@
 import { Text } from "@/components/ui/Typography";
+import { useSwipePressGuard } from "@/components/ui/swipe-press-guard";
 import { isGeneratedBookCoverPath, shouldRenderCoverTypography } from "@/lib/book/cover-display";
 import { generatedCoverTextTone } from "@/lib/book/cover-text-contrast";
 import { loadingCoverColorForBook } from "@/lib/book/loading-cover-placeholder";
 import { findBundledCatalogBookByTitle } from "@/lib/catalog/bundled-books";
 import { useResolvedCovers } from "@/screens/notes/useResolvedCovers";
-import { useLibraryStore } from "@/stores/library-store";
 import { useColors } from "@/styles/theme";
 /**
  * BookCard — Touch-optimized book card matching Tauri mobile MobileBookCard exactly.
  * Cover (28:41), vectorization overlay, long-press action sheet.
  */
 import type { Book } from "@readany/core/types";
+import { BlurView } from "expo-blur";
 import { memo, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Image, TouchableOpacity, View } from "react-native";
@@ -46,9 +47,7 @@ export const BookCard = memo(function BookCard({
   const colors = useColors();
   const s = makeStyles(colors, cardWidth);
   const { t } = useTranslation();
-  const isGeneratingCover = useLibraryStore((state) =>
-    state.generatingCoverBookIds.includes(book.id),
-  );
+  const swipePressGuard = useSwipePressGuard();
   const [failedCoverUrl, setFailedCoverUrl] = useState<string>();
   const bundledCatalogBook = findBundledCatalogBookByTitle(book.meta.title);
   const coverItems = useMemo(
@@ -65,20 +64,24 @@ export const BookCard = memo(function BookCard({
     ? bundledCoverUris.get(bundledCatalogBook.coverAssetModule)
     : undefined;
   const hasUsableSavedCover = Boolean(resolvedCoverUrl) && resolvedCoverUrl !== failedCoverUrl;
-  const showsLoadingPlaceholder = isGeneratingCover && !hasUsableSavedCover && !bundledCoverUri;
+  const showsColorPlaceholder = !hasUsableSavedCover && !bundledCoverUri;
   const showCoverTypography =
     !hasUsableSavedCover || shouldRenderCoverTypography(book.id, book.meta.coverUrl);
-  const coverTextTone = showsLoadingPlaceholder
+  const coverTextTone = showsColorPlaceholder
     ? "light"
     : isGeneratedBookCoverPath(book.id, book.meta.coverUrl)
       ? generatedCoverTextTone({ title: book.meta.title, author: book.meta.author })
       : (bundledCatalogBook?.coverTextTone ?? "dark");
+  const progressPercent = Math.round(Math.max(0, Math.min(1, book.progress ?? 0)) * 100);
 
   return (
     <BookCardActionSheet book={book} onOpen={onOpen} onDelete={onDelete}>
       <TouchableOpacity
         style={s.container}
-        onPress={() => onOpen(book)}
+        onPress={() => {
+          if (swipePressGuard?.canPress() === false) return;
+          onOpen(book);
+        }}
         activeOpacity={0.7}
         accessibilityRole="button"
         accessibilityLabel={book.meta.title}
@@ -97,26 +100,29 @@ export const BookCard = memo(function BookCard({
             <Image source={{ uri: bundledCoverUri }} style={s.coverImage} resizeMode="cover" />
           ) : (
             <View
-              style={[
-                s.fallbackCover,
-                showsLoadingPlaceholder
-                  ? { backgroundColor: loadingCoverColorForBook(book.id) }
-                  : null,
-              ]}
+              style={[s.fallbackCover, { backgroundColor: loadingCoverColorForBook(book.id) }]}
             />
           )}
 
           {/* Корешок остаётся видимым и на собственной обложке, и на заглушке. */}
           <BookSpineOverlay coverWidth={cardWidth} />
 
-          {showCoverTypography ? (
-            <BookCoverTypography
-              title={book.meta.title}
-              author={book.meta.author}
-              width={cardWidth}
-              textTone={coverTextTone}
-            />
-          ) : null}
+          <BookCoverTypography
+            title={book.meta.title}
+            author={book.meta.author}
+            width={cardWidth}
+            showText={showCoverTypography}
+            textTone={coverTextTone}
+            bottomAccessory={
+              progressPercent > 0 ? (
+                <BlurView tint="dark" intensity={50} style={s.progressChip}>
+                  <Text style={s.cardProgress} numberOfLines={1}>
+                    {`${progressPercent}%`}
+                  </Text>
+                </BlurView>
+              ) : null
+            }
+          />
           {/* Remote status overlay (on-demand download) */}
           {book.syncStatus === "remote" && (
             <View style={s.remoteOverlay}>

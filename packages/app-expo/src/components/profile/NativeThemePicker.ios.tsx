@@ -1,21 +1,105 @@
 import { spacing, useTheme } from "@/styles/theme";
+import { baseColors } from "@deslop/primitives";
 import { interfaceFontFamily } from "@deslop/primitives/native";
-import { Button, HStack, Host, Picker, ScrollView, Text } from "@expo/ui/swift-ui";
+import { Host, Picker, Text } from "@expo/ui/swift-ui";
+import { frame, pickerStyle, tag } from "@expo/ui/swift-ui/modifiers";
+import { useCallback, useEffect, useRef } from "react";
 import {
-  background,
-  buttonStyle,
-  controlSize,
-  font,
-  foregroundStyle,
-  frame,
-  padding,
-  pickerStyle,
-  shapes,
-  tag,
-  tint,
-} from "@expo/ui/swift-ui/modifiers";
-import { StyleSheet, useWindowDimensions } from "react-native";
+  type LayoutChangeEvent,
+  type NativeScrollEvent,
+  ScrollView as NativeScrollView,
+  type NativeSyntheticEvent,
+  Pressable,
+  StyleSheet,
+  View,
+} from "react-native";
+import Animated, {
+  Easing,
+  interpolateColor,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import type { NativeThemePickerProps } from "./NativeThemePicker.types";
+
+type SegmentLayout = { x: number; width: number };
+const CHIP_ANIMATION_DURATION_MS = 80;
+const CHIP_PRESSED_SCALE = 0.9;
+const CHIP_ANIMATION = {
+  duration: CHIP_ANIMATION_DURATION_MS,
+  easing: Easing.inOut(Easing.quad),
+} as const;
+const whiteToken = baseColors.find(({ name }) => name === "White");
+if (!whiteToken) {
+  throw new Error('@deslop/primitives: color token "White" is missing');
+}
+const CHIP_ACTIVE_FOREGROUND_COLOR = whiteToken.light;
+
+interface ChipProps {
+  label: string;
+  selected: boolean;
+  activeBackgroundColor: string;
+  activeForegroundColor: string;
+  inactiveBackgroundColor: string;
+  inactiveForegroundColor: string;
+  onPress: () => void;
+}
+
+function Chip({
+  label,
+  selected,
+  activeBackgroundColor,
+  activeForegroundColor,
+  inactiveBackgroundColor,
+  inactiveForegroundColor,
+  onPress,
+}: ChipProps) {
+  const pressed = useSharedValue(0);
+  const selectedProgress = useSharedValue(selected ? 1 : 0);
+
+  useEffect(() => {
+    selectedProgress.value = withTiming(selected ? 1 : 0, CHIP_ANIMATION);
+  }, [selected, selectedProgress]);
+
+  const chipStyle = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(
+      selectedProgress.value,
+      [0, 1],
+      [inactiveBackgroundColor, activeBackgroundColor],
+    ),
+    transform: [{ scale: 1 - pressed.value * (1 - CHIP_PRESSED_SCALE) }],
+  }));
+  const labelStyle = useAnimatedStyle(() => ({
+    color: interpolateColor(
+      selectedProgress.value,
+      [0, 1],
+      [inactiveForegroundColor, activeForegroundColor],
+    ),
+  }));
+
+  const setPressed = (nextPressed: boolean) => {
+    pressed.value = withTiming(nextPressed ? 1 : 0, CHIP_ANIMATION);
+  };
+
+  return (
+    <Pressable
+      accessible
+      accessibilityLabel={label}
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      hitSlop={4}
+      onPress={onPress}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
+    >
+      <Animated.View style={[styles.chip, chipStyle]}>
+        <Animated.Text numberOfLines={1} style={[styles.chipLabel, labelStyle]}>
+          {label}
+        </Animated.Text>
+      </Animated.View>
+    </Pressable>
+  );
+}
 
 export function NativeThemePicker({
   values,
@@ -26,13 +110,46 @@ export function NativeThemePicker({
   scrollable = false,
 }: NativeThemePickerProps) {
   const { colors } = useTheme();
-  const { width: viewportWidth } = useWindowDimensions();
+  const scrollRef = useRef<NativeScrollView>(null);
+  const segmentLayoutsRef = useRef(new Map<number, SegmentLayout>());
+  const viewportWidthRef = useRef(0);
+  const scrollOffsetRef = useRef(0);
+
+  const scrollToSegment = useCallback((index: number) => {
+    const layout = segmentLayoutsRef.current.get(index);
+    const viewportWidth = viewportWidthRef.current;
+    if (!layout || viewportWidth <= 0) return;
+
+    const edgeInset = spacing.lg;
+    const visibleLeft = scrollOffsetRef.current + edgeInset;
+    const visibleRight = scrollOffsetRef.current + viewportWidth - edgeInset;
+    const segmentRight = layout.x + layout.width;
+    let nextOffset = scrollOffsetRef.current;
+
+    if (layout.x < visibleLeft) {
+      nextOffset = Math.max(0, layout.x - edgeInset);
+    } else if (segmentRight > visibleRight) {
+      nextOffset = Math.max(0, segmentRight - viewportWidth + edgeInset);
+    } else {
+      return;
+    }
+
+    scrollOffsetRef.current = nextOffset;
+    scrollRef.current?.scrollTo({ x: nextOffset, animated: true });
+  }, []);
+
+  useEffect(() => {
+    if (!scrollable) return;
+    const frame = requestAnimationFrame(() => scrollToSegment(selectedIndex));
+    return () => cancelAnimationFrame(frame);
+  }, [scrollToSegment, scrollable, selectedIndex]);
+
   const picker = (
     <Picker
       label={accessibilityLabel}
       selection={selectedIndex}
       onSelectionChange={onSelect}
-      modifiers={[pickerStyle("segmented")]}
+      modifiers={[pickerStyle("segmented"), frame({ maxWidth: 10_000, height: 44 })]}
     >
       {values.map((label, index) => (
         <Text key={label} modifiers={[tag(index)]}>
@@ -42,44 +159,74 @@ export function NativeThemePicker({
     </Picker>
   );
 
+  if (scrollable) {
+    const handleViewportLayout = (event: LayoutChangeEvent) => {
+      viewportWidthRef.current = event.nativeEvent.layout.width;
+      scrollToSegment(selectedIndex);
+    };
+    const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      scrollOffsetRef.current = event.nativeEvent.contentOffset.x;
+    };
+
+    return (
+      <NativeScrollView
+        ref={scrollRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        onLayout={handleViewportLayout}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
+        contentContainerStyle={styles.scrollContent}
+      >
+        {values.map((label, index) => (
+          <View
+            key={`${index}-${label}`}
+            onLayout={(event) => {
+              const { x, width } = event.nativeEvent.layout;
+              segmentLayoutsRef.current.set(index, { x, width });
+              if (index === selectedIndex) scrollToSegment(index);
+            }}
+          >
+            <Chip
+              label={label}
+              selected={selectedIndex === index}
+              activeBackgroundColor={colors.primary}
+              activeForegroundColor={CHIP_ACTIVE_FOREGROUND_COLOR}
+              inactiveBackgroundColor={colors.primary5}
+              inactiveForegroundColor={colors.mutedForeground}
+              onPress={() => {
+                scrollToSegment(index);
+                onSelect(index);
+              }}
+            />
+          </View>
+        ))}
+      </NativeScrollView>
+    );
+  }
+
   return (
-    <Host matchContents={{ vertical: true }} style={styles.host} colorScheme={colorScheme}>
-      {scrollable ? (
-        <ScrollView
-          axes="horizontal"
-          showsIndicators={false}
-          modifiers={[frame({ width: viewportWidth })]}
-        >
-          <HStack spacing={spacing.sm} modifiers={[padding({ horizontal: spacing.lg })]}>
-            {values.map((label, index) => (
-              <Button
-                key={label}
-                label={label}
-                onPress={() => onSelect(index)}
-                modifiers={[
-                  controlSize("regular"),
-                  font({ family: interfaceFontFamily.semibold, size: 17 }),
-                  tint(selectedIndex === index ? colors.primary : colors.mutedForeground),
-                  buttonStyle(selectedIndex === index ? "borderedProminent" : "plain"),
-                  ...(selectedIndex === index
-                    ? []
-                    : [
-                        foregroundStyle(colors.mutedForeground),
-                        padding({ horizontal: 16, vertical: 8 }),
-                        background(colors.primary5, shapes.capsule()),
-                      ]),
-                ]}
-              />
-            ))}
-          </HStack>
-        </ScrollView>
-      ) : (
-        picker
-      )}
+    <Host style={styles.host} colorScheme={colorScheme}>
+      {picker}
     </Host>
   );
 }
 
 const styles = StyleSheet.create({
-  host: { width: "100%", minHeight: 36 },
+  host: { width: "100%", height: 44 },
+  chip: {
+    alignItems: "center",
+    borderCurve: "continuous",
+    borderRadius: 999,
+    justifyContent: "center",
+    minHeight: 44,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  chipLabel: { fontFamily: interfaceFontFamily.semibold, fontSize: 17, lineHeight: 22 },
+  scrollContent: {
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+  },
 });

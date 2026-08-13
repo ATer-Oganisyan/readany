@@ -9,8 +9,16 @@ SIMULATOR_NAME="${READANY_SIMULATOR_NAME:-iPhone 17 Pro}"
 SIMULATOR_ID="${READANY_SIMULATOR_ID:-}"
 METRO_PORT="${READANY_METRO_PORT:-8081}"
 BUNDLE_ID="com.mishanaer.readany.dev"
-WORKSPACE="$APP_ROOT/ios/ReadAnyDev.xcworkspace"
-SCHEME="ReadAnyDev"
+if [[ -d "$APP_ROOT/ios/ReadAnyDev.xcworkspace" ]]; then
+  WORKSPACE="$APP_ROOT/ios/ReadAnyDev.xcworkspace"
+  SCHEME="ReadAnyDev"
+elif [[ -d "$APP_ROOT/ios/ReadAny.xcworkspace" ]]; then
+  WORKSPACE="$APP_ROOT/ios/ReadAny.xcworkspace"
+  SCHEME="ReadAny"
+else
+  WORKSPACE="$APP_ROOT/ios/Narra.xcworkspace"
+  SCHEME="Narra"
+fi
 DERIVED_DATA_PATH="${READANY_DERIVED_DATA_PATH:-$APP_ROOT/ios/build/codex-devicehub}"
 CANONICAL_APP="$DERIVED_DATA_PATH/Build/Products/Debug-iphonesimulator/Narra.app"
 FINGERPRINT_FILE="$DERIVED_DATA_PATH/.readany-native-fingerprint"
@@ -178,7 +186,9 @@ native_fingerprint() {
       "$APP_ROOT/ios/Podfile.lock" \
       "$APP_ROOT/ios/Podfile.properties.json" \
       "$APP_ROOT/ios/Pods/Manifest.lock" \
-      "$APP_ROOT/ios/ReadAnyDev.xcodeproj/project.pbxproj"; do
+      "$APP_ROOT/ios/ReadAnyDev.xcodeproj/project.pbxproj" \
+      "$APP_ROOT/ios/ReadAny.xcodeproj/project.pbxproj" \
+      "$APP_ROOT/ios/Narra.xcodeproj/project.pbxproj"; do
       [[ -f "$path" ]] && printf '%s\n' "$path"
     done
 
