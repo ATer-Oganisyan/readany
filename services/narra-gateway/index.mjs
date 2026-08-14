@@ -1225,7 +1225,8 @@ if (bookMarkupRepository) {
     repository: bookMarkupRepository,
     analysisRepository: bookAnalysisRepository,
     shadowPreviewEnabled: BOOK_SHADOW_PREVIEW_ENABLED,
-    storage: bookObjectStorage
+    storage: bookObjectStorage,
+    uploadMaxBytes: BOOK_UPLOAD_MAX_BYTES
   }))
 }
 

@@ -106,6 +106,25 @@ export function createBookCatalogService({
 }) {
   const store = requiredRepository(repository)
 
+  async function ensureCanonicalAnalysis(edition) {
+    if (!analysisRepository || typeof analysisRepository.ensureAnalysisRun !== 'function') {
+      throw serviceError('ANALYSIS_UNAVAILABLE', 'Разметка v3 временно недоступна', 503)
+    }
+    const analysis = await analysisRepository.ensureAnalysisRun({
+      bookEditionId: edition.id,
+      inputHash: edition.contentSha256,
+      priority: 50
+    })
+    return {
+      analysisRunId: analysis.run.id,
+      analysisStage: analysis.run.stage,
+      analysisStatus: analysis.run.status,
+      analysisCreated: analysis.created,
+      jobId: analysis.prepareJob.id,
+      jobStatus: analysis.prepareJob.status
+    }
+  }
+
   async function v3Manifest(snapshot, bookEditionId, source = 'v3') {
     if (!analysisRepository || typeof analysisRepository.getLatestShadowAnalysisPublication !== 'function') {
       throw serviceError('ANALYSIS_UNAVAILABLE', 'Разметка v3 временно недоступна', 503)
@@ -158,6 +177,63 @@ export function createBookCatalogService({
     }
   }
 
+  function legacyManifest(snapshot, bookEditionId) {
+    if (!snapshot.markup) {
+      return {
+        book: bookBinding(snapshot.edition),
+        availability: 'processing',
+        readerTextOffset: snapshot.readerTextOffset,
+        readingFraction: snapshot.readingFraction,
+        readerSectionIndex: snapshot.readerSectionIndex,
+        readerSectionFraction: snapshot.readerSectionFraction,
+        markup: null,
+        characters: []
+      }
+    }
+    const characters = []
+    for (const character of snapshot.characters) {
+      const state = readerCharacterState(character, character.bundle, {
+        textOffset: snapshot.readerTextOffset,
+        sectionIndex: snapshot.readerSectionIndex,
+        sectionFraction: snapshot.readerSectionFraction
+      })
+      if (state === 'hidden') continue
+      characters.push({
+        characterKey: character.characterKey,
+        name: character.name,
+        fullName: character.fullName,
+        firstAppearanceTextOffset: character.firstAppearanceTextOffset,
+        state,
+        profile: character.data,
+        bundle: state === 'ready'
+          ? {
+              version: character.bundle.version,
+              assets: character.bundle.assets.map((asset) => publicAsset({
+                ...asset,
+                downloadPath: `/v2/books/${bookEditionId}/media/${asset.assetId}/download`
+              }))
+            }
+          : null
+      })
+    }
+    return {
+      book: bookBinding(snapshot.edition),
+      availability: 'ready',
+      readerTextOffset: snapshot.readerTextOffset,
+      readingFraction: snapshot.readingFraction,
+      readerSectionIndex: snapshot.readerSectionIndex,
+      readerSectionFraction: snapshot.readerSectionFraction,
+      markup: {
+        schemaVersion: snapshot.markup.schemaVersion,
+        analysisVersion: snapshot.markup.analysisVersion,
+        revision: snapshot.markup.revision,
+        textLength: snapshot.markup.textLength,
+        publishedAt: snapshot.markup.publishedAt
+      },
+      characters
+    }
+  }
+
   return {
     async listCatalog({ limit, cursor }) {
       const result = await store.listCatalogBooks({ limit, cursor })
@@ -193,6 +269,50 @@ export function createBookCatalogService({
         ...input
       })
       return bookBinding(edition)
+    },
+
+    async uploadLocalSource(subjectId, bookEditionId, bytes, contentType) {
+      if (typeof store.beginPrivateBookUpload !== 'function' ||
+          typeof store.completePrivateBookUpload !== 'function') {
+        throw new TypeError('private book upload repository is incomplete')
+      }
+      if (!storage) throw serviceError('UPLOAD_UNAVAILABLE', 'Загрузка книги временно недоступна', 503)
+      const sourceBytes = Buffer.from(bytes)
+      if (!sourceBytes.byteLength) {
+        throw serviceError('VALIDATION', 'Файл книги пуст', 400)
+      }
+      const contentSha256 = createHash('sha256').update(sourceBytes).digest('hex')
+      const objectKey = `books/private/${subjectId}/${contentSha256}/source`
+      const prepared = await store.beginPrivateBookUpload({
+        subjectId,
+        bookEditionId,
+        contentSha256,
+        objectKey,
+        mimeType: contentType,
+        byteSize: sourceBytes.byteLength
+      })
+      if (!prepared) throw serviceError('NOT_FOUND', 'Локальная книга не найдена', 404)
+      if (prepared.uploadRequired) {
+        const stored = await storage.putBytes({
+          objectKey: prepared.file.objectKey,
+          bytes: sourceBytes,
+          mimeType: prepared.file.mimeType
+        })
+        if (stored.contentHash !== prepared.file.contentSha256 ||
+            stored.byteSize !== prepared.file.byteSize) {
+          throw serviceError('UPLOAD_INTEGRITY', 'Хранилище вернуло другой checksum', 409)
+        }
+      }
+      const edition = prepared.uploadRequired
+        ? await store.completePrivateBookUpload({ subjectId, bookEditionId })
+        : prepared.edition
+      if (!edition) throw serviceError('NOT_FOUND', 'Локальная книга не найдена', 404)
+      const analysis = await ensureCanonicalAnalysis(edition)
+      return {
+        ...bookBinding(edition),
+        sourceUploaded: true,
+        ...analysis
+      }
     },
 
     async publishLocalMarkup(subjectId, bookEditionId, input) {
@@ -269,68 +389,9 @@ export function createBookCatalogService({
         bundleVersion
       })
       if (!snapshot) throw serviceError('NOT_FOUND', 'Книга не найдена', 404)
-      if (snapshot.edition?.scope === 'catalog') {
-        return v3Manifest(snapshot, bookEditionId)
-      }
-      if (!snapshot.markup) {
-        return {
-          book: bookBinding(snapshot.edition),
-          availability: 'processing',
-          readerTextOffset: snapshot.readerTextOffset,
-          readingFraction: snapshot.readingFraction,
-          readerSectionIndex: snapshot.readerSectionIndex,
-          readerSectionFraction: snapshot.readerSectionFraction,
-          markup: null,
-          characters: []
-        }
-      }
-
-      const characters = []
-      for (const character of snapshot.characters) {
-        const state = readerCharacterState(
-          character,
-          character.bundle,
-          {
-            textOffset: snapshot.readerTextOffset,
-            sectionIndex: snapshot.readerSectionIndex,
-            sectionFraction: snapshot.readerSectionFraction
-          }
-        )
-        if (state === 'hidden') continue
-        characters.push({
-          characterKey: character.characterKey,
-          name: character.name,
-          fullName: character.fullName,
-          firstAppearanceTextOffset: character.firstAppearanceTextOffset,
-          state,
-          profile: character.data,
-          bundle: state === 'ready'
-            ? {
-                version: character.bundle.version,
-                assets: character.bundle.assets.map((asset) => publicAsset({
-                  ...asset,
-                  downloadPath: `/v2/books/${bookEditionId}/media/${asset.assetId}/download`
-                }))
-              }
-            : null
-        })
-      }
-      return {
-        book: bookBinding(snapshot.edition),
-        availability: 'ready',
-        readerTextOffset: snapshot.readerTextOffset,
-        readingFraction: snapshot.readingFraction,
-        readerSectionIndex: snapshot.readerSectionIndex,
-        readerSectionFraction: snapshot.readerSectionFraction,
-        markup: {
-          schemaVersion: snapshot.markup.schemaVersion,
-          analysisVersion: snapshot.markup.analysisVersion,
-          revision: snapshot.markup.revision,
-          textLength: snapshot.markup.textLength,
-          publishedAt: snapshot.markup.publishedAt
-        },
-        characters
-      }
+      return analysisRepository?.getLatestShadowAnalysisPublication
+        ? v3Manifest(snapshot, bookEditionId)
+        : legacyManifest(snapshot, bookEditionId)
     },
 
     async shadowManifest(subjectId, bookEditionId) {
@@ -368,7 +429,9 @@ export function createBookCatalogService({
       })
       if (!progress) throw serviceError('NOT_FOUND', 'Книга не найдена', 404)
 
-      const charactersDue = progress.scope === 'catalog' ? [] : progress.charactersDue
+      const charactersDue = analysisRepository || progress.scope === 'catalog'
+        ? []
+        : progress.charactersDue
       const requests = await Promise.allSettled(charactersDue.map((character) =>
         ensureCharacterBundle(store, {
           bookEditionId,

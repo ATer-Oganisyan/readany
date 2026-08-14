@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import test from 'node:test'
 import { REQUIRED_CHARACTER_MEDIA } from '../book-markup.mjs'
 import { createBookCatalogService } from '../book-catalog-service.mjs'
@@ -247,6 +248,104 @@ test('catalog manifest does not fall back to legacy v2 while v3 is processing', 
   assert.equal(manifest.availability, 'processing')
   assert.equal(manifest.markup, null)
   assert.deepEqual(manifest.characters, [])
+})
+
+test('private manifest uses canonical v3 and never falls back to client-derived v2', async () => {
+  const service = createBookCatalogService({
+    repository: repository({
+      async getReaderBookManifest() {
+        return {
+          edition: { ...EDITION, sourceStorage: 'temporary' },
+          readerTextOffset: 154_110,
+          readingFraction: 0.15411,
+          markup: {
+            schemaVersion: 2,
+            analysisVersion: 'book-markup-v2',
+            revision: 1,
+            textLength: 1_000_000,
+            publishedAt: '2026-08-10T00:00:00.000Z'
+          },
+          characters: []
+        }
+      }
+    }),
+    analysisRepository: {
+      async getLatestShadowAnalysisPublication() { return null }
+    }
+  })
+
+  const manifest = await service.manifest('reader-1', EDITION.id)
+
+  assert.equal(manifest.source, 'v3')
+  assert.equal(manifest.availability, 'processing')
+  assert.equal(manifest.markup, null)
+  assert.deepEqual(manifest.characters, [])
+})
+
+test('private source upload verifies bytes, persists a temporary source and starts v3', async () => {
+  const bytes = Buffer.from('private epub fixture')
+  const contentSha256 = createHash('sha256').update(bytes).digest('hex')
+  const calls = []
+  const edition = {
+    ...EDITION,
+    contentSha256,
+    status: 'marking_up',
+    sourceStorage: 'temporary',
+    expiresAt: '2026-08-17T00:00:00.000Z'
+  }
+  const service = createBookCatalogService({
+    repository: repository({
+      async beginPrivateBookUpload(input) {
+        calls.push(['begin', input])
+        return {
+          edition: { ...edition, sourceStorage: 'local_only' },
+          uploadRequired: true,
+          file: {
+            objectKey: `books/private/reader-1/${contentSha256}/source`,
+            contentSha256,
+            mimeType: 'application/epub+zip',
+            byteSize: bytes.byteLength
+          }
+        }
+      },
+      async completePrivateBookUpload(input) {
+        calls.push(['complete', input])
+        return edition
+      }
+    }),
+    analysisRepository: {
+      async ensureAnalysisRun(input) {
+        calls.push(['analysis', input])
+        return {
+          run: { id: 'run-v3', stage: 'prepare', status: 'queued' },
+          prepareJob: { id: 'job-v3', status: 'queued' },
+          created: true
+        }
+      }
+    },
+    storage: {
+      async putBytes(input) {
+        calls.push(['store', input])
+        return {
+          objectKey: input.objectKey,
+          contentHash: contentSha256,
+          mimeType: input.mimeType,
+          byteSize: input.bytes.byteLength
+        }
+      }
+    }
+  })
+
+  const result = await service.uploadLocalSource(
+    'reader-1',
+    EDITION.id,
+    bytes,
+    'application/epub+zip'
+  )
+
+  assert.equal(result.sourceUploaded, true)
+  assert.equal(result.analysisRunId, 'run-v3')
+  assert.deepEqual(calls.map(([name]) => name), ['begin', 'store', 'complete', 'analysis'])
 })
 
 test('progress requests every character behind the markup warmup frontier', async () => {

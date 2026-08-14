@@ -167,6 +167,15 @@ test('local-only migration removes private source metadata and adds expiring obj
   assert.match(migration, /expires_at TIMESTAMPTZ/)
 })
 
+test('private v3 migration permits only expiring temporary source storage', async () => {
+  const migration = await readFile(
+    new URL('../migrations/008_private_v3_sources.sql', import.meta.url),
+    'utf8'
+  )
+  assert.match(migration, /scope = 'private' AND source_storage IN \('local_only', 'temporary'\)/)
+  assert.match(migration, /WHERE scope = 'private'/)
+})
+
 test('catalog cover migration stores one verified presentation asset per edition', async () => {
   const migration = await readFile(
     new URL('../migrations/004_catalog_covers.sql', import.meta.url),

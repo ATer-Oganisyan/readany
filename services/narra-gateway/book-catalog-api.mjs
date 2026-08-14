@@ -266,6 +266,7 @@ function bookJson(book) {
     generation_status: book.generationStatus,
     ready: book.ready,
     source_download_path: book.sourceDownloadPath,
+    source_uploaded: book.sourceUploaded,
     expires_at: book.expiresAt
   }
   if (book.cover) {
@@ -354,7 +355,8 @@ export function createBookCatalogRouter({
   repository,
   analysisRepository = null,
   shadowPreviewEnabled = false,
-  storage = null
+  storage = null,
+  uploadMaxBytes = 50 * 1024 * 1024
 }) {
   const router = express.Router()
   const service = createBookCatalogService({ repository, analysisRepository, storage })
@@ -401,6 +403,21 @@ export function createBookCatalogRouter({
         ...bookJson(result),
         markup_revision: result.markupRevision
       })
+    })
+  )
+
+  router.put(
+    '/:bookEditionId/source',
+    express.raw({ type: () => true, limit: uploadMaxBytes }),
+    asyncRoute(async (req, res) => {
+      if (!Buffer.isBuffer(req.body) || !req.body.byteLength) validation('book content: required')
+      const result = await service.uploadLocalSource(
+        subject(req),
+        uuid(req.params.bookEditionId, 'bookEditionId'),
+        req.body,
+        String(req.headers['content-type'] || '').split(';', 1)[0].trim().toLowerCase()
+      )
+      res.status(202).json(bookJson(result))
     })
   )
 
