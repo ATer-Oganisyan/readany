@@ -25,7 +25,7 @@
       "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE": "installation",
-        "EXPO_PUBLIC_NARRA_GATEWAY_URL": "https://api.narra.disrupt.builders"
+        "EXPO_PUBLIC_NARRA_GATEWAY_URL": "https://api-test.narra.disrupt.builders"
       }
     }
   },
