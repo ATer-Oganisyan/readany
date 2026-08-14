@@ -52,10 +52,13 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
   const validatedPortraitsRef = useRef(new Set<string>());
   const validatedBookIdRef = useRef(bookId);
   const autoAnalysisStartedRef = useRef(false);
+  const backendRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [analysisStage, setAnalysisStage] = useState("");
+  const [backendProcessing, setBackendProcessing] = useState(false);
   const [portraitLoading, setPortraitLoading] = useState<string | null>(null);
   const storedCharacters = bookState?.characters ?? [];
   const characters = storedCharacters;
+  const catalogBackendBook = bookState?.backendBinding?.resolution === "catalog";
   const visibleCharacters = useMemo(
     () => characters.filter((character) => isCharacterUnlocked(book?.progress ?? 0, character)),
     [book?.progress, characters],
@@ -66,10 +69,35 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
     recordTelemetry("character_opened", { feature: "character" });
   }, []);
 
+  const backendBookRef = useRef(book);
+  backendBookRef.current = book;
+  const backendBookSyncKey = book
+    ? `${book.id}\u0000${book.filePath}\u0000${book.fileHash ?? ""}`
+    : "";
   useEffect(() => {
-    if (!narraStoreHydrated || !book) return;
-    void openBackendBookSync(book);
-  }, [book, narraStoreHydrated]);
+    if (!narraStoreHydrated || !backendBookSyncKey) return;
+    let cancelled = false;
+
+    const refresh = async () => {
+      const currentBook = backendBookRef.current;
+      if (!currentBook) return;
+      const manifest = await openBackendBookSync(currentBook);
+      if (cancelled) return;
+      const processing = manifest?.availability === "processing";
+      setBackendProcessing(processing);
+      if (processing) {
+        backendRefreshTimerRef.current = setTimeout(refresh, 5_000);
+      }
+    };
+
+    if (catalogBackendBook && characters.length === 0) setBackendProcessing(true);
+    void refresh();
+    return () => {
+      cancelled = true;
+      if (backendRefreshTimerRef.current) clearTimeout(backendRefreshTimerRef.current);
+      backendRefreshTimerRef.current = null;
+    };
+  }, [backendBookSyncKey, catalogBackendBook, characters.length, narraStoreHydrated]);
 
   useEffect(() => {
     let cancelled = false;
@@ -276,7 +304,28 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
     >
       <ExtractorWebView ref={extractorRef} />
       <CharacterChatList items={listItems} />
-      {characters.length === 0 ? (
+      {characters.length === 0 && catalogBackendBook ? (
+        <CenteredEmptyState
+          title={
+            backendProcessing
+              ? t("narra.backendMarkupProcessingTitle", "Размечаю книгу…")
+              : t("narra.backendCharactersAheadTitle", "Персонажи ещё впереди")
+          }
+          description={
+            backendProcessing
+              ? t(
+                  "narra.backendMarkupProcessingDescription",
+                  "Персонажи появятся здесь автоматически, когда новая разметка будет готова",
+                )
+              : t(
+                  "narra.backendCharactersAheadDescription",
+                  "Они появятся здесь после встречи с ними в тексте",
+                )
+          }
+        >
+          {backendProcessing ? <ActivityIndicator color={colors.primary} /> : null}
+        </CenteredEmptyState>
+      ) : characters.length === 0 ? (
         <CenteredEmptyState
           title={t("narra.meetCharacters", "Персонажей пока нет")}
           description={t("narra.analysisDescription", "Найдём их в тексте книги")}

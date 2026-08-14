@@ -106,13 +106,13 @@ export function createBackendBookCoordinator({
   }
 
   async function applyManifest(bookId: string, manifest: BackendBookManifest): Promise<void> {
+    state.setManifestSource(bookId, manifest.source);
     if (manifest.availability === "processing" && manifest.characters.length === 0) return;
     const characters = await files.materialize(bookId, manifest);
     state.setCharacters(bookId, characters);
-    state.setManifestSource(bookId, manifest.source);
   }
 
-  async function open(book: Book): Promise<void> {
+  async function open(book: Book): Promise<BackendBookManifest | undefined> {
     const cached = await files.loadCached(book.id);
     if (cached.length) state.setCharacters(book.id, cached);
     try {
@@ -129,9 +129,12 @@ export function createBackendBookCoordinator({
       if (binding.resolution === "private" && localCharacters.length) {
         state.setBinding(book.id, await api.publish(bookEditionId, localCharacters));
       }
-      await applyManifest(book.id, await api.manifest(bookEditionId));
+      const manifest = await api.manifest(bookEditionId);
+      await applyManifest(book.id, manifest);
+      return manifest;
     } catch (error) {
       state.reportError("book_open", error);
+      return undefined;
     }
   }
 
@@ -272,7 +275,7 @@ const coordinator = createBackendBookCoordinator({
   state: defaultState,
 });
 
-export function openBackendBookSync(book: Book): Promise<void> {
+export function openBackendBookSync(book: Book): Promise<BackendBookManifest | undefined> {
   return coordinator.open(book);
 }
 

@@ -197,4 +197,22 @@ describe("backend book coordinator", () => {
     expect(value.api.manifest).toHaveBeenCalledWith("edition-1");
     expect(value.calls).toContain("set-source:v3");
   });
+
+  it("returns and records an empty processing manifest so the UI can keep polling", async () => {
+    const value = fixture();
+    const processing: BackendBookManifest = {
+      source: "v3",
+      availability: "processing",
+      readerTextOffset: 0,
+      readingFraction: null,
+      characters: [],
+    };
+    value.api.manifest = vi.fn(async () => processing);
+
+    const result = await createBackendBookCoordinator(value).open(BOOK);
+
+    expect(result).toEqual(processing);
+    expect(value.calls).toContain("set-source:v3");
+    expect(value.calls).not.toContain("materialize");
+  });
 });
