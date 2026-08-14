@@ -109,11 +109,12 @@ do not apply the same migration twice.
 Worker and internal generator logs are single-line operational messages. They
 show the book/job identifiers, title, selected analysis chunk ranges, character
 names, media stages, providers, byte sizes and durations without logging source
-text, prompts, credentials or generated payloads. Follow both processes on i167:
+text, prompts, credentials or generated payloads. Follow both staging processes
+on i167:
 
 ```bash
-sudo docker compose --env-file /srv/narra-stagging/compose.env \
-  -f /srv/narra-stagging/compose.yml --profile book-backend \
+sudo docker compose --env-file /srv/nara-stagging/compose.env \
+  -f /srv/nara-stagging/compose.yml --profile book-backend \
   logs -f --tail=200 gateway book-markup-worker
 ```
 
@@ -232,12 +233,19 @@ the Gateway service.
 Copy `.env.example` to `.env` only for local development. Secrets belong in the
 deployment environment and must never be committed or shipped to the Expo app.
 
-## i167 production
+## i167 staging and production
 
 The current production inventory, Railway retirement state and staging policy
 are recorded in [`docs/narra-infrastructure.md`](../../docs/narra-infrastructure.md).
 This directory is the canonical gateway source; do not redeploy the historical
 copy from the standalone Narra repository.
+
+The test Gateway is the separate i167 deployment rooted at
+`/srv/nara-stagging` and exposed only as
+`https://api-test.narra.disrupt.builders`. Mobile development, preview and the
+current production build configuration all use that hostname. Do not point a
+staging verification command at the production Gateway or reuse the production
+Compose project and volumes.
 
 Production is a single Docker replica behind Caddy on `127.0.0.1:8788`. The
 file-backed installation registry and analytics outbox live in the external
