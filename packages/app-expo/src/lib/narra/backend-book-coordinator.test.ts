@@ -6,6 +6,7 @@ import {
   type BackendBookCoordinatorFiles,
   type BackendBookCoordinatorState,
   createBackendBookCoordinator,
+  shouldRefreshBackendManifest,
 } from "./backend-book-coordinator";
 import type { NarraCharacter } from "./types";
 
@@ -143,6 +144,50 @@ function fixture() {
 }
 
 describe("backend book coordinator", () => {
+  it("keeps refreshing while canonical character media is preparing", () => {
+    expect(
+      shouldRefreshBackendManifest({
+        source: "v3",
+        availability: "ready",
+        readerTextOffset: 100,
+        readingFraction: 0.1,
+        characters: [
+          {
+            characterKey: "egor",
+            name: "Егор",
+            fullName: "Егор",
+            firstAppearanceTextOffset: 0,
+            state: "preparing",
+            profile: {},
+            bundle: null,
+          },
+        ],
+      }),
+    ).toBe(true);
+  });
+
+  it("stops refreshing only when markup and visible media are ready", () => {
+    expect(
+      shouldRefreshBackendManifest({
+        source: "v3",
+        availability: "ready",
+        readerTextOffset: 100,
+        readingFraction: 0.1,
+        characters: [
+          {
+            characterKey: "egor",
+            name: "Егор",
+            fullName: "Егор",
+            firstAppearanceTextOffset: 0,
+            state: "ready",
+            profile: {},
+            bundle: { version: "v1", assets: [] },
+          },
+        ],
+      }),
+    ).toBe(false);
+  });
+
   it("shares concurrent binding, uploads a private source once and starts canonical v3", async () => {
     const value = fixture();
     const coordinator = createBackendBookCoordinator(value);

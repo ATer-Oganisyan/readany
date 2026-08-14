@@ -1,8 +1,13 @@
 import { NativeCharacterDetailsCells } from "@/components/narra/NativeCharacterDetailsCells";
+import { NarraLoopVideo } from "@/components/narra/NarraLoopVideo";
 import { CharacterPortraitImage } from "@/components/narra/character-portrait-image";
 import { Text } from "@/components/ui/Typography";
 import { NarraAudioPlayer } from "@/lib/narra/audio-player";
 import { hasCharacterPortrait, resolveCharacterPortraitUri } from "@/lib/narra/character-portrait";
+import {
+  resolvePreparedGreetingAudioUri,
+  resolvePreparedIdleAnimationUri,
+} from "@/lib/narra/character-prepared-media";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
 import { reportNarraError } from "@/lib/narra/errors";
 import { ensureCharacterPortrait, synthesizeNarraSpeech } from "@/lib/narra/media";
@@ -363,7 +368,12 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
       ""
     ).trim();
     const sampleVoice = liveCharacter.voiceOverride || liveCharacter.voice;
-    const canSample = Boolean(samplePhrase && sampleVoice);
+    const preparedGreetingAudioUri = resolvePreparedGreetingAudioUri(
+      liveCharacter,
+      samplePhrase,
+    );
+    const idleAnimationUri = resolvePreparedIdleAnimationUri(liveCharacter);
+    const canSample = Boolean(preparedGreetingAudioUri || (samplePhrase && sampleVoice));
 
     const toggleVoiceSample = () => {
       if (voiceState !== "idle") {
@@ -373,9 +383,12 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
       if (!canSample) return;
       const requestId = ++voiceRequestRef.current;
       setVoiceState("loading");
-      void synthesizeNarraSpeech(samplePhrase, sampleVoice, {
-        prosody: liveCharacter.voiceOverride ? undefined : liveCharacter.voiceProsody,
-      })
+      const audioUri = preparedGreetingAudioUri
+        ? Promise.resolve(preparedGreetingAudioUri)
+        : synthesizeNarraSpeech(samplePhrase, sampleVoice, {
+            prosody: liveCharacter.voiceOverride ? undefined : liveCharacter.voiceProsody,
+          });
+      void audioUri
         .then((uri) => {
           if (voiceRequestRef.current !== requestId) return;
           setVoiceState("playing");
@@ -420,6 +433,15 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
               )
             }
           />
+          {idleAnimationUri && !portraitBusy ? (
+            <View pointerEvents="none" style={styles.portraitVideoLayer}>
+              <NarraLoopVideo
+                uri={idleAnimationUri}
+                style={styles.portraitVideo}
+                accessibilityLabel={t("narra.animatedPortrait", "Оживлённый портрет героя")}
+              />
+            </View>
+          ) : null}
           {embedded && portraitUri ? (
             <ProgressivePortraitTransition
               uri={portraitUri}
@@ -738,6 +760,13 @@ const makeStyles = (colors: ThemeColors) =>
       borderRadius: 0,
     },
     portraitImage: { width: "100%", height: "100%" },
+    portraitVideoLayer: {
+      ...StyleSheet.absoluteFill,
+    },
+    portraitVideo: {
+      width: "100%",
+      height: "100%",
+    },
     portraitLetter: {
       color: colors.mutedForeground,
       fontFamily: serifTextFontFamily.bold,

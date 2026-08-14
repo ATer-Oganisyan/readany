@@ -20,7 +20,12 @@ import {
 import { fetchEdgeTTSAudio } from "./edge-tts";
 import { type ChunkBoundary, resolveCurrentChunk } from "./playback-cursor";
 import { splitIntoChunks } from "./text-utils";
-import { normalizeXiaomiTTSVoice, type ITTSPlayer, type TTSConfig } from "./types";
+import {
+  DEFAULT_TTS_CONFIG,
+  normalizeXiaomiTTSVoice,
+  type ITTSPlayer,
+  type TTSConfig,
+} from "./types";
 
 // ── Browser SpeechSynthesis ──
 
@@ -1049,7 +1054,7 @@ export class EdgeTTSPlayer implements ITTSPlayer {
       }
     }, 200);
 
-    const voice = config.edgeVoice || "zh-CN-XiaoxiaoNeural";
+    const voice = config.edgeVoice || DEFAULT_TTS_CONFIG.edgeVoice;
     const lang = voice.split("-").slice(0, 2).join("-");
     const base = { voice, lang, rate: config.rate, pitch: config.pitch };
 

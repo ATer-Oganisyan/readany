@@ -29,6 +29,14 @@ export function supportsBackendBookMarkup(format: string): boolean {
   return SUPPORTED_FORMATS.has(format);
 }
 
+export function shouldRefreshBackendManifest(manifest: BackendBookManifest | undefined): boolean {
+  if (!manifest) return false;
+  return (
+    manifest.availability === "processing" ||
+    manifest.characters.some((character) => character.state === "preparing")
+  );
+}
+
 export interface BackendBookCoordinatorApi {
   resolve(contentSha256: string): Promise<BackendBookBinding>;
   register(book: Book, contentSha256: string): Promise<BackendBookBinding>;

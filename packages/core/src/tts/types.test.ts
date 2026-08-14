@@ -1,12 +1,18 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  DEFAULT_TTS_CONFIG,
   DEFAULT_XIAOMI_TTS_VOICE,
   XIAOMI_TTS_VOICES,
   normalizeTTSConfig,
 } from "./types";
 
 describe("normalizeTTSConfig", () => {
+  it("defaults Russian readers to a Russian Edge voice", () => {
+    expect(DEFAULT_TTS_CONFIG.edgeVoice).toBe("ru-RU-SvetlanaNeural");
+    expect(normalizeTTSConfig(undefined).edgeVoice).toBe("ru-RU-SvetlanaNeural");
+  });
+
   it("preserves persisted default profile settings", () => {
     const config = normalizeTTSConfig({
       engine: "openai-compatible",

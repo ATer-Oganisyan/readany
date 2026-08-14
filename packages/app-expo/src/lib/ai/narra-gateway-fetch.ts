@@ -9,7 +9,7 @@ const INSTALLATION_TOKEN_KEY = "narra.gateway.installation-token";
 const INSTALLATION_TOKEN_EXPIRY_KEY = "narra.gateway.installation-token-expires-at";
 const TOKEN_EXPIRY_SKEW_MS = 30_000;
 const DEFAULT_TIMEOUT_MS = 60_000;
-const IMAGE_TIMEOUT_MS = 150_000;
+const IMAGE_TIMEOUT_MS = 330_000;
 // Только legacy synchronous cover route держит длинное соединение. Durable
 // cover-job POST/GET короткие и используют обычный сетевой таймаут.
 const COVER_TIMEOUT_MS = 180_000;
@@ -320,12 +320,7 @@ async function directGatewayRequest(path: string, init: RequestInit): Promise<Re
       headers.set("authorization", `Bearer ${await getInstallationToken(forceRefresh)}`);
     }
     const controller = new AbortController();
-    const requestTimeout =
-      path === "/v2/media/cover"
-        ? COVER_TIMEOUT_MS
-        : path.startsWith("/v2/media/images")
-          ? IMAGE_TIMEOUT_MS
-          : DEFAULT_TIMEOUT_MS;
+    const requestTimeout = gatewayRequestTimeoutMs(path);
     const timeout = setTimeout(() => controller.abort(), requestTimeout);
     try {
       return await configuredFetch(url, { ...init, headers, signal: controller.signal });
@@ -344,6 +339,12 @@ async function directGatewayRequest(path: string, init: RequestInit): Promise<Re
     }
   }
   return response;
+}
+
+export function gatewayRequestTimeoutMs(path: string): number {
+  if (path === "/v2/media/cover") return COVER_TIMEOUT_MS;
+  if (path.startsWith("/v2/media/images")) return IMAGE_TIMEOUT_MS;
+  return DEFAULT_TIMEOUT_MS;
 }
 
 export async function narraGatewayRequest(path: string, init: RequestInit = {}): Promise<Response> {

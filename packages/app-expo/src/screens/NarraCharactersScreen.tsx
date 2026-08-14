@@ -12,6 +12,7 @@ import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import {
   openBackendBookSync,
+  shouldRefreshBackendManifest,
   supportsBackendBookMarkup,
 } from "@/lib/narra/backend-book-coordinator";
 import { analyzeBookCharacters } from "@/lib/narra/character-analysis";
@@ -88,7 +89,7 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
       if (cancelled) return;
       const processing = manifest?.availability === "processing";
       setBackendProcessing(processing);
-      if (processing) {
+      if (shouldRefreshBackendManifest(manifest)) {
         backendRefreshTimerRef.current = setTimeout(refresh, 5_000);
       }
     };

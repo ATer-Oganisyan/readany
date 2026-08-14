@@ -12,6 +12,7 @@ import {
 import { Platform } from "react-native";
 import TrackPlayer from "react-native-track-player";
 import { create } from "zustand";
+import { migrateLegacyNarraEdgeVoice } from "../lib/reader/tts-default";
 import { ExpoSpeechTTSPlayer } from "../lib/platform/expo-speech-player";
 import { canUseSystemTtsSynthesis } from "../lib/platform/system-tts-synthesis";
 import { TrackPlayerDashScopeTTSPlayer } from "../lib/platform/track-player-dashscope-player";
@@ -663,7 +664,9 @@ export const useTTSStore = create<TTSState>()(
     } as Partial<TTSState>,
     (persisted) => ({
       ...persisted,
-      config: normalizeTTSConfig((persisted as TTSState).config),
+      config: migrateLegacyNarraEdgeVoice(
+        normalizeTTSConfig((persisted as TTSState).config),
+      ),
     }),
   ),
 );

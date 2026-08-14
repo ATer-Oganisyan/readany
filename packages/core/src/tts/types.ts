@@ -22,7 +22,7 @@ export interface TTSConfig {
   rate: number;
   /** Speech pitch (0.5 - 2.0) */
   pitch: number;
-  /** Edge TTS voice ID (e.g. "zh-CN-XiaoxiaoNeural") */
+  /** Edge TTS voice ID (e.g. "ru-RU-SvetlanaNeural") */
   edgeVoice: string;
   /** DashScope API Key (optional, for high-quality TTS) */
   dashscopeApiKey: string;
@@ -165,7 +165,7 @@ export const DEFAULT_TTS_CONFIG: TTSConfig = {
   systemVoiceLabel: "",
   rate: 1.0,
   pitch: 1.0,
-  edgeVoice: "zh-CN-XiaoxiaoNeural",
+  edgeVoice: "ru-RU-SvetlanaNeural",
   dashscopeApiKey: "",
   dashscopeVoice: "Cherry",
   xiaomiApiKey: "",

@@ -320,6 +320,14 @@ describe("Narra gateway installation recovery", () => {
   });
 });
 
+describe("Narra gateway request timeouts", () => {
+  it("keeps scene image requests alive longer than the backend Kandinsky window", async () => {
+    const { gatewayRequestTimeoutMs } = await import("./narra-gateway-fetch");
+
+    expect(gatewayRequestTimeoutMs("/v2/media/images")).toBeGreaterThan(300_000);
+  });
+});
+
 describe("Narra gateway build configuration", () => {
   it("uses the i167 test gateway when a native build has no Expo environment", async () => {
     vi.resetModules();

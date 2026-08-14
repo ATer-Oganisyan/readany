@@ -6,6 +6,7 @@ import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import { NarraAudioPlayer } from "@/lib/narra/audio-player";
 import { normalizeCharacterChatPlaceholder } from "@/lib/narra/chat-placeholder";
+import { resolvePreparedGreetingAudioUri } from "@/lib/narra/character-prepared-media";
 import { isCharacterUnlocked, normalizeReadingProgress } from "@/lib/narra/domain";
 import { reportNarraError } from "@/lib/narra/errors";
 import { synthesizeNarraSpeech } from "@/lib/narra/media";
@@ -356,15 +357,16 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
 
       setSpeakingId(message.id);
       try {
-        const uri = await synthesizeNarraSpeech(
-          content,
-          character.voiceOverride || character.voice,
-          { prosody: character.voiceOverride ? undefined : character.voiceProsody },
-        );
+        const preparedUri = resolvePreparedGreetingAudioUri(character, content);
+        const uri =
+          preparedUri ??
+          (await synthesizeNarraSpeech(content, character.voiceOverride || character.voice, {
+            prosody: character.voiceOverride ? undefined : character.voiceProsody,
+          }));
         audioRef.current.play(uri, () => setSpeakingId(null));
         recordTelemetry("tts_playback_started", {
           source: "character",
-          cache_hit: false,
+          cache_hit: Boolean(preparedUri),
           origin: "user",
         });
       } catch (error) {

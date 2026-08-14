@@ -12,8 +12,8 @@
  */
 import { createAudioPlayer, type AudioPlayer } from "expo-audio";
 import { File, Paths } from "expo-file-system";
+import { DEFAULT_TTS_CONFIG, fetchEdgeTTSAudio } from "@readany/core/tts";
 import type { ITTSPlayer, TTSConfig } from "@readany/core/tts";
-import { fetchEdgeTTSAudio } from "@readany/core/tts";
 import { splitIntoChunks } from "@readany/core/tts";
 
 const CHUNK_MAX_CHARS = 500;
@@ -329,7 +329,7 @@ export class ExpoAVEdgeTTSPlayer implements ITTSPlayer {
   private async _fetchChunkFile(index: number): Promise<string> {
     if (this._stopped) throw new Error("aborted");
     const config = this._config!;
-    const voice = config.edgeVoice || "zh-CN-XiaoxiaoNeural";
+    const voice = config.edgeVoice || DEFAULT_TTS_CONFIG.edgeVoice;
     const lang = voice.split("-").slice(0, 2).join("-");
 
     const mp3Data = await fetchEdgeTTSAudio({
