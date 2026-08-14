@@ -89,6 +89,10 @@ function responseJson(value) {
     upload_path: value.uploadPath,
     complete_path: value.completePath,
     byte_size: value.byteSize,
+    analysis_run_id: value.analysisRunId,
+    analysis_stage: value.analysisStage,
+    analysis_status: value.analysisStatus,
+    analysis_created: value.analysisCreated,
     job_id: value.jobId,
     job_status: value.jobStatus
   }
@@ -110,11 +114,12 @@ function coverResponseJson(value) {
 export function createCatalogIngestRouter({
   token,
   repository,
+  analysisRepository,
   storage,
   uploadMaxBytes = 50 * 1024 * 1024
 }) {
   const router = express.Router()
-  const service = createCatalogIngestService({ repository, storage })
+  const service = createCatalogIngestService({ repository, analysisRepository, storage })
   router.use(requireOperatorAuth(token))
 
   router.post('/books/uploads', express.json({ limit: '16kb' }), asyncRoute(async (req, res) => {

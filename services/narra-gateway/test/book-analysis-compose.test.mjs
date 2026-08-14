@@ -13,8 +13,8 @@ const stages = {
   publish: '["node", "book-analysis-stage-worker-runner.mjs", "publish"]'
 }
 
-test('shadow analysis deploys every stage as an independently scalable service', () => {
-  assert.match(compose, /profiles: \["book-analysis-shadow"\]/)
+test('canonical v3 analysis deploys every stage by default as an independently scalable service', () => {
+  assert.doesNotMatch(compose, /profiles: \["book-analysis-shadow"\]/)
   for (const [stage, command] of Object.entries(stages)) {
     const service = `  book-analysis-${stage}:\n`
     assert.ok(compose.includes(service), `missing ${stage} service`)

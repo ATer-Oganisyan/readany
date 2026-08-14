@@ -381,17 +381,20 @@ test('PostgreSQL analysis workers claim different scan shards and reclaim an exp
     })
     assert.equal(publication.status, 'ready')
     const finalState = await pool.query(
-      `SELECT run.stage, run.status,
+      `SELECT run.stage, run.status, edition.status AS edition_status,
               (SELECT count(*)::integer FROM book_analysis_publications
                WHERE run_id = run.id AND channel = 'shadow') AS shadow_publications,
               (SELECT count(*)::integer FROM book_markup_versions
                WHERE book_edition_id = run.book_edition_id) AS visible_v2_markups
-       FROM book_analysis_runs AS run WHERE run.id = $1`,
+       FROM book_analysis_runs AS run
+       JOIN book_editions AS edition ON edition.id = run.book_edition_id
+       WHERE run.id = $1`,
       [runId]
     )
     assert.deepEqual(finalState.rows[0], {
       stage: 'publish',
       status: 'ready',
+      edition_status: 'base_ready',
       shadow_publications: 1,
       visible_v2_markups: 0
     })

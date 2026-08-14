@@ -19,7 +19,6 @@ x-book-analysis-storage-environment: &book-analysis-storage-environment
   BOOK_STORAGE_SECRET_ACCESS_KEY: ${NARRA_STORAGE_SECRET_ACCESS_KEY:?NARRA_STORAGE_SECRET_ACCESS_KEY is required}
 
 x-book-analysis-worker: &book-analysis-worker
-  profiles: ["book-analysis-shadow"]
   image: ${NARRA_GATEWAY_IMAGE:?NARRA_GATEWAY_IMAGE must contain an immutable image tag}
   healthcheck:
     disable: true

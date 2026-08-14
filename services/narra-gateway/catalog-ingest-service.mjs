@@ -26,8 +26,31 @@ function coverResult(cover, extra = {}) {
   }
 }
 
-export function createCatalogIngestService({ repository, storage, idFactory = randomUUID }) {
+export function createCatalogIngestService({
+  repository,
+  analysisRepository = null,
+  storage,
+  idFactory = randomUUID
+}) {
   if (!repository || !storage) throw new TypeError('catalog repository and storage are required')
+  const ensureCanonicalAnalysis = async (edition) => {
+    if (!analysisRepository || typeof analysisRepository.ensureAnalysisRun !== 'function') {
+      throw new TypeError('book analysis repository is required for catalog ingestion')
+    }
+    const analysis = await analysisRepository.ensureAnalysisRun({
+      bookEditionId: edition.id,
+      inputHash: edition.contentSha256,
+      priority: 50
+    })
+    return {
+      analysisRunId: analysis.run.id,
+      analysisStage: analysis.run.stage,
+      analysisStatus: analysis.run.status,
+      analysisCreated: analysis.created,
+      jobId: analysis.prepareJob.id,
+      jobStatus: analysis.prepareJob.status
+    }
+  }
   return {
     async begin(input) {
       const proposedBookEditionId = idFactory()
@@ -37,10 +60,11 @@ export function createCatalogIngestService({ repository, storage, idFactory = ra
         objectKey,
         ...input
       })
-      if (!prepared.uploadRequired && !['base_ready', 'published'].includes(prepared.edition.status)) {
-        await repository.enqueueBookMarkup({ bookEditionId: prepared.edition.id })
-      }
+      const analysis = prepared.uploadRequired
+        ? {}
+        : await ensureCanonicalAnalysis(prepared.edition)
       return result(prepared.edition, {
+        ...analysis,
         uploadRequired: prepared.uploadRequired,
         uploadPath: prepared.uploadRequired
           ? `/v2/admin/catalog/books/${prepared.edition.id}/content`
@@ -81,8 +105,8 @@ export function createCatalogIngestService({ repository, storage, idFactory = ra
       await storage.verifyUpload(upload.file)
       const edition = await repository.completeCatalogBookUpload({ bookEditionId })
       if (!edition) throw serviceError('NOT_FOUND', 'Каталожная книга не найдена', 404)
-      const job = await repository.enqueueBookMarkup({ bookEditionId })
-      return result(edition, { jobId: job.id, jobStatus: job.status })
+      const analysis = await ensureCanonicalAnalysis(edition)
+      return result(edition, analysis)
     },
 
     async beginCover(bookEditionId, input) {

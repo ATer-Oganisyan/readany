@@ -281,8 +281,13 @@ function bookJson(book) {
 
 function manifestJson(manifest) {
   return {
+    source: manifest.source,
     book: bookJson(manifest.book),
     availability: manifest.availability,
+    publication_id: manifest.publicationId,
+    run_id: manifest.runId,
+    content_hash: manifest.contentHash,
+    published_at: manifest.publishedAt,
     reader_text_offset: manifest.readerTextOffset,
     reading_fraction: manifest.readingFraction,
     reader_section_index: manifest.readerSectionIndex,

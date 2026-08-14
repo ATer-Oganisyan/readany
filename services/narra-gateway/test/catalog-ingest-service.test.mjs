@@ -10,7 +10,7 @@ const EDITION = {
   status: 'uploading'
 }
 
-test('catalog ingestion verifies bytes, stores the source and queues markup', async () => {
+test('catalog ingestion verifies bytes, stores the source and queues canonical v3 analysis', async () => {
   const calls = []
   const repository = {
     async beginCatalogBookUpload(input) {
@@ -41,9 +41,18 @@ test('catalog ingestion verifies bytes, stores the source and queues markup', as
       calls.push(['complete'])
       return { ...EDITION, status: 'marking_up' }
     },
-    async enqueueBookMarkup(input) {
-      calls.push(['enqueue', input])
-      return { id: 'job-1', status: 'queued' }
+    async enqueueBookMarkup() {
+      throw new Error('legacy v2 markup must not be queued')
+    }
+  }
+  const analysisRepository = {
+    async ensureAnalysisRun(input) {
+      calls.push(['ensure-analysis', input])
+      return {
+        created: true,
+        run: { id: 'run-v3', stage: 'prepare', status: 'running' },
+        prepareJob: { id: 'prepare-v3', status: 'queued' }
+      }
     }
   }
   const storage = {
@@ -58,6 +67,7 @@ test('catalog ingestion verifies bytes, stores the source and queues markup', as
   }
   const service = createCatalogIngestService({
     repository,
+    analysisRepository,
     storage,
     idFactory: () => 'book-1'
   })
@@ -71,7 +81,47 @@ test('catalog ingestion verifies bytes, stores the source and queues markup', as
   assert.equal(calls[1][0], 'put')
   const completed = await service.complete('book-1')
   assert.equal(completed.jobStatus, 'queued')
-  assert.deepEqual(calls.at(-1), ['enqueue', { bookEditionId: 'book-1' }])
+  assert.equal(completed.analysisRunId, 'run-v3')
+  assert.deepEqual(calls.at(-1), ['ensure-analysis', {
+    bookEditionId: 'book-1',
+    inputHash: HASH,
+    priority: 50
+  }])
+})
+
+test('repeated catalog ingestion ensures v3 analysis without creating a v2 job', async () => {
+  const calls = []
+  const service = createCatalogIngestService({
+    repository: {
+      async beginCatalogBookUpload() {
+        return { edition: { ...EDITION, status: 'base_ready' }, uploadRequired: false }
+      },
+      async enqueueBookMarkup() {
+        throw new Error('legacy v2 markup must not be queued')
+      }
+    },
+    analysisRepository: {
+      async ensureAnalysisRun(input) {
+        calls.push(input)
+        return {
+          created: false,
+          run: { id: 'run-v3', stage: 'done', status: 'ready' },
+          prepareJob: { id: 'prepare-v3', status: 'ready' }
+        }
+      }
+    },
+    storage: {},
+    idFactory: () => 'book-1'
+  })
+
+  const begun = await service.begin({
+    catalogKey: 'catalog-book', contentSha256: HASH, title: 'Book', author: 'Author',
+    format: 'epub', mimeType: 'application/epub+zip', byteSize: BYTES.byteLength
+  })
+
+  assert.equal(begun.uploadRequired, false)
+  assert.equal(begun.analysisRunId, 'run-v3')
+  assert.deepEqual(calls, [{ bookEditionId: 'book-1', inputHash: HASH, priority: 50 }])
 })
 
 test('catalog ingestion rejects source bytes with a different checksum', async () => {

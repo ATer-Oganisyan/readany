@@ -105,7 +105,7 @@ test('manifest exposes no partial media when a visible bundle is incomplete', as
   assert.equal(manifest.characters[0].bundle, null)
 })
 
-test('shadow preview exposes validated v3 characters without replacing the public v2 manifest', async () => {
+test('catalog manifest exposes validated v3 as the canonical markup', async () => {
   const publicSnapshot = {
     edition: { ...EDITION, scope: 'catalog', catalogKey: 'book' },
     readerTextOffset: 100,
@@ -189,9 +189,10 @@ test('shadow preview exposes validated v3 characters without replacing the publi
     }
   })
 
-  const preview = await service.shadowManifest('reader-1', EDITION.id)
+  const preview = await service.manifest('reader-1', EDITION.id)
 
-  assert.equal(preview.source, 'shadow-v3')
+  assert.equal(preview.source, 'v3')
+  assert.equal(preview.availability, 'ready')
   assert.equal(preview.publicationId, 'publication-v3')
   assert.equal(preview.readerTextOffset, 1_000)
   assert.deepEqual(preview.characters, [{
@@ -209,11 +210,43 @@ test('shadow preview exposes validated v3 characters without replacing the publi
       appearancePrompt: '',
       greeting: 'Здравствуйте',
       voice: 'Bys',
-      analysisSource: 'shadow-v3'
+      analysisSource: 'v3'
     },
     bundle: null
   }])
-  assert.equal(publicSnapshot.markup.analysisVersion, 'book-markup-v2')
+  assert.equal(preview.markup.analysisVersion, 'book-markup-v3')
+})
+
+test('catalog manifest does not fall back to legacy v2 while v3 is processing', async () => {
+  const service = createBookCatalogService({
+    repository: repository({
+      async getReaderBookManifest() {
+        return {
+          edition: { ...EDITION, scope: 'catalog', catalogKey: 'book' },
+          readerTextOffset: 100,
+          readingFraction: 0.1,
+          markup: {
+            schemaVersion: 2,
+            analysisVersion: 'book-markup-v2',
+            revision: 7,
+            textLength: 1_000,
+            publishedAt: '2026-08-10T00:00:00.000Z'
+          },
+          characters: [{ characterKey: 'legacy-character' }]
+        }
+      }
+    }),
+    analysisRepository: {
+      async getLatestShadowAnalysisPublication() { return null }
+    }
+  })
+
+  const manifest = await service.manifest('reader-1', EDITION.id)
+
+  assert.equal(manifest.source, 'v3')
+  assert.equal(manifest.availability, 'processing')
+  assert.equal(manifest.markup, null)
+  assert.deepEqual(manifest.characters, [])
 })
 
 test('progress requests every character behind the markup warmup frontier', async () => {
@@ -245,6 +278,33 @@ test('progress requests every character behind the markup warmup frontier', asyn
   assert.deepEqual(ensured.map(({ characterKey }) => characterKey), ['hero', 'future'])
   assert.equal(result.readingFraction, 0.09)
   assert.deepEqual(result.warmup, { requested: 2, ready: 1, pending: 1, failed: 0 })
+})
+
+test('catalog progress never queues legacy v2 character bundles', async () => {
+  const service = createBookCatalogService({
+    repository: repository({
+      async advanceReaderPosition() {
+        return {
+          scope: 'catalog',
+          readerTextOffset: 90,
+          readingFraction: 0.09,
+          chapterKey: 'chapter-2',
+          charactersDue: [{ characterKey: 'legacy-v2-character' }]
+        }
+      },
+      async ensureCharacterBundle() {
+        throw new Error('legacy v2 character bundle must not be queued for catalog books')
+      }
+    })
+  })
+
+  const result = await service.advanceProgress('reader-1', 'book-1', {
+    progressFraction: 0.09,
+    textOffset: null,
+    chapterKey: 'chapter-2'
+  })
+
+  assert.deepEqual(result.warmup, { requested: 0, ready: 0, pending: 0, failed: 0 })
 })
 
 test('local hash reuses a ready catalog edition and otherwise requests local registration', async () => {

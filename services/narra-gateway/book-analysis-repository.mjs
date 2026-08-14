@@ -1521,6 +1521,11 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
           `UPDATE book_analysis_runs SET status = 'ready' WHERE id = $1`,
           [job.runId]
         )
+        await client.query(
+          `UPDATE book_editions SET status = 'base_ready', updated_at = now()
+           WHERE id = $1 AND scope = 'catalog' AND status IN ('marking_up', 'failed')`,
+          [run.rows[0].book_edition_id]
+        )
         return { publicationId, channel: 'shadow', status: 'ready' }
       })
     },

@@ -1191,6 +1191,7 @@ if (bookMarkupRepository && bookObjectStorage) {
   app.use('/v2/admin/catalog', createCatalogIngestRouter({
     token: CATALOG_INGEST_TOKEN,
     repository: bookMarkupRepository,
+    analysisRepository: bookAnalysisRepository,
     storage: bookObjectStorage,
     uploadMaxBytes: BOOK_UPLOAD_MAX_BYTES
   }))
