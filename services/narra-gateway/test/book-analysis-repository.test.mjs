@@ -124,7 +124,7 @@ test('analysis jobs are claimed fairly across books before another chunk from th
 test('prepare completion writes chunks and scan jobs before advancing the barrier', async () => {
   const pool = scriptedPool([
     () => ({ rows: [{ id: 'prepare-1', max_attempts: 5, attempts: 1 }] }),
-    () => ({ rows: [{ id: 'run-1' }] }),
+    () => ({ rows: [{ id: 'run-1', text_length: '100' }] }),
     () => ({ rows: [] }),
     () => ({ rows: [] }),
     () => ({ rows: [] }),
@@ -191,7 +191,7 @@ test('resolve completion freezes evidence before advancing to synthesize', async
   }
   const pool = scriptedPool([
     () => ({ rows: [{ id: 'resolve-1', max_attempts: 5, attempts: 1 }] }),
-    () => ({ rows: [{ id: 'run-1' }] }),
+    () => ({ rows: [{ id: 'run-1', text_length: '100' }] }),
     () => ({ rows: [observation] }),
     () => ({ rows: [] }),
     () => ({ rows: [] }),

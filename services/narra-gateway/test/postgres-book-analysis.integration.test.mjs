@@ -306,6 +306,16 @@ test('PostgreSQL analysis workers claim different scan shards and reclaim an exp
       }),
       (error) => error.code === 'RESOLUTION_OUTPUT_INCOMPLETE'
     )
+    await assert.rejects(
+      repository.completeResolve(resolve, {
+        observationSetHash: resolveInput.observationSetHash,
+        observationCount: resolveInput.observations.length,
+        entities: entities.map((entity) => entity.entityKind === 'character'
+          ? { ...entity, resolutionStatus: 'rejected' }
+          : entity)
+      }),
+      (error) => error.code === 'ANALYSIS_CHARACTERS_MISSING'
+    )
     const rolledBack = await pool.query(
       `SELECT
          (SELECT count(*)::integer FROM book_analysis_entities WHERE run_id = $1) AS entities,

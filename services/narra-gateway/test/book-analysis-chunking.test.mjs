@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createStableBookChunks } from '../book-analysis-chunking.mjs'
+import {
+  BOOK_ANALYSIS_CHUNK_DEFAULTS,
+  createStableBookChunks
+} from '../book-analysis-chunking.mjs'
 
 function fixture() {
   const first = Array.from({ length: 120 }, (_, index) =>
@@ -126,4 +129,24 @@ test('chunking rejects a section map with gaps', () => {
     maxChars: 6,
     overlapChars: 1
   }), /contiguously/)
+})
+
+test('default chunks keep a short book inside the scan coverage budget', () => {
+  const text = 'Сюжетный абзац с Евгением и Парашей.\n\n'.repeat(390).slice(0, 15_805)
+  const chunks = createStableBookChunks({
+    runId: 'short-book-coverage-run',
+    text,
+    sections: [{ key: 'book', startOffset: 0, endOffset: text.length }]
+  })
+
+  assert.deepEqual(BOOK_ANALYSIS_CHUNK_DEFAULTS, {
+    targetChars: 4_000,
+    minChars: 2_500,
+    maxChars: 5_000,
+    overlapChars: 500
+  })
+  assert.ok(chunks.length >= 3)
+  assert.ok(chunks.every((chunk) =>
+    chunk.coreEndOffset - chunk.coreStartOffset <= BOOK_ANALYSIS_CHUNK_DEFAULTS.maxChars
+  ))
 })

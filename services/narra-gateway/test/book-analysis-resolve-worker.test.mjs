@@ -4,6 +4,7 @@ import { createBookAnalysisResolveWorker } from '../book-analysis-resolve-worker
 
 const input = {
   runId: 'run-1',
+  textLength: 100,
   observationSetHash: 'a'.repeat(64),
   observations: [{
     id: '11111111-1111-4111-8111-111111111111',
@@ -77,4 +78,58 @@ test('resolve worker retries its lease after invalid resolution input', async ()
   assert.equal(result.status, 'failed')
   assert.equal(result.errorCode, 'RESOLUTION_INPUT_INVALID')
   assert.equal(failure.job.id, 'job-2')
+})
+
+test('resolve worker rejects grounded facts that cover only the beginning of a book', async () => {
+  let failure
+  const observations = [
+    { offset: 178, type: 'location', entityKind: 'location', candidate: 'Петербург' },
+    { offset: 214, type: 'event', entityKind: 'event', candidate: 'Происшествие' },
+    { offset: 273, type: 'event', entityKind: 'event', candidate: 'Наводнение' }
+  ].map(({ offset, type, entityKind, candidate }, index) => ({
+    id: `11111111-1111-4111-8111-11111111111${index}`,
+    observationKey: `obs:${index}`,
+    type,
+    entityKind,
+    entityCandidate: candidate,
+    relatedEntityCandidates: [],
+    fact: `${candidate}: подтверждённый факт`,
+    evidence: {
+      quote: 'подтверждение',
+      startOffset: offset,
+      endOffset: offset + 13,
+      chapterKey: 'book'
+    },
+    confidence: 0.99
+  }))
+  const worker = createBookAnalysisResolveWorker({
+    repository: {
+      async claimAnalysisJob() {
+        return { id: 'job-3', runId: 'run-3', stage: 'resolve', leaseToken: 'lease-3' }
+      },
+      async getResolveInput() {
+        return {
+          ...input,
+          runId: 'run-3',
+          textLength: 15_805,
+          observations
+        }
+      },
+      async renewAnalysisJobLease() {},
+      async completeResolve() { assert.fail('incomplete analysis must not advance') },
+      async failAnalysisJob(job, errorCode) {
+        failure = { job, errorCode }
+        return { status: 'queued' }
+      }
+    },
+    workerId: 'resolve-worker-3',
+    leaseSeconds: 60,
+    leaseRenewMs: 10_000,
+    logger: { info() {}, warn() {}, error() {} }
+  })
+
+  const result = await worker.runOnce()
+  assert.equal(result.status, 'failed')
+  assert.equal(result.errorCode, 'ANALYSIS_TEXT_COVERAGE_INCOMPLETE')
+  assert.equal(failure.errorCode, 'ANALYSIS_TEXT_COVERAGE_INCOMPLETE')
 })

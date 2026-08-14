@@ -9,6 +9,7 @@ import {
   normalizeBookMarkupV3,
   normalizeBookAnalysisResolvedEntity
 } from './book-analysis-contracts.mjs'
+import { assessBookAnalysisCoverage } from './book-analysis-quality.mjs'
 import { REQUIRED_CHARACTER_MEDIA, characterBundleIdempotencyKey } from './book-markup.mjs'
 import { isSupportedVoice } from './voices.mjs'
 
@@ -1194,6 +1195,17 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
           throw repositoryError(
             'RESOLUTION_INPUT_CHANGED',
             'observation set changed while the resolve job was running'
+          )
+        }
+        const quality = assessBookAnalysisCoverage({
+          textLength: Number(run.rows[0].text_length),
+          observations,
+          entities: normalizedEntities
+        })
+        if (!quality.valid) {
+          throw repositoryError(
+            quality.errorCodes[0],
+            `analysis coverage rejected: ${quality.errorCodes.join(', ')}`
           )
         }
         const knownEvidenceIds = new Set(observations.map(({ id }) => id))

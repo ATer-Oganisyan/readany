@@ -1,4 +1,5 @@
 import { resolveBookAnalysisEntities } from './book-analysis-resolver.mjs'
+import { assessBookAnalysisCoverage } from './book-analysis-quality.mjs'
 import { createOperationalLogger } from './operational-log.mjs'
 
 function safeErrorCode(error) {
@@ -27,6 +28,23 @@ export function createBookAnalysisResolveWorker({
   async function resolve(job) {
     const input = await repository.getResolveInput(job)
     const entities = await resolveEntities({ observations: input.observations })
+    const quality = assessBookAnalysisCoverage({
+      textLength: input.textLength,
+      observations: input.observations,
+      entities
+    })
+    if (!quality.valid) {
+      log.warn('resolve.quality_rejected', 'Разметка не прошла проверку полноты', {
+        run: input.runId,
+        error_codes: quality.errorCodes,
+        covered_bands: quality.coveredBandCount,
+        required_bands: quality.requiredBandCount,
+        confirmed_characters: quality.confirmedCharacterCount
+      })
+      throw Object.assign(new Error('book analysis coverage is incomplete'), {
+        code: quality.errorCodes[0]
+      })
+    }
     const result = await repository.completeResolve(job, {
       observationSetHash: input.observationSetHash,
       observationCount: input.observations.length,

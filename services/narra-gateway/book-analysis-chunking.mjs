@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto'
 
 const DEFAULTS = Object.freeze({
-  targetChars: 14_000,
-  minChars: 8_000,
-  maxChars: 18_000,
-  overlapChars: 1_800
+  targetChars: 4_000,
+  minChars: 2_500,
+  maxChars: 5_000,
+  overlapChars: 500
 })
 
 function invalid(message) {
