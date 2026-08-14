@@ -1233,6 +1233,7 @@ if (bookMarkupRepository && bookObjectStorage) {
       username: BOOK_OPERATOR_USERNAME,
       password: BOOK_OPERATOR_PASSWORD,
       dashboardRepository: bookOperatorRepository,
+      analysisRepository: bookAnalysisRepository,
       catalogService: catalogIngestService,
       uploadMaxBytes: BOOK_UPLOAD_MAX_BYTES
     }))

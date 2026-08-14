@@ -185,6 +185,17 @@ test('v3 media migration accepts canonical namespaced character keys', async () 
   assert.match(migration, /book_characters_key_v3/)
 })
 
+test('analysis rerun migration versions runs without replacing prior publications', async () => {
+  const migration = await readFile(
+    new URL('../migrations/010_book_analysis_reruns.sql', import.meta.url),
+    'utf8'
+  )
+  assert.match(migration, /ADD COLUMN run_sequence INTEGER NOT NULL DEFAULT 1/)
+  assert.match(migration, /UNIQUE \(book_edition_id, input_hash, pipeline_version, prompt_version, run_sequence\)/)
+  assert.doesNotMatch(migration, /DELETE FROM book_analysis_publications/)
+  assert.doesNotMatch(migration, /UPDATE book_analysis_publications/)
+})
+
 test('catalog cover migration stores one verified presentation asset per edition', async () => {
   const migration = await readFile(
     new URL('../migrations/004_catalog_covers.sql', import.meta.url),

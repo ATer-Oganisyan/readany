@@ -9,6 +9,67 @@ import { runBookMarkupMigrations } from '../postgres-runtime.mjs'
 
 const connectionString = process.env.BOOK_MARKUP_TEST_DATABASE_URL
 
+test('PostgreSQL creates one isolated rerun and deduplicates concurrent restart requests', {
+  skip: !connectionString
+}, async () => {
+  const { default: pg } = await import('pg')
+  const pool = new pg.Pool({ connectionString, ssl: false, max: 4 })
+  const bookEditionId = randomUUID()
+  const hash = createHash('sha256').update(`rerun-${bookEditionId}`).digest('hex')
+  try {
+    await runBookMarkupMigrations(pool, { logger: { info() {} } })
+    await pool.query(
+      `INSERT INTO book_editions (
+         id, scope, catalog_key, content_sha256, title, author, format, status
+       ) VALUES ($1, 'catalog', $2, $3, 'Rerun Test', '', 'epub', 'marking_up')`,
+      [bookEditionId, `rerun-${bookEditionId}`, hash]
+    )
+    await pool.query(
+      `INSERT INTO book_files (
+         book_edition_id, object_key, mime_type, byte_size, content_hash, status
+       ) VALUES ($1, $2, 'application/epub+zip', 10, $3, 'ready')`,
+      [bookEditionId, `rerun/${bookEditionId}/source`, hash]
+    )
+    const repository = createPostgresBookAnalysisRepository(pool)
+    const first = await repository.ensureAnalysisRun({ bookEditionId, inputHash: hash })
+    const active = await repository.restartAnalysisRun({ bookEditionId })
+    assert.equal(active.created, false)
+    assert.equal(active.run.id, first.run.id)
+
+    await pool.query(
+      `UPDATE book_analysis_jobs SET status = 'cancelled'
+       WHERE run_id = $1 AND status = 'queued'`,
+      [first.run.id]
+    )
+    await pool.query(
+      `UPDATE book_analysis_runs SET status = 'cancelled' WHERE id = $1`,
+      [first.run.id]
+    )
+
+    const restarted = await Promise.all([
+      repository.restartAnalysisRun({ bookEditionId }),
+      repository.restartAnalysisRun({ bookEditionId })
+    ])
+    assert.equal(restarted.filter((value) => value.created).length, 1)
+    assert.equal(new Set(restarted.map((value) => value.run.id)).size, 1)
+    assert.equal(restarted[0].run.runSequence, 2)
+    assert.equal(restarted[0].run.restartedFromRunId, first.run.id)
+
+    const original = await repository.ensureAnalysisRun({ bookEditionId, inputHash: hash })
+    assert.equal(original.run.id, first.run.id)
+    assert.equal(original.run.runSequence, 1)
+    const count = await pool.query(
+      `SELECT count(*)::integer AS count
+       FROM book_analysis_runs WHERE book_edition_id = $1`,
+      [bookEditionId]
+    )
+    assert.equal(count.rows[0].count, 2)
+  } finally {
+    await pool.query('DELETE FROM book_editions WHERE id = $1', [bookEditionId]).catch(() => {})
+    await pool.end()
+  }
+})
+
 test('PostgreSQL analysis barriers reject incomplete or skipped stages', {
   skip: !connectionString
 }, async () => {

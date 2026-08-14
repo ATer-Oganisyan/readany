@@ -71,6 +71,7 @@ input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px #0088ff20; }
 .empty-mark { width: 72px; height: 72px; border-radius: 22px; display: grid; place-items: center; background: var(--primary); color: #fff; font-size: 32px; font-weight: 700; box-shadow: var(--shadow); }
 .book-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 20px; }
 .book-heading .muted { margin: 0; }
+.book-heading-actions { display: flex; align-items: center; gap: 12px; }
 .heading-progress { text-align: right; display: grid; }
 .heading-progress strong { font-size: 32px; line-height: 32px; }
 .heading-progress span { color: var(--primary-60); font-size: 13px; }

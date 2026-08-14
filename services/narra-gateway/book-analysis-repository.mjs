@@ -45,6 +45,13 @@ function validateLeaseSeconds(value) {
   return value
 }
 
+function validatePriority(value) {
+  if (!Number.isSafeInteger(value) || value < -1_000 || value > 1_000) {
+    throw new RangeError('priority must be between -1000 and 1000')
+  }
+  return value
+}
+
 function runRow(row) {
   if (!row) return null
   return {
@@ -54,6 +61,8 @@ function runRow(row) {
     pipelineVersion: row.pipeline_version,
     promptVersion: row.prompt_version,
     inputHash: row.input_hash,
+    runSequence: Number(row.run_sequence ?? 1),
+    restartedFromRunId: row.restarted_from_run_id ?? undefined,
     stage: row.stage,
     status: row.status,
     normalizedTextObjectKey: row.normalized_text_object_key ?? undefined,
@@ -483,22 +492,23 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
         pipelineVersion,
         promptVersion
       })
-      if (!Number.isSafeInteger(priority) || priority < -1_000 || priority > 1_000) {
-        throw new RangeError('priority must be between -1000 and 1000')
-      }
+      const safePriority = validatePriority(priority)
       return transaction(pool, async (client) => {
         const inserted = await client.query(
           `INSERT INTO book_analysis_runs (
-             id, idempotency_key, book_edition_id, pipeline_version, prompt_version, input_hash
+             id, idempotency_key, book_edition_id, pipeline_version, prompt_version,
+             input_hash, run_sequence
            )
-           SELECT $1, $2, edition.id, $4, $5, $3
+           SELECT $1, $2, edition.id, $4, $5, $3, 1
            FROM book_editions AS edition
            JOIN book_files AS file
              ON file.book_edition_id = edition.id
             AND file.status = 'ready'
             AND file.content_hash = edition.content_sha256
            WHERE edition.id = $6 AND edition.content_sha256 = $3
-           ON CONFLICT (book_edition_id, input_hash, pipeline_version, prompt_version)
+           ON CONFLICT (
+             book_edition_id, input_hash, pipeline_version, prompt_version, run_sequence
+           )
            DO NOTHING
            RETURNING *`,
           [idFactory(), idempotencyKey, inputHash, pipelineVersion, promptVersion, bookEditionId]
@@ -509,6 +519,7 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
               `SELECT * FROM book_analysis_runs
                WHERE book_edition_id = $1 AND input_hash = $2
                  AND pipeline_version = $3 AND prompt_version = $4
+                 AND run_sequence = 1
                FOR UPDATE`,
               [bookEditionId, inputHash, pipelineVersion, promptVersion]
             )
@@ -525,7 +536,7 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
            ) VALUES ($1, $2, 'prepare', 'book', true, $3)
            ON CONFLICT (run_id, stage, shard_key) DO NOTHING
            RETURNING *`,
-          [idFactory(), row.id, priority]
+          [idFactory(), row.id, safePriority]
         )
         const selectedJob = job.rows[0]
           ? job
@@ -538,6 +549,93 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
           run: runRow(row),
           prepareJob: jobRow(selectedJob.rows[0]),
           created: Boolean(inserted.rows[0])
+        }
+      })
+    },
+
+    async restartAnalysisRun({
+      bookEditionId,
+      pipelineVersion = BOOK_ANALYSIS_PIPELINE_VERSION,
+      promptVersion = BOOK_ANALYSIS_PROMPT_VERSION,
+      priority = 100
+    }) {
+      const safeBookEditionId = validateIdentifier(bookEditionId, 'bookEditionId')
+      const safePipelineVersion = validateIdentifier(pipelineVersion, 'pipelineVersion')
+      const safePromptVersion = validateIdentifier(promptVersion, 'promptVersion')
+      const safePriority = validatePriority(priority)
+      return transaction(pool, async (client) => {
+        const source = await client.query(
+          `SELECT edition.id, edition.content_sha256
+           FROM book_editions AS edition
+           JOIN book_files AS file
+             ON file.book_edition_id = edition.id
+            AND file.status = 'ready'
+            AND file.content_hash = edition.content_sha256
+           WHERE edition.id = $1
+           FOR UPDATE OF edition`,
+          [safeBookEditionId]
+        )
+        const edition = source.rows[0]
+        if (!edition) {
+          throw repositoryError(
+            'BOOK_ANALYSIS_SOURCE_UNAVAILABLE',
+            'book edition or verified stored source is unavailable'
+          )
+        }
+        const inputHash = validateHash(edition.content_sha256, 'contentSha256')
+        const latestResult = await client.query(
+          `SELECT * FROM book_analysis_runs
+           WHERE book_edition_id = $1 AND input_hash = $2
+             AND pipeline_version = $3 AND prompt_version = $4
+           ORDER BY run_sequence DESC
+           LIMIT 1 FOR UPDATE`,
+          [safeBookEditionId, inputHash, safePipelineVersion, safePromptVersion]
+        )
+        const latest = latestResult.rows[0]
+        if (latest && ['queued', 'running'].includes(latest.status)) {
+          const prepare = await client.query(
+            `SELECT * FROM book_analysis_jobs
+             WHERE run_id = $1 AND stage = 'prepare' AND shard_key = 'book'`,
+            [latest.id]
+          )
+          return {
+            run: runRow(latest),
+            prepareJob: jobRow(prepare.rows[0]),
+            created: false
+          }
+        }
+
+        const runSequence = Number(latest?.run_sequence ?? 0) + 1
+        const baseIdempotencyKey = bookAnalysisRunIdempotencyKey({
+          bookEditionId: safeBookEditionId,
+          inputHash,
+          pipelineVersion: safePipelineVersion,
+          promptVersion: safePromptVersion
+        })
+        const runId = idFactory()
+        const inserted = await client.query(
+          `INSERT INTO book_analysis_runs (
+             id, idempotency_key, book_edition_id, input_hash,
+             pipeline_version, prompt_version, run_sequence, restarted_from_run_id
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+           RETURNING *`,
+          [
+            runId, `${baseIdempotencyKey}:rerun:${runSequence}`,
+            safeBookEditionId, inputHash, safePipelineVersion, safePromptVersion,
+            runSequence, latest?.id ?? null
+          ]
+        )
+        const prepareJob = await client.query(
+          `INSERT INTO book_analysis_jobs (
+             id, run_id, stage, shard_key, required, priority
+           ) VALUES ($1, $2, 'prepare', 'book', true, $3)
+           RETURNING *`,
+          [idFactory(), runId, safePriority]
+        )
+        return {
+          run: runRow(inserted.rows[0]),
+          prepareJob: jobRow(prepareJob.rows[0]),
+          created: true
         }
       })
     },

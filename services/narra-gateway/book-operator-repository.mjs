@@ -48,6 +48,8 @@ function runValue(row) {
     pipelineVersion: row.pipeline_version,
     promptVersion: row.prompt_version,
     inputHash: row.input_hash,
+    runSequence: number(row.run_sequence || 1),
+    restartedFromRunId: row.restarted_from_run_id ?? undefined,
     normalizedTextHash: row.normalized_text_hash ?? undefined,
     textLength: row.text_length == null ? undefined : number(row.text_length),
     stage: row.stage,
@@ -207,7 +209,7 @@ export function createPostgresBookOperatorRepository(pool) {
        SELECT DISTINCT ON (run.book_edition_id) run.*
        FROM book_analysis_runs AS run
        ${runFilter}
-       ORDER BY run.book_edition_id, run.created_at DESC, run.id DESC`,
+       ORDER BY run.book_edition_id, run.run_sequence DESC, run.created_at DESC, run.id DESC`,
       editionParameters
     )
     const publicationsPromise = pool.query(

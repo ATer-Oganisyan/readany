@@ -33,6 +33,51 @@ test('analysis run key binds source and both pipeline versions', () => {
   }), `book-analysis:book-1:${'a'.repeat(64)}:book-analysis-v8:scan-v1`)
 })
 
+test('restart creates the next isolated run and leaves the previous publication untouched', async () => {
+  const ids = [
+    '123e4567-e89b-42d3-a456-426614174010',
+    '123e4567-e89b-42d3-a456-426614174011'
+  ]
+  const pool = scriptedPool([
+    () => ({ rows: [{
+      id: '123e4567-e89b-42d3-a456-426614174001',
+      content_sha256: 'a'.repeat(64)
+    }] }),
+    () => ({ rows: [{
+      id: '123e4567-e89b-42d3-a456-426614174002',
+      book_edition_id: '123e4567-e89b-42d3-a456-426614174001',
+      input_hash: 'a'.repeat(64), pipeline_version: 'book-analysis-v8',
+      prompt_version: 'book-scan-v4', run_sequence: 1,
+      stage: 'publish', status: 'ready'
+    }] }),
+    (_sql, params) => ({ rows: [{
+      id: params[0], idempotency_key: params[1],
+      book_edition_id: params[2], input_hash: params[3],
+      pipeline_version: params[4], prompt_version: params[5],
+      run_sequence: params[6], stage: 'prepare', status: 'queued'
+    }] }),
+    (_sql, params) => ({ rows: [{
+      id: params[0], run_id: params[1], stage: 'prepare', shard_key: 'book',
+      status: 'queued', priority: params[2], attempts: 0, max_attempts: 5,
+      payload: {}
+    }] })
+  ])
+  const repository = createPostgresBookAnalysisRepository(pool, {
+    idFactory: () => ids.shift()
+  })
+
+  const restarted = await repository.restartAnalysisRun({
+    bookEditionId: '123e4567-e89b-42d3-a456-426614174001',
+    priority: 100
+  })
+
+  assert.equal(restarted.created, true)
+  assert.equal(restarted.run.runSequence, 2)
+  assert.equal(restarted.prepareJob.priority, 100)
+  assert.ok(pool.queries.some(({ sql }) => /INSERT INTO book_analysis_runs/.test(sql)))
+  assert.ok(pool.queries.every(({ sql }) => !/(UPDATE|DELETE FROM) book_analysis_publications/.test(sql)))
+})
+
 test('analysis jobs are claimed with stage isolation, skip locked and expiring leases', async () => {
   const pool = scriptedPool([
     () => ({ rows: [] }),

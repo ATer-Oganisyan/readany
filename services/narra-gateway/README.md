@@ -118,12 +118,13 @@ sudo docker compose --env-file /srv/narra-stagging/compose.env \
   logs -f --tail=200 gateway book-markup-worker
 ```
 
-### Parallel book analysis shadow pipeline
+### Parallel book analysis pipeline
 
-The v8 analysis pipeline is operator-only and produces v3 markup without
-replacing the reader-visible v2 markup. Start one idempotent run for a verified stored book directly in the
-Gateway container, inspect its stage/job counters, and read the final shadow
-publication:
+The v8 analysis pipeline produces canonical v3 markup. Its immutable audit
+publication uses the internal `shadow` channel name, then atomically materializes
+the reader-visible v3 revision and media jobs. Start one idempotent run for a
+verified stored book directly in the Gateway container, inspect its stage/job
+counters, read the publication, or create a new isolated rerun:
 
 The complete architecture, evidence filtering rules, versioning contract,
 failure handling, scaling guidance and operator runbook are documented in
@@ -132,6 +133,8 @@ failure handling, scaling guidance and operator runbook are documented in
 ```bash
 docker compose exec gateway npm run book-analysis -- \
   start --book-edition-id <book-edition-uuid>
+docker compose exec gateway npm run book-analysis -- \
+  restart --book-edition-id <book-edition-uuid>
 docker compose exec gateway npm run book-analysis -- \
   status --run-id <analysis-run-uuid>
 docker compose exec gateway npm run book-analysis -- \
@@ -211,6 +214,7 @@ password must differ from every bearer/signing secret. The UI provides:
 - observed, resolved and published characters plus portrait/audio/animation status;
 - a chronological analysis and generation operation log;
 - formatted publication, artifact and canonical-markup JSON;
+- an explicit per-book v3 restart that keeps the current publication active until the replacement passes validation;
 - catalog book and cover upload with visible checksum, transfer and pipeline progress.
 
 The browser upload routes and `/v2/admin/catalog/*` routes receive the same

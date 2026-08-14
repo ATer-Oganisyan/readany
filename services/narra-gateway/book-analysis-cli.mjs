@@ -2,6 +2,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 
 export const BOOK_ANALYSIS_CLI_USAGE = `Usage:
   npm run book-analysis -- start --book-edition-id <uuid> [--priority <number>]
+  npm run book-analysis -- restart --book-edition-id <uuid> [--priority <number>]
   npm run book-analysis -- status --run-id <uuid>
   npm run book-analysis -- result --run-id <uuid>`
 
@@ -29,7 +30,7 @@ export function parseBookAnalysisCommand(argv) {
     throw cliError('USAGE', BOOK_ANALYSIS_CLI_USAGE)
   }
   const command = argv[0]
-  if (!['start', 'status', 'result'].includes(command)) {
+  if (!['start', 'restart', 'status', 'result'].includes(command)) {
     throw cliError('USAGE', BOOK_ANALYSIS_CLI_USAGE)
   }
   const options = {}
@@ -45,14 +46,16 @@ export function parseBookAnalysisCommand(argv) {
     options[name] = value
   }
 
-  if (command === 'start') {
+  if (command === 'start' || command === 'restart') {
     const allowed = new Set(['--book-edition-id', '--priority'])
     const unknown = Object.keys(options).find((name) => !allowed.has(name))
     if (unknown) throw cliError('INVALID_ARGUMENT', `unsupported option: ${unknown}`)
     return {
       command,
       bookEditionId: requireUuid(options['--book-edition-id'], '--book-edition-id'),
-      priority: options['--priority'] === undefined ? 50 : parsePriority(options['--priority'])
+      priority: options['--priority'] === undefined
+        ? command === 'restart' ? 100 : 50
+        : parsePriority(options['--priority'])
     }
   }
 
@@ -68,6 +71,7 @@ function requireRepository(repository) {
   const methods = [
     'getReadyAnalysisSource',
     'ensureAnalysisRun',
+    'restartAnalysisRun',
     'getAnalysisRunDetails',
     'getShadowAnalysisPublication'
   ]
@@ -99,6 +103,35 @@ export async function executeBookAnalysisCommand({ argv, repository }) {
       created: started.created,
       run: started.run,
       prepareJobId: started.prepareJob.id,
+      book: {
+        id: source.id,
+        scope: source.scope,
+        catalogKey: source.catalogKey,
+        title: source.title,
+        author: source.author,
+        contentSha256: source.contentSha256
+      }
+    }
+  }
+
+  if (input.command === 'restart') {
+    const source = await repository.getReadyAnalysisSource(input.bookEditionId)
+    if (!source) {
+      throw cliError(
+        'BOOK_ANALYSIS_SOURCE_UNAVAILABLE',
+        'book edition or verified stored source is unavailable'
+      )
+    }
+    const restarted = await repository.restartAnalysisRun({
+      bookEditionId: source.id,
+      priority: input.priority
+    })
+    return {
+      ok: true,
+      command: 'restart',
+      created: restarted.created,
+      run: restarted.run,
+      prepareJobId: restarted.prepareJob.id,
       book: {
         id: source.id,
         scope: source.scope,

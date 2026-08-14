@@ -29,6 +29,13 @@ function operatorRepository(overrides = {}) {
         prepareJob: { id: '33333333-3333-4333-8333-333333333333' }
       }
     },
+    async restartAnalysisRun() {
+      return {
+        created: true,
+        run: { id: RUN_ID, runSequence: 2, stage: 'prepare', status: 'queued' },
+        prepareJob: { id: '33333333-3333-4333-8333-333333333333' }
+      }
+    },
     async getAnalysisRunDetails() {
       return {
         run: { id: RUN_ID, stage: 'scan', status: 'running' },
@@ -51,6 +58,11 @@ test('operator CLI parses only explicit UUID commands', () => {
   assert.deepEqual(parseBookAnalysisCommand(['status', '--run-id', RUN_ID]), {
     command: 'status', runId: RUN_ID
   })
+  assert.deepEqual(parseBookAnalysisCommand([
+    'restart', '--book-edition-id', BOOK_ID, '--priority', '100'
+  ]), {
+    command: 'restart', bookEditionId: BOOK_ID, priority: 100
+  })
   assert.throws(
     () => parseBookAnalysisCommand(['result', '--run-id', 'not-a-uuid']),
     (error) => error.code === 'INVALID_ARGUMENT'
@@ -59,6 +71,26 @@ test('operator CLI parses only explicit UUID commands', () => {
     () => parseBookAnalysisCommand([]),
     (error) => error.code === 'USAGE' && error.message === BOOK_ANALYSIS_CLI_USAGE
   )
+})
+
+test('restart starts a new isolated run for the verified stored source', async () => {
+  let restartInput
+  const result = await executeBookAnalysisCommand({
+    argv: ['restart', '--book-edition-id', BOOK_ID],
+    repository: operatorRepository({
+      async restartAnalysisRun(input) {
+        restartInput = input
+        return {
+          created: true,
+          run: { id: RUN_ID, runSequence: 2, stage: 'prepare', status: 'queued' },
+          prepareJob: { id: '33333333-3333-4333-8333-333333333333' }
+        }
+      }
+    })
+  })
+  assert.deepEqual(restartInput, { bookEditionId: BOOK_ID, priority: 100 })
+  assert.equal(result.command, 'restart')
+  assert.equal(result.run.runSequence, 2)
 })
 
 test('start uses the verified stored source hash and remains idempotent', async () => {

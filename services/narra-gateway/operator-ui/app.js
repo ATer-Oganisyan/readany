@@ -34,7 +34,7 @@ const elements = Object.fromEntries([
   'book-list', 'book-search', 'summary-strip', 'empty-state', 'book-panel', 'book-title',
   'book-author', 'book-meta', 'heading-percent', 'heading-status', 'stage-grid', 'metric-grid',
   'character-grid', 'character-count', 'refreshed-at', 'operation-list', 'json-view', 'toast',
-  'upload-form', 'upload-steps', 'upload-live-detail', 'live-label'
+  'upload-form', 'upload-steps', 'upload-live-detail', 'live-label', 'restart-book'
 ].map((id) => [id, document.getElementById(id)]))
 
 function escapeHtml(value) {
@@ -141,6 +141,11 @@ function renderDetail(detail) {
   elements['book-meta'].textContent = `${book.scope === 'catalog' ? 'Каталог' : 'Личная'} · ${book.format.toUpperCase()} · ${book.catalogKey || book.id}`
   elements['heading-percent'].textContent = `${progress.percent}%`
   elements['heading-status'].textContent = `${stageLabels[progress.stage] || progress.stage} · ${statusLabels[progress.status] || progress.status}`
+  elements['restart-book'].hidden = false
+  elements['restart-book'].disabled = ['queued', 'running'].includes(progress.status)
+  elements['restart-book'].textContent = elements['restart-book'].disabled
+    ? 'v3 выполняется'
+    : 'Перезапустить v3'
   elements['refreshed-at'].textContent = `Обновлено ${formatDate(detail.refreshedAt, { timeOnly: true })}`
 
   elements['stage-grid'].innerHTML = stageOrder.map((stage, index) => {
@@ -254,6 +259,7 @@ function openUpload() {
   elements['empty-state'].hidden = true
   elements['book-panel'].hidden = false
   if (!state.selectedId) {
+    elements['restart-book'].hidden = true
     elements['book-title'].textContent = 'Новая книга'
     elements['book-author'].textContent = 'Загрузите файл — v3 запустится автоматически'
     elements['book-meta'].textContent = 'Каталог'
@@ -403,6 +409,26 @@ elements['book-list'].addEventListener('click', (event) => {
 })
 elements['book-search'].addEventListener('input', (event) => { state.search = event.target.value; renderBookList() })
 document.getElementById('open-upload').addEventListener('click', openUpload)
+elements['restart-book'].addEventListener('click', async () => {
+  if (!state.selectedId || elements['restart-book'].disabled) return
+  const title = state.detail?.book?.title || 'эту книгу'
+  const confirmed = globalThis.confirm(
+    `Перезапустить v3-разметку для «${title}»? Текущий опубликованный результат останется доступен до успешного завершения нового.`
+  )
+  if (!confirmed) return
+  elements['restart-book'].disabled = true
+  elements['restart-book'].textContent = 'Запускаю…'
+  try {
+    const result = await api(`books/${state.selectedId}/restart`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}'
+    })
+    toast(result.created ? `Запущена v3-разметка №${result.run.runSequence}` : 'v3-разметка уже выполняется')
+    await refresh()
+  } catch (error) {
+    toast(error.message, true)
+    await refresh()
+  }
+})
 document.querySelector('.tabs').addEventListener('click', (event) => {
   const tab = event.target.closest('[data-tab]')
   if (tab) void setTab(tab.dataset.tab).catch((error) => toast(error.message, true))

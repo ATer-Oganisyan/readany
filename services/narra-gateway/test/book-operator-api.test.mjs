@@ -50,6 +50,22 @@ function dependencies(overrides = {}) {
       async uploadCover() { throw new Error('not used') },
       async completeCover() { throw new Error('not used') }
     },
+    analysisRepository: {
+      async restartAnalysisRun(input) {
+        calls.push(['restart-analysis', input])
+        return {
+          created: true,
+          run: {
+            id: '55555555-5555-4555-8555-555555555555',
+            bookEditionId: BOOK_ID,
+            runSequence: 2,
+            stage: 'prepare',
+            status: 'queued'
+          },
+          prepareJob: { id: '66666666-6666-4666-8666-666666666666', status: 'queued' }
+        }
+      }
+    },
     ...overrides
   }
 }
@@ -99,6 +115,7 @@ test('operator UI exposes live book summaries, details, operations and formatted
     assert.match(html, /Разметка книг/)
     assert.match(html, /<script defer src="\.\/assets\/app\.js"><\/script>/)
     assert.doesNotMatch(html, /type="module"/)
+    assert.match(html, />Перезапустить v3</)
     assert.match(page.headers.get('content-security-policy'), /frame-ancestors 'none'/)
 
     const styles = await fetch(`${baseUrl}/operator/assets/styles.css`, {
@@ -114,7 +131,9 @@ test('operator UI exposes live book summaries, details, operations and formatted
       headers: { authorization: AUTH }
     })
     assert.equal(script.status, 200)
-    assert.doesNotMatch(await script.text(), /^await refresh\(\)$/m)
+    const scriptText = await script.text()
+    assert.doesNotMatch(scriptText, /^await refresh\(\)$/m)
+    assert.match(scriptText, /books\/\$\{state\.selectedId\}\/restart/)
 
     const books = await fetch(`${baseUrl}/operator/api/books`, {
       headers: { authorization: AUTH }
@@ -137,6 +156,25 @@ test('operator UI exposes live book summaries, details, operations and formatted
       headers: { authorization: AUTH }
     })
     assert.equal((await json.json()).analysisVersion, 'book-markup-v3')
+  })
+})
+
+test('operator can safely start a new v3 run for one selected book', async () => {
+  const input = dependencies()
+  await withServer(input, async (baseUrl) => {
+    const restarted = await fetch(`${baseUrl}/operator/api/books/${BOOK_ID}/restart`, {
+      method: 'POST',
+      headers: { authorization: AUTH, 'content-type': 'application/json' },
+      body: '{}'
+    })
+    assert.equal(restarted.status, 202)
+    const body = await restarted.json()
+    assert.equal(body.created, true)
+    assert.equal(body.run.runSequence, 2)
+    assert.deepEqual(input.calls, [[
+      'restart-analysis',
+      { bookEditionId: BOOK_ID, priority: 100 }
+    ]])
   })
 })
 

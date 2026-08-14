@@ -57,6 +57,9 @@ export function createBookOperatorRouter({
   ].some((method) => typeof dashboardRepository[method] !== 'function')) {
     throw new TypeError('book operator dashboard repository is required')
   }
+  if (!analysisRepository || typeof analysisRepository.restartAnalysisRun !== 'function') {
+    throw new TypeError('book analysis repository with restart support is required')
+  }
   const ingest = catalogService ?? createCatalogIngestService({
     repository,
     analysisRepository,
@@ -93,6 +96,30 @@ export function createBookOperatorRouter({
     )
     res.json({ operations })
   }))
+
+  router.post(
+    '/api/books/:bookEditionId/restart',
+    express.json({ limit: '1kb' }),
+    asyncRoute(async (req, res) => {
+      exactEmptyBody(req.body ?? {})
+      try {
+        const value = await analysisRepository.restartAnalysisRun({
+          bookEditionId: uuid(req.params.bookEditionId),
+          priority: 100
+        })
+        res.status(value.created ? 202 : 200).json(value)
+      } catch (error) {
+        if (error?.code === 'BOOK_ANALYSIS_SOURCE_UNAVAILABLE') {
+          throw serviceError(
+            'BOOK_ANALYSIS_SOURCE_UNAVAILABLE',
+            'Исходный файл книги недоступен или не прошёл проверку',
+            409
+          )
+        }
+        throw error
+      }
+    })
+  )
 
   router.post('/api/uploads', express.json({ limit: '16kb' }), asyncRoute(async (req, res) => {
     const value = await ingest.begin(parseCatalogUploadBody(req.body, uploadMaxBytes))
