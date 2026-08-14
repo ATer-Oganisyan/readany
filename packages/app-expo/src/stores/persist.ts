@@ -14,6 +14,25 @@ const pendingData = new Map<string, unknown>();
 
 let dirCreated = false;
 
+export function notifyPersistLoaded(
+  key: string,
+  eventTarget: { dispatchEvent?: (event: Event) => unknown } | undefined = typeof window !==
+  "undefined"
+    ? window
+    : undefined,
+  CustomEventConstructor: typeof CustomEvent | undefined = typeof CustomEvent !== "undefined"
+    ? CustomEvent
+    : undefined,
+): void {
+  if (
+    typeof eventTarget?.dispatchEvent !== "function" ||
+    typeof CustomEventConstructor !== "function"
+  ) {
+    return;
+  }
+  eventTarget.dispatchEvent(new CustomEventConstructor("persist:loaded", { detail: { key } }));
+}
+
 async function ensureDir() {
   if (!dirCreated) {
     const dirInfo = await FileSystem.getInfoAsync(STORE_DIR);
@@ -109,7 +128,12 @@ export function withPersist<T extends object>(
         const migrated = migrate ? migrate(persisted) : persisted;
         // Merge persisted data with current state (don't replace methods)
         const currentState = get();
-        const mergedState = { ...currentState, ...migrated, ...(resetAfterHydrate ?? {}), _hasHydrated: true };
+        const mergedState = {
+          ...currentState,
+          ...migrated,
+          ...(resetAfterHydrate ?? {}),
+          _hasHydrated: true,
+        };
         (set as (state: T, replace: true) => void)(mergedState as T, true);
       } else {
         const currentState = get();
@@ -124,9 +148,7 @@ export function withPersist<T extends object>(
       }
 
       // Dispatch event to notify that persist is loaded
-      if (typeof window !== "undefined" && typeof CustomEvent !== "undefined") {
-        window.dispatchEvent(new CustomEvent("persist:loaded", { detail: { key } }));
-      }
+      notifyPersistLoaded(key);
     });
 
     return state;
