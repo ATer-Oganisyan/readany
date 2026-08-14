@@ -1,3 +1,4 @@
+import { getNativeTabBarContentInset } from "@/platform/navigation/native-tab-bar";
 import { fontSize, fontWeight, headingFontFamily, useColors } from "@/styles/theme";
 import type { ReactNode } from "react";
 import { Platform, type StyleProp, StyleSheet, View, type ViewStyle } from "react-native";
@@ -22,8 +23,9 @@ export function CenteredEmptyState({
 }: CenteredEmptyStateProps) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const nativeTabBarHeight = Platform.OS === "android" ? 80 : Platform.OS === "ios" ? 49 : 0;
-  const bottomInset = avoidNativeTabBar ? nativeTabBarHeight + insets.bottom : 0;
+  const bottomInset = avoidNativeTabBar
+    ? getNativeTabBarContentInset(Platform.OS, insets.bottom)
+    : 0;
 
   return (
     <View style={[styles.container, bottomInset > 0 && { paddingBottom: bottomInset }, style]}>

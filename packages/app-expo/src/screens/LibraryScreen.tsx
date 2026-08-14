@@ -23,6 +23,7 @@ import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { NativeSegmentedPager } from "@/components/ui/native-segmented-pager";
 import { SwipePressGuardProvider, useSwipePressGuard } from "@/components/ui/swipe-press-guard";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
+import { getLibraryScrollBottomPadding } from "@/lib/library/library-scroll-layout";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
 import {
   type CachedBackendCatalogBook,
@@ -78,6 +79,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ReadAnyNativeControls from "../../modules/native-controls";
 import { TagManagementSheet } from "./library/TagManagementSheet";
 import { useBookDownload } from "./library/useBookDownload";
@@ -149,6 +151,7 @@ function LibraryScreenContent() {
   const { t } = useTranslation();
   const nav = useNavigation<Nav>();
   const nativeHeaderHeight = useHeaderHeight();
+  const insets = useSafeAreaInsets();
   const layout = useResponsiveLayout();
   const gridGap = layout.isTablet ? 16 : GRID_GAP;
   const columnCount = layout.isTabletLandscape ? 5 : layout.isTablet ? 4 : NUM_COLUMNS;
@@ -162,8 +165,17 @@ function LibraryScreenContent() {
         gridGap,
         gridItemWidth,
         isWideScreen: layout.isTablet,
+        bottomPadding: getLibraryScrollBottomPadding(Platform.OS, insets.bottom),
       }),
-    [colors, contentWidth, gridGap, gridItemWidth, layout.horizontalPadding, layout.isTablet],
+    [
+      colors,
+      contentWidth,
+      gridGap,
+      gridItemWidth,
+      insets.bottom,
+      layout.horizontalPadding,
+      layout.isTablet,
+    ],
   );
   const [tagSheetOpen, setTagSheetOpen] = useState(false);
   const [tagSheetBook, setTagSheetBook] = useState<Book | null>(null);
@@ -1304,6 +1316,7 @@ const makeStyles = (
     gridGap: number;
     gridItemWidth: number;
     isWideScreen: boolean;
+    bottomPadding: number;
   },
 ) =>
   StyleSheet.create({
@@ -1431,11 +1444,11 @@ const makeStyles = (
       alignSelf: "center",
       paddingHorizontal: layout.horizontalPadding,
       paddingTop: 16,
-      paddingBottom: 24,
+      paddingBottom: layout.bottomPadding,
     },
     pagerGridContent: {
       width: "100%",
-      paddingBottom: 24,
+      paddingBottom: 0,
     },
     libraryGrid: {
       flexDirection: "row",
