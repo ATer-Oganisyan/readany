@@ -10,6 +10,7 @@ import {
   publishLocalBackendMarkup,
   registerLocalBackendBook,
   resolveLocalBackendBook,
+  uploadLocalBackendSource,
 } from "./backend-book-api";
 import { loadCachedBackendCharacters, materializeBackendManifest } from "./backend-book-cache";
 import { sha256BackendFile } from "./backend-file-hash";
@@ -17,11 +18,26 @@ import type { NarraCharacter } from "./types";
 
 const SHA256 = /^[0-9a-f]{64}$/;
 const SUPPORTED_FORMATS = new Set(["epub", "fb2", "txt", "pdf"]);
+const BOOK_MIME_TYPES: Record<string, string> = {
+  epub: "application/epub+zip",
+  fb2: "application/x-fictionbook+xml",
+  txt: "text/plain",
+  pdf: "application/pdf",
+};
+
+export function supportsBackendBookMarkup(format: string): boolean {
+  return SUPPORTED_FORMATS.has(format);
+}
 
 export interface BackendBookCoordinatorApi {
   resolve(contentSha256: string): Promise<BackendBookBinding>;
   register(book: Book, contentSha256: string): Promise<BackendBookBinding>;
   publish(bookEditionId: string, characters: NarraCharacter[]): Promise<BackendBookBinding>;
+  uploadSource(
+    bookEditionId: string,
+    bytes: Uint8Array,
+    mimeType: string,
+  ): Promise<BackendBookBinding>;
   advance(
     bookEditionId: string,
     progressFraction: number,
@@ -33,6 +49,7 @@ export interface BackendBookCoordinatorApi {
 
 export interface BackendBookCoordinatorFiles {
   describe(book: Book): Promise<{ contentSha256: string }>;
+  readSource(book: Book): Promise<{ bytes: Uint8Array; mimeType: string }>;
   loadCached(bookId: string): Promise<NarraCharacter[]>;
   materialize(bookId: string, manifest: BackendBookManifest): Promise<NarraCharacter[]>;
 }
@@ -77,8 +94,8 @@ export function createBackendBookCoordinator({
       SHA256.test(current.contentSha256) &&
       book.fileHash === current.contentSha256 &&
       (current.resolution === "catalog" ||
-        !current.expiresAt ||
-        Date.parse(current.expiresAt) > Date.now())
+        (current.sourceUploaded === true &&
+          (!current.expiresAt || Date.parse(current.expiresAt) > Date.now())))
     ) {
       return current;
     }
@@ -86,7 +103,7 @@ export function createBackendBookCoordinator({
     if (existing) return existing;
 
     const operation = (async () => {
-      if (!SUPPORTED_FORMATS.has(book.format)) {
+      if (!supportsBackendBookMarkup(book.format)) {
         throw new Error(`Backend markup does not support ${book.format}`);
       }
       const file = await files.describe(book);
@@ -98,6 +115,10 @@ export function createBackendBookCoordinator({
         resolved = await api.register(book, file.contentSha256);
       }
       if (!resolved.bookEditionId) throw new Error("Backend resolve returned no edition id");
+      if (resolved.resolution === "private" && resolved.sourceUploaded !== true) {
+        const source = await files.readSource(book);
+        resolved = await api.uploadSource(resolved.bookEditionId, source.bytes, source.mimeType);
+      }
       state.setBinding(book.id, resolved);
       return resolved;
     })().finally(() => bindingPromises.delete(book.id));
@@ -120,14 +141,8 @@ export function createBackendBookCoordinator({
       const bookEditionId = binding.bookEditionId;
       if (!bookEditionId) throw new Error("Backend binding has no edition id");
       const localCharacters = state.getCharacters(book.id);
-      if (
-        binding.resolution === "catalog" &&
-        localCharacters.some((character) => character.mediaSource !== "backend")
-      ) {
+      if (localCharacters.some((character) => character.mediaSource !== "backend")) {
         state.setCharacters(book.id, []);
-      }
-      if (binding.resolution === "private" && localCharacters.length) {
-        state.setBinding(book.id, await api.publish(bookEditionId, localCharacters));
       }
       const manifest = await api.manifest(bookEditionId);
       await applyManifest(book.id, manifest);
@@ -152,11 +167,10 @@ export function createBackendBookCoordinator({
   }
 
   async function syncLocalMarkup(book: Book, characters: NarraCharacter[]): Promise<void> {
-    if (!characters.length) return;
-    const binding = await ensureBinding(book);
-    if (binding.resolution !== "private") return;
-    if (!binding.bookEditionId) throw new Error("Backend binding has no edition id");
-    state.setBinding(book.id, await api.publish(binding.bookEditionId, characters));
+    // Compatibility hook retained for callers on the legacy client analyzer.
+    // Canonical private markup is produced exclusively by the backend v3 pipeline.
+    void book;
+    void characters;
   }
 
   function flush(bookId: string): Promise<void> {
@@ -189,7 +203,7 @@ export function createBackendBookCoordinator({
     chapterKey?: string,
     sectionPosition?: BackendReaderSectionPosition,
   ): void {
-    if (!SUPPORTED_FORMATS.has(book.format)) return;
+    if (!supportsBackendBookMarkup(book.format)) return;
     if (!Number.isFinite(progressFraction) || progressFraction < 0 || progressFraction > 1) return;
     const previous = pending.get(book.id);
     if (previous?.timer) clearTimeout(previous.timer);
@@ -221,6 +235,7 @@ const defaultApi: BackendBookCoordinatorApi = {
   resolve: resolveLocalBackendBook,
   register: registerLocalBackendBook,
   publish: publishLocalBackendMarkup,
+  uploadSource: uploadLocalBackendSource,
   advance: advanceBackendReaderProgress,
   manifest: fetchBackendBookManifest,
 };
@@ -236,6 +251,16 @@ const defaultFiles: BackendBookCoordinatorFiles = {
     const info = await LegacyFileSystem.getInfoAsync(path);
     if (!info.exists || info.isDirectory || !info.size) throw new Error("Book file is unavailable");
     return { contentSha256: await sha256BackendFile(path) };
+  },
+  async readSource(book) {
+    const platform = getPlatformService();
+    const root = await platform.getAppDataDir();
+    const path = /^(file|content):\/\//.test(book.filePath)
+      ? book.filePath
+      : await platform.joinPath(root, book.filePath);
+    const mimeType = BOOK_MIME_TYPES[book.format];
+    if (!mimeType) throw new Error(`Backend markup does not support ${book.format}`);
+    return { bytes: await platform.readFile(path), mimeType };
   },
   loadCached: loadCachedBackendCharacters,
   materialize: materializeBackendManifest,

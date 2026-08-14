@@ -17,6 +17,7 @@ export interface BackendBookBinding {
   generationStatus?: string;
   ready: boolean;
   sourceDownloadPath?: string;
+  sourceUploaded?: boolean;
   expiresAt?: string;
 }
 
@@ -134,6 +135,7 @@ function binding(value: JsonRecord): BackendBookBinding {
     ready: value.ready === true,
     sourceDownloadPath:
       typeof value.source_download_path === "string" ? value.source_download_path : undefined,
+    sourceUploaded: value.source_uploaded === true,
     expiresAt: typeof value.expires_at === "string" ? value.expires_at : undefined,
   };
 }
@@ -217,6 +219,20 @@ export async function registerLocalBackendBook(
         author: book.meta.author || "",
         format: book.format,
       }),
+    }),
+  );
+}
+
+export async function uploadLocalBackendSource(
+  bookEditionId: string,
+  bytes: Uint8Array,
+  mimeType: string,
+): Promise<BackendBookBinding> {
+  return binding(
+    await gatewayJson(`/v2/books/${encodeURIComponent(bookEditionId)}/source`, {
+      method: "PUT",
+      headers: { "content-type": mimeType },
+      body: bytes as unknown as BodyInit,
     }),
   );
 }

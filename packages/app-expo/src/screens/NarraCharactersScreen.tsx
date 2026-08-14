@@ -10,7 +10,10 @@ import { Text } from "@/components/ui/Typography";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
-import { openBackendBookSync } from "@/lib/narra/backend-book-coordinator";
+import {
+  openBackendBookSync,
+  supportsBackendBookMarkup,
+} from "@/lib/narra/backend-book-coordinator";
 import { analyzeBookCharacters } from "@/lib/narra/character-analysis";
 import { hasCharacterPortrait } from "@/lib/narra/character-portrait";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
@@ -58,7 +61,7 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
   const [portraitLoading, setPortraitLoading] = useState<string | null>(null);
   const storedCharacters = bookState?.characters ?? [];
   const characters = storedCharacters;
-  const catalogBackendBook = bookState?.backendBinding?.resolution === "catalog";
+  const backendManagedBook = Boolean(book && supportsBackendBookMarkup(book.format));
   const visibleCharacters = useMemo(
     () => characters.filter((character) => isCharacterUnlocked(book?.progress ?? 0, character)),
     [book?.progress, characters],
@@ -90,14 +93,14 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
       }
     };
 
-    if (catalogBackendBook && characters.length === 0) setBackendProcessing(true);
+    if (backendManagedBook && characters.length === 0) setBackendProcessing(true);
     void refresh();
     return () => {
       cancelled = true;
       if (backendRefreshTimerRef.current) clearTimeout(backendRefreshTimerRef.current);
       backendRefreshTimerRef.current = null;
     };
-  }, [backendBookSyncKey, catalogBackendBook, characters.length, narraStoreHydrated]);
+  }, [backendBookSyncKey, backendManagedBook, characters.length, narraStoreHydrated]);
 
   useEffect(() => {
     let cancelled = false;
@@ -197,6 +200,7 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
     if (
       !narraStoreHydrated ||
       !book ||
+      backendManagedBook ||
       characters.length > 0 ||
       bookState?.backendBinding ||
       bookState?.analyzedAt ||
@@ -210,6 +214,7 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
     void analyze(false);
   }, [
     analyze,
+    backendManagedBook,
     book,
     bookState?.analysisError,
     bookState?.analyzedAt,
@@ -304,7 +309,7 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
     >
       <ExtractorWebView ref={extractorRef} />
       <CharacterChatList items={listItems} />
-      {characters.length === 0 && catalogBackendBook ? (
+      {characters.length === 0 && backendManagedBook ? (
         <CenteredEmptyState
           title={
             backendProcessing

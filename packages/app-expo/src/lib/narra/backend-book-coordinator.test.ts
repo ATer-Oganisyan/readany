@@ -77,6 +77,17 @@ function fixture() {
         ready: true,
       };
     },
+    async uploadSource() {
+      calls.push("upload");
+      return {
+        resolution: "private",
+        bookEditionId: "edition-1",
+        contentSha256: HASH,
+        generationStatus: "marking_up",
+        ready: false,
+        sourceUploaded: true,
+      };
+    },
     async advance(_editionId, offset, _chapterKey, sectionPosition) {
       calls.push(
         `advance:${offset}:${sectionPosition?.sectionIndex ?? "legacy"}:${sectionPosition?.sectionFraction ?? "legacy"}`,
@@ -91,6 +102,10 @@ function fixture() {
     async describe() {
       calls.push("describe");
       return { contentSha256: HASH };
+    },
+    async readSource() {
+      calls.push("read-source");
+      return { bytes: new Uint8Array([1, 2, 3]), mimeType: "application/epub+zip" };
     },
     async loadCached() {
       return [];
@@ -128,7 +143,7 @@ function fixture() {
 }
 
 describe("backend book coordinator", () => {
-  it("shares concurrent binding and registers a local-only book only once", async () => {
+  it("shares concurrent binding, uploads a private source once and starts canonical v3", async () => {
     const value = fixture();
     const coordinator = createBackendBookCoordinator(value);
     const [left, right] = await Promise.all([
@@ -138,15 +153,40 @@ describe("backend book coordinator", () => {
     expect(left.bookEditionId).toBe("edition-1");
     expect(right).toEqual(left);
     expect(value.calls.filter((call) => call === "describe")).toHaveLength(1);
-    expect(value.calls).toEqual(["describe", "set-hash", "resolve", "register", "set-binding"]);
+    expect(value.calls).toEqual([
+      "describe",
+      "set-hash",
+      "resolve",
+      "register",
+      "read-source",
+      "upload",
+      "set-binding",
+    ]);
+    expect((left as BackendBookBinding & { sourceUploaded?: boolean }).sourceUploaded).toBe(true);
   });
 
-  it("publishes derived characters without uploading the source book", async () => {
+  it("keeps legacy local markup without publishing it as the default backend result", async () => {
     const value = fixture();
     const coordinator = createBackendBookCoordinator(value);
     await coordinator.syncLocalMarkup(BOOK, [{ id: "anna" } as NarraCharacter]);
-    expect(value.calls).toContain("publish");
-    expect(value.calls).not.toContain("upload");
+    expect(value.calls).not.toContain("publish");
+  });
+
+  it("upgrades a persisted legacy private binding by uploading its source before manifest", async () => {
+    const value = fixture();
+    value.state.setBinding(BOOK.id, {
+      resolution: "private",
+      bookEditionId: "edition-1",
+      contentSha256: HASH,
+      generationStatus: "marking_up",
+      ready: false,
+    });
+    value.calls.length = 0;
+
+    await createBackendBookCoordinator(value).open({ ...BOOK, fileHash: HASH });
+
+    expect(value.calls).toContain("upload");
+    expect(value.calls.indexOf("upload")).toBeLessThan(value.calls.indexOf("manifest"));
   });
 
   it("coalesces reader events to the greatest reading fraction", async () => {

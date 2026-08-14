@@ -1,12 +1,14 @@
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  type BackendBookBinding,
   advanceBackendReaderProgress,
   fetchBackendBookManifest,
   fetchBackendCatalogBooks,
   publishLocalBackendMarkup,
   registerLocalBackendBook,
   resolveLocalBackendBook,
+  uploadLocalBackendSource,
 } from "./backend-book-api";
 import type { NarraServiceError } from "./errors";
 import type { NarraCharacter } from "./types";
@@ -123,6 +125,34 @@ describe("backend book API", () => {
       author: "Author",
       format: "epub",
     });
+  });
+
+  it("uploads private source bytes to start canonical v3", async () => {
+    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          resolution: "private",
+          book_edition_id: "book-1",
+          content_sha256: "a".repeat(64),
+          generation_status: "marking_up",
+          source_uploaded: true,
+          ready: false,
+        }),
+        { status: 202 },
+      ),
+    );
+    const result = await uploadLocalBackendSource(
+      "book-1",
+      new Uint8Array([1, 2, 3]),
+      "application/epub+zip",
+    );
+
+    expect((result as BackendBookBinding & { sourceUploaded?: boolean }).sourceUploaded).toBe(true);
+    const [path, request] = vi.mocked(narraGatewayRequest).mock.calls[0] ?? [];
+    expect(path).toBe("/v2/books/book-1/source");
+    expect(request?.method).toBe("PUT");
+    expect(new Headers(request?.headers).get("content-type")).toBe("application/epub+zip");
+    expect(Array.from(request?.body as Uint8Array)).toEqual([1, 2, 3]);
   });
 
   it("publishes only derived character markup", async () => {
