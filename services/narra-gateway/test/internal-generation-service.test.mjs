@@ -211,6 +211,80 @@ test('internal generation service repairs wrong offsets for one exact quote matc
   })
 })
 
+test('internal generation service drops an author copied only from front matter', async () => {
+  const storage = memoryStorage()
+  const contextText = 'Медный всадник\nАлександр Пушкин'
+  const quote = 'Александр Пушкин'
+  const startOffset = contextText.indexOf(quote)
+  const service = createInternalGenerationService({
+    storage,
+    logger: { info() {}, warn() {}, error() {} },
+    async completeChat() {
+      return JSON.stringify({ observations: [{
+        type: 'character_mention',
+        entityKind: 'character',
+        entityCandidate: 'Александр Пушкин',
+        relatedEntityCandidates: [],
+        fact: 'На титульной странице указан Александр Пушкин',
+        evidence: { quote, startOffset, endOffset: startOffset + quote.length },
+        confidence: 1
+      }] })
+    },
+    async generatePortrait() { throw new Error('unused') },
+    async synthesizeSpeech() { throw new Error('unused') },
+    async generateIdleAnimation() { throw new Error('unused') }
+  })
+
+  await assert.rejects(() => service.scanBookChunk({
+    idempotencyKey: 'run-author:scan:chunk-author:book-scan-v5',
+    runId: 'run-author',
+    chunkId: 'chunk-author',
+    extractorVersion: 'book-scan-v5',
+    bookTitle: 'Медный всадник',
+    bookAuthor: 'Александр Пушкин',
+    contextText,
+    coreLocalStartOffset: 0,
+    coreLocalEndOffset: contextText.length
+  }), (error) => error.code === 'EVIDENCE_MISMATCH')
+})
+
+test('internal generation service rejects a relationship without character observations for every participant', async () => {
+  const storage = memoryStorage()
+  const contextText = 'Евгений думает: И в нём Парашу успокою'
+  const quote = 'И в нём Парашу успокою'
+  const startOffset = contextText.indexOf(quote)
+  const service = createInternalGenerationService({
+    storage,
+    logger: { info() {}, warn() {}, error() {} },
+    async completeChat() {
+      return JSON.stringify({ observations: [{
+        type: 'relationship',
+        entityKind: 'relationship',
+        entityCandidate: 'Евгений и Параша',
+        relatedEntityCandidates: ['Евгений', 'Параша'],
+        fact: 'Евгений хочет успокоить Парашу',
+        evidence: { quote, startOffset, endOffset: startOffset + quote.length },
+        confidence: 0.98
+      }] })
+    },
+    async generatePortrait() { throw new Error('unused') },
+    async synthesizeSpeech() { throw new Error('unused') },
+    async generateIdleAnimation() { throw new Error('unused') }
+  })
+
+  await assert.rejects(() => service.scanBookChunk({
+    idempotencyKey: 'run-relation:scan:chunk-relation:book-scan-v5',
+    runId: 'run-relation',
+    chunkId: 'chunk-relation',
+    extractorVersion: 'book-scan-v5',
+    bookTitle: 'Медный всадник',
+    bookAuthor: 'Александр Пушкин',
+    contextText,
+    coreLocalStartOffset: 0,
+    coreLocalEndOffset: contextText.length
+  }), (error) => error.code === 'GENERATION_RESULT_INVALID')
+})
+
 test('internal generation service keeps grounded observations and drops invented evidence', async () => {
   const storage = memoryStorage()
   const lines = []

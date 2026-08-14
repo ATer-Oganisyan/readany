@@ -120,7 +120,7 @@ sudo docker compose --env-file /srv/narra-stagging/compose.env \
 
 ### Parallel book analysis pipeline
 
-The v9 analysis pipeline produces canonical v3 markup. Its immutable audit
+The v10 analysis pipeline produces canonical v3 markup. Its immutable audit
 publication uses the internal `shadow` channel name, then atomically materializes
 the reader-visible v3 revision and media jobs. Start one idempotent run for a
 verified stored book directly in the Gateway container, inspect its stage/job
@@ -161,11 +161,15 @@ only ingestion, `start`, or an explicit `restart` enqueues analysis. The interna
 `shadow` publication is the immutable audit source for the canonical v3 reader
 projection; retained v2 rows are not selected by the mobile manifest.
 
-Pipeline v9 scans paragraph-aware cores around 4,000 characters (2,500–5,000,
+Pipeline v10 scans paragraph-aware cores around 4,000 characters (2,500–5,000,
 with 500 characters of context overlap). Before resolve can freeze a snapshot,
 evidence must cover at least 75% of fixed 4,000-character bands and the result
-must contain a confirmed character. An incomplete replacement run fails without
-replacing the currently published revision.
+must contain a confirmed non-metadata character. Every named participant of an
+inter-character relationship must also resolve to a confirmed character, while
+an author copied only from front matter is rejected. An incomplete replacement
+run fails without replacing the currently published revision. A new successful
+publication requeues failed media bundles for its characters once; manifest reads
+do not repeatedly reset failed work.
 
 Test environments can expose the latest shadow publication through the
 authenticated `GET /v2/books/:bookEditionId/analysis-shadow/manifest` route by

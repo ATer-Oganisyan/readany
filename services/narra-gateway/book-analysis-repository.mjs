@@ -324,7 +324,8 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
     bookEditionId,
     contentHash: markupContentHash,
     markup: rawMarkup,
-    publishedAt = null
+    publishedAt = null,
+    retryFailedBundles = false
   }) {
     const markup = normalizeBookMarkupV3(rawMarkup)
     const editionResult = await client.query(
@@ -436,11 +437,33 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
         `SELECT id, status FROM generation_jobs WHERE idempotency_key = $1`,
         [idempotencyKey]
       )
+      if (retryFailedBundles && job.rows[0]?.status === 'failed') {
+        await client.query(
+          `UPDATE generation_jobs
+           SET status = 'queued', attempts = 0, last_error_code = NULL,
+               available_at = now(), locked_at = NULL, locked_by = NULL,
+               lease_token = NULL, updated_at = now()
+           WHERE id = $1 AND status = 'failed'`,
+          [job.rows[0].id]
+        )
+        job.rows[0].status = 'queued'
+      }
       await client.query(
         `INSERT INTO character_media_bundles (
            id, book_edition_id, character_key, bundle_version, job_id, status, expires_at
          ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-         ON CONFLICT (book_edition_id, character_key, bundle_version) DO NOTHING`,
+         ON CONFLICT (book_edition_id, character_key, bundle_version) DO UPDATE
+         SET job_id = EXCLUDED.job_id,
+             status = CASE
+               WHEN character_media_bundles.status = 'failed' AND EXCLUDED.status = 'queued'
+                 THEN 'queued'
+               ELSE character_media_bundles.status
+             END,
+             updated_at = CASE
+               WHEN character_media_bundles.status = 'failed' AND EXCLUDED.status = 'queued'
+                 THEN now()
+               ELSE character_media_bundles.updated_at
+             END`,
         [
           idFactory(), bookEditionId, character.characterKey,
           BOOK_ANALYSIS_CHARACTER_BUNDLE_VERSION, job.rows[0].id, job.rows[0].status,
@@ -725,7 +748,7 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
       return publicationRow(result.rows[0])
     },
 
-    async ensureLatestMediaProjection(bookEditionId) {
+    async ensureLatestMediaProjection(bookEditionId, { retryFailedBundles = false } = {}) {
       validateIdentifier(bookEditionId, 'bookEditionId')
       return transaction(pool, async (client) => {
         const publication = await client.query(
@@ -742,7 +765,8 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
           bookEditionId,
           contentHash: row.content_hash,
           markup: row.data.markup,
-          publishedAt: row.published_at
+          publishedAt: row.published_at,
+          retryFailedBundles
         })
       })
     },
@@ -1171,9 +1195,12 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
       return transaction(pool, async (client) => {
         await requireLeasedJob(client, job, 'resolve')
         const run = await client.query(
-          `SELECT * FROM book_analysis_runs
-           WHERE id = $1 AND stage = 'resolve' AND status = 'running'
-           FOR UPDATE`,
+          `SELECT analysis_run.*, edition.author AS book_author
+           FROM book_analysis_runs AS analysis_run
+           JOIN book_editions AS edition ON edition.id = analysis_run.book_edition_id
+           WHERE analysis_run.id = $1 AND analysis_run.stage = 'resolve'
+             AND analysis_run.status = 'running'
+           FOR UPDATE OF analysis_run`,
           [job.runId]
         )
         if (!run.rows[0]) throw repositoryError('RUN_STATE_CHANGED', 'analysis run is not resolving')
@@ -1200,7 +1227,8 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
         const quality = assessBookAnalysisCoverage({
           textLength: Number(run.rows[0].text_length),
           observations,
-          entities: normalizedEntities
+          entities: normalizedEntities,
+          author: run.rows[0].book_author
         })
         if (!quality.valid) {
           throw repositoryError(
@@ -1791,7 +1819,8 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
         await materializeMediaProjection(client, {
           bookEditionId: run.rows[0].book_edition_id,
           contentHash: artifact.rows[0].content_hash,
-          markup: artifact.rows[0].data
+          markup: artifact.rows[0].data,
+          retryFailedBundles: true
         })
         await client.query(
           `UPDATE book_analysis_artifacts

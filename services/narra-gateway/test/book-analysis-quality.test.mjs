@@ -2,11 +2,22 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { assessBookAnalysisCoverage } from '../book-analysis-quality.mjs'
 
-function observation({ offset, kind = 'character', type = 'character_mention' }) {
+function observation({
+  id,
+  offset,
+  kind = 'character',
+  type = 'character_mention',
+  candidate = 'Анна',
+  related = [],
+  quote = candidate
+}) {
   return {
+    id: id ?? `observation-${offset}`,
     entityKind: kind,
     type,
-    evidence: { startOffset: offset, endOffset: offset + 8 }
+    entityCandidate: candidate,
+    relatedEntityCandidates: related,
+    evidence: { quote, startOffset: offset, endOffset: offset + quote.length }
   }
 }
 
@@ -61,4 +72,59 @@ test('coverage requires at least one confirmed character for the character produ
 
   assert.equal(result.valid, false)
   assert.deepEqual(result.errorCodes, ['ANALYSIS_CHARACTERS_MISSING'])
+})
+
+test('coverage rejects an author copied only from front matter as a character', () => {
+  const result = assessBookAnalysisCoverage({
+    textLength: 3_000,
+    author: 'Александр Пушкин',
+    observations: [observation({
+      id: 'author-evidence',
+      offset: 32,
+      candidate: 'Александр Пушкин',
+      quote: 'Александр Пушкин'
+    })],
+    entities: [{
+      entityKind: 'character',
+      canonicalName: 'Александр Пушкин',
+      aliases: [],
+      resolutionStatus: 'confirmed',
+      evidenceIds: ['author-evidence']
+    }]
+  })
+
+  assert.equal(result.valid, false)
+  assert.deepEqual(result.errorCodes, [
+    'ANALYSIS_CHARACTERS_MISSING',
+    'ANALYSIS_METADATA_CHARACTER'
+  ])
+})
+
+test('coverage rejects a relationship participant missing from confirmed characters', () => {
+  const result = assessBookAnalysisCoverage({
+    textLength: 3_000,
+    observations: [
+      observation({ id: 'evgeny', offset: 500, candidate: 'Евгений' }),
+      observation({
+        id: 'relationship',
+        offset: 900,
+        kind: 'relationship',
+        type: 'relationship',
+        candidate: 'Евгений и Параша',
+        related: ['Евгений', 'Параша'],
+        quote: 'И в нём Парашу успокою'
+      })
+    ],
+    entities: [{
+      entityKind: 'character',
+      canonicalName: 'Евгений',
+      aliases: [],
+      resolutionStatus: 'confirmed',
+      evidenceIds: ['evgeny']
+    }]
+  })
+
+  assert.equal(result.valid, false)
+  assert.deepEqual(result.errorCodes, ['ANALYSIS_RELATIONSHIP_CHARACTERS_MISSING'])
+  assert.deepEqual(result.missingRelationshipCharacters, ['Параша'])
 })

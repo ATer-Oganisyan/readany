@@ -31,7 +31,8 @@ export function createBookAnalysisResolveWorker({
     const quality = assessBookAnalysisCoverage({
       textLength: input.textLength,
       observations: input.observations,
-      entities
+      entities,
+      author: input.author
     })
     if (!quality.valid) {
       log.warn('resolve.quality_rejected', 'Разметка не прошла проверку полноты', {
@@ -39,7 +40,9 @@ export function createBookAnalysisResolveWorker({
         error_codes: quality.errorCodes,
         covered_bands: quality.coveredBandCount,
         required_bands: quality.requiredBandCount,
-        confirmed_characters: quality.confirmedCharacterCount
+        confirmed_characters: quality.confirmedCharacterCount,
+        metadata_characters: quality.metadataCharacterCount,
+        missing_relationship_characters: quality.missingRelationshipCharacters
       })
       throw Object.assign(new Error('book analysis coverage is incomplete'), {
         code: quality.errorCodes[0]

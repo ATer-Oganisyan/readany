@@ -236,11 +236,11 @@ test('PostgreSQL analysis workers claim different scan shards and reclaim an exp
 
     const completionResults = await Promise.all([
       repository.completeScan(second, {
-        extractorVersion: 'book-scan-v4',
+        extractorVersion: ensured.run.promptVersion,
         observations: [scanObservation(second)]
       }),
       repository.completeScan(reclaimed, {
-        extractorVersion: 'book-scan-v4',
+        extractorVersion: ensured.run.promptVersion,
         observations: [scanObservation(reclaimed)]
       })
     ])
@@ -273,7 +273,7 @@ test('PostgreSQL analysis workers claim different scan shards and reclaim an exp
     assert.equal(storedObservations.rows[0].count, 2)
     await assert.rejects(
       repository.completeScan(first, {
-        extractorVersion: 'book-scan-v4',
+        extractorVersion: ensured.run.promptVersion,
         observations: [scanObservation(first)]
       }),
       (error) => ['LEASE_LOST', 'RUN_STATE_CHANGED'].includes(error.code)
@@ -486,6 +486,38 @@ test('PostgreSQL analysis workers claim different scan shards and reclaim an exp
     const repeatedProjection = await repository.ensureLatestMediaProjection(bookEditionId)
     assert.equal(repeatedProjection.created, false)
     assert.equal(repeatedProjection.queuedCharacters, 2)
+    const failedMediaJob = await pool.query(
+      `UPDATE generation_jobs
+       SET status = 'failed', attempts = 3, last_error_code = 'GENERATOR_HTTP_502'
+       WHERE id = (
+         SELECT id FROM generation_jobs
+         WHERE book_edition_id = $1 AND target_version = 'character-bundle-v3'
+         ORDER BY character_key LIMIT 1
+       )
+       RETURNING id`,
+      [bookEditionId]
+    )
+    await pool.query(
+      `UPDATE character_media_bundles SET status = 'failed'
+       WHERE job_id = $1`,
+      [failedMediaJob.rows[0].id]
+    )
+    await repository.ensureLatestMediaProjection(bookEditionId)
+    assert.equal((await pool.query(
+      'SELECT status FROM generation_jobs WHERE id = $1',
+      [failedMediaJob.rows[0].id]
+    )).rows[0].status, 'failed')
+    await repository.ensureLatestMediaProjection(bookEditionId, { retryFailedBundles: true })
+    const retriedMedia = await pool.query(
+      `SELECT job.status, job.attempts, job.last_error_code, bundle.status AS bundle_status
+       FROM generation_jobs AS job
+       JOIN character_media_bundles AS bundle ON bundle.job_id = job.id
+       WHERE job.id = $1`,
+      [failedMediaJob.rows[0].id]
+    )
+    assert.deepEqual(retriedMedia.rows[0], {
+      status: 'queued', attempts: 0, last_error_code: null, bundle_status: 'queued'
+    })
     const details = await repository.getAnalysisRunDetails(runId)
     assert.equal(details.run.status, 'ready')
     assert.equal(details.book.id, bookEditionId)
