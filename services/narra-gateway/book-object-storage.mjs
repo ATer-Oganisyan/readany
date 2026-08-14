@@ -12,7 +12,7 @@ import { parseEnvBool, parseEnvInt } from './env.mjs'
 import { serviceUrl } from './service-url.mjs'
 
 const SHA256 = /^[0-9a-f]{64}$/
-const OBJECT_KEY = /^[A-Za-z0-9][A-Za-z0-9!_.*'()/-]{0,900}$/
+const OBJECT_KEY = /^[A-Za-z0-9][A-Za-z0-9!_.*'():/-]{0,900}$/
 
 function invalid(message) {
   throw Object.assign(new Error(message), { code: 'VALIDATION', status: 400 })

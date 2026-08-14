@@ -385,7 +385,19 @@ test('PostgreSQL analysis workers claim different scan shards and reclaim an exp
               (SELECT count(*)::integer FROM book_analysis_publications
                WHERE run_id = run.id AND channel = 'shadow') AS shadow_publications,
               (SELECT count(*)::integer FROM book_markup_versions
-               WHERE book_edition_id = run.book_edition_id) AS visible_v2_markups
+               WHERE book_edition_id = run.book_edition_id
+                 AND status = 'published' AND analysis_version = 'book-markup-v3') AS media_projections,
+              (SELECT count(*)::integer FROM generation_jobs
+               WHERE book_edition_id = run.book_edition_id
+                 AND job_type = 'character_bundle'
+                 AND target_version = 'character-bundle-v3') AS media_jobs,
+              (SELECT count(*)::integer
+               FROM book_markup_versions AS media_markup
+               JOIN book_characters AS media_character
+                 ON media_character.markup_version_id = media_markup.id
+               WHERE media_markup.book_edition_id = run.book_edition_id
+                 AND media_markup.status = 'published'
+                 AND media_character.data->>'analysisSource' = 'book-markup-v3') AS media_characters
        FROM book_analysis_runs AS run
        JOIN book_editions AS edition ON edition.id = run.book_edition_id
        WHERE run.id = $1`,
@@ -396,8 +408,13 @@ test('PostgreSQL analysis workers claim different scan shards and reclaim an exp
       status: 'ready',
       edition_status: 'base_ready',
       shadow_publications: 1,
-      visible_v2_markups: 0
+      media_projections: 1,
+      media_jobs: 2,
+      media_characters: 2
     })
+    const repeatedProjection = await repository.ensureLatestMediaProjection(bookEditionId)
+    assert.equal(repeatedProjection.created, false)
+    assert.equal(repeatedProjection.queuedCharacters, 2)
     const details = await repository.getAnalysisRunDetails(runId)
     assert.equal(details.run.status, 'ready')
     assert.equal(details.book.id, bookEditionId)

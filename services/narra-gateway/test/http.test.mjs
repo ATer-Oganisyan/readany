@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import test from 'node:test'
-import { consumeResponse, createResponseBuffer } from '../http.mjs'
+import { consumeResponse, createResponseBuffer, normalizeHttpTransportError } from '../http.mjs'
+
+test('socket timeouts keep the closed TIMEOUT error contract', () => {
+  const error = normalizeHttpTransportError(new Error('TIMEOUT'))
+  assert.equal(error.code, 'TIMEOUT')
+  assert.equal(error.status, 504)
+})
 
 test('bounded upstream buffer rejects a binary response over its limit', () => {
   const buffer = createResponseBuffer({ binary: true, maxResponseBytes: 8 })

@@ -10,7 +10,7 @@ export const REQUIRED_CHARACTER_MEDIA = Object.freeze([
   'idle_animation'
 ])
 
-const IDENTIFIER = /^[a-z0-9][a-z0-9._-]{0,127}$/i
+const IDENTIFIER = /^[a-z0-9][a-z0-9._:-]{0,255}$/i
 const JOB_STATUSES = new Set(['queued', 'running', 'ready', 'failed'])
 
 function invalid(message) {

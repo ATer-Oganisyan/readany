@@ -107,6 +107,7 @@ test('manifest exposes no partial media when a visible bundle is incomplete', as
 })
 
 test('catalog manifest exposes validated v3 as the canonical markup', async () => {
+  const calls = []
   const publicSnapshot = {
     edition: { ...EDITION, scope: 'catalog', catalogKey: 'book' },
     readerTextOffset: 100,
@@ -118,13 +119,24 @@ test('catalog manifest exposes validated v3 as the canonical markup', async () =
       textLength: 1_000,
       publishedAt: '2026-08-10T00:00:00.000Z'
     },
-    characters: []
+    characters: [{
+      characterKey: 'visible', name: 'Visible', fullName: 'Visible Hero',
+      warmupTextOffset: 850, firstAppearanceTextOffset: 900,
+      data: { analysisSource: 'v3' }, bundle: readyBundle('visible')
+    }]
   }
   const service = createBookCatalogService({
     repository: repository({
-      async getReaderBookManifest() { return publicSnapshot }
+      async getReaderBookManifest(input) {
+        calls.push(['manifest', input.bundleVersion])
+        return publicSnapshot
+      }
     }),
     analysisRepository: {
+      async ensureLatestMediaProjection(bookEditionId) {
+        calls.push(['projection', bookEditionId])
+        return { projected: true }
+      },
       async getLatestShadowAnalysisPublication(bookEditionId) {
         assert.equal(bookEditionId, EDITION.id)
         return {
@@ -201,7 +213,7 @@ test('catalog manifest exposes validated v3 as the canonical markup', async () =
     name: 'Visible',
     fullName: 'Visible Hero',
     firstAppearanceTextOffset: 900,
-    state: 'preparing',
+    state: 'ready',
     profile: {
       role: 'Главный герой',
       gender: undefined,
@@ -213,9 +225,23 @@ test('catalog manifest exposes validated v3 as the canonical markup', async () =
       voice: 'Bys',
       analysisSource: 'v3'
     },
-    bundle: null
+    bundle: {
+      version: 'character-bundle-v1',
+      assets: REQUIRED_CHARACTER_MEDIA.map((type) => ({
+        assetId: `visible-${type}`,
+        type,
+        contentHash: HASH,
+        mimeType: 'application/octet-stream',
+        byteSize: 10,
+        downloadPath: `/v2/books/${EDITION.id}/media/visible-${type}/download`
+      }))
+    }
   }])
   assert.equal(preview.markup.analysisVersion, 'book-markup-v3')
+  assert.deepEqual(calls.slice(0, 2), [
+    ['projection', EDITION.id],
+    ['manifest', 'character-bundle-v3']
+  ])
 })
 
 test('catalog manifest does not fall back to legacy v2 while v3 is processing', async () => {
@@ -404,6 +430,47 @@ test('catalog progress never queues legacy v2 character bundles', async () => {
   })
 
   assert.deepEqual(result.warmup, { requested: 0, ready: 0, pending: 0, failed: 0 })
+})
+
+test('canonical v3 progress queues media for characters behind the warmup frontier', async () => {
+  const ensured = []
+  const service = createBookCatalogService({
+    repository: repository({
+      async advanceReaderPosition() {
+        return {
+          scope: 'private',
+          analysisVersion: 'book-markup-v3',
+          readerTextOffset: 90,
+          readingFraction: 0.09,
+          chapterKey: 'chapter-2',
+          charactersDue: [{
+            characterKey: 'character:hero',
+            warmupTextOffset: 80,
+            firstAppearanceTextOffset: 120
+          }]
+        }
+      },
+      async ensureCharacterBundle(input) {
+        ensured.push(input)
+        return { status: 'queued' }
+      }
+    }),
+    analysisRepository: {
+      async ensureLatestMediaProjection() { return { projected: true } }
+    }
+  })
+
+  const result = await service.advanceProgress('reader-1', 'book-1', {
+    progressFraction: 0.09,
+    textOffset: null,
+    chapterKey: 'chapter-2'
+  })
+
+  assert.equal(ensured.length, 1)
+  assert.equal(ensured[0].bookEditionId, 'book-1')
+  assert.equal(ensured[0].characterKey, 'character:hero')
+  assert.equal(ensured[0].bundleVersion, 'character-bundle-v3')
+  assert.deepEqual(result.warmup, { requested: 1, ready: 0, pending: 1, failed: 0 })
 })
 
 test('local hash reuses a ready catalog edition and otherwise requests local registration', async () => {

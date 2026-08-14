@@ -10,7 +10,7 @@ import {
   normalizeEvidenceClaim
 } from './book-analysis-contracts.mjs'
 
-const IDENTIFIER = /^[a-z0-9][a-z0-9._:-]{0,127}$/i
+const IDENTIFIER = /^[a-z0-9][a-z0-9._:-]{0,255}$/i
 const SHA256 = /^[0-9a-f]{64}$/
 const SCOPES = new Set(['catalog', 'private'])
 const SCAN_TYPE_ENTITY_KIND = new Map([
@@ -49,7 +49,7 @@ function requiredString(value, name, max = 1_000) {
 }
 
 function identifier(value, name) {
-  const result = requiredString(value, name, 128)
+  const result = requiredString(value, name, 256)
   if (!IDENTIFIER.test(result)) invalid(`${name}: invalid identifier`)
   return result
 }

@@ -135,3 +135,11 @@ test('a new bundle version has a separate idempotency key', async () => {
     `book-42:anna-karenina:${CHARACTER_BUNDLE_VERSION}`
   )
 })
+
+test('v3 canonical character keys are valid media identifiers', () => {
+  assert.equal(characterBundleIdempotencyKey({
+    bookEditionId: 'book-42',
+    characterKey: 'character:anna',
+    bundleVersion: 'character-bundle-v3'
+  }), 'book-42:character:anna:character-bundle-v3')
+})

@@ -1,5 +1,9 @@
 export function shouldRetryKandinsky(error) {
-  return error?.code === 'RATE'
+  return error?.code === 'RATE' || error?.code === 'NETWORK'
+}
+
+export function shouldRetryKandinskyStatus(error) {
+  return error?.code === 'TIMEOUT' || error?.code === 'NETWORK'
 }
 
 export function videoRetryDelay(error) {

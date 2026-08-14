@@ -36,6 +36,21 @@ function stringValues(value, maxItems, maxLength) {
     .slice(0, maxItems)
 }
 
+function claimString(value, maxLength) {
+  return stringValue(
+    value && typeof value === 'object' && !Array.isArray(value) ? value.value : value,
+    maxLength
+  )
+}
+
+function claimStrings(value, maxItems, maxLength) {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item) => claimString(item, maxLength))
+    .filter(Boolean)
+    .slice(0, maxItems)
+}
+
 function safeTextOffset(value, fallback = 0) {
   return Number.isSafeInteger(value) && value >= 0 ? value : fallback
 }
@@ -61,8 +76,9 @@ export function normalizeCharacterBundleInput(input) {
   const passport = source.passport && typeof source.passport === 'object' && !Array.isArray(source.passport)
     ? source.passport
     : {}
-  const gender = ['male', 'female', 'unspecified'].includes(source.gender)
-    ? source.gender
+  const claimedGender = claimString(source.gender, 32)
+  const gender = ['male', 'female', 'unspecified'].includes(claimedGender)
+    ? claimedGender
     : 'unspecified'
   const name = stringValue(request.name, 160)
   const fullName = stringValue(request.fullName, 240) || name
@@ -74,22 +90,24 @@ export function normalizeCharacterBundleInput(input) {
     firstAppearanceTextOffset,
     safeTextOffset(rawWarmupTextOffset, safeTextOffset(source.warmupTextOffset))
   )
-  const role = stringValue(source.role, 400)
-  const traits = stringValues(source.traits, 5, 120)
-  const speechStyle = stringValue(source.speechStyle, 1_000)
-  const description = stringValue(source.description, 2_000) || [
+  const role = claimString(source.role, 400)
+  const traits = claimStrings(source.traits, 5, 120)
+  const speechStyle = claimString(source.speechStyle, 1_000)
+  const description = claimString(source.description, 2_000) || [
     role,
     traits.length ? `Черты: ${traits.join(', ')}` : '',
     speechStyle ? `Манера речи: ${speechStyle}` : ''
   ].filter(Boolean).join('. ').slice(0, 2_000)
-  const appearancePrompt = stringValue(source.appearancePrompt, 3_000) || [
+  const appearancePrompt = stringValue(source.creative?.appearancePrompt, 3_000) ||
+    stringValue(source.appearancePrompt, 3_000) ||
+    claimStrings(source.appearance, 16, 500).join(', ').slice(0, 3_000) || [
     stringValue(passport.build, 300),
     stringValue(passport.hair, 300),
     stringValue(passport.eyes, 300),
     stringValue(passport.face, 500),
     stringValue(passport.outfit, 500)
   ].filter(Boolean).join(', ').slice(0, 3_000)
-  const requestedVoice = stringValue(source.voice, 32)
+  const requestedVoice = stringValue(source.creative?.voice, 32) || stringValue(source.voice, 32)
   const voice = isSupportedVoice(requestedVoice)
     ? requestedVoice
     : gender === 'male' ? 'She' : gender === 'female' ? 'Che' : 'Erm'
@@ -104,7 +122,7 @@ export function normalizeCharacterBundleInput(input) {
       fullName,
       aliases: stringValues(source.aliases, 10, 160),
       gender,
-      age: stringValue(source.age, 120) || (
+      age: claimString(source.age, 120) || (
         typeof passport.age === 'number' && Number.isFinite(passport.age)
           ? String(passport.age)
           : ''
@@ -112,7 +130,7 @@ export function normalizeCharacterBundleInput(input) {
       role,
       description,
       appearancePrompt,
-      greeting: stringValue(source.greeting, 2_000),
+      greeting: stringValue(source.creative?.greeting, 2_000) || stringValue(source.greeting, 2_000),
       voice,
       firstAppearanceTextOffset,
       warmupTextOffset

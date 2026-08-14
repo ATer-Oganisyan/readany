@@ -192,6 +192,63 @@ test('worker adapts legacy local profiles to the strict character bundle contrac
   assert.equal('firstAppearanceTextOffset' in generatorInput, false)
 })
 
+test('worker adapts evidence-backed v3 profiles without losing creative media fields', async () => {
+  let generatorInput
+  const repository = {
+    async claimGenerationJob() {
+      return {
+        id: 'job-v3', type: 'character_bundle', bookEditionId: 'book-v3',
+        characterKey: 'character:anna', leaseToken: 'lease-v3'
+      }
+    },
+    async getCharacterBundleInput() {
+      return {
+        bookEditionId: 'book-v3', characterKey: 'character:anna',
+        name: 'Анна', fullName: 'Анна Сергеевна', scope: 'private',
+        bookTitle: 'Книга', bookAuthor: 'Автор', bundleVersion: 'character-bundle-v3',
+        character: {
+          characterKey: 'character:anna', aliases: ['Анна'],
+          firstAppearanceTextOffset: 200, warmupTextOffset: 150,
+          role: { value: 'Героиня', evidenceIds: ['role-1'], confidence: 0.9 },
+          age: { value: '27 лет', evidenceIds: ['age-1'], confidence: 0.8 },
+          gender: { value: 'female', evidenceIds: ['gender-1'], confidence: 0.9 },
+          description: { value: 'Наблюдательная женщина', evidenceIds: ['desc-1'], confidence: 0.8 },
+          traits: [{ value: 'смелая', evidenceIds: ['trait-1'], confidence: 0.8 }],
+          speechStyle: { value: 'говорит коротко', evidenceIds: ['speech-1'], confidence: 0.8 },
+          appearance: [{ value: 'тёмные волосы', evidenceIds: ['look-1'], confidence: 0.8 }],
+          creative: {
+            appearancePrompt: 'кинематографичный портрет Анны',
+            greeting: 'Здравствуйте',
+            voice: 'Che'
+          }
+        }
+      }
+    },
+    async publishCharacterBundle() {},
+    async failGenerationJob() { assert.fail('job must not fail') }
+  }
+  const worker = createGenerationWorker({
+    repository,
+    generator: {
+      async generateCharacterBundle(input) {
+        generatorInput = input
+        return { assets: generatedAssets() }
+      }
+    },
+    workerId: 'worker-v3',
+    logger: silentLogger
+  })
+
+  assert.equal((await worker.runOnce()).status, 'completed')
+  assert.equal(generatorInput.character.role, 'Героиня')
+  assert.equal(generatorInput.character.gender, 'female')
+  assert.equal(generatorInput.character.age, '27 лет')
+  assert.equal(generatorInput.character.description, 'Наблюдательная женщина')
+  assert.equal(generatorInput.character.appearancePrompt, 'кинематографичный портрет Анны')
+  assert.equal(generatorInput.character.greeting, 'Здравствуйте')
+  assert.equal(generatorInput.character.voice, 'Che')
+})
+
 test('invalid generated media fails the leased job without partial publication', async () => {
   let failed
   let publishCount = 0

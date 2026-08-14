@@ -91,13 +91,13 @@ test('internal generation service creates all three required bundle assets', asy
     }
   })
   const result = await service.generateCharacterBundle({
-    idempotencyKey: '11111111-1111-4111-8111-111111111111:anna:character-bundle-v1',
-    bookEditionId: '11111111-1111-4111-8111-111111111111', characterKey: 'anna',
+    idempotencyKey: '11111111-1111-4111-8111-111111111111:character:anna:character-bundle-v3',
+    bookEditionId: '11111111-1111-4111-8111-111111111111', characterKey: 'character:anna',
     name: 'Анна', fullName: 'Анна', scope: 'private', bookTitle: 'Книга', bookAuthor: '',
-    bundleVersion: 'character-bundle-v1',
+    bundleVersion: 'character-bundle-v3',
     requiredMedia: ['primary_portrait', 'greeting_audio', 'idle_animation'],
     character: {
-      characterKey: 'anna', name: 'Анна', fullName: 'Анна', aliases: [], gender: 'female',
+      characterKey: 'character:anna', name: 'Анна', fullName: 'Анна', aliases: [], gender: 'female',
       age: '', role: '', description: '', appearancePrompt: 'portrait', greeting: 'Привет', voice: 'Che',
       firstAppearanceTextOffset: 0, warmupTextOffset: 0
     }

@@ -1,12 +1,25 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { imageUpstreamError, shouldFallbackAfterImageError } from '../image-policy.mjs'
-import { shouldRetryKandinsky, videoRetryDelay } from '../retry-policy.mjs'
+import {
+  shouldRetryKandinsky,
+  shouldRetryKandinskyStatus,
+  videoRetryDelay
+} from '../retry-policy.mjs'
 
-test('Kandinsky censorship is terminal and only rate limits are retried', () => {
+test('Kandinsky retries provider rate limits and transient 5xx network failures', () => {
   assert.equal(shouldRetryKandinsky({ code: 'RATE' }), true)
+  assert.equal(shouldRetryKandinsky({ code: 'NETWORK' }), true)
   assert.equal(shouldRetryKandinsky({ code: 'CENSOR' }), false)
   assert.equal(shouldRetryKandinsky({ code: 'AUTH' }), false)
+  assert.equal(shouldRetryKandinsky({ code: 'TIMEOUT' }), false)
+})
+
+test('Kandinsky status polling keeps the same task after transient transport failures', () => {
+  assert.equal(shouldRetryKandinskyStatus({ code: 'TIMEOUT' }), true)
+  assert.equal(shouldRetryKandinskyStatus({ code: 'NETWORK' }), true)
+  assert.equal(shouldRetryKandinskyStatus({ code: 'CENSOR' }), false)
+  assert.equal(shouldRetryKandinskyStatus({ code: 'AUTH' }), false)
 })
 
 test('provider fallback never bypasses an image censorship decision', () => {

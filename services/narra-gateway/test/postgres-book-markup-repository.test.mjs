@@ -176,6 +176,15 @@ test('private v3 migration permits only expiring temporary source storage', asyn
   assert.match(migration, /WHERE scope = 'private'/)
 })
 
+test('v3 media migration accepts canonical namespaced character keys', async () => {
+  const migration = await readFile(
+    new URL('../migrations/009_v3_character_media.sql', import.meta.url),
+    'utf8'
+  )
+  assert.match(migration, /character_key ~ '\^\[A-Za-z0-9\]\[A-Za-z0-9\._:-\]/)
+  assert.match(migration, /book_characters_key_v3/)
+})
+
 test('catalog cover migration stores one verified presentation asset per edition', async () => {
   const migration = await readFile(
     new URL('../migrations/004_catalog_covers.sql', import.meta.url),

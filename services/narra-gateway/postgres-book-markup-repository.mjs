@@ -1016,7 +1016,7 @@ export function createPostgresBookMarkupRepository(pool, {
     }) {
       return transaction(pool, async (client) => {
         const edition = await client.query(
-          `SELECT edition.id, edition.scope, markup.text_length
+          `SELECT edition.id, edition.scope, markup.text_length, markup.analysis_version
            FROM book_editions AS edition
            LEFT JOIN book_markup_versions AS markup
              ON markup.book_edition_id = edition.id AND markup.status = 'published'
@@ -1125,6 +1125,7 @@ export function createPostgresBookMarkupRepository(pool, {
         )
         return {
           scope: edition.rows[0].scope,
+          analysisVersion: edition.rows[0].analysis_version ?? null,
           readerTextOffset,
           readingFraction,
           chapterKey: position.rows[0].chapter_key,

@@ -1,5 +1,6 @@
 export const BOOK_ANALYSIS_PIPELINE_VERSION = 'book-analysis-v8'
 export const BOOK_ANALYSIS_MARKUP_VERSION = 'book-markup-v3'
+export const BOOK_ANALYSIS_CHARACTER_BUNDLE_VERSION = 'character-bundle-v3'
 export const BOOK_ANALYSIS_SCHEMA_VERSION = 3
 export const BOOK_ANALYSIS_PROMPT_VERSION = 'book-scan-v4'
 export const BOOK_ANALYSIS_EXTRACTOR_VERSION = 'book-scan-v4'

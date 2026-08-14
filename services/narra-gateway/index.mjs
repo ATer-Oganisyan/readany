@@ -42,6 +42,7 @@ import {
 } from './service-url.mjs'
 import {
   shouldRetryKandinsky,
+  shouldRetryKandinskyStatus,
   videoRetryDelay
 } from './retry-policy.mjs'
 import { imageUpstreamError, shouldFallbackAfterImageError } from './image-policy.mjs'
@@ -72,6 +73,7 @@ import {
 } from './internal-generation-service.mjs'
 import { createLocalIdleAnimation } from './local-idle-animation.mjs'
 import { createPrivateMaterialCleanup } from './private-material-cleanup.mjs'
+import { kandinskyImageTimeoutMs, kandinskyRequestTimeoutMs } from './image-timeouts.mjs'
 
 // ================= Конфигурация =================
 const PORT = process.env.PORT || 8787
@@ -153,6 +155,8 @@ const PRIVATE_MATERIAL_CLEANUP_MS = envInt(
 const PRIVATE_MATERIAL_CLEANUP_BATCH_SIZE = envInt('PRIVATE_MATERIAL_CLEANUP_BATCH_SIZE', 100, 1_000)
 const LLM_RESPONSE_MAX_BYTES = envInt('LLM_RESPONSE_MAX_MIB', 8, 64) * 1024 * 1024
 const KANDINSKY_QUEUE_LIMIT = envInt('KANDINSKY_QUEUE_LIMIT', 6, 100)
+const KANDINSKY_IMAGE_TIMEOUT_MS = kandinskyImageTimeoutMs(process.env)
+const KANDINSKY_REQUEST_TIMEOUT_MS = kandinskyRequestTimeoutMs(process.env)
 const VIDEO_QUEUE_LIMIT = envInt('VIDEO_QUEUE_LIMIT', 4, 100)
 const LLM_CONCURRENCY = envInt('LLM_CONCURRENCY', 8, 100)
 const LLM_QUEUE_LIMIT = envInt('LLM_QUEUE_LIMIT', 16, 500)
@@ -334,7 +338,7 @@ async function kandinskyWithRetry(prompt, width, height, signal, attempts = 3) {
       return await kandinskyGenerate(prompt, width, height, signal)
     } catch (e) {
       if (shouldRetryKandinsky(e) && i < attempts - 1) {
-        console.error(`[kandinsky] лимит, жду 20с (попытка ${i + 2}/${attempts})`)
+        console.error(`[kandinsky] временная ошибка ${e.code}, жду 20с (попытка ${i + 2}/${attempts})`)
         await abortableDelay(20000, signal)
         continue
       }
@@ -345,11 +349,16 @@ async function kandinskyWithRetry(prompt, width, height, signal, attempts = 3) {
 
 async function kandinskyGenerate(prompt, width = 768, height = 1024, signal) {
   const resolution = resolutionFor(width, height)
+  const deadline = Date.now() + KANDINSKY_IMAGE_TIMEOUT_MS
+  const requestTimeoutMs = () => Math.max(
+    1,
+    Math.min(KANDINSKY_REQUEST_TIMEOUT_MS, deadline - Date.now())
+  )
   // 1) создать задачу
   const runRes = await httpsRequest(`${KANDINSKY_HOST}/tasks/k6-image-t2i`, {
     method: 'POST',
     insecure: INSECURE,
-    timeoutMs: 30000,
+    timeoutMs: requestTimeoutMs(),
     signal,
     headers: kHeaders(),
     body: JSON.stringify({ params: { query: `${prompt}${STYLE_SUFFIX}`.slice(0, 950), resolution } })
@@ -366,16 +375,21 @@ async function kandinskyGenerate(prompt, width = 768, height = 1024, signal) {
   if (!taskId) throw httpErr('UNKNOWN', 'Kandinsky: нет task_id')
 
   // 2) поллинг статуса
-  const deadline = Date.now() + 120_000
   let done = false
   while (Date.now() < deadline) {
     await abortableDelay(4000, signal)
-    const st = await httpsRequest(`${KANDINSKY_HOST}/tasks/${taskId}`, {
-      insecure: INSECURE,
-      timeoutMs: 20000,
-      signal,
-      headers: kHeaders()
-    })
+    let st
+    try {
+      st = await httpsRequest(`${KANDINSKY_HOST}/tasks/${taskId}`, {
+        insecure: INSECURE,
+        timeoutMs: 20000,
+        signal,
+        headers: kHeaders()
+      })
+    } catch (error) {
+      if (shouldRetryKandinskyStatus(error)) continue
+      throw error
+    }
     if (st.status >= 400) {
       const upstreamError = imageUpstreamError({
         provider: 'Kandinsky',
@@ -400,12 +414,17 @@ async function kandinskyGenerate(prompt, width = 768, height = 1024, signal) {
       })
     }
   }
-  if (!done) throw httpErr('TIMEOUT', 'Kandinsky: таймаут (120с)')
+  if (!done) {
+    throw httpErr(
+      'TIMEOUT',
+      `Kandinsky: таймаут (${Math.round(KANDINSKY_IMAGE_TIMEOUT_MS / 1000)}с)`
+    )
+  }
 
   // 3) забрать результат (бинарный PNG)
   const resImg = await httpsRequest(`${KANDINSKY_HOST}/tasks/${taskId}/result`, {
     insecure: INSECURE,
-    timeoutMs: 30000,
+    timeoutMs: requestTimeoutMs(),
     signal,
     binary: true,
     headers: { Authorization: `Bearer ${KANDINSKY_TOKEN}` }
