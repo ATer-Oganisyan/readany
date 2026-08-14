@@ -105,7 +105,10 @@ test('operator UI exposes live book summaries, details, operations and formatted
       headers: { authorization: AUTH }
     })
     assert.equal(styles.status, 200)
-    assert.match(await styles.text(), /mishanaer\/deslop primitives/)
+    const css = await styles.text()
+    assert.match(css, /mishanaer\/deslop primitives/)
+    assert.match(css, /\[hidden\]\s*\{\s*display:\s*none\s*!important;/)
+    assert.match(css, /\.book-row-title\s*\{[^}]*display:\s*block;/s)
 
     const script = await fetch(`${baseUrl}/operator/assets/app.js`, {
       headers: { authorization: AUTH }

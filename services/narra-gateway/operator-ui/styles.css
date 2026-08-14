@@ -21,6 +21,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--background); }
 button, input { font: inherit; }
 button { color: inherit; }
@@ -57,8 +58,8 @@ input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px #0088ff20; }
 .book-row:hover { background: var(--primary-5); }
 .book-row.active { background: var(--primary-10); }
 .book-row-main { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.book-row-title { font-weight: 700; line-height: 20px; }
-.book-row-author { color: var(--primary-60); font-size: 13px; line-height: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.book-row-title { display: block; font-weight: 700; line-height: 20px; }
+.book-row-author { display: block; color: var(--primary-60); font-size: 13px; line-height: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .progress-track { height: 5px; overflow: hidden; border-radius: 9999px; background: var(--primary-10); }
 .progress-track > span { display: block; height: 100%; background: var(--blue); border-radius: inherit; transition: width .35s ease; }
 .book-row-state { display: flex; justify-content: space-between; gap: 8px; color: var(--primary-60); font-size: 11px; }
