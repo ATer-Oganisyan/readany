@@ -14,21 +14,27 @@ import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useLibraryStore, useNarraStore } from "@/stores";
 import {
   type ThemeColors,
+  bodyTypography,
+  captionTypography,
   fontSize,
   fontWeight,
   headingFontFamily,
   spacing,
-  useColors,
+  titleFontFamily,
+  useTheme,
 } from "@/styles/theme";
-import { useHeaderHeight } from "@react-navigation/elements";
+import { radiusPixels, spacingPixels } from "@deslop/primitives";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { MessageV2 } from "@readany/core/types/message";
 import * as Crypto from "expo-crypto";
+import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 type Props = NativeStackScreenProps<RootStackParamList, "NarraCharacterChat">;
+
+const headerControlSize = 34;
 
 export function buildCharacterSystemPrompt(
   character: NarraCharacter,
@@ -92,9 +98,8 @@ function toMessageV2(message: NarraChatMessage, threadId: string): MessageV2 {
 
 export function NarraCharacterChatScreen({ route, navigation }: Props) {
   const { bookId, characterId } = route.params;
-  const colors = useColors();
+  const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const headerHeight = useHeaderHeight();
   const { t, i18n } = useTranslation();
   const interfaceLanguage = i18n.resolvedLanguage === "en" ? "en" : "ru";
   const book = useLibraryStore((state) => state.books.find((item) => item.id === bookId));
@@ -107,11 +112,26 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
   const memory = narraBook?.memories?.[characterId] ?? "";
   const [sending, setSending] = useState(false);
   const [greetingLoading, setGreetingLoading] = useState(false);
+  const [pendingAssistant, setPendingAssistant] = useState<NarraChatMessage | null>(null);
+  const [revealMessageId, setRevealMessageId] = useState<string | null>(null);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const audioRef = useRef(new NarraAudioPlayer());
   const greetingRequestedRef = useRef(false);
   const placeholderRequestedRef = useRef<string | null>(null);
   const unlocked = Boolean(book && character && isCharacterUnlocked(book.progress, character));
+  const characterStatus =
+    sending || greetingLoading || Boolean(revealMessageId)
+      ? t("narra.characterTyping", "Печатает...")
+      : t("narra.characterOnline", "онлайн");
+  const openCharacterProfile = useCallback(
+    () =>
+      navigation.navigate("NarraCharacterProfile", {
+        bookId,
+        characterId,
+        openedFromChat: true,
+      }),
+    [bookId, characterId, navigation],
+  );
 
   useEffect(() => {
     recordTelemetry("chat_opened", { feature: "chat" });
@@ -125,13 +145,7 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
           character: character.name,
         })}
         hitSlop={8}
-        onPress={() =>
-          navigation.navigate("NarraCharacterProfile", {
-            bookId,
-            characterId,
-            openedFromChat: true,
-          })
-        }
+        onPress={openCharacterProfile}
         style={({ pressed }) => [styles.headerAvatarButton, pressed && styles.headerAvatarPressed]}
       >
         <CharacterPortraitImage
@@ -150,25 +164,20 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
 
     navigation.setOptions({
       title: character?.name || t("narra.characterChat", "Чат с персонажем"),
-      ...(Platform.OS === "ios"
-        ? {
-            headerRight: undefined,
-            unstable_headerRightItems: () =>
-              profileButton
-                ? [
-                    {
-                      type: "custom" as const,
-                      element: profileButton,
-                    },
-                  ]
-                : [],
-          }
-        : {
-            unstable_headerRightItems: undefined,
-            headerRight: () => profileButton,
-          }),
+      headerTitle: () => (
+        <CharacterHeaderTitle
+          name={character?.name || t("narra.characterChat", "Чат с персонажем")}
+          status={characterStatus}
+          isDark={isDark}
+          onPress={openCharacterProfile}
+          styles={styles}
+        />
+      ),
+      headerTitleAlign: "center",
+      unstable_headerRightItems: undefined,
+      headerRight: () => profileButton,
     });
-  }, [bookId, character, characterId, navigation, styles, t]);
+  }, [bookId, character, characterStatus, isDark, navigation, openCharacterProfile, styles, t]);
 
   useEffect(() => () => audioRef.current.stop(), []);
 
@@ -231,8 +240,11 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
 
   const chatMessages = useMemo(() => {
     const threadId = `narra-character-${bookId}-${characterId}`;
-    return messages.map((message) => toMessageV2(message, threadId));
-  }, [bookId, characterId, messages]);
+    const persistedMessages = messages.map((message) => toMessageV2(message, threadId));
+    return pendingAssistant
+      ? [...persistedMessages, toMessageV2(pendingAssistant, threadId)]
+      : persistedMessages;
+  }, [bookId, characterId, messages, pendingAssistant]);
 
   // Первое сообщение героя: свой greeting из анализа/каталога, иначе — просим
   // гейтвей поздороваться в роли персонажа. Сохраняется в историю чата один раз,
@@ -389,7 +401,15 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
         content: text,
         createdAt: Date.now(),
       };
+      const assistantMessageId = Crypto.randomUUID();
+      const assistantDraft: NarraChatMessage = {
+        id: assistantMessageId,
+        role: "assistant",
+        content: "",
+        createdAt: Date.now(),
+      };
       append(bookId, characterId, userMessage);
+      setPendingAssistant(assistantDraft);
       try {
         const response = await narraGatewayRequest("/v2/ai/chat/complete", {
           method: "POST",
@@ -404,14 +424,17 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
         });
         const content = await readCompletion(response);
         const assistantMessage: NarraChatMessage = {
-          id: Crypto.randomUUID(),
+          id: assistantMessageId,
           role: "assistant",
           content: content || t("narra.emptyAnswer", "Мне нечего добавить."),
           createdAt: Date.now(),
         };
         append(bookId, characterId, assistantMessage);
+        setPendingAssistant(null);
+        setRevealMessageId(assistantMessage.id);
         void refreshMemory([...messages, userMessage, assistantMessage]);
       } catch (error) {
+        setPendingAssistant(null);
         Alert.alert(
           t("narra.chatFailedTitle", "Не удалось получить ответ"),
           reportNarraError("character_chat", error).message,
@@ -469,13 +492,14 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
       };
 
   return (
-    <View
-      style={[styles.container, { paddingTop: process.env.EXPO_OS === "ios" ? headerHeight : 0 }]}
-    >
+    <View style={styles.container}>
       <NarraChat
         messages={chatMessages}
-        isStreaming={sending || greetingLoading}
-        currentStep={sending || greetingLoading ? "responding" : "idle"}
+        adjustsForTransparentHeader
+        floatingComposer
+        isStreaming={sending || greetingLoading || Boolean(revealMessageId)}
+        showScrollToBottomButton={false}
+        currentStep={sending || greetingLoading || revealMessageId ? "responding" : "idle"}
         placeholder={
           interfaceLanguage === "en"
             ? t("narra.messagePlaceholder", "Message {{name}}…", { name: character.name })
@@ -484,6 +508,11 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
         }
         onSend={send}
         assistantName={character.name}
+        showTypingIndicator={false}
+        revealMessageId={revealMessageId}
+        onRevealComplete={(messageId) =>
+          setRevealMessageId((current) => (current === messageId ? null : current))
+        }
         showModeControls={false}
         assistantMessageAction={assistantMessageAction}
       />
@@ -516,16 +545,114 @@ const makeStyles = (colors: ThemeColors) =>
       textAlign: "center",
     },
     headerAvatarButton: {
-      width: 34,
-      height: 34,
+      width: headerControlSize,
+      height: headerControlSize,
       overflow: "hidden",
       alignItems: "center",
       justifyContent: "center",
-      borderRadius: 17,
+      borderRadius: headerControlSize / 2,
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: colors.border,
       backgroundColor: colors.elevation2,
     },
     headerAvatarPressed: { opacity: 0.62 },
     headerAvatarImage: { width: "100%", height: "100%" },
+    headerTitleContent: {
+      alignItems: "center",
+      flex: 1,
+      justifyContent: "center",
+      minWidth: 0,
+    },
+    headerTitlePressable: {
+      alignItems: "center",
+      alignSelf: "stretch",
+      flex: 1,
+      justifyContent: "center",
+    },
+    headerTitleGlass: {
+      alignItems: "center",
+      borderCurve: "continuous",
+      borderRadius: radiusPixels.full,
+      flexDirection: "column",
+      flexShrink: 0,
+      height: spacingPixels[44],
+      justifyContent: "center",
+      maxWidth: 220,
+      minWidth: 104,
+      paddingHorizontal: spacingPixels[12],
+    },
+    headerTitleFallback: {
+      borderColor: colors.border,
+      borderWidth: StyleSheet.hairlineWidth,
+      backgroundColor: colors.elevation1,
+    },
+    headerTitle: {
+      color: colors.foreground,
+      ...bodyTypography,
+      fontFamily: titleFontFamily,
+      fontWeight: fontWeight.bold,
+      maxWidth: 190,
+    },
+    headerSubtitle: {
+      color: colors.mutedForeground,
+      ...captionTypography,
+      fontFamily: bodyTypography.fontFamily,
+      textTransform: "none",
+    },
   });
+
+function CharacterHeaderTitle({
+  name,
+  status,
+  isDark,
+  onPress,
+  styles,
+}: {
+  name: string;
+  status: string;
+  isDark: boolean;
+  onPress: () => void;
+  styles: ReturnType<typeof makeStyles>;
+}) {
+  const content = (
+    <View style={styles.headerTitleContent}>
+      <Text numberOfLines={1} style={styles.headerTitle}>
+        {name}
+      </Text>
+      <Text numberOfLines={1} style={styles.headerSubtitle}>
+        {status}
+      </Text>
+    </View>
+  );
+
+  if (Platform.OS === "ios" && isLiquidGlassAvailable()) {
+    return (
+      <GlassView
+        colorScheme={isDark ? "dark" : "light"}
+        glassEffectStyle="regular"
+        isInteractive
+        style={styles.headerTitleGlass}
+      >
+        <Pressable
+          accessibilityLabel={`${name}, ${status}`}
+          accessibilityRole="button"
+          onPress={onPress}
+          style={styles.headerTitlePressable}
+        >
+          {content}
+        </Pressable>
+      </GlassView>
+    );
+  }
+
+  return (
+    <Pressable
+      accessibilityLabel={`${name}, ${status}`}
+      accessibilityRole="button"
+      onPress={onPress}
+      style={[styles.headerTitleGlass, styles.headerTitleFallback]}
+    >
+      {content}
+    </Pressable>
+  );
+}

@@ -10,6 +10,7 @@ import {
 import { BasicMarkdown } from './components/BasicMarkdown'
 import { MarkdownMessageText, isMarkdownAvailable } from './components/MarkdownMessageText'
 import { StreamingCursor } from './components/StreamingCursor'
+import { StreamingText } from './components/StreamingText'
 import { useThemedStyles } from './hooks/useTheme'
 import { LinkParser, LinkMatcher, LinkType } from './linkParser'
 import { LeftRightStyle, IMessage } from './Models'
@@ -48,6 +49,10 @@ export type MessageTextProps<TMessage extends IMessage> = {
   markdown?: boolean
   /** Extra props forwarded to the Streamdown component (its own theming/rules API); only used when streamdown is installed. */
   markdownProps?: Record<string, unknown>
+  /** Reveal the text with the streamingText staggered word animation. */
+  streamingReveal?: boolean
+  /** Called when the streamingText reveal animation has finished. */
+  onStreamingRevealComplete?: () => void
 }
 
 export function MessageText<TMessage extends IMessage>({
@@ -69,6 +74,8 @@ export function MessageText<TMessage extends IMessage>({
   stripPrefix = false,
   markdown,
   markdownProps,
+  streamingReveal = false,
+  onStreamingRevealComplete,
 }: MessageTextProps<TMessage>) {
   const styles = useThemedStyles(createStyles)
 
@@ -90,6 +97,16 @@ export function MessageText<TMessage extends IMessage>({
   }, [onPressProp, currentMessage])
 
   const isStreaming = !!currentMessage?.streaming
+
+  if (streamingReveal && currentMessage?.text)
+    return (
+      <StreamingText
+        text={currentMessage.text}
+        textStyle={style}
+        containerStyle={[styles.container, containerStyle?.[position]]}
+        onComplete={onStreamingRevealComplete}
+      />
+    )
 
   // Render markdown when explicitly enabled, or when the message is being
   // streamed (AI replies) and it wasn't explicitly disabled. Prefer

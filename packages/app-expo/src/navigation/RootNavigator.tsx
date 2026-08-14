@@ -199,6 +199,11 @@ export function RootNavigator() {
             animation: "slide_from_right",
             title: t("narra.characterChat", "Чат с персонажем"),
             headerRight: undefined,
+            scrollEdgeEffects: {
+              ...NATIVE_SCROLL_EDGE_EFFECTS,
+              top: "hidden",
+              bottom: "hidden",
+            },
             unstable_headerRightItems: () => [],
           }}
         />

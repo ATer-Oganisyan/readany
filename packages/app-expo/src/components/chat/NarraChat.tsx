@@ -1,4 +1,5 @@
 import { fontFamily, useTheme, withOpacity } from "@/styles/theme";
+import { spacingPixels } from "@deslop/primitives";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useFocusEffect } from "@react-navigation/native";
 import type { AttachedQuote } from "@readany/core/types";
@@ -9,10 +10,14 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, StyleSheet, Text, type TextInput, View } from "react-native";
 import {
+  Bubble,
+  type BubbleProps,
   Chat,
   type IMessage,
   type InputToolbarProps,
   type MessageMenuItem,
+  MessageText,
+  type MessageTextProps,
   type PartialChatTheme,
 } from "../../../vendor/react-native-chat/src";
 import { NarraChatComposer } from "./narra-chat-composer";
@@ -52,6 +57,12 @@ interface NarraChatProps {
   autoFocus?: boolean;
   assistantName?: string;
   assistantAvatar?: IMessage["user"]["avatar"];
+  adjustsForTransparentHeader?: boolean;
+  floatingComposer?: boolean;
+  showScrollToBottomButton?: boolean;
+  showTypingIndicator?: boolean;
+  revealMessageId?: string | null;
+  onRevealComplete?: (messageId: string) => void;
   showModeControls?: boolean;
   assistantMessageAction?: AssistantMessageAction;
 }
@@ -143,6 +154,12 @@ export function NarraChat({
   autoFocus = false,
   assistantName = "Narra AI",
   assistantAvatar,
+  adjustsForTransparentHeader = false,
+  floatingComposer = false,
+  showScrollToBottomButton = true,
+  showTypingIndicator = true,
+  revealMessageId = null,
+  onRevealComplete,
   showModeControls = true,
   assistantMessageAction,
 }: NarraChatProps) {
@@ -154,6 +171,7 @@ export function NarraChat({
   const inputRef = useRef<TextInput>(null);
   const [deepThinking, setDeepThinking] = useState(false);
   const [spoilerFree, setSpoilerFree] = useState(false);
+  const [composerHeight, setComposerHeight] = useState(0);
 
   const streamingMessageId =
     isStreaming && messages.at(-1)?.role === "assistant" ? messages.at(-1)?.id : undefined;
@@ -266,6 +284,52 @@ export function NarraChat({
     [onCitationClick],
   );
 
+  const renderMessageText = useCallback(
+    (props: MessageTextProps<NarraMessage>) => {
+      const shouldReveal =
+        revealMessageId !== null &&
+        String(props.currentMessage._id) === revealMessageId &&
+        props.currentMessage.source.role === "assistant";
+
+      return (
+        <MessageText
+          {...props}
+          streamingReveal={shouldReveal}
+          onStreamingRevealComplete={
+            shouldReveal && onRevealComplete ? () => onRevealComplete(revealMessageId) : undefined
+          }
+        />
+      );
+    },
+    [onRevealComplete, revealMessageId],
+  );
+
+  const renderBubble = useCallback(
+    (props: BubbleProps<NarraMessage>) => (
+      <Bubble
+        {...props}
+        bottomContainerStyle={{
+          left: { display: "none" },
+          right: { display: "none" },
+        }}
+        renderTicks={() => null}
+      />
+    ),
+    [],
+  );
+
+  const messageTextProps = useMemo(
+    () => ({
+      containerStyle: {
+        left: { margin: spacingPixels[12] },
+        right: { margin: spacingPixels[12] },
+      },
+      markdown: true,
+      onPress: handleMessageLink,
+    }),
+    [handleMessageLink],
+  );
+
   const renderAccessory = useCallback(() => {
     if (!errorMessage && quotes.length === 0 && !showModeControls) return null;
 
@@ -340,11 +404,18 @@ export function NarraChat({
       <NarraChatComposer
         {...props}
         allowSendWithoutText={quotes.length > 0}
+        floating={floatingComposer}
         isStreaming={isStreaming}
+        onHeightChange={setComposerHeight}
         onStop={onStop}
       />
     ),
-    [isStreaming, onStop, quotes.length],
+    [floatingComposer, isStreaming, onStop, quotes.length],
+  );
+  const renderNoTypingIndicator = useCallback(() => null, []);
+  const renderTransparentHeaderInset = useCallback(
+    () => <View pointerEvents="none" style={{ height: headerHeight + spacingPixels[8] }} />,
+    [headerHeight],
   );
 
   const lastMessage = messages.at(-1);
@@ -365,11 +436,15 @@ export function NarraChat({
       renderAvatar={null}
       renderAccessory={renderAccessory}
       renderInputToolbar={renderInputToolbar}
-      isTyping={showInitialStreaming}
+      renderBubble={renderBubble}
+      renderMessageText={renderMessageText}
+      renderTime={() => null}
+      renderTypingIndicator={showTypingIndicator ? undefined : renderNoTypingIndicator}
+      isTyping={showTypingIndicator && showInitialStreaming}
       messageActions={messageActions}
-      messageTextProps={{ markdown: true, onPress: handleMessageLink }}
+      messageTextProps={messageTextProps}
       isDayAnimationEnabled
-      isScrollToBottomEnabled
+      isScrollToBottomEnabled={showScrollToBottomButton}
       textInputRef={inputRef}
       textInputProps={{
         placeholder: effectivePlaceholder,
@@ -379,11 +454,26 @@ export function NarraChat({
         style: { fontFamily: fontFamily.regular, fontSize: 16, color: colors.foreground },
         autoCapitalize: "sentences",
       }}
-      keyboardAvoidingViewProps={{ keyboardVerticalOffset: headerHeight }}
+      keyboardAvoidingViewProps={{
+        keyboardVerticalOffset: adjustsForTransparentHeader ? 0 : headerHeight,
+      }}
       messagesContainerStyle={{ backgroundColor: colors.backgroundSecondary }}
       listProps={{
+        automaticallyAdjustContentInsets: false,
+        contentInsetAdjustmentBehavior: "never",
         keyboardDismissMode: "interactive",
         keyboardShouldPersistTaps: "handled",
+        ...(adjustsForTransparentHeader
+          ? { ListFooterComponent: renderTransparentHeaderInset }
+          : {}),
+        ...(floatingComposer
+          ? {
+              contentContainerStyle: {
+                paddingBottom: spacingPixels[10],
+                paddingTop: composerHeight,
+              },
+            }
+          : {}),
       }}
     />
   );
