@@ -48,6 +48,7 @@ import { loadCachedBackendCharacters, materializeBackendManifest } from "./backe
 
 function manifest(assetTypes: string[]): BackendBookManifest {
   return {
+    source: "v2",
     availability: "ready",
     readerTextOffset: 100,
     readingFraction: 0.1,

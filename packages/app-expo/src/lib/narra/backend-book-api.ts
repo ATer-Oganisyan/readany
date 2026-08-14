@@ -4,6 +4,7 @@ import { NarraServiceError } from "./errors";
 import type { NarraCharacter } from "./types";
 
 export type BackendBookResolution = "catalog" | "private" | "local_registration_required";
+export type BackendManifestSource = "v2" | "shadow-v3";
 
 export interface BackendBookBinding {
   resolution: BackendBookResolution;
@@ -55,11 +56,18 @@ export interface BackendManifestCharacter {
 }
 
 export interface BackendBookManifest {
+  source: BackendManifestSource;
   availability: "processing" | "ready";
   readerTextOffset: number;
   readingFraction: number | null;
   textLength?: number;
   revision?: number;
+  schemaVersion?: number;
+  analysisVersion?: string;
+  publicationId?: string;
+  runId?: string;
+  contentHash?: string;
+  publishedAt?: string;
   characters: BackendManifestCharacter[];
 }
 
@@ -292,17 +300,32 @@ export async function advanceBackendReaderProgress(
 
 export async function fetchBackendBookManifest(
   bookEditionId: string,
+  source: BackendManifestSource = "v2",
 ): Promise<BackendBookManifest> {
-  const payload = await gatewayJson(`/v2/books/${encodeURIComponent(bookEditionId)}/manifest`);
+  const encodedBookEditionId = encodeURIComponent(bookEditionId);
+  const path =
+    source === "shadow-v3"
+      ? `/v2/books/${encodedBookEditionId}/analysis-shadow/manifest`
+      : `/v2/books/${encodedBookEditionId}/manifest`;
+  const payload = await gatewayJson(path);
   const markup =
     payload.markup && typeof payload.markup === "object" ? (payload.markup as JsonRecord) : null;
   const rawCharacters = Array.isArray(payload.characters) ? payload.characters : [];
   return {
-    availability: payload.availability === "ready" ? "ready" : "processing",
+    source: payload.source === "shadow-v3" ? "shadow-v3" : "v2",
+    availability:
+      payload.source === "shadow-v3" || payload.availability === "ready" ? "ready" : "processing",
     readerTextOffset: Number(payload.reader_text_offset) || 0,
     readingFraction: typeof payload.reading_fraction === "number" ? payload.reading_fraction : null,
     textLength: markup ? Number(markup.text_length) || undefined : undefined,
     revision: markup ? Number(markup.revision) || undefined : undefined,
+    schemaVersion: markup ? Number(markup.schema_version) || undefined : undefined,
+    analysisVersion:
+      markup && typeof markup.analysis_version === "string" ? markup.analysis_version : undefined,
+    publicationId: typeof payload.publication_id === "string" ? payload.publication_id : undefined,
+    runId: typeof payload.run_id === "string" ? payload.run_id : undefined,
+    contentHash: typeof payload.content_hash === "string" ? payload.content_hash : undefined,
+    publishedAt: typeof payload.published_at === "string" ? payload.published_at : undefined,
     characters: rawCharacters.flatMap((candidate): BackendManifestCharacter[] => {
       if (!candidate || typeof candidate !== "object") return [];
       const character = candidate as JsonRecord;

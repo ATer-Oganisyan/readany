@@ -82,7 +82,10 @@ async function downloadedAsset(
   return path;
 }
 
-function baseCharacter(character: BackendBookManifest["characters"][number]): NarraCharacter {
+function baseCharacter(
+  character: BackendBookManifest["characters"][number],
+  source: BackendBookManifest["source"],
+): NarraCharacter {
   const clientCharacterId =
     typeof character.profile.clientCharacterId === "string" &&
     character.profile.clientCharacterId.trim()
@@ -119,6 +122,7 @@ function baseCharacter(character: BackendBookManifest["characters"][number]): Na
     unlockProgress: 0,
     mediaSource: "backend",
     mediaState: character.state,
+    analysisSource: source,
   };
 }
 
@@ -129,7 +133,7 @@ export async function materializeBackendManifest(
   const directory = await ensureBookDirectory(bookId);
   const characters = await Promise.all(
     manifest.characters.map(async (character) => {
-      const result = baseCharacter(character);
+      const result = baseCharacter(character, manifest.source);
       if (character.state !== "ready" || !character.bundle) return result;
       try {
         const requiredTypes = new Set(character.bundle.assets.map((asset) => asset.type));

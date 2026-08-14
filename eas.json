@@ -9,6 +9,7 @@
       "distribution": "internal",
       "env": {
         "EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE": "installation",
+        "EXPO_PUBLIC_NARRA_SHADOW_PREVIEW": "1",
         "EXPO_PUBLIC_NARRA_GATEWAY_URL": "https://api-test.narra.disrupt.builders"
       }
     },
@@ -16,6 +17,7 @@
       "distribution": "internal",
       "env": {
         "EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE": "installation",
+        "EXPO_PUBLIC_NARRA_SHADOW_PREVIEW": "1",
         "EXPO_PUBLIC_NARRA_GATEWAY_URL": "https://api-test.narra.disrupt.builders"
       }
     },

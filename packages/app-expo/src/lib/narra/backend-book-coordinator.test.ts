@@ -45,6 +45,7 @@ function fixture() {
   const calls: string[] = [];
   const characters: NarraCharacter[] = [];
   const manifest: BackendBookManifest = {
+    source: "v2",
     availability: "ready",
     readerTextOffset: 100,
     readingFraction: 0.1,
@@ -106,12 +107,18 @@ function fixture() {
     getCharacters() {
       return characters;
     },
+    getManifestSource() {
+      return undefined;
+    },
     setBinding(_bookId, value) {
       binding = value;
       calls.push("set-binding");
     },
     setCharacters() {
       calls.push("set-characters");
+    },
+    setManifestSource(_bookId, source) {
+      calls.push(`set-source:${source}`);
     },
     async updateBookHash() {
       calls.push("set-hash");
@@ -178,5 +185,22 @@ describe("backend book coordinator", () => {
     });
     await createBackendBookCoordinator(value).open({ ...BOOK, fileHash: HASH });
     expect(setCharacters).toHaveBeenCalledWith("local-book", []);
+  });
+
+  it("switches to shadow only after the preview manifest is materialized", async () => {
+    const value = fixture();
+    value.api.manifest = vi.fn(async (_editionId, source) => ({
+      source: source ?? "v2",
+      availability: "ready" as const,
+      readerTextOffset: 100,
+      readingFraction: 0.1,
+      characters: [],
+    }));
+    await createBackendBookCoordinator(value).selectManifestSource(BOOK, "shadow-v3");
+    expect(value.api.manifest).toHaveBeenCalledWith("edition-1", "shadow-v3");
+    expect(value.calls).toContain("set-source:shadow-v3");
+    expect(value.calls.indexOf("materialize")).toBeLessThan(
+      value.calls.indexOf("set-source:shadow-v3"),
+    );
   });
 });

@@ -41,6 +41,7 @@ export interface NarraState {
   setAnalyzing: (bookId: string | null) => void;
   setCharacters: (bookId: string, characters: NarraCharacter[], genre?: NarraGenreAnalysis) => void;
   setBackendBinding: (bookId: string, binding: NarraBackendBinding) => void;
+  setBackendManifestSource: (bookId: string, source: "v2" | "shadow-v3") => void;
   updateCharacter: (bookId: string, characterId: string, updates: Partial<NarraCharacter>) => void;
   setAnalysisError: (bookId: string, error?: string) => void;
   setMemory: (bookId: string, characterId: string, memory: string) => void;
@@ -81,6 +82,11 @@ export const useNarraStore = create<NarraState>()(
         set((state) => {
           const book = state.books[bookId] ?? emptyNarraBookState(bookId);
           return { books: { ...state.books, [bookId]: { ...book, backendBinding } } };
+        }),
+      setBackendManifestSource: (bookId, backendManifestSource) =>
+        set((state) => {
+          const book = state.books[bookId] ?? emptyNarraBookState(bookId);
+          return { books: { ...state.books, [bookId]: { ...book, backendManifestSource } } };
         }),
       updateCharacter: (bookId, characterId, updates) =>
         set((state) => {

@@ -10,7 +10,10 @@ import { Text } from "@/components/ui/Typography";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
-import { openBackendBookSync } from "@/lib/narra/backend-book-coordinator";
+import {
+  openBackendBookSync,
+  selectBackendManifestSource,
+} from "@/lib/narra/backend-book-coordinator";
 import { analyzeBookCharacters } from "@/lib/narra/character-analysis";
 import { hasCharacterPortrait } from "@/lib/narra/character-portrait";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
@@ -35,6 +38,7 @@ import {
 } from "react-native";
 
 type Props = NativeStackScreenProps<RootStackParamList, "NarraCharacters">;
+const SHADOW_PREVIEW_ENABLED = process.env.EXPO_PUBLIC_NARRA_SHADOW_PREVIEW === "1";
 
 export function NarraCharactersScreen({ route, navigation }: Props) {
   const { bookId } = route.params;
@@ -54,6 +58,7 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
   const autoAnalysisStartedRef = useRef(false);
   const [analysisStage, setAnalysisStage] = useState("");
   const [portraitLoading, setPortraitLoading] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const storedCharacters = bookState?.characters ?? [];
   const characters = storedCharacters;
   const visibleCharacters = useMemo(
@@ -61,6 +66,9 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
     [book?.progress, characters],
   );
   const busy = analyzing || Boolean(analysisStage);
+  const manifestSource = bookState?.backendManifestSource ?? "v2";
+  const canPreviewShadow =
+    SHADOW_PREVIEW_ENABLED && bookState?.backendBinding?.resolution === "catalog";
 
   useEffect(() => {
     recordTelemetry("character_opened", { feature: "character" });
@@ -219,6 +227,22 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
     [bookId, navigation],
   );
 
+  const toggleManifestSource = useCallback(async () => {
+    if (!book || previewLoading) return;
+    const nextSource = manifestSource === "shadow-v3" ? "v2" : "shadow-v3";
+    setPreviewLoading(true);
+    try {
+      await selectBackendManifestSource(book, nextSource);
+    } catch (error) {
+      Alert.alert(
+        t("narra.shadowPreviewFailed", "Не удалось открыть тестовую разметку"),
+        error instanceof Error ? error.message : String(error),
+      );
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [book, manifestSource, previewLoading, t]);
+
   const listItems: CharacterChatListItem[] = [
     {
       key: "narra",
@@ -275,6 +299,36 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
       style={styles.container}
     >
       <ExtractorWebView ref={extractorRef} />
+      {canPreviewShadow ? (
+        <View style={styles.previewPanel}>
+          <View style={styles.previewCopy}>
+            <Text style={styles.previewTitle}>
+              {manifestSource === "shadow-v3" ? "Тестовая разметка v3" : "Рабочая разметка v2"}
+            </Text>
+            <Text style={styles.previewDescription}>
+              {manifestSource === "shadow-v3"
+                ? "Показан результат полного shadow-анализа"
+                : "Можно сравнить с новым полным анализом книги"}
+            </Text>
+          </View>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel={manifestSource === "shadow-v3" ? "Показать v2" : "Показать v3"}
+            activeOpacity={0.82}
+            disabled={previewLoading}
+            onPress={() => void toggleManifestSource()}
+            style={[styles.previewButton, previewLoading && styles.disabled]}
+          >
+            {previewLoading ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <Text style={styles.previewButtonText}>
+                {manifestSource === "shadow-v3" ? "Показать v2" : "Показать v3"}
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      ) : null}
       <CharacterChatList items={listItems} />
       {characters.length === 0 ? (
         <CenteredEmptyState
@@ -315,6 +369,32 @@ const makeStyles = (colors: ThemeColors) =>
       paddingBottom: spacing.xxl,
     },
     emptyActions: { alignItems: "center", gap: spacing.md },
+    previewPanel: {
+      marginBottom: spacing.md,
+      padding: spacing.md,
+      borderRadius: radius.lg,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.md,
+    },
+    previewCopy: { flex: 1, gap: spacing.xs },
+    previewTitle: { color: colors.foreground, fontWeight: fontWeight.semibold },
+    previewDescription: { color: colors.mutedForeground, fontSize: fontSize.xs },
+    previewButton: {
+      minHeight: 36,
+      justifyContent: "center",
+      paddingHorizontal: spacing.md,
+      borderRadius: radius.full,
+      backgroundColor: colors.accent,
+    },
+    previewButtonText: {
+      color: colors.primary,
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.semibold,
+    },
     primaryButton: {
       minHeight: 46,
       paddingHorizontal: spacing.xl,

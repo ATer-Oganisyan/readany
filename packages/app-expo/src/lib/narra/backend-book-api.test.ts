@@ -206,6 +206,51 @@ describe("backend book API", () => {
     );
   });
 
+  it("loads the isolated v3 shadow manifest only from the explicit preview endpoint", async () => {
+    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          source: "shadow-v3",
+          publication_id: "publication-v3",
+          run_id: "run-v3",
+          content_hash: "c".repeat(64),
+          published_at: "2026-08-13T12:00:00.000Z",
+          reader_text_offset: 900,
+          reading_fraction: 0.45,
+          markup: {
+            schema_version: 3,
+            analysis_version: "book-markup-v3",
+            text_length: 2_000,
+          },
+          characters: [
+            {
+              character_key: "rodion",
+              name: "Раскольников",
+              full_name: "Родион Романович Раскольников",
+              first_appearance_text_offset: 100,
+              state: "preparing",
+              profile: { role: "Главный герой", analysisSource: "shadow-v3" },
+              bundle: null,
+            },
+          ],
+        }),
+      ),
+    );
+
+    const manifest = await fetchBackendBookManifest("book-1", "shadow-v3");
+
+    expect(vi.mocked(narraGatewayRequest)).toHaveBeenCalledWith(
+      "/v2/books/book-1/analysis-shadow/manifest",
+      {},
+    );
+    expect(manifest).toMatchObject({
+      source: "shadow-v3",
+      availability: "ready",
+      publicationId: "publication-v3",
+      analysisVersion: "book-markup-v3",
+    });
+  });
+
   it("sends a clamped reading fraction for backend canonicalization", async () => {
     vi.mocked(narraGatewayRequest).mockResolvedValueOnce(new Response("{}"));
     await advanceBackendReaderProgress("book-1", 1.2, "chapter-2", {
