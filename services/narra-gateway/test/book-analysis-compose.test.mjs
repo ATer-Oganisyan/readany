@@ -22,6 +22,14 @@ test('canonical v3 analysis deploys every stage by default as an independently s
   }
 })
 
+test('scan stage has parallel workers by default for catalog backfills', () => {
+  const scan = compose.slice(
+    compose.indexOf('  book-analysis-scan:'),
+    compose.indexOf('  book-analysis-resolve:')
+  )
+  assert.match(scan, /replicas: \$\{BOOK_ANALYSIS_SCAN_REPLICAS:-4\}/)
+})
+
 test('shadow analysis workers keep the hardened read-only runtime', () => {
   assert.match(compose, /x-book-analysis-worker: &book-analysis-worker/)
   assert.match(compose, /restart: unless-stopped/)

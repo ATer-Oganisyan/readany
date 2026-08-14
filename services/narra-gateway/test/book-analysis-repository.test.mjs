@@ -59,6 +59,23 @@ test('analysis jobs are claimed with stage isolation, skip locked and expiring l
   assert.deepEqual(claim.params[1], ['scan'])
 })
 
+test('analysis jobs are claimed fairly across books before another chunk from the same run', async () => {
+  const pool = scriptedPool([
+    () => ({ rows: [] }),
+    () => ({ rows: [] })
+  ])
+  const repository = createPostgresBookAnalysisRepository(pool, {
+    idFactory: () => '123e4567-e89b-42d3-a456-426614174001'
+  })
+
+  await repository.claimAnalysisJob('scan-worker-1', { stages: ['scan'] })
+
+  const claim = pool.queries.find(({ sql }) => /WITH candidate AS/.test(sql))
+  assert.match(claim.sql, /MAX\(sibling\.updated_at\)/)
+  assert.match(claim.sql, /sibling\.attempts > 0/)
+  assert.match(claim.sql, /NULLS FIRST/)
+})
+
 test('prepare completion writes chunks and scan jobs before advancing the barrier', async () => {
   const pool = scriptedPool([
     () => ({ rows: [{ id: 'prepare-1', max_attempts: 5, attempts: 1 }] }),

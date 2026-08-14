@@ -532,7 +532,15 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
                      AND dependency.status <> 'ready'
                  )
                )
-             ORDER BY job.priority DESC, job.available_at, job.created_at
+             ORDER BY job.priority DESC,
+               (
+                 SELECT MAX(sibling.updated_at)
+                 FROM book_analysis_jobs AS sibling
+                 WHERE sibling.run_id = job.run_id
+                   AND sibling.stage = job.stage
+                   AND sibling.attempts > 0
+               ) ASC NULLS FIRST,
+               job.available_at, job.created_at
              FOR UPDATE OF job SKIP LOCKED
              LIMIT 1
            )

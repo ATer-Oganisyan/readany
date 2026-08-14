@@ -254,6 +254,8 @@ services:
   book-analysis-scan:
     <<: *book-analysis-worker
     command: ["node", "book-analysis-scan-worker-runner.mjs"]
+    deploy:
+      replicas: ${BOOK_ANALYSIS_SCAN_REPLICAS:-4}
     environment:
       <<: [*book-analysis-database-environment, *book-analysis-storage-environment, *book-analysis-generator-environment]
 
