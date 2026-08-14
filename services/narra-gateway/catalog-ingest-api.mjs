@@ -113,13 +113,18 @@ function coverResponseJson(value) {
 
 export function createCatalogIngestRouter({
   token,
+  service: providedService,
   repository,
   analysisRepository,
   storage,
   uploadMaxBytes = 50 * 1024 * 1024
 }) {
   const router = express.Router()
-  const service = createCatalogIngestService({ repository, analysisRepository, storage })
+  const service = providedService ?? createCatalogIngestService({
+    repository,
+    analysisRepository,
+    storage
+  })
   router.use(requireOperatorAuth(token))
 
   router.post('/books/uploads', express.json({ limit: '16kb' }), asyncRoute(async (req, res) => {

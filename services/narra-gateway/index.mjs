@@ -63,7 +63,10 @@ import { createCoverJobStore } from './cover-job-store.mjs'
 import { createCoverJobRunner } from './cover-job-runner.mjs'
 import { createBookCatalogRouter } from './book-catalog-api.mjs'
 import { createCatalogIngestRouter } from './catalog-ingest-api.mjs'
+import { createCatalogIngestService } from './catalog-ingest-service.mjs'
 import { createPostgresBookAnalysisRepository } from './book-analysis-repository.mjs'
+import { createBookOperatorRouter } from './book-operator-api.mjs'
+import { createPostgresBookOperatorRepository } from './book-operator-repository.mjs'
 import { createPostgresBookMarkupRepository } from './postgres-book-markup-repository.mjs'
 import { createPostgresPoolFromEnv, runBookMarkupMigrations } from './postgres-runtime.mjs'
 import { createBookObjectStorageFromEnv } from './book-object-storage.mjs'
@@ -258,6 +261,11 @@ if (PRODUCTION && INSTALLATION_OPERATOR_TOKEN.length < 32) {
 const CATALOG_INGEST_TOKEN = String(process.env.CATALOG_INGEST_TOKEN || '').trim()
 if (PRODUCTION && CATALOG_INGEST_TOKEN.length < 32) {
   throw new Error('CATALOG_INGEST_TOKEN must contain at least 32 characters in production')
+}
+const BOOK_OPERATOR_USERNAME = String(process.env.BOOK_OPERATOR_USERNAME || 'narra').trim()
+const BOOK_OPERATOR_PASSWORD = String(process.env.BOOK_OPERATOR_PASSWORD || '').trim()
+if (PRODUCTION && (BOOK_OPERATOR_USERNAME.length < 1 || BOOK_OPERATOR_PASSWORD.length < 20)) {
+  throw new Error('BOOK_OPERATOR_USERNAME and a 20+ character BOOK_OPERATOR_PASSWORD are required in production')
 }
 
 // ================= Токены (кэш ~30 мин) =================
@@ -739,10 +747,11 @@ if (
     analyticsSecret,
     installationSecretPepper,
     INSTALLATION_OPERATOR_TOKEN,
-    CATALOG_INGEST_TOKEN
-  ]).size !== 5
+    CATALOG_INGEST_TOKEN,
+    BOOK_OPERATOR_PASSWORD
+  ]).size !== 6
 ) {
-  throw new Error('Gateway, analytics, installation pepper, operator and catalog secrets must all differ')
+  throw new Error('Gateway, analytics, installation pepper, operator, catalog and book UI secrets must all differ')
 }
 const dataDir = process.env.DATA_DIR || (process.env.NODE_ENV === 'production'
   ? '/data'
@@ -814,6 +823,7 @@ coverJobRunner.start()
 let bookMarkupPool = null
 let bookMarkupRepository = null
 let bookAnalysisRepository = null
+let bookOperatorRepository = null
 let privateMaterialCleanupTimer = null
 let privateMaterialCleanupInitialTimer = null
 const bookObjectStorage = createBookObjectStorageFromEnv(process.env)
@@ -838,6 +848,7 @@ if (process.env.DATABASE_URL) {
     privateMaterialTtlDays: PRIVATE_MATERIAL_TTL_DAYS
   })
   bookAnalysisRepository = createPostgresBookAnalysisRepository(bookMarkupPool)
+  bookOperatorRepository = createPostgresBookOperatorRepository(bookMarkupPool)
   if (bookObjectStorage) {
     const cleanup = createPrivateMaterialCleanup({
       repository: bookMarkupRepository,
@@ -1207,13 +1218,25 @@ app.post(
 )
 
 if (bookMarkupRepository && bookObjectStorage) {
-  app.use('/v2/admin/catalog', createCatalogIngestRouter({
-    token: CATALOG_INGEST_TOKEN,
+  const catalogIngestService = createCatalogIngestService({
     repository: bookMarkupRepository,
     analysisRepository: bookAnalysisRepository,
-    storage: bookObjectStorage,
+    storage: bookObjectStorage
+  })
+  app.use('/v2/admin/catalog', createCatalogIngestRouter({
+    token: CATALOG_INGEST_TOKEN,
+    service: catalogIngestService,
     uploadMaxBytes: BOOK_UPLOAD_MAX_BYTES
   }))
+  if (BOOK_OPERATOR_PASSWORD && bookOperatorRepository) {
+    app.use('/operator', createBookOperatorRouter({
+      username: BOOK_OPERATOR_USERNAME,
+      password: BOOK_OPERATOR_PASSWORD,
+      dashboardRepository: bookOperatorRepository,
+      catalogService: catalogIngestService,
+      uploadMaxBytes: BOOK_UPLOAD_MAX_BYTES
+    }))
+  }
 }
 
 // Public generic update feed. Integrity comes from electron-builder SHA-512

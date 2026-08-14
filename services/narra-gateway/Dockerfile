@@ -12,6 +12,7 @@ ENV NODE_ENV=production \
 
 COPY --chown=node:node *.mjs *.pem ./
 COPY --chown=node:node migrations ./migrations
+COPY --chown=node:node operator-ui ./operator-ui
 
 USER node
 EXPOSE 8787

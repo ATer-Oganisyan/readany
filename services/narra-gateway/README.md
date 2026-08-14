@@ -202,6 +202,23 @@ book may include `cover` and `cover_mime_type`; the seeder uploads that image
 through the separate cover prepare/content/complete flow. Public clients receive
 only checksum, size, MIME type and an authenticated cover download path.
 
+The password-protected book operations UI is served by the Gateway at
+`/operator/`. Configure a dedicated `BOOK_OPERATOR_PASSWORD` of at least 20
+characters and optionally `BOOK_OPERATOR_USERNAME` (defaults to `narra`). The
+password must differ from every bearer/signing secret. The UI provides:
+
+- live per-book progress across `prepare → scan → resolve → synthesize → validate → publish`;
+- observed, resolved and published characters plus portrait/audio/animation status;
+- a chronological analysis and generation operation log;
+- formatted publication, artifact and canonical-markup JSON;
+- catalog book and cover upload with visible checksum, transfer and pipeline progress.
+
+The browser upload routes and `/v2/admin/catalog/*` routes receive the same
+`CatalogIngestService` instance. Both therefore use the identical verified
+storage flow and `ensureAnalysisRun`; only Basic-authenticated browser entry and
+Bearer-authenticated CLI entry differ. Live state is read from PostgreSQL every
+two seconds and is never reconstructed from process memory or logs.
+
 When MinIO is reachable only inside Compose, keep `BOOK_STORAGE_ENDPOINT` on
 the internal service address and set `BOOK_STORAGE_PUBLIC_ENDPOINT` to the HTTPS
 origin exposed by Caddy. Gateway uses the internal client for object operations
