@@ -4,7 +4,7 @@ import { NarraServiceError } from "./errors";
 import type { NarraCharacter } from "./types";
 
 export type BackendBookResolution = "catalog" | "private" | "local_registration_required";
-export type BackendManifestSource = "v2" | "shadow-v3";
+export type BackendManifestSource = "v2" | "v3";
 
 export interface BackendBookBinding {
   resolution: BackendBookResolution;
@@ -300,21 +300,15 @@ export async function advanceBackendReaderProgress(
 
 export async function fetchBackendBookManifest(
   bookEditionId: string,
-  source: BackendManifestSource = "v2",
 ): Promise<BackendBookManifest> {
   const encodedBookEditionId = encodeURIComponent(bookEditionId);
-  const path =
-    source === "shadow-v3"
-      ? `/v2/books/${encodedBookEditionId}/analysis-shadow/manifest`
-      : `/v2/books/${encodedBookEditionId}/manifest`;
-  const payload = await gatewayJson(path);
+  const payload = await gatewayJson(`/v2/books/${encodedBookEditionId}/manifest`);
   const markup =
     payload.markup && typeof payload.markup === "object" ? (payload.markup as JsonRecord) : null;
   const rawCharacters = Array.isArray(payload.characters) ? payload.characters : [];
   return {
-    source: payload.source === "shadow-v3" ? "shadow-v3" : "v2",
-    availability:
-      payload.source === "shadow-v3" || payload.availability === "ready" ? "ready" : "processing",
+    source: payload.source === "v3" || payload.source === "shadow-v3" ? "v3" : "v2",
+    availability: payload.availability === "ready" ? "ready" : "processing",
     readerTextOffset: Number(payload.reader_text_offset) || 0,
     readingFraction: typeof payload.reading_fraction === "number" ? payload.reading_fraction : null,
     textLength: markup ? Number(markup.text_length) || undefined : undefined,

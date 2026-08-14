@@ -41,7 +41,7 @@ export interface NarraState {
   setAnalyzing: (bookId: string | null) => void;
   setCharacters: (bookId: string, characters: NarraCharacter[], genre?: NarraGenreAnalysis) => void;
   setBackendBinding: (bookId: string, binding: NarraBackendBinding) => void;
-  setBackendManifestSource: (bookId: string, source: "v2" | "shadow-v3") => void;
+  setBackendManifestSource: (bookId: string, source: "v2" | "v3") => void;
   updateCharacter: (bookId: string, characterId: string, updates: Partial<NarraCharacter>) => void;
   setAnalysisError: (bookId: string, error?: string) => void;
   setMemory: (bookId: string, characterId: string, memory: string) => void;

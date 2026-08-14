@@ -48,7 +48,7 @@ export interface NarraCharacter {
   idleAnimationUri?: string;
   mediaSource?: "local" | "backend";
   mediaState?: "preparing" | "ready";
-  analysisSource?: "v2" | "shadow-v3";
+  analysisSource?: "v2" | "v3" | "shadow-v3";
 }
 
 export interface NarraBackendBinding {
@@ -121,5 +121,5 @@ export interface NarraBookState {
   analyzedAt?: number;
   analysisError?: string;
   backendBinding?: NarraBackendBinding;
-  backendManifestSource?: "v2" | "shadow-v3";
+  backendManifestSource?: "v2" | "v3" | "shadow-v3";
 }

@@ -206,11 +206,12 @@ describe("backend book API", () => {
     );
   });
 
-  it("loads the isolated v3 shadow manifest only from the explicit preview endpoint", async () => {
+  it("loads canonical v3 markup from the public manifest endpoint", async () => {
     vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
       new Response(
         JSON.stringify({
-          source: "shadow-v3",
+          source: "v3",
+          availability: "ready",
           publication_id: "publication-v3",
           run_id: "run-v3",
           content_hash: "c".repeat(64),
@@ -229,7 +230,7 @@ describe("backend book API", () => {
               full_name: "Родион Романович Раскольников",
               first_appearance_text_offset: 100,
               state: "preparing",
-              profile: { role: "Главный герой", analysisSource: "shadow-v3" },
+              profile: { role: "Главный герой", analysisSource: "v3" },
               bundle: null,
             },
           ],
@@ -237,14 +238,11 @@ describe("backend book API", () => {
       ),
     );
 
-    const manifest = await fetchBackendBookManifest("book-1", "shadow-v3");
+    const manifest = await fetchBackendBookManifest("book-1");
 
-    expect(vi.mocked(narraGatewayRequest)).toHaveBeenCalledWith(
-      "/v2/books/book-1/analysis-shadow/manifest",
-      {},
-    );
+    expect(vi.mocked(narraGatewayRequest)).toHaveBeenCalledWith("/v2/books/book-1/manifest", {});
     expect(manifest).toMatchObject({
-      source: "shadow-v3",
+      source: "v3",
       availability: "ready",
       publicationId: "publication-v3",
       analysisVersion: "book-markup-v3",

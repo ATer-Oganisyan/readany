@@ -4,7 +4,6 @@ import type { Book } from "@readany/core/types";
 import {
   type BackendBookBinding,
   type BackendBookManifest,
-  type BackendManifestSource,
   type BackendReaderSectionPosition,
   advanceBackendReaderProgress,
   fetchBackendBookManifest,
@@ -29,7 +28,7 @@ export interface BackendBookCoordinatorApi {
     chapterKey?: string,
     sectionPosition?: BackendReaderSectionPosition,
   ): Promise<void>;
-  manifest(bookEditionId: string, source?: BackendManifestSource): Promise<BackendBookManifest>;
+  manifest(bookEditionId: string): Promise<BackendBookManifest>;
 }
 
 export interface BackendBookCoordinatorFiles {
@@ -41,10 +40,9 @@ export interface BackendBookCoordinatorFiles {
 export interface BackendBookCoordinatorState {
   getBinding(bookId: string): BackendBookBinding | undefined;
   getCharacters(bookId: string): NarraCharacter[];
-  getManifestSource(bookId: string): BackendManifestSource | undefined;
   setBinding(bookId: string, binding: BackendBookBinding): void;
   setCharacters(bookId: string, characters: NarraCharacter[]): void;
-  setManifestSource(bookId: string, source: BackendManifestSource): void;
+  setManifestSource(bookId: string, source: BackendBookManifest["source"]): void;
   updateBookHash(bookId: string, contentSha256: string): Promise<void>;
   reportError(scope: string, error: unknown): void;
 }
@@ -131,10 +129,7 @@ export function createBackendBookCoordinator({
       if (binding.resolution === "private" && localCharacters.length) {
         state.setBinding(book.id, await api.publish(bookEditionId, localCharacters));
       }
-      await applyManifest(
-        book.id,
-        await api.manifest(bookEditionId, state.getManifestSource(book.id) ?? "v2"),
-      );
+      await applyManifest(book.id, await api.manifest(bookEditionId));
     } catch (error) {
       state.reportError("book_open", error);
     }
@@ -150,17 +145,7 @@ export function createBackendBookCoordinator({
     const bookEditionId = binding.bookEditionId;
     if (!bookEditionId) throw new Error("Backend binding has no edition id");
     await api.advance(bookEditionId, progressFraction, chapterKey, sectionPosition);
-    await applyManifest(
-      book.id,
-      await api.manifest(bookEditionId, state.getManifestSource(book.id) ?? "v2"),
-    );
-  }
-
-  async function selectManifestSource(book: Book, source: BackendManifestSource): Promise<void> {
-    const binding = await ensureBinding(book);
-    const bookEditionId = binding.bookEditionId;
-    if (!bookEditionId) throw new Error("Backend binding has no edition id");
-    await applyManifest(book.id, await api.manifest(bookEditionId, source));
+    await applyManifest(book.id, await api.manifest(bookEditionId));
   }
 
   async function syncLocalMarkup(book: Book, characters: NarraCharacter[]): Promise<void> {
@@ -222,7 +207,6 @@ export function createBackendBookCoordinator({
   return {
     ensureBinding,
     open,
-    selectManifestSource,
     syncLocalMarkup,
     syncProgress,
     queueProgress,
@@ -261,9 +245,6 @@ const defaultState: BackendBookCoordinatorState = {
   getCharacters(bookId) {
     return useNarraStore.getState().books[bookId]?.characters ?? [];
   },
-  getManifestSource(bookId) {
-    return useNarraStore.getState().books[bookId]?.backendManifestSource;
-  },
   setBinding(bookId, binding) {
     useNarraStore.getState().setBackendBinding(bookId, binding);
   },
@@ -297,13 +278,6 @@ export function openBackendBookSync(book: Book): Promise<void> {
 
 export function syncLocalBookMarkup(book: Book, characters: NarraCharacter[]): Promise<void> {
   return coordinator.syncLocalMarkup(book, characters);
-}
-
-export function selectBackendManifestSource(
-  book: Book,
-  source: BackendManifestSource,
-): Promise<void> {
-  return coordinator.selectManifestSource(book, source);
 }
 
 export function queueBackendReaderProgress(

@@ -107,9 +107,6 @@ function fixture() {
     getCharacters() {
       return characters;
     },
-    getManifestSource() {
-      return undefined;
-    },
     setBinding(_bookId, value) {
       binding = value;
       calls.push("set-binding");
@@ -187,20 +184,17 @@ describe("backend book coordinator", () => {
     expect(setCharacters).toHaveBeenCalledWith("local-book", []);
   });
 
-  it("switches to shadow only after the preview manifest is materialized", async () => {
+  it("always loads the canonical manifest without a preview selector", async () => {
     const value = fixture();
-    value.api.manifest = vi.fn(async (_editionId, source) => ({
-      source: source ?? "v2",
+    value.api.manifest = vi.fn(async () => ({
+      source: "v3" as const,
       availability: "ready" as const,
       readerTextOffset: 100,
       readingFraction: 0.1,
       characters: [],
     }));
-    await createBackendBookCoordinator(value).selectManifestSource(BOOK, "shadow-v3");
-    expect(value.api.manifest).toHaveBeenCalledWith("edition-1", "shadow-v3");
-    expect(value.calls).toContain("set-source:shadow-v3");
-    expect(value.calls.indexOf("materialize")).toBeLessThan(
-      value.calls.indexOf("set-source:shadow-v3"),
-    );
+    await createBackendBookCoordinator(value).open(BOOK);
+    expect(value.api.manifest).toHaveBeenCalledWith("edition-1");
+    expect(value.calls).toContain("set-source:v3");
   });
 });
