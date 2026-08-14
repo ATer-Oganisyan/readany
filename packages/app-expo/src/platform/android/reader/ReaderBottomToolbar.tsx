@@ -1,26 +1,26 @@
 import { ReadingProgressSlider } from "@/components/reader/ReadingProgressSlider";
-import { MaterialIcon } from "@/components/ui/Icon";
 import type { ReaderBottomToolbarProps } from "@/screens/reader/ReaderBottomToolbar.types";
 import { withOpacity } from "@/styles/theme";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { Pressable, StyleSheet, View } from "react-native";
 
 export function ReaderBottomToolbar(props: ReaderBottomToolbarProps) {
   const actions = [
     {
       key: "toc",
-      icon: "format_list_bulleted" as const,
+      icon: "format-list-bulleted" as const,
       label: props.labels.toc,
       onPress: props.onOpenToc,
     },
     {
       key: "bookmark",
-      icon: props.isBookmarked ? "bookmark" : "bookmark_border",
+      icon: props.isBookmarked ? "bookmark" : "bookmark-border",
       label: props.labels.bookmarks,
       onPress: props.onToggleBookmark,
     },
     {
       key: "notes",
-      icon: "edit_note" as const,
+      icon: "edit-note" as const,
       label: props.labels.notes,
       onPress: props.onOpenNotes,
     },
@@ -67,8 +67,8 @@ export function ReaderBottomToolbar(props: ReaderBottomToolbarProps) {
               pressed ? { backgroundColor: withOpacity(props.foregroundColor, 0.1) } : null,
             ]}
           >
-            <MaterialIcon
-              name={action.icon}
+            <MaterialIcons
+              name={action.icon as keyof typeof MaterialIcons.glyphMap}
               size={26}
               color={
                 action.key === "bookmark" && props.isBookmarked

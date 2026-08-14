@@ -1,7 +1,7 @@
-import { MaterialIcon } from "@/components/ui/Icon";
 import type { NativeContextMenuButtonProps } from "@/components/ui/NativeContextMenuButton.types";
 import { useColors } from "@/styles/theme";
 import { Box, DropdownMenu, DropdownMenuItem, Host, Text } from "@expo/ui/jetpack-compose";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useCallback, useState } from "react";
 import { TouchableOpacity, View } from "react-native";
 
@@ -57,13 +57,13 @@ export function NativeContextMenuButton({
         activeOpacity={0.7}
         onPress={() => setMenuExpanded(true)}
       >
-        <MaterialIcon
+        <MaterialIcons
           name={
             sfSymbol.startsWith("book")
-              ? "menu_book"
+              ? "menu-book"
               : sfSymbol === "square.and.arrow.up"
                 ? "share"
-                : "more_vert"
+                : "more-vert"
           }
           size={22}
           color={iconColor}
