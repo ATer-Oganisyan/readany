@@ -11,11 +11,10 @@ import {
   extractBookMetadata,
   extractBookMetadataFromFile,
 } from "@/lib/book/metadata-extractor";
-import { shouldRefreshBundledCatalogCover } from "@/lib/catalog/bundled-book-definitions";
 import {
-  findBundledCatalogBookByTitle,
-  installBundledCatalogCover,
-} from "@/lib/catalog/bundled-books";
+  type BookImportSource,
+  planBookBackgroundWork,
+} from "@/lib/book/book-source-boundary";
 import { queueBookCharacterAnalysis } from "@/lib/narra/character-analysis-queue";
 import { queueBook as queueAutoVectorize } from "@/lib/rag/auto-vectorize-service";
 import {
@@ -94,7 +93,10 @@ export interface LibraryState {
   setViewMode: (mode: LibraryViewMode) => void;
   setSortField: (field: SortField) => void;
   setSortOrder: (order: SortOrder) => void;
-  importBooks: (files: Array<{ uri: string; name?: string }>) => Promise<ImportBooksResult>;
+  importBooks: (
+    files: Array<{ uri: string; name?: string }>,
+    options?: { source?: BookImportSource },
+  ) => Promise<ImportBooksResult>;
   inspectDeletedBookCandidate: (
     bookId: string,
     file: { uri: string; name?: string },
@@ -330,18 +332,6 @@ async function ensureGeneratedBookCover(
 ): Promise<void> {
   if (book.meta.coverUrl) return;
 
-  const catalogBook = findBundledCatalogBookByTitle(book.meta.title);
-  if (catalogBook) {
-    const coverUrl = await installBundledCatalogCover(book.id, catalogBook);
-    const currentBook = useLibraryStore.getState().books.find((item) => item.id === book.id);
-    if (!currentBook || currentBook.meta.coverUrl) return;
-    await useLibraryStore.getState().updateBook(book.id, {
-      meta: { ...currentBook.meta, coverUrl },
-      updatedAt: Date.now(),
-    });
-    return;
-  }
-
   const generated = await generateBookCover({
     bookId: book.id,
     title: book.meta.title,
@@ -487,33 +477,8 @@ async function migrateLegacyGeneratedBookCovers(books: Book[]): Promise<void> {
   }
 }
 
-async function repairBundledCatalogCovers(books: Book[]): Promise<void> {
-  for (const originalBook of books) {
-    const book =
-      useLibraryStore.getState().books.find((item) => item.id === originalBook.id) || originalBook;
-    const catalogBook = findBundledCatalogBookByTitle(book.meta.title);
-    if (!catalogBook) continue;
-
-    const previousCoverUrl = book.meta.coverUrl;
-    if (!shouldRefreshBundledCatalogCover(book.id, previousCoverUrl)) continue;
-
-    try {
-      const installedCoverUrl = await installBundledCatalogCover(book.id, catalogBook);
-      const latestBook = useLibraryStore.getState().books.find((item) => item.id === book.id);
-      if (!latestBook || latestBook.meta.coverUrl !== previousCoverUrl) continue;
-      await useLibraryStore.getState().updateBook(book.id, {
-        meta: { ...latestBook.meta, coverUrl: installedCoverUrl },
-        updatedAt: Date.now(),
-      });
-    } catch (error) {
-      console.warn(`[Catalog] Failed to refresh cover ${catalogBook.id}:`, error);
-    }
-  }
-}
-
 async function repairImportedBookMetadata(books: Book[]): Promise<void> {
   await repairSuspiciousBookTitles(books);
-  await repairBundledCatalogCovers(books);
   await migrateLegacyGeneratedBookCovers(books);
   await repairMissingBookCovers(books);
 }
@@ -1162,8 +1127,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   setSortField: (field) => set((state) => ({ filter: { ...state.filter, sortField: field } })),
   setSortOrder: (order) => set((state) => ({ filter: { ...state.filter, sortOrder: order } })),
 
-  importBooks: async (files) => {
+  importBooks: async (files, options = {}) => {
     set({ isImporting: true });
+    const backgroundWork = planBookBackgroundWork(options.source ?? "local-import");
     const result = createEmptyImportBooksResult();
     const duplicateIndex = createImportDuplicateIndex(get().books);
     try {
@@ -1314,8 +1280,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
                 await get().addBook(book);
               }
               result.imported.push(book);
-              void queueBookCharacterAnalysis(book, textSample);
-              if (!book.meta.coverUrl) {
+              if (backgroundWork.runLocalCharacterAnalysis) {
+                void queueBookCharacterAnalysis(book, textSample);
+              }
+              if (backgroundWork.runLocalCoverGeneration && !book.meta.coverUrl) {
                 void queueGeneratedBookCover(book, { textSample });
               }
               if (fileHash) {
@@ -1441,15 +1409,17 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
                 await get().addBook(book);
               }
               result.imported.push(book);
-              void queueBookCharacterAnalysis(book, async () => {
-                const metadata = await extractBookMetadata(
-                  conversion.epubBytes,
-                  "epub",
-                  `${title}.epub`,
-                );
-                return metadata.textSample ?? "";
-              });
-              if (!book.meta.coverUrl) {
+              if (backgroundWork.runLocalCharacterAnalysis) {
+                void queueBookCharacterAnalysis(book, async () => {
+                  const metadata = await extractBookMetadata(
+                    conversion.epubBytes,
+                    "epub",
+                    `${title}.epub`,
+                  );
+                  return metadata.textSample ?? "";
+                });
+              }
+              if (backgroundWork.runLocalCoverGeneration && !book.meta.coverUrl) {
                 void queueGeneratedBookCover(book);
               }
               if (fileHash) {
@@ -1594,8 +1564,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             await get().addBook(book);
           }
           result.imported.push(book);
-          void queueBookCharacterAnalysis(book, coverContext?.textSample);
-          if (!book.meta.coverUrl) {
+          if (backgroundWork.runLocalCharacterAnalysis) {
+            void queueBookCharacterAnalysis(book, coverContext?.textSample);
+          }
+          if (backgroundWork.runLocalCoverGeneration && !book.meta.coverUrl) {
             void queueGeneratedBookCover(book, coverContext);
           }
           if (fileHash) {

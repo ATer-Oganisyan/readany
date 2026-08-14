@@ -305,7 +305,9 @@ export class ExpoPlatformService implements IPlatformService {
       filePath,
       {
         headers: options?.headers,
-        sessionType: LegacyFS.FileSystemSessionType.FOREGROUND,
+        sessionType: options?.background
+          ? LegacyFS.FileSystemSessionType.BACKGROUND
+          : LegacyFS.FileSystemSessionType.FOREGROUND,
       },
       (progress) => {
         options?.onProgress?.(
@@ -333,7 +335,9 @@ export class ExpoPlatformService implements IPlatformService {
         headers: options?.headers,
         httpMethod: "PUT",
         uploadType: LegacyFS.FileSystemUploadType.BINARY_CONTENT,
-        sessionType: LegacyFS.FileSystemSessionType.FOREGROUND,
+        sessionType: options?.background
+          ? LegacyFS.FileSystemSessionType.BACKGROUND
+          : LegacyFS.FileSystemSessionType.FOREGROUND,
       },
       (progress) => {
         options?.onProgress?.(progress.totalBytesSent, progress.totalBytesExpectedToSend);

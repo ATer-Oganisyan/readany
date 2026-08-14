@@ -1,5 +1,4 @@
 import { Text as InterfaceText } from "@/components/ui/Typography";
-import { getBundledCatalogCharactersById } from "@/lib/narra/bundled-catalog-characters";
 import type { NarraCharacter } from "@/lib/narra/types";
 import { ReaderCharacterCard } from "@/screens/reader/ReaderCharacterCard";
 import { spacing } from "@/styles/theme";
@@ -47,18 +46,20 @@ type ProfilePreviewStackParamList = {
   CharacterProfile: undefined;
 };
 const ProfilePreviewStack = createNativeStackNavigator<ProfilePreviewStackParamList>();
-const bundledAnna = getBundledCatalogCharactersById("anna-karenina")?.[0];
-
-if (!bundledAnna) {
-  throw new Error("Storybook character fixture is unavailable");
-}
 
 const STORYBOOK_CHARACTER: NarraCharacter = {
-  ...bundledAnna,
-  // В стенде не запускаем синтез речи или другие сетевые действия.
+  id: "anna-karenina",
+  name: "Анна",
+  fullName: "Анна Аркадьевна Каренина",
+  role: "Главная героиня",
+  gender: "female",
   voice: "",
+  traits: ["искренняя", "решительная"],
+  speechStyle: "эмоциональная и прямая речь",
   greeting: "",
   speechExamples: [],
+  appearancePrompt: "тёмные волосы, серые глаза, аристократическая осанка",
+  unlockProgress: 0,
 };
 
 const STORYBOOK_CHARACTER_WITHOUT_AVATAR: NarraCharacter = {

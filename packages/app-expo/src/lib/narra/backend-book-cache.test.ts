@@ -1,0 +1,131 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { BackendBookManifest } from "./backend-book-api";
+
+const mocks = vi.hoisted(() => ({
+  files: new Map<string, number>(),
+  requestDownload: vi.fn(async () => "https://storage/signed"),
+  hash: vi.fn(async () => "a".repeat(64)),
+  downloads: vi.fn(),
+  readText: vi.fn(),
+}));
+
+vi.mock("expo-file-system/legacy", () => ({
+  documentDirectory: "file:///documents/",
+  FileSystemSessionType: { BACKGROUND: 0 },
+  async getInfoAsync(path: string) {
+    if (path.endsWith("narra-backend-books") || /narra-backend-books\/[^/]+$/.test(path)) {
+      return { exists: true, isDirectory: true, uri: path };
+    }
+    const size = mocks.files.get(path);
+    return size === undefined
+      ? { exists: false, isDirectory: false, uri: path }
+      : { exists: true, isDirectory: false, uri: path, size };
+  },
+  makeDirectoryAsync: vi.fn(),
+  createDownloadResumable(_url: string, path: string) {
+    return {
+      async downloadAsync() {
+        mocks.downloads(path);
+        mocks.files.set(path, 64);
+        return { status: 200, uri: path };
+      },
+    };
+  },
+  async deleteAsync(path: string) {
+    mocks.files.delete(path);
+  },
+  async moveAsync({ from, to }: { from: string; to: string }) {
+    mocks.files.set(to, mocks.files.get(from) ?? 0);
+    mocks.files.delete(from);
+  },
+  writeAsStringAsync: vi.fn(),
+  readAsStringAsync: mocks.readText,
+}));
+vi.mock("./backend-file-hash", () => ({ sha256BackendFile: mocks.hash }));
+vi.mock("./backend-book-api", () => ({ requestBackendDownloadUrl: mocks.requestDownload }));
+
+import { loadCachedBackendCharacters, materializeBackendManifest } from "./backend-book-cache";
+
+function manifest(assetTypes: string[]): BackendBookManifest {
+  return {
+    availability: "ready",
+    readerTextOffset: 100,
+    readingFraction: 0.1,
+    textLength: 1_000,
+    revision: 1,
+    characters: [
+      {
+        characterKey: "anna",
+        name: "Анна",
+        fullName: "Анна Каренина",
+        firstAppearanceTextOffset: 90,
+        state: "ready",
+        profile: { gender: "female", role: "Героиня" },
+        bundle: {
+          version: "character-bundle-v1",
+          assets: assetTypes.map((type, index) => ({
+            assetId: `asset-${index}`,
+            type: type as "primary_portrait" | "greeting_audio" | "idle_animation",
+            contentHash: "a".repeat(64),
+            mimeType: type === "primary_portrait" ? "image/png" : "audio/mpeg",
+            byteSize: 64,
+            downloadPath: `/v2/media/${index}`,
+          })),
+        },
+      },
+    ],
+  };
+}
+
+describe("backend book media cache", () => {
+  beforeEach(() => {
+    mocks.files.clear();
+    vi.clearAllMocks();
+    mocks.readText.mockRejectedValue(new Error("missing cache"));
+  });
+
+  it("publishes all three cached media paths together", async () => {
+    const [character] = await materializeBackendManifest(
+      "book-1",
+      manifest(["primary_portrait", "greeting_audio", "idle_animation"]),
+    );
+    expect(character).toMatchObject({
+      mediaSource: "backend",
+      mediaState: "ready",
+      portraitUri: expect.stringContaining("primary_portrait"),
+      greetingAudioUri: expect.stringContaining("greeting_audio"),
+      idleAnimationUri: expect.stringContaining("idle_animation"),
+    });
+    expect(mocks.downloads).toHaveBeenCalledTimes(3);
+  });
+
+  it("never exposes a partial backend bundle", async () => {
+    const [character] = await materializeBackendManifest(
+      "book-1",
+      manifest(["primary_portrait", "greeting_audio"]),
+    );
+    expect(character).toMatchObject({ mediaSource: "backend", mediaState: "preparing" });
+    expect(character?.portraitUri).toBeUndefined();
+    expect(mocks.downloads).not.toHaveBeenCalled();
+  });
+
+  it("re-homes persisted media paths after an iOS container change", async () => {
+    mocks.readText.mockResolvedValueOnce(
+      JSON.stringify({
+        manifest: manifest([]),
+        characters: [
+          {
+            id: "anna",
+            portraitUri:
+              "file:///old/container/Documents/narra-backend-books/book-1/primary_portrait-a.png",
+          },
+        ],
+      }),
+    );
+    await expect(loadCachedBackendCharacters("book-1")).resolves.toEqual([
+      expect.objectContaining({
+        portraitUri: "file:///documents/narra-backend-books/book-1/primary_portrait-a.png",
+      }),
+    ]);
+  });
+});

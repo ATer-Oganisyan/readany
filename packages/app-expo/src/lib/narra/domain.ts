@@ -42,18 +42,32 @@ export function withNarraCharacters(
       const previous = state.characters.find((item) => item.id === character.id);
       if (!previous) return character;
       const merged = { ...character };
-      // Портрет и ручной выбор голоса переживают повторный анализ книги.
-      if (previous.portraitUri && !character.portraitUri) {
+
+      const backendOwnsMedia = character.mediaSource === "backend";
+      const preserveUserPortrait = Boolean(
+        previous.portraitUri && previous.portraitUriOverridesAsset,
+      );
+      if (preserveUserPortrait) {
+        merged.portraitUri = previous.portraitUri;
+        merged.portraitUriOverridesAsset = true;
+      } else if (!backendOwnsMedia && previous.portraitUri && !character.portraitUri) {
         merged.portraitUri = previous.portraitUri;
         merged.portraitUriOverridesAsset = previous.portraitUriOverridesAsset;
       }
-      if (previous.portraitAssetId && !character.portraitAssetId) {
+      if (!backendOwnsMedia && previous.portraitAssetId && !character.portraitAssetId) {
         merged.portraitAssetId = previous.portraitAssetId;
       }
+      if (!backendOwnsMedia && previous.greetingAudioUri && !character.greetingAudioUri) {
+        merged.greetingAudioUri = previous.greetingAudioUri;
+      }
+      if (!backendOwnsMedia && previous.idleAnimationUri && !character.idleAnimationUri) {
+        merged.idleAnimationUri = previous.idleAnimationUri;
+      }
+
+      // User-authored profile choices survive either local re-analysis or a backend refresh.
       if (previous.voiceOverride && !character.voiceOverride) {
         merged.voiceOverride = previous.voiceOverride;
       }
-      // Ударение имени (P9) не теряется, если новый анализ его не вернул.
       if (previous.stressedName && !character.stressedName) {
         merged.stressedName = previous.stressedName;
       }

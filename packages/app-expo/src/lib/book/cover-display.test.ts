@@ -12,9 +12,9 @@ describe("cover display", () => {
     expect(shouldRenderCoverTypography("book-1", "https://example.com/cover.jpg")).toBe(false);
   });
 
-  it("overlays typography on generated, catalog, and missing covers", () => {
+  it("overlays typography only on generated and missing covers", () => {
     expect(shouldRenderCoverTypography("book-1", "covers/book-1-generated.webp")).toBe(true);
-    expect(shouldRenderCoverTypography("book-1", "covers/book-1-catalog-v7.jpg")).toBe(true);
+    expect(shouldRenderCoverTypography("book-1", "covers/book-1-catalog.jpg")).toBe(false);
     expect(shouldRenderCoverTypography("book-1")).toBe(true);
   });
 

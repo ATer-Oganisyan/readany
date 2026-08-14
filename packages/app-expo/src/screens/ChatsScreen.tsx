@@ -9,7 +9,6 @@ import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { NativeSegmentedPager } from "@/components/ui/native-segmented-pager";
 import { getBookTabLabel } from "@/lib/book/book-tab-label";
-import { getBundledCatalogCharactersByTitle } from "@/lib/narra/bundled-catalog-characters";
 import { hasCharacterPortrait } from "@/lib/narra/character-portrait";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
 import { reportNarraError } from "@/lib/narra/errors";
@@ -31,7 +30,6 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 interface ChatBook {
   book: Book;
   characters: NarraCharacter[];
-  fromBundledCatalog: boolean;
 }
 
 interface ChatRow {
@@ -39,7 +37,6 @@ interface ChatRow {
   character: NarraCharacter;
   unlocked: boolean;
   messageCount: number;
-  fromBundledCatalog: boolean;
 }
 
 export function ChatsScreen() {
@@ -51,7 +48,6 @@ export function ChatsScreen() {
   const navigation = useNavigation<Nav>();
   const books = useLibraryStore((state) => state.books);
   const narraBooks = useNarraStore((state) => state.books);
-  const setCharacters = useNarraStore((state) => state.setCharacters);
   const updateCharacter = useNarraStore((state) => state.updateCharacter);
   const [selectedBookId, setSelectedBookId] = useState("all");
   const [portraitLoadingKey, setPortraitLoadingKey] = useState<string | null>(null);
@@ -61,12 +57,8 @@ export function ChatsScreen() {
     return books
       .filter((book) => !book.deletedAt)
       .map((book) => {
-        const storedCharacters = narraBooks[book.id]?.characters ?? [];
-        const fromBundledCatalog = storedCharacters.length === 0;
-        const characters = fromBundledCatalog
-          ? (getBundledCatalogCharactersByTitle(book.meta.title) ?? [])
-          : storedCharacters;
-        return { book, characters, fromBundledCatalog };
+        const characters = narraBooks[book.id]?.characters ?? [];
+        return { book, characters };
       })
       .filter((item) => item.characters.length > 0)
       .sort((a, b) => (b.book.lastOpenedAt ?? 0) - (a.book.lastOpenedAt ?? 0));
@@ -91,7 +83,7 @@ export function ChatsScreen() {
   }, [chatBooks, selectedBookId]);
 
   const allRows = useMemo<ChatRow[]>(() => {
-    return chatBooks.flatMap(({ book, characters, fromBundledCatalog }) => {
+    return chatBooks.flatMap(({ book, characters }) => {
       const chats = narraBooks[book.id]?.chats ?? {};
       return characters
         .map((character) => ({
@@ -99,7 +91,6 @@ export function ChatsScreen() {
           character,
           unlocked: isCharacterUnlocked(book.progress ?? 0, character),
           messageCount: chats[character.id]?.length ?? 0,
-          fromBundledCatalog,
         }))
         .filter((row) => row.unlocked)
         .sort(
@@ -119,16 +110,12 @@ export function ChatsScreen() {
   const openChat = useCallback(
     (row: ChatRow) => {
       if (!row.unlocked) return;
-      if (row.fromBundledCatalog) {
-        const bundled = getBundledCatalogCharactersByTitle(row.book.meta.title);
-        if (bundled?.length) setCharacters(row.book.id, bundled);
-      }
       navigation.navigate("NarraCharacterChat", {
         bookId: row.book.id,
         characterId: row.character.id,
       });
     },
-    [navigation, setCharacters],
+    [navigation],
   );
 
   const openNarraChat = useCallback(
@@ -211,6 +198,7 @@ export function ChatsScreen() {
       const key = `${row.book.id}:${row.character.id}`;
       return (
         row.unlocked &&
+        row.character.mediaSource !== "backend" &&
         !hasCharacterPortrait(row.character) &&
         !portraitAttemptsRef.current.has(key)
       );
@@ -220,17 +208,13 @@ export function ChatsScreen() {
     const key = `${nextRow.book.id}:${nextRow.character.id}`;
     portraitAttemptsRef.current.add(key);
     setPortraitLoadingKey(key);
-    if (nextRow.fromBundledCatalog) {
-      const bundled = getBundledCatalogCharactersByTitle(nextRow.book.meta.title);
-      if (bundled?.length) setCharacters(nextRow.book.id, bundled);
-    }
     void ensureCharacterPortrait(nextRow.book.id, nextRow.character)
       .then((portraitUri) =>
         updateCharacter(nextRow.book.id, nextRow.character.id, { portraitUri }),
       )
       .catch((error) => reportNarraError("character_portrait_background", error))
       .finally(() => setPortraitLoadingKey(null));
-  }, [portraitLoadingKey, rows, setCharacters, updateCharacter]);
+  }, [portraitLoadingKey, rows, updateCharacter]);
 
   if (chatBooks.length === 0) {
     return (

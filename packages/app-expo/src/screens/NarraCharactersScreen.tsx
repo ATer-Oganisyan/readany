@@ -10,7 +10,7 @@ import { Text } from "@/components/ui/Typography";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
-import { getBundledCatalogCharactersByTitle } from "@/lib/narra/bundled-catalog-characters";
+import { openBackendBookSync } from "@/lib/narra/backend-book-coordinator";
 import { analyzeBookCharacters } from "@/lib/narra/character-analysis";
 import { hasCharacterPortrait } from "@/lib/narra/character-portrait";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
@@ -45,7 +45,6 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
   const bookState = useNarraStore((state) => state.books[bookId]);
   const analyzing = useNarraStore((state) => state.analyzingBookId === bookId);
   const narraStoreHydrated = useNarraStore((state) => state._hasHydrated);
-  const setCharacters = useNarraStore((state) => state.setCharacters);
   const updateCharacter = useNarraStore((state) => state.updateCharacter);
   const extractorRef = useRef<ExtractorRef>(null);
   const analysisActiveRef = useRef(false);
@@ -56,15 +55,11 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
   const [analysisStage, setAnalysisStage] = useState("");
   const [portraitLoading, setPortraitLoading] = useState<string | null>(null);
   const storedCharacters = bookState?.characters ?? [];
-  const bundledCharacters = useMemo(
-    () => (book ? getBundledCatalogCharactersByTitle(book.meta.title) : undefined),
-    [book],
+  const characters = storedCharacters;
+  const visibleCharacters = useMemo(
+    () => characters.filter((character) => isCharacterUnlocked(book?.progress ?? 0, character)),
+    [book?.progress, characters],
   );
-  const characters = storedCharacters.length > 0 ? storedCharacters : (bundledCharacters ?? []);
-  const visibleCharacters = useMemo(() => {
-    const progress = book?.progress ?? 0;
-    return characters.filter((character) => isCharacterUnlocked(progress, character));
-  }, [book?.progress, characters]);
   const busy = analyzing || Boolean(analysisStage);
 
   useEffect(() => {
@@ -72,11 +67,9 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
   }, []);
 
   useEffect(() => {
-    if (!narraStoreHydrated || !book || storedCharacters.length > 0 || !bundledCharacters?.length) {
-      return;
-    }
-    setCharacters(bookId, bundledCharacters);
-  }, [book, bookId, bundledCharacters, narraStoreHydrated, setCharacters, storedCharacters.length]);
+    if (!narraStoreHydrated || !book) return;
+    void openBackendBookSync(book);
+  }, [book, narraStoreHydrated]);
 
   useEffect(() => {
     let cancelled = false;
@@ -176,8 +169,8 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
     if (
       !narraStoreHydrated ||
       !book ||
-      Boolean(bundledCharacters?.length) ||
       characters.length > 0 ||
+      bookState?.backendBinding ||
       bookState?.analyzedAt ||
       bookState?.analysisError ||
       autoAnalysisStartedRef.current
@@ -192,7 +185,7 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
     book,
     bookState?.analysisError,
     bookState?.analyzedAt,
-    bundledCharacters?.length,
+    bookState?.backendBinding,
     characters.length,
     narraStoreHydrated,
   ]);
@@ -202,6 +195,7 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
     const nextCharacter = characters.find(
       (character) =>
         isCharacterUnlocked(book.progress, character) &&
+        character.mediaSource !== "backend" &&
         !hasCharacterPortrait(character) &&
         !portraitAttemptsRef.current.has(character.id),
     );
@@ -217,16 +211,12 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
 
   const openCharacterChat = useCallback(
     (character: NarraCharacter) => {
-      // Чат ищет героя в narra-store — bundled-фолбэк сначала фиксируем там.
-      if (storedCharacters.length === 0 && bundledCharacters?.length) {
-        setCharacters(bookId, bundledCharacters);
-      }
       navigation.navigate("NarraCharacterChat", {
         bookId,
         characterId: character.id,
       });
     },
-    [bookId, bundledCharacters, navigation, setCharacters, storedCharacters.length],
+    [bookId, navigation],
   );
 
   const listItems: CharacterChatListItem[] = [

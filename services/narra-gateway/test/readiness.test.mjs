@@ -29,6 +29,16 @@ test('a required unavailable video provider blocks readiness', () => {
   assert.equal(result.checks.video, false)
 })
 
+test('a required unavailable book backend blocks readiness', () => {
+  const result = gatewayReadiness({
+    ...base,
+    bookBackendRequired: true,
+    bookBackendReady: false
+  })
+  assert.equal(result.ready, false)
+  assert.equal(result.checks.book_backend, false)
+})
+
 test('plaintext video is reported when explicitly configured', () => {
   const result = gatewayReadiness({
     ...base,

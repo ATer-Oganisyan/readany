@@ -3,7 +3,6 @@ import { recordTelemetry } from "@/lib/analytics/telemetry";
 import * as FileSystem from "expo-file-system/legacy";
 import { generateOpenRouterImageWithFallback } from "../ai/openrouter-image";
 import { resolveCoverGenreProfile } from "../book/cover-genre";
-import { findBundledCatalogBookDefinitionByTitle } from "../catalog/bundled-book-definitions";
 import { budgetPrompt } from "./art-style";
 import { normalizeNarraError } from "./errors";
 import { type NarraGenreAnalysis, narraGenreLabel } from "./genre-analysis";
@@ -147,9 +146,7 @@ export function resolvePortraitGenre(
     };
   }
 
-  const explicitlyClassic =
-    Boolean(findBundledCatalogBookDefinitionByTitle(meta.title)) ||
-    meta.subjects?.some((subject) => /(?:classic|классик)/iu.test(subject));
+  const explicitlyClassic = meta.subjects?.some((subject) => /(?:classic|классик)/iu.test(subject));
   return explicitlyClassic
     ? { id: "classic", label: "классическая литература" }
     : resolveCoverGenreProfile(meta);

@@ -1,6 +1,5 @@
 import { useNarraStore } from "@/stores/narra-store";
 import type { Book } from "@readany/core/types";
-import { getBundledCatalogCharactersByTitle } from "./bundled-catalog-characters";
 import { type CharacterAnalysisTextFallback, analyzeBookCharacters } from "./character-analysis";
 import type { NarraCharacter } from "./types";
 
@@ -17,12 +16,6 @@ export function queueBookCharacterAnalysis(
 ): Promise<NarraCharacter[]> {
   const stored = storedCharacters(book.id);
   if (stored.length > 0) return Promise.resolve(stored);
-
-  const bundled = getBundledCatalogCharactersByTitle(book.meta.title);
-  if (bundled?.length) {
-    useNarraStore.getState().setCharacters(book.id, bundled);
-    return Promise.resolve(bundled);
-  }
 
   const queued = queuedAnalyses.get(book.id);
   if (queued) return queued;

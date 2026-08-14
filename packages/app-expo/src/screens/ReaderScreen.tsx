@@ -12,13 +12,9 @@ import type { RelocateEvent, SelectionEvent, VisibleTTSSegment } from "@/hooks/u
 import { durationBucket } from "@/lib/analytics/contract";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import {
-  BUNDLED_CATALOG_BOOKS,
-  findBundledCatalogBookByTitle,
-  installBundledCatalogCover,
-  normalizeCatalogIdentity,
-  resolveBundledCatalogBookUri,
-} from "@/lib/catalog/bundled-books";
-import { getBundledCatalogCharactersByTitle } from "@/lib/narra/bundled-catalog-characters";
+  openBackendBookSync,
+  queueBackendReaderProgress,
+} from "@/lib/narra/backend-book-coordinator";
 import { buildCharacterNameMatcherSpec } from "@/lib/narra/character-name-matcher";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
 import { reportNarraError } from "@/lib/narra/errors";
@@ -34,6 +30,11 @@ import {
   advanceSceneSuggestion,
 } from "@/lib/narra/scene-suggestion";
 import type { NarraCharacter } from "@/lib/narra/types";
+import {
+  isForwardReaderRelocation,
+  readerRelocationMarker,
+  type ReaderRelocationMarker,
+} from "@/lib/narra/reader-progress";
 import {
   DEFAULT_READER_FONT_FAMILY,
   getBundledReaderFontFaceCSS,
@@ -95,12 +96,12 @@ import Reanimated, {
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 
 // ── Extracted modules ──
 import { ReaderNoteViewModal } from "./reader/ReaderNoteViewModal";
 import { ReaderToolbar, TOOLBAR_HEIGHT } from "./reader/ReaderToolbar";
+import { ReaderBottomToolbar } from "./reader/ReaderBottomToolbar";
 
 const REFLOWABLE_CHARACTERS_PER_LOCATION = 1500;
 const MAX_TRACKED_LOCATION_DELTA = 20;
@@ -245,154 +246,7 @@ function resolveReaderFontFamily(
 
 // ──────────────────────────── ReaderScreen ────────────────────────────
 export function ReaderScreen(props: Props) {
-  const { t } = useTranslation();
-  const importBooks = useLibraryStore((state) => state.importBooks);
-  const updateBook = useLibraryStore((state) => state.updateBook);
-  const requestedBookId = props.route.params.bookId;
-  const catalogBookId = props.route.params.catalogBookId;
-  const [resolvedBookId, setResolvedBookId] = useState<string | null>(
-    catalogBookId ? null : requestedBookId,
-  );
-
-  useEffect(() => {
-    if (!catalogBookId) {
-      setResolvedBookId(requestedBookId);
-      return;
-    }
-
-    const catalogBook = BUNDLED_CATALOG_BOOKS.find((book) => book.id === catalogBookId);
-    if (!catalogBook) {
-      Alert.alert(
-        t("library.catalogImportErrorTitle", "Не получилось добавить книгу"),
-        t("library.catalogImportErrorDescription", "Попробуйте ещё раз."),
-        [{ text: t("common.ok", "OK"), onPress: () => props.navigation.goBack() }],
-      );
-      return;
-    }
-
-    let cancelled = false;
-    const prepareCatalogBook = async () => {
-      const existingBook = useLibraryStore
-        .getState()
-        .books.find(
-          (book) =>
-            !book.deletedAt &&
-            normalizeCatalogIdentity(book.meta.title) ===
-              normalizeCatalogIdentity(catalogBook.title),
-        );
-      if (existingBook) return existingBook.id;
-
-      const uri = await resolveBundledCatalogBookUri(catalogBook);
-      const result = await importBooks([{ uri, name: catalogBook.fileName }]);
-      const importedBook = result.imported[0] ?? result.skippedDuplicates[0]?.existingBook;
-      if (!importedBook) throw new Error("catalog-import-failed");
-
-      const normalizedMeta = {
-        ...importedBook.meta,
-        title: catalogBook.title,
-        author: catalogBook.author,
-      };
-      await updateBook(importedBook.id, { meta: normalizedMeta });
-      void installBundledCatalogCover(importedBook.id, catalogBook)
-        .then((coverUrl) => updateBook(importedBook.id, { meta: { ...normalizedMeta, coverUrl } }))
-        .catch((error) =>
-          console.warn(`[Catalog] Failed to install cover ${catalogBook.id}:`, error),
-        );
-      return importedBook.id;
-    };
-
-    void prepareCatalogBook()
-      .then((bookId) => {
-        if (!cancelled) setResolvedBookId(bookId);
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        console.error(`[Catalog] Failed to add ${catalogBook.id}:`, error);
-        Alert.alert(
-          t("library.catalogImportErrorTitle", "Не получилось добавить книгу"),
-          t("library.catalogImportErrorDescription", "Попробуйте ещё раз."),
-          [{ text: t("common.ok", "OK"), onPress: () => props.navigation.goBack() }],
-        );
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [catalogBookId, importBooks, props.navigation, requestedBookId, t, updateBook]);
-
-  if (!resolvedBookId) {
-    return <ReaderLoadingChrome navigation={props.navigation} />;
-  }
-
-  return (
-    <ReaderContent
-      {...props}
-      route={{
-        ...props.route,
-        params: { ...props.route.params, bookId: resolvedBookId, catalogBookId: undefined },
-      }}
-    />
-  );
-}
-
-function ReaderLoadingChrome({ navigation }: { navigation: Props["navigation"] }) {
-  const colors = useColors();
-  const { isDark } = useTheme();
-  const { t } = useTranslation();
-  const insets = useSafeAreaInsets();
-  const ignorePress = () => undefined;
-
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      headerShown: true,
-      headerTransparent: true,
-      headerShadowVisible: false,
-      headerBackButtonDisplayMode: "minimal",
-      headerTintColor: colors.foreground,
-      headerTitleAlign: "center",
-      title: "",
-      unstable_headerRightItems: undefined,
-      headerRight: () => (
-        <View pointerEvents="none">
-          <NativeContextMenuButton
-            accessibilityLabel={t("reader.bookActions", "Действия с книгой")}
-            items={[]}
-            color={colors.foreground}
-          />
-        </View>
-      ),
-    });
-  }, [colors.foreground, navigation, t]);
-
-  return (
-    <View style={{ flex: 1, paddingBottom: insets.bottom, backgroundColor: colors.background }}>
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-        <ReaderLoadingIndicator color={colors.primary20} />
-      </View>
-      {Platform.OS === "ios" && (
-        <View
-          pointerEvents="none"
-          style={{
-            position: "absolute",
-            right: 0,
-            bottom: 0,
-            left: 0,
-            height: TOOLBAR_HEIGHT + insets.bottom,
-            paddingBottom: insets.bottom,
-            backgroundColor: colors.background,
-          }}
-        >
-          <ReaderToolbar
-            tintColor={colors.foreground}
-            isDark={isDark}
-            speechState="idle"
-            onSpeechPress={ignorePress}
-            onChatPress={ignorePress}
-          />
-        </View>
-      )}
-    </View>
-  );
+  return <ReaderContent {...props} />;
 }
 
 function ReaderContent({ route, navigation }: Props) {
@@ -409,7 +263,7 @@ function ReaderContent({ route, navigation }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showControls, setShowControls] = useState(true);
-  const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
+  const [isReaderMenuOpen, setIsReaderMenuOpen] = useState(false);
   const [showTOC, setShowTOC] = useState(false);
   const [tocActiveTab, setTocActiveTab] = useState<ReaderNavTab>("toc");
   const [showSettings, setShowSettings] = useState(false);
@@ -607,6 +461,8 @@ function ReaderContent({ route, navigation }: Props) {
   } | null>(null);
   const totalBookCharactersRef = useRef<number | null>(null);
   const progressTrackingGuardUntilRef = useRef(0);
+  const backendRelocationRef = useRef<ReaderRelocationMarker | null>(null);
+  const backendInitialCalibrationRef = useRef(true);
 
   const incrementPagesRead = useReadingSessionStore((s) => s.incrementPagesRead);
   const incrementCharactersRead = useReadingSessionStore((s) => s.incrementCharactersRead);
@@ -629,19 +485,16 @@ function ReaderContent({ route, navigation }: Props) {
   ).current;
   const { loadAnnotations, highlights, removeBookmark } = useAnnotationStore();
   const book = useMemo(() => books.find((b) => b.id === bookId), [books, bookId]);
+  const backendResolution = useNarraStore(
+    (state) => state.books[bookId]?.backendBinding?.resolution,
+  );
 
   // ── Narra: кликабельные имена персонажей ────────────────────────────────────
   const narraBookCharacters = useNarraStore((state) => state.books[bookId]?.characters);
-  const setNarraCharacters = useNarraStore((state) => state.setCharacters);
-  const bundledCharacters = useMemo(
-    () => (book ? getBundledCatalogCharactersByTitle(book.meta.title) : undefined),
-    [book],
-  );
   const characters = useMemo<NarraCharacter[]>(
-    () => (narraBookCharacters?.length ? narraBookCharacters : (bundledCharacters ?? [])),
-    [narraBookCharacters, bundledCharacters],
+    () => narraBookCharacters ?? [],
+    [narraBookCharacters],
   );
-  const charactersFromBundledCatalog = !narraBookCharacters?.length;
   // Ключ состава открытых персонажей: спека пересобирается только при unlock,
   // а не на каждом изменении прогресса
   const unlockedCharacterIdsKey = useMemo(
@@ -766,11 +619,11 @@ function ReaderContent({ route, navigation }: Props) {
     if (qualifiedReadingRecordedRef.current || readingActiveTime < 60_000) return;
     qualifiedReadingRecordedRef.current = true;
     recordTelemetry("reading_session_qualified", {
-      book_kind: book && findBundledCatalogBookByTitle(book.meta.title) ? "builtin" : "imported",
+      book_kind: backendResolution === "catalog" ? "builtin" : "imported",
       duration_seconds: Math.round(readingActiveTime / 1_000),
       duration_bucket: durationBucket(readingActiveTime),
     });
-  }, [book, readingActiveTime]);
+  }, [backendResolution, readingActiveTime]);
 
   // ── System safe area ────────────────────────────────────────────────────────
   const { stableTopInset, insets } = useReaderSystemInfo({
@@ -791,7 +644,7 @@ function ReaderContent({ route, navigation }: Props) {
     navigation.setOptions({
       // Меню действий живёт внутри шапки: пока оно открыто, шапку скрывать
       // нельзя, иначе меню размонтируется вместе с ней.
-      headerShown: showControls || actionsMenuOpen,
+      headerShown: showControls || isReaderMenuOpen,
       headerTransparent: true,
       headerShadowVisible: false,
       headerBackButtonDisplayMode: "minimal",
@@ -800,7 +653,7 @@ function ReaderContent({ route, navigation }: Props) {
       headerTitleAlign: "center",
       title: "",
     });
-  }, [actionsMenuOpen, isReaderThemeDark, navigation, readerThemeColors.foreground, showControls]);
+  }, [isReaderMenuOpen, isReaderThemeDark, navigation, readerThemeColors.foreground, showControls]);
 
   const suppressProgressTracking = useCallback((duration = PROGRAMMATIC_NAV_GUARD_MS) => {
     progressTrackingGuardUntilRef.current = Math.max(
@@ -841,8 +694,21 @@ function ReaderContent({ route, navigation }: Props) {
     progressRef.current = progress;
   }, [progress]);
 
+  const backendBookSyncRef = useRef(book);
+  backendBookSyncRef.current = book;
+  const backendBookSyncKey = book
+    ? `${book.id}\u0000${book.filePath}\u0000${book.fileHash ?? ""}`
+    : "";
+  useEffect(() => {
+    if (!backendBookSyncKey) return;
+    const currentBook = backendBookSyncRef.current;
+    if (currentBook) void openBackendBookSync(currentBook);
+  }, [backendBookSyncKey]);
+
   useEffect(() => {
     sessionProgressRef.current = null;
+    backendRelocationRef.current = null;
+    backendInitialCalibrationRef.current = true;
     totalBookCharactersRef.current = null;
     sceneSuggestionStateRef.current = INITIAL_SCENE_SUGGESTION_STATE;
     suppressProgressTracking(INITIAL_PROGRESS_RESTORE_GUARD_MS);
@@ -904,10 +770,6 @@ function ReaderContent({ route, navigation }: Props) {
     goToCfi: (cfi) => bridgeRef.current?.goToCFI(cfi),
   });
 
-  useEffect(() => {
-    progressRef.current = progress;
-  }, [progress]);
-
   // Also read ttsPlayState from store for volume paging guard
   const ttsPlayState = useTTSStore((s) => s.playState);
 
@@ -940,6 +802,25 @@ function ReaderContent({ route, navigation }: Props) {
     return () => sub.remove();
   }, []);
 
+  const handleReaderMenuOpenChange = useCallback((open: boolean) => {
+    setIsReaderMenuOpen(open);
+
+    if (controlsTimer.current) {
+      clearTimeout(controlsTimer.current);
+      controlsTimer.current = null;
+    }
+
+    if (open) {
+      setShowControls(true);
+      return;
+    }
+
+    controlsTimer.current = setTimeout(() => {
+      setShowControls(false);
+      controlsTimer.current = null;
+    }, CONTROLS_TIMEOUT);
+  }, []);
+
   // Load reader HTML asset
   useEffect(() => {
     if (assetLoadedRef.current) return;
@@ -961,6 +842,8 @@ function ReaderContent({ route, navigation }: Props) {
 
   // Controls toggle — declared before bridge so onTap can reference it without TS error
   const toggleControls = useCallback(() => {
+    if (isReaderMenuOpen) return;
+
     const willShow = !showControls;
     setShowControls(willShow);
 
@@ -975,7 +858,7 @@ function ReaderContent({ route, navigation }: Props) {
         controlsTimer.current = null;
       }, CONTROLS_TIMEOUT);
     }
-  }, [showControls]);
+  }, [isReaderMenuOpen, showControls]);
 
   useEffect(() => {
     controlsVisibility.value = withTiming(showControls ? 1 : 0, {
@@ -1100,6 +983,13 @@ function ReaderContent({ route, navigation }: Props) {
       );
 
       const trackingSuppressed = Date.now() < progressTrackingGuardUntilRef.current;
+      const backendRelocation = readerRelocationMarker(detail);
+      const previousBackendRelocation = backendRelocationRef.current;
+      backendRelocationRef.current = backendRelocation;
+      const initialBackendCalibration = backendInitialCalibrationRef.current;
+      if (initialBackendCalibration && !trackingSuppressed) {
+        backendInitialCalibrationRef.current = false;
+      }
 
       if (detail.location?.total) {
         const totalBookCharacters = totalBookCharactersRef.current;
@@ -1172,6 +1062,24 @@ function ReaderContent({ route, navigation }: Props) {
           }
         }
         sessionProgressRef.current = { mode: "page", current: detail.section.current };
+      }
+      if (
+        book &&
+        detail.fraction != null &&
+        backendRelocation.sectionIndex != null &&
+        (initialBackendCalibration ||
+          (!trackingSuppressed &&
+            isForwardReaderRelocation(previousBackendRelocation, backendRelocation)))
+      ) {
+        queueBackendReaderProgress(
+          book,
+          detail.fraction,
+          detail.tocItem?.href || `section:${detail.section?.current ?? 0}`,
+          {
+            sectionIndex: backendRelocation.sectionIndex,
+            sectionFraction: backendRelocation.sectionFraction ?? 0,
+          },
+        );
       }
       if (detail.tocItem?.label) setCurrentChapter(detail.tocItem.label);
       if (detail.tocItem?.href) setCurrentChapterHref(detail.tocItem.href);
@@ -1299,11 +1207,6 @@ function ReaderContent({ route, navigation }: Props) {
       const character = characters.find((item) => item.id === characterId);
       // Запертые персонажи не размечаются, но на случай гонки — двойная проверка
       if (!character || !isCharacterUnlocked(progress, character)) return;
-      // Нативный профиль пишет в narra-store (портрет, выбор голоса) — bundled-каталог
-      // сначала фиксируем там, как это делает переход в чат.
-      if (charactersFromBundledCatalog && bundledCharacters?.length) {
-        setNarraCharacters(bookId, bundledCharacters);
-      }
       suppressReaderTapUntilRef.current = Date.now() + 400;
       navigation.navigate("NarraCharacterProfile", {
         bookId,
@@ -1566,7 +1469,7 @@ function ReaderContent({ route, navigation }: Props) {
   useLayoutEffect(() => {
     // Пока открыто меню действий, шапку прятать нельзя: headerRight с ней
     // размонтируется, а вместе с ним исчезает и само меню — оно живёт внутри.
-    const headerVisible = showControls || actionsMenuOpen;
+    const headerVisible = showControls || isReaderMenuOpen;
     // Единая панель для оглавления, закладок и поиска открывается из меню действий.
     const openNavPanel = (tab: ReaderNavTab) => {
       setTocActiveTab(tab);
@@ -1649,8 +1552,8 @@ function ReaderContent({ route, navigation }: Props) {
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
                     <NativeButton
                       label=""
-                      accessibilityLabel={t("narra.chat", "Чат")}
-                      icon="chat"
+                      accessibilityLabel={t("narra.characters", "Персонажи")}
+                      icon="characters"
                       size="small"
                       variant="tertiary"
                       onPress={handleOpenCharacters}
@@ -1665,7 +1568,7 @@ function ReaderContent({ route, navigation }: Props) {
                     />
                     <NativeContextMenuButton
                       accessibilityLabel={t("reader.bookActions", "Действия с книгой")}
-                      onOpenChange={setActionsMenuOpen}
+                      onOpenChange={handleReaderMenuOpenChange}
                       items={[
                         ...readerActions,
                         {
@@ -1681,9 +1584,10 @@ function ReaderContent({ route, navigation }: Props) {
           },
     );
   }, [
-    actionsMenuOpen,
+    isReaderMenuOpen,
     bookId,
     handleOpenCharacters,
+    handleReaderMenuOpenChange,
     handleToggleBookmark,
     isBookmarked,
     navigation,
@@ -1763,7 +1667,7 @@ function ReaderContent({ route, navigation }: Props) {
     }
     setBookTitle(book.meta.title);
     recordTelemetry("book_opened", {
-      book_kind: findBundledCatalogBookByTitle(book.meta.title) ? "builtin" : "imported",
+      book_kind: backendResolution === "catalog" ? "builtin" : "imported",
     });
     updateBook(bookId, { lastOpenedAt: Date.now() });
     loadAnnotations(bookId);
@@ -1771,7 +1675,7 @@ function ReaderContent({ route, navigation }: Props) {
     return () => {
       readingContextService.clearContext();
     };
-  }, [bookId]);
+  }, [backendResolution, bookId]);
 
   useEffect(() => {
     return eventBus.on("sync:completed", () => {
@@ -2068,11 +1972,7 @@ function ReaderContent({ route, navigation }: Props) {
           tintColor={readerThemeColors.foreground}
           isDark={isReaderThemeDark}
           speechState={
-            ttsPlayState === "loading"
-              ? "loading"
-              : ttsPlayState === "playing"
-                ? "playing"
-                : "idle"
+            ttsPlayState === "loading" ? "loading" : ttsPlayState === "playing" ? "playing" : "idle"
           }
           onSpeechPress={() => void tts.handleToggleTTS()}
           onChatPress={handleOpenCharacters}
@@ -2314,8 +2214,48 @@ function ReaderContent({ route, navigation }: Props) {
 
         {readerToolbarDock}
 
+        {Platform.OS === "android" && showControls && !showTOC && (
+          <View style={{ position: "absolute", right: 0, bottom: 0, left: 0, zIndex: 30 }}>
+            <ReaderBottomToolbar
+              progress={progress}
+              isBookmarked={isBookmarked}
+              bottomInset={insets.bottom}
+              foregroundColor={colors.foreground}
+              mutedColor={colors.elevation1}
+              accentColor={colors.primary}
+              isDark={isDark}
+              labels={{
+                toc: "Оглавление",
+                bookmarks: isBookmarked ? "Удалить закладку" : "Добавить закладку",
+                notes: "Заметки",
+                search: "Поиск",
+              }}
+              onSeek={(value) => {
+                suppressProgressTracking();
+                bridge.goToFraction(value);
+              }}
+              onDragStart={() => suppressProgressTracking()}
+              onDragEnd={() => suppressProgressTracking()}
+              onOpenToc={() => {
+                setTocActiveTab("toc");
+                setShowTOC(true);
+              }}
+              onToggleBookmark={handleToggleBookmark}
+              onOpenNotes={() => navigation.navigate("FullScreenNotes", { bookId })}
+              onOpenSearch={() => {
+                setTocActiveTab("search");
+                setShowTOC(true);
+              }}
+            />
+          </View>
+        )}
+
         {/* ─── Bookmark Ribbon (top-right) ─── */}
-        <BookmarkRibbon visible={isBookmarked} topOffset={0} rightOffset={readerContentInset} />
+        <BookmarkRibbon
+          visible={isBookmarked && !showControls && !isReaderMenuOpen}
+          topOffset={0}
+          rightOffset={readerContentInset}
+        />
 
         {/* Note Tooltip (long-press on wavy underline) */}
         {adjustedNoteTooltip && (

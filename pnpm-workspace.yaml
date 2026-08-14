@@ -9,8 +9,8 @@ allowBuilds:
   protobufjs: set this to true or false
   sharp: set this to true or false
 overrides:
-  react: 19.2.0
-  react-dom: 19.2.0
+  react: 19.2.3
+  react-dom: 19.2.3
   "@types/react": ~19.2.2
 patchedDependencies:
   "@langchain/core": patches/@langchain__core.patch

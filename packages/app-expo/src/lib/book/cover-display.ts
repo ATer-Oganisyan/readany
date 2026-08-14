@@ -1,5 +1,3 @@
-import { isBundledCatalogCoverPath } from "../catalog/bundled-book-definitions";
-
 const LEGACY_GENERATED_COVER_DELAY_MS = 10_000;
 
 function escapeRegExp(value: string): string {
@@ -33,5 +31,5 @@ export function isLegacyGeneratedBookCover(params: {
 
 export function shouldRenderCoverTypography(bookId: string, coverUrl?: string): boolean {
   if (!coverUrl) return true;
-  return isGeneratedBookCoverPath(bookId, coverUrl) || isBundledCatalogCoverPath(bookId, coverUrl);
+  return isGeneratedBookCoverPath(bookId, coverUrl);
 }

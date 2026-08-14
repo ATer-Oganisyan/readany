@@ -1,18 +1,15 @@
 import { useSwipePressGuard } from "@/components/ui/swipe-press-guard";
-import { findBundledCatalogBookByTitle } from "@/lib/catalog/bundled-books";
 import { useColors } from "@/styles/theme";
-import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Image, View } from "react-native";
+import { ActivityIndicator, Image, StyleSheet, View } from "react-native";
 import { makeStyles } from "./book-card-styles";
 import { BookCoverTypography } from "./book-cover-typography";
 import { PerspectiveBook } from "./perspective-book";
-import { useResolvedAssetUris } from "./use-resolved-asset-uris";
 
 interface CatalogBookCardProps {
   title: string;
   author: string;
-  coverAssetModule: number;
+  coverUri?: string;
   cardWidth: number;
   isImporting: boolean;
   isInLibrary: boolean;
@@ -22,7 +19,7 @@ interface CatalogBookCardProps {
 export function CatalogBookCard({
   title,
   author,
-  coverAssetModule,
+  coverUri,
   cardWidth,
   isImporting,
   isInLibrary,
@@ -32,8 +29,6 @@ export function CatalogBookCard({
   const styles = makeStyles(colors, cardWidth);
   const { t } = useTranslation();
   const swipePressGuard = useSwipePressGuard();
-  const coverAssetModules = useMemo(() => [coverAssetModule], [coverAssetModule]);
-  const coverUri = useResolvedAssetUris(coverAssetModules).get(coverAssetModule);
 
   return (
     <PerspectiveBook
@@ -55,16 +50,43 @@ export function CatalogBookCard({
           {coverUri ? (
             <Image source={{ uri: coverUri }} style={styles.coverImage} resizeMode="cover" />
           ) : (
-            <View style={styles.fallbackCover} />
+            <View style={styles.fallbackCover}>
+              <BookCoverTypography
+                title={title}
+                author={author}
+                width={cardWidth}
+                textTone="light"
+              />
+            </View>
           )}
-          <BookCoverTypography
-            title={title}
-            author={author}
-            width={cardWidth}
-            textTone={findBundledCatalogBookByTitle(title)?.coverTextTone ?? "dark"}
-          />
+          {isImporting ? (
+            <View style={localStyles.loadingOverlay}>
+              <ActivityIndicator color="#fff" />
+            </View>
+          ) : null}
+          {isInLibrary && !isImporting ? (
+            <View style={[localStyles.libraryBadge, { backgroundColor: colors.primary }]} />
+          ) : null}
         </View>
       }
     />
   );
 }
+
+const localStyles = StyleSheet.create({
+  loadingOverlay: {
+    position: "absolute",
+    inset: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.38)",
+  },
+  libraryBadge: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+});

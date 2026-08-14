@@ -75,4 +75,25 @@ describe("Narra persisted book state", () => {
     expect(restored.analyzedAt).toBe(123);
     expect(restored.genre).toMatchObject({ primary: "fanfiction", secondary: ["romance"] });
   });
+
+  it("does not expose stale partial media for a backend character", () => {
+    const local = withNarraCharacters(emptyNarraBookState("book-1"), [
+      { ...character, portraitUriOverridesAsset: undefined },
+    ]);
+    const backend = withNarraCharacters(local, [
+      {
+        ...character,
+        portraitUri: undefined,
+        mediaSource: "backend",
+        mediaState: "preparing",
+      },
+    ]);
+
+    expect(backend.characters[0]).toMatchObject({
+      id: "anna",
+      mediaSource: "backend",
+      mediaState: "preparing",
+    });
+    expect(backend.characters[0]?.portraitUri).toBeUndefined();
+  });
 });

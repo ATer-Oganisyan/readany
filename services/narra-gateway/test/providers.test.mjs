@@ -20,6 +20,83 @@ test('provider route is selected only from server environment', () => {
   assert.deepEqual(route, ['openrouter', 'giga'])
 })
 
+test('provider request omits temperature when the caller leaves it unset', async () => {
+  let body
+  const result = await requestChat({
+    messages: [{ role: 'user', content: 'hello' }],
+    purpose: 'structured_task',
+    stream: false,
+    fetchImpl: async (_url, init) => {
+      body = JSON.parse(init.body)
+      return new Response('{"choices":[{"message":{"content":"{}"}}]}', { status: 200 })
+    },
+    env: {
+      LLM_ROUTE_STRUCTURED_TASK: 'giga',
+      LLM_BASE_URL: 'https://giga.test',
+      LLM_API_KEY: 'giga-key',
+      LLM_MODEL_STRUCTURED_TASK: 'gpt-5.6-luna'
+    }
+  })
+  assert.equal(Object.hasOwn(body, 'temperature'), false)
+  await result.finalizeAttempt()
+})
+
+test('character chat uses model-aware server sampling and ignores caller temperature', async () => {
+  for (const provider of ['giga', 'openrouter']) {
+    let body
+    const isOpenRouter = provider === 'openrouter'
+    const result = await requestChat({
+      messages: [{ role: 'user', content: 'hello' }],
+      temperature: 0.1,
+      purpose: 'character_chat',
+      stream: false,
+      fetchImpl: async (_url, init) => {
+        body = JSON.parse(init.body)
+        return new Response('{"choices":[{"message":{"content":"hello"}}]}', { status: 200 })
+      },
+      env: isOpenRouter
+        ? {
+            LLM_ROUTE_CHARACTER_CHAT: 'openrouter',
+            OPENROUTER_BASE_URL: 'https://openrouter.test/v1',
+            OPENROUTER_API_KEY: 'or-key',
+            OPENROUTER_MODEL_CHARACTER_CHAT: 'openai/gpt-5.6-luna'
+          }
+        : {
+            LLM_ROUTE_CHARACTER_CHAT: 'giga',
+            LLM_BASE_URL: 'https://giga.test',
+            LLM_API_KEY: 'giga-key',
+            LLM_MODEL_CHARACTER_CHAT: 'gpt-5.6-luna'
+          }
+    })
+    assert.equal(body.temperature, 0.85)
+    assert.equal(body.reasoning_effort, 'none')
+    await result.finalizeAttempt()
+  }
+})
+
+test('unknown models receive no optional sampling parameters', async () => {
+  let body
+  const result = await requestChat({
+    messages: [{ role: 'user', content: 'hello' }],
+    temperature: 0.1,
+    purpose: 'character_chat',
+    stream: false,
+    fetchImpl: async (_url, init) => {
+      body = JSON.parse(init.body)
+      return new Response('{"choices":[{"message":{"content":"hello"}}]}', { status: 200 })
+    },
+    env: {
+      LLM_ROUTE_CHARACTER_CHAT: 'giga',
+      LLM_BASE_URL: 'https://giga.test',
+      LLM_API_KEY: 'giga-key',
+      LLM_MODEL_CHARACTER_CHAT: 'future-model'
+    }
+  })
+  assert.equal(Object.hasOwn(body, 'temperature'), false)
+  assert.equal(Object.hasOwn(body, 'reasoning_effort'), false)
+  await result.finalizeAttempt()
+})
+
 test('readiness requires a complete configured route for every purpose', () => {
   const broken = llmRouteReadiness({ OPENROUTER_API_KEY: 'key', LLM_ROUTE_DEFAULT: 'openrouter' })
   assert.equal(broken.ready, false)
@@ -48,7 +125,7 @@ test('llm max_tokens has safe defaults and env overrides with bounds', async () 
   assert.equal(maxTokensFor('summary', false, { LLM_MAX_TOKENS_COMPLETE: '900000' }), 32000)
 
   const bodies = []
-  const fetchImpl = async (url, init) => {
+  const fetchImpl = async (_url, init) => {
     bodies.push(JSON.parse(init.body))
     return new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), {
       status: 200,
@@ -72,7 +149,7 @@ test('llm max_tokens has safe defaults and env overrides with bounds', async () 
   assert.equal(bodies[0].max_tokens, 8000)
 })
 
-test('temperature is dropped only for providers that reject it', async () => {
+test('legacy provider omit flags stay scoped while request sampling remains server-owned', async () => {
   assert.equal(omitsTemperature('giga', {}), false)
   assert.equal(omitsTemperature('giga', { LLM_OMIT_TEMPERATURE: 'true' }), true)
   assert.equal(omitsTemperature('giga', { LLM_OMIT_TEMPERATURE: 'TRUE' }), true)
@@ -81,7 +158,7 @@ test('temperature is dropped only for providers that reject it', async () => {
   assert.equal(omitsTemperature('openrouter', { OPENROUTER_OMIT_TEMPERATURE: 'true' }), true)
 
   const bodies = []
-  const fetchImpl = async (url, init) => {
+  const fetchImpl = async (_url, init) => {
     bodies.push(JSON.parse(init.body))
     return new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), {
       status: 200,
@@ -106,7 +183,7 @@ test('temperature is dropped only for providers that reject it', async () => {
     await result.finalizeAttempt()
   }
   await call(baseEnv)
-  assert.equal(bodies[0].temperature, 0.25)
+  assert.ok(!('temperature' in bodies[0]), 'an unknown model must not inherit caller sampling')
   await call({ ...baseEnv, LLM_OMIT_TEMPERATURE: 'true' })
   assert.ok(!('temperature' in bodies[1]), 'temperature must be absent, not null')
 })

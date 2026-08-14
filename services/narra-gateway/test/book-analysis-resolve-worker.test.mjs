@@ -1,0 +1,80 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { createBookAnalysisResolveWorker } from '../book-analysis-resolve-worker.mjs'
+
+const input = {
+  runId: 'run-1',
+  observationSetHash: 'a'.repeat(64),
+  observations: [{
+    id: '11111111-1111-4111-8111-111111111111',
+    observationKey: 'obs:anna',
+    type: 'character_mention',
+    entityKind: 'character',
+    entityCandidate: 'Анна',
+    relatedEntityCandidates: [],
+    fact: 'Анна появилась',
+    evidence: {
+      quote: 'Анна появилась',
+      startOffset: 10,
+      endOffset: 26,
+      chapterKey: 'chapter-1'
+    },
+    confidence: 0.9
+  }]
+}
+
+test('resolve worker consumes a whole-run observation set and advances to synthesize', async () => {
+  let completed
+  const job = { id: 'job-1', runId: 'run-1', stage: 'resolve', leaseToken: 'lease-1' }
+  const worker = createBookAnalysisResolveWorker({
+    repository: {
+      async claimAnalysisJob() { return job },
+      async getResolveInput() { return input },
+      async renewAnalysisJobLease() {},
+      async completeResolve(candidate, value) {
+        completed = { candidate, value }
+        return { stage: 'synthesize', entityCount: value.entities.length }
+      },
+      async failAnalysisJob() { assert.fail('resolve must not fail') }
+    },
+    workerId: 'resolve-worker-1',
+    leaseSeconds: 60,
+    leaseRenewMs: 10_000,
+    logger: { info() {}, error() {} }
+  })
+  const result = await worker.runOnce()
+  assert.equal(result.status, 'completed')
+  assert.equal(result.result.stage, 'synthesize')
+  assert.equal(completed.value.observationSetHash, input.observationSetHash)
+  assert.equal(completed.value.observationCount, 1)
+  assert.equal(completed.value.entities[0].canonicalName, 'Анна')
+  assert.deepEqual(completed.value.entities[0].evidenceIds, [input.observations[0].id])
+})
+
+test('resolve worker retries its lease after invalid resolution input', async () => {
+  let failure
+  const worker = createBookAnalysisResolveWorker({
+    repository: {
+      async claimAnalysisJob() {
+        return { id: 'job-2', runId: 'run-2', stage: 'resolve', leaseToken: 'lease-2' }
+      },
+      async getResolveInput() {
+        return { ...input, observations: [{ ...input.observations[0], id: '' }] }
+      },
+      async renewAnalysisJobLease() {},
+      async completeResolve() { assert.fail('resolve must not complete') },
+      async failAnalysisJob(job, errorCode) {
+        failure = { job, errorCode }
+        return { status: 'queued' }
+      }
+    },
+    workerId: 'resolve-worker-2',
+    leaseSeconds: 60,
+    leaseRenewMs: 10_000,
+    logger: { info() {}, error() {} }
+  })
+  const result = await worker.runOnce()
+  assert.equal(result.status, 'failed')
+  assert.equal(result.errorCode, 'RESOLUTION_INPUT_INVALID')
+  assert.equal(failure.job.id, 'job-2')
+})

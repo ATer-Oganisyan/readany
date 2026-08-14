@@ -452,15 +452,28 @@ index afa6b0f335714de0cc8741d5bbdd51b4e04bb3bb..32eab06c5f29e8fa8389b65872bf33d8
  import com.facebook.react.modules.core.DeviceEventManagerModule
  import com.google.android.exoplayer2.ui.R as ExoPlayerR
  import kotlinx.coroutines.*
-@@ -94,11 +99,47 @@ class MusicService : HeadlessJsTaskService() {
+@@ -94,11 +99,57 @@ class MusicService : HeadlessJsTaskService() {
      private var compactCapabilities: List<Capability> = emptyList()
  
      override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
 -        startTask(getTaskConfig(intent))
+-        startAndStopEmptyNotificationToAvoidANR()
+-        return START_STICKY
+-    }
 +        startTaskWithReactHost(getTaskConfig(intent))
-         startAndStopEmptyNotificationToAvoidANR()
-         return START_STICKY
-     }
++        try {
++            startAndStopEmptyNotificationToAvoidANR()
++        } catch (error: IllegalStateException) {
++            // Android 12+ rejects foreground-service promotion when the sticky
++            // service is restored while the app is still in the background.
++            if (!error.message.orEmpty().contains("startForeground() not allowed")) {
++                throw error
++            }
++            stopSelf(startId)
++            return START_NOT_STICKY
++        }
++        return START_STICKY
++    }
  
 +    /**
 +     * React Native 0.82+ no longer exposes ReactNativeHost in New Architecture apps.

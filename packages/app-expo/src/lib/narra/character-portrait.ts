@@ -1,15 +1,11 @@
-import { Image, type ImageSourcePropType } from "react-native";
-import { CATALOG_CHARACTER_PORTRAIT_ASSETS } from "./catalog-character-portrait-assets";
+import type { ImageSourcePropType } from "react-native";
 import { normalizePersistedNarraMediaUri } from "./media";
 import type { NarraCharacter } from "./types";
 
 export function hasCharacterPortrait(
   character: Pick<NarraCharacter, "portraitAssetId" | "portraitUri">,
 ): boolean {
-  return Boolean(
-    character.portraitUri ||
-      (character.portraitAssetId && CATALOG_CHARACTER_PORTRAIT_ASSETS[character.portraitAssetId]),
-  );
+  return Boolean(character.portraitUri);
 }
 
 type CharacterPortraitFields = Pick<
@@ -32,19 +28,7 @@ export function resolveCharacterPortraitSources(
   const persistedSource = character.portraitUri
     ? { uri: normalizePersistedNarraMediaUri(character.portraitUri) }
     : undefined;
-  const bundledSource = character.portraitAssetId
-    ? CATALOG_CHARACTER_PORTRAIT_ASSETS[character.portraitAssetId]
-    : undefined;
-
-  if (character.portraitUriOverridesAsset) {
-    return [persistedSource, bundledSource].filter(
-      (source): source is ImageSourcePropType => source !== undefined,
-    );
-  }
-
-  return [bundledSource, persistedSource].filter(
-    (source): source is ImageSourcePropType => source !== undefined,
-  );
+  return persistedSource ? [persistedSource] : [];
 }
 
 export function resolveCharacterPortraitSource(
@@ -53,12 +37,11 @@ export function resolveCharacterPortraitSource(
   return resolveCharacterPortraitSources(character)[0];
 }
 
-/** Resolves user-generated files and bundled catalog assets to one Image-compatible URI. */
+/** Resolves a generated, user-overridden, or backend-cached portrait URI. */
 export function resolveCharacterPortraitUri(
   character: CharacterPortraitFields | null | undefined,
 ): string | undefined {
   const source = resolveCharacterPortraitSource(character);
   if (!source) return undefined;
-  if (typeof source !== "number" && "uri" in source) return source.uri;
-  return Image.resolveAssetSource(source)?.uri;
+  return typeof source !== "number" && "uri" in source ? source.uri : undefined;
 }

@@ -23,17 +23,23 @@ import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { NativeSegmentedPager } from "@/components/ui/native-segmented-pager";
 import { SwipePressGuardProvider, useSwipePressGuard } from "@/components/ui/swipe-press-guard";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
-import {
-  BUNDLED_CATALOG_BOOKS,
-  type BundledCatalogBook,
-  normalizeCatalogIdentity,
-} from "@/lib/catalog/bundled-books";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
+import {
+  type CachedBackendCatalogBook,
+  installBackendCatalogCover,
+  loadCachedBackendCatalog,
+  refreshBackendCatalog,
+} from "@/lib/narra/backend-catalog-cache";
+import {
+  cleanupBackendCatalogSource,
+  downloadBackendCatalogSource,
+} from "@/lib/narra/backend-catalog-source";
 import { queueBookForAutoVectorize } from "@/lib/rag/auto-vectorize-book";
 import { setCallback, setExtractorRef } from "@/lib/rag/auto-vectorize-service";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { NATIVE_SCROLL_EDGE_EFFECTS } from "@/navigation/scroll-edge-effects";
 import { useLibraryStore } from "@/stores/library-store";
+import { useNarraStore } from "@/stores/narra-store";
 import { useVectorModelStore } from "@/stores/vector-model-store";
 import {
   type ThemeColors,
@@ -125,6 +131,10 @@ type LibraryGridItem =
 type LibrarySection = "catalog" | "my-books";
 const LIBRARY_SECTION_STORAGE_KEY = "library_last_section";
 
+function normalizeCatalogIdentity(value: string): string {
+  return value.trim().toLocaleLowerCase("ru-RU").replace(/\s+/g, " ");
+}
+
 export function LibraryScreen() {
   return (
     <SwipePressGuardProvider>
@@ -160,6 +170,9 @@ function LibraryScreenContent() {
   const [isPickingImport, setIsPickingImport] = useState(false);
   const [isUrlImporting, setIsUrlImporting] = useState(false);
   const [librarySection, setLibrarySection] = useState<LibrarySection>("catalog");
+  const [catalogImportingId, setCatalogImportingId] = useState<string | null>(null);
+  const [catalogBooks, setCatalogBooks] = useState<CachedBackendCatalogBook[]>([]);
+  const [isCatalogLoading, setIsCatalogLoading] = useState(true);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedBookIds, setSelectedBookIds] = useState<Set<string>>(new Set());
   const [showGroupPicker, setShowGroupPicker] = useState(false);
@@ -187,6 +200,7 @@ function LibraryScreenContent() {
     isGroupView,
     loadBooks,
     importBooks,
+    updateBook,
     removeBook,
     setGroupView,
     setActiveGroupId,
@@ -201,6 +215,7 @@ function LibraryScreenContent() {
     removeTag,
     renameTag,
   } = useLibraryStore();
+  const narraBooks = useNarraStore((state) => state.books);
   const isBookImporting = isImporting || isPickingImport || isUrlImporting;
   const hasBooks = books.length > 0;
   const syncNow = useSyncStore((state) => state.syncNow);
@@ -236,6 +251,28 @@ function LibraryScreenContent() {
         console.warn("[Library] Failed to restore selected section:", error);
       });
 
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadCachedBackendCatalog()
+      .then((items) => {
+        if (!cancelled && items.length) {
+          setCatalogBooks(items);
+          setIsCatalogLoading(false);
+        }
+      })
+      .then(() => refreshBackendCatalog())
+      .then((items) => {
+        if (!cancelled) setCatalogBooks(items);
+      })
+      .catch((error) => console.warn("[Catalog] Failed to refresh backend catalog:", error))
+      .finally(() => {
+        if (!cancelled) setIsCatalogLoading(false);
+      });
     return () => {
       cancelled = true;
     };
@@ -430,15 +467,20 @@ function LibraryScreenContent() {
 
   const catalogBooksInLibrary = useMemo(() => {
     const result = new Map<string, Book>();
-    for (const catalogBook of BUNDLED_CATALOG_BOOKS) {
+    for (const catalogBook of catalogBooks) {
       const catalogTitle = normalizeCatalogIdentity(catalogBook.title);
-      const existingBook = books.find(
-        (book) => normalizeCatalogIdentity(book.meta.title) === catalogTitle,
-      );
-      if (existingBook) result.set(catalogBook.id, existingBook);
+      const existingBook = books.find((book) => {
+        const binding = narraBooks[book.id]?.backendBinding;
+        return (
+          binding?.catalogKey === catalogBook.catalogKey ||
+          binding?.bookEditionId === catalogBook.bookEditionId ||
+          normalizeCatalogIdentity(book.meta.title) === catalogTitle
+        );
+      });
+      if (existingBook) result.set(catalogBook.catalogKey, existingBook);
     }
     return result;
-  }, [books]);
+  }, [books, catalogBooks, narraBooks]);
 
   const showCatalog = !activeTag && !activeGroupId && !selectionMode;
 
@@ -625,18 +667,61 @@ function LibraryScreenContent() {
   );
 
   const handleCatalogOpen = useCallback(
-    async (catalogBook: BundledCatalogBook) => {
-      const existingBook = catalogBooksInLibrary.get(catalogBook.id);
+    async (catalogBook: CachedBackendCatalogBook) => {
+      const existingBook = catalogBooksInLibrary.get(catalogBook.catalogKey);
       if (existingBook) {
         await handleOpen(existingBook);
         return;
       }
-      nav.navigate("Reader", {
-        bookId: `catalog:${catalogBook.id}`,
-        catalogBookId: catalogBook.id,
-      });
+      if (catalogImportingId) return;
+
+      setCatalogImportingId(catalogBook.catalogKey);
+      let temporarySource: string | null = null;
+      try {
+        temporarySource = await downloadBackendCatalogSource(catalogBook);
+        const fileName = `${catalogBook.catalogKey}.${catalogBook.format}`;
+        const result = await importBooks([{ uri: temporarySource, name: fileName }], {
+          source: "backend-catalog",
+        });
+        const importedBook = result.imported[0] ?? result.skippedDuplicates[0]?.existingBook;
+        if (!importedBook) throw new Error("catalog-import-failed");
+
+        let coverUrl = importedBook.meta.coverUrl;
+        try {
+          coverUrl = (await installBackendCatalogCover(importedBook.id, catalogBook)) ?? coverUrl;
+        } catch (coverError) {
+          console.warn(
+            `[Catalog] Could not install cover for ${catalogBook.catalogKey}:`,
+            coverError,
+          );
+        }
+
+        const normalizedBook: Book = {
+          ...importedBook,
+          meta: {
+            ...importedBook.meta,
+            title: catalogBook.title,
+            author: catalogBook.author,
+            coverUrl,
+          },
+        };
+        await updateBook(importedBook.id, { meta: normalizedBook.meta });
+        useNarraStore.getState().setBackendBinding(importedBook.id, catalogBook);
+        await handleOpen(normalizedBook);
+      } catch (error) {
+        console.error(`[Catalog] Failed to add ${catalogBook.catalogKey}:`, error);
+        Alert.alert(
+          t("library.catalogImportErrorTitle", "Не получилось добавить книгу"),
+          t("library.catalogImportErrorDescription", "Попробуйте ещё раз."),
+        );
+      } finally {
+        await cleanupBackendCatalogSource(temporarySource).catch((error) => {
+          console.warn("[Catalog] Failed to remove temporary source:", error);
+        });
+        setCatalogImportingId(null);
+      }
     },
-    [catalogBooksInLibrary, handleOpen, nav],
+    [catalogBooksInLibrary, catalogImportingId, handleOpen, importBooks, t, updateBook],
   );
 
   const handleManageTags = useCallback((book: Book) => {
@@ -1075,19 +1160,23 @@ function LibraryScreenContent() {
   const catalogGrid = (
     <View style={s.catalogSection}>
       <View style={s.catalogGrid}>
-        {BUNDLED_CATALOG_BOOKS.map((catalogBook) => (
-          <View key={catalogBook.id} style={s.gridItem}>
-            <CatalogBookCard
-              title={catalogBook.title}
-              author={catalogBook.author}
-              coverAssetModule={catalogBook.coverAssetModule}
-              cardWidth={gridItemWidth}
-              isImporting={false}
-              isInLibrary={catalogBooksInLibrary.has(catalogBook.id)}
-              onPress={() => void handleCatalogOpen(catalogBook)}
-            />
-          </View>
-        ))}
+        {isCatalogLoading ? (
+          <ActivityIndicator color={colors.primary} />
+        ) : (
+          catalogBooks.map((catalogBook) => (
+            <View key={catalogBook.bookEditionId} style={s.gridItem}>
+              <CatalogBookCard
+                title={catalogBook.title}
+                author={catalogBook.author}
+                coverUri={catalogBook.coverUri}
+                cardWidth={gridItemWidth}
+                isImporting={catalogImportingId === catalogBook.catalogKey}
+                isInLibrary={catalogBooksInLibrary.has(catalogBook.catalogKey)}
+                onPress={() => void handleCatalogOpen(catalogBook)}
+              />
+            </View>
+          ))
+        )}
       </View>
     </View>
   );

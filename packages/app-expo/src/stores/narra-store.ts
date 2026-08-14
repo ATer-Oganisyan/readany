@@ -14,6 +14,7 @@ import {
   SCENE_SUGGESTION_INTERVALS,
 } from "@/lib/narra/scene-suggestion";
 import type {
+  NarraBackendBinding,
   NarraBookState,
   NarraCharacter,
   NarraChatMessage,
@@ -39,6 +40,7 @@ export interface NarraState {
   getBookState: (bookId: string) => NarraBookState;
   setAnalyzing: (bookId: string | null) => void;
   setCharacters: (bookId: string, characters: NarraCharacter[], genre?: NarraGenreAnalysis) => void;
+  setBackendBinding: (bookId: string, binding: NarraBackendBinding) => void;
   updateCharacter: (bookId: string, characterId: string, updates: Partial<NarraCharacter>) => void;
   setAnalysisError: (bookId: string, error?: string) => void;
   setMemory: (bookId: string, characterId: string, memory: string) => void;
@@ -74,6 +76,11 @@ export const useNarraStore = create<NarraState>()(
               [bookId]: genre ? { ...analyzedBook, genre } : analyzedBook,
             },
           };
+        }),
+      setBackendBinding: (bookId, backendBinding) =>
+        set((state) => {
+          const book = state.books[bookId] ?? emptyNarraBookState(bookId);
+          return { books: { ...state.books, [bookId]: { ...book, backendBinding } } };
         }),
       updateCharacter: (bookId, characterId, updates) =>
         set((state) => {

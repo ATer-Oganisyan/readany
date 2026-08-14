@@ -4,6 +4,7 @@ import { useNarraStore } from "@/stores/narra-store";
 import { getChunks } from "@readany/core/db/database";
 import type { Book } from "@readany/core/types";
 import { characterCountBucket, durationBucket } from "../analytics/contract";
+import { syncLocalBookMarkup } from "./backend-book-coordinator";
 import {
   normalizeCharacterAnalysisResponse,
   normalizeGenreAnalysisResponse,
@@ -179,6 +180,11 @@ async function runBookCharacterAnalysis(
       );
     }
     store.setCharacters(book.id, characters, genre);
+    try {
+      await syncLocalBookMarkup(book, characters);
+    } catch (error) {
+      reportNarraError("local_markup_sync", error);
+    }
     recordTelemetry("book_analysis_completed", {
       analysis_version: "v1",
       character_count_bucket: characterCountBucket(characters.length),

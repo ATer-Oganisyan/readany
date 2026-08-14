@@ -3,7 +3,6 @@ import { useSwipePressGuard } from "@/components/ui/swipe-press-guard";
 import { isGeneratedBookCoverPath, shouldRenderCoverTypography } from "@/lib/book/cover-display";
 import { generatedCoverTextTone } from "@/lib/book/cover-text-contrast";
 import { loadingCoverColorForBook } from "@/lib/book/loading-cover-placeholder";
-import { findBundledCatalogBookByTitle } from "@/lib/catalog/bundled-books";
 import { useResolvedCovers } from "@/screens/notes/useResolvedCovers";
 import { useColors } from "@/styles/theme";
 /**
@@ -19,7 +18,6 @@ import { BookCardActionSheet } from "./BookCardActionSheet";
 import { makeStyles } from "./book-card-styles";
 import { BookCoverTypography } from "./book-cover-typography";
 import { BookSpineOverlay } from "./book-spine-overlay";
-import { useResolvedAssetUris } from "./use-resolved-asset-uris";
 
 interface BookCardProps {
   book: Book;
@@ -49,29 +47,20 @@ export const BookCard = memo(function BookCard({
   const { t } = useTranslation();
   const swipePressGuard = useSwipePressGuard();
   const [failedCoverUrl, setFailedCoverUrl] = useState<string>();
-  const bundledCatalogBook = findBundledCatalogBookByTitle(book.meta.title);
   const coverItems = useMemo(
     () => [{ bookId: book.id, coverUrl: book.meta.coverUrl ?? null }],
     [book.id, book.meta.coverUrl],
   );
   const resolvedCoverUrl = useResolvedCovers(coverItems).get(book.id);
-  const bundledCoverAssetModules = useMemo(
-    () => (bundledCatalogBook ? [bundledCatalogBook.coverAssetModule] : []),
-    [bundledCatalogBook],
-  );
-  const bundledCoverUris = useResolvedAssetUris(bundledCoverAssetModules);
-  const bundledCoverUri = bundledCatalogBook
-    ? bundledCoverUris.get(bundledCatalogBook.coverAssetModule)
-    : undefined;
   const hasUsableSavedCover = Boolean(resolvedCoverUrl) && resolvedCoverUrl !== failedCoverUrl;
-  const showsColorPlaceholder = !hasUsableSavedCover && !bundledCoverUri;
+  const showsColorPlaceholder = !hasUsableSavedCover;
   const showCoverTypography =
     !hasUsableSavedCover || shouldRenderCoverTypography(book.id, book.meta.coverUrl);
   const coverTextTone = showsColorPlaceholder
     ? "light"
     : isGeneratedBookCoverPath(book.id, book.meta.coverUrl)
       ? generatedCoverTextTone({ title: book.meta.title, author: book.meta.author })
-      : (bundledCatalogBook?.coverTextTone ?? "dark");
+      : "dark";
   const progressPercent = Math.round(Math.max(0, Math.min(1, book.progress ?? 0)) * 100);
 
   return (
@@ -96,8 +85,6 @@ export const BookCard = memo(function BookCard({
               resizeMode="cover"
               onError={() => setFailedCoverUrl(resolvedCoverUrl)}
             />
-          ) : bundledCoverUri ? (
-            <Image source={{ uri: bundledCoverUri }} style={s.coverImage} resizeMode="cover" />
           ) : (
             <View
               style={[s.fallbackCover, { backgroundColor: loadingCoverColorForBook(book.id) }]}

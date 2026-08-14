@@ -60,6 +60,17 @@ import { createInstallationRegistry } from './installation-registry.mjs'
 import { gatewayReadiness } from './readiness.mjs'
 import { createCoverJobStore } from './cover-job-store.mjs'
 import { createCoverJobRunner } from './cover-job-runner.mjs'
+import { createBookCatalogRouter } from './book-catalog-api.mjs'
+import { createCatalogIngestRouter } from './catalog-ingest-api.mjs'
+import { createPostgresBookMarkupRepository } from './postgres-book-markup-repository.mjs'
+import { createPostgresPoolFromEnv, runBookMarkupMigrations } from './postgres-runtime.mjs'
+import { createBookObjectStorageFromEnv } from './book-object-storage.mjs'
+import {
+  createInternalGenerationRouter,
+  createInternalGenerationService
+} from './internal-generation-service.mjs'
+import { createLocalIdleAnimation } from './local-idle-animation.mjs'
+import { createPrivateMaterialCleanup } from './private-material-cleanup.mjs'
 
 // ================= Конфигурация =================
 const PORT = process.env.PORT || 8787
@@ -72,6 +83,7 @@ if (!['production', 'staging', 'development', 'test'].includes(ANALYTICS_ENV)) {
   throw new Error('ANALYTICS_ENV must be production, staging, development or test')
 }
 const VIDEO_REQUIRED = parseEnvBool(process.env, 'VIDEO_REQUIRED', false)
+const BOOK_BACKEND_REQUIRED = parseEnvBool(process.env, 'BOOK_BACKEND_REQUIRED', false)
 const ALLOW_INSECURE_VIDEO_HTTP = process.env.ALLOW_INSECURE_VIDEO_HTTP === 'true'
 const INSECURE_VIDEO_ENV_ALLOWED = insecureVideoEnvironmentAllowed({
   production: PRODUCTION,
@@ -125,6 +137,14 @@ const IMPORT_DAILY_BYTES_MB = envInt('IMPORT_LIMIT_MIB_PER_DAY', 300, 30_000)
 const IMPORT_GLOBAL_DAILY_BYTES_MB = envInt('IMPORT_GLOBAL_LIMIT_MIB_PER_DAY', 10_000, 300_000)
 const IMPORT_CONCURRENCY = envInt('IMPORT_CONCURRENCY', 2, 20)
 const IMPORT_QUEUE_LIMIT = envInt('IMPORT_QUEUE_LIMIT', 2, 50)
+const BOOK_UPLOAD_MAX_BYTES = envInt('BOOK_UPLOAD_MAX_MIB', 50, 500) * 1024 * 1024
+const PRIVATE_MATERIAL_TTL_DAYS = envInt('PRIVATE_MATERIAL_TTL_DAYS', 7, 365)
+const PRIVATE_MATERIAL_CLEANUP_MS = envInt(
+  'PRIVATE_MATERIAL_CLEANUP_MS',
+  60 * 60 * 1_000,
+  24 * 60 * 60 * 1_000
+)
+const PRIVATE_MATERIAL_CLEANUP_BATCH_SIZE = envInt('PRIVATE_MATERIAL_CLEANUP_BATCH_SIZE', 100, 1_000)
 const LLM_RESPONSE_MAX_BYTES = envInt('LLM_RESPONSE_MAX_MIB', 8, 64) * 1024 * 1024
 const KANDINSKY_QUEUE_LIMIT = envInt('KANDINSKY_QUEUE_LIMIT', 6, 100)
 const VIDEO_QUEUE_LIMIT = envInt('VIDEO_QUEUE_LIMIT', 4, 100)
@@ -224,6 +244,10 @@ if (PRODUCTION && TRACTION_INGEST_TOKEN && TRACTION_INGEST_TOKEN.length < 32) {
 const INSTALLATION_OPERATOR_TOKEN = String(process.env.INSTALLATION_OPERATOR_TOKEN || '').trim()
 if (PRODUCTION && INSTALLATION_OPERATOR_TOKEN.length < 32) {
   throw new Error('INSTALLATION_OPERATOR_TOKEN must contain at least 32 characters in production')
+}
+const CATALOG_INGEST_TOKEN = String(process.env.CATALOG_INGEST_TOKEN || '').trim()
+if (PRODUCTION && CATALOG_INGEST_TOKEN.length < 32) {
+  throw new Error('CATALOG_INGEST_TOKEN must contain at least 32 characters in production')
 }
 
 // ================= Токены (кэш ~30 мин) =================
@@ -514,6 +538,121 @@ async function animatePortrait(image, query, quality, signal) {
   return videoTask(model, params, signal)
 }
 
+async function completeInternalChat({ messages, signal }) {
+  let release
+  try {
+    release = await llmGate.acquire(signal)
+    const { response, finalizeAttempt } = await requestChat({
+      messages,
+      purpose: 'structured_task',
+      stream: false,
+      requestId: randomUUID(),
+      signal
+    })
+    const payload = await settleProviderResponse({
+      finalizeAttempt,
+      consume: async () => {
+        const bytes = await readBoundedBody(response, LLM_RESPONSE_MAX_BYTES, signal)
+        let json
+        try {
+          json = JSON.parse(bytes.toString('utf8'))
+        } catch (error) {
+          throw Object.assign(error, { code: 'PARSE', status: 502 })
+        }
+        return validateChatCompletionPayload(json)
+      }
+    })
+    return payload?.choices?.[0]?.message?.content || ''
+  } finally {
+    release?.()
+  }
+}
+
+async function generateInternalPortrait(prompt, signal) {
+  let release
+  try {
+    release = await imageGate.acquire(signal)
+    let base64
+    let provider
+    if (LLM_API_KEY) {
+      try {
+        base64 = await gigachatImage(prompt, signal)
+        provider = 'gigachat-image'
+      } catch (error) {
+        if (!shouldFallbackAfterImageError(error) || !KANDINSKY_TOKEN) throw error
+        console.error('[internal-generation] portrait fallback to Kandinsky:', error.message)
+      }
+    }
+    if (!base64 && KANDINSKY_TOKEN) {
+      base64 = await kandinskyQueued(prompt, 1024, 1024, signal)
+      provider = 'kandinsky'
+    }
+    if (!base64) throw httpErr('NO_KEY', 'No image provider is configured')
+    const bytes = Buffer.from(base64, 'base64')
+    if (!bytes.byteLength || bytes.byteLength > 18 * 1024 * 1024) {
+      throw httpErr('NETWORK', 'Image provider returned an invalid portrait')
+    }
+    return { bytes, mimeType: 'image/png', provider }
+  } finally {
+    release?.()
+  }
+}
+
+async function synthesizeInternalSpeech(text, voice, signal) {
+  let release
+  try {
+    release = await speechGate.acquire(signal)
+    const { providerVoice } = parseSynthesisBody({ text, voice })
+    const token = await getToken('SALUTE_SPEECH_PERS', SALUTE_KEY, SALUTE_OAUTH_URL)
+    const response = await httpsRequest(
+      `${SALUTE_SYNTH_URL}?format=wav16&voice=${encodeURIComponent(providerVoice)}`,
+      {
+        method: 'POST',
+        insecure: INSECURE,
+        ca: sberCaBundle,
+        timeoutMs: 60_000,
+        maxResponseBytes: 16 * 1024 * 1024,
+        signal,
+        binary: true,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/text'
+        },
+        body: Buffer.from(text, 'utf8')
+      }
+    )
+    if (response.status === 401) {
+      delete tokenCache['SALUTE_SPEECH_PERS']
+      throw httpErr('AUTH', 'SaluteSpeech rejected the service token')
+    }
+    if (response.status === 429) throw httpErr('RATE', 'SaluteSpeech rate limit')
+    if (response.status !== 200 || !response.body?.length) {
+      throw httpErr('NETWORK', `SaluteSpeech returned ${response.status}`)
+    }
+    return { bytes: Buffer.from(response.body), mimeType: 'audio/wav', provider: 'salute-speech' }
+  } finally {
+    release?.()
+  }
+}
+
+async function generateInternalIdleAnimation(portraitBytes, signal) {
+  if (KANDINSKY_TOKEN && VIDEO_BASE_URL) {
+    try {
+      const base64 = await animatePortrait(
+        Buffer.from(portraitBytes).toString('base64'),
+        'the character stays still, blinks slowly and breathes subtly, locked camera, no zoom',
+        'lite',
+        signal
+      )
+      const bytes = Buffer.from(base64, 'base64')
+      if (bytes.byteLength) return { bytes, mimeType: 'video/mp4', provider: 'kandinsky-video' }
+    } catch (error) {
+      console.error('[internal-generation] video provider failed, using local idle animation:', error.message)
+    }
+  }
+  return { ...(await createLocalIdleAnimation(portraitBytes, signal)), provider: 'local-ffmpeg' }
+}
+
 
 // Долгие задачи: отвечаем сразу и шлём keep-alive пробелы, чтобы fetch клиента
 // не обрывался по таймауту (undici ждёт первых байт максимум 5 минут).
@@ -574,10 +713,11 @@ if (
     tokenSecret,
     analyticsSecret,
     installationSecretPepper,
-    INSTALLATION_OPERATOR_TOKEN
-  ]).size !== 4
+    INSTALLATION_OPERATOR_TOKEN,
+    CATALOG_INGEST_TOKEN
+  ]).size !== 5
 ) {
-  throw new Error('Gateway, analytics, installation pepper and operator secrets must all differ')
+  throw new Error('Gateway, analytics, installation pepper, operator and catalog secrets must all differ')
 }
 const dataDir = process.env.DATA_DIR || (process.env.NODE_ENV === 'production'
   ? '/data'
@@ -645,6 +785,62 @@ const coverJobRunner = createCoverJobRunner({
   })
 })
 coverJobRunner.start()
+
+let bookMarkupPool = null
+let bookMarkupRepository = null
+let privateMaterialCleanupTimer = null
+let privateMaterialCleanupInitialTimer = null
+const bookObjectStorage = createBookObjectStorageFromEnv(process.env)
+const generatorServiceToken = String(process.env.GENERATOR_SERVICE_TOKEN || '').trim()
+const internalGenerationService = bookObjectStorage && generatorServiceToken
+  ? createInternalGenerationService({
+      storage: bookObjectStorage,
+      completeChat: completeInternalChat,
+      generatePortrait: generateInternalPortrait,
+      synthesizeSpeech: synthesizeInternalSpeech,
+      generateIdleAnimation: generateInternalIdleAnimation,
+      maxBookBytes: BOOK_UPLOAD_MAX_BYTES
+    })
+  : null
+if (!internalGenerationService) {
+  console.warn('[internal-generation] storage or GENERATOR_SERVICE_TOKEN is not configured; internal API is disabled')
+}
+if (process.env.DATABASE_URL) {
+  bookMarkupPool = await createPostgresPoolFromEnv(process.env)
+  await runBookMarkupMigrations(bookMarkupPool)
+  bookMarkupRepository = createPostgresBookMarkupRepository(bookMarkupPool, {
+    privateMaterialTtlDays: PRIVATE_MATERIAL_TTL_DAYS
+  })
+  if (bookObjectStorage) {
+    const cleanup = createPrivateMaterialCleanup({
+      repository: bookMarkupRepository,
+      storage: bookObjectStorage,
+      batchSize: PRIVATE_MATERIAL_CLEANUP_BATCH_SIZE
+    })
+    const runCleanup = () => void cleanup.runOnce().catch((error) => {
+      console.error('[book-cleanup] cleanup loop failed', error)
+    })
+    privateMaterialCleanupInitialTimer = setTimeout(runCleanup, 5_000)
+    privateMaterialCleanupInitialTimer.unref?.()
+    privateMaterialCleanupTimer = setInterval(runCleanup, PRIVATE_MATERIAL_CLEANUP_MS)
+    privateMaterialCleanupTimer.unref?.()
+  }
+} else {
+  console.warn('[book-markup] DATABASE_URL is not configured; catalog API is disabled')
+}
+
+async function checkBookBackendReady() {
+  if (!bookMarkupPool || !bookObjectStorage || !internalGenerationService) return false
+  try {
+    await Promise.all([
+      bookMarkupPool.query('SELECT 1'),
+      bookObjectStorage.checkReady({ signal: AbortSignal.timeout(3_000) })
+    ])
+    return true
+  } catch {
+    return false
+  }
+}
 
 function actorIdFor(req) {
   return createHmac('sha256', analyticsSecret).update(req.installation.sub).digest('hex')
@@ -760,7 +956,11 @@ app.get('/health', (_req, res) => {
       salutespeech: !!SALUTE_KEY && SBER_CA_VERIFIED,
       kandinsky: !!KANDINSKY_TOKEN,
       cover: coverRouteReadiness().ready,
-      video: !!KANDINSKY_TOKEN && !!VIDEO_BASE_URL
+      video: !!KANDINSKY_TOKEN && !!VIDEO_BASE_URL,
+      book_markup: Boolean(bookMarkupRepository),
+      book_storage: Boolean(bookObjectStorage),
+      internal_generation: Boolean(internalGenerationService),
+      book_backend_required: BOOK_BACKEND_REQUIRED
     },
     media_transport: {
       llm_https: LLM_TRANSPORT_SECURE,
@@ -783,11 +983,12 @@ app.get('/health', (_req, res) => {
   })
 })
 
-app.get('/ready', (_req, res) => {
+app.get('/ready', async (_req, res) => {
   const llm = llmRouteReadiness()
   const coverReady = coverRouteReadiness().ready
   const registryStatus = installationRegistry.status()
   const coverJobStatus = coverJobStore.status()
+  const bookBackendReady = await checkBookBackendReady()
   const videoConfigured = !!KANDINSKY_TOKEN && !!VIDEO_BASE_URL
   const videoTransportAccepted =
     VIDEO_TRANSPORT_SECURE ||
@@ -802,7 +1003,9 @@ app.get('/ready', (_req, res) => {
     videoRequired: VIDEO_REQUIRED,
     videoTransportSecure: VIDEO_TRANSPORT_SECURE,
     llmTransportSecure: LLM_TRANSPORT_SECURE,
-    environment: ANALYTICS_ENV
+    environment: ANALYTICS_ENV,
+    bookBackendRequired: BOOK_BACKEND_REQUIRED,
+    bookBackendReady
   })
   res.status(readiness.ready ? 200 : 503).json({
     ok: readiness.ready,
@@ -976,6 +1179,15 @@ app.post(
   }
 )
 
+if (bookMarkupRepository && bookObjectStorage) {
+  app.use('/v2/admin/catalog', createCatalogIngestRouter({
+    token: CATALOG_INGEST_TOKEN,
+    repository: bookMarkupRepository,
+    storage: bookObjectStorage,
+    uploadMaxBytes: BOOK_UPLOAD_MAX_BYTES
+  }))
+}
+
 // Public generic update feed. Integrity comes from electron-builder SHA-512
 // metadata plus the required Developer ID signature of the macOS app. Keeping
 // it before /v2 auth is required because electron-updater does not hold an
@@ -987,11 +1199,24 @@ app.use('/v2/updates/files', express.static(new URL('./updates', import.meta.url
 }))
 app.use('/v2/updates/files', (_req, res) => res.status(404).json({ error: 'Update artifact not found' }))
 
+if (internalGenerationService) {
+  app.use('/internal', createInternalGenerationRouter({
+    token: generatorServiceToken,
+    service: internalGenerationService
+  }))
+}
+
 app.use('/v2', requireGatewayAuth(tokenService, installationRegistry), apiLimit)
 // Parsers deliberately live after bearer auth/rate limiting. Large unauthenticated
 // bodies are rejected before Express buffers or parses them. Endpoint quotas
 // are attached directly before each parser so Express path normalization cannot
 // bypass them with case or trailing-slash variants.
+if (bookMarkupRepository) {
+  app.use('/v2/books', createBookCatalogRouter({
+    repository: bookMarkupRepository,
+    storage: bookObjectStorage
+  }))
+}
 
 app.post('/v2/events/batch', eventLimit, express.json({ limit: '1mb' }), async (req, res) => {
   try {
@@ -1602,13 +1827,20 @@ let shuttingDown = false
 async function shutdown(signal) {
   if (shuttingDown) return
   shuttingDown = true
+  if (privateMaterialCleanupTimer) clearInterval(privateMaterialCleanupTimer)
+  if (privateMaterialCleanupInitialTimer) clearTimeout(privateMaterialCleanupInitialTimer)
   console.log(`[narra-proxy] ${signal}: draining HTTP and analytics outbox`)
   const force = setTimeout(() => process.exit(1), 25_000)
   force.unref?.()
   httpServer.close(async (error) => {
     try {
       await coverJobRunner.stop()
-      await Promise.all([eventStore.stop(), installationRegistry.stop(), coverJobStore.stop()])
+      await Promise.all([
+        eventStore.stop(),
+        installationRegistry.stop(),
+        coverJobStore.stop(),
+        bookMarkupPool?.end()
+      ])
       if (error) throw error
       clearTimeout(force)
       process.exit(0)

@@ -2,7 +2,6 @@ import { Text } from "@/components/ui/Typography";
 import { isGeneratedBookCoverPath, shouldRenderCoverTypography } from "@/lib/book/cover-display";
 import { generatedCoverTextTone } from "@/lib/book/cover-text-contrast";
 import { loadingCoverColorForBook } from "@/lib/book/loading-cover-placeholder";
-import { findBundledCatalogBookByTitle } from "@/lib/catalog/bundled-books";
 import { useResolvedCovers } from "@/screens/notes/useResolvedCovers";
 import { type ThemeColors, fontWeight, radius, spacing, useColors } from "@/styles/theme";
 import type { Book } from "@readany/core/types";
@@ -18,7 +17,6 @@ import { BookCardActionSheet } from "./BookCardActionSheet";
 import { BookCoverTypography } from "./book-cover-typography";
 import { BookSpineOverlay } from "./book-spine-overlay";
 import { PerspectiveBook } from "./perspective-book";
-import { useResolvedAssetUris } from "./use-resolved-asset-uris";
 
 const CARD_WIDTH = 104;
 const COVER_HEIGHT = Math.round(CARD_WIDTH * (41 / 28));
@@ -48,15 +46,6 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
     [books],
   );
   const covers = useResolvedCovers(coverItems);
-  const bundledCoverAssetModules = useMemo(
-    () =>
-      books.flatMap((book) => {
-        const bundledBook = findBundledCatalogBookByTitle(book.meta.title);
-        return bundledBook ? [bundledBook.coverAssetModule] : [];
-      }),
-    [books],
-  );
-  const bundledCoverUris = useResolvedAssetUris(bundledCoverAssetModules);
 
   if (books.length === 0) return null;
 
@@ -76,20 +65,14 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
           const coverKey = `${book.id}:${book.meta.coverUrl ?? ""}`;
           const hasUsableCover = Boolean(coverUri) && !failedCoverKeys.has(coverKey);
           const progressPercent = Math.round(Math.max(0, Math.min(1, book.progress ?? 0)) * 100);
-          const bundledCatalogBook = hasUsableCover
-            ? undefined
-            : findBundledCatalogBookByTitle(book.meta.title);
-          const bundledCoverUri = bundledCatalogBook
-            ? bundledCoverUris.get(bundledCatalogBook.coverAssetModule)
-            : undefined;
-          const showsColorPlaceholder = !hasUsableCover && !bundledCoverUri;
+          const showsColorPlaceholder = !hasUsableCover;
           const showCoverTypography =
             !hasUsableCover || shouldRenderCoverTypography(book.id, book.meta.coverUrl);
           const coverTextTone = showsColorPlaceholder
             ? "light"
             : isGeneratedBookCoverPath(book.id, book.meta.coverUrl)
               ? generatedCoverTextTone({ title: book.meta.title, author: book.meta.author })
-              : (bundledCatalogBook?.coverTextTone ?? "dark");
+              : "dark";
           return (
             <BookCardActionSheet key={book.id} book={book} onDelete={onDelete} onOpen={onOpen}>
               <PerspectiveBook
@@ -114,12 +97,6 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
                             return next;
                           })
                         }
-                      />
-                    ) : bundledCoverUri ? (
-                      <Image
-                        source={{ uri: bundledCoverUri }}
-                        style={s.coverImage}
-                        resizeMode="cover"
                       />
                     ) : (
                       <View

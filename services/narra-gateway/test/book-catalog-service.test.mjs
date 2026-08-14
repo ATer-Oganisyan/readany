@@ -1,0 +1,282 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { REQUIRED_CHARACTER_MEDIA } from '../book-markup.mjs'
+import { createBookCatalogService } from '../book-catalog-service.mjs'
+
+const HASH = 'a'.repeat(64)
+const EDITION = {
+  id: 'book-1',
+  scope: 'private',
+  contentSha256: HASH,
+  title: 'Book',
+  author: 'Author',
+  format: 'epub',
+  status: 'base_ready',
+  createdAt: '2026-08-10T00:00:00.000Z'
+}
+
+function repository(overrides = {}) {
+  return {
+    async listCatalogBooks() { return { items: [], nextCursor: null } },
+    async resolveBook() { return null },
+    async getReaderBookManifest() { return null },
+    async advanceReaderPosition() { return null },
+    async ensureCharacterBundle() { return { status: 'queued' } },
+    ...overrides
+  }
+}
+
+function readyBundle(characterKey) {
+  return {
+    version: 'character-bundle-v1',
+    status: 'ready',
+    assets: REQUIRED_CHARACTER_MEDIA.map((type) => ({
+      assetId: `${characterKey}-${type}`,
+      type,
+      contentHash: HASH,
+      mimeType: 'application/octet-stream',
+      byteSize: 10,
+      status: 'ready'
+    }))
+  }
+}
+
+test('manifest never leaks a future character even when its global bundle is ready', async () => {
+  const service = createBookCatalogService({
+    repository: repository({
+      async getReaderBookManifest() {
+        return {
+          edition: EDITION,
+          readerTextOffset: 50,
+          readingFraction: 0.05,
+          markup: {
+            schemaVersion: 2,
+            analysisVersion: 'book-markup-v2',
+            revision: 1,
+            textLength: 1_000,
+            publishedAt: '2026-08-10T00:00:00.000Z'
+          },
+          characters: [
+            {
+              characterKey: 'visible', name: 'Visible', fullName: 'Visible Hero',
+              warmupTextOffset: 0, firstAppearanceTextOffset: 20, data: { role: 'hero' },
+              bundle: readyBundle('visible')
+            },
+            {
+              characterKey: 'future', name: 'Future', fullName: 'Future Hero',
+              warmupTextOffset: 30, firstAppearanceTextOffset: 100, data: { spoiler: true },
+              bundle: readyBundle('future')
+            }
+          ]
+        }
+      }
+    })
+  })
+  const manifest = await service.manifest('reader-1', 'book-1')
+  assert.deepEqual(manifest.characters.map(({ characterKey }) => characterKey), ['visible'])
+  assert.equal(manifest.characters[0].state, 'ready')
+  assert.equal(manifest.characters[0].bundle.assets.length, REQUIRED_CHARACTER_MEDIA.length)
+})
+
+test('manifest exposes no partial media when a visible bundle is incomplete', async () => {
+  const partial = readyBundle('hero')
+  partial.assets.pop()
+  const service = createBookCatalogService({
+    repository: repository({
+      async getReaderBookManifest() {
+        return {
+          edition: EDITION,
+          readerTextOffset: 100,
+          readingFraction: 0.1,
+          markup: {
+            schemaVersion: 2, analysisVersion: 'book-markup-v2', revision: 1,
+            textLength: 1_000, publishedAt: ''
+          },
+          characters: [{
+            characterKey: 'hero', name: 'Hero', fullName: 'The Hero',
+            warmupTextOffset: 0, firstAppearanceTextOffset: 10, data: {}, bundle: partial
+          }]
+        }
+      }
+    })
+  })
+  const manifest = await service.manifest('reader-1', 'book-1')
+  assert.equal(manifest.characters[0].state, 'preparing')
+  assert.equal(manifest.characters[0].bundle, null)
+})
+
+test('progress requests every character behind the markup warmup frontier', async () => {
+  const ensured = []
+  const service = createBookCatalogService({
+    repository: repository({
+      async advanceReaderPosition() {
+        return {
+          readerTextOffset: 90,
+          readingFraction: 0.09,
+          chapterKey: 'chapter-2',
+          charactersDue: [
+            { characterKey: 'hero', warmupTextOffset: 0, firstAppearanceTextOffset: 10 },
+            { characterKey: 'future', warmupTextOffset: 80, firstAppearanceTextOffset: 120 }
+          ]
+        }
+      },
+      async ensureCharacterBundle(input) {
+        ensured.push(input)
+        return { status: input.characterKey === 'hero' ? 'ready' : 'running' }
+      }
+    })
+  })
+  const result = await service.advanceProgress('reader-1', 'book-1', {
+    progressFraction: 0.09,
+    textOffset: null,
+    chapterKey: 'chapter-2'
+  })
+  assert.deepEqual(ensured.map(({ characterKey }) => characterKey), ['hero', 'future'])
+  assert.equal(result.readingFraction, 0.09)
+  assert.deepEqual(result.warmup, { requested: 2, ready: 1, pending: 1, failed: 0 })
+})
+
+test('local hash reuses a ready catalog edition and otherwise requests local registration', async () => {
+  const catalog = { ...EDITION, id: 'catalog-1', scope: 'catalog', catalogKey: 'book' }
+  const service = createBookCatalogService({
+    repository: repository({
+      async resolveBook({ contentSha256 }) {
+        return contentSha256 === HASH ? catalog : null
+      }
+    })
+  })
+  assert.equal((await service.resolve('reader-1', {
+    source: 'local', contentSha256: HASH
+  })).resolution, 'catalog')
+  assert.deepEqual(await service.resolve('reader-1', {
+    source: 'local', contentSha256: 'b'.repeat(64)
+  }), {
+    resolution: 'local_registration_required',
+    contentSha256: 'b'.repeat(64),
+    ready: false
+  })
+})
+
+test('catalog listing never receives processing editions from the service contract', async () => {
+  const catalog = {
+    ...EDITION,
+    id: 'catalog-1',
+    scope: 'catalog',
+    catalogKey: 'book',
+    cover: {
+      objectKey: 'catalog/book/cover',
+      contentHash: HASH,
+      mimeType: 'image/jpeg',
+      byteSize: 42
+    }
+  }
+  const service = createBookCatalogService({
+    repository: repository({
+      async listCatalogBooks() {
+        return {
+          items: [catalog],
+          nextCursor: { createdAt: catalog.createdAt, id: catalog.id }
+        }
+      }
+    })
+  })
+  const result = await service.listCatalog({ limit: 1, cursor: null })
+  assert.equal(result.items[0].ready, true)
+  assert.deepEqual(result.items[0].cover, {
+    contentHash: HASH,
+    mimeType: 'image/jpeg',
+    byteSize: 42,
+    downloadPath: '/v2/books/catalog-1/cover/download'
+  })
+  assert.deepEqual(result.nextCursor, { createdAt: catalog.createdAt, id: catalog.id })
+})
+
+test('catalog cover download is authorized before storage signing', async () => {
+  const calls = []
+  const service = createBookCatalogService({
+    repository: repository({
+      async getCatalogBookCover(input) {
+        calls.push(['authorize-cover', input])
+        return { objectKey: 'catalog/cover', mimeType: 'image/jpeg' }
+      }
+    }),
+    storage: {
+      async createDownload(input) {
+        calls.push(['sign-cover', input])
+        return { url: 'https://storage/cover', expiresAt: '' }
+      }
+    }
+  })
+  assert.equal((await service.coverDownload('reader', 'book')).url, 'https://storage/cover')
+  assert.equal(calls[0][0], 'authorize-cover')
+  assert.equal(calls[1][0], 'sign-cover')
+})
+
+test('local registration and markup store only metadata and derived character profiles', async () => {
+  const calls = []
+  const privateEdition = {
+    ...EDITION,
+    id: 'book-private',
+    status: 'draft',
+    sourceStorage: 'local_only',
+    expiresAt: '2026-08-17T00:00:00.000Z'
+  }
+  const store = repository({
+    async registerLocalBook(input) {
+      calls.push(['register', input])
+      return privateEdition
+    },
+    async publishLocalBookMarkup(input) {
+      calls.push(['publish', input])
+      return {
+        edition: { ...privateEdition, status: 'base_ready' },
+        revision: 1,
+        created: true
+      }
+    }
+  })
+  const service = createBookCatalogService({
+    repository: store,
+    idFactory: () => 'edition-proposed'
+  })
+  const registered = await service.registerLocalBook('reader', {
+    contentSha256: HASH,
+    title: 'Book', author: 'Author', format: 'epub'
+  })
+  assert.equal(registered.sourceDownloadPath, undefined)
+  assert.equal(calls[0][1].proposedBookEditionId, 'edition-proposed')
+
+  const published = await service.publishLocalMarkup('reader', 'book-private', {
+    characters: [{
+      characterKey: 'hero', name: 'Hero', fullName: 'The Hero',
+      firstAppearanceFraction: 0.2, warmupFraction: 0.15,
+      profile: { role: 'protagonist' }
+    }]
+  })
+  assert.equal(published.ready, true)
+  const payload = calls.at(-1)[1]
+  assert.equal(payload.characters[0].firstAppearanceTextOffset, 200_000)
+  assert.equal(payload.characters[0].warmupTextOffset, 150_000)
+  assert.equal('source' in payload, false)
+})
+
+test('media download is authorized by the repository before storage signing', async () => {
+  const calls = []
+  const service = createBookCatalogService({
+    repository: repository({
+      async getReaderMediaAsset(input) {
+        calls.push(['authorize', input])
+        return { objectKey: 'private/media', mimeType: 'image/png' }
+      }
+    }),
+    storage: {
+      async createDownload(input) {
+        calls.push(['sign', input])
+        return { url: 'https://storage/signed', expiresAt: '' }
+      }
+    }
+  })
+  assert.equal((await service.mediaDownload('reader', 'book', 'asset')).url, 'https://storage/signed')
+  assert.equal(calls[0][0], 'authorize')
+  assert.equal(calls[1][0], 'sign')
+})

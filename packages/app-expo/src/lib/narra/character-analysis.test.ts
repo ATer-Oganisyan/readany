@@ -20,6 +20,9 @@ vi.mock("@/stores/narra-store", () => ({
   useNarraStore: { getState: () => store },
 }));
 vi.mock("@readany/core/db/database", () => ({ getChunks: vi.fn() }));
+vi.mock("./backend-book-coordinator", () => ({
+  syncLocalBookMarkup: vi.fn(async () => undefined),
+}));
 
 const book = {
   id: "book-1",

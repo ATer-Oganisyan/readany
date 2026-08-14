@@ -1,6 +1,5 @@
 import type { Book } from "@readany/core/types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getBundledCatalogCharactersByTitle } from "./bundled-catalog-characters";
 import { analyzeBookCharacters } from "./character-analysis";
 import { queueBookCharacterAnalysis } from "./character-analysis-queue";
 import type { NarraBookState, NarraCharacter } from "./types";
@@ -12,9 +11,6 @@ const narraState = vi.hoisted(() => ({
 
 vi.mock("@/stores/narra-store", () => ({
   useNarraStore: { getState: () => narraState },
-}));
-vi.mock("./bundled-catalog-characters", () => ({
-  getBundledCatalogCharactersByTitle: vi.fn(),
 }));
 vi.mock("./character-analysis", () => ({
   analyzeBookCharacters: vi.fn(),
@@ -30,17 +26,7 @@ describe("background character analysis queue", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     narraState.books = {};
-    vi.mocked(getBundledCatalogCharactersByTitle).mockReturnValue(undefined);
     vi.mocked(analyzeBookCharacters).mockResolvedValue(characters);
-  });
-
-  it("stores bundled characters without a network analysis", async () => {
-    vi.mocked(getBundledCatalogCharactersByTitle).mockReturnValue(characters);
-
-    await expect(queueBookCharacterAnalysis(book)).resolves.toBe(characters);
-
-    expect(narraState.setCharacters).toHaveBeenCalledWith(book.id, characters);
-    expect(analyzeBookCharacters).not.toHaveBeenCalled();
   });
 
   it("deduplicates queued work and marks it as background", async () => {
