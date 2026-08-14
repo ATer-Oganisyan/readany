@@ -13,6 +13,8 @@ import {
 const IDENTIFIER = /^[a-z0-9][a-z0-9._:-]{0,255}$/i
 const SHA256 = /^[0-9a-f]{64}$/
 const SCOPES = new Set(['catalog', 'private'])
+const LOSSY_SCAN_MIN_PROVIDER_OBSERVATIONS = 5
+const LOSSY_SCAN_MIN_ACCEPTED_FRACTION = 0.25
 const SCAN_TYPE_ENTITY_KIND = new Map([
   ['character_mention', 'character'],
   ['character_alias', 'character'],
@@ -516,6 +518,15 @@ function normalizeScanChunkResult(
     invalid(
       'LLM relationship result omits character observations for participants',
       'GENERATION_RESULT_INVALID'
+    )
+  }
+  if (
+    source.observations.length >= LOSSY_SCAN_MIN_PROVIDER_OBSERVATIONS &&
+    observations.length / source.observations.length < LOSSY_SCAN_MIN_ACCEPTED_FRACTION
+  ) {
+    invalid(
+      'evidence filtering dropped too many provider observations',
+      'EVIDENCE_MISMATCH'
     )
   }
   return {

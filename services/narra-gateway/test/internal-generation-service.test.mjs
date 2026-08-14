@@ -285,6 +285,54 @@ test('internal generation service rejects a relationship without character obser
   }), (error) => error.code === 'GENERATION_RESULT_INVALID')
 })
 
+test('internal generation service retries a scan when evidence filtering drops most provider observations', async () => {
+  const storage = memoryStorage()
+  const contextText = 'Анна вошла в комнату.'
+  const validQuote = 'Анна вошла в комнату.'
+  const service = createInternalGenerationService({
+    storage,
+    logger: { info() {}, warn() {}, error() {} },
+    async completeChat() {
+      return JSON.stringify({ observations: [
+        {
+          type: 'character_action',
+          entityKind: 'character',
+          entityCandidate: 'Анна',
+          relatedEntityCandidates: [],
+          fact: 'Анна вошла в комнату',
+          evidence: { quote: validQuote, startOffset: 0, endOffset: validQuote.length },
+          confidence: 0.95
+        },
+        ...Array.from({ length: 5 }, (_, index) => ({
+          type: 'character_trait',
+          entityKind: 'character',
+          entityCandidate: 'Анна',
+          relatedEntityCandidates: [],
+          fact: `Неподтверждённый факт ${index}`,
+          evidence: { quote: `выдуманная цитата ${index}`, startOffset: 0, endOffset: 5 },
+          confidence: 0.9
+        }))
+      ] })
+    },
+    async generatePortrait() { throw new Error('unused') },
+    async synthesizeSpeech() { throw new Error('unused') },
+    async generateIdleAnimation() { throw new Error('unused') }
+  })
+
+  await assert.rejects(() => service.scanBookChunk({
+    idempotencyKey: 'run-lossy:scan:chunk-lossy:book-scan-v6',
+    runId: 'run-lossy',
+    chunkId: 'chunk-lossy',
+    extractorVersion: 'book-scan-v6',
+    bookTitle: 'Книга',
+    bookAuthor: 'Автор',
+    contextText,
+    coreLocalStartOffset: 0,
+    coreLocalEndOffset: contextText.length
+  }), (error) => error.code === 'EVIDENCE_MISMATCH')
+  assert.equal(storage.objects.size, 0)
+})
+
 test('internal generation service keeps grounded observations and drops invented evidence', async () => {
   const storage = memoryStorage()
   const lines = []
