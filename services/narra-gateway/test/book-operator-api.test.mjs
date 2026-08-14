@@ -95,7 +95,10 @@ test('operator UI exposes live book summaries, details, operations and formatted
     const page = await fetch(`${baseUrl}/operator/`, { headers: { authorization: AUTH } })
     assert.equal(page.status, 200)
     assert.match(page.headers.get('content-type'), /^text\/html/)
-    assert.match(await page.text(), /Разметка книг/)
+    const html = await page.text()
+    assert.match(html, /Разметка книг/)
+    assert.match(html, /<script defer src="\.\/assets\/app\.js"><\/script>/)
+    assert.doesNotMatch(html, /type="module"/)
     assert.match(page.headers.get('content-security-policy'), /frame-ancestors 'none'/)
 
     const styles = await fetch(`${baseUrl}/operator/assets/styles.css`, {
@@ -103,6 +106,12 @@ test('operator UI exposes live book summaries, details, operations and formatted
     })
     assert.equal(styles.status, 200)
     assert.match(await styles.text(), /mishanaer\/deslop primitives/)
+
+    const script = await fetch(`${baseUrl}/operator/assets/app.js`, {
+      headers: { authorization: AUTH }
+    })
+    assert.equal(script.status, 200)
+    assert.doesNotMatch(await script.text(), /^await refresh\(\)$/m)
 
     const books = await fetch(`${baseUrl}/operator/api/books`, {
       headers: { authorization: AUTH }

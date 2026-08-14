@@ -417,5 +417,5 @@ document.getElementById('copy-json').addEventListener('click', async () => {
   catch { toast('Не удалось скопировать JSON', true) }
 })
 
-await refresh()
+void refresh()
 setInterval(() => void refresh(), 2_000)
