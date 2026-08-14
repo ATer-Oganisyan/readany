@@ -62,6 +62,7 @@ import { createCoverJobStore } from './cover-job-store.mjs'
 import { createCoverJobRunner } from './cover-job-runner.mjs'
 import { createBookCatalogRouter } from './book-catalog-api.mjs'
 import { createCatalogIngestRouter } from './catalog-ingest-api.mjs'
+import { createPostgresBookAnalysisRepository } from './book-analysis-repository.mjs'
 import { createPostgresBookMarkupRepository } from './postgres-book-markup-repository.mjs'
 import { createPostgresPoolFromEnv, runBookMarkupMigrations } from './postgres-runtime.mjs'
 import { createBookObjectStorageFromEnv } from './book-object-storage.mjs'
@@ -84,6 +85,11 @@ if (!['production', 'staging', 'development', 'test'].includes(ANALYTICS_ENV)) {
 }
 const VIDEO_REQUIRED = parseEnvBool(process.env, 'VIDEO_REQUIRED', false)
 const BOOK_BACKEND_REQUIRED = parseEnvBool(process.env, 'BOOK_BACKEND_REQUIRED', false)
+const BOOK_SHADOW_PREVIEW_ENABLED = parseEnvBool(
+  process.env,
+  'BOOK_SHADOW_PREVIEW_ENABLED',
+  ANALYTICS_ENV !== 'production'
+)
 const ALLOW_INSECURE_VIDEO_HTTP = process.env.ALLOW_INSECURE_VIDEO_HTTP === 'true'
 const INSECURE_VIDEO_ENV_ALLOWED = insecureVideoEnvironmentAllowed({
   production: PRODUCTION,
@@ -788,6 +794,7 @@ coverJobRunner.start()
 
 let bookMarkupPool = null
 let bookMarkupRepository = null
+let bookAnalysisRepository = null
 let privateMaterialCleanupTimer = null
 let privateMaterialCleanupInitialTimer = null
 const bookObjectStorage = createBookObjectStorageFromEnv(process.env)
@@ -811,6 +818,7 @@ if (process.env.DATABASE_URL) {
   bookMarkupRepository = createPostgresBookMarkupRepository(bookMarkupPool, {
     privateMaterialTtlDays: PRIVATE_MATERIAL_TTL_DAYS
   })
+  bookAnalysisRepository = createPostgresBookAnalysisRepository(bookMarkupPool)
   if (bookObjectStorage) {
     const cleanup = createPrivateMaterialCleanup({
       repository: bookMarkupRepository,
@@ -1214,6 +1222,8 @@ app.use('/v2', requireGatewayAuth(tokenService, installationRegistry), apiLimit)
 if (bookMarkupRepository) {
   app.use('/v2/books', createBookCatalogRouter({
     repository: bookMarkupRepository,
+    analysisRepository: bookAnalysisRepository,
+    shadowPreviewEnabled: BOOK_SHADOW_PREVIEW_ENABLED,
     storage: bookObjectStorage
   }))
 }

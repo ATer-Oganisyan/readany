@@ -316,9 +316,43 @@ function manifestJson(manifest) {
   }
 }
 
-export function createBookCatalogRouter({ repository, storage = null }) {
+function shadowManifestJson(manifest) {
+  return {
+    source: manifest.source,
+    availability: 'ready',
+    publication_id: manifest.publicationId,
+    run_id: manifest.runId,
+    content_hash: manifest.contentHash,
+    published_at: manifest.publishedAt,
+    reader_text_offset: manifest.readerTextOffset,
+    reading_fraction: manifest.readingFraction,
+    reader_section_index: manifest.readerSectionIndex,
+    reader_section_fraction: manifest.readerSectionFraction,
+    markup: {
+      schema_version: manifest.markup.schemaVersion,
+      analysis_version: manifest.markup.analysisVersion,
+      text_length: manifest.markup.textLength
+    },
+    characters: manifest.characters.map((character) => ({
+      character_key: character.characterKey,
+      name: character.name,
+      full_name: character.fullName,
+      first_appearance_text_offset: character.firstAppearanceTextOffset,
+      state: character.state,
+      profile: character.profile,
+      bundle: null
+    }))
+  }
+}
+
+export function createBookCatalogRouter({
+  repository,
+  analysisRepository = null,
+  shadowPreviewEnabled = false,
+  storage = null
+}) {
   const router = express.Router()
-  const service = createBookCatalogService({ repository, storage })
+  const service = createBookCatalogService({ repository, analysisRepository, storage })
   const subject = (req) => uuid(req.installation?.sub, 'installation subject')
 
   router.get('/catalog', asyncRoute(async (req, res) => {
@@ -396,6 +430,20 @@ export function createBookCatalogRouter({ repository, storage = null }) {
       uuid(req.params.bookEditionId, 'bookEditionId')
     )
     res.status(result.availability === 'processing' ? 202 : 200).json(manifestJson(result))
+  }))
+
+  router.get('/:bookEditionId/analysis-shadow/manifest', asyncRoute(async (req, res) => {
+    if (!shadowPreviewEnabled) {
+      throw Object.assign(new Error('Предпросмотр v3-разметки выключен'), {
+        code: 'PREVIEW_DISABLED',
+        status: 404
+      })
+    }
+    const result = await service.shadowManifest(
+      subject(req),
+      uuid(req.params.bookEditionId, 'bookEditionId')
+    )
+    res.json(shadowManifestJson(result))
   }))
 
   router.post(

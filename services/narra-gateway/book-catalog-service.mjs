@@ -5,6 +5,7 @@ import {
   ensureCharacterBundle,
   readerCharacterState
 } from './book-markup.mjs'
+import { normalizeBookMarkupV3 } from './book-analysis-contracts.mjs'
 import { createHash, randomUUID } from 'node:crypto'
 
 function serviceError(code, message, status) {
@@ -62,8 +63,43 @@ function publicAsset(asset) {
   }
 }
 
+function claimValue(claim) {
+  return typeof claim?.value === 'string' ? claim.value : ''
+}
+
+function shadowCharacterProfile(character) {
+  const gender = claimValue(character.gender)
+  const appearancePrompt = character.creative?.appearancePrompt || character.appearance
+    .map(claimValue)
+    .filter(Boolean)
+    .join(', ')
+  return {
+    role: claimValue(character.role) || 'Персонаж истории',
+    gender: gender === 'male' || gender === 'female' ? gender : undefined,
+    traits: character.traits.map(claimValue).filter(Boolean).slice(0, 5),
+    speechStyle: claimValue(character.speechStyle),
+    speechExamples: character.speechExamples.map(claimValue).filter(Boolean).slice(0, 3),
+    appearancePrompt,
+    greeting: character.creative?.greeting || '',
+    voice: character.creative?.voice || '',
+    analysisSource: 'shadow-v3'
+  }
+}
+
+function shadowReaderTextOffset(snapshot, textLength) {
+  if (typeof snapshot.readingFraction === 'number' && Number.isFinite(snapshot.readingFraction)) {
+    return Math.round(Math.min(1, Math.max(0, snapshot.readingFraction)) * textLength)
+  }
+  const publicTextLength = Number(snapshot.markup?.textLength)
+  if (Number.isSafeInteger(publicTextLength) && publicTextLength > 0) {
+    return Math.round(Math.min(1, snapshot.readerTextOffset / publicTextLength) * textLength)
+  }
+  return Math.min(textLength, Math.max(0, Number(snapshot.readerTextOffset) || 0))
+}
+
 export function createBookCatalogService({
   repository,
+  analysisRepository = null,
   storage = null,
   bundleVersion = CHARACTER_BUNDLE_VERSION,
   idFactory = randomUUID
@@ -239,6 +275,53 @@ export function createBookCatalogService({
           publishedAt: snapshot.markup.publishedAt
         },
         characters
+      }
+    },
+
+    async shadowManifest(subjectId, bookEditionId) {
+      if (!analysisRepository || typeof analysisRepository.getLatestShadowAnalysisPublication !== 'function') {
+        throw serviceError('PREVIEW_UNAVAILABLE', 'Теневая разметка недоступна', 503)
+      }
+      const snapshot = await store.getReaderBookManifest({
+        subjectId,
+        bookEditionId,
+        bundleVersion
+      })
+      if (!snapshot || snapshot.edition?.scope !== 'catalog') {
+        throw serviceError('NOT_FOUND', 'Книга каталога не найдена', 404)
+      }
+      const publication = await analysisRepository.getLatestShadowAnalysisPublication(bookEditionId)
+      if (!publication?.data?.markup) {
+        throw serviceError('SHADOW_NOT_READY', 'Для книги ещё нет готовой v3-разметки', 404)
+      }
+      const markup = normalizeBookMarkupV3(publication.data.markup)
+      const readerTextOffset = shadowReaderTextOffset(snapshot, markup.textLength)
+      return {
+        source: 'shadow-v3',
+        publicationId: publication.id,
+        runId: publication.runId,
+        contentHash: publication.contentHash,
+        publishedAt: publication.publishedAt,
+        readerTextOffset,
+        readingFraction: snapshot.readingFraction,
+        readerSectionIndex: snapshot.readerSectionIndex,
+        readerSectionFraction: snapshot.readerSectionFraction,
+        markup: {
+          schemaVersion: markup.schemaVersion,
+          analysisVersion: markup.analysisVersion,
+          textLength: markup.textLength
+        },
+        characters: markup.characters
+          .filter((character) => character.firstAppearanceTextOffset <= readerTextOffset)
+          .map((character) => ({
+            characterKey: character.characterKey,
+            name: character.name,
+            fullName: character.fullName,
+            firstAppearanceTextOffset: character.firstAppearanceTextOffset,
+            state: 'preparing',
+            profile: shadowCharacterProfile(character),
+            bundle: null
+          }))
       }
     },
 

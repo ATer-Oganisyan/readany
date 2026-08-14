@@ -470,6 +470,18 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
       return publicationRow(result.rows[0])
     },
 
+    async getLatestShadowAnalysisPublication(bookEditionId) {
+      const result = await pool.query(
+        `SELECT publication.*
+         FROM book_analysis_publications AS publication
+         WHERE publication.book_edition_id = $1 AND publication.channel = 'shadow'
+         ORDER BY publication.published_at DESC, publication.id DESC
+         LIMIT 1`,
+        [validateIdentifier(bookEditionId, 'bookEditionId')]
+      )
+      return publicationRow(result.rows[0])
+    },
+
     async claimAnalysisJob(workerId, {
       stages = ['prepare', 'scan', 'resolve', 'synthesize', 'validate', 'publish'],
       leaseSeconds = 300

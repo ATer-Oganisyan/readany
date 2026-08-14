@@ -105,6 +105,117 @@ test('manifest exposes no partial media when a visible bundle is incomplete', as
   assert.equal(manifest.characters[0].bundle, null)
 })
 
+test('shadow preview exposes validated v3 characters without replacing the public v2 manifest', async () => {
+  const publicSnapshot = {
+    edition: { ...EDITION, scope: 'catalog', catalogKey: 'book' },
+    readerTextOffset: 100,
+    readingFraction: 0.5,
+    markup: {
+      schemaVersion: 2,
+      analysisVersion: 'book-markup-v2',
+      revision: 7,
+      textLength: 1_000,
+      publishedAt: '2026-08-10T00:00:00.000Z'
+    },
+    characters: []
+  }
+  const service = createBookCatalogService({
+    repository: repository({
+      async getReaderBookManifest() { return publicSnapshot }
+    }),
+    analysisRepository: {
+      async getLatestShadowAnalysisPublication(bookEditionId) {
+        assert.equal(bookEditionId, EDITION.id)
+        return {
+          id: 'publication-v3',
+          runId: 'run-v3',
+          bookEditionId,
+          channel: 'shadow',
+          analysisVersion: 'book-markup-v3',
+          contentHash: HASH,
+          publishedAt: '2026-08-13T12:00:00.000Z',
+          data: {
+            markup: {
+              schemaVersion: 3,
+              analysisVersion: 'book-markup-v3',
+              snapshotId: 'snapshot-v3',
+              textLength: 2_000,
+              characters: [
+                {
+                  characterKey: 'visible',
+                  name: 'Visible',
+                  fullName: 'Visible Hero',
+                  aliases: [],
+                  identityEvidenceIds: ['identity-visible'],
+                  firstAppearanceTextOffset: 900,
+                  warmupTextOffset: 850,
+                  role: { value: 'Главный герой', evidenceIds: ['role-1'], confidence: 0.9 },
+                  age: null,
+                  gender: null,
+                  description: null,
+                  traits: [{ value: 'смелый', evidenceIds: ['trait-1'], confidence: 0.8 }],
+                  speechStyle: null,
+                  speechExamples: [],
+                  appearance: [],
+                  creative: { greeting: 'Здравствуйте', appearancePrompt: '', voice: 'Bys' }
+                },
+                {
+                  characterKey: 'future',
+                  name: 'Future',
+                  fullName: 'Future Hero',
+                  aliases: [],
+                  identityEvidenceIds: ['identity-future'],
+                  firstAppearanceTextOffset: 1_500,
+                  warmupTextOffset: 1_400,
+                  role: null,
+                  age: null,
+                  gender: null,
+                  description: null,
+                  traits: [],
+                  speechStyle: null,
+                  speechExamples: [],
+                  appearance: [],
+                  creative: {}
+                }
+              ],
+              locations: [],
+              events: [],
+              relationships: [],
+              storyArcs: []
+            }
+          }
+        }
+      }
+    }
+  })
+
+  const preview = await service.shadowManifest('reader-1', EDITION.id)
+
+  assert.equal(preview.source, 'shadow-v3')
+  assert.equal(preview.publicationId, 'publication-v3')
+  assert.equal(preview.readerTextOffset, 1_000)
+  assert.deepEqual(preview.characters, [{
+    characterKey: 'visible',
+    name: 'Visible',
+    fullName: 'Visible Hero',
+    firstAppearanceTextOffset: 900,
+    state: 'preparing',
+    profile: {
+      role: 'Главный герой',
+      gender: undefined,
+      traits: ['смелый'],
+      speechStyle: '',
+      speechExamples: [],
+      appearancePrompt: '',
+      greeting: 'Здравствуйте',
+      voice: 'Bys',
+      analysisSource: 'shadow-v3'
+    },
+    bundle: null
+  }])
+  assert.equal(publicSnapshot.markup.analysisVersion, 'book-markup-v2')
+})
+
 test('progress requests every character behind the markup warmup frontier', async () => {
   const ensured = []
   const service = createBookCatalogService({

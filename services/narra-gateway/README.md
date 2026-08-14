@@ -154,7 +154,16 @@ docker compose --profile book-analysis-shadow up -d \
 
 The profile is disabled by default. Starting its workers does not enqueue books;
 only the explicit `start` command does that. The resulting publication remains
-in the immutable `shadow` channel and is not exposed by the public book API.
+in the immutable `shadow` channel and never replaces the public v2 manifest.
+
+Test environments can expose the latest shadow publication through the
+authenticated `GET /v2/books/:bookEditionId/analysis-shadow/manifest` route by
+setting `BOOK_SHADOW_PREVIEW_ENABLED=true`. The route is limited to catalog
+books already accessible to the reader, applies the same progress-based
+character visibility rule, and returns profiles only: evidence and media
+bundles stay private. The Expo development/preview builds then show a manual
+v2/v3 switch on the book's character screen. Production builds do not enable
+that switch.
 
 Stable `event` values such as `markup.chunk_selected`, `markup.published`,
 `bundle.asset_ready`, `job.retry_scheduled` and `job.failed` can be filtered with
