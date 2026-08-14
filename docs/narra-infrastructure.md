@@ -10,7 +10,7 @@ standalone Narra repository is not an operations runbook.
 | Runtime | Source | Deployment |
 | --- | --- | --- |
 | Gateway | `services/narra-gateway` | Docker Compose via `deploy-i167.sh` |
-| Gateway staging | `services/narra-gateway` | Docker Compose in `/srv/nara-stagging` on i167 |
+| Gateway staging | `services/narra-gateway` | Docker Compose in `/srv/narra-stagging` on i167 |
 | Product analytics | `stats/narra` | systemd via `deploy.sh` |
 
 The first reviewed gateway migration is merge commit `c8e38887efe7` (PR #3).
@@ -56,7 +56,7 @@ are removed from the monitor configuration.
 
 ## Staging policy
 
-The replacement staging Gateway runs on i167 from `/srv/nara-stagging` and is
+The replacement staging Gateway runs on i167 from `/srv/narra-stagging` and is
 published as `https://api-test.narra.disrupt.builders`. It has its own Compose
 configuration and must remain isolated from the production deployment rooted at
 `/srv/narra-gateway`. Mobile development, preview and the current production

@@ -113,8 +113,8 @@ text, prompts, credentials or generated payloads. Follow both staging processes
 on i167:
 
 ```bash
-sudo docker compose --env-file /srv/nara-stagging/compose.env \
-  -f /srv/nara-stagging/compose.yml --profile book-backend \
+sudo docker compose --env-file /srv/narra-stagging/compose.env \
+  -f /srv/narra-stagging/compose.yml --profile book-backend \
   logs -f --tail=200 gateway book-markup-worker
 ```
 
@@ -241,7 +241,7 @@ This directory is the canonical gateway source; do not redeploy the historical
 copy from the standalone Narra repository.
 
 The test Gateway is the separate i167 deployment rooted at
-`/srv/nara-stagging` and exposed only as
+`/srv/narra-stagging` and exposed only as
 `https://api-test.narra.disrupt.builders`. Mobile development, preview and the
 current production build configuration all use that hostname. Do not point a
 staging verification command at the production Gateway or reuse the production
