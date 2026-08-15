@@ -45,12 +45,14 @@ const COLLECTIVE_CHARACTER_TOKENS = new Set([
   'сыновья', 'дочери', 'братья', 'сестры', 'марсиане', 'атланты', 'аолы',
   'казаки', 'козаки', 'запорожцы', 'армейцы', 'женщины', 'мужчины',
   'слуги', 'музыканты', 'танки', 'подразделения', 'толпа', 'голоса',
-  'богатыри', 'старшины', 'наборщики', 'часовые', 'гайдуки',
+  'богатыри', 'старшины', 'наборщики', 'часовые', 'гайдуки', 'будочники',
+  'писари', 'взводные', 'бронеавтомобили', 'девки', 'прислужницы',
   'army', 'troops', 'soldiers', 'people', 'children', 'brothers', 'sisters',
   'women', 'men', 'servants', 'musicians', 'tanks', 'crowd', 'voices'
 ])
 const LEADING_CHARACTER_TITLES = new Set([
-  'царь', 'царица', 'король', 'королева', 'князь', 'княгиня', 'княжна',
+  'царь', 'царица', 'царевич', 'царевна', 'король', 'королева',
+  'князь', 'княгиня', 'княжна',
   'граф', 'графиня', 'барон', 'баронесса', 'принц', 'принцесса',
   'майор', 'капитан', 'полковник', 'генерал', 'адмирал', 'профессор',
   'доктор', 'господин', 'госпожа', 'синьор', 'синьора',
@@ -210,12 +212,16 @@ function isOrderedSubset(shorter, longer) {
 
 function hasProperNameForm(node) {
   if (GENERIC_CHARACTER_CANDIDATES.has(node.normalized)) return false
-  if (nameTokens(node.normalized).some((token) => DESCRIPTIVE_CHARACTER_TOKENS.has(token))) {
+  const tokens = nameTokens(node.normalized)
+  const semanticTokens = leadingTitleBase(node.normalized) ? tokens.slice(1) : tokens
+  if (semanticTokens.some((token) => DESCRIPTIVE_CHARACTER_TOKENS.has(token))) {
     return false
   }
-  return [...node.forms.values()].some(({ display }) =>
-    /^\p{Lu}[\p{L}'’.-]*(?:\s|$)/u.test(display)
-  )
+  return [...node.forms.values()].some(({ display }) => {
+    const words = display.match(/\p{L}[\p{L}'’.-]*/gu) ?? []
+    if (words.length === 1) return /^\p{Lu}/u.test(words[0])
+    return words.slice(1).some((word) => /^\p{Lu}/u.test(word))
+  })
 }
 
 function leadingTitleBase(value) {

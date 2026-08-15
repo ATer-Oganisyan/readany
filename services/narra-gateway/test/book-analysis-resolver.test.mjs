@@ -178,6 +178,50 @@ test('resolver merges a leading title with the same named character', () => {
   assert.deepEqual(result[0].aliases, ['царь Салтан'])
 })
 
+test('resolver recognizes a proper name after a lowercase leading title', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111111134',
+      type: 'character_action',
+      candidate: 'царь Салтан',
+      startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222244',
+      candidate: 'царь Салтан',
+      startOffset: 200
+    })
+  ]
+  const result = resolveBookAnalysisEntities({ observations })
+  assert.equal(result[0].resolutionStatus, 'confirmed')
+})
+
+test('resolver does not confirm generated descriptions merely because they start uppercase', () => {
+  const candidates = [
+    'Мертвая лягушка',
+    'Капитан дальнего плавания',
+    'Механический толстяк',
+    'Неустановленный голос',
+    'Газовые бронеавтомобили',
+    'Две девки-прислужницы',
+    'Будочники',
+    'Писари',
+    'Взводные'
+  ]
+  const observations = candidates.flatMap((candidate, index) => [
+    observation({
+      id: `11111111-1111-4111-8111-${String(index).padStart(12, '0')}`,
+      type: 'character_action', candidate, startOffset: index * 100
+    }),
+    observation({
+      id: `22222222-2222-4222-8222-${String(index).padStart(12, '0')}`,
+      type: 'character_dialogue', candidate, startOffset: index * 100 + 10
+    })
+  ])
+  const result = resolveBookAnalysisEntities({ observations })
+  assert.ok(result.every(({ resolutionStatus }) => resolutionStatus === 'candidate'))
+})
+
 test('resolver binds relationship participants to character entity keys including candidates', () => {
   const observations = [
     observation({

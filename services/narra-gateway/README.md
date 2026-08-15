@@ -161,7 +161,7 @@ only ingestion, `start`, or an explicit `restart` enqueues analysis. The interna
 `shadow` publication is the immutable audit source for the canonical v3 reader
 projection; retained v2 rows are not selected by the mobile manifest.
 
-Pipeline v15 scans paragraph-aware cores around 4,000 characters (2,500–5,000,
+Pipeline v16 scans paragraph-aware cores around 4,000 characters (2,500–5,000,
 with 500 characters of context overlap). Before resolve can freeze a snapshot,
 evidence must cover at least 75% of fixed 4,000-character bands and the result
 must contain a confirmed non-metadata character. Relationship participants bind
