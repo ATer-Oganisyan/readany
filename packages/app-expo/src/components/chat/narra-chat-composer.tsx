@@ -184,7 +184,7 @@ export function NarraChatComposer<TMessage extends IMessage>({
 const styles = StyleSheet.create({
   container: {
     gap: spacingPixels[6],
-    paddingHorizontal: spacingPixels[8],
+    paddingHorizontal: spacingPixels[16],
     paddingTop: spacingPixels[6],
   },
   floatingContainer: {

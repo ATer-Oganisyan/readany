@@ -5,7 +5,7 @@ export default StyleSheet.create({
     flex: 1,
   },
   contentContainer: {
-    overflow: 'hidden',
+    overflow: 'visible',
   },
   hidden: {
     opacity: 0,

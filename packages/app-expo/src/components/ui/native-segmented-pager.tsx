@@ -14,8 +14,6 @@ interface NativeSegmentedPagerProps {
   scrollableSegments?: boolean;
   controlsStyle?: ViewStyle;
   minimumPageHeight?: number;
-  pageSeamColor?: string;
-  pageSeamGap?: number;
   stablePageHeight?: boolean;
   onSwipeStateChange?: (swiping: boolean) => void;
 }
@@ -30,15 +28,12 @@ export function NativeSegmentedPager({
   scrollableSegments = false,
   controlsStyle,
   minimumPageHeight = 1,
-  pageSeamColor = "transparent",
-  pageSeamGap = 0,
   stablePageHeight = false,
   onSwipeStateChange,
 }: NativeSegmentedPagerProps) {
   const pagerRef = useRef<PagerView>(null);
   const activePageRef = useRef(-1);
   const [pageHeights, setPageHeights] = useState<Record<number, number>>({});
-  const [isSwiping, setIsSwiping] = useState(false);
   const pageCount = Children.count(children);
   const safeSelectedIndex = Math.max(0, Math.min(selectedIndex, Math.max(0, pageCount - 1)));
   const tallestPageHeight = Math.max(0, ...Object.values(pageHeights));
@@ -72,7 +67,6 @@ export function NativeSegmentedPager({
   const handlePageScrollStateChanged = useCallback(
     ({ nativeEvent }: { nativeEvent: { pageScrollState: "idle" | "dragging" | "settling" } }) => {
       const swiping = nativeEvent.pageScrollState !== "idle";
-      setIsSwiping(swiping);
       onSwipeStateChange?.(swiping);
     },
     [onSwipeStateChange],
@@ -105,24 +99,6 @@ export function NativeSegmentedPager({
         {pages.map((page, index) => (
           <View collapsable={false} key={page.key ?? `page-${index}`} style={styles.page}>
             <View onLayout={(event) => rememberPageHeight(index, event)}>{page}</View>
-            {isSwiping && pageSeamGap > 0 && index > 0 ? (
-              <View
-                pointerEvents="none"
-                style={[
-                  styles.pageSeam,
-                  { backgroundColor: pageSeamColor, left: 0, width: pageSeamGap / 2 },
-                ]}
-              />
-            ) : null}
-            {isSwiping && pageSeamGap > 0 && index < pageCount - 1 ? (
-              <View
-                pointerEvents="none"
-                style={[
-                  styles.pageSeam,
-                  { backgroundColor: pageSeamColor, right: 0, width: pageSeamGap / 2 },
-                ]}
-              />
-            ) : null}
           </View>
         ))}
       </PagerView>
@@ -134,5 +110,4 @@ const styles = StyleSheet.create({
   container: { width: "100%" },
   pager: { width: "100%" },
   page: { width: "100%" },
-  pageSeam: { bottom: 0, position: "absolute", top: 0 },
 });

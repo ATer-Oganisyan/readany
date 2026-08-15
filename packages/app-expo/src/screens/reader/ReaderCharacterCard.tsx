@@ -696,10 +696,12 @@ const makeStyles = (colors: ThemeColors) =>
     embeddedDetailsScroll: {
       flex: 1,
       alignSelf: "stretch",
+      overflow: "visible",
       zIndex: 1,
     },
     embeddedDetailsScrollContent: {
       flexGrow: 1,
+      overflow: "visible",
       paddingBottom: 0,
     },
     grabber: {
@@ -787,6 +789,9 @@ const makeStyles = (colors: ThemeColors) =>
       alignSelf: "stretch",
       maxWidth: "100%",
       paddingHorizontal: spacing.xxl,
+      paddingVertical: spacing.xl,
+      marginVertical: -spacing.xl,
+      overflow: "visible",
       textShadowColor: "rgba(0, 0, 0, 0.5)",
       textShadowOffset: { width: 0, height: 2 },
       textShadowRadius: 20,
@@ -810,6 +815,7 @@ const makeStyles = (colors: ThemeColors) =>
     embeddedCharacterSection: {
       minHeight: 340,
       marginTop: "-32%",
+      overflow: "visible",
       paddingTop: spacing.xl,
       paddingBottom: 40,
       zIndex: 1,
@@ -823,6 +829,7 @@ const makeStyles = (colors: ThemeColors) =>
     embeddedCharacterInfo: {
       zIndex: 1,
       gap: 0,
+      overflow: "visible",
     },
     // Роль и манера речи — SB Sans, спокойный тёмно-серый (cardv2__role)
     description: {

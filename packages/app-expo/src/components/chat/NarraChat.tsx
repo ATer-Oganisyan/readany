@@ -15,7 +15,9 @@ import {
   Chat,
   type IMessage,
   type InputToolbarProps,
+  Message,
   type MessageMenuItem,
+  type MessageProps,
   MessageText,
   type MessageTextProps,
   type PartialChatTheme,
@@ -24,7 +26,6 @@ import { NarraChatComposer } from "./narra-chat-composer";
 
 const USER_ID = "narra-user";
 const ASSISTANT_ID = "narra-ai";
-
 type StreamingStep = "thinking" | "tool_calling" | "responding" | "idle";
 
 interface NarraMessage extends IMessage {
@@ -318,6 +319,19 @@ export function NarraChat({
     [],
   );
 
+  const renderMessage = useCallback(
+    (props: MessageProps<NarraMessage>) => (
+      <Message
+        {...props}
+        containerStyle={{
+          left: styles.messageContainer,
+          right: styles.messageContainer,
+        }}
+      />
+    ),
+    [],
+  );
+
   const messageTextProps = useMemo(
     () => ({
       containerStyle: {
@@ -437,6 +451,7 @@ export function NarraChat({
       renderAccessory={renderAccessory}
       renderInputToolbar={renderInputToolbar}
       renderBubble={renderBubble}
+      renderMessage={renderMessage}
       renderMessageText={renderMessageText}
       renderTime={() => null}
       renderTypingIndicator={showTypingIndicator ? undefined : renderNoTypingIndicator}
@@ -508,6 +523,9 @@ function ModeButton({
 }
 
 const styles = StyleSheet.create({
+  messageContainer: {
+    marginHorizontal: spacingPixels[16],
+  },
   accessory: {
     gap: 6,
     paddingHorizontal: 8,

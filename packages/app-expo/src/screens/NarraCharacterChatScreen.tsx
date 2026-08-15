@@ -101,14 +101,13 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
   const [sending, setSending] = useState(false);
   const [greetingLoading, setGreetingLoading] = useState(false);
   const [pendingAssistant, setPendingAssistant] = useState<NarraChatMessage | null>(null);
-  const [revealMessageId, setRevealMessageId] = useState<string | null>(null);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const audioRef = useRef(new NarraAudioPlayer());
   const greetingRequestedRef = useRef(false);
   const placeholderRequestedRef = useRef<string | null>(null);
   const unlocked = Boolean(book && character && isCharacterUnlocked(book.progress, character));
   const characterStatus =
-    sending || greetingLoading || Boolean(revealMessageId)
+    sending || greetingLoading
       ? t("narra.characterTyping", "Печатает...")
       : t("narra.characterOnline", "онлайн");
   const openCharacterProfile = useCallback(
@@ -392,7 +391,6 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
         };
         append(bookId, characterId, assistantMessage);
         setPendingAssistant(null);
-        setRevealMessageId(assistantMessage.id);
         void refreshMemory([...messages, userMessage, assistantMessage]);
       } catch (error) {
         setPendingAssistant(null);
@@ -458,9 +456,9 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
         messages={chatMessages}
         adjustsForTransparentHeader
         floatingComposer
-        isStreaming={sending || greetingLoading || Boolean(revealMessageId)}
+        isStreaming={sending || greetingLoading}
         showScrollToBottomButton={false}
-        currentStep={sending || greetingLoading || revealMessageId ? "responding" : "idle"}
+        currentStep={sending || greetingLoading ? "responding" : "idle"}
         placeholder={
           interfaceLanguage === "en"
             ? t("narra.messagePlaceholder", "Message {{name}}…", { name: character.name })
@@ -470,10 +468,6 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
         onSend={send}
         assistantName={character.name}
         showTypingIndicator={false}
-        revealMessageId={revealMessageId}
-        onRevealComplete={(messageId) =>
-          setRevealMessageId((current) => (current === messageId ? null : current))
-        }
         showModeControls={false}
         assistantMessageAction={assistantMessageAction}
       />
