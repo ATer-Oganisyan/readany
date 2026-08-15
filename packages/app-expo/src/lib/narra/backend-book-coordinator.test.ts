@@ -22,6 +22,8 @@ vi.mock("@/lib/ai/narra-gateway-fetch", () => ({ narraGatewayRequest: vi.fn() })
 vi.mock("@readany/core/services", () => ({ getPlatformService: vi.fn() }));
 vi.mock("./backend-book-cache", () => ({
   loadCachedBackendCharacters: vi.fn(async () => []),
+  projectBackendManifestCharacters: vi.fn(() => []),
+  persistBackendManifestCharacters: vi.fn(async () => undefined),
   materializeBackendManifest: vi.fn(async () => []),
 }));
 vi.mock("./backend-file-hash", () => ({ sha256BackendFile: vi.fn() }));
@@ -111,6 +113,13 @@ function fixture() {
     async loadCached() {
       return [];
     },
+    project() {
+      calls.push("project");
+      return characters;
+    },
+    async persist() {
+      calls.push("persist");
+    },
     async materialize() {
       calls.push("materialize");
       return characters;
@@ -129,6 +138,9 @@ function fixture() {
     },
     setCharacters() {
       calls.push("set-characters");
+    },
+    updateCharacterMedia() {
+      calls.push("update-character-media");
     },
     setManifestSource(_bookId, source) {
       calls.push(`set-source:${source}`);
@@ -252,6 +264,38 @@ describe("backend book coordinator", () => {
     value.files.loadCached = vi.fn(async () => [{ id: "cached" } as NarraCharacter]);
     await createBackendBookCoordinator(value).open(BOOK);
     expect(value.calls[0]).toBe("set-characters");
+  });
+
+  it("publishes manifest characters without waiting for media downloads", async () => {
+    const value = fixture();
+    const projectedCharacters = [
+      { id: "taras", name: "Тарас Бульба", mediaState: "preparing" },
+      { id: "ostap", name: "Остап", mediaState: "preparing" },
+    ] as NarraCharacter[];
+    let finishMedia!: (characters: NarraCharacter[]) => void;
+    const mediaPending = new Promise<NarraCharacter[]>((resolve) => {
+      finishMedia = resolve;
+    });
+    value.files.project = vi.fn(() => projectedCharacters);
+    value.files.materialize = vi.fn(() => mediaPending);
+    value.state.setCharacters = vi.fn();
+
+    const opening = createBackendBookCoordinator(value).open(BOOK);
+    let opened = false;
+    void opening.then(() => {
+      opened = true;
+    });
+
+    try {
+      await vi.waitFor(() => expect(value.files.materialize).toHaveBeenCalledOnce());
+      expect(value.state.setCharacters).toHaveBeenCalledWith(BOOK.id, projectedCharacters);
+      await Promise.resolve();
+      expect(opened).toBe(true);
+    } finally {
+      finishMedia(projectedCharacters);
+      await opening;
+      await vi.waitFor(() => expect(value.state.setCharacters).toHaveBeenCalledTimes(2));
+    }
   });
 
   it("drops legacy local profiles after a book is identified as catalog content", async () => {

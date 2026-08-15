@@ -6,6 +6,7 @@ import type { NarraCharacter } from "./types";
 
 const CACHE_ROOT = `${FileSystem.documentDirectory}narra-backend-books`;
 const CACHE_PATH_MARKER = "/Documents/narra-backend-books/";
+const MEDIA_CHARACTER_CONCURRENCY = 2;
 
 interface CachedBackendBook {
   manifest: BackendBookManifest;
@@ -126,51 +127,90 @@ function baseCharacter(
   };
 }
 
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await mapper(items[index] as T, index);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+export function projectBackendManifestCharacters(manifest: BackendBookManifest): NarraCharacter[] {
+  return manifest.characters.map((character) => ({
+    ...baseCharacter(character, manifest.source),
+    // Server readiness means the bundle exists remotely. The local client only
+    // marks it ready after all three files have passed integrity checks.
+    mediaState: "preparing" as const,
+  }));
+}
+
+export async function persistBackendManifestCharacters(
+  bookId: string,
+  manifest: BackendBookManifest,
+  characters: NarraCharacter[],
+): Promise<void> {
+  const directory = await ensureBookDirectory(bookId);
+  const cache: CachedBackendBook = { manifest, characters };
+  await FileSystem.writeAsStringAsync(`${directory}/manifest.json`, JSON.stringify(cache));
+}
+
 export async function materializeBackendManifest(
   bookId: string,
   manifest: BackendBookManifest,
+  onCharacter?: (character: NarraCharacter) => void,
 ): Promise<NarraCharacter[]> {
   const directory = await ensureBookDirectory(bookId);
-  const characters = await Promise.all(
-    manifest.characters.map(async (character) => {
-      const result = baseCharacter(character, manifest.source);
-      if (character.state !== "ready" || !character.bundle) return result;
-      try {
-        const requiredTypes = new Set(character.bundle.assets.map((asset) => asset.type));
-        if (
-          !["primary_portrait", "greeting_audio", "idle_animation"].every((type) =>
-            requiredTypes.has(type as "primary_portrait" | "greeting_audio" | "idle_animation"),
-          )
-        ) {
-          throw new Error("Backend character bundle is incomplete");
-        }
-        const paths = await Promise.all(
-          character.bundle.assets.map(async (asset) => ({
-            type: asset.type,
-            path: await downloadedAsset(directory, asset),
-          })),
-        );
-        const byType = new Map(paths.map(({ type, path }) => [type, path]));
-        return {
-          ...result,
-          portraitUri: byType.get("primary_portrait"),
-          greetingAudioUri: byType.get("greeting_audio"),
-          idleAnimationUri: byType.get("idle_animation"),
-          mediaState: "ready" as const,
-        };
-      } catch (error) {
-        console.warn("[NarraBackend] Atomic media cache failed", {
-          bookId,
-          characterId: character.characterKey,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        return { ...result, mediaState: "preparing" as const };
+  return mapWithConcurrency(manifest.characters, MEDIA_CHARACTER_CONCURRENCY, async (character) => {
+    const result = baseCharacter(character, manifest.source);
+    let materialized = result;
+    if (character.state !== "ready" || !character.bundle) {
+      onCharacter?.(materialized);
+      return materialized;
+    }
+    try {
+      const requiredTypes = new Set(character.bundle.assets.map((asset) => asset.type));
+      if (
+        !["primary_portrait", "greeting_audio", "idle_animation"].every((type) =>
+          requiredTypes.has(type as "primary_portrait" | "greeting_audio" | "idle_animation"),
+        )
+      ) {
+        throw new Error("Backend character bundle is incomplete");
       }
-    }),
-  );
-  const cache: CachedBackendBook = { manifest, characters };
-  await FileSystem.writeAsStringAsync(`${directory}/manifest.json`, JSON.stringify(cache));
-  return characters;
+      const paths = await Promise.all(
+        character.bundle.assets.map(async (asset) => ({
+          type: asset.type,
+          path: await downloadedAsset(directory, asset),
+        })),
+      );
+      const byType = new Map(paths.map(({ type, path }) => [type, path]));
+      materialized = {
+        ...result,
+        portraitUri: byType.get("primary_portrait"),
+        greetingAudioUri: byType.get("greeting_audio"),
+        idleAnimationUri: byType.get("idle_animation"),
+        mediaState: "ready" as const,
+      };
+    } catch (error) {
+      console.warn("[NarraBackend] Atomic media cache failed", {
+        bookId,
+        characterId: character.characterKey,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      materialized = { ...result, mediaState: "preparing" as const };
+    }
+    onCharacter?.(materialized);
+    return materialized;
+  });
 }
 
 export async function loadCachedBackendCharacters(bookId: string): Promise<NarraCharacter[]> {

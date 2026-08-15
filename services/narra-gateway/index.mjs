@@ -161,7 +161,7 @@ const KANDINSKY_QUEUE_LIMIT = envInt('KANDINSKY_QUEUE_LIMIT', 6, 100)
 const KANDINSKY_IMAGE_TIMEOUT_MS = kandinskyImageTimeoutMs(process.env)
 const KANDINSKY_REQUEST_TIMEOUT_MS = kandinskyRequestTimeoutMs(process.env)
 const VIDEO_QUEUE_LIMIT = envInt('VIDEO_QUEUE_LIMIT', 4, 100)
-const LLM_CONCURRENCY = envInt('LLM_CONCURRENCY', 8, 100)
+const LLM_CONCURRENCY = envInt('LLM_CONCURRENCY', 12, 100)
 const LLM_QUEUE_LIMIT = envInt('LLM_QUEUE_LIMIT', 16, 500)
 // SALUTE_SPEECH_PERS is capped at five upstream streams. Reject a stale or
 // accidental Railway override above the verified upstream scope.
@@ -213,7 +213,7 @@ const SALUTE_KEY = _saluteSecret
       process.env.SALUTESPEECH_CLIENT_ID,
       process.env.SALUTESPEECH_CLIENT_SECRET
     )
-// LiteLLM-шлюз для чата (уже держит ключи Сбера у команды).
+// Основной командный LiteLLM-шлюз для GigaChat.
 const LLM_BASE_URL = serviceUrl('LLM_BASE_URL', process.env.LLM_BASE_URL, {
   allowPrivateHttp: true,
   allowInsecureHttp: ALLOW_INSECURE_LLM_HTTP,
@@ -225,6 +225,19 @@ if (LLM_BASE_URL && !LLM_TRANSPORT_SECURE) {
 }
 const LLM_API_KEY = (process.env.LLM_API_KEY || '').trim() // виртуальный ключ LiteLLM (sk-...)
 const LLM_MODEL = (process.env.LLM_MODEL || 'gigachat-3-ultra').trim()
+// Независимый LiteLLM fallback. Он может маршрутизировать запросы в OpenRouter,
+// но gateway знает только OpenAI-compatible proxy contract и отдельный proxy key.
+const LITELLM_BASE_URL = serviceUrl('LITELLM_BASE_URL', process.env.LITELLM_BASE_URL, {
+  allowPrivateHttp: true,
+  allowInsecureHttp: ALLOW_INSECURE_LLM_HTTP,
+  allowedInsecureHosts: LLM_INSECURE_HTTP_HOSTS
+})
+const LITELLM_TRANSPORT_SECURE = !LITELLM_BASE_URL || isSecureServiceUrl(LITELLM_BASE_URL)
+if (LITELLM_BASE_URL && !LITELLM_TRANSPORT_SECURE) {
+  console.warn('[security] LITELLM_BASE_URL uses explicitly allowed plaintext HTTP; prompts and bearer credentials are not encrypted in transit')
+}
+const TEXT_LLM_TRANSPORT_SECURE = Boolean(LLM_BASE_URL || LITELLM_BASE_URL) &&
+  (!LLM_BASE_URL || LLM_TRANSPORT_SECURE) && LITELLM_TRANSPORT_SECURE
 
 // Kandinsky 6.0 (studio.kandinskylab.ai) — один Bearer-токен
 const KANDINSKY_TOKEN = (process.env.KANDINSKY_TOKEN || '').trim()
@@ -1001,8 +1014,12 @@ app.get('/health', (_req, res) => {
       book_backend_required: BOOK_BACKEND_REQUIRED
     },
     media_transport: {
-      llm_https: LLM_TRANSPORT_SECURE,
-      llm_insecure_http_allowed: Boolean(LLM_BASE_URL && !LLM_TRANSPORT_SECURE && ALLOW_INSECURE_LLM_HTTP),
+      llm_https: TEXT_LLM_TRANSPORT_SECURE,
+      litellm_https: LITELLM_TRANSPORT_SECURE,
+      llm_insecure_http_allowed: Boolean(
+        ALLOW_INSECURE_LLM_HTTP &&
+        ((LLM_BASE_URL && !LLM_TRANSPORT_SECURE) || (LITELLM_BASE_URL && !LITELLM_TRANSPORT_SECURE))
+      ),
       video_https: VIDEO_TRANSPORT_SECURE,
       video_insecure_http_allowed: Boolean(VIDEO_BASE_URL && !VIDEO_TRANSPORT_SECURE && ALLOW_INSECURE_VIDEO_HTTP),
       sber_ca_verified: SBER_CA_VERIFIED
@@ -1040,7 +1057,7 @@ app.get('/ready', async (_req, res) => {
     videoTransportAccepted,
     videoRequired: VIDEO_REQUIRED,
     videoTransportSecure: VIDEO_TRANSPORT_SECURE,
-    llmTransportSecure: LLM_TRANSPORT_SECURE,
+    llmTransportSecure: TEXT_LLM_TRANSPORT_SECURE,
     environment: ANALYTICS_ENV,
     bookBackendRequired: BOOK_BACKEND_REQUIRED,
     bookBackendReady
@@ -1052,8 +1069,12 @@ app.get('/ready', async (_req, res) => {
     degraded: readiness.degraded,
     checks: readiness.checks,
     media_transport: {
-      llm_https: LLM_TRANSPORT_SECURE,
-      llm_insecure_http_allowed: Boolean(LLM_BASE_URL && !LLM_TRANSPORT_SECURE && ALLOW_INSECURE_LLM_HTTP),
+      llm_https: TEXT_LLM_TRANSPORT_SECURE,
+      litellm_https: LITELLM_TRANSPORT_SECURE,
+      llm_insecure_http_allowed: Boolean(
+        ALLOW_INSECURE_LLM_HTTP &&
+        ((LLM_BASE_URL && !LLM_TRANSPORT_SECURE) || (LITELLM_BASE_URL && !LITELLM_TRANSPORT_SECURE))
+      ),
       video_https: VIDEO_TRANSPORT_SECURE,
       video_insecure_http_allowed: Boolean(
         videoConfigured && !VIDEO_TRANSPORT_SECURE && ALLOW_INSECURE_VIDEO_HTTP
@@ -1873,9 +1894,11 @@ app.use((error, _req, res, _next) => {
 })
 
 const httpServer = app.listen(PORT, () => {
+  const llm = llmRouteReadiness()
   console.log(`[narra-proxy] слушает :${PORT}`)
-  console.log(`  чат(LLM): ${LLM_API_KEY ? 'ok' : '—'}  salutespeech: ${SALUTE_KEY ? 'ok' : '—'}  kandinsky: ${KANDINSKY_TOKEN ? 'ok' : '—'}`)
+  console.log(`  чат(LLM): ${llm.ready ? 'ok' : '—'}  salutespeech: ${SALUTE_KEY ? 'ok' : '—'}  kandinsky: ${KANDINSKY_TOKEN ? 'ok' : '—'}`)
   console.log(`  шлюз: ${LLM_BASE_URL}  модель: ${LLM_MODEL}`)
+  console.log(`  fallback LiteLLM: ${LITELLM_BASE_URL || '—'}`)
 })
 
 let shuttingDown = false

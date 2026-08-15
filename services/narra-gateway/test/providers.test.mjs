@@ -14,10 +14,10 @@ import {
 
 test('provider route is selected only from server environment', () => {
   const route = routeForPurpose('summary', {
-    LLM_ROUTE_SUMMARY: 'openrouter',
+    LLM_ROUTE_SUMMARY: 'litellm',
     LLM_FALLBACK_SUMMARY: 'giga'
   })
-  assert.deepEqual(route, ['openrouter', 'giga'])
+  assert.deepEqual(route, ['litellm', 'giga'])
 })
 
 test('provider request omits temperature when the caller leaves it unset', async () => {
@@ -42,9 +42,9 @@ test('provider request omits temperature when the caller leaves it unset', async
 })
 
 test('character chat uses model-aware server sampling and ignores caller temperature', async () => {
-  for (const provider of ['giga', 'openrouter']) {
+  for (const provider of ['giga', 'litellm']) {
     let body
-    const isOpenRouter = provider === 'openrouter'
+    const isLiteLlm = provider === 'litellm'
     const result = await requestChat({
       messages: [{ role: 'user', content: 'hello' }],
       temperature: 0.1,
@@ -54,12 +54,12 @@ test('character chat uses model-aware server sampling and ignores caller tempera
         body = JSON.parse(init.body)
         return new Response('{"choices":[{"message":{"content":"hello"}}]}', { status: 200 })
       },
-      env: isOpenRouter
+      env: isLiteLlm
         ? {
-            LLM_ROUTE_CHARACTER_CHAT: 'openrouter',
-            OPENROUTER_BASE_URL: 'https://openrouter.test/v1',
-            OPENROUTER_API_KEY: 'or-key',
-            OPENROUTER_MODEL_CHARACTER_CHAT: 'openai/gpt-5.6-luna'
+            LLM_ROUTE_CHARACTER_CHAT: 'litellm',
+            LITELLM_BASE_URL: 'https://litellm.test/v1',
+            LITELLM_API_KEY: 'proxy-key',
+            LITELLM_MODEL_CHARACTER_CHAT: 'openrouter/openai/gpt-5.6-luna'
           }
         : {
             LLM_ROUTE_CHARACTER_CHAT: 'giga',
@@ -98,7 +98,7 @@ test('unknown models receive no optional sampling parameters', async () => {
 })
 
 test('readiness requires a complete configured route for every purpose', () => {
-  const broken = llmRouteReadiness({ OPENROUTER_API_KEY: 'key', LLM_ROUTE_DEFAULT: 'openrouter' })
+  const broken = llmRouteReadiness({ LITELLM_API_KEY: 'key', LLM_ROUTE_DEFAULT: 'litellm' })
   assert.equal(broken.ready, false)
   assert.equal(broken.purposes.summary.ready, false)
   const ready = llmRouteReadiness({
@@ -154,8 +154,8 @@ test('legacy provider omit flags stay scoped while request sampling remains serv
   assert.equal(omitsTemperature('giga', { LLM_OMIT_TEMPERATURE: 'true' }), true)
   assert.equal(omitsTemperature('giga', { LLM_OMIT_TEMPERATURE: 'TRUE' }), true)
   assert.equal(omitsTemperature('giga', { LLM_OMIT_TEMPERATURE: 'yes' }), false)
-  assert.equal(omitsTemperature('openrouter', { LLM_OMIT_TEMPERATURE: 'true' }), false)
-  assert.equal(omitsTemperature('openrouter', { OPENROUTER_OMIT_TEMPERATURE: 'true' }), true)
+  assert.equal(omitsTemperature('litellm', { LLM_OMIT_TEMPERATURE: 'true' }), false)
+  assert.equal(omitsTemperature('litellm', { LITELLM_OMIT_TEMPERATURE: 'true' }), true)
 
   const bodies = []
   const fetchImpl = async (_url, init) => {
@@ -208,11 +208,11 @@ test('retryable primary failure falls back and keeps one request identity', asyn
     fetchImpl,
     onAttempt: async (attempt) => events.push(attempt),
     env: {
-      LLM_ROUTE_SUMMARY: 'openrouter',
+      LLM_ROUTE_SUMMARY: 'litellm',
       LLM_FALLBACK_SUMMARY: 'giga',
-      OPENROUTER_BASE_URL: 'https://openrouter.test/v1',
-      OPENROUTER_API_KEY: 'or-key',
-      OPENROUTER_MODEL: 'or-model',
+      LITELLM_BASE_URL: 'https://litellm.test/v1',
+      LITELLM_API_KEY: 'proxy-key',
+      LITELLM_MODEL: 'openrouter/model',
       LLM_BASE_URL: 'https://giga.test',
       LLM_API_KEY: 'giga-key',
       LLM_MODEL: 'giga-model'
@@ -224,8 +224,8 @@ test('retryable primary failure falls back and keeps one request identity', asyn
   await result.finalizeAttempt()
   assert.equal(result.attempts.length, 2)
   assert.deepEqual(events.map((attempt) => `${attempt.provider}:${attempt.status}`), [
-    'openrouter:started',
-    'openrouter:failed',
+    'litellm:started',
+    'litellm:failed',
     'giga:started',
     'giga:completed'
   ])
@@ -233,10 +233,10 @@ test('retryable primary failure falls back and keeps one request identity', asyn
   assert.equal(events[0].attempt_id, events[1].attempt_id)
   assert.equal(events[2].attempt_id, events[3].attempt_id)
   assert.deepEqual(calls.map((call) => call.url), [
-    'https://openrouter.test/v1/chat/completions',
+    'https://litellm.test/v1/chat/completions',
     'https://giga.test/v1/chat/completions'
   ])
-  assert.deepEqual(calls[0].body.provider, { zdr: true, data_collection: 'deny' })
+  assert.equal(calls[0].body.provider, undefined)
   assert.equal(calls[1].body.provider, undefined)
 })
 
@@ -251,8 +251,9 @@ test('provider-local auth failure falls back to the configured secondary', async
         : new Response('{"choices":[{"message":{"content":"ok"}}]}', { status: 200 })
     },
     env: {
-      LLM_ROUTE_SUMMARY: 'openrouter', LLM_FALLBACK_SUMMARY: 'giga',
-      OPENROUTER_API_KEY: 'expired', OPENROUTER_MODEL: 'or-model',
+      LLM_ROUTE_SUMMARY: 'litellm', LLM_FALLBACK_SUMMARY: 'giga',
+      LITELLM_BASE_URL: 'https://litellm.test/v1',
+      LITELLM_API_KEY: 'expired', LITELLM_MODEL: 'openrouter/model',
       LLM_BASE_URL: 'https://giga.test', LLM_API_KEY: 'giga-key', LLM_MODEL: 'giga-model'
     }
   })
@@ -308,12 +309,13 @@ for (const [name, response, expected] of [
       onAttempt: async (attempt) => events.push(attempt),
       env: {
         LLM_ROUTE_SUMMARY: 'giga',
-        LLM_FALLBACK_SUMMARY: 'openrouter',
+        LLM_FALLBACK_SUMMARY: 'litellm',
         LLM_BASE_URL: 'https://giga.test',
         LLM_API_KEY: 'giga-key',
         LLM_MODEL: 'giga-model',
-        OPENROUTER_API_KEY: 'or-key',
-        OPENROUTER_MODEL: 'or-model'
+        LITELLM_BASE_URL: 'https://litellm.test/v1',
+        LITELLM_API_KEY: 'proxy-key',
+        LITELLM_MODEL: 'openrouter/model'
       }
     }), (error) => error?.code === expected)
     assert.equal(calls, 1)
