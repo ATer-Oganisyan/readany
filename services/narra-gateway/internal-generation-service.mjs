@@ -357,6 +357,38 @@ function scanText(value, name, maxLength, { verbatim = false } = {}) {
   return verbatim ? value : value.trim()
 }
 
+function collapseWhitespaceWithOffsets(value) {
+  const text = String(value)
+  const collapsed = []
+  const starts = []
+  const ends = []
+  let offset = 0
+  while (offset < text.length) {
+    const symbol = String.fromCodePoint(text.codePointAt(offset))
+    const symbolEnd = offset + symbol.length
+    if (!/\s/u.test(symbol)) {
+      collapsed.push(symbol)
+      for (let codeUnit = 0; codeUnit < symbol.length; codeUnit += 1) {
+        starts.push(offset)
+        ends.push(symbolEnd)
+      }
+      offset = symbolEnd
+      continue
+    }
+    const runStart = offset
+    offset = symbolEnd
+    while (offset < text.length) {
+      const next = String.fromCodePoint(text.codePointAt(offset))
+      if (!/\s/u.test(next)) break
+      offset += next.length
+    }
+    collapsed.push(' ')
+    starts.push(runStart)
+    ends.push(offset)
+  }
+  return { text: collapsed.join(''), starts, ends }
+}
+
 function resolveEvidenceOffsets(
   contextText,
   quote,
@@ -365,24 +397,40 @@ function resolveEvidenceOffsets(
   rawStartOffset,
   rawEndOffset
 ) {
+  const source = collapseWhitespaceWithOffsets(contextText)
+  const normalizedQuote = String(quote).replace(/\s+/gu, ' ').trim()
+  if (!normalizedQuote) return null
   const coreMatches = []
   let searchOffset = 0
-  while (searchOffset <= contextText.length - quote.length) {
-    const matchOffset = contextText.indexOf(quote, searchOffset)
+  while (searchOffset <= source.text.length - normalizedQuote.length) {
+    const matchOffset = source.text.indexOf(normalizedQuote, searchOffset)
     if (matchOffset < 0) break
-    if (matchOffset >= coreLocalStartOffset && matchOffset < coreLocalEndOffset) {
-      coreMatches.push(matchOffset)
+    const originalStartOffset = source.starts[matchOffset]
+    const originalEndOffset = source.ends[matchOffset + normalizedQuote.length - 1]
+    if (
+      originalStartOffset >= coreLocalStartOffset &&
+      originalStartOffset < coreLocalEndOffset
+    ) {
+      coreMatches.push({
+        startOffset: originalStartOffset,
+        endOffset: originalEndOffset
+      })
       if (coreMatches.length > 1) return null
     }
     searchOffset = matchOffset + 1
   }
   if (coreMatches.length !== 1) return null
-  const startOffset = coreMatches[0]
-  const endOffset = startOffset + quote.length
+  const { startOffset, endOffset } = coreMatches[0]
+  const sourceQuote = contextText.slice(startOffset, endOffset)
   return {
+    quote: sourceQuote,
     startOffset,
     endOffset,
-    repaired: Number(rawStartOffset) !== startOffset || Number(rawEndOffset) !== endOffset
+    repaired:
+      sourceQuote !== quote ||
+      Number(rawStartOffset) !== startOffset ||
+      Number(rawEndOffset) !== endOffset,
+    whitespaceRepaired: sourceQuote !== quote
   }
 }
 
@@ -423,7 +471,13 @@ function normalizeScanObservation(
     evidence.endOffset
   )
   if (!resolvedEvidence) return null
-  const { startOffset, endOffset, repaired = false } = resolvedEvidence
+  const {
+    quote: sourceQuote,
+    startOffset,
+    endOffset,
+    repaired = false,
+    whitespaceRepaired = false
+  } = resolvedEvidence
   if (
     typeof observation.confidence !== 'number' ||
     !Number.isFinite(observation.confidence) ||
@@ -433,6 +487,7 @@ function normalizeScanObservation(
   }
   return {
     repaired,
+    whitespaceRepaired,
     observation: {
       type: observation.type,
       entityKind: observation.entityKind,
@@ -445,7 +500,7 @@ function normalizeScanObservation(
         scanText(candidate, `${name}.relatedEntityCandidates[${candidateIndex}]`, 512)
       ),
       fact: scanText(observation.fact, `${name}.fact`, 4_000),
-      evidence: { quote, startOffset, endOffset },
+      evidence: { quote: sourceQuote, startOffset, endOffset },
       confidence: observation.confidence
     }
   }
@@ -477,6 +532,7 @@ function normalizeScanChunkResult(
   }
   const observations = []
   let repairedObservationCount = 0
+  let whitespaceRepairedObservationCount = 0
   let droppedObservationCount = 0
   for (const [index, candidate] of source.observations.entries()) {
     try {
@@ -492,6 +548,7 @@ function normalizeScanChunkResult(
         continue
       }
       if (normalized.repaired) repairedObservationCount += 1
+      if (normalized.whitespaceRepaired) whitespaceRepairedObservationCount += 1
       const author = normalizedScanName(bookAuthor)
       const normalizedCandidateName = normalizedScanName(normalized.observation.entityCandidate)
       const quote = normalizedScanName(normalized.observation.evidence.quote)
@@ -522,6 +579,7 @@ function normalizeScanChunkResult(
           provider_observation_count: source.observations.length,
           accepted_observation_count: observations.length,
           repaired_observation_count: repairedObservationCount,
+          whitespace_repaired_observation_count: whitespaceRepairedObservationCount,
           dropped_observation_count: droppedObservationCount
         }
       }
@@ -557,6 +615,7 @@ function normalizeScanChunkResult(
     observations,
     providerObservationCount: source.observations.length,
     repairedObservationCount,
+    whitespaceRepairedObservationCount,
     droppedObservationCount,
     derivedRelationshipCharacterCount
   }
@@ -898,6 +957,7 @@ export function createInternalGenerationService({
               provider_observation_count: normalized.providerObservationCount,
               accepted_observation_count: normalized.observations.length,
               repaired_observation_count: normalized.repairedObservationCount,
+              whitespace_repaired_observation_count: normalized.whitespaceRepairedObservationCount,
               dropped_observation_count: normalized.droppedObservationCount,
               derived_relationship_character_count: normalized.derivedRelationshipCharacterCount
             }

@@ -202,10 +202,10 @@ test('internal generation service resolves a repeated quote when only one occurr
   })
 
   const result = await service.scanBookChunk({
-    idempotencyKey: 'run-core-quote:scan:chunk-core-quote:book-scan-v8',
+    idempotencyKey: 'run-core-quote:scan:chunk-core-quote:book-scan-v9',
     runId: 'run-core-quote',
     chunkId: 'chunk-core-quote',
-    extractorVersion: 'book-scan-v8',
+    extractorVersion: 'book-scan-v9',
     bookTitle: 'Книга',
     bookAuthor: '',
     contextText,
@@ -217,6 +217,49 @@ test('internal generation service resolves a repeated quote when only one occurr
     quote,
     startOffset: coreStart,
     endOffset: coreStart + quote.length
+  })
+})
+
+test('internal generation service maps model-collapsed whitespace back to the exact source quote', async () => {
+  const storage = memoryStorage()
+  const contextText = '🙂 Анна\nвошла   в комнату. Потом села.'
+  const providerQuote = 'Анна вошла в комнату.'
+  const sourceQuote = 'Анна\nвошла   в комнату.'
+  const service = createInternalGenerationService({
+    storage,
+    logger: { info() {}, error() {} },
+    async completeChat() {
+      return JSON.stringify({ observations: [{
+        type: 'character_action',
+        entityKind: 'character',
+        entityCandidate: 'Анна',
+        relatedEntityCandidates: [],
+        fact: 'Анна вошла в комнату',
+        evidence: { quote: providerQuote },
+        confidence: 0.95
+      }] })
+    },
+    async generatePortrait() { throw new Error('unused') },
+    async synthesizeSpeech() { throw new Error('unused') },
+    async generateIdleAnimation() { throw new Error('unused') }
+  })
+
+  const result = await service.scanBookChunk({
+    idempotencyKey: 'run-whitespace:scan:chunk-whitespace:book-scan-v9',
+    runId: 'run-whitespace',
+    chunkId: 'chunk-whitespace',
+    extractorVersion: 'book-scan-v9',
+    bookTitle: 'Книга',
+    bookAuthor: '',
+    contextText,
+    coreLocalStartOffset: 0,
+    coreLocalEndOffset: contextText.length
+  })
+
+  assert.deepEqual(result.observations[0].evidence, {
+    quote: sourceQuote,
+    startOffset: contextText.indexOf(sourceQuote),
+    endOffset: contextText.indexOf(sourceQuote) + sourceQuote.length
   })
 })
 
@@ -394,10 +437,10 @@ test('internal generation service adaptively splits only a semantically rejected
   })
 
   const result = await service.scanBookChunk({
-    idempotencyKey: 'run-adaptive:scan:chunk-adaptive:book-scan-v8',
+    idempotencyKey: 'run-adaptive:scan:chunk-adaptive:book-scan-v9',
     runId: 'run-adaptive',
     chunkId: 'chunk-adaptive',
-    extractorVersion: 'book-scan-v8',
+    extractorVersion: 'book-scan-v9',
     bookTitle: 'Книга',
     bookAuthor: '',
     contextText,
@@ -455,10 +498,10 @@ test('internal generation service retries a scan when evidence filtering drops m
   })
 
   await assert.rejects(() => service.scanBookChunk({
-    idempotencyKey: 'run-lossy:scan:chunk-lossy:book-scan-v8',
+    idempotencyKey: 'run-lossy:scan:chunk-lossy:book-scan-v9',
     runId: 'run-lossy',
     chunkId: 'chunk-lossy',
-    extractorVersion: 'book-scan-v8',
+    extractorVersion: 'book-scan-v9',
     bookTitle: 'Книга',
     bookAuthor: 'Автор',
     contextText,
@@ -604,10 +647,10 @@ test('internal generation service treats overlapping quote occurrences as ambigu
   })
 
   await assert.rejects(() => service.scanBookChunk({
-    idempotencyKey: 'run-overlap-quote:scan:chunk-overlap-quote:book-scan-v8',
+    idempotencyKey: 'run-overlap-quote:scan:chunk-overlap-quote:book-scan-v9',
     runId: 'run-overlap-quote',
     chunkId: 'chunk-overlap-quote',
-    extractorVersion: 'book-scan-v8',
+    extractorVersion: 'book-scan-v9',
     bookTitle: 'Книга',
     bookAuthor: '',
     contextText,
