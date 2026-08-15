@@ -188,7 +188,7 @@ test('generator client preserves safe scan validation codes instead of hiding th
     () => client.scanBookChunk({
       runId: 'run-1',
       chunkId: 'chunk-1',
-      extractorVersion: 'book-scan-v7'
+      extractorVersion: 'book-scan-v8'
     }),
     (error) => error.code === 'SCAN_RELATION_PARTICIPANT_MISSING'
   )

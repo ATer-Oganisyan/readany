@@ -16,13 +16,13 @@ import {
 
 const evidenceId = '11111111-1111-4111-8111-111111111111'
 
-test('scan prompt and extractor share the cache-isolating v7 version', () => {
-  assert.equal(BOOK_ANALYSIS_PROMPT_VERSION, 'book-scan-v7')
+test('scan prompt and extractor share the cache-isolating v8 version', () => {
+  assert.equal(BOOK_ANALYSIS_PROMPT_VERSION, 'book-scan-v8')
   assert.equal(BOOK_ANALYSIS_EXTRACTOR_VERSION, BOOK_ANALYSIS_PROMPT_VERSION)
 })
 
 test('resolver, profile and scan fallback changes isolate versioned caches', () => {
-  assert.equal(BOOK_ANALYSIS_PIPELINE_VERSION, 'book-analysis-v12')
+  assert.equal(BOOK_ANALYSIS_PIPELINE_VERSION, 'book-analysis-v13')
   assert.equal(BOOK_ANALYSIS_SYNTHESIS_VERSION, 'character-profile-v2')
 })
 
