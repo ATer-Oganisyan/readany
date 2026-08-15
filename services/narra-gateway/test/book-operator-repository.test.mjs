@@ -48,6 +48,7 @@ function poolWithBooks() {
         return { rows: [{ run_id: RUN_ID, observation_count: 8, character_count: 3 }] }
       }
       if (sql.includes('operator:latest-publications')) return { rows: [] }
+      if (sql.includes('operator:publication-quality')) return { rows: [] }
       if (sql.includes('operator:media-counts')) {
         return { rows: [{
           book_edition_id: BOOK_ID,
@@ -100,13 +101,22 @@ test('ready publication always reports one hundred percent', async () => {
         book_edition_id: BOOK_ID,
         id: '33333333-3333-4333-8333-333333333333',
         analysis_version: 'book-markup-v3',
-        published_at: new Date('2026-08-14T10:03:00Z'),
-        character_count: 5
+        published_at: new Date('2026-08-14T10:03:00Z')
+      }] }
+    }
+    if (sql.includes('operator:publication-quality')) {
+      return { rows: [{
+        book_edition_id: BOOK_ID,
+        text_length: 100_000,
+        character_count: 10,
+        early_character_count: 6
       }] }
     }
     return original(sql)
   }
   const [book] = await createPostgresBookOperatorRepository(pool).listBooks()
   assert.equal(book.progress.percent, 100)
-  assert.equal(book.findings.publishedCharacters, 5)
+  assert.equal(book.findings.publishedCharacters, 10)
+  assert.equal(book.quality.characterAppearance.status, 'suspicious')
+  assert.equal(book.quality.characterAppearance.earlyCharacterCount, 6)
 })

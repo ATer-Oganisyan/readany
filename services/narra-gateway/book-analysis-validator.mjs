@@ -1,4 +1,8 @@
 import { createHash } from 'node:crypto'
+import {
+  auditCharacterAppearanceDistribution,
+  CHARACTER_APPEARANCE_CLUSTER_CODE
+} from './book-analysis-appearance-audit.mjs'
 import { normalizeBookMarkupV3 } from './book-analysis-contracts.mjs'
 
 function sha256(value) {
@@ -45,8 +49,23 @@ export function validateBookMarkupV3({
     return {
       valid: false,
       errors: [{ code: 'SCHEMA_INVALID', message: error.message }],
-      checks: { schema: false, sourceHash: false, evidence: false, references: false }
+      checks: {
+        schema: false,
+        sourceHash: false,
+        evidence: false,
+        references: false,
+        characterAppearanceDistribution: false
+      },
+      quality: { characterAppearance: null }
     }
+  }
+  const characterAppearance = auditCharacterAppearanceDistribution(markup)
+  if (characterAppearance.status === 'suspicious') {
+    errors.push({
+      code: CHARACTER_APPEARANCE_CLUSTER_CODE,
+      message: 'too many characters first appear inside the initial cast-list-sized text range',
+      details: characterAppearance
+    })
   }
   if (markup.snapshotId !== snapshot.id) {
     errors.push({ code: 'SNAPSHOT_MISMATCH', message: 'markup references another snapshot' })
@@ -195,8 +214,10 @@ export function validateBookMarkupV3({
           'SNAPSHOT_EVIDENCE_HASH_MISMATCH', 'SNAPSHOT_ENTITY_HASH_MISMATCH',
           'ENTITY_COVERAGE_MISMATCH', 'ENTITY_MISMATCH', 'ENTITY_IDENTITY_MISMATCH'
         ].includes(code)
-      )
+      ),
+      characterAppearanceDistribution: characterAppearance.status !== 'suspicious'
     },
+    quality: { characterAppearance },
     counts: {
       characters: markup.characters.length,
       locations: markup.locations.length,
