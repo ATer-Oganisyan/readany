@@ -379,7 +379,7 @@ export function NarraChat({
         style: { fontFamily: fontFamily.regular, fontSize: 16, color: colors.foreground },
         autoCapitalize: "sentences",
       }}
-      keyboardAvoidingViewProps={{ keyboardVerticalOffset: headerHeight }}
+      keyboardAvoidingViewProps={{ behavior: "padding", keyboardVerticalOffset: headerHeight }}
       messagesContainerStyle={{ backgroundColor: colors.backgroundSecondary }}
       listProps={{
         keyboardDismissMode: "interactive",
