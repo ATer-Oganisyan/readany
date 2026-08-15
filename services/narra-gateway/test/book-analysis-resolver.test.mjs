@@ -222,6 +222,39 @@ test('resolver does not confirm generated descriptions merely because they start
   assert.ok(result.every(({ resolutionStatus }) => resolutionStatus === 'candidate'))
 })
 
+test('resolver rejects named groups and objects but keeps explicit human roles', () => {
+  const rejected = [
+    'статуя Магацитла',
+    'племя Земзе',
+    'вожди Земзе',
+    'потомки Земзе',
+    'сыны Аама',
+    'жрецы Атлантов',
+    'гиганты Азии',
+    'студенты Хирургической академии'
+  ]
+  const roles = [
+    'коллежский асессор Ковалев',
+    'дядя Козий Зоб',
+    'председатель Цекубу'
+  ]
+  const candidates = [...rejected, ...roles]
+  const observations = candidates.flatMap((candidate, index) => [
+    observation({
+      id: `33333333-3333-4333-8333-${String(index).padStart(12, '0')}`,
+      type: 'character_action', candidate, startOffset: index * 100
+    }),
+    observation({
+      id: `44444444-4444-4444-8444-${String(index).padStart(12, '0')}`,
+      type: 'character_dialogue', candidate, startOffset: index * 100 + 10
+    })
+  ])
+  const result = resolveBookAnalysisEntities({ observations })
+  const byName = new Map(result.map((entity) => [entity.canonicalName, entity]))
+  for (const name of rejected) assert.equal(byName.get(name).resolutionStatus, 'candidate')
+  for (const name of roles) assert.equal(byName.get(name).resolutionStatus, 'confirmed')
+})
+
 test('resolver binds relationship participants to character entity keys including candidates', () => {
   const observations = [
     observation({

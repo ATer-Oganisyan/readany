@@ -34,7 +34,8 @@ const DESCRIPTIVE_CHARACTER_TOKENS = new Set([
   'артельщик', 'дворник', 'лакей', 'слуга', 'служанка', 'полицейский',
   'полицейская', 'man', 'woman', 'girl', 'boy', 'gentleman', 'lady',
   'daughter', 'son', 'mother', 'father', 'brother', 'sister', 'wife',
-  'husband', 'widow', 'bride', 'groom', 'servant', 'policeman', 'policewoman'
+  'husband', 'widow', 'bride', 'groom', 'servant', 'policeman', 'policewoman',
+  'статуя'
 ])
 const CHARACTER_BEHAVIOUR_TYPES = new Set([
   'character_action', 'character_dialogue', 'character_trait',
@@ -47,6 +48,8 @@ const COLLECTIVE_CHARACTER_TOKENS = new Set([
   'слуги', 'музыканты', 'танки', 'подразделения', 'толпа', 'голоса',
   'богатыри', 'старшины', 'наборщики', 'часовые', 'гайдуки', 'будочники',
   'писари', 'взводные', 'бронеавтомобили', 'девки', 'прислужницы',
+  'племя', 'племена', 'вожди', 'потомки', 'сыны', 'жрецы', 'гиганты',
+  'студенты',
   'army', 'troops', 'soldiers', 'people', 'children', 'brothers', 'sisters',
   'women', 'men', 'servants', 'musicians', 'tanks', 'crowd', 'voices'
 ])
@@ -55,10 +58,14 @@ const LEADING_CHARACTER_TITLES = new Set([
   'князь', 'княгиня', 'княжна',
   'граф', 'графиня', 'барон', 'баронесса', 'принц', 'принцесса',
   'майор', 'капитан', 'полковник', 'генерал', 'адмирал', 'профессор',
-  'доктор', 'господин', 'госпожа', 'синьор', 'синьора',
+  'доктор', 'господин', 'госпожа', 'синьор', 'синьора', 'фон',
   'king', 'queen', 'prince', 'princess', 'count', 'countess', 'baron',
   'major', 'captain', 'colonel', 'general', 'admiral', 'professor', 'doctor',
   'mister', 'missus', 'sir', 'lady'
+])
+const LEADING_HUMAN_ROLE_TOKENS = new Set([
+  'коллежский', 'дядя', 'председатель', 'попадья', 'атаман', 'матушка',
+  'хозяйка', 'механик', 'знакомый'
 ])
 
 function resolutionError(code, message) {
@@ -220,7 +227,10 @@ function hasProperNameForm(node) {
   return [...node.forms.values()].some(({ display }) => {
     const words = display.match(/\p{L}[\p{L}'’.-]*/gu) ?? []
     if (words.length === 1) return /^\p{Lu}/u.test(words[0])
-    return words.slice(1).some((word) => /^\p{Lu}/u.test(word))
+    if (!words.slice(1).some((word) => /^\p{Lu}/u.test(word))) return false
+    return /^\p{Lu}/u.test(words[0]) ||
+      Boolean(leadingTitleBase(node.normalized)) ||
+      LEADING_HUMAN_ROLE_TOKENS.has(tokens[0])
   })
 }
 
