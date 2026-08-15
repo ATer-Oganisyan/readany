@@ -35,6 +35,7 @@ import {
 } from "react-native";
 
 type Props = NativeStackScreenProps<RootStackParamList, "NarraCharacters">;
+const MAX_AUTOMATIC_PORTRAIT_ATTEMPTS = 2;
 
 export function NarraCharactersScreen({ route, navigation }: Props) {
   const { bookId } = route.params;
@@ -49,7 +50,7 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
   const updateCharacter = useNarraStore((state) => state.updateCharacter);
   const extractorRef = useRef<ExtractorRef>(null);
   const analysisActiveRef = useRef(false);
-  const portraitAttemptsRef = useRef(new Set<string>());
+  const portraitAttemptsRef = useRef(new Map<string, number>());
   const validatedPortraitsRef = useRef(new Set<string>());
   const validatedBookIdRef = useRef(bookId);
   const autoAnalysisStartedRef = useRef(false);
@@ -83,6 +84,7 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
     if (validatedBookIdRef.current !== bookId) {
       validatedBookIdRef.current = bookId;
       validatedPortraitsRef.current.clear();
+      portraitAttemptsRef.current.clear();
       autoAnalysisStartedRef.current = false;
     }
     for (const character of characters) {
@@ -203,11 +205,14 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
       (character) =>
         isCharacterUnlocked(book.progress, character) &&
         !hasCharacterPortrait(character) &&
-        !portraitAttemptsRef.current.has(character.id),
+        (portraitAttemptsRef.current.get(character.id) ?? 0) < MAX_AUTOMATIC_PORTRAIT_ATTEMPTS,
     );
     if (!nextCharacter) return;
 
-    portraitAttemptsRef.current.add(nextCharacter.id);
+    portraitAttemptsRef.current.set(
+      nextCharacter.id,
+      (portraitAttemptsRef.current.get(nextCharacter.id) ?? 0) + 1,
+    );
     setPortraitLoading(nextCharacter.id);
     void ensureCharacterPortrait(bookId, nextCharacter)
       .then((portraitUri) => updateCharacter(bookId, nextCharacter.id, { portraitUri }))

@@ -17,7 +17,7 @@ const END_WATCHDOG_INTERVAL_MS = 700;
 const MEDIA_ARTIST = "Narra";
 const DEFAULT_ARTWORK = (() => {
   try {
-    return Image.resolveAssetSource(require("../../../assets/icon.png"))?.uri || "";
+    return Image.resolveAssetSource(require("../../../assets/app-icon.png"))?.uri || "";
   } catch {
     return "";
   }

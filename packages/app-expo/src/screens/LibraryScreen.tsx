@@ -44,6 +44,7 @@ import {
   useColors,
   useTheme,
 } from "@/styles/theme";
+import { spacingPixels } from "@deslop/primitives";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -1129,7 +1130,9 @@ function LibraryScreenContent() {
           contentInsetAdjustmentBehavior="automatic"
           style={s.primaryScroll}
           contentContainerStyle={
-            isLoaded && (!isEmpty || showCatalog) ? s.gridContent : s.emptyScrollContent
+            isLoaded && (!isEmpty || showCatalog)
+              ? [s.gridContent, showCatalog ? s.catalogGridContent : null]
+              : s.emptyScrollContent
           }
           alwaysBounceVertical
           showsVerticalScrollIndicator={false}
@@ -1344,6 +1347,7 @@ const makeStyles = (
       paddingTop: 16,
       paddingBottom: 24,
     },
+    catalogGridContent: { paddingTop: spacingPixels[6] },
     pagerGridContent: {
       width: "100%",
       paddingBottom: 24,
@@ -1361,7 +1365,7 @@ const makeStyles = (
     },
     librarySectionTabs: {
       width: "100%",
-      marginBottom: 16,
+      marginBottom: spacingPixels[20] + spacingPixels[3],
     },
     catalogSection: { overflow: "visible" },
     catalogGrid: {

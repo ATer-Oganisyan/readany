@@ -44,7 +44,7 @@ import Animated, {
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Path } from "react-native-svg";
 import { captureRef } from "react-native-view-shot";
-import AppIcon from "../../assets/icon.png";
+import AppIcon from "../../assets/app-icon.png";
 import { BadgeBackIconMobile, BadgeIconMobile } from "./stats/BadgeIconMobile";
 
 const BADGE_WALL_GRADIENT = ["#15192f", "#1e2446", "#151a31"] as const;

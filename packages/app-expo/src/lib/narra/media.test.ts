@@ -29,7 +29,11 @@ vi.mock("expo-file-system/legacy", () => ({
   moveAsync: vi.fn(),
 }));
 vi.mock("@/lib/ai/narra-gateway-fetch", () => ({ narraGatewayRequest: vi.fn() }));
-vi.mock("../ai/openrouter-image", () => ({ generateOpenRouterImageWithFallback: vi.fn() }));
+vi.mock("../ai/openrouter-image", () => ({
+  OPENROUTER_PRIMARY_IMAGE_MODEL: "openai/gpt-image-2",
+  OPENROUTER_FALLBACK_IMAGE_MODEL: "google/gemini-3.1-flash-image",
+  generateOpenRouterImageWithFallback: vi.fn(),
+}));
 vi.mock("@/lib/analytics/telemetry", () => ({ recordTelemetry: vi.fn() }));
 vi.mock("@/stores", () => ({
   useLibraryStore: { getState: () => ({ books: appStoreState.libraryBooks }) },
@@ -201,7 +205,7 @@ describe("portrait prompt", () => {
         outputFormat: "jpeg",
         outputCompression: 88,
       },
-      "google/gemini-2.5-flash-image",
+      "google/gemini-3.1-flash-image",
     );
   });
 
@@ -335,7 +339,7 @@ describe("book cover generation", () => {
         prompt: "front cover artwork",
         aspectRatio: "2:3",
       }),
-      "google/gemini-2.5-flash-image",
+      "google/gemini-3.1-flash-image",
     );
     expect(recordTelemetry).toHaveBeenCalledWith(
       "media_job_enqueued",

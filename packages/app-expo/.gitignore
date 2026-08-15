@@ -17,6 +17,8 @@ modules/*/android/build/
 *.p12
 *.key
 *.mobileprovision
+credentials.json
+credentials/
 *.orig.*
 web-build/
 build/

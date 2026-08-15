@@ -16,7 +16,7 @@ const APP_VARIANTS = {
   production: {
     key: "production",
     name: "Narra",
-    bundleIdentifier: "com.readany.app",
+    bundleIdentifier: "com.mishanaer.narra",
     androidPackage: "com.readany.app",
     scheme: "readany",
   },

@@ -1,7 +1,11 @@
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import * as FileSystem from "expo-file-system/legacy";
-import { generateOpenRouterImageWithFallback } from "../ai/openrouter-image";
+import {
+  OPENROUTER_FALLBACK_IMAGE_MODEL,
+  OPENROUTER_PRIMARY_IMAGE_MODEL,
+  generateOpenRouterImageWithFallback,
+} from "../ai/openrouter-image";
 import { resolveCoverGenreProfile } from "../book/cover-genre";
 import { findBundledCatalogBookDefinitionByTitle } from "../catalog/bundled-book-definitions";
 import { budgetPrompt } from "./art-style";
@@ -17,8 +21,6 @@ const MEDIA_DIR = `${FileSystem.documentDirectory}narra-media`;
 const MEDIA_PATH_MARKER = "/Documents/narra-media/";
 let speechFileSequence = 0;
 const portraitRequests = new Map<string, Promise<string>>();
-const OPENROUTER_IMAGE_MODEL = "openai/gpt-image-2";
-const OPENROUTER_IMAGE_FALLBACK_MODEL = "google/gemini-2.5-flash-image";
 
 type MediaJobType = "image" | "cover" | "tts" | "avatar" | "video";
 type MediaJobOrigin = "user" | "background";
@@ -346,17 +348,18 @@ async function generateCharacterPortraitRequest(
   const book = portraitBookContext(bookId);
   const generated = await generateOpenRouterImageWithFallback(
     {
-      model: OPENROUTER_IMAGE_MODEL,
+      model: OPENROUTER_PRIMARY_IMAGE_MODEL,
       prompt: portraitPrompt(character, book?.description, book?.genreId, book?.genreLabel),
       aspectRatio: "3:4",
       quality: "high",
       outputFormat: "jpeg",
       outputCompression: 88,
     },
-    OPENROUTER_IMAGE_FALLBACK_MODEL,
+    OPENROUTER_FALLBACK_IMAGE_MODEL,
   );
   await ensureMediaDir();
-  const path = `${MEDIA_DIR}/${safeKey(`${bookId}-${character.id}-portrait`)}.jpg`;
+  const extension = generated.mimeType === "image/png" ? "png" : "jpg";
+  const path = `${MEDIA_DIR}/${safeKey(`${bookId}-${character.id}-portrait`)}.${extension}`;
   return persistGeneratedImage(path, { base64: generated.base64 });
 }
 
@@ -436,14 +439,14 @@ async function generateBookCoverImageRequest(
 ): Promise<GeneratedCoverImage> {
   const generated = await generateOpenRouterImageWithFallback(
     {
-      model: OPENROUTER_IMAGE_MODEL,
+      model: OPENROUTER_PRIMARY_IMAGE_MODEL,
       prompt,
       aspectRatio: "2:3",
       quality: "high",
       outputFormat: "jpeg",
       outputCompression: 90,
     },
-    OPENROUTER_IMAGE_FALLBACK_MODEL,
+    OPENROUTER_FALLBACK_IMAGE_MODEL,
   );
   return {
     base64: generated.base64,

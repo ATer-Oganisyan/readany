@@ -16,7 +16,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import AppIcon from "../../../assets/icon.png";
+import AppIcon from "../../../assets/app-icon.png";
 import {
   type ThemeColors,
   fontSize,

@@ -9,14 +9,14 @@ module.exports = {
     slug: "readany",
     version: "1.3.5",
     orientation: "portrait",
-    icon: "./assets/icon.png",
+    icon: "./assets/app-icon.png",
     userInterfaceStyle: "automatic",
     newArchEnabled: true,
     ios: {
       icon: "./assets/Narra.icon",
       supportsTablet: true,
       bundleIdentifier: variant.bundleIdentifier,
-      buildNumber: "32",
+      buildNumber: "35",
       infoPlist: {
         UIViewControllerBasedStatusBarAppearance: true,
         UIBackgroundModes: ["audio"],

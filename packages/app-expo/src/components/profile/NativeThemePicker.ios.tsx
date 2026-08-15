@@ -1,8 +1,8 @@
 import { spacing, useTheme } from "@/styles/theme";
-import { baseColors } from "@deslop/primitives";
+import { baseColors, spacingPixels } from "@deslop/primitives";
 import { interfaceFontFamily } from "@deslop/primitives/native";
 import { Host, Picker, Text } from "@expo/ui/swift-ui";
-import { frame, pickerStyle, tag } from "@expo/ui/swift-ui/modifiers";
+import { controlSize, frame, pickerStyle, tag } from "@expo/ui/swift-ui/modifiers";
 import { useCallback, useEffect, useRef } from "react";
 import {
   type LayoutChangeEvent,
@@ -23,6 +23,7 @@ import Animated, {
 import type { NativeThemePickerProps } from "./NativeThemePicker.types";
 
 type SegmentLayout = { x: number; width: number };
+const SEGMENT_CONTROL_HEIGHT = spacingPixels[44];
 const CHIP_ANIMATION_DURATION_MS = 80;
 const CHIP_PRESSED_SCALE = 0.9;
 const CHIP_ANIMATION = {
@@ -149,7 +150,11 @@ export function NativeThemePicker({
       label={accessibilityLabel}
       selection={selectedIndex}
       onSelectionChange={onSelect}
-      modifiers={[pickerStyle("segmented"), frame({ maxWidth: 10_000, height: 44 })]}
+      modifiers={[
+        pickerStyle("segmented"),
+        controlSize("large"),
+        frame({ maxWidth: 10_000, height: SEGMENT_CONTROL_HEIGHT }),
+      ]}
     >
       {values.map((label, index) => (
         <Text key={label} modifiers={[tag(index)]}>
@@ -213,15 +218,14 @@ export function NativeThemePicker({
 }
 
 const styles = StyleSheet.create({
-  host: { width: "100%", height: 44 },
+  host: { width: "100%", height: SEGMENT_CONTROL_HEIGHT },
   chip: {
     alignItems: "center",
     borderCurve: "continuous",
     borderRadius: 999,
     justifyContent: "center",
-    minHeight: 44,
+    height: SEGMENT_CONTROL_HEIGHT,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
   },
   chipLabel: { fontFamily: interfaceFontFamily.semibold, fontSize: 17, lineHeight: 22 },
   scrollContent: {

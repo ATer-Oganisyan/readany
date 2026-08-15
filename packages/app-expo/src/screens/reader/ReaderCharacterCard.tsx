@@ -236,7 +236,7 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
     const unlocked = liveCharacter ? isCharacterUnlocked(bookProgress, liveCharacter) : true;
     const [portraitLoading, setPortraitLoading] = useState(false);
     const portraitBusy = portraitLoadingPreview || portraitLoading;
-    const portraitAttemptsRef = useRef(new Set<string>());
+    const portraitAttemptsRef = useRef(new Map<string, number>());
     const [voiceState, setVoiceState] = useState<VoiceSampleState>("idle");
     const [nameFit, setNameFit] = useState<{
       name: string;
@@ -337,8 +337,12 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
         hasCharacterPortrait(character)
       )
         return;
-      if (portraitAttemptsRef.current.has(character.id)) return;
-      portraitAttemptsRef.current.add(character.id);
+      const attemptKey = `${bookId}:${character.id}`;
+      if ((portraitAttemptsRef.current.get(attemptKey) ?? 0) >= 2) return;
+      portraitAttemptsRef.current.set(
+        attemptKey,
+        (portraitAttemptsRef.current.get(attemptKey) ?? 0) + 1,
+      );
       setPortraitLoading(true);
       void ensureCharacterPortrait(bookId, character)
         .then((uri) => updateCharacter(bookId, character.id, { portraitUri: uri }))

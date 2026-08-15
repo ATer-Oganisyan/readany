@@ -35,7 +35,7 @@ assets/
 │       ├── 01-book-dark.svg
 │       ├── 02-character.svg
 │       └── 02-character-dark.svg
-├── icon.png
+├── app-icon.png
 ├── adaptive-icon.svg
 ├── adaptive-icon.png
 ├── adaptive-icon-monochrome.svg
@@ -43,7 +43,7 @@ assets/
 └── splash-icon.png
 ```
 
-`icon.png` нужен как общий legacy fallback. iOS использует не его, а `Narra.icon`.
+`app-icon.png` нужен как общий legacy fallback. iOS использует не его, а `Narra.icon`.
 
 ## Как работает генератор
 

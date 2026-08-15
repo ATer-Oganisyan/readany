@@ -16,7 +16,11 @@
  */
 
 import { hasBundledOpenRouterKey } from "@/config/bundled-ai";
-import { type OpenRouterImageRequest, generateOpenRouterImage } from "@/lib/ai/openrouter-image";
+import {
+  OPENROUTER_FALLBACK_IMAGE_MODEL,
+  type OpenRouterImageRequest,
+  generateOpenRouterImageWithFallback,
+} from "@/lib/ai/openrouter-image";
 import type { NarraGenreAnalysis } from "./genre-analysis";
 import { generateSceneImage, persistSceneImageBase64, trackNarraMediaJob } from "./media";
 import sceneGenerationConfig from "./scene-generation-config.json";
@@ -82,14 +86,17 @@ async function generateSceneImageViaOpenRouter(
     previousExcerpts: previousSceneExcerpts(bookId, excerpt),
   });
 
-  const image = await generateOpenRouterImage({
-    model: sceneModel(),
-    prompt,
-    aspectRatio: sceneGenerationConfig.aspectRatio as OpenRouterImageRequest["aspectRatio"],
-    quality: sceneGenerationConfig.quality as OpenRouterImageRequest["quality"],
-    outputFormat: sceneGenerationConfig.outputFormat as OpenRouterImageRequest["outputFormat"],
-    outputCompression: sceneGenerationConfig.outputCompression,
-  });
+  const image = await generateOpenRouterImageWithFallback(
+    {
+      model: sceneModel(),
+      prompt,
+      aspectRatio: sceneGenerationConfig.aspectRatio as OpenRouterImageRequest["aspectRatio"],
+      quality: sceneGenerationConfig.quality as OpenRouterImageRequest["quality"],
+      outputFormat: sceneGenerationConfig.outputFormat as OpenRouterImageRequest["outputFormat"],
+      outputCompression: sceneGenerationConfig.outputCompression,
+    },
+    OPENROUTER_FALLBACK_IMAGE_MODEL,
+  );
   const extension = image.mimeType === "image/png" ? "png" : "jpg";
   return persistSceneImageBase64(bookId, image.base64, extension);
 }

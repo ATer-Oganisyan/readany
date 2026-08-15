@@ -42,6 +42,8 @@ interface ChatRow {
   fromBundledCatalog: boolean;
 }
 
+const MAX_AUTOMATIC_PORTRAIT_ATTEMPTS = 2;
+
 export function ChatsScreen() {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
@@ -55,7 +57,7 @@ export function ChatsScreen() {
   const updateCharacter = useNarraStore((state) => state.updateCharacter);
   const [selectedBookId, setSelectedBookId] = useState("all");
   const [portraitLoadingKey, setPortraitLoadingKey] = useState<string | null>(null);
-  const portraitAttemptsRef = useRef(new Set<string>());
+  const portraitAttemptsRef = useRef(new Map<string, number>());
 
   const chatBooks = useMemo<ChatBook[]>(() => {
     return books
@@ -212,13 +214,13 @@ export function ChatsScreen() {
       return (
         row.unlocked &&
         !hasCharacterPortrait(row.character) &&
-        !portraitAttemptsRef.current.has(key)
+        (portraitAttemptsRef.current.get(key) ?? 0) < MAX_AUTOMATIC_PORTRAIT_ATTEMPTS
       );
     });
     if (!nextRow) return;
 
     const key = `${nextRow.book.id}:${nextRow.character.id}`;
-    portraitAttemptsRef.current.add(key);
+    portraitAttemptsRef.current.set(key, (portraitAttemptsRef.current.get(key) ?? 0) + 1);
     setPortraitLoadingKey(key);
     if (nextRow.fromBundledCatalog) {
       const bundled = getBundledCatalogCharactersByTitle(nextRow.book.meta.title);

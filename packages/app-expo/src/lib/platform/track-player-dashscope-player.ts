@@ -12,7 +12,7 @@ const CHUNK_MAX_CHARS = 500;
 const MEDIA_ARTIST = "Narra";
 const DEFAULT_ARTWORK = (() => {
   try {
-    return Image.resolveAssetSource(require("../../../assets/icon.png"))?.uri || "";
+    return Image.resolveAssetSource(require("../../../assets/app-icon.png"))?.uri || "";
   } catch {
     return "";
   }

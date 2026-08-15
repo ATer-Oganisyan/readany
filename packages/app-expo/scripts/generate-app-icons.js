@@ -138,7 +138,7 @@ async function main() {
   fs.writeFileSync(path.join(iconRoot, "icon.json"), `${JSON.stringify(iconDocument, null, 2)}\n`);
 
   const combinedArtwork = `${bookBody}\n${characterBody}`;
-  const legacySvg = `<svg width="1024" height="1024" viewBox="0 0 250 250" xmlns="http://www.w3.org/2000/svg">
+  const legacySvg = `<svg width="1024" height="1024" viewBox="0 0 250 250" fill="none" xmlns="http://www.w3.org/2000/svg">
   <rect width="250" height="250" fill="#FFFFFF"/>
   ${combinedArtwork}
 </svg>\n`;
@@ -167,7 +167,7 @@ async function main() {
   fs.writeFileSync(path.join(assetsRoot, "splash-logo.svg"), splashLogoSvg);
   fs.writeFileSync(path.join(assetsRoot, "splash-logo-dark.svg"), splashLogoDarkSvg);
 
-  await sharp(Buffer.from(legacySvg)).png().toFile(path.join(assetsRoot, "icon.png"));
+  await sharp(Buffer.from(legacySvg)).png().toFile(path.join(assetsRoot, "app-icon.png"));
   await sharp(Buffer.from(adaptiveSvg)).png().toFile(path.join(assetsRoot, "adaptive-icon.png"));
   await sharp(Buffer.from(monochromeSvg))
     .png()
