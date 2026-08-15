@@ -160,6 +160,21 @@ async function runBookCharacterAnalysis(
         error?: string;
         request_id?: string;
       } | null;
+      if (response.status >= 500 && error?.code === "AUTH") {
+        const technicalDetail = [
+          `HTTP ${response.status}`,
+          error.error,
+          error.request_id ? `request_id=${error.request_id}` : undefined,
+        ]
+          .filter(Boolean)
+          .join("; ");
+        throw new NarraServiceError(
+          "SERVICE",
+          "AI-провайдер Narra сейчас недоступен. Попробуйте немного позже.",
+          error.request_id,
+          technicalDetail,
+        );
+      }
       const normalized = normalizeNarraError(
         error?.code || error?.error || `HTTP ${response.status}`,
       );

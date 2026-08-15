@@ -1110,6 +1110,7 @@ function LibraryScreenContent() {
       accessibilityLabel={t("library.section", "Раздел библиотеки")}
       controlsStyle={s.librarySectionTabs}
       minimumPageHeight={Math.max(1, layout.height - nativeHeaderHeight - 76)}
+      pageGap={gridGap}
       stablePageHeight
       onSwipeStateChange={(swiping) => {
         if (swiping) swipePressGuard?.beginSwipe();

@@ -1,7 +1,7 @@
 import { NativeThemePicker } from "@/components/profile/NativeThemePicker";
 import type { ReactElement } from "react";
 import { Children, useCallback, useLayoutEffect, useRef, useState } from "react";
-import { type LayoutChangeEvent, StyleSheet, View, type ViewStyle } from "react-native";
+import { type LayoutChangeEvent, Platform, StyleSheet, View, type ViewStyle } from "react-native";
 import PagerView from "react-native-pager-view";
 
 interface NativeSegmentedPagerProps {
@@ -14,6 +14,7 @@ interface NativeSegmentedPagerProps {
   scrollableSegments?: boolean;
   controlsStyle?: ViewStyle;
   minimumPageHeight?: number;
+  pageGap?: number;
   stablePageHeight?: boolean;
   onSwipeStateChange?: (swiping: boolean) => void;
 }
@@ -28,13 +29,20 @@ export function NativeSegmentedPager({
   scrollableSegments = false,
   controlsStyle,
   minimumPageHeight = 1,
+  pageGap = 0,
   stablePageHeight = false,
   onSwipeStateChange,
 }: NativeSegmentedPagerProps) {
   const pagerRef = useRef<PagerView>(null);
   const activePageRef = useRef(-1);
+  const [containerWidth, setContainerWidth] = useState(0);
   const [pageHeights, setPageHeights] = useState<Record<number, number>>({});
   const pageCount = Children.count(children);
+  const safePageGap = Math.max(0, Math.round(pageGap));
+  const pagerWidth =
+    Platform.OS === "ios" && safePageGap > 0 && containerWidth > 0
+      ? containerWidth + safePageGap
+      : undefined;
   const safeSelectedIndex = Math.max(0, Math.min(selectedIndex, Math.max(0, pageCount - 1)));
   const tallestPageHeight = Math.max(0, ...Object.values(pageHeights));
   const pagerHeight = Math.max(
@@ -73,7 +81,13 @@ export function NativeSegmentedPager({
   );
 
   return (
-    <View style={styles.container}>
+    <View
+      style={styles.container}
+      onLayout={({ nativeEvent }) => {
+        const nextWidth = Math.round(nativeEvent.layout.width);
+        setContainerWidth((current) => (current === nextWidth ? current : nextWidth));
+      }}
+    >
       <View style={controlsStyle}>
         <NativeThemePicker
           values={values}
@@ -86,9 +100,10 @@ export function NativeSegmentedPager({
       </View>
       <PagerView
         ref={pagerRef}
-        style={[styles.pager, { height: pagerHeight }]}
+        style={[styles.pager, { height: pagerHeight }, pagerWidth ? { width: pagerWidth } : null]}
         initialPage={safeSelectedIndex}
         orientation="horizontal"
+        pageMargin={safePageGap}
         onPageScrollStateChanged={handlePageScrollStateChanged}
         onPageSelected={({ nativeEvent }) => {
           const nextIndex = nativeEvent.position;

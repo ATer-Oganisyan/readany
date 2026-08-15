@@ -125,6 +125,33 @@ describe("Narra character analysis", () => {
     expect(clone).not.toHaveBeenCalled();
   });
 
+  it("does not present an upstream provider rejection as installation authorization", async () => {
+    vi.mocked(getChunks).mockResolvedValueOnce([
+      { chapterTitle: "Глава", content: "Текст" },
+    ] as Awaited<ReturnType<typeof getChunks>>);
+    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          code: "AUTH",
+          error: "openrouter 403: Access denied by security policy",
+          request_id: "5dfc919d-f119-4b2b-b46b-5fa4c657abca",
+        }),
+        { status: 502 },
+      ),
+    );
+
+    await expect(analyzeBookCharacters(book)).rejects.toMatchObject({
+      code: "SERVICE",
+      message: "AI-провайдер Narra сейчас недоступен. Попробуйте немного позже.",
+      requestId: "5dfc919d-f119-4b2b-b46b-5fa4c657abca",
+      technicalDetail: expect.stringContaining("openrouter 403"),
+    });
+    expect(store.setAnalysisError).toHaveBeenLastCalledWith(
+      book.id,
+      "AI-провайдер Narra сейчас недоступен. Попробуйте немного позже.",
+    );
+  });
+
   it("sends gateway-compatible analytics for background analysis", async () => {
     vi.mocked(getChunks).mockResolvedValueOnce([
       { chapterTitle: "Глава", content: "Анна вошла в комнату." },
