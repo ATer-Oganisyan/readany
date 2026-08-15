@@ -50,23 +50,30 @@ describe("Narra gateway installation recovery", () => {
     process.env.EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE = "installation";
   });
 
-  it("does not replace a persisted identity rejected during refresh", async () => {
+  it("replaces a persisted identity rejected during refresh and retries once", async () => {
     secureValues.set(INSTALLATION_ID_KEY, "11111111-1111-4111-8111-111111111111");
     secureValues.set(INSTALLATION_SECRET_KEY, "stale-secret");
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
         jsonResponse(403, { code: "AUTH", error: "Installation proof отклонён" }),
-      );
+      )
+      .mockResolvedValueOnce(jsonResponse(201, { token: "fresh-token", expires_in: 900 }))
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
     const gateway = await import("./narra-gateway-fetch");
     gateway.setNarraGatewayFetch(fetchMock);
 
-    await expect(
-      gateway.narraGatewayRequest("/v2/media/images", { method: "POST" }),
-    ).rejects.toMatchObject({ code: "AUTH" });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const response = await gateway.narraGatewayRequest("/v2/media/images", { method: "POST" });
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(String(fetchMock.mock.calls[0]?.[0])).toMatch(/\/v2\/installations\/refresh$/);
-    expect(secureStore.deleteItemAsync).not.toHaveBeenCalled();
+    expect(String(fetchMock.mock.calls[1]?.[0])).toMatch(/\/v2\/installations\/register$/);
+    expect(secureStore.deleteItemAsync).toHaveBeenCalledWith(INSTALLATION_ID_KEY);
+    expect(secureStore.deleteItemAsync).toHaveBeenCalledWith(INSTALLATION_SECRET_KEY);
+    expect(new Headers(fetchMock.mock.calls[2]?.[1]?.headers).get("authorization")).toBe(
+      "Bearer fresh-token",
+    );
   });
 
   it("recovers when a previously valid token can no longer be refreshed", async () => {

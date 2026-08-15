@@ -268,7 +268,10 @@ async function requestInstallationToken(
       return requestInstallationToken("register", allowIdentityReset);
     }
     const error = await readGatewayError(response);
-    if (mode === "register" && allowIdentityReset && canResetRejectedIdentity(response, error)) {
+    // A keychain restore or an interrupted app update can leave a locally persisted
+    // installation ID paired with a secret the gateway no longer recognizes. That
+    // is recoverable and is distinct from an explicitly revoked installation.
+    if (allowIdentityReset && canResetRejectedIdentity(response, error)) {
       await resetInstallationIdentity();
       return requestInstallationToken("register", false);
     }
@@ -320,11 +323,12 @@ async function directGatewayRequest(path: string, init: RequestInit): Promise<Re
       headers.set("authorization", `Bearer ${await getInstallationToken(forceRefresh)}`);
     }
     const controller = new AbortController();
-    const requestTimeout = path === "/v2/media/cover"
-      ? COVER_TIMEOUT_MS
-      : path.startsWith("/v2/media/images")
-        ? IMAGE_TIMEOUT_MS
-        : DEFAULT_TIMEOUT_MS;
+    const requestTimeout =
+      path === "/v2/media/cover"
+        ? COVER_TIMEOUT_MS
+        : path.startsWith("/v2/media/images")
+          ? IMAGE_TIMEOUT_MS
+          : DEFAULT_TIMEOUT_MS;
     const timeout = setTimeout(() => controller.abort(), requestTimeout);
     try {
       return await configuredFetch(url, { ...init, headers, signal: controller.signal });
