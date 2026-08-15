@@ -34,6 +34,25 @@ function extension(mimeType: string): string {
   return "bin";
 }
 
+function backendUnlockProgress(
+  character: BackendBookManifest["characters"][number],
+  textLength: number | undefined,
+): number {
+  const normalizedTextLength = Number(textLength);
+  const firstAppearanceTextOffset = Number(character.firstAppearanceTextOffset);
+  if (
+    Number.isFinite(normalizedTextLength) &&
+    normalizedTextLength > 0 &&
+    Number.isFinite(firstAppearanceTextOffset)
+  ) {
+    return Math.min(0.95, Math.max(0, firstAppearanceTextOffset / normalizedTextLength));
+  }
+  const profileThreshold = Number(
+    character.profile.unlockFraction ?? character.profile.unlockProgress,
+  );
+  return Number.isFinite(profileThreshold) ? Math.min(0.95, Math.max(0, profileThreshold)) : 0;
+}
+
 async function ensureBookDirectory(bookId: string): Promise<string> {
   const directory = `${CACHE_ROOT}/${safeKey(bookId)}`;
   const info = await FileSystem.getInfoAsync(directory);
@@ -86,7 +105,9 @@ async function downloadedAsset(
 function baseCharacter(
   character: BackendBookManifest["characters"][number],
   source: BackendBookManifest["source"],
+  textLength: BackendBookManifest["textLength"],
 ): NarraCharacter {
+  const unlockProgress = backendUnlockProgress(character, textLength);
   const clientCharacterId =
     typeof character.profile.clientCharacterId === "string" &&
     character.profile.clientCharacterId.trim()
@@ -99,7 +120,7 @@ function baseCharacter(
         id: clientCharacterId,
         name: character.name,
         fullName: character.fullName,
-        unlockProgress: 0,
+        unlockProgress,
       },
     ],
   })[0];
@@ -115,12 +136,12 @@ function baseCharacter(
       speechStyle: "",
       speechExamples: [],
       appearancePrompt: "",
-      unlockProgress: 0,
+      unlockProgress,
     }),
     id: clientCharacterId,
     name: character.name,
     fullName: character.fullName,
-    unlockProgress: 0,
+    unlockProgress,
     mediaSource: "backend",
     mediaState: character.state,
     analysisSource: source,
@@ -147,7 +168,7 @@ async function mapWithConcurrency<T, R>(
 
 export function projectBackendManifestCharacters(manifest: BackendBookManifest): NarraCharacter[] {
   return manifest.characters.map((character) => ({
-    ...baseCharacter(character, manifest.source),
+    ...baseCharacter(character, manifest.source, manifest.textLength),
     // Server readiness means the bundle exists remotely. The local client only
     // marks it ready after all three files have passed integrity checks.
     mediaState: "preparing" as const,
@@ -171,7 +192,7 @@ export async function materializeBackendManifest(
 ): Promise<NarraCharacter[]> {
   const directory = await ensureBookDirectory(bookId);
   return mapWithConcurrency(manifest.characters, MEDIA_CHARACTER_CONCURRENCY, async (character) => {
-    const result = baseCharacter(character, manifest.source);
+    const result = baseCharacter(character, manifest.source, manifest.textLength);
     let materialized = result;
     if (character.state !== "ready" || !character.bundle) {
       onCharacter?.(materialized);

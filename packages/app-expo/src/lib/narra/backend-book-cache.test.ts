@@ -99,6 +99,7 @@ describe("backend book media cache", () => {
       expect.objectContaining({
         id: "anna",
         name: "Анна",
+        unlockProgress: 0.09,
         mediaSource: "backend",
         mediaState: "preparing",
       }),
