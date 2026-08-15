@@ -130,6 +130,72 @@ test('PostgreSQL analysis barriers reject incomplete or skipped stages', {
   }
 })
 
+test('PostgreSQL stops a deterministic analysis failure without retrying identical input', {
+  skip: !connectionString
+}, async () => {
+  const { default: pg } = await import('pg')
+  const pool = new pg.Pool({ connectionString, ssl: false, max: 2 })
+  const bookEditionId = randomUUID()
+  const runId = randomUUID()
+  const jobId = randomUUID()
+  const hash = createHash('sha256').update(`deterministic-${bookEditionId}`).digest('hex')
+  try {
+    await runBookMarkupMigrations(pool, { logger: { info() {} } })
+    await pool.query(
+      `INSERT INTO book_editions (
+         id, scope, catalog_key, content_sha256, title, author, format, status
+       ) VALUES ($1, 'catalog', $2, $3, 'Deterministic Failure', '', 'epub', 'marking_up')`,
+      [bookEditionId, `deterministic-${bookEditionId}`, hash]
+    )
+    await pool.query(
+      `INSERT INTO book_files (
+         book_edition_id, object_key, mime_type, byte_size, content_hash, status
+       ) VALUES ($1, $2, 'application/epub+zip', 10, $3, 'ready')`,
+      [bookEditionId, `deterministic/${bookEditionId}/source`, hash]
+    )
+    await pool.query(
+      `INSERT INTO book_analysis_runs (
+         id, idempotency_key, book_edition_id, pipeline_version, prompt_version,
+         input_hash, stage, status
+       ) VALUES ($1, $2, $3, 'book-analysis-test', 'book-scan-test', $4, 'resolve', 'running')`,
+      [runId, `deterministic:${bookEditionId}`, bookEditionId, hash]
+    )
+    await pool.query(
+      `INSERT INTO book_analysis_jobs (
+         id, run_id, stage, shard_key, status, max_attempts
+       ) VALUES ($1, $2, 'resolve', 'book', 'queued', 5)`,
+      [jobId, runId]
+    )
+    const repository = createPostgresBookAnalysisRepository(pool)
+    const job = await repository.claimAnalysisJob('resolve-worker', {
+      stages: ['resolve'], leaseSeconds: 60
+    })
+    const failed = await repository.failAnalysisJob(
+      job,
+      'ANALYSIS_TEXT_COVERAGE_INCOMPLETE',
+      { retryable: false }
+    )
+    assert.deepEqual(failed, { status: 'failed', retrySeconds: undefined })
+    const state = await pool.query(
+      `SELECT run.status AS run_status, run.last_error_code,
+              job.status AS job_status, job.attempts
+       FROM book_analysis_runs AS run
+       JOIN book_analysis_jobs AS job ON job.run_id = run.id
+       WHERE run.id = $1`,
+      [runId]
+    )
+    assert.deepEqual(state.rows[0], {
+      run_status: 'failed',
+      last_error_code: 'ANALYSIS_TEXT_COVERAGE_INCOMPLETE',
+      job_status: 'failed',
+      attempts: 1
+    })
+  } finally {
+    await pool.query('DELETE FROM book_editions WHERE id = $1', [bookEditionId]).catch(() => {})
+    await pool.end()
+  }
+})
+
 test('PostgreSQL analysis workers claim different scan shards and reclaim an expired lease', {
   skip: !connectionString
 }, async () => {

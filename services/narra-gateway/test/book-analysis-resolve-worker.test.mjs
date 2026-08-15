@@ -9,7 +9,7 @@ const input = {
   observations: [{
     id: '11111111-1111-4111-8111-111111111111',
     observationKey: 'obs:anna',
-    type: 'character_mention',
+    type: 'character_action',
     entityKind: 'character',
     entityCandidate: 'Анна',
     relatedEntityCandidates: [],
@@ -117,9 +117,9 @@ test('resolve worker rejects grounded facts that cover only the beginning of a b
       },
       async renewAnalysisJobLease() {},
       async completeResolve() { assert.fail('incomplete analysis must not advance') },
-      async failAnalysisJob(job, errorCode) {
-        failure = { job, errorCode }
-        return { status: 'queued' }
+      async failAnalysisJob(job, errorCode, options) {
+        failure = { job, errorCode, options }
+        return { status: 'failed' }
       }
     },
     workerId: 'resolve-worker-3',
@@ -132,4 +132,5 @@ test('resolve worker rejects grounded facts that cover only the beginning of a b
   assert.equal(result.status, 'failed')
   assert.equal(result.errorCode, 'ANALYSIS_TEXT_COVERAGE_INCOMPLETE')
   assert.equal(failure.errorCode, 'ANALYSIS_TEXT_COVERAGE_INCOMPLETE')
+  assert.deepEqual(failure.options, { retryable: false })
 })

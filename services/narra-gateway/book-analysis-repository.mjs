@@ -1848,13 +1848,14 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
       })
     },
 
-    async failAnalysisJob(job, errorCode) {
+    async failAnalysisJob(job, errorCode, { retryable = true } = {}) {
+      if (typeof retryable !== 'boolean') throw new TypeError('retryable must be a boolean')
       const safeCode = typeof errorCode === 'string' && /^[A-Z][A-Z0-9_]{1,48}$/.test(errorCode)
         ? errorCode
         : 'UNKNOWN'
       return transaction(pool, async (client) => {
         const row = await requireLeasedJob(client, job, job.stage)
-        const exhausted = Number(row.attempts) >= Number(row.max_attempts)
+        const exhausted = !retryable || Number(row.attempts) >= Number(row.max_attempts)
         const status = exhausted ? 'failed' : 'queued'
         const retrySeconds = Math.min(300, 2 ** Math.min(Number(row.attempts), 8))
         await client.query(

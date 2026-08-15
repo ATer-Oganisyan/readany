@@ -111,6 +111,102 @@ test('resolver keeps weak one-off character references as candidates', () => {
   assert.equal(result[0].resolutionStatus, 'candidate')
 })
 
+test('resolver keeps a one-off proper-name mention as a candidate until character behaviour corroborates it', () => {
+  const mention = resolveBookAnalysisEntities({
+    observations: [observation({
+      id: '11111111-1111-4111-8111-111111111130',
+      candidate: 'Гете',
+      confidence: 0.99
+    })]
+  })
+  const dialogue = resolveBookAnalysisEntities({
+    observations: [observation({
+      id: '22222222-2222-4222-8222-222222222240',
+      type: 'character_dialogue',
+      candidate: 'Мария',
+      confidence: 0.99
+    })]
+  })
+  assert.equal(mention[0].resolutionStatus, 'candidate')
+  assert.equal(dialogue[0].resolutionStatus, 'confirmed')
+})
+
+test('resolver keeps composite and collective labels out of character synthesis', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111111131',
+      type: 'character_action',
+      candidate: 'Ромео и Бенволио',
+      startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222241',
+      type: 'character_action',
+      candidate: 'Конная армия',
+      startOffset: 200
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333351',
+      type: 'character_dialogue',
+      candidate: 'Конная армия',
+      startOffset: 300
+    })
+  ]
+  const result = resolveBookAnalysisEntities({ observations })
+  assert.deepEqual(result.map(({ resolutionStatus }) => resolutionStatus), [
+    'candidate', 'candidate'
+  ])
+})
+
+test('resolver merges a leading title with the same named character', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111111132',
+      type: 'character_action',
+      candidate: 'Салтан',
+      startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222242',
+      candidate: 'царь Салтан',
+      startOffset: 200
+    })
+  ]
+  const result = resolveBookAnalysisEntities({ observations })
+  assert.equal(result.length, 1)
+  assert.equal(result[0].canonicalName, 'Салтан')
+  assert.deepEqual(result[0].aliases, ['царь Салтан'])
+})
+
+test('resolver binds relationship participants to character entity keys including candidates', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111111133',
+      type: 'character_action',
+      candidate: 'Анна',
+      startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222243',
+      candidate: 'муж Анны',
+      startOffset: 200
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333353',
+      type: 'relationship',
+      kind: 'relationship',
+      candidate: 'брак Анны',
+      related: ['Анна', 'муж Анны'],
+      startOffset: 300
+    })
+  ]
+  const result = resolveBookAnalysisEntities({ observations })
+  const characters = result.filter(({ entityKind }) => entityKind === 'character')
+  const relationship = result.find(({ entityKind }) => entityKind === 'relationship')
+  assert.deepEqual(relationship.data.relatedCharacterEntityKeys, characters.map(({ entityKey }) => entityKey))
+  assert.deepEqual(relationship.data.unresolvedRelatedEntityCandidates, [])
+})
+
 test('resolver merges one unambiguous chain of full-name fragments', () => {
   const observations = [
     observation({

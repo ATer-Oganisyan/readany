@@ -121,6 +121,24 @@ test('analysis jobs are claimed fairly across books before another chunk from th
   assert.match(claim.sql, /NULLS FIRST/)
 })
 
+test('non-retryable analysis failure marks the job and run failed immediately', async () => {
+  const pool = scriptedPool([
+    () => ({ rows: [{ id: 'resolve-1', max_attempts: 5, attempts: 1 }] }),
+    () => ({ rows: [] }),
+    () => ({ rows: [] })
+  ])
+  const repository = createPostgresBookAnalysisRepository(pool)
+  const result = await repository.failAnalysisJob({
+    id: 'resolve-1', runId: 'run-1', stage: 'resolve',
+    leaseToken: '123e4567-e89b-42d3-a456-426614174001'
+  }, 'ANALYSIS_TEXT_COVERAGE_INCOMPLETE', { retryable: false })
+
+  assert.deepEqual(result, { status: 'failed', retrySeconds: undefined })
+  const updateJob = pool.queries.find(({ sql }) => /UPDATE book_analysis_jobs/.test(sql))
+  assert.equal(updateJob.params[2], 'failed')
+  assert.ok(pool.queries.some(({ sql }) => /UPDATE book_analysis_runs/.test(sql)))
+})
+
 test('prepare completion writes chunks and scan jobs before advancing the barrier', async () => {
   const pool = scriptedPool([
     () => ({ rows: [{ id: 'prepare-1', max_attempts: 5, attempts: 1 }] }),

@@ -161,15 +161,18 @@ only ingestion, `start`, or an explicit `restart` enqueues analysis. The interna
 `shadow` publication is the immutable audit source for the canonical v3 reader
 projection; retained v2 rows are not selected by the mobile manifest.
 
-Pipeline v11 scans paragraph-aware cores around 4,000 characters (2,500–5,000,
+Pipeline v15 scans paragraph-aware cores around 4,000 characters (2,500–5,000,
 with 500 characters of context overlap). Before resolve can freeze a snapshot,
 evidence must cover at least 75% of fixed 4,000-character bands and the result
-must contain a confirmed non-metadata character. Every named participant of an
-inter-character relationship must also resolve to a confirmed character, while
-an author copied only from front matter is rejected. An incomplete replacement
-run fails without replacing the currently published revision. A new successful
-publication requeues failed media bundles for its characters once; manifest reads
-do not repeatedly reset failed work.
+must contain a confirmed non-metadata character. Relationship participants bind
+to resolved character entity keys, including evidence-backed candidates; an
+unresolved relationship is reported but does not reject the otherwise complete
+book. One-off name mentions, collective labels and composite names do not enter
+character synthesis, while an author copied only from front matter is rejected.
+Deterministic quality failures stop immediately instead of repeating the same
+resolve input. An incomplete replacement run fails without replacing the current
+published revision. A new successful publication requeues failed media bundles
+for its characters once; manifest reads do not repeatedly reset failed work.
 
 The v6 scan extractor also retries a fragment instead of caching it when a
 provider returns at least five observations but strict quote validation accepts

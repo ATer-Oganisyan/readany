@@ -36,6 +36,28 @@ const DESCRIPTIVE_CHARACTER_TOKENS = new Set([
   'daughter', 'son', 'mother', 'father', 'brother', 'sister', 'wife',
   'husband', 'widow', 'bride', 'groom', 'servant', 'policeman', 'policewoman'
 ])
+const CHARACTER_BEHAVIOUR_TYPES = new Set([
+  'character_action', 'character_dialogue', 'character_trait',
+  'character_appearance', 'character_role', 'character_age', 'character_gender'
+])
+const COLLECTIVE_CHARACTER_TOKENS = new Set([
+  'армия', 'армии', 'войско', 'войска', 'солдаты', 'люди', 'дети',
+  'сыновья', 'дочери', 'братья', 'сестры', 'марсиане', 'атланты', 'аолы',
+  'казаки', 'козаки', 'запорожцы', 'армейцы', 'женщины', 'мужчины',
+  'слуги', 'музыканты', 'танки', 'подразделения', 'толпа', 'голоса',
+  'богатыри', 'старшины', 'наборщики', 'часовые', 'гайдуки',
+  'army', 'troops', 'soldiers', 'people', 'children', 'brothers', 'sisters',
+  'women', 'men', 'servants', 'musicians', 'tanks', 'crowd', 'voices'
+])
+const LEADING_CHARACTER_TITLES = new Set([
+  'царь', 'царица', 'король', 'королева', 'князь', 'княгиня', 'княжна',
+  'граф', 'графиня', 'барон', 'баронесса', 'принц', 'принцесса',
+  'майор', 'капитан', 'полковник', 'генерал', 'адмирал', 'профессор',
+  'доктор', 'господин', 'госпожа', 'синьор', 'синьора',
+  'king', 'queen', 'prince', 'princess', 'count', 'countess', 'baron',
+  'major', 'captain', 'colonel', 'general', 'admiral', 'professor', 'doctor',
+  'mister', 'missus', 'sir', 'lady'
+])
 
 function resolutionError(code, message) {
   return Object.assign(new Error(message), { code })
@@ -196,6 +218,35 @@ function hasProperNameForm(node) {
   )
 }
 
+function leadingTitleBase(value) {
+  const tokens = nameTokens(value)
+  return tokens.length > 1 && LEADING_CHARACTER_TITLES.has(tokens[0])
+    ? tokens.slice(1).join(' ')
+    : null
+}
+
+function isCompositeOrCollectiveCharacter(node) {
+  const tokens = nameTokens(node.normalized)
+  return node.normalized.includes(' и ') ||
+    node.normalized.includes(' and ') ||
+    tokens.some((token) => COLLECTIVE_CHARACTER_TOKENS.has(token))
+}
+
+function isIndividualProperNameNode(node) {
+  return hasProperNameForm(node) && !isCompositeOrCollectiveCharacter(node)
+}
+
+function mergeLeadingTitles(sets, nodes) {
+  for (const node of nodes.values()) {
+    if (!node.key.startsWith('character\u0000')) continue
+    const base = leadingTitleBase(node.normalized)
+    if (!base) continue
+    const baseKey = `character\u0000${base}`
+    const baseNode = nodes.get(baseKey)
+    if (baseNode && isIndividualProperNameNode(baseNode)) sets.union(node.key, baseKey)
+  }
+}
+
 function compositeNameParts(node, nodes) {
   const tokens = nameTokens(node.normalized)
   if (tokens.length < 3) return null
@@ -231,7 +282,7 @@ function isNicknameComposite(node, nodes) {
 
 function mergeNicknameComposites(sets, nodes) {
   for (const node of nodes.values()) {
-    if (!node.key.startsWith('character\u0000') || !hasProperNameForm(node)) continue
+    if (!node.key.startsWith('character\u0000') || !isIndividualProperNameNode(node)) continue
     const parts = isNicknameComposite(node, nodes)
     if (!parts) continue
     sets.union(node.key, parts.prefixKey)
@@ -249,19 +300,19 @@ function diminutiveEchkaBase(tokens) {
 
 function mergeDiminutiveNicknames(sets, nodes) {
   for (const node of nodes.values()) {
-    if (!node.key.startsWith('character\u0000') || !hasProperNameForm(node)) continue
+    if (!node.key.startsWith('character\u0000') || !isIndividualProperNameNode(node)) continue
     const base = diminutiveEchkaBase(nameTokens(node.normalized))
     if (!base) continue
     const baseKey = `character\u0000${base}`
     const baseNode = nodes.get(baseKey)
-    if (baseNode && hasProperNameForm(baseNode)) sets.union(node.key, baseKey)
+    if (baseNode && isIndividualProperNameNode(baseNode)) sets.union(node.key, baseKey)
   }
 }
 
 function mergeReorderedFullNames(sets, nodes) {
   const namesByTokenSet = new Map()
   for (const node of nodes.values()) {
-    if (!node.key.startsWith('character\u0000') || !hasProperNameForm(node)) continue
+    if (!node.key.startsWith('character\u0000') || !isIndividualProperNameNode(node)) continue
     const tokens = nameTokens(node.normalized)
     if (tokens.length !== 3 || new Set(tokens).size !== 3) continue
     const tokenSet = [...tokens].sort(compareText).join('\u0000')
@@ -273,7 +324,7 @@ function mergeReorderedFullNames(sets, nodes) {
 
 function mergeResolvedCompositeNames(sets, nodes) {
   for (const node of nodes.values()) {
-    if (!node.key.startsWith('character\u0000') || !hasProperNameForm(node)) continue
+    if (!node.key.startsWith('character\u0000') || !isIndividualProperNameNode(node)) continue
     const parts = compositeNameParts(node, nodes)
     if (!parts) continue
     const prefixRoot = sets.find(parts.prefixKey)
@@ -286,7 +337,8 @@ function mergeReciprocalMentionAliases(sets, nodes, mentionClaims) {
   const edges = new Set()
   for (const { primaryKey, relatedKey } of mentionClaims) {
     if (!nodes.has(relatedKey)) continue
-    if (!hasProperNameForm(nodes.get(primaryKey)) || !hasProperNameForm(nodes.get(relatedKey))) {
+    if (!isIndividualProperNameNode(nodes.get(primaryKey)) ||
+        !isIndividualProperNameNode(nodes.get(relatedKey))) {
       continue
     }
     const primaryRoot = sets.find(primaryKey)
@@ -328,7 +380,7 @@ function isPatronymicVariant(left, right) {
 
 function mergePatronymicVariants(sets, nodes) {
   const candidates = [...nodes.values()].filter((node) =>
-    node.key.startsWith('character\u0000') && hasProperNameForm(node)
+    node.key.startsWith('character\u0000') && isIndividualProperNameNode(node)
   )
   for (const [index, node] of candidates.entries()) {
     const tokens = nameTokens(node.normalized)
@@ -343,7 +395,7 @@ function mergePatronymicVariants(sets, nodes) {
 function mergeUnambiguousNameFragments(sets, nodes) {
   const nameNodes = [...nodes.values()].filter((node) =>
     node.key.startsWith('character\u0000') &&
-    hasProperNameForm(node) &&
+    isIndividualProperNameNode(node) &&
     !isNicknameComposite(node, nodes)
   )
   const tokensByKey = new Map(nameNodes.map((node) => [node.key, nameTokens(node.normalized)]))
@@ -375,6 +427,8 @@ function mergeUnambiguousNameFragments(sets, nodes) {
 function canonicalNode(groupNodes) {
   return [...groupNodes].sort((left, right) =>
     right.anchorConfidence - left.anchorConfidence ||
+    Number(Boolean(leadingTitleBase(left.normalized))) -
+      Number(Boolean(leadingTitleBase(right.normalized))) ||
     tokenCount(right.normalized) - tokenCount(left.normalized) ||
     right.primaryCount - left.primaryCount ||
     right.confidenceSum - left.confidenceSum ||
@@ -389,13 +443,16 @@ function roundConfidence(value) {
 }
 
 function isConfirmed(kind, canonical, observations, anchorConfidence, confidence, groupNodes) {
-  if (
-    kind === 'character' &&
-    !groupNodes.some(hasProperNameForm)
-  ) return false
+  if (kind === 'character') {
+    if (!groupNodes.some(isIndividualProperNameNode)) return false
+    if (anchorConfidence >= ALIAS_CONFIDENCE || observations.length >= 2) return true
+    if (confidence < ALIAS_CONFIDENCE) return false
+    return observations.some(({ type }) => CHARACTER_BEHAVIOUR_TYPES.has(type)) &&
+      !WEAK_CHARACTER_CANDIDATES.has(normalizedCandidate(canonical))
+  }
   if (anchorConfidence >= ALIAS_CONFIDENCE || observations.length >= 2) return true
   if (confidence < ALIAS_CONFIDENCE) return false
-  return kind !== 'character' || !WEAK_CHARACTER_CANDIDATES.has(normalizedCandidate(canonical))
+  return true
 }
 
 /**
@@ -452,6 +509,7 @@ export function resolveBookAnalysisEntities({ observations: rawObservations }) {
   for (const [aliasKey, anchors] of anchorsByAlias) {
     if (anchors.size === 1) sets.union([...anchors][0], aliasKey)
   }
+  mergeLeadingTitles(sets, nodes)
   mergePatronymicVariants(sets, nodes)
   mergeReorderedFullNames(sets, nodes)
   mergeUnambiguousNameFragments(sets, nodes)
@@ -477,6 +535,7 @@ export function resolveBookAnalysisEntities({ observations: rawObservations }) {
   }
 
   const entities = []
+  const entityByRoot = new Map()
   for (const [root, groupNodes] of groupedNodes) {
     const groupObservations = observationsByRoot.get(root) ?? []
     if (!groupObservations.length) continue
@@ -504,7 +563,7 @@ export function resolveBookAnalysisEntities({ observations: rawObservations }) {
     const lastEvidenceEndOffset = Math.max(
       ...groupObservations.map(({ evidence }) => evidence.endOffset)
     )
-    entities.push(normalizeBookAnalysisResolvedEntity({
+    const entity = normalizeBookAnalysisResolvedEntity({
       entityKey,
       entityKind: kind,
       canonicalName,
@@ -525,7 +584,30 @@ export function resolveBookAnalysisEntities({ observations: rawObservations }) {
         lastEvidenceEndOffset,
         candidateKeys
       }
-    }))
+    })
+    entities.push(entity)
+    entityByRoot.set(root, entity)
+  }
+
+  for (const [root, entity] of entityByRoot) {
+    if (entity.entityKind !== 'relationship') continue
+    const relatedCharacterEntityKeys = new Set()
+    const unresolvedRelatedEntityCandidates = new Set()
+    for (const observation of observationsByRoot.get(root) ?? []) {
+      for (const candidate of observation.relatedEntityCandidates) {
+        const candidateNode = nodes.get(stableNodeKey('character', candidate))
+        const characterEntity = candidateNode && entityByRoot.get(sets.find(candidateNode.key))
+        if (characterEntity?.entityKind === 'character') {
+          relatedCharacterEntityKeys.add(characterEntity.entityKey)
+        } else {
+          unresolvedRelatedEntityCandidates.add(displayCandidate(candidate))
+        }
+      }
+    }
+    entity.data.relatedCharacterEntityKeys = [...relatedCharacterEntityKeys].sort(compareText)
+    entity.data.unresolvedRelatedEntityCandidates = [...unresolvedRelatedEntityCandidates]
+      .sort(compareText)
+    if (unresolvedRelatedEntityCandidates.size) entity.resolutionStatus = 'candidate'
   }
 
   entities.sort((left, right) =>

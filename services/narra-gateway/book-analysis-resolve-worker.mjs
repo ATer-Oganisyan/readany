@@ -7,6 +7,13 @@ function safeErrorCode(error) {
   return /^[A-Z][A-Z0-9_]{1,48}$/.test(candidate) ? candidate : 'UNKNOWN'
 }
 
+const NON_RETRYABLE_RESOLUTION_ERRORS = new Set([
+  'ANALYSIS_TEXT_COVERAGE_INCOMPLETE',
+  'ANALYSIS_CHARACTERS_MISSING',
+  'ANALYSIS_METADATA_CHARACTER',
+  'ANALYSIS_RELATIONSHIP_CHARACTERS_MISSING'
+])
+
 export function createBookAnalysisResolveWorker({
   repository,
   workerId,
@@ -92,7 +99,9 @@ export function createBookAnalysisResolveWorker({
         return { status: 'completed', jobId: job.id, runId: job.runId, result }
       } catch (error) {
         const errorCode = safeErrorCode(error)
-        const failure = await repository.failAnalysisJob(job, errorCode)
+        const failure = await repository.failAnalysisJob(job, errorCode, {
+          retryable: !NON_RETRYABLE_RESOLUTION_ERRORS.has(errorCode)
+        })
         log.error('resolve.failed', 'Сопоставление сущностей завершилось ошибкой', {
           job: job.id,
           run: job.runId,

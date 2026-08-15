@@ -100,7 +100,7 @@ test('coverage rejects an author copied only from front matter as a character', 
   ])
 })
 
-test('coverage rejects a relationship participant missing from confirmed characters', () => {
+test('coverage reports an unresolved relationship participant without rejecting the whole book', () => {
   const result = assessBookAnalysisCoverage({
     textLength: 3_000,
     observations: [
@@ -124,7 +124,63 @@ test('coverage rejects a relationship participant missing from confirmed charact
     }]
   })
 
-  assert.equal(result.valid, false)
-  assert.deepEqual(result.errorCodes, ['ANALYSIS_RELATIONSHIP_CHARACTERS_MISSING'])
+  assert.equal(result.valid, true)
+  assert.deepEqual(result.errorCodes, [])
   assert.deepEqual(result.missingRelationshipCharacters, ['Параша'])
+})
+
+test('coverage accepts a grounded relationship participant resolved as a candidate character', () => {
+  const result = assessBookAnalysisCoverage({
+    textLength: 3_000,
+    observations: [
+      observation({ id: 'anna', offset: 500, candidate: 'Анна' }),
+      observation({ id: 'husband', offset: 700, candidate: 'муж Анны' }),
+      observation({
+        id: 'relationship',
+        offset: 900,
+        kind: 'relationship',
+        type: 'relationship',
+        candidate: 'брак Анны',
+        related: ['Анна', 'муж Анны'],
+        quote: 'Анна говорила о муже'
+      })
+    ],
+    entities: [
+      {
+        entityKind: 'character', canonicalName: 'Анна', aliases: [],
+        resolutionStatus: 'confirmed', evidenceIds: ['anna'], data: { candidateKeys: ['анна'] }
+      },
+      {
+        entityKind: 'character', canonicalName: 'муж Анны', aliases: [],
+        resolutionStatus: 'candidate', evidenceIds: ['husband'], data: { candidateKeys: ['муж анны'] }
+      }
+    ]
+  })
+  assert.equal(result.valid, true)
+  assert.deepEqual(result.missingRelationshipCharacters, [])
+})
+
+test('coverage uses resolved candidate keys instead of exact display-name equality', () => {
+  const result = assessBookAnalysisCoverage({
+    textLength: 3_000,
+    observations: [
+      observation({ id: 'saltan', offset: 500, candidate: 'Салтан' }),
+      observation({
+        id: 'relationship',
+        offset: 900,
+        kind: 'relationship',
+        type: 'relationship',
+        candidate: 'Салтан и Гвидон',
+        related: ['царь Салтан'],
+        quote: 'Царь Салтан зовёт гостей'
+      })
+    ],
+    entities: [{
+      entityKind: 'character', canonicalName: 'Салтан', aliases: [],
+      resolutionStatus: 'confirmed', evidenceIds: ['saltan'],
+      data: { candidateKeys: ['салтан', 'царь салтан'] }
+    }]
+  })
+  assert.equal(result.valid, true)
+  assert.deepEqual(result.missingRelationshipCharacters, [])
 })

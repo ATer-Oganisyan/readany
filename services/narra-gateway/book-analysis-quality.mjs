@@ -57,15 +57,22 @@ export function assessBookAnalysisCoverage({ textLength, observations, entities,
   const metadataCharacterSet = new Set(metadataCharacters)
   const productCharacters = confirmedCharacters.filter((entity) => !metadataCharacterSet.has(entity))
   const confirmedCharacterCount = productCharacters.length
-  const confirmedCharacterNames = new Set(productCharacters.flatMap((entity) =>
-    [entity?.canonicalName, ...(entity?.aliases ?? [])].map(normalizedName).filter(Boolean)
-  ))
+  const resolvedCharacterNames = new Set(entities
+    .filter((entity) => entity?.entityKind === 'character')
+    .flatMap((entity) => [
+      entity?.canonicalName,
+      ...(entity?.aliases ?? []),
+      ...(entity?.data?.candidateKeys ?? [])
+    ])
+    .map(normalizedName)
+    .filter(Boolean)
+  )
   const missingRelationshipCharacters = [...new Set(observations
     .filter((observation) => observation?.type === 'relationship')
     .flatMap((observation) => observation?.relatedEntityCandidates ?? [])
     .filter((candidate) => {
       const normalized = normalizedName(candidate)
-      return normalized && !confirmedCharacterNames.has(normalized)
+      return normalized && !resolvedCharacterNames.has(normalized)
     })
     .map((candidate) => String(candidate).trim()))].sort((left, right) =>
       left.localeCompare(right, 'ru')
@@ -79,9 +86,6 @@ export function assessBookAnalysisCoverage({ textLength, observations, entities,
   }
   if (metadataCharacters.length) {
     errorCodes.push('ANALYSIS_METADATA_CHARACTER')
-  }
-  if (missingRelationshipCharacters.length) {
-    errorCodes.push('ANALYSIS_RELATIONSHIP_CHARACTERS_MISSING')
   }
   return {
     valid: errorCodes.length === 0,
