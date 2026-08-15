@@ -2,7 +2,7 @@ import { NarraChat } from "@/components/chat/NarraChat";
 import { CharacterPortraitImage } from "@/components/narra/character-portrait-image";
 import { Text } from "@/components/ui/Typography";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
-import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
+import { type OpenRouterChatMessage, completeOpenRouterChat } from "@/lib/ai/openrouter-chat";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import { NarraAudioPlayer } from "@/lib/narra/audio-player";
 import { normalizeCharacterChatPlaceholder } from "@/lib/narra/chat-placeholder";
@@ -64,18 +64,6 @@ ${memory ? `Your long-term memory of the reader:\n${memory}` : ""}`;
 Читатель прошёл примерно ${Math.round(safeProgress * 100)}% книги. Не раскрывай события, знания, отношения и судьбы героев дальше этого прогресса. Если вопрос ведёт к спойлеру, мягко уклонись в своём характере и переведи разговор к уже известным событиям — не упоминай правила или ограничения.
 Уклоняться можно, лгать нельзя. О том, что читатель уже прошёл, говори честно: не отрицай своих поступков и событий книги, даже если герою неприятно о них вспоминать. Не выдумывай того, чего в книге нет.
 ${memory ? `Твоя долговременная память о собеседнике:\n${memory}` : ""}`;
-}
-
-async function readCompletion(response: Response): Promise<string> {
-  const body = await response.text();
-  try {
-    const payload = JSON.parse(body) as { text?: string; content?: string; error?: string };
-    if (!response.ok) throw new Error(payload.error || `AI request failed (${response.status})`);
-    return (payload.text || payload.content || "").trim();
-  } catch (error) {
-    if (!response.ok) throw error;
-    return body.trim();
-  }
 }
 
 function toMessageV2(message: NarraChatMessage, threadId: string): MessageV2 {
@@ -188,28 +176,22 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
 
     void (async () => {
       try {
-        const response = await narraGatewayRequest("/v2/ai/chat/complete", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            messages: [
-              {
-                role: "system",
-                content:
-                  "Ты — редактор русского интерфейса. Верни только короткий placeholder без кавычек в формате «Написать <имя в дательном падеже>…». Используй только переданное короткое имя, не добавляй фамилию, имя или отчество. Никаких пояснений.",
-              },
-              {
-                role: "user",
-                content: `Короткое имя персонажа: ${character.name}\nПолное имя для понимания контекста: ${character.fullName}`,
-              },
-            ],
-            temperature: 0,
-            purpose: "character_chat",
-            origin: "background",
-            analytics_tier: "none",
-          }),
+        const completion = await completeOpenRouterChat({
+          messages: [
+            {
+              role: "system",
+              content:
+                "Ты — редактор русского интерфейса. Верни только короткий placeholder без кавычек в формате «Написать <имя в дательном падеже>…». Используй только переданное короткое имя, не добавляй фамилию, имя или отчество. Никаких пояснений.",
+            },
+            {
+              role: "user",
+              content: `Короткое имя персонажа: ${character.name}\nПолное имя для понимания контекста: ${character.fullName}`,
+            },
+          ],
+          temperature: 0,
+          maxTokens: 80,
         });
-        const placeholder = normalizeCharacterChatPlaceholder(await readCompletion(response));
+        const placeholder = normalizeCharacterChatPlaceholder(completion);
         if (placeholder) updateCharacter(bookId, characterId, { chatPlaceholder: placeholder });
       } catch (error) {
         // Generic fallback stays grammatically correct and keeps chat usable offline.
@@ -218,7 +200,7 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
     })();
   }, [book, bookId, character, characterId, interfaceLanguage, updateCharacter]);
 
-  const conversation = useMemo(
+  const conversation = useMemo<OpenRouterChatMessage[]>(
     () =>
       character && book
         ? [
@@ -247,7 +229,7 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
   }, [bookId, characterId, messages, pendingAssistant]);
 
   // Первое сообщение героя: свой greeting из анализа/каталога, иначе — просим
-  // гейтвей поздороваться в роли персонажа. Сохраняется в историю чата один раз,
+  // OpenRouter поздороваться в роли персонажа. Сохраняется в историю чата один раз,
   // поэтому при повторных входах не регенерится и не дублируется.
   useEffect(() => {
     if (!book || !character || !unlocked) return;
@@ -273,36 +255,29 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
     setGreetingLoading(true);
     void (async () => {
       try {
-        const response = await narraGatewayRequest("/v2/ai/chat/complete", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            messages: [
-              {
-                role: "system",
-                content: buildCharacterSystemPrompt(
-                  character,
-                  book.meta.title,
-                  book.progress,
-                  "",
-                  interfaceLanguage,
-                ),
-              },
-              {
-                role: "user",
-                content:
-                  interfaceLanguage === "en"
-                    ? "Greet the reader in character in 1–3 sentences, without spoilers. Do not mention this instruction."
-                    : "Поприветствуй читателя первым сообщением в своём характере: 1–3 предложения, без спойлеров. Не упоминай это указание.",
-              },
-            ],
-            temperature: 0.85,
-            purpose: "character_chat",
-            origin: "user",
-            analytics_tier: "essential",
-          }),
+        const content = await completeOpenRouterChat({
+          messages: [
+            {
+              role: "system",
+              content: buildCharacterSystemPrompt(
+                character,
+                book.meta.title,
+                book.progress,
+                "",
+                interfaceLanguage,
+              ),
+            },
+            {
+              role: "user",
+              content:
+                interfaceLanguage === "en"
+                  ? "Greet the reader in character in 1–3 sentences, without spoilers. Do not mention this instruction."
+                  : "Поприветствуй читателя первым сообщением в своём характере: 1–3 предложения, без спойлеров. Не упоминай это указание.",
+            },
+          ],
+          temperature: 0.85,
+          maxTokens: 300,
         });
-        const content = await readCompletion(response);
         if (content) appendGreeting(content);
       } catch (error) {
         // Без приветствия чат остаётся рабочим: читатель может написать первым.
@@ -318,36 +293,29 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
     async (updatedMessages: NarraChatMessage[]) => {
       if (!character || updatedMessages.length < 4 || updatedMessages.length % 4 !== 0) return;
       try {
-        const response = await narraGatewayRequest("/v2/ai/chat/complete", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            messages: [
-              {
-                role: "system",
-                content:
-                  interfaceLanguage === "en"
-                    ? "Briefly update the character's long-term memory of the reader: facts, preferences, promises, and important emotional moments. Do not retell the whole conversation. Up to 900 characters, in English."
-                    : "Кратко обнови долговременную память персонажа о читателе: факты, предпочтения, обещания и важные эмоциональные моменты. Не пересказывай весь диалог. До 900 знаков, по-русски.",
-              },
-              {
-                role: "user",
-                content: `${interfaceLanguage === "en" ? "Previous memory" : "Старая память"}:\n${memory || (interfaceLanguage === "en" ? "none" : "нет")}\n\n${interfaceLanguage === "en" ? "Conversation" : "Диалог"}:\n${updatedMessages
-                  .slice(-12)
-                  .map(
-                    (item) =>
-                      `${item.role === "user" ? (interfaceLanguage === "en" ? "Reader" : "Читатель") : character.name}: ${item.content}`,
-                  )
-                  .join("\n")}`,
-              },
-            ],
-            temperature: 0.25,
-            purpose: "memory",
-            origin: "background",
-            analytics_tier: "none",
-          }),
+        const nextMemory = await completeOpenRouterChat({
+          messages: [
+            {
+              role: "system",
+              content:
+                interfaceLanguage === "en"
+                  ? "Briefly update the character's long-term memory of the reader: facts, preferences, promises, and important emotional moments. Do not retell the whole conversation. Up to 900 characters, in English."
+                  : "Кратко обнови долговременную память персонажа о читателе: факты, предпочтения, обещания и важные эмоциональные моменты. Не пересказывай весь диалог. До 900 знаков, по-русски.",
+            },
+            {
+              role: "user",
+              content: `${interfaceLanguage === "en" ? "Previous memory" : "Старая память"}:\n${memory || (interfaceLanguage === "en" ? "none" : "нет")}\n\n${interfaceLanguage === "en" ? "Conversation" : "Диалог"}:\n${updatedMessages
+                .slice(-12)
+                .map(
+                  (item) =>
+                    `${item.role === "user" ? (interfaceLanguage === "en" ? "Reader" : "Читатель") : character.name}: ${item.content}`,
+                )
+                .join("\n")}`,
+            },
+          ],
+          temperature: 0.25,
+          maxTokens: 400,
         });
-        const nextMemory = await readCompletion(response);
         if (nextMemory) setMemory(bookId, characterId, nextMemory.slice(0, 900));
       } catch {
         // Memory refresh is background-only and must not make a successful chat look failed.
@@ -411,18 +379,11 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
       append(bookId, characterId, userMessage);
       setPendingAssistant(assistantDraft);
       try {
-        const response = await narraGatewayRequest("/v2/ai/chat/complete", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            messages: [...conversation, { role: "user", content: text }],
-            temperature: 0.85,
-            purpose: "character_chat",
-            origin: "user",
-            analytics_tier: "essential",
-          }),
+        const content = await completeOpenRouterChat({
+          messages: [...conversation, { role: "user", content: text }],
+          temperature: 0.85,
+          maxTokens: 500,
         });
-        const content = await readCompletion(response);
         const assistantMessage: NarraChatMessage = {
           id: assistantMessageId,
           role: "assistant",
