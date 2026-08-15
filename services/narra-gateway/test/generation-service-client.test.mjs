@@ -171,3 +171,25 @@ test('generator client preserves a grounded evidence mismatch for scan retry pol
     (error) => error.code === 'EVIDENCE_MISMATCH'
   )
 })
+
+test('generator client preserves safe scan validation codes instead of hiding them as HTTP 400', async () => {
+  const client = createGenerationServiceClient({
+    baseUrl: 'http://localhost:8790',
+    token: TOKEN,
+    production: false,
+    async fetchImpl() {
+      return new Response(JSON.stringify({
+        error: 'internal details stay inside the generation service',
+        code: 'SCAN_RELATION_PARTICIPANT_MISSING'
+      }), { status: 400 })
+    }
+  })
+  await assert.rejects(
+    () => client.scanBookChunk({
+      runId: 'run-1',
+      chunkId: 'chunk-1',
+      extractorVersion: 'book-scan-v7'
+    }),
+    (error) => error.code === 'SCAN_RELATION_PARTICIPANT_MISSING'
+  )
+})

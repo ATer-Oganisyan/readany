@@ -16,17 +16,17 @@ import {
 
 const evidenceId = '11111111-1111-4111-8111-111111111111'
 
-test('scan prompt and extractor share the cache-isolating v6 version', () => {
-  assert.equal(BOOK_ANALYSIS_PROMPT_VERSION, 'book-scan-v6')
+test('scan prompt and extractor share the cache-isolating v7 version', () => {
+  assert.equal(BOOK_ANALYSIS_PROMPT_VERSION, 'book-scan-v7')
   assert.equal(BOOK_ANALYSIS_EXTRACTOR_VERSION, BOOK_ANALYSIS_PROMPT_VERSION)
 })
 
 test('resolver, profile and scan fallback changes isolate versioned caches', () => {
-  assert.equal(BOOK_ANALYSIS_PIPELINE_VERSION, 'book-analysis-v11')
+  assert.equal(BOOK_ANALYSIS_PIPELINE_VERSION, 'book-analysis-v12')
   assert.equal(BOOK_ANALYSIS_SYNTHESIS_VERSION, 'character-profile-v2')
 })
 
-test('scan observations require exact evidence coordinates', () => {
+test('stored scan observations require exact server-resolved evidence coordinates', () => {
   const observation = normalizeBookAnalysisObservation({
     observationKey: 'chunk-7:trait:anna:1',
     type: 'character_trait',

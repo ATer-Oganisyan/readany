@@ -1,5 +1,11 @@
 import { serviceUrl } from './service-url.mjs'
 
+const SAFE_SCAN_ERROR_CODES = new Set([
+  'EVIDENCE_MISMATCH',
+  'GENERATION_RESULT_INVALID',
+  'SCAN_RELATION_PARTICIPANT_MISSING'
+])
+
 function requiredToken(value) {
   const token = String(value || '').trim()
   if (token.length < 32) throw new Error('GENERATOR_SERVICE_TOKEN must be at least 32 characters')
@@ -52,8 +58,8 @@ export function createGenerationServiceClient({
     const payload = await readJson(response)
     if (!response.ok) {
       const error = new Error(`generator request failed with HTTP ${response.status}`)
-      error.code = payload?.code === 'EVIDENCE_MISMATCH'
-        ? 'EVIDENCE_MISMATCH'
+      error.code = SAFE_SCAN_ERROR_CODES.has(payload?.code)
+        ? payload.code
         : `GENERATOR_HTTP_${response.status}`
       throw error
     }

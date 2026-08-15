@@ -113,7 +113,7 @@ test('internal generation service creates all three required bundle assets', asy
   assert.ok(lines.some((line) => line.includes('event="bundle.cached"')))
 })
 
-test('internal generation service gives the provider exactly one scan chunk', async () => {
+test('internal generation service gives the provider one scan chunk and asks for quote-only evidence', async () => {
   const storage = memoryStorage()
   let chatRequest
   const contextText = ' Анна вошла в комнату. '
@@ -122,7 +122,6 @@ test('internal generation service gives the provider exactly one scan chunk', as
     logger: { info() {}, error() {} },
     async completeChat(input) {
       chatRequest = input
-      const startOffset = contextText.indexOf('Анна')
       const quote = 'Анна вошла в комнату.'
       return JSON.stringify({
         observations: [{
@@ -131,7 +130,7 @@ test('internal generation service gives the provider exactly one scan chunk', as
           entityCandidate: 'Анна',
           relatedEntityCandidates: [],
           fact: 'Анна вошла в комнату',
-          evidence: { quote, startOffset, endOffset: startOffset + quote.length },
+          evidence: { quote },
           confidence: 0.95
         }]
       })
@@ -155,8 +154,10 @@ test('internal generation service gives the provider exactly one scan chunk', as
   assert.equal(Object.hasOwn(chatRequest, 'temperature'), false)
   assert.equal(chatRequest.messages.length, 2)
   assert.ok(chatRequest.messages[0].content.includes(
-    'только если evidence.startOffset находится внутри CORE_LOCAL_RANGE'
+    'цитата начинается внутри CORE_LOCAL_RANGE'
   ))
+  assert.equal(chatRequest.messages[0].content.includes('startOffset'), false)
+  assert.equal(chatRequest.messages[0].content.includes('endOffset'), false)
   assert.ok(chatRequest.messages[0].content.includes(
     'текст за пределами диапазона используй только как контекст'
   ))
@@ -169,6 +170,54 @@ test('internal generation service gives the provider exactly one scan chunk', as
   ))
   assert.equal(chatRequest.messages[1].content.includes('objectKey'), false)
   assert.equal(chatRequest.messages[1].content.includes('normalized'), false)
+  assert.deepEqual(result.observations[0].evidence, {
+    quote: 'Анна вошла в комнату.',
+    startOffset: contextText.indexOf('Анна'),
+    endOffset: contextText.indexOf('Анна') + 'Анна вошла в комнату.'.length
+  })
+})
+
+test('internal generation service resolves a repeated quote when only one occurrence belongs to the core', async () => {
+  const storage = memoryStorage()
+  const quote = 'Анна вошла.'
+  const contextText = `${quote} Контекст слева. ${quote} Затем она села.`
+  const coreStart = contextText.lastIndexOf(quote)
+  const service = createInternalGenerationService({
+    storage,
+    logger: { info() {}, error() {} },
+    async completeChat() {
+      return JSON.stringify({ observations: [{
+        type: 'character_action',
+        entityKind: 'character',
+        entityCandidate: 'Анна',
+        relatedEntityCandidates: [],
+        fact: 'Анна вошла',
+        evidence: { quote },
+        confidence: 0.95
+      }] })
+    },
+    async generatePortrait() { throw new Error('unused') },
+    async synthesizeSpeech() { throw new Error('unused') },
+    async generateIdleAnimation() { throw new Error('unused') }
+  })
+
+  const result = await service.scanBookChunk({
+    idempotencyKey: 'run-core-quote:scan:chunk-core-quote:book-scan-v7',
+    runId: 'run-core-quote',
+    chunkId: 'chunk-core-quote',
+    extractorVersion: 'book-scan-v7',
+    bookTitle: 'Книга',
+    bookAuthor: '',
+    contextText,
+    coreLocalStartOffset: coreStart,
+    coreLocalEndOffset: contextText.length
+  })
+
+  assert.deepEqual(result.observations[0].evidence, {
+    quote,
+    startOffset: coreStart,
+    endOffset: coreStart + quote.length
+  })
 })
 
 test('internal generation service repairs wrong offsets for one exact quote match', async () => {
@@ -282,7 +331,7 @@ test('internal generation service rejects a relationship without character obser
     contextText,
     coreLocalStartOffset: 0,
     coreLocalEndOffset: contextText.length
-  }), (error) => error.code === 'GENERATION_RESULT_INVALID')
+  }), (error) => error.code === 'SCAN_RELATION_PARTICIPANT_MISSING')
 })
 
 test('internal generation service retries a scan when evidence filtering drops most provider observations', async () => {
@@ -320,10 +369,10 @@ test('internal generation service retries a scan when evidence filtering drops m
   })
 
   await assert.rejects(() => service.scanBookChunk({
-    idempotencyKey: 'run-lossy:scan:chunk-lossy:book-scan-v6',
+    idempotencyKey: 'run-lossy:scan:chunk-lossy:book-scan-v7',
     runId: 'run-lossy',
     chunkId: 'chunk-lossy',
-    extractorVersion: 'book-scan-v6',
+    extractorVersion: 'book-scan-v7',
     bookTitle: 'Книга',
     bookAuthor: 'Автор',
     contextText,
@@ -443,6 +492,42 @@ test('internal generation service rejects offset repair for an ambiguous exact q
     coreLocalEndOffset: contextText.length
   }), (error) => error.code === 'EVIDENCE_MISMATCH')
   assert.equal(storage.objects.size, 0)
+})
+
+test('internal generation service treats overlapping quote occurrences as ambiguous', async () => {
+  const storage = memoryStorage()
+  const contextText = 'ааа'
+  const quote = 'аа'
+  const service = createInternalGenerationService({
+    storage,
+    logger: { info() {}, warn() {}, error() {} },
+    async completeChat() {
+      return JSON.stringify({ observations: [{
+        type: 'character_dialogue',
+        entityKind: 'character',
+        entityCandidate: 'Анна',
+        relatedEntityCandidates: [],
+        fact: 'Анна произносит звук',
+        evidence: { quote },
+        confidence: 0.8
+      }] })
+    },
+    async generatePortrait() { throw new Error('unused') },
+    async synthesizeSpeech() { throw new Error('unused') },
+    async generateIdleAnimation() { throw new Error('unused') }
+  })
+
+  await assert.rejects(() => service.scanBookChunk({
+    idempotencyKey: 'run-overlap-quote:scan:chunk-overlap-quote:book-scan-v7',
+    runId: 'run-overlap-quote',
+    chunkId: 'chunk-overlap-quote',
+    extractorVersion: 'book-scan-v7',
+    bookTitle: 'Книга',
+    bookAuthor: '',
+    contextText,
+    coreLocalStartOffset: 0,
+    coreLocalEndOffset: contextText.length
+  }), (error) => error.code === 'EVIDENCE_MISMATCH')
 })
 
 test('internal generation service does not cache an ungrounded scan result', async () => {
