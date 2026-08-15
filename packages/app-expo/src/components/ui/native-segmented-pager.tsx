@@ -1,6 +1,14 @@
 import { NativeThemePicker } from "@/components/profile/NativeThemePicker";
 import type { ReactElement } from "react";
-import { Children, useCallback, useLayoutEffect, useRef, useState } from "react";
+import {
+  Children,
+  forwardRef,
+  useCallback,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { type LayoutChangeEvent, Platform, StyleSheet, View, type ViewStyle } from "react-native";
 import PagerView from "react-native-pager-view";
 
@@ -19,20 +27,30 @@ interface NativeSegmentedPagerProps {
   onSwipeStateChange?: (swiping: boolean) => void;
 }
 
-export function NativeSegmentedPager({
-  values,
-  selectedIndex,
-  onSelect,
-  colorScheme,
-  accessibilityLabel,
-  children,
-  scrollableSegments = false,
-  controlsStyle,
-  minimumPageHeight = 1,
-  pageGap = 0,
-  stablePageHeight = false,
-  onSwipeStateChange,
-}: NativeSegmentedPagerProps) {
+export interface NativeSegmentedPagerHandle {
+  selectPage: (index: number, animated?: boolean) => void;
+}
+
+export const NativeSegmentedPager = forwardRef<
+  NativeSegmentedPagerHandle,
+  NativeSegmentedPagerProps
+>(function NativeSegmentedPager(
+  {
+    values,
+    selectedIndex,
+    onSelect,
+    colorScheme,
+    accessibilityLabel,
+    children,
+    scrollableSegments = false,
+    controlsStyle,
+    minimumPageHeight = 1,
+    pageGap = 0,
+    stablePageHeight = false,
+    onSwipeStateChange,
+  },
+  ref,
+) {
   const pagerRef = useRef<PagerView>(null);
   const activePageRef = useRef(-1);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -57,13 +75,19 @@ export function NativeSegmentedPager({
     pagerRef.current?.setPageWithoutAnimation(safeSelectedIndex);
   }, [safeSelectedIndex]);
 
-  const selectPage = (index: number) => {
-    const nextIndex = Math.max(0, Math.min(index, Math.max(0, pageCount - 1)));
-    if (nextIndex === activePageRef.current) return;
-    activePageRef.current = nextIndex;
-    onSelect(nextIndex);
-    pagerRef.current?.setPage(nextIndex);
-  };
+  const selectPage = useCallback(
+    (index: number, animated = true) => {
+      const nextIndex = Math.max(0, Math.min(index, Math.max(0, pageCount - 1)));
+      if (nextIndex === activePageRef.current) return;
+      activePageRef.current = nextIndex;
+      onSelect(nextIndex);
+      if (animated) pagerRef.current?.setPage(nextIndex);
+      else pagerRef.current?.setPageWithoutAnimation(nextIndex);
+    },
+    [onSelect, pageCount],
+  );
+
+  useImperativeHandle(ref, () => ({ selectPage }), [selectPage]);
 
   const rememberPageHeight = (index: number, event: LayoutChangeEvent) => {
     const nextHeight = Math.ceil(event.nativeEvent.layout.height);
@@ -119,7 +143,7 @@ export function NativeSegmentedPager({
       </PagerView>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: { width: "100%" },

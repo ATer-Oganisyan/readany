@@ -20,7 +20,10 @@ import { ScrollViewMarker } from "@/components/ui/ScrollViewMarker";
 import { SyncButton } from "@/components/ui/SyncButton";
 import { Text, TextInput } from "@/components/ui/Typography";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
-import { NativeSegmentedPager } from "@/components/ui/native-segmented-pager";
+import {
+  NativeSegmentedPager,
+  type NativeSegmentedPagerHandle,
+} from "@/components/ui/native-segmented-pager";
 import { SwipePressGuardProvider, useSwipePressGuard } from "@/components/ui/swipe-press-guard";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import {
@@ -175,6 +178,7 @@ function LibraryScreenContent() {
   const swipePressGuard = useSwipePressGuard();
 
   const extractorRef = useRef<ExtractorRef>(null);
+  const libraryPagerRef = useRef<NativeSegmentedPagerHandle>(null);
 
   const {
     books,
@@ -217,6 +221,10 @@ function LibraryScreenContent() {
       .catch((error) => {
         console.warn("[Library] Failed to save selected section:", error);
       });
+  }, []);
+
+  const revealImportedBooks = useCallback((importedCount: number) => {
+    if (importedCount > 0) libraryPagerRef.current?.selectPage(1);
   }, []);
 
   useEffect(() => {
@@ -466,6 +474,7 @@ function LibraryScreenContent() {
       if (result.canceled || !result.assets || result.assets.length === 0) return;
       const files = result.assets.map((a) => ({ uri: a.uri, name: a.name }));
       const summary = await importBooks(files);
+      revealImportedBooks(summary.imported.length);
       if (summary.imported.length === 0 || summary.failures.length > 0) {
         Alert.alert(
           t("library.importSourceUrlErrorTitle", "Не получилось добавить книгу"),
@@ -485,7 +494,7 @@ function LibraryScreenContent() {
       localImportInFlightRef.current = false;
       setIsPickingImport(false);
     }
-  }, [importBooks, t]);
+  }, [importBooks, revealImportedBooks, t]);
 
   const handleUrlImport = useCallback(
     async (rawValue: string) => {
@@ -512,6 +521,7 @@ function LibraryScreenContent() {
           const ficbookSummary = await importBooks([
             { uri: temporaryFile.uri, name: fanfic.fileName },
           ]);
+          revealImportedBooks(ficbookSummary.imported.length);
           if (ficbookSummary.imported.length === 0 || ficbookSummary.failures.length > 0) {
             Alert.alert(
               t("library.importSourceUrlErrorTitle", "Не получилось добавить книгу"),
@@ -532,6 +542,7 @@ function LibraryScreenContent() {
           idempotent: true,
         });
         const summary = await importBooks([{ uri: downloadedFile.uri, name: fileName }]);
+        revealImportedBooks(summary.imported.length);
 
         if (summary.imported.length === 0 || summary.failures.length > 0) {
           Alert.alert(
@@ -576,7 +587,7 @@ function LibraryScreenContent() {
         }
       }
     },
-    [importBooks, t],
+    [importBooks, revealImportedBooks, t],
   );
 
   const handleOpenUrlImport = useCallback(async () => {
@@ -1103,6 +1114,7 @@ function LibraryScreenContent() {
 
   const libraryPager = (
     <NativeSegmentedPager
+      ref={libraryPagerRef}
       values={[t("library.catalog", "Каталог"), t("library.myBooks", "Мои книги")]}
       selectedIndex={librarySection === "catalog" ? 0 : 1}
       onSelect={(index) => selectLibrarySection(index === 0 ? "catalog" : "my-books")}
