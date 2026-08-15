@@ -16,7 +16,7 @@ module.exports = {
       icon: "./assets/Narra.icon",
       supportsTablet: true,
       bundleIdentifier: variant.bundleIdentifier,
-      buildNumber: "35",
+      buildNumber: "36",
       infoPlist: {
         UIViewControllerBasedStatusBarAppearance: true,
         UIBackgroundModes: ["audio"],
