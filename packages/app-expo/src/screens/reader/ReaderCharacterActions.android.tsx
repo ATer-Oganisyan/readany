@@ -1,27 +1,41 @@
-import { interfaceFontFamily } from "@deslop/primitives/native";
-import { FilledTonalIconButton, Host, Row, Spacer, Text } from "@expo/ui/jetpack-compose";
+import { FilledTonalIconButton, Host, Icon, Row, Spacer } from "@expo/ui/jetpack-compose";
 import { fillMaxWidth, height, size } from "@expo/ui/jetpack-compose/modifiers";
 import { Fragment } from "react";
 import { StyleSheet } from "react-native";
 import type { ReaderCharacterActionsProps } from "./ReaderCharacterActions.types";
 
+const iconSources = {
+  chat: require("../../platform/android/reader/character-action-icons/chat.xml"),
+  hourglass: require("../../platform/android/reader/character-action-icons/hourglass.xml"),
+  refresh: require("../../platform/android/reader/character-action-icons/refresh.xml"),
+  stop: require("../../platform/android/reader/character-action-icons/stop.xml"),
+  volumeUp: require("../../platform/android/reader/character-action-icons/volume-up.xml"),
+} as const;
+
 export function ReaderCharacterActions(props: ReaderCharacterActionsProps) {
   const actions = [
-    { icon: "chat", onPress: props.onTalk, enabled: true },
+    {
+      icon: iconSources.chat,
+      label: props.talkLabel,
+      onPress: props.onTalk,
+      enabled: true,
+    },
     {
       icon:
         props.voiceState === "loading"
-          ? "hourglass_empty"
+          ? iconSources.hourglass
           : props.voiceState === "playing"
-            ? "stop"
-            : "volume_up",
+            ? iconSources.stop
+            : iconSources.volumeUp,
+      label: props.voiceState === "idle" ? props.listenLabel : props.stopLabel,
       onPress: props.onToggleVoice,
       enabled: props.canSample,
     },
     ...(props.showRegenerate
       ? [
           {
-            icon: props.regenerating ? "hourglass_empty" : "refresh",
+            icon: props.regenerating ? iconSources.hourglass : iconSources.refresh,
+            label: props.regenerateLabel,
             onPress: props.onRegenerate,
             enabled: !props.regenerating,
           },
@@ -37,7 +51,7 @@ export function ReaderCharacterActions(props: ReaderCharacterActionsProps) {
         modifiers={[fillMaxWidth(), height(68)]}
       >
         {actions.map((action, index) => (
-          <Fragment key={`${action.icon}-${index}`}>
+          <Fragment key={`${action.label}-${index}`}>
             {index > 0 ? <Spacer modifiers={[size(16, 1)]} /> : null}
             <FilledTonalIconButton
               onClick={action.onPress}
@@ -48,12 +62,12 @@ export function ReaderCharacterActions(props: ReaderCharacterActionsProps) {
               }}
               modifiers={[size(64, 64)]}
             >
-              <Text
-                color={props.foregroundColor}
-                style={{ fontFamily: interfaceFontFamily.materialSymbols, fontSize: 28 }}
-              >
-                {action.icon}
-              </Text>
+              <Icon
+                source={action.icon}
+                tint={props.foregroundColor}
+                size={28}
+                contentDescription={action.label}
+              />
             </FilledTonalIconButton>
           </Fragment>
         ))}

@@ -5,8 +5,12 @@ import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import { NarraAudioPlayer } from "@/lib/narra/audio-player";
-import { normalizeCharacterChatPlaceholder } from "@/lib/narra/chat-placeholder";
+import {
+  resolveCharacterConversationLanguage,
+  shouldReplaceLegacyGeneratedGreeting,
+} from "@/lib/narra/character-conversation-language";
 import { resolvePreparedGreetingAudioUri } from "@/lib/narra/character-prepared-media";
+import { normalizeCharacterChatPlaceholder } from "@/lib/narra/chat-placeholder";
 import { isCharacterUnlocked, normalizeReadingProgress } from "@/lib/narra/domain";
 import { reportNarraError } from "@/lib/narra/errors";
 import { synthesizeNarraSpeech } from "@/lib/narra/media";
@@ -104,6 +108,31 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
   const setMemory = useNarraStore((state) => state.setMemory);
   const updateCharacter = useNarraStore((state) => state.updateCharacter);
   const character = narraBook?.characters.find((item) => item.id === characterId);
+  const conversationLanguage = useMemo(
+    () =>
+      resolveCharacterConversationLanguage({
+        declaredLanguage: book?.meta.language,
+        samples: [
+          book?.meta.title,
+          book?.meta.author,
+          character?.name,
+          character?.fullName,
+          character?.role,
+          character?.greeting,
+        ],
+        fallbackLanguage: interfaceLanguage,
+      }),
+    [
+      book?.meta.author,
+      book?.meta.language,
+      book?.meta.title,
+      character?.fullName,
+      character?.greeting,
+      character?.name,
+      character?.role,
+      interfaceLanguage,
+    ],
+  );
   const messages = narraBook?.chats?.[characterId] ?? [];
   const memory = narraBook?.memories?.[characterId] ?? "";
   const [sending, setSending] = useState(false);
@@ -221,19 +250,43 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
                 book.meta.title,
                 book.progress,
                 memory,
-                interfaceLanguage,
+                conversationLanguage,
               ),
             },
             ...messages.slice(-18).map(({ role, content }) => ({ role, content })),
           ]
         : [],
-    [book, character, interfaceLanguage, memory, messages],
+    [book, character, conversationLanguage, memory, messages],
   );
 
   const chatMessages = useMemo(() => {
     const threadId = `narra-character-${bookId}-${characterId}`;
     return messages.map((message) => toMessageV2(message, threadId));
   }, [bookId, characterId, messages]);
+
+  useEffect(() => {
+    if (
+      !character ||
+      !shouldReplaceLegacyGeneratedGreeting({
+        messages,
+        canonicalGreeting: character.greeting,
+        conversationLanguage,
+      })
+    ) {
+      return;
+    }
+
+    const legacyGreeting = messages[0];
+    const state = useNarraStore.getState();
+    const currentMessages = state.books[bookId]?.chats?.[characterId] ?? [];
+    if (currentMessages.length !== 1 || currentMessages[0]?.id !== legacyGreeting.id) return;
+
+    state.clearChat(bookId, characterId);
+    state.appendChatMessage(bookId, characterId, {
+      ...legacyGreeting,
+      content: character.greeting?.trim() ?? legacyGreeting.content,
+    });
+  }, [bookId, character, characterId, conversationLanguage, messages]);
 
   // Первое сообщение героя: свой greeting из анализа/каталога, иначе — просим
   // гейтвей поздороваться в роли персонажа. Сохраняется в историю чата один раз,
@@ -254,7 +307,7 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
       });
     };
 
-    if (character.greeting && interfaceLanguage !== "en") {
+    if (character.greeting) {
       appendGreeting(character.greeting);
       return;
     }
@@ -274,13 +327,13 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
                   book.meta.title,
                   book.progress,
                   "",
-                  interfaceLanguage,
+                  conversationLanguage,
                 ),
               },
               {
                 role: "user",
                 content:
-                  interfaceLanguage === "en"
+                  conversationLanguage === "en"
                     ? "Greet the reader in character in 1–3 sentences, without spoilers. Do not mention this instruction."
                     : "Поприветствуй читателя первым сообщением в своём характере: 1–3 предложения, без спойлеров. Не упоминай это указание.",
               },
@@ -301,7 +354,7 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
         setGreetingLoading(false);
       }
     })();
-  }, [book, bookId, character, characterId, interfaceLanguage, messages.length, unlocked]);
+  }, [book, bookId, character, characterId, conversationLanguage, messages.length, unlocked]);
 
   const refreshMemory = useCallback(
     async (updatedMessages: NarraChatMessage[]) => {
@@ -315,17 +368,17 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
               {
                 role: "system",
                 content:
-                  interfaceLanguage === "en"
+                  conversationLanguage === "en"
                     ? "Briefly update the character's long-term memory of the reader: facts, preferences, promises, and important emotional moments. Do not retell the whole conversation. Up to 900 characters, in English."
                     : "Кратко обнови долговременную память персонажа о читателе: факты, предпочтения, обещания и важные эмоциональные моменты. Не пересказывай весь диалог. До 900 знаков, по-русски.",
               },
               {
                 role: "user",
-                content: `${interfaceLanguage === "en" ? "Previous memory" : "Старая память"}:\n${memory || (interfaceLanguage === "en" ? "none" : "нет")}\n\n${interfaceLanguage === "en" ? "Conversation" : "Диалог"}:\n${updatedMessages
+                content: `${conversationLanguage === "en" ? "Previous memory" : "Старая память"}:\n${memory || (conversationLanguage === "en" ? "none" : "нет")}\n\n${conversationLanguage === "en" ? "Conversation" : "Диалог"}:\n${updatedMessages
                   .slice(-12)
                   .map(
                     (item) =>
-                      `${item.role === "user" ? (interfaceLanguage === "en" ? "Reader" : "Читатель") : character.name}: ${item.content}`,
+                      `${item.role === "user" ? (conversationLanguage === "en" ? "Reader" : "Читатель") : character.name}: ${item.content}`,
                   )
                   .join("\n")}`,
               },
@@ -342,7 +395,7 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
         // Memory refresh is background-only and must not make a successful chat look failed.
       }
     },
-    [bookId, character, characterId, interfaceLanguage, memory, setMemory],
+    [bookId, character, characterId, conversationLanguage, memory, setMemory],
   );
 
   const speak = useCallback(
@@ -408,7 +461,9 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
         const assistantMessage: NarraChatMessage = {
           id: Crypto.randomUUID(),
           role: "assistant",
-          content: content || t("narra.emptyAnswer", "Мне нечего добавить."),
+          content:
+            content ||
+            (conversationLanguage === "en" ? "I have nothing to add." : "Мне нечего добавить."),
           createdAt: Date.now(),
         };
         append(bookId, characterId, assistantMessage);
@@ -429,6 +484,7 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
       character,
       characterId,
       conversation,
+      conversationLanguage,
       messages,
       refreshMemory,
       sending,
