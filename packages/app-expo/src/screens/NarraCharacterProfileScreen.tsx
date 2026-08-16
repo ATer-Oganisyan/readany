@@ -2,13 +2,14 @@ import { Text } from "@/components/ui/Typography";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
 import { hasCharacterPortrait } from "@/lib/narra/character-portrait";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
+import { getCharacterProfileSheetRuntimeOptions } from "@/platform/navigation/character-profile-sheet";
 import { ReaderCharacterCard } from "@/screens/reader/ReaderCharacterCard";
 import { useNarraStore } from "@/stores";
 import { type ThemeColors, fontSize, spacing, useTheme } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useLayoutEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { StyleSheet, View } from "react-native";
+import { Platform, StyleSheet, View } from "react-native";
 
 type Props = NativeStackScreenProps<RootStackParamList, "NarraCharacterProfile">;
 
@@ -23,15 +24,13 @@ export function NarraCharacterProfileScreen({ route, navigation }: Props) {
   const portraitReady = Boolean(character && hasCharacterPortrait(character));
 
   useLayoutEffect(() => {
-    navigation.setOptions({
-      contentStyle: {
-        backgroundColor: portraitReady ? colors.background : "#2C2219",
-      },
-      sheetAllowedDetents: portraitReady ? [0.78, 1] : "fitToContents",
-      sheetInitialDetentIndex: 0,
-      sheetExpandsWhenScrolledToEdge: portraitReady,
-      sheetResizeAnimationEnabled: true,
-    });
+    navigation.setOptions(
+      getCharacterProfileSheetRuntimeOptions(
+        Platform.OS,
+        portraitReady,
+        portraitReady ? colors.background : "#2C2219",
+      ),
+    );
   }, [colors.background, navigation, portraitReady]);
   const openChat = () => {
     if (openedFromChat) {
