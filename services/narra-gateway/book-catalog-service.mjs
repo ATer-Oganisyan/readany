@@ -137,16 +137,53 @@ export function createBookCatalogService({
     }
     const publication = await analysisRepository.getLatestShadowAnalysisPublication(bookEditionId)
     if (!publication?.data?.markup) {
+      const preview = typeof analysisRepository.getLatestAnalysisPreview === 'function'
+        ? await analysisRepository.getLatestAnalysisPreview(bookEditionId)
+        : null
+      const textLength = Number(preview?.run?.textLength)
+      const readerTextOffset = Number.isSafeInteger(textLength) && textLength > 0
+        ? analysisReaderTextOffset(snapshot, textLength)
+        : Math.max(0, Number(snapshot.readerTextOffset) || 0)
       return {
         source,
         book: bookBinding(snapshot.edition),
         availability: 'processing',
-        readerTextOffset: snapshot.readerTextOffset,
+        runId: preview?.run?.id,
+        readerTextOffset,
         readingFraction: snapshot.readingFraction,
         readerSectionIndex: snapshot.readerSectionIndex,
         readerSectionFraction: snapshot.readerSectionFraction,
         markup: null,
-        characters: []
+        analysis: preview
+          ? {
+              stage: preview.run.stage,
+              status: preview.run.status,
+              textLength: preview.run.textLength,
+              completedScanChunks: preview.scan.completedChunks,
+              totalScanChunks: preview.scan.totalChunks
+            }
+          : null,
+        characters: (preview?.characters ?? [])
+          .filter((character) => character.firstAppearanceTextOffset <= readerTextOffset)
+          .map((character) => ({
+            characterKey: character.characterKey,
+            name: character.name,
+            fullName: character.fullName,
+            firstAppearanceTextOffset: character.firstAppearanceTextOffset,
+            provisional: true,
+            state: 'preparing',
+            profile: {
+              role: 'Профиль формируется',
+              traits: [],
+              speechStyle: '',
+              speechExamples: [],
+              appearancePrompt: '',
+              greeting: '',
+              analysisSource: source,
+              provisional: true
+            },
+            bundle: null
+          }))
       }
     }
     const markup = normalizeBookMarkupV3(publication.data.markup)
@@ -186,6 +223,7 @@ export function createBookCatalogService({
             name: character.name,
             fullName: character.fullName,
             firstAppearanceTextOffset: character.firstAppearanceTextOffset,
+            provisional: false,
             state,
             profile: analysisCharacterProfile(character, source),
             bundle: media?.bundle?.assets?.length

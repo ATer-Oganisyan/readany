@@ -293,6 +293,13 @@ function manifestJson(manifest) {
     reading_fraction: manifest.readingFraction,
     reader_section_index: manifest.readerSectionIndex,
     reader_section_fraction: manifest.readerSectionFraction,
+    analysis: manifest.analysis && {
+      stage: manifest.analysis.stage,
+      status: manifest.analysis.status,
+      text_length: manifest.analysis.textLength,
+      completed_scan_chunks: manifest.analysis.completedScanChunks,
+      total_scan_chunks: manifest.analysis.totalScanChunks
+    },
     markup: manifest.markup && {
       schema_version: manifest.markup.schemaVersion,
       analysis_version: manifest.markup.analysisVersion,
@@ -305,6 +312,7 @@ function manifestJson(manifest) {
       name: character.name,
       full_name: character.fullName,
       first_appearance_text_offset: character.firstAppearanceTextOffset,
+      provisional: character.provisional === true,
       state: character.state,
       profile: character.profile,
       bundle: character.bundle && {
@@ -344,6 +352,7 @@ function shadowManifestJson(manifest) {
       name: character.name,
       full_name: character.fullName,
       first_appearance_text_offset: character.firstAppearanceTextOffset,
+      provisional: false,
       state: character.state,
       profile: character.profile,
       bundle: null

@@ -67,7 +67,8 @@ All routes below require the existing installation bearer token:
 - `POST /v2/books/:bookEditionId/local-markup` accepts only derived character
   profiles and appearance fractions produced by the client;
 - `GET /v2/books/:bookEditionId/manifest` returns the published markup and only
-  characters already visible to that reader;
+  characters already visible to that reader. While v3 is processing it may
+  return grounded provisional characters from completed scan chunks;
 - `POST /v2/books/:bookEditionId/progress` advances the reader's text watermark
   and requests all bundles whose markup-defined warmup offsets were crossed.
 
@@ -80,6 +81,14 @@ Warmup and visibility are intentionally independent. A bundle may be globally
 ready before first appearance, but the manifest omits that character completely.
 Once visible, the manifest returns either `preparing` with no assets or `ready`
 with the complete finite bundle. It never returns partial media.
+
+A processing v3 manifest remains HTTP `202` and keeps `markup: null`, but includes
+the active analysis stage, completed/total scan chunk counts and any reader-visible
+provisional characters. A provisional character has a run-scoped `provisional:*`
+key, `provisional: true`, no bundle and a placeholder profile. Only candidates
+that the resolver can already confirm from grounded observations are exposed.
+They are presentation hints, not a published revision: identity merging may add,
+replace or remove them until validation and atomic `book-markup-v3` publication.
 
 Private access is scoped to the installation subject until account identity is
 introduced. A private book owned by another subject resolves as not found.
@@ -114,6 +123,12 @@ downloads portrait, greeting audio and idle animation in native background sessi
 verified by size and SHA-256 and the UI publishes the three local paths only as
 one complete bundle. A failed or incomplete download remains `preparing` and
 cannot expose partial media.
+
+Processing-manifest characters are shown only in the current book's character
+list with a profile-in-progress state. The client does not persist them, include
+them in reader name markup or the global chat list, open character chats, or
+request media. The next processing poll replaces the in-memory provisional list;
+the final ready manifest replaces it with stable published character keys.
 
 Generated private markup, bundles and S3 objects have a sliding retention period
 (`PRIVATE_MATERIAL_TTL_DAYS`, seven days by default). Reader access extends it;

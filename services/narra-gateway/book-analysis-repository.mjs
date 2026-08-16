@@ -10,6 +10,7 @@ import {
   normalizeBookAnalysisResolvedEntity
 } from './book-analysis-contracts.mjs'
 import { assessBookAnalysisCoverage } from './book-analysis-quality.mjs'
+import { resolveBookAnalysisEntities } from './book-analysis-resolver.mjs'
 import {
   CHARACTER_MEDIA_JOB_TYPES,
   REQUIRED_CHARACTER_MEDIA,
@@ -20,6 +21,7 @@ import { isSupportedVoice } from './voices.mjs'
 
 const SHA256 = /^[0-9a-f]{64}$/
 const STAGES = new Set(['prepare', 'scan', 'resolve', 'synthesize', 'validate', 'publish'])
+const MAX_PROVISIONAL_CHARACTERS = 64
 
 function repositoryError(code, message) {
   return Object.assign(new Error(message), { code })
@@ -198,6 +200,10 @@ function contentHash(value) {
   return createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex')
 }
 
+function sha256(value) {
+  return createHash('sha256').update(value).digest('hex')
+}
+
 function artifactRow(row) {
   if (!row) return null
   return {
@@ -216,6 +222,23 @@ function artifactRow(row) {
 
 function hashObservationSet(observations) {
   return contentHash(observations)
+}
+
+export function buildProvisionalAnalysisCharacters(runId, observations) {
+  if (!Array.isArray(observations) || observations.length === 0) return []
+  return resolveBookAnalysisEntities({ observations })
+    .filter((entity) =>
+      entity.entityKind === 'character' && entity.resolutionStatus === 'confirmed'
+    )
+    .slice(0, MAX_PROVISIONAL_CHARACTERS)
+    .map((entity) => ({
+      characterKey: `provisional:${sha256(`${runId}:${entity.entityKey}`).slice(0, 48)}`,
+      name: entity.canonicalName,
+      fullName: entity.canonicalName,
+      firstAppearanceTextOffset: Number(entity.data.firstEvidenceStartOffset),
+      confidence: entity.confidence,
+      observationCount: Number(entity.data.observationCount)
+    }))
 }
 
 function snapshotRow(row) {
@@ -811,6 +834,36 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
         [validateIdentifier(bookEditionId, 'bookEditionId')]
       )
       return publicationRow(result.rows[0])
+    },
+
+    async getLatestAnalysisPreview(bookEditionId) {
+      const result = await pool.query(
+        `SELECT * FROM book_analysis_runs
+         WHERE book_edition_id = $1
+         ORDER BY run_sequence DESC, created_at DESC, id DESC
+         LIMIT 1`,
+        [validateIdentifier(bookEditionId, 'bookEditionId')]
+      )
+      const run = runRow(result.rows[0])
+      if (!run) return null
+      const progress = await pool.query(
+        `SELECT count(*)::integer AS total,
+                count(*) FILTER (WHERE status = 'ready')::integer AS ready
+         FROM book_analysis_jobs
+         WHERE run_id = $1 AND stage = 'scan'`,
+        [run.id]
+      )
+      const observations = run.status === 'failed' || run.status === 'cancelled'
+        ? []
+        : await loadOrderedObservations(pool, run.id)
+      return {
+        run,
+        scan: {
+          completedChunks: Number(progress.rows[0]?.ready ?? 0),
+          totalChunks: Number(progress.rows[0]?.total ?? 0)
+        },
+        characters: buildProvisionalAnalysisCharacters(run.id, observations)
+      }
     },
 
     async ensureLatestMediaProjection(bookEditionId, { retryFailedBundles = false } = {}) {

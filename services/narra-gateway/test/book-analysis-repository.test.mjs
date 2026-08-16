@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  buildProvisionalAnalysisCharacters,
   bookAnalysisRunIdempotencyKey,
   createPostgresBookAnalysisRepository
 } from '../book-analysis-repository.mjs'
@@ -31,6 +32,73 @@ test('analysis run key binds source and both pipeline versions', () => {
     pipelineVersion: 'book-analysis-v8',
     promptVersion: 'scan-v1'
   }), `book-analysis:book-1:${'a'.repeat(64)}:book-analysis-v8:scan-v1`)
+})
+
+test('provisional analysis keeps only grounded confirmed people behind temporary keys', () => {
+  const observations = [10, 30].map((offset, index) => ({
+    id: `observation-${index}`,
+    observationKey: `obs:jane-${index}`,
+    type: 'character_mention',
+    entityKind: 'character',
+    entityCandidate: 'Jane Eyre',
+    relatedEntityCandidates: [],
+    fact: 'Jane Eyre is present',
+    evidence: {
+      quote: 'Jane Eyre', startOffset: offset, endOffset: offset + 9, chapterKey: 'chapter-1'
+    },
+    confidence: 0.9,
+    data: {}
+  }))
+
+  const preview = buildProvisionalAnalysisCharacters('run-1', observations)
+
+  assert.deepEqual(preview, [{
+    characterKey: preview[0].characterKey,
+    name: 'Jane Eyre',
+    fullName: 'Jane Eyre',
+    firstAppearanceTextOffset: 10,
+    confidence: 0.9,
+    observationCount: 2
+  }])
+  assert.match(preview[0].characterKey, /^provisional:[a-f0-9]{48}$/)
+})
+
+test('latest analysis preview reports scan progress and resolved partial observations', async () => {
+  const observationRows = [10, 30].map((offset, index) => ({
+    id: `11111111-1111-4111-8111-11111111111${index}`,
+    chunk_id: `21111111-1111-4111-8111-11111111111${index}`,
+    source_job_id: `31111111-1111-4111-8111-11111111111${index}`,
+    extractor_version: 'book-scan-v10',
+    observation_key: `obs:jane-${index}`,
+    observation_type: 'character_mention',
+    entity_kind: 'character',
+    entity_candidate: 'Jane Eyre',
+    related_entity_candidates: [],
+    fact: 'Jane Eyre is present',
+    evidence_quote: 'Jane Eyre',
+    evidence_start_offset: String(offset),
+    evidence_end_offset: String(offset + 9),
+    confidence: 0.9,
+    data: {},
+    chapter_key: 'chapter-1'
+  }))
+  const pool = scriptedPool([
+    () => ({ rows: [{
+      id: 'run-1', book_edition_id: 'book-1', pipeline_version: 'book-analysis-v18',
+      prompt_version: 'book-scan-v10', input_hash: 'a'.repeat(64), run_sequence: 1,
+      stage: 'scan', status: 'running', text_length: '1000'
+    }] }),
+    () => ({ rows: [{ total: 25, ready: 4 }] }),
+    () => ({ rows: observationRows })
+  ])
+
+  const preview = await createPostgresBookAnalysisRepository(pool)
+    .getLatestAnalysisPreview('book-1')
+
+  assert.equal(preview.run.stage, 'scan')
+  assert.deepEqual(preview.scan, { completedChunks: 4, totalChunks: 25 })
+  assert.equal(preview.characters[0].name, 'Jane Eyre')
+  assert.ok(pool.queries.some(({ sql }) => /stage = 'scan'/.test(sql)))
 })
 
 test('restart creates the next isolated run and leaves the previous publication untouched', async () => {

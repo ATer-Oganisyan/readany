@@ -213,6 +213,7 @@ test('catalog manifest exposes validated v3 as the canonical markup', async () =
     name: 'Visible',
     fullName: 'Visible Hero',
     firstAppearanceTextOffset: 900,
+    provisional: false,
     state: 'ready',
     profile: {
       role: 'Главный герой',
@@ -274,6 +275,69 @@ test('catalog manifest does not fall back to legacy v2 while v3 is processing', 
   assert.equal(manifest.availability, 'processing')
   assert.equal(manifest.markup, null)
   assert.deepEqual(manifest.characters, [])
+})
+
+test('processing v3 manifest exposes only reader-visible provisional characters', async () => {
+  const service = createBookCatalogService({
+    repository: repository({
+      async getReaderBookManifest() {
+        return {
+          edition: { ...EDITION, sourceStorage: 'temporary' },
+          readerTextOffset: 500,
+          readingFraction: 0.25,
+          markup: null,
+          characters: []
+        }
+      }
+    }),
+    analysisRepository: {
+      async getLatestShadowAnalysisPublication() { return null },
+      async getLatestAnalysisPreview() {
+        return {
+          run: {
+            id: 'run-v3', stage: 'scan', status: 'running', textLength: 2_000
+          },
+          scan: { completedChunks: 12, totalChunks: 50 },
+          characters: [
+            {
+              characterKey: 'provisional:visible',
+              name: 'Джейн', fullName: 'Джейн',
+              firstAppearanceTextOffset: 100
+            },
+            {
+              characterKey: 'provisional:future',
+              name: 'Рочестер', fullName: 'Рочестер',
+              firstAppearanceTextOffset: 900
+            }
+          ]
+        }
+      }
+    }
+  })
+
+  const manifest = await service.manifest('reader-1', EDITION.id)
+
+  assert.equal(manifest.availability, 'processing')
+  assert.equal(manifest.runId, 'run-v3')
+  assert.equal(manifest.readerTextOffset, 500)
+  assert.deepEqual(manifest.analysis, {
+    stage: 'scan', status: 'running', textLength: 2_000,
+    completedScanChunks: 12, totalScanChunks: 50
+  })
+  assert.deepEqual(manifest.characters, [{
+    characterKey: 'provisional:visible',
+    name: 'Джейн',
+    fullName: 'Джейн',
+    firstAppearanceTextOffset: 100,
+    provisional: true,
+    state: 'preparing',
+    profile: {
+      role: 'Профиль формируется',
+      traits: [], speechStyle: '', speechExamples: [], appearancePrompt: '', greeting: '',
+      analysisSource: 'v3', provisional: true
+    },
+    bundle: null
+  }])
 })
 
 test('private manifest uses canonical v3 and never falls back to client-derived v2', async () => {
