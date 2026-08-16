@@ -51,9 +51,18 @@ export interface BackendManifestCharacter {
   name: string;
   fullName: string;
   firstAppearanceTextOffset: number;
+  provisional?: boolean;
   state: "preparing" | "ready";
   profile: Record<string, unknown>;
   bundle: { version: string; assets: BackendManifestAsset[] } | null;
+}
+
+export interface BackendManifestAnalysis {
+  stage: string;
+  status: string;
+  textLength?: number;
+  completedScanChunks: number;
+  totalScanChunks: number;
 }
 
 export interface BackendBookManifest {
@@ -69,6 +78,7 @@ export interface BackendBookManifest {
   runId?: string;
   contentHash?: string;
   publishedAt?: string;
+  analysis?: BackendManifestAnalysis;
   characters: BackendManifestCharacter[];
 }
 
@@ -321,13 +331,19 @@ export async function fetchBackendBookManifest(
   const payload = await gatewayJson(`/v2/books/${encodedBookEditionId}/manifest`);
   const markup =
     payload.markup && typeof payload.markup === "object" ? (payload.markup as JsonRecord) : null;
+  const analysis =
+    payload.analysis && typeof payload.analysis === "object"
+      ? (payload.analysis as JsonRecord)
+      : null;
   const rawCharacters = Array.isArray(payload.characters) ? payload.characters : [];
   return {
     source: payload.source === "v3" || payload.source === "shadow-v3" ? "v3" : "v2",
     availability: payload.availability === "ready" ? "ready" : "processing",
     readerTextOffset: Number(payload.reader_text_offset) || 0,
     readingFraction: typeof payload.reading_fraction === "number" ? payload.reading_fraction : null,
-    textLength: markup ? Number(markup.text_length) || undefined : undefined,
+    textLength:
+      (markup ? Number(markup.text_length) || undefined : undefined) ??
+      (analysis ? Number(analysis.text_length) || undefined : undefined),
     revision: markup ? Number(markup.revision) || undefined : undefined,
     schemaVersion: markup ? Number(markup.schema_version) || undefined : undefined,
     analysisVersion:
@@ -336,6 +352,15 @@ export async function fetchBackendBookManifest(
     runId: typeof payload.run_id === "string" ? payload.run_id : undefined,
     contentHash: typeof payload.content_hash === "string" ? payload.content_hash : undefined,
     publishedAt: typeof payload.published_at === "string" ? payload.published_at : undefined,
+    analysis: analysis
+      ? {
+          stage: String(analysis.stage || ""),
+          status: String(analysis.status || ""),
+          textLength: Number(analysis.text_length) || undefined,
+          completedScanChunks: Number(analysis.completed_scan_chunks) || 0,
+          totalScanChunks: Number(analysis.total_scan_chunks) || 0,
+        }
+      : undefined,
     characters: rawCharacters.flatMap((candidate): BackendManifestCharacter[] => {
       if (!candidate || typeof candidate !== "object") return [];
       const character = candidate as JsonRecord;
@@ -350,6 +375,7 @@ export async function fetchBackendBookManifest(
           name: String(character.name),
           fullName: String(character.full_name),
           firstAppearanceTextOffset: Number(character.first_appearance_text_offset) || 0,
+          provisional: character.provisional === true,
           state: character.state === "ready" ? "ready" : "preparing",
           profile:
             character.profile && typeof character.profile === "object"

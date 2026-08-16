@@ -10,6 +10,8 @@ import { Text } from "@/components/ui/Typography";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
+import type { BackendManifestAnalysis } from "@/lib/narra/backend-book-api";
+import { projectBackendManifestCharacters } from "@/lib/narra/backend-book-cache";
 import {
   openBackendBookSync,
   shouldRefreshBackendManifest,
@@ -59,9 +61,11 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
   const backendRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [analysisStage, setAnalysisStage] = useState("");
   const [backendProcessing, setBackendProcessing] = useState(false);
+  const [backendAnalysis, setBackendAnalysis] = useState<BackendManifestAnalysis | undefined>();
+  const [provisionalCharacters, setProvisionalCharacters] = useState<NarraCharacter[]>([]);
   const [portraitLoading, setPortraitLoading] = useState<string | null>(null);
   const storedCharacters = bookState?.characters ?? [];
-  const characters = storedCharacters;
+  const characters = storedCharacters.length > 0 ? storedCharacters : provisionalCharacters;
   const backendManagedBook = Boolean(book && supportsBackendBookMarkup(book.format));
   const visibleCharacters = useMemo(
     () => characters.filter((character) => isCharacterUnlocked(book?.progress ?? 0, character)),
@@ -89,19 +93,23 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
       if (cancelled) return;
       const processing = manifest?.availability === "processing";
       setBackendProcessing(processing);
+      setBackendAnalysis(processing ? manifest?.analysis : undefined);
+      setProvisionalCharacters(
+        processing && manifest ? projectBackendManifestCharacters(manifest) : [],
+      );
       if (shouldRefreshBackendManifest(manifest)) {
         backendRefreshTimerRef.current = setTimeout(refresh, 5_000);
       }
     };
 
-    if (backendManagedBook && characters.length === 0) setBackendProcessing(true);
+    if (backendManagedBook && storedCharacters.length === 0) setBackendProcessing(true);
     void refresh();
     return () => {
       cancelled = true;
       if (backendRefreshTimerRef.current) clearTimeout(backendRefreshTimerRef.current);
       backendRefreshTimerRef.current = null;
     };
-  }, [backendBookSyncKey, backendManagedBook, characters.length, narraStoreHydrated]);
+  }, [backendBookSyncKey, backendManagedBook, narraStoreHydrated, storedCharacters.length]);
 
   useEffect(() => {
     let cancelled = false;
@@ -245,6 +253,7 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
 
   const openCharacterChat = useCallback(
     (character: NarraCharacter) => {
+      if (character.analysisState === "provisional") return;
       navigation.navigate("NarraCharacterChat", {
         bookId,
         characterId: character.id,
@@ -267,20 +276,29 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
       ),
     },
     ...visibleCharacters.map((character): CharacterChatListItem => {
+      const provisional = character.analysisState === "provisional";
       const portraitBusy = portraitLoading === character.id;
 
       return {
         key: character.id,
-        accessibilityLabel: t("narra.openCharacterChat", "Открыть чат с {{character}}", {
-          character: character.name,
-        }),
+        accessibilityLabel: provisional
+          ? t("narra.characterProfilePreparing", "Профиль {{character}} формируется", {
+              character: character.name,
+            })
+          : t("narra.openCharacterChat", "Открыть чат с {{character}}", {
+              character: character.name,
+            }),
         title: character.fullName || character.name,
-        subtitle: character.role,
+        subtitle: provisional
+          ? t("narra.profilePreparing", "Профиль формируется…")
+          : character.role,
+        disabled: provisional,
         onPress: () => openCharacterChat(character),
         avatar: (
           <CharacterChatAvatar
+            muted={provisional}
             overlay={
-              portraitBusy && hasCharacterPortrait(character) ? (
+              provisional || (portraitBusy && hasCharacterPortrait(character)) ? (
                 <ActivityIndicator size="small" color={colors.primaryForeground} />
               ) : undefined
             }
@@ -310,6 +328,23 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
     >
       <ExtractorWebView ref={extractorRef} />
       <CharacterChatList items={listItems} />
+      {backendProcessing && provisionalCharacters.length > 0 ? (
+        <View style={styles.backendProgress}>
+          <ActivityIndicator size="small" color={colors.primary} />
+          <Text style={styles.backendProgressText}>
+            {backendAnalysis?.totalScanChunks
+              ? t(
+                  "narra.backendMarkupProgress",
+                  "Продолжаю разметку: {{completed}} из {{total}} фрагментов",
+                  {
+                    completed: backendAnalysis.completedScanChunks,
+                    total: backendAnalysis.totalScanChunks,
+                  },
+                )
+              : t("narra.backendMarkupContinuing", "Продолжаю разметку книги…")}
+          </Text>
+        </View>
+      ) : null}
       {characters.length === 0 && backendManagedBook ? (
         <CenteredEmptyState
           title={
@@ -386,5 +421,20 @@ const makeStyles = (colors: ThemeColors) =>
       fontWeight: fontWeight.semibold,
     },
     disabled: { opacity: 0.5 },
+    backendProgress: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.sm,
+      marginTop: spacing.md,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      borderRadius: radius.lg,
+      backgroundColor: colors.primary5,
+    },
+    backendProgressText: {
+      flex: 1,
+      color: colors.mutedForeground,
+      fontSize: fontSize.sm,
+    },
     avatarImage: { width: "100%", height: "100%" },
   });

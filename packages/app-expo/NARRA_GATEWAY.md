@@ -41,11 +41,15 @@ The repository also defines the server-side book contract:
   fractional appearance anchors without extracted prose;
 - `POST /v2/books/:bookEditionId/progress` with `progress_fraction`; the backend converts it to
   a canonical text watermark using the markup's normalized `text_length`;
-- `GET /v2/books/:bookEditionId/manifest` for reader-visible characters and atomic media bundles;
+- `GET /v2/books/:bookEditionId/manifest` for reader-visible characters and atomic media bundles.
+  An HTTP `202` processing manifest may also contain `provisional: true` scan findings and scan
+  progress before the canonical markup is published;
 - reader-authorized media downloads; source download is catalog-only.
 
 The gateway implementation is in `services/narra-gateway`; deployment still requires a configured
 URL, PostgreSQL, Generator and S3-compatible storage. Until a URL is supplied by the build
 environment (or a host calls `setNarraGatewayAdapter`), the UI remains available and shows a
-configuration error when a network-backed action starts. Characters, memories, chat history and
-verified server media file paths are persisted locally by the app store.
+configuration error when a network-backed action starts. Published characters, memories, chat
+history and verified server media file paths are persisted locally by the app store. Provisional
+characters stay local to the open character-list screen, cannot open chat, and are replaced by the
+next processing or final manifest.

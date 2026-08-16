@@ -176,7 +176,10 @@ export function createBackendBookCoordinator({
 
   async function applyManifest(bookId: string, manifest: BackendBookManifest): Promise<void> {
     state.setManifestSource(bookId, manifest.source);
-    if (manifest.availability === "processing" && manifest.characters.length === 0) return;
+    // Provisional scan findings are screen-local. Keeping them out of the
+    // persisted Narra store prevents temporary IDs from reaching chat, reader
+    // name markup, scenes, memories, or the offline manifest cache.
+    if (manifest.availability === "processing") return;
     const key = mediaKey(manifest);
     latestMediaKeys.set(bookId, key);
     const characters = files.project(manifest, state.getCharacters(bookId));

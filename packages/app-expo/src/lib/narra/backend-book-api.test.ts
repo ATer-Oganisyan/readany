@@ -279,6 +279,57 @@ describe("backend book API", () => {
     });
   });
 
+  it("parses grounded provisional characters and scan progress from a processing manifest", async () => {
+    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          source: "v3",
+          availability: "processing",
+          run_id: "run-v3",
+          reader_text_offset: 240,
+          reading_fraction: 0.12,
+          analysis: {
+            stage: "scan",
+            status: "running",
+            text_length: 2_000,
+            completed_scan_chunks: 6,
+            total_scan_chunks: 40,
+          },
+          markup: null,
+          characters: [
+            {
+              character_key: "provisional:jane",
+              name: "Jane",
+              full_name: "Jane",
+              first_appearance_text_offset: 100,
+              provisional: true,
+              state: "preparing",
+              profile: { role: "Профиль формируется", provisional: true },
+              bundle: null,
+            },
+          ],
+        }),
+        { status: 202 },
+      ),
+    );
+
+    const manifest = await fetchBackendBookManifest("book-1");
+
+    expect(manifest).toMatchObject({
+      availability: "processing",
+      runId: "run-v3",
+      textLength: 2_000,
+      analysis: {
+        stage: "scan",
+        completedScanChunks: 6,
+        totalScanChunks: 40,
+      },
+      characters: [
+        expect.objectContaining({ characterKey: "provisional:jane", provisional: true }),
+      ],
+    });
+  });
+
   it("sends a clamped reading fraction for backend canonicalization", async () => {
     vi.mocked(narraGatewayRequest).mockResolvedValueOnce(new Response("{}"));
     await advanceBackendReaderProgress("book-1", 1.2, "chapter-2", {

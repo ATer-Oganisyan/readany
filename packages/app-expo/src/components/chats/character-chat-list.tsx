@@ -10,6 +10,7 @@ export interface CharacterChatListItem {
   title: string;
   subtitle?: string;
   dimmed?: boolean;
+  disabled?: boolean;
   onPress: () => void;
 }
 
@@ -28,9 +29,15 @@ export function CharacterChatList({ items }: CharacterChatListProps) {
           <TouchableOpacity
             accessibilityRole="button"
             accessibilityLabel={item.accessibilityLabel}
-            activeOpacity={0.62}
+            accessibilityState={{ disabled: item.disabled === true }}
+            activeOpacity={item.disabled ? 1 : 0.62}
+            disabled={item.disabled}
             onPress={item.onPress}
-            style={[styles.row, item.dimmed && styles.rowDimmed]}
+            style={[
+              styles.row,
+              item.dimmed && styles.rowDimmed,
+              item.disabled && styles.rowDisabled,
+            ]}
           >
             {item.avatar}
             <View style={styles.copy}>
@@ -81,6 +88,7 @@ const makeStyles = (colors: ThemeColors) =>
       paddingVertical: spacing.md,
     },
     rowDimmed: { opacity: 0.45 },
+    rowDisabled: { opacity: 0.72 },
     avatar: {
       width: 56,
       height: 56,

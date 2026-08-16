@@ -278,6 +278,41 @@ describe("backend book coordinator", () => {
     expect(value.files.project).toHaveBeenCalledWith(expect.any(Object), cached);
   });
 
+  it("keeps provisional scan characters out of the persisted Narra store", async () => {
+    const value = fixture();
+    value.api.manifest = vi.fn(async () => ({
+      source: "v3" as const,
+      availability: "processing" as const,
+      readerTextOffset: 100,
+      readingFraction: 0.1,
+      textLength: 1_000,
+      characters: [
+        {
+          characterKey: "provisional:jane",
+          name: "Jane",
+          fullName: "Jane",
+          firstAppearanceTextOffset: 10,
+          provisional: true,
+          state: "preparing" as const,
+          profile: { provisional: true },
+          bundle: null,
+        },
+      ],
+    }));
+    value.files.project = vi.fn(() => [{ id: "provisional:jane" } as NarraCharacter]);
+    value.files.persist = vi.fn(async () => undefined);
+    value.files.materialize = vi.fn(async () => []);
+    value.state.setCharacters = vi.fn();
+
+    const manifest = await createBackendBookCoordinator(value).open(BOOK);
+
+    expect(manifest?.characters[0]?.provisional).toBe(true);
+    expect(value.files.project).not.toHaveBeenCalled();
+    expect(value.state.setCharacters).not.toHaveBeenCalled();
+    expect(value.files.persist).not.toHaveBeenCalled();
+    expect(value.files.materialize).not.toHaveBeenCalled();
+  });
+
   it("publishes manifest characters without waiting for media downloads", async () => {
     const value = fixture();
     const projectedCharacters = [

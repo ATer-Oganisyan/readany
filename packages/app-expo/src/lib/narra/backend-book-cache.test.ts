@@ -102,6 +102,7 @@ describe("backend book media cache", () => {
         unlockProgress: 0.09,
         mediaSource: "backend",
         mediaState: "preparing",
+        analysisState: "confirmed",
       }),
     ]);
     expect(characters[0]?.portraitUri).toBeUndefined();
@@ -114,6 +115,27 @@ describe("backend book media cache", () => {
     expect(persisted.characters).toEqual([
       expect.objectContaining({ id: "anna", mediaState: "preparing" }),
     ]);
+  });
+
+  it("marks processing-manifest characters as provisional display records", () => {
+    const value = manifest([]);
+    const character = value.characters[0];
+    if (!character) throw new Error("character fixture is missing");
+    value.availability = "processing";
+    value.characters[0] = {
+      ...character,
+      characterKey: "provisional:anna",
+      provisional: true,
+      state: "preparing",
+      bundle: null,
+    };
+
+    expect(projectBackendManifestCharacters(value)[0]).toMatchObject({
+      id: "provisional:anna",
+      analysisState: "provisional",
+      mediaSource: "backend",
+      mediaState: "preparing",
+    });
   });
 
   it("publishes all three cached media paths together", async () => {
@@ -163,10 +185,7 @@ describe("backend book media cache", () => {
   });
 
   it("exposes a ready portrait without waiting for audio and animation", async () => {
-    const [character] = await materializeBackendManifest(
-      "book-1",
-      manifest(["primary_portrait"]),
-    );
+    const [character] = await materializeBackendManifest("book-1", manifest(["primary_portrait"]));
     expect(character).toMatchObject({ mediaSource: "backend", mediaState: "preparing" });
     expect(character?.portraitUri).toContain("primary_portrait");
     expect(character?.greetingAudioUri).toBeUndefined();

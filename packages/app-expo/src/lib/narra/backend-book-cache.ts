@@ -159,6 +159,7 @@ function baseCharacter(
     unlockProgress,
     mediaSource: "backend",
     mediaState: character.state,
+    analysisState: character.provisional ? "provisional" : "confirmed",
     mediaBundleKey: mediaBundleKey(character),
     analysisSource: source,
   };
@@ -239,11 +240,11 @@ export async function materializeBackendManifest(
       return materialized;
     }
     const paths = await Promise.allSettled(
-        character.bundle.assets.map(async (asset) => ({
-          type: asset.type,
-          path: await downloadedAsset(directory, asset),
-        })),
-      );
+      character.bundle.assets.map(async (asset) => ({
+        type: asset.type,
+        path: await downloadedAsset(directory, asset),
+      })),
+    );
     const byType = new Map<BackendManifestAsset["type"], string>();
     for (const item of paths) {
       if (item.status === "fulfilled") byType.set(item.value.type, item.value.path);

@@ -50,6 +50,8 @@ export interface NarraCharacter {
   mediaBundleKey?: string;
   mediaSource?: "local" | "backend";
   mediaState?: "preparing" | "ready";
+  /** Provisional scan findings are display-only until canonical v3 publication. */
+  analysisState?: "provisional" | "confirmed";
   analysisSource?: "v2" | "v3" | "shadow-v3";
 }
 
