@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   requestDownload: vi.fn(async () => "https://storage/signed"),
   hash: vi.fn(async () => "a".repeat(64)),
   downloads: vi.fn(),
+  writeText: vi.fn(),
   readText: vi.fn(),
 }));
 
@@ -38,13 +39,18 @@ vi.mock("expo-file-system/legacy", () => ({
     mocks.files.set(to, mocks.files.get(from) ?? 0);
     mocks.files.delete(from);
   },
-  writeAsStringAsync: vi.fn(),
+  writeAsStringAsync: mocks.writeText,
   readAsStringAsync: mocks.readText,
 }));
 vi.mock("./backend-file-hash", () => ({ sha256BackendFile: mocks.hash }));
 vi.mock("./backend-book-api", () => ({ requestBackendDownloadUrl: mocks.requestDownload }));
 
-import { loadCachedBackendCharacters, materializeBackendManifest } from "./backend-book-cache";
+import {
+  loadCachedBackendCharacters,
+  materializeBackendManifest,
+  persistBackendManifestCharacters,
+  projectBackendManifestCharacters,
+} from "./backend-book-cache";
 
 function manifest(assetTypes: string[]): BackendBookManifest {
   return {
@@ -83,6 +89,31 @@ describe("backend book media cache", () => {
     mocks.files.clear();
     vi.clearAllMocks();
     mocks.readText.mockRejectedValue(new Error("missing cache"));
+  });
+
+  it("projects and persists character markup without downloading media", async () => {
+    const value = manifest(["primary_portrait", "greeting_audio", "idle_animation"]);
+    const characters = projectBackendManifestCharacters(value);
+
+    expect(characters).toEqual([
+      expect.objectContaining({
+        id: "anna",
+        name: "Анна",
+        unlockProgress: 0.09,
+        mediaSource: "backend",
+        mediaState: "preparing",
+      }),
+    ]);
+    expect(characters[0]?.portraitUri).toBeUndefined();
+    expect(mocks.downloads).not.toHaveBeenCalled();
+
+    await persistBackendManifestCharacters("book-1", value, characters);
+    expect(mocks.downloads).not.toHaveBeenCalled();
+    expect(mocks.writeText).toHaveBeenCalledOnce();
+    const persisted = JSON.parse(String(mocks.writeText.mock.calls[0]?.[1]));
+    expect(persisted.characters).toEqual([
+      expect.objectContaining({ id: "anna", mediaState: "preparing" }),
+    ]);
   });
 
   it("publishes all three cached media paths together", async () => {

@@ -210,6 +210,8 @@ services:
     profiles: ["book-backend"]
     image: ${NARRA_GATEWAY_IMAGE:?NARRA_GATEWAY_IMAGE must contain an immutable image tag}
     command: ["node", "book-markup-worker.mjs"]
+    deploy:
+      replicas: ${BOOK_MARKUP_WORKER_REPLICAS:-4}
     healthcheck:
       disable: true
     depends_on:
@@ -255,7 +257,7 @@ services:
     <<: *book-analysis-worker
     command: ["node", "book-analysis-scan-worker-runner.mjs"]
     deploy:
-      replicas: ${BOOK_ANALYSIS_SCAN_REPLICAS:-4}
+      replicas: ${BOOK_ANALYSIS_SCAN_REPLICAS:-8}
     environment:
       <<: [*book-analysis-database-environment, *book-analysis-storage-environment, *book-analysis-generator-environment]
 
@@ -268,6 +270,8 @@ services:
   book-analysis-synthesize:
     <<: *book-analysis-worker
     command: ["node", "book-analysis-stage-worker-runner.mjs", "synthesize"]
+    deploy:
+      replicas: ${BOOK_ANALYSIS_SYNTHESIZE_REPLICAS:-4}
     environment:
       <<: [*book-analysis-database-environment, *book-analysis-generator-environment]
 

@@ -134,6 +134,8 @@ test('operator UI exposes live book summaries, details, operations and formatted
     const scriptText = await script.text()
     assert.doesNotMatch(scriptText, /^await refresh\(\)$/m)
     assert.match(scriptText, /books\/\$\{state\.selectedId\}\/restart/)
+    assert.match(scriptText, /characterAppearance/)
+    assert.match(scriptText, /Подозрительно раннее открытие/)
 
     const books = await fetch(`${baseUrl}/operator/api/books`, {
       headers: { authorization: AUTH }

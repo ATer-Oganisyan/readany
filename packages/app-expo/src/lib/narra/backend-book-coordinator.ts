@@ -12,7 +12,12 @@ import {
   resolveLocalBackendBook,
   uploadLocalBackendSource,
 } from "./backend-book-api";
-import { loadCachedBackendCharacters, materializeBackendManifest } from "./backend-book-cache";
+import {
+  loadCachedBackendCharacters,
+  materializeBackendManifest,
+  persistBackendManifestCharacters,
+  projectBackendManifestCharacters,
+} from "./backend-book-cache";
 import { sha256BackendFile } from "./backend-file-hash";
 import type { NarraCharacter } from "./types";
 
@@ -59,7 +64,17 @@ export interface BackendBookCoordinatorFiles {
   describe(book: Book): Promise<{ contentSha256: string }>;
   readSource(book: Book): Promise<{ bytes: Uint8Array; mimeType: string }>;
   loadCached(bookId: string): Promise<NarraCharacter[]>;
-  materialize(bookId: string, manifest: BackendBookManifest): Promise<NarraCharacter[]>;
+  project(manifest: BackendBookManifest): NarraCharacter[];
+  persist(
+    bookId: string,
+    manifest: BackendBookManifest,
+    characters: NarraCharacter[],
+  ): Promise<void>;
+  materialize(
+    bookId: string,
+    manifest: BackendBookManifest,
+    onCharacter?: (character: NarraCharacter) => void,
+  ): Promise<NarraCharacter[]>;
 }
 
 export interface BackendBookCoordinatorState {
@@ -67,6 +82,14 @@ export interface BackendBookCoordinatorState {
   getCharacters(bookId: string): NarraCharacter[];
   setBinding(bookId: string, binding: BackendBookBinding): void;
   setCharacters(bookId: string, characters: NarraCharacter[]): void;
+  updateCharacterMedia(
+    bookId: string,
+    characterId: string,
+    updates: Pick<
+      NarraCharacter,
+      "portraitUri" | "greetingAudioUri" | "idleAnimationUri" | "mediaState"
+    >,
+  ): void;
   setManifestSource(bookId: string, source: BackendBookManifest["source"]): void;
   updateBookHash(bookId: string, contentSha256: string): Promise<void>;
   reportError(scope: string, error: unknown): void;
@@ -94,6 +117,23 @@ export function createBackendBookCoordinator({
   const bindingPromises = new Map<string, Promise<BackendBookBinding>>();
   const pending = new Map<string, PendingProgress>();
   const syncChains = new Map<string, Promise<void>>();
+  const mediaMaterializations = new Map<string, { key: string; promise: Promise<void> }>();
+  const latestMediaKeys = new Map<string, string>();
+
+  function mediaKey(manifest: BackendBookManifest): string {
+    const characters = manifest.characters.map((character) => [
+      character.characterKey,
+      character.state,
+      character.bundle?.version ?? "",
+      character.bundle?.assets.map((asset) => `${asset.type}:${asset.contentHash}`).join(",") ?? "",
+    ]);
+    return JSON.stringify([
+      manifest.source,
+      manifest.publicationId ?? "",
+      manifest.revision ?? 0,
+      characters,
+    ]);
+  }
 
   async function ensureBinding(book: Book): Promise<BackendBookBinding> {
     const current = state.getBinding(book.id);
@@ -137,8 +177,43 @@ export function createBackendBookCoordinator({
   async function applyManifest(bookId: string, manifest: BackendBookManifest): Promise<void> {
     state.setManifestSource(bookId, manifest.source);
     if (manifest.availability === "processing" && manifest.characters.length === 0) return;
-    const characters = await files.materialize(bookId, manifest);
+    const key = mediaKey(manifest);
+    latestMediaKeys.set(bookId, key);
+    const characters = files.project(manifest);
     state.setCharacters(bookId, characters);
+    try {
+      await files.persist(bookId, manifest, characters);
+    } catch (error) {
+      state.reportError("book_manifest_cache", error);
+    }
+
+    const active = mediaMaterializations.get(bookId);
+    if (active?.key === key) return;
+
+    const operation: Promise<void> = files
+      .materialize(bookId, manifest, (character) => {
+        if (latestMediaKeys.get(bookId) !== key || character.mediaState !== "ready") return;
+        state.updateCharacterMedia(bookId, character.id, {
+          portraitUri: character.portraitUri,
+          greetingAudioUri: character.greetingAudioUri,
+          idleAnimationUri: character.idleAnimationUri,
+          mediaState: character.mediaState,
+        });
+      })
+      .then(async (materialized) => {
+        if (latestMediaKeys.get(bookId) !== key) return;
+        state.setCharacters(bookId, materialized);
+        await files.persist(bookId, manifest, materialized);
+      })
+      .catch((error) => {
+        if (latestMediaKeys.get(bookId) === key) state.reportError("book_media", error);
+      })
+      .finally(() => {
+        if (mediaMaterializations.get(bookId)?.promise === operation) {
+          mediaMaterializations.delete(bookId);
+        }
+      });
+    mediaMaterializations.set(bookId, { key, promise: operation });
   }
 
   async function open(book: Book): Promise<BackendBookManifest | undefined> {
@@ -271,6 +346,8 @@ const defaultFiles: BackendBookCoordinatorFiles = {
     return { bytes: await platform.readFile(path), mimeType };
   },
   loadCached: loadCachedBackendCharacters,
+  project: projectBackendManifestCharacters,
+  persist: persistBackendManifestCharacters,
   materialize: materializeBackendManifest,
 };
 
@@ -286,6 +363,9 @@ const defaultState: BackendBookCoordinatorState = {
   },
   setCharacters(bookId, characters) {
     useNarraStore.getState().setCharacters(bookId, characters);
+  },
+  updateCharacterMedia(bookId, characterId, updates) {
+    useNarraStore.getState().updateCharacter(bookId, characterId, updates);
   },
   setManifestSource(bookId, source) {
     useNarraStore.getState().setBackendManifestSource(bookId, source);

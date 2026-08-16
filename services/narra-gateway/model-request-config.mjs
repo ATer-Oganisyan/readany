@@ -17,7 +17,7 @@ export const MODEL_REQUEST_CAPABILITIES = Object.freeze({
       requires: Object.freeze({ reasoning_effort: 'none' })
     })
   }),
-  'openrouter:openai/gpt-5.6-luna': Object.freeze({
+  'litellm:openrouter/openai/gpt-5.6-luna': Object.freeze({
     temperature: Object.freeze({
       min: 0,
       max: 2,

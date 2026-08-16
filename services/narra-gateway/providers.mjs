@@ -5,6 +5,7 @@ import { requestOptionsForModel } from './model-request-config.mjs'
 
 const RETRYABLE = new Set([408, 409, 429, 500, 502, 503, 504])
 const PURPOSES = ['character_chat', 'structured_task', 'summary', 'scenario', 'memory']
+const TEXT_PROVIDERS = new Set(['giga', 'litellm'])
 const MODERATION_RESPONSE = /content.?filter|moderation|safety|unsafe|censor|blocked|bad_[a-z_]*lemmas|запрещ|цензур|безопасност/i
 const IMAGE_ERROR_CODES = new Set([
   'AUTH', 'NO_KEY', 'NETWORK', 'RATE', 'TIMEOUT', 'VALIDATION',
@@ -24,34 +25,33 @@ function httpErrorCode(status, detail) {
 // умолчанию и отвечают 400 на любое явное значение. Клиентский контракт при
 // этом температуру шлёт, поэтому убираем её на выходе из шлюза, а не у клиента.
 export function omitsTemperature(providerName, env = process.env) {
-  const raw = providerName === 'openrouter'
-    ? env.OPENROUTER_OMIT_TEMPERATURE
+  const raw = providerName === 'litellm'
+    ? env.LITELLM_OMIT_TEMPERATURE
     : env.LLM_OMIT_TEMPERATURE
   return String(raw ?? '').trim().toLowerCase() === 'true'
 }
 
+function openAiBaseUrl(raw) {
+  const value = String(raw || '').replace(/\/+$/, '')
+  if (!value) return ''
+  return value.endsWith('/v1') ? value : `${value}/v1`
+}
+
 function providerConfig(name, purpose, env) {
-  if (name === 'openrouter') {
+  if (name === 'litellm') {
     return {
       name,
-      baseUrl: String(env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1').replace(/\/+$/, ''),
-      apiKey: String(env.OPENROUTER_API_KEY || '').trim(),
+      baseUrl: openAiBaseUrl(env.LITELLM_BASE_URL),
+      apiKey: String(env.LITELLM_API_KEY || '').trim(),
       model: String(
-        env[`OPENROUTER_MODEL_${purpose.toUpperCase()}`] || env.OPENROUTER_MODEL || ''
+        env[`LITELLM_MODEL_${purpose.toUpperCase()}`] || env.LITELLM_MODEL || ''
       ).trim(),
-      headers: {
-        ...(env.OPENROUTER_HTTP_REFERER ? { 'HTTP-Referer': env.OPENROUTER_HTTP_REFERER } : {}),
-        ...(env.OPENROUTER_APP_NAME ? { 'X-Title': env.OPENROUTER_APP_NAME } : {})
-      }
+      headers: {}
     }
   }
   return {
     name: 'giga',
-    baseUrl: (() => {
-      const value = String(env.LLM_BASE_URL || '').replace(/\/+$/, '')
-      if (!value) return ''
-      return value.endsWith('/v1') ? value : `${value}/v1`
-    })(),
+    baseUrl: openAiBaseUrl(env.LLM_BASE_URL),
     apiKey: String(env.LLM_API_KEY || '').trim(),
     model: String(env[`LLM_MODEL_${purpose.toUpperCase()}`] || env.LLM_MODEL || 'gigachat-3-ultra').trim(),
     headers: {}
@@ -77,8 +77,8 @@ export function routeForPurpose(purpose, env = process.env) {
   const suffix = purpose.toUpperCase()
   const primary = String(env[`LLM_ROUTE_${suffix}`] || env.LLM_ROUTE_DEFAULT || 'giga').toLowerCase()
   const fallback = String(env[`LLM_FALLBACK_${suffix}`] || env.LLM_FALLBACK_DEFAULT || '').toLowerCase()
-  if (!['giga', 'openrouter'].includes(primary)) throw new Error(`Unsupported provider route: ${primary}`)
-  if (fallback && !['giga', 'openrouter'].includes(fallback)) throw new Error(`Unsupported fallback route: ${fallback}`)
+  if (!TEXT_PROVIDERS.has(primary)) throw new Error(`Unsupported provider route: ${primary}`)
+  if (fallback && !TEXT_PROVIDERS.has(fallback)) throw new Error(`Unsupported fallback route: ${fallback}`)
   return [primary, fallback].filter((value, index, all) => value && all.indexOf(value) === index)
 }
 
@@ -161,11 +161,8 @@ export async function requestChat({
           max_tokens: maxTokensFor(purpose, stream, env),
           stream,
           ...modelRequestOptions,
-          ...(stream && providerName === 'giga'
+          ...(stream && TEXT_PROVIDERS.has(providerName)
             ? { stream_options: { include_usage: true } }
-            : {}),
-          ...(providerName === 'openrouter'
-            ? { provider: { zdr: true, data_collection: 'deny' } }
             : {})
         }),
         signal: withTimeout(signal, stream ? 180_000 : 120_000)
@@ -198,7 +195,7 @@ export async function requestChat({
           await onAttempt(attempt)
         }
         const responseCost = (() => {
-          if (providerName !== 'giga') return undefined
+          if (!TEXT_PROVIDERS.has(providerName)) return undefined
           const value = Number(response.headers.get('x-litellm-response-cost'))
           return Number.isFinite(value) && value >= 0 && value <= 1_000_000 ? value : undefined
         })()
@@ -220,7 +217,7 @@ export async function requestChat({
       if (response.status === 400 && /temperature/i.test(detail)) {
         console.error(
           `[llm] ${providerName}/${config.model} не принимает temperature; ` +
-          `выставьте ${providerName === 'openrouter' ? 'OPENROUTER_OMIT_TEMPERATURE' : 'LLM_OMIT_TEMPERATURE'}=true`
+          `выставьте ${providerName === 'litellm' ? 'LITELLM_OMIT_TEMPERATURE' : 'LLM_OMIT_TEMPERATURE'}=true`
         )
       }
       const failedAttempt = {

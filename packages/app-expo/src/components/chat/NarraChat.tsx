@@ -1,3 +1,4 @@
+import { getAndroidChatKeyboardAvoidingViewProps } from "@/platform/android/chat/keyboard-avoiding-view";
 import { fontFamily, useTheme, withOpacity } from "@/styles/theme";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useFocusEffect } from "@react-navigation/native";
@@ -7,7 +8,7 @@ import * as Clipboard from "expo-clipboard";
 import type { TFunction } from "i18next";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, StyleSheet, Text, type TextInput, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, type TextInput, View } from "react-native";
 import {
   Chat,
   type IMessage,
@@ -379,7 +380,11 @@ export function NarraChat({
         style: { fontFamily: fontFamily.regular, fontSize: 16, color: colors.foreground },
         autoCapitalize: "sentences",
       }}
-      keyboardAvoidingViewProps={{ behavior: "padding", keyboardVerticalOffset: headerHeight }}
+      keyboardAvoidingViewProps={
+        Platform.OS === "android"
+          ? getAndroidChatKeyboardAvoidingViewProps(headerHeight)
+          : { keyboardVerticalOffset: headerHeight }
+      }
       messagesContainerStyle={{ backgroundColor: colors.backgroundSecondary }}
       listProps={{
         keyboardDismissMode: "interactive",

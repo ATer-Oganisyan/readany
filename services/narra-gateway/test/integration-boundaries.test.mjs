@@ -4,7 +4,7 @@ import { requestChat } from '../providers.mjs'
 
 async function captureRequestBody({ provider = 'giga', model, purpose, temperature }) {
   let body
-  const isOpenRouter = provider === 'openrouter'
+  const isLiteLlm = provider === 'litellm'
   const result = await requestChat({
     messages: [{ role: 'user', content: 'hello' }],
     temperature,
@@ -14,12 +14,12 @@ async function captureRequestBody({ provider = 'giga', model, purpose, temperatu
       body = JSON.parse(init.body)
       return new Response('{"choices":[{"message":{"content":"ok"}}]}', { status: 200 })
     },
-    env: isOpenRouter
+    env: isLiteLlm
       ? {
-          LLM_ROUTE_CHARACTER_CHAT: 'openrouter',
-          OPENROUTER_BASE_URL: 'https://openrouter.test/v1',
-          OPENROUTER_API_KEY: 'or-key',
-          OPENROUTER_MODEL_CHARACTER_CHAT: model
+          LLM_ROUTE_CHARACTER_CHAT: 'litellm',
+          LITELLM_BASE_URL: 'https://litellm.test/v1',
+          LITELLM_API_KEY: 'proxy-key',
+          LITELLM_MODEL_CHARACTER_CHAT: model
         }
       : {
           LLM_ROUTE_CHARACTER_CHAT: 'giga',
@@ -35,7 +35,7 @@ async function captureRequestBody({ provider = 'giga', model, purpose, temperatu
 test('gateway owns sampling policy for supported character-chat models', async () => {
   for (const [provider, model] of [
     ['giga', 'gpt-5.6-luna'],
-    ['openrouter', 'openai/gpt-5.6-luna']
+    ['litellm', 'openrouter/openai/gpt-5.6-luna']
   ]) {
     const body = await captureRequestBody({
       provider,

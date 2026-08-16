@@ -53,6 +53,7 @@ input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px #0088ff20; }
 .button.wide { width: 100%; min-height: 48px; margin-top: 4px; }
 .summary-strip { min-height: 48px; display: flex; align-items: center; gap: 12px; padding: 10px 16px; color: var(--primary-60); font-size: 13px; border-bottom: 1px solid var(--primary-10); }
 .summary-strip strong { color: var(--primary); }
+.summary-strip .quality-count, .summary-strip .quality-count strong { color: var(--red); }
 .book-list { overflow-y: auto; padding: 8px; }
 .book-row { width: 100%; text-align: left; border: 0; border-radius: 14px; background: transparent; padding: 12px; cursor: pointer; display: grid; gap: 8px; margin-bottom: 2px; }
 .book-row:hover { background: var(--primary-5); }
@@ -116,6 +117,14 @@ input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px #0088ff20; }
 .status.ready, .status.published { color: var(--green); background: #46dc6614; }
 .status.running, .status.queued { color: var(--orange); background: #ff8d2814; }
 .status.failed { color: var(--red); background: #ff383c14; }
+.status.suspicious { color: var(--red); background: #ff383c14; }
+.quality-alert { display: grid; gap: 4px; margin-bottom: 16px; padding: 14px 16px; border: 1px solid var(--primary-10); border-radius: 14px; background: var(--surface); }
+.quality-alert strong { font-size: 14px; }
+.quality-alert span { color: var(--primary-60); font-size: 13px; }
+.quality-alert.suspicious { border-color: #ff383c55; background: #ff383c0d; }
+.quality-alert.suspicious strong { color: var(--red); }
+.quality-alert.clear { border-color: #46dc6644; background: #46dc660a; }
+.quality-alert.clear strong { color: var(--green); }
 .operation details { grid-column: 3 / -1; }
 .operation pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; color: var(--primary-60); }
 .json-view { margin: 0; min-height: 60vh; max-height: calc(100vh - 260px); overflow: auto; padding: 20px; border-radius: 14px; background: #111; color: #e7e7e7; font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; tab-size: 2; }

@@ -1,4 +1,8 @@
-import { BOOK_ANALYSIS_CHARACTER_BUNDLE_VERSION } from './book-analysis-contracts.mjs'
+import {
+  BOOK_ANALYSIS_CHARACTER_BUNDLE_VERSION,
+  BOOK_ANALYSIS_MARKUP_VERSION
+} from './book-analysis-contracts.mjs'
+import { characterAppearanceAuditFromCounts } from './book-analysis-appearance-audit.mjs'
 
 const STAGES = Object.freeze(['prepare', 'scan', 'resolve', 'synthesize', 'validate', 'publish'])
 const JOB_STATUSES = Object.freeze(['queued', 'running', 'ready', 'failed', 'cancelled'])
@@ -103,6 +107,18 @@ function mediaCounts(row) {
     ready: number(row?.ready),
     failed: number(row?.failed),
     total: number(row?.total)
+  }
+}
+
+function publicationQuality(row) {
+  return {
+    characterAppearance: row
+      ? characterAppearanceAuditFromCounts({
+          textLength: row.text_length,
+          characterCount: row.character_count,
+          earlyCharacterCount: row.early_character_count
+        })
+      : null
   }
 }
 
@@ -216,16 +232,30 @@ export function createPostgresBookOperatorRepository(pool) {
       `/* operator:latest-publications */
        SELECT DISTINCT ON (publication.book_edition_id)
               publication.id, publication.run_id, publication.book_edition_id,
-              publication.analysis_version, publication.published_at,
-              CASE
-                WHEN jsonb_typeof(publication.data->'markup'->'characters') = 'array'
-                  THEN jsonb_array_length(publication.data->'markup'->'characters')
-                ELSE 0
-              END AS character_count
+              publication.analysis_version, publication.published_at
        FROM book_analysis_publications AS publication
        ${publicationFilter}
        ORDER BY publication.book_edition_id, publication.published_at DESC, publication.id DESC`,
       editionParameters
+    )
+    const qualityPromise = pool.query(
+      `/* operator:publication-quality */
+       SELECT markup.book_edition_id, markup.text_length,
+              count(character.id)::integer AS character_count,
+              count(character.id) FILTER (
+                WHERE character.first_appearance_text_offset <= least(
+                  1000,
+                  greatest(1, ceil(markup.text_length * 0.01)::bigint)
+                )
+              )::integer AS early_character_count
+       FROM book_markup_versions AS markup
+       LEFT JOIN book_characters AS character ON character.markup_version_id = markup.id
+       WHERE markup.analysis_version = $1 AND markup.status = 'published'
+         ${bookEditionId ? 'AND markup.book_edition_id = $2' : ''}
+       GROUP BY markup.id`,
+      bookEditionId
+        ? [BOOK_ANALYSIS_MARKUP_VERSION, bookEditionId]
+        : [BOOK_ANALYSIS_MARKUP_VERSION]
     )
     const mediaPromise = pool.query(
       `/* operator:media-counts */
@@ -243,8 +273,8 @@ export function createPostgresBookOperatorRepository(pool) {
         ? [BOOK_ANALYSIS_CHARACTER_BUNDLE_VERSION, bookEditionId]
         : [BOOK_ANALYSIS_CHARACTER_BUNDLE_VERSION]
     )
-    const [editions, runs, publications, media] = await Promise.all([
-      editionsPromise, runsPromise, publicationsPromise, mediaPromise
+    const [editions, runs, publications, quality, media] = await Promise.all([
+      editionsPromise, runsPromise, publicationsPromise, qualityPromise, mediaPromise
     ])
     const runIds = runs.rows.map((row) => row.id)
     const [jobs, findings] = runIds.length
@@ -275,12 +305,14 @@ export function createPostgresBookOperatorRepository(pool) {
     const runByBook = new Map(runs.rows.map((row) => [row.book_edition_id, row]))
     const findingByRun = new Map(findings.rows.map((row) => [row.run_id, row]))
     const publicationByBook = new Map(publications.rows.map((row) => [row.book_edition_id, row]))
+    const qualityByBook = new Map(quality.rows.map((row) => [row.book_edition_id, row]))
     const mediaByBook = new Map(media.rows.map((row) => [row.book_edition_id, row]))
     return editions.rows.map((edition) => {
       const run = runByBook.get(edition.id)
       const counts = jobCounts(jobs.rows, run?.id)
       const live = findingByRun.get(run?.id)
       const publication = publicationByBook.get(edition.id)
+      const publicationQualityRow = qualityByBook.get(edition.id)
       return {
         ...bookValue(edition),
         analysis: run
@@ -294,7 +326,7 @@ export function createPostgresBookOperatorRepository(pool) {
         findings: {
           observations: number(live?.observation_count),
           characters: number(live?.character_count),
-          publishedCharacters: number(publication?.character_count)
+          publishedCharacters: number(publicationQualityRow?.character_count)
         },
         publication: publication
           ? {
@@ -304,6 +336,7 @@ export function createPostgresBookOperatorRepository(pool) {
               publishedAt: iso(publication.published_at)
             }
           : null,
+        quality: publicationQuality(publicationQualityRow),
         media: mediaCounts(mediaByBook.get(edition.id))
       }
     })

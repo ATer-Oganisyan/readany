@@ -11,7 +11,7 @@ const stageLabels = {
 const statusLabels = {
   queued: 'В очереди', running: 'В работе', ready: 'Готово', failed: 'Ошибка',
   cancelled: 'Отменено', published: 'Опубликовано', not_started: 'Не запущено',
-  not_queued: 'Не поставлено', prepared: 'Подготовлено'
+  not_queued: 'Не поставлено', prepared: 'Подготовлено', suspicious: 'Проверить'
 }
 const phaseLabels = { observed: 'Обнаружен', resolved: 'Подтверждён', published: 'Опубликован' }
 const mediaLabels = {
@@ -34,7 +34,8 @@ const elements = Object.fromEntries([
   'book-list', 'book-search', 'summary-strip', 'empty-state', 'book-panel', 'book-title',
   'book-author', 'book-meta', 'heading-percent', 'heading-status', 'stage-grid', 'metric-grid',
   'character-grid', 'character-count', 'refreshed-at', 'operation-list', 'json-view', 'toast',
-  'upload-form', 'upload-steps', 'upload-live-detail', 'live-label', 'restart-book'
+  'upload-form', 'upload-steps', 'upload-live-detail', 'live-label', 'restart-book',
+  'quality-alert'
 ].map((id) => [id, document.getElementById(id)]))
 
 function escapeHtml(value) {
@@ -94,12 +95,17 @@ function renderBookList() {
   )
   const active = state.books.filter((book) => ['queued', 'running'].includes(book.progress.status)).length
   const failed = state.books.filter((book) => book.progress.status === 'failed').length
-  elements['summary-strip'].innerHTML = `<span><strong>${state.books.length}</strong> книг</span><span><strong>${active}</strong> в работе</span>${failed ? `<span><strong>${failed}</strong> ошибок</span>` : ''}`
+  const suspicious = state.books.filter((book) =>
+    book.quality?.characterAppearance?.status === 'suspicious'
+  ).length
+  elements['summary-strip'].innerHTML = `<span><strong>${state.books.length}</strong> книг</span><span><strong>${active}</strong> в работе</span>${failed ? `<span><strong>${failed}</strong> ошибок</span>` : ''}${suspicious ? `<span class="quality-count"><strong>${suspicious}</strong> проверить</span>` : ''}`
   elements['book-list'].innerHTML = books.length
-    ? books.map((book) => {
+      ? books.map((book) => {
         const percent = Number(book.progress?.percent || 0)
+        const qualitySuspicious = book.quality?.characterAppearance?.status === 'suspicious'
+        const rowStatus = qualitySuspicious ? 'suspicious' : book.progress.status
         return `<button type="button" class="book-row ${book.id === state.selectedId ? 'active' : ''}" data-book-id="${escapeHtml(book.id)}">
-          <span class="book-row-main"><span><span class="book-row-title">${escapeHtml(book.title)}</span><span class="book-row-author">${escapeHtml(book.author || 'Автор не указан')}</span></span><span class="status ${escapeHtml(book.progress.status)}">${escapeHtml(statusLabels[book.progress.status] || book.progress.status)}</span></span>
+          <span class="book-row-main"><span><span class="book-row-title">${escapeHtml(book.title)}</span><span class="book-row-author">${escapeHtml(book.author || 'Автор не указан')}</span></span><span class="status ${escapeHtml(rowStatus)}">${escapeHtml(statusLabels[rowStatus] || rowStatus)}</span></span>
           <span class="progress-track"><span style="width:${percent}%"></span></span>
           <span class="book-row-state"><span>${escapeHtml(stageLabels[book.progress.stage] || book.progress.stage)}</span><span>${percent}% · ${Number(book.findings?.publishedCharacters || book.findings?.characters || 0)} перс.</span></span>
         </button>`
@@ -147,6 +153,17 @@ function renderDetail(detail) {
     ? 'v3 выполняется'
     : 'Перезапустить v3'
   elements['refreshed-at'].textContent = `Обновлено ${formatDate(detail.refreshedAt, { timeOnly: true })}`
+
+  const appearanceAudit = book.quality?.characterAppearance
+  elements['quality-alert'].hidden = !appearanceAudit
+  if (appearanceAudit) {
+    const suspicious = appearanceAudit.status === 'suspicious'
+    const percent = Math.round(Number(appearanceAudit.earlyCharacterFraction || 0) * 100)
+    elements['quality-alert'].className = `quality-alert ${suspicious ? 'suspicious' : 'clear'}`
+    elements['quality-alert'].innerHTML = suspicious
+      ? `<strong>Подозрительно раннее открытие персонажей</strong><span>${appearanceAudit.earlyCharacterCount} из ${appearanceAudit.characterCount} героев (${percent}%) получили первое появление до позиции ${appearanceAudit.earlyBoundaryTextOffset}. Новую публикацию нужно проверить и переразметить.</span>`
+      : `<strong>Координаты появления прошли аудит</strong><span>Массового кластера персонажей в начале книги не найдено.</span>`
+  }
 
   elements['stage-grid'].innerHTML = stageOrder.map((stage, index) => {
     const value = stageState(detail, stage, index)

@@ -21,10 +21,16 @@ use `temperature: 0.85` together with `reasoning_effort: none` for
 `character_chat`; structured analysis, summaries, scenarios and memory omit
 temperature and keep the model's default reasoning behavior.
 
-The configuration covers both current model identifiers:
+The configuration covers both current proxy/model identifiers:
 
 - `giga:gpt-5.6-luna`;
-- `openrouter:openai/gpt-5.6-luna`.
+- `litellm:openrouter/openai/gpt-5.6-luna`.
+
+Text routes accept only the logical providers `giga` and `litellm`. The second
+route has independent `LITELLM_BASE_URL`, `LITELLM_API_KEY` and
+`LITELLM_MODEL[_<PURPOSE>]` settings, so an OpenRouter-backed model is reached
+through LiteLLM without sharing the direct OpenRouter image credential or
+OpenRouter-specific request fields. `OPENROUTER_*` remains image-only.
 
 GPT-5.6 Luna's model and reasoning modes are documented by
 [OpenAI](https://developers.openai.com/api/docs/models/gpt-5.6-luna), while

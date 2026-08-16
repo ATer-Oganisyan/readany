@@ -1,4 +1,5 @@
 import { MissingBookPrompt } from "@/components/shared/MissingBookPrompt";
+import { getCharacterProfileSheetOptions } from "@/platform/navigation/character-profile-sheet";
 import BadgesScreen from "@/screens/BadgesScreen";
 import { ChatScreen } from "@/screens/ChatScreen";
 import { FullScreenNotesScreen } from "@/screens/FullScreenNotesScreen";
@@ -206,13 +207,7 @@ export function RootNavigator() {
           name="NarraCharacterProfile"
           component={NarraCharacterProfileScreen}
           options={{
-            presentation: "formSheet",
-            animation: "slide_from_bottom",
-            headerShown: false,
-            sheetAllowedDetents: [0.78, 1],
-            sheetInitialDetentIndex: 0,
-            sheetGrabberVisible: true,
-            sheetExpandsWhenScrolledToEdge: true,
+            ...getCharacterProfileSheetOptions(Platform.OS),
           }}
         />
         <Stack.Screen
