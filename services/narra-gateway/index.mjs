@@ -879,11 +879,16 @@ const sceneJobRunner = createCoverJobRunner({
   concurrency: IMAGE_CONCURRENCY,
   maxAttempts: SCENE_JOB_MAX_ATTEMPTS,
   attemptTimeoutMs: SCENE_JOB_ATTEMPT_TIMEOUT_SECONDS * 1000,
-  generate: async ({ prompt, signal }) => ({
-    image: await kandinskyQueued(prompt, 1024, 672, signal),
-    mimeType: 'image/png',
-    model: 'k6-image-t2i'
-  })
+  generate: async ({ prompt, signal }) => {
+    // Scene generation uses the same healthy server-owned image chain as
+    // portraits. GigaChat is primary; Kandinsky remains its fallback.
+    const generated = await generateInternalPortrait(prompt, signal)
+    return {
+      image: generated.bytes.toString('base64'),
+      mimeType: generated.mimeType,
+      model: generated.provider
+    }
+  }
 })
 sceneJobRunner.start()
 
