@@ -1,6 +1,8 @@
 import type { AIEndpoint, VectorModelConfig } from "@readany/core/types";
 
-const apiKey = process.env.EXPO_PUBLIC_OPENROUTER_API_KEY?.trim() || "";
+// Provider credentials must never be compiled into a mobile bundle. Users may
+// still add their own endpoint in Settings; Narra-owned features use Gateway.
+const apiKey = "";
 const model = process.env.EXPO_PUBLIC_OPENROUTER_MODEL?.trim() || "google/gemini-3.5-flash-lite";
 const embeddingModel =
   process.env.EXPO_PUBLIC_OPENROUTER_EMBEDDING_MODEL?.trim() || "openai/text-embedding-3-small";

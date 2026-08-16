@@ -7,7 +7,7 @@ import { runBookMarkupMigrations } from '../postgres-runtime.mjs'
 
 const connectionString = process.env.BOOK_MARKUP_TEST_DATABASE_URL
 
-test('PostgreSQL persists an idempotent catalog markup and atomic character bundles', {
+test('PostgreSQL persists markup and independently publishes character media', {
   skip: !connectionString
 }, async () => {
   const { default: pg } = await import('pg')
@@ -73,26 +73,84 @@ test('PostgreSQL persists an idempotent catalog markup and atomic character bund
     assert.equal(duplicateEnsures.filter(({ created }) => created).length, 1)
     await repository.ensureCharacterBundle({ bookEditionId, characterKey: 'vronsky' })
 
-    for (const characterKey of ['anna', 'vronsky']) {
+    const assetTypeByJob = {
+      character_portrait: 'primary_portrait',
+      character_audio: 'greeting_audio',
+      character_animation: 'idle_animation'
+    }
+    const completedByCharacter = new Map()
+    for (let index = 0; index < 6; index += 1) {
       const job = await repository.claimGenerationJob('integration-worker')
-      assert.equal(job.characterKey, characterKey)
+      assert.ok(['anna', 'vronsky'].includes(job.characterKey))
+      const characterKey = job.characterKey
       const input = await repository.getCharacterBundleInput(job)
       assert.equal(input.characterKey, characterKey)
+      const type = assetTypeByJob[job.type]
+      assert.ok(type)
       await repository.publishCharacterBundle(job, {
-        assets: REQUIRED_CHARACTER_MEDIA.map((type) => ({
+        assets: [{
           type,
           objectKey: `integration/${bookEditionId}/${characterKey}/${type}`,
           contentHash: hash,
-          mimeType: type === 'primary_portrait' ? 'image/png' : 'application/octet-stream',
+          mimeType: type === 'primary_portrait'
+            ? 'image/png'
+            : type === 'greeting_audio' ? 'audio/wav' : 'video/mp4',
           byteSize: 64
-        }))
+        }]
       })
-      const edition = await pool.query('SELECT status FROM book_editions WHERE id = $1', [bookEditionId])
-      assert.equal(edition.rows[0].status, characterKey === 'anna' ? 'generating_portraits' : 'base_ready')
+      completedByCharacter.set(characterKey, (completedByCharacter.get(characterKey) ?? 0) + 1)
+      if (type === 'primary_portrait') {
+        const partial = await pool.query(
+          `SELECT link.asset_type
+           FROM character_media_bundles AS bundle
+           JOIN character_bundle_assets AS link ON link.bundle_id = bundle.id
+           WHERE bundle.book_edition_id = $1 AND bundle.character_key = $2`,
+          [bookEditionId, characterKey]
+        )
+        assert.equal(partial.rows.some((row) => row.asset_type === 'primary_portrait'), true)
+      }
     }
+    assert.deepEqual(Object.fromEntries(completedByCharacter), { anna: 3, vronsky: 3 })
+    const edition = await pool.query('SELECT status FROM book_editions WHERE id = $1', [bookEditionId])
+    assert.equal(edition.rows[0].status, 'base_ready')
+
+    await pool.query(
+      `UPDATE character_media_bundles
+       SET status = 'failed'
+       WHERE book_edition_id = $1 AND character_key = 'vronsky'`,
+      [bookEditionId]
+    )
+    assert.deepEqual(await repository.enqueueCharacterMediaBackfill(), [])
+    const reconciledBundle = await pool.query(
+      `SELECT status FROM character_media_bundles
+       WHERE book_edition_id = $1 AND character_key = 'vronsky'`,
+      [bookEditionId]
+    )
+    assert.equal(reconciledBundle.rows[0].status, 'ready')
+
+    const coverEnsure = await repository.enqueueCatalogCover({ bookEditionId })
+    assert.equal(coverEnsure.created, true)
+    const coverJob = await repository.claimGenerationJob('integration-worker')
+    assert.equal(coverJob.type, 'catalog_cover')
+    assert.deepEqual(await repository.getCatalogCoverInput(coverJob), {
+      bookEditionId,
+      targetVersion: `catalog-cover-v2-${hash.slice(0, 16)}`,
+      scope: 'catalog',
+      title: 'Integration Book',
+      author: 'ReadAny',
+      context: ''
+    })
+    await repository.publishCatalogCover(coverJob, {
+      objectKey: `books/catalog/${bookEditionId}/cover/generated.png`,
+      contentHash: 'e'.repeat(64),
+      mimeType: 'image/png',
+      byteSize: 128
+    })
 
     const catalog = await repository.listCatalogBooks({ limit: 20 })
-    assert.equal(catalog.items.some(({ id }) => id === bookEditionId), true)
+    const catalogEdition = catalog.items.find(({ id }) => id === bookEditionId)
+    assert.ok(catalogEdition)
+    assert.equal(catalogEdition.cover.contentHash, 'e'.repeat(64))
     assert.equal((await repository.resolveBook({
       subjectId,
       source: 'local',

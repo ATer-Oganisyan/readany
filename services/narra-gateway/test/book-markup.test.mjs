@@ -2,8 +2,11 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   CHARACTER_BUNDLE_VERSION,
+  CHARACTER_MEDIA_JOB_TYPES,
   REQUIRED_CHARACTER_MEDIA,
   characterBundleIdempotencyKey,
+  characterMediaIdempotencyKey,
+  characterMediaTargetVersion,
   charactersDueForWarmup,
   ensureCharacterBundle,
   isCompleteCharacterBundle,
@@ -102,6 +105,24 @@ test('a ready character bundle is atomic and requires every media type', () => {
   incomplete.assets = incomplete.assets.filter((asset) => asset.type !== 'idle_animation')
   assert.equal(isCompleteCharacterBundle(incomplete), false)
   assert.equal(isCompleteCharacterBundle({ ...readyBundle(), status: 'running' }), false)
+})
+
+test('character media assets have independent revision-scoped job keys', () => {
+  const targetVersion = characterMediaTargetVersion({
+    bundleVersion: 'character-bundle-v3',
+    mediaRevision: 2
+  })
+  assert.equal(targetVersion, 'character-bundle-v3:r2')
+  const keys = REQUIRED_CHARACTER_MEDIA.map((assetType) => characterMediaIdempotencyKey({
+    bookEditionId: 'book-42',
+    characterKey: 'character:anna',
+    targetVersion,
+    assetType
+  }))
+  assert.equal(new Set(keys).size, 3)
+  assert.deepEqual(Object.values(CHARACTER_MEDIA_JOB_TYPES), [
+    'character_portrait', 'character_audio', 'character_animation'
+  ])
 })
 
 test('character bundle generation is idempotent under concurrent requests', async () => {

@@ -1,10 +1,17 @@
 import { serviceUrl } from './service-url.mjs'
 
-const SAFE_SCAN_ERROR_CODES = new Set([
+const SAFE_GENERATOR_ERROR_CODES = new Set([
   'EVIDENCE_MISMATCH',
   'GENERATION_RESULT_INVALID',
   'SCAN_RELATION_PARTICIPANT_MISSING'
 ])
+const SAFE_ERROR_CODE = /^[A-Z][A-Z0-9_]{1,48}$/
+
+function safeGeneratorErrorCode(value) {
+  return typeof value === 'string' && SAFE_ERROR_CODE.test(value)
+    ? value
+    : null
+}
 
 function requiredToken(value) {
   const token = String(value || '').trim()
@@ -58,8 +65,11 @@ export function createGenerationServiceClient({
     const payload = await readJson(response)
     if (!response.ok) {
       const error = new Error(`generator request failed with HTTP ${response.status}`)
-      error.code = SAFE_SCAN_ERROR_CODES.has(payload?.code)
-        ? payload.code
+      const providerCode = safeGeneratorErrorCode(payload?.code)
+      error.code = providerCode && (
+        SAFE_GENERATOR_ERROR_CODES.has(providerCode) || response.status >= 500
+      )
+        ? providerCode
         : `GENERATOR_HTTP_${response.status}`
       throw error
     }
@@ -96,9 +106,20 @@ export function createGenerationServiceClient({
         ...input
       })
     },
+    generateCatalogCover(input) {
+      return post('internal/v1/catalog-covers', {
+        idempotencyKey: `${input.bookEditionId}:catalog-cover:${input.targetVersion}`,
+        ...input
+      })
+    },
     generateCharacterBundle(input, requiredMedia) {
       return post('internal/v1/character-bundles', {
-        idempotencyKey: `${input.bookEditionId}:${input.characterKey}:${input.bundleVersion}`,
+        idempotencyKey: [
+          input.bookEditionId,
+          input.characterKey,
+          input.bundleVersion,
+          requiredMedia.join('+')
+        ].join(':'),
         ...input,
         requiredMedia
       })

@@ -21,7 +21,7 @@ use `temperature: 0.85` together with `reasoning_effort: none` for
 `character_chat`; structured analysis, summaries, scenarios and memory omit
 temperature and keep the model's default reasoning behavior.
 
-The configuration covers both current proxy/model identifiers:
+The text configuration covers both current proxy/model identifiers:
 
 - `giga:gpt-5.6-luna`;
 - `litellm:openrouter/openai/gpt-5.6-luna`.
@@ -30,7 +30,11 @@ Text routes accept only the logical providers `giga` and `litellm`. The second
 route has independent `LITELLM_BASE_URL`, `LITELLM_API_KEY` and
 `LITELLM_MODEL[_<PURPOSE>]` settings, so an OpenRouter-backed model is reached
 through LiteLLM without sharing the direct OpenRouter image credential or
-OpenRouter-specific request fields. `OPENROUTER_*` remains image-only.
+OpenRouter-specific request fields. Covers independently select
+`COVER_IMAGE_PROVIDER=litellm|openrouter`. The LiteLLM image route uses
+`LITELLM_BASE_URL`, `LITELLM_API_KEY`, `LITELLM_IMAGE_MODEL` and the standard
+`POST /v1/images/generations` contract; direct `OPENROUTER_*` remains a separate
+compatibility route. Provider credentials never enter the mobile contract.
 
 GPT-5.6 Luna's model and reasoning modes are documented by
 [OpenAI](https://developers.openai.com/api/docs/models/gpt-5.6-luna), while
@@ -65,7 +69,7 @@ npm install
 npm test
 ```
 
-## Durable cover jobs
+## Durable image jobs
 
 Book covers use an authenticated, installation-owned job API:
 
@@ -79,9 +83,16 @@ retention defaults to 24 hours, and expired records are removed before capacity
 checks and by the worker. The production worker must have a single writer;
 deployment candidates start with `COVER_JOB_WORKER_ENABLED=false`.
 
-The cover provider chain is OpenRouter GPT Image followed by Nano Banana for
-retryable provider failures. Kandinsky is deliberately not part of cover jobs or
-the compatibility `/v2/media/cover` route.
+New cover jobs use the internal GigaChat Image route with Kandinsky fallback;
+the APK sends no provider key or model. Catalog covers use PostgreSQL
+`catalog_cover` jobs and are copied idempotently to object storage before
+`catalog_book_covers` is marked ready. The direct OpenRouter/LiteLLM contract is
+kept only by the compatibility `/v2/media/cover` route.
+
+Scenes use the parallel `/v2/media/scene/jobs` API. The client sends bounded
+book/chapter facts, while the Gateway owns the prompt, Kandinsky routing, retry,
+result retention and acknowledgement. Scene metadata and results live under
+`DATA_DIR/scene-jobs-<environment>` and use the `SCENE_JOB_*` limits.
 
 ## Durable book markup and catalog
 

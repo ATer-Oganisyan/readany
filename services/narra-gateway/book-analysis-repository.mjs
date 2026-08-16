@@ -10,7 +10,12 @@ import {
   normalizeBookAnalysisResolvedEntity
 } from './book-analysis-contracts.mjs'
 import { assessBookAnalysisCoverage } from './book-analysis-quality.mjs'
-import { REQUIRED_CHARACTER_MEDIA, characterBundleIdempotencyKey } from './book-markup.mjs'
+import {
+  CHARACTER_MEDIA_JOB_TYPES,
+  REQUIRED_CHARACTER_MEDIA,
+  characterMediaIdempotencyKey,
+  characterMediaTargetVersion
+} from './book-markup.mjs'
 import { isSupportedVoice } from './voices.mjs'
 
 const SHA256 = /^[0-9a-f]{64}$/
@@ -415,59 +420,119 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
       ? markup.characters
       : markup.characters.filter((character) => character.warmupTextOffset <= readerTextOffset)
     for (const character of eligibleCharacters) {
-      const idempotencyKey = characterBundleIdempotencyKey({
-        bookEditionId,
-        characterKey: character.characterKey,
-        bundleVersion: BOOK_ANALYSIS_CHARACTER_BUNDLE_VERSION
-      })
-      const jobId = idFactory()
-      await client.query(
-        `INSERT INTO generation_jobs (
-           id, idempotency_key, job_type, book_edition_id, character_key,
-           target_version, status, priority, payload
-         ) VALUES ($1, $2, 'character_bundle', $3, $4, $5, 'queued', 50, $6::jsonb)
-         ON CONFLICT (idempotency_key) DO NOTHING`,
-        [
-          jobId, idempotencyKey, bookEditionId, character.characterKey,
-          BOOK_ANALYSIS_CHARACTER_BUNDLE_VERSION,
-          JSON.stringify({ required_media: REQUIRED_CHARACTER_MEDIA })
-        ]
+      const currentBundle = await client.query(
+        `SELECT id, status, source_markup_hash, media_revision
+         FROM character_media_bundles
+         WHERE book_edition_id = $1 AND character_key = $2 AND bundle_version = $3
+         FOR UPDATE`,
+        [bookEditionId, character.characterKey, BOOK_ANALYSIS_CHARACTER_BUNDLE_VERSION]
       )
-      const job = await client.query(
-        `SELECT id, status FROM generation_jobs WHERE idempotency_key = $1`,
-        [idempotencyKey]
-      )
-      if (retryFailedBundles && job.rows[0]?.status === 'failed') {
+      let bundle = currentBundle.rows[0]
+      let sourceChanged = false
+      if (!bundle) {
+        bundle = {
+          id: idFactory(), status: 'queued', source_markup_hash: markupContentHash, media_revision: 1
+        }
+        sourceChanged = true
         await client.query(
-          `UPDATE generation_jobs
-           SET status = 'queued', attempts = 0, last_error_code = NULL,
-               available_at = now(), locked_at = NULL, locked_by = NULL,
-               lease_token = NULL, updated_at = now()
-           WHERE id = $1 AND status = 'failed'`,
-          [job.rows[0].id]
+          `INSERT INTO character_media_bundles (
+             id, book_edition_id, character_key, bundle_version, status,
+             source_markup_hash, media_revision, expires_at
+           ) VALUES ($1, $2, $3, $4, 'queued', $5, 1, $6)`,
+          [
+            bundle.id, bookEditionId, character.characterKey,
+            BOOK_ANALYSIS_CHARACTER_BUNDLE_VERSION, markupContentHash,
+            edition.scope === 'private' ? edition.expires_at : null
+          ]
         )
-        job.rows[0].status = 'queued'
+      } else if (!bundle.source_markup_hash) {
+        await client.query(
+          `UPDATE character_media_bundles
+           SET source_markup_hash = $2, updated_at = now() WHERE id = $1`,
+          [bundle.id, markupContentHash]
+        )
+        bundle.source_markup_hash = markupContentHash
+      } else if (bundle.source_markup_hash !== markupContentHash) {
+        sourceChanged = true
+        bundle.media_revision = Number(bundle.media_revision) + 1
+        bundle.status = 'queued'
+        await client.query(
+          `UPDATE character_media_bundles
+           SET source_markup_hash = $2, media_revision = $3,
+               status = 'queued', published_at = NULL, updated_at = now()
+           WHERE id = $1`,
+          [bundle.id, markupContentHash, bundle.media_revision]
+        )
+        await client.query(
+          'DELETE FROM character_bundle_assets WHERE bundle_id = $1',
+          [bundle.id]
+        )
+      }
+      if (!sourceChanged && bundle.status === 'ready') continue
+      const mediaRevision = Number(bundle.media_revision)
+      const targetVersion = characterMediaTargetVersion({
+        bundleVersion: BOOK_ANALYSIS_CHARACTER_BUNDLE_VERSION,
+        mediaRevision
+      })
+      const jobs = []
+      for (const assetType of REQUIRED_CHARACTER_MEDIA) {
+        const idempotencyKey = characterMediaIdempotencyKey({
+          bookEditionId,
+          characterKey: character.characterKey,
+          targetVersion,
+          assetType
+        })
+        const inserted = await client.query(
+          `INSERT INTO generation_jobs (
+             id, idempotency_key, job_type, book_edition_id, character_key,
+             target_version, status, priority, payload
+           ) VALUES ($1, $2, $3, $4, $5, $6, 'queued', 50, $7::jsonb)
+           ON CONFLICT (idempotency_key) DO NOTHING
+           RETURNING id, status, job_type`,
+          [
+            idFactory(), idempotencyKey, CHARACTER_MEDIA_JOB_TYPES[assetType],
+            bookEditionId, character.characterKey, targetVersion,
+            JSON.stringify({
+              asset_type: assetType,
+              required_media: [assetType],
+              bundle_version: BOOK_ANALYSIS_CHARACTER_BUNDLE_VERSION,
+              source_markup_hash: markupContentHash,
+              media_revision: mediaRevision,
+              markup_version_id: markupId
+            })
+          ]
+        )
+        let job = inserted.rows[0]
+        if (!job) {
+          const existingJob = await client.query(
+            `SELECT id, status, job_type FROM generation_jobs WHERE idempotency_key = $1`,
+            [idempotencyKey]
+          )
+          job = existingJob.rows[0]
+        }
+        if (retryFailedBundles && job?.status === 'failed') {
+          await client.query(
+            `UPDATE generation_jobs
+             SET status = 'queued', attempts = 0, last_error_code = NULL,
+                 available_at = now(), locked_at = NULL, locked_by = NULL,
+                 lease_token = NULL, updated_at = now()
+             WHERE id = $1 AND status = 'failed'`,
+            [job.id]
+          )
+          job.status = 'queued'
+        }
+        jobs.push(job)
       }
       await client.query(
-        `INSERT INTO character_media_bundles (
-           id, book_edition_id, character_key, bundle_version, job_id, status, expires_at
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-         ON CONFLICT (book_edition_id, character_key, bundle_version) DO UPDATE
-         SET job_id = EXCLUDED.job_id,
-             status = CASE
-               WHEN character_media_bundles.status = 'failed' AND EXCLUDED.status = 'queued'
-                 THEN 'queued'
-               ELSE character_media_bundles.status
-             END,
-             updated_at = CASE
-               WHEN character_media_bundles.status = 'failed' AND EXCLUDED.status = 'queued'
-                 THEN now()
-               ELSE character_media_bundles.updated_at
-             END`,
+        `UPDATE character_media_bundles
+         SET job_id = $2,
+             status = CASE WHEN $3::boolean THEN 'queued' ELSE status END,
+             updated_at = now()
+         WHERE id = $1`,
         [
-          idFactory(), bookEditionId, character.characterKey,
-          BOOK_ANALYSIS_CHARACTER_BUNDLE_VERSION, job.rows[0].id, job.rows[0].status,
-          edition.scope === 'private' ? edition.expires_at : null
+          bundle.id,
+          jobs.find((job) => job.job_type === 'character_portrait')?.id ?? null,
+          sourceChanged || jobs.some((job) => job.status !== 'ready')
         ]
       )
     }

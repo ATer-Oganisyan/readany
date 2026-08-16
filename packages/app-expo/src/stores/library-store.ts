@@ -360,7 +360,7 @@ async function ensureGeneratedBookCover(
     throw new Error("Generated cover was not persisted in the library database");
   }
   await acknowledgeGeneratedBookCover(book.id, generated.jobId);
-  console.log(`[Library] Generated OpenRouter cover for "${currentBook.meta.title}"`);
+  console.log(`[Library] Generated backend cover for "${currentBook.meta.title}"`);
 }
 
 function queueGeneratedBookCover(
@@ -374,7 +374,7 @@ function queueGeneratedBookCover(
   const task = coverGenerationQueue
     .then(() => ensureGeneratedBookCover(book, context))
     .catch((error) => {
-      console.warn(`[Library] OpenRouter could not generate a cover for ${book.id}:`, error);
+      console.warn(`[Library] Backend could not generate a cover for ${book.id}:`, error);
     })
     .finally(() => {
       coverGenerationInFlight.delete(book.id);

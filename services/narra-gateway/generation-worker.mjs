@@ -1,11 +1,24 @@
-import { REQUIRED_CHARACTER_MEDIA, normalizeCharacterAnchor } from './book-markup.mjs'
+import {
+  CHARACTER_MEDIA_JOB_TYPES,
+  REQUIRED_CHARACTER_MEDIA,
+  normalizeCharacterAnchor
+} from './book-markup.mjs'
 import { createOperationalLogger } from './operational-log.mjs'
-import { isSupportedVoice } from './voices.mjs'
+import { voiceForGender } from './voices.mjs'
 
-const JOB_TYPES = new Set(['book_markup', 'character_bundle'])
+const JOB_TYPES = new Set([
+  'book_markup',
+  'catalog_cover',
+  'character_bundle',
+  ...Object.values(CHARACTER_MEDIA_JOB_TYPES)
+])
 const JOB_LABELS = {
   book_markup: 'разметка книги',
-  character_bundle: 'пакет персонажа'
+  catalog_cover: 'каталожная обложка',
+  character_bundle: 'пакет персонажа',
+  character_portrait: 'портрет персонажа',
+  character_audio: 'голос персонажа',
+  character_animation: 'анимация персонажа'
 }
 const ASSET_LABELS = {
   primary_portrait: 'портрет',
@@ -108,9 +121,7 @@ export function normalizeCharacterBundleInput(input) {
     stringValue(passport.outfit, 500)
   ].filter(Boolean).join(', ').slice(0, 3_000)
   const requestedVoice = stringValue(source.creative?.voice, 32) || stringValue(source.voice, 32)
-  const voice = isSupportedVoice(requestedVoice)
-    ? requestedVoice
-    : gender === 'male' ? 'She' : gender === 'female' ? 'Che' : 'Erm'
+  const voice = voiceForGender(requestedVoice, gender)
 
   return {
     ...request,
@@ -174,7 +185,7 @@ export function normalizeBookMarkupResult(value) {
   return { ...value, characters }
 }
 
-export function normalizeCharacterBundleResult(value) {
+export function normalizeCharacterBundleResult(value, requiredMedia = REQUIRED_CHARACTER_MEDIA) {
   if (!value || typeof value !== 'object' || !Array.isArray(value.assets)) {
     throw invalidResult('character bundle must contain assets')
   }
@@ -194,10 +205,17 @@ export function normalizeCharacterBundleResult(value) {
     }
     byType.set(asset.type, { ...asset })
   }
-  for (const type of REQUIRED_CHARACTER_MEDIA) {
+  if (!Array.isArray(requiredMedia) || !requiredMedia.length ||
+      requiredMedia.some((type) => !REQUIRED_CHARACTER_MEDIA.includes(type))) {
+    throw invalidResult('required character media contract is invalid')
+  }
+  for (const type of requiredMedia) {
     if (!byType.has(type)) throw invalidResult(`character bundle is missing ${type}`)
   }
-  return { assets: REQUIRED_CHARACTER_MEDIA.map((type) => byType.get(type)) }
+  if (byType.size !== requiredMedia.length) {
+    throw invalidResult('character bundle contains an unexpected asset type')
+  }
+  return { assets: requiredMedia.map((type) => byType.get(type)) }
 }
 
 /**
@@ -249,6 +267,9 @@ export function createGenerationWorker({
       duration_ms: Date.now() - startedAt
     })
     if (input.scope === 'catalog') {
+      if (typeof repository.enqueueCatalogCover === 'function') {
+        await repository.enqueueCatalogCover({ bookEditionId: job.bookEditionId })
+      }
       const bundleRequests = await Promise.allSettled(markup.characters.map((character) =>
         repository.ensureCharacterBundle({
           bookEditionId: job.bookEditionId,
@@ -285,8 +306,12 @@ export function createGenerationWorker({
       character_key: input.characterKey,
       scope: input.scope
     })
+    const requiredMedia = Array.isArray(job.payload?.required_media) && job.payload.required_media.length
+      ? job.payload.required_media
+      : [...REQUIRED_CHARACTER_MEDIA]
     const bundle = normalizeCharacterBundleResult(
-      await generator.generateCharacterBundle(input, [...REQUIRED_CHARACTER_MEDIA])
+      await generator.generateCharacterBundle(input, requiredMedia),
+      requiredMedia
     )
     for (const asset of bundle.assets) {
       log.info('bundle.asset_ready', 'Артефакт персонажа готов', {
@@ -307,6 +332,28 @@ export function createGenerationWorker({
       duration_ms: Date.now() - startedAt
     })
     return { assetCount: bundle.assets.length }
+  }
+
+  async function runCatalogCover(job) {
+    const startedAt = Date.now()
+    const input = await repository.getCatalogCoverInput(job)
+    log.info('cover.started', 'Начинаю генерацию каталожной обложки', {
+      job: job.id,
+      edition: job.bookEditionId,
+      book: input.title
+    })
+    const result = await generator.generateCatalogCover(input)
+    if (!result?.asset || typeof result.asset.objectKey !== 'string') {
+      throw invalidResult('catalog cover result is invalid')
+    }
+    await repository.publishCatalogCover(job, result.asset)
+    log.info('cover.published', 'Каталожная обложка опубликована', {
+      job: job.id,
+      edition: job.bookEditionId,
+      book: input.title,
+      duration_ms: Date.now() - startedAt
+    })
+    return { assetCount: 1 }
   }
 
   async function withLeaseHeartbeat(job, operation) {
@@ -354,9 +401,11 @@ export function createGenerationWorker({
         return { status: 'failed', jobId: job.id, errorCode: error.code }
       }
       try {
-        const result = await withLeaseHeartbeat(job, () =>
-          job.type === 'book_markup' ? runBookMarkup(job) : runCharacterBundle(job)
-        )
+        const result = await withLeaseHeartbeat(job, () => {
+          if (job.type === 'book_markup') return runBookMarkup(job)
+          if (job.type === 'catalog_cover') return runCatalogCover(job)
+          return runCharacterBundle(job)
+        })
         log.info('job.completed', 'Задание успешно завершено', {
           job: job.id,
           type: JOB_LABELS[job.type],

@@ -446,7 +446,7 @@ test('PostgreSQL analysis workers claim different scan shards and reclaim an exp
       assert.equal(input.observations.length, 1)
       await repository.completeCharacterSynthesis(characterJob, {
         snapshotId: input.snapshot.id,
-        synthesisVersion: 'character-profile-v2',
+        synthesisVersion: 'character-profile-v3',
         selectedEvidenceIds: input.observations.map(({ id }) => id),
         profile: {
           role: null,
@@ -526,8 +526,8 @@ test('PostgreSQL analysis workers claim different scan shards and reclaim an exp
                  AND status = 'published' AND analysis_version = 'book-markup-v3') AS media_projections,
               (SELECT count(*)::integer FROM generation_jobs
                WHERE book_edition_id = run.book_edition_id
-                 AND job_type = 'character_bundle'
-                 AND target_version = 'character-bundle-v3') AS media_jobs,
+                 AND job_type IN ('character_portrait', 'character_audio', 'character_animation')
+                 AND target_version = 'character-bundle-v3:r1') AS media_jobs,
               (SELECT count(*)::integer
                FROM book_markup_versions AS media_markup
                JOIN book_characters AS media_character
@@ -546,7 +546,7 @@ test('PostgreSQL analysis workers claim different scan shards and reclaim an exp
       edition_status: 'base_ready',
       shadow_publications: 1,
       media_projections: 1,
-      media_jobs: 2,
+      media_jobs: 6,
       media_characters: 2
     })
     const repeatedProjection = await repository.ensureLatestMediaProjection(bookEditionId)
@@ -557,7 +557,8 @@ test('PostgreSQL analysis workers claim different scan shards and reclaim an exp
        SET status = 'failed', attempts = 3, last_error_code = 'GENERATOR_HTTP_502'
        WHERE id = (
          SELECT id FROM generation_jobs
-         WHERE book_edition_id = $1 AND target_version = 'character-bundle-v3'
+         WHERE book_edition_id = $1 AND target_version = 'character-bundle-v3:r1'
+           AND job_type = 'character_portrait'
          ORDER BY character_key LIMIT 1
        )
        RETURNING id`,

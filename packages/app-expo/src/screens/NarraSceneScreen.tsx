@@ -2,7 +2,6 @@ import { NarraLoopVideo } from "@/components/narra/NarraLoopVideo";
 import { ChevronRightIcon } from "@/components/ui/Icon";
 import { ScrollViewMarker } from "@/components/ui/ScrollViewMarker";
 import { Text } from "@/components/ui/Typography";
-import { hasBundledOpenRouterKey } from "@/config/bundled-ai";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import { animateNarraImage } from "@/lib/narra/animate-openrouter";
 import { buildSceneMotionPrompt } from "@/lib/narra/animate-prompt";
@@ -240,7 +239,7 @@ export function NarraSceneScreen({ route, navigation }: Props) {
     });
   }, [navigation]);
 
-  // «Оживление» сцены (P18): image-to-video через OpenRouter Veo. Генерация
+  // «Оживление» сцены: image-to-video через backend-owned provider. Генерация
   // ТОЛЬКО по явному тапу (платные вызовы), готовое видео кэшируется в сцене.
   const runAnimation = useCallback(async () => {
     if (!imageUri || animating || loading || sceneMediaOperationRef.current !== "idle") return;
@@ -281,27 +280,19 @@ export function NarraSceneScreen({ route, navigation }: Props) {
       setShowVideo(false);
       return;
     }
-    if (!hasBundledOpenRouterKey) {
-      Alert.alert(t("narra.animateNeedKey", "Нужен ключ OpenRouter"));
-      return;
-    }
     if (videoUri) {
       setShowVideo(true);
       return;
     }
     void runAnimation();
-  }, [animating, runAnimation, showVideo, t, videoUri]);
+  }, [animating, runAnimation, showVideo, videoUri]);
 
   // Долгий тап — регенерация видео даже при наличии кэша.
   const regenerateAnimation = useCallback(() => {
     if (animating) return;
-    if (!hasBundledOpenRouterKey) {
-      Alert.alert(t("narra.animateNeedKey", "Нужен ключ OpenRouter"));
-      return;
-    }
     setShowVideo(false);
     void runAnimation();
-  }, [animating, runAnimation, t]);
+  }, [animating, runAnimation]);
 
   return (
     <ScrollViewMarker

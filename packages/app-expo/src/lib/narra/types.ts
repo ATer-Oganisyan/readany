@@ -46,6 +46,8 @@ export interface NarraCharacter {
   portraitUriOverridesAsset?: boolean;
   greetingAudioUri?: string;
   idleAnimationUri?: string;
+  /** Version and content hashes of the backend bundle cached by this character. */
+  mediaBundleKey?: string;
   mediaSource?: "local" | "backend";
   mediaState?: "preparing" | "ready";
   analysisSource?: "v2" | "v3" | "shadow-v3";

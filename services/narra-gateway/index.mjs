@@ -45,7 +45,12 @@ import {
   shouldRetryKandinskyStatus,
   videoRetryDelay
 } from './retry-policy.mjs'
-import { imageUpstreamError, shouldFallbackAfterImageError } from './image-policy.mjs'
+import {
+  imageEmptyResultError,
+  imageUpstreamError,
+  simplifiedPortraitPrompt,
+  shouldFallbackAfterImageError
+} from './image-policy.mjs'
 import { sberCaBundle, verifiedSberCertificates } from './sber-tls.mjs'
 import {
   createFixedWindowLimiter,
@@ -61,6 +66,7 @@ import { createInstallationRegistry } from './installation-registry.mjs'
 import { gatewayReadiness } from './readiness.mjs'
 import { createCoverJobStore } from './cover-job-store.mjs'
 import { createCoverJobRunner } from './cover-job-runner.mjs'
+import { parseSceneJobBody, sceneGenerationPrompt } from './scene-generation.mjs'
 import { createBookCatalogRouter } from './book-catalog-api.mjs'
 import { createCatalogIngestRouter } from './catalog-ingest-api.mjs'
 import { createCatalogIngestService } from './catalog-ingest-service.mjs'
@@ -177,6 +183,11 @@ const COVER_JOB_MAX_RESULT_MIB = envInt('COVER_JOB_MAX_RESULT_MIB', 16, 64)
 const COVER_JOB_MAX_ATTEMPTS = envInt('COVER_JOB_MAX_ATTEMPTS', 3, 10)
 const COVER_JOB_ATTEMPT_TIMEOUT_SECONDS = envInt('COVER_JOB_ATTEMPT_TIMEOUT_SECONDS', 32 * 60, 2 * 60 * 60)
 const COVER_JOB_WORKER_ENABLED = parseEnvBool(process.env, 'COVER_JOB_WORKER_ENABLED', true)
+const SCENE_JOB_MAX = envInt('SCENE_JOB_MAX', 1_000, 10_000)
+const SCENE_JOB_TTL_HOURS = envInt('SCENE_JOB_TTL_HOURS', 24, 168)
+const SCENE_JOB_MAX_ATTEMPTS = envInt('SCENE_JOB_MAX_ATTEMPTS', 3, 10)
+const SCENE_JOB_ATTEMPT_TIMEOUT_SECONDS = envInt('SCENE_JOB_ATTEMPT_TIMEOUT_SECONDS', 15 * 60, 60 * 60)
+const SCENE_JOB_WORKER_ENABLED = parseEnvBool(process.env, 'SCENE_JOB_WORKER_ENABLED', true)
 const coverProviderConfig = coverImageConfig()
 const coverProviderCallsPerAttempt =
   coverProviderConfig.fallbackModel && coverProviderConfig.fallbackModel !== coverProviderConfig.model ? 2 : 1
@@ -184,7 +195,7 @@ const minimumCoverAttemptTimeoutMs =
   coverProviderConfig.timeoutMs * coverProviderCallsPerAttempt + 15_000
 if (COVER_JOB_ATTEMPT_TIMEOUT_SECONDS * 1_000 < minimumCoverAttemptTimeoutMs) {
   throw new Error(
-    'COVER_JOB_ATTEMPT_TIMEOUT_SECONDS must cover every configured OpenRouter image model timeout plus 15 seconds'
+    'COVER_JOB_ATTEMPT_TIMEOUT_SECONDS must cover every configured cover image model timeout plus 15 seconds'
   )
 }
 const llmGate = createConcurrencyGate({ limit: LLM_CONCURRENCY, queueLimit: LLM_QUEUE_LIMIT, name: 'LLM' })
@@ -428,9 +439,8 @@ async function kandinskyGenerate(prompt, width = 768, height = 1024, signal) {
       break
     }
     if (status === 'failed' || status === 'error') {
-      throw imageUpstreamError({
+      throw imageEmptyResultError({
         provider: 'Kandinsky',
-        phase: 'status',
         detail: statusBody.error || statusBody.detail || statusBody.message
       })
     }
@@ -458,7 +468,9 @@ async function kandinskyGenerate(prompt, width = 768, height = 1024, signal) {
       detail: resImg.body
     })
   }
-  if (!resImg.body?.length) throw httpErr('UNKNOWN', 'Kandinsky: пустой результат')
+  if (!resImg.body?.length) {
+    throw imageEmptyResultError({ provider: 'Kandinsky' })
+  }
   return resImg.body.toString('base64')
 }
 
@@ -614,7 +626,7 @@ async function completeInternalChat({ messages, signal }) {
   }
 }
 
-async function generateInternalPortrait(prompt, signal) {
+async function generateInternalPortrait(prompt, signal, safeRetryPrompt = '') {
   let release
   try {
     release = await imageGate.acquire(signal)
@@ -625,8 +637,20 @@ async function generateInternalPortrait(prompt, signal) {
         base64 = await gigachatImage(prompt, signal)
         provider = 'gigachat-image'
       } catch (error) {
-        if (!shouldFallbackAfterImageError(error) || !KANDINSKY_TOKEN) throw error
-        console.error('[internal-generation] portrait fallback to Kandinsky:', error.message)
+        let failure = error
+        if (safeRetryPrompt && error?.code === 'NETWORK' && error?.phase === 'result') {
+          console.error('[internal-generation] portrait returned no image, retrying a simplified prompt')
+          try {
+            base64 = await gigachatImage(simplifiedPortraitPrompt(safeRetryPrompt), signal)
+            provider = 'gigachat-image'
+          } catch (retryError) {
+            failure = retryError
+          }
+        }
+        if (!base64) {
+          if (!shouldFallbackAfterImageError(failure) || !KANDINSKY_TOKEN) throw failure
+          console.error('[internal-generation] portrait fallback to Kandinsky:', failure.message)
+        }
       }
     }
     if (!base64 && KANDINSKY_TOKEN) {
@@ -681,13 +705,18 @@ async function synthesizeInternalSpeech(text, voice, signal) {
   }
 }
 
-async function generateInternalIdleAnimation(portraitBytes, signal) {
+async function generateInternalIdleAnimation(
+  portraitBytes,
+  signal,
+  query = 'the character stays still, blinks slowly and breathes subtly, locked camera, no zoom',
+  quality = 'lite'
+) {
   if (KANDINSKY_TOKEN && VIDEO_BASE_URL) {
     try {
       const base64 = await animatePortrait(
         Buffer.from(portraitBytes).toString('base64'),
-        'the character stays still, blinks slowly and breathes subtly, locked camera, no zoom',
-        'lite',
+        query,
+        quality,
         signal
       )
       const bytes = Buffer.from(base64, 'base64')
@@ -825,13 +854,38 @@ const coverJobRunner = createCoverJobRunner({
   concurrency: COVER_CONCURRENCY,
   maxAttempts: COVER_JOB_MAX_ATTEMPTS,
   attemptTimeoutMs: COVER_JOB_ATTEMPT_TIMEOUT_SECONDS * 1000,
-  generate: ({ prompt, requestId, signal }) => requestCoverImageWithFallback({
-    prompt,
-    requestId,
-    signal
-  })
+  generate: async ({ prompt, signal }) => {
+    const generated = await generateInternalPortrait(prompt, signal)
+    return {
+      image: generated.bytes.toString('base64'),
+      mimeType: generated.mimeType,
+      model: generated.provider
+    }
+  }
 })
 coverJobRunner.start()
+const sceneJobStore = createCoverJobStore({
+  dataDir,
+  environment: ANALYTICS_ENV,
+  namespace: 'scene',
+  maxJobs: SCENE_JOB_MAX,
+  resultTtlMs: SCENE_JOB_TTL_HOURS * 60 * 60 * 1000,
+  maxResultBytes: COVER_JOB_MAX_RESULT_MIB * 1024 * 1024
+})
+await sceneJobStore.start()
+const sceneJobRunner = createCoverJobRunner({
+  store: sceneJobStore,
+  enabled: SCENE_JOB_WORKER_ENABLED,
+  concurrency: IMAGE_CONCURRENCY,
+  maxAttempts: SCENE_JOB_MAX_ATTEMPTS,
+  attemptTimeoutMs: SCENE_JOB_ATTEMPT_TIMEOUT_SECONDS * 1000,
+  generate: async ({ prompt, signal }) => ({
+    image: await kandinskyQueued(prompt, 1024, 672, signal),
+    mimeType: 'image/png',
+    model: 'k6-image-t2i'
+  })
+})
+sceneJobRunner.start()
 
 let bookMarkupPool = null
 let bookMarkupRepository = null
@@ -862,6 +916,18 @@ if (process.env.DATABASE_URL) {
   })
   bookAnalysisRepository = createPostgresBookAnalysisRepository(bookMarkupPool)
   bookOperatorRepository = createPostgresBookOperatorRepository(bookMarkupPool)
+  if (internalGenerationService) {
+    const coverJobs = await bookMarkupRepository.enqueueMissingCatalogCovers()
+    const characterMediaJobs = await bookMarkupRepository.enqueueCharacterMediaBackfill()
+    console.info('[catalog-cover] durable backfill checked', {
+      jobs: coverJobs.length,
+      created: coverJobs.filter((job) => job.created).length
+    })
+    console.info('[character-media] independent backfill checked', {
+      jobs: characterMediaJobs.length,
+      created: characterMediaJobs.filter((job) => job.created).length
+    })
+  }
   if (bookObjectStorage) {
     const cleanup = createPrivateMaterialCleanup({
       repository: bookMarkupRepository,
@@ -998,6 +1064,7 @@ const importByteBudget = createPersistentBudgetMiddleware({
 
 app.get('/health', (_req, res) => {
   const llm = llmRouteReadiness()
+  const durableImageReady = Boolean(LLM_API_KEY || KANDINSKY_TOKEN)
   res.json({
     ok: true,
     version: BUILD_VERSION,
@@ -1006,7 +1073,7 @@ app.get('/health', (_req, res) => {
       gigachat: llm.ready,
       salutespeech: !!SALUTE_KEY && SBER_CA_VERIFIED,
       kandinsky: !!KANDINSKY_TOKEN,
-      cover: coverRouteReadiness().ready,
+      cover: durableImageReady,
       video: !!KANDINSKY_TOKEN && !!VIDEO_BASE_URL,
       book_markup: Boolean(bookMarkupRepository),
       book_storage: Boolean(bookObjectStorage),
@@ -1034,13 +1101,17 @@ app.get('/health', (_req, res) => {
       ...coverJobStore.status(),
       worker: coverJobRunner.status()
     },
+    scene_jobs: {
+      ...sceneJobStore.status(),
+      worker: sceneJobRunner.status()
+    },
     concurrency: { llm: llmGate.status(), speech: speechGate.status(), image: imageGate.status(), cover: coverGate.status(), import: importGate.status() }
   })
 })
 
 app.get('/ready', async (_req, res) => {
   const llm = llmRouteReadiness()
-  const coverReady = coverRouteReadiness().ready
+  const coverReady = Boolean(LLM_API_KEY || KANDINSKY_TOKEN)
   const registryStatus = installationRegistry.status()
   const coverJobStatus = coverJobStore.status()
   const bookBackendReady = await checkBookBackendReady()
@@ -1589,7 +1660,12 @@ async function gigachatImage(prompt, signal) {
   }
   const j = await r.json()
   const b64 = j?.data?.[0]?.b64_json
-  if (!b64) throw httpErr('UNKNOWN', 'gigachat-image: пустой результат')
+  if (!b64) {
+    throw imageEmptyResultError({
+      provider: 'GigaChat Image',
+      detail: JSON.stringify(j)
+    })
+  }
   return b64
 }
 
@@ -1764,12 +1840,54 @@ async function coverJobPayload(job, { includeImage = false } = {}) {
   return payload
 }
 
+async function sceneJobPayload(job, { includeImage = false } = {}) {
+  const payload = {
+    job_id: job.job_id,
+    status: job.status,
+    poll_after_ms: coverJobPollAfter(job),
+    attempt_count: job.attempt_count,
+    expires_at: job.expires_at
+  }
+  if (job.status === 'failed') {
+    payload.code = job.error_code || 'UNKNOWN'
+    payload.error = job.error_message || 'Не удалось создать сцену'
+  }
+  if (includeImage && job.status === 'completed') {
+    const result = await sceneJobStore.readResult(job)
+    payload.image = result?.toString('base64')
+    payload.mime_type = job.mime_type || 'image/png'
+    payload.model = job.model || undefined
+  }
+  return payload
+}
+
 async function reserveCoverJobBudget(installationId) {
   const reservation = await installationRegistry.reserve({
     installationId,
     metric: 'cover_requests',
     perInstallationLimit: COVER_DAILY_LIMIT,
     globalLimit: COVER_GLOBAL_DAILY_LIMIT
+  })
+  if (!reservation.ok) {
+    const error = new Error(
+      reservation.scope === 'global'
+        ? 'Общий дневной бюджет сервиса исчерпан'
+        : 'Дневной лимит установки исчерпан'
+    )
+    error.code = 'RATE'
+    error.status = 429
+    error.resetAt = reservation.resetAt
+    throw error
+  }
+  return reservation
+}
+
+async function reserveSceneJobBudget(installationId) {
+  const reservation = await installationRegistry.reserve({
+    installationId,
+    metric: 'image_requests',
+    perInstallationLimit: IMAGE_DAILY_LIMIT,
+    globalLimit: IMAGE_GLOBAL_DAILY_LIMIT
   })
   if (!reservation.ok) {
     const error = new Error(
@@ -1807,7 +1925,9 @@ app.post('/v2/media/cover/jobs', express.json({ limit: '64kb' }), async (req, re
     }
     if (result.created) coverJobRunner.notify()
     const status = ['completed', 'failed'].includes(result.job.status) ? 200 : 202
-    res.status(status).json(await coverJobPayload(result.job))
+    res.status(status).json(await coverJobPayload(result.job, {
+      includeImage: result.job.status === 'completed'
+    }))
   } catch (error) {
     if (error.resetAt) res.setHeader('RateLimit-Reset', String(Math.ceil(error.resetAt / 1000)))
     res.status(error.status || statusFor(error.code)).json({
@@ -1834,6 +1954,66 @@ app.post('/v2/media/cover/jobs/:jobId/ack', async (req, res) => {
   try {
     const acknowledged = await coverJobStore.acknowledge(req.params.jobId, req.installation.sub)
     if (!acknowledged) return res.status(404).json({ error: 'Задача обложки не найдена', code: 'NOT_FOUND' })
+    res.status(204).end()
+  } catch (error) {
+    res.status(error.status || statusFor(error.code)).json({
+      error: error.message,
+      code: error.code || 'UNKNOWN'
+    })
+  }
+})
+
+// Scene requests carry structured book facts. Prompt construction, credentials,
+// provider selection, retry and persisted result ownership stay on the gateway.
+app.post('/v2/media/scene/jobs', express.json({ limit: '64kb' }), async (req, res) => {
+  let reservation
+  try {
+    const input = parseSceneJobBody(req.body)
+    const result = await sceneJobStore.createOrGet({
+      installationId: req.installation.sub,
+      requestId: input.requestId,
+      prompt: sceneGenerationPrompt(input),
+      beforeCreate: async () => {
+        reservation = await reserveSceneJobBudget(req.installation.sub)
+      }
+    })
+    if (reservation) {
+      res.setHeader('RateLimit-Daily-Limit', String(IMAGE_DAILY_LIMIT))
+      res.setHeader('RateLimit-Daily-Remaining', String(reservation.installationRemaining))
+      res.setHeader('RateLimit-Global-Remaining', String(reservation.globalRemaining))
+      res.setHeader('RateLimit-Reset', String(Math.ceil(reservation.resetAt / 1000)))
+    }
+    if (result.created) sceneJobRunner.notify()
+    const status = ['completed', 'failed'].includes(result.job.status) ? 200 : 202
+    res.status(status).json(await sceneJobPayload(result.job, {
+      includeImage: result.job.status === 'completed'
+    }))
+  } catch (error) {
+    if (error.resetAt) res.setHeader('RateLimit-Reset', String(Math.ceil(error.resetAt / 1000)))
+    res.status(error.status || statusFor(error.code)).json({
+      error: error.message,
+      code: error.code || 'UNKNOWN'
+    })
+  }
+})
+
+app.get('/v2/media/scene/jobs/:jobId', async (req, res) => {
+  try {
+    const job = sceneJobStore.getForInstallation(req.params.jobId, req.installation.sub)
+    if (!job) return res.status(404).json({ error: 'Задача сцены не найдена', code: 'NOT_FOUND' })
+    res.json(await sceneJobPayload(job, { includeImage: true }))
+  } catch (error) {
+    res.status(error.status || statusFor(error.code)).json({
+      error: error.message,
+      code: error.code || 'UNKNOWN'
+    })
+  }
+})
+
+app.post('/v2/media/scene/jobs/:jobId/ack', async (req, res) => {
+  try {
+    const acknowledged = await sceneJobStore.acknowledge(req.params.jobId, req.installation.sub)
+    if (!acknowledged) return res.status(404).json({ error: 'Задача сцены не найдена', code: 'NOT_FOUND' })
     res.status(204).end()
   } catch (error) {
     res.status(error.status || statusFor(error.code)).json({
@@ -1876,9 +2056,13 @@ app.post('/v2/media/avatar', videoLimit, videoDailyLimit, express.json({ limit: 
 app.post('/v2/media/portrait-animation', videoLimit, videoDailyLimit, express.json({ limit: '25mb' }), async (req, res) => {
   try {
     const { image, query, quality } = parsePortraitBody(req.body)
-    if (!KANDINSKY_TOKEN) return res.status(400).json({ error: 'Видео: токен не задан на сервере', code: 'NO_KEY' })
     const signal = requestAbortSignal(req, res)
-    longJob(res, async () => ({ video: await animatePortrait(image, query, quality, signal) }))
+    longJob(res, async () => {
+      const generated = await generateInternalIdleAnimation(
+        Buffer.from(image, 'base64'), signal, query, quality
+      )
+      return { video: generated.bytes.toString('base64'), provider: generated.provider }
+    })
   } catch (error) {
     res.status(error.status || 500).json({ error: error.message, code: error.code || 'UNKNOWN' })
   }
@@ -1913,10 +2097,12 @@ async function shutdown(signal) {
   httpServer.close(async (error) => {
     try {
       await coverJobRunner.stop()
+      await sceneJobRunner.stop()
       await Promise.all([
         eventStore.stop(),
         installationRegistry.stop(),
         coverJobStore.stop(),
+        sceneJobStore.stop(),
         bookMarkupPool?.end()
       ])
       if (error) throw error

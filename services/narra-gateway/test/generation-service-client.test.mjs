@@ -50,12 +50,36 @@ test('generator client sends one idempotent request for an atomic character bund
     characterKey: 'anna',
     bundleVersion: 'character-bundle-v1'
   }, ['primary_portrait', 'greeting_audio', 'idle_animation'])
-  assert.equal(body.idempotencyKey, 'book-1:anna:character-bundle-v1')
+  assert.equal(
+    body.idempotencyKey,
+    'book-1:anna:character-bundle-v1:primary_portrait+greeting_audio+idle_animation'
+  )
   assert.deepEqual(body.requiredMedia, [
     'primary_portrait',
     'greeting_audio',
     'idle_animation'
   ])
+})
+
+test('generator client keeps catalog cover routing and credentials inside the service boundary', async () => {
+  let request
+  const client = createGenerationServiceClient({
+    baseUrl: 'http://localhost:8790',
+    token: TOKEN,
+    production: false,
+    async fetchImpl(url, options) {
+      request = { url: String(url), body: JSON.parse(options.body) }
+      return new Response(JSON.stringify({ asset: { objectKey: 'cover.png' } }), { status: 200 })
+    }
+  })
+  await client.generateCatalogCover({
+    bookEditionId: 'book-1', targetVersion: 'catalog-cover-v2-aaaa',
+    scope: 'catalog', title: 'Книга', author: '', context: ''
+  })
+  assert.equal(request.url, 'http://localhost:8790/internal/v1/catalog-covers')
+  assert.equal(request.body.idempotencyKey, 'book-1:catalog-cover:catalog-cover-v2-aaaa')
+  assert.equal(Object.hasOwn(request.body, 'provider'), false)
+  assert.equal(Object.hasOwn(request.body, 'apiKey'), false)
 })
 
 test('generator client sends one bounded scan chunk with a stable idempotency key', async () => {
@@ -108,7 +132,7 @@ test('generator client sends one idempotent character profile request', async ()
     }
   })
   const input = {
-    runId: 'run-1', snapshotId: 'snapshot-1', synthesisVersion: 'character-profile-v2',
+    runId: 'run-1', snapshotId: 'snapshot-1', synthesisVersion: 'character-profile-v3',
     bookTitle: 'Книга', bookAuthor: 'Автор', textLength: 100,
     entity: { entityKey: 'character:anna' }, evidence: [{ id: 'evidence-1' }]
   }
@@ -118,7 +142,7 @@ test('generator client sends one idempotent character profile request', async ()
   assert.equal(request.url, 'http://localhost:8790/internal/v1/book-analysis/synthesize-character')
   assert.equal(
     request.body.idempotencyKey,
-    'run-1:synthesize:snapshot-1:character:anna:character-profile-v2'
+    'run-1:synthesize:snapshot-1:character:anna:character-profile-v3'
   )
   assert.deepEqual({ ...request.body, idempotencyKey: undefined }, {
     ...input,
@@ -147,6 +171,26 @@ test('generator client maps non-success responses to a safe worker error code', 
   await assert.rejects(
     () => client.generateBookMarkup({ bookEditionId: 'book-1', analysisVersion: 'v1' }),
     (error) => error.code === 'GENERATOR_HTTP_503'
+  )
+})
+
+test('generator client preserves a bounded provider error code for media retries', async () => {
+  const client = createGenerationServiceClient({
+    baseUrl: 'http://localhost:8790',
+    token: TOKEN,
+    production: false,
+    async fetchImpl() {
+      return new Response(JSON.stringify({
+        error: 'provider details stay internal',
+        code: 'VIDEO_FAILED'
+      }), { status: 502 })
+    }
+  })
+  await assert.rejects(
+    () => client.generateCharacterBundle({
+      bookEditionId: 'book-1', characterKey: 'anna', bundleVersion: 'v1'
+    }, ['idle_animation']),
+    (error) => error.code === 'VIDEO_FAILED'
   )
 })
 
@@ -188,7 +232,7 @@ test('generator client preserves safe scan validation codes instead of hiding th
     () => client.scanBookChunk({
       runId: 'run-1',
       chunkId: 'chunk-1',
-      extractorVersion: 'book-scan-v9'
+      extractorVersion: 'book-scan-v10'
     }),
     (error) => error.code === 'SCAN_RELATION_PARTICIPANT_MISSING'
   )

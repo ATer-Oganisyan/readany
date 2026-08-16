@@ -91,7 +91,7 @@ test('internal generation service creates all three required bundle assets', asy
     }
   })
   const result = await service.generateCharacterBundle({
-    idempotencyKey: '11111111-1111-4111-8111-111111111111:character:anna:character-bundle-v3',
+    idempotencyKey: '11111111-1111-4111-8111-111111111111:character:anna:character-bundle-v3:primary_portrait+greeting_audio+idle_animation',
     bookEditionId: '11111111-1111-4111-8111-111111111111', characterKey: 'character:anna',
     name: 'Анна', fullName: 'Анна', scope: 'private', bookTitle: 'Книга', bookAuthor: '',
     bundleVersion: 'character-bundle-v3',
@@ -111,6 +111,68 @@ test('internal generation service creates all three required bundle assets', asy
   assert.ok(lines.some((line) => line.includes('event="bundle.animation_ready"') && line.includes('provider="local-ffmpeg"')))
   assert.equal(lines.filter((line) => line.includes('event="bundle.asset_stored"')).length, 3)
   assert.ok(lines.some((line) => line.includes('event="bundle.cached"')))
+})
+
+test('internal generation service publishes one requested character asset independently', async () => {
+  const storage = memoryStorage()
+  let portraitCalls = 0
+  let safeRetryPrompt = ''
+  const service = createInternalGenerationService({
+    storage,
+    logger: { info() {}, error() {} },
+    async completeChat() { throw new Error('unused') },
+    async generatePortrait(_prompt, _signal, retryPrompt) {
+      portraitCalls += 1
+      safeRetryPrompt = retryPrompt
+      return { bytes: Buffer.from('png'), mimeType: 'image/png', provider: 'image' }
+    },
+    async synthesizeSpeech() { throw new Error('audio must not run') },
+    async generateIdleAnimation() { throw new Error('animation must not run') }
+  })
+  const result = await service.generateCharacterBundle({
+    idempotencyKey: '11111111-1111-4111-8111-111111111111:character:anna:character-bundle-v3:r2:primary_portrait',
+    bookEditionId: '11111111-1111-4111-8111-111111111111', characterKey: 'character:anna',
+    name: 'Анна', fullName: 'Анна', scope: 'private', bookTitle: 'Книга', bookAuthor: '',
+    bundleVersion: 'character-bundle-v3:r2', requiredMedia: ['primary_portrait'],
+    character: {
+      characterKey: 'character:anna', name: 'Анна', fullName: 'Анна', aliases: [], gender: 'female',
+      age: '', role: '', description: '', appearancePrompt: 'portrait', greeting: 'Привет', voice: 'Che',
+      firstAppearanceTextOffset: 0, warmupTextOffset: 0
+    }
+  })
+  assert.equal(portraitCalls, 1)
+  assert.match(safeRetryPrompt, /fictional adult woman/i)
+  assert.doesNotMatch(safeRetryPrompt, /Книга|Анна/)
+  assert.deepEqual(result.assets.map(({ type }) => type), ['primary_portrait'])
+})
+
+test('internal generation service stores a permanent catalog cover idempotently', async () => {
+  const storage = memoryStorage()
+  let portraitCalls = 0
+  const service = createInternalGenerationService({
+    storage,
+    logger: { info() {}, error() {} },
+    async completeChat() { throw new Error('unused') },
+    async generatePortrait(prompt) {
+      portraitCalls += 1
+      assert.match(prompt, /Преступление и наказание/)
+      return { bytes: Buffer.from('cover'), mimeType: 'image/png', provider: 'gigachat-image' }
+    },
+    async synthesizeSpeech() { throw new Error('unused') },
+    async generateIdleAnimation() { throw new Error('unused') }
+  })
+  const input = {
+    idempotencyKey: '11111111-1111-4111-8111-111111111111:catalog-cover:catalog-cover-v2-aaaaaaaaaaaaaaaa',
+    bookEditionId: '11111111-1111-4111-8111-111111111111',
+    targetVersion: 'catalog-cover-v2-aaaaaaaaaaaaaaaa',
+    scope: 'catalog', title: 'Преступление и наказание', author: 'Фёдор Достоевский', context: ''
+  }
+  const first = await service.generateCatalogCover(input)
+  const repeated = await service.generateCatalogCover(input)
+  assert.deepEqual(repeated, first)
+  assert.equal(portraitCalls, 1)
+  assert.equal(first.asset.mimeType, 'image/png')
+  assert.match(first.asset.objectKey, /books\/catalog\/11111111-1111-4111-8111-111111111111\/cover\/generated/)
 })
 
 test('internal generation service gives the provider one scan chunk and asks for quote-only evidence', async () => {
@@ -202,10 +264,10 @@ test('internal generation service resolves a repeated quote when only one occurr
   })
 
   const result = await service.scanBookChunk({
-    idempotencyKey: 'run-core-quote:scan:chunk-core-quote:book-scan-v9',
+    idempotencyKey: 'run-core-quote:scan:chunk-core-quote:book-scan-v10',
     runId: 'run-core-quote',
     chunkId: 'chunk-core-quote',
-    extractorVersion: 'book-scan-v9',
+    extractorVersion: 'book-scan-v10',
     bookTitle: 'Книга',
     bookAuthor: '',
     contextText,
@@ -245,10 +307,10 @@ test('internal generation service maps model-collapsed whitespace back to the ex
   })
 
   const result = await service.scanBookChunk({
-    idempotencyKey: 'run-whitespace:scan:chunk-whitespace:book-scan-v9',
+    idempotencyKey: 'run-whitespace:scan:chunk-whitespace:book-scan-v10',
     runId: 'run-whitespace',
     chunkId: 'chunk-whitespace',
-    extractorVersion: 'book-scan-v9',
+    extractorVersion: 'book-scan-v10',
     bookTitle: 'Книга',
     bookAuthor: '',
     contextText,
@@ -437,10 +499,10 @@ test('internal generation service adaptively splits only a semantically rejected
   })
 
   const result = await service.scanBookChunk({
-    idempotencyKey: 'run-adaptive:scan:chunk-adaptive:book-scan-v9',
+    idempotencyKey: 'run-adaptive:scan:chunk-adaptive:book-scan-v10',
     runId: 'run-adaptive',
     chunkId: 'chunk-adaptive',
-    extractorVersion: 'book-scan-v9',
+    extractorVersion: 'book-scan-v10',
     bookTitle: 'Книга',
     bookAuthor: '',
     contextText,
@@ -498,10 +560,10 @@ test('internal generation service retries a scan when evidence filtering drops m
   })
 
   await assert.rejects(() => service.scanBookChunk({
-    idempotencyKey: 'run-lossy:scan:chunk-lossy:book-scan-v9',
+    idempotencyKey: 'run-lossy:scan:chunk-lossy:book-scan-v10',
     runId: 'run-lossy',
     chunkId: 'chunk-lossy',
-    extractorVersion: 'book-scan-v9',
+    extractorVersion: 'book-scan-v10',
     bookTitle: 'Книга',
     bookAuthor: 'Автор',
     contextText,
@@ -647,10 +709,10 @@ test('internal generation service treats overlapping quote occurrences as ambigu
   })
 
   await assert.rejects(() => service.scanBookChunk({
-    idempotencyKey: 'run-overlap-quote:scan:chunk-overlap-quote:book-scan-v9',
+    idempotencyKey: 'run-overlap-quote:scan:chunk-overlap-quote:book-scan-v10',
     runId: 'run-overlap-quote',
     chunkId: 'chunk-overlap-quote',
-    extractorVersion: 'book-scan-v9',
+    extractorVersion: 'book-scan-v10',
     bookTitle: 'Книга',
     bookAuthor: '',
     contextText,
@@ -726,7 +788,7 @@ test('internal generation service builds a grounded profile for one resolved cha
           evidenceIds: ['22222222-2222-4222-8222-222222222222'],
           confidence: 0.96
         },
-        creative: { greeting: 'Здравствуйте.', appearancePrompt: 'Портрет Анны', voice: 'Che' }
+        creative: { greeting: 'Hello. I am Anna.', appearancePrompt: 'Портрет Анны', voice: 'Che' }
       })
     },
     async generatePortrait() { throw new Error('unused') },
@@ -734,10 +796,10 @@ test('internal generation service builds a grounded profile for one resolved cha
     async generateIdleAnimation() { throw new Error('unused') }
   })
   const request = {
-    idempotencyKey: 'run-1:synthesize:snapshot-1:character:anna:character-profile-v2',
+    idempotencyKey: 'run-1:synthesize:snapshot-1:character:anna:character-profile-v3',
     runId: 'run-1',
     snapshotId: 'snapshot-1',
-    synthesisVersion: 'character-profile-v2',
+    synthesisVersion: 'character-profile-v3',
     bookTitle: 'Книга',
     bookAuthor: 'Автор',
     textLength: 1_000,
@@ -766,9 +828,13 @@ test('internal generation service builds a grounded profile for one resolved cha
   assert.deepEqual(second, first)
   assert.equal(chatCalls, 1)
   assert.equal(Object.hasOwn(chatRequest, 'temperature'), false)
+  assert.match(chatRequest.messages[0].content, /приветствие.*1.?2 предложения/i)
+  assert.match(chatRequest.messages[0].content, /без спойлеров/i)
+  assert.match(chatRequest.messages[1].content, /BOOK_LANGUAGE: ru/)
   assert.equal(first.profile.characterKey, 'character:anna')
   assert.equal(first.profile.name, 'Анна')
   assert.equal(first.profile.role.value, 'Врач')
+  assert.equal(first.profile.creative.greeting, 'Здравствуйте. Я Анна.')
   assert.deepEqual(first.profile.role.evidenceIds, request.entity.evidenceIds)
 })
 
@@ -811,10 +877,10 @@ test('internal generation service keeps compatible profile claims and drops only
     async generateIdleAnimation() { throw new Error('unused') }
   })
   const request = {
-    idempotencyKey: 'run-2:synthesize:snapshot-2:character:anna:character-profile-v2',
+    idempotencyKey: 'run-2:synthesize:snapshot-2:character:anna:character-profile-v3',
     runId: 'run-2',
     snapshotId: 'snapshot-2',
-    synthesisVersion: 'character-profile-v2',
+    synthesisVersion: 'character-profile-v3',
     bookTitle: 'Книга',
     bookAuthor: 'Автор',
     textLength: 1_000,
@@ -863,6 +929,92 @@ test('internal generation service keeps compatible profile claims and drops only
   assert.equal(lines.some((line) => line.includes('Смелая')), false)
 })
 
+test('profile synthesis derives normalized gender and stable traits from grounded behavior evidence', async () => {
+  const storage = memoryStorage()
+  let chatRequest
+  const dialogueEvidenceId = '55555555-5555-4555-8555-555555555551'
+  const actionEvidenceId = '55555555-5555-4555-8555-555555555552'
+  const secondActionEvidenceId = '55555555-5555-4555-8555-555555555553'
+  const service = createInternalGenerationService({
+    storage,
+    logger: { info() {}, warn() {}, error() {} },
+    async completeChat(input) {
+      chatRequest = input
+      return JSON.stringify({
+        gender: {
+          value: 'женщина',
+          evidenceIds: [dialogueEvidenceId],
+          confidence: 0.96
+        },
+        traits: [{
+          value: 'Заботливая',
+          evidenceIds: [actionEvidenceId, secondActionEvidenceId],
+          confidence: 0.84
+        }],
+        creative: { greeting: 'Здравствуйте.', appearancePrompt: '', voice: 'She' }
+      })
+    },
+    async generatePortrait() { throw new Error('unused') },
+    async synthesizeSpeech() { throw new Error('unused') },
+    async generateIdleAnimation() { throw new Error('unused') }
+  })
+  const entity = {
+    entityKey: 'character:babushka',
+    entityKind: 'character',
+    canonicalName: 'Бабушка',
+    aliases: [],
+    resolutionStatus: 'confirmed',
+    confidence: 0.97,
+    evidenceIds: [dialogueEvidenceId, actionEvidenceId, secondActionEvidenceId],
+    data: { firstEvidenceStartOffset: 100 }
+  }
+  const evidence = [{
+    id: dialogueEvidenceId,
+    type: 'character_dialogue',
+    fact: 'Бабушка сказала, что она придёт',
+    quote: 'Бабушка сказала, что она придёт.',
+    startOffset: 100,
+    endOffset: 135,
+    confidence: 0.96
+  }, {
+    id: actionEvidenceId,
+    type: 'character_action',
+    fact: 'Бабушка успокоила ребёнка',
+    quote: 'Бабушка успокоила ребёнка.',
+    startOffset: 200,
+    endOffset: 230,
+    confidence: 0.91
+  }, {
+    id: secondActionEvidenceId,
+    type: 'character_action',
+    fact: 'Бабушка заботилась о больном',
+    quote: 'Бабушка заботилась о больном.',
+    startOffset: 500,
+    endOffset: 533,
+    confidence: 0.9
+  }]
+
+  const result = await service.synthesizeCharacterProfile({
+    idempotencyKey: 'run-derived:synthesize:snapshot-derived:character:babushka:character-profile-v3',
+    runId: 'run-derived',
+    snapshotId: 'snapshot-derived',
+    synthesisVersion: 'character-profile-v3',
+    bookTitle: 'Детство',
+    bookAuthor: 'Максим Горький',
+    textLength: 10_000,
+    entity,
+    evidence
+  })
+
+  assert.equal(result.profile.gender.value, 'female')
+  assert.deepEqual(result.profile.gender.evidenceIds, [dialogueEvidenceId])
+  assert.equal(result.profile.traits[0].value, 'Заботливая')
+  assert.deepEqual(result.profile.traits[0].evidenceIds, [actionEvidenceId, secondActionEvidenceId])
+  assert.equal(result.profile.creative.voice, 'Che')
+  assert.match(chatRequest.messages[0].content, /gender.*male.*female/i)
+  assert.match(chatRequest.messages[0].content, /минимум два независимых/i)
+})
+
 test('internal service auth rejects public bearer tokens and accepts only its own token', () => {
   const token = 's'.repeat(48)
   const auth = requireGenerationServiceToken(token)
@@ -885,6 +1037,7 @@ test('internal router exposes all worker endpoints', () => {
     token: 's'.repeat(48),
     service: {
       async generateBookMarkup() { return { ok: true } },
+      async generateCatalogCover() { return { ok: true } },
       async generateCharacterBundle() { return { ok: true } },
       async scanBookChunk() { return { observations: [] } },
       async synthesizeCharacterProfile() { return { profile: {} } }
@@ -893,6 +1046,7 @@ test('internal router exposes all worker endpoints', () => {
   const paths = router.stack.map((layer) => layer.route?.path).filter(Boolean)
   assert.deepEqual(paths, [
     '/v1/book-markup',
+    '/v1/catalog-covers',
     '/v1/character-bundles',
     '/v1/book-analysis/scan-chunk',
     '/v1/book-analysis/synthesize-character'

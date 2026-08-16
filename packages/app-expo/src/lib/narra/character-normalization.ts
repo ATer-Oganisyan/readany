@@ -273,13 +273,15 @@ function parseUnlockThreshold(
 export interface NormalizeCharacterOptions extends AssignVoicesOptions {
   /** Число глав книги — для перевода appearanceChapter в долю unlockProgress. */
   totalChapters?: number;
+  /** Backend already owns the deterministic voice assignment for v3 profiles. */
+  preserveProvidedVoices?: boolean;
 }
 
 export function normalizeCharacterAnalysisResponse(
   input: unknown,
   options: NormalizeCharacterOptions = {},
 ): NarraCharacter[] {
-  const { totalChapters, ...voiceOptions } = options;
+  const { totalChapters, preserveProvidedVoices = false, ...voiceOptions } = options;
   const candidates = parseCharacterCandidates(input);
   const characters = candidates.slice(0, MAX_NARRA_CHARACTERS).flatMap((candidate, index) => {
     if (!candidate || typeof candidate !== "object") return [];
@@ -300,7 +302,10 @@ export function normalizeCharacterAnalysisResponse(
         stressedName: stressedName && stressedName !== "null" ? stressedName : undefined,
         role: String(raw.role || "Персонаж истории"),
         gender,
-        voice: "",
+        voice:
+          preserveProvidedVoices && typeof raw.voice === "string"
+            ? raw.voice.trim().slice(0, 32)
+            : "",
         traits: Array.isArray(raw.traits) ? raw.traits.slice(0, 5).map(String) : [],
         speechStyle: String(raw.speechStyle || ""),
         speechExamples: Array.isArray(raw.speechExamples)
@@ -339,10 +344,11 @@ export function normalizeCharacterAnalysisResponse(
   );
   return characters.map((character) => {
     const assignment = plan.assignments[character.id];
+    const providedVoice = preserveProvidedVoices ? character.voice : "";
     return {
       ...character,
-      voice: assignment?.voice ?? plan.narratorVoice,
-      voiceProsody: assignment?.prosody,
+      voice: providedVoice || assignment?.voice || plan.narratorVoice,
+      voiceProsody: providedVoice ? undefined : assignment?.prosody,
     };
   });
 }

@@ -86,10 +86,7 @@ async function runBookCoverJob(input: {
   };
 }
 
-/**
- * Direct OpenRouter cover generation. The local intent survives JS reloads;
- * the generated image is persisted on the device by the library store.
- */
+/** The local intent survives JS reloads; generation runs in the Gateway queue. */
 export function generateBookCover(input: {
   bookId: string;
   title: string;

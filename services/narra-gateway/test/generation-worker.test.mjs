@@ -129,6 +129,67 @@ test('worker publishes a character bundle only when all required media are prese
   assert.deepEqual(published.bundle.assets.map((asset) => asset.type), REQUIRED_CHARACTER_MEDIA)
 })
 
+test('worker publishes a portrait job without waiting for audio or animation', async () => {
+  let requestedMedia
+  let published
+  const repository = {
+    async claimGenerationJob() {
+      return {
+        id: 'job-portrait', type: 'character_portrait', bookEditionId: 'book-1',
+        characterKey: 'anna', leaseToken: 'lease-portrait',
+        payload: { required_media: ['primary_portrait'] }
+      }
+    },
+    async getCharacterBundleInput() { return { characterKey: 'anna' } },
+    async publishCharacterBundle(job, bundle) { published = { job, bundle } },
+    async failGenerationJob() { assert.fail('portrait job must not fail') }
+  }
+  const generator = {
+    async generateCharacterBundle(_input, media) {
+      requestedMedia = media
+      return { assets: generatedAssets().filter((asset) => media.includes(asset.type)) }
+    }
+  }
+  const worker = createGenerationWorker({ repository, generator, workerId: 'worker-1', logger: silentLogger })
+  assert.deepEqual(await worker.runOnce(), {
+    status: 'completed', jobId: 'job-portrait', result: { assetCount: 1 }
+  })
+  assert.deepEqual(requestedMedia, ['primary_portrait'])
+  assert.deepEqual(published.bundle.assets.map((asset) => asset.type), ['primary_portrait'])
+})
+
+test('worker publishes a catalog cover into the durable repository', async () => {
+  let published
+  const repository = {
+    async claimGenerationJob() {
+      return {
+        id: 'job-cover', type: 'catalog_cover', bookEditionId: 'book-1',
+        targetVersion: 'catalog-cover-v2-aaaa', leaseToken: 'lease-cover'
+      }
+    },
+    async getCatalogCoverInput() {
+      return { bookEditionId: 'book-1', title: 'Книга', scope: 'catalog' }
+    },
+    async publishCatalogCover(job, asset) { published = { job, asset } },
+    async failGenerationJob() { assert.fail('cover job must not fail') }
+  }
+  const generator = {
+    async generateCatalogCover() {
+      return {
+        asset: {
+          objectKey: 'books/catalog/book-1/cover.png', contentHash: HASH,
+          mimeType: 'image/png', byteSize: 100
+        }
+      }
+    }
+  }
+  const worker = createGenerationWorker({ repository, generator, workerId: 'worker-1', logger: silentLogger })
+  assert.deepEqual(await worker.runOnce(), {
+    status: 'completed', jobId: 'job-cover', result: { assetCount: 1 }
+  })
+  assert.equal(published.asset.objectKey, 'books/catalog/book-1/cover.png')
+})
+
 test('worker adapts legacy local profiles to the strict character bundle contract', async () => {
   let generatorInput
   const repository = {
@@ -247,6 +308,23 @@ test('worker adapts evidence-backed v3 profiles without losing creative media fi
   assert.equal(generatorInput.character.appearancePrompt, 'кинематографичный портрет Анны')
   assert.equal(generatorInput.character.greeting, 'Здравствуйте')
   assert.equal(generatorInput.character.voice, 'Che')
+})
+
+test('worker replaces a supported but wrong-gender generated voice', () => {
+  const normalized = normalizeCharacterBundleInput({
+    bookEditionId: 'book-v3', characterKey: 'character:ivan',
+    name: 'Иван', fullName: 'Иван Петрович', scope: 'private',
+    bookTitle: 'Книга', bookAuthor: 'Автор', bundleVersion: 'character-bundle-v3',
+    character: {
+      characterKey: 'character:ivan', aliases: ['Иван'],
+      firstAppearanceTextOffset: 200, warmupTextOffset: 150,
+      gender: { value: 'male', evidenceIds: ['gender-1'], confidence: 0.9 },
+      creative: { greeting: 'Здравствуйте', voice: 'Che' }
+    }
+  })
+
+  assert.equal(normalized.character.gender, 'male')
+  assert.equal(normalized.character.voice, 'She')
 })
 
 test('invalid generated media fails the leased job without partial publication', async () => {

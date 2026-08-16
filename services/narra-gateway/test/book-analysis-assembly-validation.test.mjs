@@ -6,6 +6,8 @@ import { validateBookMarkupV3 } from '../book-analysis-validator.mjs'
 
 const mentionId = '11111111-1111-4111-8111-111111111111'
 const roleId = '22222222-2222-4222-8222-222222222222'
+const dialogueId = '22222222-2222-4222-8222-222222222223'
+const actionId = '22222222-2222-4222-8222-222222222224'
 const snapshotId = '33333333-3333-4333-8333-333333333333'
 
 function canonical(value) {
@@ -19,7 +21,7 @@ function hash(value) {
 }
 
 function fixture() {
-  const normalizedText = 'Анна — врач.'
+  const normalizedText = 'Анна — врач. Она спокойно вошла. Анна помогла ребёнку.'
   const observations = [
     {
       id: mentionId,
@@ -42,6 +44,28 @@ function fixture() {
       evidence: { quote: 'врач', startOffset: 7, endOffset: 11, chapterKey: 'chapter-1' },
       confidence: 0.95,
       data: {}
+    },
+    {
+      id: dialogueId,
+      type: 'character_dialogue',
+      entityKind: 'character',
+      entityCandidate: 'Анна',
+      relatedEntityCandidates: [],
+      fact: 'К Анне применяется местоимение женского рода',
+      evidence: { quote: 'Она', startOffset: 13, endOffset: 16, chapterKey: 'chapter-1' },
+      confidence: 0.95,
+      data: {}
+    },
+    {
+      id: actionId,
+      type: 'character_action',
+      entityKind: 'character',
+      entityCandidate: 'Анна',
+      relatedEntityCandidates: [],
+      fact: 'Анна помогает ребёнку',
+      evidence: { quote: 'Анна помогла ребёнку', startOffset: 33, endOffset: 53, chapterKey: 'chapter-1' },
+      confidence: 0.93,
+      data: {}
     }
   ]
   const entity = {
@@ -52,8 +76,8 @@ function fixture() {
     aliases: ['Аня'],
     resolutionStatus: 'confirmed',
     confidence: 0.97,
-    evidenceIds: [mentionId, roleId],
-    data: { observationCount: 2, firstEvidenceStartOffset: 0, lastEvidenceEndOffset: 11 }
+    evidenceIds: [mentionId, roleId, dialogueId, actionId],
+    data: { observationCount: 4, firstEvidenceStartOffset: 0, lastEvidenceEndOffset: 53 }
   }
   const entityForHash = { ...entity }
   delete entityForHash.id
@@ -61,7 +85,7 @@ function fixture() {
     schemaVersion: 1,
     observationSetHash: hash(JSON.stringify(canonical(observations))),
     entitySetHash: hash(JSON.stringify(canonical([entityForHash]))),
-    observationIds: [mentionId, roleId],
+    observationIds: [mentionId, roleId, dialogueId, actionId],
     entities: [entity]
   }
   const snapshot = {
@@ -69,7 +93,7 @@ function fixture() {
     runId: '55555555-5555-4555-8555-555555555555',
     version: 1,
     contentHash: hash(JSON.stringify(canonical(snapshotData))),
-    evidenceCount: 2,
+    evidenceCount: 4,
     data: snapshotData
   }
   const profile = {
@@ -77,7 +101,7 @@ function fixture() {
     name: 'Анна',
     fullName: 'Анна',
     aliases: ['Аня'],
-    identityEvidenceIds: [mentionId, roleId],
+    identityEvidenceIds: [mentionId, roleId, dialogueId, actionId],
     firstAppearanceTextOffset: 0,
     warmupTextOffset: 0,
     role: { value: 'Врач', evidenceIds: [roleId], confidence: 0.95 },
@@ -94,10 +118,10 @@ function fixture() {
 }
 
 test('assembler deterministically joins full-book entities and grounded character profiles', () => {
-  const { observations, entity, profile } = fixture()
+  const { normalizedText, observations, entity, profile } = fixture()
   const markup = assembleBookMarkupV3({
     snapshotId,
-    textLength: 12,
+    textLength: normalizedText.length,
     entities: [entity],
     observations,
     characterProfiles: [profile]
@@ -106,6 +130,35 @@ test('assembler deterministically joins full-book entities and grounded characte
   assert.equal(markup.characters[0].characterKey, 'character:anna')
   assert.equal(markup.characters[0].role.value, 'Врач')
   assert.deepEqual(markup.characters[0].role.evidenceIds, [roleId])
+})
+
+test('independent validator accepts evidence-backed derived gender and stable traits', () => {
+  const { normalizedText, observations, entity, snapshot, profile } = fixture()
+  const markup = assembleBookMarkupV3({
+    snapshotId,
+    textLength: normalizedText.length,
+    entities: [entity],
+    observations,
+    characterProfiles: [{
+      ...profile,
+      gender: { value: 'female', evidenceIds: [dialogueId], confidence: 0.95 },
+      traits: [{
+        value: 'Заботливая',
+        evidenceIds: [dialogueId, actionId],
+        confidence: 0.84
+      }]
+    }]
+  })
+
+  const result = validateBookMarkupV3({
+    markup,
+    snapshot,
+    observations,
+    normalizedText,
+    normalizedTextHash: hash(normalizedText)
+  })
+
+  assert.equal(result.valid, true)
 })
 
 test('independent validator accepts exact evidence and rejects a claim backed by the wrong fact type', () => {

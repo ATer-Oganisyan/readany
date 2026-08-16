@@ -131,14 +131,47 @@ describe("backend book media cache", () => {
     expect(mocks.downloads).toHaveBeenCalledTimes(3);
   });
 
-  it("never exposes a partial backend bundle", async () => {
+  it("keeps ready cached portraits visible while the same bundle is revalidated", () => {
+    const value = manifest(["primary_portrait", "greeting_audio", "idle_animation"]);
+    const [projected] = projectBackendManifestCharacters(value);
+    const cached = {
+      ...projected,
+      portraitUri: "file:///documents/narra-backend-books/book-1/primary_portrait.png",
+      greetingAudioUri: "file:///documents/narra-backend-books/book-1/greeting.mp3",
+      idleAnimationUri: "file:///documents/narra-backend-books/book-1/idle.mp4",
+      mediaState: "ready" as const,
+    };
+
+    expect(projectBackendManifestCharacters(value, [cached])[0]).toMatchObject({
+      portraitUri: cached.portraitUri,
+      greetingAudioUri: cached.greetingAudioUri,
+      idleAnimationUri: cached.idleAnimationUri,
+      mediaState: "ready",
+    });
+  });
+
+  it("does not request or download an unchanged media bundle again", async () => {
+    const value = manifest(["primary_portrait", "greeting_audio", "idle_animation"]);
+    await materializeBackendManifest("book-1", value);
+    mocks.downloads.mockClear();
+    mocks.requestDownload.mockClear();
+
+    await materializeBackendManifest("book-1", value);
+
+    expect(mocks.requestDownload).not.toHaveBeenCalled();
+    expect(mocks.downloads).not.toHaveBeenCalled();
+  });
+
+  it("exposes a ready portrait without waiting for audio and animation", async () => {
     const [character] = await materializeBackendManifest(
       "book-1",
-      manifest(["primary_portrait", "greeting_audio"]),
+      manifest(["primary_portrait"]),
     );
     expect(character).toMatchObject({ mediaSource: "backend", mediaState: "preparing" });
-    expect(character?.portraitUri).toBeUndefined();
-    expect(mocks.downloads).not.toHaveBeenCalled();
+    expect(character?.portraitUri).toContain("primary_portrait");
+    expect(character?.greetingAudioUri).toBeUndefined();
+    expect(character?.idleAnimationUri).toBeUndefined();
+    expect(mocks.downloads).toHaveBeenCalledOnce();
   });
 
   it("re-homes persisted media paths after an iOS container change", async () => {

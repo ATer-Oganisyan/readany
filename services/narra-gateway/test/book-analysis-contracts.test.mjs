@@ -16,14 +16,14 @@ import {
 
 const evidenceId = '11111111-1111-4111-8111-111111111111'
 
-test('scan prompt and extractor share the cache-isolating v9 version', () => {
-  assert.equal(BOOK_ANALYSIS_PROMPT_VERSION, 'book-scan-v9')
+test('scan prompt and extractor share the cache-isolating v10 version', () => {
+  assert.equal(BOOK_ANALYSIS_PROMPT_VERSION, 'book-scan-v10')
   assert.equal(BOOK_ANALYSIS_EXTRACTOR_VERSION, BOOK_ANALYSIS_PROMPT_VERSION)
 })
 
 test('resolver, profile and scan fallback changes isolate versioned caches', () => {
-  assert.equal(BOOK_ANALYSIS_PIPELINE_VERSION, 'book-analysis-v17')
-  assert.equal(BOOK_ANALYSIS_SYNTHESIS_VERSION, 'character-profile-v2')
+  assert.equal(BOOK_ANALYSIS_PIPELINE_VERSION, 'book-analysis-v18')
+  assert.equal(BOOK_ANALYSIS_SYNTHESIS_VERSION, 'character-profile-v3')
 })
 
 test('stored scan observations require exact server-resolved evidence coordinates', () => {
@@ -139,6 +139,24 @@ test('v3 markup keeps grounded facts separate from creative character data', () 
   assert.equal(markup.characters[0].traits[0].evidenceIds[0], evidenceId)
   assert.equal(markup.characters[0].creative.greeting, 'Рада встрече.')
   assert.equal('evidenceIds' in markup.characters[0].creative, false)
+
+  const legacyGender = normalizeBookMarkupV3({
+    ...markup,
+    characters: [{
+      ...markup.characters[0],
+      gender: { value: 'женщина', evidenceIds: [evidenceId], confidence: 0.9 }
+    }]
+  })
+  assert.equal(legacyGender.characters[0].gender.value, 'female')
+
+  const unknownGender = normalizeBookMarkupV3({
+    ...markup,
+    characters: [{
+      ...markup.characters[0],
+      gender: { value: 'не определён', evidenceIds: [evidenceId], confidence: 0.9 }
+    }]
+  })
+  assert.equal(unknownGender.characters[0].gender, null)
 })
 
 test('analysis stages advance one step and terminal runs stay immutable', () => {

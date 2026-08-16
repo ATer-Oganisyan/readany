@@ -1,5 +1,9 @@
 import * as FileSystem from "expo-file-system/legacy";
-import { type BackendBookManifest, requestBackendDownloadUrl } from "./backend-book-api";
+import {
+  type BackendBookManifest,
+  type BackendManifestAsset,
+  requestBackendDownloadUrl,
+} from "./backend-book-api";
 import { sha256BackendFile } from "./backend-file-hash";
 import { normalizeCharacterAnalysisResponse } from "./character-normalization";
 import type { NarraCharacter } from "./types";
@@ -51,6 +55,14 @@ function backendUnlockProgress(
     character.profile.unlockFraction ?? character.profile.unlockProgress,
   );
   return Number.isFinite(profileThreshold) ? Math.min(0.95, Math.max(0, profileThreshold)) : 0;
+}
+
+function mediaBundleKey(character: BackendBookManifest["characters"][number]): string | undefined {
+  if (!character.bundle) return undefined;
+  return JSON.stringify([
+    character.bundle.version,
+    character.bundle.assets.map((asset) => `${asset.type}:${asset.contentHash}`).sort(),
+  ]);
 }
 
 async function ensureBookDirectory(bookId: string): Promise<string> {
@@ -113,17 +125,20 @@ function baseCharacter(
     character.profile.clientCharacterId.trim()
       ? character.profile.clientCharacterId
       : character.characterKey;
-  const normalized = normalizeCharacterAnalysisResponse({
-    characters: [
-      {
-        ...character.profile,
-        id: clientCharacterId,
-        name: character.name,
-        fullName: character.fullName,
-        unlockProgress,
-      },
-    ],
-  })[0];
+  const normalized = normalizeCharacterAnalysisResponse(
+    {
+      characters: [
+        {
+          ...character.profile,
+          id: clientCharacterId,
+          name: character.name,
+          fullName: character.fullName,
+          unlockProgress,
+        },
+      ],
+    },
+    { preserveProvidedVoices: true },
+  )[0];
   return {
     ...(normalized ?? {
       id: character.characterKey,
@@ -144,6 +159,7 @@ function baseCharacter(
     unlockProgress,
     mediaSource: "backend",
     mediaState: character.state,
+    mediaBundleKey: mediaBundleKey(character),
     analysisSource: source,
   };
 }
@@ -166,13 +182,37 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
-export function projectBackendManifestCharacters(manifest: BackendBookManifest): NarraCharacter[] {
-  return manifest.characters.map((character) => ({
-    ...baseCharacter(character, manifest.source, manifest.textLength),
-    // Server readiness means the bundle exists remotely. The local client only
-    // marks it ready after all three files have passed integrity checks.
-    mediaState: "preparing" as const,
-  }));
+export function projectBackendManifestCharacters(
+  manifest: BackendBookManifest,
+  previousCharacters: NarraCharacter[] = [],
+): NarraCharacter[] {
+  const previousById = new Map(previousCharacters.map((character) => [character.id, character]));
+  return manifest.characters.map((character) => {
+    const projected = baseCharacter(character, manifest.source, manifest.textLength);
+    const previous = previousById.get(projected.id);
+    const canReuseCachedBundle =
+      projected.mediaBundleKey &&
+      previous?.mediaSource === "backend" &&
+      previous.mediaBundleKey === projected.mediaBundleKey;
+    if (canReuseCachedBundle) {
+      const complete = Boolean(
+        previous.portraitUri && previous.greetingAudioUri && previous.idleAnimationUri,
+      );
+      return {
+        ...projected,
+        portraitUri: previous.portraitUri,
+        greetingAudioUri: previous.greetingAudioUri,
+        idleAnimationUri: previous.idleAnimationUri,
+        mediaState: complete ? ("ready" as const) : ("preparing" as const),
+      };
+    }
+    return {
+      ...projected,
+      // Server readiness means the bundle exists remotely. The local client only
+      // marks it ready after all three files have passed integrity checks.
+      mediaState: "preparing" as const,
+    };
+  });
 }
 
 export async function persistBackendManifestCharacters(
@@ -194,41 +234,41 @@ export async function materializeBackendManifest(
   return mapWithConcurrency(manifest.characters, MEDIA_CHARACTER_CONCURRENCY, async (character) => {
     const result = baseCharacter(character, manifest.source, manifest.textLength);
     let materialized = result;
-    if (character.state !== "ready" || !character.bundle) {
+    if (!character.bundle?.assets.length) {
       onCharacter?.(materialized);
       return materialized;
     }
-    try {
-      const requiredTypes = new Set(character.bundle.assets.map((asset) => asset.type));
-      if (
-        !["primary_portrait", "greeting_audio", "idle_animation"].every((type) =>
-          requiredTypes.has(type as "primary_portrait" | "greeting_audio" | "idle_animation"),
-        )
-      ) {
-        throw new Error("Backend character bundle is incomplete");
-      }
-      const paths = await Promise.all(
+    const paths = await Promise.allSettled(
         character.bundle.assets.map(async (asset) => ({
           type: asset.type,
           path: await downloadedAsset(directory, asset),
         })),
       );
-      const byType = new Map(paths.map(({ type, path }) => [type, path]));
-      materialized = {
-        ...result,
-        portraitUri: byType.get("primary_portrait"),
-        greetingAudioUri: byType.get("greeting_audio"),
-        idleAnimationUri: byType.get("idle_animation"),
-        mediaState: "ready" as const,
-      };
-    } catch (error) {
-      console.warn("[NarraBackend] Atomic media cache failed", {
+    const byType = new Map<BackendManifestAsset["type"], string>();
+    for (const item of paths) {
+      if (item.status === "fulfilled") byType.set(item.value.type, item.value.path);
+    }
+    const failed = paths.filter((item) => item.status === "rejected");
+    if (failed.length) {
+      console.warn("[NarraBackend] Some character media failed to cache", {
         bookId,
         characterId: character.characterKey,
-        error: error instanceof Error ? error.message : String(error),
+        failed: failed.length,
       });
-      materialized = { ...result, mediaState: "preparing" as const };
     }
+    const requiredTypes: BackendManifestAsset["type"][] = [
+      "primary_portrait",
+      "greeting_audio",
+      "idle_animation",
+    ];
+    const complete = requiredTypes.every((type) => byType.has(type));
+    materialized = {
+      ...result,
+      portraitUri: byType.get("primary_portrait"),
+      greetingAudioUri: byType.get("greeting_audio"),
+      idleAnimationUri: byType.get("idle_animation"),
+      mediaState: complete ? ("ready" as const) : ("preparing" as const),
+    };
     onCharacter?.(materialized);
     return materialized;
   });
@@ -241,8 +281,15 @@ export async function loadCachedBackendCharacters(bookId: string): Promise<Narra
       await FileSystem.readAsStringAsync(`${directory}/manifest.json`),
     ) as CachedBackendBook;
     if (!Array.isArray(value.characters)) return [];
+    const projectedById = new Map(
+      projectBackendManifestCharacters(value.manifest).map((character) => [
+        character.id,
+        character,
+      ]),
+    );
     return value.characters.map((character) => ({
       ...character,
+      mediaBundleKey: character.mediaBundleKey ?? projectedById.get(character.id)?.mediaBundleKey,
       portraitUri: normalizedCacheUri(character.portraitUri),
       greetingAudioUri: normalizedCacheUri(character.greetingAudioUri),
       idleAnimationUri: normalizedCacheUri(character.idleAnimationUri),

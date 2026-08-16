@@ -1,10 +1,10 @@
-export const BOOK_ANALYSIS_PIPELINE_VERSION = 'book-analysis-v17'
+export const BOOK_ANALYSIS_PIPELINE_VERSION = 'book-analysis-v18'
 export const BOOK_ANALYSIS_MARKUP_VERSION = 'book-markup-v3'
 export const BOOK_ANALYSIS_CHARACTER_BUNDLE_VERSION = 'character-bundle-v3'
 export const BOOK_ANALYSIS_SCHEMA_VERSION = 3
-export const BOOK_ANALYSIS_PROMPT_VERSION = 'book-scan-v9'
-export const BOOK_ANALYSIS_EXTRACTOR_VERSION = 'book-scan-v9'
-export const BOOK_ANALYSIS_SYNTHESIS_VERSION = 'character-profile-v2'
+export const BOOK_ANALYSIS_PROMPT_VERSION = 'book-scan-v10'
+export const BOOK_ANALYSIS_EXTRACTOR_VERSION = 'book-scan-v10'
+export const BOOK_ANALYSIS_SYNTHESIS_VERSION = 'character-profile-v3'
 
 export const BOOK_ANALYSIS_STAGES = Object.freeze([
   'prepare',
@@ -59,12 +59,30 @@ export const BOOK_ANALYSIS_OBSERVATION_TYPES = Object.freeze([
   'relationship'
 ])
 
+export const BOOK_ANALYSIS_GENDER_EVIDENCE_TYPES = Object.freeze([
+  'character_gender',
+  'character_mention',
+  'character_action',
+  'character_dialogue',
+  'character_trait',
+  'character_appearance',
+  'character_role',
+  'character_age'
+])
+
+export const BOOK_ANALYSIS_TRAIT_EVIDENCE_TYPES = Object.freeze([
+  'character_trait',
+  'character_action',
+  'character_dialogue'
+])
+
 const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/
 const STAGE_INDEX = new Map(BOOK_ANALYSIS_STAGES.map((stage, index) => [stage, index]))
 const RUN_STATUSES = new Set(BOOK_ANALYSIS_RUN_STATUSES)
 const ENTITY_KINDS = new Set(BOOK_ANALYSIS_ENTITY_KINDS)
 const RESOLUTION_STATUSES = new Set(BOOK_ANALYSIS_RESOLUTION_STATUSES)
 const OBSERVATION_TYPES = new Set(BOOK_ANALYSIS_OBSERVATION_TYPES)
+const CHARACTER_GENDERS = new Set(['male', 'female'])
 const OBSERVATION_ENTITY_KIND = new Map([
   ['character_mention', 'character'],
   ['character_alias', 'character'],
@@ -156,6 +174,31 @@ function boundedObjects(value, name, maxItems) {
 
 function optionalClaim(value, name) {
   return value == null ? null : normalizeEvidenceClaim(value, name)
+}
+
+export function normalizeCharacterGenderCode(value) {
+  const normalized = String(value || '').trim().toLowerCase()
+  const male = (
+    /^(male|man|masculine)\b/.test(normalized) ||
+    /(?:^|[\s,;:—-])(?:мужчин|мужск|мальчик|юнош|молодой человек)/u.test(normalized)
+  )
+  const female = (
+    /^(female|woman|feminine)\b/.test(normalized) ||
+    /(?:^|[\s,;:—-])(?:женщин|женск|девоч|девуш|девиц|мать|жена|старуха|шведка)/u.test(normalized)
+  )
+  if (male === female) return null
+  return male ? 'male' : 'female'
+}
+
+function optionalGenderClaim(value, name) {
+  const claim = optionalClaim(value, name)
+  if (!claim) return null
+  const gender = normalizeCharacterGenderCode(claim.value)
+  if (!gender) return null
+  return {
+    ...claim,
+    value: enumValue(gender, CHARACTER_GENDERS, `${name}.value`)
+  }
 }
 
 function claimValues(value, name, maxItems = 32) {
@@ -323,7 +366,7 @@ function normalizeCharacter(input, index, textLength) {
     warmupTextOffset,
     role: optionalClaim(source.role, `${name}.role`),
     age: optionalClaim(source.age, `${name}.age`),
-    gender: optionalClaim(source.gender, `${name}.gender`),
+    gender: optionalGenderClaim(source.gender, `${name}.gender`),
     description: optionalClaim(source.description, `${name}.description`),
     traits: claimValues(source.traits ?? [], `${name}.traits`, 32),
     appearance: claimValues(source.appearance ?? [], `${name}.appearance`, 32),

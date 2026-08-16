@@ -2,9 +2,11 @@ import { createHash, randomUUID } from 'node:crypto'
 import {
   BOOK_MARKUP_ANALYSIS_VERSION,
   BOOK_MARKUP_SCHEMA_VERSION,
+  CHARACTER_MEDIA_JOB_TYPES,
   CHARACTER_BUNDLE_VERSION,
   REQUIRED_CHARACTER_MEDIA,
-  characterBundleIdempotencyKey,
+  characterMediaIdempotencyKey,
+  characterMediaTargetVersion,
   hasReaderReachedCharacter
 } from './book-markup.mjs'
 
@@ -14,6 +16,12 @@ const BOOK_MIME_TYPES = Object.freeze({
   txt: 'text/plain',
   pdf: 'application/pdf'
 })
+
+const CATALOG_COVER_VERSION = 'catalog-cover-v2'
+
+function catalogCoverTargetVersion(contentSha256) {
+  return `${CATALOG_COVER_VERSION}-${contentSha256.slice(0, 16)}`
+}
 
 function leaseLost(jobId) {
   const error = new Error(`generation job lease lost: ${jobId}`)
@@ -210,6 +218,161 @@ export function createPostgresBookMarkupRepository(pool, {
       )
       if (!existing.rows[0]) throw new Error('idempotent generation job disappeared')
       return { row: existing.rows[0], created: false }
+    })
+  }
+
+  async function ensureCharacterMediaJobs({
+    bookEditionId,
+    characterKey,
+    bundleVersion,
+    priority
+  }) {
+    return transaction(pool, async (client) => {
+      await client.query(
+        `SELECT pg_advisory_xact_lock(hashtext($1 || ':' || $2 || ':' || $3))`,
+        [bookEditionId, characterKey, bundleVersion]
+      )
+      const source = await client.query(
+        `SELECT markup.id AS markup_version_id,
+                COALESCE(publication.content_hash,
+                  lpad(md5(character.data::text), 64, '0')) AS source_markup_hash,
+                bundle.id AS bundle_id, bundle.status AS bundle_status,
+                bundle.source_markup_hash AS previous_source_markup_hash,
+                bundle.media_revision
+         FROM book_markup_versions AS markup
+         JOIN book_characters AS character
+           ON character.markup_version_id = markup.id AND character.character_key = $2
+         LEFT JOIN LATERAL (
+           SELECT value.content_hash
+           FROM book_analysis_publications AS value
+           WHERE value.book_edition_id = markup.book_edition_id
+           ORDER BY value.published_at DESC, value.id DESC
+           LIMIT 1
+         ) AS publication ON true
+         LEFT JOIN character_media_bundles AS bundle
+           ON bundle.book_edition_id = markup.book_edition_id
+          AND bundle.character_key = character.character_key
+          AND bundle.bundle_version = $3
+         WHERE markup.book_edition_id = $1 AND markup.status = 'published'
+         LIMIT 1
+         FOR UPDATE OF markup, character`,
+        [bookEditionId, characterKey, bundleVersion]
+      )
+      const row = source.rows[0]
+      if (!row) throw new Error('published character is unavailable for media generation')
+      let bundleId = row.bundle_id
+      let mediaRevision = Number(row.media_revision ?? 1)
+      const sourceMarkupHash = row.source_markup_hash
+      let sourceChanged = false
+      if (!bundleId) {
+        bundleId = idFactory()
+        await client.query(
+          `INSERT INTO character_media_bundles (
+             id, book_edition_id, character_key, bundle_version, status,
+             source_markup_hash, media_revision, expires_at
+           ) VALUES ($1, $2, $3, $4, 'queued', $5, 1,
+             CASE WHEN EXISTS (
+               SELECT 1 FROM book_editions WHERE id = $2 AND scope = 'private'
+             ) THEN now() + make_interval(days => $6) ELSE NULL END)`,
+          [
+            bundleId, bookEditionId, characterKey, bundleVersion,
+            sourceMarkupHash, privateMaterialTtlDays
+          ]
+        )
+        sourceChanged = true
+      } else if (!row.previous_source_markup_hash) {
+        await client.query(
+          `UPDATE character_media_bundles
+           SET source_markup_hash = $2, updated_at = now() WHERE id = $1`,
+          [bundleId, sourceMarkupHash]
+        )
+      } else if (row.previous_source_markup_hash !== sourceMarkupHash) {
+        mediaRevision += 1
+        sourceChanged = true
+        await client.query(
+          `UPDATE character_media_bundles
+           SET source_markup_hash = $2, media_revision = $3,
+               status = 'queued', published_at = NULL, updated_at = now()
+           WHERE id = $1`,
+          [bundleId, sourceMarkupHash, mediaRevision]
+        )
+        await client.query(
+          'DELETE FROM character_bundle_assets WHERE bundle_id = $1',
+          [bundleId]
+        )
+      }
+      const complete = await client.query(
+        `SELECT COUNT(*)::int AS count
+         FROM character_bundle_assets AS link
+         JOIN media_assets AS asset ON asset.id = link.asset_id AND asset.status = 'ready'
+         WHERE link.bundle_id = $1 AND link.asset_type = ANY($2::text[])`,
+        [bundleId, REQUIRED_CHARACTER_MEDIA]
+      )
+      if (!sourceChanged &&
+          Number(complete.rows[0].count) === REQUIRED_CHARACTER_MEDIA.length) {
+        if (row.bundle_status !== 'ready') {
+          await client.query(
+            `UPDATE character_media_bundles
+             SET status = 'ready', published_at = COALESCE(published_at, now()),
+                 updated_at = now()
+             WHERE id = $1`,
+            [bundleId]
+          )
+        }
+        return { status: 'ready', created: false, jobs: [], bundleId, mediaRevision }
+      }
+      const targetVersion = characterMediaTargetVersion({ bundleVersion, mediaRevision })
+      const jobs = []
+      for (const assetType of REQUIRED_CHARACTER_MEDIA) {
+        const idempotencyKey = characterMediaIdempotencyKey({
+          bookEditionId, characterKey, targetVersion, assetType
+        })
+        const inserted = await client.query(
+          `INSERT INTO generation_jobs (
+             id, idempotency_key, job_type, book_edition_id, character_key,
+             target_version, status, priority, payload
+           ) VALUES ($1, $2, $3, $4, $5, $6, 'queued', $7, $8::jsonb)
+           ON CONFLICT (idempotency_key) DO NOTHING
+           RETURNING *`,
+          [
+            idFactory(), idempotencyKey, CHARACTER_MEDIA_JOB_TYPES[assetType],
+            bookEditionId, characterKey, targetVersion, priority,
+            JSON.stringify({
+              asset_type: assetType,
+              required_media: [assetType],
+              bundle_version: bundleVersion,
+              source_markup_hash: sourceMarkupHash,
+              media_revision: mediaRevision,
+              markup_version_id: row.markup_version_id
+            })
+          ]
+        )
+        let job = inserted.rows[0]
+        if (!job) {
+          const existing = await client.query(
+            'SELECT * FROM generation_jobs WHERE idempotency_key = $1',
+            [idempotencyKey]
+          )
+          job = existing.rows[0]
+        }
+        jobs.push({ ...jobRow(job), created: Boolean(inserted.rows[0]), idempotencyKey })
+      }
+      await client.query(
+        `UPDATE character_media_bundles
+         SET job_id = $2, status = CASE
+           WHEN status = 'ready' AND $3 = false THEN status
+           ELSE 'queued'
+         END, updated_at = now()
+         WHERE id = $1`,
+        [bundleId, jobs.find((job) => job.type === 'character_portrait')?.id ?? null, sourceChanged]
+      )
+      return {
+        status: jobs.every((job) => job.status === 'ready') ? 'ready' : 'queued',
+        created: jobs.some((job) => job.created),
+        jobs,
+        bundleId,
+        mediaRevision
+      }
     })
   }
 
@@ -599,7 +762,7 @@ export function createPostgresBookMarkupRepository(pool, {
     async completeCatalogBookUpload({ bookEditionId }) {
       return transaction(pool, async (client) => {
         const result = await client.query(
-          `SELECT edition.id
+          `SELECT edition.id, edition.content_sha256
            FROM book_editions AS edition
            JOIN book_files AS file ON file.book_edition_id = edition.id
            WHERE edition.id = $1 AND edition.scope = 'catalog'
@@ -615,6 +778,19 @@ export function createPostgresBookMarkupRepository(pool, {
           `UPDATE book_editions SET status = 'marking_up', updated_at = now()
            WHERE id = $1 AND status IN ('draft', 'uploading', 'failed')`,
           [bookEditionId]
+        )
+        const targetVersion = catalogCoverTargetVersion(result.rows[0].content_sha256)
+        await client.query(
+          `INSERT INTO generation_jobs (
+             id, idempotency_key, job_type, book_edition_id, character_key,
+             target_version, status, priority, payload
+           ) VALUES ($1, $2, 'catalog_cover', $3, NULL, $4, 'queued', 45, $5::jsonb)
+           ON CONFLICT (idempotency_key) DO NOTHING`,
+          [
+            idFactory(), `${bookEditionId}:catalog-cover:${targetVersion}`,
+            bookEditionId, targetVersion,
+            JSON.stringify({ content_sha256: result.rows[0].content_sha256 })
+          ]
         )
         const edition = await client.query(
           `SELECT id, scope, catalog_key, content_sha256, title, author, format,
@@ -770,7 +946,6 @@ export function createPostgresBookMarkupRepository(pool, {
              ON bundle.book_edition_id = edition.id
             AND bundle.character_key = character.character_key
             AND bundle.bundle_version = $4
-            AND bundle.status = 'ready'
            JOIN character_bundle_assets AS link ON link.bundle_id = bundle.id
            JOIN media_assets AS asset
              ON asset.id = link.asset_id AND asset.status = 'ready'
@@ -936,7 +1111,8 @@ export function createPostgresBookMarkupRepository(pool, {
           `SELECT character.character_key, character.name, character.full_name,
                   character.first_appearance_text_offset,
                   character.warmup_text_offset, character.data,
-                  bundle.id AS bundle_id, bundle.bundle_version, bundle.status AS bundle_status,
+                  bundle.id AS bundle_id, bundle.bundle_version,
+                  bundle.media_revision, bundle.status AS bundle_status,
                   asset.id AS asset_id, asset.type AS asset_type,
                   asset.content_hash, asset.mime_type, asset.byte_size,
                   asset.status AS asset_status
@@ -965,7 +1141,9 @@ export function createPostgresBookMarkupRepository(pool, {
               data: row.data,
               bundle: row.bundle_id
                 ? {
-                    version: row.bundle_version,
+                    version: Number(row.media_revision ?? 1) > 1
+                      ? `${row.bundle_version}:r${Number(row.media_revision)}`
+                      : row.bundle_version,
                     status: row.bundle_status,
                     assets: []
                   }
@@ -1197,42 +1375,128 @@ export function createPostgresBookMarkupRepository(pool, {
       return jobs
     },
 
+    async enqueueCatalogCover({
+      bookEditionId,
+      priority = 45
+    }) {
+      const edition = await pool.query(
+        `SELECT edition.id, edition.content_sha256
+         FROM book_editions AS edition
+         WHERE edition.id = $1 AND edition.scope = 'catalog'
+           AND edition.status IN ('marking_up', 'generating_portraits', 'base_ready', 'published')
+           AND NOT EXISTS (
+             SELECT 1 FROM catalog_book_covers AS cover
+             WHERE cover.book_edition_id = edition.id AND cover.status = 'ready'
+           )`,
+        [bookEditionId]
+      )
+      const row = edition.rows[0]
+      if (!row) return null
+      const targetVersion = catalogCoverTargetVersion(row.content_sha256)
+      const idempotencyKey = `${bookEditionId}:catalog-cover:${targetVersion}`
+      const ensured = await ensureJob({
+        idempotencyKey,
+        type: 'catalog_cover',
+        bookEditionId,
+        targetVersion,
+        priority,
+        payload: { content_sha256: row.content_sha256 }
+      })
+      return { ...jobRow(ensured.row), created: ensured.created, idempotencyKey }
+    },
+
+    async enqueueMissingCatalogCovers({ priority = 45, limit = 1_000 } = {}) {
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 10_000) {
+        throw new RangeError('catalog cover limit must be between 1 and 10000')
+      }
+      const candidates = await pool.query(
+        `SELECT edition.id
+         FROM book_editions AS edition
+         WHERE edition.scope = 'catalog'
+           AND edition.status IN ('marking_up', 'generating_portraits', 'base_ready', 'published')
+           AND NOT EXISTS (
+             SELECT 1 FROM catalog_book_covers AS cover
+             WHERE cover.book_edition_id = edition.id AND cover.status = 'ready'
+           )
+         ORDER BY edition.created_at, edition.id
+         LIMIT $1`,
+        [limit]
+      )
+      const jobs = []
+      for (const candidate of candidates.rows) {
+        const job = await this.enqueueCatalogCover({
+          bookEditionId: candidate.id,
+          priority
+        })
+        if (job) jobs.push(job)
+      }
+      return jobs
+    },
+
     async ensureCharacterBundle({
       bookEditionId,
       characterKey,
       bundleVersion = CHARACTER_BUNDLE_VERSION,
       priority = 50
     }) {
-      const idempotencyKey = characterBundleIdempotencyKey({
-        bookEditionId,
-        characterKey,
-        bundleVersion
+      const ensured = await ensureCharacterMediaJobs({
+        bookEditionId, characterKey, bundleVersion, priority
       })
-      const ensured = await ensureJob({
-        idempotencyKey,
-        type: 'character_bundle',
-        bookEditionId,
-        characterKey,
-        targetVersion: bundleVersion,
-        priority,
-        payload: { required_media: REQUIRED_CHARACTER_MEDIA }
-      })
-      await pool.query(
-        `INSERT INTO character_media_bundles (
-           id, book_edition_id, character_key, bundle_version, job_id, status, expires_at
-         ) VALUES (
-           $1, $2, $3, $4, $5, $6,
-           CASE WHEN EXISTS (
-             SELECT 1 FROM book_editions WHERE id = $2 AND scope = 'private'
-           ) THEN now() + make_interval(days => $7) ELSE NULL END
-         )
-         ON CONFLICT (book_edition_id, character_key, bundle_version) DO NOTHING`,
-        [
-          idFactory(), bookEditionId, characterKey, bundleVersion,
-          ensured.row.id, ensured.row.status, privateMaterialTtlDays
-        ]
+      return {
+        id: ensured.jobs[0]?.id,
+        idempotencyKey: ensured.jobs[0]?.idempotencyKey,
+        status: ensured.status,
+        created: ensured.created,
+        jobs: ensured.jobs,
+        bundleVersion,
+        mediaRevision: ensured.mediaRevision
+      }
+    },
+
+    async enqueueCharacterMediaBackfill({ priority = 40, limit = 1_000 } = {}) {
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 10_000) {
+        throw new RangeError('character media backfill limit must be between 1 and 10000')
+      }
+      const candidates = await pool.query(
+        `SELECT markup.book_edition_id, character.character_key,
+                CASE WHEN markup.analysis_version = 'book-markup-v3'
+                  THEN 'character-bundle-v3'
+                  ELSE $1
+                END AS bundle_version
+         FROM book_markup_versions AS markup
+         JOIN book_editions AS edition ON edition.id = markup.book_edition_id
+         JOIN book_characters AS character ON character.markup_version_id = markup.id
+         LEFT JOIN character_media_bundles AS bundle
+           ON bundle.book_edition_id = markup.book_edition_id
+          AND bundle.character_key = character.character_key
+          AND bundle.bundle_version = CASE WHEN markup.analysis_version = 'book-markup-v3'
+            THEN 'character-bundle-v3'
+            ELSE $1
+          END
+         WHERE markup.status = 'published'
+           AND (bundle.id IS NULL OR bundle.status <> 'ready')
+           AND (
+             edition.scope = 'catalog' OR EXISTS (
+               SELECT 1 FROM reader_book_positions AS position
+               WHERE position.book_edition_id = markup.book_edition_id
+                 AND position.text_offset >= character.warmup_text_offset
+             )
+           )
+         ORDER BY markup.book_edition_id, character.sort_order, character.character_key
+         LIMIT $2`,
+        [CHARACTER_BUNDLE_VERSION, limit]
       )
-      return { ...jobRow(ensured.row), created: ensured.created, idempotencyKey }
+      const jobs = []
+      for (const candidate of candidates.rows) {
+        const ensured = await ensureCharacterMediaJobs({
+          bookEditionId: candidate.book_edition_id,
+          characterKey: candidate.character_key,
+          bundleVersion: candidate.bundle_version,
+          priority
+        })
+        jobs.push(...ensured.jobs)
+      }
+      return jobs
     },
 
     async retryFailedGenerationJobs({ limit = 100 } = {}) {
@@ -1259,12 +1523,13 @@ export function createPostgresBookMarkupRepository(pool, {
         )
         const characterJobs = retried.rows.filter((row) => row.character_key)
         for (const row of characterJobs) {
+          const bundleVersion = row.payload?.bundle_version ?? row.target_version
           await client.query(
             `UPDATE character_media_bundles
              SET status = 'queued', updated_at = now()
              WHERE book_edition_id = $1 AND character_key = $2
                AND bundle_version = $3`,
-            [row.book_edition_id, row.character_key, row.target_version]
+            [row.book_edition_id, row.character_key, bundleVersion]
           )
         }
         return retried.rows.map((row) => jobRow(row))
@@ -1336,10 +1601,19 @@ export function createPostgresBookMarkupRepository(pool, {
         `WITH candidate AS (
            SELECT id
            FROM generation_jobs
-           WHERE (
+           WHERE ((
              status = 'queued' AND available_at <= now()
            ) OR (
              status = 'running' AND locked_at < now() - make_interval(secs => $2)
+           )) AND (
+             job_type <> 'character_animation' OR EXISTS (
+               SELECT 1 FROM generation_jobs AS portrait
+               WHERE portrait.book_edition_id = generation_jobs.book_edition_id
+                 AND portrait.character_key = generation_jobs.character_key
+                 AND portrait.target_version = generation_jobs.target_version
+                 AND portrait.job_type = 'character_portrait'
+                 AND portrait.status = 'ready'
+             )
            )
            ORDER BY priority DESC, available_at, created_at
            FOR UPDATE SKIP LOCKED
@@ -1354,12 +1628,13 @@ export function createPostgresBookMarkupRepository(pool, {
         [workerId, leaseSeconds, leaseToken]
       )
       const job = jobRow(result.rows[0])
-      if (job?.type === 'character_bundle') {
+      if (job?.characterKey) {
+        const bundleVersion = job.payload?.bundle_version ?? job.targetVersion
         await pool.query(
           `UPDATE character_media_bundles
            SET status = 'running', updated_at = now()
            WHERE book_edition_id = $1 AND character_key = $2 AND bundle_version = $3`,
-          [job.bookEditionId, job.characterKey, job.targetVersion]
+          [job.bookEditionId, job.characterKey, bundleVersion]
         )
       }
       return job
@@ -1409,7 +1684,11 @@ export function createPostgresBookMarkupRepository(pool, {
          FROM generation_jobs AS job
          JOIN book_editions AS edition ON edition.id = job.book_edition_id
          JOIN book_markup_versions AS markup
-           ON markup.book_edition_id = edition.id AND markup.status = 'published'
+           ON markup.book_edition_id = edition.id AND (
+             (job.payload ? 'markup_version_id'
+               AND markup.id = (job.payload->>'markup_version_id')::uuid) OR
+             (NOT (job.payload ? 'markup_version_id') AND markup.status = 'published')
+           )
          JOIN book_characters AS character
            ON character.markup_version_id = markup.id AND character.character_key = job.character_key
          WHERE job.id = $1 AND job.status = 'running' AND job.lease_token = $2::uuid`,
@@ -1429,6 +1708,27 @@ export function createPostgresBookMarkupRepository(pool, {
         bookTitle: row.title,
         bookAuthor: row.author,
         bundleVersion: job.targetVersion
+      }
+    },
+
+    async getCatalogCoverInput(job) {
+      const result = await pool.query(
+        `SELECT edition.title, edition.author, edition.scope
+         FROM generation_jobs AS job
+         JOIN book_editions AS edition ON edition.id = job.book_edition_id
+         WHERE job.id = $1 AND job.job_type = 'catalog_cover'
+           AND job.status = 'running' AND job.lease_token = $2::uuid`,
+        [job.id, job.leaseToken]
+      )
+      if (!result.rows[0]) throw leaseLost(job.id)
+      const row = result.rows[0]
+      return {
+        bookEditionId: job.bookEditionId,
+        targetVersion: job.targetVersion,
+        scope: row.scope,
+        title: row.title,
+        author: row.author,
+        context: ''
       }
     },
 
@@ -1509,6 +1809,7 @@ export function createPostgresBookMarkupRepository(pool, {
     async publishCharacterBundle(job, bundle) {
       return transaction(pool, async (client) => {
         await requireLeasedJob(client, job)
+        const bundleVersion = job.payload?.bundle_version ?? job.targetVersion
         const bundleResult = await client.query(
           `SELECT bundle.*, edition.scope
            FROM character_media_bundles AS bundle
@@ -1516,7 +1817,7 @@ export function createPostgresBookMarkupRepository(pool, {
            WHERE bundle.book_edition_id = $1 AND bundle.character_key = $2
              AND bundle.bundle_version = $3
            FOR UPDATE OF bundle`,
-          [job.bookEditionId, job.characterKey, job.targetVersion]
+          [job.bookEditionId, job.characterKey, bundleVersion]
         )
         const target = bundleResult.rows[0]
         if (!target) throw new Error(`character bundle missing for job ${job.id}`)
@@ -1553,6 +1854,13 @@ export function createPostgresBookMarkupRepository(pool, {
             [target.id, asset.type, inserted.rows[0].id]
           )
         }
+        await client.query(
+          `UPDATE generation_jobs
+           SET status = 'ready', result = $2::jsonb, last_error_code = NULL,
+               locked_at = NULL, locked_by = NULL, lease_token = NULL, updated_at = now()
+           WHERE id = $1`,
+          [job.id, JSON.stringify({ bundle_id: target.id, assets: bundle.assets.map((asset) => asset.type) })]
+        )
         const complete = await client.query(
           `SELECT COUNT(*)::int AS count
            FROM character_bundle_assets AS link
@@ -1560,18 +1868,38 @@ export function createPostgresBookMarkupRepository(pool, {
            WHERE link.bundle_id = $1 AND link.asset_type = ANY($2::text[])`,
           [target.id, REQUIRED_CHARACTER_MEDIA]
         )
-        if (Number(complete.rows[0].count) !== REQUIRED_CHARACTER_MEDIA.length) {
+        const independentJob = Object.values(CHARACTER_MEDIA_JOB_TYPES).includes(job.type)
+        let bundleStatus = Number(complete.rows[0].count) === REQUIRED_CHARACTER_MEDIA.length
+          ? 'ready'
+          : 'running'
+        if (independentJob) {
+          const revisionJobs = await client.query(
+            `SELECT status, COUNT(*)::int AS count
+             FROM generation_jobs
+             WHERE book_edition_id = $1 AND character_key = $2
+               AND target_version = $3
+               AND job_type = ANY($4::text[])
+             GROUP BY status`,
+            [job.bookEditionId, job.characterKey, job.targetVersion, Object.values(CHARACTER_MEDIA_JOB_TYPES)]
+          )
+          const counts = new Map(revisionJobs.rows.map((row) => [row.status, Number(row.count)]))
+          bundleStatus = (counts.get('ready') ?? 0) === REQUIRED_CHARACTER_MEDIA.length
+            ? 'ready'
+            : (counts.get('failed') ?? 0) > 0 ? 'failed' : 'running'
+        } else if (bundleStatus !== 'ready') {
           throw new Error('character bundle did not publish every required asset')
         }
         await client.query(
           `UPDATE character_media_bundles
-           SET status = 'ready', published_at = now(), updated_at = now(),
+           SET status = $4,
+               published_at = CASE WHEN $4 = 'ready' THEN now() ELSE published_at END,
+               updated_at = now(),
                expires_at = CASE WHEN $2 = 'private'
                  THEN now() + make_interval(days => $3)
                  ELSE NULL
                END
            WHERE id = $1`,
-          [target.id, target.scope, privateMaterialTtlDays]
+          [target.id, target.scope, privateMaterialTtlDays, bundleStatus]
         )
         if (target.scope === 'private') await touchPrivateRetention(client, job.bookEditionId)
         const missing = await client.query(
@@ -1585,7 +1913,7 @@ export function createPostgresBookMarkupRepository(pool, {
             AND bundle.status = 'ready'
            WHERE markup.book_edition_id = $1 AND markup.status = 'published'
              AND bundle.id IS NULL`,
-          [job.bookEditionId, job.targetVersion]
+          [job.bookEditionId, bundleVersion]
         )
         if (Number(missing.rows[0].count) === 0) {
           await client.query(
@@ -1594,14 +1922,57 @@ export function createPostgresBookMarkupRepository(pool, {
             [job.bookEditionId]
           )
         }
+        return { bundleId: target.id, status: bundleStatus }
+      })
+    },
+
+    async publishCatalogCover(job, asset) {
+      return transaction(pool, async (client) => {
+        await requireLeasedJob(client, job)
+        if (
+          !asset || typeof asset.objectKey !== 'string' || !asset.objectKey ||
+          typeof asset.contentHash !== 'string' || !/^[0-9a-f]{64}$/.test(asset.contentHash) ||
+          !['image/jpeg', 'image/png', 'image/webp'].includes(asset.mimeType) ||
+          !Number.isSafeInteger(asset.byteSize) || asset.byteSize < 1
+        ) {
+          const error = new Error('catalog cover asset metadata is invalid')
+          error.code = 'GENERATION_RESULT_INVALID'
+          throw error
+        }
+        const previous = await client.query(
+          `SELECT object_key FROM catalog_book_covers
+           WHERE book_edition_id = $1 FOR UPDATE`,
+          [job.bookEditionId]
+        )
+        const previousObjectKey = previous.rows[0]?.object_key
+        await client.query(
+          `INSERT INTO catalog_book_covers (
+             book_edition_id, object_key, content_hash, mime_type, byte_size, status
+           ) VALUES ($1, $2, $3, $4, $5, 'ready')
+           ON CONFLICT (book_edition_id) DO UPDATE SET
+             object_key = EXCLUDED.object_key,
+             content_hash = EXCLUDED.content_hash,
+             mime_type = EXCLUDED.mime_type,
+             byte_size = EXCLUDED.byte_size,
+             status = 'ready',
+             updated_at = now()`,
+          [job.bookEditionId, asset.objectKey, asset.contentHash, asset.mimeType, asset.byteSize]
+        )
+        if (previousObjectKey && previousObjectKey !== asset.objectKey) {
+          await client.query(
+            `INSERT INTO book_object_deletions (object_key)
+             VALUES ($1) ON CONFLICT (object_key) DO NOTHING`,
+            [previousObjectKey]
+          )
+        }
         await client.query(
           `UPDATE generation_jobs
-           SET status = 'ready', result = $2::jsonb, locked_at = NULL,
-               locked_by = NULL, lease_token = NULL, updated_at = now()
+           SET status = 'ready', result = $2::jsonb, last_error_code = NULL,
+               locked_at = NULL, locked_by = NULL, lease_token = NULL, updated_at = now()
            WHERE id = $1`,
-          [job.id, JSON.stringify({ bundle_id: target.id })]
+          [job.id, JSON.stringify({ asset })]
         )
-        return { bundleId: target.id }
+        return { bookEditionId: job.bookEditionId, status: 'ready' }
       })
     },
 
@@ -1622,13 +1993,14 @@ export function createPostgresBookMarkupRepository(pool, {
         if (!result.rows[0]) throw leaseLost(job.id)
         const failed = result.rows[0]
         if (failed.character_key) {
+          const bundleVersion = job.payload?.bundle_version ?? failed.target_version
           await client.query(
             `UPDATE character_media_bundles SET status = $4, updated_at = now()
              WHERE book_edition_id = $1 AND character_key = $2 AND bundle_version = $3`,
             [
               failed.book_edition_id,
               failed.character_key,
-              failed.target_version,
+              bundleVersion,
               failed.status
             ]
           )

@@ -10,6 +10,12 @@ export const REQUIRED_CHARACTER_MEDIA = Object.freeze([
   'idle_animation'
 ])
 
+export const CHARACTER_MEDIA_JOB_TYPES = Object.freeze({
+  primary_portrait: 'character_portrait',
+  greeting_audio: 'character_audio',
+  idle_animation: 'character_animation'
+})
+
 const IDENTIFIER = /^[a-z0-9][a-z0-9._:-]{0,255}$/i
 const JOB_STATUSES = new Set(['queued', 'running', 'ready', 'failed'])
 
@@ -116,6 +122,31 @@ export function characterBundleIdempotencyKey({
     identifier(bookEditionId, 'bookEditionId'),
     identifier(characterKey, 'characterKey'),
     identifier(bundleVersion, 'bundleVersion')
+  ].join(':')
+}
+
+export function characterMediaTargetVersion({ bundleVersion, mediaRevision }) {
+  identifier(bundleVersion, 'bundleVersion')
+  if (!Number.isSafeInteger(mediaRevision) || mediaRevision < 1) {
+    invalid('mediaRevision: expected a positive safe integer')
+  }
+  return `${bundleVersion}:r${mediaRevision}`
+}
+
+export function characterMediaIdempotencyKey({
+  bookEditionId,
+  characterKey,
+  targetVersion,
+  assetType
+}) {
+  if (!Object.hasOwn(CHARACTER_MEDIA_JOB_TYPES, assetType)) {
+    invalid('assetType: unsupported character media type')
+  }
+  return [
+    identifier(bookEditionId, 'bookEditionId'),
+    identifier(characterKey, 'characterKey'),
+    identifier(targetVersion, 'targetVersion'),
+    identifier(assetType, 'assetType')
   ].join(':')
 }
 

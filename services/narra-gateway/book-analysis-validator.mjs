@@ -3,7 +3,11 @@ import {
   auditCharacterAppearanceDistribution,
   CHARACTER_APPEARANCE_CLUSTER_CODE
 } from './book-analysis-appearance-audit.mjs'
-import { normalizeBookMarkupV3 } from './book-analysis-contracts.mjs'
+import {
+  BOOK_ANALYSIS_GENDER_EVIDENCE_TYPES,
+  BOOK_ANALYSIS_TRAIT_EVIDENCE_TYPES,
+  normalizeBookMarkupV3
+} from './book-analysis-contracts.mjs'
 
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex')
@@ -152,9 +156,19 @@ export function validateBookMarkupV3({
     }
     addClaims(usages, [character.role], new Set(['character_role']), ownerEvidenceIds)
     addClaims(usages, [character.age], new Set(['character_age']), ownerEvidenceIds)
-    addClaims(usages, [character.gender], new Set(['character_gender']), ownerEvidenceIds)
+    addClaims(
+      usages,
+      [character.gender],
+      new Set(BOOK_ANALYSIS_GENDER_EVIDENCE_TYPES),
+      ownerEvidenceIds
+    )
     addClaims(usages, [character.description], null, ownerEvidenceIds)
-    addClaims(usages, character.traits, new Set(['character_trait']), ownerEvidenceIds)
+    addClaims(
+      usages,
+      character.traits,
+      new Set(BOOK_ANALYSIS_TRAIT_EVIDENCE_TYPES),
+      ownerEvidenceIds
+    )
     addClaims(usages, character.appearance, new Set(['character_appearance']), ownerEvidenceIds)
     addClaims(
       usages,

@@ -1,7 +1,6 @@
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import * as FileSystem from "expo-file-system/legacy";
-import { generateOpenRouterImageWithFallback } from "../ai/openrouter-image";
 import { resolveCoverGenreProfile } from "../book/cover-genre";
 import { budgetPrompt } from "./art-style";
 import { normalizeNarraError } from "./errors";
@@ -16,8 +15,6 @@ const MEDIA_DIR = `${FileSystem.documentDirectory}narra-media`;
 const MEDIA_PATH_MARKER = "/Documents/narra-media/";
 let speechFileSequence = 0;
 const portraitRequests = new Map<string, Promise<string>>();
-const OPENROUTER_IMAGE_MODEL = "openai/gpt-image-2";
-const OPENROUTER_IMAGE_FALLBACK_MODEL = "google/gemini-2.5-flash-image";
 
 type MediaJobType = "image" | "cover" | "tts" | "avatar" | "video";
 type MediaJobOrigin = "user" | "background";
@@ -341,20 +338,22 @@ async function generateCharacterPortraitRequest(
   character: NarraCharacter,
 ): Promise<string> {
   const book = portraitBookContext(bookId);
-  const generated = await generateOpenRouterImageWithFallback(
-    {
-      model: OPENROUTER_IMAGE_MODEL,
+  const response = await narraGatewayRequest("/v2/media/images", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
       prompt: portraitPrompt(character, book?.description, book?.genreId, book?.genreLabel),
-      aspectRatio: "3:4",
-      quality: "high",
-      outputFormat: "jpeg",
-      outputCompression: 88,
-    },
-    OPENROUTER_IMAGE_FALLBACK_MODEL,
-  );
+      width: 768,
+      height: 1024,
+    }),
+  });
+  const generated = imagePayload(await response.json().catch(() => null));
+  if (!response.ok || (!generated.base64 && !generated.url)) {
+    throw new Error(generated.error || `Portrait generation failed (${response.status})`);
+  }
   await ensureMediaDir();
   const path = `${MEDIA_DIR}/${safeKey(`${bookId}-${character.id}-portrait`)}.jpg`;
-  return persistGeneratedImage(path, { base64: generated.base64 });
+  return persistGeneratedImage(path, generated);
 }
 
 export function generateCharacterPortrait(
@@ -431,25 +430,52 @@ async function generateBookCoverImageRequest(
     requestId: string;
   },
 ): Promise<GeneratedCoverImage> {
-  const generated = await generateOpenRouterImageWithFallback(
-    {
-      model: OPENROUTER_IMAGE_MODEL,
-      prompt,
-      aspectRatio: "2:3",
-      quality: "high",
-      outputFormat: "jpeg",
-      outputCompression: 90,
-    },
-    OPENROUTER_IMAGE_FALLBACK_MODEL,
+  type CoverJob = {
+    job_id?: string;
+    status?: "queued" | "running" | "retry_wait" | "completed" | "failed";
+    poll_after_ms?: number;
+    image?: string;
+    mime_type?: string;
+    error?: string;
+  };
+  const parse = async (response: Response): Promise<CoverJob> => {
+    const payload = (await response.json().catch(() => null)) as CoverJob | null;
+    if (!response.ok || !payload) {
+      throw new Error(payload?.error || `Cover generation failed (${response.status})`);
+    }
+    return payload;
+  };
+  let generated = await parse(
+    await narraGatewayRequest("/v2/media/cover/jobs", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt, request_id: options.requestId }),
+    }),
   );
+  if (!generated.job_id) throw new Error("Backend did not return a cover job id");
+  const jobId = generated.job_id;
+  while (!["completed", "failed"].includes(generated.status || "")) {
+    const delay = Math.min(30_000, Math.max(1_000, Number(generated.poll_after_ms) || 3_000));
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    generated = await parse(
+      await narraGatewayRequest(`/v2/media/cover/jobs/${encodeURIComponent(jobId)}`),
+    );
+  }
+  if (generated.status !== "completed" || !generated.image) {
+    throw new Error(generated.error || "Cover generation failed");
+  }
+  await narraGatewayRequest(
+    `/v2/media/cover/jobs/${encodeURIComponent(jobId)}/ack`,
+    { method: "POST" },
+  ).catch(() => undefined);
   return {
-    base64: generated.base64,
-    mimeType: generated.mimeType,
-    jobId: options.requestId,
+    base64: generated.image,
+    mimeType: generated.mime_type || "image/png",
+    jobId,
   };
 }
 
-/** Personal dev mode: OpenRouter runs directly in the mobile app. */
+/** Durable server-side generation; the APK carries neither provider key nor model routing. */
 export function generateBookCoverImage(
   prompt: string,
   options: {

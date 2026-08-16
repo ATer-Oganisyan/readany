@@ -10,6 +10,7 @@ import {
   BOOK_ANALYSIS_MARKUP_VERSION,
   normalizeBookMarkupV3
 } from './book-analysis-contracts.mjs'
+import { voiceForGender } from './voices.mjs'
 import { createHash, randomUUID } from 'node:crypto'
 
 function serviceError(code, message, status) {
@@ -73,19 +74,20 @@ function claimValue(claim) {
 
 function analysisCharacterProfile(character, analysisSource) {
   const gender = claimValue(character.gender)
+  const normalizedGender = gender === 'male' || gender === 'female' ? gender : undefined
   const appearancePrompt = character.creative?.appearancePrompt || character.appearance
     .map(claimValue)
     .filter(Boolean)
     .join(', ')
   return {
     role: claimValue(character.role) || 'Персонаж истории',
-    gender: gender === 'male' || gender === 'female' ? gender : undefined,
+    gender: normalizedGender,
     traits: character.traits.map(claimValue).filter(Boolean).slice(0, 5),
     speechStyle: claimValue(character.speechStyle),
     speechExamples: character.speechExamples.map(claimValue).filter(Boolean).slice(0, 3),
     appearancePrompt,
     greeting: character.creative?.greeting || '',
-    voice: character.creative?.voice || '',
+    voice: voiceForGender(character.creative?.voice, normalizedGender),
     analysisSource
   }
 }
@@ -186,7 +188,7 @@ export function createBookCatalogService({
             firstAppearanceTextOffset: character.firstAppearanceTextOffset,
             state,
             profile: analysisCharacterProfile(character, source),
-            bundle: state === 'ready'
+            bundle: media?.bundle?.assets?.length
               ? {
                   version: media.bundle.version,
                   assets: media.bundle.assets.map((asset) => publicAsset({
@@ -228,7 +230,7 @@ export function createBookCatalogService({
         firstAppearanceTextOffset: character.firstAppearanceTextOffset,
         state,
         profile: character.data,
-        bundle: state === 'ready'
+        bundle: character.bundle?.assets?.length
           ? {
               version: character.bundle.version,
               assets: character.bundle.assets.map((asset) => publicAsset({

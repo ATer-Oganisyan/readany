@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  coverImageConfig,
   coverRouteReadiness,
   llmRouteReadiness,
   maxTokensFor,
@@ -332,6 +333,114 @@ test('cover route readiness and model come only from server environment', () => 
   assert.equal(
     coverRouteReadiness({ OPENROUTER_API_KEY: 'or-key', OPENROUTER_IMAGE_MODEL: 'other/image' }).model,
     'other/image'
+  )
+})
+
+test('cover image route can explicitly use LiteLLM without direct OpenRouter credentials', () => {
+  const env = {
+    COVER_IMAGE_PROVIDER: 'litellm',
+    LITELLM_BASE_URL: 'https://litellm.test',
+    LITELLM_API_KEY: 'proxy-key',
+    LITELLM_IMAGE_MODEL: 'gpt-image-2'
+  }
+
+  assert.deepEqual(coverRouteReadiness(env), {
+    ready: true,
+    provider: 'litellm',
+    model: 'gpt-image-2',
+    fallbackModel: null
+  })
+  assert.equal(coverImageConfig(env).baseUrl, 'https://litellm.test/v1')
+})
+
+test('LiteLLM cover request uses the standard images generations contract', async () => {
+  let captured
+  const result = await requestCoverImage({
+    prompt: 'front cover artwork',
+    aspectRatio: '2:3',
+    requestId: 'cover-request-1',
+    fetchImpl: async (url, init) => {
+      captured = {
+        url,
+        headers: new Headers(init.headers),
+        body: JSON.parse(init.body)
+      }
+      return new Response(JSON.stringify({
+        created: 123,
+        data: [{ b64_json: 'aGVsbG8=' }]
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    },
+    env: {
+      COVER_IMAGE_PROVIDER: 'litellm',
+      LITELLM_BASE_URL: 'https://litellm.test',
+      LITELLM_API_KEY: 'proxy-key',
+      LITELLM_IMAGE_MODEL: 'gpt-image-2'
+    }
+  })
+
+  assert.deepEqual(result, {
+    image: 'aGVsbG8=',
+    mimeType: 'image/jpeg',
+    model: 'gpt-image-2'
+  })
+  assert.equal(captured.url, 'https://litellm.test/v1/images/generations')
+  assert.equal(captured.headers.get('authorization'), 'Bearer proxy-key')
+  assert.equal(captured.headers.get('x-request-id'), 'cover-request-1')
+  assert.deepEqual(captured.body, {
+    model: 'gpt-image-2',
+    prompt: 'front cover artwork',
+    n: 1,
+    size: '1024x1536',
+    quality: 'high',
+    output_format: 'jpeg'
+  })
+})
+
+test('LiteLLM cover route requires an explicit staging plaintext allowlist', () => {
+  const base = {
+    COVER_IMAGE_PROVIDER: 'litellm',
+    LITELLM_BASE_URL: 'http://192.0.2.10:4000',
+    LITELLM_API_KEY: 'proxy-key',
+    LITELLM_IMAGE_MODEL: 'gpt-image-2',
+    NODE_ENV: 'production',
+    ANALYTICS_ENV: 'staging'
+  }
+
+  assert.throws(() => coverImageConfig(base), /LITELLM_BASE_URL must use HTTPS/)
+  assert.equal(coverImageConfig({
+    ...base,
+    ALLOW_INSECURE_LLM_HTTP: 'true',
+    LLM_INSECURE_HTTP_HOSTS: '192.0.2.10'
+  }).baseUrl, 'http://192.0.2.10:4000/v1')
+  assert.throws(() => coverImageConfig({
+    ...base,
+    ANALYTICS_ENV: 'production',
+    ALLOW_INSECURE_LLM_HTTP: 'true',
+    LLM_INSECURE_HTTP_HOSTS: '192.0.2.10'
+  }), /plaintext HTTP is forbidden in production/)
+})
+
+test('LiteLLM cover route normalizes standard JSON image errors', async () => {
+  await assert.rejects(
+    requestCoverImage({
+      prompt: 'cover',
+      fetchImpl: async () => new Response(JSON.stringify({
+        error: { message: 'invalid image size', type: 'invalid_request_error' }
+      }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      }),
+      env: {
+        COVER_IMAGE_PROVIDER: 'litellm',
+        LITELLM_BASE_URL: 'https://litellm.test/v1',
+        LITELLM_API_KEY: 'proxy-key',
+        LITELLM_IMAGE_MODEL: 'gpt-image-2'
+      }
+    }),
+    (error) => error?.code === 'VALIDATION' && /LiteLLM/.test(error.message)
   )
 })
 

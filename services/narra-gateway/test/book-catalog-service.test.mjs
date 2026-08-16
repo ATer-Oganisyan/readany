@@ -79,7 +79,7 @@ test('manifest never leaks a future character even when its global bundle is rea
   assert.equal(manifest.characters[0].bundle.assets.length, REQUIRED_CHARACTER_MEDIA.length)
 })
 
-test('manifest exposes no partial media when a visible bundle is incomplete', async () => {
+test('manifest exposes ready assets while the remaining character media is still preparing', async () => {
   const partial = readyBundle('hero')
   partial.assets.pop()
   const service = createBookCatalogService({
@@ -103,7 +103,7 @@ test('manifest exposes no partial media when a visible bundle is incomplete', as
   })
   const manifest = await service.manifest('reader-1', 'book-1')
   assert.equal(manifest.characters[0].state, 'preparing')
-  assert.equal(manifest.characters[0].bundle, null)
+  assert.equal(manifest.characters[0].bundle.assets.length, REQUIRED_CHARACTER_MEDIA.length - 1)
 })
 
 test('catalog manifest exposes validated v3 as the canonical markup', async () => {
@@ -222,7 +222,7 @@ test('catalog manifest exposes validated v3 as the canonical markup', async () =
       speechExamples: [],
       appearancePrompt: '',
       greeting: 'Здравствуйте',
-      voice: 'Bys',
+      voice: 'Erm',
       analysisSource: 'v3'
     },
     bundle: {

@@ -23,20 +23,34 @@ function scriptedPool(scripts) {
   }
 }
 
-test('durable character ensure returns an existing idempotent job', async () => {
-  const row = {
-    id: 'job-existing',
-    job_type: 'character_bundle',
+test('durable character ensure returns existing independent media jobs', async () => {
+  const job = (id, type, assetType) => ({
+    id,
+    job_type: type,
     book_edition_id: 'book-42',
     character_key: 'anna',
-    target_version: 'character-bundle-v1',
+    target_version: 'character-bundle-v1:r1',
     status: 'running',
     attempts: 1,
-    payload: {}
-  }
+    payload: { bundle_version: 'character-bundle-v1', required_media: [assetType] }
+  })
   const pool = scriptedPool([
     () => ({ rows: [] }),
-    () => ({ rows: [row] }),
+    () => ({ rows: [{
+      markup_version_id: 'markup-1',
+      source_markup_hash: 'a'.repeat(64),
+      bundle_id: 'bundle-1',
+      bundle_status: 'running',
+      previous_source_markup_hash: 'a'.repeat(64),
+      media_revision: 1
+    }] }),
+    () => ({ rows: [{ count: 0 }] }),
+    () => ({ rows: [] }),
+    () => ({ rows: [job('job-portrait', 'character_portrait', 'primary_portrait')] }),
+    () => ({ rows: [] }),
+    () => ({ rows: [job('job-audio', 'character_audio', 'greeting_audio')] }),
+    () => ({ rows: [] }),
+    () => ({ rows: [job('job-animation', 'character_animation', 'idle_animation')] }),
     () => ({ rows: [] })
   ])
   const repository = createPostgresBookMarkupRepository(pool, {
@@ -47,10 +61,14 @@ test('durable character ensure returns an existing idempotent job', async () => 
     characterKey: 'anna'
   })
   assert.equal(result.created, false)
-  assert.equal(result.id, 'job-existing')
-  assert.equal(result.status, 'running')
-  assert.equal(result.idempotencyKey, 'book-42:anna:character-bundle-v1')
-  assert.match(pool.queries[1].sql, /ON CONFLICT \(idempotency_key\) DO NOTHING/)
+  assert.equal(result.id, 'job-portrait')
+  assert.equal(result.status, 'queued')
+  assert.equal(result.jobs.length, 3)
+  assert.equal(
+    result.idempotencyKey,
+    'book-42:anna:character-bundle-v1:r1:primary_portrait'
+  )
+  assert.match(pool.queries[4].sql, /ON CONFLICT \(idempotency_key\) DO NOTHING/)
 })
 
 test('claim query uses skip locked and assigns a unique lease token', async () => {
@@ -234,4 +252,17 @@ test('parallel analysis migration isolates durable jobs and whole-book barriers'
   assert.match(synthesisMigration, /channel = 'shadow'/)
   assert.match(synthesisMigration, /book_analysis_artifacts content is immutable/)
   assert.match(synthesisMigration, /book_analysis_publications_immutable/)
+})
+
+test('empty-image retry migration requeues only failed independent media jobs', async () => {
+  const migration = await readFile(
+    new URL('../migrations/012_retry_independent_media_after_empty_image.sql', import.meta.url),
+    'utf8'
+  )
+  assert.match(migration, /job_type IN \('character_portrait', 'character_audio', 'character_animation'\)/)
+  assert.match(migration, /status = 'failed'/)
+  assert.match(migration, /last_error_code = 'UNKNOWN'/)
+  assert.match(migration, /attempts = 0/)
+  assert.doesNotMatch(migration, /character_bundle'/)
+  assert.doesNotMatch(migration, /book_markup'/)
 })

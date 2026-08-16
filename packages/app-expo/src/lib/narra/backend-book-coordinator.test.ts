@@ -266,6 +266,18 @@ describe("backend book coordinator", () => {
     expect(value.calls[0]).toBe("set-characters");
   });
 
+  it("projects a refreshed manifest against the current cached media", async () => {
+    const value = fixture();
+    const cached = [{ id: "cached", portraitUri: "file:///cached.png" } as NarraCharacter];
+    value.files.loadCached = vi.fn(async () => cached);
+    value.state.getCharacters = () => cached;
+    value.files.project = vi.fn(() => cached);
+
+    await createBackendBookCoordinator(value).open(BOOK);
+
+    expect(value.files.project).toHaveBeenCalledWith(expect.any(Object), cached);
+  });
+
   it("publishes manifest characters without waiting for media downloads", async () => {
     const value = fixture();
     const projectedCharacters = [

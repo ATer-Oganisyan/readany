@@ -102,6 +102,15 @@ describe("Narra analysis normalization", () => {
     expect(characters[2].greeting).toBeUndefined();
   });
 
+  it("сохраняет назначенный backend голос вместо локального переназначения", () => {
+    const [character] = normalizeCharacterAnalysisResponse(
+      { characters: [{ name: "Иван", gender: "male", voice: "Ast" }] },
+      { preserveProvidedVoices: true },
+    );
+
+    expect(character.voice).toBe("Ast");
+  });
+
   it("выставляет пороги открытия из appearanceChapter: первая глава — 0, дальше по числу глав", () => {
     const characters = normalizeCharacterAnalysisResponse(
       '{"characters":[{"name":"Ранний","gender":"male","appearanceChapter":1},{"name":"Поздняя","gender":"female","appearanceChapter":11}]}',

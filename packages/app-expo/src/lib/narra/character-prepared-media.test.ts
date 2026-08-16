@@ -35,6 +35,15 @@ describe("prepared character media", () => {
     expect(resolvePreparedGreetingAudioUri(hero, "Другой ответ героя")).toBeNull();
   });
 
+  it("does not reuse prepared audio after the reader overrides the voice", () => {
+    expect(
+      resolvePreparedGreetingAudioUri(
+        character({ voiceOverride: "Mar" }),
+        "Вы хотели со мной поговорить?",
+      ),
+    ).toBeNull();
+  });
+
   it("exposes the pre-generated idle animation for the character profile", () => {
     expect(resolvePreparedIdleAnimationUri(character())).toBe(
       "file:///documents/narra-media/idle.mp4",

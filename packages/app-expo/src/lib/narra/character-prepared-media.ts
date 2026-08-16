@@ -10,6 +10,7 @@ export function resolvePreparedGreetingAudioUri(
   character: NarraCharacter,
   message: string,
 ): string | null {
+  if (character.voiceOverride) return null;
   const greeting = character.greeting?.trim();
   if (!greeting || message.trim() !== greeting) return null;
   return normalizedUri(character.greetingAudioUri);
