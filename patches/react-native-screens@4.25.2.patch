@@ -1,3 +1,23 @@
+diff --git a/android/src/main/java/com/swmansion/rnscreens/gamma/helpers/ImageLoader.kt b/android/src/main/java/com/swmansion/rnscreens/gamma/helpers/ImageLoader.kt
+--- a/android/src/main/java/com/swmansion/rnscreens/gamma/helpers/ImageLoader.kt
++++ b/android/src/main/java/com/swmansion/rnscreens/gamma/helpers/ImageLoader.kt
+@@ -3,5 +3,6 @@ package com.swmansion.rnscreens.gamma.helpers
+ import android.annotation.SuppressLint
+ import android.content.Context
++import android.graphics.Bitmap
+ import android.graphics.drawable.Drawable
+ import android.net.Uri
+ import android.os.Handler
+@@ -57,5 +58,8 @@ private fun loadImageInternal(
+                 if (closeableImage is CloseableStaticBitmap) {
+                     val bitmap = closeableImage.underlyingBitmap
+-                    val drawable = bitmap.toDrawable(context.resources)
++                    val drawable =
++                        bitmap
++                            .copy(bitmap.config ?: Bitmap.Config.ARGB_8888, false)
++                            .toDrawable(context.resources)
+                     onLoaded(drawable)
+                 }
 diff --git a/ios/tabs/host/RNSTabBarController.mm b/ios/tabs/host/RNSTabBarController.mm
 index 289c9d958eb913a451161da11bda7fd44aeca377..83ab4dc9aefe15b3d93e4bcab3c0eed036fdce37 100644
 --- a/ios/tabs/host/RNSTabBarController.mm
