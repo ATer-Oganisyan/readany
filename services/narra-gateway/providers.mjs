@@ -391,7 +391,12 @@ function liteLlmImageSize(aspectRatio) {
   return '1024x1536'
 }
 
+function isNanoBananaModel(model) {
+  return /(?:^|\/)google\/gemini-[a-z0-9.-]*image(?:$|[-:])/i.test(model)
+}
+
 function coverImageRequest(config, { prompt, aspectRatio, selectedModel }) {
+  const nanoBanana = isNanoBananaModel(selectedModel)
   if (config.provider === 'litellm') {
     return {
       url: `${config.baseUrl}/images/generations`,
@@ -400,7 +405,9 @@ function coverImageRequest(config, { prompt, aspectRatio, selectedModel }) {
         prompt,
         n: 1,
         size: liteLlmImageSize(aspectRatio),
-        quality: 'high',
+        ...(nanoBanana
+          ? { aspect_ratio: aspectRatio, resolution: '1K' }
+          : { quality: 'high' }),
         output_format: 'jpeg'
       }
     }
@@ -411,7 +418,7 @@ function coverImageRequest(config, { prompt, aspectRatio, selectedModel }) {
       model: selectedModel,
       prompt,
       aspect_ratio: aspectRatio,
-      quality: 'high',
+      ...(nanoBanana ? { resolution: '1K' } : { quality: 'high' }),
       output_format: 'jpeg',
       output_compression: 90,
       n: 1

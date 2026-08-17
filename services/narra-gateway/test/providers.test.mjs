@@ -401,11 +401,13 @@ test('LiteLLM cover request uses the standard images generations contract', asyn
 
 test('LiteLLM cover route falls back from GPT Image 2 to Nano Banana 2', async () => {
   const models = []
+  const bodies = []
   const result = await requestCoverImageWithFallback({
     prompt: 'front cover artwork',
     fetchImpl: async (_url, init) => {
-      const model = JSON.parse(init.body).model
-      models.push(model)
+      const body = JSON.parse(init.body)
+      models.push(body.model)
+      bodies.push(body)
       if (models.length === 1) return new Response('upstream unavailable', { status: 502 })
       return new Response(JSON.stringify({ data: [{ b64_json: 'bmFuby1iYW5hbmE=' }] }), {
         status: 200,
@@ -425,6 +427,11 @@ test('LiteLLM cover route falls back from GPT Image 2 to Nano Banana 2', async (
     'openrouter/google/gemini-3.1-flash-image'
   ])
   assert.equal(result.model, 'openrouter/google/gemini-3.1-flash-image')
+  assert.equal(bodies[0].quality, 'high')
+  assert.equal(Object.hasOwn(bodies[0], 'resolution'), false)
+  assert.equal(bodies[1].aspect_ratio, '2:3')
+  assert.equal(bodies[1].resolution, '1K')
+  assert.equal(Object.hasOwn(bodies[1], 'quality'), false)
 })
 
 test('LiteLLM cover route requires an explicit staging plaintext allowlist', () => {
