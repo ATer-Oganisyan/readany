@@ -56,12 +56,16 @@ module.exports = {
           },
         },
       ],
-      [
-        "expo-dev-client",
-        {
-          launchMode: "most-recent",
-        },
-      ],
+      ...(variant.key === "development"
+        ? [
+            [
+              "expo-dev-client",
+              {
+                launchMode: "most-recent",
+              },
+            ],
+          ]
+        : []),
       [
         "expo-audio",
         {
