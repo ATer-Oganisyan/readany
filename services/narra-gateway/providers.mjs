@@ -266,7 +266,7 @@ export async function requestChat({
 }
 
 // ================= Обложки книг (server-owned image route) =================
-// Модель, provider и ключ живут только на сервере: клиент присылает лишь prompt.
+// Prompt policy, model, provider and credentials are owned by the gateway.
 const COVER_IMAGE_PROVIDERS = new Set(['openrouter', 'litellm'])
 
 function coverImageTimeoutMs(env, provider) {

@@ -1,36 +1,70 @@
-import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { resolveCoverGenreProfile } from './cover-genre.mjs'
 
-const BACKGROUNDS = [
-  'deep cobalt blue',
-  'muted vermilion red',
-  'dark forest green',
-  'burnt orange',
-  'deep plum purple',
-  'charcoal black',
-  'dusty turquoise',
-  'mustard yellow'
-]
+const coverGenerationConfig = JSON.parse(
+  readFileSync(new URL('./cover-generation-config.json', import.meta.url), 'utf8')
+)
+const COVER_PROMPT_TEMPLATE = coverGenerationConfig.promptParagraphs.join('\n\n')
+const MAX_THEME_CHARS = 800
 
-function text(value, fallback) {
-  return typeof value === 'string' && value.trim() ? value.trim() : fallback
+export const BOOK_COVER_PROMPT_VERSION = 'book-cover-prompt-v3'
+
+function text(value, fallback, max = 500) {
+  return typeof value === 'string' && value.trim()
+    ? value.trim().slice(0, max)
+    : fallback
 }
 
-export function catalogCoverPrompt({ title, author, context = '' }) {
-  const bookTitle = text(title, 'Untitled book').slice(0, 500)
-  const bookAuthor = text(author, 'Unknown author').slice(0, 500)
-  const summary = text(context, 'Infer the central idea, mood and historical context from the title and author.')
-    .replace(/\s+/gu, ' ')
-    .slice(0, 1_200)
-  const seed = createHash('sha256').update(`${bookTitle}\n${bookAuthor}`).digest()[0]
-  const background = BACKGROUNDS[seed % BACKGROUNDS.length]
-  return [
-    'Create complete vertical 2:3 front-cover artwork for a literary book.',
-    `Meaning context only: “${bookTitle}” by ${bookAuthor}. ${summary}`,
-    'Translate the central idea into one intelligent visual metaphor, not a literal plot summary.',
-    `Use a full-bleed ${background} matte paper field with restrained analogue print texture.`,
-    'Place one compact dominant illustration in the lower half; keep the upper third quiet but fully colored.',
-    'Independent European editorial design, late-modernist and constructivist book graphics, controlled asymmetry.',
-    'Absolutely no visible text, letters, numbers, logos, signatures, barcode, border or physical-book mockup.',
-    'Generate only the finished flat cover artwork.'
-  ].join('\n\n')
+export function generatedCoverBackgroundColor({ title, author }) {
+  const bookTitle = text(title, 'Untitled book')
+  const bookAuthor = text(author, 'Unknown author')
+  const colorSeed = Array.from(`${bookTitle}:${bookAuthor}`).reduce(
+    (hash, character) => (hash * 31 + (character.codePointAt(0) || 0)) >>> 0,
+    0
+  )
+  return coverGenerationConfig.backgroundColors[
+    colorSeed % coverGenerationConfig.backgroundColors.length
+  ]
 }
+
+export function bookCoverPrompt({
+  title,
+  author,
+  description,
+  excerpt,
+  context,
+  subjects = []
+}) {
+  const bookTitle = text(title, 'Untitled book')
+  const bookAuthor = text(author, 'Unknown author')
+  const themeSource = [description, context, excerpt]
+    .find((value) => typeof value === 'string' && value.trim())
+  const theme = themeSource
+    ? themeSource.trim().replace(/\s+/gu, ' ').slice(0, MAX_THEME_CHARS)
+    : 'Infer the central idea, mood, symbols and historical context from the title and author without reproducing their names as text.'
+  const genre = resolveCoverGenreProfile({
+    subjects: Array.isArray(subjects) ? subjects : [],
+    title: bookTitle,
+    description: themeSource ? theme : undefined,
+    excerpt
+  })
+  const backgroundColor = generatedCoverBackgroundColor({
+    title: bookTitle,
+    author: bookAuthor
+  })
+  const replacements = {
+    '{{BOOK_TITLE}}': bookTitle,
+    '{{AUTHOR}}': bookAuthor,
+    '{{BOOK_DESCRIPTION}}': theme,
+    '{{BOOK_GENRE}}': genre.label,
+    '{{GENRE_ART_DIRECTION}}': genre.artDirection,
+    '{{BACKGROUND_COLOR}}': backgroundColor
+  }
+
+  return Object.entries(replacements).reduce(
+    (prompt, [placeholder, value]) => prompt.replaceAll(placeholder, value),
+    COVER_PROMPT_TEMPLATE
+  )
+}
+
+export const catalogCoverPrompt = bookCoverPrompt

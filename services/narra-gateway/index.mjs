@@ -66,6 +66,7 @@ import { createInstallationRegistry } from './installation-registry.mjs'
 import { gatewayReadiness } from './readiness.mjs'
 import { createCoverJobStore } from './cover-job-store.mjs'
 import { createCoverJobRunner } from './cover-job-runner.mjs'
+import { bookCoverPrompt } from './catalog-cover-prompt.mjs'
 import { parseSceneJobBody, sceneGenerationPrompt } from './scene-generation.mjs'
 import { createBookCatalogRouter } from './book-catalog-api.mjs'
 import { createCatalogIngestRouter } from './catalog-ingest-api.mjs'
@@ -1913,7 +1914,8 @@ async function reserveSceneJobBudget(installationId) {
 app.post('/v2/media/cover/jobs', express.json({ limit: '64kb' }), async (req, res) => {
   let reservation
   try {
-    const { prompt, requestId } = parseCoverJobBody(req.body)
+    const { prompt: legacyPrompt, book, requestId } = parseCoverJobBody(req.body)
+    const prompt = legacyPrompt ?? bookCoverPrompt(book)
     const result = await coverJobStore.createOrGet({
       installationId: req.installation.sub,
       requestId,

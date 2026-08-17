@@ -131,6 +131,40 @@ test('durable cover job contract requires a UUID idempotency key and no provider
   )
 })
 
+test('durable cover job contract accepts bounded book context for server-owned prompts', () => {
+  const requestId = '123e4567-e89b-42d3-a456-426614174001'
+  assert.deepEqual(parseCoverJobBody({
+    request_id: requestId,
+    book: {
+      title: 'Анна Каренина',
+      author: 'Лев Толстой',
+      description: 'Роман о семье и давлении общества.',
+      subjects: ['literary fiction']
+    }
+  }), {
+    requestId,
+    book: {
+      title: 'Анна Каренина',
+      author: 'Лев Толстой',
+      description: 'Роман о семье и давлении общества.',
+      excerpt: undefined,
+      subjects: ['literary fiction']
+    }
+  })
+  assert.throws(
+    () => parseCoverJobBody({ request_id: requestId }),
+    /ровно одно поле/
+  )
+  assert.throws(
+    () => parseCoverJobBody({ request_id: requestId, prompt: 'old', book: { title: 'new' } }),
+    /ровно одно поле/
+  )
+  assert.throws(
+    () => parseCoverJobBody({ request_id: requestId, book: { title: 'x', model: 'private' } }),
+    /неизвестное поле/
+  )
+})
+
 test('analytics accepts only allowlisted events and properties', () => {
   const event = {
     eventId: '123e4567-e89b-42d3-a456-426614174000',

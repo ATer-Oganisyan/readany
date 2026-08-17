@@ -84,7 +84,8 @@ export function parseImageBody(input) {
   return { prompt, width, height, engine: body.engine }
 }
 
-// Обложки: клиент присылает только готовый промпт; модель и провайдер — серверные.
+// Compatibility route for already released clients. New durable jobs send
+// structured book context and let the gateway own prompt construction.
 export function parseCoverBody(input) {
   const body = object(input)
   onlyKeys(body, new Set(['prompt']))
@@ -93,11 +94,40 @@ export function parseCoverBody(input) {
 
 export function parseCoverJobBody(input) {
   const body = object(input)
-  onlyKeys(body, new Set(['prompt', 'request_id']))
+  onlyKeys(body, new Set(['prompt', 'book', 'request_id']))
   const requestId = string(body.request_id, 'request_id', { max: 36 })
   if (!UUID_V4.test(requestId)) fail('request_id: нужен UUID v4')
+  if ((body.prompt === undefined) === (body.book === undefined)) {
+    fail('нужно ровно одно поле: prompt или book')
+  }
+  if (body.prompt !== undefined) {
+    return {
+      prompt: string(body.prompt, 'prompt', { max: 8_000 }),
+      requestId
+    }
+  }
+
+  const book = object(body.book, 'book')
+  onlyKeys(book, new Set(['title', 'author', 'description', 'excerpt', 'subjects']), 'book')
+  const optionalText = (key, max) => book[key] === undefined
+    ? undefined
+    : string(book[key], `book.${key}`, { min: 0, max })
+  if (book.subjects !== undefined && (
+    !Array.isArray(book.subjects) || book.subjects.length > 32
+  )) {
+    fail('book.subjects: нужен массив до 32 элементов')
+  }
+  const subjects = book.subjects?.map((value, index) => (
+    string(value, `book.subjects[${index}]`, { max: 120 })
+  ))
   return {
-    prompt: string(body.prompt, 'prompt', { max: 8_000 }),
+    book: {
+      title: string(book.title, 'book.title', { min: 0, max: 500 }),
+      author: optionalText('author', 500),
+      description: optionalText('description', 2_000),
+      excerpt: optionalText('excerpt', 2_000),
+      subjects
+    },
     requestId
   }
 }

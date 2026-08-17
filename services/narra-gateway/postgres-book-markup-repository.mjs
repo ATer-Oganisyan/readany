@@ -17,7 +17,7 @@ const BOOK_MIME_TYPES = Object.freeze({
   pdf: 'application/pdf'
 })
 
-const CATALOG_COVER_VERSION = 'catalog-cover-v2'
+const CATALOG_COVER_VERSION = 'catalog-cover-v3'
 
 function catalogCoverTargetVersion(contentSha256) {
   return `${CATALOG_COVER_VERSION}-${contentSha256.slice(0, 16)}`

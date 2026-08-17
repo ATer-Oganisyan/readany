@@ -73,7 +73,8 @@ npm test
 
 Book covers use an authenticated, installation-owned job API:
 
-- `POST /v2/media/cover/jobs` creates or reuses a job by `request_id`;
+- `POST /v2/media/cover/jobs` accepts bounded `book` metadata and creates or
+  reuses a job by `request_id`;
 - `GET /v2/media/cover/jobs/:jobId` polls status and returns the completed image;
 - `POST /v2/media/cover/jobs/:jobId/ack` deletes a terminal job after the client persists it.
 
@@ -83,11 +84,14 @@ retention defaults to 24 hours, and expired records are removed before capacity
 checks and by the worker. The production worker must have a single writer;
 deployment candidates start with `COVER_JOB_WORKER_ENABLED=false`.
 
+The Gateway builds personal and catalog cover prompts from the same versioned
+template, including genre art direction and a deterministic background palette.
 New cover jobs use the internal GigaChat Image route with Kandinsky fallback;
-the APK sends no provider key or model. Catalog covers use PostgreSQL
+the APK sends no prompt, provider key or model. Catalog covers use PostgreSQL
 `catalog_cover` jobs and are copied idempotently to object storage before
-`catalog_book_covers` is marked ready. The direct OpenRouter/LiteLLM contract is
-kept only by the compatibility `/v2/media/cover` route.
+`catalog_book_covers` is marked ready. Client-authored prompts are accepted only
+for already released clients by the durable job endpoint and the compatibility
+`/v2/media/cover` route.
 
 Scenes use the parallel `/v2/media/scene/jobs` API. The client sends bounded
 book/chapter facts, while the Gateway owns the prompt, Kandinsky routing, retry,
