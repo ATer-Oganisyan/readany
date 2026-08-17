@@ -824,7 +824,8 @@ export async function initLocalDatabase(): Promise<void> {
       book_id TEXT PRIMARY KEY,
       request_id TEXT NOT NULL UNIQUE,
       job_id TEXT UNIQUE,
-      prompt TEXT NOT NULL,
+      prompt TEXT NOT NULL DEFAULT '',
+      request_body TEXT,
       status TEXT NOT NULL DEFAULT 'submitting',
       next_poll_at INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL,
@@ -839,6 +840,12 @@ export async function initLocalDatabase(): Promise<void> {
         await database.execute(
           "ALTER TABLE chunks ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0",
         );
+      } catch {
+        // Column already exists on upgraded installs.
+      }
+
+      try {
+        await database.execute("ALTER TABLE cover_jobs ADD COLUMN request_body TEXT");
       } catch {
         // Column already exists on upgraded installs.
       }

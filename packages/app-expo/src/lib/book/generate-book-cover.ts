@@ -1,12 +1,7 @@
 import { generateBookCoverImage } from "@/lib/narra/media";
 import { generateId } from "@readany/core/utils";
-import coverGenerationConfig from "./cover-generation-config.json";
-import { resolveCoverGenreProfile } from "./cover-genre";
+import type { BookCoverGenerationInput } from "./cover-generation-contract";
 import { deleteLocalCoverJob, getOrCreateLocalCoverJob } from "./cover-job-repository";
-import { generatedCoverBackgroundColor } from "./cover-text-contrast";
-
-const MAX_THEME_CHARS = 800;
-const COVER_PROMPT_TEMPLATE = coverGenerationConfig.promptParagraphs.join("\n\n");
 
 export interface GeneratedBookCover {
   bytes: Uint8Array;
@@ -24,59 +19,25 @@ function decodeBase64(value: string): Uint8Array {
   return bytes;
 }
 
-export function coverPrompt(input: {
-  title: string;
-  author?: string;
-  description?: string;
-  excerpt?: string;
-  subjects?: string[];
-  metaphor?: string;
-  imageType?: string;
-  accentColor1?: string;
-  accentColor2?: string;
-}) {
-  const title = input.title.trim() || "Untitled book";
-  const author = input.author?.trim() || "Unknown author";
-  const themeSource = input.description?.trim() || input.excerpt?.trim();
-  const theme = themeSource
-    ? themeSource.replace(/\s+/gu, " ").slice(0, MAX_THEME_CHARS)
-    : "Infer the central idea, mood, symbols and historical context from the title and author without reproducing their names as text.";
-  const genre = resolveCoverGenreProfile(input);
-
-  const backgroundColor =
-    input.accentColor1?.trim() || generatedCoverBackgroundColor({ title, author });
-
-  const replacements: Record<string, string> = {
-    "{{BOOK_TITLE}}": title,
-    "{{AUTHOR}}": author,
-    "{{BOOK_DESCRIPTION}}": theme,
-    "{{BOOK_GENRE}}": genre.label,
-    "{{GENRE_ART_DIRECTION}}": genre.artDirection,
-    "{{BACKGROUND_COLOR}}": backgroundColor,
+async function runBookCoverJob(
+  input: BookCoverGenerationInput & { bookId: string },
+): Promise<GeneratedBookCover> {
+  const request = {
+    book: {
+      title: input.title,
+      author: input.author,
+      description: input.description,
+      excerpt: input.excerpt,
+      subjects: input.subjects,
+    },
   };
-
-  return Object.entries(replacements).reduce(
-    (prompt, [placeholder, value]) => prompt.replaceAll(placeholder, value),
-    COVER_PROMPT_TEMPLATE,
-  );
-}
-
-async function runBookCoverJob(input: {
-  bookId: string;
-  title: string;
-  author?: string;
-  description?: string;
-  excerpt?: string;
-  subjects?: string[];
-}): Promise<GeneratedBookCover> {
-  const prompt = coverPrompt(input);
   const localJob = await getOrCreateLocalCoverJob({
     bookId: input.bookId,
     requestId: generateId(),
-    prompt,
+    request,
   });
 
-  const generated = await generateBookCoverImage(localJob.prompt, {
+  const generated = await generateBookCoverImage(localJob.request, {
     requestId: localJob.requestId,
   });
   return {
@@ -87,14 +48,9 @@ async function runBookCoverJob(input: {
 }
 
 /** The local intent survives JS reloads; generation runs in the Gateway queue. */
-export function generateBookCover(input: {
-  bookId: string;
-  title: string;
-  author?: string;
-  description?: string;
-  excerpt?: string;
-  subjects?: string[];
-}): Promise<GeneratedBookCover> {
+export function generateBookCover(
+  input: BookCoverGenerationInput & { bookId: string },
+): Promise<GeneratedBookCover> {
   return runBookCoverJob(input);
 }
 

@@ -306,17 +306,25 @@ describe("scene image prompt", () => {
 
 describe("book cover generation", () => {
   it("uses the durable backend queue and records telemetry", async () => {
-    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
-      new Response(JSON.stringify({
-        job_id: "job-1",
-        status: "completed",
-        image: "aGVsbG8=",
-        mime_type: "image/jpeg",
-      }), { status: 200 }),
-    ).mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.mocked(narraGatewayRequest)
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            job_id: "job-1",
+            status: "completed",
+            image: "aGVsbG8=",
+            mime_type: "image/jpeg",
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
 
     await expect(
-      generateBookCoverImage("front cover artwork", { requestId: "request-1" }),
+      generateBookCoverImage(
+        { book: { title: "Анна Каренина", author: "Лев Толстой" } },
+        { requestId: "request-1" },
+      ),
     ).resolves.toEqual({
       base64: "aGVsbG8=",
       mimeType: "image/jpeg",
@@ -328,6 +336,11 @@ describe("book cover generation", () => {
       "/v2/media/cover/jobs",
       expect.objectContaining({ method: "POST" }),
     );
+    const [, coverRequest] = vi.mocked(narraGatewayRequest).mock.calls[0] ?? [];
+    expect(JSON.parse(String(coverRequest?.body))).toEqual({
+      book: { title: "Анна Каренина", author: "Лев Толстой" },
+      request_id: "request-1",
+    });
     expect(recordTelemetry).toHaveBeenCalledWith(
       "media_job_enqueued",
       expect.objectContaining({
@@ -349,7 +362,7 @@ describe("book cover generation", () => {
     );
 
     await expect(
-      generateBookCoverImage("front cover artwork", { requestId: "request-1" }),
+      generateBookCoverImage({ book: { title: "Книга" } }, { requestId: "request-1" }),
     ).rejects.toThrow("Лимит на сегодня исчерпан");
 
     expect(recordTelemetry).toHaveBeenCalledWith(

@@ -1,6 +1,15 @@
-import coverGenerationConfig from "./cover-generation-config.json";
-
 export type CoverTextTone = "dark" | "light";
+
+const GENERATED_COVER_BACKGROUNDS = [
+  "deep cobalt blue",
+  "muted vermilion red",
+  "dark forest green",
+  "burnt orange",
+  "deep plum purple",
+  "charcoal black",
+  "dusty turquoise",
+  "mustard yellow",
+] as const;
 
 const LIGHT_TEXT_BACKGROUNDS = new Set([
   "deep cobalt blue",
@@ -18,9 +27,7 @@ export function generatedCoverBackgroundColor(input: { title: string; author?: s
     0,
   );
 
-  return coverGenerationConfig.backgroundColors[
-    colorSeed % coverGenerationConfig.backgroundColors.length
-  ];
+  return GENERATED_COVER_BACKGROUNDS[colorSeed % GENERATED_COVER_BACKGROUNDS.length];
 }
 
 export function generatedCoverTextTone(input: {

@@ -1,4 +1,5 @@
 import { getLocalDB, initDatabase } from "@readany/core/db/database";
+import type { BookCoverGenerationRequest } from "./cover-generation-contract";
 
 export type LocalCoverJobStatus =
   | "submitting"
@@ -12,7 +13,7 @@ export interface LocalCoverJob {
   bookId: string;
   requestId: string;
   jobId?: string;
-  prompt: string;
+  request: BookCoverGenerationRequest;
   status: LocalCoverJobStatus;
   nextPollAt: number;
   createdAt: number;
@@ -27,6 +28,7 @@ interface CoverJobRow {
   request_id: string;
   job_id: string | null;
   prompt: string;
+  request_body?: string | null;
   status: LocalCoverJobStatus;
   next_poll_at: number;
   created_at: number;
@@ -44,12 +46,33 @@ function serial<T>(operation: () => Promise<T>): Promise<T> {
   return pending;
 }
 
+function parseRequest(row: CoverJobRow): BookCoverGenerationRequest {
+  if (row.request_body) {
+    try {
+      const parsed = JSON.parse(row.request_body) as Partial<BookCoverGenerationRequest>;
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        "book" in parsed &&
+        parsed.book &&
+        typeof parsed.book.title === "string"
+      ) {
+        return { book: parsed.book };
+      }
+    } catch {
+      // Fall through to the legacy prompt if an interrupted migration left one.
+    }
+  }
+  if (row.prompt) return { prompt: row.prompt };
+  throw new Error("Сохранённая задача обложки повреждена");
+}
+
 function mapRow(row: CoverJobRow): LocalCoverJob {
   return {
     bookId: row.book_id,
     requestId: row.request_id,
     jobId: row.job_id ?? undefined,
-    prompt: row.prompt,
+    request: parseRequest(row),
     status: row.status,
     nextPollAt: row.next_poll_at,
     createdAt: row.created_at,
@@ -72,7 +95,7 @@ async function selectByBookId(bookId: string): Promise<LocalCoverJob | null> {
 export async function getOrCreateLocalCoverJob(input: {
   bookId: string;
   requestId: string;
-  prompt: string;
+  request: BookCoverGenerationRequest;
   now?: number;
 }): Promise<LocalCoverJob> {
   await initDatabase();
@@ -81,11 +104,13 @@ export async function getOrCreateLocalCoverJob(input: {
     if (existing) return existing;
     const timestamp = input.now ?? Date.now();
     const database = await getLocalDB();
+    const legacyPrompt = "prompt" in input.request ? input.request.prompt : "";
+    const requestBody = "book" in input.request ? JSON.stringify(input.request) : null;
     await database.execute(
       `INSERT OR IGNORE INTO cover_jobs (
-        book_id, request_id, prompt, status, next_poll_at, created_at, updated_at
-      ) VALUES (?, ?, ?, 'submitting', 0, ?, ?)`,
-      [input.bookId, input.requestId, input.prompt, timestamp, timestamp],
+        book_id, request_id, prompt, request_body, status, next_poll_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, 'submitting', 0, ?, ?)`,
+      [input.bookId, input.requestId, legacyPrompt, requestBody, timestamp, timestamp],
     );
     const inserted = await selectByBookId(input.bookId);
     if (!inserted) throw new Error("Не удалось сохранить задачу обложки");

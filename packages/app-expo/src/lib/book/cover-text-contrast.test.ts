@@ -9,7 +9,7 @@ describe("generated cover text contrast", () => {
   it("keeps the background and text tone stable for the same book", () => {
     const book = { title: "Неизвестная книга", author: "Unknown author" };
 
-    expect(generatedCoverBackgroundColor(book)).toBe(generatedCoverBackgroundColor(book));
-    expect(generatedCoverTextTone(book)).toBe(generatedCoverTextTone(book));
+    expect(generatedCoverBackgroundColor(book)).toBe("deep cobalt blue");
+    expect(generatedCoverTextTone(book)).toBe("light");
   });
 });

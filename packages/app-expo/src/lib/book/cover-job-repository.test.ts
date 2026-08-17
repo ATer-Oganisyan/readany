@@ -5,6 +5,7 @@ interface StoredRow {
   request_id: string;
   job_id: string | null;
   prompt: string;
+  request_body: string | null;
   status: string;
   next_poll_at: number;
   created_at: number;
@@ -20,10 +21,11 @@ const database = vi.hoisted(() => {
     rows,
     execute: vi.fn(async (sql: string, params: unknown[] = []) => {
       if (sql.includes("INSERT OR IGNORE INTO cover_jobs")) {
-        const [bookId, requestId, prompt, createdAt, updatedAt] = params as [
+        const [bookId, requestId, prompt, requestBody, createdAt, updatedAt] = params as [
           string,
           string,
           string,
+          string | null,
           number,
           number,
         ];
@@ -33,6 +35,7 @@ const database = vi.hoisted(() => {
             request_id: requestId,
             job_id: null,
             prompt,
+            request_body: requestBody,
             status: "submitting",
             next_poll_at: 0,
             created_at: createdAt,
@@ -45,17 +48,16 @@ const database = vi.hoisted(() => {
         return;
       }
       if (sql.includes("UPDATE cover_jobs SET")) {
-        const [jobId, status, nextPollAt, updatedAt, expiresAt, code, message, bookId] =
-          params as [
-            string | null,
-            string,
-            number,
-            number,
-            number | null,
-            string | null,
-            string | null,
-            string,
-          ];
+        const [jobId, status, nextPollAt, updatedAt, expiresAt, code, message, bookId] = params as [
+          string | null,
+          string,
+          number,
+          number,
+          number | null,
+          string | null,
+          string | null,
+          string,
+        ];
         const row = rows.get(bookId);
         if (row) {
           row.job_id = jobId ?? row.job_id;
@@ -101,20 +103,20 @@ describe("local durable cover jobs", () => {
     const first = await getOrCreateLocalCoverJob({
       bookId: "book-1",
       requestId: "request-1",
-      prompt: "first prompt",
+      request: { book: { title: "First title" } },
       now: 100,
     });
     const repeated = await getOrCreateLocalCoverJob({
       bookId: "book-1",
       requestId: "request-2",
-      prompt: "changed prompt",
+      request: { book: { title: "Changed title" } },
       now: 200,
     });
 
     expect(first).toMatchObject({
       bookId: "book-1",
       requestId: "request-1",
-      prompt: "first prompt",
+      request: { book: { title: "First title" } },
       status: "submitting",
     });
     expect(repeated).toEqual(first);
@@ -125,7 +127,7 @@ describe("local durable cover jobs", () => {
     await getOrCreateLocalCoverJob({
       bookId: "book-1",
       requestId: "request-1",
-      prompt: "prompt",
+      request: { book: { title: "Книга" } },
       now: 100,
     });
     await updateLocalCoverJob("book-1", {
@@ -151,10 +153,31 @@ describe("local durable cover jobs", () => {
     await getOrCreateLocalCoverJob({
       bookId: "book-1",
       requestId: "request-1",
-      prompt: "prompt",
+      request: { book: { title: "Книга" } },
     });
     await deleteLocalCoverJob("book-1");
 
     await expect(getLocalCoverJob("book-1")).resolves.toBeNull();
+  });
+
+  it("restores a legacy client-authored prompt created by an older APK", async () => {
+    database.rows.set("book-1", {
+      book_id: "book-1",
+      request_id: "request-1",
+      job_id: "job-1",
+      prompt: "legacy prompt",
+      request_body: null,
+      status: "running",
+      next_poll_at: 0,
+      created_at: 1,
+      updated_at: 1,
+      expires_at: null,
+      last_error_code: null,
+      last_error_message: null,
+    });
+
+    await expect(getLocalCoverJob("book-1")).resolves.toMatchObject({
+      request: { prompt: "legacy prompt" },
+    });
   });
 });

@@ -1,5 +1,6 @@
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
+import type { BookCoverGenerationRequest } from "@/lib/book/cover-generation-contract";
 import * as FileSystem from "expo-file-system/legacy";
 import { resolveCoverGenreProfile } from "../book/cover-genre";
 import { budgetPrompt } from "./art-style";
@@ -425,7 +426,7 @@ export interface GeneratedCoverImage {
 }
 
 async function generateBookCoverImageRequest(
-  prompt: string,
+  request: BookCoverGenerationRequest,
   options: {
     requestId: string;
   },
@@ -449,7 +450,7 @@ async function generateBookCoverImageRequest(
     await narraGatewayRequest("/v2/media/cover/jobs", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ prompt, request_id: options.requestId }),
+      body: JSON.stringify({ ...request, request_id: options.requestId }),
     }),
   );
   if (!generated.job_id) throw new Error("Backend did not return a cover job id");
@@ -464,10 +465,9 @@ async function generateBookCoverImageRequest(
   if (generated.status !== "completed" || !generated.image) {
     throw new Error(generated.error || "Cover generation failed");
   }
-  await narraGatewayRequest(
-    `/v2/media/cover/jobs/${encodeURIComponent(jobId)}/ack`,
-    { method: "POST" },
-  ).catch(() => undefined);
+  await narraGatewayRequest(`/v2/media/cover/jobs/${encodeURIComponent(jobId)}/ack`, {
+    method: "POST",
+  }).catch(() => undefined);
   return {
     base64: generated.image,
     mimeType: generated.mime_type || "image/png",
@@ -475,15 +475,15 @@ async function generateBookCoverImageRequest(
   };
 }
 
-/** Durable server-side generation; the APK carries neither provider key nor model routing. */
+/** Durable server-side generation; the APK sends book facts, never prompt or provider controls. */
 export function generateBookCoverImage(
-  prompt: string,
+  request: BookCoverGenerationRequest,
   options: {
     requestId: string;
   },
 ): Promise<GeneratedCoverImage> {
   return trackNarraMediaJob("cover", "background", () =>
-    generateBookCoverImageRequest(prompt, options),
+    generateBookCoverImageRequest(request, options),
   );
 }
 
