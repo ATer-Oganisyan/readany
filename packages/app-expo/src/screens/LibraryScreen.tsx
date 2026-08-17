@@ -25,6 +25,7 @@ import {
   type NativeSegmentedPagerHandle,
 } from "@/components/ui/native-segmented-pager";
 import { SwipePressGuardProvider, useSwipePressGuard } from "@/components/ui/swipe-press-guard";
+import { useBookImportActions } from "@/hooks/use-book-import-actions";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import {
   BUNDLED_CATALOG_BOOKS,
@@ -35,6 +36,7 @@ import { openMobileBook } from "@/lib/library/open-mobile-book";
 import { queueBookForAutoVectorize } from "@/lib/rag/auto-vectorize-book";
 import { setCallback, setExtractorRef } from "@/lib/rag/auto-vectorize-service";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
+import type { LibraryTabStackParamList } from "@/navigation/TabNavigator";
 import { NATIVE_SCROLL_EDGE_EFFECTS } from "@/navigation/scroll-edge-effects";
 import { useLibraryStore } from "@/stores/library-store";
 import { useVectorModelStore } from "@/stores/vector-model-store";
@@ -49,15 +51,14 @@ import {
 } from "@/styles/theme";
 import { spacingPixels } from "@deslop/primitives";
 import { useHeaderHeight } from "@react-navigation/elements";
-import { useNavigation } from "@react-navigation/native";
+import { type RouteProp, useNavigation, useRoute } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { getPlatformService } from "@readany/core";
 import { setFallbackContentProvider } from "@readany/core/ai";
 import { onLibraryChanged } from "@readany/core/events/library-events";
 import { useSyncStore } from "@readany/core/stores";
 import type { Book, BookGroup } from "@readany/core/types";
-import * as DocumentPicker from "expo-document-picker";
-import { File as ExpoFile, Paths } from "expo-file-system";
+import { File as ExpoFile } from "expo-file-system";
 /**
  * LibraryScreen — matching Tauri mobile LibraryPage exactly.
  * Features: header sort/import, tag filter, vectorization progress banner,
@@ -76,7 +77,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import ReadAnyNativeControls from "../../modules/native-controls";
 import { TagManagementSheet } from "./library/TagManagementSheet";
 import { useBookDownload } from "./library/useBookDownload";
 import { useVectorizationQueue } from "./library/useVectorizationQueue";
@@ -93,35 +93,10 @@ function bytesToBase64(bytes: Uint8Array): string {
 }
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+type LibraryRoute = RouteProp<LibraryTabStackParamList, "LibraryHome">;
 
 const NUM_COLUMNS = 2;
 const GRID_GAP = 16;
-const URL_IMPORT_EXTENSIONS = new Set([
-  "epub",
-  "pdf",
-  "mobi",
-  "azw",
-  "azw3",
-  "cbz",
-  "cbr",
-  "fb2",
-  "fbz",
-  "txt",
-  "umd",
-]);
-
-function getUrlImportFilename(url: URL): string {
-  const rawName = decodeURIComponent(url.pathname.split("/").pop() || "").trim();
-  const safeName = rawName.replace(/[\\/:*?"<>|\[\]{}#%&]/g, "_");
-  const extension = safeName.split(".").pop()?.toLowerCase();
-
-  if (!safeName || !extension || !URL_IMPORT_EXTENSIONS.has(extension)) {
-    throw new Error("unsupported-url");
-  }
-
-  return safeName;
-}
-
 type LibraryGridItem =
   | { type: "group"; group: BookGroup; books: Book[] }
   | { type: "book"; book: Book };
@@ -142,6 +117,7 @@ function LibraryScreenContent() {
   const { isDark } = useTheme();
   const { t } = useTranslation();
   const nav = useNavigation<Nav>();
+  const route = useRoute<LibraryRoute>();
   const nativeHeaderHeight = useHeaderHeight();
   const layout = useResponsiveLayout();
   const gridGap = layout.isTablet ? 16 : GRID_GAP;
@@ -161,9 +137,10 @@ function LibraryScreenContent() {
   );
   const [tagSheetOpen, setTagSheetOpen] = useState(false);
   const [tagSheetBook, setTagSheetBook] = useState<Book | null>(null);
-  const [isPickingImport, setIsPickingImport] = useState(false);
-  const [isUrlImporting, setIsUrlImporting] = useState(false);
-  const [librarySection, setLibrarySection] = useState<LibrarySection>("catalog");
+  const requestedSection = route.params?.initialSection;
+  const [librarySection, setLibrarySection] = useState<LibrarySection>(
+    requestedSection ?? "catalog",
+  );
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedBookIds, setSelectedBookIds] = useState<Set<string>>(new Set());
   const [showGroupPicker, setShowGroupPicker] = useState(false);
@@ -173,12 +150,18 @@ function LibraryScreenContent() {
     group?: BookGroup;
   } | null>(null);
   const [groupNameInput, setGroupNameInput] = useState("");
-  const localImportInFlightRef = useRef(false);
   const librarySectionChangedRef = useRef(false);
   const swipePressGuard = useSwipePressGuard();
 
   const extractorRef = useRef<ExtractorRef>(null);
   const libraryPagerRef = useRef<NativeSegmentedPagerHandle>(null);
+  const primaryScrollRef = useRef<ScrollView>(null);
+
+  const resetPrimaryScroll = useCallback(() => {
+    requestAnimationFrame(() => {
+      primaryScrollRef.current?.scrollTo({ y: -nativeHeaderHeight, animated: true });
+    });
+  }, [nativeHeaderHeight]);
 
   const {
     books,
@@ -191,7 +174,6 @@ function LibraryScreenContent() {
     activeGroupId,
     isGroupView,
     loadBooks,
-    importBooks,
     removeBook,
     setGroupView,
     setActiveGroupId,
@@ -206,7 +188,6 @@ function LibraryScreenContent() {
     removeTag,
     renameTag,
   } = useLibraryStore();
-  const isBookImporting = isImporting || isPickingImport || isUrlImporting;
   const hasBooks = books.length > 0;
   const syncNow = useSyncStore((state) => state.syncNow);
   const syncStatus = useSyncStore((state) => state.status);
@@ -223,9 +204,23 @@ function LibraryScreenContent() {
       });
   }, []);
 
+  useEffect(() => {
+    if (!requestedSection) return;
+    selectLibrarySection(requestedSection);
+  }, [requestedSection, selectLibrarySection]);
+
   const revealImportedBooks = useCallback((importedCount: number) => {
     if (importedCount > 0) libraryPagerRef.current?.selectPage(1);
   }, []);
+
+  const {
+    isPickingImport,
+    isUrlImporting,
+    handleLocalImport,
+    handleOpenImportSources,
+    handleOpenUrlImport,
+  } = useBookImportActions({ onImportComplete: revealImportedBooks });
+  const isBookImporting = isImporting || isPickingImport || isUrlImporting;
 
   useEffect(() => {
     let cancelled = false;
@@ -259,12 +254,6 @@ function LibraryScreenContent() {
   const { vectorQueue, vectorizingBookId, vectorProgress, handleVectorize } = useVectorizationQueue(
     { extractorRef, nav },
   );
-
-  useEffect(() => {
-    if (isLoaded && !hasBooks && librarySection !== "catalog") {
-      selectLibrarySection("catalog");
-    }
-  }, [hasBooks, isLoaded, librarySection, selectLibrarySection]);
 
   useEffect(() => {
     let cancelled = false;
@@ -450,180 +439,15 @@ function LibraryScreenContent() {
   }, [books]);
 
   const showCatalog = !activeTag && !activeGroupId && !selectionMode;
+  const isMyBooksEmptyState = showCatalog && librarySection === "my-books" && isLoaded && !hasBooks;
 
-  const handleLocalImport = useCallback(async () => {
-    if (localImportInFlightRef.current) return;
-    localImportInFlightRef.current = true;
-    setIsPickingImport(true);
-
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: [
-          "application/epub+zip",
-          "application/pdf",
-          "application/x-mobipocket-ebook",
-          "application/vnd.amazon.ebook",
-          "application/vnd.comicbook+zip",
-          "application/x-fictionbook+xml",
-          "text/plain",
-          "application/octet-stream",
-        ],
-        multiple: true,
-        copyToCacheDirectory: true,
-      });
-      if (result.canceled || !result.assets || result.assets.length === 0) return;
-      const files = result.assets.map((a) => ({ uri: a.uri, name: a.name }));
-      const summary = await importBooks(files);
-      revealImportedBooks(summary.imported.length);
-      if (summary.imported.length === 0 || summary.failures.length > 0) {
-        Alert.alert(
-          t("library.importSourceUrlErrorTitle", "Не получилось добавить книгу"),
-          t("library.importResultSummary", {
-            imported: summary.imported.length,
-            skipped: summary.skippedDuplicates.length,
-            failed: summary.failures.length,
-          }),
-        );
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (!message.includes("Different document picking in progress")) {
-        console.error("Import failed:", err);
-      }
-    } finally {
-      localImportInFlightRef.current = false;
-      setIsPickingImport(false);
+  useEffect(() => {
+    if (!showCatalog) return;
+    resetPrimaryScroll();
+    if (librarySection === "my-books" && isMyBooksEmptyState) {
+      requestAnimationFrame(resetPrimaryScroll);
     }
-  }, [importBooks, revealImportedBooks, t]);
-
-  const handleUrlImport = useCallback(
-    async (rawValue: string) => {
-      const value = rawValue.trim();
-      let temporaryFile: ExpoFile | null = null;
-
-      try {
-        const url = new URL(value);
-        if (url.protocol !== "https:" && url.protocol !== "http:") {
-          throw new Error("invalid-url");
-        }
-
-        // Фанфики Фикбука качаются и собираются в EPUB отдельным модулем (P11);
-        // динамический импорт, чтобы не грузить парсер при обычном импорте.
-        const ficbook = await import("@/lib/book/import-ficbook");
-        if (ficbook.parseFicbookUrl(value)) {
-          setIsUrlImporting(true);
-          const fanfic = await ficbook.importFicbookFromUrl(value);
-          temporaryFile = new ExpoFile(Paths.cache, `readany-ficbook-${Date.now()}.epub`);
-          if (temporaryFile.exists) {
-            temporaryFile.delete();
-          }
-          temporaryFile.write(fanfic.epubBytes);
-          const ficbookSummary = await importBooks([
-            { uri: temporaryFile.uri, name: fanfic.fileName },
-          ]);
-          revealImportedBooks(ficbookSummary.imported.length);
-          if (ficbookSummary.imported.length === 0 || ficbookSummary.failures.length > 0) {
-            Alert.alert(
-              t("library.importSourceUrlErrorTitle", "Не получилось добавить книгу"),
-              t("library.importResultSummary", {
-                imported: ficbookSummary.imported.length,
-                skipped: ficbookSummary.skippedDuplicates.length,
-                failed: ficbookSummary.failures.length,
-              }),
-            );
-          }
-          return;
-        }
-
-        const fileName = getUrlImportFilename(url);
-        temporaryFile = new ExpoFile(Paths.cache, `readany-url-${Date.now()}-${fileName}`);
-        setIsUrlImporting(true);
-        const downloadedFile = await ExpoFile.downloadFileAsync(url.toString(), temporaryFile, {
-          idempotent: true,
-        });
-        const summary = await importBooks([{ uri: downloadedFile.uri, name: fileName }]);
-        revealImportedBooks(summary.imported.length);
-
-        if (summary.imported.length === 0 || summary.failures.length > 0) {
-          Alert.alert(
-            t("library.importSourceUrlErrorTitle", "Не получилось добавить книгу"),
-            t("library.importResultSummary", {
-              imported: summary.imported.length,
-              skipped: summary.skippedDuplicates.length,
-              failed: summary.failures.length,
-            }),
-          );
-        }
-      } catch (error) {
-        const errorCode = error instanceof Error ? error.message : "";
-        const message =
-          errorCode === "ficbook-blocked"
-            ? t(
-                "library.importSourceUrlFicbookBlocked",
-                "Фикбук временно блокирует автоматический доступ — попробуйте позже.",
-              )
-            : errorCode === "ficbook-not-found"
-              ? t(
-                  "library.importSourceUrlFicbookNotFound",
-                  "Фанфик по этой ссылке не найден. Проверьте адрес и попробуйте снова.",
-                )
-              : errorCode === "unsupported-url"
-                ? t(
-                    "library.importSourceUrlUnsupported",
-                    "Нужна прямая ссылка на файл EPUB, PDF, TXT или другого поддерживаемого формата — либо ссылка на фанфик Фикбука.",
-                  )
-                : t(
-                    "library.importSourceUrlError",
-                    "Проверьте ссылку и подключение к интернету, затем попробуйте снова.",
-                  );
-        Alert.alert(
-          t("library.importSourceUrlErrorTitle", "Не получилось добавить книгу"),
-          message,
-        );
-      } finally {
-        setIsUrlImporting(false);
-        if (temporaryFile?.exists) {
-          temporaryFile.delete();
-        }
-      }
-    },
-    [importBooks, revealImportedBooks, t],
-  );
-
-  const handleOpenUrlImport = useCallback(async () => {
-    try {
-      const value = await ReadAnyNativeControls.promptForText(
-        t("library.importSourceUrlTitle", "Ссылка на книгу"),
-        t("library.importSourceUrlDesc", "Вставьте ссылку на файл книги или на фанфик Фикбука."),
-        t("library.importSourceUrlPlaceholder", "Ссылка на файл или фанфик Фикбука"),
-        t("common.cancel", "Отмена"),
-        t("library.importSourceUrlSubmit", "Добавить"),
-      );
-      if (value?.trim()) {
-        await handleUrlImport(value);
-      }
-    } catch (error) {
-      console.error("Native URL prompt failed:", error);
-      Alert.alert(
-        t("library.importSourceUrlErrorTitle", "Не получилось добавить книгу"),
-        t("library.importSourceUrlError", "Проверьте ссылку и попробуйте снова."),
-      );
-    }
-  }, [handleUrlImport, t]);
-
-  const handleOpenImportSources = useCallback(() => {
-    Alert.alert(t("library.importFirst", "Добавить книгу"), undefined, [
-      {
-        text: t("library.importSourceUrl", "Найти по ссылке"),
-        onPress: () => void handleOpenUrlImport(),
-      },
-      {
-        text: t("library.importSourceLocal", "Выбрать файл"),
-        onPress: () => void handleLocalImport(),
-      },
-      { text: t("common.cancel", "Отмена"), style: "cancel" },
-    ]);
-  }, [handleLocalImport, handleOpenUrlImport, t]);
+  }, [isMyBooksEmptyState, librarySection, resetPrimaryScroll, showCatalog]);
 
   const handleOpen = useCallback(
     async (book: Book) => {
@@ -769,6 +593,7 @@ function LibraryScreenContent() {
   ]);
 
   const isEmpty = gridItems.length === 0;
+  const libraryPageMinHeight = Math.max(1, layout.height - nativeHeaderHeight - 76);
 
   const toggleBookSelection = useCallback((book: Book) => {
     setSelectedBookIds((prev) => {
@@ -1062,14 +887,15 @@ function LibraryScreenContent() {
     </>
   );
 
-  const emptyLibraryState = !isLoaded ? null : books.length === 0 && !showCatalog ? (
+  const emptyLibraryState = !isLoaded ? null : books.length === 0 ? (
     <CenteredEmptyState
-      title={t("library.empty", "暂无书籍")}
-      description={t("library.emptyHint", "导入电子书开始阅读之旅")}
+      title={t("library.empty", "Книг пока нет")}
+      description={t("library.emptyHint", "Выберите файл или найдите книгу по ссылке")}
       avoidNativeTabBar
+      style={{ minHeight: libraryPageMinHeight }}
     >
       <ImportSourceMenuButton
-        label={t("library.importFirst", "Добавить книгу")}
+        label={t("library.emptyAction", "Добавить")}
         urlLabel={t("library.importSourceUrl", "Найти по ссылке")}
         localLabel={t("library.importSourceLocal", "Выбрать файл")}
         disabled={isPickingImport || isUrlImporting}
@@ -1079,9 +905,11 @@ function LibraryScreenContent() {
       />
     </CenteredEmptyState>
   ) : hasBooks && isEmpty && !showCatalog ? (
-    <View style={[s.noResultsWrap, { transform: [{ translateY: -nativeHeaderHeight / 2 }] }]}>
-      <Text style={s.noResultsText}>{t("library.noResults", "没有找到匹配的书籍")}</Text>
-    </View>
+    <CenteredEmptyState
+      variant="compact"
+      title={t("library.noResults", "没有找到匹配的书籍")}
+      style={{ transform: [{ translateY: -nativeHeaderHeight / 2 }] }}
+    />
   ) : null;
 
   const catalogGrid = (
@@ -1121,16 +949,16 @@ function LibraryScreenContent() {
       colorScheme={isDark ? "dark" : "light"}
       accessibilityLabel={t("library.section", "Раздел библиотеки")}
       controlsStyle={s.librarySectionTabs}
-      minimumPageHeight={Math.max(1, layout.height - nativeHeaderHeight - 76)}
+      minimumPageHeight={libraryPageMinHeight}
       pageGap={gridGap}
-      stablePageHeight
+      stablePageHeight={!isMyBooksEmptyState}
       onSwipeStateChange={(swiping) => {
         if (swiping) swipePressGuard?.beginSwipe();
         else swipePressGuard?.endSwipe();
       }}
     >
       <View>{isLoaded ? catalogGrid : null}</View>
-      <View>{renderLibraryGrid(gridItems)}</View>
+      <View>{isLoaded ? (hasBooks ? renderLibraryGrid(gridItems) : emptyLibraryState) : null}</View>
     </NativeSegmentedPager>
   );
 
@@ -1138,6 +966,7 @@ function LibraryScreenContent() {
     <>
       <ScrollViewMarker style={s.page} scrollEdgeEffects={NATIVE_SCROLL_EDGE_EFFECTS}>
         <ScrollView
+          ref={primaryScrollRef}
           contentInsetAdjustmentBehavior="automatic"
           style={s.primaryScroll}
           contentContainerStyle={
@@ -1145,7 +974,10 @@ function LibraryScreenContent() {
               ? [s.gridContent, showCatalog ? s.catalogGridContent : null]
               : s.emptyScrollContent
           }
-          alwaysBounceVertical
+          scrollEnabled={!isMyBooksEmptyState}
+          scrollToOverflowEnabled
+          alwaysBounceVertical={!isMyBooksEmptyState}
+          bounces={!isMyBooksEmptyState}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
@@ -1347,8 +1179,6 @@ const makeStyles = (
       fontWeight: fontWeight.medium,
       color: colors.primaryForeground,
     },
-    noResultsWrap: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 80 },
-    noResultsText: { fontSize: fontSize.sm, color: colors.mutedForeground, marginTop: 12 },
     gridRow: { gap: layout.gridGap, justifyContent: "flex-start" },
     gridContent: {
       width: "100%",

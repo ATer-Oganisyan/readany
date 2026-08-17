@@ -17,6 +17,7 @@
  */
 import { ChevronLeftIcon, ChevronRightIcon, ClockIcon, SearchIcon } from "@/components/ui/Icon";
 import { Text } from "@/components/ui/Typography";
+import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { useReadingSessionStore } from "@/stores";
 import { useColors, withOpacity } from "@/styles/theme";
@@ -51,7 +52,6 @@ import { GoalsSection } from "./stats/GoalsSection";
 import {
   ChartSurface,
   DaySummaryPanel,
-  EmptyState,
   InsightsSection,
   JourneySummaryPanel,
   MetricTile,
@@ -523,7 +523,8 @@ export default function StatsScreen() {
               transform: [{ translateY: -nativeHeaderHeight / 2 }],
             }}
           >
-            <EmptyState
+            <CenteredEmptyState
+              variant="compact"
               title={errorKey ? t(errorKey) : t("stats.desktop.noDataTitle")}
               description={t("stats.desktop.noDataDesc")}
               icon={<SearchIcon size={24} color={withOpacity(colors.mutedForeground, 0.45)} />}

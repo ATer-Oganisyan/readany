@@ -4,6 +4,7 @@ export interface EmptyStateActionButtonProps {
   label: string;
   accessibilityLabel?: string;
   disabled?: boolean;
+  showPlus?: boolean;
   onPress: () => void;
 }
 
@@ -12,6 +13,7 @@ export function EmptyStateActionButton({
   label,
   accessibilityLabel,
   disabled = false,
+  showPlus = false,
   onPress,
 }: EmptyStateActionButtonProps) {
   return (
@@ -19,7 +21,7 @@ export function EmptyStateActionButton({
       label={label}
       accessibilityLabel={accessibilityLabel}
       disabled={disabled}
-      icon="add"
+      icon={showPlus ? "add" : undefined}
       size="large"
       onPress={onPress}
     />

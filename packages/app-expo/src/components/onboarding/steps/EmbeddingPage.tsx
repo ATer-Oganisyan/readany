@@ -1,6 +1,7 @@
 import { Check, ChevronLeftIcon, Cloud, Plus, Trash2, X } from "@/components/ui/Icon";
 import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
 import { Text, TextInput } from "@/components/ui/Typography";
+import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { BUNDLED_OPENROUTER_EMBEDDING_ID, hydrateBundledEmbeddingModel } from "@/config/bundled-ai";
 import { useVectorModelStore } from "@/stores/vector-model-store";
 import { headingFontFamily, largeTitleFontFamily, useTheme } from "@/styles/theme";
@@ -280,9 +281,11 @@ export function EmbeddingPage() {
             ))}
 
             {vectorModels.length === 0 && !showAddForm && (
-              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-                {t("settings.vm_noRemoteModels", "No remote models configured yet.")}
-              </Text>
+              <CenteredEmptyState
+                variant="compact"
+                title={t("settings.vm_noRemoteModels", "No remote models configured yet.")}
+                style={styles.emptyState}
+              />
             )}
           </View>
         </KeyboardAwareScrollView>
@@ -435,7 +438,7 @@ const styles = StyleSheet.create({
   modelItemActions: { flexDirection: "row", alignItems: "center", gap: 12 },
   testBtnSmall: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6 },
   testBtnText: { fontSize: 12, fontWeight: "600" },
-  emptyText: { fontSize: 14, textAlign: "center", marginTop: 16 },
+  emptyState: { paddingVertical: 16 },
   footer: {
     flexDirection: "row",
     alignItems: "center",

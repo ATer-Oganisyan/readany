@@ -15,11 +15,7 @@ import {
 } from "@/components/ui/Icon";
 import { Text as InterfaceText } from "@/components/ui/Typography";
 import { getReaderBookmarkCopy } from "@/lib/reader/reader-bookmark-copy";
-import {
-  interfaceFontFamily,
-  sansCondensedFontFamily,
-  serifTextFontFamily,
-} from "@deslop/primitives/native";
+import { interfaceFontFamily, serifTextFontFamily } from "@deslop/primitives/native";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -873,7 +869,7 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
   sheetTitleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  sheetTitle: { fontSize: 20, fontFamily: sansCondensedFontFamily.bold },
+  sheetTitle: { fontSize: 20, fontFamily: interfaceFontFamily.bold },
   quote: { borderLeftWidth: 3, paddingLeft: 12, fontSize: 14, lineHeight: 20 },
   noteInput: {
     minHeight: 110,
@@ -948,7 +944,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     gap: 8,
   },
-  emptyTitle: { fontSize: 20, fontFamily: sansCondensedFontFamily.bold, textAlign: "center" },
+  emptyTitle: { fontSize: 20, fontFamily: interfaceFontFamily.semibold, textAlign: "center" },
   emptyHint: { maxWidth: 300, fontSize: 14, lineHeight: 20, textAlign: "center" },
   noteCard: { borderRadius: 18, padding: 16, gap: 9, borderCurve: "continuous" },
   noteCardHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
@@ -1007,7 +1003,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   centerState: { alignItems: "center", justifyContent: "center", paddingHorizontal: 34, gap: 14 },
-  centerTitle: { fontSize: 21, fontFamily: sansCondensedFontFamily.bold, textAlign: "center" },
+  centerTitle: { fontSize: 21, fontFamily: interfaceFontFamily.bold, textAlign: "center" },
   centerHint: { maxWidth: 320, fontSize: 14, lineHeight: 20, textAlign: "center" },
   errorIcon: {
     width: 72,

@@ -6,13 +6,5 @@ export function ImportSourceMenuButton({
   disabled = false,
   onFallbackPress,
 }: ImportSourceMenuButtonProps) {
-  return (
-    <NativeButton
-      label={label}
-      onPress={onFallbackPress}
-      disabled={disabled}
-      icon="add"
-      size="large"
-    />
-  );
+  return <NativeButton label={label} onPress={onFallbackPress} disabled={disabled} size="large" />;
 }

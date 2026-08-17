@@ -1,10 +1,10 @@
-import { Text } from "@/components/ui/Typography";
+import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
 import { hasCharacterPortrait } from "@/lib/narra/character-portrait";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { ReaderCharacterCard } from "@/screens/reader/ReaderCharacterCard";
 import { useNarraStore } from "@/stores";
-import { type ThemeColors, fontSize, spacing, useTheme } from "@/styles/theme";
+import { type ThemeColors, useTheme } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useLayoutEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -48,11 +48,10 @@ export function NarraCharacterProfileScreen({ route, navigation }: Props) {
 
   if (!character) {
     return (
-      <View style={styles.emptyState}>
-        <Text style={styles.emptyText}>
-          {t("narra.characterUnavailable", "Персонаж недоступен.")}
-        </Text>
-      </View>
+      <CenteredEmptyState
+        title={t("narra.characterUnavailable", "Персонаж недоступен.")}
+        style={styles.emptyState}
+      />
     );
   }
 
@@ -77,14 +76,6 @@ const makeStyles = (colors: ThemeColors) =>
     compactContainer: { flex: 0, backgroundColor: "#2C2219" },
     emptyState: {
       flex: 1,
-      alignItems: "center",
-      justifyContent: "center",
-      padding: spacing.xl,
       backgroundColor: colors.background,
-    },
-    emptyText: {
-      color: colors.mutedForeground,
-      fontSize: fontSize.sm,
-      textAlign: "center",
     },
   });

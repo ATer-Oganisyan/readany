@@ -6,8 +6,9 @@ import {
   radius,
   withOpacity,
 } from "@/styles/theme";
+import { spacingPixels } from "@deslop/primitives";
 /**
- * Bottom sheet + TOC/Bookmark/Settings panel styles for ReaderScreen.
+ * Bottom sheet + settings panel styles for ReaderScreen.
  */
 import { Dimensions, StyleSheet } from "react-native";
 
@@ -23,6 +24,17 @@ export const makeSheetStyles = (colors: ThemeColors) =>
       borderTopRightRadius: radius.xxl,
       padding: 16,
     },
+    nativeSheetRoot: {
+      flex: 1,
+      backgroundColor: colors.card,
+    },
+    nativeSheetContent: {
+      flex: 1,
+      backgroundColor: colors.card,
+      paddingHorizontal: spacingPixels[16],
+      paddingTop: spacingPixels[8],
+    },
+    nativeSheetScroll: { flex: 1 },
     sheetHeader: {
       flexDirection: "row",
       alignItems: "center",
@@ -42,18 +54,6 @@ export const makeSheetStyles = (colors: ThemeColors) =>
       textAlign: "center",
       paddingVertical: 32,
     },
-
-    // ── TOC tabs ──────────────────────────────────────────────────────────────
-    tocTabBar: { flexDirection: "row" as const, alignItems: "center" as const, gap: 4 },
-    tocTab: {
-      flexDirection: "row" as const,
-      alignItems: "center" as const,
-      gap: 4,
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: radius.md,
-    },
-    tocTabText: { fontSize: fontSize.sm, fontWeight: fontWeight.medium },
 
     // ── Settings rows ─────────────────────────────────────────────────────────
     settingRow: {
@@ -160,66 +160,6 @@ export const makeSheetStyles = (colors: ThemeColors) =>
     highlightContent: { flex: 1 },
     highlightText: { fontSize: fontSize.sm, color: colors.foreground, lineHeight: 18 },
     highlightNote: { fontSize: fontSize.xs, color: colors.mutedForeground, marginTop: 4 },
-    bookmarkItem: {
-      flexDirection: "row" as const,
-      alignItems: "center" as const,
-      gap: 10,
-      paddingVertical: 12,
-      paddingHorizontal: 12,
-      borderBottomWidth: 0.5,
-      borderBottomColor: colors.border,
-    },
-    bookmarkContent: { flex: 1, minWidth: 0 },
-    bookmarkLabel: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, lineHeight: 20 },
-    bookmarkSnippet: { fontSize: fontSize.xs, lineHeight: 16, marginTop: 2, opacity: 0.7 },
-    bookmarkDate: { fontSize: fontSize.xs, marginTop: 3, opacity: 0.6 },
-    bookmarkDeleteBtn: { padding: 6, borderRadius: radius.md, opacity: 0.5 },
-    bookmarkAddBtn: {
-      flexDirection: "row" as const,
-      alignItems: "center" as const,
-      justifyContent: "center" as const,
-      gap: 8,
-      paddingVertical: 10,
-      marginBottom: 8,
-      borderRadius: radius.lg,
-      backgroundColor: withOpacity(colors.primary, 0.08),
-    },
-    bookmarkAddBtnText: {
-      fontSize: fontSize.sm,
-      fontWeight: fontWeight.medium,
-      color: colors.primary,
-    },
-
-    // ── Вкладка «Поиск» единой панели ────────────────────────────────────────
-    navSearchInputWrap: {
-      flexDirection: "row" as const,
-      alignItems: "center" as const,
-      gap: 8,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      marginBottom: 8,
-      borderRadius: radius.lg,
-      backgroundColor: colors.muted,
-    },
-    navSearchInput: { flex: 1, fontSize: fontSize.sm, color: colors.foreground, padding: 0 },
-    navSearchCount: { fontSize: fontSize.xs, color: colors.mutedForeground },
-    navSearchResult: {
-      paddingVertical: 10,
-      paddingHorizontal: 12,
-      borderBottomWidth: 0.5,
-      borderBottomColor: colors.border,
-    },
-    navSearchResultText: {
-      fontSize: fontSize.sm,
-      lineHeight: 19,
-      color: colors.mutedForeground,
-    },
-    navSearchResultMatch: {
-      color: colors.foreground,
-      fontWeight: fontWeight.semibold,
-      backgroundColor: withOpacity(colors.primary, 0.14),
-    },
-
     // ── Плитки тем страницы (Aa-панель) ──────────────────────────────────────
     pageThemeRow: { flexDirection: "row" as const, gap: 8 },
     pageThemeTile: {

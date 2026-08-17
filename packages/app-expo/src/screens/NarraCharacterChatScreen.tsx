@@ -1,6 +1,7 @@
 import { NarraChat } from "@/components/chat/NarraChat";
 import { CharacterPortraitImage } from "@/components/narra/character-portrait-image";
 import { Text } from "@/components/ui/Typography";
+import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { type OpenRouterChatMessage, completeOpenRouterChat } from "@/lib/ai/openrouter-chat";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
@@ -16,10 +17,7 @@ import {
   type ThemeColors,
   bodyTypography,
   captionTypography,
-  fontSize,
   fontWeight,
-  headingFontFamily,
-  spacing,
   titleFontFamily,
   useTheme,
 } from "@/styles/theme";
@@ -30,7 +28,7 @@ import * as Crypto from "expo-crypto";
 import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Alert, Platform, Pressable, StyleSheet, View } from "react-native";
 
 type Props = NativeStackScreenProps<RootStackParamList, "NarraCharacterChat">;
 
@@ -419,27 +417,23 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
 
   if (!book || !character) {
     return (
-      <View style={styles.centered}>
-        <Text style={styles.emptyStateText}>
-          {t("narra.characterUnavailable", "Персонаж недоступен.")}
-        </Text>
-      </View>
+      <CenteredEmptyState
+        title={t("narra.characterUnavailable", "Персонаж недоступен.")}
+        style={styles.container}
+      />
     );
   }
 
   if (!unlocked) {
     return (
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        contentContainerStyle={styles.centered}
-      >
-        <Text style={styles.emptyStateTitle}>
-          {t("narra.characterLocked", "Персонаж ещё не открыт")}
-        </Text>
-        <Text style={styles.emptyStateText}>
-          {t("narra.keepReading", "Продолжайте читать — герой появится позже по ходу книги.")}
-        </Text>
-      </ScrollView>
+      <CenteredEmptyState
+        title={t("narra.characterLocked", "Персонаж ещё не открыт")}
+        description={t(
+          "narra.keepReading",
+          "Продолжайте читать — герой появится позже по ходу книги.",
+        )}
+        style={styles.container}
+      />
     );
   }
 
@@ -478,27 +472,6 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
 const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
-    centered: {
-      flexGrow: 1,
-      alignItems: "center",
-      justifyContent: "center",
-      gap: spacing.sm,
-      padding: spacing.xxl,
-      backgroundColor: colors.background,
-    },
-    emptyStateTitle: {
-      color: colors.foreground,
-      fontFamily: headingFontFamily,
-      fontSize: fontSize.lg,
-      fontWeight: fontWeight.bold,
-      textAlign: "center",
-    },
-    emptyStateText: {
-      color: colors.mutedForeground,
-      fontSize: fontSize.sm,
-      lineHeight: 21,
-      textAlign: "center",
-    },
     headerAvatarButton: {
       width: headerControlSize,
       height: headerControlSize,

@@ -1,6 +1,6 @@
 import {
   EMPTY_STATE_ACTION_HEIGHT,
-  getEmptyStateActionWidth,
+  getEmptyStateMenuButtonWidth,
 } from "@/components/ui/empty-state-action-metrics";
 import { useTheme } from "@/styles/ThemeContext";
 import { requireNativeView } from "expo";
@@ -15,6 +15,7 @@ interface NativeImportMenuButtonProps {
   color: string;
   foregroundColor: string;
   disabled: boolean;
+  showsMenu: boolean;
   onUrlPress: () => void;
   onLocalPress: () => void;
   style: { width: number; height: number };
@@ -34,7 +35,7 @@ export function ImportSourceMenuButton({
   onLocalPress,
 }: ImportSourceMenuButtonProps) {
   const { colors } = useTheme();
-  const width = getEmptyStateActionWidth(label);
+  const width = getEmptyStateMenuButtonWidth(label);
 
   return (
     <View style={{ width, height: EMPTY_STATE_ACTION_HEIGHT }}>
@@ -45,6 +46,7 @@ export function ImportSourceMenuButton({
         color={colors.primary}
         foregroundColor={colors.primaryForeground}
         disabled={disabled}
+        showsMenu
         onUrlPress={onUrlPress}
         onLocalPress={onLocalPress}
         style={{ width, height: EMPTY_STATE_ACTION_HEIGHT }}

@@ -3,6 +3,7 @@ import { NativeSymbol } from "@/components/ui/NativeSymbol";
 import { PasswordInput } from "@/components/ui/PasswordInput";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { Text, TextInput } from "@/components/ui/Typography";
+import { ToastPreview } from "@/components/ui/toast-preview";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { ChatScreen } from "@/screens/ChatScreen";
 import { LibraryScreen } from "@/screens/LibraryScreen";
@@ -178,6 +179,14 @@ const componentItems: CatalogItem[] = [
     icon: "apps",
     sfSymbol: "rectangle.and.hand.point.up.left",
     preview: ButtonPreview,
+  },
+  {
+    id: "toast",
+    title: "Toast",
+    subtitle: "Загрузка, успех и ошибка",
+    icon: "notifications",
+    sfSymbol: "bell",
+    preview: ToastPreview,
   },
   {
     id: "material-icons",

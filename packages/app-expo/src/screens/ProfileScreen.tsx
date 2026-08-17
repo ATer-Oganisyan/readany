@@ -1,5 +1,5 @@
-import { NativeThemePicker } from "@/components/profile/NativeThemePicker";
 import { ProfileNumericText } from "@/components/profile/ProfileNumericText";
+import { NativeSettingsPicker } from "@/components/settings/NativeSettingsPicker";
 import { NativeSymbol } from "@/components/ui/NativeSymbol";
 import { ScrollViewMarker } from "@/components/ui/ScrollViewMarker";
 import { Text } from "@/components/ui/Typography";
@@ -28,9 +28,9 @@ import {
 } from "@/styles/theme";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { changeAndPersistLanguage } from "@readany/core/i18n";
 import { readingStatsService } from "@readany/core/stats";
 import type { DailyStats, OverallStats } from "@readany/core/stats";
-import { changeAndPersistLanguage } from "@readany/core/i18n";
 import { eventBus } from "@readany/core/utils/event-bus";
 /**
  * ProfileScreen — matching Tauri mobile ProfilePage exactly.
@@ -70,6 +70,11 @@ type ProfileMenuItem =
       action: () => void;
       disabled?: boolean;
     };
+type ProfileMenuSection = {
+  key: "general" | "storage";
+  title: string;
+  items: ProfileMenuItem[];
+};
 
 const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
 
@@ -298,9 +303,15 @@ export function ProfileScreen() {
     t("settings.light", "Светлая"),
     t("settings.dark", "Тёмная"),
   ];
-  const selectedThemeIndex = Math.max(0, THEME_MODES.indexOf(themeMode));
-  const interfaceLanguageValues = ["Русский", "English"];
-  const selectedLanguageIndex = i18n.resolvedLanguage === "en" ? 1 : 0;
+  const themeOptions = THEME_MODES.map((value, index) => ({
+    value,
+    label: themeLabels[index] ?? value,
+  }));
+  const languageOptions = [
+    { value: "ru", label: "Русский" },
+    { value: "en", label: "English" },
+  ] as const;
+  const languageValue = i18n.resolvedLanguage === "en" ? "en" : "ru";
 
   const loadStats = useCallback(async () => {
     try {
@@ -384,9 +395,10 @@ export function ProfileScreen() {
   }, [stopTTS, t]);
 
   // Settings menu — matching Tauri ProfilePage exactly
-  const menuSections = useMemo<{ title: string; items: ProfileMenuItem[] }[]>(
+  const menuSections = useMemo<ProfileMenuSection[]>(
     () => [
       {
+        key: "general",
         title: t("settings.general", "通用"),
         items: [
           // Бывший таб «Заметки» — теперь строка меню в стеке Профиля
@@ -406,6 +418,7 @@ export function ProfileScreen() {
         ],
       },
       {
+        key: "storage",
         title: t("profile.storage", "存储"),
         items: [
           {
@@ -501,36 +514,6 @@ export function ProfileScreen() {
           <MiniHeatmap dailyStats={liveDailyStats} />
         </View>
 
-        <View style={s.menuSection}>
-          <Text style={s.menuSectionTitle} maxFontSizeMultiplier={1.5}>
-            {t("settings.theme", "Тема")}
-          </Text>
-          <NativeThemePicker
-            values={themeLabels}
-            selectedIndex={selectedThemeIndex}
-            onSelect={(index) => {
-              setThemeMode(THEME_MODES[index] ?? "system");
-            }}
-            colorScheme={isDark ? "dark" : "light"}
-            accessibilityLabel={t("settings.theme", "Тема")}
-          />
-        </View>
-
-        <View style={s.menuSection}>
-          <Text style={s.menuSectionTitle} maxFontSizeMultiplier={1.5}>
-            {t("settings.language", "Язык")}
-          </Text>
-          <NativeThemePicker
-            values={interfaceLanguageValues}
-            selectedIndex={selectedLanguageIndex}
-            onSelect={(index) => {
-              void changeAndPersistLanguage(index === 1 ? "en" : "ru");
-            }}
-            colorScheme={isDark ? "dark" : "light"}
-            accessibilityLabel={t("settings.language", "Язык")}
-          />
-        </View>
-
         {/* Settings menu */}
         {menuSections.map((section) => (
           <View key={section.title} style={s.menuSection}>
@@ -538,6 +521,34 @@ export function ProfileScreen() {
               {section.title}
             </Text>
             <View style={s.menuCard}>
+              {section.key === "general" && (
+                <>
+                  <View style={[s.nativePickerRow, s.menuItemBorder]}>
+                    <NativeSettingsPicker
+                      label={t("settings.theme", "Тема")}
+                      selectedValue={themeMode}
+                      options={themeOptions}
+                      onValueChange={(value) => {
+                        if (value === "system" || value === "light" || value === "dark") {
+                          setThemeMode(value);
+                        }
+                      }}
+                      colorScheme={isDark ? "dark" : "light"}
+                    />
+                  </View>
+                  <View style={[s.nativePickerRow, s.menuItemBorder]}>
+                    <NativeSettingsPicker
+                      label={t("settings.language", "Язык")}
+                      selectedValue={languageValue}
+                      options={languageOptions}
+                      onValueChange={(value) => {
+                        void changeAndPersistLanguage(value === "en" ? "en" : "ru");
+                      }}
+                      colorScheme={isDark ? "dark" : "light"}
+                    />
+                  </View>
+                </>
+              )}
               {section.items.map((item, idx) => {
                 const itemKey = "route" in item ? item.route : item.label;
                 const handlePress = () => {
@@ -585,6 +596,41 @@ export function ProfileScreen() {
             </View>
           </View>
         ))}
+        {__DEV__ && (
+          <View style={s.menuSection}>
+            <Text style={s.menuSectionTitle} maxFontSizeMultiplier={1.5}>
+              Разработка
+            </Text>
+            <View style={s.menuCard}>
+              <Pressable
+                style={({ pressed }) => [
+                  s.menuItem,
+                  pressed && { backgroundColor: colors.primary5 },
+                ]}
+                onPress={() => nav.navigate("Storybook")}
+                android_ripple={{ color: colors.primary5 }}
+                accessibilityRole="button"
+                accessibilityLabel="Открыть превью компонентов"
+              >
+                <NativeSymbol
+                  name="bell"
+                  fallback="notifications"
+                  size={20}
+                  color={colors.mutedForeground}
+                />
+                <Text style={s.menuItemLabel} maxFontSizeMultiplier={1.7}>
+                  Превью компонентов
+                </Text>
+                <NativeSymbol
+                  name="chevron.forward"
+                  fallback="chevron_right"
+                  size={16}
+                  color={colors.mutedForeground}
+                />
+              </Pressable>
+            </View>
+          </View>
+        )}
       </ScrollView>
     </ScrollViewMarker>
   );
@@ -719,6 +765,7 @@ const makeStyles = (colors: ThemeColors) =>
       letterSpacing: 0.8,
       marginBottom: 8,
     },
+    nativePickerRow: { minHeight: 58 },
     menuCard: {
       backgroundColor: colors.elevation1,
       borderRadius: radius.card,

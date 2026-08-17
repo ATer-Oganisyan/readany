@@ -1,5 +1,6 @@
 import { EditIcon, PlusIcon, PuzzleIcon, Trash2Icon } from "@/components/ui/Icon";
 import { Text, TextInput } from "@/components/ui/Typography";
+import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { useNativeHeaderActions } from "@/navigation/useNativeHeaderActions";
 import {
@@ -234,16 +235,17 @@ export default function SkillsScreen() {
     <View style={s.section}>
       <Text style={s.sectionTitle}>{t("skills.customSkills", "自定义技能")}</Text>
       {customList.length === 0 ? (
-        <View style={s.customEmpty}>
-          <View style={s.customEmptyIcon}>
-            <PuzzleIcon size={28} color={colors.mutedForeground} />
-          </View>
-          <Text style={s.customEmptyText}>{t("skills.noCustomSkills", "暂无自定义技能")}</Text>
+        <CenteredEmptyState
+          variant="compact"
+          title={t("skills.noCustomSkills", "暂无自定义技能")}
+          icon={<PuzzleIcon size={28} color={colors.mutedForeground} />}
+          style={s.customEmpty}
+        >
           <TouchableOpacity style={s.customEmptyBtn} onPress={handleCreateSkill}>
             <PlusIcon size={16} color={colors.primaryForeground} />
             <Text style={s.customEmptyBtnText}>{t("settings.addSkill", "添加技能")}</Text>
           </TouchableOpacity>
-        </View>
+        </CenteredEmptyState>
       ) : (
         customList.map((skill) => (
           <View key={skill.id} style={s.skillCard}>
@@ -429,17 +431,7 @@ const makeStyles = (colors: ThemeColors) =>
     skillDesc: { fontSize: fontSize.sm, color: colors.mutedForeground, marginTop: 2 },
     customActions: { flexDirection: "row", alignItems: "center", gap: 6 },
     iconBtn: { padding: 6 },
-    customEmpty: { alignItems: "center", paddingVertical: 32 },
-    customEmptyIcon: {
-      width: 56,
-      height: 56,
-      borderRadius: 28,
-      backgroundColor: colors.muted,
-      alignItems: "center",
-      justifyContent: "center",
-      marginBottom: 12,
-    },
-    customEmptyText: { fontSize: fontSize.sm, color: colors.mutedForeground, marginBottom: 12 },
+    customEmpty: { paddingVertical: 32 },
     customEmptyBtn: {
       flexDirection: "row",
       alignItems: "center",

@@ -6,6 +6,7 @@ import {
 } from "@/components/chats/character-chat-list";
 import { CharacterPortraitImage } from "@/components/narra/character-portrait-image";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
+import { EmptyStateActionButton } from "@/components/ui/empty-state-action-button";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { NativeSegmentedPager } from "@/components/ui/native-segmented-pager";
 import { getBookTabLabel } from "@/lib/book/book-tab-label";
@@ -144,6 +145,16 @@ export function ChatsScreen() {
     [navigation],
   );
 
+  const goToCatalog = useCallback(() => {
+    navigation.getParent()?.navigate(
+      "Library" as never,
+      {
+        screen: "LibraryHome",
+        params: { initialSection: "catalog" },
+      } as never,
+    );
+  }, [navigation]);
+
   const selectChatPage = useCallback(
     (index: number) => {
       setSelectedBookId(index === 0 ? "all" : (chatBooks[index - 1]?.book.id ?? "all"));
@@ -238,10 +249,14 @@ export function ChatsScreen() {
     return (
       <CenteredEmptyState
         avoidNativeTabBar
-        title={t("chats.emptyTitle", "Персонажи из ваших книг появятся здесь")}
-        description={t("chats.emptyDescription", "С ними можно будет общаться")}
+        title={t("chats.emptyTitle", "Чаты с героями появятся после добавления книги")}
+        description={t("chats.emptyDescription", "С ними можно будет пообщаться")}
       >
-        {null}
+        <EmptyStateActionButton
+          label={t("chats.emptyAction", "Добавить")}
+          accessibilityLabel={t("chats.emptyAction", "Добавить")}
+          onPress={goToCatalog}
+        />
       </CenteredEmptyState>
     );
   }

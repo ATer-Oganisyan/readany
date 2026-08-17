@@ -17,6 +17,7 @@ import {
   getStorybookItemTitle,
 } from "@/screens/StorybookScreen";
 import { WebDavImportBrowserScreen } from "@/screens/library/WebDavImportBrowserScreen";
+import { ReaderTOCSheetScreen } from "@/screens/reader/reader-toc-sheet-screen";
 import AISettingsScreen from "@/screens/settings/AISettingsScreen";
 import AboutScreen from "@/screens/settings/AboutScreen";
 import AppearanceSettingsScreen from "@/screens/settings/AppearanceSettingsScreen";
@@ -52,6 +53,7 @@ export type RootStackParamList = {
     highlight?: boolean;
     openTTS?: boolean;
   };
+  ReaderTOC: undefined;
   BookChat: { bookId: string; selectedText?: string; chapterTitle?: string };
   NarraCharacters: { bookId: string };
   NarraCharacterChat: { bookId: string; characterId: string };
@@ -161,6 +163,27 @@ export function RootNavigator() {
             headerShown: false,
             statusBarAnimation: "fade",
             statusBarHidden: true,
+          }}
+        />
+        <Stack.Screen
+          name="ReaderTOC"
+          component={ReaderTOCSheetScreen}
+          options={{
+            presentation: "formSheet",
+            animation: "slide_from_bottom",
+            headerShown: true,
+            headerBackVisible: false,
+            headerTransparent: false,
+            headerTitle: "Оглавление",
+            headerShadowVisible: false,
+            headerStyle: { backgroundColor: colors.card },
+            contentStyle: { backgroundColor: colors.card },
+            sheetAllowedDetents: [0.55, 1],
+            sheetInitialDetentIndex: 0,
+            sheetGrabberVisible: true,
+            sheetExpandsWhenScrolledToEdge: true,
+            sheetResizeAnimationEnabled: true,
+            sheetCornerRadius: 24,
           }}
         />
         <Stack.Screen

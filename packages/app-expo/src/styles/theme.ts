@@ -1,9 +1,5 @@
 import { typographyStyles } from "@deslop/primitives";
-import {
-  interfaceFontFamily,
-  sansCondensedFontFamily,
-  serifCondensedFontFamily,
-} from "@deslop/primitives/native";
+import { interfaceFontFamily, serifCondensedFontFamily } from "@deslop/primitives/native";
 /**
  * Theme constants — re-exports dark colors as default for backward compat.
  * Use `useTheme()` from ThemeContext for reactive theme colors.
@@ -115,7 +111,7 @@ export const subtitleTypography = {
 } as const;
 
 export const fontFamily = interfaceFontFamily;
-export const headingFontFamily = sansCondensedFontFamily.regular;
-export const secondLevelTitleFontFamily = sansCondensedFontFamily.bold;
+export const headingFontFamily = interfaceFontFamily.semibold;
+export const secondLevelTitleFontFamily = interfaceFontFamily.bold;
 export const titleFontFamily = secondLevelTitleFontFamily;
 export const largeTitleFontFamily = serifCondensedFontFamily.regular;

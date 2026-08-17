@@ -1,4 +1,5 @@
 import { Text } from "@/components/ui/Typography";
+import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useLibraryStore } from "@/stores";
@@ -79,9 +80,12 @@ export function SearchScreen() {
       ]}
     >
       {!normalizedQuery ? (
-        <Text style={styles.hint}>{t("search.hint", "Найдите книгу по названию или автору")}</Text>
+        <CenteredEmptyState
+          variant="compact"
+          title={t("search.hint", "Найдите книгу по названию или автору")}
+        />
       ) : results.length === 0 ? (
-        <Text style={styles.hint}>{t("search.empty", "Ничего не найдено")}</Text>
+        <CenteredEmptyState variant="compact" title={t("search.empty", "Ничего не найдено")} />
       ) : (
         <View style={styles.list}>
           {results.map((book, index) => (
@@ -118,11 +122,6 @@ const makeStyles = (colors: ThemeColors) =>
     container: { flex: 1, backgroundColor: colors.background },
     content: { flexGrow: 1, paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
     centeredContent: { justifyContent: "center" },
-    hint: {
-      color: colors.mutedForeground,
-      fontSize: fontSize.base,
-      textAlign: "center",
-    },
     list: {},
     row: { minHeight: 68, justifyContent: "center", paddingVertical: spacing.md },
     rowBody: { gap: 2 },

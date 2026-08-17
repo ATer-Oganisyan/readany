@@ -6,6 +6,7 @@ import { TranslationPanel } from "@/components/reader/TranslationPanel";
 import { NotebookPenIcon, XIcon } from "@/components/ui/Icon";
 import { NativeButton } from "@/components/ui/NativeButton";
 import { NativeContextMenuButton } from "@/components/ui/NativeContextMenuButton";
+import type { NativeContextMenuItem } from "@/components/ui/NativeContextMenuButton.types";
 import { Text } from "@/components/ui/Typography";
 import { useReaderBridge } from "@/hooks/use-reader-bridge";
 import type { RelocateEvent, SelectionEvent, VisibleTTSSegment } from "@/hooks/use-reader-bridge";
@@ -176,11 +177,10 @@ const NOTE_TOOLTIP_TOP_THRESHOLD = 180;
 import { getAppSyncedReaderTheme, resolveReaderThemeColors } from "@/lib/reader/reader-themes";
 import { useRubyStore } from "@readany/core/stores/ruby-store";
 import { ReaderSettingsPanel } from "./reader/ReaderSettingsPanel.entry";
-import { type ReaderNavTab, ReaderTOCPanel } from "./reader/ReaderTOCPanel";
 import { CONTROLS_TIMEOUT, SCREEN_HEIGHT, SCREEN_WIDTH } from "./reader/reader-constants";
 import { makeStyles, noteTooltipMdStyles } from "./reader/reader-styles";
+import { useReaderTOCSheet } from "./reader/reader-toc-sheet-context";
 import { useReaderBookmark } from "./reader/useReaderBookmark";
-import { useReaderSearch } from "./reader/useReaderSearch";
 import { useReaderSystemInfo } from "./reader/useReaderSystemInfo";
 import { useReaderTTS } from "./reader/useReaderTTS";
 import { useVolumeButtonPaging } from "./reader/useVolumeButtonPaging";
@@ -399,6 +399,7 @@ function ReaderContent({ route, navigation }: Props) {
   const colors = useColors();
   const { mode: themeMode, isDark } = useTheme();
   const s = makeStyles(colors);
+  const { register: registerTOCSheet, unregister: unregisterTOCSheet } = useReaderTOCSheet();
   const { bookId, cfi, highlight: shouldHighlight, openTTS } = route.params;
   const { t } = useTranslation();
   const bookmarkCopy = useMemo(() => getReaderBookmarkCopy(t), [t]);
@@ -411,7 +412,6 @@ function ReaderContent({ route, navigation }: Props) {
   const [showControls, setShowControls] = useState(true);
   const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
   const [showTOC, setShowTOC] = useState(false);
-  const [tocActiveTab, setTocActiveTab] = useState<ReaderNavTab>("toc");
   const [showSettings, setShowSettings] = useState(false);
   const [showNotebook, setShowNotebook] = useState(false);
   const [showTranslation, setShowTranslation] = useState(false);
@@ -627,7 +627,7 @@ function ReaderContent({ route, navigation }: Props) {
       });
     }, 5000),
   ).current;
-  const { loadAnnotations, highlights, removeBookmark } = useAnnotationStore();
+  const { loadAnnotations, highlights } = useAnnotationStore();
   const book = useMemo(() => books.find((b) => b.id === bookId), [books, bookId]);
 
   // ── Narra: кликабельные имена персонажей ────────────────────────────────────
@@ -779,18 +779,20 @@ function ReaderContent({ route, navigation }: Props) {
   });
 
   // ── Bookmark ───────────────────────────────────────────────────────────────
+  const requestPageSnippet = useCallback(() => {
+    bridgeRef.current?.requestPageSnippet();
+  }, []);
   const bookmark = useReaderBookmark({
     bookId,
     currentCfi,
     currentChapter,
-    requestPageSnippet: () => bridgeRef.current?.requestPageSnippet(),
+    requestPageSnippet,
   });
-  const { isBookmarked, bookBookmarks, handleToggleBookmark } = bookmark;
+  const { isBookmarked, handleToggleBookmark } = bookmark;
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      // Меню действий живёт внутри шапки: пока оно открыто, шапку скрывать
-      // нельзя, иначе меню размонтируется вместе с ней.
+      // Android-меню живёт внутри headerRight. Не размонтируем шапку, пока меню открыто.
       headerShown: showControls || actionsMenuOpen,
       headerTransparent: true,
       headerShadowVisible: false,
@@ -826,16 +828,6 @@ function ReaderContent({ route, navigation }: Props) {
     },
     [suppressProgressTracking],
   );
-
-  // ── Search (вкладка «Поиск» единой панели) ─────────────────────────────────
-  // Use bridgeRef for lazy access (bridge is initialized later)
-  const search = useReaderSearch({
-    bridge: {
-      search: (q) => bridgeRef.current?.search?.(q),
-      clearSearch: () => bridgeRef.current?.clearSearch?.(),
-      goToCFI: (cfi) => goToCFISafely(cfi),
-    },
-  });
 
   useEffect(() => {
     progressRef.current = progress;
@@ -1318,9 +1310,6 @@ function ReaderContent({ route, navigation }: Props) {
     onSceneSlotRestored: ({ anchor }) => {
       void handleSceneSlotRestored(anchor);
     },
-    onSearchComplete: (count, results) => {
-      search.onSearchComplete(count, results);
-    },
     onError: (message: string) => {
       console.error("[Reader] WebView error:", message);
       if (loading) {
@@ -1563,22 +1552,23 @@ function ReaderContent({ route, navigation }: Props) {
     navigation.navigate("NarraCharacters", { bookId });
   }, [bookId, navigation]);
 
-  useLayoutEffect(() => {
-    // Пока открыто меню действий, шапку прятать нельзя: headerRight с ней
-    // размонтируется, а вместе с ним исчезает и само меню — оно живёт внутри.
-    const headerVisible = showControls || actionsMenuOpen;
-    // Единая панель для оглавления, закладок и поиска открывается из меню действий.
-    const openNavPanel = (tab: ReaderNavTab) => {
-      setTocActiveTab(tab);
-      setShowTOC(true);
-    };
-    const readerActions = [
+  const openTOCSheet = useCallback(() => {
+    setShowTOC(true);
+    navigation.navigate("ReaderTOC");
+  }, [navigation]);
+
+  const openReaderAppearance = useCallback(() => setShowSettings(true), []);
+
+  const readerActions = useMemo<NativeContextMenuItem[]>(
+    () => [
       {
+        key: "toc",
         label: t("reader.toc", "Оглавление"),
         sfSymbol: "list.bullet",
-        onPress: () => openNavPanel("toc"),
+        onPress: openTOCSheet,
       },
       {
+        key: "bookmark",
         label: isBookmarked
           ? t("bookmarks.removeCurrent", "Удалить закладку")
           : t("bookmarks.addCurrent", "Добавить закладку"),
@@ -1586,31 +1576,44 @@ function ReaderContent({ route, navigation }: Props) {
         onPress: handleToggleBookmark,
       },
       {
-        label: t("bookmarks.title", "Закладки"),
-        sfSymbol: "bookmark.fill",
-        onPress: () => openNavPanel("bookmarks"),
-      },
-      {
-        label: t("reader.search", "Поиск"),
-        sfSymbol: "magnifyingglass",
-        onPress: () => openNavPanel("search"),
-      },
-      {
+        key: "characters",
         label: t("narra.characters", "Персонажи"),
         sfSymbol: "person.2",
         onPress: handleOpenCharacters,
       },
       {
+        key: "notes",
         label: t("reader.notebook", "Заметки"),
         sfSymbol: "square.and.pencil",
         onPress: () => navigation.navigate("FullScreenNotes", { bookId }),
       },
       {
+        key: "language",
         label: t("reader.language", "Язык"),
         sfSymbol: "globe",
         onPress: () => setShowChapterTranslation(true),
       },
-    ];
+      {
+        key: "speak",
+        label: t("reader.speak", "Озвучить"),
+        sfSymbol: "airpods.max",
+        onPress: () => void tts.handleToggleTTS(),
+      },
+    ],
+    [
+      bookId,
+      handleOpenCharacters,
+      handleToggleBookmark,
+      isBookmarked,
+      navigation,
+      openTOCSheet,
+      t,
+      tts.handleToggleTTS,
+    ],
+  );
+
+  useLayoutEffect(() => {
+    const headerVisible = showControls || actionsMenuOpen;
 
     navigation.setOptions(
       Platform.OS === "ios"
@@ -1623,7 +1626,7 @@ function ReaderContent({ route, navigation }: Props) {
                     label: t("reader.appearance", "Оформление"),
                     accessibilityLabel: t("narra.readerAppearance", "Оформление"),
                     icon: { type: "sfSymbol" as const, name: "textformat.size" as const },
-                    onPress: () => setShowSettings(true),
+                    onPress: openReaderAppearance,
                   },
                   {
                     type: "menu" as const,
@@ -1634,7 +1637,9 @@ function ReaderContent({ route, navigation }: Props) {
                       items: readerActions.map((action) => ({
                         type: "action" as const,
                         label: action.label,
-                        icon: { type: "sfSymbol" as const, name: action.sfSymbol as never },
+                        icon: action.sfSymbol
+                          ? { type: "sfSymbol" as const, name: action.sfSymbol as never }
+                          : undefined,
                         onPress: action.onPress,
                       })),
                     },
@@ -1648,49 +1653,23 @@ function ReaderContent({ route, navigation }: Props) {
               ? () => (
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
                     <NativeButton
-                      label=""
-                      accessibilityLabel={t("narra.chat", "Чат")}
-                      icon="chat"
-                      size="small"
-                      variant="tertiary"
-                      onPress={handleOpenCharacters}
-                    />
-                    {/* Явный вход в настройки оформления (шрифт, тема, прокрутка) */}
-                    <NativeButton
                       label="Aa"
                       accessibilityLabel={t("narra.readerAppearance", "Оформление")}
                       size="small"
                       variant="tertiary"
-                      onPress={() => setShowSettings(true)}
+                      onPress={openReaderAppearance}
                     />
                     <NativeContextMenuButton
                       accessibilityLabel={t("reader.bookActions", "Действия с книгой")}
+                      items={readerActions}
                       onOpenChange={setActionsMenuOpen}
-                      items={[
-                        ...readerActions,
-                        {
-                          label: t("reader.speak", "Озвучить"),
-                          sfSymbol: "airpods.max",
-                          onPress: () => void tts.handleToggleTTS(),
-                        },
-                      ].map((action) => ({ key: action.label, ...action }))}
                     />
                   </View>
                 )
               : undefined,
           },
     );
-  }, [
-    actionsMenuOpen,
-    bookId,
-    handleOpenCharacters,
-    handleToggleBookmark,
-    isBookmarked,
-    navigation,
-    showControls,
-    t,
-    tts.handleToggleTTS,
-  ]);
+  }, [actionsMenuOpen, navigation, openReaderAppearance, readerActions, showControls, t]);
 
   // Bind mediator ref so onRelocate can fire the TTS continuation callback
   ttsPendingContinueRef.current = {
@@ -1700,15 +1679,23 @@ function ReaderContent({ route, navigation }: Props) {
 
   // ── Non-TTS callbacks ──────────────────────────────────────────────────────
 
+  const closeTocSheet = useCallback(() => {
+    setShowTOC(false);
+    const state = navigation.getState();
+    if (state.routes[state.index]?.name === "ReaderTOC") {
+      navigation.goBack();
+    }
+  }, [navigation]);
+
   const goToTocItem = useCallback(
     (href: string) => {
       if (lastCfiRef.current) {
         locationHistoryRef.current.push(lastCfiRef.current);
       }
       goToHrefSafely(href);
-      setShowTOC(false);
+      closeTocSheet();
     },
-    [goToHrefSafely],
+    [closeTocSheet, goToHrefSafely],
   );
 
   const goBackToPreviousLocation = useCallback(() => {
@@ -1746,6 +1733,30 @@ function ReaderContent({ route, navigation }: Props) {
     },
     [bridge, updateReadSettings, computeEffectiveFontSize],
   );
+
+  const readerTOCSheetSession = useMemo(
+    () => ({
+      bookId,
+      toc,
+      currentChapter,
+      onClose: closeTocSheet,
+      onSelectTocItem: goToTocItem,
+    }),
+    [bookId, closeTocSheet, currentChapter, goToTocItem, toc],
+  );
+
+  useEffect(() => {
+    registerTOCSheet(readerTOCSheetSession);
+  }, [readerTOCSheetSession, registerTOCSheet]);
+
+  useEffect(
+    () => () => {
+      unregisterTOCSheet(bookId);
+    },
+    [bookId, unregisterTOCSheet],
+  );
+
+  useEffect(() => navigation.addListener("focus", () => setShowTOC(false)), [navigation]);
 
   useEffect(() => {
     setGoToCfiFn(() => bridge.goToCFI);
@@ -2059,7 +2070,7 @@ function ReaderContent({ route, navigation }: Props) {
             zIndex: 30,
             height: TOOLBAR_HEIGHT + insets.bottom,
             paddingBottom: insets.bottom,
-            backgroundColor: "transparent",
+            backgroundColor: loading ? colors.background : "transparent",
           },
           controlsAnimatedStyle,
         ]}
@@ -2068,11 +2079,7 @@ function ReaderContent({ route, navigation }: Props) {
           tintColor={readerThemeColors.foreground}
           isDark={isReaderThemeDark}
           speechState={
-            ttsPlayState === "loading"
-              ? "loading"
-              : ttsPlayState === "playing"
-                ? "playing"
-                : "idle"
+            ttsPlayState === "loading" ? "loading" : ttsPlayState === "playing" ? "playing" : "idle"
           }
           onSpeechPress={() => void tts.handleToggleTTS()}
           onChatPress={handleOpenCharacters}
@@ -2085,7 +2092,10 @@ function ReaderContent({ route, navigation }: Props) {
       <View
         style={[
           s.container,
-          { paddingBottom: insets.bottom, backgroundColor: readerThemeColors.background },
+          {
+            paddingBottom: insets.bottom,
+            backgroundColor: loading ? colors.background : readerThemeColors.background,
+          },
         ]}
       >
         <View style={s.readerStage}>
@@ -2103,7 +2113,10 @@ function ReaderContent({ route, navigation }: Props) {
       <View
         style={[
           s.container,
-          { paddingBottom: insets.bottom, backgroundColor: readerThemeColors.background },
+          {
+            paddingBottom: insets.bottom,
+            backgroundColor: loading ? colors.background : readerThemeColors.background,
+          },
         ]}
       >
         <View style={s.readerStage}>
@@ -2158,7 +2171,10 @@ function ReaderContent({ route, navigation }: Props) {
       <View
         style={[
           s.container,
-          { paddingBottom: insets.bottom, backgroundColor: readerThemeColors.background },
+          {
+            paddingBottom: insets.bottom,
+            backgroundColor: loading ? colors.background : readerThemeColors.background,
+          },
         ]}
       >
         <View style={s.readerStage}>
@@ -2196,7 +2212,10 @@ function ReaderContent({ route, navigation }: Props) {
       <View
         style={[
           s.container,
-          { paddingBottom: insets.bottom, backgroundColor: readerThemeColors.background },
+          {
+            paddingBottom: insets.bottom,
+            backgroundColor: loading ? colors.background : readerThemeColors.background,
+          },
         ]}
       >
         <Animated.View
@@ -2376,37 +2395,6 @@ function ReaderContent({ route, navigation }: Props) {
             </Pressable>
           </View>
         )}
-
-        {/* ─── Единая панель: оглавление · закладки · поиск ─── */}
-        <ReaderTOCPanel
-          visible={showTOC}
-          activeTab={tocActiveTab}
-          toc={toc}
-          bookmarks={bookBookmarks}
-          currentChapter={currentChapter}
-          isBookmarked={isBookmarked}
-          searchQuery={search.searchQuery}
-          searchResults={search.searchResults}
-          searchResultCount={search.searchResultCount}
-          isSearching={search.isSearching}
-          searchTimedOut={search.searchTimedOut}
-          onClose={() => setShowTOC(false)}
-          onTabChange={setTocActiveTab}
-          onSelectTocItem={goToTocItem}
-          onGoToBookmark={(cfi) => {
-            goToCFISafely(cfi);
-            setShowTOC(false);
-          }}
-          onDeleteBookmark={(id) => removeBookmark(id)}
-          onToggleBookmark={handleToggleBookmark}
-          onSearchInput={search.handleSearchInput}
-          onSubmitSearch={search.submitSearch}
-          onSelectSearchResult={(cfi) => {
-            // Переход к совпадению; подсветка найденного остаётся в тексте
-            search.selectResult(cfi);
-            setShowTOC(false);
-          }}
-        />
 
         {/* ─── Settings Panel ─── */}
         <ReaderSettingsPanel

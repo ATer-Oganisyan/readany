@@ -1,7 +1,7 @@
 import { Text } from "@/components/ui/Typography";
 import type { CoverTextTone } from "@/lib/book/cover-text-contrast";
 import { formatBookCoverTitle } from "@/lib/book/format-book-cover-title";
-import { sansCondensedFontFamily, serifTextFontFamily } from "@deslop/primitives/native";
+import { interfaceFontFamily, serifTextFontFamily } from "@deslop/primitives/native";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import {
   type NativeSyntheticEvent,
@@ -76,7 +76,7 @@ export function BookCoverTypography({
   const authorSize = authorFontSize ?? 13 * scale;
   const formattedTitle = formatBookCoverTitle(title);
   const [fittedTitleSize, setFittedTitleSize] = useState(titleSize);
-  const textColor = textTone === "light" ? "#F7F5F0" : "#151515";
+  const textColor = textTone === "light" ? "#FFFFFF" : "#000000";
 
   useEffect(() => setFittedTitleSize(titleSize), [titleSize]);
 
@@ -99,56 +99,86 @@ export function BookCoverTypography({
     [fittedTitleSize, formattedTitle, minimumTitleSize],
   );
 
-  return (
+  // Keep two overlay passes: the full-strength pass and the softer reinforcement pass.
+  const renderTextContent = (withLayoutHandler: boolean) => (
     <>
-      {showText ? (
-        <View
-          pointerEvents="none"
+      <Text
+        numberOfLines={6}
+        onTextLayout={withLayoutHandler ? handleTitleLayout : undefined}
+        style={[
+          styles.title,
+          {
+            fontFamily: interfaceFontFamily.semibold,
+            fontWeight: "600",
+            fontSize: fittedTitleSize,
+            lineHeight: fittedTitleSize * 1.05,
+            color: textColor,
+            opacity: 1,
+          },
+        ]}
+      >
+        {formattedTitle}
+      </Text>
+      {author ? (
+        <Text
+          adjustsFontSizeToFit
+          minimumFontScale={0.74}
+          numberOfLines={2}
           style={[
-            styles.typographyLayer,
+            styles.author,
             {
-              padding: 20 * scale,
-              paddingLeft: 20 * scale + leftInsetAdjustment,
-              paddingTop: 16 * scale,
-              gap: 4 * scale,
+              fontFamily: serifTextFontFamily.regular,
+              fontSize: authorSize,
+              lineHeight: authorSize * (14 / 13),
+              color: textColor,
+              opacity: 1,
             },
           ]}
         >
-          <Text
-            numberOfLines={6}
-            onTextLayout={handleTitleLayout}
+          {author}
+        </Text>
+      ) : null}
+    </>
+  );
+
+  return (
+    <>
+      {showText ? (
+        <>
+          <View
+            pointerEvents="none"
+            accessible={false}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
             style={[
-              styles.title,
+              styles.typographySoftLayer,
               {
-                fontFamily: sansCondensedFontFamily.regular,
-                fontWeight: "600",
-                fontSize: fittedTitleSize,
-                lineHeight: fittedTitleSize * 1.05,
-                color: textColor,
+                padding: 20 * scale,
+                paddingLeft: 20 * scale + leftInsetAdjustment,
+                paddingTop: 16 * scale,
+                gap: 4 * scale,
+                mixBlendMode: "overlay",
               },
             ]}
           >
-            {formattedTitle}
-          </Text>
-          {author ? (
-            <Text
-              adjustsFontSizeToFit
-              minimumFontScale={0.74}
-              numberOfLines={2}
-              style={[
-                styles.author,
-                {
-                  fontFamily: serifTextFontFamily.regular,
-                  fontSize: authorSize,
-                  lineHeight: authorSize * (14 / 13),
-                  color: textColor,
-                },
-              ]}
-            >
-              {author}
-            </Text>
-          ) : null}
-        </View>
+            {renderTextContent(false)}
+          </View>
+          <View
+            pointerEvents="none"
+            style={[
+              styles.typographyLayer,
+              {
+                padding: 20 * scale,
+                paddingLeft: 20 * scale + leftInsetAdjustment,
+                paddingTop: 16 * scale,
+                gap: 4 * scale,
+                mixBlendMode: "overlay",
+              },
+            ]}
+          >
+            {renderTextContent(true)}
+          </View>
+        </>
       ) : null}
       {bottomAccessory ? (
         <View
@@ -170,9 +200,15 @@ export function BookCoverTypography({
 }
 
 const styles = StyleSheet.create({
+  typographySoftLayer: {
+    ...StyleSheet.absoluteFill,
+    zIndex: 11,
+    opacity: 0.3,
+  },
   typographyLayer: {
     ...StyleSheet.absoluteFill,
     zIndex: 12,
+    opacity: 1,
   },
   accessoryLayer: {
     ...StyleSheet.absoluteFill,

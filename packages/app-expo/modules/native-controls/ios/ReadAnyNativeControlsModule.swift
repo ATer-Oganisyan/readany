@@ -55,6 +55,7 @@ public final class ReadAnyNativeControlsModule: Module {
       Prop("foregroundColor") { (view, value: UIColor) in view.foregroundColor = value }
       Prop("disabled") { (view, value: Bool) in view.isControlDisabled = value }
       Prop("showsMenu") { (view, value: Bool) in view.showsMenu = value }
+      Prop("showsPlus") { (view, value: Bool) in view.showsPlus = value }
 
       OnViewDidUpdateProps { view in
         view.updateConfiguration()
@@ -196,6 +197,7 @@ final class ReadAnyImportMenuButton: ExpoView {
   var foregroundColor = UIColor.white
   var isControlDisabled = false
   var showsMenu = true
+  var showsPlus = false
 
   private let button = UIButton(type: .system)
 
@@ -240,13 +242,14 @@ final class ReadAnyImportMenuButton: ExpoView {
       configuration = .filled()
     }
     configuration.title = label
-    configuration.image = UIImage(systemName: "plus")
-    configuration.imagePadding = 7
+    configuration.image = showsPlus ? UIImage(systemName: "plus") : nil
+    configuration.imagePadding = showsPlus ? 7 : 0
     configuration.cornerStyle = .capsule
     configuration.titleLineBreakMode = .byTruncatingTail
     configuration.baseBackgroundColor = baseColor
     configuration.baseForegroundColor = foregroundColor
-    configuration.contentInsets.trailing += 8
+    configuration.contentInsets.leading = 18
+    configuration.contentInsets.trailing = showsPlus ? 26 : 18
     configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attributes in
       var attributes = attributes
       attributes.font = UIFont(name: "SB Sans Interface", size: 18) ?? UIFont.systemFont(ofSize: 18)

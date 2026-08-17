@@ -17,6 +17,7 @@ import {
   type NativeBottomTabIcon,
   createNativeBottomTabNavigator,
 } from "@react-navigation/bottom-tabs/unstable";
+import type { NavigatorScreenParams } from "@react-navigation/native";
 import {
   type NativeStackNavigationOptions,
   createNativeStackNavigator,
@@ -27,14 +28,15 @@ import { useTranslation } from "react-i18next";
 import { type ImageSourcePropType, Platform } from "react-native";
 import { NATIVE_SCROLL_EDGE_EFFECTS } from "./scroll-edge-effects";
 
+export type LibraryTabStackParamList = {
+  LibraryHome: { initialSection?: "catalog" | "my-books" } | undefined;
+};
 export type TabParamList = {
-  Library: undefined;
+  Library: NavigatorScreenParams<LibraryTabStackParamList> | undefined;
   Chats: undefined;
   Profile: undefined;
   Search: undefined;
 };
-
-export type LibraryTabStackParamList = { LibraryHome: undefined };
 export type ChatsTabStackParamList = { ChatsHome: undefined };
 export type SearchTabStackParamList = { SearchHome: undefined };
 export type ProfileTabStackParamList = {
@@ -302,6 +304,7 @@ export function TabNavigator() {
         headerShown: false,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.mutedForeground,
+        tabBarLabelVisibilityMode: "unlabeled",
         tabBarLabelStyle: { fontFamily: fontFamily.regular },
         tabBarStyle: Platform.OS === "ios" ? undefined : { backgroundColor: colors.background },
         tabBarBlurEffect: "systemDefault",
@@ -314,7 +317,7 @@ export function TabNavigator() {
         component={LibraryTabStackNavigator}
         options={{
           title: t("tabs.library", "Библиотека"),
-          tabBarLabel: t("tabs.library", "Библиотека"),
+          tabBarLabel: Platform.OS === "ios" ? "" : t("tabs.library", "Библиотека"),
           tabBarIcon: tabIcon("book.closed.fill", androidTabIcons?.Library),
         }}
       />
@@ -323,7 +326,7 @@ export function TabNavigator() {
         component={ChatsTabStackNavigator}
         options={{
           title: t("tabs.chats", "Чаты"),
-          tabBarLabel: t("tabs.chats", "Чаты"),
+          tabBarLabel: Platform.OS === "ios" ? "" : t("tabs.chats", "Чаты"),
           tabBarIcon: tabIcon("message.fill", androidTabIcons?.Chats),
         }}
       />
@@ -332,8 +335,8 @@ export function TabNavigator() {
         component={ProfileTabStackNavigator}
         options={{
           title: t("tabs.profile", "Профиль"),
-          tabBarLabel: t("tabs.profile", "Профиль"),
-          tabBarIcon: tabIcon("person.crop.circle", androidTabIcons?.Profile),
+          tabBarLabel: Platform.OS === "ios" ? "" : t("tabs.profile", "Профиль"),
+          tabBarIcon: tabIcon("person.crop.circle.fill", androidTabIcons?.Profile),
           tabBarMinimizeBehavior: "none",
         }}
       />
@@ -343,7 +346,7 @@ export function TabNavigator() {
         options={{
           title: t("tabs.search", "Поиск"),
           tabBarSystemItem: Platform.OS === "ios" ? "search" : undefined,
-          tabBarLabel: Platform.OS === "ios" ? undefined : t("tabs.search", "Поиск"),
+          tabBarLabel: Platform.OS === "ios" ? "" : t("tabs.search", "Поиск"),
           tabBarIcon:
             Platform.OS === "ios" ? undefined : tabIcon("magnifyingglass", androidTabIcons?.Search),
           tabBarMinimizeBehavior: "none",

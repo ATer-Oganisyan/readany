@@ -25,7 +25,6 @@ if (typeof navigator !== "undefined" && !navigator.userAgent) {
 
 import {
   interfaceFontAssets,
-  sansCondensedFontAssets,
   serifCondensedFontAssets,
   serifTextFontAssets,
 } from "@deslop/primitives/native";
@@ -47,6 +46,7 @@ import { setPlatformService } from "@readany/core/services";
 import { setSyncAdapter } from "@readany/core/sync";
 import { setAudioModeAsync } from "expo-audio";
 import { I18nextProvider } from "react-i18next";
+import Toast from "react-native-toast-message";
 import TrackPlayer, {
   AppKilledPlaybackBehavior,
   Event as TrackEvent,
@@ -63,6 +63,7 @@ import { ExpoPlatformService } from "@/lib/platform/expo-platform-service";
 import { seekActiveTTS, seekActiveTTSBy } from "@/lib/platform/tts-track-controls";
 import { MobileSyncAdapter } from "@/lib/sync/sync-adapter-mobile";
 import { RootNavigator } from "@/navigation/RootNavigator";
+import { ReaderTOCSheetProvider } from "@/screens/reader/reader-toc-sheet-context";
 import { useLibraryStore } from "@/stores/library-store";
 import {
   type ThemeMode,
@@ -91,8 +92,6 @@ export default function App() {
   const systemColorScheme = useColorScheme();
   const [fontsLoaded, fontError] = useFonts({
     ...interfaceFontAssets,
-    "SB Sans Text Cond": sansCondensedFontAssets.regular,
-    "SB Sans Text Cond Bold": sansCondensedFontAssets.bold,
     "SB Serif Condensed": serifCondensedFontAssets.regular,
     "SB Serif Text": serifTextFontAssets.regular,
     "SB Serif Text Bold": serifTextFontAssets.bold,
@@ -330,10 +329,13 @@ function AppInner() {
       <SafeAreaProvider>
         <CatalogCharacterPortraitPreloader />
         {Platform.OS !== "ios" && <StatusBar style={isDark ? "light" : "dark"} />}
-        <NavigationContainer theme={navTheme} ref={navigationRef}>
-          <RootNavigator />
-        </NavigationContainer>
+        <ReaderTOCSheetProvider>
+          <NavigationContainer theme={navTheme} ref={navigationRef}>
+            <RootNavigator />
+          </NavigationContainer>
+        </ReaderTOCSheetProvider>
         <UpdateDialog />
+        <Toast />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

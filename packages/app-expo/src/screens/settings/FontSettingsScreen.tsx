@@ -1,5 +1,6 @@
-import { Text, TextInput } from "@/components/ui/Typography";
 import { GlobeIcon, LinkIcon, PlusIcon, Trash2Icon, TypeIcon } from "@/components/ui/Icon";
+import { Text, TextInput } from "@/components/ui/Typography";
+import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import {
   fontSize,
@@ -405,15 +406,12 @@ export default function FontSettingsScreen() {
               )}
 
               {fonts.length === 0 ? (
-                <View style={s.emptyState}>
-                  <TypeIcon size={48} color={colors.mutedForeground} />
-                  <Text style={[s.emptyText, { color: colors.mutedForeground }]}>
-                    {t("fonts.empty", "暂无自定义字体")}
-                  </Text>
-                  <Text style={[s.emptyHint, { color: colors.mutedForeground }]}>
-                    {t("fonts.emptyHint", "点击上方按钮导入字体文件")}
-                  </Text>
-                </View>
+                <CenteredEmptyState
+                  variant="compact"
+                  title={t("fonts.empty", "暂无自定义字体")}
+                  description={t("fonts.emptyHint", "点击上方按钮导入字体文件")}
+                  icon={<TypeIcon size={48} color={colors.mutedForeground} />}
+                />
               ) : (
                 <View style={s.fontList}>
                   {fonts.map((font) => (
@@ -690,9 +688,6 @@ function makeStyles(_colors: ReturnType<typeof useColors>) {
     },
     importBtnHalf: { flex: 1 },
     importBtnText: { fontSize: fontSize.base, fontWeight: fontWeight.medium },
-    emptyState: { alignItems: "center", justifyContent: "center", paddingVertical: 48, gap: 12 },
-    emptyText: { fontSize: fontSize.base, fontWeight: fontWeight.medium },
-    emptyHint: { fontSize: fontSize.sm },
     fontList: { gap: 12 },
     fontCard: { borderRadius: radius.xl, borderWidth: 1, padding: 16, gap: 12 },
     fontHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
