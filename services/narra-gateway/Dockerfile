@@ -11,6 +11,7 @@ ENV NODE_ENV=production \
     GATEWAY_BUILD_VERSION=${GATEWAY_BUILD_VERSION}
 
 COPY --chown=node:node *.mjs *.pem ./
+COPY --chown=node:node cover-generation-config.json ./
 COPY --chown=node:node migrations ./migrations
 COPY --chown=node:node operator-ui ./operator-ui
 
