@@ -11,6 +11,10 @@ const mocks = vi.hoisted(() => ({
   requestUrl: vi.fn(async () => "https://storage.example/cover"),
   hash: vi.fn(async () => "b".repeat(64)),
   writeFile: vi.fn(),
+  holdDownloads: false,
+  activeDownloads: 0,
+  maxActiveDownloads: 0,
+  releaseDownloads: [] as Array<() => void>,
 }));
 
 vi.mock("expo-file-system/legacy", () => ({
@@ -29,8 +33,17 @@ vi.mock("expo-file-system/legacy", () => ({
   createDownloadResumable(_url: string, path: string) {
     return {
       async downloadAsync() {
-        mocks.files.set(path, { size: 42 });
-        return { status: 200, uri: path };
+        mocks.activeDownloads += 1;
+        mocks.maxActiveDownloads = Math.max(mocks.maxActiveDownloads, mocks.activeDownloads);
+        try {
+          if (mocks.holdDownloads) {
+            await new Promise<void>((resolve) => mocks.releaseDownloads.push(resolve));
+          }
+          mocks.files.set(path, { size: 42 });
+          return { status: 200, uri: path };
+        } finally {
+          mocks.activeDownloads -= 1;
+        }
       },
     };
   },
@@ -69,6 +82,7 @@ vi.mock("@readany/core/services", () => ({
 import {
   installBackendCatalogCover,
   loadCachedBackendCatalog,
+  materializeBackendCatalogCover,
   refreshBackendCatalog,
 } from "./backend-catalog-cache";
 
@@ -98,27 +112,54 @@ describe("backend catalog cache", () => {
     mocks.requestUrl.mockClear();
     mocks.hash.mockClear();
     mocks.writeFile.mockClear();
+    mocks.holdDownloads = false;
+    mocks.activeDownloads = 0;
+    mocks.maxActiveDownloads = 0;
+    for (const release of mocks.releaseDownloads.splice(0)) release();
   });
 
-  it("persists catalog metadata and a verified cover for offline use", async () => {
+  it("returns catalog metadata before downloading a requested cover", async () => {
     const refreshed = await refreshBackendCatalog();
-    expect(refreshed[0]?.coverUri).toContain("narra-backend-catalog/covers/seagull-");
+    expect(refreshed[0]?.coverUri).toBeUndefined();
+    expect(mocks.requestUrl).not.toHaveBeenCalled();
+
+    const coverUri = await materializeBackendCatalogCover(BOOK);
+    expect(coverUri).toContain("narra-backend-catalog/covers/seagull-");
     expect(mocks.requestUrl).toHaveBeenCalledWith(BOOK.cover?.downloadPath);
 
     const cached = await loadCachedBackendCatalog();
-    expect(cached).toEqual([
-      expect.objectContaining({ catalogKey: "seagull", coverUri: refreshed[0]?.coverUri }),
-    ]);
+    expect(cached).toEqual([expect.objectContaining({ catalogKey: "seagull", coverUri })]);
     expect(mocks.fetchCatalog).toHaveBeenCalledTimes(1);
   });
 
   it("copies the cached cover into the persistent library location", async () => {
-    const [cached] = await refreshBackendCatalog();
-    expect(cached).toBeDefined();
-    if (!cached) throw new Error("catalog cache is empty");
+    await refreshBackendCatalog();
+    const coverUri = await materializeBackendCatalogCover(BOOK);
+    if (!coverUri) throw new Error("catalog cover was not materialized");
+    const cached = { ...BOOK, coverUri };
     await expect(installBackendCatalogCover("local-book", cached)).resolves.toBe(
       "covers/local-book-catalog.jpg",
     );
     expect(mocks.writeFile).toHaveBeenCalledOnce();
+  });
+
+  it("limits visible cover downloads to three concurrent requests", async () => {
+    const books = Array.from({ length: 5 }, (_, index) => ({
+      ...BOOK,
+      bookEditionId: `edition-${index}`,
+      catalogKey: `book-${index}`,
+    }));
+    mocks.holdDownloads = true;
+
+    const downloads = books.map((book) => materializeBackendCatalogCover(book));
+    await vi.waitFor(() => expect(mocks.activeDownloads).toBe(3));
+    expect(mocks.maxActiveDownloads).toBe(3);
+
+    mocks.holdDownloads = false;
+    for (const release of mocks.releaseDownloads.splice(0)) release();
+    await Promise.all(downloads);
+
+    expect(mocks.requestUrl).toHaveBeenCalledTimes(5);
+    expect(mocks.maxActiveDownloads).toBe(3);
   });
 });

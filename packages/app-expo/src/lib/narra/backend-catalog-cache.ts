@@ -11,6 +11,11 @@ const CACHE_VERSION = 1;
 const CACHE_ROOT = `${FileSystem.documentDirectory}narra-backend-catalog`;
 const COVER_ROOT = `${CACHE_ROOT}/covers`;
 const CATALOG_PATH = `${CACHE_ROOT}/catalog.json`;
+const MAX_CONCURRENT_COVER_DOWNLOADS = 3;
+
+let activeCoverDownloads = 0;
+const coverDownloadWaiters: Array<() => void> = [];
+const coverDownloads = new Map<string, Promise<string | undefined>>();
 
 export interface CachedBackendCatalogBook extends BackendCatalogBook {
   coverUri?: string;
@@ -48,12 +53,22 @@ async function ensureCacheDirectories(): Promise<void> {
 async function validCachedCover(book: BackendCatalogBook, path: string): Promise<boolean> {
   if (!book.cover) return false;
   const info = await FileSystem.getInfoAsync(path);
-  return Boolean(
-    info.exists &&
-      !info.isDirectory &&
-      info.size === book.cover.byteSize &&
-      (await sha256BackendFile(path)) === book.cover.contentHash,
-  );
+  return Boolean(info.exists && !info.isDirectory && info.size === book.cover.byteSize);
+}
+
+async function withCoverDownloadSlot<T>(operation: () => Promise<T>): Promise<T> {
+  if (activeCoverDownloads >= MAX_CONCURRENT_COVER_DOWNLOADS) {
+    await new Promise<void>((resolve) => coverDownloadWaiters.push(resolve));
+  } else {
+    activeCoverDownloads += 1;
+  }
+  try {
+    return await operation();
+  } finally {
+    const next = coverDownloadWaiters.shift();
+    if (next) next();
+    else activeCoverDownloads -= 1;
+  }
 }
 
 async function materializeCover(book: BackendCatalogBook): Promise<string | undefined> {
@@ -113,22 +128,25 @@ export async function loadCachedBackendCatalog(): Promise<CachedBackendCatalogBo
 export async function refreshBackendCatalog(): Promise<CachedBackendCatalogBook[]> {
   await ensureCacheDirectories();
   const books = await fetchBackendCatalogBooks();
-  const cached = await Promise.all(
-    books.map(async (book) => {
-      try {
-        const coverUri = await materializeCover(book);
-        return coverUri ? { ...book, coverUri } : book;
-      } catch (error) {
-        console.warn("[Catalog] Failed to cache backend cover", {
-          catalogKey: book.catalogKey,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        return book;
-      }
-    }),
-  );
+  const cached = await Promise.all(books.map(cachedBook));
   await writeCatalog(books);
   return cached;
+}
+
+/** Downloads one requested cover. Callers decide which cards are visible. */
+export function materializeBackendCatalogCover(
+  book: BackendCatalogBook,
+): Promise<string | undefined> {
+  const path = coverPath(book);
+  if (!path) return Promise.resolve(undefined);
+  const existing = coverDownloads.get(path);
+  if (existing) return existing;
+
+  const download = withCoverDownloadSlot(() => materializeCover(book)).finally(() => {
+    coverDownloads.delete(path);
+  });
+  coverDownloads.set(path, download);
+  return download;
 }
 
 export async function installBackendCatalogCover(

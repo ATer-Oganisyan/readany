@@ -30,6 +30,7 @@ import {
   type CachedBackendCatalogBook,
   installBackendCatalogCover,
   loadCachedBackendCatalog,
+  materializeBackendCatalogCover,
   refreshBackendCatalog,
 } from "@/lib/narra/backend-catalog-cache";
 import {
@@ -196,6 +197,27 @@ function LibraryScreenContent() {
   const [catalogImportingId, setCatalogImportingId] = useState<string | null>(null);
   const [catalogBooks, setCatalogBooks] = useState<CachedBackendCatalogBook[]>([]);
   const [isCatalogLoading, setIsCatalogLoading] = useState(true);
+  const handleCatalogCoverNeeded = useCallback((catalogBook: CachedBackendCatalogBook) => {
+    if (!catalogBook.cover || catalogBook.coverUri) return;
+    void materializeBackendCatalogCover(catalogBook)
+      .then((coverUri) => {
+        if (!coverUri) return;
+        setCatalogBooks((current) =>
+          current.map((book) =>
+            book.bookEditionId === catalogBook.bookEditionId &&
+            book.cover?.contentHash === catalogBook.cover?.contentHash
+              ? { ...book, coverUri }
+              : book,
+          ),
+        );
+      })
+      .catch((error) => {
+        console.warn("[Catalog] Failed to cache visible backend cover", {
+          catalogKey: catalogBook.catalogKey,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+  }, []);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedBookIds, setSelectedBookIds] = useState<Set<string>>(new Set());
   const [showGroupPicker, setShowGroupPicker] = useState(false);
@@ -1190,11 +1212,20 @@ function LibraryScreenContent() {
           cardWidth={gridItemWidth}
           isImporting={catalogImportingId === catalogBook.catalogKey}
           isInLibrary={catalogBooksInLibrary.has(catalogBook.catalogKey)}
+          coverRequestKey={catalogBook.cover?.contentHash}
+          onCoverNeeded={() => handleCatalogCoverNeeded(catalogBook)}
           onPress={() => void handleCatalogOpen(catalogBook)}
         />
       </View>
     ),
-    [catalogBooksInLibrary, catalogImportingId, gridItemWidth, handleCatalogOpen, s.gridItem],
+    [
+      catalogBooksInLibrary,
+      catalogImportingId,
+      gridItemWidth,
+      handleCatalogCoverNeeded,
+      handleCatalogOpen,
+      s.gridItem,
+    ],
   );
 
   const catalogGrid = (
@@ -1212,6 +1243,8 @@ function LibraryScreenContent() {
                 cardWidth={gridItemWidth}
                 isImporting={catalogImportingId === catalogBook.catalogKey}
                 isInLibrary={catalogBooksInLibrary.has(catalogBook.catalogKey)}
+                coverRequestKey={catalogBook.cover?.contentHash}
+                onCoverNeeded={() => handleCatalogCoverNeeded(catalogBook)}
                 onPress={() => void handleCatalogOpen(catalogBook)}
               />
             </View>

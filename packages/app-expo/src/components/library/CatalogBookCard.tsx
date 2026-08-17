@@ -1,5 +1,6 @@
 import { useSwipePressGuard } from "@/components/ui/swipe-press-guard";
 import { useColors } from "@/styles/theme";
+import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { ActivityIndicator, Image, Platform, StyleSheet, View } from "react-native";
 import { makeStyles } from "./book-card-styles";
@@ -13,6 +14,8 @@ interface CatalogBookCardProps {
   cardWidth: number;
   isImporting: boolean;
   isInLibrary: boolean;
+  coverRequestKey?: string;
+  onCoverNeeded?: () => void;
   onPress: () => void;
 }
 
@@ -23,12 +26,21 @@ export function CatalogBookCard({
   cardWidth,
   isImporting,
   isInLibrary,
+  coverRequestKey,
+  onCoverNeeded,
   onPress,
 }: CatalogBookCardProps) {
   const colors = useColors();
   const styles = makeStyles(colors, cardWidth);
   const { t } = useTranslation();
   const swipePressGuard = useSwipePressGuard();
+  const requestedCoverKey = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (coverUri || !coverRequestKey || requestedCoverKey.current === coverRequestKey) return;
+    requestedCoverKey.current = coverRequestKey;
+    onCoverNeeded?.();
+  }, [coverRequestKey, coverUri, onCoverNeeded]);
 
   return (
     <PerspectiveBook
