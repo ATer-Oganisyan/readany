@@ -322,7 +322,7 @@ export function coverImageConfig(env = process.env) {
         openAiCompatible: true
       }),
       apiKey: String(env.LITELLM_API_KEY || '').trim(),
-      model: String(env.LITELLM_IMAGE_MODEL || 'gpt-image-2').trim(),
+      model: String(env.LITELLM_IMAGE_MODEL || 'openai/gpt-image-2').trim(),
       fallbackModel: String(
         env.LITELLM_IMAGE_FALLBACK_MODEL || NANO_BANANA_LITELLM_MODEL
       ).trim() || null,
