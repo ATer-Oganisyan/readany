@@ -268,6 +268,8 @@ export async function requestChat({
 // ================= Обложки книг (server-owned image route) =================
 // Prompt policy, model, provider and credentials are owned by the gateway.
 const COVER_IMAGE_PROVIDERS = new Set(['openrouter', 'litellm'])
+const NANO_BANANA_OPENROUTER_MODEL = 'google/gemini-3.1-flash-image'
+const NANO_BANANA_LITELLM_MODEL = `openrouter/${NANO_BANANA_OPENROUTER_MODEL}`
 
 function coverImageTimeoutMs(env, provider) {
   const raw = env.COVER_IMAGE_TIMEOUT_MS || (
@@ -321,7 +323,9 @@ export function coverImageConfig(env = process.env) {
       }),
       apiKey: String(env.LITELLM_API_KEY || '').trim(),
       model: String(env.LITELLM_IMAGE_MODEL || 'gpt-image-2').trim(),
-      fallbackModel: String(env.LITELLM_IMAGE_FALLBACK_MODEL || '').trim() || null,
+      fallbackModel: String(
+        env.LITELLM_IMAGE_FALLBACK_MODEL || NANO_BANANA_LITELLM_MODEL
+      ).trim() || null,
       timeoutMs: coverImageTimeoutMs(env, provider),
       headers: {}
     }
@@ -337,7 +341,7 @@ export function coverImageConfig(env = process.env) {
     apiKey: String(env.OPENROUTER_API_KEY || '').trim(),
     model: String(env.OPENROUTER_IMAGE_MODEL || 'openai/gpt-image-2').trim(),
     fallbackModel: String(
-      env.OPENROUTER_IMAGE_FALLBACK_MODEL || 'google/gemini-2.5-flash-image'
+      env.OPENROUTER_IMAGE_FALLBACK_MODEL || NANO_BANANA_OPENROUTER_MODEL
     ).trim() || null,
     timeoutMs: coverImageTimeoutMs(env, provider),
     headers: {

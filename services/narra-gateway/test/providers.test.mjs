@@ -329,7 +329,7 @@ test('cover route readiness and model come only from server environment', () => 
   const configured = coverRouteReadiness({ OPENROUTER_API_KEY: 'or-key' })
   assert.equal(configured.ready, true)
   assert.equal(configured.model, 'openai/gpt-image-2')
-  assert.equal(configured.fallbackModel, 'google/gemini-2.5-flash-image')
+  assert.equal(configured.fallbackModel, 'google/gemini-3.1-flash-image')
   assert.equal(
     coverRouteReadiness({ OPENROUTER_API_KEY: 'or-key', OPENROUTER_IMAGE_MODEL: 'other/image' }).model,
     'other/image'
@@ -348,7 +348,7 @@ test('cover image route can explicitly use LiteLLM without direct OpenRouter cre
     ready: true,
     provider: 'litellm',
     model: 'gpt-image-2',
-    fallbackModel: null
+    fallbackModel: 'openrouter/google/gemini-3.1-flash-image'
   })
   assert.equal(coverImageConfig(env).baseUrl, 'https://litellm.test/v1')
 })
@@ -397,6 +397,34 @@ test('LiteLLM cover request uses the standard images generations contract', asyn
     quality: 'high',
     output_format: 'jpeg'
   })
+})
+
+test('LiteLLM cover route falls back from GPT Image 2 to Nano Banana 2', async () => {
+  const models = []
+  const result = await requestCoverImageWithFallback({
+    prompt: 'front cover artwork',
+    fetchImpl: async (_url, init) => {
+      const model = JSON.parse(init.body).model
+      models.push(model)
+      if (models.length === 1) return new Response('upstream unavailable', { status: 502 })
+      return new Response(JSON.stringify({ data: [{ b64_json: 'bmFuby1iYW5hbmE=' }] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    },
+    env: {
+      COVER_IMAGE_PROVIDER: 'litellm',
+      LITELLM_BASE_URL: 'https://litellm.test',
+      LITELLM_API_KEY: 'proxy-key',
+      LITELLM_IMAGE_MODEL: 'gpt-image-2'
+    }
+  })
+
+  assert.deepEqual(models, [
+    'gpt-image-2',
+    'openrouter/google/gemini-3.1-flash-image'
+  ])
+  assert.equal(result.model, 'openrouter/google/gemini-3.1-flash-image')
 })
 
 test('LiteLLM cover route requires an explicit staging plaintext allowlist', () => {
@@ -460,8 +488,8 @@ test('temporary primary image failure falls back to Nano Banana', async () => {
     env: { OPENROUTER_API_KEY: 'or-key' }
   })
 
-  assert.deepEqual(models, ['openai/gpt-image-2', 'google/gemini-2.5-flash-image'])
-  assert.equal(result.model, 'google/gemini-2.5-flash-image')
+  assert.deepEqual(models, ['openai/gpt-image-2', 'google/gemini-3.1-flash-image'])
+  assert.equal(result.model, 'google/gemini-3.1-flash-image')
 })
 
 test('Nano Banana fallback can be overridden by the server environment', async () => {
@@ -519,8 +547,8 @@ test('raw AbortSignal timeout is normalized and falls back to Nano Banana', asyn
     },
     env: { OPENROUTER_API_KEY: 'or-key' }
   })
-  assert.deepEqual(models, ['openai/gpt-image-2', 'google/gemini-2.5-flash-image'])
-  assert.equal(result.model, 'google/gemini-2.5-flash-image')
+  assert.deepEqual(models, ['openai/gpt-image-2', 'google/gemini-3.1-flash-image'])
+  assert.equal(result.model, 'google/gemini-3.1-flash-image')
 })
 
 test('native transport codes are normalized to the closed image error vocabulary', () => {

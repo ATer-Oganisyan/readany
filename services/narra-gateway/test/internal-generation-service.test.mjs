@@ -148,15 +148,21 @@ test('internal generation service publishes one requested character asset indepe
 
 test('internal generation service stores a permanent catalog cover idempotently', async () => {
   const storage = memoryStorage()
-  let portraitCalls = 0
+  let coverCalls = 0
   const service = createInternalGenerationService({
     storage,
     logger: { info() {}, error() {} },
     async completeChat() { throw new Error('unused') },
-    async generatePortrait(prompt) {
-      portraitCalls += 1
+    async generatePortrait() { throw new Error('catalog cover must not use portrait routing') },
+    async generateCover(prompt) {
+      coverCalls += 1
       assert.match(prompt, /Преступление и наказание/)
-      return { bytes: Buffer.from('cover'), mimeType: 'image/png', provider: 'gigachat-image' }
+      return {
+        bytes: Buffer.from('cover'),
+        mimeType: 'image/jpeg',
+        provider: 'litellm:gpt-image-2',
+        model: 'gpt-image-2'
+      }
     },
     async synthesizeSpeech() { throw new Error('unused') },
     async generateIdleAnimation() { throw new Error('unused') }
@@ -170,8 +176,8 @@ test('internal generation service stores a permanent catalog cover idempotently'
   const first = await service.generateCatalogCover(input)
   const repeated = await service.generateCatalogCover(input)
   assert.deepEqual(repeated, first)
-  assert.equal(portraitCalls, 1)
-  assert.equal(first.asset.mimeType, 'image/png')
+  assert.equal(coverCalls, 1)
+  assert.equal(first.asset.mimeType, 'image/jpeg')
   assert.match(first.asset.objectKey, /books\/catalog\/11111111-1111-4111-8111-111111111111\/cover\/generated/)
 })
 

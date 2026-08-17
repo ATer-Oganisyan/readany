@@ -86,8 +86,10 @@ deployment candidates start with `COVER_JOB_WORKER_ENABLED=false`.
 
 The Gateway builds personal and catalog cover prompts from the same versioned
 template, including genre art direction and a deterministic background palette.
-New cover jobs use the internal GigaChat Image route with Kandinsky fallback;
-the APK sends no prompt, provider key or model. Catalog covers use PostgreSQL
+All new personal and catalog cover jobs use GPT Image 2 with Nano Banana 2
+fallback through the configured `COVER_IMAGE_PROVIDER`; Kandinsky is not part of
+the cover route.
+The APK sends no prompt, provider key or model. Catalog covers use PostgreSQL
 `catalog_cover` jobs and are copied idempotently to object storage before
 `catalog_book_covers` is marked ready. Client-authored prompts are accepted only
 for already released clients by the durable job endpoint and the compatibility

@@ -669,6 +669,30 @@ async function generateInternalPortrait(prompt, signal, safeRetryPrompt = '') {
   }
 }
 
+async function generateInternalCover(prompt, signal) {
+  let release
+  try {
+    release = await imageGate.acquire(signal)
+    const generated = await requestCoverImageWithFallback({
+      prompt,
+      aspectRatio: '2:3',
+      signal
+    })
+    const bytes = Buffer.from(generated.image, 'base64')
+    if (!bytes.byteLength || bytes.byteLength > 18 * 1024 * 1024) {
+      throw httpErr('NETWORK', 'Image provider returned an invalid cover')
+    }
+    return {
+      bytes,
+      mimeType: generated.mimeType,
+      model: generated.model,
+      provider: `${coverProviderConfig.provider}:${generated.model}`
+    }
+  } finally {
+    release?.()
+  }
+}
+
 async function synthesizeInternalSpeech(text, voice, signal) {
   let release
   try {
@@ -856,11 +880,11 @@ const coverJobRunner = createCoverJobRunner({
   maxAttempts: COVER_JOB_MAX_ATTEMPTS,
   attemptTimeoutMs: COVER_JOB_ATTEMPT_TIMEOUT_SECONDS * 1000,
   generate: async ({ prompt, signal }) => {
-    const generated = await generateInternalPortrait(prompt, signal)
+    const generated = await generateInternalCover(prompt, signal)
     return {
       image: generated.bytes.toString('base64'),
       mimeType: generated.mimeType,
-      model: generated.provider
+      model: generated.model
     }
   }
 })
@@ -906,6 +930,7 @@ const internalGenerationService = bookObjectStorage && generatorServiceToken
       storage: bookObjectStorage,
       completeChat: completeInternalChat,
       generatePortrait: generateInternalPortrait,
+      generateCover: generateInternalCover,
       synthesizeSpeech: synthesizeInternalSpeech,
       generateIdleAnimation: generateInternalIdleAnimation,
       maxBookBytes: BOOK_UPLOAD_MAX_BYTES

@@ -944,12 +944,16 @@ export function createInternalGenerationService({
   storage,
   completeChat,
   generatePortrait,
+  generateCover = generatePortrait,
   synthesizeSpeech,
   generateIdleAnimation,
   maxBookBytes = 64 * 1024 * 1024,
   logger = console
 }) {
-  if (!storage || !completeChat || !generatePortrait || !synthesizeSpeech || !generateIdleAnimation) {
+  if (
+    !storage || !completeChat || !generatePortrait || !generateCover ||
+    !synthesizeSpeech || !generateIdleAnimation
+  ) {
     throw new TypeError('storage and all generation providers are required')
   }
   const log = createOperationalLogger({ component: 'book-generator', logger })
@@ -1224,7 +1228,7 @@ export function createInternalGenerationService({
       const common = { edition: input.bookEditionId, book: input.title }
       log.info('cover.requested', 'Получен запрос на каталожную обложку', common)
       return cached(storage, input.idempotencyKey, input, async () => {
-        const generated = await generatePortrait(catalogCoverPrompt(input), signal)
+        const generated = await generateCover(catalogCoverPrompt(input), signal)
         const extension = generated.mimeType === 'image/webp'
           ? 'webp'
           : generated.mimeType === 'image/jpeg' ? 'jpg' : 'png'
