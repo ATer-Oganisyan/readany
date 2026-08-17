@@ -23,6 +23,7 @@ import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { NativeSegmentedPager } from "@/components/ui/native-segmented-pager";
 import { SwipePressGuardProvider, useSwipePressGuard } from "@/components/ui/swipe-press-guard";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
+import { getCatalogGridVirtualizationConfig } from "@/lib/library/catalog-grid-virtualization";
 import { getLibraryScrollBottomPadding } from "@/lib/library/library-scroll-layout";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
 import {
@@ -71,6 +72,7 @@ import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
   Alert,
+  FlatList,
   Modal,
   Platform,
   Pressable,
@@ -176,6 +178,15 @@ function LibraryScreenContent() {
       layout.horizontalPadding,
       layout.isTablet,
     ],
+  );
+  const catalogVirtualization = useMemo(
+    () =>
+      getCatalogGridVirtualizationConfig({
+        columnCount,
+        viewportHeight: layout.height,
+        itemHeight: gridItemWidth * (41 / 28) + gridGap,
+      }),
+    [columnCount, gridGap, gridItemWidth, layout.height],
   );
   const [tagSheetOpen, setTagSheetOpen] = useState(false);
   const [tagSheetBook, setTagSheetBook] = useState<Book | null>(null);
@@ -1169,6 +1180,23 @@ function LibraryScreenContent() {
     </View>
   ) : null;
 
+  const renderCatalogGridItem = useCallback(
+    ({ item: catalogBook }: { item: CachedBackendCatalogBook }) => (
+      <View style={s.gridItem}>
+        <CatalogBookCard
+          title={catalogBook.title}
+          author={catalogBook.author}
+          coverUri={catalogBook.coverUri}
+          cardWidth={gridItemWidth}
+          isImporting={catalogImportingId === catalogBook.catalogKey}
+          isInLibrary={catalogBooksInLibrary.has(catalogBook.catalogKey)}
+          onPress={() => void handleCatalogOpen(catalogBook)}
+        />
+      </View>
+    ),
+    [catalogBooksInLibrary, catalogImportingId, gridItemWidth, handleCatalogOpen, s.gridItem],
+  );
+
   const catalogGrid = (
     <View style={s.catalogSection}>
       <View style={s.catalogGrid}>
@@ -1201,6 +1229,63 @@ function LibraryScreenContent() {
     </View>
   );
 
+  const virtualizedLibraryPager = (
+    <NativeSegmentedPager
+      values={[t("library.catalog", "Каталог"), t("library.myBooks", "Мои книги")]}
+      selectedIndex={librarySection === "catalog" ? 0 : 1}
+      onSelect={(index) => selectLibrarySection(index === 0 ? "catalog" : "my-books")}
+      colorScheme={isDark ? "dark" : "light"}
+      accessibilityLabel={t("library.section", "Раздел библиотеки")}
+      controlsStyle={s.librarySectionTabs}
+      minimumPageHeight={Math.max(1, layout.height - nativeHeaderHeight - 76)}
+      pageSeamColor={colors.background}
+      pageSeamGap={gridGap}
+      fillAvailableSpace
+      onSwipeStateChange={(swiping) => {
+        if (swiping) swipePressGuard?.beginSwipe();
+        else swipePressGuard?.endSwipe();
+      }}
+    >
+      <FlatList
+        key={`catalog-grid-${columnCount}`}
+        data={isLoaded && !isCatalogLoading ? catalogBooks : []}
+        renderItem={renderCatalogGridItem}
+        keyExtractor={(catalogBook) => catalogBook.bookEditionId}
+        numColumns={columnCount}
+        columnWrapperStyle={s.gridRow}
+        contentContainerStyle={s.pagerListContent}
+        ListEmptyComponent={
+          isCatalogLoading ? (
+            <View style={s.pagerListEmpty}>
+              <ActivityIndicator color={colors.primary} />
+            </View>
+          ) : null
+        }
+        initialNumToRender={catalogVirtualization.initialNumToRender}
+        maxToRenderPerBatch={catalogVirtualization.maxToRenderPerBatch}
+        windowSize={catalogVirtualization.windowSize}
+        removeClippedSubviews={Platform.OS === "android"}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      />
+      <FlatList
+        key={`library-grid-${columnCount}`}
+        data={isLoaded ? gridItems : []}
+        renderItem={renderGridItem}
+        keyExtractor={(item) => (item.type === "group" ? `group-${item.group.id}` : item.book.id)}
+        numColumns={columnCount}
+        columnWrapperStyle={s.gridRow}
+        contentContainerStyle={s.pagerListContent}
+        initialNumToRender={catalogVirtualization.initialNumToRender}
+        maxToRenderPerBatch={catalogVirtualization.maxToRenderPerBatch}
+        windowSize={catalogVirtualization.windowSize}
+        removeClippedSubviews={Platform.OS === "android"}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      />
+    </NativeSegmentedPager>
+  );
+
   const libraryPager = (
     <NativeSegmentedPager
       values={[t("library.catalog", "Каталог"), t("library.myBooks", "Мои книги")]}
@@ -1223,25 +1308,36 @@ function LibraryScreenContent() {
     </NativeSegmentedPager>
   );
 
+  const useAndroidVirtualizedPager = Platform.OS === "android" && showCatalog;
+
   return (
     <>
-      <ScrollViewMarker style={s.page} scrollEdgeEffects={NATIVE_SCROLL_EDGE_EFFECTS}>
-        <ScrollView
-          contentInsetAdjustmentBehavior="automatic"
-          style={s.primaryScroll}
-          contentContainerStyle={
-            isLoaded && (!isEmpty || showCatalog) ? s.gridContent : s.emptyScrollContent
-          }
-          alwaysBounceVertical
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-        >
-          {listHeader}
-          {showCatalog ? libraryPager : renderLibraryGrid(gridItems)}
-          {!showCatalog ? emptyLibraryState : null}
-        </ScrollView>
-      </ScrollViewMarker>
+      {useAndroidVirtualizedPager ? (
+        <ScrollViewMarker style={s.page} scrollEdgeEffects={NATIVE_SCROLL_EDGE_EFFECTS}>
+          <View style={s.catalogPagerShell}>
+            {listHeader}
+            {virtualizedLibraryPager}
+          </View>
+        </ScrollViewMarker>
+      ) : (
+        <ScrollViewMarker style={s.page} scrollEdgeEffects={NATIVE_SCROLL_EDGE_EFFECTS}>
+          <ScrollView
+            contentInsetAdjustmentBehavior="automatic"
+            style={s.primaryScroll}
+            contentContainerStyle={
+              isLoaded && (!isEmpty || showCatalog) ? s.gridContent : s.emptyScrollContent
+            }
+            alwaysBounceVertical
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+          >
+            {listHeader}
+            {showCatalog ? libraryPager : renderLibraryGrid(gridItems)}
+            {!showCatalog ? emptyLibraryState : null}
+          </ScrollView>
+        </ScrollViewMarker>
+      )}
 
       <Modal
         visible={!!groupNameModal}
@@ -1379,6 +1475,14 @@ const makeStyles = (
     },
     tagChipTextActive: { color: colors.primaryForeground },
     primaryScroll: { flex: 1, overflow: "visible" },
+    catalogPagerShell: {
+      flex: 1,
+      width: "100%",
+      maxWidth: layout.contentWidth + layout.horizontalPadding * 2,
+      alignSelf: "center",
+      paddingHorizontal: layout.horizontalPadding,
+      paddingTop: 16,
+    },
     emptyScrollContent: {
       flexGrow: 1,
       width: "100%",
@@ -1449,6 +1553,14 @@ const makeStyles = (
     pagerGridContent: {
       width: "100%",
       paddingBottom: 0,
+    },
+    pagerListContent: {
+      paddingBottom: layout.bottomPadding,
+    },
+    pagerListEmpty: {
+      minHeight: 160,
+      alignItems: "center",
+      justifyContent: "center",
     },
     libraryGrid: {
       flexDirection: "row",

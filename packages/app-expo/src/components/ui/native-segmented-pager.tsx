@@ -17,6 +17,7 @@ interface NativeSegmentedPagerProps {
   pageSeamColor?: string;
   pageSeamGap?: number;
   stablePageHeight?: boolean;
+  fillAvailableSpace?: boolean;
   onSwipeStateChange?: (swiping: boolean) => void;
 }
 
@@ -33,6 +34,7 @@ export function NativeSegmentedPager({
   pageSeamColor = "transparent",
   pageSeamGap = 0,
   stablePageHeight = false,
+  fillAvailableSpace = false,
   onSwipeStateChange,
 }: NativeSegmentedPagerProps) {
   const pagerRef = useRef<PagerView>(null);
@@ -79,7 +81,7 @@ export function NativeSegmentedPager({
   );
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, fillAvailableSpace && styles.fillAvailableSpace]}>
       <View style={controlsStyle}>
         <NativeThemePicker
           values={values}
@@ -92,7 +94,10 @@ export function NativeSegmentedPager({
       </View>
       <PagerView
         ref={pagerRef}
-        style={[styles.pager, { height: pagerHeight }]}
+        style={[
+          styles.pager,
+          fillAvailableSpace ? styles.fillAvailableSpace : { height: pagerHeight },
+        ]}
         initialPage={safeSelectedIndex}
         orientation="horizontal"
         onPageScrollStateChanged={handlePageScrollStateChanged}
@@ -103,8 +108,19 @@ export function NativeSegmentedPager({
         }}
       >
         {pages.map((page, index) => (
-          <View collapsable={false} key={page.key ?? `page-${index}`} style={styles.page}>
-            <View onLayout={(event) => rememberPageHeight(index, event)}>{page}</View>
+          <View
+            collapsable={false}
+            key={page.key ?? `page-${index}`}
+            style={[styles.page, fillAvailableSpace && styles.fillAvailableSpace]}
+          >
+            <View
+              style={fillAvailableSpace && styles.fillAvailableSpace}
+              onLayout={
+                fillAvailableSpace ? undefined : (event) => rememberPageHeight(index, event)
+              }
+            >
+              {page}
+            </View>
             {isSwiping && pageSeamGap > 0 && index > 0 ? (
               <View
                 pointerEvents="none"
@@ -134,5 +150,6 @@ const styles = StyleSheet.create({
   container: { width: "100%" },
   pager: { width: "100%" },
   page: { width: "100%" },
+  fillAvailableSpace: { flex: 1 },
   pageSeam: { bottom: 0, position: "absolute", top: 0 },
 });

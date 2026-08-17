@@ -1,7 +1,7 @@
 import { useSwipePressGuard } from "@/components/ui/swipe-press-guard";
 import { useColors } from "@/styles/theme";
 import { useTranslation } from "react-i18next";
-import { ActivityIndicator, Image, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Image, Platform, StyleSheet, View } from "react-native";
 import { makeStyles } from "./book-card-styles";
 import { BookCoverTypography } from "./book-cover-typography";
 import { PerspectiveBook } from "./perspective-book";
@@ -48,7 +48,13 @@ export function CatalogBookCard({
       cover={
         <View style={styles.coverCanvas}>
           {coverUri ? (
-            <Image source={{ uri: coverUri }} style={styles.coverImage} resizeMode="cover" />
+            <Image
+              source={{ uri: coverUri }}
+              style={styles.coverImage}
+              resizeMode="cover"
+              resizeMethod={Platform.OS === "android" ? "resize" : "auto"}
+              fadeDuration={Platform.OS === "android" ? 0 : undefined}
+            />
           ) : (
             <View style={styles.fallbackCover}>
               <BookCoverTypography
