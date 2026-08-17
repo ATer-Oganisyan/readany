@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import test from 'node:test'
 import {
   BOOK_COVER_PROMPT_VERSION,
@@ -45,4 +46,37 @@ test('gateway infers a fresh genre-specific art direction from content', () => {
 
   assert.match(prompt, /BOOK GENRE:\nhistorical fiction/)
   assert.match(prompt, /era-specific engraved figure/)
+})
+
+test('gateway stays byte-identical to the main client prompt for Fathers and Sons', () => {
+  const prompt = bookCoverPrompt({
+    title: 'Отцы и дети',
+    author: 'Иван Тургенев'
+  })
+
+  assert.equal(Buffer.byteLength(prompt), 7_266)
+  assert.equal(
+    createHash('sha256').update(prompt).digest('hex'),
+    'c53e88fc3fdd086c701ee25d4cce2e09e1ad021cc960a1a2374e484f93826224'
+  )
+})
+
+test('gateway matches main when genre evidence follows the 800-character theme excerpt', () => {
+  const prompt = bookCoverPrompt({
+    title: 'Книга',
+    description: `${'x'.repeat(900)} manga`
+  })
+
+  assert.match(prompt, /BOOK GENRE:\nmanga or anime graphic fiction/)
+  assert.match(prompt, /hand-painted 1990s cel anime/)
+  assert.doesNotMatch(prompt, /x{801}/u)
+})
+
+test('gateway matches the main client background override and ignores non-main context', () => {
+  const input = { title: 'Книга', accentColor1: 'bright red' }
+  assert.match(bookCoverPrompt(input), /REQUIRED DOMINANT BACKGROUND COLOR:\nbright red/)
+  assert.equal(
+    bookCoverPrompt(input),
+    bookCoverPrompt({ ...input, context: 'manga anime' })
+  )
 })
