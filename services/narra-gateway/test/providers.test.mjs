@@ -42,6 +42,42 @@ test('provider request omits temperature when the caller leaves it unset', async
   await result.finalizeAttempt()
 })
 
+test('assistant route forwards validated OpenAI tools through the server-owned model route', async () => {
+  let body
+  const tools = [{
+    type: 'function',
+    function: {
+      name: 'list_books',
+      description: 'List local books',
+      parameters: { type: 'object', properties: {} }
+    }
+  }]
+  const result = await requestChat({
+    messages: [{ role: 'user', content: 'Что я читаю?' }],
+    tools,
+    toolChoice: 'auto',
+    parallelToolCalls: false,
+    purpose: 'assistant',
+    stream: true,
+    fetchImpl: async (_url, init) => {
+      body = JSON.parse(init.body)
+      return new Response('data: [DONE]\n\n', { status: 200 })
+    },
+    env: {
+      LLM_ROUTE_ASSISTANT: 'litellm',
+      LITELLM_BASE_URL: 'https://litellm.test/v1',
+      LITELLM_API_KEY: 'proxy-key',
+      LITELLM_MODEL_ASSISTANT: 'openrouter/openai/gpt-5.6-luna'
+    }
+  })
+
+  assert.deepEqual(body.tools, tools)
+  assert.equal(body.tool_choice, 'auto')
+  assert.equal(body.parallel_tool_calls, false)
+  assert.equal(body.model, 'openrouter/openai/gpt-5.6-luna')
+  await result.finalizeAttempt()
+})
+
 test('character chat uses model-aware server sampling and ignores caller temperature', async () => {
   for (const provider of ['giga', 'litellm']) {
     let body

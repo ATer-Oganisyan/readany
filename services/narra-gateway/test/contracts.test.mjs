@@ -55,8 +55,12 @@ test('background chat analytics is explicit and can be actorless after opt-out',
 test('chat contract bounds payload and roles', () => {
   assert.throws(() => parseChatBody({ messages: [] }), /1–64/)
   assert.throws(
-    () => parseChatBody({ messages: [{ role: 'tool', content: 'hello' }] }),
+    () => parseChatBody({ messages: [{ role: 'developer', content: 'hello' }] }),
     /недопустимая роль/
+  )
+  assert.throws(
+    () => parseChatBody({ messages: [{ role: 'tool', content: 'hello' }] }),
+    /tool_call_id/
   )
   assert.throws(
     () => parseChatBody({ messages: [{ role: 'user', content: 'x'.repeat(60_001) }] }),
@@ -70,6 +74,60 @@ test('chat contract bounds payload and roles', () => {
     parseChatBody({ messages: [{ role: 'user', content: 'hello' }], request_id: '123e4567-e89b-42d3-a456-426614174001' }).requestId,
     '123e4567-e89b-42d3-a456-426614174001'
   )
+})
+
+test('assistant chat contract preserves bounded OpenAI tool calls without provider fields', () => {
+  const tools = [{
+    type: 'function',
+    function: {
+      name: 'list_books',
+      description: 'List local books',
+      parameters: { type: 'object', properties: {} }
+    }
+  }]
+  const parsed = parseChatBody({
+    purpose: 'assistant',
+    messages: [
+      { role: 'user', content: 'Что я читаю?' },
+      {
+        role: 'assistant',
+        content: null,
+        tool_calls: [{
+          id: 'call-1',
+          type: 'function',
+          function: { name: 'list_books', arguments: '{}' }
+        }]
+      },
+      { role: 'tool', content: '["Детство"]', name: 'list_books', tool_call_id: 'call-1' }
+    ],
+    tools,
+    tool_choice: 'auto',
+    parallel_tool_calls: false
+  })
+
+  assert.equal(parsed.purpose, 'assistant')
+  assert.equal(parsed.messages[1].content, '')
+  assert.equal(parsed.messages[1].tool_calls[0].function.name, 'list_books')
+  assert.equal(parsed.messages[2].name, 'list_books')
+  assert.deepEqual(parsed.tools, tools)
+  assert.equal(parsed.toolChoice, 'auto')
+  assert.equal(parsed.parallelToolCalls, false)
+})
+
+test('assistant chat contract drops empty incomplete assistant history entries', () => {
+  const parsed = parseChatBody({
+    purpose: 'assistant',
+    messages: [
+      { role: 'user', content: 'Первый вопрос' },
+      { role: 'assistant', content: '' },
+      { role: 'user', content: 'Повтори' }
+    ]
+  }, { stream: true })
+
+  assert.deepEqual(parsed.messages, [
+    { role: 'user', content: 'Первый вопрос' },
+    { role: 'user', content: 'Повтори' }
+  ])
 })
 
 test('media and speech contracts reject unknown or oversized inputs', () => {

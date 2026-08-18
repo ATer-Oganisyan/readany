@@ -5,7 +5,7 @@ import { requestOptionsForModel } from './model-request-config.mjs'
 import { serviceUrl } from './service-url.mjs'
 
 const RETRYABLE = new Set([408, 409, 429, 500, 502, 503, 504])
-const PURPOSES = ['character_chat', 'structured_task', 'summary', 'scenario', 'memory']
+const PURPOSES = ['assistant', 'character_chat', 'structured_task', 'summary', 'scenario', 'memory']
 const TEXT_PROVIDERS = new Set(['giga', 'litellm'])
 const MODERATION_RESPONSE = /content.?filter|moderation|safety|unsafe|censor|blocked|bad_[a-z_]*lemmas|запрещ|цензур|безопасност/i
 const IMAGE_ERROR_CODES = new Set([
@@ -105,6 +105,9 @@ export function llmRouteReadiness(env = process.env) {
 
 export async function requestChat({
   messages,
+  tools,
+  toolChoice,
+  parallelToolCalls,
   purpose,
   stream,
   requestId,
@@ -161,6 +164,9 @@ export async function requestChat({
           messages,
           max_tokens: maxTokensFor(purpose, stream, env),
           stream,
+          ...(tools ? { tools } : {}),
+          ...(toolChoice !== undefined ? { tool_choice: toolChoice } : {}),
+          ...(parallelToolCalls !== undefined ? { parallel_tool_calls: parallelToolCalls } : {}),
           ...modelRequestOptions,
           ...(stream && TEXT_PROVIDERS.has(providerName)
             ? { stream_options: { include_usage: true } }

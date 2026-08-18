@@ -1,4 +1,5 @@
 const PURPOSE_REQUEST_CONFIG = Object.freeze({
+  assistant: Object.freeze({}),
   character_chat: Object.freeze({ temperature: 0.85 }),
   structured_task: Object.freeze({}),
   summary: Object.freeze({}),
