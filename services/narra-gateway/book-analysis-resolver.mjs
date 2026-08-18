@@ -134,13 +134,23 @@ function stableNodeKey(kind, candidate) {
   return `${kind}\u0000${normalizedCandidate(candidate)}`
 }
 
+function stablePairKey(left, right) {
+  return [left, right].sort(compareText).join('\u0001')
+}
+
 class DisjointSet {
   constructor() {
     this.parents = new Map()
+    this.membersByRoot = new Map()
+    this.forbiddenPairs = new Set()
+    this.protectedMembers = new Set()
   }
 
   add(value) {
-    if (!this.parents.has(value)) this.parents.set(value, value)
+    if (!this.parents.has(value)) {
+      this.parents.set(value, value)
+      this.membersByRoot.set(value, new Set([value]))
+    }
   }
 
   find(value) {
@@ -151,14 +161,47 @@ class DisjointSet {
     return root
   }
 
+  forbid(left, right) {
+    if (left === right) return
+    this.add(left)
+    this.add(right)
+    this.forbiddenPairs.add(stablePairKey(left, right))
+  }
+
+  protect(value) {
+    this.add(value)
+    this.protectedMembers.add(value)
+  }
+
+  crossesForbidden(leftRoot, rightRoot) {
+    if (!this.forbiddenPairs.size) return false
+    const leftMembers = this.membersByRoot.get(leftRoot) ?? new Set([leftRoot])
+    const rightMembers = this.membersByRoot.get(rightRoot) ?? new Set([rightRoot])
+    return [...leftMembers].some((left) => [...rightMembers].some((right) =>
+      this.forbiddenPairs.has(stablePairKey(left, right))
+    ))
+  }
+
   union(left, right) {
     this.add(left)
     this.add(right)
     const leftRoot = this.find(left)
     const rightRoot = this.find(right)
-    if (leftRoot === rightRoot) return
+    if (leftRoot === rightRoot) return false
+    const leftMembers = this.membersByRoot.get(leftRoot) ?? new Set([leftRoot])
+    const rightMembers = this.membersByRoot.get(rightRoot) ?? new Set([rightRoot])
+    if ([...leftMembers, ...rightMembers].some((member) =>
+      this.protectedMembers.has(member)
+    )) return false
+    if (this.crossesForbidden(leftRoot, rightRoot)) return false
     const [first, second] = [leftRoot, rightRoot].sort(compareText)
     this.parents.set(second, first)
+    const mergedMembers = this.membersByRoot.get(first) ?? new Set([first])
+    const removedMembers = this.membersByRoot.get(second) ?? new Set([second])
+    for (const member of removedMembers) mergedMembers.add(member)
+    this.membersByRoot.set(first, mergedMembers)
+    this.membersByRoot.delete(second)
+    return true
   }
 }
 
@@ -428,6 +471,107 @@ function explicitRelationshipParticipants(observation) {
   }))
 }
 
+function groundedRelationshipCharacterCandidates(observation, nodes) {
+  if (observation.type !== 'relationship') return []
+  const compositeCandidates = displayCandidate(observation.entityCandidate)
+    .split(/\s+(?:and|и|&)\s+/iu)
+    .map(displayCandidate)
+  const values = [
+    ...observation.relatedEntityCandidates,
+    ...(compositeCandidates.length === 2 ? compositeCandidates : [])
+  ]
+  const seen = new Set()
+  return values.filter((value) => {
+    let key
+    try {
+      key = stableNodeKey('character', value)
+    } catch {
+      return false
+    }
+    if (seen.has(key)) return false
+    seen.add(key)
+    const node = nodes.get(key)
+    return Boolean(
+      node && isIndividualProperNameNode(node) &&
+      isSurfaceGrounded(value, observation.evidence.quote)
+    )
+  })
+}
+
+function identitySeparationVariants(candidate, nodes) {
+  const normalized = normalizedCandidate(candidate)
+  const exactKey = `character\u0000${normalized}`
+  const variants = new Set([exactKey])
+  for (const node of nodes.values()) {
+    if (
+      !node.key.startsWith('character\u0000') ||
+      !isIndividualProperNameNode(node) ||
+      node.key === exactKey
+    ) continue
+    const nodeTokenCount = semanticIdentityTokens(node.normalized).length
+    const candidateTokenCount = semanticIdentityTokens(normalized).length
+    const [shorter, longer] = nodeTokenCount < candidateTokenCount
+      ? [node.normalized, normalized]
+      : [normalized, node.normalized]
+    if (
+      nodeTokenCount !== candidateTokenCount &&
+      isExplicitNameFragment(node.normalized, normalized) &&
+      isSafePersonalNameExpansion(shorter, longer)
+    ) variants.add(node.key)
+  }
+  return variants
+}
+
+function forbidIdentityFamilies(sets, nodes, left, right) {
+  const leftExact = stableNodeKey('character', left)
+  const rightExact = stableNodeKey('character', right)
+  sets.forbid(leftExact, rightExact)
+  const leftVariants = identitySeparationVariants(left, nodes)
+  const rightVariants = identitySeparationVariants(right, nodes)
+  const shared = new Set([...leftVariants].filter((key) => rightVariants.has(key)))
+  for (const leftKey of leftVariants) {
+    if (shared.has(leftKey) && leftKey !== leftExact) continue
+    for (const rightKey of rightVariants) {
+      if (shared.has(rightKey) && rightKey !== rightExact) continue
+      if (leftKey !== rightKey) sets.forbid(leftKey, rightKey)
+    }
+  }
+}
+
+function registerHardIdentitySeparation(sets, nodes, observations) {
+  for (const node of nodes.values()) {
+    if (
+      node.key.startsWith('character\u0000') &&
+      WEAK_CHARACTER_CANDIDATES.has(node.normalized)
+    ) sets.protect(node.key)
+  }
+
+  for (const observation of observations) {
+    const participants = groundedRelationshipCharacterCandidates(observation, nodes)
+    for (const [index, left] of participants.entries()) {
+      for (const right of participants.slice(index + 1)) {
+        if (!hasIndependentSurfaceEvidence(left, right, observation.evidence.quote)) continue
+        forbidIdentityFamilies(sets, nodes, left, right)
+      }
+    }
+  }
+
+  for (const node of nodes.values()) {
+    if (!node.key.startsWith('character\u0000')) continue
+    for (const { display } of node.forms.values()) {
+      const possessive = display.match(/^(.+?)['’]s\s+(\S+)/iu)
+      if (!possessive) continue
+      const ownerKey = stableNodeKey('character', possessive[1])
+      if (nodes.has(ownerKey)) sets.forbid(node.key, ownerKey)
+      const role = normalizedCandidate(possessive[2])
+      const genericRoleKey = stableNodeKey('character', role)
+      if (OWNED_KINSHIP_GENDERS.has(role) && nodes.has(genericRoleKey)) {
+        sets.forbid(node.key, genericRoleKey)
+      }
+    }
+  }
+}
+
 function bestDisplay(node) {
   return [...node.forms.values()].sort((left, right) =>
     properNameScore(right.display) - properNameScore(left.display) ||
@@ -458,6 +602,16 @@ function isOrderedSubset(shorter, longer) {
     if (shorterIndex === shorter.length) return true
   }
   return false
+}
+
+function isSafePersonalNameExpansion(shorter, longer) {
+  const shorterTokens = semanticIdentityTokens(shorter)
+  const longerTokens = semanticIdentityTokens(longer)
+  if (shorterTokens.length < 2 || longerTokens.length <= shorterTokens.length) return true
+  return (
+    shorterTokens[0] === longerTokens[0] &&
+    shorterTokens.at(-1) === longerTokens.at(-1)
+  ) || shorterTokens.every((token, index) => token === longerTokens[index])
 }
 
 function isExplicitNameFragment(left, right) {
@@ -598,7 +752,38 @@ function isUnresolvedAmbiguousFragment(value, nodes, sets = null) {
   if (!isAmbiguousIdentityBase(value, nodes, sets)) return false
   const tokens = nameTokens(value)
   if (tokens.length === 1) return true
-  return new Set(['miss', 'ms']).has(tokens[0])
+  if (new Set(['miss', 'ms']).has(tokens[0])) return true
+  return Boolean(sets && hasMultipleCompatibleFamilyRoots(value, nodes, sets))
+}
+
+function hasMultipleCompatibleFamilyRoots(value, nodes, sets) {
+  const tokens = nameTokens(value)
+  if (tokens.length !== 2 || !FAMILY_HONORIFICS.has(tokens[0])) return false
+  const sourceKey = `character\u0000${value}`
+  if (!nodes.has(sourceKey)) return false
+  const sourceRoot = sets.find(sourceKey)
+  const supportByRoot = new Map()
+  for (const candidate of nodes.values()) {
+    if (!candidate.key.startsWith('character\u0000') || !isIndividualProperNameNode(candidate)) {
+      continue
+    }
+    const candidateTokens = nameTokens(candidate.normalized)
+    if (
+      candidateTokens.length < 3 ||
+      candidateTokens[0] !== tokens[0] ||
+      candidateTokens.at(-1) !== tokens[1] ||
+      candidateTokens[1].length <= 1
+    ) continue
+    const root = sets.find(candidate.key)
+    if (root === sourceRoot || sets.crossesForbidden(sourceRoot, root)) continue
+    const support = rootPrimarySupport(sets, nodes, root)
+    if (support < 2) continue
+    supportByRoot.set(root, support)
+  }
+  if (supportByRoot.size <= 1) return false
+  const competingSupport = [...supportByRoot.values()].reduce((sum, value) => sum + value, 0)
+  const sourceSupport = rootPrimarySupport(sets, nodes, sourceRoot)
+  return sourceSupport < 20 || sourceSupport < competingSupport * 4
 }
 
 function isSafeTitleOrDeterminerVariant(left, right, nodes, sets = null) {
@@ -844,7 +1029,8 @@ function mergeUnambiguousNameFragments(sets, nodes) {
           tokens.every((token, index) => token === tokensByKey.get(candidate.key)[index]) &&
           NAME_CONNECTOR_TOKENS.has(tokensByKey.get(candidate.key)[tokens.length])
         )) &&
-        isOrderedSubset(tokens, tokensByKey.get(candidate.key))
+        isOrderedSubset(tokens, tokensByKey.get(candidate.key)) &&
+        isSafePersonalNameExpansion(node.normalized, candidate.normalized)
       )
       const maximalSupersets = supersets.filter((candidate) =>
         !supersets.some((other) =>
@@ -858,8 +1044,7 @@ function mergeUnambiguousNameFragments(sets, nodes) {
         if (targetRoots.length > 1 && tokens.length === 1) node.identityAmbiguous = true
         continue
       }
-      sets.union(node.key, targetRoots[0])
-      changed = true
+      if (sets.union(node.key, targetRoots[0])) changed = true
     }
   }
 }
@@ -1070,48 +1255,6 @@ function genderSignalsForRoot(sets, nodes, root) {
   return new Set([...nodes.values()]
     .filter((node) => sets.find(node.key) === root)
     .flatMap(({ genderSignals }) => [...genderSignals]))
-}
-
-function genderCompatibleWithRoot(expected, sets, nodes, root) {
-  const values = genderSignalsForRoot(sets, nodes, root)
-  return values.size === 0 || (values.size === 1 && values.has(expected))
-}
-
-function mergeUniqueGenderedHonorificSurnames(sets, nodes) {
-  const nameNodes = [...nodes.values()].filter((node) =>
-    node.key.startsWith('character\u0000') && isIndividualProperNameNode(node)
-  )
-  for (const titled of nameNodes) {
-    const titledTokens = nameTokens(titled.normalized)
-    const expectedGender = titledTokens.length === 2
-      ? HONORIFIC_GENDERS.get(titledTokens[0])
-      : null
-    if (!expectedGender || titled.surfaceGroundedCount < 1) continue
-    const family = titledTokens[1]
-    const sourceRoot = sets.find(titled.key)
-    const sourceAlreadyHasFullName = componentNodes(sets, nodes, sourceRoot).some((candidate) =>
-      semanticIdentityTokens(candidate.normalized).length >= 2
-    )
-    if (sourceAlreadyHasFullName) continue
-    const targetRoots = [...new Set(nameNodes
-      .filter((candidate) => {
-        const candidateTokens = semanticIdentityTokens(candidate.normalized)
-        const candidateRoot = sets.find(candidate.key)
-        return candidateRoot !== sourceRoot &&
-          candidateTokens.length >= 2 && candidateTokens[0].length > 1 &&
-          candidateTokens.at(-1) === family &&
-          !hasGenerationalQualifier(candidate.normalized) &&
-          (candidate.surfaceGroundedCount >= 1 || candidate.primaryCount >= 2) &&
-          genderCompatibleWithRoot(expectedGender, sets, nodes, candidateRoot)
-      })
-      .map(({ key }) => sets.find(key)))]
-    if (targetRoots.length !== 1) continue
-    const targetNodes = componentNodes(sets, nodes, targetRoots[0])
-    const support = componentNodes(sets, nodes, sourceRoot)
-      .concat(targetNodes)
-      .reduce((sum, node) => sum + node.primaryCount, 0)
-    if (support >= 3) sets.union(sourceRoot, targetRoots[0])
-  }
 }
 
 function sharedGivenNameAcrossFamilyChange(leftNodes, rightNodes) {
@@ -1327,12 +1470,22 @@ function hasFamilyCollision(leftNodes, rightNodes, basis) {
   for (const left of normalizedPersonalNames(leftNodes)) {
     for (const right of normalizedPersonalNames(rightNodes)) {
       const sameFamily = left.at(-1) === right.at(-1)
-      if (sameFamily && left[0] !== right[0]) return true
+      if (sameFamily && left[0] !== right[0] && basis !== 'nickname') return true
       const sameGivenDifferentFamily = left[0] === right[0] && left.at(-1) !== right.at(-1)
       if (sameGivenDifferentFamily && basis !== 'married_name') return true
     }
   }
   return false
+}
+
+function hasInitialHonorificCollision(leftNodes, rightNodes) {
+  const variants = (groupNodes) => groupNodes.map(({ normalized }) => nameTokens(normalized))
+  return variants(leftNodes).some((left) => variants(rightNodes).some((right) => {
+    const [initial, titled] = left[0]?.length === 1 ? [left, right] : [right, left]
+    return initial.length === 2 && titled.length === 2 &&
+      initial[0].length === 1 && FAMILY_HONORIFICS.has(titled[0]) &&
+      initial[1] === titled[1]
+  }))
 }
 
 function titledFamilyBase(node) {
@@ -1341,9 +1494,8 @@ function titledFamilyBase(node) {
 }
 
 function hasCompetingTitledFamilyIdentity(leftNodes, rightNodes, nodes, sets) {
-  const rootsFor = (predicate) => new Set([...nodes.values()]
-    .filter((node) => node.key.startsWith('character\u0000') && predicate(node))
-    .map((node) => sets.find(node.key)))
+  const proposedNodes = [...leftNodes, ...rightNodes]
+  const proposedRoots = new Set(proposedNodes.map(({ key }) => sets.find(key)))
   for (const [titledNodes, namedNodes] of [
     [leftNodes, rightNodes],
     [rightNodes, leftNodes]
@@ -1355,19 +1507,58 @@ function hasCompetingTitledFamilyIdentity(leftNodes, rightNodes, nodes, sets) {
         tokens.at(-1) === family
       )
       if (!matchesNamed) continue
-      const titledRoots = rootsFor((node) => titledFamilyBase(node) === family)
-      const namedRoots = rootsFor((node) => {
+      const competingRoots = new Set([...nodes.values()].filter((node) => {
+        if (!node.key.startsWith('character\u0000') || !isIndividualProperNameNode(node)) {
+          return false
+        }
         const tokens = semanticIdentityTokens(node.normalized)
-        return tokens.length >= 2 && tokens.at(-1) === family && tokens[0].length > 1
-      })
-      if (titledRoots.size > 1 || namedRoots.size > 1) return true
+        return titledFamilyBase(node) === family ||
+          (tokens.length >= 2 && tokens.at(-1) === family && tokens[0].length > 1)
+      }).map(({ key }) => sets.find(key)).filter((root) => !proposedRoots.has(root)))
+      for (const root of competingRoots) {
+        const competingNodes = componentNodes(sets, nodes, root)
+        if (
+          !hasGenderCollision(proposedNodes, competingNodes) &&
+          !hasGenerationalCollision(proposedNodes, competingNodes)
+        ) return true
+      }
     }
   }
   return false
 }
 
 function hasAmbiguousStructuralOverlap(leftNodes, rightNodes, nodes, sets) {
-  return leftNodes.some((left) => rightNodes.some((right) => {
+  const proposedRoots = new Set(
+    [...leftNodes, ...rightNodes].map(({ key }) => sets.find(key))
+  )
+  const ambiguousGivenAsFamily = leftNodes.some((left) => rightNodes.some((right) => {
+    const leftTokens = semanticIdentityTokens(left.normalized)
+    const rightTokens = semanticIdentityTokens(right.normalized)
+    const [shorter, longer] = leftTokens.length < rightTokens.length
+      ? [leftTokens, rightTokens]
+      : [rightTokens, leftTokens]
+    if (shorter.length !== 1 || longer.length < 2 || shorter[0] !== longer.at(-1)) return false
+    return [...nodes.values()].some((candidate) => {
+      if (!candidate.key.startsWith('character\u0000') || !isIndividualProperNameNode(candidate)) {
+        return false
+      }
+      if (proposedRoots.has(sets.find(candidate.key))) return false
+      const tokens = semanticIdentityTokens(candidate.normalized)
+      return tokens.length >= 2 && tokens[0] === shorter[0]
+    })
+  }))
+  if (ambiguousGivenAsFamily) return true
+  const unsafeExpansion = leftNodes.some((left) => rightNodes.some((right) => {
+    if (!isExplicitNameFragment(left.normalized, right.normalized)) return false
+    const leftCount = semanticIdentityTokens(left.normalized).length
+    const rightCount = semanticIdentityTokens(right.normalized).length
+    const [shorter, longer] = leftCount < rightCount
+      ? [left.normalized, right.normalized]
+      : [right.normalized, left.normalized]
+    return leftCount !== rightCount && !isSafePersonalNameExpansion(shorter, longer)
+  }))
+  if (unsafeExpansion) return true
+  const ambiguousOverlap = leftNodes.some((left) => rightNodes.some((right) => {
     const overlaps = exactTitleOrDeterminerVariant(left.normalized, right.normalized) ||
       isExplicitNameFragment(left.normalized, right.normalized) ||
       isOrderedSubset(nameTokens(left.normalized), nameTokens(right.normalized)) ||
@@ -1377,6 +1568,25 @@ function hasAmbiguousStructuralOverlap(leftNodes, rightNodes, nodes, sets) {
       isAmbiguousIdentityBase(right.normalized, nodes, sets)
     )
   }))
+  if (!ambiguousOverlap) return false
+  const proposedNodes = [...leftNodes, ...rightNodes]
+  const proposedComponentRoots = new Set(proposedNodes.map(({ key }) => sets.find(key)))
+  const families = new Set(normalizedPersonalNames(proposedNodes).map((tokens) => tokens.at(-1)))
+  if (families.size !== 1) return true
+  const [family] = families
+  const competingRoots = new Set([...nodes.values()].filter((node) => {
+    if (!node.key.startsWith('character\u0000') || !isIndividualProperNameNode(node)) return false
+    const tokens = semanticIdentityTokens(node.normalized)
+    return tokens.length >= 2 && tokens.at(-1) === family && tokens[0].length > 1
+  }).map(({ key }) => sets.find(key)).filter((root) => !proposedComponentRoots.has(root)))
+  for (const root of competingRoots) {
+    const competingNodes = componentNodes(sets, nodes, root)
+    if (
+      !hasGenderCollision(proposedNodes, competingNodes) &&
+      !hasGenerationalCollision(proposedNodes, competingNodes)
+    ) return true
+  }
+  return false
 }
 
 function hasGenderCollision(leftNodes, rightNodes) {
@@ -1390,6 +1600,7 @@ function unsafeApprovedIdentityMerge(leftNodes, rightNodes, basis, nodes, sets) 
   const rightCollective = rightNodes.some(isCompositeOrCollectiveCharacter)
   return leftCollective !== rightCollective ||
     hasGenderCollision(leftNodes, rightNodes) ||
+    hasInitialHonorificCollision(leftNodes, rightNodes) ||
     hasAmbiguousStructuralOverlap(leftNodes, rightNodes, nodes, sets) ||
     hasGenerationalCollision(leftNodes, rightNodes) ||
     hasFamilyCollision(leftNodes, rightNodes, basis) ||
@@ -1438,8 +1649,38 @@ function applyApprovedIdentityMerges(sets, nodes, identityMerges) {
   }
 }
 
+function nameScript(value) {
+  const source = String(value || '')
+  const cyrillic = /\p{Script=Cyrillic}/u.test(source)
+  const latin = /\p{Script=Latin}/u.test(source)
+  if (cyrillic === latin) return null
+  return cyrillic ? 'cyrillic' : 'latin'
+}
+
+function hasUnsafeCrossScriptAlias(left, right) {
+  const leftScript = nameScript(bestDisplay(left))
+  const rightScript = nameScript(bestDisplay(right))
+  return Boolean(
+    leftScript && rightScript && leftScript !== rightScript &&
+    (!left.surfaceGroundedCount || !right.surfaceGroundedCount)
+  )
+}
+
+function hasCrossScriptGroundingMismatch(canonical, groupNodes) {
+  const value = String(canonical || '')
+  const hasCyrillic = /\p{Script=Cyrillic}/u.test(value)
+  const hasLatin = /\p{Script=Latin}/u.test(value)
+  if (hasCyrillic === hasLatin) return false
+  const expected = hasCyrillic ? 'cyrillic' : 'latin'
+  return !groupNodes.some((node) =>
+    nameScript(bestDisplay(node)) === expected && node.surfaceGroundedCount > 0
+  )
+}
+
 function isConfirmed(kind, canonical, observations, anchorConfidence, confidence, groupNodes) {
   if (kind === 'character') {
+    if (WEAK_CHARACTER_CANDIDATES.has(normalizedCandidate(canonical))) return false
+    if (hasCrossScriptGroundingMismatch(canonical, groupNodes)) return false
     if (!groupNodes.some(isIndividualProperNameNode)) return false
     if (groupNodes.every(({ identityAmbiguous }) => identityAmbiguous)) return false
     if (anchorConfidence >= ALIAS_CONFIDENCE || observations.length >= 2) return true
@@ -1534,6 +1775,8 @@ export function resolveBookAnalysisEntities({ observations: rawObservations, ide
     }
   }
 
+  registerHardIdentitySeparation(sets, nodes, observations)
+
   const claimsByPair = new Map()
   for (const claim of aliasClaims) {
     const pair = [claim.primaryKey, claim.aliasKey].sort(compareText).join('\u0001')
@@ -1575,8 +1818,13 @@ export function resolveBookAnalysisEntities({ observations: rawObservations, ide
       right,
       nodes,
       observationsByPrimaryKey
-    ) && !hasGenderCollision([nodes.get(left)], [nodes.get(right)]) &&
-      !ambiguousOverlap && (structural || (!generational && (explicitFragment ||
+    ) && !WEAK_CHARACTER_CANDIDATES.has(nodes.get(left).normalized) &&
+      !WEAK_CHARACTER_CANDIDATES.has(nodes.get(right).normalized) &&
+      !hasUnsafeCrossScriptAlias(nodes.get(left), nodes.get(right)) &&
+      !hasGenderCollision([nodes.get(left)], [nodes.get(right)]) &&
+      !hasCompetingTitledFamilyIdentity(
+        [nodes.get(left)], [nodes.get(right)], nodes, sets
+      ) && !ambiguousOverlap && (structural || (!generational && (explicitFragment ||
       claims.some(({ grounded }) => grounded) || reciprocal || evidenceSpans.size >= 2
     )))
     return {
@@ -1617,13 +1865,11 @@ export function resolveBookAnalysisEntities({ observations: rawObservations, ide
   mergeUnambiguousNameFragments(sets, nodes)
   mergeStrongUniqueGivenNames(sets, nodes)
   mergeStrongUniqueTitledPrefixes(sets, nodes)
-  mergeUniqueGenderedHonorificSurnames(sets, nodes)
   mergeExplicitFirstNameDeclarations(sets, nodes, observations, primaryNodeByObservationId)
   mergeExplicitSignedNameTransitions(sets, nodes, observations, primaryNodeByObservationId)
   mergeExplicitSpouseTitles(sets, nodes, observations)
   mergeExplicitSpouseNameTransitions(sets, nodes, observations, primaryNodeByObservationId)
   mergeMarriedFullNameExpansions(sets, nodes)
-  mergeUniqueGenderedHonorificSurnames(sets, nodes)
   mergeStrongUniqueGivenNames(sets, nodes)
   applyApprovedIdentityMerges(sets, nodes, identityMerges)
 

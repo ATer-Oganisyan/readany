@@ -588,6 +588,75 @@ test('resolver rejects approved edges across namesakes and generations', () => {
   assert.equal(result.length, 4)
 })
 
+test('resolver accepts an adjudicated nickname across matching family names only as nickname', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111111149',
+      candidate: 'Meg March',
+      startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222259',
+      candidate: 'Margaret March',
+      startOffset: 200
+    })
+  ]
+  const provisional = resolveBookAnalysisEntities({ observations })
+  const byName = new Map(provisional.map((entity) => [entity.canonicalName, entity.entityKey]))
+  const nicknameResult = resolveBookAnalysisEntities({
+    observations,
+    identityMerges: [{
+      leftEntityKey: byName.get('Meg March'),
+      rightEntityKey: byName.get('Margaret March'),
+      basis: 'nickname'
+    }]
+  })
+  assert.equal(nicknameResult.length, 1)
+  assert.deepEqual(
+    new Set([nicknameResult[0].canonicalName, ...nicknameResult[0].aliases]),
+    new Set(['Meg March', 'Margaret March'])
+  )
+
+  const nameVariantResult = resolveBookAnalysisEntities({
+    observations,
+    identityMerges: [{
+      leftEntityKey: byName.get('Meg March'),
+      rightEntityKey: byName.get('Margaret March'),
+      basis: 'name_variant'
+    }]
+  })
+  assert.equal(nameVariantResult.length, 2)
+})
+
+test('resolver rejects treating a shared given name as another character family name', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111111159',
+      candidate: 'Jane', startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222269',
+      candidate: 'Flora Jane', startOffset: 200
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333379',
+      candidate: 'Jane Andrews', startOffset: 300
+    })
+  ]
+  const provisional = resolveBookAnalysisEntities({ observations })
+  const byName = new Map(provisional.map((entity) => [entity.canonicalName, entity.entityKey]))
+  const result = resolveBookAnalysisEntities({
+    observations,
+    identityMerges: [{
+      leftEntityKey: byName.get('Jane'),
+      rightEntityKey: byName.get('Flora Jane'),
+      basis: 'name_variant'
+    }]
+  })
+  assert.equal(result.length, 3)
+  assert.ok(result.every(({ aliases }) => aliases.length === 0))
+})
+
 test('resolver rejects a titled-family merge when multiple relatives share the family name', () => {
   const observations = [
     observation({
@@ -665,7 +734,7 @@ test('resolver keeps a fragment shared by two named roles as a candidate', () =>
   assert.equal(result.filter(({ resolutionStatus }) => resolutionStatus === 'confirmed').length, 2)
 })
 
-test('resolver prefers a repeatedly grounded canonical name over an ungrounded long label', () => {
+test('resolver quarantines an ungrounded owned-role label from its named owner', () => {
   const observations = [
     observation({
       id: '11111111-1111-4111-8111-111111111143',
@@ -685,8 +754,11 @@ test('resolver prefers a repeatedly grounded canonical name over an ungrounded l
     })
   ]
   const result = resolveBookAnalysisEntities({ observations })
-  assert.equal(result.length, 1)
+  assert.equal(result.length, 2)
   assert.equal(result[0].canonicalName, 'Mrs. Gardiner')
+  assert.deepEqual(result[0].aliases, [])
+  assert.equal(result[1].canonicalName, "Mrs. Gardiner's other aunt")
+  assert.equal(result[1].resolutionStatus, 'candidate')
 })
 
 test('resolver keeps weak one-off character references as candidates', () => {
@@ -698,6 +770,61 @@ test('resolver keeps weak one-off character references as candidates', () => {
     })]
   })
   assert.equal(result[0].resolutionStatus, 'candidate')
+})
+
+test('resolver keeps a repeated first-person pronoun out of the published roster', () => {
+  const observations = [100, 200, 300, 400, 500, 600].map((startOffset, index) => observation({
+    id: `11111111-1111-4111-8111-${String(112950 + index).padStart(12, '0')}`,
+    type: 'character_dialogue', candidate: 'I', quote: 'I answered from the room.', startOffset
+  }))
+  const [character] = resolveBookAnalysisEntities({ observations })
+  assert.equal(character.canonicalName, 'I')
+  assert.equal(character.resolutionStatus, 'candidate')
+})
+
+test('resolver never carries a weak pronoun into a named character alias', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111112957',
+      type: 'character_alias', candidate: 'Griffin', related: ['I'],
+      quote: 'I answered, and Griffin was named later.', startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222957',
+      type: 'character_action', candidate: 'Griffin',
+      quote: 'Griffin crossed the room.', startOffset: 200
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333957',
+      type: 'character_dialogue', candidate: 'I',
+      quote: 'I answered from the room.', startOffset: 300
+    })
+  ]
+  const characters = resolveBookAnalysisEntities({ observations })
+  assert.equal(characters.length, 2)
+  assert.deepEqual(characters.find(({ canonicalName }) => canonicalName === 'Griffin').aliases, [])
+  assert.equal(
+    characters.find(({ canonicalName }) => canonicalName === 'I').resolutionStatus,
+    'candidate'
+  )
+})
+
+test('resolver requires source-script grounding for a generated character name', () => {
+  const ungrounded = [100, 200, 300].map((startOffset, index) => observation({
+    id: `22222222-2222-4222-8222-${String(112960 + index).padStart(12, '0')}`,
+    type: 'character_action', candidate: 'Гриффин',
+    quote: index === 0 ? 'ГЛАВА I. The invisible man crossed the room.' :
+      'The invisible man crossed the room.', startOffset
+  }))
+  const [candidate] = resolveBookAnalysisEntities({ observations: ungrounded })
+  assert.equal(candidate.resolutionStatus, 'candidate')
+
+  const grounded = ungrounded.concat(observation({
+    id: '33333333-3333-4333-8333-333333112963',
+    type: 'character_dialogue', candidate: 'Гриффин', quote: 'Гриффин ответил.', startOffset: 400
+  }))
+  const [confirmed] = resolveBookAnalysisEntities({ observations: grounded })
+  assert.equal(confirmed.resolutionStatus, 'confirmed')
 })
 
 test('resolver keeps a one-off proper-name mention as a candidate until character behaviour corroborates it', () => {
@@ -927,6 +1054,180 @@ test('resolver assigns a relationship observation only to its relationship entit
   )
 })
 
+test('resolver keeps grounded relationship participants separate through every merge pass', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111112934',
+      type: 'character_action', candidate: 'Mrs. Vane', fact: 'female',
+      quote: 'Mrs. Vane waited in the theatre.', startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222934',
+      type: 'character_dialogue', candidate: 'Mrs. Vane', fact: 'female',
+      quote: 'Mrs. Vane answered quietly.', startOffset: 200
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333934',
+      type: 'character_action', candidate: 'Sibyl Vane', fact: 'female',
+      quote: 'Sibyl Vane crossed the room.', startOffset: 300
+    }),
+    observation({
+      id: '44444444-4444-4444-8444-444444444934',
+      type: 'character_dialogue', candidate: 'Sibyl Vane', fact: 'female',
+      quote: 'Sibyl Vane called for her mother.', startOffset: 400
+    }),
+    observation({
+      id: '55555555-5555-4555-8555-555555555934',
+      type: 'character_action', candidate: 'James Vane', fact: 'male',
+      quote: 'James Vane entered.', startOffset: 500
+    }),
+    observation({
+      id: '66666666-6666-4666-8666-666666666934',
+      type: 'relationship', kind: 'relationship',
+      candidate: 'Mrs. Vane and Sibyl Vane', related: ['Mrs. Vane', 'Sibyl Vane'],
+      fact: 'Mrs. Vane is Sibyl Vane\'s mother.',
+      quote: 'Mrs. Vane warned her daughter, Sibyl Vane.', startOffset: 600
+    })
+  ]
+
+  const characters = resolveBookAnalysisEntities({ observations })
+    .filter(({ entityKind }) => entityKind === 'character')
+  assert.deepEqual(
+    characters.map(({ canonicalName }) => canonicalName),
+    ['Mrs. Vane', 'Sibyl Vane', 'James Vane']
+  )
+  assert.ok(characters.every(({ aliases }) => aliases.length === 0))
+})
+
+test('resolver propagates a grounded relationship separation through short-name bridges', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111112958',
+      type: 'character_alias', candidate: 'Anna Vale', related: ['Anna'],
+      quote: 'Anna Vale was called Anna.', startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222958',
+      type: 'character_alias', candidate: 'Beth Vale', related: ['Beth'],
+      quote: 'Beth Vale was called Beth.', startOffset: 200
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333958',
+      type: 'character_alias', candidate: 'Anna', related: ['Beth'],
+      quote: 'Anna and Beth answered together.', startOffset: 300
+    }),
+    observation({
+      id: '44444444-4444-4444-8444-444444444958',
+      type: 'relationship', kind: 'relationship',
+      candidate: 'Anna Vale and Beth Vale', related: ['Anna Vale', 'Beth Vale'],
+      fact: 'Anna Vale is Beth Vale\'s sister.',
+      quote: 'Anna Vale spoke to her sister Beth Vale.', startOffset: 400
+    })
+  ]
+  const characters = resolveBookAnalysisEntities({ observations })
+    .filter(({ entityKind }) => entityKind === 'character')
+  assert.equal(characters.length, 2)
+  assert.deepEqual(
+    characters.map(({ canonicalName, aliases }) => new Set([canonicalName, ...aliases])),
+    [new Set(['Anna Vale', 'Anna']), new Set(['Beth Vale', 'Beth'])]
+  )
+})
+
+test('resolver does not propagate a short-name separation to a leading-name insertion', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111112961',
+      type: 'character_action', candidate: 'Alice Bell',
+      quote: 'Alice Bell crossed the room.', startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222961',
+      type: 'character_alias', candidate: 'Mary Alice Bell', related: ['Beth Vale'],
+      quote: 'Mary Alice Bell, known here as Beth Vale, answered.', startOffset: 200
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333961',
+      type: 'character_dialogue', candidate: 'Beth Vale',
+      quote: 'Beth Vale replied.', startOffset: 300
+    }),
+    observation({
+      id: '44444444-4444-4444-8444-444444444961',
+      type: 'relationship', kind: 'relationship',
+      candidate: 'Alice Bell and Beth Vale', related: ['Alice Bell', 'Beth Vale'],
+      fact: 'Alice Bell speaks with Beth Vale.',
+      quote: 'Alice Bell spoke to Beth Vale.', startOffset: 400
+    })
+  ]
+  const characters = resolveBookAnalysisEntities({ observations })
+    .filter(({ entityKind }) => entityKind === 'character')
+  assert.equal(characters.length, 2)
+  assert.deepEqual(
+    characters.map(({ canonicalName, aliases }) => new Set([canonicalName, ...aliases])),
+    [new Set(['Alice Bell']), new Set(['Mary Alice Bell', 'Beth Vale'])]
+  )
+})
+
+test('resolver never folds an owned role into its named owner', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111112935',
+      type: 'character_action', candidate: 'Mr. Hubbard',
+      quote: 'Mr. Hubbard opened the door.', startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222935',
+      type: 'character_dialogue', candidate: 'Mr. Hubbard',
+      quote: 'Mr. Hubbard answered.', startOffset: 200
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333935',
+      type: 'character_action', candidate: "Mr. Hubbard's assistant",
+      quote: "Mr. Hubbard's assistant carried the bag.", startOffset: 300
+    }),
+    observation({
+      id: '44444444-4444-4444-8444-444444444935',
+      type: 'character_dialogue', candidate: "Mr. Hubbard's assistant",
+      quote: "Mr. Hubbard's assistant replied.", startOffset: 400
+    })
+  ]
+
+  const characters = resolveBookAnalysisEntities({ observations })
+    .filter(({ entityKind }) => entityKind === 'character')
+  assert.deepEqual(
+    characters.map(({ canonicalName }) => canonicalName),
+    ['Mr. Hubbard', "Mr. Hubbard's assistant"]
+  )
+  assert.ok(characters.every(({ aliases }) => aliases.length === 0))
+})
+
+test('resolver never turns one owned kinship label into a global family role', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111112962',
+      type: 'character_action', candidate: 'Father',
+      quote: 'Father marked the books.', startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222962',
+      type: 'character_dialogue', candidate: 'Father',
+      quote: 'Father answered the girls.', startOffset: 200
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333962',
+      type: 'character_mention', candidate: "Laurie's father",
+      related: ['Laurie'],
+      quote: "It was Laurie's father who entered.", startOffset: 300
+    })
+  ]
+  const characters = resolveBookAnalysisEntities({ observations })
+    .filter(({ entityKind }) => entityKind === 'character')
+  assert.equal(characters.length, 2)
+  assert.deepEqual(characters.map(({ canonicalName }) => canonicalName), [
+    'Father', "Laurie's father"
+  ])
+  assert.ok(characters.every(({ aliases }) => aliases.length === 0))
+})
+
 test('resolver does not split a relationship label when both participants are not grounded', () => {
   const result = resolveBookAnalysisEntities({ observations: [observation({
     id: '22222222-2222-4222-8222-222222222943',
@@ -969,6 +1270,118 @@ test('resolver merges one unambiguous chain of full-name fragments', () => {
     'Раскольников', 'Родион Раскольников', 'Родион Романович'
   ])
   assert.deepEqual(result[0].evidenceIds, observations.map(({ id }) => id))
+})
+
+test('resolver does not treat a leading given-name insertion as a middle-name expansion', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111112944',
+      type: 'character_action', candidate: 'Alice Bell',
+      quote: 'Alice Bell crossed the room.', startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222944',
+      type: 'character_dialogue', candidate: 'Alice Bell',
+      quote: 'Alice Bell answered.', startOffset: 200
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333944',
+      type: 'character_action', candidate: 'Mary Alice Bell',
+      quote: 'Mary Alice Bell entered.', startOffset: 300
+    }),
+    observation({
+      id: '44444444-4444-4444-8444-444444444944',
+      type: 'character_dialogue', candidate: 'Mary Alice Bell',
+      quote: 'Mary Alice Bell spoke.', startOffset: 400
+    })
+  ]
+  const characters = resolveBookAnalysisEntities({ observations })
+  assert.deepEqual(characters.map(({ canonicalName }) => canonicalName), [
+    'Alice Bell', 'Mary Alice Bell'
+  ])
+})
+
+test('resolver treats a dotted S middle initial as a name part, not a possessive marker', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111112959',
+      type: 'character_action', candidate: 'James S. Potter',
+      quote: 'James S. Potter entered.', startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222959',
+      type: 'character_dialogue', candidate: 'James',
+      quote: 'James answered.', startOffset: 200
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333959',
+      type: 'character_action', candidate: 'James',
+      quote: 'James crossed the room.', startOffset: 300
+    })
+  ]
+  const [character] = resolveBookAnalysisEntities({ observations })
+  assert.deepEqual(new Set([character.canonicalName, ...character.aliases]), new Set([
+    'James S. Potter', 'James'
+  ]))
+})
+
+test('resolver keeps a repeated ambiguous family title separate from full-name relatives', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111112945',
+      type: 'character_action', candidate: 'Mr. Dashwood', startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222945',
+      type: 'character_dialogue', candidate: 'Mr. Dashwood', startOffset: 200
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333945',
+      type: 'character_action', candidate: 'Mr. Henry Dashwood', startOffset: 300
+    }),
+    observation({
+      id: '44444444-4444-4444-8444-444444444945',
+      type: 'character_action', candidate: 'Mr. John Dashwood', startOffset: 400
+    }),
+    observation({
+      id: '55555555-5555-4555-8555-555555555945',
+      type: 'character_dialogue', candidate: 'Mr. Henry Dashwood', startOffset: 500
+    }),
+    observation({
+      id: '66666666-6666-4666-8666-666666666945',
+      type: 'character_dialogue', candidate: 'Mr. John Dashwood', startOffset: 600
+    })
+  ]
+  const characters = resolveBookAnalysisEntities({ observations })
+  const title = characters.find(({ canonicalName }) => canonicalName === 'Mr. Dashwood')
+  assert.equal(title.resolutionStatus, 'candidate')
+  assert.deepEqual(title.aliases, [])
+  assert.equal(characters.length, 3)
+})
+
+test('resolver confirms a dominant family title without merging competing full forms', () => {
+  const observations = [
+    ...Array.from({ length: 20 }, (_, index) => observation({
+      id: `11111111-1111-4111-8111-${String(index).padStart(12, '0')}`,
+      type: index % 2 ? 'character_dialogue' : 'character_action',
+      candidate: 'Mrs. Dashwood', startOffset: 100 + index * 10
+    })),
+    ...[0, 1].map((index) => observation({
+      id: `22222222-2222-4222-8222-${String(index).padStart(12, '0')}`,
+      type: index ? 'character_dialogue' : 'character_action',
+      candidate: 'Mrs. Henry Dashwood', startOffset: 400 + index * 10
+    })),
+    ...[0, 1].map((index) => observation({
+      id: `33333333-3333-4333-8333-${String(index).padStart(12, '0')}`,
+      type: index ? 'character_dialogue' : 'character_action',
+      candidate: 'Mrs. John Dashwood', startOffset: 500 + index * 10
+    }))
+  ]
+  const characters = resolveBookAnalysisEntities({ observations })
+  const title = characters.find(({ canonicalName }) => canonicalName === 'Mrs. Dashwood')
+  assert.equal(title.resolutionStatus, 'confirmed')
+  assert.deepEqual(title.aliases, [])
+  assert.equal(characters.length, 3)
 })
 
 test('resolver does not merge an ambiguous surname into two full names', () => {
@@ -1073,7 +1486,7 @@ test('resolver accepts a repeated generated full-name expansion for one unique g
   ]))
 })
 
-test('resolver merges one gender-compatible titled surname with its full name', () => {
+test('resolver does not infer a titled-surname identity from gender alone', () => {
   const observations = [
     observation({
       id: '11111111-1111-4111-8111-111111112001',
@@ -1105,11 +1518,100 @@ test('resolver merges one gender-compatible titled surname with its full name', 
     })
   ]
   const result = resolveBookAnalysisEntities({ observations })
-  assert.equal(result.length, 2)
-  assert.deepEqual(result.map(({ canonicalName, aliases }) => ({ canonicalName, aliases })), [
-    { canonicalName: 'Fitzwilliam Darcy', aliases: ['Mr. Darcy'] },
-    { canonicalName: 'Georgiana Darcy', aliases: ['Miss Darcy'] }
+  assert.equal(result.length, 4)
+  assert.deepEqual(result.map(({ canonicalName }) => canonicalName), [
+    'Mr. Darcy', 'Fitzwilliam Darcy', 'Miss Darcy', 'Georgiana Darcy'
   ])
+  assert.ok(result.every(({ aliases }) => aliases.length === 0))
+})
+
+test('resolver accepts an approved title and full-name pair when only another gender competes', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111112963',
+      type: 'character_action', candidate: 'Mr. Bingley', fact: 'male', startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222963',
+      type: 'character_dialogue', candidate: 'Charles Bingley', fact: 'male', startOffset: 200
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333963',
+      type: 'character_action', candidate: 'Caroline Bingley', fact: 'female', startOffset: 300
+    }),
+    observation({
+      id: '44444444-4444-4444-8444-444444444963',
+      type: 'character_dialogue', candidate: 'Caroline Bingley', fact: 'female', startOffset: 400
+    })
+  ]
+  const provisional = resolveBookAnalysisEntities({ observations })
+  const byName = new Map(provisional.map((entity) => [entity.canonicalName, entity.entityKey]))
+  const characters = resolveBookAnalysisEntities({
+    observations,
+    identityMerges: [{
+      leftEntityKey: byName.get('Mr. Bingley'),
+      rightEntityKey: byName.get('Charles Bingley'),
+      basis: 'name_variant'
+    }]
+  })
+  assert.equal(characters.length, 2)
+  assert.deepEqual(
+    new Set([characters[0].canonicalName, ...characters[0].aliases]),
+    new Set(['Mr. Bingley', 'Charles Bingley'])
+  )
+})
+
+test('resolver blocks an approved leading-name insertion even without another family competitor', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111112964',
+      type: 'character_action', candidate: 'Alice Bell', fact: 'female', startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222964',
+      type: 'character_action', candidate: 'Mary Alice Bell', fact: 'female', startOffset: 200
+    })
+  ]
+  const provisional = resolveBookAnalysisEntities({ observations })
+  const result = resolveBookAnalysisEntities({
+    observations,
+    identityMerges: [{
+      leftEntityKey: provisional[0].entityKey,
+      rightEntityKey: provisional[1].entityKey,
+      basis: 'name_variant'
+    }]
+  })
+  assert.deepEqual(result.map(({ canonicalName }) => canonicalName), [
+    'Alice Bell', 'Mary Alice Bell'
+  ])
+})
+
+test('resolver rejects repeated one-sided titled-family aliases when two relatives compete', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111112960',
+      type: 'character_alias', candidate: 'Edward Ferrars', related: ['Mr. Ferrars'],
+      quote: 'Mr. Ferrars is the happy man.', startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222960',
+      type: 'character_alias', candidate: 'Edward Ferrars', related: ['Mr. Ferrars'],
+      quote: 'You have seen enough of Edward.', startOffset: 200
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333960',
+      type: 'character_action', candidate: 'Robert Ferrars', fact: 'male',
+      quote: 'Robert Ferrars entered.', startOffset: 300
+    }),
+    observation({
+      id: '44444444-4444-4444-8444-444444444960',
+      type: 'character_action', candidate: 'Mr. Ferrars', fact: 'male',
+      quote: 'Mr. Ferrars arrived later.', startOffset: 400
+    })
+  ]
+  const characters = resolveBookAnalysisEntities({ observations })
+  assert.equal(characters.length, 3)
+  assert.ok(characters.every(({ aliases }) => aliases.length === 0))
 })
 
 test('resolver applies an explicit signed married-name transition', () => {
@@ -1410,6 +1912,30 @@ test('resolver does not treat a one-letter signer initial as an honorific name',
   ]
   const characters = resolveBookAnalysisEntities({ observations })
   assert.equal(characters.length, 2)
+})
+
+test('resolver blocks an approved signer-initial and honorific merge', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111112965',
+      type: 'character_action', candidate: 'Mr. Gardiner', fact: 'male', startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222965',
+      type: 'character_action', candidate: 'M. Gardiner', startOffset: 200
+    })
+  ]
+  const provisional = resolveBookAnalysisEntities({ observations })
+  const result = resolveBookAnalysisEntities({
+    observations,
+    identityMerges: [{
+      leftEntityKey: provisional[0].entityKey,
+      rightEntityKey: provisional[1].entityKey,
+      basis: 'name_variant'
+    }]
+  })
+  assert.equal(result.length, 2)
+  assert.ok(result.every(({ aliases }) => aliases.length === 0))
 })
 
 test('resolver may use one attributed behaviour when one strong full form is unique', () => {

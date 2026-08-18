@@ -173,12 +173,49 @@ test('identity reconciliation forbids incompatible genders before generation', (
   }), [])
 })
 
-test('identity reconciliation safely skips rosters above the hard limit', () => {
+test('identity reconciliation offers a near-spelling name only for adjudication', () => {
+  const sybil = character(1, 'Sybil')
+  const sibyl = character(2, 'Sibyl Vane')
+  const request = requestFor(
+    [sybil, sibyl],
+    [observation(1, 'Sybil'), observation(2, 'Sibyl Vane')]
+  )
+  assert.deepEqual(request.candidatePairs, [{
+    leftEntityKey: sybil.entityKey,
+    rightEntityKey: sibyl.entityKey,
+    signals: ['near_spelling_given_name']
+  }])
+})
+
+test('identity reconciliation bounds an oversized roster to candidate-pair participants', () => {
   const count = BOOK_IDENTITY_RECONCILIATION_LIMITS.maxCharacterEntities + 1
   const entities = Array.from({ length: count }, (_, index) => character(index + 1, `Name ${index}`))
   const observations = Array.from(
     { length: count },
     (_, index) => observation(index + 1, `Name ${index}`)
+  )
+  const request = requestFor(entities, observations)
+  assert.ok(request)
+  assert.ok(request.roster.length <= BOOK_IDENTITY_RECONCILIATION_LIMITS.maxCharacterEntities)
+  const rosterKeys = new Set(request.roster.map(({ entityKey }) => entityKey))
+  assert.ok(request.candidatePairs.every(({ leftEntityKey, rightEntityKey }) =>
+    rosterKeys.has(leftEntityKey) && rosterKeys.has(rightEntityKey)
+  ))
+})
+
+test('identity reconciliation skips an oversized roster without candidate pairs', () => {
+  const count = BOOK_IDENTITY_RECONCILIATION_LIMITS.maxCharacterEntities + 1
+  const entities = Array.from({ length: count }, (_, index) =>
+    character(index + 1, `Person${String(index).padStart(3, '0').split('').map((value) =>
+      value.repeat(4)
+    ).join('')}`)
+  )
+  const observations = Array.from(
+    { length: count },
+    (_, index) => observation(
+      index + 1,
+      `Person${String(index).padStart(3, '0').split('').map((value) => value.repeat(4)).join('')}`
+    )
   )
   assert.equal(requestFor(entities, observations), null)
 })

@@ -5,15 +5,15 @@
 
 ## Исходное состояние
 
-- На текущем продолжении проверен `HEAD` `bede6d3935bbb3e5b5dbf4937f070212364400c5`;
+- На текущем продолжении проверен `HEAD` `ff07ea16dbad09f3e2e5a88962442a210482780b`;
   переданный в задаче `742a1530` устарел. Worktree уже содержал несвязанные backend/mobile
-  изменения; они сохранены, коммитов в рамках исследования нет.
-- Текущий research-код: pipeline `book-analysis-v32`, scan `book-scan-v14`, synthesis
-  `character-profile-v10`, identity `character-identity-v11`; внешний результат по-прежнему
+  изменения; они сохранены и не включаются в research-коммиты.
+- Текущий кандидат: pipeline `book-analysis-v38`, scan `book-scan-v14`, synthesis
+  `character-profile-v10`, identity `character-identity-v17`; внешний результат по-прежнему
   `book-markup-v3`.
-- Активные локальные workers намеренно не перезапускались и остаются на прежних образах. Все v28–v31
-  показатели ниже получены одноразовыми `--read-only` containers на замороженных observations либо
-  детерминированным повторным фильтром сохранённого результата.
+- Все v28–v38 показатели ниже получены в изолированном локальном stack: read-only replay
+  на восьми замороженных observation snapshots или детерминированный повторный фильтр
+  сохранённого результата. Ни TEST, ни production не изменялись.
 - Фактический размер scan core: около 4 000 символов, overlap 500. Числа v17 в
   `book-analysis-v3.md` устарели.
 
@@ -102,6 +102,7 @@ full-novel gold сопоставимого с BOOKCOREF не найдено, п�
 | 20 | `book-analysis-v30`, `character-identity-v10`: dominant-evidence given/full-name join; self-declared first name with shared family bridge; explicit spouse surname transition; triangulated family nickname | Full-book Little Women roster разделял `Beth/Beth March`, `Jo/Jo March/Jo Bhaer`, `Laurie/Theodore Laurence` и `Marmee/Mrs. March`, из-за чего personality harness честно отказывался выбирать 4 ambiguous gold characters | Все четыре lifecycle/alias группы схлопнуты в one-to-one confirmed IDs на неизменных `3299` observations. Frozen identity gates P&P/Siddhartha/Alice/LitBank Chapter I остались PASS, significant recall `100%`, critical merge `0` | Принять в research candidate: каждое новое правило имеет positive и hard-negative tests; gold labels в resolver не передавались |
 | 21 | `book-analysis-v31`, `character-profile-v10`: direct trait считается устойчивым только при lexical support в quote; `wore off`/`no longer` и аналоги делают evidence временным | Новый provider replay Little Women выявил нестабильный `bashful` (`soon wore off`) и неподтверждённый direct label `gentle`; широкое ослабление ухудшает factual precision | V31 вернул 13 traits для 6/6 characters; single-review cited-evidence audit `13/13`, coverage traits/description/UI/voice `100%`, contradictions `0`. SWCPQ P/R/F1 `15,38/8,33/10,81%`, FAIL | Factual gate на второй книге пройден; crowd top-4 semantic gate не пройден. Не подмешивать SWCPQ answer key в prompt |
 | 22 | `book-analysis-v32`, `character-identity-v11`: relationship observation принадлежит только relationship entity; участники связываются с уже независимо подтверждёнными character entities, но не получают тот же evidence ID | Dorian Gray v31 завершил scan `108/108`, затем пять раз падал в resolve: цитата `Lord Henry Wotton and Lord Fermor` одновременно назначалась relationship и двум character entities, нарушая repository invariant `one evidence → one entity` | Read-only replay тех же `1262` observations и тех же трёх frozen identity merges: v31 имел 4 invariant violations, v32 — `0`; targeted resolver/repository/reconciliation suite `77/77` PASS | Принять общее исправление и повторить Dorian новым versioned run; не ослаблять repository invariant |
+| 23 | Кандидат `book-analysis-v38`, `character-identity-v17`: component-level hard separation для independently grounded родственников и owned roles; удалена gender-only догадка `Mr/Mrs/Miss Surname → Given Surname`; name-fragment merge не допускает leading-given insertion; weak pronouns и не grounded cross-script names не подтверждаются повторяемостью; collision `M. Surname`/`Mr Surname` запрещён до reconciliation; для состава >128 reconciliation получает bounded endpoints пар-кандидатов; semantic nickname между полными family names разрешён только с basis `nickname`; near-spelling имени создаёт только LLM-пару; однословное имя не может стать фамилией другого персонажа при competing full-given form | Stage-8 выявил общие deterministic ошибки: Sibyl/Mrs Vane, Alice/Mary Alice/Mr Bell, Lucy/Mrs Ferrars, owner/assistant, `I`, generated `Гриффин`, `M. Gardiner→Mr Gardiner`; Little Women roster cap отключал alias adjudication; Dorian сохранял Sibyl/Sybil; первый spelling replay ошибочно предлагал Jane/Flora Jane при Jane Andrews | Frozen replay на 8 неизменных snapshots: critical merge `0` на всех; significant P/R/F1: P&P `90,00/100/94,74%`, Siddhartha `100/100/100%`, Alice `91,67/100/95,65%`, Little Women Ch.1 `100/100/100%`, Anne `100/100/100%`, Dorian `100/100/100%` после frozen canonical-equivalence `Duchess→Duchess of Monmouth`, Invisible `90/90/90%`, Sense `92,31/100/96,00%`. Targeted `128/128`, full gateway `471 passed`, `0 failed`, `7 skipped` | Принять v38 как новый research candidate по identity. Порог P/R/F1 достигнут на всех 8 книгах; P&P full duplicate rate `5,263%` на `0,263` п.п. выше вспомогательного лимита `5%` и остаётся следующим bounded defect. `BOOKMAP.STABLE.1` не передвигать; personality/description оценивать отдельно |
 
 ## Результаты 1 → 2 → 4 на `book-scan-v13` / `character-profile-v4`
 

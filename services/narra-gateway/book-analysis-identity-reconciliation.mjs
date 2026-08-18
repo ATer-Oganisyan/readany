@@ -68,6 +68,36 @@ function orderedSubset(shorter, longer) {
   return false
 }
 
+function nearSpellingToken(left, right) {
+  if (left === right || Math.min(left.length, right.length) < 4) return false
+  if (Math.abs(left.length - right.length) > 1) return false
+  if (left.length === right.length) {
+    const differences = []
+    for (let index = 0; index < left.length; index += 1) {
+      if (left[index] !== right[index]) differences.push(index)
+    }
+    if (differences.length === 1) return true
+    return differences.length === 2 &&
+      left[differences[0]] === right[differences[1]] &&
+      left[differences[1]] === right[differences[0]]
+  }
+  const [shorter, longer] = left.length < right.length ? [left, right] : [right, left]
+  let shortIndex = 0
+  let longIndex = 0
+  let skipped = false
+  while (shortIndex < shorter.length && longIndex < longer.length) {
+    if (shorter[shortIndex] === longer[longIndex]) {
+      shortIndex += 1
+      longIndex += 1
+      continue
+    }
+    if (skipped) return false
+    skipped = true
+    longIndex += 1
+  }
+  return true
+}
+
 class DisjointSet {
   constructor(values) {
     this.parents = new Map(values.map((value) => [value, value]))
@@ -232,6 +262,7 @@ function namePairSignal(left, right) {
       }
       if (leftTokens[0] === rightTokens[0]) return 'shared_given_name'
       if (leftTokens.at(-1) === rightTokens.at(-1)) return 'shared_family_name'
+      if (nearSpellingToken(leftTokens[0], rightTokens[0])) return 'near_spelling_given_name'
     }
   }
   return null
@@ -312,7 +343,6 @@ export function buildBookIdentityReconciliationRequest({
     .filter(({ entityKind }) => entityKind === 'character')
     .sort((left, right) => compareText(left.entityKey, right.entityKey))
   if (characters.length < 2) return null
-  if (characters.length > MAX_CHARACTER_ENTITIES) return null
   const common = {
     runId,
     bookEditionId,
@@ -322,19 +352,37 @@ export function buildBookIdentityReconciliationRequest({
     bookTitle: title,
     bookAuthor: author || ''
   }
-  const forbidden = forbiddenPairs(entities, observations)
-  const blockedPairs = new Set(forbidden.map(({ leftEntityKey, rightEntityKey }) =>
+  const allForbidden = forbiddenPairs(entities, observations)
+  const blockedPairs = new Set(allForbidden.map(({ leftEntityKey, rightEntityKey }) =>
     pairKey(leftEntityKey, rightEntityKey)
   ))
-  common.forbiddenPairs = forbidden
-  common.candidatePairs = reconciliationCandidatePairs(characters, observations, blockedPairs)
-  if (!common.candidatePairs.length) return null
+  let candidatePairs = reconciliationCandidatePairs(characters, observations, blockedPairs)
+  if (!candidatePairs.length) return null
+  let requestCharacters = characters
+  if (characters.length > MAX_CHARACTER_ENTITIES) {
+    const includedKeys = new Set()
+    candidatePairs = candidatePairs.filter(({ leftEntityKey, rightEntityKey }) => {
+      const additional = Number(!includedKeys.has(leftEntityKey)) +
+        Number(!includedKeys.has(rightEntityKey))
+      if (includedKeys.size + additional > MAX_CHARACTER_ENTITIES) return false
+      includedKeys.add(leftEntityKey)
+      includedKeys.add(rightEntityKey)
+      return true
+    })
+    requestCharacters = characters.filter(({ entityKey }) => includedKeys.has(entityKey))
+  }
+  if (!candidatePairs.length) return null
+  const requestKeys = new Set(requestCharacters.map(({ entityKey }) => entityKey))
+  common.forbiddenPairs = allForbidden.filter(({ leftEntityKey, rightEntityKey }) =>
+    requestKeys.has(leftEntityKey) && requestKeys.has(rightEntityKey)
+  )
+  common.candidatePairs = candidatePairs
   let request = {
     ...common,
-    roster: reconciliationRoster(characters, observations, MAX_EVIDENCE_PER_ENTITY)
+    roster: reconciliationRoster(requestCharacters, observations, MAX_EVIDENCE_PER_ENTITY)
   }
   if (serializedBytes(request) > MAX_REQUEST_BYTES) {
-    request = { ...common, roster: reconciliationRoster(characters, observations, 1) }
+    request = { ...common, roster: reconciliationRoster(requestCharacters, observations, 1) }
   }
   return serializedBytes(request) <= MAX_REQUEST_BYTES ? request : null
 }
