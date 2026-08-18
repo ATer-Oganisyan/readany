@@ -1,4 +1,12 @@
-import { Check, ChevronLeftIcon, Cloud, Plus, Trash2, X } from "@/components/ui/Icon";
+import {
+  Check,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  Cloud,
+  Plus,
+  Trash2,
+  X,
+} from "@/components/ui/Icon";
 import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
 import { Text, TextInput } from "@/components/ui/Typography";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
@@ -322,8 +330,9 @@ export function EmbeddingPage() {
               ]}
             >
               <Text style={[styles.nextText, { color: colors.primaryForeground }]}>
-                {t("common.next", "Next")} →
+                {t("common.next", "Next")}
               </Text>
+              <ChevronRightIcon size={18} color={colors.primaryForeground} />
             </Pressable>
           </View>
         </View>
@@ -452,6 +461,9 @@ const styles = StyleSheet.create({
   skipBtn: { paddingVertical: 10 },
   skipText: { fontSize: 14 },
   nextBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 12,

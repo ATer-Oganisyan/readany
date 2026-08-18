@@ -1,5 +1,7 @@
+import { ChevronRightIcon } from "@/components/ui/Icon";
 import { Text } from "@/components/ui/Typography";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
+import { toast } from "@/lib/notifications";
 import { useUpdateStore } from "@/stores/update-store";
 import { getPlatformService } from "@readany/core/services";
 import { checkForUpdate } from "@readany/core/update";
@@ -7,7 +9,6 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Linking,
   ScrollView,
@@ -68,10 +69,10 @@ export default function AboutScreen() {
       if (result.hasUpdate && result.release) {
         showDialog();
       } else {
-        Alert.alert(t("settings.upToDate"), t("settings.upToDate"));
+        toast.success(t("settings.upToDate"), { description: t("settings.upToDate") });
       }
     } catch {
-      Alert.alert(t("settings.updateError"), t("settings.updaterCheckFailed"));
+      toast.error(t("settings.updateError"), { description: t("settings.updaterCheckFailed") });
     } finally {
       setChecking(false);
     }
@@ -125,7 +126,7 @@ export default function AboutScreen() {
                 <Text style={styles.updateBannerText}>
                   {t("settings.newVersionAvailable", { version: checkResult.latestVersion })}
                 </Text>
-                <Text style={styles.linkArrow}>→</Text>
+                <ChevronRightIcon size={18} color={colors.mutedForeground} />
               </TouchableOpacity>
             )}
           </View>
@@ -155,7 +156,7 @@ export default function AboutScreen() {
                   activeOpacity={0.7}
                 >
                   <Text style={styles.linkText}>{link.label}</Text>
-                  <Text style={styles.linkArrow}>→</Text>
+                  <ChevronRightIcon size={18} color={colors.mutedForeground} />
                 </TouchableOpacity>
               ))}
             </View>
@@ -293,10 +294,6 @@ const makeStyles = (colors: ThemeColors) =>
     linkText: {
       fontSize: fontSize.md,
       color: colors.foreground,
-    },
-    linkArrow: {
-      fontSize: 16,
-      color: colors.mutedForeground,
     },
     madeBy: {
       textAlign: "center",

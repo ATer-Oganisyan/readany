@@ -1,8 +1,8 @@
+import { toast } from "@/lib/notifications";
 import { getPlatformService } from "@readany/core/services";
 import type { Book } from "@readany/core/types";
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert } from "react-native";
 
 interface UseBookDownloadOptions {
   loadBooks: () => Promise<void>;
@@ -35,7 +35,9 @@ export function useBookDownload({ loadBooks, onSuccess }: UseBookDownloadOptions
           setDownloadingBookId(null);
           setDownloadingBookTitle("");
           setDownloadProgress(null);
-          Alert.alert(t("common.error", "错误"), t("library.syncNotConfigured", "请先配置同步"));
+          toast.error(t("common.error", "Ошибка"), {
+            description: t("library.syncNotConfigured", "Сначала настройте синхронизацию"),
+          });
           return false;
         }
 
@@ -47,10 +49,9 @@ export function useBookDownload({ loadBooks, onSuccess }: UseBookDownloadOptions
           setDownloadingBookId(null);
           setDownloadingBookTitle("");
           setDownloadProgress(null);
-          Alert.alert(
-            t("common.error", "错误"),
-            t("library.passwordNotFound", "未找到同步密码，请重新配置"),
-          );
+          toast.error(t("common.error", "Ошибка"), {
+            description: t("library.passwordNotFound", "Пароль синхронизации не найден"),
+          });
           return false;
         }
 
@@ -66,17 +67,21 @@ export function useBookDownload({ loadBooks, onSuccess }: UseBookDownloadOptions
         await loadBooks();
 
         if (outcome === "not-found") {
-          Alert.alert(
-            t("common.error", "错误"),
-            t(
+          toast.error(t("common.error", "Ошибка"), {
+            description: t(
               "library.downloadNotFound",
-              "远端没有这本书的文件，可能源设备还未上传成功。请回到那台设备重新打开/同步一次，或在此处重新导入。",
+              "На удалённом устройстве нет файла книги. Синхронизируйте её ещё раз или импортируйте заново.",
             ),
-          );
+          });
           return false;
         }
         if (outcome === "error") {
-          Alert.alert(t("common.error", "错误"), t("library.downloadFailed", "下载失败，请重试"));
+          toast.error(t("common.error", "Ошибка"), {
+            description: t(
+              "library.downloadFailed",
+              "Не удалось скачать книгу. Попробуйте ещё раз.",
+            ),
+          });
           return false;
         }
 
@@ -97,7 +102,9 @@ export function useBookDownload({ loadBooks, onSuccess }: UseBookDownloadOptions
         return true;
       } catch (err) {
         console.error("Download failed:", err);
-        Alert.alert(t("common.error", "错误"), t("library.downloadFailed", "下载失败，请重试"));
+        toast.error(t("common.error", "Ошибка"), {
+          description: t("library.downloadFailed", "Не удалось скачать книгу. Попробуйте ещё раз."),
+        });
         return false;
       } finally {
         setDownloadingBookId(null);

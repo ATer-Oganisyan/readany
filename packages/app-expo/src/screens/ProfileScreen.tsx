@@ -4,6 +4,7 @@ import { NativeSymbol } from "@/components/ui/NativeSymbol";
 import { ScrollViewMarker } from "@/components/ui/ScrollViewMarker";
 import { Text } from "@/components/ui/Typography";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
+import { toast } from "@/lib/notifications";
 import { clearMobileRuntimeCache, formatCacheSize } from "@/lib/platform/mobile-cache";
 import { stopTTSPreview } from "@/lib/platform/tts-preview";
 import {
@@ -370,21 +371,20 @@ export function ProfileScreen() {
               stopTTS();
               stopTTSPreview();
               const result = await clearMobileRuntimeCache();
-              Alert.alert(
-                t("profile.clearCacheDoneTitle", "缓存已清除"),
-                t("profile.clearCacheDoneDesc", {
+              toast.success(t("profile.clearCacheDoneTitle", "Кэш очищен"), {
+                description: t("profile.clearCacheDoneDesc", {
                   count: result.deletedFiles,
                   size: formatCacheSize(result.deletedBytes),
                 }),
-              );
+              });
             } catch (error) {
               console.error("[ProfileScreen] Failed to clear cache:", error);
-              Alert.alert(
-                t("profile.clearCacheFailedTitle", "清除失败"),
-                error instanceof Error
-                  ? error.message
-                  : t("profile.clearCacheFailedDesc", "请稍后重试。"),
-              );
+              toast.error(t("profile.clearCacheFailedTitle", "Не удалось очистить кэш"), {
+                description:
+                  error instanceof Error
+                    ? error.message
+                    : t("profile.clearCacheFailedDesc", "Попробуйте ещё раз позже."),
+              });
             } finally {
               setClearingCache(false);
             }

@@ -1,0 +1,668 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Маппинг иконок</title>
+    <style>
+      :root { color-scheme: light; --ink: #111; --muted: #747474; --line: #e8e8e8; }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; min-width: 320px; background: #fff; color: var(--ink); }
+      body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif; }
+      main { width: min(1320px, calc(100% - 48px)); margin: 0 auto; padding: 28px 0 64px; }
+      header { display: flex; align-items: baseline; justify-content: space-between; gap: 20px; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid var(--ink); }
+      h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -.02em; }
+      .meta { color: var(--muted); font-size: 12px; }
+      .table-wrap { overflow-x: auto; }
+      table { width: 100%; min-width: 940px; border-collapse: collapse; table-layout: fixed; }
+      th { padding: 0 12px 10px; color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .1em; text-align: left; text-transform: uppercase; }
+      th:nth-child(1) { width: 25%; }
+      th:nth-child(2) { width: 24%; }
+      th:nth-child(3) { width: 34%; }
+      th:nth-child(4) { width: 17%; }
+      td { padding: 15px 12px; border-top: 1px solid var(--line); vertical-align: middle; }
+      tbody tr:hover { background: #fafafa; }
+      .was, .became-main { display: flex; align-items: center; gap: 12px; min-height: 28px; }
+      .was { flex-direction: column; align-items: flex-start; gap: 3px; }
+      .meaning, .became strong { font-size: 14px; font-weight: 600; }
+      code { color: var(--muted); font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .icon { width: 24px; height: 24px; display: block; filter: brightness(0); }
+      .became-main > span { display: flex; flex-direction: column; gap: 3px; }
+      .became small { color: var(--muted); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+      .alternatives { display: flex; flex-wrap: wrap; gap: 10px 14px; }
+      .alternative { display: inline-flex; align-items: center; gap: 6px; }
+      .alternative-icon { width: 18px; height: 18px; }
+      .context { color: var(--muted); font-size: 12px; line-height: 1.35; }
+      .context strong, .context span { display: block; }
+      .context strong { margin-bottom: 3px; color: var(--ink); font-size: 12px; font-weight: 600; }
+      .muted { color: var(--muted); }
+      @media (max-width: 700px) { main { width: calc(100% - 24px); padding-top: 18px; } header { align-items: flex-start; flex-direction: column; gap: 5px; } table { min-width: 860px; } td { padding: 13px 10px; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header><h1>Иконки · было → стало</h1><span class="meta">123 сопоставлений</span></header>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Было</th><th>Стало</th><th>Близкие варианты</th><th>Смысл · место</th></tr></thead>
+          <tbody><tr>
+      <td class="was"><span class="meaning">Библиотека</span><code>books.vertical</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/filled/book.svg" alt="" aria-hidden="true" /><span><strong>book</strong><small>filled</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/book-open.svg" alt="" aria-hidden="true" /><code>book-open</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/books-spines.svg" alt="" aria-hidden="true" /><code>books-spines</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/book-open-magnifying-glass.svg" alt="" aria-hidden="true" /><code>book-open-magnifying-glass</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/bookmark.svg" alt="" aria-hidden="true" /><code>bookmark</code></span></div></td>
+      <td class="context"><strong>Tab bar</strong><span>TabNavigator · Library</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Чаты</span><code>message.fill</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/filled/chat-bubble.svg" alt="" aria-hidden="true" /><span><strong>chat-bubble</strong><small>filled</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/chat-bubbles.svg" alt="" aria-hidden="true" /><code>chat-bubbles</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/reply.svg" alt="" aria-hidden="true" /><code>reply</code></span></div></td>
+      <td class="context"><strong>Tab bar</strong><span>TabNavigator · Chats</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Профиль</span><code>person.crop.circle</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/filled/person.svg" alt="" aria-hidden="true" /><span><strong>person</strong><small>filled</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/person-circle.svg" alt="" aria-hidden="true" /><code>person-circle</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/people.svg" alt="" aria-hidden="true" /><code>people</code></span></div></td>
+      <td class="context"><strong>Tab bar</strong><span>TabNavigator · Profile</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Поиск</span><code>magnifyingglass</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/filled/magnifying-glass.svg" alt="" aria-hidden="true" /><span><strong>magnifying-glass</strong><small>filled</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/magnifying-glass-plus.svg" alt="" aria-hidden="true" /><code>magnifying-glass-plus</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/magnifying-glass-minus.svg" alt="" aria-hidden="true" /><code>magnifying-glass-minus</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/book-open-magnifying-glass.svg" alt="" aria-hidden="true" /><code>book-open-magnifying-glass</code></span></div></td>
+      <td class="context"><strong>Tab bar</strong><span>TabNavigator · Search</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Загрузка</span><code>loader / activity</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/pulse-circle.svg" alt="" aria-hidden="true" /><span><strong>pulse-circle</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="muted">—</span></div></td>
+      <td class="context"><strong>Toast</strong><span>ToastPreview · loading</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Успех</span><code>checkmark.circle</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/check-circle.svg" alt="" aria-hidden="true" /><span><strong>check-circle</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/check.svg" alt="" aria-hidden="true" /><code>check</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/checks.svg" alt="" aria-hidden="true" /><code>checks</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/x.svg" alt="" aria-hidden="true" /><code>x</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/x-hexagon.svg" alt="" aria-hidden="true" /><code>x-hexagon</code></span></div></td>
+      <td class="context"><strong>Toast</strong><span>ToastPreview · success</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Ошибка</span><code>xmark.circle</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/exclamation-triangle.svg" alt="" aria-hidden="true" /><span><strong>exclamation-triangle</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/check.svg" alt="" aria-hidden="true" /><code>check</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/check-circle.svg" alt="" aria-hidden="true" /><code>check-circle</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/checks.svg" alt="" aria-hidden="true" /><code>checks</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/x.svg" alt="" aria-hidden="true" /><code>x</code></span></div></td>
+      <td class="context"><strong>Toast</strong><span>ToastPreview · error</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Отправить</span><code>paperplane.fill</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/arrow-block-up.svg" alt="" aria-hidden="true" /><span><strong>arrow-block-up</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/share-network.svg" alt="" aria-hidden="true" /><code>share-network</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/link.svg" alt="" aria-hidden="true" /><code>link</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-from-square-up-right.svg" alt="" aria-hidden="true" /><code>arrow-from-square-up-right</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/paperplane.svg" alt="" aria-hidden="true" /><code>paperplane</code></span></div></td>
+      <td class="context"><strong>Chat</strong><span>NarraChat · send</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Микрофон</span><code>mic.fill</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/mic.svg" alt="" aria-hidden="true" /><span><strong>mic</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="muted">—</span></div></td>
+      <td class="context"><strong>Chat</strong><span>NarraChat · voice input</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Настройки</span><code>gearshape</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/gear.svg" alt="" aria-hidden="true" /><span><strong>gear</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/wrench.svg" alt="" aria-hidden="true" /><code>wrench</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/funnel.svg" alt="" aria-hidden="true" /><code>funnel</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/palette.svg" alt="" aria-hidden="true" /><code>palette</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/sun.svg" alt="" aria-hidden="true" /><code>sun</code></span></div></td>
+      <td class="context"><strong>Reader</strong><span>Reader toolbar</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Наушники</span><code>headphones</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/headphones.svg" alt="" aria-hidden="true" /><span><strong>headphones</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/play.svg" alt="" aria-hidden="true" /><code>play</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/pause.svg" alt="" aria-hidden="true" /><code>pause</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/stop.svg" alt="" aria-hidden="true" /><code>stop</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/volume-2.svg" alt="" aria-hidden="true" /><code>volume-2</code></span></div></td>
+      <td class="context"><strong>Reader</strong><span>Reader toolbar / native iOS</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Пауза</span><code>pause.fill</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/pause.svg" alt="" aria-hidden="true" /><span><strong>pause</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/play.svg" alt="" aria-hidden="true" /><code>play</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/stop.svg" alt="" aria-hidden="true" /><code>stop</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/headphones.svg" alt="" aria-hidden="true" /><code>headphones</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/volume-2.svg" alt="" aria-hidden="true" /><code>volume-2</code></span></div></td>
+      <td class="context"><strong>Reader</strong><span>TTS controls</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Стоп</span><code>stop.fill</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/stop.svg" alt="" aria-hidden="true" /><span><strong>stop</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/play.svg" alt="" aria-hidden="true" /><code>play</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/pause.svg" alt="" aria-hidden="true" /><code>pause</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/headphones.svg" alt="" aria-hidden="true" /><code>headphones</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/volume-2.svg" alt="" aria-hidden="true" /><code>volume-2</code></span></div></td>
+      <td class="context"><strong>Reader</strong><span>TTS controls / native iOS</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Назад</span><code>chevron.backward</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/chevron-left.svg" alt="" aria-hidden="true" /><span><strong>chevron-left</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/chevron-right.svg" alt="" aria-hidden="true" /><code>chevron-right</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/chevron-up.svg" alt="" aria-hidden="true" /><code>chevron-up</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/chevron-down.svg" alt="" aria-hidden="true" /><code>chevron-down</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-left.svg" alt="" aria-hidden="true" /><code>arrow-left</code></span></div></td>
+      <td class="context"><strong>Native</strong><span>Native headers</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Далее</span><code>chevron.forward</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/chevron-right.svg" alt="" aria-hidden="true" /><span><strong>chevron-right</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/chevron-left.svg" alt="" aria-hidden="true" /><code>chevron-left</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/chevron-up.svg" alt="" aria-hidden="true" /><code>chevron-up</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/chevron-down.svg" alt="" aria-hidden="true" /><code>chevron-down</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-left.svg" alt="" aria-hidden="true" /><code>arrow-left</code></span></div></td>
+      <td class="context"><strong>Native</strong><span>Native headers</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Добавить</span><code>plus</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/plus.svg" alt="" aria-hidden="true" /><span><strong>plus</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/plus-circle.svg" alt="" aria-hidden="true" /><code>plus-circle</code></span></div></td>
+      <td class="context"><strong>Native</strong><span>Native buttons / sheets</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Закрыть</span><code>xmark</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/x.svg" alt="" aria-hidden="true" /><span><strong>x</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/check.svg" alt="" aria-hidden="true" /><code>check</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/check-circle.svg" alt="" aria-hidden="true" /><code>check-circle</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/checks.svg" alt="" aria-hidden="true" /><code>checks</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/x-hexagon.svg" alt="" aria-hidden="true" /><code>x-hexagon</code></span></div></td>
+      <td class="context"><strong>Native</strong><span>Native sheets</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">BookOpen</span><code>BookOpenIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/book-open.svg" alt="" aria-hidden="true" /><span><strong>book-open</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/book.svg" alt="" aria-hidden="true" /><code>book</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/books-spines.svg" alt="" aria-hidden="true" /><code>books-spines</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/book-open-magnifying-glass.svg" alt="" aria-hidden="true" /><code>book-open-magnifying-glass</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/bookmark.svg" alt="" aria-hidden="true" /><code>bookmark</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">MessageSquare</span><code>MessageSquareIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/chat-bubble.svg" alt="" aria-hidden="true" /><span><strong>chat-bubble</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/chat-bubbles.svg" alt="" aria-hidden="true" /><code>chat-bubbles</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/reply.svg" alt="" aria-hidden="true" /><code>reply</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Bot</span><code>BotIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/robot.svg" alt="" aria-hidden="true" /><span><strong>robot</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="muted">—</span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">NotebookPen</span><code>NotebookPenIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/pencil-square.svg" alt="" aria-hidden="true" /><span><strong>pencil-square</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/pencil.svg" alt="" aria-hidden="true" /><code>pencil</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/text-t.svg" alt="" aria-hidden="true" /><code>text-t</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/text-b.svg" alt="" aria-hidden="true" /><code>text-b</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/text-i.svg" alt="" aria-hidden="true" /><code>text-i</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">User</span><code>UserIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/person.svg" alt="" aria-hidden="true" /><span><strong>person</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/person-circle.svg" alt="" aria-hidden="true" /><code>person-circle</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/people.svg" alt="" aria-hidden="true" /><code>people</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Plus</span><code>PlusIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/plus.svg" alt="" aria-hidden="true" /><span><strong>plus</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/plus-circle.svg" alt="" aria-hidden="true" /><code>plus-circle</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Search</span><code>SearchIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/magnifying-glass.svg" alt="" aria-hidden="true" /><span><strong>magnifying-glass</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/magnifying-glass-plus.svg" alt="" aria-hidden="true" /><code>magnifying-glass-plus</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/magnifying-glass-minus.svg" alt="" aria-hidden="true" /><code>magnifying-glass-minus</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/book-open-magnifying-glass.svg" alt="" aria-hidden="true" /><code>book-open-magnifying-glass</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">X</span><code>XIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/x.svg" alt="" aria-hidden="true" /><span><strong>x</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/check.svg" alt="" aria-hidden="true" /><code>check</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/check-circle.svg" alt="" aria-hidden="true" /><code>check-circle</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/checks.svg" alt="" aria-hidden="true" /><code>checks</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/x-hexagon.svg" alt="" aria-hidden="true" /><code>x-hexagon</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">SortAsc</span><code>SortAscIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/funnel.svg" alt="" aria-hidden="true" /><span><strong>funnel</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/gear.svg" alt="" aria-hidden="true" /><code>gear</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/wrench.svg" alt="" aria-hidden="true" /><code>wrench</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/palette.svg" alt="" aria-hidden="true" /><code>palette</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/sun.svg" alt="" aria-hidden="true" /><code>sun</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">ChevronRight</span><code>ChevronRightIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/chevron-right.svg" alt="" aria-hidden="true" /><span><strong>chevron-right</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/chevron-left.svg" alt="" aria-hidden="true" /><code>chevron-left</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/chevron-up.svg" alt="" aria-hidden="true" /><code>chevron-up</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/chevron-down.svg" alt="" aria-hidden="true" /><code>chevron-down</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-left.svg" alt="" aria-hidden="true" /><code>arrow-left</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">ChevronLeft</span><code>ChevronLeftIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/chevron-left.svg" alt="" aria-hidden="true" /><span><strong>chevron-left</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/chevron-right.svg" alt="" aria-hidden="true" /><code>chevron-right</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/chevron-up.svg" alt="" aria-hidden="true" /><code>chevron-up</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/chevron-down.svg" alt="" aria-hidden="true" /><code>chevron-down</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-left.svg" alt="" aria-hidden="true" /><code>arrow-left</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Folder</span><code>FolderIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/folder.svg" alt="" aria-hidden="true" /><span><strong>folder</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/file-txt.svg" alt="" aria-hidden="true" /><code>file-txt</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/file-plus.svg" alt="" aria-hidden="true" /><code>file-plus</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/folder-plus.svg" alt="" aria-hidden="true" /><code>folder-plus</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/folder-minus.svg" alt="" aria-hidden="true" /><code>folder-minus</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">FolderPlus</span><code>FolderPlusIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/folder-plus.svg" alt="" aria-hidden="true" /><span><strong>folder-plus</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/file-txt.svg" alt="" aria-hidden="true" /><code>file-txt</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/file-plus.svg" alt="" aria-hidden="true" /><code>file-plus</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/folder.svg" alt="" aria-hidden="true" /><code>folder</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/folder-minus.svg" alt="" aria-hidden="true" /><code>folder-minus</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">FolderInput</span><code>FolderInputIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/file-plus.svg" alt="" aria-hidden="true" /><span><strong>file-plus</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/file-txt.svg" alt="" aria-hidden="true" /><code>file-txt</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/folder.svg" alt="" aria-hidden="true" /><code>folder</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/folder-plus.svg" alt="" aria-hidden="true" /><code>folder-plus</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/folder-minus.svg" alt="" aria-hidden="true" /><code>folder-minus</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">MoreVertical</span><code>MoreVerticalIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/dots-three-vertical.svg" alt="" aria-hidden="true" /><span><strong>dots-three-vertical</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/dots-three-horizontal.svg" alt="" aria-hidden="true" /><code>dots-three-horizontal</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Brain</span><code>BrainIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/microchip.svg" alt="" aria-hidden="true" /><span><strong>microchip</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="muted">—</span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">ScrollText</span><code>ScrollTextIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/file-txt.svg" alt="" aria-hidden="true" /><span><strong>file-txt</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/file-plus.svg" alt="" aria-hidden="true" /><code>file-plus</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/folder.svg" alt="" aria-hidden="true" /><code>folder</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/folder-plus.svg" alt="" aria-hidden="true" /><code>folder-plus</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/folder-minus.svg" alt="" aria-hidden="true" /><code>folder-minus</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Lightbulb</span><code>LightbulbIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/lightbulb.svg" alt="" aria-hidden="true" /><span><strong>lightbulb</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="muted">—</span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">History</span><code>HistoryIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/history.svg" alt="" aria-hidden="true" /><span><strong>history</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="muted">—</span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">MessageCirclePlus</span><code>MessageCirclePlusIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/chat-bubbles.svg" alt="" aria-hidden="true" /><span><strong>chat-bubbles</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/chat-bubble.svg" alt="" aria-hidden="true" /><code>chat-bubble</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/reply.svg" alt="" aria-hidden="true" /><code>reply</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Palette</span><code>PaletteIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/palette.svg" alt="" aria-hidden="true" /><span><strong>palette</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/gear.svg" alt="" aria-hidden="true" /><code>gear</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/wrench.svg" alt="" aria-hidden="true" /><code>wrench</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/funnel.svg" alt="" aria-hidden="true" /><code>funnel</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/sun.svg" alt="" aria-hidden="true" /><code>sun</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">RefreshCw</span><code>RefreshCwIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/repeat.svg" alt="" aria-hidden="true" /><span><strong>repeat</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="muted">—</span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Cloud</span><code>CloudIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/cloud.svg" alt="" aria-hidden="true" /><span><strong>cloud</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="muted">—</span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Database</span><code>DatabaseIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/database.svg" alt="" aria-hidden="true" /><span><strong>database</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="muted">—</span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Volume2</span><code>Volume2Icon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/volume-2.svg" alt="" aria-hidden="true" /><span><strong>volume-2</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/play.svg" alt="" aria-hidden="true" /><code>play</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/pause.svg" alt="" aria-hidden="true" /><code>pause</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/stop.svg" alt="" aria-hidden="true" /><code>stop</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/headphones.svg" alt="" aria-hidden="true" /><code>headphones</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Headphones</span><code>HeadphonesIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/headphones.svg" alt="" aria-hidden="true" /><span><strong>headphones</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/play.svg" alt="" aria-hidden="true" /><code>play</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/pause.svg" alt="" aria-hidden="true" /><code>pause</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/stop.svg" alt="" aria-hidden="true" /><code>stop</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/volume-2.svg" alt="" aria-hidden="true" /><code>volume-2</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Play</span><code>PlayIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/play.svg" alt="" aria-hidden="true" /><span><strong>play</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/pause.svg" alt="" aria-hidden="true" /><code>pause</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/stop.svg" alt="" aria-hidden="true" /><code>stop</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/headphones.svg" alt="" aria-hidden="true" /><code>headphones</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/volume-2.svg" alt="" aria-hidden="true" /><code>volume-2</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Pause</span><code>PauseIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/pause.svg" alt="" aria-hidden="true" /><span><strong>pause</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/play.svg" alt="" aria-hidden="true" /><code>play</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/stop.svg" alt="" aria-hidden="true" /><code>stop</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/headphones.svg" alt="" aria-hidden="true" /><code>headphones</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/volume-2.svg" alt="" aria-hidden="true" /><code>volume-2</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Square</span><code>SquareIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/stop.svg" alt="" aria-hidden="true" /><span><strong>stop</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/play.svg" alt="" aria-hidden="true" /><code>play</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/pause.svg" alt="" aria-hidden="true" /><code>pause</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/headphones.svg" alt="" aria-hidden="true" /><code>headphones</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/volume-2.svg" alt="" aria-hidden="true" /><code>volume-2</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">RotateCcw</span><code>RotateCcwIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/arrow-rotate-ccw-up.svg" alt="" aria-hidden="true" /><span><strong>arrow-rotate-ccw-up</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-block-up.svg" alt="" aria-hidden="true" /><code>arrow-block-up</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-down.svg" alt="" aria-hidden="true" /><code>arrow-down</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-from-square-up-right.svg" alt="" aria-hidden="true" /><code>arrow-from-square-up-right</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-left.svg" alt="" aria-hidden="true" /><code>arrow-left</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">SkipBack</span><code>SkipBackIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/skip-backward.svg" alt="" aria-hidden="true" /><span><strong>skip-backward</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/play.svg" alt="" aria-hidden="true" /><code>play</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/pause.svg" alt="" aria-hidden="true" /><code>pause</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/stop.svg" alt="" aria-hidden="true" /><code>stop</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/headphones.svg" alt="" aria-hidden="true" /><code>headphones</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">SkipForward</span><code>SkipForwardIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/skip-forward.svg" alt="" aria-hidden="true" /><span><strong>skip-forward</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/play.svg" alt="" aria-hidden="true" /><code>play</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/pause.svg" alt="" aria-hidden="true" /><code>pause</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/stop.svg" alt="" aria-hidden="true" /><code>stop</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/headphones.svg" alt="" aria-hidden="true" /><code>headphones</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Languages</span><code>LanguagesIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/translate.svg" alt="" aria-hidden="true" /><span><strong>translate</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="muted">—</span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Cpu</span><code>CpuIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/microchip.svg" alt="" aria-hidden="true" /><span><strong>microchip</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="muted">—</span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Puzzle</span><code>PuzzleIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/puzzle-piece.svg" alt="" aria-hidden="true" /><span><strong>puzzle-piece</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="muted">—</span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">HelpCircle</span><code>HelpCircleIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/question-circle.svg" alt="" aria-hidden="true" /><span><strong>question-circle</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/check.svg" alt="" aria-hidden="true" /><code>check</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/check-circle.svg" alt="" aria-hidden="true" /><code>check-circle</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/checks.svg" alt="" aria-hidden="true" /><code>checks</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/x.svg" alt="" aria-hidden="true" /><code>x</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Info</span><code>InfoIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/question-circle.svg" alt="" aria-hidden="true" /><span><strong>question-circle</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/check.svg" alt="" aria-hidden="true" /><code>check</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/check-circle.svg" alt="" aria-hidden="true" /><code>check-circle</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/checks.svg" alt="" aria-hidden="true" /><code>checks</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/x.svg" alt="" aria-hidden="true" /><code>x</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">BarChart3</span><code>BarChart3Icon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/chart-bar.svg" alt="" aria-hidden="true" /><span><strong>chart-bar</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/chart-line.svg" alt="" aria-hidden="true" /><code>chart-line</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/trending-up.svg" alt="" aria-hidden="true" /><code>trending-up</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/flame.svg" alt="" aria-hidden="true" /><code>flame</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/trophy.svg" alt="" aria-hidden="true" /><code>trophy</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Clock</span><code>ClockIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/clock-3h.svg" alt="" aria-hidden="true" /><span><strong>clock-3h</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/chart-bar.svg" alt="" aria-hidden="true" /><code>chart-bar</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/chart-line.svg" alt="" aria-hidden="true" /><code>chart-line</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/trending-up.svg" alt="" aria-hidden="true" /><code>trending-up</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/flame.svg" alt="" aria-hidden="true" /><code>flame</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Flame</span><code>FlameIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/flame.svg" alt="" aria-hidden="true" /><span><strong>flame</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/chart-bar.svg" alt="" aria-hidden="true" /><code>chart-bar</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/chart-line.svg" alt="" aria-hidden="true" /><code>chart-line</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/trending-up.svg" alt="" aria-hidden="true" /><code>trending-up</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/trophy.svg" alt="" aria-hidden="true" /><code>trophy</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">TrendingUp</span><code>TrendingUpIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/trending-up.svg" alt="" aria-hidden="true" /><span><strong>trending-up</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/chart-bar.svg" alt="" aria-hidden="true" /><code>chart-bar</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/chart-line.svg" alt="" aria-hidden="true" /><code>chart-line</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/flame.svg" alt="" aria-hidden="true" /><code>flame</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/trophy.svg" alt="" aria-hidden="true" /><code>trophy</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Trophy</span><code>TrophyIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/trophy.svg" alt="" aria-hidden="true" /><span><strong>trophy</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/chart-bar.svg" alt="" aria-hidden="true" /><code>chart-bar</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/chart-line.svg" alt="" aria-hidden="true" /><code>chart-line</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/trending-up.svg" alt="" aria-hidden="true" /><code>trending-up</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/flame.svg" alt="" aria-hidden="true" /><code>flame</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Swords</span><code>SwordsIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/shield.svg" alt="" aria-hidden="true" /><span><strong>shield</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="muted">—</span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Highlighter</span><code>HighlighterIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/paint-roller.svg" alt="" aria-hidden="true" /><span><strong>paint-roller</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/pencil.svg" alt="" aria-hidden="true" /><code>pencil</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/pencil-square.svg" alt="" aria-hidden="true" /><code>pencil-square</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/text-t.svg" alt="" aria-hidden="true" /><code>text-t</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/text-b.svg" alt="" aria-hidden="true" /><code>text-b</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Copy</span><code>CopyIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/copy.svg" alt="" aria-hidden="true" /><span><strong>copy</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/file-txt.svg" alt="" aria-hidden="true" /><code>file-txt</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/file-plus.svg" alt="" aria-hidden="true" /><code>file-plus</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/folder.svg" alt="" aria-hidden="true" /><code>folder</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/folder-plus.svg" alt="" aria-hidden="true" /><code>folder-plus</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Trash2</span><code>Trash2Icon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/bin.svg" alt="" aria-hidden="true" /><span><strong>bin</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="muted">—</span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Tag</span><code>TagIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/tag.svg" alt="" aria-hidden="true" /><span><strong>tag</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="muted">—</span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">CheckCheck</span><code>CheckCheckIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/checks.svg" alt="" aria-hidden="true" /><span><strong>checks</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/check.svg" alt="" aria-hidden="true" /><code>check</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/check-circle.svg" alt="" aria-hidden="true" /><code>check-circle</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/x.svg" alt="" aria-hidden="true" /><code>x</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/x-hexagon.svg" alt="" aria-hidden="true" /><code>x-hexagon</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Sparkles</span><code>SparklesIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/sparkles.svg" alt="" aria-hidden="true" /><span><strong>sparkles</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="muted">—</span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Loader</span><code>LoaderIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/pulse-circle.svg" alt="" aria-hidden="true" /><span><strong>pulse-circle</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="muted">—</span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Loader2</span><code>Loader2Icon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/pulse-circle.svg" alt="" aria-hidden="true" /><span><strong>pulse-circle</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="muted">—</span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Wrench</span><code>WrenchIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/wrench.svg" alt="" aria-hidden="true" /><span><strong>wrench</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/gear.svg" alt="" aria-hidden="true" /><code>gear</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/funnel.svg" alt="" aria-hidden="true" /><code>funnel</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/palette.svg" alt="" aria-hidden="true" /><code>palette</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/sun.svg" alt="" aria-hidden="true" /><code>sun</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Hash</span><code>HashIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/hash.svg" alt="" aria-hidden="true" /><span><strong>hash</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="muted">—</span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">ArrowDownAZ</span><code>ArrowDownAZIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/arrow-down.svg" alt="" aria-hidden="true" /><span><strong>arrow-down</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-block-up.svg" alt="" aria-hidden="true" /><code>arrow-block-up</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-from-square-up-right.svg" alt="" aria-hidden="true" /><code>arrow-from-square-up-right</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-left.svg" alt="" aria-hidden="true" /><code>arrow-left</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-left-right.svg" alt="" aria-hidden="true" /><code>arrow-left-right</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">ArrowUpAZ</span><code>ArrowUpAZIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/arrow-up.svg" alt="" aria-hidden="true" /><span><strong>arrow-up</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-block-up.svg" alt="" aria-hidden="true" /><code>arrow-block-up</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-down.svg" alt="" aria-hidden="true" /><code>arrow-down</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-from-square-up-right.svg" alt="" aria-hidden="true" /><code>arrow-from-square-up-right</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-left.svg" alt="" aria-hidden="true" /><code>arrow-left</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Send</span><code>SendIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/arrow-block-up.svg" alt="" aria-hidden="true" /><span><strong>arrow-block-up</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/share-network.svg" alt="" aria-hidden="true" /><code>share-network</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/link.svg" alt="" aria-hidden="true" /><code>link</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-from-square-up-right.svg" alt="" aria-hidden="true" /><code>arrow-from-square-up-right</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/paperplane.svg" alt="" aria-hidden="true" /><code>paperplane</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">StopCircle</span><code>StopCircleIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/stop.svg" alt="" aria-hidden="true" /><span><strong>stop</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/play.svg" alt="" aria-hidden="true" /><code>play</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/pause.svg" alt="" aria-hidden="true" /><code>pause</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/headphones.svg" alt="" aria-hidden="true" /><code>headphones</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/volume-2.svg" alt="" aria-hidden="true" /><code>volume-2</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">OctagonX</span><code>OctagonXIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/x-hexagon.svg" alt="" aria-hidden="true" /><span><strong>x-hexagon</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/check.svg" alt="" aria-hidden="true" /><code>check</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/check-circle.svg" alt="" aria-hidden="true" /><code>check-circle</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/checks.svg" alt="" aria-hidden="true" /><code>checks</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/x.svg" alt="" aria-hidden="true" /><code>x</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">ChevronDown</span><code>ChevronDownIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/chevron-down.svg" alt="" aria-hidden="true" /><span><strong>chevron-down</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/chevron-left.svg" alt="" aria-hidden="true" /><code>chevron-left</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/chevron-right.svg" alt="" aria-hidden="true" /><code>chevron-right</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/chevron-up.svg" alt="" aria-hidden="true" /><code>chevron-up</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-left.svg" alt="" aria-hidden="true" /><code>arrow-left</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">ChevronUp</span><code>ChevronUpIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/chevron-up.svg" alt="" aria-hidden="true" /><span><strong>chevron-up</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/chevron-left.svg" alt="" aria-hidden="true" /><code>chevron-left</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/chevron-right.svg" alt="" aria-hidden="true" /><code>chevron-right</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/chevron-down.svg" alt="" aria-hidden="true" /><code>chevron-down</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-left.svg" alt="" aria-hidden="true" /><code>arrow-left</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Check</span><code>CheckIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/check.svg" alt="" aria-hidden="true" /><span><strong>check</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/check-circle.svg" alt="" aria-hidden="true" /><code>check-circle</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/checks.svg" alt="" aria-hidden="true" /><code>checks</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/x.svg" alt="" aria-hidden="true" /><code>x</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/x-hexagon.svg" alt="" aria-hidden="true" /><code>x-hexagon</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Edit</span><code>EditIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/pencil.svg" alt="" aria-hidden="true" /><span><strong>pencil</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/pencil-square.svg" alt="" aria-hidden="true" /><code>pencil-square</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/text-t.svg" alt="" aria-hidden="true" /><code>text-t</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/text-b.svg" alt="" aria-hidden="true" /><code>text-b</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/text-i.svg" alt="" aria-hidden="true" /><code>text-i</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Share</span><code>ShareIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/share-network.svg" alt="" aria-hidden="true" /><span><strong>share-network</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/link.svg" alt="" aria-hidden="true" /><code>link</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-from-square-up-right.svg" alt="" aria-hidden="true" /><code>arrow-from-square-up-right</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-block-up.svg" alt="" aria-hidden="true" /><code>arrow-block-up</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/paperplane.svg" alt="" aria-hidden="true" /><code>paperplane</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Filter</span><code>FilterIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/funnel.svg" alt="" aria-hidden="true" /><span><strong>funnel</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/gear.svg" alt="" aria-hidden="true" /><code>gear</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/wrench.svg" alt="" aria-hidden="true" /><code>wrench</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/palette.svg" alt="" aria-hidden="true" /><code>palette</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/sun.svg" alt="" aria-hidden="true" /><code>sun</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Calendar</span><code>CalendarIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/calendar.svg" alt="" aria-hidden="true" /><span><strong>calendar</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="muted">—</span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Switch</span><code>SwitchIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/arrows-left-right.svg" alt="" aria-hidden="true" /><span><strong>arrows-left-right</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="muted">—</span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Sun</span><code>SunIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/sun.svg" alt="" aria-hidden="true" /><span><strong>sun</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/gear.svg" alt="" aria-hidden="true" /><code>gear</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/wrench.svg" alt="" aria-hidden="true" /><code>wrench</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/funnel.svg" alt="" aria-hidden="true" /><code>funnel</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/palette.svg" alt="" aria-hidden="true" /><code>palette</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Moon</span><code>MoonIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/crescent.svg" alt="" aria-hidden="true" /><span><strong>crescent</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/gear.svg" alt="" aria-hidden="true" /><code>gear</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/wrench.svg" alt="" aria-hidden="true" /><code>wrench</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/funnel.svg" alt="" aria-hidden="true" /><code>funnel</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/palette.svg" alt="" aria-hidden="true" /><code>palette</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Undo2</span><code>Undo2Icon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/arrow-rotate-ccw-up.svg" alt="" aria-hidden="true" /><span><strong>arrow-rotate-ccw-up</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-block-up.svg" alt="" aria-hidden="true" /><code>arrow-block-up</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-down.svg" alt="" aria-hidden="true" /><code>arrow-down</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-from-square-up-right.svg" alt="" aria-hidden="true" /><code>arrow-from-square-up-right</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-left.svg" alt="" aria-hidden="true" /><code>arrow-left</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Redo2</span><code>Redo2Icon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/arrow-rotate-cw-up.svg" alt="" aria-hidden="true" /><span><strong>arrow-rotate-cw-up</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-block-up.svg" alt="" aria-hidden="true" /><code>arrow-block-up</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-down.svg" alt="" aria-hidden="true" /><code>arrow-down</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-from-square-up-right.svg" alt="" aria-hidden="true" /><code>arrow-from-square-up-right</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-left.svg" alt="" aria-hidden="true" /><code>arrow-left</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Eye</span><code>EyeIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/eye.svg" alt="" aria-hidden="true" /><span><strong>eye</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/eye-slash.svg" alt="" aria-hidden="true" /><code>eye-slash</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">EyeOff</span><code>EyeOffIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/eye-slash.svg" alt="" aria-hidden="true" /><span><strong>eye-slash</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/eye.svg" alt="" aria-hidden="true" /><code>eye</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Bold</span><code>BoldIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/text-b.svg" alt="" aria-hidden="true" /><span><strong>text-b</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/pencil.svg" alt="" aria-hidden="true" /><code>pencil</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/pencil-square.svg" alt="" aria-hidden="true" /><code>pencil-square</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/text-t.svg" alt="" aria-hidden="true" /><code>text-t</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/text-i.svg" alt="" aria-hidden="true" /><code>text-i</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Italic</span><code>ItalicIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/text-i.svg" alt="" aria-hidden="true" /><span><strong>text-i</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/pencil.svg" alt="" aria-hidden="true" /><code>pencil</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/pencil-square.svg" alt="" aria-hidden="true" /><code>pencil-square</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/text-t.svg" alt="" aria-hidden="true" /><code>text-t</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/text-b.svg" alt="" aria-hidden="true" /><code>text-b</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Strikethrough</span><code>StrikethroughIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/strikethrough.svg" alt="" aria-hidden="true" /><span><strong>strikethrough</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/pencil.svg" alt="" aria-hidden="true" /><code>pencil</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/pencil-square.svg" alt="" aria-hidden="true" /><code>pencil-square</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/text-t.svg" alt="" aria-hidden="true" /><code>text-t</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/text-b.svg" alt="" aria-hidden="true" /><code>text-b</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">List</span><code>ListIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/list.svg" alt="" aria-hidden="true" /><span><strong>list</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/list-alt1.svg" alt="" aria-hidden="true" /><code>list-alt1</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">ListOrdered</span><code>ListOrderedIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/list-alt1.svg" alt="" aria-hidden="true" /><span><strong>list-alt1</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/list.svg" alt="" aria-hidden="true" /><code>list</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Code</span><code>CodeIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/code.svg" alt="" aria-hidden="true" /><span><strong>code</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="muted">—</span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Link2</span><code>Link2Icon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/link.svg" alt="" aria-hidden="true" /><span><strong>link</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/share-network.svg" alt="" aria-hidden="true" /><code>share-network</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-from-square-up-right.svg" alt="" aria-hidden="true" /><code>arrow-from-square-up-right</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-block-up.svg" alt="" aria-hidden="true" /><code>arrow-block-up</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/paperplane.svg" alt="" aria-hidden="true" /><code>paperplane</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Quote</span><code>QuoteIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/quote-left.svg" alt="" aria-hidden="true" /><span><strong>quote-left</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="muted">—</span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Minus</span><code>MinusIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/minus.svg" alt="" aria-hidden="true" /><span><strong>minus</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/minus-circle.svg" alt="" aria-hidden="true" /><code>minus-circle</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Heading1</span><code>Heading1Icon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/text-t.svg" alt="" aria-hidden="true" /><span><strong>text-t</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/pencil.svg" alt="" aria-hidden="true" /><code>pencil</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/pencil-square.svg" alt="" aria-hidden="true" /><code>pencil-square</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/text-b.svg" alt="" aria-hidden="true" /><code>text-b</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/text-i.svg" alt="" aria-hidden="true" /><code>text-i</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Heading2</span><code>Heading2Icon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/text-t.svg" alt="" aria-hidden="true" /><span><strong>text-t</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/pencil.svg" alt="" aria-hidden="true" /><code>pencil</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/pencil-square.svg" alt="" aria-hidden="true" /><code>pencil-square</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/text-b.svg" alt="" aria-hidden="true" /><code>text-b</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/text-i.svg" alt="" aria-hidden="true" /><code>text-i</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Heading3</span><code>Heading3Icon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/text-t.svg" alt="" aria-hidden="true" /><span><strong>text-t</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/pencil.svg" alt="" aria-hidden="true" /><code>pencil</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/pencil-square.svg" alt="" aria-hidden="true" /><code>pencil-square</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/text-b.svg" alt="" aria-hidden="true" /><code>text-b</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/text-i.svg" alt="" aria-hidden="true" /><code>text-i</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Library</span><code>LibraryIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/books-spines.svg" alt="" aria-hidden="true" /><span><strong>books-spines</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/book.svg" alt="" aria-hidden="true" /><code>book</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/book-open.svg" alt="" aria-hidden="true" /><code>book-open</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/book-open-magnifying-glass.svg" alt="" aria-hidden="true" /><code>book-open-magnifying-glass</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/bookmark.svg" alt="" aria-hidden="true" /><code>bookmark</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">ZoomIn</span><code>ZoomIn</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/magnifying-glass-plus.svg" alt="" aria-hidden="true" /><span><strong>magnifying-glass-plus</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/magnifying-glass.svg" alt="" aria-hidden="true" /><code>magnifying-glass</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/magnifying-glass-minus.svg" alt="" aria-hidden="true" /><code>magnifying-glass-minus</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/book-open-magnifying-glass.svg" alt="" aria-hidden="true" /><code>book-open-magnifying-glass</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">ZoomOut</span><code>ZoomOut</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/magnifying-glass-minus.svg" alt="" aria-hidden="true" /><span><strong>magnifying-glass-minus</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/magnifying-glass.svg" alt="" aria-hidden="true" /><code>magnifying-glass</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/magnifying-glass-plus.svg" alt="" aria-hidden="true" /><code>magnifying-glass-plus</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/book-open-magnifying-glass.svg" alt="" aria-hidden="true" /><code>book-open-magnifying-glass</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Download</span><code>Download</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/arrow-to-line-down.svg" alt="" aria-hidden="true" /><span><strong>arrow-to-line-down</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/share-network.svg" alt="" aria-hidden="true" /><code>share-network</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/link.svg" alt="" aria-hidden="true" /><code>link</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-from-square-up-right.svg" alt="" aria-hidden="true" /><code>arrow-from-square-up-right</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-block-up.svg" alt="" aria-hidden="true" /><code>arrow-block-up</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">RotateCcw</span><code>RotateCcw</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/arrow-rotate-ccw-up.svg" alt="" aria-hidden="true" /><span><strong>arrow-rotate-ccw-up</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-block-up.svg" alt="" aria-hidden="true" /><code>arrow-block-up</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-down.svg" alt="" aria-hidden="true" /><code>arrow-down</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-from-square-up-right.svg" alt="" aria-hidden="true" /><code>arrow-from-square-up-right</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-left.svg" alt="" aria-hidden="true" /><code>arrow-left</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Maximize2</span><code>Maximize2</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/corners.svg" alt="" aria-hidden="true" /><span><strong>corners</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/corners-in.svg" alt="" aria-hidden="true" /><code>corners-in</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Minimize2</span><code>Minimize2</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/corners-in.svg" alt="" aria-hidden="true" /><span><strong>corners-in</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/corners.svg" alt="" aria-hidden="true" /><code>corners</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Bookmark</span><code>BookmarkIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/bookmark.svg" alt="" aria-hidden="true" /><span><strong>bookmark</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/book.svg" alt="" aria-hidden="true" /><code>book</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/book-open.svg" alt="" aria-hidden="true" /><code>book-open</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/books-spines.svg" alt="" aria-hidden="true" /><code>books-spines</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/book-open-magnifying-glass.svg" alt="" aria-hidden="true" /><code>book-open-magnifying-glass</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">BookmarkFilled</span><code>BookmarkFilledIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/bookmark.svg" alt="" aria-hidden="true" /><span><strong>bookmark</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/book.svg" alt="" aria-hidden="true" /><code>book</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/book-open.svg" alt="" aria-hidden="true" /><code>book-open</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/books-spines.svg" alt="" aria-hidden="true" /><code>books-spines</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/book-open-magnifying-glass.svg" alt="" aria-hidden="true" /><code>book-open-magnifying-glass</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Type</span><code>TypeIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/text-t.svg" alt="" aria-hidden="true" /><span><strong>text-t</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/pencil.svg" alt="" aria-hidden="true" /><code>pencil</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/pencil-square.svg" alt="" aria-hidden="true" /><code>pencil-square</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/text-b.svg" alt="" aria-hidden="true" /><code>text-b</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/text-i.svg" alt="" aria-hidden="true" /><code>text-i</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Link</span><code>LinkIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/link.svg" alt="" aria-hidden="true" /><span><strong>link</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/share-network.svg" alt="" aria-hidden="true" /><code>share-network</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-from-square-up-right.svg" alt="" aria-hidden="true" /><code>arrow-from-square-up-right</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-block-up.svg" alt="" aria-hidden="true" /><code>arrow-block-up</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/paperplane.svg" alt="" aria-hidden="true" /><code>paperplane</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Globe</span><code>GlobeIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/globe.svg" alt="" aria-hidden="true" /><span><strong>globe</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="muted">—</span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Layers</span><code>LayersIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/layers.svg" alt="" aria-hidden="true" /><span><strong>layers</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="muted">—</span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">FolderMinus</span><code>FolderMinusIcon</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/folder-minus.svg" alt="" aria-hidden="true" /><span><strong>folder-minus</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/file-txt.svg" alt="" aria-hidden="true" /><code>file-txt</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/file-plus.svg" alt="" aria-hidden="true" /><code>file-plus</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/folder.svg" alt="" aria-hidden="true" /><code>folder</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/folder-plus.svg" alt="" aria-hidden="true" /><code>folder-plus</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">AlertCircle</span><code>AlertCircle</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/exclamation-triangle.svg" alt="" aria-hidden="true" /><span><strong>exclamation-triangle</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/check.svg" alt="" aria-hidden="true" /><code>check</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/check-circle.svg" alt="" aria-hidden="true" /><code>check-circle</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/checks.svg" alt="" aria-hidden="true" /><code>checks</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/x.svg" alt="" aria-hidden="true" /><code>x</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Bug</span><code>Bug</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/bug.svg" alt="" aria-hidden="true" /><span><strong>bug</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="muted">—</span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">CheckCircle2</span><code>CheckCircle2</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/check-circle.svg" alt="" aria-hidden="true" /><span><strong>check-circle</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/check.svg" alt="" aria-hidden="true" /><code>check</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/checks.svg" alt="" aria-hidden="true" /><code>checks</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/x.svg" alt="" aria-hidden="true" /><code>x</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/x-hexagon.svg" alt="" aria-hidden="true" /><code>x-hexagon</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Coffee</span><code>Coffee</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/coffee-cup.svg" alt="" aria-hidden="true" /><span><strong>coffee-cup</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="muted">—</span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">ExternalLink</span><code>ExternalLink</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/arrow-from-square-up-right.svg" alt="" aria-hidden="true" /><span><strong>arrow-from-square-up-right</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/share-network.svg" alt="" aria-hidden="true" /><code>share-network</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/link.svg" alt="" aria-hidden="true" /><code>link</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/arrow-block-up.svg" alt="" aria-hidden="true" /><code>arrow-block-up</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/paperplane.svg" alt="" aria-hidden="true" /><code>paperplane</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">MessageCircle</span><code>MessageCircle</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/chat-bubble.svg" alt="" aria-hidden="true" /><span><strong>chat-bubble</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/chat-bubbles.svg" alt="" aria-hidden="true" /><code>chat-bubbles</code></span><span class="alternative"><img class="alternative-icon" src="/assets/icons/mishanaer/stroke/reply.svg" alt="" aria-hidden="true" /><code>reply</code></span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Scan</span><code>Scan</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/qr-code.svg" alt="" aria-hidden="true" /><span><strong>qr-code</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="muted">—</span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr><tr>
+      <td class="was"><span class="meaning">Star</span><code>Star</code></td>
+      <td class="became"><div class="became-main"><img class="icon" src="/assets/icons/mishanaer/stroke/star.svg" alt="" aria-hidden="true" /><span><strong>star</strong><small>stroke</small></span></div></td>
+      <td><div class="alternatives"><span class="muted">—</span></div></td>
+      <td class="context"><strong>API alias</strong><span>components/ui/Icon.tsx</span></td>
+    </tr></tbody>
+        </table>
+      </div>
+    </main>
+  </body>
+</html>

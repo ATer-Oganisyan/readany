@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/Icon";
 import { Text, TextInput } from "@/components/ui/Typography";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
+import { toast } from "@/lib/notifications";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useNativeHeaderActions } from "@/navigation/useNativeHeaderActions";
 import { useLibraryStore } from "@/stores/library-store";
@@ -36,14 +37,7 @@ import {
 import { File, Paths } from "expo-file-system";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  StyleSheet,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { ActivityIndicator, FlatList, StyleSheet, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 type Props = NativeStackScreenProps<RootStackParamList, "WebDavImportBrowser">;
@@ -549,19 +543,18 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
         const result = await importBooks(tempFiles);
         setImportState({ phase: "idle" });
         setSelectedPaths([]);
-        Alert.alert(t("common.success", "成功！"), formatImportResultMessage(t, result), [
-          {
-            text: t("library.webdavImportContinue", "继续浏览"),
-            style: "cancel",
+        toast.success(t("common.success", "Книги добавлены"), {
+          description: formatImportResultMessage(t, result),
+          action: {
+            label: t("library.webdavImportBackToLibrary", "В библиотеку"),
+            onClick: () => navigation.goBack(),
           },
-          {
-            text: t("library.webdavImportBackToLibrary", "返回书库"),
-            onPress: () => navigation.goBack(),
-          },
-        ]);
+        });
       } catch (err) {
         setImportState({ phase: "idle" });
-        Alert.alert(t("common.failed", "失败"), err instanceof Error ? err.message : String(err));
+        toast.error(t("common.failed", "Не удалось импортировать"), {
+          description: err instanceof Error ? err.message : String(err),
+        });
       } finally {
         for (const tempFile of tempFiles) {
           try {
@@ -590,19 +583,23 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
         const targets = await service.collectImportableFiles(currentPath);
         if (targets.length === 0) {
           setImportState({ phase: "idle" });
-          Alert.alert(
-            t("library.webdavImportNoImportableTitle", "这个文件夹里还没有可导入的书"),
-            t(
-              "library.webdavImportNoImportableDesc",
-              "换一个文件夹看看，或者继续往更深的目录里找。",
-            ),
+          toast.info(
+            t("library.webdavImportNoImportableTitle", "В этой папке нет книг для импорта"),
+            {
+              description: t(
+                "library.webdavImportNoImportableDesc",
+                "Выберите другую папку или перейдите глубже по каталогу.",
+              ),
+            },
           );
           return;
         }
         await runImport(targets);
       } catch (err) {
         setImportState({ phase: "idle" });
-        Alert.alert(t("common.failed", "失败"), err instanceof Error ? err.message : String(err));
+        toast.error(t("common.failed", "Не удалось импортировать"), {
+          description: err instanceof Error ? err.message : String(err),
+        });
       }
     })();
   };

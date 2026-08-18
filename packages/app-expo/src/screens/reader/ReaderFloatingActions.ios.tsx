@@ -1,3 +1,5 @@
+import { HostedMishanaerIcon } from "@/components/ui/HostedMishanaerIcon";
+import type { MishanaerIconName } from "@/components/ui/MishanaerIcon";
 import { Button, Host, VStack } from "@expo/ui/swift-ui";
 import {
   accessibilityLabel,
@@ -9,37 +11,34 @@ import {
   labelStyle,
   tint,
 } from "@expo/ui/swift-ui/modifiers";
-import type { ComponentProps } from "react";
 import { useTranslation } from "react-i18next";
 import { Platform } from "react-native";
 import type { ReaderFloatingActionsProps } from "./ReaderFloatingActions.types";
-
-type SFSymbol = NonNullable<ComponentProps<typeof Button>["systemImage"]>;
 
 export function ReaderFloatingActions(props: ReaderFloatingActionsProps) {
   const { t } = useTranslation();
   const supportsGlass = Number.parseInt(String(Platform.Version), 10) >= 26;
   const actions: Array<{
     label: string;
-    symbol: SFSymbol;
+    icon: MishanaerIconName;
     active: boolean;
     onPress: () => void;
   }> = [
     {
       label: t("reader.language", "Язык"),
-      symbol: "globe",
+      icon: "globe",
       active: props.translationActive,
       onPress: props.onTranslate,
     },
     {
       label: t("reader.speak", "Озвучить"),
-      symbol: "airpods.max",
+      icon: "headphones",
       active: props.speechActive,
       onPress: props.onSpeech,
     },
     {
       label: t("reader.discussWithAI", "Обсудить с ИИ"),
-      symbol: "message.fill",
+      icon: "chat-bubble",
       active: false,
       onPress: props.onChat,
     },
@@ -78,13 +77,13 @@ export function ReaderFloatingActions(props: ReaderFloatingActionsProps) {
               ];
 
           return (
-            <Button
-              key={action.label}
-              label={action.label}
-              systemImage={action.symbol}
-              onPress={action.onPress}
-              modifiers={modifiers}
-            />
+            <Button key={action.label} onPress={action.onPress} modifiers={modifiers}>
+              <HostedMishanaerIcon
+                name={action.icon}
+                size={24}
+                color={action.active ? "#FFFFFF" : props.foregroundColor}
+              />
+            </Button>
           );
         })}
       </VStack>

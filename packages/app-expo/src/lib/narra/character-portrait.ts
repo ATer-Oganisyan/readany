@@ -1,5 +1,6 @@
 import { Image, type ImageSourcePropType } from "react-native";
 import { CATALOG_CHARACTER_PORTRAIT_ASSETS } from "./catalog-character-portrait-assets";
+import { CATALOG_CHARACTER_VIDEO_ASSETS } from "./catalog-character-video-assets";
 import { normalizePersistedNarraMediaUri } from "./media";
 import type { NarraCharacter } from "./types";
 
@@ -51,6 +52,16 @@ export function resolveCharacterPortraitSource(
   character: CharacterPortraitFields | null | undefined,
 ): ImageSourcePropType | undefined {
   return resolveCharacterPortraitSources(character)[0];
+}
+
+/** Returns the bundled loop for a catalog character unless a custom portrait overrides it. */
+export function resolveCharacterPortraitVideoAsset(
+  character: CharacterPortraitFields | null | undefined,
+): number | undefined {
+  if (!character || character.portraitUriOverridesAsset || !character.portraitAssetId) {
+    return undefined;
+  }
+  return CATALOG_CHARACTER_VIDEO_ASSETS[character.portraitAssetId];
 }
 
 /** Resolves user-generated files and bundled catalog assets to one Image-compatible URI. */

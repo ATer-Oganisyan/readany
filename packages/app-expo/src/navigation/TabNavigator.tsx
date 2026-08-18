@@ -1,3 +1,4 @@
+import { getFilledIconImageSource, getStrokeIconImageSource } from "@/components/ui/MishanaerIcon";
 import { NativeButton } from "@/components/ui/NativeButton";
 import { SyncButton } from "@/components/ui/SyncButton";
 import { ChatsScreen } from "@/screens/ChatsScreen";
@@ -12,7 +13,6 @@ import {
   largeTitleFontSize,
   titleFontFamily,
 } from "@/styles/theme";
-import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import {
   type NativeBottomTabIcon,
   createNativeBottomTabNavigator,
@@ -23,9 +23,9 @@ import {
   createNativeStackNavigator,
 } from "@react-navigation/native-stack";
 import { useSyncStore } from "@readany/core/stores";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { type ImageSourcePropType, Platform } from "react-native";
+import { Platform } from "react-native";
 import { NATIVE_SCROLL_EDGE_EFFECTS } from "./scroll-edge-effects";
 
 export type LibraryTabStackParamList = {
@@ -50,53 +50,15 @@ const ChatsStack = createNativeStackNavigator<ChatsTabStackParamList>();
 const SearchStack = createNativeStackNavigator<SearchTabStackParamList>();
 const ProfileStack = createNativeStackNavigator<ProfileTabStackParamList>();
 
-type AndroidTabIcons = Record<keyof TabParamList, ImageSourcePropType>;
+const TAB_ICONS = {
+  Library: getFilledIconImageSource("book"),
+  Chats: getFilledIconImageSource("chat-bubble"),
+  Profile: getFilledIconImageSource("person"),
+  Search: getFilledIconImageSource("magnifying-glass"),
+} as const;
 
-function useAndroidMaterialTabIcons() {
-  const [icons, setIcons] = useState<AndroidTabIcons | null | undefined>(
-    Platform.OS === "android" ? undefined : null,
-  );
-
-  useEffect(() => {
-    if (Platform.OS !== "android") return;
-
-    let cancelled = false;
-    void Promise.all([
-      MaterialIcons.getImageSource("local-library", 24, "#000000"),
-      MaterialIcons.getImageSource("chat", 24, "#000000"),
-      MaterialIcons.getImageSource("person", 24, "#000000"),
-      MaterialIcons.getImageSource("search", 24, "#000000"),
-    ])
-      .then(([library, chats, profile, search]) => {
-        if (cancelled) return;
-        if (!library || !chats || !profile || !search) {
-          setIcons(null);
-          return;
-        }
-        setIcons({ Library: library, Chats: chats, Profile: profile, Search: search });
-      })
-      .catch((error) => {
-        console.error("[TabNavigator] Failed to render Material tab icons", error);
-        if (!cancelled) setIcons(null);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  return icons;
-}
-
-function tabIcon(
-  sfSymbol: Extract<NativeBottomTabIcon, { type: "sfSymbol" }>["name"],
-  androidSource: ImageSourcePropType | null | undefined,
-): NativeBottomTabIcon | undefined {
-  return Platform.OS === "ios"
-    ? { type: "sfSymbol", name: sfSymbol }
-    : androidSource
-      ? { type: "image", source: androidSource }
-      : undefined;
+function tabIcon(source: (typeof TAB_ICONS)[keyof typeof TAB_ICONS]): NativeBottomTabIcon {
+  return { type: "image", source };
 }
 
 function useTabStackScreenOptions(): NativeStackNavigationOptions {
@@ -112,6 +74,10 @@ function useTabStackScreenOptions(): NativeStackNavigationOptions {
     },
     headerShadowVisible: false,
     headerTintColor: colors.foreground,
+    headerBackIcon: {
+      type: "image",
+      source: getStrokeIconImageSource("chevron-left"),
+    },
     headerTitleStyle: {
       color: colors.foreground,
       fontFamily: titleFontFamily,
@@ -233,8 +199,8 @@ function ProfileTabStackNavigator() {
                           label: t("common.sync", "Синхронизировать"),
                           accessibilityLabel: t("common.sync", "Синхронизировать"),
                           icon: {
-                            type: "sfSymbol" as const,
-                            name: "arrow.clockwise" as const,
+                            type: "image" as const,
+                            source: getStrokeIconImageSource("repeat"),
                           },
                           disabled: isSyncBusy,
                           onPress: handleSync,
@@ -259,7 +225,10 @@ function ProfileTabStackNavigator() {
                     type: "button" as const,
                     label: t("notes.addNote", "Добавить заметку"),
                     accessibilityLabel: t("notes.addNote", "Добавить заметку"),
-                    icon: { type: "sfSymbol" as const, name: "plus" as const },
+                    icon: {
+                      type: "image" as const,
+                      source: getStrokeIconImageSource("plus"),
+                    },
                     onPress: () =>
                       navigation
                         .getParent()
@@ -294,9 +263,6 @@ function ProfileTabStackNavigator() {
 export function TabNavigator() {
   const { t } = useTranslation();
   const { colors } = useTheme();
-  const androidTabIcons = useAndroidMaterialTabIcons();
-
-  if (Platform.OS === "android" && androidTabIcons === undefined) return null;
 
   return (
     <Tab.Navigator
@@ -318,7 +284,7 @@ export function TabNavigator() {
         options={{
           title: t("tabs.library", "Библиотека"),
           tabBarLabel: Platform.OS === "ios" ? "" : t("tabs.library", "Библиотека"),
-          tabBarIcon: tabIcon("book.closed.fill", androidTabIcons?.Library),
+          tabBarIcon: tabIcon(TAB_ICONS.Library),
         }}
       />
       <Tab.Screen
@@ -327,7 +293,7 @@ export function TabNavigator() {
         options={{
           title: t("tabs.chats", "Чаты"),
           tabBarLabel: Platform.OS === "ios" ? "" : t("tabs.chats", "Чаты"),
-          tabBarIcon: tabIcon("message.fill", androidTabIcons?.Chats),
+          tabBarIcon: tabIcon(TAB_ICONS.Chats),
         }}
       />
       <Tab.Screen
@@ -336,7 +302,7 @@ export function TabNavigator() {
         options={{
           title: t("tabs.profile", "Профиль"),
           tabBarLabel: Platform.OS === "ios" ? "" : t("tabs.profile", "Профиль"),
-          tabBarIcon: tabIcon("person.crop.circle.fill", androidTabIcons?.Profile),
+          tabBarIcon: tabIcon(TAB_ICONS.Profile),
           tabBarMinimizeBehavior: "none",
         }}
       />
@@ -345,10 +311,10 @@ export function TabNavigator() {
         component={SearchTabStackNavigator}
         options={{
           title: t("tabs.search", "Поиск"),
+          // Keep iOS's native search-tab behavior while using the Mishanaer icon.
           tabBarSystemItem: Platform.OS === "ios" ? "search" : undefined,
           tabBarLabel: Platform.OS === "ios" ? "" : t("tabs.search", "Поиск"),
-          tabBarIcon:
-            Platform.OS === "ios" ? undefined : tabIcon("magnifyingglass", androidTabIcons?.Search),
+          tabBarIcon: tabIcon(TAB_ICONS.Search),
           tabBarMinimizeBehavior: "none",
         }}
       />

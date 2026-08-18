@@ -1,174 +1,142 @@
-import { interfaceFontFamily } from "@deslop/primitives/native";
-import type { ComponentType } from "react";
-import { type StyleProp, Text, type TextStyle } from "react-native";
+import type { MishanaerIconName } from "./MishanaerIcon";
+import {
+  MishanaerIcon,
+  type MishanaerIconComponent,
+  type MishanaerIconProps,
+} from "./MishanaerIcon";
 
-export interface MaterialIconProps {
-  size?: number;
-  color?: string;
-  strokeWidth?: number;
-  fill?: string;
-  style?: StyleProp<TextStyle>;
-}
+export type AppIconProps = Omit<MishanaerIconProps, "name" | "variant">;
+export type AppIconComponent = MishanaerIconComponent;
 
-export type MaterialIconComponent = ComponentType<MaterialIconProps>;
-
-export function MaterialIcon({
-  name,
-  size = 24,
-  color = "#8e8e93",
-  style,
-}: MaterialIconProps & { name: string }) {
-  return (
-    <Text
-      accessibilityElementsHidden
-      importantForAccessibility="no"
-      style={[
-        {
-          width: size,
-          height: size,
-          color,
-          fontFamily: interfaceFontFamily.materialSymbols,
-          fontSize: size,
-          lineHeight: size,
-          textAlign: "center",
-          includeFontPadding: false,
-        },
-        style,
-      ]}
-    >
-      {name}
-    </Text>
-  );
-}
-
-function material(name: string): MaterialIconComponent {
-  const Icon = (props: MaterialIconProps) => <MaterialIcon name={name} {...props} />;
-  Icon.displayName = `MaterialIcon(${name})`;
+function strokeIcon(name: MishanaerIconName): AppIconComponent {
+  const Icon = (props: AppIconProps) => <MishanaerIcon name={name} variant="stroke" {...props} />;
+  Icon.displayName = `MishanaerIcon(${name})`;
   return Icon;
 }
 
-// Only symbols from the curated @deslop/primitives catalog are used here.
-export const BookOpenIcon = material("book_2");
-export const MessageSquareIcon = material("chat");
-export const BotIcon = material("chat_add_on");
-export const NotebookPenIcon = material("edit");
-export const UserIcon = material("person");
-export const PlusIcon = material("add");
-export const SearchIcon = material("search");
-export const XIcon = material("close");
-export const SortAscIcon = material("filter_list");
-export const ChevronRightIcon = material("chevron_right");
-export const ChevronLeftIcon = material("chevron_left");
-export const FolderIcon = material("folder");
-export const FolderPlusIcon = material("folder_open");
-export const FolderInputIcon = material("file_open");
-export const MoreVerticalIcon = material("more_vert");
-export const BrainIcon = material("analytics");
-export const ScrollTextIcon = material("description");
-export const LightbulbIcon = material("bolt");
-export const HistoryIcon = material("event");
-export const MessageCirclePlusIcon = material("chat_add_on");
-export const PaletteIcon = material("palette");
-export const RefreshCwIcon = material("refresh");
-export const CloudIcon = material("cloud");
-export const DatabaseIcon = material("database");
-export const Volume2Icon = material("volume_up");
-export const HeadphonesIcon = material("mic");
-export const PlayIcon = material("play_arrow");
-export const PauseIcon = material("remove");
-export const SquareIcon = material("cancel");
-export const RotateCcwIcon = material("refresh");
-export const SkipBackIcon = material("arrow_back");
-export const SkipForwardIcon = material("arrow_forward");
-export const LanguagesIcon = material("language");
-export const CpuIcon = material("terminal");
-export const PuzzleIcon = material("apps");
-export const HelpCircleIcon = material("help");
-export const InfoIcon = material("info");
-export const BarChart3Icon = material("bar_chart");
-export const ClockIcon = material("schedule");
-export const FlameIcon = material("bolt");
-export const TrendingUpIcon = material("analytics");
-export const TrophyIcon = material("workspace_premium");
-export const SwordsIcon = material("shield");
-export const HighlighterIcon = material("edit");
-export const CopyIcon = material("content_copy");
-export const Trash2Icon = material("delete");
-export const TagIcon = material("badge");
-export const CheckCheckIcon = material("verified");
-export const SparklesIcon = material("star");
-export const LoaderIcon = material("progress_activity");
-export const Loader2Icon = material("progress_activity");
-export const WrenchIcon = material("tune");
-export const HashIcon = material("badge");
-export const ArrowDownAZIcon = material("arrow_downward");
-export const ArrowUpAZIcon = material("arrow_upward");
-export const SendIcon = material("send");
-export const StopCircleIcon = material("cancel");
-export const OctagonXIcon = material("error");
-export const ChevronDownIcon = material("expand_more");
-export const ChevronUpIcon = material("expand_less");
-export const CheckIcon = material("check");
-export const EditIcon = material("edit");
-export const ShareIcon = material("share");
-export const FilterIcon = material("filter_list");
-export const CalendarIcon = material("calendar_month");
-export const SwitchIcon = material("currency_exchange");
-export const SunIcon = material("light_mode");
-export const MoonIcon = material("dark_mode");
-export const Undo2Icon = material("arrow_back");
-export const Redo2Icon = material("arrow_forward");
-export const EyeIcon = material("visibility");
-export const EyeOffIcon = material("visibility_off");
-export const BoldIcon = material("description");
+export const BookOpenIcon = strokeIcon("book-open");
+export const MessageSquareIcon = strokeIcon("chat-bubble");
+export const BotIcon = strokeIcon("robot");
+export const NotebookPenIcon = strokeIcon("pencil-square");
+export const UserIcon = strokeIcon("person");
+export const PlusIcon = strokeIcon("plus");
+export const SearchIcon = strokeIcon("magnifying-glass");
+export const XIcon = strokeIcon("x");
+export const SortAscIcon = strokeIcon("funnel");
+export const ChevronRightIcon = strokeIcon("chevron-right");
+export const ChevronLeftIcon = strokeIcon("chevron-left");
+export const FolderIcon = strokeIcon("folder");
+export const FolderPlusIcon = strokeIcon("folder-plus");
+export const FolderInputIcon = strokeIcon("file-plus");
+export const MoreVerticalIcon = strokeIcon("dots-three-vertical");
+export const BrainIcon = strokeIcon("microchip");
+export const ScrollTextIcon = strokeIcon("file-txt");
+export const LightbulbIcon = strokeIcon("lightbulb");
+export const HistoryIcon = strokeIcon("history");
+export const MessageCirclePlusIcon = strokeIcon("chat-bubbles");
+export const PaletteIcon = strokeIcon("palette");
+export const RefreshCwIcon = strokeIcon("repeat");
+export const CloudIcon = strokeIcon("cloud");
+export const DatabaseIcon = strokeIcon("database");
+export const Volume2Icon = strokeIcon("volume-2");
+export const HeadphonesIcon = strokeIcon("headphones");
+export const PlayIcon = strokeIcon("play");
+export const PauseIcon = strokeIcon("pause");
+export const SquareIcon = strokeIcon("stop");
+export const RotateCcwIcon = strokeIcon("arrow-rotate-ccw-up");
+export const SkipBackIcon = strokeIcon("skip-backward");
+export const SkipForwardIcon = strokeIcon("skip-forward");
+export const LanguagesIcon = strokeIcon("translate");
+export const CpuIcon = strokeIcon("microchip");
+export const PuzzleIcon = strokeIcon("puzzle-piece");
+export const HelpCircleIcon = strokeIcon("question-circle");
+export const InfoIcon = strokeIcon("question-circle");
+export const BarChart3Icon = strokeIcon("chart-bar");
+export const ClockIcon = strokeIcon("clock-3h");
+export const FlameIcon = strokeIcon("flame");
+export const TrendingUpIcon = strokeIcon("trending-up");
+export const TrophyIcon = strokeIcon("trophy");
+export const SwordsIcon = strokeIcon("shield");
+export const HighlighterIcon = strokeIcon("paint-roller");
+export const CopyIcon = strokeIcon("copy");
+export const Trash2Icon = strokeIcon("bin");
+export const TagIcon = strokeIcon("tag");
+export const CheckCheckIcon = strokeIcon("checks");
+export const SparklesIcon = strokeIcon("sparkles");
+export const LoaderIcon = strokeIcon("pulse-circle");
+export const Loader2Icon = strokeIcon("pulse-circle");
+export const WrenchIcon = strokeIcon("wrench");
+export const HashIcon = strokeIcon("hash");
+export const ArrowDownAZIcon = strokeIcon("arrow-down");
+export const ArrowUpAZIcon = strokeIcon("arrow-up");
+export const SendIcon = strokeIcon("arrow-block-up");
+export const StopCircleIcon = strokeIcon("stop");
+export const OctagonXIcon = strokeIcon("x-hexagon");
+export const ChevronDownIcon = strokeIcon("chevron-down");
+export const ChevronUpIcon = strokeIcon("chevron-up");
+export const CheckIcon = strokeIcon("check");
+export const EditIcon = strokeIcon("pencil");
+export const ShareIcon = strokeIcon("share-network");
+export const FilterIcon = strokeIcon("funnel");
+export const CalendarIcon = strokeIcon("calendar");
+export const SwitchIcon = strokeIcon("arrows-left-right");
+export const SunIcon = strokeIcon("sun");
+export const MoonIcon = strokeIcon("crescent");
+export const Undo2Icon = strokeIcon("arrow-rotate-ccw-up");
+export const Redo2Icon = strokeIcon("arrow-rotate-cw-up");
+export const EyeIcon = strokeIcon("eye");
+export const EyeOffIcon = strokeIcon("eye-slash");
+export const BoldIcon = strokeIcon("text-b");
 export const BoldIcon2 = BoldIcon;
-export const ItalicIcon = material("description");
-export const StrikethroughIcon = material("remove");
-export const ListIcon = material("menu");
-export const ListOrderedIcon = material("menu");
-export const CodeIcon = material("terminal");
-export const Link2Icon = material("link");
-export const QuoteIcon = material("chat");
-export const MinusIcon = material("remove");
-export const Heading1Icon = material("description");
-export const Heading2Icon = material("description");
-export const Heading3Icon = material("description");
-export const LibraryIcon = material("book_2");
-export const ZoomIn = material("add_circle");
-export const ZoomOut = material("remove_circle");
-export const Download = material("download");
-export const RotateCcw = material("refresh");
-export const Maximize2 = material("open_in_new");
-export const Minimize2 = material("dock_to_left");
-export const BookmarkIcon = material("favorite");
-export const BookmarkFilledIcon = material("favorite");
-export const TypeIcon = material("description");
-export const LinkIcon = material("link");
-export const GlobeIcon = material("public");
-export const LayersIcon = material("grid_view");
-export const FolderMinusIcon = material("archive");
+export const ItalicIcon = strokeIcon("text-i");
+export const StrikethroughIcon = strokeIcon("strikethrough");
+export const ListIcon = strokeIcon("list");
+export const ListOrderedIcon = strokeIcon("list-alt1");
+export const CodeIcon = strokeIcon("code");
+export const Link2Icon = strokeIcon("link");
+export const QuoteIcon = strokeIcon("quote-left");
+export const MinusIcon = strokeIcon("minus");
+export const Heading1Icon = strokeIcon("text-t");
+export const Heading2Icon = strokeIcon("text-t");
+export const Heading3Icon = strokeIcon("text-t");
+export const LibraryIcon = strokeIcon("books-spines");
+export const ZoomIn = strokeIcon("magnifying-glass-plus");
+export const ZoomOut = strokeIcon("magnifying-glass-minus");
+export const Download = strokeIcon("arrow-to-line-down");
+export const RotateCcw = strokeIcon("arrow-rotate-ccw-up");
+export const Maximize2 = strokeIcon("corners");
+export const Minimize2 = strokeIcon("corners-in");
+export const BookmarkIcon = strokeIcon("bookmark");
+export const BookmarkFilledIcon = strokeIcon("bookmark");
+export const TypeIcon = strokeIcon("text-t");
+export const LinkIcon = strokeIcon("link");
+export const GlobeIcon = strokeIcon("globe");
+export const LayersIcon = strokeIcon("layers");
+export const FolderMinusIcon = strokeIcon("folder-minus");
 
-// Compatibility names for screens that previously imported Lucide directly.
-export const AlertCircle = material("warning");
+export const AlertCircle = strokeIcon("exclamation-triangle");
 export const Bot = BotIcon;
-export const Bug = material("error");
+export const Bug = strokeIcon("bug");
 export const Check = CheckIcon;
-export const CheckCircle2 = material("check_circle");
+export const CheckCircle2 = strokeIcon("check-circle");
 export const ChevronLeft = ChevronLeftIcon;
 export const Cloud = CloudIcon;
-export const Coffee = material("light_mode");
-export const ExternalLink = material("open_in_new");
+export const Coffee = strokeIcon("coffee-cup");
+export const ExternalLink = strokeIcon("arrow-from-square-up-right");
 export const Eye = EyeIcon;
 export const EyeOff = EyeOffIcon;
 export const Languages = LanguagesIcon;
 export const Lightbulb = LightbulbIcon;
-export const MessageCircle = material("chat");
+export const MessageCircle = strokeIcon("chat-bubble");
 export const MessageSquare = MessageSquareIcon;
 export const Moon = MoonIcon;
 export const Plus = PlusIcon;
-export const Scan = material("qr_code_scanner");
+export const Scan = strokeIcon("qr-code");
 export const Search = SearchIcon;
-export const Star = material("star");
+export const Star = strokeIcon("star");
 export const Sun = SunIcon;
 export const Trash2 = Trash2Icon;
 export const X = XIcon;
+
+export { MishanaerIcon } from "./MishanaerIcon";
+export type { MishanaerIconName, MishanaerIconProps } from "./MishanaerIcon";

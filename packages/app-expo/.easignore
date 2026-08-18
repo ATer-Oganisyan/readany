@@ -8,8 +8,8 @@
 # Local dependency and native build artifacts. EAS installs dependencies and
 # regenerates native projects in the cloud from app.config.js.
 node_modules/
-ios/
-android/
+/ios/
+/android/
 dist/
 .expo/
 
@@ -27,6 +27,12 @@ CHANGELOG
 .editorconfig
 tsconfig.tsbuildinfo
 metro.cache
+
+# Ship only the selected production character loops. Local generation
+# experiments in this directory add roughly 900 MB to the upload otherwise.
+assets/catalog/character-video-samples/*
+!assets/catalog/character-video-samples/*-grok-eyebrow-hair-only-batch5.json
+!assets/catalog/character-video-samples/*-grok-eyebrow-hair-only-batch5-boomerang.mp4
 
 # Test files
 __tests__

@@ -1,7 +1,9 @@
 import { NativeNoteEditor } from "@/components/notes/NativeNoteEditor";
 import { ChevronDownIcon } from "@/components/ui/Icon";
+import { getStrokeIconImageSource } from "@/components/ui/MishanaerIcon";
 import { NativeButton } from "@/components/ui/NativeButton";
 import { Text } from "@/components/ui/Typography";
+import { toast } from "@/lib/notifications";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useAnnotationStore, useLibraryStore } from "@/stores";
 import { headingFontFamily, spacing, useColors } from "@/styles/theme";
@@ -80,10 +82,9 @@ export function ManualNoteScreen({ navigation, route }: Props) {
       navigation.goBack();
     } catch (error) {
       console.error("[ManualNoteScreen] Failed to save note:", error);
-      Alert.alert(
-        t("notes.saveFailed", "Не получилось сохранить заметку"),
-        t("common.tryAgain", "Попробуйте ещё раз"),
-      );
+      toast.error(t("notes.saveFailed", "Не получилось сохранить заметку"), {
+        description: t("common.tryAgain", "Попробуйте ещё раз"),
+      });
     } finally {
       setSaving(false);
     }
@@ -119,7 +120,10 @@ export function ManualNoteScreen({ navigation, route }: Props) {
                 type: "menu" as const,
                 label: t("common.book", "Книга"),
                 accessibilityLabel: t("notes.chooseBook", "Выбрать книгу"),
-                icon: { type: "sfSymbol" as const, name: "book.closed" as const },
+                icon: {
+                  type: "image" as const,
+                  source: getStrokeIconImageSource("book"),
+                },
                 menu: {
                   title: t("common.book", "Книга"),
                   multiselectable: false,
@@ -143,7 +147,10 @@ export function ManualNoteScreen({ navigation, route }: Props) {
                 type: "button" as const,
                 label: saving ? t("notes.saving", "Сохраняем") : t("common.done", "Готово"),
                 accessibilityLabel: t("notes.saveNote", "Сохранить заметку"),
-                icon: { type: "sfSymbol" as const, name: "checkmark" as const },
+                icon: {
+                  type: "image" as const,
+                  source: getStrokeIconImageSource("check"),
+                },
                 disabled: !canSave,
                 variant: "prominent" as const,
                 tintColor: colors.primary,

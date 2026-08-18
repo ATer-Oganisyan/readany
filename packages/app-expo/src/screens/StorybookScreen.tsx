@@ -1,5 +1,9 @@
+import {
+  MishanaerIcon,
+  type MishanaerIconName,
+  mishanaerIconNames,
+} from "@/components/ui/MishanaerIcon";
 import { NativeButton } from "@/components/ui/NativeButton";
-import { NativeSymbol } from "@/components/ui/NativeSymbol";
 import { PasswordInput } from "@/components/ui/PasswordInput";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { Text, TextInput } from "@/components/ui/Typography";
@@ -20,14 +24,13 @@ import VectorModelSettingsScreen from "@/screens/settings/VectorModelSettingsScr
 import { secondLevelTitleFontFamily, useColors } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { ComponentType } from "react";
-import { Platform, Pressable, ScrollView, SectionList, StyleSheet, View } from "react-native";
+import { Pressable, ScrollView, SectionList, StyleSheet, View } from "react-native";
 
 type CatalogItem = {
   id: string;
   title: string;
   subtitle: string;
-  icon: string;
-  sfSymbol: string;
+  icon: MishanaerIconName;
   preview: ComponentType;
 };
 
@@ -51,33 +54,6 @@ function ButtonPreview() {
   );
 }
 
-const iconNames = [
-  { name: "books.vertical", fallback: "book_2" },
-  { name: "message.fill", fallback: "chat" },
-  { name: "square.and.pencil", fallback: "edit" },
-  { name: "person.crop.circle", fallback: "person" },
-  { name: "plus", fallback: "add" },
-  { name: "magnifyingglass", fallback: "search" },
-  { name: "xmark", fallback: "close" },
-  { name: "line.3.horizontal.decrease", fallback: "filter_list" },
-  { name: "chevron.forward", fallback: "chevron_right" },
-  { name: "folder", fallback: "folder" },
-  { name: "ellipsis", fallback: "more_vert" },
-  { name: "chart.bar.xaxis", fallback: "analytics" },
-  { name: "doc.text", fallback: "description" },
-  { name: "paintpalette", fallback: "palette" },
-  { name: "arrow.clockwise", fallback: "refresh" },
-  { name: "icloud", fallback: "cloud" },
-  { name: "bell", fallback: "notifications" },
-  { name: "play.fill", fallback: "play_arrow" },
-  { name: "character.bubble", fallback: "language" },
-  { name: "gearshape", fallback: "settings" },
-  { name: "info.circle", fallback: "info" },
-  { name: "trash", fallback: "delete" },
-  { name: "square.and.arrow.up", fallback: "share" },
-  { name: "checkmark", fallback: "check" },
-] as const;
-
 function IconsPreview() {
   const colors = useColors();
   return (
@@ -86,15 +62,10 @@ function IconsPreview() {
       contentContainerStyle={styles.iconGrid}
       style={{ backgroundColor: colors.background }}
     >
-      {iconNames.map((icon) => (
-        <View key={icon.name} style={styles.iconItem}>
-          <NativeSymbol
-            name={icon.name}
-            fallback={icon.fallback}
-            color={colors.foreground}
-            size={30}
-          />
-          <Text style={[styles.iconName, { color: colors.mutedForeground }]}>{icon.name}</Text>
+      {mishanaerIconNames.map((name) => (
+        <View key={name} style={styles.iconItem}>
+          <MishanaerIcon name={name} color={colors.foreground} size={30} />
+          <Text style={[styles.iconName, { color: colors.mutedForeground }]}>{name}</Text>
         </View>
       ))}
     </ScrollView>
@@ -176,48 +147,42 @@ const componentItems: CatalogItem[] = [
     id: "native-button",
     title: "Нативная кнопка",
     subtitle: "Состояния, размеры и действия",
-    icon: "apps",
-    sfSymbol: "rectangle.and.hand.point.up.left",
+    icon: "hand",
     preview: ButtonPreview,
   },
   {
     id: "toast",
     title: "Toast",
     subtitle: "Загрузка, успех и ошибка",
-    icon: "notifications",
-    sfSymbol: "bell",
+    icon: "bell",
     preview: ToastPreview,
   },
   {
-    id: "material-icons",
-    title: Platform.OS === "ios" ? "SF Symbols" : "Material Icons",
-    subtitle: "Системные иконки приложения",
-    icon: "grid_view",
-    sfSymbol: "square.grid.2x2",
+    id: "mishanaer-icons",
+    title: "Mishanaer Icons",
+    subtitle: "Stroke-иконки приложения",
+    icon: "grid-2x2",
     preview: IconsPreview,
   },
   {
     id: "typography",
     title: "Типографика",
     subtitle: "Заголовки, текст и поля",
-    icon: "description",
-    sfSymbol: "textformat",
+    icon: "text-t",
     preview: TypographyPreview,
   },
   {
     id: "password",
     title: "Пароль",
     subtitle: "Поле с показом и скрытием",
-    icon: "visibility",
-    sfSymbol: "eye",
+    icon: "eye",
     preview: PasswordPreview,
   },
   {
     id: "note-editor",
     title: "Редактор заметки",
     subtitle: "Форматирование и предпросмотр",
-    icon: "edit",
-    sfSymbol: "square.and.pencil",
+    icon: "pencil-square",
     preview: EditorPreview,
   },
 ];
@@ -227,24 +192,21 @@ const pageItems: CatalogItem[] = [
     id: "library",
     title: "Библиотека",
     subtitle: "Список и импорт книг",
-    icon: "book_2",
-    sfSymbol: "books.vertical",
+    icon: "books-spines",
     preview: LibraryScreen,
   },
   {
     id: "chat",
     title: "ИИ",
     subtitle: "Диалоги и помощник по чтению",
-    icon: "chat",
-    sfSymbol: "message.fill",
+    icon: "chat-bubble",
     preview: ChatScreen,
   },
   {
     id: "notes",
     title: "Заметки",
     subtitle: "Цитаты, заметки и блокноты",
-    icon: "edit",
-    sfSymbol: "note.text",
+    icon: "note",
     preview: NotesPreview,
   },
   {
@@ -252,15 +214,13 @@ const pageItems: CatalogItem[] = [
     title: "Профиль",
     subtitle: "Статистика и настройки",
     icon: "person",
-    sfSymbol: "person.crop.circle",
     preview: ProfileScreen,
   },
   {
     id: "stats",
     title: "Статистика",
     subtitle: "Прогресс и активность чтения",
-    icon: "analytics",
-    sfSymbol: "chart.bar.xaxis",
+    icon: "chart-bar",
     preview: StatsScreen,
   },
   {
@@ -268,39 +228,34 @@ const pageItems: CatalogItem[] = [
     title: "Оформление",
     subtitle: "Тема и внешний вид",
     icon: "palette",
-    sfSymbol: "paintpalette",
     preview: AppearanceSettingsScreen,
   },
   {
     id: "ai-settings",
     title: "Настройки ИИ",
     subtitle: "Модель и подключение",
-    icon: "chat_add_on",
-    sfSymbol: "sparkles",
+    icon: "sparkles",
     preview: AISettingsScreen,
   },
   {
     id: "semantic-search",
     title: "Смысловой поиск",
     subtitle: "Модель поиска по содержанию",
-    icon: "search",
-    sfSymbol: "text.magnifyingglass",
+    icon: "book-open-magnifying-glass",
     preview: VectorModelSettingsScreen,
   },
   {
     id: "speech",
     title: "Озвучивание",
     subtitle: "Голос и воспроизведение",
-    icon: "mic",
-    sfSymbol: "headphones",
+    icon: "headphones",
     preview: TTSSettingsScreen,
   },
   {
     id: "translation",
     title: "Перевод",
     subtitle: "Язык и модель перевода",
-    icon: "language",
-    sfSymbol: "character.bubble",
+    icon: "translate",
     preview: TranslationSettingsScreen,
   },
   {
@@ -308,15 +263,13 @@ const pageItems: CatalogItem[] = [
     title: "Синхронизация",
     subtitle: "Резервная копия библиотеки",
     icon: "cloud",
-    sfSymbol: "icloud",
     preview: SyncSettingsScreen,
   },
   {
     id: "about",
     title: "О приложении",
     subtitle: "Версия и полезные ссылки",
-    icon: "info",
-    sfSymbol: "info.circle",
+    icon: "question-circle",
     preview: AboutScreen,
   },
 ];
@@ -364,12 +317,7 @@ export function StorybookScreen({ navigation }: CatalogProps) {
           ]}
         >
           <View style={[styles.catalogIcon, { backgroundColor: colors.muted }]}>
-            <NativeSymbol
-              name={item.sfSymbol}
-              fallback={item.icon}
-              size={22}
-              color={colors.foreground}
-            />
+            <MishanaerIcon name={item.icon} size={22} color={colors.foreground} />
           </View>
           <View style={styles.catalogText}>
             <Text style={[styles.catalogTitle, { color: colors.foreground }]}>{item.title}</Text>
@@ -377,12 +325,7 @@ export function StorybookScreen({ navigation }: CatalogProps) {
               {item.subtitle}
             </Text>
           </View>
-          <NativeSymbol
-            name="chevron.forward"
-            fallback="chevron_right"
-            size={18}
-            color={colors.mutedForeground}
-          />
+          <MishanaerIcon name="chevron-right" size={18} color={colors.mutedForeground} />
         </Pressable>
       )}
     />

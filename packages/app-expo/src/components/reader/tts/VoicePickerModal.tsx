@@ -1,32 +1,26 @@
+import { CheckIcon } from "@/components/ui/Icon";
 import { Text } from "@/components/ui/Typography";
-import { useColors, radius } from "@/styles/theme";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import {
   DEFAULT_SYSTEM_VOICE_VALUE,
+  type NativeSystemVoiceOption,
   findSystemVoiceLabel,
   getSystemVoiceOptionsAsync,
   groupSystemVoiceOptions,
   resolveSystemVoiceValue,
-  type NativeSystemVoiceOption,
 } from "@/lib/platform/system-voices";
+import { useColors } from "@/styles/theme";
 import {
   DASHSCOPE_VOICES,
   EDGE_TTS_VOICES,
+  type TTSConfig,
   XIAOMI_TTS_VOICES,
   getLocaleDisplayLabel,
   groupEdgeTTSVoices,
-  type TTSConfig,
 } from "@readany/core/tts";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { Modal, Pressable, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import { makeStyles } from "./tts-page-styles";
 
 interface VoicePickerModalProps {
@@ -128,7 +122,7 @@ export function VoicePickerModal({
                   </View>
                   {isActive && (
                     <View style={s.engineCheckmark}>
-                      <Text style={s.engineCheckmarkTxt}>✓</Text>
+                      <CheckIcon size={15} color="#fff" />
                     </View>
                   )}
                 </TouchableOpacity>
@@ -161,7 +155,7 @@ export function VoicePickerModal({
                     <Text style={[s.voiceItemTxt, isSelected && s.voiceItemTxtSelected]}>
                       {v.label}
                     </Text>
-                    {isSelected && <Text style={s.voiceItemCheck}>✓</Text>}
+                    {isSelected && <CheckIcon size={16} color={colors.primary} />}
                   </TouchableOpacity>
                 );
               })}
@@ -182,7 +176,7 @@ export function VoicePickerModal({
                     <Text style={[s.voiceItemTxt, isSelected && s.voiceItemTxtSelected]}>
                       {v.label}
                     </Text>
-                    {isSelected && <Text style={s.voiceItemCheck}>✓</Text>}
+                    {isSelected && <CheckIcon size={16} color={colors.primary} />}
                   </TouchableOpacity>
                 );
               })}
@@ -211,7 +205,7 @@ export function VoicePickerModal({
                         <Text style={[s.voiceItemTxt, isSelected && s.voiceItemTxtSelected]}>
                           {v.name}
                         </Text>
-                        {isSelected && <Text style={s.voiceItemCheck}>✓</Text>}
+                        {isSelected && <CheckIcon size={16} color={colors.primary} />}
                       </TouchableOpacity>
                     );
                   })}
@@ -243,7 +237,7 @@ export function VoicePickerModal({
                     {t("tts.defaultVoice")}
                   </Text>
                   {selectedSystemVoiceValue === DEFAULT_SYSTEM_VOICE_VALUE && (
-                    <Text style={s.voiceItemCheck}>✓</Text>
+                    <CheckIcon size={16} color={colors.primary} />
                   )}
                 </TouchableOpacity>
                 {systemVoiceGroups.map(([lang, voices]) => (
@@ -271,7 +265,7 @@ export function VoicePickerModal({
                           <Text style={[s.voiceItemTxt, isSelected && s.voiceItemTxtSelected]}>
                             {voice.label}
                           </Text>
-                          {isSelected && <Text style={s.voiceItemCheck}>✓</Text>}
+                          {isSelected && <CheckIcon size={16} color={colors.primary} />}
                         </TouchableOpacity>
                       );
                     })}

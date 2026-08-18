@@ -323,6 +323,18 @@ describe("importFicbookFromUrl (сеть замокана)", () => {
     ).rejects.toMatchObject({ message: "ficbook-network" });
   });
 
+  it("зависший ответ — ошибка ficbook-timeout", async () => {
+    const fetchImpl = (() => new Promise<Response>(() => {})) as unknown as typeof globalThis.fetch;
+
+    await expect(
+      importFicbookFromUrl("https://ficbook.net/readfic/13141244", {
+        fetchImpl,
+        chapterDelayMs: 0,
+        requestTimeoutMs: 5,
+      }),
+    ).rejects.toMatchObject({ message: "ficbook-timeout" });
+  });
+
   it("недоступная обложка не ломает импорт", async () => {
     const calls: string[] = [];
     const fetchImpl = (async (input: RequestInfo | URL) => {

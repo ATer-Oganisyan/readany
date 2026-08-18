@@ -1,4 +1,4 @@
-import { NativeSymbol } from "@/components/ui/NativeSymbol";
+import { MishanaerIcon } from "@/components/ui/Icon";
 import { useKeyboardInsets } from "@/hooks/use-keyboard-insets";
 import { fontFamily, useTheme } from "@/styles/theme";
 import { radiusPixels, spacingPixels } from "@deslop/primitives";
@@ -131,11 +131,11 @@ export function NarraChatComposer<TMessage extends IMessage>({
           <View style={[styles.stopGlyph, { backgroundColor: colors.primaryForeground }]} />
         ) : (
           <View pointerEvents="none" style={styles.sendIconFrame}>
-            <NativeSymbol
+            <MishanaerIcon
               color={colors.primaryForeground}
-              fallback="arrow_upward"
-              name="arrow.up"
+              name="arrow-block-up"
               size={20}
+              variant="stroke"
             />
           </View>
         )}

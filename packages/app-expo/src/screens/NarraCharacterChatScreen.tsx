@@ -11,6 +11,7 @@ import { isCharacterUnlocked, normalizeReadingProgress } from "@/lib/narra/domai
 import { reportNarraError } from "@/lib/narra/errors";
 import { synthesizeNarraSpeech } from "@/lib/narra/media";
 import type { NarraCharacter, NarraChatMessage } from "@/lib/narra/types";
+import { toast } from "@/lib/notifications";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useLibraryStore, useNarraStore } from "@/stores";
 import {
@@ -28,7 +29,7 @@ import * as Crypto from "expo-crypto";
 import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Platform, Pressable, StyleSheet, View } from "react-native";
+import { Platform, Pressable, StyleSheet, View } from "react-native";
 
 type Props = NativeStackScreenProps<RootStackParamList, "NarraCharacterChat">;
 
@@ -135,6 +136,8 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
       >
         <CharacterPortraitImage
           character={character}
+          resizeMode="cover"
+          staticOnly
           style={styles.headerAvatarImage}
           fallback={
             <InitialsAvatar
@@ -346,10 +349,9 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
         });
       } catch (error) {
         setSpeakingId(null);
-        Alert.alert(
-          t("narra.speechFailedTitle", "Не удалось озвучить ответ"),
-          reportNarraError("character_speech", error).message,
-        );
+        toast.error(t("narra.speechFailedTitle", "Не удалось озвучить ответ"), {
+          description: reportNarraError("character_speech", error).message,
+        });
       }
     },
     [character, speakingId, t],
@@ -392,10 +394,9 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
         void refreshMemory([...messages, userMessage, assistantMessage]);
       } catch (error) {
         setPendingAssistant(null);
-        Alert.alert(
-          t("narra.chatFailedTitle", "Не удалось получить ответ"),
-          reportNarraError("character_chat", error).message,
-        );
+        toast.error(t("narra.chatFailedTitle", "Не удалось получить ответ"), {
+          description: reportNarraError("character_chat", error).message,
+        });
       } finally {
         setSending(false);
       }

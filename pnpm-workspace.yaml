@@ -16,3 +16,4 @@ patchedDependencies:
   "@langchain/core": patches/@langchain__core.patch
   react-native-track-player@4.1.2: patches/react-native-track-player@4.1.2.patch
   react-native-screens@4.25.2: patches/react-native-screens@4.25.2.patch
+  sonner-native@0.27.0: patches/sonner-native@0.27.0.patch

@@ -1,3 +1,4 @@
+import { MishanaerIcon, type MishanaerIconName, XIcon } from "@/components/ui/Icon";
 import { fontFamily, useTheme, withOpacity } from "@/styles/theme";
 import { spacingPixels } from "@deslop/primitives";
 import { useHeaderHeight } from "@react-navigation/elements";
@@ -13,6 +14,7 @@ import {
   Bubble,
   type BubbleProps,
   Chat,
+  type ChatIcons,
   type IMessage,
   type InputToolbarProps,
   Message,
@@ -27,6 +29,34 @@ import { NarraChatComposer } from "./narra-chat-composer";
 const USER_ID = "narra-user";
 const ASSISTANT_ID = "narra-ai";
 type StreamingStep = "thinking" | "tool_calling" | "responding" | "idle";
+
+function chatIcon(name: MishanaerIconName) {
+  return ({ color, size }: { color: string; size: number }) => (
+    <MishanaerIcon name={name} color={color} size={size} variant="stroke" />
+  );
+}
+
+const CHAT_ICONS = {
+  send: chatIcon("arrow-block-up"),
+  mic: chatIcon("mic"),
+  camera: chatIcon("camera"),
+  play: chatIcon("play"),
+  pause: chatIcon("pause"),
+  close: chatIcon("x"),
+  chevronLeft: chatIcon("chevron-left"),
+  chevronDown: chatIcon("chevron-down"),
+  clock: chatIcon("clock-3h"),
+  check: chatIcon("check"),
+  checkAll: chatIcon("checks"),
+  pin: chatIcon("pin"),
+  plus: chatIcon("plus"),
+  emoji: chatIcon("smiley-happy"),
+  paperclip: chatIcon("paperclip"),
+  reply: chatIcon("reply"),
+  pencil: chatIcon("pencil"),
+  lock: chatIcon("lock-locked"),
+  trash: chatIcon("bin"),
+} satisfies ChatIcons;
 
 interface NarraMessage extends IMessage {
   source: MessageV2;
@@ -161,7 +191,7 @@ export function NarraChat({
   showTypingIndicator = true,
   revealMessageId = null,
   onRevealComplete,
-  showModeControls = true,
+  showModeControls = false,
   assistantMessageAction,
 }: NarraChatProps) {
   const { colors, isDark } = useTheme();
@@ -380,7 +410,7 @@ export function NarraChat({
               {quote.text}
             </Text>
             <Pressable onPress={() => onRemoveQuote?.(quote.id)} hitSlop={8}>
-              <Text style={[styles.removeQuote, { color: colors.mutedForeground }]}>×</Text>
+              <XIcon size={18} color={colors.mutedForeground} />
             </Pressable>
           </View>
         ))}
@@ -447,6 +477,7 @@ export function NarraChat({
       colorScheme={isDark ? "dark" : "light"}
       theme={theme}
       darkTheme={theme}
+      icons={CHAT_ICONS}
       renderAvatar={null}
       renderAccessory={renderAccessory}
       renderInputToolbar={renderInputToolbar}
@@ -565,10 +596,6 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: fontFamily.regular,
     fontSize: 12,
-  },
-  removeQuote: {
-    fontSize: 20,
-    lineHeight: 20,
   },
   modeRow: {
     flexDirection: "row",

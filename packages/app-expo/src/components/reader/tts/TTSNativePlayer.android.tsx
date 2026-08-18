@@ -1,10 +1,11 @@
+import { type MishanaerIconName, getStrokeIconImageSource } from "@/components/ui/MishanaerIcon";
 import { useTheme } from "@/styles/theme";
-import { interfaceFontFamily } from "@deslop/primitives/native";
 import {
   CircularProgressIndicator,
   Column,
   FilledIconButton,
   Host,
+  Icon,
   IconButton,
   Row,
   Slider,
@@ -16,13 +17,15 @@ import type { TTSNativePlayerProps } from "./TTSNativePlayer.types";
 import { useTTSNativePlayer } from "./useTTSNativePlayer";
 
 const PLAYER_HEIGHT = 132;
-const PROGRESS_SECTION_HEIGHT = 68;
 
-function PlayerIcon({ children, color }: { children: string; color: string }) {
+function PlayerIcon({ name, color }: { name: MishanaerIconName; color: string }) {
   return (
-    <Text color={color} style={{ fontFamily: interfaceFontFamily.materialSymbols, fontSize: 26 }}>
-      {children}
-    </Text>
+    <Icon
+      source={getStrokeIconImageSource(name)}
+      size={26}
+      tint={color}
+      contentDescription={name}
+    />
   );
 }
 
@@ -77,7 +80,7 @@ export function TTSNativePlayer({
             enabled={player.hasDuration}
             colors={{ contentColor: colors.foreground }}
           >
-            <PlayerIcon color={colors.foreground}>replay_15</PlayerIcon>
+            <PlayerIcon name="skip-backward" color={colors.foreground} />
           </IconButton>
           <Spacer modifiers={[size(22, 1)]} />
           <FilledIconButton
@@ -94,9 +97,10 @@ export function TTSNativePlayer({
                 modifiers={[size(24, 24)]}
               />
             ) : (
-              <PlayerIcon color={colors.primaryForeground}>
-                {player.isPlaying ? "pause" : "play_arrow"}
-              </PlayerIcon>
+              <PlayerIcon
+                name={player.isPlaying ? "pause" : "play"}
+                color={colors.primaryForeground}
+              />
             )}
           </FilledIconButton>
           <Spacer modifiers={[size(22, 1)]} />
@@ -105,7 +109,7 @@ export function TTSNativePlayer({
             enabled={player.hasDuration}
             colors={{ contentColor: colors.foreground }}
           >
-            <PlayerIcon color={colors.foreground}>forward_15</PlayerIcon>
+            <PlayerIcon name="skip-forward" color={colors.foreground} />
           </IconButton>
         </Row>
       </Column>

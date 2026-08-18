@@ -8,12 +8,22 @@ script = ""
 [[actions]]
 name = "Run"
 icon = "run"
+command = "./script/build_and_run.sh"
+
+[[actions]]
+name = "Run Metro"
+icon = "run"
 command = "./script/build_and_run.sh start"
 
 [[actions]]
-name = "Run iOS"
+name = "Run LAN"
 icon = "run"
-command = "./script/build_and_run.sh ios"
+command = "./script/build_and_run.sh start-lan"
+
+[[actions]]
+name = "Rebuild iOS"
+icon = "run"
+command = "./script/build_and_run.sh rebuild-ios"
 
 [[actions]]
 name = "Check iOS"

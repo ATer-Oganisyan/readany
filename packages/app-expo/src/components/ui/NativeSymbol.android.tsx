@@ -1,10 +1,9 @@
-import type { StyleProp, TextStyle } from "react-native";
-import { MaterialIcon } from "./Icon";
+import { MishanaerIcon, resolveSystemIconName } from "./MishanaerIcon";
 import type { NativeSymbolProps } from "./NativeSymbol.types";
 
-export function NativeSymbol({ fallback, size, color, style }: NativeSymbolProps) {
+export function NativeSymbol({ name, size, color, style }: NativeSymbolProps) {
   return (
-    <MaterialIcon name={fallback} size={size} color={color} style={style as StyleProp<TextStyle>} />
+    <MishanaerIcon name={resolveSystemIconName(name)} size={size} color={color} style={style} />
   );
 }
 

@@ -402,7 +402,6 @@ export const makeStyles = (colors: ThemeColors) =>
       justifyContent: "center",
       marginLeft: 12,
     },
-    engineCheckmarkTxt: { fontSize: 13, color: "#fff", fontWeight: fontWeight.bold },
     voicePickerList: { flexGrow: 0 },
     voiceLangHeader: {
       paddingHorizontal: 20,
@@ -429,7 +428,6 @@ export const makeStyles = (colors: ThemeColors) =>
     voiceItemSelected: { backgroundColor: withOpacity(colors.primary, 0.06) },
     voiceItemTxt: { fontSize: 15, color: colors.foreground },
     voiceItemTxtSelected: { fontWeight: fontWeight.semibold, color: colors.primary },
-    voiceItemCheck: { fontSize: 15, fontWeight: fontWeight.bold, color: colors.primary },
     voiceBrowserNote: { padding: 28, alignItems: "center" },
     voiceBrowserNoteTxt: {
       fontSize: 14,

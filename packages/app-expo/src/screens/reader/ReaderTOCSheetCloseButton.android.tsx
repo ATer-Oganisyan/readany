@@ -1,5 +1,5 @@
-import { interfaceFontFamily } from "@deslop/primitives/native";
-import { Host, IconButton, Text } from "@expo/ui/jetpack-compose";
+import { getStrokeIconImageSource } from "@/components/ui/MishanaerIcon";
+import { Host, Icon, IconButton } from "@expo/ui/jetpack-compose";
 import type { ReaderTOCSheetCloseButtonProps } from "./ReaderTOCSheetCloseButton.types";
 
 export function ReaderTOCSheetCloseButton({
@@ -10,12 +10,12 @@ export function ReaderTOCSheetCloseButton({
   return (
     <Host colorScheme={colorScheme} style={{ width: 48, height: 48 }}>
       <IconButton onClick={onPress} colors={{ contentColor: foregroundColor }}>
-        <Text
-          color={foregroundColor}
-          style={{ fontFamily: interfaceFontFamily.materialSymbols, fontSize: 24 }}
-        >
-          close
-        </Text>
+        <Icon
+          source={getStrokeIconImageSource("x")}
+          size={24}
+          tint={foregroundColor}
+          contentDescription="Close"
+        />
       </IconButton>
     </Host>
   );

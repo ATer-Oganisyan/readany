@@ -1,5 +1,5 @@
-import { interfaceFontFamily } from "@deslop/primitives/native";
-import { FilledTonalIconButton, Host, Row, Spacer, Text } from "@expo/ui/jetpack-compose";
+import { type MishanaerIconName, getStrokeIconImageSource } from "@/components/ui/MishanaerIcon";
+import { FilledTonalIconButton, Host, Icon, Row, Spacer } from "@expo/ui/jetpack-compose";
 import { fillMaxWidth, height, size } from "@expo/ui/jetpack-compose/modifiers";
 import { Fragment } from "react";
 import { StyleSheet } from "react-native";
@@ -7,21 +7,21 @@ import type { ReaderCharacterActionsProps } from "./ReaderCharacterActions.types
 
 export function ReaderCharacterActions(props: ReaderCharacterActionsProps) {
   const actions = [
-    { icon: "chat", onPress: props.onTalk, enabled: true },
+    { icon: "chat-bubble" as MishanaerIconName, onPress: props.onTalk, enabled: true },
     {
       icon:
         props.voiceState === "loading"
-          ? "hourglass_empty"
+          ? "pulse-circle"
           : props.voiceState === "playing"
             ? "stop"
-            : "volume_up",
+            : "volume-2",
       onPress: props.onToggleVoice,
       enabled: props.canSample,
     },
     ...(props.showRegenerate
       ? [
           {
-            icon: props.regenerating ? "hourglass_empty" : "refresh",
+            icon: props.regenerating ? "pulse-circle" : "repeat",
             onPress: props.onRegenerate,
             enabled: !props.regenerating,
           },
@@ -48,12 +48,12 @@ export function ReaderCharacterActions(props: ReaderCharacterActionsProps) {
               }}
               modifiers={[size(64, 64)]}
             >
-              <Text
-                color={props.foregroundColor}
-                style={{ fontFamily: interfaceFontFamily.materialSymbols, fontSize: 28 }}
-              >
-                {action.icon}
-              </Text>
+              <Icon
+                source={getStrokeIconImageSource(action.icon as MishanaerIconName)}
+                size={28}
+                tint={props.foregroundColor}
+                contentDescription={action.icon}
+              />
             </FilledTonalIconButton>
           </Fragment>
         ))}

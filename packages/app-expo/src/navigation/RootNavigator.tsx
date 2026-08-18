@@ -1,4 +1,5 @@
 import { MissingBookPrompt } from "@/components/shared/MissingBookPrompt";
+import { getStrokeIconImageSource } from "@/components/ui/MishanaerIcon";
 import BadgesScreen from "@/screens/BadgesScreen";
 import { ChatScreen } from "@/screens/ChatScreen";
 import { FullScreenNotesScreen } from "@/screens/FullScreenNotesScreen";
@@ -121,6 +122,10 @@ export function RootNavigator() {
           },
           headerShadowVisible: false,
           headerTintColor: colors.foreground,
+          headerBackIcon: {
+            type: "image",
+            source: getStrokeIconImageSource("chevron-left"),
+          },
           headerBackButtonDisplayMode: "minimal",
           headerTitleStyle: {
             color: colors.foreground,

@@ -1,4 +1,5 @@
 import type { ExtractorRef } from "@/components/rag/ExtractorWebView";
+import { toast } from "@/lib/notifications";
 import { inspectMobileBookForVectorize } from "@/lib/rag/auto-vectorize-book";
 import { triggerVectorizeBook } from "@/lib/rag/vectorize-trigger";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
@@ -8,7 +9,6 @@ import type { Book, VectorizeProgress } from "@readany/core/types";
 import * as FileSystem from "expo-file-system/legacy";
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert } from "react-native";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -108,23 +108,21 @@ export function useVectorizationQueue({ extractorRef, nav }: UseVectorizationQue
       const prepareAndQueue = async () => {
         const info = await inspectMobileBookForVectorize(book);
         if (info.reason === "unsupported-format") {
-          Alert.alert(
-            t("vectorize.unsupportedFormatTitle", "Unsupported format"),
-            t(
+          toast.error(t("vectorize.unsupportedFormatTitle", "Формат не поддерживается"), {
+            description: t(
               "vectorize.unsupportedFormatDesc",
-              "Mobile vectorization currently supports EPUB, PDF, TXT, and UMD books.",
+              "На мобильном устройстве поддерживаются EPUB, PDF, TXT и UMD.",
             ),
-          );
+          });
           return;
         }
         if (info.reason === "missing-file") {
-          Alert.alert(
-            t("common.error", "Error"),
-            t(
+          toast.error(t("common.error", "Ошибка"), {
+            description: t(
               "vectorize.missingFileDesc",
-              "The local book file is missing. Please download or re-import it.",
+              "Локальный файл книги не найден. Скачайте или импортируйте книгу заново.",
             ),
-          );
+          });
           return;
         }
         const alreadyQueued = vectorQueueRef.current.some((b) => b.id === book.id);
@@ -140,22 +138,21 @@ export function useVectorizationQueue({ extractorRef, nav }: UseVectorizationQue
 
       const hasCapability = useVectorModelStore.getState().hasVectorCapability();
       if (!hasCapability) {
-        Alert.alert(t("settings.vectorModel"), t("vectorize.notConfiguredDesc"), [
-          { text: t("common.cancel"), style: "cancel" },
-          {
-            text: t("vectorize.goSettings"),
-            onPress: () => nav.navigate("VectorModelSettings"),
+        toast.error(t("settings.vectorModel"), {
+          description: t("vectorize.notConfiguredDesc"),
+          action: {
+            label: t("vectorize.goSettings"),
+            onClick: () => nav.navigate("VectorModelSettings"),
           },
-        ]);
+        });
         return;
       }
 
       prepareAndQueue().catch((err) => {
         console.error(`[useVectorizationQueue] Failed to prepare "${book.meta.title}":`, err);
-        Alert.alert(
-          t("common.error", "Error"),
-          t("vectorize.prepareFailed", "Failed to prepare vectorization."),
-        );
+        toast.error(t("common.error", "Ошибка"), {
+          description: t("vectorize.prepareFailed", "Не удалось подготовить векторизацию."),
+        });
       });
     },
     [nav, t, vectorizingBookId, processQueue],

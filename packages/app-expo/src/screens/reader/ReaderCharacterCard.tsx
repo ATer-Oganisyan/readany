@@ -7,6 +7,7 @@ import { isCharacterUnlocked } from "@/lib/narra/domain";
 import { reportNarraError } from "@/lib/narra/errors";
 import { ensureCharacterPortrait, synthesizeNarraSpeech } from "@/lib/narra/media";
 import type { NarraCharacter } from "@/lib/narra/types";
+import { toast } from "@/lib/notifications";
 import { useLibraryStore, useNarraStore } from "@/stores";
 import {
   type ThemeColors,
@@ -32,7 +33,7 @@ import {
   useState,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, View } from "react-native";
+import { ActivityIndicator, Modal, Pressable, ScrollView, View } from "react-native";
 import { StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
@@ -152,7 +153,7 @@ function ProgressivePortraitTransition({
     <Svg pointerEvents="none" style={StyleSheet.absoluteFill} viewBox="0 0 75 100">
       <Defs>
         <Filter id={blurId} x="-20%" y="-20%" width="140%" height="140%">
-          <FeGaussianBlur stdDeviation={3.2} edgeMode="duplicate" />
+          <FeGaussianBlur stdDeviation={5} edgeMode="duplicate" />
         </Filter>
         <LinearGradient id={blurMaskGradientId} x1="0" y1="0" x2="0" y2="1">
           {PROGRESSIVE_TRANSITION_STOPS.map(({ offset, opacity }) => (
@@ -389,10 +390,9 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
           const normalized = reportNarraError("character_voice_sample", error);
           if (voiceRequestRef.current !== requestId) return;
           setVoiceState("idle");
-          Alert.alert(
-            t("narra.voiceSampleFailedTitle", "Не удалось озвучить героя"),
-            normalized.message,
-          );
+          toast.error(t("narra.voiceSampleFailedTitle", "Не удалось озвучить героя"), {
+            description: normalized.message,
+          });
         });
     };
 
@@ -429,6 +429,20 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
               uri={portraitUri}
               backgroundColor={portraitBackgroundColor}
             />
+          ) : null}
+          {embedded ? (
+            <Text
+              adjustsFontSizeToFit={nameNeedsFitting}
+              minimumFontScale={nameNeedsFitting ? 0.5 : undefined}
+              numberOfLines={2}
+              style={[
+                styles.name,
+                styles.embeddedPortraitName,
+                { color: portraitForeground.primary },
+              ]}
+            >
+              {fittedDisplayName}
+            </Text>
           ) : null}
           {portraitUri && !portraitBusy && !embedded ? (
             <View style={styles.portraitButtonsRow}>
@@ -480,12 +494,15 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
             </Text>
           ) : null}
           <Text
+            accessibilityElementsHidden={embedded}
             adjustsFontSizeToFit={embedded && nameNeedsFitting}
+            importantForAccessibility={embedded ? "no-hide-descendants" : undefined}
             minimumFontScale={embedded && nameNeedsFitting ? 0.5 : undefined}
             numberOfLines={embedded ? 2 : undefined}
             style={[
               styles.name,
               embedded && styles.embeddedName,
+              embedded && styles.embeddedNameSpacer,
               embedded && { color: portraitForeground.primary },
             ]}
           >
@@ -795,6 +812,23 @@ const makeStyles = (colors: ThemeColors) =>
       textShadowColor: "rgba(0, 0, 0, 0.5)",
       textShadowOffset: { width: 0, height: 2 },
       textShadowRadius: 20,
+    },
+    embeddedPortraitName: {
+      position: "absolute",
+      right: 0,
+      bottom: 58 - spacing.xxl,
+      left: 0,
+      zIndex: 2,
+      paddingHorizontal: spacing.xxl,
+      paddingVertical: spacing.xxl,
+      overflow: "visible",
+      textShadowColor: "rgba(0, 0, 0, 0.5)",
+      textShadowOffset: { width: 0, height: 2 },
+      textShadowRadius: 20,
+    },
+    embeddedNameSpacer: {
+      height: largeTitleLineHeight + spacing.xl * 2,
+      opacity: 0,
     },
     embeddedNameMeasurement: {
       position: "absolute",

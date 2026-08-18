@@ -15,6 +15,7 @@ import { Text } from "@/components/ui/Typography";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { EmptyStateActionButton } from "@/components/ui/empty-state-action-button";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
+import { toast } from "@/lib/notifications";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { NATIVE_SCROLL_EDGE_EFFECTS } from "@/navigation/scroll-edge-effects";
 import { useAnnotationStore, useLibraryStore } from "@/stores";
@@ -351,14 +352,18 @@ export function NotesView({
       try {
         if (format === "notion") {
           await exporter.copyToClipboard(content);
-          Alert.alert(t("common.success", "成功"), t("notes.copiedToClipboard", "已复制到剪贴板"));
+          toast.success(t("common.success", "成功"), {
+            description: t("notes.copiedToClipboard", "已复制到剪贴板"),
+          });
         } else {
           const ext = format === "json" ? "json" : "md";
           await exporter.downloadAsFile(content, `${selectedBook.title}-${format}.${ext}`, format);
         }
       } catch (err) {
         console.error("Export failed:", err);
-        Alert.alert(t("common.error", "错误"), t("notes.exportFailed", "导出失败"));
+        toast.error(t("common.error", "错误"), {
+          description: t("notes.exportFailed", "导出失败"),
+        });
       }
     },
     [selectedBook, books, t],

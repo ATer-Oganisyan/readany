@@ -1,7 +1,7 @@
 /**
  * useReaderBookmark — handles bookmark toggling, pending snippet requests, and bookmark list.
  */
-import { useAnnotationStore, type AnnotationState } from "@/stores";
+import { type AnnotationState, useAnnotationStore } from "@/stores";
 import { generateId } from "@readany/core/utils";
 import { useCallback, useMemo, useRef } from "react";
 
@@ -10,6 +10,8 @@ export interface UseReaderBookmarkOptions {
   currentCfi: string;
   currentChapter: string;
   requestPageSnippet: () => void;
+  onBookmarkAdded?: () => void;
+  onBookmarkRemoved?: () => void;
 }
 
 export interface UseReaderBookmarkResult {
@@ -26,6 +28,8 @@ export function useReaderBookmark({
   currentCfi,
   currentChapter,
   requestPageSnippet,
+  onBookmarkAdded,
+  onBookmarkRemoved,
 }: UseReaderBookmarkOptions): UseReaderBookmarkResult {
   const { bookmarks, addBookmark, removeBookmark } = useAnnotationStore();
   const pendingBookmarkRef = useRef(false);
@@ -45,6 +49,7 @@ export function useReaderBookmark({
     if (!currentCfi || !bookId) return;
     if (isBookmarked && existingBookmark) {
       removeBookmark(existingBookmark.id);
+      onBookmarkRemoved?.();
     } else {
       pendingBookmarkRef.current = true;
       requestPageSnippet();
@@ -59,6 +64,7 @@ export function useReaderBookmark({
             chapterTitle: currentChapter || undefined,
             createdAt: Date.now(),
           });
+          onBookmarkAdded?.();
         }
       }, 500);
     }
@@ -71,6 +77,8 @@ export function useReaderBookmark({
     removeBookmark,
     addBookmark,
     requestPageSnippet,
+    onBookmarkAdded,
+    onBookmarkRemoved,
   ]);
 
   const onBookmarkSnippet = useCallback(
@@ -86,10 +94,11 @@ export function useReaderBookmark({
             chapterTitle: currentChapter || undefined,
             createdAt: Date.now(),
           });
+          onBookmarkAdded?.();
         }
       }
     },
-    [addBookmark, bookId, currentCfi, currentChapter],
+    [addBookmark, bookId, currentCfi, currentChapter, onBookmarkAdded],
   );
 
   return {

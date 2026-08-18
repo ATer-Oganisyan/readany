@@ -1,4 +1,5 @@
 import { ClockIcon } from "@/components/ui/Icon";
+import { MishanaerIcon } from "@/components/ui/MishanaerIcon";
 import { Text } from "@/components/ui/Typography";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 /**
@@ -339,16 +340,23 @@ export function MetricTile({
           {value}
         </Text>
         {deltaLabel && delta !== undefined && delta !== 0 && (
-          <Text
-            style={{
-              fontSize: 9,
-              fontWeight: "700",
-              color: delta > 0 ? "rgba(16,185,129,0.7)" : "rgba(239,68,68,0.7)",
-            }}
-          >
-            {delta > 0 ? "↑" : "↓"}
-            {deltaLabel}
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 1 }}>
+            <MishanaerIcon
+              name={delta > 0 ? "arrow-up" : "arrow-down"}
+              size={10}
+              color={delta > 0 ? "rgba(16,185,129,0.7)" : "rgba(239,68,68,0.7)"}
+              variant="stroke"
+            />
+            <Text
+              style={{
+                fontSize: 9,
+                fontWeight: "700",
+                color: delta > 0 ? "rgba(16,185,129,0.7)" : "rgba(239,68,68,0.7)",
+              }}
+            >
+              {deltaLabel}
+            </Text>
+          </View>
         )}
       </View>
       {sublabel && (

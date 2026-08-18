@@ -1,3 +1,4 @@
+import { getStrokeIconImageSource } from "@/components/ui/MishanaerIcon";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useTheme } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -37,7 +38,10 @@ export function ReaderTOCSheetScreen({ navigation }: Props) {
                 type: "button" as const,
                 label: t("common.close", "Закрыть"),
                 accessibilityLabel: t("common.close", "Закрыть"),
-                icon: { type: "sfSymbol" as const, name: "xmark" as const },
+                icon: {
+                  type: "image" as const,
+                  source: getStrokeIconImageSource("x"),
+                },
                 onPress: handleClose,
               },
             ],

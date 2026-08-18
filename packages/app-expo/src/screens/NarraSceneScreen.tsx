@@ -12,6 +12,7 @@ import { normalizePersistedNarraMediaUri, synthesizeNarraSpeech } from "@/lib/na
 import { generateNarraAudioScenario } from "@/lib/narra/scene-audio";
 import { generateNarraSceneImage as generateSceneImage } from "@/lib/narra/scene-image-openrouter";
 import type { NarraCharacter, NarraSceneAudioSegment } from "@/lib/narra/types";
+import { toast } from "@/lib/notifications";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { NATIVE_SCROLL_EDGE_EFFECTS } from "@/navigation/scroll-edge-effects";
 import { useNarraStore } from "@/stores";
@@ -27,15 +28,7 @@ import { interfaceFontFamily } from "@deslop/primitives/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  View,
-} from "react-native";
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type Props = NativeStackScreenProps<RootStackParamList, "NarraScene">;
@@ -86,6 +79,11 @@ export function NarraSceneScreen({ route, navigation }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [animating, setAnimating] = useState(false);
   const [showVideo, setShowVideo] = useState(false);
+  const [videoState, setVideoState] = useState<{
+    uri: string | null;
+    ready: boolean;
+    failed: boolean;
+  }>({ uri: null, ready: false, failed: false });
   const [audioStatus, setAudioStatus] = useState<AudioStatus>("idle");
   const [textExpanded, setTextExpanded] = useState(false);
   const startedRef = useRef(false);
@@ -97,6 +95,16 @@ export function NarraSceneScreen({ route, navigation }: Props) {
   const videoUri = cachedScene?.videoUri
     ? normalizePersistedNarraMediaUri(cachedScene.videoUri)
     : null;
+  const videoReady =
+    showVideo &&
+    videoState.uri === videoUri &&
+    videoState.ready &&
+    !videoState.failed &&
+    Boolean(videoUri);
+
+  useEffect(() => {
+    setVideoState({ uri: showVideo ? videoUri : null, ready: false, failed: false });
+  }, [showVideo, videoUri]);
 
   const generate = useCallback(async () => {
     if (loading || animating || sceneMediaOperationRef.current !== "idle") return;
@@ -264,10 +272,9 @@ export function NarraSceneScreen({ route, navigation }: Props) {
       setShowVideo(true);
     } catch (cause) {
       const normalized = reportNarraError("scene_animate", cause);
-      Alert.alert(
-        t("narra.sceneAnimateFailedTitle", "Не удалось оживить сцену"),
-        normalized.message,
-      );
+      toast.error(t("narra.sceneAnimateFailedTitle", "Не удалось оживить сцену"), {
+        description: normalized.message,
+      });
     } finally {
       sceneMediaOperationRef.current = "idle";
       setAnimating(false);
@@ -282,7 +289,7 @@ export function NarraSceneScreen({ route, navigation }: Props) {
       return;
     }
     if (!hasBundledOpenRouterKey) {
-      Alert.alert(t("narra.animateNeedKey", "Нужен ключ OpenRouter"));
+      toast.error(t("narra.animateNeedKey", "Нужен ключ OpenRouter"));
       return;
     }
     if (videoUri) {
@@ -296,7 +303,7 @@ export function NarraSceneScreen({ route, navigation }: Props) {
   const regenerateAnimation = useCallback(() => {
     if (animating) return;
     if (!hasBundledOpenRouterKey) {
-      Alert.alert(t("narra.animateNeedKey", "Нужен ключ OpenRouter"));
+      toast.error(t("narra.animateNeedKey", "Нужен ключ OpenRouter"));
       return;
     }
     setShowVideo(false);
@@ -317,13 +324,18 @@ export function NarraSceneScreen({ route, navigation }: Props) {
           {imageUri ? (
             <>
               {showVideo && videoUri ? (
-                // «Ожившая» сцена — зацикленное видео НА МЕСТЕ картинки
                 <NarraLoopVideo
                   accessibilityLabel={t("narra.sceneVideoLabel", "Ожившая сцена")}
+                  onError={() => {
+                    setVideoState({ uri: videoUri, ready: false, failed: true });
+                    setShowVideo(false);
+                  }}
+                  onReady={() => setVideoState({ uri: videoUri, ready: true, failed: false })}
+                  style={StyleSheet.absoluteFill}
                   uri={videoUri}
-                  style={styles.image}
                 />
-              ) : (
+              ) : null}
+              {!showVideo || !videoReady ? (
                 <Image
                   accessibilityLabel={t(
                     "narra.sceneIllustrationLabel",
@@ -333,11 +345,11 @@ export function NarraSceneScreen({ route, navigation }: Props) {
                     },
                   )}
                   source={{ uri: imageUri }}
-                  style={styles.image}
+                  style={StyleSheet.absoluteFill}
                   resizeMode="cover"
                   onError={() => setImageUri(null)}
                 />
-              )}
+              ) : null}
               {loading ? (
                 <View style={styles.imageOverlay}>
                   <ActivityIndicator size="large" color="#fff" />

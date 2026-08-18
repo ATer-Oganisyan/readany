@@ -1,5 +1,7 @@
+import { ChevronDownIcon, ChevronUpIcon } from "@/components/ui/Icon";
 import { Text, TextInput } from "@/components/ui/Typography";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
+import { toast } from "@/lib/notifications";
 import { getPlatformService } from "@readany/core/services";
 import { useSyncStore } from "@readany/core/stores";
 import { SYNC_SECRET_KEYS } from "@readany/core/sync/sync-backend";
@@ -290,13 +292,12 @@ export default function SyncSettingsScreen() {
   const handleSync = useCallback(async () => {
     const result = await syncNow();
     if (result?.success && (result.filesUploadFailed > 0 || result.filesDownloadFailed > 0)) {
-      Alert.alert(
-        t("common.warning", "提示"),
-        t("settings.syncFilesPartialFailed", {
+      toast.warning(t("common.warning", "Синхронизация завершена с предупреждением"), {
+        description: t("settings.syncFilesPartialFailed", {
           uploadFailed: result.filesUploadFailed,
           downloadFailed: result.filesDownloadFailed,
         }),
-      );
+      });
     }
   }, [syncNow, t]);
 
@@ -735,7 +736,11 @@ export default function SyncSettingsScreen() {
                   onPress={() => setShowAdvanced(!showAdvanced)}
                 >
                   <Text style={styles.sectionTitle}>{t("settings.syncAdvanced")}</Text>
-                  <Text style={styles.chevron}>{showAdvanced ? "▲" : "▼"}</Text>
+                  {showAdvanced ? (
+                    <ChevronUpIcon size={18} color={colors.mutedForeground} />
+                  ) : (
+                    <ChevronDownIcon size={18} color={colors.mutedForeground} />
+                  )}
                 </TouchableOpacity>
                 {showAdvanced && (
                   <View style={styles.card}>

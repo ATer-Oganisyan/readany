@@ -17,6 +17,7 @@ import { isCharacterUnlocked } from "@/lib/narra/domain";
 import { NarraServiceError, reportNarraError } from "@/lib/narra/errors";
 import { ensureCharacterPortrait, normalizePersistedNarraMediaUri } from "@/lib/narra/media";
 import type { NarraCharacter } from "@/lib/narra/types";
+import { toast } from "@/lib/notifications";
 import { inspectMobileBookForVectorize } from "@/lib/rag/auto-vectorize-book";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useLibraryStore, useNarraStore } from "@/stores";
@@ -25,14 +26,7 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import * as FileSystem from "expo-file-system/legacy";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  ActivityIndicator,
-  Alert,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { ActivityIndicator, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 
 type Props = NativeStackScreenProps<RootStackParamList, "NarraCharacters">;
 const MAX_AUTOMATIC_PORTRAIT_ATTEMPTS = 2;
@@ -159,12 +153,12 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
               : error instanceof Error
                 ? error.message
                 : String(error);
-          Alert.alert(
-            t("narra.analysisFailedTitle", "Не удалось найти персонажей"),
-            __DEV__ && detail !== normalized.message
-              ? `${normalized.message}\n\nДиагностика: ${detail}`
-              : normalized.message,
-          );
+          toast.error(t("narra.analysisFailedTitle", "Не удалось найти персонажей"), {
+            description:
+              __DEV__ && detail !== normalized.message
+                ? `${normalized.message}\n\nДиагностика: ${detail}`
+                : normalized.message,
+          });
         }
       } finally {
         analysisActiveRef.current = false;
@@ -268,6 +262,8 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
           >
             <CharacterPortraitImage
               character={character}
+              resizeMode="cover"
+              staticOnly
               style={styles.avatarImage}
               fallback={
                 <InitialsAvatar

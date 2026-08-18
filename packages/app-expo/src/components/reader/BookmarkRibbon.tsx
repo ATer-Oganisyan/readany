@@ -1,7 +1,7 @@
+import { BookmarkIcon } from "@/components/ui/Icon";
 import { useColors } from "@/styles/theme";
 import { useEffect, useRef } from "react";
 import { Animated, StyleSheet } from "react-native";
-import Svg, { Path } from "react-native-svg";
 
 interface BookmarkRibbonProps {
   visible: boolean;
@@ -40,9 +40,7 @@ export function BookmarkRibbon({ visible, topOffset = 0, rightOffset = 20 }: Boo
         { top: topOffset, right: rightOffset, opacity, transform: [{ translateY }] },
       ]}
     >
-      <Svg width={14} height={60} viewBox="0 0 14 60">
-        <Path d="M0 0h14v54l-7-4-7 4V0z" fill={colors.primary} />
-      </Svg>
+      <BookmarkIcon size={24} color={colors.primary} />
     </Animated.View>
   );
 }

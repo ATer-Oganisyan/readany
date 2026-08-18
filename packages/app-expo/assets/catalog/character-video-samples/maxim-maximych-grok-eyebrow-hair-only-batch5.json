@@ -1,0 +1,21 @@
+{
+  "character": "Maxim Maximych",
+  "book": "Hero Of Our Time",
+  "sourceImage": "packages/app-expo/assets/catalog/characters/hero-of-our-time/maxim-maximych.jpg",
+  "outputVideo": "packages/app-expo/assets/catalog/character-video-samples/maxim-maximych-grok-eyebrow-hair-only-batch5.mp4",
+  "model": "x-ai/grok-imagine-video-1.5",
+  "promptVariant": "grok-eyebrow-hair-only-batch5",
+  "frameMode": "first-frame",
+  "durationSeconds": 4,
+  "resolution": "720p",
+  "aspectRatio": "3:4",
+  "generateAudio": false,
+  "prompt": "Create a perfectly seamless 4-second loop from the provided portrait.\n\nCAMERA LOCK: Treat the source image as a fixed 2D plate. Lock the camera and image plane completely. Every frame must have the exact same crop, framing, scale, perspective, focal length, and pixel alignment as the source image. No camera path or image-plane transformation: no zoom in, zoom out, push-in, pull-out, pan, tilt, dolly, orbit, parallax, stabilization, shake, reframing, rescaling, or background drift. The subject and every background edge must remain registered to the same pixel coordinates.\n\nCHARACTER: Preserve the exact identity, pose, proportions, clothing, props, lighting, colors, textures, background, and original visual style. Keep the eyes open and the gaze fixed.\n\nMOTION: Allow only one almost imperceptible change in eyebrow tension in the middle of the clip, plus barely perceptible hair movement. All movement must be slow, restrained, and form a complete closed cycle. No shoulder movement, eye or mouth movement, smile, grin, speech, head turn or nod, body movement, clothing movement, or prop movement.\n\nLOOP: The first and final frames must be identical to the original source image. The eyebrow change and hair movement must begin and end within the middle of the clip. Keep the first and final 0.5 seconds completely still and return to the exact source frame before the end. No cuts, crossfades, transitions, jumps, visible reset, flicker, morphing, warping, focus shift, lighting change, or color shift.\n\nPreserve the original portrait everywhere except for the minimal eyebrow change and barely perceptible hair movement.",
+  "jobId": "EgtKU8LoH53dCKNlTFav",
+  "generationId": "gen-vid-1787064120-pLTTBrb2eCdfqln9ni0m",
+  "usage": {
+    "cost": 0.57,
+    "is_byok": false
+  },
+  "generatedAt": "2026-08-18T14:42:52.247Z"
+}

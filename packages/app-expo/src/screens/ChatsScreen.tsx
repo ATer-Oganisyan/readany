@@ -17,8 +17,10 @@ import { reportNarraError } from "@/lib/narra/errors";
 import { ensureCharacterPortrait } from "@/lib/narra/media";
 import type { NarraCharacter } from "@/lib/narra/types";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
+import type { TabParamList } from "@/navigation/TabNavigator";
 import { useLibraryStore, useNarraStore } from "@/stores";
 import { type ThemeColors, spacing, useTheme } from "@/styles/theme";
+import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { Book } from "@readany/core/types";
@@ -146,13 +148,10 @@ export function ChatsScreen() {
   );
 
   const goToCatalog = useCallback(() => {
-    navigation.getParent()?.navigate(
-      "Library" as never,
-      {
-        screen: "LibraryHome",
-        params: { initialSection: "catalog" },
-      } as never,
-    );
+    navigation.getParent<BottomTabNavigationProp<TabParamList>>()?.navigate("Library", {
+      screen: "LibraryHome",
+      params: { initialSection: "catalog" },
+    });
   }, [navigation]);
 
   const selectChatPage = useCallback(
@@ -198,6 +197,8 @@ export function ChatsScreen() {
             <CharacterChatAvatar>
               <CharacterPortraitImage
                 character={row.character}
+                resizeMode="cover"
+                staticOnly
                 style={styles.avatarImage}
                 fallback={
                   <InitialsAvatar

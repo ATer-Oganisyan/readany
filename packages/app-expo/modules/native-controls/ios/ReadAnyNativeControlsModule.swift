@@ -3,6 +3,40 @@ import ExpoModulesCore
 import SwiftUI
 import UIKit
 
+private final class MishanaerIconBundleToken {}
+
+private enum MishanaerIconAssets {
+  private static let resourceBundle: Bundle = {
+    let moduleBundle = Bundle(for: MishanaerIconBundleToken.self)
+    for hostBundle in [moduleBundle, Bundle.main] {
+      if
+        let resourceURL = hostBundle.url(
+          forResource: "ReadAnyNativeControlsResources",
+          withExtension: "bundle"
+        ),
+        let bundle = Bundle(url: resourceURL)
+      {
+        return bundle
+      }
+    }
+    return moduleBundle
+  }()
+
+  static func image(_ name: String) -> UIImage {
+    guard
+      let image = UIImage(
+        named: "mishanaer-\(name)",
+        in: resourceBundle,
+        compatibleWith: nil
+      )
+    else {
+      assertionFailure("Missing Mishanaer icon: \(name)")
+      return UIImage()
+    }
+    return image.withRenderingMode(.alwaysTemplate)
+  }
+}
+
 public final class ReadAnyNativeControlsModule: Module {
   public func definition() -> ModuleDefinition {
     Name("ReadAnyNativeControls")
@@ -242,7 +276,7 @@ final class ReadAnyImportMenuButton: ExpoView {
       configuration = .filled()
     }
     configuration.title = label
-    configuration.image = showsPlus ? UIImage(systemName: "plus") : nil
+    configuration.image = showsPlus ? MishanaerIconAssets.image("plus") : nil
     configuration.imagePadding = showsPlus ? 7 : 0
     configuration.cornerStyle = .capsule
     configuration.titleLineBreakMode = .byTruncatingTail
@@ -265,12 +299,12 @@ final class ReadAnyImportMenuButton: ExpoView {
       ? UIMenu(children: [
           UIAction(
             title: urlLabel,
-            image: UIImage(systemName: "link"),
+            image: MishanaerIconAssets.image("link"),
             handler: { [weak self] _ in self?.onUrlPress() }
           ),
           UIAction(
             title: localLabel,
-            image: UIImage(systemName: "folder"),
+            image: MishanaerIconAssets.image("folder"),
             handler: { [weak self] _ in self?.onLocalPress() }
           )
         ])
@@ -342,18 +376,18 @@ final class ReadAnyReaderToolbar: ExpoView {
     }
 
     let speech = makeItem(
-      symbol: speechActive ? "stop.fill" : "airpods.max",
+      iconName: speechActive ? "stop" : "headphones",
       accessibilityLabel: speechActive ? "Остановить озвучку" : speechLabel,
       action: #selector(handleSpeechPress)
     )
     let chat = makeItem(
-      symbol: "message.fill",
+      iconName: "chat-bubble",
       accessibilityLabel: chatLabel,
       action: #selector(handleChatPress)
     )
     // Явный вход в оформление читалки (Aa): шрифты, тема, прокрутка
     let settings = makeItem(
-      symbol: "textformat.size",
+      iconName: "text-t",
       accessibilityLabel: settingsLabel,
       action: #selector(handleSettingsPress)
     )
@@ -370,12 +404,12 @@ final class ReadAnyReaderToolbar: ExpoView {
   }
 
   private func makeItem(
-    symbol: String,
+    iconName: String,
     accessibilityLabel: String,
     action: Selector
   ) -> UIBarButtonItem {
     let item = UIBarButtonItem(
-      image: UIImage(systemName: symbol),
+      image: MishanaerIconAssets.image(iconName),
       style: .plain,
       target: self,
       action: action
@@ -445,13 +479,13 @@ final class ReadAnySceneToolbar: ExpoView {
     }
 
     let speech = makeItem(
-      symbol: "speaker.wave.2",
+      iconName: "volume-2",
       accessibilityLabel: speechActive ? "Остановить озвучку" : speechLabel,
       action: #selector(handleSpeechPress),
       enabled: !speechDisabled
     )
     let regenerate = makeItem(
-      symbol: "arrow.counterclockwise",
+      iconName: "repeat",
       accessibilityLabel: regenerateLabel,
       action: #selector(handleRegeneratePress),
       enabled: !regenerateDisabled
@@ -466,13 +500,13 @@ final class ReadAnySceneToolbar: ExpoView {
   }
 
   private func makeItem(
-    symbol: String,
+    iconName: String,
     accessibilityLabel: String,
     action: Selector,
     enabled: Bool
   ) -> UIBarButtonItem {
     let item = UIBarButtonItem(
-      image: UIImage(systemName: symbol),
+      image: MishanaerIconAssets.image(iconName),
       style: .plain,
       target: self,
       action: action
@@ -547,7 +581,7 @@ final class ReadAnyTTSPlayerToolbar: ExpoView {
     }
 
     let backward = UIBarButtonItem(
-      image: UIImage(systemName: "gobackward.15"),
+      image: MishanaerIconAssets.image("skip-backward"),
       style: .plain,
       target: self,
       action: #selector(handleBackwardPress)
@@ -556,7 +590,7 @@ final class ReadAnyTTSPlayerToolbar: ExpoView {
     backward.isEnabled = seekEnabled
 
     let forward = UIBarButtonItem(
-      image: UIImage(systemName: "goforward.15"),
+      image: MishanaerIconAssets.image("skip-forward"),
       style: .plain,
       target: self,
       action: #selector(handleForwardPress)
@@ -578,7 +612,7 @@ final class ReadAnyTTSPlayerToolbar: ExpoView {
     configuration.showsActivityIndicator = false
     configuration.image = isLoading
       ? nil
-      : UIImage(systemName: isPlaying ? "pause.fill" : "play.fill")
+      : MishanaerIconAssets.image(isPlaying ? "pause" : "play")
     playButton.configuration = configuration
     playButton.accessibilityLabel = isLoading
       ? "Остановить загрузку"
@@ -634,7 +668,8 @@ public struct ReadAnyNavigationStack: ExpoSwiftUI.View {
           SwiftUI.Button {
             props.onClosePress()
           } label: {
-            Image(systemName: "xmark")
+            Image(uiImage: MishanaerIconAssets.image("x"))
+              .renderingMode(.template)
           }
           .accessibilityLabel(props.closeAccessibilityLabel)
         }
@@ -667,7 +702,7 @@ public struct ReadAnyValueStepper: ExpoSwiftUI.View {
       Spacer(minLength: 12)
       HStack(spacing: 0) {
         stepButton(
-          systemName: "minus",
+          iconName: "minus",
           accessibilityLabel: props.decrementAccessibilityLabel,
           disabled: props.value <= props.min,
           nextValue: max(props.min, props.value - props.step)
@@ -681,7 +716,7 @@ public struct ReadAnyValueStepper: ExpoSwiftUI.View {
           .accessibilityLabel(props.valueLabel)
         Divider().frame(height: 22)
         stepButton(
-          systemName: "plus",
+          iconName: "plus",
           accessibilityLabel: props.incrementAccessibilityLabel,
           disabled: props.value >= props.max,
           nextValue: min(props.max, props.value + props.step)
@@ -694,7 +729,7 @@ public struct ReadAnyValueStepper: ExpoSwiftUI.View {
   }
 
   private func stepButton(
-    systemName: String,
+    iconName: String,
     accessibilityLabel: String,
     disabled: Bool,
     nextValue: Int
@@ -702,7 +737,8 @@ public struct ReadAnyValueStepper: ExpoSwiftUI.View {
     Button {
       props.onValueChange(["value": nextValue])
     } label: {
-      Image(systemName: systemName)
+      Image(uiImage: MishanaerIconAssets.image(iconName))
+        .renderingMode(.template)
         .font(.body.weight(.medium))
         .frame(width: 48, height: 44)
         .contentShape(Rectangle())
@@ -743,7 +779,8 @@ final class ReadAnySheetNavigationBar: ExpoView {
 
     navigationBar.prefersLargeTitles = false
     closeItem = UIBarButtonItem(
-      barButtonSystemItem: .close,
+      image: MishanaerIconAssets.image("x"),
+      style: .plain,
       target: self,
       action: #selector(handleClosePress)
     )

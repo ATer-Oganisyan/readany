@@ -1,26 +1,28 @@
+import { CheckIcon, PlayIcon, SquareIcon } from "@/components/ui/Icon";
 import { Text, TextInput } from "@/components/ui/Typography";
-import { useTTSStore } from "@/stores";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import {
   DEFAULT_SYSTEM_VOICE_VALUE,
+  type NativeSystemVoiceOption,
   findSystemVoiceLabel,
   getSystemVoiceOptionsAsync,
   groupSystemVoiceOptions,
   resolveSystemVoiceValue,
-  type NativeSystemVoiceOption,
 } from "@/lib/platform/system-voices";
 import { previewTTSConfig, stopTTSPreview } from "@/lib/platform/tts-preview";
+import { useTTSStore } from "@/stores";
 import {
   DASHSCOPE_VOICES,
   DEFAULT_XIAOMI_STYLE_PROMPT,
   EDGE_TTS_VOICES,
+  type TTSProfile,
+  type TTSProviderType,
   XIAOMI_TTS_VOICES,
   getActiveTTSProfile,
   getLocaleDisplayLabel,
   groupEdgeTTSVoices,
-  type TTSProviderType,
-  type TTSProfile,
 } from "@readany/core/tts";
+import type { TFunction } from "i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -31,7 +33,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import type { TFunction } from "i18next";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { PasswordInput } from "../../components/ui/PasswordInput";
 import {
@@ -82,10 +83,7 @@ export default function TTSSettingsScreen() {
   const displayLocale = i18n.resolvedLanguage || i18n.language;
   const edgeVoiceGroups = useMemo(() => groupEdgeTTSVoices(EDGE_TTS_VOICES), []);
 
-  const systemVoiceGroups = useMemo(
-    () => groupSystemVoiceOptions(systemVoices),
-    [systemVoices],
-  );
+  const systemVoiceGroups = useMemo(() => groupSystemVoiceOptions(systemVoices), [systemVoices]);
   const selectedSystemVoiceValue = useMemo(
     () => resolveSystemVoiceValue(config.voiceName, systemVoices),
     [config.voiceName, systemVoices],
@@ -173,20 +171,19 @@ export default function TTSSettingsScreen() {
       onPress={handlePreview}
       activeOpacity={0.7}
     >
+      {isPreviewing ? (
+        <SquareIcon size={16} color={colors.primaryForeground} />
+      ) : (
+        <PlayIcon size={16} color={colors.primary} />
+      )}
       <Text style={[styles.previewBtnText, isPreviewing && styles.previewBtnTextActive]}>
-        {isPreviewing ? "■" : "▶"}{" "}
-        {isPreviewing
-          ? t("common.previewing", "试听中")
-          : t("common.preview", "试听")}
+        {isPreviewing ? t("common.previewing", "试听中") : t("common.preview", "试听")}
       </Text>
     </TouchableOpacity>
   );
 
   return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: colors.background }]}
-      edges={[]}
-    >
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={[]}>
       <SettingsHeader
         title={t("tts.title", "TTS 设置")}
         subtitle={t("settings.realtimeHint")}
@@ -204,7 +201,9 @@ export default function TTSSettingsScreen() {
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
         >
-          <View style={[styles.contentColumn, { width: "100%", maxWidth: layout.centeredContentWidth }]}>
+          <View
+            style={[styles.contentColumn, { width: "100%", maxWidth: layout.centeredContentWidth }]}
+          >
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>{t("tts.voiceProfile", "朗读方案")}</Text>
               <View style={styles.profileList}>
@@ -222,7 +221,7 @@ export default function TTSSettingsScreen() {
                           {profileName(profile, t)}
                         </Text>
                       </View>
-                      {active && <Text style={styles.profileStatus}>✓</Text>}
+                      {active && <CheckIcon size={18} color={colors.primary} />}
                     </TouchableOpacity>
                   );
                 })}
@@ -233,127 +232,51 @@ export default function TTSSettingsScreen() {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>{t("tts.voiceSelect", "声音选择")}</Text>
 
-            {config.engine === "edge" && (
-              <ScrollView style={styles.voiceList} nestedScrollEnabled>
-                {edgeVoiceGroups.map(([lang, voices]) => (
-                  <View key={lang}>
-                    <View style={styles.voiceGroupHeader}>
-                      <Text style={styles.voiceGroupLabel}>
-                        {getLocaleDisplayLabel(lang, displayLocale)}
-                      </Text>
+              {config.engine === "edge" && (
+                <ScrollView style={styles.voiceList} nestedScrollEnabled>
+                  {edgeVoiceGroups.map(([lang, voices]) => (
+                    <View key={lang}>
+                      <View style={styles.voiceGroupHeader}>
+                        <Text style={styles.voiceGroupLabel}>
+                          {getLocaleDisplayLabel(lang, displayLocale)}
+                        </Text>
+                      </View>
+                      {voices.map((v) => (
+                        <TouchableOpacity
+                          key={v.id}
+                          style={styles.voiceItem}
+                          onPress={() => {
+                            updateActiveProfile({ voice: v.id });
+                            updateConfig({ edgeVoice: v.id });
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Text
+                            style={[
+                              styles.voiceName,
+                              config.edgeVoice === v.id && styles.voiceNameActive,
+                            ]}
+                          >
+                            {v.name}
+                          </Text>
+                          {config.edgeVoice === v.id && <Text style={styles.micIcon}>♪</Text>}
+                        </TouchableOpacity>
+                      ))}
                     </View>
-                    {voices.map((v) => (
+                  ))}
+                </ScrollView>
+              )}
+
+              {config.engine === "dashscope" && (
+                <>
+                  <ScrollView style={styles.voiceList} nestedScrollEnabled>
+                    {DASHSCOPE_VOICES.map((v) => (
                       <TouchableOpacity
                         key={v.id}
                         style={styles.voiceItem}
                         onPress={() => {
                           updateActiveProfile({ voice: v.id });
-                          updateConfig({ edgeVoice: v.id });
-                        }}
-                        activeOpacity={0.7}
-                      >
-                        <Text
-                          style={[
-                            styles.voiceName,
-                            config.edgeVoice === v.id && styles.voiceNameActive,
-                          ]}
-                        >
-                          {v.name}
-                        </Text>
-                        {config.edgeVoice === v.id && <Text style={styles.micIcon}>♪</Text>}
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                ))}
-              </ScrollView>
-            )}
-
-            {config.engine === "dashscope" && (
-              <>
-                <ScrollView style={styles.voiceList} nestedScrollEnabled>
-                  {DASHSCOPE_VOICES.map((v) => (
-                    <TouchableOpacity
-                      key={v.id}
-                      style={styles.voiceItem}
-                      onPress={() => {
-                        updateActiveProfile({ voice: v.id });
-                        updateConfig({ dashscopeVoice: v.id });
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <View>
-                        <Text
-                          style={[
-                            styles.voiceName,
-                            config.dashscopeVoice === v.id && styles.voiceNameActive,
-                          ]}
-                        >
-                          {v.label}
-                        </Text>
-                        <Text style={styles.voiceSubLabel}>{v.id}</Text>
-                      </View>
-                      {config.dashscopeVoice === v.id && <Text style={styles.micIcon}>♪</Text>}
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-
-                {/* DashScope API Key */}
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.fieldLabel}>{t("tts.apiKey", "DashScope API Key")}</Text>
-                  <PasswordInput
-                    style={styles.input}
-                    value={config.dashscopeApiKey || ""}
-                    onChangeText={(v) => {
-                      updateActiveProfile({ apiKey: v });
-                      updateConfig({ dashscopeApiKey: v });
-                    }}
-                    placeholder="sk-..."
-                    placeholderTextColor={colors.mutedForeground}
-                  />
-                </View>
-              </>
-            )}
-
-            {config.engine === "system" && (
-              <ScrollView style={styles.voiceList} nestedScrollEnabled>
-                <TouchableOpacity
-                  style={styles.voiceItem}
-                  onPress={() => {
-                    updateActiveProfile({ voice: "" });
-                    updateConfig({ voiceName: "", systemVoiceLabel: "" });
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text
-                    style={[
-                      styles.voiceName,
-                      selectedSystemVoiceValue === DEFAULT_SYSTEM_VOICE_VALUE &&
-                        styles.voiceNameActive,
-                    ]}
-                  >
-                    {t("tts.defaultVoice")}
-                  </Text>
-                  {selectedSystemVoiceValue === DEFAULT_SYSTEM_VOICE_VALUE && (
-                    <Text style={styles.micIcon}>♪</Text>
-                  )}
-                </TouchableOpacity>
-                {systemVoiceGroups.map(([lang, voices]) => (
-                  <View key={lang}>
-                    <View style={styles.voiceGroupHeader}>
-                      <Text style={styles.voiceGroupLabel}>
-                        {getLocaleDisplayLabel(lang, displayLocale)}
-                      </Text>
-                    </View>
-                    {voices.map((voice) => (
-                      <TouchableOpacity
-                        key={voice.id}
-                        style={styles.voiceItem}
-                        onPress={() => {
-                          updateActiveProfile({ voice: voice.id });
-                          updateConfig({
-                            voiceName: voice.id,
-                            systemVoiceLabel: findSystemVoiceLabel(voice.id, systemVoices),
-                          });
+                          updateConfig({ dashscopeVoice: v.id });
                         }}
                         activeOpacity={0.7}
                       >
@@ -361,226 +284,296 @@ export default function TTSSettingsScreen() {
                           <Text
                             style={[
                               styles.voiceName,
-                              selectedSystemVoiceValue === voice.id && styles.voiceNameActive,
+                              config.dashscopeVoice === v.id && styles.voiceNameActive,
                             ]}
                           >
-                            {voice.label}
+                            {v.label}
                           </Text>
-                          <Text style={styles.voiceSubLabel}>
-                            {getLocaleDisplayLabel(voice.lang, displayLocale)}
-                          </Text>
+                          <Text style={styles.voiceSubLabel}>{v.id}</Text>
                         </View>
-                        {selectedSystemVoiceValue === voice.id && (
-                          <Text style={styles.micIcon}>♪</Text>
-                        )}
+                        {config.dashscopeVoice === v.id && <Text style={styles.micIcon}>♪</Text>}
                       </TouchableOpacity>
                     ))}
-                  </View>
-                ))}
-              </ScrollView>
-            )}
+                  </ScrollView>
 
-            {config.engine === "xiaomi" && (
-              <>
-                <ScrollView style={styles.voiceList} nestedScrollEnabled>
-                  {XIAOMI_TTS_VOICES.map((v) => (
-                    <TouchableOpacity
-                      key={v.id}
-                      style={styles.voiceItem}
-                      onPress={() => {
-                        updateActiveProfile({ voice: v.id });
-                        updateConfig({ xiaomiVoice: v.id });
+                  {/* DashScope API Key */}
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.fieldLabel}>{t("tts.apiKey", "DashScope API Key")}</Text>
+                    <PasswordInput
+                      style={styles.input}
+                      value={config.dashscopeApiKey || ""}
+                      onChangeText={(v) => {
+                        updateActiveProfile({ apiKey: v });
+                        updateConfig({ dashscopeApiKey: v });
                       }}
-                      activeOpacity={0.7}
+                      placeholder="sk-..."
+                      placeholderTextColor={colors.mutedForeground}
+                    />
+                  </View>
+                </>
+              )}
+
+              {config.engine === "system" && (
+                <ScrollView style={styles.voiceList} nestedScrollEnabled>
+                  <TouchableOpacity
+                    style={styles.voiceItem}
+                    onPress={() => {
+                      updateActiveProfile({ voice: "" });
+                      updateConfig({ voiceName: "", systemVoiceLabel: "" });
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[
+                        styles.voiceName,
+                        selectedSystemVoiceValue === DEFAULT_SYSTEM_VOICE_VALUE &&
+                          styles.voiceNameActive,
+                      ]}
                     >
-                      <View>
-                        <Text
-                          style={[
-                            styles.voiceName,
-                            config.xiaomiVoice === v.id && styles.voiceNameActive,
-                          ]}
-                        >
-                          {v.label}
+                      {t("tts.defaultVoice")}
+                    </Text>
+                    {selectedSystemVoiceValue === DEFAULT_SYSTEM_VOICE_VALUE && (
+                      <Text style={styles.micIcon}>♪</Text>
+                    )}
+                  </TouchableOpacity>
+                  {systemVoiceGroups.map(([lang, voices]) => (
+                    <View key={lang}>
+                      <View style={styles.voiceGroupHeader}>
+                        <Text style={styles.voiceGroupLabel}>
+                          {getLocaleDisplayLabel(lang, displayLocale)}
                         </Text>
-                        <Text style={styles.voiceSubLabel}>MiMo-V2.5-TTS</Text>
                       </View>
-                      {config.xiaomiVoice === v.id && <Text style={styles.micIcon}>♪</Text>}
-                    </TouchableOpacity>
+                      {voices.map((voice) => (
+                        <TouchableOpacity
+                          key={voice.id}
+                          style={styles.voiceItem}
+                          onPress={() => {
+                            updateActiveProfile({ voice: voice.id });
+                            updateConfig({
+                              voiceName: voice.id,
+                              systemVoiceLabel: findSystemVoiceLabel(voice.id, systemVoices),
+                            });
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <View>
+                            <Text
+                              style={[
+                                styles.voiceName,
+                                selectedSystemVoiceValue === voice.id && styles.voiceNameActive,
+                              ]}
+                            >
+                              {voice.label}
+                            </Text>
+                            <Text style={styles.voiceSubLabel}>
+                              {getLocaleDisplayLabel(voice.lang, displayLocale)}
+                            </Text>
+                          </View>
+                          {selectedSystemVoiceValue === voice.id && (
+                            <Text style={styles.micIcon}>♪</Text>
+                          )}
+                        </TouchableOpacity>
+                      ))}
+                    </View>
                   ))}
                 </ScrollView>
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.fieldLabel}>{t("tts.apiKey", "API Key")}</Text>
-                  <PasswordInput
-                    style={styles.input}
-                    value={config.xiaomiApiKey || ""}
-                    onChangeText={(v) => {
-                      updateActiveProfile({ apiKey: v });
-                      updateConfig({ xiaomiApiKey: v });
-                    }}
-                    placeholder="MIMO_API_KEY"
-                    placeholderTextColor={colors.mutedForeground}
-                  />
-                </View>
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.fieldLabel}>{t("tts.baseUrl", "Base URL")}</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={config.xiaomiBaseUrl}
-                    onChangeText={(v) => {
-                      updateActiveProfile({ baseUrl: v });
-                      updateConfig({ xiaomiBaseUrl: v });
-                    }}
-                    placeholder="https://api.xiaomimimo.com/v1"
-                    placeholderTextColor={colors.mutedForeground}
-                    autoCapitalize="none"
-                  />
-                </View>
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.fieldLabel}>{t("tts.stylePrompt", "朗读风格")}</Text>
-                  <TextInput
-                    style={[styles.input, styles.multilineInput]}
-                    value={xiaomiStylePromptValue}
-                    onChangeText={(v) => {
-                      updateActiveProfile({ stylePrompt: v });
-                      updateConfig({ xiaomiStylePrompt: v });
-                    }}
-                    multiline
-                    placeholder={defaultStylePrompt}
-                    placeholderTextColor={colors.mutedForeground}
-                  />
-                </View>
-              </>
-            )}
+              )}
 
-            {config.engine === "openai-compatible" && (
-              <>
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.fieldLabel}>{t("tts.baseUrl", "Base URL")}</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={config.openaiTtsBaseUrl}
-                    onChangeText={(v) => {
-                      updateActiveProfile({ baseUrl: v });
-                      updateConfig({ openaiTtsBaseUrl: v });
-                    }}
-                    placeholder="https://api.openai.com/v1"
-                    placeholderTextColor={colors.mutedForeground}
-                    autoCapitalize="none"
-                  />
-                </View>
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.fieldLabel}>{t("tts.endpoint", "Endpoint")}</Text>
-                  <View style={styles.optionRow}>
-                    {(["audio-speech", "chat-completions"] as const).map((endpoint) => {
-                      const active = config.openaiTtsEndpoint === endpoint;
-                      return (
-                        <TouchableOpacity
-                          key={endpoint}
-                          style={[styles.optionChip, active && styles.optionChipActive]}
-                          onPress={() => {
-                            updateActiveProfile({ endpoint });
-                            updateConfig({ openaiTtsEndpoint: endpoint });
-                          }}
-                          activeOpacity={0.7}
-                        >
+              {config.engine === "xiaomi" && (
+                <>
+                  <ScrollView style={styles.voiceList} nestedScrollEnabled>
+                    {XIAOMI_TTS_VOICES.map((v) => (
+                      <TouchableOpacity
+                        key={v.id}
+                        style={styles.voiceItem}
+                        onPress={() => {
+                          updateActiveProfile({ voice: v.id });
+                          updateConfig({ xiaomiVoice: v.id });
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <View>
                           <Text
                             style={[
-                              styles.optionChipText,
-                              active && styles.optionChipTextActive,
+                              styles.voiceName,
+                              config.xiaomiVoice === v.id && styles.voiceNameActive,
                             ]}
                           >
-                            {endpoint === "audio-speech" ? "/audio/speech" : "/chat/completions"}
+                            {v.label}
                           </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
+                          <Text style={styles.voiceSubLabel}>MiMo-V2.5-TTS</Text>
+                        </View>
+                        {config.xiaomiVoice === v.id && <Text style={styles.micIcon}>♪</Text>}
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.fieldLabel}>{t("tts.apiKey", "API Key")}</Text>
+                    <PasswordInput
+                      style={styles.input}
+                      value={config.xiaomiApiKey || ""}
+                      onChangeText={(v) => {
+                        updateActiveProfile({ apiKey: v });
+                        updateConfig({ xiaomiApiKey: v });
+                      }}
+                      placeholder="MIMO_API_KEY"
+                      placeholderTextColor={colors.mutedForeground}
+                    />
                   </View>
-                </View>
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.fieldLabel}>{t("tts.format", "Format")}</Text>
-                  <View style={styles.optionRow}>
-                    {(["mp3", "wav", "pcm16"] as const).map((format) => {
-                      const active = config.openaiTtsFormat === format;
-                      return (
-                        <TouchableOpacity
-                          key={format}
-                          style={[styles.optionChip, active && styles.optionChipActive]}
-                          onPress={() => {
-                            updateActiveProfile({ format });
-                            updateConfig({ openaiTtsFormat: format });
-                          }}
-                          activeOpacity={0.7}
-                        >
-                          <Text
-                            style={[
-                              styles.optionChipText,
-                              active && styles.optionChipTextActive,
-                            ]}
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.fieldLabel}>{t("tts.baseUrl", "Base URL")}</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={config.xiaomiBaseUrl}
+                      onChangeText={(v) => {
+                        updateActiveProfile({ baseUrl: v });
+                        updateConfig({ xiaomiBaseUrl: v });
+                      }}
+                      placeholder="https://api.xiaomimimo.com/v1"
+                      placeholderTextColor={colors.mutedForeground}
+                      autoCapitalize="none"
+                    />
+                  </View>
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.fieldLabel}>{t("tts.stylePrompt", "朗读风格")}</Text>
+                    <TextInput
+                      style={[styles.input, styles.multilineInput]}
+                      value={xiaomiStylePromptValue}
+                      onChangeText={(v) => {
+                        updateActiveProfile({ stylePrompt: v });
+                        updateConfig({ xiaomiStylePrompt: v });
+                      }}
+                      multiline
+                      placeholder={defaultStylePrompt}
+                      placeholderTextColor={colors.mutedForeground}
+                    />
+                  </View>
+                </>
+              )}
+
+              {config.engine === "openai-compatible" && (
+                <>
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.fieldLabel}>{t("tts.baseUrl", "Base URL")}</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={config.openaiTtsBaseUrl}
+                      onChangeText={(v) => {
+                        updateActiveProfile({ baseUrl: v });
+                        updateConfig({ openaiTtsBaseUrl: v });
+                      }}
+                      placeholder="https://api.openai.com/v1"
+                      placeholderTextColor={colors.mutedForeground}
+                      autoCapitalize="none"
+                    />
+                  </View>
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.fieldLabel}>{t("tts.endpoint", "Endpoint")}</Text>
+                    <View style={styles.optionRow}>
+                      {(["audio-speech", "chat-completions"] as const).map((endpoint) => {
+                        const active = config.openaiTtsEndpoint === endpoint;
+                        return (
+                          <TouchableOpacity
+                            key={endpoint}
+                            style={[styles.optionChip, active && styles.optionChipActive]}
+                            onPress={() => {
+                              updateActiveProfile({ endpoint });
+                              updateConfig({ openaiTtsEndpoint: endpoint });
+                            }}
+                            activeOpacity={0.7}
                           >
-                            {format}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
+                            <Text
+                              style={[styles.optionChipText, active && styles.optionChipTextActive]}
+                            >
+                              {endpoint === "audio-speech" ? "/audio/speech" : "/chat/completions"}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
                   </View>
-                </View>
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.fieldLabel}>{t("tts.model", "Model")}</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={config.openaiTtsModel}
-                    onChangeText={(v) => {
-                      updateActiveProfile({ model: v });
-                      updateConfig({ openaiTtsModel: v });
-                    }}
-                    placeholder="gpt-4o-mini-tts"
-                    placeholderTextColor={colors.mutedForeground}
-                    autoCapitalize="none"
-                  />
-                </View>
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.fieldLabel}>{t("tts.voice", "声音")}</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={config.openaiTtsVoice}
-                    onChangeText={(v) => {
-                      updateActiveProfile({ voice: v });
-                      updateConfig({ openaiTtsVoice: v });
-                    }}
-                    placeholder="alloy"
-                    placeholderTextColor={colors.mutedForeground}
-                    autoCapitalize="none"
-                  />
-                </View>
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.fieldLabel}>{t("tts.apiKey", "API Key")}</Text>
-                  <PasswordInput
-                    style={styles.input}
-                    value={config.openaiTtsApiKey || ""}
-                    onChangeText={(v) => {
-                      updateActiveProfile({ apiKey: v });
-                      updateConfig({ openaiTtsApiKey: v });
-                    }}
-                    placeholder="sk-..."
-                    placeholderTextColor={colors.mutedForeground}
-                  />
-                </View>
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.fieldLabel}>{t("tts.stylePrompt", "朗读风格")}</Text>
-                  <TextInput
-                    style={[styles.input, styles.multilineInput]}
-                    value={openAIStylePromptValue}
-                    onChangeText={(v) => {
-                      updateActiveProfile({ stylePrompt: v });
-                      updateConfig({ openaiTtsStylePrompt: v });
-                    }}
-                    multiline
-                    placeholder={defaultStylePrompt}
-                    placeholderTextColor={colors.mutedForeground}
-                  />
-                </View>
-              </>
-            )}
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.fieldLabel}>{t("tts.format", "Format")}</Text>
+                    <View style={styles.optionRow}>
+                      {(["mp3", "wav", "pcm16"] as const).map((format) => {
+                        const active = config.openaiTtsFormat === format;
+                        return (
+                          <TouchableOpacity
+                            key={format}
+                            style={[styles.optionChip, active && styles.optionChipActive]}
+                            onPress={() => {
+                              updateActiveProfile({ format });
+                              updateConfig({ openaiTtsFormat: format });
+                            }}
+                            activeOpacity={0.7}
+                          >
+                            <Text
+                              style={[styles.optionChipText, active && styles.optionChipTextActive]}
+                            >
+                              {format}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.fieldLabel}>{t("tts.model", "Model")}</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={config.openaiTtsModel}
+                      onChangeText={(v) => {
+                        updateActiveProfile({ model: v });
+                        updateConfig({ openaiTtsModel: v });
+                      }}
+                      placeholder="gpt-4o-mini-tts"
+                      placeholderTextColor={colors.mutedForeground}
+                      autoCapitalize="none"
+                    />
+                  </View>
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.fieldLabel}>{t("tts.voice", "声音")}</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={config.openaiTtsVoice}
+                      onChangeText={(v) => {
+                        updateActiveProfile({ voice: v });
+                        updateConfig({ openaiTtsVoice: v });
+                      }}
+                      placeholder="alloy"
+                      placeholderTextColor={colors.mutedForeground}
+                      autoCapitalize="none"
+                    />
+                  </View>
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.fieldLabel}>{t("tts.apiKey", "API Key")}</Text>
+                    <PasswordInput
+                      style={styles.input}
+                      value={config.openaiTtsApiKey || ""}
+                      onChangeText={(v) => {
+                        updateActiveProfile({ apiKey: v });
+                        updateConfig({ openaiTtsApiKey: v });
+                      }}
+                      placeholder="sk-..."
+                      placeholderTextColor={colors.mutedForeground}
+                    />
+                  </View>
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.fieldLabel}>{t("tts.stylePrompt", "朗读风格")}</Text>
+                    <TextInput
+                      style={[styles.input, styles.multilineInput]}
+                      value={openAIStylePromptValue}
+                      onChangeText={(v) => {
+                        updateActiveProfile({ stylePrompt: v });
+                        updateConfig({ openaiTtsStylePrompt: v });
+                      }}
+                      multiline
+                      placeholder={defaultStylePrompt}
+                      placeholderTextColor={colors.mutedForeground}
+                    />
+                  </View>
+                </>
+              )}
             </View>
 
             {/* Rate & Pitch */}
@@ -702,10 +695,6 @@ const makeStyles = (colors: ThemeColors) =>
     },
     profileNameActive: {
       fontWeight: fontWeight.medium,
-      color: colors.primary,
-    },
-    profileStatus: {
-      fontSize: fontSize.lg,
       color: colors.primary,
     },
     optionRow: {

@@ -15,6 +15,7 @@ import {
   Trash2Icon,
   XIcon,
 } from "@/components/ui/Icon";
+import { getStrokeIconImageSource } from "@/components/ui/MishanaerIcon";
 import { NativeButton } from "@/components/ui/NativeButton";
 import { ScrollViewMarker } from "@/components/ui/ScrollViewMarker";
 import { SyncButton } from "@/components/ui/SyncButton";
@@ -67,7 +68,6 @@ import { File as ExpoFile } from "expo-file-system";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  ActivityIndicator,
   Alert,
   Modal,
   Platform,
@@ -155,13 +155,6 @@ function LibraryScreenContent() {
 
   const extractorRef = useRef<ExtractorRef>(null);
   const libraryPagerRef = useRef<NativeSegmentedPagerHandle>(null);
-  const primaryScrollRef = useRef<ScrollView>(null);
-
-  const resetPrimaryScroll = useCallback(() => {
-    requestAnimationFrame(() => {
-      primaryScrollRef.current?.scrollTo({ y: -nativeHeaderHeight, animated: true });
-    });
-  }, [nativeHeaderHeight]);
 
   const {
     books,
@@ -441,14 +434,6 @@ function LibraryScreenContent() {
   const showCatalog = !activeTag && !activeGroupId && !selectionMode;
   const isMyBooksEmptyState = showCatalog && librarySection === "my-books" && isLoaded && !hasBooks;
 
-  useEffect(() => {
-    if (!showCatalog) return;
-    resetPrimaryScroll();
-    if (librarySection === "my-books" && isMyBooksEmptyState) {
-      requestAnimationFrame(resetPrimaryScroll);
-    }
-  }, [isMyBooksEmptyState, librarySection, resetPrimaryScroll, showCatalog]);
-
   const handleOpen = useCallback(
     async (book: Book) => {
       if (book.syncStatus === "remote") {
@@ -503,47 +488,47 @@ function LibraryScreenContent() {
                   type: "button" as const,
                   label: t("sync.syncNow", "Синхронизировать"),
                   accessibilityLabel: t("sync.syncNow", "Синхронизировать"),
-                  icon: { type: "sfSymbol" as const, name: "arrow.clockwise" as const },
+                  icon: {
+                    type: "image" as const,
+                    source: getStrokeIconImageSource("repeat"),
+                  },
                   disabled: isSyncBusy,
                   onPress: handleSync,
                 },
               ]
             : []),
-          isBookImporting
-            ? {
-                type: "custom" as const,
-                element: (
-                  <View
-                    accessibilityRole="progressbar"
-                    accessibilityLabel={t("common.loading", "Загрузка")}
-                    style={[s.nativeHeaderButton, s.importLoaderButton]}
-                  >
-                    <ActivityIndicator size="small" color={colors.primary} />
-                  </View>
-                ),
-              }
-            : {
-                type: "menu" as const,
-                label: t("library.importFirst", "Добавить книгу"),
-                accessibilityLabel: t("library.importFirst", "Добавить книгу"),
-                icon: { type: "sfSymbol" as const, name: "plus" as const },
-                menu: {
-                  items: [
-                    {
-                      type: "action" as const,
-                      label: t("library.importSourceUrl", "Найти по ссылке"),
-                      icon: { type: "sfSymbol" as const, name: "link" as const },
-                      onPress: handleOpenUrlImport,
-                    },
-                    {
-                      type: "action" as const,
-                      label: t("library.importSourceLocal", "Выбрать файл"),
-                      icon: { type: "sfSymbol" as const, name: "folder" as const },
-                      onPress: () => void handleLocalImport(),
-                    },
-                  ],
+          {
+            type: "menu" as const,
+            label: t("library.importFirst", "Добавить книгу"),
+            accessibilityLabel: t("library.importFirst", "Добавить книгу"),
+            icon: {
+              type: "image" as const,
+              source: getStrokeIconImageSource("plus"),
+            },
+            disabled: isBookImporting,
+            menu: {
+              items: [
+                {
+                  type: "action" as const,
+                  label: t("library.importSourceUrl", "Найти по ссылке"),
+                  icon: {
+                    type: "image" as const,
+                    source: getStrokeIconImageSource("link"),
+                  },
+                  onPress: handleOpenUrlImport,
                 },
-              },
+                {
+                  type: "action" as const,
+                  label: t("library.importSourceLocal", "Выбрать файл"),
+                  icon: {
+                    type: "image" as const,
+                    source: getStrokeIconImageSource("folder"),
+                  },
+                  onPress: () => void handleLocalImport(),
+                },
+              ],
+            },
+          },
         ],
       });
       return;
@@ -565,11 +550,7 @@ function LibraryScreenContent() {
             disabled={isBookImporting}
             activeOpacity={0.65}
           >
-            {isBookImporting ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : (
-              <PlusIcon size={24} color={colors.primary} />
-            )}
+            <PlusIcon size={24} color={colors.primary} />
           </TouchableOpacity>
         </View>
       ),
@@ -586,7 +567,6 @@ function LibraryScreenContent() {
     nav,
     s.nativeHeaderActions,
     s.nativeHeaderButton,
-    s.importLoaderButton,
     selectionMode,
     syncBackendType,
     t,
@@ -594,6 +574,8 @@ function LibraryScreenContent() {
 
   const isEmpty = gridItems.length === 0;
   const libraryPageMinHeight = Math.max(1, layout.height - nativeHeaderHeight - 76);
+  const libraryPagerMinHeight =
+    librarySection === "my-books" && !isMyBooksEmptyState ? 1 : libraryPageMinHeight;
 
   const toggleBookSelection = useCallback((book: Book) => {
     setSelectedBookIds((prev) => {
@@ -949,9 +931,10 @@ function LibraryScreenContent() {
       colorScheme={isDark ? "dark" : "light"}
       accessibilityLabel={t("library.section", "Раздел библиотеки")}
       controlsStyle={s.librarySectionTabs}
-      minimumPageHeight={libraryPageMinHeight}
+      minimumPageHeight={libraryPagerMinHeight}
+      initialPageHeight={libraryPageMinHeight}
       pageGap={gridGap}
-      stablePageHeight={!isMyBooksEmptyState}
+      stablePageHeight={false}
       onSwipeStateChange={(swiping) => {
         if (swiping) swipePressGuard?.beginSwipe();
         else swipePressGuard?.endSwipe();
@@ -966,7 +949,6 @@ function LibraryScreenContent() {
     <>
       <ScrollViewMarker style={s.page} scrollEdgeEffects={NATIVE_SCROLL_EDGE_EFFECTS}>
         <ScrollView
-          ref={primaryScrollRef}
           contentInsetAdjustmentBehavior="automatic"
           style={s.primaryScroll}
           contentContainerStyle={
@@ -1086,11 +1068,6 @@ const makeStyles = (
       borderRadius: radius.full,
       alignItems: "center",
       justifyContent: "center",
-    },
-    importLoaderButton: {
-      backgroundColor: colors.card,
-      borderWidth: 0.5,
-      borderColor: colors.border,
     },
     headerBtn: {
       width: 36,

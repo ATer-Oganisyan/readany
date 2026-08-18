@@ -44,6 +44,7 @@
     "importSourceUrlUnsupported": "Use a direct link to an EPUB, PDF, TXT, or another supported book file — or a Ficbook story link.",
     "importSourceUrlFicbookBlocked": "Ficbook is temporarily blocking automated access. Try again later.",
     "importSourceUrlFicbookNotFound": "No story was found at this link. Check the address and try again.",
+    "importSourceUrlFicbookTimeout": "Ficbook did not respond in time. Try adding the book again later.",
     "importSourceUrlError": "Check the link and your internet connection, then try again.",
     "importRootLabel": "Starting point",
     "importRemoteRootHint": "You can enter any nested path. Leave it blank to start from the WebDAV service base directory.",

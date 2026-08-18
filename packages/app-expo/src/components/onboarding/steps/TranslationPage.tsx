@@ -1,12 +1,14 @@
-import { AlertCircle, Check, CheckCircle2, ChevronLeftIcon } from "@/components/ui/Icon";
+import {
+  AlertCircle,
+  Check,
+  CheckCircle2,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+} from "@/components/ui/Icon";
 import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
 import { Text, TextInput } from "@/components/ui/Typography";
 import { useSettingsStore } from "@/stores";
-import {
-  largeTitleFontFamily,
-  secondLevelTitleFontFamily,
-  useTheme,
-} from "@/styles/theme";
+import { largeTitleFontFamily, secondLevelTitleFontFamily, useTheme } from "@/styles/theme";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { testDeepLConnection } from "@readany/core/translation/providers";
@@ -281,8 +283,9 @@ export function TranslationPage() {
               ]}
             >
               <Text style={[styles.nextText, { color: colors.primaryForeground }]}>
-                {t("common.next", "Next")} →
+                {t("common.next", "Next")}
               </Text>
+              <ChevronRightIcon size={18} color={colors.primaryForeground} />
             </Pressable>
           </View>
         </View>
@@ -382,6 +385,9 @@ const styles = StyleSheet.create({
   skipBtn: { paddingVertical: 12 },
   skipText: { fontSize: 14, color: "#94a3b8", fontWeight: "500" },
   nextBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
     backgroundColor: "#6366f1",
     paddingVertical: 14,
     paddingHorizontal: 28,
