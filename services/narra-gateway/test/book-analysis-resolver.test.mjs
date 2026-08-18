@@ -801,6 +801,7 @@ test('resolver never carries a weak pronoun into a named character alias', () =>
     })
   ]
   const characters = resolveBookAnalysisEntities({ observations })
+    .filter(({ entityKind }) => entityKind === 'character')
   assert.equal(characters.length, 2)
   assert.deepEqual(characters.find(({ canonicalName }) => canonicalName === 'Griffin').aliases, [])
   assert.equal(
@@ -2352,4 +2353,277 @@ test('resolver output is stable regardless of scan completion order', () => {
   const forward = resolveBookAnalysisEntities({ observations })
   const reverse = resolveBookAnalysisEntities({ observations: [...observations].reverse() })
   assert.deepEqual(reverse, forward)
+})
+
+test('resolver merges a titled surname with the only full name substituted by scan evidence', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111113001',
+      type: 'character_action', candidate: 'Mr. Wickham', fact: 'male', startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222223001',
+      type: 'character_action', candidate: 'George Wickham',
+      fact: 'George Wickham is described as a young man.',
+      quote: 'Mr. Wickham is by no means a respectable young man.', startOffset: 200
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333001',
+      type: 'character_action', candidate: 'Lydia Wickham', fact: 'female', startOffset: 300
+    })
+  ]
+  const characters = resolveBookAnalysisEntities({ observations })
+  const wickham = characters.find(({ aliases, canonicalName }) =>
+    [canonicalName, ...aliases].includes('George Wickham')
+  )
+  assert.deepEqual(new Set([wickham.canonicalName, ...wickham.aliases]), new Set([
+    'George Wickham', 'Mr. Wickham'
+  ]))
+  assert.ok(characters.some(({ canonicalName }) => canonicalName === 'Lydia Wickham'))
+  assert.equal(characters.length, 2)
+})
+
+test('resolver does not infer candidate gender from a different person in the fact', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111113010',
+      type: 'character_gender', candidate: 'Mrs. Alexander Spencer', fact: 'female',
+      quote: 'Mrs. Alexander Spencer called.', startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222223010',
+      type: 'character_action', candidate: 'Mrs. Alexander Spencer',
+      fact: 'Mrs. Alexander Spencer will bring a boy.',
+      quote: 'Mrs. Spencer will bring a boy.', startOffset: 200
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333010',
+      type: 'character_action', candidate: 'Mrs. Spencer', fact: 'female',
+      quote: 'Mrs. Spencer arrived.', startOffset: 300
+    })
+  ]
+  const [character] = resolveBookAnalysisEntities({ observations })
+    .filter(({ entityKind }) => entityKind === 'character')
+  assert.deepEqual(new Set([character.canonicalName, ...character.aliases]), new Set([
+    'Mrs. Alexander Spencer', 'Mrs. Spencer'
+  ]))
+})
+
+test('resolver leaves a shared title separate when evidence substitutes it for two relatives', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111113002',
+      type: 'character_action', candidate: 'Mr. Ferrars', fact: 'male', startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222223002',
+      type: 'character_action', candidate: 'Edward Ferrars', fact: 'male',
+      quote: 'Mr. Ferrars entered the room.', startOffset: 200
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333002',
+      type: 'character_action', candidate: 'Robert Ferrars', fact: 'male',
+      quote: 'Mr. Ferrars left the house.', startOffset: 300
+    })
+  ]
+  const characters = resolveBookAnalysisEntities({ observations })
+    .filter(({ entityKind }) => entityKind === 'character')
+  assert.equal(characters.length, 3)
+  assert.ok(characters.every(({ aliases }) => aliases.length === 0))
+})
+
+test('resolver does not use an owned family title to bridge two full-name relatives', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111113007',
+      type: 'character_alias', candidate: 'Charlotte Lucas', related: ['Miss Lucas'],
+      fact: 'female', quote: 'Miss Lucas, Charlotte Lucas, entered.', startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222223007',
+      type: 'character_action', candidate: 'Maria Lucas', fact: 'female',
+      quote: 'Miss Lucas answered Maria.', startOffset: 200
+    })
+  ]
+  const characters = resolveBookAnalysisEntities({ observations })
+    .filter(({ entityKind }) => entityKind === 'character')
+  assert.equal(characters.length, 2)
+  const charlotte = characters.find(({ canonicalName, aliases }) =>
+    [canonicalName, ...aliases].includes('Charlotte Lucas')
+  )
+  assert.ok(![charlotte.canonicalName, ...charlotte.aliases].includes('Maria Lucas'))
+})
+
+test('resolver keeps a substituted family title apart from a grounded relative', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111113003',
+      type: 'character_action', candidate: 'Mrs. Vane', fact: 'female', startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222223003',
+      type: 'character_action', candidate: 'Sibyl Vane', fact: 'female',
+      quote: 'Mrs. Vane crossed the room.', startOffset: 200
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333003',
+      type: 'relationship', kind: 'relationship', candidate: 'Sibyl Vane and Mrs. Vane',
+      related: ['Sibyl Vane', 'Mrs. Vane'], fact: 'Mrs. Vane is Sibyl Vane\'s mother.',
+      quote: 'Mrs. Vane put her hands on her daughter\'s head.', startOffset: 300
+    })
+  ]
+  const characters = resolveBookAnalysisEntities({ observations })
+    .filter(({ entityKind }) => entityKind === 'character')
+  assert.equal(characters.length, 2)
+  assert.ok(characters.every(({ aliases }) => aliases.length === 0))
+})
+
+test('resolver treats two grounded names in one quote as co-occurrence, not substitution', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111113009',
+      type: 'character_action', candidate: 'Mrs. Barry', fact: 'female',
+      quote: 'Mrs. Barry said that Aunt Josephine had arrived.', startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222223009',
+      type: 'character_action', candidate: 'Aunt Josephine Barry', fact: 'female',
+      quote: 'Aunt Josephine Barry entered the room.', startOffset: 200
+    })
+  ]
+  const characters = resolveBookAnalysisEntities({ observations })
+    .filter(({ entityKind }) => entityKind === 'character')
+  assert.equal(characters.length, 2)
+  assert.ok(characters.every(({ aliases }) => aliases.length === 0))
+})
+
+test('resolver merges a named aunt title with the same grounded personal name', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111113004',
+      type: 'character_action', candidate: 'Aunt Josephine Barry', fact: 'female', startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222223004',
+      type: 'character_action', candidate: 'Miss Josephine Barry', fact: 'female', startOffset: 200
+    })
+  ]
+  const [character] = resolveBookAnalysisEntities({ observations })
+  assert.deepEqual(new Set([character.canonicalName, ...character.aliases]), new Set([
+    'Aunt Josephine Barry', 'Miss Josephine Barry'
+  ]))
+})
+
+test('resolver does not merge a named aunt through a family-only title cluster', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111113008',
+      type: 'character_action', candidate: 'Aunt Josephine Barry', fact: 'female', startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222223008',
+      type: 'character_action', candidate: 'Miss Josephine Barry', fact: 'female', startOffset: 200
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333008',
+      type: 'character_action', candidate: 'Josephine Barry', related: ['Miss Barry'],
+      fact: 'female', quote: 'Miss Barry wrote to Josephine Barry.', startOffset: 300
+    }),
+    observation({
+      id: '44444444-4444-4444-8444-444444443008',
+      type: 'character_action', candidate: 'Mrs. Barry',
+      fact: 'female', quote: 'Mrs. Barry spoke to her daughter.', startOffset: 400
+    })
+  ]
+  const characters = resolveBookAnalysisEntities({ observations })
+    .filter(({ entityKind }) => entityKind === 'character')
+  assert.ok(characters.length >= 2)
+  assert.ok(characters.every(({ canonicalName, aliases }) => {
+    const names = [canonicalName, ...aliases]
+    return !(names.some((name) => name.includes('Josephine')) && names.includes('Mrs. Barry'))
+  }))
+})
+
+test('resolver merges a spouse-style title after repeated same-family cross-references', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111113005',
+      type: 'character_alias', candidate: 'Fanny Dashwood', related: ['Fanny'], fact: 'female',
+      quote: 'Fanny Dashwood, called Fanny by her family, spoke.', startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222223005',
+      type: 'character_action', candidate: 'Mrs. John Dashwood', related: ['Fanny'],
+      fact: 'female', startOffset: 200
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333005',
+      type: 'character_action', candidate: 'Mrs. John Dashwood', related: ['Fanny'],
+      fact: 'female', startOffset: 400
+    }),
+    observation({
+      id: '44444444-4444-4444-8444-444444443005',
+      type: 'character_action', candidate: 'Fanny',
+      fact: 'Fanny is John Dashwood\'s wife.', startOffset: 500
+    })
+  ]
+  const [character] = resolveBookAnalysisEntities({ observations })
+  assert.deepEqual(new Set([character.canonicalName, ...character.aliases]), new Set([
+    'Fanny', 'Fanny Dashwood', 'Mrs. John Dashwood'
+  ]))
+})
+
+test('resolver does not propagate a family-title separation to every full-name relative', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111113011',
+      type: 'relationship', kind: 'relationship',
+      candidate: 'Mrs. Dashwood and Mrs. John Dashwood',
+      related: ['Mrs. Dashwood', 'Mrs. John Dashwood'],
+      fact: 'Mrs. Dashwood is Mrs. John Dashwood\'s mother-in-law.',
+      quote: 'Mrs. Dashwood answered Mrs. John Dashwood.', startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222223011',
+      type: 'character_action', candidate: 'Fanny Dashwood',
+      fact: 'Fanny Dashwood is John Dashwood\'s wife.', startOffset: 200
+    }),
+    observation({
+      id: '55555555-5555-4555-8555-555555553011',
+      type: 'character_gender', candidate: 'Fanny Dashwood', fact: 'female', startOffset: 250
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333011',
+      type: 'character_action', candidate: 'Mrs. John Dashwood', related: ['Fanny Dashwood'],
+      fact: 'female', startOffset: 300
+    }),
+    observation({
+      id: '44444444-4444-4444-8444-444444443011',
+      type: 'character_action', candidate: 'Mrs. John Dashwood', related: ['Fanny Dashwood'],
+      fact: 'female', startOffset: 500
+    })
+  ]
+  const characters = resolveBookAnalysisEntities({ observations })
+    .filter(({ entityKind }) => entityKind === 'character')
+  const fanny = characters.find(({ canonicalName, aliases }) =>
+    [canonicalName, ...aliases].includes('Fanny Dashwood')
+  )
+  assert.ok([fanny.canonicalName, ...fanny.aliases].includes('Mrs. John Dashwood'))
+  assert.ok(![fanny.canonicalName, ...fanny.aliases].includes('Mrs. Dashwood'))
+})
+
+test('resolver does not merge a spouse-style title from one related mention', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111113006',
+      type: 'character_action', candidate: 'Fanny Dashwood', fact: 'female', startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222223006',
+      type: 'character_action', candidate: 'Mrs. John Dashwood', related: ['Fanny Dashwood'],
+      fact: 'female', startOffset: 200
+    })
+  ]
+  const characters = resolveBookAnalysisEntities({ observations })
+  assert.equal(characters.length, 2)
 })

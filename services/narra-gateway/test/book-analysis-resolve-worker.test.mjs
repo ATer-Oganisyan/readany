@@ -5,7 +5,7 @@ import { createBookAnalysisResolveWorker } from '../book-analysis-resolve-worker
 const input = {
   runId: 'run-1',
   bookEditionId: 'book-1',
-  pipelineVersion: 'book-analysis-v38',
+  pipelineVersion: 'book-analysis-v42',
   title: 'Книга',
   author: 'Автор',
   textLength: 100,
@@ -132,7 +132,7 @@ test('resolve worker applies only validated whole-book identity proposals', asyn
   })
   const result = await worker.runOnce()
   assert.equal(result.status, 'completed')
-  assert.equal(reconciliationRequest.pipelineVersion, 'book-analysis-v38')
+  assert.equal(reconciliationRequest.pipelineVersion, 'book-analysis-v42')
   assert.equal(completed.value.entities.filter(({ entityKind }) => entityKind === 'character').length, 1)
   assert.equal(completed.value.entities[0].evidenceIds.length, 3)
 })

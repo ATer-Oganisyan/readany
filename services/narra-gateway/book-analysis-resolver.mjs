@@ -70,6 +70,7 @@ const IDENTITY_HONORIFICS = new Set([
 ])
 const FAMILY_HONORIFICS = new Set(['mr', 'mrs', 'ms', 'miss', 'mister', 'missus'])
 const MARRIED_HONORIFICS = new Set(['mrs', 'missus', 'госпожа'])
+const NAMED_KINSHIP_TITLES = new Set(['aunt', 'uncle', 'тетя', 'тетушка', 'дядя'])
 const HONORIFIC_GENDERS = new Map([
   ['mr', 'male'], ['mister', 'male'], ['sir', 'male'], ['lord', 'male'],
   ['mrs', 'female'], ['ms', 'female'], ['miss', 'female'], ['missus', 'female'],
@@ -86,6 +87,7 @@ const NAME_CONNECTOR_TOKENS = new Set(['of', 'de', 'del', 'della', 'di', 'du', '
 const SIGNED_NAME_CUE = /\b(?:sign(?:s|ed|ing)?\s+(?:my|her|his|their|the)\s+name|sign(?:s|ed|ing)?\s+(?:myself|herself|himself|themself|themselves)\s+(?:as\s+)?)\b|\bподпис\p{L}*\s+(?:именем|как)\b/iu
 const FIRST_NAME_DECLARATION_CUE = /\bmy first name is\s+([\p{L}'’.-]+)/iu
 const SPOUSE_CUE = /\b(?:wife|husband|spouse|marri(?:ed|age)|wedding|engaged\s+to\s+be\s+married)\b|\b(?:жен\p{L}*|муж\p{L}*|супруг\p{L}*|брак\p{L}*|свадьб\p{L}*|помолв\p{L}*)\b/iu
+const DISTINCT_KINSHIP_CUE = /\b(?:mother|father|daughter|son|sister|brother|parent|child|aunt|uncle|niece|nephew|wife|husband|spouse)\b|\b(?:мать|отец|дочь|сын|сестра|брат|родител\p{L}*|ребен\p{L}*|тет\p{L}*|дяд\p{L}*|племян\p{L}*|жен\p{L}*|муж\p{L}*|супруг\p{L}*)\b/iu
 const OWNED_KINSHIP_GENDERS = new Map([
   ['father', 'male'], ['son', 'male'],
   ['brother', 'male'],
@@ -269,6 +271,22 @@ function createNode(nodes, key, display, evidenceOffset, { primary = false, conf
 function explicitObservationGender(value) {
   const normalized = String(value || '').trim().toLocaleLowerCase('en-US')
   return normalized === 'male' || normalized === 'female' ? normalized : null
+}
+
+function attributedObservationGender(observation) {
+  const explicit = explicitObservationGender(observation.fact)
+  if (explicit) return explicit
+  const candidate = normalizedCandidate(observation.entityCandidate)
+  const fact = normalizedCandidate(observation.fact)
+  if (!fact.startsWith(`${candidate} `)) return null
+  const remainder = fact.slice(candidate.length + 1)
+  const attribution = /^(?:is|was|является|был|была)\s+(?:(?:described|identified|introduced)\s+as\s+|(?:описан|описана|назван|названа)\s+)?(?:(?:a|an|the)\s+)?(?:young\s+)?/iu
+  const value = remainder.match(attribution)?.[0]
+  if (!value) return null
+  const described = remainder.slice(value.length)
+  if (/^(?:male|man|boy|son|мужчина|мальчик|сын)\b/iu.test(described)) return 'male'
+  if (/^(?:female|woman|girl|daughter|женщина|девушка|девочка|дочь)\b/iu.test(described)) return 'female'
+  return null
 }
 
 function surfaceRanges(value, surface) {
@@ -1402,6 +1420,257 @@ function mergeStrongUniqueTitledPrefixes(sets, nodes) {
   }
 }
 
+function rootGenderSignals(sets, nodes, root, observationsByPrimaryKey) {
+  const values = new Set()
+  for (const node of componentNodes(sets, nodes, root)) {
+    for (const value of node.genderSignals) values.add(value)
+    for (const observation of observationsByPrimaryKey.get(node.key) ?? []) {
+      const value = attributedObservationGender(observation)
+      if (value) values.add(value)
+    }
+  }
+  return values
+}
+
+function groundedSubstitutionSpans(
+  sets,
+  nodes,
+  sourceRoot,
+  targetRoot,
+  observationsByPrimaryKey
+) {
+  const sourceForms = componentNodes(sets, nodes, sourceRoot)
+    .flatMap((node) => [...node.forms.values()].map(({ display }) => display))
+  const targetForms = componentNodes(sets, nodes, targetRoot)
+    .flatMap((node) => [...node.forms.values()].map(({ display }) => display))
+  const spans = new Set()
+  for (const node of componentNodes(sets, nodes, sourceRoot)) {
+    for (const observation of observationsByPrimaryKey.get(node.key) ?? []) {
+      // A substitution is useful only when the scan assigned one identity while the quote names
+      // the other. Mere co-occurrence is negative evidence for identity, not an alias bridge.
+      if (
+        !sourceForms.some((display) => isSurfaceGrounded(display, observation.evidence.quote)) &&
+        targetForms.some((display) => isSurfaceGrounded(display, observation.evidence.quote))
+      ) {
+        spans.add(`${observation.evidence.startOffset}:${observation.evidence.endOffset}`)
+      }
+    }
+  }
+  return spans
+}
+
+function relationshipSeparatesComponents(sets, nodes, leftRoot, rightRoot, observations) {
+  return observations.some((observation) => {
+    if (observation.type !== 'relationship' || !DISTINCT_KINSHIP_CUE.test(observation.fact)) {
+      return false
+    }
+    const roots = new Set(observation.relatedEntityCandidates.map((candidate) => {
+      let key
+      try {
+        key = stableNodeKey('character', candidate)
+      } catch {
+        return null
+      }
+      return nodes.has(key) ? sets.find(key) : null
+    }).filter(Boolean))
+    return roots.has(leftRoot) && roots.has(rightRoot)
+  })
+}
+
+/**
+ * Joins a titled family form only when frozen scan evidence itself substitutes that form for one
+ * compatible full-name root. This is deliberately stricter than surname/gender inference: if
+ * Edward and Robert both receive `Mr Ferrars` evidence, neither can absorb the shared title.
+ */
+function mergeEvidenceSubstitutedTitledNames(
+  sets,
+  nodes,
+  observations,
+  observationsByPrimaryKey
+) {
+  const titledNodes = [...nodes.values()].filter((node) =>
+    node.key.startsWith('character\u0000') && titledFamilyBase(node)
+  )
+  for (const titledNode of titledNodes) {
+    const titleRoot = sets.find(titledNode.key)
+    // A bare family title that is already attached to a full name has an owner. Reusing a
+    // one-sided scan substitution to attach a second full name would collapse relatives such as
+    // Charlotte Lucas and Maria Lucas through the shared `Miss Lucas` component.
+    if (fullPersonalNames(componentNodes(sets, nodes, titleRoot)).length > 0) continue
+    const family = titledFamilyBase(titledNode)
+    const titleGender = HONORIFIC_GENDERS.get(nameTokens(titledNode.normalized)[0])
+    if (!titleGender) continue
+    const candidateRoots = [...new Set([...nodes.values()].filter((node) => {
+      if (!node.key.startsWith('character\u0000') || !isIndividualProperNameNode(node)) return false
+      const root = sets.find(node.key)
+      const tokens = semanticIdentityTokens(node.normalized)
+      if (root === titleRoot || tokens.length < 2 || tokens.at(-1) !== family) return false
+      const genders = rootGenderSignals(sets, nodes, root, observationsByPrimaryKey)
+      return genders.size === 1 && genders.has(titleGender)
+    }).map(({ key }) => sets.find(key)))]
+    const supported = candidateRoots.filter((root) =>
+      groundedSubstitutionSpans(
+        sets,
+        nodes,
+        root,
+        titleRoot,
+        observationsByPrimaryKey
+      ).size > 0 || groundedSubstitutionSpans(
+        sets,
+        nodes,
+        titleRoot,
+        root,
+        observationsByPrimaryKey
+      ).size > 0
+    )
+    if (
+      supported.length === 1 &&
+      !relationshipSeparatesComponents(sets, nodes, titleRoot, supported[0], observations)
+    ) sets.union(titleRoot, supported[0])
+  }
+}
+
+function namedKinshipCore(node) {
+  const tokens = nameTokens(node.normalized)
+  return tokens.length >= 3 && NAMED_KINSHIP_TITLES.has(tokens[0])
+    ? tokens.slice(1).join(' ')
+    : null
+}
+
+function mergeNamedKinshipTitleVariants(sets, nodes) {
+  const candidates = [...nodes.values()].filter((node) => namedKinshipCore(node))
+  for (const node of candidates) {
+    const sourceRoot = sets.find(node.key)
+    const core = namedKinshipCore(node)
+    const targets = [...new Set([...nodes.values()].filter((candidate) =>
+      candidate.key.startsWith('character\u0000') &&
+      sets.find(candidate.key) !== sourceRoot &&
+      semanticIdentityTokens(candidate.normalized).join(' ') === core &&
+      candidate.surfaceGroundedCount > 0
+    ).map(({ key }) => sets.find(key)))].filter((root) =>
+      // Do not bridge through a component that already contains a family-only title. That cluster
+      // is ambiguous by construction (`Miss Barry` and `Mrs Barry` can be different people), even
+      // if it also happens to contain the desired full name.
+      componentNodes(sets, nodes, root)
+        .filter((candidate) => candidate.key.startsWith('character\u0000'))
+        .every((candidate) => {
+          const tokens = semanticIdentityTokens(candidate.normalized)
+          return tokens.length >= 2 && tokens.join(' ') === core
+        })
+    )
+    if (targets.length === 1) sets.union(sourceRoot, targets[0])
+  }
+}
+
+function componentEvidenceNodesWithUniqueGiven(sets, nodes, root) {
+  const values = new Map(componentNodes(sets, nodes, root).map((node) => [node.key, node]))
+  for (const tokens of fullPersonalNames([...values.values()])) {
+    const given = tokens[0]
+    const givenKey = stableNodeKey('character', given)
+    const givenNode = nodes.get(givenKey)
+    if (
+      givenNode &&
+      identityFamilySignatures(given, nodes, sets).size === 1
+    ) values.set(givenKey, givenNode)
+  }
+  return [...values.values()]
+}
+
+function relatedReferenceSpans(
+  sets,
+  nodes,
+  sourceRoot,
+  targetRoot,
+  observationsByPrimaryKey
+) {
+  const targetKeys = new Set(
+    componentEvidenceNodesWithUniqueGiven(sets, nodes, targetRoot).map(({ key }) => key)
+  )
+  const spans = new Set()
+  for (const node of componentNodes(sets, nodes, sourceRoot)) {
+    for (const observation of observationsByPrimaryKey.get(node.key) ?? []) {
+      const referencesTarget = observation.relatedEntityCandidates.some((candidate) => {
+        let key
+        try {
+          key = stableNodeKey('character', candidate)
+        } catch {
+          return false
+        }
+        return targetKeys.has(key)
+      })
+      if (referencesTarget) {
+        spans.add(`${observation.evidence.startOffset}:${observation.evidence.endOffset}`)
+      }
+    }
+  }
+  return spans
+}
+
+function spouseOwnershipSpans(
+  sets,
+  nodes,
+  sourceRoot,
+  titledNode,
+  observationsByPrimaryKey
+) {
+  const titleTokens = nameTokens(titledNode.normalized)
+  const partner = titleTokens.slice(1).join(' ')
+  const sourceNodes = componentEvidenceNodesWithUniqueGiven(sets, nodes, sourceRoot)
+  const sourceForms = sourceNodes
+    .flatMap((node) => [...node.forms.values()].map(({ display }) => display))
+  const spans = new Set()
+  for (const node of sourceNodes) {
+    for (const observation of observationsByPrimaryKey.get(node.key) ?? []) {
+      const fact = observation.fact
+      if (
+        SPOUSE_CUE.test(fact) &&
+        isSurfaceGrounded(partner, fact) &&
+        sourceForms.some((display) => isSurfaceGrounded(display, fact))
+      ) spans.add(`${observation.evidence.startOffset}:${observation.evidence.endOffset}`)
+    }
+  }
+  return spans
+}
+
+/**
+ * `Mrs John Dashwood` is a spouse-style title, not a woman named John. It may join a different
+ * given name only when scan evidence repeatedly cross-references exactly one same-family woman.
+ */
+function mergeRepeatedMarriedTitleReferences(sets, nodes, observationsByPrimaryKey) {
+  const titledNodes = [...nodes.values()].filter((node) => {
+    const tokens = nameTokens(node.normalized)
+    return tokens.length === 3 && MARRIED_HONORIFICS.has(tokens[0])
+  })
+  for (const titledNode of titledNodes) {
+    const titleRoot = sets.find(titledNode.key)
+    const family = nameTokens(titledNode.normalized).at(-1)
+    const candidates = [...new Set([...nodes.values()].filter((node) => {
+      if (!node.key.startsWith('character\u0000') || !isIndividualProperNameNode(node)) return false
+      const root = sets.find(node.key)
+      const tokens = semanticIdentityTokens(node.normalized)
+      if (root === titleRoot || tokens.length !== 2 || tokens.at(-1) !== family) return false
+      const genders = rootGenderSignals(sets, nodes, root, observationsByPrimaryKey)
+      return genders.size === 1 && genders.has('female')
+    }).map(({ key }) => sets.find(key)))]
+    const supported = candidates.filter((root) =>
+      relatedReferenceSpans(
+        sets,
+        nodes,
+        titleRoot,
+        root,
+        observationsByPrimaryKey
+      ).size >= 2 && spouseOwnershipSpans(
+        sets,
+        nodes,
+        root,
+        titledNode,
+        observationsByPrimaryKey
+      ).size >= 1
+    )
+    if (supported.length === 1) sets.union(titleRoot, supported[0])
+  }
+}
+
 function groundedPersonalNameNode(node) {
   return node.identityLabelPriority === 0 &&
     node.surfaceGroundedCount > 0 &&
@@ -1775,6 +2044,10 @@ export function resolveBookAnalysisEntities({ observations: rawObservations, ide
     }
   }
 
+  // A spouse-style title contains the partner's name, so generic relationship separation can
+  // otherwise mistake the title for that partner's family variant. Apply only the independently
+  // proved wife/title identity first; all later unions remain subject to hard component guards.
+  mergeRepeatedMarriedTitleReferences(sets, nodes, observationsByPrimaryKey)
   registerHardIdentitySeparation(sets, nodes, observations)
 
   const claimsByPair = new Map()
@@ -1870,6 +2143,8 @@ export function resolveBookAnalysisEntities({ observations: rawObservations, ide
   mergeExplicitSpouseTitles(sets, nodes, observations)
   mergeExplicitSpouseNameTransitions(sets, nodes, observations, primaryNodeByObservationId)
   mergeMarriedFullNameExpansions(sets, nodes)
+  mergeNamedKinshipTitleVariants(sets, nodes)
+  mergeEvidenceSubstitutedTitledNames(sets, nodes, observations, observationsByPrimaryKey)
   mergeStrongUniqueGivenNames(sets, nodes)
   applyApprovedIdentityMerges(sets, nodes, identityMerges)
 
