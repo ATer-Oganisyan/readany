@@ -2,6 +2,7 @@ import { Text } from "@/components/ui/Typography";
 import type { CoverTextTone } from "@/lib/book/cover-text-contrast";
 import { formatBookCoverTitle } from "@/lib/book/format-book-cover-title";
 import { sansCondensedFontFamily, serifTextFontFamily } from "@deslop/primitives/native";
+import { LinearGradient } from "expo-linear-gradient";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import {
   type NativeSyntheticEvent,
@@ -102,53 +103,61 @@ export function BookCoverTypography({
   return (
     <>
       {showText ? (
-        <View
-          pointerEvents="none"
-          style={[
-            styles.typographyLayer,
-            {
-              padding: 20 * scale,
-              paddingLeft: 20 * scale + leftInsetAdjustment,
-              paddingTop: 16 * scale,
-              gap: 4 * scale,
-            },
-          ]}
-        >
-          <Text
-            numberOfLines={6}
-            onTextLayout={handleTitleLayout}
+        <>
+          <LinearGradient
+            pointerEvents="none"
+            colors={["rgba(0,0,0,0.56)", "rgba(0,0,0,0.2)", "rgba(0,0,0,0)"]}
+            locations={[0, 0.58, 1]}
+            style={styles.textScrim}
+          />
+          <View
+            pointerEvents="none"
             style={[
-              styles.title,
+              styles.typographyLayer,
               {
-                fontFamily: sansCondensedFontFamily.regular,
-                fontWeight: "600",
-                fontSize: fittedTitleSize,
-                lineHeight: fittedTitleSize * 1.05,
-                color: textColor,
+                padding: 20 * scale,
+                paddingLeft: 20 * scale + leftInsetAdjustment,
+                paddingTop: 16 * scale,
+                gap: 4 * scale,
               },
             ]}
           >
-            {formattedTitle}
-          </Text>
-          {author ? (
             <Text
-              adjustsFontSizeToFit
-              minimumFontScale={0.74}
-              numberOfLines={2}
+              numberOfLines={6}
+              onTextLayout={handleTitleLayout}
               style={[
-                styles.author,
+                styles.title,
                 {
-                  fontFamily: serifTextFontFamily.regular,
-                  fontSize: authorSize,
-                  lineHeight: authorSize * (14 / 13),
+                  fontFamily: sansCondensedFontFamily.regular,
+                  fontWeight: "600",
+                  fontSize: fittedTitleSize,
+                  lineHeight: fittedTitleSize * 1.05,
                   color: textColor,
                 },
               ]}
             >
-              {author}
+              {formattedTitle}
             </Text>
-          ) : null}
-        </View>
+            {author ? (
+              <Text
+                adjustsFontSizeToFit
+                minimumFontScale={0.74}
+                numberOfLines={2}
+                style={[
+                  styles.author,
+                  {
+                    fontFamily: serifTextFontFamily.regular,
+                    fontSize: authorSize,
+                    lineHeight: authorSize * (14 / 13),
+                    color: textColor,
+                  },
+                ]}
+              >
+                {author}
+              </Text>
+            ) : null}
+          </View>
+        </>
       ) : null}
       {bottomAccessory ? (
         <View
@@ -170,6 +179,14 @@ export function BookCoverTypography({
 }
 
 const styles = StyleSheet.create({
+  textScrim: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    left: 0,
+    height: "62%",
+    zIndex: 11,
+  },
   typographyLayer: {
     ...StyleSheet.absoluteFill,
     zIndex: 12,

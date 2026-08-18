@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  isCatalogBookCoverPath,
   isGeneratedBookCoverPath,
   isLegacyGeneratedBookCover,
   shouldRenderCoverTypography,
@@ -12,10 +13,15 @@ describe("cover display", () => {
     expect(shouldRenderCoverTypography("book-1", "https://example.com/cover.jpg")).toBe(false);
   });
 
-  it("overlays typography only on generated and missing covers", () => {
+  it("overlays typography on generated, backend catalog, and missing covers", () => {
     expect(shouldRenderCoverTypography("book-1", "covers/book-1-generated.webp")).toBe(true);
-    expect(shouldRenderCoverTypography("book-1", "covers/book-1-catalog.jpg")).toBe(false);
+    expect(shouldRenderCoverTypography("book-1", "covers/book-1-catalog.jpg")).toBe(true);
     expect(shouldRenderCoverTypography("book-1")).toBe(true);
+  });
+
+  it("recognizes backend catalog covers only for the requested book", () => {
+    expect(isCatalogBookCoverPath("book-1", "covers/book-1-catalog.png")).toBe(true);
+    expect(isCatalogBookCoverPath("book-1", "covers/book-2-catalog.png")).toBe(false);
   });
 
   it("matches generated covers only for the requested book", () => {

@@ -1,6 +1,7 @@
 import { useSwipePressGuard } from "@/components/ui/swipe-press-guard";
+import { generatedCoverPlaceholderColor } from "@/lib/book/cover-text-contrast";
 import { useColors } from "@/styles/theme";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ActivityIndicator, Image, Platform, StyleSheet, View } from "react-native";
 import { makeStyles } from "./book-card-styles";
@@ -35,12 +36,21 @@ export function CatalogBookCard({
   const { t } = useTranslation();
   const swipePressGuard = useSwipePressGuard();
   const requestedCoverKey = useRef<string | undefined>(undefined);
+  const [failedCoverUri, setFailedCoverUri] = useState<string>();
+  const coverIdentity = { title, author };
+  const placeholderColor = generatedCoverPlaceholderColor(coverIdentity);
+  const visibleCoverUri = coverUri === failedCoverUri ? undefined : coverUri;
 
   useEffect(() => {
-    if (coverUri || !coverRequestKey || requestedCoverKey.current === coverRequestKey) return;
+    if (coverUri) requestedCoverKey.current = undefined;
+  }, [coverUri]);
+
+  useEffect(() => {
+    if (visibleCoverUri || !coverRequestKey || requestedCoverKey.current === coverRequestKey)
+      return;
     requestedCoverKey.current = coverRequestKey;
     onCoverNeeded?.();
-  }, [coverRequestKey, coverUri, onCoverNeeded]);
+  }, [coverRequestKey, onCoverNeeded, visibleCoverUri]);
 
   return (
     <PerspectiveBook
@@ -59,24 +69,19 @@ export function CatalogBookCard({
       }}
       cover={
         <View style={styles.coverCanvas}>
-          {coverUri ? (
+          {visibleCoverUri ? (
             <Image
-              source={{ uri: coverUri }}
+              source={{ uri: visibleCoverUri }}
               style={styles.coverImage}
               resizeMode="cover"
               resizeMethod={Platform.OS === "android" ? "resize" : "auto"}
               fadeDuration={Platform.OS === "android" ? 0 : undefined}
+              onError={() => setFailedCoverUri(visibleCoverUri)}
             />
           ) : (
-            <View style={styles.fallbackCover}>
-              <BookCoverTypography
-                title={title}
-                author={author}
-                width={cardWidth}
-                textTone="light"
-              />
-            </View>
+            <View style={[styles.fallbackCover, { backgroundColor: placeholderColor }]} />
           )}
+          <BookCoverTypography title={title} author={author} width={cardWidth} textTone="light" />
           {isImporting ? (
             <View style={localStyles.loadingOverlay}>
               <ActivityIndicator color="#fff" />

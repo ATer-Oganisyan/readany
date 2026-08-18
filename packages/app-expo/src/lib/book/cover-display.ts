@@ -10,6 +10,12 @@ export function isGeneratedBookCoverPath(bookId: string, coverUrl?: string): boo
   return new RegExp(`^covers/${escapedBookId}-generated\\.(?:jpe?g|png|webp)$`, "i").test(coverUrl);
 }
 
+export function isCatalogBookCoverPath(bookId: string, coverUrl?: string): boolean {
+  if (!coverUrl) return false;
+  const escapedBookId = escapeRegExp(bookId);
+  return new RegExp(`^covers/${escapedBookId}-catalog\\.(?:jpe?g|png|webp)$`, "i").test(coverUrl);
+}
+
 export function isLegacyBookCoverPath(bookId: string, coverUrl?: string): boolean {
   if (!coverUrl) return false;
   const escapedBookId = escapeRegExp(bookId);
@@ -31,5 +37,5 @@ export function isLegacyGeneratedBookCover(params: {
 
 export function shouldRenderCoverTypography(bookId: string, coverUrl?: string): boolean {
   if (!coverUrl) return true;
-  return isGeneratedBookCoverPath(bookId, coverUrl);
+  return isGeneratedBookCoverPath(bookId, coverUrl) || isCatalogBookCoverPath(bookId, coverUrl);
 }

@@ -11,6 +11,20 @@ const GENERATED_COVER_BACKGROUNDS = [
   "mustard yellow",
 ] as const;
 
+const GENERATED_COVER_PLACEHOLDER_COLORS: Record<
+  (typeof GENERATED_COVER_BACKGROUNDS)[number],
+  string
+> = {
+  "deep cobalt blue": "#31569A",
+  "muted vermilion red": "#B95043",
+  "dark forest green": "#365C42",
+  "burnt orange": "#B96632",
+  "deep plum purple": "#65405F",
+  "charcoal black": "#343434",
+  "dusty turquoise": "#69A5A3",
+  "mustard yellow": "#C49B38",
+};
+
 const LIGHT_TEXT_BACKGROUNDS = new Set([
   "deep cobalt blue",
   "muted vermilion red",
@@ -19,7 +33,10 @@ const LIGHT_TEXT_BACKGROUNDS = new Set([
   "charcoal black",
 ]);
 
-export function generatedCoverBackgroundColor(input: { title: string; author?: string }): string {
+export function generatedCoverBackgroundColor(input: {
+  title: string;
+  author?: string;
+}): (typeof GENERATED_COVER_BACKGROUNDS)[number] {
   const title = input.title.trim() || "Untitled book";
   const author = input.author?.trim() || "Unknown author";
   const colorSeed = Array.from(`${title}:${author}`).reduce(
@@ -35,4 +52,11 @@ export function generatedCoverTextTone(input: {
   author?: string;
 }): CoverTextTone {
   return LIGHT_TEXT_BACKGROUNDS.has(generatedCoverBackgroundColor(input)) ? "light" : "dark";
+}
+
+export function generatedCoverPlaceholderColor(input: {
+  title: string;
+  author?: string;
+}): string {
+  return GENERATED_COVER_PLACEHOLDER_COLORS[generatedCoverBackgroundColor(input)];
 }

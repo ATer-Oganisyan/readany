@@ -1,5 +1,5 @@
 import { getNativeTabBarContentInset } from "@/platform/navigation/native-tab-bar";
-import { fontSize, fontWeight, headingFontFamily, useColors } from "@/styles/theme";
+import { fontSize, fontWeight, headingFontFamily, spacing, useColors } from "@/styles/theme";
 import type { ReactNode } from "react";
 import { Platform, type StyleProp, StyleSheet, View, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -40,11 +40,18 @@ export function CenteredEmptyState({
 
 const styles = StyleSheet.create({
   container: { flex: 1, alignItems: "center", justifyContent: "center" },
-  copy: { alignItems: "center", gap: 8 },
+  copy: {
+    alignSelf: "stretch",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: spacing.xxl,
+  },
   title: {
+    alignSelf: "stretch",
     fontFamily: headingFontFamily,
     fontSize: fontSize.lg,
     fontWeight: fontWeight.semibold,
+    textAlign: "center",
   },
   description: { fontSize: fontSize.sm, textAlign: "center", maxWidth: 240 },
   action: { alignItems: "center", marginTop: 24 },

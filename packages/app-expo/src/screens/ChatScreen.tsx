@@ -10,20 +10,12 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  Alert,
-  Animated,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { Animated, Pressable, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useStreamingChat } from "@/hooks";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
-import { resolveActiveAIConfig } from "@/lib/ai/resolve-active-ai-config";
+import { createNarraAssistantAIConfig } from "@/lib/ai/narra-assistant-gateway";
 import { useLibraryStore } from "@/stores";
 import { useChatStore } from "@/stores/chat-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -197,51 +189,16 @@ export function ChatScreen() {
   // Handlers
   const handleSend = useCallback(
     async (text: string, deepThinking: boolean, spoilerFree: boolean, quotes?: AttachedQuote[]) => {
-      // Validate AI config before sending
-      const state = useSettingsStore.getState();
-      const resolvedAIConfig = await resolveActiveAIConfig(state);
-
-      if (!resolvedAIConfig) {
-        Alert.alert(
-          t("chat.configRequired", "需要配置 AI"),
-          t("chat.configRequiredMessage", "请先在设置中配置 AI 端点和模型"),
-          [
-            { text: t("common.cancel", "取消"), style: "cancel" },
-            {
-              text: t("common.settings", "去设置"),
-              onPress: () => navigation.navigate("AISettings"),
-            },
-          ],
-        );
-        return;
-      }
-
-      await sendMessage(text, bookId, deepThinking, spoilerFree, quotes, resolvedAIConfig);
+      const aiConfig = createNarraAssistantAIConfig(useSettingsStore.getState().aiConfig);
+      await sendMessage(text, bookId, deepThinking, spoilerFree, quotes, aiConfig);
     },
-    [bookId, navigation, sendMessage, t],
+    [bookId, sendMessage],
   );
 
   const handleRetry = useCallback(async () => {
-    const state = useSettingsStore.getState();
-    const resolvedAIConfig = await resolveActiveAIConfig(state);
-
-    if (!resolvedAIConfig) {
-      Alert.alert(
-        t("chat.configRequired", "Настройте ИИ"),
-        t("chat.configRequiredMessage", "Добавьте адрес API, ключ и модель в настройках"),
-        [
-          { text: t("common.cancel", "Отмена"), style: "cancel" },
-          {
-            text: t("common.settings", "Настройки"),
-            onPress: () => navigation.navigate("AISettings"),
-          },
-        ],
-      );
-      return;
-    }
-
-    await retryLastMessage(resolvedAIConfig);
-  }, [navigation, retryLastMessage, t]);
+    const aiConfig = createNarraAssistantAIConfig(useSettingsStore.getState().aiConfig);
+    await retryLastMessage(aiConfig);
+  }, [retryLastMessage]);
 
   const handleNewThread = useCallback(() => {
     if (bookId) {

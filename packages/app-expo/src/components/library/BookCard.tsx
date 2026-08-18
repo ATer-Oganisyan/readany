@@ -1,7 +1,6 @@
 import { Text } from "@/components/ui/Typography";
 import { useSwipePressGuard } from "@/components/ui/swipe-press-guard";
-import { isGeneratedBookCoverPath, shouldRenderCoverTypography } from "@/lib/book/cover-display";
-import { generatedCoverTextTone } from "@/lib/book/cover-text-contrast";
+import { shouldRenderCoverTypography } from "@/lib/book/cover-display";
 import { loadingCoverColorForBook } from "@/lib/book/loading-cover-placeholder";
 import { useResolvedCovers } from "@/screens/notes/useResolvedCovers";
 import { useColors } from "@/styles/theme";
@@ -53,14 +52,8 @@ export const BookCard = memo(function BookCard({
   );
   const resolvedCoverUrl = useResolvedCovers(coverItems).get(book.id);
   const hasUsableSavedCover = Boolean(resolvedCoverUrl) && resolvedCoverUrl !== failedCoverUrl;
-  const showsColorPlaceholder = !hasUsableSavedCover;
   const showCoverTypography =
     !hasUsableSavedCover || shouldRenderCoverTypography(book.id, book.meta.coverUrl);
-  const coverTextTone = showsColorPlaceholder
-    ? "light"
-    : isGeneratedBookCoverPath(book.id, book.meta.coverUrl)
-      ? generatedCoverTextTone({ title: book.meta.title, author: book.meta.author })
-      : "dark";
   const progressPercent = Math.round(Math.max(0, Math.min(1, book.progress ?? 0)) * 100);
 
   return (
@@ -99,7 +92,7 @@ export const BookCard = memo(function BookCard({
             author={book.meta.author}
             width={cardWidth}
             showText={showCoverTypography}
-            textTone={coverTextTone}
+            textTone="light"
             bottomAccessory={
               progressPercent > 0 ? (
                 <BlurView tint="dark" intensity={50} style={s.progressChip}>

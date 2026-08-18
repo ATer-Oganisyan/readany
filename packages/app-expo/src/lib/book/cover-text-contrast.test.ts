@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { generatedCoverBackgroundColor, generatedCoverTextTone } from "./cover-text-contrast";
+import {
+  generatedCoverBackgroundColor,
+  generatedCoverPlaceholderColor,
+  generatedCoverTextTone,
+} from "./cover-text-contrast";
 
 describe("generated cover text contrast", () => {
   it("uses light text on dark generated backgrounds", () => {
@@ -11,5 +15,19 @@ describe("generated cover text contrast", () => {
 
     expect(generatedCoverBackgroundColor(book)).toBe("deep cobalt blue");
     expect(generatedCoverTextTone(book)).toBe("light");
+  });
+
+  it("uses stable, varied non-white placeholders for catalog books", () => {
+    const placeholders = new Set(
+      Array.from({ length: 64 }, (_, index) =>
+        generatedCoverPlaceholderColor({ title: `Книга ${index}`, author: `Автор ${index}` }),
+      ),
+    );
+
+    expect(placeholders.size).toBeGreaterThan(1);
+    for (const color of placeholders) {
+      expect(color).toMatch(/^#[0-9A-F]{6}$/u);
+      expect(color).not.toBe("#FFFFFF");
+    }
   });
 });

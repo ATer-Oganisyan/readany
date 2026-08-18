@@ -1,6 +1,5 @@
 import { Text } from "@/components/ui/Typography";
-import { isGeneratedBookCoverPath, shouldRenderCoverTypography } from "@/lib/book/cover-display";
-import { generatedCoverTextTone } from "@/lib/book/cover-text-contrast";
+import { shouldRenderCoverTypography } from "@/lib/book/cover-display";
 import { loadingCoverColorForBook } from "@/lib/book/loading-cover-placeholder";
 import { useResolvedCovers } from "@/screens/notes/useResolvedCovers";
 import { type ThemeColors, fontWeight, radius, spacing, useColors } from "@/styles/theme";
@@ -65,14 +64,8 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
           const coverKey = `${book.id}:${book.meta.coverUrl ?? ""}`;
           const hasUsableCover = Boolean(coverUri) && !failedCoverKeys.has(coverKey);
           const progressPercent = Math.round(Math.max(0, Math.min(1, book.progress ?? 0)) * 100);
-          const showsColorPlaceholder = !hasUsableCover;
           const showCoverTypography =
             !hasUsableCover || shouldRenderCoverTypography(book.id, book.meta.coverUrl);
-          const coverTextTone = showsColorPlaceholder
-            ? "light"
-            : isGeneratedBookCoverPath(book.id, book.meta.coverUrl)
-              ? generatedCoverTextTone({ title: book.meta.title, author: book.meta.author })
-              : "dark";
           return (
             <BookCardActionSheet key={book.id} book={book} onDelete={onDelete} onOpen={onOpen}>
               <PerspectiveBook
@@ -114,7 +107,7 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
                       titleFontSize={15}
                       leftInsetAdjustment={2}
                       showText={showCoverTypography}
-                      textTone={coverTextTone}
+                      textTone="light"
                       bottomAccessory={
                         progressPercent > 0 ? (
                           <BlurView tint="dark" intensity={50} style={s.progressChip}>

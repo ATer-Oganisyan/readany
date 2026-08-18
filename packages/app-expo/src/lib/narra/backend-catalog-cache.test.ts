@@ -143,6 +143,14 @@ describe("backend catalog cache", () => {
     expect(mocks.writeFile).toHaveBeenCalledOnce();
   });
 
+  it("materializes the cover before import when lazy loading has not finished", async () => {
+    await expect(installBackendCatalogCover("local-book", BOOK)).resolves.toBe(
+      "covers/local-book-catalog.jpg",
+    );
+    expect(mocks.requestUrl).toHaveBeenCalledWith(BOOK.cover?.downloadPath);
+    expect(mocks.writeFile).toHaveBeenCalledOnce();
+  });
+
   it("limits visible cover downloads to three concurrent requests", async () => {
     const books = Array.from({ length: 5 }, (_, index) => ({
       ...BOOK,

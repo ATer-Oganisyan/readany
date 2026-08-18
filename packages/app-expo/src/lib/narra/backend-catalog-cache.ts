@@ -153,9 +153,11 @@ export async function installBackendCatalogCover(
   bookId: string,
   catalogBook: CachedBackendCatalogBook,
 ): Promise<string | undefined> {
-  if (!catalogBook.coverUri || !catalogBook.cover) return undefined;
+  if (!catalogBook.cover) return undefined;
+  const coverUri = catalogBook.coverUri ?? (await materializeBackendCatalogCover(catalogBook));
+  if (!coverUri) return undefined;
   const platform = getPlatformService();
-  const bytes = await platform.readFile(catalogBook.coverUri);
+  const bytes = await platform.readFile(coverUri);
   const appData = await platform.getAppDataDir();
   const coversDirectory = await platform.joinPath(appData, "covers");
   await platform.mkdir(coversDirectory);

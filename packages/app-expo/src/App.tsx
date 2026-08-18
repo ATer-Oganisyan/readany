@@ -55,7 +55,10 @@ import TrackPlayer, {
 
 import { AnimatedNarraFace } from "@/components/chat/animated-narra-face";
 import { UpdateDialog } from "@/components/update/UpdateDialog";
-import { useUpdateChecker } from "@/hooks/use-update-checker";
+import {
+  isNarraAssistantGatewayRequest,
+  narraAssistantGatewayFetch,
+} from "@/lib/ai/narra-assistant-gateway";
 import { startTelemetry } from "@/lib/analytics/telemetry";
 import { navigationRef } from "@/lib/navigationRef";
 import { ExpoPlatformService } from "@/lib/platform/expo-platform-service";
@@ -130,7 +133,12 @@ export default function App() {
 
         console.log("[App] bootstrap: import expo/fetch");
         const { fetch: expoFetch } = await import("expo/fetch");
-        setStreamingFetch(expoFetch as typeof globalThis.fetch);
+        setStreamingFetch(((input: RequestInfo | URL, init?: RequestInit) => {
+          if (isNarraAssistantGatewayRequest(input)) {
+            return narraAssistantGatewayFetch(input, init);
+          }
+          return expoFetch(input, init);
+        }) as typeof globalThis.fetch);
 
         console.log("[App] bootstrap: configure audio mode");
         await setAudioModeAsync({
@@ -306,7 +314,6 @@ export default function App() {
 function AppInner() {
   const { colors, isDark } = useTheme();
   const loadBooks = useLibraryStore((s) => s.loadBooks);
-  useUpdateChecker();
   useAutoSync(loadBooks);
 
   const navTheme = useMemo(

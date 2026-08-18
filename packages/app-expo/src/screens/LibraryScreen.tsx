@@ -197,26 +197,25 @@ function LibraryScreenContent() {
   const [catalogImportingId, setCatalogImportingId] = useState<string | null>(null);
   const [catalogBooks, setCatalogBooks] = useState<CachedBackendCatalogBook[]>([]);
   const [isCatalogLoading, setIsCatalogLoading] = useState(true);
-  const handleCatalogCoverNeeded = useCallback((catalogBook: CachedBackendCatalogBook) => {
-    if (!catalogBook.cover || catalogBook.coverUri) return;
-    void materializeBackendCatalogCover(catalogBook)
-      .then((coverUri) => {
-        if (!coverUri) return;
-        setCatalogBooks((current) =>
-          current.map((book) =>
-            book.bookEditionId === catalogBook.bookEditionId &&
-            book.cover?.contentHash === catalogBook.cover?.contentHash
-              ? { ...book, coverUri }
-              : book,
-          ),
-        );
-      })
-      .catch((error) => {
-        console.warn("[Catalog] Failed to cache visible backend cover", {
-          catalogKey: catalogBook.catalogKey,
-          error: error instanceof Error ? error.message : String(error),
-        });
+  const handleCatalogCoverNeeded = useCallback(async (catalogBook: CachedBackendCatalogBook) => {
+    if (!catalogBook.cover) return;
+    try {
+      const coverUri = await materializeBackendCatalogCover(catalogBook);
+      if (!coverUri) return;
+      setCatalogBooks((current) =>
+        current.map((book) =>
+          book.bookEditionId === catalogBook.bookEditionId &&
+          book.cover?.contentHash === catalogBook.cover?.contentHash
+            ? { ...book, coverUri }
+            : book,
+        ),
+      );
+    } catch (error) {
+      console.warn("[Catalog] Failed to cache visible backend cover", {
+        catalogKey: catalogBook.catalogKey,
+        error: error instanceof Error ? error.message : String(error),
       });
+    }
   }, []);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedBookIds, setSelectedBookIds] = useState<Set<string>>(new Set());
