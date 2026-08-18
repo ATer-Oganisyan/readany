@@ -15,7 +15,7 @@ function scanInput(text = 'OVERLAP Анна вошла в комнату. Бор
     runId: 'run-1',
     title: 'Книга',
     author: 'Автор',
-    extractorVersion: 'book-scan-v10',
+    extractorVersion: 'book-scan-v13',
     normalizedTextObjectKey: 'analysis/run-1/normalized-text-v1.txt',
     chunk: {
       id: 'chunk-1',
@@ -27,6 +27,7 @@ function scanInput(text = 'OVERLAP Анна вошла в комнату. Бор
       contextEndOffset: text.length,
       contentHash: sha256(text),
       metadata: {
+        sectionTitles: ['Глава вторая'],
         contextByteStart: 0,
         contextByteEnd: Buffer.byteLength(text)
       }
@@ -144,10 +145,75 @@ test('scan worker reads and sends only its bounded chunk', async () => {
     maxBytes: 128 * 1024
   })
   assert.equal(generatorRequest.contextText, text)
+  assert.deepEqual(generatorRequest.sectionTitles, ['Глава вторая'])
   assert.equal(generatorRequest.coreLocalStartOffset, 8)
   assert.equal(generatorRequest.coreLocalEndOffset, 50)
   assert.equal('normalizedTextObjectKey' in generatorRequest, false)
   assert.equal(completed.value.observations.length, 1)
+})
+
+test('scan worker skips pure paratext only after verifying the stored chunk', async () => {
+  const text = 'OVERLAP Предисловие издателя без текста романа. TAIL'
+  for (const sectionTitles of [['PREFACE.'], ['Начало', 'PREFACE.']]) {
+    const input = scanInput(text)
+    input.chunk.metadata.sectionTitles = sectionTitles
+    input.chunk.coreEndOffset = text.length
+    let storageRead = false
+    let completed
+    const worker = createBookAnalysisScanWorker({
+      repository: {
+        async claimAnalysisJob() {
+          return { id: 'job-paratext', runId: 'run-1', stage: 'scan', leaseToken: 'lease' }
+        },
+        async getScanInput() { return input },
+        async renewAnalysisJobLease() {},
+        async completeScan(_job, value) { completed = value; return { stage: 'scan' } },
+        async failAnalysisJob() { assert.fail('pure paratext must not fail') }
+      },
+      storage: {
+        async getBytesRange() { storageRead = true; return { bytes: Buffer.from(text) } }
+      },
+      generator: { async scanBookChunk() { assert.fail('LLM must not scan pure paratext') } },
+      workerId: 'scan-worker-paratext',
+      leaseSeconds: 60,
+      leaseRenewMs: 10_000,
+      logger: { info() {}, error() {} }
+    })
+    assert.equal((await worker.runOnce()).status, 'completed')
+    assert.equal(storageRead, true)
+    assert.deepEqual(completed, { extractorVersion: 'book-scan-v13', observations: [] })
+  }
+})
+
+test('scan worker keeps mixed paratext and narrative chunks', async () => {
+  const text = 'OVERLAP Анна вошла в комнату. Борис ответил ей. TAIL'
+  const input = scanInput(text)
+  input.chunk.metadata.sectionTitles = ['PREFACE.', 'Chapter I.]']
+  let generatorCalled = false
+  const worker = createBookAnalysisScanWorker({
+    repository: {
+      async claimAnalysisJob() {
+        return { id: 'job-mixed', runId: 'run-1', stage: 'scan', leaseToken: 'lease' }
+      },
+      async getScanInput() { return input },
+      async renewAnalysisJobLease() {},
+      async completeScan(_job, value) { return { observationCount: value.observations.length, stage: 'scan' } },
+      async failAnalysisJob() { assert.fail('mixed chunk must not fail') }
+    },
+    storage: { async getBytesRange() { return { bytes: Buffer.from(text) } } },
+    generator: {
+      async scanBookChunk() {
+        generatorCalled = true
+        return { observations: [observation(text, 'Анна вошла в комнату.')] }
+      }
+    },
+    workerId: 'scan-worker-mixed',
+    leaseSeconds: 60,
+    leaseRenewMs: 10_000,
+    logger: { info() {}, error() {} }
+  })
+  assert.equal((await worker.runOnce()).status, 'completed')
+  assert.equal(generatorCalled, true)
 })
 
 test('scan worker retries its job when the stored chunk hash is wrong', async () => {
@@ -205,7 +271,7 @@ test('scan worker refuses a job created for another extractor version', async ()
   assert.equal(failedCode, 'EXTRACTOR_VERSION_MISMATCH')
 })
 
-test('scan worker completes the final evidence mismatch attempt with an empty grounded result', async () => {
+test('scan worker completes a final content-level rejection with an empty grounded result', async () => {
   const text = 'OVERLAP Анна вошла в комнату. Борис ответил ей. TAIL'
   const input = scanInput(text)
   const job = {
@@ -216,37 +282,39 @@ test('scan worker completes the final evidence mismatch attempt with an empty gr
     attempts: 5,
     maxAttempts: 5
   }
-  let completed
-  const worker = createBookAnalysisScanWorker({
-    repository: {
-      async claimAnalysisJob() { return job },
-      async getScanInput() { return input },
-      async renewAnalysisJobLease() {},
-      async completeScan(candidate, value) {
-        completed = { candidate, value }
-        return { observationCount: 0, stage: 'resolve' }
+  for (const code of ['EVIDENCE_MISMATCH', 'GENERATOR_HTTP_422']) {
+    let completed
+    const worker = createBookAnalysisScanWorker({
+      repository: {
+        async claimAnalysisJob() { return job },
+        async getScanInput() { return input },
+        async renewAnalysisJobLease() {},
+        async completeScan(candidate, value) {
+          completed = { candidate, value }
+          return { observationCount: 0, stage: 'resolve' }
+        },
+        async failAnalysisJob() { assert.fail('final content rejection must not fail the run') }
       },
-      async failAnalysisJob() { assert.fail('final evidence mismatch must not fail the run') }
-    },
-    storage: { async getBytesRange() { return { bytes: Buffer.from(text) } } },
-    generator: {
-      async scanBookChunk() {
-        throw Object.assign(new Error('no grounded observations'), { code: 'EVIDENCE_MISMATCH' })
-      }
-    },
-    workerId: 'scan-worker-4',
-    leaseSeconds: 60,
-    leaseRenewMs: 10_000,
-    logger: { info() {}, warn() {}, error() {} }
-  })
-  const result = await worker.runOnce()
-  assert.equal(result.status, 'completed')
-  assert.equal(result.result.stage, 'resolve')
-  assert.equal(completed.candidate, job)
-  assert.deepEqual(completed.value, {
-    extractorVersion: 'book-scan-v10',
-    observations: []
-  })
+      storage: { async getBytesRange() { return { bytes: Buffer.from(text) } } },
+      generator: {
+        async scanBookChunk() {
+          throw Object.assign(new Error('content was rejected'), { code })
+        }
+      },
+      workerId: `scan-worker-4-${code}`,
+      leaseSeconds: 60,
+      leaseRenewMs: 10_000,
+      logger: { info() {}, warn() {}, error() {} }
+    })
+    const result = await worker.runOnce()
+    assert.equal(result.status, 'completed')
+    assert.equal(result.result.stage, 'resolve')
+    assert.equal(completed.candidate, job)
+    assert.deepEqual(completed.value, {
+      extractorVersion: 'book-scan-v13',
+      observations: []
+    })
+  }
 })
 
 test('scan worker still retries an evidence mismatch before the final attempt', async () => {

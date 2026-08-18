@@ -6,6 +6,9 @@ import {
 import { createOperationalLogger } from './operational-log.mjs'
 
 const UTF8_DECODER = new TextDecoder('utf-8', { fatal: true })
+const PARATEXT_SECTION = /^(?:preface|foreword|introduction|contents?|table of contents|предисловие|введение|оглавление|содержание)\s*[.:\]]?$/iu
+const NARRATIVE_SECTION = /^(?:chapter|part|book|prologue|epilogue|глава|часть|книга|пролог|эпилог)\b/iu
+const FINAL_EMPTY_SCAN_ERRORS = new Set(['EVIDENCE_MISMATCH', 'GENERATOR_HTTP_422'])
 
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex')
@@ -24,6 +27,14 @@ function safeErrorCode(error) {
 
 function scanError(code, message) {
   return Object.assign(new Error(message), { code })
+}
+
+function isPureParatextChunk(sectionTitles) {
+  const titles = Array.isArray(sectionTitles)
+    ? sectionTitles.filter((title) => typeof title === 'string').map((title) => title.trim())
+    : []
+  return titles.some((title) => PARATEXT_SECTION.test(title)) &&
+    !titles.some((title) => NARRATIVE_SECTION.test(title))
 }
 
 function localOffset(value, name, textLength) {
@@ -176,12 +187,23 @@ export function createBookAnalysisScanWorker({
     ) {
       throw scanError('CHUNK_INTEGRITY', 'chunk does not match its immutable boundaries')
     }
+    const sectionTitles = input.chunk.metadata.sectionTitles ?? []
+    if (isPureParatextChunk(sectionTitles)) {
+      const result = await repository.completeScan(job, { extractorVersion, observations: [] })
+      log.info('scan.paratext_skipped', 'Служебный фрагмент книги пропущен', {
+        run: input.runId,
+        chunk: input.chunk.ordinal,
+        next_stage: result.stage
+      })
+      return result
+    }
     const rawResult = await generator.scanBookChunk({
       runId: input.runId,
       chunkId: input.chunk.id,
       extractorVersion,
       bookTitle: input.title,
       bookAuthor: input.author,
+      sectionTitles,
       contextText,
       coreLocalStartOffset: input.chunk.coreStartOffset - input.chunk.contextStartOffset,
       coreLocalEndOffset: input.chunk.coreEndOffset - input.chunk.contextStartOffset
@@ -228,7 +250,7 @@ export function createBookAnalysisScanWorker({
       } catch (error) {
         const errorCode = safeErrorCode(error)
         if (
-          errorCode === 'EVIDENCE_MISMATCH' &&
+          FINAL_EMPTY_SCAN_ERRORS.has(errorCode) &&
           Number.isSafeInteger(job.attempts) &&
           Number.isSafeInteger(job.maxAttempts) &&
           job.attempts >= job.maxAttempts
@@ -241,6 +263,7 @@ export function createBookAnalysisScanWorker({
             job: job.id,
             run: job.runId,
             attempts: job.attempts,
+            error_code: errorCode,
             next_stage: result.stage
           })
           return { status: 'completed', jobId: job.id, runId: job.runId, result }

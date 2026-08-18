@@ -120,7 +120,7 @@ function sectionsFromOffsets(text, candidates, prefix) {
 
 function headingSections(text, prefix) {
   const candidates = []
-  const heading = /^(?:глава|часть|книга|пролог|эпилог)(?:\s+[\p{L}\p{N}IVXLCDMivxlcdm._-]+)?(?:[.:\s—-].*)?$/gimu
+  const heading = /^(?:(?:глава|часть|книга|chapter|part|book)(?:\s+[\p{L}\p{N}IVXLCDMivxlcdm._\[\]-]+(?:[.:\]\s—-].*)?|[.:\]]?)|(?:предисловие|введение|пролог|эпилог|preface|foreword|introduction|prologue|epilogue)\s*[.:\]]?)$/gimu
   for (const match of text.matchAll(heading)) {
     candidates.push({ startOffset: match.index, title: match[0] })
   }

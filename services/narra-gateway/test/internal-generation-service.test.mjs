@@ -214,6 +214,7 @@ test('internal generation service gives the provider one scan chunk and asks for
     extractorVersion: 'book-scan-v1',
     bookTitle: 'Книга',
     bookAuthor: 'Автор',
+    sectionTitles: ['PREFACE.'],
     contextText,
     coreLocalStartOffset: 1,
     coreLocalEndOffset: contextText.length - 1
@@ -236,6 +237,8 @@ test('internal generation service gives the provider one scan chunk and asks for
   assert.ok(chatRequest.messages[1].content.includes(
     `CORE_LOCAL_RANGE: 1-${contextText.length - 1}`
   ))
+  assert.ok(chatRequest.messages[1].content.includes('SECTION_TITLES: PREFACE.'))
+  assert.match(chatRequest.messages[0].content, /title page, contents, preface, introduction/i)
   assert.equal(chatRequest.messages[1].content.includes('objectKey'), false)
   assert.equal(chatRequest.messages[1].content.includes('normalized'), false)
   assert.deepEqual(result.observations[0].evidence, {
@@ -836,6 +839,9 @@ test('internal generation service builds a grounded profile for one resolved cha
   assert.equal(Object.hasOwn(chatRequest, 'temperature'), false)
   assert.match(chatRequest.messages[0].content, /приветствие.*1.?2 предложения/i)
   assert.match(chatRequest.messages[0].content, /без спойлеров/i)
+  assert.match(chatRequest.messages[0].content, /description — обязательное краткое описание/i)
+  assert.match(chatRequest.messages[0].content, /traits — 3.?6 наиболее определяющих/i)
+  assert.match(chatRequest.messages[0].content, /Не включай внешность, возраст, одежду/i)
   assert.match(chatRequest.messages[1].content, /BOOK_LANGUAGE: ru/)
   assert.equal(first.profile.characterKey, 'character:anna')
   assert.equal(first.profile.name, 'Анна')

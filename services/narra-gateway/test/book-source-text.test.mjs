@@ -103,3 +103,60 @@ test('structured TXT extraction builds a contiguous chapter skeleton without cha
     )
   }
 })
+
+test('structured TXT extraction recognizes English paratext and decorated chapter headings', async () => {
+  const source = [
+    'PRIDE AND PREJUDICE',
+    '',
+    'PREFACE.',
+    '',
+    'Critical discussion of another Austen novel.',
+    '',
+    'Chapter I.]',
+    '',
+    'It is a truth universally acknowledged.',
+    '',
+    'CHAPTER II.',
+    '',
+    'Mr. Bennet was among the earliest of those who waited on Mr. Bingley.'
+  ].join('\n')
+  const structured = await extractStructuredBookText({
+    bytes: Buffer.from(source),
+    format: 'txt',
+    mimeType: 'text/plain'
+  })
+  assert.equal(structured.text, source)
+  assert.deepEqual(structured.sections.slice(1).map(({ title }) => title), [
+    'PREFACE.',
+    'Chapter I.]',
+    'CHAPTER II.'
+  ])
+  for (let index = 1; index < structured.sections.length; index += 1) {
+    assert.equal(structured.sections[index - 1].endOffset, structured.sections[index].startOffset)
+  }
+})
+
+test('structured TXT extraction does not treat prose beginning with introduction as a heading', async () => {
+  const source = [
+    'PREFACE.',
+    '',
+    'Editorial text.',
+    '',
+    'Chapter I.]',
+    '',
+    'The introduction at Rosings had already been made.',
+    '',
+    'CHAPTER II.',
+    '',
+    'The story continues.'
+  ].join('\n')
+  const structured = await extractStructuredBookText({
+    bytes: Buffer.from(source),
+    format: 'txt',
+    mimeType: 'text/plain'
+  })
+  assert.deepEqual(structured.sections.slice(1).map(({ title }) => title), [
+    'Chapter I.]',
+    'CHAPTER II.'
+  ])
+})
