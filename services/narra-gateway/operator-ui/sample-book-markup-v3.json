@@ -1,0 +1,105 @@
+{
+  "book": {
+    "title": "Демонстрационная книга",
+    "author": "Narra local lab"
+  },
+  "publication": {
+    "data": {
+      "markup": {
+        "schemaVersion": 3,
+        "analysisVersion": "book-markup-v3",
+        "snapshotId": "11111111-1111-4111-8111-111111111111",
+        "textLength": 48000,
+        "characters": [
+          {
+            "characterKey": "character:anna",
+            "name": "Анна",
+            "fullName": "Анна Сергеевна",
+            "aliases": ["Аня", "Анна Сергеевна"],
+            "identityEvidenceIds": ["21111111-1111-4111-8111-111111111111"],
+            "firstAppearanceTextOffset": 1240,
+            "warmupTextOffset": 280,
+            "role": {
+              "value": "Главная героиня",
+              "evidenceIds": ["31111111-1111-4111-8111-111111111111"],
+              "confidence": 0.94
+            },
+            "gender": {
+              "value": "female",
+              "evidenceIds": ["41111111-1111-4111-8111-111111111111"],
+              "confidence": 0.97
+            },
+            "description": {
+              "value": "Наблюдательная и деятельная молодая женщина, которая берёт ответственность за близких.",
+              "evidenceIds": ["51111111-1111-4111-8111-111111111111", "61111111-1111-4111-8111-111111111111"],
+              "confidence": 0.88
+            },
+            "traits": [
+              {
+                "value": "Заботливая",
+                "evidenceIds": ["51111111-1111-4111-8111-111111111111", "61111111-1111-4111-8111-111111111111"],
+                "confidence": 0.91
+              },
+              {
+                "value": "Решительная",
+                "evidenceIds": ["71111111-1111-4111-8111-111111111111", "81111111-1111-4111-8111-111111111111"],
+                "confidence": 0.86
+              }
+            ],
+            "appearance": [
+              {
+                "value": "Тёмные волосы, серые глаза, синее шерстяное пальто",
+                "evidenceIds": ["91111111-1111-4111-8111-111111111111"],
+                "confidence": 0.93
+              }
+            ],
+            "speechStyle": null,
+            "speechExamples": [],
+            "creative": {
+              "greeting": "Рада встрече.",
+              "appearancePrompt": "Книжный портрет Анны в синем шерстяном пальто",
+              "voice": "Che"
+            }
+          },
+          {
+            "characterKey": "character:nikolai",
+            "name": "Николай",
+            "fullName": "Николай Петрович",
+            "aliases": ["Николай Петрович"],
+            "identityEvidenceIds": ["a1111111-1111-4111-8111-111111111111"],
+            "firstAppearanceTextOffset": 8200,
+            "warmupTextOffset": 6200,
+            "role": null,
+            "age": null,
+            "gender": null,
+            "description": null,
+            "traits": [],
+            "appearance": [],
+            "speechStyle": null,
+            "speechExamples": [],
+            "creative": {
+              "greeting": "Здравствуйте.",
+              "appearancePrompt": "",
+              "voice": ""
+            }
+          }
+        ],
+        "locations": [],
+        "events": [],
+        "relationships": [],
+        "storyArcs": []
+      }
+    }
+  },
+  "evidence": [
+    { "id": "21111111-1111-4111-8111-111111111111", "type": "character_mention", "entityCandidate": "Анна", "fact": "Анна названа в тексте", "quote": "Анна Сергеевна остановилась у двери.", "startOffset": 1240, "endOffset": 1279, "confidence": 0.99 },
+    { "id": "31111111-1111-4111-8111-111111111111", "type": "character_role", "entityCandidate": "Анна", "fact": "Анна ведёт действие сцены", "quote": "Все ждали решения Анны, и она первой вошла в тёмный дом.", "startOffset": 1620, "endOffset": 1681, "confidence": 0.94 },
+    { "id": "41111111-1111-4111-8111-111111111111", "type": "character_gender", "entityCandidate": "Анна", "fact": "Женский род", "quote": "Она сняла перчатки и оглянулась.", "startOffset": 1710, "endOffset": 1747, "confidence": 0.97 },
+    { "id": "51111111-1111-4111-8111-111111111111", "type": "character_action", "entityCandidate": "Анна", "fact": "Помогает близкому", "quote": "Анна укрыла брата пледом и всю ночь просидела рядом.", "startOffset": 4500, "endOffset": 4559, "confidence": 0.92 },
+    { "id": "61111111-1111-4111-8111-111111111111", "type": "character_action", "entityCandidate": "Анна", "fact": "Снова заботится о семье", "quote": "Утром она принесла лекарство и сама приготовила завтрак.", "startOffset": 12400, "endOffset": 12461, "confidence": 0.9 },
+    { "id": "71111111-1111-4111-8111-111111111111", "type": "character_dialogue", "entityCandidate": "Анна", "fact": "Берёт решение на себя", "quote": "— Я пойду первой, — сказала Анна.", "startOffset": 19100, "endOffset": 19138, "confidence": 0.88 },
+    { "id": "81111111-1111-4111-8111-111111111111", "type": "character_action", "entityCandidate": "Анна", "fact": "Действует без промедления", "quote": "Не дожидаясь ответа, она подняла фонарь и шагнула вперёд.", "startOffset": 23300, "endOffset": 23361, "confidence": 0.86 },
+    { "id": "91111111-1111-4111-8111-111111111111", "type": "character_appearance", "entityCandidate": "Анна", "fact": "Внешность Анны", "quote": "Серые глаза выделялись под тёмными волосами; синее пальто было застёгнуто до подбородка.", "startOffset": 1980, "endOffset": 2072, "confidence": 0.93 },
+    { "id": "a1111111-1111-4111-8111-111111111111", "type": "character_mention", "entityCandidate": "Николай", "fact": "Николай назван в тексте", "quote": "Николай Петрович молча отступил к окну.", "startOffset": 8200, "endOffset": 8244, "confidence": 0.98 }
+  ]
+}

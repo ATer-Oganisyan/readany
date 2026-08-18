@@ -126,6 +126,31 @@ function characterKey(value) {
   return String(value?.characterKey ?? value?.character_key ?? value?.entityKey ?? '')
 }
 
+function markupEvidenceIds(markup) {
+  if (!markup || typeof markup !== 'object') return []
+  const ids = new Set()
+  const add = (values) => {
+    if (!Array.isArray(values)) return
+    for (const value of values) {
+      if (typeof value === 'string' && value) ids.add(value)
+    }
+  }
+  const addClaim = (claim) => add(claim?.evidenceIds)
+  for (const character of markup.characters ?? []) {
+    add(character?.identityEvidenceIds)
+    for (const field of ['role', 'age', 'gender', 'description', 'speechStyle']) {
+      addClaim(character?.[field])
+    }
+    for (const field of ['traits', 'appearance', 'speechExamples']) {
+      for (const claim of character?.[field] ?? []) addClaim(claim)
+    }
+  }
+  for (const collection of ['locations', 'events', 'relationships', 'storyArcs']) {
+    for (const item of markup[collection] ?? []) add(item?.evidenceIds)
+  }
+  return [...ids]
+}
+
 function liveCharacters({ publication, entities, observations, media }) {
   const result = new Map()
   const published = Array.isArray(publication?.data?.markup?.characters)
@@ -450,14 +475,15 @@ export function createPostgresBookOperatorRepository(pool) {
       [bookEditionId]
     )
     if (!edition.rows[0]) return null
-    const [publication, artifacts, markup] = await Promise.all([
-      pool.query(
-        `/* operator:json-publication */
-         SELECT * FROM book_analysis_publications
-         WHERE book_edition_id = $1 AND channel = 'shadow'
-         ORDER BY published_at DESC, id DESC LIMIT 1`,
-        [bookEditionId]
-      ),
+    const publication = await pool.query(
+      `/* operator:json-publication */
+       SELECT * FROM book_analysis_publications
+       WHERE book_edition_id = $1 AND channel = 'shadow'
+       ORDER BY published_at DESC, id DESC LIMIT 1`,
+      [bookEditionId]
+    )
+    const evidenceIds = markupEvidenceIds(publication.rows[0]?.data?.markup)
+    const [artifacts, markup, evidence] = await Promise.all([
       pool.query(
         `/* operator:json-artifacts */
          SELECT artifact.id, artifact.run_id, artifact.snapshot_id,
@@ -494,7 +520,19 @@ export function createPostgresBookOperatorRepository(pool) {
          GROUP BY markup.id
          ORDER BY markup.revision DESC`,
         [bookEditionId]
-      )
+      ),
+      evidenceIds.length
+        ? pool.query(
+            `/* operator:json-evidence */
+             SELECT id, observation_type, entity_kind, entity_candidate, fact,
+                    evidence_quote, evidence_start_offset, evidence_end_offset,
+                    confidence, data
+             FROM book_analysis_observations
+             WHERE run_id = $1 AND id = ANY($2::uuid[])
+             ORDER BY evidence_start_offset, evidence_end_offset, id`,
+            [publication.rows[0].run_id, evidenceIds]
+          )
+        : { rows: [] }
     ])
     const row = edition.rows[0]
     return {
@@ -511,6 +549,18 @@ export function createPostgresBookOperatorRepository(pool) {
         updatedAt: iso(row.updated_at)
       },
       publication: publicationValue(publication.rows[0]),
+      evidence: evidence.rows.map((item) => ({
+        id: item.id,
+        type: item.observation_type,
+        entityKind: item.entity_kind,
+        entityCandidate: item.entity_candidate,
+        fact: item.fact,
+        quote: item.evidence_quote,
+        startOffset: number(item.evidence_start_offset),
+        endOffset: number(item.evidence_end_offset),
+        confidence: number(item.confidence),
+        data: item.data
+      })),
       artifacts: artifacts.rows.map((artifact) => ({
         id: artifact.id,
         runId: artifact.run_id,

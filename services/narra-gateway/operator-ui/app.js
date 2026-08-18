@@ -148,6 +148,7 @@ function renderDetail(detail) {
   elements['heading-percent'].textContent = `${progress.percent}%`
   elements['heading-status'].textContent = `${stageLabels[progress.stage] || progress.stage} · ${statusLabels[progress.status] || progress.status}`
   elements['restart-book'].hidden = false
+  document.getElementById('review-book').href = `./review?book=${encodeURIComponent(book.id)}`
   elements['restart-book'].disabled = ['queued', 'running'].includes(progress.status)
   elements['restart-book'].textContent = elements['restart-book'].disabled
     ? 'v3 выполняется'

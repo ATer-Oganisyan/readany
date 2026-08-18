@@ -92,7 +92,7 @@ async function withServer(input, operation) {
 test('operator UI and every API endpoint require the configured browser password', async () => {
   const input = dependencies()
   await withServer(input, async (baseUrl) => {
-    for (const path of ['/operator/', '/operator/api/books']) {
+    for (const path of ['/operator/', '/operator/review', '/operator/api/books']) {
       const missing = await fetch(`${baseUrl}${path}`)
       assert.equal(missing.status, 401)
       assert.match(missing.headers.get('www-authenticate'), /^Basic /)
@@ -117,6 +117,26 @@ test('operator UI exposes live book summaries, details, operations and formatted
     assert.doesNotMatch(html, /type="module"/)
     assert.match(html, />Перезапустить v3</)
     assert.match(page.headers.get('content-security-policy'), /frame-ancestors 'none'/)
+
+    const review = await fetch(`${baseUrl}/operator/review`, {
+      headers: { authorization: AUTH }
+    })
+    assert.equal(review.status, 200)
+    const reviewHtml = await review.text()
+    assert.match(reviewHtml, /Проверка разметки/)
+    assert.match(reviewHtml, /\.\/assets\/review\.js/)
+
+    const reviewScript = await fetch(`${baseUrl}/operator/assets/review.js`, {
+      headers: { authorization: AUTH }
+    })
+    assert.equal(reviewScript.status, 200)
+    assert.match(await reviewScript.text(), /Характер не заполнен/)
+
+    const sample = await fetch(`${baseUrl}/operator/assets/sample-book-markup-v3.json`, {
+      headers: { authorization: AUTH }
+    })
+    assert.equal(sample.status, 200)
+    assert.equal((await sample.json()).publication.data.markup.analysisVersion, 'book-markup-v3')
 
     const styles = await fetch(`${baseUrl}/operator/assets/styles.css`, {
       headers: { authorization: AUTH }

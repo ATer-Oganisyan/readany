@@ -4,6 +4,8 @@ import { createPostgresBookOperatorRepository } from '../book-operator-repositor
 
 const BOOK_ID = '11111111-1111-4111-8111-111111111111'
 const RUN_ID = '22222222-2222-4222-8222-222222222222'
+const IDENTITY_EVIDENCE_ID = '33333333-3333-4333-8333-333333333333'
+const TRAIT_EVIDENCE_ID = '44444444-4444-4444-8444-444444444444'
 
 function poolWithBooks() {
   return {
@@ -119,4 +121,74 @@ test('ready publication always reports one hundred percent', async () => {
   assert.equal(book.findings.publishedCharacters, 10)
   assert.equal(book.quality.characterAppearance.status, 'suspicious')
   assert.equal(book.quality.characterAppearance.earlyCharacterCount, 6)
+})
+
+test('formatted JSON includes only evidence referenced by the published v3 markup', async () => {
+  const calls = []
+  const pool = {
+    async query(sql, parameters) {
+      calls.push([sql, parameters])
+      if (sql.includes('operator:json-edition')) return { rows: [{
+        id: BOOK_ID,
+        scope: 'catalog',
+        catalog_key: 'sample',
+        title: 'Sample',
+        author: 'Author',
+        format: 'txt',
+        status: 'base_ready',
+        content_sha256: 'a'.repeat(64)
+      }] }
+      if (sql.includes('operator:json-publication')) return { rows: [{
+        id: '55555555-5555-4555-8555-555555555555',
+        run_id: RUN_ID,
+        book_edition_id: BOOK_ID,
+        artifact_id: '66666666-6666-4666-8666-666666666666',
+        channel: 'shadow',
+        analysis_version: 'book-markup-v3',
+        content_hash: 'b'.repeat(64),
+        data: { markup: { characters: [{
+          characterKey: 'anna',
+          identityEvidenceIds: [IDENTITY_EVIDENCE_ID],
+          traits: [{
+            value: 'Смелая',
+            evidenceIds: [TRAIT_EVIDENCE_ID],
+            confidence: 0.9
+          }]
+        }] } }
+      }] }
+      if (sql.includes('operator:json-artifacts')) return { rows: [] }
+      if (sql.includes('operator:json-canonical-markup')) return { rows: [] }
+      if (sql.includes('operator:json-evidence')) return { rows: [{
+        id: TRAIT_EVIDENCE_ID,
+        observation_type: 'character_trait',
+        entity_kind: 'character',
+        entity_candidate: 'Анна',
+        fact: 'Анна смелая',
+        evidence_quote: 'Анна первой вошла в дом.',
+        evidence_start_offset: '120',
+        evidence_end_offset: '147',
+        confidence: 0.9,
+        data: {}
+      }] }
+      throw new Error(`unexpected query: ${sql}`)
+    }
+  }
+  const value = await createPostgresBookOperatorRepository(pool).getBookJson(BOOK_ID)
+  const evidenceCall = calls.find(([sql]) => sql.includes('operator:json-evidence'))
+  assert.deepEqual(new Set(evidenceCall[1][1]), new Set([
+    IDENTITY_EVIDENCE_ID,
+    TRAIT_EVIDENCE_ID
+  ]))
+  assert.deepEqual(value.evidence, [{
+    id: TRAIT_EVIDENCE_ID,
+    type: 'character_trait',
+    entityKind: 'character',
+    entityCandidate: 'Анна',
+    fact: 'Анна смелая',
+    quote: 'Анна первой вошла в дом.',
+    startOffset: 120,
+    endOffset: 147,
+    confidence: 0.9,
+    data: {}
+  }])
 })

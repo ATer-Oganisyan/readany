@@ -193,6 +193,7 @@ export function createBookOperatorRouter({
     index: false,
     maxAge: 0
   }))
+  router.get('/review', (_req, res) => res.sendFile('review.html', { root: uiDirectory }))
   router.get('/', (_req, res) => res.sendFile('index.html', { root: uiDirectory }))
 
   router.use((error, _req, res, next) => {

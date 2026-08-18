@@ -1,3 +1,4 @@
 .env
+book-analysis-local.env
 .data/
 node_modules/
