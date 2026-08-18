@@ -8,8 +8,8 @@
 - На текущем продолжении проверен `HEAD` `bede6d3935bbb3e5b5dbf4937f070212364400c5`;
   переданный в задаче `742a1530` устарел. Worktree уже содержал несвязанные backend/mobile
   изменения; они сохранены, коммитов в рамках исследования нет.
-- Текущий research-код: pipeline `book-analysis-v31`, scan `book-scan-v14`, synthesis
-  `character-profile-v10`, identity `character-identity-v10`; внешний результат по-прежнему
+- Текущий research-код: pipeline `book-analysis-v32`, scan `book-scan-v14`, synthesis
+  `character-profile-v10`, identity `character-identity-v11`; внешний результат по-прежнему
   `book-markup-v3`.
 - Активные локальные workers намеренно не перезапускались и остаются на прежних образах. Все v28–v31
   показатели ниже получены одноразовыми `--read-only` containers на замороженных observations либо
@@ -101,6 +101,7 @@ full-novel gold сопоставимого с BOOKCOREF не найдено, п�
 | 19 | Stress-test v9 filter на сохранённых v13/v4 outputs ещё трёх книг, без нового provider-вызова | Проверить, можно ли безопасно ослабить scene/category guards ради semantic recall до нового synthesis | Siddhartha `22 → 13`, Little Women `143 → 86`, Alice `48 → 25` traits. LW SWCPQ TP/predictions `4/49 → 3/35`, F1 `10,96 → 10,17%`. Ослабление scene gap возвращает вместе с валидными traits category errors; ослабление temporal guard возвращает вместе с `modest/careful` эпизодические `looked humble/cheerful/friendly face` | Не ослаблять filter по старым v4 outputs: он не может исправить отсутствующую semantic entailment. Следующее измерение — только новый v9 synthesis на тех же frozen evidence; старые цифры использовать как stress-test, не как качество v9 |
 | 20 | `book-analysis-v30`, `character-identity-v10`: dominant-evidence given/full-name join; self-declared first name with shared family bridge; explicit spouse surname transition; triangulated family nickname | Full-book Little Women roster разделял `Beth/Beth March`, `Jo/Jo March/Jo Bhaer`, `Laurie/Theodore Laurence` и `Marmee/Mrs. March`, из-за чего personality harness честно отказывался выбирать 4 ambiguous gold characters | Все четыре lifecycle/alias группы схлопнуты в one-to-one confirmed IDs на неизменных `3299` observations. Frozen identity gates P&P/Siddhartha/Alice/LitBank Chapter I остались PASS, significant recall `100%`, critical merge `0` | Принять в research candidate: каждое новое правило имеет positive и hard-negative tests; gold labels в resolver не передавались |
 | 21 | `book-analysis-v31`, `character-profile-v10`: direct trait считается устойчивым только при lexical support в quote; `wore off`/`no longer` и аналоги делают evidence временным | Новый provider replay Little Women выявил нестабильный `bashful` (`soon wore off`) и неподтверждённый direct label `gentle`; широкое ослабление ухудшает factual precision | V31 вернул 13 traits для 6/6 characters; single-review cited-evidence audit `13/13`, coverage traits/description/UI/voice `100%`, contradictions `0`. SWCPQ P/R/F1 `15,38/8,33/10,81%`, FAIL | Factual gate на второй книге пройден; crowd top-4 semantic gate не пройден. Не подмешивать SWCPQ answer key в prompt |
+| 22 | `book-analysis-v32`, `character-identity-v11`: relationship observation принадлежит только relationship entity; участники связываются с уже независимо подтверждёнными character entities, но не получают тот же evidence ID | Dorian Gray v31 завершил scan `108/108`, затем пять раз падал в resolve: цитата `Lord Henry Wotton and Lord Fermor` одновременно назначалась relationship и двум character entities, нарушая repository invariant `one evidence → one entity` | Read-only replay тех же `1262` observations и тех же трёх frozen identity merges: v31 имел 4 invariant violations, v32 — `0`; targeted resolver/repository/reconciliation suite `77/77` PASS | Принять общее исправление и повторить Dorian новым versioned run; не ослаблять repository invariant |
 
 ## Результаты 1 → 2 → 4 на `book-scan-v13` / `character-profile-v4`
 
@@ -115,7 +116,7 @@ full-novel gold сопоставимого с BOOKCOREF не найдено, п�
 локальными: P&P — 4 jobs, Siddhartha — 5, Little Women — 3, Alice — 0. Полный Gateway suite после
 изменений: 355 passed, 0 failed, 7 opt-in integration skipped.
 
-## Текущий frozen итог `book-analysis-v31`
+## Последний четырёхкнижный frozen итог `book-analysis-v31`
 
 | Книга и scope | Gold | P / R / F1 significant | Full P / R / F1 | Merge / duplicate | Gate |
 |---|---|---:|---:|---:|---:|

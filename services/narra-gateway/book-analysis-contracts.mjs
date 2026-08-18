@@ -1,11 +1,11 @@
-export const BOOK_ANALYSIS_PIPELINE_VERSION = 'book-analysis-v31'
+export const BOOK_ANALYSIS_PIPELINE_VERSION = 'book-analysis-v32'
 export const BOOK_ANALYSIS_MARKUP_VERSION = 'book-markup-v3'
 export const BOOK_ANALYSIS_CHARACTER_BUNDLE_VERSION = 'character-bundle-v3'
 export const BOOK_ANALYSIS_SCHEMA_VERSION = 3
 export const BOOK_ANALYSIS_PROMPT_VERSION = 'book-scan-v14'
 export const BOOK_ANALYSIS_EXTRACTOR_VERSION = 'book-scan-v14'
 export const BOOK_ANALYSIS_SYNTHESIS_VERSION = 'character-profile-v10'
-export const BOOK_ANALYSIS_IDENTITY_RECONCILIATION_VERSION = 'character-identity-v10'
+export const BOOK_ANALYSIS_IDENTITY_RECONCILIATION_VERSION = 'character-identity-v11'
 
 export const BOOK_ANALYSIS_STAGES = Object.freeze([
   'prepare',

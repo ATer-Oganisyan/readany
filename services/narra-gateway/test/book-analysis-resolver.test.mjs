@@ -873,7 +873,7 @@ test('resolver binds relationship participants to character entity keys includin
   assert.deepEqual(relationship.data.unresolvedRelatedEntityCandidates, [])
 })
 
-test('resolver reifies two independently grounded participants from a relationship label', () => {
+test('resolver keeps relationship-only participants unresolved without duplicating evidence ownership', () => {
   const observations = [observation({
     id: '11111111-1111-4111-8111-111111111933',
     type: 'relationship',
@@ -887,12 +887,44 @@ test('resolver reifies two independently grounded participants from a relationsh
   })]
   const result = resolveBookAnalysisEntities({ observations })
   const characters = result.filter(({ entityKind }) => entityKind === 'character')
-  assert.deepEqual(characters.map(({ canonicalName }) => canonicalName), ['Father', 'Mother'])
-  assert.ok(characters.every(({ resolutionStatus }) => resolutionStatus === 'confirmed'))
-  assert.ok(characters.every(({ evidenceIds }) => evidenceIds[0] === observations[0].id))
+  assert.deepEqual(characters, [])
   const relationship = result.find(({ entityKind }) => entityKind === 'relationship')
-  assert.equal(relationship.data.relatedCharacterEntityKeys.length, 2)
-  assert.deepEqual(relationship.data.unresolvedRelatedEntityCandidates, ['Jo', 'Meg'])
+  assert.deepEqual(relationship.data.relatedCharacterEntityKeys, [])
+  assert.deepEqual(
+    relationship.data.unresolvedRelatedEntityCandidates,
+    ['Father', 'Jo', 'Meg', 'Mother']
+  )
+  assert.deepEqual(relationship.evidenceIds, [observations[0].id])
+})
+
+test('resolver assigns a relationship observation only to its relationship entity', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111112933',
+      type: 'character_action', candidate: 'Lord Henry', startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222933',
+      type: 'character_action', candidate: 'Lord Fermor', startOffset: 200
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333933',
+      type: 'relationship', kind: 'relationship',
+      candidate: 'Lord Henry and Lord Fermor',
+      fact: "Lord Fermor is Lord Henry's uncle.",
+      quote: 'Lord Henry went to call on his uncle, Lord Fermor.',
+      startOffset: 300
+    })
+  ]
+  const result = resolveBookAnalysisEntities({ observations })
+  const relationshipEvidenceId = observations[2].id
+  const owners = result.filter(({ evidenceIds }) => evidenceIds.includes(relationshipEvidenceId))
+  assert.equal(owners.length, 1)
+  assert.equal(owners[0].entityKind, 'relationship')
+  assert.deepEqual(
+    new Set(owners[0].data.relatedCharacterEntityKeys),
+    new Set(result.filter(({ entityKind }) => entityKind === 'character').map(({ entityKey }) => entityKey))
+  )
 })
 
 test('resolver does not split a relationship label when both participants are not grounded', () => {

@@ -1464,7 +1464,6 @@ export function resolveBookAnalysisEntities({ observations: rawObservations, ide
   const observationsByPrimaryKey = new Map()
   const aliasClaims = []
   const mentionClaims = []
-  const relationshipParticipantSupports = []
 
   for (const observation of observations) {
     const primaryKey = stableNodeKey(observation.entityKind, observation.entityCandidate)
@@ -1501,7 +1500,6 @@ export function resolveBookAnalysisEntities({ observations: rawObservations, ide
         observation.confidence
       )
       if (!hasProperNameForm(participantNode)) participantNode.identityLabelPriority = 1
-      relationshipParticipantSupports.push({ observation, participantKey })
     }
     if (observation.type === 'character_mention' && observation.confidence >= ALIAS_CONFIDENCE) {
       for (const related of observation.relatedEntityCandidates) {
@@ -1643,13 +1641,6 @@ export function resolveBookAnalysisEntities({ observations: rawObservations, ide
     values.push(observation)
     observationsByRoot.set(root, values)
   }
-  for (const { observation, participantKey } of relationshipParticipantSupports) {
-    const root = sets.find(participantKey)
-    const values = observationsByRoot.get(root) ?? []
-    if (!values.some(({ id }) => id === observation.id)) values.push(observation)
-    observationsByRoot.set(root, values)
-  }
-
   const entities = []
   const entityByRoot = new Map()
   for (const [root, groupNodes] of groupedNodes) {

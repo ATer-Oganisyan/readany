@@ -23,9 +23,9 @@ test('scan prompt and extractor share the cache-isolating v14 version', () => {
 })
 
 test('resolver, profile and scan fallback changes isolate versioned caches', () => {
-  assert.equal(BOOK_ANALYSIS_PIPELINE_VERSION, 'book-analysis-v31')
+  assert.equal(BOOK_ANALYSIS_PIPELINE_VERSION, 'book-analysis-v32')
   assert.equal(BOOK_ANALYSIS_SYNTHESIS_VERSION, 'character-profile-v10')
-  assert.equal(BOOK_ANALYSIS_IDENTITY_RECONCILIATION_VERSION, 'character-identity-v10')
+  assert.equal(BOOK_ANALYSIS_IDENTITY_RECONCILIATION_VERSION, 'character-identity-v11')
 })
 
 test('stored scan observations require exact server-resolved evidence coordinates', () => {
