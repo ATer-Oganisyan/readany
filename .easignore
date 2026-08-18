@@ -27,6 +27,12 @@ node_modules
 /services
 /stats
 
+# Character animation experiments are kept locally. The app ships only the
+# selected production loop and its generation metadata for each character.
+packages/app-expo/assets/catalog/character-video-samples/*
+!packages/app-expo/assets/catalog/character-video-samples/*-grok-eyebrow-hair-only-batch5.json
+!packages/app-expo/assets/catalog/character-video-samples/*-grok-eyebrow-hair-only-batch5-boomerang.mp4
+
 # Generated native projects and build outputs
 packages/app-expo/ios/
 packages/app-expo/android/
