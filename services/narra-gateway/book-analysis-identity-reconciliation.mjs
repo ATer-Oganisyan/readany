@@ -30,6 +30,8 @@ const IDENTITY_EVIDENCE_RANK = new Map([
   ['character_age', 7],
   ['character_appearance', 8]
 ])
+const IDENTITY_BRIDGE_CUE = /\b(?:alias|also known as|called|christened|first name|name is|sign(?:s|ed|ature|er)?|letter|writes?|wrote|\u043f\u043e\u0434\u043f\u0438\u0441\p{L}*|\u043f\u0438\u0441\u044c\u043c\p{L}*|\u0437\u043e\u0432\u0443\u0442|\u0438\u043c\u044f)\b/iu
+const FIRST_PERSON_CUE = /\b(?:I|I'm|I\u2019m|I am|me|my|mine|\u044f|\u043c\u0435\u043d\u044f|\u043c\u043d\u0435|\u043c\u043e\u0439|\u043c\u043e\u044f|\u043c\u043e\u0451)\b/iu
 
 function compareText(left, right) {
   return left < right ? -1 : left > right ? 1 : 0
@@ -139,6 +141,11 @@ function otherRosterNameScore(observation, ownNames, rosterNames) {
   return score
 }
 
+function identityBridgeScore(observation) {
+  if (observation.type === 'character_alias') return 3
+  return IDENTITY_BRIDGE_CUE.test(`${observation.fact} ${observation.evidence.quote}`) ? 2 : 0
+}
+
 function representativeEvidence(entity, observationsById, limit, rosterNames) {
   const ownNames = new Set(
     [entity.canonicalName, ...entity.aliases].map(normalizedName).filter(Boolean)
@@ -147,6 +154,7 @@ function representativeEvidence(entity, observationsById, limit, rosterNames) {
     .map((id) => observationsById.get(id))
     .filter(Boolean)
     .sort((left, right) =>
+      identityBridgeScore(right) - identityBridgeScore(left) ||
       otherRosterNameScore(right, ownNames, rosterNames) -
         otherRosterNameScore(left, ownNames, rosterNames) ||
       (IDENTITY_EVIDENCE_RANK.get(left.type) ?? 99) -
@@ -268,6 +276,30 @@ function namePairSignal(left, right) {
   return null
 }
 
+function personaReferenceSignal(left, right, observationsById) {
+  const tests = [[left, right], [right, left]]
+  for (const [descriptor, identity] of tests) {
+    const descriptorName = normalizedName(descriptor.canonicalName)
+    const descriptorTokens = descriptorName.split(' ').filter(Boolean)
+    if (descriptorTokens.length !== 2 || descriptorTokens[0] !== 'the') continue
+    const identityCores = [identity.canonicalName, ...identity.aliases]
+      .map((value) => identityTokens(value).join(' '))
+      .filter((value) => value.split(' ').length >= 2)
+    if (!identityCores.length) continue
+    for (const evidenceId of descriptor.evidenceIds) {
+      const observation = observationsById.get(evidenceId)
+      if (!observation) continue
+      const source = `${observation.fact} ${observation.evidence.quote}`
+      const normalizedSource = ` ${normalizedName(source)} `
+      if (!FIRST_PERSON_CUE.test(source)) continue
+      if (identityCores.some((core) => normalizedSource.includes(` ${core} `))) {
+        return 'persona_self_reference'
+      }
+    }
+  }
+  return null
+}
+
 function directAliasPairs(characterEntities, observations) {
   const ownersByName = new Map()
   for (const entity of characterEntities) {
@@ -298,6 +330,7 @@ function directAliasPairs(characterEntities, observations) {
 
 function reconciliationCandidatePairs(characterEntities, observations, blockedPairs) {
   const aliasPairs = directAliasPairs(characterEntities, observations)
+  const observationsById = new Map(observations.map((item) => [item.id, item]))
   const candidates = []
   for (const [index, left] of characterEntities.entries()) {
     for (const right of characterEntities.slice(index + 1)) {
@@ -305,13 +338,15 @@ function reconciliationCandidatePairs(characterEntities, observations, blockedPa
       if (blockedPairs.has(key)) continue
       const nameSignal = namePairSignal(left, right)
       const aliasSignal = aliasPairs.has(key)
-      if (!nameSignal && !aliasSignal) continue
+      const personaSignal = personaReferenceSignal(left, right, observationsById)
+      if (!nameSignal && !aliasSignal && !personaSignal) continue
       candidates.push({
         leftEntityKey: left.entityKey,
         rightEntityKey: right.entityKey,
         signals: [...new Set([
           ...(aliasSignal ? ['scan_alias_claim'] : []),
-          ...(nameSignal ? [nameSignal] : [])
+          ...(nameSignal ? [nameSignal] : []),
+          ...(personaSignal ? [personaSignal] : [])
         ])]
       })
     }

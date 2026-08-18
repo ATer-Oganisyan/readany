@@ -1615,6 +1615,59 @@ test('resolver rejects repeated one-sided titled-family aliases when two relativ
   assert.ok(characters.every(({ aliases }) => aliases.length === 0))
 })
 
+test('resolver rejects repeated ungrounded alias claims without a competing relative', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111112961',
+      type: 'character_alias', candidate: 'Lucy Steele', related: ['Miss Steele'],
+      quote: 'Lucy Steele entered the room.', startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222961',
+      type: 'character_alias', candidate: 'Lucy Steele', related: ['Miss Steele'],
+      quote: 'Lucy Steele spoke again.', startOffset: 200
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333961',
+      type: 'character_dialogue', candidate: 'Miss Steele',
+      quote: 'Miss Steele asked a question.', startOffset: 300
+    })
+  ]
+  const characters = resolveBookAnalysisEntities({ observations })
+  assert.equal(characters.length, 2)
+  assert.ok(characters.every(({ aliases }) => aliases.length === 0))
+})
+
+test('resolver quarantines a singular family title when a collective names two relatives', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111112962',
+      type: 'character_alias', candidate: 'Lucy Steele', related: ['Miss Steele'],
+      quote: 'Lucy Steele entered the room.', startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222962',
+      type: 'character_dialogue', candidate: 'Miss Steele',
+      quote: 'Miss Steele asked a question.', startOffset: 200
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333962',
+      type: 'character_mention', candidate: 'Miss Steeles', related: ['Lucy', 'Anne'],
+      quote: 'The Miss Steeles, Lucy and Anne, arrived together.', startOffset: 300
+    }),
+    observation({
+      id: '44444444-4444-4444-8444-444444444962',
+      type: 'character_action', candidate: 'Anne',
+      quote: 'Anne asked another question.', startOffset: 400
+    })
+  ]
+  const characters = resolveBookAnalysisEntities({ observations })
+  const lucy = characters.find(({ canonicalName }) => canonicalName === 'Lucy Steele')
+  const title = characters.find(({ canonicalName }) => canonicalName === 'Miss Steele')
+  assert.deepEqual(lucy.aliases, [])
+  assert.equal(title.resolutionStatus, 'candidate')
+})
+
 test('resolver applies an explicit signed married-name transition', () => {
   const observations = [
     observation({
@@ -1638,6 +1691,56 @@ test('resolver applies an explicit signed married-name transition', () => {
   assert.deepEqual(new Set([result[0].canonicalName, ...result[0].aliases]), new Set([
     'Lydia Bennet', 'Lydia Wickham'
   ]))
+})
+
+test('resolver joins a signer initial only through an answered-letter authorship bridge', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111112015',
+      type: 'character_mention', candidate: 'M. Vale',
+      fact: 'M. Vale is the signer of the letter.',
+      quote: 'Yours sincerely, M. VALE', startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222015',
+      type: 'character_action', candidate: 'M. Vale',
+      quote: 'I recollected my dear Alice and Jane.', startOffset: 200
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333015',
+      type: 'character_action', candidate: 'Mr. Vale', fact: 'male',
+      quote: 'Mr. Vale wrote to his brother.', startOffset: 300
+    }),
+    observation({
+      id: '44444444-4444-4444-8444-444444444015',
+      type: 'character_action', candidate: 'Mrs. Vale', fact: 'female',
+      quote: "Alice had never answered Mrs. Vale's long letter.", startOffset: 400
+    }),
+    observation({
+      id: '55555555-5555-4555-8555-555555555015',
+      type: 'character_action', candidate: 'Alice', fact: 'female',
+      quote: 'Alice read the letter.', startOffset: 500
+    }),
+    observation({
+      id: '66666666-6666-4666-8666-666666666015',
+      type: 'character_action', candidate: 'Jane', fact: 'female',
+      quote: 'Jane listened.', startOffset: 600
+    })
+  ]
+  const characters = resolveBookAnalysisEntities({ observations })
+  const valeRows = characters.filter(({ canonicalName, aliases }) =>
+    [canonicalName, ...aliases].some((name) => /Vale$/u.test(name))
+  )
+  assert.equal(valeRows.length, 2)
+  const signer = valeRows.find(({ canonicalName, aliases }) =>
+    [canonicalName, ...aliases].includes('M. Vale')
+  )
+  assert.deepEqual(new Set([signer.canonicalName, ...signer.aliases]), new Set([
+    'M. Vale', 'Mrs. Vale'
+  ]))
+  assert.equal(valeRows.some(({ canonicalName, aliases }) =>
+    [canonicalName, ...aliases].includes('Mr. Vale')
+  ), true)
 })
 
 test('resolver ignores isolated namesake noise when one full-name expansion is strong', () => {

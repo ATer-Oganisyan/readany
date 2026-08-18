@@ -241,6 +241,9 @@ test('internal generation service gives the provider one scan chunk and asks for
   ))
   assert.ok(chatRequest.messages[1].content.includes('SECTION_TITLES: PREFACE.'))
   assert.match(chatRequest.messages[0].content, /title page, contents, preface, introduction/i)
+  assert.match(chatRequest.messages[0].content, /said the Voice\. I am an invisible man/i)
+  assert.match(chatRequest.messages[0].content, /одной непрерывной evidence\.quote/i)
+  assert.match(chatRequest.messages[0].content, /подпись письма/i)
   assert.equal(chatRequest.messages[1].content.includes('objectKey'), false)
   assert.equal(chatRequest.messages[1].content.includes('normalized'), false)
   assert.deepEqual(result.observations[0].evidence, {

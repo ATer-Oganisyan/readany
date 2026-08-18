@@ -85,6 +85,9 @@ const GENERATIONAL_CHARACTER_TOKENS = new Set([
 ])
 const NAME_CONNECTOR_TOKENS = new Set(['of', 'de', 'del', 'della', 'di', 'du', 'van', 'von'])
 const SIGNED_NAME_CUE = /\b(?:sign(?:s|ed|ing)?\s+(?:my|her|his|their|the)\s+name|sign(?:s|ed|ing)?\s+(?:myself|herself|himself|themself|themselves)\s+(?:as\s+)?)\b|\bподпис\p{L}*\s+(?:именем|как)\b/iu
+const LETTER_SIGNATURE_CUE = /\b(?:signer|signature|signed)\b|\b(?:подпис\p{L}*|автор\p{L}*)\b/iu
+const LETTER_REPLY_CUE = /\b(?:answer(?:ed|ing)?|repl(?:y|ied|ies|ying)|thank(?:ed|ing)?)\b|\b(?:ответ\p{L}*|отвеч\p{L}*|поблагодар\p{L}*|благодар\p{L}*)\b/iu
+const LETTER_CUE = /\b(?:letter|note|epistle)\b|\b(?:письм\p{L}*|записк\p{L}*|послани\p{L}*)\b/iu
 const FIRST_NAME_DECLARATION_CUE = /\bmy first name is\s+([\p{L}'’.-]+)/iu
 const SPOUSE_CUE = /\b(?:wife|husband|spouse|marri(?:ed|age)|wedding|engaged\s+to\s+be\s+married)\b|\b(?:жен\p{L}*|муж\p{L}*|супруг\p{L}*|брак\p{L}*|свадьб\p{L}*|помолв\p{L}*)\b/iu
 const DISTINCT_KINSHIP_CUE = /\b(?:mother|father|daughter|son|sister|brother|parent|child|aunt|uncle|niece|nephew|wife|husband|spouse)\b|\b(?:мать|отец|дочь|сын|сестра|брат|родител\p{L}*|ребен\p{L}*|тет\p{L}*|дяд\p{L}*|племян\p{L}*|жен\p{L}*|муж\p{L}*|супруг\p{L}*)\b/iu
@@ -1671,6 +1674,72 @@ function mergeRepeatedMarriedTitleReferences(sets, nodes, observationsByPrimaryK
   }
 }
 
+function initialSignatureFamily(node) {
+  const tokens = semanticIdentityTokens(node.normalized)
+  if (tokens.length !== 2 || tokens[0].length !== 1) return null
+  return [...node.forms.values()].some(({ display }) =>
+    /^\p{L}\.\s+\p{L}[\p{L}\p{M}'’.-]*$/u.test(display)
+  ) ? tokens[1] : null
+}
+
+/**
+ * Resolves a letter-signature initial only through a later, independently grounded reply to that
+ * exact letter. `M. Gardiner` must never be expanded as the honorific `Mr. Gardiner`; the bridge
+ * instead needs (a) explicit signer evidence, (b) a named correspondent in the signed letter and
+ * (c) a same-family titled person named in an answer/reply/thanks reference to a letter.
+ */
+function mergeAnsweredLetterSignatures(sets, nodes, observationsByPrimaryKey) {
+  const characterNodes = [...nodes.values()].filter((node) =>
+    node.key.startsWith('character\u0000')
+  )
+  for (const signerNode of characterNodes) {
+    const family = initialSignatureFamily(signerNode)
+    if (!family) continue
+    const signerObservations = observationsByPrimaryKey.get(signerNode.key) ?? []
+    const hasSignature = signerObservations.some((observation) => {
+      const context = `${observation.fact} ${observation.evidence.quote}`
+      return LETTER_SIGNATURE_CUE.test(context) &&
+        LETTER_CUE.test(context) &&
+        isSurfaceGrounded(bestDisplay(signerNode), observation.evidence.quote)
+    })
+    if (!hasSignature) continue
+
+    const correspondentNodes = characterNodes.filter((candidate) => {
+      if (candidate.key === signerNode.key) return false
+      const tokens = semanticIdentityTokens(candidate.normalized)
+      if (tokens.at(-1) === family) return false
+      return signerObservations.some((observation) =>
+        [...candidate.forms.values()].some(({ display }) =>
+          isSurfaceGrounded(display, observation.evidence.quote)
+        )
+      )
+    })
+    if (!correspondentNodes.length) continue
+
+    const targetRoots = [...new Set(characterNodes.filter((candidate) => {
+      const tokens = nameTokens(candidate.normalized)
+      return tokens.length === 2 && FAMILY_HONORIFICS.has(tokens[0]) &&
+        titledFamilyBase(candidate) === family
+    }).filter((candidate) => {
+      const targetRoot = sets.find(candidate.key)
+      return componentNodes(sets, nodes, targetRoot).some((componentNode) =>
+        (observationsByPrimaryKey.get(componentNode.key) ?? []).some((observation) => {
+          const context = `${observation.fact} ${observation.evidence.quote}`
+          return LETTER_REPLY_CUE.test(context) && LETTER_CUE.test(context) &&
+            [...candidate.forms.values()].some(({ display }) =>
+              isSurfaceGrounded(display, observation.evidence.quote)
+            ) && correspondentNodes.some((correspondent) =>
+              [...correspondent.forms.values()].some(({ display }) =>
+                isSurfaceGrounded(display, observation.evidence.quote)
+              )
+            )
+        })
+      )
+    }).map(({ key }) => sets.find(key)))]
+    if (targetRoots.length === 1) sets.union(signerNode.key, targetRoots[0])
+  }
+}
+
 function groundedPersonalNameNode(node) {
   return node.identityLabelPriority === 0 &&
     node.surfaceGroundedCount > 0 &&
@@ -1760,6 +1829,25 @@ function hasInitialHonorificCollision(leftNodes, rightNodes) {
 function titledFamilyBase(node) {
   const tokens = nameTokens(node.normalized)
   return tokens.length === 2 && FAMILY_HONORIFICS.has(tokens[0]) ? tokens[1] : null
+}
+
+function markAmbiguousSingularFamilyTitles(sets, nodes, observations) {
+  for (const observation of observations) {
+    if (observation.entityKind !== 'character') continue
+    const tokens = nameTokens(normalizedCandidate(observation.entityCandidate))
+    const related = new Set(observation.relatedEntityCandidates
+      .map(normalizedCandidate)
+      .filter(Boolean))
+    if (
+      tokens.length !== 2 || !FAMILY_HONORIFICS.has(tokens[0]) ||
+      related.size < 2 || !tokens[1].endsWith('s')
+    ) continue
+    const singularKey = stableNodeKey('character', `${tokens[0]} ${tokens[1].slice(0, -1)}`)
+    const singular = nodes.get(singularKey)
+    if (!singular) continue
+    singular.identityAmbiguous = true
+    sets.protect(singularKey)
+  }
 }
 
 function hasCompetingTitledFamilyIdentity(leftNodes, rightNodes, nodes, sets) {
@@ -2047,7 +2135,9 @@ export function resolveBookAnalysisEntities({ observations: rawObservations, ide
   // A spouse-style title contains the partner's name, so generic relationship separation can
   // otherwise mistake the title for that partner's family variant. Apply only the independently
   // proved wife/title identity first; all later unions remain subject to hard component guards.
+  markAmbiguousSingularFamilyTitles(sets, nodes, observations)
   mergeRepeatedMarriedTitleReferences(sets, nodes, observationsByPrimaryKey)
+  mergeAnsweredLetterSignatures(sets, nodes, observationsByPrimaryKey)
   registerHardIdentitySeparation(sets, nodes, observations)
 
   const claimsByPair = new Map()
@@ -2098,7 +2188,7 @@ export function resolveBookAnalysisEntities({ observations: rawObservations, ide
       !hasCompetingTitledFamilyIdentity(
         [nodes.get(left)], [nodes.get(right)], nodes, sets
       ) && !ambiguousOverlap && (structural || (!generational && (explicitFragment ||
-      claims.some(({ grounded }) => grounded) || reciprocal || evidenceSpans.size >= 2
+      claims.some(({ grounded }) => grounded) || reciprocal
     )))
     return {
       left,

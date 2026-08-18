@@ -15,7 +15,7 @@ function scanInput(text = 'OVERLAP Анна вошла в комнату. Бор
     runId: 'run-1',
     title: 'Книга',
     author: 'Автор',
-    extractorVersion: 'book-scan-v14',
+    extractorVersion: 'book-scan-v15',
     normalizedTextObjectKey: 'analysis/run-1/normalized-text-v1.txt',
     chunk: {
       id: 'chunk-1',
@@ -181,7 +181,7 @@ test('scan worker skips pure paratext only after verifying the stored chunk', as
     })
     assert.equal((await worker.runOnce()).status, 'completed')
     assert.equal(storageRead, true)
-    assert.deepEqual(completed, { extractorVersion: 'book-scan-v14', observations: [] })
+    assert.deepEqual(completed, { extractorVersion: 'book-scan-v15', observations: [] })
   }
 })
 
@@ -311,7 +311,7 @@ test('scan worker completes a final content-level rejection with an empty ground
     assert.equal(result.result.stage, 'resolve')
     assert.equal(completed.candidate, job)
     assert.deepEqual(completed.value, {
-      extractorVersion: 'book-scan-v14',
+      extractorVersion: 'book-scan-v15',
       observations: []
     })
   }

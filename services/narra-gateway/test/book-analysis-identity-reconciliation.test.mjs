@@ -187,6 +187,58 @@ test('identity reconciliation offers a near-spelling name only for adjudication'
   }])
 })
 
+test('identity reconciliation prioritizes letter and signature evidence', () => {
+  const signer = character(1, 'M. Vale')
+  signer.evidenceIds = ['evidence:01', 'evidence:03']
+  const titled = character(2, 'Mrs. Vale')
+  titled.evidenceIds = ['evidence:02', 'evidence:04']
+  const observations = [
+    observation(1, 'M. Vale', 'M. Vale discusses Alice and Jane.'),
+    observation(2, 'Mrs. Vale', 'Mrs. Vale appears with Alice.'),
+    {
+      ...observation(3, 'M. Vale', 'M. Vale is the signer of the letter.'),
+      evidence: {
+        quote: 'Yours sincerely, M. VALE.', startOffset: 300, endOffset: 325
+      }
+    },
+    {
+      ...observation(4, 'Mrs. Vale', 'Alice has not answered Mrs. Vale\'s long letter.'),
+      evidence: {
+        quote: "Alice had not answered Mrs. Vale's long letter.",
+        startOffset: 400,
+        endOffset: 448
+      }
+    }
+  ]
+  const request = requestFor([signer, titled], observations)
+  const byName = new Map(request.roster.map((item) => [item.names[0], item]))
+  assert.equal(byName.get('M. Vale').evidence[0].id, 'evidence:03')
+  assert.equal(byName.get('Mrs. Vale').evidence[0].id, 'evidence:04')
+})
+
+test('identity reconciliation offers a direct descriptor self-reference as persona only', () => {
+  const voice = character(1, 'the Voice')
+  const griffin = character(2, 'Griffin')
+  griffin.aliases = ['The Invisible Man']
+  const observations = [
+    {
+      ...observation(1, 'the Voice', 'The Voice identifies itself and asks Marvel to help it.'),
+      evidence: {
+        quote: "said the Voice. I'm an invisible man. You have to be my helper.",
+        startOffset: 100,
+        endOffset: 163
+      }
+    },
+    observation(2, 'Griffin')
+  ]
+  const request = requestFor([voice, griffin], observations)
+  assert.deepEqual(request.candidatePairs, [{
+    leftEntityKey: voice.entityKey,
+    rightEntityKey: griffin.entityKey,
+    signals: ['persona_self_reference']
+  }])
+})
+
 test('identity reconciliation bounds an oversized roster to candidate-pair participants', () => {
   const count = BOOK_IDENTITY_RECONCILIATION_LIMITS.maxCharacterEntities + 1
   const entities = Array.from({ length: count }, (_, index) => character(index + 1, `Name ${index}`))
