@@ -2,6 +2,7 @@ import { GlobeIcon, LinkIcon, PlusIcon, Trash2Icon, TypeIcon } from "@/component
 import { Text, TextInput } from "@/components/ui/Typography";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
+import { toast } from "@/lib/notifications";
 import {
   fontSize,
   fontWeight,
@@ -69,10 +70,9 @@ export default function FontSettingsScreen() {
         remoteUrl: preset.remoteUrl,
       };
       addFont(font, { select: true });
-      Alert.alert(
-        t("fonts.imported", "导入成功"),
-        t("fonts.importedDesc", '字体 "{{name}}" 已添加', { name: font.name }),
-      );
+      toast.success(t("fonts.imported", "Шрифт добавлен"), {
+        description: t("fonts.importedDesc", 'Шрифт "{{name}}" добавлен', { name: font.name }),
+      });
     },
     [addFont, i18n.language, t],
   );
@@ -147,14 +147,18 @@ export default function FontSettingsScreen() {
       setImporting(false);
     } catch (err) {
       console.error("[FontSettings] Pick error:", err);
-      Alert.alert(t("fonts.error", "错误"), t("fonts.pickError", "选择字体文件失败"));
+      toast.error(t("fonts.error", "Ошибка"), {
+        description: t("fonts.pickError", "Не удалось выбрать файл шрифта"),
+      });
       setImporting(false);
     }
   }, [t]);
 
   const handleConfirmImport = useCallback(async () => {
     if (!fontNameInput.trim()) {
-      Alert.alert(t("fonts.error", "错误"), t("fonts.nameRequired", "请输入字体名称"));
+      toast.error(t("fonts.error", "Ошибка"), {
+        description: t("fonts.nameRequired", "Введите название шрифта"),
+      });
       return;
     }
     if (!pendingFontFile) return;
@@ -184,13 +188,16 @@ export default function FontSettingsScreen() {
       };
 
       addFont(font, { select: true });
-      Alert.alert(
-        t("fonts.imported", "导入成功"),
-        t("fonts.importedDesc", '字体 "{{name}}" 已导入', { name: fontNameInput.trim() }),
-      );
+      toast.success(t("fonts.imported", "Шрифт добавлен"), {
+        description: t("fonts.importedDesc", 'Шрифт "{{name}}" импортирован', {
+          name: fontNameInput.trim(),
+        }),
+      });
     } catch (err) {
       console.error("[FontSettings] Import error:", err);
-      Alert.alert(t("fonts.error", "错误"), t("fonts.importError", "导入字体失败"));
+      toast.error(t("fonts.error", "Ошибка"), {
+        description: t("fonts.importError", "Не удалось импортировать шрифт"),
+      });
     } finally {
       setImporting(false);
       setPendingFontFile(null);
@@ -200,11 +207,15 @@ export default function FontSettingsScreen() {
 
   const handleImportRemote = useCallback(async () => {
     if (!remoteFontName.trim()) {
-      Alert.alert(t("fonts.error", "错误"), t("fonts.nameRequired", "请输入字体名称"));
+      toast.error(t("fonts.error", "Ошибка"), {
+        description: t("fonts.nameRequired", "Введите название шрифта"),
+      });
       return;
     }
     if (!remoteUrl.trim() && !remoteUrlWoff2.trim()) {
-      Alert.alert(t("fonts.error", "错误"), t("fonts.urlRequired", "请输入字体链接"));
+      toast.error(t("fonts.error", "Ошибка"), {
+        description: t("fonts.urlRequired", "Введите ссылку на шрифт"),
+      });
       return;
     }
 
@@ -230,13 +241,16 @@ export default function FontSettingsScreen() {
       };
 
       addFont(font, { select: true });
-      Alert.alert(
-        t("fonts.imported", "导入成功"),
-        t("fonts.importedDesc", '字体 "{{name}}" 已导入', { name: remoteFontName.trim() }),
-      );
+      toast.success(t("fonts.imported", "Шрифт добавлен"), {
+        description: t("fonts.importedDesc", 'Шрифт "{{name}}" импортирован', {
+          name: remoteFontName.trim(),
+        }),
+      });
     } catch (err) {
       console.error("[FontSettings] Import remote error:", err);
-      Alert.alert(t("fonts.error", "错误"), t("fonts.importError", "导入字体失败"));
+      toast.error(t("fonts.error", "Ошибка"), {
+        description: t("fonts.importError", "Не удалось импортировать шрифт"),
+      });
     } finally {
       setImporting(false);
       setRemoteUrl("");

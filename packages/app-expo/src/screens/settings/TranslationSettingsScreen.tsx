@@ -1,11 +1,13 @@
+import { CheckIcon } from "@/components/ui/Icon";
 import { Text, TextInput } from "@/components/ui/Typography";
-import { useSettingsStore } from "@/stores";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
+import { useSettingsStore } from "@/stores";
 import {
   TRANSLATOR_LANGS,
   TRANSLATOR_PROVIDERS,
   type TranslationTargetLang,
 } from "@readany/core/types/translation";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   KeyboardAvoidingView,
@@ -29,7 +31,6 @@ import {
   useColors,
 } from "../../styles/theme";
 import { SettingsHeader } from "./SettingsHeader";
-import { useState } from "react";
 
 export default function TranslationSettingsScreen() {
   const colors = useColors();
@@ -120,7 +121,9 @@ export default function TranslationSettingsScreen() {
                         </Text>
                       )}
                     </View>
-                    {translationConfig.provider.id === p.id && <Text style={styles.check}>✓</Text>}
+                    {translationConfig.provider.id === p.id && (
+                      <CheckIcon size={18} color={colors.primary} />
+                    )}
                   </TouchableOpacity>
                 ))}
               </View>
@@ -226,7 +229,9 @@ export default function TranslationSettingsScreen() {
                       >
                         {name}
                       </Text>
-                      {translationConfig.targetLang === code && <Text style={styles.check}>✓</Text>}
+                      {translationConfig.targetLang === code && (
+                        <CheckIcon size={18} color={colors.primary} />
+                      )}
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
@@ -271,7 +276,7 @@ export default function TranslationSettingsScreen() {
                         >
                           {model}
                         </Text>
-                        {isActive && <Text style={styles.check}>✓</Text>}
+                        {isActive && <CheckIcon size={18} color={colors.primary} />}
                       </TouchableOpacity>
                     );
                   })}
@@ -335,10 +340,6 @@ const makeStyles = (colors: ThemeColors) =>
       color: colors.mutedForeground,
       marginTop: 2,
       lineHeight: 20,
-    },
-    check: {
-      fontSize: 14,
-      color: colors.primary,
     },
     apiKeyInput: {
       borderRadius: radius.xl,

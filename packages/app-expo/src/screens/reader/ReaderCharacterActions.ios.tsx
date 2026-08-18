@@ -1,3 +1,5 @@
+import { HostedMishanaerIcon } from "@/components/ui/HostedMishanaerIcon";
+import type { MishanaerIconName } from "@/components/ui/MishanaerIcon";
 import { Button, GlassEffectContainer, HStack, Host } from "@expo/ui/swift-ui";
 import {
   accessibilityLabel,
@@ -9,34 +11,31 @@ import {
   labelStyle,
   tint,
 } from "@expo/ui/swift-ui/modifiers";
-import type { ComponentProps } from "react";
 import { Platform, StyleSheet } from "react-native";
 import type { ReaderCharacterActionsProps } from "./ReaderCharacterActions.types";
-
-type SFSymbol = NonNullable<ComponentProps<typeof Button>["systemImage"]>;
 
 export function ReaderCharacterActions(props: ReaderCharacterActionsProps) {
   const supportsGlass = Number.parseInt(String(Platform.Version), 10) >= 26;
   const actions: Array<{
     label: string;
-    symbol: SFSymbol;
+    icon: MishanaerIconName;
     onPress: () => void;
     disabled: boolean;
   }> = [
     {
       label: props.talkLabel,
-      symbol: "message.fill",
+      icon: "chat-bubble",
       onPress: props.onTalk,
       disabled: false,
     },
     {
       label: props.voiceState !== "idle" ? props.stopLabel : props.listenLabel,
-      symbol:
+      icon:
         props.voiceState === "loading"
-          ? "hourglass"
+          ? "pulse-circle"
           : props.voiceState === "playing"
-            ? "stop.fill"
-            : "speaker.wave.2.fill",
+            ? "stop"
+            : "volume-2",
       onPress: props.onToggleVoice,
       disabled: !props.canSample,
     },
@@ -45,7 +44,7 @@ export function ReaderCharacterActions(props: ReaderCharacterActionsProps) {
   if (props.showRegenerate) {
     actions.push({
       label: props.regenerateLabel,
-      symbol: props.regenerating ? "hourglass" : "arrow.clockwise",
+      icon: props.regenerating ? "pulse-circle" : "repeat",
       onPress: props.onRegenerate,
       disabled: props.regenerating,
     });
@@ -76,13 +75,9 @@ export function ReaderCharacterActions(props: ReaderCharacterActionsProps) {
             ];
 
         return (
-          <Button
-            key={action.label}
-            label={action.label}
-            systemImage={action.symbol}
-            onPress={action.onPress}
-            modifiers={modifiers}
-          />
+          <Button key={action.label} onPress={action.onPress} modifiers={modifiers}>
+            <HostedMishanaerIcon name={action.icon} size={28} color={props.foregroundColor} />
+          </Button>
         );
       })}
     </HStack>

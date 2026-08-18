@@ -6,7 +6,6 @@ export const interfaceFontFamily: {
   readonly semibold: "SB Sans Interface Semibold";
   readonly bold: "SB Sans Interface Bold";
   readonly caps: "SB Sans Interface Caps";
-  readonly materialSymbols: "Material Symbols Rounded";
 };
 
 export const displayFontFamily: {

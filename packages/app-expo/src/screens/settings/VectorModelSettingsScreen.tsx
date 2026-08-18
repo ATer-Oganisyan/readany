@@ -1,4 +1,4 @@
-import { EditIcon, PlusIcon, Trash2Icon, XIcon } from "@/components/ui/Icon";
+import { CheckIcon, EditIcon, PlusIcon, Trash2Icon, XIcon } from "@/components/ui/Icon";
 import { Text, TextInput } from "@/components/ui/Typography";
 import { BUNDLED_OPENROUTER_EMBEDDING_ID, hydrateBundledEmbeddingModel } from "@/config/bundled-ai";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
@@ -36,6 +36,15 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ConfigTransfer } from "../../components/settings/ConfigTransfer";
 import { PasswordInput } from "../../components/ui/PasswordInput";
+
+type VectorModelTestResult = {
+  message: string;
+  status: "loading" | "success" | "error";
+};
+
+function stripLegacyStatusGlyph(message: string) {
+  return message.replace(/^[^\p{L}\p{N}]+/u, "").trimStart();
+}
 
 export default function VectorModelSettingsScreen() {
   const colors = useColors();
@@ -187,7 +196,7 @@ function RemoteModelsSection() {
   const [formApiKey, setFormApiKey] = useState("");
   const [formDesc, setFormDesc] = useState("");
   const [testingId, setTestingId] = useState<string | null>(null);
-  const [testResults, setTestResults] = useState<Record<string, string>>({});
+  const [testResults, setTestResults] = useState<Record<string, VectorModelTestResult>>({});
 
   const resetForm = useCallback(() => {
     setFormName("");
@@ -247,7 +256,10 @@ function RemoteModelsSection() {
   const detectModelDimension = useCallback(
     async (model: VectorModelConfig) => {
       setTestingId(model.id);
-      setTestResults((prev) => ({ ...prev, [model.id]: t("settings.vm_testing", "测试中...") }));
+      setTestResults((prev) => ({
+        ...prev,
+        [model.id]: { message: t("settings.vm_testing", "测试中..."), status: "loading" },
+      }));
       const normalizedUrl = normalizeEmbeddingEndpointUrl(model.url);
       if (normalizedUrl && normalizedUrl !== model.url) {
         updateVectorModel(model.id, { url: normalizedUrl });
@@ -262,7 +274,12 @@ function RemoteModelsSection() {
         updateVectorModel(model.id, { dimension: result.dimension, url: result.url });
         setTestResults((prev) => ({
           ...prev,
-          [model.id]: t("settings.vm_testSuccess", { dimension: result.dimension }),
+          [model.id]: {
+            message: stripLegacyStatusGlyph(
+              t("settings.vm_testSuccess", { dimension: result.dimension }),
+            ),
+            status: "success",
+          },
         }));
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -270,7 +287,12 @@ function RemoteModelsSection() {
           error instanceof EmbeddingEndpointTestError ? error.url : normalizedUrl || model.url;
         setTestResults((prev) => ({
           ...prev,
-          [model.id]: t("settings.vm_testFailedWithUrl", { error: message, url: testUrl }),
+          [model.id]: {
+            message: stripLegacyStatusGlyph(
+              t("settings.vm_testFailedWithUrl", { error: message, url: testUrl }),
+            ),
+            status: "error",
+          },
         }));
       } finally {
         setTestingId(null);
@@ -364,14 +386,25 @@ function RemoteModelsSection() {
             ) : null}
           </View>
           {testResults[model.id] ? (
-            <Text
-              style={[
-                s.testResult,
-                testResults[model.id].includes("✓") ? s.testSuccess : s.testError,
-              ]}
-            >
-              {testResults[model.id]}
-            </Text>
+            <View style={s.testResultRow}>
+              {testResults[model.id].status === "success" ? (
+                <CheckIcon size={14} color={colors.emerald} />
+              ) : testResults[model.id].status === "error" ? (
+                <XIcon size={14} color={colors.destructive} />
+              ) : null}
+              <Text
+                style={[
+                  s.testResult,
+                  testResults[model.id].status === "success"
+                    ? s.testSuccess
+                    : testResults[model.id].status === "error"
+                      ? s.testError
+                      : s.testLoading,
+                ]}
+              >
+                {testResults[model.id].message}
+              </Text>
+            </View>
           ) : null}
         </View>
       ))}
@@ -646,7 +679,9 @@ const makeStyles = (colors: ThemeColors) =>
       backgroundColor: withOpacity(colors.primary, 0.1),
     },
     testBtnText: { fontSize: 11, fontWeight: fontWeight.medium, color: colors.primary },
-    testResult: { fontSize: fontSize.xs, marginTop: 8, lineHeight: 17 },
+    testResultRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 8 },
+    testResult: { flex: 1, fontSize: fontSize.xs, lineHeight: 17 },
+    testLoading: { color: colors.mutedForeground },
     testSuccess: { color: colors.emerald },
     testError: { color: colors.destructive },
     // Form

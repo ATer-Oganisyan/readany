@@ -1,5 +1,6 @@
 import { Text, TextInput } from "@/components/ui/Typography";
 import { hasBundledOpenRouterKey } from "@/config/bundled-ai";
+import { toast } from "@/lib/notifications";
 import { getAIEndpointRequestPreview, testAIEndpoint } from "@readany/core/ai";
 import { getPlatformService } from "@readany/core/services";
 import type { AIEndpoint, AIProviderType } from "@readany/core/types";
@@ -11,7 +12,7 @@ import {
 } from "@readany/core/utils";
 import type { TFunction } from "i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, ScrollView, Switch, TouchableOpacity, View } from "react-native";
+import { ScrollView, Switch, TouchableOpacity, View } from "react-native";
 import { LoaderIcon, Trash2Icon, XIcon } from "../../../components/ui/Icon";
 import { PasswordInput } from "../../../components/ui/PasswordInput";
 import type { ThemeColors } from "../../../styles/theme";
@@ -242,12 +243,13 @@ export function EndpointEditor({
     if (!requestPreview) return;
     try {
       await getPlatformService().copyToClipboard(requestPreview);
-      Alert.alert(t("common.success", "成功！"), t("notes.copiedToClipboard", "已复制到剪贴板"));
+      toast.success(t("common.success", "Скопировано"), {
+        description: t("notes.copiedToClipboard", "Скопировано в буфер обмена"),
+      });
     } catch (error) {
-      Alert.alert(
-        t("common.failed", "失败"),
-        error instanceof Error ? error.message : t("common.failed", "失败"),
-      );
+      toast.error(t("common.failed", "Не удалось скопировать"), {
+        description: error instanceof Error ? error.message : t("common.failed", "Ошибка"),
+      });
     }
   }, [requestPreview, t]);
 

@@ -207,24 +207,28 @@ pnpm install
 # 安装/运行 iOS 开发构建
 pnpm expo:ios
 
-# 安装/运行 iOS 模拟器开发构建
+# 首次安装/重新构建 iOS 模拟器原生开发构建
 pnpm expo:ios:simulator
+
+# 日常运行 iOS 模拟器（复用已安装构建，不进行原生构建）
+pnpm expo:simulator
 
 # 安装/运行 Android 开发构建
 # 先启动 Android 模拟器，或连接真机。
 pnpm expo:android
 
-# 为已安装的开发构建启动 Metro
+# 为实体手机通过 LAN 启动 Metro
 pnpm expo:start
 ```
 
 移动端开发使用带 `expo-dev-client` 的 Expo development build，不再使用
 Expo Go。Expo Go 无法加载 ReadAny 当前依赖的原生模块和应用配置。首次调试，
 或原生依赖/配置发生变化时，先运行 `pnpm expo:ios`、`pnpm expo:ios:simulator`
-或 `pnpm expo:android` 安装开发版 App；日常 JS 调试再运行 `pnpm expo:start`，
-用已安装的 ReadAny 开发版 App 连接 Metro。
+或 `pnpm expo:android` 安装开发版 App。iOS 模拟器的日常 JS 调试使用
+`pnpm expo:simulator`（或 Codex 的 `Run`），它会启动/复用 localhost Metro，
+不调用 `xcodebuild`。实体手机使用 `pnpm expo:start` 连接 LAN Metro。
 
-模拟器调试时，iOS 使用 `pnpm expo:ios:simulator`；Android 先启动 Android
+需要原生 iOS 重建时才使用 `pnpm expo:ios:simulator`；Android 先启动 Android
 模拟器，再运行 `pnpm expo:android`。
 
 移动端源码位于 [`packages/app-expo`](packages/app-expo)。
@@ -271,12 +275,15 @@ pnpm install
 pnpm tauri dev
 
 # 开发模式（移动端 - Expo development build，不是 Expo Go）
-# 首次先安装/运行原生开发构建：
+# 首次先安装/重新构建原生开发构建：
 pnpm expo:ios
 pnpm expo:ios:simulator
 pnpm expo:android
 
-# 然后为已安装的开发版 App 启动 Metro：
+# 日常运行 iOS 模拟器（不进行原生构建）：
+pnpm expo:simulator
+
+# 为实体手机通过 LAN 启动 Metro：
 pnpm expo:start
 
 # 构建
@@ -285,7 +292,8 @@ pnpm tauri build
 
 移动端使用 `expo-dev-client`，不支持 Expo Go。修改原生依赖、`app.config.js`、
 权限、scheme 或 Expo plugins 后，需要重新运行 `pnpm expo:ios`、
-`pnpm expo:ios:simulator` 或 `pnpm expo:android` 生成/安装开发构建。
+`pnpm expo:ios:simulator` 或 `pnpm expo:android` 生成/安装开发构建。iOS 模拟器
+的日常 JS 调试使用 `pnpm expo:simulator`，不会重新构建原生 App。
 
 **环境要求：** Node.js ≥18, pnpm ≥9, Rust（Tauri 需要）；移动端开发还需要
 iOS 的 Xcode 或 Android 的 Android Studio/SDK。

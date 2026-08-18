@@ -16,6 +16,8 @@
     "cli:preflight:full": "pnpm --filter @readany/cli preflight:release -- --include-app-build",
     "tauri": "pnpm --filter app tauri",
     "expo:start": "pnpm --filter @readany/app-expo start",
+    "expo:simulator": "pnpm --filter @readany/app-expo simulator",
+    "expo:rebuild:ios": "pnpm --filter @readany/app-expo rebuild:ios",
     "expo:ios": "pnpm --filter @readany/app-expo ios",
     "expo:ios:simulator": "pnpm --filter @readany/app-expo ios:simulator",
     "expo:android": "pnpm --filter @readany/app-expo android",
@@ -42,7 +44,8 @@
     "patchedDependencies": {
       "@langchain/core": "patches/@langchain__core.patch",
       "react-native-screens@4.25.2": "patches/react-native-screens@4.25.2.patch",
-      "react-native-track-player@4.1.2": "patches/react-native-track-player@4.1.2.patch"
+      "react-native-track-player@4.1.2": "patches/react-native-track-player@4.1.2.patch",
+      "sonner-native@0.27.0": "patches/sonner-native@0.27.0.patch"
     }
   },
   "packageManager": "pnpm@9.15.0"

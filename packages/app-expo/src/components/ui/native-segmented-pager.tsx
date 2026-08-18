@@ -22,6 +22,7 @@ interface NativeSegmentedPagerProps {
   scrollableSegments?: boolean;
   controlsStyle?: ViewStyle;
   minimumPageHeight?: number;
+  initialPageHeight?: number;
   pageGap?: number;
   stablePageHeight?: boolean;
   onSwipeStateChange?: (swiping: boolean) => void;
@@ -45,6 +46,7 @@ export const NativeSegmentedPager = forwardRef<
     scrollableSegments = false,
     controlsStyle,
     minimumPageHeight = 1,
+    initialPageHeight = minimumPageHeight,
     pageGap = 0,
     stablePageHeight = false,
     onSwipeStateChange,
@@ -63,9 +65,14 @@ export const NativeSegmentedPager = forwardRef<
       : undefined;
   const safeSelectedIndex = Math.max(0, Math.min(selectedIndex, Math.max(0, pageCount - 1)));
   const tallestPageHeight = Math.max(0, ...Object.values(pageHeights));
+  const selectedPageHeight = pageHeights[safeSelectedIndex];
+  const hasUsableSelectedPageHeight = selectedPageHeight !== undefined && selectedPageHeight > 1;
+  const selectedPageMinimumHeight = !hasUsableSelectedPageHeight
+    ? Math.max(minimumPageHeight, initialPageHeight)
+    : minimumPageHeight;
   const pagerHeight = Math.max(
-    minimumPageHeight,
-    stablePageHeight ? tallestPageHeight : (pageHeights[safeSelectedIndex] ?? 0),
+    selectedPageMinimumHeight,
+    stablePageHeight ? tallestPageHeight : hasUsableSelectedPageHeight ? selectedPageHeight : 0,
   );
   const pages = Children.toArray(children) as ReactElement[];
 

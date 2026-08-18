@@ -1,3 +1,4 @@
+import { toast } from "@/lib/notifications";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useLibraryStore } from "@/stores/library-store";
 import { useMissingBookPromptStore } from "@/stores/missing-book-prompt-store";
@@ -7,7 +8,6 @@ import { getPlatformService } from "@readany/core/services";
 import type { Book } from "@readany/core/types";
 import * as DocumentPicker from "expo-document-picker";
 import type { TFunction } from "i18next";
-import { Alert } from "react-native";
 
 type MobileNavigation = NativeStackNavigationProp<RootStackParamList>;
 
@@ -134,10 +134,12 @@ export async function openMobileBook({
   }
 
   if (book.syncStatus === "downloading") {
-    Alert.alert(
-      t("library.downloading", "下载中"),
-      t("library.downloadInProgress", "书籍还在下载中，请稍后再打开。"),
-    );
+    toast.loading(t("library.downloading", "Загрузка"), {
+      description: t(
+        "library.downloadInProgress",
+        "Книга ещё загружается. Откройте её чуть позже.",
+      ),
+    });
     return false;
   }
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MODE="${1:-start}"
+MODE="${1:-simulator}"
 APP_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MONOREPO_ROOT="$(cd "$APP_ROOT/../.." && pwd)"
 
@@ -22,6 +22,10 @@ fi
 DERIVED_DATA_PATH="${READANY_DERIVED_DATA_PATH:-$APP_ROOT/ios/build/codex-devicehub}"
 CANONICAL_APP="$DERIVED_DATA_PATH/Build/Products/Debug-iphonesimulator/Narra.app"
 FINGERPRINT_FILE="$DERIVED_DATA_PATH/.readany-native-fingerprint"
+XCODE_APP_PATH=""
+SIMULATOR_UI_APP=""
+SIMULATOR_UI_EXECUTABLE=""
+SIMULATOR_UI_NAME=""
 
 log() {
   printf '[Narra iOS] %s\n' "$*"
@@ -37,9 +41,12 @@ show_usage() {
 usage: ./script/build_and_run.sh [mode]
 
 Modes:
-  start, run       Start Metro for the installed development client
-  ios, --ios       Safely build if needed, install, start Metro, and open Device Hub
-  check, --check   Check the local iOS launch prerequisites without changing anything
+  simulator, run   Boot Simulator, reuse/start Metro, and launch the installed dev client
+  start            Start Metro on localhost for the installed Simulator dev client
+  start-lan        Start Metro on LAN for a physical phone
+  rebuild-ios      Build/install the canonical iOS dev client, then launch it
+  ios, --ios       Legacy alias for rebuild-ios
+  check, --check   Check launch prerequisites and canonical build status
   help, --help     Show this help
 
 Optional environment variables:
@@ -47,13 +54,99 @@ Optional environment variables:
   READANY_SIMULATOR_ID         Exact simulator UDID (takes precedence over name)
   READANY_METRO_PORT           Metro port (default: 8081)
   READANY_DERIVED_DATA_PATH    Canonical DerivedData directory
+  READANY_DEVELOPER_DIR        Xcode Developer directory (defaults to DEVELOPER_DIR or xcode-select)
+  READANY_ALLOW_PASTEBOARD_SYNC=1
+                               Allow automatic Simulator pasteboard sync intentionally
 
-This script intentionally never uses expo run:ios, expo start --ios, or a tunnel.
+The simulator mode never runs xcodebuild, expo run:ios, prebuild, pod install, or a tunnel.
 USAGE
 }
 
 require_command() {
   command -v "$1" >/dev/null 2>&1 || die "Required command is unavailable: $1"
+}
+
+resolve_developer_toolchain() {
+  local selected_developer_dir="${READANY_DEVELOPER_DIR:-${DEVELOPER_DIR:-}}"
+
+  if [[ -z "$selected_developer_dir" ]]; then
+    selected_developer_dir="$(xcode-select -p)"
+  fi
+  selected_developer_dir="${selected_developer_dir%/}"
+
+  [[ -d "$selected_developer_dir" ]] \
+    || die "Xcode Developer directory is missing: $selected_developer_dir"
+
+  case "$selected_developer_dir" in
+    */Contents/Developer)
+      XCODE_APP_PATH="${selected_developer_dir%/Contents/Developer}"
+      ;;
+    *)
+      die "Expected an Xcode Developer directory ending in /Contents/Developer, got: $selected_developer_dir"
+      ;;
+  esac
+
+  export DEVELOPER_DIR="$selected_developer_dir"
+
+  if [[ -d "$XCODE_APP_PATH/Contents/Applications/DeviceHub.app" ]]; then
+    SIMULATOR_UI_APP="$XCODE_APP_PATH/Contents/Applications/DeviceHub.app"
+    SIMULATOR_UI_EXECUTABLE="$SIMULATOR_UI_APP/Contents/MacOS/DeviceHub"
+    SIMULATOR_UI_NAME="Device Hub"
+  elif [[ -d "$DEVELOPER_DIR/Applications/Simulator.app" ]]; then
+    SIMULATOR_UI_APP="$DEVELOPER_DIR/Applications/Simulator.app"
+    SIMULATOR_UI_EXECUTABLE="$SIMULATOR_UI_APP/Contents/MacOS/Simulator"
+    SIMULATOR_UI_NAME="Simulator"
+  else
+    die "Neither Device Hub nor Simulator was found inside $XCODE_APP_PATH"
+  fi
+}
+
+running_simulator_ui_processes() {
+  ps -axo pid=,command= | while IFS= read -r process_line; do
+    case "$process_line" in
+      *"/Simulator.app/Contents/MacOS/Simulator"*|*"/DeviceHub.app/Contents/MacOS/DeviceHub"*)
+        printf '%s\n' "$process_line"
+        ;;
+    esac
+  done
+}
+
+assert_simulator_ui_matches_toolchain() {
+  local process_line
+  local conflicts=""
+
+  while IFS= read -r process_line; do
+    [[ -n "$process_line" ]] || continue
+    if [[ "$process_line" != *"$SIMULATOR_UI_EXECUTABLE"* ]]; then
+      conflicts+="${conflicts:+; }$process_line"
+    fi
+  done < <(running_simulator_ui_processes)
+
+  if [[ -n "$conflicts" ]]; then
+    die "Simulator UI from another Xcode is running ($conflicts). Expected $SIMULATOR_UI_EXECUTABLE. Quit Simulator and Device Hub, then rerun."
+  fi
+}
+
+pasteboard_sync_status() {
+  defaults read com.apple.iphonesimulator PasteboardAutomaticSync 2>/dev/null || printf 'unset'
+}
+
+assert_pasteboard_sync_is_safe() {
+  local status
+  status="$(pasteboard_sync_status)"
+
+  case "$status" in
+    0|false|FALSE|NO)
+      return
+      ;;
+  esac
+
+  if [[ "${READANY_ALLOW_PASTEBOARD_SYNC:-0}" == "1" ]]; then
+    log "Automatic Simulator pasteboard sync is not confirmed off (status: $status); continuing by explicit override"
+    return
+  fi
+
+  die "Automatic Simulator pasteboard sync is not confirmed off (status: $status) and can freeze the Mac clipboard. Disable Edit > Automatically Sync Pasteboard, or set READANY_ALLOW_PASTEBOARD_SYNC=1 for an intentional one-off test."
 }
 
 check_common_prerequisites() {
@@ -65,6 +158,11 @@ check_common_prerequisites() {
   require_command xcrun
   require_command plutil
   require_command open
+  require_command defaults
+  require_command ps
+  require_command xcode-select
+
+  resolve_developer_toolchain
 
   [[ -d "$WORKSPACE" ]] || die "Xcode workspace is missing: $WORKSPACE"
   [[ -f "$APP_ROOT/ios/Podfile.lock" ]] || die "ios/Podfile.lock is missing. Do not run prebuild automatically."
@@ -73,6 +171,21 @@ check_common_prerequisites() {
   if ! cmp -s "$APP_ROOT/ios/Podfile.lock" "$APP_ROOT/ios/Pods/Manifest.lock"; then
     die "Pods are out of sync with Podfile.lock. Run pod install intentionally before rebuilding."
   fi
+}
+
+check_simulator_prerequisites() {
+  require_command pnpm
+  require_command node
+  require_command curl
+  require_command xcrun
+  require_command plutil
+  require_command shasum
+  require_command open
+  require_command defaults
+  require_command ps
+  require_command xcode-select
+
+  resolve_developer_toolchain
 }
 
 prepare_development_variant() {
@@ -84,22 +197,48 @@ prepare_development_variant() {
   )
 }
 
+ensure_reader_asset() {
+  if [[ -s "$APP_ROOT/assets/reader/reader.html" ]]; then
+    return
+  fi
+
+  log "Reader asset is missing; building it once before starting Metro"
+  (
+    cd "$APP_ROOT"
+    pnpm run build:reader
+  )
+}
+
 metro_is_running() {
   curl --silent --fail --max-time 1 "http://127.0.0.1:$METRO_PORT/status" 2>/dev/null \
     | grep -q 'packager-status:running'
 }
 
 run_metro_prepared() {
-  log "Starting Metro on localhost:$METRO_PORT"
+  local host_mode="${1:-localhost}"
+  local host_args=(--localhost)
+
+  if [[ "$host_mode" == "lan" ]]; then
+    host_args=(--lan)
+    log "Starting Metro on LAN:$METRO_PORT"
+  else
+    log "Starting Metro on localhost:$METRO_PORT"
+  fi
+
   cd "$APP_ROOT"
-  EXPO_NO_METRO_LAZY=1 APP_VARIANT=development \
+  APP_VARIANT=development \
     NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--dns-result-order=ipv4first" \
-    pnpm exec expo start --dev-client --scheme readany-dev --localhost --port "$METRO_PORT"
+    pnpm exec expo start --dev-client --scheme readany-dev "${host_args[@]}" --port "$METRO_PORT"
 }
 
 run_metro() {
-  prepare_development_variant
-  run_metro_prepared
+  ensure_reader_asset
+  run_metro_prepared localhost
+}
+
+run_metro_lan() {
+  ensure_reader_asset
+  run_metro_prepared lan
 }
 
 resolve_simulator_id() {
@@ -188,7 +327,9 @@ native_fingerprint() {
       "$APP_ROOT/ios/Pods/Manifest.lock" \
       "$APP_ROOT/ios/ReadAnyDev.xcodeproj/project.pbxproj" \
       "$APP_ROOT/ios/ReadAny.xcodeproj/project.pbxproj" \
-      "$APP_ROOT/ios/Narra.xcodeproj/project.pbxproj"; do
+      "$APP_ROOT/ios/Narra.xcodeproj/project.pbxproj" \
+      "$MONOREPO_ROOT/node_modules/expo-dev-launcher/package.json" \
+      "$MONOREPO_ROOT/node_modules/expo-dev-launcher/ios/ReactNative/EXDevLauncherRCTDevSettings.m"; do
       [[ -f "$path" ]] && printf '%s\n' "$path"
     done
 
@@ -279,10 +420,46 @@ install_canonical_app_if_needed() {
 }
 
 launch_app() {
-  log "Opening Device Hub for $SIMULATOR_NAME"
-  open "devices://device/open?id=$SIMULATOR_ID"
+  if [[ "$SIMULATOR_UI_NAME" == "Device Hub" ]]; then
+    log "Opening Device Hub from the selected Xcode"
+    open -a "$SIMULATOR_UI_APP" "devices://device/open?id=$SIMULATOR_ID"
+  else
+    log "Opening Simulator from the selected Xcode"
+    open -a "$SIMULATOR_UI_APP" --args -CurrentDeviceUDID "$SIMULATOR_ID"
+  fi
+
   log "Launching $BUNDLE_ID"
   xcrun simctl launch --terminate-running-process "$SIMULATOR_ID" "$BUNDLE_ID"
+  open_dev_client_url
+}
+
+dev_client_url() {
+  curl --silent --fail --max-time 2 \
+    "http://127.0.0.1:$METRO_PORT/_expo/open?platform=ios&runtime=custom" \
+    | node -e '
+      let input = "";
+      process.stdin.setEncoding("utf8");
+      process.stdin.on("data", chunk => { input += chunk; });
+      process.stdin.on("end", () => {
+        try {
+          const payload = JSON.parse(input);
+          if (payload.url) process.stdout.write(payload.url);
+        } catch {}
+      });
+    '
+}
+
+open_dev_client_url() {
+  local url=""
+  url="$(dev_client_url 2>/dev/null || true)"
+
+  if [[ -z "$url" ]]; then
+    log "Metro open endpoint is unavailable; relying on dev-client most-recent"
+    return
+  fi
+
+  log "Opening dev client URL from Metro"
+  xcrun simctl openurl "$SIMULATOR_ID" "$url" >/dev/null
 }
 
 launch_when_metro_is_ready() {
@@ -297,12 +474,68 @@ launch_when_metro_is_ready() {
   die "Metro did not become ready on port $METRO_PORT within 120 seconds"
 }
 
-run_ios() {
+check_installed_dev_client() {
+  local expected_build
+  local installed_path
+  local installed_build=""
+  local saved_fingerprint=""
+  local current_fingerprint=""
+
+  expected_build="$(expected_build_number)"
+  installed_path="$(installed_app_path)"
+
+  if [[ -z "$installed_path" ]]; then
+    die "Development client is not installed on $SIMULATOR_NAME. Run './script/build_and_run.sh rebuild-ios' explicitly."
+  fi
+
+  installed_build="$(app_build_number "$installed_path")"
+  if [[ "$installed_build" != "$expected_build" ]]; then
+    die "Installed dev client build is $installed_build, expected $expected_build. Run './script/build_and_run.sh rebuild-ios' explicitly."
+  fi
+
+  if [[ -f "$FINGERPRINT_FILE" && -d "$CANONICAL_APP" ]]; then
+    saved_fingerprint="$(<"$FINGERPRINT_FILE")"
+    current_fingerprint="$(native_fingerprint)"
+    if [[ "$saved_fingerprint" != "$current_fingerprint" ]]; then
+      die "Native fingerprint changed. Run './script/build_and_run.sh rebuild-ios' explicitly."
+    fi
+  else
+    log "Canonical build metadata is not initialized; using the installed build $installed_build without rebuilding"
+  fi
+
+  log "Installed development client is ready: build $installed_build"
+}
+
+run_simulator() {
+  local launcher_pid=""
+
+  check_simulator_prerequisites
+  assert_simulator_ui_matches_toolchain
+  assert_pasteboard_sync_is_safe
+  resolve_simulator_id
+  boot_simulator
+  check_installed_dev_client
+
+  if metro_is_running; then
+    log "Reusing Metro on port $METRO_PORT"
+    launch_app
+    return
+  fi
+
+  launch_when_metro_is_ready &
+  launcher_pid=$!
+  trap '[[ -n "${launcher_pid:-}" ]] && kill "$launcher_pid" >/dev/null 2>&1 || true' EXIT INT TERM
+  run_metro
+}
+
+run_rebuild_ios() {
   local expected_build
   local current_fingerprint
   local launcher_pid=""
 
   check_common_prerequisites
+  assert_simulator_ui_matches_toolchain
+  assert_pasteboard_sync_is_safe
   prepare_development_variant
   resolve_simulator_id
   boot_simulator
@@ -323,7 +556,7 @@ run_ios() {
   launch_when_metro_is_ready &
   launcher_pid=$!
   trap '[[ -n "${launcher_pid:-}" ]] && kill "$launcher_pid" >/dev/null 2>&1 || true' EXIT INT TERM
-  run_metro_prepared
+  run_metro_prepared localhost
 }
 
 run_check() {
@@ -331,28 +564,59 @@ run_check() {
   local installed_path
   local installed_build="not installed"
   local metro_status="stopped"
+  local canonical_status="missing"
+  local fingerprint_status="missing"
+  local saved_fingerprint=""
+  local current_fingerprint=""
 
   check_common_prerequisites
+  assert_simulator_ui_matches_toolchain
+  assert_pasteboard_sync_is_safe
   resolve_simulator_id
   expected_build="$(expected_build_number)"
   installed_path="$(installed_app_path)"
   [[ -n "$installed_path" ]] && installed_build="$(app_build_number "$installed_path")"
   metro_is_running && metro_status="running"
 
+  if [[ -d "$CANONICAL_APP" ]]; then
+    canonical_status="build $(app_build_number "$CANONICAL_APP")"
+  fi
+
+  if [[ -f "$FINGERPRINT_FILE" ]]; then
+    saved_fingerprint="$(<"$FINGERPRINT_FILE")"
+    current_fingerprint="$(native_fingerprint)"
+    if [[ "$saved_fingerprint" == "$current_fingerprint" ]]; then
+      fingerprint_status="current"
+    else
+      fingerprint_status="changed; rebuild required"
+    fi
+  fi
+
   log "Xcode: $(xcodebuild -version | tr '\n' ' ')"
+  log "Developer directory: $DEVELOPER_DIR"
+  log "Simulator UI: $SIMULATOR_UI_NAME ($SIMULATOR_UI_APP)"
+  log "Automatic pasteboard sync: $(pasteboard_sync_status)"
   log "Simulator: $SIMULATOR_NAME ($SIMULATOR_ID)"
   log "Expected build: $expected_build; installed build: $installed_build"
   log "Metro localhost:$METRO_PORT: $metro_status"
   log "Workspace: $WORKSPACE"
   log "Canonical DerivedData: $DERIVED_DATA_PATH"
+  log "Canonical app: $canonical_status"
+  log "Native fingerprint: $fingerprint_status"
 }
 
 case "$MODE" in
-  start|run)
+  simulator|run)
+    run_simulator
+    ;;
+  start)
     run_metro
     ;;
-  ios|--ios)
-    run_ios
+  start-lan|lan)
+    run_metro_lan
+    ;;
+  rebuild-ios|rebuild|ios|--ios)
+    run_rebuild_ios
     ;;
   check|--check)
     run_check

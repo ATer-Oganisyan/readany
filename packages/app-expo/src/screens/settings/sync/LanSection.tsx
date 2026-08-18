@@ -1,9 +1,10 @@
+import { Scan } from "@/components/ui/Icon";
 import { Text, TextInput } from "@/components/ui/Typography";
+import { toast } from "@/lib/notifications";
 import { type LANQRData, createLANServer } from "@readany/core/sync/lan-server";
 import type { ISyncBackend } from "@readany/core/sync/sync-backend";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import Constants from "expo-constants";
-import { Scan } from "@/components/ui/Icon";
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Animated, Modal, StyleSheet, TouchableOpacity, View } from "react-native";
@@ -182,7 +183,9 @@ export function LanSection({
     if (!permission.granted) {
       const res = await requestPermission();
       if (!res.granted) {
-        Alert.alert(t("settings.cameraPermission"), t("settings.cameraPermissionDesc"));
+        toast.error(t("settings.cameraPermission"), {
+          description: t("settings.cameraPermissionDesc"),
+        });
         return;
       }
     }

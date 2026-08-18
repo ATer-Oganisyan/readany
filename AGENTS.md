@@ -16,7 +16,12 @@
 ## Запуск Expo
 
 - Никогда не использовать `ngrok`, Expo Tunnel (`expo start --tunnel`) или другие публичные туннели для запуска проекта.
-- Для запуска на физическом телефоне использовать только Expo LAN: телефон и ноутбук должны быть в одной Wi‑Fi-сети, Metro запускается из `packages/app-expo` командой `pnpm start` без флага `--tunnel`.
-- Для iOS Simulator использовать прямое локальное подключение к Metro через localhost или LAN, без публичного туннеля.
-- После смены Wi‑Fi-сети перезапустить Metro, чтобы Expo выдал актуальный локальный IP и новую ссылку/QR-код.
+- Для запуска на физическом телефоне использовать только Expo LAN: телефон и ноутбук должны быть в одной Wi‑Fi-сети, Metro запускать из `packages/app-expo` командой `./script/build_and_run.sh start-lan`.
+- Для ежедневного запуска iOS Simulator использовать `./script/build_and_run.sh` или Codex-действие `Run`: оно загружает Simulator, запускает или переиспользует Metro через localhost и открывает уже установленный dev-client без нативной сборки.
+- Не запускать одновременно Simulator или Device Hub из разных версий Xcode. Перед сменой `DEVELOPER_DIR`/`xcode-select` остановить booted-устройство, закрыть оба UI-приложения и выполнить `./script/build_and_run.sh check`.
+- Держать `Edit > Automatically Sync Pasteboard` выключенным: на этой машине синхронизация при смешении Xcode вызывала системные зависания буфера и `CoreDeviceError 26003`. Не обходить защиту wrapper-скрипта без явно запрошенного разового теста.
+- Нативную пересборку запускать только явно через `./script/build_and_run.sh rebuild-ios` или Codex-действие `Rebuild iOS`. Ежедневный `Run` не должен вызывать `xcodebuild`, `expo run:ios`, prebuild или `pod install`.
+- Из корня монорепозитория те же сценарии доступны как `pnpm expo:simulator` и `pnpm expo:rebuild:ios`.
+- Для iOS Simulator использовать прямое локальное подключение к Metro через localhost; для физического телефона — LAN.
+- После смены Wi‑Fi-сети перезапустить Metro командой `./script/build_and_run.sh start-lan`, чтобы Expo выдал актуальный локальный IP и новую ссылку/QR-код.
 - Для тестировщиков вне локальной сети использовать устанавливаемую EAS/TestFlight-сборку, а не туннель, и только по явному запросу пользователя.

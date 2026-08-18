@@ -1,17 +1,10 @@
 node_modules/
 dist/
 .expo/
-ios/
-android/
-!modules/*/ios/
+/ios/
+/android/
 modules/*/ios/build/
-!modules/*/ios/*.podspec
-!modules/*/ios/*.swift
-!modules/*/android/
 modules/*/android/build/
-!modules/*/android/build.gradle
-!modules/*/android/src/
-!modules/*/android/src/**
 *.jks
 *.p8
 *.p12
@@ -23,3 +16,9 @@ credentials/
 web-build/
 build/
 .tmp/
+
+# Keep only the selected production character loops in Git. The same folder
+# also contains local generation experiments that must not ship with the app.
+assets/catalog/character-video-samples/*
+!assets/catalog/character-video-samples/*-grok-eyebrow-hair-only-batch5.json
+!assets/catalog/character-video-samples/*-grok-eyebrow-hair-only-batch5-boomerang.mp4

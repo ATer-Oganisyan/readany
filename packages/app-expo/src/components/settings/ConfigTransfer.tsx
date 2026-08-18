@@ -1,9 +1,10 @@
 import { Text, TextInput } from "@/components/ui/Typography";
+import { toast } from "@/lib/notifications";
 import { decodeConfig, encodeConfig } from "@readany/core/utils";
 import * as Clipboard from "expo-clipboard";
 import { memo, useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, TouchableOpacity, View } from "react-native";
+import { TouchableOpacity, View } from "react-native";
 import { fontSize, fontWeight, radius, useColors } from "../../styles/theme";
 
 interface ConfigTransferProps {
@@ -34,40 +35,54 @@ export const ConfigTransfer = memo(function ConfigTransfer({
       setMode("export");
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      Alert.alert(t("common.error", "错误"), `${t("settings.exportFailed", "导出失败")}: ${msg}`);
+      toast.error(t("common.error", "Ошибка"), {
+        description: `${t("settings.exportFailed", "Не удалось экспортировать")}: ${msg}`,
+      });
     }
   }, [getData, t]);
 
   const handleCopy = useCallback(async () => {
     await Clipboard.setStringAsync(token);
-    Alert.alert(t("common.copied", "已复制"), t("settings.copiedToClipboard", "口令已复制到剪贴板"));
+    toast.success(t("common.copied", "Скопировано"), {
+      description: t("settings.copiedToClipboard", "Код скопирован в буфер обмена"),
+    });
   }, [token, t]);
 
   const applyImportedData = useCallback(
     async (raw: string) => {
       const trimmed = raw.trim();
       if (!trimmed) {
-        Alert.alert(t("common.error", "错误"), t("settings.invalidConfig", "配置格式无效"));
+        toast.error(t("common.error", "Ошибка"), {
+          description: t("settings.invalidConfig", "Неверный формат конфигурации"),
+        });
         return;
       }
       const data = decodeConfig(trimmed);
       if (!data) {
-        Alert.alert(t("common.error", "错误"), t("settings.invalidConfig", "配置格式无效，口令可能不完整"));
+        toast.error(t("common.error", "Ошибка"), {
+          description: t("settings.invalidConfig", "Конфигурация повреждена или неполна"),
+        });
         return;
       }
       if (!validate(data)) {
-        Alert.alert(t("common.error", "错误"), t("settings.invalidConfig", "配置格式无效"));
+        toast.error(t("common.error", "Ошибка"), {
+          description: t("settings.invalidConfig", "Неверный формат конфигурации"),
+        });
         return;
       }
       try {
         setIsImporting(true);
         await applyData(data);
-        Alert.alert(t("common.success", "成功"), t("settings.configImported", "配置已导入"));
+        toast.success(t("common.success", "Готово"), {
+          description: t("settings.configImported", "Конфигурация импортирована"),
+        });
         setMode("idle");
         setImportText("");
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        Alert.alert(t("common.error", "错误"), `${t("settings.importFailed", "导入失败")}: ${msg}`);
+        toast.error(t("common.error", "Ошибка"), {
+          description: `${t("settings.importFailed", "Не удалось импортировать")}: ${msg}`,
+        });
       } finally {
         setIsImporting(false);
       }
@@ -127,7 +142,13 @@ export const ConfigTransfer = memo(function ConfigTransfer({
               alignItems: "center",
             }}
           >
-            <Text style={{ fontSize: fontSize.sm, color: colors.primaryForeground, fontWeight: fontWeight.medium }}>
+            <Text
+              style={{
+                fontSize: fontSize.sm,
+                color: colors.primaryForeground,
+                fontWeight: fontWeight.medium,
+              }}
+            >
               {t("common.copy", "复制口令")}
             </Text>
           </TouchableOpacity>
@@ -209,12 +230,21 @@ export const ConfigTransfer = memo(function ConfigTransfer({
               opacity: importText.trim() && !isImporting ? 1 : 0.5,
             }}
           >
-            <Text style={{ fontSize: fontSize.sm, color: colors.primaryForeground, fontWeight: fontWeight.medium }}>
+            <Text
+              style={{
+                fontSize: fontSize.sm,
+                color: colors.primaryForeground,
+                fontWeight: fontWeight.medium,
+              }}
+            >
               {t("settings.importConfig", "导入")}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={() => { setMode("idle"); setImportText(""); }}
+            onPress={() => {
+              setMode("idle");
+              setImportText("");
+            }}
             style={{
               paddingVertical: 10,
               paddingHorizontal: 14,

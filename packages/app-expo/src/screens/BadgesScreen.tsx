@@ -4,6 +4,7 @@
 import { ShareIcon } from "@/components/ui/Icon";
 import { Text } from "@/components/ui/Typography";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
+import { toast } from "@/lib/notifications";
 import { useNativeHeaderActions } from "@/navigation/useNativeHeaderActions";
 import { useReadingSessionStore } from "@/stores";
 import {
@@ -24,7 +25,6 @@ import * as Sharing from "expo-sharing";
 import React, { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  Alert,
   Image,
   Modal,
   Pressable,
@@ -174,10 +174,9 @@ export default function BadgesScreen() {
     try {
       const permission = await MediaLibrary.requestPermissionsAsync();
       if (!permission.granted) {
-        Alert.alert(
-          t("stats.desktop.badgeSaveAction"),
-          t("stats.desktop.badgeSavePermissionDenied"),
-        );
+        toast.error(t("stats.desktop.badgeSaveAction"), {
+          description: t("stats.desktop.badgeSavePermissionDenied"),
+        });
         return;
       }
 
@@ -185,12 +184,14 @@ export default function BadgesScreen() {
       if (!exportFile) return;
 
       await MediaLibrary.saveToLibraryAsync(exportFile.uri);
-      Alert.alert(
-        t("stats.desktop.badgeSaveSuccessTitle"),
-        t("stats.desktop.badgeSaveSuccessDesc"),
-      );
+      toast.success(t("stats.desktop.badgeSaveSuccessTitle"), {
+        description: t("stats.desktop.badgeSaveSuccessDesc"),
+      });
     } catch (error) {
       console.error("[BadgesScreen] Failed to save badge poster", error);
+      toast.error(t("common.error", "Не удалось сохранить плакат"), {
+        description: error instanceof Error ? error.message : undefined,
+      });
     } finally {
       setIsSharingPoster(false);
     }

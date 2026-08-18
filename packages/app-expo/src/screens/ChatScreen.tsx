@@ -1,5 +1,6 @@
 import { Text } from "@/components/ui/Typography";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
+import { toast } from "@/lib/notifications";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import type { RouteProp } from "@react-navigation/native";
@@ -10,15 +11,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  Alert,
-  Animated,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { Animated, Pressable, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useStreamingChat } from "@/hooks";
@@ -202,17 +195,16 @@ export function ChatScreen() {
       const resolvedAIConfig = await resolveActiveAIConfig(state);
 
       if (!resolvedAIConfig) {
-        Alert.alert(
-          t("chat.configRequired", "需要配置 AI"),
-          t("chat.configRequiredMessage", "请先在设置中配置 AI 端点和模型"),
-          [
-            { text: t("common.cancel", "取消"), style: "cancel" },
-            {
-              text: t("common.settings", "去设置"),
-              onPress: () => navigation.navigate("AISettings"),
-            },
-          ],
-        );
+        toast.error(t("chat.configRequired", "Настройте ИИ"), {
+          description: t(
+            "chat.configRequiredMessage",
+            "Добавьте адрес API, ключ и модель в настройках",
+          ),
+          action: {
+            label: t("common.settings", "Настройки"),
+            onClick: () => navigation.navigate("AISettings"),
+          },
+        });
         return;
       }
 
@@ -226,17 +218,16 @@ export function ChatScreen() {
     const resolvedAIConfig = await resolveActiveAIConfig(state);
 
     if (!resolvedAIConfig) {
-      Alert.alert(
-        t("chat.configRequired", "Настройте ИИ"),
-        t("chat.configRequiredMessage", "Добавьте адрес API, ключ и модель в настройках"),
-        [
-          { text: t("common.cancel", "Отмена"), style: "cancel" },
-          {
-            text: t("common.settings", "Настройки"),
-            onPress: () => navigation.navigate("AISettings"),
-          },
-        ],
-      );
+      toast.error(t("chat.configRequired", "Настройте ИИ"), {
+        description: t(
+          "chat.configRequiredMessage",
+          "Добавьте адрес API, ключ и модель в настройках",
+        ),
+        action: {
+          label: t("common.settings", "Настройки"),
+          onClick: () => navigation.navigate("AISettings"),
+        },
+      });
       return;
     }
 

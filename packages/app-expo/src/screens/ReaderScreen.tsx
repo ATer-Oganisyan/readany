@@ -4,6 +4,7 @@ import { BookmarkRibbon } from "@/components/reader/BookmarkRibbon";
 import { ChapterTranslationSheet } from "@/components/reader/ChapterTranslationSheet";
 import { TranslationPanel } from "@/components/reader/TranslationPanel";
 import { NotebookPenIcon, XIcon } from "@/components/ui/Icon";
+import { getStrokeIconImageSource, resolveSystemIconName } from "@/components/ui/MishanaerIcon";
 import { NativeButton } from "@/components/ui/NativeButton";
 import { NativeContextMenuButton } from "@/components/ui/NativeContextMenuButton";
 import type { NativeContextMenuItem } from "@/components/ui/NativeContextMenuButton.types";
@@ -35,6 +36,7 @@ import {
   advanceSceneSuggestion,
 } from "@/lib/narra/scene-suggestion";
 import type { NarraCharacter } from "@/lib/narra/types";
+import { toast } from "@/lib/notifications";
 import {
   DEFAULT_READER_FONT_FAMILY,
   getBundledReaderFontFaceCSS,
@@ -76,7 +78,6 @@ import * as FileSystem from "expo-file-system/legacy";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  Alert,
   Animated,
   AppState,
   type AppStateStatus,
@@ -262,11 +263,10 @@ export function ReaderScreen(props: Props) {
 
     const catalogBook = BUNDLED_CATALOG_BOOKS.find((book) => book.id === catalogBookId);
     if (!catalogBook) {
-      Alert.alert(
-        t("library.catalogImportErrorTitle", "Не получилось добавить книгу"),
-        t("library.catalogImportErrorDescription", "Попробуйте ещё раз."),
-        [{ text: t("common.ok", "OK"), onPress: () => props.navigation.goBack() }],
-      );
+      toast.error(t("library.catalogImportErrorTitle", "Не получилось добавить книгу"), {
+        description: t("library.catalogImportErrorDescription", "Попробуйте ещё раз."),
+      });
+      props.navigation.goBack();
       return;
     }
 
@@ -308,11 +308,10 @@ export function ReaderScreen(props: Props) {
       .catch((error) => {
         if (cancelled) return;
         console.error(`[Catalog] Failed to add ${catalogBook.id}:`, error);
-        Alert.alert(
-          t("library.catalogImportErrorTitle", "Не получилось добавить книгу"),
-          t("library.catalogImportErrorDescription", "Попробуйте ещё раз."),
-          [{ text: t("common.ok", "OK"), onPress: () => props.navigation.goBack() }],
-        );
+        toast.error(t("library.catalogImportErrorTitle", "Не получилось добавить книгу"), {
+          description: t("library.catalogImportErrorDescription", "Попробуйте ещё раз."),
+        });
+        props.navigation.goBack();
       });
 
     return () => {
@@ -782,11 +781,21 @@ function ReaderContent({ route, navigation }: Props) {
   const requestPageSnippet = useCallback(() => {
     bridgeRef.current?.requestPageSnippet();
   }, []);
+  const handleBookmarkAdded = useCallback(
+    () => toast.success(bookmarkCopy.added),
+    [bookmarkCopy.added],
+  );
+  const handleBookmarkRemoved = useCallback(
+    () => toast.success(bookmarkCopy.removed),
+    [bookmarkCopy.removed],
+  );
   const bookmark = useReaderBookmark({
     bookId,
     currentCfi,
     currentChapter,
     requestPageSnippet,
+    onBookmarkAdded: handleBookmarkAdded,
+    onBookmarkRemoved: handleBookmarkRemoved,
   });
   const { isBookmarked, handleToggleBookmark } = bookmark;
 
@@ -1011,32 +1020,10 @@ function ReaderContent({ route, navigation }: Props) {
       `);
     },
     onLoaded: () => {
+      // Initial typography is sent with openBook and applied inside the
+      // WebView before it signals loaded. Applying it again here starts a
+      // second renderer layout pass and makes the first page flash.
       setLoading(false);
-      const settings = useSettingsStore.getState().readSettings;
-      const { fonts, selectedFontId: selId } = useFontStore.getState();
-      const fontCSS = [
-        defaultReaderFontFaceCSSRef.current,
-        buildCustomFontFaceCSS(fonts, selId, fileServerRef.current),
-      ]
-        .filter(Boolean)
-        .join("\n");
-      const fontFamily = resolveReaderFontFamily(fonts, selId);
-      console.log("[ReaderScreen][Font] selection", {
-        selectedFontId: selId,
-        fontFamily,
-        fontCSSLength: fontCSS.length,
-      });
-      bridge.applySettings({
-        fontSize: computeEffectiveFontSize(settings.fontSize, settings.followSystemFontScale),
-        lineHeight: settings.lineHeight,
-        paragraphSpacing: settings.paragraphSpacing,
-        pageMargin: settings.pageMargin,
-        fontTheme: settings.fontTheme,
-        viewMode: settings.viewMode,
-        paginatedLayout: settings.paginatedLayout,
-        customFontFaceCSS: fontCSS,
-        customFontFamily: fontFamily ?? "",
-      });
 
       // Auto-restore ruby annotations if enabled for this book
       const rubyMode = useRubyStore.getState().getBookRuby(bookId);
@@ -1470,7 +1457,9 @@ function ReaderContent({ route, navigation }: Props) {
     (excerpt: string, sourceKey: string) => {
       const normalizedExcerpt = excerpt.trim();
       if (!normalizedExcerpt) {
-        Alert.alert("Не удалось создать сцену", "На этой странице нет текста для иллюстрации.");
+        toast.error("Не удалось создать сцену", {
+          description: "На этой странице нет текста для иллюстрации.",
+        });
         return;
       }
       navigation.navigate("NarraScene", {
@@ -1596,7 +1585,7 @@ function ReaderContent({ route, navigation }: Props) {
       {
         key: "speak",
         label: t("reader.speak", "Озвучить"),
-        sfSymbol: "airpods.max",
+        sfSymbol: "headphones",
         onPress: () => void tts.handleToggleTTS(),
       },
     ],
@@ -1625,20 +1614,31 @@ function ReaderContent({ route, navigation }: Props) {
                     type: "button" as const,
                     label: t("reader.appearance", "Оформление"),
                     accessibilityLabel: t("narra.readerAppearance", "Оформление"),
-                    icon: { type: "sfSymbol" as const, name: "textformat.size" as const },
+                    icon: {
+                      type: "image" as const,
+                      source: getStrokeIconImageSource("text-t"),
+                    },
                     onPress: openReaderAppearance,
                   },
                   {
                     type: "menu" as const,
                     label: t("reader.bookActions", "Действия с книгой"),
                     accessibilityLabel: t("reader.bookActions", "Действия с книгой"),
-                    icon: { type: "sfSymbol" as const, name: "ellipsis" as const },
+                    icon: {
+                      type: "image" as const,
+                      source: getStrokeIconImageSource("dots-three-horizontal"),
+                    },
                     menu: {
                       items: readerActions.map((action) => ({
                         type: "action" as const,
                         label: action.label,
                         icon: action.sfSymbol
-                          ? { type: "sfSymbol" as const, name: action.sfSymbol as never }
+                          ? {
+                              type: "image" as const,
+                              source: getStrokeIconImageSource(
+                                resolveSystemIconName(action.sfSymbol),
+                              ),
+                            }
                           : undefined,
                         onPress: action.onPress,
                       })),
@@ -1955,7 +1955,7 @@ function ReaderContent({ route, navigation }: Props) {
     if (!webViewReady) return;
     bridge.setBookmarkPullState({
       bookmarked: isBookmarked,
-      ...bookmarkCopy,
+      added: bookmarkCopy.added,
     });
   }, [bookmarkCopy, bridge, isBookmarked, webViewReady]);
 

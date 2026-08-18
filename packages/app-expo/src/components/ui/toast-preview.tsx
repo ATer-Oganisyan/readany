@@ -1,17 +1,21 @@
 import { NativeButton } from "@/components/ui/NativeButton";
 import { Text } from "@/components/ui/Typography";
+import { toast } from "@/lib/notifications";
 import { headingFontFamily, useColors } from "@/styles/theme";
-import { StyleSheet, View } from "react-native";
-import Toast from "react-native-toast-message";
+import { ScrollView, StyleSheet, View } from "react-native";
 
 export function ToastPreview() {
   const colors = useColors();
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <ScrollView
+      contentInsetAdjustmentBehavior="automatic"
+      contentContainerStyle={styles.container}
+      style={{ backgroundColor: colors.background }}
+    >
       <Text style={[styles.title, { color: colors.foreground }]}>Превью уведомлений</Text>
       <Text style={[styles.description, { color: colors.mutedForeground }]}>
-        Это стандартный внешний вид react-native-toast-message без нашей кастомизации.
+        Это единый внешний вид sonner-native для transient-уведомлений приложения.
       </Text>
 
       <View style={styles.actions}>
@@ -20,10 +24,8 @@ export function ToastPreview() {
           variant="primary"
           fullWidth
           onPress={() =>
-            Toast.show({
-              type: "info",
-              text1: "Загружаем книгу",
-              text2: "Это может занять несколько секунд",
+            toast.loading("Загружаем книгу", {
+              description: "Это может занять несколько секунд",
             })
           }
         />
@@ -31,36 +33,30 @@ export function ToastPreview() {
           label="Закладка добавлена"
           variant="secondary"
           fullWidth
-          onPress={() =>
-            Toast.show({
-              type: "success",
-              text1: "Закладка добавлена",
-              text2: "Страница сохранена",
-            })
-          }
+          onPress={() => toast.success("Закладка добавлена", { description: "Страница сохранена" })}
         />
         <NativeButton
           label="Показать ошибку"
           variant="destructive"
           fullWidth
           onPress={() =>
-            Toast.show({
-              type: "error",
-              text1: "Не удалось загрузить книгу",
-              text2: "Проверьте ссылку и попробуйте ещё раз",
+            toast.error("Не удалось загрузить книгу", {
+              description: "Проверьте ссылку и попробуйте ещё раз",
             })
           }
         />
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    flexGrow: 1,
     gap: 12,
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 32,
   },
   title: {
     fontFamily: headingFontFamily,

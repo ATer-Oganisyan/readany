@@ -70,6 +70,7 @@ module.exports = {
           enableBackgroundPlayback: true,
         },
       ],
+      "expo-video",
       [
         "expo-build-properties",
         {
@@ -95,6 +96,7 @@ module.exports = {
         },
       ],
       "expo-secure-store",
+      "expo-sharing",
       "expo-sqlite",
       "expo-asset",
       "./plugins/withIosSceneLifecycle",

@@ -1,5 +1,6 @@
+import { getStrokeIconImageSource, resolveSystemIconName } from "@/components/ui/MishanaerIcon";
 import { NativeButton } from "@/components/ui/NativeButton";
-import type { NativeButtonIcon } from "@/components/ui/NativeButton.types";
+import { type NativeButtonIcon, nativeButtonIconNames } from "@/components/ui/NativeButton.types";
 import { NativeContextMenuButton } from "@/components/ui/NativeContextMenuButton";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useNavigation } from "@react-navigation/native";
@@ -79,14 +80,20 @@ function iosActions(actions: NativeHeaderItem[]) {
             type: "menu" as const,
             label: action.label,
             accessibilityLabel: action.accessibilityLabel ?? action.label,
-            icon: { type: "sfSymbol" as const, name: action.sfSymbol as never },
+            icon: {
+              type: "image" as const,
+              source: getStrokeIconImageSource(nativeButtonIconNames[action.icon]),
+            },
             disabled: action.disabled,
             menu: {
               items: action.items.map((item) => ({
                 type: "action" as const,
                 label: item.label,
                 icon: item.sfSymbol
-                  ? { type: "sfSymbol" as const, name: item.sfSymbol as never }
+                  ? {
+                      type: "image" as const,
+                      source: getStrokeIconImageSource(resolveSystemIconName(item.sfSymbol)),
+                    }
                   : undefined,
                 onPress: item.onPress,
                 disabled: item.disabled,
@@ -98,7 +105,10 @@ function iosActions(actions: NativeHeaderItem[]) {
             type: "button" as const,
             label: action.label,
             accessibilityLabel: action.accessibilityLabel ?? action.label,
-            icon: { type: "sfSymbol" as const, name: action.sfSymbol as never },
+            icon: {
+              type: "image" as const,
+              source: getStrokeIconImageSource(nativeButtonIconNames[action.icon]),
+            },
             onPress: action.onPress,
             disabled: action.disabled,
             variant: action.destructive ? ("plain" as const) : undefined,

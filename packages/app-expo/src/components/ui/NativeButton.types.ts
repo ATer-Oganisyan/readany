@@ -1,4 +1,5 @@
 import type { StyleProp, ViewStyle } from "react-native";
+import type { MishanaerIconName } from "./MishanaerIcon";
 
 export type NativeButtonVariant = "primary" | "secondary" | "tertiary" | "destructive";
 export type NativeButtonSize = "small" | "medium" | "large";
@@ -20,6 +21,26 @@ export type NativeButtonIcon =
   | "settings"
   | "share"
   | "sparkles";
+
+export const nativeButtonIconNames: Record<NativeButtonIcon, MishanaerIconName> = {
+  add: "plus",
+  back: "arrow-left",
+  forward: "arrow-right",
+  image: "image",
+  check: "check",
+  chat: "chat-bubble",
+  close: "x",
+  components: "grid-2x2",
+  delete: "bin",
+  edit: "pencil",
+  play: "play",
+  refresh: "repeat",
+  search: "magnifying-glass",
+  send: "arrow-block-up",
+  settings: "gear",
+  share: "share-network",
+  sparkles: "sparkles",
+};
 
 export interface NativeButtonProps {
   label: string;

@@ -1,4 +1,11 @@
-import { EditIcon, PlusIcon, PuzzleIcon, Trash2Icon } from "@/components/ui/Icon";
+import {
+  EditIcon,
+  MishanaerIcon,
+  type MishanaerIconName,
+  PlusIcon,
+  PuzzleIcon,
+  Trash2Icon,
+} from "@/components/ui/Icon";
 import { Text, TextInput } from "@/components/ui/Typography";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
@@ -33,15 +40,15 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-const SKILL_ICONS: Record<string, string> = {
-  summarizer: "📝",
-  "concept-explainer": "💡",
-  "argument-analyzer": "⚖️",
-  "character-tracker": "👥",
-  "quote-collector": "✨",
-  "reading-guide": "📖",
-  translator: "🌐",
-  "vocabulary-builder": "📚",
+const SKILL_ICONS: Record<string, MishanaerIconName> = {
+  summarizer: "note",
+  "concept-explainer": "lightbulb",
+  "argument-analyzer": "scales-of-justice",
+  "character-tracker": "people",
+  "quote-collector": "quote-left",
+  "reading-guide": "book-open",
+  translator: "translate",
+  "vocabulary-builder": "books-spines",
 };
 
 export default function SkillsScreen() {
@@ -213,7 +220,11 @@ export default function SkillsScreen() {
           onPress={() => handleEditSkill(skill)}
           activeOpacity={0.7}
         >
-          <Text style={s.skillEmoji}>{SKILL_ICONS[skill.id] || "🔧"}</Text>
+          <MishanaerIcon
+            name={SKILL_ICONS[skill.id] ?? "wrench"}
+            size={24}
+            color={colors.mutedForeground}
+          />
           <View style={s.skillInfo}>
             <Text style={s.skillName}>{skill.name}</Text>
             <Text style={s.skillDesc} numberOfLines={1}>
@@ -249,7 +260,11 @@ export default function SkillsScreen() {
       ) : (
         customList.map((skill) => (
           <View key={skill.id} style={s.skillCard}>
-            <Text style={s.skillEmoji}>{SKILL_ICONS[skill.id] || "🔧"}</Text>
+            <MishanaerIcon
+              name={SKILL_ICONS[skill.id] ?? "wrench"}
+              size={24}
+              color={colors.mutedForeground}
+            />
             <TouchableOpacity style={s.skillInfo} onPress={() => handleEditSkill(skill)}>
               <Text style={s.skillName}>{skill.name}</Text>
               <Text style={s.skillDesc} numberOfLines={1}>
@@ -425,7 +440,6 @@ const makeStyles = (colors: ThemeColors) =>
       padding: 16,
       marginBottom: 8,
     },
-    skillEmoji: { fontSize: 24 },
     skillInfo: { flex: 1, minWidth: 0 },
     skillName: { fontSize: fontSize.md, fontWeight: fontWeight.medium, color: colors.foreground },
     skillDesc: { fontSize: fontSize.sm, color: colors.mutedForeground, marginTop: 2 },

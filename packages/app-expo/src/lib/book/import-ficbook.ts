@@ -46,10 +46,12 @@ const REQUEST_HEADERS: Record<string, string> = {
 
 /** Пауза между последовательными запросами глав — не дразнить антибот. */
 const DEFAULT_CHAPTER_DELAY_MS = 400;
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
 export type FicbookImportErrorCode =
   | "ficbook-blocked"
   | "ficbook-not-found"
+  | "ficbook-timeout"
   | "ficbook-network"
   | "ficbook-parse";
 
@@ -416,6 +418,8 @@ export interface FicbookFetchOptions {
   fetchImpl?: typeof globalThis.fetch;
   /** Пауза между запросами глав; в тестах передавайте 0. */
   chapterDelayMs?: number;
+  /** Максимальное ожидание одного ответа Фикбука; в тестах можно уменьшить. */
+  requestTimeoutMs?: number;
 }
 
 async function resolveFetch(options: FicbookFetchOptions): Promise<typeof globalThis.fetch> {
@@ -430,11 +434,43 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function fetchFicbookHtml(fetchImpl: typeof globalThis.fetch, url: string): Promise<string> {
+async function fetchFicbookResponse(
+  fetchImpl: typeof globalThis.fetch,
+  url: string,
+  requestTimeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController();
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      controller.abort();
+      reject(new FicbookImportError("ficbook-timeout"));
+    }, requestTimeoutMs);
+  });
+
+  try {
+    return await Promise.race([
+      fetchImpl(url, { headers: REQUEST_HEADERS, signal: controller.signal }),
+      timeoutPromise,
+    ]);
+  } catch (error) {
+    if (error instanceof FicbookImportError) throw error;
+    throw new FicbookImportError("ficbook-network");
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  }
+}
+
+async function fetchFicbookHtml(
+  fetchImpl: typeof globalThis.fetch,
+  url: string,
+  requestTimeoutMs: number,
+): Promise<string> {
   let response: Response;
   try {
-    response = await fetchImpl(url, { headers: REQUEST_HEADERS });
-  } catch {
+    response = await fetchFicbookResponse(fetchImpl, url, requestTimeoutMs);
+  } catch (error) {
+    if (error instanceof FicbookImportError) throw error;
     throw new FicbookImportError("ficbook-network");
   }
   if (response.status === 403 || response.status === 429) {
@@ -452,9 +488,10 @@ async function fetchFicbookHtml(fetchImpl: typeof globalThis.fetch, url: string)
 async function fetchCover(
   fetchImpl: typeof globalThis.fetch,
   coverUrl: string,
+  requestTimeoutMs: number,
 ): Promise<{ bytes: Uint8Array; mimeType: string } | null> {
   try {
-    const response = await fetchImpl(coverUrl, { headers: REQUEST_HEADERS });
+    const response = await fetchFicbookResponse(fetchImpl, coverUrl, requestTimeoutMs);
     if (!response.ok) return null;
     const bytes = new Uint8Array(await response.arrayBuffer());
     if (bytes.length === 0) return null;
@@ -481,7 +518,7 @@ function sanitizeFileName(title: string): string {
 /**
  * Полный импорт: страница фанфика → главы по очереди → EPUB-байты.
  * Бросает FicbookImportError с кодами ficbook-blocked / ficbook-not-found /
- * ficbook-network / ficbook-parse.
+ * ficbook-timeout / ficbook-network / ficbook-parse.
  */
 export async function importFicbookFromUrl(
   rawUrl: string,
@@ -494,9 +531,10 @@ export async function importFicbookFromUrl(
 
   const fetchImpl = await resolveFetch(options);
   const chapterDelayMs = options.chapterDelayMs ?? DEFAULT_CHAPTER_DELAY_MS;
+  const requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
 
   const workUrl = `${FICBOOK_ORIGIN}/readfic/${ref.workId}`;
-  const workHtml = await fetchFicbookHtml(fetchImpl, workUrl);
+  const workHtml = await fetchFicbookHtml(fetchImpl, workUrl, requestTimeoutMs);
   const work = parseFicbookWorkPage(workHtml, ref.workId);
 
   const chapters: FicbookChapter[] = [];
@@ -508,7 +546,7 @@ export async function importFicbookFromUrl(
       if (index > 0 && chapterDelayMs > 0) {
         await sleep(chapterDelayMs);
       }
-      const chapterHtml = await fetchFicbookHtml(fetchImpl, chapterRef.url);
+      const chapterHtml = await fetchFicbookHtml(fetchImpl, chapterRef.url, requestTimeoutMs);
       const chapter = parseFicbookChapterPage(chapterHtml);
       chapters.push({
         title: chapter.title || chapterRef.title,
@@ -521,7 +559,7 @@ export async function importFicbookFromUrl(
     throw new FicbookImportError("ficbook-parse");
   }
 
-  const cover = work.coverUrl ? await fetchCover(fetchImpl, work.coverUrl) : null;
+  const cover = work.coverUrl ? await fetchCover(fetchImpl, work.coverUrl, requestTimeoutMs) : null;
 
   const epubBytes = buildFicbookEpub({
     workId: ref.workId,

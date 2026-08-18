@@ -1,3 +1,4 @@
+import { toast } from "@/lib/notifications";
 import { useLibraryStore } from "@/stores";
 import type { ImportBooksResult } from "@readany/core";
 import * as DocumentPicker from "expo-document-picker";
@@ -37,6 +38,10 @@ interface UseBookImportActionsOptions {
   onImportComplete?: (importedCount: number) => void;
 }
 
+type ImportToastId = string | number;
+
+const RESULT_TOAST_DURATION_MS = 4000;
+
 export function useBookImportActions({ onImportComplete }: UseBookImportActionsOptions = {}) {
   const { t } = useTranslation();
   const importBooks = useLibraryStore((state) => state.importBooks);
@@ -45,17 +50,27 @@ export function useBookImportActions({ onImportComplete }: UseBookImportActionsO
   const localImportInFlightRef = useRef(false);
 
   const showImportSummary = useCallback(
-    (summary: ImportBooksResult) => {
+    (summary: ImportBooksResult, toastId?: ImportToastId) => {
       onImportComplete?.(summary.imported.length);
-      if (summary.imported.length === 0 || summary.failures.length > 0) {
-        Alert.alert(
+      const description = t("library.importResultSummary", {
+        imported: summary.imported.length,
+        skipped: summary.skippedDuplicates.length,
+        failed: summary.failures.length,
+      });
+      const toastOptions = {
+        description,
+        duration: RESULT_TOAST_DURATION_MS,
+        id: toastId,
+      };
+      if (summary.failures.length > 0) {
+        toast.error(
           t("library.importSourceUrlErrorTitle", "Не получилось добавить книгу"),
-          t("library.importResultSummary", {
-            imported: summary.imported.length,
-            skipped: summary.skippedDuplicates.length,
-            failed: summary.failures.length,
-          }),
+          toastOptions,
         );
+      } else if (summary.imported.length > 0) {
+        toast.success(t("common.success", "Книга добавлена"), toastOptions);
+      } else {
+        toast.warning(t("library.importSourceUrlErrorTitle", "Книга не добавлена"), toastOptions);
       }
     },
     [onImportComplete, t],
@@ -101,6 +116,7 @@ export function useBookImportActions({ onImportComplete }: UseBookImportActionsO
     async (rawValue: string) => {
       const value = rawValue.trim();
       let temporaryFile: ExpoFile | null = null;
+      let loadingToastId: string | number | undefined;
 
       try {
         const url = new URL(value);
@@ -108,10 +124,18 @@ export function useBookImportActions({ onImportComplete }: UseBookImportActionsO
           throw new Error("invalid-url");
         }
 
+        setIsUrlImporting(true);
+        loadingToastId = toast.loading(t("library.downloading", "Загрузка книги…"), {
+          description: t(
+            "library.importSourceUrlDesc",
+            "Скачиваем книгу по ссылке. Это может занять несколько секунд.",
+          ),
+          duration: Number.POSITIVE_INFINITY,
+        });
+
         // Фанфики Фикбука качаются и собираются в EPUB отдельным модулем (P11).
         const ficbook = await import("@/lib/book/import-ficbook");
         if (ficbook.parseFicbookUrl(value)) {
-          setIsUrlImporting(true);
           const fanfic = await ficbook.importFicbookFromUrl(value);
           temporaryFile = new ExpoFile(Paths.cache, `readany-ficbook-${Date.now()}.epub`);
           if (temporaryFile.exists) {
@@ -121,19 +145,19 @@ export function useBookImportActions({ onImportComplete }: UseBookImportActionsO
           const ficbookSummary = await importBooks([
             { uri: temporaryFile.uri, name: fanfic.fileName },
           ]);
-          showImportSummary(ficbookSummary);
+          showImportSummary(ficbookSummary, loadingToastId);
           return;
         }
 
         const fileName = getUrlImportFilename(url);
         temporaryFile = new ExpoFile(Paths.cache, `readany-url-${Date.now()}-${fileName}`);
-        setIsUrlImporting(true);
         const downloadedFile = await ExpoFile.downloadFileAsync(url.toString(), temporaryFile, {
           idempotent: true,
         });
         const summary = await importBooks([{ uri: downloadedFile.uri, name: fileName }]);
-        showImportSummary(summary);
+        showImportSummary(summary, loadingToastId);
       } catch (error) {
+        console.info("[BookImport][url] Failed:", error);
         const errorCode = error instanceof Error ? error.message : "";
         const message =
           errorCode === "ficbook-blocked"
@@ -146,19 +170,25 @@ export function useBookImportActions({ onImportComplete }: UseBookImportActionsO
                   "library.importSourceUrlFicbookNotFound",
                   "Фанфик по этой ссылке не найден. Проверьте адрес и попробуйте снова.",
                 )
-              : errorCode === "unsupported-url"
+              : errorCode === "ficbook-timeout"
                 ? t(
-                    "library.importSourceUrlUnsupported",
-                    "Нужна прямая ссылка на файл EPUB, PDF, TXT или другого поддерживаемого формата — либо ссылка на фанфик Фикбука.",
+                    "library.importSourceUrlFicbookTimeout",
+                    "Фикбук не ответил вовремя. Попробуйте добавить книгу ещё раз позже.",
                   )
-                : t(
-                    "library.importSourceUrlError",
-                    "Проверьте ссылку и подключение к интернету, затем попробуйте снова.",
-                  );
-        Alert.alert(
-          t("library.importSourceUrlErrorTitle", "Не получилось добавить книгу"),
-          message,
-        );
+                : errorCode === "unsupported-url"
+                  ? t(
+                      "library.importSourceUrlUnsupported",
+                      "Нужна прямая ссылка на файл EPUB, PDF, TXT или другого поддерживаемого формата — либо ссылка на фанфик Фикбука.",
+                    )
+                  : t(
+                      "library.importSourceUrlError",
+                      "Проверьте ссылку и подключение к интернету, затем попробуйте снова.",
+                    );
+        toast.error(t("library.importSourceUrlErrorTitle", "Не получилось добавить книгу"), {
+          description: message,
+          duration: RESULT_TOAST_DURATION_MS,
+          id: loadingToastId,
+        });
       } finally {
         setIsUrlImporting(false);
         if (temporaryFile?.exists) {
@@ -183,10 +213,9 @@ export function useBookImportActions({ onImportComplete }: UseBookImportActionsO
       }
     } catch (error) {
       console.error("Native URL prompt failed:", error);
-      Alert.alert(
-        t("library.importSourceUrlErrorTitle", "Не получилось добавить книгу"),
-        t("library.importSourceUrlError", "Проверьте ссылку и попробуйте снова."),
-      );
+      toast.error(t("library.importSourceUrlErrorTitle", "Не получилось добавить книгу"), {
+        description: t("library.importSourceUrlError", "Проверьте ссылку и попробуйте снова."),
+      });
     }
   }, [handleUrlImport, t]);
 

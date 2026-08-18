@@ -1,4 +1,4 @@
-import { BookOpenIcon, MoreVerticalIcon, ShareIcon } from "@/components/ui/Icon";
+import { MishanaerIcon, resolveSystemIconName } from "@/components/ui/MishanaerIcon";
 import { Text } from "@/components/ui/Typography";
 import { fontSize, fontWeight, radius, useColors } from "@/styles/theme";
 import { useCallback, useState } from "react";
@@ -49,13 +49,7 @@ export function NativeContextMenuButton({
         activeOpacity={0.7}
         onPress={() => setOpenState(true)}
       >
-        {sfSymbol.startsWith("book") ? (
-          <BookOpenIcon size={18} color={iconColor} />
-        ) : sfSymbol === "square.and.arrow.up" ? (
-          <ShareIcon size={18} color={iconColor} />
-        ) : (
-          <MoreVerticalIcon size={18} color={iconColor} />
-        )}
+        <MishanaerIcon name={resolveSystemIconName(sfSymbol)} size={18} color={iconColor} />
       </TouchableOpacity>
 
       <Modal

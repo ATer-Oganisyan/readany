@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Narra — персонажи</title>
+    <style>
+      @font-face {
+        font-family: "SB Serif Text";
+        src: url("/packages/deslop-primitives/fonts/SBSerifText-Regular.otf") format("opentype");
+        font-display: swap;
+      }
+
+      :root {
+        color-scheme: dark;
+        --background: #111111;
+        --text: #ffffff;
+        --muted: rgba(255, 255, 255, 0.56);
+        --line: rgba(255, 255, 255, 0.16);
+        --space: 24px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        min-width: 320px;
+        min-height: 100%;
+        margin: 0;
+        background: var(--background);
+        color: var(--text);
+      }
+
+      body {
+        display: grid;
+        min-height: 100svh;
+        place-items: start center;
+        padding: 32px var(--space) 56px;
+      }
+
+      .gallery {
+        display: grid;
+        width: min(1480px, 100%);
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: var(--space);
+        align-items: start;
+      }
+
+      figure {
+        min-width: 0;
+        margin: 0;
+      }
+
+      video {
+        display: block;
+        width: 100%;
+        height: auto;
+        object-fit: contain;
+        border-radius: 1px;
+        background: var(--background);
+      }
+
+      figcaption {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        padding-top: 10px;
+        font-family: "SB Serif Text", serif;
+        font-size: clamp(18px, 1.8vw, 28px);
+        line-height: 1;
+        letter-spacing: -0.025em;
+      }
+
+      figcaption small {
+        color: var(--muted);
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 10px;
+        letter-spacing: 0.08em;
+        line-height: 1.2;
+        text-transform: uppercase;
+      }
+
+      @media (max-width: 900px) {
+        :root {
+          --space: 16px;
+        }
+
+        .gallery {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: var(--space);
+        }
+      }
+
+      @media (max-width: 480px) {
+        body {
+          padding: 20px 14px 36px;
+        }
+
+        .gallery {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="gallery" aria-label="Анимации персонажей">
+      <figure>
+        <video aria-label="Анна Каренина — Grok" autoplay muted loop playsinline preload="auto" poster="/packages/app-expo/assets/catalog/characters/anna-karenina/anna-karenina.jpg" src="/packages/app-expo/assets/catalog/character-video-samples/anna-karenina-grok-eyebrow-hair-only-batch5-boomerang.mp4"></video>
+        <figcaption><span>Анна Каренина</span><small>Grok · 8 s</small></figcaption>
+      </figure>
+
+      <figure>
+        <video aria-label="Родион Раскольников — Grok" autoplay muted loop playsinline preload="auto" poster="/packages/app-expo/assets/catalog/characters/crime-and-punishment/rodion-raskolnikov.jpg" src="/packages/app-expo/assets/catalog/character-video-samples/rodion-raskolnikov-grok-eyebrow-hair-only-batch5-boomerang.mp4"></video>
+        <figcaption><span>Родион Раскольников</span><small>Grok · 8 s</small></figcaption>
+      </figure>
+
+      <figure>
+        <video aria-label="Буратино — Grok" autoplay muted loop playsinline preload="auto" poster="/packages/app-expo/assets/catalog/characters/golden-key/buratino.jpg" src="/packages/app-expo/assets/catalog/character-video-samples/buratino-grok-eyebrow-hair-only-batch5-boomerang.mp4"></video>
+        <figcaption><span>Буратино</span><small>Grok · 8 s</small></figcaption>
+      </figure>
+
+      <figure>
+        <video aria-label="Наташа Ростова — Grok" autoplay muted loop playsinline preload="auto" poster="/packages/app-expo/assets/catalog/characters/war-and-peace/natasha-rostova.jpg" src="/packages/app-expo/assets/catalog/character-video-samples/natasha-rostova-grok-eyebrow-hair-only-batch5-boomerang.mp4"></video>
+        <figcaption><span>Наташа Ростова</span><small>Grok · 8 s</small></figcaption>
+      </figure>
+
+      <figure>
+        <video aria-label="Евгений Базаров — Grok" autoplay muted loop playsinline preload="auto" poster="/packages/app-expo/assets/catalog/characters/fathers-and-sons/evgeny-bazarov.jpg" src="/packages/app-expo/assets/catalog/character-video-samples/evgeny-bazarov-grok-eyebrow-hair-only-batch5-boomerang.mp4"></video>
+        <figcaption><span>Евгений Базаров</span><small>Grok · 8 s</small></figcaption>
+      </figure>
+
+      <figure>
+        <video aria-label="Евгений Онегин — Grok" autoplay muted loop playsinline preload="auto" poster="/packages/app-expo/assets/catalog/characters/eugene-onegin/eugene-onegin.jpg" src="/packages/app-expo/assets/catalog/character-video-samples/eugene-onegin-grok-eyebrow-hair-only-batch5-boomerang.mp4"></video>
+        <figcaption><span>Евгений Онегин</span><small>Grok · 8 s</small></figcaption>
+      </figure>
+
+      <figure>
+        <video aria-label="Григорий Печорин — Grok" autoplay muted loop playsinline preload="auto" poster="/packages/app-expo/assets/catalog/characters/hero-of-our-time/grigory-pechorin.jpg" src="/packages/app-expo/assets/catalog/character-video-samples/grigory-pechorin-grok-eyebrow-hair-only-batch5-boomerang.mp4"></video>
+        <figcaption><span>Григорий Печорин</span><small>Grok · 8 s</small></figcaption>
+      </figure>
+
+      <figure>
+        <video aria-label="Остап Бендер — Grok" autoplay muted loop playsinline preload="auto" poster="/packages/app-expo/assets/catalog/characters/twelve-chairs/ostap-bender.jpg" src="/packages/app-expo/assets/catalog/character-video-samples/ostap-bender-grok-eyebrow-hair-only-batch5-boomerang.mp4"></video>
+        <figcaption><span>Остап Бендер</span><small>Grok · 8 s</small></figcaption>
+      </figure>
+
+      <figure>
+        <video aria-label="Павел Чичиков — Grok" autoplay muted loop playsinline preload="auto" poster="/packages/app-expo/assets/catalog/characters/dead-souls/pavel-chichikov.jpg" src="/packages/app-expo/assets/catalog/character-video-samples/pavel-chichikov-grok-eyebrow-hair-only-batch5-boomerang.mp4"></video>
+        <figcaption><span>Павел Чичиков</span><small>Grok · 8 s</small></figcaption>
+      </figure>
+
+      <figure>
+        <video aria-label="Катерина Кабанова — Grok" autoplay muted loop playsinline preload="auto" poster="/packages/app-expo/assets/catalog/characters/thunderstorm/katerina-kabanova.jpg" src="/packages/app-expo/assets/catalog/character-video-samples/katerina-kabanova-grok-eyebrow-hair-only-batch5-boomerang.mp4"></video>
+        <figcaption><span>Катерина Кабанова</span><small>Grok · 8 s</small></figcaption>
+      </figure>
+    </main>
+
+    <script type="module">
+      import {
+        baseColors,
+        primaryColors,
+        spacingPixels,
+      } from "/packages/deslop-primitives/index.js";
+
+      const findColor = (collection, name) =>
+        collection.find((token) => token.name === name)?.dark;
+
+      const root = document.documentElement;
+      root.style.setProperty("--background", findColor(baseColors, "Background Primary"));
+      root.style.setProperty("--text", findColor(primaryColors, "Primary"));
+      root.style.setProperty("--space", `${spacingPixels[24]}px`);
+    </script>
+  </body>
+</html>

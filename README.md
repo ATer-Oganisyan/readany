@@ -207,26 +207,30 @@ pnpm install
 # Install/run the development build on iOS
 pnpm expo:ios
 
-# Install/run the development build on iOS Simulator
+# First install/rebuild the native development client on iOS Simulator
 pnpm expo:ios:simulator
+
+# Daily iOS Simulator run (reuses the installed client; no native build)
+pnpm expo:simulator
 
 # Install/run the development build on Android
 # Start an Android emulator first, or connect a device.
 pnpm expo:android
 
-# Start Metro for the installed development build
+# Start Metro on LAN for an installed development build on a physical phone
 pnpm expo:start
 ```
 
 Mobile development uses an Expo development build with `expo-dev-client`, not
 Expo Go. Expo Go cannot load ReadAny's native modules and app configuration. Use
 `pnpm expo:ios`, `pnpm expo:ios:simulator`, or `pnpm expo:android` the first
-time, or whenever native dependencies/configuration change, then use
-`pnpm expo:start` for daily JS debugging in the installed ReadAny development
-app.
+time, or whenever native dependencies/configuration change. For daily iOS
+Simulator work use `pnpm expo:simulator` (or the Codex `Run` action): it boots
+the Simulator, starts/reuses localhost Metro, and opens the installed client
+without `xcodebuild`. Use `pnpm expo:start` for a physical phone on LAN.
 
-For simulators, use `pnpm expo:ios:simulator` on iOS. For Android, start an
-Android emulator first, then run `pnpm expo:android`.
+For a native iOS rebuild, use `pnpm expo:ios:simulator` explicitly. For
+Android, start an Android emulator first, then run `pnpm expo:android`.
 
 Mobile app source lives in [`packages/app-expo`](packages/app-expo).
 
@@ -272,12 +276,15 @@ pnpm install
 pnpm tauri dev
 
 # Dev (Mobile - Expo development build, not Expo Go)
-# First install/run the native development build:
+# First install/rebuild the native development build:
 pnpm expo:ios
 pnpm expo:ios:simulator
 pnpm expo:android
 
-# Then start Metro for the installed development app:
+# Daily iOS Simulator run (no native build):
+pnpm expo:simulator
+
+# Start Metro on LAN for a physical phone:
 pnpm expo:start
 
 # Build
@@ -287,7 +294,8 @@ pnpm tauri build
 Mobile development uses `expo-dev-client`, so Expo Go is not supported. Re-run
 `pnpm expo:ios`, `pnpm expo:ios:simulator`, or `pnpm expo:android` after
 changing native dependencies, `app.config.js`, permissions, schemes, or build
-plugins.
+plugins. For daily iOS Simulator JS work, use `pnpm expo:simulator`; it does not
+rebuild the native app.
 
 **Requirements:** Node.js ≥18, pnpm ≥9, Rust (for Tauri), plus Xcode for iOS or
 Android Studio/SDK for Android mobile development.

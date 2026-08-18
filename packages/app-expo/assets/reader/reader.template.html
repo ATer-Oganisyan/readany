@@ -14,14 +14,6 @@
       font-display: swap;
     }
 
-    @font-face {
-      font-family: "Material Symbols Rounded";
-      src: url("__READANY_MATERIAL_SYMBOLS_ROUNDED_DATA_URL__") format("woff2");
-      font-style: normal;
-      font-weight: 100 700;
-      font-display: block;
-    }
-
     :root {
       /* @deslop/mini-app Snackbar + @deslop/primitives */
       --reader-snackbar-background: #11111199;
@@ -66,107 +58,6 @@
       height: 100%;
       position: relative;
       overflow: hidden;
-    }
-
-    #pull-bookmark-indicator {
-      position: absolute;
-      left: 0;
-      right: 0;
-      top: calc(env(safe-area-inset-top, 0px) + var(--reader-snackbar-block-inset));
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 0 var(--reader-snackbar-inline-inset);
-      transform: translateY(-32px) scale(0.96);
-      transform-origin: top center;
-      opacity: 0;
-      filter: blur(4px);
-      pointer-events: none;
-      z-index: 9000;
-      transition-property: opacity, transform, filter;
-      transition-duration: 180ms;
-      transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
-    }
-
-    #pull-bookmark-indicator[data-armed="true"] {
-      filter: blur(0);
-      transition-duration: 300ms;
-    }
-
-    /* While the finger is actively dragging the indicator, kill the transition
-       so the pill follows touch instantly. Re-enable on release for the
-       spring-back animation. */
-    #pull-bookmark-indicator[data-following="true"] {
-      transition: none;
-    }
-
-    #pull-bookmark-indicator .pill {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: fit-content;
-      max-width: 100%;
-      min-width: 0;
-      min-height: 50px;
-      padding: var(--reader-snackbar-padding);
-      gap: 8px;
-      border-radius: var(--reader-snackbar-radius);
-      background: var(--reader-snackbar-background);
-      color: var(--reader-snackbar-text);
-      font-family: "SB Sans Interface", system-ui, sans-serif;
-      font-size: 13px;
-      font-weight: 400;
-      line-height: 18px;
-      letter-spacing: 0;
-      text-align: center;
-      backdrop-filter: blur(25px);
-      -webkit-backdrop-filter: blur(25px);
-    }
-
-    #pull-bookmark-indicator .icon {
-      display: flex;
-      width: 20px;
-      height: 20px;
-      flex: 0 0 20px;
-      align-items: center;
-      justify-content: center;
-      opacity: 0;
-      filter: blur(4px);
-      transform: scale(0.25);
-      transition-property: opacity, transform, filter;
-      transition-duration: 180ms;
-      transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
-    }
-
-    #pull-bookmark-indicator .icon svg {
-      display: block;
-      width: 20px;
-      height: 20px;
-      fill: currentColor;
-    }
-
-    #pull-bookmark-indicator #pull-bookmark-indicator-text {
-      opacity: 0;
-      filter: blur(4px);
-      transform: translateY(4px);
-      transition-property: opacity, transform, filter;
-      transition-duration: 180ms;
-      transition-delay: 70ms;
-      transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
-    }
-
-    #pull-bookmark-indicator[data-armed="true"] .icon {
-      opacity: 1;
-      filter: blur(0);
-      transform: scale(1);
-      transition-duration: 300ms;
-    }
-
-    #pull-bookmark-indicator[data-armed="true"] #pull-bookmark-indicator-text {
-      opacity: 1;
-      filter: blur(0);
-      transform: translateY(0);
-      transition-duration: 220ms;
     }
 
     #loading {
@@ -226,17 +117,6 @@
     .book-page-loader[hidden],
     .error-text[hidden] {
       display: none;
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      #pull-bookmark-indicator,
-      #pull-bookmark-indicator[data-armed="true"],
-      #pull-bookmark-indicator .icon,
-      #pull-bookmark-indicator #pull-bookmark-indicator-text {
-        transition-duration: 0ms;
-        transition-delay: 0ms;
-      }
-
     }
 
     .error-text {
@@ -341,12 +221,6 @@
 
 <body>
   <div id="reader-container">
-    <div id="pull-bookmark-indicator" aria-hidden="true" data-armed="false">
-      <div class="pill">
-        <span class="icon" aria-hidden="true">__READANY_BOOKMARK_ADDED_ICON__</span>
-        <span id="pull-bookmark-indicator-text"></span>
-      </div>
-    </div>
     <div id="footnote-tip" role="tooltip" aria-hidden="true" data-state="closed" data-side="bottom">
       <span id="footnote-tip-content"></span>
     </div>
@@ -437,7 +311,6 @@
     let bookTextMetricsJobId = 0;
     let bookTextMetricsTimer = null;
     let bookmarkPullGestureActive = false;
-    let pullBookmarkResetTimer = null;
     let refreshAnnotationsTimer = null;
     let activeFootnoteTipKey = null;
     let activeFootnoteTipAnchor = null;
@@ -742,71 +615,20 @@
       });
     }
 
-    function getPullBookmarkElements() {
-      return {
-        indicator: document.getElementById('pull-bookmark-indicator'),
-        text: document.getElementById('pull-bookmark-indicator-text'),
-      };
-    }
-
     function setReaderTranslateY(offset, animated) {
       return;
     }
 
-    function updatePullBookmarkUI(offset, armed) {
-      const { indicator, text } = getPullBookmarkElements();
+    function updatePullBookmarkState(offset, armed) {
       const pullOffset = Math.max(0, Math.min(offset, 72));
       const easedOffset = Math.round(Math.min(58, pullOffset * 0.78));
       bookmarkPullGestureActive = pullOffset > 0;
-      if (text) text.textContent = bookmarkPullStateMeta.added;
-      if (indicator) {
-        indicator.dataset.following = 'true';
-        indicator.dataset.armed = armed ? 'true' : 'false';
-        indicator.style.opacity = '0';
-        indicator.style.transform = 'translateY(-32px) scale(0.96)';
-      }
       setReaderTranslateY(easedOffset, false);
       postToRN('bookmarkPull', { offset: easedOffset, armed, active: pullOffset > 0 });
     }
 
-    function showBookmarkAddedToast() {
-      const { indicator, text } = getPullBookmarkElements();
-      if (pullBookmarkResetTimer) clearTimeout(pullBookmarkResetTimer);
-      if (text) text.textContent = bookmarkPullStateMeta.added;
-      if (indicator) {
-        indicator.dataset.following = 'false';
-        indicator.dataset.armed = 'true';
-        indicator.style.opacity = '1';
-        indicator.style.transform = 'translateY(0) scale(1)';
-      }
-      pullBookmarkResetTimer = setTimeout(() => {
-        if (indicator) {
-          indicator.dataset.armed = 'false';
-          indicator.style.opacity = '0';
-          indicator.style.transform = 'translateY(-32px) scale(0.96)';
-        }
-        pullBookmarkResetTimer = null;
-      }, 1800);
-    }
-
-    function resetPullBookmarkUI(animated, preserveToast) {
-      const { indicator, text } = getPullBookmarkElements();
+    function resetPullBookmarkState(animated) {
       bookmarkPullGestureActive = false;
-      if (!preserveToast) {
-        if (pullBookmarkResetTimer) {
-          clearTimeout(pullBookmarkResetTimer);
-          pullBookmarkResetTimer = null;
-        }
-        if (text) text.textContent = bookmarkPullStateMeta.added;
-        if (indicator) {
-          indicator.dataset.following = 'false';
-          indicator.dataset.armed = 'false';
-          indicator.style.opacity = '0';
-          indicator.style.transform = 'translateY(-32px) scale(0.96)';
-        }
-      } else if (indicator) {
-        indicator.dataset.following = 'false';
-      }
       setReaderTranslateY(0, animated !== false);
       postToRN('bookmarkPull', { offset: 0, armed: false, active: false });
     }
@@ -2020,7 +1842,7 @@
         readerElement = el;
         el.style.width = '100%';
         el.style.height = '100%';
-        resetPullBookmarkUI(false);
+        resetPullBookmarkState(false);
 
         el.addEventListener('load', async (e) => {
           const { doc, index, primary } = e.detail;
@@ -2029,22 +1851,32 @@
             currentSectionUsesVerticalWriting = !el.isFixedLayout && isVerticalDoc(doc);
             applyRendererFlowMode(el.renderer);
           }
-          // The first chapter can paint as soon as Foliate emits `load`.
-          // Apply the complete saved typography before waiting for the font,
-          // otherwise the EPUB font is visible for one frame and then reflows.
+          // Inject the font faces first, but postpone the renderer layout until
+          // the selected font is ready. The loading layer stays visible during
+          // this wait, so the first visible frame already has final typography.
           if (msg.settings) {
-            applySettings(msg.settings);
+            updateSettingsState({
+              customFontFaceCSS: msg.settings.customFontFaceCSS,
+              customFontFamily: msg.settings.customFontFamily,
+            });
           }
           applyDocStyles(doc);
           try {
             if (doc.fonts && doc.fonts.ready) {
+              const requestedFontFamily = String(msg.settings?.customFontFamily || '').trim();
+              const selectedFontReady = requestedFontFamily && doc.fonts.load
+                ? doc.fonts.load(`16px ${JSON.stringify(requestedFontFamily)}`).catch(() => undefined)
+                : Promise.resolve();
               await Promise.race([
-                doc.fonts.ready,
+                Promise.all([doc.fonts.ready, selectedFontReady]),
                 new Promise((resolve) => setTimeout(resolve, 1200)),
               ]);
             }
           } catch (fontError) {
             console.warn('[Reader] Failed to await initial fonts:', fontError);
+          }
+          if (msg.settings) {
+            applySettings(msg.settings);
           }
           markLoaded();
           attachTapListener(doc);
@@ -2247,10 +2079,6 @@
               : currentPaginatedLayout;
           currentPaginatedLayout = paginatedLayout;
           applyFixedLayoutRendererSettings(renderer, currentPaginatedLayout);
-        }
-
-        if (msg.settings) {
-          applySettings(msg.settings);
         }
 
         if (el.isFixedLayout) {
@@ -3083,7 +2911,7 @@ a { color: ${primary} !important; }
             deltaY < -INTENT_THRESHOLD / 2
           ) {
             pullState.cancelled = true;
-            resetPullBookmarkUI(false);
+            resetPullBookmarkState(false);
             return;
           }
 
@@ -3101,7 +2929,7 @@ a { color: ${primary} !important; }
         }
 
         if (deltaY <= 0) {
-          resetPullBookmarkUI(false);
+          resetPullBookmarkState(false);
           return;
         }
 
@@ -3118,7 +2946,6 @@ a { color: ${primary} !important; }
           pullState.completed = true;
           lastTriggeredAt = Date.now();
           postToRN('toggleBookmark', {});
-          showBookmarkAddedToast();
         }
 
         if (pullState.completed) {
@@ -3128,7 +2955,7 @@ a { color: ${primary} !important; }
           setReaderTranslateY(easedOffset, false);
           postToRN('bookmarkPull', { offset: easedOffset, armed: true, active: pullOffset > 0 });
         } else {
-          updatePullBookmarkUI(Math.min(MAX_PULL_DISTANCE, deltaY), armed);
+          updatePullBookmarkState(Math.min(MAX_PULL_DISTANCE, deltaY), armed);
         }
       }, { passive: false, capture: true });
 
@@ -3147,7 +2974,7 @@ a { color: ${primary} !important; }
           e.stopPropagation();
         }
 
-        resetPullBookmarkUI(true, !!state.completed);
+        resetPullBookmarkState(true);
       }, { passive: false, capture: true });
 
       doc.addEventListener('touchcancel', () => {
@@ -3158,7 +2985,7 @@ a { color: ${primary} !important; }
             window.setNavigationLocked(false);
           }
         } catch (err) { /* no-op */ }
-        resetPullBookmarkUI(true, !!state?.completed);
+        resetPullBookmarkState(true);
       }, { passive: true, capture: true });
     }
 
@@ -4687,8 +4514,6 @@ a { color: ${primary} !important; }
         ...bookmarkPullStateMeta,
         ...(params || {}),
       };
-      const { text } = getPullBookmarkElements();
-      if (text) text.textContent = bookmarkPullStateMeta.added;
     };
     window.getVisibleText = function () {
       var result = doGetVisibleText();

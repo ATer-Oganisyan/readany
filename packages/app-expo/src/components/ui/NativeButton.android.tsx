@@ -1,32 +1,12 @@
-import { MaterialIcon } from "@/components/ui/Icon";
+import { MishanaerIcon } from "@/components/ui/Icon";
 import { Text } from "@/components/ui/Typography";
 import { useTheme } from "@/styles/theme";
 import { ActivityIndicator, Pressable, StyleSheet } from "react-native";
 import {
-  type NativeButtonIcon,
   type NativeButtonProps,
   nativeButtonHeights,
+  nativeButtonIconNames,
 } from "./NativeButton.types";
-
-const icons: Record<NativeButtonIcon, string> = {
-  add: "add",
-  back: "arrow_back",
-  forward: "arrow_forward",
-  image: "add_photo_alternate",
-  check: "check",
-  chat: "chat",
-  close: "close",
-  components: "apps",
-  delete: "delete",
-  edit: "edit",
-  play: "play_arrow",
-  refresh: "refresh",
-  search: "search",
-  send: "send",
-  settings: "settings",
-  share: "share",
-  sparkles: "auto_awesome",
-};
 
 export function NativeButton({
   label,
@@ -78,7 +58,9 @@ export function NativeButton({
         <ActivityIndicator color={content} />
       ) : (
         <>
-          {icon ? <MaterialIcon name={icons[icon]} size={20} color={content} /> : null}
+          {icon ? (
+            <MishanaerIcon name={nativeButtonIconNames[icon]} size={20} color={content} />
+          ) : null}
           <Text
             numberOfLines={1}
             adjustsFontSizeToFit

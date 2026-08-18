@@ -1,4 +1,6 @@
-import { Button, HStack, Host, ProgressView, Spacer } from "@expo/ui/swift-ui";
+import { HostedMishanaerIcon } from "@/components/ui/HostedMishanaerIcon";
+import type { MishanaerIconName } from "@/components/ui/MishanaerIcon";
+import { Button, HStack, Host, ProgressView, Spacer, Text } from "@expo/ui/swift-ui";
 import {
   Animation,
   accessibilityLabel,
@@ -13,7 +15,6 @@ import {
   progressViewStyle,
   tint,
 } from "@expo/ui/swift-ui/modifiers";
-import type { ComponentProps } from "react";
 import { useTranslation } from "react-i18next";
 import { Platform } from "react-native";
 import type { ReaderToolbarProps } from "./ReaderToolbar.types";
@@ -21,8 +22,6 @@ import type { ReaderToolbarProps } from "./ReaderToolbar.types";
 const TOOLBAR_HEIGHT = 50;
 const CONTROL_SIZE = 44;
 const NAVIGATION_HORIZONTAL_INSET = 20;
-
-type SFSymbol = NonNullable<ComponentProps<typeof Button>["systemImage"]>;
 
 export function ReaderToolbar(props: ReaderToolbarProps) {
   const { t } = useTranslation();
@@ -61,7 +60,7 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
   const speechLoading = props.speechState === "loading";
   const speechActive = props.speechState === "playing";
   const speechLabel = speechActive ? t("common.stop", "Стоп") : t("reader.listen", "Слушать");
-  const speechSymbol: SFSymbol = speechActive ? "stop.fill" : "airpods.max";
+  const speechIcon: MishanaerIconName = speechActive ? "stop" : "headphones";
   const speechLoadingLabel = t("reader.audioLoading", "Загрузка аудио");
 
   return (
@@ -92,20 +91,30 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
             />
           </Button>
         ) : (
-          <Button
-            label={speechLabel}
-            systemImage={speechSymbol}
-            onPress={props.onSpeechPress}
-            modifiers={makeModifiers(speechLabel)}
-          />
+          <Button onPress={props.onSpeechPress} modifiers={makeModifiers(speechLabel)}>
+            <HStack spacing={7} alignment="center">
+              <HostedMishanaerIcon
+                name={speechIcon}
+                variant="filled"
+                size={20}
+                color={props.tintColor}
+              />
+              <Text>{speechLabel}</Text>
+            </HStack>
+          </Button>
         )}
         <Spacer />
-        <Button
-          label={t("narra.chat", "Чат")}
-          systemImage="message.fill"
-          onPress={props.onChatPress}
-          modifiers={makeModifiers(t("narra.chat", "Чат"))}
-        />
+        <Button onPress={props.onChatPress} modifiers={makeModifiers(t("narra.chat", "Чат"))}>
+          <HStack spacing={7} alignment="center">
+            <HostedMishanaerIcon
+              name="chat-bubble"
+              variant="filled"
+              size={20}
+              color={props.tintColor}
+            />
+            <Text>{t("narra.chat", "Чат")}</Text>
+          </HStack>
+        </Button>
       </HStack>
     </Host>
   );
