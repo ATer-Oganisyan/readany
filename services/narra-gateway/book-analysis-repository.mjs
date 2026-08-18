@@ -1252,7 +1252,7 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
 
     async getResolveInput(job) {
       const run = await pool.query(
-        `SELECT run.id AS run_id, run.book_edition_id, run.prompt_version,
+        `SELECT run.id AS run_id, run.book_edition_id, run.pipeline_version, run.prompt_version,
                 run.normalized_text_hash, run.text_length, edition.title, edition.author
          FROM book_analysis_jobs AS job
          JOIN book_analysis_runs AS run ON run.id = job.run_id
@@ -1286,6 +1286,7 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
       return {
         runId: run.rows[0].run_id,
         bookEditionId: run.rows[0].book_edition_id,
+        pipelineVersion: run.rows[0].pipeline_version,
         title: run.rows[0].title,
         author: run.rows[0].author,
         extractorVersion: run.rows[0].prompt_version,

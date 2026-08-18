@@ -1,0 +1,454 @@
+{
+  "schemaVersion": 1,
+  "id": "alice-wonderland-pdnc-v1",
+  "goldCount": 50,
+  "significantCount": 11,
+  "source": {
+    "dataset": "PDNC",
+    "repository": "Priya22/project-dialogism-novel-corpus",
+    "repositoryCommit": "6fda0a78bda5e9da0854f7befb5dab268abefb7e",
+    "sourcePath": "data/AlicesAdventuresInWonderland/character_info.csv",
+    "sourceSha256": "86e9d06d36e764c680c61833be8310609ad20edf10f66cf90d786cb2d11efb97",
+    "rawCharacterRows": 51,
+    "denominatorProtocol": "Use every PDNC character row, merging source Character IDs 1 and 31 as the same Bill/Bill the Lizard identity; this gives 50 full-book identities.",
+    "significantProtocol": "PDNC Category is major or intermediate; this gives 11 significant identities.",
+    "aliasPolicy": "Only PDNC Main Name and Aliases values plus the frozen collision-free article normalization are accepted; no aliases are inferred from evaluated output.",
+    "articleNormalizationProtocol": "Mechanically remove exactly one leading English article (The, A, or An) from each PDNC Main Name or Alias, retaining the result only when its normalized surface belongs to one gold identity."
+  },
+  "gates": {
+    "precision": 0.9,
+    "recall": 0.9,
+    "f1": 0.9,
+    "criticalMerges": 0,
+    "duplicateRate": 0.05
+  },
+  "collisionGuards": [
+    {
+      "id": "alice_family",
+      "surfaces": ["Alice", "Alice'S Sister", "Her Sister"],
+      "goldIds": ["alice", "alices_sister"],
+      "reason": "A possessive family reference must not merge Alice with her sister."
+    },
+    {
+      "id": "hearts_court_titles",
+      "surfaces": ["The King Of Hearts", "The Queen Of Hearts", "The Knave Of Hearts", "The King", "The Queen"],
+      "goldIds": ["the_king_of_hearts", "the_queen", "the_knave_of_hearts"],
+      "reason": "Shared court titles and the Of Hearts suffix identify three different characters."
+    },
+    {
+      "id": "footmen_roles",
+      "surfaces": ["The Fish-Footman", "The Frog-Footman", "The Footman"],
+      "goldIds": ["the_fish_footman", "the_frog_footman"],
+      "reason": "The two footmen are distinct even though PDNC uses The Footman as an alias for the frog footman."
+    },
+    {
+      "id": "crab_generations",
+      "surfaces": ["An Old Crab", "Old Crab", "The Young Crab", "Young Crab"],
+      "goldIds": ["an_old_crab", "the_young_crab"],
+      "reason": "The old and young crabs are separate characters."
+    }
+  ],
+  "characters": [
+    {
+      "id": "alice",
+      "name": "Alice",
+      "sourceCharacterIds": [0],
+      "category": "major",
+      "significant": true,
+      "aliases": []
+    },
+    {
+      "id": "bill_the_lizard",
+      "name": "Bill, The Lizard",
+      "sourceCharacterIds": [1, 31],
+      "category": "minor",
+      "significant": false,
+      "aliases": ["Bill"]
+    },
+    {
+      "id": "five",
+      "name": "Five",
+      "sourceCharacterIds": [2],
+      "category": "minor",
+      "significant": false,
+      "aliases": []
+    },
+    {
+      "id": "hare",
+      "name": "Hare",
+      "sourceCharacterIds": [3],
+      "category": "minor",
+      "significant": false,
+      "aliases": ["March Hare"]
+    },
+    {
+      "id": "alices_sister",
+      "name": "Alice'S Sister",
+      "sourceCharacterIds": [4],
+      "category": "minor",
+      "significant": false,
+      "aliases": ["Her Sister"]
+    },
+    {
+      "id": "seven",
+      "name": "Seven",
+      "sourceCharacterIds": [5],
+      "category": "minor",
+      "significant": false,
+      "aliases": []
+    },
+    {
+      "id": "the_cat",
+      "name": "The Cat",
+      "sourceCharacterIds": [6],
+      "category": "intermediate",
+      "significant": true,
+      "aliases": ["Cheshire Cat", "Cat"]
+    },
+    {
+      "id": "the_caterpillar",
+      "name": "The Caterpillar",
+      "sourceCharacterIds": [7],
+      "category": "intermediate",
+      "significant": true,
+      "aliases": ["Caterpillar"]
+    },
+    {
+      "id": "the_cook",
+      "name": "The Cook",
+      "sourceCharacterIds": [8],
+      "category": "minor",
+      "significant": false,
+      "aliases": ["Cook"]
+    },
+    {
+      "id": "the_dodo",
+      "name": "The Dodo",
+      "sourceCharacterIds": [9],
+      "category": "minor",
+      "significant": false,
+      "aliases": ["Dodo"]
+    },
+    {
+      "id": "the_dormouse",
+      "name": "The Dormouse",
+      "sourceCharacterIds": [10],
+      "category": "intermediate",
+      "significant": true,
+      "aliases": ["A Dormouse", "Dormouse"]
+    },
+    {
+      "id": "the_duchess",
+      "name": "The Duchess",
+      "sourceCharacterIds": [11],
+      "category": "intermediate",
+      "significant": true,
+      "aliases": ["Duchess"]
+    },
+    {
+      "id": "the_executioner",
+      "name": "The Executioner",
+      "sourceCharacterIds": [12],
+      "category": "minor",
+      "significant": false,
+      "aliases": ["Executioner"]
+    },
+    {
+      "id": "the_gryphon",
+      "name": "The Gryphon",
+      "sourceCharacterIds": [13],
+      "category": "intermediate",
+      "significant": true,
+      "aliases": ["A Gryphon", "Gryphon"]
+    },
+    {
+      "id": "the_hatter",
+      "name": "The Hatter",
+      "sourceCharacterIds": [14],
+      "category": "intermediate",
+      "significant": true,
+      "aliases": ["Hatter"]
+    },
+    {
+      "id": "the_king_of_hearts",
+      "name": "The King Of Hearts",
+      "sourceCharacterIds": [15],
+      "category": "intermediate",
+      "significant": true,
+      "aliases": ["The King", "King Of Hearts", "King"]
+    },
+    {
+      "id": "the_knave_of_hearts",
+      "name": "The Knave Of Hearts",
+      "sourceCharacterIds": [16],
+      "category": "minor",
+      "significant": false,
+      "aliases": ["Knave Of Hearts"]
+    },
+    {
+      "id": "the_mock_turtle",
+      "name": "The Mock Turtle",
+      "sourceCharacterIds": [17],
+      "category": "intermediate",
+      "significant": true,
+      "aliases": ["Mock Turtle"]
+    },
+    {
+      "id": "the_mouse",
+      "name": "The Mouse",
+      "sourceCharacterIds": [18],
+      "category": "minor",
+      "significant": false,
+      "aliases": ["Mouse"]
+    },
+    {
+      "id": "the_pigeon",
+      "name": "The Pigeon",
+      "sourceCharacterIds": [19],
+      "category": "minor",
+      "significant": false,
+      "aliases": ["Pigeon"]
+    },
+    {
+      "id": "the_queen",
+      "name": "The Queen",
+      "sourceCharacterIds": [20],
+      "category": "intermediate",
+      "significant": true,
+      "aliases": ["The Queen Of Hearts", "Queen", "Queen Of Hearts"]
+    },
+    {
+      "id": "the_white_rabbit",
+      "name": "The White Rabbit",
+      "sourceCharacterIds": [21],
+      "category": "intermediate",
+      "significant": true,
+      "aliases": ["The Rabbit", "White Rabbit", "Rabbit"]
+    },
+    {
+      "id": "time",
+      "name": "Time",
+      "sourceCharacterIds": [22],
+      "category": "minor",
+      "significant": false,
+      "aliases": []
+    },
+    {
+      "id": "tortoise",
+      "name": "Tortoise",
+      "sourceCharacterIds": [23],
+      "category": "minor",
+      "significant": false,
+      "aliases": []
+    },
+    {
+      "id": "two",
+      "name": "Two",
+      "sourceCharacterIds": [24],
+      "category": "minor",
+      "significant": false,
+      "aliases": []
+    },
+    {
+      "id": "a_canary",
+      "name": "A Canary",
+      "sourceCharacterIds": [25],
+      "category": "minor",
+      "significant": false,
+      "aliases": ["Canarie", "Canary"]
+    },
+    {
+      "id": "a_farmer",
+      "name": "A Farmer",
+      "sourceCharacterIds": [26],
+      "category": "minor",
+      "significant": false,
+      "aliases": ["Farmer"]
+    },
+    {
+      "id": "a_little_bright_eyed_terrier",
+      "name": "A Little Bright-Eyed Terrier",
+      "sourceCharacterIds": [27],
+      "category": "minor",
+      "significant": false,
+      "aliases": ["Little Bright-Eyed Terrier"]
+    },
+    {
+      "id": "ada",
+      "name": "Ada",
+      "sourceCharacterIds": [28],
+      "category": "minor",
+      "significant": false,
+      "aliases": []
+    },
+    {
+      "id": "an_enormous_puppy",
+      "name": "An Enormous Puppy",
+      "sourceCharacterIds": [29],
+      "category": "minor",
+      "significant": false,
+      "aliases": ["Enormous Puppy"]
+    },
+    {
+      "id": "an_old_crab",
+      "name": "An Old Crab",
+      "sourceCharacterIds": [30],
+      "category": "minor",
+      "significant": false,
+      "aliases": ["Old Crab"]
+    },
+    {
+      "id": "dinah",
+      "name": "Dinah",
+      "sourceCharacterIds": [32],
+      "category": "minor",
+      "significant": false,
+      "aliases": []
+    },
+    {
+      "id": "edgar_atheling",
+      "name": "Edgar Atheling",
+      "sourceCharacterIds": [33],
+      "category": "minor",
+      "significant": false,
+      "aliases": []
+    },
+    {
+      "id": "edwin",
+      "name": "Edwin",
+      "sourceCharacterIds": [34],
+      "category": "minor",
+      "significant": false,
+      "aliases": []
+    },
+    {
+      "id": "mabel",
+      "name": "Mabel",
+      "sourceCharacterIds": [35],
+      "category": "minor",
+      "significant": false,
+      "aliases": []
+    },
+    {
+      "id": "mary_ann",
+      "name": "Mary Ann",
+      "sourceCharacterIds": [36],
+      "category": "minor",
+      "significant": false,
+      "aliases": []
+    },
+    {
+      "id": "morcar",
+      "name": "Morcar",
+      "sourceCharacterIds": [37],
+      "category": "minor",
+      "significant": false,
+      "aliases": []
+    },
+    {
+      "id": "old_magpie",
+      "name": "Old Magpie",
+      "sourceCharacterIds": [38],
+      "category": "minor",
+      "significant": false,
+      "aliases": ["Magpie"]
+    },
+    {
+      "id": "pat",
+      "name": "Pat",
+      "sourceCharacterIds": [39],
+      "category": "minor",
+      "significant": false,
+      "aliases": []
+    },
+    {
+      "id": "stigand",
+      "name": "Stigand",
+      "sourceCharacterIds": [40],
+      "category": "minor",
+      "significant": false,
+      "aliases": []
+    },
+    {
+      "id": "the_baby",
+      "name": "The Baby",
+      "sourceCharacterIds": [41],
+      "category": "minor",
+      "significant": false,
+      "aliases": ["Baby"]
+    },
+    {
+      "id": "the_duck",
+      "name": "The Duck",
+      "sourceCharacterIds": [42],
+      "category": "minor",
+      "significant": false,
+      "aliases": ["Duck"]
+    },
+    {
+      "id": "the_eaglet",
+      "name": "The Eaglet",
+      "sourceCharacterIds": [43],
+      "category": "minor",
+      "significant": false,
+      "aliases": ["Eaglet"]
+    },
+    {
+      "id": "the_fish_footman",
+      "name": "The Fish-Footman",
+      "sourceCharacterIds": [44],
+      "category": "minor",
+      "significant": false,
+      "aliases": ["Fish-Footman"]
+    },
+    {
+      "id": "the_frog_footman",
+      "name": "The Frog-Footman",
+      "sourceCharacterIds": [45],
+      "category": "minor",
+      "significant": false,
+      "aliases": ["The Footman", "Frog-Footman", "Footman"]
+    },
+    {
+      "id": "the_little_crocodile",
+      "name": "The Little Crocodile",
+      "sourceCharacterIds": [46],
+      "category": "minor",
+      "significant": false,
+      "aliases": ["Little Crocodile"]
+    },
+    {
+      "id": "the_lory",
+      "name": "The Lory",
+      "sourceCharacterIds": [47],
+      "category": "minor",
+      "significant": false,
+      "aliases": ["Lory"]
+    },
+    {
+      "id": "the_pope",
+      "name": "The Pope",
+      "sourceCharacterIds": [48],
+      "category": "minor",
+      "significant": false,
+      "aliases": ["Pope"]
+    },
+    {
+      "id": "the_young_crab",
+      "name": "The Young Crab",
+      "sourceCharacterIds": [49],
+      "category": "minor",
+      "significant": false,
+      "aliases": ["Young Crab"]
+    },
+    {
+      "id": "william_the_conqueror",
+      "name": "William The Conqueror",
+      "sourceCharacterIds": [50],
+      "category": "minor",
+      "significant": false,
+      "aliases": []
+    }
+  ],
+  "knownExtras": []
+}

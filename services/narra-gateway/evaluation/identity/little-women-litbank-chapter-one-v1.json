@@ -1,0 +1,139 @@
+{
+  "schemaVersion": 1,
+  "id": "little-women-litbank-chapter-one-v1",
+  "goldCount": 6,
+  "significantCount": 6,
+  "source": {
+    "dataset": "LitBank",
+    "repositoryUrl": "https://github.com/dbamman/litbank",
+    "license": "CC BY 4.0",
+    "documentId": "514_little_women",
+    "gutenbergId": 514,
+    "fragment": "Chapter One: Playing Pilgrims; the complete LitBank-provided fragment, ending after Beth proposes buying Marmee slippers",
+    "annotationPath": "coref/brat/514_little_women_brat.ann",
+    "textPath": "coref/brat/514_little_women_brat.txt",
+    "annotationSha256": "1873c9a08e2c95d47072eb559ce76695fc56f5b3790f3a387ce7736404e7bad9",
+    "textSha256": "faddb22c433b8b9444077bd6c8131e3eb0b06fb45a4480f0a24b68a8a56d6d9c",
+    "annotationBytes": 18601,
+    "textBytes": 8949,
+    "targetProtocol": "exactly the six named March-family person identity chains requested before inspecting stage-4 output; both full and significant denominators are N=6",
+    "targetClusterIds": ["Jo-1", "Meg-2", "Amy-3", "Beth-9", "Mother-8", "Father-7"],
+    "totalTargetMentions": 185,
+    "aliasPolicy": "only unambiguous name-like surfaces in the frozen LitBank chains; pronouns, relational descriptions, common roles, copular personas, and names absent from this fragment are excluded",
+    "outOfScopeNames": [
+      "Jo March",
+      "Meg March",
+      "Margaret March",
+      "Amy March",
+      "Beth March",
+      "Mrs. March",
+      "Mr. March"
+    ],
+    "blockedPersonas": [
+      {
+        "surfaces": ["Miss March"],
+        "litbankClusterIds": ["Miss_March-700"],
+        "reason": "The fragment uses this as Jo's hypothetical future social persona; LitBank keeps it separate from every sister identity chain."
+      },
+      {
+        "surfaces": ["a girl", "boy", "a boy", "a woman", "a young lady"],
+        "litbankClusterIds": ["a_girl-31", "boy-32", "a_boy-33", "a_woman-41"],
+        "reason": "Generic and hypothetical gender personas are not identity aliases for Jo or another sister."
+      }
+    ]
+  },
+  "gates": {
+    "precision": 0.9,
+    "recall": 0.9,
+    "f1": 0.9,
+    "criticalMerges": 0,
+    "duplicateRate": 0.05
+  },
+  "collisionGuards": [
+    {
+      "id": "march_sisters_collective",
+      "surfaces": [
+        "the four sisters",
+        "the girls",
+        "the four",
+        "The four young faces on which the firelight shone"
+      ],
+      "goldIds": ["jo", "meg", "amy", "beth"],
+      "reason": "LitBank assigns these surfaces to a collective chain; the collective must not collapse or impersonate one or more sisters."
+    },
+    {
+      "id": "miss_march_persona",
+      "surfaces": ["Miss March"],
+      "goldIds": ["jo", "meg", "amy", "beth"],
+      "reason": "The fragment-level annotation keeps the hypothetical Miss March persona separate, and the shared family title cannot safely select one sister."
+    }
+  ],
+  "characters": [
+    {
+      "id": "jo",
+      "name": "Jo",
+      "mentionCount": 70,
+      "significant": true,
+      "aliases": ["Josephine", "Poor Jo", "Fifteen-year-old Jo"]
+    },
+    {
+      "id": "meg",
+      "name": "Meg",
+      "mentionCount": 30,
+      "significant": true,
+      "aliases": ["Margaret"]
+    },
+    {
+      "id": "amy",
+      "name": "Amy",
+      "mentionCount": 31,
+      "significant": true,
+      "aliases": ["little Amy"]
+    },
+    {
+      "id": "beth",
+      "name": "Beth",
+      "mentionCount": 34,
+      "significant": true,
+      "aliases": ["Elizabeth", "Little Miss Tranquility", "the 'Mouse'"]
+    },
+    {
+      "id": "marmee",
+      "name": "Marmee",
+      "mentionCount": 10,
+      "significant": true,
+      "aliases": ["Mother"]
+    },
+    {
+      "id": "father",
+      "name": "Father",
+      "mentionCount": 10,
+      "significant": true,
+      "aliases": ["Papa"]
+    }
+  ],
+  "knownExtras": [
+    {
+      "id": "march_sisters_collective",
+      "name": "The four sisters",
+      "aliases": [
+        "the girls",
+        "the four",
+        "The four young faces on which the firelight shone"
+      ],
+      "kind": "collective"
+    },
+    {
+      "id": "miss_march_persona",
+      "name": "Miss March",
+      "aliases": [],
+      "kind": "persona"
+    },
+    {
+      "id": "jo_gender_personas",
+      "name": "A girl",
+      "aliases": ["Boy", "A boy", "A woman", "A young lady"],
+      "kind": "persona"
+    }
+  ]
+}

@@ -113,8 +113,8 @@ test('operator UI exposes live book summaries, details, operations and formatted
     assert.match(page.headers.get('content-type'), /^text\/html/)
     const html = await page.text()
     assert.match(html, /Разметка книг/)
-    assert.match(html, /<script defer src="\.\/assets\/app\.js"><\/script>/)
-    assert.doesNotMatch(html, /type="module"/)
+    assert.match(html, /<script type="module" src="\.\/assets\/app\.js"><\/script>/)
+    assert.match(html, /id="json-quality-summary"/)
     assert.match(html, />Перезапустить v3</)
     assert.match(page.headers.get('content-security-policy'), /frame-ancestors 'none'/)
 
@@ -156,6 +156,12 @@ test('operator UI exposes live book summaries, details, operations and formatted
     assert.match(scriptText, /books\/\$\{state\.selectedId\}\/restart/)
     assert.match(scriptText, /characterAppearance/)
     assert.match(scriptText, /Подозрительно раннее открытие/)
+
+    const jsonViewModule = await fetch(`${baseUrl}/operator/assets/book-json-view.js`, {
+      headers: { authorization: AUTH }
+    })
+    assert.equal(jsonViewModule.status, 200)
+    assert.match(await jsonViewModule.text(), /summarizeBookJson/)
 
     const books = await fetch(`${baseUrl}/operator/api/books`, {
       headers: { authorization: AUTH }

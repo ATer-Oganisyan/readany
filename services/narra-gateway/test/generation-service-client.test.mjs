@@ -150,6 +150,39 @@ test('generator client sends one idempotent character profile request', async ()
   })
 })
 
+test('generator client sends one idempotent whole-book identity request', async () => {
+  let request
+  const client = createGenerationServiceClient({
+    baseUrl: 'http://localhost:8790',
+    token: TOKEN,
+    production: false,
+    async fetchImpl(url, options) {
+      request = { url: String(url), body: JSON.parse(options.body) }
+      return new Response(JSON.stringify({ result: { merges: [] } }), { status: 200 })
+    }
+  })
+  const input = {
+    runId: 'run-1',
+    bookEditionId: 'book-1',
+    pipelineVersion: 'book-analysis-v25',
+    reconciliationVersion: 'character-identity-v6',
+    observationSetHash: 'a'.repeat(64),
+    bookTitle: 'Книга',
+    bookAuthor: 'Автор',
+    roster: [],
+    forbiddenPairs: []
+  }
+  assert.deepEqual(await client.reconcileBookCharacterIdentities(input), { merges: [] })
+  assert.equal(
+    request.url,
+    'http://localhost:8790/internal/v1/book-analysis/reconcile-character-identities'
+  )
+  assert.equal(
+    request.body.idempotencyKey,
+    `run-1:identity:book-analysis-v25:character-identity-v6:${'a'.repeat(64)}`
+  )
+})
+
 test('generator client rejects weak auth and unsafe production URLs', () => {
   assert.throws(() => createGenerationServiceClient({
     baseUrl: 'https://generator.example.com', token: 'short', production: true

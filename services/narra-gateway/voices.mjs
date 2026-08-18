@@ -55,16 +55,14 @@ const DEFAULT_VOICE_BY_GENDER = Object.freeze({
 
 /**
  * Keeps generated voices compatible with the evidence-backed character gender.
- * An unknown gender may retain any supported voice; a missing or incompatible
- * voice gets a deterministic assistant fallback.
+ * An unknown gender always gets the neutral/unspecified assistant fallback.
+ * A known gender may retain a compatible supported voice.
  */
 export function voiceForGender(voice, gender) {
   const normalizedGender = gender === 'male' || gender === 'female' ? gender : 'unspecified'
+  if (normalizedGender === 'unspecified') return DEFAULT_VOICE_BY_GENDER.unspecified
   const configured = voiceConfig(voice)
-  if (
-    configured &&
-    (normalizedGender === 'unspecified' || configured.gender === normalizedGender)
-  ) {
+  if (configured && configured.gender === normalizedGender) {
     return voice
   }
   return DEFAULT_VOICE_BY_GENDER[normalizedGender]

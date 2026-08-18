@@ -1,3 +1,9 @@
+import {
+  profileClaimText,
+  profileClaimValues,
+  summarizeBookJson
+} from './book-json-view.js'
+
 const stageOrder = ['prepare', 'scan', 'resolve', 'synthesize', 'validate', 'publish']
 const stageLabels = {
   prepare: 'Подготовка',
@@ -33,7 +39,8 @@ const state = {
 const elements = Object.fromEntries([
   'book-list', 'book-search', 'summary-strip', 'empty-state', 'book-panel', 'book-title',
   'book-author', 'book-meta', 'heading-percent', 'heading-status', 'stage-grid', 'metric-grid',
-  'character-grid', 'character-count', 'refreshed-at', 'operation-list', 'json-view', 'toast',
+  'character-grid', 'character-count', 'refreshed-at', 'operation-list', 'json-view',
+  'json-quality-summary', 'json-profile-grid', 'toast',
   'upload-form', 'upload-steps', 'upload-live-detail', 'live-label', 'restart-book',
   'quality-alert'
 ].map((id) => [id, document.getElementById(id)]))
@@ -219,6 +226,50 @@ function renderOperations(operations) {
 
 function renderJson(value) {
   state.json = value
+  const summary = summarizeBookJson(value)
+  const percent = (field) => summary.total > 0
+    ? Math.round(summary.fields[field] / summary.total * 100)
+    : 0
+  const coverage = [
+    ['identity', 'ID и имя'],
+    ['traits', 'Характер'],
+    ['description', 'Описание'],
+    ['gender', 'Пол'],
+    ['voiceGenderConsistency', 'Голос согласован'],
+    ['timeline', 'Появление и прогрев']
+  ]
+  elements['json-quality-summary'].innerHTML = coverage.map(([field, label]) => `
+    <article class="json-quality-metric">
+      <strong>${percent(field)}%</strong>
+      <span>${escapeHtml(label)}</span>
+      <small>${summary.fields[field]}/${summary.total}</small>
+    </article>
+  `).join('')
+  elements['json-profile-grid'].innerHTML = summary.characters.length
+    ? summary.characters.map((character) => {
+        const traits = profileClaimValues(character.traits)
+        const aliases = Array.isArray(character.aliases) ? character.aliases : []
+        const description = profileClaimText(character.description)
+        const gender = profileClaimText(character.gender) || 'unspecified'
+        const voice = String(character.creative?.voice || '—')
+        const evidenceIds = new Set([
+          ...(character.identityEvidenceIds || []),
+          ...(character.traits || []).flatMap((claim) => claim?.evidenceIds || []),
+          ...(character.description?.evidenceIds || [])
+        ])
+        return `<article class="json-profile-card">
+          <div class="json-profile-heading">
+            <div><strong>${escapeHtml(character.fullName || character.name)}</strong><small>${escapeHtml(character.characterKey || character.entityKey || 'нет ID')}</small></div>
+            <span class="status ${gender === 'unspecified' ? 'queued' : 'ready'}">${escapeHtml(gender)} · ${escapeHtml(voice)}</span>
+          </div>
+          <div class="json-traits">${traits.length
+            ? traits.map((trait) => `<span>${escapeHtml(trait)}</span>`).join('')
+            : '<span class="empty">traits: unknown</span>'}</div>
+          <p>${escapeHtml(description || 'description: unknown')}</p>
+          <small class="json-profile-meta">aliases ${aliases.length} · evidence ${evidenceIds.size} · first ${Number(character.firstAppearanceTextOffset) || 0}</small>
+        </article>`
+      }).join('')
+    : '<div class="placeholder-card">В опубликованном JSON пока нет персонажей</div>'
   elements['json-view'].textContent = JSON.stringify(value, null, 2)
 }
 

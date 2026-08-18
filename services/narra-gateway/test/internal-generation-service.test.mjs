@@ -4,6 +4,8 @@ import test from 'node:test'
 import {
   createInternalGenerationRouter,
   createInternalGenerationService,
+  fallbackProfileDescription,
+  filterStableTraits,
   requireGenerationServiceToken
 } from '../internal-generation-service.mjs'
 
@@ -781,6 +783,91 @@ test('internal generation service does not cache an ungrounded scan result', asy
   assert.ok(lines.every((line) => !line.includes('Анна убежала')))
 })
 
+test('internal generation service reconciles only existing identity keys idempotently', async () => {
+  const storage = memoryStorage()
+  let chatCalls = 0
+  let chatRequest
+  const leftEvidence = '11111111-1111-4111-8111-111111111111'
+  const rightEvidence = '22222222-2222-4222-8222-222222222222'
+  const service = createInternalGenerationService({
+    storage,
+    logger: { info() {}, error() {} },
+    async completeChat(input) {
+      chatCalls += 1
+      chatRequest = input
+      return JSON.stringify({
+        merges: [{
+          leftEntityKey: 'character:elizabeth',
+          rightEntityKey: 'character:lizzy',
+          basis: 'nickname',
+          evidenceIds: [leftEvidence, rightEvidence]
+        }, {
+          leftEntityKey: 'character:invented',
+          rightEntityKey: 'character:lizzy',
+          basis: 'nickname',
+          evidenceIds: [rightEvidence]
+        }]
+      })
+    },
+    async generatePortrait() { throw new Error('unused') },
+    async synthesizeSpeech() { throw new Error('unused') },
+    async generateIdleAnimation() { throw new Error('unused') }
+  })
+  const observationSetHash = 'a'.repeat(64)
+  const request = {
+    idempotencyKey: `run-1:identity:book-analysis-v25:character-identity-v6:${observationSetHash}`,
+    runId: 'run-1',
+    bookEditionId: 'book-1',
+    pipelineVersion: 'book-analysis-v25',
+    reconciliationVersion: 'character-identity-v6',
+    observationSetHash,
+    bookTitle: 'Pride and Prejudice',
+    bookAuthor: 'Jane Austen',
+    roster: [{
+      entityKey: 'character:elizabeth',
+      names: ['Elizabeth'],
+      resolutionStatus: 'confirmed',
+      observationCount: 1,
+      evidence: [{
+        id: leftEvidence,
+        type: 'character_mention',
+        fact: 'Elizabeth appears',
+        quote: 'Elizabeth entered the room.',
+        startOffset: 100
+      }]
+    }, {
+      entityKey: 'character:lizzy',
+      names: ['Lizzy'],
+      resolutionStatus: 'confirmed',
+      observationCount: 1,
+      evidence: [{
+        id: rightEvidence,
+        type: 'character_mention',
+        fact: 'Lizzy answers',
+        quote: 'Lizzy answered her father.',
+        startOffset: 1_000
+      }]
+    }],
+    candidatePairs: [{
+      leftEntityKey: 'character:elizabeth',
+      rightEntityKey: 'character:lizzy',
+      signals: ['scan_alias_claim']
+    }],
+    forbiddenPairs: []
+  }
+  const first = await service.reconcileBookCharacterIdentities(request)
+  const second = await service.reconcileBookCharacterIdentities(request)
+  assert.deepEqual(second, first)
+  assert.equal(chatCalls, 1)
+  assert.equal(first.providerMergeCount, 2)
+  assert.equal(first.merges.length, 1)
+  assert.equal(first.droppedMergeCount, 1)
+  assert.match(chatRequest.messages[0].content, /Не создавай имена, aliases или entityKey/)
+  assert.match(chatRequest.messages[0].content, /совместимы ровно с одной полной формой/)
+  assert.match(chatRequest.messages[0].content, /Для married_name активно ищи/)
+  assert.match(chatRequest.messages[0].content, /При сомнении не добавляй merge/)
+})
+
 test('internal generation service builds a grounded profile for one resolved character', async () => {
   const storage = memoryStorage()
   let chatCalls = 0
@@ -840,8 +927,12 @@ test('internal generation service builds a grounded profile for one resolved cha
   assert.match(chatRequest.messages[0].content, /приветствие.*1.?2 предложения/i)
   assert.match(chatRequest.messages[0].content, /без спойлеров/i)
   assert.match(chatRequest.messages[0].content, /description — обязательное краткое описание/i)
-  assert.match(chatRequest.messages[0].content, /traits — 3.?6 наиболее определяющих/i)
-  assert.match(chatRequest.messages[0].content, /Не включай внешность, возраст, одежду/i)
+  assert.match(chatRequest.messages[0].content, /при двух и более содержательных EVIDENCE/i)
+  assert.match(chatRequest.messages[0].content, /traits — от 0 до 4 наиболее определяющих/i)
+  assert.match(chatRequest.messages[0].content, /\[\] — обязательный результат/i)
+  assert.match(chatRequest.messages[0].content, /проверь общие независимые оси/i)
+  assert.match(chatRequest.messages[0].content, /шестью и более поведенческими наблюдениями/i)
+  assert.match(chatRequest.messages[0].content, /Не включай состояние или эмоцию.*внешность, возраст, одежду/i)
   assert.match(chatRequest.messages[1].content, /BOOK_LANGUAGE: ru/)
   assert.equal(first.profile.characterKey, 'character:anna')
   assert.equal(first.profile.name, 'Анна')
@@ -929,9 +1020,11 @@ test('internal generation service keeps compatible profile claims and drops only
   assert.deepEqual(second, first)
   assert.equal(chatCalls, 1)
   assert.equal(first.profile.role.value, 'Врач')
+  assert.equal(first.profile.description.value, 'Анна работает врачом. Анна вошла.')
+  assert.deepEqual(first.profile.description.evidenceIds, [roleEvidenceId, actionEvidenceId])
   assert.deepEqual(first.profile.traits, [])
   assert.deepEqual(first.profile.appearance, [])
-  assert.equal(first.profile.creative.voice, 'Che')
+  assert.equal(first.profile.creative.voice, 'Erm')
   assert.ok(lines.some((line) =>
     line.includes('event="synthesis.character_completed"') &&
     line.includes('provider_claim_count=4') &&
@@ -939,6 +1032,25 @@ test('internal generation service keeps compatible profile claims and drops only
     line.includes('dropped_claim_count=3')
   ))
   assert.equal(lines.some((line) => line.includes('Смелая')), false)
+})
+
+test('extractive profile description fallback is deterministic and requires two grounded facts', () => {
+  const evidence = [{
+    id: 'e-2', type: 'character_action', fact: 'Анна помогла соседке', startOffset: 200,
+    confidence: 0.91
+  }, {
+    id: 'e-1', type: 'character_trait', fact: 'Анна терпелива.', startOffset: 100,
+    confidence: 0.96
+  }, {
+    id: 'e-3', type: 'character_gender', fact: 'female', startOffset: 50,
+    confidence: 0.99
+  }]
+  assert.deepEqual(fallbackProfileDescription(evidence), {
+    value: 'Анна терпелива. Анна помогла соседке.',
+    evidenceIds: ['e-1', 'e-2'],
+    confidence: 0.91
+  })
+  assert.equal(fallbackProfileDescription(evidence.slice(0, 1)), null)
 })
 
 test('profile synthesis derives normalized gender and stable traits from grounded behavior evidence', async () => {
@@ -1001,8 +1113,8 @@ test('profile synthesis derives normalized gender and stable traits from grounde
     type: 'character_action',
     fact: 'Бабушка заботилась о больном',
     quote: 'Бабушка заботилась о больном.',
-    startOffset: 500,
-    endOffset: 533,
+    startOffset: 2_500,
+    endOffset: 2_533,
     confidence: 0.9
   }]
 
@@ -1024,7 +1136,172 @@ test('profile synthesis derives normalized gender and stable traits from grounde
   assert.deepEqual(result.profile.traits[0].evidenceIds, [actionEvidenceId, secondActionEvidenceId])
   assert.equal(result.profile.creative.voice, 'Che')
   assert.match(chatRequest.messages[0].content, /gender.*male.*female/i)
-  assert.match(chatRequest.messages[0].content, /минимум два независимых/i)
+  assert.match(chatRequest.messages[0].content, /минимум две независимо достаточные сцены/i)
+  assert.match(chatRequest.messages[0].content, /грамматически законченных предложениях/i)
+  assert.match(chatRequest.messages[0].content, /anxious.*прямом утверждении устойчивого свойства/i)
+})
+
+test('personality filter requires independent scenes and preserves abstention', () => {
+  const firstId = '66666666-6666-4666-8666-666666666661'
+  const nearbyId = '66666666-6666-4666-8666-666666666662'
+  const distantId = '66666666-6666-4666-8666-666666666663'
+  const evidenceById = new Map([
+    [firstId, {
+      id: firstId,
+      type: 'character_action',
+      fact: 'Анна помогла ребёнку',
+      quote: 'Анна помогла ребёнку.',
+      startOffset: 100,
+      confidence: 0.9
+    }],
+    [nearbyId, {
+      id: nearbyId,
+      type: 'character_dialogue',
+      fact: 'Анна успокоила ребёнка',
+      quote: 'Анна успокоила ребёнка.',
+      startOffset: 250,
+      confidence: 0.9
+    }],
+    [distantId, {
+      id: distantId,
+      type: 'character_action',
+      fact: 'Анна ухаживала за больным',
+      quote: 'Анна ухаживала за больным.',
+      startOffset: 3_000,
+      confidence: 0.9
+    }]
+  ])
+  const nearby = [{ value: 'заботливая', evidenceIds: [firstId, nearbyId], confidence: 0.9 }]
+  const distant = [{ value: 'заботливая', evidenceIds: [firstId, distantId], confidence: 0.9 }]
+  assert.deepEqual(filterStableTraits(nearby, evidenceById, 10_000), [])
+  assert.deepEqual(filterStableTraits(distant, evidenceById, 10_000), distant)
+})
+
+test('personality filter rejects polarity inversion, temporary states and skills', () => {
+  const fixtures = [
+    ['principled', 'Wickham had a want of principle.', 'Wickham had a want of principle.'],
+    ['humble', 'Amy looked humble in her little effort.', 'Amy looked humble in her little effort.'],
+    ['artistic', 'Amy practised drawing.', 'Amy practised drawing.'],
+    ['accomplished', 'Georgiana was accomplished at music.', 'She played and sang all day.'],
+    ['musical', 'Laurie played music.', 'Laurie played music.'],
+    ['storytelling', 'Jo wrote a story.', 'Jo wrote a story.'],
+    ['housewifely', 'Beth kept the house.', 'Beth kept the house.'],
+    ['good-humoured', 'Lydia had a good-humoured countenance.', 'Her good-humoured countenance.'],
+    ['proud', 'Miss Darcy was reported as proud, but was only shy.', 'She was said to be proud, but she was only exceedingly shy.'],
+    ['admiring', 'Georgiana admired Elizabeth.', 'Her opinion of Elizabeth was very high.']
+  ]
+  const evidenceById = new Map()
+  const claims = fixtures.map(([value, fact, quote], index) => {
+    const id = `77777777-7777-4777-8777-${String(index + 1).padStart(12, '0')}`
+    evidenceById.set(id, {
+      id,
+      type: 'character_trait',
+      fact,
+      quote,
+      startOffset: index * 3_000,
+      confidence: 0.95
+    })
+    return { value, evidenceIds: [id], confidence: 0.95 }
+  })
+  assert.deepEqual(filterStableTraits(claims, evidenceById, 100_000), [])
+})
+
+test('personality filter rejects low-confidence invention and inferred emotional state', () => {
+  const firstId = '79797979-7979-4797-8797-797979797971'
+  const secondId = '79797979-7979-4797-8797-797979797972'
+  const directId = '79797979-7979-4797-8797-797979797973'
+  const evidenceById = new Map([
+    [firstId, {
+      id: firstId,
+      type: 'character_action',
+      fact: 'Mrs. Bennet became distressed by the absence.',
+      quote: 'She was distressed by his continued absence.',
+      startOffset: 100,
+      confidence: 0.95
+    }],
+    [secondId, {
+      id: secondId,
+      type: 'character_action',
+      fact: 'Mrs. Bennet was in an agony of ill-humour.',
+      quote: 'The mention threw her into an agony of ill-humour.',
+      startOffset: 3_000,
+      confidence: 0.95
+    }],
+    [directId, {
+      id: directId,
+      type: 'character_trait',
+      fact: 'The narrator calls her habitually anxious.',
+      quote: 'Her habitually anxious disposition returned.',
+      startOffset: 6_000,
+      confidence: 0.95
+    }]
+  ])
+  const invented = [{
+    value: 'conceited',
+    evidenceIds: [firstId, secondId],
+    confidence: 0.76
+  }]
+  const inferredState = [{
+    value: 'anxious',
+    evidenceIds: [firstId, secondId],
+    confidence: 0.95
+  }]
+  const directStable = [{ value: 'anxious', evidenceIds: [directId], confidence: 0.95 }]
+
+  assert.deepEqual(filterStableTraits(invented, evidenceById, 100_000), [])
+  assert.deepEqual(filterStableTraits(inferredState, evidenceById, 100_000), [])
+  assert.deepEqual(filterStableTraits(directStable, evidenceById, 100_000), directStable)
+})
+
+test('personality filter does not trust a direct label absent from its quote', () => {
+  const unsupportedId = '78787878-7878-4787-8787-787878787871'
+  const temporaryId = '78787878-7878-4787-8787-787878787872'
+  const evidenceById = new Map([
+    [unsupportedId, {
+      id: unsupportedId,
+      type: 'character_trait',
+      fact: 'Beth is gentle.',
+      quote: 'Beth exercised more influence than anyone in the family.',
+      startOffset: 100,
+      confidence: 0.95
+    }],
+    [temporaryId, {
+      id: temporaryId,
+      type: 'character_trait',
+      fact: 'Laurie is bashful.',
+      quote: 'Laurie’s bashfulness soon wore off.',
+      startOffset: 3_000,
+      confidence: 0.95
+    }]
+  ])
+  const claims = [{
+    value: 'gentle', evidenceIds: [unsupportedId], confidence: 0.95
+  }, {
+    value: 'bashful', evidenceIds: [temporaryId], confidence: 0.95
+  }]
+  assert.deepEqual(filterStableTraits(claims, evidenceById, 100_000), [])
+})
+
+test('personality filter removes tied antonyms and caps a deterministic profile at four traits', () => {
+  const values = ['good-tempered', 'quick-tempered', 'kind', 'honest', 'patient', 'brave', 'loyal']
+  const evidenceById = new Map()
+  const claims = values.map((value, index) => {
+    const id = `88888888-8888-4888-8888-${String(index + 1).padStart(12, '0')}`
+    evidenceById.set(id, {
+      id,
+      type: 'character_trait',
+      fact: `The narrator calls the character ${value}.`,
+      quote: `The character was ${value}.`,
+      startOffset: index * 3_000,
+      confidence: 0.95
+    })
+    return { value, evidenceIds: [id], confidence: 0.95 }
+  })
+  const result = filterStableTraits(claims, evidenceById, 100_000)
+  assert.equal(result.length, 4)
+  assert.equal(result.some(({ value }) => value === 'good-tempered'), false)
+  assert.equal(result.some(({ value }) => value === 'quick-tempered'), false)
+  assert.deepEqual(result.map(({ value }) => value), ['brave', 'honest', 'kind', 'loyal'])
 })
 
 test('internal service auth rejects public bearer tokens and accepts only its own token', () => {
@@ -1052,6 +1329,7 @@ test('internal router exposes all worker endpoints', () => {
       async generateCatalogCover() { return { ok: true } },
       async generateCharacterBundle() { return { ok: true } },
       async scanBookChunk() { return { observations: [] } },
+      async reconcileBookCharacterIdentities() { return { merges: [] } },
       async synthesizeCharacterProfile() { return { profile: {} } }
     }
   })
@@ -1061,6 +1339,7 @@ test('internal router exposes all worker endpoints', () => {
     '/v1/catalog-covers',
     '/v1/character-bundles',
     '/v1/book-analysis/scan-chunk',
+    '/v1/book-analysis/reconcile-character-identities',
     '/v1/book-analysis/synthesize-character'
   ])
 })

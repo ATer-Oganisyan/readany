@@ -77,6 +77,18 @@ export function createGenerationServiceClient({
   }
 
   return {
+    reconcileBookCharacterIdentities(input) {
+      return post('internal/v1/book-analysis/reconcile-character-identities', {
+        idempotencyKey: [
+          input.runId,
+          'identity',
+          input.pipelineVersion,
+          input.reconciliationVersion,
+          input.observationSetHash
+        ].join(':'),
+        ...input
+      })
+    },
     synthesizeCharacterProfile(input) {
       return post('internal/v1/book-analysis/synthesize-character', {
         idempotencyKey: [

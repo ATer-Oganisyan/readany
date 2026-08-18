@@ -93,7 +93,12 @@
             <div><p class="eyebrow">Source of truth</p><h3>JSON книги</h3></div>
             <button class="button secondary" id="copy-json" type="button">Копировать</button>
           </div>
-          <pre class="json-view" id="json-view">Загрузка…</pre>
+          <div class="json-quality" id="json-quality-summary" aria-live="polite"></div>
+          <div class="json-profile-grid" id="json-profile-grid"></div>
+          <details class="json-raw" open>
+            <summary>Raw JSON</summary>
+            <pre class="json-view" id="json-view">Загрузка…</pre>
+          </details>
         </section>
 
         <section class="tab-panel" id="tab-upload" hidden>
@@ -128,6 +133,6 @@
   </main>
 
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
-  <script defer src="./assets/app.js"></script>
+  <script type="module" src="./assets/app.js"></script>
 </body>
 </html>

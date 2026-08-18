@@ -1,4 +1,11 @@
 import { resolveBookAnalysisEntities } from './book-analysis-resolver.mjs'
+import {
+  BOOK_ANALYSIS_IDENTITY_RECONCILIATION_VERSION
+} from './book-analysis-contracts.mjs'
+import {
+  buildBookIdentityReconciliationRequest,
+  validateBookIdentityMerges
+} from './book-analysis-identity-reconciliation.mjs'
 import { assessBookAnalysisCoverage } from './book-analysis-quality.mjs'
 import { createOperationalLogger } from './operational-log.mjs'
 
@@ -20,6 +27,8 @@ export function createBookAnalysisResolveWorker({
   leaseSeconds = 300,
   leaseRenewMs = 60_000,
   resolveEntities = resolveBookAnalysisEntities,
+  generator = null,
+  reconciliationVersion = BOOK_ANALYSIS_IDENTITY_RECONCILIATION_VERSION,
   logger = console
 }) {
   if (!repository) throw new TypeError('repository is required')
@@ -34,7 +43,39 @@ export function createBookAnalysisResolveWorker({
 
   async function resolve(job) {
     const input = await repository.getResolveInput(job)
-    const entities = await resolveEntities({ observations: input.observations })
+    let entities = await resolveEntities({ observations: input.observations })
+    let acceptedIdentityMerges = []
+    if (generator) {
+      const request = buildBookIdentityReconciliationRequest({
+        ...input,
+        entities,
+        pipelineVersion: input.pipelineVersion,
+        reconciliationVersion
+      })
+      if (request) {
+        const proposed = await generator.reconcileBookCharacterIdentities(request)
+        acceptedIdentityMerges = validateBookIdentityMerges({
+          request,
+          proposedMerges: proposed.merges
+        })
+        if (acceptedIdentityMerges.length) {
+          entities = await resolveEntities({
+            observations: input.observations,
+            identityMerges: acceptedIdentityMerges
+          })
+        }
+        log.info('resolve.identity_reconciled', 'Имена персонажей сверены по всей книге', {
+          run: input.runId,
+          proposed_merge_count: proposed.merges.length,
+          accepted_merge_count: acceptedIdentityMerges.length
+        })
+      } else {
+        log.warn('resolve.identity_skipped', 'Глобальная сверка имён пропущена из-за лимитов', {
+          run: input.runId,
+          character_count: entities.filter(({ entityKind }) => entityKind === 'character').length
+        })
+      }
+    }
     const quality = assessBookAnalysisCoverage({
       textLength: input.textLength,
       observations: input.observations,
@@ -64,6 +105,7 @@ export function createBookAnalysisResolveWorker({
       run: input.runId,
       observation_count: input.observations.length,
       entity_count: entities.length,
+      accepted_identity_merge_count: acceptedIdentityMerges.length,
       next_stage: result.stage
     })
     return result

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { createPostgresBookAnalysisRepository } from './book-analysis-repository.mjs'
 import { createBookAnalysisResolveWorker } from './book-analysis-resolve-worker.mjs'
+import { createGenerationServiceClient } from './generation-service-client.mjs'
 import { parseEnvInt } from './env.mjs'
 import { createOperationalLogger } from './operational-log.mjs'
 import { createPostgresPoolFromEnv, runBookMarkupMigrations } from './postgres-runtime.mjs'
@@ -57,7 +58,12 @@ try {
     repository,
     workerId,
     leaseSeconds,
-    leaseRenewMs
+    leaseRenewMs,
+    generator: createGenerationServiceClient({
+      baseUrl: process.env.GENERATOR_BASE_URL,
+      token: process.env.GENERATOR_SERVICE_TOKEN,
+      timeoutMs: parseEnvInt(process.env, 'GENERATOR_TIMEOUT_MS', 300_000, 900_000)
+    })
   })
   log.info('worker.ready', 'Resolve-воркер запущен', {
     worker: workerId,

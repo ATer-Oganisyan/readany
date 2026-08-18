@@ -170,7 +170,7 @@ test('catalog manifest exposes validated v3 as the canonical markup', async () =
                   speechStyle: null,
                   speechExamples: [],
                   appearance: [],
-                  creative: { greeting: 'Здравствуйте', appearancePrompt: '', voice: 'Bys' }
+                  creative: { greeting: 'Здравствуйте', appearancePrompt: '', voice: 'Che' }
                 },
                 {
                   characterKey: 'future',

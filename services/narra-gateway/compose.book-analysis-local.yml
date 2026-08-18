@@ -186,7 +186,7 @@ services:
     <<: *analysis-worker
     command: ["node", "book-analysis-resolve-worker-runner.mjs"]
     environment:
-      <<: *database-environment
+      <<: [*database-environment, *generator-environment]
 
   book-analysis-synthesize:
     <<: *analysis-worker

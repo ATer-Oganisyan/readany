@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   BOOK_ANALYSIS_EXTRACTOR_VERSION,
+  BOOK_ANALYSIS_IDENTITY_RECONCILIATION_VERSION,
   BOOK_ANALYSIS_MARKUP_VERSION,
   BOOK_ANALYSIS_PIPELINE_VERSION,
   BOOK_ANALYSIS_PROMPT_VERSION,
@@ -16,14 +17,15 @@ import {
 
 const evidenceId = '11111111-1111-4111-8111-111111111111'
 
-test('scan prompt and extractor share the cache-isolating v13 version', () => {
-  assert.equal(BOOK_ANALYSIS_PROMPT_VERSION, 'book-scan-v13')
+test('scan prompt and extractor share the cache-isolating v14 version', () => {
+  assert.equal(BOOK_ANALYSIS_PROMPT_VERSION, 'book-scan-v14')
   assert.equal(BOOK_ANALYSIS_EXTRACTOR_VERSION, BOOK_ANALYSIS_PROMPT_VERSION)
 })
 
 test('resolver, profile and scan fallback changes isolate versioned caches', () => {
-  assert.equal(BOOK_ANALYSIS_PIPELINE_VERSION, 'book-analysis-v18')
-  assert.equal(BOOK_ANALYSIS_SYNTHESIS_VERSION, 'character-profile-v4')
+  assert.equal(BOOK_ANALYSIS_PIPELINE_VERSION, 'book-analysis-v31')
+  assert.equal(BOOK_ANALYSIS_SYNTHESIS_VERSION, 'character-profile-v10')
+  assert.equal(BOOK_ANALYSIS_IDENTITY_RECONCILIATION_VERSION, 'character-identity-v10')
 })
 
 test('stored scan observations require exact server-resolved evidence coordinates', () => {

@@ -1,0 +1,340 @@
+{
+  "schemaVersion": 1,
+  "id": "pride-prejudice-bookcoref-v1",
+  "goldCount": 38,
+  "significantCount": 18,
+  "source": {
+    "dataset": "BOOKCOREF",
+    "documentId": "pride_and_prejudice_1342",
+    "gutenbergId": 1342,
+    "significantProtocol": "minimum descending mention-count prefix covering at least 95 percent of gold mentions, including boundary-frequency ties",
+    "totalMentions": 16419
+  },
+  "gates": {
+    "precision": 0.9,
+    "recall": 0.9,
+    "f1": 0.9,
+    "criticalMerges": 0,
+    "duplicateRate": 0.05
+  },
+  "characters": [
+    {
+      "id": "mr_bennet",
+      "name": "Mr Bennet",
+      "mentionCount": 712,
+      "significant": true,
+      "aliases": ["Mr. Bennet"]
+    },
+    {
+      "id": "mrs_bennet",
+      "name": "Mrs Bennet",
+      "mentionCount": 1065,
+      "significant": true,
+      "aliases": ["Mrs. Bennet"]
+    },
+    {
+      "id": "fitzwilliam_darcy",
+      "name": "Mr Darcy",
+      "mentionCount": 2476,
+      "significant": true,
+      "aliases": ["Mr. Darcy", "Darcy", "Fitzwilliam Darcy"]
+    },
+    {
+      "id": "george_wickham",
+      "name": "George Wickham",
+      "mentionCount": 760,
+      "significant": true,
+      "aliases": ["Mr Wickham", "Mr. Wickham", "Wickham"]
+    },
+    {
+      "id": "william_collins",
+      "name": "Mr William Collins",
+      "mentionCount": 984,
+      "significant": true,
+      "aliases": ["Mr Collins", "Mr. Collins", "William Collins", "Collins"]
+    },
+    {
+      "id": "mr_gardiner",
+      "name": "Mr Gardiner",
+      "mentionCount": 209,
+      "significant": true,
+      "aliases": ["Mr. Gardiner"]
+    },
+    {
+      "id": "lady_lucas",
+      "name": "Lady Lucas",
+      "mentionCount": 35,
+      "significant": false,
+      "aliases": []
+    },
+    {
+      "id": "charles_bingley",
+      "name": "Charles Bingley",
+      "mentionCount": 956,
+      "significant": true,
+      "aliases": ["Mr Bingley", "Mr. Bingley", "Bingley", "Charles"]
+    },
+    {
+      "id": "caroline_bingley",
+      "name": "Caroline Bingley",
+      "mentionCount": 415,
+      "significant": true,
+      "aliases": ["Miss Bingley", "Caroline"]
+    },
+    {
+      "id": "mr_philips",
+      "name": "Mr Philips",
+      "mentionCount": 13,
+      "significant": false,
+      "aliases": ["Mr. Philips"]
+    },
+    {
+      "id": "jane_bennet",
+      "name": "Jane",
+      "mentionCount": 1216,
+      "significant": true,
+      "aliases": ["Jane Bennet", "Miss Bennet", "Miss Jane Bennet"]
+    },
+    {
+      "id": "georgiana_darcy",
+      "name": "Georgiana",
+      "mentionCount": 215,
+      "significant": true,
+      "aliases": ["Georgiana Darcy", "Miss Darcy"]
+    },
+    {
+      "id": "sir_william_lucas",
+      "name": "Sir William",
+      "mentionCount": 135,
+      "significant": true,
+      "aliases": ["Sir William Lucas"]
+    },
+    {
+      "id": "elizabeth_bennet",
+      "name": "Elizabeth",
+      "mentionCount": 4441,
+      "significant": true,
+      "aliases": [
+        "Elizabeth Bennet",
+        "Miss Elizabeth",
+        "Miss Elizabeth Bennet",
+        "Lizzy",
+        "Eliza",
+        "Eliza Bennet",
+        "Miss Eliza",
+        "sister Elizabeth"
+      ]
+    },
+    {
+      "id": "charlotte_lucas",
+      "name": "Charlotte",
+      "mentionCount": 353,
+      "significant": true,
+      "aliases": ["Charlotte Lucas", "Miss Lucas", "Mrs Collins", "Mrs. Collins", "Charlotte Collins"]
+    },
+    {
+      "id": "mrs_hurst",
+      "name": "Mrs Hurst",
+      "mentionCount": 55,
+      "significant": false,
+      "aliases": ["Mrs. Hurst"]
+    },
+    {
+      "id": "mrs_gardiner",
+      "name": "Mrs Gardiner",
+      "mentionCount": 305,
+      "significant": true,
+      "aliases": ["Mrs. Gardiner", "M Gardiner", "M. Gardiner"]
+    },
+    {
+      "id": "lady_catherine_de_bourgh",
+      "name": "Lady Catherine",
+      "mentionCount": 542,
+      "significant": true,
+      "aliases": ["Lady Catherine de Bourgh"]
+    },
+    {
+      "id": "miss_de_bourgh",
+      "name": "Miss de Bourgh",
+      "mentionCount": 91,
+      "significant": false,
+      "aliases": ["Miss De Bourgh", "Anne de Bourgh"]
+    },
+    {
+      "id": "maria_lucas",
+      "name": "Maria",
+      "mentionCount": 37,
+      "significant": false,
+      "aliases": ["Maria Lucas"]
+    },
+    {
+      "id": "colonel_fitzwilliam",
+      "name": "Colonel Fitzwilliam",
+      "mentionCount": 142,
+      "significant": true,
+      "aliases": ["Fitzwilliam"]
+    },
+    {
+      "id": "lydia_bennet",
+      "name": "Lydia",
+      "mentionCount": 671,
+      "significant": true,
+      "aliases": [
+        "Lydia Bennet",
+        "Miss Lydia Bennet",
+        "Lydia Wickham",
+        "Lydia Bennet Wickham"
+      ]
+    },
+    {
+      "id": "mrs_reynolds",
+      "name": "Mrs Reynolds",
+      "mentionCount": 77,
+      "significant": false,
+      "aliases": ["Mrs. Reynolds"]
+    },
+    {
+      "id": "catherine_bennet",
+      "name": "Catherine",
+      "mentionCount": 110,
+      "significant": true,
+      "aliases": ["Catherine Bennet", "Kitty", "Kitty Bennet"]
+    },
+    {
+      "id": "mrs_forster",
+      "name": "Mrs Forster",
+      "mentionCount": 35,
+      "significant": false,
+      "aliases": ["Mrs. Forster", "Mrs F", "Mrs. F."]
+    },
+    {
+      "id": "mary_king",
+      "name": "Mary King",
+      "mentionCount": 27,
+      "significant": false,
+      "aliases": ["Miss King"]
+    },
+    {
+      "id": "mrs_philips",
+      "name": "Mrs Philips",
+      "mentionCount": 79,
+      "significant": false,
+      "aliases": ["Mrs. Philips"]
+    },
+    {
+      "id": "mr_hurst",
+      "name": "Mr Hurst",
+      "mentionCount": 23,
+      "significant": false,
+      "aliases": ["Mr. Hurst"]
+    },
+    {
+      "id": "mary_bennet",
+      "name": "Mary",
+      "mentionCount": 77,
+      "significant": false,
+      "aliases": ["Mary Bennet"]
+    },
+    {
+      "id": "colonel_forster",
+      "name": "Colonel Forster",
+      "mentionCount": 66,
+      "significant": false,
+      "aliases": ["Mr F", "Mr. F."]
+    },
+    {
+      "id": "captain_carter",
+      "name": "Captain Carter",
+      "mentionCount": 8,
+      "significant": false,
+      "aliases": []
+    },
+    {
+      "id": "mr_jones",
+      "name": "Mr Jones",
+      "mentionCount": 8,
+      "significant": false,
+      "aliases": ["Mr. Jones"]
+    },
+    {
+      "id": "mr_denny",
+      "name": "Mr Denny",
+      "mentionCount": 35,
+      "significant": false,
+      "aliases": ["Mr. Denny", "Denny"]
+    },
+    {
+      "id": "mrs_jenkinson",
+      "name": "Mrs Jenkinson",
+      "mentionCount": 12,
+      "significant": false,
+      "aliases": ["Mrs. Jenkinson"]
+    },
+    {
+      "id": "mrs_younge",
+      "name": "Mrs Younge",
+      "mentionCount": 20,
+      "significant": false,
+      "aliases": ["Mrs. Younge"]
+    },
+    {
+      "id": "mr_dawson",
+      "name": "Mr Dawson",
+      "mentionCount": 1,
+      "significant": false,
+      "aliases": ["Mr. Dawson"]
+    },
+    {
+      "id": "mrs_hill",
+      "name": "Mrs Hill",
+      "mentionCount": 11,
+      "significant": false,
+      "aliases": ["Mrs. Hill", "Hill"]
+    },
+    {
+      "id": "haggerston",
+      "name": "Haggerston",
+      "mentionCount": 2,
+      "significant": false,
+      "aliases": []
+    }
+  ],
+  "knownExtras": [
+    {
+      "id": "mrs_annesley",
+      "name": "Mrs Annesley",
+      "aliases": ["Mrs. Annesley", "Miss Annesley"],
+      "kind": "individual"
+    },
+    {
+      "id": "mrs_long",
+      "name": "Mrs Long",
+      "aliases": ["Mrs. Long"],
+      "kind": "individual"
+    },
+    {
+      "id": "mrs_nichols",
+      "name": "Mrs Nichols",
+      "aliases": ["Mrs. Nichols", "Mrs Nicholls", "Mrs. Nicholls"],
+      "kind": "individual"
+    },
+    {
+      "id": "sir_lewis_de_bourgh",
+      "name": "Sir Lewis de Bourgh",
+      "aliases": [],
+      "kind": "individual"
+    },
+    {
+      "id": "gardiners_collective",
+      "name": "Gardiners",
+      "aliases": ["the Gardiners"],
+      "kind": "collective"
+    },
+    {
+      "id": "ladies_of_longbourn",
+      "name": "The ladies of Longbourn",
+      "aliases": [],
+      "kind": "collective"
+    }
+  ]
+}
