@@ -34,6 +34,17 @@ assets/catalog/character-video-samples/*
 !assets/catalog/character-video-samples/*-grok-eyebrow-hair-only-batch5.json
 !assets/catalog/character-video-samples/*-grok-eyebrow-hair-only-batch5-boomerang.mp4
 
+# EAS archives from the monorepo Git root, so the same exclusions also need
+# their repository-relative paths.
+packages/app-expo/node_modules/
+packages/app-expo/ios/
+packages/app-expo/android/
+packages/app-expo/dist/
+packages/app-expo/.expo/
+packages/app-expo/assets/catalog/character-video-samples/*
+!packages/app-expo/assets/catalog/character-video-samples/*-grok-eyebrow-hair-only-batch5.json
+!packages/app-expo/assets/catalog/character-video-samples/*-grok-eyebrow-hair-only-batch5-boomerang.mp4
+
 # Test files
 __tests__
 *.test.js
