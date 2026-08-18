@@ -1480,6 +1480,49 @@ function relationshipSeparatesComponents(sets, nodes, leftRoot, rightRoot, obser
   })
 }
 
+function explicitRoleAttributionTarget(observation, nodes) {
+  if (observation.type !== 'character_role') return null
+  const source = normalizedCandidate(observation.entityCandidate)
+  if (!isSurfaceGrounded(observation.entityCandidate, observation.evidence.quote)) return null
+  const fact = normalizedCandidate(observation.fact)
+  const targets = [...nodes.values()].filter((node) => {
+    if (!node.key.startsWith('character\u0000')) return false
+    const role = leadingDeterminerBase(node.normalized)
+    if (!role || GENERATIONAL_CHARACTER_TOKENS.has(role) ||
+        OWNED_KINSHIP_GENDERS.has(role)) return false
+    const display = [...node.forms.values()].find(({ display }) =>
+      isSurfaceGrounded(display, observation.evidence.quote)
+    )?.display
+    if (!display || !hasIndependentSurfaceEvidence(
+      observation.entityCandidate,
+      display,
+      observation.evidence.quote
+    )) return false
+    return fact === `${source} is the ${role}` || fact === `${source} was the ${role}` ||
+      fact === `${source} является ${role}` || fact === `${source} был ${role}` ||
+      fact === `${source} была ${role}`
+  })
+  return targets.length === 1 ? targets[0].key : null
+}
+
+/**
+ * A role is not an alias by itself. It becomes one only when the same role observation explicitly
+ * states the identity and its quote independently grounds both the personal name and descriptor.
+ */
+function mergeExplicitRoleAttributions(
+  sets,
+  nodes,
+  observations,
+  primaryNodeByObservationId
+) {
+  for (const observation of observations) {
+    const targetKey = explicitRoleAttributionTarget(observation, nodes)
+    const sourceKey = primaryNodeByObservationId.get(observation.id)
+    if (!targetKey || !sourceKey) continue
+    sets.union(sourceKey, targetKey)
+  }
+}
+
 /**
  * Joins a titled family form only when frozen scan evidence itself substitutes that form for one
  * compatible full-name root. This is deliberately stricter than surname/gender inference: if
@@ -1509,7 +1552,7 @@ function mergeEvidenceSubstitutedTitledNames(
       const tokens = semanticIdentityTokens(node.normalized)
       if (root === titleRoot || tokens.length < 2 || tokens.at(-1) !== family) return false
       const genders = rootGenderSignals(sets, nodes, root, observationsByPrimaryKey)
-      return genders.size === 1 && genders.has(titleGender)
+      return genders.size <= 1 && (!genders.size || genders.has(titleGender))
     }).map(({ key }) => sets.find(key)))]
     const supported = candidateRoots.filter((root) =>
       groundedSubstitutionSpans(
@@ -1526,8 +1569,16 @@ function mergeEvidenceSubstitutedTitledNames(
         observationsByPrimaryKey
       ).size > 0
     )
+    const supportedExtendsExactTitle = supported.length === 1 &&
+      componentNodes(sets, nodes, supported[0]).some((node) => {
+        const tokens = nameTokens(node.normalized)
+        const titledTokens = nameTokens(titledNode.normalized)
+        return tokens.length >= 3 && tokens[0] === titledTokens[0] &&
+          tokens.at(-1) === family
+      })
     if (
       supported.length === 1 &&
+      (candidateRoots.length === 1 || supportedExtendsExactTitle) &&
       !relationshipSeparatesComponents(sets, nodes, titleRoot, supported[0], observations)
     ) sets.union(titleRoot, supported[0])
   }
@@ -2234,6 +2285,7 @@ export function resolveBookAnalysisEntities({ observations: rawObservations, ide
   mergeExplicitSpouseNameTransitions(sets, nodes, observations, primaryNodeByObservationId)
   mergeMarriedFullNameExpansions(sets, nodes)
   mergeNamedKinshipTitleVariants(sets, nodes)
+  mergeExplicitRoleAttributions(sets, nodes, observations, primaryNodeByObservationId)
   mergeEvidenceSubstitutedTitledNames(sets, nodes, observations, observationsByPrimaryKey)
   mergeStrongUniqueGivenNames(sets, nodes)
   applyApprovedIdentityMerges(sets, nodes, identityMerges)

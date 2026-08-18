@@ -2486,6 +2486,95 @@ test('resolver merges a titled surname with the only full name substituted by sc
   assert.equal(characters.length, 2)
 })
 
+test('resolver merges a grounded role only through an explicit same-quote attribution', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111112971',
+      type: 'character_role', candidate: 'Mr. Bunting',
+      fact: 'Mr. Bunting is the vicar.',
+      quote: 'The vicar and the doctor looked at one another. “Yes,” said Mr. Bunting.',
+      startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222971',
+      type: 'character_dialogue', candidate: 'the vicar',
+      quote: 'The vicar answered quietly.', startOffset: 300
+    })
+  ]
+  const characters = resolveBookAnalysisEntities({ observations })
+  assert.equal(characters.length, 1)
+  assert.deepEqual(new Set([characters[0].canonicalName, ...characters[0].aliases]), new Set([
+    'Mr. Bunting', 'the vicar'
+  ]))
+})
+
+test('resolver does not merge a role from co-occurrence without an identity attribution', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111112972',
+      type: 'character_role', candidate: 'Mr. Bunting',
+      fact: 'Mr. Bunting speaks after the vicar.',
+      quote: 'The vicar paused. “Yes,” said Mr. Bunting.', startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222972',
+      type: 'character_dialogue', candidate: 'the vicar',
+      quote: 'The vicar answered quietly.', startOffset: 300
+    })
+  ]
+  const characters = resolveBookAnalysisEntities({ observations })
+  assert.equal(characters.length, 2)
+})
+
+test('resolver accepts a direct title substitution when the full name has no gender metadata', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111112973',
+      type: 'character_action', candidate: 'Charlotte Palmer',
+      fact: 'Charlotte Palmer invites them.',
+      quote: '“Come to Cleveland,” said Mrs. Palmer.', startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222973',
+      type: 'character_action', candidate: 'Mrs. Palmer', fact: 'female',
+      quote: 'Mrs. Palmer laughed.', startOffset: 300
+    })
+  ]
+  const characters = resolveBookAnalysisEntities({ observations })
+  assert.equal(characters.length, 1)
+  assert.deepEqual(new Set([characters[0].canonicalName, ...characters[0].aliases]), new Set([
+    'Charlotte Palmer', 'Mrs. Palmer'
+  ]))
+})
+
+test('resolver keeps an evidence-backed exact titled expansion despite another family member', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111112974',
+      type: 'character_mention', candidate: 'Mrs. Alexander Spencer', fact: 'female',
+      quote: 'Her cousin lives there and Mrs. Spencer has visited her.', startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222974',
+      type: 'character_action', candidate: 'Mrs. Spencer', fact: 'female',
+      quote: 'Mrs. Spencer arrived.', startOffset: 300
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333974',
+      type: 'character_action', candidate: 'Laura Spencer', fact: 'female',
+      quote: 'Laura Spencer recited a poem.', startOffset: 500
+    })
+  ]
+  const characters = resolveBookAnalysisEntities({ observations })
+  assert.equal(characters.length, 2)
+  const titled = characters.find(({ canonicalName, aliases }) =>
+    [canonicalName, ...aliases].includes('Mrs. Alexander Spencer')
+  )
+  assert.deepEqual(new Set([titled.canonicalName, ...titled.aliases]), new Set([
+    'Mrs. Alexander Spencer', 'Mrs. Spencer'
+  ]))
+})
+
 test('resolver does not infer candidate gender from a different person in the fact', () => {
   const observations = [
     observation({
