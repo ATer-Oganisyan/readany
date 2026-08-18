@@ -13,7 +13,9 @@ module.exports = {
     userInterfaceStyle: "automatic",
     newArchEnabled: true,
     ios: {
-      icon: "./assets/Narra.icon",
+      // Keep release archives compatible with the stable Xcode toolchain used by App Store Connect.
+      // This opaque PNG is generated from the same Narra icon artwork as the Icon Composer package.
+      icon: "./assets/app-icon.png",
       supportsTablet: true,
       bundleIdentifier: variant.bundleIdentifier,
       buildNumber: "36",
