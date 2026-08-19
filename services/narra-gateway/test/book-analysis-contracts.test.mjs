@@ -23,8 +23,8 @@ test('scan prompt and extractor share the cache-isolating v15 version', () => {
 })
 
 test('resolver, profile and scan fallback changes isolate versioned caches', () => {
-  assert.equal(BOOK_ANALYSIS_PIPELINE_VERSION, 'book-analysis-v44')
-  assert.equal(BOOK_ANALYSIS_SYNTHESIS_VERSION, 'character-profile-v13')
+  assert.equal(BOOK_ANALYSIS_PIPELINE_VERSION, 'book-analysis-v45')
+  assert.equal(BOOK_ANALYSIS_SYNTHESIS_VERSION, 'character-profile-v14')
   assert.equal(BOOK_ANALYSIS_IDENTITY_RECONCILIATION_VERSION, 'character-identity-v20')
 })
 
@@ -125,6 +125,17 @@ test('v3 markup keeps grounded facts separate from creative character data', () 
       warmupTextOffset: 1_000,
       role: { value: 'Главная героиня', evidenceIds: [evidenceId], confidence: 0.96 },
       traits: [{ value: 'Решительная', evidenceIds: [evidenceId], confidence: 0.88 }],
+      personalityTimelineVersion: 'progressive-personality-v1',
+      personalitySnapshots: [{
+        cutoffTextOffset: 1_400,
+        status: 'preliminary',
+        traits: [{
+          value: 'Решительная',
+          evidenceIds: [evidenceId],
+          confidence: 0.65,
+          evidenceLevel: 'single_scene'
+        }]
+      }],
       appearance: [],
       speechExamples: [],
       creative: {
@@ -139,6 +150,8 @@ test('v3 markup keeps grounded facts separate from creative character data', () 
     storyArcs: []
   })
   assert.equal(markup.characters[0].traits[0].evidenceIds[0], evidenceId)
+  assert.equal(markup.characters[0].personalityTimelineVersion, 'progressive-personality-v1')
+  assert.equal(markup.characters[0].personalitySnapshots[0].status, 'preliminary')
   assert.equal(markup.characters[0].creative.greeting, 'Рада встрече.')
   assert.equal('evidenceIds' in markup.characters[0].creative, false)
 

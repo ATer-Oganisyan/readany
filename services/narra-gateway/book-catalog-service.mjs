@@ -84,6 +84,16 @@ function analysisCharacterProfile(character, analysisSource) {
     role: claimValue(character.role) || 'Персонаж истории',
     gender: normalizedGender,
     traits: character.traits.map(claimValue).filter(Boolean).slice(0, 5),
+    personalityTimelineVersion: character.personalityTimelineVersion || undefined,
+    personalitySnapshots: character.personalitySnapshots.map((snapshot) => ({
+      cutoffTextOffset: snapshot.cutoffTextOffset,
+      status: snapshot.status,
+      traits: snapshot.traits.map((trait) => ({
+        value: claimValue(trait),
+        confidence: trait.confidence,
+        evidenceLevel: trait.evidenceLevel
+      })).filter(({ value }) => value).slice(0, 5)
+    })),
     speechStyle: claimValue(character.speechStyle),
     speechExamples: character.speechExamples.map(claimValue).filter(Boolean).slice(0, 3),
     appearancePrompt,

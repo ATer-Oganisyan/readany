@@ -23,10 +23,10 @@ function contentHash(value) {
   return sha256(JSON.stringify(canonical(value)))
 }
 
-function addClaims(target, values, expectedTypes, ownerEvidenceIds) {
+function addClaims(target, values, expectedTypes, ownerEvidenceIds, maxEndOffset = null) {
   for (const claim of values.filter(Boolean)) {
     for (const evidenceId of claim.evidenceIds) {
-      target.push({ evidenceId, expectedTypes, ownerEvidenceIds })
+      target.push({ evidenceId, expectedTypes, ownerEvidenceIds, maxEndOffset })
     }
   }
 }
@@ -169,6 +169,15 @@ export function validateBookMarkupV3({
       new Set(BOOK_ANALYSIS_TRAIT_EVIDENCE_TYPES),
       ownerEvidenceIds
     )
+    for (const personalitySnapshot of character.personalitySnapshots) {
+      addClaims(
+        usages,
+        personalitySnapshot.traits,
+        new Set(BOOK_ANALYSIS_TRAIT_EVIDENCE_TYPES),
+        ownerEvidenceIds,
+        personalitySnapshot.cutoffTextOffset
+      )
+    }
     addClaims(usages, character.appearance, new Set(['character_appearance']), ownerEvidenceIds)
     addClaims(
       usages,
@@ -213,6 +222,15 @@ export function validateBookMarkupV3({
     }
     if (usage.expectedTypes && !usage.expectedTypes.has(observation.type)) {
       errors.push({ code: 'EVIDENCE_TYPE_MISMATCH', message: `evidence ${usage.evidenceId} has incompatible type` })
+    }
+    if (
+      Number.isSafeInteger(usage.maxEndOffset) &&
+      observation.evidence.endOffset > usage.maxEndOffset
+    ) {
+      errors.push({
+        code: 'EVIDENCE_AFTER_CUTOFF',
+        message: `evidence ${usage.evidenceId} is after personality cutoff`
+      })
     }
   }
   return {

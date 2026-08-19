@@ -1,10 +1,10 @@
-export const BOOK_ANALYSIS_PIPELINE_VERSION = 'book-analysis-v44'
+export const BOOK_ANALYSIS_PIPELINE_VERSION = 'book-analysis-v45'
 export const BOOK_ANALYSIS_MARKUP_VERSION = 'book-markup-v3'
 export const BOOK_ANALYSIS_CHARACTER_BUNDLE_VERSION = 'character-bundle-v3'
 export const BOOK_ANALYSIS_SCHEMA_VERSION = 3
 export const BOOK_ANALYSIS_PROMPT_VERSION = 'book-scan-v15'
 export const BOOK_ANALYSIS_EXTRACTOR_VERSION = 'book-scan-v15'
-export const BOOK_ANALYSIS_SYNTHESIS_VERSION = 'character-profile-v13'
+export const BOOK_ANALYSIS_SYNTHESIS_VERSION = 'character-profile-v14'
 export const BOOK_ANALYSIS_IDENTITY_RECONCILIATION_VERSION = 'character-identity-v20'
 
 export const BOOK_ANALYSIS_STAGES = Object.freeze([
@@ -84,6 +84,12 @@ const ENTITY_KINDS = new Set(BOOK_ANALYSIS_ENTITY_KINDS)
 const RESOLUTION_STATUSES = new Set(BOOK_ANALYSIS_RESOLUTION_STATUSES)
 const OBSERVATION_TYPES = new Set(BOOK_ANALYSIS_OBSERVATION_TYPES)
 const CHARACTER_GENDERS = new Set(['male', 'female'])
+const PERSONALITY_SNAPSHOT_STATUSES = new Set([
+  'insufficient_evidence',
+  'preliminary',
+  'supported'
+])
+const PERSONALITY_EVIDENCE_LEVELS = new Set(['single_scene', 'repeated', 'direct'])
 const OBSERVATION_ENTITY_KIND = new Map([
   ['character_mention', 'character'],
   ['character_alias', 'character'],
@@ -206,6 +212,47 @@ function claimValues(value, name, maxItems = 32) {
   if (!Array.isArray(value)) invalid(`${name}: expected an array`)
   if (value.length > maxItems) invalid(`${name}: exceeds ${maxItems} items`)
   return value.map((claim, index) => normalizeEvidenceClaim(claim, `${name}[${index}]`))
+}
+
+function normalizePersonalityTrait(input, name) {
+  const source = objectValue(input, name)
+  return {
+    ...normalizeEvidenceClaim(source, name),
+    evidenceLevel: enumValue(
+      source.evidenceLevel,
+      PERSONALITY_EVIDENCE_LEVELS,
+      `${name}.evidenceLevel`
+    )
+  }
+}
+
+function normalizePersonalitySnapshots(value, name, textLength) {
+  const values = boundedObjects(value, name, 12)
+  let previousCutoff = -1
+  return values.map((input, index) => {
+    const itemName = `${name}[${index}]`
+    const source = objectValue(input, itemName)
+    const cutoffTextOffset = textOffset(source.cutoffTextOffset, `${itemName}.cutoffTextOffset`)
+    if (cutoffTextOffset > textLength) invalid(`${itemName}.cutoffTextOffset: exceeds textLength`)
+    if (cutoffTextOffset <= previousCutoff) {
+      invalid(`${itemName}.cutoffTextOffset: must be strictly increasing`)
+    }
+    previousCutoff = cutoffTextOffset
+    const traits = boundedObjects(source.traits ?? [], `${itemName}.traits`, 5)
+      .map((trait, traitIndex) => normalizePersonalityTrait(
+        trait,
+        `${itemName}.traits[${traitIndex}]`
+      ))
+    const status = enumValue(
+      source.status,
+      PERSONALITY_SNAPSHOT_STATUSES,
+      `${itemName}.status`
+    )
+    if ((status === 'insufficient_evidence') !== (traits.length === 0)) {
+      invalid(`${itemName}.status: does not match traits`)
+    }
+    return { cutoffTextOffset, status, traits }
+  })
 }
 
 function uniqueKeys(items, key, name) {
@@ -370,6 +417,17 @@ function normalizeCharacter(input, index, textLength) {
     gender: optionalGenderClaim(source.gender, `${name}.gender`),
     description: optionalClaim(source.description, `${name}.description`),
     traits: claimValues(source.traits ?? [], `${name}.traits`, 32),
+    personalityTimelineVersion: stringValue(
+      source.personalityTimelineVersion,
+      `${name}.personalityTimelineVersion`,
+      64,
+      { optional: true }
+    ),
+    personalitySnapshots: normalizePersonalitySnapshots(
+      source.personalitySnapshots ?? [],
+      `${name}.personalitySnapshots`,
+      textLength
+    ),
     appearance: claimValues(source.appearance ?? [], `${name}.appearance`, 32),
     speechStyle: optionalClaim(source.speechStyle, `${name}.speechStyle`),
     speechExamples: claimValues(source.speechExamples ?? [], `${name}.speechExamples`, 32),

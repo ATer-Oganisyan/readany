@@ -1065,6 +1065,19 @@ test('current profile synthesis audits traits and rewrites description from cite
             evidenceIds: [episodicTraitId],
             confidence: 0.9
           }],
+          personalitySnapshots: [{
+            cutoffTextOffset: 140,
+            traits: [{
+              value: 'generous', evidenceIds: [firstActionId], confidence: 0.7
+            }]
+          }, {
+            cutoffTextOffset: 7_060,
+            traits: [{
+              value: 'generous',
+              evidenceIds: [firstActionId, secondActionId],
+              confidence: 0.86
+            }]
+          }],
           creative: { greeting: 'Hello.', appearancePrompt: '', voice: 'Erm' }
         })
       }
@@ -1123,10 +1136,10 @@ test('current profile synthesis audits traits and rewrites description from cite
     confidence: 0.96
   }]
   const result = await service.synthesizeCharacterProfile({
-    idempotencyKey: 'run-audit:synthesize:snapshot-audit:character:anna:character-profile-v13',
+    idempotencyKey: 'run-audit:synthesize:snapshot-audit:character:anna:character-profile-v14',
     runId: 'run-audit',
     snapshotId: 'snapshot-audit',
-    synthesisVersion: 'character-profile-v13',
+    synthesisVersion: 'character-profile-v14',
     bookTitle: 'The Book',
     bookAuthor: 'An Author',
     textLength: 10_000,
@@ -1151,6 +1164,109 @@ test('current profile synthesis audits traits and rewrites description from cite
   assert.deepEqual(result.profile.traits[0].evidenceIds, [firstActionId, secondActionId])
   assert.equal(result.profile.description.value, 'Anna repeatedly helps people in need.')
   assert.deepEqual(result.profile.description.evidenceIds, [firstActionId, secondActionId])
+  assert.deepEqual(result.profile.personalitySnapshots.map(({ cutoffTextOffset, status }) => ({
+    cutoffTextOffset,
+    status
+  })), [{
+    cutoffTextOffset: 140,
+    status: 'preliminary'
+  }, {
+    cutoffTextOffset: 7_060,
+    status: 'supported'
+  }])
+  assert.equal(result.profile.personalityTimelineVersion, 'progressive-personality-v1')
+})
+
+test('invalid primary personality timeline falls back to sequential checkpoint synthesis', async () => {
+  const storage = memoryStorage()
+  const ids = [
+    '61616161-6161-4161-8161-616161616161',
+    '62626262-6262-4262-8262-626262626262',
+    '63636363-6363-4363-8363-636363636363'
+  ]
+  const calls = []
+  const service = createInternalGenerationService({
+    storage,
+    logger: { info() {}, warn() {}, error() {} },
+    async completeChat(input) {
+      calls.push(input)
+      if (calls.length === 1) {
+        return JSON.stringify({
+          traits: [],
+          personalitySnapshots: [{
+            cutoffTextOffset: 120,
+            traits: [{ value: 'смелый', evidenceIds: [ids[2]], confidence: 0.9 }]
+          }, { cutoffTextOffset: 320, traits: [] }],
+          creative: { greeting: 'Здравствуйте.', appearancePrompt: '', voice: 'Erm' }
+        })
+      }
+      if (calls.length === 2) return JSON.stringify({ traits: [] })
+      if (calls.length === 3) return JSON.stringify({ traits: [], description: null })
+      if (calls.length === 4) {
+        return JSON.stringify({
+          traits: [{ value: 'решительный', evidenceIds: [ids[0]], confidence: 0.8 }]
+        })
+      }
+      return JSON.stringify({
+        traits: [{
+          value: 'решительный', evidenceIds: [ids[0], ids[2]], confidence: 0.9
+        }]
+      })
+    },
+    async generatePortrait() { throw new Error('unused') },
+    async synthesizeSpeech() { throw new Error('unused') },
+    async generateIdleAnimation() { throw new Error('unused') }
+  })
+  const evidence = ids.map((id, index) => ({
+    id,
+    type: 'character_action',
+    fact: `Поступок ${index + 1}`,
+    quote: `Герой совершил поступок ${index + 1}.`,
+    startOffset: index * 100 + 80,
+    endOffset: index * 100 + 120,
+    confidence: 0.9
+  }))
+
+  const result = await service.synthesizeCharacterProfile({
+    idempotencyKey: 'run-fallback:synthesize:snapshot-fallback:character:hero:character-profile-v14',
+    runId: 'run-fallback',
+    snapshotId: 'snapshot-fallback',
+    synthesisVersion: 'character-profile-v14',
+    bookTitle: 'Книга',
+    bookAuthor: 'Автор',
+    textLength: 1_000,
+    entity: {
+      entityKey: 'character:hero',
+      entityKind: 'character',
+      canonicalName: 'Герой',
+      aliases: [],
+      resolutionStatus: 'confirmed',
+      confidence: 0.9,
+      evidenceIds: ids,
+      data: { firstEvidenceStartOffset: 80 }
+    },
+    evidence
+  })
+
+  assert.equal(calls.length, 5)
+  assert.match(calls[3].messages[0].content, /fallback.*контрольной точки/i)
+  assert.match(calls[3].messages[1].content, /PREVIOUS_SNAPSHOT: \{\}/)
+  assert.match(calls[4].messages[1].content, /PREVIOUS_SNAPSHOT:.*решительный/)
+  assert.deepEqual(result.profile.personalitySnapshots, [{
+    cutoffTextOffset: 120,
+    status: 'preliminary',
+    traits: [{
+      value: 'решительный', evidenceIds: [ids[0]], confidence: 0.65,
+      evidenceLevel: 'single_scene'
+    }]
+  }, {
+    cutoffTextOffset: 320,
+    status: 'preliminary',
+    traits: [{
+      value: 'решительный', evidenceIds: [ids[0], ids[2]], confidence: 0.82,
+      evidenceLevel: 'repeated'
+    }]
+  }])
 })
 
 test('extractive profile description fallback is deterministic and requires two grounded facts', () => {

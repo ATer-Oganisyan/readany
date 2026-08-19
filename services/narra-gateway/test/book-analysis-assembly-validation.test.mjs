@@ -194,3 +194,35 @@ test('independent validator accepts exact evidence and rejects a claim backed by
   assert.equal(invalid.valid, false)
   assert.ok(invalid.errors.some(({ code }) => code === 'EVIDENCE_TYPE_MISMATCH'))
 })
+
+test('independent validator blocks personality evidence after its reading cutoff', () => {
+  const { normalizedText, observations, entity, snapshot, profile } = fixture()
+  const markup = assembleBookMarkupV3({
+    snapshotId,
+    textLength: normalizedText.length,
+    entities: [entity],
+    observations,
+    characterProfiles: [{
+      ...profile,
+      personalitySnapshots: [{
+        cutoffTextOffset: 16,
+        status: 'preliminary',
+        traits: [{
+          value: 'Заботливая', evidenceIds: [actionId], confidence: 0.65,
+          evidenceLevel: 'single_scene'
+        }]
+      }]
+    }]
+  })
+
+  const result = validateBookMarkupV3({
+    markup,
+    snapshot,
+    observations,
+    normalizedText,
+    normalizedTextHash: hash(normalizedText)
+  })
+
+  assert.equal(result.valid, false)
+  assert.ok(result.errors.some(({ code }) => code === 'EVIDENCE_AFTER_CUTOFF'))
+})

@@ -1963,6 +1963,7 @@ export function createPostgresBookAnalysisRepository(pool, {
         const claims = [
           normalizedProfile.role, normalizedProfile.age, normalizedProfile.gender,
           normalizedProfile.description, ...normalizedProfile.traits,
+          ...normalizedProfile.personalitySnapshots.flatMap(({ traits }) => traits),
           ...normalizedProfile.appearance, normalizedProfile.speechStyle,
           ...normalizedProfile.speechExamples
         ].filter(Boolean)

@@ -91,7 +91,7 @@ test('narra and external cache identities are disjoint for the same content hash
   const narra = bookAnalysisPipelineCacheKey({ pipelineId: 'narra', contentHash })
   const external = bookAnalysisPipelineCacheKey({ pipelineId: 'external', contentHash })
   assert.notEqual(narra, external)
-  assert.match(narra, /narra:book-analysis-v44/)
+  assert.match(narra, /narra:book-analysis-v45/)
   assert.match(external, /external:external-autiobook-v1\.d532bdd0/)
   assert.match(external, /normalized-text-v1:schema-3:book-markup-v3/)
 })
