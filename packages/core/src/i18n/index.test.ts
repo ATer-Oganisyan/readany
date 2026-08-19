@@ -50,6 +50,15 @@ describe("interface localization", () => {
     expect(englishKeys).toEqual(russianKeys);
   });
 
+  it("mentions AO3 in the link import dialog in both languages", async () => {
+    await i18nReady;
+
+    await i18n.changeLanguage("en");
+    expect(i18n.t("library.importSourceUrlDesc")).toContain("AO3");
+    await i18n.changeLanguage("ru");
+    expect(i18n.t("library.importSourceUrlDesc")).toContain("AO3");
+  });
+
   it("keeps interpolation variables identical in both languages", async () => {
     await i18nReady;
     const russian = flattenStrings(i18n.getResourceBundle("ru", "translation"));

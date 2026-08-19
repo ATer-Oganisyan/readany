@@ -420,10 +420,8 @@ export interface FicbookFetchOptions {
 
 async function resolveFetch(options: FicbookFetchOptions): Promise<typeof globalThis.fetch> {
   if (options.fetchImpl) return options.fetchImpl;
-  // expo/fetch — WinterCG-совместимый fetch Expo (стриминг, arrayBuffer);
-  // импорт ленивый, чтобы модуль оставался чистым для юнит-тестов.
-  const { fetch: expoFetch } = await import("expo/fetch");
-  return expoFetch as unknown as typeof globalThis.fetch;
+  const { gatewayImportSourceFetch } = await import("./import-source-gateway");
+  return gatewayImportSourceFetch as typeof globalThis.fetch;
 }
 
 function sleep(ms: number): Promise<void> {

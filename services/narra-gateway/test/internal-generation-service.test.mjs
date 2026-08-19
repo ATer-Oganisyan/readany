@@ -242,8 +242,8 @@ test('internal generation service gives the provider one scan chunk and asks for
   assert.ok(chatRequest.messages[1].content.includes('SECTION_TITLES: PREFACE.'))
   assert.match(chatRequest.messages[0].content, /title page, contents, preface, introduction/i)
   assert.match(chatRequest.messages[0].content, /said the Voice\. I am an invisible man/i)
-  assert.match(chatRequest.messages[0].content, /одной непрерывной evidence\.quote/i)
-  assert.match(chatRequest.messages[0].content, /подпись письма/i)
+  assert.match(chatRequest.messages[0].content, /\u043eдной непрерывной evidence\.quote/i)
+  assert.match(chatRequest.messages[0].content, /\u043fодпись письма/i)
   assert.equal(chatRequest.messages[1].content.includes('objectKey'), false)
   assert.equal(chatRequest.messages[1].content.includes('normalized'), false)
   assert.deepEqual(result.observations[0].evidence, {
@@ -931,7 +931,7 @@ test('internal generation service builds a grounded profile for one resolved cha
   assert.match(chatRequest.messages[0].content, /без спойлеров/i)
   assert.match(chatRequest.messages[0].content, /description — обязательное краткое описание/i)
   assert.match(chatRequest.messages[0].content, /при двух и более содержательных EVIDENCE/i)
-  assert.match(chatRequest.messages[0].content, /traits — от 0 до 4 наиболее определяющих/i)
+  assert.match(chatRequest.messages[0].content, /traits — от 0 до 8 кандидатов/i)
   assert.match(chatRequest.messages[0].content, /\[\] — обязательный результат/i)
   assert.match(chatRequest.messages[0].content, /проверь общие независимые оси/i)
   assert.match(chatRequest.messages[0].content, /шестью и более поведенческими наблюдениями/i)
@@ -1035,6 +1035,122 @@ test('internal generation service keeps compatible profile claims and drops only
     line.includes('dropped_claim_count=3')
   ))
   assert.equal(lines.some((line) => line.includes('Смелая')), false)
+})
+
+test('current profile synthesis audits traits and rewrites description from cited evidence only', async () => {
+  const storage = memoryStorage()
+  const firstActionId = '31313131-3131-4131-8131-313131313131'
+  const secondActionId = '32323232-3232-4232-8232-323232323232'
+  const episodicTraitId = '33333333-3333-4333-8333-333333333333'
+  const appearanceId = '34343434-3434-4434-8434-343434343434'
+  const calls = []
+  const service = createInternalGenerationService({
+    storage,
+    logger: { info() {}, warn() {}, error() {} },
+    async completeChat(input) {
+      calls.push(input)
+      if (calls.length === 1) {
+        return JSON.stringify({
+          description: {
+            value: 'Anna repeatedly helps people and is a famous heiress.',
+            evidenceIds: [firstActionId, secondActionId],
+            confidence: 0.91
+          },
+          traits: [{
+            value: 'generous',
+            evidenceIds: [firstActionId, secondActionId, appearanceId],
+            confidence: 0.92
+          }, {
+            value: 'fastidious',
+            evidenceIds: [episodicTraitId],
+            confidence: 0.9
+          }],
+          creative: { greeting: 'Hello.', appearancePrompt: '', voice: 'Erm' }
+        })
+      }
+      if (calls.length === 2) {
+        return JSON.stringify({
+          traits: [{
+            value: 'generous',
+            evidenceIds: [firstActionId],
+            confidence: 0.96
+          }]
+        })
+      }
+      return JSON.stringify({
+        traits: [{ index: 0, evidenceIds: [firstActionId, secondActionId, appearanceId] }],
+        description: {
+          value: 'Anna repeatedly helps people in need.',
+          evidenceIds: [firstActionId, secondActionId]
+        }
+      })
+    },
+    async generatePortrait() { throw new Error('unused') },
+    async synthesizeSpeech() { throw new Error('unused') },
+    async generateIdleAnimation() { throw new Error('unused') }
+  })
+  const evidence = [{
+    id: firstActionId,
+    type: 'character_action',
+    fact: 'Anna gives food to a hungry child',
+    quote: 'Anna gave the hungry child her supper.',
+    startOffset: 100,
+    endOffset: 140,
+    confidence: 0.94
+  }, {
+    id: secondActionId,
+    type: 'character_action',
+    fact: 'Anna pays a stranger’s fare home',
+    quote: 'Anna quietly paid the stranger’s fare home.',
+    startOffset: 4_000,
+    endOffset: 4_050,
+    confidence: 0.93
+  }, {
+    id: episodicTraitId,
+    type: 'character_trait',
+    fact: 'Anna arranges one place setting fastidiously',
+    quote: 'Anna arranged the spoons fastidiously and sat down.',
+    startOffset: 7_000,
+    endOffset: 7_060,
+    confidence: 0.91
+  }, {
+    id: appearanceId,
+    type: 'character_appearance',
+    fact: 'Anna has dark hair',
+    quote: 'Anna had dark hair.',
+    startOffset: 8_000,
+    endOffset: 8_020,
+    confidence: 0.96
+  }]
+  const result = await service.synthesizeCharacterProfile({
+    idempotencyKey: 'run-audit:synthesize:snapshot-audit:character:anna:character-profile-v13',
+    runId: 'run-audit',
+    snapshotId: 'snapshot-audit',
+    synthesisVersion: 'character-profile-v13',
+    bookTitle: 'The Book',
+    bookAuthor: 'An Author',
+    textLength: 10_000,
+    entity: {
+      entityKey: 'character:anna',
+      entityKind: 'character',
+      canonicalName: 'Anna',
+      aliases: [],
+      resolutionStatus: 'confirmed',
+      confidence: 0.96,
+      evidenceIds: evidence.map(({ id }) => id),
+      data: { firstEvidenceStartOffset: 100 }
+    },
+    evidence
+  })
+  assert.equal(calls.length, 3)
+  assert.match(calls[1].messages[0].content, /recall-экстрактор/i)
+  assert.match(calls[2].messages[0].content, /строгий независимый аудитор/i)
+  assert.match(calls[2].messages[0].content, /good-natured grumble/i)
+  assert.match(calls[2].messages[0].content, /слух, лесть, оскорбление, метафора/i)
+  assert.deepEqual(result.profile.traits.map(({ value }) => value), ['generous'])
+  assert.deepEqual(result.profile.traits[0].evidenceIds, [firstActionId, secondActionId])
+  assert.equal(result.profile.description.value, 'Anna repeatedly helps people in need.')
+  assert.deepEqual(result.profile.description.evidenceIds, [firstActionId, secondActionId])
 })
 
 test('extractive profile description fallback is deterministic and requires two grounded facts', () => {
@@ -1283,6 +1399,56 @@ test('personality filter does not trust a direct label absent from its quote', (
     value: 'bashful', evidenceIds: [temporaryId], confidence: 0.95
   }]
   assert.deepEqual(filterStableTraits(claims, evidenceById, 100_000), [])
+})
+
+test('personality filter follows durable quote attribution despite noisy evidence typing', () => {
+  const fixtures = [{
+    value: 'observant',
+    type: 'character_action',
+    fact: 'Kemp notices a spot.',
+    quote: 'His scientific pursuits have made him a very observant man.',
+    startOffset: 100
+  }, {
+    value: 'stern',
+    type: 'character_trait',
+    fact: 'James is stern.',
+    quote: 'She had felt ill at ease when alone with this rough stern son of hers.',
+    startOffset: 3_000
+  }, {
+    value: 'shy',
+    type: 'character_trait',
+    fact: 'Sibyl is shy.',
+    quote: 'Sibyl was so shy and so gentle.',
+    startOffset: 6_000
+  }, {
+    value: 'humble',
+    type: 'character_trait',
+    fact: 'Amy is humble.',
+    quote: 'Amy looked humble in her little effort.',
+    startOffset: 9_000
+  }, {
+    value: 'dissipated',
+    type: 'character_trait',
+    fact: 'Willoughby is dissipated.',
+    quote: 'His character is now before you; expensive, dissipated, and worse than both.',
+    startOffset: 12_000
+  }, {
+    value: 'cool and methodical',
+    type: 'character_trait',
+    fact: 'Kemp is cool and methodical.',
+    quote: 'Kemp was cool and methodical.',
+    startOffset: 15_000
+  }]
+  const evidenceById = new Map()
+  const claims = fixtures.map((fixture, index) => {
+    const id = `89898989-8989-4898-8898-${String(index + 1).padStart(12, '0')}`
+    evidenceById.set(id, { id, ...fixture, confidence: 0.96 })
+    return { value: fixture.value, evidenceIds: [id], confidence: 0.96 }
+  })
+  assert.deepEqual(
+    filterStableTraits(claims, evidenceById, 100_000).map(({ value }) => value).sort(),
+    ['dissipated', 'observant', 'shy', 'stern']
+  )
 })
 
 test('personality filter removes tied antonyms and caps a deterministic profile at four traits', () => {

@@ -26,7 +26,8 @@ import {
 } from './provider-response.mjs'
 import { parseEventBatch } from './events.mjs'
 import { createEventStore } from './event-store.mjs'
-import { fetchWithRedirectPolicy, readBoundedBody } from './safe-fetch.mjs'
+import { readBoundedBody } from './safe-fetch.mjs'
+import { fetchImportSource, importSourceFailure } from './import-source.mjs'
 import { createConcurrencyGate, requestAbortSignal, withTimeout } from './concurrency.mjs'
 import { parseEnvBool, parseEnvInt } from './env.mjs'
 import {
@@ -1749,37 +1750,20 @@ app.post(
 // --- Генерация изображения: gigachat-image (осн.), Kandinsky (фолбэк) ---
 // Загрузка книг по ссылке (AO3 заблокирован в РФ — качаем сервером).
 // Строгий белый список хостов, только https, лимит 30 МБ.
-const IMPORT_HOSTS = new Set(['archiveofourown.org', 'download.archiveofourown.org', 'ficbook.net', 'www.ficbook.net'])
 app.get('/v2/import/fetch', importLimit, importDailyLimit, importByteBudget, async (req, res) => {
   const clientSignal = requestAbortSignal(req, res)
   let release
   try {
     release = await importGate.acquire(clientSignal)
-    const u = new URL(String(req.query.url || ''))
-    const headers = {
-      'User-Agent':
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
-      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,application/epub+zip,*/*;q=0.8',
-      'Accept-Language': 'ru-RU,ru;q=0.9,en;q=0.8',
-      'Cache-Control': 'no-cache',
-      Referer: `${u.protocol}//${u.hostname}/`
-    }
-    // сайты фанфиков режут частые запросы (403/429) — ждём и пробуем ещё
-    let r = null
-    for (let attempt = 0; attempt < 3; attempt++) {
-      r = await fetchWithRedirectPolicy(u, { allowedHosts: IMPORT_HOSTS, headers, signal: clientSignal })
-      if (r.ok || (r.status !== 403 && r.status !== 429 && r.status < 500)) break
-      await r.body?.cancel().catch(() => {})
-      if (attempt < 2) await abortableDelay(4000 * (attempt + 1), clientSignal)
-    }
+    const r = await fetchImportSource(String(req.query.url || ''), { signal: clientSignal })
     if (!r.ok) {
-      const limited = r.status === 403 || r.status === 429
+      const failure = importSourceFailure(r.status)
       await r.body?.cancel().catch(() => {})
-      return res.status(502).json({
-        error: limited
+      return res.status(failure.status).json({
+        error: failure.code === 'RATE'
           ? 'Сайт временно ограничил загрузку (антифлуд). Подожди пару минут и попробуй снова.'
           : `Источник ответил ${r.status}`,
-        code: limited ? 'RATE' : 'NETWORK'
+        code: failure.code
       })
     }
     const buf = await readBoundedBody(r, 30 * 1024 * 1024, clientSignal)

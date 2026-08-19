@@ -610,6 +610,29 @@ function LibraryScreenContent() {
           return;
         }
 
+        const ao3 = await import("@/lib/book/import-ao3");
+        if (ao3.isAo3Url(value)) {
+          setIsUrlImporting(true);
+          const work = await ao3.importAo3FromUrl(value);
+          temporaryFile = new ExpoFile(Paths.cache, `readany-ao3-${Date.now()}.epub`);
+          if (temporaryFile.exists) {
+            temporaryFile.delete();
+          }
+          temporaryFile.write(work.epubBytes);
+          const ao3Summary = await importBooks([{ uri: temporaryFile.uri, name: work.fileName }]);
+          if (ao3Summary.imported.length === 0 || ao3Summary.failures.length > 0) {
+            Alert.alert(
+              t("library.importSourceUrlErrorTitle", "Не получилось добавить книгу"),
+              t("library.importResultSummary", {
+                imported: ao3Summary.imported.length,
+                skipped: ao3Summary.skippedDuplicates.length,
+                failed: ao3Summary.failures.length,
+              }),
+            );
+          }
+          return;
+        }
+
         const fileName = getUrlImportFilename(url);
         temporaryFile = new ExpoFile(Paths.cache, `readany-url-${Date.now()}-${fileName}`);
         setIsUrlImporting(true);
@@ -641,15 +664,30 @@ function LibraryScreenContent() {
                   "library.importSourceUrlFicbookNotFound",
                   "Фанфик по этой ссылке не найден. Проверьте адрес и попробуйте снова.",
                 )
-              : errorCode === "unsupported-url"
+              : errorCode === "ao3-work-link-required"
                 ? t(
-                    "library.importSourceUrlUnsupported",
-                    "Нужна прямая ссылка на файл EPUB, PDF, TXT или другого поддерживаемого формата — либо ссылка на фанфик Фикбука.",
+                    "library.importSourceUrlAo3WorkRequired",
+                    "Нужна ссылка на конкретную работу AO3 вида archiveofourown.org/works/123456.",
                   )
-                : t(
-                    "library.importSourceUrlError",
-                    "Проверьте ссылку и подключение к интернету, затем попробуйте снова.",
-                  );
+                : errorCode === "ao3-blocked"
+                  ? t(
+                      "library.importSourceUrlAo3Blocked",
+                      "AO3 временно ограничивает загрузку — попробуйте позже.",
+                    )
+                  : errorCode === "ao3-not-found"
+                    ? t(
+                        "library.importSourceUrlAo3NotFound",
+                        "Работа AO3 по этой ссылке не найдена или доступна только после входа.",
+                      )
+                    : errorCode === "unsupported-url"
+                      ? t(
+                          "library.importSourceUrlUnsupported",
+                          "Нужна прямая ссылка на файл книги либо на конкретную работу Фикбука или AO3.",
+                        )
+                      : t(
+                          "library.importSourceUrlError",
+                          "Проверьте ссылку и подключение к интернету, затем попробуйте снова.",
+                        );
         Alert.alert(
           t("library.importSourceUrlErrorTitle", "Не получилось добавить книгу"),
           message,
@@ -668,8 +706,11 @@ function LibraryScreenContent() {
     try {
       const value = await ReadAnyNativeControls.promptForText(
         t("library.importSourceUrlTitle", "Ссылка на книгу"),
-        t("library.importSourceUrlDesc", "Вставьте ссылку на файл книги или на фанфик Фикбука."),
-        t("library.importSourceUrlPlaceholder", "Ссылка на файл или фанфик Фикбука"),
+        t(
+          "library.importSourceUrlDesc",
+          "Вставьте ссылку на файл книги либо на работу Фикбука или AO3.",
+        ),
+        t("library.importSourceUrlPlaceholder", "Ссылка на файл, Фикбук или AO3"),
         t("common.cancel", "Отмена"),
         t("library.importSourceUrlSubmit", "Добавить"),
       );

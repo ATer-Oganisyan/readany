@@ -13,6 +13,7 @@ const IMAGE_TIMEOUT_MS = 330_000;
 // Только legacy synchronous cover route держит длинное соединение. Durable
 // cover-job POST/GET короткие и используют обычный сетевой таймаут.
 const COVER_TIMEOUT_MS = 180_000;
+const IMPORT_TIMEOUT_MS = 120_000;
 const INSTALLATION_TIMEOUT_MS = 15_000;
 const DEFAULT_NARRA_GATEWAY_URL = "https://api-test.narra.disrupt.builders";
 
@@ -344,6 +345,7 @@ async function directGatewayRequest(path: string, init: RequestInit): Promise<Re
 export function gatewayRequestTimeoutMs(path: string): number {
   if (path === "/v2/media/cover") return COVER_TIMEOUT_MS;
   if (path.startsWith("/v2/media/images")) return IMAGE_TIMEOUT_MS;
+  if (path.startsWith("/v2/import/fetch")) return IMPORT_TIMEOUT_MS;
   return DEFAULT_TIMEOUT_MS;
 }
 

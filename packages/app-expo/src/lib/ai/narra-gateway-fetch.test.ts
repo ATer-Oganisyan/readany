@@ -320,6 +320,13 @@ describe("Narra gateway installation recovery", () => {
   });
 });
 
+describe("Narra gateway import timeout", () => {
+  it("allows server-side source retries to finish", async () => {
+    const { gatewayRequestTimeoutMs } = await import("./narra-gateway-fetch");
+    expect(gatewayRequestTimeoutMs("/v2/import/fetch?url=https%3A%2F%2Fficbook.net")).toBe(120_000);
+  });
+});
+
 describe("Narra gateway request timeouts", () => {
   it("keeps scene image requests alive longer than the backend Kandinsky window", async () => {
     const { gatewayRequestTimeoutMs } = await import("./narra-gateway-fetch");

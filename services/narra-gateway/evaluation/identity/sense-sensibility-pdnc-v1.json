@@ -1,0 +1,427 @@
+{
+  "schemaVersion": 1,
+  "id": "sense-sensibility-pdnc-v1",
+  "goldCount": 22,
+  "significantCount": 12,
+  "source": {
+    "dataset": "PDNC",
+    "repository": "Priya22/project-dialogism-novel-corpus",
+    "repositoryCommit": "6fda0a78bda5e9da0854f7befb5dab268abefb7e",
+    "sourcePath": "data/SenseAndSensibility/character_info.csv",
+    "sourceSha256": "958a873dd5e5522a985561c57224326e6054e4e9e14c58b1d30e4ceae2055727",
+    "rawCharacterRows": 24,
+    "correctedGoldCount": 22,
+    "gutenbergId": 161,
+    "canonicalTextSha256": "4580a4a8a5814b20909e9eaf542fc62cdebc4f6dc1e7f6659e3a41d5397bb5c2",
+    "denominatorProtocol": "Start from every pinned PDNC character_info.csv row; apply only the listed source-backed corrections and exclude reserved annotation sentinels whose Main Name starts with an underscore.",
+    "significantProtocol": "Corrected PDNC Category is major or intermediate; corrections affect only minor rows.",
+    "aliasPolicy": "Use corrected PDNC Main Name/Aliases and collision-free removal of exactly one leading English article; no evaluated-output aliases are added.",
+    "articleNormalizationProtocol": "Mechanically remove exactly one leading The, A, or An and retain the result only when the normalized surface belongs to one corrected gold identity.",
+    "corrections": [
+      {
+        "id": "annotation_sentinels",
+        "action": "exclude_source_rows_18_19",
+        "surfaces": [
+          "_group",
+          "_unknowable"
+        ],
+        "reason": "Reserved annotation states are not characters."
+      },
+      {
+        "id": "edward_robert_split",
+        "action": "correct_alias_ownership",
+        "removedFromEdward": [
+          "Robert",
+          "Ferrars",
+          "Mr. Ferrars"
+        ],
+        "addedToRobert": [
+          "Robert"
+        ],
+        "reason": "Edward and Robert Ferrars are brothers; bare surname/title is globally ambiguous and Robert belongs only to Robert Ferrars."
+      },
+      {
+        "id": "steele_title_collision",
+        "action": "remove_ambiguous_alias",
+        "surface": "Miss Steele",
+        "reason": "Anne and Lucy Steele can both be addressed by the title; it is not a global alias."
+      },
+      {
+        "id": "palmer_servant_contamination",
+        "action": "remove_unsupported_alias",
+        "surface": "Man-servant",
+        "reason": "The source text does not identify a man-servant as Mr. Palmer."
+      }
+    ]
+  },
+  "gates": {
+    "precision": 0.9,
+    "recall": 0.9,
+    "f1": 0.9,
+    "criticalMerges": 0,
+    "duplicateRate": 0.05
+  },
+  "collisionGuards": [
+    {
+      "id": "ferrars_family",
+      "surfaces": [
+        "Ferrars",
+        "Mr. Ferrars",
+        "Edward Ferrars",
+        "Edward",
+        "Robert Ferrars",
+        "Robert",
+        "Mrs. Ferrars"
+      ],
+      "goldIds": [
+        "edward_ferrars",
+        "robert_ferrars",
+        "mrs_ferrars"
+      ],
+      "reason": "The Ferrars family names are a central plot collision and must never merge."
+    },
+    {
+      "id": "steele_sisters",
+      "surfaces": [
+        "Miss Steele",
+        "Anne Steele",
+        "Anne",
+        "Nancy",
+        "Lucy Steele",
+        "Lucy"
+      ],
+      "goldIds": [
+        "anne_steele",
+        "lucy_steele"
+      ],
+      "reason": "The Steele sisters share surname/title but are distinct."
+    },
+    {
+      "id": "dashwood_family",
+      "surfaces": [
+        "Dashwood",
+        "Miss Dashwood",
+        "Mrs. Dashwood",
+        "Mr. Dashwood",
+        "Elinor",
+        "Marianne",
+        "John Dashwood",
+        "Fanny"
+      ],
+      "goldIds": [
+        "elinor",
+        "marianne",
+        "mrs_dashwood",
+        "john_dashwood",
+        "fanny"
+      ],
+      "reason": "Shared surname, household, and marriage titles must not collapse the Dashwoods."
+    },
+    {
+      "id": "palmer_spouses",
+      "surfaces": [
+        "Mrs. Palmer",
+        "Charlotte Palmer",
+        "Mr. Palmer",
+        "Thomas Palmer"
+      ],
+      "goldIds": [
+        "charlotte",
+        "mr_palmer"
+      ],
+      "reason": "Charlotte and Thomas Palmer are spouses, not aliases."
+    }
+  ],
+  "characters": [
+    {
+      "id": "anne_steele",
+      "name": "Anne Steele",
+      "sourceCharacterIds": [
+        0
+      ],
+      "category": "intermediate",
+      "significant": true,
+      "aliases": [
+        "Anne",
+        "Nancy"
+      ]
+    },
+    {
+      "id": "charlotte",
+      "name": "Charlotte",
+      "sourceCharacterIds": [
+        1
+      ],
+      "category": "intermediate",
+      "significant": true,
+      "aliases": [
+        "Mrs. Palmer",
+        "Charlotte Palmer"
+      ]
+    },
+    {
+      "id": "colonel_brandon",
+      "name": "Colonel Brandon",
+      "sourceCharacterIds": [
+        2
+      ],
+      "category": "intermediate",
+      "significant": true,
+      "aliases": [
+        "The Colonel",
+        "Colonel",
+        "Brandon"
+      ]
+    },
+    {
+      "id": "edward_ferrars",
+      "name": "Edward Ferrars",
+      "sourceCharacterIds": [
+        3
+      ],
+      "category": "intermediate",
+      "significant": true,
+      "aliases": [
+        "Edward"
+      ]
+    },
+    {
+      "id": "elinor",
+      "name": "Elinor",
+      "sourceCharacterIds": [
+        4
+      ],
+      "category": "major",
+      "significant": true,
+      "aliases": [
+        "Miss Dashwood"
+      ]
+    },
+    {
+      "id": "fanny",
+      "name": "Fanny",
+      "sourceCharacterIds": [
+        5
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Mrs. John Dashwood"
+      ]
+    },
+    {
+      "id": "john_dashwood",
+      "name": "John Dashwood",
+      "sourceCharacterIds": [
+        6
+      ],
+      "category": "intermediate",
+      "significant": true,
+      "aliases": [
+        "Dashwood",
+        "Mr. Dashwood"
+      ]
+    },
+    {
+      "id": "john_middleton",
+      "name": "John Middleton",
+      "sourceCharacterIds": [
+        7
+      ],
+      "category": "intermediate",
+      "significant": true,
+      "aliases": [
+        "Sir John",
+        "Sir John Middleton"
+      ]
+    },
+    {
+      "id": "lady_middleton",
+      "name": "Lady Middleton",
+      "sourceCharacterIds": [
+        8
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Mary"
+      ]
+    },
+    {
+      "id": "lucy_steele",
+      "name": "Lucy Steele",
+      "sourceCharacterIds": [
+        9
+      ],
+      "category": "intermediate",
+      "significant": true,
+      "aliases": [
+        "Lucy",
+        "Mrs. Robert Ferrars"
+      ]
+    },
+    {
+      "id": "margaret",
+      "name": "Margaret",
+      "sourceCharacterIds": [
+        10
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "marianne",
+      "name": "Marianne",
+      "sourceCharacterIds": [
+        11
+      ],
+      "category": "major",
+      "significant": true,
+      "aliases": [
+        "Miss Marianne"
+      ]
+    },
+    {
+      "id": "mr_willoughby",
+      "name": "Mr. Willoughby",
+      "sourceCharacterIds": [
+        12
+      ],
+      "category": "intermediate",
+      "significant": true,
+      "aliases": [
+        "Willoughby"
+      ]
+    },
+    {
+      "id": "mrs_dashwood",
+      "name": "Mrs. Dashwood",
+      "sourceCharacterIds": [
+        13
+      ],
+      "category": "intermediate",
+      "significant": true,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mrs_ferrars",
+      "name": "Mrs. Ferrars",
+      "sourceCharacterIds": [
+        14
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mrs_jennings",
+      "name": "Mrs. Jennings",
+      "sourceCharacterIds": [
+        15
+      ],
+      "category": "intermediate",
+      "significant": true,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "robert_ferrars",
+      "name": "Robert Ferrars",
+      "sourceCharacterIds": [
+        16
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Robert"
+      ]
+    },
+    {
+      "id": "mr_palmer",
+      "name": "Mr. Palmer",
+      "sourceCharacterIds": [
+        17
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Thomas",
+        "Palmer"
+      ]
+    },
+    {
+      "id": "mr_pratt",
+      "name": "Mr. Pratt",
+      "sourceCharacterIds": [
+        20
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "footman",
+      "name": "Footman",
+      "sourceCharacterIds": [
+        21
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "eliza_williams",
+      "name": "Eliza Williams",
+      "sourceCharacterIds": [
+        22
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "harry",
+      "name": "Harry",
+      "sourceCharacterIds": [
+        23
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    }
+  ],
+  "knownExtras": [
+    {
+      "id": "pdnc_group",
+      "name": "_group",
+      "aliases": [
+
+      ],
+      "kind": "annotation_sentinel"
+    },
+    {
+      "id": "pdnc_unknowable",
+      "name": "_unknowable",
+      "aliases": [
+
+      ],
+      "kind": "annotation_sentinel"
+    }
+  ]
+}
