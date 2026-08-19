@@ -3,6 +3,9 @@ import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { createChatModel } from "@readany/core/ai/llm-provider";
 import type { AIConfig, AIEndpoint } from "@readany/core/types";
 import { providerRequiresApiKey } from "@readany/core/utils";
+import { isTechnicalBookTitle, normalizeBookIdentityValue } from "./book-identity-resolver";
+
+export { isSuspiciousBookTitle, isTechnicalBookTitle } from "./book-identity-resolver";
 
 const MAX_EXCERPT_CHARS = 6000;
 const MAX_TITLE_CHARS = 180;
@@ -10,23 +13,6 @@ const MAX_TITLE_CHARS = 180;
 export interface GeneratedBookIdentity {
   title: string;
   author?: string;
-}
-
-export function isTechnicalBookTitle(title: string): boolean {
-  const value = title.trim();
-  if (!value) return true;
-  if (/^\d{5,}$/.test(value)) return true;
-  if (/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value)) return true;
-  if (/^[0-9a-f]{16,}$/i.test(value)) return true;
-  return /^(?:book|книга|untitled|без названия)(?:[-_\s]*\d+)?$/i.test(value);
-}
-
-export function isSuspiciousBookTitle(title: string, fileName: string): boolean {
-  const value = title.trim();
-  const fileStem = fileName.replace(/\.[^.]+$/i, "").trim();
-  if (isTechnicalBookTitle(value)) return true;
-  if (value.toLocaleLowerCase() === fileStem.toLocaleLowerCase()) return true;
-  return false;
 }
 
 async function resolveConnectedGeminiConfig(): Promise<AIConfig | null> {
@@ -81,8 +67,8 @@ function parseIdentity(raw: string): GeneratedBookIdentity | null {
   if (!json) return null;
   try {
     const value = JSON.parse(json) as { title?: unknown; author?: unknown };
-    const title = typeof value.title === "string" ? value.title.replace(/\s+/g, " ").trim() : "";
-    const author = typeof value.author === "string" ? value.author.replace(/\s+/g, " ").trim() : "";
+    const title = normalizeBookIdentityValue(value.title, MAX_TITLE_CHARS);
+    const author = normalizeBookIdentityValue(value.author, MAX_TITLE_CHARS);
     if (!title || title.length > MAX_TITLE_CHARS) return null;
     return { title, author: author || undefined };
   } catch {
@@ -134,6 +120,6 @@ export async function generateBookIdentityWithGemini(input: {
   }
 
   const identity = parseIdentity(responseText(response.content));
-  if (!identity || isSuspiciousBookTitle(identity.title, input.fileName)) return null;
+  if (!identity || isTechnicalBookTitle(identity.title)) return null;
   return identity;
 }

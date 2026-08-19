@@ -14,6 +14,7 @@ import pako from "pako";
 export interface ExtractedMeta {
   title: string;
   author: string;
+  identityProvenance: BookMetadataIdentityProvenance;
   publisher?: string;
   language?: string;
   isbn?: string;
@@ -24,6 +25,18 @@ export interface ExtractedMeta {
   coverMimeType: string | null;
   /** A short plain-text excerpt that can be used to verify incomplete metadata. */
   textSample?: string;
+}
+
+export type BookMetadataIdentitySource =
+  | "epub-opf"
+  | "fb2-title-info"
+  | "mobi-header"
+  | "filename"
+  | "missing";
+
+export interface BookMetadataIdentityProvenance {
+  title: BookMetadataIdentitySource;
+  author: BookMetadataIdentitySource;
 }
 
 interface SliceReadable {
@@ -45,7 +58,8 @@ export function extractFb2Metadata(fileBytes: Uint8Array, fileName = "book.fb2")
   const fallbackTitle = fileName.replace(/\.fb2$/i, "") || "Untitled";
   const xml = decodeXmlBytes(fileBytes);
   const titleInfo = extractElementInnerXml(xml, "title-info") || xml;
-  const title = cleanXmlText(extractElementInnerXml(titleInfo, "book-title")) || fallbackTitle;
+  const embeddedTitle = cleanXmlText(extractElementInnerXml(titleInfo, "book-title"));
+  const title = embeddedTitle || fallbackTitle;
   const authorXml = extractElementInnerXml(titleInfo, "author");
   const author = authorXml
     ? ["first-name", "middle-name", "last-name"]
@@ -60,6 +74,10 @@ export function extractFb2Metadata(fileBytes: Uint8Array, fileName = "book.fb2")
   return {
     title,
     author,
+    identityProvenance: {
+      title: embeddedTitle ? "fb2-title-info" : "filename",
+      author: author ? "fb2-title-info" : "missing",
+    },
     publisher: cleanXmlText(extractElementInnerXml(xml, "publisher")),
     language: cleanXmlText(extractElementInnerXml(titleInfo, "lang")),
     isbn: cleanXmlText(extractElementInnerXml(xml, "isbn")),
@@ -117,7 +135,13 @@ async function extractEpubMetadataFromReaders({
   const containerXml = await readText("META-INF/container.xml");
   if (!containerXml) {
     console.warn(`[${logPrefix}] container.xml not found`);
-    return { title: "", author: "", coverBytes: null, coverMimeType: null };
+    return {
+      title: "",
+      author: "",
+      identityProvenance: { title: "missing", author: "missing" },
+      coverBytes: null,
+      coverMimeType: null,
+    };
   }
 
   const opfPath = parseAttribute(containerXml, "rootfile", "full-path") || "content.opf";
@@ -127,7 +151,13 @@ async function extractEpubMetadataFromReaders({
   const opfXml = await readText(opfPath);
   if (!opfXml) {
     console.warn(`[${logPrefix}] OPF not found at: ${opfPath}`);
-    return { title: "", author: "", coverBytes: null, coverMimeType: null };
+    return {
+      title: "",
+      author: "",
+      identityProvenance: { title: "missing", author: "missing" },
+      coverBytes: null,
+      coverMimeType: null,
+    };
   }
 
   const title = extractTagContent(opfXml, "dc:title") || extractTagContent(opfXml, "title") || "";
@@ -190,6 +220,10 @@ async function extractEpubMetadataFromReaders({
   return {
     title: title.trim(),
     author: author.trim(),
+    identityProvenance: {
+      title: title.trim() ? "epub-opf" : "missing",
+      author: author.trim() ? "epub-opf" : "missing",
+    },
     publisher: publisher.trim(),
     language: language.trim(),
     isbn,
@@ -212,6 +246,7 @@ export async function extractBookMetadata(
   const fallback: ExtractedMeta = {
     title: fileName.replace(/\.\w+$/i, "") || "Untitled",
     author: "",
+    identityProvenance: { title: "filename", author: "missing" },
     coverBytes: null,
     coverMimeType: null,
   };
@@ -239,6 +274,7 @@ export async function extractBookMetadataFromFile(
   const fallback: ExtractedMeta = {
     title: fileName.replace(/\.\w+$/i, "") || "Untitled",
     author: "",
+    identityProvenance: { title: "filename", author: "missing" },
     coverBytes: null,
     coverMimeType: null,
   };
@@ -266,6 +302,7 @@ async function extractMobiMetadata(file: BlobLikeFile, fileName: string): Promis
   const fallback: ExtractedMeta = {
     title: fileName.replace(/\.\w+$/i, "") || "Untitled",
     author: "",
+    identityProvenance: { title: "filename", author: "missing" },
     coverBytes: null,
     coverMimeType: null,
   };
@@ -302,9 +339,15 @@ async function extractMobiMetadata(file: BlobLikeFile, fileName: string): Promis
     console.warn("[extractMobiMetadata] cover extraction error:", err);
   }
 
+  const embeddedTitle = String(header.title || "").trim();
+  const embeddedAuthor = String(header.author || "").trim();
   return {
-    title: String(header.title || fallback.title).trim(),
-    author: String(header.author || "").trim(),
+    title: embeddedTitle || fallback.title,
+    author: embeddedAuthor,
+    identityProvenance: {
+      title: embeddedTitle ? "mobi-header" : "filename",
+      author: embeddedAuthor ? "mobi-header" : "missing",
+    },
     coverBytes,
     coverMimeType,
   };
