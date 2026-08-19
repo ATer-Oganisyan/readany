@@ -33,6 +33,10 @@ export interface FileTransferOptions {
   headers?: Record<string, string>;
   allowInsecure?: boolean;
   onProgress?: (loaded: number, total: number) => void;
+  /** Cancel an in-flight transfer without leaving its caller permanently blocked. */
+  signal?: AbortSignal;
+  /** Optional hard timeout for one transfer attempt. */
+  timeoutMs?: number;
 }
 
 export interface UpdateInfo {

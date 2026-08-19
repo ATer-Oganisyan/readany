@@ -22,7 +22,7 @@ import type {
 import * as Clipboard from "expo-clipboard";
 import Constants from "expo-constants";
 import * as DocumentPicker from "expo-document-picker";
-import { Directory, File, Paths } from "expo-file-system";
+import { Directory, DownloadTask, File, Paths } from "expo-file-system";
 import * as LegacyFS from "expo-file-system/legacy";
 import * as Network from "expo-network";
 import * as SecureStore from "expo-secure-store";
@@ -300,27 +300,43 @@ export class ExpoPlatformService implements IPlatformService {
 
   async downloadFile(url: string, filePath: string, options?: FileTransferOptions): Promise<void> {
     const effectiveUrl = options?.allowInsecure ? url.replace(/^https:\/\//i, "http://") : url;
-    const task = LegacyFS.createDownloadResumable(
-      effectiveUrl,
-      filePath,
-      {
-        headers: options?.headers,
-        sessionType: LegacyFS.FileSystemSessionType.FOREGROUND,
-      },
-      (progress) => {
+    const controller = new AbortController();
+    const abortFromCaller = () => controller.abort();
+    let didTimeout = false;
+
+    if (options?.signal?.aborted) controller.abort();
+    else options?.signal?.addEventListener("abort", abortFromCaller, { once: true });
+
+    const task = new DownloadTask(effectiveUrl, new File(filePath), {
+      headers: options?.headers,
+      sessionType: "foreground",
+      signal: controller.signal,
+      onProgress: (progress) => {
         options?.onProgress?.(
-          progress.totalBytesWritten,
-          progress.totalBytesExpectedToWrite > 0 ? progress.totalBytesExpectedToWrite : 0,
+          progress.bytesWritten,
+          progress.totalBytes > 0 ? progress.totalBytes : 0,
         );
       },
-    );
+    });
+    const timeout = options?.timeoutMs
+      ? setTimeout(() => {
+          didTimeout = true;
+          controller.abort();
+        }, options.timeoutMs)
+      : null;
 
-    const result = await task.downloadAsync();
-    if (!result) {
-      throw new Error(`File download cancelled: ${effectiveUrl}`);
-    }
-    if (result.status < 200 || result.status >= 300) {
-      throw new Error(`File download failed: ${result.status}`);
+    try {
+      const result = await task.downloadAsync();
+      if (!result) throw new Error(`File download cancelled: ${effectiveUrl}`);
+    } catch (error) {
+      if (didTimeout) {
+        throw new Error(`File download timeout (${options?.timeoutMs}ms): ${effectiveUrl}`);
+      }
+      throw error;
+    } finally {
+      if (timeout) clearTimeout(timeout);
+      options?.signal?.removeEventListener("abort", abortFromCaller);
+      task.release();
     }
   }
 
