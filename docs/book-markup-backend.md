@@ -6,11 +6,11 @@ This document fixes the implementation boundaries for server-side book markup.
 
 - A full markup revision discovers every character and records exact text anchors.
 - `warmup_text_offset` may trigger shared generation work before a character appears.
-- `first_appearance_text_offset` gates reader access and must never be inferred from
-  the global maximum reading progress.
+- `first_appearance_text_offset` controls client-side reader visibility and must
+  never be inferred from the global maximum reading progress.
 - A warmed character means one versioned, atomic media bundle is complete.
-- A ready bundle remains hidden from a reader until that reader crosses the first
-  appearance anchor.
+- A ready bundle may be described in the manifest, but its bytes are downloaded
+  only after the local reader crosses the first appearance anchor.
 - Generation is idempotent by book edition, stable character key and bundle version.
 
 ## Character bundle v1
@@ -66,9 +66,10 @@ All routes below require the existing installation bearer token:
 - `POST /v2/books/local` registers only the local book's hash and metadata;
 - `POST /v2/books/:bookEditionId/local-markup` accepts only derived character
   profiles and appearance fractions produced by the client;
-- `GET /v2/books/:bookEditionId/manifest` returns the published markup and only
-  characters already visible to that reader. While v3 is processing it may
-  return grounded provisional characters from completed scan chunks;
+- `GET /v2/books/:bookEditionId/manifest` returns every stable character profile
+  from the published v3 markup. The client filters them by local reading progress.
+  While v3 is processing it may return reader-visible grounded provisional
+  characters from completed scan chunks;
 - `POST /v2/books/:bookEditionId/progress` advances the reader's text watermark
   and requests all bundles whose markup-defined warmup offsets were crossed.
 
@@ -78,9 +79,9 @@ re-evaluates all due characters, so an interrupted enqueue is healed by the next
 call while the character-level generation key remains idempotent.
 
 Warmup and visibility are intentionally independent. A bundle may be globally
-ready before first appearance, but the manifest omits that character completely.
-Once visible, the manifest returns either `preparing` with no assets or `ready`
-with the complete finite bundle. It never returns partial media.
+ready before first appearance and its profile may already be present in the
+manifest. The mobile client keeps that profile hidden and does not materialize
+its media until local progress reaches `first_appearance_text_offset`.
 
 A processing v3 manifest remains HTTP `202` and keeps `markup: null`, but includes
 the active analysis stage, completed/total scan chunk counts and any reader-visible
@@ -168,7 +169,7 @@ catalog profiles or presentation assets are used as runtime fallbacks.
 Markup schema v2 adds `text_length`, measured in the same normalized text stream
 used to produce every character anchor. Mobile clients send
 `progress_fraction` from `0` to `1`; PostgreSQL converts it to
-`round(text_length * progress_fraction)` before evaluating warmup and visibility.
+`round(text_length * progress_fraction)` before evaluating warmup and media authorization.
 This removes the previous dependency on the renderer's approximate character
 count. `text_offset` remains accepted as a mutually exclusive legacy input.
 
@@ -183,9 +184,10 @@ book. Therefore catalog character visibility additionally uses:
   `reader_book_positions`.
 
 When both sides have section coordinates, section order and within-section
-fraction are authoritative for manifest and media-download authorization. The
-global text offset remains the warmup coordinate and the compatibility fallback
-for older clients or local markup without section anchors.
+fraction are authoritative for media-download authorization. Profile visibility
+uses the same published anchors against local client progress. The global text
+offset remains the warmup coordinate and the compatibility fallback for older
+clients or local markup without section anchors.
 
 The fraction, derived text watermark and section coordinate are monotonic per
 reader. If a reader reports progress before markup is published, the fraction is retained;

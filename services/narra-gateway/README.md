@@ -206,8 +206,8 @@ Test environments can expose the latest shadow publication through the
 authenticated `GET /v2/books/:bookEditionId/analysis-shadow/manifest` route by
 setting `BOOK_SHADOW_PREVIEW_ENABLED=true`. The route is limited to catalog
 books already accessible to the reader, applies the same progress-based
-character visibility rule, and returns profiles only: evidence and media
-bundles stay private. The Expo development/preview builds then show a manual
+media authorization rule, and returns the complete published profile list.
+Evidence stays private. The Expo development/preview builds then show a manual
 v2/v3 switch on the book's character screen. Production builds do not enable
 that switch.
 
@@ -221,8 +221,9 @@ When `DATABASE_URL` is configured, Gateway enables the authenticated book API:
 `GET /v2/books/catalog`, `POST /v2/books/resolve`,
 `POST /v2/books/local`, `POST /v2/books/:bookEditionId/local-markup`,
 `GET /v2/books/:bookEditionId/manifest` and
-`POST /v2/books/:bookEditionId/progress`. Future characters and partial media
-are never included in a reader manifest.
+`POST /v2/books/:bookEditionId/progress`. A ready v3 manifest contains every
+published character profile and its appearance anchor. The client applies its
+local reading progress; media bytes are fetched lazily only for reached characters.
 
 User book sources remain on-device. Registration sends only hash and metadata;
 local analysis publishes only derived character profiles. Generated private
@@ -273,9 +274,9 @@ and the public client only for short-lived signed URLs.
 The Expo client persists the last successful catalog response and verified
 covers under its Documents directory. Selecting a catalog item downloads the
 source through a short-lived signed URL, verifies SHA-256, imports it into the
-local library and removes the temporary download. Reader-visible character
-profiles and their complete media bundles are likewise cached after manifest
-materialization, so already fetched data remains available offline.
+local library and removes the temporary download. Published character profiles
+and reader-visible media bundles are likewise cached after manifest materialization,
+so already fetched data remains available offline.
 
 Completion queues full markup jobs, so run this only when provider usage is
 intended. S3/MinIO credentials remain server-side.

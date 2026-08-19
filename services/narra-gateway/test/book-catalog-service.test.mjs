@@ -208,36 +208,20 @@ test('catalog manifest exposes validated v3 as the canonical markup', async () =
   assert.equal(preview.availability, 'ready')
   assert.equal(preview.publicationId, 'publication-v3')
   assert.equal(preview.readerTextOffset, 1_000)
-  assert.deepEqual(preview.characters, [{
-    characterKey: 'visible',
-    name: 'Visible',
-    fullName: 'Visible Hero',
-    firstAppearanceTextOffset: 900,
-    provisional: false,
-    state: 'ready',
-    profile: {
-      role: 'Главный герой',
-      gender: undefined,
-      traits: ['смелый'],
-      speechStyle: '',
-      speechExamples: [],
-      appearancePrompt: '',
-      greeting: 'Здравствуйте',
-      voice: 'Erm',
-      analysisSource: 'v3'
-    },
-    bundle: {
-      version: 'character-bundle-v1',
-      assets: REQUIRED_CHARACTER_MEDIA.map((type) => ({
-        assetId: `visible-${type}`,
-        type,
-        contentHash: HASH,
-        mimeType: 'application/octet-stream',
-        byteSize: 10,
-        downloadPath: `/v2/books/${EDITION.id}/media/visible-${type}/download`
-      }))
-    }
-  }])
+  assert.deepEqual(
+    preview.characters.map(({ characterKey, profile }) => ({
+      characterKey,
+      traits: profile.traits
+    })),
+    [
+      { characterKey: 'visible', traits: ['смелый'] },
+      { characterKey: 'future', traits: [] }
+    ]
+  )
+  assert.equal(preview.characters[0].state, 'ready')
+  assert.equal(preview.characters[0].bundle.assets.length, REQUIRED_CHARACTER_MEDIA.length)
+  assert.equal(preview.characters[1].firstAppearanceTextOffset, 1_500)
+  assert.equal(preview.characters[1].bundle, null)
   assert.equal(preview.markup.analysisVersion, 'book-markup-v3')
   assert.deepEqual(calls.slice(0, 2), [
     ['projection', EDITION.id],

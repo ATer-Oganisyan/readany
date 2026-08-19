@@ -3,6 +3,7 @@ import {
   LOCAL_MARKUP_ANALYSIS_VERSION,
   LOCAL_MARKUP_PROGRESS_SCALE,
   ensureCharacterBundle,
+  isCompleteCharacterBundle,
   readerCharacterState
 } from './book-markup.mjs'
 import {
@@ -210,14 +211,9 @@ export function createBookCatalogService({
         publishedAt: publication.publishedAt
       },
       characters: markup.characters
-        .filter((character) => character.firstAppearanceTextOffset <= readerTextOffset)
         .map((character) => {
           const media = mediaByCharacterKey.get(character.characterKey)
-          const state = readerCharacterState(character, media?.bundle, {
-            textOffset: readerTextOffset,
-            sectionIndex: snapshot.readerSectionIndex,
-            sectionFraction: snapshot.readerSectionFraction
-          })
+          const state = isCompleteCharacterBundle(media?.bundle) ? 'ready' : 'preparing'
           return {
             characterKey: character.characterKey,
             name: character.name,

@@ -43,9 +43,9 @@ flowchart LR
   V --> U["publish: immutable shadow publication"]
   U --> M["Каноническая reader projection v3"]
   M --> W["Независимые media jobs"]
-  M --> API["Reader manifest с progress gating"]
+  M --> API["Reader manifest со всеми profiles"]
   W --> API
-  API --> APP["Android/iOS: список, карточка, чат, reader, scenes"]
+  API --> APP["Android/iOS: local progress gating, список, карточка, чат, scenes"]
 ```
 
 PostgreSQL — control plane: состояния, leases, доказательства, snapshots, artifacts, publications и
@@ -195,13 +195,14 @@ publication канала `shadow`. Несмотря на внутреннее и
 и reader-visible provisional characters. Их run-scoped IDs не сохраняются на устройстве; они не
 попадают в чат, reader markup, память, сцены или media generation.
 
-После публикации manifest возвращает только персонажей, для которых читатель достиг
-`firstAppearanceTextOffset`. Скрытый будущий персонаж не передаётся клиенту вообще. Progress может
-передаваться как доля книги либо section index/fraction; backend переводит её в координаты
-нормализованного текста.
+После публикации manifest возвращает все стабильные профили и их `firstAppearanceTextOffset`.
+Клиент сопоставляет этот offset с локальной долей книги и не показывает будущих персонажей.
+Progress по-прежнему передаётся как доля книги либо section index/fraction: backend использует
+его для прогрева и авторизации медиа, но не урезает список опубликованных профилей.
 
-Warmup и visibility независимы: пересечение `warmupTextOffset` ставит медиа в очередь заранее, но
-имя и профиль остаются скрыты до `firstAppearanceTextOffset`.
+Warmup и visibility независимы: пересечение `warmupTextOffset` ставит медиа в очередь заранее,
+а имя и профиль скрывает клиент до `firstAppearanceTextOffset`. Полный профиль может уже лежать
+в локальном manifest cache, но его медиа не скачиваются до пересечения порога.
 
 ## Медиа персонажа
 
