@@ -74,10 +74,6 @@ function useTabStackScreenOptions(): NativeStackNavigationOptions {
     },
     headerShadowVisible: false,
     headerTintColor: colors.foreground,
-    headerBackIcon: {
-      type: "image",
-      source: getStrokeIconImageSource("chevron-left"),
-    },
     headerTitleStyle: {
       color: colors.foreground,
       fontFamily: titleFontFamily,
