@@ -57,6 +57,17 @@ function backendUnlockProgress(
   return Number.isFinite(profileThreshold) ? Math.min(0.95, Math.max(0, profileThreshold)) : 0;
 }
 
+export function isBackendManifestCharacterReached(
+  character: BackendBookManifest["characters"][number],
+  textLength: BackendBookManifest["textLength"],
+  progressFraction: number,
+): boolean {
+  const progress = Number.isFinite(progressFraction)
+    ? Math.min(1, Math.max(0, progressFraction))
+    : 0;
+  return backendUnlockProgress(character, textLength) <= progress;
+}
+
 function mediaBundleKey(character: BackendBookManifest["characters"][number]): string | undefined {
   if (!character.bundle) return undefined;
   return JSON.stringify([
@@ -229,11 +240,15 @@ export async function persistBackendManifestCharacters(
 export async function materializeBackendManifest(
   bookId: string,
   manifest: BackendBookManifest,
+  progressFraction = manifest.readingFraction ?? 0,
   onCharacter?: (character: NarraCharacter) => void,
 ): Promise<NarraCharacter[]> {
   const directory = await ensureBookDirectory(bookId);
   return mapWithConcurrency(manifest.characters, MEDIA_CHARACTER_CONCURRENCY, async (character) => {
     const result = baseCharacter(character, manifest.source, manifest.textLength);
+    if (!isBackendManifestCharacterReached(character, manifest.textLength, progressFraction)) {
+      return { ...result, mediaState: "preparing" as const };
+    }
     let materialized = result;
     if (!character.bundle?.assets.length) {
       onCharacter?.(materialized);

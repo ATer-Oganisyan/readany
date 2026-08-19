@@ -13,6 +13,7 @@ import {
   uploadLocalBackendSource,
 } from "./backend-book-api";
 import {
+  isBackendManifestCharacterReached,
   loadCachedBackendCharacters,
   materializeBackendManifest,
   persistBackendManifestCharacters,
@@ -34,11 +35,18 @@ export function supportsBackendBookMarkup(format: string): boolean {
   return SUPPORTED_FORMATS.has(format);
 }
 
-export function shouldRefreshBackendManifest(manifest: BackendBookManifest | undefined): boolean {
+export function shouldRefreshBackendManifest(
+  manifest: BackendBookManifest | undefined,
+  progressFraction = manifest?.readingFraction ?? 0,
+): boolean {
   if (!manifest) return false;
   return (
     manifest.availability === "processing" ||
-    manifest.characters.some((character) => character.state === "preparing")
+    manifest.characters.some(
+      (character) =>
+        isBackendManifestCharacterReached(character, manifest.textLength, progressFraction) &&
+        character.state === "preparing",
+    )
   );
 }
 
@@ -73,6 +81,7 @@ export interface BackendBookCoordinatorFiles {
   materialize(
     bookId: string,
     manifest: BackendBookManifest,
+    progressFraction: number,
     onCharacter?: (character: NarraCharacter) => void,
   ): Promise<NarraCharacter[]>;
 }
@@ -120,13 +129,18 @@ export function createBackendBookCoordinator({
   const mediaMaterializations = new Map<string, { key: string; promise: Promise<void> }>();
   const latestMediaKeys = new Map<string, string>();
 
-  function mediaKey(manifest: BackendBookManifest): string {
-    const characters = manifest.characters.map((character) => [
-      character.characterKey,
-      character.state,
-      character.bundle?.version ?? "",
-      character.bundle?.assets.map((asset) => `${asset.type}:${asset.contentHash}`).join(",") ?? "",
-    ]);
+  function mediaKey(manifest: BackendBookManifest, progressFraction: number): string {
+    const characters = manifest.characters
+      .filter((character) =>
+        isBackendManifestCharacterReached(character, manifest.textLength, progressFraction),
+      )
+      .map((character) => [
+        character.characterKey,
+        character.state,
+        character.bundle?.version ?? "",
+        character.bundle?.assets.map((asset) => `${asset.type}:${asset.contentHash}`).join(",") ??
+          "",
+      ]);
     return JSON.stringify([
       manifest.source,
       manifest.publicationId ?? "",
@@ -174,13 +188,17 @@ export function createBackendBookCoordinator({
     return operation;
   }
 
-  async function applyManifest(bookId: string, manifest: BackendBookManifest): Promise<void> {
+  async function applyManifest(
+    bookId: string,
+    manifest: BackendBookManifest,
+    progressFraction: number,
+  ): Promise<void> {
     state.setManifestSource(bookId, manifest.source);
     // Provisional scan findings are screen-local. Keeping them out of the
     // persisted Narra store prevents temporary IDs from reaching chat, reader
     // name markup, scenes, memories, or the offline manifest cache.
     if (manifest.availability === "processing") return;
-    const key = mediaKey(manifest);
+    const key = mediaKey(manifest, progressFraction);
     latestMediaKeys.set(bookId, key);
     const characters = files.project(manifest, state.getCharacters(bookId));
     state.setCharacters(bookId, characters);
@@ -194,7 +212,7 @@ export function createBackendBookCoordinator({
     if (active?.key === key) return;
 
     const operation: Promise<void> = files
-      .materialize(bookId, manifest, (character) => {
+      .materialize(bookId, manifest, progressFraction, (character) => {
         if (latestMediaKeys.get(bookId) !== key || character.mediaState !== "ready") return;
         state.updateCharacterMedia(bookId, character.id, {
           portraitUri: character.portraitUri,
@@ -230,8 +248,14 @@ export function createBackendBookCoordinator({
       if (localCharacters.some((character) => character.mediaSource !== "backend")) {
         state.setCharacters(book.id, []);
       }
+      const progressFraction = Math.min(1, Math.max(0, Number(book.progress) || 0));
+      try {
+        await api.advance(bookEditionId, progressFraction);
+      } catch (error) {
+        state.reportError("reader_progress", error);
+      }
       const manifest = await api.manifest(bookEditionId);
-      await applyManifest(book.id, manifest);
+      await applyManifest(book.id, manifest, progressFraction);
       return manifest;
     } catch (error) {
       state.reportError("book_open", error);
@@ -249,7 +273,7 @@ export function createBackendBookCoordinator({
     const bookEditionId = binding.bookEditionId;
     if (!bookEditionId) throw new Error("Backend binding has no edition id");
     await api.advance(bookEditionId, progressFraction, chapterKey, sectionPosition);
-    await applyManifest(book.id, await api.manifest(bookEditionId));
+    await applyManifest(book.id, await api.manifest(bookEditionId), progressFraction);
   }
 
   async function syncLocalMarkup(book: Book, characters: NarraCharacter[]): Promise<void> {

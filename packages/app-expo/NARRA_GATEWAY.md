@@ -42,7 +42,8 @@ The repository also defines the server-side book contract:
   fractional appearance anchors without extracted prose;
 - `POST /v2/books/:bookEditionId/progress` with `progress_fraction`; the backend converts it to
   a canonical text watermark using the markup's normalized `text_length`;
-- `GET /v2/books/:bookEditionId/manifest` for reader-visible characters and atomic media bundles.
+- `GET /v2/books/:bookEditionId/manifest` for all published character profiles and atomic media
+  bundle metadata. The app applies local progress and materializes only reader-visible media.
   An HTTP `202` processing manifest may also contain `provisional: true` scan findings and scan
   progress before the canonical markup is published;
 - reader-authorized media downloads; source download is catalog-only.

@@ -21,6 +21,12 @@ vi.mock("@/stores/narra-store", () => ({
 vi.mock("@/lib/ai/narra-gateway-fetch", () => ({ narraGatewayRequest: vi.fn() }));
 vi.mock("@readany/core/services", () => ({ getPlatformService: vi.fn() }));
 vi.mock("./backend-book-cache", () => ({
+  isBackendManifestCharacterReached: vi.fn(
+    (character: { firstAppearanceTextOffset: number }, textLength: number, progress: number) =>
+      Number.isFinite(textLength)
+        ? character.firstAppearanceTextOffset <= textLength * progress
+        : true,
+  ),
   loadCachedBackendCharacters: vi.fn(async () => []),
   projectBackendManifestCharacters: vi.fn(() => []),
   persistBackendManifestCharacters: vi.fn(async () => undefined),
@@ -200,6 +206,39 @@ describe("backend book coordinator", () => {
     ).toBe(false);
   });
 
+  it("ignores preparation state of characters beyond local reader progress", () => {
+    const manifest: BackendBookManifest = {
+      source: "v3",
+      availability: "ready",
+      readerTextOffset: 100,
+      readingFraction: 0.1,
+      textLength: 1_000,
+      characters: [
+        {
+          characterKey: "visible",
+          name: "Видимый",
+          fullName: "Видимый",
+          firstAppearanceTextOffset: 50,
+          state: "ready",
+          profile: {},
+          bundle: { version: "v1", assets: [] },
+        },
+        {
+          characterKey: "future",
+          name: "Будущий",
+          fullName: "Будущий",
+          firstAppearanceTextOffset: 900,
+          state: "preparing",
+          profile: {},
+          bundle: null,
+        },
+      ],
+    };
+
+    expect(shouldRefreshBackendManifest(manifest, 0.1)).toBe(false);
+    expect(shouldRefreshBackendManifest(manifest, 0.95)).toBe(true);
+  });
+
   it("shares concurrent binding, uploads a private source once and starts canonical v3", async () => {
     const value = fixture();
     const coordinator = createBackendBookCoordinator(value);
@@ -372,6 +411,17 @@ describe("backend book coordinator", () => {
     await createBackendBookCoordinator(value).open(BOOK);
     expect(value.api.manifest).toHaveBeenCalledWith("edition-1");
     expect(value.calls).toContain("set-source:v3");
+  });
+
+  it("synchronizes local reader progress before loading the full manifest", async () => {
+    const value = fixture();
+
+    await createBackendBookCoordinator(value).open({ ...BOOK, progress: 0.8 });
+
+    expect(value.calls).toContain("advance:0.8:legacy:legacy");
+    expect(value.calls.indexOf("advance:0.8:legacy:legacy")).toBeLessThan(
+      value.calls.indexOf("manifest"),
+    );
   });
 
   it("returns and records an empty processing manifest so the UI can keep polling", async () => {

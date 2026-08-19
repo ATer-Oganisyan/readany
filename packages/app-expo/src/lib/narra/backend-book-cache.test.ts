@@ -153,6 +153,40 @@ describe("backend book media cache", () => {
     expect(mocks.downloads).toHaveBeenCalledTimes(3);
   });
 
+  it("downloads media only for characters reached by local reader progress", async () => {
+    const value = manifest(["primary_portrait"]);
+    const anna = value.characters[0];
+    if (!anna) throw new Error("character fixture is missing");
+    value.characters.push({
+      ...anna,
+      characterKey: "future",
+      name: "Будущий герой",
+      fullName: "Будущий герой",
+      firstAppearanceTextOffset: 900,
+      bundle: {
+        version: "character-bundle-v1",
+        assets: [
+          {
+            assetId: "future-audio",
+            type: "greeting_audio",
+            contentHash: "a".repeat(64),
+            mimeType: "audio/mpeg",
+            byteSize: 64,
+            downloadPath: "/v2/media/future-audio",
+          },
+        ],
+      },
+    });
+
+    const characters = await materializeBackendManifest("book-1", value, 0.1);
+
+    expect(characters).toHaveLength(2);
+    expect(characters[0]?.portraitUri).toContain("primary_portrait");
+    expect(characters[1]?.greetingAudioUri).toBeUndefined();
+    expect(characters[1]?.mediaState).toBe("preparing");
+    expect(mocks.requestDownload).toHaveBeenCalledOnce();
+  });
+
   it("keeps ready cached portraits visible while the same bundle is revalidated", () => {
     const value = manifest(["primary_portrait", "greeting_audio", "idle_animation"]);
     const [projected] = projectBackendManifestCharacters(value);
