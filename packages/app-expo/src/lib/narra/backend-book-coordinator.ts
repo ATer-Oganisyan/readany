@@ -72,7 +72,11 @@ export interface BackendBookCoordinatorFiles {
   describe(book: Book): Promise<{ contentSha256: string }>;
   readSource(book: Book): Promise<{ bytes: Uint8Array; mimeType: string }>;
   loadCached(bookId: string): Promise<NarraCharacter[]>;
-  project(manifest: BackendBookManifest, previousCharacters?: NarraCharacter[]): NarraCharacter[];
+  project(
+    manifest: BackendBookManifest,
+    previousCharacters?: NarraCharacter[],
+    progressFraction?: number,
+  ): NarraCharacter[];
   persist(
     bookId: string,
     manifest: BackendBookManifest,
@@ -200,7 +204,7 @@ export function createBackendBookCoordinator({
     if (manifest.availability === "processing") return;
     const key = mediaKey(manifest, progressFraction);
     latestMediaKeys.set(bookId, key);
-    const characters = files.project(manifest, state.getCharacters(bookId));
+    const characters = files.project(manifest, state.getCharacters(bookId), progressFraction);
     state.setCharacters(bookId, characters);
     try {
       await files.persist(bookId, manifest, characters);

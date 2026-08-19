@@ -1,6 +1,7 @@
 import type { NarraGenreAnalysis } from "./genre-analysis";
 
 export type NarraGender = "male" | "female";
+export type NarraPersonalityStatus = "insufficient_evidence" | "preliminary" | "supported";
 
 export interface NarraPassport {
   age: number;
@@ -26,6 +27,8 @@ export interface NarraCharacter {
   /** Имя с ударением: апостроф сразу после ударной гласной (SaluteSpeech, P9). */
   stressedName?: string;
   traits: string[];
+  /** Evidence-aware status of traits selected for the current reading offset. */
+  personalityStatus?: NarraPersonalityStatus;
   speechStyle: string;
   speechExamples: string[];
   appearancePrompt: string;

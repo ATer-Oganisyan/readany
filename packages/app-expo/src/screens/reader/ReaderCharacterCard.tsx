@@ -1,5 +1,5 @@
-import { NativeCharacterDetailsCells } from "@/components/narra/NativeCharacterDetailsCells";
 import { NarraLoopVideo } from "@/components/narra/NarraLoopVideo";
+import { NativeCharacterDetailsCells } from "@/components/narra/NativeCharacterDetailsCells";
 import { CharacterPortraitImage } from "@/components/narra/character-portrait-image";
 import { Text } from "@/components/ui/Typography";
 import { NarraAudioPlayer } from "@/lib/narra/audio-player";
@@ -368,12 +368,19 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
       ""
     ).trim();
     const sampleVoice = liveCharacter.voiceOverride || liveCharacter.voice;
-    const preparedGreetingAudioUri = resolvePreparedGreetingAudioUri(
-      liveCharacter,
-      samplePhrase,
-    );
+    const preparedGreetingAudioUri = resolvePreparedGreetingAudioUri(liveCharacter, samplePhrase);
     const idleAnimationUri = resolvePreparedIdleAnimationUri(liveCharacter);
     const canSample = Boolean(preparedGreetingAudioUri || (samplePhrase && sampleVoice));
+    const personalityTraits = formatCharacterTraits(liveCharacter.traits);
+    const personalityValue =
+      personalityTraits ||
+      (liveCharacter.personalityStatus === "insufficient_evidence"
+        ? t("narra.personalityInsufficientEvidence", "Недостаточно данных")
+        : "");
+    const personalityLabel =
+      liveCharacter.personalityStatus === "preliminary"
+        ? t("narra.characterPreliminary", "Характер · предварительно")
+        : t("narra.character", "Характер");
 
     const toggleVoiceSample = () => {
       if (voiceState !== "idle") {
@@ -534,19 +541,24 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
           {embedded ? (
             <View style={styles.embeddedDetailsBlock}>
               <NativeCharacterDetailsCells
-                bio={character.role || "—"}
+                bio={liveCharacter.role || "—"}
                 bioLabel={t("narra.bio", "Био")}
                 cellBackgroundColor={colors.primary10}
-                character={formatCharacterTraits(character.traits) || "—"}
-                characterLabel={t("narra.character", "Характер")}
+                character={personalityValue || "—"}
+                characterLabel={personalityLabel}
                 isDark={portraitForeground.isDark}
               />
             </View>
-          ) : character.role ? (
-            <Text style={styles.description}>{character.role}</Text>
+          ) : liveCharacter.role ? (
+            <Text style={styles.description}>{liveCharacter.role}</Text>
           ) : null}
-          {!embedded && character.traits.length > 0 ? (
-            <Text style={styles.description}>{formatCharacterTraits(character.traits)}</Text>
+          {!embedded && personalityValue ? (
+            <Text style={styles.description}>
+              {personalityValue}
+              {liveCharacter.personalityStatus === "preliminary"
+                ? t("narra.preliminarySuffix", " · предварительно")
+                : ""}
+            </Text>
           ) : null}
           {!embedded && liveCharacter.speechStyle ? (
             <View style={styles.speechSection}>

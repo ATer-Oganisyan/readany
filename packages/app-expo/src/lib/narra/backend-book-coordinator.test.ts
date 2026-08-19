@@ -314,7 +314,7 @@ describe("backend book coordinator", () => {
 
     await createBackendBookCoordinator(value).open(BOOK);
 
-    expect(value.files.project).toHaveBeenCalledWith(expect.any(Object), cached);
+    expect(value.files.project).toHaveBeenCalledWith(expect.any(Object), cached, 0);
   });
 
   it("keeps provisional scan characters out of the persisted Narra store", async () => {
