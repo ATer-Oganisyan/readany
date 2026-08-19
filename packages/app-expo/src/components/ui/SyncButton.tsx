@@ -1,7 +1,9 @@
 import { RefreshCwIcon } from "@/components/ui/Icon";
+import { PressableScale } from "@/components/ui/PressableScale";
+import { hapticError, hapticSuccess } from "@/lib/haptics";
 import { useSyncStore } from "@readany/core/stores";
 import { useCallback, useEffect, useRef } from "react";
-import { Animated, Easing, TouchableOpacity } from "react-native";
+import { Animated, Easing } from "react-native";
 
 interface SyncButtonProps {
   size?: number;
@@ -44,6 +46,19 @@ export function SyncButton({ size = 20, color }: SyncButtonProps) {
     }
   }, [isBusy, spinAnim]);
 
+  // Отдача в момент, когда синхронизация закончилась, а не когда её запустили:
+  // причина здесь — результат, а не нажатие. Крутящаяся иконка при этом
+  // остаётся единственным обязательным сигналом, вибрация только дополняет её.
+  const previousStatusRef = useRef(status);
+  useEffect(() => {
+    const previousStatus = previousStatusRef.current;
+    previousStatusRef.current = status;
+    const wasBusy = previousStatus !== "idle" && previousStatus !== "error";
+    if (!wasBusy) return;
+    if (status === "idle") hapticSuccess();
+    else if (status === "error") hapticError();
+  }, [status]);
+
   const handlePress = useCallback(() => {
     if (isBusy) return;
     void syncNow();
@@ -57,10 +72,12 @@ export function SyncButton({ size = 20, color }: SyncButtonProps) {
   });
 
   return (
-    <TouchableOpacity onPress={handlePress} activeOpacity={0.7} hitSlop={8}>
+    // Иконка мелкая, поэтому вжатие глубже обычного — на 0.97 оно на 20pt
+    // просто не видно. hitSlop добирает зону касания до 48pt.
+    <PressableScale onPress={handlePress} pressedScale={0.88} hitSlop={(48 - size) / 2}>
       <Animated.View style={{ transform: [{ rotate: spin }] }}>
         <RefreshCwIcon size={size} color={color} />
       </Animated.View>
-    </TouchableOpacity>
+    </PressableScale>
   );
 }

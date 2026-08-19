@@ -1,7 +1,7 @@
 import { BookmarkIcon } from "@/components/ui/Icon";
 import { useColors } from "@/styles/theme";
-import { useEffect, useRef } from "react";
-import { Animated, StyleSheet } from "react-native";
+import { StyleSheet } from "react-native";
+import Animated, { cubicBezier, useReducedMotion } from "react-native-reanimated";
 
 interface BookmarkRibbonProps {
   visible: boolean;
@@ -9,35 +9,42 @@ interface BookmarkRibbonProps {
   rightOffset?: number;
 }
 
+/** Сильный ease-out: появление должно начинаться сразу, без вялого разгона. */
+const EASE_OUT = cubicBezier(0.23, 1, 0.32, 1);
+
+/** Появление и исчезновение — верхняя граница диапазона мелких изменений. */
+const DURATION_MS = 200;
+
+/** Лента приезжает сверху, из-за края страницы. */
+const HIDDEN_OFFSET = -20;
+
 /**
- * A bookmark ribbon shown at the top-right of the reader page
- * when the current position is bookmarked.
+ * Лента закладки в правом верхнем углу страницы ридера: показывается, когда
+ * текущая позиция отмечена.
+ *
+ * Появление без пружины намеренно: пальца здесь нет, отбрасывать нечего, а
+ * перелёт на элементе, который просто проявился, читается как дребезг.
  */
 export function BookmarkRibbon({ visible, topOffset = 0, rightOffset = 20 }: BookmarkRibbonProps) {
   const colors = useColors();
-  const anim = useRef(new Animated.Value(visible ? 1 : 0)).current;
-
-  useEffect(() => {
-    Animated.spring(anim, {
-      toValue: visible ? 1 : 0,
-      useNativeDriver: true,
-      tension: 80,
-      friction: 10,
-    }).start();
-  }, [visible, anim]);
-
-  const opacity = anim;
-  const translateY = anim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-20, 0],
-  });
+  // Уменьшенное движение — это «меньше и мягче», а не «ничего»: сдвиг убираем,
+  // проявление оставляем, иначе пропадает объяснение смены состояния.
+  const reducedMotion = useReducedMotion();
 
   return (
     <Animated.View
       pointerEvents="none"
       style={[
         styles.container,
-        { top: topOffset, right: rightOffset, opacity, transform: [{ translateY }] },
+        {
+          top: topOffset,
+          right: rightOffset,
+          opacity: visible ? 1 : 0,
+          transform: [{ translateY: reducedMotion || visible ? 0 : HIDDEN_OFFSET }],
+          transitionProperty: reducedMotion ? "opacity" : ["opacity", "transform"],
+          transitionDuration: DURATION_MS,
+          transitionTimingFunction: EASE_OUT,
+        },
       ]}
     >
       <BookmarkIcon size={24} color={colors.primary} />

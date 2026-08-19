@@ -198,6 +198,7 @@ export function ChatsScreen() {
               <CharacterPortraitImage
                 character={row.character}
                 resizeMode="cover"
+                cropAnchor="top"
                 staticOnly
                 style={styles.avatarImage}
                 fallback={

@@ -13,7 +13,7 @@
       "env": {
         "APP_VARIANT": "development",
         "EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE": "installation",
-        "EXPO_PUBLIC_NARRA_GATEWAY_URL": "https://api.narra.disrupt.builders",
+        "EXPO_PUBLIC_NARRA_GATEWAY_URL": "https://api-test.narra.disrupt.builders",
         "EXPO_NO_METRO_WORKSPACE_ROOT": "1",
         "SHARP_IGNORE_GLOBAL_LIBVIPS": "1"
       }
@@ -29,7 +29,7 @@
       "env": {
         "APP_VARIANT": "development",
         "EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE": "installation",
-        "EXPO_PUBLIC_NARRA_GATEWAY_URL": "https://api.narra.disrupt.builders",
+        "EXPO_PUBLIC_NARRA_GATEWAY_URL": "https://api-test.narra.disrupt.builders",
         "EXPO_NO_METRO_WORKSPACE_ROOT": "1",
         "SHARP_IGNORE_GLOBAL_LIBVIPS": "1"
       }
@@ -49,7 +49,7 @@
       "env": {
         "APP_VARIANT": "preview",
         "EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE": "installation",
-        "EXPO_PUBLIC_NARRA_GATEWAY_URL": "https://api.narra.disrupt.builders",
+        "EXPO_PUBLIC_NARRA_GATEWAY_URL": "https://api-test.narra.disrupt.builders",
         "EXPO_NO_METRO_WORKSPACE_ROOT": "1",
         "SHARP_IGNORE_GLOBAL_LIBVIPS": "1"
       }
@@ -64,7 +64,7 @@
       "env": {
         "APP_VARIANT": "production",
         "EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE": "installation",
-        "EXPO_PUBLIC_NARRA_GATEWAY_URL": "https://api.narra.disrupt.builders",
+        "EXPO_PUBLIC_NARRA_GATEWAY_URL": "https://api-test.narra.disrupt.builders",
         "EXPO_NO_METRO_WORKSPACE_ROOT": "1",
         "SHARP_IGNORE_GLOBAL_LIBVIPS": "1"
       }
@@ -81,7 +81,7 @@
       "env": {
         "APP_VARIANT": "production",
         "EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE": "installation",
-        "EXPO_PUBLIC_NARRA_GATEWAY_URL": "https://api.narra.disrupt.builders",
+        "EXPO_PUBLIC_NARRA_GATEWAY_URL": "https://api-test.narra.disrupt.builders",
         "EXPO_NO_METRO_WORKSPACE_ROOT": "1",
         "SHARP_IGNORE_GLOBAL_LIBVIPS": "1"
       }

@@ -3,7 +3,7 @@ import { CharacterPortraitImage } from "@/components/narra/character-portrait-im
 import { Text } from "@/components/ui/Typography";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
-import { type OpenRouterChatMessage, completeOpenRouterChat } from "@/lib/ai/openrouter-chat";
+import { type NarraChatMessageInput, completeNarraChat } from "@/lib/ai/narra-chat";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import { NarraAudioPlayer } from "@/lib/narra/audio-player";
 import { normalizeCharacterChatPlaceholder } from "@/lib/narra/chat-placeholder";
@@ -137,6 +137,7 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
         <CharacterPortraitImage
           character={character}
           resizeMode="cover"
+          cropAnchor="top"
           staticOnly
           style={styles.headerAvatarImage}
           fallback={
@@ -176,7 +177,7 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
 
     void (async () => {
       try {
-        const completion = await completeOpenRouterChat({
+        const completion = await completeNarraChat({
           messages: [
             {
               role: "system",
@@ -189,7 +190,9 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
             },
           ],
           temperature: 0,
-          maxTokens: 80,
+          purpose: "character_chat",
+          origin: "background",
+          analyticsTier: "none",
         });
         const placeholder = normalizeCharacterChatPlaceholder(completion);
         if (placeholder) updateCharacter(bookId, characterId, { chatPlaceholder: placeholder });
@@ -200,7 +203,7 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
     })();
   }, [book, bookId, character, characterId, interfaceLanguage, updateCharacter]);
 
-  const conversation = useMemo<OpenRouterChatMessage[]>(
+  const conversation = useMemo<NarraChatMessageInput[]>(
     () =>
       character && book
         ? [
@@ -229,7 +232,7 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
   }, [bookId, characterId, messages, pendingAssistant]);
 
   // Первое сообщение героя: свой greeting из анализа/каталога, иначе — просим
-  // OpenRouter поздороваться в роли персонажа. Сохраняется в историю чата один раз,
+  // Шлюз здоровается в роли персонажа. Сохраняется в историю чата один раз,
   // поэтому при повторных входах не регенерится и не дублируется.
   useEffect(() => {
     if (!book || !character || !unlocked) return;
@@ -255,7 +258,7 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
     setGreetingLoading(true);
     void (async () => {
       try {
-        const content = await completeOpenRouterChat({
+        const content = await completeNarraChat({
           messages: [
             {
               role: "system",
@@ -276,7 +279,9 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
             },
           ],
           temperature: 0.85,
-          maxTokens: 300,
+          purpose: "character_chat",
+          origin: "user",
+          analyticsTier: "essential",
         });
         if (content) appendGreeting(content);
       } catch (error) {
@@ -293,7 +298,7 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
     async (updatedMessages: NarraChatMessage[]) => {
       if (!character || updatedMessages.length < 4 || updatedMessages.length % 4 !== 0) return;
       try {
-        const nextMemory = await completeOpenRouterChat({
+        const nextMemory = await completeNarraChat({
           messages: [
             {
               role: "system",
@@ -314,7 +319,9 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
             },
           ],
           temperature: 0.25,
-          maxTokens: 400,
+          purpose: "memory",
+          origin: "background",
+          analyticsTier: "none",
         });
         if (nextMemory) setMemory(bookId, characterId, nextMemory.slice(0, 900));
       } catch {
@@ -378,10 +385,12 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
       append(bookId, characterId, userMessage);
       setPendingAssistant(assistantDraft);
       try {
-        const content = await completeOpenRouterChat({
+        const content = await completeNarraChat({
           messages: [...conversation, { role: "user", content: text }],
           temperature: 0.85,
-          maxTokens: 500,
+          purpose: "character_chat",
+          origin: "user",
+          analyticsTier: "essential",
         });
         const assistantMessage: NarraChatMessage = {
           id: assistantMessageId,
@@ -519,7 +528,7 @@ const makeStyles = (colors: ThemeColors) =>
       color: colors.foreground,
       ...bodyTypography,
       fontFamily: titleFontFamily,
-      fontWeight: fontWeight.bold,
+      fontWeight: fontWeight.semibold,
       maxWidth: 190,
     },
     headerSubtitle: {

@@ -11,6 +11,7 @@ import type { NativeContextMenuItem } from "@/components/ui/NativeContextMenuBut
 import { Text } from "@/components/ui/Typography";
 import { useReaderBridge } from "@/hooks/use-reader-bridge";
 import type { RelocateEvent, SelectionEvent, VisibleTTSSegment } from "@/hooks/use-reader-bridge";
+import { hapticLight } from "@/lib/haptics";
 import { durationBucket } from "@/lib/analytics/contract";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import {
@@ -92,11 +93,11 @@ import {
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Reanimated, {
-  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 
@@ -781,14 +782,18 @@ function ReaderContent({ route, navigation }: Props) {
   const requestPageSnippet = useCallback(() => {
     bridgeRef.current?.requestPageSnippet();
   }, []);
-  const handleBookmarkAdded = useCallback(
-    () => toast.success(bookmarkCopy.added),
-    [bookmarkCopy.added],
-  );
-  const handleBookmarkRemoved = useCallback(
-    () => toast.success(bookmarkCopy.removed),
-    [bookmarkCopy.removed],
-  );
+  // Отдача висит на самом действии, а не на появлении ленты закладки: лента
+  // показывается и когда пользователь просто перелистнул на уже заложенную
+  // страницу, и вибрация там была бы откликом на прокрутку. Тост остаётся
+  // основным сигналом, вибрация только подтверждает его.
+  const handleBookmarkAdded = useCallback(() => {
+    hapticLight();
+    toast.success(bookmarkCopy.added);
+  }, [bookmarkCopy.added]);
+  const handleBookmarkRemoved = useCallback(() => {
+    hapticLight();
+    toast.success(bookmarkCopy.removed);
+  }, [bookmarkCopy.removed]);
   const bookmark = useReaderBookmark({
     bookId,
     currentCfi,
@@ -1000,7 +1005,7 @@ function ReaderContent({ route, navigation }: Props) {
         .failOffsetY([-24, 24])
         .onEnd((event) => {
           if (event.translationX >= 72 || event.velocityX >= 520) {
-            runOnJS(handleReaderBackSwipe)();
+            scheduleOnRN(handleReaderBackSwipe);
           }
         }),
     [handleReaderBackSwipe],

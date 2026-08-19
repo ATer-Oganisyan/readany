@@ -2,7 +2,7 @@ import { NativeCharacterDetailsCells } from "@/components/narra/NativeCharacterD
 import { CharacterPortraitImage } from "@/components/narra/character-portrait-image";
 import { Text } from "@/components/ui/Typography";
 import { NarraAudioPlayer } from "@/lib/narra/audio-player";
-import { hasCharacterPortrait, resolveCharacterPortraitUri } from "@/lib/narra/character-portrait";
+import { resolveCharacterPortraitUri } from "@/lib/narra/character-portrait";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
 import { reportNarraError } from "@/lib/narra/errors";
 import { ensureCharacterPortrait, synthesizeNarraSpeech } from "@/lib/narra/media";
@@ -329,13 +329,17 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
 
     // Портрет по требованию — тот же механизм, что и в NarraCharactersScreen;
     // для запертого героя не генерируем (антиспойлер и лишний расход).
+    //
+    // Проверяем разрешённый URI, а не просто наличие записи: если portraitUri
+    // указывает на исчезнувший файл, проверка записи возвращала true и
+    // генерация не запускалась — карточка навсегда оставалась без портрета.
     useEffect(() => {
       if (
         portraitLoadingPreview ||
         !visible ||
         !unlocked ||
         !character ||
-        hasCharacterPortrait(character)
+        resolveCharacterPortraitUri(storedCharacter ?? character)
       )
         return;
       const attemptKey = `${bookId}:${character.id}`;
@@ -349,7 +353,15 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
         .then((uri) => updateCharacter(bookId, character.id, { portraitUri: uri }))
         .catch((error) => reportNarraError("character_portrait_reader_card", error))
         .finally(() => setPortraitLoading(false));
-    }, [visible, unlocked, character, bookId, portraitLoadingPreview, updateCharacter]);
+    }, [
+      visible,
+      unlocked,
+      character,
+      storedCharacter,
+      bookId,
+      portraitLoadingPreview,
+      updateCharacter,
+    ]);
 
     if (!character || !liveCharacter) return null;
 
@@ -493,16 +505,25 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
               {displayName}
             </Text>
           ) : null}
+          {/*
+            В embedded-режиме видимое имя лежит поверх портрета
+            (embeddedPortraitName), а эта копия работает распоркой под него —
+            отсюда embeddedNameSpacer с opacity 0. Но пока портрета нет, блок
+            портрета не рендерится, и распорка остаётся единственной копией:
+            без этого условия имя в компактной шторке пропадало совсем.
+          */}
           <Text
-            accessibilityElementsHidden={embedded}
+            accessibilityElementsHidden={embedded && !portraitPending}
             adjustsFontSizeToFit={embedded && nameNeedsFitting}
-            importantForAccessibility={embedded ? "no-hide-descendants" : undefined}
+            importantForAccessibility={
+              embedded && !portraitPending ? "no-hide-descendants" : undefined
+            }
             minimumFontScale={embedded && nameNeedsFitting ? 0.5 : undefined}
             numberOfLines={embedded ? 2 : undefined}
             style={[
               styles.name,
               embedded && styles.embeddedName,
-              embedded && styles.embeddedNameSpacer,
+              embedded && !portraitPending && styles.embeddedNameSpacer,
               embedded && { color: portraitForeground.primary },
             ]}
           >

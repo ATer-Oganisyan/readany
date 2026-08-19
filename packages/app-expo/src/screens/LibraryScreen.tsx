@@ -155,6 +155,7 @@ function LibraryScreenContent() {
 
   const extractorRef = useRef<ExtractorRef>(null);
   const libraryPagerRef = useRef<NativeSegmentedPagerHandle>(null);
+  const primaryScrollRef = useRef<ScrollView>(null);
 
   const {
     books,
@@ -936,8 +937,17 @@ function LibraryScreenContent() {
       pageGap={gridGap}
       stablePageHeight={false}
       onSwipeStateChange={(swiping) => {
-        if (swiping) swipePressGuard?.beginSwipe();
-        else swipePressGuard?.endSwipe();
+        if (swiping) {
+          swipePressGuard?.beginSwipe();
+          // Пока идёт жест, высота держится по самой длинной вкладке, поэтому
+          // анимация доезжает до верха без обрезания позиции. К моменту смены
+          // страницы мы уже наверху — прыжка одним кадром больше нет.
+          //
+          // Верх здесь не ноль: при большом заголовке система поднимает
+          // содержимое на высоту навбара, поэтому ноль оставляет список
+          // посередине. Целимся в минус высоту навбара — это и есть верх.
+          primaryScrollRef.current?.scrollTo({ y: -nativeHeaderHeight, animated: true });
+        } else swipePressGuard?.endSwipe();
       }}
     >
       <View>{isLoaded ? catalogGrid : null}</View>
@@ -949,6 +959,7 @@ function LibraryScreenContent() {
     <>
       <ScrollViewMarker style={s.page} scrollEdgeEffects={NATIVE_SCROLL_EDGE_EFFECTS}>
         <ScrollView
+          ref={primaryScrollRef}
           contentInsetAdjustmentBehavior="automatic"
           style={s.primaryScroll}
           contentContainerStyle={

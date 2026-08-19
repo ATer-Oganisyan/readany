@@ -1,11 +1,6 @@
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import * as FileSystem from "expo-file-system/legacy";
-import {
-  OPENROUTER_FALLBACK_IMAGE_MODEL,
-  OPENROUTER_PRIMARY_IMAGE_MODEL,
-  generateOpenRouterImageWithFallback,
-} from "../ai/openrouter-image";
 import { resolveCoverGenreProfile } from "../book/cover-genre";
 import { findBundledCatalogBookDefinitionByTitle } from "../catalog/bundled-book-definitions";
 import { budgetPrompt } from "./art-style";
@@ -277,7 +272,15 @@ function isKandinskySafetyRejection(error?: string): boolean {
   return !!error && KANDINSKY_SAFETY_REJECTION.test(error);
 }
 
-async function requestSceneImage(prompt: string): Promise<{
+/**
+ * Низкоуровневый запрос картинки к шлюзу. Размеры задают серверный
+ * aspectRatio: 1024×1024 → 1:1 (Kandinsky-сцены), 1536×1024 → 3:2
+ * (OpenRouter-сцены), 768×1024 → 3:4 (портреты).
+ */
+export async function requestNarraGatewayImage(
+  prompt: string,
+  options: { width: number; height: number; engine: "kandinsky" | "openrouter" },
+): Promise<{
   response: Response;
   payload: { base64?: string; url?: string; error?: string };
 }> {
@@ -286,15 +289,22 @@ async function requestSceneImage(prompt: string): Promise<{
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       prompt,
-      width: 1024,
-      height: 1024,
-      engine: "kandinsky",
+      width: options.width,
+      height: options.height,
+      engine: options.engine,
     }),
   });
   return {
     response,
     payload: imagePayload(await response.json().catch(() => null)),
   };
+}
+
+function requestSceneImage(prompt: string): Promise<{
+  response: Response;
+  payload: { base64?: string; url?: string; error?: string };
+}> {
+  return requestNarraGatewayImage(prompt, { width: 1024, height: 1024, engine: "kandinsky" });
 }
 
 async function persistGeneratedImage(
@@ -346,21 +356,26 @@ async function generateCharacterPortraitRequest(
   character: NarraCharacter,
 ): Promise<string> {
   const book = portraitBookContext(bookId);
-  const generated = await generateOpenRouterImageWithFallback(
-    {
-      model: OPENROUTER_PRIMARY_IMAGE_MODEL,
+  // Портреты идут через гейтвей: 768×1024 даёт серверный aspectRatio 3:4, а
+  // engine=openrouter оставляет ту же модель, что была в приложении, — ключ
+  // при этом больше не уезжает в бандл.
+  const response = await narraGatewayRequest("/v2/media/images", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
       prompt: portraitPrompt(character, book?.description, book?.genreId, book?.genreLabel),
-      aspectRatio: "3:4",
-      quality: "high",
-      outputFormat: "jpeg",
-      outputCompression: 88,
-    },
-    OPENROUTER_FALLBACK_IMAGE_MODEL,
-  );
+      width: 768,
+      height: 1024,
+      engine: "openrouter",
+    }),
+  });
+  const payload = imagePayload(await response.json().catch(() => null));
+  if (!response.ok || (!payload.base64 && !payload.url)) {
+    throw new Error(payload.error || `Portrait generation failed (${response.status})`);
+  }
   await ensureMediaDir();
-  const extension = generated.mimeType === "image/png" ? "png" : "jpg";
-  const path = `${MEDIA_DIR}/${safeKey(`${bookId}-${character.id}-portrait`)}.${extension}`;
-  return persistGeneratedImage(path, { base64: generated.base64 });
+  const path = `${MEDIA_DIR}/${safeKey(`${bookId}-${character.id}-portrait`)}.jpg`;
+  return persistGeneratedImage(path, payload);
 }
 
 export function generateCharacterPortrait(
@@ -437,25 +452,30 @@ async function generateBookCoverImageRequest(
     requestId: string;
   },
 ): Promise<GeneratedCoverImage> {
-  const generated = await generateOpenRouterImageWithFallback(
-    {
-      model: OPENROUTER_PRIMARY_IMAGE_MODEL,
-      prompt,
-      aspectRatio: "2:3",
-      quality: "high",
-      outputFormat: "jpeg",
-      outputCompression: 90,
-    },
-    OPENROUTER_FALLBACK_IMAGE_MODEL,
-  );
+  // Обложки: клиент присылает только промпт, модель и провайдер серверные
+  // (/v2/media/cover — тот же OpenRouter gpt-image-2, что был в приложении).
+  const response = await narraGatewayRequest("/v2/media/cover", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ prompt }),
+  });
+  const raw = (await response.json().catch(() => null)) as {
+    image?: string;
+    mime_type?: string;
+    error?: string;
+  } | null;
+  const payload = imagePayload(raw);
+  if (!response.ok || !payload.base64) {
+    throw new Error(payload.error || `Cover generation failed (${response.status})`);
+  }
   return {
-    base64: generated.base64,
-    mimeType: generated.mimeType,
+    base64: payload.base64,
+    mimeType: raw?.mime_type || "image/jpeg",
     jobId: options.requestId,
   };
 }
 
-/** Personal dev mode: OpenRouter runs directly in the mobile app. */
+/** Обложка генерируется на гейтвее: ключ и модель остаются на сервере. */
 export function generateBookCoverImage(
   prompt: string,
   options: {

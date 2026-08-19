@@ -17,9 +17,10 @@ import { SYNC_SECRET_KEYS, type WebDavConfig } from "@readany/core/sync/sync-bac
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
-import Animated, { SlideInRight } from "react-native-reanimated";
+import Animated from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { OnboardingStackParamList } from "../OnboardingNavigator";
+import { pageEntrance } from "./entrances";
 
 type NavProp = NativeStackNavigationProp<OnboardingStackParamList, "Sync">;
 
@@ -85,7 +86,7 @@ export function SyncPage() {
 
   return (
     <View style={[styles.safeArea, { backgroundColor: colors.background }]}>
-      <Animated.View entering={SlideInRight.duration(500)} style={styles.container}>
+      <Animated.View entering={pageEntrance()} style={styles.container}>
         <KeyboardAwareScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
           <View style={styles.header}>
             <Text style={[styles.title, { color: colors.foreground }]}>

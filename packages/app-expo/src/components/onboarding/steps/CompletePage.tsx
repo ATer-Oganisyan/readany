@@ -3,8 +3,9 @@ import { useSettingsStore } from "@/stores";
 import { largeTitleFontFamily, useTheme } from "@/styles/theme";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, View } from "react-native";
-import Animated, { FadeInDown, SlideInRight } from "react-native-reanimated";
+import Animated from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { lineEntrance, pageEntrance } from "./entrances";
 
 export function CompletePage() {
   const { t } = useTranslation();
@@ -18,16 +19,16 @@ export function CompletePage() {
 
   return (
     <View style={[styles.safeArea, { backgroundColor: colors.background }]}>
-      <Animated.View entering={SlideInRight.duration(500)} style={styles.container}>
+      <Animated.View entering={pageEntrance()} style={styles.container}>
         <View style={styles.content}>
           <Animated.Text
-            entering={FadeInDown.delay(200).springify()}
+            entering={lineEntrance(200)}
             style={[styles.title, { color: colors.foreground }]}
           >
             {t("onboarding.complete.title", "You're All Set!")}
           </Animated.Text>
           <Animated.Text
-            entering={FadeInDown.delay(300).springify()}
+            entering={lineEntrance(300)}
             style={[styles.subtitle, { color: colors.mutedForeground }]}
           >
             {t(

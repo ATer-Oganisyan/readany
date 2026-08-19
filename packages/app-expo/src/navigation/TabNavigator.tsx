@@ -81,7 +81,7 @@ function useTabStackScreenOptions(): NativeStackNavigationOptions {
     headerTitleStyle: {
       color: colors.foreground,
       fontFamily: titleFontFamily,
-      fontWeight: "400",
+      fontWeight: "600",
     },
     scrollEdgeEffects: NATIVE_SCROLL_EDGE_EFFECTS,
     contentStyle: { backgroundColor: colors.background },

@@ -113,5 +113,9 @@ export const subtitleTypography = {
 export const fontFamily = interfaceFontFamily;
 export const headingFontFamily = interfaceFontFamily.semibold;
 export const secondLevelTitleFontFamily = interfaceFontFamily.bold;
-export const titleFontFamily = secondLevelTitleFontFamily;
+/**
+ * Заголовок навбара — та же гарнитура и начертание, что у заголовков книжных
+ * обложек (book-cover-typography.tsx: interfaceFontFamily.semibold + 600).
+ */
+export const titleFontFamily = headingFontFamily;
 export const largeTitleFontFamily = serifCondensedFontFamily.regular;

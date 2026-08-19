@@ -1,36 +1,41 @@
 /**
- * Генерация изображений сцен через OpenRouter (P16) — единая точка входа.
+ * Генерация изображений сцен через Narra Gateway на движке OpenRouter (P16) —
+ * единая точка входа.
  *
- * Путь тот же, что у обложек (generate-book-cover.ts): POST {baseUrl}/images
- * со встроенным ключом из bundled-ai; модель и параметры — в
- * scene-generation-config.json. Промпт — 5-блочная схема scene-prompt.ts,
- * БЕЗ цензорной нейтрализации текста и safety-фолбэка (это костыли под
- * цензора Кандинского, они искажали сцены).
+ * Раньше этот путь бил прямо в OpenRouter со встроенным ключом. Теперь запрос
+ * идёт на /v2/media/images с engine=openrouter: провайдер и качество те же, но
+ * ключ и модель остаются на сервере. 1536×1024 даёт серверный aspectRatio 3:2,
+ * как было в scene-generation-config.json.
  *
- * Без встроенного ключа приложение честно откатывается на прежний
- * гейтвей-путь (media.ts → Kandinsky), там нейтрализация сохранена.
+ * Промпт — 5-блочная схема scene-prompt.ts, БЕЗ цензорной нейтрализации текста
+ * и safety-фолбэка (это костыли под цензора Кандинского, они искажали сцены).
+ *
+ * При отказе движка OpenRouter сцена не ломается: пробуем прежний
+ * гейтвей-путь на Кандинском (media.ts), там нейтрализация сохранена.
  *
  * Референс-изображения (портреты героев) эндпоинт /images НЕ учитывает:
  * живой вызов 2026-08 принимает поле image, но игнорирует его содержимое,
  * поэтому консистентность героев держим паспортами внешности в промпте.
  */
 
-import { hasBundledOpenRouterKey } from "@/config/bundled-ai";
-import {
-  OPENROUTER_FALLBACK_IMAGE_MODEL,
-  type OpenRouterImageRequest,
-  generateOpenRouterImageWithFallback,
-} from "@/lib/ai/openrouter-image";
 import type { NarraGenreAnalysis } from "./genre-analysis";
-import { generateSceneImage, persistSceneImageBase64, trackNarraMediaJob } from "./media";
+import {
+  generateSceneImage,
+  persistSceneImageBase64,
+  requestNarraGatewayImage,
+  trackNarraMediaJob,
+} from "./media";
 import sceneGenerationConfig from "./scene-generation-config.json";
 import { buildScenePrompt } from "./scene-prompt";
 import type { NarraCharacter } from "./types";
 
-const DEFAULT_SCENE_MODEL = sceneGenerationConfig.openRouterModel;
+/** 3:2 на сервере: width > height и не попадает в ветку 3:4. */
+const SCENE_WIDTH = 1536;
+const SCENE_HEIGHT = 1024;
 
+/** Модель выбирает сервер; здесь она нужна только для телеметрии. */
 function sceneModel(): string {
-  return process.env.EXPO_PUBLIC_OPENROUTER_SCENE_IMAGE_MODEL?.trim() || DEFAULT_SCENE_MODEL;
+  return sceneGenerationConfig.openRouterModel;
 }
 
 /** Метаданные книги для блоков «эпоха/мир» и жанра (лениво, вне юнит-тестов). */
@@ -67,7 +72,7 @@ function previousSceneExcerpts(bookId: string, currentExcerpt: string): string[]
     .map((scene) => scene.excerpt);
 }
 
-async function generateSceneImageViaOpenRouter(
+async function generateSceneImageViaGatewayOpenRouter(
   bookId: string,
   chapter: string,
   excerpt: string,
@@ -86,28 +91,23 @@ async function generateSceneImageViaOpenRouter(
     previousExcerpts: previousSceneExcerpts(bookId, excerpt),
   });
 
-  const image = await generateOpenRouterImageWithFallback(
-    {
-      model: sceneModel(),
-      prompt,
-      aspectRatio: sceneGenerationConfig.aspectRatio as OpenRouterImageRequest["aspectRatio"],
-      quality: sceneGenerationConfig.quality as OpenRouterImageRequest["quality"],
-      outputFormat: sceneGenerationConfig.outputFormat as OpenRouterImageRequest["outputFormat"],
-      outputCompression: sceneGenerationConfig.outputCompression,
-    },
-    OPENROUTER_FALLBACK_IMAGE_MODEL,
-  );
-  const extension = image.mimeType === "image/png" ? "png" : "jpg";
-  return persistSceneImageBase64(bookId, image.base64, extension);
+  const { response, payload } = await requestNarraGatewayImage(prompt, {
+    width: SCENE_WIDTH,
+    height: SCENE_HEIGHT,
+    engine: "openrouter",
+  });
+  if (!response.ok || !payload.base64) {
+    throw new Error(payload.error || `Scene generation failed (${response.status})`);
+  }
+  return persistSceneImageBase64(bookId, payload.base64, "jpg");
 }
 
 /**
- * Единая точка генерации сцены: OpenRouter при наличии встроенного ключа,
- * иначе прежний гейтвей-путь. Сигнатура совпадает с generateSceneImage.
+ * Единая точка генерации сцены. Сигнатура совпадает с generateSceneImage.
  *
- * При ошибке OpenRouter (собственный цензор OpenAI режет узнаваемых
+ * При ошибке движка OpenRouter (собственный цензор OpenAI режет узнаваемых
  * франшизных героев — проверено живым вызовом на «Гарри Поттере»; сеть;
- * лимиты) сцена не ломается: пробуем прежний гейтвей-путь. Обе попытки
+ * лимиты) сцена не ломается: пробуем гейтвей-путь на Кандинском. Обе попытки
  * видны в телеметрии со своими provider.
  */
 export async function generateNarraSceneImage(
@@ -116,18 +116,15 @@ export async function generateNarraSceneImage(
   excerpt: string,
   characters: NarraCharacter[],
 ): Promise<string> {
-  if (!hasBundledOpenRouterKey) {
-    return generateSceneImage(bookId, chapter, excerpt, characters);
-  }
   try {
     return await trackNarraMediaJob(
       "image",
       "user",
-      () => generateSceneImageViaOpenRouter(bookId, chapter, excerpt, characters),
+      () => generateSceneImageViaGatewayOpenRouter(bookId, chapter, excerpt, characters),
       { provider: "openrouter", model: sceneModel() },
     );
   } catch (cause) {
-    console.warn("[narra] OpenRouter scene image failed, falling back to gateway", cause);
+    console.warn("[narra] gateway OpenRouter scene image failed, falling back to Kandinsky", cause);
     return generateSceneImage(bookId, chapter, excerpt, characters);
   }
 }

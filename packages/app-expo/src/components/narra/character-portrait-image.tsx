@@ -21,6 +21,13 @@ interface CharacterPortraitImageProps {
   fallback: ReactNode;
   staticOnly?: boolean;
   resizeMode?: ImageResizeMode;
+  /**
+   * "top" прижимает кадр к верху портрета — для круглых миниатюр, чтобы в
+   * кружок попадало лицо, а не середина фигуры. Контейнер миниатюры уже режет
+   * по кругу (overflow: hidden), поэтому картинку достаточно сделать выше
+   * контейнера в пропорции портрета 3:4 и посадить на верхний край.
+   */
+  cropAnchor?: "center" | "top";
   style?: StyleProp<ImageStyle>;
 }
 
@@ -29,6 +36,7 @@ export function CharacterPortraitImage({
   fallback,
   staticOnly = false,
   resizeMode = "cover",
+  cropAnchor = "center",
   style,
 }: CharacterPortraitImageProps) {
   const sourceKey = `${character.portraitAssetId ?? ""}|${character.portraitUri ?? ""}|${
@@ -111,7 +119,7 @@ export function CharacterPortraitImage({
     <Image
       source={source}
       resizeMode={resizeMode}
-      style={style}
+      style={cropAnchor === "top" ? [style, styles.topAnchored] : style}
       onError={() => setSelection({ key: sourceKey, index: sourceIndex + 1 })}
     />
   );
@@ -121,5 +129,13 @@ const styles = StyleSheet.create({
   fallback: {
     alignItems: "center",
     justifyContent: "center",
+  },
+  topAnchored: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    width: "100%",
+    height: undefined,
+    aspectRatio: 3 / 4,
   },
 });

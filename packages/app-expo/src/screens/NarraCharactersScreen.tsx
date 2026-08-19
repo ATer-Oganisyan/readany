@@ -6,8 +6,6 @@ import {
 } from "@/components/chats/character-chat-list";
 import { CharacterPortraitImage } from "@/components/narra/character-portrait-image";
 import { type ExtractorRef, ExtractorWebView } from "@/components/rag/ExtractorWebView";
-import { Text } from "@/components/ui/Typography";
-import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import { getBundledCatalogCharactersByTitle } from "@/lib/narra/bundled-catalog-characters";
@@ -21,12 +19,12 @@ import { toast } from "@/lib/notifications";
 import { inspectMobileBookForVectorize } from "@/lib/rag/auto-vectorize-book";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useLibraryStore, useNarraStore } from "@/stores";
-import { type ThemeColors, fontSize, fontWeight, radius, spacing, useTheme } from "@/styles/theme";
+import { type ThemeColors, spacing, useTheme } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import * as FileSystem from "expo-file-system/legacy";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ActivityIndicator, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, ScrollView, StyleSheet } from "react-native";
 
 type Props = NativeStackScreenProps<RootStackParamList, "NarraCharacters">;
 const MAX_AUTOMATIC_PORTRAIT_ATTEMPTS = 2;
@@ -263,6 +261,7 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
             <CharacterPortraitImage
               character={character}
               resizeMode="cover"
+              cropAnchor="top"
               staticOnly
               style={styles.avatarImage}
               fallback={
@@ -287,31 +286,6 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
     >
       <ExtractorWebView ref={extractorRef} />
       <CharacterChatList items={listItems} />
-      {characters.length === 0 ? (
-        <CenteredEmptyState
-          title={t("narra.meetCharacters", "Персонажей пока нет")}
-          description={t("narra.analysisDescription", "Найдём их в тексте книги")}
-        >
-          <View style={styles.emptyActions}>
-            <TouchableOpacity
-              accessibilityRole="button"
-              accessibilityLabel={busy ? analysisStage : t("narra.findCharacters", "Найти героев")}
-              activeOpacity={0.82}
-              disabled={busy || !book}
-              onPress={() => void analyze()}
-              style={[styles.primaryButton, (busy || !book) && styles.disabled]}
-            >
-              {busy ? (
-                <ActivityIndicator size="small" color={colors.primaryForeground} />
-              ) : (
-                <Text style={styles.primaryButtonText}>
-                  {t("narra.findCharacters", "Найти героев")}
-                </Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        </CenteredEmptyState>
-      ) : null}
     </ScrollView>
   );
 }
@@ -325,22 +299,5 @@ const makeStyles = (colors: ThemeColors) =>
       paddingTop: spacing.sm,
       paddingBottom: spacing.xxl,
     },
-    emptyActions: { alignItems: "center", gap: spacing.md },
-    primaryButton: {
-      minHeight: 46,
-      paddingHorizontal: spacing.xl,
-      borderRadius: radius.full,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: spacing.sm,
-      backgroundColor: colors.primary,
-    },
-    primaryButtonText: {
-      color: colors.primaryForeground,
-      fontSize: fontSize.sm,
-      fontWeight: fontWeight.semibold,
-    },
-    disabled: { opacity: 0.5 },
     avatarImage: { width: "100%", height: "100%" },
   });

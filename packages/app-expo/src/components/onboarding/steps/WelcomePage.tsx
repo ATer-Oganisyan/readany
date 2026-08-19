@@ -7,9 +7,10 @@ import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useTranslation } from "react-i18next";
 import { ScrollView, StyleSheet, View } from "react-native";
-import Animated, { FadeInDown } from "react-native-reanimated";
+import Animated from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { OnboardingStackParamList } from "../OnboardingNavigator";
+import { lineEntrance } from "./entrances";
 
 type NavProp = NativeStackNavigationProp<OnboardingStackParamList, "Welcome">;
 
@@ -37,13 +38,13 @@ export function WelcomePage() {
         showsVerticalScrollIndicator={false}
       >
         <Animated.Text
-          entering={FadeInDown.delay(200).springify()}
+          entering={lineEntrance(200)}
           style={[styles.title, { color: colors.foreground }]}
         >
           {t("onboarding.welcome.title", "Welcome to Narra")}
         </Animated.Text>
         <Animated.Text
-          entering={FadeInDown.delay(300).springify()}
+          entering={lineEntrance(300)}
           style={[styles.subtitle, { color: colors.mutedForeground }]}
         >
           {t(
@@ -72,7 +73,7 @@ export function WelcomePage() {
           ].map((f, i) => (
             <Animated.View
               key={f.title}
-              entering={FadeInDown.delay(400 + i * 100).springify()}
+              entering={lineEntrance(400 + i * 100)}
               style={styles.featureRow}
             >
               <View style={[styles.featureIcon, { backgroundColor: `${f.icon.props.color}20` }]}>

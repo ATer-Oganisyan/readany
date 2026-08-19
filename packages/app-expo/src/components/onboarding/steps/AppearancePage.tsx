@@ -7,9 +7,10 @@ import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useTranslation } from "react-i18next";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
-import Animated, { SlideInRight } from "react-native-reanimated";
+import Animated from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { OnboardingStackParamList } from "../OnboardingNavigator";
+import { pageEntrance } from "./entrances";
 
 type NavProp = NativeStackNavigationProp<OnboardingStackParamList, "Appearance">;
 
@@ -42,7 +43,7 @@ export function AppearancePage() {
 
   return (
     <View style={[styles.safeArea, { backgroundColor: colors.background }]}>
-      <Animated.View entering={SlideInRight.duration(500)} style={styles.container}>
+      <Animated.View entering={pageEntrance()} style={styles.container}>
         <ScrollView
           style={styles.scroll}
           contentInsetAdjustmentBehavior="automatic"
