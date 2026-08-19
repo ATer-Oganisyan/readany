@@ -13,6 +13,7 @@ import { recordTelemetry } from "@/lib/analytics/telemetry";
 import { normalizeCharacterChatPlaceholder } from "@/lib/narra/chat-placeholder";
 import { isCharacterUnlocked, normalizeReadingProgress } from "@/lib/narra/domain";
 import { reportNarraError } from "@/lib/narra/errors";
+import { rfChatCompliance } from "@/lib/narra/rf-compliance";
 import type { NarraCharacter, NarraChatMessage } from "@/lib/narra/types";
 import { toast } from "@/lib/notifications";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
@@ -64,6 +65,7 @@ Reply in English, in the first person, naturally, usually in 1–3 sentences. Ne
 Avoid lists and corporate language. React to the reader's actual words; you may disagree, joke, and ask questions.
 The reader has completed about ${Math.round(safeProgress * 100)}% of the book. Do not reveal events, knowledge, relationships, or character fates beyond that point. If a question risks a spoiler, gently deflect in character and return to events the reader already knows without mentioning rules or restrictions.
 You may evade, but do not lie. Speak honestly about events the reader has already reached and do not invent facts that are not in the book.
+${rfChatCompliance("en")}
 ${memory ? `Your long-term memory of the reader:\n${memory}` : ""}`;
   }
   return `Ты — ${character.fullName} из книги «${title}». Полностью оставайся в роли.
@@ -74,6 +76,7 @@ ${memory ? `Your long-term memory of the reader:\n${memory}` : ""}`;
 Не используй списки и канцелярит. Реагируй на конкретные слова собеседника, можешь спорить, шутить и задавать вопросы.
 Читатель прошёл примерно ${Math.round(safeProgress * 100)}% книги. Не раскрывай события, знания, отношения и судьбы героев дальше этого прогресса. Если вопрос ведёт к спойлеру, мягко уклонись в своём характере и переведи разговор к уже известным событиям — не упоминай правила или ограничения.
 Уклоняться можно, лгать нельзя. О том, что читатель уже прошёл, говори честно: не отрицай своих поступков и событий книги, даже если герою неприятно о них вспоминать. Не выдумывай того, чего в книге нет.
+${rfChatCompliance("ru")}
 ${memory ? `Твоя долговременная память о собеседнике:\n${memory}` : ""}`;
 }
 

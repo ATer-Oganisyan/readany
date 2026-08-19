@@ -14,6 +14,7 @@
 // cover-genre чист от зависимостей — правила жанров едины с обложками.
 import { resolveCoverGenreProfile } from "../book/cover-genre";
 import { type NarraGenreAnalysis, narraGenreLabel } from "./genre-analysis";
+import { RF_IMAGE_COMPLIANCE } from "./rf-compliance";
 import type { NarraCharacter } from "./types";
 
 /** Разумный потолок промпта сцены для GPT Image (не лимит провайдера). */
@@ -187,6 +188,8 @@ export function buildScenePrompt(input: ScenePromptInput): string {
     previous.length
       ? `КОНТЕКСТ СЕРИИ — ранее в книге: ${previous.map((item) => `«${item}»`).join(" ")} Новая иллюстрация продолжает ту же серию: тот же художник, та же палитра и манера.`
       : "",
+    // 6. Правовые рамки РФ: разрешает драму сюжета и любые пары книги, режет привнесённую политику.
+    RF_IMAGE_COMPLIANCE,
     "Единое пространство и один момент времени, НЕ коллаж. Строго без текста, букв, цифр, надписей, логотипов и водяных знаков.",
   ];
 

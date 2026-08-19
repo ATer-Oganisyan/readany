@@ -1,4 +1,5 @@
 import { budgetPrompt } from "./art-style";
+import { RF_IMAGE_COMPLIANCE } from "./rf-compliance";
 import { passportDescription, sceneArtDirectionForGenre } from "./scene-prompt";
 import type { NarraCharacter } from "./types";
 
@@ -10,8 +11,11 @@ export interface CharacterPortraitPromptContext {
   assumeAdultFemale?: boolean;
 }
 
-/** Портреты идут через GPT Image и не ограничены коротким лимитом Kandinsky. */
-export const PORTRAIT_PROMPT_CHAR_LIMIT = 1_600;
+/**
+ * Портреты идут через GPT Image и не ограничены коротким лимитом Kandinsky.
+ * 2500 — как у сцен: рамка кадра, паспорт и правовой блок РФ влезают целиком.
+ */
+export const PORTRAIT_PROMPT_CHAR_LIMIT = 2_500;
 
 function femaleBodyDirection(
   character: NarraCharacter,
@@ -34,7 +38,9 @@ function portraitArtStyle(genreId: string, genreLabel: string): string {
     genreId === "classic"
       ? "классический живописный портрет в традиции книжной иллюстрации: натуральные пропорции, сдержанная академическая манера, мягкий естественный свет и благородная историческая палитра"
       : sceneArtDirectionForGenre(genreId);
-  return `портретная иллюстрация в визуальном языке жанра «${genreLabel}»: ${direction}; единая серия работ одного художника; строго без текста, букв, цифр, надписей, логотипов и водяных знаков`;
+  // Правовой блок в хвосте стиля: budgetPrompt никогда не сокращает хвост,
+  // поэтому рамки РФ доезжают до модели целиком при любом переполнении.
+  return `портретная иллюстрация в визуальном языке жанра «${genreLabel}»: ${direction}; единая серия работ одного художника; строго без текста, букв, цифр, надписей, логотипов и водяных знаков. ${RF_IMAGE_COMPLIANCE}`;
 }
 
 export function buildCharacterPortraitPrompt(
