@@ -1,4 +1,5 @@
 import { createOperationalLogger } from './operational-log.mjs'
+import { bookAnalysisLogContext } from './book-analysis-observability.mjs'
 
 function errorCode(error) {
   const value = typeof error?.code === 'string' ? error.code : 'UNKNOWN'
@@ -22,6 +23,7 @@ export function createBookAnalysisPublishWorker({
     async runOnce() {
       const job = await repository.claimAnalysisJob(workerId, { stages: ['publish'], leaseSeconds })
       if (!job) return { status: 'idle' }
+      const startedAt = performance.now()
       const timer = setInterval(() => {
         void repository.renewAnalysisJobLease(job, { leaseSeconds }).catch(() => {})
       }, leaseRenewMs)
@@ -37,12 +39,21 @@ export function createBookAnalysisPublishWorker({
           artifactId: input.artifact.id
         })
         log.info('publish.completed', 'V3-разметка опубликована в shadow-канал', {
-          run: job.runId, publication: result.publicationId, channel: 'shadow'
+          run: job.runId, publication: result.publicationId, channel: 'shadow',
+          ...bookAnalysisLogContext(job, { startedAt, terminalStatus: 'ready' })
         })
         return { status: 'completed', jobId: job.id, runId: job.runId, result }
       } catch (error) {
         const code = errorCode(error)
         const failure = await repository.failAnalysisJob(job, code)
+        log.error('publish.failed', 'Публикация разметки завершилась ошибкой', {
+          job: job.id,
+          ...bookAnalysisLogContext(job, {
+            startedAt,
+            terminalStatus: failure.status,
+            errorCode: code
+          })
+        })
         return { status: 'failed', jobId: job.id, runId: job.runId, errorCode: code, failure }
       } finally {
         clearInterval(timer)

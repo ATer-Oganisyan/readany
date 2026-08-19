@@ -1,9 +1,12 @@
 import {
-  BOOK_ANALYSIS_PIPELINE_VERSION,
-  BOOK_ANALYSIS_PROMPT_VERSION
-} from './book-analysis-contracts.mjs'
+  BOOK_ANALYSIS_PIPELINE_NARRA,
+  getBookAnalysisPipeline
+} from './book-analysis-pipeline.mjs'
 
-export function createBookAnalysisCoordinator({ repository }) {
+export function createBookAnalysisCoordinator({
+  repository,
+  defaultPipelineId = BOOK_ANALYSIS_PIPELINE_NARRA
+}) {
   if (!repository || typeof repository.ensureAnalysisRun !== 'function') {
     throw new TypeError('book analysis repository is required')
   }
@@ -11,15 +14,16 @@ export function createBookAnalysisCoordinator({ repository }) {
     async start({
       bookEditionId,
       contentSha256,
-      pipelineVersion = BOOK_ANALYSIS_PIPELINE_VERSION,
-      promptVersion = BOOK_ANALYSIS_PROMPT_VERSION,
+      pipelineId = defaultPipelineId,
       priority = 50
     }) {
+      const strategy = getBookAnalysisPipeline(pipelineId)
       const result = await repository.ensureAnalysisRun({
         bookEditionId,
         inputHash: contentSha256,
-        pipelineVersion,
-        promptVersion,
+        pipelineId: strategy.id,
+        pipelineVersion: strategy.orchestrationVersion,
+        promptVersion: strategy.extractorVersion,
         priority
       })
       return {

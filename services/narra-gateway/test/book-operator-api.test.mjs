@@ -206,6 +206,30 @@ test('operator can safely start a new v3 run for one selected book', async () =>
   })
 })
 
+test('operator restart accepts only the explicit narra or external pipeline selector', async () => {
+  const input = dependencies()
+  await withServer(input, async (baseUrl) => {
+    const selected = await fetch(`${baseUrl}/operator/api/books/${BOOK_ID}/restart`, {
+      method: 'POST',
+      headers: { authorization: AUTH, 'content-type': 'application/json' },
+      body: JSON.stringify({ pipeline: 'external' })
+    })
+    assert.equal(selected.status, 202)
+    assert.deepEqual(input.calls, [[
+      'restart-analysis',
+      { bookEditionId: BOOK_ID, pipelineId: 'external', priority: 100 }
+    ]])
+
+    const invalid = await fetch(`${baseUrl}/operator/api/books/${BOOK_ID}/restart`, {
+      method: 'POST',
+      headers: { authorization: AUTH, 'content-type': 'application/json' },
+      body: JSON.stringify({ pipeline: 'fallback' })
+    })
+    assert.equal(invalid.status, 400)
+    assert.equal((await invalid.json()).code, 'INVALID_ARGUMENT')
+  })
+})
+
 test('web upload calls the same catalog service sequence as the command endpoint', async () => {
   const input = dependencies()
   await withServer(input, async (baseUrl) => {

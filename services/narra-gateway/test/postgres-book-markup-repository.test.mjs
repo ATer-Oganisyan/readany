@@ -214,6 +214,22 @@ test('analysis rerun migration versions runs without replacing prior publication
   assert.doesNotMatch(migration, /UPDATE book_analysis_publications/)
 })
 
+test('pipeline migration freezes run and job identity and separates cache lineages', async () => {
+  const migration = await readFile(
+    new URL('../migrations/013_book_analysis_pipelines.sql', import.meta.url),
+    'utf8'
+  )
+  assert.match(migration, /pipeline_id IN \('narra', 'external'\)/)
+  assert.match(migration, /pipeline_implementation_version TEXT NOT NULL/)
+  assert.match(migration, /normalization_version TEXT NOT NULL/)
+  assert.match(migration, /output_schema_version INTEGER NOT NULL DEFAULT 3/)
+  assert.match(migration, /book_analysis_runs_pipeline_sequence_unique/)
+  assert.match(migration, /book_analysis_jobs_pipeline_identity/)
+  assert.match(migration, /analysis pipeline identity is immutable/)
+  assert.match(migration, /analysis run lineage is immutable/)
+  assert.match(migration, /run\.pipeline_id = 'external'/)
+})
+
 test('catalog cover migration stores one verified presentation asset per edition', async () => {
   const migration = await readFile(
     new URL('../migrations/004_catalog_covers.sql', import.meta.url),

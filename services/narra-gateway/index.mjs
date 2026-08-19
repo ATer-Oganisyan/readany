@@ -73,6 +73,7 @@ import { createBookCatalogRouter } from './book-catalog-api.mjs'
 import { createCatalogIngestRouter } from './catalog-ingest-api.mjs'
 import { createCatalogIngestService } from './catalog-ingest-service.mjs'
 import { createPostgresBookAnalysisRepository } from './book-analysis-repository.mjs'
+import { bookAnalysisPipelineFromEnv } from './book-analysis-pipeline.mjs'
 import { createBookOperatorRouter } from './book-operator-api.mjs'
 import { createPostgresBookOperatorRepository } from './book-operator-repository.mjs'
 import { createPostgresBookMarkupRepository } from './postgres-book-markup-repository.mjs'
@@ -88,6 +89,7 @@ import { kandinskyImageTimeoutMs, kandinskyRequestTimeoutMs } from './image-time
 
 // ================= Конфигурация =================
 const PORT = process.env.PORT || 8787
+const BOOK_ANALYSIS_PIPELINE = bookAnalysisPipelineFromEnv(process.env)
 const INSECURE = process.env.ALLOW_INSECURE_TLS === 'true'
 const PRODUCTION = process.env.NODE_ENV === 'production'
 const BUILD_VERSION = String(process.env.GATEWAY_BUILD_VERSION || 'development').slice(0, 120)
@@ -946,7 +948,9 @@ if (process.env.DATABASE_URL) {
   bookMarkupRepository = createPostgresBookMarkupRepository(bookMarkupPool, {
     privateMaterialTtlDays: PRIVATE_MATERIAL_TTL_DAYS
   })
-  bookAnalysisRepository = createPostgresBookAnalysisRepository(bookMarkupPool)
+  bookAnalysisRepository = createPostgresBookAnalysisRepository(bookMarkupPool, {
+    defaultPipelineId: BOOK_ANALYSIS_PIPELINE
+  })
   bookOperatorRepository = createPostgresBookOperatorRepository(bookMarkupPool)
   if (internalGenerationService) {
     const coverJobs = await bookMarkupRepository.enqueueMissingCatalogCovers()

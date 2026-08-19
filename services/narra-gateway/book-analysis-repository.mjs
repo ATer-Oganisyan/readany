@@ -4,7 +4,6 @@ import {
   BOOK_ANALYSIS_MARKUP_VERSION,
   BOOK_ANALYSIS_SCHEMA_VERSION,
   BOOK_ANALYSIS_PIPELINE_VERSION,
-  BOOK_ANALYSIS_PROMPT_VERSION,
   normalizeBookAnalysisCharacterProfile,
   normalizeBookMarkupV3,
   normalizeBookAnalysisResolvedEntity
@@ -17,6 +16,16 @@ import {
   characterMediaIdempotencyKey,
   characterMediaTargetVersion
 } from './book-markup.mjs'
+import {
+  BOOK_ANALYSIS_NORMALIZATION_VERSION,
+  BOOK_ANALYSIS_PIPELINE_IDS,
+  BOOK_ANALYSIS_PIPELINE_NARRA,
+  bookAnalysisPipelineForRun,
+  bookAnalysisPipelineCacheKey,
+  bookAnalysisPublicationProvenance,
+  getBookAnalysisPipeline,
+  normalizeBookAnalysisPipelineId
+} from './book-analysis-pipeline.mjs'
 import { isSupportedVoice } from './voices.mjs'
 
 const SHA256 = /^[0-9a-f]{64}$/
@@ -60,6 +69,13 @@ function validatePriority(value) {
   return value
 }
 
+function validateOutputSchemaVersion(value) {
+  if (value !== BOOK_ANALYSIS_SCHEMA_VERSION) {
+    throw new RangeError(`outputSchemaVersion must be ${BOOK_ANALYSIS_SCHEMA_VERSION}`)
+  }
+  return value
+}
+
 function runRow(row) {
   if (!row) return null
   return {
@@ -68,6 +84,12 @@ function runRow(row) {
     idempotencyKey: row.idempotency_key,
     pipelineVersion: row.pipeline_version,
     promptVersion: row.prompt_version,
+    pipelineId: row.pipeline_id ?? BOOK_ANALYSIS_PIPELINE_NARRA,
+    pipelineImplementationVersion:
+      row.pipeline_implementation_version ?? row.pipeline_version,
+    normalizationVersion:
+      row.normalization_version ?? BOOK_ANALYSIS_NORMALIZATION_VERSION,
+    outputSchemaVersion: Number(row.output_schema_version ?? BOOK_ANALYSIS_SCHEMA_VERSION),
     inputHash: row.input_hash,
     runSequence: Number(row.run_sequence ?? 1),
     restartedFromRunId: row.restarted_from_run_id ?? undefined,
@@ -138,7 +160,11 @@ function jobRow(row) {
     maxAttempts: row.max_attempts,
     leaseToken: row.lease_token ?? undefined,
     payload: row.payload ?? {},
-    result: row.result ?? undefined
+    result: row.result ?? undefined,
+    pipelineId: row.pipeline_id ?? BOOK_ANALYSIS_PIPELINE_NARRA,
+    pipelineImplementationVersion:
+      row.pipeline_implementation_version ?? BOOK_ANALYSIS_PIPELINE_VERSION,
+    sourceHash: row.source_hash ?? undefined
   }
 }
 
@@ -150,6 +176,9 @@ function scanInputRow(row) {
     title: row.title,
     author: row.author,
     extractorVersion: row.prompt_version,
+    pipelineId: row.pipeline_id ?? BOOK_ANALYSIS_PIPELINE_NARRA,
+    pipelineImplementationVersion:
+      row.pipeline_implementation_version ?? BOOK_ANALYSIS_PIPELINE_VERSION,
     normalizedTextObjectKey: row.normalized_text_object_key,
     normalizedTextHash: row.normalized_text_hash,
     textLength: Number(row.text_length),
@@ -284,7 +313,10 @@ async function loadOrderedObservationsByIds(client, runId, observationIds) {
 
 async function requireStageInput(pool, job, stage) {
   const result = await pool.query(
-    `SELECT run.id AS run_id, run.book_edition_id, run.normalized_text_object_key,
+    `SELECT run.id AS run_id, run.book_edition_id, run.pipeline_id,
+            run.pipeline_implementation_version, run.pipeline_version,
+            run.prompt_version, run.input_hash, run.normalization_version,
+            run.output_schema_version, run.normalized_text_object_key,
             run.normalized_text_hash, run.text_length, edition.title, edition.author,
             job.payload, job.shard_key, snapshot.*
      FROM book_analysis_jobs AS job
@@ -294,7 +326,9 @@ async function requireStageInput(pool, job, stage) {
        ON snapshot.run_id = run.id AND snapshot.id = (job.payload->>'snapshotId')::uuid
      WHERE job.id = $1 AND job.run_id = $2 AND job.stage = $4
        AND job.status = 'running' AND job.lease_token = $3::uuid
-       AND run.stage = $4 AND run.status = 'running'`,
+       AND run.stage = $4 AND run.status = 'running'
+       AND job.pipeline_id = run.pipeline_id
+       AND job.pipeline_implementation_version = run.pipeline_implementation_version`,
     [job.id, job.runId, job.leaseToken, stage]
   )
   if (!result.rows[0]) throw repositoryError('LEASE_LOST', `analysis job lease lost: ${job.id}`)
@@ -331,22 +365,48 @@ async function requireLeasedJob(client, job, expectedStage) {
 export function bookAnalysisRunIdempotencyKey({
   bookEditionId,
   inputHash,
-  pipelineVersion = BOOK_ANALYSIS_PIPELINE_VERSION,
-  promptVersion = BOOK_ANALYSIS_PROMPT_VERSION
+  pipelineId = BOOK_ANALYSIS_PIPELINE_NARRA,
+  pipelineImplementationVersion,
+  pipelineVersion,
+  promptVersion,
+  normalizationVersion = BOOK_ANALYSIS_NORMALIZATION_VERSION,
+  outputSchemaVersion = BOOK_ANALYSIS_SCHEMA_VERSION
 }) {
+  const strategy = getBookAnalysisPipeline(pipelineId)
   return [
-    'book-analysis',
-    validateIdentifier(bookEditionId, 'bookEditionId'),
-    validateHash(inputHash, 'inputHash'),
-    validateIdentifier(pipelineVersion, 'pipelineVersion'),
-    validateIdentifier(promptVersion, 'promptVersion')
+    bookAnalysisPipelineCacheKey({
+      pipelineId: strategy.id,
+      contentHash: validateHash(inputHash, 'inputHash'),
+      implementationVersion: validateIdentifier(
+        pipelineImplementationVersion ?? strategy.implementationVersion,
+        'pipelineImplementationVersion'
+      ),
+      orchestrationVersion: validateIdentifier(
+        pipelineVersion ?? strategy.orchestrationVersion,
+        'pipelineVersion'
+      ),
+      extractorVersion: validateIdentifier(
+        promptVersion ?? strategy.extractorVersion,
+        'promptVersion'
+      ),
+      normalizationVersion: validateIdentifier(normalizationVersion, 'normalizationVersion'),
+      outputSchemaVersion
+    }),
+    validateIdentifier(bookEditionId, 'bookEditionId')
   ].join(':')
 }
 
-export function createPostgresBookAnalysisRepository(pool, { idFactory = randomUUID } = {}) {
+export function createPostgresBookAnalysisRepository(pool, {
+  idFactory = randomUUID,
+  defaultPipelineId = BOOK_ANALYSIS_PIPELINE_NARRA
+} = {}) {
   if (!pool || typeof pool.connect !== 'function' || typeof pool.query !== 'function') {
     throw new TypeError('a pg-compatible pool is required')
   }
+  const repositoryDefaultPipelineId = normalizeBookAnalysisPipelineId(
+    defaultPipelineId,
+    'defaultPipelineId'
+  )
 
   async function materializeMediaProjection(client, {
     bookEditionId,
@@ -594,24 +654,47 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
     async ensureAnalysisRun({
       bookEditionId,
       inputHash,
-      pipelineVersion = BOOK_ANALYSIS_PIPELINE_VERSION,
-      promptVersion = BOOK_ANALYSIS_PROMPT_VERSION,
+      pipelineId = repositoryDefaultPipelineId,
+      pipelineVersion,
+      promptVersion,
+      normalizationVersion = BOOK_ANALYSIS_NORMALIZATION_VERSION,
+      outputSchemaVersion = BOOK_ANALYSIS_SCHEMA_VERSION,
       priority = 50
     }) {
+      const strategy = getBookAnalysisPipeline(pipelineId)
+      const selectedPipelineVersion = validateIdentifier(
+        pipelineVersion ?? strategy.orchestrationVersion,
+        'pipelineVersion'
+      )
+      const selectedPromptVersion = validateIdentifier(
+        promptVersion ?? strategy.extractorVersion,
+        'promptVersion'
+      )
+      const selectedNormalizationVersion = validateIdentifier(
+        normalizationVersion,
+        'normalizationVersion'
+      )
+      const selectedSchemaVersion = validateOutputSchemaVersion(outputSchemaVersion)
       const idempotencyKey = bookAnalysisRunIdempotencyKey({
         bookEditionId,
         inputHash,
-        pipelineVersion,
-        promptVersion
+        pipelineId: strategy.id,
+        pipelineImplementationVersion: strategy.implementationVersion,
+        pipelineVersion: selectedPipelineVersion,
+        promptVersion: selectedPromptVersion,
+        normalizationVersion: selectedNormalizationVersion,
+        outputSchemaVersion: selectedSchemaVersion
       })
       const safePriority = validatePriority(priority)
       return transaction(pool, async (client) => {
         const inserted = await client.query(
           `INSERT INTO book_analysis_runs (
              id, idempotency_key, book_edition_id, pipeline_version, prompt_version,
-             input_hash, run_sequence
+             input_hash, run_sequence, pipeline_id,
+             pipeline_implementation_version, normalization_version,
+             output_schema_version
            )
-           SELECT $1, $2, edition.id, $4, $5, $3, 1
+           SELECT $1, $2, edition.id, $4, $5, $3, 1, $7, $8, $9, $10
            FROM book_editions AS edition
            JOIN book_files AS file
              ON file.book_edition_id = edition.id
@@ -619,21 +702,34 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
             AND file.content_hash = edition.content_sha256
            WHERE edition.id = $6 AND edition.content_sha256 = $3
            ON CONFLICT (
-             book_edition_id, input_hash, pipeline_version, prompt_version, run_sequence
+             book_edition_id, input_hash, pipeline_id, pipeline_implementation_version,
+             pipeline_version, prompt_version, normalization_version,
+             output_schema_version, run_sequence
            )
            DO NOTHING
            RETURNING *`,
-          [idFactory(), idempotencyKey, inputHash, pipelineVersion, promptVersion, bookEditionId]
+          [
+            idFactory(), idempotencyKey, inputHash, selectedPipelineVersion,
+            selectedPromptVersion, bookEditionId, strategy.id,
+            strategy.implementationVersion, selectedNormalizationVersion,
+            selectedSchemaVersion
+          ]
         )
         const selected = inserted.rows[0]
           ? inserted
           : await client.query(
               `SELECT * FROM book_analysis_runs
                WHERE book_edition_id = $1 AND input_hash = $2
-                 AND pipeline_version = $3 AND prompt_version = $4
+                 AND pipeline_id = $3 AND pipeline_implementation_version = $4
+                 AND pipeline_version = $5 AND prompt_version = $6
+                 AND normalization_version = $7 AND output_schema_version = $8
                  AND run_sequence = 1
                FOR UPDATE`,
-              [bookEditionId, inputHash, pipelineVersion, promptVersion]
+              [
+                bookEditionId, inputHash, strategy.id, strategy.implementationVersion,
+                selectedPipelineVersion, selectedPromptVersion,
+                selectedNormalizationVersion, selectedSchemaVersion
+              ]
             )
         const row = selected.rows[0]
         if (!row) {
@@ -644,11 +740,15 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
         }
         const job = await client.query(
           `INSERT INTO book_analysis_jobs (
-             id, run_id, stage, shard_key, required, priority
-           ) VALUES ($1, $2, 'prepare', 'book', true, $3)
+             id, run_id, stage, shard_key, required, priority,
+             pipeline_id, pipeline_implementation_version
+           ) VALUES ($1, $2, 'prepare', 'book', true, $3, $4, $5)
            ON CONFLICT (run_id, stage, shard_key) DO NOTHING
            RETURNING *`,
-          [idFactory(), row.id, safePriority]
+          [
+            idFactory(), row.id, safePriority,
+            row.pipeline_id, row.pipeline_implementation_version
+          ]
         )
         const selectedJob = job.rows[0]
           ? job
@@ -667,13 +767,14 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
 
     async restartAnalysisRun({
       bookEditionId,
-      pipelineVersion = BOOK_ANALYSIS_PIPELINE_VERSION,
-      promptVersion = BOOK_ANALYSIS_PROMPT_VERSION,
+      pipelineId,
+      pipelineVersion,
+      promptVersion,
+      normalizationVersion,
+      outputSchemaVersion,
       priority = 100
     }) {
       const safeBookEditionId = validateIdentifier(bookEditionId, 'bookEditionId')
-      const safePipelineVersion = validateIdentifier(pipelineVersion, 'pipelineVersion')
-      const safePromptVersion = validateIdentifier(promptVersion, 'promptVersion')
       const safePriority = validatePriority(priority)
       return transaction(pool, async (client) => {
         const source = await client.query(
@@ -695,13 +796,46 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
           )
         }
         const inputHash = validateHash(edition.content_sha256, 'contentSha256')
+        const previousResult = await client.query(
+          `SELECT * FROM book_analysis_runs
+           WHERE book_edition_id = $1 AND input_hash = $2
+           ORDER BY created_at DESC, run_sequence DESC
+           LIMIT 1 FOR UPDATE`,
+          [safeBookEditionId, inputHash]
+        )
+        const previous = previousResult.rows[0]
+        const strategy = getBookAnalysisPipeline(
+          pipelineId ?? previous?.pipeline_id ?? repositoryDefaultPipelineId
+        )
+        const inherited = previous?.pipeline_id === strategy.id ? previous : null
+        const safePipelineVersion = validateIdentifier(
+          pipelineVersion ?? inherited?.pipeline_version ?? strategy.orchestrationVersion,
+          'pipelineVersion'
+        )
+        const safePromptVersion = validateIdentifier(
+          promptVersion ?? inherited?.prompt_version ?? strategy.extractorVersion,
+          'promptVersion'
+        )
+        const safeNormalizationVersion = validateIdentifier(
+          normalizationVersion ?? inherited?.normalization_version ?? strategy.normalizationVersion,
+          'normalizationVersion'
+        )
+        const safeOutputSchemaVersion = validateOutputSchemaVersion(
+          outputSchemaVersion ?? Number(inherited?.output_schema_version ?? strategy.outputSchemaVersion)
+        )
         const latestResult = await client.query(
           `SELECT * FROM book_analysis_runs
            WHERE book_edition_id = $1 AND input_hash = $2
-             AND pipeline_version = $3 AND prompt_version = $4
+             AND pipeline_id = $3 AND pipeline_implementation_version = $4
+             AND pipeline_version = $5 AND prompt_version = $6
+             AND normalization_version = $7 AND output_schema_version = $8
            ORDER BY run_sequence DESC
            LIMIT 1 FOR UPDATE`,
-          [safeBookEditionId, inputHash, safePipelineVersion, safePromptVersion]
+          [
+            safeBookEditionId, inputHash, strategy.id, strategy.implementationVersion,
+            safePipelineVersion, safePromptVersion,
+            safeNormalizationVersion, safeOutputSchemaVersion
+          ]
         )
         const latest = latestResult.rows[0]
         if (latest && ['queued', 'running'].includes(latest.status)) {
@@ -721,28 +855,40 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
         const baseIdempotencyKey = bookAnalysisRunIdempotencyKey({
           bookEditionId: safeBookEditionId,
           inputHash,
+          pipelineId: strategy.id,
+          pipelineImplementationVersion: strategy.implementationVersion,
           pipelineVersion: safePipelineVersion,
-          promptVersion: safePromptVersion
+          promptVersion: safePromptVersion,
+          normalizationVersion: safeNormalizationVersion,
+          outputSchemaVersion: safeOutputSchemaVersion
         })
         const runId = idFactory()
         const inserted = await client.query(
           `INSERT INTO book_analysis_runs (
              id, idempotency_key, book_edition_id, input_hash,
-             pipeline_version, prompt_version, run_sequence, restarted_from_run_id
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             pipeline_version, prompt_version, run_sequence, restarted_from_run_id,
+             pipeline_id, pipeline_implementation_version, normalization_version,
+             output_schema_version
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
            RETURNING *`,
           [
             runId, `${baseIdempotencyKey}:rerun:${runSequence}`,
             safeBookEditionId, inputHash, safePipelineVersion, safePromptVersion,
-            runSequence, latest?.id ?? null
+            runSequence, latest?.id ?? null, strategy.id,
+            strategy.implementationVersion, safeNormalizationVersion,
+            safeOutputSchemaVersion
           ]
         )
         const prepareJob = await client.query(
           `INSERT INTO book_analysis_jobs (
-             id, run_id, stage, shard_key, required, priority
-           ) VALUES ($1, $2, 'prepare', 'book', true, $3)
+             id, run_id, stage, shard_key, required, priority,
+             pipeline_id, pipeline_implementation_version
+           ) VALUES ($1, $2, 'prepare', 'book', true, $3, $4, $5)
            RETURNING *`,
-          [idFactory(), runId, safePriority]
+          [
+            idFactory(), runId, safePriority,
+            strategy.id, strategy.implementationVersion
+          ]
         )
         return {
           run: runRow(inserted.rows[0]),
@@ -891,11 +1037,18 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
 
     async claimAnalysisJob(workerId, {
       stages = ['prepare', 'scan', 'resolve', 'synthesize', 'validate', 'publish'],
+      pipelineIds = BOOK_ANALYSIS_PIPELINE_IDS,
       leaseSeconds = 300
     } = {}) {
       const worker = validateIdentifier(workerId, 'workerId', 240)
       if (!Array.isArray(stages) || !stages.length) throw new TypeError('stages must not be empty')
       const allowedStages = [...new Set(stages.map(validateStage))]
+      if (!Array.isArray(pipelineIds) || !pipelineIds.length) {
+        throw new TypeError('pipelineIds must not be empty')
+      }
+      const allowedPipelineIds = [...new Set(pipelineIds.map((value) =>
+        normalizeBookAnalysisPipelineId(value, 'pipelineId')
+      ))]
       validateLeaseSeconds(leaseSeconds)
       return transaction(pool, async (client) => {
         const exhausted = await client.query(
@@ -904,9 +1057,10 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
                locked_at = NULL, lease_expires_at = NULL, locked_by = NULL,
                lease_token = NULL, updated_at = now()
            WHERE stage = ANY($1::text[]) AND status = 'running'
+             AND pipeline_id = ANY($2::text[])
              AND lease_expires_at <= now() AND attempts >= max_attempts
            RETURNING run_id`,
-          [allowedStages]
+          [allowedStages, allowedPipelineIds]
         )
         if (exhausted.rows.length) {
           await client.query(
@@ -919,10 +1073,13 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
         const leaseToken = idFactory()
         const result = await client.query(
           `WITH candidate AS (
-             SELECT job.id
+             SELECT job.id, run.input_hash AS source_hash
              FROM book_analysis_jobs AS job
              JOIN book_analysis_runs AS run ON run.id = job.run_id
              WHERE job.stage = ANY($2::text[]) AND run.stage = job.stage
+               AND job.pipeline_id = ANY($5::text[])
+               AND job.pipeline_id = run.pipeline_id
+               AND job.pipeline_implementation_version = run.pipeline_implementation_version
                AND run.status IN ('queued', 'running')
                AND job.attempts < job.max_attempts
                AND (
@@ -957,8 +1114,8 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
                locked_by = $1, lease_token = $4::uuid, updated_at = now()
            FROM candidate
            WHERE job.id = candidate.id
-           RETURNING job.*`,
-          [worker, allowedStages, leaseSeconds, leaseToken]
+           RETURNING job.*, candidate.source_hash`,
+          [worker, allowedStages, leaseSeconds, leaseToken, allowedPipelineIds]
         )
         const job = jobRow(result.rows[0])
         if (job) {
@@ -990,6 +1147,8 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
     async getPrepareInput(job) {
       const result = await pool.query(
         `SELECT run.id AS run_id, run.input_hash, run.pipeline_version, run.prompt_version,
+                run.pipeline_id, run.pipeline_implementation_version,
+                run.normalization_version, run.output_schema_version,
                 edition.scope, edition.title, edition.author, edition.format,
                 file.object_key, file.mime_type, file.byte_size, file.content_hash
          FROM book_analysis_jobs AS job
@@ -998,7 +1157,9 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
          JOIN book_files AS file
            ON file.book_edition_id = edition.id AND file.status = 'ready'
          WHERE job.id = $1 AND job.run_id = $2 AND job.stage = 'prepare'
-           AND job.status = 'running' AND job.lease_token = $3::uuid`,
+           AND job.status = 'running' AND job.lease_token = $3::uuid
+           AND job.pipeline_id = run.pipeline_id
+           AND job.pipeline_implementation_version = run.pipeline_implementation_version`,
         [job.id, job.runId, job.leaseToken]
       )
       const row = result.rows[0]
@@ -1008,6 +1169,10 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
         inputHash: row.input_hash,
         pipelineVersion: row.pipeline_version,
         promptVersion: row.prompt_version,
+        pipelineId: row.pipeline_id,
+        pipelineImplementationVersion: row.pipeline_implementation_version,
+        normalizationVersion: row.normalization_version,
+        outputSchemaVersion: Number(row.output_schema_version),
         scope: row.scope,
         title: row.title,
         author: row.author,
@@ -1043,6 +1208,15 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
           [job.runId]
         )
         if (!run.rows[0]) throw repositoryError('RUN_STATE_CHANGED', 'analysis run is not preparing')
+        const strategy = bookAnalysisPipelineForRun({
+          pipelineId: run.rows[0].pipeline_id,
+          pipelineImplementationVersion: run.rows[0].pipeline_implementation_version,
+          normalizationVersion: run.rows[0].normalization_version,
+          outputSchemaVersion: run.rows[0].output_schema_version == null
+            ? undefined
+            : Number(run.rows[0].output_schema_version)
+        })
+        const runImplementationVersion = strategy.implementationVersion
         await client.query(
           `UPDATE book_analysis_runs
            SET normalized_text_object_key = $2, normalized_text_hash = $3,
@@ -1066,15 +1240,18 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
               chunk.contentHash, JSON.stringify(chunk.metadata ?? {})
             ]
           )
+        }
+        for (const scanJob of strategy.createScanJobs(chunks)) {
           await client.query(
             `INSERT INTO book_analysis_jobs (
                id, run_id, stage, shard_key, chunk_id, required, priority,
-               payload
-             ) VALUES (
-               $1, $2, 'scan', $3, $4, true, $5,
-               jsonb_build_object('chunk_ordinal', $6::integer)
-             )`,
-            [idFactory(), job.runId, `chunk:${chunk.ordinal}`, chunk.id, scanPriority, chunk.ordinal]
+               payload, pipeline_id, pipeline_implementation_version
+             ) VALUES ($1, $2, 'scan', $3, $4, true, $5, $6::jsonb, $7, $8)`,
+            [
+              idFactory(), job.runId, scanJob.shardKey, scanJob.chunkId,
+              scanPriority, JSON.stringify(scanJob.payload),
+              strategy.id, runImplementationVersion
+            ]
           )
         }
         const coverage = await client.query(
@@ -1126,6 +1303,7 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
     async getScanInput(job) {
       const result = await pool.query(
         `SELECT run.id AS run_id, run.book_edition_id, run.prompt_version,
+                run.pipeline_id, run.pipeline_implementation_version,
                 run.normalized_text_object_key, run.normalized_text_hash,
                 run.text_length, edition.title, edition.author,
                 chunk.id AS chunk_id, chunk.ordinal, chunk.chapter_key,
@@ -1139,12 +1317,54 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
            ON chunk.run_id = job.run_id AND chunk.id = job.chunk_id
          WHERE job.id = $1 AND job.run_id = $2 AND job.stage = 'scan'
            AND job.status = 'running' AND job.lease_token = $3::uuid
-           AND run.stage = 'scan' AND run.status = 'running'`,
+           AND run.stage = 'scan' AND run.status = 'running'
+           AND run.pipeline_id = 'narra'
+           AND job.pipeline_id = run.pipeline_id
+           AND job.pipeline_implementation_version = run.pipeline_implementation_version`,
         [job.id, job.runId, job.leaseToken]
       )
       const input = scanInputRow(result.rows[0])
       if (!input) throw repositoryError('LEASE_LOST', `analysis job lease lost: ${job.id}`)
       return input
+    },
+
+    async getExternalScanInput(job) {
+      const result = await pool.query(
+        `SELECT run.id AS run_id, run.book_edition_id, run.pipeline_id,
+                run.pipeline_implementation_version, run.prompt_version,
+                run.normalization_version, run.output_schema_version,
+                run.normalized_text_object_key, run.normalized_text_hash,
+                run.input_hash, run.text_length, edition.title, edition.author,
+                job.payload
+         FROM book_analysis_jobs AS job
+         JOIN book_analysis_runs AS run ON run.id = job.run_id
+         JOIN book_editions AS edition ON edition.id = run.book_edition_id
+         WHERE job.id = $1 AND job.run_id = $2 AND job.stage = 'scan'
+           AND job.status = 'running' AND job.lease_token = $3::uuid
+           AND run.stage = 'scan' AND run.status = 'running'
+           AND run.pipeline_id = 'external'
+           AND job.pipeline_id = run.pipeline_id
+           AND job.pipeline_implementation_version = run.pipeline_implementation_version
+           AND job.payload->>'scope' = 'book'`,
+        [job.id, job.runId, job.leaseToken]
+      )
+      const row = result.rows[0]
+      if (!row) throw repositoryError('LEASE_LOST', `analysis job lease lost: ${job.id}`)
+      return {
+        runId: row.run_id,
+        bookEditionId: row.book_edition_id,
+        pipelineId: row.pipeline_id,
+        pipelineImplementationVersion: row.pipeline_implementation_version,
+        extractorVersion: row.prompt_version,
+        normalizationVersion: row.normalization_version,
+        outputSchemaVersion: Number(row.output_schema_version),
+        sourceContentHash: row.input_hash,
+        normalizedTextObjectKey: row.normalized_text_object_key,
+        normalizedTextHash: row.normalized_text_hash,
+        textLength: Number(row.text_length),
+        title: row.title,
+        author: row.author
+      }
     },
 
     async completeScan(job, { extractorVersion, observations, resolvePriority = 50 }) {
@@ -1155,11 +1375,18 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
         const run = await client.query(
           `SELECT * FROM book_analysis_runs
            WHERE id = $1 AND stage = 'scan' AND status = 'running'
+             AND pipeline_id = 'narra'
            FOR UPDATE`,
           [job.runId]
         )
         if (!run.rows[0]) throw repositoryError('RUN_STATE_CHANGED', 'analysis run is not scanning')
         const leased = await requireLeasedJob(client, job, 'scan')
+        if (
+          leased.pipeline_id !== run.rows[0].pipeline_id ||
+          leased.pipeline_implementation_version !== run.rows[0].pipeline_implementation_version
+        ) {
+          throw repositoryError('PIPELINE_MISMATCH', 'scan job belongs to another pipeline')
+        }
         if (run.rows[0].prompt_version !== extractorVersion) {
           throw repositoryError(
             'EXTRACTOR_VERSION_MISMATCH',
@@ -1235,10 +1462,14 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
         if (requiredCount > 0 && incompleteCount === 0) {
           await client.query(
             `INSERT INTO book_analysis_jobs (
-               id, run_id, stage, shard_key, required, priority
-             ) VALUES ($1, $2, 'resolve', 'book', true, $3)
+               id, run_id, stage, shard_key, required, priority,
+               pipeline_id, pipeline_implementation_version
+             ) VALUES ($1, $2, 'resolve', 'book', true, $3, $4, $5)
              ON CONFLICT (run_id, stage, shard_key) DO NOTHING`,
-            [idFactory(), job.runId, resolvePriority]
+            [
+              idFactory(), job.runId, resolvePriority,
+              run.rows[0].pipeline_id, run.rows[0].pipeline_implementation_version
+            ]
           )
           await client.query(
             `UPDATE book_analysis_runs SET stage = 'resolve' WHERE id = $1`,
@@ -1250,9 +1481,118 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
       })
     },
 
+    async completeExternalScan(job, {
+      extractorVersion,
+      observations,
+      resolvePriority = 50
+    }) {
+      validateIdentifier(extractorVersion, 'extractorVersion', 128)
+      if (!Array.isArray(observations)) throw new TypeError('observations must be an array')
+      if (observations.length > 100_000) {
+        throw new RangeError('observations exceed 100000 items')
+      }
+      return transaction(pool, async (client) => {
+        const run = await client.query(
+          `SELECT * FROM book_analysis_runs
+           WHERE id = $1 AND stage = 'scan' AND status = 'running'
+             AND pipeline_id = 'external'
+           FOR UPDATE`,
+          [job.runId]
+        )
+        if (!run.rows[0]) throw repositoryError('RUN_STATE_CHANGED', 'analysis run is not scanning')
+        const leased = await requireLeasedJob(client, job, 'scan')
+        if (
+          leased.pipeline_id !== run.rows[0].pipeline_id ||
+          leased.pipeline_implementation_version !== run.rows[0].pipeline_implementation_version ||
+          leased.payload?.scope !== 'book'
+        ) {
+          throw repositoryError('PIPELINE_MISMATCH', 'scan job belongs to another pipeline')
+        }
+        if (run.rows[0].prompt_version !== extractorVersion) {
+          throw repositoryError(
+            'EXTRACTOR_VERSION_MISMATCH',
+            'external scan result extractor version does not match the analysis run'
+          )
+        }
+        for (const observation of observations) {
+          const inserted = await client.query(
+            `INSERT INTO book_analysis_observations (
+               id, run_id, chunk_id, source_job_id, extractor_version,
+               observation_key, observation_type, entity_kind, entity_candidate,
+               related_entity_candidates, fact, evidence_quote,
+               evidence_start_offset, evidence_end_offset, confidence, data
+             )
+             SELECT
+               $1, $2, chunk.id, $3, $4, $5, $6, $7, $8,
+               $9::jsonb, $10, $11, $12, $13, $14, $15::jsonb
+             FROM book_analysis_chunks AS chunk
+             JOIN book_analysis_runs AS analysis_run ON analysis_run.id = chunk.run_id
+             WHERE chunk.run_id = $2
+               AND $12 >= chunk.core_start_offset
+               AND $12 < chunk.core_end_offset
+               AND $13 > $12
+               AND $13 <= analysis_run.text_length
+             ORDER BY chunk.ordinal
+             LIMIT 1
+             ON CONFLICT (run_id, chunk_id, extractor_version, observation_key)
+             DO NOTHING
+             RETURNING id`,
+            [
+              idFactory(), job.runId, job.id, extractorVersion,
+              observation.observationKey, observation.type, observation.entityKind,
+              observation.entityCandidate,
+              JSON.stringify(observation.relatedEntityCandidates),
+              observation.fact, observation.evidence.quote,
+              observation.evidence.startOffset, observation.evidence.endOffset,
+              observation.confidence, JSON.stringify(observation.data ?? {})
+            ]
+          )
+          if (!inserted.rows[0]) {
+            const existing = await client.query(
+              `SELECT id FROM book_analysis_observations
+               WHERE run_id = $1 AND extractor_version = $2 AND observation_key = $3`,
+              [job.runId, extractorVersion, observation.observationKey]
+            )
+            if (!existing.rows[0]) {
+              throw repositoryError(
+                'OBSERVATION_OUTSIDE_BOOK',
+                `observation is outside normalized text: ${observation.observationKey}`
+              )
+            }
+          }
+        }
+        await client.query(
+          `UPDATE book_analysis_jobs
+           SET status = 'ready', result = $3::jsonb,
+               locked_at = NULL, lease_expires_at = NULL,
+               locked_by = NULL, lease_token = NULL, updated_at = now()
+           WHERE id = $1 AND lease_token = $2::uuid`,
+          [job.id, job.leaseToken, JSON.stringify({ observationCount: observations.length })]
+        )
+        await client.query(
+          `INSERT INTO book_analysis_jobs (
+             id, run_id, stage, shard_key, required, priority,
+             pipeline_id, pipeline_implementation_version
+           ) VALUES ($1, $2, 'resolve', 'book', true, $3, $4, $5)
+           ON CONFLICT (run_id, stage, shard_key) DO NOTHING`,
+          [
+            idFactory(), job.runId, resolvePriority,
+            run.rows[0].pipeline_id, run.rows[0].pipeline_implementation_version
+          ]
+        )
+        await client.query(
+          `UPDATE book_analysis_runs SET stage = 'resolve' WHERE id = $1`,
+          [job.runId]
+        )
+        return { observationCount: observations.length, stage: 'resolve' }
+      })
+    },
+
     async getResolveInput(job) {
       const run = await pool.query(
         `SELECT run.id AS run_id, run.book_edition_id, run.pipeline_version, run.prompt_version,
+                run.pipeline_id, run.pipeline_implementation_version,
+                run.input_hash, run.normalization_version, run.output_schema_version,
                 run.normalized_text_hash, run.text_length, edition.title, edition.author
          FROM book_analysis_jobs AS job
          JOIN book_analysis_runs AS run ON run.id = job.run_id
@@ -1260,6 +1600,8 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
          WHERE job.id = $1 AND job.run_id = $2 AND job.stage = 'resolve'
            AND job.status = 'running' AND job.lease_token = $3::uuid
            AND run.stage = 'resolve' AND run.status = 'running'
+           AND job.pipeline_id = run.pipeline_id
+           AND job.pipeline_implementation_version = run.pipeline_implementation_version
            AND NOT EXISTS (
              SELECT 1 FROM book_analysis_jobs AS scan
              WHERE scan.run_id = run.id AND scan.stage = 'scan'
@@ -1287,6 +1629,11 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
         runId: run.rows[0].run_id,
         bookEditionId: run.rows[0].book_edition_id,
         pipelineVersion: run.rows[0].pipeline_version,
+        pipelineId: run.rows[0].pipeline_id,
+        pipelineImplementationVersion: run.rows[0].pipeline_implementation_version,
+        sourceContentHash: run.rows[0].input_hash,
+        normalizationVersion: run.rows[0].normalization_version,
+        outputSchemaVersion: Number(run.rows[0].output_schema_version),
         title: run.rows[0].title,
         author: run.rows[0].author,
         extractorVersion: run.rows[0].prompt_version,
@@ -1347,7 +1694,10 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
           textLength: Number(run.rows[0].text_length),
           observations,
           entities: normalizedEntities,
-          author: run.rows[0].book_author
+          author: run.rows[0].book_author,
+          ...getBookAnalysisPipeline(
+            run.rows[0].pipeline_id ?? BOOK_ANALYSIS_PIPELINE_NARRA
+          ).quality
         })
         if (!quality.valid) {
           throw repositoryError(
@@ -1476,24 +1826,28 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
         for (const entity of characterEntities) {
           await client.query(
             `INSERT INTO book_analysis_jobs (
-               id, run_id, stage, shard_key, required, priority, payload
-             ) VALUES ($1, $2, 'synthesize', $3, true, $4, $5::jsonb)
+               id, run_id, stage, shard_key, required, priority, payload,
+               pipeline_id, pipeline_implementation_version
+             ) VALUES ($1, $2, 'synthesize', $3, true, $4, $5::jsonb, $6, $7)
              ON CONFLICT (run_id, stage, shard_key) DO NOTHING`,
             [
               idFactory(), job.runId, `character:${entity.entityKey}`,
               synthesizePriority,
-              JSON.stringify({ mode: 'character_profile', snapshotId, entityId: entity.id })
+              JSON.stringify({ mode: 'character_profile', snapshotId, entityId: entity.id }),
+              run.rows[0].pipeline_id, run.rows[0].pipeline_implementation_version
             ]
           )
         }
         await client.query(
           `INSERT INTO book_analysis_jobs (
-             id, run_id, stage, shard_key, required, priority, payload
-           ) VALUES ($1, $2, 'synthesize', 'book', true, $3, $4::jsonb)
+             id, run_id, stage, shard_key, required, priority, payload,
+             pipeline_id, pipeline_implementation_version
+           ) VALUES ($1, $2, 'synthesize', 'book', true, $3, $4::jsonb, $5, $6)
            ON CONFLICT (run_id, stage, shard_key) DO NOTHING`,
           [
             idFactory(), job.runId, synthesizePriority,
-            JSON.stringify({ mode: 'assemble_book', snapshotId })
+            JSON.stringify({ mode: 'assemble_book', snapshotId }),
+            run.rows[0].pipeline_id, run.rows[0].pipeline_implementation_version
           ]
         )
         await client.query(
@@ -1522,6 +1876,9 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
         return {
           mode,
           runId: row.run_id,
+          pipelineId: row.pipeline_id,
+          pipelineImplementationVersion: row.pipeline_implementation_version,
+          sourceContentHash: row.input_hash,
           title: row.title,
           author: row.author,
           textLength: Number(row.text_length),
@@ -1542,6 +1899,9 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
         return {
           mode,
           runId: row.run_id,
+          pipelineId: row.pipeline_id,
+          pipelineImplementationVersion: row.pipeline_implementation_version,
+          sourceContentHash: row.input_hash,
           title: row.title,
           author: row.author,
           textLength: Number(row.text_length),
@@ -1696,12 +2056,14 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
         )
         await client.query(
           `INSERT INTO book_analysis_jobs (
-             id, run_id, stage, shard_key, required, priority, payload
-           ) VALUES ($1, $2, 'validate', 'book', true, $3, $4::jsonb)
+             id, run_id, stage, shard_key, required, priority, payload,
+             pipeline_id, pipeline_implementation_version
+           ) VALUES ($1, $2, 'validate', 'book', true, $3, $4::jsonb, $5, $6)
            ON CONFLICT (run_id, stage, shard_key) DO NOTHING`,
           [
             idFactory(), job.runId, validatePriority,
-            JSON.stringify({ snapshotId, artifactId })
+            JSON.stringify({ snapshotId, artifactId }),
+            run.rows[0].pipeline_id, run.rows[0].pipeline_implementation_version
           ]
         )
         await client.query(`UPDATE book_analysis_runs SET stage = 'validate' WHERE id = $1`, [job.runId])
@@ -1720,6 +2082,9 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
       if (!artifact.rows[0]) throw repositoryError('VALIDATION_INPUT_INVALID', 'draft markup is unavailable')
       return {
         runId: row.run_id,
+        pipelineId: row.pipeline_id,
+        pipelineImplementationVersion: row.pipeline_implementation_version,
+        sourceContentHash: row.input_hash,
         snapshot: snapshotRow(row),
         artifact: artifactRow(artifact.rows[0]),
         normalizedTextObjectKey: row.normalized_text_object_key,
@@ -1827,8 +2192,9 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
         )
         await client.query(
           `INSERT INTO book_analysis_jobs (
-             id, run_id, stage, shard_key, required, priority, payload
-           ) VALUES ($1, $2, 'publish', 'shadow', true, $3, $4::jsonb)
+             id, run_id, stage, shard_key, required, priority, payload,
+             pipeline_id, pipeline_implementation_version
+           ) VALUES ($1, $2, 'publish', 'shadow', true, $3, $4::jsonb, $5, $6)
            ON CONFLICT (run_id, stage, shard_key) DO NOTHING`,
           [
             idFactory(), job.runId, publishPriority,
@@ -1837,7 +2203,8 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
               artifactId: markup.rows[0].id,
               reportId,
               channel: 'shadow'
-            })
+            }),
+            run.rows[0].pipeline_id, run.rows[0].pipeline_implementation_version
           ]
         )
         await client.query(`UPDATE book_analysis_runs SET stage = 'publish' WHERE id = $1`, [job.runId])
@@ -1847,7 +2214,10 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
 
     async getPublishInput(job) {
       const result = await pool.query(
-        `SELECT run.id AS run_id, run.book_edition_id, job.payload,
+        `SELECT run.id AS run_id, run.book_edition_id, run.pipeline_id,
+                run.pipeline_implementation_version, run.pipeline_version,
+                run.prompt_version, run.input_hash, run.normalization_version,
+                run.output_schema_version, run.normalized_text_hash, job.payload,
                 markup.*, report.status AS report_status, report.data AS report_data
          FROM book_analysis_jobs AS job
          JOIN book_analysis_runs AS run ON run.id = job.run_id
@@ -1858,6 +2228,8 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
          WHERE job.id = $1 AND job.run_id = $2 AND job.stage = 'publish'
            AND job.status = 'running' AND job.lease_token = $3::uuid
            AND run.stage = 'publish' AND run.status = 'running'
+           AND job.pipeline_id = run.pipeline_id
+           AND job.pipeline_implementation_version = run.pipeline_implementation_version
            AND job.payload->>'channel' = 'shadow'
            AND markup.artifact_kind = 'book_markup' AND markup.status = 'valid'
            AND report.artifact_kind = 'validation_report' AND report.status = 'valid'`,
@@ -1867,6 +2239,9 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
       return {
         runId: result.rows[0].run_id,
         bookEditionId: result.rows[0].book_edition_id,
+        pipelineId: result.rows[0].pipeline_id,
+        pipelineImplementationVersion: result.rows[0].pipeline_implementation_version,
+        sourceContentHash: result.rows[0].input_hash,
         channel: 'shadow',
         artifact: artifactRow(result.rows[0]),
         validationReport: result.rows[0].report_data
@@ -1922,6 +2297,7 @@ export function createPostgresBookAnalysisRepository(pool, { idFactory = randomU
           analysisVersion: BOOK_ANALYSIS_MARKUP_VERSION,
           artifactId,
           snapshotId: artifact.rows[0].snapshot_id,
+          provenance: bookAnalysisPublicationProvenance(runRow(run.rows[0])),
           markup: artifact.rows[0].data
         }
         await client.query(

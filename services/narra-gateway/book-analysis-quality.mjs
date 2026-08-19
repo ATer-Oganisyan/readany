@@ -24,7 +24,13 @@ function normalizedName(value) {
  * where a model reads only the beginning of a large prompt. Narra also needs at
  * least one confirmed character before a result is useful to the reader.
  */
-export function assessBookAnalysisCoverage({ textLength, observations, entities, author = '' }) {
+export function assessBookAnalysisCoverage({
+  textLength,
+  observations,
+  entities,
+  author = '',
+  requireTextCoverage = true
+}) {
   if (!Number.isSafeInteger(textLength) || textLength < 1) {
     throw qualityInputError('textLength must be a positive safe integer')
   }
@@ -78,7 +84,7 @@ export function assessBookAnalysisCoverage({ textLength, observations, entities,
       left.localeCompare(right, 'ru')
     )
   const errorCodes = []
-  if (coveredBands.size < requiredBandCount) {
+  if (requireTextCoverage && coveredBands.size < requiredBandCount) {
     errorCodes.push('ANALYSIS_TEXT_COVERAGE_INCOMPLETE')
   }
   if (confirmedCharacterCount === 0) {

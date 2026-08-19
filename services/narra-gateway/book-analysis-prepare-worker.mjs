@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { createStableBookChunks } from './book-analysis-chunking.mjs'
+import { bookAnalysisLogContext } from './book-analysis-observability.mjs'
 import { extractStructuredBookText } from './book-source-text.mjs'
 import { createOperationalLogger } from './operational-log.mjs'
 
@@ -107,8 +108,13 @@ export function createBookAnalysisPrepareWorker({
         leaseSeconds
       })
       if (!job) return { status: 'idle' }
+      const startedAt = performance.now()
       try {
         const result = await withLeaseHeartbeat(job, () => prepare(job))
+        log.info('prepare.attempt_completed', 'Prepare-задание завершено', {
+          job: job.id,
+          ...bookAnalysisLogContext(job, { startedAt, terminalStatus: 'completed' })
+        })
         return { status: 'completed', jobId: job.id, runId: job.runId, result }
       } catch (error) {
         const errorCode = safeErrorCode(error)
@@ -117,7 +123,12 @@ export function createBookAnalysisPrepareWorker({
           job: job.id,
           run: job.runId,
           error_code: errorCode,
-          retry_status: failure.status
+          retry_status: failure.status,
+          ...bookAnalysisLogContext(job, {
+            startedAt,
+            terminalStatus: failure.status,
+            errorCode
+          })
         })
         return { status: 'failed', jobId: job.id, runId: job.runId, errorCode }
       }
