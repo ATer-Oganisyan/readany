@@ -5,7 +5,10 @@ import {
   type CharacterChatListItem,
 } from "@/components/chats/character-chat-list";
 import { CharacterPortraitImage } from "@/components/narra/character-portrait-image";
+import { MorphTransitionDestination } from "@/components/navigation/MorphSheetTransition";
+import { supportsMorphSheetTransition } from "@/components/navigation/morph-sheet-transition-support";
 import { type ExtractorRef, ExtractorWebView } from "@/components/rag/ExtractorWebView";
+import { Text } from "@/components/ui/Typography";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import { getBundledCatalogCharactersByTitle } from "@/lib/narra/bundled-catalog-characters";
@@ -15,22 +18,23 @@ import { isCharacterUnlocked } from "@/lib/narra/domain";
 import { NarraServiceError, reportNarraError } from "@/lib/narra/errors";
 import { ensureCharacterPortrait, normalizePersistedNarraMediaUri } from "@/lib/narra/media";
 import type { NarraCharacter } from "@/lib/narra/types";
+import { navigate as navigateFromRoot } from "@/lib/navigationRef";
 import { toast } from "@/lib/notifications";
 import { inspectMobileBookForVectorize } from "@/lib/rag/auto-vectorize-book";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useLibraryStore, useNarraStore } from "@/stores";
-import { type ThemeColors, spacing, useTheme } from "@/styles/theme";
+import { type ThemeColors, fontSize, fontWeight, spacing, useTheme } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import * as FileSystem from "expo-file-system/legacy";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ActivityIndicator, ScrollView, StyleSheet } from "react-native";
+import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
 
 type Props = NativeStackScreenProps<RootStackParamList, "NarraCharacters">;
 const MAX_AUTOMATIC_PORTRAIT_ATTEMPTS = 2;
 
 export function NarraCharactersScreen({ route, navigation }: Props) {
-  const { bookId } = route.params;
+  const { bookId, morphSourceId } = route.params;
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
@@ -46,6 +50,9 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
   const validatedPortraitsRef = useRef(new Set<string>());
   const validatedBookIdRef = useRef(bookId);
   const autoAnalysisStartedRef = useRef(false);
+  const pendingChatRef = useRef<
+    { type: "book" } | { type: "character"; characterId: string } | null
+  >(null);
   const [analysisStage, setAnalysisStage] = useState("");
   const [portraitLoading, setPortraitLoading] = useState<string | null>(null);
   const storedCharacters = bookState?.characters ?? [];
@@ -59,6 +66,28 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
     return characters.filter((character) => isCharacterUnlocked(progress, character));
   }, [book?.progress, characters]);
   const busy = analyzing || Boolean(analysisStage);
+
+  useEffect(
+    () =>
+      navigation.addListener("transitionEnd", (event) => {
+        if (!event.data.closing) return;
+        const pendingChat = pendingChatRef.current;
+        if (!pendingChat) return;
+        pendingChatRef.current = null;
+
+        requestAnimationFrame(() => {
+          if (pendingChat.type === "book") {
+            navigateFromRoot("BookChat", { bookId });
+          } else {
+            navigateFromRoot("NarraCharacterChat", {
+              bookId,
+              characterId: pendingChat.characterId,
+            });
+          }
+        });
+      }),
+    [bookId, navigation],
+  );
 
   useEffect(() => {
     recordTelemetry("character_opened", { feature: "character" });
@@ -218,13 +247,27 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
       if (storedCharacters.length === 0 && bundledCharacters?.length) {
         setCharacters(bookId, bundledCharacters);
       }
-      navigation.navigate("NarraCharacterChat", {
-        bookId,
-        characterId: character.id,
-      });
+      if (supportsMorphSheetTransition) {
+        pendingChatRef.current = { type: "character", characterId: character.id };
+        navigation.goBack();
+      } else {
+        navigation.navigate("NarraCharacterChat", {
+          bookId,
+          characterId: character.id,
+        });
+      }
     },
     [bookId, bundledCharacters, navigation, setCharacters, storedCharacters.length],
   );
+
+  const openBookChat = useCallback(() => {
+    if (supportsMorphSheetTransition) {
+      pendingChatRef.current = { type: "book" };
+      navigation.goBack();
+    } else {
+      navigation.navigate("BookChat", { bookId });
+    }
+  }, [bookId, navigation]);
 
   const listItems: CharacterChatListItem[] = [
     {
@@ -232,7 +275,7 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
       accessibilityLabel: t("narra.openNarraBookChat", "Открыть чат с Наррой об этой книге"),
       title: "Нарра",
       subtitle: t("narra.askAboutBook", "Спросите что угодно о книге"),
-      onPress: () => navigation.navigate("BookChat", { bookId }),
+      onPress: openBookChat,
       avatar: (
         <CharacterChatAvatar muted>
           <AnimatedNarraFace width={38} height={40} />
@@ -279,20 +322,49 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
   ];
 
   return (
-    <ScrollView
-      contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={styles.content}
-      style={styles.container}
-    >
-      <ExtractorWebView ref={extractorRef} />
-      <CharacterChatList items={listItems} />
-    </ScrollView>
+    <View style={styles.container}>
+      <MorphTransitionDestination sourceId={morphSourceId} />
+      {supportsMorphSheetTransition ? (
+        <View pointerEvents="none" style={styles.sheetNavigationBar}>
+          <Text style={styles.sheetNavigationTitle}>{t("narra.characters", "Персонажи")}</Text>
+        </View>
+      ) : null}
+      <ScrollView
+        contentInsetAdjustmentBehavior={supportsMorphSheetTransition ? "never" : "automatic"}
+        contentContainerStyle={[
+          styles.content,
+          supportsMorphSheetTransition && styles.sheetContent,
+        ]}
+        style={styles.scrollView}
+      >
+        <ExtractorWebView ref={extractorRef} />
+        <CharacterChatList items={listItems} />
+      </ScrollView>
+    </View>
   );
 }
 
 const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
+    scrollView: { flex: 1, backgroundColor: colors.background },
+    sheetNavigationBar: {
+      position: "absolute",
+      top: 0,
+      right: 0,
+      left: 0,
+      zIndex: 2,
+      height: 56,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.background,
+    },
+    sheetNavigationTitle: {
+      color: colors.foreground,
+      fontSize: fontSize.lg,
+      fontWeight: fontWeight.semibold,
+    },
+    sheetContent: { paddingTop: 64 },
     content: {
       flexGrow: 1,
       paddingHorizontal: spacing.lg,

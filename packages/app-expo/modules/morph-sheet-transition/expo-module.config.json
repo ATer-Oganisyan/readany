@@ -1,0 +1,8 @@
+{
+  "platforms": ["apple"],
+  "apple": {
+    "modules": ["MorphSheetTransitionModule"],
+    "podspecPath": "ios/MorphSheetTransition.podspec",
+    "swiftModuleName": "MorphSheetTransition"
+  }
+}

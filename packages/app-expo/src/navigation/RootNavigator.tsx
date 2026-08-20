@@ -1,3 +1,4 @@
+import { supportsMorphSheetTransition } from "@/components/navigation/morph-sheet-transition-support";
 import { MissingBookPrompt } from "@/components/shared/MissingBookPrompt";
 import BadgesScreen from "@/screens/BadgesScreen";
 import { ChatScreen } from "@/screens/ChatScreen";
@@ -27,12 +28,7 @@ import TTSSettingsScreen from "@/screens/settings/TTSSettingsScreen";
 import TranslationSettingsScreen from "@/screens/settings/TranslationSettingsScreen";
 import VectorModelSettingsScreen from "@/screens/settings/VectorModelSettingsScreen";
 import { useSettingsStore } from "@/stores";
-import {
-  largeTitleFontFamily,
-  largeTitleFontSize,
-  titleFontFamily,
-  useTheme,
-} from "@/styles/theme";
+import { titleFontFamily, useTheme } from "@/styles/theme";
 /**
  * RootNavigator — top-level stack matching Tauri mobile App.tsx routes exactly.
  */
@@ -55,7 +51,7 @@ export type RootStackParamList = {
   };
   ReaderTOC: undefined;
   BookChat: { bookId: string; selectedText?: string; chapterTitle?: string };
-  NarraCharacters: { bookId: string };
+  NarraCharacters: { bookId: string; morphSourceId?: string };
   NarraCharacterChat: { bookId: string; characterId: string };
   NarraCharacterProfile: {
     bookId: string;
@@ -200,20 +196,28 @@ export function RootNavigator() {
         <Stack.Screen
           name="NarraCharacters"
           component={NarraCharactersScreen}
-          options={{
-            animation: "slide_from_right",
-            title: t("tabs.chats", "Чаты"),
-            statusBarHidden: false,
-            statusBarStyle: isDark ? "light" : "dark",
-            headerLargeTitleEnabled: Platform.OS === "ios",
-            headerLargeTitleShadowVisible: false,
-            headerLargeTitleStyle: {
-              color: colors.foreground,
-              fontFamily: largeTitleFontFamily,
-              fontSize: largeTitleFontSize,
-              fontWeight: "400",
-            },
-          }}
+          options={
+            supportsMorphSheetTransition
+              ? {
+                  presentation: "formSheet",
+                  animation: "default",
+                  headerShown: false,
+                  statusBarHidden: false,
+                  statusBarStyle: isDark ? "light" : "dark",
+                  contentStyle: { backgroundColor: colors.background },
+                  sheetAllowedDetents: [0.55, 1],
+                  sheetInitialDetentIndex: 0,
+                  sheetGrabberVisible: true,
+                  sheetExpandsWhenScrolledToEdge: true,
+                  sheetResizeAnimationEnabled: true,
+                }
+              : {
+                  animation: "slide_from_right",
+                  title: t("narra.characters", "Персонажи"),
+                  statusBarHidden: false,
+                  statusBarStyle: isDark ? "light" : "dark",
+                }
+          }
         />
         <Stack.Screen
           name="NarraCharacterChat"
