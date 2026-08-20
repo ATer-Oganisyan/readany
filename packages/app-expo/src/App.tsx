@@ -1,3 +1,5 @@
+import "./global.css";
+
 import { Text } from "@/components/ui/Typography";
 /**
  * Narra Expo App — Root component
@@ -34,6 +36,7 @@ import { useFonts } from "expo-font";
 import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
+import { PanelUIProvider } from "panelui-native";
 import { useEffect, useMemo, useState } from "react";
 import { LogBox, Platform, StyleSheet, View, useColorScheme } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -323,7 +326,11 @@ export default function App() {
     >
       <I18nextProvider i18n={i18n}>
         <ThemeProvider initialMode={initialThemeMode}>
-          <AppInner />
+          {/* PanelUI пока обслуживает только чат. Его тему свяжем с нашей
+              отдельным шагом — сейчас он работает на своей палитре. */}
+          <PanelUIProvider>
+            <AppInner />
+          </PanelUIProvider>
         </ThemeProvider>
       </I18nextProvider>
     </View>

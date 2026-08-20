@@ -1,0 +1,15 @@
+/*
+ * Точка входа Uniwind (Tailwind v4) для компонентов PanelUI.
+ *
+ * Пока подключает только штатную тему библиотеки. Тема Narra, собранная из
+ * токенов deslop, добавляется отдельным шагом — до неё чат будет в палитре
+ * PanelUI, и это ожидаемо.
+ *
+ * Путь в @source считается от этого файла. В pnpm-монорепозитории пакет лежит
+ * в корневом node_modules, локального симлинка нет — отсюда три уровня вверх.
+ */
+@import "tailwindcss";
+@import "uniwind";
+@import "panelui-native/theme.css";
+
+@source '../../../node_modules/panelui-native/src';

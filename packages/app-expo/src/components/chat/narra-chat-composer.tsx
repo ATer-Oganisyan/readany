@@ -1,23 +1,23 @@
-import { MishanaerIcon } from "@/components/ui/Icon";
 import { useKeyboardInsets } from "@/hooks/use-keyboard-insets";
-import { fontFamily, useTheme } from "@/styles/theme";
-import { radiusPixels, spacingPixels } from "@deslop/primitives";
-import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
-import { useCallback, useEffect, useState } from "react";
+import { spacingPixels } from "@deslop/primitives";
+import { AIInput } from "panelui-native";
 import type { ComponentPropsWithRef } from "react";
-import { useTranslation } from "react-i18next";
-import {
-  type LayoutChangeEvent,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  type TextInputContentSizeChangeEvent,
-  View,
-} from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { type LayoutChangeEvent, StyleSheet, type TextInput, View } from "react-native";
 import type { IMessage, InputToolbarProps } from "../../../vendor/react-native-chat/src";
 
+/**
+ * Поле ввода чата на AIInput из PanelUI.
+ *
+ * Контракт с вендорной лентой сохранён: она по-прежнему отдаёт текст, коллбэк
+ * изменения и отправку через InputToolbarProps, поэтому заменён только инпут,
+ * а сама лента пока прежняя.
+ *
+ * Контролы включены в системном виде (native): их цвет, метрики и форму
+ * задаёт платформа — на iOS 26 это Liquid Glass. Тема PanelUI до них не
+ * дотягивается, и это нужное поведение: пока своя тема не собрана, инпут
+ * должен выглядеть системным, а не чужим.
+ */
 type RuntimeToolbarProps<TMessage extends IMessage> = InputToolbarProps<TMessage> & {
   allowSendWithoutText?: boolean;
   isStreaming?: boolean;
@@ -31,232 +31,100 @@ type RuntimeToolbarProps<TMessage extends IMessage> = InputToolbarProps<TMessage
   textInputProps?: ComponentPropsWithRef<typeof TextInput>;
 };
 
-const controlSize = 36;
-const maxInputHeight = 120;
-const hitSlop = Object.freeze({ bottom: 6, left: 6, right: 6, top: 6 });
-
 export function NarraChatComposer<TMessage extends IMessage>({
   allowSendWithoutText = false,
-  floating = false,
   isStreaming = false,
   onHeightChange,
   onStop,
   ...props
 }: RuntimeToolbarProps<TMessage>) {
-  const { colors, isDark } = useTheme();
-  const { t } = useTranslation();
   const keyboardInsets = useKeyboardInsets();
-  const [inputHeight, setInputHeight] = useState(controlSize);
+  const safeAreaBottom = keyboardInsets.safeAreaBottom;
+  /**
+   * Счётчик сбросов поля.
+   *
+   * В строчном режиме PanelUI не задаёт полю минимальную высоту, и выросший
+   * многострочный TextInput не возвращается к одной строке даже когда текст
+   * очищен: RN держит уже измеренную высоту. Лента резервирует место под
+   * инпут по его высоте, поэтому после отправки между сообщением и полем
+   * оставался провал. Меняем key на переходе «текст был → текста нет», чтобы
+   * поле пересоздалось в своей естественной высоте.
+   */
+  const [fieldGeneration, setFieldGeneration] = useState(0);
+  const hadTextRef = useRef(false);
   const text = props.text ?? "";
   const inputProps = props.textInputProps;
-  const placeholder = inputProps?.placeholder ?? "";
-  const placeholderColor = inputProps?.placeholderTextColor ?? colors.mutedForeground;
   const onSend = props.onSend;
-  const canSend = (text.trim().length > 0 || allowSendWithoutText) && !isStreaming;
-  const canStop = isStreaming && Boolean(onStop);
 
-  useEffect(() => {
-    if (!text) setInputHeight(controlSize);
-  }, [text]);
-
-  const handleContentSizeChange = useCallback(
-    (event: TextInputContentSizeChangeEvent) => {
-      inputProps?.onContentSizeChange?.(event);
-      const nextHeight = Math.max(
-        controlSize,
-        Math.min(maxInputHeight, event.nativeEvent.contentSize.height),
-      );
-      setInputHeight(nextHeight);
+  const handleSubmit = useCallback(
+    (value: string) => {
+      const trimmed = value.trim();
+      if (!trimmed && !allowSendWithoutText) return;
+      onSend?.({ text: trimmed } as Partial<TMessage>, true);
     },
-    [inputProps],
+    [allowSendWithoutText, onSend],
   );
 
-  const handleSend = useCallback(() => {
-    if (!canSend) return;
-    onSend?.({ text: text.trim() } as Partial<TMessage>, true);
-  }, [canSend, onSend, text]);
+  useEffect(() => {
+    const hasText = text.length > 0;
+    if (hadTextRef.current && !hasText) setFieldGeneration((value) => value + 1);
+    hadTextRef.current = hasText;
+  }, [text]);
 
   const handleLayout = useCallback(
     (event: LayoutChangeEvent) => onHeightChange?.(Math.ceil(event.nativeEvent.layout.height)),
     [onHeightChange],
   );
 
-  const accessory = props.renderAccessory?.(props);
-  const surface = (
-    <View style={styles.row}>
-      <View style={[styles.inputFrame, { height: inputHeight }]}>
-        {!text && placeholder ? (
-          <Text
-            numberOfLines={1}
-            pointerEvents="none"
-            style={[styles.placeholder, { color: placeholderColor }]}
-          >
-            {placeholder}
-          </Text>
-        ) : null}
-        <TextInput
-          {...inputProps}
-          accessibilityLabel={placeholder}
-          caretHidden={false}
-          enablesReturnKeyAutomatically
-          keyboardAppearance={isDark ? "dark" : "light"}
-          maxFontSizeMultiplier={2}
-          multiline
-          onContentSizeChange={handleContentSizeChange}
-          placeholder={undefined}
-          scrollEnabled={inputHeight >= maxInputHeight}
-          style={[styles.input, { color: colors.foreground }, inputProps?.style]}
-          textAlignVertical={inputHeight > controlSize ? "top" : "center"}
-          value={text}
-        />
-      </View>
-
-      <Pressable
-        accessibilityLabel={
-          canStop ? t("chat.stopResponse", "Остановить ответ") : t("narra.send", "Отправить")
-        }
-        accessibilityRole="button"
-        accessibilityState={{ disabled: !canSend && !canStop }}
-        disabled={!canSend && !canStop}
-        hitSlop={hitSlop}
-        onPress={canStop ? onStop : handleSend}
-        style={({ pressed }) => [
-          styles.send,
-          { backgroundColor: colors.primary },
-          !canSend && !isStreaming && styles.disabled,
-          pressed && styles.pressed,
-        ]}
-      >
-        {canStop ? (
-          <View style={[styles.stopGlyph, { backgroundColor: colors.primaryForeground }]} />
-        ) : (
-          <View pointerEvents="none" style={styles.sendIconFrame}>
-            <MishanaerIcon
-              color={colors.primaryForeground}
-              name="arrow-block-up"
-              size={20}
-              variant="stroke"
-            />
-          </View>
-        )}
-      </Pressable>
-    </View>
-  );
-
   return (
+    // Нижний отступ живёт в этом контейнере, а не в margin у AIInput: лента
+    // резервирует место под инпут по измеренной высоте этой вьюхи, и отступ
+    // снаружи неё в измерение не попадал — последнее сообщение подрезалось.
     <View
       onLayout={handleLayout}
       style={[
         styles.container,
-        floating && styles.floatingContainer,
-        {
-          backgroundColor: "transparent",
-          paddingBottom:
-            spacingPixels[8] + (keyboardInsets.isVisible ? 0 : keyboardInsets.safeAreaBottom),
-        },
+        { paddingBottom: KEYBOARD_GAP + (keyboardInsets.isVisible ? 0 : safeAreaBottom) },
       ]}
     >
-      {accessory}
-      {Platform.OS === "ios" && isLiquidGlassAvailable() ? (
-        <GlassView
-          colorScheme={isDark ? "dark" : "light"}
-          glassEffectStyle="clear"
-          isInteractive
-          style={styles.surface}
-        >
-          {surface}
-        </GlassView>
-      ) : (
-        <View
-          style={[
-            styles.surface,
-            styles.surfaceFallback,
-            { backgroundColor: colors.elevation1, borderColor: colors.border },
-          ]}
-        >
-          {surface}
-        </View>
-      )}
+      <AIInput
+        avoidKeyboard={false}
+        // Тень рисует не PanelUI: класс shadow-md убран, отделение поля от фона
+        // остаётся за материалом платформы — на iOS 26 это край самого стекла.
+        className="shadow-none"
+        keyboardBottomInset={0}
+        native
+        onStop={onStop}
+        onSubmit={handleSubmit}
+        onValueChange={inputProps?.onChangeText}
+        status={isStreaming ? "streaming" : "ready"}
+        value={text}
+      >
+        {/* Выравнивание оставлено библиотечным — по центру. Прижатие к низу
+            здесь не работает: настоящая высота многострочного поля компоненту
+            неизвестна из-за платформенного инсета, и текст уезжает ниже
+            контролов рядом. Это описано в исходниках PanelUI как отвергнутый
+            вариант, и на нашем экране повторилось ровно так же. */}
+        <AIInput.Row>
+          {/* Без принудительной минимальной высоты: на iOS многострочное поле
+              прижимает текст к верху, а textAlignVertical, которым библиотека
+              центрует его в этом режиме, работает только на Android — лишняя
+              высота дала бы перекос. Поле обнимает свой текст. */}
+          <AIInput.Field key={fieldGeneration} placeholder={inputProps?.placeholder} />
+          <AIInput.Submit />
+        </AIInput.Row>
+      </AIInput>
     </View>
   );
 }
 
+// Отступы те же, что были у прежнего композера: поле не липнет к краям экрана,
+// а снизу остаётся запас под безопасную зону, когда клавиатура убрана.
+/** Зазор между полем и клавиатурой. */
+const KEYBOARD_GAP = spacingPixels[8];
 const styles = StyleSheet.create({
   container: {
-    gap: spacingPixels[6],
     paddingHorizontal: spacingPixels[16],
     paddingTop: spacingPixels[6],
-  },
-  floatingContainer: {
-    bottom: 0,
-    left: 0,
-    position: "absolute",
-    right: 0,
-    zIndex: 1,
-  },
-  surface: {
-    borderCurve: "continuous",
-    borderRadius: radiusPixels[22],
-    overflow: "hidden",
-    padding: spacingPixels[6],
-  },
-  surfaceFallback: {
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  row: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: spacingPixels[4],
-  },
-  inputFrame: {
-    flex: 1,
-    justifyContent: "center",
-    minWidth: 0,
-    position: "relative",
-  },
-  input: {
-    fontFamily: fontFamily.regular,
-    fontSize: 16,
-    height: "100%",
-    lineHeight: 20,
-    maxHeight: maxInputHeight,
-    minHeight: controlSize,
-    minWidth: 0,
-    paddingHorizontal: spacingPixels[10],
-    paddingVertical: spacingPixels[8],
-    width: "100%",
-  },
-  placeholder: {
-    fontFamily: fontFamily.regular,
-    fontSize: 16,
-    left: spacingPixels[10],
-    lineHeight: 20,
-    position: "absolute",
-    right: spacingPixels[10],
-  },
-  send: {
-    alignItems: "center",
-    borderRadius: radiusPixels.full,
-    flexShrink: 0,
-    height: controlSize,
-    justifyContent: "center",
-    width: controlSize,
-  },
-  sendIconFrame: {
-    alignItems: "center",
-    height: spacingPixels[20],
-    justifyContent: "center",
-    width: spacingPixels[20],
-  },
-  disabled: {
-    opacity: 0.32,
-  },
-  pressed: {
-    opacity: 0.65,
-  },
-  stopGlyph: {
-    borderRadius: radiusPixels[4],
-    height: 10,
-    width: 10,
   },
 });

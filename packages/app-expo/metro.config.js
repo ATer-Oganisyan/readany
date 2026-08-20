@@ -1,5 +1,6 @@
 const { getDefaultConfig } = require("expo/metro-config");
 const { withStorybook } = require("@storybook/react-native/metro/withStorybook");
+const { withUniwindConfig } = require("uniwind/metro");
 const path = require("node:path");
 
 const projectRoot = __dirname;
@@ -97,7 +98,16 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   return context.resolveRequest(context, moduleName, platform);
 };
 
-module.exports = withStorybook(config, {
+// 9. Uniwind (Tailwind v4) для компонентов PanelUI.
+// Оборачиваем последним из наших настроек: плагин сохраняет transformer
+// (значит SVG-трансформер выше остаётся) и цепляет наш resolveRequest как
+// базовый, поэтому редиректы ONNX и punycode продолжают работать.
+const uniwindConfig = withUniwindConfig(config, {
+  cssEntryFile: "./src/global.css",
+  dtsFile: "./uniwind-types.d.ts",
+});
+
+module.exports = withStorybook(uniwindConfig, {
   configPath: path.resolve(projectRoot, ".rnstorybook"),
   enabled: process.env.EXPO_PUBLIC_STORYBOOK_ENABLED === "true",
   docTools: true,
