@@ -52,3 +52,5 @@ coverage/
 .codex-*.png
 EPUB_CONVERSION_PLAN.md
 README*.md
+/AGENT_HANDOFF*.md
+/TESTFLIGHT_ACCESS.md
