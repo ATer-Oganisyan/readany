@@ -66,7 +66,7 @@ function syncIosInfoPlist(variant) {
   );
   plist = replaceAll(
     plist,
-    /<string>(?:com\.readany\.app(?:\.(?:dev|preview))?|com\.mishanaer\.readany\.dev)<\/string>/g,
+    /<string>(?:com\.readany\.app(?:\.(?:dev|preview))?|com\.mishanaer\.(?:readany\.dev|narra))<\/string>/g,
     `<string>${variant.bundleIdentifier}</string>`,
   );
   plist = replaceAll(
