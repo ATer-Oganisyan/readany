@@ -1,20 +1,20 @@
+import {
+  isSuspiciousBookTitle,
+  isTechnicalBookTitle,
+  resolveBookIdentityWithLlmFallback,
+} from "@/lib/book/book-identity-resolver";
+import { type BookImportSource, planBookBackgroundWork } from "@/lib/book/book-source-boundary";
 import { isLegacyGeneratedBookCover } from "@/lib/book/cover-display";
 import { deleteLocalCoverJob, getLocalCoverJob } from "@/lib/book/cover-job-repository";
 import { acknowledgeGeneratedBookCover, generateBookCover } from "@/lib/book/generate-book-cover";
+import { generateBookIdentityWithGemini } from "@/lib/book/generate-book-title";
 import {
-  generateBookIdentityWithGemini,
-  isSuspiciousBookTitle,
-  isTechnicalBookTitle,
-} from "@/lib/book/generate-book-title";
-import {
+  type BookMetadataIdentityProvenance,
+  type ExtractedMeta,
   createRangeReadableFile,
   extractBookMetadata,
   extractBookMetadataFromFile,
 } from "@/lib/book/metadata-extractor";
-import {
-  type BookImportSource,
-  planBookBackgroundWork,
-} from "@/lib/book/book-source-boundary";
 import { queueBookCharacterAnalysis } from "@/lib/narra/character-analysis-queue";
 import { queueBook as queueAutoVectorize } from "@/lib/rag/auto-vectorize-service";
 import {
@@ -202,7 +202,7 @@ async function extractMobileImportMetadata(params: {
   fileName: string;
   fileSize: number;
   sourceBytes?: Uint8Array;
-}) {
+}): Promise<ExtractedMeta> {
   const { filePath, format, fileName, fileSize, sourceBytes } = params;
 
   if (format === "epub" || format === "fb2") {
@@ -225,6 +225,7 @@ async function extractMobileImportMetadata(params: {
   return {
     title: fileName.replace(/\.\w+$/i, "") || "Untitled",
     author: "",
+    identityProvenance: { title: "filename", author: "missing" },
     coverBytes: null,
     coverMimeType: null,
   };
@@ -234,35 +235,30 @@ async function resolveImportedBookIdentity(params: {
   fileName: string;
   title: string;
   author: string;
+  provenance?: Partial<BookMetadataIdentityProvenance>;
   description?: string;
   textSample?: string;
-  forceGemini?: boolean;
+  forceLlm?: boolean;
 }): Promise<{ title: string; author: string }> {
-  if (!params.forceGemini && !isSuspiciousBookTitle(params.title, params.fileName)) {
-    return { title: params.title, author: params.author };
-  }
-
-  try {
-    const generated = await generateBookIdentityWithGemini({
+  const resolution = await resolveBookIdentityWithLlmFallback(
+    {
       fileName: params.fileName,
       detectedTitle: params.title,
       detectedAuthor: params.author,
+      provenance: params.provenance,
       excerpt: params.textSample || params.description,
-    });
-    if (generated) {
-      console.log(
-        `[Library] Gemini identified "${params.fileName}" as "${generated.title}" (${generated.author || params.author || "автор не указан"})`,
-      );
-      return {
-        title: generated.title,
-        author: generated.author || params.author,
-      };
-    }
-  } catch (error) {
-    console.warn("[Library] Gemini could not identify the book; using embedded metadata:", error);
+      forceLlm: params.forceLlm,
+    },
+    generateBookIdentityWithGemini,
+  );
+  if (resolution.llmStatus === "used") {
+    console.log(
+      `[Library] LLM identified "${params.fileName}" as "${resolution.title}" (${resolution.author || "автор не указан"})`,
+    );
+  } else if (resolution.llmStatus === "failed") {
+    console.warn("[Library] LLM identity repair failed; using deterministic metadata");
   }
-
-  return { title: params.title, author: params.author };
+  return { title: resolution.title, author: resolution.author };
 }
 
 const titleRepairAttempted = new Set<string>();
@@ -306,11 +302,12 @@ async function repairSuspiciousBookTitles(books: Book[]): Promise<void> {
         fileName,
         title: meta.title,
         author: meta.author,
+        provenance: meta.identityProvenance,
         description: meta.description,
         textSample: meta.textSample,
-        forceGemini: true,
+        forceLlm: true,
       });
-      if (!isSuspiciousBookTitle(identity.title, fileName)) {
+      if (!isTechnicalBookTitle(identity.title)) {
         await useLibraryStore.getState().updateBook(book.id, {
           meta: {
             ...book.meta,
@@ -1461,8 +1458,6 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           let coverContext:
             | { description?: string; textSample?: string; subjects?: string[] }
             | undefined;
-          const shouldGenerateIdentity = isTechnicalBookTitle(title);
-
           try {
             console.log(`[importBooks] Extracting metadata for format=${format}...`);
             const meta = await extractMobileImportMetadata({
@@ -1486,9 +1481,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
               fileName,
               title,
               author,
+              provenance: meta.identityProvenance,
               description: meta.description,
               textSample: meta.textSample,
-              forceGemini: shouldGenerateIdentity,
             });
             title = identity.title;
             author = identity.author;

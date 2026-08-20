@@ -102,6 +102,7 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
                     <BookSpineOverlay coverWidth={CARD_WIDTH} />
                     <BookCoverTypography
                       title={book.meta.title}
+                      author={book.meta.author}
                       width={CARD_WIDTH}
                       referenceWidth={catalogCardWidth}
                       titleFontSize={15}

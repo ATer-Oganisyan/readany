@@ -1,6 +1,6 @@
 import { Text } from "@/components/ui/Typography";
 import type { CoverTextTone } from "@/lib/book/cover-text-contrast";
-import { formatBookCoverTitle } from "@/lib/book/format-book-cover-title";
+import { formatBookCoverIdentity } from "@/lib/book/format-book-cover-title";
 import { sansCondensedFontFamily, serifTextFontFamily } from "@deslop/primitives/native";
 import { LinearGradient } from "expo-linear-gradient";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
@@ -75,7 +75,8 @@ export function BookCoverTypography({
   const titleSize = titleFontSize ?? Math.max(12, Math.min(18, referenceWidth * 0.12)) * scale;
   const minimumTitleSize = Math.min(titleSize, 12);
   const authorSize = authorFontSize ?? 13 * scale;
-  const formattedTitle = formatBookCoverTitle(title);
+  const formattedIdentity = formatBookCoverIdentity(title, author);
+  const formattedTitle = formattedIdentity.title;
   const [fittedTitleSize, setFittedTitleSize] = useState(titleSize);
   const textColor = textTone === "light" ? "#F7F5F0" : "#151515";
 
@@ -138,7 +139,7 @@ export function BookCoverTypography({
             >
               {formattedTitle}
             </Text>
-            {author ? (
+            {formattedIdentity.author ? (
               <Text
                 adjustsFontSizeToFit
                 minimumFontScale={0.74}
@@ -153,7 +154,7 @@ export function BookCoverTypography({
                   },
                 ]}
               >
-                {author}
+                {formattedIdentity.author}
               </Text>
             ) : null}
           </View>
