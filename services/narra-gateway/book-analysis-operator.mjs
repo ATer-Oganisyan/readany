@@ -3,6 +3,7 @@ import {
   parseBookAnalysisCommand
 } from './book-analysis-cli.mjs'
 import { createPostgresBookAnalysisRepository } from './book-analysis-repository.mjs'
+import { bookAnalysisPipelineFromEnv } from './book-analysis-pipeline.mjs'
 import { createPostgresPoolFromEnv, runBookMarkupMigrations } from './postgres-runtime.mjs'
 
 let pool
@@ -12,7 +13,9 @@ try {
   await runBookMarkupMigrations(pool)
   const result = await executeBookAnalysisCommand({
     argv: process.argv.slice(2),
-    repository: createPostgresBookAnalysisRepository(pool)
+    repository: createPostgresBookAnalysisRepository(pool, {
+      defaultPipelineId: bookAnalysisPipelineFromEnv(process.env)
+    })
   })
   console.log(JSON.stringify(result, null, 2))
 } catch (error) {

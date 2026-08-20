@@ -11,6 +11,7 @@
     "worker:book-markup": "node book-markup-worker.mjs",
     "worker:book-analysis": "node book-analysis-worker.mjs",
     "worker:book-analysis-scan": "node book-analysis-scan-worker-runner.mjs",
+    "worker:book-analysis-external": "node book-analysis-external-worker-runner.mjs",
     "worker:book-analysis-resolve": "node book-analysis-resolve-worker-runner.mjs",
     "worker:book-analysis-synthesize": "node book-analysis-stage-worker-runner.mjs synthesize",
     "worker:book-analysis-validate": "node book-analysis-stage-worker-runner.mjs validate",

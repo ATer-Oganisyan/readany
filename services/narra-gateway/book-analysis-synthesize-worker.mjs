@@ -1,6 +1,10 @@
 import { assembleBookMarkupV3 } from './book-analysis-assembler.mjs'
 import { BOOK_ANALYSIS_SYNTHESIS_VERSION } from './book-analysis-contracts.mjs'
-import { selectCharacterSynthesisEvidence } from './book-analysis-synthesis.mjs'
+import { bookAnalysisLogContext } from './book-analysis-observability.mjs'
+import {
+  BOOK_ANALYSIS_PIPELINE_NARRA,
+  bookAnalysisPipelineForRun
+} from './book-analysis-pipeline.mjs'
 import { createOperationalLogger } from './operational-log.mjs'
 
 function safeErrorCode(error) {
@@ -26,45 +30,19 @@ export function createBookAnalysisSynthesizeWorker({
 
   async function synthesize(job) {
     const input = await repository.getSynthesizeInput(job)
+    const strategy = bookAnalysisPipelineForRun({
+      ...input,
+      pipelineId: input.pipelineId ?? BOOK_ANALYSIS_PIPELINE_NARRA
+    })
     if (input.mode === 'character_profile') {
-      const selectedEvidence = selectCharacterSynthesisEvidence(input.observations).map((observation) => ({
-        id: observation.id,
-        type: observation.type,
-        fact: observation.fact,
-        quote: observation.evidence.quote,
-        startOffset: observation.evidence.startOffset,
-        endOffset: observation.evidence.endOffset,
-        confidence: observation.confidence
-      }))
-      const modelEntity = {
-        entityKey: input.entity.entityKey,
-        entityKind: input.entity.entityKind,
-        canonicalName: input.entity.canonicalName,
-        aliases: input.entity.aliases.slice(0, 16),
-        resolutionStatus: input.entity.resolutionStatus,
-        confidence: input.entity.confidence,
-        evidenceIds: selectedEvidence.map(({ id }) => id),
-        data: {
-          observationCount: input.entity.data.observationCount,
-          firstEvidenceStartOffset: input.entity.data.firstEvidenceStartOffset,
-          lastEvidenceEndOffset: input.entity.data.lastEvidenceEndOffset
-        }
-      }
-      const generated = await generator.synthesizeCharacterProfile({
-        runId: input.runId,
-        snapshotId: input.snapshot.id,
-        synthesisVersion,
-        bookTitle: input.title,
-        bookAuthor: input.author,
-        textLength: input.textLength,
-        entity: modelEntity,
-        evidence: selectedEvidence
+      const synthesized = await strategy.synthesizeCharacter({
+        input,
+        generator,
+        synthesisVersion
       })
       return repository.completeCharacterSynthesis(job, {
         snapshotId: input.snapshot.id,
-        synthesisVersion,
-        selectedEvidenceIds: selectedEvidence.map(({ id }) => id),
-        profile: generated.profile
+        ...synthesized
       })
     }
     if (input.mode === 'assemble_book') {
@@ -100,17 +78,24 @@ export function createBookAnalysisSynthesizeWorker({
         leaseSeconds
       })
       if (!job) return { status: 'idle' }
+      const startedAt = performance.now()
       try {
         const result = await withLeaseHeartbeat(job, () => synthesize(job))
         log.info('synthesis.completed', 'Задание синтеза завершено', {
-          job: job.id, run: job.runId, shard: job.shardKey, next_stage: result.stage
+          job: job.id, run: job.runId, shard: job.shardKey, next_stage: result.stage,
+          ...bookAnalysisLogContext(job, { startedAt, terminalStatus: 'completed' })
         })
         return { status: 'completed', jobId: job.id, runId: job.runId, result }
       } catch (error) {
         const errorCode = safeErrorCode(error)
         const failure = await repository.failAnalysisJob(job, errorCode)
         log.error('synthesis.failed', 'Задание синтеза завершилось ошибкой', {
-          job: job.id, run: job.runId, error_code: errorCode, retry_status: failure.status
+          job: job.id, run: job.runId, error_code: errorCode, retry_status: failure.status,
+          ...bookAnalysisLogContext(job, {
+            startedAt,
+            terminalStatus: failure.status,
+            errorCode
+          })
         })
         return { status: 'failed', jobId: job.id, runId: job.runId, errorCode }
       }

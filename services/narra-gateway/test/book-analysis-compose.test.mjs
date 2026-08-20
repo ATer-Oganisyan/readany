@@ -3,6 +3,10 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
 const compose = await readFile(new URL('../compose.i167.yml', import.meta.url), 'utf8')
+const localCompose = await readFile(
+  new URL('../compose.book-analysis-local.yml', import.meta.url),
+  'utf8'
+)
 const envExample = await readFile(new URL('../.env.example', import.meta.url), 'utf8')
 const gatewaySource = await readFile(new URL('../index.mjs', import.meta.url), 'utf8')
 
@@ -30,6 +34,24 @@ test('scan stage has parallel workers by default for catalog backfills', () => {
     compose.indexOf('  book-analysis-resolve:')
   )
   assert.match(scan, /replicas: \$\{BOOK_ANALYSIS_SCAN_REPLICAS:-8\}/)
+})
+
+test('external research services are isolated in the local-only compose profile', () => {
+  assert.match(localCompose, /^name: \$\{NARRA_BOOK_ANALYSIS_PROJECT:-narra-book-analysis-local\}$/m)
+  const adapter = localCompose.slice(
+    localCompose.indexOf('  autiobook-adapter:'),
+    localCompose.indexOf('  book-analysis-external:')
+  )
+  const worker = localCompose.slice(
+    localCompose.indexOf('  book-analysis-external:'),
+    localCompose.indexOf('  book-analysis-resolve:')
+  )
+  assert.match(adapter, /profiles: \["book-analysis-external"\]/)
+  assert.match(adapter, /read_only: true/)
+  assert.doesNotMatch(adapter, /\n    ports:/)
+  assert.match(worker, /book-analysis-external-worker-runner\.mjs/)
+  assert.match(worker, /AUTIOBOOK_ADAPTER_BASE_URL: http:\/\/autiobook-adapter\.railway\.internal:8080/)
+  assert.match(gatewaySource, /BOOK_ANALYSIS_PIPELINE/)
 })
 
 test('gateway LLM capacity is aligned with the larger scan pool', () => {

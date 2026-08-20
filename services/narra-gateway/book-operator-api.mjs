@@ -1,4 +1,5 @@
 import express from 'express'
+import { normalizeBookAnalysisPipelineId } from './book-analysis-pipeline.mjs'
 import { createCatalogIngestService } from './catalog-ingest-service.mjs'
 import {
   parseCatalogCoverUploadBody,
@@ -22,6 +23,22 @@ function uuid(value, name = 'bookEditionId') {
 function exactEmptyBody(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).length) {
     throw serviceError('VALIDATION', 'body: expected empty object', 400)
+  }
+}
+
+function analysisRestartBody(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw serviceError('VALIDATION', 'body: expected object', 400)
+  }
+  const keys = Object.keys(body)
+  if (keys.some((key) => key !== 'pipeline')) {
+    throw serviceError('VALIDATION', 'body: unsupported field', 400)
+  }
+  if (!Object.hasOwn(body, 'pipeline')) return {}
+  try {
+    return { pipelineId: normalizeBookAnalysisPipelineId(body.pipeline) }
+  } catch (error) {
+    throw serviceError('INVALID_ARGUMENT', error.message, 400)
   }
 }
 
@@ -101,10 +118,11 @@ export function createBookOperatorRouter({
     '/api/books/:bookEditionId/restart',
     express.json({ limit: '1kb' }),
     asyncRoute(async (req, res) => {
-      exactEmptyBody(req.body ?? {})
+      const selection = analysisRestartBody(req.body ?? {})
       try {
         const value = await analysisRepository.restartAnalysisRun({
           bookEditionId: uuid(req.params.bookEditionId),
+          ...selection,
           priority: 100
         })
         res.status(value.created ? 202 : 200).json(value)

@@ -106,9 +106,10 @@ test('scan worker reads and sends only its bounded chunk', async () => {
   let rangeRequest
   let generatorRequest
   let completed
+  let claimOptions
   const job = { id: 'job-1', runId: 'run-1', stage: 'scan', leaseToken: 'lease-1' }
   const repository = {
-    async claimAnalysisJob() { return job },
+    async claimAnalysisJob(_workerId, options) { claimOptions = options; return job },
     async getScanInput() { return input },
     async renewAnalysisJobLease() {},
     async completeScan(candidate, value) {
@@ -138,6 +139,7 @@ test('scan worker reads and sends only its bounded chunk', async () => {
   })
   const result = await worker.runOnce()
   assert.equal(result.status, 'completed')
+  assert.deepEqual(claimOptions.pipelineIds, ['narra'])
   assert.deepEqual(rangeRequest, {
     objectKey: input.normalizedTextObjectKey,
     startByte: 0,

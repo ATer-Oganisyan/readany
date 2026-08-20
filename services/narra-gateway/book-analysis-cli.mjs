@@ -1,8 +1,10 @@
+import { normalizeBookAnalysisPipelineId } from './book-analysis-pipeline.mjs'
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 export const BOOK_ANALYSIS_CLI_USAGE = `Usage:
-  npm run book-analysis -- start --book-edition-id <uuid> [--priority <number>]
-  npm run book-analysis -- restart --book-edition-id <uuid> [--priority <number>]
+  npm run book-analysis -- start --book-edition-id <uuid> [--pipeline narra|external] [--priority <number>]
+  npm run book-analysis -- restart --book-edition-id <uuid> [--pipeline narra|external] [--priority <number>]
   npm run book-analysis -- status --run-id <uuid>
   npm run book-analysis -- result --run-id <uuid>`
 
@@ -23,6 +25,14 @@ function parsePriority(value) {
     throw cliError('INVALID_ARGUMENT', '--priority must be an integer between -1000 and 1000')
   }
   return priority
+}
+
+function parsePipeline(value) {
+  try {
+    return normalizeBookAnalysisPipelineId(value, '--pipeline')
+  } catch (error) {
+    throw cliError('INVALID_ARGUMENT', error.message)
+  }
 }
 
 export function parseBookAnalysisCommand(argv) {
@@ -47,12 +57,15 @@ export function parseBookAnalysisCommand(argv) {
   }
 
   if (command === 'start' || command === 'restart') {
-    const allowed = new Set(['--book-edition-id', '--priority'])
+    const allowed = new Set(['--book-edition-id', '--pipeline', '--priority'])
     const unknown = Object.keys(options).find((name) => !allowed.has(name))
     if (unknown) throw cliError('INVALID_ARGUMENT', `unsupported option: ${unknown}`)
     return {
       command,
       bookEditionId: requireUuid(options['--book-edition-id'], '--book-edition-id'),
+      ...(options['--pipeline'] === undefined
+        ? {}
+        : { pipelineId: parsePipeline(options['--pipeline']) }),
       priority: options['--priority'] === undefined
         ? command === 'restart' ? 100 : 50
         : parsePriority(options['--priority'])
@@ -95,6 +108,7 @@ export async function executeBookAnalysisCommand({ argv, repository }) {
     const started = await repository.ensureAnalysisRun({
       bookEditionId: source.id,
       inputHash: source.contentSha256,
+      ...(input.pipelineId ? { pipelineId: input.pipelineId } : {}),
       priority: input.priority
     })
     return {
@@ -124,6 +138,7 @@ export async function executeBookAnalysisCommand({ argv, repository }) {
     }
     const restarted = await repository.restartAnalysisRun({
       bookEditionId: source.id,
+      ...(input.pipelineId ? { pipelineId: input.pipelineId } : {}),
       priority: input.priority
     })
     return {

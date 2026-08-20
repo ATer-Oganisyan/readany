@@ -18,12 +18,16 @@ interface SceneJobPayload {
 function bookMeta(bookId: string): {
   title: string;
   author?: string;
+  description?: string;
+  subjects?: string[];
   analyzedGenre?: NarraGenreAnalysis;
 } {
   const book = useLibraryStore.getState().books.find((item) => item.id === bookId);
   return {
     title: book?.meta.title ?? "Без названия",
     author: book?.meta.author || undefined,
+    description: book?.meta.description || undefined,
+    subjects: book?.meta.subjects,
     analyzedGenre: useNarraStore.getState().books[bookId]?.genre,
   };
 }
@@ -65,6 +69,11 @@ async function generateSceneThroughGateway(
         request_id: Crypto.randomUUID(),
         book_title: meta.title,
         book_author: meta.author || "",
+        book_description: (meta.description || "").slice(0, 4_000),
+        book_subjects: (meta.subjects || [])
+          .slice(0, 32)
+          .map((subject) => subject.slice(0, 200)),
+        genre_id: meta.analyzedGenre?.primary || "",
         chapter,
         excerpt,
         characters: characters.slice(0, 16).map((character) => ({
@@ -72,7 +81,7 @@ async function generateSceneThroughGateway(
           full_name: character.fullName,
           role: character.role,
           gender: character.gender,
-          appearance: character.appearancePrompt || passportDescription(character),
+          appearance: passportDescription(character).slice(0, 1_500),
         })),
         previous_excerpts: previousSceneExcerpts(bookId, excerpt),
       }),

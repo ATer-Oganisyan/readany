@@ -1,4 +1,4 @@
-name: narra-book-analysis-local
+name: ${NARRA_BOOK_ANALYSIS_PROJECT:-narra-book-analysis-local}
 
 x-database-environment: &database-environment
   NODE_ENV: development
@@ -133,6 +133,7 @@ services:
       ANALYTICS_ENV: development
       DATA_DIR: /data
       BOOK_BACKEND_REQUIRED: "true"
+      BOOK_ANALYSIS_PIPELINE: ${BOOK_ANALYSIS_PIPELINE:-narra}
       BOOK_STORAGE_PUBLIC_ENDPOINT: http://localhost:${NARRA_BOOK_ANALYSIS_MINIO_PORT:-19000}
       GENERATOR_SERVICE_TOKEN: narra-local-generator-token-0000000000000001
       GATEWAY_TOKEN_SECRET: narra-local-gateway-token-000000000000000001
@@ -182,6 +183,46 @@ services:
     environment:
       <<: [*database-environment, *storage-environment, *generator-environment]
 
+  autiobook-adapter:
+    profiles: ["book-analysis-external"]
+    image: narra-autiobook-adapter-local
+    build:
+      context: ../autiobook-adapter
+      args:
+        AUTIOBOOK_COMMIT: d532bdd0a15f2948fd0c99f5e11b92677cb5c3eb
+    environment:
+      AUTIOBOOK_ADAPTER_TOKEN: ${AUTIOBOOK_ADAPTER_TOKEN:-narra-local-autiobook-token-000000000001}
+      AUTIOBOOK_LLM_BASE_URL: ${AUTIOBOOK_LLM_BASE_URL:-}
+      AUTIOBOOK_LLM_API_KEY: ${AUTIOBOOK_LLM_API_KEY:-}
+      AUTIOBOOK_LLM_MODEL: ${AUTIOBOOK_LLM_MODEL:-}
+      AUTIOBOOK_MAX_CONCURRENCY: ${AUTIOBOOK_MAX_CONCURRENCY:-1}
+      AUTIOBOOK_TIMEOUT_SECONDS: ${AUTIOBOOK_TIMEOUT_SECONDS:-3600}
+    volumes:
+      - autiobook-work:/work
+    init: true
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      default:
+        aliases:
+          - autiobook-adapter.railway.internal
+
+  book-analysis-external:
+    <<: *analysis-worker
+    profiles: ["book-analysis-external"]
+    command: ["node", "book-analysis-external-worker-runner.mjs"]
+    environment:
+      <<: [*database-environment, *storage-environment]
+      AUTIOBOOK_ADAPTER_BASE_URL: http://autiobook-adapter.railway.internal:8080
+      AUTIOBOOK_ADAPTER_TOKEN: ${AUTIOBOOK_ADAPTER_TOKEN:-narra-local-autiobook-token-000000000001}
+      AUTIOBOOK_ADAPTER_TIMEOUT_MS: ${AUTIOBOOK_ADAPTER_TIMEOUT_MS:-3600000}
+
   book-analysis-resolve:
     <<: *analysis-worker
     command: ["node", "book-analysis-resolve-worker-runner.mjs"]
@@ -210,3 +251,4 @@ volumes:
   postgres-data:
   object-data:
   gateway-data:
+  autiobook-work:

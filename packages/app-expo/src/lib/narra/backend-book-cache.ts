@@ -6,7 +6,7 @@ import {
 } from "./backend-book-api";
 import { sha256BackendFile } from "./backend-file-hash";
 import { normalizeCharacterAnalysisResponse } from "./character-normalization";
-import type { NarraCharacter } from "./types";
+import type { NarraCharacter, NarraPersonalityStatus } from "./types";
 
 const CACHE_ROOT = `${FileSystem.documentDirectory}narra-backend-books`;
 const CACHE_PATH_MARKER = "/Documents/narra-backend-books/";
@@ -57,12 +57,75 @@ function backendUnlockProgress(
   return Number.isFinite(profileThreshold) ? Math.min(0.95, Math.max(0, profileThreshold)) : 0;
 }
 
+export function isBackendManifestCharacterReached(
+  character: BackendBookManifest["characters"][number],
+  textLength: BackendBookManifest["textLength"],
+  progressFraction: number,
+): boolean {
+  const progress = Number.isFinite(progressFraction)
+    ? Math.min(1, Math.max(0, progressFraction))
+    : 0;
+  return backendUnlockProgress(character, textLength) <= progress;
+}
+
 function mediaBundleKey(character: BackendBookManifest["characters"][number]): string | undefined {
   if (!character.bundle) return undefined;
   return JSON.stringify([
     character.bundle.version,
     character.bundle.assets.map((asset) => `${asset.type}:${asset.contentHash}`).sort(),
   ]);
+}
+
+function personalityAtProgress(
+  profile: Record<string, unknown>,
+  textLength: BackendBookManifest["textLength"],
+  progressFraction: number,
+): { traits: string[]; status?: NarraPersonalityStatus } {
+  if (
+    profile.personalityTimelineVersion !== "progressive-personality-v1" ||
+    !Array.isArray(profile.personalitySnapshots)
+  ) {
+    return {
+      traits: Array.isArray(profile.traits) ? profile.traits.slice(0, 5).map(String) : [],
+    };
+  }
+  const length = Number(textLength);
+  const cutoff =
+    Number.isFinite(length) && length > 0
+      ? Math.round(Math.min(1, Math.max(0, progressFraction)) * length)
+      : progressFraction >= 1
+        ? Number.MAX_SAFE_INTEGER
+        : 0;
+  const snapshots = profile.personalitySnapshots
+    .flatMap((candidate) => {
+      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return [];
+      const snapshot = candidate as Record<string, unknown>;
+      const snapshotCutoff = Number(snapshot.cutoffTextOffset);
+      if (!Number.isSafeInteger(snapshotCutoff) || snapshotCutoff < 0 || snapshotCutoff > cutoff) {
+        return [];
+      }
+      const status = ["insufficient_evidence", "preliminary", "supported"].includes(
+        String(snapshot.status),
+      )
+        ? (String(snapshot.status) as NarraPersonalityStatus)
+        : "insufficient_evidence";
+      const traits = Array.isArray(snapshot.traits)
+        ? snapshot.traits
+            .flatMap((raw) => {
+              if (typeof raw === "string" && raw.trim()) return [raw.trim()];
+              if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+              const value = String((raw as Record<string, unknown>).value || "").trim();
+              return value ? [value] : [];
+            })
+            .slice(0, 5)
+        : [];
+      return [{ cutoffTextOffset: snapshotCutoff, status, traits }];
+    })
+    .sort((left, right) => left.cutoffTextOffset - right.cutoffTextOffset);
+  const selected = snapshots.at(-1);
+  return selected
+    ? { traits: selected.traits, status: selected.status }
+    : { traits: [], status: "insufficient_evidence" };
 }
 
 async function ensureBookDirectory(bookId: string): Promise<string> {
@@ -118,6 +181,7 @@ function baseCharacter(
   character: BackendBookManifest["characters"][number],
   source: BackendBookManifest["source"],
   textLength: BackendBookManifest["textLength"],
+  progressFraction: number,
 ): NarraCharacter {
   const unlockProgress = backendUnlockProgress(character, textLength);
   const clientCharacterId =
@@ -125,11 +189,13 @@ function baseCharacter(
     character.profile.clientCharacterId.trim()
       ? character.profile.clientCharacterId
       : character.characterKey;
+  const personality = personalityAtProgress(character.profile, textLength, progressFraction);
   const normalized = normalizeCharacterAnalysisResponse(
     {
       characters: [
         {
           ...character.profile,
+          traits: personality.traits,
           id: clientCharacterId,
           name: character.name,
           fullName: character.fullName,
@@ -162,6 +228,7 @@ function baseCharacter(
     analysisState: character.provisional ? "provisional" : "confirmed",
     mediaBundleKey: mediaBundleKey(character),
     analysisSource: source,
+    personalityStatus: personality.status,
   };
 }
 
@@ -186,10 +253,16 @@ async function mapWithConcurrency<T, R>(
 export function projectBackendManifestCharacters(
   manifest: BackendBookManifest,
   previousCharacters: NarraCharacter[] = [],
+  progressFraction = manifest.readingFraction ?? 0,
 ): NarraCharacter[] {
   const previousById = new Map(previousCharacters.map((character) => [character.id, character]));
   return manifest.characters.map((character) => {
-    const projected = baseCharacter(character, manifest.source, manifest.textLength);
+    const projected = baseCharacter(
+      character,
+      manifest.source,
+      manifest.textLength,
+      progressFraction,
+    );
     const previous = previousById.get(projected.id);
     const canReuseCachedBundle =
       projected.mediaBundleKey &&
@@ -229,11 +302,15 @@ export async function persistBackendManifestCharacters(
 export async function materializeBackendManifest(
   bookId: string,
   manifest: BackendBookManifest,
+  progressFraction = manifest.readingFraction ?? 0,
   onCharacter?: (character: NarraCharacter) => void,
 ): Promise<NarraCharacter[]> {
   const directory = await ensureBookDirectory(bookId);
   return mapWithConcurrency(manifest.characters, MEDIA_CHARACTER_CONCURRENCY, async (character) => {
-    const result = baseCharacter(character, manifest.source, manifest.textLength);
+    const result = baseCharacter(character, manifest.source, manifest.textLength, progressFraction);
+    if (!isBackendManifestCharacterReached(character, manifest.textLength, progressFraction)) {
+      return { ...result, mediaState: "preparing" as const };
+    }
     let materialized = result;
     if (!character.bundle?.assets.length) {
       onCharacter?.(materialized);

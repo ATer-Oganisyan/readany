@@ -31,7 +31,11 @@ test('analysis run key binds source and both pipeline versions', () => {
     inputHash: 'a'.repeat(64),
     pipelineVersion: 'book-analysis-v8',
     promptVersion: 'scan-v1'
-  }), `book-analysis:book-1:${'a'.repeat(64)}:book-analysis-v8:scan-v1`)
+  }), [
+    'book-analysis-cache', 'narra', 'book-analysis-v45', 'a'.repeat(64),
+    'book-analysis-v8', 'scan-v1', 'normalized-text-v1', 'schema-3',
+    'book-markup-v3', 'book-1'
+  ].join(':'))
 })
 
 test('provisional analysis keeps only grounded confirmed people behind temporary keys', () => {
@@ -116,6 +120,17 @@ test('restart creates the next isolated run and leaves the previous publication 
       book_edition_id: '123e4567-e89b-42d3-a456-426614174001',
       input_hash: 'a'.repeat(64), pipeline_version: 'book-analysis-v8',
       prompt_version: 'book-scan-v4', run_sequence: 1,
+      pipeline_id: 'narra', pipeline_implementation_version: 'book-analysis-v44',
+      normalization_version: 'normalized-text-v1', output_schema_version: 3,
+      stage: 'publish', status: 'ready'
+    }] }),
+    () => ({ rows: [{
+      id: '123e4567-e89b-42d3-a456-426614174002',
+      book_edition_id: '123e4567-e89b-42d3-a456-426614174001',
+      input_hash: 'a'.repeat(64), pipeline_version: 'book-analysis-v8',
+      prompt_version: 'book-scan-v4', run_sequence: 1,
+      pipeline_id: 'narra', pipeline_implementation_version: 'book-analysis-v44',
+      normalization_version: 'normalized-text-v1', output_schema_version: 3,
       stage: 'publish', status: 'ready'
     }] }),
     (_sql, params) => ({ rows: [{
@@ -131,7 +146,8 @@ test('restart creates the next isolated run and leaves the previous publication 
     }] })
   ])
   const repository = createPostgresBookAnalysisRepository(pool, {
-    idFactory: () => ids.shift()
+    idFactory: () => ids.shift(),
+    defaultPipelineId: 'external'
   })
 
   const restarted = await repository.restartAnalysisRun({
@@ -141,6 +157,7 @@ test('restart creates the next isolated run and leaves the previous publication 
 
   assert.equal(restarted.created, true)
   assert.equal(restarted.run.runSequence, 2)
+  assert.equal(restarted.run.pipelineId, 'narra')
   assert.equal(restarted.prepareJob.priority, 100)
   assert.ok(pool.queries.some(({ sql }) => /INSERT INTO book_analysis_runs/.test(sql)))
   assert.ok(pool.queries.every(({ sql }) => !/(UPDATE|DELETE FROM) book_analysis_publications/.test(sql)))
@@ -252,8 +269,63 @@ test('prepare completion writes chunks and scan jobs before advancing the barrie
   const advance = sql.findIndex((value) => /UPDATE book_analysis_runs SET stage = 'scan'/.test(value))
   assert.ok(insertChunk > 0 && insertChunk < insertJob)
   assert.ok(insertJob < readyPrepare && readyPrepare < advance)
-  assert.ok(sql.some((value) => /chunk_ordinal', \$6::integer/.test(value)))
+  const scanInsert = pool.queries.find(({ sql: value }) => /INSERT INTO book_analysis_jobs/.test(value))
+  assert.deepEqual(JSON.parse(scanInsert.params[5]), { chunkOrdinal: 0 })
+  assert.equal(scanInsert.params[6], 'narra')
   assert.ok(sql.some((value) => /lag\(core_end_offset\)/.test(value)))
+})
+
+test('external prepare keeps Narra chunks but creates one book-level scan job', async () => {
+  const pool = scriptedPool([
+    () => ({ rows: [{ id: 'prepare-1', max_attempts: 5, attempts: 1 }] }),
+    () => ({ rows: [{
+      id: 'run-1', text_length: '100', pipeline_id: 'external',
+      pipeline_implementation_version: 'external-autiobook-v1.d532bdd0'
+    }] }),
+    () => ({ rows: [] }),
+    () => ({ rows: [] }),
+    () => ({ rows: [] }),
+    () => ({ rows: [] }),
+    () => ({ rows: [{
+      chunk_count: 2, first_ordinal: 0, last_ordinal: 1,
+      first_offset: '0', last_offset: '100', covered_chars: '100',
+      discontinuity_count: 0
+    }] }),
+    () => ({ rows: [] }),
+    () => ({ rows: [] })
+  ])
+  const repository = createPostgresBookAnalysisRepository(pool, {
+    idFactory: () => '123e4567-e89b-42d3-a456-426614174002'
+  })
+  await repository.completePrepare({
+    id: 'prepare-1', runId: 'run-1', leaseToken: '123e4567-e89b-42d3-a456-426614174003'
+  }, {
+    normalizedTextObjectKey: 'analysis/run-1/normalized-text-v1.txt',
+    normalizedTextHash: 'b'.repeat(64),
+    textLength: 100,
+    sections: [{ key: 'document', startOffset: 0, endOffset: 100 }],
+    chunks: [
+      {
+        id: '123e4567-e89b-42d3-a456-426614174004', ordinal: 0,
+        chapterKey: 'one', coreStartOffset: 0, coreEndOffset: 50,
+        contextStartOffset: 0, contextEndOffset: 60,
+        contentHash: 'c'.repeat(64), metadata: {}
+      },
+      {
+        id: '123e4567-e89b-42d3-a456-426614174005', ordinal: 1,
+        chapterKey: 'two', coreStartOffset: 50, coreEndOffset: 100,
+        contextStartOffset: 40, contextEndOffset: 100,
+        contentHash: 'd'.repeat(64), metadata: {}
+      }
+    ]
+  })
+  const scanInserts = pool.queries.filter(({ sql }) =>
+    /INSERT INTO book_analysis_jobs/.test(sql)
+  )
+  assert.equal(scanInserts.length, 1)
+  assert.equal(scanInserts[0].params[2], 'pipeline:external')
+  assert.deepEqual(JSON.parse(scanInserts[0].params[5]), { scope: 'book' })
+  assert.equal(scanInserts[0].params[6], 'external')
 })
 
 test('resolve completion freezes evidence before advancing to synthesize', async () => {

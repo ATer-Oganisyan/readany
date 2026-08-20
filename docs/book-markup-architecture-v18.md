@@ -1,10 +1,10 @@
-# Архитектура разметки книг v18
+# Текущая архитектура разметки книг
 
-- Статус: фактическая архитектура текущей ветки на 17 августа 2026 года.
-- Версия pipeline: `book-analysis-v18`.
+- Статус: фактическая архитектура текущей ветки на 19 августа 2026 года.
+- Версия pipeline: `book-analysis-v45`.
 - Публичный артефакт: `book-markup-v3`, schema `3`.
-- Scan prompt/extractor: `book-scan-v10`.
-- Профиль персонажа: `character-profile-v3`.
+- Scan prompt/extractor: `book-scan-v15`.
+- Профиль персонажа: `character-profile-v14`.
 - Медиа-пакет: `character-bundle-v3`.
 
 Этот документ — краткий актуальный срез реализации. [book-analysis-v3.md](./book-analysis-v3.md)
@@ -43,9 +43,9 @@ flowchart LR
   V --> U["publish: immutable shadow publication"]
   U --> M["Каноническая reader projection v3"]
   M --> W["Независимые media jobs"]
-  M --> API["Reader manifest с progress gating"]
+  M --> API["Reader manifest со всеми profiles"]
   W --> API
-  API --> APP["Android/iOS: список, карточка, чат, reader, scenes"]
+  API --> APP["Android/iOS: local progress gating, список, карточка, чат, scenes"]
 ```
 
 PostgreSQL — control plane: состояния, leases, доказательства, snapshots, artifacts, publications и
@@ -68,7 +68,7 @@ PostgreSQL — control plane: состояния, leases, доказательс
 2. вызывает `POST /v2/books/resolve`;
 3. при отсутствии edition регистрирует метаданные через `POST /v2/books/local`;
 4. загружает исходник через `PUT /v2/books/:bookEditionId/source`;
-5. после проверенной загрузки backend запускает тот же канонический v18 pipeline.
+5. после проверенной загрузки backend запускает тот же канонический pipeline.
 
 Приватный объект изолирован по пользователю и продлевает срок жизни при активности. Значение
 `PRIVATE_MATERIAL_TTL_DAYS` по умолчанию — 7 дней. Старый endpoint `local-markup` и мобильный локальный
@@ -150,6 +150,25 @@ processing manifest — лишь предварительная проекция
 `greeting`, `creative.appearancePrompt` и `voice` — творческие производные и не являются evidence
 claims. Некорректные отдельные claims отбрасываются; структурно некорректный ответ job отклоняется.
 
+Строгий итоговый `traits` не заменён. Рядом с ним профиль хранит
+`personalitySnapshots` — накопительную шкалу характера по прогрессу чтения:
+
+- новая шкала явно помечена `personalityTimelineVersion=progressive-personality-v1`, чтобы клиент
+  не принимал старую публикацию без snapshots за новый пустой результат;
+- контрольные точки определяются числом содержательных trait/action/dialogue evidence
+  (`1, 3, 6, 12, ...` и финальная точка), а не временем или длиной книги;
+- вариант Б формирует всю шкалу в уже существующем основном LLM-запросе профиля;
+- каждый следующий snapshot видит накопленный контекст предыдущих и может уточнить гипотезу;
+- при слишком большом контексте или невалидной шкале включается
+  вариант А: последовательная обработка тех же контрольных точек внутри durable character job;
+- одиночная характерная сцена может дать только `preliminary` с confidence не выше `0.65`;
+- повторные evidence допускают confidence до `0.82`; строгий `traits` поверх шкалы получает
+  `supported` только после того, как читатель прошёл все связанные evidence;
+- validator запрещает snapshot ссылаться на evidence после своего `cutoffTextOffset`.
+
+Сбой обоих progressive-вариантов не отменяет канонический строгий профиль: публикация сохраняет
+пустую шкалу со статусом `insufficient_evidence`, а старые поля продолжают работать.
+
 `firstAppearanceTextOffset` берётся не из synthesis, а из первого evidence resolved entity.
 `warmupTextOffset` вычисляется как:
 
@@ -195,13 +214,17 @@ publication канала `shadow`. Несмотря на внутреннее и
 и reader-visible provisional characters. Их run-scoped IDs не сохраняются на устройстве; они не
 попадают в чат, reader markup, память, сцены или media generation.
 
-После публикации manifest возвращает только персонажей, для которых читатель достиг
-`firstAppearanceTextOffset`. Скрытый будущий персонаж не передаётся клиенту вообще. Progress может
-передаваться как доля книги либо section index/fraction; backend переводит её в координаты
-нормализованного текста.
+После публикации manifest возвращает все стабильные профили и их `firstAppearanceTextOffset`.
+Клиент сопоставляет этот offset с локальной долей книги и не показывает будущих персонажей.
+Для открытого персонажа клиент также выбирает последний `personalitySnapshot`, чей
+`cutoffTextOffset` уже прочитан. Поэтому сервер отдаёт шкалу целиком, а решение о текущем состоянии
+принимается по локальному прогрессу без утечки будущих черт.
+Progress по-прежнему передаётся как доля книги либо section index/fraction: backend использует
+его для прогрева и авторизации медиа, но не урезает список опубликованных профилей.
 
-Warmup и visibility независимы: пересечение `warmupTextOffset` ставит медиа в очередь заранее, но
-имя и профиль остаются скрыты до `firstAppearanceTextOffset`.
+Warmup и visibility независимы: пересечение `warmupTextOffset` ставит медиа в очередь заранее,
+а имя и профиль скрывает клиент до `firstAppearanceTextOffset`. Полный профиль может уже лежать
+в локальном manifest cache, но его медиа не скачиваются до пересечения порога.
 
 ## Медиа персонажа
 
@@ -227,7 +250,7 @@ Reader считает bundle полностью ready, когда готовы �
 
 - identity: `id`, `name`, `fullName`, aliases;
 - anti-spoiler: `firstAppearanceTextOffset` → `unlockProgress`;
-- карточка: role, traits, portrait/animation;
+- карточка: role, строгие traits, progressive personality snapshots, portrait/animation;
 - чат: full name, role, traits, speech style;
 - голос: voice, greeting/speech example и greeting audio;
 - reader: имена/aliases для подсветки и открытия карточки;

@@ -3,6 +3,11 @@ import {
   BOOK_ANALYSIS_EXTRACTOR_VERSION,
   normalizeBookAnalysisObservation
 } from './book-analysis-contracts.mjs'
+import { bookAnalysisLogContext } from './book-analysis-observability.mjs'
+import {
+  BOOK_ANALYSIS_PIPELINE_NARRA,
+  bookAnalysisPipelineForRun
+} from './book-analysis-pipeline.mjs'
 import { createOperationalLogger } from './operational-log.mjs'
 
 const UTF8_DECODER = new TextDecoder('utf-8', { fatal: true })
@@ -155,6 +160,7 @@ export function createBookAnalysisScanWorker({
 
   async function scan(job) {
     const input = await repository.getScanInput(job)
+    bookAnalysisPipelineForRun(input)
     if (input.extractorVersion !== extractorVersion) {
       throw scanError(
         'EXTRACTOR_VERSION_MISMATCH',
@@ -241,11 +247,17 @@ export function createBookAnalysisScanWorker({
     async runOnce() {
       const job = await repository.claimAnalysisJob(workerId, {
         stages: ['scan'],
+        pipelineIds: [BOOK_ANALYSIS_PIPELINE_NARRA],
         leaseSeconds
       })
       if (!job) return { status: 'idle' }
+      const startedAt = performance.now()
       try {
         const result = await withLeaseHeartbeat(job, () => scan(job))
+        log.info('scan.attempt_completed', 'Scan-задание завершено', {
+          job: job.id,
+          ...bookAnalysisLogContext(job, { startedAt, terminalStatus: 'completed' })
+        })
         return { status: 'completed', jobId: job.id, runId: job.runId, result }
       } catch (error) {
         const errorCode = safeErrorCode(error)
@@ -264,7 +276,8 @@ export function createBookAnalysisScanWorker({
             run: job.runId,
             attempts: job.attempts,
             error_code: errorCode,
-            next_stage: result.stage
+            next_stage: result.stage,
+            ...bookAnalysisLogContext(job, { startedAt, terminalStatus: 'completed' })
           })
           return { status: 'completed', jobId: job.id, runId: job.runId, result }
         }
@@ -273,7 +286,12 @@ export function createBookAnalysisScanWorker({
           job: job.id,
           run: job.runId,
           error_code: errorCode,
-          retry_status: failure.status
+          retry_status: failure.status,
+          ...bookAnalysisLogContext(job, {
+            startedAt,
+            terminalStatus: failure.status,
+            errorCode
+          })
         })
         return { status: 'failed', jobId: job.id, runId: job.runId, errorCode }
       }

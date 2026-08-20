@@ -9,6 +9,108 @@ import { runBookMarkupMigrations } from '../postgres-runtime.mjs'
 
 const connectionString = process.env.BOOK_MARKUP_TEST_DATABASE_URL
 
+test('PostgreSQL persists two immutable pipeline lineages for one content hash', {
+  skip: !connectionString
+}, async () => {
+  const { default: pg } = await import('pg')
+  const pool = new pg.Pool({ connectionString, ssl: false, max: 2 })
+  const bookEditionId = randomUUID()
+  const inputHash = createHash('sha256').update(`pipelines-${bookEditionId}`).digest('hex')
+  try {
+    await runBookMarkupMigrations(pool, { logger: { info() {} } })
+    await pool.query(
+      `INSERT INTO book_editions (
+         id, scope, catalog_key, content_sha256, title, author, format, status
+       ) VALUES ($1, 'catalog', $2, $3, 'Pipeline Test', '', 'epub', 'marking_up')`,
+      [bookEditionId, `pipelines-${bookEditionId}`, inputHash]
+    )
+    await pool.query(
+      `INSERT INTO book_files (
+         book_edition_id, object_key, mime_type, byte_size, content_hash, status
+       ) VALUES ($1, $2, 'application/epub+zip', 10, $3, 'ready')`,
+      [bookEditionId, `pipelines/${bookEditionId}/source`, inputHash]
+    )
+    const repository = createPostgresBookAnalysisRepository(pool)
+    const narra = await repository.ensureAnalysisRun({ bookEditionId, inputHash })
+    const external = await repository.ensureAnalysisRun({
+      bookEditionId,
+      inputHash,
+      pipelineId: 'external'
+    })
+    assert.equal(narra.run.pipelineId, 'narra')
+    assert.equal(external.run.pipelineId, 'external')
+    assert.notEqual(narra.run.id, external.run.id)
+    assert.notEqual(narra.run.idempotencyKey, external.run.idempotencyKey)
+    const rows = await pool.query(
+      `SELECT run.pipeline_id, run.pipeline_implementation_version,
+              job.pipeline_id AS job_pipeline_id,
+              job.pipeline_implementation_version AS job_pipeline_version
+       FROM book_analysis_runs AS run
+       JOIN book_analysis_jobs AS job ON job.run_id = run.id
+       WHERE run.book_edition_id = $1 AND job.stage = 'prepare'
+       ORDER BY run.pipeline_id`,
+      [bookEditionId]
+    )
+    assert.equal(rows.rows.length, 2)
+    assert.ok(rows.rows.every((row) =>
+      row.pipeline_id === row.job_pipeline_id &&
+      row.pipeline_implementation_version === row.job_pipeline_version
+    ))
+    await assert.rejects(
+      pool.query(
+        `UPDATE book_analysis_runs SET pipeline_id = 'external' WHERE id = $1`,
+        [narra.run.id]
+      ),
+      /run lineage is immutable/
+    )
+    await assert.rejects(
+      pool.query(
+        `UPDATE book_analysis_runs SET prompt_version = 'changed-after-retry' WHERE id = $1`,
+        [narra.run.id]
+      ),
+      /run lineage is immutable/
+    )
+
+    const prepareNarra = await repository.claimAnalysisJob('prepare-narra', {
+      stages: ['prepare'], pipelineIds: ['narra'], leaseSeconds: 60
+    })
+    const prepareExternal = await repository.claimAnalysisJob('prepare-external', {
+      stages: ['prepare'], pipelineIds: ['external'], leaseSeconds: 60
+    })
+    assert.equal(prepareNarra.runId, narra.run.id)
+    assert.equal(prepareExternal.runId, external.run.id)
+    for (const [prepared, pipelineId, ordinal] of [
+      [prepareNarra, 'narra', 1],
+      [prepareExternal, 'external', 2]
+    ]) {
+      await repository.completePrepare(prepared, {
+        normalizedTextObjectKey: `pipelines/${prepared.runId}/normalized.txt`,
+        normalizedTextHash: String(ordinal).repeat(64),
+        textLength: 10,
+        sections: [{ key: 'book', startOffset: 0, endOffset: 10 }],
+        chunks: [{
+          id: randomUUID(), ordinal: 0, chapterKey: 'book',
+          coreStartOffset: 0, coreEndOffset: 10,
+          contextStartOffset: 0, contextEndOffset: 10,
+          contentHash: String(ordinal + 2).repeat(64), metadata: {}
+        }]
+      })
+      const scan = await repository.claimAnalysisJob(`scan-${pipelineId}`, {
+        stages: ['scan'], pipelineIds: [pipelineId], leaseSeconds: 60
+      })
+      assert.equal(scan.runId, prepared.runId)
+      assert.equal(scan.pipelineId, pipelineId)
+      assert.equal(
+        scan.shardKey,
+        pipelineId === 'narra' ? 'chunk:0' : 'pipeline:external'
+      )
+    }
+  } finally {
+    await pool.query('DELETE FROM book_editions WHERE id = $1', [bookEditionId]).catch(() => {})
+    await pool.end()
+  }
+})
+
 test('PostgreSQL creates one isolated rerun and deduplicates concurrent restart requests', {
   skip: !connectionString
 }, async () => {
@@ -203,7 +305,7 @@ test('PostgreSQL analysis workers claim different scan shards and reclaim an exp
   const pool = new pg.Pool({ connectionString, ssl: false, max: 4 })
   const bookEditionId = randomUUID()
   const hash = 'e'.repeat(64)
-  const normalizedText = `${' '.repeat(10)}test${' '.repeat(46)}test${' '.repeat(36)}`
+  const normalizedText = `${' '.repeat(10)}Анна${' '.repeat(36)}Борис${' '.repeat(45)}`
   const normalizedTextHash = createHash('sha256').update(normalizedText).digest('hex')
   try {
     await runBookMarkupMigrations(pool, { logger: { info() {} } })
@@ -282,7 +384,8 @@ test('PostgreSQL analysis workers claim different scan shards and reclaim an exp
 
     function scanObservation(scanJob) {
       const firstChunk = scanJob.chunkId === chunkIds[0]
-      const startOffset = firstChunk ? 10 : 60
+      const startOffset = firstChunk ? 10 : 50
+      const quote = firstChunk ? 'Анна' : 'Борис'
       return {
         observationKey: `obs:${firstChunk ? 'first' : 'second'}`,
         type: 'character_action',
@@ -291,12 +394,12 @@ test('PostgreSQL analysis workers claim different scan shards and reclaim an exp
         relatedEntityCandidates: [],
         fact: 'Подтверждённое действие',
         evidence: {
-          quote: 'test',
+          quote,
           startOffset,
-          endOffset: startOffset + 4,
+          endOffset: startOffset + quote.length,
           chapterKey: firstChunk ? 'chapter-1' : 'chapter-2'
         },
-        confidence: 0.9
+        confidence: 0.99
       }
     }
 

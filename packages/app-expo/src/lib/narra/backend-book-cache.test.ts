@@ -138,6 +138,58 @@ describe("backend book media cache", () => {
     });
   });
 
+  it("selects the latest personality snapshot reached by local reading progress", () => {
+    const value = manifest([]);
+    const character = value.characters[0];
+    if (!character) throw new Error("character fixture is missing");
+    character.profile = {
+      ...character.profile,
+      traits: ["финальная строгая черта"],
+      personalityTimelineVersion: "progressive-personality-v1",
+      personalitySnapshots: [
+        {
+          cutoffTextOffset: 100,
+          status: "preliminary",
+          traits: [{ value: "наблюдательная", evidenceLevel: "single_scene" }],
+        },
+        {
+          cutoffTextOffset: 600,
+          status: "supported",
+          traits: [{ value: "решительная", evidenceLevel: "repeated" }],
+        },
+      ],
+    };
+
+    expect(projectBackendManifestCharacters(value, [], 0.05)[0]).toMatchObject({
+      traits: [],
+      personalityStatus: "insufficient_evidence",
+    });
+    expect(projectBackendManifestCharacters(value, [], 0.2)[0]).toMatchObject({
+      traits: ["наблюдательная"],
+      personalityStatus: "preliminary",
+    });
+    expect(projectBackendManifestCharacters(value, [], 0.8)[0]).toMatchObject({
+      traits: ["решительная"],
+      personalityStatus: "supported",
+    });
+  });
+
+  it("keeps strict traits from a legacy publication without a timeline version", () => {
+    const value = manifest([]);
+    const character = value.characters[0];
+    if (!character) throw new Error("character fixture is missing");
+    character.profile = {
+      ...character.profile,
+      traits: ["строгая черта старой публикации"],
+      personalitySnapshots: [],
+    };
+
+    expect(projectBackendManifestCharacters(value, [], 0.5)[0]).toMatchObject({
+      traits: ["строгая черта старой публикации"],
+    });
+    expect(projectBackendManifestCharacters(value, [], 0.5)[0]?.personalityStatus).toBeUndefined();
+  });
+
   it("publishes all three cached media paths together", async () => {
     const [character] = await materializeBackendManifest(
       "book-1",
@@ -151,6 +203,40 @@ describe("backend book media cache", () => {
       idleAnimationUri: expect.stringContaining("idle_animation"),
     });
     expect(mocks.downloads).toHaveBeenCalledTimes(3);
+  });
+
+  it("downloads media only for characters reached by local reader progress", async () => {
+    const value = manifest(["primary_portrait"]);
+    const anna = value.characters[0];
+    if (!anna) throw new Error("character fixture is missing");
+    value.characters.push({
+      ...anna,
+      characterKey: "future",
+      name: "Будущий герой",
+      fullName: "Будущий герой",
+      firstAppearanceTextOffset: 900,
+      bundle: {
+        version: "character-bundle-v1",
+        assets: [
+          {
+            assetId: "future-audio",
+            type: "greeting_audio",
+            contentHash: "a".repeat(64),
+            mimeType: "audio/mpeg",
+            byteSize: 64,
+            downloadPath: "/v2/media/future-audio",
+          },
+        ],
+      },
+    });
+
+    const characters = await materializeBackendManifest("book-1", value, 0.1);
+
+    expect(characters).toHaveLength(2);
+    expect(characters[0]?.portraitUri).toContain("primary_portrait");
+    expect(characters[1]?.greetingAudioUri).toBeUndefined();
+    expect(characters[1]?.mediaState).toBe("preparing");
+    expect(mocks.requestDownload).toHaveBeenCalledOnce();
   });
 
   it("keeps ready cached portraits visible while the same bundle is revalidated", () => {

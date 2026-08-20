@@ -97,7 +97,7 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
       setProvisionalCharacters(
         processing && manifest ? projectBackendManifestCharacters(manifest) : [],
       );
-      if (shouldRefreshBackendManifest(manifest)) {
+      if (shouldRefreshBackendManifest(manifest, currentBook.progress)) {
         backendRefreshTimerRef.current = setTimeout(refresh, 5_000);
       }
     };

@@ -63,6 +63,17 @@ test('operator CLI parses only explicit UUID commands', () => {
   ]), {
     command: 'restart', bookEditionId: BOOK_ID, priority: 100
   })
+  assert.deepEqual(parseBookAnalysisCommand([
+    'start', '--book-edition-id', BOOK_ID, '--pipeline', 'external'
+  ]), {
+    command: 'start', bookEditionId: BOOK_ID, pipelineId: 'external', priority: 50
+  })
+  assert.throws(
+    () => parseBookAnalysisCommand([
+      'start', '--book-edition-id', BOOK_ID, '--pipeline', 'unknown'
+    ]),
+    (error) => error.code === 'INVALID_ARGUMENT'
+  )
   assert.throws(
     () => parseBookAnalysisCommand(['result', '--run-id', 'not-a-uuid']),
     (error) => error.code === 'INVALID_ARGUMENT'
@@ -116,6 +127,24 @@ test('start uses the verified stored source hash and remains idempotent', async 
   assert.equal(result.created, false)
   assert.equal(result.run.id, RUN_ID)
   assert.equal(result.book.contentSha256, HASH)
+})
+
+test('explicit pipeline selector is passed only when requested', async () => {
+  let ensureInput
+  await executeBookAnalysisCommand({
+    argv: ['start', '--book-edition-id', BOOK_ID, '--pipeline', 'narra'],
+    repository: operatorRepository({
+      async ensureAnalysisRun(input) {
+        ensureInput = input
+        return {
+          created: true,
+          run: { id: RUN_ID, pipelineId: 'narra', stage: 'prepare', status: 'queued' },
+          prepareJob: { id: '33333333-3333-4333-8333-333333333333' }
+        }
+      }
+    })
+  })
+  assert.equal(ensureInput.pipelineId, 'narra')
 })
 
 test('status returns per-stage progress without the large publication payload', async () => {
