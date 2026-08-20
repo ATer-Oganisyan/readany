@@ -626,7 +626,7 @@ describe("mcp", () => {
     expect(publisherText).not.toContain("MCP export should stay file-based.");
 
     const exported = await readFile(outputPath, "utf8");
-    expect(exported).toContain("# ReadAny Knowledge Export");
+    expect(exported).toContain("# Narra Knowledge Export");
     expect(exported).toContain("## MCP for Readers");
     expect(exported).toContain("MCP export should stay file-based.");
     expect(exported).toContain("External agents should receive export metadata");

@@ -2655,7 +2655,7 @@ describe("commands", () => {
     expect(JSON.stringify(result.data)).not.toContain("Agents need safe tool boundaries.");
 
     const exported = await readFile(outputPath, "utf8");
-    expect(exported).toContain("# ReadAny Knowledge Export");
+    expect(exported).toContain("# Narra Knowledge Export");
     expect(exported).toContain("## Agent Systems");
     expect(exported).toContain("Draft-first editing keeps users safe.");
     expect(exported).toContain("Agents need safe tool boundaries.");
