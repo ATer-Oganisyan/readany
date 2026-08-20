@@ -1,0 +1,12 @@
+diff --git a/apple/scripts/build-xcframework.sh b/apple/scripts/build-xcframework.sh
+index 56bcb4ced0c25da2aaa170e3d2657ae2e4798ca7..8af5156d5e9f6cdc5c8b4ecef95cab46047b82a8 100755
+--- a/apple/scripts/build-xcframework.sh
++++ b/apple/scripts/build-xcframework.sh
+@@ -229,6 +229,7 @@ build_slice() {
+     DEBUG_INFORMATION_FORMAT=dwarf-with-dsym \
+     COMPILER_INDEX_STORE_ENABLE=NO \
+     SWIFT_COMPILATION_MODE=wholemodule \
++    2>&1 | sed '/^error: the following command failed with exit code 0 but produced no further output$/d'
+   )
+ 
+   local product_path="${BUILD_PRODUCTS_PATH}/${build_dir_name}"
