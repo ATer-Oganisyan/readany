@@ -170,6 +170,7 @@ describe("buildFicbookEpub", () => {
 
     expect(meta.title).toBe("Удивительные приключения «Фоксглав»");
     expect(meta.author).toBe("Yuliya Yako");
+    expect(meta.identityProvenance).toEqual({ title: "epub-opf", author: "epub-opf" });
     expect(meta.description).toContain("Аннотация фанфика.");
     expect(meta.textSample).toContain("Первый абзац.");
     expect(meta.language).toBe("ru");
@@ -203,6 +204,15 @@ describe("extractFb2Metadata", () => {
     const meta = extractFb2Metadata(new TextEncoder().encode(xml));
 
     expect(meta.subjects).toEqual(["sf_fantasy", "adventure"]);
+    expect(meta.identityProvenance).toEqual({ title: "fb2-title-info", author: "missing" });
+  });
+
+  it("marks the filename as fallback when FB2 title-info has no title", () => {
+    const xml = "<FictionBook><description><title-info /></description><body /></FictionBook>";
+    const meta = extractFb2Metadata(new TextEncoder().encode(xml), "fallback.fb2");
+
+    expect(meta.title).toBe("fallback");
+    expect(meta.identityProvenance).toEqual({ title: "filename", author: "missing" });
   });
 });
 

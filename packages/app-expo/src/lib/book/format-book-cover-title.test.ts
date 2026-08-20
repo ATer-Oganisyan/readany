@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatBookCoverTitle } from "./format-book-cover-title";
+import { formatBookCoverIdentity, formatBookCoverTitle } from "./format-book-cover-title";
 
 describe("formatBookCoverTitle", () => {
   it.each(["а", "в", "и", "к", "о", "с", "у", "до", "из", "на", "of", "to"])(
@@ -40,5 +40,13 @@ describe("formatBookCoverTitle", () => {
 
   it("applies non-breaking spaces after shortening the title", () => {
     expect(formatBookCoverTitle("Любовь и море. Вторая часть")).toBe("Любовь и\u00A0море");
+  });
+
+  it("formats generated cover text as title followed by author", () => {
+    expect(formatBookCoverIdentity("  Война   и мир ", "  Лев\nТолстой ")).toEqual({
+      title: "Война и\u00A0мир",
+      author: "Лев Толстой",
+      text: "Война и\u00A0мир\nЛев Толстой",
+    });
   });
 });
