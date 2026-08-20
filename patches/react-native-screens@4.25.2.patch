@@ -1,15 +1,17 @@
 diff --git a/ios/RNSScreenStack.mm b/ios/RNSScreenStack.mm
-index 7a2339b3..20f40c45 100644
+index bfd0a519a09eb346dfd687fe2feb0b5489d34c32..57b25baa105ca586e870d5e060d4977fdcc7c7be 100644
 --- a/ios/RNSScreenStack.mm
 +++ b/ios/RNSScreenStack.mm
-@@ -1099,5 +1099,5 @@ - (BOOL)isScrollViewPanGestureRecognizer:(UIGestureRecognizer *)gestureRecognizer
- // This is the same logic as in RCTScrollView:
+@@ -1099,7 +1099,7 @@ - (BOOL)isScrollViewPanGestureRecognizer:(UIGestureRecognizer *)gestureRecognize
+ // https://github.com/facebook/react-native/blob/69b131c2b1627f64f34a534dac4cf48a542e6ea6/packages/react-native/React/Views/ScrollView/RCTScrollView.m#L557
  - (BOOL)scrollViewHasHorizontalPart:(UIScrollView *)scrollView
  {
 -  return scrollView.contentSize.width > scrollView.frame.size.width;
 +  return scrollView.scrollEnabled && scrollView.contentSize.width > scrollView.frame.size.width;
  }
-@@ -1203,8 +1203,14 @@ - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer
+ 
+ // Custom method for compatibility with iOS < 13.4
+@@ -1203,6 +1203,12 @@ - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer
    if (@available(iOS 26, *)) {
      if (gestureRecognizer == _controller.interactiveContentPopGestureRecognizer &&
          [self isScrollViewPanGestureRecognizer:otherGestureRecognizer]) {
@@ -22,9 +24,8 @@ index 7a2339b3..20f40c45 100644
        // ScrollView should take precedence when scrolling horizontally (it should be required to fail).
        // However, if it does not allow for horizontal scrolling, there should be no such restriction,
        // and swiping horizontally should dismiss the screen.
-       return [self scrollViewHasHorizontalPart:static_cast<UIScrollView *>(otherGestureRecognizer.view)];
-     }
-@@ -1227,6 +1233,9 @@ - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer
+@@ -1224,8 +1230,11 @@ - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer
+     // as `RNSScreenEdgeGestureRecognizer` but we don't want ScrollView being recognized on condition that the former
      // fails, but rather the opposite & that the ScrollView recognizer has a higher priority See also
      // gestureRecognizer:shouldRequireFailureOfGestureRecognizer
 -    isEdgeSwipeGestureRecognizer =
@@ -36,9 +37,9 @@ index 7a2339b3..20f40c45 100644
 +    }
    }
  #endif // check for iOS >= 26
-
+ 
 diff --git a/ios/tabs/host/RNSTabBarController.mm b/ios/tabs/host/RNSTabBarController.mm
-index 289c9d958eb913a451161da11bda7fd44aeca377..83ab4dc9aefe15b3d93e4bcab3c0eed036fdce37 100644
+index 289c9d958eb913a451161da11bda7fd44aeca377..0b39102d83a6aa4d61a589f0bc2fa425be9b6c62 100644
 --- a/ios/tabs/host/RNSTabBarController.mm
 +++ b/ios/tabs/host/RNSTabBarController.mm
 @@ -300,6 +300,15 @@ - (BOOL)updateSelectedViewControllerTo:(nullable UIViewController *)nextSelected
@@ -140,7 +141,7 @@ index 289c9d958eb913a451161da11bda7fd44aeca377..83ab4dc9aefe15b3d93e4bcab3c0eed0
  }
  
  - (void)updateSelectedViewControllerIfNeeded
-@@ -500,7 +577,7 @@ - (void)updateSelectedViewControllerIfNeeded
+@@ -500,7 +576,7 @@ - (void)updateSelectedViewControllerIfNeeded
  
  - (void)updateSelectedViewController
  {
@@ -149,7 +150,7 @@ index 289c9d958eb913a451161da11bda7fd44aeca377..83ab4dc9aefe15b3d93e4bcab3c0eed0
      return;
    }
  
-@@ -601,7 +678,7 @@ - (void)updateTabBarAppearance
+@@ -601,7 +677,7 @@ - (void)updateTabBarAppearance
  
  - (void)updateTabBarA11yIfNeeded
  {
@@ -158,7 +159,7 @@ index 289c9d958eb913a451161da11bda7fd44aeca377..83ab4dc9aefe15b3d93e4bcab3c0eed0
      auto screenView = static_cast<RNSTabsScreenViewController *>(tabViewController).tabScreenComponentView;
      if (!screenView.tabBarItemNeedsA11yUpdate) {
        continue;
-@@ -620,7 +697,7 @@ - (nullable RNSTabsScreenViewController *)findChildViewControllerForKey:(nullabl
+@@ -620,7 +696,7 @@ - (nullable RNSTabsScreenViewController *)findChildViewControllerForKey:(nullabl
    if (screenKey == nil) {
      return nil;
    }
