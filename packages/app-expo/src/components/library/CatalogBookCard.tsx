@@ -1,10 +1,9 @@
-import { Text } from "@/components/ui/Typography";
 import { useSwipePressGuard } from "@/components/ui/swipe-press-guard";
 import { generatedCoverTextTone } from "@/lib/book/cover-text-contrast";
 import { useColors } from "@/styles/theme";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ActivityIndicator, Image, StyleSheet, View } from "react-native";
+import { Image, StyleSheet, View } from "react-native";
 import Animated from "react-native-reanimated";
 import { CatalogBookSkeleton } from "./CatalogBookSkeleton";
 import { makeStyles } from "./book-card-styles";
@@ -19,7 +18,6 @@ interface CatalogBookCardProps {
   author: string;
   coverUri?: string;
   cardWidth: number;
-  isImporting: boolean;
   isInLibrary: boolean;
   onPress: () => void;
 }
@@ -29,7 +27,6 @@ export function CatalogBookCard({
   author,
   coverUri,
   cardWidth,
-  isImporting,
   isInLibrary,
   onPress,
 }: CatalogBookCardProps) {
@@ -81,11 +78,9 @@ export function CatalogBookCard({
           height={cardHeight}
           accessibilityLabel={title}
           accessibilityHint={
-            isImporting
-              ? t("library.catalogImportInProgressTitle", "Книга уже загружается")
-              : isInLibrary
-                ? t("notes.openBook", "Открыть книгу")
-                : t("library.catalogAdd", "Добавить в библиотеку")
+            isInLibrary
+              ? t("notes.openBook", "Открыть книгу")
+              : t("library.catalogAdd", "Добавить в библиотеку")
           }
           onPress={() => {
             if (swipePressGuard?.canPress() === false) return;
@@ -108,15 +103,8 @@ export function CatalogBookCard({
                 author={author}
                 width={cardWidth}
                 textTone={coverUri ? generatedCoverTextTone({ title, author }) : "dark"}
+                coverUri={coverUri}
               />
-              {isImporting ? (
-                <View pointerEvents="none" style={styles.downloadingOverlay}>
-                  <ActivityIndicator size="small" color="#fff" />
-                  <Text style={styles.downloadingOverlayText}>
-                    {t("library.catalogImporting", "Загружаем…")}
-                  </Text>
-                </View>
-              ) : null}
             </View>
           }
         />

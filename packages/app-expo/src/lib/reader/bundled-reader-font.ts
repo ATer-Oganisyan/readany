@@ -1,17 +1,10 @@
-import {
-  interfaceFontAssets,
-  interfaceFontFamily,
-  serifTextFontAssets,
-  serifTextFontFamily,
-} from "@deslop/primitives/native";
+import { serifTextFontAssets, serifTextFontFamily } from "@deslop/primitives/native";
 import { Asset } from "expo-asset";
 import { Directory, File, Paths } from "expo-file-system";
 
 const READER_FONT_DIRECTORY = "readany-fonts";
 
 export const DEFAULT_READER_FONT_FAMILY = serifTextFontFamily.regular;
-export const SB_SANS_READER_FONT_ID = "__bundled_sb_sans__";
-export const SB_SANS_READER_FONT_FAMILY = interfaceFontFamily.regular;
 
 const READER_FONT_FILES = [
   {
@@ -42,34 +35,7 @@ const READER_FONT_FILES = [
     weight: 700,
     style: "italic",
   },
-  {
-    asset: interfaceFontAssets[interfaceFontFamily.regular],
-    fileName: "SBSansUI-Regular.otf",
-    family: SB_SANS_READER_FONT_FAMILY,
-    weight: 400,
-    style: "normal",
-  },
-  {
-    asset: interfaceFontAssets[interfaceFontFamily.semibold],
-    fileName: "SBSansUI-Semibold.otf",
-    family: SB_SANS_READER_FONT_FAMILY,
-    weight: 600,
-    style: "normal",
-  },
-  {
-    asset: interfaceFontAssets[interfaceFontFamily.bold],
-    fileName: "SBSansUI-Bold.otf",
-    family: SB_SANS_READER_FONT_FAMILY,
-    weight: 700,
-    style: "normal",
-  },
 ] as const;
-
-export function getBundledReaderFontFamily(selectedFontId: string | null): string | null {
-  if (!selectedFontId) return DEFAULT_READER_FONT_FAMILY;
-  if (selectedFontId === SB_SANS_READER_FONT_ID) return SB_SANS_READER_FONT_FAMILY;
-  return null;
-}
 
 let bundledFontsReady: Promise<void> | null = null;
 
@@ -114,7 +80,7 @@ export async function getBundledReaderFontFaceCSS(localServerUrl: string): Promi
   src: url('${baseUrl}/${READER_FONT_DIRECTORY}/${encodeURIComponent(fileName)}') format('opentype');
   font-weight: ${weight};
   font-style: ${style};
-  font-display: block;
+  font-display: swap;
 }`,
   ).join("\n");
 }

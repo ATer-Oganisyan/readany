@@ -4,7 +4,7 @@ import { File } from "expo-file-system";
 import { AppState, type AppStateStatus, Image, Platform } from "react-native";
 import TrackPlayer, { Event, State } from "react-native-track-player";
 
-import { synthesizeNarraSpeech } from "../narra/media";
+import { getNarraTTSProvider, synthesizeNarraSpeech } from "../narra/media";
 import { getNarratorVoice } from "../narra/scene-audio";
 import { resolveReaderVoiceForChunk } from "../narra/voice-markup";
 import { chunkIndexFromTrackId, trackIdForChunkIndex } from "./track-player-chunk-id";
@@ -310,6 +310,7 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
     if (this._paused) return;
 
     await TrackPlayer.play();
+    await this._applyPlaybackRate();
     this._playStarted = true;
     this._startProgressPolling(gen);
     // Resolve current playback position by track ID, not queue index — when
@@ -659,6 +660,21 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
     this.onEnd?.();
   }
 
+  /**
+   * Скорость чтения. Grok TTS не принимает ни rate, ни pitch (проверено:
+   * `speed` не меняет длительность), поэтому пользовательская скорость
+   * применяется на плеере — мгновенно и без повторного платного синтеза.
+   * На пути через гейтвей скорость уже зашита в SSML, плеер остаётся на 1.0.
+   */
+  private async _applyPlaybackRate(): Promise<void> {
+    const rate = getNarraTTSProvider() === "grok" ? (this._config?.rate ?? 1) : 1;
+    try {
+      await TrackPlayer.setRate(rate);
+    } catch (error) {
+      console.warn("[TTS] TrackPlayer setRate failed:", error);
+    }
+  }
+
   private async _fetchChunkFile(index: number, gen: number): Promise<string> {
     if (this._stopped || gen !== this._speakGen || !this._config) throw new Error("aborted");
 
@@ -693,6 +709,7 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
     if (this._stopped || !this._paused) return;
     this._paused = false;
     TrackPlayer.play();
+    void this._applyPlaybackRate();
     this._playStarted = true;
     this._startProgressPolling(this._speakGen);
     this.onStateChange?.("playing");

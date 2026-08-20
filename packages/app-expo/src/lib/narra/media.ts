@@ -6,6 +6,7 @@ import { findBundledCatalogBookDefinitionByTitle } from "../catalog/bundled-book
 import { budgetPrompt } from "./art-style";
 import { normalizeNarraError } from "./errors";
 import { type NarraGenreAnalysis, narraGenreLabel } from "./genre-analysis";
+import { GROK_TTS_MODEL, GROK_TTS_SAMPLE_RATE, fetchGrokSpeechAudio } from "./grok-speech";
 import { buildCharacterPortraitPrompt } from "./portrait-prompt";
 import { mentionedCharacters, passportDescription } from "./scene-prompt";
 import { applyActiveStressMarkup } from "./stress-markup";
@@ -20,6 +21,17 @@ const portraitRequests = new Map<string, Promise<string>>();
 type MediaJobType = "image" | "cover" | "tts" | "avatar" | "video";
 type MediaJobOrigin = "user" | "background";
 
+/**
+ * Провайдер озвучки. `grok` — Grok TTS напрямую в OpenRouter (дефолт),
+ * `gateway` — прежний путь через `/v2/speech/synthesize` (SaluteSpeech).
+ * Откат — одной переменной окружения, без пересборки логики.
+ */
+export type NarraTTSProvider = "grok" | "gateway";
+
+export function getNarraTTSProvider(): NarraTTSProvider {
+  return process.env.EXPO_PUBLIC_NARRA_TTS_PROVIDER?.trim() === "gateway" ? "gateway" : "grok";
+}
+
 const MEDIA_JOB_ROUTES: Record<MediaJobType, { provider: string; model: string }> = {
   image: { provider: "kandinsky", model: "k6-image-t2i" },
   cover: { provider: "openrouter", model: "gpt-image-2" },
@@ -27,6 +39,13 @@ const MEDIA_JOB_ROUTES: Record<MediaJobType, { provider: string; model: string }
   avatar: { provider: "openrouter", model: "gpt-image-2" },
   video: { provider: "openrouter", model: "veo-3.1-lite" },
 };
+
+function mediaJobRoute(type: MediaJobType): { provider: string; model: string } {
+  if (type === "tts" && getNarraTTSProvider() === "grok") {
+    return { provider: "openrouter", model: GROK_TTS_MODEL };
+  }
+  return MEDIA_JOB_ROUTES[type];
+}
 
 function mediaLatencyBucket(durationMs: number): string {
   if (durationMs < 1_000) return "<1s";
@@ -56,7 +75,7 @@ export async function trackNarraMediaJob<T>(
   meta?: { provider: string; model: string },
 ): Promise<T> {
   const startedAt = Date.now();
-  const route = MEDIA_JOB_ROUTES[jobType];
+  const route = mediaJobRoute(jobType);
   const provider = meta?.provider ?? route.provider;
   const model = meta?.model ?? route.model;
   recordTelemetry("media_job_enqueued", {
@@ -525,15 +544,26 @@ export function buildNarraSpeechSsml(
   return `<speak><prosody rate="${ratePercent}%" pitch="${pitch}">${escapeSsmlText(text)}</prosody></speak>`;
 }
 
-async function synthesizeNarraSpeechRequest(
-  text: string,
+async function writeSpeechFile(bytes: Uint8Array, extension: "wav" | "mp3"): Promise<string> {
+  await ensureMediaDir();
+  const path = `${MEDIA_DIR}/speech-${Date.now()}-${speechFileSequence++}.${extension}`;
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  }
+  await FileSystem.writeAsStringAsync(path, btoa(binary), {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+  return path;
+}
+
+/** Прежний путь: гейтвей Narra + SaluteSpeech, SSML с prosody rate/pitch. */
+async function synthesizeViaGateway(
+  trimmed: string,
   voice: string,
-  options?: NarraSpeechOptions,
+  options: NarraSpeechOptions | undefined,
+  startedAt: number,
 ): Promise<string> {
-  const startedAt = Date.now();
-  // Ударения (P9) размечаются здесь — в единой точке всей озвучки (книга,
-  // сцены, чат) — до сборки SSML, чтобы работать и в {text}, и в {ssml}.
-  const trimmed = applyActiveStressMarkup(text.slice(0, 12_000));
   const ssml = buildNarraSpeechSsml(trimmed, options?.prosody, options?.rate);
   const response = await narraGatewayRequest("/v2/speech/synthesize", {
     method: "POST",
@@ -552,17 +582,41 @@ async function synthesizeNarraSpeechRequest(
       origin: "user",
     });
   }
-  await ensureMediaDir();
-  const path = `${MEDIA_DIR}/speech-${Date.now()}-${speechFileSequence++}.wav`;
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  let binary = "";
-  for (let index = 0; index < bytes.length; index += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
-  }
-  await FileSystem.writeAsStringAsync(path, btoa(binary), {
-    encoding: FileSystem.EncodingType.Base64,
+  return writeSpeechFile(new Uint8Array(await response.arrayBuffer()), "wav");
+}
+
+/**
+ * Grok TTS через OpenRouter. Просодия персонажа уходит в подбор голоса
+ * (grok-voices), пользовательская скорость — на плеер: API Grok не принимает
+ * ни rate, ни pitch, поэтому SSML здесь не собирается.
+ */
+async function synthesizeViaGrok(
+  trimmed: string,
+  voice: string,
+  options: NarraSpeechOptions | undefined,
+  startedAt: number,
+): Promise<string> {
+  const bytes = await fetchGrokSpeechAudio(trimmed, voice, { prosody: options?.prosody });
+  recordTelemetry("tts_first_audio_ready", {
+    sample_rate: GROK_TTS_SAMPLE_RATE,
+    first_audio_latency_bucket: firstAudioLatencyBucket(Date.now() - startedAt),
+    origin: "user",
   });
-  return path;
+  return writeSpeechFile(bytes, "mp3");
+}
+
+async function synthesizeNarraSpeechRequest(
+  text: string,
+  voice: string,
+  options?: NarraSpeechOptions,
+): Promise<string> {
+  const startedAt = Date.now();
+  // Ударения (P9) размечаются здесь — в единой точке всей озвучки (книга,
+  // сцены, чат) — до сборки SSML, чтобы работать и в {text}, и в {ssml}.
+  const trimmed = applyActiveStressMarkup(text.slice(0, 12_000));
+  return getNarraTTSProvider() === "grok"
+    ? synthesizeViaGrok(trimmed, voice, options, startedAt)
+    : synthesizeViaGateway(trimmed, voice, options, startedAt);
 }
 
 export function synthesizeNarraSpeech(

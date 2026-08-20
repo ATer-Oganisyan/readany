@@ -138,12 +138,14 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
                       leftInsetAdjustment={2}
                       showText={showCoverTypography}
                       textTone={coverTextTone}
+                      coverUri={(hasUsableCover ? coverUri : bundledCoverUri) ?? undefined}
                       bottomAccessory={
                         progressPercent > 0 ? (
                           <BlurView tint="dark" intensity={50} style={s.progressChip}>
                             <Text style={s.cardProgress} numberOfLines={1}>
                               {`${progressPercent}%`}
                             </Text>
+                            <View pointerEvents="none" style={s.progressChipBorder} />
                           </BlurView>
                         ) : null
                       }
@@ -183,6 +185,12 @@ const makeStyles = (colors: ThemeColors) =>
       borderRadius: radius.full,
       overflow: "hidden",
       backgroundColor: "rgba(0,0,0,0.5)",
+    },
+    progressChipBorder: {
+      ...StyleSheet.absoluteFill,
+      borderWidth: 1,
+      borderColor: "rgba(255,255,255,0.5)",
+      borderRadius: radius.full,
     },
     cardProgress: {
       fontSize: 13,

@@ -5,12 +5,10 @@ import { XIcon } from "@/components/ui/Icon";
 import { Text } from "@/components/ui/Typography";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { SCENE_SUGGESTION_INTERVALS } from "@/lib/narra/scene-suggestion";
-import { SB_SANS_READER_FONT_ID } from "@/lib/reader/bundled-reader-font";
 import { READER_PAGE_THEMES, resolveReaderThemeColors } from "@/lib/reader/reader-themes";
 import { useNarraStore } from "@/stores";
 import { darkColors } from "@/styles/ThemeContext";
 import { useColors } from "@/styles/theme";
-import { useFontStore } from "@readany/core/stores";
 import type { ReadSettings } from "@readany/core/types";
 import { useTranslation } from "react-i18next";
 import { Modal, Platform, Pressable, ScrollView, TouchableOpacity, View } from "react-native";
@@ -30,10 +28,6 @@ export function ReaderSettingsPanel({ visible, readSettings, onClose, onUpdateSe
   const insets = useSafeAreaInsets();
   const layout = useResponsiveLayout();
   const { t } = useTranslation();
-
-  const customFonts = useFontStore((s) => s.fonts);
-  const selectedFontId = useFontStore((s) => s.selectedFontId);
-  const setSelectedFont = useFontStore((s) => s.setSelectedFont);
 
   const {
     fontSize: settingFontSize,
@@ -195,51 +189,6 @@ export function ReaderSettingsPanel({ visible, readSettings, onClose, onUpdateSe
                 <Text style={s.stepBtnText}>+</Text>
               </TouchableOpacity>
             </View>
-          </View>
-          {/* Font */}
-          <View style={s.settingRow}>
-            <Text style={s.settingLabel}>{t("fonts.title", "字体")}</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.themeScroll}>
-              <View style={s.themeRow}>
-                <TouchableOpacity
-                  style={[s.themeBtn, !selectedFontId && s.themeBtnActive]}
-                  onPress={() => setSelectedFont(null)}
-                >
-                  <Text style={[s.themeBtnText, !selectedFontId && s.themeBtnTextActive]}>
-                    {t("fonts.serif", "С засечками")}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    s.themeBtn,
-                    selectedFontId === SB_SANS_READER_FONT_ID && s.themeBtnActive,
-                  ]}
-                  onPress={() => setSelectedFont(SB_SANS_READER_FONT_ID)}
-                >
-                  <Text
-                    style={[
-                      s.themeBtnText,
-                      selectedFontId === SB_SANS_READER_FONT_ID && s.themeBtnTextActive,
-                    ]}
-                  >
-                    {t("fonts.sansSerif", "Без засечек")}
-                  </Text>
-                </TouchableOpacity>
-                {customFonts.map((font) => (
-                  <TouchableOpacity
-                    key={font.id}
-                    style={[s.themeBtn, selectedFontId === font.id && s.themeBtnActive]}
-                    onPress={() => setSelectedFont(font.id)}
-                  >
-                    <Text
-                      style={[s.themeBtnText, selectedFontId === font.id && s.themeBtnTextActive]}
-                    >
-                      {font.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </ScrollView>
           </View>
           {/* View Mode */}
           <View style={s.settingRow}>

@@ -306,6 +306,7 @@
     let currentCustomFontFaceCSS = '';
     let currentCustomFontFamily = '';
     let tapNavigationInFlight = false;
+    let tapNavigationLockDeadline = 0;
     let tapNavigationResetTimer = null;
     let readerElement = null;
     let bookTextMetricsJobId = 0;
@@ -347,6 +348,7 @@
 
     function clearTapNavigationLock() {
       tapNavigationInFlight = false;
+      tapNavigationLockDeadline = 0;
       if (tapNavigationResetTimer) {
         clearTimeout(tapNavigationResetTimer);
         tapNavigationResetTimer = null;
@@ -355,10 +357,18 @@
 
     function armTapNavigationLock() {
       tapNavigationInFlight = true;
+      tapNavigationLockDeadline = Date.now() + 220;
       if (tapNavigationResetTimer) clearTimeout(tapNavigationResetTimer);
       tapNavigationResetTimer = setTimeout(() => {
         clearTapNavigationLock();
       }, 220);
+    }
+
+    function isTapNavigationLocked() {
+      if (!tapNavigationInFlight) return false;
+      if (Date.now() < tapNavigationLockDeadline) return true;
+      clearTapNavigationLock();
+      return false;
     }
 
     function refreshUserAnnotations(delay) {
@@ -1844,16 +1854,16 @@
         el.style.height = '100%';
         resetPullBookmarkState(false);
 
-        el.addEventListener('load', async (e) => {
+        el.addEventListener('load', (e) => {
           const { doc, index, primary } = e.detail;
           normalizeBrOnlyParagraphs(doc);
           if (primary !== false) {
             currentSectionUsesVerticalWriting = !el.isFixedLayout && isVerticalDoc(doc);
             applyRendererFlowMode(el.renderer);
           }
-          // Inject the font faces first, but postpone the renderer layout until
-          // the selected font is ready. The loading layer stays visible during
-          // this wait, so the first visible frame already has final typography.
+          // Inject the book font before the first layout. Font loading must not
+          // own reader readiness: a slow or unavailable face may change type,
+          // but it must never leave an already visible page non-interactive.
           if (msg.settings) {
             updateSettingsState({
               customFontFaceCSS: msg.settings.customFontFaceCSS,
@@ -1861,23 +1871,12 @@
             });
           }
           applyDocStyles(doc);
-          try {
-            if (doc.fonts && doc.fonts.ready) {
-              const requestedFontFamily = String(msg.settings?.customFontFamily || '').trim();
-              const selectedFontReady = requestedFontFamily && doc.fonts.load
-                ? doc.fonts.load(`16px ${JSON.stringify(requestedFontFamily)}`).catch(() => undefined)
-                : Promise.resolve();
-              await Promise.race([
-                Promise.all([doc.fonts.ready, selectedFontReady]),
-                new Promise((resolve) => setTimeout(resolve, 1200)),
-              ]);
-            }
-          } catch (fontError) {
-            console.warn('[Reader] Failed to await initial fonts:', fontError);
-          }
           if (msg.settings) {
             applySettings(msg.settings);
           }
+
+          // Wire input and remove both RN/HTML loading layers as soon as the
+          // section itself is laid out. These are the readiness requirements.
           markLoaded();
           attachTapListener(doc);
           attachPullBookmarkListener(doc);
@@ -1894,6 +1893,30 @@
           }
           // Восстановление врезок сцен по якорям (список приходит из RN)
           try { applySceneInserts(doc, index); } catch(e) {}
+
+          // Finish typography in the background. The browser swaps SB Serif in
+          // when it is ready; a successful primary load gets one explicit reflow.
+          if (doc.fonts && doc.fonts.ready) {
+            const requestedFontFamily = String(msg.settings?.customFontFamily || '').trim();
+            void (async () => {
+              if (requestedFontFamily && doc.fonts.load) {
+                const family = JSON.stringify(requestedFontFamily);
+                const loadedFaces = await Promise.all([
+                  doc.fonts.load(`normal 400 16px ${family}`),
+                  doc.fonts.load(`italic 400 16px ${family}`),
+                  doc.fonts.load(`normal 700 16px ${family}`),
+                  doc.fonts.load(`italic 700 16px ${family}`),
+                ]);
+                if (loadedFaces.some((faces) => faces.length === 0)) {
+                  throw new Error(`Reader font face is unavailable: ${requestedFontFamily}`);
+                }
+              }
+              await doc.fonts.ready;
+              if (primary !== false && msg.settings) applySettings(msg.settings);
+            })().catch((fontError) => {
+              console.warn('[Reader] Continuing with fallback typography:', fontError);
+            });
+          }
         });
 
         var snippetTimer = null;
@@ -2066,6 +2089,9 @@
 
         const renderer = el.renderer;
         if (renderer && !el.isFixedLayout) {
+          // Page turns are tap-only. Horizontal drags stay available to the
+          // native navigation stack, so iOS can drive its interactive back transition.
+          renderer.setAttribute('no-swipe', '');
           applyMobileReflowRendererSizing(renderer);
           // Default gap/margin
           const margin = msg.pageMargin || 16;
@@ -2234,7 +2260,7 @@
             -webkit-text-size-adjust: none;
             text-size-adjust: none;
           }
-          :root:not(.vrtl):not(.vltr) body *:not(svg):not(svg *):not(math):not(math *):not(pre):not(pre *):not(code):not(code *):not(kbd):not(kbd *):not(samp):not(samp *) {
+          :root body *:not(svg):not(svg *):not(math):not(math *) {
             font-family: var(--readany-font-family) !important;
           }
           :root:not(.vrtl):not(.vltr) body *:not(h1):not(h2):not(h3):not(h4):not(h5):not(h6):not(svg):not(svg *):not(math):not(math *):not(pre):not(pre *):not(code):not(code *):not(kbd):not(kbd *):not(samp):not(samp *):not(rt):not(rp) {
@@ -2242,7 +2268,7 @@
           }
           :root:is(.vrtl, .vltr),
           :root:is(.vrtl, .vltr) body {
-            font-family: var(--readany-font-family);
+            font-family: var(--readany-font-family) !important;
             font-size: ${fSize}px;
             -webkit-text-size-adjust: none;
             text-size-adjust: none;
@@ -2260,17 +2286,16 @@
           :root:not(.vrtl):not(.vltr) blockquote,
           :root:not(.vrtl):not(.vltr) dd,
           :root:not(.vrtl):not(.vltr) li,
-          :root:not(.vrtl):not(.vltr) span,
+          :root:not(.vrtl):not(.vltr) span {
+            line-height: ${lh} !important;
+          }
           :root:not(.vrtl):not(.vltr) h1,
           :root:not(.vrtl):not(.vltr) h2,
           :root:not(.vrtl):not(.vltr) h3,
           :root:not(.vrtl):not(.vltr) h4,
           :root:not(.vrtl):not(.vltr) h5,
           :root:not(.vrtl):not(.vltr) h6 {
-            line-height: ${lh} !important;
-          }
-          pre, code, kbd, samp {
-            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+            line-height: 1 !important;
           }
           :root:not(.vrtl):not(.vltr) p {
             margin-top: ${ps}px !important;
@@ -2672,6 +2697,31 @@ a { color: ${primary} !important; }
       return !!anchor.querySelector('img, picture, svg, image, canvas');
     }
 
+    function getActiveSelectionRange(doc) {
+      try {
+        const selection = doc && doc.getSelection ? doc.getSelection() : null;
+        const range = getSelectionRange(selection);
+        return range && selection.toString().trim() ? range : null;
+      } catch {
+        return null;
+      }
+    }
+
+    function recoverStaleSelectionInteraction(doc) {
+      const range = getActiveSelectionRange(doc);
+      if (!range) doc.__readany_selection_interaction = false;
+      return range;
+    }
+
+    function clearDocumentSelection(doc) {
+      try {
+        const selection = doc.getSelection();
+        if (selection) selection.removeAllRanges();
+      } catch { /* document may have been replaced during a transition */ }
+      doc.__readany_selection_interaction = false;
+      postToRN('selectionCleared', {});
+    }
+
     // ─── Tap detection ───
     function attachTapListener(doc) {
       if (doc.__readany_tap) return;
@@ -2679,75 +2729,91 @@ a { color: ${primary} !important; }
 
       const MAX_TAP_MS = 250;
       const MOVE_THRESHOLD = 12;
+      const SELECTION_MOVE_THRESHOLD = 2;
       let tapState = null;
 
-      doc.addEventListener('touchstart', (e) => {
+      function recoverInterruptedPullGesture() {
         if (bookmarkPullGestureActive) {
-          tapState = null;
-          return;
+          resetPullBookmarkState(false);
+          try {
+            if (typeof window.setNavigationLocked === 'function') {
+              window.setNavigationLocked(false);
+            }
+          } catch { /* renderer may have been replaced — no-op */ }
         }
-        if (doc.__readany_selection_interaction) {
-          tapState = null;
-          return;
-        }
-        if (e.touches.length !== 1) {
-          tapState = null;
-          return;
-        }
-        const touch = e.touches[0];
-        const hitNote = isPointInNoteRange(doc, touch.clientX, touch.clientY);
-        const hitAnnotation = hitNote || isPointInAnnotationRange(doc, touch.clientX, touch.clientY);
+      }
+
+      function beginTap(clientX, clientY, target, input, pointerId) {
+        recoverInterruptedPullGesture();
+        const selectionRange = recoverStaleSelectionInteraction(doc);
+        const hitNote = isPointInNoteRange(doc, clientX, clientY);
+        const hitAnnotation = hitNote || isPointInAnnotationRange(doc, clientX, clientY);
         tapState = {
+          input,
+          pointerId,
           startedAt: Date.now(),
-          startX: touch.clientX,
-          startY: touch.clientY,
+          startX: clientX,
+          startY: clientY,
           moved: false,
-          target: e.target,
+          target,
           noteRangeHit: !!hitNote,
           annotationRangeHit: hitAnnotation,
+          selectionActiveAtStart: !!selectionRange,
         };
         if (hitAnnotation) armNoteTapGuard(doc);
-      }, { passive: true });
+      }
 
-      doc.addEventListener('touchmove', (e) => {
-        if (!tapState || e.touches.length !== 1) return;
+      function moveTap(clientX, clientY, input, pointerId) {
+        if (
+          !tapState ||
+          tapState.input !== input ||
+          (input === 'pointer' && tapState.pointerId !== pointerId)
+        ) return;
         if (bookmarkPullGestureActive) {
           tapState = null;
           return;
         }
-        if (doc.__readany_selection_interaction) {
-          tapState = null;
-          return;
-        }
-        const touch = e.touches[0];
+        const deltaX = Math.abs(clientX - tapState.startX);
+        const deltaY = Math.abs(clientY - tapState.startY);
         if (
-          Math.abs(touch.clientX - tapState.startX) > MOVE_THRESHOLD ||
-          Math.abs(touch.clientY - tapState.startY) > MOVE_THRESHOLD
+          deltaX > (tapState.selectionActiveAtStart ? SELECTION_MOVE_THRESHOLD : MOVE_THRESHOLD) ||
+          deltaY > (tapState.selectionActiveAtStart ? SELECTION_MOVE_THRESHOLD : MOVE_THRESHOLD)
         ) {
           tapState.moved = true;
         }
-      }, { passive: true });
+      }
 
-      doc.addEventListener('touchcancel', () => {
+      function cancelTap(input, pointerId) {
+        if (
+          tapState &&
+          (tapState.input !== input ||
+            (input === 'pointer' && tapState.pointerId !== pointerId))
+        ) return;
         tapState = null;
-      }, { passive: true });
+        recoverStaleSelectionInteraction(doc);
+      }
 
-      doc.addEventListener('touchend', (e) => {
-        if (bookmarkPullGestureActive || tapNavigationInFlight) {
-          tapState = null;
-          return;
-        }
-        if (doc.__readany_selection_interaction) {
-          tapState = null;
-          return;
-        }
-
+      function finishTap(e, clientX, clientY, input, pointerId) {
         const state = tapState;
+        if (
+          !state ||
+          state.input !== input ||
+          (input === 'pointer' && state.pointerId !== pointerId)
+        ) return;
         tapState = null;
-        if (!state || state.moved || e.changedTouches.length !== 1) return;
+
+        if (bookmarkPullGestureActive || isTapNavigationLocked()) {
+          return;
+        }
+        if (state.moved) return;
         if (Date.now() - state.startedAt > MAX_TAP_MS) return;
-        const touch = e.changedTouches[0];
-        const hitAnnotation = state.annotationRangeHit || isPointInAnnotationRange(doc, touch.clientX, touch.clientY);
+        if (state.selectionActiveAtStart) {
+          e.preventDefault();
+          e.stopPropagation();
+          clearDocumentSelection(doc);
+          return;
+        }
+        const hitAnnotation = state.annotationRangeHit || isPointInAnnotationRange(doc, clientX, clientY);
         if (hitAnnotation) {
           e.preventDefault();
           e.stopPropagation();
@@ -2805,14 +2871,15 @@ a { color: ${primary} !important; }
 
         hideFootnoteTip();
 
-        const sel = doc.getSelection();
-        if (sel && !sel.isCollapsed && sel.toString().trim().length > 0) return;
+        // A selection created by this same gesture is legitimate. Leave it in
+        // place; the next ordinary tap will dismiss it through the branch above.
+        if (getActiveSelectionRange(doc)) return;
 
         let viewW;
         try { viewW = window.top.innerWidth || window.innerWidth; } catch { viewW = window.innerWidth; }
         const iframe = doc.defaultView && doc.defaultView.frameElement;
         const iframeLeft = iframe ? iframe.getBoundingClientRect().left : 0;
-        const viewportX = e.changedTouches[0].clientX + iframeLeft;
+        const viewportX = clientX + iframeLeft;
         const normalizedX = ((viewportX % viewW) + viewW) % viewW;
         e.preventDefault();
         e.stopPropagation();
@@ -2842,6 +2909,57 @@ a { color: ${primary} !important; }
         } else {
           if (view) goNextByMode();
         }
+      }
+
+      doc.addEventListener('touchstart', (e) => {
+        if (e.touches.length !== 1) {
+          tapState = null;
+          return;
+        }
+        const touch = e.touches[0];
+        beginTap(touch.clientX, touch.clientY, e.target, 'touch', null);
+      }, { passive: true });
+
+      doc.addEventListener('touchmove', (e) => {
+        if (e.touches.length !== 1) return;
+        const touch = e.touches[0];
+        moveTap(touch.clientX, touch.clientY, 'touch', null);
+      }, { passive: true });
+
+      doc.addEventListener('touchcancel', () => {
+        cancelTap('touch', null);
+      }, { passive: true });
+
+      doc.addEventListener('touchend', (e) => {
+        if (e.changedTouches.length !== 1) {
+          cancelTap('touch', null);
+          return;
+        }
+        const touch = e.changedTouches[0];
+        finishTap(e, touch.clientX, touch.clientY, 'touch', null);
+      }, { passive: false, capture: true });
+
+      // Device Hub and trackpads deliver a mouse pointer to WKWebView rather
+      // than a synthetic touch. Ignore touch pointers here to avoid handling a
+      // real finger twice on browsers that emit both event families.
+      doc.addEventListener('pointerdown', (e) => {
+        if (e.pointerType !== 'mouse' || e.isPrimary === false || e.button !== 0) return;
+        beginTap(e.clientX, e.clientY, e.target, 'pointer', e.pointerId);
+      }, { passive: true });
+
+      doc.addEventListener('pointermove', (e) => {
+        if (e.pointerType !== 'mouse') return;
+        moveTap(e.clientX, e.clientY, 'pointer', e.pointerId);
+      }, { passive: true });
+
+      doc.addEventListener('pointercancel', (e) => {
+        if (e.pointerType !== 'mouse') return;
+        cancelTap('pointer', e.pointerId);
+      }, { passive: true });
+
+      doc.addEventListener('pointerup', (e) => {
+        if (e.pointerType !== 'mouse' || e.isPrimary === false || e.button !== 0) return;
+        finishTap(e, e.clientX, e.clientY, 'pointer', e.pointerId);
       }, { passive: false, capture: true });
     }
 
@@ -2859,7 +2977,26 @@ a { color: ${primary} !important; }
       let pullState = null;
       let lastTriggeredAt = 0;
 
+      function unlockPageNavigation() {
+        try {
+          if (typeof window.setNavigationLocked === 'function') {
+            window.setNavigationLocked(false);
+          }
+        } catch (err) { /* renderer may have been replaced — no-op */ }
+      }
+
+      function resetInterruptedPullGesture(animated) {
+        pullState = null;
+        unlockPageNavigation();
+        resetPullBookmarkState(animated);
+      }
+
       doc.addEventListener('touchstart', (e) => {
+        // A new gesture proves that any previous pull has ended, even if iOS
+        // dropped its touchend while the WebView or native sheet was moving.
+        if (bookmarkPullGestureActive) resetInterruptedPullGesture(false);
+        else unlockPageNavigation();
+
         if (
           !view ||
           e.touches.length !== 1 ||
@@ -2962,12 +3099,11 @@ a { color: ${primary} !important; }
       doc.addEventListener('touchend', (e) => {
         const state = pullState;
         pullState = null;
-        try {
-          if (typeof window.setNavigationLocked === 'function') {
-            window.setNavigationLocked(false);
-          }
-        } catch (err) { /* no-op */ }
-        if (!state) return;
+        unlockPageNavigation();
+        if (!state) {
+          if (bookmarkPullGestureActive) resetPullBookmarkState(false);
+          return;
+        }
 
         if (state.active) {
           e.preventDefault();
@@ -2978,15 +3114,23 @@ a { color: ${primary} !important; }
       }, { passive: false, capture: true });
 
       doc.addEventListener('touchcancel', () => {
-        const state = pullState;
-        pullState = null;
-        try {
-          if (typeof window.setNavigationLocked === 'function') {
-            window.setNavigationLocked(false);
-          }
-        } catch (err) { /* no-op */ }
-        resetPullBookmarkState(true);
+        resetInterruptedPullGesture(true);
       }, { passive: true, capture: true });
+
+      const cancelInterruptedGesture = () => {
+        if (!pullState && !bookmarkPullGestureActive) {
+          unlockPageNavigation();
+          return;
+        }
+        resetInterruptedPullGesture(false);
+      };
+      doc.addEventListener('visibilitychange', () => {
+        if (doc.visibilityState === 'hidden') cancelInterruptedGesture();
+      });
+      if (doc.defaultView) {
+        doc.defaultView.addEventListener('blur', cancelInterruptedGesture);
+        doc.defaultView.addEventListener('pagehide', cancelInterruptedGesture);
+      }
     }
 
     // ─── Selection detection ───
@@ -3013,7 +3157,7 @@ a { color: ${primary} !important; }
       function scheduleClearSelectionInteraction() {
         if (selectionClearTimer) clearTimeout(selectionClearTimer);
         selectionClearTimer = setTimeout(() => {
-          if (!getSelectionRange(doc.getSelection())) {
+          if (!getActiveSelectionRange(doc)) {
             markSelectionInteraction(false);
           }
         }, 120);
@@ -3076,6 +3220,15 @@ a { color: ${primary} !important; }
       doc.addEventListener('touchcancel', () => {
         scheduleClearSelectionInteraction();
       }, { passive: true });
+
+      const recoverInterruptedSelection = () => {
+        if (!getActiveSelectionRange(doc)) markSelectionInteraction(false);
+      };
+      doc.addEventListener('visibilitychange', recoverInterruptedSelection);
+      if (doc.defaultView) {
+        doc.defaultView.addEventListener('blur', recoverInterruptedSelection);
+        doc.defaultView.addEventListener('pagehide', recoverInterruptedSelection);
+      }
     }
 
     function emitSelection(doc, sel, range) {

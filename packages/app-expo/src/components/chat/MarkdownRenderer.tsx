@@ -1,5 +1,5 @@
-import { Text } from "@/components/ui/Typography";
 import { MermaidView } from "@/components/common/MermaidView";
+import { Text } from "@/components/ui/Typography";
 import { fontSize as fs, headingFontFamily, radius, useColors } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
 import type { CitationPart } from "@readany/core/types/message";
@@ -7,15 +7,25 @@ import * as Clipboard from "expo-clipboard";
 import { Fragment, type ReactNode, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
-import type { StyleProp, TextStyle } from "react-native";
+import type { StyleProp, TextStyle, ViewStyle } from "react-native";
 import Markdown, { type RenderRules, type ASTNode } from "react-native-markdown-display";
 
 interface MarkdownRendererProps {
   content: string;
   isStreaming?: boolean;
   styleOverrides?: Record<string, any>;
+  /** Типографика обычного текста для конкретного места использования. */
+  textStyle?: TextStyle;
+  /** Убирает внешний нижний отступ у последнего абзаца внутри компактной поверхности. */
+  trimTrailingParagraphSpacing?: boolean;
   citations?: CitationPart[];
   onCitationClick?: (citation: CitationPart) => void;
+  /**
+   * Цвет обычного текста поверх базовых стилей. Нужен пузырям чата: на
+   * акцентном фоне текст тёмный независимо от темы, а остальные стили
+   * (заголовки, код, цитаты) остаются общими.
+   */
+  textColor?: string;
 }
 
 function isUnsafeMarkdownTextColor(color: unknown): boolean {
@@ -186,12 +196,22 @@ export function MarkdownRenderer({
   styleOverrides,
   citations,
   onCitationClick,
+  textColor,
+  textStyle,
+  trimTrailingParagraphSpacing = false,
 }: MarkdownRendererProps) {
   const colors = useColors();
+  const effectiveTextColor = textColor ?? colors.foreground;
   const baseStyles = makeMarkdownStyles(colors);
   // When styleOverrides is provided, use it directly without merging with baseStyles
   // This ensures custom styles (like tooltip dark background) are not overridden
-  const styles = styleOverrides || baseStyles;
+  const styles = styleOverrides || {
+    ...baseStyles,
+    body: { ...baseStyles.body, ...textStyle, color: effectiveTextColor },
+    text: { ...baseStyles.text, ...textStyle, color: effectiveTextColor },
+    textgroup: { ...baseStyles.textgroup, ...textStyle, color: effectiveTextColor },
+    paragraph: { ...baseStyles.paragraph, ...textStyle, color: effectiveTextColor },
+  };
 
   const rules = useMemo<RenderRules>(
     () => ({
@@ -219,7 +239,7 @@ export function MarkdownRenderer({
       },
       text: (node: ASTNode, children: ReactNode[], parentNodes: ASTNode[], style: any) => {
         const text = node.content || "";
-        const readableStyle = [style, { color: getReadableTextColor(style, colors.foreground) }];
+        const readableStyle = [style, { color: getReadableTextColor(style, effectiveTextColor) }];
         if (citations && citations.length > 0 && /\[\d+\]/.test(text)) {
           return (
             <Text key={node.key} style={readableStyle}>
@@ -233,8 +253,29 @@ export function MarkdownRenderer({
           </Text>
         );
       },
+      paragraph: (
+        node: ASTNode,
+        children: ReactNode[],
+        parentNodes: ASTNode[],
+        style: Record<string, StyleProp<ViewStyle>>,
+      ) => {
+        const parent = parentNodes[0];
+        const isTrailingParagraph =
+          trimTrailingParagraphSpacing &&
+          parent?.type === "body" &&
+          parent.children.at(-1)?.key === node.key;
+
+        return (
+          <View
+            key={node.key}
+            style={[style._VIEW_SAFE_paragraph, isTrailingParagraph && { marginBottom: 0 }]}
+          >
+            {children}
+          </View>
+        );
+      },
     }),
-    [colors, citations, onCitationClick],
+    [colors, citations, effectiveTextColor, onCitationClick, trimTrailingParagraphSpacing],
   );
 
   return (

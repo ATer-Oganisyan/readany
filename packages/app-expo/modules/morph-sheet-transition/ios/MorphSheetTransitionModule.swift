@@ -108,6 +108,8 @@ final class MorphTransitionDestinationView: ExpoView {
   }
 
   private weak var configuredScreen: RNSScreen?
+  private var requestedExpanded: Bool?
+  private var sheetUpdateWorkItem: DispatchWorkItem?
 
   required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
@@ -118,6 +120,9 @@ final class MorphTransitionDestinationView: ExpoView {
   override func didMoveToSuperview() {
     super.didMoveToSuperview()
     if superview == nil {
+      sheetUpdateWorkItem?.cancel()
+      sheetUpdateWorkItem = nil
+      requestedExpanded = nil
       clearConfiguredTransition()
     } else {
       scheduleTransitionSetup()
@@ -130,12 +135,61 @@ final class MorphTransitionDestinationView: ExpoView {
     }
   }
 
+  func expandSheet() {
+    updateSheet(expanded: true)
+  }
+
+  func collapseSheet() {
+    updateSheet(expanded: false)
+  }
+
+  private func updateSheet(expanded: Bool) {
+    guard Thread.isMainThread else {
+      DispatchQueue.main.async { [weak self] in
+        self?.updateSheet(expanded: expanded)
+      }
+      return
+    }
+
+    requestedExpanded = expanded
+    sheetUpdateWorkItem?.cancel()
+    sheetUpdateWorkItem = nil
+    applyRequestedSheetState(remainingAttempts: 8)
+  }
+
+  private func applyRequestedSheetState(remainingAttempts: Int) {
+    guard let expanded = requestedExpanded else { return }
+    guard
+      let sheet = findSheetPresentationController(),
+      let detent = expanded ? sheet.detents.last : sheet.detents.first
+    else {
+      guard remainingAttempts > 0 else { return }
+      let workItem = DispatchWorkItem { [weak self] in
+        self?.applyRequestedSheetState(remainingAttempts: remainingAttempts - 1)
+      }
+      sheetUpdateWorkItem = workItem
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.025, execute: workItem)
+      return
+    }
+
+    sheetUpdateWorkItem = nil
+    guard sheet.selectedDetentIdentifier != detent.identifier else { return }
+
+    // React Native Screens owns the presentation style, detents, grabber and
+    // system corner geometry. This view only selects a detent, so UIKit gets a
+    // single owner and performs one layout pass instead of two competing ones.
+    sheet.animateChanges {
+      sheet.selectedDetentIdentifier = detent.identifier
+    }
+  }
+
   private func setupTransition() {
     clearConfiguredTransition()
 
+    guard let screen = findScreen() else { return }
+
     guard !sourceIdentifier.isEmpty else { return }
     guard !UIAccessibility.isReduceMotionEnabled else { return }
-    guard let screen = findScreen() else { return }
 
     if #available(iOS 18.0, *) {
       let identifier = sourceIdentifier
@@ -164,6 +218,24 @@ final class MorphTransitionDestinationView: ExpoView {
     }
     return nil
   }
+
+  private func findSheetPresentationController() -> UISheetPresentationController? {
+    guard let screen = findScreen() else { return nil }
+
+    return findSheetPresentationController(from: screen)
+  }
+
+  private func findSheetPresentationController(from screen: RNSScreen) -> UISheetPresentationController? {
+    var controller: UIViewController? = screen
+    while let current = controller {
+      if let sheet = current.presentationController as? UISheetPresentationController {
+        return sheet
+      }
+      controller = current.parent
+    }
+
+    return screen.sheetPresentationController ?? screen.navigationController?.sheetPresentationController
+  }
 }
 
 public final class MorphSheetTransitionModule: Module {
@@ -183,6 +255,14 @@ public final class MorphSheetTransitionModule: Module {
 
       OnViewDidUpdateProps { view in
         view.scheduleTransitionSetup()
+      }
+
+      AsyncFunction("expandSheet") { (view: MorphTransitionDestinationView) in
+        view.expandSheet()
+      }
+
+      AsyncFunction("collapseSheet") { (view: MorphTransitionDestinationView) in
+        view.collapseSheet()
       }
     }
   }

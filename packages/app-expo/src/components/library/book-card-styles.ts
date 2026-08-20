@@ -98,23 +98,6 @@ export const makeStyles = (colors: ThemeColors, cardWidth: number) => {
       paddingVertical: 4,
       borderRadius: radius.sm,
     },
-    downloadingOverlay: {
-      position: "absolute",
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: "rgba(0,0,0,0.5)",
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    downloadingOverlayText: {
-      marginTop: 6,
-      fontSize: 14,
-      fontWeight: fontWeight.medium,
-      color: "#fff",
-    },
-    downloadingOverlayPct: { marginTop: 2, fontSize: 12, color: "#fff", opacity: 0.85 },
     moreButtonWrap: {
       position: "absolute",
       right: 6,

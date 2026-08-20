@@ -1,5 +1,6 @@
 import { supportsMorphSheetTransition } from "@/components/navigation/morph-sheet-transition-support";
 import { MissingBookPrompt } from "@/components/shared/MissingBookPrompt";
+import type { CachedBackendCatalogBook } from "@/lib/narra/backend-catalog-cache";
 import BadgesScreen from "@/screens/BadgesScreen";
 import { ChatScreen } from "@/screens/ChatScreen";
 import { FullScreenNotesScreen } from "@/screens/FullScreenNotesScreen";
@@ -45,6 +46,8 @@ export type RootStackParamList = {
   Reader: {
     bookId: string;
     catalogBookId?: string;
+    /** Книга из каталога бэкенда: ридер сам качает и импортирует её под своим лоудером. */
+    catalogBook?: CachedBackendCatalogBook;
     cfi?: string;
     highlight?: boolean;
     openTTS?: boolean;
@@ -98,7 +101,6 @@ export type RootStackParamList = {
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
-
 export function RootNavigator() {
   const { _hasHydrated } = useSettingsStore();
   const { colors, isDark } = useTheme();
@@ -142,9 +144,10 @@ export function RootNavigator() {
           options={{
             presentation: "card",
             animation: "slide_from_right",
-            title: "Narra AI",
-            headerTransparent: false,
-            headerStyle: { backgroundColor: colors.background },
+            title: "Narra",
+            headerShown: false,
+            statusBarHidden: false,
+            statusBarStyle: isDark ? "light" : "dark",
           }}
         />
         <Stack.Screen
@@ -152,10 +155,14 @@ export function RootNavigator() {
           component={ReaderScreen}
           options={{
             animation: "slide_from_right",
-            animationMatchesGesture: true,
             gestureEnabled: true,
-            fullScreenGestureEnabled: true,
-            gestureResponseDistance: { start: 48 },
+            animationMatchesGesture: Platform.OS === "ios",
+            ...(Platform.OS === "ios"
+              ? {
+                  fullScreenGestureEnabled: true,
+                  gestureResponseDistance: { start: 0, end: 1000 },
+                }
+              : {}),
             headerShown: false,
             statusBarAnimation: "fade",
             statusBarHidden: true,
@@ -188,9 +195,10 @@ export function RootNavigator() {
           options={{
             presentation: "card",
             animation: "slide_from_right",
-            title: "Narra AI",
-            headerTransparent: false,
-            headerStyle: { backgroundColor: colors.background },
+            title: "Narra",
+            headerShown: false,
+            statusBarHidden: false,
+            statusBarStyle: isDark ? "light" : "dark",
           }}
         />
         <Stack.Screen
@@ -223,15 +231,17 @@ export function RootNavigator() {
           name="NarraCharacterChat"
           component={NarraCharacterChatScreen}
           options={{
+            presentation: "card",
             animation: "slide_from_right",
             title: t("narra.characterChat", "Чат с персонажем"),
-            headerRight: undefined,
+            headerShown: false,
+            statusBarHidden: false,
+            statusBarStyle: isDark ? "light" : "dark",
             scrollEdgeEffects: {
               ...NATIVE_SCROLL_EDGE_EFFECTS,
               top: "hidden",
               bottom: "hidden",
             },
-            unstable_headerRightItems: () => [],
           }}
         />
         <Stack.Screen

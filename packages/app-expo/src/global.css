@@ -11,5 +11,7 @@
 @import "tailwindcss";
 @import "uniwind";
 @import "panelui-native/theme.css";
+/* Наши токены поверх штатных: те же имена переменных, значения из deslop. */
+@import "./panelui-theme.css";
 
 @source '../../../node_modules/panelui-native/src';

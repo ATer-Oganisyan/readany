@@ -1,8 +1,9 @@
 import { useKeyboardInsets } from "@/hooks/use-keyboard-insets";
-import { spacingPixels } from "@deslop/primitives";
+import { useTheme } from "@/styles/theme";
+import { radiusPixels, spacingPixels } from "@deslop/primitives";
 import { AIInput } from "panelui-native";
 import type { ComponentPropsWithRef } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback } from "react";
 import { type LayoutChangeEvent, StyleSheet, type TextInput, View } from "react-native";
 import type { IMessage, InputToolbarProps } from "../../../vendor/react-native-chat/src";
 
@@ -33,25 +34,15 @@ type RuntimeToolbarProps<TMessage extends IMessage> = InputToolbarProps<TMessage
 
 export function NarraChatComposer<TMessage extends IMessage>({
   allowSendWithoutText = false,
+  floating = false,
   isStreaming = false,
   onHeightChange,
   onStop,
   ...props
 }: RuntimeToolbarProps<TMessage>) {
+  const { colors } = useTheme();
   const keyboardInsets = useKeyboardInsets();
   const safeAreaBottom = keyboardInsets.safeAreaBottom;
-  /**
-   * Счётчик сбросов поля.
-   *
-   * В строчном режиме PanelUI не задаёт полю минимальную высоту, и выросший
-   * многострочный TextInput не возвращается к одной строке даже когда текст
-   * очищен: RN держит уже измеренную высоту. Лента резервирует место под
-   * инпут по его высоте, поэтому после отправки между сообщением и полем
-   * оставался провал. Меняем key на переходе «текст был → текста нет», чтобы
-   * поле пересоздалось в своей естественной высоте.
-   */
-  const [fieldGeneration, setFieldGeneration] = useState(0);
-  const hadTextRef = useRef(false);
   const text = props.text ?? "";
   const inputProps = props.textInputProps;
   const onSend = props.onSend;
@@ -64,12 +55,6 @@ export function NarraChatComposer<TMessage extends IMessage>({
     },
     [allowSendWithoutText, onSend],
   );
-
-  useEffect(() => {
-    const hasText = text.length > 0;
-    if (hadTextRef.current && !hasText) setFieldGeneration((value) => value + 1);
-    hadTextRef.current = hasText;
-  }, [text]);
 
   const handleLayout = useCallback(
     (event: LayoutChangeEvent) => onHeightChange?.(Math.ceil(event.nativeEvent.layout.height)),
@@ -84,33 +69,37 @@ export function NarraChatComposer<TMessage extends IMessage>({
       onLayout={handleLayout}
       style={[
         styles.container,
-        { paddingBottom: KEYBOARD_GAP + (keyboardInsets.isVisible ? 0 : safeAreaBottom) },
+        {
+          paddingBottom:
+            KEYBOARD_GAP + (floating || !keyboardInsets.isVisible ? safeAreaBottom : 0),
+        },
       ]}
     >
       <AIInput
-        avoidKeyboard={false}
-        // Тень рисует не PanelUI: класс shadow-md убран, отделение поля от фона
-        // остаётся за материалом платформы — на iOS 26 это край самого стекла.
-        className="shadow-none"
-        keyboardBottomInset={0}
+        avoidKeyboard={floating}
+        keyboardBottomInset={floating ? safeAreaBottom + KEYBOARD_GAP : 0}
         native
         onStop={onStop}
         onSubmit={handleSubmit}
         onValueChange={inputProps?.onChangeText}
         status={isStreaming ? "streaming" : "ready"}
+        style={[styles.input, { borderColor: colors.border }]}
         value={text}
       >
-        {/* Выравнивание оставлено библиотечным — по центру. Прижатие к низу
-            здесь не работает: настоящая высота многострочного поля компоненту
-            неизвестна из-за платформенного инсета, и текст уезжает ниже
-            контролов рядом. Это описано в исходниках PanelUI как отвергнутый
-            вариант, и на нашем экране повторилось ровно так же. */}
-        <AIInput.Row>
-          {/* Без принудительной минимальной высоты: на iOS многострочное поле
-              прижимает текст к верху, а textAlignVertical, которым библиотека
-              центрует его в этом режиме, работает только на Android — лишняя
-              высота дала бы перекос. Поле обнимает свой текст. */}
-          <AIInput.Field key={fieldGeneration} placeholder={inputProps?.placeholder} />
+        {/* Сам TextInput остаётся многострочным и растёт вместе с текстом. */}
+        <AIInput.Row style={styles.row}>
+          {/* На iOS многострочное поле растёт вместе с текстом. После отправки
+              пустому полю возвращается высота control-md из primitives. Это сжимает
+              его обратно до строки, но сохраняет тот же нативный TextInput и
+              его фокус — клавиатура больше не закрывается и не открывается
+              заново. */}
+          <AIInput.Field
+            accessibilityLabel={inputProps?.placeholder}
+            autoFocus={inputProps?.autoFocus}
+            editable={inputProps?.editable}
+            placeholder={inputProps?.placeholder ?? ""}
+            style={[styles.field, text.length === 0 ? styles.emptyField : undefined]}
+          />
           <AIInput.Submit />
         </AIInput.Row>
       </AIInput>
@@ -122,9 +111,29 @@ export function NarraChatComposer<TMessage extends IMessage>({
 // а снизу остаётся запас под безопасную зону, когда клавиатура убрана.
 /** Зазор между полем и клавиатурой. */
 const KEYBOARD_GAP = spacingPixels[8];
+/** Библиотечный md-радиус равен 26; по макету внешний контур на 6 пунктов круглее. */
+const INPUT_RADIUS = radiusPixels[34];
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: spacingPixels[16],
     paddingTop: spacingPixels[6],
+  },
+  input: {
+    borderCurve: "continuous",
+    borderRadius: INPUT_RADIUS,
+    borderWidth: 1,
+    boxShadow: [],
+    overflow: "visible",
+  },
+  row: {
+    position: "relative",
+  },
+  field: {
+    minHeight: spacingPixels[32],
+    paddingBottom: spacingPixels[6],
+    paddingTop: spacingPixels[6],
+  },
+  emptyField: {
+    height: spacingPixels[32],
   },
 });

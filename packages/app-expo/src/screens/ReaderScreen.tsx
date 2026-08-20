@@ -11,7 +11,6 @@ import type { NativeContextMenuItem } from "@/components/ui/NativeContextMenuBut
 import { Text } from "@/components/ui/Typography";
 import { useReaderBridge } from "@/hooks/use-reader-bridge";
 import type { RelocateEvent, SelectionEvent, VisibleTTSSegment } from "@/hooks/use-reader-bridge";
-import { hapticLight } from "@/lib/haptics";
 import { durationBucket } from "@/lib/analytics/contract";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import {
@@ -21,6 +20,9 @@ import {
   normalizeCatalogIdentity,
   resolveBundledCatalogBookUri,
 } from "@/lib/catalog/bundled-books";
+import { hapticLight } from "@/lib/haptics";
+import { importBackendCatalogBook } from "@/lib/narra/backend-catalog-import";
+import { isBackendDownloadAbort } from "@/lib/narra/backend-file-download";
 import { getBundledCatalogCharactersByTitle } from "@/lib/narra/bundled-catalog-characters";
 import { buildCharacterNameMatcherSpec } from "@/lib/narra/character-name-matcher";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
@@ -41,7 +43,6 @@ import { toast } from "@/lib/notifications";
 import {
   DEFAULT_READER_FONT_FAMILY,
   getBundledReaderFontFaceCSS,
-  getBundledReaderFontFamily,
 } from "@/lib/reader/bundled-reader-font";
 import { startFileServer, stopFileServer } from "@/lib/reader/local-file-server";
 import { getReaderBookmarkCopy } from "@/lib/reader/reader-bookmark-copy";
@@ -65,7 +66,6 @@ import { runWithDbRetry } from "@readany/core/db/write-retry";
 import { useChapterTranslation } from "@readany/core/hooks";
 import { useReadingSession } from "@readany/core/hooks/use-reading-session";
 import { getPlatformService } from "@readany/core/services";
-import { getCSSFontFace, useFontStore } from "@readany/core/stores";
 import type { ReadSettings, TOCItem } from "@readany/core/types";
 import { eventBus } from "@readany/core/utils/event-bus";
 import { throttle } from "@readany/core/utils/throttle";
@@ -91,13 +91,7 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import Reanimated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from "react-native-reanimated";
-import { scheduleOnRN } from "react-native-worklets";
+import Reanimated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 
@@ -188,8 +182,6 @@ import { useReaderTTS } from "./reader/useReaderTTS";
 import { useVolumeButtonPaging } from "./reader/useVolumeButtonPaging";
 
 const READER_HTML_ASSET = Asset.fromModule(require("../../assets/reader/reader.html"));
-const LOCAL_FONT_SERVER_DIR = "readany-fonts";
-
 type Props = NativeStackScreenProps<RootStackParamList, "Reader">;
 type TTSSegment = VisibleTTSSegment;
 
@@ -201,50 +193,6 @@ function ReaderLoadingIndicator({ color }: { color: string }) {
 
 const keepTTSInReader = (_visible: boolean) => undefined;
 
-function buildCustomFontFaceCSS(
-  fonts: import("@readany/core/types/font").CustomFont[],
-  selectedFontId: string | null,
-  localServerUrl?: string | null,
-): string {
-  if (!selectedFontId) return "";
-  const platform = getPlatformService();
-  return fonts
-    .filter((f) => f.id === selectedFontId)
-    .map((f) => {
-      // CSS-based remote fonts: @import into the reader iframe
-      if (f.source === "remote" && f.remoteCssUrl) {
-        return `@import url('${f.remoteCssUrl}');`;
-      }
-      if (f.source === "remote") return getCSSFontFace(f);
-      if (!f.filePath) return "";
-      const fileUrl = localServerUrl
-        ? `${localServerUrl.replace(/\/$/, "")}/${LOCAL_FONT_SERVER_DIR}/${encodeURIComponent(f.fileName)}`
-        : platform.convertFileSrc(f.filePath);
-      const cssFormat =
-        f.format === "otf"
-          ? "opentype"
-          : f.format === "woff"
-            ? "woff"
-            : f.format === "woff2"
-              ? "woff2"
-              : "truetype";
-      return `@font-face {\n  font-family: ${JSON.stringify(f.fontFamily)};\n  src: url('${fileUrl}') format('${cssFormat}');\n  font-weight: normal;\n  font-style: normal;\n}`;
-    })
-    .filter(Boolean)
-    .join("\n");
-}
-
-function resolveReaderFontFamily(
-  fonts: import("@readany/core/types/font").CustomFont[],
-  selectedFontId: string | null,
-): string {
-  return (
-    getBundledReaderFontFamily(selectedFontId) ??
-    fonts.find((font) => font.id === selectedFontId)?.fontFamily ??
-    DEFAULT_READER_FONT_FAMILY
-  );
-}
-
 // ──────────────────────────── ReaderScreen ────────────────────────────
 export function ReaderScreen(props: Props) {
   const { t } = useTranslation();
@@ -252,18 +200,21 @@ export function ReaderScreen(props: Props) {
   const updateBook = useLibraryStore((state) => state.updateBook);
   const requestedBookId = props.route.params.bookId;
   const catalogBookId = props.route.params.catalogBookId;
+  const catalogBook = props.route.params.catalogBook;
   const [resolvedBookId, setResolvedBookId] = useState<string | null>(
-    catalogBookId ? null : requestedBookId,
+    catalogBookId || catalogBook ? null : requestedBookId,
   );
 
   useEffect(() => {
-    if (!catalogBookId) {
-      setResolvedBookId(requestedBookId);
-      return;
-    }
+    if (catalogBookId || catalogBook) return;
+    setResolvedBookId(requestedBookId);
+  }, [catalogBook, catalogBookId, requestedBookId]);
 
-    const catalogBook = BUNDLED_CATALOG_BOOKS.find((book) => book.id === catalogBookId);
-    if (!catalogBook) {
+  useEffect(() => {
+    if (!catalogBookId) return;
+
+    const bundledBook = BUNDLED_CATALOG_BOOKS.find((book) => book.id === catalogBookId);
+    if (!bundledBook) {
       toast.error(t("library.catalogImportErrorTitle", "Не получилось добавить книгу"), {
         description: t("library.catalogImportErrorDescription", "Попробуйте ещё раз."),
       });
@@ -272,6 +223,62 @@ export function ReaderScreen(props: Props) {
     }
 
     let cancelled = false;
+    const prepareBundledBook = async () => {
+      const existingBook = useLibraryStore
+        .getState()
+        .books.find(
+          (book) =>
+            !book.deletedAt &&
+            normalizeCatalogIdentity(book.meta.title) ===
+              normalizeCatalogIdentity(bundledBook.title),
+        );
+      if (existingBook) return existingBook.id;
+
+      const uri = await resolveBundledCatalogBookUri(bundledBook);
+      const result = await importBooks([{ uri, name: bundledBook.fileName }]);
+      const importedBook = result.imported[0] ?? result.skippedDuplicates[0]?.existingBook;
+      if (!importedBook) throw new Error("catalog-import-failed");
+
+      const normalizedMeta = {
+        ...importedBook.meta,
+        title: bundledBook.title,
+        author: bundledBook.author,
+      };
+      await updateBook(importedBook.id, { meta: normalizedMeta });
+      void installBundledCatalogCover(importedBook.id, bundledBook)
+        .then((coverUrl) => updateBook(importedBook.id, { meta: { ...normalizedMeta, coverUrl } }))
+        .catch((error) =>
+          console.warn(`[Catalog] Failed to install cover ${bundledBook.id}:`, error),
+        );
+      return importedBook.id;
+    };
+
+    void prepareBundledBook()
+      .then((bookId) => {
+        if (!cancelled) setResolvedBookId(bookId);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error(`[Catalog] Failed to add ${bundledBook.id}:`, error);
+        toast.error(t("library.catalogImportErrorTitle", "Не получилось добавить книгу"), {
+          description: t("library.catalogImportErrorDescription", "Попробуйте ещё раз."),
+        });
+        props.navigation.goBack();
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [catalogBookId, importBooks, props.navigation, t, updateBook]);
+
+  // Каталог открывает книгу сразу: качаем и импортируем уже здесь, под лоудером
+  // ридера. Уход назад прерывает загрузку — незачем тянуть файл в пустоту.
+  useEffect(() => {
+    if (!catalogBook) return;
+
+    const controller = new AbortController();
+    let cancelled = false;
+
     const prepareCatalogBook = async () => {
       const existingBook = useLibraryStore
         .getState()
@@ -283,22 +290,11 @@ export function ReaderScreen(props: Props) {
         );
       if (existingBook) return existingBook.id;
 
-      const uri = await resolveBundledCatalogBookUri(catalogBook);
-      const result = await importBooks([{ uri, name: catalogBook.fileName }]);
-      const importedBook = result.imported[0] ?? result.skippedDuplicates[0]?.existingBook;
-      if (!importedBook) throw new Error("catalog-import-failed");
-
-      const normalizedMeta = {
-        ...importedBook.meta,
-        title: catalogBook.title,
-        author: catalogBook.author,
-      };
-      await updateBook(importedBook.id, { meta: normalizedMeta });
-      void installBundledCatalogCover(importedBook.id, catalogBook)
-        .then((coverUrl) => updateBook(importedBook.id, { meta: { ...normalizedMeta, coverUrl } }))
-        .catch((error) =>
-          console.warn(`[Catalog] Failed to install cover ${catalogBook.id}:`, error),
-        );
+      const importedBook = await importBackendCatalogBook(catalogBook, {
+        importBooks,
+        updateBook,
+        signal: controller.signal,
+      });
       return importedBook.id;
     };
 
@@ -307,8 +303,8 @@ export function ReaderScreen(props: Props) {
         if (!cancelled) setResolvedBookId(bookId);
       })
       .catch((error) => {
-        if (cancelled) return;
-        console.error(`[Catalog] Failed to add ${catalogBook.id}:`, error);
+        if (cancelled || isBackendDownloadAbort(error)) return;
+        console.error(`[Catalog] Failed to add ${catalogBook.catalogKey}:`, error);
         toast.error(t("library.catalogImportErrorTitle", "Не получилось добавить книгу"), {
           description: t("library.catalogImportErrorDescription", "Попробуйте ещё раз."),
         });
@@ -317,8 +313,9 @@ export function ReaderScreen(props: Props) {
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [catalogBookId, importBooks, props.navigation, requestedBookId, t, updateBook]);
+  }, [catalogBook, importBooks, props.navigation, t, updateBook]);
 
   if (!resolvedBookId) {
     return <ReaderLoadingChrome navigation={props.navigation} />;
@@ -433,7 +430,6 @@ function ReaderContent({ route, navigation }: Props) {
   const [currentCfi, setCurrentCfi] = useState("");
   const [selection, setSelection] = useState<SelectionEvent | null>(null);
   const selectionRef = useRef<SelectionEvent | null>(null);
-  const [fontServerUrl, setFontServerUrl] = useState<string | null>(null);
   const [defaultReaderFontFaceCSS, setDefaultReaderFontFaceCSS] = useState("");
   const [noteViewHighlight, setNoteViewHighlight] = useState<{
     id: string;
@@ -569,22 +565,6 @@ function ReaderContent({ route, navigation }: Props) {
     (rawFontSize: number, follow: boolean | undefined): number =>
       follow ? Math.max(1, Math.round(rawFontSize * systemFontScale)) : rawFontSize,
     [systemFontScale],
-  );
-
-  // Custom fonts — build @font-face CSS per-font using individual filePath
-  const customFonts = useFontStore((s) => s.fonts);
-  const selectedFontId = useFontStore((s) => s.selectedFontId);
-  const fontsHydrated = useFontStore((s) => s._hasHydrated);
-  const readerFontFamily = useMemo(
-    () => resolveReaderFontFamily(customFonts, selectedFontId),
-    [customFonts, selectedFontId],
-  );
-  const readerFontFaceCSS = useMemo(
-    () =>
-      [defaultReaderFontFaceCSS, buildCustomFontFaceCSS(customFonts, selectedFontId, fontServerUrl)]
-        .filter(Boolean)
-        .join("\n"),
-    [customFonts, defaultReaderFontFaceCSS, selectedFontId, fontServerUrl],
   );
 
   const controlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -989,28 +969,6 @@ function ReaderContent({ route, navigation }: Props) {
       duration: CONTROLS_VISIBILITY_ANIMATION_MS,
     });
   }, [controlsVisibility, showControls]);
-
-  const handleReaderBackSwipe = useCallback(() => {
-    if (navigation.canGoBack()) {
-      navigation.popTo("Tabs");
-      return;
-    }
-    navigation.navigate("Tabs");
-  }, [navigation]);
-
-  const readerBackSwipeGesture = useMemo(
-    () =>
-      Gesture.Pan()
-        .enabled(Platform.OS === "ios")
-        .activeOffsetX(18)
-        .failOffsetY([-24, 24])
-        .onEnd((event) => {
-          if (event.translationX >= 72 || event.velocityX >= 520) {
-            scheduleOnRN(handleReaderBackSwipe);
-          }
-        }),
-    [handleReaderBackSwipe],
-  );
 
   // Reader bridge
   const bridge = useReaderBridge({
@@ -1719,22 +1677,14 @@ function ReaderContent({ route, navigation }: Props) {
       const updates = { [key]: value } as Partial<ReadSettings>;
       updateReadSettings(updates);
       const currentSettings = useSettingsStore.getState().readSettings;
-      const { fonts, selectedFontId: selId } = useFontStore.getState();
-      const fontCSS = [
-        defaultReaderFontFaceCSSRef.current,
-        buildCustomFontFaceCSS(fonts, selId, fileServerRef.current),
-      ]
-        .filter(Boolean)
-        .join("\n");
-      const fontFamily = resolveReaderFontFamily(fonts, selId);
       // Recompute effective fontSize after every settings change — covers
       // both stepper changes and toggling followSystemFontScale on/off.
       const merged = { ...currentSettings, ...updates };
       bridge.applySettings({
         ...merged,
         fontSize: computeEffectiveFontSize(merged.fontSize, merged.followSystemFontScale),
-        customFontFaceCSS: fontCSS,
-        customFontFamily: fontFamily ?? "",
+        customFontFaceCSS: defaultReaderFontFaceCSSRef.current,
+        customFontFamily: DEFAULT_READER_FONT_FAMILY,
       });
     },
     [bridge, updateReadSettings, computeEffectiveFontSize],
@@ -1821,7 +1771,7 @@ function ReaderContent({ route, navigation }: Props) {
 
   // When WebView is ready and book is available, send the open command
   useEffect(() => {
-    if (!webViewReady || !book?.filePath || !fontsHydrated) {
+    if (!webViewReady || !book?.filePath) {
       return;
     }
 
@@ -1841,24 +1791,9 @@ function ReaderContent({ route, navigation }: Props) {
         // and the massive JSON serialization through injectJavaScript.
         const serverUrl = await startFileServer(appData);
         fileServerRef.current = serverUrl;
-        setFontServerUrl(serverUrl);
-        try {
-          const bundledFontCSS = await getBundledReaderFontFaceCSS(serverUrl);
-          defaultReaderFontFaceCSSRef.current = bundledFontCSS;
-          setDefaultReaderFontFaceCSS(bundledFontCSS);
-        } catch (fontError) {
-          console.warn("[ReaderScreen] Failed to prepare SB Serif:", fontError);
-          defaultReaderFontFaceCSSRef.current = "";
-          setDefaultReaderFontFaceCSS("");
-        }
-        const { fonts, selectedFontId: initialSelectedFontId } = useFontStore.getState();
-        const initialFontCSS = [
-          defaultReaderFontFaceCSSRef.current,
-          buildCustomFontFaceCSS(fonts, initialSelectedFontId, serverUrl),
-        ]
-          .filter(Boolean)
-          .join("\n");
-        const initialFontFamily = resolveReaderFontFamily(fonts, initialSelectedFontId);
+        const bundledFontCSS = await getBundledReaderFontFaceCSS(serverUrl);
+        defaultReaderFontFaceCSSRef.current = bundledFontCSS;
+        setDefaultReaderFontFaceCSS(bundledFontCSS);
         const encodedPath = book.filePath
           .split("/")
           .map((s) => encodeURIComponent(s))
@@ -1882,8 +1817,8 @@ function ReaderContent({ route, navigation }: Props) {
             fontTheme: readSettings.fontTheme,
             viewMode: readSettings.viewMode,
             paginatedLayout: readSettings.paginatedLayout,
-            customFontFaceCSS: initialFontCSS,
-            customFontFamily: initialFontFamily ?? "",
+            customFontFaceCSS: bundledFontCSS,
+            customFontFamily: DEFAULT_READER_FONT_FAMILY,
           },
         });
 
@@ -1896,7 +1831,7 @@ function ReaderContent({ route, navigation }: Props) {
     };
 
     loadBook();
-  }, [bookId, book?.filePath, fontsHydrated, loadAttempt, webViewReady]);
+  }, [bookId, book?.filePath, loadAttempt, webViewReady]);
 
   const handleReimportMissingBook = useCallback(async () => {
     if (isReimporting) return;
@@ -1970,14 +1905,14 @@ function ReaderContent({ route, navigation }: Props) {
     bridge.setThemeColors(readerThemeColors);
   }, [themeMode, readerThemeColors, webViewReady]);
 
-  // Re-apply font settings when custom fonts or selected font changes
+  // The book always uses the bundled SB Serif family.
   useEffect(() => {
     if (!webViewReady) return;
     bridge.applySettings({
-      customFontFaceCSS: readerFontFaceCSS,
-      customFontFamily: readerFontFamily,
+      customFontFaceCSS: defaultReaderFontFaceCSS,
+      customFontFamily: DEFAULT_READER_FONT_FAMILY,
     });
-  }, [readerFontFaceCSS, readerFontFamily, webViewReady]);
+  }, [bridge, defaultReaderFontFaceCSS, webViewReady]);
 
   // Re-apply effective fontSize when the OS-level font scale changes while
   // the reader is open (e.g. user changes "Display & Brightness → Text Size"
@@ -2319,24 +2254,6 @@ function ReaderContent({ route, navigation }: Props) {
             </View>
           )}
         </Animated.View>
-
-        {Platform.OS === "ios" && (
-          <GestureDetector gesture={readerBackSwipeGesture}>
-            <View
-              collapsable={false}
-              accessibilityElementsHidden
-              importantForAccessibility="no-hide-descendants"
-              style={{
-                position: "absolute",
-                top: 0,
-                bottom: 0,
-                left: 0,
-                width: 24,
-                zIndex: 20,
-              }}
-            />
-          </GestureDetector>
-        )}
 
         {readerToolbarDock}
 

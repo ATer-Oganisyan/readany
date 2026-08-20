@@ -32,18 +32,12 @@ import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
 import {
   type CachedBackendCatalogBook,
-  installBackendCatalogCover,
   loadCachedBackendCatalog,
   materializeBackendCatalogCover,
   refreshBackendCatalog,
 } from "@/lib/narra/backend-catalog-cache";
-import {
-  cleanupBackendCatalogSource,
-  downloadBackendCatalogSource,
-} from "@/lib/narra/backend-catalog-source";
 import { isBackendDownloadAbort } from "@/lib/narra/backend-file-download";
 import { CatalogCoverQueue } from "@/lib/narra/catalog-cover-queue";
-import { CatalogImportCoordinator } from "@/lib/narra/catalog-import-coordinator";
 import { queueBookForAutoVectorize } from "@/lib/rag/auto-vectorize-book";
 import { setCallback, setExtractorRef } from "@/lib/rag/auto-vectorize-service";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
@@ -193,10 +187,8 @@ function LibraryScreenContent() {
   const libraryPagerRef = useRef<NativeSegmentedPagerHandle>(null);
   const isScreenFocused = useIsFocused();
   const [catalogBooks, setCatalogBooks] = useState<CachedBackendCatalogBook[]>([]);
-  const [catalogImportingId, setCatalogImportingId] = useState<string | null>(null);
   const [isCatalogLoading, setIsCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
-  const catalogImportCoordinatorRef = useRef(new CatalogImportCoordinator());
   const catalogCoverQueueRef = useRef<CatalogCoverQueue | null>(null);
   const catalogGridRef = useRef<View>(null);
   const [catalogScrollY, setCatalogScrollY] = useState(0);
@@ -213,8 +205,6 @@ function LibraryScreenContent() {
     activeGroupId,
     isGroupView,
     loadBooks,
-    importBooks,
-    updateBook,
     removeBook,
     setGroupView,
     setActiveGroupId,
@@ -271,11 +261,6 @@ function LibraryScreenContent() {
   useEffect(() => {
     void loadBackendCatalog();
   }, [loadBackendCatalog]);
-
-  useEffect(() => {
-    const coordinator = catalogImportCoordinatorRef.current;
-    return () => coordinator.dispose();
-  }, []);
 
   const revealImportedBooks = useCallback((importedCount: number) => {
     if (importedCount > 0) libraryPagerRef.current?.selectPage(1);
@@ -675,10 +660,9 @@ function LibraryScreenContent() {
     return () => cancelAnimationFrame(frame);
   }, [catalogCoverLoadingEnabled, queueVisibleCatalogCovers]);
 
-  // Нажатие на книгу каталога: подписанная ссылка -> файл -> проверка хэша ->
-  // импорт в библиотеку -> открытие. Координатор не даёт запустить две загрузки
-  // разом и разделяет фазы «качается» и «импортируется»: качающееся можно
-  // отменить, импортируемое — уже нет.
+  // Нажатие на книгу каталога: своя книга открывается напрямую, чужая уходит в
+  // ридер вместе с описанием из каталога — качает и импортирует уже он, показывая
+  // свой лоудер вместо заглушки поверх обложки.
   const handleCatalogOpen = useCallback(
     async (catalogBook: CachedBackendCatalogBook) => {
       const existingBook = catalogBooksInLibrary.get(catalogBook.catalogKey);
@@ -686,101 +670,9 @@ function LibraryScreenContent() {
         await handleOpen(existingBook);
         return;
       }
-
-      const coordinator = catalogImportCoordinatorRef.current;
-      const beginResult = coordinator.begin(catalogBook.catalogKey);
-      if (beginResult.status === "already-active") {
-        Alert.alert(
-          t("library.catalogImportInProgressTitle", "Книга уже загружается"),
-          t(
-            "library.catalogImportInProgressDescription",
-            "Можно дождаться загрузки или выбрать другую книгу.",
-          ),
-          [
-            {
-              text: t("library.catalogCancelDownload", "Отменить загрузку"),
-              style: "destructive",
-              onPress: () => {
-                if (coordinator.cancelDownload(beginResult.operation)) {
-                  coordinator.complete(beginResult.operation);
-                  setCatalogImportingId(null);
-                }
-              },
-            },
-            { text: t("common.continue", "Продолжить") },
-          ],
-        );
-        return;
-      }
-      if (beginResult.status === "busy-importing") {
-        Alert.alert(
-          t("library.catalogImportFinishingTitle", "Книга добавляется"),
-          t(
-            "library.catalogImportFinishingDescription",
-            "Дождитесь завершения импорта и попробуйте снова.",
-          ),
-        );
-        return;
-      }
-      const { operation } = beginResult;
-
-      setCatalogImportingId(catalogBook.catalogKey);
-      let temporarySource: string | null = null;
-      try {
-        const coverPromise = (
-          catalogCoverQueueRef.current
-            ? catalogCoverQueueRef.current.load(catalogBook, true)
-            : materializeBackendCatalogCover(catalogBook).then((coverUri) => {
-                if (coverUri) rememberCatalogCover(catalogBook.catalogKey, coverUri);
-                return coverUri;
-              })
-        ).catch((error) => {
-          console.warn(`[Catalog] Failed to download cover ${catalogBook.catalogKey}:`, error);
-          return undefined;
-        });
-        temporarySource = await downloadBackendCatalogSource(
-          catalogBook,
-          operation.controller.signal,
-        );
-        if (!coordinator.markImporting(operation)) return;
-        const result = await importBooks([
-          { uri: temporarySource, name: `${catalogBook.catalogKey}.${catalogBook.format}` },
-        ]);
-        if (!coordinator.isCurrent(operation)) return;
-        const importedBook = result.imported[0] ?? result.skippedDuplicates[0]?.existingBook;
-        if (!importedBook) throw new Error("catalog-import-failed");
-
-        const coverUri = await coverPromise;
-        const coverUrl =
-          (await installBackendCatalogCover(importedBook.id, { ...catalogBook, coverUri })) ??
-          importedBook.meta.coverUrl;
-        const meta = {
-          ...importedBook.meta,
-          title: catalogBook.title,
-          author: catalogBook.author,
-          coverUrl,
-        };
-        await updateBook(importedBook.id, { meta });
-        if (!coordinator.isCurrent(operation)) return;
-        await handleOpen({ ...importedBook, meta });
-      } catch (error) {
-        if (!isBackendDownloadAbort(error)) {
-          console.error(`[Catalog] Failed to add ${catalogBook.catalogKey}:`, error);
-          Alert.alert(
-            t("library.catalogImportErrorTitle", "Не получилось добавить книгу"),
-            t("library.catalogImportErrorDescription", "Попробуйте ещё раз."),
-          );
-        }
-      } finally {
-        await cleanupBackendCatalogSource(temporarySource).catch((error) => {
-          console.warn("[Catalog] Failed to remove temporary source:", error);
-        });
-        if (coordinator.complete(operation)) {
-          setCatalogImportingId(null);
-        }
-      }
+      nav.navigate("Reader", { bookId: "", catalogBook });
     },
-    [catalogBooksInLibrary, handleOpen, importBooks, rememberCatalogCover, t, updateBook],
+    [catalogBooksInLibrary, handleOpen, nav],
   );
 
   const handleManageTags = useCallback((book: Book) => {
@@ -822,7 +714,8 @@ function LibraryScreenContent() {
             : []),
           {
             type: "menu" as const,
-            label: t("library.importFirst", "Добавить книгу"),
+            // Заголовок пустой: с ним iOS рисует в баре текст вместо плюса.
+            label: "",
             accessibilityLabel: t("library.importFirst", "Добавить книгу"),
             icon: {
               type: "image" as const,
@@ -1242,7 +1135,6 @@ function LibraryScreenContent() {
                 author={catalogBook.author}
                 coverUri={catalogBook.coverUri}
                 cardWidth={gridItemWidth}
-                isImporting={catalogImportingId === catalogBook.catalogKey}
                 isInLibrary={catalogBooksInLibrary.has(catalogBook.catalogKey)}
                 onPress={() => void handleCatalogOpen(catalogBook)}
               />
@@ -1269,7 +1161,7 @@ function LibraryScreenContent() {
   const libraryPager = (
     <NativeSegmentedPager
       ref={libraryPagerRef}
-      values={[t("library.catalog", "Каталог"), t("library.myBooks", "Мои книги")]}
+      values={[t("library.catalog", "Для вас"), t("library.myBooks", "Мои книги")]}
       selectedIndex={librarySection === "catalog" ? 0 : 1}
       onSelect={(index) => selectLibrarySection(index === 0 ? "catalog" : "my-books")}
       colorScheme={isDark ? "dark" : "light"}

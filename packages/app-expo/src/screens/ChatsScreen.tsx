@@ -170,9 +170,9 @@ export function ChatsScreen() {
         key: "narra",
         accessibilityLabel:
           pageBookId === "all"
-            ? t("narra.openNarraChat", "Открыть чат с Наррой")
-            : t("narra.openNarraBookChat", "Открыть чат с Наррой об этой книге"),
-        title: "Нарра",
+            ? t("narra.openNarraChat", "Открыть чат с Narra")
+            : t("narra.openNarraBookChat", "Открыть чат с Narra об этой книге"),
+        title: "Narra",
         subtitle:
           pageBookId === "all"
             ? t("narra.askAboutBooks", "Спросите что угодно о книгах")

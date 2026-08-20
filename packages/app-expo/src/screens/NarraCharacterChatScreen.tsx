@@ -1,37 +1,47 @@
 import { NarraChat } from "@/components/chat/NarraChat";
+import {
+  NARRA_CHAT_EMBEDDED_TOP_INSET,
+  NARRA_CHAT_HEADER_HEIGHT,
+  NarraChatHeader,
+} from "@/components/chat/narra-chat-header";
 import { CharacterPortraitImage } from "@/components/narra/character-portrait-image";
-import { Text } from "@/components/ui/Typography";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { type NarraChatMessageInput, completeNarraChat } from "@/lib/ai/narra-chat";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
-import { NarraAudioPlayer } from "@/lib/narra/audio-player";
 import { normalizeCharacterChatPlaceholder } from "@/lib/narra/chat-placeholder";
 import { isCharacterUnlocked, normalizeReadingProgress } from "@/lib/narra/domain";
 import { reportNarraError } from "@/lib/narra/errors";
-import { synthesizeNarraSpeech } from "@/lib/narra/media";
 import type { NarraCharacter, NarraChatMessage } from "@/lib/narra/types";
 import { toast } from "@/lib/notifications";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useLibraryStore, useNarraStore } from "@/stores";
-import {
-  type ThemeColors,
-  bodyTypography,
-  captionTypography,
-  fontWeight,
-  titleFontFamily,
-  useTheme,
-} from "@/styles/theme";
-import { radiusPixels, spacingPixels } from "@deslop/primitives";
+import { type ThemeColors, useTheme } from "@/styles/theme";
+import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { MessageV2 } from "@readany/core/types/message";
 import * as Crypto from "expo-crypto";
-import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Platform, Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-type Props = NativeStackScreenProps<RootStackParamList, "NarraCharacterChat">;
+type StandaloneCharacterChatProps = NativeStackScreenProps<
+  RootStackParamList,
+  "NarraCharacterChat"
+>;
+
+type EmbeddedCharacterChatProps = {
+  embedded: true;
+  bookId: string;
+  characterId: string;
+  onBack: () => void;
+};
+
+export type NarraCharacterChatScreenProps =
+  | StandaloneCharacterChatProps
+  | EmbeddedCharacterChatProps;
 
 const headerControlSize = 34;
 
@@ -83,9 +93,14 @@ function toMessageV2(message: NarraChatMessage, threadId: string): MessageV2 {
   };
 }
 
-export function NarraCharacterChatScreen({ route, navigation }: Props) {
-  const { bookId, characterId } = route.params;
-  const { colors, isDark } = useTheme();
+export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
+  const embedded = "embedded" in props;
+  const bookId = embedded ? props.bookId : props.route.params.bookId;
+  const characterId = embedded ? props.characterId : props.route.params.characterId;
+  const embeddedBack = embedded ? props.onBack : undefined;
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t, i18n } = useTranslation();
   const interfaceLanguage = i18n.resolvedLanguage === "en" ? "en" : "ru";
@@ -99,9 +114,6 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
   const memory = narraBook?.memories?.[characterId] ?? "";
   const [sending, setSending] = useState(false);
   const [greetingLoading, setGreetingLoading] = useState(false);
-  const [pendingAssistant, setPendingAssistant] = useState<NarraChatMessage | null>(null);
-  const [speakingId, setSpeakingId] = useState<string | null>(null);
-  const audioRef = useRef(new NarraAudioPlayer());
   const greetingRequestedRef = useRef(false);
   const placeholderRequestedRef = useRef<string | null>(null);
   const unlocked = Boolean(book && character && isCharacterUnlocked(book.progress, character));
@@ -109,6 +121,15 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
     sending || greetingLoading
       ? t("narra.characterTyping", "Печатает...")
       : t("narra.characterOnline", "онлайн");
+  const headerSafeAreaTop = embedded ? NARRA_CHAT_EMBEDDED_TOP_INSET : insets.top;
+  const headerHeight = headerSafeAreaTop + NARRA_CHAT_HEADER_HEIGHT;
+  const goBack = useCallback(() => {
+    if (embeddedBack) {
+      embeddedBack();
+      return;
+    }
+    navigation.goBack();
+  }, [embeddedBack, navigation]);
   const openCharacterProfile = useCallback(
     () =>
       navigation.navigate("NarraCharacterProfile", {
@@ -118,57 +139,9 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
       }),
     [bookId, characterId, navigation],
   );
-
   useEffect(() => {
     recordTelemetry("chat_opened", { feature: "chat" });
   }, []);
-
-  useLayoutEffect(() => {
-    const profileButton = character ? (
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={t("narra.openCharacterProfile", "Открыть профиль {{character}}", {
-          character: character.name,
-        })}
-        hitSlop={8}
-        onPress={openCharacterProfile}
-        style={({ pressed }) => [styles.headerAvatarButton, pressed && styles.headerAvatarPressed]}
-      >
-        <CharacterPortraitImage
-          character={character}
-          resizeMode="cover"
-          cropAnchor="top"
-          staticOnly
-          style={styles.headerAvatarImage}
-          fallback={
-            <InitialsAvatar
-              size={32}
-              userId={`${bookId}:${character.id}`}
-              name={character.fullName || character.name}
-            />
-          }
-        />
-      </Pressable>
-    ) : null;
-
-    navigation.setOptions({
-      title: character?.name || t("narra.characterChat", "Чат с персонажем"),
-      headerTitle: () => (
-        <CharacterHeaderTitle
-          name={character?.name || t("narra.characterChat", "Чат с персонажем")}
-          status={characterStatus}
-          isDark={isDark}
-          onPress={openCharacterProfile}
-          styles={styles}
-        />
-      ),
-      headerTitleAlign: "center",
-      unstable_headerRightItems: undefined,
-      headerRight: () => profileButton,
-    });
-  }, [bookId, character, characterStatus, isDark, navigation, openCharacterProfile, styles, t]);
-
-  useEffect(() => () => audioRef.current.stop(), []);
 
   useEffect(() => {
     if (interfaceLanguage === "en" || !book || !character || character.chatPlaceholder) return;
@@ -225,11 +198,8 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
 
   const chatMessages = useMemo(() => {
     const threadId = `narra-character-${bookId}-${characterId}`;
-    const persistedMessages = messages.map((message) => toMessageV2(message, threadId));
-    return pendingAssistant
-      ? [...persistedMessages, toMessageV2(pendingAssistant, threadId)]
-      : persistedMessages;
-  }, [bookId, characterId, messages, pendingAssistant]);
+    return messages.map((message) => toMessageV2(message, threadId));
+  }, [bookId, characterId, messages]);
 
   // Первое сообщение героя: свой greeting из анализа/каталога, иначе — просим
   // Шлюз здоровается в роли персонажа. Сохраняется в историю чата один раз,
@@ -331,39 +301,6 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
     [bookId, character, characterId, interfaceLanguage, memory, setMemory],
   );
 
-  const speak = useCallback(
-    async (message: MessageV2) => {
-      if (!character || speakingId) return;
-      const content = message.parts
-        .filter((part) => part.type === "text")
-        .map((part) => part.text)
-        .join("\n")
-        .trim();
-      if (!content) return;
-
-      setSpeakingId(message.id);
-      try {
-        const uri = await synthesizeNarraSpeech(
-          content,
-          character.voiceOverride || character.voice,
-          { prosody: character.voiceOverride ? undefined : character.voiceProsody },
-        );
-        audioRef.current.play(uri, () => setSpeakingId(null));
-        recordTelemetry("tts_playback_started", {
-          source: "character",
-          cache_hit: false,
-          origin: "user",
-        });
-      } catch (error) {
-        setSpeakingId(null);
-        toast.error(t("narra.speechFailedTitle", "Не удалось озвучить ответ"), {
-          description: reportNarraError("character_speech", error).message,
-        });
-      }
-    },
-    [character, speakingId, t],
-  );
-
   const send = useCallback(
     async (value: string) => {
       const text = value.trim();
@@ -376,14 +313,7 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
         createdAt: Date.now(),
       };
       const assistantMessageId = Crypto.randomUUID();
-      const assistantDraft: NarraChatMessage = {
-        id: assistantMessageId,
-        role: "assistant",
-        content: "",
-        createdAt: Date.now(),
-      };
       append(bookId, characterId, userMessage);
-      setPendingAssistant(assistantDraft);
       try {
         const content = await completeNarraChat({
           messages: [...conversation, { role: "user", content: text }],
@@ -399,10 +329,8 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
           createdAt: Date.now(),
         };
         append(bookId, characterId, assistantMessage);
-        setPendingAssistant(null);
         void refreshMemory([...messages, userMessage, assistantMessage]);
       } catch (error) {
-        setPendingAssistant(null);
         toast.error(t("narra.chatFailedTitle", "Не удалось получить ответ"), {
           description: reportNarraError("character_chat", error).message,
         });
@@ -425,40 +353,82 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
     ],
   );
 
+  const header = (
+    <NarraChatHeader
+      backLabel={t("common.back", "Назад")}
+      onBack={goBack}
+      onTitlePress={character ? openCharacterProfile : undefined}
+      onTrailingPress={character ? openCharacterProfile : undefined}
+      safeAreaTop={headerSafeAreaTop}
+      subtitle={characterStatus}
+      title={character?.name || t("narra.characterChat", "Чат с персонажем")}
+      trailing={
+        character ? (
+          <View style={styles.headerAvatar}>
+            <CharacterPortraitImage
+              character={character}
+              resizeMode="cover"
+              cropAnchor="top"
+              staticOnly
+              style={styles.headerAvatarImage}
+              fallback={
+                <InitialsAvatar
+                  size={32}
+                  userId={`${bookId}:${character.id}`}
+                  name={character.fullName || character.name}
+                />
+              }
+            />
+          </View>
+        ) : null
+      }
+      trailingLabel={
+        character
+          ? t("narra.openCharacterProfile", "Открыть профиль {{character}}", {
+              character: character.name,
+            })
+          : undefined
+      }
+    />
+  );
+
   if (!book || !character) {
     return (
-      <CenteredEmptyState
-        title={t("narra.characterUnavailable", "Персонаж недоступен.")}
-        style={styles.container}
-      />
+      <View style={styles.container}>
+        {header}
+        <View style={[styles.content, { paddingTop: headerHeight }]}>
+          <CenteredEmptyState
+            title={t("narra.characterUnavailable", "Персонаж недоступен.")}
+            style={styles.content}
+          />
+        </View>
+      </View>
     );
   }
 
   if (!unlocked) {
     return (
-      <CenteredEmptyState
-        title={t("narra.characterLocked", "Персонаж ещё не открыт")}
-        description={t(
-          "narra.keepReading",
-          "Продолжайте читать — герой появится позже по ходу книги.",
-        )}
-        style={styles.container}
-      />
+      <View style={styles.container}>
+        {header}
+        <View style={[styles.content, { paddingTop: headerHeight }]}>
+          <CenteredEmptyState
+            title={t("narra.characterLocked", "Персонаж ещё не открыт")}
+            description={t(
+              "narra.keepReading",
+              "Продолжайте читать — герой появится позже по ходу книги.",
+            )}
+            style={styles.content}
+          />
+        </View>
+      </View>
     );
   }
 
-  const assistantMessageAction = speakingId
-    ? undefined
-    : {
-        label: t("narra.playAnswer", "Озвучить ответ"),
-        onPress: speak,
-      };
-
   return (
     <View style={styles.container}>
+      {header}
       <NarraChat
         messages={chatMessages}
-        adjustsForTransparentHeader
         floatingComposer
         isStreaming={sending || greetingLoading}
         showScrollToBottomButton={false}
@@ -473,7 +443,7 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
         assistantName={character.name}
         showTypingIndicator={false}
         showModeControls={false}
-        assistantMessageAction={assistantMessageAction}
+        topInset={headerHeight}
       />
     </View>
   );
@@ -482,7 +452,8 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
 const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
-    headerAvatarButton: {
+    content: { flex: 1 },
+    headerAvatar: {
       width: headerControlSize,
       height: headerControlSize,
       overflow: "hidden",
@@ -493,104 +464,5 @@ const makeStyles = (colors: ThemeColors) =>
       borderColor: colors.border,
       backgroundColor: colors.elevation2,
     },
-    headerAvatarPressed: { opacity: 0.62 },
     headerAvatarImage: { width: "100%", height: "100%" },
-    headerTitleContent: {
-      alignItems: "center",
-      flex: 1,
-      justifyContent: "center",
-      minWidth: 0,
-    },
-    headerTitlePressable: {
-      alignItems: "center",
-      alignSelf: "stretch",
-      flex: 1,
-      justifyContent: "center",
-    },
-    headerTitleGlass: {
-      alignItems: "center",
-      borderCurve: "continuous",
-      borderRadius: radiusPixels.full,
-      flexDirection: "column",
-      flexShrink: 0,
-      height: spacingPixels[44],
-      justifyContent: "center",
-      maxWidth: 220,
-      minWidth: 104,
-      paddingHorizontal: spacingPixels[12],
-    },
-    headerTitleFallback: {
-      borderColor: colors.border,
-      borderWidth: StyleSheet.hairlineWidth,
-      backgroundColor: colors.elevation1,
-    },
-    headerTitle: {
-      color: colors.foreground,
-      ...bodyTypography,
-      fontFamily: titleFontFamily,
-      fontWeight: fontWeight.semibold,
-      maxWidth: 190,
-    },
-    headerSubtitle: {
-      color: colors.mutedForeground,
-      ...captionTypography,
-      fontFamily: bodyTypography.fontFamily,
-      textTransform: "none",
-    },
   });
-
-function CharacterHeaderTitle({
-  name,
-  status,
-  isDark,
-  onPress,
-  styles,
-}: {
-  name: string;
-  status: string;
-  isDark: boolean;
-  onPress: () => void;
-  styles: ReturnType<typeof makeStyles>;
-}) {
-  const content = (
-    <View style={styles.headerTitleContent}>
-      <Text numberOfLines={1} style={styles.headerTitle}>
-        {name}
-      </Text>
-      <Text numberOfLines={1} style={styles.headerSubtitle}>
-        {status}
-      </Text>
-    </View>
-  );
-
-  if (Platform.OS === "ios" && isLiquidGlassAvailable()) {
-    return (
-      <GlassView
-        colorScheme={isDark ? "dark" : "light"}
-        glassEffectStyle="regular"
-        isInteractive
-        style={styles.headerTitleGlass}
-      >
-        <Pressable
-          accessibilityLabel={`${name}, ${status}`}
-          accessibilityRole="button"
-          onPress={onPress}
-          style={styles.headerTitlePressable}
-        >
-          {content}
-        </Pressable>
-      </GlassView>
-    );
-  }
-
-  return (
-    <Pressable
-      accessibilityLabel={`${name}, ${status}`}
-      accessibilityRole="button"
-      onPress={onPress}
-      style={[styles.headerTitleGlass, styles.headerTitleFallback]}
-    >
-      {content}
-    </Pressable>
-  );
-}

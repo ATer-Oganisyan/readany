@@ -31,7 +31,11 @@ import {
 } from "@readany/core/utils";
 
 import { NarraChat } from "@/components/chat/NarraChat";
-import { AnimatedNarraFace } from "@/components/chat/animated-narra-face";
+import {
+  NARRA_CHAT_EMBEDDED_TOP_INSET,
+  NARRA_CHAT_HEADER_HEIGHT,
+  NarraChatHeader,
+} from "@/components/chat/narra-chat-header";
 import { MessageCirclePlusIcon, Trash2Icon, XIcon } from "@/components/ui/Icon";
 import {
   fontSize as fs,
@@ -45,26 +49,39 @@ import type { ThemeColors } from "@/styles/theme";
 
 type ChatRoute = RouteProp<RootStackParamList, "Chat"> | RouteProp<RootStackParamList, "BookChat">;
 
-const renderNarraAvatar = () => <AnimatedNarraFace width={27} height={28} />;
+interface ChatScreenProps {
+  embedded?: boolean;
+  embeddedBookId?: string;
+  onBack?: () => void;
+}
 
-export function ChatScreen() {
+export function ChatScreen({
+  embedded = false,
+  embeddedBookId,
+  onBack: embeddedBack,
+}: ChatScreenProps = {}) {
   const { t } = useTranslation();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<ChatRoute>();
   const bookParams = route.name === "BookChat" ? route.params : undefined;
-  const bookId = bookParams?.bookId;
+  const bookId = embeddedBookId ?? bookParams?.bookId;
   const books = useLibraryStore((state) => state.books);
   const book = useMemo(
     () => (bookId ? books.find((item) => item.id === bookId) : undefined),
     [bookId, books],
   );
   const [quotes, setQuotes] = useState<AttachedQuote[]>([]);
-
-  useEffect(() => {
-    navigation.setOptions({ title: bookId ? "Нарра" : "Narra AI" });
-  }, [bookId, navigation]);
+  const headerSafeAreaTop = embedded ? NARRA_CHAT_EMBEDDED_TOP_INSET : insets.top;
+  const headerHeight = headerSafeAreaTop + NARRA_CHAT_HEADER_HEIGHT;
+  const goBack = useCallback(() => {
+    if (embeddedBack) {
+      embeddedBack();
+      return;
+    }
+    navigation.goBack();
+  }, [embeddedBack, navigation]);
 
   useEffect(() => {
     if (!bookParams?.selectedText || quotes.length > 0) return;
@@ -400,7 +417,7 @@ export function ChatScreen() {
   );
 
   return (
-    <View style={[s.container, { paddingBottom: insets.bottom }]}>
+    <View style={s.container}>
       <View style={s.shell}>
         {isTabletLandscape && (
           <View style={[s.sidebarDocked, { paddingTop: insets.top }]}>
@@ -409,11 +426,17 @@ export function ChatScreen() {
         )}
 
         <View style={s.mainColumn}>
+          <NarraChatHeader
+            backLabel={t("common.back", "Назад")}
+            onBack={goBack}
+            safeAreaTop={headerSafeAreaTop}
+            title="Narra"
+            transparent={false}
+          />
           {/* Content */}
           <View style={s.content}>
             <NarraChat
               messages={allMessages}
-              assistantAvatar={renderNarraAvatar}
               isStreaming={isStreaming}
               currentStep={currentStep}
               onSend={handleSend}
@@ -428,7 +451,9 @@ export function ChatScreen() {
               quotes={quotes}
               onRemoveQuote={handleRemoveQuote}
               onCitationClick={handleCitationClick}
-              autoFocus
+              autoFocus={!embedded}
+              floatingComposer
+              topInset={headerHeight}
             />
           </View>
         </View>

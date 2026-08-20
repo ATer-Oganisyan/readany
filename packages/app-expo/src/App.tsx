@@ -25,6 +25,7 @@ if (typeof navigator !== "undefined" && !navigator.userAgent) {
   });
 }
 
+import { PanelUIThemeBridge } from "@/styles/panelui-theme-bridge";
 import {
   interfaceFontAssets,
   interfaceFontFamily,
@@ -328,7 +329,10 @@ export default function App() {
         <ThemeProvider initialMode={initialThemeMode}>
           {/* PanelUI пока обслуживает только чат. Его тему свяжем с нашей
               отдельным шагом — сейчас он работает на своей палитре. */}
-          <PanelUIProvider>
+          {/* background={false}: фон страницы мы красим сами, иначе PanelUI
+              положит поверх свой. */}
+          <PanelUIProvider background={false}>
+            <PanelUIThemeBridge />
             <AppInner />
           </PanelUIProvider>
         </ThemeProvider>

@@ -83,7 +83,7 @@ export interface NarraProsody {
   rate?: number;
 }
 
-const PROSODY_VARIANTS: readonly NarraProsody[] = [
+export const PROSODY_VARIANTS: readonly NarraProsody[] = [
   { pitch: -2 },
   { pitch: 2 },
   { rate: 0.9 },

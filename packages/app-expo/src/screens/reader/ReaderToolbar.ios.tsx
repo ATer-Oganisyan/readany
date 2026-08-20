@@ -4,6 +4,7 @@ import type { MishanaerIconName } from "@/components/ui/MishanaerIcon";
 import { Button, HStack, Host, ProgressView, Text } from "@expo/ui/swift-ui";
 import {
   Animation,
+  accessibilityHidden,
   accessibilityLabel,
   animation,
   buttonStyle,
@@ -17,7 +18,7 @@ import {
   tint,
 } from "@expo/ui/swift-ui/modifiers";
 import { useTranslation } from "react-i18next";
-import { Platform, StyleSheet, View } from "react-native";
+import { Platform, Pressable, StyleSheet, View } from "react-native";
 import type { ReaderToolbarProps } from "./ReaderToolbar.types";
 
 const TOOLBAR_HEIGHT = 50;
@@ -109,25 +110,40 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
         </HStack>
       </Host>
 
-      <MorphTransitionSource sourceId={props.chatMorphSourceId} style={styles.chatSource}>
-        <Host
-          matchContents
-          colorScheme={props.isDark ? "dark" : "light"}
-          style={styles.controlHost}
+      <Pressable
+        accessibilityLabel={t("narra.chat", "Чат")}
+        accessibilityRole="button"
+        onPress={props.onChatPress}
+        style={styles.chatControl}
+      >
+        <MorphTransitionSource
+          pointerEvents="none"
+          sourceId={props.chatMorphSourceId}
+          style={styles.chatSource}
         >
-          <Button onPress={props.onChatPress} modifiers={makeModifiers(t("narra.chat", "Чат"))}>
-            <HStack spacing={7} alignment="center">
-              <HostedMishanaerIcon
-                name="chat-bubble"
-                variant="filled"
-                size={20}
-                color={props.tintColor}
-              />
-              <Text>{t("narra.chat", "Чат")}</Text>
-            </HStack>
-          </Button>
-        </Host>
-      </MorphTransitionSource>
+          <Host
+            matchContents
+            pointerEvents="none"
+            colorScheme={props.isDark ? "dark" : "light"}
+            style={styles.controlHost}
+          >
+            <Button
+              onPress={() => {}}
+              modifiers={[...makeModifiers(t("narra.chat", "Чат")), accessibilityHidden(true)]}
+            >
+              <HStack spacing={7} alignment="center">
+                <HostedMishanaerIcon
+                  name="chat-bubble"
+                  variant="filled"
+                  size={20}
+                  color={props.tintColor}
+                />
+                <Text>{t("narra.chat", "Чат")}</Text>
+              </HStack>
+            </Button>
+          </Host>
+        </MorphTransitionSource>
+      </Pressable>
     </View>
   );
 }
@@ -145,6 +161,9 @@ const styles = StyleSheet.create({
     height: CONTROL_SIZE,
   },
   chatSource: {
+    height: CONTROL_SIZE,
+  },
+  chatControl: {
     height: CONTROL_SIZE,
   },
 });

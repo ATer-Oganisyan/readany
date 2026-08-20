@@ -2,9 +2,11 @@
 import type { ImageSourcePropType } from "react-native";
 import FilledBookAsset from "../../../assets/icons/mishanaer/filled/book.svg";
 import FilledChatBubbleAsset from "../../../assets/icons/mishanaer/filled/chat-bubble.svg";
+import FilledChatBubblesAsset from "../../../assets/icons/mishanaer/filled/chat-bubbles.svg";
 import FilledHeadphonesAsset from "../../../assets/icons/mishanaer/filled/headphones.svg";
 import FilledMagnifyingGlassAsset from "../../../assets/icons/mishanaer/filled/magnifying-glass.svg";
 import FilledPersonAsset from "../../../assets/icons/mishanaer/filled/person.svg";
+import FilledStopAsset from "../../../assets/icons/mishanaer/filled/stop.svg";
 import StrokeArchiveAsset from "../../../assets/icons/mishanaer/stroke/archive.svg";
 import StrokeArrowBlockUpAsset from "../../../assets/icons/mishanaer/stroke/arrow-block-up.svg";
 import StrokeArrowDownAsset from "../../../assets/icons/mishanaer/stroke/arrow-down.svg";
@@ -276,9 +278,11 @@ export const strokeIconComponents = {
 export const filledIconComponents = {
   book: FilledBookAsset,
   "chat-bubble": FilledChatBubbleAsset,
+  "chat-bubbles": FilledChatBubblesAsset,
   headphones: FilledHeadphonesAsset,
   "magnifying-glass": FilledMagnifyingGlassAsset,
   person: FilledPersonAsset,
+  stop: FilledStopAsset,
 } as const;
 
 export const strokeIconImages = {
@@ -346,7 +350,9 @@ export const strokeIconImages = {
 export const filledIconImages = {
   book: require("../../../assets/icons/mishanaer/filled-png/book.png"),
   "chat-bubble": require("../../../assets/icons/mishanaer/filled-png/chat-bubble.png"),
+  "chat-bubbles": require("../../../assets/icons/mishanaer/filled-png/chat-bubbles.png"),
   headphones: require("../../../assets/icons/mishanaer/filled-png/headphones.png"),
   "magnifying-glass": require("../../../assets/icons/mishanaer/filled-png/magnifying-glass.png"),
   person: require("../../../assets/icons/mishanaer/filled-png/person.png"),
+  stop: require("../../../assets/icons/mishanaer/filled-png/stop.png"),
 } as const satisfies Record<string, ImageSourcePropType>;

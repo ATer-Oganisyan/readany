@@ -1,0 +1,69 @@
+/*
+ * СГЕНЕРИРОВАНО. Не править руками.
+ *
+ * Источник — packages/app-expo/src/styles/theme-colors.ts, то есть та же
+ * палитра deslop, на которой работают экраны приложения. Перегенерация:
+ * pnpm --filter @readany/app-expo run generate:panelui-theme
+ *
+ * Подключается в global.css после panelui-native/theme.css: одинаковые имена
+ * переменных, наши значения — поэтому побеждает последнее объявление.
+ */
+:root {
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-xl: 22px;
+  --radius-2xl: 26px;
+  --radius-3xl: 34px;
+
+  @variant light {
+    --color-background: #f5f5f5;
+    --color-foreground: #111111;
+    --color-card: #ffffff;
+    --color-card-foreground: #111111;
+    --color-popover: #ffffff;
+    --color-popover-foreground: #111111;
+    --color-overlay: #ffffff;
+    --color-overlay-foreground: #111111;
+    --color-inset: #1111110d;
+    --color-primary: #ff8d28;
+    --color-primary-foreground: #111111;
+    --color-secondary: #1111110d;
+    --color-secondary-foreground: #111111;
+    --color-muted: #eaeaea;
+    --color-muted-foreground: #838383;
+    --color-accent: #fff6ee;
+    --color-accent-foreground: #ff8d28;
+    --color-destructive: #ff383c;
+    --color-destructive-foreground: #ffffff;
+    --color-border: #dedede;
+    --color-input: #dedede;
+    --color-ring: #ff8d28;
+  }
+
+  @variant dark {
+    --color-background: #111111;
+    --color-foreground: #ffffff;
+    --color-card: #1d1d1d;
+    --color-card-foreground: #ffffff;
+    --color-popover: #1d1d1d;
+    --color-popover-foreground: #ffffff;
+    --color-overlay: #1d1d1d;
+    --color-overlay-foreground: #ffffff;
+    --color-inset: #ffffff0d;
+    --color-primary: #ff9230;
+    --color-primary-foreground: #111111;
+    --color-secondary: #ffffff0d;
+    --color-secondary-foreground: #ffffff;
+    --color-muted: #1d1d1d;
+    --color-muted-foreground: #888888;
+    --color-accent: #2f261f;
+    --color-accent-foreground: #ff9230;
+    --color-destructive: #ff4245;
+    --color-destructive-foreground: #ffffff;
+    --color-border: #292929;
+    --color-input: #292929;
+    --color-ring: #ff9230;
+  }
+}

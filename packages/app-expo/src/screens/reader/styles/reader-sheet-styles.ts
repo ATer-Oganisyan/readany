@@ -105,21 +105,6 @@ export const makeSheetStyles = (colors: ThemeColors) =>
       fontWeight: fontWeight.medium,
     },
     settingToggleTextActive: { color: colors.primary },
-    themeScroll: { maxWidth: 220 },
-    themeRow: { flexDirection: "row", gap: 6 },
-    themeBtn: {
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: radius.lg,
-      backgroundColor: colors.muted,
-    },
-    themeBtnActive: { backgroundColor: colors.primary },
-    themeBtnText: {
-      fontSize: fontSize.xs,
-      fontWeight: fontWeight.medium,
-      color: colors.mutedForeground,
-    },
-    themeBtnTextActive: { color: colors.primaryForeground },
     viewModeRow: { flexDirection: "row", gap: 8 },
     viewModeBtn: {
       paddingHorizontal: 16,

@@ -143,7 +143,17 @@ const STROKE_ICONS = [
   "x-hexagon",
 ];
 
-const FILLED_ICONS = ["book", "chat-bubble", "headphones", "magnifying-glass", "person"];
+const FILLED_ICONS = [
+  "book",
+  "chat-bubble",
+  // Upstream's solid chat-bubbles knocks three dots out of the bubble; the tab bar uses the
+  // plain solid variant, so re-syncing overwrites filled/chat-bubbles.svg with the dotted one.
+  "chat-bubbles",
+  "headphones",
+  "magnifying-glass",
+  "person",
+  "stop",
+];
 
 // Only native navigation and Compose controls need raster sources. Regular UI uses SVG.
 const NATIVE_STROKE_ICONS = [

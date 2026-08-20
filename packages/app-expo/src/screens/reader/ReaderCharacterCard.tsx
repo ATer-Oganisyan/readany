@@ -9,6 +9,7 @@ import { ensureCharacterPortrait, synthesizeNarraSpeech } from "@/lib/narra/medi
 import type { NarraCharacter } from "@/lib/narra/types";
 import { toast } from "@/lib/notifications";
 import { useLibraryStore, useNarraStore } from "@/stores";
+import { foregroundForBackground } from "@/styles/foreground-for-background";
 import {
   type ThemeColors,
   fontSize,
@@ -112,28 +113,6 @@ function splitNameIntoTwoBalancedLines(name: string): string {
   }
 
   return `${words.slice(0, bestBreak).join(" ")}\n${words.slice(bestBreak).join(" ")}`;
-}
-
-function foregroundForBackground(color: string): {
-  isDark: boolean;
-  primary: string;
-  secondary: string;
-} {
-  const red = Number.parseInt(color.slice(1, 3), 16) / 255;
-  const green = Number.parseInt(color.slice(3, 5), 16) / 255;
-  const blue = Number.parseInt(color.slice(5, 7), 16) / 255;
-  const luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
-  return luminance > 0.58
-    ? {
-        isDark: false,
-        primary: "rgba(0,0,0,0.9)",
-        secondary: "rgba(0,0,0,0.62)",
-      }
-    : {
-        isDark: true,
-        primary: "rgba(255,255,255,0.96)",
-        secondary: "rgba(255,255,255,0.72)",
-      };
 }
 
 function ProgressivePortraitTransition({

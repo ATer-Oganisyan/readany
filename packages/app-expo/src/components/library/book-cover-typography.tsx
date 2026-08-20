@@ -9,6 +9,7 @@ import {
   type TextLayoutEventData,
   View,
 } from "react-native";
+import { useCoverForeground } from "./use-cover-foreground";
 
 interface BookCoverTypographyProps {
   title: string;
@@ -16,11 +17,12 @@ interface BookCoverTypographyProps {
   width: number;
   referenceWidth?: number;
   titleFontSize?: number;
-  authorFontSize?: number;
   leftInsetAdjustment?: number;
   showText?: boolean;
   bottomAccessory?: ReactNode;
   textTone?: CoverTextTone;
+  /** Файл обложки: по нему считается цвет текста. */
+  coverUri?: string;
 }
 
 function normalizeLayoutText(value: string) {
@@ -64,19 +66,18 @@ export function BookCoverTypography({
   width,
   referenceWidth = width,
   titleFontSize,
-  authorFontSize,
   leftInsetAdjustment = 4,
   showText = true,
   bottomAccessory,
   textTone = "dark",
+  coverUri,
 }: BookCoverTypographyProps) {
   const scale = Math.min(1, width / referenceWidth);
   const titleSize = titleFontSize ?? Math.max(12, Math.min(18, referenceWidth * 0.12)) * scale;
   const minimumTitleSize = Math.min(titleSize, 12);
-  const authorSize = authorFontSize ?? 13 * scale;
   const formattedTitle = formatBookCoverTitle(title);
   const [fittedTitleSize, setFittedTitleSize] = useState(titleSize);
-  const textColor = textTone === "light" ? "#FFFFFF" : "#000000";
+  const foreground = useCoverForeground(coverUri, textTone);
 
   useEffect(() => setFittedTitleSize(titleSize), [titleSize]);
 
@@ -99,7 +100,9 @@ export function BookCoverTypography({
     [fittedTitleSize, formattedTitle, minimumTitleSize],
   );
 
-  // Keep two overlay passes: the full-strength pass and the softer reinforcement pass.
+  // Обычный слой снизу создаёт минимальную контрастную основу. Overlay кладём
+  // поверх неё: на почти чёрной обложке он смешивается уже не с чистым чёрным
+  // и не исчезает, а на цветной снова пропускает фактуру бумаги внутрь букв.
   const renderTextContent = (withLayoutHandler: boolean) => (
     <>
       <Text
@@ -112,7 +115,7 @@ export function BookCoverTypography({
             fontWeight: "600",
             fontSize: fittedTitleSize,
             lineHeight: fittedTitleSize * 1.05,
-            color: textColor,
+            color: foreground.primary,
             opacity: 1,
           },
         ]}
@@ -121,16 +124,15 @@ export function BookCoverTypography({
       </Text>
       {author ? (
         <Text
-          adjustsFontSizeToFit
-          minimumFontScale={0.74}
-          numberOfLines={2}
+          ellipsizeMode="tail"
+          numberOfLines={3}
           style={[
             styles.author,
             {
               fontFamily: serifTextFontFamily.regular,
-              fontSize: authorSize,
-              lineHeight: authorSize * (14 / 13),
-              color: textColor,
+              fontSize: 13,
+              lineHeight: 14,
+              color: foreground.secondary,
               opacity: 1,
             },
           ]}
@@ -151,7 +153,7 @@ export function BookCoverTypography({
             accessibilityElementsHidden
             importantForAccessibility="no-hide-descendants"
             style={[
-              styles.typographySoftLayer,
+              styles.typographyBlendLayer,
               {
                 padding: 20 * scale,
                 paddingLeft: 20 * scale + leftInsetAdjustment,
@@ -166,13 +168,12 @@ export function BookCoverTypography({
           <View
             pointerEvents="none"
             style={[
-              styles.typographyLayer,
+              styles.typographyContrastLayer,
               {
                 padding: 20 * scale,
                 paddingLeft: 20 * scale + leftInsetAdjustment,
                 paddingTop: 16 * scale,
                 gap: 4 * scale,
-                mixBlendMode: "overlay",
               },
             ]}
           >
@@ -200,15 +201,15 @@ export function BookCoverTypography({
 }
 
 const styles = StyleSheet.create({
-  typographySoftLayer: {
-    ...StyleSheet.absoluteFill,
-    zIndex: 11,
-    opacity: 0.3,
-  },
-  typographyLayer: {
+  typographyBlendLayer: {
     ...StyleSheet.absoluteFill,
     zIndex: 12,
-    opacity: 1,
+    opacity: 0.85,
+  },
+  typographyContrastLayer: {
+    ...StyleSheet.absoluteFill,
+    zIndex: 11,
+    opacity: 0.2,
   },
   accessoryLayer: {
     ...StyleSheet.absoluteFill,

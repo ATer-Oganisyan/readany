@@ -1,18 +1,8 @@
 import { SCENE_SUGGESTION_INTERVALS } from "@/lib/narra/scene-suggestion";
 import { READER_PAGE_THEMES } from "@/lib/reader/reader-themes";
-import { SB_SANS_READER_FONT_ID } from "@/lib/reader/bundled-reader-font";
 import { useNarraStore } from "@/stores";
 import { useTheme } from "@/styles/theme";
-import {
-  BottomSheet,
-  Form,
-  Group,
-  Host,
-  Picker,
-  Section,
-  Text,
-  Toggle,
-} from "@expo/ui/swift-ui";
+import { BottomSheet, Form, Group, Host, Picker, Section, Text, Toggle } from "@expo/ui/swift-ui";
 import {
   labelsHidden,
   pickerStyle,
@@ -21,7 +11,6 @@ import {
   tag,
   tint,
 } from "@expo/ui/swift-ui/modifiers";
-import { useFontStore } from "@readany/core/stores";
 import type { ReadSettings } from "@readany/core/types";
 import { requireNativeView } from "expo";
 import { type ComponentType, type ReactNode, useCallback } from "react";
@@ -33,8 +22,6 @@ interface Props {
   onClose: () => void;
   onUpdateSetting: <K extends keyof ReadSettings>(key: K, value: ReadSettings[K]) => void;
 }
-
-const DEFAULT_FONT_ID = "__default__";
 
 interface NativeNavigationStackProps {
   title: string;
@@ -68,9 +55,6 @@ const NativeValueStepper = requireNativeView(
 export function ReaderSettingsPanel({ visible, readSettings, onClose, onUpdateSetting }: Props) {
   const { colors, isDark } = useTheme();
   const { t } = useTranslation();
-  const customFonts = useFontStore((state) => state.fonts);
-  const selectedFontId = useFontStore((state) => state.selectedFontId);
-  const setSelectedFont = useFontStore((state) => state.setSelectedFont);
   const sceneInterval = useNarraStore((state) => state.sceneSuggestionInterval);
   const setSceneInterval = useNarraStore((state) => state.setSceneSuggestionInterval);
 
@@ -165,25 +149,6 @@ export function ReaderSettingsPanel({ visible, readSettings, onClose, onUpdateSe
               </Section>
 
               <Section title={t("reader.appearance", "Оформление")}>
-                <Picker
-                  label={t("fonts.title", "Шрифт")}
-                  selection={selectedFontId ?? DEFAULT_FONT_ID}
-                  onSelectionChange={(value) =>
-                    setSelectedFont(value === DEFAULT_FONT_ID ? null : value)
-                  }
-                  modifiers={[pickerStyle("menu")]}
-                >
-                  <Text modifiers={[tag(DEFAULT_FONT_ID)]}>{t("fonts.serif", "С засечками")}</Text>
-                  <Text modifiers={[tag(SB_SANS_READER_FONT_ID)]}>
-                    {t("fonts.sansSerif", "Без засечек")}
-                  </Text>
-                  {customFonts.map((customFont) => (
-                    <Text key={customFont.id} modifiers={[tag(customFont.id)]}>
-                      {customFont.name}
-                    </Text>
-                  ))}
-                </Picker>
-
                 <Picker
                   label={t("reader.viewMode", "Режим чтения")}
                   selection={readSettings.viewMode}

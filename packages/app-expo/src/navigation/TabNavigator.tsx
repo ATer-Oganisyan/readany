@@ -52,9 +52,9 @@ const ProfileStack = createNativeStackNavigator<ProfileTabStackParamList>();
 
 const TAB_ICONS = {
   Library: getFilledIconImageSource("book"),
-  Chats: getFilledIconImageSource("chat-bubble"),
+  Chats: getFilledIconImageSource("chat-bubbles"),
   Profile: getFilledIconImageSource("person"),
-  Search: getFilledIconImageSource("magnifying-glass"),
+  Search: getStrokeIconImageSource("magnifying-glass"),
 } as const;
 
 function tabIcon(source: (typeof TAB_ICONS)[keyof typeof TAB_ICONS]): NativeBottomTabIcon {
@@ -265,7 +265,7 @@ export function TabNavigator() {
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.mutedForeground,
+        tabBarInactiveTintColor: colors.primary80,
         tabBarLabelVisibilityMode: "unlabeled",
         tabBarLabelStyle: { fontFamily: fontFamily.regular },
         tabBarStyle: Platform.OS === "ios" ? undefined : { backgroundColor: colors.background },

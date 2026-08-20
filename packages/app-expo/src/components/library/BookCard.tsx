@@ -113,6 +113,7 @@ export const BookCard = memo(function BookCard({
             width={cardWidth}
             showText={showCoverTypography}
             textTone={coverTextTone}
+            coverUri={(hasUsableSavedCover ? resolvedCoverUrl : bundledCoverUri) ?? undefined}
             bottomAccessory={
               progressPercent > 0 ? (
                 <BlurView tint="dark" intensity={50} style={s.progressChip}>

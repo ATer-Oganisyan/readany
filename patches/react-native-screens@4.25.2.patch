@@ -1,3 +1,42 @@
+diff --git a/ios/RNSScreenStack.mm b/ios/RNSScreenStack.mm
+index 7a2339b3..20f40c45 100644
+--- a/ios/RNSScreenStack.mm
++++ b/ios/RNSScreenStack.mm
+@@ -1099,5 +1099,5 @@ - (BOOL)isScrollViewPanGestureRecognizer:(UIGestureRecognizer *)gestureRecognizer
+ // This is the same logic as in RCTScrollView:
+ - (BOOL)scrollViewHasHorizontalPart:(UIScrollView *)scrollView
+ {
+-  return scrollView.contentSize.width > scrollView.frame.size.width;
++  return scrollView.scrollEnabled && scrollView.contentSize.width > scrollView.frame.size.width;
+ }
+@@ -1203,8 +1203,14 @@ - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer
+   if (@available(iOS 26, *)) {
+     if (gestureRecognizer == _controller.interactiveContentPopGestureRecognizer &&
+         [self isScrollViewPanGestureRecognizer:otherGestureRecognizer]) {
++      RNSScreenView *topScreen = _reactSubviews.lastObject;
++      float end = [topScreen.gestureResponseDistance[@"end"] floatValue];
++      if (end >= 0) {
++        return NO;
++      }
++
+       // ScrollView should take precedence when scrolling horizontally (it should be required to fail).
+       // However, if it does not allow for horizontal scrolling, there should be no such restriction,
+       // and swiping horizontally should dismiss the screen.
+       return [self scrollViewHasHorizontalPart:static_cast<UIScrollView *>(otherGestureRecognizer.view)];
+     }
+@@ -1227,6 +1233,9 @@ - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer
+     // fails, but rather the opposite & that the ScrollView recognizer has a higher priority See also
+     // gestureRecognizer:shouldRequireFailureOfGestureRecognizer
+-    isEdgeSwipeGestureRecognizer =
+-        isEdgeSwipeGestureRecognizer && gestureRecognizer != _controller.interactiveContentPopGestureRecognizer;
++    if (gestureRecognizer == _controller.interactiveContentPopGestureRecognizer) {
++      RNSScreenView *topScreen = _reactSubviews.lastObject;
++      float end = [topScreen.gestureResponseDistance[@"end"] floatValue];
++      isEdgeSwipeGestureRecognizer = end >= 0;
++    }
+   }
+ #endif // check for iOS >= 26
+
 diff --git a/ios/tabs/host/RNSTabBarController.mm b/ios/tabs/host/RNSTabBarController.mm
 index 289c9d958eb913a451161da11bda7fd44aeca377..83ab4dc9aefe15b3d93e4bcab3c0eed036fdce37 100644
 --- a/ios/tabs/host/RNSTabBarController.mm

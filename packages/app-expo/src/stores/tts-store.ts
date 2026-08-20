@@ -12,11 +12,12 @@ import {
 import { Platform } from "react-native";
 import TrackPlayer from "react-native-track-player";
 import { create } from "zustand";
+import { getNarraTTSProvider } from "../lib/narra/media";
 import { ExpoSpeechTTSPlayer } from "../lib/platform/expo-speech-player";
 import { canUseSystemTtsSynthesis } from "../lib/platform/system-tts-synthesis";
+import { TrackPlayerCloudTTSPlayer } from "../lib/platform/track-player-cloud-tts-player";
 import { TrackPlayerDashScopeTTSPlayer } from "../lib/platform/track-player-dashscope-player";
 import { TrackPlayerEdgeTTSPlayer } from "../lib/platform/track-player-edge-player";
-import { TrackPlayerCloudTTSPlayer } from "../lib/platform/track-player-cloud-tts-player";
 import { TrackPlayerSystemTTSPlayer } from "../lib/platform/track-player-system-player";
 import { withPersist } from "./persist";
 
@@ -100,6 +101,20 @@ function clearRespeakTimer(): void {
     clearTimeout(_respeakTimer);
     _respeakTimer = null;
   }
+}
+
+/**
+ * Правило повторного синтеза с учётом провайдера озвучки Narra.
+ *
+ * Grok TTS применяет скорость на плеере (TrackPlayer.setRate), а не при
+ * синтезе, поэтому изменение скорости не должно вызывать повторный — платный —
+ * синтез. Проверяем это, прогнав правило движка ещё раз с прежней скоростью:
+ * если без неё расхождений не осталось, пересинтезировать нечего.
+ */
+export function shouldRespeakForNarraSynthChange(prev: TTSConfig, next: TTSConfig): boolean {
+  if (!shouldRespeakForSynthChange(prev, next)) return false;
+  if (getNarraTTSProvider() !== "grok") return true;
+  return shouldRespeakForSynthChange(prev, { ...next, rate: prev.rate });
 }
 
 function scheduleRespeak(): void {
@@ -544,7 +559,7 @@ export const useTTSStore = create<TTSState>()(
         set({ config: nextConfig });
 
         if (
-          shouldRespeakForSynthChange(previousConfig, nextConfig) &&
+          shouldRespeakForNarraSynthChange(previousConfig, nextConfig) &&
           isActivePlay(get().playState)
         ) {
           scheduleRespeak();

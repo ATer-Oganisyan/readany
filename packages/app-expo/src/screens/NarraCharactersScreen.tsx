@@ -1,11 +1,15 @@
 import { AnimatedNarraFace } from "@/components/chat/animated-narra-face";
+import { NARRA_CHAT_EMBEDDED_TOP_INSET } from "@/components/chat/narra-chat-header";
 import {
   CharacterChatAvatar,
   CharacterChatList,
   type CharacterChatListItem,
 } from "@/components/chats/character-chat-list";
 import { CharacterPortraitImage } from "@/components/narra/character-portrait-image";
-import { MorphTransitionDestination } from "@/components/navigation/MorphSheetTransition";
+import {
+  MorphTransitionDestination,
+  type MorphTransitionDestinationHandle,
+} from "@/components/navigation/MorphSheetTransition";
 import { supportsMorphSheetTransition } from "@/components/navigation/morph-sheet-transition-support";
 import { type ExtractorRef, ExtractorWebView } from "@/components/rag/ExtractorWebView";
 import { Text } from "@/components/ui/Typography";
@@ -18,22 +22,290 @@ import { isCharacterUnlocked } from "@/lib/narra/domain";
 import { NarraServiceError, reportNarraError } from "@/lib/narra/errors";
 import { ensureCharacterPortrait, normalizePersistedNarraMediaUri } from "@/lib/narra/media";
 import type { NarraCharacter } from "@/lib/narra/types";
-import { navigate as navigateFromRoot } from "@/lib/navigationRef";
 import { toast } from "@/lib/notifications";
 import { inspectMobileBookForVectorize } from "@/lib/rag/auto-vectorize-book";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
+import { ChatScreen } from "@/screens/ChatScreen";
+import { NarraCharacterChatScreen } from "@/screens/NarraCharacterChatScreen";
 import { useLibraryStore, useNarraStore } from "@/stores";
-import { type ThemeColors, fontSize, fontWeight, spacing, useTheme } from "@/styles/theme";
+import { type ThemeColors, fontWeight, spacing, useTheme } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import * as FileSystem from "expo-file-system/legacy";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
+import {
+  AccessibilityInfo,
+  ActivityIndicator,
+  Easing,
+  Animated as RNAnimated,
+  ScrollView,
+  StyleSheet,
+  View,
+} from "react-native";
 
 type Props = NativeStackScreenProps<RootStackParamList, "NarraCharacters">;
+type CharactersListProps = Props & {
+  isActive?: boolean;
+  renderMorphDestination?: boolean;
+  onOpenBookChat?: () => void;
+  onOpenCharacterChat?: (characterId: string) => void;
+};
+
+type SheetContent =
+  | { kind: "characters" }
+  | { kind: "bookChat" }
+  | { kind: "characterChat"; characterId: string };
+
 const MAX_AUTOMATIC_PORTRAIT_ATTEMPTS = 2;
+const CONTENT_EXIT_DURATION_MS = 120;
+const CONTENT_ENTER_DURATION_MS = 180;
+const CONTENT_EXIT_EASING = Easing.bezier(0.4, 0, 1, 1);
+const CONTENT_ENTER_EASING = Easing.bezier(0.2, 0, 0, 1);
+
+function animateOpacity({
+  duration,
+  easing,
+  onComplete,
+  reduceMotion,
+  toValue,
+  value,
+}: {
+  duration: number;
+  easing: (value: number) => number;
+  onComplete: () => void;
+  reduceMotion: boolean;
+  toValue: number;
+  value: RNAnimated.Value;
+}) {
+  if (reduceMotion) {
+    value.setValue(toValue);
+    onComplete();
+    return;
+  }
+
+  RNAnimated.timing(value, {
+    duration,
+    easing,
+    toValue,
+    useNativeDriver: true,
+  }).start(({ finished }) => {
+    if (finished) onComplete();
+  });
+}
 
 export function NarraCharactersScreen({ route, navigation }: Props) {
+  if (supportsMorphSheetTransition) {
+    return <NarraCharactersSheetFlow route={route} navigation={navigation} />;
+  }
+
+  return <NarraCharactersList route={route} navigation={navigation} />;
+}
+
+function NarraCharactersSheetFlow({ route, navigation }: Props) {
+  const sheetControllerRef = useRef<MorphTransitionDestinationHandle>(null);
+  const [content, setContent] = useState<SheetContent>({ kind: "characters" });
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const transitionFrameRef = useRef<number | null>(null);
+  const transitioningRef = useRef(false);
+  const listOpacity = useRef(new RNAnimated.Value(1)).current;
+  // GlassView нельзя монтировать под opacity: 0: эффект может не восстановиться.
+  // Поэтому чат всегда непрозрачный, а fade рисует обычная шторка поверх него.
+  const chatCoverOpacity = useRef(new RNAnimated.Value(1)).current;
+  const [reduceMotion, setReduceMotion] = useState(false);
+  const { colors } = useTheme();
+  const expandSheet = useCallback(() => {
+    void sheetControllerRef.current?.expandSheet?.();
+  }, []);
+  const collapseSheet = useCallback(() => {
+    void sheetControllerRef.current?.collapseSheet?.();
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (transitionFrameRef.current !== null) {
+        cancelAnimationFrame(transitionFrameRef.current);
+      }
+      listOpacity.stopAnimation();
+      chatCoverOpacity.stopAnimation();
+    },
+    [chatCoverOpacity, listOpacity],
+  );
+
+  useEffect(() => {
+    let active = true;
+    void AccessibilityInfo.isReduceMotionEnabled().then((enabled) => {
+      if (active) setReduceMotion(enabled);
+    });
+    const subscription = AccessibilityInfo.addEventListener("reduceMotionChanged", setReduceMotion);
+
+    return () => {
+      active = false;
+      subscription.remove();
+    };
+  }, []);
+
+  const finishTransition = useCallback(() => {
+    transitioningRef.current = false;
+    setIsTransitioning(false);
+  }, []);
+
+  const fadeIn = useCallback(
+    (value: RNAnimated.Value, onComplete: () => void) => {
+      transitionFrameRef.current = requestAnimationFrame(() => {
+        transitionFrameRef.current = null;
+        animateOpacity({
+          value,
+          toValue: 1,
+          duration: CONTENT_ENTER_DURATION_MS,
+          easing: CONTENT_ENTER_EASING,
+          reduceMotion,
+          onComplete,
+        });
+      });
+    },
+    [reduceMotion],
+  );
+
+  const showCharacters = useCallback(() => {
+    if (transitioningRef.current || content.kind === "characters") return;
+    transitioningRef.current = true;
+    setIsTransitioning(true);
+
+    animateOpacity({
+      value: chatCoverOpacity,
+      toValue: 1,
+      duration: CONTENT_EXIT_DURATION_MS,
+      easing: CONTENT_EXIT_EASING,
+      reduceMotion,
+      onComplete: () => {
+        collapseSheet();
+        setContent({ kind: "characters" });
+        fadeIn(listOpacity, () => {
+          finishTransition();
+        });
+      },
+    });
+  }, [
+    chatCoverOpacity,
+    collapseSheet,
+    content.kind,
+    fadeIn,
+    finishTransition,
+    listOpacity,
+    reduceMotion,
+  ]);
+
+  const showChat = useCallback(
+    (nextContent: Exclude<SheetContent, { kind: "characters" }>) => {
+      if (transitioningRef.current || content.kind !== "characters") return;
+      transitioningRef.current = true;
+      setIsTransitioning(true);
+
+      animateOpacity({
+        value: listOpacity,
+        toValue: 0,
+        duration: CONTENT_EXIT_DURATION_MS,
+        easing: CONTENT_EXIT_EASING,
+        reduceMotion,
+        onComplete: () => {
+          expandSheet();
+          chatCoverOpacity.setValue(reduceMotion ? 0 : 1);
+          setContent(nextContent);
+
+          if (reduceMotion) {
+            finishTransition();
+            return;
+          }
+
+          transitionFrameRef.current = requestAnimationFrame(() => {
+            transitionFrameRef.current = null;
+            animateOpacity({
+              value: chatCoverOpacity,
+              toValue: 0,
+              duration: CONTENT_ENTER_DURATION_MS,
+              easing: CONTENT_ENTER_EASING,
+              reduceMotion: false,
+              onComplete: finishTransition,
+            });
+          });
+        },
+      });
+    },
+    [chatCoverOpacity, content.kind, expandSheet, finishTransition, listOpacity, reduceMotion],
+  );
+
+  const showBookChat = useCallback(() => {
+    showChat({ kind: "bookChat" });
+  }, [showChat]);
+  const showCharacterChat = useCallback(
+    (characterId: string) => {
+      showChat({ kind: "characterChat", characterId });
+    },
+    [showChat],
+  );
+
+  const listIsActive = content.kind === "characters" && !isTransitioning;
+  const chatIsActive = content.kind !== "characters" && !isTransitioning;
+
+  return (
+    <View style={[flowStyles.container, { backgroundColor: colors.background }]}>
+      <MorphTransitionDestination ref={sheetControllerRef} sourceId={route.params.morphSourceId} />
+      <View style={flowStyles.contentStack}>
+        <RNAnimated.View
+          accessibilityElementsHidden={!listIsActive}
+          importantForAccessibility={listIsActive ? "auto" : "no-hide-descendants"}
+          pointerEvents={listIsActive ? "auto" : "none"}
+          style={[flowStyles.contentLayer, { opacity: listOpacity }]}
+        >
+          <NarraCharactersList
+            route={route}
+            navigation={navigation}
+            isActive={listIsActive}
+            renderMorphDestination={false}
+            onOpenBookChat={showBookChat}
+            onOpenCharacterChat={showCharacterChat}
+          />
+        </RNAnimated.View>
+
+        {content.kind !== "characters" ? (
+          <View
+            accessibilityElementsHidden={!chatIsActive}
+            importantForAccessibility={chatIsActive ? "auto" : "no-hide-descendants"}
+            pointerEvents={chatIsActive ? "auto" : "none"}
+            style={flowStyles.contentLayer}
+          >
+            {content.kind === "bookChat" ? (
+              <ChatScreen embedded embeddedBookId={route.params.bookId} onBack={showCharacters} />
+            ) : (
+              <NarraCharacterChatScreen
+                embedded
+                bookId={route.params.bookId}
+                characterId={content.characterId}
+                onBack={showCharacters}
+              />
+            )}
+            <RNAnimated.View
+              pointerEvents="none"
+              style={[
+                flowStyles.transitionCover,
+                { backgroundColor: colors.background, opacity: chatCoverOpacity },
+              ]}
+            />
+          </View>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+function NarraCharactersList({
+  route,
+  navigation,
+  isActive = true,
+  renderMorphDestination = true,
+  onOpenBookChat,
+  onOpenCharacterChat,
+}: CharactersListProps) {
   const { bookId, morphSourceId } = route.params;
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -50,9 +322,7 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
   const validatedPortraitsRef = useRef(new Set<string>());
   const validatedBookIdRef = useRef(bookId);
   const autoAnalysisStartedRef = useRef(false);
-  const pendingChatRef = useRef<
-    { type: "book" } | { type: "character"; characterId: string } | null
-  >(null);
+  const openingChatRef = useRef(false);
   const [analysisStage, setAnalysisStage] = useState("");
   const [portraitLoading, setPortraitLoading] = useState<string | null>(null);
   const storedCharacters = bookState?.characters ?? [];
@@ -67,31 +337,13 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
   }, [book?.progress, characters]);
   const busy = analyzing || Boolean(analysisStage);
 
-  useEffect(
-    () =>
-      navigation.addListener("transitionEnd", (event) => {
-        if (!event.data.closing) return;
-        const pendingChat = pendingChatRef.current;
-        if (!pendingChat) return;
-        pendingChatRef.current = null;
-
-        requestAnimationFrame(() => {
-          if (pendingChat.type === "book") {
-            navigateFromRoot("BookChat", { bookId });
-          } else {
-            navigateFromRoot("NarraCharacterChat", {
-              bookId,
-              characterId: pendingChat.characterId,
-            });
-          }
-        });
-      }),
-    [bookId, navigation],
-  );
-
   useEffect(() => {
     recordTelemetry("character_opened", { feature: "character" });
   }, []);
+
+  useEffect(() => {
+    if (isActive) openingChatRef.current = false;
+  }, [isActive]);
 
   useEffect(() => {
     if (!narraStoreHydrated || !book || storedCharacters.length > 0 || !bundledCharacters?.length) {
@@ -247,9 +499,17 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
       if (storedCharacters.length === 0 && bundledCharacters?.length) {
         setCharacters(bookId, bundledCharacters);
       }
-      if (supportsMorphSheetTransition) {
-        pendingChatRef.current = { type: "character", characterId: character.id };
-        navigation.goBack();
+      if (!supportsMorphSheetTransition) {
+        navigation.navigate("NarraCharacterChat", {
+          bookId,
+          characterId: character.id,
+        });
+        return;
+      }
+      if (openingChatRef.current) return;
+      openingChatRef.current = true;
+      if (onOpenCharacterChat) {
+        onOpenCharacterChat(character.id);
       } else {
         navigation.navigate("NarraCharacterChat", {
           bookId,
@@ -257,23 +517,35 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
         });
       }
     },
-    [bookId, bundledCharacters, navigation, setCharacters, storedCharacters.length],
+    [
+      bookId,
+      bundledCharacters,
+      navigation,
+      onOpenCharacterChat,
+      setCharacters,
+      storedCharacters.length,
+    ],
   );
 
   const openBookChat = useCallback(() => {
-    if (supportsMorphSheetTransition) {
-      pendingChatRef.current = { type: "book" };
-      navigation.goBack();
+    if (!supportsMorphSheetTransition) {
+      navigation.navigate("BookChat", { bookId });
+      return;
+    }
+    if (openingChatRef.current) return;
+    openingChatRef.current = true;
+    if (onOpenBookChat) {
+      onOpenBookChat();
     } else {
       navigation.navigate("BookChat", { bookId });
     }
-  }, [bookId, navigation]);
+  }, [bookId, navigation, onOpenBookChat]);
 
   const listItems: CharacterChatListItem[] = [
     {
       key: "narra",
-      accessibilityLabel: t("narra.openNarraBookChat", "Открыть чат с Наррой об этой книге"),
-      title: "Нарра",
+      accessibilityLabel: t("narra.openNarraBookChat", "Открыть чат с Narra об этой книге"),
+      title: "Narra",
       subtitle: t("narra.askAboutBook", "Спросите что угодно о книге"),
       onPress: openBookChat,
       avatar: (
@@ -323,7 +595,7 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
 
   return (
     <View style={styles.container}>
-      <MorphTransitionDestination sourceId={morphSourceId} />
+      {renderMorphDestination ? <MorphTransitionDestination sourceId={morphSourceId} /> : null}
       {supportsMorphSheetTransition ? (
         <View pointerEvents="none" style={styles.sheetNavigationBar}>
           <Text style={styles.sheetNavigationTitle}>{t("narra.characters", "Персонажи")}</Text>
@@ -354,17 +626,20 @@ const makeStyles = (colors: ThemeColors) =>
       right: 0,
       left: 0,
       zIndex: 2,
-      height: 56,
+      height: 52 + NARRA_CHAT_EMBEDDED_TOP_INSET,
+      paddingTop: 8 + NARRA_CHAT_EMBEDDED_TOP_INSET,
       alignItems: "center",
       justifyContent: "center",
       backgroundColor: colors.background,
     },
     sheetNavigationTitle: {
       color: colors.foreground,
-      fontSize: fontSize.lg,
+      fontSize: 17,
       fontWeight: fontWeight.semibold,
+      lineHeight: 22,
+      letterSpacing: -0.4,
     },
-    sheetContent: { paddingTop: 64 },
+    sheetContent: { paddingTop: 60 + NARRA_CHAT_EMBEDDED_TOP_INSET },
     content: {
       flexGrow: 1,
       paddingHorizontal: spacing.lg,
@@ -373,3 +648,23 @@ const makeStyles = (colors: ThemeColors) =>
     },
     avatarImage: { width: "100%", height: "100%" },
   });
+
+const flowStyles = StyleSheet.create({
+  container: { flex: 1 },
+  contentStack: { flex: 1 },
+  contentLayer: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+  },
+  transitionCover: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    zIndex: 100,
+  },
+});

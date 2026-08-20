@@ -6,16 +6,11 @@
   "expo": {
     "entryPoint": "./index.js",
     "install": {
-      "exclude": [
-        "react-native-screens"
-      ]
+      "exclude": ["react-native-screens"]
     },
     "doctor": {
       "reactNativeDirectoryCheck": {
-        "exclude": [
-          "react-native-tcp-socket",
-          "react-native-track-player"
-        ],
+        "exclude": ["react-native-tcp-socket", "react-native-track-player"],
         "listUnknownPackages": false
       }
     }
@@ -61,7 +56,8 @@
     "eas:build:ios": "APP_VARIANT=production pnpm exec eas build --profile production --platform ios",
     "eas:build:ios:dev": "APP_VARIANT=development pnpm exec eas build --profile development --platform ios",
     "eas:build:ios:simulator": "APP_VARIANT=development pnpm exec eas build --profile development-simulator --platform ios",
-    "eas:build:ios:preview": "APP_VARIANT=preview pnpm exec eas build --profile preview --platform ios"
+    "eas:build:ios:preview": "APP_VARIANT=preview pnpm exec eas build --profile preview --platform ios",
+    "generate:panelui-theme": "node --import tsx scripts/generate-panelui-theme.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.712.0",
