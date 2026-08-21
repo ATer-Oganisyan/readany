@@ -111,7 +111,7 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
       </Host>
 
       <Pressable
-        accessibilityLabel={t("narra.chat", "Чат")}
+        accessibilityLabel={t("narra.characters", "Персонажи")}
         accessibilityRole="button"
         onPress={props.onChatPress}
         style={styles.chatControl}
@@ -133,13 +133,13 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
               style={styles.chatCapsule}
             >
               <MishanaerIcon
-                name="chat-bubble"
+                name="person"
                 variant="filled"
                 size={20}
                 color={props.tintColor}
               />
               <RNText style={[styles.chatLabel, { color: props.tintColor }]}>
-                {t("narra.chat", "Чат")}
+                {t("narra.characters", "Персонажи")}
               </RNText>
             </GlassView>
           ) : (
@@ -152,13 +152,13 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
               ]}
             >
               <MishanaerIcon
-                name="chat-bubble"
+                name="person"
                 variant="filled"
                 size={20}
                 color={props.tintColor}
               />
               <RNText style={[styles.chatLabel, { color: props.tintColor }]}>
-                {t("narra.chat", "Чат")}
+                {t("narra.characters", "Персонажи")}
               </RNText>
             </View>
           )}
