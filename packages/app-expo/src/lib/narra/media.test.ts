@@ -193,6 +193,17 @@ describe("portrait prompt", () => {
       "/v2/media/images",
       expect.objectContaining({ method: "POST" }),
     );
+    const request = vi.mocked(narraGatewayRequest).mock.calls[0]?.[1];
+    const body = JSON.parse(String(request?.body));
+    expect(body).toMatchObject({
+      engine: "openrouter",
+      width: 768,
+      height: 1024,
+    });
+    expect(body.prompt).toContain("Ровно один человек в кадре — Анна Каренина");
+    expect(body.prompt).toContain("Внешность (соблюдать точно):");
+    expect(body.prompt).toContain("классический живописный портрет");
+    expect(body.prompt.length).toBeLessThanOrEqual(PORTRAIT_PROMPT_CHAR_LIMIT);
   });
 
   it("prefers the persisted LLM genre for a character portrait", () => {

@@ -6,6 +6,7 @@ import { createOperationalLogger } from './operational-log.mjs'
 import { voiceForGender } from './voices.mjs'
 import { catalogCoverPrompt } from './catalog-cover-prompt.mjs'
 import { normalizeBookDisplayIdentity } from './book-identity.mjs'
+import { buildCharacterPortraitPrompt } from './character-portrait-prompt.mjs'
 import {
   BOOK_ANALYSIS_GENDER_EVIDENCE_TYPES,
   BOOK_ANALYSIS_SYNTHESIS_VERSION,
@@ -83,13 +84,6 @@ function greetingMatchesLanguage(greeting, language) {
   return latin >= cyrillic
 }
 
-function safePortraitRetryPrompt(gender) {
-  const subject = gender === 'female'
-    ? 'fictional adult woman'
-    : gender === 'male' ? 'fictional adult man' : 'fictional adult person'
-  return `A ${subject}, waist-up painted literary portrait, historically plausible clothing, expressive neutral face, neutral background, no typography, no watermark.`
-}
-
 function invalid(message, code = 'VALIDATION', details = {}) {
   throw Object.assign(new Error(message), { code, status: 400 }, details)
 }
@@ -126,6 +120,28 @@ function sha256(value) {
 function notFound(error) {
   return error?.name === 'NoSuchKey' || error?.name === 'NotFound' ||
     error?.Code === 'NoSuchKey' || error?.$metadata?.httpStatusCode === 404
+}
+
+function imageExtension(mimeType) {
+  if (mimeType === 'image/webp') return 'webp'
+  if (mimeType === 'image/jpeg') return 'jpg'
+  return 'png'
+}
+
+async function storedPortraitBytes(storage, prefix) {
+  let missingError
+  for (const extension of ['jpg', 'png', 'webp']) {
+    try {
+      return (await storage.getBytes({
+        objectKey: `${prefix}/primary-portrait.${extension}`,
+        maxBytes: 32 * 1024 * 1024
+      })).bytes
+    } catch (error) {
+      if (!notFound(error)) throw error
+      missingError = error
+    }
+  }
+  throw missingError
 }
 
 function parseJsonObject(raw) {
@@ -2142,9 +2158,7 @@ export function createInternalGenerationService({
       log.info('cover.requested', 'Получен запрос на каталожную обложку', common)
       return cached(storage, input.idempotencyKey, input, async () => {
         const generated = await generateCover(catalogCoverPrompt(input), signal)
-        const extension = generated.mimeType === 'image/webp'
-          ? 'webp'
-          : generated.mimeType === 'image/jpeg' ? 'jpg' : 'png'
+        const extension = imageExtension(generated.mimeType)
         const asset = await storage.putBytes({
           objectKey: `books/catalog/${input.bookEditionId}/cover/generated/${input.targetVersion}.${extension}`,
           bytes: generated.bytes,
@@ -2178,18 +2192,15 @@ export function createInternalGenerationService({
         const storedAssets = new Map()
         let portrait = null
         if (requested.has('primary_portrait')) {
-          const portraitPrompt = [
-            character.appearancePrompt || character.description || `book character ${input.fullName}`,
-            `Character from the book “${input.bookTitle}”${input.bookAuthor ? ` by ${input.bookAuthor}` : ''}.`,
-            'Single character, waist-up literary illustration, expressive face, neutral background, no typography, no watermark.'
-          ].join(' ')
+          const portraitPrompt = buildCharacterPortraitPrompt({
+            character,
+            fullName: input.fullName,
+            bookTitle: input.bookTitle,
+            bookAuthor: input.bookAuthor
+          })
           const portraitStartedAt = Date.now()
           log.info('bundle.portrait_started', 'Начинаю генерацию портрета', common)
-          portrait = await generatePortrait(
-            portraitPrompt.slice(0, 4_000),
-            signal,
-            safePortraitRetryPrompt(character.gender)
-          )
+          portrait = await generatePortrait(portraitPrompt, signal)
           log.info('bundle.portrait_ready', 'Портрет готов', {
             ...common,
             provider: portrait.provider,
@@ -2197,7 +2208,7 @@ export function createInternalGenerationService({
             duration_ms: Date.now() - portraitStartedAt
           })
           storedAssets.set('primary_portrait', await storage.putBytes({
-            objectKey: `${prefix}/primary-portrait.png`,
+            objectKey: `${prefix}/primary-portrait.${imageExtension(portrait.mimeType)}`,
             bytes: portrait.bytes,
             mimeType: portrait.mimeType
           }))
@@ -2233,10 +2244,7 @@ export function createInternalGenerationService({
           const animationStartedAt = Date.now()
           log.info('bundle.animation_started', 'Начинаю генерацию idle-анимации', common)
           pending.push((async () => {
-            const portraitBytes = portrait?.bytes ?? (await storage.getBytes({
-              objectKey: `${prefix}/primary-portrait.png`,
-              maxBytes: 32 * 1024 * 1024
-            })).bytes
+            const portraitBytes = portrait?.bytes ?? await storedPortraitBytes(storage, prefix)
             const animation = await generateIdleAnimation(portraitBytes, signal)
             log.info('bundle.animation_ready', 'Idle-анимация готова', {
               ...common,

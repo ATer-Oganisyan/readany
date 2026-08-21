@@ -346,6 +346,7 @@ async function generateCharacterPortraitRequest(
       prompt: portraitPrompt(character, book?.description, book?.genreId, book?.genreLabel),
       width: 768,
       height: 1024,
+      engine: "openrouter",
     }),
   });
   const generated = imagePayload(await response.json().catch(() => null));

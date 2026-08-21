@@ -115,12 +115,18 @@ test('internal generation service normalizes book display identity idempotently'
 test('internal generation service creates all three required bundle assets', async () => {
   const storage = memoryStorage()
   const lines = []
+  let generatedPortraitPrompt = ''
   const service = createInternalGenerationService({
     storage,
     logger: { info(line) { lines.push(line) }, error(line) { lines.push(line) } },
     async completeChat() { throw new Error('unused') },
-    async generatePortrait() {
-      return { bytes: Buffer.from('png'), mimeType: 'image/png', provider: 'gigachat-image' }
+    async generatePortrait(prompt) {
+      generatedPortraitPrompt = prompt
+      return {
+        bytes: Buffer.from('jpeg'),
+        mimeType: 'image/jpeg',
+        provider: 'openrouter:openai/gpt-image-2'
+      }
     },
     async synthesizeSpeech() {
       return { bytes: Buffer.from('wav'), mimeType: 'audio/wav', provider: 'salute-speech' }
@@ -144,8 +150,14 @@ test('internal generation service creates all three required bundle assets', asy
   assert.deepEqual(result.assets.map((asset) => asset.type), [
     'primary_portrait', 'greeting_audio', 'idle_animation'
   ])
-  assert.deepEqual(result.assets.map((asset) => asset.mimeType), ['image/png', 'audio/wav', 'video/mp4'])
-  assert.ok(lines.some((line) => line.includes('event="bundle.portrait_ready"') && line.includes('provider="gigachat-image"')))
+  assert.deepEqual(result.assets.map((asset) => asset.mimeType), ['image/jpeg', 'audio/wav', 'video/mp4'])
+  assert.match(result.assets[0].objectKey, /primary-portrait\.jpg$/)
+  assert.match(generatedPortraitPrompt, /^Ровно один человек в кадре — Анна, никого больше/)
+  assert.match(generatedPortraitPrompt, /Персонаж книги «Книга»/)
+  assert.match(generatedPortraitPrompt, /Внешность \(соблюдать точно\): portrait/)
+  assert.match(generatedPortraitPrompt, /классический живописный портрет/)
+  assert.ok(generatedPortraitPrompt.length <= 1_600)
+  assert.ok(lines.some((line) => line.includes('event="bundle.portrait_ready"') && line.includes('provider="openrouter:openai/gpt-image-2"')))
   assert.ok(lines.some((line) => line.includes('event="bundle.audio_ready"') && line.includes('provider="salute-speech"')))
   assert.ok(lines.some((line) => line.includes('event="bundle.animation_ready"') && line.includes('provider="local-ffmpeg"')))
   assert.equal(lines.filter((line) => line.includes('event="bundle.asset_stored"')).length, 3)
@@ -155,14 +167,14 @@ test('internal generation service creates all three required bundle assets', asy
 test('internal generation service publishes one requested character asset independently', async () => {
   const storage = memoryStorage()
   let portraitCalls = 0
-  let safeRetryPrompt = ''
+  let generatedPortraitPrompt = ''
   const service = createInternalGenerationService({
     storage,
     logger: { info() {}, error() {} },
     async completeChat() { throw new Error('unused') },
-    async generatePortrait(_prompt, _signal, retryPrompt) {
+    async generatePortrait(prompt) {
       portraitCalls += 1
-      safeRetryPrompt = retryPrompt
+      generatedPortraitPrompt = prompt
       return { bytes: Buffer.from('png'), mimeType: 'image/png', provider: 'image' }
     },
     async synthesizeSpeech() { throw new Error('audio must not run') },
@@ -180,9 +192,55 @@ test('internal generation service publishes one requested character asset indepe
     }
   })
   assert.equal(portraitCalls, 1)
-  assert.match(safeRetryPrompt, /fictional adult woman/i)
-  assert.doesNotMatch(safeRetryPrompt, /Книга|Анна/)
+  assert.match(generatedPortraitPrompt, /Ровно один человек в кадре — Анна/)
+  assert.match(generatedPortraitPrompt, /Персонаж книги «Книга»/)
+  assert.doesNotMatch(generatedPortraitPrompt, /Single character|fictional adult woman/i)
   assert.deepEqual(result.assets.map(({ type }) => type), ['primary_portrait'])
+})
+
+test('internal generation service reuses a stored OpenRouter JPEG for an independent animation', async () => {
+  const bookEditionId = '11111111-1111-4111-8111-111111111111'
+  const bundleVersion = 'character-bundle-v3:r3'
+  const prefix = `generated/private/${bookEditionId}/characters/character:anna/${bundleVersion}`
+  const storage = memoryStorage({
+    [`${prefix}/primary-portrait.jpg`]: {
+      bytes: Buffer.from('stored-jpeg'),
+      mimeType: 'image/jpeg'
+    }
+  })
+  let animationSource = ''
+  const service = createInternalGenerationService({
+    storage,
+    logger: { info() {}, error() {} },
+    async completeChat() { throw new Error('unused') },
+    async generatePortrait() { throw new Error('portrait must not run') },
+    async synthesizeSpeech() { throw new Error('audio must not run') },
+    async generateIdleAnimation(bytes) {
+      animationSource = bytes.toString('utf8')
+      return { bytes: Buffer.from('mp4'), mimeType: 'video/mp4', provider: 'local-ffmpeg' }
+    }
+  })
+
+  const result = await service.generateCharacterBundle({
+    idempotencyKey: `${bookEditionId}:character:anna:${bundleVersion}:idle_animation`,
+    bookEditionId,
+    characterKey: 'character:anna',
+    name: 'Анна',
+    fullName: 'Анна',
+    scope: 'private',
+    bookTitle: 'Книга',
+    bookAuthor: '',
+    bundleVersion,
+    requiredMedia: ['idle_animation'],
+    character: {
+      characterKey: 'character:anna', name: 'Анна', fullName: 'Анна', aliases: [], gender: 'female',
+      age: '', role: '', description: '', appearancePrompt: 'portrait', greeting: 'Привет', voice: 'Che',
+      firstAppearanceTextOffset: 0, warmupTextOffset: 0
+    }
+  })
+
+  assert.equal(animationSource, 'stored-jpeg')
+  assert.deepEqual(result.assets.map(({ type }) => type), ['idle_animation'])
 })
 
 test('internal generation service stores a permanent catalog cover idempotently', async () => {

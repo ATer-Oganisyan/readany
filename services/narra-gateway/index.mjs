@@ -696,6 +696,30 @@ async function generateInternalCover(prompt, signal) {
   }
 }
 
+async function generateInternalCharacterPortrait(prompt, signal) {
+  let release
+  try {
+    release = await imageGate.acquire(signal)
+    const generated = await requestCoverImageWithFallback({
+      prompt,
+      aspectRatio: '3:4',
+      signal
+    })
+    const bytes = Buffer.from(generated.image, 'base64')
+    if (!bytes.byteLength || bytes.byteLength > 18 * 1024 * 1024) {
+      throw httpErr('NETWORK', 'Image provider returned an invalid portrait')
+    }
+    return {
+      bytes,
+      mimeType: generated.mimeType,
+      model: generated.model,
+      provider: `${coverProviderConfig.provider}:${generated.model}`
+    }
+  } finally {
+    release?.()
+  }
+}
+
 async function synthesizeInternalSpeech(text, voice, signal) {
   let release
   try {
@@ -932,7 +956,7 @@ const internalGenerationService = bookObjectStorage && generatorServiceToken
   ? createInternalGenerationService({
       storage: bookObjectStorage,
       completeChat: completeInternalChat,
-      generatePortrait: generateInternalPortrait,
+      generatePortrait: generateInternalCharacterPortrait,
       generateCover: generateInternalCover,
       synthesizeSpeech: synthesizeInternalSpeech,
       generateIdleAnimation: generateInternalIdleAnimation,
