@@ -1,9 +1,9 @@
 # Текущая архитектура разметки книг
 
 - Статус: фактическая архитектура текущей ветки на 19 августа 2026 года.
-- Версия pipeline: `book-analysis-v45`.
+- Версия pipeline: `book-analysis-v49`.
 - Публичный артефакт: `book-markup-v3`, schema `3`.
-- Scan prompt/extractor: `book-scan-v15`.
+- Scan prompt/extractor: `book-scan-v17`.
 - Профиль персонажа: `character-profile-v14`.
 - Медиа-пакет: `character-bundle-v3`.
 

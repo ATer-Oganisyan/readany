@@ -72,11 +72,14 @@ async function reconcileNarraIdentities({
   log
 }) {
   if (!generator) return { entities, acceptedIdentityMerges: [] }
+  const characters = entities.filter(({ entityKind }) => entityKind === 'character')
+  const recovery = characters.length >= 3
   const request = buildBookIdentityReconciliationRequest({
     ...input,
     entities,
     pipelineVersion: input.pipelineVersion,
-    reconciliationVersion
+    reconciliationVersion,
+    recovery
   })
   if (!request) {
     log?.warn('resolve.identity_skipped', 'Глобальная сверка имён пропущена из-за лимитов', {
@@ -101,7 +104,8 @@ async function reconcileNarraIdentities({
     run: input.runId,
     pipeline_id: input.pipelineId,
     proposed_merge_count: proposed.merges.length,
-    accepted_merge_count: acceptedIdentityMerges.length
+    accepted_merge_count: acceptedIdentityMerges.length,
+    recovery
   })
   return { entities: reconciled, acceptedIdentityMerges }
 }

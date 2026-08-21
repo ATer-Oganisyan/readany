@@ -36,7 +36,7 @@ function observation(index, candidate, fact = `${candidate} appears`) {
   }
 }
 
-function requestFor(entities, observations) {
+function requestFor(entities, observations, options = {}) {
   return buildBookIdentityReconciliationRequest({
     runId: 'run-1',
     bookEditionId: 'book-1',
@@ -46,9 +46,35 @@ function requestFor(entities, observations) {
     title: 'Book',
     author: 'Author',
     entities,
-    observations
+    observations,
+    ...options
   })
 }
+
+test('identity reconciliation exposes bounded recovery pairs only when explicitly requested', () => {
+  const mtsyri = character(1, 'Мцыри')
+  const narrator = character(2, 'рассказчик')
+  const captive = character(3, 'пленный ребёнок')
+  for (const entity of [mtsyri, narrator, captive]) {
+    entity.resolutionStatus = 'candidate'
+    entity.data.observationCount = 4
+  }
+  const observations = [
+    observation(1, 'Мцыри', 'Герой исповедуется.'),
+    observation(2, 'рассказчик', 'Рассказчик говорит о себе.'),
+    observation(3, 'пленный ребёнок', 'Пленника привезли в монастырь.')
+  ]
+
+  assert.equal(requestFor([mtsyri, narrator, captive], observations), null)
+  const request = requestFor([mtsyri, narrator, captive], observations, {
+    recovery: true
+  })
+  assert.ok(request)
+  assert.equal(request.candidatePairs.length, 3)
+  assert.ok(request.candidatePairs.every(({ signals }) =>
+    signals.includes('low_recall_recovery')
+  ))
+})
 
 test('identity reconciliation request is bounded, stable and exposes relationship guards', () => {
   const alice = character(1, 'Alice')

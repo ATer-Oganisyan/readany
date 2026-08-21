@@ -339,6 +339,15 @@ test('internal generation service gives the provider one scan chunk and asks for
   assert.match(chatRequest.messages[0].content, /said the Voice\. I am an invisible man/i)
   assert.match(chatRequest.messages[0].content, /\u043eдной непрерывной evidence\.quote/i)
   assert.match(chatRequest.messages[0].content, /\u043fодпись письма/i)
+  assert.match(chatRequest.messages[0].content, /каждого самостоятельного участника/i)
+  assert.match(
+    chatRequest.messages[0].content,
+    /животных.*персонифицированных существ/i
+  )
+  assert.match(
+    chatRequest.messages[0].content,
+    /фоновых животных.*без самостоятельного действия/i
+  )
   assert.equal(chatRequest.messages[1].content.includes('objectKey'), false)
   assert.equal(chatRequest.messages[1].content.includes('normalized'), false)
   assert.deepEqual(result.observations[0].evidence, {
@@ -1364,7 +1373,7 @@ test('invalid primary personality timeline falls back to sequential checkpoint s
   }])
 })
 
-test('extractive profile description fallback is deterministic and requires two grounded facts', () => {
+test('extractive profile description fallback is deterministic and accepts one grounded fact', () => {
   const evidence = [{
     id: 'e-2', type: 'character_action', fact: 'Анна помогла соседке', startOffset: 200,
     confidence: 0.91
@@ -1380,7 +1389,16 @@ test('extractive profile description fallback is deterministic and requires two 
     evidenceIds: ['e-1', 'e-2'],
     confidence: 0.91
   })
-  assert.equal(fallbackProfileDescription(evidence.slice(0, 1)), null)
+  assert.deepEqual(fallbackProfileDescription(evidence.slice(0, 1)), {
+    value: 'Анна помогла соседке.',
+    evidenceIds: ['e-2'],
+    confidence: 0.91
+  })
+  assert.deepEqual(fallbackProfileDescription(evidence.slice(2)), {
+    value: 'Персонаж женского пола.',
+    evidenceIds: ['e-3'],
+    confidence: 0.99
+  })
 })
 
 test('profile synthesis derives normalized gender and stable traits from grounded behavior evidence', async () => {

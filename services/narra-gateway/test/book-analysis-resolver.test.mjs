@@ -545,6 +545,42 @@ test('resolver applies approved whole-book identity edges without inventing alia
   ]))
 })
 
+test('resolver shows contextual actors before an approved persona merge deduplicates them', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111111997',
+      candidate: 'Мцыри',
+      type: 'character_dialogue',
+      quote: 'Ты слушать исповедь мою сюда пришёл.',
+      startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222997',
+      candidate: 'рассказчик',
+      type: 'character_dialogue',
+      quote: 'Я мало жил, и жил в плену.',
+      startOffset: 200
+    })
+  ]
+  const provisional = resolveBookAnalysisEntities({ observations })
+  assert.ok(provisional.every(({ resolutionStatus }) => resolutionStatus === 'confirmed'))
+  const byName = new Map(provisional.map((entity) => [entity.canonicalName, entity.entityKey]))
+  const result = resolveBookAnalysisEntities({
+    observations,
+    identityMerges: [{
+      leftEntityKey: byName.get('Мцыри'),
+      rightEntityKey: byName.get('рассказчик'),
+      basis: 'persona'
+    }]
+  })
+  assert.equal(result.length, 1)
+  assert.equal(result[0].resolutionStatus, 'confirmed')
+  assert.equal(result[0].canonicalName, 'Мцыри')
+  assert.deepEqual(new Set([result[0].canonicalName, ...result[0].aliases]), new Set([
+    'Мцыри', 'рассказчик'
+  ]))
+})
+
 test('resolver rejects approved edges across namesakes and generations', () => {
   const observations = [
     observation({
@@ -913,7 +949,7 @@ test('resolver recognizes a proper name after a lowercase leading title', () => 
   assert.equal(result[0].resolutionStatus, 'confirmed')
 })
 
-test('resolver does not confirm generated descriptions merely because they start uppercase', () => {
+test('resolver favors grounded acting descriptions over omitting possible characters', () => {
   const candidates = [
     'Мертвая лягушка',
     'Капитан дальнего плавания',
@@ -936,7 +972,78 @@ test('resolver does not confirm generated descriptions merely because they start
     })
   ])
   const result = resolveBookAnalysisEntities({ observations })
-  assert.ok(result.every(({ resolutionStatus }) => resolutionStatus === 'candidate'))
+  const byName = new Map(result.map((entity) => [entity.canonicalName, entity]))
+  for (const name of candidates.slice(0, 4)) {
+    assert.equal(byName.get(name).resolutionStatus, 'confirmed')
+  }
+  for (const name of candidates.slice(4)) {
+    assert.equal(byName.get(name).resolutionStatus, 'candidate')
+  }
+})
+
+test('resolver confirms a grounded unnamed participant only with action and corroborating facts', () => {
+  const observations = [
+    observation({
+      id: '11111111-1111-4111-8111-111111111135',
+      type: 'character_action',
+      candidate: 'грузинка',
+      quote: 'Грузинка скользила меж камней.',
+      startOffset: 100
+    }),
+    observation({
+      id: '22222222-2222-4222-8222-222222222245',
+      type: 'character_gender',
+      candidate: 'грузинка',
+      fact: 'female',
+      quote: 'Грузинка скользила меж камней.',
+      startOffset: 100
+    }),
+    observation({
+      id: '33333333-3333-4333-8333-333333333355',
+      type: 'character_action',
+      candidate: 'русский генерал',
+      quote: 'Однажды русский генерал ребёнка пленного вёз.',
+      startOffset: 200
+    }),
+    observation({
+      id: '44444444-4444-4444-8444-444444444465',
+      type: 'character_gender',
+      candidate: 'русский генерал',
+      fact: 'male',
+      quote: 'Однажды русский генерал ребёнка пленного вёз.',
+      startOffset: 200
+    }),
+    observation({
+      id: '55555555-5555-4555-8555-555555555575',
+      type: 'character_mention',
+      candidate: 'случайный прохожий',
+      quote: 'Случайный прохожий мелькнул вдали.',
+      startOffset: 300
+    })
+  ]
+  const byName = new Map(resolveBookAnalysisEntities({ observations })
+    .map((entity) => [entity.canonicalName, entity]))
+
+  assert.equal(byName.get('грузинка').resolutionStatus, 'confirmed')
+  assert.equal(byName.get('русский генерал').resolutionStatus, 'confirmed')
+  assert.equal(byName.get('случайный прохожий').resolutionStatus, 'candidate')
+})
+
+test('resolver keeps a context-resolved actor when one grounded fact uses a pronoun', () => {
+  const observations = [
+    observation({
+      id: '66666666-6666-4666-8666-666666666685',
+      type: 'character_action',
+      candidate: 'грузинка',
+      quote: 'Она скользила меж камней.',
+      startOffset: 100
+    })
+  ]
+
+  assert.equal(
+    resolveBookAnalysisEntities({ observations })[0].resolutionStatus,
+    'confirmed'
+  )
 })
 
 test('resolver rejects named groups and objects but keeps explicit human roles', () => {
@@ -2161,7 +2268,7 @@ test('resolver keeps repeated descriptive character labels out of synthesis', ()
   assert.equal(result[0].resolutionStatus, 'candidate')
 })
 
-test('resolver keeps capitalized descriptive phrases out of synthesis', () => {
+test('resolver keeps mention-only descriptions provisional but includes a grounded actor', () => {
   const observations = [
     observation({
       id: '11111111-1111-4111-8111-111111111119',
@@ -2183,7 +2290,7 @@ test('resolver keeps capitalized descriptive phrases out of synthesis', () => {
   ]
   const result = resolveBookAnalysisEntities({ observations })
   assert.deepEqual(result.map(({ resolutionStatus }) => resolutionStatus), [
-    'candidate', 'candidate'
+    'confirmed', 'candidate'
   ])
 })
 

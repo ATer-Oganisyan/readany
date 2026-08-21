@@ -137,6 +137,100 @@ test('resolve worker applies only validated whole-book identity proposals', asyn
   assert.equal(completed.value.entities[0].evidenceIds.length, 3)
 })
 
+test('resolve worker invokes bounded whole-roster reconciliation for three or more characters', async () => {
+  let completed
+  let recoveryRequest
+  const candidates = [
+    {
+      id: '11111111-1111-4111-8111-111111111997',
+      candidate: 'Мцыри',
+      quote: 'Ты слушать исповедь мою сюда пришёл.',
+      offset: 1
+    },
+    {
+      id: '22222222-2222-4222-8222-222222222997',
+      candidate: 'рассказчик',
+      quote: 'Я мало жил, и жил в плену.',
+      offset: 42
+    },
+    {
+      id: '33333333-3333-4333-8333-333333333997',
+      candidate: 'пленный ребёнок',
+      quote: 'Его привёз в монастырь генерал.',
+      offset: 73
+    },
+    {
+      id: '44444444-4444-4444-8444-444444444997',
+      candidate: 'Мцыри',
+      quote: 'Мцыри убежал из монастыря.',
+      offset: 104
+    }
+  ].map(({ id, candidate, quote, offset }) => ({
+    ...input.observations[0],
+    id,
+    observationKey: `obs:${id}`,
+    type: 'character_dialogue',
+    entityCandidate: candidate,
+    fact: `Факт о ${candidate}`,
+    evidence: {
+      quote,
+      startOffset: offset,
+      endOffset: offset + quote.length,
+      chapterKey: 'chapter-1'
+    }
+  }))
+  const worker = createBookAnalysisResolveWorker({
+    repository: {
+      async claimAnalysisJob() {
+        return { id: 'job-recovery', runId: 'run-1', stage: 'resolve', leaseToken: 'lease' }
+      },
+      async getResolveInput() {
+        return { ...input, title: 'Мцыри', textLength: 200, observations: candidates }
+      },
+      async renewAnalysisJobLease() {},
+      async completeResolve(_job, value) {
+        completed = value
+        return { stage: 'synthesize', entityCount: value.entities.length }
+      },
+      async failAnalysisJob() { assert.fail('recovery must complete') }
+    },
+    generator: {
+      async reconcileBookCharacterIdentities(request) {
+        recoveryRequest = request
+        const byName = new Map(request.roster.map((item) => [item.names[0], item]))
+        return {
+          merges: [
+            ['Мцыри', 'рассказчик'],
+            ['Мцыри', 'пленный ребёнок']
+          ].map(([leftName, rightName]) => ({
+            leftEntityKey: byName.get(leftName).entityKey,
+            rightEntityKey: byName.get(rightName).entityKey,
+            basis: 'persona',
+            evidenceIds: [
+              byName.get(leftName).evidence[0].id,
+              byName.get(rightName).evidence[0].id
+            ]
+          }))
+        }
+      }
+    },
+    workerId: 'resolve-worker-recovery',
+    leaseSeconds: 60,
+    leaseRenewMs: 10_000,
+    logger: { info() {}, warn() {}, error() {} }
+  })
+
+  const result = await worker.runOnce()
+  assert.equal(result.status, 'completed')
+  assert.ok(recoveryRequest.candidatePairs.every(({ signals }) =>
+    signals.includes('low_recall_recovery')
+  ))
+  const characters = completed.entities.filter(({ entityKind }) => entityKind === 'character')
+  assert.equal(characters.length, 1)
+  assert.equal(characters[0].canonicalName, 'Мцыри')
+  assert.equal(characters[0].resolutionStatus, 'confirmed')
+})
+
 test('resolve worker retries its lease after invalid resolution input', async () => {
   let failure
   const worker = createBookAnalysisResolveWorker({

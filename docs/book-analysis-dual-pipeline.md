@@ -4,8 +4,8 @@
 
 Новые analysis runs выбирают одну из двух независимых стратегий:
 
-- `narra` — существующий `book-analysis-v44` со scan `book-scan-v15`,
-  `character-identity-v20` и текущим `character-profile-v13` synthesis;
+- `narra` — существующий `book-analysis-v49` со scan `book-scan-v17`,
+  `character-identity-v22` и текущим `character-profile-v14` synthesis;
 - `external` — `external-autiobook-v1.d532bdd0`, изолированный HTTP-адаптер
   над `khimaros/autiobook` commit
   `d532bdd0a15f2948fd0c99f5e11b92677cb5c3eb`.

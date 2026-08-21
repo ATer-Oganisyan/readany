@@ -2,6 +2,7 @@ const MAX_CHARACTER_ENTITIES = 128
 const MAX_EVIDENCE_PER_ENTITY = 2
 const MAX_REQUEST_BYTES = 96 * 1024
 const MAX_CANDIDATE_PAIRS = 128
+const MAX_RECOVERY_CHARACTERS = 12
 const IDENTITY_PREFIXES = new Set([
   'a', 'an', 'the', 'mr', 'mrs', 'ms', 'miss', 'mister', 'missus', 'sir', 'lady', 'lord',
   'господин', 'госпожа'
@@ -328,7 +329,12 @@ function directAliasPairs(characterEntities, observations) {
   return pairs
 }
 
-function reconciliationCandidatePairs(characterEntities, observations, blockedPairs) {
+function reconciliationCandidatePairs(
+  characterEntities,
+  observations,
+  blockedPairs,
+  { recovery = false } = {}
+) {
   const aliasPairs = directAliasPairs(characterEntities, observations)
   const observationsById = new Map(observations.map((item) => [item.id, item]))
   const candidates = []
@@ -351,12 +357,36 @@ function reconciliationCandidatePairs(characterEntities, observations, blockedPa
       })
     }
   }
-  return candidates.sort((left, right) =>
+  const ordered = candidates.sort((left, right) =>
     Number(!left.signals.includes('scan_alias_claim')) -
       Number(!right.signals.includes('scan_alias_claim')) ||
     compareText(left.leftEntityKey, right.leftEntityKey) ||
     compareText(left.rightEntityKey, right.rightEntityKey)
-  ).slice(0, MAX_CANDIDATE_PAIRS)
+  )
+  if (!recovery) return ordered.slice(0, MAX_CANDIDATE_PAIRS)
+
+  const existing = new Set(ordered.map(({ leftEntityKey, rightEntityKey }) =>
+    pairKey(leftEntityKey, rightEntityKey)
+  ))
+  const recoveryRoster = [...characterEntities]
+    .sort((left, right) =>
+      (right.data?.observationCount ?? 0) - (left.data?.observationCount ?? 0) ||
+      compareText(left.entityKey, right.entityKey)
+    )
+    .slice(0, MAX_RECOVERY_CHARACTERS)
+  for (const [index, left] of recoveryRoster.entries()) {
+    for (const right of recoveryRoster.slice(index + 1)) {
+      const key = pairKey(left.entityKey, right.entityKey)
+      if (blockedPairs.has(key) || existing.has(key)) continue
+      existing.add(key)
+      ordered.push({
+        leftEntityKey: left.entityKey,
+        rightEntityKey: right.entityKey,
+        signals: ['low_recall_recovery']
+      })
+    }
+  }
+  return ordered.slice(0, MAX_CANDIDATE_PAIRS)
 }
 
 function serializedBytes(value) {
@@ -372,7 +402,8 @@ export function buildBookIdentityReconciliationRequest({
   title,
   author,
   entities,
-  observations
+  observations,
+  recovery = false
 }) {
   const characters = entities
     .filter(({ entityKind }) => entityKind === 'character')
@@ -391,7 +422,12 @@ export function buildBookIdentityReconciliationRequest({
   const blockedPairs = new Set(allForbidden.map(({ leftEntityKey, rightEntityKey }) =>
     pairKey(leftEntityKey, rightEntityKey)
   ))
-  let candidatePairs = reconciliationCandidatePairs(characters, observations, blockedPairs)
+  let candidatePairs = reconciliationCandidatePairs(
+    characters,
+    observations,
+    blockedPairs,
+    { recovery }
+  )
   if (!candidatePairs.length) return null
   let requestCharacters = characters
   if (characters.length > MAX_CHARACTER_ENTITIES) {
