@@ -9,7 +9,7 @@
  * Falls back to react-native-tcp-socket JS-layer server if the native static
  * server module is not available (e.g. during development without a rebuild).
  */
-import { File } from "expo-file-system";
+import { File, FileMode } from "expo-file-system";
 
 // --- State ---
 let _nativeServer: any | null = null;
@@ -128,7 +128,11 @@ async function _startNativeServer(cleanRoot: string): Promise<string> {
       } catch {}
     }
     _nativeServer = null;
-    _useNative = false;
+    // Runtime start failure (e.g. startup timeout) should not latch TCP for the
+    // rest of the session: retry the native backend on the next book open.
+    // A missing native module still converges to a permanent fallback via the
+    // import check in startFileServer.
+    _useNative = null;
     return _startTcpFallback(cleanRoot);
   }
 }
@@ -249,9 +253,9 @@ async function _startTcpFallback(cleanRoot: string): Promise<string> {
           return;
         }
 
-        let fileData: Uint8Array;
+        let rangeData: Uint8Array;
         try {
-          fileData = await file.bytes();
+          rangeData = await _readFileRange(file, start, contentLength);
         } catch (e) {
           console.warn(
             `[FileServer] TCP failed to read file: ${fileUri} (${e instanceof Error ? e.message : e})`,
@@ -261,15 +265,15 @@ async function _startTcpFallback(cleanRoot: string): Promise<string> {
         }
 
         const CHUNK = 65536;
-        let offset = start;
+        let offset = 0;
         const pump = () => {
-          if (offset > end) {
+          if (offset >= rangeData.length) {
             socket.destroy();
             return;
           }
-          const chunkEnd = Math.min(offset + CHUNK - 1, end);
-          const chunk = fileData.slice(offset, chunkEnd + 1);
-          offset = chunkEnd + 1;
+          const chunkEnd = Math.min(offset + CHUNK, rangeData.length);
+          const chunk = rangeData.slice(offset, chunkEnd);
+          offset = chunkEnd;
           try {
             socket.write(chunk, undefined, (err?: Error) => {
               if (err) {
@@ -334,6 +338,51 @@ export async function stopFileServer(_docRoot?: string): Promise<void> {
   }
   _serverUrl = null;
   _serverDocRoot = null;
+  _fullReadCache = null;
+}
+
+// --- Range reads ---
+// Cache of the last fully-read file, used only on binaries whose
+// expo-file-system predates FileHandle partial reads. One entry is enough:
+// the reader serves a single book at a time.
+let _fullReadCache: { uri: string; bytes: Uint8Array } | null = null;
+let _fileHandleUnsupported = false;
+
+/**
+ * Read `length` bytes at `start` without loading the whole file.
+ *
+ * The previous implementation called `file.bytes()` per request; foliate-js
+ * reads books via dozens of small Range requests, so every chapter turn
+ * re-read the entire EPUB through the bridge and stalled the JS thread.
+ * FileHandle (expo-file-system 54+) reads just the requested slice.
+ */
+async function _readFileRange(
+  file: InstanceType<typeof File>,
+  start: number,
+  length: number,
+): Promise<Uint8Array> {
+  if (length <= 0) return new Uint8Array(0);
+  if (!_fileHandleUnsupported && typeof (file as any).open === "function") {
+    let handle: any = null;
+    try {
+      handle = (file as any).open(FileMode.ReadOnly);
+      handle.offset = start;
+      return handle.readBytes(length);
+    } catch (e) {
+      console.warn(
+        `[FileServer] FileHandle range read failed, using full-read cache (${e instanceof Error ? e.message : e})`,
+      );
+      _fileHandleUnsupported = true;
+    } finally {
+      try {
+        handle?.close();
+      } catch {}
+    }
+  }
+  if (_fullReadCache?.uri !== file.uri) {
+    _fullReadCache = { uri: file.uri, bytes: await file.bytes() };
+  }
+  return _fullReadCache.bytes.subarray(start, start + length);
 }
 
 // --- Helpers ---

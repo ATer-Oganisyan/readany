@@ -1015,13 +1015,6 @@ function ReaderContent({ route, navigation }: Props) {
       totalBookCharactersRef.current = totalCharacters > 0 ? totalCharacters : null;
     },
     onRelocate: (detail: RelocateEvent) => {
-      console.log("[ReaderScreen] onRelocate", {
-        section: detail.section,
-        fraction: detail.fraction,
-        cfi: detail.cfi,
-        routeCfi: cfi,
-        lastNavigated: lastNavigatedCfiRef.current,
-      });
       if (loading) {
         setLoading(false);
       }
