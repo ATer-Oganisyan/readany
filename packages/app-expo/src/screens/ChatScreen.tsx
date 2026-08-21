@@ -31,6 +31,7 @@ import {
   mergeMessagesWithStreaming,
 } from "@readany/core/utils";
 
+import { AnimatedNarraFace } from "@/components/chat/animated-narra-face";
 import { NarraChat } from "@/components/chat/NarraChat";
 import {
   NARRA_CHAT_EMBEDDED_TOP_INSET,
@@ -432,8 +433,19 @@ export function ChatScreen({
             backLabel={t("common.back", "Назад")}
             onBack={goBack}
             safeAreaTop={headerSafeAreaTop}
+            subtitle={
+              isStreaming
+                ? t("narra.characterTyping", "Печатает...")
+                : t("narra.characterOnline", "онлайн")
+            }
             title="Narra"
-            transparent={false}
+            // Пока без onTrailingPress: профиль Narra появится позже.
+            trailing={
+              <View style={s.headerAvatar}>
+                <AnimatedNarraFace width={23} height={24} color={colors.mutedForeground} />
+              </View>
+            }
+            trailingLabel="Narra"
           />
           {/* Content */}
           <View style={s.content}>
@@ -532,6 +544,17 @@ const makeStyles = (
       justifyContent: "center",
     },
     content: { flex: 1 },
+    headerAvatar: {
+      width: 34,
+      height: 34,
+      overflow: "hidden",
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: 17,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      backgroundColor: colors.elevation2,
+    },
 
     // Sidebar
     sidebarBackdrop: {
