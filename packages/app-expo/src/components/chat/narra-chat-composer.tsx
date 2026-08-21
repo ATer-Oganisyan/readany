@@ -81,7 +81,7 @@ export function NarraChatComposer<TMessage extends IMessage>({
         onSubmit={handleSubmit}
         onValueChange={inputProps?.onChangeText}
         status={isStreaming ? "streaming" : "ready"}
-        style={[styles.input, { borderColor: colors.border }]}
+        style={[styles.input, { borderColor: colors.primary5 }]}
         value={text}
       >
         {/* Сам TextInput остаётся многострочным и растёт вместе с текстом. */}

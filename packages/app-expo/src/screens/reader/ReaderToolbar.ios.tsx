@@ -197,8 +197,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   chatLabel: {
+    // Соседняя кнопка «Слушать» — нативная: её надпись рисует SwiftUI шрифтом
+    // .body, а задать ему вес из JS нельзя (в @expo/ui нет font-модификаторов).
+    // Поэтому подпись подгоняется под неё, а не наоборот: SF Pro 17 regular,
+    // трекинг −0.4 повторяет системный на этом кегле.
     fontSize: 17,
-    fontWeight: "600",
+    fontWeight: "400",
     lineHeight: 22,
     letterSpacing: -0.4,
   },
