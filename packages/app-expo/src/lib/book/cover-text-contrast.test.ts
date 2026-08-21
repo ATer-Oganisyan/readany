@@ -30,4 +30,11 @@ describe("generated cover text contrast", () => {
       expect(color).not.toBe("#FFFFFF");
     }
   });
+
+  it("uses the backend-provided identity as its stable color seed", () => {
+    const displayIdentity = { title: "Маскарад", author: "Михаил Лермонтов" };
+    expect(generatedCoverPlaceholderColor(displayIdentity)).toBe(
+      generatedCoverPlaceholderColor(displayIdentity),
+    );
+  });
 });

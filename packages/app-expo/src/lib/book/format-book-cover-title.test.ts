@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { formatBookCoverIdentity, formatBookCoverTitle } from "./format-book-cover-title";
+import {
+  formatBookCoverAuthor,
+  formatBookCoverIdentity,
+  formatBookCoverTitle,
+} from "./format-book-cover-title";
 
 describe("formatBookCoverTitle", () => {
   it.each(["а", "в", "и", "к", "о", "с", "у", "до", "из", "на", "of", "to"])(
@@ -25,12 +29,14 @@ describe("formatBookCoverTitle", () => {
     expect(formatBookCoverTitle("Эмоциональный интеллект")).toBe("Эмоциональный интеллект");
   });
 
-  it("keeps only the first sentence without trailing punctuation", () => {
+  it("preserves the complete backend-provided display title", () => {
     expect(
       formatBookCoverTitle("Эмоциональный интеллект. Почему он может значить больше, чем IQ"),
-    ).toBe("Эмоциональный интеллект");
-    expect(formatBookCoverTitle("Кто виноват? Что делать?")).toBe("Кто виноват");
-    expect(formatBookCoverTitle("Сначала главное! Потом детали")).toBe("Сначала главное");
+    ).toBe("Эмоциональный интеллект. Почему он\u00A0может значить больше, чем IQ");
+    expect(formatBookCoverTitle("Кто виноват? Что делать?")).toBe("Кто виноват? Что делать?");
+    expect(formatBookCoverTitle("Сначала главное! Потом детали")).toBe(
+      "Сначала главное! Потом детали",
+    );
   });
 
   it("preserves punctuation when the title contains only one sentence", () => {
@@ -38,8 +44,10 @@ describe("formatBookCoverTitle", () => {
     expect(formatBookCoverTitle("Что делать?")).toBe("Что делать?");
   });
 
-  it("applies non-breaking spaces after shortening the title", () => {
-    expect(formatBookCoverTitle("Любовь и море. Вторая часть")).toBe("Любовь и\u00A0море");
+  it("applies non-breaking spaces without changing title semantics", () => {
+    expect(formatBookCoverTitle("Любовь и море. Вторая часть")).toBe(
+      "Любовь и\u00A0море. Вторая часть",
+    );
   });
 
   it("formats generated cover text as title followed by author", () => {
@@ -48,5 +56,26 @@ describe("formatBookCoverTitle", () => {
       author: "Лев Толстой",
       text: "Война и\u00A0мир\nЛев Толстой",
     });
+  });
+
+  it("does not normalize bibliographic metadata on the client", () => {
+    expect(formatBookCoverTitle("Маскарад[1]")).toBe("Маскарад[1]");
+    expect(formatBookCoverTitle("Мертвое озеро (Часть первая)")).toBe(
+      "Мертвое озеро (Часть первая)",
+    );
+  });
+
+  it.each([
+    ["Что делать?", "Что делать?"],
+    ["Хорошо!", "Хорошо!"],
+    ["Росла́влев, или Русские в 1812 году", "Росла́влев, или Русские в\u00A01812 году"],
+  ])("preserves the meaningful title %s", (title, expected) => {
+    expect(formatBookCoverTitle(title)).toBe(expected);
+  });
+
+  it("does not normalize author metadata on the client", () => {
+    expect(formatBookCoverAuthor("Николай Некрасов (1821—1877)")).toBe(
+      "Николай Некрасов (1821—1877)",
+    );
   });
 });

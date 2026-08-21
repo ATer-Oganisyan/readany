@@ -1,3 +1,5 @@
+import { formatBookCoverIdentity } from "./format-book-cover-title";
+
 export type CoverTextTone = "dark" | "light";
 
 const GENERATED_COVER_BACKGROUNDS = [
@@ -37,8 +39,9 @@ export function generatedCoverBackgroundColor(input: {
   title: string;
   author?: string;
 }): (typeof GENERATED_COVER_BACKGROUNDS)[number] {
-  const title = input.title.trim() || "Untitled book";
-  const author = input.author?.trim() || "Unknown author";
+  const formattedIdentity = formatBookCoverIdentity(input.title, input.author);
+  const title = formattedIdentity.title.replaceAll("\u00A0", " ") || "Untitled book";
+  const author = formattedIdentity.author || "Unknown author";
   const colorSeed = Array.from(`${title}:${author}`).reduce(
     (hash, character) => (hash * 31 + (character.codePointAt(0) || 0)) >>> 0,
     0,

@@ -198,6 +198,14 @@ describe("backend book API", () => {
       new Response(
         JSON.stringify({
           availability: "ready",
+          book: {
+            resolution: "private",
+            book_edition_id: "book-1",
+            title: "Мертвое озеро",
+            author: "Николай Некрасов",
+            content_sha256: "a".repeat(64),
+            ready: true,
+          },
           reader_text_offset: 120,
           reading_fraction: 0.12,
           markup: { revision: 2, text_length: 1_000 },
@@ -229,6 +237,7 @@ describe("backend book API", () => {
     );
     const manifest = await fetchBackendBookManifest("book-1");
     expect(manifest.revision).toBe(2);
+    expect(manifest.book?.title).toBe("Мертвое озеро");
     expect(manifest.textLength).toBe(1_000);
     expect(manifest.readingFraction).toBe(0.12);
     expect(manifest.characters[0]?.bundle?.assets[0]?.downloadPath).toBe(

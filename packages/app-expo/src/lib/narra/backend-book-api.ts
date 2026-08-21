@@ -66,6 +66,7 @@ export interface BackendManifestAnalysis {
 }
 
 export interface BackendBookManifest {
+  book?: BackendBookBinding;
   source: BackendManifestSource;
   availability: "processing" | "ready";
   readerTextOffset: number;
@@ -336,7 +337,12 @@ export async function fetchBackendBookManifest(
       ? (payload.analysis as JsonRecord)
       : null;
   const rawCharacters = Array.isArray(payload.characters) ? payload.characters : [];
+  const manifestBook =
+    payload.book && typeof payload.book === "object"
+      ? binding(payload.book as JsonRecord)
+      : undefined;
   return {
+    book: manifestBook?.bookEditionId ? manifestBook : undefined,
     source: payload.source === "v3" || payload.source === "shadow-v3" ? "v3" : "v2",
     availability: payload.availability === "ready" ? "ready" : "processing",
     readerTextOffset: Number(payload.reader_text_offset) || 0,

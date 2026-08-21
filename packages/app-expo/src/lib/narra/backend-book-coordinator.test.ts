@@ -154,6 +154,9 @@ function fixture() {
     async updateBookHash() {
       calls.push("set-hash");
     },
+    async updateBookIdentity(_bookId, identity) {
+      calls.push(`set-identity:${identity.title}:${identity.author || ""}`);
+    },
     reportError(_scope, error) {
       throw error;
     },
@@ -315,6 +318,26 @@ describe("backend book coordinator", () => {
     await createBackendBookCoordinator(value).open(BOOK);
 
     expect(value.files.project).toHaveBeenCalledWith(expect.any(Object), cached, 0);
+  });
+
+  it("applies the backend-generated display identity before rendering the cover", async () => {
+    const value = fixture();
+    const originalManifest = value.api.manifest;
+    value.api.manifest = vi.fn(async () => ({
+      ...(await originalManifest("edition-1")),
+      book: {
+        resolution: "private" as const,
+        bookEditionId: "edition-1",
+        contentSha256: HASH,
+        title: "Мертвое озеро",
+        author: "Николай Некрасов",
+        ready: true,
+      },
+    }));
+
+    await createBackendBookCoordinator(value).open(BOOK);
+
+    expect(value.calls).toContain("set-identity:Мертвое озеро:Николай Некрасов");
   });
 
   it("keeps provisional scan characters out of the persisted Narra store", async () => {

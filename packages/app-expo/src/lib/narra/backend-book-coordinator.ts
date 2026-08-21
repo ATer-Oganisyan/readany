@@ -105,6 +105,7 @@ export interface BackendBookCoordinatorState {
   ): void;
   setManifestSource(bookId: string, source: BackendBookManifest["source"]): void;
   updateBookHash(bookId: string, contentSha256: string): Promise<void>;
+  updateBookIdentity(bookId: string, identity: { title: string; author?: string }): Promise<void>;
   reportError(scope: string, error: unknown): void;
 }
 
@@ -197,6 +198,12 @@ export function createBackendBookCoordinator({
     manifest: BackendBookManifest,
     progressFraction: number,
   ): Promise<void> {
+    if (manifest.book?.title) {
+      await state.updateBookIdentity(bookId, {
+        title: manifest.book.title,
+        author: manifest.book.author,
+      });
+    }
     state.setManifestSource(bookId, manifest.source);
     // Provisional scan findings are screen-local. Keeping them out of the
     // persisted Narra store prevents temporary IDs from reaching chat, reader
@@ -404,6 +411,18 @@ const defaultState: BackendBookCoordinatorState = {
   async updateBookHash(bookId, contentSha256) {
     const { useLibraryStore } = await import("@/stores/library-store");
     await useLibraryStore.getState().updateBook(bookId, { fileHash: contentSha256 });
+  },
+  async updateBookIdentity(bookId, identity) {
+    const { useLibraryStore } = await import("@/stores/library-store");
+    const library = useLibraryStore.getState();
+    const book = library.books.find((candidate) => candidate.id === bookId);
+    if (!book) return;
+    const author = identity.author || book.meta.author;
+    if (book.meta.title === identity.title && book.meta.author === author) return;
+    await library.updateBook(bookId, {
+      meta: { ...book.meta, title: identity.title, author },
+      updatedAt: Date.now(),
+    });
   },
   reportError(scope, error) {
     console.warn("[NarraBackend] Background sync failed", {
