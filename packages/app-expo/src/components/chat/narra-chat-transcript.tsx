@@ -10,7 +10,7 @@ import {
   Shimmer,
   useMessageScroller,
 } from "panelui-native";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MutableRefObject } from "react";
 import { type ScrollViewProps, StyleSheet, type TextStyle, View } from "react-native";
 import type { KeyboardChatScrollViewRef } from "react-native-keyboard-controller";
@@ -45,6 +45,8 @@ const EDGE_FADE_HEIGHT = ELEMENT_GAP;
 const FOLLOW_LAYOUT_SETTLE_MS = 80;
 /** Повтор после первого окна виртуализации FlatList. */
 const FOLLOW_LAYOUT_RETRY_MS = 140;
+/** Пустое множество для стартового состояния: новая ссылка каждый рендер сбивала бы мемоизацию. */
+const EMPTY_IDS: ReadonlySet<string> = new Set();
 /** Насколько далеко от живого края слежение за ответом ещё уместно. */
 const NEAR_LIVE_EDGE = 160;
 /** Геометрия сообщения по продуктовой спецификации чата. */
@@ -356,12 +358,31 @@ export function NarraChatTranscript({
     }
     return undefined;
   }, [messages]);
+  // Ответы, пришедшие при открытом чате: их проявляем по словам. История,
+  // с которой чат открылся, появляется сразу — иначе каждое открытие
+  // превращалось бы в представление.
+  const [revealIds, setRevealIds] = useState<ReadonlySet<string>>(EMPTY_IDS);
+  const seenIdsRef = useRef<Set<string> | null>(null);
   const tailMessage = messages.at(-1);
   const tailId = tailMessage?.id;
   const tailLength = useMemo(
     () => (tailMessage ? renderText(tailMessage).length : 0),
     [renderText, tailMessage],
   );
+  useEffect(() => {
+    if (!seenIdsRef.current) {
+      seenIdsRef.current = new Set(messages.map((message) => message.id));
+      return;
+    }
+    const tail = messages.at(-1);
+    if (!tail || tail.role !== "assistant" || seenIdsRef.current.has(tail.id)) return;
+    seenIdsRef.current.add(tail.id);
+    // Текст, который дописывается по токенам, ведёт себя иначе: там волну
+    // задаёт сам поток, и целое сообщение проявлять не нужно.
+    if (tail.id === streamingMessageId) return;
+    setRevealIds((previous) => new Set(previous).add(tail.id));
+  }, [messages, streamingMessageId]);
+
   const fadeColor = colors.background;
   const chatScrollViewRef = useRef<KeyboardChatScrollViewRef>(null);
   const scrollOffsetRef = useRef(0);
@@ -402,7 +423,9 @@ export function NarraChatTranscript({
       const isStreamingMessage = item.message.id === streamingMessageId;
       // Волна только на живом ответе героя: свои сообщения появляются целиком,
       // а дописанный ответ отдаётся обычному рендеру — с разметкой и сносками.
-      const revealWords = isStreamingMessage && !isUser && !MARKDOWN_SYNTAX.test(messageBody);
+      const revealWhole = revealIds.has(item.message.id);
+      const revealWords =
+        (isStreamingMessage || revealWhole) && !isUser && !MARKDOWN_SYNTAX.test(messageBody);
       return (
         <View style={styles.messageRow}>
           <Message align={isUser ? "end" : "start"}>
@@ -419,6 +442,7 @@ export function NarraChatTranscript({
                 {revealWords ? (
                   <StreamingWords
                     color={colors.foreground}
+                    mode={isStreamingMessage ? "stream" : "whole"}
                     text={messageBody}
                     textStyle={MESSAGE_TEXT_STYLE}
                   />
@@ -439,7 +463,7 @@ export function NarraChatTranscript({
         </View>
       );
     },
-    [colors, isDark, onCitationClick, renderText, streamingMessageId],
+    [colors, isDark, onCitationClick, renderText, revealIds, streamingMessageId],
   );
 
   return (

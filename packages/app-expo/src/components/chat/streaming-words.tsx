@@ -33,6 +33,14 @@ const REDUCED_DURATION_MS = 150;
  * последние слова ждали бы секунды.
  */
 const MAX_STAGGER_WORDS = 12;
+/**
+ * Сколько всего длится волна, когда ответ пришёл целиком.
+ *
+ * У персонажей ответ не печатается по токенам — он вставляется разом, и очередь
+ * слов задавать нечему. Тогда волну ведём по всему сообщению, а шаг сжимаем,
+ * чтобы длинный ответ не проявлялся полминуты.
+ */
+const WHOLE_MESSAGE_STAGGER_MS = 2100;
 
 const EASE_OUT = cubicBezier(0.23, 1, 0.32, 1);
 
@@ -51,6 +59,11 @@ interface StreamingWordsProps {
   /** Типографика бабла: слова садятся на ту же сетку, что обычный текст. */
   textStyle?: TextStyle;
   color: string;
+  /**
+   * `stream` — текст дописывается по токенам, шаг нужен внутри пришедшей порции.
+   * `whole` — ответ пришёл целиком, волна идёт по всему сообщению.
+   */
+  mode?: "stream" | "whole";
 }
 
 /**
@@ -62,7 +75,7 @@ function splitLines(text: string): string[][] {
   return text.split("\n").map((line) => line.split(/\s+/).filter(Boolean));
 }
 
-export function StreamingWords({ text, textStyle, color }: StreamingWordsProps) {
+export function StreamingWords({ text, textStyle, color, mode = "stream" }: StreamingWordsProps) {
   const reducedMotion = useReducedMotion();
   const lines = splitLines(text);
   const total = lines.reduce((sum, words) => sum + words.length, 0);
@@ -76,6 +89,13 @@ export function StreamingWords({ text, textStyle, color }: StreamingWordsProps) 
     shownRef.current = total;
   }, [total]);
 
+  // При целом ответе шаг сжимается под общую длительность волны, при потоке
+  // остаётся исходным: там очередь задаёт сам поток.
+  const step =
+    mode === "whole"
+      ? Math.min(WORD_STAGGER_MS, WHOLE_MESSAGE_STAGGER_MS / Math.max(total, 1))
+      : WORD_STAGGER_MS;
+
   let wordIndex = 0;
 
   return (
@@ -85,7 +105,10 @@ export function StreamingWords({ text, textStyle, color }: StreamingWordsProps) 
         return (
           <View key={lineKey} style={styles.line}>
             {words.map((word, indexInLine) => {
-              const staggerSteps = Math.min(Math.max(wordIndex - shown, 0), MAX_STAGGER_WORDS);
+              const staggerSteps =
+                mode === "whole"
+                  ? wordIndex
+                  : Math.min(Math.max(wordIndex - shown, 0), MAX_STAGGER_WORDS);
               wordIndex += 1;
               return (
                 <Animated.Text
@@ -100,7 +123,7 @@ export function StreamingWords({ text, textStyle, color }: StreamingWordsProps) 
                       animationName: reducedMotion ? REDUCED_KEYFRAMES : WORD_KEYFRAMES,
                       animationDuration: reducedMotion ? REDUCED_DURATION_MS : WORD_DURATION_MS,
                       animationTimingFunction: reducedMotion ? "linear" : EASE_OUT,
-                      animationDelay: reducedMotion ? 0 : staggerSteps * WORD_STAGGER_MS,
+                      animationDelay: reducedMotion ? 0 : staggerSteps * step,
                       animationFillMode: "both",
                     },
                   ]}
