@@ -9,7 +9,6 @@ import {
   MessageScroller,
   Shimmer,
   useMessageScroller,
-  useMessageScrollerVisibility,
 } from "panelui-native";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { MutableRefObject } from "react";
@@ -46,6 +45,8 @@ const EDGE_FADE_HEIGHT = ELEMENT_GAP;
 const FOLLOW_LAYOUT_SETTLE_MS = 80;
 /** Повтор после первого окна виртуализации FlatList. */
 const FOLLOW_LAYOUT_RETRY_MS = 140;
+/** Насколько далеко от живого края слежение за ответом ещё уместно. */
+const NEAR_LIVE_EDGE = 160;
 /** Геометрия сообщения по продуктовой спецификации чата. */
 const MESSAGE_RADIUS = 20;
 /**
@@ -272,27 +273,32 @@ function FollowComposerResize({
  * растущий ответ ассистента менял лишь высоту контента. MessageScroller
  * догоняет её сам только когда считает себя у края, и после программной
  * прокрутки это состояние не восстанавливалось — ответ уползал под инпут.
- * Здесь край подтягивается на каждый пришедший фрагмент, но лишь пока читатель
- * действительно стоит внизу: чтение истории эффект не прерывает.
+ * Условие — не «идёт стрим», а «хвост ленты изменился»: в чате персонажа ответ
+ * приходит целиком, без токенов, поэтому привязка к streamingMessageId там
+ * молчала и готовый ответ вставал под инпут. Подтягиваем край, лишь пока
+ * читатель действительно стоит внизу: чтение истории эффект не прерывает.
  */
-function FollowStreamingMessage({
+function FollowLiveEdge({
   bottomInset,
   chatScrollViewRef,
-  streamingLength,
-  streamingMessageId,
+  distanceFromBottomRef,
+  tailId,
+  tailLength,
 }: {
   bottomInset: number;
   chatScrollViewRef: MutableRefObject<KeyboardChatScrollViewRef | null>;
-  streamingLength: number;
-  streamingMessageId?: string;
+  distanceFromBottomRef: MutableRefObject<number>;
+  tailId?: string;
+  tailLength: number;
 }) {
   const { scrollToEnd } = useMessageScroller();
-  const { atEnd } = useMessageScrollerVisibility();
 
   useEffect(() => {
-    // Длина ответа здесь и условие, и тик: каждый пришедший фрагмент меняет её и
-    // заново догоняет живой край.
-    if (!streamingMessageId || streamingLength <= 0 || bottomInset <= 0 || !atEnd) return;
+    // Длина последнего сообщения здесь и условие, и тик: каждый пришедший
+    // фрагмент — как и разом вставленный ответ — меняет её и заново догоняет край.
+    if (!tailId || tailLength <= 0 || bottomInset <= 0) return;
+    // Читатель ушёл в историю — не выдёргиваем его к живому краю.
+    if (distanceFromBottomRef.current > NEAR_LIVE_EDGE) return;
 
     const frame = requestAnimationFrame(() => {
       scrollToEnd(false);
@@ -300,7 +306,7 @@ function FollowStreamingMessage({
     });
 
     return () => cancelAnimationFrame(frame);
-  }, [atEnd, bottomInset, chatScrollViewRef, scrollToEnd, streamingLength, streamingMessageId]);
+  }, [bottomInset, chatScrollViewRef, distanceFromBottomRef, scrollToEnd, tailId, tailLength]);
 
   return null;
 }
@@ -350,19 +356,22 @@ export function NarraChatTranscript({
     }
     return undefined;
   }, [messages]);
-  const streamingLength = useMemo(() => {
-    if (!streamingMessageId) return 0;
-    const message = messages.find((item) => item.id === streamingMessageId);
-    return message ? renderText(message).length : 0;
-  }, [messages, renderText, streamingMessageId]);
+  const tailMessage = messages.at(-1);
+  const tailId = tailMessage?.id;
+  const tailLength = useMemo(
+    () => (tailMessage ? renderText(tailMessage).length : 0),
+    [renderText, tailMessage],
+  );
   const fadeColor = colors.background;
   const chatScrollViewRef = useRef<KeyboardChatScrollViewRef>(null);
   const scrollOffsetRef = useRef(0);
+  const distanceFromBottomRef = useRef(0);
   const renderScrollComponent = useCallback(
     (props: ScrollViewProps) => (
       <NarraKeyboardChatScrollView
         {...props}
         chatScrollViewRef={chatScrollViewRef}
+        distanceFromBottomRef={distanceFromBottomRef}
         scrollOffsetRef={scrollOffsetRef}
       />
     ),
@@ -470,11 +479,12 @@ export function NarraChatTranscript({
           chatScrollViewRef={chatScrollViewRef}
           messageId={latestUserMessageId}
         />
-        <FollowStreamingMessage
+        <FollowLiveEdge
           bottomInset={baseBottomInset}
           chatScrollViewRef={chatScrollViewRef}
-          streamingLength={streamingLength}
-          streamingMessageId={streamingMessageId}
+          distanceFromBottomRef={distanceFromBottomRef}
+          tailId={tailId}
+          tailLength={tailLength}
         />
         {showTyping ? (
           <View style={styles.messageRow}>

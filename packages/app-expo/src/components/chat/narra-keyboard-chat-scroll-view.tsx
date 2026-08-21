@@ -11,6 +11,16 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 type NarraKeyboardChatScrollViewProps = KeyboardChatScrollViewProps & {
   chatScrollViewRef: MutableRefObject<KeyboardChatScrollViewRef | null>;
   scrollOffsetRef: MutableRefObject<number>;
+  /**
+   * Сколько ещё осталось до живого края.
+   *
+   * Слежение за ответом нельзя вешать на atEnd из MessageScroller: это
+   * JS-зеркало, которое обновляется только событием скролла, а на открытом
+   * чате скролла ещё не было — оно остаётся false, и следящий эффект молчит.
+   * Здесь значение считается из того же события и стартует с нуля, потому что
+   * лента открывается у края.
+   */
+  distanceFromBottomRef: MutableRefObject<number>;
 };
 
 /**
@@ -23,7 +33,7 @@ type NarraKeyboardChatScrollViewProps = KeyboardChatScrollViewProps & {
 export const NarraKeyboardChatScrollView = forwardRef<
   KeyboardChatScrollViewRef,
   NarraKeyboardChatScrollViewProps
->(({ chatScrollViewRef, scrollOffsetRef, ...props }, ref) => {
+>(({ chatScrollViewRef, distanceFromBottomRef, scrollOffsetRef, ...props }, ref) => {
   const { bottom: safeAreaBottom } = useSafeAreaInsets();
   const combinedRef: RefCallback<KeyboardChatScrollViewRef> = useCallback(
     (instance) => {
@@ -42,10 +52,15 @@ export const NarraKeyboardChatScrollView = forwardRef<
   const originalOnScroll = props.onScroll;
   const handleScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      scrollOffsetRef.current = event.nativeEvent.contentOffset.y;
+      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+      scrollOffsetRef.current = contentOffset.y;
+      distanceFromBottomRef.current = Math.max(
+        0,
+        contentSize.height - contentOffset.y - layoutMeasurement.height,
+      );
       if (typeof originalOnScroll === "function") originalOnScroll(event);
     },
-    [originalOnScroll, scrollOffsetRef],
+    [distanceFromBottomRef, originalOnScroll, scrollOffsetRef],
   );
 
   return (
