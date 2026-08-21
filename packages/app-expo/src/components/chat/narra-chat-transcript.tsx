@@ -11,7 +11,7 @@ import {
   useMessageScroller,
   useMessageScrollerVisibility,
 } from "panelui-native";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { MutableRefObject } from "react";
 import { type ScrollViewProps, StyleSheet, type TextStyle, View } from "react-native";
 import type { KeyboardChatScrollViewRef } from "react-native-keyboard-controller";
@@ -46,16 +46,6 @@ const EDGE_FADE_HEIGHT = ELEMENT_GAP;
 const FOLLOW_LAYOUT_SETTLE_MS = 80;
 /** Повтор после первого окна виртуализации FlatList. */
 const FOLLOW_LAYOUT_RETRY_MS = 140;
-/**
- * Задержка перед включением живого края.
- *
- * MessageScroller ставит стартовую позицию без анимации, но каждое следующее
- * изменение размера контента уводит ленту к последнему сообщению уже плавно.
- * На открытии это читается как самопроизвольный проскролл: достаточно, чтобы
- * что-то дообмерилось после первого кадра — перенос строк, подгруженный шрифт,
- * инсет композера. Живой край нужен для ответов, а не для входа в чат.
- */
-const INITIAL_FOLLOW_DELAY_MS = 250;
 /** Геометрия сообщения по продуктовой спецификации чата. */
 const MESSAGE_RADIUS = 20;
 /**
@@ -366,11 +356,6 @@ export function NarraChatTranscript({
     return message ? renderText(message).length : 0;
   }, [messages, renderText, streamingMessageId]);
   const fadeColor = colors.background;
-  const [liveFollow, setLiveFollow] = useState(false);
-  useEffect(() => {
-    const timer = setTimeout(() => setLiveFollow(true), INITIAL_FOLLOW_DELAY_MS);
-    return () => clearTimeout(timer);
-  }, []);
   const chatScrollViewRef = useRef<KeyboardChatScrollViewRef>(null);
   const scrollOffsetRef = useRef(0);
   const renderScrollComponent = useCallback(
@@ -450,7 +435,7 @@ export function NarraChatTranscript({
 
   return (
     <View style={styles.host}>
-      <MessageScroller autoScroll={liveFollow} defaultScrollPosition="end" style={styles.host}>
+      <MessageScroller autoScroll defaultScrollPosition="end" style={styles.host}>
         <MessageScroller.List
           alwaysBounceVertical={false}
           automaticallyAdjustContentInsets={false}
