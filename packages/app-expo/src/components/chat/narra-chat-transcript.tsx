@@ -4,9 +4,18 @@ import { bodyTypography, fontFamily, useTheme, withOpacity } from "@/styles/them
 import { spacingPixels } from "@deslop/primitives";
 import type { CitationPart, MessageV2 } from "@readany/core/types/message";
 import { LinearGradient } from "expo-linear-gradient";
-import { Message, MessageScroller, Shimmer, useMessageScroller } from "panelui-native";
+import {
+  Message,
+  MessageScroller,
+  Shimmer,
+  useMessageScroller,
+  useMessageScrollerVisibility,
+} from "panelui-native";
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { StyleSheet, type TextStyle, View } from "react-native";
+import type { MutableRefObject } from "react";
+import { type ScrollViewProps, StyleSheet, type TextStyle, View } from "react-native";
+import type { KeyboardChatScrollViewRef } from "react-native-keyboard-controller";
+import { NarraKeyboardChatScrollView } from "./narra-keyboard-chat-scroll-view";
 
 /**
  * Лента сообщений чата на MessageScroller из PanelUI.
@@ -99,9 +108,11 @@ function citationsOf(message: MessageV2): CitationPart[] {
  */
 function FollowSentMessage({
   bottomInset,
+  chatScrollViewRef,
   messageId,
 }: {
   bottomInset: number;
+  chatScrollViewRef: MutableRefObject<KeyboardChatScrollViewRef | null>;
   messageId?: string;
 }) {
   const { scrollToEnd, scrollToMessage } = useMessageScroller();
@@ -129,6 +140,7 @@ function FollowSentMessage({
         retryTimer = setTimeout(() => {
           retryFrame = requestAnimationFrame(() => {
             scrollToEnd(false);
+            chatScrollViewRef.current?.scrollToEnd({ animated: false });
             pendingFollow.current = false;
           });
         }, FOLLOW_LAYOUT_RETRY_MS);
@@ -141,7 +153,7 @@ function FollowSentMessage({
       if (firstFrame) cancelAnimationFrame(firstFrame);
       if (retryFrame) cancelAnimationFrame(retryFrame);
     };
-  }, [bottomInset, messageId, scrollToEnd, scrollToMessage]);
+  }, [bottomInset, chatScrollViewRef, messageId, scrollToEnd, scrollToMessage]);
 
   return null;
 }
@@ -155,7 +167,13 @@ function FollowSentMessage({
  * последнее сообщение под инпутом. Один повтор после применения inset
  * исправляет только стартовую геометрию и не мешает ручному чтению истории.
  */
-function SyncInitialComposerInset({ bottomInset }: { bottomInset: number }) {
+function SyncInitialComposerInset({
+  bottomInset,
+  chatScrollViewRef,
+}: {
+  bottomInset: number;
+  chatScrollViewRef: MutableRefObject<KeyboardChatScrollViewRef | null>;
+}) {
   const { scrollToEnd } = useMessageScroller();
   const previousBottomInset = useRef(bottomInset);
   const didSync = useRef(bottomInset > 0);
@@ -168,14 +186,104 @@ function SyncInitialComposerInset({ bottomInset }: { bottomInset: number }) {
 
     let frame = 0;
     const settleTimer = setTimeout(() => {
-      frame = requestAnimationFrame(() => scrollToEnd(false));
+      frame = requestAnimationFrame(() => {
+        scrollToEnd(false);
+        chatScrollViewRef.current?.scrollToEnd({ animated: false });
+      });
     }, FOLLOW_LAYOUT_SETTLE_MS);
 
     return () => {
       clearTimeout(settleTimer);
       if (frame) cancelAnimationFrame(frame);
     };
-  }, [bottomInset, scrollToEnd]);
+  }, [bottomInset, chatScrollViewRef, scrollToEnd]);
+
+  return null;
+}
+
+/**
+ * Удерживает последнее сообщение над многострочным плавающим композером.
+ *
+ * Нижний padding ленты растёт вместе с TextInput. VirtualizedList обновляет
+ * диапазон прокрутки, но не сохраняет экранный якорь, поэтому компенсируем
+ * ровно дельту высоты после layout. Это не ведёт пользователя в конец чата и
+ * не мешает чтению истории: видимые сообщения просто остаются над инпутом.
+ */
+function FollowComposerResize({
+  baseBottomInset,
+  bottomInset,
+  chatScrollViewRef,
+  scrollOffsetRef,
+}: {
+  baseBottomInset: number;
+  bottomInset: number;
+  chatScrollViewRef: MutableRefObject<KeyboardChatScrollViewRef | null>;
+  scrollOffsetRef: MutableRefObject<number>;
+}) {
+  const previousBottomInset = useRef(bottomInset);
+
+  useEffect(() => {
+    const previous = previousBottomInset.current;
+    previousBottomInset.current = bottomInset;
+    if (baseBottomInset <= 0 || previous <= 0 || previous === bottomInset) return;
+    const delta = bottomInset - previous;
+
+    let firstFrame = 0;
+    let secondFrame = 0;
+    firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => {
+        chatScrollViewRef.current?.scrollTo({
+          animated: false,
+          y: scrollOffsetRef.current + delta,
+        });
+      });
+    });
+
+    return () => {
+      if (firstFrame) cancelAnimationFrame(firstFrame);
+      if (secondFrame) cancelAnimationFrame(secondFrame);
+    };
+  }, [baseBottomInset, bottomInset, chatScrollViewRef, scrollOffsetRef]);
+
+  return null;
+}
+
+/**
+ * Ведёт живой край, пока ответ печатается.
+ *
+ * `FollowSentMessage` реагирует только на новое сообщение пользователя, а
+ * растущий ответ ассистента менял лишь высоту контента. MessageScroller
+ * догоняет её сам только когда считает себя у края, и после программной
+ * прокрутки это состояние не восстанавливалось — ответ уползал под инпут.
+ * Здесь край подтягивается на каждый пришедший фрагмент, но лишь пока читатель
+ * действительно стоит внизу: чтение истории эффект не прерывает.
+ */
+function FollowStreamingMessage({
+  bottomInset,
+  chatScrollViewRef,
+  streamingLength,
+  streamingMessageId,
+}: {
+  bottomInset: number;
+  chatScrollViewRef: MutableRefObject<KeyboardChatScrollViewRef | null>;
+  streamingLength: number;
+  streamingMessageId?: string;
+}) {
+  const { scrollToEnd } = useMessageScroller();
+  const { atEnd } = useMessageScrollerVisibility();
+
+  useEffect(() => {
+    // Длина ответа здесь и условие, и тик: каждый пришедший фрагмент меняет её и
+    // заново догоняет живой край.
+    if (!streamingMessageId || streamingLength <= 0 || bottomInset <= 0 || !atEnd) return;
+
+    const frame = requestAnimationFrame(() => {
+      scrollToEnd(false);
+      chatScrollViewRef.current?.scrollToEnd({ animated: false });
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [atEnd, bottomInset, chatScrollViewRef, scrollToEnd, streamingLength, streamingMessageId]);
 
   return null;
 }
@@ -194,6 +302,8 @@ interface NarraChatTranscriptProps {
   topInset?: number;
   /** Высота плавающего инпута, под которым продолжается лента. */
   bottomInset?: number;
+  /** Базовая высота однострочного композера, зарезервированная в содержимом списка. */
+  baseBottomInset?: number;
   /** Кнопка возврата к последнему сообщению. */
   showScrollToBottom?: boolean;
   /** Пузырь «печатает» в конце ленты, пока ответа ещё нет. */
@@ -208,10 +318,11 @@ export function NarraChatTranscript({
   onCitationClick,
   topInset = 0,
   bottomInset = 0,
+  baseBottomInset = 0,
   showScrollToBottom = true,
   showTyping = false,
 }: NarraChatTranscriptProps) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const typingLabel = locale === "en" ? "Typing…" : "Печатает…";
   const rows = useMemo(() => buildRows(messages, locale), [locale, messages]);
   const latestUserMessageId = useMemo(() => {
@@ -220,7 +331,24 @@ export function NarraChatTranscript({
     }
     return undefined;
   }, [messages]);
+  const streamingLength = useMemo(() => {
+    if (!streamingMessageId) return 0;
+    const message = messages.find((item) => item.id === streamingMessageId);
+    return message ? renderText(message).length : 0;
+  }, [messages, renderText, streamingMessageId]);
   const fadeColor = colors.background;
+  const chatScrollViewRef = useRef<KeyboardChatScrollViewRef>(null);
+  const scrollOffsetRef = useRef(0);
+  const renderScrollComponent = useCallback(
+    (props: ScrollViewProps) => (
+      <NarraKeyboardChatScrollView
+        {...props}
+        chatScrollViewRef={chatScrollViewRef}
+        scrollOffsetRef={scrollOffsetRef}
+      />
+    ),
+    [],
+  );
 
   const renderRow = useCallback(
     ({ item }: { item: ChatRow }) => {
@@ -241,7 +369,12 @@ export function NarraChatTranscript({
             <Message.Content>
               <Message.Bubble
                 className="rounded-es-[20px] rounded-ee-[20px]"
-                style={styles.messageBubble}
+                style={[
+                  styles.messageBubble,
+                  // В тёмной теме входящий бабл держится на Primary 10, иначе он
+                  // сливается с приподнятой поверхностью шторки.
+                  !isUser && isDark ? { backgroundColor: colors.primary10 } : undefined,
+                ]}
               >
                 <MarkdownRenderer
                   citations={citationsOf(item.message)}
@@ -258,29 +391,50 @@ export function NarraChatTranscript({
         </View>
       );
     },
-    [colors, onCitationClick, renderText, streamingMessageId],
+    [colors, isDark, onCitationClick, renderText, streamingMessageId],
   );
 
   return (
     <View style={styles.host}>
       <MessageScroller autoScroll defaultScrollPosition="end" style={styles.host}>
         <MessageScroller.List
-          automaticallyAdjustKeyboardInsets
+          alwaysBounceVertical={false}
+          automaticallyAdjustContentInsets={false}
+          automaticallyAdjustKeyboardInsets={false}
           contentContainerClassName="grow justify-end gap-0 p-0"
           contentContainerStyle={{
             flexGrow: 1,
             justifyContent: "flex-end",
             paddingTop: topInset + ROW_HALF_GAP,
-            paddingBottom: 0,
+            paddingBottom: bottomInset + ROW_HALF_GAP,
           }}
           data={rows}
           keyboardDismissMode="interactive"
           keyboardShouldPersistTaps="handled"
-          ListFooterComponent={<View style={{ height: bottomInset + ROW_HALF_GAP }} />}
           renderItem={renderRow}
+          renderScrollComponent={renderScrollComponent}
         />
-        <SyncInitialComposerInset bottomInset={bottomInset} />
-        <FollowSentMessage bottomInset={bottomInset} messageId={latestUserMessageId} />
+        <SyncInitialComposerInset
+          bottomInset={baseBottomInset}
+          chatScrollViewRef={chatScrollViewRef}
+        />
+        <FollowComposerResize
+          baseBottomInset={baseBottomInset}
+          bottomInset={bottomInset}
+          chatScrollViewRef={chatScrollViewRef}
+          scrollOffsetRef={scrollOffsetRef}
+        />
+        <FollowSentMessage
+          bottomInset={baseBottomInset}
+          chatScrollViewRef={chatScrollViewRef}
+          messageId={latestUserMessageId}
+        />
+        <FollowStreamingMessage
+          bottomInset={baseBottomInset}
+          chatScrollViewRef={chatScrollViewRef}
+          streamingLength={streamingLength}
+          streamingMessageId={streamingMessageId}
+        />
         {showTyping ? (
           <View style={styles.messageRow}>
             <Message align="start">
@@ -295,7 +449,11 @@ export function NarraChatTranscript({
             </Message>
           </View>
         ) : null}
-        {showScrollToBottom ? <MessageScroller.Button /> : null}
+        {showScrollToBottom ? (
+          <MessageScroller.Button
+            onTouchEnd={() => chatScrollViewRef.current?.scrollToEnd({ animated: true })}
+          />
+        ) : null}
       </MessageScroller>
 
       {/* Оба края — один непрерывный линейный переход на всю высоту зоны:

@@ -8,6 +8,7 @@ import {
   useTheme,
 } from "@/styles/theme";
 import { radiusPixels, spacingPixels } from "@deslop/primitives";
+import { Host, Image } from "@expo/ui/swift-ui";
 import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 import type { ReactNode } from "react";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
@@ -15,7 +16,7 @@ import { Platform, Pressable, StyleSheet, View } from "react-native";
 /** Высота общей шапки чата без системной safe area. */
 export const NARRA_CHAT_HEADER_HEIGHT = spacingPixels[44] + spacingPixels[12];
 /** Дополнительный отступ от drag indicator внутри книжной form-sheet. */
-export const NARRA_CHAT_EMBEDDED_TOP_INSET = spacingPixels[4];
+export const NARRA_CHAT_EMBEDDED_TOP_INSET = spacingPixels[8];
 
 interface NarraChatHeaderProps {
   backLabel: string;
@@ -117,7 +118,13 @@ export function NarraChatHeader({
       onPress={onBack}
       style={({ pressed }) => [styles.controlPressable, pressed && styles.pressed]}
     >
-      <ChevronLeftIcon size={24} color={colors.foreground} />
+      {Platform.OS === "ios" ? (
+        <Host matchContents pointerEvents="none" style={styles.backSymbolHost}>
+          <Image systemName="chevron.backward" size={20} color={colors.foreground} />
+        </Host>
+      ) : (
+        <ChevronLeftIcon size={24} color={colors.foreground} />
+      )}
     </Pressable>
   );
 
@@ -243,6 +250,10 @@ const styles = StyleSheet.create({
     height: "100%",
     justifyContent: "center",
     width: "100%",
+  },
+  backSymbolHost: {
+    alignItems: "center",
+    justifyContent: "center",
   },
   titleGlass: {
     alignItems: "center",

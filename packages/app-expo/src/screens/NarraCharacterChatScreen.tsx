@@ -25,6 +25,7 @@ import * as Crypto from "expo-crypto";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, View } from "react-native";
+import { KeyboardController } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type StandaloneCharacterChatProps = NativeStackScreenProps<
@@ -124,6 +125,7 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
   const headerSafeAreaTop = embedded ? NARRA_CHAT_EMBEDDED_TOP_INSET : insets.top;
   const headerHeight = headerSafeAreaTop + NARRA_CHAT_HEADER_HEIGHT;
   const goBack = useCallback(() => {
+    void KeyboardController.dismiss({ animated: true, keepFocus: false });
     if (embeddedBack) {
       embeddedBack();
       return;

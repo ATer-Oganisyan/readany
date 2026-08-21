@@ -1,10 +1,9 @@
 import { MorphTransitionSource } from "@/components/navigation/MorphSheetTransition";
 import { HostedMishanaerIcon } from "@/components/ui/HostedMishanaerIcon";
-import type { MishanaerIconName } from "@/components/ui/MishanaerIcon";
+import { MishanaerIcon, type MishanaerIconName } from "@/components/ui/MishanaerIcon";
 import { Button, HStack, Host, ProgressView, Text } from "@expo/ui/swift-ui";
 import {
   Animation,
-  accessibilityHidden,
   accessibilityLabel,
   animation,
   buttonStyle,
@@ -17,8 +16,9 @@ import {
   progressViewStyle,
   tint,
 } from "@expo/ui/swift-ui/modifiers";
+import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 import { useTranslation } from "react-i18next";
-import { Platform, Pressable, StyleSheet, View } from "react-native";
+import { Platform, Pressable, Text as RNText, StyleSheet, View } from "react-native";
 import type { ReaderToolbarProps } from "./ReaderToolbar.types";
 
 const TOOLBAR_HEIGHT = 50;
@@ -121,27 +121,47 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
           sourceId={props.chatMorphSourceId}
           style={styles.chatSource}
         >
-          <Host
-            matchContents
-            pointerEvents="none"
-            colorScheme={props.isDark ? "dark" : "light"}
-            style={styles.controlHost}
-          >
-            <Button
-              onPress={() => {}}
-              modifiers={[...makeModifiers(t("narra.chat", "Чат")), accessibilityHidden(true)]}
+          {/* A/B §10.9: source-view без SwiftUI Host/Liquid Glass subtree.
+              UIKit-backed GlassView + RN-контент; вид кнопки тот же, слои другие. */}
+          {isLiquidGlassAvailable() ? (
+            <GlassView
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+              colorScheme={props.isDark ? "dark" : "light"}
+              glassEffectStyle="regular"
+              isInteractive
+              style={styles.chatCapsule}
             >
-              <HStack spacing={7} alignment="center">
-                <HostedMishanaerIcon
-                  name="chat-bubble"
-                  variant="filled"
-                  size={20}
-                  color={props.tintColor}
-                />
-                <Text>{t("narra.chat", "Чат")}</Text>
-              </HStack>
-            </Button>
-          </Host>
+              <MishanaerIcon
+                name="chat-bubble"
+                variant="filled"
+                size={20}
+                color={props.tintColor}
+              />
+              <RNText style={[styles.chatLabel, { color: props.tintColor }]}>
+                {t("narra.chat", "Чат")}
+              </RNText>
+            </GlassView>
+          ) : (
+            <View
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+              style={[
+                styles.chatCapsule,
+                props.isDark ? styles.chatFallbackDark : styles.chatFallbackLight,
+              ]}
+            >
+              <MishanaerIcon
+                name="chat-bubble"
+                variant="filled"
+                size={20}
+                color={props.tintColor}
+              />
+              <RNText style={[styles.chatLabel, { color: props.tintColor }]}>
+                {t("narra.chat", "Чат")}
+              </RNText>
+            </View>
+          )}
         </MorphTransitionSource>
       </Pressable>
     </View>
@@ -165,6 +185,28 @@ const styles = StyleSheet.create({
   },
   chatControl: {
     height: CONTROL_SIZE,
+  },
+  chatCapsule: {
+    height: CONTROL_SIZE,
+    borderRadius: CONTROL_SIZE / 2,
+    overflow: "hidden",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    paddingHorizontal: 14,
+  },
+  chatLabel: {
+    fontSize: 17,
+    fontWeight: "600",
+    lineHeight: 22,
+    letterSpacing: -0.4,
+  },
+  chatFallbackLight: {
+    backgroundColor: "rgba(120, 120, 128, 0.16)",
+  },
+  chatFallbackDark: {
+    backgroundColor: "rgba(118, 118, 128, 0.24)",
   },
 });
 

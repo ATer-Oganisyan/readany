@@ -1,10 +1,11 @@
-import { useKeyboardInsets } from "@/hooks/use-keyboard-insets";
+import { MishanaerIcon } from "@/components/ui/MishanaerIcon";
 import { useTheme } from "@/styles/theme";
 import { radiusPixels, spacingPixels } from "@deslop/primitives";
 import { AIInput } from "panelui-native";
 import type { ComponentPropsWithRef } from "react";
 import { useCallback } from "react";
-import { type LayoutChangeEvent, StyleSheet, type TextInput, View } from "react-native";
+import { Pressable, StyleSheet, type TextInput, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { IMessage, InputToolbarProps } from "../../../vendor/react-native-chat/src";
 
 /**
@@ -26,23 +27,18 @@ type RuntimeToolbarProps<TMessage extends IMessage> = InputToolbarProps<TMessage
     message: Partial<TMessage> | Partial<TMessage>[],
     shouldResetInputToolbar: boolean,
   ) => void;
-  floating?: boolean;
-  onHeightChange?: (height: number) => void;
   onStop?: () => void;
   textInputProps?: ComponentPropsWithRef<typeof TextInput>;
 };
 
 export function NarraChatComposer<TMessage extends IMessage>({
   allowSendWithoutText = false,
-  floating = false,
   isStreaming = false,
-  onHeightChange,
   onStop,
   ...props
 }: RuntimeToolbarProps<TMessage>) {
   const { colors } = useTheme();
-  const keyboardInsets = useKeyboardInsets();
-  const safeAreaBottom = keyboardInsets.safeAreaBottom;
+  const { bottom: safeAreaBottom } = useSafeAreaInsets();
   const text = props.text ?? "";
   const inputProps = props.textInputProps;
   const onSend = props.onSend;
@@ -56,28 +52,30 @@ export function NarraChatComposer<TMessage extends IMessage>({
     [allowSendWithoutText, onSend],
   );
 
-  const handleLayout = useCallback(
-    (event: LayoutChangeEvent) => onHeightChange?.(Math.ceil(event.nativeEvent.layout.height)),
-    [onHeightChange],
-  );
+  const canPress = isStreaming ? Boolean(onStop) : text.trim().length > 0 || allowSendWithoutText;
+  const sendLabel = isStreaming ? "Остановить" : "Отправить";
+  const handlePress = useCallback(() => {
+    if (isStreaming) {
+      onStop?.();
+      return;
+    }
+    handleSubmit(text);
+  }, [handleSubmit, isStreaming, onStop, text]);
 
   return (
-    // Нижний отступ живёт в этом контейнере, а не в margin у AIInput: лента
-    // резервирует место под инпут по измеренной высоте этой вьюхи, и отступ
-    // снаружи неё в измерение не попадал — последнее сообщение подрезалось.
+    // KeyboardStickyView снаружи двигает весь композер синхронно с клавиатурой.
+    // Здесь остаются только постоянные safe-area и дизайн-зазор; высота клавиатуры
+    // больше не вычисляется и не применяется второй раз внутри AIInput.
     <View
-      onLayout={handleLayout}
       style={[
         styles.container,
         {
-          paddingBottom:
-            KEYBOARD_GAP + (floating || !keyboardInsets.isVisible ? safeAreaBottom : 0),
+          paddingBottom: KEYBOARD_GAP + safeAreaBottom,
         },
       ]}
     >
       <AIInput
-        avoidKeyboard={floating}
-        keyboardBottomInset={floating ? safeAreaBottom + KEYBOARD_GAP : 0}
+        avoidKeyboard={false}
         native
         onStop={onStop}
         onSubmit={handleSubmit}
@@ -88,19 +86,36 @@ export function NarraChatComposer<TMessage extends IMessage>({
       >
         {/* Сам TextInput остаётся многострочным и растёт вместе с текстом. */}
         <AIInput.Row style={styles.row}>
-          {/* На iOS многострочное поле растёт вместе с текстом. После отправки
-              пустому полю возвращается высота control-md из primitives. Это сжимает
-              его обратно до строки, но сохраняет тот же нативный TextInput и
-              его фокус — клавиатура больше не закрывается и не открывается
-              заново. */}
+          {/* Метрики строки считает сам AIInput: он центрирует одну строку в
+              контроле и растит поле вниз. Свои minHeight и паддинги перебивали
+              этот расчёт и сдвигали плейсхолдер вверх. */}
           <AIInput.Field
             accessibilityLabel={inputProps?.placeholder}
             autoFocus={inputProps?.autoFocus}
             editable={inputProps?.editable}
+            nativeID={inputProps?.nativeID}
             placeholder={inputProps?.placeholder ?? ""}
-            style={[styles.field, text.length === 0 ? styles.emptyField : undefined]}
+            style={styles.field}
           />
-          <AIInput.Submit />
+          {/* Своя кнопка вместо AIInput.Submit: тот трёхликий контрол подменяет
+              глиф на диктовку и стоп, а отправка в чате Narra всегда читается
+              одной стрелкой вверх. */}
+          <Pressable
+            accessibilityLabel={sendLabel}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !canPress }}
+            disabled={!canPress}
+            hitSlop={spacingPixels[8]}
+            onPress={handlePress}
+            style={({ pressed }) => [
+              styles.submit,
+              { backgroundColor: colors.primary },
+              !canPress && styles.submitInert,
+              pressed && styles.submitPressed,
+            ]}
+          >
+            <MishanaerIcon name="arrow-up" size={SUBMIT_GLYPH} color={colors.primaryForeground} />
+          </Pressable>
         </AIInput.Row>
       </AIInput>
     </View>
@@ -113,6 +128,11 @@ export function NarraChatComposer<TMessage extends IMessage>({
 const KEYBOARD_GAP = spacingPixels[8];
 /** Библиотечный md-радиус равен 26; по макету внешний контур на 6 пунктов круглее. */
 const INPUT_RADIUS = radiusPixels[34];
+/** Диаметр кнопки отправки внутри поля. */
+const SUBMIT_SIZE = spacingPixels[32];
+const SUBMIT_GLYPH = spacingPixels[16];
+/** Зазор между кнопкой и контуром поля. */
+const SUBMIT_INSET = spacingPixels[6];
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: spacingPixels[16],
@@ -126,14 +146,28 @@ const styles = StyleSheet.create({
     overflow: "visible",
   },
   row: {
+    // Кнопка держится за нижнюю строку: у растущего поля выравнивание по центру
+    // уводило её на середину абзаца.
+    alignItems: "flex-end",
+    // Свой отступ вместо библиотечного: кнопка стоит в 6 pt от контура поля.
+    padding: SUBMIT_INSET,
     position: "relative",
   },
+
   field: {
-    minHeight: spacingPixels[32],
-    paddingBottom: spacingPixels[6],
-    paddingTop: spacingPixels[6],
+    // У многострочного TextInput на iOS есть свой вертикальный запас: при
+    // выравнивании строки по низу он уходит под текст и поднимает его над
+    // центром капсулы. Центрируем сам бокс поля — кнопка остаётся внизу.
+    alignSelf: "center",
   },
-  emptyField: {
-    height: spacingPixels[32],
+  submit: {
+    alignItems: "center",
+    alignSelf: "flex-end",
+    borderRadius: SUBMIT_SIZE / 2,
+    height: SUBMIT_SIZE,
+    justifyContent: "center",
+    width: SUBMIT_SIZE,
   },
+  submitInert: { opacity: 0.4 },
+  submitPressed: { opacity: 0.7 },
 });

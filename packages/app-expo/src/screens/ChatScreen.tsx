@@ -12,6 +12,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Animated, Pressable, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
+import { KeyboardController } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useStreamingChat } from "@/hooks";
@@ -76,6 +77,7 @@ export function ChatScreen({
   const headerSafeAreaTop = embedded ? NARRA_CHAT_EMBEDDED_TOP_INSET : insets.top;
   const headerHeight = headerSafeAreaTop + NARRA_CHAT_HEADER_HEIGHT;
   const goBack = useCallback(() => {
+    void KeyboardController.dismiss({ animated: true, keepFocus: false });
     if (embeddedBack) {
       embeddedBack();
       return;

@@ -4,7 +4,7 @@ import * as SecureStore from "expo-secure-store";
  *
  * oklch values from globals.css are converted to hex.
  */
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useColorScheme } from "react-native";
 import {
@@ -85,6 +85,24 @@ export function ThemeProvider({
 
 export function useTheme(): ThemeContextValue {
   return useContext(ThemeContext);
+}
+
+/**
+ * Поднимает базовый фон до `Elevation 2` в тёмной теме — так системная шторка
+ * не сливается с экраном под ней. В светлой теме поверхности и без того белые,
+ * поэтому палитра остаётся нетронутой.
+ */
+export function ElevatedSurfaceTheme({ children }: { children: ReactNode }) {
+  const parent = useTheme();
+  const value = useMemo<ThemeContextValue>(() => {
+    if (!parent.isDark) return parent;
+    return {
+      ...parent,
+      colors: { ...parent.colors, background: parent.colors.elevation2 },
+    };
+  }, [parent]);
+
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 
 /**

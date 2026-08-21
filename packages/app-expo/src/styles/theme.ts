@@ -6,7 +6,7 @@ import { interfaceFontFamily, serifCondensedFontFamily } from "@deslop/primitive
  */
 import { darkColors, useTheme } from "./ThemeContext";
 export type { ThemeColors } from "./ThemeContext";
-export { useTheme } from "./ThemeContext";
+export { ElevatedSurfaceTheme, useTheme } from "./ThemeContext";
 
 /**
  * Convert a hex color to an rgba string with the given opacity.

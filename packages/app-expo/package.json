@@ -6,7 +6,7 @@
   "expo": {
     "entryPoint": "./index.js",
     "install": {
-      "exclude": ["react-native-screens"]
+      "exclude": ["react-native-keyboard-controller", "react-native-screens"]
     },
     "doctor": {
       "reactNativeDirectoryCheck": {
@@ -118,6 +118,7 @@
     "react-native": "~0.86.2",
     "react-native-gesture-handler": "~2.32.0",
     "react-native-get-random-values": "~1.11.0",
+    "react-native-keyboard-controller": "1.22.4",
     "react-native-markdown-display": "^7.0.2",
     "react-native-pager-view": "8.0.2",
     "react-native-qrcode-svg": "^6.3.21",

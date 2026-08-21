@@ -3,9 +3,11 @@ import { fontFamily, useTheme, withOpacity } from "@/styles/theme";
 import type { AttachedQuote } from "@readany/core/types";
 import type { CitationPart, MessageV2 } from "@readany/core/types/message";
 import type { TFunction } from "i18next";
-import { useCallback, useState } from "react";
+import { useCallback, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { type LayoutChangeEvent, Pressable, StyleSheet, Text, View } from "react-native";
+import { KeyboardGestureArea, KeyboardStickyView } from "react-native-keyboard-controller";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { NarraChatComposer } from "./narra-chat-composer";
 import { NarraChatTranscript } from "./narra-chat-transcript";
 
@@ -115,7 +117,10 @@ export function NarraChat({
   showModeControls = false,
 }: NarraChatProps) {
   const { colors } = useTheme();
+  const { bottom: safeAreaBottom } = useSafeAreaInsets();
   const { t, i18n } = useTranslation();
+  const reactInputId = useId();
+  const inputNativeId = `narra-chat-input-${reactInputId.replaceAll(":", "")}`;
   const effectivePlaceholder = placeholder || t("chat.inputPlaceholder", "Сообщение");
   const effectiveRetryLabel = retryLabel || t("common.retry", "Повторить");
   const [deepThinking, setDeepThinking] = useState(false);
@@ -123,6 +128,8 @@ export function NarraChat({
   // Текст композера раньше держала вендорная лента — теперь он наш.
   const [composerText, setComposerText] = useState("");
   const [composerHeight, setComposerHeight] = useState(0);
+  const [baseComposerHeight, setBaseComposerHeight] = useState(0);
+  const baseComposerHeightRef = useRef(0);
 
   const streamingMessageId =
     isStreaming && messages.at(-1)?.role === "assistant" ? messages.at(-1)?.id : undefined;
@@ -140,6 +147,22 @@ export function NarraChat({
     void onSend(value, deepThinking, spoilerFree, quotes);
     for (const quote of quotes) onRemoveQuote?.(quote.id);
   }, [composerText, deepThinking, onRemoveQuote, onSend, quotes, spoilerFree]);
+
+  const handleComposerLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      const height = Math.ceil(event.nativeEvent.layout.height);
+      setComposerHeight(height);
+
+      if (!floatingComposer) return;
+
+      const baseHeight = baseComposerHeightRef.current;
+      if (baseHeight === 0 || height < baseHeight) {
+        baseComposerHeightRef.current = height;
+        setBaseComposerHeight(height);
+      }
+    },
+    [floatingComposer],
+  );
 
   const renderMessageText = useCallback((message: MessageV2) => messageText(message, t), [t]);
 
@@ -204,29 +227,36 @@ export function NarraChat({
   const composer = (
     <NarraChatComposer
       allowSendWithoutText={quotes.length > 0}
-      floating={floatingComposer}
       isStreaming={isStreaming}
-      onHeightChange={floatingComposer ? setComposerHeight : undefined}
       onSend={handleComposerSend}
       onStop={onStop}
       text={composerText}
       textInputProps={{
         autoFocus,
         editable: !isStreaming,
+        nativeID: inputNativeId,
         onChangeText: setComposerText,
         placeholder: effectivePlaceholder,
       }}
     />
   );
+
+  const composerDock = (
+    <View onLayout={handleComposerLayout}>
+      {renderAccessory()}
+      {composer}
+    </View>
+  );
+
   return (
-    // Подъём от клавиатуры общий для ленты и композера, как делала вендорная
-    // библиотека: колонка сжимается, и последние сообщения остаются видны.
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" && !floatingComposer ? "padding" : undefined}
-      keyboardVerticalOffset={0}
+    <KeyboardGestureArea
+      interpolator="ios"
+      offset={composerHeight}
       style={styles.root}
+      textInputNativeID={inputNativeId}
     >
       <NarraChatTranscript
+        baseBottomInset={floatingComposer ? baseComposerHeight : 0}
         bottomInset={floatingComposer ? composerHeight : 0}
         locale={i18n.resolvedLanguage === "en" ? "en" : "ru"}
         messages={messages}
@@ -237,9 +267,13 @@ export function NarraChat({
         streamingMessageId={streamingMessageId}
         topInset={topInset}
       />
-      {renderAccessory()}
-      {floatingComposer ? <View style={styles.floatingComposer}>{composer}</View> : composer}
-    </KeyboardAvoidingView>
+      <KeyboardStickyView
+        offset={{ opened: safeAreaBottom }}
+        style={floatingComposer ? styles.floatingComposer : undefined}
+      >
+        {composerDock}
+      </KeyboardStickyView>
+    </KeyboardGestureArea>
   );
 }
 

@@ -28,7 +28,13 @@ import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { ChatScreen } from "@/screens/ChatScreen";
 import { NarraCharacterChatScreen } from "@/screens/NarraCharacterChatScreen";
 import { useLibraryStore, useNarraStore } from "@/stores";
-import { type ThemeColors, fontWeight, spacing, useTheme } from "@/styles/theme";
+import {
+  ElevatedSurfaceTheme,
+  type ThemeColors,
+  fontWeight,
+  spacing,
+  useTheme,
+} from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import * as FileSystem from "expo-file-system/legacy";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -95,7 +101,13 @@ function animateOpacity({
 
 export function NarraCharactersScreen({ route, navigation }: Props) {
   if (supportsMorphSheetTransition) {
-    return <NarraCharactersSheetFlow route={route} navigation={navigation} />;
+    // Экран живёт только как шторка поверх ридера, поэтому вся его поверхность —
+    // включая встроенные чаты — приподнята относительно фона книги.
+    return (
+      <ElevatedSurfaceTheme>
+        <NarraCharactersSheetFlow route={route} navigation={navigation} />
+      </ElevatedSurfaceTheme>
+    );
   }
 
   return <NarraCharactersList route={route} navigation={navigation} />;
@@ -107,26 +119,36 @@ function NarraCharactersSheetFlow({ route, navigation }: Props) {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const transitionFrameRef = useRef<number | null>(null);
   const transitioningRef = useRef(false);
+  const returnToCharactersPromiseRef = useRef<Promise<void> | null>(null);
+  const cancelReturnToCharactersRef = useRef<(() => void) | null>(null);
+  const mountedRef = useRef(true);
   const listOpacity = useRef(new RNAnimated.Value(1)).current;
   // GlassView нельзя монтировать под opacity: 0: эффект может не восстановиться.
   // Поэтому чат всегда непрозрачный, а fade рисует обычная шторка поверх него.
   const chatCoverOpacity = useRef(new RNAnimated.Value(1)).current;
   const [reduceMotion, setReduceMotion] = useState(false);
   const { colors } = useTheme();
-  const expandSheet = useCallback(() => {
-    void sheetControllerRef.current?.expandSheet?.();
-  }, []);
-  const collapseSheet = useCallback(() => {
-    void sheetControllerRef.current?.collapseSheet?.();
-  }, []);
+  const expandSheet = useCallback(
+    () => sheetControllerRef.current?.expandSheet?.() ?? Promise.resolve(),
+    [],
+  );
+  const collapseSheet = useCallback(
+    () => sheetControllerRef.current?.collapseSheet?.() ?? Promise.resolve(),
+    [],
+  );
 
   useEffect(
     () => () => {
+      mountedRef.current = false;
       if (transitionFrameRef.current !== null) {
         cancelAnimationFrame(transitionFrameRef.current);
       }
       listOpacity.stopAnimation();
       chatCoverOpacity.stopAnimation();
+      cancelReturnToCharactersRef.current?.();
+      cancelReturnToCharactersRef.current = null;
+      returnToCharactersPromiseRef.current = null;
+      transitioningRef.current = false;
     },
     [chatCoverOpacity, listOpacity],
   );
@@ -146,7 +168,7 @@ function NarraCharactersSheetFlow({ route, navigation }: Props) {
 
   const finishTransition = useCallback(() => {
     transitioningRef.current = false;
-    setIsTransitioning(false);
+    if (mountedRef.current) setIsTransitioning(false);
   }, []);
 
   const fadeIn = useCallback(
@@ -166,25 +188,74 @@ function NarraCharactersSheetFlow({ route, navigation }: Props) {
     [reduceMotion],
   );
 
-  const showCharacters = useCallback(() => {
-    if (transitioningRef.current || content.kind === "characters") return;
+  const transitionToCharacters = useCallback((): Promise<void> => {
+    const pendingTransition = returnToCharactersPromiseRef.current;
+    if (pendingTransition) return pendingTransition;
+    if (content.kind === "characters" && !transitioningRef.current) return Promise.resolve();
+
+    if (transitionFrameRef.current !== null) {
+      cancelAnimationFrame(transitionFrameRef.current);
+      transitionFrameRef.current = null;
+    }
+    listOpacity.stopAnimation();
+    chatCoverOpacity.stopAnimation();
     transitioningRef.current = true;
     setIsTransitioning(true);
 
-    animateOpacity({
-      value: chatCoverOpacity,
-      toValue: 1,
-      duration: CONTENT_EXIT_DURATION_MS,
-      easing: CONTENT_EXIT_EASING,
-      reduceMotion,
-      onComplete: () => {
-        collapseSheet();
+    let cancelTransition: (() => void) | null = null;
+    const transition = new Promise<void>((resolve, reject) => {
+      cancelTransition = () => {
+        reject(new Error("The characters-sheet transition was cancelled during teardown"));
+      };
+
+      const restoreCharactersList = () => {
+        const nativeCollapse = collapseSheet();
         setContent({ kind: "characters" });
-        fadeIn(listOpacity, () => {
-          finishTransition();
+
+        const listEntrance = new Promise<void>((resolveEntrance) => {
+          fadeIn(listOpacity, resolveEntrance);
         });
-      },
+
+        void Promise.all([nativeCollapse, listEntrance]).then(
+          () => {
+            finishTransition();
+            resolve();
+          },
+          (error: unknown) => {
+            finishTransition();
+            reject(error);
+          },
+        );
+      };
+
+      // During the first frames of opening a chat, the React content is still
+      // the list even though its fade-out has already started. Cancelling that
+      // opening must restore the stable medium list before the route can pop.
+      if (content.kind === "characters") {
+        restoreCharactersList();
+        return;
+      }
+
+      animateOpacity({
+        value: chatCoverOpacity,
+        toValue: 1,
+        duration: CONTENT_EXIT_DURATION_MS,
+        easing: CONTENT_EXIT_EASING,
+        reduceMotion,
+        onComplete: restoreCharactersList,
+      });
     });
+
+    returnToCharactersPromiseRef.current = transition;
+    cancelReturnToCharactersRef.current = () => cancelTransition?.();
+    const clearPendingTransition = () => {
+      if (returnToCharactersPromiseRef.current === transition) {
+        returnToCharactersPromiseRef.current = null;
+        cancelReturnToCharactersRef.current = null;
+      }
+    };
+    void transition.then(clearPendingTransition, clearPendingTransition);
+    return transition;
   }, [
     chatCoverOpacity,
     collapseSheet,
@@ -194,6 +265,12 @@ function NarraCharactersSheetFlow({ route, navigation }: Props) {
     listOpacity,
     reduceMotion,
   ]);
+
+  const showCharacters = useCallback(() => {
+    void transitionToCharacters().catch((error: unknown) => {
+      console.warn("[Narra] Failed to restore the characters sheet before closing", error);
+    });
+  }, [transitionToCharacters]);
 
   const showChat = useCallback(
     (nextContent: Exclude<SheetContent, { kind: "characters" }>) => {
@@ -208,7 +285,9 @@ function NarraCharactersSheetFlow({ route, navigation }: Props) {
         easing: CONTENT_EXIT_EASING,
         reduceMotion,
         onComplete: () => {
-          expandSheet();
+          void expandSheet().catch(() => {
+            // A quick return to the list legitimately supersedes expansion.
+          });
           chatCoverOpacity.setValue(reduceMotion ? 0 : 1);
           setContent(nextContent);
 

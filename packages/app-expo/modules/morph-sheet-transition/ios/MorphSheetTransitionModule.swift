@@ -2,6 +2,20 @@ import ExpoModulesCore
 import RNScreens
 import UIKit
 
+#if DEBUG
+private func morphDebug(_ message: @autoclosure () -> String) {
+  NSLog("[MorphSheet][%.6f] %@", CACurrentMediaTime(), message())
+}
+#else
+private func morphDebug(_ message: @autoclosure () -> String) {}
+#endif
+
+private func morphViewState(_ view: UIView?) -> String {
+  guard let view else { return "view=nil" }
+  let frame = view.window.map { view.convert(view.bounds, to: $0) } ?? .null
+  return "view=\(ObjectIdentifier(view)) window=\(view.window != nil) hidden=\(view.isHidden) alpha=\(view.alpha) frame=\(frame)"
+}
+
 private final class WeakSourceView {
   weak var view: UIView?
 
@@ -23,6 +37,7 @@ private final class MorphTransitionSourceRepository {
     lock.lock()
     sources[identifier] = WeakSourceView(view)
     lock.unlock()
+    morphDebug("source register id=\(identifier) \(morphViewState(view))")
   }
 
   func unregister(identifier: String, matching view: UIView) {
@@ -32,6 +47,7 @@ private final class MorphTransitionSourceRepository {
       sources.removeValue(forKey: identifier)
     }
     lock.unlock()
+    morphDebug("source unregister id=\(identifier) \(morphViewState(view))")
   }
 
   func source(identifier: String) -> UIView? {
@@ -39,12 +55,70 @@ private final class MorphTransitionSourceRepository {
     lock.lock()
     defer { lock.unlock() }
 
-    guard let source = sources[identifier] else { return nil }
-    guard let view = source.view else {
-      sources.removeValue(forKey: identifier)
+    guard let source = sources[identifier] else {
+      morphDebug("provider id=\(identifier) missing")
       return nil
     }
-    return view
+    guard let view = source.view else {
+      sources.removeValue(forKey: identifier)
+      morphDebug("provider id=\(identifier) deallocated")
+      return nil
+    }
+    let result = view.window == nil ? nil : view
+    morphDebug("provider id=\(identifier) result=\(result == nil ? "nil" : "source") \(morphViewState(view))")
+    return result
+  }
+}
+
+private final class SheetResizeObserverViewController: UIViewController {
+  var onResizeCompleted: ((UInt) -> Void)?
+
+  private var pendingGeneration: UInt?
+  private var observedGeneration: UInt?
+
+  func prepareForResize(generation: UInt) {
+    pendingGeneration = generation
+    observedGeneration = nil
+    morphDebug("resize observer prepare generation=\(generation)")
+  }
+
+  func observedResize(generation: UInt) -> Bool {
+    observedGeneration == generation
+  }
+
+  func finishResize(generation: UInt) {
+    guard pendingGeneration == generation else { return }
+    pendingGeneration = nil
+    observedGeneration = nil
+  }
+
+  func cancelPendingResize() {
+    pendingGeneration = nil
+    observedGeneration = nil
+  }
+
+  override func viewWillTransition(
+    to size: CGSize,
+    with coordinator: any UIViewControllerTransitionCoordinator
+  ) {
+    super.viewWillTransition(to: size, with: coordinator)
+
+    morphDebug("resize observer callback size=\(size) pending=\(String(describing: pendingGeneration))")
+
+    guard
+      let generation = pendingGeneration,
+      observedGeneration != generation
+    else {
+      return
+    }
+
+    let registered = coordinator.animate(alongsideTransition: nil) { [weak self] _ in
+      self?.onResizeCompleted?(generation)
+    }
+    if registered {
+      observedGeneration = generation
+    }
+    morphDebug("resize observer coordinator generation=\(generation) registered=\(registered)")
   }
 }
 
@@ -108,7 +182,13 @@ final class MorphTransitionDestinationView: ExpoView {
   }
 
   private weak var configuredScreen: RNSScreen?
+  private var configuredSourceIdentifier: String?
+  private weak var resizeObserverScreen: RNSScreen?
+  private var resizeObserver: SheetResizeObserverViewController?
+  private var resizeGeneration: UInt = 0
+  private var pendingResizeGeneration: UInt?
   private var requestedExpanded: Bool?
+  private var pendingSheetUpdatePromise: Promise?
   private var sheetUpdateWorkItem: DispatchWorkItem?
 
   required init(appContext: AppContext? = nil) {
@@ -123,7 +203,13 @@ final class MorphTransitionDestinationView: ExpoView {
       sheetUpdateWorkItem?.cancel()
       sheetUpdateWorkItem = nil
       requestedExpanded = nil
+      rejectPendingSheetUpdate(
+        code: "ERR_MORPH_SHEET_UNMOUNTED",
+        description: "The sheet was removed before its detent transition completed"
+      )
+      invalidatePendingResize()
       clearConfiguredTransition()
+      removeResizeObserver()
     } else {
       scheduleTransitionSetup()
     }
@@ -135,22 +221,28 @@ final class MorphTransitionDestinationView: ExpoView {
     }
   }
 
-  func expandSheet() {
-    updateSheet(expanded: true)
+  func expandSheet(promise: Promise) {
+    updateSheet(expanded: true, promise: promise)
   }
 
-  func collapseSheet() {
-    updateSheet(expanded: false)
+  func collapseSheet(promise: Promise) {
+    updateSheet(expanded: false, promise: promise)
   }
 
-  private func updateSheet(expanded: Bool) {
+  private func updateSheet(expanded: Bool, promise: Promise) {
     guard Thread.isMainThread else {
       DispatchQueue.main.async { [weak self] in
-        self?.updateSheet(expanded: expanded)
+        self?.updateSheet(expanded: expanded, promise: promise)
       }
       return
     }
 
+    morphDebug("detent request expanded=\(expanded)")
+    rejectPendingSheetUpdate(
+      code: "ERR_MORPH_SHEET_UPDATE_SUPERSEDED",
+      description: "A newer sheet detent transition replaced the pending transition"
+    )
+    pendingSheetUpdatePromise = promise
     requestedExpanded = expanded
     sheetUpdateWorkItem?.cancel()
     sheetUpdateWorkItem = nil
@@ -163,7 +255,14 @@ final class MorphTransitionDestinationView: ExpoView {
       let sheet = findSheetPresentationController(),
       let detent = expanded ? sheet.detents.last : sheet.detents.first
     else {
-      guard remainingAttempts > 0 else { return }
+      guard remainingAttempts > 0 else {
+        requestedExpanded = nil
+        rejectPendingSheetUpdate(
+          code: "ERR_MORPH_SHEET_UNAVAILABLE",
+          description: "The native sheet presentation controller was not available"
+        )
+        return
+      }
       let workItem = DispatchWorkItem { [weak self] in
         self?.applyRequestedSheetState(remainingAttempts: remainingAttempts - 1)
       }
@@ -173,7 +272,22 @@ final class MorphTransitionDestinationView: ExpoView {
     }
 
     sheetUpdateWorkItem = nil
-    guard sheet.selectedDetentIdentifier != detent.identifier else { return }
+    requestedExpanded = nil
+    morphDebug("detent apply expanded=\(expanded) current=\(String(describing: sheet.selectedDetentIdentifier)) target=\(String(describing: detent.identifier))")
+    guard sheet.selectedDetentIdentifier != detent.identifier else {
+      setupTransition()
+      resolvePendingSheetUpdate()
+      return
+    }
+
+    guard let screen = findScreen() else {
+      rejectPendingSheetUpdate(
+        code: "ERR_MORPH_SHEET_SCREEN_UNAVAILABLE",
+        description: "The native screen containing the sheet was not available"
+      )
+      return
+    }
+    let generation = suspendTransitionForResize(on: screen)
 
     // React Native Screens owns the presentation style, detents, grabber and
     // system corner geometry. This view only selects a detent, so UIKit gets a
@@ -181,23 +295,51 @@ final class MorphTransitionDestinationView: ExpoView {
     sheet.animateChanges {
       sheet.selectedDetentIdentifier = detent.identifier
     }
+
+    morphDebug("detent animateChanges returned generation=\(generation) observed=\(resizeObserver?.observedResize(generation: generation) == true) selected=\(String(describing: sheet.selectedDetentIdentifier))")
+
+    // UIKit sends viewWillTransition synchronously when this call starts an
+    // actual size transition. If the requested detent did not change the
+    // presented size, there is no coordinator to wait for and Zoom is safe to
+    // restore immediately.
+    if resizeObserver?.observedResize(generation: generation) != true {
+      finishResize(generation: generation)
+    }
   }
 
   private func setupTransition() {
-    clearConfiguredTransition()
+    guard let screen = findScreen() else {
+      morphDebug("zoom setup skipped: screen unavailable")
+      return
+    }
 
-    guard let screen = findScreen() else { return }
+    ensureResizeObserver(on: screen)
 
-    guard !sourceIdentifier.isEmpty else { return }
-    guard !UIAccessibility.isReduceMotionEnabled else { return }
+    guard pendingResizeGeneration == nil else {
+      morphDebug("zoom setup deferred pendingResize=\(String(describing: pendingResizeGeneration))")
+      return
+    }
+
+    guard !sourceIdentifier.isEmpty, !UIAccessibility.isReduceMotionEnabled else {
+      clearConfiguredTransition()
+      return
+    }
 
     if #available(iOS 18.0, *) {
+      guard configuredScreen !== screen || configuredSourceIdentifier != sourceIdentifier else {
+        return
+      }
+
+      clearConfiguredTransition()
       let identifier = sourceIdentifier
       let options = UIViewController.Transition.ZoomOptions()
       screen.preferredTransition = .zoom(options: options) { _ in
-        MorphTransitionSourceRepository.shared.source(identifier: identifier)
+        morphDebug("zoom provider invoked id=\(identifier)")
+        return MorphTransitionSourceRepository.shared.source(identifier: identifier)
       }
       configuredScreen = screen
+      configuredSourceIdentifier = identifier
+      morphDebug("zoom configured screen=\(ObjectIdentifier(screen)) id=\(identifier)")
     }
   }
 
@@ -206,6 +348,89 @@ final class MorphTransitionDestinationView: ExpoView {
       configuredScreen?.preferredTransition = nil
     }
     configuredScreen = nil
+    configuredSourceIdentifier = nil
+    morphDebug("zoom cleared")
+  }
+
+  private func suspendTransitionForResize(on screen: RNSScreen) -> UInt {
+    ensureResizeObserver(on: screen)
+
+    resizeGeneration &+= 1
+    let generation = resizeGeneration
+    pendingResizeGeneration = generation
+    resizeObserver?.prepareForResize(generation: generation)
+
+    // preferredTransition is stateful inside UIKit. Keeping the Zoom object
+    // alive while a sheet changes detents leaves it bound to stale geometry,
+    // so a later dismissal can splice a sheet slide and a zoom together.
+    clearConfiguredTransition()
+    morphDebug("resize suspended generation=\(generation)")
+    return generation
+  }
+
+  private func finishResize(generation: UInt) {
+    guard pendingResizeGeneration == generation else { return }
+
+    morphDebug("resize finish generation=\(generation)")
+    pendingResizeGeneration = nil
+    resizeObserver?.finishResize(generation: generation)
+    setupTransition()
+    resolvePendingSheetUpdate()
+  }
+
+  private func resolvePendingSheetUpdate() {
+    guard let promise = pendingSheetUpdatePromise else { return }
+    pendingSheetUpdatePromise = nil
+    promise.resolve()
+  }
+
+  private func rejectPendingSheetUpdate(code: String, description: String) {
+    guard let promise = pendingSheetUpdatePromise else { return }
+    pendingSheetUpdatePromise = nil
+    promise.reject(code, description)
+  }
+
+  private func invalidatePendingResize() {
+    resizeGeneration &+= 1
+    pendingResizeGeneration = nil
+    resizeObserver?.cancelPendingResize()
+  }
+
+  private func ensureResizeObserver(on screen: RNSScreen) {
+    guard resizeObserverScreen !== screen || resizeObserver == nil else { return }
+
+    removeResizeObserver()
+
+    let observer = SheetResizeObserverViewController()
+    observer.onResizeCompleted = { [weak self] generation in
+      self?.finishResize(generation: generation)
+    }
+
+    screen.addChild(observer)
+    observer.view.frame = screen.view.bounds
+    observer.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+    observer.view.isHidden = true
+    observer.view.isUserInteractionEnabled = false
+    screen.view.addSubview(observer.view)
+    observer.didMove(toParent: screen)
+
+    resizeObserver = observer
+    resizeObserverScreen = screen
+  }
+
+  private func removeResizeObserver() {
+    guard let observer = resizeObserver else {
+      resizeObserverScreen = nil
+      return
+    }
+
+    observer.cancelPendingResize()
+    observer.onResizeCompleted = nil
+    observer.willMove(toParent: nil)
+    observer.view.removeFromSuperview()
+    observer.removeFromParent()
+    resizeObserver = nil
+    resizeObserverScreen = nil
   }
 
   private func findScreen() -> RNSScreen? {
@@ -253,16 +478,12 @@ public final class MorphSheetTransitionModule: Module {
         view.sourceIdentifier = sourceId
       }
 
-      OnViewDidUpdateProps { view in
-        view.scheduleTransitionSetup()
+      AsyncFunction("expandSheet") { (view: MorphTransitionDestinationView, promise: Promise) in
+        view.expandSheet(promise: promise)
       }
 
-      AsyncFunction("expandSheet") { (view: MorphTransitionDestinationView) in
-        view.expandSheet()
-      }
-
-      AsyncFunction("collapseSheet") { (view: MorphTransitionDestinationView) in
-        view.collapseSheet()
+      AsyncFunction("collapseSheet") { (view: MorphTransitionDestinationView, promise: Promise) in
+        view.collapseSheet(promise: promise)
       }
     }
   }

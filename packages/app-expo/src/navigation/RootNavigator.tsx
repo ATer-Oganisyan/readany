@@ -212,7 +212,10 @@ export function RootNavigator() {
                   headerShown: false,
                   statusBarHidden: false,
                   statusBarStyle: isDark ? "light" : "dark",
-                  contentStyle: { backgroundColor: colors.background },
+                  // Шторка приподнята над ридером — см. ElevatedSurfaceTheme.
+                  contentStyle: {
+                    backgroundColor: isDark ? colors.elevation2 : colors.background,
+                  },
                   sheetAllowedDetents: [0.55, 1],
                   sheetInitialDetentIndex: 0,
                   sheetGrabberVisible: true,
