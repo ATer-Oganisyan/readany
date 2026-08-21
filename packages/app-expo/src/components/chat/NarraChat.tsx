@@ -13,6 +13,15 @@ import { NarraChatTranscript } from "./narra-chat-transcript";
 
 type StreamingStep = "thinking" | "tool_calling" | "responding" | "idle";
 
+/**
+ * Свёрнутая высота дока композера без нижней safe area.
+ *
+ * Нужна только как стартовая оценка на первый кадр: настоящую высоту сообщает
+ * onLayout, и она сразу перекрывает эту константу. Расхождение в пару пунктов
+ * не видно — лента доводится одним доскроллом после измерения.
+ */
+const COLLAPSED_COMPOSER_DOCK_HEIGHT = 60;
+
 /** Собирает видимый текст сообщения из частей MessageV2. */
 function messageText(message: MessageV2, t: TFunction): string {
   const body: string[] = [];
@@ -127,9 +136,18 @@ export function NarraChat({
   const [spoilerFree, setSpoilerFree] = useState(false);
   // Текст композера раньше держала вендорная лента — теперь он наш.
   const [composerText, setComposerText] = useState("");
-  const [composerHeight, setComposerHeight] = useState(0);
-  const [baseComposerHeight, setBaseComposerHeight] = useState(0);
-  const baseComposerHeightRef = useRef(0);
+  // MessageScroller ставит стартовую прокрутку до того, как onLayout сообщит
+  // высоту дока. С нулём лента открывалась без нижнего резервирования, а
+  // следующий кадр возвращал последнее сообщение из-под инпута скачком.
+  // Оценка живёт только до первого измерения, которое её перекрывает.
+  const initialComposerHeight = floatingComposer
+    ? COLLAPSED_COMPOSER_DOCK_HEIGHT + safeAreaBottom
+    : 0;
+  const [composerHeight, setComposerHeight] = useState(initialComposerHeight);
+  const [baseComposerHeight, setBaseComposerHeight] = useState(initialComposerHeight);
+  const [composerMeasured, setComposerMeasured] = useState(false);
+  const baseComposerHeightRef = useRef(initialComposerHeight);
+  const didMeasureComposerRef = useRef(false);
 
   const streamingMessageId =
     isStreaming && messages.at(-1)?.role === "assistant" ? messages.at(-1)?.id : undefined;
@@ -152,11 +170,14 @@ export function NarraChat({
     (event: LayoutChangeEvent) => {
       const height = Math.ceil(event.nativeEvent.layout.height);
       setComposerHeight(height);
+      setComposerMeasured(true);
 
       if (!floatingComposer) return;
 
+      const wasMeasured = didMeasureComposerRef.current;
+      didMeasureComposerRef.current = true;
       const baseHeight = baseComposerHeightRef.current;
-      if (baseHeight === 0 || height < baseHeight) {
+      if (!wasMeasured || baseHeight === 0 || height < baseHeight) {
         baseComposerHeightRef.current = height;
         setBaseComposerHeight(height);
       }
@@ -258,6 +279,7 @@ export function NarraChat({
       <NarraChatTranscript
         baseBottomInset={floatingComposer ? baseComposerHeight : 0}
         bottomInset={floatingComposer ? composerHeight : 0}
+        composerMeasured={composerMeasured}
         locale={i18n.resolvedLanguage === "en" ? "en" : "ru"}
         messages={messages}
         onCitationClick={onCitationClick}

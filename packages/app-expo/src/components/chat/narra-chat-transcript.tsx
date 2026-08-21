@@ -159,29 +159,28 @@ function FollowSentMessage({
 }
 
 /**
- * После первого измерения плавающего композера повторно фиксирует живой край.
+ * После первого измерения плавающего композера подтверждает живой край.
  *
- * На первом кадре его высота ещё равна нулю, поэтому MessageScroller успевает
- * открыть ленту без нижнего резервирования. Когда onLayout сообщает реальную
- * высоту, FlatList уже считает начальную прокрутку завершённой и оставляет
- * последнее сообщение под инпутом. Один повтор после применения inset
- * исправляет только стартовую геометрию и не мешает ручному чтению истории.
+ * Лента открывается по стартовой оценке дока (COLLAPSED_COMPOSER_DOCK_HEIGHT),
+ * поэтому последнее сообщение сразу стоит над инпутом. Когда onLayout сообщает
+ * настоящую высоту, FlatList уже считает начальную прокрутку завершённой —
+ * один доскролл добирает расхождение оценки с измерением. При точной оценке он
+ * ничего не двигает, поэтому скачка на открытии больше нет.
  */
 function SyncInitialComposerInset({
   bottomInset,
   chatScrollViewRef,
+  composerMeasured,
 }: {
   bottomInset: number;
   chatScrollViewRef: MutableRefObject<KeyboardChatScrollViewRef | null>;
+  composerMeasured: boolean;
 }) {
   const { scrollToEnd } = useMessageScroller();
-  const previousBottomInset = useRef(bottomInset);
-  const didSync = useRef(bottomInset > 0);
+  const didSync = useRef(false);
 
   useEffect(() => {
-    const hadNoInset = previousBottomInset.current <= 0;
-    previousBottomInset.current = bottomInset;
-    if (didSync.current || !hadNoInset || bottomInset <= 0) return;
+    if (didSync.current || !composerMeasured || bottomInset <= 0) return;
     didSync.current = true;
 
     let frame = 0;
@@ -196,7 +195,7 @@ function SyncInitialComposerInset({
       clearTimeout(settleTimer);
       if (frame) cancelAnimationFrame(frame);
     };
-  }, [bottomInset, chatScrollViewRef, scrollToEnd]);
+  }, [bottomInset, chatScrollViewRef, composerMeasured, scrollToEnd]);
 
   return null;
 }
@@ -213,18 +212,26 @@ function FollowComposerResize({
   baseBottomInset,
   bottomInset,
   chatScrollViewRef,
+  composerMeasured,
   scrollOffsetRef,
 }: {
   baseBottomInset: number;
   bottomInset: number;
   chatScrollViewRef: MutableRefObject<KeyboardChatScrollViewRef | null>;
+  composerMeasured: boolean;
   scrollOffsetRef: MutableRefObject<number>;
 }) {
   const previousBottomInset = useRef(bottomInset);
+  const previousMeasured = useRef(composerMeasured);
 
   useEffect(() => {
     const previous = previousBottomInset.current;
+    const wasMeasured = previousMeasured.current;
     previousBottomInset.current = bottomInset;
+    previousMeasured.current = composerMeasured;
+    // Переход «стартовая оценка → измерение» не пользовательский ресайз:
+    // стартовую геометрию доводит SyncInitialComposerInset.
+    if (!wasMeasured && composerMeasured) return;
     if (baseBottomInset <= 0 || previous <= 0 || previous === bottomInset) return;
     const delta = bottomInset - previous;
 
@@ -243,7 +250,7 @@ function FollowComposerResize({
       if (firstFrame) cancelAnimationFrame(firstFrame);
       if (secondFrame) cancelAnimationFrame(secondFrame);
     };
-  }, [baseBottomInset, bottomInset, chatScrollViewRef, scrollOffsetRef]);
+  }, [baseBottomInset, bottomInset, chatScrollViewRef, composerMeasured, scrollOffsetRef]);
 
   return null;
 }
@@ -304,6 +311,7 @@ interface NarraChatTranscriptProps {
   bottomInset?: number;
   /** Базовая высота однострочного композера, зарезервированная в содержимом списка. */
   baseBottomInset?: number;
+  composerMeasured?: boolean;
   /** Кнопка возврата к последнему сообщению. */
   showScrollToBottom?: boolean;
   /** Пузырь «печатает» в конце ленты, пока ответа ещё нет. */
@@ -319,6 +327,7 @@ export function NarraChatTranscript({
   topInset = 0,
   bottomInset = 0,
   baseBottomInset = 0,
+  composerMeasured = false,
   showScrollToBottom = true,
   showTyping = false,
 }: NarraChatTranscriptProps) {
@@ -355,7 +364,14 @@ export function NarraChatTranscript({
       if (item.kind === "day") {
         return (
           <View style={styles.dayRow}>
-            <View style={[styles.dayPill, { backgroundColor: colors.elevation1 }]}>
+            {/* Плашка даты держится на фоне входящего бабла: в светлой теме это
+                bg-muted из panelui, в тёмной — тот же Primary 10, что и у бабла. */}
+            <View
+              style={[
+                styles.dayPill,
+                { backgroundColor: isDark ? colors.primary10 : colors.muted },
+              ]}
+            >
               <Text style={[styles.dayLabel, { color: colors.mutedForeground }]}>{item.label}</Text>
             </View>
           </View>
@@ -417,11 +433,13 @@ export function NarraChatTranscript({
         <SyncInitialComposerInset
           bottomInset={baseBottomInset}
           chatScrollViewRef={chatScrollViewRef}
+          composerMeasured={composerMeasured}
         />
         <FollowComposerResize
           baseBottomInset={baseBottomInset}
           bottomInset={bottomInset}
           chatScrollViewRef={chatScrollViewRef}
+          composerMeasured={composerMeasured}
           scrollOffsetRef={scrollOffsetRef}
         />
         <FollowSentMessage
