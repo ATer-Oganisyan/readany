@@ -12,7 +12,6 @@ const functionNames = new Set([
   "recoverStaleSelectionInteraction",
   "clearDocumentSelection",
   "attachTapListener",
-  "attachPullBookmarkListener",
 ]);
 
 function readReaderMainScript() {
@@ -158,8 +157,6 @@ function createHarness() {
     SCENE_INSERT_CLASS: "scene",
     SCENE_STATE_ATTR: "data-state",
     armNoteTapGuard() {},
-    bookmarkPullGestureActive: false,
-    bookmarkPullStateMeta: { bookmarked: false },
     clearTimeout,
     console,
     currentViewMode: "paginated",
@@ -177,18 +174,10 @@ function createHarness() {
       messages.push(type);
     },
     renderSceneInsert() {},
-    resetPullBookmarkState() {
-      runtime.bookmarkPullGestureActive = false;
-      messages.push("bookmarkPull");
-    },
-    setReaderTranslateY() {},
     setTimeout,
     tapNavigationInFlight: false,
     tapNavigationLockDeadline: 0,
     tapNavigationResetTimer: null,
-    updatePullBookmarkState(offset: number) {
-      runtime.bookmarkPullGestureActive = offset > 0;
-    },
     view: {},
     window: {
       innerWidth: 368,
@@ -202,7 +191,6 @@ function createHarness() {
 
   const doc = new FakeDocument();
   (runtime.attachTapListener as (document: FakeDocument) => void)(doc);
-  (runtime.attachPullBookmarkListener as (document: FakeDocument) => void)(doc);
 
   return {
     doc,
@@ -276,15 +264,5 @@ describe("Reader interaction recovery", () => {
 
     expect(harness.messages).toContain("tap");
     expect(harness.runtime.tapNavigationInFlight).toBe(false);
-  });
-
-  it("новым жестом завершает прерванное вытягивание закладки", () => {
-    const harness = createHarness();
-    harness.runtime.bookmarkPullGestureActive = true;
-
-    harness.tap();
-
-    expect(harness.messages).toContain("tap");
-    expect(harness.runtime.bookmarkPullGestureActive).toBe(false);
   });
 });

@@ -28,12 +28,6 @@ export interface SelectionEvent {
   };
 }
 
-export interface BookmarkPullEvent {
-  offset: number;
-  armed: boolean;
-  active: boolean;
-}
-
 export interface VisibleTTSSegment {
   text: string;
   cfi: string;
@@ -101,8 +95,6 @@ export interface ReaderBridgeCallbacks {
   }) => void;
   onPageSnippet?: (text: string) => void;
   onBookmarkSnippet?: (text: string) => void;
-  onToggleBookmark?: () => void;
-  onBookmarkPull?: (detail: BookmarkPullEvent) => void;
   onCharacterTap?: (detail: CharacterTapEvent) => void;
   /** Тап по слоту «Показать сцену» (или по слоту в состоянии ошибки). */
   onSceneSlotTap?: (detail: SceneSlotEvent) => void;
@@ -330,16 +322,6 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
   const setNavigationLocked = useCallback(
     (locked: boolean) => {
       inject(`window.setNavigationLocked(${locked})`);
-    },
-    [inject],
-  );
-
-  const setBookmarkPullState = useCallback(
-    (params: {
-      bookmarked: boolean;
-      added: string;
-    }) => {
-      inject(`window.setBookmarkPullState(${JSON.stringify(params)})`);
     },
     [inject],
   );
@@ -902,16 +884,6 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
         case "bookmarkSnippet":
           cb.onBookmarkSnippet?.(msg.textSnippet || "");
           break;
-        case "toggleBookmark":
-          cb.onToggleBookmark?.();
-          break;
-        case "bookmarkPull":
-          cb.onBookmarkPull?.({
-            offset: typeof msg.offset === "number" ? msg.offset : 0,
-            armed: !!msg.armed,
-            active: !!msg.active,
-          });
-          break;
         case "characterTap":
           if (msg.characterId) {
             cb.onCharacterTap?.({
@@ -1119,7 +1091,6 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       applySettings,
       setThemeColors,
       setNavigationLocked,
-      setBookmarkPullState,
       requestPageSnippet,
       getVisibleText,
       getVisibleTTSSegments,
@@ -1163,7 +1134,6 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       applySettings,
       setThemeColors,
       setNavigationLocked,
-      setBookmarkPullState,
       requestPageSnippet,
       getVisibleText,
       getVisibleTTSSegments,

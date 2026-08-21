@@ -1,6 +1,5 @@
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
 import { AnimatedNarraFace } from "@/components/chat/animated-narra-face";
-import { BookmarkRibbon } from "@/components/reader/BookmarkRibbon";
 import { ChapterTranslationSheet } from "@/components/reader/ChapterTranslationSheet";
 import { TranslationPanel } from "@/components/reader/TranslationPanel";
 import { NotebookPenIcon, XIcon } from "@/components/ui/Icon";
@@ -568,7 +567,6 @@ function ReaderContent({ route, navigation }: Props) {
   );
 
   const controlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const readerPullAnim = useRef(new Animated.Value(0)).current;
   const controlsVisibility = useSharedValue(1);
   const controlsAnimatedStyle = useAnimatedStyle(() => ({
     opacity: controlsVisibility.value,
@@ -1215,21 +1213,6 @@ function ReaderContent({ route, navigation }: Props) {
         return;
       }
       toggleControls();
-    },
-    onToggleBookmark: () => {
-      handleToggleBookmark();
-    },
-    onBookmarkPull: ({ offset, active }) => {
-      if (active) {
-        readerPullAnim.setValue(offset);
-        return;
-      }
-
-      Animated.timing(readerPullAnim, {
-        toValue: 0,
-        duration: 180,
-        useNativeDriver: true,
-      }).start();
     },
     onCharacterTap: ({ characterId }) => {
       const character = characters.find((item) => item.id === characterId);
@@ -1887,14 +1870,6 @@ function ReaderContent({ route, navigation }: Props) {
   // Apply theme colors when theme changes
   useEffect(() => {
     if (!webViewReady) return;
-    bridge.setBookmarkPullState({
-      bookmarked: isBookmarked,
-      added: bookmarkCopy.added,
-    });
-  }, [bookmarkCopy, bridge, isBookmarked, webViewReady]);
-
-  useEffect(() => {
-    if (!webViewReady) return;
     bridge.setThemeColors(readerThemeColors);
   }, [themeMode, readerThemeColors, webViewReady]);
 
@@ -2156,10 +2131,7 @@ function ReaderContent({ route, navigation }: Props) {
         <Animated.View
           style={[
             s.readerStage,
-            {
-              backgroundColor: "transparent",
-              transform: [{ translateY: readerPullAnim }],
-            },
+            { backgroundColor: "transparent" },
           ]}
           pointerEvents="box-none"
         >
@@ -2251,7 +2223,6 @@ function ReaderContent({ route, navigation }: Props) {
         {readerToolbarDock}
 
         {/* ─── Bookmark Ribbon (top-right) ─── */}
-        <BookmarkRibbon visible={isBookmarked} topOffset={0} rightOffset={readerContentInset} />
 
         {/* Note Tooltip (long-press on wavy underline) */}
         {adjustedNoteTooltip && (
