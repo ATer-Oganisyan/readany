@@ -16,6 +16,7 @@ import type { MutableRefObject } from "react";
 import { type ScrollViewProps, StyleSheet, type TextStyle, View } from "react-native";
 import type { KeyboardChatScrollViewRef } from "react-native-keyboard-controller";
 import { NarraKeyboardChatScrollView } from "./narra-keyboard-chat-scroll-view";
+import { StreamingWords } from "./streaming-words";
 
 /**
  * Лента сообщений чата на MessageScroller из PanelUI.
@@ -57,6 +58,15 @@ const FOLLOW_LAYOUT_RETRY_MS = 140;
 const INITIAL_FOLLOW_DELAY_MS = 250;
 /** Геометрия сообщения по продуктовой спецификации чата. */
 const MESSAGE_RADIUS = 20;
+/**
+ * Разметка в ещё не дописанном ответе.
+ *
+ * Пословное появление раскладывает строку на отдельные слова, и инлайновая
+ * разметка на этом рвётся. Пока ответ идёт с разметкой — показываем его обычным
+ * рендером, без волны: это ровно то поведение, что было до неё.
+ */
+const MARKDOWN_SYNTAX = /[*_`#>|]|\[\d*\]|^\s*[-+]\s|^\s*\d+\.\s/m;
+
 const MESSAGE_TEXT_STYLE: TextStyle = {
   ...bodyTypography,
   fontWeight: "400",
@@ -394,6 +404,11 @@ export function NarraChatTranscript({
       }
 
       const isUser = item.message.role === "user";
+      const messageBody = renderText(item.message);
+      const isStreamingMessage = item.message.id === streamingMessageId;
+      // Волна только на живом ответе героя: свои сообщения появляются целиком,
+      // а дописанный ответ отдаётся обычному рендеру — с разметкой и сносками.
+      const revealWords = isStreamingMessage && !isUser && !MARKDOWN_SYNTAX.test(messageBody);
       return (
         <View style={styles.messageRow}>
           <Message align={isUser ? "end" : "start"}>
@@ -407,15 +422,23 @@ export function NarraChatTranscript({
                   !isUser && isDark ? { backgroundColor: colors.primary10 } : undefined,
                 ]}
               >
-                <MarkdownRenderer
-                  citations={citationsOf(item.message)}
-                  content={renderText(item.message)}
-                  isStreaming={item.message.id === streamingMessageId}
-                  onCitationClick={onCitationClick}
-                  textColor={isUser ? colors.primaryForeground : colors.foreground}
-                  textStyle={MESSAGE_TEXT_STYLE}
-                  trimTrailingParagraphSpacing
-                />
+                {revealWords ? (
+                  <StreamingWords
+                    color={colors.foreground}
+                    text={messageBody}
+                    textStyle={MESSAGE_TEXT_STYLE}
+                  />
+                ) : (
+                  <MarkdownRenderer
+                    citations={citationsOf(item.message)}
+                    content={messageBody}
+                    isStreaming={isStreamingMessage}
+                    onCitationClick={onCitationClick}
+                    textColor={isUser ? colors.primaryForeground : colors.foreground}
+                    textStyle={MESSAGE_TEXT_STYLE}
+                    trimTrailingParagraphSpacing
+                  />
+                )}
               </Message.Bubble>
             </Message.Content>
           </Message>
