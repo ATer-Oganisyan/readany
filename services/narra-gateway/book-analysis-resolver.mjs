@@ -41,6 +41,17 @@ const CHARACTER_BEHAVIOUR_TYPES = new Set([
   'character_action', 'character_dialogue', 'character_trait',
   'character_appearance', 'character_role', 'character_age', 'character_gender'
 ])
+const INDEPENDENT_CHARACTER_ACTION_TYPES = new Set([
+  'character_action', 'character_dialogue'
+])
+const CORROBORATING_CHARACTER_TYPES = new Set([
+  'character_trait', 'character_appearance', 'character_role',
+  'character_age', 'character_gender'
+])
+const NON_CHARACTER_ENTITY_TOKENS = new Set([
+  'статуя', 'бронеавтомобиль', 'бронеавтомобили', 'танк', 'танки',
+  'statue', 'armored car', 'armored cars', 'tank', 'tanks'
+])
 const COLLECTIVE_CHARACTER_TOKENS = new Set([
   'армия', 'армии', 'войско', 'войска', 'солдаты', 'люди', 'дети',
   'сыновья', 'дочери', 'братья', 'сестры', 'марсиане', 'атланты', 'аолы',
@@ -1799,11 +1810,22 @@ function groundedPersonalNameNode(node) {
     isIndividualProperNameNode(node)
 }
 
+function anchoredPersonalNameNode(node) {
+  return node.anchorConfidence >= ALIAS_CONFIDENCE &&
+    properNameScore(bestDisplay(node)) > 0 &&
+    isIndividualProperNameNode(node)
+}
+
 function canonicalNode(groupNodes) {
   const preferGroundedPersonalName = groupNodes.some(groundedPersonalNameNode)
+  const preferAnchoredPersonalName = !preferGroundedPersonalName &&
+    groupNodes.some(anchoredPersonalNameNode)
   return [...groupNodes].sort((left, right) =>
     (preferGroundedPersonalName
       ? Number(groundedPersonalNameNode(right)) - Number(groundedPersonalNameNode(left))
+      : 0) ||
+    (preferAnchoredPersonalName
+      ? Number(anchoredPersonalNameNode(right)) - Number(anchoredPersonalNameNode(left))
       : 0) ||
     right.identityLabelPriority - left.identityLabelPriority ||
     right.surfaceGroundedCount - left.surfaceGroundedCount ||
@@ -2053,6 +2075,9 @@ function applyApprovedIdentityMerges(sets, nodes, identityMerges) {
     const leftNodes = componentNodes(sets, nodes, leftNodeKey)
     const rightNodes = componentNodes(sets, nodes, rightNodeKey)
     if (unsafeApprovedIdentityMerge(leftNodes, rightNodes, basis, nodes, sets)) continue
+    for (const node of [...leftNodes, ...rightNodes]) {
+      node.anchorConfidence = Math.max(node.anchorConfidence, ALIAS_CONFIDENCE)
+    }
     sets.union(leftRoot, rightRoot)
   }
 }
@@ -2085,11 +2110,67 @@ function hasCrossScriptGroundingMismatch(canonical, groupNodes) {
   )
 }
 
+function hasEvidenceScriptMismatch(canonical, observations) {
+  const expected = nameScript(canonical)
+  if (!expected) return false
+  const evidenceScripts = observations
+    .map(({ evidence }) => nameScript(evidence.quote))
+    .filter(Boolean)
+  return evidenceScripts.length > 0 && evidenceScripts.every((script) => script !== expected)
+}
+
+function hasGroundedIndependentParticipantEvidence(
+  canonical,
+  observations,
+  confidence,
+  groupNodes
+) {
+  const normalized = normalizedCandidate(canonical)
+  if (
+    confidence < 0.9 ||
+    WEAK_CHARACTER_CANDIDATES.has(normalized) ||
+    nameTokens(normalized).some((token) => NON_CHARACTER_ENTITY_TOKENS.has(token)) ||
+    groupNodes.some(isCompositeOrCollectiveCharacter) ||
+    (
+      groupNodes.some((node) => hasGenerationalQualifier(node.normalized)) &&
+      observations.length < 2 &&
+      groupNodes.every(({ anchorConfidence }) => anchorConfidence < ALIAS_CONFIDENCE)
+    )
+  ) return false
+  const grounded = observations.filter((observation) =>
+    groupNodes.some((node) => [...node.forms.values()].some(({ display }) =>
+      isSurfaceGrounded(display, observation.evidence.quote)
+    ))
+  )
+  if (grounded.some(({ type }) =>
+    INDEPENDENT_CHARACTER_ACTION_TYPES.has(type) || CORROBORATING_CHARACTER_TYPES.has(type)
+  )) return true
+  return observations.some(({ type }) =>
+    INDEPENDENT_CHARACTER_ACTION_TYPES.has(type) || CORROBORATING_CHARACTER_TYPES.has(type)
+  )
+}
+
 function isConfirmed(kind, canonical, observations, anchorConfidence, confidence, groupNodes) {
   if (kind === 'character') {
     if (WEAK_CHARACTER_CANDIDATES.has(normalizedCandidate(canonical))) return false
-    if (hasCrossScriptGroundingMismatch(canonical, groupNodes)) return false
-    if (!groupNodes.some(isIndividualProperNameNode)) return false
+    const hasContextualParticipantEvidence = hasGroundedIndependentParticipantEvidence(
+      canonical,
+      observations,
+      confidence,
+      groupNodes
+    )
+    if (
+      hasCrossScriptGroundingMismatch(canonical, groupNodes) &&
+      anchorConfidence < ALIAS_CONFIDENCE &&
+      (
+        !hasContextualParticipantEvidence ||
+        hasEvidenceScriptMismatch(canonical, observations)
+      )
+    ) return false
+    if (
+      !groupNodes.some(isIndividualProperNameNode) &&
+      !hasContextualParticipantEvidence
+    ) return false
     if (groupNodes.every(({ identityAmbiguous }) => identityAmbiguous)) return false
     if (anchorConfidence >= ALIAS_CONFIDENCE || observations.length >= 2) return true
     if (confidence < ALIAS_CONFIDENCE) return false
