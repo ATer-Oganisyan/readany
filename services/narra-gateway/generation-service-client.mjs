@@ -118,6 +118,12 @@ export function createGenerationServiceClient({
         ...input
       })
     },
+    generateBookIdentity(input) {
+      return post('internal/v1/book-identities', {
+        idempotencyKey: `${input.bookEditionId}:book-identity:${input.targetVersion}`,
+        ...input
+      })
+    },
     generateCatalogCover(input) {
       return post('internal/v1/catalog-covers', {
         idempotencyKey: `${input.bookEditionId}:catalog-cover:${input.targetVersion}`,

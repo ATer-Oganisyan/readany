@@ -80,3 +80,34 @@ test('gateway matches the main client background override and ignores non-main c
     bookCoverPrompt({ ...input, context: 'manga anime' })
   )
 })
+
+test('gateway normalizes catalog bibliography noise before building the cover prompt', () => {
+  const prompt = bookCoverPrompt({
+    title: 'Мертвое озеро (Часть первая)[1]',
+    author: 'Жюль Верн, илл. Риу Э. (Édouard Riou)'
+  })
+
+  assert.match(prompt, /“Мертвое озеро”/u)
+  assert.match(prompt, /“Мертвое озеро” by Жюль Верн\./u)
+  assert.doesNotMatch(prompt, /\[1\]|Часть первая|илл\.|Riou/u)
+})
+
+test('gateway cover normalization preserves meaningful title punctuation', () => {
+  for (const title of [
+    'Что делать?',
+    'Хорошо!',
+    'Росла́влев, или Русские в 1812 году'
+  ]) {
+    assert.ok(bookCoverPrompt({ title }).includes(title))
+  }
+})
+
+test('gateway hashes normalized cover identity for a stable generated palette', () => {
+  assert.equal(
+    generatedCoverBackgroundColor({
+      title: 'Маскарад[1]',
+      author: 'Михаил Лермонтов (1814—1841)'
+    }),
+    generatedCoverBackgroundColor({ title: 'Маскарад', author: 'Михаил Лермонтов' })
+  )
+})

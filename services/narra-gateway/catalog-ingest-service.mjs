@@ -105,6 +105,7 @@ export function createCatalogIngestService({
       await storage.verifyUpload(upload.file)
       const edition = await repository.completeCatalogBookUpload({ bookEditionId })
       if (!edition) throw serviceError('NOT_FOUND', 'Каталожная книга не найдена', 404)
+      await repository.enqueueBookIdentity?.({ bookEditionId })
       const analysis = await ensureCanonicalAnalysis(edition)
       return result(edition, analysis)
     },

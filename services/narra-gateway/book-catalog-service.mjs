@@ -376,6 +376,7 @@ export function createBookCatalogService({
         ? await store.completePrivateBookUpload({ subjectId, bookEditionId })
         : prepared.edition
       if (!edition) throw serviceError('NOT_FOUND', 'Локальная книга не найдена', 404)
+      await store.enqueueBookIdentity?.({ bookEditionId })
       const analysis = await ensureCanonicalAnalysis(edition)
       return {
         ...bookBinding(edition),

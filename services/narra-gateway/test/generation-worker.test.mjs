@@ -3,6 +3,7 @@ import test from 'node:test'
 import { REQUIRED_CHARACTER_MEDIA } from '../book-markup.mjs'
 import {
   createGenerationWorker,
+  normalizeBookIdentityResult,
   normalizeBookMarkupResult,
   normalizeCharacterBundleInput,
   normalizeCharacterBundleResult
@@ -188,6 +189,34 @@ test('worker publishes a catalog cover into the durable repository', async () =>
     status: 'completed', jobId: 'job-cover', result: { assetCount: 1 }
   })
   assert.equal(published.asset.objectKey, 'books/catalog/book-1/cover.png')
+})
+
+test('dedicated identity job publishes normalized display metadata', async () => {
+  let published
+  const repository = {
+    async claimGenerationJob() {
+      return {
+        id: 'job-identity', type: 'book_identity', bookEditionId: 'book-1',
+        targetVersion: 'book-identity-v1-aaaa', leaseToken: 'lease-identity'
+      }
+    },
+    async getBookIdentityInput() {
+      return { bookEditionId: 'book-1', title: 'Мертвое озеро (Часть первая)' }
+    },
+    async publishBookIdentity(job, identity) { published = { job, identity } },
+    async failGenerationJob() { assert.fail('identity job must not fail') }
+  }
+  const generator = {
+    async generateBookIdentity() {
+      return { title: 'Мертвое озеро', author: 'Николай Некрасов', source: 'llm' }
+    }
+  }
+  const worker = createGenerationWorker({ repository, generator, workerId: 'identity-1', logger: silentLogger })
+  assert.equal((await worker.runOnce()).status, 'completed')
+  assert.deepEqual(published.identity, {
+    title: 'Мертвое озеро', author: 'Николай Некрасов', source: 'llm'
+  })
+  assert.deepEqual(normalizeBookIdentityResult(published.identity), published.identity)
 })
 
 test('worker adapts legacy local profiles to the strict character bundle contract', async () => {

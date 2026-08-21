@@ -5,15 +5,18 @@ import {
 } from './book-markup.mjs'
 import { createOperationalLogger } from './operational-log.mjs'
 import { voiceForGender } from './voices.mjs'
+import { normalizeBookDisplayIdentity } from './book-identity.mjs'
 
-const JOB_TYPES = new Set([
+export const BOOK_MARKUP_WORKER_JOB_TYPES = Object.freeze([
   'book_markup',
   'catalog_cover',
   'character_bundle',
   ...Object.values(CHARACTER_MEDIA_JOB_TYPES)
 ])
+const JOB_TYPES = new Set(['book_identity', ...BOOK_MARKUP_WORKER_JOB_TYPES])
 const JOB_LABELS = {
   book_markup: 'разметка книги',
+  book_identity: 'название книги',
   catalog_cover: 'каталожная обложка',
   character_bundle: 'пакет персонажа',
   character_portrait: 'портрет персонажа',
@@ -218,6 +221,18 @@ export function normalizeCharacterBundleResult(value, requiredMedia = REQUIRED_C
   return { assets: requiredMedia.map((type) => byType.get(type)) }
 }
 
+export function normalizeBookIdentityResult(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw invalidResult('book identity must be an object')
+  }
+  const identity = normalizeBookDisplayIdentity(value)
+  if (!identity.title) throw invalidResult('book identity title is required')
+  return {
+    ...identity,
+    source: value.source === 'llm' ? 'llm' : 'deterministic'
+  }
+}
+
 /**
  * A single-claim worker. The repository owns leases and durable transactions;
  * the generator owns provider calls and object-storage writes.
@@ -293,6 +308,35 @@ export function createGenerationWorker({
       }
     }
     return { characterCount: markup.characters.length }
+  }
+
+  async function runBookIdentity(job) {
+    const startedAt = Date.now()
+    const input = await repository.getBookIdentityInput(job)
+    log.info('identity.started', 'Определяю отображаемое название книги', {
+      job: job.id,
+      edition: job.bookEditionId,
+      book: input.title,
+      scope: input.scope
+    })
+    const identity = normalizeBookIdentityResult(await generator.generateBookIdentity(input))
+    const publication = await repository.publishBookIdentity(job, identity)
+    if (publication?.status === 'stale') {
+      log.warn('identity.stale', 'Устаревший результат названия пропущен', {
+        job: job.id,
+        edition: job.bookEditionId,
+        duration_ms: Date.now() - startedAt
+      })
+      return { identity, published: false }
+    }
+    log.info('identity.published', 'Отображаемое название книги опубликовано', {
+      job: job.id,
+      edition: job.bookEditionId,
+      book: identity.title,
+      source: identity.source,
+      duration_ms: Date.now() - startedAt
+    })
+    return { identity }
   }
 
   async function runCharacterBundle(job) {
@@ -403,6 +447,7 @@ export function createGenerationWorker({
       try {
         const result = await withLeaseHeartbeat(job, () => {
           if (job.type === 'book_markup') return runBookMarkup(job)
+          if (job.type === 'book_identity') return runBookIdentity(job)
           if (job.type === 'catalog_cover') return runCatalogCover(job)
           return runCharacterBundle(job)
         })

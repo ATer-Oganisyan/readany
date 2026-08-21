@@ -953,8 +953,13 @@ if (process.env.DATABASE_URL) {
   })
   bookOperatorRepository = createPostgresBookOperatorRepository(bookMarkupPool)
   if (internalGenerationService) {
+    const identityJobs = await bookMarkupRepository.enqueueMissingBookIdentities()
     const coverJobs = await bookMarkupRepository.enqueueMissingCatalogCovers()
     const characterMediaJobs = await bookMarkupRepository.enqueueCharacterMediaBackfill()
+    console.info('[book-identity] durable backfill checked', {
+      jobs: identityJobs.length,
+      created: identityJobs.filter((job) => job.created).length
+    })
     console.info('[catalog-cover] durable backfill checked', {
       jobs: coverJobs.length,
       created: coverJobs.filter((job) => job.created).length

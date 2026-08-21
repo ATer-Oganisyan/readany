@@ -9,6 +9,7 @@ const localCompose = await readFile(
 )
 const envExample = await readFile(new URL('../.env.example', import.meta.url), 'utf8')
 const gatewaySource = await readFile(new URL('../index.mjs', import.meta.url), 'utf8')
+const deploySource = await readFile(new URL('../deploy-i167.sh', import.meta.url), 'utf8')
 
 const stages = {
   prepare: '["node", "book-analysis-worker.mjs"]',
@@ -70,6 +71,20 @@ test('markup and synthesis capacity survives a routine compose redeploy', () => 
   )
   assert.match(markup, /replicas: \$\{BOOK_MARKUP_WORKER_REPLICAS:-4\}/)
   assert.match(synthesize, /replicas: \$\{BOOK_ANALYSIS_SYNTHESIZE_REPLICAS:-4\}/)
+})
+
+test('book display identity has one separate durable worker', () => {
+  const identity = compose.slice(
+    compose.indexOf('  book-identity-worker:'),
+    compose.indexOf('  book-analysis-prepare:')
+  )
+  assert.match(identity, /command: \["node", "book-identity-worker\.mjs"\]/)
+  assert.match(identity, /replicas: \$\{BOOK_IDENTITY_WORKER_REPLICAS:-1\}/)
+  assert.match(identity, /read_only: true/)
+  assert.match(
+    deploySource,
+    /for worker_service in book-markup-worker book-identity-worker/
+  )
 })
 
 test('shadow analysis workers keep the hardened read-only runtime', () => {

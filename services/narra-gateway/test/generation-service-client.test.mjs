@@ -82,6 +82,29 @@ test('generator client keeps catalog cover routing and credentials inside the se
   assert.equal(Object.hasOwn(request.body, 'apiKey'), false)
 })
 
+test('generator client sends book identity jobs to their dedicated endpoint', async () => {
+  let request
+  const client = createGenerationServiceClient({
+    baseUrl: 'http://localhost:8790',
+    token: TOKEN,
+    production: false,
+    async fetchImpl(url, options) {
+      request = { url: String(url), body: JSON.parse(options.body) }
+      return new Response(JSON.stringify({ result: { title: 'Книга', source: 'llm' } }), {
+        status: 200
+      })
+    }
+  })
+  await client.generateBookIdentity({
+    bookEditionId: 'book-1', targetVersion: 'book-identity-v1-aaaa', title: 'Книга'
+  })
+  assert.equal(request.url, 'http://localhost:8790/internal/v1/book-identities')
+  assert.equal(
+    request.body.idempotencyKey,
+    'book-1:book-identity:book-identity-v1-aaaa'
+  )
+})
+
 test('generator client sends one bounded scan chunk with a stable idempotency key', async () => {
   let request
   const client = createGenerationServiceClient({

@@ -1,5 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto'
 import {
+  BOOK_IDENTITY_VERSION,
+  bookIdentityTargetVersion,
+  normalizeBookDisplayIdentity,
+  normalizeBookIdentityValue
+} from './book-identity.mjs'
+import {
   BOOK_MARKUP_ANALYSIS_VERSION,
   BOOK_MARKUP_SCHEMA_VERSION,
   CHARACTER_MEDIA_JOB_TYPES,
@@ -61,13 +67,20 @@ function jobRow(row) {
 
 function editionRow(row) {
   if (!row) return null
+  const fallbackIdentity = normalizeBookDisplayIdentity({ title: row.title, author: row.author })
+  const displayTitle = row.display_title
+    ? normalizeBookIdentityValue(row.display_title)
+    : fallbackIdentity.title
+  const displayAuthor = row.display_author != null
+    ? normalizeBookIdentityValue(row.display_author)
+    : fallbackIdentity.author
   const edition = {
     id: row.id,
     scope: row.scope,
     catalogKey: row.catalog_key ?? undefined,
     contentSha256: row.content_sha256,
-    title: row.title,
-    author: row.author,
+    title: displayTitle || 'Untitled book',
+    author: displayAuthor,
     format: row.format,
     status: row.status,
     sourceStorage: row.source_storage || 'stored',
@@ -219,6 +232,44 @@ export function createPostgresBookMarkupRepository(pool, {
       if (!existing.rows[0]) throw new Error('idempotent generation job disappeared')
       return { row: existing.rows[0], created: false }
     })
+  }
+
+  function identityJobSpec(edition) {
+    const targetVersion = bookIdentityTargetVersion({
+      contentSha256: edition.content_sha256,
+      title: edition.title,
+      author: edition.author
+    })
+    return {
+      targetVersion,
+      idempotencyKey: `${edition.id}:book-identity:${targetVersion}`
+    }
+  }
+
+  async function ensureBookIdentityJob(client, edition, priority = 60) {
+    const spec = identityJobSpec(edition)
+    if (edition.identity_version === spec.targetVersion) return null
+    const inserted = await client.query(
+      `INSERT INTO generation_jobs (
+         id, idempotency_key, job_type, book_edition_id, character_key,
+         target_version, status, priority, payload
+       ) VALUES ($1, $2, 'book_identity', $3, NULL, $4, 'queued', $5, $6::jsonb)
+       ON CONFLICT (idempotency_key) DO NOTHING
+       RETURNING *`,
+      [
+        idFactory(), spec.idempotencyKey, edition.id, spec.targetVersion, priority,
+        JSON.stringify({ identity_version: BOOK_IDENTITY_VERSION })
+      ]
+    )
+    if (inserted.rows[0]) {
+      return { ...jobRow(inserted.rows[0]), created: true, ...spec }
+    }
+    const existing = await client.query(
+      'SELECT * FROM generation_jobs WHERE idempotency_key = $1',
+      [spec.idempotencyKey]
+    )
+    if (!existing.rows[0]) throw new Error('idempotent book identity job disappeared')
+    return { ...jobRow(existing.rows[0]), created: false, ...spec }
   }
 
   async function ensureCharacterMediaJobs({
@@ -387,8 +438,9 @@ export function createPostgresBookMarkupRepository(pool, {
     }) {
       return transaction(pool, async (client) => {
         const catalog = await client.query(
-          `SELECT id, scope, catalog_key, content_sha256, title, author, format,
-                  status, source_storage, expires_at, created_at
+          `SELECT id, scope, catalog_key, content_sha256, title, author,
+                  display_title, display_author, format, status,
+                  source_storage, expires_at, created_at
            FROM book_editions
            WHERE scope = 'catalog' AND content_sha256 = $1
              AND status IN ('base_ready', 'published')
@@ -420,6 +472,26 @@ export function createPostgresBookMarkupRepository(pool, {
            )
            ON CONFLICT (owner_subject_id, content_sha256) WHERE scope = 'private'
            DO UPDATE SET
+             display_title = CASE
+               WHEN book_editions.title IS DISTINCT FROM EXCLUDED.title OR
+                    book_editions.author IS DISTINCT FROM EXCLUDED.author
+                 THEN NULL ELSE book_editions.display_title END,
+             display_author = CASE
+               WHEN book_editions.title IS DISTINCT FROM EXCLUDED.title OR
+                    book_editions.author IS DISTINCT FROM EXCLUDED.author
+                 THEN NULL ELSE book_editions.display_author END,
+             identity_version = CASE
+               WHEN book_editions.title IS DISTINCT FROM EXCLUDED.title OR
+                    book_editions.author IS DISTINCT FROM EXCLUDED.author
+                 THEN NULL ELSE book_editions.identity_version END,
+             identity_source = CASE
+               WHEN book_editions.title IS DISTINCT FROM EXCLUDED.title OR
+                    book_editions.author IS DISTINCT FROM EXCLUDED.author
+                 THEN NULL ELSE book_editions.identity_source END,
+             identity_updated_at = CASE
+               WHEN book_editions.title IS DISTINCT FROM EXCLUDED.title OR
+                    book_editions.author IS DISTINCT FROM EXCLUDED.author
+                 THEN NULL ELSE book_editions.identity_updated_at END,
              title = EXCLUDED.title,
              author = EXCLUDED.author,
              format = EXCLUDED.format,
@@ -431,8 +503,9 @@ export function createPostgresBookMarkupRepository(pool, {
           ]
         )
         const result = await client.query(
-          `SELECT id, scope, catalog_key, content_sha256, title, author, format,
-                  status, source_storage, expires_at, created_at
+          `SELECT id, scope, catalog_key, content_sha256, title, author,
+                  display_title, display_author, format, status,
+                  source_storage, expires_at, created_at
            FROM book_editions
            WHERE scope = 'private' AND owner_subject_id = $1::uuid
              AND content_sha256 = $2`,
@@ -453,8 +526,9 @@ export function createPostgresBookMarkupRepository(pool, {
     }) {
       return transaction(pool, async (client) => {
         const editionResult = await client.query(
-          `SELECT id, scope, catalog_key, content_sha256, title, author, format,
-                  status, source_storage, expires_at, created_at
+          `SELECT id, scope, catalog_key, content_sha256, title, author,
+                  display_title, display_author, format, status,
+                  source_storage, expires_at, created_at
            FROM book_editions
            WHERE id = $1 AND scope = 'private' AND owner_subject_id = $2::uuid
              AND expires_at > now()
@@ -534,7 +608,8 @@ export function createPostgresBookMarkupRepository(pool, {
     async completePrivateBookUpload({ subjectId, bookEditionId }) {
       return transaction(pool, async (client) => {
         const result = await client.query(
-          `SELECT edition.id
+          `SELECT edition.id, edition.content_sha256, edition.title, edition.author,
+                  edition.identity_version
            FROM book_editions AS edition
            JOIN book_files AS file ON file.book_edition_id = edition.id
            WHERE edition.id = $1 AND edition.scope = 'private'
@@ -555,9 +630,11 @@ export function createPostgresBookMarkupRepository(pool, {
            WHERE id = $1`,
           [bookEditionId, privateMaterialTtlDays]
         )
+        await ensureBookIdentityJob(client, result.rows[0])
         const edition = await client.query(
-          `SELECT id, scope, catalog_key, content_sha256, title, author, format,
-                  status, source_storage, expires_at, created_at
+          `SELECT id, scope, catalog_key, content_sha256, title, author,
+                  display_title, display_author, format, status,
+                  source_storage, expires_at, created_at
            FROM book_editions WHERE id = $1`,
           [bookEditionId]
         )
@@ -575,8 +652,9 @@ export function createPostgresBookMarkupRepository(pool, {
     }) {
       return transaction(pool, async (client) => {
         const editionResult = await client.query(
-          `SELECT id, scope, catalog_key, content_sha256, title, author, format,
-                  status, source_storage, expires_at, created_at
+          `SELECT id, scope, catalog_key, content_sha256, title, author,
+                  display_title, display_author, format, status,
+                  source_storage, expires_at, created_at
            FROM book_editions
            WHERE id = $1 AND scope = 'private' AND owner_subject_id = $2::uuid
              AND source_storage = 'local_only' AND expires_at > now()
@@ -675,8 +753,9 @@ export function createPostgresBookMarkupRepository(pool, {
     }) {
       return transaction(pool, async (client) => {
         const existingResult = await client.query(
-          `SELECT id, scope, catalog_key, content_sha256, title, author, format,
-                  status, source_storage, expires_at, created_at
+          `SELECT id, scope, catalog_key, content_sha256, title, author,
+                  display_title, display_author, format, status,
+                  source_storage, expires_at, created_at
            FROM book_editions
            WHERE scope = 'catalog' AND catalog_key = $1
            FOR UPDATE`,
@@ -718,8 +797,9 @@ export function createPostgresBookMarkupRepository(pool, {
           [editionId, objectKey, mimeType, byteSize, contentSha256]
         )
         const editionResult = await client.query(
-          `SELECT id, scope, catalog_key, content_sha256, title, author, format,
-                  status, source_storage, expires_at, created_at
+          `SELECT id, scope, catalog_key, content_sha256, title, author,
+                  display_title, display_author, format, status,
+                  source_storage, expires_at, created_at
            FROM book_editions WHERE id = $1`,
           [editionId]
         )
@@ -736,6 +816,7 @@ export function createPostgresBookMarkupRepository(pool, {
       const result = await pool.query(
         `SELECT edition.id, edition.scope, edition.catalog_key,
                 edition.content_sha256, edition.title, edition.author,
+                edition.display_title, edition.display_author,
                 edition.format, edition.status, edition.source_storage,
                 edition.expires_at, edition.created_at,
                 file.object_key, file.mime_type, file.byte_size,
@@ -762,7 +843,8 @@ export function createPostgresBookMarkupRepository(pool, {
     async completeCatalogBookUpload({ bookEditionId }) {
       return transaction(pool, async (client) => {
         const result = await client.query(
-          `SELECT edition.id, edition.content_sha256
+          `SELECT edition.id, edition.content_sha256, edition.title, edition.author,
+                  edition.identity_version
            FROM book_editions AS edition
            JOIN book_files AS file ON file.book_edition_id = edition.id
            WHERE edition.id = $1 AND edition.scope = 'catalog'
@@ -792,8 +874,10 @@ export function createPostgresBookMarkupRepository(pool, {
             JSON.stringify({ content_sha256: result.rows[0].content_sha256 })
           ]
         )
+        await ensureBookIdentityJob(client, result.rows[0])
         const edition = await client.query(
-          `SELECT id, scope, catalog_key, content_sha256, title, author, format,
+          `SELECT id, scope, catalog_key, content_sha256, title, author,
+                  display_title, display_author, format,
                   status, source_storage, expires_at, created_at
            FROM book_editions WHERE id = $1`,
           [bookEditionId]
@@ -991,6 +1075,7 @@ export function createPostgresBookMarkupRepository(pool, {
       const result = await pool.query(
         `SELECT edition.id, edition.scope, edition.catalog_key,
                 edition.content_sha256, edition.title, edition.author,
+                edition.display_title, edition.display_author,
                 edition.format, edition.status, edition.source_storage,
                 edition.expires_at, edition.created_at,
                 cover.object_key AS cover_object_key,
@@ -1025,7 +1110,8 @@ export function createPostgresBookMarkupRepository(pool, {
     async resolveBook({ subjectId, source, catalogKey, contentSha256 }) {
       if (source === 'catalog') {
         const result = await pool.query(
-          `SELECT id, scope, catalog_key, content_sha256, title, author, format,
+          `SELECT id, scope, catalog_key, content_sha256, title, author,
+                  display_title, display_author, format,
                   status, source_storage, expires_at, created_at
            FROM book_editions
            WHERE scope = 'catalog' AND catalog_key = $1
@@ -1037,7 +1123,8 @@ export function createPostgresBookMarkupRepository(pool, {
       }
       return transaction(pool, async (client) => {
         const result = await client.query(
-          `SELECT id, scope, catalog_key, content_sha256, title, author, format,
+          `SELECT id, scope, catalog_key, content_sha256, title, author,
+                  display_title, display_author, format,
                   status, source_storage, expires_at, created_at
            FROM book_editions
            WHERE content_sha256 = $2 AND (
@@ -1058,8 +1145,9 @@ export function createPostgresBookMarkupRepository(pool, {
     async getReaderBookManifest({ subjectId, bookEditionId, bundleVersion }) {
       return transaction(pool, async (client) => {
         const editionResult = await client.query(
-          `SELECT id, scope, catalog_key, content_sha256, title, author, format,
-                  status, source_storage, expires_at, created_at
+          `SELECT id, scope, catalog_key, content_sha256, title, author,
+                  display_title, display_author, format, status,
+                  source_storage, expires_at, created_at
            FROM book_editions
            WHERE id = $1 AND (
              (scope = 'catalog' AND status IN ('base_ready', 'published')) OR
@@ -1375,6 +1463,47 @@ export function createPostgresBookMarkupRepository(pool, {
       return jobs
     },
 
+    async enqueueBookIdentity({ bookEditionId, priority = 60 }) {
+      return transaction(pool, async (client) => {
+        const edition = await client.query(
+          `SELECT edition.id, edition.content_sha256, edition.title, edition.author,
+                  edition.identity_version
+           FROM book_editions AS edition
+           JOIN book_files AS file
+             ON file.book_edition_id = edition.id AND file.status = 'ready'
+           WHERE edition.id = $1
+           FOR SHARE OF edition`,
+          [bookEditionId]
+        )
+        if (!edition.rows[0]) return null
+        return ensureBookIdentityJob(client, edition.rows[0], priority)
+      })
+    },
+
+    async enqueueMissingBookIdentities({ priority = 60, limit = 10_000 } = {}) {
+      const candidates = await pool.query(
+        `SELECT edition.id, edition.content_sha256, edition.title, edition.author,
+                edition.identity_version
+         FROM book_editions AS edition
+         JOIN book_files AS file
+           ON file.book_edition_id = edition.id AND file.status = 'ready'
+         WHERE edition.identity_version IS NULL
+            OR edition.identity_version NOT LIKE $2
+         ORDER BY edition.created_at, edition.id
+         LIMIT $1`,
+        [limit, `${BOOK_IDENTITY_VERSION}-%`]
+      )
+      const jobs = []
+      for (const candidate of candidates.rows) {
+        const job = await this.enqueueBookIdentity({
+          bookEditionId: candidate.id,
+          priority
+        })
+        if (job) jobs.push(job)
+      }
+      return jobs
+    },
+
     async enqueueCatalogCover({
       bookEditionId,
       priority = 45
@@ -1595,13 +1724,16 @@ export function createPostgresBookMarkupRepository(pool, {
       return result.rows.length
     },
 
-    async claimGenerationJob(workerId, { leaseSeconds = 300 } = {}) {
+    async claimGenerationJob(workerId, { leaseSeconds = 300, jobTypes = null } = {}) {
+      const allowedJobTypes = Array.isArray(jobTypes) && jobTypes.length
+        ? [...new Set(jobTypes)]
+        : null
       const leaseToken = idFactory()
       const result = await pool.query(
         `WITH candidate AS (
            SELECT id
            FROM generation_jobs
-           WHERE ((
+           WHERE ($4::text[] IS NULL OR job_type = ANY($4::text[])) AND ((
              status = 'queued' AND available_at <= now()
            ) OR (
              status = 'running' AND locked_at < now() - make_interval(secs => $2)
@@ -1612,7 +1744,14 @@ export function createPostgresBookMarkupRepository(pool, {
                  AND portrait.character_key = generation_jobs.character_key
                  AND portrait.target_version = generation_jobs.target_version
                  AND portrait.job_type = 'character_portrait'
-                 AND portrait.status = 'ready'
+               AND portrait.status = 'ready'
+             )
+           ) AND (
+             job_type <> 'catalog_cover' OR NOT EXISTS (
+               SELECT 1 FROM generation_jobs AS identity
+               WHERE identity.book_edition_id = generation_jobs.book_edition_id
+                 AND identity.job_type = 'book_identity'
+                 AND identity.status IN ('queued', 'running')
              )
            )
            ORDER BY priority DESC, available_at, created_at
@@ -1625,7 +1764,7 @@ export function createPostgresBookMarkupRepository(pool, {
          FROM candidate
          WHERE job.id = candidate.id
          RETURNING job.*`,
-        [workerId, leaseSeconds, leaseToken]
+        [workerId, leaseSeconds, leaseToken, allowedJobTypes]
       )
       const job = jobRow(result.rows[0])
       if (job?.characterKey) {
@@ -1655,6 +1794,33 @@ export function createPostgresBookMarkupRepository(pool, {
       return {
         bookEditionId: job.bookEditionId,
         analysisVersion: job.targetVersion,
+        scope: row.scope,
+        title: row.title,
+        author: row.author,
+        format: row.format,
+        contentSha256: row.content_sha256,
+        objectKey: row.object_key,
+        mimeType: row.mime_type,
+        byteSize: Number(row.byte_size)
+      }
+    },
+
+    async getBookIdentityInput(job) {
+      const result = await pool.query(
+        `SELECT edition.scope, edition.title, edition.author, edition.format,
+                edition.content_sha256, file.object_key, file.mime_type, file.byte_size
+         FROM generation_jobs AS job
+         JOIN book_editions AS edition ON edition.id = job.book_edition_id
+         JOIN book_files AS file ON file.book_edition_id = edition.id AND file.status = 'ready'
+         WHERE job.id = $1 AND job.job_type = 'book_identity'
+           AND job.status = 'running' AND job.lease_token = $2::uuid`,
+        [job.id, job.leaseToken]
+      )
+      if (!result.rows[0]) throw leaseLost(job.id)
+      const row = result.rows[0]
+      return {
+        bookEditionId: job.bookEditionId,
+        targetVersion: job.targetVersion,
         scope: row.scope,
         title: row.title,
         author: row.author,
@@ -1713,7 +1879,9 @@ export function createPostgresBookMarkupRepository(pool, {
 
     async getCatalogCoverInput(job) {
       const result = await pool.query(
-        `SELECT edition.title, edition.author, edition.scope
+        `SELECT COALESCE(edition.display_title, edition.title) AS title,
+                COALESCE(edition.display_author, edition.author) AS author,
+                edition.scope
          FROM generation_jobs AS job
          JOIN book_editions AS edition ON edition.id = job.book_edition_id
          WHERE job.id = $1 AND job.job_type = 'catalog_cover'
@@ -1971,6 +2139,63 @@ export function createPostgresBookMarkupRepository(pool, {
                locked_at = NULL, locked_by = NULL, lease_token = NULL, updated_at = now()
            WHERE id = $1`,
           [job.id, JSON.stringify({ asset })]
+        )
+        return { bookEditionId: job.bookEditionId, status: 'ready' }
+      })
+    },
+
+    async publishBookIdentity(job, identity) {
+      return transaction(pool, async (client) => {
+        await requireLeasedJob(client, job)
+        const edition = await client.query(
+          `SELECT id, content_sha256, title, author, identity_version
+           FROM book_editions WHERE id = $1 FOR UPDATE`,
+          [job.bookEditionId]
+        )
+        if (!edition.rows[0]) throw leaseLost(job.id)
+        const currentTarget = identityJobSpec(edition.rows[0]).targetVersion
+        if (currentTarget !== job.targetVersion) {
+          await ensureBookIdentityJob(client, edition.rows[0])
+          await client.query(
+            `UPDATE generation_jobs
+             SET status = 'ready', result = $2::jsonb, last_error_code = NULL,
+                 locked_at = NULL, locked_by = NULL, lease_token = NULL, updated_at = now()
+             WHERE id = $1`,
+            [job.id, JSON.stringify({ stale: true, current_target_version: currentTarget })]
+          )
+          return { bookEditionId: job.bookEditionId, status: 'stale' }
+        }
+        const generated = normalizeBookDisplayIdentity(identity)
+        const fallback = normalizeBookDisplayIdentity(edition.rows[0])
+        const normalized = {
+          title: generated.title || fallback.title,
+          author: generated.author || fallback.author
+        }
+        if (!normalized.title) {
+          const error = new Error('book identity title is invalid')
+          error.code = 'GENERATION_RESULT_INVALID'
+          throw error
+        }
+        await client.query(
+          `UPDATE book_editions
+           SET display_title = $2, display_author = $3,
+               identity_version = $4, identity_source = $5,
+               identity_updated_at = now(), updated_at = now()
+           WHERE id = $1`,
+          [
+            job.bookEditionId,
+            normalized.title,
+            normalized.author,
+            job.targetVersion,
+            identity.source === 'llm' ? 'llm' : 'deterministic'
+          ]
+        )
+        await client.query(
+          `UPDATE generation_jobs
+           SET status = 'ready', result = $2::jsonb, last_error_code = NULL,
+               locked_at = NULL, locked_by = NULL, lease_token = NULL, updated_at = now()
+           WHERE id = $1`,
+          [job.id, JSON.stringify({ identity: { ...normalized, source: identity.source } })]
         )
         return { bookEditionId: job.bookEditionId, status: 'ready' }
       })

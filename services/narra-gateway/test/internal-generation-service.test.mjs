@@ -75,6 +75,43 @@ test('internal generation service extracts markup once and returns an idempotent
   assert.ok(lines.some((line) => line.includes('event="markup.cache_hit"')))
 })
 
+test('internal generation service normalizes book display identity idempotently', async () => {
+  const source = Buffer.from('Мертвое озеро. Роман Николая Некрасова и Авдотьи Панаевой.')
+  const contentSha256 = createHash('sha256').update(source).digest('hex')
+  const storage = memoryStorage({ source: { bytes: source, mimeType: 'text/plain' } })
+  let chatCalls = 0
+  let chatRequest
+  const service = createInternalGenerationService({
+    storage,
+    logger: { info() {}, error() {} },
+    async completeChat(input) {
+      chatCalls += 1
+      chatRequest = input
+      return JSON.stringify({ title: 'Мертвое озеро', author: '' })
+    },
+    async generatePortrait() { throw new Error('unused') },
+    async synthesizeSpeech() { throw new Error('unused') },
+    async generateIdleAnimation() { throw new Error('unused') }
+  })
+  const request = {
+    idempotencyKey: '11111111-1111-4111-8111-111111111111:book-identity:book-identity-v1-aaaaaaaa',
+    bookEditionId: '11111111-1111-4111-8111-111111111111',
+    targetVersion: 'book-identity-v1-aaaaaaaa', scope: 'catalog',
+    title: 'Мертвое озеро (Часть первая)', author: 'Николай Некрасов (1821—1877)',
+    format: 'txt', contentSha256, objectKey: 'source',
+    mimeType: 'text/plain', byteSize: source.byteLength
+  }
+  const first = await service.generateBookIdentity(request)
+  const repeated = await service.generateBookIdentity(request)
+  assert.deepEqual(first, {
+    title: 'Мертвое озеро', author: 'Николай Некрасов', source: 'llm'
+  })
+  assert.deepEqual(repeated, first)
+  assert.equal(chatCalls, 1)
+  assert.match(chatRequest.messages[1].content, /Мертвое озеро \(Часть первая\)/)
+  assert.match(chatRequest.messages[1].content, /BOOK_EXCERPT/)
+})
+
 test('internal generation service creates all three required bundle assets', async () => {
   const storage = memoryStorage()
   const lines = []
@@ -1611,6 +1648,7 @@ test('internal router exposes all worker endpoints', () => {
     token: 's'.repeat(48),
     service: {
       async generateBookMarkup() { return { ok: true } },
+      async generateBookIdentity() { return { title: 'Книга' } },
       async generateCatalogCover() { return { ok: true } },
       async generateCharacterBundle() { return { ok: true } },
       async scanBookChunk() { return { observations: [] } },
@@ -1621,6 +1659,7 @@ test('internal router exposes all worker endpoints', () => {
   const paths = router.stack.map((layer) => layer.route?.path).filter(Boolean)
   assert.deepEqual(paths, [
     '/v1/book-markup',
+    '/v1/book-identities',
     '/v1/catalog-covers',
     '/v1/character-bundles',
     '/v1/book-analysis/scan-chunk',

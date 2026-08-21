@@ -41,7 +41,8 @@ export async function createPostgresPoolFromEnv(env = process.env) {
       10_000,
       120_000
     ),
-    application_name: env.BOOK_MARKUP_WORKER_ID || 'readany-book-markup'
+    application_name: env.BOOK_IDENTITY_WORKER_ID || env.BOOK_MARKUP_WORKER_ID ||
+      'readany-book-markup'
   })
 }
 

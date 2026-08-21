@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { bookIdentityTargetVersion } from '../book-identity.mjs'
 import { createPostgresBookMarkupRepository } from '../postgres-book-markup-repository.mjs'
 
 function scriptedPool(scripts) {
@@ -86,6 +87,85 @@ test('claim query uses skip locked and assigns a unique lease token', async () =
   assert.equal(job.leaseToken, '123e4567-e89b-42d3-a456-426614174001')
   assert.match(pool.queries[0].sql, /FOR UPDATE SKIP LOCKED/)
   assert.match(pool.queries[0].sql, /lease_token = \$3::uuid/)
+})
+
+test('claim query can isolate the book identity worker queue', async () => {
+  const pool = scriptedPool([() => ({ rows: [] })])
+  const repository = createPostgresBookMarkupRepository(pool, {
+    idFactory: () => '123e4567-e89b-42d3-a456-426614174001'
+  })
+  await repository.claimGenerationJob('identity-worker', {
+    jobTypes: ['book_identity']
+  })
+  assert.match(pool.queries[0].sql, /job_type = ANY\(\$4::text\[\]\)/)
+  assert.match(pool.queries[0].sql, /identity\.status IN \('queued', 'running'\)/)
+  assert.deepEqual(pool.queries[0].params[3], ['book_identity'])
+})
+
+test('catalog API prefers the identity worker display metadata', async () => {
+  const pool = scriptedPool([() => ({ rows: [{
+    id: 'book-1', scope: 'catalog', catalog_key: 'book-1', content_sha256: 'a'.repeat(64),
+    title: 'Мертвое озеро (Часть первая)', author: 'Николай Некрасов (1821—1877)',
+    display_title: 'Мертвое озеро', display_author: 'Николай Некрасов',
+    format: 'fb2', status: 'base_ready', source_storage: 'stored',
+    expires_at: null, created_at: new Date('2026-08-20T00:00:00.000Z')
+  }] })])
+  const repository = createPostgresBookMarkupRepository(pool)
+  const result = await repository.listCatalogBooks({ limit: 20 })
+  assert.equal(result.items[0].title, 'Мертвое озеро')
+  assert.equal(result.items[0].author, 'Николай Некрасов')
+  assert.match(pool.queries[0].sql, /edition\.display_title, edition\.display_author/)
+})
+
+test('stale identity publication cannot overwrite newer raw metadata', async () => {
+  const pool = scriptedPool([
+    () => ({ rows: [{ id: 'job-old' }] }),
+    () => ({ rows: [{
+      id: 'book-1', content_sha256: 'a'.repeat(64), title: 'Новое название',
+      author: 'Автор', identity_version: null
+    }] }),
+    (_sql, params) => ({ rows: [{
+      id: params[0], job_type: 'book_identity', book_edition_id: 'book-1',
+      character_key: null, target_version: params[3], status: 'queued', attempts: 0,
+      payload: {}
+    }] }),
+    () => ({ rows: [] })
+  ])
+  const repository = createPostgresBookMarkupRepository(pool, {
+    idFactory: () => '123e4567-e89b-42d3-a456-426614174001'
+  })
+  const result = await repository.publishBookIdentity({
+    id: 'job-old', bookEditionId: 'book-1', targetVersion: 'book-identity-v1-old',
+    leaseToken: '123e4567-e89b-42d3-a456-426614174002'
+  }, { title: 'Старое название', author: 'Старый автор', source: 'llm' })
+  assert.equal(result.status, 'stale')
+  assert.equal(pool.queries.some(({ sql }) => /SET display_title/.test(sql)), false)
+})
+
+test('identity publication keeps a valid raw author when the LLM omits it', async () => {
+  const edition = {
+    id: 'book-1', content_sha256: 'a'.repeat(64), title: 'Книга',
+    author: 'Исходный автор', identity_version: null
+  }
+  const targetVersion = bookIdentityTargetVersion({
+    contentSha256: edition.content_sha256,
+    title: edition.title,
+    author: edition.author
+  })
+  let publishedParams
+  const pool = scriptedPool([
+    () => ({ rows: [{ id: 'job-current' }] }),
+    () => ({ rows: [edition] }),
+    (_sql, params) => { publishedParams = params; return { rows: [] } },
+    () => ({ rows: [] })
+  ])
+  const repository = createPostgresBookMarkupRepository(pool)
+  const result = await repository.publishBookIdentity({
+    id: 'job-current', bookEditionId: 'book-1', targetVersion,
+    leaseToken: '123e4567-e89b-42d3-a456-426614174002'
+  }, { title: 'Книга', author: '', source: 'llm' })
+  assert.equal(result.status, 'ready')
+  assert.equal(publishedParams[2], 'Исходный автор')
 })
 
 test('character bundle input includes durable appearance offsets for legacy profiles', async () => {
@@ -281,4 +361,14 @@ test('empty-image retry migration requeues only failed independent media jobs', 
   assert.match(migration, /attempts = 0/)
   assert.doesNotMatch(migration, /character_bundle'/)
   assert.doesNotMatch(migration, /book_markup'/)
+})
+
+test('book display identity migration adds durable metadata jobs without replacing raw metadata', async () => {
+  const migration = await readFile(
+    new URL('../migrations/014_book_display_identity.sql', import.meta.url),
+    'utf8'
+  )
+  assert.match(migration, /ADD COLUMN display_title TEXT/)
+  assert.match(migration, /'book_identity'/)
+  assert.doesNotMatch(migration, /DROP COLUMN (title|author)/)
 })

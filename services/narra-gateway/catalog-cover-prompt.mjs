@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { resolveCoverGenreProfile } from './cover-genre.mjs'
+import { normalizeBookDisplayIdentity } from './book-identity.mjs'
 
 const coverGenerationConfig = JSON.parse(
   readFileSync(new URL('./cover-generation-config.json', import.meta.url), 'utf8')
@@ -12,8 +13,9 @@ export const BOOK_COVER_PROMPT_VERSION = 'book-cover-prompt-v3'
 // Keep this algorithm semantically identical to coverPrompt() at origin/main
 // 4da75687: packages/app-expo/src/lib/book/generate-book-cover.ts.
 export function generatedCoverBackgroundColor(input) {
-  const title = input.title.trim() || 'Untitled book'
-  const author = input.author?.trim() || 'Unknown author'
+  const normalizedIdentity = normalizeBookDisplayIdentity(input)
+  const title = normalizedIdentity.title || 'Untitled book'
+  const author = normalizedIdentity.author || 'Unknown author'
   const colorSeed = Array.from(`${title}:${author}`).reduce(
     (hash, character) => (hash * 31 + (character.codePointAt(0) || 0)) >>> 0,
     0
@@ -24,8 +26,9 @@ export function generatedCoverBackgroundColor(input) {
 }
 
 export function bookCoverPrompt(input) {
-  const title = input.title.trim() || 'Untitled book'
-  const author = input.author?.trim() || 'Unknown author'
+  const normalizedIdentity = normalizeBookDisplayIdentity(input)
+  const title = normalizedIdentity.title || 'Untitled book'
+  const author = normalizedIdentity.author || 'Unknown author'
   const themeSource = input.description?.trim() || input.excerpt?.trim()
   const theme = themeSource
     ? themeSource.replace(/\s+/gu, ' ').slice(0, MAX_THEME_CHARS)
