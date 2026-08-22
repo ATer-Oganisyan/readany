@@ -28,10 +28,11 @@ import { getLibraryScrollBottomPadding } from "@/lib/library/library-scroll-layo
 import { openMobileBook } from "@/lib/library/open-mobile-book";
 import {
   type CachedBackendCatalogBook,
+  type CachedBackendCatalogPage,
   installBackendCatalogCover,
-  loadCachedBackendCatalog,
+  loadCachedBackendCatalogPage,
   materializeBackendCatalogCover,
-  refreshBackendCatalog,
+  refreshBackendCatalogPage,
 } from "@/lib/narra/backend-catalog-cache";
 import {
   cleanupBackendCatalogSource,
@@ -82,6 +83,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import type { NativeScrollEvent, NativeSyntheticEvent } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ReadAnyNativeControls from "../../modules/native-controls";
 import { TagManagementSheet } from "./library/TagManagementSheet";
@@ -103,6 +105,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 const NUM_COLUMNS = 2;
 const GRID_GAP = 16;
+const CATALOG_PAGE_SIZE = 24;
 const URL_IMPORT_EXTENSIONS = new Set([
   "epub",
   "pdf",
@@ -134,6 +137,24 @@ type LibraryGridItem =
   | { type: "book"; book: Book };
 
 type LibrarySection = "catalog" | "my-books";
+
+function appendUniqueCatalogBooks(
+  current: CachedBackendCatalogBook[],
+  incoming: CachedBackendCatalogBook[],
+): CachedBackendCatalogBook[] {
+  const books = [...current];
+  const indexes = new Map(current.map((book, index) => [book.bookEditionId, index]));
+  for (const book of incoming) {
+    const index = indexes.get(book.bookEditionId);
+    if (index === undefined) {
+      indexes.set(book.bookEditionId, books.length);
+      books.push(book);
+    } else {
+      books[index] = book;
+    }
+  }
+  return books;
+}
 const LIBRARY_SECTION_STORAGE_KEY = "library_last_section";
 
 function normalizeCatalogIdentity(value: string): string {
@@ -196,7 +217,11 @@ function LibraryScreenContent() {
   const [librarySection, setLibrarySection] = useState<LibrarySection>("catalog");
   const [catalogImportingId, setCatalogImportingId] = useState<string | null>(null);
   const [catalogBooks, setCatalogBooks] = useState<CachedBackendCatalogBook[]>([]);
+  const [catalogNextCursor, setCatalogNextCursor] = useState<string | null>(null);
   const [isCatalogLoading, setIsCatalogLoading] = useState(true);
+  const [isCatalogLoadingMore, setIsCatalogLoadingMore] = useState(false);
+  const catalogInitialRefreshInFlightRef = useRef(true);
+  const catalogLoadMoreInFlightRef = useRef(false);
   const handleCatalogCoverNeeded = useCallback(async (catalogBook: CachedBackendCatalogBook) => {
     if (!catalogBook.cover) return;
     try {
@@ -266,6 +291,7 @@ function LibraryScreenContent() {
   const syncStatus = useSyncStore((state) => state.status);
   const syncBackendType = useSyncStore((state) => state.backendType);
   const isSyncBusy = syncStatus !== "idle" && syncStatus !== "error";
+  const showCatalog = !activeTag && !activeGroupId && !selectionMode;
 
   const selectLibrarySection = useCallback((section: LibrarySection) => {
     librarySectionChangedRef.current = true;
@@ -302,25 +328,75 @@ function LibraryScreenContent() {
 
   useEffect(() => {
     let cancelled = false;
-    void loadCachedBackendCatalog()
-      .then((items) => {
-        if (!cancelled && items.length) {
-          setCatalogBooks(items);
-          setIsCatalogLoading(false);
+    const loadInitialCatalogPage = async () => {
+      const cached = await loadCachedBackendCatalogPage();
+      if (!cancelled && cached.books.length) {
+        setCatalogBooks(cached.books);
+        setCatalogNextCursor(cached.nextCursor);
+        setIsCatalogLoading(false);
+      }
+      try {
+        const fresh = await refreshBackendCatalogPage({
+          limit: CATALOG_PAGE_SIZE,
+          reset: true,
+        });
+        if (!cancelled) {
+          setCatalogBooks(fresh.books);
+          setCatalogNextCursor(fresh.nextCursor);
         }
-      })
-      .then(() => refreshBackendCatalog())
-      .then((items) => {
-        if (!cancelled) setCatalogBooks(items);
-      })
-      .catch((error) => console.warn("[Catalog] Failed to refresh backend catalog:", error))
-      .finally(() => {
+      } catch (error) {
+        console.warn("[Catalog] Failed to refresh backend catalog:", error);
+      } finally {
+        catalogInitialRefreshInFlightRef.current = false;
         if (!cancelled) setIsCatalogLoading(false);
-      });
+      }
+    };
+    void loadInitialCatalogPage();
     return () => {
       cancelled = true;
+      catalogInitialRefreshInFlightRef.current = false;
     };
   }, []);
+
+  const loadMoreCatalogBooks = useCallback(async () => {
+    const cursor = catalogNextCursor;
+    if (
+      !cursor ||
+      librarySection !== "catalog" ||
+      catalogInitialRefreshInFlightRef.current ||
+      catalogLoadMoreInFlightRef.current
+    ) {
+      return;
+    }
+    catalogLoadMoreInFlightRef.current = true;
+    setIsCatalogLoadingMore(true);
+    try {
+      let page: CachedBackendCatalogPage;
+      try {
+        page = await refreshBackendCatalogPage({ limit: CATALOG_PAGE_SIZE, cursor });
+      } catch (networkError) {
+        page = await loadCachedBackendCatalogPage(cursor);
+        if (!page.books.length) throw networkError;
+      }
+      setCatalogBooks((current) => appendUniqueCatalogBooks(current, page.books));
+      setCatalogNextCursor(page.nextCursor === cursor ? null : page.nextCursor);
+    } catch (error) {
+      console.warn("[Catalog] Failed to load the next catalog page:", error);
+    } finally {
+      catalogLoadMoreInFlightRef.current = false;
+      setIsCatalogLoadingMore(false);
+    }
+  }, [catalogNextCursor, librarySection]);
+
+  const handleCatalogScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (!showCatalog || librarySection !== "catalog") return;
+      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+      const remaining = contentSize.height - contentOffset.y - layoutMeasurement.height;
+      if (remaining <= layoutMeasurement.height * 0.75) void loadMoreCatalogBooks();
+    },
+    [librarySection, loadMoreCatalogBooks, showCatalog],
+  );
 
   const { downloadingBookId, downloadProgress, downloadBook } = useBookDownload({
     loadBooks,
@@ -525,8 +601,6 @@ function LibraryScreenContent() {
     }
     return result;
   }, [books, catalogBooks, narraBooks]);
-
-  const showCatalog = !activeTag && !activeGroupId && !selectionMode;
 
   const handleLocalImport = useCallback(async () => {
     if (localImportInFlightRef.current) return;
@@ -1291,6 +1365,11 @@ function LibraryScreenContent() {
           ))
         )}
       </View>
+      {isCatalogLoadingMore ? (
+        <View style={s.catalogPageLoader}>
+          <ActivityIndicator color={colors.primary} />
+        </View>
+      ) : null}
     </View>
   );
 
@@ -1338,6 +1417,15 @@ function LibraryScreenContent() {
         maxToRenderPerBatch={catalogVirtualization.maxToRenderPerBatch}
         windowSize={catalogVirtualization.windowSize}
         removeClippedSubviews={Platform.OS === "android"}
+        onEndReached={() => void loadMoreCatalogBooks()}
+        onEndReachedThreshold={0.75}
+        ListFooterComponent={
+          isCatalogLoadingMore ? (
+            <View style={s.catalogPageLoader}>
+              <ActivityIndicator color={colors.primary} />
+            </View>
+          ) : null
+        }
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       />
@@ -1404,6 +1492,8 @@ function LibraryScreenContent() {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
+            onScroll={handleCatalogScroll}
+            scrollEventThrottle={200}
           >
             {listHeader}
             {showCatalog ? libraryPager : renderLibraryGrid(gridItems)}
@@ -1656,6 +1746,11 @@ const makeStyles = (
       flexWrap: "wrap",
       columnGap: layout.gridGap,
       overflow: "visible",
+    },
+    catalogPageLoader: {
+      minHeight: 56,
+      alignItems: "center",
+      justifyContent: "center",
     },
     groupModalOverlay: {
       flex: 1,

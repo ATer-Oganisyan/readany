@@ -5,6 +5,7 @@ import {
   advanceBackendReaderProgress,
   fetchBackendBookManifest,
   fetchBackendCatalogBooks,
+  fetchBackendCatalogBooksPage,
   publishLocalBackendMarkup,
   registerLocalBackendBook,
   resolveLocalBackendBook,
@@ -61,6 +62,73 @@ describe("backend book API", () => {
       }),
     ]);
     expect(vi.mocked(narraGatewayRequest)).toHaveBeenCalledWith("/v2/books/catalog?limit=100", {});
+  });
+
+  it("loads one catalog page with an opaque cursor", async () => {
+    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          items: [
+            {
+              resolution: "catalog",
+              book_edition_id: "book-1",
+              catalog_key: "seagull",
+              title: "Чайка",
+              author: "Антон Чехов",
+              format: "epub",
+              content_sha256: "a".repeat(64),
+              ready: true,
+              source_download_path: "/v2/books/book-1/source/download",
+            },
+          ],
+          next_cursor: "next/catalog+cursor",
+        }),
+      ),
+    );
+
+    await expect(
+      fetchBackendCatalogBooksPage({ limit: 24, cursor: "current/catalog+cursor" }),
+    ).resolves.toEqual({
+      books: [expect.objectContaining({ bookEditionId: "book-1", catalogKey: "seagull" })],
+      nextCursor: "next/catalog+cursor",
+    });
+    expect(vi.mocked(narraGatewayRequest)).toHaveBeenCalledWith(
+      "/v2/books/catalog?limit=24&cursor=current%2Fcatalog%2Bcursor",
+      {},
+    );
+  });
+
+  it("keeps the full-list contract by following every catalog cursor", async () => {
+    const item = (id: string) => ({
+      resolution: "catalog",
+      book_edition_id: id,
+      catalog_key: id,
+      title: id,
+      author: "",
+      format: "epub",
+      content_sha256: id === "book-1" ? "a".repeat(64) : "b".repeat(64),
+      ready: true,
+      source_download_path: `/v2/books/${id}/source/download`,
+    });
+    vi.mocked(narraGatewayRequest)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ items: [item("book-1")], next_cursor: "cursor-2" })),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ items: [item("book-1"), item("book-2")], next_cursor: null }),
+        ),
+      );
+
+    await expect(fetchBackendCatalogBooks()).resolves.toEqual([
+      expect.objectContaining({ bookEditionId: "book-1" }),
+      expect.objectContaining({ bookEditionId: "book-2" }),
+    ]);
+    expect(vi.mocked(narraGatewayRequest)).toHaveBeenNthCalledWith(
+      2,
+      "/v2/books/catalog?limit=100&cursor=cursor-2",
+      {},
+    );
   });
 
   it("reports response metadata when the backend body is not JSON", async () => {

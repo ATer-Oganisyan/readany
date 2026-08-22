@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   directories: new Set([
     "file:///documents/narra-backend-catalog",
     "file:///documents/narra-backend-catalog/covers",
+    "file:///documents/narra-backend-catalog/pages",
   ]),
   files: new Map<string, { size: number; text?: string }>(),
   fetchCatalog: vi.fn(),
@@ -48,6 +49,12 @@ vi.mock("expo-file-system/legacy", () => ({
     };
   },
   async deleteAsync(path: string) {
+    if (mocks.directories.has(path)) {
+      mocks.directories.delete(path);
+      for (const file of [...mocks.files.keys()]) {
+        if (file.startsWith(`${path}/`)) mocks.files.delete(file);
+      }
+    }
     mocks.files.delete(path);
   },
   async moveAsync({ from, to }: { from: string; to: string }) {
@@ -65,7 +72,7 @@ vi.mock("expo-file-system/legacy", () => ({
   },
 }));
 vi.mock("./backend-book-api", () => ({
-  fetchBackendCatalogBooks: mocks.fetchCatalog,
+  fetchBackendCatalogBooksPage: mocks.fetchCatalog,
   requestBackendDownloadUrl: mocks.requestUrl,
 }));
 vi.mock("./backend-file-hash", () => ({ sha256BackendFile: mocks.hash }));
@@ -82,8 +89,10 @@ vi.mock("@readany/core/services", () => ({
 import {
   installBackendCatalogCover,
   loadCachedBackendCatalog,
+  loadCachedBackendCatalogPage,
   materializeBackendCatalogCover,
   refreshBackendCatalog,
+  refreshBackendCatalogPage,
 } from "./backend-catalog-cache";
 
 const BOOK: BackendCatalogBook = {
@@ -107,8 +116,12 @@ const BOOK: BackendCatalogBook = {
 describe("backend catalog cache", () => {
   beforeEach(() => {
     mocks.files.clear();
+    mocks.directories.clear();
+    mocks.directories.add("file:///documents/narra-backend-catalog");
+    mocks.directories.add("file:///documents/narra-backend-catalog/covers");
+    mocks.directories.add("file:///documents/narra-backend-catalog/pages");
     mocks.fetchCatalog.mockReset();
-    mocks.fetchCatalog.mockResolvedValue([BOOK]);
+    mocks.fetchCatalog.mockResolvedValue({ books: [BOOK], nextCursor: null });
     mocks.requestUrl.mockClear();
     mocks.hash.mockClear();
     mocks.writeFile.mockClear();
@@ -130,6 +143,34 @@ describe("backend catalog cache", () => {
     const cached = await loadCachedBackendCatalog();
     expect(cached).toEqual([expect.objectContaining({ catalogKey: "seagull", coverUri })]);
     expect(mocks.fetchCatalog).toHaveBeenCalledTimes(1);
+  });
+
+  it("stores and reads catalog pages independently", async () => {
+    const secondBook = {
+      ...BOOK,
+      bookEditionId: "edition-2",
+      catalogKey: "second-book",
+      title: "Вторая книга",
+    };
+    mocks.fetchCatalog
+      .mockResolvedValueOnce({ books: [BOOK], nextCursor: "cursor-2" })
+      .mockResolvedValueOnce({ books: [secondBook], nextCursor: null });
+
+    await refreshBackendCatalogPage({ limit: 24, reset: true });
+    await refreshBackendCatalogPage({ limit: 24, cursor: "cursor-2" });
+
+    await expect(loadCachedBackendCatalogPage()).resolves.toEqual({
+      books: [expect.objectContaining({ bookEditionId: "edition-1" })],
+      nextCursor: "cursor-2",
+    });
+    await expect(loadCachedBackendCatalogPage("cursor-2")).resolves.toEqual({
+      books: [expect.objectContaining({ bookEditionId: "edition-2" })],
+      nextCursor: null,
+    });
+    await expect(loadCachedBackendCatalog()).resolves.toEqual([
+      expect.objectContaining({ bookEditionId: "edition-1" }),
+      expect.objectContaining({ bookEditionId: "edition-2" }),
+    ]);
   });
 
   it("copies the cached cover into the persistent library location", async () => {

@@ -2,15 +2,15 @@ import { getPlatformService } from "@readany/core/services";
 import * as FileSystem from "expo-file-system/legacy";
 import {
   type BackendCatalogBook,
-  fetchBackendCatalogBooks,
+  fetchBackendCatalogBooksPage,
   requestBackendDownloadUrl,
 } from "./backend-book-api";
 import { sha256BackendFile } from "./backend-file-hash";
 
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 const CACHE_ROOT = `${FileSystem.documentDirectory}narra-backend-catalog`;
 const COVER_ROOT = `${CACHE_ROOT}/covers`;
-const CATALOG_PATH = `${CACHE_ROOT}/catalog.json`;
+const PAGE_ROOT = `${CACHE_ROOT}/pages`;
 const MAX_CONCURRENT_COVER_DOWNLOADS = 3;
 
 let activeCoverDownloads = 0;
@@ -21,9 +21,16 @@ export interface CachedBackendCatalogBook extends BackendCatalogBook {
   coverUri?: string;
 }
 
-interface StoredCatalog {
+export interface CachedBackendCatalogPage {
+  books: CachedBackendCatalogBook[];
+  nextCursor: string | null;
+}
+
+interface StoredCatalogPage {
   version: number;
+  requestCursor: string | null;
   books: BackendCatalogBook[];
+  nextCursor: string | null;
 }
 
 function safeKey(value: string): string {
@@ -44,10 +51,20 @@ function coverPath(book: BackendCatalogBook): string | undefined {
 }
 
 async function ensureCacheDirectories(): Promise<void> {
-  for (const directory of [CACHE_ROOT, COVER_ROOT]) {
+  for (const directory of [CACHE_ROOT, COVER_ROOT, PAGE_ROOT]) {
     const info = await FileSystem.getInfoAsync(directory);
     if (!info.exists) await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
   }
+}
+
+function pagePath(cursor: string | null): string {
+  if (cursor === null) return `${PAGE_ROOT}/first.json`;
+  let hash = 2_166_136_261;
+  for (let index = 0; index < cursor.length; index += 1) {
+    hash ^= cursor.charCodeAt(index);
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return `${PAGE_ROOT}/cursor-${(hash >>> 0).toString(16)}-${cursor.length}.json`;
 }
 
 async function validCachedCover(book: BackendCatalogBook, path: string): Promise<boolean> {
@@ -106,31 +123,107 @@ async function cachedBook(book: BackendCatalogBook): Promise<CachedBackendCatalo
   return { ...book, coverUri: path };
 }
 
-async function writeCatalog(books: BackendCatalogBook[]): Promise<void> {
-  const temporary = `${CATALOG_PATH}.${Date.now()}.tmp`;
-  const value: StoredCatalog = { version: CACHE_VERSION, books };
+async function writeCatalogPage(
+  requestCursor: string | null,
+  books: BackendCatalogBook[],
+  nextCursor: string | null,
+): Promise<void> {
+  const path = pagePath(requestCursor);
+  const temporary = `${path}.${Date.now()}.tmp`;
+  const value: StoredCatalogPage = { version: CACHE_VERSION, requestCursor, books, nextCursor };
   await FileSystem.writeAsStringAsync(temporary, JSON.stringify(value));
-  await FileSystem.deleteAsync(CATALOG_PATH, { idempotent: true });
-  await FileSystem.moveAsync({ from: temporary, to: CATALOG_PATH });
+  await FileSystem.deleteAsync(path, { idempotent: true });
+  await FileSystem.moveAsync({ from: temporary, to: path });
 }
 
-export async function loadCachedBackendCatalog(): Promise<CachedBackendCatalogBook[]> {
+async function readCatalogPage(cursor: string | null): Promise<StoredCatalogPage | null> {
   try {
     await ensureCacheDirectories();
-    const value = JSON.parse(await FileSystem.readAsStringAsync(CATALOG_PATH)) as StoredCatalog;
-    if (value.version !== CACHE_VERSION || !Array.isArray(value.books)) return [];
-    return Promise.all(value.books.map(cachedBook));
+    const value = JSON.parse(
+      await FileSystem.readAsStringAsync(pagePath(cursor)),
+    ) as StoredCatalogPage;
+    if (
+      value.version !== CACHE_VERSION ||
+      value.requestCursor !== cursor ||
+      !Array.isArray(value.books) ||
+      (value.nextCursor !== null && typeof value.nextCursor !== "string")
+    ) {
+      return null;
+    }
+    return value;
   } catch {
-    return [];
+    return null;
   }
 }
 
-export async function refreshBackendCatalog(): Promise<CachedBackendCatalogBook[]> {
+export async function loadCachedBackendCatalogPage(
+  cursor: string | null = null,
+): Promise<CachedBackendCatalogPage> {
+  const page = await readCatalogPage(cursor);
+  if (!page) return { books: [], nextCursor: null };
+  return {
+    books: await Promise.all(page.books.map(cachedBook)),
+    nextCursor: page.nextCursor,
+  };
+}
+
+export async function refreshBackendCatalogPage({
+  limit = 24,
+  cursor = null,
+  reset = false,
+}: {
+  limit?: number;
+  cursor?: string | null;
+  reset?: boolean;
+} = {}): Promise<CachedBackendCatalogPage> {
   await ensureCacheDirectories();
-  const books = await fetchBackendCatalogBooks();
-  const cached = await Promise.all(books.map(cachedBook));
-  await writeCatalog(books);
-  return cached;
+  const page = await fetchBackendCatalogBooksPage({ limit, cursor });
+  if (reset) {
+    if (cursor !== null) throw new Error("Catalog cache can only reset from the first page");
+    await FileSystem.deleteAsync(PAGE_ROOT, { idempotent: true });
+    await FileSystem.makeDirectoryAsync(PAGE_ROOT, { intermediates: true });
+  }
+  await writeCatalogPage(cursor, page.books, page.nextCursor);
+  return {
+    books: await Promise.all(page.books.map(cachedBook)),
+    nextCursor: page.nextCursor,
+  };
+}
+
+export async function loadCachedBackendCatalog(): Promise<CachedBackendCatalogBook[]> {
+  const books: CachedBackendCatalogBook[] = [];
+  const cursors = new Set<string>();
+  let cursor: string | null = null;
+  do {
+    const page = await readCatalogPage(cursor);
+    if (!page) break;
+    books.push(...(await Promise.all(page.books.map(cachedBook))));
+    cursor = page.nextCursor;
+    if (cursor && cursors.has(cursor)) break;
+    if (cursor) cursors.add(cursor);
+  } while (cursor);
+  return books;
+}
+
+export async function refreshBackendCatalog(): Promise<CachedBackendCatalogBook[]> {
+  const books: CachedBackendCatalogBook[] = [];
+  const bookIds = new Set<string>();
+  const cursors = new Set<string>();
+  let cursor: string | null = null;
+  let reset = true;
+  do {
+    const page = await refreshBackendCatalogPage({ limit: 100, cursor, reset });
+    reset = false;
+    for (const book of page.books) {
+      if (bookIds.has(book.bookEditionId)) continue;
+      bookIds.add(book.bookEditionId);
+      books.push(book);
+    }
+    cursor = page.nextCursor;
+    if (cursor && cursors.has(cursor)) break;
+    if (cursor) cursors.add(cursor);
+  } while (cursor);
+  return books;
 }
 
 /** Downloads one requested cover. Callers decide which cards are visible. */

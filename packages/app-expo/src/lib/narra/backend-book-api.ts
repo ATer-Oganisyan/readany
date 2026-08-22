@@ -37,6 +37,11 @@ export interface BackendCatalogBook extends BackendBookBinding {
   };
 }
 
+export interface BackendCatalogPage {
+  books: BackendCatalogBook[];
+  nextCursor: string | null;
+}
+
 export interface BackendManifestAsset {
   assetId: string;
   type: "primary_portrait" | "greeting_audio" | "idle_animation";
@@ -195,15 +200,57 @@ function catalogBook(value: unknown): BackendCatalogBook | null {
   };
 }
 
-export async function fetchBackendCatalogBooks(): Promise<BackendCatalogBook[]> {
-  const payload = await gatewayJson("/v2/books/catalog?limit=100");
+export async function fetchBackendCatalogBooksPage({
+  limit = 24,
+  cursor = null,
+}: {
+  limit?: number;
+  cursor?: string | null;
+} = {}): Promise<BackendCatalogPage> {
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+    throw new RangeError("Catalog page limit must be an integer from 1 to 100");
+  }
+  const query = `limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
+  const payload = await gatewayJson(`/v2/books/catalog?${query}`);
   if (!Array.isArray(payload.items)) {
     throw new NarraServiceError("SERVICE", "Backend вернул некорректный каталог");
   }
-  return payload.items.flatMap((value) => {
+  if (
+    payload.next_cursor !== undefined &&
+    payload.next_cursor !== null &&
+    typeof payload.next_cursor !== "string"
+  ) {
+    throw new NarraServiceError("SERVICE", "Backend вернул некорректный cursor каталога");
+  }
+  const books = payload.items.flatMap((value) => {
     const book = catalogBook(value);
     return book ? [book] : [];
   });
+  return {
+    books,
+    nextCursor: typeof payload.next_cursor === "string" ? payload.next_cursor : null,
+  };
+}
+
+export async function fetchBackendCatalogBooks(): Promise<BackendCatalogBook[]> {
+  const books: BackendCatalogBook[] = [];
+  const bookIds = new Set<string>();
+  const cursors = new Set<string>();
+  let cursor: string | null = null;
+  do {
+    const page = await fetchBackendCatalogBooksPage({ limit: 100, cursor });
+    for (const book of page.books) {
+      if (bookIds.has(book.bookEditionId)) continue;
+      bookIds.add(book.bookEditionId);
+      books.push(book);
+    }
+    cursor = page.nextCursor;
+    if (cursor && cursors.has(cursor)) {
+      throw new NarraServiceError("SERVICE", "Backend зациклил cursor каталога");
+    }
+    if (cursor) cursors.add(cursor);
+  } while (cursor);
+  return books;
 }
 
 export async function resolveLocalBackendBook(contentSha256: string): Promise<BackendBookBinding> {
