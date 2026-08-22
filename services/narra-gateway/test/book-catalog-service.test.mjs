@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import test from 'node:test'
 import { REQUIRED_CHARACTER_MEDIA } from '../book-markup.mjs'
+import { decodeBookContentCursor } from '../book-content.mjs'
 import { createBookCatalogService } from '../book-catalog-service.mjs'
 
 const HASH = 'a'.repeat(64)
@@ -772,4 +773,104 @@ test('media download is authorized by the repository before storage signing', as
   assert.equal((await service.mediaDownload('reader', 'book', 'asset')).url, 'https://storage/signed')
   assert.equal(calls[0][0], 'authorize')
   assert.equal(calls[1][0], 'sign')
+})
+
+test('full catalog content signs the prepared text object without loading it', async () => {
+  const calls = []
+  const service = createBookCatalogService({
+    repository: repository({
+      async getReaderBookContent(input) {
+        calls.push(['authorize', input])
+        return {
+          bookEditionId: 'book-1',
+          objectKey: 'analysis/run-1/normalized-text-v1.txt',
+          contentHash: HASH,
+          textLength: 4,
+          normalizationVersion: 'normalized-text-v1'
+        }
+      }
+    }),
+    storage: {
+      async getObjectInfo(input) {
+        calls.push(['info', input])
+        return { byteSize: 8 }
+      },
+      async createDownload(input) {
+        calls.push(['sign', input])
+        return { url: 'https://storage/content', expiresAt: '2026-08-22T12:00:00.000Z' }
+      }
+    }
+  })
+
+  const result = await service.fullContent('reader-1', 'book-1')
+  assert.equal(result.contentHash, HASH)
+  assert.equal(result.byteSize, 8)
+  assert.equal(result.url, 'https://storage/content')
+  assert.deepEqual(calls.map(([name]) => name), ['authorize', 'info', 'sign'])
+})
+
+test('catalog content chunks start immediately and continue with an opaque cursor', async () => {
+  const bytes = Buffer.from('абвг')
+  const ranges = []
+  const service = createBookCatalogService({
+    repository: repository({
+      async getReaderBookContent() {
+        return {
+          bookEditionId: 'book-1',
+          objectKey: 'analysis/run-1/normalized-text-v1.txt',
+          contentHash: HASH,
+          textLength: 4,
+          normalizationVersion: 'normalized-text-v1'
+        }
+      }
+    }),
+    storage: {
+      async getObjectInfo() { return { byteSize: bytes.byteLength } },
+      async getBytesRange(input) {
+        ranges.push(input)
+        return { bytes: bytes.subarray(input.startByte, input.endByteExclusive) }
+      }
+    },
+    contentChunkBytes: 5
+  })
+
+  const first = await service.contentChunk('reader-1', 'book-1', null)
+  assert.equal(first.chunk.text, 'аб')
+  assert.equal(first.chunk.startByte, 0)
+  assert.equal(first.chunk.endByteExclusive, 4)
+  assert.ok(first.nextCursor)
+  assert.equal(decodeBookContentCursor(first.nextCursor).byteOffset, 4)
+
+  const second = await service.contentChunk('reader-1', 'book-1', first.nextCursor)
+  assert.equal(second.chunk.text, 'вг')
+  assert.equal(second.chunk.startByte, 4)
+  assert.equal(second.chunk.endByteExclusive, 8)
+  assert.equal(second.nextCursor, null)
+  assert.deepEqual(ranges.map(({ startByte, endByteExclusive }) => [startByte, endByteExclusive]), [
+    [0, 8],
+    [4, 8]
+  ])
+})
+
+test('catalog content rejects a cursor from another content version', async () => {
+  const service = createBookCatalogService({
+    repository: repository({
+      async getReaderBookContent() {
+        return {
+          bookEditionId: 'book-1', objectKey: 'analysis/run-2/text.txt',
+          contentHash: 'b'.repeat(64), textLength: 4,
+          normalizationVersion: 'normalized-text-v1'
+        }
+      }
+    }),
+    storage: {
+      async getObjectInfo() { return { byteSize: 8 } },
+      async getBytesRange() { assert.fail('stale cursor must not read storage') }
+    }
+  })
+  const stale = Buffer.from(JSON.stringify({ v: 1, h: HASH, o: 4 })).toString('base64url')
+  await assert.rejects(
+    () => service.contentChunk('reader-1', 'book-1', stale),
+    (error) => error.code === 'CONTENT_VERSION_CHANGED' && error.status === 409
+  )
 })

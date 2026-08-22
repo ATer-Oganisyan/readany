@@ -117,6 +117,30 @@ test('catalog API prefers the identity worker display metadata', async () => {
   assert.match(pool.queries[0].sql, /edition\.display_title, edition\.display_author/)
 })
 
+test('catalog content resolves the latest prepared normalized text only for catalog books', async () => {
+  const pool = scriptedPool([() => ({ rows: [{
+    book_edition_id: 'book-1',
+    normalized_text_object_key: 'analysis/run-2/normalized-text-v1.txt',
+    normalized_text_hash: 'a'.repeat(64),
+    text_length: '1200',
+    normalization_version: 'normalized-text-v1'
+  }] })])
+  const repository = createPostgresBookMarkupRepository(pool)
+  assert.deepEqual(await repository.getReaderBookContent({
+    subjectId: 'reader-1',
+    bookEditionId: 'book-1'
+  }), {
+    bookEditionId: 'book-1',
+    objectKey: 'analysis/run-2/normalized-text-v1.txt',
+    contentHash: 'a'.repeat(64),
+    textLength: 1200,
+    normalizationVersion: 'normalized-text-v1'
+  })
+  assert.match(pool.queries[0].sql, /edition\.scope = 'catalog'/)
+  assert.match(pool.queries[0].sql, /run\.normalization_version = 'normalized-text-v1'/)
+  assert.match(pool.queries[0].sql, /run\.run_sequence DESC/)
+})
+
 test('stale identity publication cannot overwrite newer raw metadata', async () => {
   const pool = scriptedPool([
     () => ({ rows: [{ id: 'job-old' }] }),

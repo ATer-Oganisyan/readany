@@ -4,6 +4,7 @@ import {
   decodeCatalogCursor,
   encodeCatalogCursor,
   parseBookResolveBody,
+  parseBookContentCursor,
   parseLocalBookBody,
   parseLocalMarkupBody,
   parseReaderProgressBody,
@@ -16,6 +17,13 @@ test('catalog cursor round-trips without accepting arbitrary input', () => {
   const cursor = { createdAt: '2026-08-10T00:00:00.000Z', id: ID }
   assert.deepEqual(decodeCatalogCursor(encodeCatalogCursor(cursor)), cursor)
   assert.throws(() => decodeCatalogCursor('not-a-cursor'), /cursor: invalid value/)
+})
+
+test('book content cursor is optional but bounded', () => {
+  assert.equal(parseBookContentCursor(undefined), null)
+  assert.equal(parseBookContentCursor('next-page'), 'next-page')
+  assert.throws(() => parseBookContentCursor(['cursor']), /cursor/)
+  assert.throws(() => parseBookContentCursor('x'.repeat(1025)), /cursor/)
 })
 
 test('resolve contract separates catalog keys from local content hashes', () => {

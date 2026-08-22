@@ -209,6 +209,24 @@ test('object storage reads one exact byte range for a scan worker', async () => 
   assert.equal(command.input.Range, 'bytes=10-14')
 })
 
+test('object storage reads object size without downloading content', async () => {
+  let command
+  const storage = createBookObjectStorage({
+    client: {
+      async send(candidate) {
+        command = candidate
+        return { ContentLength: 123, ContentType: 'text/plain' }
+      }
+    },
+    bucket: 'readany-books'
+  })
+  assert.deepEqual(
+    await storage.getObjectInfo({ objectKey: 'analysis/run-1/normalized-text-v1.txt' }),
+    { byteSize: 123, mimeType: 'text/plain' }
+  )
+  assert.equal(command.input.Key, 'analysis/run-1/normalized-text-v1.txt')
+})
+
 test('object storage deletes generated materials in one explicit batch', async () => {
   let command
   const storage = createBookObjectStorage({

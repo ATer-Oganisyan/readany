@@ -1131,6 +1131,39 @@ export function createPostgresBookMarkupRepository(pool, {
       }
     },
 
+    async getReaderBookContent({ bookEditionId }) {
+      const result = await pool.query(
+        `SELECT edition.id AS book_edition_id,
+                prepared.normalized_text_object_key, prepared.normalized_text_hash,
+                prepared.text_length, prepared.normalization_version
+         FROM book_editions AS edition
+         JOIN LATERAL (
+           SELECT run.normalized_text_object_key, run.normalized_text_hash,
+                  run.text_length, run.normalization_version
+           FROM book_analysis_runs AS run
+           WHERE run.book_edition_id = edition.id
+             AND run.input_hash = edition.content_sha256
+             AND run.normalization_version = 'normalized-text-v1'
+             AND run.normalized_text_object_key IS NOT NULL
+             AND run.normalized_text_hash IS NOT NULL
+           ORDER BY run.run_sequence DESC, run.created_at DESC
+           LIMIT 1
+         ) AS prepared ON true
+         WHERE edition.id = $1 AND edition.scope = 'catalog'
+           AND edition.status IN ('base_ready', 'published')`,
+        [bookEditionId]
+      )
+      const row = result.rows[0]
+      if (!row) return null
+      return {
+        bookEditionId: row.book_edition_id,
+        objectKey: row.normalized_text_object_key,
+        contentHash: row.normalized_text_hash,
+        textLength: Number(row.text_length),
+        normalizationVersion: row.normalization_version
+      }
+    },
+
     async getCatalogBookCover({ bookEditionId }) {
       const result = await pool.query(
         `SELECT cover.object_key, cover.mime_type, cover.byte_size, cover.content_hash

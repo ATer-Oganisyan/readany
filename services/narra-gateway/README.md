@@ -241,6 +241,13 @@ media is served through `GET /v2/books/:bookEditionId/media/:assetId/download`
 and expires after `PRIVATE_MATERIAL_TTL_DAYS` of inactivity. The source download
 route is available only for catalog books.
 
+Prepared catalog text has two read contracts. `GET /v2/books/:bookEditionId/content`
+returns a short-lived URL for the complete normalized text. `GET
+/v2/books/:bookEditionId/content/chunks` returns the first UTF-8-safe text range;
+pass its `next_cursor` back as the `cursor` query parameter to continue. Both
+contracts use the same immutable content hash. Private books are intentionally
+excluded because their reader content remains on the user's device.
+
 Catalog uploads require the independent `CATALOG_INGEST_TOKEN`:
 `POST /v2/admin/catalog/books/uploads`, the returned raw content path, and the
 returned completion path. Catalog source files must be kept outside the

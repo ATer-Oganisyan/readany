@@ -11,6 +11,13 @@ import {
   BOOK_ANALYSIS_MARKUP_VERSION,
   normalizeBookMarkupV3
 } from './book-analysis-contracts.mjs'
+import {
+  BOOK_CONTENT_CHUNK_BYTES,
+  BOOK_CONTENT_CONTRACT_VERSION,
+  decodeBookContentCursor,
+  encodeBookContentCursor,
+  utf8ChunkPrefixLength
+} from './book-content.mjs'
 import { voiceForGender } from './voices.mjs'
 import { createHash, randomUUID } from 'node:crypto'
 
@@ -119,9 +126,23 @@ export function createBookCatalogService({
   analysisRepository = null,
   storage = null,
   bundleVersion = CHARACTER_BUNDLE_VERSION,
-  idFactory = randomUUID
+  idFactory = randomUUID,
+  contentChunkBytes = BOOK_CONTENT_CHUNK_BYTES
 }) {
   const store = requiredRepository(repository)
+  if (!Number.isSafeInteger(contentChunkBytes) || contentChunkBytes < 4 || contentChunkBytes > 1024 * 1024) {
+    throw new RangeError('contentChunkBytes must be between 4 bytes and 1 MiB')
+  }
+
+  async function preparedCatalogContent(subjectId, bookEditionId) {
+    if (typeof store.getReaderBookContent !== 'function') {
+      throw new TypeError('repository.getReaderBookContent is required')
+    }
+    if (!storage) throw serviceError('DOWNLOAD_UNAVAILABLE', 'Скачивание временно недоступно', 503)
+    const content = await store.getReaderBookContent({ subjectId, bookEditionId })
+    if (!content) throw serviceError('NOT_FOUND', 'Содержимое книги не найдено', 404)
+    return content
+  }
 
   async function ensureCanonicalAnalysis(edition) {
     if (!analysisRepository || typeof analysisRepository.ensureAnalysisRun !== 'function') {
@@ -426,6 +447,76 @@ export function createBookCatalogService({
       const source = await store.getReaderBookSource({ subjectId, bookEditionId })
       if (!source) throw serviceError('NOT_FOUND', 'Файл книги не найден', 404)
       return storage.createDownload(source)
+    },
+
+    async fullContent(subjectId, bookEditionId) {
+      const content = await preparedCatalogContent(subjectId, bookEditionId)
+      if (typeof storage.getObjectInfo !== 'function') {
+        throw new TypeError('storage.getObjectInfo is required')
+      }
+      const info = await storage.getObjectInfo({ objectKey: content.objectKey })
+      const download = await storage.createDownload({
+        objectKey: content.objectKey,
+        mimeType: 'text/plain; charset=utf-8',
+        filename: `${bookEditionId}.txt`
+      })
+      return {
+        contractVersion: BOOK_CONTENT_CONTRACT_VERSION,
+        representation: content.normalizationVersion,
+        bookEditionId,
+        contentHash: content.contentHash,
+        textLength: content.textLength,
+        byteSize: info.byteSize,
+        ...download
+      }
+    },
+
+    async contentChunk(subjectId, bookEditionId, rawCursor) {
+      const content = await preparedCatalogContent(subjectId, bookEditionId)
+      if (typeof storage.getObjectInfo !== 'function' || typeof storage.getBytesRange !== 'function') {
+        throw new TypeError('storage range reads are required')
+      }
+      const info = await storage.getObjectInfo({ objectKey: content.objectKey })
+      if (info.byteSize < 1) throw serviceError('CONTENT_INVALID', 'Содержимое книги пусто', 500)
+      const cursor = rawCursor ? decodeBookContentCursor(rawCursor) : null
+      if (cursor && cursor.contentHash !== content.contentHash) {
+        throw serviceError('CONTENT_VERSION_CHANGED', 'Версия содержимого книги изменилась', 409)
+      }
+      const startByte = cursor?.byteOffset ?? 0
+      if (startByte < 0 || startByte >= info.byteSize) {
+        throw serviceError('VALIDATION', 'content cursor: offset is outside the book', 400)
+      }
+      const requestedEnd = Math.min(info.byteSize, startByte + contentChunkBytes + 3)
+      const stored = await storage.getBytesRange({
+        objectKey: content.objectKey,
+        startByte,
+        endByteExclusive: requestedEnd,
+        maxBytes: contentChunkBytes + 3
+      })
+      const safeLength = utf8ChunkPrefixLength(stored.bytes, contentChunkBytes)
+      if (safeLength < 1) throw serviceError('CONTENT_INVALID', 'Не удалось прочитать фрагмент книги', 500)
+      const chunkBytes = stored.bytes.subarray(0, safeLength)
+      const endByteExclusive = startByte + safeLength
+      return {
+        contractVersion: BOOK_CONTENT_CONTRACT_VERSION,
+        representation: content.normalizationVersion,
+        bookEditionId,
+        contentHash: content.contentHash,
+        textLength: content.textLength,
+        byteSize: info.byteSize,
+        chunk: {
+          startByte,
+          endByteExclusive,
+          contentHash: createHash('sha256').update(chunkBytes).digest('hex'),
+          text: chunkBytes.toString('utf8')
+        },
+        nextCursor: endByteExclusive < info.byteSize
+          ? encodeBookContentCursor({
+              contentHash: content.contentHash,
+              byteOffset: endByteExclusive
+            })
+          : null
+      }
     },
 
     async coverDownload(subjectId, bookEditionId) {

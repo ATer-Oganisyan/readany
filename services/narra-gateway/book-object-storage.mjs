@@ -144,6 +144,19 @@ export function createBookObjectStorage({
       }
     },
 
+    async getObjectInfo({ objectKey: rawObjectKey }) {
+      const key = objectKey(rawObjectKey)
+      const result = await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }))
+      const byteSize = Number(result.ContentLength)
+      if (!Number.isSafeInteger(byteSize) || byteSize < 0) {
+        throw new Error('object storage returned an invalid content length')
+      }
+      return {
+        byteSize,
+        mimeType: result.ContentType || 'application/octet-stream'
+      }
+    },
+
     async getBytes({ objectKey: rawObjectKey, maxBytes = 64 * 1024 * 1024 }) {
       const key = objectKey(rawObjectKey)
       if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > 512 * 1024 * 1024) {

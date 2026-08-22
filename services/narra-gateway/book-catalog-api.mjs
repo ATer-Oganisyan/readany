@@ -267,6 +267,14 @@ export function decodeCatalogCursor(value) {
   }
 }
 
+export function parseBookContentCursor(value) {
+  if (value === undefined) return null
+  if (typeof value !== 'string' || !value || value.length > 1024) {
+    validation('content cursor: invalid value')
+  }
+  return value
+}
+
 function limit(value) {
   if (value === undefined) return 20
   if (!/^\d{1,3}$/.test(String(value))) validation('limit: invalid value')
@@ -466,6 +474,46 @@ export function createBookCatalogRouter({
       uuid(req.params.bookEditionId, 'bookEditionId')
     )
     res.json({ download_url: result.url, expires_at: result.expiresAt })
+  }))
+
+  router.get('/:bookEditionId/content', asyncRoute(async (req, res) => {
+    const result = await service.fullContent(
+      subject(req),
+      uuid(req.params.bookEditionId, 'bookEditionId')
+    )
+    res.json({
+      contract_version: result.contractVersion,
+      representation: result.representation,
+      book_edition_id: result.bookEditionId,
+      content_hash: result.contentHash,
+      text_length: result.textLength,
+      byte_size: result.byteSize,
+      download_url: result.url,
+      expires_at: result.expiresAt
+    })
+  }))
+
+  router.get('/:bookEditionId/content/chunks', asyncRoute(async (req, res) => {
+    const result = await service.contentChunk(
+      subject(req),
+      uuid(req.params.bookEditionId, 'bookEditionId'),
+      parseBookContentCursor(req.query.cursor)
+    )
+    res.json({
+      contract_version: result.contractVersion,
+      representation: result.representation,
+      book_edition_id: result.bookEditionId,
+      content_hash: result.contentHash,
+      text_length: result.textLength,
+      byte_size: result.byteSize,
+      chunk: {
+        start_byte: result.chunk.startByte,
+        end_byte_exclusive: result.chunk.endByteExclusive,
+        content_hash: result.chunk.contentHash,
+        text: result.chunk.text
+      },
+      next_cursor: result.nextCursor
+    })
   }))
 
   router.get('/:bookEditionId/cover/download', asyncRoute(async (req, res) => {
