@@ -739,6 +739,13 @@ export async function initDatabase(): Promise<void> {
       } catch {
         // Column already exists or table doesn't exist yet
       }
+      // Readable character count of the whole book, measured once by the
+      // reader. Without it the reader re-scans every section on each open.
+      try {
+        await database.execute("ALTER TABLE books ADD COLUMN total_characters INTEGER");
+      } catch {
+        // Column already exists
+      }
       try {
         await database.execute(
           "CREATE INDEX IF NOT EXISTS idx_books_deleted_at ON books(deleted_at)",

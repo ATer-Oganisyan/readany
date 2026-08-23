@@ -159,6 +159,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       pageMargin?: number;
       paginatedLayout?: "single" | "double";
       settings?: ReaderInitialSettings;
+      measureTextMetrics?: boolean;
     }) => {
       const msg = JSON.stringify({ type: "openBook", ...params });
       inject(`handleCommand(${msg})`);

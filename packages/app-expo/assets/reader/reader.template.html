@@ -305,9 +305,6 @@
     let currentFontTheme = 'default';
     let currentCustomFontFaceCSS = '';
     let currentCustomFontFamily = '';
-    let tapNavigationInFlight = false;
-    let tapNavigationLockDeadline = 0;
-    let tapNavigationResetTimer = null;
     let readerElement = null;
     let bookTextMetricsJobId = 0;
     let bookTextMetricsTimer = null;
@@ -339,31 +336,6 @@
             : `[ttsHighlight] ${message}`,
         });
       } catch {}
-    }
-
-    function clearTapNavigationLock() {
-      tapNavigationInFlight = false;
-      tapNavigationLockDeadline = 0;
-      if (tapNavigationResetTimer) {
-        clearTimeout(tapNavigationResetTimer);
-        tapNavigationResetTimer = null;
-      }
-    }
-
-    function armTapNavigationLock() {
-      tapNavigationInFlight = true;
-      tapNavigationLockDeadline = Date.now() + 220;
-      if (tapNavigationResetTimer) clearTimeout(tapNavigationResetTimer);
-      tapNavigationResetTimer = setTimeout(() => {
-        clearTapNavigationLock();
-      }, 220);
-    }
-
-    function isTapNavigationLocked() {
-      if (!tapNavigationInFlight) return false;
-      if (Date.now() < tapNavigationLockDeadline) return true;
-      clearTapNavigationLock();
-      return false;
     }
 
     function refreshUserAnnotations(delay) {
@@ -1899,11 +1871,6 @@
           hideFootnoteTip();
           const detail = e.detail;
           const previousSectionIndex = currentSectionIndex;
-          if (tapNavigationInFlight) {
-            setTimeout(() => {
-              clearTapNavigationLock();
-            }, 80);
-          }
           let relocatedSectionTotal = totalSections;
           if (detail.section != null) {
             currentSectionIndex = typeof detail.section === 'number'
@@ -2064,8 +2031,8 @@
 
         const renderer = el.renderer;
         if (renderer && !el.isFixedLayout) {
-          // Page turns are tap-only. Horizontal drags stay available to the
-          // native navigation stack, so iOS can drive its interactive back transition.
+          // Swipes are handled by the tap listener, which turns one page per
+          // gesture; the renderer's velocity-based snapping stays off.
           renderer.setAttribute('no-swipe', '');
           applyMobileReflowRendererSizing(renderer);
           // Default gap/margin
@@ -2095,7 +2062,10 @@
           await el.goToFraction(0);
         }
 
-        scheduleBookTextMetrics(book);
+        // Measuring parses every section of the book on this thread, which
+        // starves tap handling for as long as it runs. RN asks for it only
+        // when it has no count stored for this book yet.
+        if (msg.measureTextMetrics) scheduleBookTextMetrics(book);
 
       } catch (err) {
         console.error('[WebView] Error in openBook:', err);
@@ -2705,16 +2675,38 @@ a { color: ${primary} !important; }
       const MAX_TAP_MS = 250;
       const MOVE_THRESHOLD = 12;
       const SELECTION_MOVE_THRESHOLD = 2;
+      const SWIPE_MIN_X = 40;
       let tapState = null;
 
-      function beginTap(clientX, clientY, target, input, pointerId) {
+      // A horizontal drag turns exactly one page, in the direction the finger
+      // travelled. The renderer's own swipe handling stays off: it derives the
+      // target page from fling velocity, which sends a quick flick several
+      // pages on — or into the next chapter.
+      function finishSwipe(e, clientX, clientY, state) {
+        if (currentViewMode === 'scroll') return;
+        // Dragging a selection handle is not a page turn.
+        if (state.selectionActiveAtStart) return;
+        if (getActiveSelectionRange(doc)) return;
+        const deltaX = clientX - state.startX;
+        const deltaY = clientY - state.startY;
+        if (Math.abs(deltaX) < SWIPE_MIN_X) return;
+        if (Math.abs(deltaX) <= Math.abs(deltaY)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        hideFootnoteTip();
+        if (!view) return;
+        if (deltaX > 0) goPrevByMode();
+        else goNextByMode();
+      }
+
+      function beginTap(clientX, clientY, target, input, pointerId, startedAt) {
         const selectionRange = recoverStaleSelectionInteraction(doc);
         const hitNote = isPointInNoteRange(doc, clientX, clientY);
         const hitAnnotation = hitNote || isPointInAnnotationRange(doc, clientX, clientY);
         tapState = {
           input,
           pointerId,
-          startedAt: Date.now(),
+          startedAt,
           startX: clientX,
           startY: clientY,
           moved: false,
@@ -2761,11 +2753,14 @@ a { color: ${primary} !important; }
         ) return;
         tapState = null;
 
-        if (isTapNavigationLocked()) {
+        if (state.moved) {
+          finishSwipe(e, clientX, clientY, state);
           return;
         }
-        if (state.moved) return;
-        if (Date.now() - state.startedAt > MAX_TAP_MS) return;
+        // Timed from the event timestamps, which the engine stamps when the
+        // touch happens. Measuring handler-to-handler wall clock instead let
+        // any main-thread stall read a quick tap as a long press and drop it.
+        if (e.timeStamp - state.startedAt > MAX_TAP_MS) return;
         if (state.selectionActiveAtStart) {
           e.preventDefault();
           e.stopPropagation();
@@ -2859,7 +2854,6 @@ a { color: ${primary} !important; }
           return;
         }
 
-        armTapNavigationLock();
         e.preventDefault();
         e.stopPropagation();
 
@@ -2876,7 +2870,7 @@ a { color: ${primary} !important; }
           return;
         }
         const touch = e.touches[0];
-        beginTap(touch.clientX, touch.clientY, e.target, 'touch', null);
+        beginTap(touch.clientX, touch.clientY, e.target, 'touch', null, e.timeStamp);
       }, { passive: true });
 
       doc.addEventListener('touchmove', (e) => {
@@ -2903,7 +2897,7 @@ a { color: ${primary} !important; }
       // real finger twice on browsers that emit both event families.
       doc.addEventListener('pointerdown', (e) => {
         if (e.pointerType !== 'mouse' || e.isPrimary === false || e.button !== 0) return;
-        beginTap(e.clientX, e.clientY, e.target, 'pointer', e.pointerId);
+        beginTap(e.clientX, e.clientY, e.target, 'pointer', e.pointerId, e.timeStamp);
       }, { passive: true });
 
       doc.addEventListener('pointermove', (e) => {

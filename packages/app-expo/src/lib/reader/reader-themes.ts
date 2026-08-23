@@ -83,3 +83,28 @@ export function resolveReaderThemeColors(
       return resolveReaderThemeTokens(appTokens);
   }
 }
+
+/**
+ * Складывает полупрозрачный цвет с подложкой в плотный.
+ *
+ * Фон страницы — токен вида #1111111A, то есть плёнка 10%. Пока её кладёт один
+ * слой, всё верно; но экран загрузки и сама страница — это разные слои, и
+ * плёнка, наложенная дважды, темнеет. Поэтому фон везде берётся уже плотным.
+ */
+export function flattenReaderColor(color: string, backdrop: string): string {
+  const hex = color.replace("#", "");
+  if (hex.length !== 8) return color;
+
+  const channel = (source: string, index: number) =>
+    Number.parseInt(source.slice(index * 2, index * 2 + 2), 16);
+  const alpha = channel(hex, 3) / 255;
+  const base = backdrop.replace("#", "").slice(0, 6);
+  if (base.length !== 6) return color;
+
+  const mixed = [0, 1, 2].map((index) =>
+    Math.round(channel(hex, index) * alpha + channel(base, index) * (1 - alpha))
+      .toString(16)
+      .padStart(2, "0"),
+  );
+  return `#${mixed.join("")}`;
+}

@@ -154,15 +154,14 @@ export function RootNavigator() {
           name="Reader"
           component={ReaderScreen}
           options={{
-            animation: "slide_from_right",
-            gestureEnabled: true,
-            animationMatchesGesture: Platform.OS === "ios",
-            ...(Platform.OS === "ios"
-              ? {
-                  fullScreenGestureEnabled: true,
-                  gestureResponseDistance: { start: 0, end: 1000 },
-                }
-              : {}),
+            presentation: "fullScreenModal",
+            animation: "slide_from_bottom",
+            // Horizontal drags belong to page turning, so the reader carries no
+            // back-swipe of its own: it is dismissed by the close button.
+            gestureEnabled: false,
+            // No native header: the reader draws its own top bar so it can fade
+            // with the toolbar. It must never be toggled either — adding or
+            // removing a header on a modal screen reloads the book.
             headerShown: false,
             statusBarAnimation: "fade",
             statusBarHidden: true,

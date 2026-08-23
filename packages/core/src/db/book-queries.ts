@@ -40,6 +40,7 @@ interface BookRow {
   tags: string;
   file_hash: string | null;
   sync_status: string;
+  total_characters: number | null;
 }
 
 function rowToBook(row: BookRow): Book {
@@ -74,6 +75,7 @@ function rowToBook(row: BookRow): Book {
     tags: parseJSON(row.tags, []),
     fileHash: row.file_hash || undefined,
     syncStatus: (row.sync_status as Book["syncStatus"]) || "local",
+    totalCharacters: row.total_characters || undefined,
   };
 }
 
@@ -314,6 +316,10 @@ export async function updateBook(id: string, updates: Partial<Book>): Promise<vo
   if (updates.syncStatus !== undefined) {
     sets.push("sync_status = ?");
     values.push(updates.syncStatus);
+  }
+  if (updates.totalCharacters !== undefined) {
+    sets.push("total_characters = ?");
+    values.push(updates.totalCharacters);
   }
 
   if (sets.length === 0) return;

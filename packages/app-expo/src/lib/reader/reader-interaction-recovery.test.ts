@@ -5,9 +5,6 @@ import { describe, expect, it } from "vitest";
 
 const readerTemplatePath = new URL("../../../assets/reader/reader.template.html", import.meta.url);
 const functionNames = new Set([
-  "clearTapNavigationLock",
-  "armTapNavigationLock",
-  "isTapNavigationLocked",
   "getActiveSelectionRange",
   "recoverStaleSelectionInteraction",
   "clearDocumentSelection",
@@ -65,6 +62,7 @@ type FakeTouchEvent = {
   preventDefault: () => void;
   stopPropagation: () => void;
   target: { closest: () => null };
+  timeStamp: number;
   touches: Array<{ clientX: number; clientY: number }>;
 };
 
@@ -121,18 +119,29 @@ function extractReaderFunctions() {
   return functions.join("\n");
 }
 
-function touchEvent(type: "touchstart" | "touchend", x = 184, y = 400): FakeTouchEvent {
+function touchEvent(
+  type: "touchstart" | "touchmove" | "touchend",
+  timeStamp: number,
+  x = 184,
+  y = 400,
+): FakeTouchEvent {
   const touch = { clientX: x, clientY: y };
   return {
     changedTouches: type === "touchend" ? [touch] : [],
     preventDefault() {},
     stopPropagation() {},
     target: { closest: () => null },
-    touches: type === "touchstart" ? [touch] : [],
+    timeStamp,
+    touches: type === "touchend" ? [] : [touch],
   };
 }
 
-function pointerEvent(type: "pointerdown" | "pointerup", x = 184, y = 400): FakeTouchEvent {
+function pointerEvent(
+  type: "pointerdown" | "pointerup",
+  timeStamp: number,
+  x = 184,
+  y = 400,
+): FakeTouchEvent {
   return {
     button: 0,
     changedTouches: [],
@@ -144,15 +153,23 @@ function pointerEvent(type: "pointerdown" | "pointerup", x = 184, y = 400): Fake
     preventDefault() {},
     stopPropagation() {},
     target: { closest: () => null },
+    timeStamp,
     touches: [],
   };
 }
 
+// Wall clock the reader must not consult when timing a tap: it reads far past
+// MAX_TAP_MS, so any Date-based measurement would discard every tap here.
+const STALLED_CLOCK = {
+  now: () => 5_000_000,
+};
+
 function createHarness() {
   const messages: string[] = [];
+  const turns: string[] = [];
   const runtime: Record<string, unknown> = {
     CHARACTER_NAME_ATTR: "data-character",
-    Date,
+    Date: STALLED_CLOCK,
     SCENE_ANCHOR_ATTR: "data-anchor",
     SCENE_INSERT_CLASS: "scene",
     SCENE_STATE_ATTR: "data-state",
@@ -163,8 +180,12 @@ function createHarness() {
     getSelectionRange(selection: FakeSelection | null) {
       return selection?.rangeCount && !selection.isCollapsed ? selection.getRangeAt() : null;
     },
-    goNextByMode() {},
-    goPrevByMode() {},
+    goNextByMode() {
+      turns.push("next");
+    },
+    goPrevByMode() {
+      turns.push("prev");
+    },
     hideFootnoteTip() {},
     isNoteTapGuardActive: () => false,
     isPointInAnnotationRange: () => null,
@@ -175,9 +196,6 @@ function createHarness() {
     },
     renderSceneInsert() {},
     setTimeout,
-    tapNavigationInFlight: false,
-    tapNavigationLockDeadline: 0,
-    tapNavigationResetTimer: null,
     view: {},
     window: {
       innerWidth: 368,
@@ -192,17 +210,38 @@ function createHarness() {
   const doc = new FakeDocument();
   (runtime.attachTapListener as (document: FakeDocument) => void)(doc);
 
+  let clock = 1000;
+
   return {
     doc,
     messages,
     runtime,
-    tap() {
-      doc.dispatch("touchstart", touchEvent("touchstart"));
-      doc.dispatch("touchend", touchEvent("touchend"));
+    turns,
+    // `heldMs` is how long the finger stayed down, as the engine reports it in
+    // the event timestamps — independent of when the handlers get to run.
+    tap({ heldMs = 40, x = 184 }: { heldMs?: number; x?: number } = {}) {
+      const start = clock;
+      clock += heldMs + 10;
+      doc.dispatch("touchstart", touchEvent("touchstart", start, x));
+      doc.dispatch("touchend", touchEvent("touchend", start + heldMs, x));
     },
     mouseClick() {
-      doc.dispatch("pointerdown", pointerEvent("pointerdown"));
-      doc.dispatch("pointerup", pointerEvent("pointerup"));
+      const start = clock;
+      clock += 50;
+      doc.dispatch("pointerdown", pointerEvent("pointerdown", start));
+      doc.dispatch("pointerup", pointerEvent("pointerup", start + 40));
+    },
+    drag({ dx = 0, dy = 0, heldMs = 200 }: { dx?: number; dy?: number; heldMs?: number } = {}) {
+      const start = clock;
+      clock += heldMs + 10;
+      const fromX = 200;
+      const fromY = 400;
+      doc.dispatch("touchstart", touchEvent("touchstart", start, fromX, fromY));
+      doc.dispatch(
+        "touchmove",
+        touchEvent("touchmove", start + heldMs / 2, fromX + dx / 2, fromY + dy / 2),
+      );
+      doc.dispatch("touchend", touchEvent("touchend", start + heldMs, fromX + dx, fromY + dy));
     },
   };
 }
@@ -255,14 +294,55 @@ describe("Reader interaction recovery", () => {
     expect(harness.messages).toContain("tap");
   });
 
-  it("сам снимает просроченную блокировку перелистывания", () => {
+  it("листает подряд идущие тапы, не глотая ни одного", () => {
     const harness = createHarness();
-    harness.runtime.tapNavigationInFlight = true;
-    harness.runtime.tapNavigationLockDeadline = Date.now() - 1;
 
-    harness.tap();
+    harness.tap({ x: 340 });
+    harness.tap({ x: 340 });
+    harness.tap({ x: 340 });
 
-    expect(harness.messages).toContain("tap");
-    expect(harness.runtime.tapNavigationInFlight).toBe(false);
+    expect(harness.turns).toEqual(["next", "next", "next"]);
+  });
+
+  it("листает быстрый тап, даже когда обработчик выполнился с задержкой", () => {
+    const harness = createHarness();
+
+    harness.tap({ heldMs: 40, x: 340 });
+
+    expect(harness.turns).toEqual(["next"]);
+  });
+
+  it("не листает по долгому нажатию", () => {
+    const harness = createHarness();
+
+    harness.tap({ heldMs: 600, x: 340 });
+
+    expect(harness.turns).toEqual([]);
+  });
+
+  it("свайпом влево листает вперед, вправо — назад", () => {
+    const harness = createHarness();
+
+    harness.drag({ dx: -120 });
+    harness.drag({ dx: 120 });
+
+    expect(harness.turns).toEqual(["next", "prev"]);
+  });
+
+  it("листает ровно одну страницу, как бы быстро ни был свайп", () => {
+    const harness = createHarness();
+
+    harness.drag({ dx: -300, heldMs: 40 });
+
+    expect(harness.turns).toEqual(["next"]);
+  });
+
+  it("не листает по вертикальному и слишком короткому жесту", () => {
+    const harness = createHarness();
+
+    harness.drag({ dy: -200 });
+    harness.drag({ dx: -20 });
+
+    expect(harness.turns).toEqual([]);
   });
 });

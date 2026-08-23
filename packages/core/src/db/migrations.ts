@@ -121,6 +121,11 @@ const migrations: Migration[] = [
       "ALTER TABLE threads ADD COLUMN memory_message_count INTEGER DEFAULT 0",
     ],
   },
+  {
+    version: 14,
+    description: "Cache the whole-book character count measured by the reader",
+    up: "ALTER TABLE books ADD COLUMN total_characters INTEGER",
+  },
 ];
 
 /** Run pending migrations */

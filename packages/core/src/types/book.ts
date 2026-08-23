@@ -53,6 +53,10 @@ export interface Book {
   tags: string[];
   fileHash?: string;
   syncStatus: "local" | "remote" | "downloading"; // File availability status
+  // Readable characters in the whole book, used to turn reading progress into
+  // characters read. Measured once by the reader and kept here: the scan parses
+  // every section, which is far too costly to repeat on each open.
+  totalCharacters?: number;
 }
 
 export interface BookGroup {

@@ -3,8 +3,6 @@ import { AnimatedNarraFace } from "@/components/chat/animated-narra-face";
 import { ChapterTranslationSheet } from "@/components/reader/ChapterTranslationSheet";
 import { TranslationPanel } from "@/components/reader/TranslationPanel";
 import { NotebookPenIcon, XIcon } from "@/components/ui/Icon";
-import { getStrokeIconImageSource, resolveSystemIconName } from "@/components/ui/MishanaerIcon";
-import { NativeButton } from "@/components/ui/NativeButton";
 import { NativeContextMenuButton } from "@/components/ui/NativeContextMenuButton";
 import type { NativeContextMenuItem } from "@/components/ui/NativeContextMenuButton.types";
 import { Text } from "@/components/ui/Typography";
@@ -93,6 +91,7 @@ import {
 import Reanimated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
+import { ReaderTopBar } from "./reader/ReaderTopBar";
 
 // ── Extracted modules ──
 import { ReaderNoteViewModal } from "./reader/ReaderNoteViewModal";
@@ -169,7 +168,11 @@ const NOTE_TOOLTIP_SIDE_PADDING = 12;
 const NOTE_TOOLTIP_ABOVE_OFFSET = 2;
 const NOTE_TOOLTIP_BELOW_OFFSET = 8;
 const NOTE_TOOLTIP_TOP_THRESHOLD = 180;
-import { getAppSyncedReaderTheme, resolveReaderThemeColors } from "@/lib/reader/reader-themes";
+import {
+  flattenReaderColor,
+  getAppSyncedReaderTheme,
+  resolveReaderThemeColors,
+} from "@/lib/reader/reader-themes";
 import { useRubyStore } from "@readany/core/stores/ruby-store";
 import { ReaderSettingsPanel } from "./reader/ReaderSettingsPanel.entry";
 import { CONTROLS_TIMEOUT, SCREEN_HEIGHT, SCREEN_WIDTH } from "./reader/reader-constants";
@@ -331,8 +334,38 @@ export function ReaderScreen(props: Props) {
   );
 }
 
+/**
+ * Бумажный фон ридера. Нужен и до открытия книги: экран загрузки красится им же,
+ * чтобы тап по обложке не давал вспышки цвета приложения.
+ */
+function useReaderPaperColors() {
+  const colors = useColors();
+  const readerTheme = useSettingsStore((s) => s.readSettings.readerTheme);
+
+  return useMemo(() => {
+    const resolved = resolveReaderThemeColors(
+      readerTheme,
+      {
+        background: colors.primary10,
+        foreground: colors.primary80,
+        muted: colors.mutedForeground,
+        primary: colors.primary,
+      },
+      {
+        background: darkColors.primary10,
+        foreground: darkColors.primary80,
+        muted: darkColors.mutedForeground,
+        primary: darkColors.primary,
+      },
+    );
+    const backdrop = readerTheme === "dark" ? darkColors.background : colors.background;
+    return { ...resolved, background: flattenReaderColor(resolved.background, backdrop) };
+  }, [readerTheme, colors]);
+}
+
 function ReaderLoadingChrome({ navigation }: { navigation: Props["navigation"] }) {
   const colors = useColors();
+  const paperColors = useReaderPaperColors();
   const { isDark } = useTheme();
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
@@ -341,7 +374,7 @@ function ReaderLoadingChrome({ navigation }: { navigation: Props["navigation"] }
   useLayoutEffect(() => {
     navigation.setOptions({
       headerShown: true,
-      headerTransparent: true,
+      headerTransparent: false,
       headerShadowVisible: false,
       headerBackButtonDisplayMode: "minimal",
       headerTintColor: colors.foreground,
@@ -361,7 +394,9 @@ function ReaderLoadingChrome({ navigation }: { navigation: Props["navigation"] }
   }, [colors.foreground, navigation, t]);
 
   return (
-    <View style={{ flex: 1, paddingBottom: insets.bottom, backgroundColor: colors.background }}>
+    <View
+      style={{ flex: 1, paddingBottom: insets.bottom, backgroundColor: paperColors.background }}
+    >
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
         <ReaderLoadingIndicator color={colors.primary20} />
       </View>
@@ -375,7 +410,7 @@ function ReaderLoadingChrome({ navigation }: { navigation: Props["navigation"] }
             left: 0,
             height: TOOLBAR_HEIGHT + insets.bottom,
             paddingBottom: insets.bottom,
-            backgroundColor: colors.background,
+            backgroundColor: "transparent",
           }}
         >
           <ReaderToolbar
@@ -528,25 +563,7 @@ function ReaderContent({ route, navigation }: Props) {
 
   // Тема страницы (пресет Aa-панели): «Оригинал» — цвета приложения,
   // «Сепия»/«Тёмная» — собственные палитры страницы и окружающих полей.
-  const readerThemeColors = useMemo(
-    () =>
-      resolveReaderThemeColors(
-        readSettings.readerTheme,
-        {
-          background: colors.primary10,
-          foreground: colors.primary80,
-          muted: colors.mutedForeground,
-          primary: colors.primary,
-        },
-        {
-          background: darkColors.primary10,
-          foreground: darkColors.primary80,
-          muted: darkColors.mutedForeground,
-          primary: darkColors.primary,
-        },
-      ),
-    [readSettings.readerTheme, colors],
-  );
+  const readerThemeColors = useReaderPaperColors();
   const readerThemeColorsRef = useRef(readerThemeColors);
   readerThemeColorsRef.current = readerThemeColors;
   const isReaderThemeDark =
@@ -784,18 +801,15 @@ function ReaderContent({ route, navigation }: Props) {
   const { isBookmarked, handleToggleBookmark } = bookmark;
 
   useLayoutEffect(() => {
+    // The reader draws its own top bar, in the same animated container as the
+    // toolbar, so the native header stays out of the way entirely. It cannot
+    // carry these controls anyway: a bar button item does not take part in the
+    // toolbar's fade, and on this modal screen adding or removing the header
+    // tears the content down and reloads the book.
     navigation.setOptions({
-      // Android-меню живёт внутри headerRight. Не размонтируем шапку, пока меню открыто.
-      headerShown: showControls || actionsMenuOpen,
-      headerTransparent: true,
-      headerShadowVisible: false,
-      headerBackButtonDisplayMode: "minimal",
-      headerTintColor: readerThemeColors.foreground,
       statusBarStyle: isReaderThemeDark ? "light" : "dark",
-      headerTitleAlign: "center",
-      title: "",
     });
-  }, [actionsMenuOpen, isReaderThemeDark, navigation, readerThemeColors.foreground, showControls]);
+  }, [isReaderThemeDark, navigation]);
 
   const suppressProgressTracking = useCallback((duration = PROGRAMMATIC_NAV_GUARD_MS) => {
     progressTrackingGuardUntilRef.current = Math.max(
@@ -1010,7 +1024,12 @@ function ReaderContent({ route, navigation }: Props) {
       }
     },
     onBookTextMetrics: ({ totalCharacters }) => {
-      totalBookCharactersRef.current = totalCharacters > 0 ? totalCharacters : null;
+      if (totalCharacters <= 0) {
+        totalBookCharactersRef.current = null;
+        return;
+      }
+      totalBookCharactersRef.current = totalCharacters;
+      updateBook(bookId, { totalCharacters });
     },
     onRelocate: (detail: RelocateEvent) => {
       if (loading) {
@@ -1541,76 +1560,6 @@ function ReaderContent({ route, navigation }: Props) {
     ],
   );
 
-  useLayoutEffect(() => {
-    const headerVisible = showControls || actionsMenuOpen;
-
-    navigation.setOptions(
-      Platform.OS === "ios"
-        ? {
-            headerRight: undefined,
-            unstable_headerRightItems: headerVisible
-              ? () => [
-                  {
-                    type: "button" as const,
-                    label: t("reader.appearance", "Оформление"),
-                    accessibilityLabel: t("narra.readerAppearance", "Оформление"),
-                    icon: {
-                      type: "image" as const,
-                      source: getStrokeIconImageSource("text-t"),
-                    },
-                    onPress: openReaderAppearance,
-                  },
-                  {
-                    type: "menu" as const,
-                    label: t("reader.bookActions", "Действия с книгой"),
-                    accessibilityLabel: t("reader.bookActions", "Действия с книгой"),
-                    icon: {
-                      type: "image" as const,
-                      source: getStrokeIconImageSource("dots-three-horizontal"),
-                    },
-                    menu: {
-                      items: readerActions.map((action) => ({
-                        type: "action" as const,
-                        label: action.label,
-                        icon: action.sfSymbol
-                          ? {
-                              type: "image" as const,
-                              source: getStrokeIconImageSource(
-                                resolveSystemIconName(action.sfSymbol),
-                              ),
-                            }
-                          : undefined,
-                        onPress: action.onPress,
-                      })),
-                    },
-                  },
-                ]
-              : () => [],
-          }
-        : {
-            unstable_headerRightItems: undefined,
-            headerRight: headerVisible
-              ? () => (
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
-                    <NativeButton
-                      label="Aa"
-                      accessibilityLabel={t("narra.readerAppearance", "Оформление")}
-                      size="small"
-                      variant="tertiary"
-                      onPress={openReaderAppearance}
-                    />
-                    <NativeContextMenuButton
-                      accessibilityLabel={t("reader.bookActions", "Действия с книгой")}
-                      items={readerActions}
-                      onOpenChange={setActionsMenuOpen}
-                    />
-                  </View>
-                )
-              : undefined,
-          },
-    );
-  }, [actionsMenuOpen, navigation, openReaderAppearance, readerActions, showControls, t]);
-
   // Bind mediator ref so onRelocate can fire the TTS continuation callback
   ttsPendingContinueRef.current = {
     pendingTTSContinueCallbackRef: tts.pendingTTSContinueCallbackRef,
@@ -1745,6 +1694,36 @@ function ReaderContent({ route, navigation }: Props) {
     };
   }, [bookId]);
 
+  // Serving the file and staging the fonts needs no WebView, so it starts with
+  // the screen instead of waiting for the reader bundle to finish parsing.
+  // Both steps are idempotent: the server is reused for the same doc root and
+  // the fonts are staged once per process.
+  const readerHostPrepRef = useRef<Promise<{ serverUrl: string; fontFaceCSS: string }> | null>(
+    null,
+  );
+  const prepareReaderHost = useCallback(() => {
+    if (!readerHostPrepRef.current) {
+      readerHostPrepRef.current = (async () => {
+        const platform = getPlatformService();
+        const appData = await platform.getAppDataDir();
+        const serverUrl = await startFileServer(appData);
+        const fontFaceCSS = await getBundledReaderFontFaceCSS(serverUrl);
+        return { serverUrl, fontFaceCSS };
+      })().catch((err) => {
+        // Let the open path retry rather than caching a failure forever.
+        readerHostPrepRef.current = null;
+        throw err;
+      });
+    }
+    return readerHostPrepRef.current;
+  }, []);
+
+  useEffect(() => {
+    void prepareReaderHost().catch((err) => {
+      console.warn("[ReaderScreen] Reader host preparation failed:", err);
+    });
+  }, [prepareReaderHost]);
+
   // When WebView is ready and book is available, send the open command
   useEffect(() => {
     if (!webViewReady || !book?.filePath) {
@@ -1755,25 +1734,25 @@ function ReaderContent({ route, navigation }: Props) {
       try {
         setLoading(true);
         setError(null);
-        const platform = getPlatformService();
-        const appData = await platform.getAppDataDir();
-        const absPath = await platform.joinPath(appData, book.filePath);
         const lastLocation = book.currentCfi || undefined;
         const fileName = book.filePath.split("/").pop() || "book.epub";
         const mimeType = BOOK_FORMAT_MIME_TYPES[book.format] || "application/octet-stream";
 
-        // Start a local HTTP server so the WebView can fetch the file directly.
-        // This avoids loading the entire file into RN memory + base64 encoding (33% overhead)
-        // and the massive JSON serialization through injectJavaScript.
-        const serverUrl = await startFileServer(appData);
+        // The local HTTP server lets the WebView fetch the file directly, which
+        // avoids reading the whole book into RN memory and base64-encoding it.
+        // It was started when the screen mounted; by now it is usually up.
+        const { serverUrl, fontFaceCSS } = await prepareReaderHost();
         fileServerRef.current = serverUrl;
-        const bundledFontCSS = await getBundledReaderFontFaceCSS(serverUrl);
-        defaultReaderFontFaceCSSRef.current = bundledFontCSS;
-        setDefaultReaderFontFaceCSS(bundledFontCSS);
+        defaultReaderFontFaceCSSRef.current = fontFaceCSS;
+        setDefaultReaderFontFaceCSS(fontFaceCSS);
         const encodedPath = book.filePath
           .split("/")
           .map((s) => encodeURIComponent(s))
           .join("/");
+
+        // A count measured on an earlier open makes character tracking work
+        // from the first page, and spares the WebView the whole-book scan.
+        totalBookCharactersRef.current = book.totalCharacters ?? null;
 
         bridge.openBook({
           uri: `${serverUrl}/${encodedPath}`,
@@ -1793,9 +1772,10 @@ function ReaderContent({ route, navigation }: Props) {
             fontTheme: readSettings.fontTheme,
             viewMode: readSettings.viewMode,
             paginatedLayout: readSettings.paginatedLayout,
-            customFontFaceCSS: bundledFontCSS,
+            customFontFaceCSS: fontFaceCSS,
             customFontFamily: DEFAULT_READER_FONT_FAMILY,
           },
+          measureTextMetrics: !book.totalCharacters,
         });
 
         bridge.setThemeColors(readerThemeColorsRef.current);
@@ -1807,7 +1787,7 @@ function ReaderContent({ route, navigation }: Props) {
     };
 
     loadBook();
-  }, [bookId, book?.filePath, loadAttempt, webViewReady]);
+  }, [bookId, book?.filePath, loadAttempt, prepareReaderHost, webViewReady]);
 
   const handleReimportMissingBook = useCallback(async () => {
     if (isReimporting) return;
@@ -1966,6 +1946,35 @@ function ReaderContent({ route, navigation }: Props) {
     };
   }, [bookId, currentCfi, goToCFISafely, loading, navigation, openTTS, webViewReady]);
 
+  // Mirror of readerToolbarDock at the top edge: same animated container, same
+  // clock, so both bars fade together on a centre tap and on the timeout.
+  const readerTopBarDock = (
+    <Reanimated.View
+      pointerEvents={loading || !(showControls || actionsMenuOpen) ? "none" : "auto"}
+      style={[
+        {
+          position: "absolute",
+          top: 0,
+          right: 0,
+          left: 0,
+          zIndex: 30,
+          paddingTop: insets.top,
+          backgroundColor: "transparent",
+        },
+        controlsAnimatedStyle,
+      ]}
+    >
+      <ReaderTopBar
+        tintColor={readerThemeColors.foreground}
+        isDark={isReaderThemeDark}
+        actions={readerActions}
+        onClosePress={() => navigation.goBack()}
+        onAppearancePress={openReaderAppearance}
+        onActionsOpenChange={setActionsMenuOpen}
+      />
+    </Reanimated.View>
+  );
+
   const readerToolbarDock =
     Platform.OS === "ios" ? (
       <Reanimated.View
@@ -1979,7 +1988,7 @@ function ReaderContent({ route, navigation }: Props) {
             zIndex: 30,
             height: TOOLBAR_HEIGHT + insets.bottom,
             paddingBottom: insets.bottom,
-            backgroundColor: loading ? colors.background : "transparent",
+            backgroundColor: "transparent",
           },
           controlsAnimatedStyle,
         ]}
@@ -2004,7 +2013,7 @@ function ReaderContent({ route, navigation }: Props) {
           s.container,
           {
             paddingBottom: insets.bottom,
-            backgroundColor: loading ? colors.background : readerThemeColors.background,
+            backgroundColor: readerThemeColors.background,
           },
         ]}
       >
@@ -2013,6 +2022,7 @@ function ReaderContent({ route, navigation }: Props) {
             <ReaderLoadingIndicator color={colors.primary20} />
           </View>
         </View>
+        {readerTopBarDock}
         {readerToolbarDock}
       </View>
     );
@@ -2025,7 +2035,7 @@ function ReaderContent({ route, navigation }: Props) {
           s.container,
           {
             paddingBottom: insets.bottom,
-            backgroundColor: loading ? colors.background : readerThemeColors.background,
+            backgroundColor: readerThemeColors.background,
           },
         ]}
       >
@@ -2071,6 +2081,7 @@ function ReaderContent({ route, navigation }: Props) {
             </View>
           </View>
         </View>
+        {readerTopBarDock}
         {readerToolbarDock}
       </View>
     );
@@ -2083,7 +2094,7 @@ function ReaderContent({ route, navigation }: Props) {
           s.container,
           {
             paddingBottom: insets.bottom,
-            backgroundColor: loading ? colors.background : readerThemeColors.background,
+            backgroundColor: readerThemeColors.background,
           },
         ]}
       >
@@ -2092,6 +2103,7 @@ function ReaderContent({ route, navigation }: Props) {
             <ReaderLoadingIndicator color={colors.primary20} />
           </View>
         </View>
+        {readerTopBarDock}
         {readerToolbarDock}
       </View>
     );
@@ -2124,15 +2136,12 @@ function ReaderContent({ route, navigation }: Props) {
           s.container,
           {
             paddingBottom: insets.bottom,
-            backgroundColor: loading ? colors.background : readerThemeColors.background,
+            backgroundColor: readerThemeColors.background,
           },
         ]}
       >
         <Animated.View
-          style={[
-            s.readerStage,
-            { backgroundColor: "transparent" },
-          ]}
+          style={[s.readerStage, { backgroundColor: "transparent" }]}
           pointerEvents="box-none"
         >
           {/* WebView with foliate-js */}
@@ -2185,7 +2194,8 @@ function ReaderContent({ route, navigation }: Props) {
           {/* Loading overlay */}
           {loading && (
             <View
-              style={[s.loadingOverlay, { backgroundColor: colors.background }]}
+              // Фон уже нарисован контейнером — оверлей держит только спиннер.
+              style={s.loadingOverlay}
               pointerEvents="none"
             >
               <ReaderLoadingIndicator color={colors.primary20} />
@@ -2220,6 +2230,7 @@ function ReaderContent({ route, navigation }: Props) {
           )}
         </Animated.View>
 
+        {readerTopBarDock}
         {readerToolbarDock}
 
         {/* ─── Bookmark Ribbon (top-right) ─── */}
