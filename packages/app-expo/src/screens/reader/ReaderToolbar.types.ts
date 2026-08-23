@@ -2,7 +2,7 @@ export interface ReaderToolbarProps {
   tintColor: string;
   isDark: boolean;
   speechState: "idle" | "loading" | "playing";
-  chatMorphSourceId?: string;
+  charactersSheetSourceId?: string;
   onSpeechPress: () => void;
-  onChatPress: () => void;
+  onCharactersPress: () => void;
 }

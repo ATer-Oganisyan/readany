@@ -97,18 +97,28 @@ public final class ReadAnyNativeControlsModule: Module {
     }
 
     View(ReadAnyReaderToolbar.self) {
-      Events("onSpeechPress", "onChatPress", "onSettingsPress")
+      Events("onSpeechPress", "onCharactersPress")
 
       Prop("tintColor") { (view, value: UIColor) in view.toolbarTintColor = value }
       Prop("isDark") { (view, value: Bool) in view.isDark = value }
       Prop("speechActive") { (view, value: Bool) in view.speechActive = value }
+      Prop("speechLoading") { (view, value: Bool) in view.speechLoading = value }
       Prop("speechLabel") { (view, value: String) in view.speechLabel = value }
-      Prop("chatLabel") { (view, value: String) in view.chatLabel = value }
-      Prop("settingsLabel") { (view, value: String) in view.settingsLabel = value }
+      Prop("speechStopLabel") { (view, value: String) in view.speechStopLabel = value }
+      Prop("speechLoadingLabel") { (view, value: String) in view.speechLoadingLabel = value }
+      Prop("charactersLabel") { (view, value: String) in view.charactersLabel = value }
+      Prop("charactersSheetSourceId") { (view, value: String) in
+        view.charactersSheetSourceIdentifier = value
+      }
 
       OnViewDidUpdateProps { view in
         view.applyProps()
       }
+    }
+
+    View(SystemSheetZoomDestinationView.self) {
+      Prop("sourceId") { (view, value: String) in view.sourceIdentifier = value }
+      Prop("expanded") { (view, value: Bool) in view.expanded = value }
     }
 
     View(ReadAnySceneToolbar.self) {
@@ -314,25 +324,41 @@ final class ReadAnyImportMenuButton: ExpoView {
 
 final class ReadAnyReaderToolbar: ExpoView {
   let onSpeechPress = EventDispatcher()
-  let onChatPress = EventDispatcher()
-  let onSettingsPress = EventDispatcher()
+  let onCharactersPress = EventDispatcher()
 
   var toolbarTintColor = UIColor.label
   var isDark = true
   var speechActive = false
+  var speechLoading = false
   var speechLabel = "Слушать"
-  var chatLabel = "Чат"
-  var settingsLabel = "Оформление"
+  var speechStopLabel = "Стоп"
+  var speechLoadingLabel = "Загрузка аудио"
+  var charactersLabel = "Персонажи"
+  var charactersSheetSourceIdentifier = "" {
+    didSet {
+      guard oldValue != charactersSheetSourceIdentifier else { return }
+      SystemSheetZoomSourceRepository.shared.unregister(
+        identifier: oldValue,
+        matching: charactersItem
+      )
+      updateCharactersSourceRegistration()
+    }
+  }
 
   private let toolbar = UIToolbar()
+  private lazy var speechButton = makeToolbarButton(action: #selector(handleSpeechPress))
+  private lazy var charactersButton = makeToolbarButton(action: #selector(handleCharactersPress))
+  private lazy var speechItem = makeToolbarItem(button: speechButton)
+  private lazy var charactersItem = makeToolbarItem(button: charactersButton)
 
   required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
 
     toolbar.translatesAutoresizingMaskIntoConstraints = false
     toolbar.isTranslucent = true
-    toolbar.alpha = 0
+    toolbar.clipsToBounds = false
     addSubview(toolbar)
+    clipsToBounds = false
 
     NSLayoutConstraint.activate([
       toolbar.topAnchor.constraint(equalTo: topAnchor),
@@ -341,25 +367,39 @@ final class ReadAnyReaderToolbar: ExpoView {
       toolbar.trailingAnchor.constraint(equalTo: trailingAnchor)
     ])
 
+    toolbar.setItems(
+      [speechItem, UIBarButtonItem(systemItem: .flexibleSpace), charactersItem],
+      animated: false
+    )
+  }
+
+  deinit {
+    SystemSheetZoomSourceRepository.shared.unregister(
+      identifier: charactersSheetSourceIdentifier,
+      matching: charactersItem
+    )
+  }
+
+  override func didMoveToWindow() {
+    super.didMoveToWindow()
+    updateCharactersSourceRegistration()
   }
 
   @objc private func handleSpeechPress() {
     onSpeechPress()
   }
 
-  @objc private func handleChatPress() {
-    onChatPress()
-  }
-
-  @objc private func handleSettingsPress() {
-    onSettingsPress()
+  @objc private func handleCharactersPress() {
+    SystemSheetZoomSourceRepository.shared.preparePresentation(
+      identifier: charactersSheetSourceIdentifier
+    )
+    onCharactersPress()
   }
 
   func applyProps() {
     UIView.performWithoutAnimation {
       updateConfiguration()
       layoutIfNeeded()
-      toolbar.alpha = 1
     }
   }
 
@@ -367,56 +407,71 @@ final class ReadAnyReaderToolbar: ExpoView {
     toolbar.tintColor = toolbarTintColor
     toolbar.barStyle = isDark ? .black : .default
 
-    if #available(iOS 15.0, *) {
-      let appearance = UIToolbarAppearance()
-      appearance.configureWithDefaultBackground()
-      toolbar.standardAppearance = appearance
-      toolbar.scrollEdgeAppearance = appearance
-      toolbar.compactAppearance = appearance
+    let currentSpeechLabel = speechLoading
+      ? speechLoadingLabel
+      : (speechActive ? speechStopLabel : speechLabel)
+    updateToolbarButton(
+      speechButton,
+      title: currentSpeechLabel,
+      image: MishanaerIconAssets.image(speechActive ? "stop" : "headphones")
+    )
+    speechItem.isEnabled = !speechLoading
+    speechButton.isEnabled = !speechLoading
+    speechItem.accessibilityLabel = currentSpeechLabel
+
+    updateToolbarButton(
+      charactersButton,
+      title: charactersLabel,
+      image: MishanaerIconAssets.image("person")
+    )
+    charactersItem.accessibilityLabel = charactersLabel
+
+    updateCharactersSourceRegistration()
+  }
+
+  private func updateCharactersSourceRegistration() {
+    guard window != nil, !charactersSheetSourceIdentifier.isEmpty else {
+      SystemSheetZoomSourceRepository.shared.unregister(
+        identifier: charactersSheetSourceIdentifier,
+        matching: charactersItem
+      )
+      return
     }
 
-    let speech = makeItem(
-      iconName: speechActive ? "stop" : "headphones",
-      accessibilityLabel: speechActive ? "Остановить озвучку" : speechLabel,
-      action: #selector(handleSpeechPress)
-    )
-    let chat = makeItem(
-      iconName: "chat-bubble",
-      accessibilityLabel: chatLabel,
-      action: #selector(handleChatPress)
-    )
-    // Явный вход в оформление читалки (Aa): шрифты, тема, прокрутка
-    let settings = makeItem(
-      iconName: "text-t",
-      accessibilityLabel: settingsLabel,
-      action: #selector(handleSettingsPress)
-    )
-    let spacer = { UIBarButtonItem(systemItem: .flexibleSpace) }
-
-    if #available(iOS 26.0, *) {
-      [speech, chat, settings].forEach { $0.sharesBackground = true }
-    }
-
-    toolbar.setItems(
-      [spacer(), speech, chat, settings, spacer()],
-      animated: false
+    SystemSheetZoomSourceRepository.shared.register(
+      identifier: charactersSheetSourceIdentifier,
+      item: charactersItem
     )
   }
 
-  private func makeItem(
-    iconName: String,
-    accessibilityLabel: String,
-    action: Selector
-  ) -> UIBarButtonItem {
-    let item = UIBarButtonItem(
-      image: MishanaerIconAssets.image(iconName),
-      style: .plain,
-      target: self,
-      action: action
-    )
-    item.accessibilityLabel = accessibilityLabel
-    item.accessibilityHint = "Выполняет действие в текущей книге"
+  private func makeToolbarButton(action: Selector) -> UIButton {
+    let button = UIButton(type: .system)
+    button.addTarget(self, action: action, for: .touchUpInside)
+    button.clipsToBounds = false
+    return button
+  }
+
+  private func makeToolbarItem(button: UIButton) -> UIBarButtonItem {
+    let item = UIBarButtonItem(customView: button)
+    if #available(iOS 26.0, *) {
+      item.sharesBackground = false
+    }
     return item
+  }
+
+  private func updateToolbarButton(
+    _ button: UIButton,
+    title: String,
+    image: UIImage
+  ) {
+    var configuration = UIButton.Configuration.plain()
+    configuration.title = title
+    configuration.image = image
+    configuration.imagePlacement = .leading
+    configuration.imagePadding = 7
+    configuration.baseForegroundColor = toolbarTintColor
+    button.configuration = configuration
+    button.accessibilityLabel = title
   }
 }
 

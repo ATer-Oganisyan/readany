@@ -2,6 +2,21 @@ diff --git a/ios/RNSScreenStack.mm b/ios/RNSScreenStack.mm
 index bfd0a519a09eb346dfd687fe2feb0b5489d34c32..57b25baa105ca586e870d5e060d4977fdcc7c7be 100644
 --- a/ios/RNSScreenStack.mm
 +++ b/ios/RNSScreenStack.mm
+@@ -494,6 +494,13 @@ - (void)updateContainer
+         return;
+       }
+-
++
++      if ([next isKindOfClass:[RNSScreen class]] &&
++          ((RNSScreen *)next).screenView.stackPresentation == RNSScreenStackPresentationFormSheet) {
++        [[NSNotificationCenter defaultCenter]
++            postNotificationName:@"ReadAnyRNSScreenWillPresentFormSheet"
++                          object:next];
++      }
++
+       [previous presentViewController:next
+                              animated:shouldAnimate
+                            completion:^{
 @@ -1099,7 +1099,7 @@ - (BOOL)isScrollViewPanGestureRecognizer:(UIGestureRecognizer *)gestureRecognize
  // https://github.com/facebook/react-native/blob/69b131c2b1627f64f34a534dac4cf48a542e6ea6/packages/react-native/React/Views/ScrollView/RCTScrollView.m#L557
  - (BOOL)scrollViewHasHorizontalPart:(UIScrollView *)scrollView

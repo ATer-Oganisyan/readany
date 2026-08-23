@@ -6,11 +6,7 @@ import {
   type CharacterChatListItem,
 } from "@/components/chats/character-chat-list";
 import { CharacterPortraitImage } from "@/components/narra/character-portrait-image";
-import {
-  MorphTransitionDestination,
-  type MorphTransitionDestinationHandle,
-} from "@/components/navigation/MorphSheetTransition";
-import { supportsMorphSheetTransition } from "@/components/navigation/morph-sheet-transition-support";
+import { SystemSheetZoomDestination } from "@/components/navigation/SystemSheetZoomDestination";
 import { type ExtractorRef, ExtractorWebView } from "@/components/rag/ExtractorWebView";
 import { Text } from "@/components/ui/Typography";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
@@ -43,6 +39,7 @@ import {
   AccessibilityInfo,
   ActivityIndicator,
   Easing,
+  Platform,
   Animated as RNAnimated,
   ScrollView,
   StyleSheet,
@@ -52,7 +49,6 @@ import {
 type Props = NativeStackScreenProps<RootStackParamList, "NarraCharacters">;
 type CharactersListProps = Props & {
   isActive?: boolean;
-  renderMorphDestination?: boolean;
   onOpenBookChat?: () => void;
   onOpenCharacterChat?: (characterId: string) => void;
 };
@@ -67,6 +63,7 @@ const CONTENT_EXIT_DURATION_MS = 120;
 const CONTENT_ENTER_DURATION_MS = 180;
 const CONTENT_EXIT_EASING = Easing.bezier(0.4, 0, 1, 1);
 const CONTENT_ENTER_EASING = Easing.bezier(0.2, 0, 0, 1);
+const USES_CHARACTERS_SHEET = Platform.OS === "ios";
 
 function animateOpacity({
   duration,
@@ -100,7 +97,7 @@ function animateOpacity({
 }
 
 export function NarraCharactersScreen({ route, navigation }: Props) {
-  if (supportsMorphSheetTransition) {
+  if (USES_CHARACTERS_SHEET) {
     // Экран живёт только как шторка поверх ридера, поэтому вся его поверхность —
     // включая встроенные чаты — приподнята относительно фона книги.
     return (
@@ -114,13 +111,10 @@ export function NarraCharactersScreen({ route, navigation }: Props) {
 }
 
 function NarraCharactersSheetFlow({ route, navigation }: Props) {
-  const sheetControllerRef = useRef<MorphTransitionDestinationHandle>(null);
   const [content, setContent] = useState<SheetContent>({ kind: "characters" });
   const [isTransitioning, setIsTransitioning] = useState(false);
   const transitionFrameRef = useRef<number | null>(null);
   const transitioningRef = useRef(false);
-  const returnToCharactersPromiseRef = useRef<Promise<void> | null>(null);
-  const cancelReturnToCharactersRef = useRef<(() => void) | null>(null);
   const mountedRef = useRef(true);
   const listOpacity = useRef(new RNAnimated.Value(1)).current;
   // GlassView нельзя монтировать под opacity: 0: эффект может не восстановиться.
@@ -128,14 +122,6 @@ function NarraCharactersSheetFlow({ route, navigation }: Props) {
   const chatCoverOpacity = useRef(new RNAnimated.Value(1)).current;
   const [reduceMotion, setReduceMotion] = useState(false);
   const { colors } = useTheme();
-  const expandSheet = useCallback(
-    () => sheetControllerRef.current?.expandSheet?.() ?? Promise.resolve(),
-    [],
-  );
-  const collapseSheet = useCallback(
-    () => sheetControllerRef.current?.collapseSheet?.() ?? Promise.resolve(),
-    [],
-  );
 
   useEffect(
     () => () => {
@@ -145,9 +131,6 @@ function NarraCharactersSheetFlow({ route, navigation }: Props) {
       }
       listOpacity.stopAnimation();
       chatCoverOpacity.stopAnimation();
-      cancelReturnToCharactersRef.current?.();
-      cancelReturnToCharactersRef.current = null;
-      returnToCharactersPromiseRef.current = null;
       transitioningRef.current = false;
     },
     [chatCoverOpacity, listOpacity],
@@ -188,11 +171,8 @@ function NarraCharactersSheetFlow({ route, navigation }: Props) {
     [reduceMotion],
   );
 
-  const transitionToCharacters = useCallback((): Promise<void> => {
-    const pendingTransition = returnToCharactersPromiseRef.current;
-    if (pendingTransition) return pendingTransition;
-    if (content.kind === "characters" && !transitioningRef.current) return Promise.resolve();
-
+  const showCharacters = useCallback(() => {
+    if (transitioningRef.current || content.kind === "characters") return;
     if (transitionFrameRef.current !== null) {
       cancelAnimationFrame(transitionFrameRef.current);
       transitionFrameRef.current = null;
@@ -202,75 +182,18 @@ function NarraCharactersSheetFlow({ route, navigation }: Props) {
     transitioningRef.current = true;
     setIsTransitioning(true);
 
-    let cancelTransition: (() => void) | null = null;
-    const transition = new Promise<void>((resolve, reject) => {
-      cancelTransition = () => {
-        reject(new Error("The characters-sheet transition was cancelled during teardown"));
-      };
-
-      const restoreCharactersList = () => {
-        const nativeCollapse = collapseSheet();
+    animateOpacity({
+      value: chatCoverOpacity,
+      toValue: 1,
+      duration: CONTENT_EXIT_DURATION_MS,
+      easing: CONTENT_EXIT_EASING,
+      reduceMotion,
+      onComplete: () => {
         setContent({ kind: "characters" });
-
-        const listEntrance = new Promise<void>((resolveEntrance) => {
-          fadeIn(listOpacity, resolveEntrance);
-        });
-
-        void Promise.all([nativeCollapse, listEntrance]).then(
-          () => {
-            finishTransition();
-            resolve();
-          },
-          (error: unknown) => {
-            finishTransition();
-            reject(error);
-          },
-        );
-      };
-
-      // During the first frames of opening a chat, the React content is still
-      // the list even though its fade-out has already started. Cancelling that
-      // opening must restore the stable medium list before the route can pop.
-      if (content.kind === "characters") {
-        restoreCharactersList();
-        return;
-      }
-
-      animateOpacity({
-        value: chatCoverOpacity,
-        toValue: 1,
-        duration: CONTENT_EXIT_DURATION_MS,
-        easing: CONTENT_EXIT_EASING,
-        reduceMotion,
-        onComplete: restoreCharactersList,
-      });
+        fadeIn(listOpacity, finishTransition);
+      },
     });
-
-    returnToCharactersPromiseRef.current = transition;
-    cancelReturnToCharactersRef.current = () => cancelTransition?.();
-    const clearPendingTransition = () => {
-      if (returnToCharactersPromiseRef.current === transition) {
-        returnToCharactersPromiseRef.current = null;
-        cancelReturnToCharactersRef.current = null;
-      }
-    };
-    void transition.then(clearPendingTransition, clearPendingTransition);
-    return transition;
-  }, [
-    chatCoverOpacity,
-    collapseSheet,
-    content.kind,
-    fadeIn,
-    finishTransition,
-    listOpacity,
-    reduceMotion,
-  ]);
-
-  const showCharacters = useCallback(() => {
-    void transitionToCharacters().catch((error: unknown) => {
-      console.warn("[Narra] Failed to restore the characters sheet before closing", error);
-    });
-  }, [transitionToCharacters]);
+  }, [chatCoverOpacity, content.kind, fadeIn, finishTransition, listOpacity, reduceMotion]);
 
   const showChat = useCallback(
     (nextContent: Exclude<SheetContent, { kind: "characters" }>) => {
@@ -285,9 +208,6 @@ function NarraCharactersSheetFlow({ route, navigation }: Props) {
         easing: CONTENT_EXIT_EASING,
         reduceMotion,
         onComplete: () => {
-          void expandSheet().catch(() => {
-            // A quick return to the list legitimately supersedes expansion.
-          });
           chatCoverOpacity.setValue(reduceMotion ? 0 : 1);
           setContent(nextContent);
 
@@ -310,7 +230,7 @@ function NarraCharactersSheetFlow({ route, navigation }: Props) {
         },
       });
     },
-    [chatCoverOpacity, content.kind, expandSheet, finishTransition, listOpacity, reduceMotion],
+    [chatCoverOpacity, content.kind, finishTransition, listOpacity, reduceMotion],
   );
 
   const showBookChat = useCallback(() => {
@@ -328,7 +248,10 @@ function NarraCharactersSheetFlow({ route, navigation }: Props) {
 
   return (
     <View style={[flowStyles.container, { backgroundColor: colors.background }]}>
-      <MorphTransitionDestination ref={sheetControllerRef} sourceId={route.params.morphSourceId} />
+      <SystemSheetZoomDestination
+        sourceId={route.params.charactersSheetSourceId}
+        expanded={content.kind !== "characters"}
+      />
       <View style={flowStyles.contentStack}>
         <RNAnimated.View
           accessibilityElementsHidden={!listIsActive}
@@ -340,7 +263,6 @@ function NarraCharactersSheetFlow({ route, navigation }: Props) {
             route={route}
             navigation={navigation}
             isActive={listIsActive}
-            renderMorphDestination={false}
             onOpenBookChat={showBookChat}
             onOpenCharacterChat={showCharacterChat}
           />
@@ -381,11 +303,10 @@ function NarraCharactersList({
   route,
   navigation,
   isActive = true,
-  renderMorphDestination = true,
   onOpenBookChat,
   onOpenCharacterChat,
 }: CharactersListProps) {
-  const { bookId, morphSourceId } = route.params;
+  const { bookId } = route.params;
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
@@ -578,7 +499,7 @@ function NarraCharactersList({
       if (storedCharacters.length === 0 && bundledCharacters?.length) {
         setCharacters(bookId, bundledCharacters);
       }
-      if (!supportsMorphSheetTransition) {
+      if (!USES_CHARACTERS_SHEET) {
         navigation.navigate("NarraCharacterChat", {
           bookId,
           characterId: character.id,
@@ -607,7 +528,7 @@ function NarraCharactersList({
   );
 
   const openBookChat = useCallback(() => {
-    if (!supportsMorphSheetTransition) {
+    if (!USES_CHARACTERS_SHEET) {
       navigation.navigate("BookChat", { bookId });
       return;
     }
@@ -674,18 +595,14 @@ function NarraCharactersList({
 
   return (
     <View style={styles.container}>
-      {renderMorphDestination ? <MorphTransitionDestination sourceId={morphSourceId} /> : null}
-      {supportsMorphSheetTransition ? (
+      {USES_CHARACTERS_SHEET ? (
         <View pointerEvents="none" style={styles.sheetNavigationBar}>
           <Text style={styles.sheetNavigationTitle}>{t("narra.characters", "Персонажи")}</Text>
         </View>
       ) : null}
       <ScrollView
-        contentInsetAdjustmentBehavior={supportsMorphSheetTransition ? "never" : "automatic"}
-        contentContainerStyle={[
-          styles.content,
-          supportsMorphSheetTransition && styles.sheetContent,
-        ]}
+        contentInsetAdjustmentBehavior={USES_CHARACTERS_SHEET ? "never" : "automatic"}
+        contentContainerStyle={[styles.content, USES_CHARACTERS_SHEET && styles.sheetContent]}
         style={styles.scrollView}
       >
         <ExtractorWebView ref={extractorRef} />
