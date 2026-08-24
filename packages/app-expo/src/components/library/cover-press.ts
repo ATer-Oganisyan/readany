@@ -1,24 +1,37 @@
+import { Easing, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+
 /**
  * Отклик обложки на нажатие — один на библиотеку, каталог и полку «Читаю
  * сейчас», иначе они разъезжаются.
  *
- * Это CSS-переход Reanimated, а не shared value: состояние меняется дважды за
- * нажатие, а не каждый кадр, и заводить ради этого воркет незачем. Типы
- * StyleSheet.create таких свойств не знают, поэтому стили живут здесь
- * обычными объектами и уходят прямо в style у Animated.View.
+ * Раньше это был CSS-переход Reanimated, и он не отрисовывался: значение
+ * применялось одним кадром, хотя JS-сторона переход исправно запускала. Здесь
+ * движение ведёт shared value, поэтому оно живёт целиком в UI-потоке и не
+ * зависит ни от коммита React, ни от того, обёрнута ли карточка в SwiftUI-хост
+ * контекстного меню.
  *
- * Кривая — easeOutCubic, а не easeOutQuint: у последней больше половины хода
- * приходится на первый кадр, и на трёх точках движения это читается как рывок,
- * а не как анимация. Строку "cubic-bezier(...)" Reanimated не принимает и
- * падает на рендере, поэтому кривая задаётся функцией.
+ * 3% и 150 мс: обложку трогают десятки раз за сессию, поэтому отклик держим
+ * коротким. Кривая — easeOutCubic; у easeOutQuint половина хода приходится на
+ * первый кадр, и на трёх точках движения это читается как рывок.
  */
-import { cubicBezier } from "react-native-reanimated";
+const PRESSED_SCALE = 0.97;
+const PRESS_DURATION_MS = 150;
+const EASE_OUT = Easing.bezier(0.33, 1, 0.68, 1);
 
-export const coverPress = {
-  transform: [{ scale: 1 }],
-  transitionProperty: "transform",
-  transitionDuration: "150ms",
-  transitionTimingFunction: cubicBezier(0.33, 1, 0.68, 1),
-} as const;
+export function useCoverPress() {
+  const progress = useSharedValue(0);
 
-export const coverPressed = { transform: [{ scale: 0.97 }] } as const;
+  const pressStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: 1 - progress.get() * (1 - PRESSED_SCALE) }],
+  }));
+
+  const onPressIn = () => {
+    progress.set(withTiming(1, { duration: PRESS_DURATION_MS, easing: EASE_OUT }));
+  };
+
+  const onPressOut = () => {
+    progress.set(withTiming(0, { duration: PRESS_DURATION_MS, easing: EASE_OUT }));
+  };
+
+  return { pressStyle, onPressIn, onPressOut };
+}

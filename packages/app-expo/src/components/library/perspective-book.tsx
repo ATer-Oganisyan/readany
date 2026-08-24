@@ -1,9 +1,9 @@
 import { radius } from "@/styles/theme";
 import { LinearGradient } from "expo-linear-gradient";
-import { type ReactNode, useState } from "react";
+import type { ReactNode } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import Animated from "react-native-reanimated";
-import { coverPress, coverPressed } from "./cover-press";
+import { useCoverPress } from "./cover-press";
 
 interface PerspectiveBookProps {
   width: number;
@@ -28,10 +28,7 @@ export function PerspectiveBook({
   accessibilityLabel,
   accessibilityHint,
 }: PerspectiveBookProps) {
-  // Обложку нажимают десятки раз за сессию, поэтому отклик держим на пороге
-  // заметности: 3% и 120 мс. Состояние на useState, а не на shared value —
-  // оно меняется дважды за нажатие, а не каждый кадр.
-  const [pressed, setPressed] = useState(false);
+  const { pressStyle, onPressIn, onPressOut } = useCoverPress();
 
   return (
     <Pressable
@@ -40,13 +37,13 @@ export function PerspectiveBook({
       accessibilityHint={accessibilityHint}
       disabled={disabled}
       onPress={onPress}
-      onPressIn={() => setPressed(true)}
-      onPressOut={() => setPressed(false)}
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
       // Небольшой сдвиг пальца не должен отменять нажатие.
       pressRetentionOffset={16}
       style={[{ width }, disabled && styles.disabled]}
     >
-      <Animated.View style={[coverPress, styles.book, { width, height }, pressed && coverPressed]}>
+      <Animated.View style={[pressStyle, styles.book, { width, height }]}>
         <View
           style={[styles.cover, !coverEffects && styles.coverWithoutEffects, { width, height }]}
         >

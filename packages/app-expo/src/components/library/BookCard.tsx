@@ -20,7 +20,7 @@ import { BookCardActionSheet } from "./BookCardActionSheet";
 import { makeStyles } from "./book-card-styles";
 import { BookCoverTypography } from "./book-cover-typography";
 import { BookSpineOverlay } from "./book-spine-overlay";
-import { coverPress, coverPressed } from "./cover-press";
+import { useCoverPress } from "./cover-press";
 import { useResolvedAssetUris } from "./use-resolved-asset-uris";
 
 interface BookCardProps {
@@ -51,8 +51,7 @@ export const BookCard = memo(function BookCard({
   const { t } = useTranslation();
   const swipePressGuard = useSwipePressGuard();
   const [failedCoverUrl, setFailedCoverUrl] = useState<string>();
-  // Тот же отклик на нажатие, что у обложек каталога: 3% и 120 мс.
-  const [pressed, setPressed] = useState(false);
+  const { pressStyle, onPressIn, onPressOut } = useCoverPress();
   const bundledCatalogBook = findBundledCatalogBookByTitle(book.meta.title);
   const coverItems = useMemo(
     () => [{ bookId: book.id, coverUrl: book.meta.coverUrl ?? null }],
@@ -85,8 +84,8 @@ export const BookCard = memo(function BookCard({
           if (swipePressGuard?.canPress() === false) return;
           onOpen(book);
         }}
-        onPressIn={() => setPressed(true)}
-        onPressOut={() => setPressed(false)}
+        onPressIn={onPressIn}
+        onPressOut={onPressOut}
         // Небольшой сдвиг пальца не должен отменять нажатие.
         pressRetentionOffset={16}
         style={s.container}
@@ -94,7 +93,7 @@ export const BookCard = memo(function BookCard({
         accessibilityLabel={book.meta.title}
         accessibilityHint={t("notes.openBook", "Открыть")}
       >
-        <Animated.View style={[coverPress, pressed && coverPressed]}>
+        <Animated.View style={pressStyle}>
           {/* Cover — 28:41 aspect ratio */}
           <View style={s.coverWrap}>
             {hasUsableSavedCover && resolvedCoverUrl ? (
