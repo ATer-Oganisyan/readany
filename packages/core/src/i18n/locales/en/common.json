@@ -162,6 +162,7 @@
   "chats": {
     "emptyTitle": "Characters from your books will appear here",
     "emptyDescription": "You’ll be able to talk to them",
+    "emptyAction": "Add",
     "bookFilter": "Filter by book"
   },
   "search": {

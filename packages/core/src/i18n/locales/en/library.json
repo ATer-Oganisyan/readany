@@ -11,6 +11,7 @@
     "readingProgress": "{{percent}}% read",
     "empty": "No books yet",
     "emptyHint": "Tap the + button to import your first book",
+    "emptyAction": "Add",
     "importFirst": "Import book",
     "catalogAdd": "Add to library",
     "catalog": "For you",
