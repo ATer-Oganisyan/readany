@@ -33,7 +33,13 @@ export function PerspectiveBook({
       accessibilityHint={accessibilityHint}
       disabled={disabled}
       onPress={onPress}
-      style={[{ width }, disabled && styles.disabled]}
+      // Та же реакция на нажатие, что у обложки в «Моих книгах»: там
+      // TouchableOpacity с activeOpacity 0.7.
+      style={({ pressed }) => [
+        { width },
+        pressed && !disabled && styles.pressed,
+        disabled && styles.disabled,
+      ]}
     >
       <View style={[styles.book, { width, height }]}>
         <View
@@ -127,4 +133,5 @@ const styles = StyleSheet.create({
       "inset 0 -1px rgba(0,0,0,0.18), inset 0 2px 2px rgba(255,255,255,0.10), inset 4px 0 4px rgba(0,0,0,0.13)",
   },
   disabled: { opacity: 0.7 },
+  pressed: { opacity: 0.7 },
 });
