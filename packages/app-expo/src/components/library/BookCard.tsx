@@ -14,11 +14,13 @@ import type { Book } from "@readany/core/types";
 import { BlurView } from "expo-blur";
 import { memo, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Image, TouchableOpacity, View } from "react-native";
+import { Image, Pressable, View } from "react-native";
+import Animated from "react-native-reanimated";
 import { BookCardActionSheet } from "./BookCardActionSheet";
 import { makeStyles } from "./book-card-styles";
 import { BookCoverTypography } from "./book-cover-typography";
 import { BookSpineOverlay } from "./book-spine-overlay";
+import { coverPress, coverPressed } from "./cover-press";
 import { useResolvedAssetUris } from "./use-resolved-asset-uris";
 
 interface BookCardProps {
@@ -49,6 +51,8 @@ export const BookCard = memo(function BookCard({
   const { t } = useTranslation();
   const swipePressGuard = useSwipePressGuard();
   const [failedCoverUrl, setFailedCoverUrl] = useState<string>();
+  // Тот же отклик на нажатие, что у обложек каталога: 3% и 120 мс.
+  const [pressed, setPressed] = useState(false);
   const bundledCatalogBook = findBundledCatalogBookByTitle(book.meta.title);
   const coverItems = useMemo(
     () => [{ bookId: book.id, coverUrl: book.meta.coverUrl ?? null }],
@@ -76,70 +80,75 @@ export const BookCard = memo(function BookCard({
 
   return (
     <BookCardActionSheet book={book} onOpen={onOpen} onDelete={onDelete}>
-      <TouchableOpacity
-        style={s.container}
+      <Pressable
         onPress={() => {
           if (swipePressGuard?.canPress() === false) return;
           onOpen(book);
         }}
-        activeOpacity={0.7}
+        onPressIn={() => setPressed(true)}
+        onPressOut={() => setPressed(false)}
+        // Небольшой сдвиг пальца не должен отменять нажатие.
+        pressRetentionOffset={16}
+        style={s.container}
         accessibilityRole="button"
         accessibilityLabel={book.meta.title}
         accessibilityHint={t("notes.openBook", "Открыть")}
       >
-        {/* Cover — 28:41 aspect ratio */}
-        <View style={s.coverWrap}>
-          {hasUsableSavedCover && resolvedCoverUrl ? (
-            <Image
-              source={{ uri: resolvedCoverUrl }}
-              style={s.coverImage}
-              resizeMode="cover"
-              onError={() => setFailedCoverUrl(resolvedCoverUrl)}
-            />
-          ) : bundledCoverUri ? (
-            <Image source={{ uri: bundledCoverUri }} style={s.coverImage} resizeMode="cover" />
-          ) : (
-            <View
-              style={[
-                s.fallbackCover,
-                {
-                  backgroundColor: loadingCoverColorForTitleAuthor({
-                    title: book.meta.title,
-                    author: book.meta.author,
-                  }),
-                },
-              ]}
-            />
-          )}
+        <Animated.View style={[coverPress, pressed && coverPressed]}>
+          {/* Cover — 28:41 aspect ratio */}
+          <View style={s.coverWrap}>
+            {hasUsableSavedCover && resolvedCoverUrl ? (
+              <Image
+                source={{ uri: resolvedCoverUrl }}
+                style={s.coverImage}
+                resizeMode="cover"
+                onError={() => setFailedCoverUrl(resolvedCoverUrl)}
+              />
+            ) : bundledCoverUri ? (
+              <Image source={{ uri: bundledCoverUri }} style={s.coverImage} resizeMode="cover" />
+            ) : (
+              <View
+                style={[
+                  s.fallbackCover,
+                  {
+                    backgroundColor: loadingCoverColorForTitleAuthor({
+                      title: book.meta.title,
+                      author: book.meta.author,
+                    }),
+                  },
+                ]}
+              />
+            )}
 
-          {/* Корешок остаётся видимым и на собственной обложке, и на заглушке. */}
-          <BookSpineOverlay coverWidth={cardWidth} />
+            {/* Корешок остаётся видимым и на собственной обложке, и на заглушке. */}
+            <BookSpineOverlay coverWidth={cardWidth} />
 
-          <BookCoverTypography
-            title={book.meta.title}
-            author={book.meta.author}
-            width={cardWidth}
-            showText={showCoverTypography}
-            textTone={coverTextTone}
-            coverUri={(hasUsableSavedCover ? resolvedCoverUrl : bundledCoverUri) ?? undefined}
-            bottomAccessory={
-              progressPercent > 0 ? (
-                <BlurView tint="dark" intensity={50} style={s.progressChip}>
-                  <Text style={s.cardProgress} numberOfLines={1}>
-                    {`${progressPercent}%`}
-                  </Text>
-                </BlurView>
-              ) : null
-            }
-          />
-          {/* Remote status overlay (on-demand download) */}
-          {book.syncStatus === "remote" && (
-            <View style={s.remoteOverlay}>
-              <Text style={s.remoteOverlayText}>{t("home.remote", "需下载")}</Text>
-            </View>
-          )}
-        </View>
-      </TouchableOpacity>
+            <BookCoverTypography
+              title={book.meta.title}
+              author={book.meta.author}
+              width={cardWidth}
+              showText={showCoverTypography}
+              textTone={coverTextTone}
+              coverUri={(hasUsableSavedCover ? resolvedCoverUrl : bundledCoverUri) ?? undefined}
+              bottomAccessory={
+                progressPercent > 0 ? (
+                  <BlurView tint="dark" intensity={50} style={s.progressChip}>
+                    <Text style={s.cardProgress} numberOfLines={1}>
+                      {`${progressPercent}%`}
+                    </Text>
+                  </BlurView>
+                ) : null
+              }
+            />
+            {/* Remote status overlay (on-demand download) */}
+            {book.syncStatus === "remote" && (
+              <View style={s.remoteOverlay}>
+                <Text style={s.remoteOverlayText}>{t("home.remote", "需下载")}</Text>
+              </View>
+            )}
+          </View>
+        </Animated.View>
+      </Pressable>
     </BookCardActionSheet>
   );
 });

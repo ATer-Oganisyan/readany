@@ -1,7 +1,9 @@
 import { radius } from "@/styles/theme";
 import { LinearGradient } from "expo-linear-gradient";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
+import Animated from "react-native-reanimated";
+import { coverPress, coverPressed } from "./cover-press";
 
 interface PerspectiveBookProps {
   width: number;
@@ -26,6 +28,11 @@ export function PerspectiveBook({
   accessibilityLabel,
   accessibilityHint,
 }: PerspectiveBookProps) {
+  // Обложку нажимают десятки раз за сессию, поэтому отклик держим на пороге
+  // заметности: 3% и 120 мс. Состояние на useState, а не на shared value —
+  // оно меняется дважды за нажатие, а не каждый кадр.
+  const [pressed, setPressed] = useState(false);
+
   return (
     <Pressable
       accessibilityRole="button"
@@ -33,15 +40,13 @@ export function PerspectiveBook({
       accessibilityHint={accessibilityHint}
       disabled={disabled}
       onPress={onPress}
-      // Та же реакция на нажатие, что у обложки в «Моих книгах»: там
-      // TouchableOpacity с activeOpacity 0.7.
-      style={({ pressed }) => [
-        { width },
-        pressed && !disabled && styles.pressed,
-        disabled && styles.disabled,
-      ]}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
+      // Небольшой сдвиг пальца не должен отменять нажатие.
+      pressRetentionOffset={16}
+      style={[{ width }, disabled && styles.disabled]}
     >
-      <View style={[styles.book, { width, height }]}>
+      <Animated.View style={[coverPress, styles.book, { width, height }, pressed && coverPressed]}>
         <View
           style={[styles.cover, !coverEffects && styles.coverWithoutEffects, { width, height }]}
         >
@@ -92,7 +97,7 @@ export function PerspectiveBook({
             </>
           ) : null}
         </View>
-      </View>
+      </Animated.View>
       {footer}
     </Pressable>
   );
@@ -133,5 +138,4 @@ const styles = StyleSheet.create({
       "inset 0 -1px rgba(0,0,0,0.18), inset 0 2px 2px rgba(255,255,255,0.10), inset 4px 0 4px rgba(0,0,0,0.13)",
   },
   disabled: { opacity: 0.7 },
-  pressed: { opacity: 0.7 },
 });
