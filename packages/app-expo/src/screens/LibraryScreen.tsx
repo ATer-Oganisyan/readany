@@ -105,6 +105,13 @@ const GRID_GAP = 16;
 /** Запас рядов, для которых обложки грузятся заранее, ниже видимой области. */
 const COVER_LOOKAHEAD_ROWS = 3;
 /**
+ * Каталог монтируется чанками: карточек в нём около сотни, а вьюхи для них
+ * создаются разом, одним коммитом в главном потоке. Это подвешивало экран на
+ * полсекунды каждый раз, когда библиотеку нужно показать — при переходе на
+ * вкладку и при закрытии ридера, у которого экран под ним отсоединён.
+ */
+const CATALOG_PAGE_SIZE = 10;
+/**
  * Сколько точек заглушек видно за последней готовой книгой. Ровно столько
  * прокрутка и позволяет: дальше контента нет, поэтому экран скелетонов
  * пролистать нельзя, но и конец списка не выглядит обрывом.
@@ -506,9 +513,28 @@ function LibraryScreenContent() {
   }, []);
 
   /**
-   * Окно сетки равно числу готовых обложек. Позиции сохраняют порядок списка:
-   * если обложка внутри окна ещё не пришла, карточка сама покажет заглушку, а
-   * книги не будут переставляться местами.
+   * Докуда пользователь долистал каталог, округлённое вверх до чанка. Один
+   * счётчик на две задачи: сколько обложек качать и сколько карточек
+   * монтировать. Только растёт — иначе пролистанные карточки размонтировались
+   * бы, и возврат наверх снова стоил бы коммита.
+   */
+  const [catalogChunkCount, setCatalogChunkCount] = useState(CATALOG_PAGE_SIZE);
+
+  useEffect(() => {
+    const rowHeight = gridItemWidth * (41 / 28) + gridGap;
+    if (rowHeight <= 0) return;
+    const rowsPassed = Math.max(0, Math.floor(catalogScrollY / rowHeight));
+    const rowsOnScreen = Math.max(1, Math.ceil(layout.height / rowHeight));
+    const needed = (rowsPassed + rowsOnScreen + COVER_LOOKAHEAD_ROWS) * Math.max(1, columnCount);
+    setCatalogChunkCount((current) =>
+      needed <= current ? current : Math.ceil(needed / CATALOG_PAGE_SIZE) * CATALOG_PAGE_SIZE,
+    );
+  }, [catalogScrollY, columnCount, gridGap, gridItemWidth, layout.height]);
+
+  /**
+   * Окно сетки — это готовые обложки, обрезанные текущим чанком. Позиции
+   * сохраняют порядок списка: если обложка внутри окна ещё не пришла, карточка
+   * сама покажет заглушку, а книги не будут переставляться местами.
    *
    * Книга без обложки на бэкенде тоже готова: ждать нечего, и карточка рисует
    * её на дефолтном цвете обложки. Иначе такие книги не попадали в окно вовсе
@@ -519,8 +545,8 @@ function LibraryScreenContent() {
       (count, book) => (book.coverUri || !book.cover ? count + 1 : count),
       0,
     );
-    return catalogBooks.slice(0, readyCount);
-  }, [catalogBooks]);
+    return catalogBooks.slice(0, Math.min(readyCount, catalogChunkCount));
+  }, [catalogBooks, catalogChunkCount]);
 
   /**
    * За последней готовой книгой рисуем заглушек на целый экран. Одно правило
@@ -596,16 +622,13 @@ function LibraryScreenContent() {
 
   /**
    * Очередь идёт по порядку списка: положение скрытых карточек на экране не
-   * измерить. Держим готовыми то, что пользователь пролистал, плюс экран,
-   * плюс запас рядов.
+   * измерить.
    */
   const queueVisibleCatalogCovers = useCallback(() => {
     if (!catalogCoverLoadingEnabled) return;
-    const rowHeight = gridItemWidth * (41 / 28) + gridGap;
-    const rowsPassed = rowHeight > 0 ? Math.max(0, Math.floor(catalogScrollY / rowHeight)) : 0;
-    const rowsOnScreen = rowHeight > 0 ? Math.ceil(layout.height / rowHeight) : 1;
-    const desiredReadyCount =
-      (rowsPassed + rowsOnScreen + COVER_LOOKAHEAD_ROWS) * Math.max(1, columnCount);
+    // Тот же чанк, что и у сетки: обложки грузятся ровно для тех карточек,
+    // которые смонтированы или смонтируются следующими.
+    const desiredReadyCount = catalogChunkCount;
 
     const missing: CachedBackendCatalogBook[] = [];
     let readyCount = 0;
@@ -619,15 +642,7 @@ function LibraryScreenContent() {
       missing.push(book);
     }
     if (missing.length > 0) catalogCoverQueueRef.current?.enqueue(missing);
-  }, [
-    catalogBooks,
-    catalogCoverLoadingEnabled,
-    catalogScrollY,
-    columnCount,
-    gridGap,
-    gridItemWidth,
-    layout.height,
-  ]);
+  }, [catalogBooks, catalogChunkCount, catalogCoverLoadingEnabled]);
 
   useEffect(() => {
     if (!catalogCoverLoadingEnabled) {
