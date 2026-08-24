@@ -657,6 +657,7 @@ test('catalog listing never receives processing editions from the service contra
     id: 'catalog-1',
     scope: 'catalog',
     catalogKey: 'book',
+    genres: ['literary-fiction', 'psychology-self-help'],
     cover: {
       objectKey: 'catalog/book/cover',
       contentHash: HASH,
@@ -676,6 +677,7 @@ test('catalog listing never receives processing editions from the service contra
   })
   const result = await service.listCatalog({ limit: 1, cursor: null })
   assert.equal(result.items[0].ready, true)
+  assert.deepEqual(result.items[0].genres, ['literary-fiction', 'psychology-self-help'])
   assert.deepEqual(result.items[0].cover, {
     contentHash: HASH,
     mimeType: 'image/jpeg',

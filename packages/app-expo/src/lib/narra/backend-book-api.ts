@@ -1,5 +1,6 @@
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
 import type { Book } from "@readany/core/types";
+import { type CatalogGenreId, parseCatalogGenres } from "./catalog-genres";
 import { NarraServiceError } from "./errors";
 import type { NarraCharacter } from "./types";
 
@@ -12,6 +13,7 @@ export interface BackendBookBinding {
   catalogKey?: string;
   title?: string;
   author?: string;
+  genres?: CatalogGenreId[];
   format?: string;
   contentSha256: string;
   generationStatus?: string;
@@ -160,6 +162,7 @@ function binding(value: JsonRecord): BackendBookBinding {
     catalogKey: typeof value.catalog_key === "string" ? value.catalog_key : undefined,
     title: typeof value.title === "string" ? value.title : undefined,
     author: typeof value.author === "string" ? value.author : undefined,
+    genres: parseCatalogGenres(value.genres),
     format: typeof value.format === "string" ? value.format : undefined,
     contentSha256: String(value.content_sha256 || ""),
     generationStatus:

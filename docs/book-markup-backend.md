@@ -60,6 +60,11 @@ All routes below require the existing installation bearer token:
 
 - `GET /v2/books/catalog` returns only catalog editions in `base_ready` or
   `published` state and uses an opaque keyset cursor;
+- Catalog book bindings include the additive `genres` array with zero or more
+  normalized genre IDs. One book may belong to several genres. Old clients may
+  ignore the field; new clients must ignore unknown future IDs. The fixed
+  taxonomy and the book-to-genre source table live in
+  `services/narra-gateway/data/catalog-book-genres.json`;
 - `POST /v2/books/resolve` resolves a catalog key or a local SHA-256. A local
   hash reuses a ready catalog edition first, then the caller's private edition;
   otherwise the result is `local_registration_required`;

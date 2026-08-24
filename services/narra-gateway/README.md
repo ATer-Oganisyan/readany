@@ -125,6 +125,24 @@ After deploying markup schema v2, enqueue legacy editions once with:
 npm run backfill:book-markup
 ```
 
+Catalog genres use a fixed taxonomy of 20 IDs derived from the 500 EPUB files in
+`narra-books-ru` and the 1000 EPUB files in `narra-books-en`. The explicit
+book-to-genre table is checked in as `data/catalog-book-genres.json`; EN rows
+retain their EPUB `dc:subject` evidence, while RU rows are explicitly marked up
+from title and author because those EPUB files do not contain `dc:subject`.
+There is no runtime LLM classification and no genre generation job.
+
+Migration `016_book_genres.sql` creates the single many-to-many relation
+`book_edition_genres` and fills it from that table, including aliases for legacy
+staging catalog keys. Catalog ingestion applies the same hardcoded mapping to
+books added after migrations run.
+
+`GET /v2/books/catalog` exposes the additive `genres` array, for example
+`"genres": ["science-fiction", "romance"]`. Old clients can ignore it. New
+clients must ignore unknown future IDs. There is intentionally no separate
+genres endpoint: the normalized list and display order are versioned with the
+application contract.
+
 Permanently failed jobs are not duplicated by reader traffic. After correcting
 the provider or configuration failure, retry a bounded batch explicitly:
 

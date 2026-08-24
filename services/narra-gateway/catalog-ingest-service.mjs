@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { genresForCatalogBook } from './catalog-book-genres.mjs'
 
 function serviceError(code, message, status) {
   return Object.assign(new Error(message), { code, status })
@@ -33,6 +34,15 @@ export function createCatalogIngestService({
   idFactory = randomUUID
 }) {
   if (!repository || !storage) throw new TypeError('catalog repository and storage are required')
+  const assignCatalogGenres = async (edition) => {
+    if (typeof repository.replaceBookEditionGenres !== 'function') return
+    const genres = genresForCatalogBook({
+      catalogKey: edition.catalogKey,
+      title: edition.title
+    })
+    if (genres.length === 0) return
+    await repository.replaceBookEditionGenres({ bookEditionId: edition.id, genres })
+  }
   const ensureCanonicalAnalysis = async (edition) => {
     if (!analysisRepository || typeof analysisRepository.ensureAnalysisRun !== 'function') {
       throw new TypeError('book analysis repository is required for catalog ingestion')
@@ -60,6 +70,9 @@ export function createCatalogIngestService({
         objectKey,
         ...input
       })
+      if (!prepared.uploadRequired) {
+        await assignCatalogGenres(prepared.edition)
+      }
       const analysis = prepared.uploadRequired
         ? {}
         : await ensureCanonicalAnalysis(prepared.edition)
@@ -106,6 +119,7 @@ export function createCatalogIngestService({
       const edition = await repository.completeCatalogBookUpload({ bookEditionId })
       if (!edition) throw serviceError('NOT_FOUND', 'Каталожная книга не найдена', 404)
       await repository.enqueueBookIdentity?.({ bookEditionId })
+      await assignCatalogGenres(edition)
       const analysis = await ensureCanonicalAnalysis(edition)
       return result(edition, analysis)
     },

@@ -45,6 +45,7 @@ function bookBinding(edition) {
     catalogKey: edition.catalogKey ?? undefined,
     title: edition.title,
     author: edition.author,
+    genres: Array.isArray(edition.genres) ? edition.genres : [],
     format: edition.format,
     contentSha256: edition.contentSha256,
     generationStatus: edition.status,

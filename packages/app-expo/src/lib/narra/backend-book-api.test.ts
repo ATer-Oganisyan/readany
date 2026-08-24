@@ -31,6 +31,7 @@ describe("backend book API", () => {
               catalog_key: "seagull",
               title: "Чайка",
               author: "Антон Чехов",
+              genres: ["drama", "literary-fiction"],
               format: "epub",
               content_sha256: "a".repeat(64),
               ready: true,
@@ -53,6 +54,7 @@ describe("backend book API", () => {
         bookEditionId: "book-1",
         catalogKey: "seagull",
         title: "Чайка",
+        genres: ["drama", "literary-fiction"],
         sourceDownloadPath: "/v2/books/book-1/source/download",
         cover: {
           contentHash: "b".repeat(64),
@@ -130,6 +132,33 @@ describe("backend book API", () => {
       "/v2/books/catalog?limit=100&cursor=cursor-2",
       {},
     );
+  });
+
+  it("keeps known catalog genres and ignores unknown future IDs", async () => {
+    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          items: [
+            {
+              resolution: "catalog",
+              book_edition_id: "book-1",
+              catalog_key: "book",
+              title: "Book",
+              author: "Author",
+              genres: ["future-genre", "poetry", "poetry"],
+              format: "epub",
+              content_sha256: "a".repeat(64),
+              ready: true,
+              source_download_path: "/v2/books/book-1/source/download",
+            },
+          ],
+        }),
+      ),
+    );
+
+    await expect(fetchBackendCatalogBooks()).resolves.toEqual([
+      expect.objectContaining({ genres: ["poetry"] }),
+    ]);
   });
 
   it("reports response metadata when the backend body is not JSON", async () => {

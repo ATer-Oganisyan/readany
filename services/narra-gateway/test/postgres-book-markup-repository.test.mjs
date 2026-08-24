@@ -107,6 +107,7 @@ test('catalog API prefers the identity worker display metadata', async () => {
     id: 'book-1', scope: 'catalog', catalog_key: 'book-1', content_sha256: 'a'.repeat(64),
     title: 'Мертвое озеро (Часть первая)', author: 'Николай Некрасов (1821—1877)',
     display_title: 'Мертвое озеро', display_author: 'Николай Некрасов',
+    genres: ['mystery-thriller', 'literary-fiction'],
     format: 'fb2', status: 'base_ready', source_storage: 'stored',
     expires_at: null, created_at: new Date('2026-08-20T00:00:00.000Z')
   }] })])
@@ -114,7 +115,9 @@ test('catalog API prefers the identity worker display metadata', async () => {
   const result = await repository.listCatalogBooks({ limit: 20 })
   assert.equal(result.items[0].title, 'Мертвое озеро')
   assert.equal(result.items[0].author, 'Николай Некрасов')
+  assert.deepEqual(result.items[0].genres, ['mystery-thriller', 'literary-fiction'])
   assert.match(pool.queries[0].sql, /edition\.display_title, edition\.display_author/)
+  assert.match(pool.queries[0].sql, /array_agg\(link\.genre ORDER BY link\.position\)/)
 })
 
 test('catalog content resolves the latest prepared normalized text only for catalog books', async () => {
@@ -407,4 +410,17 @@ test('book scene migration adds durable interval slots and scene media jobs', as
   assert.match(migration, /UNIQUE \(markup_version_id, slot_index\)/)
   assert.match(migration, /asset_id UUID REFERENCES media_assets/)
   assert.match(migration, /type IN \([\s\S]*'scene_image'/)
+})
+
+test('book genre migration creates and seeds a normalized many-to-many relation', async () => {
+  const migration = await readFile(
+    new URL('../migrations/016_book_genres.sql', import.meta.url),
+    'utf8'
+  )
+  assert.match(migration, /CREATE TABLE book_edition_genres/)
+  assert.match(migration, /PRIMARY KEY \(book_edition_id, genre\)/)
+  assert.match(migration, /WITH source_mapping/)
+  assert.match(migration, /'science-fiction'/)
+  assert.match(migration, /narra-ru-038-kavkazskij-plennik-pushkin/)
+  assert.doesNotMatch(migration, /book_genre|genre_source|\bllm\b/i)
 })

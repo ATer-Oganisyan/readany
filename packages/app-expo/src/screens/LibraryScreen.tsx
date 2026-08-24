@@ -38,6 +38,10 @@ import {
   cleanupBackendCatalogSource,
   downloadBackendCatalogSource,
 } from "@/lib/narra/backend-catalog-source";
+import {
+  type CatalogGenreGroupId,
+  groupCatalogBooksByGenre,
+} from "@/lib/narra/catalog-genre-groups";
 import { queueBookForAutoVectorize } from "@/lib/rag/auto-vectorize-book";
 import { setCallback, setExtractorRef } from "@/lib/rag/auto-vectorize-service";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
@@ -136,6 +140,15 @@ type LibraryGridItem =
   | { type: "group"; group: BookGroup; books: Book[] }
   | { type: "book"; book: Book };
 
+type CatalogGenreListItem =
+  | { type: "header"; genre: CatalogGenreGroupId }
+  | {
+      type: "row";
+      genre: CatalogGenreGroupId;
+      rowIndex: number;
+      books: CachedBackendCatalogBook[];
+    };
+
 type LibrarySection = "catalog" | "my-books";
 
 function appendUniqueCatalogBooks(
@@ -218,6 +231,22 @@ function LibraryScreenContent() {
   const [catalogImportingId, setCatalogImportingId] = useState<string | null>(null);
   const [catalogBooks, setCatalogBooks] = useState<CachedBackendCatalogBook[]>([]);
   const [catalogNextCursor, setCatalogNextCursor] = useState<string | null>(null);
+  const catalogGenreGroups = useMemo(() => groupCatalogBooksByGenre(catalogBooks), [catalogBooks]);
+  const catalogGenreListItems = useMemo(() => {
+    const items: CatalogGenreListItem[] = [];
+    for (const group of catalogGenreGroups) {
+      items.push({ type: "header", genre: group.genre });
+      for (let index = 0; index < group.books.length; index += columnCount) {
+        items.push({
+          type: "row",
+          genre: group.genre,
+          rowIndex: index / columnCount,
+          books: group.books.slice(index, index + columnCount),
+        });
+      }
+    }
+    return items;
+  }, [catalogGenreGroups, columnCount]);
   const [isCatalogLoading, setIsCatalogLoading] = useState(true);
   const [isCatalogLoadingMore, setIsCatalogLoadingMore] = useState(false);
   const catalogInitialRefreshInFlightRef = useRef(true);
@@ -1316,9 +1345,9 @@ function LibraryScreenContent() {
     </View>
   ) : null;
 
-  const renderCatalogGridItem = useCallback(
-    ({ item: catalogBook }: { item: CachedBackendCatalogBook }) => (
-      <View style={s.gridItem}>
+  const renderCatalogCard = useCallback(
+    (catalogBook: CachedBackendCatalogBook) => (
+      <View key={catalogBook.bookEditionId} style={s.gridItem}>
         <CatalogBookCard
           title={catalogBook.title}
           author={catalogBook.author}
@@ -1342,29 +1371,33 @@ function LibraryScreenContent() {
     ],
   );
 
+  const catalogGenreTitle = useCallback(
+    (genre: CatalogGenreGroupId) => t(`library.genres.${genre}`, genre),
+    [t],
+  );
+
+  const renderCatalogGenreListItem = useCallback(
+    ({ item }: { item: CatalogGenreListItem }) =>
+      item.type === "header" ? (
+        <Text style={s.catalogGenreTitle}>{catalogGenreTitle(item.genre)}</Text>
+      ) : (
+        <View style={s.catalogGenreRow}>{item.books.map(renderCatalogCard)}</View>
+      ),
+    [catalogGenreTitle, renderCatalogCard, s.catalogGenreRow, s.catalogGenreTitle],
+  );
+
   const catalogGrid = (
     <View style={s.catalogSection}>
-      <View style={s.catalogGrid}>
-        {isCatalogLoading ? (
-          <ActivityIndicator color={colors.primary} />
-        ) : (
-          catalogBooks.map((catalogBook) => (
-            <View key={catalogBook.bookEditionId} style={s.gridItem}>
-              <CatalogBookCard
-                title={catalogBook.title}
-                author={catalogBook.author}
-                coverUri={catalogBook.coverUri}
-                cardWidth={gridItemWidth}
-                isImporting={catalogImportingId === catalogBook.catalogKey}
-                isInLibrary={catalogBooksInLibrary.has(catalogBook.catalogKey)}
-                coverRequestKey={catalogBook.cover?.contentHash}
-                onCoverNeeded={() => handleCatalogCoverNeeded(catalogBook)}
-                onPress={() => void handleCatalogOpen(catalogBook)}
-              />
-            </View>
-          ))
-        )}
-      </View>
+      {isCatalogLoading ? (
+        <ActivityIndicator color={colors.primary} />
+      ) : (
+        catalogGenreGroups.map((group) => (
+          <View key={group.genre} style={s.catalogGenreGroup}>
+            <Text style={s.catalogGenreTitle}>{catalogGenreTitle(group.genre)}</Text>
+            <View style={s.catalogGenreGrid}>{group.books.map(renderCatalogCard)}</View>
+          </View>
+        ))
+      )}
       {isCatalogLoadingMore ? (
         <View style={s.catalogPageLoader}>
           <ActivityIndicator color={colors.primary} />
@@ -1400,11 +1433,13 @@ function LibraryScreenContent() {
     >
       <FlatList
         key={`catalog-grid-${columnCount}`}
-        data={isLoaded && !isCatalogLoading ? catalogBooks : []}
-        renderItem={renderCatalogGridItem}
-        keyExtractor={(catalogBook) => catalogBook.bookEditionId}
-        numColumns={columnCount}
-        columnWrapperStyle={s.gridRow}
+        data={isLoaded && !isCatalogLoading ? catalogGenreListItems : []}
+        renderItem={renderCatalogGenreListItem}
+        keyExtractor={(item) =>
+          item.type === "header"
+            ? `genre-${item.genre}`
+            : `genre-${item.genre}-row-${item.rowIndex}`
+        }
         contentContainerStyle={s.pagerListContent}
         ListEmptyComponent={
           isCatalogLoading ? (
@@ -1741,7 +1776,15 @@ const makeStyles = (
       marginBottom: 16,
     },
     catalogSection: { overflow: "visible" },
-    catalogGrid: {
+    catalogGenreGroup: { marginBottom: layout.gridGap },
+    catalogGenreTitle: {
+      marginBottom: 12,
+      fontFamily: secondLevelTitleFontFamily,
+      fontSize: fontSize.lg,
+      fontWeight: fontWeight.semibold,
+      color: colors.foreground,
+    },
+    catalogGenreGrid: {
       flexDirection: "row",
       flexWrap: "wrap",
       columnGap: layout.gridGap,
@@ -1751,6 +1794,11 @@ const makeStyles = (
       minHeight: 56,
       alignItems: "center",
       justifyContent: "center",
+    },
+    catalogGenreRow: {
+      flexDirection: "row",
+      columnGap: layout.gridGap,
+      overflow: "visible",
     },
     groupModalOverlay: {
       flex: 1,

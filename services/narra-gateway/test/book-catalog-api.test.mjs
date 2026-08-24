@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  bookJson,
   decodeCatalogCursor,
   encodeCatalogCursor,
   parseBookResolveBody,
@@ -12,6 +13,21 @@ import {
 } from '../book-catalog-api.mjs'
 
 const ID = '123e4567-e89b-42d3-a456-426614174000'
+
+test('catalog JSON adds normalized genres without changing existing fields', () => {
+  const book = {
+    resolution: 'catalog', bookEditionId: ID, catalogKey: 'seagull',
+    title: 'Чайка', author: 'Антон Чехов', genres: ['drama'], format: 'epub',
+    contentSha256: 'a'.repeat(64), generationStatus: 'base_ready', ready: true,
+    sourceDownloadPath: `/v2/books/${ID}/source/download`
+  }
+  const json = bookJson(book)
+  assert.deepEqual(json.genres, ['drama'])
+  assert.equal(json.book_edition_id, ID)
+  assert.equal(json.catalog_key, 'seagull')
+
+  assert.deepEqual(bookJson({ ...book, genres: undefined }).genres, [])
+})
 
 test('catalog cursor round-trips without accepting arbitrary input', () => {
   const cursor = { createdAt: '2026-08-10T00:00:00.000Z', id: ID }

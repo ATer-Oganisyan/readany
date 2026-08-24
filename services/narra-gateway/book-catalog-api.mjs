@@ -287,13 +287,14 @@ function asyncRoute(operation) {
   return (req, res, next) => void operation(req, res).catch(next)
 }
 
-function bookJson(book) {
+export function bookJson(book) {
   const value = {
     resolution: book.resolution,
     book_edition_id: book.bookEditionId,
     catalog_key: book.catalogKey,
     title: book.title,
     author: book.author,
+    genres: Array.isArray(book.genres) ? book.genres : [],
     format: book.format,
     content_sha256: book.contentSha256,
     generation_status: book.generationStatus,

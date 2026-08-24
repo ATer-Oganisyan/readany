@@ -88,6 +88,7 @@ function editionRow(row) {
     contentSha256: row.content_sha256,
     title: displayTitle || 'Untitled book',
     author: displayAuthor,
+    genres: Array.isArray(row.genres) ? row.genres.filter((genre) => typeof genre === 'string') : [],
     format: row.format,
     status: row.status,
     sourceStorage: row.source_storage || 'stored',
@@ -1306,6 +1307,11 @@ export function createPostgresBookMarkupRepository(pool, {
         `SELECT edition.id, edition.scope, edition.catalog_key,
                 edition.content_sha256, edition.title, edition.author,
                 edition.display_title, edition.display_author,
+                COALESCE((
+                  SELECT array_agg(link.genre ORDER BY link.position)
+                  FROM book_edition_genres AS link
+                  WHERE link.book_edition_id = edition.id
+                ), ARRAY[]::text[]) AS genres,
                 edition.format, edition.status, edition.source_storage,
                 edition.expires_at, edition.created_at,
                 cover.object_key AS cover_object_key,
@@ -1740,6 +1746,31 @@ export function createPostgresBookMarkupRepository(pool, {
         if (job) jobs.push(job)
       }
       return jobs
+    },
+
+    async replaceBookEditionGenres({ bookEditionId, genres }) {
+      return transaction(pool, async (client) => {
+        const edition = await client.query(
+          `SELECT id FROM book_editions
+           WHERE id = $1 AND scope = 'catalog'
+           FOR UPDATE`,
+          [bookEditionId]
+        )
+        if (!edition.rows[0]) return false
+        await client.query(
+          'DELETE FROM book_edition_genres WHERE book_edition_id = $1',
+          [bookEditionId]
+        )
+        if (genres.length > 0) {
+          await client.query(
+            `INSERT INTO book_edition_genres (book_edition_id, genre, position)
+             SELECT $1, value, ordinality::smallint
+             FROM unnest($2::text[]) WITH ORDINALITY AS item(value, ordinality)`,
+            [bookEditionId, genres]
+          )
+        }
+        return true
+      })
     },
 
     async enqueueCatalogCover({

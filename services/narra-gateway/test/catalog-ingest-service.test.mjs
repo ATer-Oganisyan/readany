@@ -89,13 +89,18 @@ test('catalog ingestion verifies bytes, stores the source and queues canonical v
   }])
 })
 
-test('repeated catalog ingestion ensures v3 analysis without creating a v2 job', async () => {
+test('repeated catalog ingestion assigns hardcoded genres and ensures v3 analysis', async () => {
   const calls = []
+  const genreCalls = []
   const service = createCatalogIngestService({
     repository: {
       async beginCatalogBookUpload() {
-        return { edition: { ...EDITION, status: 'base_ready' }, uploadRequired: false }
+        return {
+          edition: { ...EDITION, catalogKey: 'aelita', title: 'Аэлита', status: 'base_ready' },
+          uploadRequired: false
+        }
       },
+      async replaceBookEditionGenres(input) { genreCalls.push(input) },
       async enqueueBookMarkup() {
         throw new Error('legacy v2 markup must not be queued')
       }
@@ -115,12 +120,15 @@ test('repeated catalog ingestion ensures v3 analysis without creating a v2 job',
   })
 
   const begun = await service.begin({
-    catalogKey: 'catalog-book', contentSha256: HASH, title: 'Book', author: 'Author',
+    catalogKey: 'aelita', contentSha256: HASH, title: 'Аэлита', author: 'Алексей Толстой',
     format: 'epub', mimeType: 'application/epub+zip', byteSize: BYTES.byteLength
   })
 
   assert.equal(begun.uploadRequired, false)
   assert.equal(begun.analysisRunId, 'run-v3')
+  assert.deepEqual(genreCalls, [{
+    bookEditionId: 'book-1', genres: ['science-fiction', 'romance']
+  }])
   assert.deepEqual(calls, [{ bookEditionId: 'book-1', inputHash: HASH, priority: 50 }])
 })
 
