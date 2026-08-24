@@ -1,5 +1,6 @@
 import express from 'express'
 import { createBookCatalogService } from './book-catalog-service.mjs'
+import { CATALOG_GENRES, CATALOG_GENRE_DATA_VERSION } from './catalog-book-genres.mjs'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const SHA256 = /^[0-9a-f]{64}$/
@@ -314,6 +315,18 @@ export function bookJson(book) {
   return value
 }
 
+export function catalogGenresJson() {
+  return {
+    version: CATALOG_GENRE_DATA_VERSION,
+    items: CATALOG_GENRES.map(({ id, labelRu, labelEn, order }) => ({
+      id,
+      label_ru: labelRu,
+      label_en: labelEn,
+      order
+    }))
+  }
+}
+
 function manifestJson(manifest) {
   return {
     source: manifest.source,
@@ -409,6 +422,10 @@ export function createBookCatalogRouter({
   const router = express.Router()
   const service = createBookCatalogService({ repository, analysisRepository, storage })
   const subject = (req) => uuid(req.installation?.sub, 'installation subject')
+
+  router.get('/genres', (_req, res) => {
+    res.json(catalogGenresJson())
+  })
 
   router.get('/catalog', asyncRoute(async (req, res) => {
     const result = await service.listCatalog({

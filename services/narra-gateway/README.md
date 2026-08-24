@@ -139,9 +139,25 @@ books added after migrations run.
 
 `GET /v2/books/catalog` exposes the additive `genres` array, for example
 `"genres": ["science-fiction", "romance"]`. Old clients can ignore it. New
-clients must ignore unknown future IDs. There is intentionally no separate
-genres endpoint: the normalized list and display order are versioned with the
-application contract.
+clients must ignore unknown future IDs.
+
+`GET /v2/books/genres` exposes the complete normalized taxonomy independently
+from the paginated book list. The authenticated response is versioned and keeps
+both display languages explicit:
+
+```json
+{
+  "version": "catalog-genres-v1",
+  "items": [
+    {
+      "id": "science-fiction",
+      "label_ru": "Научная фантастика",
+      "label_en": "Science Fiction",
+      "order": 4
+    }
+  ]
+}
+```
 
 Permanently failed jobs are not duplicated by reader traffic. After correcting
 the provider or configuration failure, retry a bounded batch explicitly:
@@ -246,7 +262,7 @@ An idle worker reports that it is alive at `BOOK_MARKUP_IDLE_LOG_MS` intervals
 (five minutes by default), without writing a line on every queue poll.
 
 When `DATABASE_URL` is configured, Gateway enables the authenticated book API:
-`GET /v2/books/catalog`, `POST /v2/books/resolve`,
+`GET /v2/books/genres`, `GET /v2/books/catalog`, `POST /v2/books/resolve`,
 `POST /v2/books/local`, `POST /v2/books/:bookEditionId/local-markup`,
 `GET /v2/books/:bookEditionId/manifest` and
 `POST /v2/books/:bookEditionId/progress`. A ready v3 manifest contains every

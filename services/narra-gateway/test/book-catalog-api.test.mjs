@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   bookJson,
+  catalogGenresJson,
+  createBookCatalogRouter,
   decodeCatalogCursor,
   encodeCatalogCursor,
   parseBookResolveBody,
@@ -13,6 +15,34 @@ import {
 } from '../book-catalog-api.mjs'
 
 const ID = '123e4567-e89b-42d3-a456-426614174000'
+
+test('genres endpoint contract exposes the fixed bilingual taxonomy', () => {
+  const result = catalogGenresJson()
+  assert.equal(result.version, 'catalog-genres-v1')
+  assert.equal(result.items.length, 20)
+  assert.deepEqual(result.items[4], {
+    id: 'science-fiction',
+    label_ru: 'Научная фантастика',
+    label_en: 'Science Fiction',
+    order: 4
+  })
+  assert.equal(new Set(result.items.map(({ id }) => id)).size, 20)
+  assert.deepEqual(result.items.map(({ order }) => order), [...Array(20).keys()])
+})
+
+test('book catalog router exposes a separate genres endpoint', () => {
+  const repository = {
+    async listCatalogBooks() {},
+    async resolveBook() {},
+    async getReaderBookManifest() {},
+    async advanceReaderPosition() {}
+  }
+  const router = createBookCatalogRouter({ repository })
+  const routes = router.stack
+    .filter((layer) => layer.route)
+    .map((layer) => ({ path: layer.route.path, methods: layer.route.methods }))
+  assert.ok(routes.some(({ path, methods }) => path === '/genres' && methods.get))
+})
 
 test('catalog JSON adds normalized genres without changing existing fields', () => {
   const book = {

@@ -58,6 +58,8 @@ first-appearance offset against that exact normalized text stream.
 
 All routes below require the existing installation bearer token:
 
+- `GET /v2/books/genres` returns the fixed, versioned list of normalized genres
+  with Russian and English display labels and stable ordering;
 - `GET /v2/books/catalog` returns only catalog editions in `base_ready` or
   `published` state and uses an opaque keyset cursor;
 - Catalog book bindings include the additive `genres` array with zero or more
