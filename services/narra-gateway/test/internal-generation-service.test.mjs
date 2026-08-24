@@ -164,6 +164,59 @@ test('internal generation service creates all three required bundle assets', asy
   assert.ok(lines.some((line) => line.includes('event="bundle.cached"')))
 })
 
+test('internal generation service reads the canonical excerpt and stores a scene idempotently', async () => {
+  const normalizedText = `Анна открыла дверь и вошла в зал. ${'Событие продолжалось. '.repeat(400)}`
+  const bytes = Buffer.from(normalizedText)
+  const normalizedTextHash = createHash('sha256').update(bytes).digest('hex')
+  const storage = memoryStorage({
+    normalized: { bytes, mimeType: 'text/plain; charset=utf-8' }
+  })
+  let sceneCalls = 0
+  let scenePrompt = ''
+  const service = createInternalGenerationService({
+    storage,
+    logger: { info() {}, error() {} },
+    async completeChat() { throw new Error('unused') },
+    async generatePortrait() { throw new Error('portrait must not run') },
+    async generateScene(prompt) {
+      sceneCalls += 1
+      scenePrompt = prompt
+      return { bytes: Buffer.from('scene'), mimeType: 'image/png', provider: 'gigachat-image' }
+    },
+    async synthesizeSpeech() { throw new Error('unused') },
+    async generateIdleAnimation() { throw new Error('unused') }
+  })
+  const request = {
+    idempotencyKey: '11111111-1111-4111-8111-111111111111:scene:text-interval-v1:0:text-interval-v1:aaaaaaaaaaaaaaaa',
+    bookEditionId: '11111111-1111-4111-8111-111111111111',
+    targetVersion: 'text-interval-v1:aaaaaaaaaaaaaaaa',
+    scope: 'private',
+    bookTitle: 'Книга',
+    bookAuthor: 'Автор',
+    sceneKey: 'text-interval-v1:0',
+    slotIndex: 0,
+    anchorTextOffset: 3_000,
+    excerptStartTextOffset: 0,
+    excerptEndTextOffset: 6_000,
+    textLength: normalizedText.length,
+    normalizedTextObjectKey: 'normalized',
+    normalizedTextHash,
+    characters: [{
+      characterKey: 'character:anna', name: 'Анна', fullName: 'Анна',
+      profile: { role: { value: 'Героиня' }, creative: { appearancePrompt: 'тёмные волосы' } }
+    }]
+  }
+
+  const first = await service.generateBookScene(request)
+  const repeated = await service.generateBookScene(request)
+  assert.deepEqual(repeated, first)
+  assert.equal(sceneCalls, 1)
+  assert.match(scenePrompt, /Анна открыла дверь/)
+  assert.match(scenePrompt, /тёмные волосы/)
+  assert.equal(first.asset.type, 'scene_image')
+  assert.match(first.asset.objectKey, /\/scenes\/text-interval-v1-aaaaaaaaaaaaaaaa\/0\.png$/)
+})
+
 test('internal generation service publishes one requested character asset independently', async () => {
   const storage = memoryStorage()
   let portraitCalls = 0
@@ -1726,6 +1779,7 @@ test('internal router exposes all worker endpoints', () => {
       async generateBookMarkup() { return { ok: true } },
       async generateBookIdentity() { return { title: 'Книга' } },
       async generateCatalogCover() { return { ok: true } },
+      async generateBookScene() { return { ok: true } },
       async generateCharacterBundle() { return { ok: true } },
       async scanBookChunk() { return { observations: [] } },
       async reconcileBookCharacterIdentities() { return { merges: [] } },
@@ -1737,6 +1791,7 @@ test('internal router exposes all worker endpoints', () => {
     '/v1/book-markup',
     '/v1/book-identities',
     '/v1/catalog-covers',
+    '/v1/book-scenes',
     '/v1/character-bundles',
     '/v1/book-analysis/scan-chunk',
     '/v1/book-analysis/reconcile-character-identities',

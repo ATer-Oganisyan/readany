@@ -15,10 +15,14 @@ import {
   openBackendBookSync,
   queueBackendReaderProgress,
 } from "@/lib/narra/backend-book-coordinator";
+import { requestBackendBookScene } from "@/lib/narra/backend-book-api";
 import { buildCharacterNameMatcherSpec } from "@/lib/narra/character-name-matcher";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
 import { reportNarraError } from "@/lib/narra/errors";
-import { normalizePersistedNarraMediaUri } from "@/lib/narra/media";
+import {
+  normalizePersistedNarraMediaUri,
+  persistBackendSceneImage,
+} from "@/lib/narra/media";
 import { generateNarraSceneImage } from "@/lib/narra/scene-image-openrouter";
 import {
   sceneImageDataUri,
@@ -485,9 +489,8 @@ function ReaderContent({ route, navigation }: Props) {
   ).current;
   const { loadAnnotations, highlights, removeBookmark } = useAnnotationStore();
   const book = useMemo(() => books.find((b) => b.id === bookId), [books, bookId]);
-  const backendResolution = useNarraStore(
-    (state) => state.books[bookId]?.backendBinding?.resolution,
-  );
+  const backendBinding = useNarraStore((state) => state.books[bookId]?.backendBinding);
+  const backendResolution = backendBinding?.resolution;
 
   // ── Narra: кликабельные имена персонажей ────────────────────────────────────
   const narraBookCharacters = useNarraStore((state) => state.books[bookId]?.characters);
@@ -522,6 +525,28 @@ function ReaderContent({ route, navigation }: Props) {
   const setNarraScene = useNarraStore((state) => state.setScene);
   const sceneSlotBusyRef = useRef(new Set<string>());
 
+  const loadBackendScene = useCallback(async () => {
+    const bookEditionId = backendBinding?.bookEditionId;
+    if (!bookEditionId) return null;
+    for (let attempt = 0; attempt < 45; attempt += 1) {
+      const scene = await requestBackendBookScene(bookEditionId, progressRef.current);
+      if (scene.status === "ready" && scene.imageUrl) {
+        return {
+          scene,
+          imageUri: await persistBackendSceneImage(
+            bookId,
+            scene.sceneKey,
+            scene.imageUrl,
+            scene.mimeType,
+          ),
+        };
+      }
+      if (scene.status === "failed") throw new Error("Backend scene generation failed");
+      await new Promise((resolve) => setTimeout(resolve, scene.pollAfterMs));
+    }
+    throw new Error("Backend scene generation timed out");
+  }, [backendBinding?.bookEditionId, bookId]);
+
   // Видимый текст страницы — контекст для промпта сцены (как в P6)
   const collectVisibleSceneExcerpt = useCallback(async () => {
     const bridge = bridgeRef.current;
@@ -545,19 +570,22 @@ function ReaderContent({ route, navigation }: Props) {
       try {
         const sourceKey = sceneSourceKeyForAnchor(anchor);
         const cached = useNarraStore.getState().books[bookId]?.scenes?.[sourceKey];
-        // Перегенерация — тот же контекст, что у сохранённой сцены
-        const excerpt = cached?.excerpt?.trim() || (await collectVisibleSceneExcerpt());
-        if (!excerpt) {
-          bridgeRef.current?.setSceneSlotState(anchor, "error");
-          return;
-        }
         const chapter =
           cached?.chapter ||
           currentChapter ||
           bookTitle ||
           book?.meta.title ||
           t("reader.currentPage", "Текущая страница");
-        const imageUri = await generateNarraSceneImage(bookId, chapter, excerpt, characters);
+        const backendScene = await loadBackendScene();
+        // Legacy fallback remains only for books that have no backend edition.
+        const excerpt = cached?.excerpt?.trim() || (await collectVisibleSceneExcerpt());
+        if (!backendScene && !excerpt) {
+          bridgeRef.current?.setSceneSlotState(anchor, "error");
+          return;
+        }
+        const imageUri = backendScene
+          ? backendScene.imageUri
+          : await generateNarraSceneImage(bookId, chapter, excerpt, characters);
         setNarraScene(bookId, {
           sourceKey,
           chapter,
@@ -565,6 +593,8 @@ function ReaderContent({ route, navigation }: Props) {
           imageUri,
           generatedAt: Date.now(),
           anchor,
+          backendSceneKey: backendScene?.scene.sceneKey,
+          backendAnchorTextOffset: backendScene?.scene.anchorTextOffset,
         });
         // Файл читается в RN и передаётся data-URI — WebView не ходит в ФС
         const base64 = await FileSystem.readAsStringAsync(
@@ -587,7 +617,9 @@ function ReaderContent({ route, navigation }: Props) {
       characters,
       collectVisibleSceneExcerpt,
       currentChapter,
+      loadBackendScene,
       setNarraScene,
+      t,
     ],
   );
 

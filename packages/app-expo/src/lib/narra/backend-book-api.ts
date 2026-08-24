@@ -80,6 +80,11 @@ export interface BackendBookManifest {
   revision?: number;
   schemaVersion?: number;
   analysisVersion?: string;
+  scenePolicy?: {
+    version: string;
+    startTextOffset: number;
+    intervalTextLength: number;
+  };
   publicationId?: string;
   runId?: string;
   contentHash?: string;
@@ -91,6 +96,17 @@ export interface BackendBookManifest {
 export interface BackendReaderSectionPosition {
   sectionIndex: number;
   sectionFraction: number;
+}
+
+export interface BackendBookScene {
+  status: "queued" | "running" | "ready" | "failed";
+  sceneKey: string;
+  slotIndex: number;
+  anchorTextOffset: number;
+  imageUrl?: string;
+  mimeType?: string;
+  expiresAt?: string;
+  pollAfterMs: number;
 }
 
 type JsonRecord = Record<string, unknown>;
@@ -383,6 +399,10 @@ export async function fetchBackendBookManifest(
     payload.analysis && typeof payload.analysis === "object"
       ? (payload.analysis as JsonRecord)
       : null;
+  const scenePolicy =
+    markup?.scene_policy && typeof markup.scene_policy === "object"
+      ? (markup.scene_policy as JsonRecord)
+      : null;
   const rawCharacters = Array.isArray(payload.characters) ? payload.characters : [];
   const manifestBook =
     payload.book && typeof payload.book === "object"
@@ -401,6 +421,17 @@ export async function fetchBackendBookManifest(
     schemaVersion: markup ? Number(markup.schema_version) || undefined : undefined,
     analysisVersion:
       markup && typeof markup.analysis_version === "string" ? markup.analysis_version : undefined,
+    scenePolicy:
+      scenePolicy &&
+      typeof scenePolicy.version === "string" &&
+      Number.isSafeInteger(scenePolicy.start_text_offset) &&
+      Number.isSafeInteger(scenePolicy.interval_text_length)
+        ? {
+            version: scenePolicy.version,
+            startTextOffset: Number(scenePolicy.start_text_offset),
+            intervalTextLength: Number(scenePolicy.interval_text_length),
+          }
+        : undefined,
     publicationId: typeof payload.publication_id === "string" ? payload.publication_id : undefined,
     runId: typeof payload.run_id === "string" ? payload.run_id : undefined,
     contentHash: typeof payload.content_hash === "string" ? payload.content_hash : undefined,
@@ -456,6 +487,32 @@ export async function fetchBackendBookManifest(
         },
       ];
     }),
+  };
+}
+
+export async function requestBackendBookScene(
+  bookEditionId: string,
+  progressFraction: number,
+): Promise<BackendBookScene> {
+  const payload = await gatewayJson(`/v2/books/${encodeURIComponent(bookEditionId)}/scenes/at`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      progress_fraction: Math.min(1, Math.max(0, progressFraction)),
+    }),
+  });
+  const status = ["queued", "running", "ready", "failed"].includes(String(payload.status))
+    ? (String(payload.status) as BackendBookScene["status"])
+    : "failed";
+  return {
+    status,
+    sceneKey: String(payload.scene_key || ""),
+    slotIndex: Number(payload.slot_index) || 0,
+    anchorTextOffset: Number(payload.anchor_text_offset) || 0,
+    imageUrl: typeof payload.image_url === "string" ? payload.image_url : undefined,
+    mimeType: typeof payload.mime_type === "string" ? payload.mime_type : undefined,
+    expiresAt: typeof payload.expires_at === "string" ? payload.expires_at : undefined,
+    pollAfterMs: Math.max(250, Number(payload.poll_after_ms) || 2_000),
   };
 }
 

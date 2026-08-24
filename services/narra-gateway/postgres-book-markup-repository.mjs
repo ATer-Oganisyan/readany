@@ -15,6 +15,13 @@ import {
   characterMediaTargetVersion,
   hasReaderReachedCharacter
 } from './book-markup.mjs'
+import {
+  bookMediaFrontier,
+  bookSceneIdempotencyKey,
+  bookSceneSlotAt,
+  bookSceneSlotsThrough,
+  normalizeBookScenePolicy
+} from './book-scenes.mjs'
 
 const BOOK_MIME_TYPES = Object.freeze({
   epub: 'application/epub+zip',
@@ -232,6 +239,145 @@ export function createPostgresBookMarkupRepository(pool, {
       if (!existing.rows[0]) throw new Error('idempotent generation job disappeared')
       return { row: existing.rows[0], created: false }
     })
+  }
+
+  async function loadSceneContext(client, { subjectId = null, bookEditionId }) {
+    const result = await client.query(
+      `SELECT edition.id, edition.scope, edition.title, edition.author,
+              edition.expires_at, markup.id AS markup_version_id,
+              markup.text_length, markup.input_hash,
+              publication.content_hash AS publication_content_hash,
+              publication.data->'markup'->'scenePolicy' AS scene_policy,
+              run.normalized_text_object_key, run.normalized_text_hash
+       FROM book_editions AS edition
+       JOIN book_markup_versions AS markup
+         ON markup.book_edition_id = edition.id
+        AND markup.status = 'published'
+        AND markup.analysis_version = 'book-markup-v3'
+       LEFT JOIN LATERAL (
+         SELECT value.content_hash, value.run_id, value.data
+         FROM book_analysis_publications AS value
+         WHERE value.book_edition_id = edition.id AND value.channel = 'shadow'
+           AND value.content_hash = markup.input_hash
+         ORDER BY value.published_at DESC, value.id DESC
+         LIMIT 1
+       ) AS publication ON true
+       LEFT JOIN book_analysis_runs AS run ON run.id = publication.run_id
+       WHERE edition.id = $1 AND (
+         $2::uuid IS NULL OR
+         (edition.scope = 'catalog' AND edition.status IN ('base_ready', 'published')) OR
+         (edition.scope = 'private' AND edition.owner_subject_id = $2::uuid
+           AND edition.expires_at > now())
+       )
+       LIMIT 1 FOR SHARE OF edition, markup`,
+      [bookEditionId, subjectId]
+    )
+    const row = result.rows[0]
+    if (!row || !row.normalized_text_object_key || !row.normalized_text_hash) return null
+    const textLength = Number(row.text_length)
+    return {
+      bookEditionId: row.id,
+      scope: row.scope,
+      title: row.title,
+      author: row.author,
+      markupVersionId: row.markup_version_id,
+      markupContentHash: row.publication_content_hash || row.input_hash,
+      normalizedTextObjectKey: row.normalized_text_object_key,
+      normalizedTextHash: row.normalized_text_hash,
+      textLength,
+      policy: normalizeBookScenePolicy(row.scene_policy, textLength)
+    }
+  }
+
+  async function ensureSceneSlot(client, context, slot, priority = 45) {
+    const idempotencyKey = bookSceneIdempotencyKey({
+      bookEditionId: context.bookEditionId,
+      markupContentHash: context.markupContentHash,
+      policyVersion: context.policy.version,
+      slotIndex: slot.slotIndex
+    })
+    const targetVersion = `${context.policy.version}:${context.markupContentHash.slice(0, 16)}`
+    const payload = {
+      markup_version_id: context.markupVersionId,
+      scene_key: slot.sceneKey,
+      slot_index: slot.slotIndex,
+      anchor_text_offset: slot.anchorTextOffset,
+      excerpt_start_text_offset: slot.excerptStartTextOffset,
+      excerpt_end_text_offset: slot.excerptEndTextOffset,
+      normalized_text_object_key: context.normalizedTextObjectKey,
+      normalized_text_hash: context.normalizedTextHash
+    }
+    const proposedJobId = idFactory()
+    const insertedJob = await client.query(
+      `INSERT INTO generation_jobs (
+         id, idempotency_key, job_type, book_edition_id, character_key,
+         target_version, status, priority, payload
+       ) VALUES ($1, $2, 'scene_image', $3, NULL, $4, 'queued', $5, $6::jsonb)
+       ON CONFLICT (idempotency_key) DO NOTHING
+       RETURNING *`,
+      [
+        proposedJobId, idempotencyKey, context.bookEditionId, targetVersion,
+        priority, JSON.stringify(payload)
+      ]
+    )
+    const job = insertedJob.rows[0] || (await client.query(
+      'SELECT * FROM generation_jobs WHERE idempotency_key = $1',
+      [idempotencyKey]
+    )).rows[0]
+    if (!job) throw new Error('idempotent scene generation job disappeared')
+    if (job.status === 'failed' && priority >= 70) {
+      await client.query(
+        `UPDATE generation_jobs
+         SET status = 'queued', attempts = 0, last_error_code = NULL,
+             available_at = now(), locked_at = NULL, locked_by = NULL,
+             lease_token = NULL, updated_at = now()
+         WHERE id = $1 AND status = 'failed'`,
+        [job.id]
+      )
+      job.status = 'queued'
+    }
+    await client.query(
+      `INSERT INTO book_scene_slots (
+         id, book_edition_id, markup_version_id, policy_version, scene_key,
+         slot_index, anchor_text_offset, excerpt_start_text_offset,
+         excerpt_end_text_offset, job_id
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       ON CONFLICT (markup_version_id, slot_index) DO NOTHING`,
+      [
+        idFactory(), context.bookEditionId, context.markupVersionId,
+        context.policy.version, slot.sceneKey, slot.slotIndex, slot.anchorTextOffset,
+        slot.excerptStartTextOffset, slot.excerptEndTextOffset, job.id
+      ]
+    )
+    const result = await client.query(
+      `SELECT scene.scene_key, scene.slot_index, scene.anchor_text_offset,
+              job.status, asset.id AS asset_id, asset.object_key,
+              asset.type, asset.content_hash, asset.mime_type, asset.byte_size
+       FROM book_scene_slots AS scene
+       JOIN generation_jobs AS job ON job.id = scene.job_id
+       LEFT JOIN media_assets AS asset
+         ON asset.id = scene.asset_id AND asset.status = 'ready'
+       WHERE scene.markup_version_id = $1 AND scene.slot_index = $2`,
+      [context.markupVersionId, slot.slotIndex]
+    )
+    const row = result.rows[0]
+    if (!row) throw new Error('durable scene slot disappeared')
+    return {
+      sceneKey: row.scene_key,
+      slotIndex: Number(row.slot_index),
+      anchorTextOffset: Number(row.anchor_text_offset),
+      status: row.asset_id ? 'ready' : row.status === 'ready' ? 'failed' : row.status,
+      asset: row.asset_id
+        ? {
+            assetId: row.asset_id,
+            objectKey: row.object_key,
+            type: row.type,
+            contentHash: row.content_hash,
+            mimeType: row.mime_type,
+            byteSize: Number(row.byte_size)
+          }
+        : null
+    }
   }
 
   function identityJobSpec(edition) {
@@ -1071,6 +1217,57 @@ export function createPostgresBookMarkupRepository(pool, {
       })
     },
 
+    async ensureReaderBookScene({
+      subjectId,
+      bookEditionId,
+      readerTextOffset = null,
+      progressFraction = null,
+      priority = 70
+    }) {
+      return transaction(pool, async (client) => {
+        const context = await loadSceneContext(client, { subjectId, bookEditionId })
+        if (!context) return null
+        const canonicalOffset = progressFraction != null
+          ? Math.round(context.textLength * Math.min(1, Math.max(0, progressFraction)))
+          : readerTextOffset
+        const slot = bookSceneSlotAt(
+          context.policy,
+          context.textLength,
+          Math.min(context.textLength - 1, Math.max(0, canonicalOffset ?? 0))
+        )
+        const scene = await ensureSceneSlot(client, context, slot, priority)
+        if (context.scope === 'private') await touchPrivateRetention(client, bookEditionId)
+        return scene
+      })
+    },
+
+    async ensureBookScenesThrough({
+      subjectId,
+      bookEditionId,
+      readerTextOffset,
+      priority = 45
+    }) {
+      return transaction(pool, async (client) => {
+        const context = await loadSceneContext(client, { subjectId, bookEditionId })
+        if (!context) return { requested: 0, ready: 0, pending: 0, failed: 0 }
+        const frontier = bookMediaFrontier({
+          scope: context.scope,
+          textLength: context.textLength,
+          readerTextOffset
+        })
+        const slots = bookSceneSlotsThrough(context.policy, context.textLength, frontier)
+        const scenes = []
+        for (const slot of slots) scenes.push(await ensureSceneSlot(client, context, slot, priority))
+        if (context.scope === 'private') await touchPrivateRetention(client, bookEditionId)
+        return {
+          requested: scenes.length,
+          ready: scenes.filter(({ status }) => status === 'ready').length,
+          pending: scenes.filter(({ status }) => status === 'queued' || status === 'running').length,
+          failed: scenes.filter(({ status }) => status === 'failed').length
+        }
+      })
+    },
+
     async listCatalogBooks({ limit, cursor = null }) {
       const result = await pool.query(
         `SELECT edition.id, edition.scope, edition.catalog_key,
@@ -1376,6 +1573,13 @@ export function createPostgresBookMarkupRepository(pool, {
         const readerSectionFraction = position.rows[0].section_fraction == null
           ? null
           : Number(position.rows[0].section_fraction)
+        const mediaFrontier = textLength
+          ? bookMediaFrontier({
+              scope: edition.rows[0].scope,
+              textLength,
+              readerTextOffset
+            })
+          : readerTextOffset
         const due = await client.query(
           `SELECT character.character_key,
                   character.first_appearance_text_offset,
@@ -1387,7 +1591,7 @@ export function createPostgresBookMarkupRepository(pool, {
            ORDER BY character.warmup_text_offset,
                     character.first_appearance_text_offset,
                     character.character_key`,
-          [bookEditionId, readerTextOffset]
+          [bookEditionId, mediaFrontier]
         )
         return {
           scope: edition.rows[0].scope,
@@ -1397,6 +1601,7 @@ export function createPostgresBookMarkupRepository(pool, {
           chapterKey: position.rows[0].chapter_key,
           readerSectionIndex,
           readerSectionFraction,
+          mediaFrontier,
           charactersDue: due.rows.map((row) => ({
             characterKey: row.character_key,
             firstAppearanceTextOffset: Number(row.first_appearance_text_offset),
@@ -1605,10 +1810,14 @@ export function createPostgresBookMarkupRepository(pool, {
          WHERE markup.status = 'published'
            AND (bundle.id IS NULL OR bundle.status <> 'ready')
            AND (
-             edition.scope = 'catalog' OR EXISTS (
-               SELECT 1 FROM reader_book_positions AS position
-               WHERE position.book_edition_id = markup.book_edition_id
-                 AND position.text_offset >= character.warmup_text_offset
+             edition.scope = 'catalog' OR
+             character.warmup_text_offset <= LEAST(
+               markup.text_length,
+               COALESCE((
+                 SELECT MAX(position.text_offset)
+                 FROM reader_book_positions AS position
+                 WHERE position.book_edition_id = markup.book_edition_id
+               ), 0) + CEIL(markup.text_length * 0.1)::bigint
              )
            )
          ORDER BY markup.book_edition_id, character.sort_order, character.character_key
@@ -1626,6 +1835,55 @@ export function createPostgresBookMarkupRepository(pool, {
         jobs.push(...ensured.jobs)
       }
       return jobs
+    },
+
+    async enqueueBookSceneBackfill({ priority = 35, limit = 1_000 } = {}) {
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 10_000) {
+        throw new RangeError('book scene backfill limit must be between 1 and 10000')
+      }
+      const candidates = await pool.query(
+        `SELECT edition.id,
+                COALESCE(MAX(position.text_offset), 0)::bigint AS reader_text_offset
+         FROM book_editions AS edition
+         JOIN book_markup_versions AS markup
+           ON markup.book_edition_id = edition.id
+          AND markup.status = 'published'
+          AND markup.analysis_version = 'book-markup-v3'
+         LEFT JOIN reader_book_positions AS position
+           ON position.book_edition_id = edition.id
+         WHERE edition.scope = 'catalog' OR edition.expires_at > now()
+         GROUP BY edition.id, edition.created_at
+         ORDER BY edition.created_at, edition.id
+         LIMIT $1`,
+        [limit]
+      )
+      const results = []
+      for (const candidate of candidates.rows) {
+        const result = await transaction(pool, async (client) => {
+          const context = await loadSceneContext(client, {
+            subjectId: null,
+            bookEditionId: candidate.id
+          })
+          if (!context) return { requested: 0, ready: 0, pending: 0, failed: 0 }
+          const frontier = bookMediaFrontier({
+            scope: context.scope,
+            textLength: context.textLength,
+            readerTextOffset: Number(candidate.reader_text_offset)
+          })
+          const scenes = []
+          for (const slot of bookSceneSlotsThrough(context.policy, context.textLength, frontier)) {
+            scenes.push(await ensureSceneSlot(client, context, slot, priority))
+          }
+          return {
+            requested: scenes.length,
+            ready: scenes.filter(({ status }) => status === 'ready').length,
+            pending: scenes.filter(({ status }) => status === 'queued' || status === 'running').length,
+            failed: scenes.filter(({ status }) => status === 'failed').length
+          }
+        })
+        results.push({ bookEditionId: candidate.id, ...result })
+      }
+      return results
     },
 
     async retryFailedGenerationJobs({ limit = 100 } = {}) {
@@ -1877,6 +2135,56 @@ export function createPostgresBookMarkupRepository(pool, {
       }
     },
 
+    async getBookSceneInput(job) {
+      const result = await pool.query(
+        `SELECT scene.scene_key, scene.slot_index, scene.anchor_text_offset,
+                scene.excerpt_start_text_offset, scene.excerpt_end_text_offset,
+                scene.markup_version_id, edition.scope, edition.title, edition.author,
+                markup.text_length,
+                job.payload->>'normalized_text_object_key' AS normalized_text_object_key,
+                job.payload->>'normalized_text_hash' AS normalized_text_hash
+         FROM generation_jobs AS job
+         JOIN book_scene_slots AS scene ON scene.job_id = job.id
+         JOIN book_editions AS edition ON edition.id = job.book_edition_id
+         JOIN book_markup_versions AS markup ON markup.id = scene.markup_version_id
+         WHERE job.id = $1 AND job.job_type = 'scene_image'
+           AND job.status = 'running' AND job.lease_token = $2::uuid
+           AND markup.status = 'published'`,
+        [job.id, job.leaseToken]
+      )
+      if (!result.rows[0]) throw leaseLost(job.id)
+      const row = result.rows[0]
+      const characters = await pool.query(
+        `SELECT character_key, name, full_name, data
+         FROM book_characters
+         WHERE markup_version_id = $1
+           AND first_appearance_text_offset <= $2
+         ORDER BY sort_order, character_key`,
+        [row.markup_version_id, row.excerpt_end_text_offset]
+      )
+      return {
+        bookEditionId: job.bookEditionId,
+        targetVersion: job.targetVersion,
+        scope: row.scope,
+        bookTitle: row.title,
+        bookAuthor: row.author,
+        sceneKey: row.scene_key,
+        slotIndex: Number(row.slot_index),
+        anchorTextOffset: Number(row.anchor_text_offset),
+        excerptStartTextOffset: Number(row.excerpt_start_text_offset),
+        excerptEndTextOffset: Number(row.excerpt_end_text_offset),
+        textLength: Number(row.text_length),
+        normalizedTextObjectKey: row.normalized_text_object_key,
+        normalizedTextHash: row.normalized_text_hash,
+        characters: characters.rows.map((character) => ({
+          characterKey: character.character_key,
+          name: character.name,
+          fullName: character.full_name,
+          profile: character.data
+        }))
+      }
+    },
+
     async getCatalogCoverInput(job) {
       const result = await pool.query(
         `SELECT COALESCE(edition.display_title, edition.title) AS title,
@@ -2091,6 +2399,78 @@ export function createPostgresBookMarkupRepository(pool, {
           )
         }
         return { bundleId: target.id, status: bundleStatus }
+      })
+    },
+
+    async publishBookScene(job, asset) {
+      return transaction(pool, async (client) => {
+        await requireLeasedJob(client, job)
+        if (
+          !asset || typeof asset.objectKey !== 'string' || !asset.objectKey ||
+          typeof asset.contentHash !== 'string' || !/^[0-9a-f]{64}$/.test(asset.contentHash) ||
+          !['image/jpeg', 'image/png', 'image/webp'].includes(asset.mimeType) ||
+          !Number.isSafeInteger(asset.byteSize) || asset.byteSize < 1
+        ) {
+          const error = new Error('book scene asset metadata is invalid')
+          error.code = 'GENERATION_RESULT_INVALID'
+          throw error
+        }
+        const target = await client.query(
+          `SELECT scene.id, scene.asset_id, edition.scope
+           FROM book_scene_slots AS scene
+           JOIN book_editions AS edition ON edition.id = scene.book_edition_id
+           WHERE scene.job_id = $1 FOR UPDATE OF scene`,
+          [job.id]
+        )
+        if (!target.rows[0]) {
+          await client.query(
+            `UPDATE generation_jobs
+             SET status = 'ready', result = '{"stale":true}'::jsonb,
+                 locked_at = NULL, locked_by = NULL, lease_token = NULL, updated_at = now()
+             WHERE id = $1`,
+            [job.id]
+          )
+          return { status: 'stale' }
+        }
+        const assetId = idFactory()
+        const inserted = await client.query(
+          `INSERT INTO media_assets (
+             id, book_edition_id, visibility, type, object_key, content_hash,
+             mime_type, byte_size, status, expires_at
+           ) VALUES (
+             $1, $2, $3, 'scene_image', $4, $5, $6, $7, 'ready',
+             CASE WHEN $3 = 'private'
+               THEN now() + make_interval(days => $8)
+               ELSE NULL
+             END
+           )
+           ON CONFLICT (object_key) DO UPDATE SET
+             content_hash = EXCLUDED.content_hash,
+             mime_type = EXCLUDED.mime_type,
+             byte_size = EXCLUDED.byte_size,
+             status = 'ready',
+             expires_at = EXCLUDED.expires_at
+           RETURNING id`,
+          [
+            assetId, job.bookEditionId, target.rows[0].scope, asset.objectKey,
+            asset.contentHash, asset.mimeType, asset.byteSize, privateMaterialTtlDays
+          ]
+        )
+        await client.query(
+          `UPDATE book_scene_slots SET asset_id = $2, updated_at = now() WHERE id = $1`,
+          [target.rows[0].id, inserted.rows[0].id]
+        )
+        await client.query(
+          `UPDATE generation_jobs
+           SET status = 'ready', result = $2::jsonb, last_error_code = NULL,
+               locked_at = NULL, locked_by = NULL, lease_token = NULL, updated_at = now()
+           WHERE id = $1`,
+          [job.id, JSON.stringify({ asset_id: inserted.rows[0].id })]
+        )
+        if (target.rows[0].scope === 'private') {
+          await touchPrivateRetention(client, job.bookEditionId)
+        }
+        return { status: 'ready', assetId: inserted.rows[0].id }
       })
     },
 

@@ -372,3 +372,15 @@ test('book display identity migration adds durable metadata jobs without replaci
   assert.match(migration, /'book_identity'/)
   assert.doesNotMatch(migration, /DROP COLUMN (title|author)/)
 })
+
+test('book scene migration adds durable interval slots and scene media jobs', async () => {
+  const migration = await readFile(
+    new URL('../migrations/015_book_scenes.sql', import.meta.url),
+    'utf8'
+  )
+  assert.match(migration, /'scene_image'/)
+  assert.match(migration, /CREATE TABLE book_scene_slots/)
+  assert.match(migration, /UNIQUE \(markup_version_id, slot_index\)/)
+  assert.match(migration, /asset_id UUID REFERENCES media_assets/)
+  assert.match(migration, /type IN \([\s\S]*'scene_image'/)
+})

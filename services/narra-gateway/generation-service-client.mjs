@@ -130,6 +130,17 @@ export function createGenerationServiceClient({
         ...input
       })
     },
+    generateBookScene(input) {
+      return post('internal/v1/book-scenes', {
+        idempotencyKey: [
+          input.bookEditionId,
+          'scene',
+          input.sceneKey,
+          input.targetVersion
+        ].join(':'),
+        ...input
+      })
+    },
     generateCharacterBundle(input, requiredMedia) {
       return post('internal/v1/character-bundles', {
         idempotencyKey: [

@@ -552,6 +552,83 @@ test('canonical v3 progress queues media for characters behind the warmup fronti
   assert.deepEqual(result.warmup, { requested: 1, ready: 0, pending: 1, failed: 0 })
 })
 
+test('canonical progress extends durable scene prefetch from the server position', async () => {
+  const calls = []
+  const service = createBookCatalogService({
+    repository: repository({
+      async advanceReaderPosition() {
+        return {
+          scope: 'private',
+          analysisVersion: 'book-markup-v3',
+          readerTextOffset: 36_000,
+          readingFraction: 0.36,
+          chapterKey: 'chapter-4',
+          charactersDue: []
+        }
+      },
+      async ensureBookScenesThrough(input) {
+        calls.push(input)
+        return { requested: 2, ready: 1, pending: 1, failed: 0 }
+      }
+    }),
+    analysisRepository: {
+      async ensureLatestMediaProjection() { return { projected: true } }
+    }
+  })
+
+  const result = await service.advanceProgress('reader-1', 'book-1', {
+    progressFraction: 0.36,
+    textOffset: null,
+    chapterKey: 'chapter-4'
+  })
+
+  assert.deepEqual(calls, [{
+    subjectId: 'reader-1',
+    bookEditionId: 'book-1',
+    readerTextOffset: 36_000
+  }])
+  assert.deepEqual(result.sceneWarmup, { requested: 2, ready: 1, pending: 1, failed: 0 })
+})
+
+test('scene lookup returns a signed ready asset and never accepts scene text from the client', async () => {
+  const calls = []
+  const service = createBookCatalogService({
+    repository: repository({
+      async ensureReaderBookScene(input) {
+        calls.push(['resolve', input])
+        return {
+          status: 'ready',
+          sceneKey: 'text-interval-v1:6',
+          slotIndex: 6,
+          anchorTextOffset: 39_000,
+          asset: { objectKey: 'generated/private/book-1/scenes/6.png', mimeType: 'image/png' }
+        }
+      }
+    }),
+    storage: {
+      async createDownload(input) {
+        calls.push(['sign', input])
+        return { url: 'https://storage/scene', expiresAt: '2026-08-22T15:00:00.000Z' }
+      }
+    }
+  })
+
+  const result = await service.sceneAt('reader-1', 'book-1', {
+    readerTextOffset: 38_500,
+    progressFraction: null
+  })
+
+  assert.deepEqual(calls[0], ['resolve', {
+    subjectId: 'reader-1',
+    bookEditionId: 'book-1',
+    readerTextOffset: 38_500,
+    progressFraction: null
+  }])
+  assert.equal(result.status, 'ready')
+  assert.equal(result.imageUrl, 'https://storage/scene')
+  assert.equal(calls[1][0], 'sign')
+})
+
 test('local hash reuses a ready catalog edition and otherwise requests local registration', async () => {
   const catalog = { ...EDITION, id: 'catalog-1', scope: 'catalog', catalogKey: 'book' }
   const service = createBookCatalogService({

@@ -154,6 +154,11 @@ test('v3 markup keeps grounded facts separate from creative character data', () 
   assert.equal(markup.characters[0].personalitySnapshots[0].status, 'preliminary')
   assert.equal(markup.characters[0].creative.greeting, 'Рада встрече.')
   assert.equal('evidenceIds' in markup.characters[0].creative, false)
+  assert.deepEqual(markup.scenePolicy, {
+    version: 'text-interval-v1',
+    startTextOffset: 0,
+    intervalTextLength: 6_000
+  })
 
   const legacyGender = normalizeBookMarkupV3({
     ...markup,

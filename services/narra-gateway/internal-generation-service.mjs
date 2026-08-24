@@ -7,6 +7,7 @@ import { voiceForGender } from './voices.mjs'
 import { catalogCoverPrompt } from './catalog-cover-prompt.mjs'
 import { normalizeBookDisplayIdentity } from './book-identity.mjs'
 import { buildCharacterPortraitPrompt } from './character-portrait-prompt.mjs'
+import { sceneGenerationPrompt } from './scene-generation.mjs'
 import {
   BOOK_ANALYSIS_GENDER_EVIDENCE_TYPES,
   BOOK_ANALYSIS_SYNTHESIS_VERSION,
@@ -340,6 +341,76 @@ function normalizeCatalogCoverRequest(input) {
     title: requiredString(body.title, 'title', 1_000),
     author: typeof body.author === 'string' ? body.author.trim().slice(0, 1_000) : '',
     context: typeof body.context === 'string' ? body.context.trim().slice(0, 4_000) : ''
+  }
+}
+
+function normalizeBookSceneRequest(input) {
+  const body = exactKeys(input, new Set([
+    'idempotencyKey', 'bookEditionId', 'targetVersion', 'scope',
+    'bookTitle', 'bookAuthor', 'sceneKey', 'slotIndex', 'anchorTextOffset',
+    'excerptStartTextOffset', 'excerptEndTextOffset', 'textLength',
+    'normalizedTextObjectKey', 'normalizedTextHash', 'characters'
+  ]))
+  const bookEditionId = identifier(body.bookEditionId, 'bookEditionId')
+  const targetVersion = identifier(body.targetVersion, 'targetVersion')
+  const sceneKey = identifier(body.sceneKey, 'sceneKey')
+  const expectedKey = `${bookEditionId}:scene:${sceneKey}:${targetVersion}`
+  if (body.idempotencyKey !== expectedKey) invalid('idempotencyKey does not match the scene request')
+  if (!SCOPES.has(body.scope)) invalid('scope: invalid value')
+  if (typeof body.normalizedTextHash !== 'string' || !SHA256.test(body.normalizedTextHash)) {
+    invalid('normalizedTextHash: invalid hash')
+  }
+  for (const name of [
+    'slotIndex', 'anchorTextOffset', 'excerptStartTextOffset',
+    'excerptEndTextOffset', 'textLength'
+  ]) {
+    if (!Number.isSafeInteger(body[name]) || body[name] < 0) invalid(`${name}: invalid value`)
+  }
+  if (
+    body.textLength < 1 ||
+    body.excerptStartTextOffset >= body.excerptEndTextOffset ||
+    body.excerptEndTextOffset > body.textLength ||
+    body.anchorTextOffset < body.excerptStartTextOffset ||
+    body.anchorTextOffset >= body.excerptEndTextOffset
+  ) {
+    invalid('scene offsets are inconsistent')
+  }
+  if (!Array.isArray(body.characters) || body.characters.length > 128) {
+    invalid('characters: invalid array')
+  }
+  return {
+    ...body,
+    bookEditionId,
+    targetVersion,
+    sceneKey,
+    bookTitle: requiredString(body.bookTitle, 'bookTitle', 1_000),
+    bookAuthor: typeof body.bookAuthor === 'string' ? body.bookAuthor.trim().slice(0, 1_000) : '',
+    normalizedTextObjectKey: requiredString(
+      body.normalizedTextObjectKey,
+      'normalizedTextObjectKey',
+      900
+    )
+  }
+}
+
+function sceneCharacter(raw) {
+  const profile = raw?.profile && typeof raw.profile === 'object' && !Array.isArray(raw.profile)
+    ? raw.profile
+    : {}
+  const claim = (value) => typeof value?.value === 'string'
+    ? value.value
+    : typeof value === 'string' ? value : ''
+  const appearance = profile.creative?.appearancePrompt || (
+    Array.isArray(profile.appearance)
+      ? profile.appearance.map(claim).filter(Boolean).join(', ')
+      : claim(profile.appearance)
+  )
+  return {
+    name: typeof raw?.name === 'string' ? raw.name.trim().slice(0, 160) : '',
+    fullName: typeof raw?.fullName === 'string' ? raw.fullName.trim().slice(0, 240) : '',
+    role: claim(profile.role).slice(0, 400),
+    gender: claim(profile.gender).slice(0, 32),
+    appearance: appearance.slice(0, 1_500)
   }
 }
 
@@ -1605,13 +1676,14 @@ export function createInternalGenerationService({
   completeChat,
   generatePortrait,
   generateCover = generatePortrait,
+  generateScene = generatePortrait,
   synthesizeSpeech,
   generateIdleAnimation,
   maxBookBytes = 64 * 1024 * 1024,
   logger = console
 }) {
   if (
-    !storage || !completeChat || !generatePortrait || !generateCover ||
+    !storage || !completeChat || !generatePortrait || !generateCover || !generateScene ||
     !synthesizeSpeech || !generateIdleAnimation
   ) {
     throw new TypeError('storage and all generation providers are required')
@@ -2186,6 +2258,65 @@ export function createInternalGenerationService({
       })
     },
 
+    async generateBookScene(rawInput, signal) {
+      const input = normalizeBookSceneRequest(rawInput)
+      const startedAt = Date.now()
+      const common = {
+        edition: input.bookEditionId,
+        book: input.bookTitle,
+        scene_key: input.sceneKey,
+        slot_index: input.slotIndex
+      }
+      log.info('scene.requested', 'Получен запрос на иллюстрацию сцены', common)
+      return cached(storage, input.idempotencyKey, input, async () => {
+        const stored = await storage.getBytes({
+          objectKey: input.normalizedTextObjectKey,
+          maxBytes: maxBookBytes
+        })
+        if (sha256(stored.bytes) !== input.normalizedTextHash) {
+          throw Object.assign(new Error('normalized book text does not match its immutable hash'), {
+            code: 'BOOK_INTEGRITY', status: 409
+          })
+        }
+        const text = stored.bytes.toString('utf8')
+        if (text.length !== input.textLength) {
+          throw Object.assign(new Error('normalized book text length changed'), {
+            code: 'BOOK_INTEGRITY', status: 409
+          })
+        }
+        const excerpt = text.slice(
+          input.excerptStartTextOffset,
+          input.excerptEndTextOffset
+        ).trim()
+        if (!excerpt) invalid('scene excerpt is empty', 'GENERATION_RESULT_INVALID')
+        const prompt = sceneGenerationPrompt({
+          bookTitle: input.bookTitle,
+          bookAuthor: input.bookAuthor,
+          bookDescription: '',
+          bookSubjects: [],
+          genreId: '',
+          chapter: '',
+          excerpt,
+          characters: input.characters.map(sceneCharacter).filter(({ name }) => name),
+          previousExcerpts: []
+        })
+        const generated = await generateScene(prompt, signal)
+        const safeTargetVersion = input.targetVersion.replace(/[^a-z0-9._-]+/gi, '-')
+        const asset = await storage.putBytes({
+          objectKey: `generated/${input.scope}/${input.bookEditionId}/scenes/${safeTargetVersion}/${input.slotIndex}.${imageExtension(generated.mimeType)}`,
+          bytes: generated.bytes,
+          mimeType: generated.mimeType
+        })
+        log.info('scene.ready', 'Иллюстрация сцены создана и сохранена', {
+          ...common,
+          provider: generated.provider,
+          bytes: asset.byteSize,
+          duration_ms: Date.now() - startedAt
+        })
+        return { asset: { type: 'scene_image', ...asset } }
+      })
+    },
+
     async generateCharacterBundle(rawInput, signal) {
       const input = normalizeBundleRequest(rawInput)
       const startedAt = Date.now()
@@ -2356,6 +2487,7 @@ export function createInternalGenerationRouter({ token, service, logger = consol
   router.post('/v1/book-markup', endpoint((body, signal) => service.generateBookMarkup(body, signal)))
   router.post('/v1/book-identities', endpoint((body, signal) => service.generateBookIdentity(body, signal)))
   router.post('/v1/catalog-covers', endpoint((body, signal) => service.generateCatalogCover(body, signal)))
+  router.post('/v1/book-scenes', endpoint((body, signal) => service.generateBookScene(body, signal)))
   router.post('/v1/character-bundles', endpoint((body, signal) => service.generateCharacterBundle(body, signal)))
   router.post(
     '/v1/book-analysis/scan-chunk',

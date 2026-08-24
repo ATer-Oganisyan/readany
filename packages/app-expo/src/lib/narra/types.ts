@@ -90,6 +90,9 @@ export interface NarraSceneImage {
    * по нему картинка возвращается на то же место при повторном открытии.
    */
   anchor?: string;
+  /** Stable server slot for automatic reader inserts. */
+  backendSceneKey?: string;
+  backendAnchorTextOffset?: number;
 }
 
 export interface NarraSceneAudioSegment {

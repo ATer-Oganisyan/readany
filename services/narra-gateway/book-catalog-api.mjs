@@ -100,6 +100,31 @@ export function parseReaderProgressBody(body) {
   }
 }
 
+export function parseSceneAtBody(body) {
+  exactKeys(body, ['reader_text_offset', 'progress_fraction'], 'body')
+  const hasTextOffset = body.reader_text_offset !== undefined
+  const hasFraction = body.progress_fraction !== undefined
+  if (hasTextOffset === hasFraction) {
+    validation('body: provide exactly one of reader_text_offset or progress_fraction')
+  }
+  if (hasTextOffset && (!Number.isSafeInteger(body.reader_text_offset) || body.reader_text_offset < 0)) {
+    validation('reader_text_offset: expected a non-negative safe integer')
+  }
+  if (
+    hasFraction &&
+    (typeof body.progress_fraction !== 'number' ||
+      !Number.isFinite(body.progress_fraction) ||
+      body.progress_fraction < 0 ||
+      body.progress_fraction > 1)
+  ) {
+    validation('progress_fraction: expected a finite number from 0 to 1')
+  }
+  return {
+    readerTextOffset: hasTextOffset ? body.reader_text_offset : null,
+    progressFraction: hasFraction ? body.progress_fraction : null
+  }
+}
+
 function boundedText(value, name, max, { allowEmpty = false } = {}) {
   if (typeof value !== 'string' || value.length > max || /[\u0000-\u001f]/.test(value)) {
     validation(`${name}: invalid value`)
@@ -305,6 +330,11 @@ function manifestJson(manifest) {
       analysis_version: manifest.markup.analysisVersion,
       revision: manifest.markup.revision,
       text_length: manifest.markup.textLength,
+      scene_policy: manifest.markup.scenePolicy && {
+        version: manifest.markup.scenePolicy.version,
+        start_text_offset: manifest.markup.scenePolicy.startTextOffset,
+        interval_text_length: manifest.markup.scenePolicy.intervalTextLength
+      },
       published_at: manifest.markup.publishedAt
     },
     characters: manifest.characters.map((character) => ({
@@ -463,6 +493,28 @@ export function createBookCatalogRouter({
     res.status(result.availability === 'processing' ? 202 : 200).json(manifestJson(result))
   }))
 
+  router.post(
+    '/:bookEditionId/scenes/at',
+    express.json({ limit: '4kb' }),
+    asyncRoute(async (req, res) => {
+      const result = await service.sceneAt(
+        subject(req),
+        uuid(req.params.bookEditionId, 'bookEditionId'),
+        parseSceneAtBody(req.body)
+      )
+      res.status(result.status === 'ready' ? 200 : 202).json({
+        status: result.status,
+        scene_key: result.sceneKey,
+        slot_index: result.slotIndex,
+        anchor_text_offset: result.anchorTextOffset,
+        image_url: result.imageUrl,
+        mime_type: result.mimeType,
+        expires_at: result.expiresAt,
+        poll_after_ms: result.pollAfterMs
+      })
+    })
+  )
+
   router.get('/:bookEditionId/analysis-shadow/manifest', asyncRoute(async (req, res) => {
     if (!shadowPreviewEnabled) {
       throw Object.assign(new Error('Предпросмотр v3-разметки выключен'), {
@@ -493,7 +545,8 @@ export function createBookCatalogRouter({
         chapter_key: result.chapterKey,
         section_index: result.readerSectionIndex,
         section_fraction: result.readerSectionFraction,
-        warmup: result.warmup
+        warmup: result.warmup,
+        scene_warmup: result.sceneWarmup
       })
     })
   )

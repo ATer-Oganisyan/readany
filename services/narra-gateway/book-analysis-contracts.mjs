@@ -1,6 +1,8 @@
 export const BOOK_ANALYSIS_PIPELINE_VERSION = 'book-analysis-v49'
 export const BOOK_ANALYSIS_MARKUP_VERSION = 'book-markup-v3'
 export const BOOK_ANALYSIS_CHARACTER_BUNDLE_VERSION = 'character-bundle-v3'
+import { normalizeBookScenePolicy } from './book-scenes.mjs'
+
 export const BOOK_ANALYSIS_SCHEMA_VERSION = 3
 export const BOOK_ANALYSIS_PROMPT_VERSION = 'book-scan-v17'
 export const BOOK_ANALYSIS_EXTRACTOR_VERSION = 'book-scan-v17'
@@ -582,6 +584,7 @@ export function normalizeBookMarkupV3(input) {
     analysisVersion: BOOK_ANALYSIS_MARKUP_VERSION,
     snapshotId: identifier(source.snapshotId, 'markup.snapshotId'),
     textLength,
+    scenePolicy: normalizeBookScenePolicy(source.scenePolicy, textLength),
     characters,
     locations,
     events,

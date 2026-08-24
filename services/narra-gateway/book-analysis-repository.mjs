@@ -17,6 +17,11 @@ import {
   characterMediaTargetVersion
 } from './book-markup.mjs'
 import {
+  bookMediaFrontier,
+  bookSceneIdempotencyKey,
+  bookSceneSlotsThrough
+} from './book-scenes.mjs'
+import {
   BOOK_ANALYSIS_NORMALIZATION_VERSION,
   BOOK_ANALYSIS_PIPELINE_IDS,
   BOOK_ANALYSIS_PIPELINE_NARRA,
@@ -499,9 +504,14 @@ export function createPostgresBookAnalysisRepository(pool, {
       [bookEditionId]
     )
     const readerTextOffset = Number(frontier.rows[0]?.text_offset ?? 0)
-    const eligibleCharacters = edition.scope === 'catalog'
-      ? markup.characters
-      : markup.characters.filter((character) => character.warmupTextOffset <= readerTextOffset)
+    const mediaFrontier = bookMediaFrontier({
+      scope: edition.scope,
+      textLength: markup.textLength,
+      readerTextOffset
+    })
+    const eligibleCharacters = markup.characters.filter(
+      (character) => character.warmupTextOffset <= mediaFrontier
+    )
     for (const character of eligibleCharacters) {
       const currentBundle = await client.query(
         `SELECT id, status, source_markup_hash, media_revision
@@ -619,6 +629,69 @@ export function createPostgresBookAnalysisRepository(pool, {
         ]
       )
     }
+    const source = await client.query(
+      `SELECT run.normalized_text_object_key, run.normalized_text_hash
+       FROM book_analysis_publications AS publication
+       JOIN book_analysis_runs AS run ON run.id = publication.run_id
+       WHERE publication.book_edition_id = $1
+         AND publication.content_hash = $2
+       ORDER BY publication.published_at DESC, publication.id DESC
+       LIMIT 1`,
+      [bookEditionId, markupContentHash]
+    )
+    let queuedScenes = 0
+    if (source.rows[0]?.normalized_text_object_key && source.rows[0]?.normalized_text_hash) {
+      const slots = bookSceneSlotsThrough(markup.scenePolicy, markup.textLength, mediaFrontier)
+      for (const slot of slots) {
+        const idempotencyKey = bookSceneIdempotencyKey({
+          bookEditionId,
+          markupContentHash,
+          policyVersion: markup.scenePolicy.version,
+          slotIndex: slot.slotIndex
+        })
+        const targetVersion = `${markup.scenePolicy.version}:${markupContentHash.slice(0, 16)}`
+        const inserted = await client.query(
+          `INSERT INTO generation_jobs (
+             id, idempotency_key, job_type, book_edition_id, character_key,
+             target_version, status, priority, payload
+           ) VALUES ($1, $2, 'scene_image', $3, NULL, $4, 'queued', 45, $5::jsonb)
+           ON CONFLICT (idempotency_key) DO NOTHING
+           RETURNING id`,
+          [
+            idFactory(), idempotencyKey, bookEditionId, targetVersion,
+            JSON.stringify({
+              markup_version_id: markupId,
+              scene_key: slot.sceneKey,
+              slot_index: slot.slotIndex,
+              anchor_text_offset: slot.anchorTextOffset,
+              excerpt_start_text_offset: slot.excerptStartTextOffset,
+              excerpt_end_text_offset: slot.excerptEndTextOffset,
+              normalized_text_object_key: source.rows[0].normalized_text_object_key,
+              normalized_text_hash: source.rows[0].normalized_text_hash
+            })
+          ]
+        )
+        const jobId = inserted.rows[0]?.id || (await client.query(
+          'SELECT id FROM generation_jobs WHERE idempotency_key = $1',
+          [idempotencyKey]
+        )).rows[0]?.id
+        if (!jobId) throw new Error('idempotent scene generation job disappeared')
+        await client.query(
+          `INSERT INTO book_scene_slots (
+             id, book_edition_id, markup_version_id, policy_version, scene_key,
+             slot_index, anchor_text_offset, excerpt_start_text_offset,
+             excerpt_end_text_offset, job_id
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+           ON CONFLICT (markup_version_id, slot_index) DO NOTHING`,
+          [
+            idFactory(), bookEditionId, markupId, markup.scenePolicy.version,
+            slot.sceneKey, slot.slotIndex, slot.anchorTextOffset,
+            slot.excerptStartTextOffset, slot.excerptEndTextOffset, jobId
+          ]
+        )
+        queuedScenes += 1
+      }
+    }
     await client.query(
       `UPDATE book_editions SET status = 'base_ready', updated_at = now()
        WHERE id = $1 AND status IN ('marking_up', 'generating_portraits', 'failed')`,
@@ -629,7 +702,9 @@ export function createPostgresBookAnalysisRepository(pool, {
       created,
       markupId,
       revision,
-      queuedCharacters: eligibleCharacters.length
+      queuedCharacters: eligibleCharacters.length,
+      queuedScenes,
+      mediaFrontier
     }
   }
 

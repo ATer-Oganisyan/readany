@@ -334,6 +334,19 @@ export async function persistSceneImageBase64(
   return persistGeneratedImage(path, { base64 });
 }
 
+/** Persists a signed backend scene URL so inline inserts keep working offline. */
+export async function persistBackendSceneImage(
+  bookId: string,
+  sceneKey: string,
+  url: string,
+  mimeType = "image/png",
+): Promise<string> {
+  await ensureMediaDir();
+  const extension = mimeType === "image/jpeg" ? "jpg" : mimeType === "image/webp" ? "webp" : "png";
+  const path = `${MEDIA_DIR}/${safeKey(`${bookId}-backend-scene-${sceneKey}`)}.${extension}`;
+  return persistGeneratedImage(path, { url });
+}
+
 async function generateCharacterPortraitRequest(
   bookId: string,
   character: NarraCharacter,

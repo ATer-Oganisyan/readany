@@ -218,6 +218,7 @@ export function createBookCatalogService({
         schemaVersion: markup.schemaVersion,
         analysisVersion: markup.analysisVersion,
         textLength: markup.textLength,
+        scenePolicy: markup.scenePolicy,
         publishedAt: publication.publishedAt
       },
       characters: markup.characters
@@ -454,6 +455,38 @@ export function createBookCatalogService({
       return storage.createDownload(asset)
     },
 
+    async sceneAt(subjectId, bookEditionId, { readerTextOffset, progressFraction }) {
+      if (typeof store.ensureReaderBookScene !== 'function') {
+        throw new TypeError('repository.ensureReaderBookScene is required')
+      }
+      if (typeof analysisRepository?.ensureLatestMediaProjection === 'function') {
+        await analysisRepository.ensureLatestMediaProjection(bookEditionId)
+      }
+      const scene = await store.ensureReaderBookScene({
+        subjectId,
+        bookEditionId,
+        readerTextOffset,
+        progressFraction
+      })
+      if (!scene) throw serviceError('NOT_FOUND', 'Книга или сцена не найдена', 404)
+      const result = {
+        status: scene.status,
+        sceneKey: scene.sceneKey,
+        slotIndex: scene.slotIndex,
+        anchorTextOffset: scene.anchorTextOffset,
+        pollAfterMs: scene.status === 'ready' ? undefined : 2_000
+      }
+      if (scene.status !== 'ready' || !scene.asset) return result
+      if (!storage) throw serviceError('DOWNLOAD_UNAVAILABLE', 'Скачивание временно недоступно', 503)
+      const download = await storage.createDownload(scene.asset)
+      return {
+        ...result,
+        imageUrl: download.url,
+        expiresAt: download.expiresAt,
+        mimeType: scene.asset.mimeType
+      }
+    },
+
     async manifest(subjectId, bookEditionId) {
       if (typeof analysisRepository?.ensureLatestMediaProjection === 'function') {
         await analysisRepository.ensureLatestMediaProjection(bookEditionId)
@@ -466,6 +499,11 @@ export function createBookCatalogService({
           : bundleVersion
       })
       if (!snapshot) throw serviceError('NOT_FOUND', 'Книга не найдена', 404)
+      await store.ensureBookScenesThrough?.({
+        subjectId,
+        bookEditionId,
+        readerTextOffset: snapshot.readerTextOffset
+      })
       return analysisRepository?.getLatestShadowAnalysisPublication
         ? v3Manifest(snapshot, bookEditionId)
         : legacyManifest(snapshot, bookEditionId)
@@ -532,6 +570,13 @@ export function createBookCatalogService({
         else if (request.value.status === 'ready') warmed.ready += 1
         else warmed.pending += 1
       }
+      const sceneWarmup = typeof store.ensureBookScenesThrough === 'function'
+        ? await store.ensureBookScenesThrough({
+            subjectId,
+            bookEditionId,
+            readerTextOffset: progress.readerTextOffset
+          })
+        : { requested: 0, ready: 0, pending: 0, failed: 0 }
       return {
         bookEditionId,
         readerTextOffset: progress.readerTextOffset,
@@ -542,7 +587,8 @@ export function createBookCatalogService({
         warmup: {
           requested: requests.length,
           ...warmed
-        }
+        },
+        sceneWarmup
       }
     }
   }

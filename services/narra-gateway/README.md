@@ -95,10 +95,20 @@ The APK sends no prompt, provider key or model. Catalog covers use PostgreSQL
 for already released clients by the durable job endpoint and the compatibility
 `/v2/media/cover` route.
 
-Scenes use the parallel `/v2/media/scene/jobs` API. The client sends bounded
-book/chapter facts, while the Gateway owns the prompt, Kandinsky routing, retry,
-result retention and acknowledgement. Scene metadata and results live under
+Manual scenes created from reader-selected text use the legacy parallel
+`/v2/media/scene/jobs` API. The client sends bounded book/chapter facts, while
+the Gateway owns the prompt, Kandinsky routing, retry, result retention and
+acknowledgement. Scene metadata and results live under
 `DATA_DIR/scene-jobs-<environment>` and use the `SCENE_JOB_*` limits.
+
+Automatic reader scenes use `POST /v2/books/:bookEditionId/scenes/at`. The
+client sends only its reading position; the Gateway resolves the stable scene
+slot from the published v3 markup policy, reads the canonical normalized book
+text, and returns either a signed ready image URL or the durable job status.
+Catalog books warm all scene slots after final markup publication. Private
+books initially warm the first 10% and extend that frontier to 10% beyond the
+reader's reported progress. Provisional markup remains display-only until the
+resolver has published the final markup.
 
 ## Durable book markup and catalog
 

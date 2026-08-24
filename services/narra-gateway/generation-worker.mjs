@@ -10,6 +10,7 @@ import { normalizeBookDisplayIdentity } from './book-identity.mjs'
 export const BOOK_MARKUP_WORKER_JOB_TYPES = Object.freeze([
   'book_markup',
   'catalog_cover',
+  'scene_image',
   'character_bundle',
   ...Object.values(CHARACTER_MEDIA_JOB_TYPES)
 ])
@@ -18,6 +19,7 @@ const JOB_LABELS = {
   book_markup: 'разметка книги',
   book_identity: 'название книги',
   catalog_cover: 'каталожная обложка',
+  scene_image: 'иллюстрация сцены',
   character_bundle: 'пакет персонажа',
   character_portrait: 'портрет персонажа',
   character_audio: 'голос персонажа',
@@ -69,6 +71,19 @@ function claimStrings(value, maxItems, maxLength) {
 
 function safeTextOffset(value, fallback = 0) {
   return Number.isSafeInteger(value) && value >= 0 ? value : fallback
+}
+
+function normalizeBookSceneResult(value) {
+  const asset = value?.asset
+  if (
+    !asset || typeof asset.objectKey !== 'string' || !asset.objectKey ||
+    typeof asset.contentHash !== 'string' || !/^[0-9a-f]{64}$/.test(asset.contentHash) ||
+    !['image/jpeg', 'image/png', 'image/webp'].includes(asset.mimeType) ||
+    !Number.isSafeInteger(asset.byteSize) || asset.byteSize < 1
+  ) {
+    throw invalidResult('book scene result is invalid')
+  }
+  return { asset }
 }
 
 /**
@@ -400,6 +415,26 @@ export function createGenerationWorker({
     return { assetCount: 1 }
   }
 
+  async function runBookScene(job) {
+    const startedAt = Date.now()
+    const input = await repository.getBookSceneInput(job)
+    log.info('scene.started', 'Начинаю генерацию сцены книги', {
+      job: job.id,
+      edition: job.bookEditionId,
+      scene_key: input.sceneKey,
+      anchor_text_offset: input.anchorTextOffset
+    })
+    const result = normalizeBookSceneResult(await generator.generateBookScene(input))
+    await repository.publishBookScene(job, result.asset)
+    log.info('scene.published', 'Сцена книги опубликована', {
+      job: job.id,
+      edition: job.bookEditionId,
+      scene_key: input.sceneKey,
+      duration_ms: Date.now() - startedAt
+    })
+    return { assetCount: 1 }
+  }
+
   async function withLeaseHeartbeat(job, operation) {
     if (typeof repository.renewGenerationLease !== 'function') return operation()
     const timer = setInterval(() => {
@@ -449,6 +484,7 @@ export function createGenerationWorker({
           if (job.type === 'book_markup') return runBookMarkup(job)
           if (job.type === 'book_identity') return runBookIdentity(job)
           if (job.type === 'catalog_cover') return runCatalogCover(job)
+          if (job.type === 'scene_image') return runBookScene(job)
           return runCharacterBundle(job)
         })
         log.info('job.completed', 'Задание успешно завершено', {

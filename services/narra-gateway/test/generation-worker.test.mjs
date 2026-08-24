@@ -191,6 +191,47 @@ test('worker publishes a catalog cover into the durable repository', async () =>
   assert.equal(published.asset.objectKey, 'books/catalog/book-1/cover.png')
 })
 
+test('worker generates and publishes a durable book scene', async () => {
+  let generatorInput
+  let published
+  const repository = {
+    async claimGenerationJob() {
+      return {
+        id: 'job-scene', type: 'scene_image', bookEditionId: 'book-1',
+        targetVersion: 'text-interval-v1:aaaa', leaseToken: 'lease-scene'
+      }
+    },
+    async getBookSceneInput() {
+      return {
+        bookEditionId: 'book-1', sceneKey: 'text-interval-v1:2',
+        excerptStartTextOffset: 12_000, excerptEndTextOffset: 18_000
+      }
+    },
+    async publishBookScene(job, asset) { published = { job, asset } },
+    async failGenerationJob() { assert.fail('scene job must not fail') }
+  }
+  const generator = {
+    async generateBookScene(input) {
+      generatorInput = input
+      return {
+        asset: {
+          objectKey: 'generated/catalog/book-1/scenes/2.png',
+          contentHash: HASH,
+          mimeType: 'image/png',
+          byteSize: 100
+        }
+      }
+    }
+  }
+  const worker = createGenerationWorker({ repository, generator, workerId: 'worker-1', logger: silentLogger })
+
+  assert.deepEqual(await worker.runOnce(), {
+    status: 'completed', jobId: 'job-scene', result: { assetCount: 1 }
+  })
+  assert.equal(generatorInput.sceneKey, 'text-interval-v1:2')
+  assert.equal(published.asset.objectKey, 'generated/catalog/book-1/scenes/2.png')
+})
+
 test('dedicated identity job publishes normalized display metadata', async () => {
   let published
   const repository = {

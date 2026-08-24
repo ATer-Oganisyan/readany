@@ -6,7 +6,8 @@ import {
   parseBookResolveBody,
   parseLocalBookBody,
   parseLocalMarkupBody,
-  parseReaderProgressBody
+  parseReaderProgressBody,
+  parseSceneAtBody
 } from '../book-catalog-api.mjs'
 
 const ID = '123e4567-e89b-42d3-a456-426614174000'
@@ -58,6 +59,22 @@ test('reader progress contract prefers a fraction but keeps legacy text offsets'
   assert.throws(
     () => parseReaderProgressBody({ progress_fraction: 0.1, section_index: 1 }),
     /provided together/
+  )
+})
+
+test('scene lookup accepts a canonical position and no client-provided excerpt', () => {
+  assert.deepEqual(parseSceneAtBody({ reader_text_offset: 42 }), {
+    readerTextOffset: 42,
+    progressFraction: null
+  })
+  assert.deepEqual(parseSceneAtBody({ progress_fraction: 0.42 }), {
+    readerTextOffset: null,
+    progressFraction: 0.42
+  })
+  assert.throws(() => parseSceneAtBody({}), /exactly one/)
+  assert.throws(
+    () => parseSceneAtBody({ reader_text_offset: 42, excerpt: 'client-controlled text' }),
+    /unknown field/
   )
 })
 

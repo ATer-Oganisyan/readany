@@ -82,6 +82,32 @@ test('generator client keeps catalog cover routing and credentials inside the se
   assert.equal(Object.hasOwn(request.body, 'apiKey'), false)
 })
 
+test('generator client sends a scene slot without client-controlled source text', async () => {
+  let request
+  const client = createGenerationServiceClient({
+    baseUrl: 'http://localhost:8790',
+    token: TOKEN,
+    production: false,
+    async fetchImpl(url, options) {
+      request = { url: String(url), body: JSON.parse(options.body) }
+      return new Response(JSON.stringify({ result: { asset: { objectKey: 'scene.png' } } }), {
+        status: 200
+      })
+    }
+  })
+  await client.generateBookScene({
+    bookEditionId: 'book-1',
+    targetVersion: 'text-interval-v1:aaaa',
+    sceneKey: 'text-interval-v1:2',
+    normalizedTextObjectKey: 'analysis/run-1/normalized.txt',
+    excerptStartTextOffset: 12_000,
+    excerptEndTextOffset: 18_000
+  })
+  assert.equal(request.url, 'http://localhost:8790/internal/v1/book-scenes')
+  assert.equal(request.body.idempotencyKey, 'book-1:scene:text-interval-v1:2:text-interval-v1:aaaa')
+  assert.equal(Object.hasOwn(request.body, 'excerpt'), false)
+})
+
 test('generator client sends book identity jobs to their dedicated endpoint', async () => {
   let request
   const client = createGenerationServiceClient({

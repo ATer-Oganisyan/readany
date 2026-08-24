@@ -958,6 +958,7 @@ const internalGenerationService = bookObjectStorage && generatorServiceToken
       completeChat: completeInternalChat,
       generatePortrait: generateInternalCharacterPortrait,
       generateCover: generateInternalCover,
+      generateScene: generateInternalPortrait,
       synthesizeSpeech: synthesizeInternalSpeech,
       generateIdleAnimation: generateInternalIdleAnimation,
       maxBookBytes: BOOK_UPLOAD_MAX_BYTES
@@ -980,6 +981,7 @@ if (process.env.DATABASE_URL) {
     const identityJobs = await bookMarkupRepository.enqueueMissingBookIdentities()
     const coverJobs = await bookMarkupRepository.enqueueMissingCatalogCovers()
     const characterMediaJobs = await bookMarkupRepository.enqueueCharacterMediaBackfill()
+    const sceneBackfills = await bookMarkupRepository.enqueueBookSceneBackfill()
     console.info('[book-identity] durable backfill checked', {
       jobs: identityJobs.length,
       created: identityJobs.filter((job) => job.created).length
@@ -991,6 +993,11 @@ if (process.env.DATABASE_URL) {
     console.info('[character-media] independent backfill checked', {
       jobs: characterMediaJobs.length,
       created: characterMediaJobs.filter((job) => job.created).length
+    })
+    console.info('[book-scenes] durable backfill checked', {
+      books: sceneBackfills.length,
+      requested: sceneBackfills.reduce((total, value) => total + value.requested, 0),
+      pending: sceneBackfills.reduce((total, value) => total + value.pending, 0)
     })
   }
   if (bookObjectStorage) {

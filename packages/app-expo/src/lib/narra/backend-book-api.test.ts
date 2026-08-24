@@ -8,6 +8,7 @@ import {
   fetchBackendCatalogBooksPage,
   publishLocalBackendMarkup,
   registerLocalBackendBook,
+  requestBackendBookScene,
   resolveLocalBackendBook,
   uploadLocalBackendSource,
 } from "./backend-book-api";
@@ -329,6 +330,11 @@ describe("backend book API", () => {
             schema_version: 3,
             analysis_version: "book-markup-v3",
             text_length: 2_000,
+            scene_policy: {
+              version: "text-interval-v1",
+              start_text_offset: 0,
+              interval_text_length: 6_000,
+            },
           },
           characters: [
             {
@@ -353,6 +359,11 @@ describe("backend book API", () => {
       availability: "ready",
       publicationId: "publication-v3",
       analysisVersion: "book-markup-v3",
+      scenePolicy: {
+        version: "text-interval-v1",
+        startTextOffset: 0,
+        intervalTextLength: 6_000,
+      },
     });
   });
 
@@ -420,6 +431,35 @@ describe("backend book API", () => {
       section_index: 4,
       section_fraction: 0.25,
     });
+  });
+
+  it("requests a server-resolved scene without sending an excerpt", async () => {
+    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          status: "running",
+          scene_key: "text-interval-v1:6",
+          slot_index: 6,
+          anchor_text_offset: 39_000,
+          poll_after_ms: 1_500,
+        }),
+        { status: 202 },
+      ),
+    );
+
+    await expect(requestBackendBookScene("book-1", 0.385)).resolves.toEqual({
+      status: "running",
+      sceneKey: "text-interval-v1:6",
+      slotIndex: 6,
+      anchorTextOffset: 39_000,
+      imageUrl: undefined,
+      mimeType: undefined,
+      expiresAt: undefined,
+      pollAfterMs: 1_500,
+    });
+    const [path, request] = vi.mocked(narraGatewayRequest).mock.calls[0] ?? [];
+    expect(path).toBe("/v2/books/book-1/scenes/at");
+    expect(JSON.parse(String(request?.body))).toEqual({ progress_fraction: 0.385 });
   });
 
   it("retries reader progress without section fields during a rolling backend deploy", async () => {
