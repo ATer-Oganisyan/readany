@@ -418,7 +418,7 @@ function ReaderLoadingChrome({ navigation }: { navigation: Props["navigation"] }
             isDark={isDark}
             speechState="idle"
             onSpeechPress={ignorePress}
-            onChatPress={ignorePress}
+            onCharactersPress={ignorePress}
           />
         </View>
       )}
@@ -432,7 +432,7 @@ function ReaderContent({ route, navigation }: Props) {
   const s = makeStyles(colors);
   const { register: registerTOCSheet, unregister: unregisterTOCSheet } = useReaderTOCSheet();
   const { bookId, cfi, highlight: shouldHighlight, openTTS } = route.params;
-  const chatMorphSourceId = `reader-chat-${bookId}`;
+  const charactersSheetSourceId = `reader-characters-${bookId}`;
   const { t } = useTranslation();
   const bookmarkCopy = useMemo(() => getReaderBookmarkCopy(t), [t]);
   const isIPadLayout = Platform.OS === "ios" && Platform.isPad;
@@ -1497,8 +1497,8 @@ function ReaderContent({ route, navigation }: Props) {
   );
 
   const handleOpenCharacters = useCallback(() => {
-    navigation.navigate("NarraCharacters", { bookId, morphSourceId: chatMorphSourceId });
-  }, [bookId, chatMorphSourceId, navigation]);
+    navigation.navigate("NarraCharacters", { bookId, charactersSheetSourceId });
+  }, [bookId, charactersSheetSourceId, navigation]);
 
   const openTOCSheet = useCallback(() => {
     setShowTOC(true);
@@ -1996,12 +1996,12 @@ function ReaderContent({ route, navigation }: Props) {
         <ReaderToolbar
           tintColor={readerThemeColors.foreground}
           isDark={isReaderThemeDark}
-          chatMorphSourceId={chatMorphSourceId}
+          charactersSheetSourceId={charactersSheetSourceId}
           speechState={
             ttsPlayState === "loading" ? "loading" : ttsPlayState === "playing" ? "playing" : "idle"
           }
           onSpeechPress={() => void tts.handleToggleTTS()}
-          onChatPress={handleOpenCharacters}
+          onCharactersPress={handleOpenCharacters}
         />
       </Reanimated.View>
     ) : null;

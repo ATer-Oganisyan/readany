@@ -1,4 +1,3 @@
-import { supportsMorphSheetTransition } from "@/components/navigation/morph-sheet-transition-support";
 import { MissingBookPrompt } from "@/components/shared/MissingBookPrompt";
 import type { CachedBackendCatalogBook } from "@/lib/narra/backend-catalog-cache";
 import BadgesScreen from "@/screens/BadgesScreen";
@@ -54,7 +53,7 @@ export type RootStackParamList = {
   };
   ReaderTOC: undefined;
   BookChat: { bookId: string; selectedText?: string; chapterTitle?: string };
-  NarraCharacters: { bookId: string; morphSourceId?: string };
+  NarraCharacters: { bookId: string; charactersSheetSourceId?: string };
   NarraCharacterChat: { bookId: string; characterId: string };
   NarraCharacterProfile: {
     bookId: string;
@@ -204,7 +203,7 @@ export function RootNavigator() {
           name="NarraCharacters"
           component={NarraCharactersScreen}
           options={
-            supportsMorphSheetTransition
+            Platform.OS === "ios"
               ? {
                   presentation: "formSheet",
                   animation: "default",
