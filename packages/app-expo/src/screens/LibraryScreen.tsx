@@ -1129,8 +1129,9 @@ function LibraryScreenContent() {
       {/* Пока каталог грузится, экран занят заглушками: крутилка с подписью
           поверх них только мигали бы. */}
       {catalogError && catalogBooks.length === 0 ? (
-        <View style={s.catalogStatus}>
-          <Text style={s.catalogStatusText}>{catalogError}</Text>
+        // Тот же компонент, что и у остальных пустых экранов, иначе каталог
+        // выпадает из общего вида: своя мелкая подпись вместо заголовка.
+        <CenteredEmptyState variant="compact" title={catalogError} style={s.catalogStatus}>
           <NativeButton
             label={t("common.retry", "Повторить")}
             onPress={() => void loadBackendCatalog()}
@@ -1138,7 +1139,7 @@ function LibraryScreenContent() {
             // центрирование контейнера — иначе она прижимается к левому краю.
             style={s.catalogStatusButton}
           />
-        </View>
+        </CenteredEmptyState>
       ) : (
         <View
           ref={catalogGridRef}
@@ -1443,11 +1444,6 @@ const makeStyles = (
       paddingHorizontal: 24,
     },
     catalogStatusButton: { alignSelf: "center" },
-    catalogStatusText: {
-      color: colors.mutedForeground,
-      fontSize: fontSize.sm,
-      textAlign: "center",
-    },
     // Тень книги уходит на 33 точки вниз (0 11px 22px), поэтому запас снизу
     // больше обычного отступа: иначе последний ряд обрезается.
     pagerGridContent: { width: "100%", paddingBottom: 48 },
