@@ -1,4 +1,5 @@
 import { HostedMishanaerIcon } from "@/components/ui/HostedMishanaerIcon";
+import type { MishanaerIconName } from "@/components/ui/MishanaerIcon";
 import { Button, HStack, Host, Label, Menu } from "@expo/ui/swift-ui";
 import {
   accessibilityLabel,
@@ -48,12 +49,25 @@ export function ReaderTopBar(props: ReaderTopBarProps) {
     accessibilityLabel(label),
   ];
 
+  // Мишень задаётся размером содержимого кнопки: у SwiftUI зона нажатия равна
+  // отрисованному содержимому, а рамка снаружи её не расширяет. Без этого
+  // нажимался только глиф в 20 точек, и мимо крестика уходила половина тапов.
+  const icon = (props2: { name?: MishanaerIconName; systemName?: string }) => (
+    <HostedMishanaerIcon
+      name={props2.name}
+      systemName={props2.systemName}
+      size={20}
+      box={CONTROL_SIZE}
+      color={props.tintColor}
+    />
+  );
+
   return (
     <View style={styles.container}>
       <Host matchContents colorScheme={props.isDark ? "dark" : "light"} style={styles.host}>
         <HStack modifiers={capsule}>
           <Button onPress={props.onClosePress} modifiers={control(closeLabel)}>
-            <HostedMishanaerIcon systemName="xmark" size={20} color={props.tintColor} />
+            {icon({ systemName: "xmark" })}
           </Button>
         </HStack>
       </Host>
@@ -61,10 +75,10 @@ export function ReaderTopBar(props: ReaderTopBarProps) {
       <Host matchContents colorScheme={props.isDark ? "dark" : "light"} style={styles.host}>
         <HStack spacing={0} modifiers={capsule}>
           <Button onPress={props.onAppearancePress} modifiers={control(appearanceLabel)}>
-            <HostedMishanaerIcon name="text-t" size={20} color={props.tintColor} />
+            {icon({ name: "text-t" })}
           </Button>
           <Menu
-            label={<HostedMishanaerIcon systemName="ellipsis" size={20} color={props.tintColor} />}
+            label={icon({ systemName: "ellipsis" })}
             modifiers={[...control(actionsLabel), labelStyle("iconOnly" as const)]}
             testID={actionsLabel}
           >
