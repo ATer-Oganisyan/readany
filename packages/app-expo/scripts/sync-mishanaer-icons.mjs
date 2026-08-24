@@ -155,6 +155,9 @@ const FILLED_ICONS = [
   "stop",
 ];
 
+// The reader toolbar is the only native control drawing filled icons.
+const NATIVE_FILLED_ICONS = ["headphones", "person", "stop"];
+
 // Only native navigation and Compose controls need raster sources. Regular UI uses SVG.
 const NATIVE_STROKE_ICONS = [
   "arrow-left",
@@ -277,18 +280,22 @@ async function syncVariant(names, variant) {
   await mkdir(svgDirectory, { recursive: true });
 
   const rasterNames = variant === "filled" ? names : NATIVE_STROKE_ICONS;
+  const nativeNames = variant === "filled" ? NATIVE_FILLED_ICONS : NATIVE_STROKE_ICONS;
   const rasterDirectory = path.join(assetRoot, `${variant}-png`);
   await mkdir(rasterDirectory, { recursive: true });
-  if (variant === "stroke") await mkdir(nativeIosIconRoot, { recursive: true });
+  await mkdir(nativeIosIconRoot, { recursive: true });
 
   for (const name of names) {
     const svg = await fetchSvg(name, variant);
     await writeFile(path.join(svgDirectory, `${toLocalFileName(name)}.svg`), `${svg.trim()}\n`);
     if (rasterNames.includes(name)) {
       await writeRasterSet(svg, rasterDirectory, toLocalFileName(name));
-      if (variant === "stroke") {
-        await writeRasterSet(svg, nativeIosIconRoot, `mishanaer-${toLocalFileName(name)}`);
-      }
+    }
+    if (nativeNames.includes(name)) {
+      // Нативные контролы читают только растры: UIToolbar не умеет взять SVG,
+      // как это делает JS. Суффикс отличает filled от stroke — имена там те же.
+      const suffix = variant === "filled" ? "-filled" : "";
+      await writeRasterSet(svg, nativeIosIconRoot, `mishanaer-${toLocalFileName(name)}${suffix}`);
     }
   }
 }

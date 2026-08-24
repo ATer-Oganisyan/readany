@@ -413,7 +413,7 @@ final class ReadAnyReaderToolbar: ExpoView {
     updateToolbarButton(
       speechButton,
       title: currentSpeechLabel,
-      image: MishanaerIconAssets.image(speechActive ? "stop" : "headphones")
+      image: MishanaerIconAssets.image(speechActive ? "stop-filled" : "headphones-filled")
     )
     speechItem.isEnabled = !speechLoading
     speechButton.isEnabled = !speechLoading
@@ -422,7 +422,7 @@ final class ReadAnyReaderToolbar: ExpoView {
     updateToolbarButton(
       charactersButton,
       title: charactersLabel,
-      image: MishanaerIconAssets.image("person")
+      image: MishanaerIconAssets.image("person-filled")
     )
     charactersItem.accessibilityLabel = charactersLabel
 
