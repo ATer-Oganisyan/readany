@@ -29,6 +29,7 @@ import {
 import { SwipePressGuardProvider, useSwipePressGuard } from "@/components/ui/swipe-press-guard";
 import { useBookImportActions } from "@/hooks/use-book-import-actions";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
+import { bookIdentity as catalogIdentity } from "@/lib/book/book-identity";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
 import {
   type CachedBackendCatalogBook,
@@ -121,15 +122,6 @@ const CATALOG_SHADOW_ROOM = 24;
 type LibraryGridItem =
   | { type: "group"; group: BookGroup; books: Book[] }
   | { type: "book"; book: Book };
-
-/** Сверка каталога с библиотекой идёт по названию и автору: у бэкенда нет наших id. */
-function normalizeCatalogIdentity(value: string): string {
-  return value.trim().toLocaleLowerCase("ru-RU").replace(/ё/g, "е").replace(/\s+/g, " ");
-}
-
-function catalogIdentity(title: string, author: string): string {
-  return `${normalizeCatalogIdentity(title)}\u0000${normalizeCatalogIdentity(author)}`;
-}
 
 type LibrarySection = "catalog" | "my-books";
 const LIBRARY_SECTION_STORAGE_KEY = "library_last_section";
@@ -517,9 +509,16 @@ function LibraryScreenContent() {
    * Окно сетки равно числу готовых обложек. Позиции сохраняют порядок списка:
    * если обложка внутри окна ещё не пришла, карточка сама покажет заглушку, а
    * книги не будут переставляться местами.
+   *
+   * Книга без обложки на бэкенде тоже готова: ждать нечего, и карточка рисует
+   * её на дефолтном цвете обложки. Иначе такие книги не попадали в окно вовсе
+   * и каталог оставался сеткой шиммеров.
    */
   const visibleCatalogBooks = useMemo(() => {
-    const readyCount = catalogBooks.reduce((count, book) => (book.coverUri ? count + 1 : count), 0);
+    const readyCount = catalogBooks.reduce(
+      (count, book) => (book.coverUri || !book.cover ? count + 1 : count),
+      0,
+    );
     return catalogBooks.slice(0, readyCount);
   }, [catalogBooks]);
 

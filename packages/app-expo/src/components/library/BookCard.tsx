@@ -2,7 +2,7 @@ import { Text } from "@/components/ui/Typography";
 import { useSwipePressGuard } from "@/components/ui/swipe-press-guard";
 import { isGeneratedBookCoverPath, shouldRenderCoverTypography } from "@/lib/book/cover-display";
 import { generatedCoverTextTone } from "@/lib/book/cover-text-contrast";
-import { loadingCoverColorForBook } from "@/lib/book/loading-cover-placeholder";
+import { loadingCoverColorForTitleAuthor } from "@/lib/book/loading-cover-placeholder";
 import { findBundledCatalogBookByTitle } from "@/lib/catalog/bundled-books";
 import { useResolvedCovers } from "@/screens/notes/useResolvedCovers";
 import { useColors } from "@/styles/theme";
@@ -100,7 +100,15 @@ export const BookCard = memo(function BookCard({
             <Image source={{ uri: bundledCoverUri }} style={s.coverImage} resizeMode="cover" />
           ) : (
             <View
-              style={[s.fallbackCover, { backgroundColor: loadingCoverColorForBook(book.id) }]}
+              style={[
+                s.fallbackCover,
+                {
+                  backgroundColor: loadingCoverColorForTitleAuthor({
+                    title: book.meta.title,
+                    author: book.meta.author,
+                  }),
+                },
+              ]}
             />
           )}
 

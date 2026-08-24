@@ -1,5 +1,6 @@
 import { useSwipePressGuard } from "@/components/ui/swipe-press-guard";
 import { generatedCoverTextTone } from "@/lib/book/cover-text-contrast";
+import { loadingCoverColorForTitleAuthor } from "@/lib/book/loading-cover-placeholder";
 import { useColors } from "@/styles/theme";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -36,10 +37,12 @@ export function CatalogBookCard({
   const swipePressGuard = useSwipePressGuard();
   const cardHeight = cardWidth * (41 / 28);
 
-  // Книга показывается только когда файл обложки уже раскодирован: иначе
+  // Книга с обложкой показывается только когда файл уже раскодирован: иначе
   // карточка успевает мигнуть подложкой под ещё не отрисованной картинкой.
+  // Ждать нечего, если обложки нет вовсе — такая книга сразу показывается на
+  // дефолтном цвете обложки, а не остаётся скелетоном навсегда.
   const [decodedCoverUri, setDecodedCoverUri] = useState<string | null>(null);
-  const isCoverReady = Boolean(coverUri) && decodedCoverUri === coverUri;
+  const isCoverReady = coverUri ? decodedCoverUri === coverUri : true;
 
   useEffect(() => {
     // Обложку перегенерировали — ждём загрузки новой, старую не показываем.
@@ -96,13 +99,20 @@ export function CatalogBookCard({
                   onLoad={() => setDecodedCoverUri(coverUri)}
                 />
               ) : (
-                <View style={styles.fallbackCover} />
+                // Обложки нет — книга показывается на цветной заглушке из той же
+                // палитры, что в библиотеке, а не на нейтральной подложке.
+                <View
+                  style={[
+                    styles.fallbackCover,
+                    { backgroundColor: loadingCoverColorForTitleAuthor({ title, author }) },
+                  ]}
+                />
               )}
               <BookCoverTypography
                 title={title}
                 author={author}
                 width={cardWidth}
-                textTone={coverUri ? generatedCoverTextTone({ title, author }) : "dark"}
+                textTone={coverUri ? generatedCoverTextTone({ title, author }) : "light"}
                 coverUri={coverUri}
               />
             </View>
