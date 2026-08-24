@@ -1134,6 +1134,9 @@ function LibraryScreenContent() {
           <NativeButton
             label={t("common.retry", "Повторить")}
             onPress={() => void loadBackendCatalog()}
+            // Кнопка сама ставит себе alignSelf: "flex-start", и он перебивает
+            // центрирование контейнера — иначе она прижимается к левому краю.
+            style={s.catalogStatusButton}
           />
         </View>
       ) : (
@@ -1439,6 +1442,7 @@ const makeStyles = (
       gap: 16,
       paddingHorizontal: 24,
     },
+    catalogStatusButton: { alignSelf: "center" },
     catalogStatusText: {
       color: colors.mutedForeground,
       fontSize: fontSize.sm,
