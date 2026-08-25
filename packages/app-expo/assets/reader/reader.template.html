@@ -2109,6 +2109,7 @@
               }
             : null;
           postToRN('relocate', {
+            sourceId: msg.sourceId || null,
             fraction: detail.fraction,
             section: { current: currentSectionIndex, total: relocatedSectionTotal },
             location: detail.location,

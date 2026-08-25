@@ -528,9 +528,13 @@ function ReaderContent({ route, navigation }: Props) {
   const backendCatalogPrefetchBusyRef = useRef(false);
   const backendCatalogRequestedBytesRef = useRef<number | null>(null);
   const pendingBackendCatalogSeekRef = useRef<number | null>(null);
+  const backendCatalogCurrentBookPathRef = useRef(book?.filePath);
+  const backendCatalogSnapshotStatesRef = useRef(new Map<string, BackendCatalogSourceState>());
+  backendCatalogCurrentBookPathRef.current = book?.filePath;
 
   useEffect(() => {
     let active = true;
+    backendCatalogSnapshotStatesRef.current.clear();
     if (!backendCatalogContent) {
       setBackendCatalogSourceState(null);
       setBackendCatalogSourceReady(true);
@@ -541,7 +545,14 @@ function ReaderContent({ route, navigation }: Props) {
     setBackendCatalogSourceReady(false);
     void getBackendCatalogSourceState(backendCatalogContent)
       .then((prepared) => {
-        if (active) setBackendCatalogSourceState(prepared?.state ?? null);
+        if (active) {
+          const state = prepared?.state ?? null;
+          const currentBookPath = backendCatalogCurrentBookPathRef.current;
+          if (state && currentBookPath) {
+            backendCatalogSnapshotStatesRef.current.set(currentBookPath, state);
+          }
+          setBackendCatalogSourceState(state);
+        }
       })
       .catch((error) => {
         console.warn("[CatalogStream] Failed to restore catalog source state:", error);
@@ -785,6 +796,7 @@ function ReaderContent({ route, navigation }: Props) {
           catalog,
           targetAbsoluteFraction,
         );
+        backendCatalogSnapshotStatesRef.current.set(refreshed.filePath, refreshed.state);
         setBackendCatalogSourceState(refreshed.state);
         suppressProgressTracking(INITIAL_PROGRESS_RESTORE_GUARD_MS);
         await updateBook(currentBook.id, {
@@ -1103,10 +1115,21 @@ function ReaderContent({ route, navigation }: Props) {
       totalBookCharactersRef.current = totalCharacters > 0 ? totalCharacters : null;
     },
     onRelocate: (detail: RelocateEvent) => {
+      if (detail.sourceId && book?.filePath && detail.sourceId !== book.filePath) {
+        console.log("[CatalogStream] Ignoring relocate from an obsolete EPUB snapshot", {
+          eventSourceId: detail.sourceId,
+          currentSourceId: book.filePath,
+        });
+        return;
+      }
+      const renderedCatalogSourceState = detail.sourceId
+        ? (backendCatalogSnapshotStatesRef.current.get(detail.sourceId) ??
+          backendCatalogSourceState)
+        : backendCatalogSourceState;
       const localFraction = detail.fraction ?? 0;
       const absoluteFraction = backendCatalogReaderProgress(
         localFraction,
-        backendCatalogSourceState,
+        renderedCatalogSourceState,
       );
       console.log("[ReaderScreen] onRelocate", {
         section: detail.section,
@@ -1138,16 +1161,17 @@ function ReaderContent({ route, navigation }: Props) {
           ? estimateBackendCatalogLocations(
               detail.location.current,
               detail.location.total,
-              backendCatalogSourceState,
+              renderedCatalogSourceState,
             )
           : null,
       );
 
       const pendingSeek = pendingBackendCatalogSeekRef.current;
-      const loadedFraction = backendCatalogLoadedFraction(backendCatalogSourceState);
+      const loadedFraction = backendCatalogLoadedFraction(renderedCatalogSourceState);
       const currentSnapshotReady = Boolean(
-        backendCatalogSourceState &&
-          book?.filePath.endsWith(`-catalog-${backendCatalogSourceState.receivedBytes}.epub`),
+        renderedCatalogSourceState &&
+          detail.sourceId === book?.filePath &&
+          book?.filePath.endsWith(`-catalog-${renderedCatalogSourceState.receivedBytes}.epub`),
       );
       if (
         pendingSeek != null &&
@@ -1934,6 +1958,7 @@ function ReaderContent({ route, navigation }: Props) {
           uri: `${serverUrl}/${encodedPath}`,
           fileName,
           mimeType,
+          sourceId: book.filePath,
           lastLocation,
           pageMargin: readSettings.pageMargin,
           paginatedLayout: readSettings.paginatedLayout,

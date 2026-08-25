@@ -7,6 +7,7 @@ import { useCallback, useMemo, useRef } from "react";
 import type { WebView } from "react-native-webview";
 
 export interface RelocateEvent {
+  sourceId?: string;
   fraction?: number;
   section?: { current: number; total: number };
   location?: { current: number; next: number; total: number };
@@ -163,6 +164,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       base64?: string;
       fileName?: string;
       mimeType?: string;
+      sourceId?: string;
       lastLocation?: string;
       pageMargin?: number;
       paginatedLayout?: "single" | "double";
