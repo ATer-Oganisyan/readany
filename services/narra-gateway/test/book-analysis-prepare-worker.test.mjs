@@ -47,7 +47,10 @@ test('prepare worker stores normalized text and atomically creates scan input', 
       return {
         text,
         textLength: text.length,
-        sections: [{ key: 'document', title: '', startOffset: 0, endOffset: text.length }]
+        sections: [{ key: 'document', title: '', startOffset: 0, endOffset: text.length }],
+        navigation: {
+          version: 'book-navigation-v1', source: 'document', items: [], segments: []
+        }
       }
     },
     logger: { info() {}, error() {} }
@@ -57,6 +60,7 @@ test('prepare worker stores normalized text and atomically creates scan input', 
   assert.equal(uploaded.objectKey, 'analysis/run-1/normalized-text-v1.txt')
   assert.equal(uploaded.bytes.toString('utf8'), text)
   assert.equal(completed.input.textLength, text.length)
+  assert.equal(completed.input.contentNavigation.version, 'book-navigation-v1')
   assert.ok(completed.input.chunks.length > 1)
   assert.equal(completed.input.chunks[0].coreStartOffset, 0)
   assert.equal(completed.input.chunks.at(-1).coreEndOffset, text.length)

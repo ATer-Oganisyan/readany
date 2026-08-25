@@ -12,11 +12,12 @@ import {
   normalizeBookMarkupV3
 } from './book-analysis-contracts.mjs'
 import {
-  BOOK_CONTENT_CHUNK_BYTES,
+  BOOK_CONTENT_CHUNK_CHARS,
   BOOK_CONTENT_CONTRACT_VERSION,
+  BOOK_CONTENT_TOC_CONTRACT_VERSION,
   decodeBookContentCursor,
   encodeBookContentCursor,
-  utf8ChunkPrefixLength
+  utf8CharacterChunk
 } from './book-content.mjs'
 import { voiceForGender } from './voices.mjs'
 import { createHash, randomUUID } from 'node:crypto'
@@ -122,17 +123,94 @@ function analysisReaderTextOffset(snapshot, textLength) {
   return Math.min(textLength, Math.max(0, Number(snapshot.readerTextOffset) || 0))
 }
 
+function preparedNavigation(content, byteSize) {
+  const rawSegments = content.navigation?.version === 'book-navigation-v1' &&
+    Array.isArray(content.navigation.segments)
+    ? content.navigation.segments
+    : []
+  const segments = []
+  let expectedStart = 0
+  for (const [index, raw] of rawSegments.entries()) {
+    if (
+      !raw || typeof raw !== 'object' || Array.isArray(raw) ||
+      typeof raw.key !== 'string' || !raw.key ||
+      !Number.isSafeInteger(raw.startByte) || raw.startByte !== expectedStart ||
+      !Number.isSafeInteger(raw.endByte) || raw.endByte <= raw.startByte ||
+      raw.endByte > byteSize
+    ) return null
+    segments.push({
+      key: raw.key.slice(0, 500),
+      title: typeof raw.title === 'string' ? raw.title.slice(0, 500) : '',
+      index,
+      startByte: raw.startByte,
+      endByte: raw.endByte
+    })
+    expectedStart = raw.endByte
+  }
+  if (!segments.length || expectedStart !== byteSize) return null
+  const byKey = new Map(segments.map(segment => [segment.key, segment]))
+  const items = Array.isArray(content.navigation.items)
+    ? content.navigation.items.flatMap((raw, index) => {
+      const section = byKey.get(raw?.sectionKey)
+      if (!section || typeof raw?.key !== 'string' || !raw.key) return []
+      return [{
+        key: raw.key.slice(0, 500),
+        title: typeof raw.title === 'string' ? raw.title.slice(0, 500) : section.title,
+        level: Number.isSafeInteger(raw.level) && raw.level >= 0 ? raw.level : 0,
+        parentKey: typeof raw.parentKey === 'string' ? raw.parentKey.slice(0, 500) : null,
+        sectionKey: section.key,
+        href: typeof raw.href === 'string' ? raw.href.slice(0, 2_000) : null,
+        anchorResolved: raw.anchorResolved !== false,
+        order: index,
+        startByte: section.startByte,
+        endByte: section.endByte
+      }]
+    })
+    : []
+  return {
+    source: typeof content.navigation.source === 'string' ? content.navigation.source : 'unknown',
+    items: items.length ? items : segments.map(segment => ({
+      key: segment.key,
+      title: segment.title,
+      level: 0,
+      parentKey: null,
+      sectionKey: segment.key,
+      href: null,
+      anchorResolved: true,
+      order: segment.index,
+      startByte: segment.startByte,
+      endByte: segment.endByte
+    })),
+    segments
+  }
+}
+
+function fallbackNavigation(byteSize) {
+  const segment = {
+    key: 'fixed:document', title: '', index: 0, startByte: 0, endByte: byteSize
+  }
+  return {
+    source: 'fixed',
+    items: [{
+      key: segment.key, title: '', level: 0, parentKey: null,
+      sectionKey: segment.key, href: null, anchorResolved: true, order: 0,
+      startByte: 0, endByte: byteSize
+    }],
+    segments: [segment]
+  }
+}
+
 export function createBookCatalogService({
   repository,
   analysisRepository = null,
   storage = null,
   bundleVersion = CHARACTER_BUNDLE_VERSION,
   idFactory = randomUUID,
-  contentChunkBytes = BOOK_CONTENT_CHUNK_BYTES
+  contentChunkChars = BOOK_CONTENT_CHUNK_CHARS
 }) {
   const store = requiredRepository(repository)
-  if (!Number.isSafeInteger(contentChunkBytes) || contentChunkBytes < 4 || contentChunkBytes > 1024 * 1024) {
-    throw new RangeError('contentChunkBytes must be between 4 bytes and 1 MiB')
+  if (!Number.isSafeInteger(contentChunkChars) || contentChunkChars < 1 || contentChunkChars > 250_000) {
+    throw new RangeError('contentChunkChars must be between 1 and 250000 characters')
   }
 
   async function preparedCatalogContent(subjectId, bookEditionId) {
@@ -484,6 +562,24 @@ export function createBookCatalogService({
       }
     },
 
+    async contentToc(subjectId, bookEditionId) {
+      const content = await preparedCatalogContent(subjectId, bookEditionId)
+      if (typeof storage.getObjectInfo !== 'function') {
+        throw new TypeError('storage.getObjectInfo is required')
+      }
+      const info = await storage.getObjectInfo({ objectKey: content.objectKey })
+      if (info.byteSize < 1) throw serviceError('CONTENT_INVALID', 'Содержимое книги пусто', 500)
+      const navigation = preparedNavigation(content, info.byteSize) || fallbackNavigation(info.byteSize)
+      return {
+        contractVersion: BOOK_CONTENT_TOC_CONTRACT_VERSION,
+        representation: content.normalizationVersion,
+        bookEditionId,
+        contentHash: content.contentHash,
+        source: navigation.source,
+        items: navigation.items
+      }
+    },
+
     async contentChunk(subjectId, bookEditionId, rawCursor) {
       const content = await preparedCatalogContent(subjectId, bookEditionId)
       if (typeof storage.getObjectInfo !== 'function' || typeof storage.getBytesRange !== 'function') {
@@ -499,17 +595,26 @@ export function createBookCatalogService({
       if (startByte < 0 || startByte >= info.byteSize) {
         throw serviceError('VALIDATION', 'content cursor: offset is outside the book', 400)
       }
-      const requestedEnd = Math.min(info.byteSize, startByte + contentChunkBytes + 3)
+      const navigation = preparedNavigation(content, info.byteSize) || fallbackNavigation(info.byteSize)
+      const section = navigation.segments.find(candidate =>
+        candidate.startByte <= startByte && candidate.endByte > startByte)
+      if (!section) throw serviceError('CONTENT_INVALID', 'Не найдена глава для позиции чтения', 500)
+      const requestedEnd = Math.min(
+        section.endByte,
+        startByte + contentChunkChars * 4 + 3
+      )
       const stored = await storage.getBytesRange({
         objectKey: content.objectKey,
         startByte,
         endByteExclusive: requestedEnd,
-        maxBytes: contentChunkBytes + 3
+        maxBytes: contentChunkChars * 4 + 3
       })
-      const safeLength = utf8ChunkPrefixLength(stored.bytes, contentChunkBytes)
-      if (safeLength < 1) throw serviceError('CONTENT_INVALID', 'Не удалось прочитать фрагмент книги', 500)
-      const chunkBytes = stored.bytes.subarray(0, safeLength)
-      const endByteExclusive = startByte + safeLength
+      const characterChunk = utf8CharacterChunk(stored.bytes, contentChunkChars)
+      const chunkBytes = characterChunk.bytes
+      if (chunkBytes.byteLength < 1) {
+        throw serviceError('CONTENT_INVALID', 'Не удалось прочитать фрагмент книги', 500)
+      }
+      const endByteExclusive = startByte + chunkBytes.byteLength
       return {
         contractVersion: BOOK_CONTENT_CONTRACT_VERSION,
         representation: content.normalizationVersion,
@@ -521,8 +626,16 @@ export function createBookCatalogService({
           startByte,
           endByteExclusive,
           contentHash: createHash('sha256').update(chunkBytes).digest('hex'),
-          text: chunkBytes.toString('utf8')
+          text: characterChunk.text
         },
+        section: {
+          key: section.key,
+          title: section.title,
+          index: section.index,
+          startByte: section.startByte,
+          endByteExclusive: section.endByte
+        },
+        sectionComplete: endByteExclusive === section.endByte,
         nextCursor: endByteExclusive < info.byteSize
           ? encodeBookContentCursor({
               contentHash: content.contentHash,

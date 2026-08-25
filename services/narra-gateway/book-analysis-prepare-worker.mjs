@@ -72,6 +72,7 @@ export function createBookAnalysisPrepareWorker({
       normalizedTextHash,
       textLength: structured.textLength,
       sections: structured.sections,
+      contentNavigation: structured.navigation,
       chunks
     })
     log.info('prepare.completed', 'Книга подготовлена для параллельного анализа', {

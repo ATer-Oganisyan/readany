@@ -1,7 +1,10 @@
 const SHA256 = /^[0-9a-f]{64}$/
 
 export const BOOK_CONTENT_CONTRACT_VERSION = 'book-content-v1'
-export const BOOK_CONTENT_CHUNK_BYTES = 64 * 1024
+export const BOOK_CONTENT_TOC_CONTRACT_VERSION = 'book-content-toc-v1'
+export const BOOK_CONTENT_PAGE_CHARS = 1_800
+export const BOOK_CONTENT_CHUNK_PAGES = 50
+export const BOOK_CONTENT_CHUNK_CHARS = BOOK_CONTENT_PAGE_CHARS * BOOK_CONTENT_CHUNK_PAGES
 
 function invalidCursor() {
   throw Object.assign(new Error('content cursor: invalid value'), {
@@ -47,4 +50,40 @@ export function utf8ChunkPrefixLength(rawBytes, maxBytes) {
   let boundary = limit
   while (boundary > 0 && (bytes[boundary] & 0xc0) === 0x80) boundary -= 1
   return boundary
+}
+
+function validUtf8Prefix(rawBytes) {
+  const bytes = Buffer.from(rawBytes)
+  const decoder = new TextDecoder('utf-8', { fatal: true })
+  for (let trim = 0; trim <= Math.min(3, bytes.byteLength); trim += 1) {
+    const end = bytes.byteLength - trim
+    try {
+      return { bytes: bytes.subarray(0, end), text: decoder.decode(bytes.subarray(0, end)) }
+    } catch {
+      // A ranged object read can end in the middle of a UTF-8 code point.
+    }
+  }
+  throw Object.assign(new Error('content range does not contain valid UTF-8'), {
+    code: 'CONTENT_INVALID',
+    status: 500
+  })
+}
+
+/** Returns at most maxChars UTF-16 code units without splitting a Unicode code point. */
+export function utf8CharacterChunk(rawBytes, maxChars) {
+  if (!Number.isSafeInteger(maxChars) || maxChars < 1) {
+    throw new TypeError('maxChars must be a positive safe integer')
+  }
+  const decoded = validUtf8Prefix(rawBytes)
+  let end = Math.min(decoded.text.length, maxChars)
+  if (
+    end > 0 && end < decoded.text.length &&
+    /[\uDC00-\uDFFF]/.test(decoded.text[end]) &&
+    /[\uD800-\uDBFF]/.test(decoded.text[end - 1])
+  ) end -= 1
+  const text = decoded.text.slice(0, end)
+  return {
+    text,
+    bytes: Buffer.from(text, 'utf8')
+  }
 }

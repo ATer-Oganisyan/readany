@@ -287,9 +287,16 @@ only for catalog books.
 Prepared catalog text has two read contracts. `GET /v2/books/:bookEditionId/content`
 returns a short-lived URL for the complete normalized text. `GET
 /v2/books/:bookEditionId/content/chunks` returns the first UTF-8-safe text range;
-pass its `next_cursor` back as the `cursor` query parameter to continue. Both
-contracts use the same immutable content hash. Private books are intentionally
-excluded because their reader content remains on the user's device.
+pass its `next_cursor` back as the `cursor` query parameter to continue. A range
+contains at most 90,000 characters (50 conventional 1,800-character pages),
+never crosses a chapter boundary, and splits an oversized chapter across
+successive ranges. `GET /v2/books/:bookEditionId/content/toc` returns the chapter
+navigation and byte ranges. When a book has no embedded table of contents, the
+reader falls back to consecutive fixed-size ranges without inferring chapters.
+Both text contracts use the same immutable content hash. Private books are
+intentionally excluded because their reader content remains on the user's
+device. Existing prepared books can be populated with navigation by running
+`npm run backfill:book-content-navigation`.
 
 Catalog uploads require the independent `CATALOG_INGEST_TOKEN`:
 `POST /v2/admin/catalog/books/uploads`, the returned raw content path, and the

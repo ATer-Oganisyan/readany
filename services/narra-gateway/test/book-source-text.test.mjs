@@ -56,6 +56,81 @@ test('structured EPUB extraction preserves spine sections and absolute offsets',
     'Глава первая',
     'Глава вторая'
   ])
+  assert.equal(structured.navigation.source, 'fixed')
+  assert.equal(structured.navigation.segments.length, 1)
+  assert.equal(structured.navigation.segments[0].endByte, Buffer.byteLength(structured.text, 'utf8'))
+})
+
+test('EPUB 3 navigation anchors become reader chapter boundaries', async () => {
+  const epub = zipSync({
+    'META-INF/container.xml': strToU8(
+      '<?xml version="1.0"?><container><rootfiles><rootfile full-path="OPS/book.opf"/></rootfiles></container>'
+    ),
+    'OPS/book.opf': strToU8(
+      '<package version="3.0"><manifest>' +
+      '<item id="nav" href="nav.xhtml" properties="nav" media-type="application/xhtml+xml"/>' +
+      '<item id="book" href="book.xhtml" media-type="application/xhtml+xml"/>' +
+      '</manifest><spine><itemref idref="book"/></spine></package>'
+    ),
+    'OPS/nav.xhtml': strToU8(
+      '<html xmlns:epub="http://www.idpf.org/2007/ops"><body>' +
+      '<nav epub:type="toc"><ol>' +
+      '<li><a href="book.xhtml#one">Chapter One</a></li>' +
+      '<li><a href="book.xhtml#two">Chapter Two</a></li>' +
+      '</ol></nav></body></html>'
+    ),
+    'OPS/book.xhtml': strToU8(
+      '<html><body><h1 id="one">Chapter One</h1><p>Alpha.</p>' +
+      '<h1 id="two">Chapter Two</h1><p>Beta.</p></body></html>'
+    )
+  })
+  const structured = await extractStructuredBookText({
+    bytes: epub, format: 'epub', mimeType: 'application/epub+zip'
+  })
+  assert.equal(structured.navigation.source, 'nav')
+  assert.deepEqual(structured.navigation.items.map(({ title }) => title), [
+    'Chapter One', 'Chapter Two'
+  ])
+  assert.equal(structured.navigation.segments.length, 2)
+  assert.match(structured.text.slice(
+    structured.navigation.segments[1].startOffset,
+    structured.navigation.segments[1].endOffset
+  ), /^Chapter Two/)
+  assert.equal(structured.navigation.segments[0].startByte, 0)
+  assert.equal(
+    structured.navigation.segments.at(-1).endByte,
+    Buffer.byteLength(structured.text, 'utf8')
+  )
+})
+
+test('EPUB 2 NCX anchors become reader chapter boundaries', async () => {
+  const epub = zipSync({
+    'META-INF/container.xml': strToU8(
+      '<?xml version="1.0"?><container><rootfiles><rootfile full-path="OPS/book.opf"/></rootfiles></container>'
+    ),
+    'OPS/book.opf': strToU8(
+      '<package version="2.0"><manifest>' +
+      '<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>' +
+      '<item id="book" href="book.xhtml" media-type="application/xhtml+xml"/>' +
+      '</manifest><spine toc="ncx"><itemref idref="book"/></spine></package>'
+    ),
+    'OPS/toc.ncx': strToU8(
+      '<ncx><navMap>' +
+      '<navPoint><navLabel><text>One</text></navLabel><content src="book.xhtml#one"/></navPoint>' +
+      '<navPoint><navLabel><text>Two</text></navLabel><content src="book.xhtml#two"/></navPoint>' +
+      '</navMap></ncx>'
+    ),
+    'OPS/book.xhtml': strToU8(
+      '<html><body><h1 id="one">One</h1><p>Alpha.</p>' +
+      '<h1 id="two">Two</h1><p>Beta.</p></body></html>'
+    )
+  })
+  const structured = await extractStructuredBookText({
+    bytes: epub, format: 'epub', mimeType: 'application/epub+zip'
+  })
+  assert.equal(structured.navigation.source, 'ncx')
+  assert.deepEqual(structured.navigation.items.map(({ title }) => title), ['One', 'Two'])
+  assert.match(structured.text.slice(structured.navigation.segments[1].startOffset), /^Two/)
 })
 
 test('representativeTextSample keeps beginning, middle and ending within its bound markers', () => {
@@ -96,6 +171,8 @@ test('structured TXT extraction builds a contiguous chapter skeleton without cha
     'Глава 1. Встреча',
     'Глава II'
   ])
+  assert.equal(structured.navigation.source, 'fixed')
+  assert.equal(structured.navigation.segments.length, 1)
   for (let index = 1; index < structured.sections.length; index += 1) {
     assert.equal(
       structured.sections[index - 1].endOffset,

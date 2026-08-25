@@ -552,7 +552,41 @@ export function createBookCatalogRouter({
         content_hash: result.chunk.contentHash,
         text: result.chunk.text
       },
+      section: {
+        key: result.section.key,
+        title: result.section.title,
+        index: result.section.index,
+        start_byte: result.section.startByte,
+        end_byte_exclusive: result.section.endByteExclusive
+      },
+      section_complete: result.sectionComplete,
       next_cursor: result.nextCursor
+    })
+  }))
+
+  router.get('/:bookEditionId/content/toc', asyncRoute(async (req, res) => {
+    const result = await service.contentToc(
+      subject(req),
+      uuid(req.params.bookEditionId, 'bookEditionId')
+    )
+    res.json({
+      contract_version: result.contractVersion,
+      representation: result.representation,
+      book_edition_id: result.bookEditionId,
+      content_hash: result.contentHash,
+      source: result.source,
+      items: result.items.map(item => ({
+        key: item.key,
+        title: item.title,
+        level: item.level,
+        parent_key: item.parentKey,
+        section_key: item.sectionKey,
+        href: item.href,
+        anchor_resolved: item.anchorResolved,
+        order: item.order,
+        start_byte: item.startByte,
+        end_byte_exclusive: item.endByte
+      }))
     })
   }))
 

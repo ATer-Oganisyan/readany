@@ -44,6 +44,8 @@ test('book catalog router exposes a separate genres endpoint', () => {
     .map((layer) => ({ path: layer.route.path, methods: layer.route.methods }))
   assert.ok(routes.some(({ path, methods }) => path === '/genres' && methods.get))
   assert.ok(routes.some(({ path, methods }) => path === '/:bookEditionId/identity' && methods.get))
+  assert.ok(routes.some(({ path, methods }) =>
+    path === '/:bookEditionId/content/toc' && methods.get))
 })
 
 test('book identity polling JSON is independent from the markup manifest', () => {

@@ -138,12 +138,251 @@ function pdfSections(text) {
   return sectionsFromOffsets(text, candidates, 'pdf-page')
 }
 
+function epubHref(baseName, href) {
+  let decoded = decodeEntities(String(href || ''))
+  try { decoded = decodeURIComponent(decoded) } catch {}
+  const [resourceWithQuery, fragment = ''] = decoded.split('#', 2)
+  const resource = resourceWithQuery.split('?', 1)[0]
+  return {
+    path: safeZipPath(path.posix.dirname(baseName), resource),
+    fragment
+  }
+}
+
+function navigationLinks(markup) {
+  const items = []
+  const lastAtLevel = []
+  let depth = 0
+  const token = /<ol\b[^>]*>|<\/ol\s*>|<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi
+  for (const match of markup.matchAll(token)) {
+    if (/^<ol\b/i.test(match[0])) {
+      depth += 1
+      continue
+    }
+    if (/^<\/ol/i.test(match[0])) {
+      depth = Math.max(0, depth - 1)
+      continue
+    }
+    const attributes = parseAttributes(match[1] || '')
+    if (!attributes.href) continue
+    const level = Math.max(0, depth - 1)
+    const index = items.length
+    items.push({
+      title: markupToText(match[2] || '').slice(0, 500),
+      href: attributes.href,
+      level,
+      parentIndex: level > 0 ? (lastAtLevel[level - 1] ?? null) : null
+    })
+    lastAtLevel[level] = index
+    lastAtLevel.length = level + 1
+  }
+  return items
+}
+
+function epub3Navigation(markup) {
+  for (const match of markup.matchAll(/<nav\b([^>]*)>([\s\S]*?)<\/nav\s*>/gi)) {
+    const attributes = parseAttributes(match[1])
+    const type = attributes['epub:type'] || attributes.type || ''
+    if (type.split(/\s+/).includes('toc')) return navigationLinks(match[2])
+  }
+  return []
+}
+
+function epub2Navigation(markup) {
+  const items = []
+  const stack = []
+  const token = /<navPoint\b[^>]*>|<\/navPoint\s*>|<navLabel\b[^>]*>([\s\S]*?)<\/navLabel\s*>|<content\b([^>]*)\/?\s*>/gi
+  for (const match of markup.matchAll(token)) {
+    if (/^<navPoint\b/i.test(match[0])) {
+      stack.push({
+        level: stack.length,
+        parentIndex: stack.at(-1)?.itemIndex ?? null,
+        title: '',
+        itemIndex: null
+      })
+      continue
+    }
+    if (/^<\/navPoint/i.test(match[0])) {
+      stack.pop()
+      continue
+    }
+    const current = stack.at(-1)
+    if (!current) continue
+    if (/^<navLabel\b/i.test(match[0])) {
+      current.title = markupToText(match[1] || '').slice(0, 500)
+      continue
+    }
+    const attributes = parseAttributes(match[2] || '')
+    if (!attributes.src || current.itemIndex !== null) continue
+    current.itemIndex = items.length
+    items.push({
+      title: current.title,
+      href: attributes.src,
+      level: current.level,
+      parentIndex: current.parentIndex
+    })
+  }
+  return items
+}
+
+function anchorTextOffset(markup, text, fragment) {
+  if (!fragment) return 0
+  for (const match of markup.matchAll(/<[A-Za-z][^>]*>/g)) {
+    const attributes = parseAttributes(match[0])
+    if (attributes.id !== fragment && attributes.name !== fragment) continue
+    const prefix = markupToText(markup.slice(0, match.index))
+    if (!text.startsWith(prefix)) return null
+    let offset = prefix.length
+    while (offset < text.length && /\s/u.test(text[offset])) offset += 1
+    return offset
+  }
+  return null
+}
+
+function utf8Offsets(text, rawOffsets) {
+  const targets = [...new Set(rawOffsets)].sort((left, right) => left - right)
+  const result = new Map()
+  let codeUnitOffset = 0
+  let byteOffset = 0
+  let targetIndex = 0
+  while (targets[targetIndex] === 0) {
+    result.set(0, 0)
+    targetIndex += 1
+  }
+  for (const symbol of text) {
+    const nextCodeUnitOffset = codeUnitOffset + symbol.length
+    while (targetIndex < targets.length && targets[targetIndex] < nextCodeUnitOffset) {
+      throw generationError('BOOK_PARSE_FAILED', 'EPUB navigation splits a Unicode code point')
+    }
+    byteOffset += Buffer.byteLength(symbol, 'utf8')
+    codeUnitOffset = nextCodeUnitOffset
+    while (targets[targetIndex] === codeUnitOffset) {
+      result.set(codeUnitOffset, byteOffset)
+      targetIndex += 1
+    }
+  }
+  if (targetIndex !== targets.length) {
+    throw generationError('BOOK_PARSE_FAILED', 'EPUB navigation offset exceeds normalized text')
+  }
+  return result
+}
+
+function fixedNavigation(text) {
+  const segment = {
+    key: 'fixed:document',
+    title: '',
+    index: 0,
+    startOffset: 0,
+    endOffset: text.length,
+    startByte: 0,
+    endByte: Buffer.byteLength(text, 'utf8')
+  }
+  return {
+    version: 'book-navigation-v1',
+    source: 'fixed',
+    items: [{
+      key: segment.key,
+      title: segment.title,
+      level: 0,
+      parentKey: null,
+      sectionKey: segment.key
+    }],
+    segments: [segment]
+  }
+}
+
+function buildEpubNavigation({
+  text,
+  sections,
+  rawSections,
+  rawItems,
+  navigationBase,
+  source
+}) {
+  if (!rawItems.length) return fixedNavigation(text)
+  const sectionBySourceIndex = new Map(sections.map(section => [section.sourceIndex, section]))
+  const documentByPath = new Map(rawSections.map((section, sourceIndex) => [
+    section.name.toLowerCase(),
+    { ...section, section: sectionBySourceIndex.get(sourceIndex) }
+  ]))
+  const resolved = []
+  const keyByRawIndex = new Map()
+  for (const [rawIndex, item] of rawItems.entries()) {
+    let target
+    try { target = epubHref(navigationBase, item.href) } catch { continue }
+    const document = documentByPath.get(target.path.toLowerCase())
+    if (!document?.section) continue
+    const resolvedAnchorOffset = anchorTextOffset(document.markup, document.text, target.fragment)
+    const localOffset = resolvedAnchorOffset ?? 0
+    const key = `toc:${source}:${rawIndex + 1}`
+    keyByRawIndex.set(rawIndex, key)
+    resolved.push({
+      rawIndex,
+      key,
+      title: item.title || document.title || '',
+      level: item.level,
+      parentIndex: item.parentIndex,
+      href: item.href,
+      anchorResolved: resolvedAnchorOffset !== null,
+      startOffset: document.section.startOffset + localOffset
+    })
+  }
+  if (!resolved.length) return fixedNavigation(text)
+  for (const item of resolved) {
+    let parentIndex = item.parentIndex
+    while (parentIndex !== null && !keyByRawIndex.has(parentIndex)) {
+      parentIndex = rawItems[parentIndex]?.parentIndex ?? null
+    }
+    item.parentKey = parentIndex === null ? null : keyByRawIndex.get(parentIndex)
+    delete item.parentIndex
+    delete item.rawIndex
+  }
+
+  const starts = [...new Set([0, ...resolved.map(item => item.startOffset)])]
+    .sort((left, right) => left - right)
+  const segmentKeyByStart = new Map()
+  const segments = starts.map((startOffset, index) => {
+    const candidates = resolved.filter(item => item.startOffset === startOffset)
+    const primary = candidates.sort((left, right) => right.level - left.level)[0]
+    const containing = sections.find(section =>
+      section.startOffset <= startOffset && section.endOffset > startOffset)
+    const key = primary?.key || `navigation:${source}:start`
+    segmentKeyByStart.set(startOffset, key)
+    return {
+      key,
+      title: primary?.title || containing?.title || '',
+      index,
+      startOffset,
+      endOffset: starts[index + 1] ?? text.length
+    }
+  }).filter(segment => segment.endOffset > segment.startOffset)
+  const offsets = utf8Offsets(text, segments.flatMap(segment => [segment.startOffset, segment.endOffset]))
+  for (const segment of segments) {
+    segment.startByte = offsets.get(segment.startOffset)
+    segment.endByte = offsets.get(segment.endOffset)
+  }
+  return {
+    version: 'book-navigation-v1',
+    source,
+    items: resolved.map(item => ({
+      key: item.key,
+      title: item.title,
+      level: item.level,
+      parentKey: item.parentKey,
+      sectionKey: segmentKeyByStart.get(item.startOffset),
+      href: item.href,
+      anchorResolved: item.anchorResolved
+    })),
+    segments
+  }
+}
+
 function epubStructuredText(bytes) {
   let entries
   try {
     entries = unzipSync(new Uint8Array(bytes), {
       filter(file) {
-        return /(?:^|\/)(?:container\.xml|[^/]+\.opf)$/i.test(file.name) || EPUB_TEXT_ENTRY.test(file.name)
+        return /(?:^|\/)(?:container\.xml|[^/]+\.(?:opf|ncx))$/i.test(file.name) || EPUB_TEXT_ENTRY.test(file.name)
       }
     })
   } catch (error) {
@@ -165,12 +404,20 @@ function epubStructuredText(bytes) {
     ? byLowerName.get(rootfile.toLowerCase())
     : entryNames.find((name) => /\.opf$/i.test(name))
   const orderedNames = []
+  let opf = ''
+  let manifestItems = []
+  let navigationBase = ''
+  let rawNavigationItems = []
+  let navigationSource = 'spine'
   if (opfName) {
-    const opf = strFromU8(entries[opfName])
+    opf = strFromU8(entries[opfName])
     const manifest = new Map()
     for (const match of opf.matchAll(/<item\b([^>]*)\/?\s*>/gi)) {
       const attributes = parseAttributes(match[1])
-      if (attributes.id && attributes.href) manifest.set(attributes.id, attributes.href)
+      if (attributes.id && attributes.href) {
+        manifest.set(attributes.id, attributes.href)
+        manifestItems.push(attributes)
+      }
     }
     const base = path.posix.dirname(opfName)
     for (const match of opf.matchAll(/<itemref\b([^>]*)\/?\s*>/gi)) {
@@ -181,20 +428,59 @@ function epubStructuredText(bytes) {
       const actual = byLowerName.get(name.toLowerCase())
       if (actual && EPUB_TEXT_ENTRY.test(actual) && !orderedNames.includes(actual)) orderedNames.push(actual)
     }
+    const navItem = manifestItems.find(item =>
+      String(item.properties || '').split(/\s+/).includes('nav'))
+    if (navItem) {
+      const target = safeZipPath(path.posix.dirname(opfName), navItem.href.split('#')[0])
+      const actual = byLowerName.get(target.toLowerCase())
+      if (actual) {
+        rawNavigationItems = epub3Navigation(strFromU8(entries[actual]))
+        navigationBase = actual
+        if (rawNavigationItems.length) navigationSource = 'nav'
+      }
+    }
+    if (!rawNavigationItems.length) {
+      const spineTocId = parseAttributes(opf.match(/<spine\b([^>]*)>/i)?.[1] || '').toc
+      const ncxItem = manifestItems.find(item =>
+        (spineTocId && item.id === spineTocId) ||
+        item['media-type'] === 'application/x-dtbncx+xml')
+      if (ncxItem) {
+        const target = safeZipPath(path.posix.dirname(opfName), ncxItem.href.split('#')[0])
+        const actual = byLowerName.get(target.toLowerCase())
+        if (actual) {
+          rawNavigationItems = epub2Navigation(strFromU8(entries[actual]))
+          navigationBase = actual
+          if (rawNavigationItems.length) navigationSource = 'ncx'
+        }
+      }
+    }
   }
   if (!orderedNames.length) {
     orderedNames.push(...entryNames.filter((name) => EPUB_TEXT_ENTRY.test(name)).sort())
   }
-  const result = joinStructuredSections(orderedNames.map((name) => {
+  const rawSections = orderedNames.map((name) => {
     const markup = strFromU8(entries[name])
     return {
+      name,
+      markup,
       key: `epub:${name}`,
       title: sectionTitle(markup, path.posix.basename(name, path.posix.extname(name))),
       text: markupToText(markup)
     }
-  }))
+  })
+  const result = joinStructuredSections(rawSections)
   if (!result.text) throw generationError('BOOK_PARSE_FAILED', 'EPUB contains no readable text')
-  return result
+  return {
+    ...result,
+    navigation: buildEpubNavigation({
+      text: result.text,
+      sections: result.sections,
+      rawSections,
+      rawItems: rawNavigationItems,
+      navigationBase,
+      source: navigationSource
+    })
+  }
 }
 
 function processOutput(command, args, input, signal) {
@@ -265,7 +551,8 @@ export async function extractStructuredBookText({ bytes: rawBytes, format, mimeT
   return {
     text: result.text,
     textLength: result.text.length,
-    sections: result.sections
+    sections: result.sections,
+    navigation: result.navigation || fixedNavigation(result.text)
   }
 }
 

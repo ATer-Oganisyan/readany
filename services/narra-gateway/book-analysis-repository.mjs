@@ -1264,6 +1264,7 @@ export function createPostgresBookAnalysisRepository(pool, {
       normalizedTextHash,
       textLength,
       sections,
+      contentNavigation,
       chunks,
       scanPriority = 50
     }) {
@@ -1273,6 +1274,9 @@ export function createPostgresBookAnalysisRepository(pool, {
         throw new TypeError('textLength must be a positive safe integer')
       }
       if (!Array.isArray(sections) || !sections.length) throw new TypeError('sections must not be empty')
+      if (!contentNavigation || typeof contentNavigation !== 'object' || Array.isArray(contentNavigation)) {
+        throw new TypeError('contentNavigation must be an object')
+      }
       if (!Array.isArray(chunks) || !chunks.length) throw new TypeError('chunks must not be empty')
       return transaction(pool, async (client) => {
         await requireLeasedJob(client, job, 'prepare')
@@ -1295,9 +1299,17 @@ export function createPostgresBookAnalysisRepository(pool, {
         await client.query(
           `UPDATE book_analysis_runs
            SET normalized_text_object_key = $2, normalized_text_hash = $3,
-               text_length = $4, sections = $5::jsonb
+               text_length = $4, sections = $5::jsonb,
+               content_navigation = $6::jsonb
            WHERE id = $1`,
-          [job.runId, normalizedTextObjectKey, normalizedTextHash, textLength, JSON.stringify(sections)]
+          [
+            job.runId,
+            normalizedTextObjectKey,
+            normalizedTextHash,
+            textLength,
+            JSON.stringify(sections),
+            JSON.stringify(contentNavigation)
+          ]
         )
         for (const chunk of chunks) {
           await client.query(

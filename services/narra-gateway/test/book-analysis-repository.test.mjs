@@ -249,6 +249,9 @@ test('prepare completion writes chunks and scan jobs before advancing the barrie
     normalizedTextHash: 'b'.repeat(64),
     textLength: 100,
     sections: [{ key: 'document', startOffset: 0, endOffset: 100 }],
+    contentNavigation: {
+      version: 'book-navigation-v1', source: 'document', items: [], segments: []
+    },
     chunks: [{
       id: '123e4567-e89b-42d3-a456-426614174004',
       ordinal: 0,
@@ -304,6 +307,9 @@ test('external prepare keeps Narra chunks but creates one book-level scan job', 
     normalizedTextHash: 'b'.repeat(64),
     textLength: 100,
     sections: [{ key: 'document', startOffset: 0, endOffset: 100 }],
+    contentNavigation: {
+      version: 'book-navigation-v1', source: 'document', items: [], segments: []
+    },
     chunks: [
       {
         id: '123e4567-e89b-42d3-a456-426614174004', ordinal: 0,

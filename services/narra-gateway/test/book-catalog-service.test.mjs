@@ -864,7 +864,7 @@ test('catalog content chunks start immediately and continue with an opaque curso
         return { bytes: bytes.subarray(input.startByte, input.endByteExclusive) }
       }
     },
-    contentChunkBytes: 5
+    contentChunkChars: 2
   })
 
   const first = await service.contentChunk('reader-1', 'book-1', null)
@@ -879,9 +879,70 @@ test('catalog content chunks start immediately and continue with an opaque curso
   assert.equal(second.chunk.startByte, 4)
   assert.equal(second.chunk.endByteExclusive, 8)
   assert.equal(second.nextCursor, null)
+  const toc = await service.contentToc('reader-1', 'book-1')
+  assert.equal(toc.source, 'fixed')
+  assert.equal(toc.items.length, 1)
   assert.deepEqual(ranges.map(({ startByte, endByteExclusive }) => [startByte, endByteExclusive]), [
     [0, 8],
     [4, 8]
+  ])
+})
+
+test('catalog reader chunks stop at chapters and split only an oversized chapter', async () => {
+  const bytes = Buffer.from('AAAAABBBBBBBB')
+  const navigation = {
+    version: 'book-navigation-v1',
+    source: 'nav',
+    items: [
+      { key: 'toc-1', title: 'One', level: 0, parentKey: null, sectionKey: 'one' },
+      { key: 'toc-2', title: 'Two', level: 0, parentKey: null, sectionKey: 'two' }
+    ],
+    segments: [
+      { key: 'one', title: 'One', startByte: 0, endByte: 5 },
+      { key: 'two', title: 'Two', startByte: 5, endByte: 13 }
+    ]
+  }
+  const service = createBookCatalogService({
+    repository: repository({
+      async getReaderBookContent() {
+        return {
+          bookEditionId: 'book-1', objectKey: 'analysis/run-1/text.txt',
+          contentHash: HASH, textLength: bytes.length,
+          normalizationVersion: 'normalized-text-v1', navigation
+        }
+      }
+    }),
+    storage: {
+      async getObjectInfo() { return { byteSize: bytes.length } },
+      async getBytesRange(input) {
+        return { bytes: bytes.subarray(input.startByte, input.endByteExclusive) }
+      }
+    },
+    contentChunkChars: 6
+  })
+
+  const first = await service.contentChunk('reader-1', 'book-1', null)
+  assert.equal(first.chunk.text, 'AAAAA')
+  assert.equal(first.section.key, 'one')
+  assert.equal(first.sectionComplete, true)
+
+  const second = await service.contentChunk('reader-1', 'book-1', first.nextCursor)
+  assert.equal(second.chunk.text, 'BBBBBB')
+  assert.equal(second.section.key, 'two')
+  assert.equal(second.sectionComplete, false)
+
+  const third = await service.contentChunk('reader-1', 'book-1', second.nextCursor)
+  assert.equal(third.chunk.text, 'BB')
+  assert.equal(third.section.key, 'two')
+  assert.equal(third.sectionComplete, true)
+  assert.equal(third.nextCursor, null)
+
+  const toc = await service.contentToc('reader-1', 'book-1')
+  assert.equal(toc.source, 'nav')
+  assert.deepEqual(toc.items.map(({ title, startByte, endByte }) =>
+    [title, startByte, endByte]), [
+    ['One', 0, 5],
+    ['Two', 5, 13]
   ])
 })
 

@@ -88,6 +88,9 @@ test('PostgreSQL persists two immutable pipeline lineages for one content hash',
         normalizedTextHash: String(ordinal).repeat(64),
         textLength: 10,
         sections: [{ key: 'book', startOffset: 0, endOffset: 10 }],
+        contentNavigation: {
+          version: 'book-navigation-v1', source: 'document', items: [], segments: []
+        },
         chunks: [{
           id: randomUUID(), ordinal: 0, chapterKey: 'book',
           coreStartOffset: 0, coreEndOffset: 10,
@@ -343,6 +346,9 @@ test('PostgreSQL analysis workers claim different scan shards and reclaim an exp
         { key: 'chapter-1', title: 'One', startOffset: 0, endOffset: 50 },
         { key: 'chapter-2', title: 'Two', startOffset: 50, endOffset: 100 }
       ],
+      contentNavigation: {
+        version: 'book-navigation-v1', source: 'document', items: [], segments: []
+      },
       chunks: [
         {
           id: chunkIds[0], ordinal: 0, chapterKey: 'chapter-1',

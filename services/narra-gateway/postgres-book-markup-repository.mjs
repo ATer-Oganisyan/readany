@@ -1134,13 +1134,14 @@ export function createPostgresBookMarkupRepository(pool, {
 
     async getReaderBookContent({ bookEditionId }) {
       const result = await pool.query(
-        `SELECT edition.id AS book_edition_id,
+         `SELECT edition.id AS book_edition_id,
                 prepared.normalized_text_object_key, prepared.normalized_text_hash,
-                prepared.text_length, prepared.normalization_version
+                prepared.text_length, prepared.normalization_version,
+                prepared.content_navigation
          FROM book_editions AS edition
          JOIN LATERAL (
            SELECT run.normalized_text_object_key, run.normalized_text_hash,
-                  run.text_length, run.normalization_version
+                  run.text_length, run.normalization_version, run.content_navigation
            FROM book_analysis_runs AS run
            WHERE run.book_edition_id = edition.id
              AND run.input_hash = edition.content_sha256
@@ -1161,7 +1162,8 @@ export function createPostgresBookMarkupRepository(pool, {
         objectKey: row.normalized_text_object_key,
         contentHash: row.normalized_text_hash,
         textLength: Number(row.text_length),
-        normalizationVersion: row.normalization_version
+        normalizationVersion: row.normalization_version,
+        navigation: row.content_navigation ?? null
       }
     },
 

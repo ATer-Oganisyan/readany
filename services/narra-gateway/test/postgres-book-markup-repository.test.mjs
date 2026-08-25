@@ -177,7 +177,8 @@ test('catalog content resolves the latest prepared normalized text only for cata
     normalized_text_object_key: 'analysis/run-2/normalized-text-v1.txt',
     normalized_text_hash: 'a'.repeat(64),
     text_length: '1200',
-    normalization_version: 'normalized-text-v1'
+    normalization_version: 'normalized-text-v1',
+    content_navigation: null
   }] })])
   const repository = createPostgresBookMarkupRepository(pool)
   assert.deepEqual(await repository.getReaderBookContent({
@@ -188,7 +189,8 @@ test('catalog content resolves the latest prepared normalized text only for cata
     objectKey: 'analysis/run-2/normalized-text-v1.txt',
     contentHash: 'a'.repeat(64),
     textLength: 1200,
-    normalizationVersion: 'normalized-text-v1'
+    normalizationVersion: 'normalized-text-v1',
+    navigation: null
   })
   assert.match(pool.queries[0].sql, /edition\.scope = 'catalog'/)
   assert.match(pool.queries[0].sql, /run\.normalization_version = 'normalized-text-v1'/)
@@ -474,4 +476,13 @@ test('book genre migration creates and seeds a normalized many-to-many relation'
   assert.match(migration, /'science-fiction'/)
   assert.match(migration, /narra-ru-038-kavkazskij-plennik-pushkin/)
   assert.doesNotMatch(migration, /book_genre|genre_source|\bllm\b/i)
+})
+
+test('book content navigation migration stores deterministic reader structure', async () => {
+  const migration = await readFile(
+    new URL('../migrations/017_book_content_navigation.sql', import.meta.url),
+    'utf8'
+  )
+  assert.match(migration, /ADD COLUMN content_navigation JSONB/)
+  assert.match(migration, /jsonb_typeof\(content_navigation\) = 'object'/)
 })
