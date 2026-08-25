@@ -13,6 +13,8 @@ export class NarraServiceError extends Error {
     message: string,
     public readonly requestId?: string,
     public readonly technicalDetail?: string,
+    public readonly backendCode?: string,
+    public readonly httpStatus?: number,
   ) {
     super(message);
     this.name = "NarraServiceError";

@@ -30,7 +30,6 @@ export interface BackendCatalogBook extends BackendBookBinding {
   title: string;
   author: string;
   format: string;
-  sourceDownloadPath: string;
   cover?: {
     contentHash: string;
     mimeType: string;
@@ -41,6 +40,22 @@ export interface BackendCatalogBook extends BackendBookBinding {
 
 export interface BackendCatalogPage {
   books: BackendCatalogBook[];
+  nextCursor: string | null;
+}
+
+export interface BackendBookContentChunk {
+  contractVersion: "book-content-v1";
+  representation: "normalized-text-v1";
+  bookEditionId: string;
+  contentHash: string;
+  textLength: number;
+  byteSize: number;
+  chunk: {
+    startByte: number;
+    endByteExclusive: number;
+    contentHash: string;
+    text: string;
+  };
   nextCursor: string | null;
 }
 
@@ -147,9 +162,14 @@ async function gatewayJson(path: string, init: RequestInit = {}): Promise<JsonRe
     );
   }
   if (!response.ok) {
+    const backendCode = typeof payload.code === "string" ? payload.code : undefined;
     throw new NarraServiceError(
       response.status === 401 || response.status === 403 ? "AUTH" : "SERVICE",
       String(payload.error || payload.code || `HTTP ${response.status}`),
+      undefined,
+      undefined,
+      backendCode,
+      response.status,
     );
   }
   return payload;
@@ -184,8 +204,7 @@ function catalogBook(value: unknown): BackendCatalogBook | null {
     !parsed.catalogKey ||
     !parsed.title ||
     !parsed.format ||
-    !parsed.contentSha256 ||
-    !parsed.sourceDownloadPath
+    !/^[a-f0-9]{64}$/.test(parsed.contentSha256)
   ) {
     return null;
   }
@@ -214,8 +233,75 @@ function catalogBook(value: unknown): BackendCatalogBook | null {
     title: parsed.title,
     author: parsed.author ?? "",
     format: parsed.format,
-    sourceDownloadPath: parsed.sourceDownloadPath,
     cover,
+  };
+}
+
+function safeInteger(value: unknown, minimum = 0): value is number {
+  return Number.isSafeInteger(value) && Number(value) >= minimum;
+}
+
+function invalidBookContent(message: string): never {
+  throw new NarraServiceError("SERVICE", message);
+}
+
+export async function fetchBackendBookContentChunk(
+  bookEditionId: string,
+  cursor: string | null = null,
+): Promise<BackendBookContentChunk> {
+  if (!bookEditionId) throw new TypeError("bookEditionId is required");
+  const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
+  const payload = await gatewayJson(
+    `/v2/books/${encodeURIComponent(bookEditionId)}/content/chunks${query}`,
+  );
+  const rawChunk = payload.chunk;
+  const chunk = rawChunk && typeof rawChunk === "object" ? (rawChunk as JsonRecord) : null;
+  const nextCursor = payload.next_cursor;
+
+  if (payload.contract_version !== "book-content-v1") {
+    invalidBookContent("Backend вернул неподдерживаемую версию текста книги");
+  }
+  if (payload.representation !== "normalized-text-v1") {
+    invalidBookContent("Backend вернул неподдерживаемое представление текста книги");
+  }
+  if (payload.book_edition_id !== bookEditionId) {
+    invalidBookContent("Backend вернул текст другой книги");
+  }
+  if (!/^[a-f0-9]{64}$/.test(String(payload.content_hash || ""))) {
+    invalidBookContent("Backend вернул некорректный hash текста книги");
+  }
+  if (!safeInteger(payload.text_length) || !safeInteger(payload.byte_size, 1)) {
+    invalidBookContent("Backend вернул некорректный размер текста книги");
+  }
+  if (
+    !chunk ||
+    !safeInteger(chunk.start_byte) ||
+    !safeInteger(chunk.end_byte_exclusive, 1) ||
+    Number(chunk.end_byte_exclusive) <= Number(chunk.start_byte) ||
+    !/^[a-f0-9]{64}$/.test(String(chunk.content_hash || "")) ||
+    typeof chunk.text !== "string" ||
+    !chunk.text
+  ) {
+    invalidBookContent("Backend вернул некорректный чанк текста книги");
+  }
+  if (nextCursor !== null && (typeof nextCursor !== "string" || !nextCursor)) {
+    invalidBookContent("Backend вернул некорректный cursor текста книги");
+  }
+
+  return {
+    contractVersion: "book-content-v1",
+    representation: "normalized-text-v1",
+    bookEditionId,
+    contentHash: String(payload.content_hash),
+    textLength: Number(payload.text_length),
+    byteSize: Number(payload.byte_size),
+    chunk: {
+      startByte: Number(chunk.start_byte),
+      endByteExclusive: Number(chunk.end_byte_exclusive),
+      contentHash: String(chunk.content_hash),
+      text: chunk.text,
+    },
+    nextCursor: typeof nextCursor === "string" ? nextCursor : null,
   };
 }
 

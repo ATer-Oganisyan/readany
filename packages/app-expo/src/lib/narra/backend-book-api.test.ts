@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type BackendBookBinding,
   advanceBackendReaderProgress,
+  fetchBackendBookContentChunk,
   fetchBackendBookManifest,
   fetchBackendCatalogBooks,
   fetchBackendCatalogBooksPage,
@@ -131,6 +132,89 @@ describe("backend book API", () => {
       2,
       "/v2/books/catalog?limit=100&cursor=cursor-2",
       {},
+    );
+  });
+
+  it("parses a normalized book-content-v1 chunk and keeps its cursor opaque", async () => {
+    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          contract_version: "book-content-v1",
+          representation: "normalized-text-v1",
+          book_edition_id: "book/1",
+          content_hash: "a".repeat(64),
+          text_length: 7,
+          byte_size: 12,
+          chunk: {
+            start_byte: 0,
+            end_byte_exclusive: 6,
+            content_hash: "b".repeat(64),
+            text: "Тес",
+          },
+          next_cursor: "next/content+cursor",
+        }),
+      ),
+    );
+
+    await expect(fetchBackendBookContentChunk("book/1", "current/content+cursor")).resolves.toEqual(
+      {
+        contractVersion: "book-content-v1",
+        representation: "normalized-text-v1",
+        bookEditionId: "book/1",
+        contentHash: "a".repeat(64),
+        textLength: 7,
+        byteSize: 12,
+        chunk: {
+          startByte: 0,
+          endByteExclusive: 6,
+          contentHash: "b".repeat(64),
+          text: "Тес",
+        },
+        nextCursor: "next/content+cursor",
+      },
+    );
+    expect(vi.mocked(narraGatewayRequest)).toHaveBeenCalledWith(
+      "/v2/books/book%2F1/content/chunks?cursor=current%2Fcontent%2Bcursor",
+      {},
+    );
+  });
+
+  it("preserves CONTENT_VERSION_CHANGED so a chunk receiver can restart", async () => {
+    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "changed", code: "CONTENT_VERSION_CHANGED" }), {
+        status: 409,
+      }),
+    );
+
+    await expect(fetchBackendBookContentChunk("book-1", "stale-cursor")).rejects.toMatchObject({
+      backendCode: "CONTENT_VERSION_CHANGED",
+      httpStatus: 409,
+    });
+  });
+
+  it("rejects unsupported book content representations", async () => {
+    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          contract_version: "book-content-v1",
+          representation: "future-text-v2",
+          book_edition_id: "book-1",
+          content_hash: "a".repeat(64),
+          text_length: 1,
+          byte_size: 1,
+          chunk: {
+            start_byte: 0,
+            end_byte_exclusive: 1,
+            content_hash: "b".repeat(64),
+            text: "a",
+          },
+          next_cursor: null,
+        }),
+      ),
+    );
+
+    await expect(fetchBackendBookContentChunk("book-1")).rejects.toThrow(
+      "неподдерживаемое представление",
     );
   });
 

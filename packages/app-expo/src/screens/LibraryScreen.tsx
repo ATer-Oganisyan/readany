@@ -251,6 +251,7 @@ function LibraryScreenContent() {
   const [isCatalogLoadingMore, setIsCatalogLoadingMore] = useState(false);
   const catalogInitialRefreshInFlightRef = useRef(true);
   const catalogLoadMoreInFlightRef = useRef(false);
+  const catalogSeenCursorsRef = useRef(new Set<string>());
   const handleCatalogCoverNeeded = useCallback(async (catalogBook: CachedBackendCatalogBook) => {
     if (!catalogBook.cover) return;
     try {
@@ -358,6 +359,7 @@ function LibraryScreenContent() {
   useEffect(() => {
     let cancelled = false;
     const loadInitialCatalogPage = async () => {
+      catalogSeenCursorsRef.current.clear();
       const cached = await loadCachedBackendCatalogPage();
       if (!cancelled && cached.books.length) {
         setCatalogBooks(cached.books);
@@ -397,6 +399,10 @@ function LibraryScreenContent() {
     ) {
       return;
     }
+    if (catalogSeenCursorsRef.current.has(cursor)) {
+      setCatalogNextCursor(null);
+      return;
+    }
     catalogLoadMoreInFlightRef.current = true;
     setIsCatalogLoadingMore(true);
     try {
@@ -407,8 +413,13 @@ function LibraryScreenContent() {
         page = await loadCachedBackendCatalogPage(cursor);
         if (!page.books.length) throw networkError;
       }
+      catalogSeenCursorsRef.current.add(cursor);
       setCatalogBooks((current) => appendUniqueCatalogBooks(current, page.books));
-      setCatalogNextCursor(page.nextCursor === cursor ? null : page.nextCursor);
+      setCatalogNextCursor(
+        page.nextCursor && catalogSeenCursorsRef.current.has(page.nextCursor)
+          ? null
+          : page.nextCursor,
+      );
     } catch (error) {
       console.warn("[Catalog] Failed to load the next catalog page:", error);
     } finally {
@@ -867,7 +878,7 @@ function LibraryScreenContent() {
       let temporarySource: string | null = null;
       try {
         temporarySource = await downloadBackendCatalogSource(catalogBook);
-        const fileName = `${catalogBook.catalogKey}.${catalogBook.format}`;
+        const fileName = `${catalogBook.catalogKey}.txt`;
         const result = await importBooks([{ uri: temporarySource, name: fileName }], {
           source: "backend-catalog",
         });
@@ -886,6 +897,7 @@ function LibraryScreenContent() {
 
         const normalizedBook: Book = {
           ...importedBook,
+          fileHash: catalogBook.contentSha256,
           meta: {
             ...importedBook.meta,
             title: catalogBook.title,
@@ -893,7 +905,10 @@ function LibraryScreenContent() {
             coverUrl,
           },
         };
-        await updateBook(importedBook.id, { meta: normalizedBook.meta });
+        await updateBook(importedBook.id, {
+          fileHash: normalizedBook.fileHash,
+          meta: normalizedBook.meta,
+        });
         useNarraStore.getState().setBackendBinding(importedBook.id, catalogBook);
         await handleOpen(normalizedBook);
       } catch (error) {
