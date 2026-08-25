@@ -329,11 +329,16 @@ async function directGatewayRequest(path: string, init: RequestInit): Promise<Re
         : path.startsWith("/v2/media/images")
           ? IMAGE_TIMEOUT_MS
           : DEFAULT_TIMEOUT_MS;
+    const externalSignal = init.signal;
+    const abortFromCaller = () => controller.abort();
+    if (externalSignal?.aborted) abortFromCaller();
+    else externalSignal?.addEventListener("abort", abortFromCaller, { once: true });
     const timeout = setTimeout(() => controller.abort(), requestTimeout);
     try {
       return await configuredFetch(url, { ...init, headers, signal: controller.signal });
     } finally {
       clearTimeout(timeout);
+      externalSignal?.removeEventListener("abort", abortFromCaller);
     }
   };
   let response = await send();

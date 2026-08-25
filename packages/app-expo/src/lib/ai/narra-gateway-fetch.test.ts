@@ -342,6 +342,39 @@ describe("Narra gateway build configuration", () => {
   });
 });
 
+describe("Narra gateway cancellation", () => {
+  it("forwards caller cancellation to the active request", async () => {
+    vi.resetModules();
+    process.env.EXPO_PUBLIC_NARRA_GATEWAY_URL = "https://gateway.test";
+    process.env.EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE = "none";
+    const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
+      await new Promise<never>((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          "abort",
+          () => {
+            const error = new Error("aborted");
+            error.name = "AbortError";
+            reject(error);
+          },
+          { once: true },
+        );
+      });
+      throw new Error("unreachable");
+    });
+    const gateway = await import("./narra-gateway-fetch");
+    gateway.setNarraGatewayFetch(fetchMock);
+    const controller = new AbortController();
+
+    const request = gateway.narraGatewayRequest("/v2/books/book-1/source/download", {
+      signal: controller.signal,
+    });
+    controller.abort();
+
+    await expect(request).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+  });
+});
+
 describe("Narra logical request identity", () => {
   it("adds one opaque request id before a request reaches an adapter", async () => {
     vi.resetModules();

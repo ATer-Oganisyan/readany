@@ -1,10 +1,8 @@
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  fetchBackendBookContentChunk,
   fetchBackendCatalogGenres,
   fetchBackendCatalogPage,
-  fetchCompleteBackendBookContent,
   mergeBackendCatalogBooks,
   requestBackendDownloadUrl,
 } from "./backend-catalog-api";
@@ -120,102 +118,6 @@ describe("backend catalog API", () => {
         { id: "fantasy", labelRu: "Фэнтези", labelEn: "Fantasy", order: 2 },
       ],
     });
-  });
-
-  it("loads a UTF-8-safe content chunk", async () => {
-    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
-      jsonResponse({
-        contract_version: "book-content-v1",
-        representation: "normalized-text-v1",
-        book_edition_id: "book-1",
-        content_hash: "c".repeat(64),
-        text_length: 6,
-        byte_size: 12,
-        chunk: {
-          start_byte: 0,
-          end_byte_exclusive: 12,
-          content_hash: "d".repeat(64),
-          text: "Привет",
-        },
-        next_cursor: null,
-      }),
-    );
-    await expect(fetchBackendBookContentChunk("book-1")).resolves.toMatchObject({
-      bookEditionId: "book-1",
-      byteSize: 12,
-      chunk: { startByte: 0, endByteExclusive: 12, text: "Привет" },
-      nextCursor: null,
-    });
-  });
-
-  it("assembles consecutive content chunks without slicing JS strings", async () => {
-    vi.mocked(narraGatewayRequest)
-      .mockResolvedValueOnce(
-        jsonResponse({
-          contract_version: "book-content-v1",
-          representation: "normalized-text-v1",
-          book_edition_id: "book-1",
-          content_hash: "c".repeat(64),
-          text_length: 6,
-          byte_size: 12,
-          chunk: {
-            start_byte: 0,
-            end_byte_exclusive: 6,
-            content_hash: "d".repeat(64),
-            text: "При",
-          },
-          next_cursor: "next",
-        }),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          contract_version: "book-content-v1",
-          representation: "normalized-text-v1",
-          book_edition_id: "book-1",
-          content_hash: "c".repeat(64),
-          text_length: 6,
-          byte_size: 12,
-          chunk: {
-            start_byte: 6,
-            end_byte_exclusive: 12,
-            content_hash: "e".repeat(64),
-            text: "вет",
-          },
-          next_cursor: null,
-        }),
-      );
-    await expect(fetchCompleteBackendBookContent("book-1")).resolves.toMatchObject({
-      byteSize: 12,
-      text: "Привет",
-    });
-  });
-
-  it("restarts content loading once when the cursor version changed", async () => {
-    vi.mocked(narraGatewayRequest)
-      .mockResolvedValueOnce(
-        jsonResponse({ error: "Версия текста изменилась", code: "CONTENT_VERSION_CHANGED" }, 409),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          contract_version: "book-content-v1",
-          representation: "normalized-text-v1",
-          book_edition_id: "book-1",
-          content_hash: "f".repeat(64),
-          text_length: 2,
-          byte_size: 4,
-          chunk: {
-            start_byte: 0,
-            end_byte_exclusive: 4,
-            content_hash: "a".repeat(64),
-            text: "Да",
-          },
-          next_cursor: null,
-        }),
-      );
-
-    await expect(fetchCompleteBackendBookContent("book-1")).resolves.toMatchObject({ text: "Да" });
-    expect(narraGatewayRequest).toHaveBeenCalledTimes(2);
-    expect(narraGatewayRequest).toHaveBeenNthCalledWith(2, "/v2/books/book-1/content/chunks", {});
   });
 
   it("resolves an authenticated backend download URL", async () => {

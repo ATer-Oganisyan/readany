@@ -74,7 +74,7 @@ export async function downloadVerifiedBackendFile(options: VerifiedBackendDownlo
     throwIfAborted(options.signal);
     await FileSystem.deleteAsync(options.destinationPath, { idempotent: true });
     try {
-      const url = await requestBackendDownloadUrl(options.downloadPath);
+      const url = await requestBackendDownloadUrl(options.downloadPath, options.signal);
       throwIfAborted(options.signal);
       await platform.downloadFile(url, options.destinationPath, {
         signal: options.signal,
