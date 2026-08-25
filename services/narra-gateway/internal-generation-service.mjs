@@ -1,5 +1,6 @@
 import express from 'express'
 import { createHash, timingSafeEqual } from 'node:crypto'
+import { extractEmbeddedBookCover } from './book-source-cover.mjs'
 import { extractStructuredBookText, representativeTextSelection } from './book-source-text.mjs'
 import { REQUIRED_CHARACTER_MEDIA, sectionAnchorForTextOffset } from './book-markup.mjs'
 import { createOperationalLogger } from './operational-log.mjs'
@@ -327,20 +328,28 @@ function normalizeBundleRequest(input) {
 function normalizeCatalogCoverRequest(input) {
   const body = exactKeys(input, new Set([
     'idempotencyKey', 'bookEditionId', 'targetVersion', 'scope',
-    'title', 'author', 'context'
+    'title', 'author', 'context', 'format', 'contentSha256', 'objectKey',
+    'mimeType', 'byteSize'
   ]))
   const bookEditionId = identifier(body.bookEditionId, 'bookEditionId')
   const targetVersion = identifier(body.targetVersion, 'targetVersion')
   const expectedKey = `${bookEditionId}:catalog-cover:${targetVersion}`
   if (body.idempotencyKey !== expectedKey) invalid('idempotencyKey does not match the cover request')
   if (body.scope !== 'catalog') invalid('catalog cover scope is invalid')
+  if (typeof body.contentSha256 !== 'string' || !SHA256.test(body.contentSha256)) {
+    invalid('contentSha256: invalid hash')
+  }
+  if (!Number.isSafeInteger(body.byteSize) || body.byteSize < 1) invalid('byteSize: invalid size')
   return {
     ...body,
     bookEditionId,
     targetVersion,
     title: requiredString(body.title, 'title', 1_000),
     author: typeof body.author === 'string' ? body.author.trim().slice(0, 1_000) : '',
-    context: typeof body.context === 'string' ? body.context.trim().slice(0, 4_000) : ''
+    context: typeof body.context === 'string' ? body.context.trim().slice(0, 4_000) : '',
+    format: requiredString(body.format, 'format', 32).toLowerCase(),
+    objectKey: requiredString(body.objectKey, 'objectKey', 900),
+    mimeType: requiredString(body.mimeType, 'mimeType', 200)
   }
 }
 
@@ -2241,6 +2250,34 @@ export function createInternalGenerationService({
       const common = { edition: input.bookEditionId, book: input.title }
       log.info('cover.requested', 'Получен запрос на каталожную обложку', common)
       return cached(storage, input.idempotencyKey, input, async () => {
+        const stored = await storage.getBytes({
+          objectKey: input.objectKey,
+          maxBytes: Math.min(maxBookBytes, 512 * 1024 * 1024)
+        })
+        if (stored.bytes.byteLength !== input.byteSize || sha256(stored.bytes) !== input.contentSha256) {
+          throw Object.assign(new Error('stored book does not match its immutable metadata'), {
+            code: 'BOOK_INTEGRITY', status: 409
+          })
+        }
+        const embedded = extractEmbeddedBookCover({
+          bytes: stored.bytes,
+          format: input.format,
+          mimeType: input.mimeType
+        })
+        if (embedded) {
+          const extension = imageExtension(embedded.mimeType)
+          const asset = await storage.putBytes({
+            objectKey: `books/catalog/${input.bookEditionId}/cover/embedded/${input.targetVersion}.${extension}`,
+            bytes: embedded.bytes,
+            mimeType: embedded.mimeType
+          })
+          log.info('cover.embedded', 'Встроенная обложка книги извлечена и опубликована', {
+            ...common,
+            bytes: asset.byteSize,
+            duration_ms: Date.now() - startedAt
+          })
+          return { asset: { type: 'catalog_cover', source: 'embedded', ...asset } }
+        }
         const generated = await generateCover(catalogCoverPrompt(input), signal)
         const extension = imageExtension(generated.mimeType)
         const asset = await storage.putBytes({
@@ -2254,7 +2291,7 @@ export function createInternalGenerationService({
           bytes: asset.byteSize,
           duration_ms: Date.now() - startedAt
         })
-        return { asset: { type: 'catalog_cover', ...asset } }
+        return { asset: { type: 'catalog_cover', source: 'generated', ...asset } }
       })
     },
 

@@ -167,6 +167,19 @@ async function saveGeneratedCoverBytesToAppData(
   return relativePath;
 }
 
+async function saveOriginalCoverBytesToAppData(
+  bookId: string,
+  bytes: Uint8Array,
+  mimeType: string,
+): Promise<string> {
+  const platform = getPlatformService();
+  await ensureAppSubDir("covers");
+  const ext = mimeType.includes("webp") ? "webp" : mimeType.includes("png") ? "png" : "jpg";
+  const relativePath = `covers/${bookId}-original.${ext}`;
+  await platform.writeFile(await resolveAppPath(relativePath), bytes);
+  return relativePath;
+}
+
 function bytesToBase64(bytes: Uint8Array): string {
   const chunkSize = 0x8000;
   let binary = "";
@@ -329,13 +342,49 @@ async function ensureGeneratedBookCover(
 ): Promise<void> {
   if (book.meta.coverUrl) return;
 
+  const filePath = isRelativeAppPath(book.filePath)
+    ? await resolveAppPath(book.filePath)
+    : book.filePath;
+  const { size } = await getMobileFileStat(filePath);
+  const fileName = filePath.split("/").pop() || `${book.meta.title}.${book.format}`;
+  const metadata = await extractMobileImportMetadata({
+    filePath,
+    format: book.format,
+    fileName,
+    fileSize: size,
+  });
+  if (metadata.coverBytes?.length) {
+    const coverUrl = await saveOriginalCoverBytesToAppData(
+      book.id,
+      metadata.coverBytes,
+      metadata.coverMimeType || "image/jpeg",
+    );
+    const currentBook = useLibraryStore.getState().books.find((item) => item.id === book.id);
+    if (currentBook && !currentBook.meta.coverUrl) {
+      await useLibraryStore.getState().updateBook(book.id, {
+        meta: { ...currentBook.meta, coverUrl },
+        updatedAt: Date.now(),
+      });
+      const persistedBook = await db.getBook(book.id);
+      if (persistedBook?.meta.coverUrl !== coverUrl) {
+        throw new Error("Original cover was not persisted in the library database");
+      }
+    }
+    await deleteLocalCoverJob(book.id).catch(() => undefined);
+    console.log(`[Library] Reused the embedded cover for "${book.meta.title}"`);
+    return;
+  }
+
+  const latestBook = useLibraryStore.getState().books.find((item) => item.id === book.id) || book;
+  if (latestBook.meta.coverUrl) return;
+
   const generated = await generateBookCover({
-    bookId: book.id,
-    title: book.meta.title,
-    author: book.meta.author,
-    description: context?.description || book.meta.description,
+    bookId: latestBook.id,
+    title: latestBook.meta.title,
+    author: latestBook.meta.author,
+    description: context?.description || latestBook.meta.description,
     excerpt: context?.textSample,
-    subjects: context?.subjects || book.meta.subjects,
+    subjects: context?.subjects || latestBook.meta.subjects,
   });
 
   const coverUrl = await saveGeneratedCoverBytesToAppData(

@@ -30,7 +30,7 @@ const BOOK_MIME_TYPES = Object.freeze({
   pdf: 'application/pdf'
 })
 
-const CATALOG_COVER_VERSION = 'catalog-cover-v3'
+const CATALOG_COVER_VERSION = 'catalog-cover-v4'
 
 function catalogCoverTargetVersion(contentSha256) {
   return `${CATALOG_COVER_VERSION}-${contentSha256.slice(0, 16)}`
@@ -1378,6 +1378,65 @@ export function createPostgresBookMarkupRepository(pool, {
       })
     },
 
+    async getReaderBookIdentity({ subjectId, bookEditionId }) {
+      return transaction(pool, async (client) => {
+        const result = await client.query(
+          `SELECT id, scope, content_sha256, title, author,
+                  display_title, display_author, identity_version,
+                  identity_source, identity_updated_at
+           FROM book_editions
+           WHERE id = $1 AND (
+             (scope = 'catalog' AND status <> 'failed') OR
+             (scope = 'private' AND owner_subject_id = $2::uuid
+               AND expires_at > now())
+           )
+           FOR SHARE`,
+          [bookEditionId, subjectId]
+        )
+        const edition = result.rows[0]
+        if (!edition) return null
+        if (edition.scope === 'private') await touchPrivateRetention(client, edition.id)
+
+        const spec = identityJobSpec(edition)
+        if (edition.identity_version === spec.targetVersion && edition.display_title) {
+          const identity = normalizeBookDisplayIdentity({
+            title: edition.display_title,
+            author: edition.display_author
+          })
+          return {
+            bookEditionId: edition.id,
+            version: BOOK_IDENTITY_VERSION,
+            status: 'ready',
+            title: identity.title,
+            author: identity.author,
+            source: edition.identity_source === 'llm' ? 'llm' : 'deterministic',
+            updatedAt: edition.identity_updated_at instanceof Date
+              ? edition.identity_updated_at.toISOString()
+              : String(edition.identity_updated_at)
+          }
+        }
+
+        const jobResult = await client.query(
+          `SELECT status, last_error_code
+           FROM generation_jobs
+           WHERE book_edition_id = $1 AND job_type = 'book_identity'
+             AND target_version = $2
+           ORDER BY created_at DESC
+           LIMIT 1`,
+          [bookEditionId, spec.targetVersion]
+        )
+        const job = jobResult.rows[0]
+        return {
+          bookEditionId: edition.id,
+          version: BOOK_IDENTITY_VERSION,
+          status: job?.status === 'failed' ? 'failed' : 'processing',
+          errorCode: job?.status === 'failed' && typeof job.last_error_code === 'string'
+            ? job.last_error_code
+            : undefined
+        }
+      })
+    },
+
     async getReaderBookManifest({ subjectId, bookEditionId, bundleVersion }) {
       return transaction(pool, async (client) => {
         const editionResult = await client.query(
@@ -2253,9 +2312,11 @@ export function createPostgresBookMarkupRepository(pool, {
       const result = await pool.query(
         `SELECT COALESCE(edition.display_title, edition.title) AS title,
                 COALESCE(edition.display_author, edition.author) AS author,
-                edition.scope
+                edition.scope, edition.format, edition.content_sha256,
+                file.object_key, file.mime_type, file.byte_size
          FROM generation_jobs AS job
          JOIN book_editions AS edition ON edition.id = job.book_edition_id
+         JOIN book_files AS file ON file.book_edition_id = edition.id AND file.status = 'ready'
          WHERE job.id = $1 AND job.job_type = 'catalog_cover'
            AND job.status = 'running' AND job.lease_token = $2::uuid`,
         [job.id, job.leaseToken]
@@ -2268,6 +2329,11 @@ export function createPostgresBookMarkupRepository(pool, {
         scope: row.scope,
         title: row.title,
         author: row.author,
+        format: row.format,
+        contentSha256: row.content_sha256,
+        objectKey: row.object_key,
+        mimeType: row.mime_type,
+        byteSize: Number(row.byte_size),
         context: ''
       }
     },

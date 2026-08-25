@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  bookIdentityJson,
   bookJson,
   catalogGenresJson,
   createBookCatalogRouter,
@@ -42,6 +43,29 @@ test('book catalog router exposes a separate genres endpoint', () => {
     .filter((layer) => layer.route)
     .map((layer) => ({ path: layer.route.path, methods: layer.route.methods }))
   assert.ok(routes.some(({ path, methods }) => path === '/genres' && methods.get))
+  assert.ok(routes.some(({ path, methods }) => path === '/:bookEditionId/identity' && methods.get))
+})
+
+test('book identity polling JSON is independent from the markup manifest', () => {
+  assert.deepEqual(bookIdentityJson({
+    version: 'book-identity-v1',
+    bookEditionId: ID,
+    status: 'ready',
+    title: 'Мертвое озеро',
+    author: 'Николай Некрасов',
+    source: 'llm',
+    updatedAt: '2026-08-25T10:00:00.000Z'
+  }), {
+    version: 'book-identity-v1',
+    book_edition_id: ID,
+    status: 'ready',
+    title: 'Мертвое озеро',
+    author: 'Николай Некрасов',
+    source: 'llm',
+    updated_at: '2026-08-25T10:00:00.000Z',
+    poll_after_ms: undefined,
+    error_code: undefined
+  })
 })
 
 test('catalog JSON adds normalized genres without changing existing fields', () => {

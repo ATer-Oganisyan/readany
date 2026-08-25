@@ -315,6 +315,20 @@ export function bookJson(book) {
   return value
 }
 
+export function bookIdentityJson(identity) {
+  return {
+    version: identity.version,
+    book_edition_id: identity.bookEditionId,
+    status: identity.status,
+    title: identity.title,
+    author: identity.author,
+    source: identity.source,
+    updated_at: identity.updatedAt,
+    poll_after_ms: identity.pollAfterMs,
+    error_code: identity.errorCode
+  }
+}
+
 export function catalogGenresJson() {
   return {
     version: CATALOG_GENRE_DATA_VERSION,
@@ -492,6 +506,14 @@ export function createBookCatalogRouter({
       uuid(req.params.bookEditionId, 'bookEditionId')
     )
     res.json({ download_url: result.url, expires_at: result.expiresAt })
+  }))
+
+  router.get('/:bookEditionId/identity', asyncRoute(async (req, res) => {
+    const result = await service.identity(
+      subject(req),
+      uuid(req.params.bookEditionId, 'bookEditionId')
+    )
+    res.status(result.status === 'processing' ? 202 : 200).json(bookIdentityJson(result))
   }))
 
   router.get('/:bookEditionId/content', asyncRoute(async (req, res) => {

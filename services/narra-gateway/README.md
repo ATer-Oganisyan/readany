@@ -264,16 +264,25 @@ An idle worker reports that it is alive at `BOOK_MARKUP_IDLE_LOG_MS` intervals
 When `DATABASE_URL` is configured, Gateway enables the authenticated book API:
 `GET /v2/books/genres`, `GET /v2/books/catalog`, `POST /v2/books/resolve`,
 `POST /v2/books/local`, `POST /v2/books/:bookEditionId/local-markup`,
+`GET /v2/books/:bookEditionId/identity`,
 `GET /v2/books/:bookEditionId/manifest` and
 `POST /v2/books/:bookEditionId/progress`. A ready v3 manifest contains every
 published character profile and its appearance anchor. The client applies its
 local reading progress; media bytes are fetched lazily only for reached characters.
 
-User book sources remain on-device. Registration sends only hash and metadata;
-local analysis publishes only derived character profiles. Generated private
-media is served through `GET /v2/books/:bookEditionId/media/:assetId/download`
-and expires after `PRIVATE_MATERIAL_TTL_DAYS` of inactivity. The source download
-route is available only for catalog books.
+Book identity is a separate durable job and does not wait for character markup.
+`GET /v2/books/:bookEditionId/identity` returns `202` with
+`status: "processing"` and `poll_after_ms` until it is ready. A ready response is
+`200` with the normalized `title`, `author`, normalization `source` and
+`updated_at`. A terminal failed job is also returned as `200` with
+`status: "failed"` and a safe `error_code`. Private editions are visible only to
+their owning installation.
+
+Private book registration sends hash and metadata first, then uploads the source
+to owner-scoped temporary storage for canonical v3 analysis. The source and
+generated private media expire after `PRIVATE_MATERIAL_TTL_DAYS` of inactivity.
+Private source download is never exposed; the source download route is available
+only for catalog books.
 
 Prepared catalog text has two read contracts. `GET /v2/books/:bookEditionId/content`
 returns a short-lived URL for the complete normalized text. `GET
@@ -298,6 +307,10 @@ the manifest nor the source books are shipped with the application. A manifest
 book may include `cover` and `cover_mime_type`; the seeder uploads that image
 through the separate cover prepare/content/complete flow. Public clients receive
 only checksum, size, MIME type and an authenticated cover download path.
+When no separate catalog cover is uploaded, the durable cover worker first checks
+the immutable EPUB or FB2 source. A valid embedded JPEG, PNG or WebP cover is
+copied to permanent book storage; the image provider is called only when the
+source has no supported embedded cover.
 
 The password-protected book operations UI is served by the Gateway at
 `/operator/`. Configure a dedicated `BOOK_OPERATOR_PASSWORD` of at least 20

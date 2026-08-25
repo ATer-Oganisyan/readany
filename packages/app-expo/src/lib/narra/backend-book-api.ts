@@ -111,6 +111,18 @@ export interface BackendBookScene {
   pollAfterMs: number;
 }
 
+export interface BackendBookIdentity {
+  version: "book-identity-v1";
+  bookEditionId: string;
+  status: "processing" | "ready" | "failed";
+  title?: string;
+  author?: string;
+  source?: "deterministic" | "llm";
+  updatedAt?: string;
+  pollAfterMs?: number;
+  errorCode?: string;
+}
+
 type JsonRecord = Record<string, unknown>;
 
 function backendCharacterKey(value: string, index: number): string {
@@ -312,6 +324,29 @@ export async function uploadLocalBackendSource(
       body: bytes as unknown as BodyInit,
     }),
   );
+}
+
+/** Lightweight polling that does not wait for the character markup manifest. */
+export async function fetchBackendBookIdentity(
+  bookEditionId: string,
+): Promise<BackendBookIdentity> {
+  const payload = await gatewayJson(`/v2/books/${encodeURIComponent(bookEditionId)}/identity`);
+  const status = ["processing", "ready", "failed"].includes(String(payload.status))
+    ? (String(payload.status) as BackendBookIdentity["status"])
+    : "failed";
+  return {
+    version: "book-identity-v1",
+    bookEditionId: String(payload.book_edition_id || bookEditionId),
+    status,
+    title: typeof payload.title === "string" ? payload.title : undefined,
+    author: typeof payload.author === "string" ? payload.author : undefined,
+    source:
+      payload.source === "llm" || payload.source === "deterministic" ? payload.source : undefined,
+    updatedAt: typeof payload.updated_at === "string" ? payload.updated_at : undefined,
+    pollAfterMs:
+      status === "processing" ? Math.max(250, Number(payload.poll_after_ms) || 2_000) : undefined,
+    errorCode: typeof payload.error_code === "string" ? payload.error_code : undefined,
+  };
 }
 
 export async function publishLocalBackendMarkup(
