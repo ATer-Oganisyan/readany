@@ -16,13 +16,23 @@ import {
   queueBackendReaderProgress,
 } from "@/lib/narra/backend-book-coordinator";
 import { requestBackendBookScene } from "@/lib/narra/backend-book-api";
+import {
+  type BackendCatalogContentBook,
+  type BackendCatalogSourceState,
+  getBackendCatalogSourceState,
+} from "@/lib/narra/backend-catalog-source";
+import {
+  appendBackendCatalogChunkToEpub,
+  backendCatalogLoadedFraction,
+  backendCatalogReaderProgress,
+  cleanupReplacedBackendCatalogEpub,
+  estimateBackendCatalogLocations,
+  shouldPrefetchBackendCatalogChunk,
+} from "@/lib/narra/backend-catalog-stream";
 import { buildCharacterNameMatcherSpec } from "@/lib/narra/character-name-matcher";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
 import { reportNarraError } from "@/lib/narra/errors";
-import {
-  normalizePersistedNarraMediaUri,
-  persistBackendSceneImage,
-} from "@/lib/narra/media";
+import { normalizePersistedNarraMediaUri, persistBackendSceneImage } from "@/lib/narra/media";
 import { generateNarraSceneImage } from "@/lib/narra/scene-image-openrouter";
 import {
   sceneImageDataUri,
@@ -491,6 +501,59 @@ function ReaderContent({ route, navigation }: Props) {
   const book = useMemo(() => books.find((b) => b.id === bookId), [books, bookId]);
   const backendBinding = useNarraStore((state) => state.books[bookId]?.backendBinding);
   const backendResolution = backendBinding?.resolution;
+  const backendCatalogContent = useMemo<BackendCatalogContentBook | null>(() => {
+    if (
+      backendBinding?.resolution !== "catalog" ||
+      !backendBinding.bookEditionId ||
+      !backendBinding.catalogKey
+    ) {
+      return null;
+    }
+    return {
+      bookEditionId: backendBinding.bookEditionId,
+      catalogKey: backendBinding.catalogKey,
+      contentSha256: backendBinding.contentSha256,
+    };
+  }, [
+    backendBinding?.bookEditionId,
+    backendBinding?.catalogKey,
+    backendBinding?.contentSha256,
+    backendBinding?.resolution,
+  ]);
+  const [backendCatalogSourceState, setBackendCatalogSourceState] =
+    useState<BackendCatalogSourceState | null>(null);
+  const [backendCatalogSourceReady, setBackendCatalogSourceReady] = useState(
+    !backendCatalogContent,
+  );
+  const backendCatalogPrefetchBusyRef = useRef(false);
+  const backendCatalogRequestedBytesRef = useRef<number | null>(null);
+  const pendingBackendCatalogSeekRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    if (!backendCatalogContent) {
+      setBackendCatalogSourceState(null);
+      setBackendCatalogSourceReady(true);
+      return () => {
+        active = false;
+      };
+    }
+    setBackendCatalogSourceReady(false);
+    void getBackendCatalogSourceState(backendCatalogContent)
+      .then((prepared) => {
+        if (active) setBackendCatalogSourceState(prepared?.state ?? null);
+      })
+      .catch((error) => {
+        console.warn("[CatalogStream] Failed to restore catalog source state:", error);
+        if (active) setBackendCatalogSourceState(null);
+      })
+      .finally(() => {
+        if (active) setBackendCatalogSourceReady(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [backendCatalogContent]);
 
   // ── Narra: кликабельные имена персонажей ────────────────────────────────────
   const narraBookCharacters = useNarraStore((state) => state.books[bookId]?.characters);
@@ -693,6 +756,59 @@ function ReaderContent({ route, navigation }: Props) {
       Date.now() + duration,
     );
   }, []);
+
+  const prefetchBackendCatalogChunk = useCallback(
+    async (localFraction: number, targetAbsoluteFraction?: number) => {
+      const sourceState = backendCatalogSourceState;
+      const currentBook = book;
+      const catalog = backendCatalogContent;
+      const explicitTarget = targetAbsoluteFraction != null;
+      if (
+        !currentBook ||
+        !catalog ||
+        !sourceState?.nextCursor ||
+        backendCatalogPrefetchBusyRef.current ||
+        backendCatalogRequestedBytesRef.current === sourceState.receivedBytes ||
+        (!explicitTarget && !shouldPrefetchBackendCatalogChunk(localFraction, sourceState))
+      ) {
+        return;
+      }
+
+      backendCatalogPrefetchBusyRef.current = true;
+      backendCatalogRequestedBytesRef.current = sourceState.receivedBytes;
+      if (targetAbsoluteFraction != null) {
+        pendingBackendCatalogSeekRef.current = Math.min(1, Math.max(0, targetAbsoluteFraction));
+      }
+      try {
+        const refreshed = await appendBackendCatalogChunkToEpub(
+          currentBook,
+          catalog,
+          targetAbsoluteFraction,
+        );
+        setBackendCatalogSourceState(refreshed.state);
+        suppressProgressTracking(INITIAL_PROGRESS_RESTORE_GUARD_MS);
+        await updateBook(currentBook.id, {
+          filePath: refreshed.filePath,
+          currentCfi: lastCfiRef.current || currentBook.currentCfi,
+          progress: progressRef.current,
+        });
+        setTimeout(() => {
+          void cleanupReplacedBackendCatalogEpub(currentBook.id, refreshed.replacedFilePath).catch(
+            (error) => {
+              console.warn("[CatalogStream] Failed to remove obsolete EPUB snapshot:", error);
+            },
+          );
+        }, 30_000);
+      } catch (error) {
+        backendCatalogRequestedBytesRef.current = null;
+        pendingBackendCatalogSeekRef.current = null;
+        console.error("[CatalogStream] Failed to append the next book chunk:", error);
+      } finally {
+        backendCatalogPrefetchBusyRef.current = false;
+      }
+    },
+    [backendCatalogContent, backendCatalogSourceState, book, suppressProgressTracking, updateBook],
+  );
 
   const goToCFISafely = useCallback(
     (targetCfi: string) => {
@@ -987,9 +1103,15 @@ function ReaderContent({ route, navigation }: Props) {
       totalBookCharactersRef.current = totalCharacters > 0 ? totalCharacters : null;
     },
     onRelocate: (detail: RelocateEvent) => {
+      const localFraction = detail.fraction ?? 0;
+      const absoluteFraction = backendCatalogReaderProgress(
+        localFraction,
+        backendCatalogSourceState,
+      );
       console.log("[ReaderScreen] onRelocate", {
         section: detail.section,
-        fraction: detail.fraction,
+        fraction: absoluteFraction,
+        localFraction,
         cfi: detail.cfi,
         routeCfi: cfi,
         lastNavigated: lastNavigatedCfiRef.current,
@@ -1005,14 +1127,39 @@ function ReaderContent({ route, navigation }: Props) {
         chapterTranslation.reset();
       }
 
-      if (detail.fraction != null) setProgress(detail.fraction);
+      if (detail.fraction != null) {
+        setProgress(absoluteFraction);
+        void prefetchBackendCatalogChunk(localFraction);
+      }
 
       // «стр. N из M» по всей книге — из foliate location (нет в scrolled/fixed)
       setBookLocation(
         detail.location?.total
-          ? { current: detail.location.current, total: detail.location.total }
+          ? estimateBackendCatalogLocations(
+              detail.location.current,
+              detail.location.total,
+              backendCatalogSourceState,
+            )
           : null,
       );
+
+      const pendingSeek = pendingBackendCatalogSeekRef.current;
+      const loadedFraction = backendCatalogLoadedFraction(backendCatalogSourceState);
+      const currentSnapshotReady = Boolean(
+        backendCatalogSourceState &&
+          book?.filePath.endsWith(`-catalog-${backendCatalogSourceState.receivedBytes}.epub`),
+      );
+      if (
+        pendingSeek != null &&
+        currentSnapshotReady &&
+        pendingSeek <= loadedFraction + Number.EPSILON
+      ) {
+        pendingBackendCatalogSeekRef.current = null;
+        suppressProgressTracking();
+        setTimeout(() => {
+          bridgeRef.current?.goToFraction(Math.min(1, pendingSeek / loadedFraction));
+        }, 50);
+      }
 
       const trackingSuppressed = Date.now() < progressTrackingGuardUntilRef.current;
       const backendRelocation = readerRelocationMarker(detail);
@@ -1025,7 +1172,7 @@ function ReaderContent({ route, navigation }: Props) {
 
       if (detail.location?.total) {
         const totalBookCharacters = totalBookCharactersRef.current;
-        const fraction = detail.fraction ?? 0;
+        const fraction = localFraction;
         if (totalBookCharacters && totalBookCharacters > 0) {
           const currentCharacters = Math.round(totalBookCharacters * fraction);
           const previous = sessionProgressRef.current;
@@ -1105,7 +1252,7 @@ function ReaderContent({ route, navigation }: Props) {
       ) {
         queueBackendReaderProgress(
           book,
-          detail.fraction,
+          absoluteFraction,
           detail.tocItem?.href || `section:${detail.section?.current ?? 0}`,
           {
             sectionIndex: backendRelocation.sectionIndex,
@@ -1117,7 +1264,7 @@ function ReaderContent({ route, navigation }: Props) {
       if (detail.tocItem?.href) setCurrentChapterHref(detail.tocItem.href);
       if (detail.cfi) {
         if (lastCfiRef.current && detail.cfi !== lastCfiRef.current) {
-          const fractionDiff = Math.abs((detail.fraction ?? 0) - progress);
+          const fractionDiff = Math.abs(absoluteFraction - progress);
           if (fractionDiff > 0.02 || locationHistoryRef.current.length === 0) {
             locationHistoryRef.current.push(lastCfiRef.current);
             if (locationHistoryRef.current.length > 50) {
@@ -1128,7 +1275,7 @@ function ReaderContent({ route, navigation }: Props) {
         lastCfiRef.current = detail.cfi;
         setCurrentCfi(detail.cfi);
         // Use throttled save instead of immediate update
-        throttledSaveProgress(bookId, detail.fraction ?? 0, detail.cfi);
+        throttledSaveProgress(bookId, absoluteFraction, detail.cfi);
       }
 
       // Врезки сцен: перелистывания считает foliate relocate, собственной
@@ -1184,7 +1331,7 @@ function ReaderContent({ route, navigation }: Props) {
         },
         currentPosition: {
           cfi: detail.cfi || "",
-          percentage: (detail.fraction ?? 0) * 100,
+          percentage: absoluteFraction * 100,
         },
       });
     },
@@ -1740,7 +1887,7 @@ function ReaderContent({ route, navigation }: Props) {
 
   // When WebView is ready and book is available, send the open command
   useEffect(() => {
-    if (!webViewReady || !book?.filePath || !fontsHydrated) {
+    if (!webViewReady || !book?.filePath || !fontsHydrated || !backendCatalogSourceReady) {
       return;
     }
 
@@ -1815,7 +1962,7 @@ function ReaderContent({ route, navigation }: Props) {
     };
 
     loadBook();
-  }, [bookId, book?.filePath, fontsHydrated, loadAttempt, webViewReady]);
+  }, [backendCatalogSourceReady, bookId, book?.filePath, fontsHydrated, loadAttempt, webViewReady]);
 
   const handleReimportMissingBook = useCallback(async () => {
     if (isReimporting) return;
@@ -2264,7 +2411,12 @@ function ReaderContent({ route, navigation }: Props) {
               }}
               onSeek={(value) => {
                 suppressProgressTracking();
-                bridge.goToFraction(value);
+                const loadedFraction = backendCatalogLoadedFraction(backendCatalogSourceState);
+                if (value <= loadedFraction || !backendCatalogSourceState?.nextCursor) {
+                  bridge.goToFraction(Math.min(1, value / loadedFraction));
+                  return;
+                }
+                void prefetchBackendCatalogChunk(0, value);
               }}
               onDragStart={() => suppressProgressTracking()}
               onDragEnd={() => suppressProgressTracking()}

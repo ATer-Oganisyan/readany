@@ -34,10 +34,7 @@ import {
   materializeBackendCatalogCover,
   refreshBackendCatalogPage,
 } from "@/lib/narra/backend-catalog-cache";
-import {
-  cleanupBackendCatalogSource,
-  downloadBackendCatalogSource,
-} from "@/lib/narra/backend-catalog-source";
+import { prepareBackendCatalogSource } from "@/lib/narra/backend-catalog-source";
 import {
   type CatalogGenreGroupId,
   groupCatalogBooksByGenre,
@@ -875,11 +872,10 @@ function LibraryScreenContent() {
       if (catalogImportingId) return;
 
       setCatalogImportingId(catalogBook.catalogKey);
-      let temporarySource: string | null = null;
       try {
-        temporarySource = await downloadBackendCatalogSource(catalogBook);
+        const preparedSource = await prepareBackendCatalogSource(catalogBook);
         const fileName = `${catalogBook.catalogKey}.txt`;
-        const result = await importBooks([{ uri: temporarySource, name: fileName }], {
+        const result = await importBooks([{ uri: preparedSource.filePath, name: fileName }], {
           source: "backend-catalog",
         });
         const importedBook = result.imported[0] ?? result.skippedDuplicates[0]?.existingBook;
@@ -918,9 +914,6 @@ function LibraryScreenContent() {
           t("library.catalogImportErrorDescription", "Попробуйте ещё раз."),
         );
       } finally {
-        await cleanupBackendCatalogSource(temporarySource).catch((error) => {
-          console.warn("[Catalog] Failed to remove temporary source:", error);
-        });
         setCatalogImportingId(null);
       }
     },

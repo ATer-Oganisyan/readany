@@ -1899,6 +1899,17 @@
       const container = document.getElementById('reader-container');
       const loading = document.getElementById('loading');
       if (loading) loading.classList.remove('hidden');
+      if (view) {
+        try { if (typeof view.close === 'function') view.close(); } catch (closeError) {
+          console.warn('[Reader] Failed to close the previous book snapshot:', closeError);
+        }
+        try { view.remove(); } catch (_) {}
+        view = null;
+        readerElement = null;
+        currentBook = null;
+        currentSectionIndex = 0;
+        totalSections = 0;
+      }
       bookTextMetricsJobId += 1;
       if (bookTextMetricsTimer) {
         clearTimeout(bookTextMetricsTimer);
