@@ -21,6 +21,14 @@ test('text fallback uses the LiteLLM provider and rejects a direct OpenRouter ro
   )
 })
 
+test('an explicitly empty structured-task fallback never inherits GigaChat', () => {
+  assert.deepEqual(routeForPurpose('structured_task', {
+    LLM_ROUTE_STRUCTURED_TASK: 'litellm',
+    LLM_FALLBACK_STRUCTURED_TASK: '',
+    LLM_FALLBACK_DEFAULT: 'giga'
+  }), ['litellm'])
+})
+
 test('LiteLLM text requests use their own endpoint, credential and model contract', async () => {
   let captured
   const result = await requestChat({

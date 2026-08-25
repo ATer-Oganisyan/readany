@@ -77,7 +77,13 @@ export function maxTokensFor(purpose, stream, env = process.env) {
 export function routeForPurpose(purpose, env = process.env) {
   const suffix = purpose.toUpperCase()
   const primary = String(env[`LLM_ROUTE_${suffix}`] || env.LLM_ROUTE_DEFAULT || 'giga').toLowerCase()
-  const fallback = String(env[`LLM_FALLBACK_${suffix}`] || env.LLM_FALLBACK_DEFAULT || '').toLowerCase()
+  const fallbackKey = `LLM_FALLBACK_${suffix}`
+  // An explicitly empty purpose fallback disables fallback for this purpose.
+  // This is important for book analysis: BOOK_ANALYSIS_LLM_FALLBACK= must not
+  // silently inherit a global GigaChat fallback.
+  const fallback = String(
+    Object.hasOwn(env, fallbackKey) ? env[fallbackKey] : (env.LLM_FALLBACK_DEFAULT || '')
+  ).toLowerCase()
   if (!TEXT_PROVIDERS.has(primary)) throw new Error(`Unsupported provider route: ${primary}`)
   if (fallback && !TEXT_PROVIDERS.has(fallback)) throw new Error(`Unsupported fallback route: ${fallback}`)
   return [primary, fallback].filter((value, index, all) => value && all.indexOf(value) === index)
