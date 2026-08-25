@@ -214,6 +214,22 @@ describe("extractFb2Metadata", () => {
     expect(meta.title).toBe("fallback");
     expect(meta.identityProvenance).toEqual({ title: "filename", author: "missing" });
   });
+
+  it("extracts the original FB2 coverpage instead of requiring generation", () => {
+    const coverBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
+    const binary = btoa(String.fromCharCode(...coverBytes));
+    const xml = `<?xml version="1.0" encoding="utf-8"?>
+      <FictionBook xmlns:l="http://www.w3.org/1999/xlink">
+        <description><title-info><book-title>Книга</book-title>
+          <coverpage><image l:href="#front-cover"/></coverpage>
+        </title-info></description>
+        <binary id="front-cover" content-type="image/jpeg">${binary}</binary>
+      </FictionBook>`;
+    const meta = extractFb2Metadata(new TextEncoder().encode(xml));
+
+    expect(meta.coverMimeType).toBe("image/jpeg");
+    expect(meta.coverBytes).toEqual(coverBytes);
+  });
 });
 
 describe("importFicbookFromUrl (сеть замокана)", () => {

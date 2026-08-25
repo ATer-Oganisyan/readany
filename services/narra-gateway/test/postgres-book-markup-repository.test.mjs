@@ -120,6 +120,57 @@ test('catalog API prefers the identity worker display metadata', async () => {
   assert.match(pool.queries[0].sql, /array_agg\(link\.genre ORDER BY link\.position\)/)
 })
 
+test('private identity polling returns the normalized title as soon as its durable job publishes', async () => {
+  const updatedAt = new Date('2026-08-25T10:00:00.000Z')
+  const edition = {
+    id: 'book-1', scope: 'private', content_sha256: 'a'.repeat(64),
+    title: 'Мертвое озеро (Часть первая)', author: 'Николай Некрасов (1821—1877)',
+    display_title: 'Мертвое озеро', display_author: 'Николай Некрасов',
+    identity_source: 'llm', identity_updated_at: updatedAt
+  }
+  edition.identity_version = bookIdentityTargetVersion({
+    contentSha256: edition.content_sha256,
+    title: edition.title,
+    author: edition.author
+  })
+  const pool = scriptedPool([
+    () => ({ rows: [edition] }),
+    () => ({ rows: [] })
+  ])
+  const repository = createPostgresBookMarkupRepository(pool)
+  assert.deepEqual(await repository.getReaderBookIdentity({
+    subjectId: '123e4567-e89b-42d3-a456-426614174000',
+    bookEditionId: 'book-1'
+  }), {
+    bookEditionId: 'book-1', version: 'book-identity-v1', status: 'ready',
+    title: 'Мертвое озеро', author: 'Николай Некрасов', source: 'llm',
+    updatedAt: updatedAt.toISOString()
+  })
+  assert.ok(pool.queries.some(({ sql }) => /owner_subject_id = \$2::uuid/.test(sql)))
+})
+
+test('identity polling reports processing without waiting for book markup', async () => {
+  const edition = {
+    id: 'book-1', scope: 'private', content_sha256: 'a'.repeat(64),
+    title: 'Book', author: 'Author', display_title: null, display_author: null,
+    identity_version: null, identity_source: null, identity_updated_at: null
+  }
+  const pool = scriptedPool([
+    () => ({ rows: [edition] }),
+    () => ({ rows: [] }),
+    () => ({ rows: [{ status: 'running', last_error_code: null }] })
+  ])
+  const repository = createPostgresBookMarkupRepository(pool)
+  assert.deepEqual(await repository.getReaderBookIdentity({
+    subjectId: '123e4567-e89b-42d3-a456-426614174000',
+    bookEditionId: 'book-1'
+  }), {
+    bookEditionId: 'book-1', version: 'book-identity-v1', status: 'processing',
+    errorCode: undefined
+  })
+  assert.ok(pool.queries.some(({ sql }) => /job_type = 'book_identity'/.test(sql)))
+})
+
 test('catalog content resolves the latest prepared normalized text only for catalog books', async () => {
   const pool = scriptedPool([() => ({ rows: [{
     book_edition_id: 'book-1',

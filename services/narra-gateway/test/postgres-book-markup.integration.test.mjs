@@ -134,10 +134,15 @@ test('PostgreSQL persists markup and independently publishes character media', {
     assert.equal(coverJob.type, 'catalog_cover')
     assert.deepEqual(await repository.getCatalogCoverInput(coverJob), {
       bookEditionId,
-      targetVersion: `catalog-cover-v3-${hash.slice(0, 16)}`,
+      targetVersion: `catalog-cover-v4-${hash.slice(0, 16)}`,
       scope: 'catalog',
       title: 'Integration Book',
       author: 'ReadAny',
+      format: 'epub',
+      contentSha256: hash,
+      objectKey: `integration/${bookEditionId}/source.epub`,
+      mimeType: 'application/epub+zip',
+      byteSize: 128,
       context: ''
     })
     await repository.publishCatalogCover(coverJob, {

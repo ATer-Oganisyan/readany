@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import test from 'node:test'
+import { strToU8, zipSync } from 'fflate'
 import {
   createInternalGenerationRouter,
   createInternalGenerationService,
@@ -297,7 +298,9 @@ test('internal generation service reuses a stored OpenRouter JPEG for an indepen
 })
 
 test('internal generation service stores a permanent catalog cover idempotently', async () => {
-  const storage = memoryStorage()
+  const source = Buffer.from('plain book without an embedded cover')
+  const contentSha256 = createHash('sha256').update(source).digest('hex')
+  const storage = memoryStorage({ source: { bytes: source, mimeType: 'text/plain' } })
   let coverCalls = 0
   const service = createInternalGenerationService({
     storage,
@@ -318,17 +321,57 @@ test('internal generation service stores a permanent catalog cover idempotently'
     async generateIdleAnimation() { throw new Error('unused') }
   })
   const input = {
-    idempotencyKey: '11111111-1111-4111-8111-111111111111:catalog-cover:catalog-cover-v2-aaaaaaaaaaaaaaaa',
+    idempotencyKey: '11111111-1111-4111-8111-111111111111:catalog-cover:catalog-cover-v4-aaaaaaaaaaaaaaaa',
     bookEditionId: '11111111-1111-4111-8111-111111111111',
-    targetVersion: 'catalog-cover-v2-aaaaaaaaaaaaaaaa',
-    scope: 'catalog', title: 'Преступление и наказание', author: 'Фёдор Достоевский', context: ''
+    targetVersion: 'catalog-cover-v4-aaaaaaaaaaaaaaaa',
+    scope: 'catalog', title: 'Преступление и наказание', author: 'Фёдор Достоевский', context: '',
+    format: 'txt', contentSha256, objectKey: 'source', mimeType: 'text/plain', byteSize: source.byteLength
   }
   const first = await service.generateCatalogCover(input)
   const repeated = await service.generateCatalogCover(input)
   assert.deepEqual(repeated, first)
   assert.equal(coverCalls, 1)
   assert.equal(first.asset.mimeType, 'image/jpeg')
+  assert.equal(first.asset.source, 'generated')
   assert.match(first.asset.objectKey, /books\/catalog\/11111111-1111-4111-8111-111111111111\/cover\/generated/)
+})
+
+test('internal generation service publishes an embedded EPUB cover without calling the image model', async () => {
+  const cover = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4])
+  const source = Buffer.from(zipSync({
+    'META-INF/container.xml': strToU8(
+      '<container><rootfiles><rootfile full-path="OPS/book.opf"/></rootfiles></container>'
+    ),
+    'OPS/book.opf': strToU8(
+      '<package><manifest><item id="cover" href="cover.jpg" media-type="image/jpeg" properties="cover-image"/></manifest></package>'
+    ),
+    'OPS/cover.jpg': cover
+  }))
+  const contentSha256 = createHash('sha256').update(source).digest('hex')
+  const storage = memoryStorage({ source: { bytes: source, mimeType: 'application/epub+zip' } })
+  let coverCalls = 0
+  const service = createInternalGenerationService({
+    storage,
+    logger: { info() {}, error() {} },
+    async completeChat() { throw new Error('unused') },
+    async generatePortrait() { throw new Error('unused') },
+    async generateCover() { coverCalls += 1; throw new Error('image model must not run') },
+    async synthesizeSpeech() { throw new Error('unused') },
+    async generateIdleAnimation() { throw new Error('unused') }
+  })
+  const result = await service.generateCatalogCover({
+    idempotencyKey: '11111111-1111-4111-8111-111111111111:catalog-cover:catalog-cover-v4-bbbbbbbbbbbbbbbb',
+    bookEditionId: '11111111-1111-4111-8111-111111111111',
+    targetVersion: 'catalog-cover-v4-bbbbbbbbbbbbbbbb',
+    scope: 'catalog', title: 'Book', author: 'Author', context: '',
+    format: 'epub', contentSha256, objectKey: 'source',
+    mimeType: 'application/epub+zip', byteSize: source.byteLength
+  })
+  assert.equal(coverCalls, 0)
+  assert.equal(result.asset.source, 'embedded')
+  assert.equal(result.asset.mimeType, 'image/jpeg')
+  assert.deepEqual(storage.objects.get(result.asset.objectKey).bytes, cover)
+  assert.match(result.asset.objectKey, /\/cover\/embedded\//)
 })
 
 test('internal generation service gives the provider one scan chunk and asks for quote-only evidence', async () => {

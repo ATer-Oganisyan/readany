@@ -450,6 +450,18 @@ export function createBookCatalogService({
       return storage.createDownload(source)
     },
 
+    async identity(subjectId, bookEditionId) {
+      if (typeof store.getReaderBookIdentity !== 'function') {
+        throw new TypeError('repository.getReaderBookIdentity is required')
+      }
+      const identity = await store.getReaderBookIdentity({ subjectId, bookEditionId })
+      if (!identity) throw serviceError('NOT_FOUND', 'Книга не найдена', 404)
+      return {
+        ...identity,
+        pollAfterMs: identity.status === 'processing' ? 2_000 : undefined
+      }
+    },
+
     async fullContent(subjectId, bookEditionId) {
       const content = await preparedCatalogContent(subjectId, bookEditionId)
       if (typeof storage.getObjectInfo !== 'function') {

@@ -70,6 +70,7 @@ export function extractFb2Metadata(fileBytes: Uint8Array, fileName = "book.fb2")
   const annotation = cleanXmlText(extractElementInnerXml(titleInfo, "annotation"));
   const bodySample = cleanXmlText(extractElementInnerXml(xml, "body")).slice(0, 6000);
   const subjects = uniqueMetadataValues(extractAllTagContent(titleInfo, "genre").map(cleanXmlText));
+  const cover = extractFb2EmbeddedCover(xml);
 
   return {
     title,
@@ -84,10 +85,46 @@ export function extractFb2Metadata(fileBytes: Uint8Array, fileName = "book.fb2")
     publishDate: cleanXmlText(extractElementInnerXml(titleInfo, "date")),
     description: annotation,
     subjects,
-    coverBytes: null,
-    coverMimeType: null,
+    coverBytes: cover?.bytes ?? null,
+    coverMimeType: cover?.mimeType ?? null,
     textSample: [annotation, bodySample].filter(Boolean).join("\n\n").slice(0, 8000),
   };
+}
+
+function extractFb2EmbeddedCover(xml: string): { bytes: Uint8Array; mimeType: string } | null {
+  const coverAttributes = xml.match(/<coverpage\b[\s\S]*?<image\b([^>]*)\/?\s*>/i)?.[1];
+  if (!coverAttributes) return null;
+  const imageTag = `<image ${coverAttributes}>`;
+  const href =
+    parseAttribute(imageTag, "image", "xlink:href") ||
+    parseAttribute(imageTag, "image", "l:href") ||
+    parseAttribute(imageTag, "image", "href") ||
+    "";
+  const binaryId = href.replace(/^#/, "");
+  if (!binaryId) return null;
+
+  for (const match of xml.matchAll(/<binary\b([^>]*)>([\s\S]*?)<\/binary\s*>/gi)) {
+    const binaryTag = `<binary ${match[1]}>`;
+    if (parseAttribute(binaryTag, "binary", "id") !== binaryId) continue;
+    const encoded = match[2].replace(/\s+/g, "");
+    if (!encoded || encoded.length > Math.ceil((EPUB_COVER_ENTRY_MAX_BYTES * 4) / 3) + 4) {
+      return null;
+    }
+    try {
+      const binary = atob(encoded);
+      if (!binary.length || binary.length > EPUB_COVER_ENTRY_MAX_BYTES) return null;
+      const bytes = new Uint8Array(binary.length);
+      for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+      const declared = parseAttribute(binaryTag, "binary", "content-type");
+      const mimeType =
+        guessMimeTypeFromBytes(bytes) || (declared === "image/jpg" ? "image/jpeg" : declared);
+      if (!mimeType || !["image/jpeg", "image/png", "image/webp"].includes(mimeType)) return null;
+      return { bytes, mimeType };
+    } catch {
+      return null;
+    }
+  }
+  return null;
 }
 
 export async function extractFb2MetadataFromFile(

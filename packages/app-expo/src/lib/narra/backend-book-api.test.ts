@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type BackendBookBinding,
   advanceBackendReaderProgress,
+  fetchBackendBookIdentity,
   fetchBackendBookManifest,
   fetchBackendCatalogBooks,
   fetchBackendCatalogBooksPage,
@@ -251,6 +252,35 @@ describe("backend book API", () => {
     expect(request?.method).toBe("PUT");
     expect(new Headers(request?.headers).get("content-type")).toBe("application/epub+zip");
     expect(Array.from(request?.body as Uint8Array)).toEqual([1, 2, 3]);
+  });
+
+  it("polls normalized book identity without loading the full manifest", async () => {
+    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          version: "book-identity-v1",
+          book_edition_id: "book-1",
+          status: "ready",
+          title: "Мертвое озеро",
+          author: "Николай Некрасов",
+          source: "llm",
+          updated_at: "2026-08-25T10:00:00.000Z",
+        }),
+      ),
+    );
+
+    await expect(fetchBackendBookIdentity("book-1")).resolves.toEqual({
+      version: "book-identity-v1",
+      bookEditionId: "book-1",
+      status: "ready",
+      title: "Мертвое озеро",
+      author: "Николай Некрасов",
+      source: "llm",
+      updatedAt: "2026-08-25T10:00:00.000Z",
+      pollAfterMs: undefined,
+      errorCode: undefined,
+    });
+    expect(vi.mocked(narraGatewayRequest)).toHaveBeenCalledWith("/v2/books/book-1/identity", {});
   });
 
   it("publishes only derived character markup", async () => {

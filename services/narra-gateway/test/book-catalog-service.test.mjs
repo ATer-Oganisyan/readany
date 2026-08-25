@@ -651,6 +651,37 @@ test('local hash reuses a ready catalog edition and otherwise requests local reg
   })
 })
 
+test('book identity can become ready before the full manifest', async () => {
+  const service = createBookCatalogService({
+    repository: repository({
+      async getReaderBookIdentity(input) {
+        assert.deepEqual(input, { subjectId: 'reader-1', bookEditionId: 'book-1' })
+        return {
+          version: 'book-identity-v1', bookEditionId: 'book-1', status: 'ready',
+          title: 'Мертвое озеро', author: 'Николай Некрасов', source: 'llm',
+          updatedAt: '2026-08-25T10:00:00.000Z'
+        }
+      }
+    })
+  })
+  assert.deepEqual(await service.identity('reader-1', 'book-1'), {
+    version: 'book-identity-v1', bookEditionId: 'book-1', status: 'ready',
+    title: 'Мертвое озеро', author: 'Николай Некрасов', source: 'llm',
+    updatedAt: '2026-08-25T10:00:00.000Z', pollAfterMs: undefined
+  })
+})
+
+test('book identity polling exposes a bounded retry interval while the job is processing', async () => {
+  const service = createBookCatalogService({
+    repository: repository({
+      async getReaderBookIdentity() {
+        return { version: 'book-identity-v1', bookEditionId: 'book-1', status: 'processing' }
+      }
+    })
+  })
+  assert.equal((await service.identity('reader-1', 'book-1')).pollAfterMs, 2_000)
+})
+
 test('catalog listing never receives processing editions from the service contract', async () => {
   const catalog = {
     ...EDITION,
