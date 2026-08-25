@@ -9,8 +9,11 @@ function book(index: number, coverUri?: string): CachedBackendCatalogBook {
     catalogKey: `book-${index}`,
     title: `Book ${index}`,
     author: "Author",
+    genres: ["fiction"],
     format: "epub",
     contentSha256: "a".repeat(64),
+    generationStatus: "base_ready",
+    ready: true,
     sourceDownloadPath: `/v2/books/${index}/source/download`,
     cover: {
       contentHash: "b".repeat(64),

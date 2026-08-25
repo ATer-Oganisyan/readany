@@ -206,6 +206,7 @@ export function ReaderScreen(props: Props) {
   const [resolvedBookId, setResolvedBookId] = useState<string | null>(
     catalogBookId || catalogBook ? null : requestedBookId,
   );
+  const [catalogProgress, setCatalogProgress] = useState<number | null>(null);
 
   useEffect(() => {
     if (catalogBookId || catalogBook) return;
@@ -280,6 +281,7 @@ export function ReaderScreen(props: Props) {
 
     const controller = new AbortController();
     let cancelled = false;
+    setCatalogProgress(null);
 
     const prepareCatalogBook = async () => {
       const existingBook = useLibraryStore
@@ -296,6 +298,9 @@ export function ReaderScreen(props: Props) {
         importBooks,
         updateBook,
         signal: controller.signal,
+        onProgress: (fraction) => {
+          if (!cancelled) setCatalogProgress(fraction);
+        },
       });
       return importedBook.id;
     };
@@ -320,7 +325,7 @@ export function ReaderScreen(props: Props) {
   }, [catalogBook, importBooks, props.navigation, t, updateBook]);
 
   if (!resolvedBookId) {
-    return <ReaderLoadingChrome navigation={props.navigation} />;
+    return <ReaderLoadingChrome navigation={props.navigation} progress={catalogProgress} />;
   }
 
   return (
@@ -363,7 +368,14 @@ function useReaderPaperColors() {
   }, [readerTheme, colors]);
 }
 
-function ReaderLoadingChrome({ navigation }: { navigation: Props["navigation"] }) {
+function ReaderLoadingChrome({
+  navigation,
+  progress,
+}: {
+  navigation: Props["navigation"];
+  /** Доля загруженного текста книги, если она известна. */
+  progress?: number | null;
+}) {
   const colors = useColors();
   const paperColors = useReaderPaperColors();
   const { isDark } = useTheme();
@@ -399,6 +411,13 @@ function ReaderLoadingChrome({ navigation }: { navigation: Props["navigation"] }
     >
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
         <ReaderLoadingIndicator color={colors.primary20} />
+        {/* Проценты появляются, только когда книга едет чанками: у загрузки
+            файла целиком прогресса нет, и пустая подпись мигала бы зря. */}
+        {typeof progress === "number" ? (
+          <Text style={{ marginTop: 16, color: colors.mutedForeground, fontSize: 13 }}>
+            {`${Math.round(progress * 100)}%`}
+          </Text>
+        ) : null}
       </View>
       {Platform.OS === "ios" && (
         <View

@@ -13,10 +13,26 @@ export class NarraServiceError extends Error {
     message: string,
     public readonly requestId?: string,
     public readonly technicalDetail?: string,
+    /**
+     * Машинный код бэкенда (`VALIDATION`, `NOT_FOUND`, `CONTENT_VERSION_CHANGED`,
+     * `DOWNLOAD_UNAVAILABLE`). В отличие от `technicalDetail` пользователю не
+     * показывается: он нужен, чтобы вызывающий код мог отличить «этого нет
+     * совсем» от «сейчас недоступно» и решить, повторять ли попытку.
+     */
+    public readonly backendCode?: string,
   ) {
     super(message);
     this.name = "NarraServiceError";
   }
+}
+
+export function narraBackendCode(error: unknown): string | undefined {
+  return error instanceof NarraServiceError ? error.backendCode : undefined;
+}
+
+/** Временный отказ бэкенда: тот же запрос имеет смысл повторить. */
+export function isRetriableNarraBackendError(error: unknown): boolean {
+  return narraBackendCode(error) === "DOWNLOAD_UNAVAILABLE";
 }
 
 export function normalizeNarraError(error: unknown): NarraServiceError {

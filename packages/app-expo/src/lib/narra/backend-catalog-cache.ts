@@ -1,9 +1,15 @@
 import { getPlatformService } from "@readany/core/services";
 import * as FileSystem from "expo-file-system/legacy";
-import { type BackendCatalogBook, fetchBackendCatalogBooks } from "./backend-catalog-api";
+import {
+  type BackendCatalogBook,
+  type BackendCatalogGenre,
+  fetchBackendCatalogGenres,
+  fetchBackendCatalogPage,
+  mergeBackendCatalogBooks,
+} from "./backend-catalog-api";
 import { downloadVerifiedBackendFile } from "./backend-file-download";
 
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 const CACHE_ROOT = `${FileSystem.documentDirectory}narra-backend-catalog`;
 const COVER_ROOT = `${CACHE_ROOT}/covers`;
 const CATALOG_PATH = `${CACHE_ROOT}/catalog.json`;
@@ -13,9 +19,19 @@ export interface CachedBackendCatalogBook extends BackendCatalogBook {
   coverUri?: string;
 }
 
+export interface CachedBackendCatalog {
+  books: CachedBackendCatalogBook[];
+  nextCursor: string | null;
+  genres: BackendCatalogGenre[];
+  genreVersion: string | null;
+}
+
 interface StoredCatalog {
   version: number;
   books: BackendCatalogBook[];
+  nextCursor: string | null;
+  genres: BackendCatalogGenre[];
+  genreVersion: string | null;
 }
 
 function safeKey(value: string): string {
@@ -50,30 +66,114 @@ async function cachedBook(book: BackendCatalogBook): Promise<CachedBackendCatalo
   return { ...book, coverUri: path };
 }
 
-async function writeCatalog(books: BackendCatalogBook[]): Promise<void> {
+function storableBook(book: CachedBackendCatalogBook): BackendCatalogBook {
+  const { coverUri: _coverUri, ...value } = book;
+  return value;
+}
+
+async function writeCatalog(
+  catalog: Omit<CachedBackendCatalog, "books"> & { books: BackendCatalogBook[] },
+): Promise<void> {
   const temporaryPath = `${CATALOG_PATH}.${Date.now()}.tmp`;
-  const value: StoredCatalog = { version: CACHE_VERSION, books };
+  const value: StoredCatalog = {
+    version: CACHE_VERSION,
+    books: catalog.books.map(storableBook),
+    nextCursor: catalog.nextCursor,
+    genres: catalog.genres,
+    genreVersion: catalog.genreVersion,
+  };
   await FileSystem.writeAsStringAsync(temporaryPath, JSON.stringify(value));
   await FileSystem.deleteAsync(CATALOG_PATH, { idempotent: true });
   await FileSystem.moveAsync({ from: temporaryPath, to: CATALOG_PATH });
 }
 
-export async function loadCachedBackendCatalog(): Promise<CachedBackendCatalogBook[]> {
+async function hydrateCatalog(value: StoredCatalog): Promise<CachedBackendCatalog> {
+  return {
+    books: await Promise.all(value.books.map(cachedBook)),
+    nextCursor: value.nextCursor,
+    genres: value.genres,
+    genreVersion: value.genreVersion,
+  };
+}
+
+function migrateLegacyCatalog(value: StoredCatalog): StoredCatalog | null {
+  if (value.version !== 1 || !Array.isArray(value.books)) return null;
+  const books = value.books.flatMap((book) => {
+    if (
+      !book ||
+      typeof book !== "object" ||
+      typeof book.bookEditionId !== "string" ||
+      typeof book.catalogKey !== "string"
+    ) {
+      return [];
+    }
+    return [{ ...book, genres: [], generationStatus: "legacy-cache", ready: true }];
+  });
+  return {
+    version: CACHE_VERSION,
+    books,
+    nextCursor: null,
+    genres: [],
+    genreVersion: null,
+  };
+}
+
+export async function loadCachedBackendCatalog(): Promise<CachedBackendCatalog> {
   try {
     await ensureCacheDirectories();
     const value = JSON.parse(await FileSystem.readAsStringAsync(CATALOG_PATH)) as StoredCatalog;
-    if (value.version !== CACHE_VERSION || !Array.isArray(value.books)) return [];
-    return Promise.all(value.books.map(cachedBook));
+    const migrated = migrateLegacyCatalog(value);
+    if (migrated) return hydrateCatalog(migrated);
+    if (
+      value.version !== CACHE_VERSION ||
+      !Array.isArray(value.books) ||
+      (value.nextCursor !== null && typeof value.nextCursor !== "string") ||
+      !Array.isArray(value.genres)
+    ) {
+      return { books: [], nextCursor: null, genres: [], genreVersion: null };
+    }
+    return hydrateCatalog(value);
   } catch {
-    return [];
+    return { books: [], nextCursor: null, genres: [], genreVersion: null };
   }
 }
 
-export async function refreshBackendCatalog(): Promise<CachedBackendCatalogBook[]> {
+export async function refreshBackendCatalog(): Promise<CachedBackendCatalog> {
   await ensureCacheDirectories();
-  const books = await fetchBackendCatalogBooks();
-  await writeCatalog(books);
-  return Promise.all(books.map(cachedBook));
+  const [page, genreResult] = await Promise.all([
+    fetchBackendCatalogPage(),
+    fetchBackendCatalogGenres().catch((error) => {
+      console.warn("[Catalog] Failed to refresh genres:", error);
+      return null;
+    }),
+  ]);
+  const previous = await loadCachedBackendCatalog();
+  const catalog = {
+    books: page.items,
+    nextCursor: page.nextCursor,
+    genres: genreResult?.items ?? previous.genres,
+    genreVersion: genreResult?.version ?? previous.genreVersion,
+  };
+  await writeCatalog(catalog);
+  return hydrateCatalog({ version: CACHE_VERSION, ...catalog });
+}
+
+export async function loadMoreCachedBackendCatalog(
+  current: CachedBackendCatalog,
+): Promise<CachedBackendCatalog> {
+  if (!current.nextCursor) return current;
+  const requestedCursor = current.nextCursor;
+  const page = await fetchBackendCatalogPage(requestedCursor);
+  const catalog = {
+    books: mergeBackendCatalogBooks(current.books, page.items),
+    // Повтор cursor означает сломанный цикл backend. Останавливаемся, чтобы
+    // один экран не создавал бесконечный поток одинаковых запросов.
+    nextCursor: page.nextCursor === requestedCursor ? null : page.nextCursor,
+    genres: current.genres,
+    genreVersion: current.genreVersion,
+  };
+  await writeCatalog(catalog);
+  return hydrateCatalog({ version: CACHE_VERSION, ...catalog });
 }
 
 export async function materializeBackendCatalogCover(

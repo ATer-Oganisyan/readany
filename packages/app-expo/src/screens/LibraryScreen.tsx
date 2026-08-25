@@ -31,9 +31,12 @@ import { useBookImportActions } from "@/hooks/use-book-import-actions";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { bookIdentity as catalogIdentity } from "@/lib/book/book-identity";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
+import type { BackendCatalogGenre } from "@/lib/narra/backend-catalog-api";
 import {
+  type CachedBackendCatalog,
   type CachedBackendCatalogBook,
   loadCachedBackendCatalog,
+  loadMoreCachedBackendCatalog,
   materializeBackendCatalogCover,
   refreshBackendCatalog,
 } from "@/lib/narra/backend-catalog-cache";
@@ -75,6 +78,8 @@ import { useTranslation } from "react-i18next";
 import {
   Alert,
   Modal,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   Platform,
   Pressable,
   ScrollView,
@@ -144,7 +149,7 @@ export function LibraryScreen() {
 function LibraryScreenContent() {
   const colors = useColors();
   const { isDark } = useTheme();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const nav = useNavigation<Nav>();
   const route = useRoute<LibraryRoute>();
   const nativeHeaderHeight = useHeaderHeight();
@@ -186,9 +191,16 @@ function LibraryScreenContent() {
   const libraryPagerRef = useRef<NativeSegmentedPagerHandle>(null);
   const isScreenFocused = useIsFocused();
   const [catalogBooks, setCatalogBooks] = useState<CachedBackendCatalogBook[]>([]);
+  const [catalogNextCursor, setCatalogNextCursor] = useState<string | null>(null);
+  const [catalogGenres, setCatalogGenres] = useState<BackendCatalogGenre[]>([]);
+  const [catalogGenreVersion, setCatalogGenreVersion] = useState<string | null>(null);
+  const [selectedCatalogGenre, setSelectedCatalogGenre] = useState<string | null>(null);
   const [isCatalogLoading, setIsCatalogLoading] = useState(true);
+  const [isCatalogLoadingMore, setIsCatalogLoadingMore] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [catalogLoadMoreError, setCatalogLoadMoreError] = useState<string | null>(null);
   const catalogCoverQueueRef = useRef<CatalogCoverQueue | null>(null);
+  const catalogLoadMoreLockRef = useRef(false);
   const catalogGridRef = useRef<View>(null);
   const [catalogScrollY, setCatalogScrollY] = useState(0);
   const primaryScrollRef = useRef<ScrollView>(null);
@@ -239,27 +251,69 @@ function LibraryScreenContent() {
     selectLibrarySection(requestedSection);
   }, [requestedSection, selectLibrarySection]);
 
+  const applyBackendCatalog = useCallback((catalog: CachedBackendCatalog) => {
+    setCatalogBooks(catalog.books);
+    setCatalogNextCursor(catalog.nextCursor);
+    setCatalogGenres(catalog.genres);
+    setCatalogGenreVersion(catalog.genreVersion);
+  }, []);
+
   const loadBackendCatalog = useCallback(async () => {
     setIsCatalogLoading(true);
     setCatalogError(null);
-    const cachedBooks = await loadCachedBackendCatalog();
-    if (cachedBooks.length > 0) setCatalogBooks(cachedBooks);
+    setCatalogLoadMoreError(null);
+    const cachedCatalog = await loadCachedBackendCatalog();
+    if (cachedCatalog.books.length > 0) applyBackendCatalog(cachedCatalog);
     try {
-      const freshBooks = await refreshBackendCatalog();
-      setCatalogBooks(freshBooks);
+      const freshCatalog = await refreshBackendCatalog();
+      applyBackendCatalog(freshCatalog);
     } catch (error) {
       console.warn("[Catalog] Failed to refresh backend catalog:", error);
-      if (cachedBooks.length === 0) {
+      if (cachedCatalog.books.length === 0) {
         setCatalogError(t("library.catalogLoadError", "Не удалось загрузить каталог"));
       }
     } finally {
       setIsCatalogLoading(false);
     }
-  }, [t]);
+  }, [applyBackendCatalog, t]);
 
   useEffect(() => {
     void loadBackendCatalog();
   }, [loadBackendCatalog]);
+
+  const loadMoreBackendCatalogPage = useCallback(async () => {
+    if (!catalogNextCursor || catalogLoadMoreLockRef.current) return;
+    catalogLoadMoreLockRef.current = true;
+    setIsCatalogLoadingMore(true);
+    setCatalogLoadMoreError(null);
+    try {
+      const catalog = await loadMoreCachedBackendCatalog({
+        books: catalogBooks,
+        nextCursor: catalogNextCursor,
+        genres: catalogGenres,
+        genreVersion: catalogGenreVersion,
+      });
+      applyBackendCatalog(catalog);
+    } catch (error) {
+      console.warn("[Catalog] Failed to load the next catalog page:", error);
+      setCatalogLoadMoreError(
+        t("library.catalogLoadMoreError", "Не удалось загрузить следующие книги"),
+      );
+    } finally {
+      catalogLoadMoreLockRef.current = false;
+      setIsCatalogLoadingMore(false);
+    }
+  }, [applyBackendCatalog, catalogBooks, catalogGenreVersion, catalogGenres, catalogNextCursor, t]);
+
+  useEffect(() => {
+    if (
+      selectedCatalogGenre &&
+      selectedCatalogGenre !== "__uncategorized__" &&
+      !catalogGenres.some((genre) => genre.id === selectedCatalogGenre)
+    ) {
+      setSelectedCatalogGenre(null);
+    }
+  }, [catalogGenres, selectedCatalogGenre]);
 
   const revealImportedBooks = useCallback((importedCount: number) => {
     if (importedCount > 0) libraryPagerRef.current?.selectPage(1);
@@ -478,6 +532,23 @@ function LibraryScreenContent() {
     [activeGroupId, groupedEntries, isGroupView, visibleBooks],
   );
 
+  const validCatalogGenreIds = useMemo(
+    () => new Set(catalogGenres.map((genre) => genre.id)),
+    [catalogGenres],
+  );
+  const displayedCatalogBooks = useMemo(() => {
+    if (!selectedCatalogGenre) return catalogBooks;
+    if (selectedCatalogGenre === "__uncategorized__") {
+      return catalogBooks.filter((book) => book.genres.length === 0);
+    }
+    if (!validCatalogGenreIds.has(selectedCatalogGenre)) return catalogBooks;
+    return catalogBooks.filter((book) => book.genres.includes(selectedCatalogGenre));
+  }, [catalogBooks, selectedCatalogGenre, validCatalogGenreIds]);
+  const hasUncategorizedCatalogBooks = useMemo(
+    () => catalogBooks.some((book) => book.genres.length === 0),
+    [catalogBooks],
+  );
+
   const catalogBooksInLibrary = useMemo(() => {
     const result = new Map<string, Book>();
     for (const catalogBook of catalogBooks) {
@@ -520,6 +591,11 @@ function LibraryScreenContent() {
    */
   const [catalogChunkCount, setCatalogChunkCount] = useState(CATALOG_PAGE_SIZE);
 
+  const selectCatalogGenre = useCallback((genreId: string | null) => {
+    setCatalogChunkCount(CATALOG_PAGE_SIZE);
+    setSelectedCatalogGenre(genreId);
+  }, []);
+
   useEffect(() => {
     const rowHeight = gridItemWidth * (41 / 28) + gridGap;
     if (rowHeight <= 0) return;
@@ -541,12 +617,12 @@ function LibraryScreenContent() {
    * и каталог оставался сеткой шиммеров.
    */
   const visibleCatalogBooks = useMemo(() => {
-    const readyCount = catalogBooks.reduce(
+    const readyCount = displayedCatalogBooks.reduce(
       (count, book) => (book.coverUri || !book.cover ? count + 1 : count),
       0,
     );
-    return catalogBooks.slice(0, Math.min(readyCount, catalogChunkCount));
-  }, [catalogBooks, catalogChunkCount]);
+    return displayedCatalogBooks.slice(0, Math.min(readyCount, catalogChunkCount));
+  }, [catalogChunkCount, displayedCatalogBooks]);
 
   /**
    * За последней готовой книгой рисуем заглушек на целый экран. Одно правило
@@ -561,8 +637,8 @@ function LibraryScreenContent() {
     // Список каталога ещё не пришёл — сколько будет книг, неизвестно, поэтому
     // просто заполняем экран: иначе первые секунды он остаётся пустым.
     if (isCatalogLoading && catalogBooks.length === 0) return screenful;
-    const remaining = catalogBooks.length - visibleCatalogBooks.length;
-    if (remaining <= 0) return 0;
+    const remaining = displayedCatalogBooks.length - visibleCatalogBooks.length;
+    if (remaining <= 0) return isCatalogLoadingMore ? screenful : 0;
     return Math.min(remaining, screenful);
   }, [
     catalogBooks.length,
@@ -570,12 +646,14 @@ function LibraryScreenContent() {
     gridGap,
     gridItemWidth,
     isCatalogLoading,
+    isCatalogLoadingMore,
     layout.height,
+    displayedCatalogBooks.length,
     visibleCatalogBooks,
   ]);
 
   const catalogSkeletonKeys = useMemo(() => {
-    const fromBooks = catalogBooks
+    const fromBooks = displayedCatalogBooks
       .slice(visibleCatalogBooks.length, visibleCatalogBooks.length + skeletonPeekCount)
       .map((book) => book.bookEditionId);
     if (fromBooks.length === skeletonPeekCount) return fromBooks;
@@ -586,7 +664,65 @@ function LibraryScreenContent() {
         (_, index) => `catalog-skeleton-${fromBooks.length + index}`,
       ),
     ];
-  }, [catalogBooks, skeletonPeekCount, visibleCatalogBooks]);
+  }, [displayedCatalogBooks, skeletonPeekCount, visibleCatalogBooks]);
+
+  const catalogScreenfulCount = useMemo(() => {
+    const rowHeight = gridItemWidth * (41 / 28) + gridGap;
+    const rows = rowHeight > 0 ? Math.max(1, Math.ceil(layout.height / rowHeight)) : 1;
+    return rows * Math.max(1, columnCount);
+  }, [columnCount, gridGap, gridItemWidth, layout.height]);
+
+  useEffect(() => {
+    // Backend пока не умеет фильтровать по жанру. Если выбранная группа почти
+    // пустая, последовательно дочитываем страницы, пока экран не наполнится или
+    // каталог не закончится.
+    if (
+      selectedCatalogGenre &&
+      displayedCatalogBooks.length < catalogScreenfulCount &&
+      catalogNextCursor &&
+      !isCatalogLoading &&
+      !isCatalogLoadingMore &&
+      !catalogLoadMoreError
+    ) {
+      void loadMoreBackendCatalogPage();
+    }
+  }, [
+    catalogNextCursor,
+    catalogLoadMoreError,
+    catalogScreenfulCount,
+    displayedCatalogBooks.length,
+    isCatalogLoading,
+    isCatalogLoadingMore,
+    loadMoreBackendCatalogPage,
+    selectedCatalogGenre,
+  ]);
+
+  const handlePrimaryScroll = useCallback(
+    ({ nativeEvent }: NativeSyntheticEvent<NativeScrollEvent>) => {
+      setCatalogScrollY(nativeEvent.contentOffset.y);
+      if (
+        !showCatalog ||
+        librarySection !== "catalog" ||
+        !catalogNextCursor ||
+        catalogLoadMoreError
+      )
+        return;
+      const distanceFromBottom =
+        nativeEvent.contentSize.height -
+        nativeEvent.layoutMeasurement.height -
+        nativeEvent.contentOffset.y;
+      if (distanceFromBottom <= nativeEvent.layoutMeasurement.height * 0.75) {
+        void loadMoreBackendCatalogPage();
+      }
+    },
+    [
+      catalogLoadMoreError,
+      catalogNextCursor,
+      librarySection,
+      loadMoreBackendCatalogPage,
+      showCatalog,
+    ],
+  );
 
   /**
    * Заглушки нарисованы целиком, а докрутить до них можно только на
@@ -632,7 +768,7 @@ function LibraryScreenContent() {
 
     const missing: CachedBackendCatalogBook[] = [];
     let readyCount = 0;
-    for (const book of catalogBooks) {
+    for (const book of displayedCatalogBooks) {
       if (book.coverUri) {
         readyCount += 1;
         continue;
@@ -642,7 +778,7 @@ function LibraryScreenContent() {
       missing.push(book);
     }
     if (missing.length > 0) catalogCoverQueueRef.current?.enqueue(missing);
-  }, [catalogBooks, catalogChunkCount, catalogCoverLoadingEnabled]);
+  }, [catalogChunkCount, catalogCoverLoadingEnabled, displayedCatalogBooks]);
 
   useEffect(() => {
     if (!catalogCoverLoadingEnabled) {
@@ -1126,6 +1262,66 @@ function LibraryScreenContent() {
 
   const catalogGrid = (
     <View style={s.catalogSection}>
+      {catalogGenres.length > 0 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={s.catalogGenreScroll}
+          contentContainerStyle={s.catalogGenreScrollContent}
+        >
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityState={{ selected: selectedCatalogGenre === null }}
+            style={[s.catalogGenreChip, !selectedCatalogGenre && s.catalogGenreChipActive]}
+            onPress={() => selectCatalogGenre(null)}
+          >
+            <Text
+              style={[
+                s.catalogGenreChipText,
+                !selectedCatalogGenre && s.catalogGenreChipTextActive,
+              ]}
+            >
+              {t("library.catalogAllGenres", "Все")}
+            </Text>
+          </TouchableOpacity>
+          {catalogGenres.map((genre) => {
+            const selected = selectedCatalogGenre === genre.id;
+            return (
+              <TouchableOpacity
+                key={genre.id}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                style={[s.catalogGenreChip, selected && s.catalogGenreChipActive]}
+                onPress={() => selectCatalogGenre(genre.id)}
+              >
+                <Text style={[s.catalogGenreChipText, selected && s.catalogGenreChipTextActive]}>
+                  {i18n.resolvedLanguage === "en" ? genre.labelEn : genre.labelRu}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+          {hasUncategorizedCatalogBooks ? (
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityState={{ selected: selectedCatalogGenre === "__uncategorized__" }}
+              style={[
+                s.catalogGenreChip,
+                selectedCatalogGenre === "__uncategorized__" && s.catalogGenreChipActive,
+              ]}
+              onPress={() => selectCatalogGenre("__uncategorized__")}
+            >
+              <Text
+                style={[
+                  s.catalogGenreChipText,
+                  selectedCatalogGenre === "__uncategorized__" && s.catalogGenreChipTextActive,
+                ]}
+              >
+                {t("library.catalogUncategorized", "Без категории")}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+        </ScrollView>
+      ) : null}
       {/* Пока каталог грузится, экран занят заглушками: крутилка с подписью
           поверх них только мигали бы. */}
       {catalogError && catalogBooks.length === 0 ? (
@@ -1140,6 +1336,12 @@ function LibraryScreenContent() {
             style={s.catalogStatusButton}
           />
         </CenteredEmptyState>
+      ) : displayedCatalogBooks.length === 0 && !catalogNextCursor && !isCatalogLoading ? (
+        <CenteredEmptyState
+          variant="compact"
+          title={t("library.catalogGenreEmpty", "В этой категории пока нет книг")}
+          style={s.catalogStatus}
+        />
       ) : (
         <View
           ref={catalogGridRef}
@@ -1165,6 +1367,16 @@ function LibraryScreenContent() {
           ))}
         </View>
       )}
+      {catalogLoadMoreError && catalogBooks.length > 0 ? (
+        <View style={s.catalogLoadMoreStatus}>
+          <Text style={s.catalogLoadMoreText}>{catalogLoadMoreError}</Text>
+          <NativeButton
+            label={t("common.retry", "Повторить")}
+            onPress={() => void loadMoreBackendCatalogPage()}
+            style={s.catalogStatusButton}
+          />
+        </View>
+      ) : null}
     </View>
   );
 
@@ -1214,7 +1426,7 @@ function LibraryScreenContent() {
         <ScrollView
           ref={primaryScrollRef}
           contentInset={{ bottom: catalogScrollBottomInset }}
-          onScroll={({ nativeEvent }) => setCatalogScrollY(nativeEvent.contentOffset.y)}
+          onScroll={handlePrimaryScroll}
           scrollEventThrottle={100}
           contentInsetAdjustmentBehavior="automatic"
           style={s.primaryScroll}
@@ -1433,6 +1645,21 @@ const makeStyles = (
       paddingBottom: CATALOG_CONTENT_BOTTOM_PADDING,
     },
     catalogGridContent: { paddingTop: spacingPixels[6] },
+    catalogGenreScroll: { marginBottom: spacingPixels[6] },
+    catalogGenreScrollContent: { gap: spacingPixels[2], paddingRight: spacingPixels[4] },
+    catalogGenreChip: {
+      paddingHorizontal: spacingPixels[4],
+      paddingVertical: spacingPixels[2],
+      borderRadius: radius.full,
+      backgroundColor: colors.muted,
+    },
+    catalogGenreChipActive: { backgroundColor: colors.primary },
+    catalogGenreChipText: {
+      fontSize: fontSize.xs,
+      fontWeight: fontWeight.medium,
+      color: colors.mutedForeground,
+    },
+    catalogGenreChipTextActive: { color: colors.primaryForeground },
     // Заглушки занимают полную высоту карточки и никогда не обрезаются.
     // Насколько далеко можно доскроллить, решает отрицательный нижний отступ
     // прокрутки, а не подрезка содержимого.
@@ -1444,6 +1671,12 @@ const makeStyles = (
       paddingHorizontal: 24,
     },
     catalogStatusButton: { alignSelf: "center" },
+    catalogLoadMoreStatus: {
+      alignItems: "center",
+      gap: spacingPixels[3],
+      paddingVertical: spacingPixels[6],
+    },
+    catalogLoadMoreText: { color: colors.mutedForeground, fontSize: fontSize.sm },
     // Тень книги уходит на 33 точки вниз (0 11px 22px), поэтому запас снизу
     // больше обычного отступа: иначе последний ряд обрезается.
     pagerGridContent: { width: "100%", paddingBottom: 48 },
