@@ -19,7 +19,6 @@ import {
 } from "@/lib/catalog/bundled-books";
 import { hapticLight } from "@/lib/haptics";
 import { importBackendCatalogBook } from "@/lib/narra/backend-catalog-import";
-import { isBackendDownloadAbort } from "@/lib/narra/backend-file-download";
 import { getBundledCatalogCharactersByTitle } from "@/lib/narra/bundled-catalog-characters";
 import { buildCharacterNameMatcherSpec } from "@/lib/narra/character-name-matcher";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
@@ -39,10 +38,13 @@ import type { NarraCharacter } from "@/lib/narra/types";
 import { toast } from "@/lib/notifications";
 import {
   DEFAULT_READER_FONT_FAMILY,
-  getBundledReaderFontFaceCSS,
 } from "@/lib/reader/bundled-reader-font";
-import { startFileServer, stopFileServer } from "@/lib/reader/local-file-server";
 import { getReaderBookmarkCopy } from "@/lib/reader/reader-bookmark-copy";
+import {
+  prepareReaderAsset,
+  prepareReaderHost,
+  prepareReaderPdfEngineUri,
+} from "@/lib/reader/reader-runtime";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import {
   useAnnotationStore,
@@ -62,11 +64,9 @@ import { readingContextService } from "@readany/core/ai/reading-context-service"
 import { runWithDbRetry } from "@readany/core/db/write-retry";
 import { useChapterTranslation } from "@readany/core/hooks";
 import { useReadingSession } from "@readany/core/hooks/use-reading-session";
-import { getPlatformService } from "@readany/core/services";
 import type { ReadSettings, TOCItem } from "@readany/core/types";
 import { eventBus } from "@readany/core/utils/event-bus";
 import { throttle } from "@readany/core/utils/throttle";
-import { Asset } from "expo-asset";
 import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
@@ -183,7 +183,6 @@ import { useReaderSystemInfo } from "./reader/useReaderSystemInfo";
 import { useReaderTTS } from "./reader/useReaderTTS";
 import { useVolumeButtonPaging } from "./reader/useVolumeButtonPaging";
 
-const READER_HTML_ASSET = Asset.fromModule(require("../../assets/reader/reader.html"));
 type Props = NativeStackScreenProps<RootStackParamList, "Reader">;
 type TTSSegment = VisibleTTSSegment;
 
@@ -304,7 +303,7 @@ export function ReaderScreen(props: Props) {
         if (!cancelled) setResolvedBookId(bookId);
       })
       .catch((error) => {
-        if (cancelled || isBackendDownloadAbort(error)) return;
+        if (cancelled || controller.signal.aborted) return;
         console.error(`[Catalog] Failed to add ${catalogBook.catalogKey}:`, error);
         toast.error(t("library.catalogImportErrorTitle", "Не получилось добавить книгу"), {
           description: t("library.catalogImportErrorDescription", "Попробуйте ещё раз."),
@@ -591,7 +590,6 @@ function ReaderContent({ route, navigation }: Props) {
   const progressRef = useRef(0);
   const locationHistoryRef = useRef<string[]>([]);
   const lastNavigatedCfiRef = useRef<string | undefined>(undefined);
-  const fileServerRef = useRef<string | null>(null);
   const defaultReaderFontFaceCSSRef = useRef("");
   const sessionProgressRef = useRef<{
     mode: "location" | "page" | "characters";
@@ -624,6 +622,7 @@ function ReaderContent({ route, navigation }: Props) {
   ).current;
   const { loadAnnotations, highlights } = useAnnotationStore();
   const book = useMemo(() => books.find((b) => b.id === bookId), [books, bookId]);
+  const activeReaderLoadIdRef = useRef<string | null>(null);
 
   // ── Narra: кликабельные имена персонажей ────────────────────────────────────
   const narraBookCharacters = useNarraStore((state) => state.books[bookId]?.characters);
@@ -945,10 +944,7 @@ function ReaderContent({ route, navigation }: Props) {
 
     const loadAsset = async () => {
       try {
-        const asset = READER_HTML_ASSET;
-        await asset.downloadAsync();
-        const uri = asset.localUri || asset.uri;
-        setReaderHtmlUri(uri);
+        setReaderHtmlUri(await prepareReaderAsset());
       } catch (err) {
         console.error("[ReaderScreen] Failed to load reader.html asset:", err);
         setError("Failed to load reader");
@@ -994,7 +990,8 @@ function ReaderContent({ route, navigation }: Props) {
         true;
       `);
     },
-    onLoaded: () => {
+    onLoaded: (detail) => {
+      if (detail.loadId && detail.loadId !== activeReaderLoadIdRef.current) return;
       // Initial typography is sent with openBook and applied inside the
       // WebView before it signals loaded. Applying it again here starts a
       // second renderer layout pass and makes the first page flash.
@@ -1031,6 +1028,8 @@ function ReaderContent({ route, navigation }: Props) {
       updateBook(bookId, { totalCharacters });
     },
     onRelocate: (detail: RelocateEvent) => {
+      if (detail.loadId && detail.loadId !== activeReaderLoadIdRef.current) return;
+      const absoluteFraction = detail.fraction ?? 0;
       if (loading) {
         setLoading(false);
       }
@@ -1042,20 +1041,18 @@ function ReaderContent({ route, navigation }: Props) {
         chapterTranslation.reset();
       }
 
-      if (detail.fraction != null) setProgress(detail.fraction);
+      if (detail.fraction != null) {
+        setProgress(absoluteFraction);
+      }
 
       // «стр. N из M» по всей книге — из foliate location (нет в scrolled/fixed)
-      setBookLocation(
-        detail.location?.total
-          ? { current: detail.location.current, total: detail.location.total }
-          : null,
-      );
+      setBookLocation(detail.location?.total ? detail.location : null);
 
       const trackingSuppressed = Date.now() < progressTrackingGuardUntilRef.current;
 
       if (detail.location?.total) {
         const totalBookCharacters = totalBookCharactersRef.current;
-        const fraction = detail.fraction ?? 0;
+        const fraction = absoluteFraction;
         if (totalBookCharacters && totalBookCharacters > 0) {
           const currentCharacters = Math.round(totalBookCharacters * fraction);
           const previous = sessionProgressRef.current;
@@ -1129,7 +1126,7 @@ function ReaderContent({ route, navigation }: Props) {
       if (detail.tocItem?.href) setCurrentChapterHref(detail.tocItem.href);
       if (detail.cfi) {
         if (lastCfiRef.current && detail.cfi !== lastCfiRef.current) {
-          const fractionDiff = Math.abs((detail.fraction ?? 0) - progress);
+          const fractionDiff = Math.abs(absoluteFraction - progress);
           if (fractionDiff > 0.02 || locationHistoryRef.current.length === 0) {
             locationHistoryRef.current.push(lastCfiRef.current);
             if (locationHistoryRef.current.length > 50) {
@@ -1140,7 +1137,7 @@ function ReaderContent({ route, navigation }: Props) {
         lastCfiRef.current = detail.cfi;
         setCurrentCfi(detail.cfi);
         // Use throttled save instead of immediate update
-        throttledSaveProgress(bookId, detail.fraction ?? 0, detail.cfi);
+        throttledSaveProgress(bookId, absoluteFraction, detail.cfi);
       }
 
       // Врезки сцен: перелистывания считает foliate relocate, собственной
@@ -1196,7 +1193,7 @@ function ReaderContent({ route, navigation }: Props) {
         },
         currentPosition: {
           cfi: detail.cfi || "",
-          percentage: (detail.fraction ?? 0) * 100,
+          percentage: absoluteFraction * 100,
         },
       });
     },
@@ -1255,8 +1252,9 @@ function ReaderContent({ route, navigation }: Props) {
     onSceneSlotRestored: ({ anchor }) => {
       void handleSceneSlotRestored(anchor);
     },
-    onError: (message: string) => {
+    onError: (message: string, detail) => {
       console.error("[Reader] WebView error:", message);
+      if (detail.loadId && detail.loadId !== activeReaderLoadIdRef.current) return;
       if (loading) {
         setError(message);
         setLoading(false);
@@ -1673,10 +1671,6 @@ function ReaderContent({ route, navigation }: Props) {
   // Save progress immediately on unmount
   useEffect(() => {
     return () => {
-      if (fileServerRef.current) {
-        stopFileServer();
-        fileServerRef.current = null;
-      }
       if (lastCfiRef.current) {
         const db = require("@readany/core/db/database");
         runWithDbRetry(
@@ -1697,26 +1691,6 @@ function ReaderContent({ route, navigation }: Props) {
   // the screen instead of waiting for the reader bundle to finish parsing.
   // Both steps are idempotent: the server is reused for the same doc root and
   // the fonts are staged once per process.
-  const readerHostPrepRef = useRef<Promise<{ serverUrl: string; fontFaceCSS: string }> | null>(
-    null,
-  );
-  const prepareReaderHost = useCallback(() => {
-    if (!readerHostPrepRef.current) {
-      readerHostPrepRef.current = (async () => {
-        const platform = getPlatformService();
-        const appData = await platform.getAppDataDir();
-        const serverUrl = await startFileServer(appData);
-        const fontFaceCSS = await getBundledReaderFontFaceCSS(serverUrl);
-        return { serverUrl, fontFaceCSS };
-      })().catch((err) => {
-        // Let the open path retry rather than caching a failure forever.
-        readerHostPrepRef.current = null;
-        throw err;
-      });
-    }
-    return readerHostPrepRef.current;
-  }, []);
-
   useEffect(() => {
     void prepareReaderHost().catch((err) => {
       console.warn("[ReaderScreen] Reader host preparation failed:", err);
@@ -1728,6 +1702,8 @@ function ReaderContent({ route, navigation }: Props) {
     if (!webViewReady || !book?.filePath) {
       return;
     }
+    const loadId = `${bookId}:${book.filePath}`;
+    activeReaderLoadIdRef.current = loadId;
 
     const loadBook = async () => {
       try {
@@ -1736,12 +1712,12 @@ function ReaderContent({ route, navigation }: Props) {
         const lastLocation = book.currentCfi || undefined;
         const fileName = book.filePath.split("/").pop() || "book.epub";
         const mimeType = BOOK_FORMAT_MIME_TYPES[book.format] || "application/octet-stream";
+        const pdfEngineUri = mimeType === "application/pdf" ? await prepareReaderPdfEngineUri() : undefined;
 
         // The local HTTP server lets the WebView fetch the file directly, which
         // avoids reading the whole book into RN memory and base64-encoding it.
         // It was started when the screen mounted; by now it is usually up.
         const { serverUrl, fontFaceCSS } = await prepareReaderHost();
-        fileServerRef.current = serverUrl;
         defaultReaderFontFaceCSSRef.current = fontFaceCSS;
         setDefaultReaderFontFaceCSS(fontFaceCSS);
         const encodedPath = book.filePath
@@ -1757,6 +1733,8 @@ function ReaderContent({ route, navigation }: Props) {
           uri: `${serverUrl}/${encodedPath}`,
           fileName,
           mimeType,
+          pdfEngineUri,
+          loadId,
           lastLocation,
           pageMargin: readSettings.pageMargin,
           paginatedLayout: readSettings.paginatedLayout,
@@ -1774,7 +1752,11 @@ function ReaderContent({ route, navigation }: Props) {
             customFontFaceCSS: fontFaceCSS,
             customFontFamily: DEFAULT_READER_FONT_FAMILY,
           },
-          measureTextMetrics: !book.totalCharacters,
+          // A whole-book character scan runs on the same WebView thread as
+          // page gestures. On a newly imported book it can freeze the first
+          // visible page for several seconds, so never start it while reading.
+          // Progress tracking already falls back to renderer locations/pages.
+          measureTextMetrics: false,
         });
 
         bridge.setThemeColors(readerThemeColorsRef.current);
@@ -1786,7 +1768,13 @@ function ReaderContent({ route, navigation }: Props) {
     };
 
     loadBook();
-  }, [bookId, book?.filePath, loadAttempt, prepareReaderHost, webViewReady]);
+  }, [
+    bookId,
+    book?.filePath,
+    loadAttempt,
+    prepareReaderHost,
+    webViewReady,
+  ]);
 
   const handleReimportMissingBook = useCallback(async () => {
     if (isReimporting) return;
@@ -2193,8 +2181,7 @@ function ReaderContent({ route, navigation }: Props) {
           {/* Loading overlay */}
           {loading && (
             <View
-              // Фон уже нарисован контейнером — оверлей держит только спиннер.
-              style={s.loadingOverlay}
+              style={[s.loadingOverlay, { backgroundColor: readerThemeColors.background }]}
               pointerEvents="none"
             >
               <ReaderLoadingIndicator color={colors.primary20} />

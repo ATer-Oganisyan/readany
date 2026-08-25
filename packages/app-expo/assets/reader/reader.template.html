@@ -11,7 +11,7 @@
       src: url("__READANY_SB_SANS_INTERFACE_REGULAR_DATA_URL__") format("opentype");
       font-weight: 400;
       font-style: normal;
-      font-display: swap;
+      font-display: block;
     }
 
     :root {
@@ -66,6 +66,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      background: var(--bg, #ffffff);
       z-index: 100;
     }
 
@@ -1548,6 +1549,7 @@
     });
 
     async function handleCommand(msg) {
+      if (msg.pdfEngineUri) window.__readanyPDFAssetUri = msg.pdfEngineUri;
       switch (msg.type) {
         case 'openBook':
           await openBook(msg);
@@ -1674,6 +1676,17 @@
       const container = document.getElementById('reader-container');
       const loading = document.getElementById('loading');
       if (loading) loading.classList.remove('hidden');
+      if (view) {
+        try { if (typeof view.close === 'function') view.close(); } catch (closeError) {
+          console.warn('[Reader] Failed to close the previous book snapshot:', closeError);
+        }
+        try { view.remove(); } catch (_) {}
+        view = null;
+        readerElement = null;
+        currentBook = null;
+        currentSectionIndex = 0;
+        totalSections = 0;
+      }
       bookTextMetricsJobId += 1;
       if (bookTextMetricsTimer) {
         clearTimeout(bookTextMetricsTimer);
@@ -1686,7 +1699,7 @@
           if (hasSignalledLoaded) return;
           hasSignalledLoaded = true;
           if (loading) loading.classList.add('hidden');
-          postToRN('loaded', {});
+          postToRN('loaded', { loadId: msg.loadId });
         };
 
         let file;
@@ -1802,16 +1815,14 @@
         el.style.width = '100%';
         el.style.height = '100%';
 
-        el.addEventListener('load', (e) => {
+        el.addEventListener('load', async (e) => {
           const { doc, index, primary } = e.detail;
           normalizeBrOnlyParagraphs(doc);
           if (primary !== false) {
             currentSectionUsesVerticalWriting = !el.isFixedLayout && isVerticalDoc(doc);
             applyRendererFlowMode(el.renderer);
           }
-          // Inject the book font before the first layout. Font loading must not
-          // own reader readiness: a slow or unavailable face may change type,
-          // but it must never leave an already visible page non-interactive.
+          // Inject typography before the first visible frame.
           if (msg.settings) {
             updateSettingsState({
               customFontFaceCSS: msg.settings.customFontFaceCSS,
@@ -1823,8 +1834,32 @@
             applySettings(msg.settings);
           }
 
-          // Wire input and remove both RN/HTML loading layers as soon as the
-          // section itself is laid out. These are the readiness requirements.
+          // Do not reveal the page in a fallback font and swap it afterwards.
+          // Reader fonts are local, so this normally completes immediately;
+          // a broken font still falls back instead of keeping the loader forever.
+          if (doc.fonts && doc.fonts.ready) {
+            const requestedFontFamily = String(msg.settings?.customFontFamily || '').trim();
+            try {
+              if (requestedFontFamily && doc.fonts.load) {
+                const family = JSON.stringify(requestedFontFamily);
+                const loadedFaces = await Promise.all([
+                  doc.fonts.load(`normal 400 16px ${family}`),
+                  doc.fonts.load(`italic 400 16px ${family}`),
+                  doc.fonts.load(`normal 700 16px ${family}`),
+                  doc.fonts.load(`italic 700 16px ${family}`),
+                ]);
+                if (loadedFaces.some((faces) => faces.length === 0)) {
+                  throw new Error(`Reader font face is unavailable: ${requestedFontFamily}`);
+                }
+              }
+              await doc.fonts.ready;
+              if (primary !== false && msg.settings) applySettings(msg.settings);
+            } catch (fontError) {
+              console.warn('[Reader] Continuing with fallback typography:', fontError);
+            }
+          }
+
+          // The first visible reader frame now has its final typography.
           markLoaded();
           attachTapListener(doc);
           attachSelectionListener(doc);
@@ -1840,30 +1875,6 @@
           }
           // Восстановление врезок сцен по якорям (список приходит из RN)
           try { applySceneInserts(doc, index); } catch(e) {}
-
-          // Finish typography in the background. The browser swaps SB Serif in
-          // when it is ready; a successful primary load gets one explicit reflow.
-          if (doc.fonts && doc.fonts.ready) {
-            const requestedFontFamily = String(msg.settings?.customFontFamily || '').trim();
-            void (async () => {
-              if (requestedFontFamily && doc.fonts.load) {
-                const family = JSON.stringify(requestedFontFamily);
-                const loadedFaces = await Promise.all([
-                  doc.fonts.load(`normal 400 16px ${family}`),
-                  doc.fonts.load(`italic 400 16px ${family}`),
-                  doc.fonts.load(`normal 700 16px ${family}`),
-                  doc.fonts.load(`italic 700 16px ${family}`),
-                ]);
-                if (loadedFaces.some((faces) => faces.length === 0)) {
-                  throw new Error(`Reader font face is unavailable: ${requestedFontFamily}`);
-                }
-              }
-              await doc.fonts.ready;
-              if (primary !== false && msg.settings) applySettings(msg.settings);
-            })().catch((fontError) => {
-              console.warn('[Reader] Continuing with fallback typography:', fontError);
-            });
-          }
         });
 
         var snippetTimer = null;
@@ -1895,6 +1906,7 @@
               }
             : null;
           postToRN('relocate', {
+            loadId: msg.loadId,
             fraction: detail.fraction,
             section: { current: currentSectionIndex, total: relocatedSectionTotal },
             location: detail.location,
@@ -2056,10 +2068,10 @@
             await el.init({ lastLocation: msg.lastLocation });
           } catch (err) {
             console.warn('[WebView] Failed to init with lastLocation, going to start:', err);
-            await el.goToFraction(0);
+            await el.goToFraction(Number.isFinite(msg.fallbackFraction) ? msg.fallbackFraction : 0);
           }
         } else {
-          await el.goToFraction(0);
+          await el.goToFraction(Number.isFinite(msg.fallbackFraction) ? msg.fallbackFraction : 0);
         }
 
         // Measuring parses every section of the book on this thread, which
@@ -2071,7 +2083,7 @@
         console.error('[WebView] Error in openBook:', err);
         const message = `${String(err)}${msg?.uri ? ` (${msg.uri})` : ''}`;
         loading.innerHTML = '<div class="error-text">' + escapeHtml(message) + '</div>';
-        postToRN('error', { message });
+        postToRN('error', { message, loadId: msg.loadId });
       }
     }
 

@@ -73,6 +73,7 @@ import { startTelemetry } from "@/lib/analytics/telemetry";
 import { navigationRef } from "@/lib/navigationRef";
 import { ExpoPlatformService } from "@/lib/platform/expo-platform-service";
 import { seekActiveTTS, seekActiveTTSBy } from "@/lib/platform/tts-track-controls";
+import { prewarmReader } from "@/lib/reader/reader-runtime";
 import { MobileSyncAdapter } from "@/lib/sync/sync-adapter-mobile";
 import { RootNavigator } from "@/navigation/RootNavigator";
 import { ReaderTOCSheetProvider } from "@/screens/reader/reader-toc-sheet-context";
@@ -139,6 +140,13 @@ export default function App() {
         console.log("[App] bootstrap: register platform service");
         const platform = new ExpoPlatformService();
         setPlatformService(platform);
+
+        // Reader HTML, fonts and the local book server do not depend on a
+        // selected book. Prepare them while the rest of the app boots, but do
+        // not make the splash screen wait if preparation fails.
+        void prewarmReader().catch((error) => {
+          console.warn("[App] Reader prewarm failed; will retry on book open:", error);
+        });
 
         console.log("[App] bootstrap: register sync adapter");
         setSyncAdapter(new MobileSyncAdapter());

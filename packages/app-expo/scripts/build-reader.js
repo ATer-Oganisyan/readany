@@ -16,6 +16,7 @@ const CHARACTER_NAME_MATCHER = path.resolve(
 const ASSETS_DIR = path.resolve(__dirname, "../assets/reader");
 const TEMPLATE = path.resolve(ASSETS_DIR, "reader.template.html");
 const OUTPUT = path.resolve(ASSETS_DIR, "reader.html");
+const PDF_OUTPUT = path.resolve(ASSETS_DIR, "reader-pdf.bin");
 const INTERFACE_FONT = path.resolve(
   __dirname,
   "../../deslop-primitives/fonts/SBSansUI-Regular.otf",
@@ -29,8 +30,8 @@ const FOLIATE_PDF = path.resolve(FOLIATE_DIR, "pdf.js");
  * iife не умеет отдельные чанки, поэтому esbuild вплавлял его в общий бандл и
  * WebView компилировал его при открытии любой книги, включая EPUB.
  *
- * Здесь он собирается отдельно и попадает в HTML строкой: парсер её только
- * пробегает, а компиляция происходит при первом обращении к PDF.
+ * Здесь он собирается в отдельный asset и вообще не попадает в HTML EPUB-
+ * ридера. WebView скачивает и компилирует его только при открытии PDF.
  */
 const pdfDeferPlugin = {
   name: "readany-defer-pdf",
@@ -77,11 +78,6 @@ async function bundle(entryContent, fileName, plugins = []) {
   }
 }
 
-/** Строковый литерал для вставки в <script>: `</` внутри закрыл бы тег. */
-function toScriptSafeStringLiteral(source) {
-  return JSON.stringify(source).split("</").join("<\\/");
-}
-
 async function buildReader() {
   const foliate = FOLIATE_DIR.replace(/\\/g, "/");
 
@@ -126,22 +122,25 @@ async function buildReader() {
   ]);
 
   const pdfLoaderJS = `
-    window.__readanyPDFSource = ${toScriptSafeStringLiteral(pdfJS)};
     window.__readanyLoadPDF = function () {
       if (!window.__readanyPDFPromise) {
-        window.__readanyPDFPromise = new Promise(function (resolve, reject) {
+        window.__readanyPDFPromise = (async function () {
           try {
-            var source = window.__readanyPDFSource;
-            if (!source) throw new Error('PDF engine source is missing');
+            var uri = window.__readanyPDFAssetUri;
+            if (!uri) throw new Error('PDF engine URI is missing');
+            var response = await fetch(uri);
+            var isLocalFileStatus = response.status === 0 && /^file:\\/\\//i.test(uri);
+            if (!response.ok && !isLocalFileStatus) {
+              throw new Error('Failed to fetch PDF engine: ' + response.status);
+            }
+            var source = await response.text();
             new Function(source)();
-            // Строка больше не нужна: движок уже в памяти как код.
-            window.__readanyPDFSource = '';
-            resolve(window.__readanyPDF);
+            return window.__readanyPDF;
           } catch (error) {
             window.__readanyPDFPromise = null;
-            reject(error);
+            throw error;
           }
-        });
+        })();
       }
       return window.__readanyPDFPromise;
     };
@@ -164,9 +163,11 @@ async function buildReader() {
     .join(MARKER)}`;
 
   fs.writeFileSync(OUTPUT, html);
+  fs.writeFileSync(PDF_OUTPUT, pdfJS);
   console.log(
     `Built reader.html (${Math.round(html.length / 1024)}KB; ` +
-      `code ${Math.round(mainJS.length / 1024)}KB + deferred PDF ${Math.round(pdfJS.length / 1024)}KB)`,
+      `code ${Math.round(mainJS.length / 1024)}KB) + ` +
+      `reader-pdf.bin (${Math.round(pdfJS.length / 1024)}KB, lazy)`,
   );
 }
 

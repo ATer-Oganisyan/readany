@@ -149,7 +149,7 @@ export function LibraryScreen() {
 function LibraryScreenContent() {
   const colors = useColors();
   const { isDark } = useTheme();
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const nav = useNavigation<Nav>();
   const route = useRoute<LibraryRoute>();
   const nativeHeaderHeight = useHeaderHeight();
@@ -194,7 +194,6 @@ function LibraryScreenContent() {
   const [catalogNextCursor, setCatalogNextCursor] = useState<string | null>(null);
   const [catalogGenres, setCatalogGenres] = useState<BackendCatalogGenre[]>([]);
   const [catalogGenreVersion, setCatalogGenreVersion] = useState<string | null>(null);
-  const [selectedCatalogGenre, setSelectedCatalogGenre] = useState<string | null>(null);
   const [isCatalogLoading, setIsCatalogLoading] = useState(true);
   const [isCatalogLoadingMore, setIsCatalogLoadingMore] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -304,16 +303,6 @@ function LibraryScreenContent() {
       setIsCatalogLoadingMore(false);
     }
   }, [applyBackendCatalog, catalogBooks, catalogGenreVersion, catalogGenres, catalogNextCursor, t]);
-
-  useEffect(() => {
-    if (
-      selectedCatalogGenre &&
-      selectedCatalogGenre !== "__uncategorized__" &&
-      !catalogGenres.some((genre) => genre.id === selectedCatalogGenre)
-    ) {
-      setSelectedCatalogGenre(null);
-    }
-  }, [catalogGenres, selectedCatalogGenre]);
 
   const revealImportedBooks = useCallback((importedCount: number) => {
     if (importedCount > 0) libraryPagerRef.current?.selectPage(1);
@@ -532,23 +521,6 @@ function LibraryScreenContent() {
     [activeGroupId, groupedEntries, isGroupView, visibleBooks],
   );
 
-  const validCatalogGenreIds = useMemo(
-    () => new Set(catalogGenres.map((genre) => genre.id)),
-    [catalogGenres],
-  );
-  const displayedCatalogBooks = useMemo(() => {
-    if (!selectedCatalogGenre) return catalogBooks;
-    if (selectedCatalogGenre === "__uncategorized__") {
-      return catalogBooks.filter((book) => book.genres.length === 0);
-    }
-    if (!validCatalogGenreIds.has(selectedCatalogGenre)) return catalogBooks;
-    return catalogBooks.filter((book) => book.genres.includes(selectedCatalogGenre));
-  }, [catalogBooks, selectedCatalogGenre, validCatalogGenreIds]);
-  const hasUncategorizedCatalogBooks = useMemo(
-    () => catalogBooks.some((book) => book.genres.length === 0),
-    [catalogBooks],
-  );
-
   const catalogBooksInLibrary = useMemo(() => {
     const result = new Map<string, Book>();
     for (const catalogBook of catalogBooks) {
@@ -591,11 +563,6 @@ function LibraryScreenContent() {
    */
   const [catalogChunkCount, setCatalogChunkCount] = useState(CATALOG_PAGE_SIZE);
 
-  const selectCatalogGenre = useCallback((genreId: string | null) => {
-    setCatalogChunkCount(CATALOG_PAGE_SIZE);
-    setSelectedCatalogGenre(genreId);
-  }, []);
-
   useEffect(() => {
     const rowHeight = gridItemWidth * (41 / 28) + gridGap;
     if (rowHeight <= 0) return;
@@ -617,12 +584,12 @@ function LibraryScreenContent() {
    * и каталог оставался сеткой шиммеров.
    */
   const visibleCatalogBooks = useMemo(() => {
-    const readyCount = displayedCatalogBooks.reduce(
+    const readyCount = catalogBooks.reduce(
       (count, book) => (book.coverUri || !book.cover ? count + 1 : count),
       0,
     );
-    return displayedCatalogBooks.slice(0, Math.min(readyCount, catalogChunkCount));
-  }, [catalogChunkCount, displayedCatalogBooks]);
+    return catalogBooks.slice(0, Math.min(readyCount, catalogChunkCount));
+  }, [catalogBooks, catalogChunkCount]);
 
   /**
    * За последней готовой книгой рисуем заглушек на целый экран. Одно правило
@@ -637,7 +604,7 @@ function LibraryScreenContent() {
     // Список каталога ещё не пришёл — сколько будет книг, неизвестно, поэтому
     // просто заполняем экран: иначе первые секунды он остаётся пустым.
     if (isCatalogLoading && catalogBooks.length === 0) return screenful;
-    const remaining = displayedCatalogBooks.length - visibleCatalogBooks.length;
+    const remaining = catalogBooks.length - visibleCatalogBooks.length;
     if (remaining <= 0) return isCatalogLoadingMore ? screenful : 0;
     return Math.min(remaining, screenful);
   }, [
@@ -648,12 +615,11 @@ function LibraryScreenContent() {
     isCatalogLoading,
     isCatalogLoadingMore,
     layout.height,
-    displayedCatalogBooks.length,
     visibleCatalogBooks,
   ]);
 
   const catalogSkeletonKeys = useMemo(() => {
-    const fromBooks = displayedCatalogBooks
+    const fromBooks = catalogBooks
       .slice(visibleCatalogBooks.length, visibleCatalogBooks.length + skeletonPeekCount)
       .map((book) => book.bookEditionId);
     if (fromBooks.length === skeletonPeekCount) return fromBooks;
@@ -664,38 +630,7 @@ function LibraryScreenContent() {
         (_, index) => `catalog-skeleton-${fromBooks.length + index}`,
       ),
     ];
-  }, [displayedCatalogBooks, skeletonPeekCount, visibleCatalogBooks]);
-
-  const catalogScreenfulCount = useMemo(() => {
-    const rowHeight = gridItemWidth * (41 / 28) + gridGap;
-    const rows = rowHeight > 0 ? Math.max(1, Math.ceil(layout.height / rowHeight)) : 1;
-    return rows * Math.max(1, columnCount);
-  }, [columnCount, gridGap, gridItemWidth, layout.height]);
-
-  useEffect(() => {
-    // Backend пока не умеет фильтровать по жанру. Если выбранная группа почти
-    // пустая, последовательно дочитываем страницы, пока экран не наполнится или
-    // каталог не закончится.
-    if (
-      selectedCatalogGenre &&
-      displayedCatalogBooks.length < catalogScreenfulCount &&
-      catalogNextCursor &&
-      !isCatalogLoading &&
-      !isCatalogLoadingMore &&
-      !catalogLoadMoreError
-    ) {
-      void loadMoreBackendCatalogPage();
-    }
-  }, [
-    catalogNextCursor,
-    catalogLoadMoreError,
-    catalogScreenfulCount,
-    displayedCatalogBooks.length,
-    isCatalogLoading,
-    isCatalogLoadingMore,
-    loadMoreBackendCatalogPage,
-    selectedCatalogGenre,
-  ]);
+  }, [catalogBooks, skeletonPeekCount, visibleCatalogBooks]);
 
   const handlePrimaryScroll = useCallback(
     ({ nativeEvent }: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -768,7 +703,7 @@ function LibraryScreenContent() {
 
     const missing: CachedBackendCatalogBook[] = [];
     let readyCount = 0;
-    for (const book of displayedCatalogBooks) {
+    for (const book of catalogBooks) {
       if (book.coverUri) {
         readyCount += 1;
         continue;
@@ -778,7 +713,7 @@ function LibraryScreenContent() {
       missing.push(book);
     }
     if (missing.length > 0) catalogCoverQueueRef.current?.enqueue(missing);
-  }, [catalogChunkCount, catalogCoverLoadingEnabled, displayedCatalogBooks]);
+  }, [catalogBooks, catalogChunkCount, catalogCoverLoadingEnabled]);
 
   useEffect(() => {
     if (!catalogCoverLoadingEnabled) {
@@ -1262,66 +1197,6 @@ function LibraryScreenContent() {
 
   const catalogGrid = (
     <View style={s.catalogSection}>
-      {catalogGenres.length > 0 ? (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={s.catalogGenreScroll}
-          contentContainerStyle={s.catalogGenreScrollContent}
-        >
-          <TouchableOpacity
-            accessibilityRole="button"
-            accessibilityState={{ selected: selectedCatalogGenre === null }}
-            style={[s.catalogGenreChip, !selectedCatalogGenre && s.catalogGenreChipActive]}
-            onPress={() => selectCatalogGenre(null)}
-          >
-            <Text
-              style={[
-                s.catalogGenreChipText,
-                !selectedCatalogGenre && s.catalogGenreChipTextActive,
-              ]}
-            >
-              {t("library.catalogAllGenres", "Все")}
-            </Text>
-          </TouchableOpacity>
-          {catalogGenres.map((genre) => {
-            const selected = selectedCatalogGenre === genre.id;
-            return (
-              <TouchableOpacity
-                key={genre.id}
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-                style={[s.catalogGenreChip, selected && s.catalogGenreChipActive]}
-                onPress={() => selectCatalogGenre(genre.id)}
-              >
-                <Text style={[s.catalogGenreChipText, selected && s.catalogGenreChipTextActive]}>
-                  {i18n.resolvedLanguage === "en" ? genre.labelEn : genre.labelRu}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-          {hasUncategorizedCatalogBooks ? (
-            <TouchableOpacity
-              accessibilityRole="button"
-              accessibilityState={{ selected: selectedCatalogGenre === "__uncategorized__" }}
-              style={[
-                s.catalogGenreChip,
-                selectedCatalogGenre === "__uncategorized__" && s.catalogGenreChipActive,
-              ]}
-              onPress={() => selectCatalogGenre("__uncategorized__")}
-            >
-              <Text
-                style={[
-                  s.catalogGenreChipText,
-                  selectedCatalogGenre === "__uncategorized__" && s.catalogGenreChipTextActive,
-                ]}
-              >
-                {t("library.catalogUncategorized", "Без категории")}
-              </Text>
-            </TouchableOpacity>
-          ) : null}
-        </ScrollView>
-      ) : null}
       {/* Пока каталог грузится, экран занят заглушками: крутилка с подписью
           поверх них только мигали бы. */}
       {catalogError && catalogBooks.length === 0 ? (
@@ -1336,10 +1211,10 @@ function LibraryScreenContent() {
             style={s.catalogStatusButton}
           />
         </CenteredEmptyState>
-      ) : displayedCatalogBooks.length === 0 && !catalogNextCursor && !isCatalogLoading ? (
+      ) : catalogBooks.length === 0 && !catalogNextCursor && !isCatalogLoading ? (
         <CenteredEmptyState
           variant="compact"
-          title={t("library.catalogGenreEmpty", "В этой категории пока нет книг")}
+          title={t("library.catalogEmpty", "В каталоге пока нет книг")}
           style={s.catalogStatus}
         />
       ) : (
@@ -1391,7 +1266,7 @@ function LibraryScreenContent() {
   const libraryPager = (
     <NativeSegmentedPager
       ref={libraryPagerRef}
-      values={[t("library.catalog", "Для вас"), t("library.myBooks", "Мои книги")]}
+      values={[t("library.catalog", "Популярное"), t("library.myBooks", "Мои книги")]}
       selectedIndex={librarySection === "catalog" ? 0 : 1}
       onSelect={(index) => selectLibrarySection(index === 0 ? "catalog" : "my-books")}
       colorScheme={isDark ? "dark" : "light"}
@@ -1645,21 +1520,6 @@ const makeStyles = (
       paddingBottom: CATALOG_CONTENT_BOTTOM_PADDING,
     },
     catalogGridContent: { paddingTop: spacingPixels[6] },
-    catalogGenreScroll: { marginBottom: spacingPixels[6] },
-    catalogGenreScrollContent: { gap: spacingPixels[2], paddingRight: spacingPixels[4] },
-    catalogGenreChip: {
-      paddingHorizontal: spacingPixels[4],
-      paddingVertical: spacingPixels[2],
-      borderRadius: radius.full,
-      backgroundColor: colors.muted,
-    },
-    catalogGenreChipActive: { backgroundColor: colors.primary },
-    catalogGenreChipText: {
-      fontSize: fontSize.xs,
-      fontWeight: fontWeight.medium,
-      color: colors.mutedForeground,
-    },
-    catalogGenreChipTextActive: { color: colors.primaryForeground },
     // Заглушки занимают полную высоту карточки и никогда не обрезаются.
     // Насколько далеко можно доскроллить, решает отрицательный нижний отступ
     // прокрутки, а не подрезка содержимого.

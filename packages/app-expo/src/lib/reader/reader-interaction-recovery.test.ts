@@ -247,18 +247,19 @@ function createHarness() {
 }
 
 describe("Reader interaction recovery", () => {
-  it("подключает ввод и убирает лоудер до фоновой загрузки шрифтов", () => {
+  it("показывает страницу только после загрузки финального шрифта", () => {
     const script = readReaderMainScript();
     const loadListenerStart = script.indexOf("el.addEventListener('load'");
     const loadListenerEnd = script.indexOf("var snippetTimer", loadListenerStart);
     const loadListener = script.slice(loadListenerStart, loadListenerEnd);
     const loadedIndex = loadListener.indexOf("markLoaded();");
     const tapIndex = loadListener.indexOf("attachTapListener(doc);");
-    const backgroundFontIndex = loadListener.indexOf("void (async () =>");
+    const fontReadyIndex = loadListener.indexOf("await doc.fonts.ready;");
 
+    expect(fontReadyIndex).toBeGreaterThan(-1);
     expect(loadedIndex).toBeGreaterThan(-1);
+    expect(loadedIndex).toBeGreaterThan(fontReadyIndex);
     expect(tapIndex).toBeGreaterThan(loadedIndex);
-    expect(backgroundFontIndex).toBeGreaterThan(tapIndex);
   });
 
   it("не теряет тап из-за устаревшего флага выделения", () => {

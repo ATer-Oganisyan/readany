@@ -7,6 +7,7 @@ import { useCallback, useMemo, useRef } from "react";
 import type { WebView } from "react-native-webview";
 
 export interface RelocateEvent {
+  loadId?: string;
   fraction?: number;
   section?: { current: number; total: number };
   location?: { current: number; next: number; total: number };
@@ -80,9 +81,9 @@ export interface ReaderBridgeCallbacks {
   onTap?: () => void;
   onSearchResult?: (index: number, count: number) => void;
   onSearchComplete?: (count: number, results?: ReaderSearchResultItem[]) => void;
-  onError?: (message: string) => void;
+  onError?: (message: string, detail: { loadId?: string }) => void;
   onReady?: () => void;
-  onLoaded?: () => void;
+  onLoaded?: (detail: { loadId?: string }) => void;
   onShowAnnotation?: (detail: {
     value: string;
     range: Range;
@@ -155,11 +156,14 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       base64?: string;
       fileName?: string;
       mimeType?: string;
+      pdfEngineUri?: string;
       lastLocation?: string;
+      fallbackFraction?: number;
       pageMargin?: number;
       paginatedLayout?: "single" | "double";
       settings?: ReaderInitialSettings;
       measureTextMetrics?: boolean;
+      loadId?: string;
     }) => {
       const msg = JSON.stringify({ type: "openBook", ...params });
       inject(`handleCommand(${msg})`);
@@ -827,7 +831,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
           cb.onReady?.();
           break;
         case "loaded":
-          cb.onLoaded?.();
+          cb.onLoaded?.(msg);
           break;
         case "relocate":
           cb.onRelocate?.(msg);
@@ -857,7 +861,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
           break;
         case "error":
           console.error("[ReaderBridge] Error from WebView:", msg.message);
-          cb.onError?.(msg.message || "Unknown error");
+          cb.onError?.(msg.message || "Unknown error", msg);
           break;
         case "foliate-loaded":
           break;

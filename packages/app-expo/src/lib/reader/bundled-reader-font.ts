@@ -80,7 +80,7 @@ export async function getBundledReaderFontFaceCSS(localServerUrl: string): Promi
   src: url('${baseUrl}/${READER_FONT_DIRECTORY}/${encodeURIComponent(fileName)}') format('opentype');
   font-weight: ${weight};
   font-style: ${style};
-  font-display: swap;
+  font-display: block;
 }`,
   ).join("\n");
 }

@@ -1,10 +1,9 @@
 import type { ChapterData } from "@readany/core/rag";
-import { Asset } from "expo-asset";
+import { prepareReaderAsset, prepareReaderPdfEngineUri } from "@/lib/reader/reader-runtime";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { WebView } from "react-native-webview";
 
-const READER_HTML_ASSET = Asset.fromModule(require("../../../assets/reader/reader.html"));
 const EXTRACTION_TIMEOUT_MS = 45_000;
 const READINESS_TIMEOUT_MS = 30_000;
 
@@ -89,10 +88,7 @@ export const ExtractorWebView = forwardRef<ExtractorRef>((_, ref) => {
   useEffect(() => {
     const loadAsset = async () => {
       try {
-        const asset = READER_HTML_ASSET;
-        await asset.downloadAsync();
-        const uri = asset.localUri || asset.uri;
-        setHtmlUri(uri);
+        setHtmlUri(await prepareReaderAsset());
       } catch (err) {
         console.error("[ExtractorWebView] Failed to load HTML asset:", err);
       }
@@ -180,6 +176,9 @@ export const ExtractorWebView = forwardRef<ExtractorRef>((_, ref) => {
     () => ({
       extractChapters: async (base64BookData: string, mimeType = "application/epub+zip") => {
         await waitUntilReady();
+        const pdfEngineUri = isPDFMimeType(mimeType)
+          ? await prepareReaderPdfEngineUri()
+          : undefined;
 
         return new Promise<ChapterData[]>((resolve, reject) => {
           if (!webViewRef.current) {
@@ -201,6 +200,7 @@ export const ExtractorWebView = forwardRef<ExtractorRef>((_, ref) => {
             base64: base64BookData,
             mimeType,
             fileName: getExtractorFileName(mimeType),
+            pdfEngineUri,
           };
 
           webViewRef.current.injectJavaScript(`
@@ -216,6 +216,9 @@ export const ExtractorWebView = forwardRef<ExtractorRef>((_, ref) => {
         maxChars = 48_000,
       }) => {
         await waitUntilReady();
+        const pdfEngineUri = isPDFMimeType(mimeType)
+          ? await prepareReaderPdfEngineUri()
+          : undefined;
 
         return new Promise<string>((resolve, reject) => {
           if (!webViewRef.current) {
@@ -238,6 +241,7 @@ export const ExtractorWebView = forwardRef<ExtractorRef>((_, ref) => {
             mimeType,
             fileName: fileName || getExtractorFileName(mimeType),
             maxChars: Math.min(48_000, Math.max(1, Math.floor(maxChars))),
+            pdfEngineUri,
           };
 
           webViewRef.current.injectJavaScript(`
