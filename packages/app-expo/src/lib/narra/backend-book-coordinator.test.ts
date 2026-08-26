@@ -264,6 +264,29 @@ describe("backend book coordinator", () => {
     expect((left as BackendBookBinding & { sourceUploaded?: boolean }).sourceUploaded).toBe(true);
   });
 
+  it("opens a catalog book by its persisted edition id without hashing or resolving it again", async () => {
+    const value = fixture();
+    const loadManifest = value.api.manifest;
+    value.api.manifest = vi.fn((bookEditionId) => loadManifest(bookEditionId));
+    value.state.setBinding(BOOK.id, {
+      resolution: "catalog",
+      bookEditionId: "catalog-edition",
+      catalogKey: "catalog-book",
+      contentSha256: HASH,
+      ready: true,
+    });
+    value.calls.length = 0;
+
+    await createBackendBookCoordinator(value).open(BOOK);
+
+    expect(value.calls).not.toContain("describe");
+    expect(value.calls).not.toContain("set-hash");
+    expect(value.calls).not.toContain("resolve");
+    expect(value.calls).toContain("advance:0:legacy:legacy");
+    expect(value.api.manifest).toHaveBeenCalledWith("catalog-edition");
+    expect(value.getBinding()?.bookEditionId).toBe("catalog-edition");
+  });
+
   it("keeps legacy local markup without publishing it as the default backend result", async () => {
     const value = fixture();
     const coordinator = createBackendBookCoordinator(value);

@@ -159,9 +159,9 @@ export function createBackendBookCoordinator({
     if (
       current?.bookEditionId &&
       SHA256.test(current.contentSha256) &&
-      book.fileHash === current.contentSha256 &&
       (current.resolution === "catalog" ||
-        (current.sourceUploaded === true &&
+        (book.fileHash === current.contentSha256 &&
+          current.sourceUploaded === true &&
           (!current.expiresAt || Date.parse(current.expiresAt) > Date.now())))
     ) {
       return current;
