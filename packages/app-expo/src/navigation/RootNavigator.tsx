@@ -158,9 +158,7 @@ export function RootNavigator() {
             // Horizontal drags belong to page turning, so the reader carries no
             // back-swipe of its own: it is dismissed by the close button.
             gestureEnabled: false,
-            // No native header: the reader draws its own top bar so it can fade
-            // with the toolbar. It must never be toggled either — adding or
-            // removing a header on a modal screen reloads the book.
+            // No native header: the Foliate reader owns its complete chrome.
             headerShown: false,
             statusBarAnimation: "fade",
             statusBarHidden: true,
@@ -175,7 +173,7 @@ export function RootNavigator() {
             headerShown: true,
             headerBackVisible: false,
             headerTransparent: false,
-            headerTitle: "Оглавление",
+            headerTitle: t("reader.toc", "Оглавление"),
             headerShadowVisible: false,
             headerStyle: { backgroundColor: colors.card },
             contentStyle: { backgroundColor: colors.card },
@@ -252,6 +250,9 @@ export function RootNavigator() {
             presentation: "formSheet",
             animation: "slide_from_bottom",
             headerShown: false,
+            contentStyle: {
+              backgroundColor: Platform.OS === "ios" ? "transparent" : colors.card,
+            },
             sheetAllowedDetents: [0.78, 1],
             sheetInitialDetentIndex: 0,
             sheetGrabberVisible: true,

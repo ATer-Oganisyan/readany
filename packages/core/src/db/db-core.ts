@@ -390,6 +390,10 @@ export async function initDatabase(): Promise<void> {
       id TEXT PRIMARY KEY,
       file_path TEXT NOT NULL,
       format TEXT NOT NULL DEFAULT 'epub',
+      source_kind TEXT NOT NULL DEFAULT 'local',
+      book_edition_id TEXT,
+      content_hash TEXT,
+      revision_id TEXT,
       title TEXT NOT NULL DEFAULT '',
       author TEXT NOT NULL DEFAULT '',
       publisher TEXT,
@@ -409,6 +413,7 @@ export async function initDatabase(): Promise<void> {
       deleted_at INTEGER,
       progress REAL DEFAULT 0,
       current_cfi TEXT,
+      native_locator TEXT,
       is_vectorized INTEGER DEFAULT 0,
       vectorize_progress REAL DEFAULT 0,
       tags TEXT DEFAULT '[]'
@@ -745,6 +750,37 @@ export async function initDatabase(): Promise<void> {
         await database.execute("ALTER TABLE books ADD COLUMN total_characters INTEGER");
       } catch {
         // Column already exists
+      }
+      for (const statement of [
+        "ALTER TABLE books ADD COLUMN source_kind TEXT NOT NULL DEFAULT 'local'",
+        "ALTER TABLE books ADD COLUMN book_edition_id TEXT",
+        "ALTER TABLE books ADD COLUMN content_hash TEXT",
+        "ALTER TABLE books ADD COLUMN revision_id TEXT",
+      ]) {
+        try {
+          await database.execute(statement);
+        } catch {
+          // Column already exists
+        }
+      }
+      try {
+        await database.execute(
+          "CREATE INDEX IF NOT EXISTS idx_books_catalog_edition ON books(book_edition_id)",
+        );
+      } catch {
+        // Older installs may add the columns on the next initialization pass.
+      }
+      try {
+        await database.execute("ALTER TABLE books ADD COLUMN native_locator TEXT");
+      } catch {
+        // Column already exists.
+      }
+      try {
+        await database.execute(
+          "UPDATE books SET native_locator = current_cfi, current_cfi = NULL WHERE native_locator IS NULL AND current_cfi LIKE 'native-v1:%'",
+        );
+      } catch {
+        // The next initialization pass will retry after the column is available.
       }
       try {
         await database.execute(

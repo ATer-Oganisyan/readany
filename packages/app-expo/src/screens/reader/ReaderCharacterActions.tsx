@@ -15,7 +15,7 @@ export function ReaderCharacterActions(props: ReaderCharacterActionsProps) {
       />
       <NativeButton
         label={props.voiceState === "playing" ? props.stopLabel : props.listenLabel}
-        icon="play"
+        icon="headphones"
         loading={props.voiceState === "loading"}
         disabled={!props.canSample}
         variant="secondary"

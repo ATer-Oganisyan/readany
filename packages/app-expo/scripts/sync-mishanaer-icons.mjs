@@ -144,13 +144,17 @@ const STROKE_ICONS = [
 ];
 
 const FILLED_ICONS = [
+  "bell",
+  "bin",
   "book",
   "chat-bubble",
   // Upstream's solid chat-bubbles knocks three dots out of the bubble; the tab bar uses the
   // plain solid variant, so re-syncing overwrites filled/chat-bubbles.svg with the dotted one.
   "chat-bubbles",
+  "cloud",
   "headphones",
   "magnifying-glass",
+  "pencil-square",
   "person",
   "stop",
 ];

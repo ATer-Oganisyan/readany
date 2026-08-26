@@ -1,7 +1,11 @@
+import type { SFSymbol } from "sf-symbols-typescript";
+import type { MishanaerIconName } from "./MishanaerIcon";
+
 export type NativeContextMenuItem = {
   key: string;
   label: string;
-  sfSymbol?: string;
+  icon?: MishanaerIconName;
+  sfSymbol?: SFSymbol;
   destructive?: boolean;
   disabled?: boolean;
   onPress: () => void;
@@ -10,7 +14,7 @@ export type NativeContextMenuItem = {
 export type NativeContextMenuButtonProps = {
   accessibilityLabel: string;
   items: NativeContextMenuItem[];
-  sfSymbol?: string;
+  sfSymbol?: SFSymbol;
   size?: number;
   color?: string;
   /**

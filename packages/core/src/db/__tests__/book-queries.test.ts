@@ -86,6 +86,10 @@ describe("book-queries", () => {
           id: "book-1",
           file_path: "/path/to/book.epub",
           format: "epub",
+          source_kind: "catalog",
+          book_edition_id: "edition-1",
+          content_hash: "content-hash-1",
+          revision_id: "revision-1",
           title: "Test Book",
           author: "Test Author",
           publisher: null,
@@ -103,6 +107,7 @@ describe("book-queries", () => {
           deleted_at: null,
           progress: 0.5,
           current_cfi: "epubcfi(/6/2)",
+          native_locator: 'native-v1:{"blockId":"block-1"}',
           is_vectorized: 0,
           vectorize_progress: 0,
           tags: '["fiction"]',
@@ -117,6 +122,14 @@ describe("book-queries", () => {
       expect(books[0].meta.title).toBe("Test Book");
       expect(books[0].progress).toBe(0.5);
       expect(books[0].isVectorized).toBe(false);
+      expect(books[0]).toMatchObject({
+        sourceKind: "catalog",
+        bookEditionId: "edition-1",
+        contentHash: "content-hash-1",
+        revisionId: "revision-1",
+        currentCfi: "epubcfi(/6/2)",
+        nativeLocator: 'native-v1:{"blockId":"block-1"}',
+      });
       expect(mockSelect).toHaveBeenCalledWith(
         "SELECT * FROM books WHERE deleted_at IS NULL ORDER BY last_opened_at DESC, added_at DESC",
       );
@@ -263,6 +276,41 @@ describe("book-queries", () => {
       await updateBook("book-1", {});
       expect(mockExecute).not.toHaveBeenCalled();
       expect(eventBusMocks.emit).not.toHaveBeenCalled();
+    });
+
+    it("stores native locator separately from legacy CFI", async () => {
+      mockExecute.mockResolvedValue(undefined);
+
+      await updateBook("book-1", { nativeLocator: 'native-v1:{"blockId":"block-2"}' });
+
+      const [sql, params] = mockExecute.mock.calls[0];
+      expect(sql).toContain("native_locator = ?");
+      expect(sql).not.toContain("current_cfi = ?");
+      expect(params).toContain('native-v1:{"blockId":"block-2"}');
+      expect(eventBusMocks.emit).toHaveBeenCalledWith("book:updated", {
+        bookId: "book-1",
+        changedFields: ["nativeLocator"],
+      });
+    });
+
+    it("updates stable catalog identity independently of the title", async () => {
+      mockExecute.mockResolvedValue(undefined);
+
+      await updateBook("book-1", {
+        sourceKind: "catalog",
+        bookEditionId: "edition-1",
+        contentHash: "content-hash-1",
+        revisionId: "revision-1",
+      });
+
+      const [sql, params] = mockExecute.mock.calls[0];
+      expect(sql).toContain("source_kind = ?");
+      expect(sql).toContain("book_edition_id = ?");
+      expect(sql).toContain("content_hash = ?");
+      expect(sql).toContain("revision_id = ?");
+      expect(params).toEqual(
+        expect.arrayContaining(["catalog", "edition-1", "content-hash-1", "revision-1"]),
+      );
     });
   });
 

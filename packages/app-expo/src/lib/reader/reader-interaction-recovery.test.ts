@@ -4,6 +4,7 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 const readerTemplatePath = new URL("../../../assets/reader/reader.template.html", import.meta.url);
+const readerScreenPath = new URL("../../screens/ReaderScreen.tsx", import.meta.url);
 const functionNames = new Set([
   "getActiveSelectionRange",
   "recoverStaleSelectionInteraction",
@@ -56,6 +57,8 @@ type FakeTouchEvent = {
   changedTouches: Array<{ clientX: number; clientY: number }>;
   clientX?: number;
   clientY?: number;
+  detail?: number;
+  isTrusted?: boolean;
   isPrimary?: boolean;
   pointerId?: number;
   pointerType?: string;
@@ -137,7 +140,7 @@ function touchEvent(
 }
 
 function pointerEvent(
-  type: "pointerdown" | "pointerup",
+  _type: "pointerdown" | "pointerup",
   timeStamp: number,
   x = 184,
   y = 400,
@@ -150,6 +153,21 @@ function pointerEvent(
     isPrimary: true,
     pointerId: 1,
     pointerType: "mouse",
+    preventDefault() {},
+    stopPropagation() {},
+    target: { closest: () => null },
+    timeStamp,
+    touches: [],
+  };
+}
+
+function clickEvent(timeStamp: number, x = 184, y = 400): FakeTouchEvent {
+  return {
+    changedTouches: [],
+    clientX: x,
+    clientY: y,
+    detail: 1,
+    isTrusted: true,
     preventDefault() {},
     stopPropagation() {},
     target: { closest: () => null },
@@ -225,11 +243,17 @@ function createHarness() {
       doc.dispatch("touchstart", touchEvent("touchstart", start, x));
       doc.dispatch("touchend", touchEvent("touchend", start + heldMs, x));
     },
-    mouseClick() {
+    mouseClick({ x = 184 }: { x?: number } = {}) {
       const start = clock;
       clock += 50;
-      doc.dispatch("pointerdown", pointerEvent("pointerdown", start));
-      doc.dispatch("pointerup", pointerEvent("pointerup", start + 40));
+      doc.dispatch("pointerdown", pointerEvent("pointerdown", start, x));
+      doc.dispatch("pointerup", pointerEvent("pointerup", start + 40, x));
+      doc.dispatch("click", clickEvent(start + 41, x));
+    },
+    syntheticClick({ x = 184 }: { x?: number } = {}) {
+      const start = clock;
+      clock += 50;
+      doc.dispatch("click", clickEvent(start, x));
     },
     drag({ dx = 0, dy = 0, heldMs = 200 }: { dx?: number; dy?: number; heldMs?: number } = {}) {
       const start = clock;
@@ -247,19 +271,71 @@ function createHarness() {
 }
 
 describe("Reader interaction recovery", () => {
-  it("показывает страницу только после загрузки финального шрифта", () => {
+  it("слушает жесты и внутри EPUB, и на внешней оболочке Foliate", () => {
+    const html = fs.readFileSync(readerTemplatePath, "utf8");
+    const outerListenerIndex = html.lastIndexOf("attachTapListener(document);");
+    const readyIndex = html.lastIndexOf("postToRN('ready', {});");
+
+    expect(outerListenerIndex).toBeGreaterThan(-1);
+    expect(readyIndex).toBeGreaterThan(outerListenerIndex);
+  });
+
+  it("подключает ввод и показывает EPUB без ожидания шрифтов документа", () => {
     const script = readReaderMainScript();
     const loadListenerStart = script.indexOf("el.addEventListener('load'");
     const loadListenerEnd = script.indexOf("var snippetTimer", loadListenerStart);
     const loadListener = script.slice(loadListenerStart, loadListenerEnd);
     const loadedIndex = loadListener.indexOf("markLoaded();");
     const tapIndex = loadListener.indexOf("attachTapListener(doc);");
-    const fontReadyIndex = loadListener.indexOf("await doc.fonts.ready;");
+    const selectionIndex = loadListener.indexOf("attachSelectionListener(doc);");
 
-    expect(fontReadyIndex).toBeGreaterThan(-1);
+    expect(loadListener).not.toContain("doc.fonts");
+    expect(loadListener).not.toContain("await ");
     expect(loadedIndex).toBeGreaterThan(-1);
-    expect(loadedIndex).toBeGreaterThan(fontReadyIndex);
-    expect(tapIndex).toBeGreaterThan(loadedIndex);
+    expect(tapIndex).toBeGreaterThan(-1);
+    expect(selectionIndex).toBeGreaterThan(-1);
+    expect(tapIndex).toBeLessThan(loadedIndex);
+    expect(selectionIndex).toBeLessThan(loadedIndex);
+  });
+
+  it("прогревает четыре начертания SB Serif один раз с ограниченным ожиданием", () => {
+    const script = readReaderMainScript();
+    const warmupStart = script.indexOf("function warmBundledReaderFontOnce()");
+    const waitStart = script.indexOf(
+      "async function waitForBundledReaderFontWarmup()",
+      warmupStart,
+    );
+    const warmupBlock = script.slice(warmupStart, waitStart);
+    const openStart = script.indexOf("async function openBook(msg)");
+    const openEnd = script.indexOf("// ─── Settings ───", openStart);
+    const openBlock = script.slice(openStart, openEnd);
+    const timeoutMatch = script.match(/BUNDLED_READER_FONT_WARMUP_TIMEOUT_MS\s*=\s*(\d+)/);
+    const waitIndex = openBlock.indexOf("await waitForBundledReaderFontWarmup();");
+    const openReaderIndex = openBlock.indexOf("await el.open(book);");
+
+    expect(warmupStart).toBeGreaterThan(-1);
+    expect(warmupBlock).toContain("if (bundledReaderFontWarmup) return bundledReaderFontWarmup;");
+    expect(warmupBlock.match(/document\.fonts\.load\(/g)).toHaveLength(4);
+    expect(Number(timeoutMatch?.[1])).toBeGreaterThan(0);
+    expect(Number(timeoutMatch?.[1])).toBeLessThanOrEqual(1500);
+    expect(waitIndex).toBeGreaterThan(-1);
+    expect(openReaderIndex).toBeGreaterThan(-1);
+    expect(waitIndex).toBeLessThan(openReaderIndex);
+  });
+
+  it("снимает экран загрузки только по loaded, а не по раннему relocate", () => {
+    const source = fs.readFileSync(readerScreenPath, "utf8");
+    const loadedBlock = source.slice(
+      source.indexOf("onLoaded:"),
+      source.indexOf("onBookTextMetrics:"),
+    );
+    const relocateBlock = source.slice(
+      source.indexOf("onRelocate:"),
+      source.indexOf("onTocReady:"),
+    );
+
+    expect(loadedBlock).toMatch(/\bsetLoading\s*\(\s*false\s*\)/);
+    expect(relocateBlock).not.toMatch(/\bsetLoading\s*\(\s*false\s*\)/);
   });
 
   it("не теряет тап из-за устаревшего флага выделения", () => {
@@ -278,6 +354,42 @@ describe("Reader interaction recovery", () => {
     harness.mouseClick();
 
     expect(harness.messages).toContain("tap");
+  });
+
+  it("принимает синтетический click от WKWebView без touch и pointer событий", () => {
+    const harness = createHarness();
+
+    harness.syntheticClick({ x: 340 });
+
+    expect(harness.turns).toEqual(["next"]);
+  });
+
+  it("принимает доверенный accessibility click с detail равным нулю", () => {
+    const harness = createHarness();
+    const event = clickEvent(1000, 340);
+    event.detail = 0;
+
+    harness.doc.dispatch("click", event);
+
+    expect(harness.turns).toEqual(["next"]);
+  });
+
+  it("игнорирует программный click", () => {
+    const harness = createHarness();
+    const event = clickEvent(1000, 340);
+    event.isTrusted = false;
+
+    harness.doc.dispatch("click", event);
+
+    expect(harness.turns).toEqual([]);
+  });
+
+  it("не обрабатывает синтетический click второй раз после pointerup", () => {
+    const harness = createHarness();
+
+    harness.mouseClick({ x: 340 });
+
+    expect(harness.turns).toEqual(["next"]);
   });
 
   it("первым тапом закрывает настоящее выделение, а следующим открывает контролы", () => {

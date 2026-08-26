@@ -166,6 +166,7 @@
     "sceneShowText": "Показать текст сцены",
     "sceneHideText": "Скрыть текст сцены",
     "sceneFailedTitle": "Не удалось создать сцену",
+    "sceneNoText": "На этой странице нет текста для иллюстрации.",
     "sceneIllustrationLabel": "Иллюстрация к главе {{chapter}}",
     "voiceTitle": "Голос героя",
     "voiceAuto": "Авто",
@@ -196,6 +197,7 @@
     "lockedCharacterProgressHint": "Откроется на {{percent}}% книги. Дочитай — и герой откроется: портрет, характер и живой разговор.",
     "writeToCharacter": "Написать",
     "voiceCharacter": "Озвучить",
+    "loopingPortraitLabel": "Зацикленный портрет персонажа",
     "bio": "Био",
     "character": "Характер",
     "continueReading": "Продолжить чтение"

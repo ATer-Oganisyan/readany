@@ -35,7 +35,7 @@ export function ReaderCharacterActions(props: ReaderCharacterActionsProps) {
           ? "pulse-circle"
           : props.voiceState === "playing"
             ? "stop"
-            : "volume-2",
+            : "headphones",
       onPress: props.onToggleVoice,
       disabled: !props.canSample,
     },
@@ -76,7 +76,12 @@ export function ReaderCharacterActions(props: ReaderCharacterActionsProps) {
 
         return (
           <Button key={action.label} onPress={action.onPress} modifiers={modifiers}>
-            <HostedMishanaerIcon name={action.icon} size={28} color={props.foregroundColor} />
+            <HostedMishanaerIcon
+              name={action.icon}
+              variant="filled"
+              size={28}
+              color={props.foregroundColor}
+            />
           </Button>
         );
       })}

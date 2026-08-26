@@ -1,3 +1,4 @@
+import * as Crypto from "expo-crypto";
 import * as FileSystem from "expo-file-system/legacy";
 import type { BackendCatalogBook } from "./backend-catalog-api";
 import { downloadVerifiedBackendFile } from "./backend-file-download";
@@ -22,8 +23,7 @@ export async function downloadBackendCatalogSource(
   }
   const filePath = `${IMPORT_CACHE_ROOT}/${safePart(book.catalogKey)}-${safePart(
     book.bookEditionId,
-  )}.${safeExtension(book.format)}`;
-  await FileSystem.deleteAsync(filePath, { idempotent: true });
+  )}-${Crypto.randomUUID()}.${safeExtension(book.format)}`;
 
   await downloadVerifiedBackendFile({
     downloadPath: book.sourceDownloadPath,

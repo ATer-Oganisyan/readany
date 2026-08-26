@@ -1,9 +1,20 @@
-import { type MishanaerIconName, getStrokeIconImageSource } from "@/components/ui/MishanaerIcon";
+import {
+  type MishanaerIconName,
+  getFilledIconImageSource,
+  getStrokeIconImageSource,
+} from "@/components/ui/MishanaerIcon";
 import { FilledTonalIconButton, Host, Icon, Row, Spacer } from "@expo/ui/jetpack-compose";
 import { fillMaxWidth, height, size } from "@expo/ui/jetpack-compose/modifiers";
 import { Fragment } from "react";
 import { StyleSheet } from "react-native";
 import type { ReaderCharacterActionsProps } from "./ReaderCharacterActions.types";
+
+function getActionIconSource(icon: MishanaerIconName) {
+  if (icon === "chat-bubble" || icon === "headphones" || icon === "stop") {
+    return getFilledIconImageSource(icon);
+  }
+  return getStrokeIconImageSource(icon);
+}
 
 export function ReaderCharacterActions(props: ReaderCharacterActionsProps) {
   const actions = [
@@ -14,7 +25,7 @@ export function ReaderCharacterActions(props: ReaderCharacterActionsProps) {
           ? "pulse-circle"
           : props.voiceState === "playing"
             ? "stop"
-            : "volume-2",
+            : "headphones",
       onPress: props.onToggleVoice,
       enabled: props.canSample,
     },
@@ -49,7 +60,7 @@ export function ReaderCharacterActions(props: ReaderCharacterActionsProps) {
               modifiers={[size(64, 64)]}
             >
               <Icon
-                source={getStrokeIconImageSource(action.icon as MishanaerIconName)}
+                source={getActionIconSource(action.icon as MishanaerIconName)}
                 size={28}
                 tint={props.foregroundColor}
                 contentDescription={action.icon}

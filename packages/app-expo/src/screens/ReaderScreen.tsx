@@ -19,6 +19,7 @@ import {
 } from "@/lib/catalog/bundled-books";
 import { hapticLight } from "@/lib/haptics";
 import { importBackendCatalogBook } from "@/lib/narra/backend-catalog-import";
+import { isCatalogBookRevisionCurrent } from "@/lib/narra/backend-catalog-library";
 import { getBundledCatalogCharactersByTitle } from "@/lib/narra/bundled-catalog-characters";
 import { buildCharacterNameMatcherSpec } from "@/lib/narra/character-name-matcher";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
@@ -64,7 +65,7 @@ import { readingContextService } from "@readany/core/ai/reading-context-service"
 import { runWithDbRetry } from "@readany/core/db/write-retry";
 import { useChapterTranslation } from "@readany/core/hooks";
 import { useReadingSession } from "@readany/core/hooks/use-reading-session";
-import type { ReadSettings, TOCItem } from "@readany/core/types";
+import type { Book, ReadSettings, TOCItem } from "@readany/core/types";
 import { eventBus } from "@readany/core/utils/event-bus";
 import { throttle } from "@readany/core/utils/throttle";
 import * as Clipboard from "expo-clipboard";
@@ -194,6 +195,16 @@ function ReaderLoadingIndicator({ color }: { color: string }) {
 
 const keepTTSInReader = (_visible: boolean) => undefined;
 
+async function isStoredBookFileAvailable(book: Book): Promise<boolean> {
+  const filePath = book.filePath;
+  const isAbsolute = filePath.startsWith("/") || /^[a-z]+:\/\//i.test(filePath);
+  const uri = isAbsolute ? filePath : `${FileSystem.documentDirectory ?? ""}${filePath}`;
+  if (!uri) return false;
+
+  const info = await FileSystem.getInfoAsync(uri);
+  return info.exists && !info.isDirectory && (info.size ?? 1) > 0;
+}
+
 // ──────────────────────────── ReaderScreen ────────────────────────────
 export function ReaderScreen(props: Props) {
   const { t } = useTranslation();
@@ -285,16 +296,31 @@ export function ReaderScreen(props: Props) {
         .books.find(
           (book) =>
             !book.deletedAt &&
-            normalizeCatalogIdentity(book.meta.title) ===
-              normalizeCatalogIdentity(catalogBook.title),
+            book.sourceKind === "catalog" &&
+            book.bookEditionId === catalogBook.bookEditionId,
         );
-      if (existingBook) return existingBook.id;
+      if (
+        existingBook &&
+        isCatalogBookRevisionCurrent(existingBook, catalogBook) &&
+        (await isStoredBookFileAvailable(existingBook))
+      ) {
+        return existingBook.id;
+      }
 
       const importedBook = await importBackendCatalogBook(catalogBook, {
         importBooks,
         updateBook,
         signal: controller.signal,
       });
+      if (existingBook && importedBook.id !== existingBook.id) {
+        await updateBook(existingBook.id, { sourceKind: "local" });
+        await updateBook(importedBook.id, {
+          progress: existingBook.progress,
+          groupId: existingBook.groupId,
+          tags: existingBook.tags,
+          lastOpenedAt: Date.now(),
+        });
+      }
       return importedBook.id;
     };
 
@@ -1030,9 +1056,6 @@ function ReaderContent({ route, navigation }: Props) {
     onRelocate: (detail: RelocateEvent) => {
       if (detail.loadId && detail.loadId !== activeReaderLoadIdRef.current) return;
       const absoluteFraction = detail.fraction ?? 0;
-      if (loading) {
-        setLoading(false);
-      }
       // Track section changes for chapter translation reset
       const newSection = detail.section?.current ?? 0;
       if (newSection !== currentSectionIndex) {
@@ -1509,6 +1532,7 @@ function ReaderContent({ route, navigation }: Props) {
       {
         key: "toc",
         label: t("reader.toc", "Оглавление"),
+        icon: "list",
         sfSymbol: "list.bullet",
         onPress: openTOCSheet,
       },
@@ -1517,30 +1541,28 @@ function ReaderContent({ route, navigation }: Props) {
         label: isBookmarked
           ? t("bookmarks.removeCurrent", "Удалить закладку")
           : t("bookmarks.addCurrent", "Добавить закладку"),
+        icon: "bookmark",
         sfSymbol: isBookmarked ? "bookmark.slash" : "bookmark",
         onPress: handleToggleBookmark,
       },
       {
         key: "characters",
         label: t("narra.characters", "Персонажи"),
+        icon: "people",
         sfSymbol: "person.2",
         onPress: handleOpenCharacters,
       },
       {
         key: "notes",
         label: t("reader.notebook", "Заметки"),
+        icon: "pencil-square",
         sfSymbol: "square.and.pencil",
         onPress: () => navigation.navigate("FullScreenNotes", { bookId }),
       },
       {
-        key: "language",
-        label: t("reader.language", "Язык"),
-        sfSymbol: "globe",
-        onPress: () => setShowChapterTranslation(true),
-      },
-      {
         key: "speak",
         label: t("reader.speak", "Озвучить"),
+        icon: "headphones",
         sfSymbol: "headphones",
         onPress: () => void tts.handleToggleTTS(),
       },
@@ -1937,7 +1959,7 @@ function ReaderContent({ route, navigation }: Props) {
   // clock, so both bars fade together on a centre tap and on the timeout.
   const readerTopBarDock = (
     <Reanimated.View
-      pointerEvents={loading || !(showControls || actionsMenuOpen) ? "none" : "auto"}
+      pointerEvents={showControls || actionsMenuOpen ? "auto" : "none"}
       style={[
         {
           position: "absolute",

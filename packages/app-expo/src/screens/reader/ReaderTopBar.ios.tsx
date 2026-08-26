@@ -1,31 +1,51 @@
 import { HostedMishanaerIcon } from "@/components/ui/HostedMishanaerIcon";
 import type { MishanaerIconName } from "@/components/ui/MishanaerIcon";
-import { Button, HStack, Host, Label, Menu } from "@expo/ui/swift-ui";
+import { Button, HStack, Host } from "@expo/ui/swift-ui";
 import {
   accessibilityLabel,
   buttonStyle,
   clipShape,
   controlSize,
-  disabled,
   frame,
   glassEffect,
-  labelStyle,
   tint,
 } from "@expo/ui/swift-ui/modifiers";
+import { requireNativeView } from "expo";
+import type { ComponentType } from "react";
 import { useTranslation } from "react-i18next";
-import { Platform, StyleSheet, View } from "react-native";
-import type { SFSymbol } from "sf-symbols-typescript";
+import { type NativeSyntheticEvent, Platform, StyleSheet, View } from "react-native";
 import type { ReaderTopBarProps } from "./ReaderTopBar.types";
 
 const BAR_HEIGHT = 50;
 const CONTROL_SIZE = 44;
 const HORIZONTAL_INSET = 20;
 
+type NativeMenuItem = {
+  key: string;
+  label: string;
+  icon: MishanaerIconName;
+  disabled: boolean;
+  destructive: boolean;
+};
+
+type NativeMenuButtonProps = {
+  items: NativeMenuItem[];
+  tintColor: string;
+  accessibilityLabel: string;
+  isDark: boolean;
+  onItemPress: (event: NativeSyntheticEvent<{ key: string }>) => void;
+  style: { width: number; height: number };
+};
+
+const NativeMenuButton = requireNativeView(
+  "ReadAnyNativeControls",
+  "ReadAnyMenuButton",
+) as ComponentType<NativeMenuButtonProps>;
+
 /**
  * Верхняя панель ридера — пара к ReaderToolbar: те же нативные кнопки в стекле.
- * Оформление и действия делят одну капсулу, как сгруппировала бы их нативная
- * шапка; показ и скрытие панели задаёт контейнер в ReaderScreen, поэтому обе
- * панели гаснут одним движением.
+ * Показ и скрытие панели задаёт контейнер в ReaderScreen, поэтому верхняя и
+ * нижняя панели гаснут одним движением.
  */
 export function ReaderTopBar(props: ReaderTopBarProps) {
   const { t } = useTranslation();
@@ -33,6 +53,22 @@ export function ReaderTopBar(props: ReaderTopBarProps) {
   const closeLabel = t("common.close", "Закрыть");
   const appearanceLabel = t("narra.readerAppearance", "Оформление");
   const actionsLabel = t("reader.bookActions", "Действия с книгой");
+  const nativeMenuItems: NativeMenuItem[] = [
+    {
+      key: "appearance",
+      label: appearanceLabel,
+      icon: "text-t",
+      disabled: false,
+      destructive: false,
+    },
+    ...props.actions.map((action) => ({
+      key: action.key,
+      label: action.label,
+      icon: action.icon ?? "question-circle",
+      disabled: action.disabled ?? false,
+      destructive: action.destructive ?? false,
+    })),
+  ];
 
   const capsule = supportsGlass
     ? [
@@ -72,31 +108,21 @@ export function ReaderTopBar(props: ReaderTopBarProps) {
         </HStack>
       </Host>
 
-      <Host matchContents colorScheme={props.isDark ? "dark" : "light"} style={styles.host}>
-        <HStack spacing={0} modifiers={capsule}>
-          <Button onPress={props.onAppearancePress} modifiers={control(appearanceLabel)}>
-            {icon({ name: "text-t" })}
-          </Button>
-          <Menu
-            label={icon({ systemName: "ellipsis" })}
-            modifiers={[...control(actionsLabel), labelStyle("iconOnly" as const)]}
-            testID={actionsLabel}
-          >
-            {props.actions.map((action) => (
-              <Button
-                key={action.key}
-                role={action.destructive ? "destructive" : "default"}
-                onPress={action.onPress}
-                modifiers={action.disabled ? [disabled(true)] : undefined}
-              >
-                {/* systemImage, а не React-иконка: нативное меню не отображает
-                    вложенные RN-вьюхи — с ними пункты остаются без картинок. */}
-                <Label title={action.label} systemImage={action.sfSymbol as SFSymbol | undefined} />
-              </Button>
-            ))}
-          </Menu>
-        </HStack>
-      </Host>
+      <NativeMenuButton
+        items={nativeMenuItems}
+        tintColor={props.tintColor}
+        accessibilityLabel={actionsLabel}
+        isDark={props.isDark}
+        onItemPress={(event) => {
+          const key = event.nativeEvent.key;
+          if (key === "appearance") {
+            props.onAppearancePress();
+            return;
+          }
+          props.actions.find((action) => action.key === key)?.onPress();
+        }}
+        style={styles.nativeMenu}
+      />
     </View>
   );
 }
@@ -111,6 +137,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: HORIZONTAL_INSET,
   },
   host: { height: CONTROL_SIZE },
+  nativeMenu: { width: CONTROL_SIZE, height: CONTROL_SIZE },
 });
 
 export { BAR_HEIGHT as READER_TOP_BAR_HEIGHT };

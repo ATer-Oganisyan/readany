@@ -4,6 +4,7 @@ import { radiusPixels, spacingPixels } from "@deslop/primitives";
 import { AIInput } from "panelui-native";
 import type { ComponentPropsWithRef } from "react";
 import { useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { Pressable, StyleSheet, type TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { IMessage, InputToolbarProps } from "../../../vendor/react-native-chat/src";
@@ -38,6 +39,7 @@ export function NarraChatComposer<TMessage extends IMessage>({
   ...props
 }: RuntimeToolbarProps<TMessage>) {
   const { colors } = useTheme();
+  const { t } = useTranslation();
   const { bottom: safeAreaBottom } = useSafeAreaInsets();
   const text = props.text ?? "";
   const inputProps = props.textInputProps;
@@ -53,7 +55,7 @@ export function NarraChatComposer<TMessage extends IMessage>({
   );
 
   const canPress = isStreaming ? Boolean(onStop) : text.trim().length > 0 || allowSendWithoutText;
-  const sendLabel = isStreaming ? "Остановить" : "Отправить";
+  const sendLabel = isStreaming ? t("common.stop", "Остановить") : t("narra.send", "Отправить");
   const handlePress = useCallback(() => {
     if (isStreaming) {
       onStop?.();

@@ -577,6 +577,7 @@ export function ProfileScreen() {
                     <NativeSymbol
                       name={item.icon.name}
                       fallback={item.icon.fallback}
+                      variant="filled"
                       size={20}
                       color={colors.mutedForeground}
                     />
@@ -615,6 +616,7 @@ export function ProfileScreen() {
                 <NativeSymbol
                   name="bell"
                   fallback="notifications"
+                  variant="filled"
                   size={20}
                   color={colors.mutedForeground}
                 />

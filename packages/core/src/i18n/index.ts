@@ -59,11 +59,15 @@ const ru = {
 export const INTERFACE_LANGUAGES = ["ru", "en"] as const;
 export type InterfaceLanguage = (typeof INTERFACE_LANGUAGES)[number];
 
+const LANGUAGE_STORAGE_KEY = "readany-lang";
+const LANGUAGE_SOURCE_STORAGE_KEY = "readany-lang-source";
+const MANUAL_LANGUAGE_SOURCE = "manual";
+
 export function resolveInterfaceLanguage(value?: string | null): InterfaceLanguage {
   const normalized = String(value || "")
     .trim()
     .toLowerCase();
-  return normalized === "en" || normalized.startsWith("en-") ? "en" : "ru";
+  return normalized === "ru" || normalized.startsWith("ru-") ? "ru" : "en";
 }
 
 export const i18nReady = i18n.use(initReactI18next).init({
@@ -71,8 +75,8 @@ export const i18nReady = i18n.use(initReactI18next).init({
     ru: { translation: ru },
     en: { translation: en },
   },
-  lng: "ru",
-  fallbackLng: "ru",
+  lng: "en",
+  fallbackLng: "en",
   supportedLngs: [...INTERFACE_LANGUAGES],
   interpolation: {
     escapeValue: false,
@@ -84,13 +88,19 @@ export async function initI18nLanguage(): Promise<void> {
   try {
     const { getPlatformService } = await import("../services/platform");
     const platform = getPlatformService();
-    const savedLanguage = await platform.kvGetItem("readany-lang");
-    const systemLocale = savedLanguage ? null : await platform.getLocale?.();
-    const language = resolveInterfaceLanguage(savedLanguage || systemLocale);
+    const savedLanguage = await platform.kvGetItem(LANGUAGE_STORAGE_KEY);
+    const savedLanguageSource = await platform.kvGetItem(LANGUAGE_SOURCE_STORAGE_KEY);
+    const systemLocale = await platform.getLocale?.();
+    const manuallySelected = savedLanguageSource === MANUAL_LANGUAGE_SOURCE && savedLanguage;
+    const language = resolveInterfaceLanguage(manuallySelected || systemLocale);
     await i18n.changeLanguage(language);
-    await platform.kvSetItem("readany-lang", language);
+    await platform.kvSetItem(LANGUAGE_STORAGE_KEY, language);
+    await platform.kvSetItem(
+      LANGUAGE_SOURCE_STORAGE_KEY,
+      manuallySelected ? MANUAL_LANGUAGE_SOURCE : "system",
+    );
   } catch {
-    await i18n.changeLanguage("ru");
+    await i18n.changeLanguage("en");
   }
 }
 
@@ -101,7 +111,9 @@ export async function changeAndPersistLanguage(lang: string): Promise<void> {
 
   try {
     const { getPlatformService } = await import("../services/platform");
-    await getPlatformService().kvSetItem("readany-lang", language);
+    const platform = getPlatformService();
+    await platform.kvSetItem(LANGUAGE_STORAGE_KEY, language);
+    await platform.kvSetItem(LANGUAGE_SOURCE_STORAGE_KEY, MANUAL_LANGUAGE_SOURCE);
   } catch {
     // Persistence is optional; the current session has already changed language.
   }

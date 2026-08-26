@@ -37,6 +37,14 @@ private enum MishanaerIconAssets {
   }
 }
 
+struct ReadAnyMenuItem: Record {
+  @Field var key = ""
+  @Field var label = ""
+  @Field var icon = "question-circle"
+  @Field var disabled = false
+  @Field var destructive = false
+}
+
 public final class ReadAnyNativeControlsModule: Module {
   public func definition() -> ModuleDefinition {
     Name("ReadAnyNativeControls")
@@ -90,6 +98,21 @@ public final class ReadAnyNativeControlsModule: Module {
       Prop("disabled") { (view, value: Bool) in view.isControlDisabled = value }
       Prop("showsMenu") { (view, value: Bool) in view.showsMenu = value }
       Prop("showsPlus") { (view, value: Bool) in view.showsPlus = value }
+
+      OnViewDidUpdateProps { view in
+        view.updateConfiguration()
+      }
+    }
+
+    View(ReadAnyMenuButton.self) {
+      Events("onItemPress")
+
+      Prop("items") { (view, value: [ReadAnyMenuItem]) in view.items = value }
+      Prop("tintColor") { (view, value: UIColor) in view.menuTintColor = value }
+      Prop("accessibilityLabel") { (view, value: String) in
+        view.menuAccessibilityLabel = value
+      }
+      Prop("isDark") { (view, value: Bool) in view.isDark = value }
 
       OnViewDidUpdateProps { view in
         view.updateConfiguration()
@@ -214,6 +237,76 @@ public final class ReadAnyNativeControlsModule: Module {
       colorSpace: colorSpace
     )
     return String(format: "#%02x%02x%02x", rgba[0], rgba[1], rgba[2])
+  }
+}
+
+final class ReadAnyMenuButton: ExpoView {
+  let onItemPress = EventDispatcher()
+
+  var items: [ReadAnyMenuItem] = []
+  var menuTintColor = UIColor.label
+  var menuAccessibilityLabel = "Menu"
+  var isDark = false
+
+  private let button = UIButton(type: .system)
+
+  required init(appContext: AppContext? = nil) {
+    super.init(appContext: appContext)
+
+    button.translatesAutoresizingMaskIntoConstraints = false
+    button.showsMenuAsPrimaryAction = true
+    button.changesSelectionAsPrimaryAction = false
+    if #available(iOS 16.0, *) {
+      button.preferredMenuElementOrder = .fixed
+    }
+    addSubview(button)
+
+    NSLayoutConstraint.activate([
+      button.topAnchor.constraint(equalTo: topAnchor),
+      button.bottomAnchor.constraint(equalTo: bottomAnchor),
+      button.leadingAnchor.constraint(equalTo: leadingAnchor),
+      button.trailingAnchor.constraint(equalTo: trailingAnchor)
+    ])
+
+    updateConfiguration()
+  }
+
+  func updateConfiguration() {
+    overrideUserInterfaceStyle = isDark ? .dark : .light
+
+    var configuration: UIButton.Configuration
+    if #available(iOS 26.0, *) {
+      configuration = .glass()
+    } else {
+      configuration = .plain()
+    }
+    configuration.image = MishanaerIconAssets.image("dots-three-horizontal")
+    configuration.cornerStyle = .capsule
+    configuration.baseForegroundColor = menuTintColor
+
+    button.configuration = configuration
+    button.accessibilityLabel = menuAccessibilityLabel
+    button.menu = UIMenu(children: items.map(makeAction))
+    button.isEnabled = !items.isEmpty
+  }
+
+  private func makeAction(_ item: ReadAnyMenuItem) -> UIAction {
+    var attributes: UIMenuElement.Attributes = []
+    if item.disabled {
+      attributes.insert(.disabled)
+    }
+    if item.destructive {
+      attributes.insert(.destructive)
+    }
+
+    return UIAction(
+      title: item.label,
+      image: MishanaerIconAssets.image(item.icon),
+      attributes: attributes,
+      handler: { [weak self] _ in
+        self?.onItemPress(["key": item.key])
+      }
+    )
   }
 }
 

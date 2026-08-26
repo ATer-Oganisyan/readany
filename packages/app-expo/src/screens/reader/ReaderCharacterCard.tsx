@@ -34,7 +34,7 @@ import {
   useState,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { ActivityIndicator, Modal, Pressable, ScrollView, View } from "react-native";
+import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, View } from "react-native";
 import { StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
@@ -232,13 +232,18 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
       portraitUri
         ? (portraitBackgroundCache.get(portraitUri) ?? DEFAULT_PORTRAIT_BACKGROUND)
         : embedded
-          ? DEFAULT_PORTRAIT_BACKGROUND
+          ? colors.card
           : colors.background,
     );
     const portraitForeground = useMemo(
       () => foregroundForBackground(portraitBackgroundColor),
       [portraitBackgroundColor],
     );
+
+    useEffect(() => {
+      if (!embedded || portraitUri) return;
+      setPortraitBackgroundColor(colors.card);
+    }, [colors.card, embedded, portraitUri]);
 
     useEffect(() => {
       if (!embedded || !portraitUri) return;
@@ -503,6 +508,7 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
               styles.name,
               embedded && styles.embeddedName,
               embedded && !portraitPending && styles.embeddedNameSpacer,
+              portraitPending && styles.embeddedPendingName,
               embedded && { color: portraitForeground.primary },
             ]}
           >
@@ -582,7 +588,7 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
         ]}
       >
         {!embedded ? <View style={styles.grabber} /> : null}
-        {embedded && unlocked ? (
+        {embedded && unlocked && !portraitPending ? (
           <View
             pointerEvents="none"
             style={[StyleSheet.absoluteFill, { backgroundColor: portraitBackgroundColor }]}
@@ -701,11 +707,12 @@ const makeStyles = (colors: ThemeColors) =>
       paddingTop: 0,
       borderTopLeftRadius: 0,
       borderTopRightRadius: 0,
+      backgroundColor: Platform.OS === "ios" ? "transparent" : colors.card,
     },
     embeddedPending: {
       flex: 0,
       alignSelf: "stretch",
-      backgroundColor: DEFAULT_PORTRAIT_BACKGROUND,
+      backgroundColor: Platform.OS === "ios" ? "transparent" : colors.card,
     },
     embeddedPendingContent: {
       alignSelf: "stretch",
@@ -830,6 +837,11 @@ const makeStyles = (colors: ThemeColors) =>
       height: largeTitleLineHeight + spacing.xl * 2,
       opacity: 0,
     },
+    embeddedPendingName: {
+      textShadowColor: "transparent",
+      textShadowOffset: { width: 0, height: 0 },
+      textShadowRadius: 0,
+    },
     embeddedNameMeasurement: {
       position: "absolute",
       top: 0,
@@ -856,8 +868,8 @@ const makeStyles = (colors: ThemeColors) =>
     },
     embeddedPendingCharacterSection: {
       minHeight: 0,
-      // Reserve the native grabber area, then keep 20 pt before the heading.
-      paddingTop: spacing.xxl + spacing.md,
+      // Reserve the native grabber area and keep the compact title comfortably below it.
+      paddingTop: spacing.xxl + spacing.md + spacing.sm,
       paddingBottom: spacing.xl,
     },
     embeddedCharacterInfo: {

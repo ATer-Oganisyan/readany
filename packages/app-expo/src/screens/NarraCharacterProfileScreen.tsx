@@ -8,7 +8,7 @@ import { type ThemeColors, useTheme } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useLayoutEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { StyleSheet, View } from "react-native";
+import { Platform, StyleSheet, View } from "react-native";
 
 type Props = NativeStackScreenProps<RootStackParamList, "NarraCharacterProfile">;
 
@@ -25,14 +25,14 @@ export function NarraCharacterProfileScreen({ route, navigation }: Props) {
   useLayoutEffect(() => {
     navigation.setOptions({
       contentStyle: {
-        backgroundColor: portraitReady ? colors.background : "#2C2219",
+        backgroundColor: Platform.OS === "ios" ? "transparent" : colors.card,
       },
       sheetAllowedDetents: portraitReady ? [0.78, 1] : "fitToContents",
       sheetInitialDetentIndex: 0,
       sheetExpandsWhenScrolledToEdge: portraitReady,
       sheetResizeAnimationEnabled: true,
     });
-  }, [colors.background, navigation, portraitReady]);
+  }, [colors.card, navigation, portraitReady]);
   const openChat = () => {
     if (openedFromChat) {
       navigation.goBack();
@@ -72,8 +72,14 @@ export function NarraCharacterProfileScreen({ route, navigation }: Props) {
 
 const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
-    container: { flex: 1, backgroundColor: colors.background },
-    compactContainer: { flex: 0, backgroundColor: "#2C2219" },
+    container: {
+      flex: 1,
+      backgroundColor: Platform.OS === "ios" ? "transparent" : colors.card,
+    },
+    compactContainer: {
+      flex: 0,
+      backgroundColor: Platform.OS === "ios" ? "transparent" : colors.card,
+    },
     emptyState: {
       flex: 1,
       backgroundColor: colors.background,

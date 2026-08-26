@@ -5,7 +5,6 @@ import { Text } from "@/components/ui/Typography";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { NativeSegmentedPager } from "@/components/ui/native-segmented-pager";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
-import { bookIdentity as catalogIdentity } from "@/lib/book/book-identity";
 import { loadingCoverColorForTitleAuthor } from "@/lib/book/loading-cover-placeholder";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
 import type { BackendCatalogGenre } from "@/lib/narra/backend-catalog-api";
@@ -17,6 +16,7 @@ import {
   materializeBackendCatalogCover,
   refreshBackendCatalog,
 } from "@/lib/narra/backend-catalog-cache";
+import { findReadableLibraryBookForCatalogBook } from "@/lib/narra/backend-catalog-library";
 import { isBackendDownloadAbort } from "@/lib/narra/backend-file-download";
 import { CatalogCoverQueue } from "@/lib/narra/catalog-cover-queue";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
@@ -257,14 +257,19 @@ export function SearchScreen() {
   const catalogBooksInLibrary = useMemo(() => {
     const result = new Map<string, Book>();
     for (const catalogBook of catalogBooks) {
-      const identity = catalogIdentity(catalogBook.title, catalogBook.author);
-      const existingBook = books.find(
-        (book) => catalogIdentity(book.meta.title, book.meta.author || "") === identity,
-      );
+      const existingBook = findReadableLibraryBookForCatalogBook(catalogBook, books);
       if (existingBook) result.set(catalogBook.catalogKey, existingBook);
     }
     return result;
   }, [books, catalogBooks]);
+  const catalogSearchResults = useMemo(() => {
+    if (!normalizedQuery) return [];
+    return catalogBooks.filter((book) =>
+      [book.title, book.author].some((value) =>
+        value.toLocaleLowerCase().includes(normalizedQuery),
+      ),
+    );
+  }, [catalogBooks, normalizedQuery]);
 
   const rememberCatalogCover = useCallback((catalogKey: string, coverUri: string) => {
     setCatalogBooks((current) =>
@@ -273,7 +278,7 @@ export function SearchScreen() {
   }, []);
 
   useEffect(() => {
-    if (!isFocused || normalizedQuery) {
+    if (!isFocused) {
       catalogCoverQueueRef.current?.dispose();
       catalogCoverQueueRef.current = null;
       return;
@@ -294,7 +299,7 @@ export function SearchScreen() {
       if (catalogCoverQueueRef.current === queue) catalogCoverQueueRef.current = null;
       queue.dispose();
     };
-  }, [isFocused, normalizedQuery, rememberCatalogCover]);
+  }, [isFocused, rememberCatalogCover]);
 
   useEffect(() => {
     if (!catalogCoverQueueRef.current || visibleCatalogKeys.size === 0) return;
@@ -304,6 +309,34 @@ export function SearchScreen() {
       ),
     );
   }, [filteredCatalogBooks, visibleCatalogKeys]);
+
+  useEffect(() => {
+    if (!normalizedQuery || !catalogCoverQueueRef.current) return;
+    catalogCoverQueueRef.current.enqueue(
+      catalogSearchResults.filter((book) => book.cover && !book.coverUri),
+    );
+  }, [catalogSearchResults, normalizedQuery]);
+
+  useEffect(() => {
+    if (
+      normalizedQuery &&
+      catalogSearchResults.length < FILTER_MINIMUM_BOOKS &&
+      catalogNextCursor &&
+      !isCatalogLoading &&
+      !isCatalogLoadingMore &&
+      !catalogLoadMoreError
+    ) {
+      void loadMoreBackendCatalogPage();
+    }
+  }, [
+    catalogLoadMoreError,
+    catalogNextCursor,
+    catalogSearchResults.length,
+    isCatalogLoading,
+    isCatalogLoadingMore,
+    loadMoreBackendCatalogPage,
+    normalizedQuery,
+  ]);
 
   const handleCatalogViewableItemsChanged = useCallback(
     ({ viewableItems }: { viewableItems: ViewToken<CachedBackendCatalogBook>[] }) => {
@@ -463,6 +496,12 @@ export function SearchScreen() {
     );
   }
 
+  const catalogOnlySearchResults = catalogSearchResults.filter((catalogBook) => {
+    const imported = catalogBooksInLibrary.get(catalogBook.catalogKey);
+    return !imported || !results.some((book) => book.id === imported.id);
+  });
+  const hasSearchResults = results.length > 0 || catalogOnlySearchResults.length > 0;
+
   return (
     <ScrollView
       contentInsetAdjustmentBehavior="automatic"
@@ -471,32 +510,44 @@ export function SearchScreen() {
       style={styles.container}
       contentContainerStyle={[
         styles.searchContent,
-        results.length === 0 && styles.centeredContent,
-        results.length === 0 &&
+        !hasSearchResults && styles.centeredContent,
+        !hasSearchResults &&
           keyboardHeight > 0 && {
             // The native search controls sit above the keyboard, outside this React Native view.
             paddingBottom: keyboardHeight + spacing.xxl * 5,
           },
       ]}
     >
-      {results.length === 0 ? (
+      {!hasSearchResults ? (
         <CenteredEmptyState variant="compact" title={t("search.empty", "Ничего не найдено")} />
       ) : (
         <CharacterChatList
-          items={results.map((book) => ({
-            key: book.id,
-            accessibilityLabel: book.meta.title,
-            title: book.meta.title,
-            subtitle: book.meta.author,
-            onPress: () => void openMobileBook({ bookId: book.id, navigation, t }),
-            avatar: (
-              <BookListCover
-                title={book.meta.title}
-                author={book.meta.author}
-                coverUri={resultCovers.get(book.id)}
-              />
-            ),
-          }))}
+          items={[
+            ...results.map((book) => ({
+              key: `library:${book.id}`,
+              accessibilityLabel: book.meta.title,
+              title: book.meta.title,
+              subtitle: book.meta.author,
+              onPress: () => void openMobileBook({ bookId: book.id, navigation, t }),
+              avatar: (
+                <BookListCover
+                  title={book.meta.title}
+                  author={book.meta.author}
+                  coverUri={resultCovers.get(book.id)}
+                />
+              ),
+            })),
+            ...catalogOnlySearchResults.map((book) => ({
+              key: `catalog:${book.bookEditionId}`,
+              accessibilityLabel: book.title,
+              title: book.title,
+              subtitle: book.author,
+              onPress: () => void handleCatalogOpen(book),
+              avatar: (
+                <BookListCover title={book.title} author={book.author} coverUri={book.coverUri} />
+              ),
+            })),
+          ]}
         />
       )}
     </ScrollView>

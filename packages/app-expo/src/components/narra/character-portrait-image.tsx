@@ -6,6 +6,7 @@ import {
 import type { NarraCharacter } from "@/lib/narra/types";
 import { Asset } from "expo-asset";
 import { type ReactNode, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Image,
   type ImageResizeMode,
@@ -39,6 +40,7 @@ export function CharacterPortraitImage({
   cropAnchor = "center",
   style,
 }: CharacterPortraitImageProps) {
+  const { t } = useTranslation();
   const sourceKey = `${character.portraitAssetId ?? ""}|${character.portraitUri ?? ""}|${
     character.portraitUriOverridesAsset ? "override" : "default"
   }`;
@@ -86,7 +88,7 @@ export function CharacterPortraitImage({
     return (
       <View style={style as StyleProp<ViewStyle>}>
         <NarraLoopVideo
-          accessibilityLabel="Зацикленный портрет персонажа"
+          accessibilityLabel={t("narra.loopingPortraitLabel", "Зацикленный портрет персонажа")}
           onError={() =>
             setVideoState({ key: sourceKey, uri: videoUri, failed: true, ready: false })
           }

@@ -27,7 +27,7 @@ export interface CharacterNameSource {
 export interface CharacterNameMatcherSpec {
   /** основа (в нижнем регистре) → id персонажей, к которым она может относиться */
   stems: Record<string, string[]>;
-  /** точные короткие формы (для несклоняемых/коротких имён) → id персонажей */
+  /** точные формы (включая безопасно сгенерированные падежные) → id персонажей */
   exact: Record<string, string[]>;
   /** допустимые окончания после основы */
   endings: string[];
@@ -172,6 +172,43 @@ export function stemNameToken(token: string): string {
   return token;
 }
 
+/**
+ * Возвращает только полные словоформы, которые можно получить без словаря и
+ * без матчинга по произвольному продолжению основы. Это особенно важно для
+ * коротких имён (Анна → Анну) и фамилий-прилагательных
+ * (Вронский → Вронского, Раневская → Раневскую).
+ */
+function exactRussianNameForms(token: string): string[] {
+  const forms = new Set<string>();
+  const addForms = (base: string, endings: readonly string[]) => {
+    for (const ending of endings) forms.add(`${base}${ending}`);
+  };
+
+  // Короткая основа не участвует в стем-матчинге: перечисляем полные формы.
+  const stem = stemNameToken(token);
+  if (token.length >= MIN_NAME_STEM_LENGTH && stem.length < MIN_NAME_STEM_LENGTH) {
+    forms.add(token);
+    if (token.endsWith("а")) {
+      const base = token.slice(0, -1);
+      const genitiveEnding = /[гкхжчшщц]$/.test(base) ? "и" : "ы";
+      addForms(base, [genitiveEnding, "е", "у", "ой", "ою"]);
+    } else if (token.endsWith("я")) {
+      addForms(token.slice(0, -1), ["и", "е", "ю", "ей", "ею"]);
+    }
+  }
+
+  // Мужские фамилии-прилагательные: Вронский, Троцкий.
+  if (/(?:ск|цк)ий$/.test(token)) {
+    addForms(token.slice(0, -2), ["ого", "ому", "им", "ом"]);
+  }
+  // Женские фамилии на -ская/-цкая: Раневская, Троцкая.
+  else if (/(?:ск|цк)ая$/.test(token)) {
+    addForms(token.slice(0, -2), ["ой", "ую", "ою"]);
+  }
+
+  return [...forms];
+}
+
 function addId(map: Record<string, string[]>, key: string, id: string): void {
   const existing = map[key];
   if (!existing) {
@@ -198,12 +235,10 @@ export function buildCharacterNameMatcherSpec(
     const tokens = raw.toLowerCase().match(/[a-zа-яё]+/g) ?? [];
     for (const token of new Set(tokens)) {
       if (token.length < 3 || stopwordSet.has(token)) continue;
+      for (const form of exactRussianNameForms(token)) addId(exact, form, character.id);
       const stem = stemNameToken(token);
       if (stem.length >= MIN_NAME_STEM_LENGTH) {
         addId(stems, stem, character.id);
-      } else if (token.length >= MIN_NAME_STEM_LENGTH) {
-        // Короткая основа («Анна» → «анн»): матчим только точную форму.
-        addId(exact, token, character.id);
       }
     }
   }

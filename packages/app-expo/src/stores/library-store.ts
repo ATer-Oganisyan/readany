@@ -64,6 +64,21 @@ export interface RemoveBookOptions {
   preserveData?: boolean;
 }
 
+export interface KnownBookImport {
+  title: string;
+  author: string;
+  sourceKind: NonNullable<Book["sourceKind"]>;
+  bookEditionId: string;
+  contentHash: string;
+  revisionId: string;
+}
+
+export interface LibraryImportFile {
+  uri: string;
+  name?: string;
+  knownBook?: KnownBookImport;
+}
+
 function keepActiveGroupId(activeGroupId: string, groups: BookGroup[]): string {
   if (!activeGroupId) return "";
   return groups.some((group) => group.id === activeGroupId) ? activeGroupId : "";
@@ -94,7 +109,7 @@ export interface LibraryState {
   setViewMode: (mode: LibraryViewMode) => void;
   setSortField: (field: SortField) => void;
   setSortOrder: (order: SortOrder) => void;
-  importBooks: (files: Array<{ uri: string; name?: string }>) => Promise<ImportBooksResult>;
+  importBooks: (files: LibraryImportFile[]) => Promise<ImportBooksResult>;
   inspectDeletedBookCandidate: (
     bookId: string,
     file: { uri: string; name?: string },
@@ -637,7 +652,11 @@ async function copyBookToAppData(
     if (destFile.exists) {
       destFile.delete();
     }
-    srcFile.copy(destFile);
+    await srcFile.copy(destFile);
+    const copiedFile = destFile.info();
+    if (!copiedFile.exists || !copiedFile.size) {
+      throw new Error(`Book copy failed: ${relativePath}`);
+    }
   }
   return { relativePath, absPath };
 }
@@ -1170,6 +1189,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       await db.initDatabase();
       for (const fileInfo of files) {
         const filePath = fileInfo.uri;
+        const knownBook = fileInfo.knownBook;
         const originalName = fileInfo.name
           ? decodeURIComponent(fileInfo.name)
           : decodeURIComponent(filePath.split("/").pop() || "book");
@@ -1194,7 +1214,18 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           const { size: fileSize, md5: fileHash } = await getMobileFileStat(filePath);
 
           const existingDuplicate = findDuplicateBookByHash(duplicateIndex, fileHash);
-          if (existingDuplicate) {
+          const existingKnownBook = knownBook
+            ? get().books.find(
+                (candidate) =>
+                  !candidate.deletedAt &&
+                  candidate.sourceKind === knownBook.sourceKind &&
+                  candidate.bookEditionId === knownBook.bookEditionId &&
+                  (candidate.syncStatus !== "local" ||
+                    candidate.revisionId === knownBook.revisionId ||
+                    candidate.contentHash === knownBook.contentHash),
+              )
+            : undefined;
+          if (existingDuplicate?.syncStatus === "local" && !existingKnownBook) {
             result.skippedDuplicates.push({
               name: fileName,
               existingBook: existingDuplicate,
@@ -1208,7 +1239,26 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
                 return null;
               })
             : null;
-          const bookId = deletedMatch?.id ?? generateId();
+          const importTarget =
+            existingKnownBook ??
+            deletedMatch ??
+            (existingDuplicate?.syncStatus === "remote" ? existingDuplicate : null);
+          const bookId = importTarget?.id ?? generateId();
+          const retainedSourceIdentity = knownBook
+            ? {
+                sourceKind: knownBook.sourceKind,
+                bookEditionId: knownBook.bookEditionId,
+                contentHash: knownBook.contentHash,
+                revisionId: knownBook.revisionId,
+              }
+            : importTarget
+              ? {
+                  sourceKind: importTarget.sourceKind,
+                  bookEditionId: importTarget.bookEditionId,
+                  contentHash: importTarget.contentHash,
+                  revisionId: importTarget.revisionId,
+                }
+              : {};
 
           console.log(
             `[importBooks] Importing: name=${fileName}, format=${format}, uri=${filePath}`,
@@ -1269,32 +1319,41 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
               // TXT-converted EPUBs have no cover, and title is already known from converter.
               // Skip metadata extraction entirely — saves a full EPUB re-parse.
-              const title = conversion.bookTitle || fileName.replace(/\.\w+$/i, "") || "Untitled";
+              const title =
+                knownBook?.title ||
+                conversion.bookTitle ||
+                fileName.replace(/\.\w+$/i, "") ||
+                "Untitled";
               const book: Book = {
                 id: bookId,
                 filePath: relativePath,
                 format: "epub",
                 meta: {
-                  ...(deletedMatch?.meta ?? {}),
+                  ...(importTarget?.meta ?? {}),
                   title,
-                  author: "",
-                  coverUrl: deletedMatch?.meta.coverUrl,
+                  author: knownBook?.author || "",
+                  coverUrl: importTarget?.meta.coverUrl,
                 },
-                groupId: deletedMatch?.groupId,
-                progress: deletedMatch?.progress ?? 0,
-                currentCfi: deletedMatch?.currentCfi,
+                groupId: importTarget?.groupId,
+                progress: importTarget?.progress ?? 0,
+                currentCfi: importTarget?.currentCfi,
                 isVectorized: false,
                 vectorizeProgress: 0,
-                tags: deletedMatch?.tags ?? [],
+                tags: importTarget?.tags ?? [],
                 fileHash,
                 syncStatus: "local",
-                addedAt: deletedMatch?.addedAt ?? Date.now(),
+                addedAt: importTarget?.addedAt ?? Date.now(),
                 updatedAt: Date.now(),
-                lastOpenedAt: deletedMatch?.lastOpenedAt ?? Date.now(),
+                lastOpenedAt: importTarget?.lastOpenedAt ?? Date.now(),
+                ...retainedSourceIdentity,
               };
 
-              if (deletedMatch) {
-                set((state) => ({ books: [...state.books, book] }));
+              if (importTarget) {
+                set((state) => ({
+                  books: state.books.some((candidate) => candidate.id === book.id)
+                    ? state.books.map((candidate) => (candidate.id === book.id ? book : candidate))
+                    : [...state.books, book],
+                }));
                 await db.updateBook(book.id, {
                   filePath: book.filePath,
                   format: book.format,
@@ -1314,8 +1373,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
                 await get().addBook(book);
               }
               result.imported.push(book);
-              void queueBookCharacterAnalysis(book, textSample);
-              if (!book.meta.coverUrl) {
+              if (!knownBook) void queueBookCharacterAnalysis(book, textSample);
+              if (!knownBook && !book.meta.coverUrl) {
                 void queueGeneratedBookCover(book, { textSample });
               }
               if (fileHash) {
@@ -1326,6 +1385,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
               // Auto-vectorize if enabled. Keep failures isolated so a
               // successful import doesn't get reported as a failed import.
               try {
+                if (knownBook) continue;
                 const vmState = useVectorModelStore.getState();
                 if (
                   vmState.autoVectorizeOnImport &&
@@ -1402,26 +1462,31 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
                 filePath: relativePath,
                 format: "umd",
                 meta: {
-                  ...(deletedMatch?.meta ?? {}),
+                  ...(importTarget?.meta ?? {}),
                   title,
                   author,
-                  coverUrl: coverUrl || deletedMatch?.meta.coverUrl,
+                  coverUrl: coverUrl || importTarget?.meta.coverUrl,
                 },
-                groupId: deletedMatch?.groupId,
-                progress: deletedMatch?.progress ?? 0,
-                currentCfi: deletedMatch?.currentCfi,
+                groupId: importTarget?.groupId,
+                progress: importTarget?.progress ?? 0,
+                currentCfi: importTarget?.currentCfi,
                 isVectorized: false,
                 vectorizeProgress: 0,
-                tags: deletedMatch?.tags ?? [],
+                tags: importTarget?.tags ?? [],
                 fileHash,
                 syncStatus: "local",
-                addedAt: deletedMatch?.addedAt ?? Date.now(),
+                addedAt: importTarget?.addedAt ?? Date.now(),
                 updatedAt: Date.now(),
-                lastOpenedAt: deletedMatch?.lastOpenedAt ?? Date.now(),
+                lastOpenedAt: importTarget?.lastOpenedAt ?? Date.now(),
+                ...retainedSourceIdentity,
               };
 
-              if (deletedMatch) {
-                set((state) => ({ books: [...state.books, book] }));
+              if (importTarget) {
+                set((state) => ({
+                  books: state.books.some((candidate) => candidate.id === book.id)
+                    ? state.books.map((candidate) => (candidate.id === book.id ? book : candidate))
+                    : [...state.books, book],
+                }));
                 await db.updateBook(book.id, {
                   filePath: book.filePath,
                   format: book.format,
@@ -1485,63 +1550,65 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           console.log(`[importBooks] File copied. relativePath: ${relativePath}`);
 
           // Extract metadata (title, author, cover) from book content
-          let title = fileName.replace(/\.\w+$/i, "") || "Untitled";
-          let author = "";
+          let title = knownBook?.title || fileName.replace(/\.\w+$/i, "") || "Untitled";
+          let author = knownBook?.author || "";
           let coverUrl: string | undefined;
           let coverContext:
             | { description?: string; textSample?: string; subjects?: string[] }
             | undefined;
           const shouldGenerateIdentity = isTechnicalBookTitle(title);
 
-          try {
-            console.log(`[importBooks] Extracting metadata for format=${format}...`);
-            const meta = await extractMobileImportMetadata({
-              filePath,
-              format,
-              fileName,
-              fileSize,
-            });
-            console.log(
-              `[importBooks] Metadata result: title="${meta.title}", author="${meta.author}", hasCover=${!!meta.coverBytes}, coverSize=${meta.coverBytes?.length ?? 0}`,
-            );
-            if (meta.title) title = meta.title;
-            if (meta.author) author = meta.author;
-            coverContext = {
-              description: meta.description,
-              textSample: meta.textSample,
-              subjects: meta.subjects,
-            };
+          if (!knownBook) {
+            try {
+              console.log(`[importBooks] Extracting metadata for format=${format}...`);
+              const meta = await extractMobileImportMetadata({
+                filePath,
+                format,
+                fileName,
+                fileSize,
+              });
+              console.log(
+                `[importBooks] Metadata result: title="${meta.title}", author="${meta.author}", hasCover=${!!meta.coverBytes}, coverSize=${meta.coverBytes?.length ?? 0}`,
+              );
+              if (meta.title) title = meta.title;
+              if (meta.author) author = meta.author;
+              coverContext = {
+                description: meta.description,
+                textSample: meta.textSample,
+                subjects: meta.subjects,
+              };
 
-            const identity = await resolveImportedBookIdentity({
-              fileName,
-              title,
-              author,
-              description: meta.description,
-              textSample: meta.textSample,
-              forceGemini: shouldGenerateIdentity,
-            });
-            title = identity.title;
-            author = identity.author;
+              const identity = await resolveImportedBookIdentity({
+                fileName,
+                title,
+                author,
+                description: meta.description,
+                textSample: meta.textSample,
+                forceGemini: shouldGenerateIdentity,
+              });
+              title = identity.title;
+              author = identity.author;
 
-            // Save cover image to app data
-            if (meta.coverBytes && meta.coverBytes.length > 0) {
-              try {
-                const mimeType = meta.coverMimeType || "image/jpeg";
-                const coverExt = mimeType.includes("png") ? "png" : "jpg";
-                await ensureAppSubDir("covers");
-                const coverRelPath = `covers/${bookId}-original.${coverExt}`;
-                const coverAbsPath = await resolveAppPath(coverRelPath);
-                console.log(`[importBooks] Saving cover to: ${coverAbsPath}`);
-                const platform = getPlatformService();
-                await platform.writeFile(coverAbsPath, meta.coverBytes);
-                coverUrl = coverRelPath;
-                console.log(`[importBooks] Cover saved. coverUrl=${coverUrl}`);
-              } catch (coverErr) {
-                console.warn(`[importBooks] Failed to save cover for ${fileName}:`, coverErr);
+              // Save cover image to app data
+              if (meta.coverBytes && meta.coverBytes.length > 0) {
+                try {
+                  const mimeType = meta.coverMimeType || "image/jpeg";
+                  const coverExt = mimeType.includes("png") ? "png" : "jpg";
+                  await ensureAppSubDir("covers");
+                  const coverRelPath = `covers/${bookId}-original.${coverExt}`;
+                  const coverAbsPath = await resolveAppPath(coverRelPath);
+                  console.log(`[importBooks] Saving cover to: ${coverAbsPath}`);
+                  const platform = getPlatformService();
+                  await platform.writeFile(coverAbsPath, meta.coverBytes);
+                  coverUrl = coverRelPath;
+                  console.log(`[importBooks] Cover saved. coverUrl=${coverUrl}`);
+                } catch (coverErr) {
+                  console.warn(`[importBooks] Failed to save cover for ${fileName}:`, coverErr);
+                }
               }
+            } catch (metaErr) {
+              console.warn(`[importBooks] Metadata extraction failed for ${fileName}:`, metaErr);
             }
-          } catch (metaErr) {
-            console.warn(`[importBooks] Metadata extraction failed for ${fileName}:`, metaErr);
           }
 
           console.log(
@@ -1552,29 +1619,34 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             filePath: relativePath,
             format,
             meta: {
-              ...(deletedMatch?.meta ?? {}),
+              ...(importTarget?.meta ?? {}),
               title,
               author,
-              description: coverContext?.description || deletedMatch?.meta.description,
+              description: coverContext?.description || importTarget?.meta.description,
               subjects: coverContext?.subjects?.length
                 ? coverContext.subjects
-                : deletedMatch?.meta.subjects,
-              coverUrl: coverUrl || deletedMatch?.meta.coverUrl,
+                : importTarget?.meta.subjects,
+              coverUrl: coverUrl || importTarget?.meta.coverUrl,
             },
-            groupId: deletedMatch?.groupId,
-            progress: deletedMatch?.progress ?? 0,
-            currentCfi: deletedMatch?.currentCfi,
+            groupId: importTarget?.groupId,
+            progress: importTarget?.progress ?? 0,
+            currentCfi: importTarget?.currentCfi,
             isVectorized: false,
             vectorizeProgress: 0,
-            tags: deletedMatch?.tags ?? [],
+            tags: importTarget?.tags ?? [],
             fileHash,
             syncStatus: "local",
-            addedAt: deletedMatch?.addedAt ?? Date.now(),
+            addedAt: importTarget?.addedAt ?? Date.now(),
             updatedAt: Date.now(),
-            lastOpenedAt: deletedMatch?.lastOpenedAt ?? Date.now(),
+            lastOpenedAt: importTarget?.lastOpenedAt ?? Date.now(),
+            ...retainedSourceIdentity,
           };
-          if (deletedMatch) {
-            set((state) => ({ books: [...state.books, book] }));
+          if (importTarget) {
+            set((state) => ({
+              books: state.books.some((candidate) => candidate.id === book.id)
+                ? state.books.map((candidate) => (candidate.id === book.id ? book : candidate))
+                : [...state.books, book],
+            }));
             await db.updateBook(book.id, {
               filePath: book.filePath,
               format: book.format,
@@ -1594,8 +1666,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             await get().addBook(book);
           }
           result.imported.push(book);
-          void queueBookCharacterAnalysis(book, coverContext?.textSample);
-          if (!book.meta.coverUrl) {
+          // Catalog books are analyzed from a representative whole-book sample
+          // when the user opens their character list.
+          if (!knownBook) void queueBookCharacterAnalysis(book, coverContext?.textSample);
+          if (!knownBook && !book.meta.coverUrl) {
             void queueGeneratedBookCover(book, coverContext);
           }
           if (fileHash) {
@@ -1605,6 +1679,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           // Auto-vectorize if enabled. Keep failures isolated so a
           // successful import doesn't get reported as a failed import.
           try {
+            if (knownBook) continue;
             const vmState = useVectorModelStore.getState();
             if (
               vmState.autoVectorizeOnImport &&

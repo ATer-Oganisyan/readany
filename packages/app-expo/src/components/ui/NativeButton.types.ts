@@ -5,6 +5,7 @@ export type NativeButtonVariant = "primary" | "secondary" | "tertiary" | "destru
 export type NativeButtonSize = "small" | "medium" | "large";
 export type NativeButtonIcon =
   | "add"
+  | "appearance"
   | "back"
   | "forward"
   | "image"
@@ -14,7 +15,9 @@ export type NativeButtonIcon =
   | "components"
   | "delete"
   | "edit"
+  | "headphones"
   | "play"
+  | "more"
   | "refresh"
   | "search"
   | "send"
@@ -24,6 +27,7 @@ export type NativeButtonIcon =
 
 export const nativeButtonIconNames: Record<NativeButtonIcon, MishanaerIconName> = {
   add: "plus",
+  appearance: "text-t",
   back: "arrow-left",
   forward: "arrow-right",
   image: "image",
@@ -33,7 +37,9 @@ export const nativeButtonIconNames: Record<NativeButtonIcon, MishanaerIconName> 
   components: "grid-2x2",
   delete: "bin",
   edit: "pencil",
+  headphones: "headphones",
   play: "play",
+  more: "dots-three-horizontal",
   refresh: "repeat",
   search: "magnifying-glass",
   send: "arrow-block-up",

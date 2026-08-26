@@ -14,6 +14,8 @@ const CACHE_ROOT = `${FileSystem.documentDirectory}narra-backend-catalog`;
 const COVER_ROOT = `${CACHE_ROOT}/covers`;
 const CATALOG_PATH = `${CACHE_ROOT}/catalog.json`;
 let coverTemporarySequence = 0;
+let catalogTemporarySequence = 0;
+let catalogRefreshPromise: Promise<CachedBackendCatalog> | null = null;
 
 export interface CachedBackendCatalogBook extends BackendCatalogBook {
   coverUri?: string;
@@ -74,7 +76,8 @@ function storableBook(book: CachedBackendCatalogBook): BackendCatalogBook {
 async function writeCatalog(
   catalog: Omit<CachedBackendCatalog, "books"> & { books: BackendCatalogBook[] },
 ): Promise<void> {
-  const temporaryPath = `${CATALOG_PATH}.${Date.now()}.tmp`;
+  catalogTemporarySequence += 1;
+  const temporaryPath = `${CATALOG_PATH}.${Date.now()}-${catalogTemporarySequence}.tmp`;
   const value: StoredCatalog = {
     version: CACHE_VERSION,
     books: catalog.books.map(storableBook),
@@ -138,24 +141,30 @@ export async function loadCachedBackendCatalog(): Promise<CachedBackendCatalog> 
   }
 }
 
-export async function refreshBackendCatalog(): Promise<CachedBackendCatalog> {
-  await ensureCacheDirectories();
-  const [page, genreResult] = await Promise.all([
-    fetchBackendCatalogPage(),
-    fetchBackendCatalogGenres().catch((error) => {
-      console.warn("[Catalog] Failed to refresh genres:", error);
-      return null;
-    }),
-  ]);
-  const previous = await loadCachedBackendCatalog();
-  const catalog = {
-    books: page.items,
-    nextCursor: page.nextCursor,
-    genres: genreResult?.items ?? previous.genres,
-    genreVersion: genreResult?.version ?? previous.genreVersion,
-  };
-  await writeCatalog(catalog);
-  return hydrateCatalog({ version: CACHE_VERSION, ...catalog });
+export function refreshBackendCatalog(): Promise<CachedBackendCatalog> {
+  if (catalogRefreshPromise) return catalogRefreshPromise;
+  catalogRefreshPromise = (async () => {
+    await ensureCacheDirectories();
+    const [page, genreResult] = await Promise.all([
+      fetchBackendCatalogPage(),
+      fetchBackendCatalogGenres().catch((error) => {
+        console.warn("[Catalog] Failed to refresh genres:", error);
+        return null;
+      }),
+    ]);
+    const previous = await loadCachedBackendCatalog();
+    const catalog = {
+      books: page.items,
+      nextCursor: page.nextCursor,
+      genres: genreResult?.items ?? previous.genres,
+      genreVersion: genreResult?.version ?? previous.genreVersion,
+    };
+    await writeCatalog(catalog);
+    return hydrateCatalog({ version: CACHE_VERSION, ...catalog });
+  })().finally(() => {
+    catalogRefreshPromise = null;
+  });
+  return catalogRefreshPromise;
 }
 
 export async function loadMoreCachedBackendCatalog(

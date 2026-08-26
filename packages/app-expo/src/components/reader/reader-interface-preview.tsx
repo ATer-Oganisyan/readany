@@ -116,7 +116,7 @@ export function ReaderInterfacePreview({
   const interfaceStrings = useMemo(
     () => ({
       search: t("reader.searchInBook", "Поиск по книге"),
-      notebook: t("reader.notebook", "Блокнот"),
+      notebook: t("reader.notebook", "Заметки"),
       notebookHint: t(
         "reader.notebookHint",
         "Выделяйте текст во время чтения, чтобы создавать заметки и выделения.",

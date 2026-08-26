@@ -1,4 +1,12 @@
-import { Easing, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import { useMemo } from "react";
+import { Gesture } from "react-native-gesture-handler";
+import {
+  Easing,
+  cancelAnimation,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 
 /**
  * Отклик обложки на нажатие — один на библиотеку, каталог и полку «Читаю
@@ -18,20 +26,48 @@ const PRESSED_SCALE = 0.97;
 const PRESS_DURATION_MS = 150;
 const EASE_OUT = Easing.bezier(0.33, 1, 0.68, 1);
 
-export function useCoverPress() {
+export function useCoverPress(disabled = false) {
   const progress = useSharedValue(0);
 
   const pressStyle = useAnimatedStyle(() => ({
     transform: [{ scale: 1 - progress.get() * (1 - PRESSED_SCALE) }],
   }));
 
+  // Pressability delivers press-in/out through JS. Navigation or EPUB
+  // preparation can delay that thread and leave the card compressed after the
+  // finger is already up. This observer owns only the visual state and runs on
+  // the UI thread; Pressable remains the sole owner of the action and a11y.
+  const gesture = useMemo(
+    () =>
+      Gesture.Tap()
+        .enabled(!disabled)
+        .maxDistance(16)
+        .maxDuration(60_000)
+        .cancelsTouchesInView(false)
+        .runOnJS(false)
+        .onBegin(() => {
+          "worklet";
+          cancelAnimation(progress);
+          progress.set(withTiming(1, { duration: PRESS_DURATION_MS, easing: EASE_OUT }));
+        })
+        .onFinalize(() => {
+          "worklet";
+          cancelAnimation(progress);
+          progress.set(withTiming(0, { duration: PRESS_DURATION_MS, easing: EASE_OUT }));
+        }),
+    [disabled, progress],
+  );
+
+  // Kept for cards that participate in the existing long-press action sheet.
+  // PerspectiveBook uses the UI-thread gesture above.
   const onPressIn = () => {
+    cancelAnimation(progress);
     progress.set(withTiming(1, { duration: PRESS_DURATION_MS, easing: EASE_OUT }));
   };
-
-  const onPressOut = () => {
+  const release = () => {
+    cancelAnimation(progress);
     progress.set(withTiming(0, { duration: PRESS_DURATION_MS, easing: EASE_OUT }));
   };
 
-  return { pressStyle, onPressIn, onPressOut };
+  return { pressStyle, gesture, onPressIn, onPressOut: release, release };
 }

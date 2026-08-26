@@ -29,7 +29,6 @@ import {
 import { SwipePressGuardProvider, useSwipePressGuard } from "@/components/ui/swipe-press-guard";
 import { useBookImportActions } from "@/hooks/use-book-import-actions";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
-import { bookIdentity as catalogIdentity } from "@/lib/book/book-identity";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
 import type { BackendCatalogGenre } from "@/lib/narra/backend-catalog-api";
 import {
@@ -40,15 +39,14 @@ import {
   materializeBackendCatalogCover,
   refreshBackendCatalog,
 } from "@/lib/narra/backend-catalog-cache";
+import { findReadableLibraryBookForCatalogBook } from "@/lib/narra/backend-catalog-library";
 import { isBackendDownloadAbort } from "@/lib/narra/backend-file-download";
 import { CatalogCoverQueue } from "@/lib/narra/catalog-cover-queue";
-import { queueBookForAutoVectorize } from "@/lib/rag/auto-vectorize-book";
 import { setCallback, setExtractorRef } from "@/lib/rag/auto-vectorize-service";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import type { LibraryTabStackParamList } from "@/navigation/TabNavigator";
 import { NATIVE_SCROLL_EDGE_EFFECTS } from "@/navigation/scroll-edge-effects";
 import { useLibraryStore } from "@/stores/library-store";
-import { useVectorModelStore } from "@/stores/vector-model-store";
 import {
   type ThemeColors,
   fontSize,
@@ -351,42 +349,10 @@ function LibraryScreenContent() {
   );
 
   useEffect(() => {
-    let cancelled = false;
-
-    const loadAndRepairVectorIndex = async () => {
-      await loadBooks();
-
-      const hydrationDeadline = Date.now() + 10_000;
-      while (!useVectorModelStore.getState()._hasHydrated && Date.now() < hydrationDeadline) {
-        await new Promise<void>((resolve) => setTimeout(resolve, 50));
-      }
-      if (cancelled) return;
-
-      const vectorState = useVectorModelStore.getState();
-      if (
-        !vectorState._hasHydrated ||
-        !vectorState.autoVectorizeOnImport ||
-        !vectorState.vectorModelEnabled ||
-        !vectorState.hasVectorCapability()
-      ) {
-        return;
-      }
-
-      const unindexedBooks = useLibraryStore.getState().books.filter((book) => !book.isVectorized);
-      for (const book of unindexedBooks) {
-        if (cancelled) return;
-        try {
-          await queueBookForAutoVectorize(book);
-        } catch (error) {
-          console.warn(`[AutoVectorize] Failed to queue existing book ${book.meta.title}:`, error);
-        }
-      }
-    };
-
-    void loadAndRepairVectorIndex();
-    return () => {
-      cancelled = true;
-    };
+    // "Auto-vectorize on import" is handled by the import/download paths.
+    // Re-reading and base64-encoding every old book here blocked touch-up and
+    // navigation on the library screen for seconds after startup.
+    void loadBooks();
   }, [loadBooks]);
   useEffect(() => {
     setExtractorRef(extractorRef.current);
@@ -524,10 +490,7 @@ function LibraryScreenContent() {
   const catalogBooksInLibrary = useMemo(() => {
     const result = new Map<string, Book>();
     for (const catalogBook of catalogBooks) {
-      const identity = catalogIdentity(catalogBook.title, catalogBook.author);
-      const existingBook = books.find(
-        (book) => catalogIdentity(book.meta.title, book.meta.author || "") === identity,
-      );
+      const existingBook = findReadableLibraryBookForCatalogBook(catalogBook, books);
       if (existingBook) result.set(catalogBook.catalogKey, existingBook);
     }
     return result;

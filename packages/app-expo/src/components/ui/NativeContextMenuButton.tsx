@@ -92,9 +92,23 @@ export function NativeContextMenuButton({
                 accessibilityRole="button"
                 accessibilityLabel={item.label}
                 activeOpacity={0.7}
-                style={{ paddingVertical: 14, paddingHorizontal: 20 }}
+                style={{
+                  minHeight: 52,
+                  paddingVertical: 14,
+                  paddingHorizontal: 20,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 12,
+                }}
                 onPress={() => runItem(item.onPress)}
               >
+                {item.icon ? (
+                  <MishanaerIcon
+                    name={item.icon}
+                    size={20}
+                    color={item.destructive ? colors.destructive : colors.foreground}
+                  />
+                ) : null}
                 <Text
                   style={{
                     fontSize: fontSize.base,

@@ -21,7 +21,7 @@ import type { TabParamList } from "@/navigation/TabNavigator";
 import { useLibraryStore, useNarraStore } from "@/stores";
 import { type ThemeColors, spacing, useTheme } from "@/styles/theme";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
-import { useNavigation } from "@react-navigation/native";
+import { useIsFocused, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { Book } from "@readany/core/types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -48,6 +48,7 @@ interface ChatRow {
 const MAX_AUTOMATIC_PORTRAIT_ATTEMPTS = 2;
 
 export function ChatsScreen() {
+  const isFocused = useIsFocused();
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const { height: viewportHeight } = useWindowDimensions();
@@ -180,7 +181,7 @@ export function ChatsScreen() {
         onPress: () => openNarraChat(pageBookId),
         avatar: (
           <CharacterChatAvatar muted>
-            <AnimatedNarraFace width={38} height={40} />
+            <AnimatedNarraFace width={38} height={40} animated={isFocused} />
           </CharacterChatAvatar>
         ),
       },
@@ -221,6 +222,7 @@ export function ChatsScreen() {
    * does not start background work for every book at once.
    */
   useEffect(() => {
+    if (!isFocused) return;
     if (portraitLoadingKey) return;
     const nextRow = rows.find((row) => {
       const key = `${row.book.id}:${row.character.id}`;
@@ -245,7 +247,7 @@ export function ChatsScreen() {
       )
       .catch((error) => reportNarraError("character_portrait_background", error))
       .finally(() => setPortraitLoadingKey(null));
-  }, [portraitLoadingKey, rows, setCharacters, updateCharacter]);
+  }, [isFocused, portraitLoadingKey, rows, setCharacters, updateCharacter]);
 
   if (chatBooks.length === 0) {
     return (

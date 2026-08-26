@@ -306,6 +306,8 @@
     let currentFontTheme = 'default';
     let currentCustomFontFaceCSS = '';
     let currentCustomFontFamily = '';
+    const BUNDLED_READER_FONT_WARMUP_TIMEOUT_MS = 750;
+    let bundledReaderFontWarmup = null;
     let readerElement = null;
     let bookTextMetricsJobId = 0;
     let bookTextMetricsTimer = null;
@@ -1815,8 +1817,13 @@
         el.style.width = '100%';
         el.style.height = '100%';
 
-        el.addEventListener('load', async (e) => {
+        el.addEventListener('load', (e) => {
           const { doc, index, primary } = e.detail;
+          // A loaded EPUB document must become interactive synchronously. Font
+          // preparation is an optimization and must never hold gesture wiring.
+          attachTapListener(doc);
+          attachSelectionListener(doc);
+          attachNoteLongPress(doc);
           normalizeBrOnlyParagraphs(doc);
           if (primary !== false) {
             currentSectionUsesVerticalWriting = !el.isFixedLayout && isVerticalDoc(doc);
@@ -1834,36 +1841,10 @@
             applySettings(msg.settings);
           }
 
-          // Do not reveal the page in a fallback font and swap it afterwards.
-          // Reader fonts are local, so this normally completes immediately;
-          // a broken font still falls back instead of keeping the loader forever.
-          if (doc.fonts && doc.fonts.ready) {
-            const requestedFontFamily = String(msg.settings?.customFontFamily || '').trim();
-            try {
-              if (requestedFontFamily && doc.fonts.load) {
-                const family = JSON.stringify(requestedFontFamily);
-                const loadedFaces = await Promise.all([
-                  doc.fonts.load(`normal 400 16px ${family}`),
-                  doc.fonts.load(`italic 400 16px ${family}`),
-                  doc.fonts.load(`normal 700 16px ${family}`),
-                  doc.fonts.load(`italic 700 16px ${family}`),
-                ]);
-                if (loadedFaces.some((faces) => faces.length === 0)) {
-                  throw new Error(`Reader font face is unavailable: ${requestedFontFamily}`);
-                }
-              }
-              await doc.fonts.ready;
-              if (primary !== false && msg.settings) applySettings(msg.settings);
-            } catch (fontError) {
-              console.warn('[Reader] Continuing with fallback typography:', fontError);
-            }
-          }
-
-          // The first visible reader frame now has its final typography.
+          // The fixed SB Serif family is warmed once in the outer document
+          // before Foliate creates its section documents. Every section still
+          // receives the @font-face CSS, while WebKit reuses the same font data.
           markLoaded();
-          attachTapListener(doc);
-          attachSelectionListener(doc);
-          attachNoteLongPress(doc);
           refreshUserAnnotations(100);
           // Auto-inject ruby annotations if enabled
           if (_rubyMode && (_rubyWordDict || _rubyCharDict)) {
@@ -2023,6 +2004,11 @@
         if (msg.settings) {
           updateSettingsState(msg.settings);
         }
+
+        // SB Serif has four faces (regular/italic × normal/bold), but it is one
+        // fixed reader family. Warm those files once per WebView. The bounded
+        // wait keeps the first frame stable without ever deadlocking the book.
+        await waitForBundledReaderFontWarmup();
 
         await el.open(book);
 
@@ -2351,17 +2337,68 @@
       return JSON.stringify(String(value || ''));
     }
 
+    function warmBundledReaderFontOnce() {
+      if (bundledReaderFontWarmup) return bundledReaderFontWarmup;
+      const familyName = String(currentCustomFontFamily || '').trim();
+      if (!currentCustomFontFaceCSS || !familyName || !document.fonts || !document.fonts.load) {
+        return null;
+      }
+
+      const family = cssString(familyName);
+      try {
+        bundledReaderFontWarmup = Promise.allSettled([
+          document.fonts.load(`normal 400 16px ${family}`),
+          document.fonts.load(`italic 400 16px ${family}`),
+          document.fonts.load(`normal 700 16px ${family}`),
+          document.fonts.load(`italic 700 16px ${family}`),
+        ]).then((results) => {
+          const unavailable = results.some(
+            (result) => result.status === 'rejected' || result.value.length === 0
+          );
+          if (unavailable) {
+            console.warn('[Reader] Some bundled SB Serif faces are unavailable; using fallback typography');
+          }
+        });
+      } catch (fontError) {
+        console.warn('[Reader] Failed to start bundled SB Serif warmup:', fontError);
+        return null;
+      }
+
+      return bundledReaderFontWarmup;
+    }
+
+    async function waitForBundledReaderFontWarmup() {
+      const warmup = warmBundledReaderFontOnce();
+      if (!warmup) return;
+
+      let timeoutId = null;
+      await Promise.race([
+        warmup,
+        new Promise((resolve) => {
+          timeoutId = setTimeout(resolve, BUNDLED_READER_FONT_WARMUP_TIMEOUT_MS);
+        }),
+      ]);
+      if (timeoutId !== null) clearTimeout(timeoutId);
+    }
+
     function syncCustomFontStylesForDoc(doc, css) {
       if (!doc || !doc.head) return;
       const { importUrls, fontFaceCSS } = splitCustomFontCSS(css);
 
-      doc.querySelectorAll('link.__readany_css_font__').forEach((el) => el.remove());
-      for (const url of importUrls) {
-        const link = doc.createElement('link');
-        link.rel = 'stylesheet';
-        link.href = url;
-        link.className = '__readany_css_font__';
-        doc.head.appendChild(link);
+      const existingLinks = Array.from(doc.querySelectorAll('link.__readany_css_font__'));
+      const existingImportUrls = existingLinks.map((link) => link.getAttribute('href') || '');
+      const importsChanged =
+        existingImportUrls.length !== importUrls.length ||
+        existingImportUrls.some((url, index) => url !== importUrls[index]);
+      if (importsChanged) {
+        existingLinks.forEach((el) => el.remove());
+        for (const url of importUrls) {
+          const link = doc.createElement('link');
+          link.rel = 'stylesheet';
+          link.href = url;
+          link.className = '__readany_css_font__';
+          doc.head.appendChild(link);
+        }
       }
 
       const styleId = '__readany_custom_font_face__';
@@ -2371,7 +2408,7 @@
         el.id = styleId;
         doc.head.appendChild(el);
       }
-      el.textContent = fontFaceCSS;
+      if (el.textContent !== fontFaceCSS) el.textContent = fontFaceCSS;
     }
 
     function syncCustomFontStylesForAllDocs(css) {
@@ -2689,6 +2726,7 @@ a { color: ${primary} !important; }
       const SELECTION_MOVE_THRESHOLD = 2;
       const SWIPE_MIN_X = 40;
       let tapState = null;
+      let lastPrimaryInputEndAt = -Infinity;
 
       // A horizontal drag turns exactly one page, in the direction the finger
       // travelled. The renderer's own swipe handling stays off: it derives the
@@ -2764,6 +2802,7 @@ a { color: ${primary} !important; }
           (input === 'pointer' && state.pointerId !== pointerId)
         ) return;
         tapState = null;
+        lastPrimaryInputEndAt = e.timeStamp;
 
         if (state.moved) {
           finishSwipe(e, clientX, clientY, state);
@@ -2925,6 +2964,20 @@ a { color: ${primary} !important; }
       doc.addEventListener('pointerup', (e) => {
         if (e.pointerType !== 'mouse' || e.isPrimary === false || e.button !== 0) return;
         finishTap(e, e.clientX, e.clientY, 'pointer', e.pointerId);
+      }, { passive: false, capture: true });
+
+      // WKWebView can expose a Simulator/Device Hub tap only as a synthetic
+      // click. Use it as a fallback, while ignoring the click browsers emit
+      // after a touch or pointer sequence that was already handled above.
+      doc.addEventListener('click', (e) => {
+        if (!Number.isFinite(e.clientX) || !Number.isFinite(e.clientY)) return;
+        // Programmatic element.click() must not turn a page. Accessibility and
+        // Simulator taps may legitimately arrive with detail === 0, but remain
+        // trusted user input in WKWebView.
+        if (e.isTrusted === false) return;
+        if (e.timeStamp - lastPrimaryInputEndAt < 500) return;
+        beginTap(e.clientX, e.clientY, e.target, 'click', null, e.timeStamp);
+        finishTap(e, e.clientX, e.clientY, 'click', null);
       }, { passive: false, capture: true });
     }
 
@@ -5949,6 +6002,11 @@ a { color: ${primary} !important; }
   <!-- __READANY_FOLIATE_BUNDLE_INSERT_POINT_7f3a9b2e__ -->
 
   <script>
+    // Foliate renders EPUB sections in nested documents. WKWebView normally
+    // sends gestures there, but iOS can retarget a Simulator/accessibility tap
+    // to the outer Foliate host. Listen in both places; iframe events do not
+    // bubble into this document, so a gesture is still handled exactly once.
+    attachTapListener(document);
     // Signal ready AFTER foliate-js is loaded
     postToRN('ready', {});
   </script>

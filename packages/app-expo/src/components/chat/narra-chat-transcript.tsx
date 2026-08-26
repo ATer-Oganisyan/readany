@@ -4,14 +4,10 @@ import { bodyTypography, fontFamily, useTheme, withOpacity } from "@/styles/them
 import { spacingPixels } from "@deslop/primitives";
 import type { CitationPart, MessageV2 } from "@readany/core/types/message";
 import { LinearGradient } from "expo-linear-gradient";
-import {
-  Message,
-  MessageScroller,
-  Shimmer,
-  useMessageScroller,
-} from "panelui-native";
+import { Message, MessageScroller, Shimmer, useMessageScroller } from "panelui-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MutableRefObject } from "react";
+import { useTranslation } from "react-i18next";
 import { type ScrollViewProps, StyleSheet, type TextStyle, View } from "react-native";
 import type { KeyboardChatScrollViewRef } from "react-native-keyboard-controller";
 import { NarraKeyboardChatScrollView } from "./narra-keyboard-chat-scroll-view";
@@ -71,14 +67,14 @@ type ChatRow =
   | { kind: "day"; messageId: string; label: string }
   | { kind: "message"; messageId: string; message: MessageV2; scrollAnchor: boolean };
 
-function dayLabel(timestamp: number, locale: "ru" | "en"): string {
+function dayLabel(timestamp: number, locale: "ru" | "en", todayLabel: string): string {
   const value = new Date(timestamp);
   const today = new Date();
   const sameDay =
     value.getDate() === today.getDate() &&
     value.getMonth() === today.getMonth() &&
     value.getFullYear() === today.getFullYear();
-  if (sameDay) return locale === "en" ? "Today" : "Сегодня";
+  if (sameDay) return todayLabel;
   return value.toLocaleDateString(locale, {
     day: "numeric",
     month: "long",
@@ -86,7 +82,7 @@ function dayLabel(timestamp: number, locale: "ru" | "en"): string {
   });
 }
 
-function buildRows(messages: MessageV2[], locale: "ru" | "en"): ChatRow[] {
+function buildRows(messages: MessageV2[], locale: "ru" | "en", todayLabel: string): ChatRow[] {
   const rows: ChatRow[] = [];
   let lastDay = "";
   for (const message of messages) {
@@ -96,7 +92,7 @@ function buildRows(messages: MessageV2[], locale: "ru" | "en"): ChatRow[] {
       rows.push({
         kind: "day",
         messageId: `day-${day}`,
-        label: dayLabel(message.createdAt, locale),
+        label: dayLabel(message.createdAt, locale, todayLabel),
       });
     }
     rows.push({ kind: "message", messageId: message.id, message, scrollAnchor: true });
@@ -350,8 +346,13 @@ export function NarraChatTranscript({
   showTyping = false,
 }: NarraChatTranscriptProps) {
   const { colors, isDark } = useTheme();
-  const typingLabel = locale === "en" ? "Typing…" : "Печатает…";
-  const rows = useMemo(() => buildRows(messages, locale), [locale, messages]);
+  const { t } = useTranslation();
+  const todayLabel = t("chat.today", "Сегодня");
+  const typingLabel = t("chat.typing", "Печатает…");
+  const rows = useMemo(
+    () => buildRows(messages, locale, todayLabel),
+    [locale, messages, todayLabel],
+  );
   const latestUserMessageId = useMemo(() => {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
       if (messages[index]?.role === "user") return messages[index]?.id;

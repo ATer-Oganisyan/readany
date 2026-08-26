@@ -66,11 +66,14 @@ describe("защиты матчера", () => {
     ]);
   });
 
-  it("короткая основа (< 4 букв) матчится только точной формой", () => {
+  it("короткая основа матчится точными падежными формами", () => {
     const spec = buildCharacterNameMatcherSpec([{ id: "anna", name: "Анна" }]);
-    // основа «анн» короче лимита — работает только точная форма «Анна»
-    expect(matchedTexts("Анна вошла.", spec)).toEqual([{ text: "Анна", characterId: "anna" }]);
-    expect(matchedTexts("Аннушка пролила масло.", spec)).toEqual([]);
+    expect(matchedTexts("Анну позвали, а без Анны не начали.", spec)).toEqual([
+      { text: "Анну", characterId: "anna" },
+      { text: "Анны", characterId: "anna" },
+    ]);
+    // Произвольные продолжения короткой основы по-прежнему не матчатся.
+    expect(matchedTexts("Аннушка и Аннуитет остались без совпадений.", spec)).toEqual([]);
   });
 
   it("слишком короткие имена не матчатся вовсе", () => {
@@ -87,6 +90,29 @@ describe("защиты матчера", () => {
     expect(matchedTexts("Андрей уехал.", spec)).toEqual([
       { text: "Андрей", characterId: "andrey" },
     ]);
+  });
+});
+
+describe("фамилии-прилагательные", () => {
+  const spec = buildCharacterNameMatcherSpec([
+    { id: "vronsky", name: "Вронский", fullName: "Алексей Кириллович Вронский" },
+    { id: "ranevskaya", name: "Раневская", fullName: "Любовь Андреевна Раневская" },
+  ]);
+
+  it("матчит мужскую и женскую падежные формы", () => {
+    expect(matchedTexts("Без Вронского Раневскую не дождались.", spec)).toEqual([
+      { text: "Вронского", characterId: "vronsky" },
+      { text: "Раневскую", characterId: "ranevskaya" },
+    ]);
+  });
+
+  it("не матчит падежную основу внутри другого слова", () => {
+    expect(matchedTexts("Аннуитет и Вронскогорский показатель.", spec)).toEqual([]);
+  });
+
+  it("не превращает обычное прилагательное в ссылку на однофамильца", () => {
+    const ambiguous = buildCharacterNameMatcherSpec([{ id: "white", name: "Белый" }]);
+    expect(matchedTexts("На Белом море начался шторм.", ambiguous)).toEqual([]);
   });
 });
 

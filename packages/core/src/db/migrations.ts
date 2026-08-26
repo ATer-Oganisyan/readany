@@ -126,6 +126,25 @@ const migrations: Migration[] = [
     description: "Cache the whole-book character count measured by the reader",
     up: "ALTER TABLE books ADD COLUMN total_characters INTEGER",
   },
+  {
+    version: 15,
+    description: "Add stable catalog identity and content revision to books",
+    up: [
+      "ALTER TABLE books ADD COLUMN source_kind TEXT NOT NULL DEFAULT 'local'",
+      "ALTER TABLE books ADD COLUMN book_edition_id TEXT",
+      "ALTER TABLE books ADD COLUMN content_hash TEXT",
+      "ALTER TABLE books ADD COLUMN revision_id TEXT",
+      "CREATE INDEX IF NOT EXISTS idx_books_catalog_edition ON books(book_edition_id)",
+    ],
+  },
+  {
+    version: 16,
+    description: "Store native reader locator without overwriting legacy CFI",
+    up: [
+      "ALTER TABLE books ADD COLUMN native_locator TEXT",
+      "UPDATE books SET native_locator = current_cfi, current_cfi = NULL WHERE current_cfi LIKE 'native-v1:%'",
+    ],
+  },
 ];
 
 /** Run pending migrations */

@@ -59,8 +59,8 @@ type SheetContent =
   | { kind: "characterChat"; characterId: string };
 
 const MAX_AUTOMATIC_PORTRAIT_ATTEMPTS = 2;
-const CONTENT_EXIT_DURATION_MS = 120;
-const CONTENT_ENTER_DURATION_MS = 180;
+const CONTENT_EXIT_DURATION_MS = 100;
+const CONTENT_ENTER_DURATION_MS = 100;
 const CONTENT_EXIT_EASING = Easing.bezier(0.4, 0, 1, 1);
 const CONTENT_ENTER_EASING = Easing.bezier(0.2, 0, 0, 1);
 const USES_CHARACTERS_SHEET = Platform.OS === "ios";
@@ -453,8 +453,6 @@ function NarraCharactersList({
       !book ||
       Boolean(bundledCharacters?.length) ||
       characters.length > 0 ||
-      bookState?.analyzedAt ||
-      bookState?.analysisError ||
       autoAnalysisStartedRef.current
     ) {
       return;
@@ -462,15 +460,7 @@ function NarraCharactersList({
 
     autoAnalysisStartedRef.current = true;
     void analyze(false);
-  }, [
-    analyze,
-    book,
-    bookState?.analysisError,
-    bookState?.analyzedAt,
-    bundledCharacters?.length,
-    characters.length,
-    narraStoreHydrated,
-  ]);
+  }, [analyze, book, bundledCharacters?.length, characters.length, narraStoreHydrated]);
 
   useEffect(() => {
     if (!book || busy || portraitLoading) return;

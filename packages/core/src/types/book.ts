@@ -40,6 +40,11 @@ export interface Book {
   id: string;
   filePath: string;
   format: BookFormat;
+  /** Stable provenance. Catalog identity must never be inferred from title. */
+  sourceKind?: "local" | "catalog";
+  bookEditionId?: string;
+  contentHash?: string;
+  revisionId?: string;
   meta: BookMeta;
   groupId?: string;
   addedAt: number;
@@ -48,6 +53,7 @@ export interface Book {
   deletedAt?: number;
   progress: number; // 0-1
   currentCfi?: string; // EPUB CFI position or PDF page marker (e.g. "page-5")
+  nativeLocator?: string; // Native reader position; kept separate so legacy CFI survives rollback.
   isVectorized: boolean;
   vectorizeProgress: number; // 0-1
   tags: string[];

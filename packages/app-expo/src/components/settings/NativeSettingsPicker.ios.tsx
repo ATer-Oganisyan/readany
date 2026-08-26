@@ -18,7 +18,10 @@ export function NativeSettingsPicker({
       <HStack
         spacing={8}
         alignment="center"
-        modifiers={[frame({ maxWidth: 10_000 }), padding({ horizontal: 16, vertical: 14 })]}
+        modifiers={[
+          frame({ maxWidth: 10_000 }),
+          padding({ leading: 16, trailing: 8, vertical: 14 }),
+        ]}
       >
         <Text modifiers={[font({ family: interfaceFontFamily.regular, size: 18 })]}>{label}</Text>
         <Spacer />

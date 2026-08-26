@@ -16,7 +16,7 @@ export function NativeSettingsPicker({
       <Row
         horizontalArrangement="spaceBetween"
         verticalAlignment="center"
-        modifiers={[fillMaxWidth(), padding(16, 4, 16, 4)]}
+        modifiers={[fillMaxWidth(), padding(16, 4, 8, 4)]}
       >
         <Text
           maxLines={1}

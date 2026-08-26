@@ -1,19 +1,19 @@
-import { getStrokeIconImageSource, resolveSystemIconName } from "@/components/ui/MishanaerIcon";
 import { NativeButton } from "@/components/ui/NativeButton";
-import { type NativeButtonIcon, nativeButtonIconNames } from "@/components/ui/NativeButton.types";
+import type { NativeButtonIcon } from "@/components/ui/NativeButton.types";
 import { NativeContextMenuButton } from "@/components/ui/NativeContextMenuButton";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useLayoutEffect, useRef } from "react";
 import { Platform, View } from "react-native";
+import type { SFSymbol } from "sf-symbols-typescript";
 
 export type NativeHeaderAction = {
   type?: "button";
   label: string;
   accessibilityLabel?: string;
   icon: NativeButtonIcon;
-  sfSymbol: string;
+  sfSymbol: SFSymbol;
   onPress: () => void;
   disabled?: boolean;
   destructive?: boolean;
@@ -24,11 +24,11 @@ export type NativeHeaderMenu = {
   label: string;
   accessibilityLabel?: string;
   icon: NativeButtonIcon;
-  sfSymbol: string;
+  sfSymbol: SFSymbol;
   disabled?: boolean;
   items: Array<{
     label: string;
-    sfSymbol?: string;
+    sfSymbol?: SFSymbol;
     onPress: () => void;
     disabled?: boolean;
     destructive?: boolean;
@@ -81,8 +81,8 @@ function iosActions(actions: NativeHeaderItem[]) {
             label: action.label,
             accessibilityLabel: action.accessibilityLabel ?? action.label,
             icon: {
-              type: "image" as const,
-              source: getStrokeIconImageSource(nativeButtonIconNames[action.icon]),
+              type: "sfSymbol" as const,
+              name: action.sfSymbol,
             },
             disabled: action.disabled,
             menu: {
@@ -91,8 +91,8 @@ function iosActions(actions: NativeHeaderItem[]) {
                 label: item.label,
                 icon: item.sfSymbol
                   ? {
-                      type: "image" as const,
-                      source: getStrokeIconImageSource(resolveSystemIconName(item.sfSymbol)),
+                      type: "sfSymbol" as const,
+                      name: item.sfSymbol,
                     }
                   : undefined,
                 onPress: item.onPress,
@@ -106,8 +106,8 @@ function iosActions(actions: NativeHeaderItem[]) {
             label: action.label,
             accessibilityLabel: action.accessibilityLabel ?? action.label,
             icon: {
-              type: "image" as const,
-              source: getStrokeIconImageSource(nativeButtonIconNames[action.icon]),
+              type: "sfSymbol" as const,
+              name: action.sfSymbol,
             },
             onPress: action.onPress,
             disabled: action.disabled,
@@ -122,10 +122,13 @@ export function useNativeHeaderActions({
   title,
   left = [],
   right = [],
+  revision,
 }: {
   title?: string;
   left?: NativeHeaderItem[];
   right?: NativeHeaderItem[];
+  /** Reinstalls native items after another header setOptions call rebuilt UINavigationItem. */
+  revision?: string | number | boolean;
 }) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const leftRef = useRef(left);
@@ -136,19 +139,19 @@ export function useNativeHeaderActions({
   const leftSignature = left
     .map((action) =>
       action.type === "menu"
-        ? `${action.label}:${action.icon}:${action.disabled}:${action.items
-            .map((item) => `${item.label}:${item.disabled}:${item.destructive}`)
+        ? `${action.label}:${action.accessibilityLabel}:${action.icon}:${action.sfSymbol}:${action.disabled}:${action.items
+            .map((item) => `${item.label}:${item.sfSymbol}:${item.disabled}:${item.destructive}`)
             .join(",")}`
-        : `${action.label}:${action.icon}:${action.disabled}:${action.destructive}`,
+        : `${action.label}:${action.accessibilityLabel}:${action.icon}:${action.sfSymbol}:${action.disabled}:${action.destructive}`,
     )
     .join("|");
   const rightSignature = right
     .map((action) =>
       action.type === "menu"
-        ? `${action.label}:${action.icon}:${action.disabled}:${action.items
-            .map((item) => `${item.label}:${item.disabled}:${item.destructive}`)
+        ? `${action.label}:${action.accessibilityLabel}:${action.icon}:${action.sfSymbol}:${action.disabled}:${action.items
+            .map((item) => `${item.label}:${item.sfSymbol}:${item.disabled}:${item.destructive}`)
             .join(",")}`
-        : `${action.label}:${action.icon}:${action.disabled}:${action.destructive}`,
+        : `${action.label}:${action.accessibilityLabel}:${action.icon}:${action.sfSymbol}:${action.disabled}:${action.destructive}`,
     )
     .join("|");
   const actionSignature = `${leftSignature}||${rightSignature}`;
@@ -156,6 +159,7 @@ export function useNativeHeaderActions({
   useLayoutEffect(() => {
     // Reinstall native bar items when their labels or states change.
     void actionSignature;
+    void revision;
     const bindCurrentActions = (ref: typeof leftRef) =>
       ref.current.map(
         (action, actionIndex): NativeHeaderItem =>
@@ -195,5 +199,5 @@ export function useNativeHeaderActions({
             headerRight: androidActions(currentRight),
           }),
     });
-  }, [actionSignature, navigation, title]);
+  }, [actionSignature, navigation, revision, title]);
 }

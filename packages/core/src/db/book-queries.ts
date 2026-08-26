@@ -15,6 +15,10 @@ interface BookRow {
   id: string;
   file_path: string;
   format: string;
+  source_kind: string | null;
+  book_edition_id: string | null;
+  content_hash: string | null;
+  revision_id: string | null;
   title: string;
   author: string;
   publisher: string | null;
@@ -35,6 +39,7 @@ interface BookRow {
   deleted_at: number | null;
   progress: number;
   current_cfi: string | null;
+  native_locator: string | null;
   is_vectorized: number;
   vectorize_progress: number;
   tags: string;
@@ -48,6 +53,10 @@ function rowToBook(row: BookRow): Book {
     id: row.id,
     filePath: row.file_path,
     format: (row.format as Book["format"]) || "epub",
+    sourceKind: row.source_kind === "catalog" ? "catalog" : "local",
+    bookEditionId: row.book_edition_id || undefined,
+    contentHash: row.content_hash || undefined,
+    revisionId: row.revision_id || undefined,
     meta: {
       title: row.title,
       author: row.author,
@@ -70,6 +79,7 @@ function rowToBook(row: BookRow): Book {
     deletedAt: row.deleted_at || undefined,
     progress: row.progress,
     currentCfi: row.current_cfi || undefined,
+    nativeLocator: row.native_locator || undefined,
     isVectorized: row.is_vectorized === 1,
     vectorizeProgress: row.vectorize_progress,
     tags: parseJSON(row.tags, []),
@@ -172,12 +182,16 @@ export async function insertBook(book: Book): Promise<void> {
   const syncVersion = await nextSyncVersion(database, "books");
   const now = Date.now();
   await database.execute(
-    `INSERT INTO books (id, file_path, format, title, author, publisher, language, isbn, description, cover_url, publish_date, rating, reviews, subjects, total_pages, total_chapters, group_id, added_at, last_opened_at, updated_at, deleted_at, progress, current_cfi, is_vectorized, vectorize_progress, tags, file_hash, sync_status, sync_version, last_modified_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO books (id, file_path, format, source_kind, book_edition_id, content_hash, revision_id, title, author, publisher, language, isbn, description, cover_url, publish_date, rating, reviews, subjects, total_pages, total_chapters, group_id, added_at, last_opened_at, updated_at, deleted_at, progress, current_cfi, native_locator, is_vectorized, vectorize_progress, tags, file_hash, sync_status, sync_version, last_modified_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       book.id,
       book.filePath,
       book.format || "epub",
+      book.sourceKind || "local",
+      book.bookEditionId || null,
+      book.contentHash || null,
+      book.revisionId || null,
       book.meta.title,
       book.meta.author,
       book.meta.publisher || null,
@@ -198,6 +212,7 @@ export async function insertBook(book: Book): Promise<void> {
       book.deletedAt || null,
       book.progress,
       book.currentCfi || null,
+      book.nativeLocator || null,
       book.isVectorized ? 1 : 0,
       book.vectorizeProgress,
       JSON.stringify(book.tags),
@@ -277,6 +292,22 @@ export async function updateBook(id: string, updates: Partial<Book>): Promise<vo
     sets.push("format = ?");
     values.push(updates.format);
   }
+  if (updates.sourceKind !== undefined) {
+    sets.push("source_kind = ?");
+    values.push(updates.sourceKind);
+  }
+  if (updates.bookEditionId !== undefined) {
+    sets.push("book_edition_id = ?");
+    values.push(updates.bookEditionId);
+  }
+  if (updates.contentHash !== undefined) {
+    sets.push("content_hash = ?");
+    values.push(updates.contentHash);
+  }
+  if (updates.revisionId !== undefined) {
+    sets.push("revision_id = ?");
+    values.push(updates.revisionId);
+  }
   if (updates.progress !== undefined) {
     sets.push("progress = ?");
     values.push(updates.progress);
@@ -284,6 +315,10 @@ export async function updateBook(id: string, updates: Partial<Book>): Promise<vo
   if (updates.currentCfi !== undefined) {
     sets.push("current_cfi = ?");
     values.push(updates.currentCfi);
+  }
+  if (updates.nativeLocator !== undefined) {
+    sets.push("native_locator = ?");
+    values.push(updates.nativeLocator);
   }
   if (updates.lastOpenedAt !== undefined) {
     sets.push("last_opened_at = ?");
