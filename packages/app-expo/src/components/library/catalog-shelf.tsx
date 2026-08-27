@@ -1,8 +1,13 @@
 import { NativeButton } from "@/components/ui/NativeButton";
+import { MishanaerIcon } from "@/components/ui/MishanaerIcon";
 import { Text } from "@/components/ui/Typography";
 import { useSwipePressGuard } from "@/components/ui/swipe-press-guard";
 import type { CachedBackendCatalogBook } from "@/lib/narra/backend-catalog-cache";
-import { CATALOG_SHELF_GAP, catalogShelfLayout } from "@/lib/narra/catalog-shelf-layout";
+import {
+  CATALOG_SHELF_GAP,
+  CATALOG_SHELF_SHADOW_INSETS,
+  catalogShelfLayout,
+} from "@/lib/narra/catalog-shelf-layout";
 import {
   CATALOG_SHELF_SKELETON_KEYS,
   type CatalogShelf,
@@ -12,7 +17,13 @@ import {
 import { fontSize, fontWeight, spacing, useColors } from "@/styles/theme";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { FlatList, type NativeScrollEvent, type NativeSyntheticEvent, View } from "react-native";
+import {
+  FlatList,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+  Pressable,
+  View,
+} from "react-native";
 import { CatalogBookCard } from "./CatalogBookCard";
 import { CatalogBookSkeleton } from "./CatalogBookSkeleton";
 
@@ -28,6 +39,8 @@ interface Props {
   loadMoreError: string | null;
   libraryKeys: ReadonlySet<string>;
   onOpen: (book: CachedBackendCatalogBook) => void;
+  onOpenCategory: (shelf: CatalogShelf) => void;
+  onRetryCover: (book: CachedBackendCatalogBook) => void;
   onLoadMore: (shelf: CatalogShelf) => void;
   onPageChange: (id: string, firstBookIndex: number) => void;
   onVisibleBooks: (id: string, keys: string[]) => void;
@@ -45,6 +58,8 @@ export function CatalogShelfRow({
   loadMoreError,
   libraryKeys,
   onOpen,
+  onOpenCategory,
+  onRetryCover,
   onLoadMore,
   onPageChange,
   onVisibleBooks,
@@ -58,7 +73,7 @@ export function CatalogShelfRow({
   const [page, setPage] = useState(initialPage);
   const didDrag = useRef(false);
   const pages = useMemo(() => chunkShelfBooks(shelf.books, columns), [shelf.books, columns]);
-  const { cardWidth, pageWidth, pageStride, edgeInset } = catalogShelfLayout(
+  const { cardWidth, pageWidth, pageStride, edgeInset, trailingInset } = catalogShelfLayout(
     viewportWidth,
     width,
     columns,
@@ -83,21 +98,40 @@ export function CatalogShelfRow({
 
   return (
     <View
-      style={{ width: viewportWidth, marginBottom: spacing.xxl }}
+      style={{ width: viewportWidth, overflow: "visible" }}
       testID={`catalog-shelf-${shelf.id}`}
     >
-      <Text
-        accessibilityRole="header"
-        style={{
-          color: colors.foreground,
-          fontSize: fontSize.xl,
-          fontWeight: fontWeight.semibold,
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={shelf.title}
+        testID={`catalog-category-link-${shelf.id}`}
+        onPress={() => {
+          if (guard?.canPress() === false) return;
+          onOpenCategory(shelf);
+        }}
+        style={({ pressed }) => ({
+          flexDirection: "row",
+          alignItems: "center",
+          minHeight: 44,
+          gap: spacing.md,
           marginBottom: spacing.sm,
           paddingHorizontal: edgeInset,
-        }}
+          opacity: pressed ? 0.72 : 1,
+        })}
       >
-        {shelf.title}
-      </Text>
+        <Text
+          accessibilityRole="header"
+          style={{
+            flex: 1,
+            color: colors.foreground,
+            fontSize: fontSize.xl,
+            fontWeight: fontWeight.semibold,
+          }}
+        >
+          {shelf.title}
+        </Text>
+        <MishanaerIcon name="chevron-small-right" size={24} color={colors.primary40} />
+      </Pressable>
       <FlatList
         horizontal
         snapToInterval={pageStride}
@@ -123,10 +157,21 @@ export function CatalogShelfRow({
         keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="handled"
         contentInsetAdjustmentBehavior="never"
-        contentContainerStyle={{ paddingVertical: spacing.sm, paddingHorizontal: edgeInset }}
+        contentContainerStyle={{
+          paddingTop: CATALOG_SHELF_SHADOW_INSETS.top,
+          paddingBottom: CATALOG_SHELF_SHADOW_INSETS.bottom,
+          paddingLeft: edgeInset,
+          paddingRight: trailingInset,
+        }}
         style={{
           width: viewportWidth,
-          height: cardWidth * (41 / 28) + spacing.sm * 2,
+          height:
+            cardWidth * (41 / 28) +
+            CATALOG_SHELF_SHADOW_INSETS.top +
+            CATALOG_SHELF_SHADOW_INSETS.bottom,
+          // Preserve the cover's distance from its heading; reserve real room below for shadows.
+          marginTop: spacing.sm - CATALOG_SHELF_SHADOW_INSETS.top,
+          overflow: "visible",
           flexGrow: 0,
         }}
         accessibilityLabel={shelf.title}
@@ -154,9 +199,12 @@ export function CatalogShelfRow({
                 title={book.title}
                 author={book.author}
                 coverUri={book.coverUri}
+                hasCover={!!book.cover}
+                coverLoadFailed={book.coverLoadFailed}
                 cardWidth={cardWidth}
                 isInLibrary={libraryKeys.has(book.catalogKey)}
                 onPress={() => onOpen(book)}
+                onRetryCover={() => onRetryCover(book)}
               />
             ))}
           </View>

@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { CATALOG_SHELF_GAP, catalogShelfLayout } from "./catalog-shelf-layout";
+import {
+  CATALOG_SHELF_GAP,
+  CATALOG_SHELF_SHADOW_INSETS,
+  catalogShelfLayout,
+} from "./catalog-shelf-layout";
 
 describe("catalog shelf geometry", () => {
+  it("leaves room for the full 11px offset / 22px blur shadow without narrowing the viewport", () => {
+    const tail = 22 * 1.5;
+    expect(CATALOG_SHELF_SHADOW_INSETS.top).toBeGreaterThanOrEqual(tail - 11);
+    expect(CATALOG_SHELF_SHADOW_INSETS.bottom).toBeGreaterThanOrEqual(tail + 11);
+  });
   it.each([
     [393, 361, 2],
     [402, 370, 2],
@@ -10,13 +19,17 @@ describe("catalog shelf geometry", () => {
     [1194, 1138, 5],
     [1440, 1260, 5],
   ])("keeps the same gap inside and between pages at %i pt", (viewport, content, columns) => {
-    const { cardWidth, pageWidth, pageStride, edgeInset } = catalogShelfLayout(
+    const { cardWidth, pageWidth, pageStride, edgeInset, trailingInset } = catalogShelfLayout(
       viewport,
       content,
       columns,
     );
     expect(CATALOG_SHELF_GAP).toBe(16);
-    expect(pageWidth + edgeInset * 2).toBe(viewport);
+    const previousCardWidth = (content - CATALOG_SHELF_GAP * (columns - 1)) / columns;
+    expect(cardWidth).toBeCloseTo(previousCardWidth * 0.8);
+    expect(cardWidth * (41 / 28)).toBeCloseTo(previousCardWidth * (41 / 28) * 0.8);
+    expect(edgeInset).toBe((viewport - content) / 2);
+    expect(pageWidth + edgeInset + trailingInset).toBeCloseTo(viewport);
     const positions = Array.from(
       { length: columns * 4 },
       (_, index) =>
@@ -34,7 +47,7 @@ describe("catalog shelf geometry", () => {
     // Restoring a page keeps its first book under the heading.
     expect(positions[columns * 2] - pageStride * 2).toBeCloseTo(edgeInset);
     // Last-page scroll limit matches the snap target, without an extra empty step.
-    const totalWidth = edgeInset * 2 + pageWidth * 4 + CATALOG_SHELF_GAP * 3;
+    const totalWidth = edgeInset + trailingInset + pageWidth * 4 + CATALOG_SHELF_GAP * 3;
     expect(totalWidth - viewport).toBeCloseTo(pageStride * 3);
   });
 });

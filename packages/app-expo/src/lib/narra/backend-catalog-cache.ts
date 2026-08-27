@@ -19,6 +19,8 @@ let catalogRefreshPromise: Promise<CachedBackendCatalog> | null = null;
 
 export interface CachedBackendCatalogBook extends BackendCatalogBook {
   coverUri?: string;
+  /** Transient failure: retry when the screen is reopened, never persist it. */
+  coverLoadFailed?: boolean;
 }
 
 export interface CachedBackendCatalog {
@@ -69,7 +71,7 @@ async function cachedBook(book: BackendCatalogBook): Promise<CachedBackendCatalo
 }
 
 function storableBook(book: CachedBackendCatalogBook): BackendCatalogBook {
-  const { coverUri: _coverUri, ...value } = book;
+  const { coverUri: _coverUri, coverLoadFailed: _coverLoadFailed, ...value } = book;
   return value;
 }
 

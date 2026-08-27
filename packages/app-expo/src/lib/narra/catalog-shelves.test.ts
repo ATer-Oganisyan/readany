@@ -4,6 +4,7 @@ import type { BackendCatalogGenre } from "./backend-catalog-api";
 import type { CachedBackendCatalog, CachedBackendCatalogBook } from "./backend-catalog-cache";
 import {
   buildCatalogShelves,
+  catalogCoverWindow,
   chunkShelfBooks,
   completeCatalogSnapshot,
   shelfPageForBook,
@@ -31,6 +32,30 @@ function book(id: string, categories: string[]): CachedBackendCatalogBook {
 }
 
 describe("catalog shelves", () => {
+  it("prefetches adjacent pages and the next shelf without downloading the whole catalog", () => {
+    const shelves = Array.from({ length: 10 }, (_, index) => ({
+      id: `shelf-${index}`,
+      title: `Shelf ${index}`,
+      books: Array.from({ length: 20 }, (_, position) => book(`${index}-${position}`, [])),
+    }));
+    const window = catalogCoverWindow(shelves, new Set(["shelf-3"]), new Map([["shelf-3", 4]]), 2);
+    expect(window.visible.map((b) => b.catalogKey)).toEqual(["3-4", "3-5"]);
+    expect(window.nearby.map((b) => b.catalogKey)).toEqual([
+      "3-2",
+      "3-3",
+      "3-4",
+      "3-5",
+      "3-6",
+      "3-7",
+      "4-0",
+      "4-1",
+      "4-2",
+      "4-3",
+    ]);
+    const initial = catalogCoverWindow(shelves, new Set(), new Map(), 2);
+    expect(initial.visible.map((b) => b.catalogKey)).toEqual(["0-0", "0-1", "1-0", "1-1"]);
+    expect(initial.nearby.length).toBeLessThan(20);
+  });
   it("orders categories, localizes headings, and hides empty shelves", () => {
     const shelves = buildCatalogShelves(
       [book("a", ["history"]), book("b", ["fiction"])],

@@ -47,6 +47,7 @@ const STROKE_ICONS = [
   "chevron-down",
   "chevron-left",
   "chevron-right",
+  "chevron-small-right",
   "chevron-up",
   "clipboard",
   "clock-3h",
