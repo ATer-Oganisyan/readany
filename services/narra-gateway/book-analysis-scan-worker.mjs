@@ -139,6 +139,7 @@ export function createBookAnalysisScanWorker({
   generator,
   workerId,
   extractorVersion = BOOK_ANALYSIS_EXTRACTOR_VERSION,
+  runIds,
   leaseSeconds = 300,
   leaseRenewMs = 60_000,
   logger = console
@@ -248,6 +249,7 @@ export function createBookAnalysisScanWorker({
       const job = await repository.claimAnalysisJob(workerId, {
         stages: ['scan'],
         pipelineIds: [BOOK_ANALYSIS_PIPELINE_NARRA],
+        runIds,
         leaseSeconds
       })
       if (!job) return { status: 'idle' }

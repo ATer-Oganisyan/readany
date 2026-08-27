@@ -38,6 +38,17 @@ test('analysis run key binds source and both pipeline versions', () => {
   ].join(':'))
 })
 
+test('analysis repository requires an explicit boolean media generation policy', () => {
+  const pool = scriptedPool([])
+  assert.throws(
+    () => createPostgresBookAnalysisRepository(pool, { mediaGenerationEnabled: 'false' }),
+    /mediaGenerationEnabled must be a boolean/
+  )
+  assert.doesNotThrow(
+    () => createPostgresBookAnalysisRepository(pool, { mediaGenerationEnabled: false })
+  )
+})
+
 test('provisional analysis keeps only grounded confirmed people behind temporary keys', () => {
   const observations = [10, 30].map((offset, index) => ({
     id: `observation-${index}`,
@@ -178,6 +189,7 @@ test('analysis jobs are claimed with stage isolation, skip locked and expiring l
   })
   const job = await repository.claimAnalysisJob('scan-worker-1', {
     stages: ['scan'],
+    runIds: ['123e4567-e89b-42d3-a456-426614174099'],
     leaseSeconds: 120
   })
   assert.equal(job.id, 'job-1')
@@ -186,7 +198,23 @@ test('analysis jobs are claimed with stage isolation, skip locked and expiring l
   assert.match(claim.sql, /run\.stage = job\.stage/)
   assert.match(claim.sql, /FOR UPDATE OF job SKIP LOCKED/)
   assert.match(claim.sql, /lease_expires_at = now\(\) \+ make_interval/)
+  assert.match(claim.sql, /run\.id = ANY\(\$6::uuid\[\]\)/)
   assert.deepEqual(claim.params[1], ['scan'])
+  assert.deepEqual(claim.params[5], ['123e4567-e89b-42d3-a456-426614174099'])
+})
+
+test('analysis job run allowlist rejects an empty or malformed scope', async () => {
+  const pool = scriptedPool([])
+  const repository = createPostgresBookAnalysisRepository(pool)
+  await assert.rejects(
+    repository.claimAnalysisJob('scan-worker-1', { stages: ['scan'], runIds: [] }),
+    /runIds must not be empty/
+  )
+  await assert.rejects(
+    repository.claimAnalysisJob('scan-worker-1', { stages: ['scan'], runIds: ['not-a-uuid'] }),
+    /runId must be a UUID/
+  )
+  assert.equal(pool.queries.length, 0)
 })
 
 test('analysis jobs are claimed fairly across books before another chunk from the same run', async () => {

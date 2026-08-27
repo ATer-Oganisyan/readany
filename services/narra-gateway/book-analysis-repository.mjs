@@ -34,6 +34,7 @@ import {
 import { isSupportedVoice } from './voices.mjs'
 
 const SHA256 = /^[0-9a-f]{64}$/
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const STAGES = new Set(['prepare', 'scan', 'resolve', 'synthesize', 'validate', 'publish'])
 const MAX_PROVISIONAL_CHARACTERS = 64
 
@@ -53,6 +54,13 @@ function validateHash(value, name) {
     throw new TypeError(`${name} must be a lowercase SHA-256`)
   }
   return value
+}
+
+function validateUuid(value, name) {
+  if (typeof value !== 'string' || !UUID.test(value)) {
+    throw new TypeError(`${name} must be a UUID`)
+  }
+  return value.toLowerCase()
 }
 
 function validateStage(value) {
@@ -403,7 +411,8 @@ export function bookAnalysisRunIdempotencyKey({
 
 export function createPostgresBookAnalysisRepository(pool, {
   idFactory = randomUUID,
-  defaultPipelineId = BOOK_ANALYSIS_PIPELINE_NARRA
+  defaultPipelineId = BOOK_ANALYSIS_PIPELINE_NARRA,
+  mediaGenerationEnabled = true
 } = {}) {
   if (!pool || typeof pool.connect !== 'function' || typeof pool.query !== 'function') {
     throw new TypeError('a pg-compatible pool is required')
@@ -412,6 +421,9 @@ export function createPostgresBookAnalysisRepository(pool, {
     defaultPipelineId,
     'defaultPipelineId'
   )
+  if (typeof mediaGenerationEnabled !== 'boolean') {
+    throw new TypeError('mediaGenerationEnabled must be a boolean')
+  }
 
   async function materializeMediaProjection(client, {
     bookEditionId,
@@ -509,9 +521,9 @@ export function createPostgresBookAnalysisRepository(pool, {
       textLength: markup.textLength,
       readerTextOffset
     })
-    const eligibleCharacters = markup.characters.filter(
-      (character) => character.warmupTextOffset <= mediaFrontier
-    )
+    const eligibleCharacters = mediaGenerationEnabled
+      ? markup.characters.filter((character) => character.warmupTextOffset <= mediaFrontier)
+      : []
     for (const character of eligibleCharacters) {
       const currentBundle = await client.query(
         `SELECT id, status, source_markup_hash, media_revision
@@ -640,7 +652,10 @@ export function createPostgresBookAnalysisRepository(pool, {
       [bookEditionId, markupContentHash]
     )
     let queuedScenes = 0
-    if (source.rows[0]?.normalized_text_object_key && source.rows[0]?.normalized_text_hash) {
+    if (
+      mediaGenerationEnabled &&
+      source.rows[0]?.normalized_text_object_key && source.rows[0]?.normalized_text_hash
+    ) {
       const slots = bookSceneSlotsThrough(markup.scenePolicy, markup.textLength, mediaFrontier)
       for (const slot of slots) {
         const idempotencyKey = bookSceneIdempotencyKey({
@@ -1113,6 +1128,7 @@ export function createPostgresBookAnalysisRepository(pool, {
     async claimAnalysisJob(workerId, {
       stages = ['prepare', 'scan', 'resolve', 'synthesize', 'validate', 'publish'],
       pipelineIds = BOOK_ANALYSIS_PIPELINE_IDS,
+      runIds,
       leaseSeconds = 300
     } = {}) {
       const worker = validateIdentifier(workerId, 'workerId', 240)
@@ -1124,6 +1140,13 @@ export function createPostgresBookAnalysisRepository(pool, {
       const allowedPipelineIds = [...new Set(pipelineIds.map((value) =>
         normalizeBookAnalysisPipelineId(value, 'pipelineId')
       ))]
+      let allowedRunIds = null
+      if (runIds !== undefined) {
+        if (!Array.isArray(runIds) || !runIds.length) {
+          throw new TypeError('runIds must not be empty when provided')
+        }
+        allowedRunIds = [...new Set(runIds.map((value) => validateUuid(value, 'runId')))]
+      }
       validateLeaseSeconds(leaseSeconds)
       return transaction(pool, async (client) => {
         const exhausted = await client.query(
@@ -1133,9 +1156,10 @@ export function createPostgresBookAnalysisRepository(pool, {
                lease_token = NULL, updated_at = now()
            WHERE stage = ANY($1::text[]) AND status = 'running'
              AND pipeline_id = ANY($2::text[])
+             AND ($3::uuid[] IS NULL OR run_id = ANY($3::uuid[]))
              AND lease_expires_at <= now() AND attempts >= max_attempts
            RETURNING run_id`,
-          [allowedStages, allowedPipelineIds]
+          [allowedStages, allowedPipelineIds, allowedRunIds]
         )
         if (exhausted.rows.length) {
           await client.query(
@@ -1153,6 +1177,7 @@ export function createPostgresBookAnalysisRepository(pool, {
              JOIN book_analysis_runs AS run ON run.id = job.run_id
              WHERE job.stage = ANY($2::text[]) AND run.stage = job.stage
                AND job.pipeline_id = ANY($5::text[])
+               AND ($6::uuid[] IS NULL OR run.id = ANY($6::uuid[]))
                AND job.pipeline_id = run.pipeline_id
                AND job.pipeline_implementation_version = run.pipeline_implementation_version
                AND run.status IN ('queued', 'running')
@@ -1190,7 +1215,7 @@ export function createPostgresBookAnalysisRepository(pool, {
            FROM candidate
            WHERE job.id = candidate.id
            RETURNING job.*, candidate.source_hash`,
-          [worker, allowedStages, leaseSeconds, leaseToken, allowedPipelineIds]
+          [worker, allowedStages, leaseSeconds, leaseToken, allowedPipelineIds, allowedRunIds]
         )
         const job = jobRow(result.rows[0])
         if (job) {

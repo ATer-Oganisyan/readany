@@ -176,12 +176,14 @@ services:
     command: ["node", "book-analysis-worker.mjs"]
     environment:
       <<: [*database-environment, *storage-environment]
+      BOOK_ANALYSIS_RUN_IDS: ${BOOK_ANALYSIS_RUN_IDS:-}
 
   book-analysis-scan:
     <<: *analysis-worker
     command: ["node", "book-analysis-scan-worker-runner.mjs"]
     environment:
       <<: [*database-environment, *storage-environment, *generator-environment]
+      BOOK_ANALYSIS_RUN_IDS: ${BOOK_ANALYSIS_RUN_IDS:-}
 
   autiobook-adapter:
     profiles: ["book-analysis-external"]
@@ -228,24 +230,28 @@ services:
     command: ["node", "book-analysis-resolve-worker-runner.mjs"]
     environment:
       <<: [*database-environment, *generator-environment]
+      BOOK_ANALYSIS_RUN_IDS: ${BOOK_ANALYSIS_RUN_IDS:-}
 
   book-analysis-synthesize:
     <<: *analysis-worker
     command: ["node", "book-analysis-stage-worker-runner.mjs", "synthesize"]
     environment:
       <<: [*database-environment, *generator-environment]
+      BOOK_ANALYSIS_RUN_IDS: ${BOOK_ANALYSIS_RUN_IDS:-}
 
   book-analysis-validate:
     <<: *analysis-worker
     command: ["node", "book-analysis-stage-worker-runner.mjs", "validate"]
     environment:
       <<: [*database-environment, *storage-environment]
+      BOOK_ANALYSIS_RUN_IDS: ${BOOK_ANALYSIS_RUN_IDS:-}
 
   book-analysis-publish:
     <<: *analysis-worker
     command: ["node", "book-analysis-stage-worker-runner.mjs", "publish"]
     environment:
       <<: *database-environment
+      BOOK_ANALYSIS_RUN_IDS: ${BOOK_ANALYSIS_RUN_IDS:-}
 
 volumes:
   postgres-data:

@@ -17,6 +17,7 @@ export function createBookAnalysisSynthesizeWorker({
   generator,
   workerId,
   synthesisVersion = BOOK_ANALYSIS_SYNTHESIS_VERSION,
+  runIds,
   leaseSeconds = 300,
   leaseRenewMs = 60_000,
   logger = console
@@ -75,6 +76,7 @@ export function createBookAnalysisSynthesizeWorker({
     async runOnce() {
       const job = await repository.claimAnalysisJob(workerId, {
         stages: ['synthesize'],
+        runIds,
         leaseSeconds
       })
       if (!job) return { status: 'idle' }

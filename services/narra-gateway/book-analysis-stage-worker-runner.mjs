@@ -5,7 +5,7 @@ import { createBookAnalysisValidateWorker } from './book-analysis-validate-worke
 import { createBookAnalysisPublishWorker } from './book-analysis-publish-worker.mjs'
 import { createBookObjectStorageFromEnv } from './book-object-storage.mjs'
 import { createGenerationServiceClient } from './generation-service-client.mjs'
-import { parseEnvInt } from './env.mjs'
+import { parseEnvBool, parseEnvInt, parseEnvUuidList } from './env.mjs'
 import { createOperationalLogger } from './operational-log.mjs'
 import { createPostgresPoolFromEnv, runBookMarkupMigrations } from './postgres-runtime.mjs'
 
@@ -31,6 +31,7 @@ const pollMs = parseEnvInt(process.env, 'BOOK_ANALYSIS_STAGE_POLL_MS', 1_000, 60
 const leaseSeconds = parseEnvInt(process.env, 'BOOK_ANALYSIS_STAGE_LEASE_SECONDS', 300, 3_600)
 const leaseRenewMs = parseEnvInt(process.env, 'BOOK_ANALYSIS_STAGE_LEASE_RENEW_MS', 60_000, 1_800_000)
 const idleLogMs = parseEnvInt(process.env, 'BOOK_ANALYSIS_STAGE_IDLE_LOG_MS', 300_000, 3_600_000)
+const runIds = parseEnvUuidList(process.env, 'BOOK_ANALYSIS_RUN_IDS')
 if (leaseSeconds < 30) throw new Error('BOOK_ANALYSIS_STAGE_LEASE_SECONDS must be at least 30')
 if (leaseRenewMs >= leaseSeconds * 1_000) {
   throw new Error('BOOK_ANALYSIS_STAGE_LEASE_RENEW_MS must be shorter than the job lease')
@@ -43,10 +44,17 @@ const log = createOperationalLogger({ component: `analysis-${stage}-worker` })
 const pool = await createPostgresPoolFromEnv(process.env)
 try {
   await runBookMarkupMigrations(pool)
-  const repository = createPostgresBookAnalysisRepository(pool)
+  const repository = createPostgresBookAnalysisRepository(pool, {
+    mediaGenerationEnabled: parseEnvBool(
+      process.env,
+      'BOOK_ANALYSIS_MEDIA_GENERATION_ENABLED',
+      true
+    )
+  })
   const common = {
     repository,
     workerId,
+    runIds,
     leaseSeconds,
     leaseRenewMs
   }
@@ -70,6 +78,7 @@ try {
   log.info('worker.ready', `${stage}-воркер запущен`, {
     worker: workerId,
     stages: [stage],
+    run_ids: runIds ?? null,
     poll_ms: pollMs,
     lease_seconds: leaseSeconds
   })

@@ -11,6 +11,7 @@ export function createBookAnalysisValidateWorker({
   repository,
   storage,
   workerId,
+  runIds,
   leaseSeconds = 300,
   leaseRenewMs = 60_000,
   logger = console
@@ -23,7 +24,11 @@ export function createBookAnalysisValidateWorker({
   const log = createOperationalLogger({ component: 'analysis-validate', logger })
   return {
     async runOnce() {
-      const job = await repository.claimAnalysisJob(workerId, { stages: ['validate'], leaseSeconds })
+      const job = await repository.claimAnalysisJob(workerId, {
+        stages: ['validate'],
+        runIds,
+        leaseSeconds
+      })
       if (!job) return { status: 'idle' }
       const startedAt = performance.now()
       const timer = setInterval(() => {

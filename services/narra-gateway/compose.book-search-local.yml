@@ -85,6 +85,7 @@ services:
         condition: service_healthy
     environment:
       BOOK_SEARCH_ENABLED: "true"
+      BOOK_ANALYSIS_MEDIA_GENERATION_ENABLED: "false"
       BOOK_EMBEDDING_BASE_URL: http://book-embedding.railway.internal:8080
       BOOK_EMBEDDING_MODEL: local-hash-v1
       BOOK_EMBEDDING_DIMENSIONS: "256"

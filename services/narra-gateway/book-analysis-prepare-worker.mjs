@@ -17,6 +17,7 @@ export function createBookAnalysisPrepareWorker({
   repository,
   storage,
   workerId,
+  runIds,
   leaseSeconds = 300,
   leaseRenewMs = 60_000,
   maxBookBytes = 64 * 1024 * 1024,
@@ -106,6 +107,7 @@ export function createBookAnalysisPrepareWorker({
     async runOnce() {
       const job = await repository.claimAnalysisJob(workerId, {
         stages: ['prepare'],
+        runIds,
         leaseSeconds
       })
       if (!job) return { status: 'idle' }

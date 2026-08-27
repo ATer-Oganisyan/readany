@@ -105,6 +105,11 @@ if (!['production', 'staging', 'development', 'test'].includes(ANALYTICS_ENV)) {
 const VIDEO_REQUIRED = parseEnvBool(process.env, 'VIDEO_REQUIRED', false)
 const BOOK_BACKEND_REQUIRED = parseEnvBool(process.env, 'BOOK_BACKEND_REQUIRED', false)
 const BOOK_SEARCH_ENABLED = parseEnvBool(process.env, 'BOOK_SEARCH_ENABLED', false)
+const BOOK_ANALYSIS_MEDIA_GENERATION_ENABLED = parseEnvBool(
+  process.env,
+  'BOOK_ANALYSIS_MEDIA_GENERATION_ENABLED',
+  true
+)
 const BOOK_SHADOW_PREVIEW_ENABLED = parseEnvBool(
   process.env,
   'BOOK_SHADOW_PREVIEW_ENABLED',
@@ -981,7 +986,8 @@ if (process.env.DATABASE_URL) {
     privateMaterialTtlDays: PRIVATE_MATERIAL_TTL_DAYS
   })
   bookAnalysisRepository = createPostgresBookAnalysisRepository(bookMarkupPool, {
-    defaultPipelineId: BOOK_ANALYSIS_PIPELINE
+    defaultPipelineId: BOOK_ANALYSIS_PIPELINE,
+    mediaGenerationEnabled: BOOK_ANALYSIS_MEDIA_GENERATION_ENABLED
   })
   bookOperatorRepository = createPostgresBookOperatorRepository(bookMarkupPool)
   if (BOOK_SEARCH_ENABLED) {
@@ -992,7 +998,7 @@ if (process.env.DATABASE_URL) {
     })
     console.info('[book-search] API enabled; books are enqueued only by explicit operator command')
   }
-  if (internalGenerationService) {
+  if (internalGenerationService && BOOK_ANALYSIS_MEDIA_GENERATION_ENABLED) {
     const identityJobs = await bookMarkupRepository.enqueueMissingBookIdentities()
     const coverJobs = await bookMarkupRepository.enqueueMissingCatalogCovers()
     const characterMediaJobs = await bookMarkupRepository.enqueueCharacterMediaBackfill()
@@ -1014,6 +1020,8 @@ if (process.env.DATABASE_URL) {
       requested: sceneBackfills.reduce((total, value) => total + value.requested, 0),
       pending: sceneBackfills.reduce((total, value) => total + value.pending, 0)
     })
+  } else if (internalGenerationService) {
+    console.info('[book-media] generation and startup backfills are disabled')
   }
   if (bookObjectStorage) {
     const cleanup = createPrivateMaterialCleanup({

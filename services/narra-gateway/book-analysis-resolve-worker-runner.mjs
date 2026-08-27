@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { createPostgresBookAnalysisRepository } from './book-analysis-repository.mjs'
 import { createBookAnalysisResolveWorker } from './book-analysis-resolve-worker.mjs'
 import { createGenerationServiceClient } from './generation-service-client.mjs'
-import { parseEnvInt } from './env.mjs'
+import { parseEnvInt, parseEnvUuidList } from './env.mjs'
 import { createOperationalLogger } from './operational-log.mjs'
 import { createPostgresPoolFromEnv, runBookMarkupMigrations } from './postgres-runtime.mjs'
 
@@ -44,6 +44,7 @@ const idleLogMs = parseEnvInt(
   300_000,
   3_600_000
 )
+const runIds = parseEnvUuidList(process.env, 'BOOK_ANALYSIS_RUN_IDS')
 if (leaseSeconds < 30) throw new Error('BOOK_ANALYSIS_RESOLVE_LEASE_SECONDS must be at least 30')
 if (leaseRenewMs >= leaseSeconds * 1_000) {
   throw new Error('BOOK_ANALYSIS_RESOLVE_LEASE_RENEW_MS must be shorter than the job lease')
@@ -57,6 +58,7 @@ try {
   const worker = createBookAnalysisResolveWorker({
     repository,
     workerId,
+    runIds,
     leaseSeconds,
     leaseRenewMs,
     generator: createGenerationServiceClient({
@@ -68,6 +70,7 @@ try {
   log.info('worker.ready', 'Resolve-воркер запущен', {
     worker: workerId,
     stages: ['resolve'],
+    run_ids: runIds ?? null,
     poll_ms: pollMs,
     lease_seconds: leaseSeconds
   })
