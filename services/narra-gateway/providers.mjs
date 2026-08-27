@@ -420,7 +420,7 @@ function coverImageRequest(config, { prompt, aspectRatio, selectedModel }) {
         ...(nanoBanana
           ? { aspect_ratio: aspectRatio, resolution: '1K' }
           : { quality: 'high' }),
-        output_format: 'jpeg'
+        output_format: 'png'
       }
     }
   }
@@ -431,11 +431,30 @@ function coverImageRequest(config, { prompt, aspectRatio, selectedModel }) {
       prompt,
       aspect_ratio: aspectRatio,
       ...(nanoBanana ? { resolution: '1K' } : { quality: 'high' }),
-      output_format: 'jpeg',
-      output_compression: 90,
+      output_format: 'png',
       n: 1
     }
   }
+}
+
+function imageMimeTypeFromBase64(value) {
+  const bytes = Buffer.from(value.slice(0, 24), 'base64')
+  if (
+    bytes.byteLength >= 8 &&
+    bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+  ) return 'image/png'
+  if (
+    bytes.byteLength >= 3 &&
+    bytes[0] === 0xff &&
+    bytes[1] === 0xd8 &&
+    bytes[2] === 0xff
+  ) return 'image/jpeg'
+  if (
+    bytes.byteLength >= 12 &&
+    bytes.toString('ascii', 0, 4) === 'RIFF' &&
+    bytes.toString('ascii', 8, 12) === 'WEBP'
+  ) return 'image/webp'
+  return ''
 }
 
 function imagePayloadResult(payload, provider) {
@@ -450,9 +469,10 @@ function imagePayloadResult(payload, provider) {
     throw error
   }
   const dataUrl = /^data:(image\/(?:jpeg|png|webp));base64,(.+)$/s.exec(raw)
+  const imageBase64 = dataUrl ? dataUrl[2] : raw
   return {
-    image: dataUrl ? dataUrl[2] : raw,
-    mimeType: image.media_type || dataUrl?.[1] || 'image/jpeg'
+    image: imageBase64,
+    mimeType: imageMimeTypeFromBase64(imageBase64) || image.media_type || dataUrl?.[1] || 'image/png'
   }
 }
 

@@ -13,6 +13,8 @@ import {
   routeForPurpose
 } from '../providers.mjs'
 
+const PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+
 test('provider route is selected only from server environment', () => {
   const route = routeForPurpose('summary', {
     LLM_ROUTE_SUMMARY: 'litellm',
@@ -403,7 +405,7 @@ test('LiteLLM cover request uses the standard images generations contract', asyn
       }
       return new Response(JSON.stringify({
         created: 123,
-        data: [{ b64_json: 'aGVsbG8=' }]
+        data: [{ b64_json: PNG_BASE64, media_type: 'image/jpeg' }]
       }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' }
@@ -418,8 +420,8 @@ test('LiteLLM cover request uses the standard images generations contract', asyn
   })
 
   assert.deepEqual(result, {
-    image: 'aGVsbG8=',
-    mimeType: 'image/jpeg',
+    image: PNG_BASE64,
+    mimeType: 'image/png',
     model: 'gpt-image-2'
   })
   assert.equal(captured.url, 'https://litellm.test/v1/images/generations')
@@ -431,7 +433,7 @@ test('LiteLLM cover request uses the standard images generations contract', asyn
     n: 1,
     size: '1024x1536',
     quality: 'high',
-    output_format: 'jpeg'
+    output_format: 'png'
   })
 })
 
@@ -615,7 +617,7 @@ test('cover request sends the server-side image contract to OpenRouter', async (
     fetchImpl: async (url, init) => {
       calls.push({ url, init, body: JSON.parse(init.body) })
       return new Response(
-        JSON.stringify({ data: [{ b64_json: 'aGVsbG8=', media_type: 'image/jpeg' }] }),
+        JSON.stringify({ data: [{ b64_json: PNG_BASE64, media_type: 'image/jpeg' }] }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
       )
     },
@@ -625,7 +627,7 @@ test('cover request sends the server-side image contract to OpenRouter', async (
       OPENROUTER_APP_NAME: 'Narra'
     }
   })
-  assert.deepEqual(result, { image: 'aGVsbG8=', mimeType: 'image/jpeg', model: 'openai/gpt-image-2' })
+  assert.deepEqual(result, { image: PNG_BASE64, mimeType: 'image/png', model: 'openai/gpt-image-2' })
   assert.equal(calls.length, 1)
   assert.equal(calls[0].url, 'https://openrouter.test/v1/images')
   assert.equal(new Headers(calls[0].init.headers).get('authorization'), 'Bearer or-key')
@@ -635,8 +637,7 @@ test('cover request sends the server-side image contract to OpenRouter', async (
     prompt: 'front cover artwork',
     aspect_ratio: '2:3',
     quality: 'high',
-    output_format: 'jpeg',
-    output_compression: 90,
+    output_format: 'png',
     n: 1
   })
 })
