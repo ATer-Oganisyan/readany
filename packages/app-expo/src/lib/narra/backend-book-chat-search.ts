@@ -7,6 +7,15 @@ import {
   searchBackendBookGraph,
 } from "./backend-book-api";
 
+const BACKEND_BOOK_CHAT_COMPATIBLE_TOOLS = new Set([
+  "getCurrentChapter",
+  "getSurroundingContext",
+  "getReadingProgress",
+  "getRecentHighlights",
+  "getAnnotations",
+  "getSelection",
+]);
+
 function toolMode(value: unknown): BackendBookSearchMode {
   if (value === "vector" || value === "semantic") return "semantic";
   if (value === "bm25" || value === "lexical") return "lexical";
@@ -68,7 +77,7 @@ export function createBackendBookRagSearchTool({
         storyArcs: result.storyArcs,
         evidence: result.evidence,
         instruction:
-          "Answer only from these spoiler-bounded results. Prefer grounded evidence quotes and distinguish explicit facts from inference. Text offsets identify positions in the backend-normalized book.",
+          "The backend retrieval is complete. Do not call more retrieval or citation tools in this turn; answer the user now from these spoiler-bounded results. Cite evidence in plain text, distinguish explicit facts from inference, and use text offsets only as positions in the backend-normalized book.",
       };
     },
   };
@@ -102,8 +111,9 @@ export function createBackendBookChatToolProvider({
       bookEditionId,
       spoilerMode: spoilerFree ? "reader" : "full",
     });
-    const localSearchIndex = tools.findIndex((tool) => tool.name === "ragSearch");
-    if (localSearchIndex < 0) return [...tools, backendSearch];
-    return tools.map((tool, index) => (index === localSearchIndex ? backendSearch : tool));
+    const compatibleTools = tools.filter((tool) =>
+      BACKEND_BOOK_CHAT_COMPATIBLE_TOOLS.has(tool.name),
+    );
+    return [...compatibleTools, backendSearch];
   };
 }

@@ -45,6 +45,8 @@ describe("backend book chat search", () => {
     const searchTools = tools.filter((tool) => tool.name === "ragSearch");
 
     expect(searchTools).toHaveLength(1);
+    expect(tools.some((tool) => tool.name === "addCitation")).toBe(false);
+    expect(tools.some((tool) => tool.name === "ragToc" || tool.name === "ragContext")).toBe(false);
     await expect(
       searchTools[0]?.execute({ query: "Prometheus", mode: "vector", topK: 7 }),
     ).resolves.toEqual(
@@ -63,7 +65,7 @@ describe("backend book chat search", () => {
     );
   });
 
-  it("keeps backend graph retrieval available without a local vector index", async () => {
+  it("uses backend retrieval without slow local content or citation tools", async () => {
     vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
       new Response(
         JSON.stringify({
@@ -88,8 +90,14 @@ describe("backend book chat search", () => {
     const search = tools.find((tool) => tool.name === "ragSearch");
 
     expect(search).toBeDefined();
-    expect(tools.some((tool) => tool.name === "fallbackSearch")).toBe(true);
-    await search?.execute({ query: "Prometheus" });
+    expect(tools.some((tool) => tool.name.startsWith("fallback"))).toBe(false);
+    expect(tools.some((tool) => tool.name === "addCitation")).toBe(false);
+    expect(tools.some((tool) => tool.name === "ragToc" || tool.name === "ragContext")).toBe(false);
+    await expect(search?.execute({ query: "Prometheus" })).resolves.toEqual(
+      expect.objectContaining({
+        instruction: expect.stringContaining("Do not call more retrieval or citation tools"),
+      }),
+    );
     expect(vi.mocked(narraGatewayRequest)).toHaveBeenCalledWith(
       `/v2/books/${BOOK_EDITION_ID}/graph/search?q=Prometheus&mode=hybrid&spoiler_mode=full&limit=8&max_hops=2`,
       {},
