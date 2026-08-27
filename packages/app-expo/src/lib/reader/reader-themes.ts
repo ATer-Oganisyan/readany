@@ -65,13 +65,18 @@ export function resolveReaderScenePalette<
   dark: T,
   paperBackground: string,
 ): T & { sceneActionColor?: string } {
+  // Lift Light slightly toward the existing white surface, keeping Sepia's paper intact.
+  const buttonFill =
+    theme === "sepia"
+      ? paperBackground
+      : `color-mix(in srgb, ${paperBackground} 70%, ${light.elevation2} 30%)`;
   return theme === "dark"
     ? dark
     : {
         ...light,
         elevation1: light.primary4,
         // Translucency belongs to the fill, never the label or icon.
-        elevation2: `color-mix(in srgb, ${paperBackground} 70%, transparent)`,
+        elevation2: `color-mix(in srgb, ${buttonFill} 70%, transparent)`,
         ...(theme === "sepia" ? { sceneActionColor: SEPIA_COLORS.foreground } : {}),
       };
 }

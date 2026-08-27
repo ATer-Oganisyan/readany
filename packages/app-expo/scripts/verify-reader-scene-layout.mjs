@@ -208,7 +208,7 @@ try {
         await page.evaluate(theme => {
           const dark = theme === 'dark';
           const background = dark ? '#282828' : theme === 'sepia' ? '#efe1c6' : '#dedede';
-          setThemeColors({ background, foreground: dark ? '#ffffffcc' : '#111111cc', muted: dark ? '#ffffff80' : '#11111180', primary5: dark ? '#ffffff0d' : '#1111110d', primary8: dark ? '#ffffff14' : '#11111114', primary10: dark ? '#ffffff1a' : '#1111111a', primary40: dark ? '#ffffff66' : '#11111166', elevation1: dark ? '#1d1d1d' : '#1111110a', sceneActionColor: theme === 'sepia' ? '#3b3125' : dark ? '#ffffff66' : '#11111166', elevation2: dark ? '#282828' : `color-mix(in srgb, ${background} 70%, transparent)` });
+          setThemeColors({ background, foreground: dark ? '#ffffffcc' : '#111111cc', muted: dark ? '#ffffff80' : '#11111180', primary5: dark ? '#ffffff0d' : '#1111110d', primary8: dark ? '#ffffff14' : '#11111114', primary10: dark ? '#ffffff1a' : '#1111111a', primary40: dark ? '#ffffff66' : '#11111166', elevation1: dark ? '#1d1d1d' : '#1111110a', sceneActionColor: theme === 'sepia' ? '#3b3125' : dark ? '#ffffff66' : '#11111166', elevation2: dark ? '#282828' : `color-mix(in srgb, ${theme === 'sepia' ? background : `color-mix(in srgb, ${background} 70%, #ffffff 30%)`} 70%, transparent)` });
           document.body.style.backgroundColor = background;
         }, theme);
         await settle(page);
@@ -307,11 +307,11 @@ try {
       }, anchor);
       await settle(page);
       await page.screenshot({ path: join(artifacts, `${engine.name()}-button.png`) });
-      await page.evaluate(() => setThemeColors({ background: '#dedede', foreground: '#111111cc', muted: '#11111180', primary5: '#1111110d', primary8: '#11111114', primary10: '#1111111a', primary40: '#11111166', elevation1: '#1111110a', elevation2: 'color-mix(in srgb, #dedede 70%, transparent)' }));
+      await page.evaluate(() => setThemeColors({ background: '#dedede', foreground: '#111111cc', muted: '#11111180', primary5: '#1111110d', primary8: '#11111114', primary10: '#1111111a', primary40: '#11111166', elevation1: '#1111110a', elevation2: 'color-mix(in srgb, color-mix(in srgb, #dedede 70%, #ffffff 30%) 70%, transparent)' }));
       await settle(page);
       const light = await measure(page, anchor);
       assert.equal(light.background, 'rgba(17, 17, 17, 0.04)');
-      assert.ok(light.action.background.startsWith('color(srgb 0.870'), `Light uses reader paper at 70%: ${light.action.background}`);
+      assert.ok(light.action.background.startsWith('color(srgb 0.909'), `Light uses slightly lifted paper at 70%: ${light.action.background}`);
       assert.equal(light.action.backdropFilter, 'blur(10px)');
       assert.equal(light.action.borderColor, 'rgba(17, 17, 17, 0.1)');
       assert.equal(light.stroke.color, 'rgba(17, 17, 17, 0.05)');
@@ -320,7 +320,7 @@ try {
       for (const theme of ['light', 'sepia']) {
         await page.evaluate(theme => {
           const background = theme === 'sepia' ? '#efe1c6' : '#dedede';
-          setThemeColors({ background, foreground: '#111111cc', muted: '#11111180', primary5: '#1111110d', primary8: '#11111114', primary10: '#1111111a', primary40: '#11111166', sceneActionColor: theme === 'sepia' ? '#3b3125' : '#11111166', elevation1: '#1111110a', elevation2: `color-mix(in srgb, ${background} 70%, transparent)` });
+          setThemeColors({ background, foreground: '#111111cc', muted: '#11111180', primary5: '#1111110d', primary8: '#11111114', primary10: '#1111111a', primary40: '#11111166', sceneActionColor: theme === 'sepia' ? '#3b3125' : '#11111166', elevation1: '#1111110a', elevation2: `color-mix(in srgb, ${theme === 'sepia' ? background : `color-mix(in srgb, ${background} 70%, #ffffff 30%)`} 70%, transparent)` });
           document.body.style.backgroundColor = background;
         }, theme);
         await settle(page);
@@ -443,14 +443,14 @@ try {
           const still = await pixels();
           await page.waitForTimeout(350);
           assert.equal((await pixels()).data, still.data, 'Reduced motion holds a static mosaic');
-          await page.evaluate(() => setThemeColors({ background: '#dedede', foreground: '#111111cc', muted: '#11111180', primary5: '#1111110d', primary8: '#11111114', primary10: '#1111111a', primary40: '#11111166', elevation1: '#1111110a', elevation2: 'color-mix(in srgb, #dedede 70%, transparent)' }));
+          await page.evaluate(() => setThemeColors({ background: '#dedede', foreground: '#111111cc', muted: '#11111180', primary5: '#1111110d', primary8: '#11111114', primary10: '#1111111a', primary40: '#11111166', elevation1: '#1111110a', elevation2: 'color-mix(in srgb, color-mix(in srgb, #dedede 70%, #ffffff 30%) 70%, transparent)' }));
           await settle(page);
           assert.notEqual((await pixels()).data, still.data, 'Loading adapts to light theme without remount');
           await checkPixelOpacity(page, anchor);
           assert.equal((await measure(page, anchor)).stroke.color, 'rgba(17, 17, 17, 0.05)');
           await page.screenshot({ path: join(artifacts, `${engine.name()}-loading-light.png`) });
           await page.evaluate(() => {
-            setThemeColors({ background: '#efe1c6', foreground: '#3b3125', muted: '#8a7a63', primary5: '#1111110d', primary8: '#11111114', primary10: '#1111111a', primary40: '#11111166', elevation1: '#1111110a', elevation2: 'color-mix(in srgb, #dedede 70%, transparent)' });
+            setThemeColors({ background: '#efe1c6', foreground: '#3b3125', muted: '#8a7a63', primary5: '#1111110d', primary8: '#11111114', primary10: '#1111111a', primary40: '#11111166', elevation1: '#1111110a', elevation2: 'color-mix(in srgb, color-mix(in srgb, #dedede 70%, #ffffff 30%) 70%, transparent)' });
             document.body.style.backgroundColor = '#efe1c6';
           });
           await settle(page);

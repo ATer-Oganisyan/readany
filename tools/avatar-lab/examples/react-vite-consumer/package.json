@@ -1,0 +1,23 @@
+{
+  "name": "avatar-react-vite-consumer",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build"
+  },
+  "dependencies": {
+    "@bible-strong/avatar-core": "workspace:*",
+    "@bible-strong/avatar-react": "workspace:*",
+    "@vitejs/plugin-react": "^6.0.2",
+    "vite": "^8.0.13",
+    "typescript": "~6.0.3",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3"
+  }
+}

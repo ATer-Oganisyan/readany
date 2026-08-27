@@ -40,7 +40,8 @@ describe("resolveReaderThemeColors", () => {
       expect(resolveReaderScenePalette(theme, light, dark, "#dedede")).toEqual({
         ...light,
         elevation1: light.primary4,
-        elevation2: "color-mix(in srgb, #dedede 70%, transparent)",
+        elevation2:
+          "color-mix(in srgb, color-mix(in srgb, #dedede 70%, #FFFFFF 30%) 70%, transparent)",
       });
     }
     expect(resolveReaderScenePalette("sepia", light, dark, "#efe1c6")).toEqual({
