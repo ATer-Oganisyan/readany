@@ -85,7 +85,7 @@ function useTabStackScreenOptions(): NativeStackNavigationOptions {
 }
 
 /** iOS large-title options shared by the tab stack home screens. */
-function useLargeTitleOptions(): NativeStackNavigationOptions {
+export function useLargeTitleOptions(): NativeStackNavigationOptions {
   const { colors } = useTheme();
 
   return Platform.OS === "ios"

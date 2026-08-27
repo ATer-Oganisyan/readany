@@ -60,6 +60,48 @@ export function shelfPageForBook(firstBookIndex: number, count: number, bookCoun
   );
 }
 
+/** The category grid loads only visible books and a small neighboring window. */
+export function catalogCategoryCoverWindow(
+  books: CachedBackendCatalogBook[],
+  visibleEditionIds: readonly string[],
+): { visible: CachedBackendCatalogBook[]; nearby: CachedBackendCatalogBook[] } {
+  const visible = new Set(visibleEditionIds);
+  const indices = books.flatMap((book, index) => (visible.has(book.bookEditionId) ? [index] : []));
+  const start = indices.length ? Math.min(...indices) : 0;
+  const end = indices.length ? Math.max(...indices) + 1 : 6;
+  return {
+    visible: books.slice(start, end),
+    nearby: books.slice(Math.max(0, start - 2), end + 6),
+  };
+}
+
+/** A bounded window: current pages first, then adjacent pages and the next shelf. */
+export function catalogCoverWindow(
+  shelves: CatalogShelf[],
+  visibleShelfIds: ReadonlySet<string>,
+  positions: ReadonlyMap<string, number>,
+  columns: number,
+): { visible: CachedBackendCatalogBook[]; nearby: CachedBackendCatalogBook[] } {
+  const visible: CachedBackendCatalogBook[] = [];
+  const nearby: CachedBackendCatalogBook[] = [];
+  const active = visibleShelfIds.size
+    ? visibleShelfIds
+    : new Set(shelves.slice(0, 2).map((s) => s.id));
+  const appendPages = (shelf: CatalogShelf, current: boolean) => {
+    const page = shelfPageForBook(positions.get(shelf.id) ?? 0, columns, shelf.books.length);
+    const start = page * columns;
+    if (current) visible.push(...shelf.books.slice(start, start + columns));
+    nearby.push(...shelf.books.slice(Math.max(0, start - columns), start + columns * 2));
+  };
+  shelves.forEach((shelf, index) => {
+    if (!active.has(shelf.id)) return;
+    appendPages(shelf, true);
+    const next = shelves[index + 1];
+    if (next && !active.has(next.id)) appendPages(next, false);
+  });
+  return { visible, nearby };
+}
+
 /** Genre filtering is client-side: publish one complete metadata snapshot so
  * newly discovered genres cannot insert rows above the reader's viewport. */
 export async function completeCatalogSnapshot(

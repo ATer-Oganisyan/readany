@@ -42,6 +42,11 @@ import {
 import { findReadableLibraryBookForCatalogBook } from "@/lib/narra/backend-catalog-library";
 import { isBackendDownloadAbort } from "@/lib/narra/backend-file-download";
 import { CatalogCoverQueue } from "@/lib/narra/catalog-cover-queue";
+import {
+  applyCatalogCoverResult,
+  retainCatalogCovers,
+  retryCatalogCoverDownload,
+} from "@/lib/narra/catalog-cover-state";
 import { setCallback, setExtractorRef } from "@/lib/rag/auto-vectorize-service";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import type { LibraryTabStackParamList } from "@/navigation/TabNavigator";
@@ -249,7 +254,7 @@ function LibraryScreenContent() {
   }, [requestedSection, selectLibrarySection]);
 
   const applyBackendCatalog = useCallback((catalog: CachedBackendCatalog) => {
-    setCatalogBooks(catalog.books);
+    setCatalogBooks((current) => retainCatalogCovers(catalog.books, current));
     setCatalogNextCursor(catalog.nextCursor);
     setCatalogGenres(catalog.genres);
     setCatalogGenreVersion(catalog.genreVersion);
@@ -512,11 +517,12 @@ function LibraryScreenContent() {
 
   const catalogCoverLoadingEnabled = isScreenFocused && showCatalog && librarySection === "catalog";
 
-  const rememberCatalogCover = useCallback((catalogKey: string, coverUri: string) => {
-    setCatalogBooks((current) =>
-      current.map((book) => (book.catalogKey === catalogKey ? { ...book, coverUri } : book)),
-    );
-  }, []);
+  const rememberCatalogCover = useCallback(
+    (_catalogKey: string, coverUri: string, requested: CachedBackendCatalogBook) => {
+      setCatalogBooks((current) => applyCatalogCoverResult(current, requested, coverUri));
+    },
+    [],
+  );
 
   /**
    * Докуда пользователь долистал каталог, округлённое вверх до чанка. Один
@@ -542,13 +548,12 @@ function LibraryScreenContent() {
    * сохраняют порядок списка: если обложка внутри окна ещё не пришла, карточка
    * сама покажет заглушку, а книги не будут переставляться местами.
    *
-   * Книга без обложки на бэкенде тоже готова: ждать нечего, и карточка рисует
-   * её на дефолтном цвете обложки. Иначе такие книги не попадали в окно вовсе
-   * и каталог оставался сеткой шиммеров.
+   * Ошибочные записи тоже занимают свою позицию: карточка предлагает повторить
+   * загрузку вместо бесконечного ожидания или выдуманной цветной обложки.
    */
   const visibleCatalogBooks = useMemo(() => {
     const readyCount = catalogBooks.reduce(
-      (count, book) => (book.coverUri || !book.cover ? count + 1 : count),
+      (count, book) => (book.coverUri || !book.cover || book.coverLoadFailed ? count + 1 : count),
       0,
     );
     return catalogBooks.slice(0, Math.min(readyCount, catalogChunkCount));
@@ -667,7 +672,7 @@ function LibraryScreenContent() {
     const missing: CachedBackendCatalogBook[] = [];
     let readyCount = 0;
     for (const book of catalogBooks) {
-      if (book.coverUri) {
+      if (book.coverUri || book.coverLoadFailed) {
         readyCount += 1;
         continue;
       }
@@ -685,12 +690,16 @@ function LibraryScreenContent() {
       return;
     }
 
+    setCatalogBooks((current) =>
+      current.map((book) => (book.coverLoadFailed ? { ...book, coverLoadFailed: false } : book)),
+    );
     const queue = new CatalogCoverQueue({
       concurrency: 2,
       load: materializeBackendCatalogCover,
       onLoaded: rememberCatalogCover,
-      onError: (catalogKey, error) => {
+      onError: (catalogKey, error, requested) => {
         if (!isBackendDownloadAbort(error)) {
+          setCatalogBooks((current) => applyCatalogCoverResult(current, requested));
           console.warn(`[Catalog] Failed to load visible cover ${catalogKey}:`, error);
         }
       },
@@ -1192,9 +1201,16 @@ function LibraryScreenContent() {
                 title={catalogBook.title}
                 author={catalogBook.author}
                 coverUri={catalogBook.coverUri}
+                hasCover={!!catalogBook.cover}
+                coverLoadFailed={catalogBook.coverLoadFailed}
                 cardWidth={gridItemWidth}
                 isInLibrary={catalogBooksInLibrary.has(catalogBook.catalogKey)}
                 onPress={() => void handleCatalogOpen(catalogBook)}
+                onRetryCover={() => {
+                  if (!catalogBook.cover) void loadBackendCatalog();
+                  else
+                    setCatalogBooks((current) => retryCatalogCoverDownload(current, catalogBook));
+                }}
               />
             </View>
           ))}

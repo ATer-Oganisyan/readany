@@ -1,5 +1,9 @@
 import { MissingBookPrompt } from "@/components/shared/MissingBookPrompt";
-import type { CachedBackendCatalogBook } from "@/lib/narra/backend-catalog-cache";
+import type {
+  CachedBackendCatalog,
+  CachedBackendCatalogBook,
+} from "@/lib/narra/backend-catalog-cache";
+import { CatalogCategoryScreen } from "@/screens/catalog-category-screen";
 import BadgesScreen from "@/screens/BadgesScreen";
 import { ChatScreen } from "@/screens/ChatScreen";
 import { FullScreenNotesScreen } from "@/screens/FullScreenNotesScreen";
@@ -36,11 +40,12 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import type { WebDavImportSource } from "@readany/core";
 import { useTranslation } from "react-i18next";
 import { Platform } from "react-native";
-import { TabNavigator } from "./TabNavigator";
+import { TabNavigator, useLargeTitleOptions } from "./TabNavigator";
 import { NATIVE_SCROLL_EDGE_EFFECTS } from "./scroll-edge-effects";
 
 export type RootStackParamList = {
   Tabs: undefined;
+  CatalogCategory: { genreId: string; title: string; catalog: CachedBackendCatalog };
   Chat: undefined;
   Reader: {
     bookId: string;
@@ -104,6 +109,7 @@ export function RootNavigator() {
   const { _hasHydrated } = useSettingsStore();
   const { colors, isDark } = useTheme();
   const { t } = useTranslation();
+  const largeTitleOptions = useLargeTitleOptions();
 
   if (!_hasHydrated) return null;
 
@@ -136,6 +142,16 @@ export function RootNavigator() {
             statusBarHidden: false,
             statusBarStyle: isDark ? "light" : "dark",
           }}
+        />
+        <Stack.Screen
+          name="CatalogCategory"
+          component={CatalogCategoryScreen}
+          options={({ route }) => ({
+            title: route.params.title,
+            ...largeTitleOptions,
+            statusBarHidden: false,
+            statusBarStyle: isDark ? "light" : "dark",
+          })}
         />
         <Stack.Screen
           name="Chat"

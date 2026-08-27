@@ -1,35 +1,38 @@
 import { useSwipePressGuard } from "@/components/ui/swipe-press-guard";
+import { NativeButton } from "@/components/ui/NativeButton";
 import { generatedCoverTextTone } from "@/lib/book/cover-text-contrast";
-import { loadingCoverColorForTitleAuthor } from "@/lib/book/loading-cover-placeholder";
+import { catalogCoverDisplayState } from "@/lib/narra/catalog-cover-state";
 import { useColors } from "@/styles/theme";
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Image, StyleSheet, View } from "react-native";
-import Animated from "react-native-reanimated";
 import { CatalogBookSkeleton } from "./CatalogBookSkeleton";
 import { makeStyles } from "./book-card-styles";
 import { BookCoverTypography } from "./book-cover-typography";
 import { PerspectiveBook } from "./perspective-book";
 
-/** Обложка проявляется за 200 мс: заметно, но не задерживает просмотр. */
-const COVER_FADE_MS = 200;
-
 interface CatalogBookCardProps {
   title: string;
   author: string;
   coverUri?: string;
+  hasCover: boolean;
+  coverLoadFailed?: boolean;
   cardWidth: number;
   isInLibrary: boolean;
   onPress: () => void;
+  onRetryCover: () => void;
 }
 
 export function CatalogBookCard({
   title,
   author,
   coverUri,
+  hasCover,
+  coverLoadFailed,
   cardWidth,
   isInLibrary,
   onPress,
+  onRetryCover,
 }: CatalogBookCardProps) {
   const colors = useColors();
   const styles = makeStyles(colors, cardWidth);
@@ -37,42 +40,37 @@ export function CatalogBookCard({
   const swipePressGuard = useSwipePressGuard();
   const cardHeight = cardWidth * (41 / 28);
 
-  // Книга с обложкой показывается только когда файл уже раскодирован: иначе
-  // карточка успевает мигнуть подложкой под ещё не отрисованной картинкой.
-  // Ждать нечего, если обложки нет вовсе — такая книга сразу показывается на
-  // дефолтном цвете обложки, а не остаётся скелетоном навсегда.
   const [decodedCoverUri, setDecodedCoverUri] = useState<string | null>(null);
-  const isCoverReady = coverUri ? decodedCoverUri === coverUri : true;
-
-  useEffect(() => {
-    // Обложку перегенерировали — ждём загрузки новой, старую не показываем.
-    if (!coverUri) setDecodedCoverUri(null);
-  }, [coverUri]);
+  const [failedCoverUri, setFailedCoverUri] = useState<string | null>(null);
+  const currentCoverUri = useRef(coverUri);
+  currentCoverUri.current = coverUri;
+  const display = catalogCoverDisplayState({
+    hasCover,
+    coverUri,
+    decodedCoverUri,
+    failedCoverUri,
+    downloadFailed: coverLoadFailed,
+  });
+  const isCoverReady = display === "image";
+  const showImage = !!coverUri && failedCoverUri !== coverUri;
 
   return (
     <View style={{ width: cardWidth, height: cardHeight }}>
-      {/* Заглушка уходит, обложка приходит — обе меняют только opacity,
-          поэтому раскладка не пересчитывается и тень не дёргается. */}
+      {/* Until the actual image is decoded, show only the neutral skeleton.
+          No colored book, fade-out, or second placeholder between states. */}
       {isCoverReady ? null : (
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            StyleSheet.absoluteFill,
-            { transitionProperty: "opacity", transitionDuration: COVER_FADE_MS },
-          ]}
-        >
+        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
           <CatalogBookSkeleton cardWidth={cardWidth} />
-        </Animated.View>
+        </View>
       )}
-      <Animated.View
+      <View
         pointerEvents={isCoverReady ? "auto" : "none"}
+        accessibilityElementsHidden={!isCoverReady}
+        importantForAccessibility={isCoverReady ? "auto" : "no-hide-descendants"}
         style={[
           StyleSheet.absoluteFill,
           {
             opacity: isCoverReady ? 1 : 0,
-            transitionProperty: "opacity",
-            transitionDuration: COVER_FADE_MS,
-            transitionTimingFunction: "ease-out",
           },
         ]}
       >
@@ -91,34 +89,47 @@ export function CatalogBookCard({
           }}
           cover={
             <View style={styles.coverCanvas}>
-              {coverUri ? (
+              {showImage ? (
                 <Image
+                  key={coverUri}
                   source={{ uri: coverUri }}
                   style={styles.coverImage}
                   resizeMode="cover"
-                  onLoad={() => setDecodedCoverUri(coverUri)}
+                  onLoad={() => {
+                    if (coverUri && currentCoverUri.current === coverUri)
+                      setDecodedCoverUri(coverUri);
+                  }}
+                  onError={() => {
+                    if (coverUri && currentCoverUri.current === coverUri)
+                      setFailedCoverUri(coverUri);
+                  }}
                 />
-              ) : (
-                // Обложки нет — книга показывается на цветной заглушке из той же
-                // палитры, что в библиотеке, а не на нейтральной подложке.
-                <View
-                  style={[
-                    styles.fallbackCover,
-                    { backgroundColor: loadingCoverColorForTitleAuthor({ title, author }) },
-                  ]}
-                />
-              )}
+              ) : null}
               <BookCoverTypography
                 title={title}
                 author={author}
                 width={cardWidth}
-                textTone={coverUri ? generatedCoverTextTone({ title, author }) : "light"}
-                coverUri={coverUri}
+                textTone={showImage ? generatedCoverTextTone({ title, author }) : "light"}
+                coverUri={showImage ? coverUri : undefined}
               />
             </View>
           }
         />
-      </Animated.View>
+      </View>
+      {display === "error" ? (
+        <View style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center" }]}>
+          <NativeButton
+            label={t("common.retry", "Повторить")}
+            accessibilityLabel={`${t("common.retry", "Повторить")}: ${title}`}
+            onPress={() => {
+              if (swipePressGuard?.canPress() === false) return;
+              setDecodedCoverUri(null);
+              setFailedCoverUri(null);
+              onRetryCover();
+            }}
+          />
+        </View>
+      ) : null}
     </View>
   );
 }

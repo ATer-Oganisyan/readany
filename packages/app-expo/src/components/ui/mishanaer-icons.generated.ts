@@ -49,6 +49,7 @@ import StrokeChecksAsset from "../../../assets/icons/mishanaer/stroke/checks.svg
 import StrokeChevronDownAsset from "../../../assets/icons/mishanaer/stroke/chevron-down.svg";
 import StrokeChevronLeftAsset from "../../../assets/icons/mishanaer/stroke/chevron-left.svg";
 import StrokeChevronRightAsset from "../../../assets/icons/mishanaer/stroke/chevron-right.svg";
+import StrokeChevronSmallRightAsset from "../../../assets/icons/mishanaer/stroke/chevron-small-right.svg";
 import StrokeChevronUpAsset from "../../../assets/icons/mishanaer/stroke/chevron-up.svg";
 import StrokeClipboardAsset from "../../../assets/icons/mishanaer/stroke/clipboard.svg";
 import StrokeClock3hAsset from "../../../assets/icons/mishanaer/stroke/clock-3h.svg";
@@ -183,6 +184,7 @@ export const strokeIconComponents = {
   "chevron-down": StrokeChevronDownAsset,
   "chevron-left": StrokeChevronLeftAsset,
   "chevron-right": StrokeChevronRightAsset,
+  "chevron-small-right": StrokeChevronSmallRightAsset,
   "chevron-up": StrokeChevronUpAsset,
   clipboard: StrokeClipboardAsset,
   "clock-3h": StrokeClock3hAsset,

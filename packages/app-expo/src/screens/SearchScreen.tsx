@@ -20,11 +20,17 @@ import {
 import { findReadableLibraryBookForCatalogBook } from "@/lib/narra/backend-catalog-library";
 import { isBackendDownloadAbort } from "@/lib/narra/backend-file-download";
 import { CatalogCoverQueue } from "@/lib/narra/catalog-cover-queue";
+import {
+  applyCatalogCoverResult,
+  retainCatalogCovers,
+  retryCatalogCoverDownload,
+} from "@/lib/narra/catalog-cover-state";
 import { catalogShelfLayout } from "@/lib/narra/catalog-shelf-layout";
 import {
   CATALOG_SHELF_SKELETON_KEYS,
   type CatalogShelf,
   buildCatalogShelves,
+  catalogCoverWindow,
   completeCatalogSnapshot,
 } from "@/lib/narra/catalog-shelves";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
@@ -131,7 +137,7 @@ function SearchContent() {
   }, [navigation, t]);
 
   const applyBackendCatalog = useCallback((catalog: CachedBackendCatalog) => {
-    setCatalogBooks(catalog.books);
+    setCatalogBooks((current) => retainCatalogCovers(catalog.books, current));
     setCatalogNextCursor(catalog.nextCursor);
     setCatalogGenres(catalog.genres);
     setCatalogGenreVersion(catalog.genreVersion);
@@ -269,11 +275,23 @@ function SearchContent() {
     );
   }, [catalogBooks, normalizedQuery]);
 
-  const rememberCatalogCover = useCallback((catalogKey: string, coverUri: string) => {
-    setCatalogBooks((current) =>
-      current.map((book) => (book.catalogKey === catalogKey ? { ...book, coverUri } : book)),
-    );
-  }, []);
+  const rememberCatalogCover = useCallback(
+    (_catalogKey: string, coverUri: string, requested: CachedBackendCatalogBook) => {
+      setCatalogBooks((current) => applyCatalogCoverResult(current, requested, coverUri));
+    },
+    [],
+  );
+
+  const retryCatalogCover = useCallback(
+    (requested: CachedBackendCatalogBook) => {
+      if (!requested.cover) {
+        void loadBackendCatalog();
+        return;
+      }
+      setCatalogBooks((current) => retryCatalogCoverDownload(current, requested));
+    },
+    [loadBackendCatalog],
+  );
 
   useEffect(() => {
     if (!isFocused) {
@@ -282,12 +300,16 @@ function SearchContent() {
       return;
     }
 
+    setCatalogBooks((current) =>
+      current.map((book) => (book.coverLoadFailed ? { ...book, coverLoadFailed: false } : book)),
+    );
     const queue = new CatalogCoverQueue({
-      concurrency: 2,
+      concurrency: 3,
       load: materializeBackendCatalogCover,
       onLoaded: rememberCatalogCover,
-      onError: (catalogKey, error) => {
+      onError: (catalogKey, error, requested) => {
         if (!isBackendDownloadAbort(error)) {
+          setCatalogBooks((current) => applyCatalogCoverResult(current, requested));
           console.warn(`[Search catalog] Failed to load visible cover ${catalogKey}:`, error);
         }
       },
@@ -300,20 +322,28 @@ function SearchContent() {
   }, [isFocused, rememberCatalogCover]);
 
   useEffect(() => {
-    if (!isFocused || !catalogCoverQueueRef.current || visibleCatalogKeys.size === 0) return;
-    catalogCoverQueueRef.current.enqueue(
-      catalogBooks.filter(
-        (book) => visibleCatalogKeys.has(book.catalogKey) && book.cover && !book.coverUri,
-      ),
+    const queue = catalogCoverQueueRef.current;
+    if (!isFocused || !queue) return;
+    if (normalizedQuery) {
+      queue.prioritize(catalogSearchResults, []);
+      return;
+    }
+    const { visible, nearby } = catalogCoverWindow(
+      shelves,
+      visibleShelfIds,
+      shelfBookPositionsRef.current,
+      shelfColumns,
     );
-  }, [catalogBooks, visibleCatalogKeys, isFocused]);
-
-  useEffect(() => {
-    if (!normalizedQuery || !catalogCoverQueueRef.current) return;
-    catalogCoverQueueRef.current.enqueue(
-      catalogSearchResults.filter((book) => book.cover && !book.coverUri),
-    );
-  }, [catalogSearchResults, normalizedQuery]);
+    queue.prioritize(visible, nearby);
+  }, [
+    catalogSearchResults,
+    normalizedQuery,
+    shelves,
+    visibleShelfIds,
+    visibleCatalogKeys,
+    shelfColumns,
+    isFocused,
+  ]);
 
   useEffect(() => {
     if (
@@ -389,6 +419,20 @@ function SearchContent() {
         loadMoreError={catalogLoadMoreError}
         libraryKeys={libraryKeys}
         onOpen={handleCatalogOpen}
+        onOpenCategory={(shelf) => {
+          Keyboard.dismiss();
+          navigation.navigate("CatalogCategory", {
+            genreId: shelf.id,
+            title: shelf.title,
+            catalog: {
+              books: catalogBooks,
+              nextCursor: catalogNextCursor,
+              genres: catalogGenres,
+              genreVersion: catalogGenreVersion,
+            },
+          });
+        }}
+        onRetryCover={retryCatalogCover}
         onLoadMore={requestShelfPage}
         onPageChange={rememberShelfPage}
         onVisibleBooks={rememberVisibleShelfBooks}
@@ -405,6 +449,11 @@ function SearchContent() {
       catalogLoadMoreError,
       libraryKeys,
       handleCatalogOpen,
+      navigation,
+      catalogBooks,
+      catalogGenres,
+      catalogGenreVersion,
+      retryCatalogCover,
       requestShelfPage,
       rememberShelfPage,
       rememberVisibleShelfBooks,
@@ -539,7 +588,12 @@ function SearchContent() {
               subtitle: book.author,
               onPress: () => void handleCatalogOpen(book),
               avatar: (
-                <BookListCover title={book.title} author={book.author} coverUri={book.coverUri} />
+                <BookListCover
+                  title={book.title}
+                  author={book.author}
+                  coverUri={book.coverUri}
+                  targetCoverOnly
+                />
               ),
             })),
           ]}
@@ -602,10 +656,12 @@ function BookListCover({
   title,
   author,
   coverUri,
+  targetCoverOnly = false,
 }: {
   title: string;
   author?: string;
   coverUri?: string;
+  targetCoverOnly?: boolean;
 }) {
   const { colors } = useTheme();
   const [failedCoverUri, setFailedCoverUri] = useState<string>();
@@ -618,7 +674,7 @@ function BookListCover({
           bookListStyles.cover,
           {
             backgroundColor:
-              visibleCoverUri == null
+              visibleCoverUri == null && !targetCoverOnly
                 ? loadingCoverColorForTitleAuthor({ title, author })
                 : colors.primary5,
           },

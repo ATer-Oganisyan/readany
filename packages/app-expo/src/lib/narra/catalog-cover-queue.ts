@@ -1,10 +1,11 @@
 import type { CachedBackendCatalogBook } from "./backend-catalog-cache";
+import { catalogCoverIdentity } from "./catalog-cover-state";
 
 interface CatalogCoverQueueOptions {
   concurrency: number;
   load: (book: CachedBackendCatalogBook, signal: AbortSignal) => Promise<string | undefined>;
-  onLoaded: (catalogKey: string, coverUri: string) => void;
-  onError?: (catalogKey: string, error: unknown) => void;
+  onLoaded: (catalogKey: string, coverUri: string, book: CachedBackendCatalogBook) => void;
+  onError?: (catalogKey: string, error: unknown, book: CachedBackendCatalogBook) => void;
 }
 
 interface QueueEntry {
@@ -55,6 +56,7 @@ export class CatalogCoverQueue {
   private readonly active = new Map<string, AbortController>();
   private pending: QueueEntry[] = [];
   private disposed = false;
+  private paused = false;
 
   constructor(options: CatalogCoverQueueOptions) {
     this.concurrency = Math.max(1, Math.floor(options.concurrency));
@@ -67,12 +69,36 @@ export class CatalogCoverQueue {
     for (const book of books) void this.load(book);
   }
 
-  load(book: CachedBackendCatalogBook, priority = false): Promise<string | undefined> {
-    if (book.coverUri || !book.cover || this.disposed) return Promise.resolve(book.coverUri);
+  /** Keep current books ahead of prefetch; drop work queued for abandoned pages. */
+  prioritize(visible: CachedBackendCatalogBook[], nearby: CachedBackendCatalogBook[]): void {
+    const ordered = [...visible, ...nearby];
+    const rank = new Map(
+      ordered.map((book, index) => [catalogCoverIdentity(book), index] as const).reverse(),
+    );
+    this.pending = this.pending.filter((entry) => {
+      const identity = catalogCoverIdentity(entry.book);
+      if (rank.has(identity)) return true;
+      this.entries.delete(identity);
+      entry.resolve(undefined);
+      return false;
+    });
+    this.paused = true;
+    this.enqueue(ordered);
+    this.pending.sort(
+      (a, b) => rank.get(catalogCoverIdentity(a.book))! - rank.get(catalogCoverIdentity(b.book))!,
+    );
+    this.paused = false;
+    this.pump();
+  }
 
-    const existing = this.entries.get(book.catalogKey);
+  load(book: CachedBackendCatalogBook, priority = false): Promise<string | undefined> {
+    if (book.coverUri || !book.cover || book.coverLoadFailed || this.disposed)
+      return Promise.resolve(book.coverUri);
+
+    const identity = catalogCoverIdentity(book);
+    const existing = this.entries.get(identity);
     if (existing) {
-      if (priority && !this.active.has(book.catalogKey)) {
+      if (priority && !this.active.has(identity)) {
         this.pending = [existing, ...this.pending.filter((entry) => entry !== existing)];
       }
       return existing.promise;
@@ -83,7 +109,7 @@ export class CatalogCoverQueue {
       resolveEntry = resolve;
     });
     const entry = { book, promise, resolve: resolveEntry };
-    this.entries.set(book.catalogKey, entry);
+    this.entries.set(identity, entry);
     if (priority) this.pending.unshift(entry);
     else this.pending.push(entry);
     this.pump();
@@ -94,7 +120,7 @@ export class CatalogCoverQueue {
     if (this.disposed) return;
     this.disposed = true;
     for (const entry of this.pending) {
-      this.entries.delete(entry.book.catalogKey);
+      this.entries.delete(catalogCoverIdentity(entry.book));
       entry.resolve(undefined);
     }
     this.pending = [];
@@ -102,11 +128,11 @@ export class CatalogCoverQueue {
   }
 
   private pump(): void {
-    while (!this.disposed && this.active.size < this.concurrency) {
+    while (!this.disposed && !this.paused && this.active.size < this.concurrency) {
       const entry = this.pending.shift();
       if (!entry) return;
       const controller = new AbortController();
-      this.active.set(entry.book.catalogKey, controller);
+      this.active.set(catalogCoverIdentity(entry.book), controller);
       void this.run(entry, controller);
     }
   }
@@ -115,14 +141,14 @@ export class CatalogCoverQueue {
     const { catalogKey } = entry.book;
     try {
       const coverUri = await this.loadCover(entry.book, controller.signal);
-      if (!this.disposed && coverUri) this.onLoaded(catalogKey, coverUri);
+      if (!this.disposed && coverUri) this.onLoaded(catalogKey, coverUri, entry.book);
       entry.resolve(coverUri);
     } catch (error) {
-      if (!controller.signal.aborted) this.onError?.(catalogKey, error);
+      if (!controller.signal.aborted) this.onError?.(catalogKey, error, entry.book);
       entry.resolve(undefined);
     } finally {
-      this.active.delete(catalogKey);
-      this.entries.delete(catalogKey);
+      this.active.delete(catalogCoverIdentity(entry.book));
+      this.entries.delete(catalogCoverIdentity(entry.book));
       this.pump();
     }
   }

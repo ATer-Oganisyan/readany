@@ -92,4 +92,47 @@ describe("catalog cover queue", () => {
 
     expect(load).toHaveBeenCalledTimes(1);
   });
+
+  it("prioritizes the new viewport and drops obsolete prefetch after a fast scroll", async () => {
+    const releases: Array<() => void> = [];
+    const load = vi.fn(async (item: CachedBackendCatalogBook) => {
+      await new Promise<void>((resolve) => releases.push(resolve));
+      return `file:///${item.catalogKey}`;
+    });
+    const queue = new CatalogCoverQueue({ concurrency: 1, load, onLoaded: vi.fn() });
+    queue.prioritize([book(0)], [book(1), book(2)]);
+    queue.prioritize([book(3)], [book(4), book(3)]);
+    releases.shift()!();
+    await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+    expect(load.mock.calls[1][0].catalogKey).toBe("book-3");
+    releases.shift()!();
+    await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(3));
+    expect(load.mock.calls[2][0].catalogKey).toBe("book-4");
+    releases.shift()!();
+  });
+
+  it("deduplicates by target version, not just book ID", async () => {
+    const load = vi.fn(
+      async (item: CachedBackendCatalogBook) => `file:///${item.cover!.contentHash}`,
+    );
+    const queue = new CatalogCoverQueue({ concurrency: 2, load, onLoaded: vi.fn() });
+    const first = book(0);
+    const newer = { ...first, cover: { ...first.cover!, contentHash: "c".repeat(64) } };
+    await Promise.all([queue.load(first), queue.load(first), queue.load(newer)]);
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not continuously retry a failed cover on unrelated updates", async () => {
+    const load = vi.fn(async () => {
+      throw new Error("offline");
+    });
+    const onError = vi.fn();
+    const queue = new CatalogCoverQueue({ concurrency: 2, load, onLoaded: vi.fn(), onError });
+    await queue.load(book(0));
+    expect(onError).toHaveBeenCalledTimes(1);
+    await queue.load({ ...book(0), coverLoadFailed: true });
+    expect(load).toHaveBeenCalledTimes(1);
+    await queue.load({ ...book(0), coverLoadFailed: false });
+    expect(load).toHaveBeenCalledTimes(2);
+  });
 });
