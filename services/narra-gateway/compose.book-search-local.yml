@@ -1,0 +1,162 @@
+x-book-search-content-worker: &book-search-content-worker
+  image: narra-gateway-book-search-local
+  build:
+    context: .
+    args:
+      GATEWAY_BUILD_VERSION: book-search-local
+  command: ["node", "book-search-worker-runner.mjs"]
+  healthcheck:
+    disable: true
+  depends_on:
+    postgres:
+      condition: service_healthy
+    minio-init:
+      condition: service_completed_successfully
+    gateway:
+      condition: service_healthy
+    book-embedding:
+      condition: service_healthy
+  environment: &book-search-content-environment
+    NODE_ENV: development
+    DATABASE_URL: postgresql://readany:narra-local-postgres@postgres:5432/readany
+    DATABASE_SSL_MODE: disable
+    BOOK_STORAGE_BUCKET: narra-books
+    BOOK_STORAGE_REGION: us-east-1
+    BOOK_STORAGE_ENDPOINT: http://minio.railway.internal:9000
+    BOOK_STORAGE_FORCE_PATH_STYLE: "true"
+    BOOK_STORAGE_ACCESS_KEY_ID: narra-gateway
+    BOOK_STORAGE_SECRET_ACCESS_KEY: narra-local-storage-secret
+    BOOK_EMBEDDING_BASE_URL: http://book-embedding.railway.internal:8080
+    BOOK_EMBEDDING_MODEL: local-hash-v1
+    BOOK_EMBEDDING_DIMENSIONS: "256"
+    BOOK_EMBEDDING_PROVIDER: local-hash
+    BOOK_EMBEDDING_INPUT_USD_PER_MILLION: "0"
+    BOOK_SEARCH_JOB_TYPES: lexical,embedding
+    BOOK_SEARCH_WORKER_CONCURRENCY: "2"
+  init: true
+  restart: unless-stopped
+  read_only: true
+  tmpfs:
+    - /tmp:size=64m,mode=1777
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+
+x-book-narrative-worker: &book-narrative-worker
+  image: narra-gateway-book-search-local
+  build:
+    context: .
+    args:
+      GATEWAY_BUILD_VERSION: book-search-local
+  command: ["node", "book-search-worker-runner.mjs"]
+  healthcheck:
+    disable: true
+  depends_on:
+    postgres:
+      condition: service_healthy
+    gateway:
+      condition: service_healthy
+  environment: &book-narrative-environment
+    NODE_ENV: development
+    DATABASE_URL: postgresql://readany:narra-local-postgres@postgres:5432/readany
+    DATABASE_SSL_MODE: disable
+    BOOK_SEARCH_JOB_TYPES: graph,story_arc
+    BOOK_SEARCH_WORKER_CONCURRENCY: "1"
+  init: true
+  restart: unless-stopped
+  read_only: true
+  tmpfs:
+    - /tmp:size=16m,mode=1777
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+
+services:
+  gateway:
+    image: narra-gateway-book-search-local
+    build:
+      context: .
+      args:
+        GATEWAY_BUILD_VERSION: book-search-local
+    depends_on:
+      book-embedding:
+        condition: service_healthy
+    environment:
+      BOOK_SEARCH_ENABLED: "true"
+      BOOK_EMBEDDING_BASE_URL: http://book-embedding.railway.internal:8080
+      BOOK_EMBEDDING_MODEL: local-hash-v1
+      BOOK_EMBEDDING_DIMENSIONS: "256"
+      BOOK_EMBEDDING_PROVIDER: local-hash
+      BOOK_EMBEDDING_INPUT_USD_PER_MILLION: "0"
+      GENERATOR_SERVICE_TOKEN: ""
+      COVER_JOB_WORKER_ENABLED: "false"
+      SCENE_JOB_WORKER_ENABLED: "false"
+      LLM_BASE_URL: ""
+      LLM_API_KEY: ""
+      LITELLM_BASE_URL: ""
+      LITELLM_API_KEY: ""
+
+  book-embedding:
+    image: narra-gateway-book-search-local
+    build:
+      context: .
+      args:
+        GATEWAY_BUILD_VERSION: book-search-local
+    command: ["node", "local-book-embedding-server.mjs"]
+    environment:
+      NODE_ENV: development
+      PORT: "8080"
+      LOCAL_EMBEDDING_MODEL: local-hash-v1
+      LOCAL_EMBEDDING_DIMENSIONS: "256"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks:
+      default:
+        aliases:
+          - book-embedding.railway.internal
+    init: true
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  book-search-catalog:
+    <<: *book-search-content-worker
+    profiles: ["search-catalog"]
+    environment:
+      <<: *book-search-content-environment
+      BOOK_SEARCH_WORKER_ID: local-book-search-catalog
+      BOOK_SEARCH_BOOK_SCOPES: catalog
+
+  book-search-private:
+    <<: *book-search-content-worker
+    profiles: ["search-private"]
+    environment:
+      <<: *book-search-content-environment
+      BOOK_SEARCH_WORKER_ID: local-book-search-private
+      BOOK_SEARCH_BOOK_SCOPES: private
+
+  book-narrative-catalog:
+    <<: *book-narrative-worker
+    profiles: ["narrative-catalog"]
+    environment:
+      <<: *book-narrative-environment
+      BOOK_SEARCH_WORKER_ID: local-book-narrative-catalog
+      BOOK_SEARCH_BOOK_SCOPES: catalog
+
+  book-narrative-private:
+    <<: *book-narrative-worker
+    profiles: ["narrative-private"]
+    environment:
+      <<: *book-narrative-environment
+      BOOK_SEARCH_WORKER_ID: local-book-narrative-private
+      BOOK_SEARCH_BOOK_SCOPES: private
