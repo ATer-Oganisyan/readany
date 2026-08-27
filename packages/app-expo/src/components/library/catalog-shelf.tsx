@@ -2,6 +2,7 @@ import { NativeButton } from "@/components/ui/NativeButton";
 import { Text } from "@/components/ui/Typography";
 import { useSwipePressGuard } from "@/components/ui/swipe-press-guard";
 import type { CachedBackendCatalogBook } from "@/lib/narra/backend-catalog-cache";
+import { CATALOG_SHELF_GAP, catalogShelfLayout } from "@/lib/narra/catalog-shelf-layout";
 import {
   CATALOG_SHELF_SKELETON_KEYS,
   type CatalogShelf,
@@ -18,6 +19,7 @@ import { CatalogBookSkeleton } from "./CatalogBookSkeleton";
 interface Props {
   shelf: CatalogShelf;
   width: number;
+  viewportWidth: number;
   columns: number;
   isVisible: boolean;
   initialBookIndex: number;
@@ -34,6 +36,7 @@ interface Props {
 export function CatalogShelfRow({
   shelf,
   width,
+  viewportWidth,
   columns,
   isVisible,
   initialBookIndex,
@@ -55,7 +58,13 @@ export function CatalogShelfRow({
   const [page, setPage] = useState(initialPage);
   const didDrag = useRef(false);
   const pages = useMemo(() => chunkShelfBooks(shelf.books, columns), [shelf.books, columns]);
-  const cardWidth = Math.floor((width - spacing.lg * (columns - 1)) / columns);
+  const { cardWidth, pageWidth, pageStride, edgeInset } = catalogShelfLayout(
+    viewportWidth,
+    width,
+    columns,
+  );
+  // Keep the restored page aligned with the heading, including the leading inset.
+  const initialOffset = useRef({ x: initialPage * pageStride, y: 0 }).current;
 
   useEffect(() => {
     onVisibleBooks(shelf.id, isVisible ? (pages[page] ?? []).map((book) => book.catalogKey) : []);
@@ -64,16 +73,19 @@ export function CatalogShelfRow({
 
   const rememberPage = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const next = Math.max(0, Math.round(event.nativeEvent.contentOffset.x / width));
+      const next = Math.max(0, Math.round(event.nativeEvent.contentOffset.x / pageStride));
       setPage(next);
       // The loading footer isn't a book page; restore the last real page instead.
       onPageChange(shelf.id, Math.min(next, pages.length - 1) * columns);
     },
-    [columns, onPageChange, pages.length, shelf.id, width],
+    [columns, onPageChange, pages.length, shelf.id, pageStride],
   );
 
   return (
-    <View style={{ width, marginBottom: spacing.xxl }} testID={`catalog-shelf-${shelf.id}`}>
+    <View
+      style={{ width: viewportWidth, marginBottom: spacing.xxl }}
+      testID={`catalog-shelf-${shelf.id}`}
+    >
       <Text
         accessibilityRole="header"
         style={{
@@ -81,19 +93,29 @@ export function CatalogShelfRow({
           fontSize: fontSize.xl,
           fontWeight: fontWeight.semibold,
           marginBottom: spacing.sm,
+          paddingHorizontal: edgeInset,
         }}
       >
         {shelf.title}
       </Text>
       <FlatList
         horizontal
-        pagingEnabled
+        snapToInterval={pageStride}
+        snapToAlignment="start"
+        decelerationRate="fast"
+        disableIntervalMomentum
         directionalLockEnabled
         showsHorizontalScrollIndicator={false}
         data={pages}
         keyExtractor={(_, index) => String(index)}
         initialScrollIndex={initialPage}
-        getItemLayout={(_, index) => ({ length: width, offset: width * index, index })}
+        contentOffset={initialOffset}
+        getItemLayout={(_, index) => ({
+          length: pageWidth,
+          offset: edgeInset + pageStride * index,
+          index,
+        })}
+        ItemSeparatorComponent={ShelfPageSeparator}
         initialNumToRender={1}
         maxToRenderPerBatch={2}
         windowSize={3}
@@ -101,8 +123,12 @@ export function CatalogShelfRow({
         keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="handled"
         contentInsetAdjustmentBehavior="never"
-        contentContainerStyle={{ paddingVertical: spacing.sm }}
-        style={{ width, height: cardWidth * (41 / 28) + spacing.sm * 2, flexGrow: 0 }}
+        contentContainerStyle={{ paddingVertical: spacing.sm, paddingHorizontal: edgeInset }}
+        style={{
+          width: viewportWidth,
+          height: cardWidth * (41 / 28) + spacing.sm * 2,
+          flexGrow: 0,
+        }}
         accessibilityLabel={shelf.title}
         onScroll={rememberPage}
         scrollEventThrottle={100}
@@ -121,7 +147,7 @@ export function CatalogShelfRow({
         }}
         onEndReachedThreshold={0.5}
         renderItem={({ item }) => (
-          <View style={{ width, flexDirection: "row", gap: spacing.lg }}>
+          <View style={{ width: pageWidth, flexDirection: "row", gap: CATALOG_SHELF_GAP }}>
             {item.map((book) => (
               <CatalogBookCard
                 key={book.bookEditionId}
@@ -139,10 +165,11 @@ export function CatalogShelfRow({
           hasMore ? (
             <View
               style={{
-                width,
+                width: pageWidth,
+                marginLeft: CATALOG_SHELF_GAP,
                 minHeight: cardWidth * (41 / 28),
                 flexDirection: "row",
-                gap: spacing.lg,
+                gap: CATALOG_SHELF_GAP,
                 alignItems: "center",
                 justifyContent: "center",
               }}
@@ -174,4 +201,8 @@ export function CatalogShelfRow({
       />
     </View>
   );
+}
+
+function ShelfPageSeparator() {
+  return <View style={{ width: CATALOG_SHELF_GAP }} />;
 }

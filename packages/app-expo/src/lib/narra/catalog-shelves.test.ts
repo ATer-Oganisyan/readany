@@ -107,7 +107,13 @@ describe("catalog shelves", () => {
     expect(screen).toContain("<CatalogShelfRow");
     expect(screen).toContain("<CharacterChatList");
     expect(shelf).toContain("<CatalogBookCard");
-    expect(shelf).toContain("pagingEnabled");
+    expect(shelf).not.toContain("pagingEnabled");
+    expect(shelf).toContain("snapToInterval={pageStride}");
+    expect(shelf).toContain("ItemSeparatorComponent={ShelfPageSeparator}");
+    expect(shelf).toContain("offset: edgeInset + pageStride * index");
+    expect(shelf).toContain("contentOffset={initialOffset}");
+    expect(shelf).toContain("width: viewportWidth");
+    expect(screen).toContain("viewportWidth={layout.width}");
     expect(shelf).toContain("directionalLockEnabled");
     expect(shelf).toContain("guard?.beginSwipe()");
   });

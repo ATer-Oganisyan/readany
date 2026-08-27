@@ -20,6 +20,7 @@ import {
 import { findReadableLibraryBookForCatalogBook } from "@/lib/narra/backend-catalog-library";
 import { isBackendDownloadAbort } from "@/lib/narra/backend-file-download";
 import { CatalogCoverQueue } from "@/lib/narra/catalog-cover-queue";
+import { catalogShelfLayout } from "@/lib/narra/catalog-shelf-layout";
 import {
   CATALOG_SHELF_SKELETON_KEYS,
   type CatalogShelf,
@@ -68,8 +69,10 @@ function SearchContent() {
   const swipeGuard = useSwipePressGuard();
   const layout = useResponsiveLayout();
   const shelfColumns = layout.isTabletLandscape ? 5 : layout.isTablet ? 4 : 2;
-  const shelfCardWidth = Math.floor(
-    (layout.centeredContentWidth - spacing.lg * (shelfColumns - 1)) / shelfColumns,
+  const { cardWidth: shelfCardWidth } = catalogShelfLayout(
+    layout.width,
+    layout.centeredContentWidth,
+    shelfColumns,
   );
   const styles = useMemo(
     () =>
@@ -374,9 +377,10 @@ function SearchContent() {
   const renderShelf = useCallback(
     ({ item }: ListRenderItemInfo<CatalogShelf>) => (
       <CatalogShelfRow
-        key={`${item.id}:${layout.centeredContentWidth}:${shelfColumns}`}
+        key={`${item.id}:${layout.width}:${layout.centeredContentWidth}:${shelfColumns}`}
         shelf={item}
         width={layout.centeredContentWidth}
+        viewportWidth={layout.width}
         columns={shelfColumns}
         initialBookIndex={shelfBookPositionsRef.current.get(item.id) ?? 0}
         isVisible={isFocused && visibleShelfIds.has(item.id)}
@@ -391,6 +395,7 @@ function SearchContent() {
       />
     ),
     [
+      layout.width,
       layout.centeredContentWidth,
       shelfColumns,
       isFocused,
@@ -552,17 +557,18 @@ const makeStyles = (
     container: { flex: 1, backgroundColor: colors.background },
     catalogContent: {
       width: "100%",
-      maxWidth: layout.contentWidth + layout.horizontalPadding * 2,
-      alignSelf: "center",
       flexGrow: 1,
-      paddingHorizontal: layout.horizontalPadding,
       paddingTop: spacing.sm,
       paddingBottom: spacing.xxl,
     },
     skeletonGrid: {
+      width: layout.contentWidth,
+      alignSelf: "center",
       gap: spacing.xxl,
     },
     catalogFooterSkeletons: {
+      width: layout.contentWidth,
+      alignSelf: "center",
       flexDirection: "row",
       gap: spacing.lg,
       paddingTop: spacing.sm,
