@@ -80,7 +80,7 @@ test('private v3 book prefetches ten percent and resolves a generated scene by r
          input_hash, normalized_text_object_key, normalized_text_hash, text_length,
          sections, stage, status, completed_at
        ) VALUES (
-         $1, $2, $3, 'book-analysis-v49', 'book-scan-v17', $4, $5, $6, $7,
+         $1, $2, $3, 'book-analysis-v50', 'book-scan-v17', $4, $5, $6, $7,
          '[]'::jsonb, 'publish', 'ready', now()
        )`,
       [

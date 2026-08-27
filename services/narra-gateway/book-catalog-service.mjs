@@ -300,8 +300,8 @@ export function createBookCatalogService({
     }
     const markup = normalizeBookMarkupV3(publication.data.markup)
     const readerTextOffset = analysisReaderTextOffset(snapshot, markup.textLength)
-    const mediaByCharacterKey = new Map(
-      (snapshot.characters || []).map((character) => [character.characterKey, character])
+    const profileByCharacterKey = new Map(
+      markup.characters.map((character) => [character.characterKey, character])
     )
     return {
       source,
@@ -322,9 +322,10 @@ export function createBookCatalogService({
         scenePolicy: markup.scenePolicy,
         publishedAt: publication.publishedAt
       },
-      characters: markup.characters
-        .map((character) => {
-          const media = mediaByCharacterKey.get(character.characterKey)
+      characters: (snapshot.characters || [])
+        .map((media) => {
+          const character = profileByCharacterKey.get(media.characterKey) || media.data
+          if (!character) return null
           const state = isCompleteCharacterBundle(media?.bundle) ? 'ready' : 'preparing'
           return {
             characterKey: character.characterKey,
@@ -345,6 +346,7 @@ export function createBookCatalogService({
               : null
           }
         })
+        .filter(Boolean)
     }
   }
 

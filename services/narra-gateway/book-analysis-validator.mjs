@@ -8,6 +8,7 @@ import {
   BOOK_ANALYSIS_TRAIT_EVIDENCE_TYPES,
   normalizeBookMarkupV3
 } from './book-analysis-contracts.mjs'
+import { selectedBookCharacterEntities } from './book-character-selection.mjs'
 
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex')
@@ -120,10 +121,10 @@ export function validateBookMarkupV3({
     }
   }
   const snapshotEntityByKey = new Map(snapshot.data.entities.map((entity) => [entity.entityKey, entity]))
-  const expectedCharacterKeys = snapshot.data.entities
-    .filter((entity) => entity.entityKind === 'character' && entity.resolutionStatus === 'confirmed')
-    .slice(0, 128)
-    .map(({ entityKey }) => entityKey)
+  const expectedCharacterKeys = selectedBookCharacterEntities(
+    snapshot.data.entities,
+    snapshot.data.characterSelection
+  ).map(({ entityKey }) => entityKey)
   if (
     markup.characters.length !== expectedCharacterKeys.length ||
     expectedCharacterKeys.some((key) => !markup.characters.some(({ characterKey }) => characterKey === key))

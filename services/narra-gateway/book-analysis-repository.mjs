@@ -11,6 +11,10 @@ import {
 import { assessBookAnalysisCoverage } from './book-analysis-quality.mjs'
 import { resolveBookAnalysisEntities } from './book-analysis-resolver.mjs'
 import {
+  MAX_PUBLISHED_BOOK_CHARACTERS,
+  rankBookCharacterEntities
+} from './book-character-selection.mjs'
+import {
   CHARACTER_MEDIA_JOB_TYPES,
   REQUIRED_CHARACTER_MEDIA,
   characterMediaIdempotencyKey,
@@ -36,7 +40,7 @@ import { isSupportedVoice } from './voices.mjs'
 const SHA256 = /^[0-9a-f]{64}$/
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const STAGES = new Set(['prepare', 'scan', 'resolve', 'synthesize', 'validate', 'publish'])
-const MAX_PROVISIONAL_CHARACTERS = 64
+const MAX_PROVISIONAL_CHARACTERS = MAX_PUBLISHED_BOOK_CHARACTERS
 
 function repositoryError(code, message) {
   return Object.assign(new Error(message), { code })
@@ -268,11 +272,12 @@ function hashObservationSet(observations) {
 
 export function buildProvisionalAnalysisCharacters(runId, observations) {
   if (!Array.isArray(observations) || observations.length === 0) return []
-  return resolveBookAnalysisEntities({ observations })
-    .filter((entity) =>
-      entity.entityKind === 'character' && entity.resolutionStatus === 'confirmed'
-    )
-    .slice(0, MAX_PROVISIONAL_CHARACTERS)
+  const resolved = resolveBookAnalysisEntities({ observations })
+  return rankBookCharacterEntities({
+    entities: resolved,
+    observations,
+    limit: MAX_PROVISIONAL_CHARACTERS
+  }).selectedCharacters
     .map((entity) => ({
       characterKey: `provisional:${sha256(`${runId}:${entity.entityKey}`).slice(0, 48)}`,
       name: entity.canonicalName,
@@ -432,7 +437,7 @@ export function createPostgresBookAnalysisRepository(pool, {
     publishedAt = null,
     retryFailedBundles = false
   }) {
-    const markup = normalizeBookMarkupV3(rawMarkup)
+    let markup = normalizeBookMarkupV3(rawMarkup)
     const editionResult = await client.query(
       `SELECT id, scope, expires_at
        FROM book_editions WHERE id = $1 FOR UPDATE`,
@@ -502,6 +507,25 @@ export function createPostgresBookAnalysisRepository(pool, {
          WHERE id = $1`,
         [markupId, publishedAt]
       )
+    }
+    if (!created) {
+      const canonicalCharacters = await client.query(
+        `SELECT character_key
+         FROM book_characters
+         WHERE markup_version_id = $1
+         ORDER BY sort_order, character_key`,
+        [markupId]
+      )
+      const profileByKey = new Map(markup.characters.map((character) => [
+        character.characterKey,
+        character
+      ]))
+      markup = {
+        ...markup,
+        characters: canonicalCharacters.rows
+          .map(({ character_key: characterKey }) => profileByKey.get(characterKey))
+          .filter(Boolean)
+      }
     }
     await client.query(
       `UPDATE reader_book_positions
@@ -1851,7 +1875,11 @@ export function createPostgresBookAnalysisRepository(pool, {
             'every observation must be assigned to exactly one resolved entity'
           )
         }
-        const entityRecords = normalizedEntities.map((entity) => ({
+        const ranked = rankBookCharacterEntities({
+          entities: normalizedEntities,
+          observations
+        })
+        const entityRecords = ranked.entities.map((entity) => ({
           id: idFactory(),
           ...entity
         }))
@@ -1897,14 +1925,15 @@ export function createPostgresBookAnalysisRepository(pool, {
             [job.runId, JSON.stringify(evidenceLinks)]
           )
         }
-        const entitySetHash = contentHash(normalizedEntities)
+        const entitySetHash = contentHash(ranked.entities)
         const snapshotId = idFactory()
         const snapshotData = {
           schemaVersion: 1,
           observationSetHash,
           entitySetHash,
           observationIds: observations.map(({ id }) => id),
-          entities: entityRecords
+          entities: entityRecords,
+          characterSelection: ranked.selection
         }
         const snapshotContentHash = contentHash(snapshotData)
         await client.query(
@@ -1932,9 +1961,10 @@ export function createPostgresBookAnalysisRepository(pool, {
             })
           ]
         )
-        const characterEntities = entityRecords.filter((entity) =>
-          entity.entityKind === 'character' && entity.resolutionStatus === 'confirmed'
-        ).slice(0, 128)
+        const entityRecordByKey = new Map(entityRecords.map((entity) => [entity.entityKey, entity]))
+        const characterEntities = ranked.selection.characterKeys
+          .map((entityKey) => entityRecordByKey.get(entityKey))
+          .filter(Boolean)
         for (const entity of characterEntities) {
           await client.query(
             `INSERT INTO book_analysis_jobs (

@@ -230,10 +230,7 @@ test('catalog manifest exposes validated v3 as the canonical markup', async () =
       characterKey,
       traits: profile.traits
     })),
-    [
-      { characterKey: 'visible', traits: ['смелый'] },
-      { characterKey: 'future', traits: [] }
-    ]
+    [{ characterKey: 'visible', traits: ['смелый'] }]
   )
   assert.equal(preview.characters[0].state, 'ready')
   assert.equal(
@@ -252,8 +249,6 @@ test('catalog manifest exposes validated v3 as the canonical markup', async () =
     traits: [{ value: 'смелый', confidence: 0.8, evidenceLevel: 'repeated' }]
   }])
   assert.equal(preview.characters[0].bundle.assets.length, REQUIRED_CHARACTER_MEDIA.length)
-  assert.equal(preview.characters[1].firstAppearanceTextOffset, 1_500)
-  assert.equal(preview.characters[1].bundle, null)
   assert.equal(preview.markup.analysisVersion, 'book-markup-v3')
   assert.deepEqual(calls.slice(0, 2), [
     ['projection', EDITION.id],

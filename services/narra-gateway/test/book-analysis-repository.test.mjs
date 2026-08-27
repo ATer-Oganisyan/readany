@@ -32,7 +32,7 @@ test('analysis run key binds source and both pipeline versions', () => {
     pipelineVersion: 'book-analysis-v8',
     promptVersion: 'scan-v1'
   }), [
-    'book-analysis-cache', 'narra', 'book-analysis-v49', 'a'.repeat(64),
+    'book-analysis-cache', 'narra', 'book-analysis-v50', 'a'.repeat(64),
     'book-analysis-v8', 'scan-v1', 'normalized-text-v1', 'schema-3',
     'book-markup-v3', 'book-1'
   ].join(':'))
@@ -445,4 +445,19 @@ test('resolve completion freezes evidence before advancing to synthesize', async
   assert.ok(insertEntity < linkEvidence && linkEvidence < insertSnapshot)
   assert.ok(insertSnapshot < completeJob && completeJob < insertCharacterSynthesize)
   assert.ok(insertCharacterSynthesize < insertSynthesize && insertSynthesize < advance)
+  const entityInsert = pool.queries[insertEntity]
+  const insertedEntities = JSON.parse(entityInsert.params[1])
+  assert.deepEqual(insertedEntities[0].data, {
+    observationCount: 1,
+    mentionCount: 1,
+    evidenceCount: 1,
+    prominenceRank: 1,
+    selectedForPublication: true
+  })
+  const frozenSnapshot = JSON.parse(pool.queries[insertSnapshot].params[4])
+  assert.deepEqual(frozenSnapshot.characterSelection, {
+    version: 'character-frequency-v1',
+    limit: 20,
+    characterKeys: ['character:anna']
+  })
 })

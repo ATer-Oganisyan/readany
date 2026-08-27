@@ -52,7 +52,8 @@ export function createBookAnalysisSynthesizeWorker({
         textLength: input.textLength,
         entities: input.snapshot.data.entities,
         observations: input.observations,
-        characterProfiles: input.characterProfiles
+        characterProfiles: input.characterProfiles,
+        characterSelection: input.snapshot.data.characterSelection
       })
       return repository.completeBookSynthesis(job, {
         snapshotId: input.snapshot.id,

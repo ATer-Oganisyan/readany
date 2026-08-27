@@ -3,6 +3,7 @@ import {
   BOOK_ANALYSIS_SCHEMA_VERSION,
   normalizeBookMarkupV3
 } from './book-analysis-contracts.mjs'
+import { selectedBookCharacterEntities } from './book-character-selection.mjs'
 
 function normalizedName(value) {
   return String(value || '')
@@ -57,16 +58,15 @@ export function assembleBookMarkupV3({
   textLength,
   entities,
   observations,
-  characterProfiles
+  characterProfiles,
+  characterSelection = null
 }) {
   const observationsById = new Map(observations.map((observation) => [observation.id, observation]))
   const profilesByKey = new Map(characterProfiles.map((profile) => [profile.characterKey, profile]))
   if (profilesByKey.size !== characterProfiles.length) {
     throw Object.assign(new Error('duplicate character profile'), { code: 'SYNTHESIS_INPUT_INVALID' })
   }
-  const characterEntities = entities.filter((entity) =>
-    entity.entityKind === 'character' && entity.resolutionStatus === 'confirmed'
-  ).slice(0, 128)
+  const characterEntities = selectedBookCharacterEntities(entities, characterSelection)
   const missingProfile = characterEntities.find(({ entityKey }) => !profilesByKey.has(entityKey))
   if (missingProfile) {
     throw Object.assign(new Error(`missing character profile: ${missingProfile.entityKey}`), {
@@ -76,10 +76,6 @@ export function assembleBookMarkupV3({
   const characters = characterEntities
     .map(({ entityKey }) => profilesByKey.get(entityKey))
     .filter(Boolean)
-    .sort((left, right) =>
-      left.firstAppearanceTextOffset - right.firstAppearanceTextOffset ||
-      left.characterKey.localeCompare(right.characterKey)
-    )
   const includedCharacterKeys = new Set(characters.map(({ characterKey }) => characterKey))
   const characterIndex = entityIndex(
     characterEntities.filter(({ entityKey }) => includedCharacterKeys.has(entityKey)),
