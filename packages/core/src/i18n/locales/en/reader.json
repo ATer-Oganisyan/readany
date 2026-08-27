@@ -1,5 +1,6 @@
 {
   "reader": {
+    "processStopped": "The reader stopped. Tap Retry",
     "untitled": "Untitled",
     "loadingBook": "Opening book…",
     "failedToLoad": "Couldn't open the book",

@@ -222,7 +222,10 @@ run_metro_prepared() {
   fi
 
   cd "$APP_ROOT"
+  # Keep reader dependencies in the initial bundle: an import() must not need
+  # another Metro request after the dev server disconnects or the app resumes.
   APP_VARIANT=development \
+    EXPO_NO_METRO_LAZY=1 \
     NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--dns-result-order=ipv4first" \
     pnpm exec expo start --dev-client --scheme readany-dev "${host_args[@]}" --port "$METRO_PORT"
 }

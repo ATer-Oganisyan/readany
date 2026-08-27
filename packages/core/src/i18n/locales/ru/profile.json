@@ -1,5 +1,8 @@
 {
   "profile": {
+    "development": "Разработка",
+    "componentPreview": "Превью компонентов",
+    "openComponentPreview": "Открыть превью компонентов",
     "title": "Я",
     "booksRead": "Прочитано книг",
     "booksUnit": "книги",
@@ -16,6 +19,10 @@
     "viewDetails": "Посмотреть детали",
     "version": "Narra Mobile v{{version}}",
     "storage": "Хранение",
+    "shareLogs": "Поделиться логами",
+    "preparingLogs": "Подготовка логов…",
+    "logsPrivacy": "Без текстов книг, переписок и ключей",
+    "shareLogsFailed": "Не удалось открыть отправку логов. Попробуйте снова",
     "clearCache": "Очистить кэш",
     "clearingCache": "Очистка…",
     "clearCacheTitle": "Очистить кэш",

@@ -17,6 +17,7 @@ import {
   normalizeCatalogIdentity,
   resolveBundledCatalogBookUri,
 } from "@/lib/catalog/bundled-books";
+import { diagnosticErrorReason, recordDiagnostic } from "@/lib/diagnostics/diagnostics";
 import { hapticLight } from "@/lib/haptics";
 import { importBackendCatalogBook } from "@/lib/narra/backend-catalog-import";
 import { isCatalogBookRevisionCurrent } from "@/lib/narra/backend-catalog-library";
@@ -37,13 +38,12 @@ import {
 } from "@/lib/narra/scene-suggestion";
 import type { NarraCharacter } from "@/lib/narra/types";
 import { toast } from "@/lib/notifications";
-import {
-  DEFAULT_READER_FONT_FAMILY,
-} from "@/lib/reader/bundled-reader-font";
+import { DEFAULT_READER_FONT_FAMILY } from "@/lib/reader/bundled-reader-font";
 import { getReaderBookmarkCopy } from "@/lib/reader/reader-bookmark-copy";
+import { isReaderTransportError } from "@/lib/reader/reader-recovery";
 import {
-  prepareReaderAsset,
   READER_BUILD_ID,
+  prepareReaderAsset,
   prepareReaderHost,
   prepareReaderPdfEngineUri,
 } from "@/lib/reader/reader-runtime";
@@ -385,7 +385,12 @@ function useReaderPaperColors() {
     );
     const backdrop = readerTheme === "dark" ? darkColors.background : lightColors.background;
     const paperBackground = flattenReaderColor(resolved.background, backdrop);
-    const sceneColors = resolveReaderScenePalette(readerTheme, lightColors, darkColors, paperBackground);
+    const sceneColors = resolveReaderScenePalette(
+      readerTheme,
+      lightColors,
+      darkColors,
+      paperBackground,
+    );
     return {
       ...resolved,
       primary5: sceneColors.primary5,
@@ -489,6 +494,12 @@ function ReaderContent({ route, navigation }: Props) {
   const [showChapterTranslation, setShowChapterTranslation] = useState(false);
   const [isReimporting, setIsReimporting] = useState(false);
   const [loadAttempt, setLoadAttempt] = useState(0);
+  const restartHostRef = useRef(false);
+  const automaticRecoveryRef = useRef(false);
+  const readerServerUrlRef = useRef<string | null>(null);
+  const diagnosticPingRef = useRef(0);
+  const diagnosticUnresponsiveRef = useRef(false);
+  const lastDiagnosticRelocateRef = useRef(0);
   const [progress, setProgress] = useState(0);
   const [currentChapter, setCurrentChapter] = useState("");
   const [currentChapterHref, setCurrentChapterHref] = useState("");
@@ -1021,8 +1032,26 @@ function ReaderContent({ route, navigation }: Props) {
   }, [controlsVisibility, showControls]);
 
   // Reader bridge
+  const retryReader = useCallback((restartHost = true) => {
+    recordDiagnostic("reader_retry", { restart: restartHost });
+    restartHostRef.current = restartHost;
+    readerServerUrlRef.current = null;
+    activeReaderLoadIdRef.current = null;
+    setWebViewReady(false);
+    setLoading(true);
+    setError(null);
+    setLoadAttempt((value) => value + 1);
+  }, []);
+
   const bridge = useReaderBridge({
+    onDiagnosticPong: (id) => {
+      if (id !== diagnosticPingRef.current) return;
+      if (diagnosticUnresponsiveRef.current) recordDiagnostic("webview_responsive");
+      diagnosticUnresponsiveRef.current = false;
+      diagnosticPingRef.current = 0;
+    },
     onReady: () => {
+      recordDiagnostic("reader_ready");
       setWebViewReady(true);
       bridge.webViewRef.current?.injectJavaScript(`
         (function() {
@@ -1035,6 +1064,7 @@ function ReaderContent({ route, navigation }: Props) {
     },
     onLoaded: (detail) => {
       if (detail.loadId && detail.loadId !== activeReaderLoadIdRef.current) return;
+      recordDiagnostic("reader_loaded");
       // Initial typography is sent with openBook and applied inside the
       // WebView before it signals loaded. Applying it again here starts a
       // second renderer layout pass and makes the first page flash.
@@ -1072,6 +1102,10 @@ function ReaderContent({ route, navigation }: Props) {
     },
     onRelocate: (detail: RelocateEvent) => {
       if (detail.loadId && detail.loadId !== activeReaderLoadIdRef.current) return;
+      if (Date.now() - lastDiagnosticRelocateRef.current > 5000) {
+        recordDiagnostic("reader_relocated");
+        lastDiagnosticRelocateRef.current = Date.now();
+      }
       const absoluteFraction = detail.fraction ?? 0;
       // Track section changes for chapter translation reset
       const newSection = detail.section?.current ?? 0;
@@ -1258,6 +1292,7 @@ function ReaderContent({ route, navigation }: Props) {
       readingContextService.clearSelection();
     },
     onTap: () => {
+      recordDiagnostic("reader_tap");
       if (noteTooltipVisibleRef.current || Date.now() < suppressReaderTapUntilRef.current) {
         return;
       }
@@ -1295,6 +1330,12 @@ function ReaderContent({ route, navigation }: Props) {
     onError: (message: string, detail) => {
       console.error("[Reader] WebView error:", message);
       if (detail.loadId && detail.loadId !== activeReaderLoadIdRef.current) return;
+      recordDiagnostic("reader_error", { reason: diagnosticErrorReason(message), loading });
+      if (isReaderTransportError(message) && !automaticRecoveryRef.current) {
+        automaticRecoveryRef.current = true;
+        retryReader();
+        return;
+      }
       if (loading) {
         setError(message);
         setLoading(false);
@@ -1741,22 +1782,29 @@ function ReaderContent({ route, navigation }: Props) {
     if (!webViewReady || !book?.filePath) {
       return;
     }
-    const loadId = `${bookId}:${book.filePath}`;
+    const loadId = `${bookId}:${book.filePath}:${loadAttempt}`;
     activeReaderLoadIdRef.current = loadId;
+    let cancelled = false;
 
     const loadBook = async () => {
       try {
+        recordDiagnostic("reader_open", { attempt: loadAttempt, format: book.format });
         setLoading(true);
         setError(null);
-        const lastLocation = book.currentCfi || undefined;
+        const lastLocation = lastCfiRef.current || book.currentCfi || undefined;
         const fileName = book.filePath.split("/").pop() || "book.epub";
         const mimeType = BOOK_FORMAT_MIME_TYPES[book.format] || "application/octet-stream";
-        const pdfEngineUri = mimeType === "application/pdf" ? await prepareReaderPdfEngineUri() : undefined;
 
         // The local HTTP server lets the WebView fetch the file directly, which
         // avoids reading the whole book into RN memory and base64-encoding it.
         // It was started when the screen mounted; by now it is usually up.
-        const { serverUrl, fontFaceCSS } = await prepareReaderHost();
+        const restart = restartHostRef.current;
+        restartHostRef.current = false;
+        const { serverUrl, fontFaceCSS } = await prepareReaderHost(restart);
+        const pdfEngineUri =
+          mimeType === "application/pdf" ? await prepareReaderPdfEngineUri(serverUrl) : undefined;
+        if (cancelled) return;
+        readerServerUrlRef.current = serverUrl;
         defaultReaderFontFaceCSSRef.current = fontFaceCSS;
         setDefaultReaderFontFaceCSS(fontFaceCSS);
         const encodedPath = book.filePath
@@ -1800,20 +1848,103 @@ function ReaderContent({ route, navigation }: Props) {
 
         bridge.setThemeColors(readerThemeColorsRef.current);
       } catch (err: any) {
+        if (cancelled) return;
         console.error("[ReaderScreen] Failed to load book:", err);
+        recordDiagnostic("reader_error", { reason: diagnosticErrorReason(err), loading: true });
         setError(err.message || "Failed to load book file");
         setLoading(false);
       }
     };
 
     loadBook();
-  }, [
-    bookId,
-    book?.filePath,
-    loadAttempt,
-    prepareReaderHost,
-    webViewReady,
-  ]);
+    return () => {
+      cancelled = true;
+    };
+  }, [bookId, book?.filePath, loadAttempt, prepareReaderHost, webViewReady]);
+
+  // iOS may suspend the local server while the reader stays mounted.
+  // A new origin invalidates the EPUB range reader and PDF/font URLs together.
+  useEffect(() => {
+    let cancelled = false;
+    let previousState = AppState.currentState;
+    const checkHost = () => {
+      const checkedUrl = readerServerUrlRef.current;
+      if (!isFocused || !checkedUrl || AppState.currentState !== "active") return;
+      recordDiagnostic("reader_foreground");
+      void prepareReaderHost()
+        .then((host) => {
+          if (
+            !cancelled &&
+            AppState.currentState === "active" &&
+            readerServerUrlRef.current === checkedUrl &&
+            host.serverUrl !== checkedUrl
+          )
+            retryReader(false);
+        })
+        .catch(() => {
+          if (
+            !cancelled &&
+            AppState.currentState === "active" &&
+            readerServerUrlRef.current === checkedUrl
+          )
+            retryReader();
+        });
+    };
+    checkHost();
+    const subscription = AppState.addEventListener("change", (state) => {
+      const returning = state === "active" && previousState !== "active";
+      previousState = state;
+      if (returning) checkHost();
+    });
+    return () => {
+      cancelled = true;
+      subscription.remove();
+    };
+  }, [isFocused, retryReader]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a different book gets its own automatic-recovery budget.
+  useEffect(() => {
+    automaticRecoveryRef.current = false;
+    return () => {
+      recordDiagnostic("reader_closed");
+    };
+  }, [bookId]);
+
+  useEffect(() => {
+    recordDiagnostic("reader_panels", {
+      toc: showTOC,
+      settings: showSettings,
+      notebook: showNotebook,
+      translation: showTranslation,
+    });
+  }, [showTOC, showSettings, showNotebook, showTranslation]);
+
+  // A probe contains no book data. RN timer lag and missing WebView replies
+  // distinguish a blocked app thread from an unresponsive reading engine.
+  useEffect(() => {
+    diagnosticPingRef.current = 0;
+    diagnosticUnresponsiveRef.current = false;
+    if (!isFocused || !appActive || !webViewReady) return;
+    const timer = setInterval(() => {
+      if (AppState.currentState !== "active") {
+        diagnosticPingRef.current = 0;
+        return;
+      }
+      const now = Date.now();
+      if (diagnosticPingRef.current) {
+        if (now - diagnosticPingRef.current >= 10_000 && !diagnosticUnresponsiveRef.current) {
+          diagnosticUnresponsiveRef.current = true;
+          recordDiagnostic("webview_unresponsive", { loading });
+        }
+        return;
+      }
+      diagnosticPingRef.current = now;
+      bridge.webViewRef.current?.injectJavaScript(
+        `window.ReactNativeWebView.postMessage(JSON.stringify({type:'diagnosticPong',id:${now}}));true;`,
+      );
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [isFocused, appActive, webViewReady, loading, bridge.webViewRef]);
 
   const handleReimportMissingBook = useCallback(async () => {
     if (isReimporting) return;
@@ -2074,9 +2205,8 @@ function ReaderContent({ route, navigation }: Props) {
                 style={s.backButton}
                 onPress={() => {
                   if (book?.filePath) {
-                    setLoading(true);
-                    setError(null);
-                    setLoadAttempt((value) => value + 1);
+                    automaticRecoveryRef.current = false;
+                    retryReader();
                     return;
                   }
                   navigation.reset({ routes: [{ name: "Tabs" }] });
@@ -2173,7 +2303,7 @@ function ReaderContent({ route, navigation }: Props) {
           {/* WebView with foliate-js */}
           <View style={{ flex: 1, backgroundColor: "transparent" }}>
             <WebView
-              key={readerHtmlUri}
+              key={`${readerHtmlUri}:${loadAttempt}`}
               ref={bridge.webViewRef}
               source={{ uri: readerHtmlUri }}
               containerStyle={{ backgroundColor: "transparent" }}
@@ -2197,12 +2327,22 @@ function ReaderContent({ route, navigation }: Props) {
               onCustomMenuSelection={handleSelectionMenuAction}
               onError={(e) => {
                 console.error("[ReaderScreen] WebView error:", e.nativeEvent);
+                recordDiagnostic("webview_error", { code: e.nativeEvent.code });
               }}
               onHttpError={(e) => {
                 console.error("[ReaderScreen] WebView HTTP error:", e.nativeEvent);
+                recordDiagnostic("webview_error", { code: e.nativeEvent.statusCode });
               }}
               onContentProcessDidTerminate={() => {
                 console.warn("[ReaderScreen] WebView content process terminated");
+                recordDiagnostic("webview_terminated");
+                if (!automaticRecoveryRef.current) {
+                  automaticRecoveryRef.current = true;
+                  retryReader();
+                } else {
+                  setLoading(false);
+                  setError(t("reader.processStopped", "Читалка остановилась. Нажмите «Повторить»"));
+                }
               }}
               javaScriptEnabled
               domStorageEnabled

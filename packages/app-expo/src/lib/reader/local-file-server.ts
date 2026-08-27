@@ -10,6 +10,7 @@
  * server module is not available (e.g. during development without a rebuild).
  */
 import { File, FileMode } from "expo-file-system";
+import { withTimeout } from "./reader-host-manager";
 
 // --- State ---
 let _nativeServer: any | null = null;
@@ -17,6 +18,13 @@ let _tcpServer: any | null = null;
 let _serverUrl: string | null = null;
 let _serverDocRoot: string | null = null;
 let _useNative: boolean | null = null; // null = not yet determined
+let serverOperation: Promise<unknown> = Promise.resolve();
+
+function serializeServer<T>(operation: () => Promise<T>): Promise<T> {
+  const pending = serverOperation.catch(() => {}).then(operation);
+  serverOperation = pending;
+  return pending;
+}
 
 const CORS_HEADERS =
   "Access-Control-Allow-Origin: *\r\n" +
@@ -39,7 +47,17 @@ setenv.add-response-header = (
  * Returns the base URL (e.g. `http://127.0.0.1:12345`).
  * Reuses the existing server if one is already running for the same docRoot.
  */
-export async function startFileServer(docRoot: string): Promise<string> {
+export function startFileServer(
+  docRoot: string,
+  options: { restart?: boolean; fallback?: boolean } = {},
+): Promise<string> {
+  return serializeServer(() => startFileServerUnlocked(docRoot, options));
+}
+
+async function startFileServerUnlocked(
+  docRoot: string,
+  options: { restart?: boolean; fallback?: boolean },
+): Promise<string> {
   // Strip file:// URI prefix — native servers need plain filesystem paths
   let cleanRoot = docRoot.replace(/\/+$/, "");
   if (cleanRoot.startsWith("file://")) {
@@ -47,7 +65,7 @@ export async function startFileServer(docRoot: string): Promise<string> {
   }
 
   // Reuse existing server
-  if (_serverUrl && _serverDocRoot === cleanRoot) {
+  if (!options.restart && _serverUrl && _serverDocRoot === cleanRoot) {
     // Check if native server is still active
     if (_nativeServer) {
       try {
@@ -59,7 +77,9 @@ export async function startFileServer(docRoot: string): Promise<string> {
   }
 
   // Stop existing
-  await stopFileServer();
+  await stopFileServerUnlocked();
+
+  if (options.fallback) return _startTcpFallback(cleanRoot);
 
   // Determine which backend to use (once)
   if (_useNative === null) {
@@ -99,12 +119,7 @@ async function _startNativeServer(cleanRoot: string): Promise<string> {
     });
     // Cap server.start() so a hung Lighttpd init can't pin the reader on a spinner.
     // On timeout we treat it the same as a throw: stop and fall back to TCP below.
-    const origin = await Promise.race([
-      server.start(),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Lighttpd startup timeout (3s)")), 3000),
-      ),
-    ]);
+    const origin = await withTimeout<string>(server.start(), 3000);
     _nativeServer = server;
     _serverDocRoot = cleanRoot;
     _serverUrl = origin;
@@ -154,19 +169,27 @@ async function _startTcpFallback(cleanRoot: string): Promise<string> {
   }
 
   return new Promise<string>((resolve, reject) => {
+    let expired = false;
     // Safety timeout: if the TCP server can't bind within 5s, bail out
     const tcpTimeout = setTimeout(() => {
+      expired = true;
+      try {
+        server.close();
+      } catch {}
       reject(new Error("TCP server startup timeout (5s)"));
     }, 5000);
 
     const server = TcpSocket.createServer((socket: any) => {
       let headerBuf = "";
+      let handled = false;
 
       socket.on("data", async (data: any) => {
+        if (handled) return;
         headerBuf += data.toString();
 
         const headerEnd = headerBuf.indexOf("\r\n\r\n");
         if (headerEnd === -1) return;
+        handled = true;
 
         const requestLine = headerBuf.slice(0, headerBuf.indexOf("\r\n"));
         const [method = "GET", rawPath] = requestLine.split(" ") || [];
@@ -174,20 +197,26 @@ async function _startTcpFallback(cleanRoot: string): Promise<string> {
 
         if (!rawPath || rawPath === "/favicon.ico") {
           socket.write(`HTTP/1.1 404 Not Found\r\n${CORS_HEADERS}Content-Length: 0\r\n\r\n`);
-          socket.destroy();
+          socket.end();
           return;
         }
 
         if (normalizedMethod === "OPTIONS") {
           socket.write(`HTTP/1.1 204 No Content\r\n${CORS_HEADERS}Content-Length: 0\r\n\r\n`);
-          socket.destroy();
+          socket.end();
           return;
         }
 
-        const decodedPath = decodeURIComponent(rawPath.slice(1));
+        let decodedPath: string;
+        try {
+          decodedPath = decodeURIComponent(rawPath.split("?")[0].slice(1));
+        } catch {
+          socket.end("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n");
+          return;
+        }
         if (decodedPath.includes("..")) {
           socket.write(`HTTP/1.1 403 Forbidden\r\n${CORS_HEADERS}Content-Length: 0\r\n\r\n`);
-          socket.destroy();
+          socket.end();
           return;
         }
 
@@ -199,7 +228,7 @@ async function _startTcpFallback(cleanRoot: string): Promise<string> {
           if (!file.exists) {
             console.warn(`[FileServer] TCP file not found: ${fileUri}`);
             socket.write(`HTTP/1.1 404 Not Found\r\n${CORS_HEADERS}Content-Length: 0\r\n\r\n`);
-            socket.destroy();
+            socket.end();
             return;
           }
         } catch (e) {
@@ -209,7 +238,7 @@ async function _startTcpFallback(cleanRoot: string): Promise<string> {
           socket.write(
             `HTTP/1.1 500 Internal Server Error\r\n${CORS_HEADERS}Content-Length: 0\r\n\r\n`,
           );
-          socket.destroy();
+          socket.end();
           return;
         }
 
@@ -233,7 +262,7 @@ async function _startTcpFallback(cleanRoot: string): Promise<string> {
             socket.write(
               `HTTP/1.1 416 Range Not Satisfiable\r\n${CORS_HEADERS}Content-Range: bytes */${size}\r\nContent-Length: 0\r\n\r\n`,
             );
-            socket.destroy();
+            socket.end();
             return;
           }
           start = requestedStart;
@@ -242,14 +271,14 @@ async function _startTcpFallback(cleanRoot: string): Promise<string> {
           contentRangeHeader = `Content-Range: bytes ${start}-${end}/${size}\r\n`;
         }
 
-        const contentLength = Math.max(0, end - start + 1);
+        const contentLength = size === 0 ? 0 : Math.max(0, end - start + 1);
 
         socket.write(
           `${statusLine}\r\nContent-Type: ${mime}\r\nContent-Length: ${contentLength}\r\nAccept-Ranges: bytes\r\n${contentRangeHeader}${CORS_HEADERS}Connection: close\r\n\r\n`,
         );
 
         if (normalizedMethod === "HEAD") {
-          socket.destroy();
+          socket.end();
           return;
         }
 
@@ -268,7 +297,7 @@ async function _startTcpFallback(cleanRoot: string): Promise<string> {
         let offset = 0;
         const pump = () => {
           if (offset >= rangeData.length) {
-            socket.destroy();
+            socket.end();
             return;
           }
           const chunkEnd = Math.min(offset + CHUNK, rangeData.length);
@@ -299,11 +328,25 @@ async function _startTcpFallback(cleanRoot: string): Promise<string> {
 
     server.on("error", (err: Error) => {
       clearTimeout(tcpTimeout);
+      expired = true;
       reject(err);
+    });
+
+    server.on("close", () => {
+      if (_tcpServer !== server) return;
+      _tcpServer = null;
+      _serverUrl = null;
+      _serverDocRoot = null;
     });
 
     server.listen({ port: 0, host: "127.0.0.1" }, () => {
       clearTimeout(tcpTimeout);
+      if (expired) {
+        try {
+          server.close();
+        } catch {}
+        return;
+      }
       const addr = server.address();
       const port = addr && typeof addr === "object" && "port" in addr ? addr.port : null;
       if (!port) {
@@ -324,21 +367,27 @@ async function _startTcpFallback(cleanRoot: string): Promise<string> {
  * Stop the file server.
  */
 export async function stopFileServer(_docRoot?: string): Promise<void> {
-  if (_nativeServer) {
-    try {
-      await _nativeServer.stop();
-    } catch {}
-    _nativeServer = null;
-  }
-  if (_tcpServer) {
-    try {
-      _tcpServer.close();
-    } catch {}
-    _tcpServer = null;
-  }
+  return serializeServer(stopFileServerUnlocked);
+}
+
+async function stopFileServerUnlocked(): Promise<void> {
+  const native = _nativeServer;
+  const tcp = _tcpServer;
+  _nativeServer = null;
+  _tcpServer = null;
   _serverUrl = null;
   _serverDocRoot = null;
   _fullReadCache = null;
+  if (native) {
+    try {
+      await withTimeout(Promise.resolve(native.stop()), 500);
+    } catch {}
+  }
+  if (tcp) {
+    try {
+      tcp.close();
+    } catch {}
+  }
 }
 
 // --- Range reads ---

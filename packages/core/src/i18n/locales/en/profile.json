@@ -1,5 +1,12 @@
 {
   "profile": {
+    "development": "Development",
+    "componentPreview": "Component preview",
+    "openComponentPreview": "Open component preview",
+    "shareLogs": "Share logs",
+    "preparingLogs": "Preparing logs…",
+    "logsPrivacy": "No book text, chats, or keys",
+    "shareLogsFailed": "Could not open log sharing. Try again",
     "title": "Me",
     "booksRead": "Books read",
     "booksUnit": "books",

@@ -70,6 +70,7 @@ import { MishanaerIcon, type MishanaerIconName } from "@/components/ui/Icon";
 import { UpdateDialog } from "@/components/update/UpdateDialog";
 import { useUpdateChecker } from "@/hooks/use-update-checker";
 import { startTelemetry } from "@/lib/analytics/telemetry";
+import { startDiagnostics } from "@/lib/diagnostics/diagnostics";
 import { navigationRef } from "@/lib/navigationRef";
 import { ExpoPlatformService } from "@/lib/platform/expo-platform-service";
 import { seekActiveTTS, seekActiveTTSBy } from "@/lib/platform/tts-track-controls";
@@ -133,6 +134,7 @@ export default function App() {
   const [initialThemeMode, setInitialThemeMode] = useState<ThemeMode | null>(null);
 
   useEffect(() => startTelemetry(), []);
+  useEffect(() => startDiagnostics(), []);
 
   useEffect(() => {
     async function bootstrap() {

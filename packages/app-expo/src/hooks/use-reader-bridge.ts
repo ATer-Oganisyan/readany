@@ -73,6 +73,7 @@ export interface ReaderSearchResultItem {
 }
 
 export interface ReaderBridgeCallbacks {
+  onDiagnosticPong?: (id: number) => void;
   onRelocate?: (detail: RelocateEvent) => void;
   onBookTextMetrics?: (detail: { totalCharacters: number }) => void;
   onTocReady?: (items: TOCItem[]) => void;
@@ -840,6 +841,9 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       const cb = callbacksRef.current;
 
       switch (msg.type) {
+        case "diagnosticPong":
+          if (typeof msg.id === "number") cb.onDiagnosticPong?.(msg.id);
+          break;
         case "ready":
           cb.onReady?.();
           break;

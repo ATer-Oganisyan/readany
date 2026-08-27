@@ -4,6 +4,7 @@ import { NativeSymbol } from "@/components/ui/NativeSymbol";
 import { ScrollViewMarker } from "@/components/ui/ScrollViewMarker";
 import { Text } from "@/components/ui/Typography";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
+import { shareDiagnosticLogs } from "@/lib/diagnostics/diagnostics";
 import { toast } from "@/lib/notifications";
 import { clearMobileRuntimeCache, formatCacheSize } from "@/lib/platform/mobile-cache";
 import { stopTTSPreview } from "@/lib/platform/tts-preview";
@@ -296,6 +297,7 @@ export function ProfileScreen() {
   const [overall, setOverall] = useState<OverallStats | null>(null);
   const [dailyStats, setDailyStats] = useState<DailyStats[]>([]);
   const [clearingCache, setClearingCache] = useState(false);
+  const [sharingLogs, setSharingLogs] = useState(false);
   const saveCurrentSession = useReadingSessionStore((s) => s.saveCurrentSession);
   const currentSession = useReadingSessionStore((s) => s.currentSession);
   const stopTTS = useTTSStore((s) => s.stop);
@@ -393,6 +395,20 @@ export function ProfileScreen() {
       ],
     );
   }, [stopTTS, t]);
+
+  const handleShareLogs = async () => {
+    if (sharingLogs) return;
+    setSharingLogs(true);
+    try {
+      await shareDiagnosticLogs(t("profile.shareLogs", "Поделиться логами"));
+    } catch {
+      toast.error(
+        t("profile.shareLogsFailed", "Не удалось открыть отправку логов. Попробуйте снова"),
+      );
+    } finally {
+      setSharingLogs(false);
+    }
+  };
 
   // Settings menu — matching Tauri ProfilePage exactly
   const menuSections = useMemo<ProfileMenuSection[]>(
@@ -600,7 +616,7 @@ export function ProfileScreen() {
         {__DEV__ && (
           <View style={s.menuSection}>
             <Text style={s.menuSectionTitle} maxFontSizeMultiplier={1.5}>
-              Разработка
+              {t("profile.development")}
             </Text>
             <View style={s.menuCard}>
               <Pressable
@@ -611,7 +627,7 @@ export function ProfileScreen() {
                 onPress={() => nav.navigate("Storybook")}
                 android_ripple={{ color: colors.primary5 }}
                 accessibilityRole="button"
-                accessibilityLabel="Открыть превью компонентов"
+                accessibilityLabel={t("profile.openComponentPreview")}
               >
                 <NativeSymbol
                   name="bell"
@@ -621,7 +637,7 @@ export function ProfileScreen() {
                   color={colors.mutedForeground}
                 />
                 <Text style={s.menuItemLabel} maxFontSizeMultiplier={1.7}>
-                  Превью компонентов
+                  {t("profile.componentPreview")}
                 </Text>
                 <NativeSymbol
                   name="chevron.forward"
@@ -633,6 +649,30 @@ export function ProfileScreen() {
             </View>
           </View>
         )}
+        <View style={s.menuSection}>
+          <View style={s.menuCard}>
+            <Pressable
+              style={({ pressed }) => [s.menuItem, pressed && { backgroundColor: colors.primary5 }]}
+              onPress={handleShareLogs}
+              disabled={sharingLogs}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: sharingLogs, busy: sharingLogs }}
+              accessibilityHint={t("profile.logsPrivacy", "Без текстов книг, переписок и ключей")}
+            >
+              <NativeSymbol
+                name="doc.text"
+                fallback="description"
+                size={20}
+                color={colors.mutedForeground}
+              />
+              <Text style={s.menuItemLabel} maxFontSizeMultiplier={1.7}>
+                {sharingLogs
+                  ? t("profile.preparingLogs", "Подготовка логов…")
+                  : t("profile.shareLogs", "Поделиться логами")}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
       </ScrollView>
     </ScrollViewMarker>
   );
