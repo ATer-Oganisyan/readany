@@ -1,6 +1,12 @@
 # Narra 1.3.5 (67) — TestFlight
 
-Статус: подготовка локальной сборки 27 августа 2026 года
+Статус на 27 августа 2026 года: билд `1.3.5 (67)` доступен в TestFlight группам `Narra Internal` и `Narra External`. После отправки на Beta App Review подтверждено `IN_BETA_TESTING` для внутреннего и внешнего тестирования; ожидания ревью нет
+
+[EAS Submit `fae2f671`](https://expo.dev/accounts/mishanaer/projects/readany/submissions/fae2f671-afc3-4ba8-b083-20d097bd0feb): загрузка успешно завершена. EAS использован только для передачи готового файла; облачная квота сборок не использовалась
+
+[Билд 67 в App Store Connect](https://appstoreconnect.apple.com/teams/d8b33429-d4a7-418c-824a-45a168acda6f/apps/6801546949/testflight/ios/0e930b76-fbc3-4fad-b5ed-e3407430d9d9) · [Ссылка для тестировщиков](https://testflight.apple.com/join/6h3wT64n)
+
+Список изменений сохранен в `What to Test` для `ru` и `en-US`. Автоматическое уведомление тестировщиков включено. Наличие билда 67 в обеих группах проверено через App Store Connect API
 
 Предыдущая опубликованная версия: 1.3.5 (66), группа Narra External
 
@@ -36,3 +42,17 @@
 - Адрес Gateway сохранен: https://api-test.narra.disrupt.builders
 - Новые зависимости и ключи не создаются; облачная квота EAS не используется для сборки
 - Публикация только в TestFlight, не в публичном App Store
+
+## Итоговый архив
+
+- Исходный коммит: `66aa8dff0590b399a0130272de7625a896c49cfd`; собран из отдельной рабочей копии без артефактов Simulator
+- Файл: `/tmp/Narra-67-66aa8dff.ipa`, около 255 MB
+- SHA-256: `b9c6422b63eae11c7f672515f8ad15d2ea44875a9b7a6d7c16d8a47074fc53c3`
+- В готовом IPA подтверждены версия `1.3.5`, билд `67`, идентификатор `com.mishanaer.narra`
+- `codesign --verify --deep --strict` прошел; профиль App Store, `get-task-allow=false`
+- Xcode `26.6 (17F113)`, SDK `iphoneos26.5 (23F81a)`; глобальный выбор Xcode и работающий Simulator не менялись
+- В бинарном JS-бандле найдены проверка доступности сервера, экспорт `Narra-logs.json`, подпись `Share logs` и ранее одобренный ключ. Значение ключа не выводилось; маркер AvatarLab отсутствует
+- Архив с символами: `/Users/manaer/Library/Developer/Xcode/Archives/2026-08-27/Narra 2026-08-27 16.26.34.xcarchive`
+- UUID приложения и dSYM совпадает: `A8F17D76-9A56-307D-8C25-4D963823882F` (`arm64`)
+- Expo Doctor: 19 из 21 проверок прошли. Сохранились предупреждения о `@expo/dom-webview` (`55.0.6` вместо `~57.0.1`) и patch-обновлениях 20 пакетов. Зависимости перед выпуском не обновлялись
+- Первый запуск остановился до компиляции из-за отсутствия Fastlane в `PATH`. Для итогового запуска добавлены пути установленного Fastlane и стабильного Xcode, а также `RUBYOPT=-rlogger`. Повторный запуск EAS CLI использовал тот же номер 67: `autoIncrement=false` изменен только в изолированной рабочей копии, основной production-профиль не менялся

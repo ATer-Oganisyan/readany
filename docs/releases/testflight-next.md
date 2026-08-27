@@ -1,5 +1,7 @@
 # Narra 1.3.5 (66) — TestFlight
 
+Архив предыдущего выпуска. Актуальный билд: [Narra 1.3.5 (67)](testflight-67.md)
+
 Статус на 27 августа 2026 года: билд `1.3.5 (66)` доступен внешним тестировщикам. После `Submit for Review` в App Store Connect подтвержден статус `Testing` в группе `Narra External` (6 тестировщиков); ожидания ревью нет
 
 Текущая отправка: [EAS Submit `d8f569a8`](https://expo.dev/accounts/mishanaer/projects/readany/submissions/d8f569a8-b704-4eb8-93c6-627f7e5544f1)
