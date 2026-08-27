@@ -228,6 +228,7 @@ services:
       GENERATOR_BASE_URL: http://gateway.railway.internal:8787
       GENERATOR_SERVICE_TOKEN: ${GENERATOR_SERVICE_TOKEN:?GENERATOR_SERVICE_TOKEN is required}
       GENERATOR_TIMEOUT_MS: "600000"
+      BOOK_MARKUP_WORKER_JOB_TYPES: ${BOOK_MARKUP_WORKER_JOB_TYPES:-}
     init: true
     restart: unless-stopped
     stop_grace_period: 30s

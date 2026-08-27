@@ -15,6 +15,20 @@ export const BOOK_MARKUP_WORKER_JOB_TYPES = Object.freeze([
   ...Object.values(CHARACTER_MEDIA_JOB_TYPES)
 ])
 const JOB_TYPES = new Set(['book_identity', ...BOOK_MARKUP_WORKER_JOB_TYPES])
+
+export function parseBookMarkupWorkerJobTypes(value) {
+  if (value === undefined || value === null || String(value).trim() === '') {
+    return [...BOOK_MARKUP_WORKER_JOB_TYPES]
+  }
+  const selected = [...new Set(String(value).split(',').map((item) => item.trim()).filter(Boolean))]
+  if (
+    selected.length === 0 ||
+    selected.some((jobType) => !BOOK_MARKUP_WORKER_JOB_TYPES.includes(jobType))
+  ) {
+    throw new TypeError('BOOK_MARKUP_WORKER_JOB_TYPES contains unsupported values')
+  }
+  return selected
+}
 const JOB_LABELS = {
   book_markup: 'разметка книги',
   book_identity: 'название книги',

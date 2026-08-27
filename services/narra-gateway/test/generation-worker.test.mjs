@@ -6,11 +6,24 @@ import {
   normalizeBookIdentityResult,
   normalizeBookMarkupResult,
   normalizeCharacterBundleInput,
-  normalizeCharacterBundleResult
+  normalizeCharacterBundleResult,
+  parseBookMarkupWorkerJobTypes
 } from '../generation-worker.mjs'
 
 const HASH = 'a'.repeat(64)
 const silentLogger = { info() {}, warn() {}, error() {} }
+
+test('book markup worker can be restricted to portrait jobs', () => {
+  assert.deepEqual(
+    parseBookMarkupWorkerJobTypes('character_portrait, character_portrait'),
+    ['character_portrait']
+  )
+  assert.throws(
+    () => parseBookMarkupWorkerJobTypes('character_portrait,book_identity'),
+    /unsupported values/
+  )
+  assert.ok(parseBookMarkupWorkerJobTypes().includes('scene_image'))
+})
 
 function generatedAssets() {
   return REQUIRED_CHARACTER_MEDIA.map((type) => ({

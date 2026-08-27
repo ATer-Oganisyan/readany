@@ -2,8 +2,8 @@ import { randomUUID } from 'node:crypto'
 import { parseEnvInt } from './env.mjs'
 import { createGenerationServiceClient } from './generation-service-client.mjs'
 import {
-  BOOK_MARKUP_WORKER_JOB_TYPES,
-  createGenerationWorker
+  createGenerationWorker,
+  parseBookMarkupWorkerJobTypes
 } from './generation-worker.mjs'
 import { createPostgresBookMarkupRepository } from './postgres-book-markup-repository.mjs'
 import { createPostgresPoolFromEnv, runBookMarkupMigrations } from './postgres-runtime.mjs'
@@ -30,6 +30,7 @@ const pollMs = parseEnvInt(process.env, 'BOOK_MARKUP_WORKER_POLL_MS', 1_000, 60_
 const leaseSeconds = parseEnvInt(process.env, 'BOOK_MARKUP_JOB_LEASE_SECONDS', 300, 3_600)
 const leaseRenewMs = parseEnvInt(process.env, 'BOOK_MARKUP_LEASE_RENEW_MS', 60_000, 1_800_000)
 const idleLogMs = parseEnvInt(process.env, 'BOOK_MARKUP_IDLE_LOG_MS', 300_000, 3_600_000)
+const jobTypes = parseBookMarkupWorkerJobTypes(process.env.BOOK_MARKUP_WORKER_JOB_TYPES)
 const log = createOperationalLogger({ component: 'book-worker' })
 if (leaseRenewMs >= leaseSeconds * 1_000) {
   throw new Error('BOOK_MARKUP_LEASE_RENEW_MS must be shorter than the job lease')
@@ -44,7 +45,7 @@ try {
     claimGenerationJob(id) {
       return baseRepository.claimGenerationJob(id, {
         leaseSeconds,
-        jobTypes: BOOK_MARKUP_WORKER_JOB_TYPES
+        jobTypes
       })
     }
   }
@@ -57,7 +58,8 @@ try {
   log.info('worker.ready', 'Воркер запущен и готов принимать задания', {
     worker: workerId,
     poll_ms: pollMs,
-    lease_seconds: leaseSeconds
+    lease_seconds: leaseSeconds,
+    job_types: jobTypes
   })
   let lastIdleLogAt = 0
   while (!shutdown.signal.aborted) {
