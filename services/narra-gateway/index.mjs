@@ -49,7 +49,6 @@ import {
 import {
   imageEmptyResultError,
   imageUpstreamError,
-  simplifiedPortraitPrompt,
   shouldFallbackAfterImageError
 } from './image-policy.mjs'
 import { sberCaBundle, verifiedSberCertificates } from './sber-tls.mjs'
@@ -83,6 +82,7 @@ import {
   createInternalGenerationRouter,
   createInternalGenerationService
 } from './internal-generation-service.mjs'
+import { createGenerationCostLedger } from './generation-cost-ledger.mjs'
 import { createLocalIdleAnimation } from './local-idle-animation.mjs'
 import { createPrivateMaterialCleanup } from './private-material-cleanup.mjs'
 import { kandinskyImageTimeoutMs, kandinskyRequestTimeoutMs } from './image-timeouts.mjs'
@@ -600,17 +600,31 @@ async function animatePortrait(image, query, quality, signal) {
   return videoTask(model, params, signal)
 }
 
-async function completeInternalChat({ messages, signal }) {
+async function recordInternalGenerationCost(input) {
+  if (!generationCostLedger) {
+    throw Object.assign(new Error('generation cost ledger is not ready'), {
+      code: 'GENERATION_COST_LEDGER_UNAVAILABLE',
+      status: 503
+    })
+  }
+  return generationCostLedger.record(input)
+}
+
+async function completeInternalChat({ messages, signal, costContext }) {
   let release
+  const requestId = randomUUID()
+  let providerResult
+  let recorded = false
   try {
     release = await llmGate.acquire(signal)
-    const { response, finalizeAttempt } = await requestChat({
+    providerResult = await requestChat({
       messages,
       purpose: 'structured_task',
       stream: false,
-      requestId: randomUUID(),
+      requestId,
       signal
     })
+    const { response, finalizeAttempt } = providerResult
     const payload = await settleProviderResponse({
       finalizeAttempt,
       consume: async () => {
@@ -624,44 +638,122 @@ async function completeInternalChat({ messages, signal }) {
         return validateChatCompletionPayload(json)
       }
     })
+    await recordInternalGenerationCost({
+      context: costContext,
+      modality: 'text',
+      requestId,
+      attempts: providerResult.attempts,
+      usage: payload?.usage,
+      responseCost: providerResult.responseCost
+    })
+    recorded = true
     return payload?.choices?.[0]?.message?.content || ''
+  } catch (error) {
+    const attempts = providerResult?.attempts || error?.attempts
+    if (!recorded && Array.isArray(attempts) && attempts.length) {
+      await recordInternalGenerationCost({
+        context: costContext,
+        modality: 'text',
+        requestId: providerResult?.requestId || error?.requestId || requestId,
+        attempts,
+        responseCost: providerResult?.responseCost
+      })
+    }
+    throw error
   } finally {
     release?.()
   }
 }
 
-async function generateInternalPortrait(prompt, signal, safeRetryPrompt = '') {
+async function generateInternalPortrait(prompt, signal, costContext = null) {
   let release
+  const requestId = randomUUID()
+  const attempts = []
+  let retryIndex = 0
+  let costRecorded = false
+  const attempt = async (provider, operation) => {
+    const attemptId = randomUUID()
+    const startedAt = Date.now()
+    try {
+      const value = await operation()
+      attempts.push({
+        attempt_id: attemptId,
+        provider,
+        model: provider,
+        status: 'completed',
+        retry_index: retryIndex,
+        latency_ms: Date.now() - startedAt
+      })
+      retryIndex += 1
+      return value
+    } catch (error) {
+      attempts.push({
+        attempt_id: attemptId,
+        provider,
+        model: provider,
+        status: 'failed',
+        retry_index: retryIndex,
+        latency_ms: Date.now() - startedAt,
+        error_code: error?.code || 'UNKNOWN',
+        http_status: error?.status
+      })
+      retryIndex += 1
+      throw error
+    }
+  }
+  const recordCost = async () => {
+    if (!costContext || costRecorded || !attempts.length) return
+    await recordInternalGenerationCost({
+      context: costContext,
+      modality: 'image',
+      requestId,
+      attempts
+    })
+    costRecorded = true
+  }
   try {
     release = await imageGate.acquire(signal)
     let base64
     let provider
     if (LLM_API_KEY) {
       try {
-        base64 = await gigachatImage(prompt, signal)
+        base64 = await attempt('gigachat-image', () => gigachatImage(prompt, signal))
         provider = 'gigachat-image'
       } catch (error) {
-        let failure = error
-        if (safeRetryPrompt && error?.code === 'NETWORK' && error?.phase === 'result') {
-          console.error('[internal-generation] portrait returned no image, retrying a simplified prompt')
-          try {
-            base64 = await gigachatImage(simplifiedPortraitPrompt(safeRetryPrompt), signal)
-            provider = 'gigachat-image'
-          } catch (retryError) {
-            failure = retryError
-          }
-        }
+        const failure = error
         if (!base64) {
-          if (!shouldFallbackAfterImageError(failure) || !KANDINSKY_TOKEN) throw failure
+          if (!shouldFallbackAfterImageError(failure) || !KANDINSKY_TOKEN) {
+            await recordCost()
+            throw failure
+          }
           console.error('[internal-generation] portrait fallback to Kandinsky:', failure.message)
         }
       }
     }
     if (!base64 && KANDINSKY_TOKEN) {
-      base64 = await kandinskyQueued(prompt, 1024, 1024, signal)
+      try {
+        base64 = await attempt('kandinsky', () => kandinskyQueued(prompt, 1024, 1024, signal))
+      } catch (error) {
+        await recordCost()
+        throw error
+      }
       provider = 'kandinsky'
     }
-    if (!base64) throw httpErr('NO_KEY', 'No image provider is configured')
+    if (!base64) {
+      const error = httpErr('NO_KEY', 'No image provider is configured')
+      attempts.push({
+        attempt_id: randomUUID(),
+        provider: 'internal-image',
+        model: 'unconfigured',
+        status: 'not_configured',
+        retry_index: retryIndex,
+        error_code: error.code,
+        latency_ms: 0
+      })
+      await recordCost()
+      throw error
+    }
+    await recordCost()
     const bytes = Buffer.from(base64, 'base64')
     if (!bytes.byteLength || bytes.byteLength > 18 * 1024 * 1024) {
       throw httpErr('NETWORK', 'Image provider returned an invalid portrait')
@@ -672,13 +764,44 @@ async function generateInternalPortrait(prompt, signal, safeRetryPrompt = '') {
   }
 }
 
-async function generateInternalCover(prompt, signal) {
+async function measuredInternalImageRequest({ prompt, aspectRatio, signal, costContext }) {
+  try {
+    const generated = await requestCoverImageWithFallback({
+      prompt,
+      aspectRatio,
+      requestId: randomUUID(),
+      signal
+    })
+    await recordInternalGenerationCost({
+      context: costContext,
+      modality: 'image',
+      requestId: generated.requestId,
+      attempts: generated.attempts,
+      usage: generated.usage,
+      responseCost: generated.responseCost
+    })
+    return generated
+  } catch (error) {
+    if (Array.isArray(error?.attempts) && error.attempts.length) {
+      await recordInternalGenerationCost({
+        context: costContext,
+        modality: 'image',
+        requestId: error.requestId,
+        attempts: error.attempts
+      })
+    }
+    throw error
+  }
+}
+
+async function generateInternalCover(prompt, signal, costContext) {
   let release
   try {
     release = await imageGate.acquire(signal)
-    const generated = await requestCoverImageWithFallback({
+    const generated = await measuredInternalImageRequest({
       prompt,
       aspectRatio: '2:3',
+      costContext,
       signal
     })
     const bytes = Buffer.from(generated.image, 'base64')
@@ -696,13 +819,14 @@ async function generateInternalCover(prompt, signal) {
   }
 }
 
-async function generateInternalCharacterPortrait(prompt, signal) {
+async function generateInternalCharacterPortrait(prompt, signal, costContext) {
   let release
   try {
     release = await imageGate.acquire(signal)
-    const generated = await requestCoverImageWithFallback({
+    const generated = await measuredInternalImageRequest({
       prompt,
       aspectRatio: '3:4',
+      costContext,
       signal
     })
     const bytes = Buffer.from(generated.image, 'base64')
@@ -948,6 +1072,7 @@ let bookMarkupPool = null
 let bookMarkupRepository = null
 let bookAnalysisRepository = null
 let bookOperatorRepository = null
+let generationCostLedger = null
 let privateMaterialCleanupTimer = null
 let privateMaterialCleanupInitialTimer = null
 const bookObjectStorage = createBookObjectStorageFromEnv(process.env)
@@ -970,6 +1095,9 @@ if (!internalGenerationService) {
 if (process.env.DATABASE_URL) {
   bookMarkupPool = await createPostgresPoolFromEnv(process.env)
   await runBookMarkupMigrations(bookMarkupPool)
+  generationCostLedger = createGenerationCostLedger(bookMarkupPool, {
+    required: String(process.env.GENERATION_COST_LEDGER_REQUIRED || 'true').trim().toLowerCase() !== 'false'
+  })
   bookMarkupRepository = createPostgresBookMarkupRepository(bookMarkupPool, {
     privateMaterialTtlDays: PRIVATE_MATERIAL_TTL_DAYS
   })

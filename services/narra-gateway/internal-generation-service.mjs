@@ -1537,7 +1537,17 @@ async function synthesizePersonalityCheckpointFallback({
             ].join('\n')
           }
         ],
-        signal
+        signal,
+        costContext: {
+          analysisRunId: input.runId,
+          operation: 'synthesize_personality_checkpoint',
+          stage: 'synthesize',
+          metadata: {
+            snapshot_id: input.snapshotId,
+            entity_key: input.entity.entityKey,
+            checkpoint_index: index
+          }
+        }
       })
       const source = parseJsonObject(response)
       const [normalized] = normalizePersonalityTimeline({
@@ -1742,7 +1752,13 @@ export function createInternalGenerationService({
               ].join('\n')
             }
           ],
-          signal
+          signal,
+          costContext: {
+            bookEditionId: input.bookEditionId,
+            operation: 'normalize_book_identity',
+            stage: 'identity',
+            metadata: { target_version: input.targetVersion }
+          }
         })
         const generatedIdentity = normalizeBookDisplayIdentity(parseJsonObject(response))
         const fallbackIdentity = normalizeBookDisplayIdentity(input)
@@ -1808,7 +1824,14 @@ export function createInternalGenerationService({
               ].join('\n')
             }
           ],
-          signal
+          signal,
+          costContext: {
+            bookEditionId: input.bookEditionId,
+            analysisRunId: input.runId,
+            operation: 'reconcile_character_identities',
+            stage: 'resolve',
+            metadata: { reconciliation_version: input.reconciliationVersion }
+          }
         })
         const normalized = normalizeIdentityReconciliationResult(parseJsonObject(response), input)
         log.info(
@@ -1902,7 +1925,16 @@ export function createInternalGenerationService({
               ].join('\n')
             }
           ],
-          signal
+          signal,
+          costContext: {
+            analysisRunId: input.runId,
+            operation: 'synthesize_character_profile',
+            stage: 'synthesize',
+            metadata: {
+              snapshot_id: input.snapshotId,
+              entity_key: input.entity.entityKey
+            }
+          }
         })
         let sourceProfile = parseJsonObject(response)
         const primaryPersonalitySource = sourceProfile.personalitySnapshots
@@ -1936,7 +1968,16 @@ export function createInternalGenerationService({
                 ].join('\n')
               }
             ],
-            signal
+            signal,
+            costContext: {
+              analysisRunId: input.runId,
+              operation: 'recall_character_traits',
+              stage: 'synthesize',
+              metadata: {
+                snapshot_id: input.snapshotId,
+                entity_key: input.entity.entityKey
+              }
+            }
           })
           sourceProfile = mergeProfileTraitCandidates(sourceProfile, parseJsonObject(recallResponse))
           const candidate = profileAuditCandidate(sourceProfile)
@@ -1972,7 +2013,16 @@ export function createInternalGenerationService({
                 ].join('\n')
               }
             ],
-            signal
+            signal,
+            costContext: {
+              analysisRunId: input.runId,
+              operation: 'audit_character_profile',
+              stage: 'synthesize',
+              metadata: {
+                snapshot_id: input.snapshotId,
+                entity_key: input.entity.entityKey
+              }
+            }
           })
           auditSummary = normalizeProfileAuditResult(
             parseJsonObject(auditResponse),
@@ -2066,7 +2116,16 @@ export function createInternalGenerationService({
                 coreLocalStartOffset: range.coreLocalStartOffset,
                 coreLocalEndOffset: range.coreLocalEndOffset
               }),
-              signal
+              signal,
+              costContext: {
+                analysisRunId: input.runId,
+                operation: 'scan_book_chunk',
+                stage: 'scan',
+                metadata: {
+                  chunk_id: input.chunkId,
+                  adaptive_part: adaptivePart || null
+                }
+              }
             })
             const normalized = normalizeScanChunkResult(
               parseJsonObject(response),
@@ -2207,7 +2266,13 @@ export function createInternalGenerationService({
               content: `Книга: ${input.title}\nАвтор: ${input.author || 'не указан'}\n\n${selection.sample}`
             }
           ],
-          signal
+          signal,
+          costContext: {
+            bookEditionId: input.bookEditionId,
+            operation: 'legacy_book_markup',
+            stage: 'markup',
+            metadata: { analysis_version: input.analysisVersion }
+          }
         })
         const parsed = parseJsonObject(response)
         const characters = normalizeCharacters(parsed.characters, text, sections)
@@ -2278,7 +2343,12 @@ export function createInternalGenerationService({
           })
           return { asset: { type: 'catalog_cover', source: 'embedded', ...asset } }
         }
-        const generated = await generateCover(catalogCoverPrompt(input), signal)
+        const generated = await generateCover(catalogCoverPrompt(input), signal, {
+          bookEditionId: input.bookEditionId,
+          operation: 'generate_catalog_cover',
+          stage: 'cover',
+          metadata: { target_version: input.targetVersion }
+        })
         const extension = imageExtension(generated.mimeType)
         const asset = await storage.putBytes({
           objectKey: `books/catalog/${input.bookEditionId}/cover/generated/${input.targetVersion}.${extension}`,
@@ -2337,7 +2407,12 @@ export function createInternalGenerationService({
           characters: input.characters.map(sceneCharacter).filter(({ name }) => name),
           previousExcerpts: []
         })
-        const generated = await generateScene(prompt, signal)
+        const generated = await generateScene(prompt, signal, {
+          bookEditionId: input.bookEditionId,
+          operation: 'generate_book_scene',
+          stage: 'scene',
+          metadata: { scene_key: input.sceneKey, slot_index: input.slotIndex }
+        })
         const safeTargetVersion = input.targetVersion.replace(/[^a-z0-9._-]+/gi, '-')
         const asset = await storage.putBytes({
           objectKey: `generated/${input.scope}/${input.bookEditionId}/scenes/${safeTargetVersion}/${input.slotIndex}.${imageExtension(generated.mimeType)}`,
@@ -2380,7 +2455,15 @@ export function createInternalGenerationService({
           })
           const portraitStartedAt = Date.now()
           log.info('bundle.portrait_started', 'Начинаю генерацию портрета', common)
-          portrait = await generatePortrait(portraitPrompt, signal)
+          portrait = await generatePortrait(portraitPrompt, signal, {
+            bookEditionId: input.bookEditionId,
+            operation: 'generate_character_portrait',
+            stage: 'character_media',
+            metadata: {
+              character_key: input.characterKey,
+              bundle_version: input.bundleVersion
+            }
+          })
           log.info('bundle.portrait_ready', 'Портрет готов', {
             ...common,
             provider: portrait.provider,

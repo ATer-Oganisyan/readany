@@ -25,12 +25,14 @@ test('provider route is selected only from server environment', () => {
 
 test('provider request omits temperature when the caller leaves it unset', async () => {
   let body
+  let headers
   const result = await requestChat({
     messages: [{ role: 'user', content: 'hello' }],
     purpose: 'structured_task',
     stream: false,
     fetchImpl: async (_url, init) => {
       body = JSON.parse(init.body)
+      headers = new Headers(init.headers)
       return new Response('{"choices":[{"message":{"content":"{}"}}]}', { status: 200 })
     },
     env: {
@@ -41,6 +43,8 @@ test('provider request omits temperature when the caller leaves it unset', async
     }
   })
   assert.equal(Object.hasOwn(body, 'temperature'), false)
+  assert.match(headers.get('x-request-id'), /^[0-9a-f-]{36}$/)
+  assert.equal(result.responseCost, undefined)
   await result.finalizeAttempt()
 })
 
@@ -419,11 +423,15 @@ test('LiteLLM cover request uses the standard images generations contract', asyn
     }
   })
 
-  assert.deepEqual(result, {
-    image: PNG_BASE64,
-    mimeType: 'image/png',
-    model: 'gpt-image-2'
-  })
+  assert.equal(result.image, PNG_BASE64)
+  assert.equal(result.mimeType, 'image/png')
+  assert.equal(result.model, 'gpt-image-2')
+  assert.equal(result.provider, 'litellm')
+  assert.equal(result.requestId, 'cover-request-1')
+  assert.equal(result.responseCost, undefined)
+  assert.deepEqual(result.attempts.map(({ status, retry_index: retryIndex }) => ({ status, retryIndex })), [
+    { status: 'completed', retryIndex: 0 }
+  ])
   assert.equal(captured.url, 'https://litellm.test/v1/images/generations')
   assert.equal(captured.headers.get('authorization'), 'Bearer proxy-key')
   assert.equal(captured.headers.get('x-request-id'), 'cover-request-1')
@@ -465,6 +473,10 @@ test('LiteLLM cover route falls back from GPT Image 2 to Nano Banana 2', async (
     'openrouter/google/gemini-3.1-flash-image'
   ])
   assert.equal(result.model, 'openrouter/google/gemini-3.1-flash-image')
+  assert.deepEqual(result.attempts.map(({ status, retry_index: retryIndex }) => ({ status, retryIndex })), [
+    { status: 'failed', retryIndex: 0 },
+    { status: 'completed', retryIndex: 1 }
+  ])
   assert.equal(bodies[0].quality, 'high')
   assert.equal(Object.hasOwn(bodies[0], 'resolution'), false)
   assert.equal(bodies[1].aspect_ratio, '2:3')
@@ -627,7 +639,9 @@ test('cover request sends the server-side image contract to OpenRouter', async (
       OPENROUTER_APP_NAME: 'Narra'
     }
   })
-  assert.deepEqual(result, { image: PNG_BASE64, mimeType: 'image/png', model: 'openai/gpt-image-2' })
+  assert.equal(result.image, PNG_BASE64)
+  assert.equal(result.mimeType, 'image/png')
+  assert.equal(result.model, 'openai/gpt-image-2')
   assert.equal(calls.length, 1)
   assert.equal(calls[0].url, 'https://openrouter.test/v1/images')
   assert.equal(new Headers(calls[0].init.headers).get('authorization'), 'Bearer or-key')
@@ -640,6 +654,40 @@ test('cover request sends the server-side image contract to OpenRouter', async (
     output_format: 'png',
     n: 1
   })
+})
+
+test('image response exposes exact cost and usage without treating a missing header as zero', async () => {
+  const env = {
+    COVER_IMAGE_PROVIDER: 'litellm',
+    LITELLM_BASE_URL: 'https://litellm.test',
+    LITELLM_API_KEY: 'proxy-key',
+    LITELLM_IMAGE_MODEL: 'gpt-image-2'
+  }
+  const priced = await requestCoverImage({
+    prompt: 'cover',
+    env,
+    fetchImpl: async () => new Response(JSON.stringify({
+      usage: { input_tokens: 10, output_tokens: 20, total_tokens: 30, cost: 0.25 },
+      data: [{ b64_json: PNG_BASE64 }]
+    }), {
+      status: 200,
+      headers: { 'x-litellm-response-cost': '0.25' }
+    })
+  })
+  assert.deepEqual(priced.usage, {
+    input_tokens: 10, output_tokens: 20, total_tokens: 30, cost: 0.25
+  })
+  assert.equal(priced.responseCost, 0.25)
+
+  const unpriced = await requestCoverImage({
+    prompt: 'cover',
+    env,
+    fetchImpl: async () => new Response(JSON.stringify({ data: [{ b64_json: PNG_BASE64 }] }), {
+      status: 200
+    })
+  })
+  assert.equal(unpriced.responseCost, undefined)
+  assert.equal(unpriced.usage, null)
 })
 
 test('OpenRouter image request accepts a server-selected portrait aspect ratio', async () => {

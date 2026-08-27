@@ -430,6 +430,18 @@ test('parallel analysis migration isolates durable jobs and whole-book barriers'
   assert.match(synthesisMigration, /book_analysis_publications_immutable/)
 })
 
+test('generation cost migration records exact priced and unpriced provider attempts per book', async () => {
+  const migration = await readFile(
+    new URL('../migrations/018_generation_cost_ledger.sql', import.meta.url),
+    'utf8'
+  )
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS generation_cost_events/)
+  assert.match(migration, /book_edition_id UUID NOT NULL REFERENCES book_editions/)
+  assert.match(migration, /analysis_run_id UUID REFERENCES book_analysis_runs/)
+  assert.match(migration, /exact_cost_usd NUMERIC\(20, 10\)/)
+  assert.match(migration, /cost_source.*response_usage.*response_header/)
+})
+
 test('empty-image retry migration requeues only failed independent media jobs', async () => {
   const migration = await readFile(
     new URL('../migrations/012_retry_independent_media_after_empty_image.sql', import.meta.url),

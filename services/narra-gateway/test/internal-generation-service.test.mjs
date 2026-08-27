@@ -67,6 +67,12 @@ test('internal generation service extracts markup once and returns an idempotent
   assert.deepEqual(second, first)
   assert.equal(chatCalls, 1)
   assert.equal(Object.hasOwn(chatRequest, 'temperature'), false)
+  assert.deepEqual(chatRequest.costContext, {
+    bookEditionId: request.bookEditionId,
+    operation: 'legacy_book_markup',
+    stage: 'markup',
+    metadata: { analysis_version: request.analysisVersion }
+  })
   assert.equal(first.textLength, source.toString('utf8').length)
   assert.equal(first.characters[0].firstAppearanceTextOffset, 0)
   assert.equal(lines.filter((line) => line.includes('event="markup.chunk_selected"')).length, 3)
@@ -111,6 +117,12 @@ test('internal generation service normalizes book display identity idempotently'
   assert.equal(chatCalls, 1)
   assert.match(chatRequest.messages[1].content, /Мертвое озеро \(Часть первая\)/)
   assert.match(chatRequest.messages[1].content, /BOOK_EXCERPT/)
+  assert.deepEqual(chatRequest.costContext, {
+    bookEditionId: request.bookEditionId,
+    operation: 'normalize_book_identity',
+    stage: 'identity',
+    metadata: { target_version: request.targetVersion }
+  })
 })
 
 test('internal generation service creates all three required bundle assets', async () => {
@@ -302,13 +314,15 @@ test('internal generation service stores a permanent catalog cover idempotently'
   const contentSha256 = createHash('sha256').update(source).digest('hex')
   const storage = memoryStorage({ source: { bytes: source, mimeType: 'text/plain' } })
   let coverCalls = 0
+  let coverCostContext
   const service = createInternalGenerationService({
     storage,
     logger: { info() {}, error() {} },
     async completeChat() { throw new Error('unused') },
     async generatePortrait() { throw new Error('catalog cover must not use portrait routing') },
-    async generateCover(prompt) {
+    async generateCover(prompt, _signal, costContext) {
       coverCalls += 1
+      coverCostContext = costContext
       assert.match(prompt, /Преступление и наказание/)
       return {
         bytes: Buffer.from('cover'),
@@ -331,6 +345,12 @@ test('internal generation service stores a permanent catalog cover idempotently'
   const repeated = await service.generateCatalogCover(input)
   assert.deepEqual(repeated, first)
   assert.equal(coverCalls, 1)
+  assert.deepEqual(coverCostContext, {
+    bookEditionId: input.bookEditionId,
+    operation: 'generate_catalog_cover',
+    stage: 'cover',
+    metadata: { target_version: input.targetVersion }
+  })
   assert.equal(first.asset.mimeType, 'image/jpeg')
   assert.equal(first.asset.source, 'generated')
   assert.match(first.asset.objectKey, /books\/catalog\/11111111-1111-4111-8111-111111111111\/cover\/generated/)

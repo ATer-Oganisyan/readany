@@ -163,6 +163,7 @@ export async function requestChat({
         headers: {
           Authorization: `Bearer ${config.apiKey}`,
           'Content-Type': 'application/json',
+          'X-Request-ID': id,
           ...config.headers
         },
         body: JSON.stringify({
@@ -186,6 +187,7 @@ export async function requestChat({
         model: config.model,
         status: 'failed',
         http_status: response.status,
+        response_cost: responseCost(response),
         latency_ms: Date.now() - started,
         retry_index: retryIndex
       }
@@ -207,18 +209,13 @@ export async function requestChat({
           console.info(JSON.stringify({ type: 'provider_attempt', request_id: id, purpose, ...attempt }))
           await onAttempt(attempt)
         }
-        const responseCost = (() => {
-          if (!TEXT_PROVIDERS.has(providerName)) return undefined
-          const value = Number(response.headers.get('x-litellm-response-cost'))
-          return Number.isFinite(value) && value >= 0 && value <= 1_000_000 ? value : undefined
-        })()
         return {
           response,
           requestId: id,
           attempts,
           provider: providerName,
           model: config.model,
-          responseCost,
+          responseCost: terminalAttempt.response_cost,
           finalizeAttempt
         }
       }
@@ -472,8 +469,22 @@ function imagePayloadResult(payload, provider) {
   const imageBase64 = dataUrl ? dataUrl[2] : raw
   return {
     image: imageBase64,
-    mimeType: imageMimeTypeFromBase64(imageBase64) || image.media_type || dataUrl?.[1] || 'image/png'
+    mimeType: imageMimeTypeFromBase64(imageBase64) || image.media_type || dataUrl?.[1] || 'image/png',
+    usage: payload?.usage || image?.usage || null
   }
+}
+
+function responseCost(response) {
+  const raw = response?.headers?.get?.('x-litellm-response-cost')
+  if (raw == null || !String(raw).trim()) return undefined
+  const value = Number(raw)
+  return Number.isFinite(value) && value >= 0 && value <= 1_000_000 ? value : undefined
+}
+
+function imageAttemptError(error, { requestId, attempts }) {
+  error.requestId = requestId
+  error.attempts = attempts
+  return error
 }
 
 export async function requestCoverImage({
@@ -481,17 +492,46 @@ export async function requestCoverImage({
   aspectRatio = '2:3',
   model,
   requestId,
+  retryIndex = 0,
   env = process.env,
   fetchImpl = fetch,
   signal
 }) {
   const config = coverImageConfig(env)
+  const id = requestId || randomUUID()
   const selectedModel = String(model || config.model).trim()
+  const attemptId = randomUUID()
+  const attempts = []
+  const started = Date.now()
+  const failedAttempt = (error, fields = {}) => {
+    attempts.push({
+      attempt_id: attemptId,
+      event_id: randomUUID(),
+      provider: config.provider,
+      model: selectedModel,
+      status: 'failed',
+      error_code: error?.code || 'UNKNOWN',
+      latency_ms: Date.now() - started,
+      retry_index: retryIndex,
+      ...fields
+    })
+    throw imageAttemptError(error, { requestId: id, attempts })
+  }
   if (!config.apiKey || !config.baseUrl || !selectedModel) {
     const error = new Error(`Обложки: ${config.label} image route не настроен`)
     error.status = 503
     error.code = 'NO_KEY'
-    throw error
+    attempts.push({
+      attempt_id: attemptId,
+      event_id: randomUUID(),
+      provider: config.provider,
+      model: selectedModel,
+      status: 'not_configured',
+      error_code: error.code,
+      latency_ms: Date.now() - started,
+      retry_index: retryIndex
+    })
+    throw imageAttemptError(error, { requestId: id, attempts })
   }
   const request = coverImageRequest(config, { prompt, aspectRatio, selectedModel })
   let response
@@ -501,46 +541,68 @@ export async function requestCoverImage({
       headers: {
         Authorization: `Bearer ${config.apiKey}`,
         'Content-Type': 'application/json',
-        ...(requestId ? { 'X-Request-ID': requestId } : {}),
+        'X-Request-ID': id,
         ...config.headers
       },
       body: JSON.stringify(request.body),
       signal: withTimeout(signal, config.timeoutMs)
     })
   } catch (error) {
-    throw normalizeImageTransportError(error, config.label)
+    failedAttempt(normalizeImageTransportError(error, config.label))
   }
   if (!response.ok) {
     const detail = (await response.text().catch(() => '')).slice(0, 4_000)
-    throw imageUpstreamError({
+    failedAttempt(imageUpstreamError({
       provider: config.label,
       phase: 'create',
       status: response.status,
       detail
-    })
+    }), { http_status: response.status, response_cost: responseCost(response) })
   }
   let payload
   try {
     payload = await response.json()
   } catch (error) {
-    throw Object.assign(new Error(`${config.label}: некорректный JSON ответа`), {
+    failedAttempt(Object.assign(new Error(`${config.label}: некорректный JSON ответа`), {
       code: 'PARSE',
       status: 502,
       cause: error
-    })
+    }), { http_status: response.status })
   }
-  const image = imagePayloadResult(payload, config.label)
+  let image
+  try {
+    image = imagePayloadResult(payload, config.label)
+  } catch (error) {
+    failedAttempt(error, { http_status: response.status })
+  }
+  attempts.push({
+    attempt_id: attemptId,
+    event_id: randomUUID(),
+    provider: config.provider,
+    model: selectedModel,
+    status: 'completed',
+    http_status: response.status,
+    latency_ms: Date.now() - started,
+    retry_index: retryIndex
+  })
   return {
     ...image,
-    model: selectedModel
+    model: selectedModel,
+    provider: config.provider,
+    requestId: id,
+    attempts,
+    responseCost: responseCost(response)
   }
 }
 
 export async function requestCoverImageWithFallback(options) {
   const config = coverImageConfig(options.env)
+  const requestId = options.requestId || randomUUID()
+  let previousAttempts = []
   try {
-    return await requestCoverImage(options)
+    return await requestCoverImage({ ...options, requestId, retryIndex: 0 })
   } catch (error) {
+    previousAttempts = Array.isArray(error?.attempts) ? error.attempts : []
     if (
       !shouldFallbackAfterImageError(error) ||
       !config.fallbackModel ||
@@ -554,5 +616,17 @@ export async function requestCoverImageWithFallback(options) {
     )
   }
 
-  return requestCoverImage({ ...options, model: config.fallbackModel })
+  try {
+    const result = await requestCoverImage({
+      ...options,
+      requestId,
+      retryIndex: 1,
+      model: config.fallbackModel
+    })
+    return { ...result, attempts: [...previousAttempts, ...result.attempts] }
+  } catch (error) {
+    error.requestId = requestId
+    error.attempts = [...previousAttempts, ...(Array.isArray(error?.attempts) ? error.attempts : [])]
+    throw error
+  }
 }
