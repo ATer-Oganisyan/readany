@@ -2,8 +2,8 @@
  * Темы страницы читалки — пресеты фона и текста в стиле Apple Books
  * (образец — панель «Темы и настройки» narra).
  *
- * «Оригинал» следует теме приложения; «Сепия» и «Тёмная» переопределяют
- * цвета всей поверхности ридера и содержимого WebView.
+ * Light, Dark, Sepia задают цвета всей поверхности ридера и WebView.
+ * Сохранённый id "original" оставлен для совместимости и означает Light.
  */
 
 export type ReaderPageTheme = "original" | "sepia" | "dark";
@@ -38,22 +38,42 @@ const SEPIA_COLORS: ReaderThemeColors = {
 };
 
 export const READER_PAGE_THEMES: ReaderPageThemePreset[] = [
-  { id: "original", labelKey: "reader.pageThemeOriginal", labelDefault: "Оригинал" },
-  {
-    id: "sepia",
-    labelKey: "reader.pageThemeSepia",
-    labelDefault: "Сепия",
-  },
+  { id: "original", labelKey: "reader.pageThemeLight", labelDefault: "Light" },
   {
     id: "dark",
     labelKey: "reader.pageThemeDark",
     labelDefault: "Тёмная",
+  },
+  {
+    id: "sepia",
+    labelKey: "reader.pageThemeSepia",
+    labelDefault: "Сепия",
   },
 ];
 
 /** Тема, с которой ридер открывается в соответствии с темой приложения. */
 export function getAppSyncedReaderTheme(isAppDark: boolean): ReaderPageTheme {
   return isAppDark ? "dark" : "original";
+}
+
+/** Scene surfaces follow the page, never the surrounding application's theme. */
+export function resolveReaderScenePalette<
+  T extends { primary4: string; elevation1: string; elevation2: string },
+>(
+  theme: string | undefined,
+  light: T,
+  dark: T,
+  paperBackground: string,
+): T & { sceneActionColor?: string } {
+  return theme === "dark"
+    ? dark
+    : {
+        ...light,
+        elevation1: light.primary4,
+        // Translucency belongs to the fill, never the label or icon.
+        elevation2: `color-mix(in srgb, ${paperBackground} 70%, transparent)`,
+        ...(theme === "sepia" ? { sceneActionColor: SEPIA_COLORS.foreground } : {}),
+      };
 }
 
 /**
@@ -71,7 +91,7 @@ export function resolveReaderThemeTokens(tokens: ReaderThemeTokenPalette): Reade
 
 export function resolveReaderThemeColors(
   theme: string | undefined,
-  appTokens: ReaderThemeTokenPalette,
+  lightTokens: ReaderThemeTokenPalette,
   darkTokens: ReaderThemeTokenPalette,
 ): ReaderThemeColors {
   switch (theme) {
@@ -80,7 +100,7 @@ export function resolveReaderThemeColors(
     case "dark":
       return resolveReaderThemeTokens(darkTokens);
     default:
-      return resolveReaderThemeTokens(appTokens);
+      return resolveReaderThemeTokens(lightTokens);
   }
 }
 

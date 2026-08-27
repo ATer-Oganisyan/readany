@@ -295,7 +295,20 @@
     const MAX_SEARCH_RESULT_ITEMS = 100;
     let currentSectionIndex = 0;
     let totalSections = 0;
-    let currentThemeColors = { bg: '#1c1c1e', fg: '#e8e8ed', muted: '#7c7c82', primary: '#3b82f6' };
+    let currentThemeColors = {
+      bg: '#1c1c1e',
+      fg: '#e8e8ed',
+      muted: '#7c7c82',
+      primary: '#3b82f6',
+      primary5: '#FFFFFF0D',
+      primary8: '#FFFFFF14',
+      primary10: '#FFFFFF1A',
+      primary20: '#FFFFFF33',
+      primary40: '#FFFFFF66',
+      sceneActionColor: '#FFFFFF66',
+      elevation1: '#1D1D1D',
+      elevation2: '#282828',
+    };
     let lastRendererStyles = '';
     let currentViewMode = 'paginated';
     let currentSectionUsesVerticalWriting = false;
@@ -1813,6 +1826,7 @@
         attachBookTransformHandler(book);
 
         const el = document.createElement('foliate-view');
+        el.cfiFilter = sceneCfiFilter;
         readerElement = el;
         el.style.width = '100%';
         el.style.height = '100%';
@@ -2475,13 +2489,23 @@
       const fg = colors.foreground || '#e8e8ed';
       const muted = colors.muted || '#7c7c82';
       const primary = colors.primary || '#3b82f6';
+      const primary5 = colors.primary5 || currentThemeColors.primary5;
+      const primary8 = colors.primary8 || currentThemeColors.primary8;
+      const primary10 = colors.primary10 || currentThemeColors.primary10;
+      const primary20 = colors.primary20 || '#FFFFFF33';
+      const primary40 = colors.primary40 || '#FFFFFF66';
+      const sceneActionColor = colors.sceneActionColor || primary40;
+      const elevation1 = colors.elevation1 || currentThemeColors.elevation1;
+      const elevation2 = colors.elevation2 || currentThemeColors.elevation2;
 
-      currentThemeColors = { bg, fg, muted, primary };
+      currentThemeColors = { bg, fg, muted, primary, primary5, primary8, primary10, primary20, primary40, sceneActionColor, elevation1, elevation2 };
 
       document.documentElement.style.setProperty('--bg', bg);
       document.documentElement.style.setProperty('--fg', fg);
       document.documentElement.style.setProperty('--muted', muted);
       document.documentElement.style.setProperty('--primary', primary);
+      document.documentElement.style.setProperty('--primary-20', primary20);
+      document.documentElement.style.setProperty('--primary-40', primary40);
       document.documentElement.dataset.readerColorScheme = isDarkCssColor(bg) ? 'dark' : 'light';
       document.body.style.backgroundColor = 'transparent';
       document.body.style.color = fg;
@@ -2714,6 +2738,21 @@ a { color: ${primary} !important; }
       } catch { /* document may have been replaced during a transition */ }
       doc.__readany_selection_interaction = false;
       postToRN('selectionCleared', {});
+    }
+
+    function isSceneUiNode(node) {
+      const el = node && (node.nodeType === 1 ? node : node.parentElement);
+      return !!(el && el.closest && el.closest('.readany-scene-insert'));
+    }
+
+    // iOS can restore a selection after touchend. Never send scene controls
+    // to the native note/copy/translate menu, even if a range bypasses CSS.
+    function dismissSceneSelection(doc, sel) {
+      sel = sel || doc.getSelection();
+      if (!sel || sel.isCollapsed) return false;
+      if (!isSceneUiNode(sel.anchorNode) && !isSceneUiNode(sel.focusNode)) return false;
+      clearDocumentSelection(doc);
+      return true;
     }
 
     // ─── Tap detection ───
@@ -3017,6 +3056,7 @@ a { color: ${primary} !important; }
           if (iosHackPending) return;
           const sel = doc.getSelection();
           if (!sel || sel.isCollapsed || !sel.toString().trim() || !sel.rangeCount) return;
+          if (dismissSceneSelection(doc, sel)) return;
           const range = sel.getRangeAt(0);
           // iOS hack: remove and re-add to dismiss system menu
           iosHackPending = true;
@@ -3032,6 +3072,7 @@ a { color: ${primary} !important; }
       }, { passive: true });
 
       doc.addEventListener('selectionchange', () => {
+        if (dismissSceneSelection(doc)) return;
         if (doc.__readany_isJiggling) return;
         if (iosHackPending) return;
         if (selTimer) clearTimeout(selTimer);
@@ -3049,9 +3090,14 @@ a { color: ${primary} !important; }
         }, 300);
       });
 
-      doc.addEventListener('selectstart', () => {
+      doc.addEventListener('selectstart', (e) => {
+        if (isSceneUiNode(e.target)) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
         markSelectionInteraction(true);
-      });
+      }, true);
 
       doc.addEventListener('pointermove', () => {
         if (getSelectionRange(doc.getSelection())) markSelectionInteraction(true);
@@ -3080,6 +3126,7 @@ a { color: ${primary} !important; }
     }
 
     function emitSelection(doc, sel, range) {
+      if (dismissSceneSelection(doc, sel)) return;
       const text = getRangeTextWithoutRuby(range, sel.toString());
       if (!text) return;
 
@@ -5548,8 +5595,8 @@ a { color: ${primary} !important; }
     };
 
     // ─── Врезки сцен внутри текста (Narra) ───
-    // Поток: RN шлёт insertSceneSlot → в конец видимого фрагмента встаёт блок
-    // «✦ Показать сцену» (пунктирная рамка). Тап → блок сам переключается в
+    // Поток: RN шлёт insertSceneSlot → после видимого абзаца, с новой страницы, встаёт блок
+    // «Сгенерировать сцену» с иконкой волшебной палочки. Тап → блок переключается в
     // плейсхолдер «Рисуем сцену…» и шлёт sceneSlotTap в RN; RN генерирует
     // картинку и возвращает её data-URI командой replaceSceneSlot. Якорь врезки —
     // CFI блока, после которого она вставлена; по списку якорей из RN
@@ -5562,24 +5609,24 @@ a { color: ${primary} !important; }
       'p, h1, h2, h3, h4, h5, h6, li, blockquote, dd, dt, figcaption, .__readany_br_paragraph';
     var _sceneRestoreAnchors = [];
     var _sceneSlotLabels = {
-      idle: 'Показать сцену',
+      idle: 'Сгенерировать сцену',
       loading: 'Рисуем сцену…',
       loadingHint: '20–60 секунд',
       caption: 'Сцена — сгенерировано ИИ',
-      error: 'Не получилось — попробовать ещё раз',
+      error: 'Попробовать снова',
     };
 
-    // Лоадер «Рисуем сцену…»: инлайн line-art логотипа Narra (контуры книжки
-    // с глазами из assets/splash-logo.svg), fill/stroke = currentColor —
-    // цвет наследуется от темы читалки. Зрачки (.readany-scene-pupils)
-    // «читают строки» CSS-анимацией readany-narra-read (~2.5 с).
-    var NARRA_LOADER_SVG = '<svg width="271" height="371" viewBox="0 0 271 371" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><mask id="pages-above-book" maskUnits="userSpaceOnUse" x="-20" y="-20" width="311" height="411"><rect x="-20" y="-20" width="311" height="411" fill="white"/><path d="M106.773 245.743 C103.236 234.872 97.047 225.656 89.509 217.901 C81.971 210.147 73.084 203.854 64.152 198.829 C44.376 187.704 23.375 182.205 13.066 180.611 M106.773 245.743 C108.88 244.542 111.535 243.028 114.51 241.363 C123.303 236.443 135.725 229.749 150.22 223.12 C179.005 209.956 216.775 196.659 250.82 198.679" fill="none" stroke="black" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/></mask></defs><g fill="currentColor"><path d="M171.239 135.629C172.825 133.936 173.656 131.694 173.528 129.378C173.401 127.063 172.325 124.862 170.558 123.28C168.792 121.699 166.487 120.871 164.171 120.999C161.855 121.126 159.718 122.199 158.21 123.961L128.945 158.12L142.458 162.687C139.354 131.159 136.948 99.4471 138.706 68.159C139.767 52.6886 141.554 36.6032 148.094 23.702C151.439 17.3003 156.398 12.5658 162.839 12.1596C169.327 11.6571 176.445 14.7736 182.883 18.7482C186.338 20.9002 189.382 23.1063 192.74 25.7995C193.404 26.3323 194.262 26.5798 195.118 26.496C195.974 26.4118 196.759 26.0031 197.306 25.3516C197.853 24.7001 198.12 23.8567 198.055 22.9986C197.99 22.1409 197.598 21.3388 196.959 20.7771C193.549 17.805 190.432 15.3057 186.76 12.7942C179.876 8.21695 172.08 3.8481 162.406 4.01452C152.443 4.09064 144.249 11.6881 140.07 19.1856C131.55 34.4987 129.336 51.0858 127.436 67.2129C124.192 99.6229 125.261 131.86 126.991 163.903L128.688 182.061L140.503 168.47L171.239 135.629Z"/><path d="M80.255 114.038C79.877 116.092 80.34 118.186 81.583 119.863C82.824 121.541 84.743 122.665 86.878 122.984C89.013 123.302 91.177 122.787 92.853 121.544C94.532 120.302 95.586 118.435 95.824 116.36C96.039 114.362 96.426 112.343 96.965 110.398C97.382 108.892 97.898 107.422 98.474 106.154C98.757 105.528 99.061 104.949 99.322 104.522C99.552 104.107 99.881 103.805 99.496 104.077C99.287 104.186 98.795 104.6 97.434 104.786C96.063 105.039 93.957 104.26 93.259 103.535C92.453 102.804 92.391 102.471 92.333 102.361C92.298 102.249 92.366 102.35 92.427 102.509C92.723 103.26 92.99 104.886 93.117 106.487C93.828 112.249 91.226 118.523 88.287 119.823C87.65 120.128 87.392 120.135 87.152 120.117C86.911 120.097 86.375 119.809 85.81 118.948C84.65 117.226 83.955 114.021 83.839 110.721C83.933 102.41 87.732 91.671 92.581 83.434C95.045 79.333 98.336 75.346 101.625 74.132C104.591 72.814 108.095 75.074 110.894 79.072C112.166 80.85 113.275 82.799 114.339 84.987C114.67 85.668 115.27 86.196 115.993 86.46C116.716 86.725 117.504 86.704 118.195 86.396C118.887 86.089 119.43 85.518 119.719 84.804C120.007 84.09 120.017 83.291 119.733 82.589C118.717 80.111 117.629 77.818 116.225 75.54C114.71 73.117 112.789 70.576 109.945 68.672C107.165 66.704 102.86 65.915 99.416 67.006C92.535 69.249 88.802 74.2 85.447 78.765C79.148 88.394 74.406 97.945 73.184 110.747C73.127 115.08 73.327 119.661 75.902 124.628C77.215 127.06 79.419 129.659 82.751 131.069C86.051 132.501 89.852 132.271 92.744 131.164C104.217 126.08 106.836 114.912 106.82 105.889C106.763 103.666 106.712 101.492 105.956 98.539C105.44 97.058 105.3 95.292 102.43 92.575C101.018 91.232 97.932 90.125 95.617 90.514C93.324 90.817 91.926 91.716 90.977 92.365C84.803 97.732 84.29 101.398 82.448 105.727C81.489 108.447 80.764 111.194 80.255 114.038Z"/><path d="M154.122 91.077C153.744 93.132 154.207 95.225 155.45 96.902C156.691 98.58 158.611 99.705 160.745 100.023C162.88 100.341 165.044 99.826 166.721 98.583C168.399 97.341 169.453 95.475 169.691 93.399C169.907 91.401 170.293 89.382 170.832 87.437C171.249 85.931 171.765 84.461 172.341 83.193C172.624 82.567 172.928 81.988 173.189 81.561C173.419 81.146 173.748 80.844 173.364 81.116C173.155 81.225 172.662 81.639 171.301 81.825C169.93 82.078 167.824 81.299 167.127 80.574C166.321 79.843 166.258 79.51 166.2 79.4C166.165 79.288 166.233 79.389 166.294 79.548C166.59 80.299 166.857 81.925 166.984 83.526C167.695 89.288 165.093 95.562 162.154 96.862C161.517 97.167 161.259 97.174 161.019 97.157C160.778 97.136 160.242 96.848 159.677 95.987C158.517 94.265 157.822 91.06 157.707 87.76C157.8 79.449 161.599 68.71 166.448 60.473C168.912 56.372 172.203 52.385 175.492 51.171C178.458 49.853 181.963 52.113 184.761 56.111C186.034 57.889 187.142 59.838 188.206 62.026C188.537 62.707 189.137 63.235 189.86 63.499C190.583 63.764 191.371 63.743 192.063 63.435C192.754 63.128 193.298 62.557 193.586 61.843C193.874 61.129 193.884 60.33 193.6 59.628C192.584 57.15 191.497 54.857 190.092 52.579C188.578 50.156 186.657 47.614 183.812 45.711C181.032 43.743 176.727 42.954 173.283 44.045C166.402 46.288 162.669 51.239 159.315 55.804C153.015 65.433 148.273 74.984 147.051 87.786C146.994 92.119 147.195 96.7 149.769 101.667C151.082 104.099 153.282 106.699 156.618 108.108C159.918 109.541 163.719 109.31 166.612 108.203C178.084 103.119 180.703 91.951 180.687 82.928C180.63 80.705 180.579 78.531 179.823 75.578C179.307 74.098 179.167 72.331 176.297 69.614C174.885 68.271 171.8 67.164 169.484 67.553C167.192 67.856 165.793 68.755 164.844 69.404C158.67 74.771 158.157 78.437 156.316 82.766C155.357 85.486 154.631 88.233 154.122 91.077Z"/><path d="M111.849 43.207C112.808 44.519 114.235 45.368 115.851 45.537C117.464 45.708 119.134 45.186 120.458 44.115C121.782 43.044 122.641 41.52 122.81 39.906C122.982 38.29 122.45 36.718 121.367 35.506C120.289 34.275 119.107 33.123 117.859 32.082C112.325 27.383 104.559 24.562 97.074 25.642C89.603 26.657 83.619 30.765 78.993 35.305C69.825 44.576 64.479 55.685 59.854 66.84L58.373 70.61C58.167 71.154 58.189 71.771 58.419 72.318C58.651 72.866 59.071 73.301 59.603 73.533C60.136 73.777 60.74 73.777 61.299 73.572C61.857 73.368 62.324 72.965 62.582 72.444C63.178 71.235 63.774 70.062 64.369 68.925C73.682 49.247 95.51 24.854 109.909 40.884C110.617 41.609 111.278 42.4 111.849 43.207Z"/></g><path d="M6.749 186.543L19.224 324.176L19.549 327.761L22.963 328.897L41.474 335.063C52.962 338.89 64.068 343.782 74.648 349.675L100.55 364.102L102.387 365.125L104.438 364.662L168.733 350.151C178.06 348.046 187.53 346.632 197.064 345.92L259.637 341.246L265.075 340.84L264.715 335.397L255.982 203.805L255.661 198.966L250.82 198.679C216.775 196.659 179.005 209.956 150.22 223.12C135.725 229.749 123.303 236.443 114.51 241.363C111.535 243.028 108.88 244.542 106.773 245.743C99.699 224.001 82.016 208.879 64.152 198.829C44.376 187.704 23.375 182.205 13.066 180.611L6.114 179.537L6.749 186.543Z" fill="none" stroke="currentColor" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><g mask="url(#pages-above-book)" fill="none" stroke="currentColor" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"><path d="M106.227 246.047 C110.4 241.136 114.521 236.456 118.62 232.01 C130.735 218.869 142.655 207.777 155.143 198.834 C179.943 181.076 206.981 171.797 242.227 171.797"/><path d="M106.227 246.047 C96 209 77 167.5 22.227 155.047"/><path d="M106.773 245.743 C103.236 234.872 97.047 225.656 89.509 217.901 C81.971 210.147 73.084 203.854 64.152 198.829 C44.376 187.704 23.375 182.205 13.066 180.611"/></g><g class="readany-scene-pupils" fill="currentColor"><circle cx="95.5" cy="104" r="7.5"/><circle cx="169.5" cy="81" r="7.5"/></g></svg>';
+    // Иконка из переданного макета magic-wand-filled.svg. currentColor
+    // синхронизирует её с цветом текста и темой ридера.
+    var SCENE_WAND_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M17.237 4.362a2 2 0 0 1 2.677.138L21.5 6.086l.138.151a2 2 0 0 1 0 2.526l-.138.151L7.914 22.5a2 2 0 0 1-2.677.138l-.151-.138L3.5 20.914a2 2 0 0 1 0-2.828L17.086 4.5zM19.5 15.125c.47 0 .855.37.874.839l.005.101.014.157c.106.77.75 1.366 1.542 1.4l.101.004a.875.875 0 0 1 0 1.748l-.101.005a1.625 1.625 0 0 0-1.542 1.4l-.014.156-.005.101a.875.875 0 0 1-1.748 0l-.005-.101a1.625 1.625 0 0 0-1.4-1.542l-.156-.014-.101-.005a.875.875 0 0 1 0-1.748l.101-.005.157-.014a1.625 1.625 0 0 0 1.4-1.542l.004-.101.008-.087a.875.875 0 0 1 .866-.752M3.5 10a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3M8 0a1 1 0 0 1 .987.839l.217 1.332.033.16a2 2 0 0 0 1.653 1.496l1.255.184a1 1 0 0 1 0 1.978l-1.255.184a2 2 0 0 0-1.686 1.656l-.217 1.332a1 1 0 0 1-1.974 0L6.796 7.83A2 2 0 0 0 5.27 6.202l-.16-.03-1.255-.183a1 1 0 0 1 0-1.978l1.255-.184.16-.03a2 2 0 0 0 1.526-1.626L7.013.839l.02-.089A1 1 0 0 1 8 0m11.207 6.793a1 1 0 0 0-1.414 0l-1.5 1.5a1 1 0 1 0 1.414 1.414l1.5-1.5a1 1 0 0 0 0-1.414"/></svg>';
+
 
     // Фильтр адресации CFI: свои вставки не участвуют вовсе, спаны имён
     // персонажей «прозрачны» (их дети считаются детьми родителя) — якорь
     // совпадает с CFI «чистого» документа до любой нашей разметки.
     function sceneCfiFilter(node) {
       if (node.nodeType !== 1 || !node.classList) return NodeFilter.FILTER_ACCEPT;
+      if (node.hasAttribute('cfi-inert')) return NodeFilter.FILTER_REJECT;
       if (node.classList.contains(SCENE_INSERT_CLASS)) return NodeFilter.FILTER_REJECT;
       if (node.classList.contains(CHARACTER_NAME_CLASS)) return NodeFilter.FILTER_SKIP;
       if (node.classList.contains('readany-translation')) return NodeFilter.FILTER_REJECT;
@@ -5589,74 +5636,215 @@ a { color: ${primary} !important; }
     // Стили в цветах темы читалки (currentThemeColors обновляет setThemeColors)
     function sceneSlotStyleText() {
       var muted = currentThemeColors.muted;
+      var primary5 = currentThemeColors.primary5;
+      var primary10 = currentThemeColors.primary10;
+      var primary40 = currentThemeColors.primary40;
+      var actionColor = currentThemeColors.sceneActionColor;
+      var press = window._readanyCoverPressFeedback;
       return [
         '.' + SCENE_INSERT_CLASS + ' {',
-        '  margin: 1.1em 0;',
-        '  -webkit-column-break-inside: avoid;',
-        '  break-inside: avoid;',
+        '  --readany-scene-side: min(var(--page-content-width, 0px), max(1px, calc(var(--page-content-height, 0px) - 24px)));',
+        '  display: block !important;',
+        '  position: relative !important;',
+        '  box-sizing: border-box !important;',
+        '  width: var(--readany-scene-side) !important;',
+        '  height: var(--readany-scene-side) !important;',
+        '  min-width: 0 !important;',
+        '  min-height: 0 !important;',
+        '  max-width: none !important;',
+        '  max-height: none !important;',
+        '  margin: 0 auto 24px !important;',
+        '  padding: 0 !important;',
+        '  border: 0 !important;',
+        '  background: ' + currentThemeColors.elevation1 + ' !important;',
+        '  float: none !important;',
+        '  clear: both !important;',
+        '  overflow: hidden !important;',
+        '  border-radius: 12px;',
+        '  -webkit-column-break-before: always !important;',
+        '  break-before: column !important;',
+        '  -webkit-column-break-inside: avoid !important;',
+        '  break-inside: avoid !important;',
         '  -webkit-user-select: none;',
         '  user-select: none;',
-        '  -webkit-tap-highlight-color: rgba(127, 127, 127, 0.12);',
+        '}',
+        // The button's shared cover-scale animation is the only press feedback.
+        // Disable iOS's additional tap overlay throughout the scene subtree.
+        '.' + SCENE_INSERT_CLASS + ',',
+        '.' + SCENE_INSERT_CLASS + ' * {',
+        '  -webkit-tap-highlight-color: transparent !important;',
+        '  -webkit-user-select: none !important;',
+        '  user-select: none !important;',
+        '  -webkit-touch-callout: none !important;',
+        '  -webkit-user-drag: none !important;',
         '}',
         '.' + SCENE_INSERT_CLASS + ' .readany-scene-box {',
-        '  border: 1.5px dashed ' + muted + ';',
+        '  position: relative;',
+        '  isolation: isolate;',
+        '  display: flex;',
+        '  flex-direction: column;',
+        '  align-items: center;',
+        '  justify-content: center;',
+        '  box-sizing: border-box !important;',
+        '  width: 100% !important;',
+        '  height: 100% !important;',
+        '  margin: 0 !important;',
+        '  border: 0 !important;',
         '  border-radius: 12px;',
-        '  padding: 14px 12px;',
+        '  padding: 12px !important;',
         '  text-align: center;',
         '  color: ' + muted + ';',
         '  font-size: 0.85em;',
         '  line-height: 1.5;',
         '}',
-        '.' + SCENE_INSERT_CLASS + '[' + SCENE_STATE_ATTR + '="loading"] .readany-scene-box {',
-        '  border-color: transparent;',
-        '  background: rgba(127, 127, 127, 0.12);',
+        '.' + SCENE_INSERT_CLASS + ' .readany-scene-flow-border {',
+        '  position: absolute;',
+        '  z-index: 2;',
+        '  top: 0;',
+        '  left: 0;',
+        '  overflow: visible;',
+        '  pointer-events: none;',
         '}',
-        '.' + SCENE_INSERT_CLASS + ' .readany-scene-hint {',
+        '.' + SCENE_INSERT_CLASS + ' .readany-scene-flow-border rect {',
+        '  fill: none;',
+        '  stroke: ' + primary5 + ';',
+        '  stroke-width: 1.5;',
+        '  stroke-dasharray: none;',
+        '  vector-effect: non-scaling-stroke;',
+        '}',
+        // shadcn Button outline/default, adapted from app/components/ui/button.tsx
+        // to the EPUB DOM. Keep Narra's Body typography and semantic colors.
+        '.' + SCENE_INSERT_CLASS + ' .readany-scene-action {',
+        '  position: relative !important;',
+        '  z-index: 1;',
+        '  appearance: none !important;',
+        '  -webkit-appearance: none !important;',
+        '  box-sizing: border-box !important;',
+        '  display: inline-flex;',
+        '  width: auto;',
+        '  max-width: 100% !important;',
+        '  min-height: 36px !important;',
+        '  height: auto !important;',
+        '  flex-shrink: 0;',
+        '  align-items: center;',
+        '  justify-content: center;',
+        '  gap: 8px;',
+        '  margin: 0;',
+        '  padding: 7px 15px;',
+        '  border: 1px solid ' + primary10 + ' !important;',
+        '  border-radius: 9999px !important;',
+        '  background: ' + currentThemeColors.elevation2 + ' !important;',
+        '  box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);',
+        '  outline: none;',
+        '  cursor: pointer;',
+        '  touch-action: manipulation;',
+        '  -webkit-user-select: none !important;',
+        '  user-select: none !important;',
+        '  white-space: normal !important;',
+        '  transform: scale(1);',
+        '  transform-origin: center;',
+        '  transition: transform ' + press.durationMs + 'ms cubic-bezier(' + press.easing.join(',') + ');',
+        '  text-align: center;',
+        '  text-indent: 0;',
+        '  color: ' + actionColor + ' !important;',
+        '  font-family: "SB Sans Interface", system-ui, sans-serif;',
+        '  font-size: 16px;',
+        '  line-height: 20px;',
+        '  font-weight: 400;',
+        '  letter-spacing: 0;',
+        '}',
+        // A separate backdrop avoids WebKit dropping the button's foreground
+        // when compositing a filtered control inside paginated columns.
+        '.' + SCENE_INSERT_CLASS + ' .readany-scene-action::before {',
+        '  content: "";',
+        '  position: absolute;',
+        '  inset: 0;',
+        '  z-index: -1;',
+        '  border-radius: inherit;',
+        '  pointer-events: none;',
+        '  -webkit-backdrop-filter: blur(10px);',
+        '  backdrop-filter: blur(10px);',
+        '}',
+        '.' + SCENE_INSERT_CLASS + ' .readany-scene-action:active {',
+        '  transform: scale(' + press.scale + ');',
+        '}',
+        '@media (prefers-reduced-motion: reduce) {',
+        '  .' + SCENE_INSERT_CLASS + ' .readany-scene-action { transition: none; }',
+        '}',
+        '.' + SCENE_INSERT_CLASS + ' .readany-scene-action:focus-visible {',
+        '  outline: 2px solid ' + primary40 + ' !important;',
+        '  outline-offset: 2px;',
+        '}',
+        '.' + SCENE_INSERT_CLASS + ' .readany-scene-action:disabled {',
+        '  pointer-events: none;',
+        '  opacity: 0.5;',
+        '}',
+        '.' + SCENE_INSERT_CLASS + ' .readany-scene-action-icon {',
+        '  display: inline-block;',
+        '  width: 16px !important;',
+        '  height: 16px !important;',
+        '  flex: 0 0 16px;',
+        '  pointer-events: none;',
+        '}',
+        '.' + SCENE_INSERT_CLASS + ' .readany-scene-action-icon svg {',
         '  display: block;',
-        '  font-size: 0.85em;',
-        '  opacity: 0.75;',
-        '  margin-top: 2px;',
+        '  width: 100% !important;',
+        '  height: 100% !important;',
+        '  color: inherit !important;',
         '}',
-        // Лоадер «Рисуем сцену…»: значок Narra, листающий страницы
-        '.' + SCENE_INSERT_CLASS + ' {',
-        '  font-family: inherit;',
+        '.' + SCENE_INSERT_CLASS + ' .readany-scene-action-icon svg path {',
+        '  fill: currentColor !important;',
         '}',
-        '.' + SCENE_INSERT_CLASS + ' *,',
-        '.' + SCENE_INSERT_CLASS + ' .readany-scene-box,',
-        '.' + SCENE_INSERT_CLASS + ' .readany-scene-hint {',
-        '  font-family: inherit;',
-        '}',
-        // Лоадер «Рисуем сцену…»: line-art логотип Narra без подложки,
-        // цвет — currentColor контейнера (тема читалки)
-        '.' + SCENE_INSERT_CLASS + ' .readany-scene-loader {',
-        '  display: block;',
-        '  width: 56px;',
-        '  margin: 2px auto 8px;',
-        '  color: inherit;',
-        '}',
-        '.' + SCENE_INSERT_CLASS + ' .readany-scene-loader svg {',
-        '  display: block;',
-        '  width: 100%;',
-        '  height: auto;',
-        '}',
-        // Зрачки «читают строки»: слева направо с лёгким наклоном вниз,
-        // возврат каретки, следующая строка; цикл ~2.5 с, плавно
-        '.' + SCENE_INSERT_CLASS + ' .readany-scene-pupils {',
-        '  animation: readany-narra-read 2.5s ease-in-out infinite;',
-        '}',
-        '@keyframes readany-narra-read {',
-        '  0% { transform: translate(-9px, -3px); }',
-        '  36% { transform: translate(9px, 0); }',
-        '  44% { transform: translate(-9px, 0); }',
-        '  80% { transform: translate(9px, 3px); }',
-        '  88%, 100% { transform: translate(-9px, -3px); }',
+        '.' + SCENE_INSERT_CLASS + ' .readany-scene-pixels {',
+        '  --scene-primary8: ' + currentThemeColors.primary8 + ';',
+        '  position: absolute !important;',
+        '  z-index: 0;',
+        '  inset: 0 !important;',
+        '  display: block !important;',
+        '  width: 100% !important;',
+        '  height: 100% !important;',
+        '  margin: 0 !important;',
+        '  padding: 0 !important;',
+        '  border: 0 !important;',
+        '  border-radius: 12px;',
+        '  pointer-events: none;',
+        '  color: ' + muted + ' !important;',
         '}',
         '.' + SCENE_INSERT_CLASS + ' img {',
         '  display: block;',
         '  width: 100%;',
+        '  height: 100%;',
+        '  margin: 0 !important;',
+        '  padding: 0 !important;',
+        '  object-fit: cover;',
         '  border-radius: 12px;',
         '}',
       ].join('\n');
+    }
+
+    // @font-face внешнего reader.html не действует внутри EPUB-документа.
+    // Копируем уже собранное правило с data URL, не дублируя файл шрифта в HTML.
+    function sceneSlotInterfaceFontFaceText() {
+      try {
+        var sheets = document.styleSheets;
+        for (var i = 0; i < sheets.length; i++) {
+          var rules = sheets[i].cssRules;
+          if (!rules) continue;
+          for (var j = 0; j < rules.length; j++) {
+            var rule = rules[j];
+            if (
+              rule.type === CSSRule.FONT_FACE_RULE &&
+              rule.style &&
+              String(rule.style.fontFamily || '').indexOf('SB Sans Interface') >= 0
+            ) {
+              return rule.cssText;
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[SceneSlots] Failed to copy SB Sans Interface font face:', e);
+      }
+      return '';
     }
 
     function sceneSlotInjectStyles(doc) {
@@ -5667,7 +5855,8 @@ a { color: ${primary} !important; }
         style.id = SCENE_INSERT_STYLE_ID;
         if (doc.head) doc.head.appendChild(style);
       }
-      style.textContent = sceneSlotStyleText();
+      var interfaceFontFace = sceneSlotInterfaceFontFaceText();
+      style.textContent = (interfaceFontFace ? interfaceFontFace + '\n' : '') + sceneSlotStyleText();
     }
 
     // Смена темы читалки — перегенерировать стили во всех загруженных секциях
@@ -5675,50 +5864,153 @@ a { color: ${primary} !important; }
       var contents = getRendererContents();
       for (var i = 0; i < contents.length; i++) {
         var doc = contents[i].doc;
-        if (doc && doc.getElementById(SCENE_INSERT_STYLE_ID)) sceneSlotInjectStyles(doc);
+        if (doc && doc.getElementById(SCENE_INSERT_STYLE_ID)) {
+          sceneSlotInjectStyles(doc);
+          var actions = doc.querySelectorAll(
+            '.' + SCENE_INSERT_CLASS + ' .readany-scene-action'
+          );
+          for (var j = 0; j < actions.length; j++) {
+            actions[j].style.setProperty('color', currentThemeColors.sceneActionColor, 'important');
+          }
+        }
       }
     }
 
     function renderSceneInsert(el, state, payload) {
       var doc = el.ownerDocument;
       el.setAttribute(SCENE_STATE_ATTR, state);
+      var oldBox = el.querySelector('.readany-scene-box');
+      if (oldBox && oldBox.__readanyBorderObserver) oldBox.__readanyBorderObserver.disconnect();
+      if (oldBox && oldBox.__readanyDisposeLoader) oldBox.__readanyDisposeLoader();
       while (el.firstChild) el.removeChild(el.firstChild);
 
       if (state === 'image') {
         var img = doc.createElement('img');
         img.src = (payload && payload.imageDataUri) || '';
         img.alt = _sceneSlotLabels.caption;
+        // The reader's book typography sets img height:auto !important. Keep
+        // the already-reserved square unchanged when the image is decoded.
+        img.style.setProperty('width', '100%', 'important');
+        img.style.setProperty('height', '100%', 'important');
+        img.style.setProperty('object-fit', 'cover', 'important');
         el.appendChild(img);
         return;
       }
 
       var box = doc.createElement('div');
       box.className = 'readany-scene-box';
-      if (state === 'loading') {
-        // Логотип Narra (line-art, currentColor) с «читающими» зрачками
-        var loader = doc.createElement('div');
-        loader.className = 'readany-scene-loader';
-        loader.innerHTML = NARRA_LOADER_SVG;
+      var loader = null;
+      var preset = state === 'loading' ? 'sweep-gradient' : 'pixels-organic';
+      if (state === 'loading' || state === 'idle') {
+        loader = doc.createElement('canvas');
+        loader.className = 'readany-scene-pixels';
+        loader.setAttribute('data-scene-effect', preset);
+        loader.setAttribute('aria-hidden', 'true');
         box.appendChild(loader);
-        box.appendChild(doc.createTextNode(_sceneSlotLabels.loading));
-        var hint = doc.createElement('span');
-        hint.className = 'readany-scene-hint';
-        hint.textContent = _sceneSlotLabels.loadingHint;
-        box.appendChild(hint);
-      } else if (state === 'error') {
-        box.appendChild(doc.createTextNode('✦ ' + _sceneSlotLabels.error));
-      } else {
-        box.appendChild(doc.createTextNode('✦ ' + _sceneSlotLabels.idle));
       }
+      if (state === 'loading') {
+        // No visible copy or logo; keep the status available to VoiceOver.
+        box.setAttribute('role', 'status');
+        box.setAttribute('aria-label', _sceneSlotLabels.loading);
+      } else if (state === 'error') {
+        appendSceneAction(box, _sceneSlotLabels.error);
+      } else {
+        appendSceneAction(box, _sceneSlotLabels.idle);
+      }
+      // The same Primary5 frame is present in every placeholder state.
+      appendSceneFlowBorder(box);
       el.appendChild(box);
+      if (loader) {
+        box.__readanyDisposeLoader = window._readanyMountScenePixelLoader(loader, preset);
+      }
+    }
+
+    function appendSceneFlowBorder(box) {
+      var doc = box.ownerDocument;
+      var svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('aria-hidden', 'true');
+      svg.classList.add('readany-scene-flow-border');
+      svg.style.visibility = 'hidden';
+      var rect = doc.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      rect.setAttribute('rx', '12');
+      svg.appendChild(rect);
+      box.appendChild(svg);
+
+      var updateBorderSize = function () {
+        var bounds = box.getBoundingClientRect();
+        var width = Math.max(0, bounds.width);
+        var height = Math.max(0, bounds.height);
+        if (width <= 1.5 || height <= 1.5) return;
+        svg.setAttribute('width', String(width));
+        svg.setAttribute('height', String(height));
+        svg.style.setProperty('width', width + 'px', 'important');
+        svg.style.setProperty('height', height + 'px', 'important');
+        svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+        rect.setAttribute('x', '0.75');
+        rect.setAttribute('y', '0.75');
+        rect.setAttribute('width', String(width - 1.5));
+        rect.setAttribute('height', String(height - 1.5));
+        svg.style.visibility = 'visible';
+      };
+      requestAnimationFrame(updateBorderSize);
+      // Only the overlay follows the square; it never sizes its parent. The
+      // renderer changes page-size variables synchronously during reflow.
+      var win = doc.defaultView;
+      if (win && win.ResizeObserver) {
+        box.__readanyBorderObserver = new win.ResizeObserver(updateBorderSize);
+        box.__readanyBorderObserver.observe(box);
+      }
+    }
+
+    function appendSceneAction(box, label) {
+      var doc = box.ownerDocument;
+      var action = doc.createElement('button');
+      action.type = 'button';
+      action.className = 'readany-scene-action';
+      action.setAttribute('data-slot', 'button');
+      action.setAttribute('data-variant', 'outline');
+      action.setAttribute('data-size', 'default');
+      // EPUB typography enforces SB Serif and the reader font size with
+      // !important. Inline important keeps this isolated control on the
+      // primitives Body style regardless of the book's own CSS.
+      action.style.setProperty(
+        'font-family',
+        '"SB Sans Interface", system-ui, sans-serif',
+        'important'
+      );
+      action.style.setProperty('font-size', '16px', 'important');
+      action.style.setProperty('line-height', '20px', 'important');
+      action.style.setProperty('font-weight', '400', 'important');
+      action.style.setProperty('letter-spacing', '0', 'important');
+      action.style.setProperty('color', currentThemeColors.sceneActionColor, 'important');
+      action.style.setProperty('display', 'inline-flex', 'important');
+      action.style.setProperty('width', 'auto', 'important');
+      action.style.setProperty('align-items', 'center', 'important');
+      action.style.setProperty('justify-content', 'center', 'important');
+      action.style.setProperty('gap', '8px', 'important');
+      action.style.setProperty('margin', '0', 'important');
+      action.style.setProperty('padding', '7px 15px', 'important');
+      action.style.setProperty('text-align', 'center', 'important');
+      action.style.setProperty('text-indent', '0', 'important');
+      var icon = doc.createElement('span');
+      icon.className = 'readany-scene-action-icon';
+      icon.setAttribute('data-icon', 'inline-start');
+      icon.setAttribute('aria-hidden', 'true');
+      icon.innerHTML = SCENE_WAND_SVG;
+      action.appendChild(icon);
+      action.appendChild(doc.createTextNode(label));
+      box.appendChild(action);
     }
 
     function createSceneInsert(doc, anchor, state) {
       var el = doc.createElement('div');
       el.className = SCENE_INSERT_CLASS;
+      el.setAttribute('cfi-inert', '');
       el.setAttribute(SCENE_ANCHOR_ATTR, anchor);
-      renderSceneInsert(el, state || 'idle', null);
+      // The loader subscribes to this stylesheet at mount. Install it first,
+      // including for the first scene in a fresh EPUB chapter.
       sceneSlotInjectStyles(doc);
+      renderSceneInsert(el, state || 'idle', null);
       return el;
     }
 
@@ -5741,17 +6033,29 @@ a { color: ${primary} !important; }
       return null;
     }
 
-    // Врезка встаёт после самостоятельного блока: пункт списка поднимаем
-    // до списка целиком, чтобы не ломать разметку ul/ol/dl.
+    // Page-wide inserts must not be placed inside a narrow epigraph, a table,
+    // or a flex/grid item. Keep the anchor in the book, but place the scene
+    // after the enclosing constrained block instead of changing its layout.
     function sceneInsertHostForBlock(block) {
       if (!block) return null;
-      var tag = block.localName ? block.localName.toLowerCase() : '';
-      if ((tag === 'li' || tag === 'dd' || tag === 'dt') && block.parentElement) {
-        var parent = block.parentElement;
-        var parentTag = parent.localName ? parent.localName.toLowerCase() : '';
-        if (parentTag === 'ul' || parentTag === 'ol' || parentTag === 'dl') return parent;
+      var host = block;
+      var doc = block.ownerDocument;
+      var win = doc.defaultView;
+      var pageWidth = win ? parseFloat(win.getComputedStyle(doc.documentElement)
+        .getPropertyValue('--page-content-width')) : 0;
+      for (var parent = block.parentElement; parent && parent !== doc.body && parent !== doc.documentElement; parent = parent.parentElement) {
+        var tag = parent.localName.toLowerCase();
+        var style = win && win.getComputedStyle(parent);
+        var constrained = /^(ul|ol|dl|table|thead|tbody|tfoot|tr|td|th|blockquote|figure)$/.test(tag);
+        if (style) {
+          constrained = constrained || style.float !== 'none' ||
+            style.position === 'absolute' || style.position === 'fixed' ||
+            /flex|grid|table|inline-block/.test(style.display) ||
+            (pageWidth > 0 && parseFloat(style.width) < pageWidth - 1);
+        }
+        if (constrained) host = parent;
       }
-      return block;
+      return host;
     }
 
     // Последний видимый блок текста — логика видимости как в getVisibleTextSnippet
@@ -5977,6 +6281,9 @@ a { color: ${primary} !important; }
 
     window.removeSceneSlot = function (anchor) {
       var el = findSceneInsert(anchor);
+      var box = el && el.querySelector('.readany-scene-box');
+      if (box && box.__readanyBorderObserver) box.__readanyBorderObserver.disconnect();
+      if (box && box.__readanyDisposeLoader) box.__readanyDisposeLoader();
       if (el && el.parentNode) el.parentNode.removeChild(el);
     };
   </script>

@@ -5,6 +5,7 @@ interface StoredRow {
   request_id: string;
   job_id: string | null;
   prompt: string;
+  request_body?: string | null;
   status: string;
   next_poll_at: number;
   created_at: number;
@@ -33,6 +34,7 @@ const database = vi.hoisted(() => {
             request_id: requestId,
             job_id: null,
             prompt,
+            request_body: params[5] as string | null,
             status: "submitting",
             next_poll_at: 0,
             created_at: createdAt,
@@ -45,17 +47,16 @@ const database = vi.hoisted(() => {
         return;
       }
       if (sql.includes("UPDATE cover_jobs SET")) {
-        const [jobId, status, nextPollAt, updatedAt, expiresAt, code, message, bookId] =
-          params as [
-            string | null,
-            string,
-            number,
-            number,
-            number | null,
-            string | null,
-            string | null,
-            string,
-          ];
+        const [jobId, status, nextPollAt, updatedAt, expiresAt, code, message, bookId] = params as [
+          string | null,
+          string,
+          number,
+          number,
+          number | null,
+          string | null,
+          string | null,
+          string,
+        ];
         const row = rows.get(bookId);
         if (row) {
           row.job_id = jobId ?? row.job_id;
@@ -97,6 +98,21 @@ beforeEach(() => {
 });
 
 describe("local durable cover jobs", () => {
+  it("persists bounded structured facts and restores the exact body, not later edits", async () => {
+    const first = await getOrCreateLocalCoverJob({
+      bookId: "book",
+      requestId: "id",
+      request: { book: { title: "Original" } },
+    });
+    const second = await getOrCreateLocalCoverJob({
+      bookId: "book",
+      requestId: "new",
+      request: { book: { title: "Changed" } },
+    });
+    expect(second).toEqual(first);
+    expect((await getLocalCoverJob("book"))?.request).toEqual({ book: { title: "Original" } });
+    expect(first.prompt).toBe("");
+  });
   it("persists the intent before submission and keeps its idempotency key", async () => {
     const first = await getOrCreateLocalCoverJob({
       bookId: "book-1",

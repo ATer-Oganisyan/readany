@@ -198,11 +198,7 @@ prepare_development_variant() {
 }
 
 ensure_reader_asset() {
-  if [[ -s "$APP_ROOT/assets/reader/reader.html" ]]; then
-    return
-  fi
-
-  log "Reader asset is missing; building it once before starting Metro"
+  log "Preparing current reader assets (unchanged files are preserved)"
   (
     cd "$APP_ROOT"
     pnpm run build:reader
@@ -434,7 +430,7 @@ launch_app() {
 }
 
 dev_client_url() {
-  curl --silent --fail --max-time 2 \
+  curl --silent --fail --max-time 15 \
     "http://127.0.0.1:$METRO_PORT/_expo/open?platform=ios&runtime=custom" \
     | node -e '
       let input = "";
@@ -515,6 +511,7 @@ run_simulator() {
   resolve_simulator_id
   boot_simulator
   check_installed_dev_client
+  ensure_reader_asset
 
   if metro_is_running; then
     log "Reusing Metro on port $METRO_PORT"

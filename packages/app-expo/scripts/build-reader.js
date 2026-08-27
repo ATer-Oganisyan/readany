@@ -7,16 +7,25 @@
 const esbuild = require("esbuild");
 const fs = require("node:fs");
 const path = require("node:path");
+const crypto = require("node:crypto");
 
 const FOLIATE_DIR = path.resolve(__dirname, "../../foliate-js");
 const CHARACTER_NAME_MATCHER = path.resolve(
   __dirname,
   "../src/lib/narra/character-name-matcher.ts",
 );
+const COVER_PRESS_CONFIG = path.resolve(__dirname, "../src/components/library/cover-press-config.ts");
+const SCENE_PIXEL_LOADER = path.resolve(__dirname, "../src/lib/reader/scene-pixel-loader.ts");
 const ASSETS_DIR = path.resolve(__dirname, "../assets/reader");
 const TEMPLATE = path.resolve(ASSETS_DIR, "reader.template.html");
 const OUTPUT = path.resolve(ASSETS_DIR, "reader.html");
 const PDF_OUTPUT = path.resolve(ASSETS_DIR, "reader-pdf.bin");
+const BUILD_MANIFEST = path.resolve(ASSETS_DIR, "reader-build.json");
+
+function writeIfChanged(file, contents) {
+  if (fs.existsSync(file) && fs.readFileSync(file, "utf8") === contents) return;
+  fs.writeFileSync(file, contents);
+}
 const INTERFACE_FONT = path.resolve(
   __dirname,
   "../../deslop-primitives/fonts/SBSansUI-Regular.otf",
@@ -89,8 +98,12 @@ async function buildReader() {
     import { EPUB } from "${foliate}/epub.js";
     import { extractPDFChapters, makePDFFromURL } from "${foliate}/pdf.js";
     import { findCharacterNameMatches } from "${CHARACTER_NAME_MATCHER.replace(/\\/g, "/")}";
+    import { COVER_PRESS_FEEDBACK } from "${COVER_PRESS_CONFIG.replace(/\\/g, "/")}";
+    import { mountScenePixelLoader } from "${SCENE_PIXEL_LOADER.replace(/\\/g, "/")}";
 
     window.makeBook = makeBook;
+    window._readanyCoverPressFeedback = COVER_PRESS_FEEDBACK;
+    window._readanyMountScenePixelLoader = mountScenePixelLoader;
     // Матчер имён персонажей Narra — единая логика с RN-стороной (юниты рядом с модулем)
     window._readanyFindCharacterNameMatches = findCharacterNameMatches;
     window.Overlayer = Overlayer;
@@ -158,12 +171,18 @@ async function buildReader() {
   // Use split/join instead of replace to avoid $ replacement patterns in JS bundle
   const MARKER = "<!-- __READANY_FOLIATE_BUNDLE_INSERT_POINT_7f3a9b2e__ -->";
   const parts = template.split(MARKER);
-  const html = `${parts[0]}<script>\n${pdfLoaderJS}\n</script>\n<script>\n${mainJS}\n</script>${parts
+  const sceneEffectLicense = fs.readFileSync(path.join(ASSETS_DIR, "img-fx.LICENSE.txt"), "utf8");
+  const html = `${parts[0]}<script>\n${pdfLoaderJS}\n</script>\n<script>\n/*!\n${sceneEffectLicense}\n*/\n${mainJS}\n</script>${parts
     .slice(1)
     .join(MARKER)}`;
 
-  fs.writeFileSync(OUTPUT, html);
-  fs.writeFileSync(PDF_OUTPUT, pdfJS);
+  writeIfChanged(OUTPUT, html);
+  writeIfChanged(PDF_OUTPUT, pdfJS);
+  // Update a JS dependency too, so Metro notices rebuilt non-JS reader assets.
+  writeIfChanged(
+    BUILD_MANIFEST,
+    `${JSON.stringify({ htmlMd5: crypto.createHash("md5").update(html).digest("hex") }, null, 2)}\n`,
+  );
   console.log(
     `Built reader.html (${Math.round(html.length / 1024)}KB; ` +
       `code ${Math.round(mainJS.length / 1024)}KB) + ` +

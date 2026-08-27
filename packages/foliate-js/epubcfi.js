@@ -288,7 +288,15 @@ const partsToNode = (node, parts, filter) => {
 };
 
 const nodeToParts = (node, offset, filter) => {
-  const { parentNode, id } = node;
+  const { id } = node;
+  let parentNode = node.parentNode;
+  // A FILTER_SKIP wrapper is transparent. Index against its logical parent
+  // so preceding text chunks still contribute to the offset (e.g. a marked
+  // character name in the middle of a paragraph).
+  while (filter && parentNode !== node.ownerDocument.documentElement &&
+    filter(parentNode) === NodeFilter.FILTER_SKIP) {
+    parentNode = parentNode.parentNode;
+  }
   const indexed = indexChildNodes(parentNode, filter);
   const index = indexed.findIndex((x) =>
     Array.isArray(x) ? x.some((x) => x === node) : x === node,

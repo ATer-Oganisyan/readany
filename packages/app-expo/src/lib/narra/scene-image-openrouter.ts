@@ -4,8 +4,8 @@
  *
  * Раньше этот путь бил прямо в OpenRouter со встроенным ключом. Теперь запрос
  * идёт на /v2/media/images с engine=openrouter: провайдер и качество те же, но
- * ключ и модель остаются на сервере. 1536×1024 даёт серверный aspectRatio 3:2,
- * как было в scene-generation-config.json.
+ * ключ и модель остаются на сервере. 1024×1024 даёт квадратный aspectRatio 1:1,
+ * согласно scene-generation-config.json.
  *
  * Промпт — 5-блочная схема scene-prompt.ts, БЕЗ цензорной нейтрализации текста
  * и safety-фолбэка (это костыли под цензора Кандинского, они искажали сцены).
@@ -29,8 +29,8 @@ import sceneGenerationConfig from "./scene-generation-config.json";
 import { buildScenePrompt } from "./scene-prompt";
 import type { NarraCharacter } from "./types";
 
-/** 3:2 на сервере: width > height и не попадает в ветку 3:4. */
-const SCENE_WIDTH = 1536;
+/** Сцены генерируются квадратными и без дополнительной обрезки в приложении. */
+const SCENE_WIDTH = 1024;
 const SCENE_HEIGHT = 1024;
 
 /** Модель выбирает сервер; здесь она нужна только для телеметрии. */

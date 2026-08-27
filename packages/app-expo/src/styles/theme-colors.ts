@@ -25,9 +25,12 @@ export interface ThemeColors {
   border: string;
   primary: string;
   primary5: string;
+  primary4: string;
+  primary8: string;
   primary10: string;
   primary20: string;
   primary30: string;
+  primary40: string;
   primary60: string;
   primary80: string;
   primaryForeground: string;
@@ -112,9 +115,12 @@ export function makeThemeColors(mode: ResolvedThemeMode): ThemeColors {
     border: mixHex(foreground, backgroundSecondary, 0.1),
     primary,
     primary5: primaryScale("Primary 5"),
+    primary4: primaryScale("Primary 4"),
+    primary8: primaryScale("Primary 8"),
     primary10: primaryScale("Primary 10"),
     primary20: primaryScale("Primary 20"),
     primary30: primaryScale("Primary 30"),
+    primary40: primaryScale("Primary 40"),
     primary60: primaryScale("Primary 60"),
     primary80: primaryScale("Primary 80"),
     primaryForeground: base("Black"),

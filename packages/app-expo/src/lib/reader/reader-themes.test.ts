@@ -1,8 +1,10 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   READER_PAGE_THEMES,
   type ReaderThemeTokenPalette,
   getAppSyncedReaderTheme,
+  resolveReaderScenePalette,
   resolveReaderThemeColors,
 } from "./reader-themes";
 
@@ -21,10 +23,64 @@ const darkTokens: ReaderThemeTokenPalette = {
 };
 
 describe("resolveReaderThemeColors", () => {
-  it("«Оригинал», пустое и неизвестное значение — цвета приложения", () => {
+  it("Light and Sepia use light Primary 4 for the scene, Dark keeps Elevation 1", () => {
+    const light = {
+      primary4: "#1111110A",
+      elevation1: "#FFFFFF",
+      elevation2: "#FFFFFF",
+      primary8: "#11111114",
+    };
+    const dark = {
+      primary4: "#FFFFFF0A",
+      elevation1: "#1D1D1D",
+      elevation2: "#282828",
+      primary8: "#FFFFFF14",
+    };
+    for (const theme of [undefined, "original"]) {
+      expect(resolveReaderScenePalette(theme, light, dark, "#dedede")).toEqual({
+        ...light,
+        elevation1: light.primary4,
+        elevation2: "color-mix(in srgb, #dedede 70%, transparent)",
+      });
+    }
+    expect(resolveReaderScenePalette("sepia", light, dark, "#efe1c6")).toEqual({
+      ...light,
+      elevation1: light.primary4,
+      elevation2: "color-mix(in srgb, #efe1c6 70%, transparent)",
+      sceneActionColor: "#3b3125",
+    });
+    expect(resolveReaderScenePalette("dark", light, dark, "#282828")).toEqual(dark);
+  });
+  it("совместимый id Light, пустое и неизвестное значение — светлая палитра", () => {
     expect(resolveReaderThemeColors("original", lightTokens, darkTokens)).toEqual(lightTokens);
     expect(resolveReaderThemeColors(undefined, lightTokens, darkTokens)).toEqual(lightTokens);
     expect(resolveReaderThemeColors("legacy-value", lightTokens, darkTokens)).toEqual(lightTokens);
+  });
+
+  it("показывает Light, Dark, Sepia в заданном порядке в обеих локалях", () => {
+    const en = JSON.parse(
+      readFileSync(
+        new URL("../../../../core/src/i18n/locales/en/reader.json", import.meta.url),
+        "utf8",
+      ),
+    );
+    const ru = JSON.parse(
+      readFileSync(
+        new URL("../../../../core/src/i18n/locales/ru/reader.json", import.meta.url),
+        "utf8",
+      ),
+    );
+    expect(READER_PAGE_THEMES.map((preset) => preset.id)).toEqual(["original", "dark", "sepia"]);
+    expect(READER_PAGE_THEMES.map((preset) => en.reader[preset.labelKey.split(".")[1]])).toEqual([
+      "Light",
+      "Dark",
+      "Sepia",
+    ]);
+    expect(READER_PAGE_THEMES.map((preset) => ru.reader[preset.labelKey.split(".")[1]])).toEqual([
+      "Светлая",
+      "Тёмная",
+      "Сепия",
+    ]);
   });
 
   it("тёмная тема без преобразования использует тёмные Primary 10 и Primary 80", () => {
@@ -51,7 +107,7 @@ describe("resolveReaderThemeColors", () => {
 });
 
 describe("getAppSyncedReaderTheme", () => {
-  it("открывает светлую тему приложения как оригинальную тему ридера", () => {
+  it("открывает светлую тему приложения как Light с совместимым id", () => {
     expect(getAppSyncedReaderTheme(false)).toBe("original");
   });
 

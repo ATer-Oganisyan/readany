@@ -7,7 +7,7 @@ import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { SCENE_SUGGESTION_INTERVALS } from "@/lib/narra/scene-suggestion";
 import { READER_PAGE_THEMES, resolveReaderThemeColors } from "@/lib/reader/reader-themes";
 import { useNarraStore } from "@/stores";
-import { darkColors } from "@/styles/ThemeContext";
+import { darkColors, lightColors } from "@/styles/ThemeContext";
 import { useColors } from "@/styles/theme";
 import type { ReadSettings } from "@readany/core/types";
 import { useTranslation } from "react-i18next";
@@ -67,10 +67,10 @@ export function ReaderSettingsPanel({ visible, readSettings, onClose, onUpdateSe
                 const preview = resolveReaderThemeColors(
                   preset.id,
                   {
-                    background: colors.primary10,
-                    foreground: colors.primary80,
-                    muted: colors.mutedForeground,
-                    primary: colors.primary,
+                    background: lightColors.primary10,
+                    foreground: lightColors.primary80,
+                    muted: lightColors.mutedForeground,
+                    primary: lightColors.primary,
                   },
                   {
                     background: darkColors.primary10,

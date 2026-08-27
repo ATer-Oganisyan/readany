@@ -114,8 +114,8 @@ export interface ReadSettings extends ViewSettings {
   followSystemFontScale?: boolean;
   /**
    * Тема страницы читалки (пресет фона/текста в стиле Apple Books):
-   * "original" — цвета темы приложения, "sepia", "dark". Опциональное поле,
-   * старые сохранённые настройки читаются как "original".
+   * "original" — сохранённый id светлой темы (Light), "dark", "sepia".
+   * Поле опционально для совместимости со старыми сохранёнными настройками.
    */
   readerTheme?: "original" | "sepia" | "dark";
 }

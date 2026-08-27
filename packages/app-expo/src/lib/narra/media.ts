@@ -4,6 +4,14 @@ import * as FileSystem from "expo-file-system/legacy";
 import { resolveCoverGenreProfile } from "../book/cover-genre";
 import { findBundledCatalogBookDefinitionByTitle } from "../catalog/bundled-book-definitions";
 import { budgetPrompt } from "./art-style";
+import {
+  CoverJobError,
+  type CoverJobRequest,
+  type CoverJobSnapshot,
+  coverJobDelay,
+  getCoverJob,
+  submitCoverJob,
+} from "./cover-jobs";
 import { normalizeNarraError } from "./errors";
 import { type NarraGenreAnalysis, narraGenreLabel } from "./genre-analysis";
 import { GROK_TTS_MODEL, GROK_TTS_SAMPLE_RATE, fetchGrokSpeechAudio } from "./grok-speech";
@@ -293,8 +301,7 @@ function isKandinskySafetyRejection(error?: string): boolean {
 
 /**
  * Низкоуровневый запрос картинки к шлюзу. Размеры задают серверный
- * aspectRatio: 1024×1024 → 1:1 (Kandinsky-сцены), 1536×1024 → 3:2
- * (OpenRouter-сцены), 768×1024 → 3:4 (портреты).
+ * aspectRatio: 1024×1024 → 1:1 (сцены), 768×1024 → 3:4 (портреты).
  */
 export async function requestNarraGatewayImage(
   prompt: string,
@@ -466,43 +473,61 @@ export interface GeneratedCoverImage {
 }
 
 async function generateBookCoverImageRequest(
-  prompt: string,
+  request: CoverJobRequest,
   options: {
     requestId: string;
+    jobId?: string;
+    nextPollAt?: number;
+    signal?: AbortSignal;
+    onJob: (job: CoverJobSnapshot) => Promise<void>;
   },
 ): Promise<GeneratedCoverImage> {
-  // Обложки: клиент присылает только промпт, модель и провайдер серверные
-  // (/v2/media/cover — тот же OpenRouter gpt-image-2, что был в приложении).
-  const response = await narraGatewayRequest("/v2/media/cover", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ prompt }),
-  });
-  const raw = (await response.json().catch(() => null)) as {
-    image?: string;
-    mime_type?: string;
-    error?: string;
-  } | null;
-  const payload = imagePayload(raw);
-  if (!response.ok || !payload.base64) {
-    throw new Error(payload.error || `Cover generation failed (${response.status})`);
+  await coverJobDelay((options.nextPollAt ?? 0) - Date.now(), options.signal);
+  let job = options.jobId
+    ? await getCoverJob(options.jobId, options.signal)
+    : await submitCoverJob(request, options.requestId, options.signal);
+  while (true) {
+    // Persist the real server ID before waiting or touching the image.
+    await options.onJob(job);
+    if (job.status === "failed")
+      throw new CoverJobError(
+        job.errorMessage || "Cover generation failed",
+        job.errorCode || "FAILED",
+      );
+    if (job.status === "completed") {
+      // Earlier gateways omit image on an idempotent POST. Fetch that same job.
+      if (!job.base64) {
+        job = await getCoverJob(job.jobId, options.signal);
+        await options.onJob(job);
+      }
+      if (
+        job.status !== "completed" ||
+        !job.base64 ||
+        !job.mimeType ||
+        !["image/jpeg", "image/png", "image/webp"].includes(job.mimeType)
+      ) {
+        throw new CoverJobError("Invalid cover image result", "INVALID_IMAGE");
+      }
+      return { base64: job.base64, mimeType: job.mimeType, jobId: job.jobId };
+    }
+    await coverJobDelay(job.nextPollAt - Date.now(), options.signal);
+    job = await getCoverJob(job.jobId, options.signal);
   }
-  return {
-    base64: payload.base64,
-    mimeType: raw?.mime_type || "image/jpeg",
-    jobId: options.requestId,
-  };
 }
 
 /** Обложка генерируется на гейтвее: ключ и модель остаются на сервере. */
 export function generateBookCoverImage(
-  prompt: string,
+  request: CoverJobRequest,
   options: {
     requestId: string;
+    jobId?: string;
+    nextPollAt?: number;
+    signal?: AbortSignal;
+    onJob: (job: CoverJobSnapshot) => Promise<void>;
   },
 ): Promise<GeneratedCoverImage> {
   return trackNarraMediaJob("cover", "background", () =>
-    generateBookCoverImageRequest(prompt, options),
+    generateBookCoverImageRequest(request, options),
   );
 }
 

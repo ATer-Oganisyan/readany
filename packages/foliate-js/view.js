@@ -234,6 +234,9 @@ export class View extends HTMLElement {
   #searchIndicatorConfig = { type: "outline", options: {} };
   #cursorAutohider = new CursorAutohider(this, () => this.hasAttribute("autohide-cursor"));
   isFixedLayout = false;
+  // Optional host filter for UI nodes inserted into a reflowable document.
+  // Generation and resolution must use the same logical book tree.
+  cfiFilter;
   lastLocation;
   history = new History();
   constructor() {
@@ -489,14 +492,14 @@ export class View extends HTMLElement {
   getCFI(index, range) {
     const baseCFI = this.book.sections[index].cfi ?? CFI.fake.fromIndex(index);
     if (!range) return baseCFI;
-    return CFI.joinIndir(baseCFI, CFI.fromRange(range));
+    return CFI.joinIndir(baseCFI, CFI.fromRange(range, this.cfiFilter));
   }
   resolveCFI(cfi) {
-    if (this.book.resolveCFI) return this.book.resolveCFI(cfi);
+    if (this.book.resolveCFI) return this.book.resolveCFI(cfi, this.cfiFilter);
 
     const parts = CFI.parse(cfi);
     const index = CFI.fake.toIndex((parts.parent ?? parts).shift());
-    const anchor = (doc) => CFI.toRange(doc, parts);
+    const anchor = (doc) => CFI.toRange(doc, parts, this.cfiFilter);
     return { index, anchor };
   }
   resolveNavigation(target) {

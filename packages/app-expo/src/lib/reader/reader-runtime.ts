@@ -1,29 +1,32 @@
 import { getPlatformService } from "@readany/core/services";
 import { Asset } from "expo-asset";
 import * as FileSystem from "expo-file-system/legacy";
+import readerBuild from "../../../assets/reader/reader-build.json";
 
 import { getBundledReaderFontFaceCSS } from "./bundled-reader-font";
 import { startFileServer } from "./local-file-server";
+import { createReaderAssetLoader } from "./reader-asset";
 
-const READER_HTML_ASSET = Asset.fromModule(require("../../../assets/reader/reader.html"));
+export const READER_BUILD_ID = readerBuild.htmlMd5;
 const READER_PDF_ASSET = Asset.fromModule(require("../../../assets/reader/reader-pdf.bin"));
 const READER_ASSET_DIRECTORY = "readany-reader-assets";
 
-let readerAssetPreparation: Promise<string> | null = null;
+const loadReaderAsset = createReaderAssetLoader({
+  download: async (uri, hash) => {
+    // Avoid the in-memory Asset.downloaded shortcut. Native Expo still reuses
+    // matching files on disk, and redownloads missing or mismatched files.
+    const asset = await new Asset({ name: "reader", type: "html", uri, hash }).downloadAsync();
+    if (!asset.localUri) throw new Error("Reader asset was not downloaded");
+    return asset.localUri;
+  },
+  inspect: (uri) => FileSystem.getInfoAsync(uri, { md5: true }),
+});
 let readerHostPreparation: Promise<{ serverUrl: string; fontFaceCSS: string }> | null = null;
 let readerPdfPreparation: Promise<string> | null = null;
 
 export function prepareReaderAsset(): Promise<string> {
-  if (!readerAssetPreparation) {
-    readerAssetPreparation = READER_HTML_ASSET.downloadAsync()
-      .then((asset) => asset.localUri || asset.uri)
-      .catch((error) => {
-        readerAssetPreparation = null;
-        throw error;
-      });
-  }
-
-  return readerAssetPreparation;
+  const asset = Asset.fromModule(require("../../../assets/reader/reader.html"));
+  return loadReaderAsset(asset.uri || asset.localUri || "", READER_BUILD_ID);
 }
 
 export function prepareReaderHost(): Promise<{ serverUrl: string; fontFaceCSS: string }> {

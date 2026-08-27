@@ -20,6 +20,12 @@ describe("cover display", () => {
 
   it("matches generated covers only for the requested book", () => {
     expect(isGeneratedBookCoverPath("book-1", "covers/book-1-generated.png")).toBe(true);
+    expect(
+      isGeneratedBookCoverPath(
+        "book-1",
+        "covers/book-1-generated-b42e5309-0d9f-49b3-89cf-87fc08ee381b.png",
+      ),
+    ).toBe(true);
     expect(isGeneratedBookCoverPath("book-1", "covers/book-2-generated.png")).toBe(false);
   });
 

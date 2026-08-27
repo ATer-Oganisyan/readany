@@ -224,6 +224,34 @@ const getVisibleRange = (doc, start, end, mapRect) => {
     for (let node = walker.nextNode(); node; node = walker.nextNode())
         nodes.push(node)
 
+    // A page can consist solely of a cfi-inert illustration. Do not return
+    // body:0 (book start) as its reading position. Anchor to the next real text,
+    // or the end of the preceding text when the illustration ends a section.
+    if (!nodes.length) {
+        const texts = doc.createTreeWalker(doc.body, SHOW_TEXT | SHOW_CDATA_SECTION, {
+            acceptNode: node => node.nodeValue?.trim() &&
+                !node.parentElement?.closest('[cfi-inert], script, style')
+                ? FILTER_ACCEPT : FILTER_REJECT,
+        })
+        let preceding
+        for (let node = texts.nextNode(); node; node = texts.nextNode()) {
+            const probe = doc.createRange()
+            probe.selectNodeContents(node)
+            const rects = Array.from(probe.getClientRects()).filter(isNonEmptyRect)
+            if (!rects.length) continue
+            const rect = mapRect(rects[0])
+            if (Math.min(rect.left, rect.right) >= end) {
+                probe.collapse(true)
+                return probe
+            }
+            preceding = probe
+        }
+        if (preceding) {
+            preceding.collapse(false)
+            return preceding
+        }
+    }
+
     // we're only interested in the first and last visible nodes
     const from = nodes[0] ?? doc.body
     const to = nodes[nodes.length - 1] ?? from
@@ -551,6 +579,8 @@ class View {
             '--full-height': `${Math.trunc(height)}`,
             '--available-width': `${availableWidth}`,
             '--available-height': `${availableHeight}`,
+            '--page-content-width': `${Math.floor(Math.min(columnWidth, width - sidePaddingLeft - sidePaddingRight))}px`,
+            '--page-content-height': `${availableHeight}px`,
         })
         setStylesImportant(doc.body, {
             [vertical ? 'max-height' : 'max-width']: `${columnWidth}px`,
@@ -610,6 +640,11 @@ class View {
             '--full-height': `${Math.trunc(availableHeight)}`,
             '--available-width': `${availableWidth}`,
             '--available-height': `${availableHeight}`,
+            // Definite sizes for injected/replaced blocks. Neither the iframe
+            // (which expands across the section) nor a fragmented paragraph is
+            // a page-width reference.
+            '--page-content-width': `${Math.trunc(vertical ? availableWidth : columnWidth)}px`,
+            '--page-content-height': `${availableHeight}px`,
         })
         setStylesImportant(doc.body, {
             'max-height': 'none',

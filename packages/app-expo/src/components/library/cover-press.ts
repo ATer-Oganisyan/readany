@@ -7,6 +7,7 @@ import {
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
+import { COVER_PRESS_FEEDBACK } from "./cover-press-config";
 
 /**
  * Отклик обложки на нажатие — один на библиотеку, каталог и полку «Читаю
@@ -22,9 +23,9 @@ import {
  * коротким. Кривая — easeOutCubic; у easeOutQuint половина хода приходится на
  * первый кадр, и на трёх точках движения это читается как рывок.
  */
-const PRESSED_SCALE = 0.97;
-const PRESS_DURATION_MS = 150;
-const EASE_OUT = Easing.bezier(0.33, 1, 0.68, 1);
+const PRESSED_SCALE = COVER_PRESS_FEEDBACK.scale;
+const PRESS_DURATION_MS = COVER_PRESS_FEEDBACK.durationMs;
+const EASE_OUT = Easing.bezier(...COVER_PRESS_FEEDBACK.easing);
 
 export function useCoverPress(disabled = false) {
   const progress = useSharedValue(0);

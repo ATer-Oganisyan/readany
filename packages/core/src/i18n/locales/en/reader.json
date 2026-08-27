@@ -28,7 +28,7 @@
     "searchEmptyHint": "Type a word or phrase to search the whole book",
     "pageOfBook": "p. {{current}} of {{total}}",
     "pageTheme": "Page theme",
-    "pageThemeOriginal": "Original",
+    "pageThemeLight": "Light",
     "pageThemeSepia": "Sepia",
     "pageThemeDark": "Dark",
     "askAI": "Ask AI",

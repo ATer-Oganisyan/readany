@@ -1,4 +1,5 @@
 import { getLocalDB, initDatabase } from "@readany/core/db/database";
+import type { CoverJobRequest } from "../narra/cover-jobs";
 
 export type LocalCoverJobStatus =
   | "submitting"
@@ -13,6 +14,7 @@ export interface LocalCoverJob {
   requestId: string;
   jobId?: string;
   prompt: string;
+  request?: CoverJobRequest;
   status: LocalCoverJobStatus;
   nextPollAt: number;
   createdAt: number;
@@ -27,6 +29,7 @@ interface CoverJobRow {
   request_id: string;
   job_id: string | null;
   prompt: string;
+  request_body?: string | null;
   status: LocalCoverJobStatus;
   next_poll_at: number;
   created_at: number;
@@ -50,6 +53,7 @@ function mapRow(row: CoverJobRow): LocalCoverJob {
     requestId: row.request_id,
     jobId: row.job_id ?? undefined,
     prompt: row.prompt,
+    request: row.request_body ? (JSON.parse(row.request_body) as CoverJobRequest) : undefined,
     status: row.status,
     nextPollAt: row.next_poll_at,
     createdAt: row.created_at,
@@ -72,7 +76,8 @@ async function selectByBookId(bookId: string): Promise<LocalCoverJob | null> {
 export async function getOrCreateLocalCoverJob(input: {
   bookId: string;
   requestId: string;
-  prompt: string;
+  prompt?: string;
+  request?: CoverJobRequest;
   now?: number;
 }): Promise<LocalCoverJob> {
   await initDatabase();
@@ -83,9 +88,16 @@ export async function getOrCreateLocalCoverJob(input: {
     const database = await getLocalDB();
     await database.execute(
       `INSERT OR IGNORE INTO cover_jobs (
-        book_id, request_id, prompt, status, next_poll_at, created_at, updated_at
-      ) VALUES (?, ?, ?, 'submitting', 0, ?, ?)`,
-      [input.bookId, input.requestId, input.prompt, timestamp, timestamp],
+        book_id, request_id, prompt, status, next_poll_at, created_at, updated_at, request_body
+      ) VALUES (?, ?, ?, 'submitting', 0, ?, ?, ?)`,
+      [
+        input.bookId,
+        input.requestId,
+        input.prompt ?? "",
+        timestamp,
+        timestamp,
+        input.request ? JSON.stringify(input.request) : null,
+      ],
     );
     const inserted = await selectByBookId(input.bookId);
     if (!inserted) throw new Error("Не удалось сохранить задачу обложки");

@@ -1,5 +1,6 @@
 import { isLegacyGeneratedBookCover } from "@/lib/book/cover-display";
 import { deleteLocalCoverJob, getLocalCoverJob } from "@/lib/book/cover-job-repository";
+import { persistCoverFile, verifyCoverPersistence } from "@/lib/book/cover-persistence";
 import { acknowledgeGeneratedBookCover, generateBookCover } from "@/lib/book/generate-book-cover";
 import {
   generateBookIdentityWithGemini,
@@ -29,6 +30,7 @@ import { runWithDbRetry } from "@readany/core/db/write-retry";
 import { getPlatformService } from "@readany/core/services";
 import type { Book, BookGroup, LibraryFilter, SortField, SortOrder } from "@readany/core/types";
 import { generateId } from "@readany/core/utils";
+import { AppState } from "react-native";
 import { create } from "zustand";
 import { debouncedSave, loadFromFS } from "./persist";
 import { useVectorModelStore } from "./vector-model-store";
@@ -166,18 +168,37 @@ async function saveGeneratedCoverBytesToAppData(
   bookId: string,
   bytes: Uint8Array,
   mimeType: string,
+  kind: "generated" | "original" = "generated",
 ): Promise<string> {
   const platform = getPlatformService();
   await ensureAppSubDir("covers");
   const ext = mimeType.includes("webp") ? "webp" : mimeType.includes("jpeg") ? "jpg" : "png";
-  const relativePath = `covers/${bookId}-generated.${ext}`;
+  // A fresh destination makes the rename atomic without deleting an old cover.
+  const relativePath = `covers/${bookId}-${kind}-${generateId()}.${ext}`;
   const absolutePath = await resolveAppPath(relativePath);
   const temporaryPath = `${absolutePath}.${Date.now()}.tmp`;
-  await platform.writeFile(temporaryPath, bytes);
   const FileSystem = await import("expo-file-system/legacy");
-  await FileSystem.deleteAsync(absolutePath, { idempotent: true });
-  await FileSystem.moveAsync({ from: temporaryPath, to: absolutePath });
+  await persistCoverFile({
+    bytes,
+    mimeType,
+    temporaryPath,
+    destinationPath: absolutePath,
+    write: (path, data) => platform.writeFile(path, data),
+    move: (from, to) => FileSystem.moveAsync({ from, to }),
+    read: (path) => platform.readFile(path),
+  });
   return relativePath;
+}
+
+async function verifyPersistedBookCover(bookId: string, expectedUrl: string): Promise<void> {
+  const absolutePath = isRelativeAppPath(expectedUrl)
+    ? await resolveAppPath(expectedUrl)
+    : expectedUrl;
+  await verifyCoverPersistence({
+    expectedUrl,
+    readSavedUrl: async () => (await db.getBook(bookId))?.meta.coverUrl,
+    readImage: () => getPlatformService().readFile(absolutePath),
+  });
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -281,6 +302,18 @@ async function resolveImportedBookIdentity(params: {
 const titleRepairAttempted = new Set<string>();
 const coverGenerationInFlight = new Set<string>();
 let coverGenerationQueue: Promise<void> = Promise.resolve();
+let coverResumeSubscription: ReturnType<typeof AppState.addEventListener> | undefined;
+
+function watchCoverRecovery(): void {
+  if (coverResumeSubscription) return;
+  coverResumeSubscription = AppState.addEventListener("change", (state) => {
+    if (state === "active" && useLibraryStore.getState().isLoaded) {
+      void repairMissingBookCovers(useLibraryStore.getState().books).catch((error) =>
+        console.warn("[Library] Cover recovery deferred:", error),
+      );
+    }
+  });
+}
 
 function setCoverGenerationActive(bookId: string, active: boolean): void {
   useLibraryStore.setState((state) => ({
@@ -340,13 +373,56 @@ async function repairSuspiciousBookTitles(books: Book[]): Promise<void> {
 }
 
 async function ensureGeneratedBookCover(
-  book: Book,
-  context?: { description?: string; textSample?: string; subjects?: string[] },
+  queuedBook: Book,
+  queuedContext?: { description?: string; textSample?: string; subjects?: string[] },
 ): Promise<void> {
+  // The queue may have waited while another action saved/deleted this book.
+  const book = await db.getBook(queuedBook.id);
+  if (!book) return;
+  let context = queuedContext;
   if (book.meta.coverUrl) return;
+  if (book.sourceKind === "catalog") return;
 
+  // Do not infer "no embedded cover" from an earlier failed import save.
+  if (["epub", "fb2", "mobi", "azw", "azw3"].includes(book.format)) {
+    const filePath = isRelativeAppPath(book.filePath)
+      ? await resolveAppPath(book.filePath)
+      : book.filePath;
+    const { size } = await getMobileFileStat(filePath);
+    if (size <= 0) throw new Error("Cannot check embedded cover: book file is unavailable");
+    const metadata = await extractMobileImportMetadata({
+      filePath,
+      format: book.format,
+      fileName: filePath.split("/").pop() || `${book.meta.title}.${book.format}`,
+      fileSize: size,
+    });
+    context = {
+      description: metadata.description || context?.description,
+      textSample: metadata.textSample || context?.textSample,
+      subjects: metadata.subjects || context?.subjects,
+    };
+    if (metadata.coverBytes?.length) {
+      const coverUrl = await saveGeneratedCoverBytesToAppData(
+        book.id,
+        metadata.coverBytes,
+        metadata.coverMimeType || "image/jpeg",
+        "original",
+      );
+      const current = useLibraryStore.getState().books.find((item) => item.id === book.id);
+      if (!current || current.meta.coverUrl) return;
+      await useLibraryStore
+        .getState()
+        .updateBook(book.id, { meta: { ...current.meta, coverUrl }, updatedAt: Date.now() });
+      await verifyPersistedBookCover(book.id, coverUrl);
+      // Any obsolete server job expires normally; never submit another one.
+      await deleteLocalCoverJob(book.id);
+      return;
+    }
+  }
+  const existingJob = await getLocalCoverJob(book.id);
+  if (existingJob?.status === "failed") return;
   const catalogBook = findBundledCatalogBookByTitle(book.meta.title);
-  if (catalogBook) {
+  if (catalogBook && !existingJob) {
     const coverUrl = await installBundledCatalogCover(book.id, catalogBook);
     const currentBook = useLibraryStore.getState().books.find((item) => item.id === book.id);
     if (!currentBook || currentBook.meta.coverUrl) return;
@@ -356,7 +432,6 @@ async function ensureGeneratedBookCover(
     });
     return;
   }
-
   const generated = await generateBookCover({
     bookId: book.id,
     title: book.meta.title,
@@ -373,19 +448,26 @@ async function ensureGeneratedBookCover(
   );
   const currentBook = useLibraryStore.getState().books.find((item) => item.id === book.id);
   if (!currentBook || currentBook.meta.coverUrl) {
-    await acknowledgeGeneratedBookCover(book.id, generated.jobId);
+    if (currentBook?.meta.coverUrl) {
+      const existingUrl = currentBook.meta.coverUrl;
+      await acknowledgeGeneratedBookCover(
+        book.id,
+        () => verifyPersistedBookCover(book.id, existingUrl),
+        generated.jobId,
+      );
+    }
     return;
   }
   await useLibraryStore.getState().updateBook(book.id, {
     meta: { ...currentBook.meta, coverUrl },
     updatedAt: Date.now(),
   });
-  const persistedBook = await db.getBook(book.id);
-  if (persistedBook?.meta.coverUrl !== coverUrl) {
-    throw new Error("Generated cover was not persisted in the library database");
-  }
-  await acknowledgeGeneratedBookCover(book.id, generated.jobId);
-  console.log(`[Library] Generated OpenRouter cover for "${currentBook.meta.title}"`);
+  await acknowledgeGeneratedBookCover(
+    book.id,
+    () => verifyPersistedBookCover(book.id, coverUrl),
+    generated.jobId,
+  );
+  console.log(`[Library] Saved generated cover for "${currentBook.meta.title}"`);
 }
 
 function queueGeneratedBookCover(
@@ -418,8 +500,13 @@ async function repairMissingBookCovers(books: Book[]): Promise<void> {
       if (localJob) {
         const persistedBook = await db.getBook(book.id).catch(() => null);
         if (persistedBook?.meta.coverUrl === book.meta.coverUrl) {
+          const savedUrl = book.meta.coverUrl;
           if (localJob.status === "completed" || localJob.status === "failed") {
-            await acknowledgeGeneratedBookCover(book.id, localJob.jobId).catch((error) =>
+            await acknowledgeGeneratedBookCover(
+              book.id,
+              () => verifyPersistedBookCover(book.id, savedUrl),
+              localJob.jobId,
+            ).catch((error) =>
               console.warn(`[Library] Could not acknowledge cover job ${book.id}:`, error),
             );
           } else {
@@ -433,31 +520,7 @@ async function repairMissingBookCovers(books: Book[]): Promise<void> {
     }
     if (coverGenerationInFlight.has(book.id)) continue;
 
-    let context: { description?: string; textSample?: string; subjects?: string[] } | undefined;
-    if (book.format === "epub" || book.format === "fb2") {
-      try {
-        const filePath = isRelativeAppPath(book.filePath)
-          ? await resolveAppPath(book.filePath)
-          : book.filePath;
-        const { size } = await getMobileFileStat(filePath);
-        const fileName = filePath.split("/").pop() || `${book.meta.title}.${book.format}`;
-        const metadata = await extractMobileImportMetadata({
-          filePath,
-          format: book.format,
-          fileName,
-          fileSize: size,
-        });
-        context = {
-          description: metadata.description,
-          textSample: metadata.textSample,
-          subjects: metadata.subjects,
-        };
-      } catch (error) {
-        console.warn(`[Library] Could not read cover context for ${book.id}:`, error);
-      }
-    }
-
-    await queueGeneratedBookCover(book, context);
+    await queueGeneratedBookCover(book);
   }
 }
 
@@ -1082,6 +1145,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       debouncedSave("library-books", books);
       debouncedSave("library-groups", groups);
       debouncedSave("library-tags", allTags);
+      watchCoverRecovery();
       void repairImportedBookMetadata(books);
     } catch (err) {
       console.error("Failed to load books from database:", err);

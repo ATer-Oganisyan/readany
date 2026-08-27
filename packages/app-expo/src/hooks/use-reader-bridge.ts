@@ -97,7 +97,7 @@ export interface ReaderBridgeCallbacks {
   onPageSnippet?: (text: string) => void;
   onBookmarkSnippet?: (text: string) => void;
   onCharacterTap?: (detail: CharacterTapEvent) => void;
-  /** Тап по слоту «Показать сцену» (или по слоту в состоянии ошибки). */
+  /** Тап по слоту «Сгенерировать сцену» (или по слоту в состоянии ошибки). */
   onSceneSlotTap?: (detail: SceneSlotEvent) => void;
   /** Врезка восстановлена при загрузке секции — RN должен прислать картинку. */
   onSceneSlotRestored?: (detail: SceneSlotEvent) => void;
@@ -317,7 +317,20 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
   );
 
   const setThemeColors = useCallback(
-    (colors: { background: string; foreground: string; muted: string; primary?: string }) => {
+    (colors: {
+      background: string;
+      foreground: string;
+      muted: string;
+      primary?: string;
+      primary5?: string;
+      primary8?: string;
+      primary10?: string;
+      primary20?: string;
+      primary40?: string;
+      sceneActionColor?: string;
+      elevation1?: string;
+      elevation2?: string;
+    }) => {
       const msg = JSON.stringify({ type: "setThemeColors", colors });
       inject(`handleCommand(${msg})`);
     },
@@ -743,7 +756,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
   }, []);
 
   // ─── Scene Insert Commands (врезки сцен в тексте) ───
-  /** Вставить слот «Показать сцену» в конец видимого фрагмента текста. */
+  /** Вставить слот «Сгенерировать сцену» в конец видимого фрагмента текста. */
   const insertSceneSlot = useCallback(() => {
     webViewRef.current?.injectJavaScript(`
         (function() {

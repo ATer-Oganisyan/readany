@@ -43,6 +43,7 @@ import {
 import { getReaderBookmarkCopy } from "@/lib/reader/reader-bookmark-copy";
 import {
   prepareReaderAsset,
+  READER_BUILD_ID,
   prepareReaderHost,
   prepareReaderPdfEngineUri,
 } from "@/lib/reader/reader-runtime";
@@ -57,7 +58,7 @@ import {
   useTTSStore,
 } from "@/stores";
 import { useMissingBookPromptStore } from "@/stores/missing-book-prompt-store";
-import { darkColors, useTheme } from "@/styles/ThemeContext";
+import { darkColors, lightColors, useTheme } from "@/styles/ThemeContext";
 import { useColors } from "@/styles/theme";
 import { useIsFocused } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -172,6 +173,7 @@ const NOTE_TOOLTIP_TOP_THRESHOLD = 180;
 import {
   flattenReaderColor,
   getAppSyncedReaderTheme,
+  resolveReaderScenePalette,
   resolveReaderThemeColors,
 } from "@/lib/reader/reader-themes";
 import { useRubyStore } from "@readany/core/stores/ruby-store";
@@ -363,17 +365,16 @@ export function ReaderScreen(props: Props) {
  * чтобы тап по обложке не давал вспышки цвета приложения.
  */
 function useReaderPaperColors() {
-  const colors = useColors();
   const readerTheme = useSettingsStore((s) => s.readSettings.readerTheme);
 
   return useMemo(() => {
     const resolved = resolveReaderThemeColors(
       readerTheme,
       {
-        background: colors.primary10,
-        foreground: colors.primary80,
-        muted: colors.mutedForeground,
-        primary: colors.primary,
+        background: lightColors.primary10,
+        foreground: lightColors.primary80,
+        muted: lightColors.mutedForeground,
+        primary: lightColors.primary,
       },
       {
         background: darkColors.primary10,
@@ -382,9 +383,22 @@ function useReaderPaperColors() {
         primary: darkColors.primary,
       },
     );
-    const backdrop = readerTheme === "dark" ? darkColors.background : colors.background;
-    return { ...resolved, background: flattenReaderColor(resolved.background, backdrop) };
-  }, [readerTheme, colors]);
+    const backdrop = readerTheme === "dark" ? darkColors.background : lightColors.background;
+    const paperBackground = flattenReaderColor(resolved.background, backdrop);
+    const sceneColors = resolveReaderScenePalette(readerTheme, lightColors, darkColors, paperBackground);
+    return {
+      ...resolved,
+      primary5: sceneColors.primary5,
+      primary8: sceneColors.primary8,
+      primary10: sceneColors.primary10,
+      primary20: sceneColors.primary20,
+      primary40: sceneColors.primary40,
+      sceneActionColor: sceneColors.sceneActionColor ?? sceneColors.primary40,
+      elevation1: sceneColors.elevation1,
+      elevation2: sceneColors.elevation2,
+      background: paperBackground,
+    };
+  }, [readerTheme]);
 }
 
 function ReaderLoadingChrome({ navigation }: { navigation: Props["navigation"] }) {
@@ -506,7 +520,6 @@ function ReaderContent({ route, navigation }: Props) {
   const noteTooltipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const noteTooltipVisibleRef = useRef(false);
   const suppressReaderTapUntilRef = useRef(0);
-  const assetLoadedRef = useRef(false);
   // Mediator ref so onRelocate can fire TTS continuation without direct hook dependency
   const ttsPendingContinueRef = useRef<{
     pendingTTSContinueCallbackRef: React.RefObject<(() => void) | null>;
@@ -585,14 +598,12 @@ function ReaderContent({ route, navigation }: Props) {
     }
   }, [isDark, updateReadSettings]);
 
-  // Тема страницы (пресет Aa-панели): «Оригинал» — цвета приложения,
-  // «Сепия»/«Тёмная» — собственные палитры страницы и окружающих полей.
+  // Явные темы страницы: Light, Dark, Sepia. "original" — сохранённый id Light.
   const readerThemeColors = useReaderPaperColors();
   const readerThemeColorsRef = useRef(readerThemeColors);
   readerThemeColorsRef.current = readerThemeColors;
   const isReaderThemeDark =
-    readSettings.readerTheme === "dark" ||
-    ((readSettings.readerTheme === "original" || !readSettings.readerTheme) && isDark);
+    readSettings.readerTheme === "dark" || (!readSettings.readerTheme && isDark);
 
   // Track OS-level accessibility font scale; re-renders when the user
   // changes the system font size while the reader is open.
@@ -681,7 +692,7 @@ function ReaderContent({ route, navigation }: Props) {
 
   // ── Narra: врезки сцен внутри текста раз в N страниц (P6 → P14) ─────────────
   // Счётчик перелистываний прежний (scene-suggestion.ts); по сигналу в конец
-  // видимого фрагмента WebView вставляет слот «Показать сцену», тап по нему
+  // видимого фрагмента WebView вставляет слот «Сгенерировать сцену», тап по нему
   // запускает генерацию, готовая картинка встаёт в текст на место слота.
   const sceneSuggestionInterval = useNarraStore((state) => state.sceneSuggestionInterval);
   const sceneSuggestionStateRef = useRef(INITIAL_SCENE_SUGGESTION_STATE);
@@ -774,7 +785,7 @@ function ReaderContent({ route, navigation }: Props) {
         });
         bridgeRef.current?.replaceSceneSlot(anchor, sceneImageDataUri(base64, uri));
       } catch (cause) {
-        // Файл картинки потерян — слот возвращается в состояние «Показать сцену»
+        // Файл картинки потерян — слот возвращается в состояние «Сгенерировать сцену»
         console.warn("[Reader] Failed to restore scene insert", cause);
         bridgeRef.current?.setSceneSlotState(anchor, "idle");
       }
@@ -963,21 +974,27 @@ function ReaderContent({ route, navigation }: Props) {
     return () => sub.remove();
   }, []);
 
-  // Load reader HTML asset
+  // A rebuilt HTML asset must replace the WebView even after Fast Refresh.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the generated build ID changes on HMR, unlike an ordinary imported constant.
   useEffect(() => {
-    if (assetLoadedRef.current) return;
-    assetLoadedRef.current = true;
-
+    let cancelled = false;
     const loadAsset = async () => {
       try {
-        setReaderHtmlUri(await prepareReaderAsset());
+        const uri = await prepareReaderAsset();
+        if (cancelled || uri === readerHtmlUri) return;
+        setWebViewReady(false);
+        setLoading(true);
+        setReaderHtmlUri(uri);
       } catch (err) {
         console.error("[ReaderScreen] Failed to load reader.html asset:", err);
-        setError("Failed to load reader");
+        if (!cancelled) setError("Failed to load reader");
       }
     };
     loadAsset();
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [READER_BUILD_ID, readerHtmlUri]);
 
   // Controls toggle — declared before bridge so onTap can reference it without TS error
   const toggleControls = useCallback(() => {
@@ -1165,7 +1182,7 @@ function ReaderContent({ route, navigation }: Props) {
 
       // Врезки сцен: перелистывания считает foliate relocate, собственной
       // пагинации нет (логика — scene-suggestion.ts). По сигналу счётчика
-      // WebView вставляет слот «Показать сцену» в конец видимого фрагмента.
+      // WebView вставляет слот «Сгенерировать сцену» в конец видимого фрагмента.
       const sceneAdvance = advanceSceneSuggestion(
         sceneSuggestionStateRef.current,
         detail,
@@ -1391,11 +1408,11 @@ function ReaderContent({ route, navigation }: Props) {
     if (!webViewReady) return;
     configureSceneSlots(
       JSON.stringify({
-        idle: t("narra.sceneSlotShow", "Показать сцену"),
+        idle: t("narra.sceneSlotShow", "Сгенерировать сцену"),
         loading: t("narra.sceneSlotDrawing", "Рисуем сцену…"),
         loadingHint: t("narra.sceneSlotDrawingHint", "20–60 секунд"),
         caption: t("narra.sceneSlotCaption", "Сцена — сгенерировано ИИ"),
-        error: t("narra.sceneSlotError", "Не получилось — попробовать ещё раз"),
+        error: t("narra.sceneSlotError", "Попробовать снова"),
       }),
     );
   }, [webViewReady, configureSceneSlots, t]);
@@ -2156,6 +2173,7 @@ function ReaderContent({ route, navigation }: Props) {
           {/* WebView with foliate-js */}
           <View style={{ flex: 1, backgroundColor: "transparent" }}>
             <WebView
+              key={readerHtmlUri}
               ref={bridge.webViewRef}
               source={{ uri: readerHtmlUri }}
               containerStyle={{ backgroundColor: "transparent" }}

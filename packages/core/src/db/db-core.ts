@@ -868,6 +868,7 @@ export async function initLocalDatabase(): Promise<void> {
       request_id TEXT NOT NULL UNIQUE,
       job_id TEXT UNIQUE,
       prompt TEXT NOT NULL,
+      request_body TEXT,
       status TEXT NOT NULL DEFAULT 'submitting',
       next_poll_at INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL,
@@ -877,6 +878,12 @@ export async function initLocalDatabase(): Promise<void> {
       last_error_message TEXT
     )
   `);
+
+      try {
+        await database.execute("ALTER TABLE cover_jobs ADD COLUMN request_body TEXT");
+      } catch {
+        // Already present on upgraded installations.
+      }
 
       try {
         await database.execute(

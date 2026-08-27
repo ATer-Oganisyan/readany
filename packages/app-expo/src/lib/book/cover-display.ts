@@ -9,7 +9,10 @@ function escapeRegExp(value: string): string {
 export function isGeneratedBookCoverPath(bookId: string, coverUrl?: string): boolean {
   if (!coverUrl) return false;
   const escapedBookId = escapeRegExp(bookId);
-  return new RegExp(`^covers/${escapedBookId}-generated\\.(?:jpe?g|png|webp)$`, "i").test(coverUrl);
+  return new RegExp(
+    `^covers/${escapedBookId}-generated(?:-[a-f0-9-]{36})?\\.(?:jpe?g|png|webp)$`,
+    "i",
+  ).test(coverUrl);
 }
 
 export function isLegacyBookCoverPath(bookId: string, coverUrl?: string): boolean {

@@ -1,8 +1,22 @@
 import { generateBookCoverImage } from "@/lib/narra/media";
 import { generateId } from "@readany/core/utils";
+import {
+  CoverJobError,
+  acknowledgeCoverJob,
+  boundedCoverBookFacts,
+  coverJobDelay,
+} from "../narra/cover-jobs";
+import { normalizeNarraError } from "../narra/errors";
 import coverGenerationConfig from "./cover-generation-config.json";
 import { resolveCoverGenreProfile } from "./cover-genre";
-import { deleteLocalCoverJob, getOrCreateLocalCoverJob } from "./cover-job-repository";
+import { validateCoverImage } from "./cover-image";
+import {
+  deleteLocalCoverJob,
+  getLocalCoverJob,
+  getOrCreateLocalCoverJob,
+  updateLocalCoverJob,
+} from "./cover-job-repository";
+import { inCoverForeground } from "./cover-job-session";
 import { generatedCoverBackgroundColor } from "./cover-text-contrast";
 
 const MAX_THEME_CHARS = 800;
@@ -69,27 +83,75 @@ async function runBookCoverJob(input: {
   excerpt?: string;
   subjects?: string[];
 }): Promise<GeneratedBookCover> {
-  const prompt = coverPrompt(input);
-  const localJob = await getOrCreateLocalCoverJob({
+  await getOrCreateLocalCoverJob({
     bookId: input.bookId,
     requestId: generateId(),
-    prompt,
+    request: { book: boundedCoverBookFacts(input) },
   });
-
-  const generated = await generateBookCoverImage(localJob.prompt, {
-    requestId: localJob.requestId,
+  return inCoverForeground(async (signal) => {
+    for (let attempt = 0; ; attempt++) {
+      const localJob = await getLocalCoverJob(input.bookId);
+      if (!localJob) throw new CoverJobError("Cover intent removed", "CANCELLED");
+      if (localJob.status === "failed")
+        throw new CoverJobError(
+          localJob.lastErrorMessage || "Cover job failed",
+          localJob.lastErrorCode || "FAILED",
+        );
+      try {
+        const generated = await generateBookCoverImage(
+          localJob.request ?? { prompt: localJob.prompt },
+          {
+            requestId: localJob.requestId,
+            jobId: localJob.jobId,
+            nextPollAt: localJob.nextPollAt,
+            signal,
+            onJob: async (job) => {
+              if (!(await updateLocalCoverJob(input.bookId, job)))
+                throw new CoverJobError("Cover intent removed", "CANCELLED");
+            },
+          },
+        );
+        const bytes = decodeBase64(generated.base64);
+        validateCoverImage(bytes, generated.mimeType);
+        return { bytes, mimeType: generated.mimeType, jobId: generated.jobId };
+      } catch (error) {
+        if (signal.aborted) throw error;
+        if (error instanceof CoverJobError && error.status === 404) {
+          // A later library pass rechecks embedded covers before creating a fresh ID.
+          await deleteLocalCoverJob(input.bookId);
+          throw error;
+        }
+        const current = await getLocalCoverJob(input.bookId);
+        if (!current || current.status === "failed") throw error;
+        const transient =
+          error instanceof TypeError ||
+          (error instanceof Error && error.name === "AbortError") ||
+          ["CONNECTION", "TIMEOUT"].includes(normalizeNarraError(error).code) ||
+          (error instanceof CoverJobError && error.status >= 500);
+        const nextPollAt = transient
+          ? Date.now() + Math.min(30_000, 2000 * 2 ** attempt) + Math.floor(Math.random() * 1000)
+          : 0;
+        await updateLocalCoverJob(input.bookId, {
+          status:
+            error instanceof CoverJobError && [400, 409, 429].includes(error.status)
+              ? "failed"
+              : current.status,
+          nextPollAt,
+          errorCode: error instanceof CoverJobError ? error.code : "NETWORK_OR_STORAGE",
+          errorMessage: error instanceof Error ? error.message : String(error),
+        });
+        if (!transient || attempt >= 3) throw error;
+        await coverJobDelay(nextPollAt - Date.now(), signal);
+      }
+    }
   });
-  return {
-    bytes: decodeBase64(generated.base64),
-    mimeType: generated.mimeType,
-    jobId: generated.jobId,
-  };
 }
 
 /**
- * Direct OpenRouter cover generation. The local intent survives JS reloads;
- * the generated image is persisted on the device by the library store.
+ * Durable server generation. The persisted request and job ID survive reloads.
+ * Each book has at most one local submission/polling loop.
  */
+const coverRequests = new Map<string, Promise<GeneratedBookCover>>();
 export function generateBookCover(input: {
   bookId: string;
   title: string;
@@ -98,13 +160,28 @@ export function generateBookCover(input: {
   excerpt?: string;
   subjects?: string[];
 }): Promise<GeneratedBookCover> {
-  return runBookCoverJob(input);
+  const existing = coverRequests.get(input.bookId);
+  if (existing) return existing;
+  const pending = runBookCoverJob(input).finally(() => coverRequests.delete(input.bookId));
+  coverRequests.set(input.bookId, pending);
+  return pending;
 }
 
-/** Remove the local intent only after the cover is safely stored on device. */
+/** Verify disk + DB before deleting server data, then remove the local intent. */
 export async function acknowledgeGeneratedBookCover(
   bookId: string,
-  _knownJobId?: string,
+  verifySavedCover: () => Promise<void>,
+  knownJobId?: string,
 ): Promise<void> {
+  const localJob = await getLocalCoverJob(bookId);
+  if (!localJob) return;
+  const jobId = knownJobId ?? localJob.jobId;
+  if (!jobId) return;
+  if (localJob.jobId !== jobId || !["completed", "failed"].includes(localJob.status))
+    throw new Error("Cover job is not ready for acknowledgement");
+  await inCoverForeground(async (signal) => {
+    await verifySavedCover();
+    await acknowledgeCoverJob(jobId, signal);
+  });
   await deleteLocalCoverJob(bookId);
 }
