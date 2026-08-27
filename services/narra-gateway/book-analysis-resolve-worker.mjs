@@ -29,6 +29,7 @@ export function createBookAnalysisResolveWorker({
   leaseRenewMs = 60_000,
   resolveEntities = resolveBookAnalysisEntities,
   generator = null,
+  runIds,
   reconciliationVersion = BOOK_ANALYSIS_IDENTITY_RECONCILIATION_VERSION,
   logger = console
 }) {
@@ -117,6 +118,7 @@ export function createBookAnalysisResolveWorker({
     async runOnce() {
       const job = await repository.claimAnalysisJob(workerId, {
         stages: ['resolve'],
+        runIds,
         leaseSeconds
       })
       if (!job) return { status: 'idle' }

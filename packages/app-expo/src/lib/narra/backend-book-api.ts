@@ -44,6 +44,25 @@ export interface BackendCatalogPage {
   nextCursor: string | null;
 }
 
+export type BackendBookSearchMode = "hybrid" | "semantic" | "lexical";
+export type BackendBookSpoilerMode = "reader" | "full";
+
+export interface BackendBookGraphSearchResult {
+  contractVersion: "book-graph-search-v1";
+  bookEditionId: string;
+  query: string;
+  requestedMode: BackendBookSearchMode;
+  effectiveMode: BackendBookSearchMode;
+  spoilerMode: BackendBookSpoilerMode;
+  maxTextOffset: number;
+  state: string;
+  contentResults: JsonRecord[];
+  nodes: JsonRecord[];
+  edges: JsonRecord[];
+  storyArcs: JsonRecord[];
+  evidence: JsonRecord[];
+}
+
 export interface BackendManifestAsset {
   assetId: string;
   type: "primary_portrait" | "greeting_audio" | "idle_animation";
@@ -424,6 +443,69 @@ export async function advanceBackendReaderProgress(
     }
     await postProgress(baseBody);
   }
+}
+
+export async function searchBackendBookGraph(
+  bookEditionId: string,
+  {
+    query,
+    mode = "hybrid",
+    spoilerMode = "reader",
+    limit = 8,
+    maxHops = 2,
+  }: {
+    query: string;
+    mode?: BackendBookSearchMode;
+    spoilerMode?: BackendBookSpoilerMode;
+    limit?: number;
+    maxHops?: 1 | 2;
+  },
+): Promise<BackendBookGraphSearchResult> {
+  const normalizedQuery = query.trim();
+  if (normalizedQuery.length < 2 || normalizedQuery.length > 500) {
+    throw new RangeError("Book search query must contain 2-500 characters");
+  }
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 20) {
+    throw new RangeError("Book search limit must be an integer from 1 to 20");
+  }
+  if (maxHops !== 1 && maxHops !== 2) {
+    throw new RangeError("Book graph maxHops must be 1 or 2");
+  }
+  const queryString = new URLSearchParams({
+    q: normalizedQuery,
+    mode,
+    spoiler_mode: spoilerMode,
+    limit: String(limit),
+    max_hops: String(maxHops),
+  }).toString();
+  const payload = await gatewayJson(
+    `/v2/books/${encodeURIComponent(bookEditionId)}/graph/search?${queryString}`,
+  );
+  const arrays = ["content_results", "nodes", "edges", "story_arcs", "evidence"] as const;
+  if (
+    payload.contract_version !== "book-graph-search-v1" ||
+    payload.book_edition_id !== bookEditionId ||
+    typeof payload.query !== "string" ||
+    typeof payload.max_text_offset !== "number" ||
+    arrays.some((key) => !Array.isArray(payload[key]))
+  ) {
+    throw new NarraServiceError("SERVICE", "Backend вернул некорректный граф книги");
+  }
+  return {
+    contractVersion: "book-graph-search-v1",
+    bookEditionId,
+    query: payload.query,
+    requestedMode: String(payload.requested_mode) as BackendBookSearchMode,
+    effectiveMode: String(payload.effective_mode) as BackendBookSearchMode,
+    spoilerMode: String(payload.spoiler_mode) as BackendBookSpoilerMode,
+    maxTextOffset: payload.max_text_offset,
+    state: String(payload.state || ""),
+    contentResults: payload.content_results as JsonRecord[],
+    nodes: payload.nodes as JsonRecord[],
+    edges: payload.edges as JsonRecord[],
+    storyArcs: payload.story_arcs as JsonRecord[],
+    evidence: payload.evidence as JsonRecord[],
+  };
 }
 
 export async function fetchBackendBookManifest(

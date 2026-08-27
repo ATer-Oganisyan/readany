@@ -12,6 +12,7 @@ ENV NODE_ENV=production \
 
 COPY --chown=node:node *.mjs *.pem ./
 COPY --chown=node:node evaluation ./evaluation
+COPY --chown=node:node data ./data
 COPY --chown=node:node cover-generation-config.json ./
 COPY --chown=node:node data ./data
 COPY --chown=node:node migrations ./migrations

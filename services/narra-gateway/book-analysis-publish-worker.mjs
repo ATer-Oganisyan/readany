@@ -9,6 +9,7 @@ function errorCode(error) {
 export function createBookAnalysisPublishWorker({
   repository,
   workerId,
+  runIds,
   leaseSeconds = 300,
   leaseRenewMs = 60_000,
   logger = console
@@ -21,7 +22,11 @@ export function createBookAnalysisPublishWorker({
   const log = createOperationalLogger({ component: 'analysis-publish', logger })
   return {
     async runOnce() {
-      const job = await repository.claimAnalysisJob(workerId, { stages: ['publish'], leaseSeconds })
+      const job = await repository.claimAnalysisJob(workerId, {
+        stages: ['publish'],
+        runIds,
+        leaseSeconds
+      })
       if (!job) return { status: 'idle' }
       const startedAt = performance.now()
       const timer = setInterval(() => {

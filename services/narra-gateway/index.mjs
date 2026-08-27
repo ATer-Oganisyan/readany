@@ -69,6 +69,10 @@ import { createCoverJobRunner } from './cover-job-runner.mjs'
 import { bookCoverPrompt } from './catalog-cover-prompt.mjs'
 import { parseSceneJobBody, sceneGenerationPrompt } from './scene-generation.mjs'
 import { createBookCatalogRouter } from './book-catalog-api.mjs'
+import { createBookEmbeddingClientFromEnv } from './book-embedding-client.mjs'
+import { createBookSearchRouter } from './book-search-api.mjs'
+import { createPostgresBookSearchRepository } from './book-search-repository.mjs'
+import { createBookSearchService } from './book-search-service.mjs'
 import { createCatalogIngestRouter } from './catalog-ingest-api.mjs'
 import { createCatalogIngestService } from './catalog-ingest-service.mjs'
 import { createPostgresBookAnalysisRepository } from './book-analysis-repository.mjs'
@@ -100,6 +104,12 @@ if (!['production', 'staging', 'development', 'test'].includes(ANALYTICS_ENV)) {
 }
 const VIDEO_REQUIRED = parseEnvBool(process.env, 'VIDEO_REQUIRED', false)
 const BOOK_BACKEND_REQUIRED = parseEnvBool(process.env, 'BOOK_BACKEND_REQUIRED', false)
+const BOOK_SEARCH_ENABLED = parseEnvBool(process.env, 'BOOK_SEARCH_ENABLED', false)
+const BOOK_ANALYSIS_MEDIA_GENERATION_ENABLED = parseEnvBool(
+  process.env,
+  'BOOK_ANALYSIS_MEDIA_GENERATION_ENABLED',
+  true
+)
 const BOOK_SHADOW_PREVIEW_ENABLED = parseEnvBool(
   process.env,
   'BOOK_SHADOW_PREVIEW_ENABLED',
@@ -1073,6 +1083,8 @@ let bookMarkupRepository = null
 let bookAnalysisRepository = null
 let bookOperatorRepository = null
 let generationCostLedger = null
+let bookSearchRepository = null
+let bookSearchService = null
 let privateMaterialCleanupTimer = null
 let privateMaterialCleanupInitialTimer = null
 const bookObjectStorage = createBookObjectStorageFromEnv(process.env)
@@ -1102,10 +1114,19 @@ if (process.env.DATABASE_URL) {
     privateMaterialTtlDays: PRIVATE_MATERIAL_TTL_DAYS
   })
   bookAnalysisRepository = createPostgresBookAnalysisRepository(bookMarkupPool, {
-    defaultPipelineId: BOOK_ANALYSIS_PIPELINE
+    defaultPipelineId: BOOK_ANALYSIS_PIPELINE,
+    mediaGenerationEnabled: BOOK_ANALYSIS_MEDIA_GENERATION_ENABLED
   })
   bookOperatorRepository = createPostgresBookOperatorRepository(bookMarkupPool)
-  if (internalGenerationService) {
+  if (BOOK_SEARCH_ENABLED) {
+    bookSearchRepository = createPostgresBookSearchRepository(bookMarkupPool)
+    bookSearchService = createBookSearchService({
+      repository: bookSearchRepository,
+      embeddingClient: createBookEmbeddingClientFromEnv(process.env)
+    })
+    console.info('[book-search] API enabled; books are enqueued only by explicit operator command')
+  }
+  if (internalGenerationService && BOOK_ANALYSIS_MEDIA_GENERATION_ENABLED) {
     const identityJobs = await bookMarkupRepository.enqueueMissingBookIdentities()
     const coverJobs = await bookMarkupRepository.enqueueMissingCatalogCovers()
     const characterMediaJobs = await bookMarkupRepository.enqueueCharacterMediaBackfill()
@@ -1127,6 +1148,8 @@ if (process.env.DATABASE_URL) {
       requested: sceneBackfills.reduce((total, value) => total + value.requested, 0),
       pending: sceneBackfills.reduce((total, value) => total + value.pending, 0)
     })
+  } else if (internalGenerationService) {
+    console.info('[book-media] generation and startup backfills are disabled')
   }
   if (bookObjectStorage) {
     const cleanup = createPrivateMaterialCleanup({
@@ -1556,6 +1579,9 @@ app.use('/v2', requireGatewayAuth(tokenService, installationRegistry), apiLimit)
 // are attached directly before each parser so Express path normalization cannot
 // bypass them with case or trailing-slash variants.
 if (bookMarkupRepository) {
+  if (bookSearchService) {
+    app.use('/v2/books', createBookSearchRouter({ service: bookSearchService }))
+  }
   app.use('/v2/books', createBookCatalogRouter({
     repository: bookMarkupRepository,
     analysisRepository: bookAnalysisRepository,

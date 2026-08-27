@@ -8,6 +8,7 @@ import {
   toolCallPartToMessageToolCall,
 } from "../ai/tool-call-state";
 import { getAvailableTools } from "../ai/tools";
+import type { ToolDefinition } from "../ai/tools";
 import { getBook, getSkills as getDbSkills } from "../db/database";
 import i18n from "../i18n";
 import { getChatStreamingKey, useChatStore } from "../stores/chat-store";
@@ -85,6 +86,15 @@ export interface StreamingChatOptions {
   book?: Book | null;
   semanticContext?: SemanticContext | null;
   bookId?: string;
+  /** Marks content retrieval as ready even when the index lives outside the client database. */
+  contentSearchReady?: boolean;
+  /** Allows a host app to replace local RAG tools with authenticated backend retrieval. */
+  getAvailableTools?: (options: {
+    bookId: string | null;
+    isVectorized: boolean;
+    enabledSkills: Skill[];
+    spoilerFree: boolean;
+  }) => ToolDefinition[];
 }
 
 export interface StreamingState {
@@ -392,7 +402,8 @@ export function useStreamingChat(options?: StreamingChatOptions) {
         };
 
         const streamBook = await resolveFreshBook(bookId, options?.book);
-        const streamIsVectorized = streamBook?.isVectorized ?? false;
+        const streamIsVectorized = Boolean(streamBook?.isVectorized || options?.contentSearchReady);
+        const requestToolProvider = options?.getAvailableTools;
 
         await stream.stream({
           thread: threadForStream,
@@ -404,7 +415,10 @@ export function useStreamingChat(options?: StreamingChatOptions) {
           aiConfig: aiConfigOverride || aiConfig,
           deepThinking,
           spoilerFree,
-          getAvailableTools,
+          getAvailableTools: (toolOptions) =>
+            requestToolProvider
+              ? requestToolProvider({ ...toolOptions, spoilerFree })
+              : getAvailableTools(toolOptions),
           onToken: (token) => {
             if (!currentTextPart) {
               currentTextPart = createTextPart("");
@@ -594,6 +608,8 @@ export function useStreamingChat(options?: StreamingChatOptions) {
       loadEnabledSkills,
       options?.book,
       options?.bookId,
+      options?.contentSearchReady,
+      options?.getAvailableTools,
       options?.semanticContext,
     ],
   );

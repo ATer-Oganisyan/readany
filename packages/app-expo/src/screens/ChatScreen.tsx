@@ -16,7 +16,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useStreamingChat } from "@/hooks";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { createNarraAssistantAIConfig } from "@/lib/ai/narra-assistant-gateway";
-import { useLibraryStore } from "@/stores";
+import { createBackendBookChatToolProvider } from "@/lib/narra/backend-book-chat-search";
+import { useLibraryStore, useNarraStore } from "@/stores";
 import { useChatStore } from "@/stores/chat-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import type { AttachedQuote } from "@readany/core/types";
@@ -58,6 +59,19 @@ export function ChatScreen() {
   const book = useMemo(
     () => (bookId ? books.find((item) => item.id === bookId) : undefined),
     [bookId, books],
+  );
+  const backendBookEditionId = useNarraStore((state) =>
+    bookId ? state.books[bookId]?.backendBinding?.bookEditionId : undefined,
+  );
+  const backendBookToolProvider = useMemo(
+    () =>
+      backendBookEditionId
+        ? createBackendBookChatToolProvider({
+            bookEditionId: backendBookEditionId,
+            localBookIsVectorized: book?.isVectorized === true,
+          })
+        : undefined,
+    [backendBookEditionId, book?.isVectorized],
   );
   const [quotes, setQuotes] = useState<AttachedQuote[]>([]);
 
@@ -170,7 +184,16 @@ export function ChatScreen() {
     sendMessage,
     retryLastMessage,
     stopStream,
-  } = useStreamingChat(bookId ? { book, bookId } : undefined);
+  } = useStreamingChat(
+    bookId
+      ? {
+          book,
+          bookId,
+          contentSearchReady: Boolean(backendBookEditionId),
+          getAvailableTools: backendBookToolProvider,
+        }
+      : undefined,
+  );
 
   // Messages - compute directly without useMemo to ensure reactivity
   const activeThread = activeThreadId
