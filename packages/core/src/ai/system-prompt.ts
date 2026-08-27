@@ -49,7 +49,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
       !!(ctx.book?.id || ctx.bookId),
       ctx.allowedToolNames,
     ),
-    buildWorkflowSection(ctx.isVectorized, !!(ctx.book?.id || ctx.bookId)),
+    buildWorkflowSection(ctx.isVectorized, !!(ctx.book?.id || ctx.bookId), ctx.allowedToolNames),
     buildConstraintsSection(
       ctx.userLanguage,
       ctx.isVectorized,
@@ -317,7 +317,13 @@ function buildToolsSection(
   return `## Available Tools\n\n${tools.join("\n")}`;
 }
 
-function buildWorkflowSection(isVectorized: boolean, hasBookContext: boolean): string {
+function buildWorkflowSection(
+  isVectorized: boolean,
+  hasBookContext: boolean,
+  allowedToolNames?: string[],
+): string {
+  const allowed = allowedToolNames ? new Set(allowedToolNames) : null;
+  const canUse = (name: string) => !allowed || allowed.has(name);
   const steps: string[] = [
     "## Core Workflow",
     "",
@@ -333,109 +339,146 @@ function buildWorkflowSection(isVectorized: boolean, hasBookContext: boolean): s
   }
 
   if (isVectorized) {
-    steps.push(
-      "   - **resolveChapterReference**: first step for user-mentioned chapter numbers/titles; do not convert human chapter numbers to chapterIndex yourself",
+    if (canUse("resolveChapterReference")) {
+      steps.push(
+        "   - **resolveChapterReference**: first step for user-mentioned chapter numbers/titles; do not convert human chapter numbers to chapterIndex yourself",
+      );
+    }
+    if (canUse("ragSearch")) {
+      steps.push(
+        "   - **ragSearch**: primary path for indexed book-content questions by topic/keyword",
+      );
+    }
+    if (canUse("ragToc")) {
+      steps.push("   - **ragToc**: for compact/paginated structure browsing");
+    }
+    const analysisTools = ["summarize", "extractEntities", "analyzeArguments", "findQuotes"].filter(
+      canUse,
     );
-    steps.push(
-      "   - **ragSearch**: primary path for indexed book-content questions by topic/keyword",
-    );
-    steps.push("   - **ragToc**: for compact/paginated structure browsing");
-    steps.push(
-      "   - **summarize/extractEntities/analyzeArguments/findQuotes**: for indexed content analysis",
-    );
+    if (analysisTools.length > 0) {
+      steps.push(`   - **${analysisTools.join("/")}**: for indexed content analysis`);
+    }
   } else {
-    steps.push(
-      "   - **resolveChapterReference**: first step for user-mentioned chapter numbers/titles; do not convert human chapter numbers to chapterIndex yourself",
-    );
-    steps.push("   - **fallbackSearch**: for keyword exploration when the book is not vectorized");
-    steps.push("   - **fallbackToc**: for compact/paginated structure browsing without an index");
-    steps.push("   - **fallbackChapterContext**: for reading a specific chapter without an index");
+    if (canUse("resolveChapterReference")) {
+      steps.push(
+        "   - **resolveChapterReference**: first step for user-mentioned chapter numbers/titles; do not convert human chapter numbers to chapterIndex yourself",
+      );
+    }
+    if (canUse("fallbackSearch")) {
+      steps.push(
+        "   - **fallbackSearch**: for keyword exploration when the book is not vectorized",
+      );
+    }
+    if (canUse("fallbackToc")) {
+      steps.push("   - **fallbackToc**: for compact/paginated structure browsing without an index");
+    }
+    if (canUse("fallbackChapterContext")) {
+      steps.push(
+        "   - **fallbackChapterContext**: for reading a specific chapter without an index",
+      );
+    }
   }
 
-  steps.push("   - **getSurroundingContext**: for current page content");
+  if (canUse("getSurroundingContext")) {
+    steps.push("   - **getSurroundingContext**: for current page content");
+  }
 
-  steps.push("3. **Register citations before answering** — If your answer uses book content:");
-  steps.push("   - Call **addCitation** before writing the final response body");
-  steps.push(
-    "   - Wait for addCitation to return successfully before using the matching [N] marker",
-  );
-  steps.push("   - This rule applies to BOTH indexed books and non-indexed fallback content");
-  steps.push("4. **Synthesize and answer** — Only after citation registration, write your answer");
-  steps.push("");
+  if (canUse("addCitation")) {
+    steps.push("3. **Register citations before answering** — If your answer uses book content:");
+    steps.push("   - Call **addCitation** before writing the final response body");
+    steps.push(
+      "   - Wait for addCitation to return successfully before using the matching [N] marker",
+    );
+    steps.push("   - This rule applies to BOTH indexed books and non-indexed fallback content");
+    steps.push(
+      "4. **Synthesize and answer** — Only after citation registration, write your answer",
+    );
+    steps.push("");
 
-  if (isVectorized) {
-    steps.push("## CRITICAL: Citation Requirements");
-    steps.push("");
-    steps.push("**You MUST cite all factual claims about the book's content.**");
-    steps.push("");
-    steps.push("When you reference specific information from the book, you MUST:");
-    steps.push("");
-    steps.push("1. **Call addCitation tool** for each source location:");
-    steps.push("   - Use chapterTitle, chapterIndex, cfi from ragSearch/tool results");
-    steps.push("   - Provide a short quotedText excerpt (max 200 chars)");
-    steps.push("   - Each citation registers a verifiable source");
-    steps.push("");
-    steps.push("2. **Reference citations using [1], [2], [3] format** in your response:");
-    steps.push('   - Example: "The author argues that...[1] and later explains...[2]"');
-    steps.push("   - Each [N] corresponds to a registered citation");
-    steps.push("   - Users can click [N] to jump to the exact location");
-    steps.push("");
-    steps.push("3. **What requires citation:**");
-    steps.push("   - Direct quotes from the book");
-    steps.push("   - Specific facts, data, or statistics from the book");
-    steps.push("   - Author's arguments, claims, or opinions");
-    steps.push("   - Plot events, character descriptions, or story details");
-    steps.push("   - Any content retrieved via ragSearch, summarize, or content tools");
-    steps.push("   - General knowledge not from this book does not need citation");
-    steps.push(
-      "   - Your own analysis does not need citation, but cite the content you're analyzing",
-    );
-    steps.push("");
-    steps.push("4. **Citation workflow with CFI:**");
-    steps.push(
-      "   - Step 1: Use ragSearch/ragContext or indexed analysis tools to retrieve content",
-    );
-    steps.push("   - Step 2: Extract chapterTitle, chapterIndex, and **CFI** from tool results");
-    steps.push(
-      "   - Step 3: Call addCitation with the extracted CFI and set citationIndex to the number you will use in [N]",
-    );
-    steps.push(
-      "     The citationIndex values MUST follow the final response marker order exactly: the source for [1] uses citationIndex=1, [2] uses citationIndex=2, etc. Never swap citationIndex values even if tool calls complete out of order.",
-    );
-    steps.push("   - Step 4: Wait for addCitation to return a citation result successfully");
-    steps.push(
-      "   - Step 5: Write your final response using [1], [2] to reference citations — each must match the citationIndex you set",
-    );
-    steps.push(
-      "   - **Example**: ragSearch returns {cfi: 'epubcfi(/6/52!/4...)', ...} → pass this exact CFI to addCitation",
-    );
-    steps.push("");
-    steps.push(
-      "**This is MANDATORY for academic integrity and user trust. Never skip citations for book content.**",
-    );
-    steps.push("");
+    if (isVectorized) {
+      steps.push("## CRITICAL: Citation Requirements");
+      steps.push("");
+      steps.push("**You MUST cite all factual claims about the book's content.**");
+      steps.push("");
+      steps.push("When you reference specific information from the book, you MUST:");
+      steps.push("");
+      steps.push("1. **Call addCitation tool** for each source location:");
+      steps.push("   - Use chapterTitle, chapterIndex, cfi from ragSearch/tool results");
+      steps.push("   - Provide a short quotedText excerpt (max 200 chars)");
+      steps.push("   - Each citation registers a verifiable source");
+      steps.push("");
+      steps.push("2. **Reference citations using [1], [2], [3] format** in your response:");
+      steps.push('   - Example: "The author argues that...[1] and later explains...[2]"');
+      steps.push("   - Each [N] corresponds to a registered citation");
+      steps.push("   - Users can click [N] to jump to the exact location");
+      steps.push("");
+      steps.push("3. **What requires citation:**");
+      steps.push("   - Direct quotes from the book");
+      steps.push("   - Specific facts, data, or statistics from the book");
+      steps.push("   - Author's arguments, claims, or opinions");
+      steps.push("   - Plot events, character descriptions, or story details");
+      steps.push("   - Any content retrieved via ragSearch, summarize, or content tools");
+      steps.push("   - General knowledge not from this book does not need citation");
+      steps.push(
+        "   - Your own analysis does not need citation, but cite the content you're analyzing",
+      );
+      steps.push("");
+      steps.push("4. **Citation workflow with CFI:**");
+      steps.push(
+        "   - Step 1: Use ragSearch/ragContext or indexed analysis tools to retrieve content",
+      );
+      steps.push("   - Step 2: Extract chapterTitle, chapterIndex, and **CFI** from tool results");
+      steps.push(
+        "   - Step 3: Call addCitation with the extracted CFI and set citationIndex to the number you will use in [N]",
+      );
+      steps.push(
+        "     The citationIndex values MUST follow the final response marker order exactly: the source for [1] uses citationIndex=1, [2] uses citationIndex=2, etc. Never swap citationIndex values even if tool calls complete out of order.",
+      );
+      steps.push("   - Step 4: Wait for addCitation to return a citation result successfully");
+      steps.push(
+        "   - Step 5: Write your final response using [1], [2] to reference citations — each must match the citationIndex you set",
+      );
+      steps.push(
+        "   - **Example**: ragSearch returns {cfi: 'epubcfi(/6/52!/4...)', ...} → pass this exact CFI to addCitation",
+      );
+      steps.push("");
+      steps.push(
+        "**This is MANDATORY for academic integrity and user trust. Never skip citations for book content.**",
+      );
+      steps.push("");
+    } else {
+      steps.push("## CRITICAL: Fallback Source Requirements");
+      steps.push("");
+      steps.push(
+        "**This book is not indexed. Fallback content can support answers, and some fallback results may include a segment-level CFI for precise navigation.**",
+      );
+      steps.push("");
+      steps.push("When you reference fallback content, you MUST:");
+      steps.push(
+        "1. If the exact fallback result/chunk you cite has a non-empty cfi, call addCitation with that cfi, chapterTitle, chapterIndex, and quotedText",
+      );
+      steps.push("2. Call addCitation before writing the final response body");
+      steps.push("3. Use [1], [2], [3] markers only after addCitation succeeds");
+      steps.push(
+        "4. The citationIndex values MUST follow the final response marker order exactly: the source for [1] uses citationIndex=1, [2] uses citationIndex=2, etc. Never swap citationIndex values even if tool calls complete out of order.",
+      );
+      steps.push(
+        "5. If no cfi is present, or addCitation returns an error, cite the source in plain text using chapterTitle/chapterIndex and a short quoted excerpt",
+      );
+      steps.push(
+        "6. Never invent a CFI or use a chapter-level/source-level CFI for unrelated text",
+      );
+      steps.push(
+        "7. If the user needs consistently precise jumpable references, tell them indexing the book improves reliability",
+      );
+      steps.push("");
+    }
   } else {
-    steps.push("## CRITICAL: Fallback Source Requirements");
-    steps.push("");
+    steps.push("3. **Ground the answer** — Use only evidence returned by the available tools:");
+    steps.push("   - Cite chapter names, excerpts, or backend text offsets in plain text");
+    steps.push("   - Never invent a CFI or a clickable [N] citation marker");
     steps.push(
-      "**This book is not indexed. Fallback content can support answers, and some fallback results may include a segment-level CFI for precise navigation.**",
-    );
-    steps.push("");
-    steps.push("When you reference fallback content, you MUST:");
-    steps.push(
-      "1. If the exact fallback result/chunk you cite has a non-empty cfi, call addCitation with that cfi, chapterTitle, chapterIndex, and quotedText",
-    );
-    steps.push("2. Call addCitation before writing the final response body");
-    steps.push("3. Use [1], [2], [3] markers only after addCitation succeeds");
-    steps.push(
-      "4. The citationIndex values MUST follow the final response marker order exactly: the source for [1] uses citationIndex=1, [2] uses citationIndex=2, etc. Never swap citationIndex values even if tool calls complete out of order.",
-    );
-    steps.push(
-      "5. If no cfi is present, or addCitation returns an error, cite the source in plain text using chapterTitle/chapterIndex and a short quoted excerpt",
-    );
-    steps.push("6. Never invent a CFI or use a chapter-level/source-level CFI for unrelated text");
-    steps.push(
-      "7. If the user needs consistently precise jumpable references, tell them indexing the book improves reliability",
+      "4. **Synthesize and answer immediately** — Do not search again when the evidence is sufficient",
     );
     steps.push("");
   }
@@ -451,14 +494,16 @@ function buildWorkflowSection(isVectorized: boolean, hasBookContext: boolean): s
     '- **Each tool call must have a distinct purpose.** Good: ragToc → summarize(chapter 1) → summarize(chapter 2). Bad: ragSearch("主题") → ragSearch("主要主题") → ragSearch("书的主题").',
   );
   steps.push(
-    "- If a content retrieval/analysis tool returns enough information to answer, do NOT call more retrieval tools. If the answer uses that book content, call addCitation first, then answer.",
+    canUse("addCitation")
+      ? "- If a content retrieval/analysis tool returns enough information to answer, do NOT call more retrieval tools. If the answer uses that book content, call addCitation first, then answer."
+      : "- If a content retrieval tool returns enough information to answer, do NOT call more tools. Answer immediately using plain-text evidence references.",
   );
   steps.push(
     "- If a tool returns no results or an error, tell the user honestly. Do NOT retry with rephrased queries.",
   );
   steps.push(
     isVectorized
-      ? "- For indexed books, prefer ragSearch/ragContext for broad content questions. Use current selection/page/chapter context first only when the user explicitly asks about what they are reading right now, then fall back to indexed retrieval if needed."
+      ? `- For indexed books, prefer ${canUse("ragContext") ? "ragSearch/ragContext" : "ragSearch"} for broad content questions. Use current selection/page/chapter context first only when the user explicitly asks about what they are reading right now, then fall back to indexed retrieval if needed.`
       : "- For non-indexed books, prefer fallbackSearch/fallbackChapterContext for broad content questions. Use current selection/page/chapter context first only when the user explicitly asks about what they are reading right now, then fall back to original-file retrieval if needed.",
   );
   steps.push(

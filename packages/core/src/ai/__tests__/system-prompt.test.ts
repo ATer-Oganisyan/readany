@@ -110,4 +110,21 @@ describe("buildSystemPrompt citations", () => {
     expect(prompt).not.toContain("- ragSearch");
     expect(prompt).not.toContain("Semantic/keyword search across book content");
   });
+
+  it("does not require clickable citations when addCitation is unavailable", () => {
+    const prompt = buildSystemPrompt({
+      book: makeBook(),
+      semanticContext: null,
+      enabledSkills: [],
+      isVectorized: true,
+      userLanguage: "en",
+      allowedToolNames: ["ragSearch", "getReadingProgress"],
+    });
+
+    expect(prompt).toContain("Synthesize and answer immediately");
+    expect(prompt).toContain("Never invent a CFI or a clickable [N] citation marker");
+    expect(prompt).not.toContain("Call **addCitation**");
+    expect(prompt).not.toContain("Call addCitation before writing the final response body");
+    expect(prompt).not.toContain("ragSearch/ragContext");
+  });
 });
