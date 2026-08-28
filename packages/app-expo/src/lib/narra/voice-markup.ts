@@ -239,6 +239,7 @@ export interface ChunkVoiceAssignment {
 const PLAN_LIMIT = 4000;
 
 let activeVoicePlan = new Map<string, ChunkVoiceAssignment>();
+let activeVoiceSequence: ChunkVoiceAssignment[] = [];
 
 function planKey(text: string): string {
   return text.replace(/\s+/g, " ").trim();
@@ -259,10 +260,13 @@ export function primeReaderVoicePlan(
   primeCharacterStressForms(characters);
   const assignments = markupVoiceSegments(texts, characters, narratorVoice);
   const next = options?.append ? activeVoicePlan : new Map<string, ChunkVoiceAssignment>();
+  const nextSequence = options?.append ? activeVoiceSequence : [];
   assignments.forEach((assignment, index) => {
     const key = planKey(texts[index]);
     if (!key) return;
-    next.set(key, { voice: assignment.voice, prosody: assignment.prosody });
+    const value = { voice: assignment.voice, prosody: assignment.prosody };
+    next.set(key, value);
+    nextSequence.push(value);
   });
   while (next.size > PLAN_LIMIT) {
     const oldest = next.keys().next().value;
@@ -270,13 +274,89 @@ export function primeReaderVoicePlan(
     next.delete(oldest);
   }
   activeVoicePlan = next;
+  activeVoiceSequence = nextSequence.slice(-PLAN_LIMIT);
+}
+
+export interface ReaderScriptVoiceSegment {
+  text: string;
+  ttsKind?: "speech" | "narration";
+  ttsCharacterKey?: string | null;
+}
+
+function installReaderVoiceAssignments(
+  texts: readonly string[],
+  assignments: readonly ChunkVoiceAssignment[],
+  append: boolean,
+): void {
+  const next = append ? activeVoicePlan : new Map<string, ChunkVoiceAssignment>();
+  const nextSequence = append ? activeVoiceSequence : [];
+  assignments.forEach((assignment, index) => {
+    const key = planKey(texts[index]);
+    if (!key) return;
+    next.set(key, assignment);
+    nextSequence.push(assignment);
+  });
+  while (next.size > PLAN_LIMIT) {
+    const oldest = next.keys().next().value;
+    if (oldest == null) break;
+    next.delete(oldest);
+  }
+  activeVoicePlan = next;
+  activeVoiceSequence = nextSequence.slice(-PLAN_LIMIT);
+}
+
+/** Installs the compatibility plan used while the server sidecar is unavailable. */
+export function primeReaderNarratorPlan(
+  texts: readonly string[],
+  narratorVoice: string,
+  options?: { append?: boolean },
+): void {
+  installReaderVoiceAssignments(
+    texts,
+    texts.map(() => ({ voice: narratorVoice })),
+    options?.append === true,
+  );
+}
+
+/** Installs voices from the canonical server TTS sidecar without local speaker guessing. */
+export function primeReaderScriptVoicePlan(
+  segments: readonly ReaderScriptVoiceSegment[],
+  characters: readonly NarraCharacter[],
+  narratorVoice: string,
+  options?: { append?: boolean },
+): void {
+  primeCharacterStressForms(characters);
+  const byKey = new Map(characters.map((character) => [character.id, character]));
+  const assignments = segments.map((segment): ChunkVoiceAssignment => {
+    if (segment.ttsKind !== "speech" || !segment.ttsCharacterKey) {
+      return { voice: narratorVoice };
+    }
+    return voiceForCharacter(byKey.get(segment.ttsCharacterKey), narratorVoice);
+  });
+  installReaderVoiceAssignments(
+    segments.map(({ text }) => text),
+    assignments,
+    options?.append === true,
+  );
 }
 
 export function clearReaderVoicePlan(): void {
   activeVoicePlan = new Map();
+  activeVoiceSequence = [];
 }
 
 /** Голос для чанка синтеза; null — чанк вне плана (фолбэк — нарратор). */
-export function resolveReaderVoiceForChunk(text: string): ChunkVoiceAssignment | null {
+export function resolveReaderVoiceForChunk(
+  text: string,
+  queueIndex?: number,
+): ChunkVoiceAssignment | null {
+  if (
+    Number.isSafeInteger(queueIndex) &&
+    queueIndex != null &&
+    queueIndex >= 0 &&
+    queueIndex < activeVoiceSequence.length
+  ) {
+    return activeVoiceSequence[queueIndex] ?? null;
+  }
   return activeVoicePlan.get(planKey(text)) ?? null;
 }

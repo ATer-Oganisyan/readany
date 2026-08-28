@@ -10,8 +10,24 @@
  */
 
 import type { VisibleTTSSegment } from "@/hooks/use-reader-bridge";
+import {
+  fetchBackendBookManifest,
+  fetchBackendBookTtsSection,
+  type BackendBookTtsSection,
+} from "@/lib/narra/backend-book-api";
+import {
+  activatePendingTtsMarkupAtChapterBoundary,
+  initialTtsMarkupActivation,
+  projectTtsScriptOntoReaderSegments,
+  receiveReadyTtsMarkup,
+  type TtsMarkupActivationState,
+} from "@/lib/narra/tts-script";
 import type { NarraCharacter } from "@/lib/narra/types";
-import { clearReaderVoicePlan, primeReaderVoicePlan } from "@/lib/narra/voice-markup";
+import {
+  clearReaderVoicePlan,
+  primeReaderNarratorPlan,
+  primeReaderScriptVoicePlan,
+} from "@/lib/narra/voice-markup";
 import { narratorVoiceFor } from "@/lib/narra/voice-rules";
 import { useNarraStore, useTTSStore } from "@/stores";
 import { getPlatformService } from "@readany/core/services";
@@ -31,7 +47,11 @@ import {
   normalizeTTSDebugText,
 } from "./tts-debug-utils";
 
-export type TTSSegment = VisibleTTSSegment;
+export type TTSSegment = VisibleTTSSegment & {
+  ttsKind?: "narration" | "speech";
+  ttsCharacterKey?: string | null;
+  sectionIndex?: number;
+};
 
 // ─── Types for the bridge ref the hook needs ───────────────────────────────
 export type TTSBridgeRef = {
@@ -66,6 +86,7 @@ export type TTSBridgeRef = {
 // ─── Hook inputs ────────────────────────────────────────────────────────────
 export interface UseReaderTTSOptions {
   bookId: string;
+  backendBookEditionId?: string;
   bookTitle: string;
   currentChapter: string;
   currentChapterHref: string;
@@ -137,6 +158,7 @@ const TTS_CONTEXT_CACHE_LIMIT = 24;
 const TTS_CONTEXT_WINDOW = 12;
 const TTS_DYNAMIC_APPEND_THRESHOLD = 18;
 const TTS_WORD_HIGHLIGHT_POLL_MS = 120;
+const TTS_MARKUP_POLL_FALLBACK_MS = 10_000;
 
 function getTTSWordIndex(text: string, progress: number): number {
   const words = Array.from(text.matchAll(/[\p{L}\p{N}]+(?:['’\-][\p{L}\p{N}]+)*/gu));
@@ -200,6 +222,7 @@ function previewTTSQueue(segments: TTSSegment[], limit = 8) {
 
 export function useReaderTTS({
   bookId,
+  backendBookEditionId,
   bookTitle,
   currentChapter,
   currentChapterHref,
@@ -246,6 +269,7 @@ export function useReaderTTS({
   const [ttsChunkOffset, setTtsChunkOffset] = useState(0);
   const [ttsSourceKind, setTtsSourceKind] = useState<"page" | "selection">("page");
   const [ttsContinuousEnabled, setTtsContinuousEnabled] = useState(true);
+  const [ttsMarkupReadyEpoch, setTtsMarkupReadyEpoch] = useState(0);
 
   // ─── TTS Refs ───────────────────────────────────────────────────────────────
   const ttsSegmentsRef = useRef<TTSSegment[]>([]);
@@ -287,6 +311,18 @@ export function useReaderTTS({
   } | null>(null);
   const ttsStartChapterRef = useRef<string>("");
   const previousReaderBookIdRef = useRef<string | null>(null);
+  const ttsMarkupActivationRef = useRef<TtsMarkupActivationState>(initialTtsMarkupActivation());
+  const ttsMarkupSectionsRef = useRef<Map<string, BackendBookTtsSection>>(new Map());
+  const ttsMarkupSectionInflightRef = useRef<Map<string, Promise<BackendBookTtsSection | null>>>(
+    new Map(),
+  );
+  const ttsMarkupBoundaryRestartRef = useRef<{
+    revision: number;
+    sectionIndex: number;
+  } | null>(null);
+  const ttsPlaybackStateRef = useRef(ttsPlayState);
+  const ttsPlaybackBookIdRef = useRef(ttsCurrentBookId);
+  const currentSectionIndexRef = useRef(currentSectionIndex);
   // Mirrors of frequently-changing store values — used inside handleTTSPageEnd
   // so the callback doesn't need to be re-created on every chunk advance.
   const ttsCurrentChunkIndexRef = useRef(0);
@@ -299,42 +335,123 @@ export function useReaderTTS({
   ttsCurrentChunkIndexRef.current = ttsCurrentChunkIndex;
   ttsCurrentLocationCfiRef.current = ttsCurrentLocationCfi;
   ttsTotalChunksRef.current = ttsTotalChunks;
+  ttsPlaybackStateRef.current = ttsPlayState;
+  ttsPlaybackBookIdRef.current = ttsCurrentBookId;
+  currentSectionIndexRef.current = currentSectionIndex;
 
   // ─── Разметка очереди по голосам (P7) ──────────────────────────────────────
-  // Перед каждым play/append активный план голосов пересобирается синхронно —
-  // edge-плеер читает его при синтезе каждого чанка (voice-markup.ts).
+  // Готовый sidecar даёт character_key для реплик; клиент больше не угадывает имя.
+  // Если sidecar нет, вся очередь явно идёт одним голосом рассказчика.
   const charactersRef = useRef<NarraCharacter[]>(characters ?? []);
   charactersRef.current = characters ?? [];
 
-  const primeVoicePlanForTexts = useCallback((texts: string[], append: boolean) => {
+  const primeVoicePlanForSegments = useCallback((segments: TTSSegment[], append: boolean) => {
     try {
-      primeReaderVoicePlan(
-        texts,
+      primeReaderScriptVoicePlan(
+        segments,
         charactersRef.current,
         narratorVoiceFor(useNarraStore.getState().narratorVoicePreference),
         { append },
       );
     } catch (error) {
-      // Ошибка разметки не должна ломать озвучку — фолбэк на голос нарратора.
-      console.warn("[ReaderScreen][TTS] voice markup failed", error);
-      if (!append) clearReaderVoicePlan();
+      console.warn("[ReaderScreen][TTS] server voice plan failed", error);
+      primeReaderNarratorPlan(
+        segments.map(({ text }) => text),
+        narratorVoiceFor(useNarraStore.getState().narratorVoicePreference),
+        { append },
+      );
     }
   }, []);
 
   const ttsPlay = useCallback(
-    (text: string | string[]) => {
-      primeVoicePlanForTexts(Array.isArray(text) ? text : splitNarrationText(text), false);
-      ttsPlayRaw(text);
+    (input: string | TTSSegment[]) => {
+      if (Array.isArray(input)) {
+        primeVoicePlanForSegments(input, false);
+        ttsPlayRaw(input.map(({ text }) => text));
+        return;
+      }
+      primeReaderNarratorPlan(
+        splitNarrationText(input),
+        narratorVoiceFor(useNarraStore.getState().narratorVoicePreference),
+      );
+      ttsPlayRaw(input);
     },
-    [primeVoicePlanForTexts, ttsPlayRaw],
+    [primeVoicePlanForSegments, ttsPlayRaw],
   );
 
   const ttsAppend = useCallback(
-    (text: string | string[]) => {
-      primeVoicePlanForTexts(Array.isArray(text) ? text : splitNarrationText(text), true);
-      return ttsAppendRaw(text);
+    (input: string | TTSSegment[]) => {
+      if (Array.isArray(input)) {
+        primeVoicePlanForSegments(input, true);
+        return ttsAppendRaw(input.map(({ text }) => text));
+      }
+      primeReaderNarratorPlan(
+        splitNarrationText(input),
+        narratorVoiceFor(useNarraStore.getState().narratorVoicePreference),
+        { append: true },
+      );
+      return ttsAppendRaw(input);
     },
-    [primeVoicePlanForTexts, ttsAppendRaw],
+    [primeVoicePlanForSegments, ttsAppendRaw],
+  );
+
+  const loadReadyTtsSection = useCallback(
+    async (sectionIndex: number, revision: number): Promise<BackendBookTtsSection | null> => {
+      if (!backendBookEditionId || sectionIndex < 0) return null;
+      const key = `${backendBookEditionId}:${revision}:${sectionIndex}`;
+      const cached = ttsMarkupSectionsRef.current.get(key);
+      if (cached) return cached;
+      const inflight = ttsMarkupSectionInflightRef.current.get(key);
+      if (inflight) return inflight;
+
+      const request = fetchBackendBookTtsSection(backendBookEditionId, sectionIndex)
+        .then((result) => {
+          if (result.status !== "ready" || result.revision !== revision || !result.section) {
+            return null;
+          }
+          ttsMarkupSectionsRef.current.set(key, result.section);
+          return result.section;
+        })
+        .catch((error) => {
+          if (__DEV__) {
+            console.warn("[ReaderScreen][TTS] failed to load TTS section", {
+              sectionIndex,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+          return null;
+        })
+        .finally(() => {
+          ttsMarkupSectionInflightRef.current.delete(key);
+        });
+      ttsMarkupSectionInflightRef.current.set(key, request);
+      return request;
+    },
+    [backendBookEditionId],
+  );
+
+  const prepareTTSSegmentsForSection = useCallback(
+    async (
+      segments: TTSSegment[],
+      sectionIndex: number,
+      options?: { chapterBoundary?: boolean },
+    ): Promise<TTSSegment[]> => {
+      let activation = ttsMarkupActivationRef.current;
+      if (options?.chapterBoundary) {
+        activation = activatePendingTtsMarkupAtChapterBoundary(activation, sectionIndex);
+      } else if (activation.playbackSectionIndex == null) {
+        activation = { ...activation, playbackSectionIndex: sectionIndex };
+      }
+      ttsMarkupActivationRef.current = activation;
+
+      const revision = activation.activeRevision;
+      const section = revision == null ? null : await loadReadyTtsSection(sectionIndex, revision);
+      return projectTtsScriptOntoReaderSegments(segments, section).map((segment) => ({
+        ...segment,
+        sectionIndex,
+      }));
+    },
+    [loadReadyTtsSection],
   );
 
   // ─── Cover URI resolution ───────────────────────────────────────────────────
@@ -378,6 +495,10 @@ export function useReaderTTS({
 
     ttsContextCacheRef.current.clear();
     ttsContextInflightRef.current.clear();
+    ttsMarkupActivationRef.current = initialTtsMarkupActivation();
+    ttsMarkupSectionsRef.current.clear();
+    ttsMarkupSectionInflightRef.current.clear();
+    ttsMarkupBoundaryRestartRef.current = null;
     ttsPrefetchedChapterTransitionRef.current = null;
     setTtsLastText("");
     setTtsSegments([]);
@@ -416,6 +537,81 @@ export function useReaderTTS({
       bridgeRef.current?.setTTSHighlight(null);
     }
   }, [bookId, bridgeRef, setShowTTS]);
+
+  // The manifest request both starts lazy sidecar generation and reports its status.
+  // A ready revision received during playback remains pending until a chapter boundary.
+  useEffect(() => {
+    ttsMarkupActivationRef.current = initialTtsMarkupActivation();
+    ttsMarkupSectionsRef.current.clear();
+    ttsMarkupSectionInflightRef.current.clear();
+    ttsMarkupBoundaryRestartRef.current = null;
+    if (!backendBookEditionId) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const poll = async () => {
+      try {
+        const manifest = await fetchBackendBookManifest(backendBookEditionId);
+        if (cancelled) return;
+        const status = manifest.ttsMarkup;
+        if (status?.status === "ready" && status.revision != null) {
+          const playbackActive =
+            ttsPlaybackBookIdRef.current === bookId && ttsPlaybackStateRef.current !== "stopped";
+          const next = receiveReadyTtsMarkup(ttsMarkupActivationRef.current, {
+            revision: status.revision,
+            currentSectionIndex: currentSectionIndexRef.current,
+            playbackActive,
+          });
+          ttsMarkupActivationRef.current = next;
+          if (
+            next.pendingRevision === status.revision &&
+            ttsPrefetchedChapterTransitionRef.current
+          ) {
+            ttsMarkupBoundaryRestartRef.current = {
+              revision: status.revision,
+              sectionIndex: ttsPrefetchedChapterTransitionRef.current.targetIndex,
+            };
+          }
+          setTtsMarkupReadyEpoch((value) => value + 1);
+          if (next.activeRevision === status.revision) {
+            void loadReadyTtsSection(currentSectionIndexRef.current, status.revision);
+          }
+          return;
+        }
+        if (status?.status === "failed" || status?.status === "unavailable") return;
+        const delay = Math.max(
+          1_000,
+          Math.min(60_000, status?.retryAfterMs ?? TTS_MARKUP_POLL_FALLBACK_MS),
+        );
+        timer = setTimeout(() => void poll(), delay);
+      } catch (error) {
+        if (cancelled) return;
+        if (__DEV__) {
+          console.warn("[ReaderScreen][TTS] TTS markup polling failed", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        timer = setTimeout(() => void poll(), TTS_MARKUP_POLL_FALLBACK_MS);
+      }
+    };
+
+    void poll();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [backendBookEditionId, bookId, loadReadyTtsSection]);
+
+  useEffect(() => {
+    const next = activatePendingTtsMarkupAtChapterBoundary(
+      ttsMarkupActivationRef.current,
+      currentSectionIndex,
+    );
+    ttsMarkupActivationRef.current = next;
+    if (next.activeRevision != null) {
+      void loadReadyTtsSection(currentSectionIndex, next.activeRevision);
+    }
+  }, [currentSectionIndex, loadReadyTtsSection]);
 
   // ─── Sync segment refs whenever state changes ───────────────────────────────
   useEffect(() => {
@@ -981,7 +1177,11 @@ export function useReaderTTS({
             TTS_NEXT_CHAPTER_PREFETCH_SEGMENTS,
           );
           const resolvedSectionIndex = readableSection?.sectionIndex ?? targetSectionIndex;
-          const normalizedSegments = readableSection?.segments || [];
+          const normalizedSegments = await prepareTTSSegmentsForSection(
+            readableSection?.segments || [],
+            resolvedSectionIndex,
+            { chapterBoundary: true },
+          );
           if (__DEV__) {
             console.log("[ReaderScreen][TTS][queue-transition] extracted-next-chapter", {
               targetIndex: resolvedSectionIndex,
@@ -1044,7 +1244,7 @@ export function useReaderTTS({
                 queuePreview: previewTTSQueue(normalizedSegments),
               });
             }
-            ttsPlay(normalizedSegments.map((segment) => segment.text));
+            ttsPlay(normalizedSegments);
           }
         })();
       };
@@ -1066,6 +1266,7 @@ export function useReaderTTS({
       currentChapter,
       currentSectionIndex,
       findReadableSectionTTSSegments,
+      prepareTTSSegmentsForSection,
       primeTTSLyricContext,
       syncTTSChunkOffset,
       ttsCoverUri,
@@ -1098,12 +1299,16 @@ export function useReaderTTS({
       return [];
     }
 
-    const appendSegments = filterDistinctTTSSegments(
+    const rawAppendSegments = filterDistinctTTSSegments(
       readableSection.segments,
       ttsPrevPageSegmentsRef.current,
       ttsSegmentsRef.current,
       ttsFutureSegmentsRef.current,
     ).slice(0, TTS_NEXT_CHAPTER_PREFETCH_SEGMENTS);
+
+    const appendSegments = await prepareTTSSegmentsForSection(rawAppendSegments, nextChapterIndex, {
+      chapterBoundary: true,
+    });
 
     if (appendSegments.length === 0) return [];
 
@@ -1135,6 +1340,7 @@ export function useReaderTTS({
     currentSectionIndex,
     findReadableSectionTTSSegments,
     filterDistinctTTSSegments,
+    prepareTTSSegmentsForSection,
   ]);
 
   // ─── recoverTTSLyricsState ────────────────────────────────────────────────
@@ -1447,7 +1653,7 @@ export function useReaderTTS({
             ]);
       if (!visibleSegments.length) return;
       const previousContext = filterDistinctTTSSegments(context.before || [], visibleSegments);
-      const previous = mergeUniqueTTSSegments(
+      let previous = mergeUniqueTTSSegments(
         ttsPrevPageSegmentsRef.current,
         previousContext,
         "append",
@@ -1459,6 +1665,9 @@ export function useReaderTTS({
         playbackSegments = mergeUniqueTTSSegments(visibleSegments, frontLoadedFuture, "append");
         future = filterDistinctTTSSegments(future, playbackSegments);
       }
+      previous = await prepareTTSSegmentsForSection(previous, currentSectionIndex);
+      playbackSegments = await prepareTTSSegmentsForSection(playbackSegments, currentSectionIndex);
+      future = await prepareTTSSegmentsForSection(future, currentSectionIndex);
       const nextText = playbackSegments
         .map((segment) => segment.text)
         .join(" ")
@@ -1503,7 +1712,7 @@ export function useReaderTTS({
       ttsSetCurrentLocation(playbackSegments[0]?.cfi || targetCfi);
       ttsContinuousRef.current = ttsSourceKind === "page" && ttsContinuousEnabled;
       ttsSetOnEnd(ttsContinuousRef.current ? handleTTSPageEnd : null);
-      ttsPlay(playbackSegments.map((segment) => segment.text));
+      ttsPlay(playbackSegments);
     },
     [
       bridgeRef,
@@ -1514,6 +1723,8 @@ export function useReaderTTS({
       handleTTSPageEnd,
       logTTSExtractionDiagnostics,
       mergeUniqueTTSSegments,
+      currentSectionIndex,
+      prepareTTSSegmentsForSection,
       syncTTSChunkOffset,
       ttsContinuousEnabled,
       ttsPlay,
@@ -1566,7 +1777,10 @@ export function useReaderTTS({
         .trim();
       if (!normalized) return;
       ttsPrefetchedChapterTransitionRef.current = null;
-      let playbackSegments = normalizedSegments;
+      let playbackSegments = await prepareTTSSegmentsForSection(
+        normalizedSegments,
+        currentSectionIndex,
+      );
       let futureSegments: TTSSegment[] = [];
       if (continuous) {
         const lastCfi =
@@ -1575,9 +1789,12 @@ export function useReaderTTS({
           pageAnchorCfi;
         if (lastCfi) {
           const context = await getCachedTTSSegmentContext(lastCfi, 0, TTS_DYNAMIC_APPEND_SEGMENTS);
-          futureSegments = filterDistinctTTSSegments(context.after || [], playbackSegments).slice(
-            0,
-            TTS_DYNAMIC_APPEND_SEGMENTS,
+          futureSegments = await prepareTTSSegmentsForSection(
+            filterDistinctTTSSegments(context.after || [], playbackSegments).slice(
+              0,
+              TTS_DYNAMIC_APPEND_SEGMENTS,
+            ),
+            currentSectionIndex,
           );
           playbackSegments = mergeUniqueTTSSegments(playbackSegments, futureSegments, "append");
 
@@ -1660,15 +1877,14 @@ export function useReaderTTS({
           normalizedSegments[0]?.cfi ||
           pageAnchorCfi,
       );
-      ttsPlay(
-        playbackSegments.length > 0 ? playbackSegments.map((segment) => segment.text) : normalized,
-      );
+      ttsPlay(playbackSegments.length > 0 ? playbackSegments : normalized);
     },
     [
       bookId,
       bookTitle,
       currentChapter,
       currentCfi,
+      currentSectionIndex,
       filterDistinctTTSSegments,
       getCachedTTSSegmentContext,
       handleTTSPageEnd,
@@ -1676,6 +1892,7 @@ export function useReaderTTS({
       getNormalizedVisibleTTSSegments,
       mergeUniqueTTSSegments,
       prefetchNextChapterTTSSegments,
+      prepareTTSSegmentsForSection,
       primeTTSLyricContext,
       setShowControls,
       setShowTTS,
@@ -1718,7 +1935,7 @@ export function useReaderTTS({
       ttsSetCurrentLocation(selectionCfi || currentCfi);
       ttsSetCurrentBook(bookTitle, currentChapter, bookId, ttsCoverUri);
       setShowControls(false);
-      ttsPlay(segments.length > 0 ? segments.map((segment) => segment.text) : normalized);
+      ttsPlay(normalized);
     },
     [
       bookId,
@@ -1943,7 +2160,7 @@ export function useReaderTTS({
         syncTTSChunkOffset(0);
         ttsSetCurrentLocation(nextCfi);
         if (nextCfi) bridgeRef.current?.goToCFI(nextCfi);
-        setTimeout(() => ttsPlay(allSegments.map((s) => s.text)), 0);
+        setTimeout(() => ttsPlay(allSegments), 0);
       } else {
         const safeIdx = Math.max(0, Math.min(offsetFromCurrent, ttsSegments.length - 1));
         const sliced = ttsSegments.slice(safeIdx);
@@ -1965,7 +2182,7 @@ export function useReaderTTS({
         syncTTSChunkOffset(0);
         ttsSetCurrentLocation(nextCfi);
         if (nextCfi) bridgeRef.current?.goToCFI(nextCfi);
-        setTimeout(() => ttsPlay(sliced.map((s) => s.text)), 0);
+        setTimeout(() => ttsPlay(sliced), 0);
       }
     },
     [
@@ -2015,7 +2232,7 @@ export function useReaderTTS({
         syncTTSChunkOffset(0);
         ttsSetCurrentLocation(nextCfi);
         if (nextCfi) bridgeRef.current?.goToCFI(nextCfi);
-        ttsPlay(allSegments.map((s) => s.text));
+        ttsPlay(allSegments);
         return;
       }
 
@@ -2044,7 +2261,7 @@ export function useReaderTTS({
         syncTTSChunkOffset(0);
         ttsSetCurrentLocation(nextCfi);
         if (nextCfi) bridgeRef.current?.goToCFI(nextCfi);
-        ttsPlay(remainingFuture.map((s) => s.text));
+        ttsPlay(remainingFuture);
         void primeTTSLyricContext(
           remainingFuture[0]?.cfi || nextCfi,
           remainingFuture[0]?.cfi || nextCfi,
@@ -2621,6 +2838,8 @@ export function useReaderTTS({
 
         if (appendSegments.length === 0) {
           appendSegments = await prefetchNextChapterTTSSegments();
+        } else {
+          appendSegments = await prepareTTSSegmentsForSection(appendSegments, currentSectionIndex);
         }
 
         if (appendSegments.length === 0) {
@@ -2645,7 +2864,7 @@ export function useReaderTTS({
           });
         }
 
-        const didAppend = ttsAppend(appendSegments.map((segment) => segment.text));
+        const didAppend = ttsAppend(appendSegments);
         if (__DEV__) {
           console.log("[ReaderScreen][TTS][queue-append] append-result", {
             didAppend,
@@ -2699,6 +2918,8 @@ export function useReaderTTS({
     getCachedTTSSegmentContext,
     mergeUniqueTTSSegments,
     prefetchNextChapterTTSSegments,
+    prepareTTSSegmentsForSection,
+    currentSectionIndex,
     ttsAppend,
     ttsChunkOffset,
     ttsDynamicAppendTrigger,
@@ -2709,12 +2930,23 @@ export function useReaderTTS({
   // When the dynamic queue has already appended the next chapter, keep the
   // reader view and metadata in step with playback instead of waiting for onEnd.
   useEffect(() => {
+    void ttsMarkupReadyEpoch;
     const transition = ttsPrefetchedChapterTransitionRef.current;
     if (!transition || transition.navigated) return;
     if (ttsCurrentBookId !== bookId) return;
     if (ttsSourceKind !== "page") return;
     if (ttsPlayState !== "playing" && ttsPlayState !== "loading") return;
     if (ttsCurrentChunkIndex < transition.startChunkIndex) return;
+
+    const pendingRestart = ttsMarkupBoundaryRestartRef.current;
+    if (pendingRestart?.sectionIndex === transition.targetIndex) {
+      transition.navigated = true;
+      ttsMarkupBoundaryRestartRef.current = null;
+      ttsContinuousRef.current = false;
+      ttsSetOnEnd(null);
+      ttsStop();
+      if (queueTTSChapterTransition(transition.targetIndex, { autoResume: true })) return;
+    }
 
     const targetCfi = currentTTSSegment?.cfi || transition.firstCfi;
     transition.navigated = true;
@@ -2747,13 +2979,17 @@ export function useReaderTTS({
     bridgeRef,
     currentTTSSegment?.cfi,
     goToHref,
+    queueTTSChapterTransition,
     ttsCoverUri,
     ttsCurrentBookId,
     ttsCurrentChunkIndex,
     ttsPlayState,
+    ttsMarkupReadyEpoch,
     ttsSetCurrentBook,
     ttsSetCurrentLocation,
+    ttsSetOnEnd,
     ttsSourceKind,
+    ttsStop,
   ]);
 
   useEffect(() => {

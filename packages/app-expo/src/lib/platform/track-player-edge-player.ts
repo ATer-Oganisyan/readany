@@ -665,7 +665,7 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
     // Голос чанка — из активного плана разметки по ролям (voice-markup P7);
     // сегменты вне плана (и весь нарратив) — голосом нарратора.
     const chunkText = this._chunks[index];
-    const assignment = resolveReaderVoiceForChunk(chunkText);
+    const assignment = resolveReaderVoiceForChunk(chunkText, index);
     const audioUri = await synthesizeNarraSpeech(
       chunkText,
       assignment?.voice || getNarratorVoice(),

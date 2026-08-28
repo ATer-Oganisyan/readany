@@ -203,6 +203,7 @@ function fallbackNavigation(byteSize) {
 export function createBookCatalogService({
   repository,
   analysisRepository = null,
+  ttsMarkupRepository = null,
   storage = null,
   bundleVersion = CHARACTER_BUNDLE_VERSION,
   idFactory = randomUUID,
@@ -298,6 +299,18 @@ export function createBookCatalogService({
       }
     }
     const markup = normalizeBookMarkupV3(publication.data.markup)
+    let ttsMarkup = { status: 'unavailable', version: 'book-tts-script-v1', revision: null,
+      retryAfterMs: null }
+    if (ttsMarkupRepository?.ensureBookTtsMarkup) {
+      try {
+        ttsMarkup = await ttsMarkupRepository.ensureBookTtsMarkup({
+          bookEditionId,
+          sourcePublicationId: publication.id
+        }) ?? ttsMarkup
+      } catch {
+        // TTS markup is an additive sidecar and must never make the book unavailable.
+      }
+    }
     const readerTextOffset = analysisReaderTextOffset(snapshot, markup.textLength)
     const mediaByCharacterKey = new Map(
       (snapshot.characters || []).map((character) => [character.characterKey, character])
@@ -321,6 +334,7 @@ export function createBookCatalogService({
         scenePolicy: markup.scenePolicy,
         publishedAt: publication.publishedAt
       },
+      ttsMarkup,
       characters: markup.characters
         .map((character) => {
           const media = mediaByCharacterKey.get(character.characterKey)
@@ -578,6 +592,25 @@ export function createBookCatalogService({
         source: navigation.source,
         items: navigation.items
       }
+    },
+
+    async ttsSection(subjectId, bookEditionId, sectionIndex) {
+      if (!Number.isSafeInteger(sectionIndex) || sectionIndex < 0) {
+        throw serviceError('VALIDATION', 'section index: invalid value', 400)
+      }
+      const snapshot = await store.getReaderBookManifest({ subjectId, bookEditionId })
+      if (!snapshot) throw serviceError('NOT_FOUND', 'Книга не найдена', 404)
+      if (!ttsMarkupRepository?.getBookTtsMarkupSection) {
+        return { status: 'unavailable', version: 'book-tts-script-v1', revision: null,
+          retryAfterMs: null }
+      }
+      const section = await ttsMarkupRepository.getBookTtsMarkupSection({
+        bookEditionId,
+        sectionIndex
+      })
+      if (section) return section
+      return { status: 'processing', version: 'book-tts-script-v1', revision: null,
+        retryAfterMs: 10_000 }
     },
 
     async contentChunk(subjectId, bookEditionId, rawCursor) {

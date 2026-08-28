@@ -77,6 +77,7 @@ import { bookAnalysisPipelineFromEnv } from './book-analysis-pipeline.mjs'
 import { createBookOperatorRouter } from './book-operator-api.mjs'
 import { createPostgresBookOperatorRepository } from './book-operator-repository.mjs'
 import { createPostgresBookMarkupRepository } from './postgres-book-markup-repository.mjs'
+import { createPostgresBookTtsMarkupRepository } from './book-tts-markup-repository.mjs'
 import { createPostgresPoolFromEnv, runBookMarkupMigrations } from './postgres-runtime.mjs'
 import { createBookObjectStorageFromEnv } from './book-object-storage.mjs'
 import {
@@ -947,6 +948,7 @@ sceneJobRunner.start()
 let bookMarkupPool = null
 let bookMarkupRepository = null
 let bookAnalysisRepository = null
+let bookTtsMarkupRepository = null
 let bookOperatorRepository = null
 let privateMaterialCleanupTimer = null
 let privateMaterialCleanupInitialTimer = null
@@ -976,6 +978,7 @@ if (process.env.DATABASE_URL) {
   bookAnalysisRepository = createPostgresBookAnalysisRepository(bookMarkupPool, {
     defaultPipelineId: BOOK_ANALYSIS_PIPELINE
   })
+  bookTtsMarkupRepository = createPostgresBookTtsMarkupRepository(bookMarkupPool)
   bookOperatorRepository = createPostgresBookOperatorRepository(bookMarkupPool)
   if (internalGenerationService) {
     const identityJobs = await bookMarkupRepository.enqueueMissingBookIdentities()
@@ -1431,6 +1434,7 @@ if (bookMarkupRepository) {
   app.use('/v2/books', createBookCatalogRouter({
     repository: bookMarkupRepository,
     analysisRepository: bookAnalysisRepository,
+    ttsMarkupRepository: bookTtsMarkupRepository,
     shadowPreviewEnabled: BOOK_SHADOW_PREVIEW_ENABLED,
     storage: bookObjectStorage,
     uploadMaxBytes: BOOK_UPLOAD_MAX_BYTES

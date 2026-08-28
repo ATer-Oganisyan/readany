@@ -341,7 +341,17 @@ export function catalogGenresJson() {
   }
 }
 
-function manifestJson(manifest) {
+function ttsMarkupJson(value) {
+  if (!value) return undefined
+  return {
+    status: value.status,
+    version: value.version,
+    revision: value.revision,
+    retry_after_ms: value.retryAfterMs
+  }
+}
+
+export function manifestJson(manifest) {
   return {
     source: manifest.source,
     book: bookJson(manifest.book),
@@ -373,6 +383,7 @@ function manifestJson(manifest) {
       },
       published_at: manifest.markup.publishedAt
     },
+    tts_markup: ttsMarkupJson(manifest.ttsMarkup),
     characters: manifest.characters.map((character) => ({
       character_key: character.characterKey,
       name: character.name,
@@ -393,6 +404,33 @@ function manifestJson(manifest) {
         }))
       }
     }))
+  }
+}
+
+export function ttsSectionJson(value) {
+  if (value.status !== 'ready' || !value.section) {
+    return { tts_markup: ttsMarkupJson(value) }
+  }
+  return {
+    contract_version: value.version,
+    revision: value.revision,
+    normalized_text_hash: value.normalizedTextHash,
+    section: {
+      key: value.section.key,
+      title: value.section.title,
+      index: value.section.index,
+      start_offset: value.section.startOffset,
+      end_offset: value.section.endOffset,
+      segments: value.section.segments.map((segment) => ({
+        id: segment.id,
+        start_offset: segment.startOffset,
+        end_offset: segment.endOffset,
+        text: segment.text,
+        kind: segment.kind,
+        character_key: segment.characterKey,
+        confidence: segment.confidence
+      }))
+    }
   }
 }
 
@@ -429,12 +467,15 @@ function shadowManifestJson(manifest) {
 export function createBookCatalogRouter({
   repository,
   analysisRepository = null,
+  ttsMarkupRepository = null,
   shadowPreviewEnabled = false,
   storage = null,
   uploadMaxBytes = 50 * 1024 * 1024
 }) {
   const router = express.Router()
-  const service = createBookCatalogService({ repository, analysisRepository, storage })
+  const service = createBookCatalogService({
+    repository, analysisRepository, ttsMarkupRepository, storage
+  })
   const subject = (req) => uuid(req.installation?.sub, 'installation subject')
 
   router.get('/genres', (_req, res) => {
@@ -588,6 +629,19 @@ export function createBookCatalogRouter({
         end_byte_exclusive: item.endByte
       }))
     })
+  }))
+
+  router.get('/:bookEditionId/tts-script/sections/:sectionIndex', asyncRoute(async (req, res) => {
+    const sectionIndex = Number(req.params.sectionIndex)
+    const result = await service.ttsSection(
+      subject(req),
+      uuid(req.params.bookEditionId, 'bookEditionId'),
+      sectionIndex
+    )
+    if (result.retryAfterMs) {
+      res.setHeader('Retry-After', String(Math.max(1, Math.ceil(result.retryAfterMs / 1_000))))
+    }
+    res.status(result.status === 'ready' ? 200 : 202).json(ttsSectionJson(result))
   }))
 
   router.get('/:bookEditionId/cover/download', asyncRoute(async (req, res) => {

@@ -1395,6 +1395,7 @@ function ReaderContent({ route, navigation }: Props) {
   // ── useReaderTTS ──
   const tts = useReaderTTS({
     bookId,
+    backendBookEditionId: backendBinding?.bookEditionId,
     bookTitle: bookTitle || book?.meta.title || "",
     currentChapter,
     currentChapterHref,
