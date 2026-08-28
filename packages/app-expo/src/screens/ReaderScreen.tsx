@@ -114,6 +114,7 @@ const MAX_TRACKED_FRACTION_DELTA = 0.08;
 const INITIAL_PROGRESS_RESTORE_GUARD_MS = 1800;
 const PROGRAMMATIC_NAV_GUARD_MS = 1200;
 const CONTROLS_VISIBILITY_ANIMATION_MS = 220;
+const BACKEND_SCENE_POLL_TIMEOUT_MS = 5 * 60 * 1000;
 const BOOK_MIME_TYPES = [
   "application/epub+zip",
   "application/pdf",
@@ -528,7 +529,8 @@ function ReaderContent({ route, navigation }: Props) {
   const loadBackendScene = useCallback(async () => {
     const bookEditionId = backendBinding?.bookEditionId;
     if (!bookEditionId) return null;
-    for (let attempt = 0; attempt < 45; attempt += 1) {
+    const pollDeadline = Date.now() + BACKEND_SCENE_POLL_TIMEOUT_MS;
+    while (Date.now() <= pollDeadline) {
       const scene = await requestBackendBookScene(bookEditionId, progressRef.current);
       if (scene.status === "ready" && scene.imageUrl) {
         return {
@@ -542,7 +544,9 @@ function ReaderContent({ route, navigation }: Props) {
         };
       }
       if (scene.status === "failed") throw new Error("Backend scene generation failed");
-      await new Promise((resolve) => setTimeout(resolve, scene.pollAfterMs));
+      const remainingMs = pollDeadline - Date.now();
+      if (remainingMs <= 0) break;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(scene.pollAfterMs, remainingMs)));
     }
     throw new Error("Backend scene generation timed out");
   }, [backendBinding?.bookEditionId, bookId]);
