@@ -107,6 +107,11 @@ test('TTS markup runs as an independently scalable hardened container', () => {
   assert.match(publicBooksRouter, /ttsMarkupRepository: bookTtsMarkupRepository/)
 })
 
+test('book scenes use the configured image route and landscape aspect ratio', () => {
+  assert.match(gatewaySource, /generateScene: generateInternalScene/)
+  assert.match(gatewaySource, /aspectRatio: '4:3'/)
+})
+
 test('shadow analysis workers keep the hardened read-only runtime', () => {
   assert.match(compose, /x-book-analysis-worker: &book-analysis-worker/)
   assert.match(compose, /restart: unless-stopped/)

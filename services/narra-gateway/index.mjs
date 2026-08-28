@@ -855,6 +855,31 @@ async function generateInternalCharacterPortrait(prompt, signal, costContext) {
   }
 }
 
+async function generateInternalScene(prompt, signal, costContext) {
+  let release
+  try {
+    release = await imageGate.acquire(signal)
+    const generated = await measuredInternalImageRequest({
+      prompt,
+      aspectRatio: '4:3',
+      costContext,
+      signal
+    })
+    const bytes = Buffer.from(generated.image, 'base64')
+    if (!bytes.byteLength || bytes.byteLength > 18 * 1024 * 1024) {
+      throw httpErr('NETWORK', 'Image provider returned an invalid scene')
+    }
+    return {
+      bytes,
+      mimeType: generated.mimeType,
+      model: generated.model,
+      provider: `${coverProviderConfig.provider}:${generated.model}`
+    }
+  } finally {
+    release?.()
+  }
+}
+
 async function synthesizeInternalSpeech(text, voice, signal) {
   let release
   try {
@@ -1097,7 +1122,7 @@ const internalGenerationService = bookObjectStorage && generatorServiceToken
       completeChat: completeInternalChat,
       generatePortrait: generateInternalCharacterPortrait,
       generateCover: generateInternalCover,
-      generateScene: generateInternalPortrait,
+      generateScene: generateInternalScene,
       synthesizeSpeech: synthesizeInternalSpeech,
       generateIdleAnimation: generateInternalIdleAnimation,
       maxBookBytes: BOOK_UPLOAD_MAX_BYTES
