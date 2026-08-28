@@ -19,6 +19,24 @@ const appStoreState = vi.hoisted(() => ({
   >,
 }));
 
+const downloadFileAsync = vi.hoisted(() =>
+  vi.fn(async (_url: string, destination: { uri: string }) => ({
+    ...destination,
+    exists: true,
+    size: 3,
+  })),
+);
+
+vi.mock("expo-file-system", () => ({
+  File: class MockFile {
+    static downloadFileAsync = downloadFileAsync;
+    readonly exists = true;
+    readonly size = 3;
+
+    constructor(readonly uri: string) {}
+  },
+}));
+
 vi.mock("expo-file-system/legacy", () => ({
   documentDirectory: "file:///documents/",
   EncodingType: { Base64: "base64" },
@@ -46,6 +64,7 @@ import {
   generateCharacterPortrait,
   generateSceneImage,
   normalizePersistedNarraMediaUri,
+  persistBackendSceneImage,
   portraitPrompt,
   resolvePortraitGenre,
   synthesizeNarraSpeech,
@@ -224,6 +243,18 @@ describe("portrait prompt", () => {
 });
 
 describe("scene image prompt", () => {
+  it("downloads a ready backend scene through the native file API", async () => {
+    await expect(
+      persistBackendSceneImage("book-1", "text-interval-v1:0", "https://example.test/scene"),
+    ).resolves.toContain("book-1-backend-scene-text-interval-v1-0.png");
+
+    expect(downloadFileAsync).toHaveBeenCalledWith(
+      "https://example.test/scene",
+      expect.objectContaining({ uri: expect.stringContaining(".tmp") }),
+      { idempotent: true },
+    );
+  });
+
   it("fits the Kandinsky budget with the full style on a long excerpt", () => {
     const excerpt = `Анна вошла в зал. ${"Свет свечей дрожал на паркете, гости расступались. ".repeat(60)}`;
     const prompt = buildSceneImagePrompt("Бал", excerpt, [anna, vronsky]);

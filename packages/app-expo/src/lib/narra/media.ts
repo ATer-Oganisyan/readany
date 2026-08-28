@@ -1,6 +1,7 @@
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import type { BookCoverGenerationRequest } from "@/lib/book/cover-generation-contract";
+import { File } from "expo-file-system";
 import * as FileSystem from "expo-file-system/legacy";
 import { resolveCoverGenreProfile } from "../book/cover-genre";
 import { budgetPrompt } from "./art-style";
@@ -300,7 +301,12 @@ async function persistGeneratedImage(
       encoding: FileSystem.EncodingType.Base64,
     });
   } else if (payload.url) {
-    await FileSystem.downloadAsync(payload.url, temporaryPath);
+    const downloaded = await File.downloadFileAsync(payload.url, new File(temporaryPath), {
+      idempotent: true,
+    });
+    if (!downloaded.exists || (downloaded.size ?? 0) < 1) {
+      throw new Error("Downloaded image is empty");
+    }
   } else {
     throw new Error("Image response is empty");
   }
