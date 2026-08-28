@@ -1,5 +1,6 @@
 import {
   emptyNarraBookState,
+  withNarraCharacterUpdates,
   withNarraCharacters,
   withNarraChatMessage,
   withNarraMemory,
@@ -75,21 +76,16 @@ export const useNarraStore = create<NarraState>()(
             },
           };
         }),
-      updateCharacter: (bookId, characterId, updates) =>
-        set((state) => {
-          const book = state.books[bookId] ?? emptyNarraBookState(bookId);
-          return {
-            books: {
-              ...state.books,
-              [bookId]: {
-                ...book,
-                characters: book.characters.map((character) =>
-                  character.id === characterId ? { ...character, ...updates } : character,
-                ),
-              },
-            },
-          };
-        }),
+      updateCharacter: (bookId, characterId, updates) => {
+        const state = get();
+        const book = state.books[bookId];
+        if (!book) return;
+        const updated = withNarraCharacterUpdates(book, characterId, updates);
+        // Avoid even calling persisted set for a no-op: its wrapper would
+        // otherwise schedule serialization of the entire Narra state.
+        if (updated === book) return;
+        set({ books: { ...state.books, [bookId]: updated } });
+      },
       setAnalysisError: (bookId, analysisError) =>
         set((state) => {
           const book = state.books[bookId] ?? emptyNarraBookState(bookId);

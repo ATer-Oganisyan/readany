@@ -1,4 +1,5 @@
-import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
+import { readGatewayResponseText } from "@/lib/ai/narra-gateway-consumer";
+import { consumeNarraGatewayResponse } from "@/lib/ai/narra-gateway-fetch";
 import { type NarraErrorCode, NarraServiceError } from "./errors";
 
 export interface BackendCatalogBook {
@@ -46,29 +47,27 @@ function isBackendCoverMimeType(value: unknown): value is BackendCoverMimeType {
 }
 
 async function gatewayJson(path: string, signal?: AbortSignal): Promise<JsonRecord> {
-  const response = await narraGatewayRequest(path, signal ? { signal } : {});
-  const text = await response.text();
-  let payload: JsonRecord;
-  try {
-    payload = text ? (JSON.parse(text) as JsonRecord) : {};
-  } catch {
-    throw new NarraServiceError("SERVICE", "Backend вернул некорректный JSON");
-  }
-  if (!response.ok) {
-    const backendCode = typeof payload.code === "string" ? payload.code : undefined;
-    // Бэкенд различает VALIDATION / NOT_FOUND / DOWNLOAD_UNAVAILABLE и другие
-    // машинные коды. Раньше всё это схлопывалось в одну «ошибку
-    // сервиса», и вызывающий код не мог отличить «книги нет» от «хранилище
-    // временно недоступно». Код едет отдельным полем, текст остаётся текстом.
-    throw new NarraServiceError(
-      backendErrorCodeToNarraCode(response.status, backendCode),
-      String(payload.error || backendCode || `HTTP ${response.status}`),
-      undefined,
-      undefined,
-      backendCode,
-    );
-  }
-  return payload;
+  return consumeNarraGatewayResponse(path, signal ? { signal } : {}, async (response, scope) => {
+    const text = await readGatewayResponseText(response, scope);
+    let payload: JsonRecord;
+    try {
+      payload = text ? (JSON.parse(text) as JsonRecord) : {};
+    } catch {
+      throw new NarraServiceError("SERVICE", "Backend вернул некорректный JSON");
+    }
+    if (!response.ok) {
+      const backendCode = typeof payload.code === "string" ? payload.code : undefined;
+      // Preserve backend machine codes independently from the user-facing error.
+      throw new NarraServiceError(
+        backendErrorCodeToNarraCode(response.status, backendCode),
+        String(payload.error || backendCode || `HTTP ${response.status}`),
+        undefined,
+        undefined,
+        backendCode,
+      );
+    }
+    return payload;
+  });
 }
 
 function backendErrorCodeToNarraCode(status: number, backendCode?: string): NarraErrorCode {
@@ -154,12 +153,13 @@ export const BACKEND_CATALOG_PAGE_LIMIT = 24;
 export async function fetchBackendCatalogPage(
   cursor?: string,
   limit = BACKEND_CATALOG_PAGE_LIMIT,
+  signal?: AbortSignal,
 ): Promise<BackendCatalogPage> {
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
     throw new NarraServiceError("REQUEST", "Некорректный размер страницы каталога");
   }
   const cursorQuery = cursor ? `&cursor=${encodeURIComponent(cursor)}` : "";
-  const payload = await gatewayJson(`/v2/books/catalog?limit=${limit}${cursorQuery}`);
+  const payload = await gatewayJson(`/v2/books/catalog?limit=${limit}${cursorQuery}`, signal);
   if (!Array.isArray(payload.items)) {
     throw new NarraServiceError("SERVICE", "Backend вернул некорректный каталог");
   }
@@ -217,8 +217,10 @@ function parseGenre(value: unknown): BackendCatalogGenre | null {
   };
 }
 
-export async function fetchBackendCatalogGenres(): Promise<BackendGenreCatalog> {
-  const payload = await gatewayJson("/v2/books/genres");
+export async function fetchBackendCatalogGenres(
+  signal?: AbortSignal,
+): Promise<BackendGenreCatalog> {
+  const payload = await gatewayJson("/v2/books/genres", signal);
   if (typeof payload.version !== "string" || !Array.isArray(payload.items)) {
     throw new NarraServiceError("SERVICE", "Backend вернул некорректный справочник жанров");
   }

@@ -1,6 +1,6 @@
 import { BookCard } from "@/components/library/BookCard";
-import { CatalogBookCard } from "@/components/library/CatalogBookCard";
 import { CatalogBookSkeleton } from "@/components/library/CatalogBookSkeleton";
+import { ConnectedCatalogBookCard } from "@/components/library/ConnectedCatalogBookCard";
 import { GroupCard } from "@/components/library/GroupCard";
 import { GroupPickerSheet } from "@/components/library/GroupPickerSheet";
 import { ImportSourceMenuButton } from "@/components/library/ImportSourceMenuButton";
@@ -27,26 +27,15 @@ import {
   type NativeSegmentedPagerHandle,
 } from "@/components/ui/native-segmented-pager";
 import { SwipePressGuardProvider, useSwipePressGuard } from "@/components/ui/swipe-press-guard";
+import { useBackendCatalog, useBackendCatalogActivity } from "@/hooks/use-backend-catalog";
 import { useBookImportActions } from "@/hooks/use-book-import-actions";
+import { useCatalogCoverWindow } from "@/hooks/use-catalog-cover-window";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
-import type { BackendCatalogGenre } from "@/lib/narra/backend-catalog-api";
-import {
-  type CachedBackendCatalog,
-  type CachedBackendCatalogBook,
-  loadCachedBackendCatalog,
-  loadMoreCachedBackendCatalog,
-  materializeBackendCatalogCover,
-  refreshBackendCatalog,
-} from "@/lib/narra/backend-catalog-cache";
+import type { CachedBackendCatalogBook } from "@/lib/narra/backend-catalog-cache";
 import { findReadableLibraryBookForCatalogBook } from "@/lib/narra/backend-catalog-library";
-import { isBackendDownloadAbort } from "@/lib/narra/backend-file-download";
-import { CatalogCoverQueue } from "@/lib/narra/catalog-cover-queue";
-import {
-  applyCatalogCoverResult,
-  retainCatalogCovers,
-  retryCatalogCoverDownload,
-} from "@/lib/narra/catalog-cover-state";
+import { retryCatalogCover as retrySharedCatalogCover } from "@/lib/narra/catalog-cover-coordinator";
+import { getCatalogBookWithCover } from "@/lib/narra/catalog-cover-store";
 import { setCallback, setExtractorRef } from "@/lib/rag/auto-vectorize-service";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import type { LibraryTabStackParamList } from "@/navigation/TabNavigator";
@@ -140,6 +129,8 @@ type LibraryGridItem =
 
 type LibrarySection = "catalog" | "my-books";
 const LIBRARY_SECTION_STORAGE_KEY = "library_last_section";
+// Download finishes silently — user can re-tap the book to open it.
+const onBookDownloaded = () => {};
 
 export function LibraryScreen() {
   return (
@@ -147,6 +138,50 @@ export function LibraryScreen() {
       <LibraryScreenContent />
     </SwipePressGuardProvider>
   );
+}
+
+/** Focus and queue ownership stay outside the persistent library tree. */
+function LibraryCatalogLifecycle({
+  books,
+  chunkCount,
+  scrollY,
+  columnCount,
+  gridItemWidth,
+  gridGap,
+  viewportHeight,
+  enabled,
+}: {
+  books: CachedBackendCatalogBook[];
+  chunkCount: number;
+  scrollY: number;
+  columnCount: number;
+  gridItemWidth: number;
+  gridGap: number;
+  viewportHeight: number;
+  enabled: boolean;
+}) {
+  const focused = useIsFocused();
+  const guard = useSwipePressGuard();
+  useBackendCatalogActivity(focused && enabled);
+  useEffect(() => {
+    guard?.setEnabled(focused);
+    return () => guard?.setEnabled(false);
+  }, [focused, guard]);
+  const window = useMemo(() => {
+    const rowHeight = gridItemWidth * (41 / 28) + gridGap;
+    const firstRow = Math.max(0, Math.floor(scrollY / rowHeight) - 1);
+    const rowsOnScreen = Math.max(1, Math.ceil(viewportHeight / rowHeight));
+    const columns = Math.max(1, columnCount);
+    const first = firstRow * columns;
+    const visibleEnd = Math.min(chunkCount, (firstRow + rowsOnScreen + 1) * columns);
+    const nearbyEnd = Math.min(chunkCount, visibleEnd + COVER_LOOKAHEAD_ROWS * columns);
+    return {
+      visible: books.slice(first, visibleEnd),
+      nearby: books.slice(visibleEnd, nearbyEnd),
+    };
+  }, [books, chunkCount, columnCount, gridGap, gridItemWidth, scrollY, viewportHeight]);
+  useCatalogCoverWindow({ ...window, active: focused && enabled });
+  return null;
 }
 
 function LibraryScreenContent() {
@@ -192,18 +227,20 @@ function LibraryScreenContent() {
 
   const extractorRef = useRef<ExtractorRef>(null);
   const libraryPagerRef = useRef<NativeSegmentedPagerHandle>(null);
-  const isScreenFocused = useIsFocused();
-  const [catalogBooks, setCatalogBooks] = useState<CachedBackendCatalogBook[]>([]);
-  const [catalogNextCursor, setCatalogNextCursor] = useState<string | null>(null);
-  const [catalogGenres, setCatalogGenres] = useState<BackendCatalogGenre[]>([]);
-  const [catalogGenreVersion, setCatalogGenreVersion] = useState<string | null>(null);
-  const [isCatalogLoading, setIsCatalogLoading] = useState(true);
-  const [isCatalogLoadingMore, setIsCatalogLoadingMore] = useState(false);
-  const [catalogError, setCatalogError] = useState<string | null>(null);
-  const [catalogLoadMoreError, setCatalogLoadMoreError] = useState<string | null>(null);
-  const catalogCoverQueueRef = useRef<CatalogCoverQueue | null>(null);
-  const catalogLoadMoreLockRef = useRef(false);
-  const catalogGridRef = useRef<View>(null);
+  const catalogState = useBackendCatalog(false);
+  const catalogBooks = catalogState.catalog.books;
+  const catalogNextCursor = catalogState.catalog.nextCursor;
+  const isCatalogLoading = catalogState.isLoading;
+  const isCatalogLoadingMore = catalogState.isRefreshing && catalogBooks.length > 0;
+  const catalogError = catalogState.error
+    ? t("library.catalogLoadError", "Не удалось загрузить каталог")
+    : null;
+  const catalogLoadMoreError =
+    catalogState.error && catalogBooks.length > 0
+      ? t("library.catalogLoadMoreError", "Не удалось загрузить следующие книги")
+      : null;
+  const loadBackendCatalog = catalogState.retry;
+  const loadMoreBackendCatalogPage = catalogState.retry;
   const [catalogScrollY, setCatalogScrollY] = useState(0);
   const primaryScrollRef = useRef<ScrollView>(null);
 
@@ -253,60 +290,6 @@ function LibraryScreenContent() {
     selectLibrarySection(requestedSection);
   }, [requestedSection, selectLibrarySection]);
 
-  const applyBackendCatalog = useCallback((catalog: CachedBackendCatalog) => {
-    setCatalogBooks((current) => retainCatalogCovers(catalog.books, current));
-    setCatalogNextCursor(catalog.nextCursor);
-    setCatalogGenres(catalog.genres);
-    setCatalogGenreVersion(catalog.genreVersion);
-  }, []);
-
-  const loadBackendCatalog = useCallback(async () => {
-    setIsCatalogLoading(true);
-    setCatalogError(null);
-    setCatalogLoadMoreError(null);
-    const cachedCatalog = await loadCachedBackendCatalog();
-    if (cachedCatalog.books.length > 0) applyBackendCatalog(cachedCatalog);
-    try {
-      const freshCatalog = await refreshBackendCatalog();
-      applyBackendCatalog(freshCatalog);
-    } catch (error) {
-      console.warn("[Catalog] Failed to refresh backend catalog:", error);
-      if (cachedCatalog.books.length === 0) {
-        setCatalogError(t("library.catalogLoadError", "Не удалось загрузить каталог"));
-      }
-    } finally {
-      setIsCatalogLoading(false);
-    }
-  }, [applyBackendCatalog, t]);
-
-  useEffect(() => {
-    void loadBackendCatalog();
-  }, [loadBackendCatalog]);
-
-  const loadMoreBackendCatalogPage = useCallback(async () => {
-    if (!catalogNextCursor || catalogLoadMoreLockRef.current) return;
-    catalogLoadMoreLockRef.current = true;
-    setIsCatalogLoadingMore(true);
-    setCatalogLoadMoreError(null);
-    try {
-      const catalog = await loadMoreCachedBackendCatalog({
-        books: catalogBooks,
-        nextCursor: catalogNextCursor,
-        genres: catalogGenres,
-        genreVersion: catalogGenreVersion,
-      });
-      applyBackendCatalog(catalog);
-    } catch (error) {
-      console.warn("[Catalog] Failed to load the next catalog page:", error);
-      setCatalogLoadMoreError(
-        t("library.catalogLoadMoreError", "Не удалось загрузить следующие книги"),
-      );
-    } finally {
-      catalogLoadMoreLockRef.current = false;
-      setIsCatalogLoadingMore(false);
-    }
-  }, [applyBackendCatalog, catalogBooks, catalogGenreVersion, catalogGenres, catalogNextCursor, t]);
-
   const revealImportedBooks = useCallback((importedCount: number) => {
     if (importedCount > 0) libraryPagerRef.current?.selectPage(1);
   }, []);
@@ -345,8 +328,7 @@ function LibraryScreenContent() {
 
   const { downloadingBookId, downloadProgress, downloadBook } = useBookDownload({
     loadBooks,
-    // Download finishes silently — user can re-tap the book to open it.
-    onSuccess: () => {},
+    onSuccess: onBookDownloaded,
   });
 
   const { vectorQueue, vectorizingBookId, vectorProgress, handleVectorize } = useVectorizationQueue(
@@ -515,14 +497,7 @@ function LibraryScreenContent() {
     [downloadBook, nav, t],
   );
 
-  const catalogCoverLoadingEnabled = isScreenFocused && showCatalog && librarySection === "catalog";
-
-  const rememberCatalogCover = useCallback(
-    (_catalogKey: string, coverUri: string, requested: CachedBackendCatalogBook) => {
-      setCatalogBooks((current) => applyCatalogCoverResult(current, requested, coverUri));
-    },
-    [],
-  );
+  const catalogCoverLoadingEnabled = showCatalog && librarySection === "catalog";
 
   /**
    * Докуда пользователь долистал каталог, округлённое вверх до чанка. Один
@@ -543,21 +518,12 @@ function LibraryScreenContent() {
     );
   }, [catalogScrollY, columnCount, gridGap, gridItemWidth, layout.height]);
 
-  /**
-   * Окно сетки — это готовые обложки, обрезанные текущим чанком. Позиции
-   * сохраняют порядок списка: если обложка внутри окна ещё не пришла, карточка
-   * сама покажет заглушку, а книги не будут переставляться местами.
-   *
-   * Ошибочные записи тоже занимают свою позицию: карточка предлагает повторить
-   * загрузку вместо бесконечного ожидания или выдуманной цветной обложки.
-   */
-  const visibleCatalogBooks = useMemo(() => {
-    const readyCount = catalogBooks.reduce(
-      (count, book) => (book.coverUri || !book.cover || book.coverLoadFailed ? count + 1 : count),
-      0,
-    );
-    return catalogBooks.slice(0, Math.min(readyCount, catalogChunkCount));
-  }, [catalogBooks, catalogChunkCount]);
+  // Mount the existing chunk without waiting for every cover. Each card owns
+  // its decode/skeleton state, so one finished cover cannot rebuild this grid.
+  const visibleCatalogBooks = useMemo(
+    () => catalogBooks.slice(0, catalogChunkCount),
+    [catalogBooks, catalogChunkCount],
+  );
 
   /**
    * За последней готовой книгой рисуем заглушек на целый экран. Одно правило
@@ -659,63 +625,16 @@ function LibraryScreenContent() {
     visibleCatalogBooks.length,
   ]);
 
-  /**
-   * Очередь идёт по порядку списка: положение скрытых карточек на экране не
-   * измерить.
-   */
-  const queueVisibleCatalogCovers = useCallback(() => {
-    if (!catalogCoverLoadingEnabled) return;
-    // Тот же чанк, что и у сетки: обложки грузятся ровно для тех карточек,
-    // которые смонтированы или смонтируются следующими.
-    const desiredReadyCount = catalogChunkCount;
-
-    const missing: CachedBackendCatalogBook[] = [];
-    let readyCount = 0;
-    for (const book of catalogBooks) {
-      if (book.coverUri || book.coverLoadFailed) {
-        readyCount += 1;
-        continue;
+  const retryCatalogCover = useCallback(
+    (book: CachedBackendCatalogBook) => {
+      if (!book.cover) {
+        void catalogState.refresh();
+        return;
       }
-      if (!book.cover) continue;
-      if (readyCount + missing.length >= desiredReadyCount) break;
-      missing.push(book);
-    }
-    if (missing.length > 0) catalogCoverQueueRef.current?.enqueue(missing);
-  }, [catalogBooks, catalogChunkCount, catalogCoverLoadingEnabled]);
-
-  useEffect(() => {
-    if (!catalogCoverLoadingEnabled) {
-      catalogCoverQueueRef.current?.dispose();
-      catalogCoverQueueRef.current = null;
-      return;
-    }
-
-    setCatalogBooks((current) =>
-      current.map((book) => (book.coverLoadFailed ? { ...book, coverLoadFailed: false } : book)),
-    );
-    const queue = new CatalogCoverQueue({
-      concurrency: 2,
-      load: materializeBackendCatalogCover,
-      onLoaded: rememberCatalogCover,
-      onError: (catalogKey, error, requested) => {
-        if (!isBackendDownloadAbort(error)) {
-          setCatalogBooks((current) => applyCatalogCoverResult(current, requested));
-          console.warn(`[Catalog] Failed to load visible cover ${catalogKey}:`, error);
-        }
-      },
-    });
-    catalogCoverQueueRef.current = queue;
-    return () => {
-      if (catalogCoverQueueRef.current === queue) catalogCoverQueueRef.current = null;
-      queue.dispose();
-    };
-  }, [catalogCoverLoadingEnabled, rememberCatalogCover]);
-
-  useEffect(() => {
-    if (!catalogCoverLoadingEnabled) return;
-    const frame = requestAnimationFrame(queueVisibleCatalogCovers);
-    return () => cancelAnimationFrame(frame);
-  }, [catalogCoverLoadingEnabled, queueVisibleCatalogCovers]);
+      retrySharedCatalogCover(book);
+    },
+    [catalogState.refresh],
+  );
 
   // Нажатие на книгу каталога: своя книга открывается напрямую, чужая уходит в
   // ридер вместе с описанием из каталога — качает и импортирует уже он, показывая
@@ -727,7 +646,7 @@ function LibraryScreenContent() {
         await handleOpen(existingBook);
         return;
       }
-      nav.navigate("Reader", { bookId: "", catalogBook });
+      nav.navigate("Reader", { bookId: "", catalogBook: getCatalogBookWithCover(catalogBook) });
     },
     [catalogBooksInLibrary, handleOpen, nav],
   );
@@ -1190,27 +1109,15 @@ function LibraryScreenContent() {
           style={s.catalogStatus}
         />
       ) : (
-        <View
-          ref={catalogGridRef}
-          style={s.catalogGrid}
-          onLayout={() => requestAnimationFrame(queueVisibleCatalogCovers)}
-        >
+        <View style={s.catalogGrid}>
           {visibleCatalogBooks.map((catalogBook) => (
             <View key={catalogBook.bookEditionId} style={s.gridItem}>
-              <CatalogBookCard
-                title={catalogBook.title}
-                author={catalogBook.author}
-                coverUri={catalogBook.coverUri}
-                hasCover={!!catalogBook.cover}
-                coverLoadFailed={catalogBook.coverLoadFailed}
+              <ConnectedCatalogBookCard
+                book={catalogBook}
                 cardWidth={gridItemWidth}
                 isInLibrary={catalogBooksInLibrary.has(catalogBook.catalogKey)}
-                onPress={() => void handleCatalogOpen(catalogBook)}
-                onRetryCover={() => {
-                  if (!catalogBook.cover) void loadBackendCatalog();
-                  else
-                    setCatalogBooks((current) => retryCatalogCoverDownload(current, catalogBook));
-                }}
+                onPress={handleCatalogOpen}
+                onRetryCover={retryCatalogCover}
               />
             </View>
           ))}
@@ -1257,7 +1164,6 @@ function LibraryScreenContent() {
       stablePageHeight={false}
       onSwipeStateChange={(swiping) => {
         if (swiping) {
-          swipePressGuard?.beginSwipe();
           // Пока идёт жест, высота держится по самой длинной вкладке, поэтому
           // анимация доезжает до верха без обрезания позиции. К моменту смены
           // страницы мы уже наверху — прыжка одним кадром больше нет.
@@ -1266,7 +1172,7 @@ function LibraryScreenContent() {
           // содержимое на высоту навбара, поэтому ноль оставляет список
           // посередине. Целимся в минус высоту навбара — это и есть верх.
           primaryScrollRef.current?.scrollTo({ y: -nativeHeaderHeight, animated: true });
-        } else swipePressGuard?.endSwipe();
+        }
       }}
     >
       <View>{isLoaded ? catalogGrid : null}</View>
@@ -1276,32 +1182,46 @@ function LibraryScreenContent() {
 
   return (
     <>
-      <ScrollViewMarker style={s.page} scrollEdgeEffects={NATIVE_SCROLL_EDGE_EFFECTS}>
-        <ScrollView
-          ref={primaryScrollRef}
-          contentInset={{ bottom: catalogScrollBottomInset }}
-          onScroll={handlePrimaryScroll}
-          scrollEventThrottle={100}
-          contentInsetAdjustmentBehavior="automatic"
-          style={s.primaryScroll}
-          contentContainerStyle={
-            isLoaded && (!isEmpty || showCatalog)
-              ? [s.gridContent, showCatalog ? s.catalogGridContent : null]
-              : s.emptyScrollContent
-          }
-          scrollEnabled={!isMyBooksEmptyState}
-          scrollToOverflowEnabled
-          alwaysBounceVertical={!isMyBooksEmptyState}
-          bounces={!isMyBooksEmptyState}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-        >
-          {listHeader}
-          {showCatalog ? libraryPager : renderLibraryGrid(gridItems)}
-          {!showCatalog ? emptyLibraryState : null}
-        </ScrollView>
-      </ScrollViewMarker>
+      <LibraryCatalogLifecycle
+        books={catalogBooks}
+        chunkCount={catalogChunkCount}
+        scrollY={catalogScrollY}
+        columnCount={columnCount}
+        gridItemWidth={gridItemWidth}
+        gridGap={gridGap}
+        viewportHeight={layout.height}
+        enabled={catalogCoverLoadingEnabled}
+      />
+      <View style={s.page} {...swipePressGuard?.touchHandlers}>
+        <ScrollViewMarker style={s.page} scrollEdgeEffects={NATIVE_SCROLL_EDGE_EFFECTS}>
+          <ScrollView
+            ref={primaryScrollRef}
+            {...swipePressGuard?.scrollHandlers}
+            {...swipePressGuard?.touchHandlers}
+            contentInset={{ bottom: catalogScrollBottomInset }}
+            onScroll={handlePrimaryScroll}
+            scrollEventThrottle={100}
+            contentInsetAdjustmentBehavior="automatic"
+            style={s.primaryScroll}
+            contentContainerStyle={
+              isLoaded && (!isEmpty || showCatalog)
+                ? [s.gridContent, showCatalog ? s.catalogGridContent : null]
+                : s.emptyScrollContent
+            }
+            scrollEnabled={!isMyBooksEmptyState}
+            scrollToOverflowEnabled
+            alwaysBounceVertical={!isMyBooksEmptyState}
+            bounces={!isMyBooksEmptyState}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+          >
+            {listHeader}
+            {showCatalog ? libraryPager : renderLibraryGrid(gridItems)}
+            {!showCatalog ? emptyLibraryState : null}
+          </ScrollView>
+        </ScrollViewMarker>
+      </View>
 
       <Modal
         visible={!!groupNameModal}

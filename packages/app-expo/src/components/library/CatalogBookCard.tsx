@@ -1,13 +1,12 @@
-import { useSwipePressGuard } from "@/components/ui/swipe-press-guard";
 import { NativeButton } from "@/components/ui/NativeButton";
+import { useSwipePressGuard } from "@/components/ui/swipe-press-guard";
 import { generatedCoverTextTone } from "@/lib/book/cover-text-contrast";
+import { countRender } from "@/lib/diagnostics/interaction-performance";
 import { catalogCoverDisplayState } from "@/lib/narra/catalog-cover-state";
-import { useColors } from "@/styles/theme";
-import { useRef, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Image, StyleSheet, View } from "react-native";
+import { type GestureResponderEvent, Image, StyleSheet, View } from "react-native";
 import { CatalogBookSkeleton } from "./CatalogBookSkeleton";
-import { makeStyles } from "./book-card-styles";
 import { BookCoverTypography } from "./book-cover-typography";
 import { PerspectiveBook } from "./perspective-book";
 
@@ -23,7 +22,7 @@ interface CatalogBookCardProps {
   onRetryCover: () => void;
 }
 
-export function CatalogBookCard({
+export const CatalogBookCard = memo(function CatalogBookCard({
   title,
   author,
   coverUri,
@@ -34,12 +33,15 @@ export function CatalogBookCard({
   onPress,
   onRetryCover,
 }: CatalogBookCardProps) {
-  const colors = useColors();
-  const styles = makeStyles(colors, cardWidth);
+  countRender("catalog.card");
   const { t } = useTranslation();
   const swipePressGuard = useSwipePressGuard();
   const cardHeight = cardWidth * (41 / 28);
-
+  const cardSize = useMemo(
+    () => ({ width: cardWidth, height: cardHeight }),
+    [cardWidth, cardHeight],
+  );
+  const coverSource = useMemo(() => ({ uri: coverUri }), [coverUri]);
   const [decodedCoverUri, setDecodedCoverUri] = useState<string | null>(null);
   const [failedCoverUri, setFailedCoverUri] = useState<string | null>(null);
   const currentCoverUri = useRef(coverUri);
@@ -53,11 +55,31 @@ export function CatalogBookCard({
   });
   const isCoverReady = display === "image";
   const showImage = !!coverUri && failedCoverUri !== coverUri;
+  const handlePress = useCallback(
+    (event: GestureResponderEvent) => {
+      if (swipePressGuard?.canPress(event) === false) return;
+      onPress();
+    },
+    [swipePressGuard, onPress],
+  );
+  const handleLoad = useCallback(() => {
+    if (coverUri && currentCoverUri.current === coverUri) setDecodedCoverUri(coverUri);
+  }, [coverUri]);
+  const handleError = useCallback(() => {
+    if (coverUri && currentCoverUri.current === coverUri) setFailedCoverUri(coverUri);
+  }, [coverUri]);
+  const handleRetry = useCallback(
+    (event?: GestureResponderEvent) => {
+      if (swipePressGuard?.canPress(event) === false) return;
+      setDecodedCoverUri(null);
+      setFailedCoverUri(null);
+      onRetryCover();
+    },
+    [swipePressGuard, onRetryCover],
+  );
 
   return (
-    <View style={{ width: cardWidth, height: cardHeight }}>
-      {/* Until the actual image is decoded, show only the neutral skeleton.
-          No colored book, fade-out, or second placeholder between states. */}
+    <View style={cardSize}>
       {isCoverReady ? null : (
         <View pointerEvents="none" style={StyleSheet.absoluteFill}>
           <CatalogBookSkeleton cardWidth={cardWidth} />
@@ -67,48 +89,40 @@ export function CatalogBookCard({
         pointerEvents={isCoverReady ? "auto" : "none"}
         accessibilityElementsHidden={!isCoverReady}
         importantForAccessibility={isCoverReady ? "auto" : "no-hide-descendants"}
-        style={[
-          StyleSheet.absoluteFill,
-          {
-            opacity: isCoverReady ? 1 : 0,
-          },
-        ]}
+        style={[StyleSheet.absoluteFill, !isCoverReady && styles.hidden]}
       >
         <PerspectiveBook
           width={cardWidth}
           height={cardHeight}
+          coverEffects={isCoverReady}
+          showShadow={isCoverReady}
+          disabled={!isCoverReady}
           accessibilityLabel={title}
           accessibilityHint={
             isInLibrary
               ? t("notes.openBook", "Открыть книгу")
               : t("library.catalogAdd", "Добавить в библиотеку")
           }
-          onPress={() => {
-            if (swipePressGuard?.canPress() === false) return;
-            onPress();
-          }}
+          onPress={handlePress}
           cover={
             <View style={styles.coverCanvas}>
               {showImage ? (
                 <Image
                   key={coverUri}
-                  source={{ uri: coverUri }}
+                  source={coverSource}
                   style={styles.coverImage}
                   resizeMode="cover"
-                  onLoad={() => {
-                    if (coverUri && currentCoverUri.current === coverUri)
-                      setDecodedCoverUri(coverUri);
-                  }}
-                  onError={() => {
-                    if (coverUri && currentCoverUri.current === coverUri)
-                      setFailedCoverUri(coverUri);
-                  }}
+                  onLoad={handleLoad}
+                  onError={handleError}
                 />
               ) : null}
+              {/* Keep contrast preparation and the Image mounted, but create
+                  no native text or surface effects behind the skeleton. */}
               <BookCoverTypography
                 title={title}
                 author={author}
                 width={cardWidth}
+                showText={isCoverReady}
                 textTone={showImage ? generatedCoverTextTone({ title, author }) : "light"}
                 coverUri={showImage ? coverUri : undefined}
               />
@@ -117,19 +131,30 @@ export function CatalogBookCard({
         />
       </View>
       {display === "error" ? (
-        <View style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center" }]}>
+        <View style={styles.retry}>
           <NativeButton
             label={t("common.retry", "Повторить")}
             accessibilityLabel={`${t("common.retry", "Повторить")}: ${title}`}
-            onPress={() => {
-              if (swipePressGuard?.canPress() === false) return;
-              setDecodedCoverUri(null);
-              setFailedCoverUri(null);
-              onRetryCover();
-            }}
+            onPress={handleRetry}
           />
         </View>
       ) : null}
     </View>
   );
-}
+});
+
+const styles = StyleSheet.create({
+  hidden: { opacity: 0 },
+  coverCanvas: {
+    width: "100%",
+    height: "100%",
+    position: "relative",
+    isolation: "isolate",
+  },
+  coverImage: { width: "100%", height: "100%" },
+  retry: {
+    ...StyleSheet.absoluteFill,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+});

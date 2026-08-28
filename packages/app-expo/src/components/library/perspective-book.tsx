@@ -1,7 +1,8 @@
+import { countRender } from "@/lib/diagnostics/interaction-performance";
 import { radius } from "@/styles/theme";
 import { LinearGradient } from "expo-linear-gradient";
-import type { ReactNode } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { type ReactNode, memo, useMemo } from "react";
+import { type GestureResponderEvent, Pressable, StyleSheet, View } from "react-native";
 import { GestureDetector } from "react-native-gesture-handler";
 import Animated from "react-native-reanimated";
 import { useCoverPress } from "./cover-press";
@@ -11,25 +12,30 @@ interface PerspectiveBookProps {
   height: number;
   cover: ReactNode;
   coverEffects?: boolean;
+  showShadow?: boolean;
   footer?: ReactNode;
-  onPress: () => void;
+  onPress: (event: GestureResponderEvent) => void;
   disabled?: boolean;
   accessibilityLabel: string;
   accessibilityHint?: string;
 }
 
-export function PerspectiveBook({
+export const PerspectiveBook = memo(function PerspectiveBook({
   width,
   height,
   cover,
   coverEffects = true,
+  showShadow = true,
   footer,
   onPress,
   disabled = false,
   accessibilityLabel,
   accessibilityHint,
 }: PerspectiveBookProps) {
+  countRender("catalog.perspective");
   const { pressStyle, gesture } = useCoverPress(disabled);
+  const size = useMemo(() => ({ width, height }), [width, height]);
+  const pressableSize = useMemo(() => ({ width }), [width]);
 
   return (
     <GestureDetector gesture={gesture}>
@@ -41,73 +47,89 @@ export function PerspectiveBook({
         onPress={onPress}
         // Небольшой сдвиг пальца не должен отменять нажатие.
         pressRetentionOffset={16}
-        style={[{ width }, disabled && styles.disabled]}
+        style={[pressableSize, disabled && styles.disabled]}
       >
-        <Animated.View style={[pressStyle, styles.book, { width, height }]}>
-          <View
-            style={[styles.cover, !coverEffects && styles.coverWithoutEffects, { width, height }]}
-          >
+        <Animated.View style={[pressStyle, styles.book, showShadow && styles.bookShadow, size]}>
+          <View style={[styles.cover, !coverEffects && styles.coverWithoutEffects, size]}>
             {cover}
-
-            {coverEffects ? (
-              <>
-                <LinearGradient
-                  colors={[
-                    "rgba(255,255,255,0)",
-                    "rgba(255,255,255,0)",
-                    "rgba(255,255,255,0.25)",
-                    "rgba(255,255,255,0)",
-                    "rgba(255,255,255,0)",
-                    "rgba(255,255,255,0.22)",
-                    "rgba(255,255,255,0)",
-                  ]}
-                  locations={[0, 0.12, 0.2925, 0.505, 0.7525, 0.91, 1]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  pointerEvents="none"
-                  style={styles.spine}
-                />
-                <LinearGradient
-                  colors={[
-                    "rgba(0,0,0,0.03)",
-                    "rgba(0,0,0,0.10)",
-                    "rgba(0,0,0,0)",
-                    "rgba(0,0,0,0.02)",
-                    "rgba(0,0,0,0.20)",
-                    "rgba(0,0,0,0.50)",
-                    "rgba(0,0,0,0.15)",
-                    "rgba(0,0,0,0)",
-                  ]}
-                  locations={[0, 0.12, 0.3, 0.5, 0.735, 0.7525, 0.8525, 1]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  pointerEvents="none"
-                  style={styles.spine}
-                />
-                <LinearGradient
-                  colors={["rgba(255,255,255,0.13)", "rgba(255,255,255,0)", "rgba(0,0,0,0.18)"]}
-                  locations={[0, 0.52, 1]}
-                  pointerEvents="none"
-                  style={StyleSheet.absoluteFill}
-                />
-                <View pointerEvents="none" style={styles.coverFinish} />
-              </>
-            ) : null}
+            {coverEffects ? <BookSurfaceEffects /> : null}
           </View>
         </Animated.View>
         {footer}
       </Pressable>
     </GestureDetector>
   );
-}
+});
+
+const SPINE_HIGHLIGHT_COLORS = [
+  "rgba(255,255,255,0)",
+  "rgba(255,255,255,0)",
+  "rgba(255,255,255,0.25)",
+  "rgba(255,255,255,0)",
+  "rgba(255,255,255,0)",
+  "rgba(255,255,255,0.22)",
+  "rgba(255,255,255,0)",
+] as const;
+const SPINE_HIGHLIGHT_LOCATIONS = [0, 0.12, 0.2925, 0.505, 0.7525, 0.91, 1] as const;
+const SPINE_SHADE_COLORS = [
+  "rgba(0,0,0,0.03)",
+  "rgba(0,0,0,0.10)",
+  "rgba(0,0,0,0)",
+  "rgba(0,0,0,0.02)",
+  "rgba(0,0,0,0.20)",
+  "rgba(0,0,0,0.50)",
+  "rgba(0,0,0,0.15)",
+  "rgba(0,0,0,0)",
+] as const;
+const SPINE_SHADE_LOCATIONS = [0, 0.12, 0.3, 0.5, 0.735, 0.7525, 0.8525, 1] as const;
+const COVER_SHADE_COLORS = [
+  "rgba(255,255,255,0.13)",
+  "rgba(255,255,255,0)",
+  "rgba(0,0,0,0.18)",
+] as const;
+const COVER_SHADE_LOCATIONS = [0, 0.52, 1] as const;
+const HORIZONTAL_START = { x: 0, y: 0 };
+const HORIZONTAL_END = { x: 1, y: 0 };
+
+// This surface is identical on every card. Stable props and a separate memo
+// boundary keep cover/status updates from resubmitting all gradient stops.
+const BookSurfaceEffects = memo(function BookSurfaceEffects() {
+  return (
+    <>
+      <LinearGradient
+        colors={SPINE_HIGHLIGHT_COLORS}
+        locations={SPINE_HIGHLIGHT_LOCATIONS}
+        start={HORIZONTAL_START}
+        end={HORIZONTAL_END}
+        pointerEvents="none"
+        style={styles.spine}
+      />
+      <LinearGradient
+        colors={SPINE_SHADE_COLORS}
+        locations={SPINE_SHADE_LOCATIONS}
+        start={HORIZONTAL_START}
+        end={HORIZONTAL_END}
+        pointerEvents="none"
+        style={styles.spine}
+      />
+      <LinearGradient
+        colors={COVER_SHADE_COLORS}
+        locations={COVER_SHADE_LOCATIONS}
+        pointerEvents="none"
+        style={StyleSheet.absoluteFill}
+      />
+      <View pointerEvents="none" style={styles.coverFinish} />
+    </>
+  );
+});
 
 const styles = StyleSheet.create({
   book: {
     position: "relative",
     borderRadius: radius.sm,
     borderCurve: "continuous",
-    boxShadow: "0 2px 4px rgba(0,0,0,0.20), 0 11px 22px rgba(0,0,0,0.22)",
   },
+  bookShadow: { boxShadow: "0 2px 4px rgba(0,0,0,0.20), 0 11px 22px rgba(0,0,0,0.22)" },
   cover: {
     overflow: "hidden",
     position: "relative",

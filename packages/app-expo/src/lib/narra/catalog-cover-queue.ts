@@ -57,6 +57,7 @@ export class CatalogCoverQueue {
   private pending: QueueEntry[] = [];
   private disposed = false;
   private paused = false;
+  private desired = new Map<string, CachedBackendCatalogBook>();
 
   constructor(options: CatalogCoverQueueOptions) {
     this.concurrency = Math.max(1, Math.floor(options.concurrency));
@@ -72,6 +73,7 @@ export class CatalogCoverQueue {
   /** Keep current books ahead of prefetch; drop work queued for abandoned pages. */
   prioritize(visible: CachedBackendCatalogBook[], nearby: CachedBackendCatalogBook[]): void {
     const ordered = [...visible, ...nearby];
+    this.desired = new Map(ordered.map((book) => [catalogCoverIdentity(book), book]));
     const rank = new Map(
       ordered.map((book, index) => [catalogCoverIdentity(book), index] as const).reverse(),
     );
@@ -82,10 +84,15 @@ export class CatalogCoverQueue {
       entry.resolve(undefined);
       return false;
     });
+    for (const [identity, controller] of this.active) {
+      if (!rank.has(identity)) controller.abort();
+    }
     this.paused = true;
     this.enqueue(ordered);
     this.pending.sort(
-      (a, b) => rank.get(catalogCoverIdentity(a.book))! - rank.get(catalogCoverIdentity(b.book))!,
+      (a, b) =>
+        (rank.get(catalogCoverIdentity(a.book)) ?? ordered.length) -
+        (rank.get(catalogCoverIdentity(b.book)) ?? ordered.length),
     );
     this.paused = false;
     this.pump();
@@ -119,12 +126,17 @@ export class CatalogCoverQueue {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.desired.clear();
     for (const entry of this.pending) {
       this.entries.delete(catalogCoverIdentity(entry.book));
       entry.resolve(undefined);
     }
     this.pending = [];
     for (const controller of this.active.values()) controller.abort();
+  }
+
+  getDiagnostics(): { active: number; pending: number; entries: number } {
+    return { active: this.active.size, pending: this.pending.length, entries: this.entries.size };
   }
 
   private pump(): void {
@@ -141,14 +153,18 @@ export class CatalogCoverQueue {
     const { catalogKey } = entry.book;
     try {
       const coverUri = await this.loadCover(entry.book, controller.signal);
-      if (!this.disposed && coverUri) this.onLoaded(catalogKey, coverUri, entry.book);
-      entry.resolve(coverUri);
+      if (!this.disposed && !controller.signal.aborted && coverUri)
+        this.onLoaded(catalogKey, coverUri, entry.book);
+      entry.resolve(controller.signal.aborted || this.disposed ? undefined : coverUri);
     } catch (error) {
       if (!controller.signal.aborted) this.onError?.(catalogKey, error, entry.book);
       entry.resolve(undefined);
     } finally {
       this.active.delete(catalogCoverIdentity(entry.book));
-      this.entries.delete(catalogCoverIdentity(entry.book));
+      const identity = catalogCoverIdentity(entry.book);
+      this.entries.delete(identity);
+      const wantedAgain = this.desired.get(identity);
+      if (controller.signal.aborted && wantedAgain && !this.disposed) this.enqueue([wantedAgain]);
       this.pump();
     }
   }

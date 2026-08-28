@@ -142,12 +142,12 @@ export const GroupCard = memo(function GroupCard({
     <TouchableOpacity
       style={bookStyles.container}
       activeOpacity={0.76}
-      onPress={() => {
-        if (swipePressGuard?.canPress() === false) return;
+      onPress={(event) => {
+        if (swipePressGuard?.canPress(event) === false) return;
         onOpen(group.id);
       }}
-      onLongPress={() => {
-        if (swipePressGuard?.canPress() === false) return;
+      onLongPress={(event) => {
+        if (swipePressGuard?.canPress(event) === false) return;
         onLongPress?.(group);
       }}
       delayLongPress={450}
@@ -177,7 +177,7 @@ export const GroupCard = memo(function GroupCard({
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               onPress={(event) => {
                 event.stopPropagation();
-                if (swipePressGuard?.canPress() === false) return;
+                if (swipePressGuard?.canPress(event) === false) return;
                 onLongPress(group);
               }}
             >

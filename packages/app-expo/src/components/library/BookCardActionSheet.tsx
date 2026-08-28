@@ -3,6 +3,7 @@ import { useSwipePressGuard } from "@/components/ui/swipe-press-guard";
 import type { Book } from "@readany/core/types";
 import type { ReactElement } from "react";
 import { useTranslation } from "react-i18next";
+import type { GestureResponderEvent } from "react-native";
 import { BookCardContextMenu } from "./BookCardContextMenu";
 
 interface BookCardActionSheetProps {
@@ -39,8 +40,8 @@ export function BookCardActionSheet({
     <BookCardContextMenu
       accessibilityLabel={t("common.actions", "Действия с книгой")}
       items={items}
-      onPress={() => {
-        if (swipePressGuard?.canPress() === false) return;
+      onPress={(event?: GestureResponderEvent) => {
+        if (swipePressGuard?.canPress(event) === false) return;
         onOpen(book);
       }}
     >

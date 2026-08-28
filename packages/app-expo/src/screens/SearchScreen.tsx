@@ -1,67 +1,71 @@
-import { CharacterChatList } from "@/components/chats/character-chat-list";
+import { CharacterChatListRow } from "@/components/chats/character-chat-list";
 import { CatalogBookSkeleton } from "@/components/library/CatalogBookSkeleton";
 import { CatalogShelfRow } from "@/components/library/catalog-shelf";
 import { NativeButton } from "@/components/ui/NativeButton";
 import { Text } from "@/components/ui/Typography";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { SwipePressGuardProvider, useSwipePressGuard } from "@/components/ui/swipe-press-guard";
+import { useBackendCatalog, useBackendCatalogActivity } from "@/hooks/use-backend-catalog";
+import { useCatalogCover } from "@/hooks/use-catalog-cover";
+import { useCatalogCoverWindow } from "@/hooks/use-catalog-cover-window";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { loadingCoverColorForTitleAuthor } from "@/lib/book/loading-cover-placeholder";
+import { countRender, markInteraction } from "@/lib/diagnostics/interaction-performance";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
-import type { BackendCatalogGenre } from "@/lib/narra/backend-catalog-api";
-import {
-  type CachedBackendCatalog,
-  type CachedBackendCatalogBook,
-  loadCachedBackendCatalog,
-  loadMoreCachedBackendCatalog,
-  materializeBackendCatalogCover,
-  refreshBackendCatalog,
-} from "@/lib/narra/backend-catalog-cache";
+import type { CachedBackendCatalogBook } from "@/lib/narra/backend-catalog-cache";
 import { findReadableLibraryBookForCatalogBook } from "@/lib/narra/backend-catalog-library";
-import { isBackendDownloadAbort } from "@/lib/narra/backend-file-download";
-import { CatalogCoverQueue } from "@/lib/narra/catalog-cover-queue";
+import { retryCatalogCover } from "@/lib/narra/catalog-cover-coordinator";
+import { getCatalogBookWithCover } from "@/lib/narra/catalog-cover-store";
 import {
-  applyCatalogCoverResult,
-  retainCatalogCovers,
-  retryCatalogCoverDownload,
-} from "@/lib/narra/catalog-cover-state";
+  type BookSearchResult,
+  buildBookSearchIndex,
+  normalizeBookQuery,
+  searchBookIndex,
+  searchResultWindow,
+} from "@/lib/narra/catalog-search-results";
 import { catalogShelfLayout } from "@/lib/narra/catalog-shelf-layout";
 import {
   CATALOG_SHELF_SKELETON_KEYS,
   type CatalogShelf,
   buildCatalogShelves,
   catalogCoverWindow,
-  completeCatalogSnapshot,
 } from "@/lib/narra/catalog-shelves";
+import { NativeSearchQuery } from "@/lib/narra/native-search-query";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useResolvedCovers } from "@/screens/notes/useResolvedCovers";
 import { useLibraryStore } from "@/stores";
-import { type ThemeColors, fontSize, radius, spacing, useTheme } from "@/styles/theme";
+import { type ThemeColors, radius, spacing, useTheme } from "@/styles/theme";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { Book } from "@readany/core/types";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import {
   FlatList,
+  type GestureResponderEvent,
   Image,
   Keyboard,
   type KeyboardEvent,
   type ListRenderItemInfo,
-  ScrollView,
   StyleSheet,
   View,
   type ViewToken,
 } from "react-native";
+import type { SearchBarProps } from "react-native-screens";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+const EMPTY_SHELVES: CatalogShelf[] = [];
+const INITIAL_SKELETON_KEYS = ["search-skeleton-1", "search-skeleton-2"];
 
-const FILTER_MINIMUM_BOOKS = 8;
-const INITIAL_SKELETON_COUNT = 2;
-const INITIAL_SKELETON_KEYS = Array.from(
-  { length: INITIAL_SKELETON_COUNT },
-  (_, index) => `search-catalog-skeleton-${index}`,
-);
 export function SearchScreen() {
   return (
     <SwipePressGuardProvider>
@@ -70,398 +74,296 @@ export function SearchScreen() {
   );
 }
 
-function SearchContent() {
+const SearchContent = memo(function SearchContent() {
+  countRender("search.screen");
   const { colors } = useTheme();
-  const swipeGuard = useSwipePressGuard();
   const layout = useResponsiveLayout();
-  const shelfColumns = layout.isTabletLandscape ? 5 : layout.isTablet ? 4 : 2;
-  const { cardWidth: shelfCardWidth } = catalogShelfLayout(
-    layout.width,
-    layout.centeredContentWidth,
-    shelfColumns,
-  );
+  const { t, i18n } = useTranslation();
+  const navigation = useNavigation<Nav>();
+  const books = useLibraryStore((state) => state.books);
+  const snapshot = useBackendCatalog(false);
+  const { catalog } = snapshot;
+  const guard = useSwipePressGuard();
+  const draft = useRef(new NativeSearchQuery()).current;
+  const searchBarRef = useRef<NonNullable<SearchBarProps["ref"]>["current"]>(null);
+  const [query, setQuery] = useState("");
+  const normalized = normalizeBookQuery(query);
+  const deferredQuery = useDeferredValue(normalized);
+  const searching = normalized.length > 0;
+  const navigating = useRef(false);
+  const opening = useRef(false);
   const styles = useMemo(
     () =>
       makeStyles(colors, {
-        contentWidth: layout.centeredContentWidth,
+        centeredContentWidth: layout.centeredContentWidth,
         horizontalPadding: layout.horizontalPadding,
       }),
     [colors, layout.centeredContentWidth, layout.horizontalPadding],
   );
-  const { t, i18n } = useTranslation();
-  const navigation = useNavigation<Nav>();
-  const isFocused = useIsFocused();
-  const books = useLibraryStore((state) => state.books);
-  const [query, setQuery] = useState("");
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const [catalogBooks, setCatalogBooks] = useState<CachedBackendCatalogBook[]>([]);
-  const [catalogNextCursor, setCatalogNextCursor] = useState<string | null>(null);
-  const [catalogGenres, setCatalogGenres] = useState<BackendCatalogGenre[]>([]);
-  const [catalogGenreVersion, setCatalogGenreVersion] = useState<string | null>(null);
-  const [isCatalogLoading, setIsCatalogLoading] = useState(true);
-  const [isCatalogLoadingMore, setIsCatalogLoadingMore] = useState(false);
-  const [catalogError, setCatalogError] = useState<string | null>(null);
-  const [catalogLoadMoreError, setCatalogLoadMoreError] = useState<string | null>(null);
-  const [visibleCatalogKeys, setVisibleCatalogKeys] = useState<Set<string>>(new Set());
-  const catalogLoadMoreLockRef = useRef(false);
-  const catalogCoverQueueRef = useRef<CatalogCoverQueue | null>(null);
-  const catalogViewabilityConfig = useRef({ itemVisiblePercentThreshold: 1 }).current;
-  const [visibleShelfIds, setVisibleShelfIds] = useState<Set<string>>(new Set());
-  const shelfVisibleBooksRef = useRef(new Map<string, string[]>());
-  const shelfBookPositionsRef = useRef(new Map<string, number>());
-  const catalogRequestRef = useRef(0);
-
-  useEffect(() => {
-    const updateKeyboardHeight = (event: KeyboardEvent) => {
-      setKeyboardHeight(event.endCoordinates.height);
-    };
-    const showEvent = process.env.EXPO_OS === "ios" ? "keyboardWillChangeFrame" : "keyboardDidShow";
-    const hideEvent = process.env.EXPO_OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-    const showSubscription = Keyboard.addListener(showEvent, updateKeyboardHeight);
-    const hideSubscription = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0));
-
-    return () => {
-      showSubscription.remove();
-      hideSubscription.remove();
-    };
-  }, []);
+  const columns = layout.isTabletLandscape ? 5 : layout.isTablet ? 4 : 2;
+  const shelves = useMemo(() => {
+    countRender("catalog.group");
+    return buildCatalogShelves(
+      catalog.books,
+      catalog.genres,
+      i18n.resolvedLanguage ?? "ru",
+      t("library.catalogUncategorized", "Без категории"),
+    );
+  }, [catalog.books, catalog.genres, i18n.resolvedLanguage, t]);
+  const libraryKeys = useMemo(
+    () =>
+      new Set(
+        catalog.books.flatMap((book) =>
+          findReadableLibraryBookForCatalogBook(book, books) ? [book.catalogKey] : [],
+        ),
+      ),
+    [books, catalog.books],
+  );
 
   useLayoutEffect(() => {
     navigation.setOptions({
       headerSearchBarOptions: {
+        ref: searchBarRef,
         placeholder: t("search.booksPlaceholder", "Книги и авторы"),
-        onChangeText: ({ nativeEvent }) => setQuery(nativeEvent.text),
-        onCancelButtonPress: () => setQuery(""),
+        onChangeText: ({ nativeEvent }) => {
+          const next = draft.change(nativeEvent.text);
+          if (next.restore) searchBarRef.current?.setText(next.query);
+          else {
+            markInteraction("search.input");
+            setQuery(next.query);
+          }
+        },
+        onFocus: () => searchBarRef.current?.setText(draft.focus()),
+        onCancelButtonPress: () => {
+          draft.cancel();
+          searchBarRef.current?.blur();
+        },
       },
     });
-  }, [navigation, t]);
-
-  const applyBackendCatalog = useCallback((catalog: CachedBackendCatalog) => {
-    setCatalogBooks((current) => retainCatalogCovers(catalog.books, current));
-    setCatalogNextCursor(catalog.nextCursor);
-    setCatalogGenres(catalog.genres);
-    setCatalogGenreVersion(catalog.genreVersion);
-  }, []);
-
-  const loadBackendCatalog = useCallback(async () => {
-    const request = ++catalogRequestRef.current;
-    const isCurrent = () => catalogRequestRef.current === request;
-    setIsCatalogLoading(true);
-    setCatalogError(null);
-    setCatalogLoadMoreError(null);
-    const cachedCatalog = await loadCachedBackendCatalog();
-    if (!isCurrent()) return;
-    // Only a complete cache can safely expose genre shelves during refresh.
-    if (cachedCatalog.books.length > 0 && !cachedCatalog.nextCursor)
-      applyBackendCatalog(cachedCatalog);
-    let latestCatalog = cachedCatalog;
-    try {
-      latestCatalog = await refreshBackendCatalog();
-      const complete = await completeCatalogSnapshot(
-        latestCatalog,
-        async (current) => {
-          latestCatalog = await loadMoreCachedBackendCatalog(current);
-          return latestCatalog;
-        },
-        isCurrent,
-      );
-      if (complete) applyBackendCatalog(complete);
-    } catch (error) {
-      if (!isCurrent()) return;
-      console.warn("[Search catalog] Failed to refresh backend catalog:", error);
-      const fallback =
-        cachedCatalog.books.length > 0 && !cachedCatalog.nextCursor ? cachedCatalog : latestCatalog;
-      if (fallback.books.length > 0) {
-        applyBackendCatalog(fallback);
-        if (fallback.nextCursor)
-          setCatalogLoadMoreError(
-            t("library.catalogLoadMoreError", "Не удалось загрузить следующие книги"),
-          );
-      } else {
-        setCatalogError(t("library.catalogLoadError", "Не удалось загрузить каталог"));
-      }
-    } finally {
-      if (isCurrent()) setIsCatalogLoading(false);
-    }
-  }, [applyBackendCatalog, t]);
-
-  useEffect(() => {
-    void loadBackendCatalog();
-    return () => {
-      catalogRequestRef.current += 1;
-    };
-  }, [loadBackendCatalog]);
-
-  const loadMoreBackendCatalogPage = useCallback(async () => {
-    if (!catalogNextCursor || catalogLoadMoreLockRef.current || isCatalogLoading || !isFocused)
-      return;
-    catalogLoadMoreLockRef.current = true;
-    setIsCatalogLoadingMore(true);
-    setCatalogLoadMoreError(null);
-    const request = catalogRequestRef.current;
-    try {
-      const complete = await completeCatalogSnapshot(
-        {
-          books: catalogBooks,
-          nextCursor: catalogNextCursor,
-          genres: catalogGenres,
-          genreVersion: catalogGenreVersion,
-        },
-        loadMoreCachedBackendCatalog,
-        () => catalogRequestRef.current === request,
-      );
-      if (complete) applyBackendCatalog(complete);
-    } catch (error) {
-      console.warn("[Search catalog] Failed to load the next catalog page:", error);
-      setCatalogLoadMoreError(
-        t("library.catalogLoadMoreError", "Не удалось загрузить следующие книги"),
-      );
-    } finally {
-      catalogLoadMoreLockRef.current = false;
-      setIsCatalogLoadingMore(false);
-    }
-  }, [
-    applyBackendCatalog,
-    catalogBooks,
-    catalogGenreVersion,
-    catalogGenres,
-    catalogNextCursor,
-    isCatalogLoading,
-    isFocused,
-    t,
-  ]);
-
-  const shelves = useMemo(
+  }, [draft, navigation, t]);
+  useEffect(
     () =>
-      buildCatalogShelves(
-        catalogBooks,
-        catalogGenres,
-        i18n.resolvedLanguage ?? "ru",
-        t("library.catalogUncategorized", "Без категории"),
-      ),
-    [catalogBooks, catalogGenres, i18n.resolvedLanguage, t],
+      navigation.addListener("focus", () => {
+        if (!opening.current) navigating.current = false;
+      }),
+    [navigation],
   );
 
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  const results = useMemo(() => {
-    if (!normalizedQuery) return [];
-    return books.filter((book) => {
-      if (book.deletedAt) return false;
-      return [book.meta.title, book.meta.author]
-        .filter(Boolean)
-        .some((value) => value?.toLocaleLowerCase().includes(normalizedQuery));
-    });
-  }, [books, normalizedQuery]);
-  const resultCoverItems = useMemo(
-    () => results.map((book) => ({ bookId: book.id, coverUrl: book.meta.coverUrl ?? null })),
-    [results],
-  );
-  const resultCovers = useResolvedCovers(resultCoverItems);
-
-  const catalogBooksInLibrary = useMemo(() => {
-    const result = new Map<string, Book>();
-    for (const catalogBook of catalogBooks) {
-      const existingBook = findReadableLibraryBookForCatalogBook(catalogBook, books);
-      if (existingBook) result.set(catalogBook.catalogKey, existingBook);
-    }
-    return result;
-  }, [books, catalogBooks]);
-  const catalogSearchResults = useMemo(() => {
-    if (!normalizedQuery) return [];
-    return catalogBooks.filter((book) =>
-      [book.title, book.author].some((value) =>
-        value.toLocaleLowerCase().includes(normalizedQuery),
-      ),
-    );
-  }, [catalogBooks, normalizedQuery]);
-
-  const rememberCatalogCover = useCallback(
-    (_catalogKey: string, coverUri: string, requested: CachedBackendCatalogBook) => {
-      setCatalogBooks((current) => applyCatalogCoverResult(current, requested, coverUri));
+  const openCategory = useCallback(
+    (shelf: CatalogShelf) => {
+      if (navigating.current || !navigation.isFocused()) return;
+      navigating.current = true;
+      searchBarRef.current?.blur();
+      markInteraction("category.open");
+      navigation.navigate("CatalogCategory", { genreId: shelf.id, title: shelf.title });
     },
-    [],
+    [navigation],
   );
-
-  const retryCatalogCover = useCallback(
-    (requested: CachedBackendCatalogBook) => {
-      if (!requested.cover) {
-        void loadBackendCatalog();
-        return;
+  const openCatalogBook = useCallback(
+    async (book: CachedBackendCatalogBook) => {
+      if (navigating.current || !navigation.isFocused()) return;
+      navigating.current = true;
+      opening.current = true;
+      searchBarRef.current?.blur();
+      try {
+        const existing = findReadableLibraryBookForCatalogBook(book, books);
+        if (existing) {
+          if (!(await openMobileBook({ bookId: existing.id, navigation, t })))
+            navigating.current = false;
+        } else
+          navigation.navigate("Reader", { bookId: "", catalogBook: getCatalogBookWithCover(book) });
+      } catch (error) {
+        navigating.current = false;
+        throw error;
+      } finally {
+        opening.current = false;
       }
-      setCatalogBooks((current) => retryCatalogCoverDownload(current, requested));
     },
-    [loadBackendCatalog],
+    [books, navigation, t],
+  );
+  const openLibraryBook = useCallback(
+    async (book: Book) => {
+      if (navigating.current || !navigation.isFocused()) return;
+      navigating.current = true;
+      opening.current = true;
+      searchBarRef.current?.blur();
+      try {
+        if (!(await openMobileBook({ bookId: book.id, navigation, t }))) navigating.current = false;
+      } catch (error) {
+        navigating.current = false;
+        throw error;
+      } finally {
+        opening.current = false;
+      }
+    },
+    [navigation, t],
+  );
+  const retryCover = useCallback(
+    (book: CachedBackendCatalogBook) => {
+      if (!book.cover) void snapshot.refresh();
+      else retryCatalogCover(book);
+    },
+    [snapshot.refresh],
   );
 
+  return (
+    <View style={styles.container} {...guard?.touchHandlers}>
+      <SearchLifecycle />
+      <View
+        style={searching ? styles.hidden : styles.container}
+        accessibilityElementsHidden={searching}
+        importantForAccessibility={searching ? "no-hide-descendants" : "auto"}
+      >
+        <DiscoveryList
+          shelves={snapshot.hasCompleteCatalog || snapshot.error ? shelves : EMPTY_SHELVES}
+          columns={columns}
+          libraryKeys={libraryKeys}
+          onOpen={openCatalogBook}
+          onOpenCategory={openCategory}
+          onRetryCover={retryCover}
+          enabled={!searching}
+          snapshot={snapshot}
+        />
+      </View>
+      {searching ? (
+        <SearchResults
+          query={deferredQuery}
+          books={books}
+          catalogBooks={catalog.books}
+          onOpenLibrary={openLibraryBook}
+          onOpenCatalog={openCatalogBook}
+        />
+      ) : null}
+    </View>
+  );
+});
+
+function SearchLifecycle() {
+  const focused = useIsFocused();
+  const guard = useSwipePressGuard();
+  useBackendCatalogActivity(focused);
   useEffect(() => {
-    if (!isFocused) {
-      catalogCoverQueueRef.current?.dispose();
-      catalogCoverQueueRef.current = null;
-      return;
-    }
+    guard?.setEnabled(focused);
+    markInteraction(focused ? "search.focus" : "search.blur");
+  }, [focused, guard]);
+  return null;
+}
 
-    setCatalogBooks((current) =>
-      current.map((book) => (book.coverLoadFailed ? { ...book, coverLoadFailed: false } : book)),
-    );
-    const queue = new CatalogCoverQueue({
-      concurrency: 3,
-      load: materializeBackendCatalogCover,
-      onLoaded: rememberCatalogCover,
-      onError: (catalogKey, error, requested) => {
-        if (!isBackendDownloadAbort(error)) {
-          setCatalogBooks((current) => applyCatalogCoverResult(current, requested));
-          console.warn(`[Search catalog] Failed to load visible cover ${catalogKey}:`, error);
-        }
-      },
-    });
-    catalogCoverQueueRef.current = queue;
-    return () => {
-      if (catalogCoverQueueRef.current === queue) catalogCoverQueueRef.current = null;
-      queue.dispose();
-    };
-  }, [isFocused, rememberCatalogCover]);
+function CoverLifecycle({
+  visible,
+  nearby,
+  enabled = true,
+}: { visible: CachedBackendCatalogBook[]; nearby: CachedBackendCatalogBook[]; enabled?: boolean }) {
+  const focused = useIsFocused();
+  useCatalogCoverWindow({ visible, nearby, active: focused && enabled });
+  return null;
+}
 
-  useEffect(() => {
-    const queue = catalogCoverQueueRef.current;
-    if (!isFocused || !queue) return;
-    if (normalizedQuery) {
-      queue.prioritize(catalogSearchResults, []);
-      return;
-    }
-    const { visible, nearby } = catalogCoverWindow(
-      shelves,
-      visibleShelfIds,
-      shelfBookPositionsRef.current,
-      shelfColumns,
-    );
-    queue.prioritize(visible, nearby);
-  }, [
-    catalogSearchResults,
-    normalizedQuery,
-    shelves,
-    visibleShelfIds,
-    visibleCatalogKeys,
-    shelfColumns,
-    isFocused,
-  ]);
-
-  useEffect(() => {
-    if (
-      normalizedQuery &&
-      catalogSearchResults.length < FILTER_MINIMUM_BOOKS &&
-      catalogNextCursor &&
-      !isCatalogLoading &&
-      !isCatalogLoadingMore &&
-      !catalogLoadMoreError
-    ) {
-      void loadMoreBackendCatalogPage();
-    }
-  }, [
-    catalogLoadMoreError,
-    catalogNextCursor,
-    catalogSearchResults.length,
-    isCatalogLoading,
-    isCatalogLoadingMore,
-    loadMoreBackendCatalogPage,
-    normalizedQuery,
-  ]);
-
-  const handleCatalogViewableItemsChanged = useCallback(
+type DiscoveryProps = {
+  shelves: CatalogShelf[];
+  columns: number;
+  libraryKeys: ReadonlySet<string>;
+  onOpen: (book: CachedBackendCatalogBook) => void;
+  onOpenCategory: (shelf: CatalogShelf) => void;
+  onRetryCover: (book: CachedBackendCatalogBook) => void;
+  enabled: boolean;
+  snapshot: ReturnType<typeof useBackendCatalog>;
+};
+const DiscoveryList = memo(function DiscoveryList({
+  shelves,
+  columns,
+  libraryKeys,
+  onOpen,
+  onOpenCategory,
+  onRetryCover,
+  enabled,
+  snapshot,
+}: DiscoveryProps) {
+  const { colors } = useTheme();
+  const { t } = useTranslation();
+  const layout = useResponsiveLayout();
+  const guard = useSwipePressGuard();
+  const styles = useMemo(
+    () =>
+      makeStyles(colors, {
+        centeredContentWidth: layout.centeredContentWidth,
+        horizontalPadding: layout.horizontalPadding,
+      }),
+    [colors, layout.centeredContentWidth, layout.horizontalPadding],
+  );
+  const [visibleShelfIds, setVisibleShelfIds] = useState<ReadonlySet<string>>(new Set());
+  const [positions, setPositions] = useState<ReadonlyMap<string, number>>(new Map());
+  const viewability = useRef({ itemVisiblePercentThreshold: 1 }).current;
+  const onViewable = useCallback(
     ({ viewableItems }: { viewableItems: ViewToken<CatalogShelf>[] }) => {
-      setVisibleShelfIds(new Set(viewableItems.map(({ item }) => item.id)));
+      const next = new Set(viewableItems.map(({ item }) => item.id));
+      setVisibleShelfIds((current) => (equalSets(current, next) ? current : next));
     },
     [],
   );
-
-  const rememberVisibleShelfBooks = useCallback((id: string, keys: string[]) => {
-    if (keys.length) shelfVisibleBooksRef.current.set(id, keys);
-    else shelfVisibleBooksRef.current.delete(id);
-    const next = new Set([...shelfVisibleBooksRef.current.values()].flat());
-    setVisibleCatalogKeys((current) =>
-      current.size === next.size && [...current].every((key) => next.has(key)) ? current : next,
+  const onPageChange = useCallback((id: string, index: number) => {
+    setPositions((current) =>
+      (current.get(id) ?? 0) === index ? current : new Map(current).set(id, index),
     );
   }, []);
-
-  const rememberShelfPage = useCallback((id: string, firstBookIndex: number) => {
-    shelfBookPositionsRef.current.set(id, firstBookIndex);
-  }, []);
-
-  const requestShelfPage = useCallback(() => {
-    void loadMoreBackendCatalogPage();
-  }, [loadMoreBackendCatalogPage]);
-
-  const libraryKeys = useMemo(() => new Set(catalogBooksInLibrary.keys()), [catalogBooksInLibrary]);
-
-  const handleCatalogOpen = useCallback(
-    async (catalogBook: CachedBackendCatalogBook) => {
-      const existingBook = catalogBooksInLibrary.get(catalogBook.catalogKey);
-      if (existingBook) {
-        await openMobileBook({ bookId: existingBook.id, navigation, t });
-        return;
-      }
-      navigation.navigate("Reader", { bookId: "", catalogBook });
-    },
-    [catalogBooksInLibrary, navigation, t],
+  const window = useMemo(
+    () => catalogCoverWindow(shelves, visibleShelfIds, positions, columns),
+    [shelves, visibleShelfIds, positions, columns],
   );
-
+  const { cardWidth } = catalogShelfLayout(layout.width, layout.centeredContentWidth, columns);
+  const loadMore = useCallback(() => {
+    void snapshot.retry();
+  }, [snapshot.retry]);
+  useEffect(() => {
+    if (!enabled) guard?.cancelSwipe();
+  }, [enabled, guard]);
   const renderShelf = useCallback(
     ({ item }: ListRenderItemInfo<CatalogShelf>) => (
       <CatalogShelfRow
-        key={`${item.id}:${layout.width}:${layout.centeredContentWidth}:${shelfColumns}`}
+        key={`${item.id}:${layout.width}:${layout.centeredContentWidth}:${columns}`}
         shelf={item}
         width={layout.centeredContentWidth}
         viewportWidth={layout.width}
-        columns={shelfColumns}
-        initialBookIndex={shelfBookPositionsRef.current.get(item.id) ?? 0}
-        isVisible={isFocused && visibleShelfIds.has(item.id)}
-        hasMore={!!catalogNextCursor}
-        isLoadingMore={isCatalogLoadingMore}
-        loadMoreError={catalogLoadMoreError}
+        columns={columns}
+        initialBookIndex={positions.get(item.id) ?? 0}
+        isVisible={enabled && visibleShelfIds.has(item.id)}
+        hasMore={!!snapshot.catalog.nextCursor}
+        isLoadingMore={snapshot.isLoading}
+        loadMoreError={
+          snapshot.catalog.nextCursor && snapshot.error
+            ? t("library.catalogLoadMoreError", "Не удалось загрузить следующие книги")
+            : null
+        }
         libraryKeys={libraryKeys}
-        onOpen={handleCatalogOpen}
-        onOpenCategory={(shelf) => {
-          Keyboard.dismiss();
-          navigation.navigate("CatalogCategory", {
-            genreId: shelf.id,
-            title: shelf.title,
-            catalog: {
-              books: catalogBooks,
-              nextCursor: catalogNextCursor,
-              genres: catalogGenres,
-              genreVersion: catalogGenreVersion,
-            },
-          });
-        }}
-        onRetryCover={retryCatalogCover}
-        onLoadMore={requestShelfPage}
-        onPageChange={rememberShelfPage}
-        onVisibleBooks={rememberVisibleShelfBooks}
+        onOpen={onOpen}
+        onOpenCategory={onOpenCategory}
+        onRetryCover={onRetryCover}
+        onLoadMore={loadMore}
+        onPageChange={onPageChange}
       />
     ),
     [
-      layout.width,
+      columns,
+      enabled,
       layout.centeredContentWidth,
-      shelfColumns,
-      isFocused,
-      visibleShelfIds,
-      catalogNextCursor,
-      isCatalogLoadingMore,
-      catalogLoadMoreError,
+      layout.width,
       libraryKeys,
-      handleCatalogOpen,
-      navigation,
-      catalogBooks,
-      catalogGenres,
-      catalogGenreVersion,
-      retryCatalogCover,
-      requestShelfPage,
-      rememberShelfPage,
-      rememberVisibleShelfBooks,
+      loadMore,
+      onOpen,
+      onOpenCategory,
+      onPageChange,
+      onRetryCover,
+      positions,
+      snapshot.catalog.nextCursor,
+      snapshot.error,
+      snapshot.isLoading,
+      t,
+      visibleShelfIds,
     ],
   );
-
-  if (!normalizedQuery) {
-    return (
+  return (
+    <>
+      <CoverLifecycle {...window} enabled={enabled} />
       <FlatList
         data={shelves}
         keyExtractor={(shelf) => shelf.id}
@@ -473,25 +375,20 @@ function SearchContent() {
         style={styles.container}
         contentContainerStyle={styles.catalogContent}
         initialNumToRender={3}
+        maxToRenderPerBatch={2}
         windowSize={5}
         removeClippedSubviews={false}
-        onScrollBeginDrag={() => swipeGuard?.beginSwipe()}
-        onScrollEndDrag={() => swipeGuard?.endSwipe()}
-        onMomentumScrollBegin={() => swipeGuard?.beginSwipe()}
-        onMomentumScrollEnd={() => swipeGuard?.endSwipe()}
-        onViewableItemsChanged={handleCatalogViewableItemsChanged}
-        viewabilityConfig={catalogViewabilityConfig}
-        onEndReached={() => {
-          if (!catalogLoadMoreError) void loadMoreBackendCatalogPage();
-        }}
-        onEndReachedThreshold={0.5}
+        {...guard?.touchHandlers}
+        {...guard?.scrollHandlers}
+        onViewableItemsChanged={onViewable}
+        viewabilityConfig={viewability}
         ListEmptyComponent={
-          isCatalogLoading ? (
+          snapshot.isLoading ? (
             <View style={styles.skeletonGrid}>
               {INITIAL_SKELETON_KEYS.map((key) => (
                 <View key={key} style={styles.catalogFooterSkeletons}>
-                  {CATALOG_SHELF_SKELETON_KEYS.slice(0, shelfColumns).map((columnKey) => (
-                    <CatalogBookSkeleton key={columnKey} cardWidth={shelfCardWidth} />
+                  {CATALOG_SHELF_SKELETON_KEYS.slice(0, columns).map((columnKey) => (
+                    <CatalogBookSkeleton key={columnKey} cardWidth={cardWidth} />
                   ))}
                 </View>
               ))}
@@ -499,13 +396,17 @@ function SearchContent() {
           ) : (
             <CenteredEmptyState
               variant="compact"
-              title={catalogError ?? t("library.catalogEmpty", "В каталоге пока нет книг")}
+              title={
+                snapshot.error
+                  ? t("library.catalogLoadError", "Не удалось загрузить каталог")
+                  : t("library.catalogEmpty", "В каталоге пока нет книг")
+              }
               style={styles.catalogStatus}
             >
-              {catalogError ? (
+              {snapshot.error ? (
                 <NativeButton
                   label={t("common.retry", "Повторить")}
-                  onPress={() => void loadBackendCatalog()}
+                  onPress={loadMore}
                   style={styles.catalogStatusButton}
                 />
               ) : null}
@@ -513,115 +414,233 @@ function SearchContent() {
           )
         }
         ListFooterComponent={
-          isCatalogLoadingMore ? (
-            <View style={styles.catalogFooterSkeletons}>
-              {CATALOG_SHELF_SKELETON_KEYS.slice(0, shelfColumns).map((columnKey) => (
-                <CatalogBookSkeleton key={columnKey} cardWidth={shelfCardWidth} />
-              ))}
-            </View>
-          ) : catalogNextCursor ? (
+          snapshot.error && shelves.length ? (
             <View style={styles.catalogLoadMoreStatus}>
-              {catalogLoadMoreError ? (
-                <Text style={styles.catalogLoadMoreText}>{catalogLoadMoreError}</Text>
-              ) : null}
-              <NativeButton
-                label={
-                  catalogLoadMoreError
-                    ? t("common.retry", "Повторить")
-                    : t("common.loadMore", "Загрузить ещё")
-                }
-                onPress={() => void loadMoreBackendCatalogPage()}
-                style={styles.catalogStatusButton}
-              />
+              <Text style={styles.catalogLoadMoreText}>
+                {t("library.catalogLoadMoreError", "Не удалось загрузить следующие книги")}
+              </Text>
+              <NativeButton label={t("common.retry", "Повторить")} onPress={loadMore} />
             </View>
           ) : null
         }
       />
-    );
-  }
-
-  const catalogOnlySearchResults = catalogSearchResults.filter((catalogBook) => {
-    const imported = catalogBooksInLibrary.get(catalogBook.catalogKey);
-    return !imported || !results.some((book) => book.id === imported.id);
-  });
-  const hasSearchResults = results.length > 0 || catalogOnlySearchResults.length > 0;
-
-  return (
-    <ScrollView
-      contentInsetAdjustmentBehavior="automatic"
-      keyboardDismissMode="on-drag"
-      keyboardShouldPersistTaps="handled"
-      style={styles.container}
-      contentContainerStyle={[
-        styles.searchContent,
-        !hasSearchResults && styles.centeredContent,
-        !hasSearchResults &&
-          keyboardHeight > 0 && {
-            // The native search controls sit above the keyboard, outside this React Native view.
-            paddingBottom: keyboardHeight + spacing.xxl * 5,
-          },
-      ]}
-    >
-      {!hasSearchResults ? (
-        <CenteredEmptyState variant="compact" title={t("search.empty", "Ничего не найдено")} />
-      ) : (
-        <CharacterChatList
-          items={[
-            ...results.map((book) => ({
-              key: `library:${book.id}`,
-              accessibilityLabel: book.meta.title,
-              title: book.meta.title,
-              subtitle: book.meta.author,
-              onPress: () => void openMobileBook({ bookId: book.id, navigation, t }),
-              avatar: (
-                <BookListCover
-                  title={book.meta.title}
-                  author={book.meta.author}
-                  coverUri={resultCovers.get(book.id)}
-                />
-              ),
-            })),
-            ...catalogOnlySearchResults.map((book) => ({
-              key: `catalog:${book.bookEditionId}`,
-              accessibilityLabel: book.title,
-              title: book.title,
-              subtitle: book.author,
-              onPress: () => void handleCatalogOpen(book),
-              avatar: (
-                <BookListCover
-                  title={book.title}
-                  author={book.author}
-                  coverUri={book.coverUri}
-                  targetCoverOnly
-                />
-              ),
-            })),
-          ]}
-        />
-      )}
-    </ScrollView>
+    </>
   );
-}
+});
 
+const SearchResults = memo(function SearchResults({
+  query,
+  books,
+  catalogBooks,
+  onOpenLibrary,
+  onOpenCatalog,
+}: {
+  query: string;
+  books: Book[];
+  catalogBooks: CachedBackendCatalogBook[];
+  onOpenLibrary: (book: Book) => void;
+  onOpenCatalog: (book: CachedBackendCatalogBook) => void;
+}) {
+  countRender("search.results");
+  const { colors } = useTheme();
+  const { t } = useTranslation();
+  const layout = useResponsiveLayout();
+  const guard = useSwipePressGuard();
+  const styles = useMemo(
+    () =>
+      makeStyles(colors, {
+        centeredContentWidth: layout.centeredContentWidth,
+        horizontalPadding: layout.horizontalPadding,
+      }),
+    [colors, layout.centeredContentWidth, layout.horizontalPadding],
+  );
+  const index = useMemo(() => buildBookSearchIndex(books, catalogBooks), [books, catalogBooks]);
+  const results = useMemo(() => {
+    countRender("search.results.build");
+    return searchBookIndex(index, query);
+  }, [index, query]);
+  const [visibleKeys, setVisibleKeys] = useState<string[]>([]);
+  const [keyboardHeight, setKeyboardHeight] = useState(() => Keyboard.metrics()?.height ?? 0);
+  const listRef = useRef<FlatList<BookSearchResult>>(null);
+  const positionedQuery = useRef<string | null>(null);
+  const config = useRef({ itemVisiblePercentThreshold: 1 }).current;
+  const initialRows = Math.ceil(layout.height / 80);
+  const window = useMemo(
+    () => searchResultWindow(results, visibleKeys, initialRows),
+    [results, visibleKeys, initialRows],
+  );
+  const onViewable = useCallback(
+    ({ viewableItems }: { viewableItems: ViewToken<BookSearchResult>[] }) => {
+      const next = viewableItems.map(({ item }) => item.key);
+      setVisibleKeys((current) =>
+        current.length === next.length && current.every((value, i) => value === next[i])
+          ? current
+          : next,
+      );
+    },
+    [],
+  );
+  useLayoutEffect(() => {
+    if (positionedQuery.current === query) return;
+    positionedQuery.current = query;
+    guard?.cancelSwipe();
+    listRef.current?.scrollToOffset({ offset: 0, animated: false });
+    setVisibleKeys((current) => (current.length ? [] : current));
+  }, [query, guard]);
+  useEffect(() => {
+    const onShow = (event: KeyboardEvent) => setKeyboardHeight(event.endCoordinates.height);
+    const onHide = () => setKeyboardHeight(0);
+    const subscriptions = [
+      Keyboard.addListener("keyboardDidShow", onShow),
+      Keyboard.addListener("keyboardDidHide", onHide),
+    ];
+    if (process.env.EXPO_OS === "ios") {
+      subscriptions.push(
+        Keyboard.addListener("keyboardWillChangeFrame", onShow),
+        Keyboard.addListener("keyboardWillHide", onHide),
+      );
+    }
+    return () => {
+      for (const subscription of subscriptions) subscription.remove();
+    };
+  }, []);
+  const renderRow = useCallback(
+    ({ item, index: rowIndex }: ListRenderItemInfo<BookSearchResult>) =>
+      item.kind === "catalog" ? (
+        <CatalogResultRow
+          book={item.book}
+          onOpen={onOpenCatalog}
+          separator={rowIndex < results.length - 1}
+        />
+      ) : (
+        <LibraryResultRow
+          book={item.book}
+          onOpen={onOpenLibrary}
+          separator={rowIndex < results.length - 1}
+          resolveCover={window.rowKeys.has(item.key)}
+        />
+      ),
+    [onOpenCatalog, onOpenLibrary, results.length, window.rowKeys],
+  );
+  return (
+    <>
+      <CoverLifecycle visible={window.visible} nearby={window.nearby} />
+      <FlatList
+        ref={listRef}
+        testID="search-results-list"
+        data={results}
+        keyExtractor={(item) => item.key}
+        renderItem={renderRow}
+        style={styles.container}
+        contentContainerStyle={[
+          styles.searchContent,
+          !results.length && styles.centeredContent,
+          !results.length &&
+            keyboardHeight > 0 && { paddingBottom: keyboardHeight + spacing.xxl * 5 },
+        ]}
+        contentInsetAdjustmentBehavior="automatic"
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
+        initialNumToRender={initialRows}
+        maxToRenderPerBatch={6}
+        windowSize={3}
+        removeClippedSubviews={false}
+        viewabilityConfig={config}
+        onViewableItemsChanged={onViewable}
+        {...guard?.touchHandlers}
+        {...guard?.scrollHandlers}
+        ListEmptyComponent={
+          <CenteredEmptyState variant="compact" title={t("search.empty", "Ничего не найдено")} />
+        }
+      />
+    </>
+  );
+});
+
+const CatalogResultRow = memo(function CatalogResultRow({
+  book,
+  onOpen,
+  separator,
+}: {
+  book: CachedBackendCatalogBook;
+  onOpen: (book: CachedBackendCatalogBook) => void;
+  separator: boolean;
+}) {
+  const guard = useSwipePressGuard();
+  const resolved = useCatalogCover(book);
+  const item = useMemo(
+    () => ({
+      key: `catalog:${book.bookEditionId}`,
+      accessibilityLabel: book.title,
+      title: book.title,
+      subtitle: book.author,
+      onPress: (event?: GestureResponderEvent) => {
+        if (guard?.canPress(event) !== false) onOpen(resolved);
+      },
+      avatar: (
+        <BookListCover
+          title={book.title}
+          author={book.author}
+          coverUri={resolved.coverUri}
+          targetCoverOnly
+        />
+      ),
+    }),
+    [book, guard, onOpen, resolved],
+  );
+  return <CharacterChatListRow item={item} separator={separator} />;
+});
+const LibraryResultRow = memo(function LibraryResultRow({
+  book,
+  onOpen,
+  separator,
+  resolveCover,
+}: { book: Book; onOpen: (book: Book) => void; separator: boolean; resolveCover: boolean }) {
+  const guard = useSwipePressGuard();
+  const items = useMemo(
+    () => (resolveCover ? [{ bookId: book.id, coverUrl: book.meta.coverUrl }] : []),
+    [book.id, book.meta.coverUrl, resolveCover],
+  );
+  const covers = useResolvedCovers(items);
+  const uri = covers.get(book.id);
+  const item = useMemo(
+    () => ({
+      key: `library:${book.id}`,
+      accessibilityLabel: book.meta.title,
+      title: book.meta.title,
+      subtitle: book.meta.author,
+      onPress: (event?: GestureResponderEvent) => {
+        if (guard?.canPress(event) !== false) onOpen(book);
+      },
+      avatar: <BookListCover title={book.meta.title} author={book.meta.author} coverUri={uri} />,
+    }),
+    [book, guard, onOpen, uri],
+  );
+  return <CharacterChatListRow item={item} separator={separator} />;
+});
+
+function equalSets(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+  return a.size === b.size && [...a].every((key) => b.has(key));
+}
 const makeStyles = (
   colors: ThemeColors,
-  layout: { contentWidth: number; horizontalPadding: number },
+  layout: Pick<
+    ReturnType<typeof useResponsiveLayout>,
+    "centeredContentWidth" | "horizontalPadding"
+  >,
 ) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
+    hidden: { display: "none" },
     catalogContent: {
       width: "100%",
       flexGrow: 1,
       paddingTop: spacing.sm,
       paddingBottom: spacing.xxl,
     },
-    skeletonGrid: {
-      width: layout.contentWidth,
-      alignSelf: "center",
-      gap: spacing.xxl,
-    },
+    skeletonGrid: { width: layout.centeredContentWidth, alignSelf: "center", gap: spacing.xxl },
     catalogFooterSkeletons: {
-      width: layout.contentWidth,
+      width: layout.centeredContentWidth,
       alignSelf: "center",
       flexDirection: "row",
       gap: spacing.lg,
@@ -635,16 +654,12 @@ const makeStyles = (
       paddingHorizontal: spacing.xl,
     },
     catalogStatusButton: { alignSelf: "center" },
-    catalogLoadMoreStatus: {
-      alignItems: "center",
-      gap: spacing.sm,
-      paddingVertical: spacing.xl,
-    },
-    catalogLoadMoreText: { color: colors.mutedForeground, fontSize: fontSize.sm },
+    catalogLoadMoreStatus: { alignItems: "center", gap: spacing.sm, paddingVertical: spacing.xl },
+    catalogLoadMoreText: { color: colors.mutedForeground },
     searchContent: {
       flexGrow: 1,
       width: "100%",
-      maxWidth: layout.contentWidth + layout.horizontalPadding * 2,
+      maxWidth: layout.centeredContentWidth + layout.horizontalPadding * 2,
       alignSelf: "center",
       paddingHorizontal: layout.horizontalPadding,
       paddingBottom: spacing.xxl,

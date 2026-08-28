@@ -10,127 +10,85 @@ import { EmptyStateActionButton } from "@/components/ui/empty-state-action-butto
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { NativeSegmentedPager } from "@/components/ui/native-segmented-pager";
 import { getBookTabLabel } from "@/lib/book/book-tab-label";
+import { countRender } from "@/lib/diagnostics/interaction-performance";
 import { getBundledCatalogCharactersByTitle } from "@/lib/narra/bundled-catalog-characters";
 import { hasCharacterPortrait } from "@/lib/narra/character-portrait";
-import { isCharacterUnlocked } from "@/lib/narra/domain";
+import {
+  type ChatListModel,
+  type ChatListRow,
+  createChatListSelector,
+} from "@/lib/narra/chat-list-model";
 import { reportNarraError } from "@/lib/narra/errors";
 import { ensureCharacterPortrait } from "@/lib/narra/media";
-import type { NarraCharacter } from "@/lib/narra/types";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import type { TabParamList } from "@/navigation/TabNavigator";
 import { useLibraryStore, useNarraStore } from "@/stores";
+import type { NarraState } from "@/stores/narra-store";
 import { type ThemeColors, spacing, useTheme } from "@/styles/theme";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import type { Book } from "@readany/core/types";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-interface ChatBook {
-  book: Book;
-  characters: NarraCharacter[];
-  fromBundledCatalog: boolean;
-}
-
-interface ChatRow {
-  book: Book;
-  character: NarraCharacter;
-  unlocked: boolean;
-  messageCount: number;
-  fromBundledCatalog: boolean;
-}
-
 const MAX_AUTOMATIC_PORTRAIT_ATTEMPTS = 2;
+const EMPTY_ROWS: readonly ChatListRow[] = [];
 
 export function ChatsScreen() {
-  const isFocused = useIsFocused();
+  const books = useLibraryStore((state) => state.books);
+  const selectChatList = useMemo(
+    () => createChatListSelector(getBundledCatalogCharactersByTitle),
+    [],
+  );
+  const selectModel = useCallback(
+    (state: NarraState) => selectChatList(books, state.books),
+    [books, selectChatList],
+  );
+  const model = useNarraStore(selectModel);
+
+  return <ChatsContent model={model} />;
+}
+
+const ChatsContent = memo(function ChatsContent({ model }: { model: ChatListModel }) {
+  countRender("chats.screen");
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const { height: viewportHeight } = useWindowDimensions();
   const styles = useMemo(() => makeStyles(colors, insets.bottom), [colors, insets.bottom]);
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
-  const books = useLibraryStore((state) => state.books);
-  const narraBooks = useNarraStore((state) => state.books);
   const setCharacters = useNarraStore((state) => state.setCharacters);
-  const updateCharacter = useNarraStore((state) => state.updateCharacter);
   const [selectedBookId, setSelectedBookId] = useState("all");
-  const [portraitLoadingKey, setPortraitLoadingKey] = useState<string | null>(null);
-  const portraitAttemptsRef = useRef(new Map<string, number>());
-
-  const chatBooks = useMemo<ChatBook[]>(() => {
-    return books
-      .filter((book) => !book.deletedAt)
-      .map((book) => {
-        const storedCharacters = narraBooks[book.id]?.characters ?? [];
-        const fromBundledCatalog = storedCharacters.length === 0;
-        const characters = fromBundledCatalog
-          ? (getBundledCatalogCharactersByTitle(book.meta.title) ?? [])
-          : storedCharacters;
-        return { book, characters, fromBundledCatalog };
-      })
-      .filter((item) => item.characters.length > 0)
-      .sort((a, b) => (b.book.lastOpenedAt ?? 0) - (a.book.lastOpenedAt ?? 0));
-  }, [books, narraBooks]);
-
   const segmentValues = useMemo(
-    () => [
-      t("common.all", "Все"),
-      ...chatBooks.map(({ book }) => getBookTabLabel(book.meta.title)),
-    ],
-    [chatBooks, t],
+    () => [t("common.all", "Все"), ...model.books.map((book) => getBookTabLabel(book.title))],
+    [model.books, t],
   );
   const selectedSegmentIndex = Math.max(
     0,
-    chatBooks.findIndex(({ book }) => book.id === selectedBookId) + 1,
+    model.books.findIndex((book) => book.id === selectedBookId) + 1,
   );
+  const rows =
+    selectedBookId === "all" ? model.allRows : (model.rowsByBook.get(selectedBookId) ?? EMPTY_ROWS);
 
   useEffect(() => {
-    if (selectedBookId !== "all" && !chatBooks.some(({ book }) => book.id === selectedBookId)) {
+    if (selectedBookId !== "all" && !model.rowsByBook.has(selectedBookId)) {
       setSelectedBookId("all");
     }
-  }, [chatBooks, selectedBookId]);
-
-  const allRows = useMemo<ChatRow[]>(() => {
-    return chatBooks.flatMap(({ book, characters, fromBundledCatalog }) => {
-      const chats = narraBooks[book.id]?.chats ?? {};
-      return characters
-        .map((character) => ({
-          book,
-          character,
-          unlocked: isCharacterUnlocked(book.progress ?? 0, character),
-          messageCount: chats[character.id]?.length ?? 0,
-          fromBundledCatalog,
-        }))
-        .filter((row) => row.unlocked)
-        .sort(
-          (a, b) =>
-            b.messageCount - a.messageCount ||
-            a.character.unlockProgress - b.character.unlockProgress,
-        );
-    });
-  }, [chatBooks, narraBooks]);
-
-  const rows = useMemo(
-    () =>
-      selectedBookId === "all" ? allRows : allRows.filter(({ book }) => book.id === selectedBookId),
-    [allRows, selectedBookId],
-  );
+  }, [model.rowsByBook, selectedBookId]);
 
   const openChat = useCallback(
-    (row: ChatRow) => {
+    (row: ChatListRow) => {
       if (!row.unlocked) return;
       if (row.fromBundledCatalog) {
-        const bundled = getBundledCatalogCharactersByTitle(row.book.meta.title);
-        if (bundled?.length) setCharacters(row.book.id, bundled);
+        const bundled = getBundledCatalogCharactersByTitle(row.bookTitle);
+        if (bundled?.length) setCharacters(row.bookId, bundled);
       }
       navigation.navigate("NarraCharacterChat", {
-        bookId: row.book.id,
+        bookId: row.bookId,
         characterId: row.character.id,
       });
     },
@@ -157,99 +115,12 @@ export function ChatsScreen() {
 
   const selectChatPage = useCallback(
     (index: number) => {
-      setSelectedBookId(index === 0 ? "all" : (chatBooks[index - 1]?.book.id ?? "all"));
+      setSelectedBookId(index === 0 ? "all" : (model.books[index - 1]?.id ?? "all"));
     },
-    [chatBooks],
+    [model.books],
   );
 
-  const buildListItems = (pageBookId: string): CharacterChatListItem[] => {
-    const pageRows =
-      pageBookId === "all" ? allRows : allRows.filter(({ book }) => book.id === pageBookId);
-
-    return [
-      {
-        key: "narra",
-        accessibilityLabel:
-          pageBookId === "all"
-            ? t("narra.openNarraChat", "Открыть чат с Narra")
-            : t("narra.openNarraBookChat", "Открыть чат с Narra об этой книге"),
-        title: "Narra",
-        subtitle:
-          pageBookId === "all"
-            ? t("narra.askAboutBooks", "Спросите что угодно о книгах")
-            : t("narra.askAboutBook", "Спросите что угодно о книге"),
-        onPress: () => openNarraChat(pageBookId),
-        avatar: (
-          <CharacterChatAvatar muted>
-            <AnimatedNarraFace width={38} height={40} animated={isFocused} />
-          </CharacterChatAvatar>
-        ),
-      },
-      ...pageRows.map((row): CharacterChatListItem => {
-        const rowKey = `${row.book.id}:${row.character.id}`;
-
-        return {
-          key: rowKey,
-          accessibilityLabel: `${row.character.name}, ${row.book.meta.title}`,
-          title: row.character.fullName || row.character.name,
-          subtitle: row.character.role,
-          onPress: () => openChat(row),
-          avatar: (
-            <CharacterChatAvatar>
-              <CharacterPortraitImage
-                character={row.character}
-                resizeMode="cover"
-                cropAnchor="top"
-                staticOnly
-                style={styles.avatarImage}
-                fallback={
-                  <InitialsAvatar
-                    size={56}
-                    userId={rowKey}
-                    name={row.character.fullName || row.character.name}
-                  />
-                }
-              />
-            </CharacterChatAvatar>
-          ),
-        };
-      }),
-    ];
-  };
-
-  /*
-   * Portrait generation stays scoped to the selected page so horizontal paging
-   * does not start background work for every book at once.
-   */
-  useEffect(() => {
-    if (!isFocused) return;
-    if (portraitLoadingKey) return;
-    const nextRow = rows.find((row) => {
-      const key = `${row.book.id}:${row.character.id}`;
-      return (
-        row.unlocked &&
-        !hasCharacterPortrait(row.character) &&
-        (portraitAttemptsRef.current.get(key) ?? 0) < MAX_AUTOMATIC_PORTRAIT_ATTEMPTS
-      );
-    });
-    if (!nextRow) return;
-
-    const key = `${nextRow.book.id}:${nextRow.character.id}`;
-    portraitAttemptsRef.current.set(key, (portraitAttemptsRef.current.get(key) ?? 0) + 1);
-    setPortraitLoadingKey(key);
-    if (nextRow.fromBundledCatalog) {
-      const bundled = getBundledCatalogCharactersByTitle(nextRow.book.meta.title);
-      if (bundled?.length) setCharacters(nextRow.book.id, bundled);
-    }
-    void ensureCharacterPortrait(nextRow.book.id, nextRow.character)
-      .then((portraitUri) =>
-        updateCharacter(nextRow.book.id, nextRow.character.id, { portraitUri }),
-      )
-      .catch((error) => reportNarraError("character_portrait_background", error))
-      .finally(() => setPortraitLoadingKey(null));
-  }, [isFocused, portraitLoadingKey, rows, setCharacters, updateCharacter]);
-
-  if (chatBooks.length === 0) {
+  if (model.books.length === 0) {
     return (
       <CenteredEmptyState
         avoidNativeTabBar
@@ -266,33 +137,176 @@ export function ChatsScreen() {
   }
 
   return (
-    <ScrollView
-      contentInsetAdjustmentBehavior="automatic"
-      style={styles.container}
-      contentContainerStyle={styles.content}
-    >
-      <NativeSegmentedPager
-        values={segmentValues}
-        selectedIndex={selectedSegmentIndex}
-        onSelect={selectChatPage}
-        colorScheme={isDark ? "dark" : "light"}
-        accessibilityLabel={t("chats.bookFilter", "Фильтр по книге")}
-        scrollableSegments
-        controlsStyle={styles.tabs}
-        minimumPageHeight={Math.max(1, viewportHeight - insets.top - insets.bottom - 120)}
+    <>
+      <ChatPortraitWorker rows={rows} />
+      <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
+        style={styles.container}
+        contentContainerStyle={styles.content}
       >
-        {segmentValues.map((_, index) => {
-          const pageBookId = index === 0 ? "all" : chatBooks[index - 1]?.book.id;
-          return (
-            <View key={pageBookId ?? `chat-page-${index}`}>
-              <CharacterChatList items={buildListItems(pageBookId ?? "all")} />
-            </View>
-          );
-        })}
-      </NativeSegmentedPager>
-    </ScrollView>
+        <NativeSegmentedPager
+          values={segmentValues}
+          selectedIndex={selectedSegmentIndex}
+          onSelect={selectChatPage}
+          colorScheme={isDark ? "dark" : "light"}
+          accessibilityLabel={t("chats.bookFilter", "Фильтр по книге")}
+          scrollableSegments
+          controlsStyle={styles.tabs}
+          minimumPageHeight={Math.max(1, viewportHeight - insets.top - insets.bottom - 120)}
+        >
+          {segmentValues.map((_, index) => {
+            const pageBookId = index === 0 ? "all" : (model.books[index - 1]?.id ?? "all");
+            return (
+              <View key={pageBookId}>
+                <ChatsPage
+                  pageBookId={pageBookId}
+                  rows={
+                    pageBookId === "all"
+                      ? model.allRows
+                      : (model.rowsByBook.get(pageBookId) ?? EMPTY_ROWS)
+                  }
+                  onOpenChat={openChat}
+                  onOpenNarraChat={openNarraChat}
+                />
+              </View>
+            );
+          })}
+        </NativeSegmentedPager>
+      </ScrollView>
+    </>
+  );
+});
+
+const ChatsPage = memo(function ChatsPage({
+  pageBookId,
+  rows,
+  onOpenChat,
+  onOpenNarraChat,
+}: {
+  pageBookId: string;
+  rows: readonly ChatListRow[];
+  onOpenChat: (row: ChatListRow) => void;
+  onOpenNarraChat: (bookId: string) => void;
+}) {
+  const { t } = useTranslation();
+  const narraItem = useMemo<CharacterChatListItem>(
+    () => ({
+      key: "narra",
+      accessibilityLabel:
+        pageBookId === "all"
+          ? t("narra.openNarraChat", "Открыть чат с Narra")
+          : t("narra.openNarraBookChat", "Открыть чат с Narra об этой книге"),
+      title: "Narra",
+      subtitle:
+        pageBookId === "all"
+          ? t("narra.askAboutBooks", "Спросите что угодно о книгах")
+          : t("narra.askAboutBook", "Спросите что угодно о книге"),
+      onPress: () => onOpenNarraChat(pageBookId),
+      avatar: <FocusedNarraAvatar />,
+    }),
+    [pageBookId, onOpenNarraChat, t],
+  );
+  const itemForRow = useMemo(() => {
+    const cache = new WeakMap<ChatListRow, CharacterChatListItem>();
+    return (row: ChatListRow): CharacterChatListItem => {
+      const existing = cache.get(row);
+      if (existing) return existing;
+      const rowKey = `${row.bookId}:${row.character.id}`;
+      const item: CharacterChatListItem = {
+        key: rowKey,
+        accessibilityLabel: `${row.character.name}, ${row.bookTitle}`,
+        title: row.character.fullName || row.character.name,
+        subtitle: row.character.role,
+        onPress: () => onOpenChat(row),
+        avatar: (
+          <CharacterChatAvatar>
+            <CharacterPortraitImage
+              character={row.character}
+              resizeMode="cover"
+              cropAnchor="top"
+              staticOnly
+              style={avatarStyles.image}
+              fallback={
+                <InitialsAvatar
+                  size={56}
+                  userId={rowKey}
+                  name={row.character.fullName || row.character.name}
+                />
+              }
+            />
+          </CharacterChatAvatar>
+        ),
+      };
+      cache.set(row, item);
+      return item;
+    };
+  }, [onOpenChat]);
+  const items = useMemo(() => {
+    countRender("chats.page.build");
+    return [narraItem, ...rows.map(itemForRow)];
+  }, [narraItem, rows, itemForRow]);
+
+  return <CharacterChatList items={items} />;
+});
+
+// Only this small animation leaf and the queue worker subscribe to tab focus.
+function FocusedNarraAvatar() {
+  const isFocused = useIsFocused();
+  return (
+    <CharacterChatAvatar muted>
+      <AnimatedNarraFace width={38} height={40} animated={isFocused} />
+    </CharacterChatAvatar>
   );
 }
+
+function ChatPortraitWorker({ rows }: { rows: readonly ChatListRow[] }) {
+  const isFocused = useIsFocused();
+  const setCharacters = useNarraStore((state) => state.setCharacters);
+  const updateCharacter = useNarraStore((state) => state.updateCharacter);
+  const [portraitLoadingKey, setPortraitLoadingKey] = useState<string | null>(null);
+  const portraitAttemptsRef = useRef(new Map<string, number>());
+  const mountedRef = useRef(false);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  // Generation remains scoped to the selected page. Queue progress must not
+  // rebuild the pager or its rows, including while the tab is hidden.
+  useEffect(() => {
+    if (!isFocused || portraitLoadingKey) return;
+    const nextRow = rows.find((row) => {
+      const key = `${row.bookId}:${row.character.id}`;
+      return (
+        row.unlocked &&
+        !hasCharacterPortrait(row.character) &&
+        (portraitAttemptsRef.current.get(key) ?? 0) < MAX_AUTOMATIC_PORTRAIT_ATTEMPTS
+      );
+    });
+    if (!nextRow) return;
+
+    const key = `${nextRow.bookId}:${nextRow.character.id}`;
+    portraitAttemptsRef.current.set(key, (portraitAttemptsRef.current.get(key) ?? 0) + 1);
+    setPortraitLoadingKey(key);
+    if (nextRow.fromBundledCatalog) {
+      const bundled = getBundledCatalogCharactersByTitle(nextRow.bookTitle);
+      if (bundled?.length) setCharacters(nextRow.bookId, bundled);
+    }
+    void ensureCharacterPortrait(nextRow.bookId, nextRow.character)
+      .then((portraitUri) => updateCharacter(nextRow.bookId, nextRow.character.id, { portraitUri }))
+      .catch((error) => reportNarraError("character_portrait_background", error))
+      .finally(() => {
+        if (mountedRef.current) setPortraitLoadingKey(null);
+      });
+  }, [isFocused, portraitLoadingKey, rows, setCharacters, updateCharacter]);
+
+  return null;
+}
+
+const avatarStyles = StyleSheet.create({ image: { width: "100%", height: "100%" } });
 
 const makeStyles = (colors: ThemeColors, bottomInset: number) =>
   StyleSheet.create({
@@ -306,5 +320,4 @@ const makeStyles = (colors: ThemeColors, bottomInset: number) =>
       marginHorizontal: -spacing.lg,
       paddingBottom: spacing.lg,
     },
-    avatarImage: { width: "100%", height: "100%" },
   });

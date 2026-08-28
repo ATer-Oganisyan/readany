@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readGatewayResponseText } from "./narra-gateway-consumer";
 
 const secureValues = vi.hoisted(() => new Map<string, string>());
 const secureStore = vi.hoisted(() => ({
@@ -39,6 +40,33 @@ function expoJsonResponse(status: number, payload: object): Response {
     },
   });
   return response;
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((yes, no) => {
+    resolve = yes;
+    reject = no;
+  });
+  return { promise, resolve, reject };
+}
+
+async function flush(): Promise<void> {
+  await new Promise<void>((resolve) => setImmediate(resolve));
+}
+
+function pendingNativeBody(status = 200) {
+  const body = deferred<ReadableStreamReadResult<Uint8Array>>();
+  const cancellation = deferred<void>();
+  const reader = {
+    read: vi.fn(() => body.promise),
+    cancel: vi.fn(() => cancellation.promise),
+    releaseLock: vi.fn(),
+  };
+  const response = new Response(null, { status });
+  Object.defineProperty(response, "body", { value: { getReader: () => reader } });
+  return { response, reader, body, cancellation };
 }
 
 describe("Narra gateway installation recovery", () => {
@@ -372,6 +400,277 @@ describe("Narra gateway cancellation", () => {
 
     await expect(request).rejects.toMatchObject({ name: "AbortError" });
     expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+  });
+});
+
+describe("Narra gateway consumed response lifecycle", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    secureValues.clear();
+    process.env.EXPO_PUBLIC_NARRA_GATEWAY_URL = "https://gateway.test";
+    process.env.EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE = "none";
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("reads split UTF-8 chunks without calling the native text method and removes its deadline", async () => {
+    const expected = "Книга — déjà vu 📖";
+    const encoded = new TextEncoder().encode(expected);
+    const response = new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoded.slice(0, 1));
+          controller.enqueue(encoded.slice(1, encoded.length - 1));
+          controller.enqueue(encoded.slice(encoded.length - 1));
+          controller.close();
+        },
+      }),
+    );
+    const nativeText = vi.spyOn(response, "text").mockImplementation(() => new Promise(() => {}));
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(response);
+    const gateway = await import("./narra-gateway-fetch");
+    gateway.setNarraGatewayFetch(fetchMock);
+    const controller = new AbortController();
+    const add = vi.spyOn(controller.signal, "addEventListener");
+    const remove = vi.spyOn(controller.signal, "removeEventListener");
+
+    await expect(
+      gateway.consumeNarraGatewayResponse(
+        "/v2/books/catalog",
+        { signal: controller.signal },
+        readGatewayResponseText,
+      ),
+    ).resolves.toBe(expected);
+
+    expect(nativeText).not.toHaveBeenCalled();
+    expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(false);
+    expect(remove).toHaveBeenCalledWith("abort", add.mock.calls[0][1]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("cancels an auth waiter without cancelling shared registration or dispatching its unused endpoint", async () => {
+    process.env.EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE = "installation";
+    const token = deferred<Response>();
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockReturnValueOnce(token.promise)
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
+    const gateway = await import("./narra-gateway-fetch");
+    gateway.setNarraGatewayFetch(fetchMock);
+    const controller = new AbortController();
+    const cancelled = gateway.consumeNarraGatewayResponse(
+      "/v2/books/catalog",
+      { signal: controller.signal },
+      readGatewayResponseText,
+    );
+    const cancelledResult = cancelled.catch((error: unknown) => error);
+    const other = gateway.consumeNarraGatewayResponse(
+      "/v2/books/genres",
+      {},
+      readGatewayResponseText,
+    );
+    await flush();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const tokenSignal = fetchMock.mock.calls[0][1]?.signal;
+    controller.abort();
+    expect(await cancelledResult).toMatchObject({ name: "AbortError" });
+    expect(tokenSignal?.aborted).toBe(false);
+    token.resolve(jsonResponse(201, { token: "shared-token", expires_in: 900 }));
+    await expect(other).resolves.toBe(JSON.stringify({ ok: true }));
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      "https://gateway.test/v2/installations/register",
+      "https://gateway.test/v2/books/genres",
+    ]);
+    expect(secureValues.get(INSTALLATION_TOKEN_KEY)).toBe("shared-token");
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("observes a late shared auth rejection after its caller leaves and permits the next attempt", async () => {
+    process.env.EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE = "installation";
+    const token = deferred<Response>();
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockReturnValueOnce(token.promise)
+      .mockResolvedValueOnce(jsonResponse(201, { token: "recovered-token", expires_in: 900 }))
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
+    const gateway = await import("./narra-gateway-fetch");
+    gateway.setNarraGatewayFetch(fetchMock);
+    const controller = new AbortController();
+    const cancelled = gateway
+      .consumeNarraGatewayResponse(
+        "/v2/books/catalog",
+        { signal: controller.signal },
+        readGatewayResponseText,
+      )
+      .catch((error: unknown) => error);
+    await flush();
+    controller.abort();
+    expect(await cancelled).toMatchObject({ name: "AbortError" });
+    token.reject(new Error("late auth transport failure"));
+    await flush();
+    expect(secureValues.has(INSTALLATION_TOKEN_KEY)).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+    await expect(
+      gateway.consumeNarraGatewayResponse("/v2/books/catalog", {}, readGatewayResponseText),
+    ).resolves.toBe(JSON.stringify({ ok: true }));
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("settles caller abort after headers even when native read and cancellation never settle", async () => {
+    const native = pendingNativeBody();
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(native.response);
+    const gateway = await import("./narra-gateway-fetch");
+    gateway.setNarraGatewayFetch(fetchMock);
+    const controller = new AbortController();
+    const request = gateway
+      .consumeNarraGatewayResponse(
+        "/v2/books/catalog",
+        { signal: controller.signal },
+        readGatewayResponseText,
+      )
+      .catch((error: unknown) => error);
+    await flush();
+    expect(native.reader.read).toHaveBeenCalledOnce();
+    controller.abort();
+    expect(await request).toMatchObject({ name: "AbortError" });
+    expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(true);
+    expect(native.reader.cancel).toHaveBeenCalledOnce();
+    expect(native.reader.releaseLock).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+    // Both late errors must be observed; Vitest fails on unhandled rejection.
+    native.body.reject(new Error("late native body error"));
+    native.cancellation.reject(new Error("late native cancel error"));
+    await flush();
+  });
+
+  it("settles caller abort before headers even when fetch does not reject until later", async () => {
+    const headers = deferred<Response>();
+    const fetchMock = vi.fn<typeof fetch>().mockReturnValue(headers.promise);
+    const gateway = await import("./narra-gateway-fetch");
+    gateway.setNarraGatewayFetch(fetchMock);
+    const controller = new AbortController();
+    const request = gateway
+      .consumeNarraGatewayResponse(
+        "/v2/books/catalog",
+        { signal: controller.signal },
+        readGatewayResponseText,
+      )
+      .catch((error: unknown) => error);
+    controller.abort();
+    expect(await request).toMatchObject({ name: "AbortError" });
+    expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(true);
+    headers.reject(new Error("late native headers error"));
+    await flush();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("keeps one timeout budget across headers and a stalled body", async () => {
+    const headers = deferred<Response>();
+    const native = pendingNativeBody();
+    const fetchMock = vi.fn<typeof fetch>().mockReturnValue(headers.promise);
+    const gateway = await import("./narra-gateway-fetch");
+    gateway.setNarraGatewayFetch(fetchMock);
+    const request = gateway
+      .consumeNarraGatewayResponse("/v2/books/catalog", {}, readGatewayResponseText, 100)
+      .catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(80);
+    headers.resolve(native.response);
+    await flush();
+    expect(native.reader.read).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(20);
+    expect(await request).toMatchObject({ code: "TIMEOUT" });
+    expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(true);
+    expect(native.reader.cancel).toHaveBeenCalledOnce();
+    native.body.resolve({ done: true, value: undefined });
+    native.cancellation.resolve();
+    await flush();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("bounds the shared auth body at fifteen seconds and never persists its late token", async () => {
+    process.env.EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE = "installation";
+    const native = pendingNativeBody(201);
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(native.response)
+      .mockResolvedValueOnce(jsonResponse(201, { token: "current-token", expires_in: 900 }))
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
+    const gateway = await import("./narra-gateway-fetch");
+    gateway.setNarraGatewayFetch(fetchMock);
+    const request = gateway
+      .consumeNarraGatewayResponse("/v2/books/catalog", {}, readGatewayResponseText)
+      .catch((error: unknown) => error);
+    await flush();
+    expect(native.reader.read).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(await request).toMatchObject({ code: "TIMEOUT" });
+    expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(true);
+    native.body.resolve({
+      done: false,
+      value: new TextEncoder().encode(JSON.stringify({ token: "obsolete-token", expires_in: 900 })),
+    });
+    native.cancellation.resolve();
+    await flush();
+    expect(secureValues.has(INSTALLATION_TOKEN_KEY)).toBe(false);
+    await expect(
+      gateway.consumeNarraGatewayResponse("/v2/books/catalog", {}, readGatewayResponseText),
+    ).resolves.toBe(JSON.stringify({ ok: true }));
+    expect(secureValues.get(INSTALLATION_TOKEN_KEY)).toBe("current-token");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("keeps the fifteen-second auth budget per HTTP attempt during refresh-to-registration recovery", async () => {
+    process.env.EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE = "installation";
+    secureValues.set(INSTALLATION_ID_KEY, "11111111-1111-4111-8111-111111111111");
+    secureValues.set(INSTALLATION_SECRET_KEY, "valid-secret");
+    const refresh = deferred<Response>();
+    const registration = deferred<Response>();
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockReturnValueOnce(refresh.promise)
+      .mockReturnValueOnce(registration.promise)
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
+    const gateway = await import("./narra-gateway-fetch");
+    gateway.setNarraGatewayFetch(fetchMock);
+    const request = gateway.consumeNarraGatewayResponse(
+      "/v2/books/catalog",
+      {},
+      readGatewayResponseText,
+    );
+    await flush();
+    await vi.advanceTimersByTimeAsync(14_000);
+    refresh.resolve(jsonResponse(404, { code: "INSTALLATION_NOT_FOUND" }));
+    await flush();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(14_000);
+    registration.resolve(jsonResponse(201, { token: "recovered-token", expires_in: 900 }));
+    await expect(request).resolves.toBe(JSON.stringify({ ok: true }));
+    expect(fetchMock.mock.calls.every(([, init]) => !init?.signal?.aborted)).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("retains raw streaming lifetimes beyond the consumed-response deadline", async () => {
+    let stream!: ReadableStreamDefaultController<Uint8Array>;
+    const response = new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          stream = controller;
+        },
+      }),
+    );
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(response);
+    const gateway = await import("./narra-gateway-fetch");
+    gateway.setNarraGatewayFetch(fetchMock);
+    const raw = await gateway.narraGatewayRequest("/v2/ai/chat/stream", { method: "POST" });
+    await vi.advanceTimersByTimeAsync(180_001);
+    expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(false);
+    stream.enqueue(new TextEncoder().encode("data: still streaming\n\n"));
+    stream.close();
+    await expect(raw.text()).resolves.toBe("data: still streaming\n\n");
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
 

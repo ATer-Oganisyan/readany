@@ -80,8 +80,8 @@ export const BookCard = memo(function BookCard({
   return (
     <BookCardActionSheet book={book} onOpen={onOpen} onDelete={onDelete}>
       <Pressable
-        onPress={() => {
-          if (swipePressGuard?.canPress() === false) return;
+        onPress={(event) => {
+          if (swipePressGuard?.canPress(event) === false) return;
           onOpen(book);
         }}
         onPressIn={onPressIn}

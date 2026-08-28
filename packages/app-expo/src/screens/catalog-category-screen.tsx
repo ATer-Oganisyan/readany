@@ -1,38 +1,38 @@
-import { CatalogBookCard } from "@/components/library/CatalogBookCard";
+import { CatalogBookSkeleton } from "@/components/library/CatalogBookSkeleton";
+import { ConnectedCatalogBookCard } from "@/components/library/ConnectedCatalogBookCard";
 import { NativeButton } from "@/components/ui/NativeButton";
 import { Text } from "@/components/ui/Typography";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { SwipePressGuardProvider, useSwipePressGuard } from "@/components/ui/swipe-press-guard";
+import { useBackendCatalog, useBackendCatalogActivity } from "@/hooks/use-backend-catalog";
+import { useCatalogCoverWindow } from "@/hooks/use-catalog-cover-window";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
+import { countRender, markInteraction } from "@/lib/diagnostics/interaction-performance";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
-import {
-  type CachedBackendCatalogBook,
-  loadMoreCachedBackendCatalog,
-  materializeBackendCatalogCover,
-  refreshBackendCatalog,
-} from "@/lib/narra/backend-catalog-cache";
+import type { CachedBackendCatalogBook } from "@/lib/narra/backend-catalog-cache";
 import { findReadableLibraryBookForCatalogBook } from "@/lib/narra/backend-catalog-library";
-import { isBackendDownloadAbort } from "@/lib/narra/backend-file-download";
-import { CatalogCoverQueue } from "@/lib/narra/catalog-cover-queue";
-import {
-  applyCatalogCoverResult,
-  retainCatalogCovers,
-  retryCatalogCoverDownload,
-} from "@/lib/narra/catalog-cover-state";
+import { retryCatalogCover } from "@/lib/narra/catalog-cover-coordinator";
+import { getCatalogBookWithCover } from "@/lib/narra/catalog-cover-store";
+import { catalogGridLayout } from "@/lib/narra/catalog-grid-layout";
 import { CATALOG_SHELF_GAP, CATALOG_SHELF_SHADOW_INSETS } from "@/lib/narra/catalog-shelf-layout";
-import {
-  buildCatalogShelves,
-  catalogCategoryCoverWindow,
-  completeCatalogSnapshot,
-} from "@/lib/narra/catalog-shelves";
+import { buildCatalogShelves, catalogCategoryCoverWindow } from "@/lib/narra/catalog-shelves";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useLibraryStore } from "@/stores";
 import { spacing, useColors } from "@/styles/theme";
+import { useHeaderHeight } from "@react-navigation/elements";
 import { useIsFocused } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ActivityIndicator, FlatList, View, type ViewToken } from "react-native";
+import {
+  ActivityIndicator,
+  FlatList,
+  type LayoutChangeEvent,
+  type ListRenderItemInfo,
+  View,
+  type ViewToken,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type Props = NativeStackScreenProps<RootStackParamList, "CatalogCategory">;
 const EMPTY_BOOKS: CachedBackendCatalogBook[] = [];
@@ -45,230 +45,209 @@ export function CatalogCategoryScreen(props: Props) {
   );
 }
 
-function CategoryGrid({ route, navigation }: Props) {
+const CategoryGrid = memo(function CategoryGrid({ route, navigation }: Props) {
+  countRender("catalog.category");
   const { genreId } = route.params;
   const colors = useColors();
   const { t, i18n } = useTranslation();
   const layout = useResponsiveLayout();
-  const isFocused = useIsFocused();
+  const headerHeight = useHeaderHeight();
+  const insets = useSafeAreaInsets();
   const guard = useSwipePressGuard();
   const libraryBooks = useLibraryStore((state) => state.books);
-  // Reuse the search snapshot: opening a category does not blank already-loaded covers.
-  const [catalog, setCatalog] = useState(route.params.catalog);
-  const catalogRef = useRef(catalog);
-  catalogRef.current = catalog;
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const requestRef = useRef(0);
-  const loadingRef = useRef(false);
-  const queueRef = useRef<CatalogCoverQueue | null>(null);
+  const snapshot = useBackendCatalog(false);
+  const { catalog } = snapshot;
   const [visibleKeys, setVisibleKeys] = useState<string[]>([]);
-  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 1 }).current;
-  const onViewableItemsChanged = useCallback(
+  const [viewportHeight, setViewportHeight] = useState(layout.height);
+  const navigating = useRef(false);
+  const opening = useRef(false);
+  const viewability = useRef({ itemVisiblePercentThreshold: 1 }).current;
+  const onViewable = useCallback(
     ({ viewableItems }: { viewableItems: ViewToken<CachedBackendCatalogBook>[] }) => {
-      setVisibleKeys(viewableItems.map(({ item }) => item.bookEditionId));
+      const next = viewableItems.map(({ item }) => item.bookEditionId);
+      setVisibleKeys((current) =>
+        current.length === next.length && current.every((value, i) => value === next[i])
+          ? current
+          : next,
+      );
     },
     [],
   );
-
-  const category = useMemo(
-    () =>
-      buildCatalogShelves(
-        catalog.books,
-        catalog.genres,
-        i18n.resolvedLanguage ?? "ru",
-        t("library.catalogUncategorized", "Без категории"),
-      ).find((shelf) => shelf.id === genreId),
-    [catalog.books, catalog.genres, genreId, i18n.resolvedLanguage, t],
-  );
+  const category = useMemo(() => {
+    countRender("catalog.group");
+    return buildCatalogShelves(
+      catalog.books,
+      catalog.genres,
+      i18n.resolvedLanguage ?? "ru",
+      t("library.catalogUncategorized", "Без категории"),
+    ).find((shelf) => shelf.id === genreId);
+  }, [catalog.books, catalog.genres, genreId, i18n.resolvedLanguage, t]);
   const books = category?.books ?? EMPTY_BOOKS;
   const title = category?.title ?? route.params.title;
-  // Deliberately two columns, at the full library size, not the 80% carousel size.
   const cardWidth = (layout.centeredContentWidth - CATALOG_SHELF_GAP) / 2;
   const edgeInset = (layout.width - layout.centeredContentWidth) / 2;
-
-  useLayoutEffect(() => {
-    navigation.setOptions({ title });
-  }, [navigation, title]);
-
-  const loadCatalog = useCallback(
-    async (refresh = false) => {
-      if (loadingRef.current) return;
-      loadingRef.current = true;
-      const request = ++requestRef.current;
-      const isCurrent = () => requestRef.current === request;
-      const previous = catalogRef.current;
-      let latest = previous;
-      setLoading(true);
-      setError(null);
-      try {
-        if (refresh) latest = await refreshBackendCatalog();
-        const complete = await completeCatalogSnapshot(
-          latest,
-          async (current) => {
-            latest = await loadMoreCachedBackendCatalog(current);
-            return latest;
-          },
-          isCurrent,
-        );
-        if (complete)
-          setCatalog((current) => ({
-            ...complete,
-            books: retainCatalogCovers(complete.books, current.books),
-          }));
-      } catch (cause) {
-        if (!isCurrent()) return;
-        console.warn("[Catalog category] Failed to load category:", cause);
-        // Keep a complete old snapshot; otherwise retain successfully fetched pages for Retry.
-        const fallback = previous.nextCursor ? latest : previous;
-        setCatalog((current) => ({
-          ...fallback,
-          books: retainCatalogCovers(fallback.books, current.books),
-        }));
-        setError(t("library.catalogLoadMoreError", "Не удалось загрузить следующие книги"));
-      } finally {
-        if (isCurrent()) {
-          loadingRef.current = false;
-          setLoading(false);
-        }
-      }
-    },
-    [t],
+  const grid = useMemo(
+    () =>
+      catalogGridLayout({
+        cardWidth,
+        viewportHeight,
+        topInset: headerHeight,
+        bottomInset: insets.bottom,
+      }),
+    [cardWidth, viewportHeight, headerHeight, insets.bottom],
   );
-
-  useEffect(() => {
-    if (catalogRef.current.nextCursor) void loadCatalog();
-    return () => {
-      requestRef.current += 1;
-      loadingRef.current = false;
-    };
-  }, [loadCatalog]);
-
-  useEffect(() => {
-    if (!isFocused) return;
-    setCatalog((current) => ({
-      ...current,
-      books: current.books.map((book) =>
-        book.coverLoadFailed ? { ...book, coverLoadFailed: false } : book,
+  const coverWindow = useMemo(
+    () => catalogCategoryCoverWindow(books, visibleKeys),
+    [books, visibleKeys],
+  );
+  const libraryKeys = useMemo(
+    () =>
+      new Set(
+        books.flatMap((book) =>
+          findReadableLibraryBookForCatalogBook(book, libraryBooks) ? [book.catalogKey] : [],
+        ),
       ),
-    }));
-    const queue = new CatalogCoverQueue({
-      concurrency: 3,
-      load: materializeBackendCatalogCover,
-      onLoaded: (_key, uri, requested) =>
-        setCatalog((current) => ({
-          ...current,
-          books: applyCatalogCoverResult(current.books, requested, uri),
-        })),
-      onError: (_key, cause, requested) => {
-        if (isBackendDownloadAbort(cause)) return;
-        setCatalog((current) => ({
-          ...current,
-          books: applyCatalogCoverResult(current.books, requested),
-        }));
-        console.warn("[Catalog category] Failed to load cover:", cause);
-      },
-    });
-    queueRef.current = queue;
-    return () => {
-      if (queueRef.current === queue) queueRef.current = null;
-      queue.dispose();
-    };
-  }, [isFocused]);
-
-  useEffect(() => {
-    if (!isFocused) return;
-    const { visible, nearby } = catalogCategoryCoverWindow(books, visibleKeys);
-    queueRef.current?.prioritize(visible, nearby);
-  }, [books, isFocused, visibleKeys]);
-
-  const retryCover = useCallback(
-    (requested: CachedBackendCatalogBook) => {
-      if (!requested.cover) {
-        void loadCatalog(true);
-        return;
-      }
-      setCatalog((current) => ({
-        ...current,
-        books: retryCatalogCoverDownload(current.books, requested),
-      }));
-    },
-    [loadCatalog],
+    [books, libraryBooks],
   );
-
+  const style = useMemo(
+    () => ({ flex: 1, backgroundColor: colors.background }),
+    [colors.background],
+  );
+  const contentStyle = useMemo(
+    () => ({
+      paddingHorizontal: edgeInset,
+      paddingTop: grid.topPadding,
+      paddingBottom: CATALOG_SHELF_SHADOW_INSETS.bottom,
+    }),
+    [edgeInset, grid.topPadding],
+  );
+  const columnStyle = useMemo(() => ({ gap: CATALOG_SHELF_GAP }), []);
+  const onLayout = useCallback((event: LayoutChangeEvent) => {
+    const height = event.nativeEvent.layout.height;
+    if (height > 0) setViewportHeight((current) => (current === height ? current : height));
+    markInteraction("category.layout");
+  }, []);
+  useLayoutEffect(() => navigation.setOptions({ title }), [navigation, title]);
+  useEffect(
+    () =>
+      navigation.addListener("focus", () => {
+        if (!opening.current) navigating.current = false;
+      }),
+    [navigation],
+  );
+  const retryCover = useCallback(
+    (book: CachedBackendCatalogBook) => {
+      if (!book.cover) void snapshot.refresh();
+      else retryCatalogCover(book);
+    },
+    [snapshot.refresh],
+  );
   const openBook = useCallback(
     async (book: CachedBackendCatalogBook) => {
-      const existing = findReadableLibraryBookForCatalogBook(book, libraryBooks);
-      if (existing) await openMobileBook({ bookId: existing.id, navigation, t });
-      else navigation.navigate("Reader", { bookId: "", catalogBook: book });
+      if (navigating.current || !navigation.isFocused()) return;
+      navigating.current = true;
+      opening.current = true;
+      try {
+        const existing = findReadableLibraryBookForCatalogBook(book, libraryBooks);
+        if (existing) {
+          if (!(await openMobileBook({ bookId: existing.id, navigation, t })))
+            navigating.current = false;
+        } else
+          navigation.navigate("Reader", { bookId: "", catalogBook: getCatalogBookWithCover(book) });
+      } catch (error) {
+        navigating.current = false;
+        throw error;
+      } finally {
+        opening.current = false;
+      }
     },
     [libraryBooks, navigation, t],
   );
-
-  return (
-    <FlatList
-      testID="catalog-category-grid"
-      style={{ flex: 1, backgroundColor: colors.background }}
-      data={books}
-      numColumns={2}
-      keyExtractor={(book) => book.bookEditionId}
-      contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={{
-        paddingHorizontal: edgeInset,
-        paddingTop: spacing.md,
-        paddingBottom: CATALOG_SHELF_SHADOW_INSETS.bottom,
-      }}
-      columnWrapperStyle={{ gap: CATALOG_SHELF_GAP }}
-      removeClippedSubviews={false}
-      initialNumToRender={6}
-      maxToRenderPerBatch={6}
-      windowSize={5}
-      viewabilityConfig={viewabilityConfig}
-      onViewableItemsChanged={onViewableItemsChanged}
-      onScrollBeginDrag={() => guard?.beginSwipe()}
-      onScrollEndDrag={() => guard?.endSwipe()}
-      onMomentumScrollBegin={() => guard?.beginSwipe()}
-      onMomentumScrollEnd={() => guard?.endSwipe()}
-      renderItem={({ item }) => (
-        <View style={{ marginBottom: CATALOG_SHELF_GAP, overflow: "visible" }}>
-          <CatalogBookCard
-            title={item.title}
-            author={item.author}
-            coverUri={item.coverUri}
-            hasCover={!!item.cover}
-            coverLoadFailed={item.coverLoadFailed}
-            cardWidth={cardWidth}
-            isInLibrary={!!findReadableLibraryBookForCatalogBook(item, libraryBooks)}
-            onPress={() => void openBook(item)}
-            onRetryCover={() => retryCover(item)}
-          />
-        </View>
-      )}
-      ListEmptyComponent={
-        !loading && !error ? (
-          <CenteredEmptyState
-            variant="compact"
-            title={t("library.catalogEmpty", "В каталоге пока нет книг")}
-          />
-        ) : null
-      }
-      ListFooterComponent={
-        loading || error ? (
-          <View style={{ alignItems: "center", padding: spacing.lg, gap: spacing.md }}>
-            {loading ? (
-              <ActivityIndicator color={colors.primary} />
-            ) : (
-              <>
-                <Text style={{ color: colors.mutedForeground }}>{error}</Text>
-                <NativeButton
-                  label={t("common.retry", "Повторить")}
-                  onPress={() => void loadCatalog(!catalog.nextCursor)}
-                />
-              </>
-            )}
-          </View>
-        ) : null
-      }
-    />
+  const renderBook = useCallback(
+    ({ item }: ListRenderItemInfo<CachedBackendCatalogBook>) => (
+      <View style={bookRowStyle}>
+        <ConnectedCatalogBookCard
+          book={item}
+          cardWidth={cardWidth}
+          isInLibrary={libraryKeys.has(item.catalogKey)}
+          onPress={openBook}
+          onRetryCover={retryCover}
+        />
+      </View>
+    ),
+    [cardWidth, libraryKeys, openBook, retryCover],
   );
+  return (
+    <View style={style} {...guard?.touchHandlers}>
+      <CategoryLifecycle {...coverWindow} />
+      <FlatList
+        testID="catalog-category-grid"
+        style={style}
+        data={books}
+        numColumns={2}
+        keyExtractor={(book) => book.bookEditionId}
+        contentInsetAdjustmentBehavior="automatic"
+        contentContainerStyle={contentStyle}
+        columnWrapperStyle={columnStyle}
+        removeClippedSubviews={false}
+        initialNumToRender={grid.initialRows}
+        maxToRenderPerBatch={2}
+        windowSize={3}
+        getItemLayout={grid.getItemLayout}
+        onLayout={onLayout}
+        viewabilityConfig={viewability}
+        onViewableItemsChanged={onViewable}
+        renderItem={renderBook}
+        {...guard?.touchHandlers}
+        {...guard?.scrollHandlers}
+        ListEmptyComponent={
+          snapshot.isLoading ? (
+            <View style={{ flexDirection: "row", gap: CATALOG_SHELF_GAP }}>
+              <CatalogBookSkeleton cardWidth={cardWidth} />
+              <CatalogBookSkeleton cardWidth={cardWidth} />
+            </View>
+          ) : !snapshot.error ? (
+            <CenteredEmptyState
+              variant="compact"
+              title={t("library.catalogEmpty", "В каталоге пока нет книг")}
+            />
+          ) : null
+        }
+        ListFooterComponent={
+          snapshot.isLoading || snapshot.error ? (
+            <View style={{ alignItems: "center", padding: spacing.lg, gap: spacing.md }}>
+              {snapshot.isLoading ? (
+                <ActivityIndicator color={colors.primary} />
+              ) : (
+                <>
+                  <Text style={{ color: colors.mutedForeground }}>
+                    {t("library.catalogLoadMoreError", "Не удалось загрузить следующие книги")}
+                  </Text>
+                  <NativeButton
+                    label={t("common.retry", "Повторить")}
+                    onPress={() => void snapshot.retry()}
+                  />
+                </>
+              )}
+            </View>
+          ) : null
+        }
+      />
+    </View>
+  );
+});
+
+const bookRowStyle = { marginBottom: CATALOG_SHELF_GAP, overflow: "visible" as const };
+function CategoryLifecycle({
+  visible,
+  nearby,
+}: { visible: CachedBackendCatalogBook[]; nearby: CachedBackendCatalogBook[] }) {
+  const focused = useIsFocused();
+  const guard = useSwipePressGuard();
+  useBackendCatalogActivity(focused);
+  useCatalogCoverWindow({ visible, nearby, active: focused });
+  useEffect(() => {
+    guard?.setEnabled(focused);
+  }, [focused, guard]);
+  return null;
 }

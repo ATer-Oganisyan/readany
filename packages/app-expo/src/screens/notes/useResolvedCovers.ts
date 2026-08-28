@@ -7,9 +7,9 @@ import { useEffect, useState } from "react";
 
 const EMPTY_ITEMS: readonly [] = [];
 
-export function useResolvedCovers<T extends { bookId?: string; id?: string; coverUrl?: string | null }>(
-  items?: T[],
-): Map<string, string> {
+export function useResolvedCovers<
+  T extends { bookId?: string; id?: string; coverUrl?: string | null },
+>(items?: T[]): Map<string, string> {
   const [resolvedCovers, setResolvedCovers] = useState<Map<string, string>>(new Map());
   const safeItems = items ?? EMPTY_ITEMS;
 
@@ -18,12 +18,15 @@ export function useResolvedCovers<T extends { bookId?: string; id?: string; cove
       setResolvedCovers((prev) => (prev.size === 0 ? prev : new Map()));
       return;
     }
+    let cancelled = false;
     const resolve = async () => {
       const newMap = new Map<string, string>();
       try {
         const platform = getPlatformService();
         const appData = await platform.getAppDataDir();
+        if (cancelled) return;
         for (const item of safeItems) {
+          if (cancelled) return;
           const key = item.bookId || item.id;
           if (!key || !item.coverUrl) continue;
           if (
@@ -39,6 +42,7 @@ export function useResolvedCovers<T extends { bookId?: string; id?: string; cove
             newMap.set(key, absPath);
           } catch {}
         }
+        if (cancelled) return;
         setResolvedCovers((prev) => {
           if (prev.size !== newMap.size) return newMap;
           for (const [key, value] of newMap) {
@@ -50,7 +54,10 @@ export function useResolvedCovers<T extends { bookId?: string; id?: string; cove
         console.error("Failed to resolve cover URLs:", err);
       }
     };
-    resolve();
+    void resolve();
+    return () => {
+      cancelled = true;
+    };
   }, [safeItems]);
 
   return resolvedCovers;

@@ -1,4 +1,5 @@
 import { NativeThemePicker } from "@/components/profile/NativeThemePicker";
+import { useSwipePressGuard } from "@/components/ui/swipe-press-guard";
 import { hapticSelection } from "@/lib/haptics";
 import type { ReactElement } from "react";
 import {
@@ -63,6 +64,7 @@ export const NativeSegmentedPager = forwardRef<
   ref,
 ) {
   const pagerRef = useRef<PagerView>(null);
+  const swipeGuard = useSwipePressGuard();
   const activePageRef = useRef(-1);
   const [containerWidth, setContainerWidth] = useState(0);
   const [pageHeights, setPageHeights] = useState<Record<number, number>>({});
@@ -135,17 +137,26 @@ export const NativeSegmentedPager = forwardRef<
   };
 
   const handlePageScrollStateChanged = useCallback(
-    ({ nativeEvent }: { nativeEvent: { pageScrollState: "idle" | "dragging" | "settling" } }) => {
-      const nextSwiping = nativeEvent.pageScrollState !== "idle";
+    (event: { nativeEvent: { pageScrollState: "idle" | "dragging" | "settling" } }) => {
+      const state = event.nativeEvent.pageScrollState;
+      if (state === "dragging") {
+        swipeGuard?.scrollHandlers.onScrollBeginDrag(event);
+      } else {
+        swipeGuard?.scrollHandlers.onScrollEndDrag(event);
+        if (state === "settling") swipeGuard?.scrollHandlers.onMomentumScrollBegin(event);
+        else swipeGuard?.scrollHandlers.onMomentumScrollEnd(event);
+      }
+      const nextSwiping = state !== "idle";
       setSwiping(nextSwiping);
       onSwipeStateChange?.(nextSwiping);
     },
-    [onSwipeStateChange],
+    [onSwipeStateChange, swipeGuard],
   );
 
   return (
     <View
       style={fillHeight ? styles.containerFill : styles.container}
+      {...swipeGuard?.touchHandlers}
       onLayout={({ nativeEvent }) => {
         const nextWidth = Math.round(nativeEvent.layout.width);
         setContainerWidth((current) => (current === nextWidth ? current : nextWidth));

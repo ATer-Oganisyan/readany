@@ -128,10 +128,10 @@ describe("catalog shelves", () => {
     expect(screen).not.toContain("NativeSegmentedPager");
     expect(screen).not.toContain("selectedCatalogGenre");
     expect(screen).not.toContain("contentOffset=");
-    expect(screen).toContain("completeCatalogSnapshot");
+    expect(screen).toContain("snapshot.hasCompleteCatalog");
     expect(screen).toContain("<CatalogShelfRow");
     expect(screen).toContain("<CharacterChatList");
-    expect(shelf).toContain("<CatalogBookCard");
+    expect(shelf).toContain("<ConnectedCatalogBookCard");
     expect(shelf).not.toContain("pagingEnabled");
     expect(shelf).toContain("snapToInterval={pageStride}");
     expect(shelf).toContain("ItemSeparatorComponent={ShelfPageSeparator}");
@@ -140,7 +140,7 @@ describe("catalog shelves", () => {
     expect(shelf).toContain("width: viewportWidth");
     expect(screen).toContain("viewportWidth={layout.width}");
     expect(shelf).toContain("directionalLockEnabled");
-    expect(shelf).toContain("guard?.beginSwipe()");
+    expect(shelf).toContain("guard?.scrollHandlers.onScrollBeginDrag(event)");
   });
 
   it("publishes the full metadata catalog even when later pages discover earlier genres", async () => {

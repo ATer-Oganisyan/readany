@@ -1,7 +1,8 @@
 import { Text } from "@/components/ui/Typography";
+import { countRender } from "@/lib/diagnostics/interaction-performance";
 import { type ThemeColors, fontSize, fontWeight, radius, spacing, useTheme } from "@/styles/theme";
-import type { ReactNode } from "react";
-import { StyleSheet, TouchableOpacity, View } from "react-native";
+import { type ReactNode, memo } from "react";
+import { type GestureResponderEvent, StyleSheet, TouchableOpacity, View } from "react-native";
 
 export interface CharacterChatListItem {
   key: string;
@@ -10,48 +11,63 @@ export interface CharacterChatListItem {
   title: string;
   subtitle?: string;
   dimmed?: boolean;
-  onPress: () => void;
+  onPress: (event?: GestureResponderEvent) => void;
 }
 
 interface CharacterChatListProps {
-  items: CharacterChatListItem[];
+  items: readonly CharacterChatListItem[];
 }
 
-export function CharacterChatList({ items }: CharacterChatListProps) {
-  const { colors } = useTheme();
-  const styles = makeStyles(colors);
-
+export const CharacterChatList = memo(function CharacterChatList({
+  items,
+}: CharacterChatListProps) {
   return (
     <View>
       {items.map((item, index) => (
-        <View key={item.key}>
-          <TouchableOpacity
-            accessibilityRole="button"
-            accessibilityLabel={item.accessibilityLabel}
-            activeOpacity={0.62}
-            onPress={item.onPress}
-            style={[styles.row, item.dimmed && styles.rowDimmed]}
-          >
-            {item.avatar}
-            <View style={styles.copy}>
-              <Text style={styles.title} numberOfLines={1}>
-                {item.title}
-              </Text>
-              {item.subtitle ? (
-                <Text style={styles.subtitle} numberOfLines={2}>
-                  {item.subtitle}
-                </Text>
-              ) : null}
-            </View>
-          </TouchableOpacity>
-          {index < items.length - 1 ? <View style={styles.separator} /> : null}
-        </View>
+        <CharacterChatListRow key={item.key} item={item} separator={index < items.length - 1} />
       ))}
     </View>
   );
-}
+});
 
-export function CharacterChatAvatar({
+export const CharacterChatListRow = memo(function CharacterChatListRow({
+  item,
+  separator,
+}: {
+  item: CharacterChatListItem;
+  separator: boolean;
+}) {
+  countRender("chats.row");
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
+
+  return (
+    <View>
+      <TouchableOpacity
+        accessibilityRole="button"
+        accessibilityLabel={item.accessibilityLabel}
+        activeOpacity={0.62}
+        onPress={item.onPress}
+        style={[styles.row, item.dimmed && styles.rowDimmed]}
+      >
+        {item.avatar}
+        <View style={styles.copy}>
+          <Text style={styles.title} numberOfLines={1}>
+            {item.title}
+          </Text>
+          {item.subtitle ? (
+            <Text style={styles.subtitle} numberOfLines={2}>
+              {item.subtitle}
+            </Text>
+          ) : null}
+        </View>
+      </TouchableOpacity>
+      {separator ? <View style={styles.separator} /> : null}
+    </View>
+  );
+});
+
+export const CharacterChatAvatar = memo(function CharacterChatAvatar({
   children,
   muted = false,
   overlay,
@@ -61,7 +77,7 @@ export function CharacterChatAvatar({
   overlay?: ReactNode;
 }) {
   const { colors } = useTheme();
-  const styles = makeStyles(colors);
+  const styles = getStyles(colors);
 
   return (
     <View style={[styles.avatar, muted && styles.avatarMuted]}>
@@ -69,7 +85,7 @@ export function CharacterChatAvatar({
       {overlay ? <View style={styles.avatarOverlay}>{overlay}</View> : null}
     </View>
   );
-}
+});
 
 const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
@@ -114,3 +130,14 @@ const makeStyles = (colors: ThemeColors) =>
       backgroundColor: colors.primary20,
     },
   });
+
+const styleCache = new WeakMap<ThemeColors, ReturnType<typeof makeStyles>>();
+
+function getStyles(colors: ThemeColors) {
+  let styles = styleCache.get(colors);
+  if (!styles) {
+    styles = makeStyles(colors);
+    styleCache.set(colors, styles);
+  }
+  return styles;
+}

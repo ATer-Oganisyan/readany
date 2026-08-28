@@ -1,9 +1,5 @@
 import { MissingBookPrompt } from "@/components/shared/MissingBookPrompt";
-import type {
-  CachedBackendCatalog,
-  CachedBackendCatalogBook,
-} from "@/lib/narra/backend-catalog-cache";
-import { CatalogCategoryScreen } from "@/screens/catalog-category-screen";
+import type { CachedBackendCatalogBook } from "@/lib/narra/backend-catalog-cache";
 import BadgesScreen from "@/screens/BadgesScreen";
 import { ChatScreen } from "@/screens/ChatScreen";
 import { FullScreenNotesScreen } from "@/screens/FullScreenNotesScreen";
@@ -21,6 +17,7 @@ import {
   StorybookScreen,
   getStorybookItemTitle,
 } from "@/screens/StorybookScreen";
+import { CatalogCategoryScreen } from "@/screens/catalog-category-screen";
 import { WebDavImportBrowserScreen } from "@/screens/library/WebDavImportBrowserScreen";
 import { ReaderTOCSheetScreen } from "@/screens/reader/reader-toc-sheet-screen";
 import AISettingsScreen from "@/screens/settings/AISettingsScreen";
@@ -45,7 +42,7 @@ import { NATIVE_SCROLL_EDGE_EFFECTS } from "./scroll-edge-effects";
 
 export type RootStackParamList = {
   Tabs: undefined;
-  CatalogCategory: { genreId: string; title: string; catalog: CachedBackendCatalog };
+  CatalogCategory: { genreId: string; title: string };
   Chat: undefined;
   Reader: {
     bookId: string;

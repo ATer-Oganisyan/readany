@@ -36,7 +36,7 @@ describe("expanded catalog category", () => {
       "Uncategorized",
     );
     expect(
-      chunkShelfBooks(shelves.find((shelf) => shelf.id === "fiction")!.books, 2).map((row) =>
+      chunkShelfBooks(shelves.find((shelf) => shelf.id === "fiction")?.books ?? [], 2).map((row) =>
         row.map((item) => item.catalogKey),
       ),
     ).toEqual([["0", "1"], ["2", "3"], ["4", "5"], ["6"]]);
@@ -55,7 +55,9 @@ describe("expanded catalog category", () => {
       nextCursor: null,
     }));
     const complete = await completeCatalogSnapshot(initial, loadNext);
-    expect(buildCatalogShelves(complete!.books, genres, "ru", "Без категории")[0]).toMatchObject({
+    expect(
+      buildCatalogShelves(complete?.books ?? [], genres, "ru", "Без категории")[0],
+    ).toMatchObject({
       title: "Проза",
       books: [book("first"), book("last")],
     });
@@ -110,8 +112,8 @@ describe("expanded catalog category", () => {
     expect(screen).toContain("numColumns={2}");
     expect(screen).toContain('contentInsetAdjustmentBehavior="automatic"');
     expect(screen).not.toContain("headerSearchBarOptions");
-    expect(screen).toContain("retryCatalogCoverDownload");
+    expect(screen).toContain("retryCatalogCover(book)");
     expect(screen).toContain("findReadableLibraryBookForCatalogBook");
-    expect(screen).toContain("queue.dispose()");
+    expect(screen).toContain("useCatalogCoverWindow");
   });
 });

@@ -1,21 +1,14 @@
+import { markInteraction } from "@/lib/diagnostics/interaction-performance";
 import { getPlatformService } from "@readany/core/services";
 import * as FileSystem from "expo-file-system/legacy";
-import {
-  type BackendCatalogBook,
-  type BackendCatalogGenre,
-  fetchBackendCatalogGenres,
-  fetchBackendCatalogPage,
-  mergeBackendCatalogBooks,
-} from "./backend-catalog-api";
+import type { BackendCatalogBook, BackendCatalogGenre } from "./backend-catalog-api";
 import { downloadVerifiedBackendFile } from "./backend-file-download";
+import { createCatalogFileStorage } from "./catalog-storage";
 
-const CACHE_VERSION = 2;
 const CACHE_ROOT = `${FileSystem.documentDirectory}narra-backend-catalog`;
 const COVER_ROOT = `${CACHE_ROOT}/covers`;
-const CATALOG_PATH = `${CACHE_ROOT}/catalog.json`;
 let coverTemporarySequence = 0;
-let catalogTemporarySequence = 0;
-let catalogRefreshPromise: Promise<CachedBackendCatalog> | null = null;
+let coverDirectories: Promise<void> | null = null;
 
 export interface CachedBackendCatalogBook extends BackendCatalogBook {
   coverUri?: string;
@@ -30,13 +23,26 @@ export interface CachedBackendCatalog {
   genreVersion: string | null;
 }
 
-interface StoredCatalog {
-  version: number;
-  books: BackendCatalogBook[];
-  nextCursor: string | null;
-  genres: BackendCatalogGenre[];
-  genreVersion: string | null;
-}
+/** Metadata storage is independent of the visible-cover download cache. */
+export const backendCatalogStorage = createCatalogFileStorage(
+  {
+    read: (path) => {
+      if (path.endsWith("/catalog.json") || path.endsWith("/catalog.json.previous"))
+        markInteraction("catalog.metadata.read");
+      return FileSystem.readAsStringAsync(path);
+    },
+    write: (path, value) => FileSystem.writeAsStringAsync(path, value),
+    move: (from, to) => FileSystem.moveAsync({ from, to }),
+    remove: (path) => FileSystem.deleteAsync(path, { idempotent: true }),
+    exists: async (path) => (await FileSystem.getInfoAsync(path)).exists,
+    mkdir: async (path) => {
+      if (!(await FileSystem.getInfoAsync(path)).exists)
+        await FileSystem.makeDirectoryAsync(path, { intermediates: true });
+    },
+    list: (path) => FileSystem.readDirectoryAsync(path),
+  },
+  CACHE_ROOT,
+);
 
 function safeKey(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 160);
@@ -55,136 +61,32 @@ function coverPath(book: BackendCatalogBook): string | undefined {
   )}`;
 }
 
-async function ensureCacheDirectories(): Promise<void> {
-  for (const directory of [CACHE_ROOT, COVER_ROOT]) {
-    const info = await FileSystem.getInfoAsync(directory);
-    if (!info.exists) await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
+function ensureCacheDirectories(): Promise<void> {
+  if (!coverDirectories) {
+    coverDirectories = (async () => {
+      for (const directory of [CACHE_ROOT, COVER_ROOT]) {
+        const info = await FileSystem.getInfoAsync(directory);
+        if (!info.exists) await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
+      }
+    })().catch((error) => {
+      coverDirectories = null;
+      throw error;
+    });
   }
+  return coverDirectories;
 }
 
-async function cachedBook(book: BackendCatalogBook): Promise<CachedBackendCatalogBook> {
-  const path = coverPath(book);
-  if (!path || !book.cover) return book;
-  const info = await FileSystem.getInfoAsync(path);
-  if (!info.exists || info.isDirectory || info.size !== book.cover.byteSize) return book;
-  return { ...book, coverUri: path };
-}
-
-function storableBook(book: CachedBackendCatalogBook): BackendCatalogBook {
-  const { coverUri: _coverUri, coverLoadFailed: _coverLoadFailed, ...value } = book;
-  return value;
-}
-
-async function writeCatalog(
-  catalog: Omit<CachedBackendCatalog, "books"> & { books: BackendCatalogBook[] },
-): Promise<void> {
-  catalogTemporarySequence += 1;
-  const temporaryPath = `${CATALOG_PATH}.${Date.now()}-${catalogTemporarySequence}.tmp`;
-  const value: StoredCatalog = {
-    version: CACHE_VERSION,
-    books: catalog.books.map(storableBook),
-    nextCursor: catalog.nextCursor,
-    genres: catalog.genres,
-    genreVersion: catalog.genreVersion,
-  };
-  await FileSystem.writeAsStringAsync(temporaryPath, JSON.stringify(value));
-  await FileSystem.deleteAsync(CATALOG_PATH, { idempotent: true });
-  await FileSystem.moveAsync({ from: temporaryPath, to: CATALOG_PATH });
-}
-
-async function hydrateCatalog(value: StoredCatalog): Promise<CachedBackendCatalog> {
-  return {
-    books: await Promise.all(value.books.map(cachedBook)),
-    nextCursor: value.nextCursor,
-    genres: value.genres,
-    genreVersion: value.genreVersion,
-  };
-}
-
-function migrateLegacyCatalog(value: StoredCatalog): StoredCatalog | null {
-  if (value.version !== 1 || !Array.isArray(value.books)) return null;
-  const books = value.books.flatMap((book) => {
-    if (
-      !book ||
-      typeof book !== "object" ||
-      typeof book.bookEditionId !== "string" ||
-      typeof book.catalogKey !== "string"
-    ) {
-      return [];
-    }
-    return [{ ...book, genres: [], generationStatus: "legacy-cache", ready: true }];
-  });
-  return {
-    version: CACHE_VERSION,
-    books,
-    nextCursor: null,
-    genres: [],
-    genreVersion: null,
-  };
-}
-
+/** Compatibility for non-screen callers; active screens use the shared store. */
 export async function loadCachedBackendCatalog(): Promise<CachedBackendCatalog> {
   try {
-    await ensureCacheDirectories();
-    const value = JSON.parse(await FileSystem.readAsStringAsync(CATALOG_PATH)) as StoredCatalog;
-    const migrated = migrateLegacyCatalog(value);
-    if (migrated) return hydrateCatalog(migrated);
-    if (
-      value.version !== CACHE_VERSION ||
-      !Array.isArray(value.books) ||
-      (value.nextCursor !== null && typeof value.nextCursor !== "string") ||
-      !Array.isArray(value.genres)
-    ) {
-      return { books: [], nextCursor: null, genres: [], genreVersion: null };
-    }
-    return hydrateCatalog(value);
+    const stored = await backendCatalogStorage.read();
+    return (
+      stored.complete ??
+      stored.progress ?? { books: [], nextCursor: null, genres: [], genreVersion: null }
+    );
   } catch {
     return { books: [], nextCursor: null, genres: [], genreVersion: null };
   }
-}
-
-export function refreshBackendCatalog(): Promise<CachedBackendCatalog> {
-  if (catalogRefreshPromise) return catalogRefreshPromise;
-  catalogRefreshPromise = (async () => {
-    await ensureCacheDirectories();
-    const [page, genreResult] = await Promise.all([
-      fetchBackendCatalogPage(),
-      fetchBackendCatalogGenres().catch((error) => {
-        console.warn("[Catalog] Failed to refresh genres:", error);
-        return null;
-      }),
-    ]);
-    const previous = await loadCachedBackendCatalog();
-    const catalog = {
-      books: page.items,
-      nextCursor: page.nextCursor,
-      genres: genreResult?.items ?? previous.genres,
-      genreVersion: genreResult?.version ?? previous.genreVersion,
-    };
-    await writeCatalog(catalog);
-    return hydrateCatalog({ version: CACHE_VERSION, ...catalog });
-  })().finally(() => {
-    catalogRefreshPromise = null;
-  });
-  return catalogRefreshPromise;
-}
-
-export async function loadMoreCachedBackendCatalog(
-  current: CachedBackendCatalog,
-): Promise<CachedBackendCatalog> {
-  if (!current.nextCursor) return current;
-  const requestedCursor = current.nextCursor;
-  const page = await fetchBackendCatalogPage(requestedCursor);
-  const catalog = {
-    books: mergeBackendCatalogBooks(current.books, page.items),
-    // Повтор cursor означает сломанный цикл backend. Останавливаемся, чтобы
-    // один экран не создавал бесконечный поток одинаковых запросов.
-    nextCursor: page.nextCursor === requestedCursor ? null : page.nextCursor,
-    genres: current.genres,
-    genreVersion: current.genreVersion,
-  };
-  await writeCatalog(catalog);
-  return hydrateCatalog({ version: CACHE_VERSION, ...catalog });
 }
 
 export async function materializeBackendCatalogCover(
@@ -193,6 +95,7 @@ export async function materializeBackendCatalogCover(
 ): Promise<string | undefined> {
   const path = coverPath(book);
   if (!path || !book.cover) return undefined;
+  await ensureCacheDirectories();
   const existing = await FileSystem.getInfoAsync(path);
   if (existing.exists && !existing.isDirectory && existing.size === book.cover.byteSize)
     return path;

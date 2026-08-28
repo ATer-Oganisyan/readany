@@ -1,43 +1,33 @@
-import { type ReactNode, createContext, useCallback, useContext, useMemo, useRef } from "react";
+import { type SwipePressGuard, createSwipePressGuard } from "@/lib/narra/swipe-press-guard";
+import { createSwipePressGuardBinding } from "@/lib/narra/swipe-press-guard-binding";
+import { type ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
 
-interface SwipePressGuardValue {
-  beginSwipe: () => void;
-  canPress: () => boolean;
-  endSwipe: () => void;
-}
-
-const SwipePressGuardContext = createContext<SwipePressGuardValue | null>(null);
+const SwipePressGuardContext = createContext<SwipePressGuard | null>(null);
 
 export function SwipePressGuardProvider({ children }: { children: ReactNode }) {
-  const swipeActiveRef = useRef(false);
-  const suppressPressUntilRef = useRef(0);
+  const [guard] = useState(createSwipePressGuard);
 
-  const beginSwipe = useCallback(() => {
-    swipeActiveRef.current = true;
-    suppressPressUntilRef.current = Number.POSITIVE_INFINITY;
-  }, []);
-
-  const endSwipe = useCallback(() => {
-    swipeActiveRef.current = false;
-    // iOS may deliver the release press immediately after PagerView becomes idle.
-    suppressPressUntilRef.current = Date.now() + 120;
-  }, []);
-
-  const canPress = useCallback(
-    () => !swipeActiveRef.current && Date.now() >= suppressPressUntilRef.current,
-    [],
-  );
-
-  const value = useMemo(
-    () => ({ beginSwipe, canPress, endSwipe }),
-    [beginSwipe, canPress, endSwipe],
-  );
+  useEffect(() => () => guard.reset(), [guard]);
 
   return (
-    <SwipePressGuardContext.Provider value={value}>{children}</SwipePressGuardContext.Provider>
+    <SwipePressGuardContext.Provider value={guard}>{children}</SwipePressGuardContext.Provider>
   );
 }
 
+/**
+ * Each hook owns only its own scroll/pager leases. The shared provider identity
+ * stays stable while gestures change, so cards do not rerender on focus/swipes.
+ * Spread touchHandlers on the existing screen and scroll wrappers; keep action
+ * ownership in Pressable and call canPress(event) only at its action boundary.
+ */
 export function useSwipePressGuard() {
-  return useContext(SwipePressGuardContext);
+  const guard = useContext(SwipePressGuardContext);
+  const binding = useMemo(() => (guard ? createSwipePressGuardBinding(guard) : null), [guard]);
+
+  useEffect(() => {
+    binding?.activate();
+    return () => binding?.dispose();
+  }, [binding]);
+
+  return binding;
 }

@@ -9,7 +9,13 @@ import {
 } from "./catalog-cover-state";
 
 const pending = { hasCover: true, decodedCoverUri: null, failedCoverUri: null };
-const book = { catalogKey: "book", cover: { contentHash: "v1" } } as CachedBackendCatalogBook;
+const cover: NonNullable<CachedBackendCatalogBook["cover"]> = {
+  contentHash: "v1",
+  mimeType: "image/jpeg",
+  byteSize: 42,
+  downloadPath: "/fixture",
+};
+const book = { catalogKey: "book", cover } as CachedBackendCatalogBook;
 
 describe("target catalog cover", () => {
   it("never shows a colored book between metadata, download, and decoding", () => {
@@ -50,12 +56,12 @@ describe("target catalog cover", () => {
   it("retains downloaded files across a same-cover metadata refresh", () => {
     const current = { ...book, coverUri: "file:///target" };
     expect(retainCatalogCovers([book], [current])[0].coverUri).toBe(current.coverUri);
-    const updated = { ...book, cover: { ...book.cover!, contentHash: "v2" } };
+    const updated = { ...book, cover: { ...cover, contentHash: "v2" } };
     expect(retainCatalogCovers([updated], [current])[0].coverUri).toBeUndefined();
   });
 
   it("ignores stale successes and failures after the target cover changes", () => {
-    const updated = { ...book, cover: { ...book.cover!, contentHash: "v2" } };
+    const updated = { ...book, cover: { ...cover, contentHash: "v2" } };
     expect(applyCatalogCoverResult([updated], book, "file:///old")[0]).toBe(updated);
     expect(applyCatalogCoverResult([updated], book)[0]).toBe(updated);
     expect(applyCatalogCoverResult([book], book)[0].coverLoadFailed).toBe(true);
@@ -71,7 +77,7 @@ describe("target catalog cover", () => {
       coverUri: undefined,
       coverLoadFailed: false,
     });
-    const newer = { ...book, cover: { ...book.cover!, contentHash: "v2" } };
+    const newer = { ...book, cover: { ...cover, contentHash: "v2" } };
     expect(retryCatalogCoverDownload([newer], failed)[0]).toBe(newer);
     const ready = { ...book, coverUri: "file:///ready" };
     expect(applyCatalogCoverResult([ready], book)[0]).toBe(ready);
@@ -88,12 +94,18 @@ describe("target catalog cover", () => {
     expect(card).toContain("onRetryCover()");
     expect(card).not.toContain("transitionDuration");
     expect(card).not.toContain("loadingCoverColorForTitleAuthor");
+    const connected = readFileSync(
+      new URL("../../components/library/ConnectedCatalogBookCard.tsx", import.meta.url),
+      "utf8",
+    );
+    expect(connected).toContain("hasCover={!!");
+    expect(connected).toContain("useCatalogCover(book)");
     for (const name of [
       "../../components/library/catalog-shelf.tsx",
       "../../screens/LibraryScreen.tsx",
     ]) {
       const source = readFileSync(new URL(name, import.meta.url), "utf8");
-      expect(source).toContain("hasCover={!!");
+      expect(source).toContain("<ConnectedCatalogBookCard");
       expect(source).toContain("onRetryCover=");
     }
   });

@@ -2,6 +2,11 @@ import * as Crypto from "expo-crypto";
 import * as SecureStore from "expo-secure-store";
 import { fetch as expoFetch } from "expo/fetch";
 import { NarraServiceError } from "../narra/errors";
+import {
+  type GatewayConsumerScope,
+  readGatewayResponseText,
+  withGatewayConsumer,
+} from "./narra-gateway-consumer";
 
 const INSTALLATION_ID_KEY = "narra.gateway.installation-id";
 const INSTALLATION_SECRET_KEY = "narra.gateway.installation-secret";
@@ -172,10 +177,13 @@ interface GatewayErrorPayload {
   response: Response;
 }
 
-async function readGatewayError(response: Response): Promise<GatewayErrorPayload> {
+async function readGatewayError(
+  response: Response,
+  consumedBody?: string,
+): Promise<GatewayErrorPayload> {
   // expo/fetch currently throws from Response.clone() on native. Read the
   // error body once and recreate a response for callers that still need it.
-  const body = await response.text().catch(() => "");
+  const body = consumedBody ?? (await response.text().catch(() => ""));
   let payload: { error?: string; message?: string; code?: string } | null = null;
   try {
     payload = JSON.parse(body) as { error?: string; message?: string; code?: string };
@@ -237,37 +245,40 @@ async function requestInstallationToken(
   allowIdentityReset = true,
 ): Promise<string> {
   const identity = await getInstallationIdentity();
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), INSTALLATION_TIMEOUT_MS);
-  let response: Response;
-  try {
-    response = await configuredFetch(`${requireGatewayUrl()}/v2/installations/${mode}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(
-        mode === "register"
-          ? {
-              installation_id: identity.installationId,
-              installation_secret: identity.installationSecret,
-              app_version: "narra-expo",
-              platform: process.env.EXPO_OS || "react-native",
-              arch: "react-native",
-            }
-          : {
-              installation_id: identity.installationId,
-              installation_secret: identity.installationSecret,
-            },
-      ),
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeout);
-  }
+  // The shared token request has its own deadline. Cancelling one catalog
+  // consumer must not cancel authentication needed by other gateway callers.
+  const { response, body } = await withGatewayConsumer(
+    async (scope) => {
+      const response = await scope.wait(
+        configuredFetch(`${requireGatewayUrl()}/v2/installations/${mode}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(
+            mode === "register"
+              ? {
+                  installation_id: identity.installationId,
+                  installation_secret: identity.installationSecret,
+                  app_version: "narra-expo",
+                  platform: process.env.EXPO_OS || "react-native",
+                  arch: "react-native",
+                }
+              : {
+                  installation_id: identity.installationId,
+                  installation_secret: identity.installationSecret,
+                },
+          ),
+          signal: scope.signal,
+        }),
+      );
+      return { response, body: await readGatewayResponseText(response, scope) };
+    },
+    { timeoutMs: INSTALLATION_TIMEOUT_MS },
+  );
   if (!response.ok) {
     if (mode === "refresh" && response.status === 404) {
       return requestInstallationToken("register", allowIdentityReset);
     }
-    const error = await readGatewayError(response);
+    const error = await readGatewayError(response, body);
     // A keychain restore or an interrupted app update can leave a locally persisted
     // installation ID paired with a secret the gateway no longer recognizes. That
     // is recoverable and is distinct from an explicitly revoked installation.
@@ -283,7 +294,7 @@ async function requestInstallationToken(
       code === "RATE" ? rateLimitTechnicalDetail(error) : undefined,
     );
   }
-  const payload = (await response.json()) as { token?: string; expires_in?: number };
+  const payload = JSON.parse(body) as { token?: string; expires_in?: number };
   if (!payload.token) throw new NarraServiceError("AUTH", "Gateway returned no token");
   const configuredExpiresIn = Number(payload.expires_in);
   const expiresIn = Number.isFinite(configuredExpiresIn) ? Math.max(60, configuredExpiresIn) : 900;
@@ -314,14 +325,27 @@ async function getInstallationToken(forceRefresh = false): Promise<string> {
   return tokenPromise;
 }
 
-async function directGatewayRequest(path: string, init: RequestInit): Promise<Response> {
+async function directGatewayRequest(
+  path: string,
+  init: RequestInit,
+  scope?: GatewayConsumerScope,
+): Promise<Response> {
   const config = getNarraGatewayConfig();
   const url = `${requireGatewayUrl()}${path.startsWith("/") ? path : `/${path}`}`;
   const send = async (forceRefresh = false) => {
+    scope?.throwIfAborted();
     const headers = new Headers(init.headers);
     if (config.authMode === "installation") {
-      headers.set("authorization", `Bearer ${await getInstallationToken(forceRefresh)}`);
+      const token = scope
+        ? await scope.wait(getInstallationToken(forceRefresh))
+        : await getInstallationToken(forceRefresh);
+      headers.set("authorization", `Bearer ${token}`);
     }
+    if (scope) {
+      scope.throwIfAborted();
+      return scope.wait(configuredFetch(url, { ...init, headers, signal: scope.signal }));
+    }
+    // Raw streaming callers retain their existing headers-only lifecycle.
     const controller = new AbortController();
     const requestTimeout =
       path === "/v2/media/cover"
@@ -343,9 +367,12 @@ async function directGatewayRequest(path: string, init: RequestInit): Promise<Re
   };
   let response = await send();
   if (config.authMode === "installation" && response.status === 401) {
-    const error = await readGatewayError(response);
+    const body = scope ? await readGatewayResponseText(response, scope) : undefined;
+    const error = await readGatewayError(response, body);
     if (isInstallationTokenRejection(response, error)) {
-      await clearInstallationToken();
+      scope?.throwIfAborted();
+      if (scope) await scope.wait(clearInstallationToken());
+      else await clearInstallationToken();
       response = await send(true);
     } else {
       response = error.response;
@@ -357,6 +384,27 @@ async function directGatewayRequest(path: string, init: RequestInit): Promise<Re
 export async function narraGatewayRequest(path: string, init: RequestInit = {}): Promise<Response> {
   const request = withLogicalRequestId(path, init);
   return configuredAdapter ? configuredAdapter(path, request) : directGatewayRequest(path, request);
+}
+
+/** Opt-in complete-response lifecycle; raw chat/TTS streams keep their own lifetime. */
+export function consumeNarraGatewayResponse<T>(
+  path: string,
+  init: RequestInit,
+  consume: (response: Response, scope: GatewayConsumerScope) => Promise<T>,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+): Promise<T> {
+  const request = withLogicalRequestId(path, init);
+  return withGatewayConsumer(
+    async (scope) => {
+      const scopedRequest = { ...request, signal: scope.signal };
+      const response = configuredAdapter
+        ? await scope.wait(configuredAdapter(path, scopedRequest))
+        : await directGatewayRequest(path, scopedRequest, scope);
+      scope.throwIfAborted();
+      return scope.wait(consume(response, scope));
+    },
+    { signal: init.signal, timeoutMs },
+  );
 }
 
 /**
