@@ -1,0 +1,66 @@
+{
+  "sourceCommit": "fb22e6084a41d3171feb48ecb4039a53b9e857dd",
+  "allMatch": true,
+  "files": [
+    {
+      "path": "packages/app-expo/assets/icons/mishanaer/filled-png/arrow-rotate-ccw-up.png",
+      "sha256": "2eeb70e412ea7968792bf1c545687d980c6cce48d7b24d7870ec87370bab9c82"
+    },
+    {
+      "path": "packages/app-expo/assets/icons/mishanaer/filled-png/arrow-rotate-ccw-up@2x.png",
+      "sha256": "91ef2377025457fff00a7ebf325d5de101a415e49598681b6d81b80f827026ca"
+    },
+    {
+      "path": "packages/app-expo/assets/icons/mishanaer/filled-png/arrow-rotate-ccw-up@3x.png",
+      "sha256": "19ee8a1f072b3d0a522ac74eaecb78129aa4512cbb421c10e5cca6180bec998a"
+    },
+    {
+      "path": "packages/app-expo/assets/icons/mishanaer/filled/arrow-rotate-ccw-up.svg",
+      "sha256": "561ffc6d18724b994b49c078421a80e3cfa5d6825132495b9daef237838a8a15"
+    },
+    {
+      "path": "packages/app-expo/scripts/sync-mishanaer-icons.mjs",
+      "sha256": "997d2d0e969d9fcaab3e623b9b8d5238b37b16c6d647d9eb09facde533da5965"
+    },
+    {
+      "path": "packages/app-expo/src/components/chat/narra-chat-header.tsx",
+      "sha256": "6c32adde32df1774a85a4958fb67faf1caecf8a35940b502dc159aefb7c9f9c7"
+    },
+    {
+      "path": "packages/app-expo/src/components/ui/mishanaer-icons.generated.ts",
+      "sha256": "da23d48908909f126a96dc0d165bea5f72eb08ef392ec2f1ad40bd8a2d96c1a3"
+    },
+    {
+      "path": "packages/app-expo/src/navigation/RootNavigator.tsx",
+      "sha256": "d901b04a82e3ab6f5e10697f61e4c0072d25beb2ee23f00a089a1c7c6dd0f577"
+    },
+    {
+      "path": "packages/app-expo/src/screens/NarraCharacterChatScreen.tsx",
+      "sha256": "8eb683a18a1f32bac59f207e5e87e7e7a32f0e3994a1f64b49432c231eacce7c"
+    },
+    {
+      "path": "packages/app-expo/src/screens/NarraCharacterProfileScreen.tsx",
+      "sha256": "3cfa59e9b47039cd9e5b8a127a15f9222d2a1626eaf547bb7296822983e735fe"
+    },
+    {
+      "path": "packages/app-expo/src/screens/NarraSceneScreen.tsx",
+      "sha256": "f1717d3efddde95a2f12d1aee0e1f37733ee91041da89680aee4f743fbb29ca9"
+    },
+    {
+      "path": "packages/app-expo/src/screens/ReaderScreen.tsx",
+      "sha256": "450f846af86f788198c21ed0def0233ed5454106e1f9057a27ab0957cd99738f"
+    },
+    {
+      "path": "packages/app-expo/src/screens/reader/ReaderCharacterActions.android.tsx",
+      "sha256": "21946c7cdaab90b941f2b9a04b9aa7556a04ecb820e5f08e16319d6795b34865"
+    },
+    {
+      "path": "packages/app-expo/src/screens/reader/ReaderCharacterActions.ios.tsx",
+      "sha256": "6c2fb2dee55f977c96c4333d0d1fa4a35bf1ac5ce07f5619ae58e4b441a09320"
+    },
+    {
+      "path": "packages/app-expo/src/screens/reader/ReaderCharacterCard.tsx",
+      "sha256": "83e94de1f7457ae4a49bdcc0c47063b7246cd669beba0695b0d3493157dac6cd"
+    }
+  ]
+}

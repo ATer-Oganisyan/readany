@@ -1,0 +1,21 @@
+{
+  "buildId": "70e1ef6a-bf3e-4f12-93b0-dfe649a2dfad",
+  "version": "1.3.5",
+  "buildNumber": "70",
+  "notesVerified": true,
+  "groups": [
+    {
+      "id": "26813405-2b10-4320-ac58-f4d39b455dae",
+      "name": "Narra Internal"
+    },
+    {
+      "id": "84916db2-7c00-4b98-81c3-42e8a16e408a",
+      "name": "Narra External"
+    }
+  ],
+  "betaDetail": {
+    "autoNotifyEnabled": true,
+    "internalBuildState": "IN_BETA_TESTING",
+    "externalBuildState": "IN_BETA_TESTING"
+  }
+}
