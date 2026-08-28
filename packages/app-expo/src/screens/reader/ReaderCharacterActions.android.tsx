@@ -10,7 +10,12 @@ import { StyleSheet } from "react-native";
 import type { ReaderCharacterActionsProps } from "./ReaderCharacterActions.types";
 
 function getActionIconSource(icon: MishanaerIconName) {
-  if (icon === "chat-bubble" || icon === "headphones" || icon === "stop") {
+  if (
+    icon === "chat-bubble" ||
+    icon === "headphones" ||
+    icon === "stop" ||
+    icon === "arrow-rotate-ccw-up"
+  ) {
     return getFilledIconImageSource(icon);
   }
   return getStrokeIconImageSource(icon);
@@ -32,7 +37,7 @@ export function ReaderCharacterActions(props: ReaderCharacterActionsProps) {
     ...(props.showRegenerate
       ? [
           {
-            icon: props.regenerating ? "pulse-circle" : "repeat",
+            icon: props.regenerating ? "pulse-circle" : "arrow-rotate-ccw-up",
             onPress: props.onRegenerate,
             enabled: !props.regenerating,
           },

@@ -1,6 +1,7 @@
-import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
+import { EmptyStateActionButton } from "@/components/ui/empty-state-action-button";
 import { useBackendBook } from "@/hooks/use-backend-book";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
+import { retryBackendBookSync, useBackendBookStatus } from "@/lib/narra/backend-book-sync";
 import { hasCharacterPortrait } from "@/lib/narra/character-portrait";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
@@ -10,7 +11,7 @@ import { type ThemeColors, useTheme } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useLayoutEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Platform, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Platform, StyleSheet, View } from "react-native";
 
 type Props = NativeStackScreenProps<RootStackParamList, "NarraCharacterProfile">;
 
@@ -21,10 +22,15 @@ export function NarraCharacterProfileScreen({ route, navigation }: Props) {
   const { t } = useTranslation();
   const book = useLibraryStore((state) => state.books.find((item) => item.id === bookId));
   useBackendBook(book);
+  const backendStatus = useBackendBookStatus((state) => state.books[bookId]);
   const character = useNarraStore((state) =>
     state.books[bookId]?.characters.find((item) => item.id === characterId),
   );
-  const portraitReady = Boolean(character && hasCharacterPortrait(character));
+  const portraitReady = Boolean(
+    character?.backendManaged &&
+      isCharacterUnlocked(book?.progress ?? 0, character) &&
+      hasCharacterPortrait(character),
+  );
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -50,12 +56,18 @@ export function NarraCharacterProfileScreen({ route, navigation }: Props) {
     setTimeout(() => void openMobileBook({ bookId, navigation, t }), 0);
   };
 
-  if (!character?.backendManaged || !isCharacterUnlocked(book?.progress ?? 0, character)) {
+  if (!character?.backendManaged) {
     return (
-      <CenteredEmptyState
-        title={t("narra.characterUnavailable", "Персонаж недоступен.")}
-        style={styles.emptyState}
-      />
+      <View collapsable={false} style={[styles.compactContainer, styles.pending]}>
+        {backendStatus?.error || backendStatus?.manifest?.availability === "ready" ? (
+          <EmptyStateActionButton
+            label={t("common.retry", "Повторить")}
+            onPress={() => retryBackendBookSync(bookId)}
+          />
+        ) : (
+          <ActivityIndicator color={colors.mutedForeground} />
+        )}
+      </View>
     );
   }
 
@@ -84,8 +96,9 @@ const makeStyles = (colors: ThemeColors) =>
       flex: 0,
       backgroundColor: Platform.OS === "ios" ? "transparent" : colors.card,
     },
-    emptyState: {
-      flex: 1,
-      backgroundColor: colors.background,
+    pending: {
+      minHeight: 200,
+      alignItems: "center",
+      justifyContent: "center",
     },
   });

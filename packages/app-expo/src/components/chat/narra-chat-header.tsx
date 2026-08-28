@@ -1,4 +1,4 @@
-import { ChevronLeftIcon } from "@/components/ui/Icon";
+import { ChevronLeftIcon, XIcon } from "@/components/ui/Icon";
 import { Text } from "@/components/ui/Typography";
 import {
   bodyTypography,
@@ -20,6 +20,7 @@ export const NARRA_CHAT_EMBEDDED_TOP_INSET = spacingPixels[8];
 
 interface NarraChatHeaderProps {
   backLabel: string;
+  backIcon?: "chevron.backward" | "xmark";
   onBack: () => void;
   title: string;
   subtitle?: string;
@@ -39,6 +40,7 @@ interface NarraChatHeaderProps {
  */
 export function NarraChatHeader({
   backLabel,
+  backIcon = "chevron.backward",
   onBack,
   title,
   subtitle,
@@ -120,8 +122,10 @@ export function NarraChatHeader({
     >
       {Platform.OS === "ios" ? (
         <Host matchContents pointerEvents="none" style={styles.backSymbolHost}>
-          <Image systemName="chevron.backward" size={20} color={colors.foreground} />
+          <Image systemName={backIcon} size={20} color={colors.foreground} />
         </Host>
+      ) : backIcon === "xmark" ? (
+        <XIcon size={24} color={colors.foreground} />
       ) : (
         <ChevronLeftIcon size={24} color={colors.foreground} />
       )}

@@ -243,8 +243,14 @@ export function RootNavigator() {
           name="NarraCharacterChat"
           component={NarraCharacterChatScreen}
           options={{
-            presentation: "card",
-            animation: "slide_from_right",
+            // Keep the chat above the modal reader when replacing the profile sheet.
+            presentation: Platform.OS === "ios" ? "formSheet" : "card",
+            animation: Platform.OS === "ios" ? "slide_from_bottom" : "slide_from_right",
+            gestureEnabled: true,
+            sheetAllowedDetents: [1],
+            sheetGrabberVisible: true,
+            sheetExpandsWhenScrolledToEdge: false,
+            contentStyle: { backgroundColor: colors.background },
             title: t("narra.characterChat", "Чат с персонажем"),
             headerShown: false,
             statusBarHidden: false,

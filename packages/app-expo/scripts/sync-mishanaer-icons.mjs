@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
@@ -145,6 +145,7 @@ const STROKE_ICONS = [
 ];
 
 const FILLED_ICONS = [
+  "arrow-rotate-ccw-up",
   "bell",
   "bin",
   "book",
@@ -357,17 +358,32 @@ function createGeneratedModule() {
   ].join("\n")}\n`;
 }
 
-await Promise.all([
-  rm(assetRoot, { recursive: true, force: true }),
-  rm(nativeIosIconRoot, { recursive: true, force: true }),
-]);
-await Promise.all([syncVariant(STROKE_ICONS, "stroke"), syncVariant(FILLED_ICONS, "filled")]);
-await writeFile(
-  path.join(assetRoot, "README.md"),
-  `# Mishanaer Icons\n\nSynced from ${SOURCE_ORIGIN} at version \`${ICON_VERSION}\`.\n\nRun \`node scripts/sync-mishanaer-icons.mjs\` from \`packages/app-expo\` to refresh the selected app icons.\n`,
-);
-await writeFile(generatedFile, createGeneratedModule());
+// Import one supplied SVG without refreshing or deleting the rest of the catalog.
+// Example: --local-icon=filled/arrow-rotate-ccw-up
+const localIcon = process.argv.find((arg) => arg.startsWith("--local-icon="))?.split("=")[1];
+if (localIcon) {
+  const [variant, name] = localIcon.split("/");
+  const names = variant === "filled" ? FILLED_ICONS : variant === "stroke" ? STROKE_ICONS : [];
+  if (!names.includes(name)) throw new Error(`Unknown local icon: ${localIcon}`);
+  const svg = await readFile(path.join(assetRoot, variant, `${toLocalFileName(name)}.svg`), "utf8");
+  const rasterDirectory = path.join(assetRoot, `${variant}-png`);
+  await mkdir(rasterDirectory, { recursive: true });
+  await writeRasterSet(svg, rasterDirectory, toLocalFileName(name));
+  await writeFile(generatedFile, createGeneratedModule());
+  console.log(`Imported ${localIcon} from the local SVG.`);
+} else {
+  await Promise.all([
+    rm(assetRoot, { recursive: true, force: true }),
+    rm(nativeIosIconRoot, { recursive: true, force: true }),
+  ]);
+  await Promise.all([syncVariant(STROKE_ICONS, "stroke"), syncVariant(FILLED_ICONS, "filled")]);
+  await writeFile(
+    path.join(assetRoot, "README.md"),
+    `# Mishanaer Icons\n\nSynced from ${SOURCE_ORIGIN} at version \`${ICON_VERSION}\`.\n\nRun \`node scripts/sync-mishanaer-icons.mjs\` from \`packages/app-expo\` to refresh the selected app icons.\n`,
+  );
+  await writeFile(generatedFile, createGeneratedModule());
 
-console.log(
-  `Synced ${STROKE_ICONS.length} stroke and ${FILLED_ICONS.length} filled icons from ${SOURCE_ORIGIN}.`,
-);
+  console.log(
+    `Synced ${STROKE_ICONS.length} stroke and ${FILLED_ICONS.length} filled icons from ${SOURCE_ORIGIN}.`,
+  );
+}

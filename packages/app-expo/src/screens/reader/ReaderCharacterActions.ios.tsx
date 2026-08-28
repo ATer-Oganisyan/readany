@@ -44,7 +44,7 @@ export function ReaderCharacterActions(props: ReaderCharacterActionsProps) {
   if (props.showRegenerate) {
     actions.push({
       label: props.regenerateLabel,
-      icon: props.regenerating ? "pulse-circle" : "repeat",
+      icon: props.regenerating ? "pulse-circle" : "arrow-rotate-ccw-up",
       onPress: props.onRegenerate,
       disabled: props.regenerating,
     });
@@ -76,10 +76,12 @@ export function ReaderCharacterActions(props: ReaderCharacterActionsProps) {
 
         return (
           <Button key={action.label} onPress={action.onPress} modifiers={modifiers}>
+            {/* SwiftUI hit testing follows the label, not the outer button frame. */}
             <HostedMishanaerIcon
               name={action.icon}
               variant="filled"
               size={28}
+              box={64}
               color={props.foregroundColor}
             />
           </Button>

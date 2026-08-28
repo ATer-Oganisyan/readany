@@ -25,7 +25,7 @@ import type { MessageV2 } from "@readany/core/types/message";
 import * as Crypto from "expo-crypto";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { StyleSheet, View } from "react-native";
+import { Platform, StyleSheet, View } from "react-native";
 import { KeyboardController } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -97,6 +97,7 @@ function toMessageV2(message: NarraChatMessage, threadId: string): MessageV2 {
 
 export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
   const embedded = "embedded" in props;
+  const presentedAsSheet = Platform.OS === "ios" && !embedded;
   const bookId = embedded ? props.bookId : props.route.params.bookId;
   const characterId = embedded ? props.characterId : props.route.params.characterId;
   const embeddedBack = embedded ? props.onBack : undefined;
@@ -126,7 +127,8 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
     sending || greetingLoading
       ? t("narra.characterTyping", "Печатает...")
       : t("narra.characterOnline", "онлайн");
-  const headerSafeAreaTop = embedded ? NARRA_CHAT_EMBEDDED_TOP_INSET : insets.top;
+  const headerSafeAreaTop =
+    embedded || presentedAsSheet ? NARRA_CHAT_EMBEDDED_TOP_INSET : insets.top;
   const headerHeight = headerSafeAreaTop + NARRA_CHAT_HEADER_HEIGHT;
   const goBack = useCallback(() => {
     void KeyboardController.dismiss({ animated: true, keepFocus: false });
@@ -361,7 +363,8 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
 
   const header = (
     <NarraChatHeader
-      backLabel={t("common.back", "Назад")}
+      backLabel={presentedAsSheet ? t("common.close", "Закрыть") : t("common.back", "Назад")}
+      backIcon={presentedAsSheet ? "xmark" : "chevron.backward"}
       onBack={goBack}
       onTitlePress={character ? openCharacterProfile : undefined}
       onTrailingPress={character ? openCharacterProfile : undefined}

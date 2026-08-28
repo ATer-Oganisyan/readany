@@ -1,5 +1,6 @@
 import { NativeCharacterDetailsCells } from "@/components/narra/NativeCharacterDetailsCells";
 import { CharacterPortraitImage } from "@/components/narra/character-portrait-image";
+import { MishanaerIcon } from "@/components/ui/MishanaerIcon";
 import { Text } from "@/components/ui/Typography";
 import { NarraAudioPlayer } from "@/lib/narra/audio-player";
 import { resolveCharacterPortraitUri } from "@/lib/narra/character-portrait";
@@ -460,7 +461,12 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
                 onPress={() => generatePortrait(true)}
                 style={styles.regenButton}
               >
-                <Text style={styles.regenIcon}>↻</Text>
+                <MishanaerIcon
+                  name="arrow-rotate-ccw-up"
+                  variant="filled"
+                  size={20}
+                  color={styles.regenIcon.color}
+                />
               </Pressable>
             </View>
           ) : null}
@@ -810,8 +816,6 @@ const makeStyles = (colors: ThemeColors) =>
     },
     regenIcon: {
       color: "#fff",
-      fontFamily: interfaceFontFamily.semibold,
-      fontSize: fontSize.lg,
     },
     // Тот же SB Serif Condensed и тот же Title 40, что у large title на главной.
     name: {

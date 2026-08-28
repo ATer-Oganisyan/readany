@@ -4,6 +4,7 @@ import { ScrollViewMarker } from "@/components/ui/ScrollViewMarker";
 import { Text } from "@/components/ui/Typography";
 import { hasBundledOpenRouterKey } from "@/config/bundled-ai";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
+import { hapticLight } from "@/lib/haptics";
 import { animateNarraImage } from "@/lib/narra/animate-openrouter";
 import { buildSceneMotionPrompt } from "@/lib/narra/animate-prompt";
 import { NarraAudioPlayer } from "@/lib/narra/audio-player";
@@ -399,7 +400,10 @@ export function NarraSceneScreen({ route, navigation }: Props) {
             accessibilityRole="button"
             accessibilityLabel={t("narra.sceneRegenerate", "Нарисовать заново")}
             disabled={loading || animating}
-            onPress={() => void generate()}
+            onPress={() => {
+              hapticLight();
+              void generate();
+            }}
             style={({ pressed }) => [styles.primaryPill, pressed && styles.pillPressed]}
           >
             {loading ? (
@@ -416,8 +420,14 @@ export function NarraSceneScreen({ route, navigation }: Props) {
                 : t("narra.sceneAnimate", "Оживить")
             }
             disabled={animating || loading || !imageUri}
-            onPress={animateScene}
-            onLongPress={regenerateAnimation}
+            onPress={() => {
+              hapticLight();
+              animateScene();
+            }}
+            onLongPress={() => {
+              hapticLight();
+              regenerateAnimation();
+            }}
             style={({ pressed }) => [styles.ghostPill, pressed && styles.pillPressed]}
           >
             {animating ? (
@@ -438,7 +448,10 @@ export function NarraSceneScreen({ route, navigation }: Props) {
                 : t("narra.stopVoiceSample", "Остановить озвучку")
             }
             disabled={audioStatus === "preparing"}
-            onPress={() => void playScene()}
+            onPress={() => {
+              hapticLight();
+              void playScene();
+            }}
             style={({ pressed }) => [styles.ghostPill, pressed && styles.pillPressed]}
           >
             {audioStatus === "preparing" ? (
@@ -457,7 +470,10 @@ export function NarraSceneScreen({ route, navigation }: Props) {
         <Pressable
           accessibilityRole="button"
           accessibilityState={{ expanded: textExpanded }}
-          onPress={() => setTextExpanded((value) => !value)}
+          onPress={() => {
+            hapticLight();
+            setTextExpanded((value) => !value);
+          }}
           style={({ pressed }) => [styles.disclosureRow, pressed && styles.pillPressed]}
         >
           <Text style={styles.disclosureLabel}>

@@ -669,6 +669,15 @@ function ReaderContent({ route, navigation }: Props) {
       });
     }, 5000),
   ).current;
+  const publishCharacterProgress = useCallback(() => {
+    // Character screens read the library store, not the reader's live position.
+    // Publish before navigating so the five-second save throttle cannot relock a hero.
+    if (!lastCfiRef.current) return;
+    void updateBook(bookId, {
+      progress,
+      currentCfi: lastCfiRef.current,
+    });
+  }, [bookId, progress, updateBook]);
   const { loadAnnotations, highlights } = useAnnotationStore();
   const book = useMemo(() => books.find((b) => b.id === bookId), [books, bookId]);
   const activeReaderLoadIdRef = useRef<string | null>(null);
@@ -1361,6 +1370,7 @@ function ReaderContent({ route, navigation }: Props) {
       // Запертые персонажи не размечаются, но на случай гонки — двойная проверка
       if (!character || !isCharacterUnlocked(progress, character)) return;
       suppressReaderTapUntilRef.current = Date.now() + 400;
+      publishCharacterProgress();
       navigation.navigate("NarraCharacterProfile", {
         bookId,
         characterId: character.id,
@@ -1368,6 +1378,7 @@ function ReaderContent({ route, navigation }: Props) {
     },
     // Врезки сцен генерируются только по явному тапу.
     onSceneSlotTap: ({ anchor }) => {
+      hapticLight();
       console.log("[SceneSlot] tap → generate", { anchor });
       void runSceneSlotGeneration(anchor);
     },
@@ -1622,8 +1633,9 @@ function ReaderContent({ route, navigation }: Props) {
   );
 
   const handleOpenCharacters = useCallback(() => {
+    publishCharacterProgress();
     navigation.navigate("NarraCharacters", { bookId, charactersSheetSourceId });
-  }, [bookId, charactersSheetSourceId, navigation]);
+  }, [bookId, charactersSheetSourceId, navigation, publishCharacterProgress]);
 
   const openTOCSheet = useCallback(() => {
     setShowTOC(true);
