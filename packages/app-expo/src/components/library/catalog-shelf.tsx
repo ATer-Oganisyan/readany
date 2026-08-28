@@ -15,7 +15,7 @@ import {
   chunkShelfBooks,
   shelfPageForBook,
 } from "@/lib/narra/catalog-shelves";
-import { fontSize, fontWeight, spacing, useColors } from "@/styles/theme";
+import { fontSize, fontWeight, largeTitleFontFamily, spacing, useColors } from "@/styles/theme";
 import { memo, useCallback, useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -109,7 +109,7 @@ export const CatalogShelfRow = memo(function CatalogShelfRow({
           flexDirection: "row",
           alignItems: "center",
           minHeight: 44,
-          gap: spacing.md,
+          gap: spacing.sm,
           marginBottom: spacing.sm,
           paddingHorizontal: edgeInset,
           opacity: pressed ? 0.72 : 1,
@@ -118,10 +118,11 @@ export const CatalogShelfRow = memo(function CatalogShelfRow({
         <Text
           accessibilityRole="header"
           style={{
-            flex: 1,
+            flexShrink: 1,
             color: colors.foreground,
+            fontFamily: largeTitleFontFamily,
             fontSize: fontSize.xl,
-            fontWeight: fontWeight.semibold,
+            fontWeight: fontWeight.normal,
           }}
         >
           {shelf.title}

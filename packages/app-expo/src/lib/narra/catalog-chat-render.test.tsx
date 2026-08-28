@@ -32,6 +32,7 @@ const runtime = vi.hoisted(() => ({
       primary: "#000",
       primary5: "#eee",
       primary20: "#ccc",
+      primary30: "#bbb",
       foreground: "#111",
       mutedForeground: "#777",
     },
@@ -140,6 +141,7 @@ vi.mock("@/components/ui/initials-avatar", () => ({ InitialsAvatar: "InitialsAva
 vi.mock("@/components/ui/native-segmented-pager", () => ({ NativeSegmentedPager: "Pager" }));
 vi.mock("@/components/ui/Typography", () => ({ Text: "Text" }));
 vi.mock("@/components/ui/NativeButton", () => ({ NativeButton: "NativeButton" }));
+vi.mock("@/components/ui/Icon", () => ({ RotateCcwIcon: "RotateCcwIcon" }));
 vi.mock("@/components/ui/swipe-press-guard", () => ({ useSwipePressGuard: () => runtime.guard }));
 vi.mock("@/lib/book/book-tab-label", () => import("../book/book-tab-label"));
 vi.mock("@/lib/book/cover-text-contrast", () => ({ generatedCoverTextTone: () => "dark" }));
@@ -612,7 +614,7 @@ describe("Catalog card render and decode", () => {
     await act(() => oldLoad());
     await act(() => oldError());
     expect(hosts(view.root, "Text")).toHaveLength(0);
-    expect(hosts(view.root, "NativeButton")).toHaveLength(0);
+    expect(hosts(view.root, "RotateCcwIcon")).toHaveLength(0);
     await act(() => hosts(view.root, "Image")[0].props.onLoad());
     expect(view.root.findByType(BookCoverTypography).props.coverUri).toBe("file:///cover-b");
   });
@@ -621,12 +623,30 @@ describe("Catalog card render and decode", () => {
     const card = props();
     const view = await render(<CatalogBookCard {...card} />);
     await act(() => hosts(view.root, "Image")[0].props.onError());
+    const retry = hosts(view.root, "Pressable").find(
+      (node) => node.props.accessibilityLabel === `Повторить: ${card.title}`,
+    );
+    if (!retry) throw new Error("Expected accessible cover retry action");
+    expect(retry.props.accessibilityRole).toBe("button");
+    expect(hosts(retry, "RotateCcwIcon")[0].props).toMatchObject({
+      size: 32,
+      color: runtime.theme.colors.primary30,
+    });
+    expect(retry.props.style({ pressed: true })).toEqual([
+      { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+      { transform: [{ scale: 0.96 }] },
+    ]);
+    expect(hosts(view.root, "NativeButton")).toHaveLength(0);
+    const event = { nativeEvent: { timestamp: 123 } };
     runtime.guard.canPress.mockReturnValue(false);
-    await act(() => hosts(view.root, "NativeButton")[0].props.onPress());
+    await act(() => retry.props.onPress(event));
     expect(card.onRetryCover).not.toHaveBeenCalled();
+    expect(runtime.guard.canPress).toHaveBeenLastCalledWith(event);
     runtime.guard.canPress.mockReturnValue(true);
-    await act(() => hosts(view.root, "NativeButton")[0].props.onPress());
+    await act(() => retry.props.onPress(event));
     expect(card.onRetryCover).toHaveBeenCalledTimes(1);
+    expect(card.onPress).not.toHaveBeenCalled();
+    expect(hosts(view.root, "RotateCcwIcon")).toHaveLength(0);
     await act(() => hosts(view.root, "Image")[0].props.onLoad());
     runtime.guard.canPress.mockReturnValue(false);
     await act(() => hosts(view.root, "Pressable")[0].props.onPress());

@@ -221,7 +221,8 @@ vi.mock("@/styles/theme", () => ({
   radius: { sm: 6, full: 9999 },
   spacing: { sm: 8, md: 12, lg: 16, xl: 20, xxl: 24 },
   fontSize: { base: 16, xl: 20 },
-  fontWeight: { semibold: "600" },
+  fontWeight: { semibold: "600", normal: "400" },
+  largeTitleFontFamily: "SB Serif Condensed Regular",
 }));
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: runtime.t, i18n: runtime.i18n }),

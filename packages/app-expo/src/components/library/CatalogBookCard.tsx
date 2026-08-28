@@ -1,11 +1,12 @@
-import { NativeButton } from "@/components/ui/NativeButton";
+import { RotateCcwIcon } from "@/components/ui/Icon";
 import { useSwipePressGuard } from "@/components/ui/swipe-press-guard";
 import { generatedCoverTextTone } from "@/lib/book/cover-text-contrast";
 import { countRender } from "@/lib/diagnostics/interaction-performance";
 import { catalogCoverDisplayState } from "@/lib/narra/catalog-cover-state";
+import { useColors } from "@/styles/theme";
 import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { type GestureResponderEvent, Image, StyleSheet, View } from "react-native";
+import { type GestureResponderEvent, Image, Pressable, StyleSheet, View } from "react-native";
 import { CatalogBookSkeleton } from "./CatalogBookSkeleton";
 import { BookCoverTypography } from "./book-cover-typography";
 import { PerspectiveBook } from "./perspective-book";
@@ -34,6 +35,7 @@ export const CatalogBookCard = memo(function CatalogBookCard({
   onRetryCover,
 }: CatalogBookCardProps) {
   countRender("catalog.card");
+  const colors = useColors();
   const { t } = useTranslation();
   const swipePressGuard = useSwipePressGuard();
   const cardHeight = cardWidth * (41 / 28);
@@ -132,11 +134,14 @@ export const CatalogBookCard = memo(function CatalogBookCard({
       </View>
       {display === "error" ? (
         <View style={styles.retry}>
-          <NativeButton
-            label={t("common.retry", "Повторить")}
+          <Pressable
+            accessibilityRole="button"
             accessibilityLabel={`${t("common.retry", "Повторить")}: ${title}`}
+            style={({ pressed }) => [styles.retryButton, pressed && styles.retryPressed]}
             onPress={handleRetry}
-          />
+          >
+            <RotateCcwIcon size={32} color={colors.primary30} />
+          </Pressable>
         </View>
       ) : null}
     </View>
@@ -157,4 +162,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  retryButton: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  retryPressed: { transform: [{ scale: 0.96 }] },
 });
