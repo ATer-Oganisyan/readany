@@ -1,0 +1,9 @@
+{
+  "version": "1.3.5",
+  "buildNumber": "69",
+  "sourceCommit": "d277cf64d4ddc8a961ddee75442cc9b51e300381",
+  "uploaderExitCode": 0,
+  "confirmedAt": "2026-08-28T17:56:36+03:00",
+  "message": "Successfully uploaded the new binary to App Store Connect",
+  "route": "direct Apple upload via Fastlane Pilot; no EAS submission created"
+}

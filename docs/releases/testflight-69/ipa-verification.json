@@ -1,0 +1,20 @@
+{
+  "sha256": "8a227e7b5b024a9a5100576004201ae1a8f517d411fe3c7106ca6e046ed69c42",
+  "bytes": 268150231,
+  "version": "1.3.5",
+  "buildNumber": "69",
+  "bundleIdentifier": "com.mishanaer.narra",
+  "xcodeBuild": "17F113",
+  "sdk": "iphoneos26.5",
+  "codesignValid": true,
+  "storeProvisioning": true,
+  "debuggable": false,
+  "runtimeMarkersPresent": [
+    "book-catalog-language-v1",
+    "[TTS] Book speech request failed",
+    "/v2/speech/synthesize",
+    "api-test.narra.disrupt.builders"
+  ],
+  "fixtureMarkerPresent": false,
+  "appPath": "/private/tmp/narra-testflight-69-verify/Payload/Narra.app"
+}

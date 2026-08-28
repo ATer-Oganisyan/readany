@@ -1,0 +1,21 @@
+{
+  "files": [
+    "packages/app-expo/src/hooks/use-backend-catalog.ts",
+    "packages/app-expo/src/lib/ai/narra-gateway-consumer.ts",
+    "packages/app-expo/src/lib/narra/backend-book-contract.ts",
+    "packages/app-expo/src/lib/narra/backend-book-sync.ts",
+    "packages/app-expo/src/lib/narra/backend-catalog-api.ts",
+    "packages/app-expo/src/lib/narra/backend-catalog-cache.ts",
+    "packages/app-expo/src/lib/narra/backend-catalog-import.ts",
+    "packages/app-expo/src/lib/narra/backend-catalog-store.ts",
+    "packages/app-expo/src/lib/narra/catalog-storage.ts",
+    "packages/app-expo/src/lib/narra/catalog-store.ts",
+    "packages/app-expo/src/lib/narra/media.ts",
+    "packages/app-expo/src/lib/platform/rn-tts-factories.ts",
+    "packages/app-expo/src/lib/platform/track-player-edge-player.ts",
+    "packages/app-expo/src/stores/library-store.ts",
+    "packages/app-expo/src/stores/tts-store.ts",
+    "packages/app-expo/src/lib/narra/book-language.ts"
+  ],
+  "allMatch": true
+}
