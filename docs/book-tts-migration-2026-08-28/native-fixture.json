@@ -1,0 +1,64 @@
+{
+  "done": true,
+  "value": {
+    "chunks": [
+      {
+        "index": 0,
+        "total": 3
+      },
+      {
+        "index": 1,
+        "total": 3
+      },
+      {
+        "index": 2,
+        "total": 3
+      }
+    ],
+    "during": {
+      "state": "playing"
+    },
+    "ended": 1,
+    "fetchRestored": true,
+    "files": [
+      {
+        "bytes": 96044,
+        "exists": true,
+        "name": "speech-1787927174010-2.wav"
+      },
+      {
+        "bytes": 96044,
+        "exists": true,
+        "name": "speech-1787927173976-0.wav"
+      },
+      {
+        "bytes": 96044,
+        "exists": true,
+        "name": "speech-1787927173994-1.wav"
+      }
+    ],
+    "filesAfterStop": [
+      false,
+      false,
+      false
+    ],
+    "fixture": "one-second silent PCM WAV, no paid synthesis",
+    "progress": {
+      "buffered": 1,
+      "duration": 1,
+      "position": 0
+    },
+    "queueAfterStop": 0,
+    "requests": 3,
+    "startedAt": "2026-08-28T14:26:13.774Z",
+    "states": [
+      "playing",
+      "playing",
+      "playing",
+      "playing",
+      "stopped"
+    ],
+    "trackModule": "../../node_modules/react-native-track-player/src/index.ts",
+    "trackRate": 1
+  }
+}

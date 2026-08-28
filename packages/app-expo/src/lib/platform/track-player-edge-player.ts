@@ -4,7 +4,8 @@ import { File } from "expo-file-system";
 import { AppState, type AppStateStatus, Image, Platform } from "react-native";
 import TrackPlayer, { Event, State } from "react-native-track-player";
 
-import { getNarraTTSProvider, synthesizeNarraSpeech } from "../narra/media";
+import { NarraServiceError } from "../narra/errors";
+import { synthesizeNarraBookSpeech } from "../narra/media";
 import { getNarratorVoice } from "../narra/scene-audio";
 import { resolveReaderVoiceForChunk } from "../narra/voice-markup";
 import { chunkIndexFromTrackId, trackIdForChunkIndex } from "./track-player-chunk-id";
@@ -22,10 +23,7 @@ const DEFAULT_ARTWORK = (() => {
 
 export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
   private static readonly INITIAL_BUFFER_CHUNKS = 8;
-  // Edge readaloud is a free consumer endpoint. Sustained 8-way concurrent
-  // WebSocket fetches can trip rate limiting on a single client IP, surfacing
-  // as "Edge TTS returned no audio" failures mid-playback. 3 keeps the
-  // initial buffer responsive while staying under the typical limit.
+  // Three short Gateway/SaluteSpeech requests in flight; preserve sentence order.
   private static readonly FETCH_CONCURRENCY = 3;
   private static readonly STARVE_RESUME_BUFFER_CHUNKS = 2;
   private static readonly MAX_RETRIES = 3;
@@ -42,6 +40,7 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
   private _config: TTSConfig | null = null;
   private _tempFiles: string[] = [];
   private _speakGen = 0;
+  private _sessionAbort: AbortController | null = null;
   private _unsubscribers: (() => void)[] = [];
   private _downloadComplete = false;
   private _nextChunkToAdd = 0;
@@ -72,6 +71,7 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
     await this._cleanup();
     if (gen !== this._speakGen) return;
 
+    this._sessionAbort = new AbortController();
     this._stopped = false;
     this._paused = false;
     this._config = config;
@@ -184,8 +184,7 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
           TrackPlayer.retry().catch((err) => console.warn("[TTS] TrackPlayer retry failed:", err));
         } else {
           console.log("[TTS] Playback stopped after retries");
-          this._stopped = true;
-          this.onStateChange?.("stopped");
+          this.stop();
         }
       } else if (event.state === State.Ended || event.state === State.Stopped) {
         this._handlePlaybackEnded(gen);
@@ -248,7 +247,11 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
         this._chunks.length,
       );
 
-      while (this._nextChunkToAdd < this._chunks.length) {
+      while (
+        gen === this._speakGen &&
+        !this._stopped &&
+        this._nextChunkToAdd < this._chunks.length
+      ) {
         this._startChunkFetches(gen);
         const nextIndex = this._nextChunkToAdd;
         const fetchPromise = this._fetchPromises.get(nextIndex);
@@ -258,6 +261,7 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
         }
 
         const audioUri = await fetchPromise;
+        if (gen !== this._speakGen || this._stopped) return;
         this._fetchPromises.delete(nextIndex);
         await this._addFetchedChunk(nextIndex, audioUri, gen);
 
@@ -276,16 +280,17 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
         await this._resumeStarvedQueue(gen);
       }
     } catch (err) {
-      if (!this._stopped && (err as Error)?.message !== "aborted") {
+      if (gen === this._speakGen && !this._stopped && (err as Error)?.message !== "aborted") {
         console.log("[TTS] Speech synthesis stopped after retries");
-        this._stopped = true;
-        this.onStateChange?.("stopped");
+        this.stop();
       }
     }
   }
 
   private _startChunkFetches(gen: number): void {
     while (
+      gen === this._speakGen &&
+      !this._stopped &&
       this._fetchPromises.size < TrackPlayerEdgeTTSPlayer.FETCH_CONCURRENCY &&
       this._nextChunkToFetch < this._chunks.length
     ) {
@@ -300,6 +305,7 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
     if (this._playStarted || gen !== this._speakGen || this._stopped) return;
 
     const queue = await TrackPlayer.getQueue();
+    if (gen !== this._speakGen || this._stopped) return;
     if (queue.length === 0) {
       this._stopped = true;
       this.onStateChange?.("stopped");
@@ -311,6 +317,7 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
 
     await TrackPlayer.play();
     await this._applyPlaybackRate();
+    if (gen !== this._speakGen || this._stopped) return;
     this._playStarted = true;
     this._startProgressPolling(gen);
     // Resolve current playback position by track ID, not queue index — when
@@ -340,6 +347,7 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
       artwork: this._currentArtwork,
     });
 
+    if (gen !== this._speakGen || this._stopped) return;
     this._nextChunkToAdd = Math.max(this._nextChunkToAdd, index + 1);
     if (this._nextChunkToAdd >= this._chunks.length) {
       this._downloadComplete = true;
@@ -447,17 +455,18 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
           throw error;
         }
         lastError = error;
-        const text = this._chunks[index] || "";
-        const textPreview = text.length > 60 ? `${text.slice(0, 60)}…` : text;
-        console.warn("[TrackPlayerEdgeTTSPlayer] chunk fetch failed", {
+        if (
+          error instanceof NarraServiceError &&
+          ["AUTH", "CONFIG", "REQUEST"].includes(error.code)
+        )
+          throw error;
+        console.warn("[TTS] Book speech request failed", {
           index,
           attempt: attempt + 1,
-          maxAttempts: TrackPlayerEdgeTTSPlayer.MAX_CHUNK_FETCH_RETRIES + 1,
-          textLen: text.length,
-          textPreview,
-          error,
+          code: error instanceof NarraServiceError ? error.code : "NETWORK",
         });
-        await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+        if (attempt < TrackPlayerEdgeTTSPlayer.MAX_CHUNK_FETCH_RETRIES)
+          await this._waitForRetry(500 * (attempt + 1));
       }
     }
 
@@ -660,14 +669,9 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
     this.onEnd?.();
   }
 
-  /**
-   * Скорость чтения. Grok TTS не принимает ни rate, ни pitch (проверено:
-   * `speed` не меняет длительность), поэтому пользовательская скорость
-   * применяется на плеере — мгновенно и без повторного платного синтеза.
-   * На пути через гейтвей скорость уже зашита в SSML, плеер остаётся на 1.0.
-   */
+  /** Rate is already encoded in backend SSML; applying it twice speeds speech up twice. */
   private async _applyPlaybackRate(): Promise<void> {
-    const rate = getNarraTTSProvider() === "grok" ? (this._config?.rate ?? 1) : 1;
+    const rate = 1;
     try {
       await TrackPlayer.setRate(rate);
     } catch (error) {
@@ -682,16 +686,20 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
     // сегменты вне плана (и весь нарратив) — голосом нарратора.
     const chunkText = this._chunks[index];
     const assignment = resolveReaderVoiceForChunk(chunkText);
-    const audioUri = await synthesizeNarraSpeech(
+    const audioUri = await synthesizeNarraBookSpeech(
       chunkText,
       assignment?.voice || getNarratorVoice(),
       {
         prosody: assignment?.prosody,
         rate: this._config?.rate,
+        signal: this._sessionAbort?.signal,
       },
     );
 
-    if (this._stopped || gen !== this._speakGen) throw new Error("aborted");
+    if (this._stopped || gen !== this._speakGen) {
+      this._deleteTempFiles([audioUri]);
+      throw new Error("aborted");
+    }
 
     this._tempFiles.push(audioUri);
     return audioUri;
@@ -716,6 +724,9 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
   }
 
   stop(): void {
+    ++this._speakGen;
+    this._sessionAbort?.abort();
+    this._sessionAbort = null;
     this._stopped = true;
     this._paused = false;
     this._downloadComplete = false;
@@ -726,14 +737,18 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
     this._fetchPromises.clear();
     this._silenceTrackIds.clear();
     this._stopProgressPolling();
-    TrackPlayer.stop();
-    TrackPlayer.reset();
+    void TrackPlayer.stop().catch(() => {});
+    void TrackPlayer.reset().catch(() => {});
     this._cleanupEvents();
     this._cleanupTempFiles();
     this.onStateChange?.("stopped");
   }
 
   private async _cleanup(): Promise<void> {
+    this._sessionAbort?.abort();
+    this._sessionAbort = null;
+    const oldFiles = this._tempFiles;
+    this._tempFiles = [];
     this._stopped = true;
     this._downloadComplete = false;
     this._queueStarved = false;
@@ -748,7 +763,7 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
       await TrackPlayer.stop();
       await TrackPlayer.reset();
     } catch {}
-    this._cleanupTempFiles();
+    this._deleteTempFiles(oldFiles);
   }
 
   private _cleanupEvents(): void {
@@ -757,12 +772,33 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
   }
 
   private _cleanupTempFiles(): void {
-    for (const f of this._tempFiles) {
+    const files = this._tempFiles;
+    this._tempFiles = [];
+    this._deleteTempFiles(files);
+  }
+
+  private _deleteTempFiles(files: string[]): void {
+    for (const f of files) {
       try {
         const file = new File(f);
         if (file.exists) file.delete();
       } catch {}
     }
-    this._tempFiles = [];
+  }
+
+  private _waitForRetry(ms: number): Promise<void> {
+    const signal = this._sessionAbort?.signal;
+    if (!signal || signal.aborted) return Promise.reject(new Error("aborted"));
+    return new Promise((resolve, reject) => {
+      const abort = () => {
+        clearTimeout(timer);
+        reject(new Error("aborted"));
+      };
+      const timer = setTimeout(() => {
+        signal.removeEventListener("abort", abort);
+        resolve();
+      }, ms);
+      signal.addEventListener("abort", abort, { once: true });
+    });
   }
 }

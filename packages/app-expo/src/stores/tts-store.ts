@@ -12,7 +12,6 @@ import {
 import { Platform } from "react-native";
 import TrackPlayer from "react-native-track-player";
 import { create } from "zustand";
-import { getNarraTTSProvider } from "../lib/narra/media";
 import { ExpoSpeechTTSPlayer } from "../lib/platform/expo-speech-player";
 import { canUseSystemTtsSynthesis } from "../lib/platform/system-tts-synthesis";
 import { TrackPlayerCloudTTSPlayer } from "../lib/platform/track-player-cloud-tts-player";
@@ -54,6 +53,7 @@ let _dashscopeTTS: ITTSPlayer | null = null;
 let _xiaomiTTS: ITTSPlayer | null = null;
 let _openAICompatibleTTS: ITTSPlayer | null = null;
 let _activeTTS: ITTSPlayer | null = null;
+let _activeConfig: TTSConfig | null = null;
 
 let _sessionSegments: string[] = [];
 let _sessionCurrentIndex = 0;
@@ -103,19 +103,8 @@ function clearRespeakTimer(): void {
   }
 }
 
-/**
- * Правило повторного синтеза с учётом провайдера озвучки Narra.
- *
- * Grok TTS применяет скорость на плеере (TrackPlayer.setRate), а не при
- * синтезе, поэтому изменение скорости не должно вызывать повторный — платный —
- * синтез. Проверяем это, прогнав правило движка ещё раз с прежней скоростью:
- * если без неё расхождений не осталось, пересинтезировать нечего.
- */
-export function shouldRespeakForNarraSynthChange(prev: TTSConfig, next: TTSConfig): boolean {
-  if (!shouldRespeakForSynthChange(prev, next)) return false;
-  if (getNarraTTSProvider() !== "grok") return true;
-  return shouldRespeakForSynthChange(prev, { ...next, rate: prev.rate });
-}
+/** Book speech encodes speed in backend SSML, so a speed change needs new audio. */
+export const shouldRespeakForNarraSynthChange = shouldRespeakForSynthChange;
 
 function scheduleRespeak(): void {
   clearRespeakTimer();
@@ -142,6 +131,7 @@ function detachAndStopPlayer(player: ITTSPlayer | null): void {
 
 function detachAndStopAllPlayers(): void {
   _activeTTS = null;
+  _activeConfig = null;
   detachAndStopPlayer(_systemTTS);
   detachAndStopPlayer(_edgeTTS);
   detachAndStopPlayer(_dashscopeTTS);
@@ -246,6 +236,7 @@ function startPlayback(
   const gen = _sessionGeneration;
   let isStarting = true;
   _activeTTS = player;
+  _activeConfig = config;
 
   // Set artwork getter for RNTP players
   if (
@@ -481,7 +472,15 @@ export const useTTSStore = create<TTSState>()(
 
       resume: () => {
         console.log("[TTSStore] resume called");
-        if (get().playState === "paused" && _activeTTS) {
+        const config = normalizeTTSConfig(get().config);
+        // Speed lives in SSML. Resume old WAV only if its synthesis settings still match.
+        if (
+          get().playState === "paused" &&
+          _activeTTS &&
+          _activeConfig &&
+          _activeConfig.engine === config.engine &&
+          !shouldRespeakForNarraSynthChange(_activeConfig, config)
+        ) {
           _activeTTS.resume();
           set({ playState: "playing" });
           return;
@@ -492,7 +491,6 @@ export const useTTSStore = create<TTSState>()(
           return;
         }
 
-        const config = normalizeTTSConfig(get().config);
         const nextIndex = Math.max(0, Math.min(_sessionCurrentIndex, _sessionSegments.length - 1));
         const remainingSegments = _sessionSegments.slice(nextIndex);
         if (remainingSegments.length === 0) {

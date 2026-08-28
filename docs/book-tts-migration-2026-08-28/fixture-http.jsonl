@@ -1,0 +1,14 @@
+{"at":"2026-08-28T14:17:52.258Z","path":"/speech","method":"POST","keys":["ssml","voice"],"voice":"Che","authorizationPresent":false,"bytes":96044}
+{"at":"2026-08-28T14:17:52.262Z","path":"/speech","method":"POST","keys":["ssml","voice"],"voice":"Che","authorizationPresent":false,"bytes":96044}
+{"at":"2026-08-28T14:17:52.264Z","path":"/speech","method":"POST","keys":["ssml","voice"],"voice":"Che","authorizationPresent":false,"bytes":96044}
+{"at":"2026-08-28T14:19:31.212Z","path":"/slow","method":"POST","keys":["text","voice"],"voice":"Che","authorizationPresent":false,"bytes":96044}
+{"at":"2026-08-28T14:19:31.215Z","path":"/slow","method":"POST","keys":["text","voice"],"voice":"Che","authorizationPresent":false,"bytes":96044}
+{"at":"2026-08-28T14:19:31.485Z","event":"slow-close","finished":false}
+{"at":"2026-08-28T14:19:31.488Z","event":"slow-close","finished":false}
+{"at":"2026-08-28T14:26:13.949Z","path":"/speech","method":"POST","keys":["ssml","voice"],"voice":"Che","authorizationPresent":false,"bytes":96044}
+{"at":"2026-08-28T14:26:13.950Z","path":"/speech","method":"POST","keys":["ssml","voice"],"voice":"Che","authorizationPresent":false,"bytes":96044}
+{"at":"2026-08-28T14:26:13.951Z","path":"/speech","method":"POST","keys":["ssml","voice"],"voice":"Che","authorizationPresent":false,"bytes":96044}
+{"at":"2026-08-28T14:26:26.672Z","path":"/slow","method":"POST","keys":["text","voice"],"voice":"Che","authorizationPresent":false,"bytes":96044}
+{"at":"2026-08-28T14:26:26.672Z","path":"/slow","method":"POST","keys":["text","voice"],"voice":"Che","authorizationPresent":false,"bytes":96044}
+{"at":"2026-08-28T14:26:26.936Z","event":"slow-close","finished":false}
+{"at":"2026-08-28T14:26:26.937Z","event":"slow-close","finished":false}

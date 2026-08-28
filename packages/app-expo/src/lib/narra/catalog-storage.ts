@@ -1,4 +1,5 @@
 import type { BackendCatalogBook, BackendCatalogGenre } from "./backend-catalog-api";
+import { normalizeBookLanguage } from "./book-language";
 import type {
   CatalogMetadata,
   CatalogProgress,
@@ -90,6 +91,7 @@ function readBook(value: unknown, legacy: boolean): BackendCatalogBook | null {
     title: raw.title,
     author: raw.author,
     genres,
+    language: normalizeBookLanguage(raw.language),
     format: raw.format,
     contentSha256: raw.contentSha256,
     generationStatus,

@@ -21,6 +21,7 @@ import {
   preserveBackendOriginalSource,
   startImportedBackendBook,
 } from "@/lib/narra/backend-book-sync";
+import { normalizeBookLanguage } from "@/lib/narra/book-language";
 import { queueBook as queueAutoVectorize } from "@/lib/rag/auto-vectorize-service";
 import {
   type ImportBooksResult,
@@ -70,6 +71,7 @@ export interface RemoveBookOptions {
 }
 
 export interface KnownBookImport {
+  language?: string;
   title: string;
   author: string;
   sourceKind: NonNullable<Book["sourceKind"]>;
@@ -1611,6 +1613,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           // Extract metadata (title, author, cover) from book content
           let title = knownBook?.title || fileName.replace(/\.\w+$/i, "") || "Untitled";
           let author = knownBook?.author || "";
+          let language = normalizeBookLanguage(knownBook?.language);
           let coverUrl: string | undefined;
           let coverContext:
             | { description?: string; textSample?: string; subjects?: string[] }
@@ -1631,6 +1634,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
               );
               if (meta.title) title = meta.title;
               if (meta.author) author = meta.author;
+              language = normalizeBookLanguage(meta.language);
               coverContext = {
                 description: meta.description,
                 textSample: meta.textSample,
@@ -1681,6 +1685,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
               ...(importTarget?.meta ?? {}),
               title,
               author,
+              language: language ?? importTarget?.meta.language,
               description: coverContext?.description || importTarget?.meta.description,
               subjects: coverContext?.subjects?.length
                 ? coverContext.subjects

@@ -1,0 +1,81 @@
+{
+  "done": true,
+  "value": {
+    "authMode": "installation",
+    "baseUrl": "https://api-test.narra.disrupt.builders",
+    "completedAt": "2026-08-28T14:35:51.711Z",
+    "pages": [
+      {
+        "count": 2,
+        "hasNext": true,
+        "languages": [
+          "en",
+          "en"
+        ],
+        "scope": "all"
+      },
+      {
+        "diagnostic": "ru",
+        "firstCursorPresent": true,
+        "firstIds": [
+          "5f79199b-e75f-4e1f-94db-106c8250696f",
+          "0df94132-2ec4-4ff4-bb94-f2d0078af6a3"
+        ],
+        "repeatedCursor": false,
+        "secondCursorPresent": true,
+        "secondIds": [
+          "7989108c-7830-4b8a-94bd-4cf8a5aba29a",
+          "22eedf41-7d47-4fa5-8c04-673491a25bb0"
+        ]
+      },
+      {
+        "contractValidated": true,
+        "distinctEditions": 4,
+        "languages": [
+          "ru",
+          "ru",
+          "ru",
+          "ru"
+        ],
+        "opaqueCursorPassedUnchanged": true,
+        "pageCounts": [
+          2,
+          2
+        ],
+        "paginationDistinct": true,
+        "scope": "ru"
+      },
+      {
+        "diagnostic": "en",
+        "firstCursorPresent": true,
+        "firstIds": [
+          "33ba8895-d714-422e-8d0c-56af3e84caa1",
+          "8207c7b0-c1af-430b-a658-d777d38a1b25"
+        ],
+        "repeatedCursor": false,
+        "secondCursorPresent": false,
+        "secondIds": [
+          "4caaf7b0-30c7-44e3-8e30-4719a653081e"
+        ]
+      },
+      {
+        "contractValidated": true,
+        "distinctEditions": 3,
+        "languages": [
+          "en",
+          "en",
+          "en"
+        ],
+        "opaqueCursorPassedUnchanged": true,
+        "pageCounts": [
+          2,
+          1
+        ],
+        "paginationDistinct": true,
+        "scope": "en"
+      }
+    ],
+    "readOnly": true,
+    "startedAt": "2026-08-28T14:35:51.142Z"
+  }
+}

@@ -1,0 +1,69 @@
+{
+  "capturedAt": "2026-08-28T14:37:36.178210+00:00",
+  "worktree": "/Users/manaer/.codex/worktrees/5652/Narra2",
+  "base": "bdc79ec5d06fbf1a85d2a0fcbfe71250cf9c68a3",
+  "contract": {
+    "path": "/Users/manaer/Downloads/book-catalog-language-api-change-report.md",
+    "sha256": "e934bd7732832932cb64239e2aedb6ed235a72325f2a777f610056fcc8db4516"
+  },
+  "checks": {
+    "suite": {
+      "exitCode": 0,
+      "tests": 741,
+      "files": 80
+    },
+    "tsc": {
+      "exitCode": 0
+    },
+    "biome": {
+      "exitCode": 0,
+      "files": 25
+    },
+    "wrapper": {
+      "exitCode": 0
+    },
+    "diffCheck": {
+      "exitCode": 0
+    }
+  },
+  "sourceSHA256": {
+    "packages/app-expo/src/hooks/use-backend-catalog.ts": "c4a98dbd0ec049cfd53f17dbd49578f6137578822aeb3b2cc2a7969af28036d4",
+    "packages/app-expo/src/lib/ai/narra-gateway-consumer.ts": "050f6c95244ad96954380096df3d1116bd477b2d6dd60507d4547ac858441bbc",
+    "packages/app-expo/src/lib/narra/backend-book-contract.test.ts": "64a12b7999ab875e90b6fc7f5c9f6d3ca194b040ad32eb22bb1b0867c56c73d9",
+    "packages/app-expo/src/lib/narra/backend-book-contract.ts": "a47671b14d96c5f16cf8728b1461c19fdd87e79c392ccdb3e89d4e23114ebfa1",
+    "packages/app-expo/src/lib/narra/backend-book-sync.test.ts": "5eee436069c1ab14d8124e5fb833eb99b88be1b7dadb45ef134d5d313407f28d",
+    "packages/app-expo/src/lib/narra/backend-book-sync.ts": "29ffe9f3c04f4c1cb9dab46ba7eb7b394f07f5e47f3fdb28ea267d31438cc4fd",
+    "packages/app-expo/src/lib/narra/backend-catalog-api.test.ts": "a66f55f9603d1ff0a235393440c820e44598a5b611360f65f659efa60207911c",
+    "packages/app-expo/src/lib/narra/backend-catalog-api.ts": "1446828458f76571c447764f859639d8c2079f79dc05519c5eb3e81e97798443",
+    "packages/app-expo/src/lib/narra/backend-catalog-cache.ts": "1877bc3589ae743aac100a775c8766feb5fbc8f3b233dd296bb6bef561839aa4",
+    "packages/app-expo/src/lib/narra/backend-catalog-import.test.ts": "b4025cfce1f87e6dce6120755c41dabb86aa116b38f74f1be026a926001a3b36",
+    "packages/app-expo/src/lib/narra/backend-catalog-import.ts": "7697f8fc3b4417938da4f58cfa4e0ffbefbb4763c546ca48f2b52503a89897c0",
+    "packages/app-expo/src/lib/narra/backend-catalog-store.ts": "fcc266ddb46a24161a8b13c3345d0d73244b09d5823151d806f91c6d127232e1",
+    "packages/app-expo/src/lib/narra/catalog-storage.test.ts": "da2d0640ad0f3b30efe80ff3b2a1824eef9692f14755c2e94242e69dcf8cb854",
+    "packages/app-expo/src/lib/narra/catalog-storage.ts": "e1428c197ccd94460d39f0628c2b0d1aa6b669cc60a051a6e45c625a64ba6c77",
+    "packages/app-expo/src/lib/narra/catalog-store.test.ts": "4ce6d404b1b272f402e03993372cb0ecd5120e29c9ab533de58882b787a87b01",
+    "packages/app-expo/src/lib/narra/catalog-store.ts": "b7b3015a67f49c923508e35948ccf43ca54c4b5907f01704a6c47f19fc2f1b00",
+    "packages/app-expo/src/lib/narra/media.test.ts": "0bd8120ac36b0fb4201891fbf8c8726cfce53c776f6073ca178a8ee552e96830",
+    "packages/app-expo/src/lib/narra/media.ts": "2852db6e2158cab030db75e04210b082656c2f6c3ddb52e623b33722644194fa",
+    "packages/app-expo/src/lib/platform/rn-tts-factories.ts": "beba3a7c4f66fa8649bbd946aa6016a0d4c893ba38eaa934f216bc7b4f00832a",
+    "packages/app-expo/src/lib/platform/track-player-edge-player.ts": "8b73b30e8ff9b6cd999d5a5f3179cdbd66dde814c886295adf8d7c5c038f27eb",
+    "packages/app-expo/src/stores/library-store.ts": "08248adf3115432c90c27e56a98b24747f3cbdf8583ac49d01383c49cbe66ad6",
+    "packages/app-expo/src/stores/tts-store.ts": "950ed0f3b8d925615645420bc295352dff30c350babab2679ef842db9f076761",
+    "packages/app-expo/src/lib/narra/book-language.ts": "0a15a333e662e7f984b476e3f4fc472e3b53cb25152f32a06b3c694056ffe850",
+    "packages/app-expo/src/lib/narra/backend-language-catalog.test.ts": "5dc750acf5be9e3bad35962c879bc176b94c0de1577c22c8e8976a23d17b4010",
+    "packages/app-expo/src/lib/narra/book-tts-player.test.ts": "dca57bdb51617aec1058931dc99b52db1330b96acc0be32e8666c8dfbb44cdce"
+  },
+  "evidenceSHA256": {
+    "README.md": "bc97000d07031c395c067e9504ff102a301d2ead2ce724f54b83198c39e5399d",
+    "lint.txt": "b40bb169409ecd2bcfcd9c282f1995d4f291c142c7bd844f8efacc80f637fec2",
+    "native-api-diagnostic.json": "ee5d22ab9c98a0e0621703601a0bbef5834715ce597b7612285072fec42cfde9",
+    "native-api-first-attempt.json": "f1ae58813d1267d33567abc02921c0e6b4755c0d4f6c38f9b769c1a4ed0f9297",
+    "native-api-probe.js": "a86af661a5c7b6796679e505bfe6f0db306fd294432932ace49b6130a713ae85",
+    "native-api.json": "18dec5537e263a708aca65588f71ba9230c04c571534fc21b11a76bec22f2c14",
+    "simulator-library.jpg": "0723ef5257e5c9294c7dde20e58e0cfb7b4f7a131e02aa927f90cfc9dd60883d",
+    "suite.txt": "2171df805b825a13588c8fa632021dece748a483cf26d611c07a43b03c277214",
+    "tsc.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "wrapper-check.txt": "2bab611be57d30d4c2ba67f56c05a56e3c558e199f2305cfad3a8af52ccc7e34",
+    "wrapper-run.txt": "2af9f2523c0254d361aad3986c031031bbf0b5870beeaddbc596e5255b481ed3"
+  }
+}

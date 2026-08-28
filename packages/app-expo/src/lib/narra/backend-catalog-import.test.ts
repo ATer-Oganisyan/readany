@@ -2,7 +2,7 @@ vi.mock("@/stores/narra-store", () => ({
   useNarraStore: { getState: () => ({ setBackendBinding: vi.fn() }) },
 }));
 import type { Book } from "@readany/core/types";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   importBackendCatalogBook,
   importDownloadedBackendCatalogBook,
@@ -60,6 +60,27 @@ const CATALOG_BOOK = {
 };
 
 describe("backend catalog import", () => {
+  beforeEach(() => vi.clearAllMocks());
+  it.each(["ru", null, undefined])(
+    "keeps catalog language %s, or preserves the parser language when unknown",
+    async (language) => {
+      mocks.materializeCover.mockResolvedValueOnce(undefined);
+      const parsed = { ...IMPORTED_BOOK, meta: { ...IMPORTED_BOOK.meta, language: "en" } };
+      const importBooks = vi.fn().mockResolvedValue({ imported: [parsed], skippedDuplicates: [] });
+      const updateBook = vi.fn().mockResolvedValue(undefined);
+      const result = await importDownloadedBackendCatalogBook(
+        { ...CATALOG_BOOK, language },
+        "file:///language.epub",
+        { importBooks, updateBook },
+      );
+      expect(result.meta.language).toBe(language ?? "en");
+      expect(updateBook).toHaveBeenCalledWith(
+        parsed.id,
+        expect.objectContaining({ meta: expect.objectContaining({ language: language ?? "en" }) }),
+      );
+      if (language) expect(importBooks.mock.calls[0][0][0].knownBook.language).toBe(language);
+    },
+  );
   it("imports the complete source file without waiting for the cover", async () => {
     let finishCover: ((value: string) => void) | undefined;
     mocks.downloadSource.mockResolvedValueOnce("file:///complete.epub");

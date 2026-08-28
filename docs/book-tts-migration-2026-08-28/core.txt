@@ -1,0 +1,8 @@
+
+ RUN  v4.1.2 /Users/manaer/.codex/worktrees/5652/Narra2/packages/core
+
+
+ Test Files  4 passed (4)
+      Tests  25 passed (25)
+   Start at  17:20:21
+   Duration  156ms (transform 101ms, setup 0ms, import 151ms, tests 11ms, environment 0ms)

@@ -107,6 +107,43 @@ async function open(value: Book) {
 }
 
 describe("backend book import and persistence integration", () => {
+  it.each([
+    ["EN_us", "en"],
+    ["ru-RU", "ru"],
+    [undefined, undefined],
+    ["not a language", undefined],
+  ])("registers parser language %s and omits unknown values", async (language, expected) => {
+    runtime.request
+      .mockResolvedValueOnce({ resolution: "local_registration_required" })
+      .mockResolvedValueOnce({
+        resolution: "private",
+        book_edition_id: "language-local",
+        source_uploaded: true,
+      });
+    await open({ ...book(), meta: { ...book().meta, language } });
+    const registration = runtime.request.mock.calls.find(([path]) => path === "/v2/books/local");
+    expect(registration).toBeDefined();
+    const payload = JSON.parse(registration?.[1].body);
+    if (expected) expect(payload.language).toBe(expected);
+    else expect(payload).not.toHaveProperty("language");
+    // Older binding/manifest responses do not wipe file metadata.
+    expect(runtime.books[0].meta.language).toBe(language);
+  });
+
+  it("retains explicit language from resolve and manifest in the local library", async () => {
+    runtime.request.mockResolvedValueOnce({
+      resolution: "catalog",
+      book_edition_id: "language-catalog",
+      language: "en",
+    });
+    await open(book());
+    expect(runtime.books[0].meta.language).toBe("en");
+    expect(useNarraStore.getState().books.local.backendBinding?.language).toBe("en");
+    releases.pop()?.();
+    runtime.request.mockResolvedValueOnce({}).mockResolvedValueOnce({ ...ready, language: "ru" });
+    await open(runtime.books[0]);
+    expect(runtime.books[0].meta.language).toBe("ru");
+  });
   it("catalog open never resolves, registers, uploads or hashes; profiles persist before a portrait exists", async () => {
     await open({
       ...book(),

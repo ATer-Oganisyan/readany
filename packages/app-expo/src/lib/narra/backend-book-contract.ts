@@ -1,3 +1,4 @@
+import { normalizeBookLanguage } from "./book-language";
 import type { NarraCharacter } from "./types";
 import { VOICES, assignVoices } from "./voice-rules";
 
@@ -5,6 +6,7 @@ export type BackendRecord = Record<string, unknown>;
 export interface BackendBookBinding {
   bookEditionId: string;
   resolution: "catalog" | "private";
+  language?: string | null;
   catalogKey?: string;
   contentSha256: string;
   sourceUploaded: boolean;
@@ -30,6 +32,7 @@ export interface BackendManifestCharacter {
 }
 export interface BackendBookManifest {
   availability: "ready" | "processing" | "unknown";
+  language?: string | null;
   revision?: number;
   publicationId?: string;
   contentHash?: string;
@@ -59,6 +62,7 @@ export function parseBackendBinding(value: unknown, hash: string): BackendBookBi
   return {
     bookEditionId: string(raw.book_edition_id),
     resolution: raw.resolution,
+    language: normalizeBookLanguage(raw.language),
     catalogKey: string(raw.catalog_key) || undefined,
     contentSha256: hash,
     sourceUploaded: raw.resolution === "catalog" || raw.source_uploaded === true,
@@ -104,6 +108,7 @@ export function parseBackendManifest(value: unknown): BackendBookManifest {
       raw.availability === "ready" || raw.availability === "processing"
         ? raw.availability
         : "unknown",
+    language: normalizeBookLanguage(raw.language),
     revision: finite(markup.revision) ? markup.revision : undefined,
     publicationId: string(raw.publication_id) || undefined,
     contentHash: string(raw.content_hash) || undefined,

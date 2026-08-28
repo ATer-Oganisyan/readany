@@ -8,10 +8,19 @@ import {
   type CatalogStorage,
   type CatalogStoredPage,
   createCatalogStore,
+  retainCatalogMetadata,
 } from "./catalog-store";
 import { NarraServiceError } from "./errors";
 
 const genres = [{ id: "fiction", labelRu: "Проза", labelEn: "Fiction", order: 1 }];
+
+it("updates a changed book language but retains equal unknown metadata", () => {
+  const old = catalog([book("same")]);
+  expect(retainCatalogMetadata(catalog([{ ...old.books[0], language: null }]), old)).toBe(old);
+  const next = retainCatalogMetadata(catalog([{ ...old.books[0], language: "ru" }]), old);
+  expect(next).not.toBe(old);
+  expect(next.books[0].language).toBe("ru");
+});
 
 function book(id: string, changes: Partial<BackendCatalogBook> = {}): BackendCatalogBook {
   return {

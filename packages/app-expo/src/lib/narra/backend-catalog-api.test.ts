@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   fetchBackendCatalogGenres,
   fetchBackendCatalogPage,
+  fetchBackendLanguageCatalogPage,
   mergeBackendCatalogBooks,
   requestBackendDownloadUrl,
 } from "./backend-catalog-api";
@@ -12,6 +13,23 @@ vi.mock("expo-crypto", () => ({}));
 vi.mock("expo/fetch", () => ({ fetch: vi.fn() }));
 
 const adapter = vi.fn<(path: string, init: RequestInit) => Promise<Response>>();
+
+function languageBook(language?: unknown) {
+  return {
+    resolution: "catalog",
+    book_edition_id: "language-book",
+    catalog_key: "narra-en-misleading",
+    title: "Русское название",
+    author: "Author",
+    genres: [],
+    format: "epub",
+    content_sha256: "a".repeat(64),
+    generation_status: "published",
+    ready: true,
+    source_download_path: "/v2/books/language-book/source/download",
+    ...(language !== undefined ? { language } : {}),
+  };
+}
 
 function jsonResponse(value: unknown, status = 200): Response {
   return new Response(JSON.stringify(value), {
@@ -26,6 +44,81 @@ describe("backend catalog API", () => {
     setNarraGatewayAdapter(adapter);
   });
   afterEach(() => setNarraGatewayAdapter(null));
+
+  it.each([undefined, null, "ru", "en", "de", "fil"])(
+    "preserves explicit language %s without guessing from names/keys",
+    async (language) => {
+      adapter.mockResolvedValueOnce(
+        jsonResponse({ items: [languageBook(language)], next_cursor: null }),
+      );
+      const result = await fetchBackendCatalogPage();
+      expect(result.items[0].language).toBe(language ?? null);
+    },
+  );
+
+  it.each(["ru", "en"] as const)(
+    "loads the versioned %s route with an opaque cursor",
+    async (language) => {
+      adapter.mockResolvedValueOnce(
+        jsonResponse({
+          contract_version: "book-catalog-language-v1",
+          language,
+          items: [languageBook(language)],
+          next_cursor: "next+/=",
+        }),
+      );
+      const result = await fetchBackendLanguageCatalogPage(language, "old+/=", 100);
+      expect(result.items[0].language).toBe(language);
+      expect(result.nextCursor).toBe("next+/=");
+      expect(adapter).toHaveBeenCalledWith(
+        `/v2/books/catalog/languages/${language}?limit=100&cursor=old%2B%2F%3D`,
+        { signal: expect.any(AbortSignal) },
+      );
+    },
+  );
+
+  it.each([
+    { contract_version: "future" },
+    { language: "en" },
+    { items: [languageBook("en")] },
+    { items: [languageBook()] },
+    { items: [languageBook("ru"), {}] },
+    { next_cursor: 42 },
+  ])(
+    "rejects an incompatible language page instead of publishing a partial/mixed catalog",
+    async (change) => {
+      adapter.mockResolvedValueOnce(
+        jsonResponse({
+          contract_version: "book-catalog-language-v1",
+          language: "ru",
+          items: [languageBook("ru")],
+          next_cursor: null,
+          ...change,
+        }),
+      );
+      await expect(fetchBackendLanguageCatalogPage("ru")).rejects.toMatchObject({
+        code: "SERVICE",
+      });
+    },
+  );
+
+  it("rejects unsupported language and bad limits before dispatch, and preserves cursor validation errors", async () => {
+    await expect(fetchBackendLanguageCatalogPage("de" as "ru")).rejects.toMatchObject({
+      code: "REQUEST",
+    });
+    await expect(fetchBackendLanguageCatalogPage("ru", undefined, 101)).rejects.toMatchObject({
+      code: "REQUEST",
+    });
+    expect(adapter).not.toHaveBeenCalled();
+    adapter.mockResolvedValueOnce(
+      jsonResponse({ code: "VALIDATION", error: "Invalid cursor" }, 400),
+    );
+    await expect(fetchBackendLanguageCatalogPage("ru", "opaque")).rejects.toMatchObject({
+      code: "REQUEST",
+      backendCode: "VALIDATION",
+    });
+    expect(adapter).toHaveBeenCalledTimes(1);
+  });
 
   it("loads a contract-complete catalog page", async () => {
     adapter.mockResolvedValueOnce(
@@ -61,6 +154,7 @@ describe("backend catalog API", () => {
         {
           resolution: "catalog",
           bookEditionId: "book-1",
+          language: null,
           catalogKey: "seagull",
           title: "Чайка",
           author: "Антон Чехов",

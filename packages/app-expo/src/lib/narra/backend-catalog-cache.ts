@@ -3,6 +3,11 @@ import { getPlatformService } from "@readany/core/services";
 import * as FileSystem from "expo-file-system/legacy";
 import type { BackendCatalogBook, BackendCatalogGenre } from "./backend-catalog-api";
 import { downloadVerifiedBackendFile } from "./backend-file-download";
+import {
+  BOOK_CATALOG_LANGUAGE_CONTRACT,
+  type CatalogLanguage,
+  isCatalogLanguage,
+} from "./book-language";
 import { createCatalogFileStorage } from "./catalog-storage";
 
 const CACHE_ROOT = `${FileSystem.documentDirectory}narra-backend-catalog`;
@@ -24,25 +29,31 @@ export interface CachedBackendCatalog {
 }
 
 /** Metadata storage is independent of the visible-cover download cache. */
-export const backendCatalogStorage = createCatalogFileStorage(
-  {
-    read: (path) => {
-      if (path.endsWith("/catalog.json") || path.endsWith("/catalog.json.previous"))
-        markInteraction("catalog.metadata.read");
-      return FileSystem.readAsStringAsync(path);
+export function createBackendCatalogStorage(language?: CatalogLanguage) {
+  if (language !== undefined && !isCatalogLanguage(language))
+    throw new Error("Invalid catalog language");
+  return createCatalogFileStorage(
+    {
+      read: (path) => {
+        if (path.endsWith("/catalog.json") || path.endsWith("/catalog.json.previous"))
+          markInteraction("catalog.metadata.read");
+        return FileSystem.readAsStringAsync(path);
+      },
+      write: (path, value) => FileSystem.writeAsStringAsync(path, value),
+      move: (from, to) => FileSystem.moveAsync({ from, to }),
+      remove: (path) => FileSystem.deleteAsync(path, { idempotent: true }),
+      exists: async (path) => (await FileSystem.getInfoAsync(path)).exists,
+      mkdir: async (path) => {
+        if (!(await FileSystem.getInfoAsync(path)).exists)
+          await FileSystem.makeDirectoryAsync(path, { intermediates: true });
+      },
+      list: (path) => FileSystem.readDirectoryAsync(path),
     },
-    write: (path, value) => FileSystem.writeAsStringAsync(path, value),
-    move: (from, to) => FileSystem.moveAsync({ from, to }),
-    remove: (path) => FileSystem.deleteAsync(path, { idempotent: true }),
-    exists: async (path) => (await FileSystem.getInfoAsync(path)).exists,
-    mkdir: async (path) => {
-      if (!(await FileSystem.getInfoAsync(path)).exists)
-        await FileSystem.makeDirectoryAsync(path, { intermediates: true });
-    },
-    list: (path) => FileSystem.readDirectoryAsync(path),
-  },
-  CACHE_ROOT,
-);
+    language ? `${CACHE_ROOT}/${BOOK_CATALOG_LANGUAGE_CONTRACT}/${language}` : CACHE_ROOT,
+  );
+}
+
+export const backendCatalogStorage = createBackendCatalogStorage();
 
 function safeKey(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 160);

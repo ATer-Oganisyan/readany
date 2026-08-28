@@ -1,0 +1,55 @@
+TAP version 13
+# Subtest: chat contract accepts purpose but rejects client-selected provider
+ok 1 - chat contract accepts purpose but rejects client-selected provider
+  ---
+  duration_ms: 0.700708
+  ...
+# Subtest: background chat analytics is explicit and can be actorless after opt-out
+ok 2 - background chat analytics is explicit and can be actorless after opt-out
+  ---
+  duration_ms: 0.351458
+  ...
+# Subtest: chat contract bounds payload and roles
+ok 3 - chat contract bounds payload and roles
+  ---
+  duration_ms: 0.187208
+  ...
+# Subtest: media and speech contracts reject unknown or oversized inputs
+ok 4 - media and speech contracts reject unknown or oversized inputs
+  ---
+  duration_ms: 0.273
+  ...
+# Subtest: cover contract accepts only a bounded prompt and no provider hints
+ok 5 - cover contract accepts only a bounded prompt and no provider hints
+  ---
+  duration_ms: 0.099625
+  ...
+# Subtest: durable cover job contract requires a UUID idempotency key and no provider hints
+ok 6 - durable cover job contract requires a UUID idempotency key and no provider hints
+  ---
+  duration_ms: 0.096
+  ...
+# Subtest: analytics accepts only allowlisted events and properties
+ok 7 - analytics accepts only allowlisted events and properties
+  ---
+  duration_ms: 1.497167
+  ...
+# Subtest: analytics error codes are closed enums and cannot carry content
+ok 8 - analytics error codes are closed enums and cannot carry content
+  ---
+  duration_ms: 0.104125
+  ...
+# Subtest: extended import and media telemetry accepts buckets but rejects book content
+ok 9 - extended import and media telemetry accepts buckets but rejects book content
+  ---
+  duration_ms: 0.191958
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 47.091625

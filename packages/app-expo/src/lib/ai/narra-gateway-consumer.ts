@@ -112,3 +112,40 @@ export async function readGatewayResponseText(
     reader.releaseLock();
   }
 }
+
+/** Binary counterpart for audio; bounded while streaming, including a slow/incomplete body. */
+export async function readGatewayResponseBytes(
+  response: Response,
+  scope: GatewayConsumerScope,
+  maxBytes: number,
+): Promise<Uint8Array> {
+  scope.throwIfAborted();
+  if (!response.body) return new Uint8Array();
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  let completed = false;
+  try {
+    while (true) {
+      const part = await scope.wait(reader.read());
+      if (part.done) {
+        completed = true;
+        break;
+      }
+      length += part.value.byteLength;
+      if (length > maxBytes)
+        throw new NarraServiceError("SERVICE", "Ответ озвучки превышает допустимый размер.");
+      chunks.push(part.value);
+    }
+    const bytes = new Uint8Array(length);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return bytes;
+  } finally {
+    if (!completed) void reader.cancel(scope.signal.reason).catch(() => {});
+    reader.releaseLock();
+  }
+}

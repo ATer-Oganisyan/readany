@@ -22,13 +22,31 @@ const appStoreState = vi.hoisted(() => ({
 vi.mock("expo-file-system/legacy", () => ({
   documentDirectory: "file:///documents/",
   EncodingType: { Base64: "base64" },
-  getInfoAsync: vi.fn(async () => ({ exists: true })),
+  getInfoAsync: vi.fn(async () => ({ exists: true, size: 46 })),
   makeDirectoryAsync: vi.fn(),
   writeAsStringAsync: vi.fn(),
-  deleteAsync: vi.fn(),
+  deleteAsync: vi.fn(async () => {}),
   moveAsync: vi.fn(),
 }));
-vi.mock("@/lib/ai/narra-gateway-fetch", () => ({ narraGatewayRequest: vi.fn() }));
+vi.mock("@/lib/ai/narra-gateway-fetch", async () => {
+  const { withGatewayConsumer } = await import("@/lib/ai/narra-gateway-consumer");
+  const request = vi.fn();
+  return {
+    narraGatewayRequest: request,
+    consumeNarraGatewayResponse: (
+      path: string,
+      init: RequestInit,
+      consume: (
+        response: Response,
+        scope: import("@/lib/ai/narra-gateway-consumer").GatewayConsumerScope,
+      ) => Promise<unknown>,
+    ) =>
+      withGatewayConsumer(
+        async (scope) => consume(await request(path, { ...init, signal: scope.signal }), scope),
+        { signal: init.signal, timeoutMs: 60_000 },
+      ),
+  };
+});
 vi.mock("@/lib/analytics/telemetry", () => ({ recordTelemetry: vi.fn() }));
 vi.mock("@/config/bundled-ai", () => ({
   getBundledApiKey: vi.fn(() => "test-openrouter-key"),
@@ -55,6 +73,7 @@ import {
   normalizePersistedNarraMediaUri,
   portraitPrompt,
   resolvePortraitGenre,
+  synthesizeNarraBookSpeech,
   synthesizeNarraSpeech,
 } from "./media";
 import { PORTRAIT_PROMPT_CHAR_LIMIT, buildCharacterPortraitPrompt } from "./portrait-prompt";
@@ -594,4 +613,171 @@ describe("synthesizeNarraSpeech — Grok TTS через OpenRouter", () => {
     speechFetchMock.mockResolvedValue(new Response(new Uint8Array(), { status: 200 }));
     await expect(synthesizeNarraSpeech("Привет", "Che")).rejects.toThrow();
   });
+});
+
+describe("book TTS backend contract", () => {
+  it("rejects an oversized binary response while streaming, before any file is written", async () => {
+    const fs = await import("expo-file-system/legacy");
+    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
+      new Response(new Uint8Array(16 * 1024 * 1024 + 1), {
+        headers: { "content-type": "audio/wav", "x-audio-sample-rate": "48000" },
+      }),
+    );
+    await expect(synthesizeNarraBookSpeech("Text.", "Che")).rejects.toMatchObject({
+      code: "SERVICE",
+    });
+    expect(fs.writeAsStringAsync).not.toHaveBeenCalled();
+  });
+  it("removes a partially written file when storage fails", async () => {
+    const fs = await import("expo-file-system/legacy");
+    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(response());
+    vi.mocked(fs.writeAsStringAsync).mockRejectedValueOnce(new Error("storage full"));
+    await expect(synthesizeNarraBookSpeech("Text.", "Che")).rejects.toThrow("storage full");
+    expect(fs.deleteAsync).toHaveBeenCalledWith(expect.stringMatching(/speech-.*\.wav$/), {
+      idempotent: true,
+    });
+  });
+  it("rejects oversized escaped SSML without issuing a request", async () => {
+    await expect(
+      synthesizeNarraBookSpeech("&".repeat(12_000), "Che", { rate: 1.1 }),
+    ).rejects.toMatchObject({ code: "REQUEST" });
+    expect(narraGatewayRequest).not.toHaveBeenCalled();
+  });
+
+  function wav() {
+    const bytes = new Uint8Array(46);
+    const view = new DataView(bytes.buffer);
+    bytes.set(new TextEncoder().encode("RIFF"));
+    view.setUint32(4, 38, true);
+    bytes.set(new TextEncoder().encode("WAVEfmt "), 8);
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, 48000, true);
+    view.setUint32(28, 96000, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    bytes.set(new TextEncoder().encode("data"), 36);
+    view.setUint32(40, 2, true);
+    return bytes;
+  }
+  function response(body = wav()) {
+    return new Response(body, {
+      headers: { "content-type": "audio/wav", "x-audio-sample-rate": "48000" },
+    });
+  }
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.useRealTimers();
+    primeCharacterStressForms([]);
+  });
+
+  it("uses Gateway even if other Narra speech uses Grok; sends only text and voice and saves WAV", async () => {
+    vi.stubEnv("EXPO_PUBLIC_NARRA_TTS_PROVIDER", "grok");
+    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(response());
+    await expect(synthesizeNarraBookSpeech("Текст.", "Che")).resolves.toMatch(/speech-.*\.wav$/);
+    expect(narraGatewayRequest).toHaveBeenCalledWith(
+      "/v2/speech/synthesize",
+      expect.objectContaining({ body: JSON.stringify({ text: "Текст.", voice: "Che" }) }),
+    );
+    expect(speechFetchMock).not.toHaveBeenCalled();
+    expect(recordTelemetry).toHaveBeenCalledWith(
+      "media_job_enqueued",
+      expect.objectContaining({ provider: "salutespeech" }),
+    );
+  });
+  it("combines rate/prosody with stress marks, sending SSML instead of text", async () => {
+    primeCharacterStressForms([{ ...anna, stressedName: "А'нна" }]);
+    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(response());
+    await synthesizeNarraBookSpeech("Анна.", "Ast", { rate: 1.1, prosody: { pitch: -2 } });
+    const body = JSON.parse(String(vi.mocked(narraGatewayRequest).mock.lastCall?.[1]?.body));
+    expect(body).toEqual({
+      voice: "Ast",
+      ssml: '<speak><prosody rate="110%" pitch="-8%">А&apos;нна.</prosody></speak>',
+    });
+  });
+  it.each([new Uint8Array(), new Uint8Array(46)])(
+    "does not write empty/non-WAV bytes",
+    async (body) => {
+      const fs = await import("expo-file-system/legacy");
+      vi.mocked(narraGatewayRequest).mockResolvedValueOnce(response(body));
+      await expect(synthesizeNarraBookSpeech("Текст.", "Che")).rejects.toMatchObject({
+        code: "SERVICE",
+      });
+      expect(fs.writeAsStringAsync).not.toHaveBeenCalled();
+    },
+  );
+  it("rejects a missing local file instead of enqueueing it", async () => {
+    const fs = await import("expo-file-system/legacy");
+    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(response());
+    vi.mocked(fs.getInfoAsync)
+      .mockResolvedValueOnce({
+        exists: true,
+        isDirectory: true,
+        uri: "file:///documents/narra-media",
+        size: 0,
+        modificationTime: 0,
+      })
+      .mockResolvedValueOnce({ exists: false, isDirectory: false, uri: "file:///missing" });
+    await expect(synthesizeNarraBookSpeech("Текст.", "Che")).rejects.toMatchObject({
+      code: "SERVICE",
+    });
+    expect(fs.deleteAsync).toHaveBeenCalled();
+  });
+  it("bounds the full response body to 60 seconds and cancels a stalled native stream", async () => {
+    vi.useFakeTimers();
+    const cancel = vi.fn();
+    const stream = new ReadableStream({ pull: () => new Promise(() => {}), cancel });
+    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
+      new Response(stream, {
+        headers: { "content-type": "audio/wav", "x-audio-sample-rate": "48000" },
+      }),
+    );
+    const pending = synthesizeNarraBookSpeech("Текст.", "Che");
+    const assertion = expect(pending).rejects.toMatchObject({ code: "TIMEOUT" });
+    await vi.advanceTimersByTimeAsync(60_000);
+    await assertion;
+    expect(cancel).toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it("deletes a WAV whose write finishes after Stop", async () => {
+    const fs = await import("expo-file-system/legacy");
+    const controller = new AbortController();
+    let finish!: () => void;
+    const write = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    vi.mocked(fs.writeAsStringAsync).mockReturnValueOnce(write);
+    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(response());
+    const pending = synthesizeNarraBookSpeech("Текст.", "Che", { signal: controller.signal });
+    const assertion = expect(pending).rejects.toBeDefined();
+    for (let i = 0; i < 30; i++) await Promise.resolve();
+    expect(fs.writeAsStringAsync).toHaveBeenCalled();
+    controller.abort();
+    await assertion;
+    finish();
+    for (let i = 0; i < 30; i++) await Promise.resolve();
+    expect(fs.deleteAsync).toHaveBeenCalledWith(expect.stringMatching(/speech-.*\.wav$/), {
+      idempotent: true,
+    });
+  });
+  it.each([400, 401, 429, 503])(
+    "propagates HTTP %i without switching to another provider",
+    async (status) => {
+      vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
+        new Response("private body", { status }),
+      );
+      await expect(synthesizeNarraBookSpeech("Текст.", "Che")).rejects.toMatchObject({
+        code:
+          status === 400
+            ? "REQUEST"
+            : status === 401
+              ? "AUTH"
+              : status === 429
+                ? "RATE"
+                : "SERVICE",
+      });
+      expect(speechFetchMock).not.toHaveBeenCalled();
+    },
+  );
 });

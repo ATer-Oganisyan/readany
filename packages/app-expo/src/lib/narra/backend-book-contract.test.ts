@@ -28,6 +28,20 @@ function manifest(overrides: Record<string, unknown> = {}) {
 }
 
 describe("backend book contract", () => {
+  it.each([
+    [undefined, null],
+    [null, null],
+    ["EN_us", "en"],
+    ["ru-RU", "ru"],
+    ["fil", "fil"],
+    ["not a language", null],
+  ])("reads nullable language %s in binding and manifest", (input, expected) => {
+    expect(
+      parseBackendBinding({ resolution: "private", book_edition_id: "id", language: input }, "hash")
+        .language,
+    ).toBe(expected);
+    expect(manifest({ language: input }).language).toBe(expected);
+  });
   it("keeps stable IDs and confirmed profiles usable without portraits", () => {
     const characters = backendConfirmedCharacters(manifest(), 0.4);
     expect(characters).toHaveLength(1);

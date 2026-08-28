@@ -101,6 +101,7 @@ function sameBook(left: BackendCatalogBook, right: BackendCatalogBook): boolean 
     left.catalogKey === right.catalogKey &&
     left.title === right.title &&
     left.author === right.author &&
+    (left.language ?? null) === (right.language ?? null) &&
     left.format === right.format &&
     left.contentSha256 === right.contentSha256 &&
     left.generationStatus === right.generationStatus &&

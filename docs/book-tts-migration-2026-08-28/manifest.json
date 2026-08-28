@@ -1,0 +1,79 @@
+{
+  "capturedAt": "2026-08-28T14:27:28.422778+00:00",
+  "worktree": "/Users/manaer/.codex/worktrees/5652/Narra2",
+  "base": "bdc79ec5d06fbf1a85d2a0fcbfe71250cf9c68a3",
+  "contract": {
+    "path": "/Users/manaer/Downloads/mobile-book-tts-backend-interaction.md",
+    "sha256": "ffd0e51af66923e9cced525218bfca018e9a64eb0951d6ebca84579fa3a22666"
+  },
+  "runtime": {
+    "appPid": 80779,
+    "metroPid": 66760,
+    "metroPort": 8082,
+    "metroCwd": "/Users/manaer/.codex/worktrees/5652/Narra2/packages/app-expo",
+    "simulator": "iPhone 17 Pro / iOS 27",
+    "simulatorUdid": "89DF38B4-5C83-4D6F-B622-1D22F7AE0AA5",
+    "build": "Debug 1.3.5 (36)",
+    "nativeRebuild": false
+  },
+  "sourceInputsSHA256": {
+    "packages/app-expo/src/lib/ai/narra-gateway-consumer.ts": "050f6c95244ad96954380096df3d1116bd477b2d6dd60507d4547ac858441bbc",
+    "packages/app-expo/src/lib/narra/media.test.ts": "0bd8120ac36b0fb4201891fbf8c8726cfce53c776f6073ca178a8ee552e96830",
+    "packages/app-expo/src/lib/narra/media.ts": "2852db6e2158cab030db75e04210b082656c2f6c3ddb52e623b33722644194fa",
+    "packages/app-expo/src/lib/platform/rn-tts-factories.ts": "beba3a7c4f66fa8649bbd946aa6016a0d4c893ba38eaa934f216bc7b4f00832a",
+    "packages/app-expo/src/lib/platform/track-player-edge-player.ts": "8b73b30e8ff9b6cd999d5a5f3179cdbd66dde814c886295adf8d7c5c038f27eb",
+    "packages/app-expo/src/stores/tts-store.ts": "950ed0f3b8d925615645420bc295352dff30c350babab2679ef842db9f076761",
+    "packages/app-expo/src/lib/narra/book-tts-player.test.ts": "dca57bdb51617aec1058931dc99b52db1330b96acc0be32e8666c8dfbb44cdce",
+    "packages/app-expo/src/lib/ai/narra-gateway-fetch.ts": "4f7717bb5c03497e8891695dd6e55abb80b8925a5cf3f114ff4140ed1980cb27",
+    "packages/app-expo/src/lib/narra/voice-markup.ts": "223561fc52913b2deda5b63f9009885096319bd13d12f853df795c9906e201de",
+    "packages/app-expo/src/screens/reader/useReaderTTS.ts": "f808a3fe3c85e575051b83ad967691d12c53cbdc1eeda2598d9dc87281065e16",
+    "services/narra-gateway/index.mjs": "2e2955d0d436a72bc0549648c466d2b5a363c4249c2f830d45e6bfe6404f50e4",
+    "services/narra-gateway/contracts.mjs": "7d6a5ca79b49d41580511a9816fc2fe24e12a467d237cc722f1e369dee6dc7fe",
+    "services/narra-gateway/voices.mjs": "9aa6f0ad8aa2e7ccd77ddfa93dab72adb2a4c4744fb26d37d712a16ee1d02f4c"
+  },
+  "checks": {
+    "appSuite": {
+      "exitCode": 0,
+      "files": 79,
+      "tests": 708
+    },
+    "tsc": {
+      "exitCode": 0
+    },
+    "biome": {
+      "exitCode": 0,
+      "files": 7
+    },
+    "core": {
+      "exitCode": 0,
+      "tests": 25
+    },
+    "gatewayContracts": {
+      "exitCode": 0,
+      "tests": 9
+    },
+    "wrapper": {
+      "exitCode": 0
+    }
+  },
+  "evidenceSHA256": {
+    "core.txt": "eba474f2a7be28feb7e478c3ec37a334793baed81178ed605a84cccdc8dc50dc",
+    "evaluate-runtime.cjs": "7ea0077622c4711e70074d956400403867ea970751c0260f3a6184dc15637e5d",
+    "fixture-http.jsonl": "c82030b9b61dfb417eadf66880df5b78e8aa81b16757edd55b06a34af46c203c",
+    "fixture-server.cjs": "e68214b9eeece52faf0db52b349b4395f5414ca58c96a7f2d37dbdeb0742255b",
+    "gateway-contracts.txt": "2fc04e4533d7ff4b6f24f610a3a62e92516a42b890e554df173fff32d682436b",
+    "lint.txt": "54d5852365156ce3a6dd782d0091a48b00ef481ace07c1d5e3cdd0691480f23b",
+    "native-cancel-initial.json": "2595946076f695a003f67d4c78c290b00cb007ab4b06bdd353f043f8c968c6de",
+    "native-cancel-probe.js": "d189451f438ee9f37dd9b7c93269bda03db57d322146cb8be693d0c97d9ea757",
+    "native-cancel.json": "7cc9e262fb0334723096553a9d6a94c5038e022f3b957b9427de769efd1c1a96",
+    "native-fixture-initial.json": "a92d9ce1b1ecc59c1f7061380251f04a88cd56177b40e6de998a19aa9c2a3116",
+    "native-fixture.json": "e751624919684b4476e449b4c1d252a4c3a10d9b09ee258082c14ec797cbda6d",
+    "native-probe.js": "42de51a616fa214bd97152e3613139188dd910f9568ebd5fc4e9dd603cc6834e",
+    "simulator-library.jpg": "1c041c2bb77439a6d61a4f66889ad303407e0cf9efe52d7589edb62231a55170",
+    "suite.txt": "cea09ce9c902ef39dd83cba3c74fab802fe554fe1dcc6dc950df2dda94785136",
+    "tsc.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "wrapper-check.txt": "2bab611be57d30d4c2ba67f56c05a56e3c558e199f2305cfad3a8af52ccc7e34",
+    "wrapper-run.txt": "ac5098bf0a1ba267c6110f87d941f50e4ffdbabb44e17cc1d539df55c5759620",
+    "README.md": "8cbf406164a48c446e5807bd1cdc06df32e3975e6ef962c1c10a2daca9169cfc"
+  }
+}

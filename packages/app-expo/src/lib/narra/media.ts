@@ -1,4 +1,5 @@
-import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
+import { readGatewayResponseBytes } from "@/lib/ai/narra-gateway-consumer";
+import { consumeNarraGatewayResponse, narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import * as FileSystem from "expo-file-system/legacy";
 import { resolveCoverGenreProfile } from "../book/cover-genre";
@@ -12,7 +13,7 @@ import {
   getCoverJob,
   submitCoverJob,
 } from "./cover-jobs";
-import { normalizeNarraError } from "./errors";
+import { NarraServiceError, normalizeNarraError } from "./errors";
 import { type NarraGenreAnalysis, narraGenreLabel } from "./genre-analysis";
 import { GROK_TTS_MODEL, GROK_TTS_SAMPLE_RATE, fetchGrokSpeechAudio } from "./grok-speech";
 import { buildCharacterPortraitPrompt } from "./portrait-prompt";
@@ -580,10 +581,15 @@ async function writeSpeechFile(bytes: Uint8Array, extension: "wav" | "mp3"): Pro
   for (let index = 0; index < bytes.length; index += 0x8000) {
     binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
   }
-  await FileSystem.writeAsStringAsync(path, btoa(binary), {
-    encoding: FileSystem.EncodingType.Base64,
-  });
-  return path;
+  try {
+    await FileSystem.writeAsStringAsync(path, btoa(binary), {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    return path;
+  } catch (error) {
+    await FileSystem.deleteAsync(path, { idempotent: true }).catch(() => {});
+    throw error;
+  }
 }
 
 /** Прежний путь: гейтвей Narra + SaluteSpeech, SSML с prosody rate/pitch. */
@@ -655,5 +661,90 @@ export function synthesizeNarraSpeech(
 ): Promise<string> {
   return trackNarraMediaJob("tts", "user", () =>
     synthesizeNarraSpeechRequest(text, voice, options),
+  );
+}
+
+/** Book reading always uses the authenticated backend, independently of chat/scene TTS. */
+export function synthesizeNarraBookSpeech(
+  text: string,
+  voice: string,
+  options: NarraSpeechOptions & { signal?: AbortSignal } = {},
+): Promise<string> {
+  return trackNarraMediaJob(
+    "tts",
+    "user",
+    async () => {
+      const startedAt = Date.now();
+      const prepared = applyActiveStressMarkup(text.slice(0, 12_000)).slice(0, 12_000).trim();
+      const ssml = buildNarraSpeechSsml(prepared, options.prosody, options.rate);
+      if (!prepared || (ssml && ssml.length > 24_000))
+        throw new NarraServiceError("REQUEST", "Не удалось подготовить фрагмент для озвучки.");
+      return consumeNarraGatewayResponse(
+        "/v2/speech/synthesize",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(ssml ? { ssml, voice } : { text: prepared, voice }),
+          signal: options.signal,
+        },
+        async (response, scope) => {
+          if (!response.ok) {
+            // Do not log provider bodies: they may echo the book text.
+            throw new NarraServiceError(
+              response.status === 401 || response.status === 403
+                ? "AUTH"
+                : response.status === 429
+                  ? "RATE"
+                  : response.status >= 500 || response.status === 408
+                    ? "SERVICE"
+                    : "REQUEST",
+              "Не удалось озвучить фрагмент.",
+              undefined,
+              `Speech HTTP ${response.status}`,
+            );
+          }
+          const mime = response.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase();
+          const sampleRate = Number(response.headers.get("x-audio-sample-rate"));
+          if (
+            !["audio/wav", "audio/x-wav"].includes(mime ?? "") ||
+            ![24_000, 48_000].includes(sampleRate)
+          )
+            throw new NarraServiceError(
+              "SERVICE",
+              "Сервис вернул неподдерживаемый формат озвучки.",
+            );
+          const bytes = await readGatewayResponseBytes(response, scope, 16 * 1024 * 1024);
+          if (
+            bytes.length <= 44 ||
+            String.fromCharCode(...bytes.subarray(0, 4)) !== "RIFF" ||
+            String.fromCharCode(...bytes.subarray(8, 12)) !== "WAVE"
+          )
+            throw new NarraServiceError("SERVICE", "Сервис вернул пустой или повреждённый звук.");
+          scope.throwIfAborted();
+          // Writing can finish after cancellation. Always observe it and remove a late file.
+          const saving = writeSpeechFile(bytes, "wav").then(async (uri) => {
+            try {
+              scope.throwIfAborted();
+              const info = await FileSystem.getInfoAsync(uri);
+              scope.throwIfAborted();
+              if (!info.exists || info.isDirectory || info.size !== bytes.byteLength)
+                throw new NarraServiceError("SERVICE", "Не удалось сохранить звук на устройстве.");
+              return uri;
+            } catch (error) {
+              await FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
+              throw error;
+            }
+          });
+          const uri = await scope.wait(saving);
+          recordTelemetry("tts_first_audio_ready", {
+            sample_rate: sampleRate,
+            first_audio_latency_bucket: firstAudioLatencyBucket(Date.now() - startedAt),
+            origin: "user",
+          });
+          return uri;
+        },
+      );
+    },
+    MEDIA_JOB_ROUTES.tts,
   );
 }

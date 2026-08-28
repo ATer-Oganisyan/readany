@@ -20,6 +20,7 @@ import {
 import { BackendBookSession } from "./backend-book-session";
 import { loadBackendCharacterMedia } from "./backend-character-media";
 import { sha256BackendFile } from "./backend-file-hash";
+import { normalizeBookLanguage } from "./book-language";
 
 interface SyncStatus {
   manifest?: BackendBookManifest;
@@ -93,6 +94,7 @@ async function bindBook(book: Book, signal: AbortSignal) {
     binding = {
       bookEditionId: book.bookEditionId,
       resolution: "catalog" as const,
+      language: normalizeBookLanguage(book.meta.language),
       catalogKey: book.catalogKey,
       contentSha256: book.contentHash,
       sourceUploaded: true,
@@ -118,6 +120,9 @@ async function bindBook(book: Book, signal: AbortSignal) {
             title: book.meta.title,
             author: book.meta.author,
             format: original?.format ?? book.format,
+            ...(normalizeBookLanguage(book.meta.language)
+              ? { language: normalizeBookLanguage(book.meta.language) }
+              : {}),
           },
           signal,
         ),
@@ -127,6 +132,7 @@ async function bindBook(book: Book, signal: AbortSignal) {
   }
   if (signal.aborted) throw new Error("Book binding cancelled");
   store.setBackendBinding(book.id, binding);
+  await applyBookLanguage(book.id, binding.language);
   if (binding.resolution === "private" && !binding.sourceUploaded) {
     const response = await backendBookRequest(backendBookPath(binding.bookEditionId, "source"), {
       method: "PUT",
@@ -154,6 +160,16 @@ async function bindBook(book: Book, signal: AbortSignal) {
     });
   }
   return binding;
+}
+
+async function applyBookLanguage(bookId: string, language: unknown) {
+  const normalized = normalizeBookLanguage(language);
+  const current = useLibraryStore.getState().books.find((item) => item.id === bookId);
+  // Old/null responses must not erase a language read from the local file.
+  if (normalized && current && !current.deletedAt && current.meta.language !== normalized)
+    await useLibraryStore
+      .getState()
+      .updateBook(bookId, { meta: { ...current.meta, language: normalized } });
 }
 
 function createSession(book: Book, progress: number) {
@@ -217,6 +233,9 @@ function createSession(book: Book, progress: number) {
       publish: (manifest, value) => {
         const current = useLibraryStore.getState().books.find((item) => item.id === book.id);
         if (!current || current.deletedAt) return;
+        void applyBookLanguage(book.id, manifest.language).catch(() => {
+          console.warn("[Backend books] Could not persist book language");
+        });
         useNarraStore.getState().applyBackendManifest(book.id, manifest, value);
         status(book.id, {
           manifest,

@@ -10,6 +10,7 @@ import {
   cleanupBackendCatalogSource,
   downloadBackendCatalogSource,
 } from "./backend-catalog-source";
+import { normalizeBookLanguage } from "./book-language";
 
 interface ImportBackendCatalogBookOptions extends Pick<LibraryState, "importBooks" | "updateBook"> {
   signal?: AbortSignal;
@@ -28,6 +29,7 @@ async function performDownloadedBackendCatalogImport(
       uri: sourcePath,
       name: `${catalogBook.catalogKey}.${catalogBook.format}`,
       knownBook: {
+        ...(catalogBook.language ? { language: catalogBook.language } : {}),
         title: catalogBook.title,
         author: catalogBook.author,
         sourceKind: "catalog",
@@ -44,6 +46,7 @@ async function performDownloadedBackendCatalogImport(
     ...importedBook.meta,
     title: catalogBook.title,
     author: catalogBook.author,
+    language: normalizeBookLanguage(catalogBook.language) ?? importedBook.meta.language,
   };
   const catalogIdentity = {
     sourceKind: "catalog" as const,
@@ -58,6 +61,7 @@ async function performDownloadedBackendCatalogImport(
   await updateBook(importedBook.id, { meta, ...catalogIdentity });
   useNarraStore.getState().setBackendBinding(importedBook.id, {
     resolution: "catalog",
+    language: normalizeBookLanguage(catalogBook.language),
     bookEditionId: catalogBook.bookEditionId,
     catalogKey: catalogBook.catalogKey,
     contentSha256: catalogBook.contentSha256,

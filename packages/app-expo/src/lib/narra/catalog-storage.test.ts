@@ -8,6 +8,7 @@ const root = "/cache/catalog";
 function book(id: string): BackendCatalogBook {
   return {
     resolution: "catalog",
+    language: null,
     bookEditionId: id,
     catalogKey: id,
     title: id,
@@ -84,6 +85,40 @@ function memoryIO() {
 }
 
 describe("catalog v2 metadata storage and page journal", () => {
+  it("reads old cache entries as unknown and preserves a new language through disk roundtrip", async () => {
+    const { files, storage } = memoryIO();
+    const old = catalog();
+    old.books[0].language = undefined;
+    files.set(`${root}/catalog.json`, JSON.stringify({ version: 2, ...old }));
+    expect((await storage.read()).complete?.books[0].language).toBeNull();
+    const updated = { ...old, books: [{ ...old.books[0], language: "en" }] };
+    await storage.commit(updated, "language-refresh");
+    expect((await storage.read()).complete?.books[0].language).toBe("en");
+  });
+
+  it("keeps complete snapshots and resumable cursors in separate all/ru/en namespaces", async () => {
+    const { io } = memoryIO();
+    const scopes = [
+      root,
+      `${root}/book-catalog-language-v1/ru`,
+      `${root}/book-catalog-language-v1/en`,
+    ];
+    for (let i = 0; i < scopes.length; i++) {
+      const storage = createCatalogFileStorage(io, scopes[i]);
+      await storage.commit(catalog(`complete-${i}`), `complete-${i}`);
+      await storage.begin("g1");
+      await storage.append({
+        ...page(0, null, `opaque-${i}+/=`),
+        page: { items: [book(`progress-${i}`)], nextCursor: `opaque-${i}+/=` },
+      });
+    }
+    for (let i = 0; i < scopes.length; i++) {
+      const result = await createCatalogFileStorage(io, scopes[i]).read();
+      expect(result.complete?.books[0].bookEditionId).toBe(`complete-${i}`);
+      expect(result.progress?.nextCursor).toBe(`opaque-${i}+/=`);
+      expect(result.progress?.books[0].bookEditionId).toBe(`progress-${i}`);
+    }
+  });
   it("reads the existing v2 cache without checking every cover file", async () => {
     const { files, io, storage } = memoryIO();
     const value = catalog();

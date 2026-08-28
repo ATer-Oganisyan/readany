@@ -1,0 +1,60 @@
+{
+  "done": true,
+  "value": {
+    "authMode": "installation",
+    "baseUrl": "https://api-test.narra.disrupt.builders",
+    "completedAt": "2026-08-28T14:36:28.031Z",
+    "englishVerification": {
+      "allEnglish": true,
+      "count": 3,
+      "hasNext": false,
+      "limit": 100
+    },
+    "pages": [
+      {
+        "count": 2,
+        "hasNext": true,
+        "languages": [
+          "en",
+          "en"
+        ],
+        "scope": "all"
+      },
+      {
+        "contractValidated": true,
+        "distinctEditions": 4,
+        "languages": [
+          "ru",
+          "ru",
+          "ru",
+          "ru"
+        ],
+        "opaqueCursorPassedUnchanged": true,
+        "pageCounts": [
+          2,
+          2
+        ],
+        "paginationDistinct": true,
+        "scope": "ru"
+      },
+      {
+        "contractValidated": true,
+        "distinctEditions": 3,
+        "languages": [
+          "en",
+          "en",
+          "en"
+        ],
+        "opaqueCursorPassedUnchanged": true,
+        "pageCounts": [
+          2,
+          1
+        ],
+        "paginationDistinct": true,
+        "scope": "en"
+      }
+    ],
+    "readOnly": true,
+    "startedAt": "2026-08-28T14:36:27.282Z"
+  }
+}

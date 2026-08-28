@@ -2,7 +2,7 @@
  * React Native TTS player factories.
  *
  * - SystemTTS  → Native synthesis + TrackPlayer on iOS/Android for background media controls
- * - EdgeTTS    → react-native-track-player + Edge TTS WebSocket API (background + notification controls)
+ * - EdgeTTS    → react-native-track-player + Narra Gateway / SaluteSpeech (legacy engine name) (background + notification controls)
  * - DashScope  → react-native-track-player + DashScope MP3 API (background + notification controls)
  */
 import type { TTSPlayerFactories } from "@readany/core/stores";

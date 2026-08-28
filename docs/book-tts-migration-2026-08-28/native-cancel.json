@@ -1,0 +1,17 @@
+{
+  "done": true,
+  "value": {
+    "chunks": [],
+    "fetchRestored": true,
+    "fixture": "one-second silent PCM WAV, no paid synthesis",
+    "newFiles": [],
+    "queueAfterStop": 0,
+    "requests": 2,
+    "startedAt": "2026-08-28T14:26:26.668Z",
+    "states": [
+      "stopped",
+      "stopped"
+    ],
+    "trackModule": "../../node_modules/react-native-track-player/src/index.ts"
+  }
+}

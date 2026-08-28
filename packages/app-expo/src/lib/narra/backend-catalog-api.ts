@@ -1,5 +1,11 @@
 import { readGatewayResponseText } from "@/lib/ai/narra-gateway-consumer";
 import { consumeNarraGatewayResponse } from "@/lib/ai/narra-gateway-fetch";
+import {
+  BOOK_CATALOG_LANGUAGE_CONTRACT,
+  type CatalogLanguage,
+  isCatalogLanguage,
+  normalizeBookLanguage,
+} from "./book-language";
 import { type NarraErrorCode, NarraServiceError } from "./errors";
 
 export interface BackendCatalogBook {
@@ -9,6 +15,8 @@ export interface BackendCatalogBook {
   title: string;
   author: string;
   genres: string[];
+  /** Missing in older caches/responses; null and undefined both mean unknown. */
+  language?: string | null;
   format: string;
   contentSha256: string;
   generationStatus: string;
@@ -139,6 +147,7 @@ function parseCatalogBook(value: unknown): BackendCatalogBook | null {
     title,
     author,
     genres,
+    language: normalizeBookLanguage(raw.language),
     format,
     contentSha256: contentSha256.toLowerCase(),
     generationStatus,
@@ -155,16 +164,51 @@ export async function fetchBackendCatalogPage(
   limit = BACKEND_CATALOG_PAGE_LIMIT,
   signal?: AbortSignal,
 ): Promise<BackendCatalogPage> {
+  return fetchCatalogPageAt("/v2/books/catalog", cursor, limit, signal);
+}
+
+export async function fetchBackendLanguageCatalogPage(
+  language: CatalogLanguage,
+  cursor?: string,
+  limit = BACKEND_CATALOG_PAGE_LIMIT,
+  signal?: AbortSignal,
+): Promise<BackendCatalogPage> {
+  if (!isCatalogLanguage(language))
+    throw new NarraServiceError("REQUEST", "Языковой каталог поддерживает только ru и en");
+  return fetchCatalogPageAt(
+    `/v2/books/catalog/languages/${language}`,
+    cursor,
+    limit,
+    signal,
+    language,
+  );
+}
+
+async function fetchCatalogPageAt(
+  path: string,
+  cursor: string | undefined,
+  limit: number,
+  signal?: AbortSignal,
+  language?: CatalogLanguage,
+): Promise<BackendCatalogPage> {
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
     throw new NarraServiceError("REQUEST", "Некорректный размер страницы каталога");
   }
   const cursorQuery = cursor ? `&cursor=${encodeURIComponent(cursor)}` : "";
-  const payload = await gatewayJson(`/v2/books/catalog?limit=${limit}${cursorQuery}`, signal);
+  const payload = await gatewayJson(`${path}?limit=${limit}${cursorQuery}`, signal);
   if (!Array.isArray(payload.items)) {
     throw new NarraServiceError("SERVICE", "Backend вернул некорректный каталог");
   }
+  if (
+    language &&
+    (payload.contract_version !== BOOK_CATALOG_LANGUAGE_CONTRACT || payload.language !== language)
+  )
+    throw new NarraServiceError("SERVICE", "Backend вернул несовместимый языковой каталог");
   const books = payload.items.flatMap((value) => {
     const book = parseCatalogBook(value);
+    // A language page is an atomic contract: never publish a mixed/truncated page.
+    if (language && (!book || (value as JsonRecord).language !== language))
+      throw new NarraServiceError("SERVICE", "Backend вернул книгу вне языкового каталога");
     return book ? [book] : [];
   });
 
