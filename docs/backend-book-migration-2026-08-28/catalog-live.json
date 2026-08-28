@@ -1,0 +1,3272 @@
+{
+  "done": true,
+  "value": {
+    "capturedAt": "2026-08-28T13:31:03.889Z",
+    "catalog": {
+      "author": "Leo Tolstoy",
+      "book_edition_id": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "catalog_key": "narra-en-0999-war-and-peace",
+      "content_sha256": "5112f15b1264bb888c3530fa1ffc34bcdb4ad9142ab4c99e85798c8e4d9e4088",
+      "cover": {
+        "byte_size": 3094442,
+        "content_hash": "190d6b8f3c5bba8cfb19359bc9c4d15516e74f7bfe54ffde61de46e1394803ea",
+        "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/cover/download",
+        "mime_type": "image/png"
+      },
+      "format": "epub",
+      "generation_status": "base_ready",
+      "genres": [
+        "historical-fiction",
+        "adventure"
+      ],
+      "ready": true,
+      "resolution": "catalog",
+      "source_download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/source/download",
+      "title": "War and Peace"
+    },
+    "manifest": {
+      "availability": "ready",
+      "book": {
+        "author": "Leo Tolstoy",
+        "book_edition_id": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+        "catalog_key": "narra-en-0999-war-and-peace",
+        "content_sha256": "5112f15b1264bb888c3530fa1ffc34bcdb4ad9142ab4c99e85798c8e4d9e4088",
+        "format": "epub",
+        "generation_status": "base_ready",
+        "genres": [],
+        "ready": true,
+        "resolution": "catalog",
+        "source_download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/source/download",
+        "title": "War and Peace"
+      },
+      "characters": [
+        {
+          "bundle": {
+            "assets": [
+              {
+                "asset_id": "9b982380-a0eb-484b-b204-0c472ff799fb",
+                "byte_size": 274604,
+                "content_hash": "41de96aa4df40220e8800ea3170b88ea2fadfc11490370c924551148bc87c052",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/9b982380-a0eb-484b-b204-0c472ff799fb/download",
+                "mime_type": "audio/wav",
+                "type": "greeting_audio"
+              },
+              {
+                "asset_id": "dd336ab9-795e-491b-aa4a-2dd0ae7022ae",
+                "byte_size": 214241,
+                "content_hash": "f6445dde8463860383ec394ab2e24c8a1a2964497bea54c4c37d89eb84fa0123",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/dd336ab9-795e-491b-aa4a-2dd0ae7022ae/download",
+                "mime_type": "video/mp4",
+                "type": "idle_animation"
+              },
+              {
+                "asset_id": "43d3f8b6-ef6d-486e-8b42-f1715cf032ee",
+                "byte_size": 2517457,
+                "content_hash": "665dba8c1b2bde98e6b81a2932832531ac96647a0858d0c867d73768702f6c83",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/43d3f8b6-ef6d-486e-8b42-f1715cf032ee/download",
+                "mime_type": "image/png",
+                "type": "primary_portrait"
+              }
+            ],
+            "version": "character-bundle-v3"
+          },
+          "character_key": "character:2e97b63c492fb2607337043d1ca8f8a70df6e5ba7597dab6",
+          "first_appearance_text_offset": 10385,
+          "full_name": "Prince Andrew",
+          "name": "Prince Andrew",
+          "profile": {
+            "analysisSource": "v3",
+            "appearancePrompt": "A very handsome young man of medium height with firm, clear-cut features.",
+            "gender": "male",
+            "greeting": "Good day. I hope you are well.",
+            "personalitySnapshots": [
+              {
+                "cutoffTextOffset": 10626,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "clever"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "eccentric"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 29001,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "clever"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "eccentric"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 45151,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "clever"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "eccentric"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 64840,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "clever"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "eccentric"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "calm"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 376201,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "clever"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "eccentric"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "calm"
+                  },
+                  {
+                    "confidence": 0.91,
+                    "evidenceLevel": "direct",
+                    "value": "kind"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 3106879,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "clever"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "eccentric"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "calm"
+                  },
+                  {
+                    "confidence": 0.91,
+                    "evidenceLevel": "direct",
+                    "value": "kind"
+                  },
+                  {
+                    "confidence": 0.9,
+                    "evidenceLevel": "repeated",
+                    "value": "candid"
+                  }
+                ]
+              }
+            ],
+            "personalityTimelineVersion": "progressive-personality-v1",
+            "role": "Персонаж истории",
+            "speechExamples": [
+              "“Your excellency, I should like to be of use here. Allow me to remain with Prince Bagratión’s detachment.”",
+              "“I should like to speak well of them, but as far as I know the facts, I can’t,”"
+            ],
+            "speechStyle": "",
+            "traits": [
+              "calm",
+              "kind",
+              "candid"
+            ],
+            "voice": "She"
+          },
+          "provisional": false,
+          "state": "ready"
+        },
+        {
+          "bundle": {
+            "assets": [
+              {
+                "asset_id": "956697e2-8a91-469f-8fb0-f7c3fdcc8410",
+                "byte_size": 282284,
+                "content_hash": "3c4ca465331b41fed1f360acd73e79b6f76c0babffd860c7b4d6fe72dcb3ce34",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/956697e2-8a91-469f-8fb0-f7c3fdcc8410/download",
+                "mime_type": "audio/wav",
+                "type": "greeting_audio"
+              },
+              {
+                "asset_id": "24acec94-1ce2-451b-80ec-2392051d2b02",
+                "byte_size": 199054,
+                "content_hash": "e92acf92be45919c83280d22a440e37ee9fb81bcf1edc2f36c028118f7928ebb",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/24acec94-1ce2-451b-80ec-2392051d2b02/download",
+                "mime_type": "video/mp4",
+                "type": "idle_animation"
+              },
+              {
+                "asset_id": "69ae9d0c-9cd4-4af1-8d16-3c8940ed399f",
+                "byte_size": 2607948,
+                "content_hash": "4e5e1ea7a525d880b3416ef67fda4609ff7d765bf084a60ddfbea40f5fec101e",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/69ae9d0c-9cd4-4af1-8d16-3c8940ed399f/download",
+                "mime_type": "image/png",
+                "type": "primary_portrait"
+              }
+            ],
+            "version": "character-bundle-v3"
+          },
+          "character_key": "character:bb477bfc645907b12ea91e63a1591c4f37deeb0e79551dce",
+          "first_appearance_text_offset": 15575,
+          "full_name": "Pierre",
+          "name": "Pierre",
+          "profile": {
+            "analysisSource": "v3",
+            "appearancePrompt": "A stout, heavily built young man with close-cropped hair and spectacles, dressed in light-colored breeches, a high ruffle, and a brown dress coat; later shown with a huge figure and an animated, enthusiastic expression.",
+            "gender": "male",
+            "greeting": "Good day. I hope we may speak openly.",
+            "personalitySnapshots": [
+              {
+                "cutoffTextOffset": 16371,
+                "status": "insufficient_evidence",
+                "traits": []
+              },
+              {
+                "cutoffTextOffset": 17344,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "shy"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "clever"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "natural"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "observant"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 44218,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "shy"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "clever"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "natural"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "observant"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 154055,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "shy"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "clever"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "natural"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "observant"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 807029,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "shy"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "clever"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "natural"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "observant"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 3105302,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "shy"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "dreamer"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "clever"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "natural"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "observant"
+                  }
+                ]
+              }
+            ],
+            "personalityTimelineVersion": "progressive-personality-v1",
+            "role": "Персонаж истории",
+            "speechExamples": [
+              "Yes, I have heard of his scheme for perpetual peace, and it is very interesting but hardly feasible.",
+              "The execution of the Duc d’Enghien was a political necessity.",
+              "I knew you would be here. I will come to supper with you. May I?"
+            ],
+            "speechStyle": "direct, opinionated, and reflective",
+            "traits": [
+              "dreamer",
+              "clever",
+              "natural",
+              "observant"
+            ],
+            "voice": "She"
+          },
+          "provisional": false,
+          "state": "ready"
+        },
+        {
+          "bundle": {
+            "assets": [
+              {
+                "asset_id": "9fb57db6-c3e2-482d-bce1-0b85b856826a",
+                "byte_size": 236204,
+                "content_hash": "1ba82fc364c3729fb26668b0c7c62cd40b2413e7a2ab8695bc95a95d31aab2a1",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/9fb57db6-c3e2-482d-bce1-0b85b856826a/download",
+                "mime_type": "audio/wav",
+                "type": "greeting_audio"
+              },
+              {
+                "asset_id": "42ea80ac-cd70-4c48-9d68-78ea0429b6b0",
+                "byte_size": 184734,
+                "content_hash": "17a1f33339a0eea7b85a1e1f88e05234cf05debd5098d666724d2ec698440ba8",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/42ea80ac-cd70-4c48-9d68-78ea0429b6b0/download",
+                "mime_type": "video/mp4",
+                "type": "idle_animation"
+              },
+              {
+                "asset_id": "c2a0204a-32bb-4f02-bc50-5704eb2c4a37",
+                "byte_size": 2517630,
+                "content_hash": "0e4a1779cc305d2f9cdc310a7e11dce1773623dcd65d03bd51509eef044a382a",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/c2a0204a-32bb-4f02-bc50-5704eb2c4a37/download",
+                "mime_type": "image/png",
+                "type": "primary_portrait"
+              }
+            ],
+            "version": "character-bundle-v3"
+          },
+          "character_key": "character:3cdb66eed49a6e985a3b13c989a70b5b5ff2eca4b1f2054d",
+          "first_appearance_text_offset": 92015,
+          "full_name": "Nicholas",
+          "name": "Nicholas",
+          "profile": {
+            "analysisSource": "v3",
+            "appearancePrompt": "A short young man with curly hair, an open expression, and dark hairs on his upper lip, wearing a shabby cadet uniform.",
+            "gender": "male",
+            "greeting": "Good day. What can I do for you?",
+            "personalitySnapshots": [
+              {
+                "cutoffTextOffset": 93093,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.55,
+                    "evidenceLevel": "single_scene",
+                    "value": "socially shy"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 99306,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.55,
+                    "evidenceLevel": "single_scene",
+                    "value": "socially shy"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "impulsive"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 153493,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "impulsive"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 317793,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "impulsive"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 546229,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "impulsive"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 3107768,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "impulsive"
+                  }
+                ]
+              }
+            ],
+            "personalityTimelineVersion": "progressive-personality-v1",
+            "role": "cadet and hussar officer",
+            "speechExamples": [
+              "I simply feel that the army is my vocation",
+              "Denísov, let him alone, I know who has taken it",
+              "Allow me to look at your purse"
+            ],
+            "speechStyle": "abrupt sentences",
+            "traits": [
+              "impulsive"
+            ],
+            "voice": "She"
+          },
+          "provisional": false,
+          "state": "ready"
+        },
+        {
+          "bundle": {
+            "assets": [
+              {
+                "asset_id": "cbc7a8f5-6bed-45c8-a131-9de5c8b22910",
+                "byte_size": 266924,
+                "content_hash": "17f8c5ea4bb302e6c77920162118242317ffb4ba445a5ce2fe7e9f6afc6f94f7",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/cbc7a8f5-6bed-45c8-a131-9de5c8b22910/download",
+                "mime_type": "audio/wav",
+                "type": "greeting_audio"
+              },
+              {
+                "asset_id": "e781d2cf-7590-4ed5-859f-7d30ec990ae5",
+                "byte_size": 186826,
+                "content_hash": "ac9a971aed93d8b6bb300061999c778a4f216cfe99e81576e58a524b2f5b1572",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/e781d2cf-7590-4ed5-859f-7d30ec990ae5/download",
+                "mime_type": "video/mp4",
+                "type": "idle_animation"
+              },
+              {
+                "asset_id": "4b46d80d-6725-4e92-b982-45f180f36a25",
+                "byte_size": 2380813,
+                "content_hash": "70c955fe3d5606e946c38344cd21ef3f6032644e9dcf14c43980e963136015a0",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/4b46d80d-6725-4e92-b982-45f180f36a25/download",
+                "mime_type": "image/png",
+                "type": "primary_portrait"
+              }
+            ],
+            "version": "character-bundle-v3"
+          },
+          "character_key": "character:9ef790105ebec38fd5073cc4823ea4fafb143c3fe62be4eb",
+          "first_appearance_text_offset": 268,
+          "full_name": "Napoleon",
+          "name": "Napoleon",
+          "profile": {
+            "analysisSource": "v3",
+            "appearancePrompt": "An undersized emperor with short hair, a broad forehead, and a plump white neck, dressed in military uniform.",
+            "gender": "male",
+            "greeting": "I am Napoleon. State your purpose.",
+            "personalitySnapshots": [
+              {
+                "cutoffTextOffset": 25801,
+                "status": "insufficient_evidence",
+                "traits": []
+              },
+              {
+                "cutoffTextOffset": 427179,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.7,
+                    "evidenceLevel": "repeated",
+                    "value": "aggressive"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 688993,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.7,
+                    "evidenceLevel": "repeated",
+                    "value": "aggressive"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "cunning"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 957319,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.7,
+                    "evidenceLevel": "repeated",
+                    "value": "aggressive"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "cunning"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 1587534,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "aggressive"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "cunning"
+                  },
+                  {
+                    "confidence": 0.93,
+                    "evidenceLevel": "repeated",
+                    "value": "unscrupulous"
+                  },
+                  {
+                    "confidence": 0.9,
+                    "evidenceLevel": "repeated",
+                    "value": "reckless"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 3157444,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "aggressive"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "cunning"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "audacious"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "self-confident"
+                  },
+                  {
+                    "confidence": 0.93,
+                    "evidenceLevel": "repeated",
+                    "value": "unscrupulous"
+                  }
+                ]
+              }
+            ],
+            "personalityTimelineVersion": "progressive-personality-v1",
+            "role": "Персонаж истории",
+            "speechExamples": [
+              "Break the armistice immediately and march on the enemy.",
+              "If, however, the Emperor of Russia ratifies that convention, I will ratify it; but it is only a trick. March on, destroy the Russian army....",
+              "Du sublime au ridicule il n’y a qu’un pas."
+            ],
+            "speechStyle": "imperative and self-assured",
+            "traits": [
+              "audacious",
+              "self-confident",
+              "unscrupulous",
+              "reckless"
+            ],
+            "voice": "She"
+          },
+          "provisional": false,
+          "state": "ready"
+        },
+        {
+          "bundle": {
+            "assets": [
+              {
+                "asset_id": "5addba45-4933-4499-bb8c-a208d80eef32",
+                "byte_size": 228524,
+                "content_hash": "efdfc558307c6469cae9d789b9d06aae82818b95cfd4d4343a93af1a26ae0977",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/5addba45-4933-4499-bb8c-a208d80eef32/download",
+                "mime_type": "audio/wav",
+                "type": "greeting_audio"
+              },
+              {
+                "asset_id": "2058046c-d8e3-42aa-ad0c-73adc075c94f",
+                "byte_size": 240391,
+                "content_hash": "81dde3113f1b70f7b37cf8fa72edcbd090b4a1279bbfa14bdf82f5cc8d249ad4",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/2058046c-d8e3-42aa-ad0c-73adc075c94f/download",
+                "mime_type": "video/mp4",
+                "type": "idle_animation"
+              },
+              {
+                "asset_id": "25676499-7912-48be-a1d2-1d0ec2b611f9",
+                "byte_size": 2819117,
+                "content_hash": "b0d3a1dfa42b92585968a6775dad5cec330a1ced5ed4479a4f04c1748dff9e06",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/25676499-7912-48be-a1d2-1d0ec2b611f9/download",
+                "mime_type": "image/png",
+                "type": "primary_portrait"
+              }
+            ],
+            "version": "character-bundle-v3"
+          },
+          "character_key": "character:3822934786e408d608ff8402a8e743da01264fef88d79515",
+          "first_appearance_text_offset": 89501,
+          "full_name": "Natásha",
+          "name": "Natásha",
+          "profile": {
+            "analysisSource": "v3",
+            "appearancePrompt": "A lively young woman with black eyes, a wide mouth, dark curls, and a slender figure, portrayed with a warm, natural presence.",
+            "gender": "female",
+            "greeting": "Hello. I’m glad you’re here—shall we talk?",
+            "personalitySnapshots": [
+              {
+                "cutoffTextOffset": 90447,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "Full of life"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 91112,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "Full of life"
+                  },
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "Spontaneous"
+                  },
+                  {
+                    "confidence": 0.75,
+                    "evidenceLevel": "repeated",
+                    "value": "Emotionally expressive"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 156433,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "Full of life"
+                  },
+                  {
+                    "confidence": 0.75,
+                    "evidenceLevel": "repeated",
+                    "value": "Spontaneous"
+                  },
+                  {
+                    "confidence": 0.75,
+                    "evidenceLevel": "repeated",
+                    "value": "Emotionally expressive"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 592886,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "Full of life"
+                  },
+                  {
+                    "confidence": 0.75,
+                    "evidenceLevel": "repeated",
+                    "value": "Spontaneous"
+                  },
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "Emotionally expressive"
+                  },
+                  {
+                    "confidence": 0.7,
+                    "evidenceLevel": "repeated",
+                    "value": "Caring toward friends"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "Bold"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 1168182,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "Full of life"
+                  },
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "Spontaneous"
+                  },
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "Emotionally expressive"
+                  },
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "Affectionate"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "Bold"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 3105341,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "Full of life"
+                  },
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "Spontaneous"
+                  },
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "Emotionally expressive"
+                  },
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "Affectionate"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "Bold"
+                  }
+                ]
+              }
+            ],
+            "personalityTimelineVersion": "progressive-personality-v1",
+            "role": "young countess and Pierre's wife",
+            "speechExamples": [
+              "“Márya Dmítrievna! What kind of ice pudding? I don’t like ice cream.”",
+              "“Nicholas, will you come to Iogel’s? Please do!”",
+              "“Don’t say it! I can’t bear it!”"
+            ],
+            "speechStyle": "direct and spontaneous, with expressive exclamations and questions",
+            "traits": [
+              "Bold",
+              "Outgoing"
+            ],
+            "voice": "Che"
+          },
+          "provisional": false,
+          "state": "ready"
+        },
+        {
+          "bundle": {
+            "assets": [
+              {
+                "asset_id": "4b947834-08ad-4550-814b-0a40f51416e1",
+                "byte_size": 320684,
+                "content_hash": "90ecb49cc7ed6ded39ab8ae054145f31d9e129ea43eda0a9fba36b6e81751957",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/4b947834-08ad-4550-814b-0a40f51416e1/download",
+                "mime_type": "audio/wav",
+                "type": "greeting_audio"
+              },
+              {
+                "asset_id": "5c5d34cc-953f-41b8-ae3a-9db0e5b7e6f6",
+                "byte_size": 168200,
+                "content_hash": "96d78c2046c2cc1c6d5adda4d23cfb223f35b90a2670ce18c1b31a9c292825d7",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/5c5d34cc-953f-41b8-ae3a-9db0e5b7e6f6/download",
+                "mime_type": "video/mp4",
+                "type": "idle_animation"
+              },
+              {
+                "asset_id": "dcf6e5dc-3558-4772-8c33-53bfbebf3f98",
+                "byte_size": 2516098,
+                "content_hash": "4850b289ae2152f85a8e9780ae2d6d891121083e370a9c6946ab8639002ef43b",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/dcf6e5dc-3558-4772-8c33-53bfbebf3f98/download",
+                "mime_type": "image/png",
+                "type": "primary_portrait"
+              }
+            ],
+            "version": "character-bundle-v3"
+          },
+          "character_key": "character:fc850157e8722f918ce4436227432c161a570009dd990bd1",
+          "first_appearance_text_offset": 9794,
+          "full_name": "Princess Mary",
+          "name": "Princess Mary",
+          "profile": {
+            "analysisSource": "v3",
+            "appearancePrompt": "A plain, thin, sickly-faced princess with a weak, ungraceful figure and large, deep, luminous eyes.",
+            "gender": "female",
+            "greeting": "Good day. Please, speak gently.",
+            "personalitySnapshots": [
+              {
+                "cutoffTextOffset": 10657,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "direct",
+                    "value": "Very unhappy"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 218663,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "direct",
+                    "value": "Very unhappy"
+                  },
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "Apprehensive"
+                  },
+                  {
+                    "confidence": 0.58,
+                    "evidenceLevel": "single_scene",
+                    "value": "Prayerful"
+                  },
+                  {
+                    "confidence": 0.55,
+                    "evidenceLevel": "single_scene",
+                    "value": "Emotionally reactive"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 222871,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "direct",
+                    "value": "Very unhappy"
+                  },
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "Apprehensive"
+                  },
+                  {
+                    "confidence": 0.58,
+                    "evidenceLevel": "single_scene",
+                    "value": "Prayerful"
+                  },
+                  {
+                    "confidence": 0.55,
+                    "evidenceLevel": "single_scene",
+                    "value": "Emotionally reactive"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 271993,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "Compassionate"
+                  },
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "Nonjudgmental"
+                  },
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "Prayerful"
+                  },
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "Solitary"
+                  },
+                  {
+                    "confidence": 0.68,
+                    "evidenceLevel": "repeated",
+                    "value": "Emotionally distressed"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 589254,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "Compassionate"
+                  },
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "Nonjudgmental"
+                  },
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "Prayerful"
+                  },
+                  {
+                    "confidence": 0.78,
+                    "evidenceLevel": "repeated",
+                    "value": "Forgiving"
+                  },
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "Devoted to her father"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 3088144,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "Nonjudgmental"
+                  },
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "Prayerful"
+                  },
+                  {
+                    "confidence": 0.78,
+                    "evidenceLevel": "repeated",
+                    "value": "Forgiving"
+                  },
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "Devoted to her father"
+                  },
+                  {
+                    "confidence": 0.94,
+                    "evidenceLevel": "repeated",
+                    "value": "compassionate"
+                  }
+                ]
+              }
+            ],
+            "personalityTimelineVersion": "progressive-personality-v1",
+            "role": "Персонаж истории",
+            "speechExamples": [
+              "“Yes, it’s from Julie,” replied the princess with a timid glance and a timid smile.",
+              "“Read this if you like, Father,” said the princess, blushing still more and holding out the letter.",
+              "“As I was saying to you, Andrew, be kind and generous as you always used to be. Don’t judge Lise harshly,” she began."
+            ],
+            "speechStyle": "timid and reserved",
+            "traits": [
+              "compassionate",
+              "protective",
+              "dutiful",
+              "devout"
+            ],
+            "voice": "Che"
+          },
+          "provisional": false,
+          "state": "ready"
+        },
+        {
+          "bundle": {
+            "assets": [
+              {
+                "asset_id": "28d01e07-6da3-44a1-8912-41497a51baa7",
+                "byte_size": 236204,
+                "content_hash": "1ba82fc364c3729fb26668b0c7c62cd40b2413e7a2ab8695bc95a95d31aab2a1",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/28d01e07-6da3-44a1-8912-41497a51baa7/download",
+                "mime_type": "audio/wav",
+                "type": "greeting_audio"
+              },
+              {
+                "asset_id": "13d7f022-7138-4e71-bae8-a89601ea2047",
+                "byte_size": 218978,
+                "content_hash": "7950e2ef61285a55987a53620f4b2ec638b453be7a6a67a700446309067a2fa4",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/13d7f022-7138-4e71-bae8-a89601ea2047/download",
+                "mime_type": "video/mp4",
+                "type": "idle_animation"
+              },
+              {
+                "asset_id": "bc3bb8ff-b925-4eff-9e28-b34f7957937a",
+                "byte_size": 2726352,
+                "content_hash": "dc02289e8cb937e8d9d984fca3118fde3f5ce5e0426e8a0974c37dba81a48087",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/bc3bb8ff-b925-4eff-9e28-b34f7957937a/download",
+                "mime_type": "image/png",
+                "type": "primary_portrait"
+              }
+            ],
+            "version": "character-bundle-v3"
+          },
+          "character_key": "character:54a50f4e3eb79b3b3027d517da1d06d87b397bb0462ecd39",
+          "first_appearance_text_offset": 10730,
+          "full_name": "Kutúzov",
+          "name": "Kutúzov",
+          "profile": {
+            "analysisSource": "v3",
+            "appearancePrompt": "An old male commander in chief with a scarred, puffy face, an eagle nose, one sound eye, and an empty eye socket; wearing a white cap with a red band and a padded overcoat over round shoulders.",
+            "gender": "male",
+            "greeting": "Good day. What can I do for you?",
+            "personalitySnapshots": [
+              {
+                "cutoffTextOffset": 276879,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.58,
+                    "evidenceLevel": "single_scene",
+                    "value": "Cautious in military decisions"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 288153,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.58,
+                    "evidenceLevel": "single_scene",
+                    "value": "Cautious in military decisions"
+                  },
+                  {
+                    "confidence": 0.6,
+                    "evidenceLevel": "single_scene",
+                    "value": "Attentive to subordinates"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 298884,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.58,
+                    "evidenceLevel": "single_scene",
+                    "value": "Cautious in military decisions"
+                  },
+                  {
+                    "confidence": 0.6,
+                    "evidenceLevel": "single_scene",
+                    "value": "Attentive to subordinates"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 386720,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.58,
+                    "evidenceLevel": "single_scene",
+                    "value": "Cautious in military decisions"
+                  },
+                  {
+                    "confidence": 0.6,
+                    "evidenceLevel": "single_scene",
+                    "value": "Attentive to subordinates"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 705101,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "Strategically cautious"
+                  },
+                  {
+                    "confidence": 0.74,
+                    "evidenceLevel": "repeated",
+                    "value": "Values capable officers"
+                  },
+                  {
+                    "confidence": 0.7,
+                    "evidenceLevel": "repeated",
+                    "value": "Attentive to subordinates"
+                  },
+                  {
+                    "confidence": 0.72,
+                    "evidenceLevel": "repeated",
+                    "value": "Leads from the front"
+                  },
+                  {
+                    "confidence": 0.9,
+                    "evidenceLevel": "repeated",
+                    "value": "cautious"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 2906620,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "Strategically cautious"
+                  },
+                  {
+                    "confidence": 0.74,
+                    "evidenceLevel": "repeated",
+                    "value": "Values capable officers"
+                  },
+                  {
+                    "confidence": 0.7,
+                    "evidenceLevel": "repeated",
+                    "value": "Attentive to subordinates"
+                  },
+                  {
+                    "confidence": 0.72,
+                    "evidenceLevel": "repeated",
+                    "value": "Leads from the front"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "modest"
+                  }
+                ]
+              }
+            ],
+            "personalityTimelineVersion": "progressive-personality-v1",
+            "role": "commander in chief",
+            "speechExamples": [
+              "“Another Ismail comrade,” said he. “A brave officer! Are you satisfied with him?”",
+              "“Where is Dólokhov?” asked Kutúzov.",
+              "“Do your duty. The Emperor is gracious, and I shan’t forget you if you deserve well.”"
+            ],
+            "speechStyle": "formal and deferential",
+            "traits": [
+              "modest",
+              "simple",
+              "cautious"
+            ],
+            "voice": "She"
+          },
+          "provisional": false,
+          "state": "ready"
+        },
+        {
+          "bundle": {
+            "assets": [
+              {
+                "asset_id": "830cb8a0-d33c-46e8-bb65-a7e5dbd86418",
+                "byte_size": 320684,
+                "content_hash": "e49d484ab0ef86c370ea46fbd6ae8bc4defc4dc0cd3cf31567d13b0bce781139",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/830cb8a0-d33c-46e8-bb65-a7e5dbd86418/download",
+                "mime_type": "audio/wav",
+                "type": "greeting_audio"
+              },
+              {
+                "asset_id": "7007798d-8016-43f2-9633-ba17498b3867",
+                "byte_size": 216076,
+                "content_hash": "4b0e777296825de7ba629de01c2e7eaa785777c940bcf8f64f4a80d0570db8a9",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/7007798d-8016-43f2-9633-ba17498b3867/download",
+                "mime_type": "video/mp4",
+                "type": "idle_animation"
+              },
+              {
+                "asset_id": "326ca2b5-0b0d-49b1-a59f-36c143d4144b",
+                "byte_size": 2684982,
+                "content_hash": "1ffdcdfe2859ced7cd7365429fc5707c56373c505da8a24df9c0e2b30c36b9de",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/326ca2b5-0b0d-49b1-a59f-36c143d4144b/download",
+                "mime_type": "image/png",
+                "type": "primary_portrait"
+              }
+            ],
+            "version": "character-bundle-v3"
+          },
+          "character_key": "character:6264d442bf88aac8fc1d3e3cbb48bbb011293f69f99cc588",
+          "first_appearance_text_offset": 92068,
+          "full_name": "Sónya",
+          "name": "Sónya",
+          "profile": {
+            "analysisSource": "v3",
+            "appearancePrompt": "A slender young brunette with a tender look, long lashes, thick black plaits, and a tawny complexion, portrayed in a refined nineteenth-century Russian setting.",
+            "gender": "female",
+            "greeting": "Hello. I’m Sónya. How may I help you?",
+            "personalitySnapshots": [
+              {
+                "cutoffTextOffset": 95045,
+                "status": "insufficient_evidence",
+                "traits": []
+              },
+              {
+                "cutoffTextOffset": 103763,
+                "status": "insufficient_evidence",
+                "traits": []
+              },
+              {
+                "cutoffTextOffset": 594924,
+                "status": "insufficient_evidence",
+                "traits": []
+              },
+              {
+                "cutoffTextOffset": 858129,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.8,
+                    "evidenceLevel": "repeated",
+                    "value": "self-sacrificing"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 3077210,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.88,
+                    "evidenceLevel": "direct",
+                    "value": "lacks egotism"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "devoted"
+                  },
+                  {
+                    "confidence": 0.8,
+                    "evidenceLevel": "repeated",
+                    "value": "self-sacrificing"
+                  }
+                ]
+              }
+            ],
+            "personalityTimelineVersion": "progressive-personality-v1",
+            "role": "the count's niece",
+            "speechExamples": [
+              "I don’t like you to talk like that.",
+              "Take care, you’ll fall out.",
+              "It’s past one o’clock."
+            ],
+            "speechStyle": "brief, direct, and disapproving",
+            "traits": [
+              "devoted",
+              "self-sacrificing"
+            ],
+            "voice": "Che"
+          },
+          "provisional": false,
+          "state": "ready"
+        },
+        {
+          "bundle": {
+            "assets": [
+              {
+                "asset_id": "49345fcb-335c-449b-9db5-4a695e401106",
+                "byte_size": 297644,
+                "content_hash": "1420b2c88a7838effc49aa5ef99363d725640f46c9acbc833de4335251836e96",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/49345fcb-335c-449b-9db5-4a695e401106/download",
+                "mime_type": "audio/wav",
+                "type": "greeting_audio"
+              },
+              {
+                "asset_id": "e5402c05-878c-48d4-9c97-463a5ef49b5b",
+                "byte_size": 260799,
+                "content_hash": "967299f8ec7b2a13c7f4d7b02d2f223933df2b728c126e8f0e226d6e9a6c5f6a",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/e5402c05-878c-48d4-9c97-463a5ef49b5b/download",
+                "mime_type": "video/mp4",
+                "type": "idle_animation"
+              },
+              {
+                "asset_id": "a45cdec6-56f1-4e35-bf90-7c1b7c257507",
+                "byte_size": 2554068,
+                "content_hash": "e9202b3a0dccd7729638a4dec4388edb0138f97c9585cc14332140f1a50a9474",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/a45cdec6-56f1-4e35-bf90-7c1b7c257507/download",
+                "mime_type": "image/png",
+                "type": "primary_portrait"
+              }
+            ],
+            "version": "character-bundle-v3"
+          },
+          "character_key": "character:5986ebfcb2d19a1b5bcbddbf876d49dc4395e7bfabce3b0a",
+          "first_appearance_text_offset": 90086,
+          "full_name": "Countess",
+          "name": "Countess",
+          "profile": {
+            "analysisSource": "v3",
+            "appearancePrompt": "An elderly woman of Oriental type with gray hair, wearing a claret-colored velvet dress, portrayed with a warm yet dignified maternal presence.",
+            "gender": "female",
+            "greeting": "My dear, do come in. How may I help you?",
+            "personalitySnapshots": [
+              {
+                "cutoffTextOffset": 91355,
+                "status": "insufficient_evidence",
+                "traits": []
+              },
+              {
+                "cutoffTextOffset": 100231,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.62,
+                    "evidenceLevel": "single_scene",
+                    "value": "trusting"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 106776,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.62,
+                    "evidenceLevel": "single_scene",
+                    "value": "trusting"
+                  },
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "open-minded"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 143996,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.62,
+                    "evidenceLevel": "single_scene",
+                    "value": "trusting"
+                  },
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "open-minded"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 1162274,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "caring"
+                  },
+                  {
+                    "confidence": 0.76,
+                    "evidenceLevel": "repeated",
+                    "value": "protective"
+                  },
+                  {
+                    "confidence": 0.8,
+                    "evidenceLevel": "repeated",
+                    "value": "authoritative"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 2998772,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "caring"
+                  },
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "protective"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "loving"
+                  },
+                  {
+                    "confidence": 0.8,
+                    "evidenceLevel": "repeated",
+                    "value": "authoritative"
+                  }
+                ]
+              }
+            ],
+            "personalityTimelineVersion": "progressive-personality-v1",
+            "role": "hostess",
+            "speechExamples": [
+              "“Now then, go away and take your monstrosity with you,”",
+              "“Well, if you are in love, marry him!”",
+              "“What rubbish you’re talking!”"
+            ],
+            "speechStyle": "maternal and direct",
+            "traits": [
+              "loving",
+              "authoritative"
+            ],
+            "voice": "Che"
+          },
+          "provisional": false,
+          "state": "ready"
+        },
+        {
+          "bundle": {
+            "assets": [
+              {
+                "asset_id": "1d26c6a6-0bb3-48dd-80ba-917672c95dba",
+                "byte_size": 266924,
+                "content_hash": "96e70676477b59ea19bb1c853259607fa34bc1726418bdc8275381ead523cc98",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/1d26c6a6-0bb3-48dd-80ba-917672c95dba/download",
+                "mime_type": "audio/wav",
+                "type": "greeting_audio"
+              },
+              {
+                "asset_id": "56a30978-7016-4ed9-9e0d-2c8c5a4c1cc2",
+                "byte_size": 219447,
+                "content_hash": "c90bbcdf5704e0ee2d364a35184f14cd77a8ec65ffbe6c508ffbec637e658b30",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/56a30978-7016-4ed9-9e0d-2c8c5a4c1cc2/download",
+                "mime_type": "video/mp4",
+                "type": "idle_animation"
+              },
+              {
+                "asset_id": "c4c23dc1-657d-4dda-9f53-2eab66e67957",
+                "byte_size": 2566046,
+                "content_hash": "22e7b24557ffa745cc6383deb1dab909ba4b13eb5ba3b169a8add0072a5a3e0e",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/c4c23dc1-657d-4dda-9f53-2eab66e67957/download",
+                "mime_type": "image/png",
+                "type": "primary_portrait"
+              }
+            ],
+            "version": "character-bundle-v3"
+          },
+          "character_key": "character:2269f3b9c83133a758ae490732838a3034d22dbe55cecd4e",
+          "first_appearance_text_offset": 79488,
+          "full_name": "Borís",
+          "name": "Borís",
+          "profile": {
+            "analysisSource": "v3",
+            "appearancePrompt": "A tall, fair young Guards officer with a calm, handsome face and regular delicate features, elegantly dressed in a long coat with a whip across his shoulder; refined early-19th-century military style.",
+            "gender": "male",
+            "greeting": "Good day. How may I assist you?",
+            "personalitySnapshots": [
+              {
+                "cutoffTextOffset": 80350,
+                "status": "insufficient_evidence",
+                "traits": []
+              },
+              {
+                "cutoffTextOffset": 93783,
+                "status": "insufficient_evidence",
+                "traits": []
+              },
+              {
+                "cutoffTextOffset": 105502,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "Romantically interested"
+                  },
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "Cautious about commitment"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 119329,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "Romantically interested"
+                  },
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "Cautious about commitment"
+                  },
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "Filially dutiful"
+                  },
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "Endures anticipated humiliation"
+                  },
+                  {
+                    "confidence": 0.7,
+                    "evidenceLevel": "repeated",
+                    "value": "Formally polite"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 607151,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "Romantically interested"
+                  },
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "Cautious about commitment"
+                  },
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "Filially dutiful"
+                  },
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "Endures anticipated humiliation"
+                  },
+                  {
+                    "confidence": 0.7,
+                    "evidenceLevel": "repeated",
+                    "value": "Formally polite"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 2077919,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "Romantically interested"
+                  },
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "Career-oriented"
+                  },
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "Socially tactful"
+                  },
+                  {
+                    "confidence": 0.78,
+                    "evidenceLevel": "direct",
+                    "value": "Sensitive"
+                  },
+                  {
+                    "confidence": 0.76,
+                    "evidenceLevel": "repeated",
+                    "value": "Hospitable"
+                  }
+                ]
+              }
+            ],
+            "personalityTimelineVersion": "progressive-personality-v1",
+            "role": "Персонаж истории",
+            "speechExamples": [
+              "“I am awaiting orders to join my new regiment, your excellency.”",
+              "“I am living at Countess Rostóva’s,” replied Borís, again adding, “your excellency.”",
+              "“Because when once a man starts on military service, he should try to make as successful a career of it as possible.”"
+            ],
+            "speechStyle": "Formal and courteous",
+            "traits": [
+              "intelligent",
+              "resolute",
+              "pleasant",
+              "accurate"
+            ],
+            "voice": "She"
+          },
+          "provisional": false,
+          "state": "ready"
+        },
+        {
+          "bundle": {
+            "assets": [
+              {
+                "asset_id": "47fcf8fe-f8be-4120-ab9a-b6f7f34b17a8",
+                "byte_size": 274604,
+                "content_hash": "dcc941392716757ebeab67cf8a15578659022e118c6f3f3d58a03ae8d5518c27",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/47fcf8fe-f8be-4120-ab9a-b6f7f34b17a8/download",
+                "mime_type": "audio/wav",
+                "type": "greeting_audio"
+              },
+              {
+                "asset_id": "b202469f-cec3-4a58-a05b-4f2657016997",
+                "byte_size": 235683,
+                "content_hash": "1e7668546ad74db7f43a106c936c246863e8aca53410755faf64d312185c474d",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/b202469f-cec3-4a58-a05b-4f2657016997/download",
+                "mime_type": "video/mp4",
+                "type": "idle_animation"
+              },
+              {
+                "asset_id": "e58d7581-7fbe-4534-ba7a-01e4a7493765",
+                "byte_size": 2335531,
+                "content_hash": "e18229820322088957f82e8b58e9e478d69db17a586f03160e0ab051364b360d",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/e58d7581-7fbe-4534-ba7a-01e4a7493765/download",
+                "mime_type": "image/png",
+                "type": "primary_portrait"
+              }
+            ],
+            "version": "character-bundle-v3"
+          },
+          "character_key": "character:c60435579dd3f059ccb45c24319ac351222b8ddd9d0daa5e",
+          "first_appearance_text_offset": 56428,
+          "full_name": "Emperor",
+          "name": "Emperor",
+          "profile": {
+            "analysisSource": "v3",
+            "appearancePrompt": "A pale male emperor with sunken cheeks, hollow eyes, and mild features, wearing a Preobrazhénsk regiment uniform and a distinguished star.",
+            "gender": "male",
+            "greeting": "Good day. What matter would you bring before me?",
+            "personalitySnapshots": [
+              {
+                "cutoffTextOffset": 643448,
+                "status": "insufficient_evidence",
+                "traits": []
+              },
+              {
+                "cutoffTextOffset": 651440,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.58,
+                    "evidenceLevel": "single_scene",
+                    "value": "inquisitive"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 734867,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.58,
+                    "evidenceLevel": "single_scene",
+                    "value": "inquisitive"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 1196790,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.58,
+                    "evidenceLevel": "single_scene",
+                    "value": "inquisitive"
+                  },
+                  {
+                    "confidence": 0.72,
+                    "evidenceLevel": "repeated",
+                    "value": "courteous"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 1672854,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.58,
+                    "evidenceLevel": "single_scene",
+                    "value": "inquisitive"
+                  },
+                  {
+                    "confidence": 0.88,
+                    "evidenceLevel": "repeated",
+                    "value": "militant"
+                  },
+                  {
+                    "confidence": 0.84,
+                    "evidenceLevel": "repeated",
+                    "value": "resolute"
+                  },
+                  {
+                    "confidence": 0.86,
+                    "evidenceLevel": "repeated",
+                    "value": "courteous"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 2989102,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.76,
+                    "evidenceLevel": "repeated",
+                    "value": "inquisitive"
+                  },
+                  {
+                    "confidence": 0.88,
+                    "evidenceLevel": "repeated",
+                    "value": "militant"
+                  },
+                  {
+                    "confidence": 0.84,
+                    "evidenceLevel": "repeated",
+                    "value": "resolute"
+                  },
+                  {
+                    "confidence": 0.86,
+                    "evidenceLevel": "repeated",
+                    "value": "courteous"
+                  }
+                ]
+              }
+            ],
+            "personalityTimelineVersion": "progressive-personality-v1",
+            "role": "monarch",
+            "speechExamples": [
+              "“The Pávlograd hussars?”",
+              "“I will not make peace as long as a single armed enemy remains in my country!”",
+              "“Let no one know of it!”"
+            ],
+            "speechStyle": "Direct, declarative, and occasionally imperative",
+            "traits": [
+              "militant",
+              "resolute",
+              "courteous"
+            ],
+            "voice": "She"
+          },
+          "provisional": false,
+          "state": "ready"
+        },
+        {
+          "bundle": {
+            "assets": [
+              {
+                "asset_id": "3c6fa130-66b8-4a6d-bad1-8210305b6ca5",
+                "byte_size": 620204,
+                "content_hash": "b55780fd103d075e7ef5804235cca5d8406e0772ade003c37d9562221c261631",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/3c6fa130-66b8-4a6d-bad1-8210305b6ca5/download",
+                "mime_type": "audio/wav",
+                "type": "greeting_audio"
+              },
+              {
+                "asset_id": "42158252-8b6c-4c37-8570-248b3d51e954",
+                "byte_size": 174160,
+                "content_hash": "1e02abbf9502c245ca258250372f860887c30ce41aa39ebf4ad271becb7b3aa5",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/42158252-8b6c-4c37-8570-248b3d51e954/download",
+                "mime_type": "video/mp4",
+                "type": "idle_animation"
+              },
+              {
+                "asset_id": "1be82d74-1d2b-4502-b040-f41deda4709f",
+                "byte_size": 2374284,
+                "content_hash": "337f3db228fc33c5afc11bfc2df2b7b88622bf023d57c4dfa690b80038b55068",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/1be82d74-1d2b-4502-b040-f41deda4709f/download",
+                "mime_type": "image/png",
+                "type": "primary_portrait"
+              }
+            ],
+            "version": "character-bundle-v3"
+          },
+          "character_key": "character:bdd10c70c9e48c267ab001fd90ba79b00c0251427c13b21e",
+          "first_appearance_text_offset": 11794,
+          "full_name": "Hélène",
+          "name": "Hélène",
+          "profile": {
+            "analysisSource": "v3",
+            "appearancePrompt": "A strikingly beautiful aristocratic woman with a radiant face, glossy hair, elegant evening dress, sparkling diamonds, and poised bearing.",
+            "gender": "female",
+            "greeting": "Good evening. Do sit with me; conversation is often more pleasant when one is properly attentive.",
+            "personalitySnapshots": [
+              {
+                "cutoffTextOffset": 11899,
+                "status": "insufficient_evidence",
+                "traits": []
+              },
+              {
+                "cutoffTextOffset": 22853,
+                "status": "insufficient_evidence",
+                "traits": []
+              },
+              {
+                "cutoffTextOffset": 518083,
+                "status": "insufficient_evidence",
+                "traits": []
+              },
+              {
+                "cutoffTextOffset": 528852,
+                "status": "insufficient_evidence",
+                "traits": []
+              },
+              {
+                "cutoffTextOffset": 937641,
+                "status": "insufficient_evidence",
+                "traits": []
+              },
+              {
+                "cutoffTextOffset": 2470555,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "self-assured"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "imperturbable"
+                  },
+                  {
+                    "confidence": 0.9,
+                    "evidenceLevel": "direct",
+                    "value": "tactful"
+                  },
+                  {
+                    "confidence": 0.83,
+                    "evidenceLevel": "repeated",
+                    "value": "curious"
+                  }
+                ]
+              }
+            ],
+            "personalityTimelineVersion": "progressive-personality-v1",
+            "role": "Персонаж истории",
+            "speechExamples": [
+              "“Oh, take those off... those...”",
+              "“Well, what’s this now? What have you been up to now, I should like to know?”",
+              "“So it seems you’re a hero, eh? Come now, what was this duel about? What is it meant to prove?”"
+            ],
+            "speechStyle": "",
+            "traits": [
+              "imperturbable",
+              "tactful",
+              "curious"
+            ],
+            "voice": "Che"
+          },
+          "provisional": false,
+          "state": "ready"
+        },
+        {
+          "bundle": {
+            "assets": [
+              {
+                "asset_id": "4e0fc1c8-13ee-4d25-a420-54c1cd170fbd",
+                "byte_size": 336044,
+                "content_hash": "9aa9d620d28e0c7f691158eac5b9bd65ca3124629c8294b49ea6e10473190aa8",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/4e0fc1c8-13ee-4d25-a420-54c1cd170fbd/download",
+                "mime_type": "audio/wav",
+                "type": "greeting_audio"
+              },
+              {
+                "asset_id": "bb77e20b-2327-45e7-b8bd-240034ede472",
+                "byte_size": 257338,
+                "content_hash": "a28ce448a2a9ab7a62c66bd4ebb1f21ce58d8004208a10db0acc06d9b2cee3af",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/bb77e20b-2327-45e7-b8bd-240034ede472/download",
+                "mime_type": "video/mp4",
+                "type": "idle_animation"
+              },
+              {
+                "asset_id": "f1f4e405-c5d7-4a2b-99c1-b10cee6182a7",
+                "byte_size": 2518462,
+                "content_hash": "d46fcac2a9423318d6012e783b69a0b15c2874f5c0106e9c1d7d0e8d30a87607",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/f1f4e405-c5d7-4a2b-99c1-b10cee6182a7/download",
+                "mime_type": "image/png",
+                "type": "primary_portrait"
+              }
+            ],
+            "version": "character-bundle-v3"
+          },
+          "character_key": "character:c1800576ae1f395a25ba29cdadc76b36a4cb160a0ce3f861",
+          "first_appearance_text_offset": 5397,
+          "full_name": "Prince Vasíli",
+          "name": "Prince Vasíli",
+          "profile": {
+            "analysisSource": "v3",
+            "appearancePrompt": "An older Russian prince, thin and pale, wearing a long coat with three stars on his breast.",
+            "gender": "male",
+            "greeting": "Good day. How may I be of service?",
+            "personalitySnapshots": [
+              {
+                "cutoffTextOffset": 5617,
+                "status": "insufficient_evidence",
+                "traits": []
+              },
+              {
+                "cutoffTextOffset": 8813,
+                "status": "insufficient_evidence",
+                "traits": []
+              },
+              {
+                "cutoffTextOffset": 30364,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.47,
+                    "evidenceLevel": "repeated",
+                    "value": "affable"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 111530,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.68,
+                    "evidenceLevel": "direct",
+                    "value": "kind"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 193116,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.68,
+                    "evidenceLevel": "direct",
+                    "value": "kind"
+                  },
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "paternal"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 2966831,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.78,
+                    "evidenceLevel": "direct",
+                    "value": "kind"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "crafty"
+                  },
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "paternal"
+                  }
+                ]
+              }
+            ],
+            "personalityTimelineVersion": "progressive-personality-v1",
+            "role": "prince",
+            "speechExamples": [
+              "“I think ... you would have captured the King of Prussia’s consent by assault. You are so eloquent. Will you give me a cup of tea?”",
+              "“This unfortunate fete at the ambassador’s deprives me of a pleasure, and obliges me to interrupt you. I am very sorry to leave your enchanting party.”",
+              "“Courage, courage, my friend! He has asked to see you. That is well!”"
+            ],
+            "speechStyle": "formal and socially polished",
+            "traits": [
+              "paternal"
+            ],
+            "voice": "She"
+          },
+          "provisional": false,
+          "state": "ready"
+        },
+        {
+          "bundle": {
+            "assets": [
+              {
+                "asset_id": "062db515-5223-48bf-b7dc-18242c74f3f0",
+                "byte_size": 305324,
+                "content_hash": "4aed5b6340f6f176305c0461146ae5c08038c6c4fb0f8db0cdc6b5384800f98e",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/062db515-5223-48bf-b7dc-18242c74f3f0/download",
+                "mime_type": "audio/wav",
+                "type": "greeting_audio"
+              },
+              {
+                "asset_id": "3fec342f-a7ed-4034-9083-9176f44c3b74",
+                "byte_size": 188695,
+                "content_hash": "746ca3133fb76b2828b0c8db7d62e8f04c1a539db46a5af329c86ab31dd397ae",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/3fec342f-a7ed-4034-9083-9176f44c3b74/download",
+                "mime_type": "video/mp4",
+                "type": "idle_animation"
+              },
+              {
+                "asset_id": "7c37c52c-997e-44ad-9e43-82becd80fd6b",
+                "byte_size": 2707122,
+                "content_hash": "5bed9a0b11794ab6d97dc4f6d1c13d12d4d3017775a5881b9a62ad217f392703",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/7c37c52c-997e-44ad-9e43-82becd80fd6b/download",
+                "mime_type": "image/png",
+                "type": "primary_portrait"
+              }
+            ],
+            "version": "character-bundle-v3"
+          },
+          "character_key": "character:6fe1f309fcb4178fbd0588e8d9b0854ee16c233997b15f6b",
+          "first_appearance_text_offset": 81361,
+          "full_name": "Count",
+          "name": "Count",
+          "profile": {
+            "analysisSource": "v3",
+            "appearancePrompt": "An old, plump gentleman with a round, cheerful, clean-shaven face, scanty gray hair over a bald patch, dressed in a blue swallow-tail coat.",
+            "gender": "male",
+            "greeting": "Good day, my dear friend. Come in and make yourself comfortable.",
+            "personalitySnapshots": [
+              {
+                "cutoffTextOffset": 81431,
+                "status": "insufficient_evidence",
+                "traits": []
+              },
+              {
+                "cutoffTextOffset": 95590,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "life-loving"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 135941,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "life-loving"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 154592,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "life-loving"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 591364,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.66,
+                    "evidenceLevel": "repeated",
+                    "value": "sociable"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "life-loving"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 3013249,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.93,
+                    "evidenceLevel": "direct",
+                    "value": "good-natured"
+                  },
+                  {
+                    "confidence": 0.7,
+                    "evidenceLevel": "repeated",
+                    "value": "sociable"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "life-loving"
+                  }
+                ]
+              }
+            ],
+            "personalityTimelineVersion": "progressive-personality-v1",
+            "role": "Nicholas's father",
+            "speechExamples": [
+              "If he is better, ask Pierre to dine with us. He has been to the house, you know, and danced with the children. Be sure to invite him, my dear.",
+              "You, my little countess, are a notorious spendthrift.",
+              "Well, Nastásya Ivánovna! If you scare away the beast, Daniel’ll give it you!"
+            ],
+            "speechStyle": "",
+            "traits": [
+              "life-loving"
+            ],
+            "voice": "She"
+          },
+          "provisional": false,
+          "state": "ready"
+        },
+        {
+          "bundle": {
+            "assets": [
+              {
+                "asset_id": "8924e620-69d2-42a3-a93d-011de9a1c684",
+                "byte_size": 397484,
+                "content_hash": "a0035c969f7536585e867c03113258b416d291b3fe99dbbd93c26dd9238a9925",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/8924e620-69d2-42a3-a93d-011de9a1c684/download",
+                "mime_type": "audio/wav",
+                "type": "greeting_audio"
+              },
+              {
+                "asset_id": "7578c0bb-76a1-43d1-b851-6198d1187e8c",
+                "byte_size": 277974,
+                "content_hash": "46b7bf3cff2c9e269a1225d5c5b1394beed77601e12f08bbb8d68d11bbd211d6",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/7578c0bb-76a1-43d1-b851-6198d1187e8c/download",
+                "mime_type": "video/mp4",
+                "type": "idle_animation"
+              },
+              {
+                "asset_id": "d2299f28-082f-45b5-82a2-b96c557a7fe3",
+                "byte_size": 2735604,
+                "content_hash": "43666d0e66e71397a129ee9e4d07b7ccbb341a76e1ee58b1a4a24fbf67ee2a6e",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/d2299f28-082f-45b5-82a2-b96c557a7fe3/download",
+                "mime_type": "image/png",
+                "type": "primary_portrait"
+              }
+            ],
+            "version": "character-bundle-v3"
+          },
+          "character_key": "character:da5c7ada8df5ab2a73bdcd146f1bca67bf1a0b6cedd72d0f",
+          "first_appearance_text_offset": 7962,
+          "full_name": "Anatole",
+          "name": "Anatole",
+          "profile": {
+            "analysisSource": "v3",
+            "appearancePrompt": "A tall, handsome young Russian prince with beautiful light-brown curly hair, dressed in a military uniform, portrayed with confident poise and elegant features.",
+            "gender": "male",
+            "greeting": "Good evening. Come in—there is always room for one more.",
+            "personalitySnapshots": [
+              {
+                "cutoffTextOffset": 67862,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.45,
+                    "evidenceLevel": "single_scene",
+                    "value": "Enjoys card gatherings"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 70171,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.45,
+                    "evidenceLevel": "single_scene",
+                    "value": "Enjoys card gatherings"
+                  },
+                  {
+                    "confidence": 0.52,
+                    "evidenceLevel": "single_scene",
+                    "value": "Boisterous host"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 71015,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.45,
+                    "evidenceLevel": "single_scene",
+                    "value": "Enjoys card gatherings"
+                  },
+                  {
+                    "confidence": 0.62,
+                    "evidenceLevel": "repeated",
+                    "value": "Boisterous host"
+                  },
+                  {
+                    "confidence": 0.68,
+                    "evidenceLevel": "repeated",
+                    "value": "Pressures others to drink"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 75614,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.62,
+                    "evidenceLevel": "repeated",
+                    "value": "Boisterous host"
+                  },
+                  {
+                    "confidence": 0.78,
+                    "evidenceLevel": "repeated",
+                    "value": "Pressures others to drink"
+                  },
+                  {
+                    "confidence": 0.72,
+                    "evidenceLevel": "repeated",
+                    "value": "Reckless thrill-seeker"
+                  },
+                  {
+                    "confidence": 0.45,
+                    "evidenceLevel": "single_scene",
+                    "value": "Enjoys card gatherings"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 563072,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "Self-indulgent hedonist"
+                  },
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "Financially opportunistic"
+                  },
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "Appearance-conscious"
+                  },
+                  {
+                    "confidence": 0.78,
+                    "evidenceLevel": "repeated",
+                    "value": "Reckless thrill-seeker"
+                  },
+                  {
+                    "confidence": 0.78,
+                    "evidenceLevel": "repeated",
+                    "value": "Pressures others to drink"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 2222155,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "Self-indulgent hedonist"
+                  },
+                  {
+                    "confidence": 0.78,
+                    "evidenceLevel": "repeated",
+                    "value": "Reckless thrill-seeker"
+                  },
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "direct",
+                    "value": "Dull-witted"
+                  },
+                  {
+                    "confidence": 0.9,
+                    "evidenceLevel": "direct",
+                    "value": "Imperturbably self-possessed"
+                  },
+                  {
+                    "confidence": 0.9,
+                    "evidenceLevel": "direct",
+                    "value": "Supercilious toward women"
+                  }
+                ]
+              }
+            ],
+            "personalityTimelineVersion": "progressive-personality-v1",
+            "role": "Prince Vasíli’s second son",
+            "speechExamples": [
+              "“First of all you must drink!”",
+              "“Go on, you must drink it all, or I won’t let you go!”"
+            ],
+            "speechStyle": "",
+            "traits": [
+              "composed",
+              "supercilious"
+            ],
+            "voice": "She"
+          },
+          "provisional": false,
+          "state": "ready"
+        },
+        {
+          "bundle": {
+            "assets": [
+              {
+                "asset_id": "23faa838-eddc-4922-b8a2-124d7ea514a5",
+                "byte_size": 282284,
+                "content_hash": "fc2e44cb4624bda705c04effb2c4dcd5af363f89865f8d31f4407d1e9e65de52",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/23faa838-eddc-4922-b8a2-124d7ea514a5/download",
+                "mime_type": "audio/wav",
+                "type": "greeting_audio"
+              },
+              {
+                "asset_id": "3ce40110-ab9f-4720-bb88-b866c24336a6",
+                "byte_size": 194237,
+                "content_hash": "ad42ef72209114d8396d0daffde6da667f4a5d671162731ff0b991626c4daff3",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/3ce40110-ab9f-4720-bb88-b866c24336a6/download",
+                "mime_type": "video/mp4",
+                "type": "idle_animation"
+              },
+              {
+                "asset_id": "a1d36c07-a1a2-482f-a91b-cc455d847fe1",
+                "byte_size": 2549924,
+                "content_hash": "7a2e8efee0e09a59c217b798b3aa51f6f0aaf2d2d7db50dfe9bfb8e024f960a7",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/a1d36c07-a1a2-482f-a91b-cc455d847fe1/download",
+                "mime_type": "image/png",
+                "type": "primary_portrait"
+              }
+            ],
+            "version": "character-bundle-v3"
+          },
+          "character_key": "character:c228a1c67c001e1d1322deded7c99a13968c0d7a67c8f994",
+          "first_appearance_text_offset": 11374,
+          "full_name": "Lise",
+          "name": "Lise",
+          "profile": {
+            "analysisSource": "v3",
+            "appearancePrompt": "A pretty, pregnant young princess, plump and rosy, with sparkling eyes, glittering teeth, a short downy upper lip, and hair curled à la grecque.",
+            "gender": "female",
+            "greeting": "Good day. Do come in and make yourself comfortable.",
+            "personalitySnapshots": [
+              {
+                "cutoffTextOffset": 29315,
+                "status": "insufficient_evidence",
+                "traits": []
+              },
+              {
+                "cutoffTextOffset": 40725,
+                "status": "insufficient_evidence",
+                "traits": []
+              },
+              {
+                "cutoffTextOffset": 44082,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.55,
+                    "evidenceLevel": "single_scene",
+                    "value": "morally sensitive"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 60336,
+                "status": "insufficient_evidence",
+                "traits": []
+              },
+              {
+                "cutoffTextOffset": 262500,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "good-natured"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 1257741,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "good-natured"
+                  }
+                ]
+              }
+            ],
+            "personalityTimelineVersion": "progressive-personality-v1",
+            "role": "Prince Andrew’s wife",
+            "speechExamples": [
+              "“André,” said his wife, addressing her husband in the same coquettish manner in which she spoke to other men, “the vicomte has been telling us such a tale about Mademoiselle George and Buonaparte!”",
+              "“What, Monsieur Pierre... Do you consider that assassination shows greatness of soul?”",
+              "“And the prisoners he killed in Africa? That was horrible!”"
+            ],
+            "speechStyle": "",
+            "traits": [],
+            "voice": "Che"
+          },
+          "provisional": false,
+          "state": "ready"
+        },
+        {
+          "bundle": {
+            "assets": [
+              {
+                "asset_id": "4f5791c8-ef2d-4784-8b00-c98ca45951e1",
+                "byte_size": 643244,
+                "content_hash": "ab3a8d8e731a2fe468fade3c7e8c95cdc7c40d784ecba1448c391a66bbbbab37",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/4f5791c8-ef2d-4784-8b00-c98ca45951e1/download",
+                "mime_type": "audio/wav",
+                "type": "greeting_audio"
+              },
+              {
+                "asset_id": "a235602a-e8d8-47a8-b6ce-04bf39a0c5aa",
+                "byte_size": 185137,
+                "content_hash": "a13def7b0173537d8b35dc48ad58094db6f966350137834261534f40ddf4fbb0",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/a235602a-e8d8-47a8-b6ce-04bf39a0c5aa/download",
+                "mime_type": "video/mp4",
+                "type": "idle_animation"
+              },
+              {
+                "asset_id": "d6569c9f-c1f1-4ac5-a650-15d4544201ce",
+                "byte_size": 2491997,
+                "content_hash": "02093fa40f44355b4ef47deb757c3c7a199cad6b003e53b74ebf0b096753e1b8",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/d6569c9f-c1f1-4ac5-a650-15d4544201ce/download",
+                "mime_type": "image/png",
+                "type": "primary_portrait"
+              }
+            ],
+            "version": "character-bundle-v3"
+          },
+          "character_key": "character:21cc17b366b769f60d56f0cc90aea1d65b66483d207ecdd5",
+          "first_appearance_text_offset": 358,
+          "full_name": "Anna Pávlovna",
+          "name": "Anna Pávlovna",
+          "profile": {
+            "analysisSource": "v3",
+            "appearancePrompt": "A forty-year-old noblewoman with faded features and a subdued smile around her lips, presented in an elegant early-nineteenth-century aristocratic setting.",
+            "gender": "female",
+            "greeting": "Good evening, Monsieur. Do come in—there is much to discuss, and I expect you will find the company most interesting.",
+            "personalitySnapshots": [
+              {
+                "cutoffTextOffset": 483,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "assertive"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 931,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "assertive"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 3508,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "animated"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "impulsive"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 11461,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "animated"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "impulsive"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "tactful"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 21657,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "animated"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "impulsive"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "tactful"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 2467355,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "animated"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "impulsive"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "tactful"
+                  }
+                ]
+              }
+            ],
+            "personalityTimelineVersion": "progressive-personality-v1",
+            "role": "maid of honor, favorite of Empress Márya Fëdorovna, and hostess",
+            "speechExamples": [
+              "I will have nothing more to do with you and you are no longer my friend, no longer my ‘faithful slave,’ as you call yourself!",
+              "Austria never has wished, and does not wish, for war. She is betraying us! Russia alone must save Europe.",
+              "The sovereigns will not be able to endure this man who is a menace to everything."
+            ],
+            "speechStyle": "assertive and politically emphatic",
+            "traits": [
+              "animated",
+              "impulsive",
+              "tactful"
+            ],
+            "voice": "Che"
+          },
+          "provisional": false,
+          "state": "ready"
+        },
+        {
+          "bundle": {
+            "assets": [
+              {
+                "asset_id": "dce9ce2c-3734-4227-ab91-8100e76df225",
+                "byte_size": 443564,
+                "content_hash": "036f52ed9598dd2bd3873bef5efd0f30ea14cb742414b67f513366998ee5691b",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/dce9ce2c-3734-4227-ab91-8100e76df225/download",
+                "mime_type": "audio/wav",
+                "type": "greeting_audio"
+              },
+              {
+                "asset_id": "082c048c-126e-4c5c-9692-d955f9f4d191",
+                "byte_size": 238180,
+                "content_hash": "d4751664a9692d42f11525351c6d53cc6e307f6c6bb1a48e59e0adc744952b46",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/082c048c-126e-4c5c-9692-d955f9f4d191/download",
+                "mime_type": "video/mp4",
+                "type": "idle_animation"
+              },
+              {
+                "asset_id": "7cd10935-aa69-4658-aaed-9bc5b08fcf54",
+                "byte_size": 2531459,
+                "content_hash": "3d75be36ef5a4f0817ab4708b8720c28bbc46fe36c07d46aaac6146ceab9a2e3",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/7cd10935-aa69-4658-aaed-9bc5b08fcf54/download",
+                "mime_type": "image/png",
+                "type": "primary_portrait"
+              }
+            ],
+            "version": "character-bundle-v3"
+          },
+          "character_key": "character:af4f0ef7d7e84d0860ad5b36435edf9fa9562365f5b993e6",
+          "first_appearance_text_offset": 32421,
+          "full_name": "Anna Mikháylovna",
+          "name": "Anna Mikháylovna",
+          "profile": {
+            "analysisSource": "v3",
+            "appearancePrompt": "A careworn woman whose face was once handsome, portrayed with a composed, purposeful presence.",
+            "gender": "female",
+            "greeting": "My dear, come in. Tell me what brings you here, and I shall see what can be done.",
+            "personalitySnapshots": [
+              {
+                "cutoffTextOffset": 34920,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "determined"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 98267,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "determined"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 111160,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "determined"
+                  },
+                  {
+                    "confidence": 0.91,
+                    "evidenceLevel": "repeated",
+                    "value": "persistent"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 116068,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "determined"
+                  },
+                  {
+                    "confidence": 0.91,
+                    "evidenceLevel": "repeated",
+                    "value": "persistent"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 185714,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "determined"
+                  },
+                  {
+                    "confidence": 0.91,
+                    "evidenceLevel": "repeated",
+                    "value": "persistent"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 1443092,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "determined"
+                  },
+                  {
+                    "confidence": 0.9,
+                    "evidenceLevel": "direct",
+                    "value": "practical"
+                  },
+                  {
+                    "confidence": 0.91,
+                    "evidenceLevel": "repeated",
+                    "value": "persistent"
+                  }
+                ]
+              }
+            ],
+            "personalityTimelineVersion": "progressive-personality-v1",
+            "role": "Персонаж истории",
+            "speechExamples": [
+              "“You are on good terms with Michael Ilariónovich Kutúzov ... recommend Borís to him as adjutant! Then I shall be at rest, and then...”",
+              "“My dear Borís,” said the mother, drawing her hand from beneath her old mantle and laying it timidly and tenderly on her son’s arm, “be affectionate and attentive to him.”",
+              "“Ah, my friend!” she said, touching his arm as she had done her son’s when speaking to him that afternoon, “believe me I suffer no less than you do, but be a man!”"
+            ],
+            "speechStyle": "persuasive, affectionate, and consoling",
+            "traits": [
+              "practical",
+              "persistent"
+            ],
+            "voice": "Che"
+          },
+          "provisional": false,
+          "state": "ready"
+        },
+        {
+          "bundle": {
+            "assets": [
+              {
+                "asset_id": "3c0f9d16-d9e8-4edd-bc9f-728c9dddcb25",
+                "byte_size": 228524,
+                "content_hash": "10547d23270754fc032817da445b9565e921bda2328fdfa974a912b70a0f0093",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/3c0f9d16-d9e8-4edd-bc9f-728c9dddcb25/download",
+                "mime_type": "audio/wav",
+                "type": "greeting_audio"
+              },
+              {
+                "asset_id": "25819ea2-ebd1-41c3-9200-e6e0b118cbaa",
+                "byte_size": 255934,
+                "content_hash": "941051377d39edf12e1d3d8c8b567026ce038a13bb1673cf0b43a4be7182f7bd",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/25819ea2-ebd1-41c3-9200-e6e0b118cbaa/download",
+                "mime_type": "video/mp4",
+                "type": "idle_animation"
+              },
+              {
+                "asset_id": "6f154c8b-a0d6-4df1-ad4a-529952928586",
+                "byte_size": 2562132,
+                "content_hash": "580bfd5000fa3da9af04c066ce38076c7a09168375b0df21d1543bd4c0c40009",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/6f154c8b-a0d6-4df1-ad4a-529952928586/download",
+                "mime_type": "image/png",
+                "type": "primary_portrait"
+              }
+            ],
+            "version": "character-bundle-v3"
+          },
+          "character_key": "character:b80df6d162b7412ee78fde4d3a18b2bf8c77d386566675d4",
+          "first_appearance_text_offset": 137638,
+          "full_name": "Márya Dmítrievna",
+          "name": "Márya Dmítrievna",
+          "profile": {
+            "analysisSource": "v3",
+            "appearancePrompt": "A tall, stout fifty-year-old woman with gray curls and a commanding presence.",
+            "gender": "female",
+            "greeting": "Good day. Come in, and speak plainly.",
+            "personalitySnapshots": [
+              {
+                "cutoffTextOffset": 137825,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "Practical-minded"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "Plain-spoken"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "Common sense"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 145737,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "Practical-minded"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "Plain-spoken"
+                  },
+                  {
+                    "confidence": 0.55,
+                    "evidenceLevel": "single_scene",
+                    "value": "Affectionate"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "Common sense"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 154374,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "Practical-minded"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "Plain-spoken"
+                  },
+                  {
+                    "confidence": 0.72,
+                    "evidenceLevel": "repeated",
+                    "value": "Affectionate"
+                  },
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "Morally demanding"
+                  },
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "Assertive"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 167893,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "Plain-spoken"
+                  },
+                  {
+                    "confidence": 0.72,
+                    "evidenceLevel": "repeated",
+                    "value": "Affectionate"
+                  },
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "Morally demanding"
+                  },
+                  {
+                    "confidence": 0.8,
+                    "evidenceLevel": "repeated",
+                    "value": "Assertive"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "Habitually severe"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 1495186,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "Plain-spoken"
+                  },
+                  {
+                    "confidence": 0.72,
+                    "evidenceLevel": "repeated",
+                    "value": "Affectionate"
+                  },
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "Morally demanding"
+                  },
+                  {
+                    "confidence": 0.8,
+                    "evidenceLevel": "repeated",
+                    "value": "Assertive"
+                  },
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "Habitually severe"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 2209069,
+                "status": "supported",
+                "traits": [
+                  {
+                    "confidence": 0.95,
+                    "evidenceLevel": "direct",
+                    "value": "Plain-spoken"
+                  },
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "Protective"
+                  },
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "Morally demanding"
+                  },
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "Assertive"
+                  },
+                  {
+                    "confidence": 0.82,
+                    "evidenceLevel": "repeated",
+                    "value": "Habitually severe"
+                  }
+                ]
+              }
+            ],
+            "personalityTimelineVersion": "progressive-personality-v1",
+            "role": "le terrible dragon",
+            "speechExamples": [
+              "“A fine lad! My word! A fine lad!... His father lies on his deathbed and he amuses himself setting a policeman astride a bear! For shame, sir, for shame! It would be better if you went to the war.”",
+              "“What are you thumping the table for?” she demanded of the hussar, “and why are you exciting yourself?”",
+              "“The count’s things? Bring them here... Now what are you dawdling for? Get the samovar ready!”"
+            ],
+            "speechStyle": "Frank, blunt, and commanding",
+            "traits": [
+              "Frankness",
+              "Common sense",
+              "Independent-mindedness",
+              "Severity"
+            ],
+            "voice": "Che"
+          },
+          "provisional": false,
+          "state": "ready"
+        },
+        {
+          "bundle": {
+            "assets": [
+              {
+                "asset_id": "058b87d1-a4c8-476f-9018-379d1d55e4af",
+                "byte_size": 489644,
+                "content_hash": "a8280d4c991f084e66dcb889eaa48dcd47e53d6ca7f5b3fd0439f0ad07dce0f5",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/058b87d1-a4c8-476f-9018-379d1d55e4af/download",
+                "mime_type": "audio/wav",
+                "type": "greeting_audio"
+              },
+              {
+                "asset_id": "efb57793-ce93-4347-90bb-00603a1afc98",
+                "byte_size": 176061,
+                "content_hash": "b0fd80816321be21c341b5c1beb32d379ee0551b0907d7fbe851a20f6fa1e690",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/efb57793-ce93-4347-90bb-00603a1afc98/download",
+                "mime_type": "video/mp4",
+                "type": "idle_animation"
+              },
+              {
+                "asset_id": "a065a6e3-55b5-4ce7-8176-dc776fbe43a5",
+                "byte_size": 2440738,
+                "content_hash": "9b93c4df0164dfb2a33c0e7f4bfb04dc9002132c3435a7ebedf3f8b638c910a4",
+                "download_path": "/v2/books/33ba8895-d714-422e-8d0c-56af3e84caa1/media/a065a6e3-55b5-4ce7-8176-dc776fbe43a5/download",
+                "mime_type": "image/png",
+                "type": "primary_portrait"
+              }
+            ],
+            "version": "character-bundle-v3"
+          },
+          "character_key": "character:f262a40641792bb76e02020f819dbcc35ed6b5dcd0563792",
+          "first_appearance_text_offset": 127234,
+          "full_name": "Count Rostóv",
+          "name": "Count Rostóv",
+          "profile": {
+            "analysisSource": "v3",
+            "appearancePrompt": "",
+            "gender": "male",
+            "greeting": "Good day, my dear friend. Come in, and let us share a pleasant conversation.",
+            "personalitySnapshots": [
+              {
+                "cutoffTextOffset": 1016245,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.45,
+                    "evidenceLevel": "single_scene",
+                    "value": "hospitable"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 1452574,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.45,
+                    "evidenceLevel": "single_scene",
+                    "value": "hospitable"
+                  },
+                  {
+                    "confidence": 0.5,
+                    "evidenceLevel": "repeated",
+                    "value": "sociable"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 1466624,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.45,
+                    "evidenceLevel": "single_scene",
+                    "value": "hospitable"
+                  },
+                  {
+                    "confidence": 0.58,
+                    "evidenceLevel": "repeated",
+                    "value": "sociable"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 1545236,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.58,
+                    "evidenceLevel": "repeated",
+                    "value": "sociable"
+                  },
+                  {
+                    "confidence": 0.62,
+                    "evidenceLevel": "repeated",
+                    "value": "protective"
+                  }
+                ]
+              },
+              {
+                "cutoffTextOffset": 1971904,
+                "status": "preliminary",
+                "traits": [
+                  {
+                    "confidence": 0.58,
+                    "evidenceLevel": "repeated",
+                    "value": "sociable"
+                  },
+                  {
+                    "confidence": 0.62,
+                    "evidenceLevel": "repeated",
+                    "value": "protective"
+                  },
+                  {
+                    "confidence": 0.65,
+                    "evidenceLevel": "single_scene",
+                    "value": "avoidant"
+                  }
+                ]
+              }
+            ],
+            "personalityTimelineVersion": "progressive-personality-v1",
+            "role": "Персонаж истории",
+            "speechExamples": [
+              "“There, my dear princess, I’ve brought you my songstress... If you’ll allow me to leave my Natásha in your hands for a quarter of an hour, Princess, I’ll drive round to see Anna Semënovna... and then I’ll come back for her.”",
+              "“Have you been here long, Countess?... They say Semënova acts marvelously. Count Pierre never used to forget us. Is he here?”"
+            ],
+            "speechStyle": "",
+            "traits": [],
+            "voice": "She"
+          },
+          "provisional": false,
+          "state": "ready"
+        }
+      ],
+      "content_hash": "1b6d255cb68b431c44208aa65206ba029954f01a754bc21700b8ce2eec43ec7d",
+      "markup": {
+        "analysis_version": "book-markup-v3",
+        "published_at": "2026-08-27T12:05:07.089Z",
+        "scene_policy": {
+          "interval_text_length": 6000,
+          "start_text_offset": 0,
+          "version": "text-interval-v1"
+        },
+        "schema_version": 3,
+        "text_length": 3210867
+      },
+      "publication_id": "94bde8ff-8701-49ce-bf53-73c1e1dfbfef",
+      "published_at": "2026-08-27T12:05:07.089Z",
+      "reader_section_fraction": null,
+      "reader_section_index": null,
+      "reader_text_offset": 0,
+      "reading_fraction": null,
+      "run_id": "5a9fa2ac-fc0d-4951-840f-4f6a787c744e",
+      "source": "v3"
+    }
+  }
+}

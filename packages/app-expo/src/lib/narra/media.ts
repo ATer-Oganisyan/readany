@@ -421,6 +421,10 @@ export function ensureCharacterPortrait(
   if (character.portraitUri) {
     return Promise.resolve(normalizePersistedNarraMediaUri(character.portraitUri));
   }
+  if (character.backendManaged) {
+    // A missing server asset is never a request to generate another portrait.
+    return Promise.reject(new Error("Backend portrait is not available locally yet"));
+  }
 
   const key = `${bookId}:${character.id}`;
   const inFlight = portraitRequests.get(key);

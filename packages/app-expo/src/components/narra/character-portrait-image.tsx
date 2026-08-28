@@ -18,7 +18,10 @@ import {
 } from "react-native";
 
 interface CharacterPortraitImageProps {
-  character: Pick<NarraCharacter, "portraitAssetId" | "portraitUri" | "portraitUriOverridesAsset">;
+  character: Pick<
+    NarraCharacter,
+    "portraitAssetId" | "portraitUri" | "portraitUriOverridesAsset" | "backendMedia"
+  >;
   fallback: ReactNode;
   staticOnly?: boolean;
   resizeMode?: ImageResizeMode;
@@ -45,6 +48,10 @@ export function CharacterPortraitImage({
     character.portraitUriOverridesAsset ? "override" : "default"
   }`;
   const sources = resolveCharacterPortraitSources(character);
+  const backendVideo =
+    !staticOnly && !character.portraitUriOverridesAsset
+      ? character.backendMedia?.idle_animation?.uri
+      : undefined;
   const videoAsset = staticOnly ? undefined : resolveCharacterPortraitVideoAsset(character);
   const [selection, setSelection] = useState({ key: sourceKey, index: 0 });
   const [videoState, setVideoState] = useState<{
@@ -61,6 +68,10 @@ export function CharacterPortraitImage({
   useEffect(() => {
     let cancelled = false;
     setVideoState({ key: sourceKey, failed: false, ready: false });
+    if (backendVideo) {
+      setVideoState({ key: sourceKey, uri: backendVideo, failed: false, ready: false });
+      return () => undefined;
+    }
     if (typeof videoAsset !== "number") return () => undefined;
 
     const asset = Asset.fromModule(videoAsset);
@@ -81,7 +92,7 @@ export function CharacterPortraitImage({
     return () => {
       cancelled = true;
     };
-  }, [sourceKey, videoAsset]);
+  }, [sourceKey, videoAsset, backendVideo]);
 
   if (videoUri) {
     const source = sources[sourceIndex];

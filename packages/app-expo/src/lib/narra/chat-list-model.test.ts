@@ -1,5 +1,5 @@
 import type { Book } from "@readany/core/types";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createChatListSelector } from "./chat-list-model";
 import { emptyNarraBookState, withNarraCharacters } from "./domain";
 import type { NarraBookState, NarraCharacter, NarraChatMessage } from "./types";
@@ -23,6 +23,7 @@ function book(id: string, overrides: Partial<Book> = {}): Book {
 
 function character(id: string, unlockProgress = 0): NarraCharacter {
   return {
+    backendManaged: true,
     id,
     name: id,
     fullName: id,
@@ -47,7 +48,7 @@ function message(id: string): NarraChatMessage {
 
 describe("chat list model", () => {
   it("preserves book order, unlock rules and per-book message order", () => {
-    const select = createChatListSelector(() => undefined);
+    const select = createChatListSelector();
     const a = state("a", [
       character("first", 0.1),
       character("active", 0.3),
@@ -59,11 +60,11 @@ describe("chat list model", () => {
       { a, b: state("b", [character("b")]) },
     );
     expect(model.books.map((item) => item.id)).toEqual(["b", "a"]);
-    expect(model.allRows.map((row) => row.character.id)).toEqual(["b", "active", "first"]);
+    expect(model.allRows.map((row) => row.character.id)).toEqual(["b", "first", "active"]);
   });
 
   it("retains the exact model for no-op and unrelated metadata updates", () => {
-    const select = createChatListSelector(() => undefined);
+    const select = createChatListSelector();
     const books = [book("a")];
     const narraBooks = { a: state("a", [character("a")]) };
     const first = select(books, narraBooks);
@@ -80,7 +81,7 @@ describe("chat list model", () => {
   });
 
   it("changes only the affected row and book page when one portrait completes", () => {
-    const select = createChatListSelector(() => undefined);
+    const select = createChatListSelector();
     const books = [book("a"), book("b"), book("c")];
     const narraBooks = {
       a: state("a", [character("a1"), character("a2")]),
@@ -109,7 +110,7 @@ describe("chat list model", () => {
   });
 
   it("keeps its complete model after equal setCharacters inputs and analysis metadata updates", () => {
-    const select = createChatListSelector(() => undefined);
+    const select = createChatListSelector();
     const books = [book("a"), book("b")];
     const narraBooks = {
       a: { ...state("a", [character("a1"), character("a2")]), analysisError: "old" },
@@ -132,7 +133,7 @@ describe("chat list model", () => {
   });
 
   it("exposes the current full character after an actual non-list field changes", () => {
-    const select = createChatListSelector(() => undefined);
+    const select = createChatListSelector();
     const books = [book("a"), book("b")];
     const narraBooks = { a: state("a", [character("a1")]), b: state("b", [character("b")]) };
     const first = select(books, narraBooks);
@@ -149,29 +150,24 @@ describe("chat list model", () => {
   });
 
   it("ignores changed message content when the count and ordering stay the same", () => {
-    const select = createChatListSelector(() => undefined);
+    const select = createChatListSelector();
     const books = [book("a")];
     const a = { ...state("a", [character("a")]), chats: { a: [message("1")] } };
     const first = select(books, { a });
     expect(select(books, { a: { ...a, chats: { a: [message("2")] } } })).toBe(first);
   });
 
-  it("reuses bundled characters until a retained book title changes", () => {
-    const bundled = vi.fn(() => [character("bundled")]);
-    const select = createChatListSelector(bundled);
-    const books = [book("a")];
-    const first = select(books, {});
-    expect(select([...books], {})).toBe(first);
-    expect(bundled).toHaveBeenCalledTimes(1);
-    expect(first.allRows[0].fromBundledCatalog).toBe(true);
-    const renamed = select([{ ...books[0], meta: { ...books[0].meta, title: "Renamed" } }], {});
-    expect(bundled).toHaveBeenCalledTimes(2);
-    expect(renamed.books[0].title).toBe("Renamed");
-    expect(renamed.allRows[0].bookTitle).toBe("Renamed");
+  it("never seeds profiles from titles or exposes legacy local profiles", () => {
+    const select = createChatListSelector();
+    expect(select([book("a")], {}).allRows).toEqual([]);
+    expect(
+      select([book("a")], { a: state("a", [{ ...character("legacy"), backendManaged: false }]) })
+        .allRows,
+    ).toEqual([]);
   });
 
   it("keeps pages with locked characters and unlocks rows when progress changes", () => {
-    const select = createChatListSelector(() => undefined);
+    const select = createChatListSelector();
     const books = [book("a", { progress: 0 })];
     const narraBooks = { a: state("a", [character("a", 0.5)]) };
     const first = select(books, narraBooks);
@@ -183,7 +179,7 @@ describe("chat list model", () => {
   });
 
   it("reorders existing pages without rebuilding them and removes deleted books", () => {
-    const select = createChatListSelector(() => undefined);
+    const select = createChatListSelector();
     const books = [book("a", { lastOpenedAt: 1 }), book("b", { lastOpenedAt: 2 })];
     const narraBooks = { a: state("a", [character("a")]), b: state("b", [character("b")]) };
     const first = select(books, narraBooks);
@@ -195,12 +191,12 @@ describe("chat list model", () => {
     expect(deleted.rowsByBook.has("a")).toBe(false);
   });
 
-  it("drops the lookup cache for removed books", () => {
-    const bundled = vi.fn(() => [character("bundled")]);
-    const select = createChatListSelector(bundled);
-    select([book("a")], {});
+  it("drops cached rows for removed books", () => {
+    const select = createChatListSelector();
+    const books = [book("a")];
+    const data = { a: state("a", [character("a")]) };
+    const first = select(books, data);
     select([], {});
-    select([book("a")], {});
-    expect(bundled).toHaveBeenCalledTimes(2);
+    expect(select(books, data).allRows[0]).not.toBe(first.allRows[0]);
   });
 });

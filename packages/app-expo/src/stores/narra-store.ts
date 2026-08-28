@@ -1,4 +1,9 @@
 import {
+  type BackendBookBinding,
+  type BackendBookManifest,
+  backendConfirmedCharacters,
+} from "@/lib/narra/backend-book-contract";
+import {
   emptyNarraBookState,
   withNarraCharacterUpdates,
   withNarraCharacters,
@@ -27,6 +32,12 @@ import { create } from "zustand";
 import { withPersist } from "./persist";
 
 export interface NarraState {
+  setBackendOriginalSource: (
+    bookId: string,
+    source: NonNullable<NarraBookState["backendOriginalSource"]>,
+  ) => void;
+  setBackendBinding: (bookId: string, binding: BackendBookBinding) => void;
+  applyBackendManifest: (bookId: string, manifest: BackendBookManifest, progress: number) => void;
   books: Record<string, NarraBookState>;
   analyzingBookId: string | null;
   /** Выбор пользователя для голоса нарратора: мужской (Сбер) или женский (Афина). */
@@ -61,6 +72,62 @@ export const useNarraStore = create<NarraState>()(
       sceneSuggestionInterval: DEFAULT_SCENE_SUGGESTION_INTERVAL,
       portraitPromptVersion: CURRENT_PORTRAIT_PROMPT_VERSION,
       _hasHydrated: false,
+      setBackendOriginalSource: (bookId, backendOriginalSource) =>
+        set((state) => ({
+          books: {
+            ...state.books,
+            [bookId]: {
+              ...(state.books[bookId] ?? emptyNarraBookState(bookId)),
+              backendOriginalSource,
+            },
+          },
+        })),
+      setBackendBinding: (bookId, backendBinding) => {
+        const state = get();
+        const book = state.books[bookId] ?? emptyNarraBookState(bookId);
+        if (JSON.stringify(book.backendBinding) === JSON.stringify(backendBinding)) return;
+        set({ books: { ...state.books, [bookId]: { ...book, backendBinding } } });
+      },
+      applyBackendManifest: (bookId, manifest, progress) => {
+        if (manifest.availability !== "ready") return;
+        const state = get();
+        const book = state.books[bookId] ?? emptyNarraBookState(bookId);
+        if (
+          book.backendManifest?.revision !== undefined &&
+          manifest.revision !== undefined &&
+          manifest.revision < book.backendManifest.revision
+        )
+          return;
+        const characters = backendConfirmedCharacters(manifest, progress).map((character) => {
+          const previous = book.characters.find(
+            (item) => item.id === character.id && item.backendManaged,
+          );
+          if (!previous) return character;
+          const backendMedia = Object.fromEntries(
+            Object.entries(previous.backendMedia ?? {}).filter(([type, media]) =>
+              character.backendAssets?.some(
+                (asset) => asset.type === type && asset.contentHash === media?.hash,
+              ),
+            ),
+          );
+          return {
+            ...character,
+            backendMedia,
+            portraitUri: previous.portraitUriOverridesAsset
+              ? previous.portraitUri
+              : backendMedia.primary_portrait?.uri,
+            portraitUriOverridesAsset: previous.portraitUriOverridesAsset,
+            voiceOverride: previous.voiceOverride,
+          };
+        });
+        const next = withNarraCharacters(book, characters, book.analyzedAt ?? Date.now());
+        if (
+          next.characters === book.characters &&
+          JSON.stringify(book.backendManifest) === JSON.stringify(manifest)
+        )
+          return;
+        set({ books: { ...state.books, [bookId]: { ...next, backendManifest: manifest } } });
+      },
       setNarratorVoicePreference: (narratorVoicePreference) => set({ narratorVoicePreference }),
       setSceneSuggestionInterval: (sceneSuggestionInterval) => set({ sceneSuggestionInterval }),
       getBookState: (bookId) => get().books[bookId] ?? emptyNarraBookState(bookId),

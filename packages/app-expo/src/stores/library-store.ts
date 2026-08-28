@@ -17,7 +17,10 @@ import {
   findBundledCatalogBookByTitle,
   installBundledCatalogCover,
 } from "@/lib/catalog/bundled-books";
-import { queueBookCharacterAnalysis } from "@/lib/narra/character-analysis-queue";
+import {
+  preserveBackendOriginalSource,
+  startImportedBackendBook,
+} from "@/lib/narra/backend-book-sync";
 import { queueBook as queueAutoVectorize } from "@/lib/rag/auto-vectorize-service";
 import {
   type ImportBooksResult,
@@ -519,6 +522,8 @@ async function repairMissingBookCovers(books: Book[]): Promise<void> {
       continue;
     }
     if (coverGenerationInFlight.has(book.id)) continue;
+    // Resume existing user jobs only. Missing catalog metadata must never launch generation.
+    if (book.sourceKind === "catalog" || !(await getLocalCoverJob(book.id))) continue;
 
     await queueGeneratedBookCover(book);
   }
@@ -1308,6 +1313,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             deletedMatch ??
             (existingDuplicate?.syncStatus === "remote" ? existingDuplicate : null);
           const bookId = importTarget?.id ?? generateId();
+          if (!knownBook && (ext === "txt" || ext === "umd")) {
+            await preserveBackendOriginalSource(bookId, filePath, ext);
+          }
           const retainedSourceIdentity = knownBook
             ? {
                 sourceKind: knownBook.sourceKind,
@@ -1337,7 +1345,6 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
               // Hermes only supports UTF-8 in TextDecoder. Convert GBK/GB18030
               // etc. to UTF-8 using text-encoding polyfill before passing to converter.
               const bytes = ensureUtf8Bytes(sourceBytes);
-              const textSample = new TextDecoder("utf-8").decode(bytes).slice(0, 8000);
 
               // React Native Blob/File constructor doesn't support ArrayBuffer/Uint8Array.
               // Create a File-like shim that provides the methods TxtToEpubConverter needs.
@@ -1437,10 +1444,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
                 await get().addBook(book);
               }
               result.imported.push(book);
-              if (!knownBook) void queueBookCharacterAnalysis(book, textSample);
-              if (!knownBook && !book.meta.coverUrl) {
-                void queueGeneratedBookCover(book, { textSample });
-              }
+              if (!knownBook) startImportedBackendBook(book);
+
               if (fileHash) {
                 duplicateIndex.byHash.set(fileHash, book);
               }
@@ -1570,17 +1575,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
                 await get().addBook(book);
               }
               result.imported.push(book);
-              void queueBookCharacterAnalysis(book, async () => {
-                const metadata = await extractBookMetadata(
-                  conversion.epubBytes,
-                  "epub",
-                  `${title}.epub`,
-                );
-                return metadata.textSample ?? "";
-              });
-              if (!book.meta.coverUrl) {
-                void queueGeneratedBookCover(book);
-              }
+              if (!knownBook) startImportedBackendBook(book);
               if (fileHash) {
                 duplicateIndex.byHash.set(fileHash, book);
               }
@@ -1730,12 +1725,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             await get().addBook(book);
           }
           result.imported.push(book);
-          // Catalog books are analyzed from a representative whole-book sample
-          // when the user opens their character list.
-          if (!knownBook) void queueBookCharacterAnalysis(book, coverContext?.textSample);
-          if (!knownBook && !book.meta.coverUrl) {
-            void queueGeneratedBookCover(book, coverContext);
-          }
+          if (!knownBook) startImportedBackendBook(book);
+
           if (fileHash) {
             duplicateIndex.byHash.set(fileHash, book);
           }

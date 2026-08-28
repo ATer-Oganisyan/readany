@@ -1,9 +1,11 @@
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
+import { useBackendBook } from "@/hooks/use-backend-book";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
 import { hasCharacterPortrait } from "@/lib/narra/character-portrait";
+import { isCharacterUnlocked } from "@/lib/narra/domain";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { ReaderCharacterCard } from "@/screens/reader/ReaderCharacterCard";
-import { useNarraStore } from "@/stores";
+import { useLibraryStore, useNarraStore } from "@/stores";
 import { type ThemeColors, useTheme } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useLayoutEffect, useMemo } from "react";
@@ -17,6 +19,8 @@ export function NarraCharacterProfileScreen({ route, navigation }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
+  const book = useLibraryStore((state) => state.books.find((item) => item.id === bookId));
+  useBackendBook(book);
   const character = useNarraStore((state) =>
     state.books[bookId]?.characters.find((item) => item.id === characterId),
   );
@@ -46,7 +50,7 @@ export function NarraCharacterProfileScreen({ route, navigation }: Props) {
     setTimeout(() => void openMobileBook({ bookId, navigation, t }), 0);
   };
 
-  if (!character) {
+  if (!character?.backendManaged || !isCharacterUnlocked(book?.progress ?? 0, character)) {
     return (
       <CenteredEmptyState
         title={t("narra.characterUnavailable", "Персонаж недоступен.")}

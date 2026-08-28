@@ -57,11 +57,11 @@ export function withNarraCharacters(
     if (!previous) return character;
     const merged = { ...character };
     // Портрет и ручной выбор голоса переживают повторный анализ книги.
-    if (previous.portraitUri && !character.portraitUri) {
+    if (!character.backendManaged && previous.portraitUri && !character.portraitUri) {
       merged.portraitUri = previous.portraitUri;
       merged.portraitUriOverridesAsset = previous.portraitUriOverridesAsset;
     }
-    if (previous.portraitAssetId && !character.portraitAssetId) {
+    if (!character.backendManaged && previous.portraitAssetId && !character.portraitAssetId) {
       merged.portraitAssetId = previous.portraitAssetId;
     }
     if (previous.voiceOverride && !character.voiceOverride) {

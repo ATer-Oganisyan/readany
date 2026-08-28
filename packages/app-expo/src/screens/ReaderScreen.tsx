@@ -6,6 +6,7 @@ import { NotebookPenIcon, XIcon } from "@/components/ui/Icon";
 import { NativeContextMenuButton } from "@/components/ui/NativeContextMenuButton";
 import type { NativeContextMenuItem } from "@/components/ui/NativeContextMenuButton.types";
 import { Text } from "@/components/ui/Typography";
+import { useBackendBook } from "@/hooks/use-backend-book";
 import { useReaderBridge } from "@/hooks/use-reader-bridge";
 import type { RelocateEvent, SelectionEvent, VisibleTTSSegment } from "@/hooks/use-reader-bridge";
 import { durationBucket } from "@/lib/analytics/contract";
@@ -21,7 +22,6 @@ import { diagnosticErrorReason, recordDiagnostic } from "@/lib/diagnostics/diagn
 import { hapticLight } from "@/lib/haptics";
 import { importBackendCatalogBook } from "@/lib/narra/backend-catalog-import";
 import { isCatalogBookRevisionCurrent } from "@/lib/narra/backend-catalog-library";
-import { getBundledCatalogCharactersByTitle } from "@/lib/narra/bundled-catalog-characters";
 import { buildCharacterNameMatcherSpec } from "@/lib/narra/character-name-matcher";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
 import { reportNarraError } from "@/lib/narra/errors";
@@ -674,16 +674,10 @@ function ReaderContent({ route, navigation }: Props) {
 
   // ── Narra: кликабельные имена персонажей ────────────────────────────────────
   const narraBookCharacters = useNarraStore((state) => state.books[bookId]?.characters);
-  const setNarraCharacters = useNarraStore((state) => state.setCharacters);
-  const bundledCharacters = useMemo(
-    () => (book ? getBundledCatalogCharactersByTitle(book.meta.title) : undefined),
-    [book],
-  );
   const characters = useMemo<NarraCharacter[]>(
-    () => (narraBookCharacters?.length ? narraBookCharacters : (bundledCharacters ?? [])),
-    [narraBookCharacters, bundledCharacters],
+    () => (narraBookCharacters ?? []).filter((item) => item.backendManaged),
+    [narraBookCharacters],
   );
-  const charactersFromBundledCatalog = !narraBookCharacters?.length;
   // Ключ состава открытых персонажей: спека пересобирается только при unlock,
   // а не на каждом изменении прогресса
   const unlockedCharacterIdsKey = useMemo(
@@ -958,6 +952,7 @@ function ReaderContent({ route, navigation }: Props) {
 
   // Focus & foreground state for volume paging whitelist
   const isFocused = useIsFocused();
+  useBackendBook(book, isFocused, progress);
   const [appActive, setAppActive] = useState(true);
 
   useEffect(() => {
@@ -1308,11 +1303,6 @@ function ReaderContent({ route, navigation }: Props) {
       const character = characters.find((item) => item.id === characterId);
       // Запертые персонажи не размечаются, но на случай гонки — двойная проверка
       if (!character || !isCharacterUnlocked(progress, character)) return;
-      // Нативный профиль пишет в narra-store (портрет, выбор голоса) — bundled-каталог
-      // сначала фиксируем там, как это делает переход в чат.
-      if (charactersFromBundledCatalog && bundledCharacters?.length) {
-        setNarraCharacters(bookId, bundledCharacters);
-      }
       suppressReaderTapUntilRef.current = Date.now() + 400;
       navigation.navigate("NarraCharacterProfile", {
         bookId,

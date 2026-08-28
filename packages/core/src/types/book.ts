@@ -43,6 +43,7 @@ export interface Book {
   /** Stable provenance. Catalog identity must never be inferred from title. */
   sourceKind?: "local" | "catalog";
   bookEditionId?: string;
+  catalogKey?: string;
   contentHash?: string;
   revisionId?: string;
   meta: BookMeta;

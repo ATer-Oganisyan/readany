@@ -11,15 +11,12 @@ import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { NativeSegmentedPager } from "@/components/ui/native-segmented-pager";
 import { getBookTabLabel } from "@/lib/book/book-tab-label";
 import { countRender } from "@/lib/diagnostics/interaction-performance";
-import { getBundledCatalogCharactersByTitle } from "@/lib/narra/bundled-catalog-characters";
-import { hasCharacterPortrait } from "@/lib/narra/character-portrait";
+import { loadBackendCharacterMedia } from "@/lib/narra/backend-character-media";
 import {
   type ChatListModel,
   type ChatListRow,
   createChatListSelector,
 } from "@/lib/narra/chat-list-model";
-import { reportNarraError } from "@/lib/narra/errors";
-import { ensureCharacterPortrait } from "@/lib/narra/media";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import type { TabParamList } from "@/navigation/TabNavigator";
 import { useLibraryStore, useNarraStore } from "@/stores";
@@ -28,22 +25,19 @@ import { type ThemeColors, spacing, useTheme } from "@/styles/theme";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-const MAX_AUTOMATIC_PORTRAIT_ATTEMPTS = 2;
+const _MAX_AUTOMATIC_PORTRAIT_ATTEMPTS = 2;
 const EMPTY_ROWS: readonly ChatListRow[] = [];
 
 export function ChatsScreen() {
   const books = useLibraryStore((state) => state.books);
-  const selectChatList = useMemo(
-    () => createChatListSelector(getBundledCatalogCharactersByTitle),
-    [],
-  );
+  const selectChatList = useMemo(() => createChatListSelector(), []);
   const selectModel = useCallback(
     (state: NarraState) => selectChatList(books, state.books),
     [books, selectChatList],
@@ -61,7 +55,6 @@ const ChatsContent = memo(function ChatsContent({ model }: { model: ChatListMode
   const styles = useMemo(() => makeStyles(colors, insets.bottom), [colors, insets.bottom]);
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
-  const setCharacters = useNarraStore((state) => state.setCharacters);
   const [selectedBookId, setSelectedBookId] = useState("all");
   const segmentValues = useMemo(
     () => [t("common.all", "Все"), ...model.books.map((book) => getBookTabLabel(book.title))],
@@ -83,16 +76,12 @@ const ChatsContent = memo(function ChatsContent({ model }: { model: ChatListMode
   const openChat = useCallback(
     (row: ChatListRow) => {
       if (!row.unlocked) return;
-      if (row.fromBundledCatalog) {
-        const bundled = getBundledCatalogCharactersByTitle(row.bookTitle);
-        if (bundled?.length) setCharacters(row.bookId, bundled);
-      }
       navigation.navigate("NarraCharacterChat", {
         bookId: row.bookId,
         characterId: row.character.id,
       });
     },
-    [navigation, setCharacters],
+    [navigation],
   );
 
   const openNarraChat = useCallback(
@@ -261,47 +250,16 @@ function FocusedNarraAvatar() {
 
 function ChatPortraitWorker({ rows }: { rows: readonly ChatListRow[] }) {
   const isFocused = useIsFocused();
-  const setCharacters = useNarraStore((state) => state.setCharacters);
-  const updateCharacter = useNarraStore((state) => state.updateCharacter);
-  const [portraitLoadingKey, setPortraitLoadingKey] = useState<string | null>(null);
-  const portraitAttemptsRef = useRef(new Map<string, number>());
-  const mountedRef = useRef(false);
-
+  const bookIdsKey = [...new Set(rows.map((row) => row.bookId))].join("\0");
   useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  // Generation remains scoped to the selected page. Queue progress must not
-  // rebuild the pager or its rows, including while the tab is hidden.
-  useEffect(() => {
-    if (!isFocused || portraitLoadingKey) return;
-    const nextRow = rows.find((row) => {
-      const key = `${row.bookId}:${row.character.id}`;
-      return (
-        row.unlocked &&
-        !hasCharacterPortrait(row.character) &&
-        (portraitAttemptsRef.current.get(key) ?? 0) < MAX_AUTOMATIC_PORTRAIT_ATTEMPTS
-      );
-    });
-    if (!nextRow) return;
-
-    const key = `${nextRow.bookId}:${nextRow.character.id}`;
-    portraitAttemptsRef.current.set(key, (portraitAttemptsRef.current.get(key) ?? 0) + 1);
-    setPortraitLoadingKey(key);
-    if (nextRow.fromBundledCatalog) {
-      const bundled = getBundledCatalogCharactersByTitle(nextRow.bookTitle);
-      if (bundled?.length) setCharacters(nextRow.bookId, bundled);
+    if (!isFocused) return;
+    const controller = new AbortController();
+    for (const id of bookIdsKey.split("\0")) {
+      const book = useLibraryStore.getState().books.find((item) => item.id === id);
+      if (book) void loadBackendCharacterMedia(id, book.progress, controller.signal);
     }
-    void ensureCharacterPortrait(nextRow.bookId, nextRow.character)
-      .then((portraitUri) => updateCharacter(nextRow.bookId, nextRow.character.id, { portraitUri }))
-      .catch((error) => reportNarraError("character_portrait_background", error))
-      .finally(() => {
-        if (mountedRef.current) setPortraitLoadingKey(null);
-      });
-  }, [isFocused, portraitLoadingKey, rows, setCharacters, updateCharacter]);
+    return () => controller.abort();
+  }, [isFocused, bookIdsKey]);
 
   return null;
 }

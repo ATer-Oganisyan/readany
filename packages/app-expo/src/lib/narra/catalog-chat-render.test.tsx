@@ -1,3 +1,4 @@
+vi.mock("./backend-character-media", () => ({ loadBackendCharacterMedia: vi.fn(async () => {}) }));
 import type { Book } from "@readany/core/types";
 import type * as React from "react";
 import { useCallback } from "react";
@@ -91,14 +92,17 @@ vi.mock("@react-navigation/native", async () => {
 vi.mock("@/stores", async () => {
   const { useSyncExternalStore } = await import("react");
   return {
-    useLibraryStore: <T,>(selector: (state: typeof runtime.library) => T) =>
-      useSyncExternalStore(
-        (listener) => {
-          runtime.libraryListeners.add(listener);
-          return () => runtime.libraryListeners.delete(listener);
-        },
-        () => selector(runtime.library),
-      ),
+    useLibraryStore: Object.assign(
+      <T,>(selector: (state: typeof runtime.library) => T) =>
+        useSyncExternalStore(
+          (listener) => {
+            runtime.libraryListeners.add(listener);
+            return () => runtime.libraryListeners.delete(listener);
+          },
+          () => selector(runtime.library),
+        ),
+      { getState: () => runtime.library },
+    ),
     useNarraStore: <T,>(selector: (state: typeof runtime.narra) => T) =>
       useSyncExternalStore(
         (listener) => {
@@ -243,6 +247,7 @@ function book(id: string): Book {
 
 function character(id: string): NarraCharacter {
   return {
+    backendManaged: true,
     id,
     name: id,
     fullName: id,

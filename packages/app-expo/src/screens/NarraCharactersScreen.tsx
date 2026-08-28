@@ -7,19 +7,14 @@ import {
 } from "@/components/chats/character-chat-list";
 import { CharacterPortraitImage } from "@/components/narra/character-portrait-image";
 import { SystemSheetZoomDestination } from "@/components/navigation/SystemSheetZoomDestination";
-import { type ExtractorRef, ExtractorWebView } from "@/components/rag/ExtractorWebView";
 import { Text } from "@/components/ui/Typography";
+import { EmptyStateActionButton } from "@/components/ui/empty-state-action-button";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
+import { useBackendBook } from "@/hooks/use-backend-book";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
-import { getBundledCatalogCharactersByTitle } from "@/lib/narra/bundled-catalog-characters";
-import { analyzeBookCharacters } from "@/lib/narra/character-analysis";
-import { hasCharacterPortrait } from "@/lib/narra/character-portrait";
+import { retryBackendBookSync, useBackendBookStatus } from "@/lib/narra/backend-book-sync";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
-import { NarraServiceError, reportNarraError } from "@/lib/narra/errors";
-import { ensureCharacterPortrait, normalizePersistedNarraMediaUri } from "@/lib/narra/media";
 import type { NarraCharacter } from "@/lib/narra/types";
-import { toast } from "@/lib/notifications";
-import { inspectMobileBookForVectorize } from "@/lib/rag/auto-vectorize-book";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { ChatScreen } from "@/screens/ChatScreen";
 import { NarraCharacterChatScreen } from "@/screens/NarraCharacterChatScreen";
@@ -32,7 +27,6 @@ import {
   useTheme,
 } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import * as FileSystem from "expo-file-system/legacy";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -58,7 +52,7 @@ type SheetContent =
   | { kind: "bookChat" }
   | { kind: "characterChat"; characterId: string };
 
-const MAX_AUTOMATIC_PORTRAIT_ATTEMPTS = 2;
+const _MAX_AUTOMATIC_PORTRAIT_ATTEMPTS = 2;
 const CONTENT_EXIT_DURATION_MS = 100;
 const CONTENT_ENTER_DURATION_MS = 100;
 const CONTENT_EXIT_EASING = Easing.bezier(0.4, 0, 1, 1);
@@ -312,183 +306,31 @@ function NarraCharactersList({
   const { t } = useTranslation();
   const book = useLibraryStore((state) => state.books.find((item) => item.id === bookId));
   const bookState = useNarraStore((state) => state.books[bookId]);
-  const analyzing = useNarraStore((state) => state.analyzingBookId === bookId);
-  const narraStoreHydrated = useNarraStore((state) => state._hasHydrated);
-  const setCharacters = useNarraStore((state) => state.setCharacters);
-  const updateCharacter = useNarraStore((state) => state.updateCharacter);
-  const extractorRef = useRef<ExtractorRef>(null);
-  const analysisActiveRef = useRef(false);
-  const portraitAttemptsRef = useRef(new Map<string, number>());
-  const validatedPortraitsRef = useRef(new Set<string>());
-  const validatedBookIdRef = useRef(bookId);
-  const autoAnalysisStartedRef = useRef(false);
+  useBackendBook(book, isActive);
+  const backendStatus = useBackendBookStatus((state) => state.books[bookId]);
   const openingChatRef = useRef(false);
-  const [analysisStage, setAnalysisStage] = useState("");
-  const [portraitLoading, setPortraitLoading] = useState<string | null>(null);
   const storedCharacters = bookState?.characters ?? [];
-  const bundledCharacters = useMemo(
-    () => (book ? getBundledCatalogCharactersByTitle(book.meta.title) : undefined),
-    [book],
+  const visibleCharacters = useMemo(
+    () =>
+      storedCharacters.filter(
+        (character) =>
+          character.backendManaged && isCharacterUnlocked(book?.progress ?? 0, character),
+      ),
+    [storedCharacters, book?.progress],
   );
-  const characters = storedCharacters.length > 0 ? storedCharacters : (bundledCharacters ?? []);
-  const visibleCharacters = useMemo(() => {
-    const progress = book?.progress ?? 0;
-    return characters.filter((character) => isCharacterUnlocked(progress, character));
-  }, [book?.progress, characters]);
-  const busy = analyzing || Boolean(analysisStage);
-
+  const provisional =
+    backendStatus?.manifest?.availability === "processing"
+      ? backendStatus.manifest.characters.filter((item) => item.provisional)
+      : [];
   useEffect(() => {
     recordTelemetry("character_opened", { feature: "character" });
   }, []);
-
   useEffect(() => {
     if (isActive) openingChatRef.current = false;
   }, [isActive]);
 
-  useEffect(() => {
-    if (!narraStoreHydrated || !book || storedCharacters.length > 0 || !bundledCharacters?.length) {
-      return;
-    }
-    setCharacters(bookId, bundledCharacters);
-  }, [book, bookId, bundledCharacters, narraStoreHydrated, setCharacters, storedCharacters.length]);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (validatedBookIdRef.current !== bookId) {
-      validatedBookIdRef.current = bookId;
-      validatedPortraitsRef.current.clear();
-      portraitAttemptsRef.current.clear();
-      autoAnalysisStartedRef.current = false;
-    }
-    for (const character of characters) {
-      const persistedUri = character.portraitUri;
-      if (!persistedUri?.startsWith("file://")) continue;
-      const normalizedUri = normalizePersistedNarraMediaUri(persistedUri);
-      const validationKey = `${character.id}:${normalizedUri}`;
-      if (validatedPortraitsRef.current.has(validationKey)) continue;
-      validatedPortraitsRef.current.add(validationKey);
-      void FileSystem.getInfoAsync(normalizedUri).then((info) => {
-        if (cancelled) return;
-        if (!info.exists) {
-          updateCharacter(bookId, character.id, { portraitUri: undefined });
-        } else if (normalizedUri !== persistedUri) {
-          updateCharacter(bookId, character.id, { portraitUri: normalizedUri });
-        }
-      });
-    }
-    return () => {
-      cancelled = true;
-    };
-  }, [bookId, characters, updateCharacter]);
-
-  const analyze = useCallback(
-    async (interactive = true) => {
-      if (!book || analysisActiveRef.current) return;
-      analysisActiveRef.current = true;
-      portraitAttemptsRef.current.clear();
-      try {
-        if (__DEV__ && process.env.EXPO_PUBLIC_NARRA_USE_MOCKS === "1") {
-          setAnalysisStage(t("narra.analyzing", "Ищу героев…"));
-          await analyzeBookCharacters(book);
-          return;
-        }
-        setAnalysisStage(t("narra.analyzing", "Ищу героев…"));
-        await analyzeBookCharacters(book, async () => {
-          setAnalysisStage(t("narra.extracting", "Извлекаю текст…"));
-          const info = await inspectMobileBookForVectorize(book);
-          if (!info.canVectorize || !info.mimeType || !extractorRef.current) return "";
-
-          let text: string;
-          try {
-            text = await extractorRef.current.extractTextSample({
-              uri: info.absPath,
-              mimeType: info.mimeType,
-              maxChars: 48_000,
-            });
-            if (!text.trim()) {
-              throw new Error("Book text sample is empty");
-            }
-          } catch (sampleError) {
-            if (!info.size || info.size > 12 * 1024 * 1024) throw sampleError;
-            console.warn("[Narra] URI text sampling failed, retrying with base64", sampleError);
-            const base64 = await FileSystem.readAsStringAsync(info.absPath, {
-              encoding: FileSystem.EncodingType.Base64,
-            });
-            const chapters = await extractorRef.current.extractChapters(base64, info.mimeType);
-            text = chapters
-              .map((chapter) => `${chapter.title || ""}\n${chapter.content || ""}`.trim())
-              .filter(Boolean)
-              .join("\n\n");
-          }
-          setAnalysisStage(t("narra.analyzing", "Ищу героев…"));
-          return text;
-        });
-      } catch (error) {
-        const normalized = reportNarraError("character_analysis_ui", error);
-        if (interactive) {
-          const detail =
-            error instanceof NarraServiceError && error.technicalDetail
-              ? error.technicalDetail
-              : error instanceof Error
-                ? error.message
-                : String(error);
-          toast.error(t("narra.analysisFailedTitle", "Не удалось найти персонажей"), {
-            description:
-              __DEV__ && detail !== normalized.message
-                ? `${normalized.message}\n\nДиагностика: ${detail}`
-                : normalized.message,
-          });
-        }
-      } finally {
-        analysisActiveRef.current = false;
-        setAnalysisStage("");
-      }
-    },
-    [book, t],
-  );
-
-  useEffect(() => {
-    if (
-      !narraStoreHydrated ||
-      !book ||
-      Boolean(bundledCharacters?.length) ||
-      characters.length > 0 ||
-      autoAnalysisStartedRef.current
-    ) {
-      return;
-    }
-
-    autoAnalysisStartedRef.current = true;
-    void analyze(false);
-  }, [analyze, book, bundledCharacters?.length, characters.length, narraStoreHydrated]);
-
-  useEffect(() => {
-    if (!book || busy || portraitLoading) return;
-    const nextCharacter = characters.find(
-      (character) =>
-        isCharacterUnlocked(book.progress, character) &&
-        !hasCharacterPortrait(character) &&
-        (portraitAttemptsRef.current.get(character.id) ?? 0) < MAX_AUTOMATIC_PORTRAIT_ATTEMPTS,
-    );
-    if (!nextCharacter) return;
-
-    portraitAttemptsRef.current.set(
-      nextCharacter.id,
-      (portraitAttemptsRef.current.get(nextCharacter.id) ?? 0) + 1,
-    );
-    setPortraitLoading(nextCharacter.id);
-    void ensureCharacterPortrait(bookId, nextCharacter)
-      .then((portraitUri) => updateCharacter(bookId, nextCharacter.id, { portraitUri }))
-      .catch((error) => reportNarraError("character_portrait_background", error))
-      .finally(() => setPortraitLoading(null));
-  }, [book, bookId, busy, characters, portraitLoading, updateCharacter]);
-
   const openCharacterChat = useCallback(
     (character: NarraCharacter) => {
-      // Чат ищет героя в narra-store — bundled-фолбэк сначала фиксируем там.
-      if (storedCharacters.length === 0 && bundledCharacters?.length) {
-        setCharacters(bookId, bundledCharacters);
-      }
       if (!USES_CHARACTERS_SHEET) {
         navigation.navigate("NarraCharacterChat", {
           bookId,
@@ -507,14 +349,7 @@ function NarraCharactersList({
         });
       }
     },
-    [
-      bookId,
-      bundledCharacters,
-      navigation,
-      onOpenCharacterChat,
-      setCharacters,
-      storedCharacters.length,
-    ],
+    [bookId, navigation, onOpenCharacterChat],
   );
 
   const openBookChat = useCallback(() => {
@@ -545,8 +380,6 @@ function NarraCharactersList({
       ),
     },
     ...visibleCharacters.map((character): CharacterChatListItem => {
-      const portraitBusy = portraitLoading === character.id;
-
       return {
         key: character.id,
         accessibilityLabel: t("narra.openCharacterChat", "Открыть чат с {{character}}", {
@@ -556,13 +389,7 @@ function NarraCharactersList({
         subtitle: character.role,
         onPress: () => openCharacterChat(character),
         avatar: (
-          <CharacterChatAvatar
-            overlay={
-              portraitBusy && hasCharacterPortrait(character) ? (
-                <ActivityIndicator size="small" color={colors.primaryForeground} />
-              ) : undefined
-            }
-          >
+          <CharacterChatAvatar>
             <CharacterPortraitImage
               character={character}
               resizeMode="cover"
@@ -595,8 +422,32 @@ function NarraCharactersList({
         contentContainerStyle={[styles.content, USES_CHARACTERS_SHEET && styles.sheetContent]}
         style={styles.scrollView}
       >
-        <ExtractorWebView ref={extractorRef} />
+        {backendStatus?.error ? (
+          <EmptyStateActionButton
+            onPress={() => retryBackendBookSync(bookId)}
+            label="Повторить загрузку персонажей"
+          />
+        ) : null}
+        {backendStatus?.manifest?.availability === "processing" && provisional.length === 0 ? (
+          <Text>Размечаю книгу…</Text>
+        ) : null}
         <CharacterChatList items={listItems} />
+        <CharacterChatList
+          items={provisional.map((item) => ({
+            key: `preparing:${item.key}`,
+            title: item.fullName,
+            subtitle: "Профиль формируется…",
+            accessibilityLabel: `${item.fullName}: профиль формируется`,
+            dimmed: true,
+            disabled: true,
+            onPress: () => undefined,
+            avatar: (
+              <CharacterChatAvatar muted>
+                <ActivityIndicator />
+              </CharacterChatAvatar>
+            ),
+          }))}
+        />
       </ScrollView>
     </View>
   );

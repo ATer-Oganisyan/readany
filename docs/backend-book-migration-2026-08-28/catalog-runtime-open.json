@@ -1,0 +1,38 @@
+{
+  "done": true,
+  "value": {
+    "backendConfirmed": 20,
+    "binding": {
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "contentSha256": "5112f15b1264bb888c3530fa1ffc34bcdb4ad9142ab4c99e85798c8e4d9e4088",
+      "resolution": "catalog",
+      "sourceUploaded": true
+    },
+    "capturedAt": "2026-08-28T13:34:55.639Z",
+    "confirmed": 20,
+    "progress": 0.00013670107657198587,
+    "reached": [
+      {
+        "key": "character:9ef790105ebec38fd5073cc4823ea4fafb143c3fe62be4eb",
+        "media": [
+          "idle_animation",
+          "greeting_audio",
+          "primary_portrait"
+        ],
+        "portrait": true,
+        "traits": []
+      },
+      {
+        "key": "character:21cc17b366b769f60d56f0cc90aea1d65b66483d207ecdd5",
+        "media": [
+          "idle_animation",
+          "primary_portrait",
+          "greeting_audio"
+        ],
+        "portrait": true,
+        "traits": []
+      }
+    ],
+    "status": "ready"
+  }
+}

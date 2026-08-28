@@ -7,6 +7,7 @@ import {
 import { CharacterPortraitImage } from "@/components/narra/character-portrait-image";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
+import { useBackendBook } from "@/hooks/use-backend-book";
 import { type NarraChatMessageInput, completeNarraChat } from "@/lib/ai/narra-chat";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import { normalizeCharacterChatPlaceholder } from "@/lib/narra/chat-placeholder";
@@ -106,11 +107,14 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
   const { t, i18n } = useTranslation();
   const interfaceLanguage = i18n.resolvedLanguage === "en" ? "en" : "ru";
   const book = useLibraryStore((state) => state.books.find((item) => item.id === bookId));
+  useBackendBook(book);
   const narraBook = useNarraStore((state) => state.books[bookId]);
   const append = useNarraStore((state) => state.appendChatMessage);
   const setMemory = useNarraStore((state) => state.setMemory);
   const updateCharacter = useNarraStore((state) => state.updateCharacter);
-  const character = narraBook?.characters.find((item) => item.id === characterId);
+  const character = narraBook?.characters.find(
+    (item) => item.id === characterId && item.backendManaged,
+  );
   const messages = narraBook?.chats?.[characterId] ?? [];
   const memory = narraBook?.memories?.[characterId] ?? "";
   const [sending, setSending] = useState(false);

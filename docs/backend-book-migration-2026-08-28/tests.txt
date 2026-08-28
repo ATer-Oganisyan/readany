@@ -1,0 +1,13 @@
+
+> @readany/app-expo@1.3.5 test /Users/manaer/.codex/worktrees/5652/Narra2/packages/app-expo
+> vitest run src/lib/narra src/lib/book src/lib/reader src/lib/diagnostics src/lib/ai/narra-gateway-fetch.test.ts src/lib/ai/openrouter-chat.test.ts
+
+
+ RUN  v4.1.2 /Users/manaer/.codex/worktrees/5652/Narra2/packages/app-expo
+
+
+ Test Files  75 passed (75)
+      Tests  659 passed (659)
+   Start at  16:40:10
+   Duration  2.71s (transform 4.42s, setup 0ms, import 7.27s, tests 5.87s, environment 7ms)
+

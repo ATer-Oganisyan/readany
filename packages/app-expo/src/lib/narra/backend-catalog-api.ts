@@ -103,8 +103,8 @@ function parseCatalogBook(value: unknown): BackendCatalogBook | null {
     typeof format !== "string" ||
     typeof contentSha256 !== "string" ||
     !/^[a-f0-9]{64}$/i.test(contentSha256) ||
-    typeof generationStatus !== "string" ||
-    typeof ready !== "boolean" ||
+    (generationStatus !== "base_ready" && generationStatus !== "published") ||
+    ready !== true ||
     typeof sourceDownloadPath !== "string" ||
     !sourceDownloadPath.startsWith("/v2/books/")
   ) {

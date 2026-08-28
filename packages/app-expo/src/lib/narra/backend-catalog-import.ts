@@ -1,4 +1,5 @@
 import type { LibraryState } from "@/stores/library-store";
+import { useNarraStore } from "@/stores/narra-store";
 import type { Book } from "@readany/core/types";
 import {
   type CachedBackendCatalogBook,
@@ -46,6 +47,7 @@ async function performDownloadedBackendCatalogImport(
   };
   const catalogIdentity = {
     sourceKind: "catalog" as const,
+    catalogKey: catalogBook.catalogKey,
     bookEditionId: catalogBook.bookEditionId,
     contentHash: catalogBook.contentSha256,
     revisionId: catalogBook.contentSha256,
@@ -54,6 +56,13 @@ async function performDownloadedBackendCatalogImport(
   // finalization is transactional from the caller's perspective and must not
   // be interrupted by a screen-unmount abort.
   await updateBook(importedBook.id, { meta, ...catalogIdentity });
+  useNarraStore.getState().setBackendBinding(importedBook.id, {
+    resolution: "catalog",
+    bookEditionId: catalogBook.bookEditionId,
+    catalogKey: catalogBook.catalogKey,
+    contentSha256: catalogBook.contentSha256,
+    sourceUploaded: true,
+  });
   // Обложка не нужна для чтения. Не держим ридер на лоадере, пока она
   // скачивается и копируется; карточка обновится отдельно уже после открытия.
   void materializeBackendCatalogCover(catalogBook, signal)

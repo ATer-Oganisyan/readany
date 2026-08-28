@@ -1,0 +1,49 @@
+{
+  "base": "7c4cce47274909b8f871abb5e0b0388d6bc71fd2",
+  "worktree": "/Users/manaer/.codex/worktrees/5652/Narra2",
+  "runtime": "iPhone 17 Pro / iOS 27 / Debug 1.3.5 build 36 / Metro 8082 PID 66760 in this worktree",
+  "validation": {
+    "tests": 659,
+    "testFiles": 75,
+    "testsExit": 0,
+    "typescriptExit": 0,
+    "lintExcludingPreexistingReaderDiagnosticsExit": 0,
+    "readerPreexistingLint": {
+      "errors": 36,
+      "warnings": 3
+    }
+  },
+  "sha256": {
+    "packages/app-expo/src/components/catalog/CatalogCharacterPortraitPreloader.tsx": "532e5084886e1bcda4bcd3085f495d47a1bf26662d9ef0ed0a9c5f4d5db037be",
+    "packages/app-expo/src/components/chats/character-chat-list.tsx": "8de3c44b7a24af578651bbe509dea1f9c360b3d73174cac350999b412155aa5a",
+    "packages/app-expo/src/components/narra/character-portrait-image.tsx": "aa9f6b6a7569a8173022fa51b6a3d0eb7f1becc5df9db48874574944914a2802",
+    "packages/app-expo/src/lib/narra/backend-catalog-api.ts": "d38ec0d37039f823c10ad5788c087733409fad7f4a9622f982ae8f4c1b37edc8",
+    "packages/app-expo/src/lib/narra/backend-catalog-import.test.ts": "b2434297cc9d8e408cbdbf068cd3e499a1a8d8605f81db684d751f44aaada7f4",
+    "packages/app-expo/src/lib/narra/backend-catalog-import.ts": "14dfc08e8a55d2446becbc115eb2123e2fcd1eb199d9a8a8fe1e8d1ef444a6ba",
+    "packages/app-expo/src/lib/narra/catalog-chat-render.test.tsx": "34a50461aaacf7b54f47206e98d7c9153c8f773e3e5d79d5bbdd4e6275eccb54",
+    "packages/app-expo/src/lib/narra/chat-list-model.test.ts": "8501395442523c702ac48c761540b3e3765124cf1ee55a1c4b51beb59c7a291c",
+    "packages/app-expo/src/lib/narra/chat-list-model.ts": "190b6c09597d977a828ab74f4908ac874866d4a0c985177219298d68e5988f0a",
+    "packages/app-expo/src/lib/narra/domain.ts": "b0e5429207176ab6602bddd429446f1eb33f109d8150b9fec7e5d30a2d3a6d0b",
+    "packages/app-expo/src/lib/narra/media.ts": "8b7a372b6353dcb2e1254d7950c18beb0ec7812d2f500ae3191c48a3da13d4e3",
+    "packages/app-expo/src/lib/narra/types.ts": "9e27cd7eb26b0a35918821b21d858876ed730ecb2f3bef4013b397848938dbd4",
+    "packages/app-expo/src/screens/ChatsScreen.tsx": "9cb3c67cf549c0a123eb2a352b4a4ecebec864772efd61040904d1fc9a4bd321",
+    "packages/app-expo/src/screens/NarraCharacterChatScreen.tsx": "dd2e92076f9f226f0555a43c57bad7e40372d85118e708b9eb90de311c7fa227",
+    "packages/app-expo/src/screens/NarraCharacterProfileScreen.tsx": "f6dd598e6c40cc61149574b406e8a180ac64f2ab403bc9454825212c409274cf",
+    "packages/app-expo/src/screens/NarraCharactersScreen.tsx": "c6c4cb756c050998423473821654fa60adebaaa30c1f812c105a4575790846f1",
+    "packages/app-expo/src/screens/ReaderScreen.tsx": "d7a760d9f224ca19a1cd8ab792ed02ef0e0e02b933a290584dcc3f9e4a59486c",
+    "packages/app-expo/src/screens/reader/ReaderCharacterCard.tsx": "3752318f3c50d06312f0a5522582eae02aa358fc9991a6c09cce51db4778e73b",
+    "packages/app-expo/src/stores/library-store.ts": "3f026e02debd61999de727cb64f58c9fc808e78ba2ed6426b74e32f5a34d5352",
+    "packages/app-expo/src/stores/narra-store.ts": "fa47bade0ae270ed1e339b3f21b1079558416beea5320fd2844f275c1c836bb8",
+    "packages/core/src/types/book.ts": "b8381613cfcdd49b5c5248e4f13fb477175085c042a8bd9c271562e5a3e3b42d",
+    "packages/app-expo/src/hooks/use-backend-book.ts": "7bbd82c0dc6cc1c8cb9187dbde3f603014916dc0a32efaffadc2d5a73bf0e8a4",
+    "packages/app-expo/src/lib/narra/backend-book-api.ts": "b7d7bc3fae980e819b619743b2f451f54f5886cfb9018a44cd3040c85fc4ba5e",
+    "packages/app-expo/src/lib/narra/backend-book-contract.test.ts": "8d0dc3b4b2be52a36f76a2865a45bbeff468a11c0e9f3fef939605b440dd5312",
+    "packages/app-expo/src/lib/narra/backend-book-contract.ts": "b060e1daac1a261e7eba2d4b780f8e2915cec13f4e6efdf461a9e6845717298e",
+    "packages/app-expo/src/lib/narra/backend-book-session.test.ts": "9485ee1d22a041194fafcb7769a0046ffd34c14893f31523890b7c61bfd303e6",
+    "packages/app-expo/src/lib/narra/backend-book-session.ts": "b1bf19eea9dd67d7e849eb36f230125e9b44e0fe40285ba2e2c60323294b8cdb",
+    "packages/app-expo/src/lib/narra/backend-book-sync.test.ts": "adc489bb47bf8a503ba37817b25bb8479a69f4c1a80c01e65363b6c148e48231",
+    "packages/app-expo/src/lib/narra/backend-book-sync.ts": "45c4abcd4af67c24aef60754b7ffa2e9fc7f56e0a8200deae58322e7d01846e4",
+    "packages/app-expo/src/lib/narra/backend-character-media.test.ts": "1975ac5ab4ec32dc71595a39f450232f910f4c97e3789df2f3e1dcc82cd26fd2",
+    "packages/app-expo/src/lib/narra/backend-character-media.ts": "89e915e856be3aaf8c858425f30e6442f7fff3b6a3b867ab0d4f47220691ccff"
+  }
+}

@@ -24,8 +24,6 @@ export interface ChatListModel {
 
 interface BookCache {
   book: ChatListBook;
-  bundledCharacters?: readonly NarraCharacter[];
-  bundledTitle?: string;
   characters?: readonly NarraCharacter[];
   chats?: NarraBookState["chats"];
   progress?: number;
@@ -47,9 +45,7 @@ function retainItems<T>(previous: readonly T[], next: readonly T[]): readonly T[
  * library books and preserves unchanged page/row identities across updates to
  * portraits, messages, covers and unrelated Narra state.
  */
-export function createChatListSelector(
-  bundledCharactersForTitle: (title: string) => readonly NarraCharacter[] | undefined,
-) {
+export function createChatListSelector() {
   let cache = new Map<string, BookCache>();
   let model: ChatListModel = { books: [], rowsByBook: new Map(), allRows: [] };
   let previousBooks: readonly Book[] | undefined;
@@ -69,14 +65,8 @@ export function createChatListSelector(
       if (titleChanged) entry.book = { id: book.id, title };
       const state = narraBooks[book.id];
       const storedCharacters = state?.characters ?? EMPTY_CHARACTERS;
-      const fromBundledCatalog = storedCharacters.length === 0;
-      if (fromBundledCatalog && entry.bundledTitle !== title) {
-        entry.bundledCharacters = bundledCharactersForTitle(title) ?? EMPTY_CHARACTERS;
-        entry.bundledTitle = title;
-      }
-      const characters = fromBundledCatalog
-        ? (entry.bundledCharacters ?? EMPTY_CHARACTERS)
-        : storedCharacters;
+      const fromBundledCatalog = false;
+      const characters = storedCharacters;
       const chats = state?.chats ?? EMPTY_CHATS;
       const progress = book.progress ?? 0;
 
@@ -90,7 +80,7 @@ export function createChatListSelector(
         const previousRows = new Map(entry.rows.map((row) => [row.character.id, row]));
         const rows: ChatListRow[] = [];
         for (const character of characters) {
-          if (!isCharacterUnlocked(progress, character)) continue;
+          if (!character.backendManaged || !isCharacterUnlocked(progress, character)) continue;
           const messageCount = chats[character.id]?.length ?? 0;
           const row = previousRows.get(character.id);
           rows.push(
@@ -110,11 +100,6 @@ export function createChatListSelector(
                 },
           );
         }
-        rows.sort(
-          (a, b) =>
-            b.messageCount - a.messageCount ||
-            a.character.unlockProgress - b.character.unlockProgress,
-        );
         entry.rows = retainItems(entry.rows, rows);
         entry.characters = characters;
         entry.chats = chats;

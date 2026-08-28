@@ -1,3 +1,6 @@
+vi.mock("@/stores/narra-store", () => ({
+  useNarraStore: { getState: () => ({ setBackendBinding: vi.fn() }) },
+}));
 import type { Book } from "@readany/core/types";
 import { describe, expect, it, vi } from "vitest";
 import {

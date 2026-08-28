@@ -1,3 +1,8 @@
+import type {
+  BackendBookBinding,
+  BackendBookManifest,
+  BackendCharacterAsset,
+} from "./backend-book-contract";
 import type { NarraGenreAnalysis } from "./genre-analysis";
 
 export type NarraGender = "male" | "female";
@@ -13,6 +18,9 @@ export interface NarraPassport {
 }
 
 export interface NarraCharacter {
+  backendManaged?: boolean;
+  backendAssets?: BackendCharacterAsset[];
+  backendMedia?: Partial<Record<BackendCharacterAsset["type"], { hash: string; uri: string }>>;
   id: string;
   name: string;
   fullName: string;
@@ -93,6 +101,9 @@ export interface NarraSummary {
 }
 
 export interface NarraBookState {
+  backendOriginalSource?: { path: string; format: string; hash: string };
+  backendBinding?: BackendBookBinding;
+  backendManifest?: BackendBookManifest;
   bookId: string;
   /** Проверенная жанровая разметка из того же LLM-анализа, что и персонажи. */
   genre?: NarraGenreAnalysis;

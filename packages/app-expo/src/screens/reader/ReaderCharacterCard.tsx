@@ -5,7 +5,11 @@ import { NarraAudioPlayer } from "@/lib/narra/audio-player";
 import { resolveCharacterPortraitUri } from "@/lib/narra/character-portrait";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
 import { reportNarraError } from "@/lib/narra/errors";
-import { ensureCharacterPortrait, synthesizeNarraSpeech } from "@/lib/narra/media";
+import {
+  ensureCharacterPortrait,
+  generateCharacterPortrait,
+  synthesizeNarraSpeech,
+} from "@/lib/narra/media";
 import type { NarraCharacter } from "@/lib/narra/types";
 import { toast } from "@/lib/notifications";
 import { useLibraryStore, useNarraStore } from "@/stores";
@@ -296,7 +300,9 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
       const target = force
         ? { ...character, portraitAssetId: undefined, portraitUri: undefined }
         : character;
-      void ensureCharacterPortrait(bookId, target)
+      void (
+        force ? generateCharacterPortrait(bookId, target) : ensureCharacterPortrait(bookId, target)
+      )
         .then((uri) =>
           updateCharacter(bookId, character.id, {
             portraitUri: uri,
@@ -323,6 +329,7 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
         !visible ||
         !unlocked ||
         !character ||
+        character.backendManaged ||
         resolveCharacterPortraitUri(storedCharacter ?? character)
       )
         return;
@@ -364,7 +371,8 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
       ""
     ).trim();
     const sampleVoice = liveCharacter.voiceOverride || liveCharacter.voice;
-    const canSample = Boolean(samplePhrase && sampleVoice);
+    const greetingAudio = liveCharacter.backendMedia?.greeting_audio?.uri;
+    const canSample = Boolean(greetingAudio || (samplePhrase && sampleVoice));
 
     const toggleVoiceSample = () => {
       if (voiceState !== "idle") {
@@ -374,9 +382,13 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
       if (!canSample) return;
       const requestId = ++voiceRequestRef.current;
       setVoiceState("loading");
-      void synthesizeNarraSpeech(samplePhrase, sampleVoice, {
-        prosody: liveCharacter.voiceOverride ? undefined : liveCharacter.voiceProsody,
-      })
+      void (
+        greetingAudio
+          ? Promise.resolve(greetingAudio)
+          : synthesizeNarraSpeech(samplePhrase, sampleVoice, {
+              prosody: liveCharacter.voiceOverride ? undefined : liveCharacter.voiceProsody,
+            })
+      )
         .then((uri) => {
           if (voiceRequestRef.current !== requestId) return;
           setVoiceState("playing");

@@ -11,6 +11,7 @@ export interface CharacterChatListItem {
   title: string;
   subtitle?: string;
   dimmed?: boolean;
+  disabled?: boolean;
   onPress: (event?: GestureResponderEvent) => void;
 }
 
@@ -45,6 +46,8 @@ export const CharacterChatListRow = memo(function CharacterChatListRow({
     <View>
       <TouchableOpacity
         accessibilityRole="button"
+        disabled={item.disabled}
+        accessibilityState={{ disabled: item.disabled ?? false }}
         accessibilityLabel={item.accessibilityLabel}
         activeOpacity={0.62}
         onPress={item.onPress}
