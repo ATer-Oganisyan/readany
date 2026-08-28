@@ -1,0 +1,5 @@
+
+> @readany/app-expo@1.3.5 build:reader /Users/manaer/.codex/worktrees/5652/Narra2/packages/app-expo
+> node scripts/build-reader.js
+
+Built reader.html (593KB; code 222KB) + reader-pdf.bin (1654KB, lazy)

@@ -1,0 +1,23 @@
+{
+  "capturedAt": "2026-08-28T14:03:58.577340+00:00",
+  "base": "b143d24ccbdea7c75ea449b0434a86930021981e",
+  "files": {
+    "packages/app-expo/assets/reader/reader-build.json": "9a5c97418fa77bb4bb51470eaacd164d1b41838f02067285f6cdebd3591bdf21",
+    "packages/app-expo/assets/reader/reader.html": "35f92482705b7be3c3ffab4259e913b3bc6f3518284feada9f43080b5b83acc6",
+    "packages/app-expo/assets/reader/reader.template.html": "7b324d9d7041fa19c9610099ff559dfeaf50826058f432ca5990dd404f0f8bbc",
+    "packages/app-expo/src/lib/diagnostics/diagnostic-journal.test.ts": "e1e981397be27a35f574ec8962cfe4f84a4d9e56fcd0f3d3434f053bfca6e839",
+    "packages/app-expo/src/lib/diagnostics/diagnostic-journal.ts": "e7acafc7ea95857ce0c6b60561cf6553f78fce94a9eef5bbfb43f170b6dbbf53",
+    "packages/app-expo/src/lib/narra/backend-scene-file.test.ts": "dcd8f3db37df4cec264abeb746ce317a64f96be98ce772d117bc0dfc1f246d93",
+    "packages/app-expo/src/lib/narra/backend-scene-file.ts": "ae77b2cd2b78f25087084d91840aef70044be083aa5a61f67be767bb5b98ae1f",
+    "packages/app-expo/src/lib/narra/backend-scene-reader.test.ts": "988d14e59962d3cfd6cbd11c6a67e5c2d2a8f1ea49ffb40ed9fb23efe7271406",
+    "packages/app-expo/src/lib/narra/backend-scene-reader.ts": "eb36f5b222fe285cb24ac9ec1e28a5fa1a9ea0aabaf4f7138e172ef066fc387f",
+    "packages/app-expo/src/lib/narra/backend-scene.test.ts": "ca411810b8877200700c5b971dd96e61355045597aa1df8905be0292f9d68415",
+    "packages/app-expo/src/lib/narra/backend-scene.ts": "c6687b56d2073b87119052827ee21e7594574afcbb02bddfa63e01da7d8d1fb1",
+    "packages/app-expo/src/lib/narra/scene-inserts.ts": "7ad57ed9257e76c226b65952927794f89e28174ebb23af3e2f3c1e82dd46f4c1",
+    "packages/app-expo/src/lib/narra/types.ts": "2cf0a3f831ba1324e0bd1b08caa8e475fe8a2fa2b33fa1651837b3cfa45425b1",
+    "packages/app-expo/src/screens/ReaderScreen.tsx": "cca832ef7ca894f185ecab8149a983259bceaff719d3a3c90b5ff027044ab4f7",
+    "packages/app-expo/src/stores/narra-store.ts": "8d64d7f56b14e6aa86272c93ea8cea887137f421b261335f699133ef253fbb4b",
+    "packages/core/src/i18n/locales/en/common.json": "40b54c1f28c28ed5997b534454458b9e501661e3b66df8149644f13c96ca9b1d",
+    "packages/core/src/i18n/locales/ru/common.json": "908859505d5e7113ac5b69cec28eaf8c5f798ece44a4bb6f95e042ae468f16bb"
+  }
+}

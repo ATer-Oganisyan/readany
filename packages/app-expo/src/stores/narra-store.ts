@@ -55,6 +55,11 @@ export interface NarraState {
   setAnalysisError: (bookId: string, error?: string) => void;
   setMemory: (bookId: string, characterId: string, memory: string) => void;
   appendChatMessage: (bookId: string, characterId: string, message: NarraChatMessage) => void;
+  setSceneRequest: (
+    bookId: string,
+    sourceKey: string,
+    intent: NonNullable<NarraBookState["sceneRequests"]>[string],
+  ) => void;
   setScene: (bookId: string, scene: NarraSceneImage) => void;
   setSceneAudio: (bookId: string, sceneAudio: NarraSceneAudio) => void;
   setSummary: (bookId: string, summary: NarraSummary) => void;
@@ -175,6 +180,24 @@ export const useNarraStore = create<NarraState>()(
             },
           };
         }),
+      setSceneRequest: (bookId, sourceKey, intent) => {
+        const state = get();
+        const book = state.books[bookId] ?? emptyNarraBookState(bookId);
+        // Never persist a response object: it can contain an expiring signed URL.
+        const request = {
+          bookEditionId: intent.bookEditionId,
+          markupIdentity: intent.markupIdentity,
+          requestedProgress: intent.requestedProgress,
+          sceneKey: intent.sceneKey,
+        };
+        if (JSON.stringify(book.sceneRequests?.[sourceKey]) === JSON.stringify(request)) return;
+        set({
+          books: {
+            ...state.books,
+            [bookId]: { ...book, sceneRequests: { ...book.sceneRequests, [sourceKey]: request } },
+          },
+        });
+      },
       setScene: (bookId, scene) =>
         set((state) => {
           const book = state.books[bookId] ?? emptyNarraBookState(bookId);

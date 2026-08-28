@@ -22,6 +22,7 @@ import { diagnosticErrorReason, recordDiagnostic } from "@/lib/diagnostics/diagn
 import { hapticLight } from "@/lib/haptics";
 import { importBackendCatalogBook } from "@/lib/narra/backend-catalog-import";
 import { isCatalogBookRevisionCurrent } from "@/lib/narra/backend-catalog-library";
+import { generateBackendReaderScene, readSceneDataUri } from "@/lib/narra/backend-scene-reader";
 import { buildCharacterNameMatcherSpec } from "@/lib/narra/character-name-matcher";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
 import { reportNarraError } from "@/lib/narra/errors";
@@ -703,7 +704,16 @@ function ReaderContent({ route, navigation }: Props) {
   const sceneSuggestionStateRef = useRef(INITIAL_SCENE_SUGGESTION_STATE);
   const narraScenes = useNarraStore((state) => state.books[bookId]?.scenes);
   const setNarraScene = useNarraStore((state) => state.setScene);
-  const sceneSlotBusyRef = useRef(new Set<string>());
+  const narraSceneRequests = useNarraStore((state) => state.books[bookId]?.sceneRequests);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Each book owns separate operations; changing books aborts only the previous ones.
+  const sceneSlotActions = useMemo(() => new Map<string, AbortController>(), [bookId]);
+  useEffect(
+    () => () => {
+      for (const action of sceneSlotActions.values()) action.abort();
+      sceneSlotActions.clear();
+    },
+    [sceneSlotActions],
+  );
 
   // Видимый текст страницы — контекст для промпта сцены (как в P6)
   const collectVisibleSceneExcerpt = useCallback(async () => {
@@ -723,24 +733,59 @@ function ReaderContent({ route, navigation }: Props) {
   // плейсхолдер «Рисуем сцену…» — сюда приходим по событию из WebView.
   const runSceneSlotGeneration = useCallback(
     async (anchor: string) => {
-      if (sceneSlotBusyRef.current.has(anchor)) return;
-      sceneSlotBusyRef.current.add(anchor);
+      if (sceneSlotActions.has(anchor)) return;
+      const action = new AbortController();
+      sceneSlotActions.set(anchor, action);
+      // Snapshot BEFORE any await. Paging while the server works cannot change the slot.
+      const requestedProgress = progressRef.current;
+      let usesBackend = false;
       try {
         const sourceKey = sceneSourceKeyForAnchor(anchor);
-        const cached = useNarraStore.getState().books[bookId]?.scenes?.[sourceKey];
-        // Перегенерация — тот же контекст, что у сохранённой сцены
-        const excerpt = cached?.excerpt?.trim() || (await collectVisibleSceneExcerpt());
-        if (!excerpt) {
-          bridgeRef.current?.setSceneSlotState(anchor, "error");
-          return;
-        }
+        const bookState = useNarraStore.getState().books[bookId];
+        const cached = bookState?.scenes?.[sourceKey];
         const chapter =
           cached?.chapter ||
           currentChapter ||
           bookTitle ||
           book?.meta.title ||
           t("reader.currentPage", "Текущая страница");
+        // Catalog identity may be present before the persisted binding has hydrated.
+        const edition = bookState?.backendBinding?.bookEditionId || book?.bookEditionId;
+        usesBackend = Boolean(edition);
+        if (edition) {
+          const previous = bookState?.sceneRequests?.[sourceKey] ?? cached?.backendScene;
+          const manifest = bookState?.backendManifest;
+          const intent =
+            previous?.bookEditionId === edition
+              ? previous
+              : {
+                  bookEditionId: edition,
+                  requestedProgress,
+                  markupIdentity: JSON.stringify([
+                    manifest?.publicationId,
+                    manifest?.revision,
+                    manifest?.contentHash,
+                    bookState?.backendBinding?.contentSha256,
+                  ]),
+                };
+          await generateBackendReaderScene(
+            {
+              bookId,
+              anchor,
+              sourceKey,
+              chapter,
+              intent,
+              display: (dataUri) => bridgeRef.current?.replaceSceneSlot(anchor, dataUri),
+            },
+            action.signal,
+          );
+          return;
+        }
+        // Only unbound books retain the independent legacy visible-excerpt path.
+        const excerpt = cached?.excerpt?.trim() || (await collectVisibleSceneExcerpt());
+        if (!excerpt) throw new Error("SCENE_EMPTY_EXCERPT");
         const imageUri = await generateNarraSceneImage(bookId, chapter, excerpt, characters);
+        if (action.signal.aborted) return;
         setNarraScene(bookId, {
           sourceKey,
           chapter,
@@ -754,17 +799,22 @@ function ReaderContent({ route, navigation }: Props) {
           normalizePersistedNarraMediaUri(imageUri),
           { encoding: FileSystem.EncodingType.Base64 },
         );
-        bridgeRef.current?.replaceSceneSlot(anchor, sceneImageDataUri(base64, imageUri));
+        if (!action.signal.aborted)
+          bridgeRef.current?.replaceSceneSlot(anchor, sceneImageDataUri(base64, imageUri));
       } catch (cause) {
-        console.log("[SceneSlot] generation failed", { anchor, cause: String(cause) });
-        reportNarraError("scene_image", cause);
+        if (action.signal.aborted) return;
+        // Native download errors can contain signed URLs. Backend details use the safe journal.
+        if (!usesBackend) reportNarraError("scene_image", cause);
         bridgeRef.current?.setSceneSlotState(anchor, "error");
       } finally {
-        sceneSlotBusyRef.current.delete(anchor);
+        sceneSlotActions.delete(anchor);
       }
     },
     [
       book?.meta.title,
+      book?.bookEditionId,
+      sceneSlotActions,
+      t,
       bookId,
       bookTitle,
       characters,
@@ -777,25 +827,32 @@ function ReaderContent({ route, navigation }: Props) {
   // Врезка восстановлена при загрузке секции — вернуть сохранённую картинку
   const handleSceneSlotRestored = useCallback(
     async (anchor: string) => {
+      if (sceneSlotActions.has(anchor)) {
+        bridgeRef.current?.setSceneSlotState(anchor, "loading");
+        return;
+      }
+      const sourceKey = sceneSourceKeyForAnchor(anchor);
+      const bookState = useNarraStore.getState().books[bookId];
+      const scene = bookState?.scenes?.[sourceKey];
+      if (!scene?.imageUri) {
+        bridgeRef.current?.setSceneSlotState(
+          anchor,
+          bookState?.sceneRequests?.[sourceKey] ? "error" : "idle",
+        );
+        return;
+      }
+      const action = new AbortController();
+      sceneSlotActions.set(anchor, action);
       try {
-        const sourceKey = sceneSourceKeyForAnchor(anchor);
-        const cached = useNarraStore.getState().books[bookId]?.scenes?.[sourceKey];
-        if (!cached?.imageUri) {
-          bridgeRef.current?.setSceneSlotState(anchor, "idle");
-          return;
-        }
-        const uri = normalizePersistedNarraMediaUri(cached.imageUri);
-        const base64 = await FileSystem.readAsStringAsync(uri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        bridgeRef.current?.replaceSceneSlot(anchor, sceneImageDataUri(base64, uri));
-      } catch (cause) {
-        // Файл картинки потерян — слот возвращается в состояние «Сгенерировать сцену»
-        console.warn("[Reader] Failed to restore scene insert", cause);
-        bridgeRef.current?.setSceneSlotState(anchor, "idle");
+        const dataUri = await readSceneDataUri(scene.imageUri);
+        if (!action.signal.aborted) bridgeRef.current?.replaceSceneSlot(anchor, dataUri);
+      } catch {
+        if (!action.signal.aborted) bridgeRef.current?.setSceneSlotState(anchor, "error");
+      } finally {
+        sceneSlotActions.delete(anchor);
       }
     },
-    [bookId],
+    [bookId, sceneSlotActions],
   );
 
   useEffect(() => {
@@ -1441,7 +1498,7 @@ function ReaderContent({ route, navigation }: Props) {
       JSON.stringify({
         idle: t("narra.sceneSlotShow", "Сгенерировать сцену"),
         loading: t("narra.sceneSlotDrawing", "Рисуем сцену…"),
-        loadingHint: t("narra.sceneSlotDrawingHint", "20–60 секунд"),
+        loadingHint: t("narra.sceneSlotDrawingHint", "Это может занять несколько минут"),
         caption: t("narra.sceneSlotCaption", "Сцена — сгенерировано ИИ"),
         error: t("narra.sceneSlotError", "Попробовать снова"),
       }),
@@ -1451,9 +1508,9 @@ function ReaderContent({ route, navigation }: Props) {
   // Якоря сохранённых сцен: WebView восстанавливает врезки при загрузке
   // секций и просит картинки событием sceneSlotRestored
   const sceneAnchorsJson = useMemo(() => {
-    const anchors = sceneInsertAnchors(narraScenes);
+    const anchors = sceneInsertAnchors(narraScenes, narraSceneRequests);
     return anchors.length ? JSON.stringify(anchors) : null;
-  }, [narraScenes]);
+  }, [narraScenes, narraSceneRequests]);
   const setSceneAnchors = bridge.setSceneAnchors;
   useEffect(() => {
     if (!webViewReady) return;

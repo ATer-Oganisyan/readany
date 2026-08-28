@@ -1,5 +1,6 @@
 const EVENTS = new Set([
   "app_started",
+  "scene_request",
   "app_state",
   "js_stall",
   "server_start",
@@ -55,7 +56,7 @@ export interface DiagnosticEntry {
   data: Record<string, string | number | boolean>;
 }
 
-/** Allow-list, not redaction: raw errors, URLs, IDs, text and tokens never enter the journal. */
+/** Allow-list: no raw errors, URLs, text or tokens; scene correlation IDs are format-checked. */
 export function diagnosticEntry(
   event: string,
   data: Record<string, unknown> = {},
@@ -64,6 +65,77 @@ export function diagnosticEntry(
   if (!EVENTS.has(event)) return null;
   const safe: DiagnosticEntry["data"] = {};
   for (const [key, value] of Object.entries(data)) {
+    // Scene diagnostics allow only typed correlation metadata, never raw payloads/URLs.
+    if (event === "scene_request") {
+      if (
+        (key === "requestId" || key === "bookEditionId") &&
+        typeof value === "string" &&
+        /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(value)
+      )
+        safe[key] = value;
+      else if (
+        key === "sceneKey" &&
+        typeof value === "string" &&
+        /^text-interval-v1:\d{1,10}$/.test(value)
+      )
+        safe[key] = value;
+      else if (
+        key === "requestedProgress" &&
+        typeof value === "number" &&
+        Number.isFinite(value) &&
+        value >= 0 &&
+        value <= 1
+      )
+        safe[key] = value;
+      else if (
+        key === "stage" &&
+        typeof value === "string" &&
+        [
+          "request",
+          "queued",
+          "running",
+          "ready",
+          "download",
+          "saved",
+          "retry",
+          "recovery",
+          "store",
+          "webview",
+          "move",
+          "failed",
+          "aborted",
+        ].includes(value)
+      )
+        safe[key] = value;
+      else if (
+        ["bytes", "slotIndex", "anchorTextOffset"].includes(key) &&
+        typeof value === "number" &&
+        Number.isSafeInteger(value) &&
+        value >= 0
+      )
+        safe[key] = value;
+      else if (
+        key === "mime" &&
+        typeof value === "string" &&
+        ["image/png", "image/jpeg", "image/webp"].includes(value)
+      )
+        safe[key] = value;
+      else if (
+        key === "failure" &&
+        typeof value === "string" &&
+        [
+          "SCENE_FAILED",
+          "SCENE_INVALID_RESPONSE",
+          "SCENE_INVALID_ASSET",
+          "SCENE_INVALID_POSITION",
+          "SCENE_SLOT_CHANGED",
+          "SCENE_TIMEOUT",
+          "SCENE_ABORTED",
+          "SCENE_IO_OR_NETWORK",
+        ].includes(value)
+      )
+        safe[key] = value;
+    }
     if (BOOLEAN_FIELDS.has(key) && typeof value === "boolean") safe[key] = value;
     else if (NUMBER_FIELDS.has(key) && typeof value === "number" && Number.isFinite(value)) {
       safe[key] = Math.max(-1_000_000, Math.min(86_400_000, Math.round(value)));

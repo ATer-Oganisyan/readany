@@ -1,0 +1,3035 @@
+[
+  {
+    "at": "2026-08-28T13:58:59.347Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 1,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:58:59.924Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T13:58:59.924Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 1,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:58:59.924Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 1,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:03.097Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:03.099Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 1,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:05.112Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 2,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:05.398Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:05.398Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 2,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:05.398Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 2,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:06.315Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:06.317Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 2,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:08.328Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 3,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:08.588Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:08.588Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 3,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:08.588Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 3,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:09.769Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:09.771Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 3,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:11.778Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 4,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:12.056Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:12.056Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 4,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:12.056Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 4,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:12.880Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:12.882Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 4,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:14.895Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 5,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:15.536Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:15.536Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 5,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:15.536Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 5,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:16.785Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:16.789Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 5,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:18.795Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 6,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:19.447Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:19.447Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 6,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:19.447Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 6,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:20.540Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:20.542Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 6,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:22.546Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 7,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:22.856Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:22.856Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 7,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:22.856Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 7,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:23.775Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:23.777Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 7,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:25.811Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 8,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:26.169Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:26.169Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 8,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:26.169Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 8,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:26.826Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:26.831Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 8,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:28.869Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 9,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:29.043Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:29.043Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 9,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:29.043Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 9,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:29.742Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:29.744Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 9,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:31.746Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 10,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:32.294Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:32.294Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 10,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:32.294Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 10,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:33.446Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:33.447Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 10,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:35.462Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 11,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:35.704Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:35.704Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 11,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:35.704Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 11,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:36.462Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:36.468Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 11,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:38.479Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 12,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:38.648Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:38.648Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 12,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:38.648Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 12,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:39.151Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:39.153Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 12,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:41.162Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 13,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:41.338Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:41.338Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 13,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:41.338Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 13,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:41.824Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:41.827Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 13,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:43.829Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 14,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:44.041Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:44.041Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 14,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:44.041Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 14,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:44.546Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:44.550Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 14,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:46.562Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 15,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:46.754Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:46.754Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 15,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:46.754Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 15,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:47.222Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:47.224Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 15,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:49.229Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 16,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:49.419Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:49.419Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 16,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:49.419Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 16,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:49.899Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:49.905Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 16,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:51.912Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 17,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:52.169Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:52.169Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 17,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:52.169Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 17,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:52.666Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:52.672Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 17,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:54.679Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 18,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:54.903Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:54.903Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 18,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:54.903Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 18,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:55.473Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:55.480Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 18,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:57.496Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 19,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:57.923Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:57.923Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 19,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:57.923Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 19,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:58.566Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T13:59:58.569Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 19,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:00.579Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 20,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:01.327Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:01.327Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 20,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:01.327Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 20,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:02.537Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:02.542Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 20,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:04.546Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 21,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:05.161Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:05.161Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 21,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:05.161Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 21,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:05.988Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:05.993Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 21,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:07.996Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 22,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:08.488Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:08.489Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 22,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:08.489Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 22,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:09.591Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:09.593Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 22,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:11.596Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 23,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:11.806Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:11.806Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 23,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:11.806Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 23,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:12.242Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:12.245Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 23,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:14.246Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 24,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:14.422Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:14.422Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 24,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:14.422Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 24,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:14.769Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:14.775Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 24,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:16.779Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 25,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:16.978Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:16.978Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 25,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:16.978Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 25,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:17.309Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:17.312Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 25,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:19.329Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 26,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:19.505Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:19.505Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 26,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:19.505Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 26,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:19.787Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:19.792Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 26,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:21.796Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 27,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:21.971Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:21.971Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 27,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:21.971Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 27,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:22.262Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:22.269Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 27,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:24.279Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 28,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:24.446Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:24.447Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 28,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:24.447Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 28,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:24.722Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:24.724Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 28,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:26.729Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 29,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:27.095Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:27.095Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 29,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:27.095Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 29,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:27.621Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:27.625Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 29,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:29.629Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 30,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:29.813Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:29.813Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 30,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:29.813Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 30,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:30.085Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:30.088Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 30,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:32.096Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 31,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:32.266Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:32.266Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 31,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:32.266Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 31,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:32.549Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:32.553Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 31,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:34.563Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 32,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:34.742Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:34.742Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 32,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:34.742Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 32,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:35.000Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:35.005Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 32,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:37.013Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 33,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:37.195Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:37.195Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 33,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:37.195Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 33,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:37.478Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:37.482Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 33,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:39.496Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 34,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:39.748Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:39.748Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 34,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:39.748Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 34,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:40.105Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:40.107Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 34,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:42.113Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 35,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:42.321Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:42.321Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 35,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:42.321Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 35,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:42.669Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:42.670Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 35,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:44.679Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 36,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:44.977Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:44.977Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 36,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:44.977Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 36,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:45.251Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:45.253Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 36,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:47.263Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 37,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:47.431Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:47.431Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 37,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:47.431Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 37,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:47.713Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:47.719Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 37,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:49.729Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 38,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:49.928Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:49.928Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 38,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:49.928Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 38,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:50.199Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:50.201Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 38,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:52.213Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 39,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:52.387Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:52.387Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 39,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:52.387Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 39,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:52.633Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:52.636Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 39,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:54.648Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 40,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:54.812Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:54.812Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 40,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:54.812Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 40,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:55.068Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:55.071Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 40,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:57.079Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 41,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:57.241Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:57.241Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 41,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:57.241Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 41,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:57.512Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:00:57.515Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "172c9285-f92e-4680-9248-f31e94d035be",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "retry",
+      "attempt": 41,
+      "state": "active"
+    }
+  }
+]

@@ -1,0 +1,100 @@
+[
+  {
+    "at": "2026-08-28T14:03:26.821Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "e3c457e9-be8c-4b82-8eaf-781b4dca177c",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "request",
+      "attempt": 1,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:03:27.039Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "e3c457e9-be8c-4b82-8eaf-781b4dca177c",
+      "stage": "ready",
+      "slotIndex": 0,
+      "anchorTextOffset": 3000,
+      "sceneKey": "text-interval-v1:0"
+    }
+  },
+  {
+    "at": "2026-08-28T14:03:27.039Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "e3c457e9-be8c-4b82-8eaf-781b4dca177c",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "ready",
+      "attempt": 1,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:03:27.039Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "e3c457e9-be8c-4b82-8eaf-781b4dca177c",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "download",
+      "attempt": 1,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:03:27.793Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "e3c457e9-be8c-4b82-8eaf-781b4dca177c",
+      "stage": "move",
+      "bytes": 111854,
+      "mime": "image/png",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:03:27.798Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "e3c457e9-be8c-4b82-8eaf-781b4dca177c",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "saved",
+      "attempt": 1,
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:03:27.801Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "e3c457e9-be8c-4b82-8eaf-781b4dca177c",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "store",
+      "state": "active"
+    }
+  },
+  {
+    "at": "2026-08-28T14:03:27.818Z",
+    "event": "scene_request",
+    "data": {
+      "requestId": "e3c457e9-be8c-4b82-8eaf-781b4dca177c",
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "sceneKey": "text-interval-v1:0",
+      "requestedProgress": 0.0018235611566591336,
+      "stage": "webview",
+      "state": "active"
+    }
+  }
+]

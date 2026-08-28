@@ -104,7 +104,7 @@
     "sceneSuggestionDismiss": "Hide suggestion",
     "sceneSlotShow": "Generate scene",
     "sceneSlotDrawing": "Drawing scene…",
-    "sceneSlotDrawingHint": "20–60 seconds",
+    "sceneSlotDrawingHint": "This may take a few minutes",
     "sceneSlotCaption": "AI-generated scene",
     "sceneSlotRegen": "Try again",
     "sceneSlotError": "Try again",

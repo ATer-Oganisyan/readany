@@ -1,0 +1,839 @@
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:1840:21 lint/suspicious/noExplicitAny ━━━━━━━━━━
+
+  ! Unexpected any. Specify a different type.
+
+    1839 │         bridge.setThemeColors(readerThemeColorsRef.current);
+  > 1840 │       } catch (err: any) {
+         │                     ^^^
+    1841 │         if (cancelled) return;
+    1842 │         console.error("[ReaderScreen] Failed to load book:", err);
+
+  i any disables many type checking rules. Its use should be avoided.
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:724:34 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook does not specify all of its dependencies: t
+
+    722 │   // Генерация (или перегенерация) сцены для врезки: слот уже показывает
+    723 │   // плейсхолдер «Рисуем сцену…» — сюда приходим по событию из WebView.
+  > 724 │   const runSceneSlotGeneration = useCallback(
+        │                                  ^^^^^^^^^^^
+    725 │     async (anchor: string) => {
+    726 │       if (sceneSlotBusyRef.current.has(anchor)) return;
+
+  i This dependency is not specified in the hook dependency list.
+
+    740 │           bookTitle ||
+    741 │           book?.meta.title ||
+  > 742 │           t("reader.currentPage", "Текущая страница");
+        │           ^
+    743 │         const imageUri = await generateNarraSceneImage(bookId, chapter, excerpt, characters);
+    744 │         setNarraScene(bookId, {
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:883:3 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook does not specify all of its dependencies: suppressProgressTracking
+
+    881 │   }, [progress]);
+    882 │
+  > 883 │   useEffect(() => {
+        │   ^^^^^^^^^
+    884 │     sessionProgressRef.current = null;
+    885 │     totalBookCharactersRef.current = null;
+
+  i This dependency is not specified in the hook dependency list.
+
+    885 │     totalBookCharactersRef.current = null;
+    886 │     sceneSuggestionStateRef.current = INITIAL_SCENE_SUGGESTION_STATE;
+  > 887 │     suppressProgressTracking(INITIAL_PROGRESS_RESTORE_GUARD_MS);
+        │     ^^^^^^^^^^^^^^^^^^^^^^^^
+    888 │   }, [bookId]);
+    889 │   const chapterTranslation = useChapterTranslation({
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:883:3 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook specifies more dependencies than necessary: bookId
+
+    881 │   }, [progress]);
+    882 │
+  > 883 │   useEffect(() => {
+        │   ^^^^^^^^^
+    884 │     sessionProgressRef.current = null;
+    885 │     totalBookCharactersRef.current = null;
+
+  i This dependency can be removed from the list.
+
+    886 │     sceneSuggestionStateRef.current = INITIAL_SCENE_SUGGESTION_STATE;
+    887 │     suppressProgressTracking(INITIAL_PROGRESS_RESTORE_GUARD_MS);
+  > 888 │   }, [bookId]);
+        │       ^^^^^^
+    889 │   const chapterTranslation = useChapterTranslation({
+    890 │     bookId,
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:1483:21 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook does not specify all of its dependencies: t
+
+    1481 │   });
+    1482 │
+  > 1483 │   const openScene = useCallback(
+         │                     ^^^^^^^^^^^
+    1484 │     (excerpt: string, sourceKey: string) => {
+    1485 │       const normalizedExcerpt = excerpt.trim();
+
+  i This dependency is not specified in the hook dependency list.
+
+    1496 │           bookTitle ||
+    1497 │           book?.meta.title ||
+  > 1498 │           t("reader.currentPage", "Текущая страница"),
+         │           ^
+    1499 │         excerpt: normalizedExcerpt,
+    1500 │         sourceKey,
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:1506:37 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook does not specify all of its dependencies: t
+
+    1504 │   );
+    1505 │
+  > 1506 │   const handleSelectionMenuAction = useCallback(
+         │                                     ^^^^^^^^^^^
+    1507 │     (event: { nativeEvent: { key: string; selectedText: string } }) => {
+    1508 │       const activeSelection = selectionRef.current ?? selection;
+
+  i This dependency is not specified in the hook dependency list.
+
+    1537 │               bookTitle ||
+    1538 │               book?.meta.title ||
+  > 1539 │               t("reader.currentExcerpt", "Текущий фрагмент"),
+         │               ^
+    1540 │             excerpt: selectedText,
+    1541 │             sourceKey: `selection:${cfi || `${currentChapter}:${selectedText.slice(0, 120)}`}`,
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:1657:9 lint/correctness/noUnusedVariables  FIXABLE  ━━━━━━━━━━
+
+  ! This variable is unused.
+
+    1655 │   );
+    1656 │
+  > 1657 │   const goBackToPreviousLocation = useCallback(() => {
+         │         ^^^^^^^^^^^^^^^^^^^^^^^^
+    1658 │     if (locationHistoryRef.current.length === 0) return;
+    1659 │     const previousCfi = locationHistoryRef.current.pop();
+
+  i Unused variables usually are result of incomplete refactoring, typos and other source of bugs.
+
+  i Unsafe fix: If this is intentional, prepend goBackToPreviousLocation with an underscore.
+
+    1655 1655 │     );
+    1656 1656 │
+    1657      │ - ··const·goBackToPreviousLocation·=·useCallback(()·=>·{
+         1657 │ + ··const·_goBackToPreviousLocation·=·useCallback(()·=>·{
+    1658 1658 │       if (locationHistoryRef.current.length === 0) return;
+    1659 1659 │       const previousCfi = locationHistoryRef.current.pop();
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:1665:9 lint/correctness/noUnusedVariables  FIXABLE  ━━━━━━━━━━
+
+  ! This variable is unused.
+
+    1663 │   }, [goToCFISafely]);
+    1664 │
+  > 1665 │   const canGoBack = locationHistoryRef.current.length > 0;
+         │         ^^^^^^^^^
+    1666 │
+    1667 │   const updateSetting = useCallback(
+
+  i Unused variables usually are result of incomplete refactoring, typos and other source of bugs.
+
+  i Unsafe fix: If this is intentional, prepend canGoBack with an underscore.
+
+    1663 1663 │     }, [goToCFISafely]);
+    1664 1664 │
+    1665      │ - ··const·canGoBack·=·locationHistoryRef.current.length·>·0;
+         1665 │ + ··const·_canGoBack·=·locationHistoryRef.current.length·>·0;
+    1666 1666 │
+    1667 1667 │     const updateSetting = useCallback(
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:1717:3 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook does not specify all of its dependencies: book
+
+    1716 │   // Load book metadata and annotations
+  > 1717 │   useEffect(() => {
+         │   ^^^^^^^^^
+    1718 │     if (!book) {
+    1719 │       setError(t("reader.bookNotFound", "书籍未找到"));
+
+  i This dependency is not specified in the hook dependency list.
+
+    1716 │   // Load book metadata and annotations
+    1717 │   useEffect(() => {
+  > 1718 │     if (!book) {
+         │          ^^^^
+    1719 │       setError(t("reader.bookNotFound", "书籍未找到"));
+    1720 │       setLoading(false);
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:1717:3 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook does not specify all of its dependencies: loadAnnotations
+
+    1716 │   // Load book metadata and annotations
+  > 1717 │   useEffect(() => {
+         │   ^^^^^^^^^
+    1718 │     if (!book) {
+    1719 │       setError(t("reader.bookNotFound", "书籍未找到"));
+
+  i This dependency is not specified in the hook dependency list.
+
+    1726 │     });
+    1727 │     updateBook(bookId, { lastOpenedAt: Date.now() });
+  > 1728 │     loadAnnotations(bookId);
+         │     ^^^^^^^^^^^^^^^
+    1729 │
+    1730 │     return () => {
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:1717:3 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook does not specify all of its dependencies: updateBook
+
+    1716 │   // Load book metadata and annotations
+  > 1717 │   useEffect(() => {
+         │   ^^^^^^^^^
+    1718 │     if (!book) {
+    1719 │       setError(t("reader.bookNotFound", "书籍未找到"));
+
+  i This dependency is not specified in the hook dependency list.
+
+    1725 │       book_kind: findBundledCatalogBookByTitle(book.meta.title) ? "builtin" : "imported",
+    1726 │     });
+  > 1727 │     updateBook(bookId, { lastOpenedAt: Date.now() });
+         │     ^^^^^^^^^^
+    1728 │     loadAnnotations(bookId);
+    1729 │
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:1717:3 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook does not specify all of its dependencies: book.meta.title
+
+    1716 │   // Load book metadata and annotations
+  > 1717 │   useEffect(() => {
+         │   ^^^^^^^^^
+    1718 │     if (!book) {
+    1719 │       setError(t("reader.bookNotFound", "书籍未找到"));
+
+  i This dependency is not specified in the hook dependency list.
+
+    1723 │     setBookTitle(book.meta.title);
+    1724 │     recordTelemetry("book_opened", {
+  > 1725 │       book_kind: findBundledCatalogBookByTitle(book.meta.title) ? "builtin" : "imported",
+         │                                                ^^^^^^^^^^^^^^^
+    1726 │     });
+    1727 │     updateBook(bookId, { lastOpenedAt: Date.now() });
+
+  i This dependency is not specified in the hook dependency list.
+
+    1721 │       return;
+    1722 │     }
+  > 1723 │     setBookTitle(book.meta.title);
+         │                  ^^^^^^^^^^^^^^^
+    1724 │     recordTelemetry("book_opened", {
+    1725 │       book_kind: findBundledCatalogBookByTitle(book.meta.title) ? "builtin" : "imported",
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:1717:3 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook does not specify all of its dependencies: t
+
+    1716 │   // Load book metadata and annotations
+  > 1717 │   useEffect(() => {
+         │   ^^^^^^^^^
+    1718 │     if (!book) {
+    1719 │       setError(t("reader.bookNotFound", "书籍未找到"));
+
+  i This dependency is not specified in the hook dependency list.
+
+    1717 │   useEffect(() => {
+    1718 │     if (!book) {
+  > 1719 │       setError(t("reader.bookNotFound", "书籍未找到"));
+         │                ^
+    1720 │       setLoading(false);
+    1721 │       return;
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:1764:3 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook specifies more dependencies than necessary: prepareReaderHost
+
+    1762 │   // Both steps are idempotent: the server is reused for the same doc root and
+    1763 │   // the fonts are staged once per process.
+  > 1764 │   useEffect(() => {
+         │   ^^^^^^^^^
+    1765 │     void prepareReaderHost().catch((err) => {
+    1766 │       console.warn("[ReaderScreen] Reader host preparation failed:", err);
+
+  i Outer scope values aren't valid dependencies because mutating them doesn't re-render the component.
+
+    1766 │       console.warn("[ReaderScreen] Reader host preparation failed:", err);
+    1767 │     });
+  > 1768 │   }, [prepareReaderHost]);
+         │       ^^^^^^^^^^^^^^^^^
+    1769 │
+    1770 │   // When WebView is ready and book is available, send the open command
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:1771:3 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook does not specify all of its dependencies: book.currentCfi
+
+    1770 │   // When WebView is ready and book is available, send the open command
+  > 1771 │   useEffect(() => {
+         │   ^^^^^^^^^
+    1772 │     if (!webViewReady || !book?.filePath) {
+    1773 │       return;
+
+  i This dependency is not specified in the hook dependency list.
+
+    1782 │         setLoading(true);
+    1783 │         setError(null);
+  > 1784 │         const lastLocation = lastCfiRef.current || book.currentCfi || undefined;
+         │                                                    ^^^^^^^^^^^^^^^
+    1785 │         const fileName = book.filePath.split("/").pop() || "book.epub";
+    1786 │         const mimeType = BOOK_FORMAT_MIME_TYPES[book.format] || "application/octet-stream";
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:1771:3 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook does not specify all of its dependencies: book.totalCharacters
+
+    1770 │   // When WebView is ready and book is available, send the open command
+  > 1771 │   useEffect(() => {
+         │   ^^^^^^^^^
+    1772 │     if (!webViewReady || !book?.filePath) {
+    1773 │       return;
+
+  i This dependency is not specified in the hook dependency list.
+
+    1805 │         // A count measured on an earlier open makes character tracking work
+    1806 │         // from the first page, and spares the WebView the whole-book scan.
+  > 1807 │         totalBookCharactersRef.current = book.totalCharacters ?? null;
+         │                                          ^^^^^^^^^^^^^^^^^^^^
+    1808 │
+    1809 │         bridge.openBook({
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:1771:3 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook does not specify all of its dependencies: readSettings.followSystemFontScale
+
+    1770 │   // When WebView is ready and book is available, send the open command
+  > 1771 │   useEffect(() => {
+         │   ^^^^^^^^^
+    1772 │     if (!webViewReady || !book?.filePath) {
+    1773 │       return;
+
+  i This dependency is not specified in the hook dependency list.
+
+    1819 │             fontSize: computeEffectiveFontSize(
+    1820 │               readSettings.fontSize,
+  > 1821 │               readSettings.followSystemFontScale,
+         │               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    1822 │             ),
+    1823 │             lineHeight: readSettings.lineHeight,
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:1771:3 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook does not specify all of its dependencies: readSettings.viewMode
+
+    1770 │   // When WebView is ready and book is available, send the open command
+  > 1771 │   useEffect(() => {
+         │   ^^^^^^^^^
+    1772 │     if (!webViewReady || !book?.filePath) {
+    1773 │       return;
+
+  i This dependency is not specified in the hook dependency list.
+
+    1825 │             pageMargin: readSettings.pageMargin,
+    1826 │             fontTheme: readSettings.fontTheme,
+  > 1827 │             viewMode: readSettings.viewMode,
+         │                       ^^^^^^^^^^^^^^^^^^^^^
+    1828 │             paginatedLayout: readSettings.paginatedLayout,
+    1829 │             customFontFaceCSS: fontFaceCSS,
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:1771:3 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook specifies more dependencies than necessary: prepareReaderHost
+
+    1770 │   // When WebView is ready and book is available, send the open command
+  > 1771 │   useEffect(() => {
+         │   ^^^^^^^^^
+    1772 │     if (!webViewReady || !book?.filePath) {
+    1773 │       return;
+
+  i Outer scope values aren't valid dependencies because mutating them doesn't re-render the component.
+
+    1851 │       cancelled = true;
+    1852 │     };
+  > 1853 │   }, [bookId, book?.filePath, loadAttempt, prepareReaderHost, webViewReady]);
+         │                                            ^^^^^^^^^^^^^^^^^
+    1854 │
+    1855 │   // iOS may suspend the local server while the reader stays mounted.
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:1771:3 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook does not specify all of its dependencies: readSettings.paragraphSpacing
+
+    1770 │   // When WebView is ready and book is available, send the open command
+  > 1771 │   useEffect(() => {
+         │   ^^^^^^^^^
+    1772 │     if (!webViewReady || !book?.filePath) {
+    1773 │       return;
+
+  i This dependency is not specified in the hook dependency list.
+
+    1822 │             ),
+    1823 │             lineHeight: readSettings.lineHeight,
+  > 1824 │             paragraphSpacing: readSettings.paragraphSpacing,
+         │                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    1825 │             pageMargin: readSettings.pageMargin,
+    1826 │             fontTheme: readSettings.fontTheme,
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:1771:3 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook does not specify all of its dependencies: readSettings.paginatedLayout
+
+    1770 │   // When WebView is ready and book is available, send the open command
+  > 1771 │   useEffect(() => {
+         │   ^^^^^^^^^
+    1772 │     if (!webViewReady || !book?.filePath) {
+    1773 │       return;
+
+  i This dependency is not specified in the hook dependency list.
+
+    1826 │             fontTheme: readSettings.fontTheme,
+    1827 │             viewMode: readSettings.viewMode,
+  > 1828 │             paginatedLayout: readSettings.paginatedLayout,
+         │                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    1829 │             customFontFaceCSS: fontFaceCSS,
+    1830 │             customFontFamily: DEFAULT_READER_FONT_FAMILY,
+
+  i This dependency is not specified in the hook dependency list.
+
+    1815 │           lastLocation,
+    1816 │           pageMargin: readSettings.pageMargin,
+  > 1817 │           paginatedLayout: readSettings.paginatedLayout,
+         │                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    1818 │           settings: {
+    1819 │             fontSize: computeEffectiveFontSize(
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:1771:3 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook does not specify all of its dependencies: readSettings.pageMargin
+
+    1770 │   // When WebView is ready and book is available, send the open command
+  > 1771 │   useEffect(() => {
+         │   ^^^^^^^^^
+    1772 │     if (!webViewReady || !book?.filePath) {
+    1773 │       return;
+
+  i This dependency is not specified in the hook dependency list.
+
+    1823 │             lineHeight: readSettings.lineHeight,
+    1824 │             paragraphSpacing: readSettings.paragraphSpacing,
+  > 1825 │             pageMargin: readSettings.pageMargin,
+         │                         ^^^^^^^^^^^^^^^^^^^^^^^
+    1826 │             fontTheme: readSettings.fontTheme,
+    1827 │             viewMode: readSettings.viewMode,
+
+  i This dependency is not specified in the hook dependency list.
+
+    1814 │           loadId,
+    1815 │           lastLocation,
+  > 1816 │           pageMargin: readSettings.pageMargin,
+         │                       ^^^^^^^^^^^^^^^^^^^^^^^
+    1817 │           paginatedLayout: readSettings.paginatedLayout,
+    1818 │           settings: {
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:1771:3 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook does not specify all of its dependencies: readSettings.lineHeight
+
+    1770 │   // When WebView is ready and book is available, send the open command
+  > 1771 │   useEffect(() => {
+         │   ^^^^^^^^^
+    1772 │     if (!webViewReady || !book?.filePath) {
+    1773 │       return;
+
+  i This dependency is not specified in the hook dependency list.
+
+    1821 │               readSettings.followSystemFontScale,
+    1822 │             ),
+  > 1823 │             lineHeight: readSettings.lineHeight,
+         │                         ^^^^^^^^^^^^^^^^^^^^^^^
+    1824 │             paragraphSpacing: readSettings.paragraphSpacing,
+    1825 │             pageMargin: readSettings.pageMargin,
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:1771:3 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook does not specify all of its dependencies: readSettings.fontTheme
+
+    1770 │   // When WebView is ready and book is available, send the open command
+  > 1771 │   useEffect(() => {
+         │   ^^^^^^^^^
+    1772 │     if (!webViewReady || !book?.filePath) {
+    1773 │       return;
+
+  i This dependency is not specified in the hook dependency list.
+
+    1824 │             paragraphSpacing: readSettings.paragraphSpacing,
+    1825 │             pageMargin: readSettings.pageMargin,
+  > 1826 │             fontTheme: readSettings.fontTheme,
+         │                        ^^^^^^^^^^^^^^^^^^^^^^
+    1827 │             viewMode: readSettings.viewMode,
+    1828 │             paginatedLayout: readSettings.paginatedLayout,
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:1771:3 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook does not specify all of its dependencies: computeEffectiveFontSize
+
+    1770 │   // When WebView is ready and book is available, send the open command
+  > 1771 │   useEffect(() => {
+         │   ^^^^^^^^^
+    1772 │     if (!webViewReady || !book?.filePath) {
+    1773 │       return;
+
+  i This dependency is not specified in the hook dependency list.
+
+    1817 │           paginatedLayout: readSettings.paginatedLayout,
+    1818 │           settings: {
+  > 1819 │             fontSize: computeEffectiveFontSize(
+         │                       ^^^^^^^^^^^^^^^^^^^^^^^^
+    1820 │               readSettings.fontSize,
+    1821 │               readSettings.followSystemFontScale,
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:1771:3 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook does not specify all of its dependencies: readSettings.fontSize
+
+    1770 │   // When WebView is ready and book is available, send the open command
+  > 1771 │   useEffect(() => {
+         │   ^^^^^^^^^
+    1772 │     if (!webViewReady || !book?.filePath) {
+    1773 │       return;
+
+  i This dependency is not specified in the hook dependency list.
+
+    1818 │           settings: {
+    1819 │             fontSize: computeEffectiveFontSize(
+  > 1820 │               readSettings.fontSize,
+         │               ^^^^^^^^^^^^^^^^^^^^^
+    1821 │               readSettings.followSystemFontScale,
+    1822 │             ),
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:1771:3 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook does not specify all of its dependencies: bridge.setThemeColors
+
+    1770 │   // When WebView is ready and book is available, send the open command
+  > 1771 │   useEffect(() => {
+         │   ^^^^^^^^^
+    1772 │     if (!webViewReady || !book?.filePath) {
+    1773 │       return;
+
+  i This dependency is not specified in the hook dependency list.
+
+    1837 │         });
+    1838 │
+  > 1839 │         bridge.setThemeColors(readerThemeColorsRef.current);
+         │         ^^^^^^^^^^^^^^^^^^^^^
+    1840 │       } catch (err: any) {
+    1841 │         if (cancelled) return;
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:1771:3 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook does not specify all of its dependencies: book.format
+
+    1770 │   // When WebView is ready and book is available, send the open command
+  > 1771 │   useEffect(() => {
+         │   ^^^^^^^^^
+    1772 │     if (!webViewReady || !book?.filePath) {
+    1773 │       return;
+
+  i This dependency is not specified in the hook dependency list.
+
+    1784 │         const lastLocation = lastCfiRef.current || book.currentCfi || undefined;
+    1785 │         const fileName = book.filePath.split("/").pop() || "book.epub";
+  > 1786 │         const mimeType = BOOK_FORMAT_MIME_TYPES[book.format] || "application/octet-stream";
+         │                                                 ^^^^^^^^^^^
+    1787 │
+    1788 │         // The local HTTP server lets the WebView fetch the file directly, which
+
+  i This dependency is not specified in the hook dependency list.
+
+    1779 │     const loadBook = async () => {
+    1780 │       try {
+  > 1781 │         recordDiagnostic("reader_open", { attempt: loadAttempt, format: book.format });
+         │                                                                         ^^^^^^^^^^^
+    1782 │         setLoading(true);
+    1783 │         setError(null);
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:1771:3 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook does not specify all of its dependencies: bridge.openBook
+
+    1770 │   // When WebView is ready and book is available, send the open command
+  > 1771 │   useEffect(() => {
+         │   ^^^^^^^^^
+    1772 │     if (!webViewReady || !book?.filePath) {
+    1773 │       return;
+
+  i This dependency is not specified in the hook dependency list.
+
+    1807 │         totalBookCharactersRef.current = book.totalCharacters ?? null;
+    1808 │
+  > 1809 │         bridge.openBook({
+         │         ^^^^^^^^^^^^^^^
+    1810 │           uri: `${serverUrl}/${encodedPath}`,
+    1811 │           fileName,
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:1939:37 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook does not specify all of its dependencies: book
+
+    1937 │   }, [isFocused, appActive, webViewReady, loading, bridge.webViewRef]);
+    1938 │
+  > 1939 │   const handleReimportMissingBook = useCallback(async () => {
+         │                                     ^^^^^^^^^^^
+    1940 │     if (isReimporting) return;
+    1941 │     setIsReimporting(true);
+
+  i This dependency is not specified in the hook dependency list.
+
+    1949 │       if (result.canceled || !result.assets || result.assets.length === 0) return;
+    1950 │       const selectedUri = result.assets[0].uri;
+  > 1951 │       if (book) {
+         │           ^^^^
+    1952 │         const candidate = await useLibraryStore.getState().inspectDeletedBookCandidate(bookId, {
+    1953 │           uri: selectedUri,
+
+  i This dependency is not specified in the hook dependency list.
+
+    1954 │           name: result.assets[0].name,
+    1955 │         });
+  > 1956 │         if (candidate && shouldConfirmReimportCandidate(book, candidate)) {
+         │                                                         ^^^^
+    1957 │           const shouldContinue = await useMissingBookPromptStore.getState().showPrompt({
+    1958 │             title: t("reader.reimportMismatchTitle", "这份文件看起来和原书不太一致"),
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:1939:37 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook does not specify all of its dependencies: book.meta.title
+
+    1937 │   }, [isFocused, appActive, webViewReady, loading, bridge.webViewRef]);
+    1938 │
+  > 1939 │   const handleReimportMissingBook = useCallback(async () => {
+         │                                     ^^^^^^^^^^^
+    1940 │     if (isReimporting) return;
+    1941 │     setIsReimporting(true);
+
+  i This dependency is not specified in the hook dependency list.
+
+    1961 │               "原书《{{originalTitle}}》与当前文件《{{candidateTitle}}》信息差异较大。仍要把它接回原来的笔记和阅读统计吗？",
+    1962 │               {
+  > 1963 │                 originalTitle: book.meta.title,
+         │                                ^^^^^^^^^^^^^^^
+    1964 │                 candidateTitle: candidate.title || t("reader.unknownBook", "未命名书籍"),
+    1965 │               },
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:1998:3 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook does not specify all of its dependencies: bridge.setThemeColors
+
+    1997 │   // Apply theme colors when theme changes
+  > 1998 │   useEffect(() => {
+         │   ^^^^^^^^^
+    1999 │     if (!webViewReady) return;
+    2000 │     bridge.setThemeColors(readerThemeColors);
+
+  i This dependency is not specified in the hook dependency list.
+
+    1998 │   useEffect(() => {
+    1999 │     if (!webViewReady) return;
+  > 2000 │     bridge.setThemeColors(readerThemeColors);
+         │     ^^^^^^^^^^^^^^^^^^^^^
+    2001 │   }, [themeMode, readerThemeColors, webViewReady]);
+    2002 │
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:1998:3 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook specifies more dependencies than necessary: themeMode
+
+    1997 │   // Apply theme colors when theme changes
+  > 1998 │   useEffect(() => {
+         │   ^^^^^^^^^
+    1999 │     if (!webViewReady) return;
+    2000 │     bridge.setThemeColors(readerThemeColors);
+
+  i This dependency can be removed from the list.
+
+    1999 │     if (!webViewReady) return;
+    2000 │     bridge.setThemeColors(readerThemeColors);
+  > 2001 │   }, [themeMode, readerThemeColors, webViewReady]);
+         │       ^^^^^^^^^
+    2002 │
+    2003 │   // The book always uses the bundled SB Serif family.
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:2022:3 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook specifies more dependencies than necessary: systemFontScale
+
+    2020 │   // new effective font size — otherwise the renderer would keep margins
+    2021 │   // computed from the previous size.
+  > 2022 │   useEffect(() => {
+         │   ^^^^^^^^^
+    2023 │     if (!webViewReady) return;
+    2024 │     if (!readSettings.followSystemFontScale) return;
+
+  i This dependency can be removed from the list.
+
+    2029 │     });
+    2030 │   }, [
+  > 2031 │     systemFontScale,
+         │     ^^^^^^^^^^^^^^^
+    2032 │     readSettings.followSystemFontScale,
+    2033 │     readSettings.fontSize,
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:2042:3 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook does not specify all of its dependencies: bridge.addAnnotation
+
+    2041 │   // Load annotations into reader when ready
+  > 2042 │   useEffect(() => {
+         │   ^^^^^^^^^
+    2043 │     if (!webViewReady || loading || highlights.length === 0) return;
+    2044 │     for (const h of highlights) {
+
+  i This dependency is not specified in the hook dependency list.
+
+    2043 │     if (!webViewReady || loading || highlights.length === 0) return;
+    2044 │     for (const h of highlights) {
+  > 2045 │       bridge.addAnnotation({ value: h.cfi, type: "highlight", color: h.color, note: h.note });
+         │       ^^^^^^^^^^^^^^^^^^^^
+    2046 │     }
+    2047 │   }, [webViewReady, loading, highlights]);
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:2050:3 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook specifies more dependencies than necessary: bookId
+
+    2049 │   // Reset last navigated CFI when book changes
+  > 2050 │   useEffect(() => {
+         │   ^^^^^^^^^
+    2051 │     lastNavigatedCfiRef.current = undefined;
+    2052 │   }, [bookId]);
+
+  i This dependency can be removed from the list.
+
+    2050 │   useEffect(() => {
+    2051 │     lastNavigatedCfiRef.current = undefined;
+  > 2052 │   }, [bookId]);
+         │       ^^^^^^
+    2053 │
+    2054 │   // Navigate to CFI when book is loaded (from NotesPage or AI citation navigation)
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:2055:3 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook does not specify all of its dependencies: bridge.flashHighlight
+
+    2054 │   // Navigate to CFI when book is loaded (from NotesPage or AI citation navigation)
+  > 2055 │   useEffect(() => {
+         │   ^^^^^^^^^
+    2056 │     if (!webViewReady || loading || !cfi || cfi === lastNavigatedCfiRef.current) return;
+    2057 │     goToCFISafely(cfi);
+
+  i This dependency is not specified in the hook dependency list.
+
+    2063 │       const doFlash = () => {
+    2064 │         if (flashCount >= 3) return;
+  > 2065 │         bridge.flashHighlight(cfi, "orange", 500);
+         │         ^^^^^^^^^^^^^^^^^^^^^
+    2066 │         flashCount++;
+    2067 │         if (flashCount < 3) setTimeout(doFlash, 600);
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:2074:3 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook does not specify all of its dependencies: tts.resolvedTTSSegmentCfi
+
+    2073 │   // Return to the active narration fragment when navigating from the mini player.
+  > 2074 │   useEffect(() => {
+         │   ^^^^^^^^^
+    2075 │     if (!openTTS || !webViewReady || loading) return;
+    2076 │
+
+  i This dependency is not specified in the hook dependency list.
+
+    2078 │     const returnToNarration = async () => {
+    2079 │       const targetCfi =
+  > 2080 │         tts.resolvedTTSSegmentCfi || tts.ttsDisplaySegments[0]?.cfi || currentCfi || null;
+         │         ^^^^^^^^^^^^^^^^^^^^^^^^^
+    2081 │       if (targetCfi && targetCfi !== currentCfi) {
+    2082 │         goToCFISafely(targetCfi);
+
+
+packages/app-expo/src/screens/.ReaderScreen.baseline.tsx:2074:3 lint/correctness/useExhaustiveDependencies ━━━━━━━━━━
+
+  × This hook does not specify all of its dependencies: tts.ttsDisplaySegments[0]?.cfi
+
+    2073 │   // Return to the active narration fragment when navigating from the mini player.
+  > 2074 │   useEffect(() => {
+         │   ^^^^^^^^^
+    2075 │     if (!openTTS || !webViewReady || loading) return;
+    2076 │
+
+  i This dependency is not specified in the hook dependency list.
+
+    2078 │     const returnToNarration = async () => {
+    2079 │       const targetCfi =
+  > 2080 │         tts.resolvedTTSSegmentCfi || tts.ttsDisplaySegments[0]?.cfi || currentCfi || null;
+         │                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    2081 │       if (targetCfi && targetCfi !== currentCfi) {
+    2082 │         goToCFISafely(targetCfi);
+
+
+Checked 1 file in 29ms. No fixes applied.
+Found 36 errors.
+Found 3 warnings.
+check ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  × Some errors were emitted while running checks.

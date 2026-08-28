@@ -3,6 +3,7 @@ import type {
   BackendBookManifest,
   BackendCharacterAsset,
 } from "./backend-book-contract";
+import type { BackendSceneIntent } from "./backend-scene";
 import type { NarraGenreAnalysis } from "./genre-analysis";
 
 export type NarraGender = "male" | "female";
@@ -62,6 +63,7 @@ export interface NarraChatMessage {
 }
 
 export interface NarraSceneImage {
+  backendScene?: BackendSceneIntent;
   sourceKey: string;
   chapter: string;
   excerpt: string;
@@ -111,6 +113,8 @@ export interface NarraBookState {
   memories: Record<string, string>;
   chats: Record<string, NarraChatMessage[]>;
   scenes: Record<string, NarraSceneImage>;
+  /** Explicit user intents, retained for retry at the original position; never auto-started. */
+  sceneRequests?: Record<string, BackendSceneIntent>;
   sceneAudios: Record<string, NarraSceneAudio>;
   summaries: Record<string, NarraSummary>;
   analyzedAt?: number;

@@ -1,0 +1,23 @@
+{
+  "tests": {
+    "exitCode": 0,
+    "files": 78,
+    "tests": 686
+  },
+  "typescript": {
+    "exitCode": 0
+  },
+  "lint": {
+    "exitCode": 0,
+    "files": 13
+  },
+  "readerLint": {
+    "exitCode": 1,
+    "errors": 35,
+    "warnings": 3,
+    "baselineErrors": 36,
+    "baselineWarnings": 3
+  },
+  "nativeRebuild": false,
+  "liveAfterFix": "user retry: first attempt saved/store/webview; local JPEG 1024x1024 verified (backend declared PNG)"
+}

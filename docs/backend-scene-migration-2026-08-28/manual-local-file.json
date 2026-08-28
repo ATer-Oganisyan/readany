@@ -1,0 +1,23 @@
+[
+  {
+    "file": "backend-scene-293f1621d7992b516cb084a80863fd3a71aa859781efec2c3c499280990a6909.png",
+    "bytes": 111854,
+    "sha256": "0bb83a5a963325146b498c2436fe6f4ee75abe70caaf36214410700f40f66fd8",
+    "validPngSignature": false,
+    "dimensions": [
+      1024,
+      1024
+    ],
+    "backendScene": {
+      "bookEditionId": "33ba8895-d714-422e-8d0c-56af3e84caa1",
+      "markupIdentity": "[\"94bde8ff-8701-49ce-bf53-73c1e1dfbfef\",null,\"1b6d255cb68b431c44208aa65206ba029954f01a754bc21700b8ce2eec43ec7d\",\"5112f15b1264bb888c3530fa1ffc34bcdb4ad9142ab4c99e85798c8e4d9e4088\"]",
+      "requestedProgress": 0.0018235611566591336,
+      "sceneKey": "text-interval-v1:0"
+    },
+    "containsSignedUrl": false,
+    "dimensionsVerifiedWith": "sips",
+    "actualMime": "image/jpeg",
+    "backendDeclaredMime": "image/png",
+    "formatVerifiedWith": "file (JFIF 1.01)"
+  }
+]

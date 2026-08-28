@@ -8,6 +8,36 @@ import {
 afterEach(() => vi.useRealTimers());
 
 describe("private local diagnostics", () => {
+  it("keeps scene correlation without allowing signed URLs, tokens or arbitrary IDs", () => {
+    const requestId = "22222222-2222-4222-8222-222222222222";
+    expect(
+      diagnosticEntry("scene_request", {
+        requestId,
+        bookEditionId: requestId,
+        sceneKey: "text-interval-v1:6",
+        requestedProgress: 0.385,
+        stage: "download",
+        imageUrl: "https://storage?token=secret",
+        failure: "secret",
+        excerpt: "private",
+      })?.data,
+    ).toEqual({
+      requestId,
+      bookEditionId: requestId,
+      sceneKey: "text-interval-v1:6",
+      requestedProgress: 0.385,
+      stage: "download",
+    });
+    expect(
+      diagnosticEntry("scene_request", {
+        requestId: "secret",
+        sceneKey: "secret",
+        requestedProgress: Number.POSITIVE_INFINITY,
+        stage: "secret",
+      })?.data,
+    ).toEqual({});
+    expect(diagnosticEntry("reader_open", { requestId })?.data).toEqual({});
+  });
   it("drops arbitrary messages, tokens, paths, content and IDs", () => {
     const event = diagnosticEntry("reader_error", {
       reason: "transport",

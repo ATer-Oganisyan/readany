@@ -8,7 +8,7 @@
  * обратно и запрашивает картинки событием sceneSlotRestored.
  */
 
-import type { NarraSceneImage } from "./types";
+import type { NarraBookState, NarraSceneImage } from "./types";
 
 /** Префикс sourceKey сцен, привязанных к позиции страницы (как в P6). */
 export const SCENE_PAGE_SOURCE_PREFIX = "page:";
@@ -25,16 +25,19 @@ export function sceneSourceKeyForAnchor(anchor: string): string {
  */
 export function sceneInsertAnchors(
   scenes: Record<string, NarraSceneImage> | undefined,
+  requests?: NarraBookState["sceneRequests"],
 ): string[] {
-  if (!scenes) return [];
-  const anchors: string[] = [];
-  for (const scene of Object.values(scenes)) {
+  const anchors: string[] = Object.keys(requests ?? {})
+    .filter((key) => key.startsWith(SCENE_PAGE_SOURCE_PREFIX))
+    .map((key) => key.slice(SCENE_PAGE_SOURCE_PREFIX.length).trim())
+    .filter(Boolean);
+  for (const scene of Object.values(scenes ?? {})) {
     const anchor = scene.anchor?.trim();
     if (anchor && scene.imageUri && !anchors.includes(anchor)) {
       anchors.push(anchor);
     }
   }
-  return anchors.sort();
+  return [...new Set(anchors)].sort();
 }
 
 /** MIME по расширению файла картинки; генерация narra пишет .png (media.ts). */

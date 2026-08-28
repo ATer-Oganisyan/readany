@@ -1,0 +1,11 @@
+[Narra iOS] Xcode: Xcode 26.6 Build version 17F113
+[Narra iOS] Developer directory: /Users/manaer/Applications/Xcode-26.6.0.app/Contents/Developer
+[Narra iOS] Simulator UI: Simulator (/Users/manaer/Applications/Xcode-26.6.0.app/Contents/Developer/Applications/Simulator.app)
+[Narra iOS] Automatic pasteboard sync: 0
+[Narra iOS] Simulator: iPhone 17 Pro (89DF38B4-5C83-4D6F-B622-1D22F7AE0AA5)
+[Narra iOS] Expected build: 36; installed build: 36
+[Narra iOS] Metro localhost:8082: running
+[Narra iOS] Workspace: /Users/manaer/.codex/worktrees/5652/Narra2/packages/app-expo/ios/Narra.xcworkspace
+[Narra iOS] Canonical DerivedData: /Users/manaer/.codex/worktrees/5652/Narra2/packages/app-expo/ios/build/codex-devicehub
+[Narra iOS] Canonical app: build 36
+[Narra iOS] Native fingerprint: current

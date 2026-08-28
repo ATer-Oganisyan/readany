@@ -145,7 +145,7 @@
     "sceneSuggestionDismiss": "Скрыть предложение",
     "sceneSlotShow": "Сгенерировать сцену",
     "sceneSlotDrawing": "Рисуем сцену…",
-    "sceneSlotDrawingHint": "20–60 секунд",
+    "sceneSlotDrawingHint": "Это может занять несколько минут",
     "sceneSlotCaption": "Сцена — сгенерировано ИИ",
     "sceneSlotRegen": "Заново",
     "sceneSlotError": "Попробовать снова",

@@ -1,0 +1,15 @@
+Monitoring boot status for iPhone 17 Pro (89DF38B4-5C83-4D6F-B622-1D22F7AE0AA5).
+Device already booted, nothing to do.
+
+[Narra iOS] Installed development client is ready: build 36
+[Narra iOS] Preparing current reader assets (unchanged files are preserved)
+
+> @readany/app-expo@1.3.5 build:reader /Users/manaer/.codex/worktrees/5652/Narra2/packages/app-expo
+> node scripts/build-reader.js
+
+Built reader.html (593KB; code 222KB) + reader-pdf.bin (1654KB, lazy)
+[Narra iOS] Reusing Metro on port 8082
+[Narra iOS] Opening Simulator from the selected Xcode
+[Narra iOS] Launching com.mishanaer.readany.dev
+com.mishanaer.readany.dev: 60934
+[Narra iOS] Opening dev client URL from Metro
