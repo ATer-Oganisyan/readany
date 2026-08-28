@@ -100,7 +100,7 @@ describe("expanded catalog category", () => {
     expect(shelf).toContain('accessibilityRole="button"');
     expect(shelf).toContain("minHeight: 44");
     const heading = shelf.slice(shelf.indexOf("<Pressable"), shelf.indexOf("</Pressable>"));
-    expect(heading).toContain("gap: spacing.sm");
+    expect(heading).toContain("gap: 6");
     expect(heading).toContain("flexShrink: 1");
     expect(heading).toContain("fontFamily: largeTitleFontFamily");
     expect(heading).toContain("fontWeight: fontWeight.normal");
@@ -109,7 +109,6 @@ describe("expanded catalog category", () => {
       /headerLargeTitleStyle:\s*\{[^}]*fontFamily: largeTitleFontFamily/,
     );
     expect(heading).not.toMatch(/flex:\s*1\b/);
-    expect(read("../../styles/theme.ts")).toMatch(/sm:\s*8\b/);
     expect(shelf).toContain("onOpenCategory(shelf)");
     expect(shelf).toMatch(/<MishanaerIcon\s+name="chevron-small-right"/);
     expect(shelf).toMatch(/name="chevron-small-right"[\s\S]*?color=\{colors.primary40\}/);

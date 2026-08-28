@@ -527,6 +527,29 @@ describe("Search screen behavior with native boundaries replaced", () => {
     ).toBe(false);
   });
 
+  it("keeps 12pt below the heading and 32pt below books without shrinking the shadow viewport", async () => {
+    seedCatalog();
+    const mounted = await render(<SearchScreen />);
+    const shelf = hosts(mounted.root, "View").find(
+      (node) => node.props.testID === "catalog-shelf-fiction",
+    );
+    if (!shelf) throw new Error("Expected rendered fiction shelf");
+    const heading = hosts(shelf, "Pressable").find(
+      (node) => node.props.testID === "catalog-category-link-fiction",
+    );
+    if (!heading) throw new Error("Expected category heading");
+    const rail = hosts(shelf, "FlatList")[0];
+    const headingStyle = heading.props.style({ pressed: false });
+    const railStyle = rail.props.style;
+    const content = rail.props.contentContainerStyle;
+    expect(headingStyle.marginBottom + railStyle.marginTop + content.paddingTop).toBe(12);
+    expect(content.paddingBottom + railStyle.marginBottom).toBe(32);
+    expect(content.paddingTop).toBeGreaterThanOrEqual(22 * 1.5 - 11);
+    expect(content.paddingBottom).toBeGreaterThanOrEqual(22 * 1.5 + 11);
+    expect(railStyle.overflow).toBe("visible");
+    expect(rail.props.removeClippedSubviews).toBe(false);
+  });
+
   it("blurs the native search bar before opening one category for two separate activations", async () => {
     seedCatalog();
     const mounted = await render(<SearchScreen />);
@@ -534,6 +557,13 @@ describe("Search screen behavior with native boundaries replaced", () => {
       (node) => node.props.testID === "catalog-category-link-fiction",
     );
     if (!link) throw new Error("Expected category action");
+    const chevron = hosts(link, "MishanaerIcon")[0];
+    const headingStyle = link.props.style({ pressed: false });
+    // The existing 24pt SVG's stroke starts at x=9.5 minus its 1pt radius.
+    expect(headingStyle.gap + chevron.props.style.marginHorizontal + 8.5).toBe(6);
+    expect(chevron.props.size).toBe(24);
+    expect(chevron.props.style.transform).toEqual([{ translateY: 1 }]);
+    expect(headingStyle.minHeight).toBe(44);
     await act(() => {
       link.props.onPress(activation());
       link.props.onPress(activation());

@@ -6,6 +6,8 @@ import { countRender } from "@/lib/diagnostics/interaction-performance";
 import type { CachedBackendCatalogBook } from "@/lib/narra/backend-catalog-cache";
 import {
   CATALOG_SHELF_GAP,
+  CATALOG_SHELF_HEADER_GAP,
+  CATALOG_SHELF_SECTION_GAP,
   CATALOG_SHELF_SHADOW_INSETS,
   catalogShelfLayout,
 } from "@/lib/narra/catalog-shelf-layout";
@@ -109,8 +111,8 @@ export const CatalogShelfRow = memo(function CatalogShelfRow({
           flexDirection: "row",
           alignItems: "center",
           minHeight: 44,
-          gap: spacing.sm,
-          marginBottom: spacing.sm,
+          gap: 6,
+          marginBottom: CATALOG_SHELF_HEADER_GAP,
           paddingHorizontal: edgeInset,
           opacity: pressed ? 0.72 : 1,
         })}
@@ -127,7 +129,14 @@ export const CatalogShelfRow = memo(function CatalogShelfRow({
         >
           {shelf.title}
         </Text>
-        <MishanaerIcon name="chevron-small-right" size={24} color={colors.primary40} />
+        {/* The 24pt SVG has 8.5pt of blank space beside its stroked path.
+            Remove that space from layout so the 6pt gap reaches the chevron. */}
+        <MishanaerIcon
+          name="chevron-small-right"
+          size={24}
+          color={colors.primary40}
+          style={{ marginHorizontal: -8.5, transform: [{ translateY: 1 }] }}
+        />
       </Pressable>
       <FlatList
         horizontal
@@ -166,8 +175,9 @@ export const CatalogShelfRow = memo(function CatalogShelfRow({
             cardWidth * (41 / 28) +
             CATALOG_SHELF_SHADOW_INSETS.top +
             CATALOG_SHELF_SHADOW_INSETS.bottom,
-          // Preserve the cover's distance from its heading; reserve real room below for shadows.
-          marginTop: spacing.sm - CATALOG_SHELF_SHADOW_INSETS.top,
+          // Keep the full shadow viewport while setting the visible layout gaps independently.
+          marginTop: -CATALOG_SHELF_SHADOW_INSETS.top,
+          marginBottom: CATALOG_SHELF_SECTION_GAP - CATALOG_SHELF_SHADOW_INSETS.bottom,
           overflow: "visible",
           flexGrow: 0,
         }}

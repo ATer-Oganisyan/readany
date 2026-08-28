@@ -1,6 +1,8 @@
 import { spacingPixels } from "@deslop/primitives";
 
 export const CATALOG_SHELF_GAP = spacingPixels[16];
+export const CATALOG_SHELF_HEADER_GAP = spacingPixels[12];
+export const CATALOG_SHELF_SECTION_GAP = spacingPixels[32];
 // Search carousels only; the library grid keeps its original book size.
 export const CATALOG_SHELF_CARD_SCALE = 0.8;
 // PerspectiveBook's widest shadow: y=11, blur=22. Leave room for its soft tail.
