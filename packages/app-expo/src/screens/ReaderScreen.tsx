@@ -529,10 +529,17 @@ function ReaderContent({ route, navigation }: Props) {
   const loadBackendScene = useCallback(async () => {
     const bookEditionId = backendBinding?.bookEditionId;
     if (!bookEditionId) return null;
+    // Keep polling the exact slot that the reader requested. Reader progress can
+    // continue changing while image generation is running for several minutes.
+    const requestedProgress = progressRef.current;
     const pollDeadline = Date.now() + BACKEND_SCENE_POLL_TIMEOUT_MS;
-    while (Date.now() <= pollDeadline) {
-      const scene = await requestBackendBookScene(bookEditionId, progressRef.current);
-      if (scene.status === "ready" && scene.imageUrl) {
+    let lastRetryableError: unknown = null;
+
+    const readyScene = async () => {
+      const scene = await requestBackendBookScene(bookEditionId, requestedProgress);
+      if (scene.status === "failed") throw new Error("Backend scene generation failed");
+      if (scene.status !== "ready" || !scene.imageUrl) return { scene, imageUri: null };
+      try {
         return {
           scene,
           imageUri: await persistBackendSceneImage(
@@ -542,13 +549,47 @@ function ReaderContent({ route, navigation }: Props) {
             scene.mimeType,
           ),
         };
+      } catch (cause) {
+        // A signed URL or the download itself can fail transiently. The next
+        // poll obtains a fresh URL instead of losing an already generated asset.
+        lastRetryableError = cause;
+        return { scene, imageUri: null };
       }
-      if (scene.status === "failed") throw new Error("Backend scene generation failed");
+    };
+
+    while (Date.now() <= pollDeadline) {
+      let result: Awaited<ReturnType<typeof readyScene>> | null = null;
+      try {
+        result = await readyScene();
+      } catch (cause) {
+        if (cause instanceof Error && cause.message === "Backend scene generation failed") {
+          throw cause;
+        }
+        // One short network/auth failure must not abort a multi-minute durable
+        // backend job. Keep retrying until the user-visible deadline.
+        lastRetryableError = cause;
+      }
+      if (result?.imageUri) return { scene: result.scene, imageUri: result.imageUri };
       const remainingMs = pollDeadline - Date.now();
       if (remainingMs <= 0) break;
-      await new Promise((resolve) => setTimeout(resolve, Math.min(scene.pollAfterMs, remainingMs)));
+      const pollAfterMs = result?.scene.pollAfterMs ?? 2_000;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(pollAfterMs, remainingMs)));
     }
-    throw new Error("Backend scene generation timed out");
+
+    // Timers are suspended while iOS backgrounds the app. Always perform one
+    // final recovery request even if the wall-clock deadline elapsed meanwhile.
+    try {
+      const result = await readyScene();
+      if (result.imageUri) return { scene: result.scene, imageUri: result.imageUri };
+    } catch (cause) {
+      if (cause instanceof Error && cause.message === "Backend scene generation failed") {
+        throw cause;
+      }
+      lastRetryableError = cause;
+    }
+
+    const detail = lastRetryableError instanceof Error ? `: ${lastRetryableError.message}` : "";
+    throw new Error(`Backend scene generation timed out${detail}`);
   }, [backendBinding?.bookEditionId, bookId]);
 
   // Видимый текст страницы — контекст для промпта сцены (как в P6)
