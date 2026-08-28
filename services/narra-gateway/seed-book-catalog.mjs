@@ -32,10 +32,21 @@ if (!Array.isArray(manifest.books) || !manifest.books.length) {
   throw new Error('catalog manifest must contain a non-empty books array')
 }
 
+function bookLanguage(book) {
+  const explicit = typeof book.language === 'string'
+    ? book.language.trim().toLowerCase().replaceAll('_', '-').split('-', 1)[0]
+    : ''
+  if (explicit === 'ru' || explicit === 'en') return explicit
+  if (String(book.catalog_key).startsWith('narra-ru-')) return 'ru'
+  if (String(book.catalog_key).startsWith('narra-en-')) return 'en'
+  return null
+}
+
 for (const book of manifest.books) {
   const filename = path.resolve(path.dirname(manifestPath), book.file)
   const bytes = await readFile(filename)
   const contentSha256 = createHash('sha256').update(bytes).digest('hex')
+  const language = bookLanguage(book)
   const prepared = await request('/v2/admin/catalog/books/uploads', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -45,7 +56,8 @@ for (const book of manifest.books) {
       title: book.title,
       author: book.author || '',
       format: book.format,
-      byte_size: bytes.byteLength
+      byte_size: bytes.byteLength,
+      ...(language ? { language } : {})
     })
   })
   if (!prepared.upload_required) {

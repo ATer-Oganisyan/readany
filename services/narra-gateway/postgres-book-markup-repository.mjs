@@ -89,6 +89,7 @@ function editionRow(row) {
     title: displayTitle || 'Untitled book',
     author: displayAuthor,
     genres: Array.isArray(row.genres) ? row.genres.filter((genre) => typeof genre === 'string') : [],
+    language: row.language ?? null,
     format: row.format,
     status: row.status,
     sourceStorage: row.source_storage || 'stored',
@@ -581,12 +582,13 @@ export function createPostgresBookMarkupRepository(pool, {
       contentSha256,
       title,
       author,
-      format
+      format,
+      language = null
     }) {
       return transaction(pool, async (client) => {
         const catalog = await client.query(
           `SELECT id, scope, catalog_key, content_sha256, title, author,
-                  display_title, display_author, format, status,
+                  display_title, display_author, language, format, status,
                   source_storage, expires_at, created_at
            FROM book_editions
            WHERE scope = 'catalog' AND content_sha256 = $1
@@ -611,11 +613,11 @@ export function createPostgresBookMarkupRepository(pool, {
 
         await client.query(
           `INSERT INTO book_editions (
-             id, scope, owner_subject_id, content_sha256, title, author, format,
+             id, scope, owner_subject_id, content_sha256, title, author, format, language,
              status, source_storage, expires_at
            ) VALUES (
-             $1, 'private', $2::uuid, $3, $4, $5, $6,
-             'marking_up', 'local_only', now() + make_interval(days => $7)
+             $1, 'private', $2::uuid, $3, $4, $5, $6, $7,
+             'marking_up', 'local_only', now() + make_interval(days => $8)
            )
            ON CONFLICT (owner_subject_id, content_sha256) WHERE scope = 'private'
            DO UPDATE SET
@@ -642,16 +644,17 @@ export function createPostgresBookMarkupRepository(pool, {
              title = EXCLUDED.title,
              author = EXCLUDED.author,
              format = EXCLUDED.format,
-             expires_at = now() + make_interval(days => $7),
+             language = COALESCE(EXCLUDED.language, book_editions.language),
+             expires_at = now() + make_interval(days => $8),
              updated_at = now()`,
           [
-            proposedBookEditionId, subjectId, contentSha256, title, author, format,
+            proposedBookEditionId, subjectId, contentSha256, title, author, format, language,
             privateMaterialTtlDays
           ]
         )
         const result = await client.query(
           `SELECT id, scope, catalog_key, content_sha256, title, author,
-                  display_title, display_author, format, status,
+                  display_title, display_author, language, format, status,
                   source_storage, expires_at, created_at
            FROM book_editions
            WHERE scope = 'private' AND owner_subject_id = $1::uuid
@@ -674,7 +677,7 @@ export function createPostgresBookMarkupRepository(pool, {
       return transaction(pool, async (client) => {
         const editionResult = await client.query(
           `SELECT id, scope, catalog_key, content_sha256, title, author,
-                  display_title, display_author, format, status,
+                  display_title, display_author, language, format, status,
                   source_storage, expires_at, created_at
            FROM book_editions
            WHERE id = $1 AND scope = 'private' AND owner_subject_id = $2::uuid
@@ -780,7 +783,7 @@ export function createPostgresBookMarkupRepository(pool, {
         await ensureBookIdentityJob(client, result.rows[0])
         const edition = await client.query(
           `SELECT id, scope, catalog_key, content_sha256, title, author,
-                  display_title, display_author, format, status,
+                  display_title, display_author, language, format, status,
                   source_storage, expires_at, created_at
            FROM book_editions WHERE id = $1`,
           [bookEditionId]
@@ -800,7 +803,7 @@ export function createPostgresBookMarkupRepository(pool, {
       return transaction(pool, async (client) => {
         const editionResult = await client.query(
           `SELECT id, scope, catalog_key, content_sha256, title, author,
-                  display_title, display_author, format, status,
+                  display_title, display_author, language, format, status,
                   source_storage, expires_at, created_at
            FROM book_editions
            WHERE id = $1 AND scope = 'private' AND owner_subject_id = $2::uuid
@@ -894,6 +897,7 @@ export function createPostgresBookMarkupRepository(pool, {
       title,
       author,
       format,
+      language = null,
       objectKey,
       mimeType,
       byteSize
@@ -901,7 +905,7 @@ export function createPostgresBookMarkupRepository(pool, {
       return transaction(pool, async (client) => {
         const existingResult = await client.query(
           `SELECT id, scope, catalog_key, content_sha256, title, author,
-                  display_title, display_author, format, status,
+                  display_title, display_author, language, format, status,
                   source_storage, expires_at, created_at
            FROM book_editions
            WHERE scope = 'catalog' AND catalog_key = $1
@@ -914,13 +918,20 @@ export function createPostgresBookMarkupRepository(pool, {
             code: 'CATALOG_CONFLICT', status: 409
           })
         }
+        if (existing && language && existing.language !== language) {
+          await client.query(
+            'UPDATE book_editions SET language = $2, updated_at = now() WHERE id = $1',
+            [existing.id, language]
+          )
+          existing.language = language
+        }
         if (!existing) {
           await client.query(
             `INSERT INTO book_editions (
-               id, scope, catalog_key, content_sha256, title, author, format,
+               id, scope, catalog_key, content_sha256, title, author, format, language,
                status, source_storage
-             ) VALUES ($1, 'catalog', $2, $3, $4, $5, $6, 'uploading', 'stored')`,
-            [proposedBookEditionId, catalogKey, contentSha256, title, author, format]
+             ) VALUES ($1, 'catalog', $2, $3, $4, $5, $6, $7, 'uploading', 'stored')`,
+            [proposedBookEditionId, catalogKey, contentSha256, title, author, format, language]
           )
         }
         const editionId = existing?.id || proposedBookEditionId
@@ -945,7 +956,7 @@ export function createPostgresBookMarkupRepository(pool, {
         )
         const editionResult = await client.query(
           `SELECT id, scope, catalog_key, content_sha256, title, author,
-                  display_title, display_author, format, status,
+                  display_title, display_author, language, format, status,
                   source_storage, expires_at, created_at
            FROM book_editions WHERE id = $1`,
           [editionId]
@@ -964,7 +975,7 @@ export function createPostgresBookMarkupRepository(pool, {
         `SELECT edition.id, edition.scope, edition.catalog_key,
                 edition.content_sha256, edition.title, edition.author,
                 edition.display_title, edition.display_author,
-                edition.format, edition.status, edition.source_storage,
+                edition.language, edition.format, edition.status, edition.source_storage,
                 edition.expires_at, edition.created_at,
                 file.object_key, file.mime_type, file.byte_size,
                 file.content_hash, file.status AS file_status
@@ -1024,7 +1035,7 @@ export function createPostgresBookMarkupRepository(pool, {
         await ensureBookIdentityJob(client, result.rows[0])
         const edition = await client.query(
           `SELECT id, scope, catalog_key, content_sha256, title, author,
-                  display_title, display_author, format,
+                  display_title, display_author, language, format,
                   status, source_storage, expires_at, created_at
            FROM book_editions WHERE id = $1`,
           [bookEditionId]
@@ -1304,7 +1315,7 @@ export function createPostgresBookMarkupRepository(pool, {
       })
     },
 
-    async listCatalogBooks({ limit, cursor = null }) {
+    async listCatalogBooks({ limit, cursor = null, language = null }) {
       const result = await pool.query(
         `SELECT edition.id, edition.scope, edition.catalog_key,
                 edition.content_sha256, edition.title, edition.author,
@@ -1314,7 +1325,7 @@ export function createPostgresBookMarkupRepository(pool, {
                   FROM book_edition_genres AS link
                   WHERE link.book_edition_id = edition.id
                 ), ARRAY[]::text[]) AS genres,
-                edition.format, edition.status, edition.source_storage,
+                edition.language, edition.format, edition.status, edition.source_storage,
                 edition.expires_at, edition.created_at,
                 cover.object_key AS cover_object_key,
                 cover.content_hash AS cover_content_hash,
@@ -1330,9 +1341,10 @@ export function createPostgresBookMarkupRepository(pool, {
              $1::timestamptz IS NULL OR
              (edition.created_at, edition.id) < ($1::timestamptz, $2::uuid)
            )
+           AND ($4::text IS NULL OR edition.language = $4)
          ORDER BY edition.created_at DESC, edition.id DESC
          LIMIT $3`,
-        [cursor?.createdAt ?? null, cursor?.id ?? null, limit + 1]
+        [cursor?.createdAt ?? null, cursor?.id ?? null, limit + 1, language]
       )
       const hasMore = result.rows.length > limit
       const items = result.rows.slice(0, limit).map(editionRow)
@@ -1349,7 +1361,7 @@ export function createPostgresBookMarkupRepository(pool, {
       if (source === 'catalog') {
         const result = await pool.query(
           `SELECT id, scope, catalog_key, content_sha256, title, author,
-                  display_title, display_author, format,
+                  display_title, display_author, language, format,
                   status, source_storage, expires_at, created_at
            FROM book_editions
            WHERE scope = 'catalog' AND catalog_key = $1
@@ -1362,7 +1374,7 @@ export function createPostgresBookMarkupRepository(pool, {
       return transaction(pool, async (client) => {
         const result = await client.query(
           `SELECT id, scope, catalog_key, content_sha256, title, author,
-                  display_title, display_author, format,
+                  display_title, display_author, language, format,
                   status, source_storage, expires_at, created_at
            FROM book_editions
            WHERE content_sha256 = $2 AND (
@@ -1443,7 +1455,7 @@ export function createPostgresBookMarkupRepository(pool, {
       return transaction(pool, async (client) => {
         const editionResult = await client.query(
           `SELECT id, scope, catalog_key, content_sha256, title, author,
-                  display_title, display_author, format, status,
+                  display_title, display_author, language, format, status,
                   source_storage, expires_at, created_at
            FROM book_editions
            WHERE id = $1 AND (

@@ -151,7 +151,8 @@ function renderDetail(detail) {
   elements['book-panel'].hidden = false
   elements['book-title'].textContent = book.title
   elements['book-author'].textContent = book.author || 'Автор не указан'
-  elements['book-meta'].textContent = `${book.scope === 'catalog' ? 'Каталог' : 'Личная'} · ${book.format.toUpperCase()} · ${book.catalogKey || book.id}`
+  const language = book.language ? ` · ${book.language.toUpperCase()}` : ''
+  elements['book-meta'].textContent = `${book.scope === 'catalog' ? 'Каталог' : 'Личная'} · ${book.format.toUpperCase()}${language} · ${book.catalogKey || book.id}`
   elements['heading-percent'].textContent = `${progress.percent}%`
   elements['heading-status'].textContent = `${stageLabels[progress.stage] || progress.stage} · ${statusLabels[progress.status] || progress.status}`
   elements['restart-book'].hidden = false
@@ -409,16 +410,21 @@ elements['upload-form'].addEventListener('submit', async (event) => {
     uploadStep('hash', `SHA-256 готов · ${formatBytes(book.size)}`, 'ready')
 
     uploadStep('prepare', 'Создаю запись книги…')
+    const catalogKeyValue = form.elements.catalogKey.value
+    const inferredLanguage = catalogKeyValue.startsWith('narra-ru-')
+      ? 'ru'
+      : catalogKeyValue.startsWith('narra-en-') ? 'en' : null
     const prepared = await api('uploads', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        catalog_key: form.elements.catalogKey.value,
+        catalog_key: catalogKeyValue,
         content_sha256: contentSha256,
         title: form.elements.title.value,
         author: form.elements.author.value,
         format,
-        byte_size: book.size
+        byte_size: book.size,
+        language: form.elements.language.value || inferredLanguage
       })
     })
     uploadStep('prepare', `Книга создана · ${prepared.bookEditionId}`, 'ready')

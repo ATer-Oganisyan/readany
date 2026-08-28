@@ -1,6 +1,20 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { parseCatalogCoverUploadBody } from '../catalog-ingest-api.mjs'
+import { parseCatalogCoverUploadBody, parseCatalogUploadBody } from '../catalog-ingest-api.mjs'
+
+test('catalog upload keeps language optional and normalizes future metadata', () => {
+  const body = {
+    catalog_key: 'seagull',
+    content_sha256: 'a'.repeat(64),
+    title: 'Чайка',
+    author: 'Антон Чехов',
+    format: 'epub',
+    byte_size: 42
+  }
+  assert.equal(parseCatalogUploadBody(body).language, null)
+  assert.equal(parseCatalogUploadBody({ ...body, language: 'EN-us' }).language, 'en')
+  assert.throws(() => parseCatalogUploadBody({ ...body, language: 'english' }), /language/)
+})
 
 test('catalog cover upload accepts only bounded image metadata', () => {
   assert.deepEqual(parseCatalogCoverUploadBody({

@@ -9,6 +9,7 @@ function result(edition, extra = {}) {
   return {
     bookEditionId: edition.id,
     catalogKey: edition.catalogKey,
+    language: edition.language ?? null,
     contentSha256: edition.contentSha256,
     status: edition.status,
     ready: ['base_ready', 'published'].includes(edition.status),

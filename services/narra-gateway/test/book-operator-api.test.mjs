@@ -262,6 +262,7 @@ test('web upload calls the same catalog service sequence as the command endpoint
     assert.equal(completed.status, 202)
     assert.deepEqual(input.calls.map(([name]) => name), ['begin', 'upload', 'complete'])
     assert.equal(input.calls[0][1].catalogKey, 'copper-horseman')
+    assert.equal(input.calls[0][1].language, null)
     assert.equal(input.calls[1][3], 'application/epub+zip')
   })
 })

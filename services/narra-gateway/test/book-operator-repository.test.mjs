@@ -17,6 +17,7 @@ function poolWithBooks() {
           catalog_key: 'copper-horseman',
           title: 'Медный всадник',
           author: 'А. С. Пушкин',
+          language: 'ru',
           format: 'epub',
           status: 'base_ready',
           content_sha256: 'a'.repeat(64),
@@ -70,6 +71,7 @@ test('dashboard list joins live analysis and media progress for every book', asy
   const repository = createPostgresBookOperatorRepository(poolWithBooks())
   const [book] = await repository.listBooks()
   assert.equal(book.id, BOOK_ID)
+  assert.equal(book.language, 'ru')
   assert.equal(book.analysis.runId, RUN_ID)
   assert.equal(book.analysis.stage, 'scan')
   assert.deepEqual(book.analysis.jobs.scan, {
@@ -134,6 +136,7 @@ test('formatted JSON includes only evidence referenced by the published v3 marku
         catalog_key: 'sample',
         title: 'Sample',
         author: 'Author',
+        language: 'en',
         format: 'txt',
         status: 'base_ready',
         content_sha256: 'a'.repeat(64)

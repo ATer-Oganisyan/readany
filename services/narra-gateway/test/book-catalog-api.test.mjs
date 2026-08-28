@@ -1,14 +1,18 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  BOOK_CATALOG_LANGUAGE_CONTRACT_VERSION,
   bookIdentityJson,
   bookJson,
   catalogGenresJson,
   createBookCatalogRouter,
   decodeCatalogCursor,
+  decodeLanguageCatalogCursor,
   encodeCatalogCursor,
+  encodeLanguageCatalogCursor,
   parseBookResolveBody,
   parseBookContentCursor,
+  parseCatalogLanguage,
   parseLocalBookBody,
   parseLocalMarkupBody,
   parseReaderProgressBody,
@@ -43,9 +47,51 @@ test('book catalog router exposes a separate genres endpoint', () => {
     .filter((layer) => layer.route)
     .map((layer) => ({ path: layer.route.path, methods: layer.route.methods }))
   assert.ok(routes.some(({ path, methods }) => path === '/genres' && methods.get))
+  assert.ok(routes.some(({ path, methods }) => path === '/catalog/languages/:language' && methods.get))
   assert.ok(routes.some(({ path, methods }) => path === '/:bookEditionId/identity' && methods.get))
   assert.ok(routes.some(({ path, methods }) =>
     path === '/:bookEditionId/content/toc' && methods.get))
+})
+
+test('language catalog endpoint returns its versioned filtered protocol', async () => {
+  const repository = {
+    async listCatalogBooks(input) {
+      assert.equal(input.language, 'en')
+      return {
+        items: [{
+          id: ID,
+          scope: 'catalog',
+          catalogKey: 'narra-en-example',
+          contentSha256: 'a'.repeat(64),
+          title: 'Example',
+          author: 'Author',
+          genres: [],
+          language: 'en',
+          format: 'epub',
+          status: 'base_ready',
+          sourceStorage: 'stored',
+          createdAt: '2026-08-10T00:00:00.000Z'
+        }],
+        nextCursor: null
+      }
+    },
+    async resolveBook() {},
+    async getReaderBookManifest() {},
+    async advanceReaderPosition() {}
+  }
+  const router = createBookCatalogRouter({ repository })
+  const route = router.stack.find((layer) => layer.route?.path === '/catalog/languages/:language')
+  const payload = await new Promise((resolve, reject) => {
+    route.route.stack[0].handle(
+      { params: { language: 'en' }, query: { limit: '24' } },
+      { json: resolve },
+      reject
+    )
+  })
+  assert.equal(payload.contract_version, BOOK_CATALOG_LANGUAGE_CONTRACT_VERSION)
+  assert.equal(payload.language, 'en')
+  assert.equal(payload.items[0].language, 'en')
+  assert.equal(payload.next_cursor, null)
 })
 
 test('book identity polling JSON is independent from the markup manifest', () => {
@@ -70,25 +116,43 @@ test('book identity polling JSON is independent from the markup manifest', () =>
   })
 })
 
-test('catalog JSON adds normalized genres without changing existing fields', () => {
+test('catalog JSON adds nullable language and normalized genres without changing existing fields', () => {
   const book = {
     resolution: 'catalog', bookEditionId: ID, catalogKey: 'seagull',
-    title: 'Чайка', author: 'Антон Чехов', genres: ['drama'], format: 'epub',
+    title: 'Чайка', author: 'Антон Чехов', genres: ['drama'], language: 'ru', format: 'epub',
     contentSha256: 'a'.repeat(64), generationStatus: 'base_ready', ready: true,
     sourceDownloadPath: `/v2/books/${ID}/source/download`
   }
   const json = bookJson(book)
   assert.deepEqual(json.genres, ['drama'])
+  assert.equal(json.language, 'ru')
   assert.equal(json.book_edition_id, ID)
   assert.equal(json.catalog_key, 'seagull')
 
   assert.deepEqual(bookJson({ ...book, genres: undefined }).genres, [])
+  assert.equal(bookJson({ ...book, language: undefined }).language, null)
 })
 
 test('catalog cursor round-trips without accepting arbitrary input', () => {
   const cursor = { createdAt: '2026-08-10T00:00:00.000Z', id: ID }
-  assert.deepEqual(decodeCatalogCursor(encodeCatalogCursor(cursor)), cursor)
+  const encoded = encodeCatalogCursor(cursor)
+  assert.deepEqual(decodeCatalogCursor(encoded), cursor)
+  assert.equal(JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')).v, 1)
   assert.throws(() => decodeCatalogCursor('not-a-cursor'), /cursor: invalid value/)
+})
+
+test('language catalog cursor is opaque and cannot cross language categories', () => {
+  const cursor = { createdAt: '2026-08-10T00:00:00.000Z', id: ID }
+  const encoded = encodeLanguageCatalogCursor(cursor, 'ru')
+  assert.equal(
+    JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')).v,
+    BOOK_CATALOG_LANGUAGE_CONTRACT_VERSION
+  )
+  assert.deepEqual(decodeLanguageCatalogCursor(encoded, 'ru'), cursor)
+  assert.throws(() => decodeLanguageCatalogCursor(encoded, 'en'), /cursor: language mismatch/)
+  assert.throws(() => decodeCatalogCursor(encoded), /cursor: invalid value/)
+  assert.equal(parseCatalogLanguage('EN'), 'en')
+  assert.throws(() => parseCatalogLanguage('fr'), /expected ru or en/)
 })
 
 test('book content cursor is optional but bounded', () => {
@@ -168,8 +232,13 @@ test('local book registration accepts metadata and rejects source-file fields', 
     contentSha256: 'a'.repeat(64),
     title: 'Book',
     author: 'Author',
-    format: 'epub'
+    format: 'epub',
+    language: null
   })
+  assert.equal(parseLocalBookBody({
+    content_sha256: 'a'.repeat(64), title: 'Book', author: 'Author',
+    format: 'epub', language: 'ru-RU'
+  }).language, 'ru')
   assert.throws(() => parseLocalBookBody({
     content_sha256: 'a'.repeat(64), title: 'Book', author: '', format: 'mobi'
   }), /unsupported book format/)

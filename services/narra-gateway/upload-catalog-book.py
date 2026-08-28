@@ -36,6 +36,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--catalog-key", required=True, help="Стабильный ключ: например, seagull")
     parser.add_argument("--title", help="Название; по умолчанию используется имя файла")
     parser.add_argument("--author", default="", help="Автор книги")
+    parser.add_argument(
+        "--language",
+        choices=("ru", "en"),
+        help="Язык книги; для ключей narra-ru-/narra-en- определяется автоматически",
+    )
     parser.add_argument("--cover", type=Path, help="Необязательная обложка JPEG, PNG или WebP")
     parser.add_argument("--format", choices=sorted(FORMATS), help="Формат, если его нельзя взять из расширения")
     parser.add_argument(
@@ -147,6 +152,11 @@ def upload() -> None:
 
     print(f"Считаю SHA-256: {book}")
     content_sha256 = file_sha256(book)
+    language = args.language
+    if not language and args.catalog_key.startswith("narra-ru-"):
+        language = "ru"
+    if not language and args.catalog_key.startswith("narra-en-"):
+        language = "en"
     metadata = {
         "catalog_key": args.catalog_key,
         "content_sha256": content_sha256,
@@ -155,6 +165,8 @@ def upload() -> None:
         "format": book_format,
         "byte_size": byte_size,
     }
+    if language:
+        metadata["language"] = language
 
     prepared = request_json(
         f"{base_url}/v2/admin/catalog/books/uploads",

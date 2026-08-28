@@ -47,6 +47,7 @@ function bookBinding(edition) {
     title: edition.title,
     author: edition.author,
     genres: Array.isArray(edition.genres) ? edition.genres : [],
+    language: edition.language ?? null,
     format: edition.format,
     contentSha256: edition.contentSha256,
     generationStatus: edition.status,
@@ -407,6 +408,14 @@ export function createBookCatalogService({
   return {
     async listCatalog({ limit, cursor }) {
       const result = await store.listCatalogBooks({ limit, cursor })
+      return {
+        items: result.items.map((edition) => bookBinding(edition)),
+        nextCursor: result.nextCursor
+      }
+    },
+
+    async listCatalogByLanguage({ language, limit, cursor }) {
+      const result = await store.listCatalogBooks({ language, limit, cursor })
       return {
         items: result.items.map((edition) => bookBinding(edition)),
         nextCursor: result.nextCursor

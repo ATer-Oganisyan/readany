@@ -1,11 +1,13 @@
 import express from 'express'
 import { createBookCatalogService } from './book-catalog-service.mjs'
+import { isCatalogBookLanguage, normalizeBookLanguage } from './book-language.mjs'
 import { CATALOG_GENRES, CATALOG_GENRE_DATA_VERSION } from './catalog-book-genres.mjs'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const SHA256 = /^[0-9a-f]{64}$/
 const CHARACTER_KEY = /^[a-z0-9][a-z0-9._-]{0,127}$/i
 const BOOK_FORMATS = new Set(['epub', 'fb2', 'txt', 'pdf'])
+export const BOOK_CATALOG_LANGUAGE_CONTRACT_VERSION = 'book-catalog-language-v1'
 
 function validation(message) {
   throw Object.assign(new Error(message), { code: 'VALIDATION', status: 400 })
@@ -136,14 +138,19 @@ function boundedText(value, name, max, { allowEmpty = false } = {}) {
 }
 
 export function parseLocalBookBody(body) {
-  exactKeys(body, ['content_sha256', 'title', 'author', 'format'], 'body')
+  exactKeys(body, ['content_sha256', 'title', 'author', 'format', 'language'], 'body')
   const format = boundedText(body.format, 'format', 16)
   if (!BOOK_FORMATS.has(format)) validation('format: unsupported book format')
+  const language = normalizeBookLanguage(body.language)
+  if (body.language !== undefined && body.language !== null && body.language !== '' && !language) {
+    validation('language: expected an ISO language tag')
+  }
   return {
     contentSha256: sha256(body.content_sha256),
     title: boundedText(body.title, 'title', 500),
     author: boundedText(body.author ?? '', 'author', 500, { allowEmpty: true }),
-    format
+    format,
+    language
   }
 }
 
@@ -268,6 +275,43 @@ export function decodeCatalogCursor(value) {
   }
 }
 
+export function parseCatalogLanguage(value) {
+  const language = normalizeBookLanguage(value)
+  if (!isCatalogBookLanguage(language)) validation('language: expected ru or en')
+  return language
+}
+
+export function encodeLanguageCatalogCursor(cursor, language) {
+  if (!cursor) return null
+  return Buffer.from(JSON.stringify({
+    v: BOOK_CATALOG_LANGUAGE_CONTRACT_VERSION,
+    language: parseCatalogLanguage(language),
+    created_at: cursor.createdAt,
+    id: cursor.id
+  })).toString('base64url')
+}
+
+export function decodeLanguageCatalogCursor(value, expectedLanguage) {
+  if (!value) return null
+  const language = parseCatalogLanguage(expectedLanguage)
+  try {
+    const cursor = JSON.parse(Buffer.from(String(value), 'base64url').toString('utf8'))
+    if (cursor.language !== language) validation('cursor: language mismatch')
+    if (
+      cursor.v !== BOOK_CATALOG_LANGUAGE_CONTRACT_VERSION ||
+      typeof cursor.created_at !== 'string' ||
+      !Number.isFinite(Date.parse(cursor.created_at)) ||
+      !UUID.test(cursor.id)
+    ) {
+      validation('cursor: invalid value')
+    }
+    return { createdAt: cursor.created_at, id: cursor.id }
+  } catch (error) {
+    if (error?.code === 'VALIDATION') throw error
+    validation('cursor: invalid value')
+  }
+}
+
 export function parseBookContentCursor(value) {
   if (value === undefined) return null
   if (typeof value !== 'string' || !value || value.length > 1024) {
@@ -296,6 +340,7 @@ export function bookJson(book) {
     title: book.title,
     author: book.author,
     genres: Array.isArray(book.genres) ? book.genres : [],
+    language: book.language ?? null,
     format: book.format,
     content_sha256: book.contentSha256,
     generation_status: book.generationStatus,
@@ -449,6 +494,21 @@ export function createBookCatalogRouter({
     res.json({
       items: result.items.map(bookJson),
       next_cursor: encodeCatalogCursor(result.nextCursor)
+    })
+  }))
+
+  router.get('/catalog/languages/:language', asyncRoute(async (req, res) => {
+    const language = parseCatalogLanguage(req.params.language)
+    const result = await service.listCatalogByLanguage({
+      language,
+      limit: limit(req.query.limit),
+      cursor: decodeLanguageCatalogCursor(req.query.cursor, language)
+    })
+    res.json({
+      contract_version: BOOK_CATALOG_LANGUAGE_CONTRACT_VERSION,
+      language,
+      items: result.items.map(bookJson),
+      next_cursor: encodeLanguageCatalogCursor(result.nextCursor, language)
     })
   }))
 

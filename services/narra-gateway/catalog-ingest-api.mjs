@@ -1,4 +1,5 @@
 import express from 'express'
+import { normalizeBookLanguage } from './book-language.mjs'
 import { createCatalogIngestService } from './catalog-ingest-service.mjs'
 import { requireOperatorAuth } from './security.mjs'
 
@@ -34,7 +35,9 @@ function text(value, name, max, { empty = false } = {}) {
 }
 
 export function parseCatalogUploadBody(body, maxBytes = 50 * 1024 * 1024) {
-  exactKeys(body, ['catalog_key', 'content_sha256', 'title', 'author', 'format', 'byte_size'], 'body')
+  exactKeys(body, [
+    'catalog_key', 'content_sha256', 'title', 'author', 'format', 'byte_size', 'language'
+  ], 'body')
   const catalogKey = text(body.catalog_key, 'catalog_key', 128)
   if (!CATALOG_KEY.test(catalogKey)) validation('catalog_key: invalid value')
   const format = text(body.format, 'format', 16)
@@ -45,6 +48,10 @@ export function parseCatalogUploadBody(body, maxBytes = 50 * 1024 * 1024) {
   if (!Number.isSafeInteger(body.byte_size) || body.byte_size < 1 || body.byte_size > maxBytes) {
     validation(`byte_size: expected 1-${maxBytes}`)
   }
+  const language = normalizeBookLanguage(body.language)
+  if (body.language !== undefined && body.language !== null && body.language !== '' && !language) {
+    validation('language: expected an ISO language tag')
+  }
   return {
     catalogKey,
     contentSha256: body.content_sha256,
@@ -52,7 +59,8 @@ export function parseCatalogUploadBody(body, maxBytes = 50 * 1024 * 1024) {
     author: text(body.author ?? '', 'author', 500, { empty: true }),
     format,
     mimeType: FORMATS[format],
-    byteSize: body.byte_size
+    byteSize: body.byte_size,
+    language
   }
 }
 
@@ -82,6 +90,7 @@ function responseJson(value) {
   return {
     book_edition_id: value.bookEditionId,
     catalog_key: value.catalogKey,
+    language: value.language ?? null,
     content_sha256: value.contentSha256,
     generation_status: value.status,
     ready: value.ready,

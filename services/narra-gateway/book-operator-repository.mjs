@@ -73,6 +73,7 @@ function bookValue(row) {
     catalogKey: row.catalog_key ?? undefined,
     title: row.title,
     author: row.author,
+    language: row.language ?? null,
     format: row.format,
     status: row.status,
     contentSha256: row.content_sha256,
@@ -236,7 +237,8 @@ export function createPostgresBookOperatorRepository(pool) {
     const editionsPromise = pool.query(
       `/* operator:list-editions */
        SELECT edition.id, edition.scope, edition.catalog_key, edition.title,
-              edition.author, edition.format, edition.status, edition.content_sha256,
+              edition.author, edition.language, edition.format, edition.status,
+              edition.content_sha256,
               edition.created_at, edition.updated_at,
               file.status AS source_status, file.byte_size
        FROM book_editions AS edition
@@ -469,7 +471,7 @@ export function createPostgresBookOperatorRepository(pool) {
   async function getBookJson(bookEditionId) {
     const edition = await pool.query(
       `/* operator:json-edition */
-       SELECT id, scope, catalog_key, title, author, format, status,
+       SELECT id, scope, catalog_key, title, author, language, format, status,
               content_sha256, created_at, updated_at
        FROM book_editions WHERE id = $1`,
       [bookEditionId]
@@ -542,6 +544,7 @@ export function createPostgresBookOperatorRepository(pool) {
         catalogKey: row.catalog_key ?? undefined,
         title: row.title,
         author: row.author,
+        language: row.language ?? null,
         format: row.format,
         status: row.status,
         contentSha256: row.content_sha256,

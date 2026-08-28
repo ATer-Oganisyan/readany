@@ -23,8 +23,8 @@ test('PostgreSQL persists markup and independently publishes character media', {
     await runBookMarkupMigrations(pool, { logger: { info() {} } })
     await pool.query(
       `INSERT INTO book_editions (
-         id, scope, catalog_key, content_sha256, title, author, format, status
-       ) VALUES ($1, 'catalog', $2, $3, 'Integration Book', 'ReadAny', 'epub', 'marking_up')`,
+         id, scope, catalog_key, content_sha256, title, author, language, format, status
+       ) VALUES ($1, 'catalog', $2, $3, 'Integration Book', 'ReadAny', 'en', 'epub', 'marking_up')`,
       [bookEditionId, `integration-${bookEditionId}`, hash]
     )
     await pool.query(
@@ -155,6 +155,17 @@ test('PostgreSQL persists markup and independently publishes character media', {
     const catalog = await repository.listCatalogBooks({ limit: 20 })
     const catalogEdition = catalog.items.find(({ id }) => id === bookEditionId)
     assert.ok(catalogEdition)
+    assert.equal(catalogEdition.language, 'en')
+    assert.equal(
+      (await repository.listCatalogBooks({ limit: 100, language: 'ru' }))
+        .items.some(({ id }) => id === bookEditionId),
+      false
+    )
+    assert.equal(
+      (await repository.listCatalogBooks({ limit: 100, language: 'en' }))
+        .items.some(({ id }) => id === bookEditionId),
+      true
+    )
     assert.equal(catalogEdition.cover.contentHash, 'e'.repeat(64))
     assert.equal((await repository.resolveBook({
       subjectId,
@@ -253,10 +264,20 @@ test('PostgreSQL persists markup and independently publishes character media', {
       contentSha256: localHash,
       title: 'Local Book',
       author: 'Reader',
-      format: 'epub'
+      format: 'epub',
+      language: 'ru'
     })
     localEditionId = prepared.id
     assert.equal(prepared.sourceStorage, 'local_only')
+    assert.equal(prepared.language, 'ru')
+    assert.equal((await repository.registerLocalBook({
+      subjectId,
+      proposedBookEditionId: randomUUID(),
+      contentSha256: localHash,
+      title: 'Local Book',
+      author: 'Reader',
+      format: 'epub'
+    })).language, 'ru')
     assert.equal(await repository.getReaderBookSource({
       bookEditionId: prepared.id
     }), null)

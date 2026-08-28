@@ -7,7 +7,7 @@ const BYTES = Buffer.from('catalog epub bytes')
 const HASH = createHash('sha256').update(BYTES).digest('hex')
 const EDITION = {
   id: 'book-1', catalogKey: 'catalog-book', contentSha256: HASH,
-  status: 'uploading'
+  language: 'en', status: 'uploading'
 }
 
 test('catalog ingestion verifies bytes, stores the source and queues canonical v3 analysis', async () => {
@@ -73,8 +73,11 @@ test('catalog ingestion verifies bytes, stores the source and queues canonical v
   })
   const begun = await service.begin({
     catalogKey: 'catalog-book', contentSha256: HASH, title: 'Book', author: 'Author',
-    format: 'epub', mimeType: 'application/epub+zip', byteSize: BYTES.byteLength
+    format: 'epub', mimeType: 'application/epub+zip', byteSize: BYTES.byteLength,
+    language: 'en'
   })
+  assert.equal(begun.language, 'en')
+  assert.equal(calls[0][1].language, 'en')
   assert.equal(begun.uploadPath, '/v2/admin/catalog/books/book-1/content')
   assert.match(calls[0][1].objectKey, /^books\/catalog\/catalog-book\/[a-f0-9]{64}\/source$/)
   await service.upload('book-1', BYTES, 'application/epub+zip')

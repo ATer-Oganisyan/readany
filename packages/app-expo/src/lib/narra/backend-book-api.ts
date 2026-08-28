@@ -6,6 +6,7 @@ import type { NarraCharacter } from "./types";
 
 export type BackendBookResolution = "catalog" | "private" | "local_registration_required";
 export type BackendManifestSource = "v2" | "v3";
+export type BackendCatalogLanguage = "ru" | "en";
 
 export interface BackendBookBinding {
   resolution: BackendBookResolution;
@@ -14,6 +15,7 @@ export interface BackendBookBinding {
   title?: string;
   author?: string;
   genres?: CatalogGenreId[];
+  language?: string | null;
   format?: string;
   contentSha256: string;
   generationStatus?: string;
@@ -42,6 +44,11 @@ export interface BackendCatalogBook extends BackendBookBinding {
 export interface BackendCatalogPage {
   books: BackendCatalogBook[];
   nextCursor: string | null;
+}
+
+export interface BackendLanguageCatalogPage extends BackendCatalogPage {
+  contractVersion: "book-catalog-language-v1";
+  language: BackendCatalogLanguage;
 }
 
 export type BackendBookSearchMode = "hybrid" | "semantic" | "lexical";
@@ -144,6 +151,14 @@ export interface BackendBookIdentity {
 
 type JsonRecord = Record<string, unknown>;
 
+function normalizedBookLanguage(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase().replaceAll("_", "-");
+  if (!/^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/.test(normalized)) return null;
+  const base = normalized.split("-", 1)[0];
+  return /^[a-z]{2,3}$/.test(base) ? base : null;
+}
+
 function backendCharacterKey(value: string, index: number): string {
   const ascii = value
     .normalize("NFKD")
@@ -194,6 +209,7 @@ function binding(value: JsonRecord): BackendBookBinding {
     title: typeof value.title === "string" ? value.title : undefined,
     author: typeof value.author === "string" ? value.author : undefined,
     genres: parseCatalogGenres(value.genres),
+    language: normalizedBookLanguage(value.language),
     format: typeof value.format === "string" ? value.format : undefined,
     contentSha256: String(value.content_sha256 || ""),
     generationStatus:
@@ -282,6 +298,76 @@ export async function fetchBackendCatalogBooksPage({
   };
 }
 
+export async function fetchBackendCatalogBooksByLanguagePage(
+  language: BackendCatalogLanguage,
+  {
+    limit = 24,
+    cursor = null,
+  }: {
+    limit?: number;
+    cursor?: string | null;
+  } = {},
+): Promise<BackendLanguageCatalogPage> {
+  if (language !== "ru" && language !== "en") {
+    throw new RangeError("Catalog language must be ru or en");
+  }
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+    throw new RangeError("Catalog page limit must be an integer from 1 to 100");
+  }
+  const query = `limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
+  const payload = await gatewayJson(`/v2/books/catalog/languages/${language}?${query}`);
+  if (
+    payload.contract_version !== "book-catalog-language-v1" ||
+    payload.language !== language ||
+    !Array.isArray(payload.items)
+  ) {
+    throw new NarraServiceError("SERVICE", "Backend вернул некорректную языковую категорию");
+  }
+  if (
+    payload.next_cursor !== undefined &&
+    payload.next_cursor !== null &&
+    typeof payload.next_cursor !== "string"
+  ) {
+    throw new NarraServiceError("SERVICE", "Backend вернул некорректный cursor каталога");
+  }
+  const books = payload.items.flatMap((value) => {
+    const book = catalogBook(value);
+    return book?.language === language ? [book] : [];
+  });
+  if (books.length !== payload.items.length) {
+    throw new NarraServiceError("SERVICE", "Backend смешал языки в категории каталога");
+  }
+  return {
+    contractVersion: "book-catalog-language-v1",
+    language,
+    books,
+    nextCursor: typeof payload.next_cursor === "string" ? payload.next_cursor : null,
+  };
+}
+
+export async function fetchBackendCatalogBooksByLanguage(
+  language: BackendCatalogLanguage,
+): Promise<BackendCatalogBook[]> {
+  const books: BackendCatalogBook[] = [];
+  const bookIds = new Set<string>();
+  const cursors = new Set<string>();
+  let cursor: string | null = null;
+  do {
+    const page = await fetchBackendCatalogBooksByLanguagePage(language, { limit: 100, cursor });
+    for (const book of page.books) {
+      if (bookIds.has(book.bookEditionId)) continue;
+      bookIds.add(book.bookEditionId);
+      books.push(book);
+    }
+    cursor = page.nextCursor;
+    if (cursor && cursors.has(cursor)) {
+      throw new NarraServiceError("SERVICE", "Backend зациклил cursor каталога");
+    }
+    if (cursor) cursors.add(cursor);
+  } while (cursor);
+  return books;
+}
+
 export async function fetchBackendCatalogBooks(): Promise<BackendCatalogBook[]> {
   const books: BackendCatalogBook[] = [];
   const bookIds = new Set<string>();
@@ -317,6 +403,7 @@ export async function registerLocalBackendBook(
   book: Book,
   contentSha256: string,
 ): Promise<BackendBookBinding> {
+  const language = normalizedBookLanguage(book.meta.language);
   return binding(
     await gatewayJson("/v2/books/local", {
       method: "POST",
@@ -326,6 +413,7 @@ export async function registerLocalBackendBook(
         title: book.meta.title,
         author: book.meta.author || "",
         format: book.format,
+        ...(language ? { language } : {}),
       }),
     }),
   );

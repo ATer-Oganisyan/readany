@@ -688,6 +688,7 @@ test('catalog listing never receives processing editions from the service contra
     id: 'catalog-1',
     scope: 'catalog',
     catalogKey: 'book',
+    language: 'ru',
     genres: ['literary-fiction', 'psychology-self-help'],
     cover: {
       objectKey: 'catalog/book/cover',
@@ -708,6 +709,7 @@ test('catalog listing never receives processing editions from the service contra
   })
   const result = await service.listCatalog({ limit: 1, cursor: null })
   assert.equal(result.items[0].ready, true)
+  assert.equal(result.items[0].language, 'ru')
   assert.deepEqual(result.items[0].genres, ['literary-fiction', 'psychology-self-help'])
   assert.deepEqual(result.items[0].cover, {
     contentHash: HASH,
@@ -716,6 +718,21 @@ test('catalog listing never receives processing editions from the service contra
     downloadPath: '/v2/books/catalog-1/cover/download'
   })
   assert.deepEqual(result.nextCursor, { createdAt: catalog.createdAt, id: catalog.id })
+})
+
+test('language catalog listing binds the requested category to the repository', async () => {
+  const calls = []
+  const service = createBookCatalogService({
+    repository: repository({
+      async listCatalogBooks(input) {
+        calls.push(input)
+        return { items: [{ ...EDITION, scope: 'catalog', catalogKey: 'book', language: 'en' }], nextCursor: null }
+      }
+    })
+  })
+  const result = await service.listCatalogByLanguage({ language: 'en', limit: 24, cursor: null })
+  assert.deepEqual(calls, [{ language: 'en', limit: 24, cursor: null }])
+  assert.equal(result.items[0].language, 'en')
 })
 
 test('catalog cover download is authorized before storage signing', async () => {
@@ -768,10 +785,11 @@ test('local registration and markup store only metadata and derived character pr
   })
   const registered = await service.registerLocalBook('reader', {
     contentSha256: HASH,
-    title: 'Book', author: 'Author', format: 'epub'
+    title: 'Book', author: 'Author', format: 'epub', language: 'en'
   })
   assert.equal(registered.sourceDownloadPath, undefined)
   assert.equal(calls[0][1].proposedBookEditionId, 'edition-proposed')
+  assert.equal(calls[0][1].language, 'en')
 
   const published = await service.publishLocalMarkup('reader', 'book-private', {
     characters: [{

@@ -112,6 +112,13 @@
                 <label>Название<input name="title" maxlength="500" required></label>
                 <label>Автор<input name="author" maxlength="500"></label>
               </div>
+              <label>Язык
+                <select name="language">
+                  <option value="">Не указан</option>
+                  <option value="ru">Русский</option>
+                  <option value="en">Английский</option>
+                </select>
+              </label>
               <label>Ключ каталога
                 <input name="catalogKey" maxlength="128" pattern="[a-z0-9][a-z0-9._-]{0,127}" required>
                 <small>Латиница, цифры, точка, дефис или подчёркивание.</small>

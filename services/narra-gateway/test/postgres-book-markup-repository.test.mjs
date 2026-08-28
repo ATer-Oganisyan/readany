@@ -108,16 +108,19 @@ test('catalog API prefers the identity worker display metadata', async () => {
     title: 'Мертвое озеро (Часть первая)', author: 'Николай Некрасов (1821—1877)',
     display_title: 'Мертвое озеро', display_author: 'Николай Некрасов',
     genres: ['mystery-thriller', 'literary-fiction'],
-    format: 'fb2', status: 'base_ready', source_storage: 'stored',
+    language: 'ru', format: 'fb2', status: 'base_ready', source_storage: 'stored',
     expires_at: null, created_at: new Date('2026-08-20T00:00:00.000Z')
   }] })])
   const repository = createPostgresBookMarkupRepository(pool)
-  const result = await repository.listCatalogBooks({ limit: 20 })
+  const result = await repository.listCatalogBooks({ limit: 20, language: 'ru' })
   assert.equal(result.items[0].title, 'Мертвое озеро')
   assert.equal(result.items[0].author, 'Николай Некрасов')
   assert.deepEqual(result.items[0].genres, ['mystery-thriller', 'literary-fiction'])
+  assert.equal(result.items[0].language, 'ru')
   assert.match(pool.queries[0].sql, /edition\.display_title, edition\.display_author/)
   assert.match(pool.queries[0].sql, /array_agg\(link\.genre ORDER BY link\.position\)/)
+  assert.match(pool.queries[0].sql, /edition\.language = \$4/)
+  assert.equal(pool.queries[0].params[3], 'ru')
 })
 
 test('private identity polling returns the normalized title as soon as its durable job publishes', async () => {
@@ -497,4 +500,16 @@ test('book content navigation migration stores deterministic reader structure', 
   )
   assert.match(migration, /ADD COLUMN content_navigation JSONB/)
   assert.match(migration, /jsonb_typeof\(content_navigation\) = 'object'/)
+})
+
+test('book language migration is nullable, backfills both catalog categories and indexes listing', async () => {
+  const migration = await readFile(
+    new URL('../migrations/020_book_languages.sql', import.meta.url),
+    'utf8'
+  )
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS language TEXT/)
+  assert.match(migration, /catalog_key LIKE 'narra-en-%' THEN 'en'/)
+  assert.match(migration, /catalog_key LIKE 'narra-ru-%' THEN 'ru'/)
+  assert.match(migration, /language IS NULL OR language ~ '\^\[a-z\]\{2,3\}\$'/)
+  assert.match(migration, /ON book_editions \(language, created_at DESC, id DESC\)/)
 })

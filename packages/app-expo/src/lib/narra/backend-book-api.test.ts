@@ -6,6 +6,7 @@ import {
   fetchBackendBookIdentity,
   fetchBackendBookManifest,
   fetchBackendCatalogBooks,
+  fetchBackendCatalogBooksByLanguagePage,
   fetchBackendCatalogBooksPage,
   publishLocalBackendMarkup,
   registerLocalBackendBook,
@@ -32,6 +33,7 @@ describe("backend book API", () => {
               catalog_key: "seagull",
               title: "Чайка",
               author: "Антон Чехов",
+              language: "ru",
               genres: ["drama", "literary-fiction"],
               format: "epub",
               content_sha256: "a".repeat(64),
@@ -55,6 +57,7 @@ describe("backend book API", () => {
         bookEditionId: "book-1",
         catalogKey: "seagull",
         title: "Чайка",
+        language: "ru",
         genres: ["drama", "literary-fiction"],
         sourceDownloadPath: "/v2/books/book-1/source/download",
         cover: {
@@ -93,11 +96,54 @@ describe("backend book API", () => {
     await expect(
       fetchBackendCatalogBooksPage({ limit: 24, cursor: "current/catalog+cursor" }),
     ).resolves.toEqual({
-      books: [expect.objectContaining({ bookEditionId: "book-1", catalogKey: "seagull" })],
+      books: [
+        expect.objectContaining({
+          bookEditionId: "book-1",
+          catalogKey: "seagull",
+          language: null,
+        }),
+      ],
       nextCursor: "next/catalog+cursor",
     });
     expect(vi.mocked(narraGatewayRequest)).toHaveBeenCalledWith(
       "/v2/books/catalog?limit=24&cursor=current%2Fcatalog%2Bcursor",
+      {},
+    );
+  });
+
+  it("loads a versioned catalog category by language", async () => {
+    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          contract_version: "book-catalog-language-v1",
+          language: "en",
+          items: [
+            {
+              resolution: "catalog",
+              book_edition_id: "book-1",
+              catalog_key: "book",
+              title: "Book",
+              author: "Author",
+              language: "en",
+              format: "epub",
+              content_sha256: "a".repeat(64),
+              ready: true,
+              source_download_path: "/v2/books/book-1/source/download",
+            },
+          ],
+          next_cursor: null,
+        }),
+      ),
+    );
+
+    await expect(fetchBackendCatalogBooksByLanguagePage("en", { limit: 24 })).resolves.toEqual({
+      contractVersion: "book-catalog-language-v1",
+      language: "en",
+      books: [expect.objectContaining({ bookEditionId: "book-1", language: "en" })],
+      nextCursor: null,
+    });
+    expect(vi.mocked(narraGatewayRequest)).toHaveBeenCalledWith(
+      "/v2/books/catalog/languages/en?limit=24",
       {},
     );
   });
@@ -223,6 +269,36 @@ describe("backend book API", () => {
       title: "Book",
       author: "Author",
       format: "epub",
+    });
+  });
+
+  it("adds a normalized nullable language to new local registrations", async () => {
+    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          resolution: "private",
+          book_edition_id: "book-1",
+          content_sha256: "a".repeat(64),
+          language: "en",
+          ready: false,
+        }),
+      ),
+    );
+    await registerLocalBackendBook(
+      {
+        id: "local-book",
+        format: "epub",
+        meta: { title: "Book", author: "Author", language: "en-US" },
+      } as never,
+      "a".repeat(64),
+    );
+    const [, request] = vi.mocked(narraGatewayRequest).mock.calls[0] ?? [];
+    expect(JSON.parse(String(request?.body))).toEqual({
+      content_sha256: "a".repeat(64),
+      title: "Book",
+      author: "Author",
+      format: "epub",
+      language: "en",
     });
   });
 

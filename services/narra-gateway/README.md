@@ -137,9 +137,15 @@ Migration `016_book_genres.sql` creates the single many-to-many relation
 staging catalog keys. Catalog ingestion applies the same hardcoded mapping to
 books added after migrations run.
 
-`GET /v2/books/catalog` exposes the additive `genres` array, for example
-`"genres": ["science-fiction", "romance"]`. Old clients can ignore it. New
-clients must ignore unknown future IDs.
+`GET /v2/books/catalog` exposes the additive `genres` array and nullable base
+language code, for example `"genres": ["science-fiction", "romance"]` and
+`"language": "ru"`. Old clients can ignore both fields. A missing language is
+serialized as `null`; new clients must continue accepting it.
+
+`GET /v2/books/catalog/languages/:language` is the versioned category contract.
+`:language` is `ru` or `en`; the response identifies itself as
+`book-catalog-language-v1` and uses a language-bound opaque cursor. A cursor
+issued for one language is rejected for the other language.
 
 `GET /v2/books/genres` exposes the complete normalized taxonomy independently
 from the paginated book list. The authenticated response is versioned and keeps
@@ -262,7 +268,8 @@ An idle worker reports that it is alive at `BOOK_MARKUP_IDLE_LOG_MS` intervals
 (five minutes by default), without writing a line on every queue poll.
 
 When `DATABASE_URL` is configured, Gateway enables the authenticated book API:
-`GET /v2/books/genres`, `GET /v2/books/catalog`, `POST /v2/books/resolve`,
+`GET /v2/books/genres`, `GET /v2/books/catalog`,
+`GET /v2/books/catalog/languages/:language`, `POST /v2/books/resolve`,
 `POST /v2/books/local`, `POST /v2/books/:bookEditionId/local-markup`,
 `GET /v2/books/:bookEditionId/identity`,
 `GET /v2/books/:bookEditionId/manifest` and
@@ -309,7 +316,10 @@ CATALOG_INGEST_TOKEN='<secret>' \
 CATALOG_MANIFEST=/secure/path/catalog.json npm run seed:catalog
 ```
 
-Paths in that manifest are resolved relative to the manifest itself. Neither
+Each future manifest entry may carry `language`; `ru-RU` and `en-US`-style tags
+are normalized to their base code. Existing manifests remain valid, and the
+seeder also infers `ru`/`en` from `narra-ru-`/`narra-en-` catalog keys. Paths in
+that manifest are resolved relative to the manifest itself. Neither
 the manifest nor the source books are shipped with the application. A manifest
 book may include `cover` and `cover_mime_type`; the seeder uploads that image
 through the separate cover prepare/content/complete flow. Public clients receive

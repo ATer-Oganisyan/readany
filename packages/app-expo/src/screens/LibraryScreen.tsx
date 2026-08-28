@@ -890,6 +890,7 @@ function LibraryScreenContent() {
             ...importedBook.meta,
             title: catalogBook.title,
             author: catalogBook.author,
+            language: catalogBook.language ?? importedBook.meta.language,
             coverUrl,
           },
         };

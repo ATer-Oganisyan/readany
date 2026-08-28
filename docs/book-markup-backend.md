@@ -61,7 +61,11 @@ All routes below require the existing installation bearer token:
 - `GET /v2/books/genres` returns the fixed, versioned list of normalized genres
   with Russian and English display labels and stable ordering;
 - `GET /v2/books/catalog` returns only catalog editions in `base_ready` or
-  `published` state and uses an opaque keyset cursor;
+  `published` state and uses an opaque keyset cursor. Every book has the
+  additive nullable `language` field;
+- `GET /v2/books/catalog/languages/:language` returns only `ru` or only `en`
+  books under the `book-catalog-language-v1` contract. Its opaque cursor is
+  bound to the selected language;
 - Catalog book bindings include the additive `genres` array with zero or more
   normalized genre IDs. One book may belong to several genres. Old clients may
   ignore the field; new clients must ignore unknown future IDs. The fixed
@@ -71,6 +75,7 @@ All routes below require the existing installation bearer token:
   hash reuses a ready catalog edition first, then the caller's private edition;
   otherwise the result is `local_registration_required`;
 - `POST /v2/books/local` registers only the local book's hash and metadata;
+  optional `language` accepts an ISO language tag and stores its base code;
 - `POST /v2/books/:bookEditionId/local-markup` accepts only derived character
   profiles and appearance fractions produced by the client;
 - `GET /v2/books/:bookEditionId/manifest` returns every stable character profile
