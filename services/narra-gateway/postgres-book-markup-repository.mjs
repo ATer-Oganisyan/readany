@@ -1337,6 +1337,7 @@ export function createPostgresBookMarkupRepository(pool, {
            ON cover.book_edition_id = edition.id AND cover.status = 'ready'
          WHERE edition.scope = 'catalog'
            AND edition.status IN ('base_ready', 'published')
+           AND edition.catalog_hidden_at IS NULL
            AND (
              $1::timestamptz IS NULL OR
              (edition.created_at, edition.id) < ($1::timestamptz, $2::uuid)
@@ -1355,6 +1356,33 @@ export function createPostgresBookMarkupRepository(pool, {
           ? { createdAt: last.createdAt, id: last.id }
           : null
       }
+    },
+
+    async hideReplacedCatalogBook({ bookEditionId, replacedByBookEditionId }) {
+      return transaction(pool, async (client) => {
+        const result = await client.query(
+          `UPDATE book_editions AS old_edition
+           SET catalog_hidden_at = now(),
+               replaced_by_book_edition_id = replacement.id,
+               updated_at = now()
+           FROM book_editions AS replacement
+           WHERE old_edition.id = $1
+             AND replacement.id = $2
+             AND old_edition.id <> replacement.id
+             AND old_edition.scope = 'catalog'
+             AND replacement.scope = 'catalog'
+             AND old_edition.language IS NOT DISTINCT FROM replacement.language
+             AND replacement.status IN ('base_ready', 'published')
+             AND EXISTS (
+               SELECT 1 FROM book_analysis_publications AS publication
+               WHERE publication.book_edition_id = replacement.id
+             )
+           RETURNING old_edition.id, old_edition.catalog_hidden_at,
+                     old_edition.replaced_by_book_edition_id`,
+          [bookEditionId, replacedByBookEditionId]
+        )
+        return result.rows[0] || null
+      })
     },
 
     async resolveBook({ subjectId, source, catalogKey, contentSha256 }) {

@@ -119,8 +119,33 @@ test('catalog API prefers the identity worker display metadata', async () => {
   assert.equal(result.items[0].language, 'ru')
   assert.match(pool.queries[0].sql, /edition\.display_title, edition\.display_author/)
   assert.match(pool.queries[0].sql, /array_agg\(link\.genre ORDER BY link\.position\)/)
+  assert.match(pool.queries[0].sql, /edition\.catalog_hidden_at IS NULL/)
   assert.match(pool.queries[0].sql, /edition\.language = \$4/)
   assert.equal(pool.queries[0].params[3], 'ru')
+})
+
+test('catalog replacement hides only an already published same-language successor', async () => {
+  const hiddenAt = new Date('2026-08-30T00:00:00.000Z')
+  const pool = scriptedPool([() => ({ rows: [{
+    id: 'old-book',
+    catalog_hidden_at: hiddenAt,
+    replaced_by_book_edition_id: 'new-book'
+  }] })])
+  const repository = createPostgresBookMarkupRepository(pool)
+
+  const result = await repository.hideReplacedCatalogBook({
+    bookEditionId: 'old-book',
+    replacedByBookEditionId: 'new-book'
+  })
+
+  assert.equal(result.id, 'old-book')
+  assert.equal(result.replaced_by_book_edition_id, 'new-book')
+  const update = pool.queries.find(({ sql }) => /UPDATE book_editions AS old_edition/.test(sql))
+  assert.ok(update)
+  assert.deepEqual(update.params, ['old-book', 'new-book'])
+  assert.match(update.sql, /old_edition\.language IS NOT DISTINCT FROM replacement\.language/)
+  assert.match(update.sql, /replacement\.status IN \('base_ready', 'published'\)/)
+  assert.match(update.sql, /book_analysis_publications AS publication/)
 })
 
 test('private identity polling returns the normalized title as soon as its durable job publishes', async () => {
@@ -512,4 +537,18 @@ test('book language migration is nullable, backfills both catalog categories and
   assert.match(migration, /catalog_key LIKE 'narra-ru-%' THEN 'ru'/)
   assert.match(migration, /language IS NULL OR language ~ '\^\[a-z\]\{2,3\}\$'/)
   assert.match(migration, /ON book_editions \(language, created_at DESC, id DESC\)/)
+})
+
+test('catalog replacement migration preserves old editions while hiding them from listings', async () => {
+  const migration = await readFile(
+    new URL('../migrations/021_catalog_replacements.sql', import.meta.url),
+    'utf8'
+  )
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS catalog_hidden_at TIMESTAMPTZ/)
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS replaced_by_book_edition_id UUID/)
+  assert.match(migration, /FOREIGN KEY \(replaced_by_book_edition_id\)/)
+  assert.match(migration, /REFERENCES book_editions\(id\)/)
+  assert.match(migration, /ON DELETE SET NULL/)
+  assert.match(migration, /catalog_hidden_at IS NULL/)
+  assert.doesNotMatch(migration, /DELETE FROM book_editions/)
 })
