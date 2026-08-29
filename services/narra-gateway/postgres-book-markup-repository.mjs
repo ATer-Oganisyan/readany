@@ -1372,6 +1372,9 @@ export function createPostgresBookMarkupRepository(pool, {
              AND old_edition.scope = 'catalog'
              AND replacement.scope = 'catalog'
              AND old_edition.language IS NOT DISTINCT FROM replacement.language
+             AND lower(btrim(COALESCE(NULLIF(old_edition.display_title, ''), old_edition.title))) =
+                 lower(btrim(COALESCE(NULLIF(replacement.display_title, ''), replacement.title)))
+             AND old_edition.content_sha256 <> replacement.content_sha256
              AND replacement.status IN ('base_ready', 'published')
              AND EXISTS (
                SELECT 1 FROM book_analysis_publications AS publication
