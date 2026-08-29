@@ -83,6 +83,16 @@ function claimValue(claim) {
   return typeof claim?.value === 'string' ? claim.value : ''
 }
 
+function publicCharacterFullName(character) {
+  const name = String(character?.name || '').normalize('NFKC').trim().toLocaleLowerCase('ru-RU')
+  const fullName = String(character?.fullName || '').trim()
+  const normalizedFullName = fullName.normalize('NFKC').toLocaleLowerCase('ru-RU')
+  const unknownMarker = /^(?:полное имя|фамили[яи]).*(?:не назван|не указан|неизвест)|^(?:full name|surname).*(?:not (?:given|mentioned)|unknown)/iu
+  return fullName && normalizedFullName !== name && !unknownMarker.test(normalizedFullName)
+    ? fullName
+    : ''
+}
+
 function analysisCharacterProfile(character, analysisSource) {
   const gender = claimValue(character.gender)
   const normalizedGender = gender === 'male' || gender === 'female' ? gender : undefined
@@ -92,6 +102,7 @@ function analysisCharacterProfile(character, analysisSource) {
     .join(', ')
   return {
     role: claimValue(character.role) || 'Персонаж истории',
+    description: claimValue(character.description),
     gender: normalizedGender,
     traits: character.traits.map(claimValue).filter(Boolean).slice(0, 5),
     personalityTimelineVersion: character.personalityTimelineVersion || undefined,
@@ -280,7 +291,7 @@ export function createBookCatalogService({
           .map((character) => ({
             characterKey: character.characterKey,
             name: character.name,
-            fullName: character.fullName,
+            fullName: publicCharacterFullName(character),
             firstAppearanceTextOffset: character.firstAppearanceTextOffset,
             provisional: true,
             state: 'preparing',
@@ -329,7 +340,7 @@ export function createBookCatalogService({
           return {
             characterKey: character.characterKey,
             name: character.name,
-            fullName: character.fullName,
+            fullName: publicCharacterFullName(character),
             firstAppearanceTextOffset: character.firstAppearanceTextOffset,
             provisional: false,
             state,
@@ -372,7 +383,7 @@ export function createBookCatalogService({
       characters.push({
         characterKey: character.characterKey,
         name: character.name,
-        fullName: character.fullName,
+        fullName: publicCharacterFullName(character),
         firstAppearanceTextOffset: character.firstAppearanceTextOffset,
         state,
         profile: character.data,

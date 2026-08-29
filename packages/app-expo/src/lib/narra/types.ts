@@ -16,8 +16,10 @@ export interface NarraPassport {
 export interface NarraCharacter {
   id: string;
   name: string;
+  /** Empty when the book does not provide a distinct, evidence-backed full name. */
   fullName: string;
   role: string;
+  description?: string;
   gender: NarraGender;
   voice: string;
   /** Просодия при повторе голоса из исчерпанного пула (pitch — полутоны, rate — множитель). */

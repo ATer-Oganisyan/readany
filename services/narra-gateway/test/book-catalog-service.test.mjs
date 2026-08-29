@@ -166,7 +166,11 @@ test('catalog manifest exposes validated v3 as the canonical markup', async () =
                   role: { value: 'Главный герой', evidenceIds: ['role-1'], confidence: 0.9 },
                   age: null,
                   gender: null,
-                  description: null,
+                  description: {
+                    value: 'Подробное описание главного героя.',
+                    evidenceIds: ['description-1'],
+                    confidence: 0.9
+                  },
                   traits: [{ value: 'смелый', evidenceIds: ['trait-1'], confidence: 0.8 }],
                   personalityTimelineVersion: 'progressive-personality-v1',
                   personalitySnapshots: [{
@@ -192,7 +196,7 @@ test('catalog manifest exposes validated v3 as the canonical markup', async () =
                 {
                   characterKey: 'future',
                   name: 'Future',
-                  fullName: 'Future Hero',
+                  fullName: 'Future',
                   aliases: [],
                   identityEvidenceIds: ['identity-future'],
                   firstAppearanceTextOffset: 1_500,
@@ -236,6 +240,11 @@ test('catalog manifest exposes validated v3 as the canonical markup', async () =
     ]
   )
   assert.equal(preview.characters[0].state, 'ready')
+  assert.equal(
+    preview.characters[0].profile.description,
+    'Подробное описание главного героя.'
+  )
+  assert.equal(preview.characters[1].fullName, '')
   assert.equal(
     preview.characters[0].profile.personalityTimelineVersion,
     'progressive-personality-v1'
@@ -343,7 +352,7 @@ test('processing v3 manifest exposes only reader-visible provisional characters'
   assert.deepEqual(manifest.characters, [{
     characterKey: 'provisional:visible',
     name: 'Джейн',
-    fullName: 'Джейн',
+    fullName: '',
     firstAppearanceTextOffset: 100,
     provisional: true,
     state: 'preparing',

@@ -43,8 +43,9 @@ export function buildCharacterSystemPrompt(
   language: "ru" | "en" = "ru",
 ): string {
   const safeProgress = normalizeReadingProgress(progress);
+  const displayName = character.fullName || character.name;
   if (language === "en") {
-    return `You are ${character.fullName} from “${title}”. Stay completely in character.
+    return `You are ${displayName} from “${title}”. Stay completely in character.
 Traits: ${character.traits.join(", ")}.
 Role: ${character.role}.
 Speaking style: ${character.speechStyle}.
@@ -54,7 +55,7 @@ The reader has completed about ${Math.round(safeProgress * 100)}% of the book. D
 You may evade, but do not lie. Speak honestly about events the reader has already reached and do not invent facts that are not in the book.
 ${memory ? `Your long-term memory of the reader:\n${memory}` : ""}`;
   }
-  return `Ты — ${character.fullName} из книги «${title}». Полностью оставайся в роли.
+  return `Ты — ${displayName} из книги «${title}». Полностью оставайся в роли.
 Характер: ${character.traits.join(", ")}.
 Роль: ${character.role}.
 Манера речи: ${character.speechStyle}.
@@ -221,7 +222,14 @@ export function NarraCharacterChatScreen({ route, navigation }: Props) {
               },
               {
                 role: "user",
-                content: `Короткое имя персонажа: ${character.name}\nПолное имя для понимания контекста: ${character.fullName}`,
+                content: [
+                  `Короткое имя персонажа: ${character.name}`,
+                  character.fullName
+                    ? `Полное имя для понимания контекста: ${character.fullName}`
+                    : "",
+                ]
+                  .filter(Boolean)
+                  .join("\n"),
               },
             ],
             temperature: 0,

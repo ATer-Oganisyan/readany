@@ -111,6 +111,26 @@ describe("Narra analysis normalization", () => {
     expect(character.voice).toBe("Ast");
   });
 
+  it("не выдаёт короткое имя или служебную заглушку за полное имя", () => {
+    const characters = normalizeCharacterAnalysisResponse({
+      characters: [
+        {
+          name: "Настенька",
+          fullName: "Настенька",
+          description: "Настенька — семнадцатилетняя внучка своей бабушки.",
+        },
+        { name: "Матрена", fullName: "фамилия не названа" },
+      ],
+    });
+
+    expect(characters[0]).toMatchObject({
+      name: "Настенька",
+      fullName: "",
+      description: "Настенька — семнадцатилетняя внучка своей бабушки.",
+    });
+    expect(characters[1]).toMatchObject({ name: "Матрена", fullName: "" });
+  });
+
   it("выставляет пороги открытия из appearanceChapter: первая глава — 0, дальше по числу глав", () => {
     const characters = normalizeCharacterAnalysisResponse(
       '{"characters":[{"name":"Ранний","gender":"male","appearanceChapter":1},{"name":"Поздняя","gender":"female","appearanceChapter":11}]}',

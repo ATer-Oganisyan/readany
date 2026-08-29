@@ -277,6 +277,16 @@ export interface NormalizeCharacterOptions extends AssignVoicesOptions {
   preserveProvidedVoices?: boolean;
 }
 
+function usableFullName(value: string, name: string): string {
+  const normalized = value.normalize("NFKC").trim().toLocaleLowerCase("ru-RU");
+  const normalizedName = name.normalize("NFKC").trim().toLocaleLowerCase("ru-RU");
+  const unknownMarker =
+    /^(?:полное имя|фамили[яи]).*(?:не назван|не указан|неизвест)|^(?:full name|surname).*(?:not (?:given|mentioned)|unknown)/iu;
+  return normalized && normalized !== normalizedName && !unknownMarker.test(normalized)
+    ? value.trim()
+    : "";
+}
+
 export function normalizeCharacterAnalysisResponse(
   input: unknown,
   options: NormalizeCharacterOptions = {},
@@ -286,9 +296,13 @@ export function normalizeCharacterAnalysisResponse(
   const characters = candidates.slice(0, MAX_NARRA_CHARACTERS).flatMap((candidate, index) => {
     if (!candidate || typeof candidate !== "object") return [];
     const raw = candidate as Record<string, unknown>;
-    const fullName = String(raw.fullName || raw.name || "").trim();
-    if (!fullName) return [];
-    const name = String(raw.name || fullName.split(/\s+/)[0]).trim();
+    const explicitFullName = Object.prototype.hasOwnProperty.call(raw, "fullName");
+    const rawFullName = String(raw.fullName || "").trim();
+    const rawName = String(raw.name || "").trim();
+    const fullNameCanIdentifyCharacter = usableFullName(rawFullName, rawName);
+    const name = String(rawName || fullNameCanIdentifyCharacter.split(/\s+/)[0] || "").trim();
+    if (!name) return [];
+    const fullName = explicitFullName ? usableFullName(rawFullName, name) : name;
     // Ударение имени для озвучки (P9): поле опциональное, валидация формы —
     // в stress-markup при построении словаря.
     const stressedName = typeof raw.stressedName === "string" ? raw.stressedName.trim() : "";
@@ -301,6 +315,10 @@ export function normalizeCharacterAnalysisResponse(
         fullName,
         stressedName: stressedName && stressedName !== "null" ? stressedName : undefined,
         role: String(raw.role || "Персонаж истории"),
+        description:
+          typeof raw.description === "string" && raw.description.trim()
+            ? raw.description.trim()
+            : undefined,
         gender,
         voice:
           preserveProvidedVoices && typeof raw.voice === "string"

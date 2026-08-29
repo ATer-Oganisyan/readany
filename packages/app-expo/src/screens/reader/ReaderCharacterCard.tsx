@@ -354,6 +354,7 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
     if (!character || !liveCharacter) return null;
 
     const displayName = character.fullName || character.name;
+    const biography = liveCharacter.description || liveCharacter.role;
     const nameNeedsFitting = nameFit?.name === displayName && nameFit.needsFitting;
     const fittedDisplayName = nameNeedsFitting
       ? splitNameIntoTwoBalancedLines(displayName)
@@ -541,7 +542,7 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
           {embedded ? (
             <View style={styles.embeddedDetailsBlock}>
               <NativeCharacterDetailsCells
-                bio={liveCharacter.role || "—"}
+                bio={biography || "—"}
                 bioLabel={t("narra.bio", "Био")}
                 cellBackgroundColor={colors.primary10}
                 character={personalityValue || "—"}
@@ -549,8 +550,8 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
                 isDark={portraitForeground.isDark}
               />
             </View>
-          ) : liveCharacter.role ? (
-            <Text style={styles.description}>{liveCharacter.role}</Text>
+          ) : biography ? (
+            <Text style={styles.description}>{biography}</Text>
           ) : null}
           {!embedded && personalityValue ? (
             <Text style={styles.description}>

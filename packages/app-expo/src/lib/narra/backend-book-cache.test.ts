@@ -67,7 +67,11 @@ function manifest(assetTypes: string[]): BackendBookManifest {
         fullName: "Анна Каренина",
         firstAppearanceTextOffset: 90,
         state: "ready",
-        profile: { gender: "female", role: "Героиня" },
+        profile: {
+          gender: "female",
+          role: "Героиня",
+          description: "Анна — центральная героиня романа.",
+        },
         bundle: {
           version: "character-bundle-v1",
           assets: assetTypes.map((type, index) => ({
@@ -99,6 +103,7 @@ describe("backend book media cache", () => {
       expect.objectContaining({
         id: "anna",
         name: "Анна",
+        description: "Анна — центральная героиня романа.",
         unlockProgress: 0.09,
         mediaSource: "backend",
         mediaState: "preparing",
