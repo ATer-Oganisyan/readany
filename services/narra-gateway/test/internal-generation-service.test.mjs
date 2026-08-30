@@ -1022,6 +1022,41 @@ test('internal generation service attributes only known TTS atoms to known chara
   assert.match(chatRequest.messages[0].content, /только characterKey из CHARACTERS/)
 })
 
+test('internal generation service turns invalid provider TTS identities into abstentions', async () => {
+  const service = createInternalGenerationService({
+    storage: memoryStorage(),
+    logger: { info() {}, error() {} },
+    async completeChat() {
+      return JSON.stringify({ assignments: [
+        { atomId: 'invented', characterKey: 'character:ivan', confidence: 1 },
+        { atomId: 'tts:0:1', characterKey: 'character:ghost', confidence: 0.9 }
+      ] })
+    },
+    async generatePortrait() { throw new Error('unused') },
+    async synthesizeSpeech() { throw new Error('unused') },
+    async generateIdleAnimation() { throw new Error('unused') }
+  })
+  const result = await service.generateBookTtsMarkup({
+    idempotencyKey: 'publication-1:tts:provider-abstention:book-tts-script-v1',
+    bookEditionId: 'book-1', sourcePublicationId: 'publication-1',
+    normalizedTextHash: 'a'.repeat(64), markupVersion: 'book-tts-script-v1',
+    requestId: 'provider-abstention', bookTitle: 'Книга', bookAuthor: 'Автор',
+    section: { key: 'chapter-1', index: 0 },
+    characters: [{
+      characterKey: 'character:ivan', name: 'Иван', fullName: 'Иван', aliases: []
+    }],
+    coreAtoms: [
+      { atomId: 'tts:0:1', kind: 'speech', text: '— Привет.', startOffset: 0, endOffset: 9 },
+      { atomId: 'tts:0:2', kind: 'speech', text: '— Кто ты?', startOffset: 10, endOffset: 18 }
+    ],
+    contextAtoms: [{ atomId: 'tts:0:1', kind: 'speech', text: '— Привет.' }]
+  })
+  assert.deepEqual(result, { assignments: [
+    { atomId: 'tts:0:1', characterKey: null, confidence: 0 },
+    { atomId: 'tts:0:2', characterKey: null, confidence: 0 }
+  ] })
+})
+
 test('internal generation service reconciles only existing identity keys idempotently', async () => {
   const storage = memoryStorage()
   let chatCalls = 0

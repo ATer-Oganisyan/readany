@@ -185,6 +185,13 @@ export function createBookTtsMarkupRequests({
   const roster = (characters ?? []).map(publicCharacter)
   const requests = []
   for (const draft of drafts) {
+    const sectionIdentity = createHash('sha256').update(JSON.stringify({
+      key: draft.key,
+      title: draft.title,
+      index: draft.index,
+      startOffset: draft.startOffset,
+      endOffset: draft.endOffset
+    })).digest('hex').slice(0, 16)
     const speech = draft.atoms.filter(({ kind, text }) => kind === 'speech' && text.trim())
     let cursor = 0
     while (cursor < speech.length) {
@@ -203,10 +210,12 @@ export function createBookTtsMarkupRequests({
         const startOffset = Math.max(atom.startOffset, contextStart)
         const endOffset = Math.min(atom.endOffset, contextEnd)
         if (endOffset <= startOffset) return []
+        const text = atom.text.slice(startOffset - atom.startOffset, endOffset - atom.startOffset)
+        if (!text.trim()) return []
         return [{
           atomId: atom.id,
           kind: atom.kind,
-          text: atom.text.slice(startOffset - atom.startOffset, endOffset - atom.startOffset)
+          text
         }]
       })
       requests.push({
@@ -214,7 +223,7 @@ export function createBookTtsMarkupRequests({
         sourcePublicationId,
         normalizedTextHash,
         markupVersion: BOOK_TTS_MARKUP_VERSION,
-        requestId: `${sourcePublicationId}:${draft.index}:${requests.length}`,
+        requestId: `${sourcePublicationId}:${sectionIdentity}:${requests.length}`,
         section: {
           key: draft.key, title: draft.title, index: draft.index,
           startOffset: draft.startOffset, endOffset: draft.endOffset
@@ -228,6 +237,36 @@ export function createBookTtsMarkupRequests({
     }
   }
   return requests
+}
+
+export function normalizeBookTtsProviderAssignments(raw, { coreAtoms, characters }) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw) || !Array.isArray(raw.assignments)) {
+    invalid('assignments: expected an array')
+  }
+  const atoms = coreAtoms.filter(({ kind }) => kind === 'speech')
+  const atomIds = new Set(atoms.map((atom) => atom.atomId ?? atom.id))
+  const characterKeys = new Set((characters ?? []).map(({ characterKey }) => characterKey))
+  const byAtom = new Map()
+  for (const assignment of raw.assignments) {
+    const atomId = String(assignment?.atomId || '').trim()
+    if (!atomIds.has(atomId) || byAtom.has(atomId)) continue
+    const candidate = assignment.characterKey == null || assignment.characterKey === ''
+      ? null
+      : String(assignment.characterKey).trim()
+    const confidence = Number(assignment.confidence)
+    const characterKey = candidate && characterKeys.has(candidate) ? candidate : null
+    byAtom.set(atomId, {
+      atomId,
+      characterKey,
+      confidence: characterKey && Number.isFinite(confidence) && confidence >= 0 && confidence <= 1
+        ? confidence
+        : 0
+    })
+  }
+  return atoms.map((atom) => {
+    const atomId = atom.atomId ?? atom.id
+    return byAtom.get(atomId) ?? { atomId, characterKey: null, confidence: 0 }
+  })
 }
 
 export function normalizeBookTtsAssignments(raw, { coreAtoms, characters }) {

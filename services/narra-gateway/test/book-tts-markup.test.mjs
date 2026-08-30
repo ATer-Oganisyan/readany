@@ -6,6 +6,7 @@ import {
   createBookTtsMarkupRequests,
   createBookTtsSectionDrafts,
   normalizeBookTtsAssignments,
+  normalizeBookTtsProviderAssignments,
   normalizeBookTtsScript
 } from '../book-tts-markup.mjs'
 
@@ -57,6 +58,48 @@ test('TTS requests send numbered speech atoms and a closed canonical character r
   assert.equal(requests[0].markupVersion, BOOK_TTS_MARKUP_VERSION)
 })
 
+test('TTS requests omit whitespace-only context atoms rejected by the generator contract', () => {
+  const drafts = [{
+    key: 'chapter-1', title: '', index: 0, startOffset: 0, endOffset: 12,
+    atoms: [
+      { id: 'tts:0:0', kind: 'narration', startOffset: 0, endOffset: 2, text: '\n\n' },
+      { id: 'tts:0:1', kind: 'speech', startOffset: 2, endOffset: 12, text: '"Hello."  ' }
+    ]
+  }]
+  const [request] = createBookTtsMarkupRequests({
+    bookEditionId: 'book-1', sourcePublicationId: 'publication-1',
+    normalizedTextHash: 'a'.repeat(64), drafts, characters: CHARACTERS
+  })
+
+  assert.ok(request.contextAtoms.every(({ text }) => text.trim().length > 0))
+})
+
+test('TTS request identity changes when the same publication gets chapter boundaries', () => {
+  const common = {
+    bookEditionId: 'book-1', sourcePublicationId: 'publication-1',
+    normalizedTextHash: 'a'.repeat(64), characters: CHARACTERS
+  }
+  const atom = {
+    id: 'tts:0:0', kind: 'speech', startOffset: 10, endOffset: 20, text: '"Hello."  '
+  }
+  const [wholeBook] = createBookTtsMarkupRequests({
+    ...common,
+    drafts: [{
+      key: 'document', title: '', index: 0, startOffset: 0, endOffset: 100,
+      atoms: [atom]
+    }]
+  })
+  const [chapter] = createBookTtsMarkupRequests({
+    ...common,
+    drafts: [{
+      key: 'chapter-1', title: 'Chapter I', index: 0, startOffset: 10, endOffset: 50,
+      atoms: [atom]
+    }]
+  })
+
+  assert.notEqual(wholeBook.requestId, chapter.requestId)
+})
+
 test('TTS requests clip very large narration to the configured attribution context', () => {
   const text = `${'A'.repeat(50_000)}\n\n"Hello."\n\n${'B'.repeat(50_000)}`
   const drafts = createBookTtsSectionDrafts({
@@ -89,6 +132,21 @@ test('LLM assignments cannot invent atoms or characters', () => {
   assert.throws(() => normalizeBookTtsAssignments({
     assignments: [{ atomId: speechIds[0], characterKey: 'character:ghost', confidence: 1 }]
   }, { coreAtoms: draft.atoms, characters: CHARACTERS }), /unknown character/)
+})
+
+test('provider assignments abstain safely when the LLM omits or invents identities', () => {
+  const coreAtoms = [
+    { atomId: 'tts:0:1', kind: 'speech', text: '"Hello."' },
+    { atomId: 'tts:0:2', kind: 'speech', text: '"Who are you?"' }
+  ]
+  assert.deepEqual(normalizeBookTtsProviderAssignments({ assignments: [
+    { atomId: 'invented', characterKey: 'character:ivan', confidence: 1 },
+    { atomId: 'tts:0:1', characterKey: 'character:ghost', confidence: 0.9 },
+    { atomId: 'tts:0:1', characterKey: 'character:ivan', confidence: 0.8 }
+  ] }, { coreAtoms, characters: CHARACTERS }), [
+    { atomId: 'tts:0:1', characterKey: null, confidence: 0 },
+    { atomId: 'tts:0:2', characterKey: null, confidence: 0 }
+  ])
 })
 
 test('published TTS script is an additive exact source-bound artifact', () => {

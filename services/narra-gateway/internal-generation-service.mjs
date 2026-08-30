@@ -28,7 +28,7 @@ import {
 } from './progressive-personality.mjs'
 import {
   BOOK_TTS_MARKUP_VERSION,
-  normalizeBookTtsAssignments
+  normalizeBookTtsProviderAssignments
 } from './book-tts-markup.mjs'
 
 const IDENTIFIER = /^[a-z0-9][a-z0-9._:-]{0,255}$/i
@@ -2134,7 +2134,7 @@ export function createInternalGenerationService({
       return cached(storage, input.idempotencyKey, input, async () => {
         const response = await completeChat({ messages: ttsMarkupMessages(input), signal })
         return {
-          assignments: normalizeBookTtsAssignments(parseJsonObject(response), {
+          assignments: normalizeBookTtsProviderAssignments(parseJsonObject(response), {
             coreAtoms: input.coreAtoms,
             characters: input.characters
           })

@@ -12,11 +12,13 @@ process.once('SIGINT', () => shutdown.abort())
 
 function delay(milliseconds) {
   return new Promise((resolve) => {
-    const timer = setTimeout(resolve, milliseconds)
-    shutdown.signal.addEventListener('abort', () => {
+    const finish = () => {
       clearTimeout(timer)
+      shutdown.signal.removeEventListener('abort', finish)
       resolve()
-    }, { once: true })
+    }
+    const timer = setTimeout(finish, milliseconds)
+    shutdown.signal.addEventListener('abort', finish, { once: true })
   })
 }
 
