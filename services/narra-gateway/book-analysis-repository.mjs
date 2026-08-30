@@ -2293,14 +2293,18 @@ export function createPostgresBookAnalysisRepository(pool, {
         }
         const reportId = idFactory()
         const reportHash = contentHash(report)
+        const reportArtifactKey = markup.rows[0].artifact_key === 'primary'
+          ? 'primary'
+          : markup.rows[0].artifact_key
         await client.query(
           `INSERT INTO book_analysis_artifacts (
              id, run_id, snapshot_id, artifact_kind, artifact_key,
              schema_version, status, content_hash, data
-           ) VALUES ($1, $2, $3, 'validation_report', 'primary', 1, $4, $5, $6::jsonb)`,
+           ) VALUES ($1, $2, $3, 'validation_report', $7, 1, $4, $5, $6::jsonb)`,
           [
             reportId, job.runId, markup.rows[0].snapshot_id,
-            report.valid ? 'valid' : 'invalid', reportHash, JSON.stringify(report)
+            report.valid ? 'valid' : 'invalid', reportHash, JSON.stringify(report),
+            reportArtifactKey
           ]
         )
         await client.query(
