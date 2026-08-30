@@ -16,7 +16,9 @@ import {
   parseLocalBookBody,
   parseLocalMarkupBody,
   parseReaderProgressBody,
-  parseSceneAtBody
+  parseSceneAtBody,
+  manifestJson,
+  ttsSectionJson
 } from '../book-catalog-api.mjs'
 
 const ID = '123e4567-e89b-42d3-a456-426614174000'
@@ -51,6 +53,40 @@ test('book catalog router exposes a separate genres endpoint', () => {
   assert.ok(routes.some(({ path, methods }) => path === '/:bookEditionId/identity' && methods.get))
   assert.ok(routes.some(({ path, methods }) =>
     path === '/:bookEditionId/content/toc' && methods.get))
+  assert.ok(routes.some(({ path, methods }) =>
+    path === '/:bookEditionId/tts-script/sections/:sectionIndex' && methods.get))
+})
+
+test('manifest polling exposes additive TTS markup state without changing book markup', () => {
+  const json = manifestJson({
+    source: 'v3', book: {}, availability: 'ready', readerTextOffset: 0,
+    readingFraction: 0, markup: null, characters: [],
+    ttsMarkup: {
+      status: 'processing', version: 'book-tts-script-v1', revision: null,
+      retryAfterMs: 10_000
+    }
+  })
+  assert.deepEqual(json.tts_markup, {
+    status: 'processing', version: 'book-tts-script-v1', revision: null,
+    retry_after_ms: 10_000
+  })
+})
+
+test('TTS section JSON carries exact source ranges and canonical character keys', () => {
+  const result = ttsSectionJson({
+    status: 'ready', version: 'book-tts-script-v1', revision: 2,
+    normalizedTextHash: 'a'.repeat(64),
+    section: {
+      key: 'chapter-1', title: 'Глава 1', index: 0, startOffset: 0, endOffset: 6,
+      segments: [{
+        id: 'tts:0:0', startOffset: 0, endOffset: 6, text: 'Привет',
+        kind: 'speech', characterKey: 'character:ivan', confidence: 0.95
+      }]
+    }
+  })
+  assert.equal(result.contract_version, 'book-tts-script-v1')
+  assert.equal(result.section.segments[0].character_key, 'character:ivan')
+  assert.equal(result.section.segments[0].start_offset, 0)
 })
 
 test('language catalog endpoint returns its versioned filtered protocol', async () => {

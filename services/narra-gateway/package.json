@@ -10,6 +10,7 @@
     "dev": "node --env-file=.env index.mjs",
     "worker:book-markup": "node book-markup-worker.mjs",
     "worker:book-identity": "node book-identity-worker.mjs",
+    "worker:book-tts-markup": "node book-tts-markup-worker-runner.mjs",
     "worker:book-analysis": "node book-analysis-worker.mjs",
     "worker:book-analysis-scan": "node book-analysis-scan-worker-runner.mjs",
     "worker:book-analysis-external": "node book-analysis-external-worker-runner.mjs",

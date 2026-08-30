@@ -1006,6 +1006,77 @@ test('internal generation service does not cache an ungrounded scan result', asy
   assert.ok(lines.every((line) => !line.includes('Анна убежала')))
 })
 
+test('internal generation service attributes only known TTS atoms to known characters', async () => {
+  const storage = memoryStorage()
+  let chatRequest
+  const service = createInternalGenerationService({
+    storage,
+    logger: { info() {}, error() {} },
+    async completeChat(input) {
+      chatRequest = input
+      return JSON.stringify({ assignments: [{
+        atomId: 'tts:0:1', characterKey: 'character:ivan', confidence: 0.94
+      }] })
+    },
+    async generatePortrait() { throw new Error('unused') },
+    async synthesizeSpeech() { throw new Error('unused') },
+    async generateIdleAnimation() { throw new Error('unused') }
+  })
+  const result = await service.generateBookTtsMarkup({
+    idempotencyKey: 'publication-1:tts:publication-1:0:0:book-tts-script-v1',
+    bookEditionId: 'book-1', sourcePublicationId: 'publication-1',
+    normalizedTextHash: 'a'.repeat(64), markupVersion: 'book-tts-script-v1',
+    requestId: 'publication-1:0:0', bookTitle: 'Книга', bookAuthor: 'Автор',
+    section: { key: 'chapter-1', index: 0 },
+    characters: [{
+      characterKey: 'character:ivan', name: 'Иван', fullName: 'Иван', aliases: []
+    }],
+    coreAtoms: [{
+      atomId: 'tts:0:1', kind: 'speech', text: '— Привет.', startOffset: 0, endOffset: 9
+    }],
+    contextAtoms: [{ atomId: 'tts:0:1', kind: 'speech', text: '— Привет.' }]
+  })
+  assert.deepEqual(result, { assignments: [{
+    atomId: 'tts:0:1', characterKey: 'character:ivan', confidence: 0.94
+  }] })
+  assert.match(chatRequest.messages[0].content, /только characterKey из CHARACTERS/)
+})
+
+test('internal generation service turns invalid provider TTS identities into abstentions', async () => {
+  const service = createInternalGenerationService({
+    storage: memoryStorage(),
+    logger: { info() {}, error() {} },
+    async completeChat() {
+      return JSON.stringify({ assignments: [
+        { atomId: 'invented', characterKey: 'character:ivan', confidence: 1 },
+        { atomId: 'tts:0:1', characterKey: 'character:ghost', confidence: 0.9 }
+      ] })
+    },
+    async generatePortrait() { throw new Error('unused') },
+    async synthesizeSpeech() { throw new Error('unused') },
+    async generateIdleAnimation() { throw new Error('unused') }
+  })
+  const result = await service.generateBookTtsMarkup({
+    idempotencyKey: 'publication-1:tts:provider-abstention:book-tts-script-v1',
+    bookEditionId: 'book-1', sourcePublicationId: 'publication-1',
+    normalizedTextHash: 'a'.repeat(64), markupVersion: 'book-tts-script-v1',
+    requestId: 'provider-abstention', bookTitle: 'Книга', bookAuthor: 'Автор',
+    section: { key: 'chapter-1', index: 0 },
+    characters: [{
+      characterKey: 'character:ivan', name: 'Иван', fullName: 'Иван', aliases: []
+    }],
+    coreAtoms: [
+      { atomId: 'tts:0:1', kind: 'speech', text: '— Привет.', startOffset: 0, endOffset: 9 },
+      { atomId: 'tts:0:2', kind: 'speech', text: '— Кто ты?', startOffset: 10, endOffset: 18 }
+    ],
+    contextAtoms: [{ atomId: 'tts:0:1', kind: 'speech', text: '— Привет.' }]
+  })
+  assert.deepEqual(result, { assignments: [
+    { atomId: 'tts:0:1', characterKey: null, confidence: 0 },
+    { atomId: 'tts:0:2', characterKey: null, confidence: 0 }
+  ] })
+})
+
 test('internal generation service reconciles only existing identity keys idempotently', async () => {
   const storage = memoryStorage()
   let chatCalls = 0
@@ -1854,9 +1925,10 @@ test('internal router exposes all worker endpoints', () => {
     '/v1/book-markup',
     '/v1/book-identities',
     '/v1/catalog-covers',
-    '/v1/book-scenes',
-    '/v1/character-bundles',
-    '/v1/book-analysis/scan-chunk',
+      '/v1/book-scenes',
+      '/v1/character-bundles',
+      '/v1/book-tts-markup/attribute',
+      '/v1/book-analysis/scan-chunk',
     '/v1/book-analysis/reconcile-character-identities',
     '/v1/book-analysis/synthesize-character'
   ])

@@ -87,6 +87,26 @@ test('book display identity has one separate durable worker', () => {
   )
 })
 
+test('TTS markup runs as an independently scalable hardened container', () => {
+  const worker = compose.slice(
+    compose.indexOf('  book-tts-markup-worker:'),
+    compose.indexOf('  book-analysis-prepare:')
+  )
+  assert.match(worker, /command: \["node", "book-tts-markup-worker-runner\.mjs"\]/)
+  assert.match(worker, /replicas: \$\{BOOK_TTS_MARKUP_WORKER_REPLICAS:-2\}/)
+  assert.match(worker, /read_only: true/)
+  assert.match(worker, /book-analysis-database-environment/)
+  assert.match(worker, /book-analysis-storage-environment/)
+  assert.match(worker, /book-analysis-generator-environment/)
+  assert.match(envExample, /^BOOK_TTS_MARKUP_WORKER_REPLICAS=2$/m)
+  assert.match(deploySource, /for worker_service in book-tts-markup-worker/)
+  const publicBooksRouter = gatewaySource.slice(
+    gatewaySource.indexOf("app.use('/v2/books'"),
+    gatewaySource.indexOf("app.post('/v2/events/batch'")
+  )
+  assert.match(publicBooksRouter, /ttsMarkupRepository: bookTtsMarkupRepository/)
+})
+
 test('shadow analysis workers keep the hardened read-only runtime', () => {
   assert.match(compose, /x-book-analysis-worker: &book-analysis-worker/)
   assert.match(compose, /restart: unless-stopped/)

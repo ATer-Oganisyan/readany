@@ -98,6 +98,45 @@ export interface BackendManifestAnalysis {
   totalScanChunks: number;
 }
 
+export type BackendTtsMarkupStatus =
+  | "missing"
+  | "queued"
+  | "processing"
+  | "ready"
+  | "failed"
+  | "unavailable";
+
+export interface BackendTtsMarkupState {
+  status: BackendTtsMarkupStatus;
+  version: string;
+  revision: number | null;
+  retryAfterMs: number | null;
+}
+
+export interface BackendBookTtsSegment {
+  id: string;
+  startOffset: number;
+  endOffset: number;
+  text: string;
+  kind: "narration" | "speech";
+  characterKey: string | null;
+  confidence: number;
+}
+
+export interface BackendBookTtsSection {
+  key: string;
+  title: string;
+  index: number;
+  startOffset: number;
+  endOffset: number;
+  segments: BackendBookTtsSegment[];
+}
+
+export interface BackendBookTtsSectionResult extends BackendTtsMarkupState {
+  normalizedTextHash?: string;
+  section?: BackendBookTtsSection;
+}
+
 export interface BackendBookManifest {
   book?: BackendBookBinding;
   source: BackendManifestSource;
@@ -118,6 +157,7 @@ export interface BackendBookManifest {
   contentHash?: string;
   publishedAt?: string;
   analysis?: BackendManifestAnalysis;
+  ttsMarkup?: BackendTtsMarkupState;
   characters: BackendManifestCharacter[];
 }
 
@@ -219,6 +259,27 @@ function binding(value: JsonRecord): BackendBookBinding {
       typeof value.source_download_path === "string" ? value.source_download_path : undefined,
     sourceUploaded: value.source_uploaded === true,
     expiresAt: typeof value.expires_at === "string" ? value.expires_at : undefined,
+  };
+}
+
+function ttsMarkupState(value: unknown): BackendTtsMarkupState | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const raw = value as JsonRecord;
+  const supported = new Set<BackendTtsMarkupStatus>([
+    "missing",
+    "queued",
+    "processing",
+    "ready",
+    "failed",
+    "unavailable",
+  ]);
+  const status = String(raw.status) as BackendTtsMarkupStatus;
+  if (!supported.has(status)) return undefined;
+  return {
+    status,
+    version: typeof raw.version === "string" ? raw.version : "book-tts-script-v1",
+    revision: Number.isSafeInteger(raw.revision) ? Number(raw.revision) : null,
+    retryAfterMs: Number.isSafeInteger(raw.retry_after_ms) ? Number(raw.retry_after_ms) : null,
   };
 }
 
@@ -613,6 +674,7 @@ export async function fetchBackendBookManifest(
       ? (markup.scene_policy as JsonRecord)
       : null;
   const rawCharacters = Array.isArray(payload.characters) ? payload.characters : [];
+  const ttsMarkup = ttsMarkupState(payload.tts_markup);
   const manifestBook =
     payload.book && typeof payload.book === "object"
       ? binding(payload.book as JsonRecord)
@@ -654,6 +716,7 @@ export async function fetchBackendBookManifest(
           totalScanChunks: Number(analysis.total_scan_chunks) || 0,
         }
       : undefined,
+    ttsMarkup,
     characters: rawCharacters.flatMap((candidate): BackendManifestCharacter[] => {
       if (!candidate || typeof candidate !== "object") return [];
       const character = candidate as JsonRecord;
@@ -696,6 +759,63 @@ export async function fetchBackendBookManifest(
         },
       ];
     }),
+  };
+}
+
+export async function fetchBackendBookTtsSection(
+  bookEditionId: string,
+  sectionIndex: number,
+): Promise<BackendBookTtsSectionResult> {
+  if (!Number.isSafeInteger(sectionIndex) || sectionIndex < 0) {
+    throw new RangeError("sectionIndex must be a non-negative integer");
+  }
+  const payload = await gatewayJson(
+    `/v2/books/${encodeURIComponent(bookEditionId)}/tts-script/sections/${sectionIndex}`,
+  );
+  const pending = ttsMarkupState(payload.tts_markup);
+  if (pending) return pending;
+  const rawSection =
+    payload.section && typeof payload.section === "object" ? (payload.section as JsonRecord) : null;
+  if (!rawSection || payload.contract_version !== "book-tts-script-v1") {
+    return {
+      status: "failed",
+      version: "book-tts-script-v1",
+      revision: null,
+      retryAfterMs: null,
+    };
+  }
+  const rawSegments = Array.isArray(rawSection.segments) ? rawSection.segments : [];
+  const segments = rawSegments.flatMap((candidate): BackendBookTtsSegment[] => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return [];
+    const raw = candidate as JsonRecord;
+    if (raw.kind !== "speech" && raw.kind !== "narration") return [];
+    return [
+      {
+        id: String(raw.id || ""),
+        startOffset: Number(raw.start_offset),
+        endOffset: Number(raw.end_offset),
+        text: String(raw.text || ""),
+        kind: raw.kind,
+        characterKey: typeof raw.character_key === "string" ? raw.character_key : null,
+        confidence: Number(raw.confidence) || 0,
+      },
+    ];
+  });
+  return {
+    status: "ready",
+    version: "book-tts-script-v1",
+    revision: Number.isSafeInteger(payload.revision) ? Number(payload.revision) : 1,
+    retryAfterMs: null,
+    normalizedTextHash:
+      typeof payload.normalized_text_hash === "string" ? payload.normalized_text_hash : undefined,
+    section: {
+      key: String(rawSection.key || ""),
+      title: String(rawSection.title || ""),
+      index: Number(rawSection.index),
+      startOffset: Number(rawSection.start_offset),
+      endOffset: Number(rawSection.end_offset),
+      segments,
+    },
   };
 }
 

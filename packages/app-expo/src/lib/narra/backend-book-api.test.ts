@@ -5,6 +5,7 @@ import {
   advanceBackendReaderProgress,
   fetchBackendBookIdentity,
   fetchBackendBookManifest,
+  fetchBackendBookTtsSection,
   fetchBackendCatalogBooks,
   fetchBackendCatalogBooksByLanguagePage,
   fetchBackendCatalogBooksPage,
@@ -473,6 +474,12 @@ describe("backend book API", () => {
               interval_text_length: 6_000,
             },
           },
+          tts_markup: {
+            status: "processing",
+            version: "book-tts-script-v1",
+            revision: null,
+            retry_after_ms: 10_000,
+          },
           characters: [
             {
               character_key: "rodion",
@@ -501,7 +508,50 @@ describe("backend book API", () => {
         startTextOffset: 0,
         intervalTextLength: 6_000,
       },
+      ttsMarkup: {
+        status: "processing",
+        version: "book-tts-script-v1",
+        revision: null,
+        retryAfterMs: 10_000,
+      },
     });
+  });
+
+  it("loads an exact ready TTS script section", async () => {
+    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          contract_version: "book-tts-script-v1",
+          revision: 2,
+          normalized_text_hash: "a".repeat(64),
+          section: {
+            key: "chapter-1",
+            title: "Глава 1",
+            index: 0,
+            start_offset: 10,
+            end_offset: 20,
+            segments: [
+              {
+                id: "tts:0:0",
+                start_offset: 10,
+                end_offset: 20,
+                text: "— Привет",
+                kind: "speech",
+                character_key: "character:ivan",
+                confidence: 0.95,
+              },
+            ],
+          },
+        }),
+      ),
+    );
+    const result = await fetchBackendBookTtsSection("book-1", 0);
+    expect(result.status).toBe("ready");
+    expect(result.section?.segments[0]?.characterKey).toBe("character:ivan");
+    expect(vi.mocked(narraGatewayRequest)).toHaveBeenCalledWith(
+      "/v2/books/book-1/tts-script/sections/0",
+      {},
+    );
   });
 
   it("parses grounded provisional characters and scan progress from a processing manifest", async () => {

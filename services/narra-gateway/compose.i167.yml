@@ -289,6 +289,15 @@ services:
         max-size: 10m
         max-file: "5"
 
+  book-tts-markup-worker:
+    <<: *book-analysis-worker
+    command: ["node", "book-tts-markup-worker-runner.mjs"]
+    read_only: true
+    deploy:
+      replicas: ${BOOK_TTS_MARKUP_WORKER_REPLICAS:-2}
+    environment:
+      <<: [*book-analysis-database-environment, *book-analysis-storage-environment, *book-analysis-generator-environment]
+
   book-analysis-prepare:
     <<: *book-analysis-worker
     command: ["node", "book-analysis-worker.mjs"]

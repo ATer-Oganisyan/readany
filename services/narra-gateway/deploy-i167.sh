@@ -199,6 +199,16 @@ if test "$book_backend_enabled" = 1; then
   done
 fi
 
+for worker_service in book-tts-markup-worker; do
+  worker_ids="$(NARRA_GATEWAY_IMAGE="$IMAGE" docker compose -p narra \
+    -f "$REMOTE_STAGE/compose.i167.yml" ps -q "$worker_service")"
+  test -n "$worker_ids"
+  for worker_id in $worker_ids; do
+    test "$(docker inspect --format '{{.State.Running}}' "$worker_id")" = true
+    test "$(docker inspect --format '{{.RestartCount}}' "$worker_id")" = 0
+  done
+done
+
 production_ready=0
 for _attempt in $(seq 1 45); do
   if curl -fsS http://127.0.0.1:8788/ready >/dev/null; then

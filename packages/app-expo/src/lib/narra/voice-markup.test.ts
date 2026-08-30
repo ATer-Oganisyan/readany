@@ -4,6 +4,8 @@ import {
   classifySegmentKind,
   clearReaderVoicePlan,
   markupVoiceSegments,
+  primeReaderNarratorPlan,
+  primeReaderScriptVoicePlan,
   primeReaderVoicePlan,
   resolveReaderVoiceForChunk,
 } from "./voice-markup";
@@ -175,5 +177,40 @@ describe("активный план озвучки (реестр для edge-п�
     primeReaderVoicePlan(["Текст."], CAST, NARRATOR);
     clearReaderVoicePlan();
     expect(resolveReaderVoiceForChunk("Текст.")).toBeNull();
+  });
+
+  it("uses only the narrator when there is no server TTS script", () => {
+    primeReaderNarratorPlan(["— Привет.", "Сад молчал."], NARRATOR);
+
+    expect(resolveReaderVoiceForChunk("— Привет.", 0)).toMatchObject({ voice: NARRATOR });
+    expect(resolveReaderVoiceForChunk("Сад молчал.", 1)).toMatchObject({ voice: NARRATOR });
+  });
+
+  it("uses the exact character key from the server TTS script", () => {
+    primeReaderScriptVoicePlan(
+      [
+        { text: "— Привет.", ttsKind: "speech", ttsCharacterKey: "arkady" },
+        { text: "Сказал автор.", ttsKind: "narration", ttsCharacterKey: null },
+      ],
+      CAST,
+      NARRATOR,
+    );
+
+    expect(resolveReaderVoiceForChunk("— Привет.", 0)).toMatchObject({ voice: "Ast" });
+    expect(resolveReaderVoiceForChunk("Сказал автор.", 1)).toMatchObject({ voice: NARRATOR });
+  });
+
+  it("resolves duplicate texts by queue position", () => {
+    primeReaderScriptVoicePlan(
+      [
+        { text: "Да.", ttsKind: "speech", ttsCharacterKey: "arkady" },
+        { text: "Да.", ttsKind: "narration", ttsCharacterKey: null },
+      ],
+      CAST,
+      NARRATOR,
+    );
+
+    expect(resolveReaderVoiceForChunk("Да.", 0)?.voice).toBe("Ast");
+    expect(resolveReaderVoiceForChunk("Да.", 1)?.voice).toBe(NARRATOR);
   });
 });

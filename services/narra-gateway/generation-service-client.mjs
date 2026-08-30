@@ -112,6 +112,17 @@ export function createGenerationServiceClient({
         ...input
       })
     },
+    generateBookTtsMarkup(input) {
+      return post('internal/v1/book-tts-markup/attribute', {
+        idempotencyKey: [
+          input.sourcePublicationId,
+          'tts',
+          input.requestId,
+          input.markupVersion
+        ].join(':'),
+        ...input
+      })
+    },
     generateBookMarkup(input) {
       return post('internal/v1/book-markup', {
         idempotencyKey: `${input.bookEditionId}:book-markup:${input.analysisVersion}`,

@@ -199,6 +199,24 @@ test('generator client sends one idempotent character profile request', async ()
   })
 })
 
+test('generator client routes TTS attribution through its dedicated internal contract', async () => {
+  let request
+  const client = createGenerationServiceClient({
+    baseUrl: 'http://localhost:8790', token: TOKEN, production: false,
+    async fetchImpl(url, options) {
+      request = { url: String(url), body: JSON.parse(options.body) }
+      return new Response(JSON.stringify({ result: { assignments: [] } }), { status: 200 })
+    }
+  })
+  const input = {
+    sourcePublicationId: 'publication-1', requestId: 'publication-1:0:0',
+    markupVersion: 'book-tts-script-v1', coreAtoms: [], contextAtoms: [], characters: []
+  }
+  assert.deepEqual(await client.generateBookTtsMarkup(input), { assignments: [] })
+  assert.equal(request.url, 'http://localhost:8790/internal/v1/book-tts-markup/attribute')
+  assert.equal(request.body.idempotencyKey, 'publication-1:tts:publication-1:0:0:book-tts-script-v1')
+})
+
 test('generator client sends one idempotent whole-book identity request', async () => {
   let request
   const client = createGenerationServiceClient({
