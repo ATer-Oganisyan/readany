@@ -32,7 +32,7 @@ test('analysis run key binds source and both pipeline versions', () => {
     pipelineVersion: 'book-analysis-v8',
     promptVersion: 'scan-v1'
   }), [
-    'book-analysis-cache', 'narra', 'book-analysis-v50', 'a'.repeat(64),
+    'book-analysis-cache', 'narra', 'book-analysis-v51', 'a'.repeat(64),
     'book-analysis-v8', 'scan-v1', 'normalized-text-v1', 'schema-3',
     'book-markup-v3', 'book-1'
   ].join(':'))

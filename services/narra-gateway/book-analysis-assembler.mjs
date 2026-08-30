@@ -3,6 +3,7 @@ import {
   BOOK_ANALYSIS_SCHEMA_VERSION,
   normalizeBookMarkupV3
 } from './book-analysis-contracts.mjs'
+import { auditCharacterAppearanceDistribution } from './book-analysis-appearance-audit.mjs'
 import { selectedBookCharacterEntities } from './book-character-selection.mjs'
 
 function normalizedName(value) {
@@ -53,6 +54,38 @@ function relatedKeys(observations, index) {
   return keys
 }
 
+function recoverClusteredCharacterAppearances({
+  characters,
+  characterEntities,
+  observationsById,
+  textLength
+}) {
+  const audit = auditCharacterAppearanceDistribution({ textLength, characters })
+  if (audit.status !== 'suspicious') return characters
+  const entitiesByKey = new Map(characterEntities.map((entity) => [entity.entityKey, entity]))
+  const warmupDistance = Math.max(2_000, Math.round(textLength * 0.02))
+  return characters.map((character) => {
+    if (character.firstAppearanceTextOffset > audit.earlyBoundaryTextOffset) return character
+    const entity = entitiesByKey.get(character.characterKey)
+    const firstNarrativeEvidence = entity?.evidenceIds
+      .map((id) => observationsById.get(id))
+      .filter((observation) =>
+        Number.isSafeInteger(observation?.evidence?.startOffset) &&
+        observation.evidence.startOffset > audit.earlyBoundaryTextOffset
+      )
+      .sort((left, right) =>
+        left.evidence.startOffset - right.evidence.startOffset || left.id.localeCompare(right.id)
+      )[0]
+    if (!firstNarrativeEvidence) return character
+    const firstAppearanceTextOffset = firstNarrativeEvidence.evidence.startOffset
+    return {
+      ...character,
+      firstAppearanceTextOffset,
+      warmupTextOffset: Math.max(0, firstAppearanceTextOffset - warmupDistance)
+    }
+  })
+}
+
 export function assembleBookMarkupV3({
   snapshotId,
   textLength,
@@ -73,9 +106,15 @@ export function assembleBookMarkupV3({
       code: 'SYNTHESIS_BARRIER_INCOMPLETE'
     })
   }
-  const characters = characterEntities
+  const generatedCharacters = characterEntities
     .map(({ entityKey }) => profilesByKey.get(entityKey))
     .filter(Boolean)
+  const characters = recoverClusteredCharacterAppearances({
+    characters: generatedCharacters,
+    characterEntities,
+    observationsById,
+    textLength
+  })
   const includedCharacterKeys = new Set(characters.map(({ characterKey }) => characterKey))
   const characterIndex = entityIndex(
     characterEntities.filter(({ entityKey }) => includedCharacterKeys.has(entityKey)),

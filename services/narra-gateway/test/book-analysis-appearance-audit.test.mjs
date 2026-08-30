@@ -167,3 +167,103 @@ test('independent v3 validator blocks a publication with a cast-list appearance 
   assert.equal(report.quality.characterAppearance.status, 'suspicious')
   assert.ok(report.errors.some(({ code }) => code === CHARACTER_APPEARANCE_CLUSTER_CODE))
 })
+
+test('assembler moves cast-list offsets to the first later evidence when it exists', () => {
+  const textLength = 100_000
+  const observations = []
+  const entities = []
+  const profiles = []
+  for (let index = 0; index < 5; index += 1) {
+    const characterKey = `character:hero-${index}`
+    const earlyId = `00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`
+    const laterId = `10000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`
+    const earlyOffset = 100 + index * 100
+    const laterOffset = 5_000 + index * 2_000
+    observations.push(
+      {
+        id: earlyId,
+        type: 'character_mention',
+        entityKind: 'character',
+        entityCandidate: `Герой${index}`,
+        relatedEntityCandidates: [],
+        fact: 'Персонаж перечислен в списке действующих лиц',
+        evidence: {
+          quote: `Герой${index}`,
+          startOffset: earlyOffset,
+          endOffset: earlyOffset + 6,
+          chapterKey: 'front-matter'
+        },
+        confidence: 0.99,
+        data: {}
+      },
+      {
+        id: laterId,
+        type: 'character_dialogue',
+        entityKind: 'character',
+        entityCandidate: `Герой${index}`,
+        relatedEntityCandidates: [],
+        fact: 'Персонаж говорит в сцене',
+        evidence: {
+          quote: `Герой${index}`,
+          startOffset: laterOffset,
+          endOffset: laterOffset + 6,
+          chapterKey: 'act-1'
+        },
+        confidence: 0.99,
+        data: {}
+      }
+    )
+    entities.push({
+      id: `20000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+      entityKey: characterKey,
+      entityKind: 'character',
+      canonicalName: `Герой${index}`,
+      aliases: [],
+      resolutionStatus: 'confirmed',
+      confidence: 0.99,
+      evidenceIds: [earlyId, laterId],
+      data: {
+        observationCount: 2,
+        firstEvidenceStartOffset: earlyOffset,
+        lastEvidenceEndOffset: laterOffset + 6
+      }
+    })
+    profiles.push({
+      characterKey,
+      name: `Герой${index}`,
+      fullName: `Герой${index}`,
+      aliases: [],
+      identityEvidenceIds: [earlyId, laterId],
+      firstAppearanceTextOffset: earlyOffset,
+      warmupTextOffset: 0,
+      role: null,
+      age: null,
+      gender: null,
+      description: null,
+      traits: [],
+      personalitySnapshots: [],
+      appearance: [],
+      speechStyle: null,
+      speechExamples: [],
+      creative: { greeting: '', appearancePrompt: '', voice: '' }
+    })
+  }
+
+  const result = assembleBookMarkupV3({
+    snapshotId: '30000000-0000-4000-8000-000000000000',
+    textLength,
+    entities,
+    observations,
+    characterProfiles: profiles
+  })
+
+  assert.equal(auditCharacterAppearanceDistribution(result).status, 'clear')
+  assert.deepEqual(
+    result.characters.map(({ firstAppearanceTextOffset }) => firstAppearanceTextOffset),
+    [5_000, 7_000, 9_000, 11_000, 13_000]
+  )
+  assert.deepEqual(
+    result.characters.map(({ warmupTextOffset }) => warmupTextOffset),
+    [3_000, 5_000, 7_000, 9_000, 11_000]
+  )
+})
