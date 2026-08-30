@@ -158,7 +158,7 @@ test('catalog manifest exposes validated v3 as the canonical markup', async () =
                 {
                   characterKey: 'visible',
                   name: 'Visible',
-                  fullName: 'Visible Hero',
+                  fullName: 'Visible',
                   aliases: [],
                   identityEvidenceIds: ['identity-visible'],
                   firstAppearanceTextOffset: 900,
@@ -241,7 +241,7 @@ test('catalog manifest exposes validated v3 as the canonical markup', async () =
     preview.characters[0].profile.description,
     'Подробное описание главного героя.'
   )
-  assert.equal(preview.characters[1].fullName, '')
+  assert.equal(preview.characters[0].fullName, '')
   assert.equal(
     preview.characters[0].profile.personalityTimelineVersion,
     'progressive-personality-v1'
