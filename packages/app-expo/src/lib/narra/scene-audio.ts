@@ -65,7 +65,9 @@ export async function generateNarraAudioScenario(
   // Словарь ударений имён книги (P9) — синтез сегментов сцены пойдёт через
   // synthesizeNarraSpeech, который читает активный словарь.
   primeCharacterStressForms(characters);
-  const roster = characters.map((character) => `${character.id}: ${character.fullName}`).join("; ");
+  const roster = characters
+    .map((character) => `${character.id}: ${character.fullName || character.name}`)
+    .join("; ");
   const response = await narraGatewayRequest("/v2/ai/chat/complete", {
     method: "POST",
     headers: { "content-type": "application/json" },

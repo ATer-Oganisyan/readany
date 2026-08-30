@@ -240,7 +240,9 @@ export function buildSceneImagePrompt(
   characters: NarraCharacter[],
 ): string {
   const canon = mentionedCharacters(excerpt, characters)
-    .map((character) => `${character.fullName}: ${passportDescription(character)}`)
+    .map(
+      (character) => `${character.fullName || character.name}: ${passportDescription(character)}`,
+    )
     .join("; ");
   return budgetPrompt([
     `Иллюстрация сцены из главы «${chapter}».`,
@@ -257,7 +259,9 @@ export function buildSafetyFallbackSceneImagePrompt(
   characters: NarraCharacter[],
 ): string {
   const canon = mentionedCharacters(excerpt, characters)
-    .map((character) => `${character.fullName}: ${passportDescription(character)}`)
+    .map(
+      (character) => `${character.fullName || character.name}: ${passportDescription(character)}`,
+    )
     .join("; ");
   return budgetPrompt([
     "Нейтральная книжная иллюстрация спокойного момента.",

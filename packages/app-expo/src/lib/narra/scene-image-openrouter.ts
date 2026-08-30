@@ -1,6 +1,6 @@
-import * as Crypto from "expo-crypto";
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
 import { useLibraryStore, useNarraStore } from "@/stores";
+import * as Crypto from "expo-crypto";
 import type { NarraGenreAnalysis } from "./genre-analysis";
 import { persistSceneImageBase64, trackNarraMediaJob } from "./media";
 import { passportDescription } from "./scene-prompt";
@@ -70,15 +70,13 @@ async function generateSceneThroughGateway(
         book_title: meta.title,
         book_author: meta.author || "",
         book_description: (meta.description || "").slice(0, 4_000),
-        book_subjects: (meta.subjects || [])
-          .slice(0, 32)
-          .map((subject) => subject.slice(0, 200)),
+        book_subjects: (meta.subjects || []).slice(0, 32).map((subject) => subject.slice(0, 200)),
         genre_id: meta.analyzedGenre?.primary || "",
         chapter,
         excerpt,
         characters: characters.slice(0, 16).map((character) => ({
           name: character.name,
-          full_name: character.fullName,
+          full_name: character.fullName || character.name,
           role: character.role,
           gender: character.gender,
           appearance: passportDescription(character).slice(0, 1_500),
@@ -100,10 +98,9 @@ async function generateSceneThroughGateway(
   }
   const extension = payload.mime_type === "image/jpeg" ? "jpg" : "png";
   const result = await persistSceneImageBase64(bookId, payload.image, extension);
-  await narraGatewayRequest(
-    `/v2/media/scene/jobs/${encodeURIComponent(jobId)}/ack`,
-    { method: "POST" },
-  ).catch(() => undefined);
+  await narraGatewayRequest(`/v2/media/scene/jobs/${encodeURIComponent(jobId)}/ack`, {
+    method: "POST",
+  }).catch(() => undefined);
   return result;
 }
 

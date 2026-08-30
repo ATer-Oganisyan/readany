@@ -475,6 +475,7 @@ export async function publishLocalBackendMarkup(
           profile: {
             clientCharacterId: character.id,
             role: character.role,
+            description: character.description,
             gender: character.gender,
             voice: character.voice,
             traits: character.traits,

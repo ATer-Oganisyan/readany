@@ -376,6 +376,7 @@ describe("backend book API", () => {
         name: "Анна",
         fullName: "Анна Каренина",
         role: "героиня",
+        description: "Анна — центральная героиня романа.",
         gender: "female",
         voice: "Che",
         traits: ["смелая"],
@@ -394,6 +395,7 @@ describe("backend book API", () => {
     });
     expect(body.characters[0].character_key).toMatch(/^character-1-[a-f0-9]+$/);
     expect(body.characters[0].profile.clientCharacterId).toBe("анна");
+    expect(body.characters[0].profile.description).toBe("Анна — центральная героиня романа.");
     expect(JSON.stringify(body)).not.toContain("book text");
   });
 
