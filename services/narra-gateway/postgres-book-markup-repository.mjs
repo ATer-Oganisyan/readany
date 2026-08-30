@@ -31,6 +31,7 @@ const BOOK_MIME_TYPES = Object.freeze({
 })
 
 const CATALOG_COVER_VERSION = 'catalog-cover-v4'
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 function catalogCoverTargetVersion(contentSha256) {
   return `${CATALOG_COVER_VERSION}-${contentSha256.slice(0, 16)}`
@@ -2150,16 +2151,27 @@ export function createPostgresBookMarkupRepository(pool, {
       return result.rows.length
     },
 
-    async claimGenerationJob(workerId, { leaseSeconds = 300, jobTypes = null } = {}) {
+    async claimGenerationJob(workerId, {
+      leaseSeconds = 300,
+      jobTypes = null,
+      bookEditionIds = null
+    } = {}) {
       const allowedJobTypes = Array.isArray(jobTypes) && jobTypes.length
         ? [...new Set(jobTypes)]
         : null
+      const allowedBookEditionIds = Array.isArray(bookEditionIds) && bookEditionIds.length
+        ? [...new Set(bookEditionIds)]
+        : null
+      if (allowedBookEditionIds?.some((value) => !UUID.test(String(value)))) {
+        throw new TypeError('bookEditionIds must contain UUIDs')
+      }
       const leaseToken = idFactory()
       const result = await pool.query(
         `WITH candidate AS (
            SELECT id
            FROM generation_jobs
-           WHERE ($4::text[] IS NULL OR job_type = ANY($4::text[])) AND ((
+           WHERE ($4::text[] IS NULL OR job_type = ANY($4::text[]))
+             AND ($5::uuid[] IS NULL OR book_edition_id = ANY($5::uuid[])) AND ((
              status = 'queued' AND available_at <= now()
            ) OR (
              status = 'running' AND locked_at < now() - make_interval(secs => $2)
@@ -2190,7 +2202,7 @@ export function createPostgresBookMarkupRepository(pool, {
          FROM candidate
          WHERE job.id = candidate.id
          RETURNING job.*`,
-        [workerId, leaseSeconds, leaseToken, allowedJobTypes]
+        [workerId, leaseSeconds, leaseToken, allowedJobTypes, allowedBookEditionIds]
       )
       const job = jobRow(result.rows[0])
       if (job?.characterKey) {

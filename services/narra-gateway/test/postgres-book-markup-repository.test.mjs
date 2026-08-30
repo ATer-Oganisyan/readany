@@ -102,6 +102,24 @@ test('claim query can isolate the book identity worker queue', async () => {
   assert.deepEqual(pool.queries[0].params[3], ['book_identity'])
 })
 
+test('claim query can isolate generation jobs by book edition', async () => {
+  const editionId = '123e4567-e89b-42d3-a456-426614174099'
+  const pool = scriptedPool([() => ({ rows: [] })])
+  const repository = createPostgresBookMarkupRepository(pool, {
+    idFactory: () => '123e4567-e89b-42d3-a456-426614174001'
+  })
+  await repository.claimGenerationJob('campaign-worker', {
+    jobTypes: ['catalog_cover', 'character_portrait'],
+    bookEditionIds: [editionId, editionId]
+  })
+  assert.match(pool.queries[0].sql, /book_edition_id = ANY\(\$5::uuid\[\]\)/)
+  assert.deepEqual(pool.queries[0].params[4], [editionId])
+  await assert.rejects(
+    repository.claimGenerationJob('campaign-worker', { bookEditionIds: ['not-a-uuid'] }),
+    /bookEditionIds must contain UUIDs/
+  )
+})
+
 test('catalog API prefers the identity worker display metadata', async () => {
   const pool = scriptedPool([() => ({ rows: [{
     id: 'book-1', scope: 'catalog', catalog_key: 'book-1', content_sha256: 'a'.repeat(64),

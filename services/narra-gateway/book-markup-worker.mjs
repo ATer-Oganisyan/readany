@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { parseEnvInt } from './env.mjs'
+import { parseEnvInt, parseEnvUuidList } from './env.mjs'
 import { createGenerationServiceClient } from './generation-service-client.mjs'
 import {
   createGenerationWorker,
@@ -31,6 +31,7 @@ const leaseSeconds = parseEnvInt(process.env, 'BOOK_MARKUP_JOB_LEASE_SECONDS', 3
 const leaseRenewMs = parseEnvInt(process.env, 'BOOK_MARKUP_LEASE_RENEW_MS', 60_000, 1_800_000)
 const idleLogMs = parseEnvInt(process.env, 'BOOK_MARKUP_IDLE_LOG_MS', 300_000, 3_600_000)
 const jobTypes = parseBookMarkupWorkerJobTypes(process.env.BOOK_MARKUP_WORKER_JOB_TYPES)
+const bookEditionIds = parseEnvUuidList(process.env, 'BOOK_MARKUP_WORKER_EDITION_IDS')
 const log = createOperationalLogger({ component: 'book-worker' })
 if (leaseRenewMs >= leaseSeconds * 1_000) {
   throw new Error('BOOK_MARKUP_LEASE_RENEW_MS must be shorter than the job lease')
@@ -45,7 +46,8 @@ try {
     claimGenerationJob(id) {
       return baseRepository.claimGenerationJob(id, {
         leaseSeconds,
-        jobTypes
+        jobTypes,
+        bookEditionIds
       })
     }
   }
@@ -59,7 +61,8 @@ try {
     worker: workerId,
     poll_ms: pollMs,
     lease_seconds: leaseSeconds,
-    job_types: jobTypes
+    job_types: jobTypes,
+    book_edition_ids: bookEditionIds ?? null
   })
   let lastIdleLogAt = 0
   while (!shutdown.signal.aborted) {
