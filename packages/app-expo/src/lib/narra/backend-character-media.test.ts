@@ -6,6 +6,9 @@ const runtime = vi.hoisted(() => ({
   info: vi.fn(),
   move: vi.fn(),
   remove: vi.fn(),
+  updateCharacter: vi.fn(),
+  libraryState: { books: [] as unknown[] },
+  narraState: { books: {} as Record<string, unknown> },
   serial: 0,
 }));
 vi.mock("expo-crypto", () => ({ randomUUID: () => `temporary-${++runtime.serial}` }));
@@ -18,9 +21,20 @@ vi.mock("expo-file-system/legacy", () => ({
 }));
 vi.mock("./backend-file-download", () => ({ downloadVerifiedBackendFile: runtime.download }));
 vi.mock("./backend-file-hash", () => ({ sha256BackendFile: runtime.hash }));
-vi.mock("@/stores/library-store", () => ({ useLibraryStore: { getState: () => ({ books: [] }) } }));
-vi.mock("@/stores/narra-store", () => ({ useNarraStore: { getState: () => ({ books: {} }) } }));
-import { materializeBackendCharacterAsset } from "./backend-character-media";
+vi.mock("@/stores/library-store", () => ({
+  useLibraryStore: { getState: () => runtime.libraryState },
+}));
+vi.mock("@/stores/narra-store", () => ({
+  useNarraStore: {
+    getState: () => ({ ...runtime.narraState, updateCharacter: runtime.updateCharacter }),
+  },
+}));
+import {
+  loadBackendCharacterMedia,
+  materializeBackendCharacterAsset,
+  planBackendCharacterMedia,
+} from "./backend-character-media";
+import type { NarraCharacter } from "./types";
 const asset: BackendCharacterAsset = {
   assetId: "id",
   type: "primary_portrait",
@@ -35,6 +49,8 @@ beforeEach(() => {
   runtime.download.mockResolvedValue(undefined);
   runtime.hash.mockResolvedValue(asset.contentHash);
   runtime.move.mockResolvedValue(undefined);
+  runtime.libraryState.books = [];
+  runtime.narraState.books = {};
 });
 describe("verified character media cache", () => {
   it("moves only verified temporary files and passes exact hash/size to the downloader", async () => {
@@ -81,9 +97,50 @@ describe("verified character media cache", () => {
     await vi.waitFor(() => expect(runtime.download).toHaveBeenCalledTimes(1));
     controller.abort();
     await rejected;
+    await expect(first).rejects.toMatchObject({ name: "AbortError" });
     expect(runtime.download.mock.calls[0][0].signal.aborted).toBe(false);
     complete();
     await expect(second).resolves.toContain(asset.contentHash);
+  });
+  it("treats a screen cancellation as an expected end of background media work", async () => {
+    let started!: () => void;
+    const didStart = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    runtime.download.mockImplementation(
+      () =>
+        new Promise<void>(() => {
+          started();
+        }),
+    );
+    const character = {
+      id: "hero",
+      name: "Герой",
+      fullName: "Герой",
+      role: "",
+      gender: "male" as const,
+      voice: "",
+      traits: [],
+      speechStyle: "",
+      speechExamples: [],
+      appearancePrompt: "",
+      unlockProgress: 0,
+      backendManaged: true,
+      backendAssets: [asset],
+    };
+    runtime.libraryState.books = [{ id: "book", progress: 0, deletedAt: undefined }];
+    runtime.narraState.books = {
+      book: {
+        backendBinding: { bookEditionId: "edition" },
+        characters: [character],
+      },
+    };
+    const controller = new AbortController();
+    const loading = loadBackendCharacterMedia("book", 0, controller.signal);
+    await didStart;
+    controller.abort();
+
+    await expect(loading).resolves.toBeUndefined();
   });
   it("retains the server audio format for WAV greeting files", async () => {
     await expect(
@@ -93,5 +150,58 @@ describe("verified character media cache", () => {
         mimeType: "audio/wav",
       }),
     ).resolves.toMatch(/\.wav$/);
+  });
+});
+
+describe("character media priority", () => {
+  const character = (
+    id: string,
+    unlockProgress: number,
+    assets: BackendCharacterAsset[],
+  ): NarraCharacter => ({
+    id,
+    name: id,
+    fullName: id,
+    role: "",
+    gender: "male",
+    voice: "",
+    traits: [],
+    speechStyle: "",
+    speechExamples: [],
+    appearancePrompt: "",
+    unlockProgress,
+    backendManaged: true,
+    backendAssets: assets,
+  });
+  const typedAsset = (id: string, type: BackendCharacterAsset["type"]): BackendCharacterAsset => ({
+    ...asset,
+    assetId: id,
+    type,
+    contentHash: id.padEnd(64, "b").slice(0, 64),
+  });
+
+  it("loads visible portraits first and warms only the next character portrait", () => {
+    const visiblePortrait = typedAsset("1", "primary_portrait");
+    const visibleAudio = typedAsset("2", "greeting_audio");
+    const nextPortrait = typedAsset("3", "primary_portrait");
+    const laterPortrait = typedAsset("4", "primary_portrait");
+    const plan = planBackendCharacterMedia(
+      [
+        character("visible", 0.1, [visibleAudio, visiblePortrait]),
+        character("later", 0.8, [laterPortrait]),
+        character("next", 0.3, [nextPortrait, typedAsset("5", "idle_animation")]),
+      ],
+      0.2,
+    );
+
+    expect(plan.unlockedPortraits).toEqual([
+      expect.objectContaining({ characterId: "visible", asset: visiblePortrait }),
+    ]);
+    expect(plan.nextPortrait).toEqual([
+      expect.objectContaining({ characterId: "next", asset: nextPortrait }),
+    ]);
+    expect(plan.unlockedRemainder).toEqual([
+      expect.objectContaining({ characterId: "visible", asset: visibleAudio }),
+    ]);
   });
 });

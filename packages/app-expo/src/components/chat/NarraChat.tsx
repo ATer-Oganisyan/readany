@@ -85,9 +85,6 @@ interface NarraChatProps {
     quotes?: AttachedQuote[],
   ) => void | Promise<void>;
   onStop?: () => void;
-  errorMessage?: string | null;
-  retryLabel?: string;
-  onRetry?: () => void | Promise<void>;
   autoFocus?: boolean;
   assistantName?: string;
   floatingComposer?: boolean;
@@ -115,9 +112,6 @@ export function NarraChat({
   onCitationClick,
   onSend,
   onStop,
-  errorMessage,
-  retryLabel,
-  onRetry,
   autoFocus = false,
   floatingComposer = false,
   topInset = 0,
@@ -131,7 +125,6 @@ export function NarraChat({
   const reactInputId = useId();
   const inputNativeId = `narra-chat-input-${reactInputId.replaceAll(":", "")}`;
   const effectivePlaceholder = placeholder || t("chat.inputPlaceholder", "Сообщение");
-  const effectiveRetryLabel = retryLabel || t("common.retry", "Повторить");
   const [deepThinking, setDeepThinking] = useState(false);
   const [spoilerFree, setSpoilerFree] = useState(false);
   // Текст композера раньше держала вендорная лента — теперь он наш.
@@ -188,35 +181,10 @@ export function NarraChat({
   const renderMessageText = useCallback((message: MessageV2) => messageText(message, t), [t]);
 
   const renderAccessory = () => {
-    if (!errorMessage && quotes.length === 0 && !showModeControls) return null;
+    if (quotes.length === 0 && !showModeControls) return null;
 
     return (
       <View style={styles.accessory}>
-        {errorMessage ? (
-          <View
-            style={[
-              styles.errorState,
-              {
-                backgroundColor: withOpacity(colors.destructive, 0.08),
-                borderColor: withOpacity(colors.destructive, 0.24),
-              },
-            ]}
-            accessibilityRole="alert"
-          >
-            <Text style={[styles.errorMessage, { color: colors.foreground }]}>{errorMessage}</Text>
-            <Pressable
-              onPress={() => void onRetry?.()}
-              disabled={!onRetry}
-              accessibilityRole="button"
-              accessibilityLabel={effectiveRetryLabel}
-              hitSlop={8}
-            >
-              <Text style={[styles.retryLabel, { color: colors.destructive }]}>
-                {effectiveRetryLabel}
-              </Text>
-            </Pressable>
-          </View>
-        ) : null}
         {quotes.map((quote) => (
           <View key={quote.id} style={[styles.quoteChip, { backgroundColor: colors.elevation2 }]}>
             <Text style={[styles.chipText, { color: colors.foreground }]} numberOfLines={1}>
@@ -335,27 +303,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingTop: 6,
     paddingBottom: 2,
-  },
-  errorState: {
-    minHeight: 44,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  errorMessage: {
-    flex: 1,
-    fontFamily: fontFamily.regular,
-    fontSize: 14,
-    lineHeight: 18,
-  },
-  retryLabel: {
-    fontFamily: fontFamily.semibold,
-    fontSize: 14,
-    lineHeight: 18,
   },
   quoteChip: {
     flexDirection: "row",

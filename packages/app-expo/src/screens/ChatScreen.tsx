@@ -31,8 +31,8 @@ import {
   mergeMessagesWithStreaming,
 } from "@readany/core/utils";
 
-import { AnimatedNarraFace } from "@/components/chat/animated-narra-face";
 import { NarraChat } from "@/components/chat/NarraChat";
+import { AnimatedNarraFace } from "@/components/chat/animated-narra-face";
 import {
   NARRA_CHAT_EMBEDDED_TOP_INSET,
   NARRA_CHAT_HEADER_HEIGHT,
@@ -254,6 +254,24 @@ export function ChatScreen({
     await retryLastMessage(resolvedAIConfig);
   }, [navigation, retryLastMessage, t]);
 
+  const shownChatErrorRef = useRef<string | null>(null);
+  useEffect(() => {
+    const activeError = error && activeThread?.id === errorThreadId ? error : null;
+    if (!activeError) {
+      shownChatErrorRef.current = null;
+      return;
+    }
+    const errorKey = `${errorThreadId}:${activeError.message}`;
+    if (shownChatErrorRef.current === errorKey) return;
+    shownChatErrorRef.current = errorKey;
+    toast.error(t("chat.responseFailed", "Не удалось получить ответ"), {
+      action: {
+        label: t("common.retry", "Повторить"),
+        onClick: () => void handleRetry(),
+      },
+    });
+  }, [activeThread?.id, error, errorThreadId, handleRetry, t]);
+
   const handleNewThread = useCallback(() => {
     if (bookId) {
       setBookActiveThread(bookId, null);
@@ -455,18 +473,14 @@ export function ChatScreen({
               currentStep={currentStep}
               onSend={handleSend}
               onStop={stopStream}
-              errorMessage={
-                error && activeThread?.id === errorThreadId
-                  ? t("chat.responseFailed", "Не удалось получить ответ")
-                  : undefined
-              }
-              retryLabel={t("common.retry", "Повторить")}
-              onRetry={handleRetry}
               quotes={quotes}
               onRemoveQuote={handleRemoveQuote}
               onCitationClick={handleCitationClick}
               autoFocus={!embedded}
               floatingComposer
+              showModeControls={false}
+              showScrollToBottomButton={false}
+              showTypingIndicator={false}
               topInset={headerHeight}
             />
           </View>

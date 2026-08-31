@@ -6,10 +6,12 @@ import { AppState } from "react-native";
 import {
   BackendSceneError,
   type BackendSceneIntent,
+  backendSceneId,
   requestBackendSceneAt,
   resolveBackendScene,
 } from "./backend-scene";
 import { saveBackendSceneFile } from "./backend-scene-file";
+import { consumeBackendSceneOperation } from "./backend-scene-operations";
 import { normalizePersistedNarraMediaUri } from "./media";
 import { sceneImageDataUri } from "./scene-inserts";
 
@@ -30,14 +32,18 @@ export async function generateBackendReaderScene(
     sourceKey: string;
     chapter: string;
     intent: BackendSceneIntent;
-    display(dataUri: string): void;
+    display(anchor: string, dataUri: string): void;
+    remove(anchor: string): void;
   },
   signal: AbortSignal,
 ): Promise<void> {
   const requestId = Crypto.randomUUID();
   let intent = { ...input.intent };
-  const persistIntent = () =>
-    useNarraStore.getState().setSceneRequest(input.bookId, input.sourceKey, intent);
+  const persistIntent = () => {
+    const change = useNarraStore.getState().setSceneRequest(input.bookId, input.sourceKey, intent);
+    for (const anchor of change?.removedAnchors ?? []) input.remove(anchor);
+    return change;
+  };
   const trace = (stage: string, attempt?: number, code?: number) =>
     recordDiagnostic("scene_request", {
       requestId,
@@ -52,49 +58,92 @@ export async function generateBackendReaderScene(
   try {
     if (signal.aborted) throw new BackendSceneError("SCENE_ABORTED");
     persistIntent();
-    const result = await resolveBackendScene(
-      intent,
-      {
-        request: requestBackendSceneAt,
-        save: (scene, activeSignal) =>
-          saveBackendSceneFile(intent, scene, activeSignal, (bytes, mime) => {
-            recordDiagnostic("scene_request", {
-              requestId,
-              stage: "move",
-              bytes,
-              mime,
-              state: AppState.currentState,
-            });
-          }),
-        onSnapshot: (scene) => {
-          intent = { ...intent, sceneKey: scene.sceneKey };
-          persistIntent();
-          recordDiagnostic("scene_request", {
-            requestId,
-            stage: scene.status,
-            slotIndex: scene.slotIndex,
-            anchorTextOffset: scene.anchorTextOffset,
-            sceneKey: scene.sceneKey,
-          });
-        },
-        trace,
+    let firstSnapshot: Awaited<ReturnType<typeof requestBackendSceneAt>> | undefined;
+    if (!intent.sceneKey) {
+      firstSnapshot = await requestBackendSceneAt(
+        intent.bookEditionId,
+        intent.requestedProgress,
+        signal,
+      );
+      intent = {
+        ...intent,
+        sceneKey: firstSnapshot.sceneKey,
+        slotIndex: firstSnapshot.slotIndex,
+        anchorTextOffset: firstSnapshot.anchorTextOffset,
+      };
+      persistIntent();
+    }
+    const id = backendSceneId(intent);
+    if (!id) throw new BackendSceneError("SCENE_INVALID_RESPONSE");
+    const discoveredSnapshot = firstSnapshot;
+    const shared = await consumeBackendSceneOperation(
+      id,
+      async (sharedSignal) => {
+        let initial = discoveredSnapshot;
+        const sharedIntent = { ...intent };
+        const result = await resolveBackendScene(
+          sharedIntent,
+          {
+            request: (edition, progress, activeSignal) => {
+              if (initial) {
+                const snapshot = initial;
+                initial = undefined;
+                return Promise.resolve(snapshot);
+              }
+              return requestBackendSceneAt(edition, progress, activeSignal);
+            },
+            save: (scene, activeSignal) =>
+              saveBackendSceneFile(sharedIntent, scene, activeSignal, (bytes, mime) => {
+                recordDiagnostic("scene_request", {
+                  requestId,
+                  stage: "move",
+                  bytes,
+                  mime,
+                  state: AppState.currentState,
+                });
+              }),
+            onSnapshot: (scene) => {
+              sharedIntent.sceneKey = scene.sceneKey;
+              sharedIntent.slotIndex = scene.slotIndex;
+              sharedIntent.anchorTextOffset = scene.anchorTextOffset;
+              recordDiagnostic("scene_request", {
+                requestId,
+                stage: scene.status,
+                slotIndex: scene.slotIndex,
+                anchorTextOffset: scene.anchorTextOffset,
+                sceneKey: scene.sceneKey,
+              });
+            },
+            trace,
+          },
+          sharedSignal,
+        );
+        return { ...result, intent: sharedIntent };
       },
       signal,
     );
     if (signal.aborted) throw new BackendSceneError("SCENE_ABORTED");
-    useNarraStore.getState().setScene(input.bookId, {
-      sourceKey: input.sourceKey,
-      anchor: input.anchor,
-      chapter: input.chapter,
-      excerpt: "",
-      imageUri: result.imageUri,
-      backendScene: intent,
-      generatedAt: Date.now(),
-    });
+    intent = shared.intent;
+    const change = useNarraStore.getState().setBackendScene(
+      input.bookId,
+      input.anchor,
+      {
+        sourceKey: input.sourceKey,
+        anchor: input.anchor,
+        chapter: input.chapter,
+        excerpt: "",
+        imageUri: shared.imageUri,
+        backendScene: intent,
+        generatedAt: Date.now(),
+      },
+      intent,
+    );
+    for (const anchor of change.removedAnchors) input.remove(anchor);
     trace("store");
-    const dataUri = await readSceneDataUri(result.imageUri);
+    if (change.canonicalAnchor !== input.anchor) return;
+    const dataUri = await readSceneDataUri(shared.imageUri);
     if (signal.aborted) throw new BackendSceneError("SCENE_ABORTED");
-    input.display(dataUri);
+    input.display(change.canonicalAnchor, dataUri);
     trace("webview");
   } catch (error) {
     recordDiagnostic("scene_request", {

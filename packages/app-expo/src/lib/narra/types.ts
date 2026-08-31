@@ -3,7 +3,7 @@ import type {
   BackendBookManifest,
   BackendCharacterAsset,
 } from "./backend-book-contract";
-import type { BackendSceneIntent } from "./backend-scene";
+import type { BackendSceneIntent } from "./backend-scene-identity";
 import type { NarraGenreAnalysis } from "./genre-analysis";
 
 export type NarraGender = "male" | "female";
@@ -64,6 +64,8 @@ export interface NarraChatMessage {
 
 export interface NarraSceneImage {
   backendScene?: BackendSceneIntent;
+  /** Canonical backend identity. Unlike sourceKey, it does not contain a page anchor. */
+  backendSceneId?: string;
   sourceKey: string;
   chapter: string;
   excerpt: string;
@@ -113,6 +115,10 @@ export interface NarraBookState {
   memories: Record<string, string>;
   chats: Record<string, NarraChatMessage[]>;
   scenes: Record<string, NarraSceneImage>;
+  /** Backend assets are stored once, independently from where they are rendered. */
+  scenesByBackendId?: Record<string, NarraSceneImage>;
+  /** One CFI anchor per backend asset. Values point into scenesByBackendId. */
+  sceneAnchorBindings?: Record<string, string>;
   /** Explicit user intents, retained for retry at the original position; never auto-started. */
   sceneRequests?: Record<string, BackendSceneIntent>;
   sceneAudios: Record<string, NarraSceneAudio>;

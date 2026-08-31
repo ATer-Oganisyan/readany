@@ -3,6 +3,14 @@ import {
   type BackendBookManifest,
   backendConfirmedCharacters,
 } from "@/lib/narra/backend-book-contract";
+import { backendSceneMarkupIdentity } from "@/lib/narra/backend-scene-identity";
+import {
+  type SceneBindingChange,
+  invalidateBackendScenes,
+  migrateBackendSceneState,
+  withBackendSceneAsset,
+  withBackendSceneIntent,
+} from "@/lib/narra/backend-scene-state";
 import {
   emptyNarraBookState,
   withNarraCharacterUpdates,
@@ -59,7 +67,13 @@ export interface NarraState {
     bookId: string,
     sourceKey: string,
     intent: NonNullable<NarraBookState["sceneRequests"]>[string],
-  ) => void;
+  ) => SceneBindingChange | undefined;
+  setBackendScene: (
+    bookId: string,
+    anchor: string,
+    scene: NarraSceneImage,
+    intent: NonNullable<NarraBookState["sceneRequests"]>[string],
+  ) => SceneBindingChange;
   setScene: (bookId: string, scene: NarraSceneImage) => void;
   setSceneAudio: (bookId: string, sceneAudio: NarraSceneAudio) => void;
   setSummary: (bookId: string, summary: NarraSummary) => void;
@@ -89,14 +103,36 @@ export const useNarraStore = create<NarraState>()(
         })),
       setBackendBinding: (bookId, backendBinding) => {
         const state = get();
-        const book = state.books[bookId] ?? emptyNarraBookState(bookId);
+        const current = state.books[bookId] ?? emptyNarraBookState(bookId);
+        const previousIdentity = backendSceneMarkupIdentity(
+          current.backendManifest,
+          current.backendBinding,
+        );
+        const nextIdentity = backendSceneMarkupIdentity(current.backendManifest, backendBinding);
+        const book =
+          previousIdentity === nextIdentity
+            ? current
+            : invalidateBackendScenes(current, backendBinding.bookEditionId, nextIdentity);
         if (JSON.stringify(book.backendBinding) === JSON.stringify(backendBinding)) return;
         set({ books: { ...state.books, [bookId]: { ...book, backendBinding } } });
       },
       applyBackendManifest: (bookId, manifest, progress) => {
         if (manifest.availability !== "ready") return;
         const state = get();
-        const book = state.books[bookId] ?? emptyNarraBookState(bookId);
+        const current = state.books[bookId] ?? emptyNarraBookState(bookId);
+        const nextMarkupIdentity = backendSceneMarkupIdentity(manifest, current.backendBinding);
+        const previousMarkupIdentity = backendSceneMarkupIdentity(
+          current.backendManifest,
+          current.backendBinding,
+        );
+        const book =
+          current.backendBinding && previousMarkupIdentity !== nextMarkupIdentity
+            ? invalidateBackendScenes(
+                current,
+                current.backendBinding.bookEditionId,
+                nextMarkupIdentity,
+              )
+            : current;
         if (
           book.backendManifest?.revision !== undefined &&
           manifest.revision !== undefined &&
@@ -189,14 +225,30 @@ export const useNarraStore = create<NarraState>()(
           markupIdentity: intent.markupIdentity,
           requestedProgress: intent.requestedProgress,
           sceneKey: intent.sceneKey,
+          slotIndex: intent.slotIndex,
+          anchorTextOffset: intent.anchorTextOffset,
         };
         if (JSON.stringify(book.sceneRequests?.[sourceKey]) === JSON.stringify(request)) return;
+        const anchor = sourceKey.startsWith("page:") ? sourceKey.slice("page:".length) : undefined;
+        if (anchor) {
+          const result = withBackendSceneIntent(book, anchor, request);
+          set({ books: { ...state.books, [bookId]: result.book } });
+          return result.change;
+        }
         set({
           books: {
             ...state.books,
             [bookId]: { ...book, sceneRequests: { ...book.sceneRequests, [sourceKey]: request } },
           },
         });
+        return undefined;
+      },
+      setBackendScene: (bookId, anchor, scene, intent) => {
+        const state = get();
+        const book = state.books[bookId] ?? emptyNarraBookState(bookId);
+        const result = withBackendSceneAsset(book, anchor, scene, intent);
+        set({ books: { ...state.books, [bookId]: result.book } });
+        return result.change;
       },
       setScene: (bookId, scene) =>
         set((state) => {
@@ -261,12 +313,21 @@ export const useNarraStore = create<NarraState>()(
     // Ушедшие варианты частоты врезок (5/15 стр.) приводим к новому дефолту
     (persisted) => {
       const withPortraitsMigrated = migrateGeneratedFemalePortraits(persisted);
+      const withScenesMigrated = {
+        ...withPortraitsMigrated,
+        books: Object.fromEntries(
+          Object.entries(withPortraitsMigrated.books ?? {}).map(([bookId, book]) => [
+            bookId,
+            migrateBackendSceneState(book),
+          ]),
+        ),
+      };
       return (SCENE_SUGGESTION_INTERVALS as readonly number[]).includes(
-        withPortraitsMigrated.sceneSuggestionInterval,
+        withScenesMigrated.sceneSuggestionInterval,
       )
-        ? withPortraitsMigrated
+        ? withScenesMigrated
         : {
-            ...withPortraitsMigrated,
+            ...withScenesMigrated,
             sceneSuggestionInterval: DEFAULT_SCENE_SUGGESTION_INTERVAL,
           };
     },

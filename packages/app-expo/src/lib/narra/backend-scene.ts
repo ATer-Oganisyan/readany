@@ -5,6 +5,12 @@ import {
   backendJsonPost,
 } from "./backend-book-api";
 import { backendRecord } from "./backend-book-contract";
+import type { BackendSceneIntent } from "./backend-scene-identity";
+export {
+  type BackendSceneIntent,
+  backendSceneId,
+  backendSceneMarkupIdentity,
+} from "./backend-scene-identity";
 
 export interface BackendSceneSnapshot {
   status: "queued" | "running" | "ready" | "failed";
@@ -16,12 +22,6 @@ export interface BackendSceneSnapshot {
   mimeType?: "image/png" | "image/jpeg" | "image/webp";
   errorCode?: string;
 }
-export interface BackendSceneIntent {
-  bookEditionId: string;
-  markupIdentity: string;
-  requestedProgress: number;
-  sceneKey?: string;
-}
 export class BackendSceneError extends Error {
   constructor(public readonly code: string) {
     super(code);
@@ -31,7 +31,13 @@ export class BackendSceneError extends Error {
 
 export function parseBackendScene(value: unknown): BackendSceneSnapshot {
   const raw = backendRecord(value);
-  if (raw.status === "failed") throw new BackendSceneError("SCENE_FAILED");
+  if (raw.status === "failed") {
+    const code =
+      typeof raw.error_code === "string" && /^[A-Z0-9_]{1,80}$/.test(raw.error_code)
+        ? raw.error_code
+        : "SCENE_FAILED";
+    throw new BackendSceneError(code);
+  }
   if (raw.status !== "queued" && raw.status !== "running" && raw.status !== "ready")
     throw new BackendSceneError("SCENE_INVALID_RESPONSE");
   if (

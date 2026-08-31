@@ -30,8 +30,10 @@ vi.mock("./backend-book-api", async (original) => ({
 }));
 vi.mock("./backend-scene-file", () => ({ saveBackendSceneFile: runtime.save }));
 import { useNarraStore } from "@/stores/narra-store";
+import { clearBackendSceneOperationsForTests } from "./backend-scene-operations";
 import { generateBackendReaderScene, readSceneDataUri } from "./backend-scene-reader";
 import { sceneInsertAnchors } from "./scene-inserts";
+import type { NarraBookState } from "./types";
 
 const ready = {
   status: "ready",
@@ -48,8 +50,10 @@ const input = () => ({
   chapter: "Chapter",
   intent: { bookEditionId: "edition", markupIdentity: "v3", requestedProgress: 0.385 },
   display: vi.fn(),
+  remove: vi.fn(),
 });
 const state = () => useNarraStore.getState().books.book;
+const backendScene = () => Object.values(state().scenesByBackendId ?? {})[0];
 beforeEach(() => {
   vi.useFakeTimers();
   useNarraStore.setState({ books: {} });
@@ -57,6 +61,7 @@ beforeEach(() => {
   runtime.save.mockReset().mockResolvedValue("file:///documents/scene.png");
   runtime.read.mockReset().mockResolvedValue("aW1hZ2U=");
   runtime.diagnostic.mockClear();
+  clearBackendSceneOperationsForTests();
 });
 afterEach(() => vi.useRealTimers());
 
@@ -65,17 +70,17 @@ describe("reader backend scene action and persistence", () => {
     const action = input();
     runtime.save.mockImplementation(async () => {
       expect(state().sceneRequests?.[action.sourceKey].requestedProgress).toBe(0.385);
-      expect(state().scenes[action.sourceKey]).toBeUndefined();
+      expect(state().scenesByBackendId).toBeUndefined();
       expect(action.display).not.toHaveBeenCalled();
       return "file:///documents/scene.png";
     });
     runtime.read.mockImplementation(async () => {
-      expect(state().scenes[action.sourceKey].imageUri).toBe("file:///documents/scene.png");
+      expect(backendScene().imageUri).toBe("file:///documents/scene.png");
       return "aW1hZ2U=";
     });
     await generateBackendReaderScene(action, new AbortController().signal);
-    expect(action.display).toHaveBeenCalledWith("data:image/png;base64,aW1hZ2U=");
-    expect(state().scenes[action.sourceKey].backendScene?.sceneKey).toBe("text-interval-v1:6");
+    expect(action.display).toHaveBeenCalledWith("anchor", "data:image/png;base64,aW1hZ2U=");
+    expect(backendScene().backendScene?.sceneKey).toBe("text-interval-v1:6");
     expect(JSON.stringify(state())).not.toContain("signed");
     expect(JSON.stringify(runtime.diagnostic.mock.calls)).not.toContain("signed");
     const correlation = runtime.diagnostic.mock.calls.map((args) => args[1].requestId);
@@ -118,11 +123,14 @@ describe("reader backend scene action and persistence", () => {
   it("restores an image after restart without network and remaps the old sandbox path", async () => {
     const action = input();
     await generateBackendReaderScene(action, new AbortController().signal);
-    const stored = JSON.parse(JSON.stringify(state()));
+    const stored = JSON.parse(JSON.stringify(state())) as NarraBookState;
     runtime.request.mockClear().mockRejectedValue(new Error("offline"));
     await expect(
       readSceneDataUri(
-        stored.scenes[action.sourceKey].imageUri.replace("file:///documents/", "file:///old/"),
+        Object.values(stored.scenesByBackendId ?? {})[0].imageUri.replace(
+          "file:///documents/",
+          "file:///old/",
+        ),
       ),
     ).resolves.toBe("data:image/png;base64,aW1hZ2U=");
     expect(runtime.request).not.toHaveBeenCalled();
@@ -130,9 +138,9 @@ describe("reader backend scene action and persistence", () => {
       encoding: "base64",
     });
     runtime.read.mockResolvedValue("");
-    await expect(readSceneDataUri(stored.scenes[action.sourceKey].imageUri)).rejects.toThrow(
-      "SCENE_EMPTY_LOCAL_FILE",
-    );
+    await expect(
+      readSceneDataUri(Object.values(stored.scenesByBackendId ?? {})[0].imageUri),
+    ).rejects.toThrow("SCENE_EMPTY_LOCAL_FILE");
   });
   it("cancellation during download cannot publish into a closed reader", async () => {
     const action = input();

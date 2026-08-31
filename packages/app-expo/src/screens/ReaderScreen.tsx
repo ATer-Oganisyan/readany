@@ -22,7 +22,9 @@ import { diagnosticErrorReason, recordDiagnostic } from "@/lib/diagnostics/diagn
 import { hapticLight } from "@/lib/haptics";
 import { importBackendCatalogBook } from "@/lib/narra/backend-catalog-import";
 import { isCatalogBookRevisionCurrent } from "@/lib/narra/backend-catalog-library";
+import { backendSceneMarkupIdentity } from "@/lib/narra/backend-scene-identity";
 import { generateBackendReaderScene, readSceneDataUri } from "@/lib/narra/backend-scene-reader";
+import { backendSceneForAnchor } from "@/lib/narra/backend-scene-state";
 import { buildCharacterNameMatcherSpec } from "@/lib/narra/character-name-matcher";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
 import { reportNarraError } from "@/lib/narra/errors";
@@ -582,6 +584,7 @@ function ReaderContent({ route, navigation }: Props) {
     insertSceneSlot: () => void;
     replaceSceneSlot: (anchor: string, imageDataUri: string) => void;
     setSceneSlotState: (anchor: string, state: "idle" | "loading" | "error") => void;
+    removeSceneSlot: (anchor: string) => void;
   } | null>(null);
 
   // Chapter translation state
@@ -714,6 +717,9 @@ function ReaderContent({ route, navigation }: Props) {
   const narraScenes = useNarraStore((state) => state.books[bookId]?.scenes);
   const setNarraScene = useNarraStore((state) => state.setScene);
   const narraSceneRequests = useNarraStore((state) => state.books[bookId]?.sceneRequests);
+  const narraSceneAnchorBindings = useNarraStore(
+    (state) => state.books[bookId]?.sceneAnchorBindings,
+  );
   // biome-ignore lint/correctness/useExhaustiveDependencies: Each book owns separate operations; changing books aborts only the previous ones.
   const sceneSlotActions = useMemo(() => new Map<string, AbortController>(), [bookId]);
   useEffect(
@@ -751,7 +757,7 @@ function ReaderContent({ route, navigation }: Props) {
       try {
         const sourceKey = sceneSourceKeyForAnchor(anchor);
         const bookState = useNarraStore.getState().books[bookId];
-        const cached = bookState?.scenes?.[sourceKey];
+        const cached = backendSceneForAnchor(bookState, anchor) ?? bookState?.scenes?.[sourceKey];
         const chapter =
           cached?.chapter ||
           currentChapter ||
@@ -770,12 +776,7 @@ function ReaderContent({ route, navigation }: Props) {
               : {
                   bookEditionId: edition,
                   requestedProgress,
-                  markupIdentity: JSON.stringify([
-                    manifest?.publicationId,
-                    manifest?.revision,
-                    manifest?.contentHash,
-                    bookState?.backendBinding?.contentSha256,
-                  ]),
+                  markupIdentity: backendSceneMarkupIdentity(manifest, bookState?.backendBinding),
                 };
           await generateBackendReaderScene(
             {
@@ -784,7 +785,9 @@ function ReaderContent({ route, navigation }: Props) {
               sourceKey,
               chapter,
               intent,
-              display: (dataUri) => bridgeRef.current?.replaceSceneSlot(anchor, dataUri),
+              display: (targetAnchor, dataUri) =>
+                bridgeRef.current?.replaceSceneSlot(targetAnchor, dataUri),
+              remove: (targetAnchor) => bridgeRef.current?.removeSceneSlot(targetAnchor),
             },
             action.signal,
           );
@@ -842,7 +845,7 @@ function ReaderContent({ route, navigation }: Props) {
       }
       const sourceKey = sceneSourceKeyForAnchor(anchor);
       const bookState = useNarraStore.getState().books[bookId];
-      const scene = bookState?.scenes?.[sourceKey];
+      const scene = backendSceneForAnchor(bookState, anchor) ?? bookState?.scenes?.[sourceKey];
       if (!scene?.imageUri) {
         bridgeRef.current?.setSceneSlotState(
           anchor,
@@ -1519,9 +1522,9 @@ function ReaderContent({ route, navigation }: Props) {
   // Якоря сохранённых сцен: WebView восстанавливает врезки при загрузке
   // секций и просит картинки событием sceneSlotRestored
   const sceneAnchorsJson = useMemo(() => {
-    const anchors = sceneInsertAnchors(narraScenes, narraSceneRequests);
+    const anchors = sceneInsertAnchors(narraScenes, narraSceneRequests, narraSceneAnchorBindings);
     return anchors.length ? JSON.stringify(anchors) : null;
-  }, [narraScenes, narraSceneRequests]);
+  }, [narraScenes, narraSceneRequests, narraSceneAnchorBindings]);
   const setSceneAnchors = bridge.setSceneAnchors;
   useEffect(() => {
     if (!webViewReady) return;

@@ -26,11 +26,15 @@ export function sceneSourceKeyForAnchor(anchor: string): string {
 export function sceneInsertAnchors(
   scenes: Record<string, NarraSceneImage> | undefined,
   requests?: NarraBookState["sceneRequests"],
+  bindings?: NarraBookState["sceneAnchorBindings"],
 ): string[] {
-  const anchors: string[] = Object.keys(requests ?? {})
-    .filter((key) => key.startsWith(SCENE_PAGE_SOURCE_PREFIX))
-    .map((key) => key.slice(SCENE_PAGE_SOURCE_PREFIX.length).trim())
-    .filter(Boolean);
+  const anchors: string[] = Object.keys(bindings ?? {});
+  anchors.push(
+    ...Object.keys(requests ?? {})
+      .filter((key) => key.startsWith(SCENE_PAGE_SOURCE_PREFIX))
+      .map((key) => key.slice(SCENE_PAGE_SOURCE_PREFIX.length).trim())
+      .filter(Boolean),
+  );
   for (const scene of Object.values(scenes ?? {})) {
     const anchor = scene.anchor?.trim();
     if (anchor && scene.imageUri && !anchors.includes(anchor)) {

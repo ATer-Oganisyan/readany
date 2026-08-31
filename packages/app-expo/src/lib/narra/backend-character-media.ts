@@ -6,6 +6,7 @@ import type { BackendCharacterAsset } from "./backend-book-contract";
 import { downloadVerifiedBackendFile } from "./backend-file-download";
 import { sha256BackendFile } from "./backend-file-hash";
 import { isCharacterUnlocked } from "./domain";
+import type { NarraCharacter } from "./types";
 
 const root = `${FileSystem.documentDirectory}narra-backend-media`;
 interface AssetRequest {
@@ -15,6 +16,12 @@ interface AssetRequest {
 }
 const active = new Map<string, AssetRequest>();
 const verified = new Set<string>();
+
+function mediaCancellationError(): Error {
+  const error = new Error("Media consumer cancelled");
+  error.name = "AbortError";
+  return error;
+}
 
 function consumeAsset(request: AssetRequest, signal?: AbortSignal): Promise<string> {
   request.consumers++;
@@ -28,7 +35,7 @@ function consumeAsset(request: AssetRequest, signal?: AbortSignal): Promise<stri
       if (error) reject(error);
       else resolve(uri as string);
     };
-    const abort = () => finish(new Error("Media consumer cancelled"));
+    const abort = () => finish(mediaCancellationError());
     request.promise.then(
       (uri) => finish(undefined, uri),
       (error) => finish(error),
@@ -43,7 +50,7 @@ export async function materializeBackendCharacterAsset(
   asset: BackendCharacterAsset,
   signal?: AbortSignal,
 ): Promise<string> {
-  if (signal?.aborted) throw new Error("Media consumer cancelled");
+  if (signal?.aborted) throw mediaCancellationError();
   const directory = `${root}/${encodeURIComponent(edition)}/${asset.type}`;
   const extension =
     asset.mimeType === "image/png"
@@ -120,6 +127,118 @@ async function characterSlot<T>(work: () => Promise<T>) {
   }
 }
 
+interface CharacterAssetJob {
+  characterId: string;
+  asset: BackendCharacterAsset;
+  requiresUnlock: boolean;
+}
+
+export interface BackendCharacterMediaPlan {
+  unlockedPortraits: CharacterAssetJob[];
+  nextPortrait: CharacterAssetJob[];
+  unlockedRemainder: CharacterAssetJob[];
+}
+
+/**
+ * Portraits are user-visible immediately, so they go before audio/video. We also
+ * warm exactly one upcoming portrait without exposing the character itself.
+ */
+export function planBackendCharacterMedia(
+  characters: readonly NarraCharacter[],
+  progress: number,
+): BackendCharacterMediaPlan {
+  const backendCharacters = characters.filter((character) => character.backendManaged);
+  const unlocked = backendCharacters.filter((character) =>
+    isCharacterUnlocked(progress, character),
+  );
+  const futureWithPortrait = backendCharacters
+    .filter((character) => !isCharacterUnlocked(progress, character))
+    .sort((a, b) => a.unlockProgress - b.unlockProgress)
+    .find((character) =>
+      character.backendAssets?.some((asset) => asset.type === "primary_portrait"),
+    );
+  const jobs = (
+    values: readonly NarraCharacter[],
+    predicate: (asset: BackendCharacterAsset) => boolean,
+    requiresUnlock: boolean,
+  ): CharacterAssetJob[] =>
+    values.flatMap((character) =>
+      (character.backendAssets ?? [])
+        .filter(predicate)
+        .map((asset) => ({ characterId: character.id, asset, requiresUnlock })),
+    );
+
+  return {
+    unlockedPortraits: jobs(unlocked, (asset) => asset.type === "primary_portrait", true),
+    nextPortrait: futureWithPortrait
+      ? jobs([futureWithPortrait], (asset) => asset.type === "primary_portrait", false)
+      : [],
+    unlockedRemainder: jobs(unlocked, (asset) => asset.type !== "primary_portrait", true),
+  };
+}
+
+async function loadCharacterAssetJobs(
+  bookId: string,
+  edition: string,
+  jobs: readonly CharacterAssetJob[],
+  signal?: AbortSignal,
+): Promise<void> {
+  let index = 0;
+  await Promise.all(
+    [0, 1].map(async () => {
+      while (index < jobs.length && !signal?.aborted) {
+        const job = jobs[index++];
+        try {
+          await characterSlot(async () => {
+            const book = useLibraryStore.getState().books.find((item) => item.id === bookId);
+            const character = useNarraStore
+              .getState()
+              .books[bookId]?.characters.find((item) => item.id === job.characterId);
+            if (
+              signal?.aborted ||
+              !book ||
+              book.deletedAt ||
+              !character ||
+              (job.requiresUnlock && !isCharacterUnlocked(book.progress, character))
+            )
+              return;
+
+            const uri = await materializeBackendCharacterAsset(edition, job.asset, signal);
+            const latest = useNarraStore.getState().books[bookId];
+            const current = latest?.characters.find((item) => item.id === job.characterId);
+            if (
+              signal?.aborted ||
+              latest?.backendBinding?.bookEditionId !== edition ||
+              !current?.backendAssets?.some(
+                (value) =>
+                  value.type === job.asset.type && value.contentHash === job.asset.contentHash,
+              )
+            )
+              return;
+            if (
+              current.backendMedia?.[job.asset.type]?.uri === uri &&
+              current.backendMedia[job.asset.type]?.hash === job.asset.contentHash
+            )
+              return;
+            useNarraStore.getState().updateCharacter(bookId, job.characterId, {
+              backendMedia: {
+                ...current.backendMedia,
+                [job.asset.type]: { hash: job.asset.contentHash, uri },
+              },
+              ...(job.asset.type === "primary_portrait" && !current.portraitUriOverridesAsset
+                ? { portraitUri: uri }
+                : {}),
+            });
+          });
+        } catch {
+          // A screen may release its consumer while another keeps the shared download alive.
+          // Individual media failures are retried by the next manifest/progress refresh.
+        }
+      }
+    }),
+  );
+}
+
 export async function loadBackendCharacterMedia(
   bookId: string,
   progress: number,
@@ -128,56 +247,9 @@ export async function loadBackendCharacterMedia(
   const state = useNarraStore.getState().books[bookId];
   if (!state?.backendBinding) return;
   const edition = state.backendBinding.bookEditionId;
-  const characters = state.characters.filter(
-    (item) => item.backendManaged && isCharacterUnlocked(progress, item),
-  );
-  // Each invocation queues only two workers, not every character in the book.
-  let index = 0;
-  await Promise.all(
-    [0, 1].map(async () => {
-      while (index < characters.length && !signal?.aborted) {
-        const character = characters[index++];
-        await characterSlot(async () => {
-          const book = useLibraryStore.getState().books.find((item) => item.id === bookId);
-          if (
-            signal?.aborted ||
-            !book ||
-            book.deletedAt ||
-            !isCharacterUnlocked(book.progress, character)
-          )
-            return;
-          await Promise.allSettled(
-            (character.backendAssets ?? []).map(async (asset) => {
-              if (signal?.aborted) return;
-              const uri = await materializeBackendCharacterAsset(edition, asset, signal);
-              const latest = useNarraStore.getState().books[bookId];
-              const current = latest?.characters.find((item) => item.id === character.id);
-              if (
-                signal?.aborted ||
-                latest?.backendBinding?.bookEditionId !== edition ||
-                !current?.backendAssets?.some(
-                  (value) => value.type === asset.type && value.contentHash === asset.contentHash,
-                )
-              )
-                return;
-              if (
-                current.backendMedia?.[asset.type]?.uri === uri &&
-                current.backendMedia[asset.type]?.hash === asset.contentHash
-              )
-                return;
-              useNarraStore.getState().updateCharacter(bookId, character.id, {
-                backendMedia: {
-                  ...current.backendMedia,
-                  [asset.type]: { hash: asset.contentHash, uri },
-                },
-                ...(asset.type === "primary_portrait" && !current.portraitUriOverridesAsset
-                  ? { portraitUri: uri }
-                  : {}),
-              });
-            }),
-          );
-        });
-      }
-    }),
-  );
+  const plan = planBackendCharacterMedia(state.characters, progress);
+  // Strict phases keep visible portraits ahead of speculative and decorative media.
+  await loadCharacterAssetJobs(bookId, edition, plan.unlockedPortraits, signal);
+  await loadCharacterAssetJobs(bookId, edition, plan.nextPortrait, signal);
+  await loadCharacterAssetJobs(bookId, edition, plan.unlockedRemainder, signal);
 }

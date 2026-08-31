@@ -822,6 +822,17 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       `);
   }, []);
 
+  const removeSceneSlot = useCallback((anchor: string) => {
+    webViewRef.current?.injectJavaScript(`
+        (function() {
+          try {
+            if (window.removeSceneSlot) window.removeSceneSlot(${JSON.stringify(anchor)});
+          } catch(e) { console.error('[WebView] removeSceneSlot error:', e); }
+        })();
+        true;
+      `);
+  }, []);
+
   const removeRuby = useCallback(() => {
     webViewRef.current?.injectJavaScript(`
       (function() {
@@ -1134,6 +1145,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       configureSceneSlots,
       replaceSceneSlot,
       setSceneSlotState,
+      removeSceneSlot,
     }),
     [
       handleMessage,
@@ -1177,6 +1189,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       configureSceneSlots,
       replaceSceneSlot,
       setSceneSlotState,
+      removeSceneSlot,
     ],
   );
 }
