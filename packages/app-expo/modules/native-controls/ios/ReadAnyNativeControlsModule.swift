@@ -439,7 +439,24 @@ final class ReadAnyReaderToolbar: ExpoView {
   }
 
   private let toolbar = UIToolbar()
-  private lazy var speechButton = makeToolbarButton(action: #selector(handleSpeechPress))
+  private lazy var speechButton: UIButton = {
+    let button = makeToolbarButton(action: #selector(handleSpeechPress))
+    // Speech is the time-critical action. Let flexible space and the secondary
+    // button yield before UIKit compresses its localized title.
+    button.setContentCompressionResistancePriority(.required, for: .horizontal)
+    return button
+  }()
+  private lazy var speechLoadingIndicator: UIActivityIndicatorView = {
+    let indicator = UIActivityIndicatorView(style: .medium)
+    indicator.translatesAutoresizingMaskIntoConstraints = false
+    indicator.hidesWhenStopped = true
+    speechButton.addSubview(indicator)
+    NSLayoutConstraint.activate([
+      indicator.centerXAnchor.constraint(equalTo: speechButton.centerXAnchor),
+      indicator.centerYAnchor.constraint(equalTo: speechButton.centerYAnchor)
+    ])
+    return indicator
+  }()
   private lazy var charactersButton = makeToolbarButton(action: #selector(handleCharactersPress))
   private lazy var speechItem = makeToolbarItem(button: speechButton)
   private lazy var charactersItem = makeToolbarItem(button: charactersButton)
@@ -506,7 +523,8 @@ final class ReadAnyReaderToolbar: ExpoView {
     updateToolbarButton(
       speechButton,
       title: currentSpeechLabel,
-      image: MishanaerIconAssets.image(speechActive ? "stop-filled" : "headphones-filled")
+      image: MishanaerIconAssets.image(speechActive ? "stop-filled" : "headphones-filled"),
+      isLoading: speechLoading
     )
     speechItem.isEnabled = !speechLoading
     speechButton.isEnabled = !speechLoading
@@ -541,6 +559,10 @@ final class ReadAnyReaderToolbar: ExpoView {
     let button = UIButton(type: .system)
     button.addTarget(self, action: action, for: .touchUpInside)
     button.clipsToBounds = false
+    button.titleLabel?.numberOfLines = 1
+    button.titleLabel?.adjustsFontSizeToFitWidth = true
+    button.titleLabel?.minimumScaleFactor = 0.85
+    button.titleLabel?.lineBreakMode = .byClipping
     return button
   }
 
@@ -555,16 +577,26 @@ final class ReadAnyReaderToolbar: ExpoView {
   private func updateToolbarButton(
     _ button: UIButton,
     title: String,
-    image: UIImage
+    image: UIImage,
+    isLoading: Bool = false
   ) {
     var configuration = UIButton.Configuration.plain()
     configuration.title = title
     configuration.image = image
     configuration.imagePlacement = .leading
     configuration.imagePadding = 7
-    configuration.baseForegroundColor = toolbarTintColor
+    configuration.baseForegroundColor = isLoading ? .clear : toolbarTintColor
     button.configuration = configuration
+    button.titleLabel?.numberOfLines = 1
     button.accessibilityLabel = title
+
+    guard button === speechButton else { return }
+    speechLoadingIndicator.color = toolbarTintColor
+    if isLoading {
+      speechLoadingIndicator.startAnimating()
+    } else {
+      speechLoadingIndicator.stopAnimating()
+    }
   }
 }
 

@@ -8,11 +8,10 @@ import {
 import { CharacterPortraitImage } from "@/components/narra/character-portrait-image";
 import { SystemSheetZoomDestination } from "@/components/navigation/SystemSheetZoomDestination";
 import { Text } from "@/components/ui/Typography";
-import { EmptyStateActionButton } from "@/components/ui/empty-state-action-button";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { useBackendBook } from "@/hooks/use-backend-book";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
-import { retryBackendBookSync, useBackendBookStatus } from "@/lib/narra/backend-book-sync";
+import { useBackendBookStatus } from "@/lib/narra/backend-book-sync";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
 import type { NarraCharacter } from "@/lib/narra/types";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
@@ -322,6 +321,7 @@ function NarraCharactersList({
     backendStatus?.manifest?.availability === "processing"
       ? backendStatus.manifest.characters.filter((item) => item.provisional)
       : [];
+  const isFindingCharacters = backendStatus?.manifest?.availability === "processing";
   useEffect(() => {
     recordTelemetry("character_opened", { feature: "character" });
   }, []);
@@ -371,7 +371,9 @@ function NarraCharactersList({
       key: "narra",
       accessibilityLabel: t("narra.openNarraBookChat", "Открыть чат с Narra об этой книге"),
       title: "Narra",
-      subtitle: t("narra.askAboutBook", "Спросите что угодно о книге"),
+      subtitle: isFindingCharacters
+        ? t("narra.findingCharacters", "Ищу персонажей…")
+        : t("narra.askAboutBook", "Спросите что угодно о книге"),
       onPress: openBookChat,
       avatar: (
         <CharacterChatAvatar muted>
@@ -422,15 +424,6 @@ function NarraCharactersList({
         contentContainerStyle={[styles.content, USES_CHARACTERS_SHEET && styles.sheetContent]}
         style={styles.scrollView}
       >
-        {backendStatus?.error ? (
-          <EmptyStateActionButton
-            onPress={() => retryBackendBookSync(bookId)}
-            label="Повторить загрузку персонажей"
-          />
-        ) : null}
-        {backendStatus?.manifest?.availability === "processing" && provisional.length === 0 ? (
-          <Text>Размечаю книгу…</Text>
-        ) : null}
         <CharacterChatList items={listItems} />
         <CharacterChatList
           items={provisional.map((item) => ({

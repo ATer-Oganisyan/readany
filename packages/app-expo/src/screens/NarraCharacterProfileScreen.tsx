@@ -75,6 +75,7 @@ export function NarraCharacterProfileScreen({ route, navigation }: Props) {
     <View collapsable={false} style={[styles.container, !portraitReady && styles.compactContainer]}>
       <ReaderCharacterCard
         embedded
+        staticPortraitOnly
         visible
         character={character}
         bookId={bookId}

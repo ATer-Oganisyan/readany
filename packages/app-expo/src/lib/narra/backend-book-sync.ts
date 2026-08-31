@@ -134,12 +134,19 @@ async function bindBook(book: Book, signal: AbortSignal) {
   store.setBackendBinding(book.id, binding);
   await applyBookLanguage(book.id, binding.language);
   if (binding.resolution === "private" && !binding.sourceUploaded) {
+    // Passing expo-file-system's File directly makes expo/fetch normalize the
+    // Blob before it creates the native request. On iOS that conversion can
+    // stall, leaving the private edition registered but with no source bytes.
+    // Read the file explicitly so fetch receives an unambiguous binary body.
+    const sourceFile = new File(await sourcePath(book));
+    const sourceBytes = await sourceFile.bytes();
+    if (sourceBytes.byteLength === 0) throw new Error("Book source is empty");
     const response = await backendBookRequest(backendBookPath(binding.bookEditionId, "source"), {
       method: "PUT",
       headers: {
         "content-type": mimeTypes[original?.format ?? book.format] ?? "application/octet-stream",
       },
-      body: new File(await sourcePath(book)),
+      body: sourceBytes,
       signal,
     });
     if (signal.aborted) throw new Error("Source upload cancelled");
@@ -287,6 +294,8 @@ export function retryBackendBookSync(bookId: string) {
   sessions.get(bookId)?.session.retry();
 }
 
+const IMPORTED_BOOK_SYNC_DEADLINE_MS = 5 * 60_000;
+
 /** Start server work for an explicitly imported file without blocking its local reader. */
 export function startImportedBackendBook(book: Book): void {
   const stop = () => {
@@ -294,10 +303,10 @@ export function startImportedBackendBook(book: Book): void {
     unsubscribe?.();
     release?.();
   };
-  const deadline = setTimeout(stop, 120_000);
+  const deadline = setTimeout(stop, IMPORTED_BOOK_SYNC_DEADLINE_MS);
   const release = retainBackendBookSync(book);
   const unsubscribe = useBackendBookStatus.subscribe((state) => {
     const current = state.books[book.id];
-    if (current?.error || current?.manifest?.availability === "ready") stop();
+    if (current?.manifest?.availability === "ready") stop();
   });
 }

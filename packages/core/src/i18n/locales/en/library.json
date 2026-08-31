@@ -91,6 +91,7 @@
     "webdavImportSortRecent": "Recently updated",
     "webdavImportSortName": "Name",
     "importResultSummary": "Imported: {{imported}} · duplicates skipped: {{skipped}} · failed: {{failed}}",
+    "localImportEnrichmentPending": "Done! We'll add the cover and characters soon",
     "deleteBookTitle": "Remove this book?",
     "deleteBookDescription": "The book file will be removed from your shelf.",
     "preserveDeleteDataLabel": "Keep notes and reading stats",

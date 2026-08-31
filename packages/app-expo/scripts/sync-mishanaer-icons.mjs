@@ -155,6 +155,7 @@ const FILLED_ICONS = [
   "chat-bubbles",
   "cloud",
   "headphones",
+  "magic-wand",
   "magnifying-glass",
   "pencil-square",
   "person",

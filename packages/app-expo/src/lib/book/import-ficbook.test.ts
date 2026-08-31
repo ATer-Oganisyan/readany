@@ -25,6 +25,9 @@ describe("parseFicbookUrl", () => {
     expect(parseFicbookUrl("https://ficbook.net/readfic/13141244")).toEqual({
       workId: "13141244",
     });
+    expect(parseFicbookUrl("https://ficbook.net/readfic/9006691")).toEqual({
+      workId: "9006691",
+    });
   });
 
   it("распознаёт ссылку на конкретную главу", () => {

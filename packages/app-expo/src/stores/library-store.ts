@@ -21,6 +21,7 @@ import {
   preserveBackendOriginalSource,
   startImportedBackendBook,
 } from "@/lib/narra/backend-book-sync";
+import { trySha256BackendFile } from "@/lib/narra/backend-file-hash";
 import { normalizeBookLanguage } from "@/lib/narra/book-language";
 import { queueBook as queueAutoVectorize } from "@/lib/rag/auto-vectorize-service";
 import {
@@ -36,6 +37,7 @@ import type { Book, BookGroup, LibraryFilter, SortField, SortOrder } from "@read
 import { generateId } from "@readany/core/utils";
 import { AppState } from "react-native";
 import { create } from "zustand";
+import { useNarraStore } from "./narra-store";
 import { debouncedSave, loadFromFS } from "./persist";
 import { useVectorModelStore } from "./vector-model-store";
 
@@ -308,6 +310,7 @@ const titleRepairAttempted = new Set<string>();
 const coverGenerationInFlight = new Set<string>();
 let coverGenerationQueue: Promise<void> = Promise.resolve();
 let coverResumeSubscription: ReturnType<typeof AppState.addEventListener> | undefined;
+let backendImportResumeSubscription: (() => void) | undefined;
 
 function watchCoverRecovery(): void {
   if (coverResumeSubscription) return;
@@ -524,8 +527,9 @@ async function repairMissingBookCovers(books: Book[]): Promise<void> {
       continue;
     }
     if (coverGenerationInFlight.has(book.id)) continue;
-    // Resume existing user jobs only. Missing catalog metadata must never launch generation.
-    if (book.sourceKind === "catalog" || !(await getLocalCoverJob(book.id))) continue;
+    // Imported books always get a durable cover job, including books imported
+    // before the enqueue regression was fixed. Catalog metadata never launches generation.
+    if (book.sourceKind === "catalog") continue;
 
     await queueGeneratedBookCover(book);
   }
@@ -596,7 +600,38 @@ async function repairBundledCatalogCovers(books: Book[]): Promise<void> {
   }
 }
 
+function resumeInterruptedBackendImports(books: Book[]): void {
+  const resume = (): boolean => {
+    const narra = useNarraStore.getState();
+    if (!narra._hasHydrated) return false;
+    const resumedSources = new Set<string>();
+    for (const book of [...books].sort((a, b) => b.addedAt - a.addedAt)) {
+      const backendBook = narra.books[book.id];
+      const binding = backendBook?.backendBinding;
+      if (binding?.resolution !== "private") continue;
+      // A source upload and the markup job are separate stages. Keep polling
+      // after a relaunch when the bytes are already stored but the manifest
+      // has not reached its terminal ready state yet.
+      if (binding.sourceUploaded && backendBook.backendManifest?.availability === "ready") continue;
+      const sourceKey = binding.contentSha256 || binding.bookEditionId;
+      if (resumedSources.has(sourceKey)) continue;
+      resumedSources.add(sourceKey);
+      startImportedBackendBook(book);
+    }
+    return true;
+  };
+
+  if (resume() || backendImportResumeSubscription) return;
+  backendImportResumeSubscription = useNarraStore.subscribe((state) => {
+    if (!state._hasHydrated) return;
+    backendImportResumeSubscription?.();
+    backendImportResumeSubscription = undefined;
+    resume();
+  });
+}
+
 async function repairImportedBookMetadata(books: Book[]): Promise<void> {
+  resumeInterruptedBackendImports(books);
   await repairSuspiciousBookTitles(books);
   await repairBundledCatalogCovers(books);
   await migrateLegacyGeneratedBookCovers(books);
@@ -1282,7 +1317,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           const format: Book["format"] = formatMap[ext || ""] || "epub";
           const fileName = originalName;
           const platform = getPlatformService();
-          const { size: fileSize, md5: fileHash } = await getMobileFileStat(filePath);
+          const { size: fileSize, md5 } = await getMobileFileStat(filePath);
+          // MD5 is unavailable for some iOS document-provider URLs. Try the
+          // backend SHA-256 identity, but never block import if that provider
+          // does not expose the temporary URL to the hashing module.
+          const fileHash = md5 || (await trySha256BackendFile(filePath));
 
           const existingDuplicate = findDuplicateBookByHash(duplicateIndex, fileHash);
           const existingKnownBook = knownBook
@@ -1296,24 +1335,15 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
                     candidate.contentHash === knownBook.contentHash),
               )
             : undefined;
-          if (existingDuplicate?.syncStatus === "local" && !existingKnownBook) {
-            result.skippedDuplicates.push({
-              name: fileName,
-              existingBook: existingDuplicate,
-            });
-            continue;
-          }
-
           const deletedMatch = fileHash
             ? await db.getDeletedBookByFileHash(fileHash).catch((err) => {
                 console.warn("[Library] Failed to check deleted book by hash:", err);
                 return null;
               })
             : null;
-          const importTarget =
-            existingKnownBook ??
-            deletedMatch ??
-            (existingDuplicate?.syncStatus === "remote" ? existingDuplicate : null);
+          // Reimporting the same local file refreshes the existing book instead
+          // of failing as a duplicate or adding a second library row.
+          const importTarget = existingKnownBook ?? deletedMatch ?? existingDuplicate ?? null;
           const bookId = importTarget?.id ?? generateId();
           if (!knownBook && (ext === "txt" || ext === "umd")) {
             await preserveBackendOriginalSource(bookId, filePath, ext);
@@ -1446,7 +1476,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
                 await get().addBook(book);
               }
               result.imported.push(book);
-              if (!knownBook) startImportedBackendBook(book);
+              if (!knownBook) {
+                startImportedBackendBook(book);
+                void queueGeneratedBookCover(book);
+              }
 
               if (fileHash) {
                 duplicateIndex.byHash.set(fileHash, book);
@@ -1577,7 +1610,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
                 await get().addBook(book);
               }
               result.imported.push(book);
-              if (!knownBook) startImportedBackendBook(book);
+              if (!knownBook) {
+                startImportedBackendBook(book);
+                void queueGeneratedBookCover(book);
+              }
               if (fileHash) {
                 duplicateIndex.byHash.set(fileHash, book);
               }
@@ -1730,7 +1766,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             await get().addBook(book);
           }
           result.imported.push(book);
-          if (!knownBook) startImportedBackendBook(book);
+          if (!knownBook) {
+            startImportedBackendBook(book);
+            void queueGeneratedBookCover(book, coverContext);
+          }
 
           if (fileHash) {
             duplicateIndex.byHash.set(fileHash, book);

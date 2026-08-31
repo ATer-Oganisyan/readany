@@ -23,6 +23,7 @@ function createBook(overrides: Partial<Book>): Book {
     vectorizeProgress: overrides.vectorizeProgress ?? 0,
     tags: overrides.tags ?? [],
     fileHash: overrides.fileHash,
+    contentHash: overrides.contentHash,
     syncStatus: overrides.syncStatus ?? "local",
     addedAt: overrides.addedAt ?? 1,
     updatedAt: overrides.updatedAt ?? 1,
@@ -41,6 +42,13 @@ describe("import dedupe helpers", () => {
 
     expect(findDuplicateBookByHash(index, "abc123")).toEqual(existing);
     expect(findDuplicateBookByHash(index, "missing")).toBeNull();
+  });
+
+  it("uses the content hash when the platform file hash is unavailable", () => {
+    const existing = createBook({ fileHash: undefined, contentHash: "sha256-content" });
+    const index = createImportDuplicateIndex([existing]);
+
+    expect(findDuplicateBookByHash(index, "sha256-content")).toEqual(existing);
   });
 
   it("finds likely duplicates by book title and filename", () => {

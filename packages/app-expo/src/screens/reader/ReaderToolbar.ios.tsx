@@ -39,7 +39,7 @@ export function ReaderToolbar({
       speechActive={speechState === "playing"}
       speechLoading={speechState === "loading"}
       speechLabel={t("reader.listen", "Слушать")}
-      speechStopLabel={t("common.stop", "Стоп")}
+      speechStopLabel={t("tts.stopShort", "Стоп")}
       speechLoadingLabel={t("reader.audioLoading", "Загрузка аудио")}
       charactersLabel={t("narra.characters", "Персонажи")}
       charactersSheetSourceId={charactersSheetSourceId}

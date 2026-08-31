@@ -67,6 +67,8 @@ interface ReaderCharacterCardProps {
   showActions?: boolean;
   /** Storybook-only loading state without starting a real image request. */
   portraitLoadingPreview?: boolean;
+  /** Показывать только статичный портрет, даже если для героя уже есть видео. */
+  staticPortraitOnly?: boolean;
   /** Переход в ридер книги из заглушки запертого героя («Продолжить чтение»). */
   onContinueReading?: () => void;
 }
@@ -200,6 +202,7 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
       embedded = false,
       showActions = true,
       portraitLoadingPreview = false,
+      staticPortraitOnly = false,
     },
     ref,
   ) {
@@ -422,6 +425,7 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
         <View style={[styles.portrait, embedded && styles.embeddedPortrait]}>
           <CharacterPortraitImage
             character={liveCharacter}
+            staticOnly={staticPortraitOnly}
             style={styles.portraitImage}
             fallback={
               portraitBusy ? (

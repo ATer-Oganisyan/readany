@@ -1,9 +1,11 @@
+import { MishanaerIcon } from "@/components/ui/MishanaerIcon";
 import { toast } from "@/lib/notifications";
 import { useLibraryStore } from "@/stores";
+import { useTheme } from "@/styles/ThemeContext";
 import type { ImportBooksResult } from "@readany/core";
 import * as DocumentPicker from "expo-document-picker";
 import { File as ExpoFile, Paths } from "expo-file-system";
-import { useCallback, useRef, useState } from "react";
+import { createElement, useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert } from "react-native";
 import ReadAnyNativeControls from "../../modules/native-controls";
@@ -44,13 +46,14 @@ const RESULT_TOAST_DURATION_MS = 4000;
 
 export function useBookImportActions({ onImportComplete }: UseBookImportActionsOptions = {}) {
   const { t } = useTranslation();
+  const { colors } = useTheme();
   const importBooks = useLibraryStore((state) => state.importBooks);
   const [isPickingImport, setIsPickingImport] = useState(false);
   const [isUrlImporting, setIsUrlImporting] = useState(false);
   const localImportInFlightRef = useRef(false);
 
   const showImportSummary = useCallback(
-    (summary: ImportBooksResult, toastId?: ImportToastId) => {
+    (summary: ImportBooksResult, toastId?: ImportToastId, announceEnrichment = false) => {
       onImportComplete?.(summary.imported.length);
       const description = t("library.importResultSummary", {
         imported: summary.imported.length,
@@ -68,12 +71,30 @@ export function useBookImportActions({ onImportComplete }: UseBookImportActionsO
           toastOptions,
         );
       } else if (summary.imported.length > 0) {
-        toast.success(t("common.success", "Книга добавлена"), toastOptions);
+        toast.success(
+          announceEnrichment
+            ? t(
+                "library.localImportEnrichmentPending",
+                "Готово! Скоро добавим обложку и\u00A0персонажей",
+              )
+            : t("common.success", "Книга добавлена"),
+          announceEnrichment
+            ? {
+                ...toastOptions,
+                icon: createElement(MishanaerIcon, {
+                  name: "magic-wand",
+                  variant: "filled",
+                  size: 24,
+                  color: colors.primary60,
+                }),
+              }
+            : toastOptions,
+        );
       } else {
         toast.warning(t("library.importSourceUrlErrorTitle", "Книга не добавлена"), toastOptions);
       }
     },
-    [onImportComplete, t],
+    [colors.primary60, onImportComplete, t],
   );
 
   const handleLocalImport = useCallback(async () => {
@@ -100,7 +121,7 @@ export function useBookImportActions({ onImportComplete }: UseBookImportActionsO
 
       const files = result.assets.map((asset) => ({ uri: asset.uri, name: asset.name }));
       const summary = await importBooks(files);
-      showImportSummary(summary);
+      showImportSummary(summary, undefined, true);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (!message.includes("Different document picking in progress")) {

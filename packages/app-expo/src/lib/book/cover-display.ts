@@ -6,6 +6,10 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function toBackendCatalogCoverKey(bookId: string): string {
+  return bookId.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 160);
+}
+
 export function isGeneratedBookCoverPath(bookId: string, coverUrl?: string): boolean {
   if (!coverUrl) return false;
   const escapedBookId = escapeRegExp(bookId);
@@ -34,7 +38,17 @@ export function isLegacyGeneratedBookCover(params: {
   );
 }
 
+export function isBackendCatalogCoverPath(bookId: string, coverUrl?: string): boolean {
+  if (!coverUrl) return false;
+  const escapedBookId = escapeRegExp(toBackendCatalogCoverKey(bookId));
+  return new RegExp(`^covers/${escapedBookId}-catalog\\.(?:jpe?g|png|webp)$`, "i").test(coverUrl);
+}
+
 export function shouldRenderCoverTypography(bookId: string, coverUrl?: string): boolean {
   if (!coverUrl) return true;
-  return isGeneratedBookCoverPath(bookId, coverUrl) || isBundledCatalogCoverPath(bookId, coverUrl);
+  return (
+    isGeneratedBookCoverPath(bookId, coverUrl) ||
+    isBundledCatalogCoverPath(bookId, coverUrl) ||
+    isBackendCatalogCoverPath(bookId, coverUrl)
+  );
 }

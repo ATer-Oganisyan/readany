@@ -91,6 +91,7 @@
     "webdavImportSortRecent": "Недавно обновлено",
     "webdavImportSortName": "Имя",
     "importResultSummary": "Импортирован {{imported}}, пропущены дублирующиеся книги {{skipped}}, не удалось {{failed}}.",
+    "localImportEnrichmentPending": "Готово! Скоро добавим обложку и\u00a0персонажей",
     "deleteBookTitle": "Удалить эту книгу?",
     "deleteBookDescription": "Файл книги будет удален с вашей полки.",
     "preserveDeleteDataLabel": "Ведите заметки и читайте статистику",

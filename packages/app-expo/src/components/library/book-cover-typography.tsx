@@ -106,7 +106,8 @@ export function BookCoverTypography({
   const renderTextContent = (withLayoutHandler: boolean) => (
     <>
       <Text
-        numberOfLines={6}
+        ellipsizeMode="tail"
+        numberOfLines={2}
         onTextLayout={withLayoutHandler ? handleTitleLayout : undefined}
         style={[
           styles.title,
@@ -125,7 +126,7 @@ export function BookCoverTypography({
       {author ? (
         <Text
           ellipsizeMode="tail"
-          numberOfLines={3}
+          numberOfLines={2}
           style={[
             styles.author,
             {

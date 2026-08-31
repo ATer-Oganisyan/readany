@@ -36,10 +36,7 @@ export function normalizeImportIdentity(value: string): string {
 }
 
 function buildBookNameCandidates(book: Book): string[] {
-  const candidates = [
-    book.meta.title,
-    getPathLeaf(book.filePath),
-  ]
+  const candidates = [book.meta.title, getPathLeaf(book.filePath)]
     .filter(Boolean)
     .map((value) => normalizeImportIdentity(value as string))
     .filter(Boolean);
@@ -52,8 +49,8 @@ export function createImportDuplicateIndex(books: Book[]): ImportDuplicateIndex 
   const byName = new Map<string, Book>();
 
   for (const book of books) {
-    if (book.fileHash) {
-      byHash.set(book.fileHash, book);
+    for (const hash of [book.fileHash, book.contentHash]) {
+      if (hash && !byHash.has(hash)) byHash.set(hash, book);
     }
 
     for (const candidate of buildBookNameCandidates(book)) {

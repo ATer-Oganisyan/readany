@@ -169,7 +169,14 @@ describe("character profile actions", () => {
     expect(chat).toContain('presentation: Platform.OS === "ios" ? "formSheet" : "card"');
     expect(chat).toContain("sheetAllowedDetents: [1]");
     expect(chat).toContain("sheetGrabberVisible: true");
+    expect(chat).toContain(
+      'Platform.OS === "ios" && isDark ? colors.elevation2 : colors.background',
+    );
     expect(chat).not.toContain('presentation: "card"');
+
+    expect(navigator).toContain("function NarraCharacterChatRouteScreen");
+    expect(navigator).toContain("<ElevatedSurfaceTheme>");
+    expect(navigator).toContain("component={NarraCharacterChatRouteScreen}");
   });
 
   it("gives all native buttons a full 64-point label and forwards the talk action", () => {
@@ -219,5 +226,21 @@ describe("character profile actions", () => {
       "utf8",
     );
     expect(card.match(/onTalk=\{\(\) => onOpenChat\(character\)\}/g)).toHaveLength(2);
+  });
+
+  it("shows a static portrait on the character profile", () => {
+    const navigation = { setOptions: vi.fn(), replace: vi.fn(), goBack: vi.fn() };
+    const screenProps = {
+      route: { params: { bookId: "book", characterId: "hero" } },
+      navigation,
+    } as unknown as NativeStackScreenProps<RootStackParamList, "NarraCharacterProfile">;
+
+    act(() => {
+      tree = create(<NarraCharacterProfileScreen {...screenProps} />);
+    });
+
+    expect(tree.root.find((node) => String(node.type) === "CharacterCard").props).toMatchObject({
+      staticPortraitOnly: true,
+    });
   });
 });

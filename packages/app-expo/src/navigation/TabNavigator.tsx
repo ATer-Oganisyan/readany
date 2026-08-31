@@ -279,7 +279,7 @@ export function TabNavigator() {
         component={LibraryTabStackNavigator}
         options={{
           title: t("tabs.library", "Библиотека"),
-          tabBarLabel: Platform.OS === "ios" ? "" : t("tabs.library", "Библиотека"),
+          tabBarLabel: "",
           tabBarIcon: tabIcon(TAB_ICONS.Library),
         }}
       />
@@ -288,7 +288,7 @@ export function TabNavigator() {
         component={ChatsTabStackNavigator}
         options={{
           title: t("tabs.chats", "Чаты"),
-          tabBarLabel: Platform.OS === "ios" ? "" : t("tabs.chats", "Чаты"),
+          tabBarLabel: "",
           tabBarIcon: tabIcon(TAB_ICONS.Chats),
         }}
       />
@@ -297,7 +297,7 @@ export function TabNavigator() {
         component={ProfileTabStackNavigator}
         options={{
           title: t("tabs.profile", "Профиль"),
-          tabBarLabel: Platform.OS === "ios" ? "" : t("tabs.profile", "Профиль"),
+          tabBarLabel: "",
           tabBarIcon: tabIcon(TAB_ICONS.Profile),
           tabBarMinimizeBehavior: "none",
         }}
@@ -307,9 +307,9 @@ export function TabNavigator() {
         component={SearchTabStackNavigator}
         options={{
           title: t("tabs.search", "Поиск"),
-          // Keep iOS's native search-tab behavior while using the Mishanaer icon.
+          // iOS renders the search destination as a separate trailing control.
           tabBarSystemItem: Platform.OS === "ios" ? "search" : undefined,
-          tabBarLabel: Platform.OS === "ios" ? "" : t("tabs.search", "Поиск"),
+          tabBarLabel: "",
           tabBarIcon: tabIcon(TAB_ICONS.Search),
           tabBarMinimizeBehavior: "none",
         }}

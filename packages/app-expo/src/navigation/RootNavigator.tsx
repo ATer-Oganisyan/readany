@@ -29,11 +29,14 @@ import TTSSettingsScreen from "@/screens/settings/TTSSettingsScreen";
 import TranslationSettingsScreen from "@/screens/settings/TranslationSettingsScreen";
 import VectorModelSettingsScreen from "@/screens/settings/VectorModelSettingsScreen";
 import { useSettingsStore } from "@/stores";
-import { titleFontFamily, useTheme } from "@/styles/theme";
+import { ElevatedSurfaceTheme, titleFontFamily, useTheme } from "@/styles/theme";
 /**
  * RootNavigator — top-level stack matching Tauri mobile App.tsx routes exactly.
  */
-import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import {
+  type NativeStackScreenProps,
+  createNativeStackNavigator,
+} from "@react-navigation/native-stack";
 import type { WebDavImportSource } from "@readany/core";
 import { useTranslation } from "react-i18next";
 import { Platform } from "react-native";
@@ -102,6 +105,19 @@ export type RootStackParamList = {
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+
+function NarraCharacterChatRouteScreen(
+  props: NativeStackScreenProps<RootStackParamList, "NarraCharacterChat">,
+) {
+  if (Platform.OS !== "ios") return <NarraCharacterChatScreen {...props} />;
+
+  return (
+    <ElevatedSurfaceTheme>
+      <NarraCharacterChatScreen {...props} />
+    </ElevatedSurfaceTheme>
+  );
+}
+
 export function RootNavigator() {
   const { _hasHydrated } = useSettingsStore();
   const { colors, isDark } = useTheme();
@@ -241,7 +257,7 @@ export function RootNavigator() {
         />
         <Stack.Screen
           name="NarraCharacterChat"
-          component={NarraCharacterChatScreen}
+          component={NarraCharacterChatRouteScreen}
           options={{
             // Keep the chat above the modal reader when replacing the profile sheet.
             presentation: Platform.OS === "ios" ? "formSheet" : "card",
@@ -250,7 +266,10 @@ export function RootNavigator() {
             sheetAllowedDetents: [1],
             sheetGrabberVisible: true,
             sheetExpandsWhenScrolledToEdge: false,
-            contentStyle: { backgroundColor: colors.background },
+            contentStyle: {
+              backgroundColor:
+                Platform.OS === "ios" && isDark ? colors.elevation2 : colors.background,
+            },
             title: t("narra.characterChat", "Чат с персонажем"),
             headerShown: false,
             statusBarHidden: false,

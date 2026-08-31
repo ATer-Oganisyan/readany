@@ -6,6 +6,7 @@ const runtime = vi.hoisted(() => ({
   books: [] as Book[],
   request: vi.fn(),
   hash: vi.fn(async () => "a".repeat(64)),
+  sourceBytes: new Uint8Array([60, 63, 120, 109, 108, 62]),
 }));
 vi.mock("@/stores/library-store", () => ({
   useLibraryStore: {
@@ -25,6 +26,9 @@ vi.mock("@/stores/persist", () => ({
 vi.mock("expo-file-system", () => ({
   File: class {
     constructor(public uri: string) {}
+    async bytes() {
+      return runtime.sourceBytes;
+    }
   },
 }));
 vi.mock("expo-file-system/legacy", () => ({ documentDirectory: "file:///documents/" }));
@@ -52,7 +56,7 @@ vi.mock("@/lib/ai/narra-gateway-fetch", () => ({ consumeNarraGatewayResponse: vi
 
 import { useNarraStore } from "@/stores/narra-store";
 import { parseBackendManifest } from "./backend-book-contract";
-import { retainBackendBookSync } from "./backend-book-sync";
+import { retainBackendBookSync, startImportedBackendBook } from "./backend-book-sync";
 
 const ready = {
   availability: "ready",
@@ -185,7 +189,7 @@ describe("backend book import and persistence integration", () => {
     await open(book());
     const upload = runtime.request.mock.calls.find((call) => call[1]?.method === "PUT");
     expect(upload?.[0]).toBe("/v2/books/private-id/source");
-    expect(upload?.[1].body).toMatchObject({ uri: "file:///documents/books/local.epub" });
+    expect(upload?.[1].body).toBe(runtime.sourceBytes);
     expect(upload?.[1].headers).toEqual({ "content-type": "application/epub+zip" });
     expect(useNarraStore.getState().books.local.backendBinding?.sourceUploaded).toBe(true);
     releases.pop()?.();
@@ -225,6 +229,33 @@ describe("backend book import and persistence integration", () => {
     await open({ ...book(), contentHash: "a".repeat(64) });
     expect(runtime.request.mock.calls[0][0]).toBe("/v2/books/resolve");
     expect(runtime.request.mock.calls.some((call) => call[1]?.method === "PUT")).toBe(false);
+  });
+
+  it("keeps an imported book alive after a transient error and retries automatically", async () => {
+    useNarraStore.getState().setBackendBinding("local", {
+      resolution: "private",
+      bookEditionId: "private-id",
+      contentSha256: "a".repeat(64),
+      sourceUploaded: true,
+    });
+    let manifestAttempts = 0;
+    runtime.request.mockImplementation(async (path: string) => {
+      if (path.endsWith("/manifest")) {
+        manifestAttempts++;
+        if (manifestAttempts === 1) throw new TypeError("offline");
+        return ready;
+      }
+      if (path.endsWith("/identity"))
+        return { status: "ready", title: "Normalized", author: "Author" };
+      return {};
+    });
+
+    startImportedBackendBook(book());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(manifestAttempts).toBe(1);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(manifestAttempts).toBe(2);
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
   });
 
   it("retains the last confirmed profiles through processing and ignores older revisions", async () => {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  isBackendCatalogCoverPath,
   isGeneratedBookCoverPath,
   isLegacyGeneratedBookCover,
   shouldRenderCoverTypography,
@@ -12,10 +13,27 @@ describe("cover display", () => {
     expect(shouldRenderCoverTypography("book-1", "https://example.com/cover.jpg")).toBe(false);
   });
 
-  it("overlays typography on generated, catalog, and missing covers", () => {
+  it("overlays typography on generated, bundled catalog, backend catalog, and missing covers", () => {
     expect(shouldRenderCoverTypography("book-1", "covers/book-1-generated.webp")).toBe(true);
     expect(shouldRenderCoverTypography("book-1", "covers/book-1-catalog-v7.jpg")).toBe(true);
+    expect(shouldRenderCoverTypography("book-1", "covers/book-1-catalog.jpg")).toBe(true);
+    expect(shouldRenderCoverTypography("book-1", "covers/book-1-catalog.jpeg")).toBe(true);
+    expect(shouldRenderCoverTypography("book-1", "covers/book-1-catalog.png")).toBe(true);
+    expect(shouldRenderCoverTypography("book-1", "covers/book-1-catalog.webp")).toBe(true);
     expect(shouldRenderCoverTypography("book-1")).toBe(true);
+  });
+
+  it("matches backend catalog covers using the same safe book key as persistence", () => {
+    expect(isBackendCatalogCoverPath("book:1/edition", "covers/book-1-edition-catalog.png")).toBe(
+      true,
+    );
+    expect(isBackendCatalogCoverPath("book:1/edition", "covers/book-1-edition-catalog.webp")).toBe(
+      true,
+    );
+    expect(isBackendCatalogCoverPath("book:1/edition", "covers/other-catalog.png")).toBe(false);
+    expect(isBackendCatalogCoverPath("book:1/edition", "covers/book-1-edition-original.png")).toBe(
+      false,
+    );
   });
 
   it("matches generated covers only for the requested book", () => {

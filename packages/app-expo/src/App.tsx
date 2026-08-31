@@ -419,8 +419,9 @@ function AppInner() {
             },
             titleStyle: {
               color: colors.cardForeground,
-              fontFamily: interfaceFontFamily.semibold,
+              fontFamily: interfaceFontFamily.regular,
               fontSize: 16,
+              fontWeight: "400",
             },
             descriptionStyle: {
               display: "none",

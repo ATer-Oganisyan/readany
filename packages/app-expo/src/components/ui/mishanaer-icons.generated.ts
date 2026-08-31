@@ -8,6 +8,7 @@ import FilledChatBubbleAsset from "../../../assets/icons/mishanaer/filled/chat-b
 import FilledChatBubblesAsset from "../../../assets/icons/mishanaer/filled/chat-bubbles.svg";
 import FilledCloudAsset from "../../../assets/icons/mishanaer/filled/cloud.svg";
 import FilledHeadphonesAsset from "../../../assets/icons/mishanaer/filled/headphones.svg";
+import FilledMagicWandAsset from "../../../assets/icons/mishanaer/filled/magic-wand.svg";
 import FilledMagnifyingGlassAsset from "../../../assets/icons/mishanaer/filled/magnifying-glass.svg";
 import FilledPencilSquareAsset from "../../../assets/icons/mishanaer/filled/pencil-square.svg";
 import FilledPersonAsset from "../../../assets/icons/mishanaer/filled/person.svg";
@@ -291,6 +292,7 @@ export const filledIconComponents = {
   "chat-bubbles": FilledChatBubblesAsset,
   cloud: FilledCloudAsset,
   headphones: FilledHeadphonesAsset,
+  "magic-wand": FilledMagicWandAsset,
   "magnifying-glass": FilledMagnifyingGlassAsset,
   "pencil-square": FilledPencilSquareAsset,
   person: FilledPersonAsset,
@@ -368,6 +370,7 @@ export const filledIconImages = {
   "chat-bubbles": require("../../../assets/icons/mishanaer/filled-png/chat-bubbles.png"),
   cloud: require("../../../assets/icons/mishanaer/filled-png/cloud.png"),
   headphones: require("../../../assets/icons/mishanaer/filled-png/headphones.png"),
+  "magic-wand": require("../../../assets/icons/mishanaer/filled-png/magic-wand.png"),
   "magnifying-glass": require("../../../assets/icons/mishanaer/filled-png/magnifying-glass.png"),
   "pencil-square": require("../../../assets/icons/mishanaer/filled-png/pencil-square.png"),
   person: require("../../../assets/icons/mishanaer/filled-png/person.png"),
