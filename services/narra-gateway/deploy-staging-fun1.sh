@@ -56,6 +56,9 @@ ssh "$REMOTE" \
    && sudo grep -Eq '^INSTALLATION_OPERATOR_TOKEN=.+$' '$TARGET_ENV' \
    && sudo grep -Eq '^BOOK_OPERATOR_USERNAME=.+$' '$TARGET_ENV' \
    && sudo grep -Eq '^BOOK_OPERATOR_PASSWORD=.{20,}$' '$TARGET_ENV' \
+   && sudo grep -Eq '^GATEWAY_TOKEN_SECRET=.{32,}$' '$TARGET_ENV' \
+   && sudo grep -Eq '^INSTALLATION_SECRET_PEPPER=.{32,}$' '$TARGET_ENV' \
+   && sudo grep -Eq '^ANALYTICS_HMAC_SECRET=.{32,}$' '$TARGET_ENV' \
    && sudo install -d -o root -g root -m 0755 '$REMOTE_ROOT/releases' '$REMOTE_STAGE'"
 rsync "${FLAGS[@]}" --rsync-path="sudo rsync" "$HERE/" "$REMOTE:$REMOTE_STAGE/"
 
@@ -86,6 +89,48 @@ docker build --pull \
   --tag "$IMAGE" "$REMOTE_STAGE"
 docker image inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$IMAGE" \
   | grep -qx "GATEWAY_BUILD_VERSION=$HEAD"
+
+candidate="narra-staging-candidate-${HEAD:0:12}"
+candidate_volume="narra_staging_candidate_${HEAD:0:12}"
+cleanup_candidate() {
+  docker stop --time 20 "$candidate" >/dev/null 2>&1 || true
+  docker rm "$candidate" >/dev/null 2>&1 || true
+  docker volume rm "$candidate_volume" >/dev/null 2>&1 || true
+}
+trap cleanup_candidate EXIT
+cleanup_candidate
+docker volume create "$candidate_volume" >/dev/null
+docker run --rm --network none --user 0:0 --entrypoint sh \
+  -v "$candidate_volume:/data" \
+  "$IMAGE" -c 'chown -R 1000:1000 /data'
+docker run -d --name "$candidate" --init --env-file "$TARGET_ENV" \
+  -e NODE_ENV=production -e ANALYTICS_ENV=staging \
+  -e PORT=8787 -e DATA_DIR=/data -e PERSISTENT_DATA_MOUNT_PATH=/data \
+  -e DATABASE_URL= -e BOOK_BACKEND_REQUIRED=false \
+  -e INSTALLATION_SINGLE_REPLICA_ACK=true -e COVER_JOB_WORKER_ENABLED=false \
+  -p 127.0.0.1:18789:8787 -v "$candidate_volume:/data" \
+  --read-only --tmpfs /tmp:size=64m,mode=1777 \
+  --cap-drop ALL --security-opt no-new-privileges:true \
+  --pids-limit 256 --memory 1g --cpus 1.5 "$IMAGE" >/dev/null
+
+candidate_ready=0
+for _attempt in $(seq 1 45); do
+  if curl -fsS http://127.0.0.1:18789/ready >/dev/null; then
+    candidate_ready=1
+    break
+  fi
+  sleep 1
+done
+test "$candidate_ready" = 1
+curl -fsS http://127.0.0.1:18789/health | python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+assert data["ok"] is True
+assert data["version"] == sys.argv[1]
+assert data["installation_registry"]["storage_verified"] is True
+' "$HEAD"
+cleanup_candidate
+trap - EXIT
 
 backup_dir="/srv/backups/narra-stagging/$(date -u +%Y%m%dT%H%M%SZ)-${HEAD:0:12}"
 install -d -o root -g root -m 0700 "$backup_dir"
@@ -123,48 +168,6 @@ find "$minio_mount" -type f -printf '%s\n' \
   | awk '{ files += 1; bytes += $1 } END { printf "files=%d bytes=%.0f\n", files, bytes }' \
   > "$backup_dir/minio-inventory-summary"
 chmod 0600 "$backup_dir"/*
-
-candidate="narra-staging-candidate-${HEAD:0:12}"
-candidate_volume="narra_staging_candidate_${HEAD:0:12}"
-cleanup_candidate() {
-  docker stop --time 20 "$candidate" >/dev/null 2>&1 || true
-  docker rm "$candidate" >/dev/null 2>&1 || true
-  docker volume rm "$candidate_volume" >/dev/null 2>&1 || true
-}
-trap cleanup_candidate EXIT
-cleanup_candidate
-docker volume create "$candidate_volume" >/dev/null
-docker run --rm --network none --user 0:0 --entrypoint sh \
-  -v "$candidate_volume:/data" -v "$backup_dir:/backup:ro" \
-  "$IMAGE" -c 'tar -xzf /backup/gateway-data.tar.gz -C /data && chown -R 1000:1000 /data'
-docker run -d --name "$candidate" --init --env-file "$TARGET_ENV" \
-  -e NODE_ENV=production -e ANALYTICS_ENV=staging \
-  -e PORT=8787 -e DATA_DIR=/data -e PERSISTENT_DATA_MOUNT_PATH=/data \
-  -e DATABASE_URL= -e BOOK_BACKEND_REQUIRED=false \
-  -e INSTALLATION_SINGLE_REPLICA_ACK=true -e COVER_JOB_WORKER_ENABLED=false \
-  -p 127.0.0.1:18789:8787 -v "$candidate_volume:/data" \
-  --read-only --tmpfs /tmp:size=64m,mode=1777 \
-  --cap-drop ALL --security-opt no-new-privileges:true \
-  --pids-limit 256 --memory 1g --cpus 1.5 "$IMAGE" >/dev/null
-
-candidate_ready=0
-for _attempt in $(seq 1 45); do
-  if curl -fsS http://127.0.0.1:18789/ready >/dev/null; then
-    candidate_ready=1
-    break
-  fi
-  sleep 1
-done
-test "$candidate_ready" = 1
-curl -fsS http://127.0.0.1:18789/health | python3 -c '
-import json, sys
-data = json.load(sys.stdin)
-assert data["ok"] is True
-assert data["version"] == sys.argv[1]
-assert data["installation_registry"]["storage_verified"] is True
-' "$HEAD"
-cleanup_candidate
-trap - EXIT
 
 profiles=(--profile book-backend --profile media --profile scenes --profile tts-markup)
 scales=(

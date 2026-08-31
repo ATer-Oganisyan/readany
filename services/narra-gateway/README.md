@@ -430,8 +430,11 @@ separate deployment target. `deploy-i167.sh` delegates to the staging-only
 `deploy-staging-fun1.sh` and refuses every other host.
 
 Prepare the existing root-only staging environment once. The command backs up
-the file, fixes the non-secret analytics environment to `staging`, and creates a
-dedicated operator token without printing it:
+the file, verifies the non-secret analytics environment as `staging`, and copies
+the allowlisted effective runtime settings and existing operator credentials
+that only existed in the old container into the canonical environment. Existing
+values are never rotated or overwritten: any difference stops preparation.
+Secret values are never printed:
 
 ```bash
 ./prepare-staging-env-fun1.sh

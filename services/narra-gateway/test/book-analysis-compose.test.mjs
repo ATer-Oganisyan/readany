@@ -161,6 +161,10 @@ test('deploy is pinned to fun1, versioned Compose, backups and one-replica canar
   assert.match(stagingDeploySource, /minio-inventory-summary/)
   assert.match(stagingDeploySource, /-e DATABASE_URL=/)
   assert.match(stagingDeploySource, /-e BOOK_BACKEND_REQUIRED=false/)
+  assert.ok(
+    stagingDeploySource.indexOf('candidate="narra-staging-candidate-') <
+      stagingDeploySource.indexOf('backup_dir="/srv/backups/narra-stagging/')
+  )
   assert.match(stagingDeploySource, /--scale book-analysis-scan=1/)
   assert.match(stagingDeploySource, /RestartCount/)
   assert.match(stagingDeploySource, /State\.Health/)
@@ -168,6 +172,14 @@ test('deploy is pinned to fun1, versioned Compose, backups and one-replica canar
   assert.match(stagingEnvSource, /BOOK_OPERATOR_USERNAME/)
   assert.match(stagingEnvSource, /BOOK_OPERATOR_PASSWORD/)
   assert.match(stagingEnvSource, /ANALYTICS_ENV=staging/)
+  assert.match(stagingEnvSource, /runtime_keys=\(/)
+  assert.match(stagingEnvSource, /GATEWAY_TOKEN_SECRET/)
+  assert.match(stagingEnvSource, /INSTALLATION_SECRET_PEPPER/)
+  assert.match(stagingEnvSource, /ANALYTICS_HMAC_SECRET/)
+  assert.match(stagingEnvSource, /grep -Fqx -- "\$source_line"/)
+  assert.match(stagingEnvSource, /current_managed_keys=\(/)
+  assert.match(stagingEnvSource, /printf '%s\\n' "\$operator_token_line"/)
+  assert.doesNotMatch(stagingEnvSource, /openssl rand/)
   assert.match(stagingEnvSource, /compose\.env\.\$timestamp/)
 })
 
