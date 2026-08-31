@@ -1,0 +1,1504 @@
+{
+  "schemaVersion": 1,
+  "id": "anne-green-gables-pdnc-v1",
+  "goldCount": 114,
+  "significantCount": 5,
+  "source": {
+    "dataset": "PDNC",
+    "repository": "Priya22/project-dialogism-novel-corpus",
+    "repositoryCommit": "6fda0a78bda5e9da0854f7befb5dab268abefb7e",
+    "sourcePath": "data/AnneOfGreenGables/character_info.csv",
+    "sourceSha256": "5496a76c9851f0da59c37eb4a495817850c64ff26c471bfea32a05ff09256156",
+    "rawCharacterRows": 113,
+    "correctedGoldCount": 114,
+    "gutenbergId": 45,
+    "canonicalTextSha256": "bd14660006ea9d0394bb29548740dac66f9987d68876163f509deacfb5d1e9b0",
+    "denominatorProtocol": "Start from every pinned PDNC character_info.csv row; apply only the listed source-backed corrections and exclude reserved annotation sentinels whose Main Name starts with an underscore.",
+    "significantProtocol": "Corrected PDNC Category is major or intermediate; corrections affect only minor rows.",
+    "aliasPolicy": "Use corrected PDNC Main Name/Aliases and collision-free removal of exactly one leading English article; no evaluated-output aliases are added.",
+    "articleNormalizationProtocol": "Mechanically remove exactly one leading The, A, or An and retain the result only when the normalized surface belongs to one corrected gold identity.",
+    "corrections": [
+      {
+        "id": "anne_body_title_surface",
+        "action": "retain_alias_but_ignore_paratext_evidence",
+        "surface": "Anne Of Green Gables",
+        "reason": "The surface occurs as Anne self-identification in the novel body; header/title occurrences alone are not evidence."
+      },
+      {
+        "id": "aunt_josephine_split",
+        "action": "split_source_row_24",
+        "reason": "Pinned PG45 body independently identifies Aunt Josephine, Josie Pye, and Gertie Pye as three people."
+      },
+      {
+        "id": "doctor_spencer_merge",
+        "action": "merge_source_rows_9_64",
+        "reason": "Doctor Spencer and Dr. Spencer are orthographic variants of the same physician."
+      },
+      {
+        "id": "cuthbert_bare_surface",
+        "action": "remove_ambiguous_alias",
+        "surface": "Cuthbert",
+        "reason": "The bare family/place surface must not globally select Matthew over Marilla."
+      }
+    ],
+    "litbank": {
+      "repository": "dbamman/litbank",
+      "repositoryCommit": "3e50db0ffc033d7ccbb94f4d88f6b99210328ed8",
+      "annotationPath": "coref/brat/45_anne_of_green_gables_brat.ann",
+      "annotationSha256": "b0fd03f60413246abfc23f6bff91eac996e34ae07ac6f38c870a4792aad935a0",
+      "textPath": "coref/brat/45_anne_of_green_gables_brat.txt",
+      "textSha256": "b794f082918cffda94a444fe8303bfbdc8aa5d391d2d4e26f57881cb308ad8bc",
+      "scope": "approximately 2,000-word fragment; secondary audit only, not the full-book denominator"
+    }
+  },
+  "gates": {
+    "precision": 0.9,
+    "recall": 0.9,
+    "f1": 0.9,
+    "criticalMerges": 0,
+    "duplicateRate": 0.05
+  },
+  "collisionGuards": [
+    {
+      "id": "cuthbert_household",
+      "surfaces": [
+        "Cuthbert",
+        "Marilla Cuthbert",
+        "Matthew Cuthbert",
+        "Miss Cuthbert",
+        "Mr. Cuthbert"
+      ],
+      "goldIds": [
+        "marilla_cuthbert",
+        "matthew_cuthbert"
+      ],
+      "reason": "The Cuthbert siblings share a surname and household but are distinct."
+    },
+    {
+      "id": "barry_family",
+      "surfaces": [
+        "Barry",
+        "Diana Barry",
+        "Mr. Barry",
+        "Mrs. Barry",
+        "Miss Barry",
+        "Minnie May Barry"
+      ],
+      "goldIds": [
+        "diana_barry",
+        "mr_barry",
+        "mrs_barry",
+        "aunt_josephine",
+        "minnie_may_barry"
+      ],
+      "reason": "Barry family and kinship surfaces must not collapse distinct identities."
+    },
+    {
+      "id": "pye_characters",
+      "surfaces": [
+        "Josie Pye",
+        "Gertie Pye",
+        "Mr. Pye"
+      ],
+      "goldIds": [
+        "josie_pye",
+        "gertie_pye",
+        "mr_pye"
+      ],
+      "reason": "The polluted source row is split into distinct source-backed Pye identities."
+    }
+  ],
+  "characters": [
+    {
+      "id": "alice_bell",
+      "name": "Alice Bell",
+      "sourceCharacterIds": [
+        0
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "an_american",
+      "name": "An American",
+      "sourceCharacterIds": [
+        1
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "American"
+      ]
+    },
+    {
+      "id": "anne_shirley",
+      "name": "Anne Shirley",
+      "sourceCharacterIds": [
+        2
+      ],
+      "category": "major",
+      "significant": true,
+      "aliases": [
+        "Anne",
+        "Anne Of Green Gables"
+      ]
+    },
+    {
+      "id": "billy_andrews",
+      "name": "Billy Andrews",
+      "sourceCharacterIds": [
+        3
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "carrie_sloane",
+      "name": "Carrie Sloane",
+      "sourceCharacterIds": [
+        4
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Sloane"
+      ]
+    },
+    {
+      "id": "charlie_sloane",
+      "name": "Charlie Sloane",
+      "sourceCharacterIds": [
+        5
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "charlotte_gillis",
+      "name": "Charlotte Gillis",
+      "sourceCharacterIds": [
+        6
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "clara_louise_macpherson",
+      "name": "Clara Louise Macpherson",
+      "sourceCharacterIds": [
+        7
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "diana_barry",
+      "name": "Diana Barry",
+      "sourceCharacterIds": [
+        8
+      ],
+      "category": "intermediate",
+      "significant": true,
+      "aliases": [
+        "Diana"
+      ]
+    },
+    {
+      "id": "doctor_spencer",
+      "name": "Doctor Spencer",
+      "sourceCharacterIds": [
+        9,
+        64
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Dr. Spencer"
+      ]
+    },
+    {
+      "id": "emily_clay",
+      "name": "Emily Clay",
+      "sourceCharacterIds": [
+        10
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "emily_gillis",
+      "name": "Emily Gillis",
+      "sourceCharacterIds": [
+        11
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "frank_stockley",
+      "name": "Frank Stockley",
+      "sourceCharacterIds": [
+        12
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "gilbert_blythe",
+      "name": "Gilbert Blythe",
+      "sourceCharacterIds": [
+        13
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Gilbert",
+        "Gil"
+      ]
+    },
+    {
+      "id": "jane_andrews",
+      "name": "Jane Andrews",
+      "sourceCharacterIds": [
+        14
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Jane"
+      ]
+    },
+    {
+      "id": "john_blythe",
+      "name": "John Blythe",
+      "sourceCharacterIds": [
+        15
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "julia_bell",
+      "name": "Julia Bell",
+      "sourceCharacterIds": [
+        16
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "laura_spencer",
+      "name": "Laura Spencer",
+      "sourceCharacterIds": [
+        17
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "madame_selitsky",
+      "name": "Madame Selitsky",
+      "sourceCharacterIds": [
+        18
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "malcolm_andres",
+      "name": "Malcolm Andres",
+      "sourceCharacterIds": [
+        19
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "marilla_cuthbert",
+      "name": "Marilla Cuthbert",
+      "sourceCharacterIds": [
+        20
+      ],
+      "category": "major",
+      "significant": true,
+      "aliases": [
+        "Miss Cuthbert",
+        "Marilla"
+      ]
+    },
+    {
+      "id": "martin",
+      "name": "Martin",
+      "sourceCharacterIds": [
+        21
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "matthew_cuthbert",
+      "name": "Matthew Cuthbert",
+      "sourceCharacterIds": [
+        22
+      ],
+      "category": "intermediate",
+      "significant": true,
+      "aliases": [
+        "Mr. Cuthbert",
+        "Matthew"
+      ]
+    },
+    {
+      "id": "miss_ames",
+      "name": "Miss Ames",
+      "sourceCharacterIds": [
+        23
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "aunt_josephine",
+      "name": "Aunt Josephine",
+      "sourceCharacterIds": [
+        24
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Miss Josephine Barry",
+        "Old Miss Barry",
+        "Josephine Barry",
+        "Miss Barry"
+      ]
+    },
+    {
+      "id": "josie_pye",
+      "name": "Josie Pye",
+      "sourceCharacterIds": [
+        "24:split:josie"
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Josie"
+      ]
+    },
+    {
+      "id": "gertie_pye",
+      "name": "Gertie Pye",
+      "sourceCharacterIds": [
+        "24:split:gertie"
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "miss_muriel_stacy",
+      "name": "Miss Muriel Stacy",
+      "sourceCharacterIds": [
+        25
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Miss Stacy",
+        "Stacy"
+      ]
+    },
+    {
+      "id": "moody_spurgeon",
+      "name": "Moody Spurgeon",
+      "sourceCharacterIds": [
+        26
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Moody Spurgeon Macpherson"
+      ]
+    },
+    {
+      "id": "mr_abbey",
+      "name": "Mr. Abbey",
+      "sourceCharacterIds": [
+        27
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mr_allan",
+      "name": "Mr. Allan",
+      "sourceCharacterIds": [
+        28
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mr_andrews",
+      "name": "Mr. Andrews",
+      "sourceCharacterIds": [
+        29
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mr_barry",
+      "name": "Mr. Barry",
+      "sourceCharacterIds": [
+        30
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mr_superintendent_bell",
+      "name": "Mr. Superintendent Bell",
+      "sourceCharacterIds": [
+        31
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mr_gillis",
+      "name": "Mr. Gillis",
+      "sourceCharacterIds": [
+        32
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mr_phillips",
+      "name": "Mr. Phillips",
+      "sourceCharacterIds": [
+        33
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Teddy Phillips"
+      ]
+    },
+    {
+      "id": "mr_pye",
+      "name": "Mr. Pye",
+      "sourceCharacterIds": [
+        34
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mr_russell",
+      "name": "Mr. Russell",
+      "sourceCharacterIds": [
+        35
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mr_sadler",
+      "name": "Mr. Sadler",
+      "sourceCharacterIds": [
+        36
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mrs_allan",
+      "name": "Mrs. Allan",
+      "sourceCharacterIds": [
+        37
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "A Merry Voice",
+        "Merry Voice"
+      ]
+    },
+    {
+      "id": "mrs_andrews",
+      "name": "Mrs. Andrews",
+      "sourceCharacterIds": [
+        38
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mrs_barry",
+      "name": "Mrs. Barry",
+      "sourceCharacterIds": [
+        39
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mrs_bell",
+      "name": "Mrs. Bell",
+      "sourceCharacterIds": [
+        40
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mrs_peter_blewett",
+      "name": "Mrs. Peter Blewett",
+      "sourceCharacterIds": [
+        41
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Mrs. Blewett",
+        "Mrs. Peter"
+      ]
+    },
+    {
+      "id": "mrs_evans",
+      "name": "Mrs. Evans",
+      "sourceCharacterIds": [
+        42
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mrs_spencer",
+      "name": "Mrs. Spencer",
+      "sourceCharacterIds": [
+        43
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Mrs. Alexander Spencer"
+      ]
+    },
+    {
+      "id": "myrtle_bell",
+      "name": "Myrtle Bell",
+      "sourceCharacterIds": [
+        44
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "priscilla_grant",
+      "name": "Priscilla Grant",
+      "sourceCharacterIds": [
+        45
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "prissy_andrews",
+      "name": "Prissy Andrews",
+      "sourceCharacterIds": [
+        46
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "professor_tremaine",
+      "name": "Professor Tremaine",
+      "sourceCharacterIds": [
+        47
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "rachel_lynde",
+      "name": "Rachel Lynde",
+      "sourceCharacterIds": [
+        48
+      ],
+      "category": "intermediate",
+      "significant": true,
+      "aliases": [
+        "Mrs. Lynde",
+        "Lynde",
+        "Mrs. Rachel",
+        "Mrs. Rachel Lynde",
+        "Rachel"
+      ]
+    },
+    {
+      "id": "ruby_gillis",
+      "name": "Ruby Gillis",
+      "sourceCharacterIds": [
+        49
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Ruby"
+      ]
+    },
+    {
+      "id": "stella_maynard",
+      "name": "Stella Maynard",
+      "sourceCharacterIds": [
+        50
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "susan_gillis",
+      "name": "Susan Gillis",
+      "sourceCharacterIds": [
+        51
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "the_child",
+      "name": "The Child",
+      "sourceCharacterIds": [
+        52
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Child"
+      ]
+    },
+    {
+      "id": "the_oculist",
+      "name": "The Oculist",
+      "sourceCharacterIds": [
+        53
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Oculist"
+      ]
+    },
+    {
+      "id": "the_peddler",
+      "name": "The Peddler",
+      "sourceCharacterIds": [
+        54
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Peddler"
+      ]
+    },
+    {
+      "id": "the_stout_lady_in_pink_silk",
+      "name": "The Stout Lady In Pink Silk",
+      "sourceCharacterIds": [
+        55
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "The Pink Lady",
+        "A Stout Lady In Pink Silk",
+        "Stout Lady In Pink Silk",
+        "Pink Lady"
+      ]
+    },
+    {
+      "id": "the_station_master",
+      "name": "The Station-Master",
+      "sourceCharacterIds": [
+        56
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "The Stationmaster",
+        "Stationmaster",
+        "Station-Master"
+      ]
+    },
+    {
+      "id": "the_white_lace_girl",
+      "name": "The White-Lace Girl",
+      "sourceCharacterIds": [
+        57
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "White-Lace Girl"
+      ]
+    },
+    {
+      "id": "thomas_lynde",
+      "name": "Thomas Lynde",
+      "sourceCharacterIds": [
+        58
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "william_blair",
+      "name": "William Blair",
+      "sourceCharacterIds": [
+        59
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "somebody",
+      "name": "Somebody",
+      "sourceCharacterIds": [
+        60
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "alice_andrews",
+      "name": "Alice Andrews",
+      "sourceCharacterIds": [
+        61
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "arty_gillis",
+      "name": "Arty Gillis",
+      "sourceCharacterIds": [
+        62
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "dr_blair",
+      "name": "Dr. Blair",
+      "sourceCharacterIds": [
+        63
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "emma_white",
+      "name": "Emma White",
+      "sourceCharacterIds": [
+        65
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "jenny_gillis",
+      "name": "Jenny Gillis",
+      "sourceCharacterIds": [
+        66
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "jerry_buote",
+      "name": "Jerry Buote",
+      "sourceCharacterIds": [
+        67
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "jimmy_glover",
+      "name": "Jimmy Glover",
+      "sourceCharacterIds": [
+        68
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "lauretta_bradley",
+      "name": "Lauretta Bradley",
+      "sourceCharacterIds": [
+        69
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "minnie_andrews",
+      "name": "Minnie Andrews",
+      "sourceCharacterIds": [
+        70
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "minnie_macpherson",
+      "name": "Minnie Macpherson",
+      "sourceCharacterIds": [
+        71
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "minnie_may_barry",
+      "name": "Minnie May Barry",
+      "sourceCharacterIds": [
+        72
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "miranda_sloane",
+      "name": "Miranda Sloane",
+      "sourceCharacterIds": [
+        73
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "miss_lucillia_harris",
+      "name": "Miss Lucillia Harris",
+      "sourceCharacterIds": [
+        74
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Miss Lucilla Harris"
+      ]
+    },
+    {
+      "id": "mr_bentley",
+      "name": "Mr. Bentley",
+      "sourceCharacterIds": [
+        75
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mr_chester_ross",
+      "name": "Mr. Chester Ross",
+      "sourceCharacterIds": [
+        76
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mr_gresham",
+      "name": "Mr. Gresham",
+      "sourceCharacterIds": [
+        77
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mr_marshall",
+      "name": "Mr. Marshall",
+      "sourceCharacterIds": [
+        78
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mr_silas_sloane",
+      "name": "Mr. Silas Sloane",
+      "sourceCharacterIds": [
+        79
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mr_smith",
+      "name": "Mr. Smith",
+      "sourceCharacterIds": [
+        80
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mr_terry",
+      "name": "Mr. Terry",
+      "sourceCharacterIds": [
+        81
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mr_thomas",
+      "name": "Mr. Thomas",
+      "sourceCharacterIds": [
+        82
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mrs_chester_ross",
+      "name": "Mrs. Chester Ross",
+      "sourceCharacterIds": [
+        83
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mrs_hammond",
+      "name": "Mrs. Hammond",
+      "sourceCharacterIds": [
+        84
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mrs_sloane",
+      "name": "Mrs. Sloane",
+      "sourceCharacterIds": [
+        85
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mrs_thomas",
+      "name": "Mrs. Thomas",
+      "sourceCharacterIds": [
+        86
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "rob_wright",
+      "name": "Rob Wright",
+      "sourceCharacterIds": [
+        87
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "sara_gillis",
+      "name": "Sara Gillis",
+      "sourceCharacterIds": [
+        88
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "sophia_sloane",
+      "name": "Sophia Sloane",
+      "sourceCharacterIds": [
+        89
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "the_doctor",
+      "name": "The Doctor",
+      "sourceCharacterIds": [
+        90
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Doctor"
+      ]
+    },
+    {
+      "id": "the_minister",
+      "name": "The Minister",
+      "sourceCharacterIds": [
+        91
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Minister"
+      ]
+    },
+    {
+      "id": "the_premier",
+      "name": "The Premier",
+      "sourceCharacterIds": [
+        92
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Premier"
+      ]
+    },
+    {
+      "id": "tillie_boulter",
+      "name": "Tillie Boulter",
+      "sourceCharacterIds": [
+        93
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "tommy_sloane",
+      "name": "Tommy Sloane",
+      "sourceCharacterIds": [
+        94
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "young_mary_joe",
+      "name": "Young Mary Joe",
+      "sourceCharacterIds": [
+        95
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "a_merchant",
+      "name": "A Merchant",
+      "sourceCharacterIds": [
+        96
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Merchant"
+      ]
+    },
+    {
+      "id": "bertha_shirley",
+      "name": "Bertha Shirley",
+      "sourceCharacterIds": [
+        97
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "bonny",
+      "name": "Bonny",
+      "sourceCharacterIds": [
+        98
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "flora_jane",
+      "name": "Flora Jane",
+      "sourceCharacterIds": [
+        99
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "hepzibah_jenkins",
+      "name": "Hepzibah Jenkins",
+      "sourceCharacterIds": [
+        100
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "latin",
+      "name": "Latin",
+      "sourceCharacterIds": [
+        101
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "lily_jones",
+      "name": "Lily Jones",
+      "sourceCharacterIds": [
+        102
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mary_alice_bell",
+      "name": "Mary Alice Bell",
+      "sourceCharacterIds": [
+        103
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "miss_rogerson",
+      "name": "Miss Rogerson",
+      "sourceCharacterIds": [
+        104
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mr_hammond",
+      "name": "Mr. Hammond",
+      "sourceCharacterIds": [
+        105
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mr_kirke",
+      "name": "Mr. Kirke",
+      "sourceCharacterIds": [
+        106
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "nancy",
+      "name": "Nancy",
+      "sourceCharacterIds": [
+        107
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "richard_spencer",
+      "name": "Richard Spencer",
+      "sourceCharacterIds": [
+        108
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "robert_spencer",
+      "name": "Robert Spencer",
+      "sourceCharacterIds": [
+        109
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "the_matron",
+      "name": "The Matron",
+      "sourceCharacterIds": [
+        110
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Matron"
+      ]
+    },
+    {
+      "id": "the_superintendent",
+      "name": "The Superintendent",
+      "sourceCharacterIds": [
+        111
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Superintendent"
+      ]
+    },
+    {
+      "id": "walter_shirley",
+      "name": "Walter Shirley",
+      "sourceCharacterIds": [
+        112
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    }
+  ],
+  "knownExtras": [
+
+  ]
+}

@@ -45,6 +45,25 @@ test('temporary public HTTP requires a narrow explicit opt-in', () => {
   assert.equal(isSecureServiceUrl('https://video.example.test'), true)
 })
 
+test('a public LiteLLM endpoint requires the same exact plaintext host allowlist', () => {
+  assert.throws(
+    () => serviceUrl('LITELLM_BASE_URL', 'http://192.0.2.10:4000', {
+      production: true,
+      allowInsecureHttp: true,
+      allowedInsecureHosts: ['192.0.2.11']
+    }),
+    /must use HTTPS/
+  )
+  assert.equal(
+    serviceUrl('LITELLM_BASE_URL', 'http://192.0.2.10:4000/', {
+      production: true,
+      allowInsecureHttp: true,
+      allowedInsecureHosts: ['192.0.2.10']
+    }),
+    'http://192.0.2.10:4000'
+  )
+})
+
 test('Railway private HTTP remains independently supported', () => {
   assert.equal(
     serviceUrl('LLM_BASE_URL', 'http://litellm.railway.internal:4000', {

@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "id": "little-women-swcpq-v1",
+  "source": {
+    "name": "Statistical Which Character Personality Quiz aggregated dataset, January 2025",
+    "url": "https://openpsychometrics.org/tests/characters/data/",
+    "archiveSha256": "251db8592523f187971a3339e517198eb760ed91588e2f561bee104c49b7c604",
+    "license": "CC BY-NC-ND 4.0",
+    "usage": "Local non-commercial read-only evaluation. Do not redistribute this derived fixture without legal review.",
+    "selection": "The six Little Women characters and four non-physical diagnostic poles per character were frozen before the evaluated output; each pole has n >= 30, abs(mean - 50) >= 15, and a 95% CI wholly on the selected side of 50."
+  },
+  "gates": {
+    "precision": 0.8,
+    "recall": 0.8,
+    "f1": 0.8,
+    "traitCoverage": 0.8,
+    "descriptionCoverage": 0.8,
+    "uiCoreReady": 0.8,
+    "voiceGenderConsistency": 0.8,
+    "contradictionRate": 0.02
+  },
+  "characters": [
+    {
+      "id": "LW/1",
+      "name": "Jo March",
+      "aliases": ["Jo", "Josephine March", "Miss Jo", "Miss Jo March", "Mrs. Bhaer", "Jo Bhaer"],
+      "traits": [
+        { "id": "BAP136", "label": "driven", "mean": 93.0, "n": 345, "accepted": ["driven"] },
+        { "id": "BAP73", "label": "open to new experiences", "mean": 8.9, "n": 331, "accepted": ["open to new experiences"] },
+        { "id": "BAP163", "label": "independent", "mean": 8.9, "n": 328, "accepted": ["independent", "independent-minded", "self-reliant"] },
+        { "id": "BAP134", "label": "rebellious", "mean": 90.8, "n": 330, "accepted": ["rebellious"] }
+      ],
+      "contradictory": ["dependent", "conformist", "passive"]
+    },
+    {
+      "id": "LW/2",
+      "name": "Meg March",
+      "aliases": ["Meg", "Margaret Brooke", "Meg Brooke", "Mrs. Brooke", "Mrs Brooke", "Mrs. John Brooke"],
+      "traits": [
+        { "id": "BAP84", "label": "kind", "mean": 88.0, "n": 352, "accepted": ["kind", "gentle"] },
+        { "id": "BAP179", "label": "nurturing", "mean": 87.9, "n": 335, "accepted": ["nurturing", "tender", "motherly"] },
+        { "id": "BAP164", "label": "family-first", "mean": 12.2, "n": 345, "accepted": ["family-first"] },
+        { "id": "BAP168", "label": "proper", "mean": 85.3, "n": 313, "accepted": ["proper"] }
+      ],
+      "contradictory": ["cruel", "neglectful", "self-centered", "improper"]
+    },
+    {
+      "id": "LW/3",
+      "name": "Amy March",
+      "aliases": ["Amy", "Amy Laurence", "Mrs. Laurence", "Mrs Laurence"],
+      "traits": [
+        { "id": "BAP357", "label": "opinionated", "mean": 84.1, "n": 94, "accepted": ["opinionated"] },
+        { "id": "BAP17", "label": "competitive", "mean": 20.7, "n": 304, "accepted": ["competitive"] },
+        { "id": "BAP136", "label": "driven", "mean": 79.3, "n": 335, "accepted": ["driven"] },
+        { "id": "BAP212", "label": "social", "mean": 21.6, "n": 271, "accepted": ["social", "sociable"] }
+      ],
+      "contradictory": ["apathetic", "unmotivated", "withdrawn"]
+    },
+    {
+      "id": "LW/4",
+      "name": "Beth March",
+      "aliases": ["Beth", "Elizabeth March", "Little Beth"],
+      "traits": [
+        { "id": "BAP84", "label": "kind", "mean": 95.2, "n": 326, "accepted": ["kind", "gentle"] },
+        { "id": "BAP28", "label": "loyal", "mean": 8.3, "n": 310, "accepted": ["loyal", "faithful"] },
+        { "id": "BAP38", "label": "humble", "mean": 90.5, "n": 329, "accepted": ["humble", "modest"] },
+        { "id": "BAP60", "label": "quiet", "mean": 11.5, "n": 348, "accepted": ["quiet"] }
+      ],
+      "contradictory": ["cruel", "disloyal", "arrogant", "loud"]
+    },
+    {
+      "id": "LW/5",
+      "name": "Marmee March",
+      "aliases": ["Marmee", "Mrs. March", "Mrs March", "Mrs. Robert March"],
+      "traits": [
+        { "id": "BAP84", "label": "kind", "mean": 92.2, "n": 323, "accepted": ["kind", "gentle"] },
+        { "id": "BAP179", "label": "nurturing", "mean": 91.7, "n": 334, "accepted": ["nurturing", "motherly"] },
+        { "id": "BAP28", "label": "loyal", "mean": 9.8, "n": 326, "accepted": ["loyal", "faithful"] },
+        { "id": "BAP186", "label": "mature", "mean": 89.5, "n": 587, "accepted": ["mature"] }
+      ],
+      "contradictory": ["cruel", "neglectful", "disloyal", "immature"]
+    },
+    {
+      "id": "LW/6",
+      "name": "Theodore Laurence",
+      "aliases": ["Theodore", "Theodore 'Laurie' Laurence", "Theodore Laurie Laurence", "Laurie", "Laurie Laurence", "Teddy"],
+      "traits": [
+        { "id": "BAP142", "label": "charismatic", "mean": 18.4, "n": 352, "accepted": ["charismatic"] },
+        { "id": "BAP367", "label": "emotional", "mean": 81.1, "n": 72, "accepted": ["emotional"] },
+        { "id": "BAP292", "label": "romantic", "mean": 81.1, "n": 83, "accepted": ["romantic"] },
+        { "id": "BAP49", "label": "spontaneous", "mean": 78.8, "n": 331, "accepted": ["spontaneous"] }
+      ],
+      "contradictory": ["unemotional", "unromantic", "rigid"]
+    }
+  ]
+}

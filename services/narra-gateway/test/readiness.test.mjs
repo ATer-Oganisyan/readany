@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { parseEnvBool } from '../env.mjs'
+import { parseEnvBool, parseEnvUuidList } from '../env.mjs'
 import { gatewayReadiness } from '../readiness.mjs'
 
 const base = {
@@ -29,6 +29,16 @@ test('a required unavailable video provider blocks readiness', () => {
   assert.equal(result.checks.video, false)
 })
 
+test('a required unavailable book backend blocks readiness', () => {
+  const result = gatewayReadiness({
+    ...base,
+    bookBackendRequired: true,
+    bookBackendReady: false
+  })
+  assert.equal(result.ready, false)
+  assert.equal(result.checks.book_backend, false)
+})
+
 test('plaintext video is reported when explicitly configured', () => {
   const result = gatewayReadiness({
     ...base,
@@ -52,4 +62,18 @@ test('boolean environment values are strict', () => {
   assert.equal(parseEnvBool({}, 'FLAG', true), true)
   assert.equal(parseEnvBool({ FLAG: 'false' }, 'FLAG', true), false)
   assert.throws(() => parseEnvBool({ FLAG: 'yes' }, 'FLAG'), /must be true or false/)
+})
+
+test('UUID list environment parser returns a deduplicated optional allowlist', () => {
+  const first = '123e4567-e89b-42d3-a456-426614174000'
+  const second = '123e4567-e89b-42d3-a456-426614174001'
+  assert.equal(parseEnvUuidList({}, 'RUN_IDS'), undefined)
+  assert.deepEqual(
+    parseEnvUuidList({ RUN_IDS: `${first}, ${second},${first}` }, 'RUN_IDS'),
+    [first, second]
+  )
+  assert.throws(
+    () => parseEnvUuidList({ RUN_IDS: 'not-a-uuid' }, 'RUN_IDS'),
+    /comma-separated list of UUIDs/
+  )
 })

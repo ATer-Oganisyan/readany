@@ -1,0 +1,512 @@
+{
+  "schemaVersion": 1,
+  "id": "invisible-man-pdnc-v1",
+  "goldCount": 29,
+  "significantCount": 10,
+  "source": {
+    "dataset": "PDNC",
+    "repository": "Priya22/project-dialogism-novel-corpus",
+    "repositoryCommit": "6fda0a78bda5e9da0854f7befb5dab268abefb7e",
+    "sourcePath": "data/TheInvisibleMan/character_info.csv",
+    "sourceSha256": "a74309c26cce93e12ac021995933e7493c0fb869afbf8b8b0a46d23b5044c149",
+    "rawCharacterRows": 31,
+    "correctedGoldCount": 29,
+    "gutenbergId": 5230,
+    "canonicalTextSha256": "c3b214783d0625f31fac6fe688ad6c3787dc0bf826a4e6e51c28e62f5883e962",
+    "denominatorProtocol": "Start from every pinned PDNC character_info.csv row; apply only the listed source-backed corrections and exclude reserved annotation sentinels whose Main Name starts with an underscore.",
+    "significantProtocol": "Corrected PDNC Category is major or intermediate; corrections affect only minor rows.",
+    "aliasPolicy": "Use corrected PDNC Main Name/Aliases and collision-free removal of exactly one leading English article; no evaluated-output aliases are added.",
+    "articleNormalizationProtocol": "Mechanically remove exactly one leading The, A, or An and retain the result only when the normalized surface belongs to one corrected gold identity.",
+    "corrections": [
+      {
+        "id": "annotation_sentinels",
+        "action": "exclude_source_rows_29_30",
+        "surfaces": [
+          "_group",
+          "_unknowable"
+        ],
+        "reason": "Reserved annotation states are not characters."
+      }
+    ],
+    "litbank": {
+      "repository": "dbamman/litbank",
+      "repositoryCommit": "3e50db0ffc033d7ccbb94f4d88f6b99210328ed8",
+      "annotationPath": "coref/brat/5230_the_invisible_man_a_grotesque_romance_brat.ann",
+      "annotationSha256": "4b34d66f5602109cd007757b2d72d25a7eae873e0325ab812b07a6342f20e078",
+      "textPath": "coref/brat/5230_the_invisible_man_a_grotesque_romance_brat.txt",
+      "textSha256": "cc6900717317dd0097dacb3b192b973d530dd05d884cf232ed33d8e62a80a913",
+      "scope": "approximately 2,000-word fragment; secondary audit only, not the full-book denominator"
+    }
+  },
+  "gates": {
+    "precision": 0.9,
+    "recall": 0.9,
+    "f1": 0.9,
+    "criticalMerges": 0,
+    "duplicateRate": 0.05
+  },
+  "collisionGuards": [
+    {
+      "id": "hall_spouses",
+      "surfaces": [
+        "Hall",
+        "Mr. Hall",
+        "Mrs. Hall",
+        "George",
+        "Janny"
+      ],
+      "goldIds": [
+        "mr_hall",
+        "mrs_hall"
+      ],
+      "reason": "The innkeeper spouses share Hall but are distinct."
+    },
+    {
+      "id": "bunting_spouses",
+      "surfaces": [
+        "Bunting",
+        "Mr. Bunting",
+        "Mrs. Bunting",
+        "The Vicar"
+      ],
+      "goldIds": [
+        "bunting",
+        "mrs_bunting"
+      ],
+      "reason": "The vicar and Mrs. Bunting are distinct."
+    },
+    {
+      "id": "scientists",
+      "surfaces": [
+        "The Doctor",
+        "Dr. Kemp",
+        "Kemp",
+        "The Invisible Man",
+        "Griffin",
+        "The Stranger"
+      ],
+      "goldIds": [
+        "the_doctor",
+        "the_invisible_man"
+      ],
+      "reason": "Kemp and Griffin are distinct scientists despite interacting throughout the late novel."
+    },
+    {
+      "id": "police_roles",
+      "surfaces": [
+        "Colonel Adye",
+        "The Constable",
+        "The First Policeman",
+        "The Second Policeman",
+        "The Policeman"
+      ],
+      "goldIds": [
+        "colonel_adye",
+        "the_constable",
+        "the_first_policeman",
+        "the_second_policeman",
+        "the_policeman"
+      ],
+      "reason": "Police and authority roles refer to distinct people."
+    }
+  ],
+  "characters": [
+    {
+      "id": "a_lady_in_the_group",
+      "name": "A Lady In The Group",
+      "sourceCharacterIds": [
+        0
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Lady In The Group"
+      ]
+    },
+    {
+      "id": "a_man",
+      "name": "A Man",
+      "sourceCharacterIds": [
+        1
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Man"
+      ]
+    },
+    {
+      "id": "an_old_woman",
+      "name": "An Old Woman",
+      "sourceCharacterIds": [
+        2
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Old Woman"
+      ]
+    },
+    {
+      "id": "bunting",
+      "name": "Bunting",
+      "sourceCharacterIds": [
+        3
+      ],
+      "category": "intermediate",
+      "significant": true,
+      "aliases": [
+        "The Vicar",
+        "Mr. Bunting",
+        "Vicar"
+      ]
+    },
+    {
+      "id": "colonel_adye",
+      "name": "Colonel Adye",
+      "sourceCharacterIds": [
+        4
+      ],
+      "category": "intermediate",
+      "significant": true,
+      "aliases": [
+        "Adye"
+      ]
+    },
+    {
+      "id": "cuss",
+      "name": "Cuss",
+      "sourceCharacterIds": [
+        5
+      ],
+      "category": "intermediate",
+      "significant": true,
+      "aliases": [
+        "Mr. Cuss"
+      ]
+    },
+    {
+      "id": "fearenside",
+      "name": "Fearenside",
+      "sourceCharacterIds": [
+        6
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mr_hall",
+      "name": "Mr. Hall",
+      "sourceCharacterIds": [
+        7
+      ],
+      "category": "intermediate",
+      "significant": true,
+      "aliases": [
+        "George",
+        "Hall"
+      ]
+    },
+    {
+      "id": "huxter",
+      "name": "Huxter",
+      "sourceCharacterIds": [
+        8
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Mr. Huxter"
+      ]
+    },
+    {
+      "id": "jaffers",
+      "name": "Jaffers",
+      "sourceCharacterIds": [
+        9
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Mr. Bobby Jaffers"
+      ]
+    },
+    {
+      "id": "the_doctor",
+      "name": "The Doctor",
+      "sourceCharacterIds": [
+        10
+      ],
+      "category": "major",
+      "significant": true,
+      "aliases": [
+        "Kemp",
+        "Dr. Kemp",
+        "Doctor"
+      ]
+    },
+    {
+      "id": "mr_heelas",
+      "name": "Mr. Heelas",
+      "sourceCharacterIds": [
+        11
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mr_thomas_marvel",
+      "name": "Mr. Thomas Marvel",
+      "sourceCharacterIds": [
+        12
+      ],
+      "category": "major",
+      "significant": true,
+      "aliases": [
+        "Marvel",
+        "The Landlord",
+        "Mr. Marvel",
+        "Landlord"
+      ]
+    },
+    {
+      "id": "mr_sandy_wadgers",
+      "name": "Mr. Sandy Wadgers",
+      "sourceCharacterIds": [
+        13
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Mr. Wadgers",
+        "Sandy Wadgers"
+      ]
+    },
+    {
+      "id": "mrs_bunting",
+      "name": "Mrs. Bunting",
+      "sourceCharacterIds": [
+        14
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mrs_hall",
+      "name": "Mrs. Hall",
+      "sourceCharacterIds": [
+        15
+      ],
+      "category": "intermediate",
+      "significant": true,
+      "aliases": [
+        "Janny"
+      ]
+    },
+    {
+      "id": "silas_durgan",
+      "name": "Silas Durgan",
+      "sourceCharacterIds": [
+        16
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mr_teddy_henfrey",
+      "name": "Mr. Teddy Henfrey",
+      "sourceCharacterIds": [
+        17
+      ],
+      "category": "intermediate",
+      "significant": true,
+      "aliases": [
+        "Mr. Teddy",
+        "Henfrey",
+        "Teddy",
+        "Teddy Henfrey",
+        "Mr. Henfrey"
+      ]
+    },
+    {
+      "id": "the_barman",
+      "name": "The Barman",
+      "sourceCharacterIds": [
+        18
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Barman"
+      ]
+    },
+    {
+      "id": "the_big_navvy",
+      "name": "The Big Navvy",
+      "sourceCharacterIds": [
+        19
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Big Navvy"
+      ]
+    },
+    {
+      "id": "the_cabman",
+      "name": "The Cabman",
+      "sourceCharacterIds": [
+        20
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "The First Cabman",
+        "The Anaemic Cabman",
+        "Cabman",
+        "First Cabman",
+        "Anaemic Cabman"
+      ]
+    },
+    {
+      "id": "the_constable",
+      "name": "The Constable",
+      "sourceCharacterIds": [
+        21
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Constable"
+      ]
+    },
+    {
+      "id": "the_first_policeman",
+      "name": "The First Policeman",
+      "sourceCharacterIds": [
+        22
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "First Policeman"
+      ]
+    },
+    {
+      "id": "the_housemaid",
+      "name": "The Housemaid",
+      "sourceCharacterIds": [
+        23
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Housemaid"
+      ]
+    },
+    {
+      "id": "the_invisible_man",
+      "name": "The Invisible Man",
+      "sourceCharacterIds": [
+        24
+      ],
+      "category": "major",
+      "significant": true,
+      "aliases": [
+        "The Voice",
+        "The Stranger",
+        "Griffin",
+        "The Visitor",
+        "Stranger",
+        "The Unseen",
+        "Invisible Man",
+        "Voice",
+        "Visitor",
+        "Unseen"
+      ]
+    },
+    {
+      "id": "the_man_with_the_black_beard",
+      "name": "The Man With The Black Beard",
+      "sourceCharacterIds": [
+        25
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "A Black-bearded Man",
+        "Man With The Black Beard",
+        "Black-bearded Man"
+      ]
+    },
+    {
+      "id": "the_mariner",
+      "name": "The Mariner",
+      "sourceCharacterIds": [
+        26
+      ],
+      "category": "intermediate",
+      "significant": true,
+      "aliases": [
+        "Mariner"
+      ]
+    },
+    {
+      "id": "the_policeman",
+      "name": "The Policeman",
+      "sourceCharacterIds": [
+        27
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Policeman"
+      ]
+    },
+    {
+      "id": "the_second_policeman",
+      "name": "The Second Policeman",
+      "sourceCharacterIds": [
+        28
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "The Man On The Floor",
+        "One Of The Policemen",
+        "Second Policeman",
+        "Man On The Floor"
+      ]
+    }
+  ],
+  "knownExtras": [
+    {
+      "id": "pdnc_group",
+      "name": "_group",
+      "aliases": [
+
+      ],
+      "kind": "annotation_sentinel"
+    },
+    {
+      "id": "pdnc_unknowable",
+      "name": "_unknowable",
+      "aliases": [
+
+      ],
+      "kind": "annotation_sentinel"
+    }
+  ]
+}

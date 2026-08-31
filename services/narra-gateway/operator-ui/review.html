@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Narra — проверка book-markup-v3</title>
+  <link rel="stylesheet" href="./assets/styles.css">
+  <link rel="stylesheet" href="./assets/review.css">
+</head>
+<body>
+  <header class="topbar review-topbar">
+    <div>
+      <p class="eyebrow">Narra review</p>
+      <h1>Проверка разметки</h1>
+    </div>
+    <div class="review-actions">
+      <a class="button secondary" href="./">К списку книг</a>
+      <label class="button secondary file-button">Открыть JSON<input id="json-file" type="file" accept="application/json,.json"></label>
+      <button class="button primary" id="open-sample" type="button">Открыть пример</button>
+    </div>
+  </header>
+
+  <main class="review-shell">
+    <section class="review-intro" id="review-intro">
+      <div class="intro-copy">
+        <p class="eyebrow">book-markup-v3</p>
+        <h2>Персонажи, характер, внешность и доказательства — рядом</h2>
+        <p>Откройте JSON из pipeline или готовый пример. Файл обрабатывается только в браузере и никуда не отправляется.</p>
+      </div>
+      <div class="drop-zone" id="drop-zone">
+        <strong>Перетащите JSON сюда</strong>
+        <span>Поддерживается публикация Gateway, ответ operator API или сам объект markup.</span>
+      </div>
+    </section>
+
+    <section id="review-workspace" hidden>
+      <div class="review-heading">
+        <div>
+          <p class="eyebrow" id="review-version"></p>
+          <h2 id="review-title"></h2>
+          <p class="muted" id="review-meta"></p>
+        </div>
+        <div class="diagnostic-grid" id="diagnostic-grid"></div>
+      </div>
+
+      <div class="review-grid">
+        <aside class="character-index">
+          <label class="search">
+            <span class="sr-only">Поиск персонажей</span>
+            <input id="character-search" type="search" placeholder="Найти персонажа">
+          </label>
+          <div id="character-list"></div>
+        </aside>
+        <section class="character-review" id="character-review"></section>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  <script defer src="./assets/review.js"></script>
+</body>
+</html>

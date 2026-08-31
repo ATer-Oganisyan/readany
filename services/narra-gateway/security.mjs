@@ -176,6 +176,43 @@ export function requireOperatorAuth(secret) {
   }
 }
 
+function basicCredentials(header) {
+  const match = /^Basic\s+([A-Za-z0-9+/]+={0,2})$/i.exec(String(header || ''))
+  if (!match) return null
+  try {
+    const decoded = Buffer.from(match[1], 'base64').toString('utf8')
+    const separator = decoded.indexOf(':')
+    if (separator < 1) return null
+    return { username: decoded.slice(0, separator), password: decoded.slice(separator + 1) }
+  } catch {
+    return null
+  }
+}
+
+function constantTimeTextEqual(expected, actual) {
+  const expectedDigest = createHmac('sha256', 'narra-basic-auth-v1').update(expected).digest()
+  const actualDigest = createHmac('sha256', 'narra-basic-auth-v1').update(actual).digest()
+  return timingSafeEqual(expectedDigest, actualDigest)
+}
+
+export function requireBasicAuth({ username, password, realm = 'Narra operator' }) {
+  if (typeof username !== 'string' || !username || typeof password !== 'string' || !password) {
+    throw new TypeError('basic auth username and password are required')
+  }
+  const safeRealm = String(realm).replace(/["\\\r\n]/g, '').slice(0, 80) || 'Narra operator'
+  return (req, res, next) => {
+    const supplied = basicCredentials(req.headers.authorization)
+    const accepted = supplied &&
+      constantTimeTextEqual(username, supplied.username) &&
+      constantTimeTextEqual(password, supplied.password)
+    if (!accepted) {
+      res.setHeader('WWW-Authenticate', `Basic realm="${safeRealm}", charset="UTF-8"`)
+      return res.status(401).json({ error: 'Нужен пароль оператора', code: 'AUTH' })
+    }
+    next()
+  }
+}
+
 export function createPersistentBudgetMiddleware({
   registry,
   metric,

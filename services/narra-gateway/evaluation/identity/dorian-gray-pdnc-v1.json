@@ -1,0 +1,630 @@
+{
+  "schemaVersion": 1,
+  "id": "dorian-gray-pdnc-v1",
+  "goldCount": 42,
+  "significantCount": 7,
+  "source": {
+    "dataset": "PDNC",
+    "repository": "Priya22/project-dialogism-novel-corpus",
+    "repositoryCommit": "6fda0a78bda5e9da0854f7befb5dab268abefb7e",
+    "sourcePath": "data/ThePictureOfDorianGray/character_info.csv",
+    "sourceSha256": "21175c017287db00f13e2fd62bdb0480a002dad7586e33b1f7c7b4e7ff485284",
+    "rawCharacterRows": 43,
+    "correctedGoldCount": 42,
+    "gutenbergId": 174,
+    "canonicalTextSha256": "aa8346331b9532dab86d8ab25a4a4ad598dc1c79e7ec2ed66157db9881861236",
+    "denominatorProtocol": "Start from every pinned PDNC character_info.csv row; apply only the listed source-backed corrections and exclude reserved annotation sentinels whose Main Name starts with an underscore.",
+    "significantProtocol": "Corrected PDNC Category is major or intermediate; corrections affect only minor rows.",
+    "aliasPolicy": "Use corrected PDNC Main Name/Aliases and collision-free removal of exactly one leading English article; no evaluated-output aliases are added.",
+    "articleNormalizationProtocol": "Mechanically remove exactly one leading The, A, or An and retain the result only when the normalized surface belongs to one corrected gold identity.",
+    "corrections": [
+      {
+        "id": "annotation_sentinel",
+        "action": "exclude_source_row_38",
+        "surface": "_unknowable",
+        "reason": "Reserved annotation state is not a character."
+      },
+      {
+        "id": "vane_bare_surface",
+        "action": "remove_ambiguous_alias",
+        "surface": "Vane",
+        "reason": "The surname belongs to Sibyl, James, and Mrs. Vane and is not a global identity."
+      }
+    ],
+    "litbank": {
+      "repository": "dbamman/litbank",
+      "repositoryCommit": "3e50db0ffc033d7ccbb94f4d88f6b99210328ed8",
+      "annotationPath": "coref/brat/174_the_picture_of_dorian_gray_brat.ann",
+      "annotationSha256": "3cef238203798941467be8b93d358d946533e63a532803e34a54bb9581662029",
+      "textPath": "coref/brat/174_the_picture_of_dorian_gray_brat.txt",
+      "textSha256": "4af78eedb1d47e838695caa8eb93624a19fd54dc44f21cd2c690422678d815e9",
+      "scope": "approximately 2,000-word fragment; secondary audit only, not the full-book denominator"
+    }
+  },
+  "gates": {
+    "precision": 0.9,
+    "recall": 0.9,
+    "f1": 0.9,
+    "criticalMerges": 0,
+    "duplicateRate": 0.05
+  },
+  "collisionGuards": [
+    {
+      "id": "vane_family",
+      "surfaces": [
+        "Vane",
+        "James Vane",
+        "Sibyl Vane",
+        "Mrs. Vane"
+      ],
+      "goldIds": [
+        "james_vane",
+        "sibyl_vane",
+        "mrs_vane"
+      ],
+      "reason": "The three Vane family members remain distinct; bare Vane is blocked."
+    },
+    {
+      "id": "henry_spouses",
+      "surfaces": [
+        "Lord Henry",
+        "Lady Henry",
+        "Henry",
+        "Harry",
+        "Victoria"
+      ],
+      "goldIds": [
+        "lord_henry",
+        "lady_henry"
+      ],
+      "reason": "Lord and Lady Henry are spouses, not aliases."
+    },
+    {
+      "id": "dorian_and_vanes",
+      "surfaces": [
+        "Prince Charming",
+        "Dorian Gray",
+        "James Vane",
+        "Sibyl Vane"
+      ],
+      "goldIds": [
+        "prince_charming",
+        "james_vane",
+        "sibyl_vane"
+      ],
+      "reason": "Prince Charming is Dorian, while the Vane siblings remain separate."
+    }
+  ],
+  "characters": [
+    {
+      "id": "adrian_singleton",
+      "name": "Adrian Singleton",
+      "sourceCharacterIds": [
+        0
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "alan_campbell",
+      "name": "Alan Campbell",
+      "sourceCharacterIds": [
+        1
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Alan",
+        "Campbell"
+      ]
+    },
+    {
+      "id": "basil_hallward",
+      "name": "Basil Hallward",
+      "sourceCharacterIds": [
+        2
+      ],
+      "category": "major",
+      "significant": true,
+      "aliases": [
+        "Hallward",
+        "Basil"
+      ]
+    },
+    {
+      "id": "the_policeman",
+      "name": "The Policeman",
+      "sourceCharacterIds": [
+        3
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Constable",
+        "Policeman"
+      ]
+    },
+    {
+      "id": "prince_charming",
+      "name": "Prince Charming",
+      "sourceCharacterIds": [
+        4
+      ],
+      "category": "major",
+      "significant": true,
+      "aliases": [
+        "Gray",
+        "Mr. Gray",
+        "Dorian",
+        "Dorian Gray"
+      ]
+    },
+    {
+      "id": "duchess_of_harley",
+      "name": "Duchess Of Harley",
+      "sourceCharacterIds": [
+        5
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "ernest_harrowden",
+      "name": "Ernest Harrowden",
+      "sourceCharacterIds": [
+        6
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "francis",
+      "name": "Francis",
+      "sourceCharacterIds": [
+        7
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "the_gardener",
+      "name": "The Gardener",
+      "sourceCharacterIds": [
+        8
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Gardener"
+      ]
+    },
+    {
+      "id": "duchess_of_monmouth",
+      "name": "Duchess Of Monmouth",
+      "sourceCharacterIds": [
+        9
+      ],
+      "category": "intermediate",
+      "significant": true,
+      "aliases": [
+        "Gladys"
+      ]
+    },
+    {
+      "id": "hansom_driver",
+      "name": "Hansom Driver",
+      "sourceCharacterIds": [
+        10
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Driver",
+        "The Man",
+        "Man"
+      ]
+    },
+    {
+      "id": "james_vane",
+      "name": "James Vane",
+      "sourceCharacterIds": [
+        11
+      ],
+      "category": "intermediate",
+      "significant": true,
+      "aliases": [
+        "Jim",
+        "James"
+      ]
+    },
+    {
+      "id": "juliet",
+      "name": "Juliet",
+      "sourceCharacterIds": [
+        12
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "lady_agatha",
+      "name": "Lady Agatha",
+      "sourceCharacterIds": [
+        13
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "lady_alice_chapman",
+      "name": "Lady Alice Chapman",
+      "sourceCharacterIds": [
+        14
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "lady_henry",
+      "name": "Lady Henry",
+      "sourceCharacterIds": [
+        15
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Victoria"
+      ]
+    },
+    {
+      "id": "lady_narborough",
+      "name": "Lady Narborough",
+      "sourceCharacterIds": [
+        16
+      ],
+      "category": "intermediate",
+      "significant": true,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "lady_ruxton",
+      "name": "Lady Ruxton",
+      "sourceCharacterIds": [
+        17
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "lord_fermor",
+      "name": "Lord Fermor",
+      "sourceCharacterIds": [
+        18
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Uncle George"
+      ]
+    },
+    {
+      "id": "lord_henry",
+      "name": "Lord Henry",
+      "sourceCharacterIds": [
+        19
+      ],
+      "category": "major",
+      "significant": true,
+      "aliases": [
+        "Henry",
+        "Lord Henry Wotton",
+        "Harry"
+      ]
+    },
+    {
+      "id": "mr_erskine",
+      "name": "Mr. Erskine",
+      "sourceCharacterIds": [
+        20
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mr_hubbard",
+      "name": "Mr. Hubbard",
+      "sourceCharacterIds": [
+        21
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mrs_erlynne",
+      "name": "Mrs Erlynne",
+      "sourceCharacterIds": [
+        22
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mrs_leaf",
+      "name": "Mrs. Leaf",
+      "sourceCharacterIds": [
+        23
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mrs_vandeleur",
+      "name": "Mrs. Vandeleur",
+      "sourceCharacterIds": [
+        24
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "mrs_vane",
+      "name": "Mrs. Vane",
+      "sourceCharacterIds": [
+        25
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "one_of_the_women",
+      "name": "One Of The Women",
+      "sourceCharacterIds": [
+        26
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "one_of_the_women_who_had_been_drinking_at_the_bar",
+      "name": "One Of The Women Who Had Been Drinking At The Bar",
+      "sourceCharacterIds": [
+        27
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "one_young_man",
+      "name": "One Young Man",
+      "sourceCharacterIds": [
+        28
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "A Young Man",
+        "Young Man"
+      ]
+    },
+    {
+      "id": "parker",
+      "name": "Parker",
+      "sourceCharacterIds": [
+        29
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Butler",
+        "The Butler"
+      ]
+    },
+    {
+      "id": "sailor",
+      "name": "Sailor",
+      "sourceCharacterIds": [
+        30
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "sibyl_vane",
+      "name": "Sibyl Vane",
+      "sourceCharacterIds": [
+        31
+      ],
+      "category": "intermediate",
+      "significant": true,
+      "aliases": [
+        "Sibyl"
+      ]
+    },
+    {
+      "id": "sir_geoffrey_clouston",
+      "name": "Sir Geoffrey Clouston",
+      "sourceCharacterIds": [
+        32
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Geoffrey"
+      ]
+    },
+    {
+      "id": "sir_thomas_burdon",
+      "name": "Sir Thomas Burdon",
+      "sourceCharacterIds": [
+        33
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Sir Thomas"
+      ]
+    },
+    {
+      "id": "the_elder_of_the_two_gentlemen",
+      "name": "The Elder Of The Two Gentlemen",
+      "sourceCharacterIds": [
+        34
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Elder Of The Two Gentlemen"
+      ]
+    },
+    {
+      "id": "the_gamekeeper",
+      "name": "The Gamekeeper",
+      "sourceCharacterIds": [
+        35
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Thornton",
+        "The Head-keeper",
+        "Gamekeeper",
+        "Head-keeper"
+      ]
+    },
+    {
+      "id": "victor",
+      "name": "Victor",
+      "sourceCharacterIds": [
+        36
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "woman_at_bar",
+      "name": "Woman At Bar",
+      "sourceCharacterIds": [
+        37
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "the_artist",
+      "name": "The Artist",
+      "sourceCharacterIds": [
+        39
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Artist"
+      ]
+    },
+    {
+      "id": "mother",
+      "name": "Mother",
+      "sourceCharacterIds": [
+        40
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+
+      ]
+    },
+    {
+      "id": "the_lad",
+      "name": "The Lad",
+      "sourceCharacterIds": [
+        41
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Lad"
+      ]
+    },
+    {
+      "id": "the_painter",
+      "name": "The Painter",
+      "sourceCharacterIds": [
+        42
+      ],
+      "category": "minor",
+      "significant": false,
+      "aliases": [
+        "Painter"
+      ]
+    }
+  ],
+  "knownExtras": [
+    {
+      "id": "pdnc_unknowable",
+      "name": "_unknowable",
+      "aliases": [
+
+      ],
+      "kind": "annotation_sentinel"
+    }
+  ]
+}

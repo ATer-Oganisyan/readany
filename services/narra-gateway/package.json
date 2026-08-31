@@ -8,13 +8,38 @@
   "scripts": {
     "start": "node index.mjs",
     "dev": "node --env-file=.env index.mjs",
+    "worker:book-markup": "node book-markup-worker.mjs",
+    "worker:book-identity": "node book-identity-worker.mjs",
+    "worker:book-tts-markup": "node book-tts-markup-worker-runner.mjs",
+    "worker:book-analysis": "node book-analysis-worker.mjs",
+    "worker:book-analysis-scan": "node book-analysis-scan-worker-runner.mjs",
+    "worker:book-analysis-external": "node book-analysis-external-worker-runner.mjs",
+    "worker:book-analysis-resolve": "node book-analysis-resolve-worker-runner.mjs",
+    "worker:book-analysis-synthesize": "node book-analysis-stage-worker-runner.mjs synthesize",
+    "worker:book-analysis-validate": "node book-analysis-stage-worker-runner.mjs validate",
+    "worker:book-analysis-publish": "node book-analysis-stage-worker-runner.mjs publish",
+    "worker:book-search": "node book-search-worker-runner.mjs",
+    "book-analysis": "node book-analysis-operator.mjs",
+    "report:generation-cost": "node generation-cost-report.mjs",
+    "book-search": "node book-search-operator.mjs",
+    "evaluate:book-identity": "node book-analysis-identity-replay.mjs",
+    "migrate:book-markup": "node migrate-book-markup.mjs",
+    "backfill:book-markup": "node backfill-book-markup.mjs",
+    "backfill:character-sections": "node backfill-character-section-anchors.mjs",
+    "backfill:book-content-navigation": "node backfill-book-content-navigation.mjs",
+    "seed:catalog": "node seed-book-catalog.mjs",
+    "retry:book-generation": "node retry-failed-book-generation.mjs",
     "test": "node --test"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1014.0",
+    "@aws-sdk/s3-request-presigner": "^3.1014.0",
     "cors": "^2.8.5",
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "fflate": "^0.8.2",
+    "pg": "^8.23.0"
   }
 }

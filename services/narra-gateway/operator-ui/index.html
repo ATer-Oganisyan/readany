@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Narra — разметка книг</title>
+  <link rel="stylesheet" href="./assets/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">Narra operator</p>
+      <h1>Разметка книг</h1>
+    </div>
+    <div class="live-state" title="Данные автоматически обновляются">
+      <span class="live-dot" aria-hidden="true"></span>
+      <span id="live-label">Подключение…</span>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <aside class="sidebar">
+      <div class="sidebar-actions">
+        <label class="search">
+          <span class="sr-only">Поиск книг</span>
+          <input id="book-search" type="search" placeholder="Найти книгу">
+        </label>
+        <button class="button primary" id="open-upload" type="button">Загрузить книгу</button>
+      </div>
+      <div class="summary-strip" id="summary-strip" aria-live="polite"></div>
+      <div class="book-list" id="book-list" aria-label="Книги"></div>
+    </aside>
+
+    <section class="content">
+      <div class="empty-state" id="empty-state">
+        <div class="empty-mark">N</div>
+        <h2>Выберите книгу</h2>
+        <p>Здесь появятся стадии анализа, персонажи, медиа и журнал операций.</p>
+      </div>
+
+      <div id="book-panel" hidden>
+        <div class="book-heading">
+          <div>
+            <p class="eyebrow" id="book-meta"></p>
+            <h2 id="book-title"></h2>
+            <p class="muted" id="book-author"></p>
+          </div>
+          <div class="book-heading-actions">
+            <a class="button secondary" id="review-book" href="./review">Проверить разметку</a>
+            <button class="button secondary" id="restart-book" type="button">Перезапустить v3</button>
+            <div class="heading-progress">
+              <strong id="heading-percent">0%</strong>
+              <span id="heading-status">Не запущено</span>
+            </div>
+          </div>
+        </div>
+
+        <nav class="tabs" aria-label="Разделы книги">
+          <button type="button" class="tab active" data-tab="overview">Обзор</button>
+          <button type="button" class="tab" data-tab="operations">Операции</button>
+          <button type="button" class="tab" data-tab="json">JSON</button>
+          <button type="button" class="tab" data-tab="upload">Загрузка</button>
+        </nav>
+
+        <section class="tab-panel" id="tab-overview">
+          <div class="quality-alert" id="quality-alert" hidden></div>
+          <div class="section-title">
+            <div><p class="eyebrow">Pipeline</p><h3>Ход обработки</h3></div>
+            <span class="timestamp" id="refreshed-at"></span>
+          </div>
+          <div class="stage-grid" id="stage-grid"></div>
+
+          <div class="metric-grid" id="metric-grid"></div>
+
+          <div class="section-title characters-title">
+            <div><p class="eyebrow">Live result</p><h3>Персонажи и медиа</h3></div>
+            <span class="muted" id="character-count"></span>
+          </div>
+          <div class="character-grid" id="character-grid"></div>
+        </section>
+
+        <section class="tab-panel" id="tab-operations" hidden>
+          <div class="section-title">
+            <div><p class="eyebrow">Audit trail</p><h3>Детализация операций</h3></div>
+            <button class="button secondary" id="refresh-operations" type="button">Обновить</button>
+          </div>
+          <div class="operation-list" id="operation-list"></div>
+        </section>
+
+        <section class="tab-panel" id="tab-json" hidden>
+          <div class="section-title">
+            <div><p class="eyebrow">Source of truth</p><h3>JSON книги</h3></div>
+            <button class="button secondary" id="copy-json" type="button">Копировать</button>
+          </div>
+          <div class="json-quality" id="json-quality-summary" aria-live="polite"></div>
+          <div class="json-profile-grid" id="json-profile-grid"></div>
+          <details class="json-raw" open>
+            <summary>Raw JSON</summary>
+            <pre class="json-view" id="json-view">Загрузка…</pre>
+          </details>
+        </section>
+
+        <section class="tab-panel" id="tab-upload" hidden>
+          <div class="upload-layout">
+            <form class="upload-card" id="upload-form">
+              <div><p class="eyebrow">Новая книга</p><h3>Загрузка в каталог</h3></div>
+              <label>Файл книги
+                <input name="book" type="file" accept=".epub,.fb2,.txt,.pdf" required>
+              </label>
+              <div class="form-row">
+                <label>Название<input name="title" maxlength="500" required></label>
+                <label>Автор<input name="author" maxlength="500"></label>
+              </div>
+              <label>Язык
+                <select name="language">
+                  <option value="">Не указан</option>
+                  <option value="ru">Русский</option>
+                  <option value="en">Английский</option>
+                </select>
+              </label>
+              <label>Ключ каталога
+                <input name="catalogKey" maxlength="128" pattern="[a-z0-9][a-z0-9._-]{0,127}" required>
+                <small>Латиница, цифры, точка, дефис или подчёркивание.</small>
+              </label>
+              <label>Обложка, необязательно
+                <input name="cover" type="file" accept="image/jpeg,image/png,image/webp">
+              </label>
+              <button class="button primary wide" type="submit">Загрузить и запустить v3</button>
+            </form>
+            <div class="upload-monitor">
+              <div><p class="eyebrow">Live monitor</p><h3>Что происходит сейчас</h3></div>
+              <ol class="upload-steps" id="upload-steps"></ol>
+              <div id="upload-live-detail" class="upload-live-detail"></div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  <script type="module" src="./assets/app.js"></script>
+</body>
+</html>

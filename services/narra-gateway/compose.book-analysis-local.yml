@@ -1,0 +1,260 @@
+name: ${NARRA_BOOK_ANALYSIS_PROJECT:-narra-book-analysis-local}
+
+x-database-environment: &database-environment
+  NODE_ENV: development
+  DATABASE_URL: postgresql://readany:narra-local-postgres@postgres:5432/readany
+  DATABASE_SSL_MODE: disable
+
+x-storage-environment: &storage-environment
+  BOOK_STORAGE_BUCKET: narra-books
+  BOOK_STORAGE_REGION: us-east-1
+  BOOK_STORAGE_ENDPOINT: http://minio.railway.internal:9000
+  BOOK_STORAGE_FORCE_PATH_STYLE: "true"
+  BOOK_STORAGE_ACCESS_KEY_ID: narra-gateway
+  BOOK_STORAGE_SECRET_ACCESS_KEY: narra-local-storage-secret
+
+x-generator-environment: &generator-environment
+  GENERATOR_BASE_URL: http://gateway.railway.internal:8787
+  GENERATOR_SERVICE_TOKEN: narra-local-generator-token-0000000000000001
+  GENERATOR_TIMEOUT_MS: "600000"
+
+x-analysis-worker: &analysis-worker
+  image: narra-gateway-book-analysis-local
+  build:
+    context: .
+    args:
+      GATEWAY_BUILD_VERSION: book-analysis-local
+  depends_on:
+    postgres:
+      condition: service_healthy
+    gateway:
+      condition: service_healthy
+  healthcheck:
+    disable: true
+  init: true
+  restart: unless-stopped
+  read_only: true
+  tmpfs:
+    - /tmp:size=64m,mode=1777
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+
+services:
+  postgres:
+    image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+    environment:
+      POSTGRES_DB: readany
+      POSTGRES_USER: readany
+      POSTGRES_PASSWORD: narra-local-postgres
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U readany -d readany"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    init: true
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    command: ["server", "/data", "--address", ":9000", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: narra-root
+      MINIO_ROOT_PASSWORD: narra-local-minio-secret
+    volumes:
+      - object-data:/data
+    networks:
+      default:
+        aliases:
+          - minio.railway.internal
+    ports:
+      - "127.0.0.1:${NARRA_BOOK_ANALYSIS_MINIO_PORT:-19000}:9000"
+      - "127.0.0.1:${NARRA_BOOK_ANALYSIS_MINIO_CONSOLE_PORT:-19001}:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    init: true
+    restart: unless-stopped
+
+  minio-init:
+    image: minio/mc:latest@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MC_CONFIG_DIR: /tmp/.mc
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        set -eu;
+        mc alias set narra http://minio:9000 narra-root narra-local-minio-secret --quiet;
+        mc mb --ignore-existing narra/narra-books;
+        mc admin user add narra narra-gateway narra-local-storage-secret || mc admin user enable narra narra-gateway;
+        mc admin policy attach narra readwrite --user narra-gateway
+    restart: "no"
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+
+  gateway-data-init:
+    image: narra-gateway-book-analysis-local
+    build:
+      context: .
+      args:
+        GATEWAY_BUILD_VERSION: book-analysis-local
+    user: root
+    command: ["chown", "-R", "node:node", "/data"]
+    volumes:
+      - gateway-data:/data
+    restart: "no"
+
+  gateway:
+    image: narra-gateway-book-analysis-local
+    build:
+      context: .
+      args:
+        GATEWAY_BUILD_VERSION: book-analysis-local
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      gateway-data-init:
+        condition: service_completed_successfully
+    environment:
+      <<: [*database-environment, *storage-environment]
+      PORT: "8787"
+      ANALYTICS_ENV: development
+      DATA_DIR: /data
+      BOOK_BACKEND_REQUIRED: "true"
+      BOOK_ANALYSIS_PIPELINE: ${BOOK_ANALYSIS_PIPELINE:-narra}
+      BOOK_STORAGE_PUBLIC_ENDPOINT: http://localhost:${NARRA_BOOK_ANALYSIS_MINIO_PORT:-19000}
+      GENERATOR_SERVICE_TOKEN: narra-local-generator-token-0000000000000001
+      GATEWAY_TOKEN_SECRET: narra-local-gateway-token-000000000000000001
+      CATALOG_INGEST_TOKEN: narra-local-catalog-token-000000000000000001
+      BOOK_OPERATOR_USERNAME: narra
+      BOOK_OPERATOR_PASSWORD: narra-local-review-only
+      COVER_JOB_WORKER_ENABLED: "false"
+      SCENE_JOB_WORKER_ENABLED: "false"
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-gigachat-3-ultra}
+      ALLOW_INSECURE_LLM_HTTP: ${ALLOW_INSECURE_LLM_HTTP:-false}
+      LLM_INSECURE_HTTP_HOSTS: ${LLM_INSECURE_HTTP_HOSTS:-}
+      LLM_OMIT_TEMPERATURE: ${LLM_OMIT_TEMPERATURE:-true}
+      LITELLM_BASE_URL: ${LITELLM_BASE_URL:-}
+      LITELLM_API_KEY: ${LITELLM_API_KEY:-}
+      LITELLM_MODEL: ${LITELLM_MODEL:-openrouter/openai/gpt-5.6-luna}
+      LLM_ROUTE_STRUCTURED_TASK: ${BOOK_ANALYSIS_LLM_ROUTE:-litellm}
+      LLM_FALLBACK_STRUCTURED_TASK: ${BOOK_ANALYSIS_LLM_FALLBACK:-}
+      LITELLM_OMIT_TEMPERATURE: ${LITELLM_OMIT_TEMPERATURE:-true}
+    ports:
+      - "127.0.0.1:${NARRA_BOOK_ANALYSIS_PORT:-18787}:8787"
+    volumes:
+      - gateway-data:/data
+    networks:
+      default:
+        aliases:
+          - gateway.railway.internal
+    init: true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 10s
+
+  book-analysis-prepare:
+    <<: *analysis-worker
+    command: ["node", "book-analysis-worker.mjs"]
+    environment:
+      <<: [*database-environment, *storage-environment]
+      BOOK_ANALYSIS_RUN_IDS: ${BOOK_ANALYSIS_RUN_IDS:-}
+
+  book-analysis-scan:
+    <<: *analysis-worker
+    command: ["node", "book-analysis-scan-worker-runner.mjs"]
+    environment:
+      <<: [*database-environment, *storage-environment, *generator-environment]
+      BOOK_ANALYSIS_RUN_IDS: ${BOOK_ANALYSIS_RUN_IDS:-}
+
+  autiobook-adapter:
+    profiles: ["book-analysis-external"]
+    image: narra-autiobook-adapter-local
+    build:
+      context: ../autiobook-adapter
+      args:
+        AUTIOBOOK_COMMIT: d532bdd0a15f2948fd0c99f5e11b92677cb5c3eb
+    environment:
+      AUTIOBOOK_ADAPTER_TOKEN: ${AUTIOBOOK_ADAPTER_TOKEN:-narra-local-autiobook-token-000000000001}
+      AUTIOBOOK_LLM_BASE_URL: ${AUTIOBOOK_LLM_BASE_URL:-}
+      AUTIOBOOK_LLM_API_KEY: ${AUTIOBOOK_LLM_API_KEY:-}
+      AUTIOBOOK_LLM_MODEL: ${AUTIOBOOK_LLM_MODEL:-}
+      AUTIOBOOK_MAX_CONCURRENCY: ${AUTIOBOOK_MAX_CONCURRENCY:-1}
+      AUTIOBOOK_TIMEOUT_SECONDS: ${AUTIOBOOK_TIMEOUT_SECONDS:-3600}
+    volumes:
+      - autiobook-work:/work
+    init: true
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      default:
+        aliases:
+          - autiobook-adapter.railway.internal
+
+  book-analysis-external:
+    <<: *analysis-worker
+    profiles: ["book-analysis-external"]
+    command: ["node", "book-analysis-external-worker-runner.mjs"]
+    environment:
+      <<: [*database-environment, *storage-environment]
+      AUTIOBOOK_ADAPTER_BASE_URL: http://autiobook-adapter.railway.internal:8080
+      AUTIOBOOK_ADAPTER_TOKEN: ${AUTIOBOOK_ADAPTER_TOKEN:-narra-local-autiobook-token-000000000001}
+      AUTIOBOOK_ADAPTER_TIMEOUT_MS: ${AUTIOBOOK_ADAPTER_TIMEOUT_MS:-3600000}
+
+  book-analysis-resolve:
+    <<: *analysis-worker
+    command: ["node", "book-analysis-resolve-worker-runner.mjs"]
+    environment:
+      <<: [*database-environment, *generator-environment]
+      BOOK_ANALYSIS_RUN_IDS: ${BOOK_ANALYSIS_RUN_IDS:-}
+
+  book-analysis-synthesize:
+    <<: *analysis-worker
+    command: ["node", "book-analysis-stage-worker-runner.mjs", "synthesize"]
+    environment:
+      <<: [*database-environment, *generator-environment]
+      BOOK_ANALYSIS_RUN_IDS: ${BOOK_ANALYSIS_RUN_IDS:-}
+
+  book-analysis-validate:
+    <<: *analysis-worker
+    command: ["node", "book-analysis-stage-worker-runner.mjs", "validate"]
+    environment:
+      <<: [*database-environment, *storage-environment]
+      BOOK_ANALYSIS_RUN_IDS: ${BOOK_ANALYSIS_RUN_IDS:-}
+
+  book-analysis-publish:
+    <<: *analysis-worker
+    command: ["node", "book-analysis-stage-worker-runner.mjs", "publish"]
+    environment:
+      <<: *database-environment
+      BOOK_ANALYSIS_RUN_IDS: ${BOOK_ANALYSIS_RUN_IDS:-}
+
+volumes:
+  postgres-data:
+  object-data:
+  gateway-data:
+  autiobook-work:
