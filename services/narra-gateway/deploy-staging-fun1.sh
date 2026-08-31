@@ -50,7 +50,7 @@ fi
 ssh "$REMOTE" \
   "sudo test ! -e '$REMOTE_STAGE' \
    && sudo test -f '$TARGET_ENV' \
-   && sudo test \"\$(stat -c %a '$TARGET_ENV')\" = 600 \
+   && sudo test \"\$(sudo stat -c %a '$TARGET_ENV')\" = 600 \
    && sudo grep -qx 'ANALYTICS_ENV=staging' '$TARGET_ENV' \
    && sudo grep -qx 'BOOK_BACKEND_REQUIRED=true' '$TARGET_ENV' \
    && sudo grep -Eq '^INSTALLATION_OPERATOR_TOKEN=.+$' '$TARGET_ENV' \
