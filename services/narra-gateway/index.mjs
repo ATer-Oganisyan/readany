@@ -49,6 +49,7 @@ import {
 import {
   imageEmptyResultError,
   imageUpstreamError,
+  simplifiedScenePrompt,
   shouldFallbackAfterImageError
 } from './image-policy.mjs'
 import { sberCaBundle, verifiedSberCertificates } from './sber-tls.mjs'
@@ -88,6 +89,12 @@ import {
   createInternalGenerationService
 } from './internal-generation-service.mjs'
 import { createGenerationCostLedger } from './generation-cost-ledger.mjs'
+import { createBestEffortGenerationCostRecorder } from './generation-cost-recorder.mjs'
+import { createOperationalMetricsRepository } from './operational-metrics-repository.mjs'
+import {
+  operationalRuntimeMetrics,
+  recordProviderFailure
+} from './operational-runtime-metrics.mjs'
 import { createLocalIdleAnimation } from './local-idle-animation.mjs'
 import { createPrivateMaterialCleanup } from './private-material-cleanup.mjs'
 import { kandinskyImageTimeoutMs, kandinskyRequestTimeoutMs } from './image-timeouts.mjs'
@@ -98,6 +105,39 @@ const BOOK_ANALYSIS_PIPELINE = bookAnalysisPipelineFromEnv(process.env)
 const INSECURE = process.env.ALLOW_INSECURE_TLS === 'true'
 const PRODUCTION = process.env.NODE_ENV === 'production'
 const BUILD_VERSION = String(process.env.GATEWAY_BUILD_VERSION || 'development').slice(0, 120)
+
+function recordProviderAttemptMetric(attempt) {
+  if (attempt?.status !== 'failed') return
+  const status = Number(attempt.http_status)
+  const code = String(attempt.error_code || '').toUpperCase()
+  const category = status === 429
+    ? '429'
+    : status >= 500
+      ? '5xx'
+      : code === 'TIMEOUT'
+        ? 'timeout'
+        : code === 'NETWORK'
+          ? 'network'
+          : 'other'
+  recordProviderFailure(attempt.provider, category)
+}
+
+function recordProviderAttempts(attempts) {
+  if (!Array.isArray(attempts)) return
+  for (const attempt of attempts) recordProviderAttemptMetric(attempt)
+}
+
+async function requestCoverImageObserved(options) {
+  try {
+    const result = await requestCoverImageWithFallback(options)
+    recordProviderAttempts(result.attempts)
+    return result
+  } catch (error) {
+    recordProviderAttempts(error?.attempts)
+    throw error
+  }
+}
+
 if (PRODUCTION && INSECURE) throw new Error('ALLOW_INSECURE_TLS is forbidden in production')
 const ANALYTICS_ENV = process.env.ANALYTICS_ENV || (PRODUCTION ? 'production' : 'development')
 if (!['production', 'staging', 'development', 'test'].includes(ANALYTICS_ENV)) {
@@ -611,15 +651,9 @@ async function animatePortrait(image, query, quality, signal) {
   return videoTask(model, params, signal)
 }
 
-async function recordInternalGenerationCost(input) {
-  if (!generationCostLedger) {
-    throw Object.assign(new Error('generation cost ledger is not ready'), {
-      code: 'GENERATION_COST_LEDGER_UNAVAILABLE',
-      status: 503
-    })
-  }
-  return generationCostLedger.record(input)
-}
+const recordInternalGenerationCost = createBestEffortGenerationCostRecorder({
+  getLedger: () => generationCostLedger
+})
 
 async function completeInternalChat({ messages, signal, costContext }) {
   let release
@@ -633,6 +667,7 @@ async function completeInternalChat({ messages, signal, costContext }) {
       purpose: 'structured_task',
       stream: false,
       requestId,
+      onAttempt: recordProviderAttemptMetric,
       signal
     })
     const { response, finalizeAttempt } = providerResult
@@ -698,6 +733,12 @@ async function generateInternalPortrait(prompt, signal, costContext = null) {
       retryIndex += 1
       return value
     } catch (error) {
+      recordProviderAttemptMetric({
+        provider,
+        status: 'failed',
+        error_code: error?.code,
+        http_status: error?.status
+      })
       attempts.push({
         attempt_id: attemptId,
         provider,
@@ -777,7 +818,7 @@ async function generateInternalPortrait(prompt, signal, costContext = null) {
 
 async function measuredInternalImageRequest({ prompt, aspectRatio, signal, costContext }) {
   try {
-    const generated = await requestCoverImageWithFallback({
+    const generated = await requestCoverImageObserved({
       prompt,
       aspectRatio,
       requestId: randomUUID(),
@@ -859,12 +900,26 @@ async function generateInternalScene(prompt, signal, costContext) {
   let release
   try {
     release = await imageGate.acquire(signal)
-    const generated = await measuredInternalImageRequest({
-      prompt,
-      aspectRatio: '4:3',
-      costContext,
-      signal
-    })
+    let generated
+    try {
+      generated = await measuredInternalImageRequest({
+        prompt,
+        aspectRatio: '4:3',
+        costContext,
+        signal
+      })
+    } catch (error) {
+      if (error?.code !== 'VALIDATION') throw error
+      console.warn('[internal-generation] scene prompt rejected; retrying simplified prompt', {
+        provider_detail: error?.providerDetail
+      })
+      generated = await measuredInternalImageRequest({
+        prompt: simplifiedScenePrompt(prompt),
+        aspectRatio: '4:3',
+        costContext,
+        signal
+      })
+    }
     const bytes = Buffer.from(generated.image, 'base64')
     if (!bytes.byteLength || bytes.byteLength > 18 * 1024 * 1024) {
       throw httpErr('NETWORK', 'Image provider returned an invalid scene')
@@ -907,11 +962,18 @@ async function synthesizeInternalSpeech(text, voice, signal) {
       delete tokenCache['SALUTE_SPEECH_PERS']
       throw httpErr('AUTH', 'SaluteSpeech rejected the service token')
     }
-    if (response.status === 429) throw httpErr('RATE', 'SaluteSpeech rate limit')
+    if (response.status === 429) {
+      recordProviderFailure('salute-speech', '429')
+      throw httpErr('RATE', 'SaluteSpeech rate limit')
+    }
     if (response.status !== 200 || !response.body?.length) {
+      if (response.status >= 500) recordProviderFailure('salute-speech', '5xx')
       throw httpErr('NETWORK', `SaluteSpeech returned ${response.status}`)
     }
     return { bytes: Buffer.from(response.body), mimeType: 'audio/wav', provider: 'salute-speech' }
+  } catch (error) {
+    if (error?.code === 'TIMEOUT') recordProviderFailure('salute-speech', 'timeout')
+    throw error
   } finally {
     release?.()
   }
@@ -1109,6 +1171,7 @@ let bookMarkupRepository = null
 let bookAnalysisRepository = null
 let bookTtsMarkupRepository = null
 let bookOperatorRepository = null
+let operationalMetricsRepository = null
 let generationCostLedger = null
 let bookSearchRepository = null
 let bookSearchService = null
@@ -1146,6 +1209,7 @@ if (process.env.DATABASE_URL) {
   })
   bookTtsMarkupRepository = createPostgresBookTtsMarkupRepository(bookMarkupPool)
   bookOperatorRepository = createPostgresBookOperatorRepository(bookMarkupPool)
+  operationalMetricsRepository = createOperationalMetricsRepository(bookMarkupPool)
   if (BOOK_SEARCH_ENABLED) {
     bookSearchRepository = createPostgresBookSearchRepository(bookMarkupPool)
     bookSearchService = createBookSearchService({
@@ -1518,6 +1582,26 @@ app.post(
 )
 
 const operatorAuth = requireOperatorAuth(INSTALLATION_OPERATOR_TOKEN)
+app.get('/v2/admin/metrics', operatorAuth, async (_req, res, next) => {
+  if (!operationalMetricsRepository) {
+    return res.status(503).json({ error: 'Метрики backend недоступны', code: 'UNAVAILABLE' })
+  }
+  try {
+    res.json(await operationalMetricsRepository.snapshot({
+      runtime: operationalRuntimeMetrics(),
+      concurrency: {
+        llm: llmGate.status(),
+        speech: speechGate.status(),
+        image: imageGate.status(),
+        cover: coverGate.status(),
+        import: importGate.status()
+      },
+      buildVersion: BUILD_VERSION
+    }))
+  } catch (error) {
+    next(error)
+  }
+})
 app.get('/v2/admin/installations/:installationId', operatorAuth, (req, res) => {
   if (!isInstallationId(req.params.installationId)) {
     return res.status(400).json({ error: 'Некорректный installation_id', code: 'VALIDATION' })
@@ -1682,14 +1766,16 @@ app.post('/v2/ai/chat/stream', aiLimit, aiDailyLimit, express.json({ limit: '1mb
       ...input,
       requestId,
       stream: true,
-      onAttempt: recordActorAnalytics
-        ? (attempt) => appendInternalEvent(
-            req,
-            `provider_attempt_${attempt.status}`,
-            providerAttemptProperties(requestId, input.purpose, attempt),
-            attempt.event_id
-          )
-        : undefined,
+      onAttempt: (attempt) => {
+        recordProviderAttemptMetric(attempt)
+        if (!recordActorAnalytics) return undefined
+        return appendInternalEvent(
+          req,
+          `provider_attempt_${attempt.status}`,
+          providerAttemptProperties(requestId, input.purpose, attempt),
+          attempt.event_id
+        )
+      },
       signal: clientSignal
     })
     res.setHeader('Content-Type', 'text/event-stream')
@@ -1791,14 +1877,16 @@ app.post('/v2/ai/chat/complete', aiLimit, aiDailyLimit, express.json({ limit: '1
       ...input,
       requestId,
       stream: false,
-      onAttempt: recordActorAnalytics
-        ? (attempt) => appendInternalEvent(
-            req,
-            `provider_attempt_${attempt.status}`,
-            providerAttemptProperties(requestId, input.purpose, attempt),
-            attempt.event_id
-          )
-        : undefined,
+      onAttempt: (attempt) => {
+        recordProviderAttemptMetric(attempt)
+        if (!recordActorAnalytics) return undefined
+        return appendInternalEvent(
+          req,
+          `provider_attempt_${attempt.status}`,
+          providerAttemptProperties(requestId, input.purpose, attempt),
+          attempt.event_id
+        )
+      },
       signal: clientSignal
     })
     const j = await settleProviderResponse({
@@ -1882,14 +1970,26 @@ app.post('/v2/speech/synthesize', speechLimit, speechDailyLimit, express.json({ 
       delete tokenCache['SALUTE_SPEECH_PERS']
       return res.status(401).json({ error: 'SaluteSpeech: токен отклонён', code: 'AUTH' })
     }
-    if (r.status === 429) return res.status(429).json({ error: 'SaluteSpeech: лимит', code: 'RATE' })
+    if (r.status === 429) {
+      recordProviderFailure('salutespeech', '429')
+      const seconds = Number(r.headers?.['retry-after'])
+      if (Number.isFinite(seconds) && seconds >= 0) {
+        res.setHeader('Retry-After', String(Math.max(1, Math.min(60, Math.ceil(seconds)))))
+      }
+      return res.status(429).json({ error: 'SaluteSpeech: лимит', code: 'RATE' })
+    }
     if (r.status !== 200) {
-      return res.status(502).json({ error: `SaluteSpeech ${r.status}: ${r.body?.toString('utf8').slice(0, 160)}`, code: 'NETWORK' })
+      if (r.status >= 500) recordProviderFailure('salutespeech', '5xx')
+      return res.status(502).json({ error: 'SaluteSpeech временно недоступен', code: 'NETWORK' })
     }
     res.setHeader('Content-Type', 'audio/wav')
     res.setHeader('X-Audio-Sample-Rate', String(sampleRate))
     res.send(r.body)
   } catch (e) {
+    recordProviderFailure(
+      'salutespeech',
+      e?.code === 'TIMEOUT' ? 'timeout' : e?.code === 'NETWORK' ? 'network' : 'other'
+    )
     res.status(statusFor(e.code)).json({ error: e.message, code: e.code || 'UNKNOWN' })
   } finally {
     release?.()
@@ -2013,7 +2113,7 @@ app.post('/v2/media/images', imageDailyLimit, express.json({ limit: '1mb' }), as
     // Kandinsky в этот путь не входит.
     if (engine === 'openrouter') {
       const aspectRatio = width * 4 === height * 3 ? '3:4' : width === height ? '1:1' : width > height ? '3:2' : '2:3'
-      const image = await requestCoverImageWithFallback({ prompt, aspectRatio, signal })
+      const image = await requestCoverImageObserved({ prompt, aspectRatio, signal })
       return res.json({ image: image.image, mime_type: image.mimeType })
     }
     // Вертикальные изображения (обложки) и явный engine='kandinsky' (сцены) — Kandinsky:
@@ -2270,7 +2370,7 @@ app.post('/v2/media/cover', coverDailyLimit, express.json({ limit: '64kb' }), as
   try {
     release = await coverGate.acquire(signal)
     const { prompt } = parseCoverBody(req.body)
-    const cover = await requestCoverImageWithFallback({ prompt, signal })
+    const cover = await requestCoverImageObserved({ prompt, signal })
     res.json({ image: cover.image, mime_type: cover.mimeType })
   } catch (e) {
     res.status(e.status || statusFor(e.code)).json({ error: e.message, code: e.code || 'UNKNOWN' })

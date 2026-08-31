@@ -5,9 +5,15 @@ import { describe, expect, it } from "vitest";
 
 const appRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const wrapper = readFileSync(`${appRoot}/script/build_and_run.sh`, "utf8");
+const metroConfig = readFileSync(`${appRoot}/metro.config.js`, "utf8");
 const startFunction = wrapper.match(/^run_metro_prepared\(\) \{\n[\s\S]*?^\}/m)?.[0];
 
 describe("canonical Metro startup", () => {
+  it("watches the real target of worktree node_modules symlinks", () => {
+    expect(metroConfig).toContain("fs.realpathSync(modulePath)");
+    expect(metroConfig).toContain("monorepoRoot, ...linkedNodeModules");
+  });
+
   it.each(["localhost", "lan"])("includes lazy imports in the initial %s bundle", (host) => {
     expect(startFunction).toBeDefined();
     // Execute the real startup function but replace pnpm with an argument/env

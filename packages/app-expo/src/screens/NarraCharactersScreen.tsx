@@ -8,10 +8,11 @@ import {
 import { CharacterPortraitImage } from "@/components/narra/character-portrait-image";
 import { SystemSheetZoomDestination } from "@/components/navigation/SystemSheetZoomDestination";
 import { Text } from "@/components/ui/Typography";
+import { EmptyStateActionButton } from "@/components/ui/empty-state-action-button";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { useBackendBook } from "@/hooks/use-backend-book";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
-import { useBackendBookStatus } from "@/lib/narra/backend-book-sync";
+import { retryBackendBookAnalysis, useBackendBookStatus } from "@/lib/narra/backend-book-sync";
 import { characterProfileText } from "@/lib/narra/character-profile";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
 import type { NarraCharacter } from "@/lib/narra/types";
@@ -323,6 +324,15 @@ function NarraCharactersList({
       ? backendStatus.manifest.characters.filter((item) => item.provisional)
       : [];
   const isFindingCharacters = backendStatus?.manifest?.availability === "processing";
+  const analysisAvailability = backendStatus?.manifest?.availability;
+  const analysisTerminal =
+    analysisAvailability === "failed" || analysisAvailability === "cancelled";
+  const analysisRetryable =
+    analysisTerminal && backendStatus?.manifest?.analysis?.retryable === true;
+  const sourceUnavailable = backendStatus?.error === "SOURCE_UNAVAILABLE";
+  const retryAnalysis = useCallback(() => {
+    void retryBackendBookAnalysis(bookId).catch(() => undefined);
+  }, [bookId]);
   useEffect(() => {
     recordTelemetry("character_opened", { feature: "character" });
   }, []);
@@ -429,9 +439,9 @@ function NarraCharactersList({
         <CharacterChatList
           items={provisional.map((item) => ({
             key: `preparing:${item.key}`,
-            title: item.fullName,
+            title: item.fullName || item.name,
             subtitle: "Профиль формируется…",
-            accessibilityLabel: `${item.fullName}: профиль формируется`,
+            accessibilityLabel: `${item.fullName || item.name}: профиль формируется`,
             dimmed: true,
             disabled: true,
             onPress: () => undefined,
@@ -442,6 +452,36 @@ function NarraCharactersList({
             ),
           }))}
         />
+        {analysisTerminal || analysisAvailability === "unavailable" ? (
+          <View style={styles.analysisState}>
+            <Text style={styles.analysisStateTitle}>
+              {sourceUnavailable
+                ? t("narra.analysisSourceUnavailable", "Нужен исходный файл книги")
+                : analysisAvailability === "cancelled"
+                  ? t("narra.analysisCancelled", "Разметка книги остановлена")
+                  : t("narra.analysisFailed", "Не удалось подготовить персонажей")}
+            </Text>
+            <Text style={styles.analysisStateDescription}>
+              {sourceUnavailable
+                ? t(
+                    "narra.analysisSourceUnavailableHint",
+                    "Импортируйте тот же файл снова — локальное чтение останется доступным.",
+                  )
+                : t(
+                    "narra.analysisFailedHint",
+                    "Книгу можно продолжать читать. Повторите разметку, когда будет удобно.",
+                  )}
+            </Text>
+            {analysisRetryable && !sourceUnavailable ? (
+              <EmptyStateActionButton
+                label={t("narra.retryAnalysis", "Повторить разметку")}
+                accessibilityLabel={t("narra.retryAnalysis", "Повторить разметку")}
+                disabled={backendStatus?.analysisRetrying === true}
+                onPress={retryAnalysis}
+              />
+            ) : null}
+          </View>
+        ) : null}
       </ScrollView>
     </View>
   );
@@ -478,6 +518,23 @@ const makeStyles = (colors: ThemeColors) =>
       paddingBottom: spacing.xxl,
     },
     avatarImage: { width: "100%", height: "100%" },
+    analysisState: {
+      alignItems: "center",
+      gap: spacing.sm,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.xl,
+    },
+    analysisStateTitle: {
+      color: colors.foreground,
+      fontSize: 17,
+      fontWeight: fontWeight.semibold,
+      textAlign: "center",
+    },
+    analysisStateDescription: {
+      color: colors.mutedForeground,
+      lineHeight: 20,
+      textAlign: "center",
+    },
   });
 
 const flowStyles = StyleSheet.create({

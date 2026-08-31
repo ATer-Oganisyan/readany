@@ -8,10 +8,13 @@
       "autoIncrement": true,
       "developmentClient": true,
       "distribution": "internal",
+      "channel": "test",
       "node": "20.20.2",
       "pnpm": "9.15.0",
       "env": {
         "APP_VARIANT": "development",
+        "EXPO_PUBLIC_NARRA_ANALYTICS_TIER": "essential",
+        "EXPO_PUBLIC_NARRA_ENVIRONMENT": "test",
         "EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE": "installation",
         "EXPO_PUBLIC_NARRA_GATEWAY_URL": "https://api-test.narra.disrupt.builders",
         "EXPO_NO_METRO_WORKSPACE_ROOT": "1",
@@ -21,6 +24,7 @@
     "development-simulator": {
       "developmentClient": true,
       "distribution": "internal",
+      "channel": "development",
       "ios": {
         "simulator": true
       },
@@ -28,8 +32,10 @@
       "pnpm": "9.15.0",
       "env": {
         "APP_VARIANT": "development",
+        "EXPO_PUBLIC_NARRA_ANALYTICS_TIER": "none",
+        "EXPO_PUBLIC_NARRA_ENVIRONMENT": "local",
         "EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE": "installation",
-        "EXPO_PUBLIC_NARRA_GATEWAY_URL": "https://api-test.narra.disrupt.builders",
+        "EXPO_PUBLIC_NARRA_GATEWAY_URL": "http://127.0.0.1:8787",
         "EXPO_NO_METRO_WORKSPACE_ROOT": "1",
         "SHARP_IGNORE_GLOBAL_LIBVIPS": "1"
       }
@@ -37,6 +43,7 @@
     "preview": {
       "autoIncrement": true,
       "distribution": "internal",
+      "channel": "test",
       "android": {
         "buildType": "apk",
         "gradleCommand": ":app:assembleRelease -PreactNativeArchitectures=arm64-v8a"
@@ -48,6 +55,8 @@
       "pnpm": "9.15.0",
       "env": {
         "APP_VARIANT": "preview",
+        "EXPO_PUBLIC_NARRA_ANALYTICS_TIER": "essential",
+        "EXPO_PUBLIC_NARRA_ENVIRONMENT": "test",
         "EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE": "installation",
         "EXPO_PUBLIC_NARRA_GATEWAY_URL": "https://api-test.narra.disrupt.builders",
         "EXPO_NO_METRO_WORKSPACE_ROOT": "1",
@@ -56,6 +65,7 @@
     },
     "production": {
       "autoIncrement": true,
+      "channel": "production",
       "android": {
         "buildType": "app-bundle"
       },
@@ -63,8 +73,10 @@
       "pnpm": "9.15.0",
       "env": {
         "APP_VARIANT": "production",
+        "EXPO_PUBLIC_NARRA_ANALYTICS_TIER": "essential",
+        "EXPO_PUBLIC_NARRA_ENVIRONMENT": "production",
         "EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE": "installation",
-        "EXPO_PUBLIC_NARRA_GATEWAY_URL": "https://api-test.narra.disrupt.builders",
+        "EXPO_PUBLIC_NARRA_GATEWAY_URL": "https://api.narra.disrupt.builders",
         "EXPO_NO_METRO_WORKSPACE_ROOT": "1",
         "SHARP_IGNORE_GLOBAL_LIBVIPS": "1"
       }
@@ -72,6 +84,7 @@
     "production-apk": {
       "autoIncrement": true,
       "distribution": "store",
+      "channel": "production",
       "android": {
         "buildType": "apk",
         "gradleCommand": ":app:assembleRelease -PreactNativeArchitectures=arm64-v8a"
@@ -80,8 +93,10 @@
       "pnpm": "9.15.0",
       "env": {
         "APP_VARIANT": "production",
+        "EXPO_PUBLIC_NARRA_ANALYTICS_TIER": "essential",
+        "EXPO_PUBLIC_NARRA_ENVIRONMENT": "production",
         "EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE": "installation",
-        "EXPO_PUBLIC_NARRA_GATEWAY_URL": "https://api-test.narra.disrupt.builders",
+        "EXPO_PUBLIC_NARRA_GATEWAY_URL": "https://api.narra.disrupt.builders",
         "EXPO_NO_METRO_WORKSPACE_ROOT": "1",
         "SHARP_IGNORE_GLOBAL_LIBVIPS": "1"
       }

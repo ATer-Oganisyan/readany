@@ -172,6 +172,36 @@ the provider or configuration failure, retry a bounded batch explicitly:
 npm run retry:book-generation
 ```
 
+### Queue controls and operational metrics
+
+Generation queues are paused through an explicit database state, never by
+moving `available_at` to an arbitrary future date. Every command is a dry run
+unless `--execute` is present, and a single command can affect at most 1000
+jobs:
+
+```bash
+npm run operator:generation-queue -- status
+npm run operator:generation-queue -- pause --job-type scene_image \
+  --campaign-id recovery-canary --limit 25 --reason RECOVERY_CANARY --operator release-owner
+npm run operator:generation-queue -- pause --job-type scene_image \
+  --campaign-id recovery-canary --limit 25 --reason RECOVERY_CANARY --operator release-owner --execute
+npm run operator:generation-queue -- resume --pause-id <uuid> --limit 25 \
+  --reason RECOVERY_CANARY_RELEASE --operator release-owner
+npm run operator:generation-queue -- resume --pause-id <uuid> --limit 25 \
+  --reason RECOVERY_CANARY_RELEASE --operator release-owner --execute
+```
+
+Resume clears only the named pause in bounded batches and preserves every
+job's original schedule. Persistent workers publish a database heartbeat keyed
+by container ID, worker type and immutable build version. Their Compose health
+check requires the process/container to be alive, PostgreSQL to be reachable
+and the heartbeat to be no older than 60 seconds.
+
+`GET /v2/admin/metrics` requires the dedicated `INSTALLATION_OPERATOR_TOKEN` as
+a bearer token. It returns only aggregate queue/stage/error/latency/concurrency,
+heartbeat and build-version data; it never returns book text, prompts, provider
+credentials or signed object URLs.
+
 They require `DATABASE_URL`, the Gateway's private Docker URL in
 `GENERATOR_BASE_URL`, and an independent `GENERATOR_SERVICE_TOKEN`; see
 `.env.example`. The same Gateway exposes `/internal/v1/book-markup` and
@@ -387,53 +417,50 @@ copy from the standalone Narra repository.
 
 The test Gateway is the separate i167 deployment rooted at
 `/srv/narra-stagging` and exposed only as
-`https://api-test.narra.disrupt.builders`. Mobile development, preview and the
-current production build configuration all use that hostname. Do not point a
-staging verification command at the production Gateway or reuse the production
-Compose project and volumes.
+`https://api-test.narra.disrupt.builders`. Internal development and preview
+builds use that hostname. Store profiles use
+`https://api.narra.disrupt.builders`, but must not be released until the new
+production backend passes its smoke matrix. Do not point a staging verification
+command at the production Gateway or reuse the production Compose project and
+volumes.
 
-Production is a single Docker replica behind Caddy on `127.0.0.1:8788`. The
-file-backed installation registry and analytics outbox live in the external
-`narra_gateway-data` volume. Two production writers must never mount that volume
-at the same time.
+The only supported SSH target for the recovery rollout is the local alias
+`fun1`. Historical `i167` filenames remain compatibility names; they are not a
+separate deployment target. `deploy-i167.sh` delegates to the staging-only
+`deploy-staging-fun1.sh` and refuses every other host.
 
-The first migration from the legacy `/srv/nara` deployment creates a filtered,
-root-only environment file and keeps all stable installation secrets:
+Prepare the existing root-only staging environment once. The command backs up
+the file, fixes the non-secret analytics environment to `staging`, and creates a
+dedicated operator token without printing it:
 
 ```bash
-REMOTE=max@158.160.163.167 ./bootstrap-i167.sh
+./prepare-staging-env-fun1.sh
 ```
 
-Deploy only a clean, reviewed commit and pin the exact currently running image
-ID as a compare-and-swap precondition:
+Deploy only a clean reviewed commit and pin the exact current staging image ID
+as a compare-and-swap precondition:
 
 ```bash
-EXPECTED_REMOTE_IMAGE_ID="$(ssh max@158.160.163.167 \
-  "sudo docker inspect --format '{{.Image}}' narra-gateway-1")"
+EXPECTED_REMOTE_IMAGE_ID="$(ssh fun1 \
+  "sudo docker inspect --format '{{.Image}}' narra-stagging-gateway-1")"
 
-REMOTE=max@158.160.163.167 \
 EXPECTED_REMOTE_IMAGE_ID="$EXPECTED_REMOTE_IMAGE_ID" \
 REVIEWED_COMMIT="$(git rev-parse HEAD)" \
-./deploy-i167.sh
+./deploy-staging-fun1.sh
 ```
 
-The deploy builds an immutable image tagged by commit, creates and validates a
-volume backup, runs the candidate against a cloned volume on localhost port
-`8789`, and only then replaces the container on port `8788`. Caddy and the
-public hostname do not change. A failed production probe restarts the previous
-image automatically.
+The staging deploy builds `readany/narra-gateway:<full-git-sha>` from the
+versioned release directory, validates a no-network candidate, creates and
+checks a PostgreSQL logical dump and gateway-volume archive, records an
+aggregate MinIO inventory, and then starts exactly one canary replica of every
+persistent worker from `compose.i167.yml`. It checks `/ready`, worker health and
+restart counts, protected aggregate metrics, and the public TEST hostname. A
+failed probe restores the previous staging Compose/image while retaining the
+additive database migration and backups for investigation.
 
-`narra-gateway-backup.timer` creates daily root-only volume archives with
-14-day retention. A restore must be performed while the gateway is stopped:
-
-```bash
-sudo docker run --rm --network none --user 0:0 --entrypoint sh \
-  -v narra_gateway-data:/data \
-  -v /srv/backups/narra-gateway:/backup:ro \
-  readany/narra-gateway:<reviewed-commit> \
-  -c 'tar -xzf /backup/<archive>.tar.gz -C /data && chown -R 1000:1000 /data'
-```
-
-The secret file is `/etc/narra-gateway.env` with mode `0600`. Do not reuse the
-gateway signing secret as the analytics HMAC secret and do not copy Stats read
-credentials into the gateway container.
+Production is not deployed by either of these staging scripts. It must use an
+independent `narra-production-v2` Compose project, PostgreSQL, object storage,
+secrets and gateway volume on a temporary local port. The legacy production
+gateway stays available for nginx rollback until the complete production smoke
+matrix passes. Never point production at staging DB/MinIO or reuse staging
+credentials.

@@ -33,6 +33,8 @@ export interface NarraCharacter {
   name: string;
   fullName: string;
   role: string;
+  /** Canonical backend biography; role remains the safe legacy fallback. */
+  description?: string;
   gender: NarraGender;
   voice: string;
   /** Просодия при повторе голоса из исчерпанного пула (pitch — полутоны, rate — множитель). */

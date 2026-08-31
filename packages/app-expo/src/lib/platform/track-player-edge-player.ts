@@ -460,13 +460,26 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
           ["AUTH", "CONFIG", "REQUEST"].includes(error.code)
         )
           throw error;
+        if (
+          error instanceof NarraServiceError &&
+          error.code === "SERVICE" &&
+          error.backendCode?.startsWith("HTTP_") &&
+          !["HTTP_408", "HTTP_502", "HTTP_503", "HTTP_504"].includes(error.backendCode)
+        )
+          throw error;
         console.warn("[TTS] Book speech request failed", {
           index,
           attempt: attempt + 1,
           code: error instanceof NarraServiceError ? error.code : "NETWORK",
         });
-        if (attempt < TrackPlayerEdgeTTSPlayer.MAX_CHUNK_FETCH_RETRIES)
-          await this._waitForRetry(500 * (attempt + 1));
+        if (attempt < TrackPlayerEdgeTTSPlayer.MAX_CHUNK_FETCH_RETRIES) {
+          const jitterMs = Math.floor(Math.random() * 100);
+          const delayMs = Math.max(
+            error instanceof NarraServiceError ? (error.retryAfterMs ?? 0) : 0,
+            500 * (attempt + 1) + jitterMs,
+          );
+          await this._waitForRetry(delayMs);
+        }
       }
     }
 

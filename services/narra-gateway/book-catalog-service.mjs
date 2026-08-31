@@ -268,10 +268,14 @@ export function createBookCatalogService({
       const readerTextOffset = Number.isSafeInteger(textLength) && textLength > 0
         ? analysisReaderTextOffset(snapshot, textLength)
         : Math.max(0, Number(snapshot.readerTextOffset) || 0)
+      const terminalStatus = ['failed', 'cancelled'].includes(preview?.run?.status)
+        ? preview.run.status
+        : null
+      const availability = terminalStatus ?? (preview ? 'processing' : 'unavailable')
       return {
         source,
         book: bookBinding(snapshot.edition),
-        availability: 'processing',
+        availability,
         runId: preview?.run?.id,
         readerTextOffset,
         readingFraction: snapshot.readingFraction,
@@ -280,8 +284,12 @@ export function createBookCatalogService({
         markup: null,
         analysis: preview
           ? {
+              runId: preview.run.id,
               stage: preview.run.stage,
               status: preview.run.status,
+              retryable: Boolean(terminalStatus && snapshot.edition?.scope === 'private'),
+              errorCode: preview.run.lastErrorCode,
+              updatedAt: preview.run.updatedAt,
               textLength: preview.run.textLength,
               completedScanChunks: preview.scan.completedChunks,
               totalScanChunks: preview.scan.totalChunks
@@ -741,6 +749,15 @@ export function createBookCatalogService({
         progressFraction
       })
       if (!scene) throw serviceError('NOT_FOUND', 'Книга или сцена не найдена', 404)
+      if (scene.errorCode) {
+        return {
+          status: scene.status,
+          errorCode: scene.errorCode,
+          retryable: scene.retryable,
+          analysis: scene.analysis,
+          pollAfterMs: scene.errorCode === 'MARKUP_PROCESSING' ? 5_000 : undefined
+        }
+      }
       const result = {
         status: scene.status,
         sceneKey: scene.sceneKey,
@@ -750,6 +767,9 @@ export function createBookCatalogService({
       }
       if (scene.status !== 'ready' || !scene.asset) return result
       if (!storage) throw serviceError('DOWNLOAD_UNAVAILABLE', 'Скачивание временно недоступно', 503)
+      if (scene.jobId && typeof store.recordSceneDownloadReady === 'function') {
+        await store.recordSceneDownloadReady(scene.jobId).catch(() => {})
+      }
       const download = await storage.createDownload(scene.asset)
       return {
         ...result,
@@ -759,10 +779,19 @@ export function createBookCatalogService({
       }
     },
 
-    async manifest(subjectId, bookEditionId) {
-      if (typeof analysisRepository?.ensureLatestMediaProjection === 'function') {
-        await analysisRepository.ensureLatestMediaProjection(bookEditionId)
+    async retryAnalysis(subjectId, bookEditionId, { requestId }) {
+      if (!analysisRepository || typeof analysisRepository.retryPrivateAnalysisRun !== 'function') {
+        throw serviceError('ANALYSIS_UNAVAILABLE', 'Повтор разметки временно недоступен', 503)
       }
+      return analysisRepository.retryPrivateAnalysisRun({
+        subjectId,
+        bookEditionId,
+        requestId,
+        priority: 100
+      })
+    },
+
+    async manifest(subjectId, bookEditionId) {
       const snapshot = await store.getReaderBookManifest({
         subjectId,
         bookEditionId,
@@ -771,11 +800,6 @@ export function createBookCatalogService({
           : bundleVersion
       })
       if (!snapshot) throw serviceError('NOT_FOUND', 'Книга не найдена', 404)
-      await store.ensureBookScenesThrough?.({
-        subjectId,
-        bookEditionId,
-        readerTextOffset: snapshot.readerTextOffset
-      })
       return analysisRepository?.getLatestShadowAnalysisPublication
         ? v3Manifest(snapshot, bookEditionId)
         : legacyManifest(snapshot, bookEditionId)
@@ -784,9 +808,6 @@ export function createBookCatalogService({
     async shadowManifest(subjectId, bookEditionId) {
       if (!analysisRepository || typeof analysisRepository.getLatestShadowAnalysisPublication !== 'function') {
         throw serviceError('PREVIEW_UNAVAILABLE', 'Теневая разметка недоступна', 503)
-      }
-      if (typeof analysisRepository.ensureLatestMediaProjection === 'function') {
-        await analysisRepository.ensureLatestMediaProjection(bookEditionId)
       }
       const snapshot = await store.getReaderBookManifest({
         subjectId,
@@ -842,13 +863,6 @@ export function createBookCatalogService({
         else if (request.value.status === 'ready') warmed.ready += 1
         else warmed.pending += 1
       }
-      const sceneWarmup = typeof store.ensureBookScenesThrough === 'function'
-        ? await store.ensureBookScenesThrough({
-            subjectId,
-            bookEditionId,
-            readerTextOffset: progress.readerTextOffset
-          })
-        : { requested: 0, ready: 0, pending: 0, failed: 0 }
       return {
         bookEditionId,
         readerTextOffset: progress.readerTextOffset,
@@ -860,7 +874,7 @@ export function createBookCatalogService({
           requested: requests.length,
           ...warmed
         },
-        sceneWarmup
+        sceneWarmup: { requested: 0, ready: 0, pending: 0, failed: 0 }
       }
     }
   }

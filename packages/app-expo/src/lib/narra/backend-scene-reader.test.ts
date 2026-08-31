@@ -138,9 +138,20 @@ describe("reader backend scene action and persistence", () => {
       encoding: "base64",
     });
     runtime.read.mockResolvedValue("");
-    await expect(
+    const emptyRead = expect(
       readSceneDataUri(Object.values(stored.scenesByBackendId ?? {})[0].imageUri),
     ).rejects.toThrow("SCENE_EMPTY_LOCAL_FILE");
+    await vi.advanceTimersByTimeAsync(225);
+    await emptyRead;
+  });
+  it("retries the first native read race with a bounded delay", async () => {
+    runtime.read.mockRejectedValueOnce(new Error("file is not visible yet"));
+    const pending = readSceneDataUri("file:///documents/scene.png");
+    await vi.advanceTimersByTimeAsync(74);
+    expect(runtime.read).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(pending).resolves.toBe("data:image/png;base64,aW1hZ2U=");
+    expect(runtime.read).toHaveBeenCalledTimes(2);
   });
   it("cancellation during download cannot publish into a closed reader", async () => {
     const action = input();

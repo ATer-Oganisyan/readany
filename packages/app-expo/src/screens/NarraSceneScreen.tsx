@@ -373,7 +373,7 @@ export function NarraSceneScreen({ route, navigation }: Props) {
                 {t("narra.sceneSlotDrawing", "Рисуем сцену…")}
               </Text>
               <Text style={styles.placeholderHint}>
-                {t("narra.sceneSlotDrawingHint", "Обычно 20–60 секунд")}
+                {t("narra.sceneSlotDrawingHint", "Обычно 2–3 минуты")}
               </Text>
             </View>
           ) : (

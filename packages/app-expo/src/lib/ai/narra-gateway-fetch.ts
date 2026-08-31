@@ -19,7 +19,8 @@ const IMAGE_TIMEOUT_MS = 150_000;
 // cover-job POST/GET короткие и используют обычный сетевой таймаут.
 const COVER_TIMEOUT_MS = 180_000;
 const INSTALLATION_TIMEOUT_MS = 15_000;
-const DEFAULT_NARRA_GATEWAY_URL = "https://api-test.narra.disrupt.builders";
+const TEST_NARRA_GATEWAY_URL = "https://api-test.narra.disrupt.builders";
+const PRODUCTION_NARRA_GATEWAY_URL = "https://api.narra.disrupt.builders";
 
 type NarraGatewayAdapter = (path: string, init: RequestInit) => Promise<Response>;
 
@@ -50,7 +51,11 @@ export interface NarraGatewayConfig {
 
 export function getNarraGatewayConfig(): NarraGatewayConfig {
   const configuredUrl = process.env.EXPO_PUBLIC_NARRA_GATEWAY_URL?.trim().replace(/\/+$/, "");
-  const baseUrl = configuredUrl || DEFAULT_NARRA_GATEWAY_URL;
+  const defaultUrl =
+    process.env.EXPO_PUBLIC_NARRA_ENVIRONMENT === "production"
+      ? PRODUCTION_NARRA_GATEWAY_URL
+      : TEST_NARRA_GATEWAY_URL;
+  const baseUrl = configuredUrl || defaultUrl;
   const authMode =
     process.env.EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE === "none" ? "none" : "installation";
   return { baseUrl, authMode };

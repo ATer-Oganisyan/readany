@@ -2,6 +2,7 @@ import { useLibraryStore } from "@/stores/library-store";
 import { useNarraStore } from "@/stores/narra-store";
 import { getPlatformService } from "@readany/core/services";
 import type { Book } from "@readany/core/types";
+import * as Crypto from "expo-crypto";
 import { File } from "expo-file-system";
 import * as FileSystem from "expo-file-system/legacy";
 import { create } from "zustand";
@@ -10,6 +11,7 @@ import {
   backendBookPath,
   backendBookRequest,
   backendJsonPost,
+  postBackendAnalysisRetry,
   postBackendProgress,
 } from "./backend-book-api";
 import {
@@ -26,6 +28,7 @@ interface SyncStatus {
   manifest?: BackendBookManifest;
   error?: string;
   identityError?: string;
+  analysisRetrying?: boolean;
 }
 /** Provisional rows are deliberately never written to the persisted Narra store. */
 export const useBackendBookStatus = create<{ books: Record<string, SyncStatus> }>(() => ({
@@ -246,7 +249,13 @@ function createSession(book: Book, progress: number) {
         useNarraStore.getState().applyBackendManifest(book.id, manifest, value);
         status(book.id, {
           manifest,
-          error: manifest.availability === "unknown" ? "UNKNOWN_MANIFEST_STATE" : undefined,
+          error:
+            manifest.availability === "unknown"
+              ? "UNKNOWN_MANIFEST_STATE"
+              : manifest.availability === "failed" || manifest.availability === "cancelled"
+                ? (manifest.analysis?.errorCode ??
+                  `ANALYSIS_${manifest.availability.toUpperCase()}`)
+                : undefined,
         });
         if (current.sourceKind === "catalog" && manifest.availability === "processing")
           console.warn("[Backend books] Catalog manifest is unexpectedly processing");
@@ -292,6 +301,29 @@ export function updateBackendBookProgress(bookId: string, progress: number) {
 }
 export function retryBackendBookSync(bookId: string) {
   sessions.get(bookId)?.session.retry();
+}
+
+export async function retryBackendBookAnalysis(bookId: string): Promise<void> {
+  const binding = useNarraStore.getState().books[bookId]?.backendBinding;
+  if (!binding || binding.resolution !== "private") {
+    status(bookId, { error: "ANALYSIS_RETRY_UNAVAILABLE", analysisRetrying: false });
+    return;
+  }
+  status(bookId, { error: undefined, analysisRetrying: true });
+  try {
+    await postBackendAnalysisRetry(binding.bookEditionId, Crypto.randomUUID());
+    status(bookId, { error: undefined, analysisRetrying: false });
+    sessions.get(bookId)?.session.retry();
+  } catch (error) {
+    status(bookId, {
+      error:
+        error instanceof BackendBookError
+          ? (error.backendCode ?? `HTTP_${error.status}`)
+          : "CONNECTION",
+      analysisRetrying: false,
+    });
+    throw error;
+  }
 }
 
 const IMPORTED_BOOK_SYNC_DEADLINE_MS = 5 * 60_000;

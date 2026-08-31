@@ -4,6 +4,7 @@ import { MishanaerIcon } from "@/components/ui/MishanaerIcon";
 import { Text } from "@/components/ui/Typography";
 import { NarraAudioPlayer } from "@/lib/narra/audio-player";
 import { resolveCharacterPortraitUri } from "@/lib/narra/character-portrait";
+import { characterProfileText } from "@/lib/narra/character-profile";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
 import { reportNarraError } from "@/lib/narra/errors";
 import {
@@ -364,6 +365,10 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
     const backendProfileDetails = liveCharacter.profileDetails ?? [];
     const traitsDetail = backendProfileDetails.find((detail) => detail.key === "traits");
     const descriptionDetail = backendProfileDetails.find((detail) => detail.key === "description");
+    const biography =
+      characterProfileText(liveCharacter, "description") ||
+      liveCharacter.description ||
+      liveCharacter.role;
     const traits = Array.isArray(traitsDetail?.value)
       ? traitsDetail.value
       : typeof traitsDetail?.value === "string"
@@ -383,7 +388,7 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
       {
         key: "description",
         label: t("narra.description", "Описание"),
-        value: descriptionDetail?.value ?? "—",
+        value: descriptionDetail?.value ?? biography ?? "—",
       },
     ].map((detail) => ({
       ...detail,
@@ -596,8 +601,8 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
                 isDark={portraitForeground.isDark}
               />
             </View>
-          ) : character.role ? (
-            <Text style={styles.description}>{character.role}</Text>
+          ) : biography ? (
+            <Text style={styles.description}>{biography}</Text>
           ) : null}
           {!embedded && character.traits.length > 0 ? (
             <Text style={styles.description}>{formatCharacterTraits(character.traits)}</Text>

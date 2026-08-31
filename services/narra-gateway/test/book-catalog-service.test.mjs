@@ -71,6 +71,9 @@ test('manifest never leaks a future character even when its global bundle is rea
             }
           ]
         }
+      },
+      async ensureBookScenesThrough() {
+        assert.fail('manifest must not enqueue scene prefetch')
       }
     })
   })
@@ -259,10 +262,7 @@ test('catalog manifest exposes validated v3 as the canonical markup', async () =
   }])
   assert.equal(preview.characters[0].bundle.assets.length, REQUIRED_CHARACTER_MEDIA.length)
   assert.equal(preview.markup.analysisVersion, 'book-markup-v3')
-  assert.deepEqual(calls.slice(0, 2), [
-    ['projection', EDITION.id],
-    ['manifest', 'character-bundle-v3']
-  ])
+  assert.deepEqual(calls, [['manifest', 'character-bundle-v3']])
 })
 
 test('catalog manifest does not fall back to legacy v2 while v3 is processing', async () => {
@@ -292,7 +292,7 @@ test('catalog manifest does not fall back to legacy v2 while v3 is processing', 
   const manifest = await service.manifest('reader-1', EDITION.id)
 
   assert.equal(manifest.source, 'v3')
-  assert.equal(manifest.availability, 'processing')
+  assert.equal(manifest.availability, 'unavailable')
   assert.equal(manifest.markup, null)
   assert.deepEqual(manifest.characters, [])
 })
@@ -341,7 +341,8 @@ test('processing v3 manifest exposes only reader-visible provisional characters'
   assert.equal(manifest.runId, 'run-v3')
   assert.equal(manifest.readerTextOffset, 500)
   assert.deepEqual(manifest.analysis, {
-    stage: 'scan', status: 'running', textLength: 2_000,
+    runId: 'run-v3', stage: 'scan', status: 'running', retryable: false,
+    errorCode: undefined, updatedAt: undefined, textLength: 2_000,
     completedScanChunks: 12, totalScanChunks: 50
   })
   assert.deepEqual(manifest.characters, [{
@@ -358,6 +359,47 @@ test('processing v3 manifest exposes only reader-visible provisional characters'
     },
     bundle: null
   }])
+})
+
+test('terminal private analysis is explicit and retryable without leaking internal detail', async () => {
+  const service = createBookCatalogService({
+    repository: repository({
+      async getReaderBookManifest() {
+        return {
+          edition: { ...EDITION, sourceStorage: 'temporary' },
+          readerTextOffset: 500,
+          readingFraction: 0.25,
+          markup: null,
+          characters: []
+        }
+      }
+    }),
+    analysisRepository: {
+      async getLatestShadowAnalysisPublication() { return null },
+      async getLatestAnalysisPreview() {
+        return {
+          run: {
+            id: 'run-v3', stage: 'scan', status: 'cancelled', textLength: 2_000,
+            lastErrorCode: 'OPERATOR_CANCELLED',
+            updatedAt: '2026-08-31T12:00:00.000Z',
+            providerDetail: 'must stay private'
+          },
+          scan: { completedChunks: 12, totalChunks: 50 },
+          characters: []
+        }
+      }
+    }
+  })
+
+  const manifest = await service.manifest('reader-1', EDITION.id)
+
+  assert.equal(manifest.availability, 'cancelled')
+  assert.deepEqual(manifest.analysis, {
+    runId: 'run-v3', stage: 'scan', status: 'cancelled', retryable: true,
+    errorCode: 'OPERATOR_CANCELLED', updatedAt: '2026-08-31T12:00:00.000Z',
+    textLength: 2_000, completedScanChunks: 12, totalScanChunks: 50
+  })
+  assert.equal(JSON.stringify(manifest).includes('must stay private'), false)
 })
 
 test('private manifest uses canonical v3 and never falls back to client-derived v2', async () => {
@@ -387,7 +429,7 @@ test('private manifest uses canonical v3 and never falls back to client-derived 
   const manifest = await service.manifest('reader-1', EDITION.id)
 
   assert.equal(manifest.source, 'v3')
-  assert.equal(manifest.availability, 'processing')
+  assert.equal(manifest.availability, 'unavailable')
   assert.equal(manifest.markup, null)
   assert.deepEqual(manifest.characters, [])
 })
@@ -557,7 +599,7 @@ test('canonical v3 progress queues media for characters behind the warmup fronti
   assert.deepEqual(result.warmup, { requested: 1, ready: 0, pending: 1, failed: 0 })
 })
 
-test('canonical progress extends durable scene prefetch from the server position', async () => {
+test('canonical progress never prefetches scenes automatically', async () => {
   const calls = []
   const service = createBookCatalogService({
     repository: repository({
@@ -587,12 +629,8 @@ test('canonical progress extends durable scene prefetch from the server position
     chapterKey: 'chapter-4'
   })
 
-  assert.deepEqual(calls, [{
-    subjectId: 'reader-1',
-    bookEditionId: 'book-1',
-    readerTextOffset: 36_000
-  }])
-  assert.deepEqual(result.sceneWarmup, { requested: 2, ready: 1, pending: 1, failed: 0 })
+  assert.deepEqual(calls, [])
+  assert.deepEqual(result.sceneWarmup, { requested: 0, ready: 0, pending: 0, failed: 0 })
 })
 
 test('scene lookup returns a signed ready asset and never accepts scene text from the client', async () => {
@@ -632,6 +670,31 @@ test('scene lookup returns a signed ready asset and never accepts scene text fro
   assert.equal(result.status, 'ready')
   assert.equal(result.imageUrl, 'https://storage/scene')
   assert.equal(calls[1][0], 'sign')
+})
+
+test('scene lookup exposes markup prerequisites without signing or polling a scene job', async () => {
+  const service = createBookCatalogService({
+    repository: repository({
+      async ensureReaderBookScene() {
+        return {
+          status: 'processing', errorCode: 'MARKUP_PROCESSING', retryable: false,
+          analysis: { runId: 'run-1', stage: 'scan', status: 'running', retryable: false }
+        }
+      }
+    }),
+    storage: {
+      async createDownload() { assert.fail('prerequisite response must not sign a scene') }
+    }
+  })
+
+  assert.deepEqual(await service.sceneAt('reader-1', 'book-1', {
+    readerTextOffset: 10,
+    progressFraction: null
+  }), {
+    status: 'processing', errorCode: 'MARKUP_PROCESSING', retryable: false,
+    analysis: { runId: 'run-1', stage: 'scan', status: 'running', retryable: false },
+    pollAfterMs: 5_000
+  })
 })
 
 test('local hash reuses a ready catalog edition and otherwise requests local registration', async () => {

@@ -8,6 +8,10 @@ MONOREPO_ROOT="$(cd "$APP_ROOT/../.." && pwd)"
 SIMULATOR_NAME="${READANY_SIMULATOR_NAME:-iPhone 17 Pro}"
 SIMULATOR_ID="${READANY_SIMULATOR_ID:-}"
 METRO_PORT="${READANY_METRO_PORT:-8081}"
+export EXPO_PUBLIC_NARRA_ENVIRONMENT="${EXPO_PUBLIC_NARRA_ENVIRONMENT:-test}"
+export EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE="${EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE:-installation}"
+export EXPO_PUBLIC_NARRA_GATEWAY_URL="${EXPO_PUBLIC_NARRA_GATEWAY_URL:-https://api-test.narra.disrupt.builders}"
+export EXPO_PUBLIC_NARRA_ANALYTICS_TIER="${EXPO_PUBLIC_NARRA_ANALYTICS_TIER:-essential}"
 BUNDLE_ID="com.mishanaer.readany.dev"
 if [[ -d "$APP_ROOT/ios/ReadAnyDev.xcworkspace" ]]; then
   WORKSPACE="$APP_ROOT/ios/ReadAnyDev.xcworkspace"
@@ -57,6 +61,8 @@ Optional environment variables:
   READANY_DEVELOPER_DIR        Xcode Developer directory (defaults to DEVELOPER_DIR or xcode-select)
   READANY_ALLOW_PASTEBOARD_SYNC=1
                                Allow automatic Simulator pasteboard sync intentionally
+  EXPO_PUBLIC_NARRA_GATEWAY_URL
+                               Gateway URL (default: https://api-test.narra.disrupt.builders)
 
 The simulator mode never runs xcodebuild, expo run:ios, prebuild, pod install, or a tunnel.
 USAGE
@@ -543,6 +549,7 @@ run_rebuild_ios() {
   expected_build="$(expected_build_number)"
   current_fingerprint="$(native_fingerprint)"
   log "Expected build: $expected_build; native fingerprint: ${current_fingerprint:0:12}"
+  log "Gateway profile: $EXPO_PUBLIC_NARRA_ENVIRONMENT ($EXPO_PUBLIC_NARRA_GATEWAY_URL)"
 
   build_canonical_app_if_needed "$expected_build" "$current_fingerprint"
   install_canonical_app_if_needed "$expected_build"
@@ -598,6 +605,7 @@ run_check() {
   log "Automatic pasteboard sync: $(pasteboard_sync_status)"
   log "Simulator: $SIMULATOR_NAME ($SIMULATOR_ID)"
   log "Expected build: $expected_build; installed build: $installed_build"
+  log "Gateway profile: $EXPO_PUBLIC_NARRA_ENVIRONMENT ($EXPO_PUBLIC_NARRA_GATEWAY_URL)"
   log "Metro localhost:$METRO_PORT: $metro_status"
   log "Workspace: $WORKSPACE"
   log "Canonical DerivedData: $DERIVED_DATA_PATH"
