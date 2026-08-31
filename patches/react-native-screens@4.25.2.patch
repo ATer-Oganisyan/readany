@@ -115,7 +115,7 @@ index 289c9d958eb913a451161da11bda7fd44aeca377..0b39102d83a6aa4d61a589f0bc2fa425
  - (BOOL)tabBarController:(UITabBarController *)tabBarController
      shouldSelectViewController:(UIViewController *)viewController
  {
-@@ -488,7 +532,39 @@ - (void)updateReactChildrenControllers
+@@ -488,7 +532,43 @@ - (void)updateReactChildrenControllers
      return;
    }
  
@@ -160,7 +160,7 @@ index 289c9d958eb913a451161da11bda7fd44aeca377..0b39102d83a6aa4d61a589f0bc2fa425
  }
  
  - (void)updateSelectedViewControllerIfNeeded
-@@ -500,7 +576,7 @@ - (void)updateSelectedViewControllerIfNeeded
+@@ -500,7 +580,7 @@ - (void)updateSelectedViewControllerIfNeeded
  
  - (void)updateSelectedViewController
  {
@@ -169,7 +169,7 @@ index 289c9d958eb913a451161da11bda7fd44aeca377..0b39102d83a6aa4d61a589f0bc2fa425
      return;
    }
  
-@@ -601,7 +677,7 @@ - (void)updateTabBarAppearance
+@@ -601,7 +681,7 @@ - (void)updateTabBarAppearance
  
  - (void)updateTabBarA11yIfNeeded
  {
@@ -178,7 +178,7 @@ index 289c9d958eb913a451161da11bda7fd44aeca377..0b39102d83a6aa4d61a589f0bc2fa425
      auto screenView = static_cast<RNSTabsScreenViewController *>(tabViewController).tabScreenComponentView;
      if (!screenView.tabBarItemNeedsA11yUpdate) {
        continue;
-@@ -620,7 +696,7 @@ - (nullable RNSTabsScreenViewController *)findChildViewControllerForKey:(nullabl
+@@ -620,7 +700,7 @@ - (nullable RNSTabsScreenViewController *)findChildViewControllerForKey:(nullabl
    if (screenKey == nil) {
      return nil;
    }
