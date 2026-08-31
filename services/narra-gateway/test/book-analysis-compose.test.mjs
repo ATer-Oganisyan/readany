@@ -154,6 +154,8 @@ test('deploy is pinned to fun1, versioned Compose, backups and one-replica canar
   assert.match(deploySource, /deploy-staging-fun1\.sh/)
   assert.match(stagingDeploySource, /REMOTE="\$\{REMOTE:-fun1\}"/)
   assert.match(stagingDeploySource, /\[ "\$REMOTE" != "fun1" \]/)
+  assert.match(stagingDeploySource, /ServerAliveInterval=15/)
+  assert.match(stagingDeploySource, /ServerAliveCountMax=12/)
   assert.match(stagingDeploySource, /profiles=\(--profile book-backend --profile media --profile scenes --profile tts-markup\)/)
   assert.match(stagingDeploySource, /-f "\$REMOTE_STAGE\/compose\.i167\.yml"/)
   assert.match(stagingDeploySource, /pg_dump/)

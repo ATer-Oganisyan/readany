@@ -12,6 +12,7 @@ CURRENT_CONTAINER="$PROJECT-gateway-1"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(git -C "$HERE" rev-parse --show-toplevel)"
 HEAD="$(git -C "$REPO" rev-parse HEAD)"
+SSH_OPTIONS=(-o ServerAliveInterval=15 -o ServerAliveCountMax=12)
 
 if [ "$REMOTE" != "fun1" ] \
   || [[ ! "$EXPECTED_REMOTE_IMAGE_ID" =~ ^sha256:[a-f0-9]{64}$ ]] \
@@ -35,7 +36,8 @@ REMOTE_STAGE="$REMOTE_ROOT/releases/$VERSION"
 FLAGS=(-az --exclude=node_modules --exclude=.data --exclude=.env --exclude='*.log')
 [ "$DRY_RUN" = 1 ] && FLAGS+=(--dry-run -v)
 
-remote_image_id="$(ssh "$REMOTE" "sudo docker inspect --format '{{.Image}}' '$CURRENT_CONTAINER'")"
+remote_image_id="$(ssh "${SSH_OPTIONS[@]}" "$REMOTE" \
+  "sudo docker inspect --format '{{.Image}}' '$CURRENT_CONTAINER'")"
 if [ "$remote_image_id" != "$EXPECTED_REMOTE_IMAGE_ID" ]; then
   echo "Remote image drift: expected $EXPECTED_REMOTE_IMAGE_ID, got $remote_image_id" >&2
   exit 1
@@ -47,7 +49,7 @@ if [ "$DRY_RUN" = 1 ]; then
   exit 0
 fi
 
-ssh "$REMOTE" \
+ssh "${SSH_OPTIONS[@]}" "$REMOTE" \
   "sudo test ! -e '$REMOTE_STAGE' \
    && sudo test -f '$TARGET_ENV' \
    && sudo test \"\$(sudo stat -c %a '$TARGET_ENV')\" = 600 \
@@ -62,7 +64,7 @@ ssh "$REMOTE" \
    && sudo install -d -o root -g root -m 0755 '$REMOTE_ROOT/releases' '$REMOTE_STAGE'"
 rsync "${FLAGS[@]}" --rsync-path="sudo rsync" "$HERE/" "$REMOTE:$REMOTE_STAGE/"
 
-ssh "$REMOTE" \
+ssh "${SSH_OPTIONS[@]}" "$REMOTE" \
   "sudo env \
     REMOTE_ROOT='$REMOTE_ROOT' \
     REMOTE_STAGE='$REMOTE_STAGE' \
