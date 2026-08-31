@@ -1,0 +1,817 @@
+import express from 'express'
+import { createBookCatalogService } from './book-catalog-service.mjs'
+import { isCatalogBookLanguage, normalizeBookLanguage } from './book-language.mjs'
+import { CATALOG_GENRES, CATALOG_GENRE_DATA_VERSION } from './catalog-book-genres.mjs'
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const SHA256 = /^[0-9a-f]{64}$/
+const CHARACTER_KEY = /^[a-z0-9][a-z0-9._-]{0,127}$/i
+const BOOK_FORMATS = new Set(['epub', 'fb2', 'txt', 'pdf'])
+export const BOOK_CATALOG_LANGUAGE_CONTRACT_VERSION = 'book-catalog-language-v1'
+
+function validation(message) {
+  throw Object.assign(new Error(message), { code: 'VALIDATION', status: 400 })
+}
+
+function exactKeys(value, allowed, name) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) validation(`${name}: expected object`)
+  for (const key of Object.keys(value)) {
+    if (!allowed.includes(key)) validation(`${name}.${key}: unknown field`)
+  }
+}
+
+function uuid(value, name) {
+  if (typeof value !== 'string' || !UUID.test(value)) validation(`${name}: invalid UUID`)
+  return value
+}
+
+function catalogKey(value) {
+  if (typeof value !== 'string' || !value.trim() || value.length > 200 || /[\u0000-\u001f]/.test(value)) {
+    validation('catalog_key: invalid value')
+  }
+  return value.trim()
+}
+
+function sha256(value) {
+  if (typeof value !== 'string' || !SHA256.test(value)) validation('content_sha256: invalid SHA-256')
+  return value
+}
+
+export function parseBookResolveBody(body) {
+  exactKeys(body, ['source', 'catalog_key', 'content_sha256'], 'body')
+  if (body.source === 'catalog') {
+    if (body.content_sha256 !== undefined) validation('content_sha256 is not allowed for catalog resolve')
+    return { source: 'catalog', catalogKey: catalogKey(body.catalog_key) }
+  }
+  if (body.source === 'local') {
+    if (body.catalog_key !== undefined) validation('catalog_key is not allowed for local resolve')
+    return { source: 'local', contentSha256: sha256(body.content_sha256) }
+  }
+  validation('source: expected catalog or local')
+}
+
+export function parseReaderProgressBody(body) {
+  exactKeys(body, [
+    'progress_fraction', 'text_offset', 'chapter_key', 'section_index', 'section_fraction'
+  ], 'body')
+  const hasFraction = body.progress_fraction !== undefined
+  const hasTextOffset = body.text_offset !== undefined
+  if (hasFraction === hasTextOffset) {
+    validation('body: provide exactly one of progress_fraction or text_offset')
+  }
+  if (
+    hasFraction &&
+    (typeof body.progress_fraction !== 'number' ||
+      !Number.isFinite(body.progress_fraction) ||
+      body.progress_fraction < 0 ||
+      body.progress_fraction > 1)
+  ) {
+    validation('progress_fraction: expected a finite number from 0 to 1')
+  }
+  if (hasTextOffset && (!Number.isSafeInteger(body.text_offset) || body.text_offset < 0)) {
+    validation('text_offset: expected a non-negative safe integer')
+  }
+  const hasSectionIndex = body.section_index !== undefined
+  const hasSectionFraction = body.section_fraction !== undefined
+  if (hasSectionIndex !== hasSectionFraction) {
+    validation('body: section_index and section_fraction must be provided together')
+  }
+  if (hasSectionIndex && (!Number.isSafeInteger(body.section_index) || body.section_index < 0)) {
+    validation('section_index: expected a non-negative safe integer')
+  }
+  if (
+    hasSectionFraction &&
+    (typeof body.section_fraction !== 'number' ||
+      !Number.isFinite(body.section_fraction) ||
+      body.section_fraction < 0 ||
+      body.section_fraction > 1)
+  ) {
+    validation('section_fraction: expected a finite number from 0 to 1')
+  }
+  if (
+    body.chapter_key !== undefined &&
+    (typeof body.chapter_key !== 'string' || body.chapter_key.length > 200 || /[\u0000-\u001f]/.test(body.chapter_key))
+  ) {
+    validation('chapter_key: invalid value')
+  }
+  return {
+    progressFraction: hasFraction ? body.progress_fraction : null,
+    textOffset: hasTextOffset ? body.text_offset : null,
+    chapterKey: body.chapter_key?.trim() || null,
+    sectionIndex: hasSectionIndex ? body.section_index : null,
+    sectionFraction: hasSectionFraction ? body.section_fraction : null
+  }
+}
+
+export function parseSceneAtBody(body) {
+  exactKeys(body, ['reader_text_offset', 'progress_fraction'], 'body')
+  const hasTextOffset = body.reader_text_offset !== undefined
+  const hasFraction = body.progress_fraction !== undefined
+  if (hasTextOffset === hasFraction) {
+    validation('body: provide exactly one of reader_text_offset or progress_fraction')
+  }
+  if (hasTextOffset && (!Number.isSafeInteger(body.reader_text_offset) || body.reader_text_offset < 0)) {
+    validation('reader_text_offset: expected a non-negative safe integer')
+  }
+  if (
+    hasFraction &&
+    (typeof body.progress_fraction !== 'number' ||
+      !Number.isFinite(body.progress_fraction) ||
+      body.progress_fraction < 0 ||
+      body.progress_fraction > 1)
+  ) {
+    validation('progress_fraction: expected a finite number from 0 to 1')
+  }
+  return {
+    readerTextOffset: hasTextOffset ? body.reader_text_offset : null,
+    progressFraction: hasFraction ? body.progress_fraction : null
+  }
+}
+
+function boundedText(value, name, max, { allowEmpty = false } = {}) {
+  if (typeof value !== 'string' || value.length > max || /[\u0000-\u001f]/.test(value)) {
+    validation(`${name}: invalid value`)
+  }
+  const normalized = value.trim()
+  if (!allowEmpty && !normalized) validation(`${name}: required`)
+  return normalized
+}
+
+export function parseLocalBookBody(body) {
+  exactKeys(body, ['content_sha256', 'title', 'author', 'format', 'language'], 'body')
+  const format = boundedText(body.format, 'format', 16)
+  if (!BOOK_FORMATS.has(format)) validation('format: unsupported book format')
+  const language = normalizeBookLanguage(body.language)
+  if (body.language !== undefined && body.language !== null && body.language !== '' && !language) {
+    validation('language: expected an ISO language tag')
+  }
+  return {
+    contentSha256: sha256(body.content_sha256),
+    title: boundedText(body.title, 'title', 500),
+    author: boundedText(body.author ?? '', 'author', 500, { allowEmpty: true }),
+    format,
+    language
+  }
+}
+
+function fraction(value, name) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) {
+    validation(`${name}: expected a finite number from 0 to 1`)
+  }
+  return value
+}
+
+function stringArray(value, name, maxItems, maxLength) {
+  if (value === undefined) return []
+  if (!Array.isArray(value) || value.length > maxItems) validation(`${name}: invalid array`)
+  return value.map((item, index) => boundedText(item, `${name}[${index}]`, maxLength))
+}
+
+function localCharacterProfile(value) {
+  exactKeys(value, [
+    'clientCharacterId', 'role', 'gender', 'voice', 'traits', 'speechStyle', 'speechExamples',
+    'appearancePrompt', 'passport', 'expression', 'greeting', 'isNarrator',
+    'unlockProgress'
+  ], 'profile')
+  const profile = {
+    clientCharacterId: boundedText(
+      value.clientCharacterId ?? '',
+      'profile.clientCharacterId',
+      200,
+      { allowEmpty: true }
+    ),
+    role: boundedText(value.role ?? 'Персонаж истории', 'profile.role', 500),
+    gender: value.gender === 'female' ? 'female' : 'male',
+    voice: boundedText(value.voice ?? 'She', 'profile.voice', 32),
+    traits: stringArray(value.traits, 'profile.traits', 5, 120),
+    speechStyle: boundedText(value.speechStyle ?? '', 'profile.speechStyle', 1_000, { allowEmpty: true }),
+    speechExamples: stringArray(value.speechExamples, 'profile.speechExamples', 3, 500),
+    appearancePrompt: boundedText(value.appearancePrompt ?? '', 'profile.appearancePrompt', 4_000, { allowEmpty: true }),
+    expression: boundedText(value.expression ?? '', 'profile.expression', 300, { allowEmpty: true }),
+    greeting: boundedText(value.greeting ?? '', 'profile.greeting', 2_000, { allowEmpty: true }),
+    isNarrator: value.isNarrator === true,
+    unlockProgress: fraction(value.unlockProgress ?? 0, 'profile.unlockProgress')
+  }
+  if (value.passport !== undefined) {
+    exactKeys(value.passport, ['age', 'gender', 'build', 'hair', 'eyes', 'face', 'outfit'], 'profile.passport')
+    profile.passport = {
+      age: Math.max(1, Math.min(150, Number(value.passport.age) || 30)),
+      gender: value.passport.gender === 'female' ? 'female' : 'male',
+      build: boundedText(value.passport.build ?? '', 'profile.passport.build', 300, { allowEmpty: true }),
+      hair: boundedText(value.passport.hair ?? '', 'profile.passport.hair', 300, { allowEmpty: true }),
+      eyes: boundedText(value.passport.eyes ?? '', 'profile.passport.eyes', 300, { allowEmpty: true }),
+      face: boundedText(value.passport.face ?? '', 'profile.passport.face', 500, { allowEmpty: true }),
+      outfit: boundedText(value.passport.outfit ?? '', 'profile.passport.outfit', 500, { allowEmpty: true })
+    }
+  }
+  return profile
+}
+
+export function parseLocalMarkupBody(body) {
+  exactKeys(body, ['characters'], 'body')
+  if (!Array.isArray(body.characters) || body.characters.length < 1 || body.characters.length > 12) {
+    validation('characters: expected 1-12 items')
+  }
+  const seen = new Set()
+  return {
+    characters: body.characters.map((candidate, index) => {
+      exactKeys(candidate, [
+        'character_key', 'name', 'full_name', 'first_appearance_fraction',
+        'warmup_fraction', 'profile'
+      ], `characters[${index}]`)
+      const characterKey = boundedText(candidate.character_key, `characters[${index}].character_key`, 128)
+      if (!CHARACTER_KEY.test(characterKey) || seen.has(characterKey)) {
+        validation(`characters[${index}].character_key: invalid or duplicate`)
+      }
+      seen.add(characterKey)
+      const firstAppearanceFraction = fraction(
+        candidate.first_appearance_fraction,
+        `characters[${index}].first_appearance_fraction`
+      )
+      const warmupFraction = fraction(
+        candidate.warmup_fraction,
+        `characters[${index}].warmup_fraction`
+      )
+      if (warmupFraction > firstAppearanceFraction) {
+        validation(`characters[${index}].warmup_fraction: must not be after first appearance`)
+      }
+      return {
+        characterKey,
+        name: boundedText(candidate.name, `characters[${index}].name`, 300),
+        fullName: boundedText(candidate.full_name, `characters[${index}].full_name`, 500),
+        firstAppearanceFraction,
+        warmupFraction,
+        profile: localCharacterProfile(candidate.profile)
+      }
+    })
+  }
+}
+
+export function encodeCatalogCursor(cursor) {
+  if (!cursor) return null
+  return Buffer.from(JSON.stringify({
+    v: 1,
+    popularity_rank: cursor.popularityRank ?? null,
+    created_at: cursor.createdAt,
+    id: cursor.id
+  })).toString('base64url')
+}
+
+function catalogCursorPopularityRank(value) {
+  if (value === undefined || value === null) return null
+  if (!Number.isSafeInteger(value) || value < 1) validation('cursor: invalid value')
+  return value
+}
+
+export function decodeCatalogCursor(value) {
+  if (!value) return null
+  try {
+    const cursor = JSON.parse(Buffer.from(String(value), 'base64url').toString('utf8'))
+    if (
+      cursor.v !== 1 ||
+      typeof cursor.created_at !== 'string' ||
+      !Number.isFinite(Date.parse(cursor.created_at)) ||
+      !UUID.test(cursor.id)
+    ) {
+      validation('cursor: invalid value')
+    }
+    return {
+      popularityRank: catalogCursorPopularityRank(cursor.popularity_rank),
+      createdAt: cursor.created_at,
+      id: cursor.id
+    }
+  } catch (error) {
+    if (error?.code === 'VALIDATION') throw error
+    validation('cursor: invalid value')
+  }
+}
+
+export function parseCatalogLanguage(value) {
+  const language = normalizeBookLanguage(value)
+  if (!isCatalogBookLanguage(language)) validation('language: expected ru or en')
+  return language
+}
+
+export function encodeLanguageCatalogCursor(cursor, language) {
+  if (!cursor) return null
+  return Buffer.from(JSON.stringify({
+    v: BOOK_CATALOG_LANGUAGE_CONTRACT_VERSION,
+    language: parseCatalogLanguage(language),
+    popularity_rank: cursor.popularityRank ?? null,
+    created_at: cursor.createdAt,
+    id: cursor.id
+  })).toString('base64url')
+}
+
+export function decodeLanguageCatalogCursor(value, expectedLanguage) {
+  if (!value) return null
+  const language = parseCatalogLanguage(expectedLanguage)
+  try {
+    const cursor = JSON.parse(Buffer.from(String(value), 'base64url').toString('utf8'))
+    if (cursor.language !== language) validation('cursor: language mismatch')
+    if (
+      cursor.v !== BOOK_CATALOG_LANGUAGE_CONTRACT_VERSION ||
+      typeof cursor.created_at !== 'string' ||
+      !Number.isFinite(Date.parse(cursor.created_at)) ||
+      !UUID.test(cursor.id)
+    ) {
+      validation('cursor: invalid value')
+    }
+    return {
+      popularityRank: catalogCursorPopularityRank(cursor.popularity_rank),
+      createdAt: cursor.created_at,
+      id: cursor.id
+    }
+  } catch (error) {
+    if (error?.code === 'VALIDATION') throw error
+    validation('cursor: invalid value')
+  }
+}
+
+export function parseBookContentCursor(value) {
+  if (value === undefined) return null
+  if (typeof value !== 'string' || !value || value.length > 1024) {
+    validation('content cursor: invalid value')
+  }
+  return value
+}
+
+function limit(value) {
+  if (value === undefined) return 20
+  if (!/^\d{1,3}$/.test(String(value))) validation('limit: invalid value')
+  const parsed = Number(value)
+  if (parsed < 1 || parsed > 100) validation('limit: expected 1-100')
+  return parsed
+}
+
+function asyncRoute(operation) {
+  return (req, res, next) => void operation(req, res).catch(next)
+}
+
+export function bookJson(book) {
+  const value = {
+    resolution: book.resolution,
+    book_edition_id: book.bookEditionId,
+    catalog_key: book.catalogKey,
+    title: book.title,
+    author: book.author,
+    genres: Array.isArray(book.genres) ? book.genres : [],
+    language: book.language ?? null,
+    format: book.format,
+    content_sha256: book.contentSha256,
+    generation_status: book.generationStatus,
+    ready: book.ready,
+    source_download_path: book.sourceDownloadPath,
+    source_uploaded: book.sourceUploaded,
+    expires_at: book.expiresAt
+  }
+  if (book.cover) {
+    value.cover = {
+      content_hash: book.cover.contentHash,
+      mime_type: book.cover.mimeType,
+      byte_size: book.cover.byteSize,
+      download_path: book.cover.downloadPath
+    }
+  }
+  return value
+}
+
+export function bookIdentityJson(identity) {
+  return {
+    version: identity.version,
+    book_edition_id: identity.bookEditionId,
+    status: identity.status,
+    title: identity.title,
+    author: identity.author,
+    source: identity.source,
+    updated_at: identity.updatedAt,
+    poll_after_ms: identity.pollAfterMs,
+    error_code: identity.errorCode
+  }
+}
+
+export function catalogGenresJson() {
+  return {
+    version: CATALOG_GENRE_DATA_VERSION,
+    items: CATALOG_GENRES.map(({ id, labelRu, labelEn, order }) => ({
+      id,
+      label_ru: labelRu,
+      label_en: labelEn,
+      order
+    }))
+  }
+}
+
+function ttsMarkupJson(value) {
+  if (!value) return undefined
+  return {
+    status: value.status,
+    version: value.version,
+    revision: value.revision,
+    retry_after_ms: value.retryAfterMs
+  }
+}
+
+export function manifestJson(manifest) {
+  return {
+    source: manifest.source,
+    book: bookJson(manifest.book),
+    availability: manifest.availability,
+    publication_id: manifest.publicationId,
+    run_id: manifest.runId,
+    content_hash: manifest.contentHash,
+    published_at: manifest.publishedAt,
+    reader_text_offset: manifest.readerTextOffset,
+    reading_fraction: manifest.readingFraction,
+    reader_section_index: manifest.readerSectionIndex,
+    reader_section_fraction: manifest.readerSectionFraction,
+    analysis: manifest.analysis && {
+      stage: manifest.analysis.stage,
+      status: manifest.analysis.status,
+      text_length: manifest.analysis.textLength,
+      completed_scan_chunks: manifest.analysis.completedScanChunks,
+      total_scan_chunks: manifest.analysis.totalScanChunks
+    },
+    markup: manifest.markup && {
+      schema_version: manifest.markup.schemaVersion,
+      analysis_version: manifest.markup.analysisVersion,
+      revision: manifest.markup.revision,
+      text_length: manifest.markup.textLength,
+      scene_policy: manifest.markup.scenePolicy && {
+        version: manifest.markup.scenePolicy.version,
+        start_text_offset: manifest.markup.scenePolicy.startTextOffset,
+        interval_text_length: manifest.markup.scenePolicy.intervalTextLength
+      },
+      published_at: manifest.markup.publishedAt
+    },
+    tts_markup: ttsMarkupJson(manifest.ttsMarkup),
+    characters: manifest.characters.map((character) => ({
+      character_key: character.characterKey,
+      name: character.name,
+      full_name: character.fullName,
+      first_appearance_text_offset: character.firstAppearanceTextOffset,
+      provisional: character.provisional === true,
+      state: character.state,
+      profile: character.profile,
+      bundle: character.bundle && {
+        version: character.bundle.version,
+        assets: character.bundle.assets.map((asset) => ({
+          asset_id: asset.assetId,
+          type: asset.type,
+          content_hash: asset.contentHash,
+          mime_type: asset.mimeType,
+          byte_size: asset.byteSize,
+          download_path: asset.downloadPath
+        }))
+      }
+    }))
+  }
+}
+
+export function ttsSectionJson(value) {
+  if (value.status !== 'ready' || !value.section) {
+    return { tts_markup: ttsMarkupJson(value) }
+  }
+  return {
+    contract_version: value.version,
+    revision: value.revision,
+    normalized_text_hash: value.normalizedTextHash,
+    section: {
+      key: value.section.key,
+      title: value.section.title,
+      index: value.section.index,
+      start_offset: value.section.startOffset,
+      end_offset: value.section.endOffset,
+      segments: value.section.segments.map((segment) => ({
+        id: segment.id,
+        start_offset: segment.startOffset,
+        end_offset: segment.endOffset,
+        text: segment.text,
+        kind: segment.kind,
+        character_key: segment.characterKey,
+        confidence: segment.confidence
+      }))
+    }
+  }
+}
+
+function shadowManifestJson(manifest) {
+  return {
+    source: manifest.source,
+    availability: 'ready',
+    publication_id: manifest.publicationId,
+    run_id: manifest.runId,
+    content_hash: manifest.contentHash,
+    published_at: manifest.publishedAt,
+    reader_text_offset: manifest.readerTextOffset,
+    reading_fraction: manifest.readingFraction,
+    reader_section_index: manifest.readerSectionIndex,
+    reader_section_fraction: manifest.readerSectionFraction,
+    markup: {
+      schema_version: manifest.markup.schemaVersion,
+      analysis_version: manifest.markup.analysisVersion,
+      text_length: manifest.markup.textLength
+    },
+    characters: manifest.characters.map((character) => ({
+      character_key: character.characterKey,
+      name: character.name,
+      full_name: character.fullName,
+      first_appearance_text_offset: character.firstAppearanceTextOffset,
+      provisional: false,
+      state: character.state,
+      profile: character.profile,
+      bundle: null
+    }))
+  }
+}
+
+export function createBookCatalogRouter({
+  repository,
+  analysisRepository = null,
+  ttsMarkupRepository = null,
+  shadowPreviewEnabled = false,
+  storage = null,
+  uploadMaxBytes = 50 * 1024 * 1024
+}) {
+  const router = express.Router()
+  const service = createBookCatalogService({
+    repository, analysisRepository, ttsMarkupRepository, storage
+  })
+  const subject = (req) => uuid(req.installation?.sub, 'installation subject')
+
+  router.get('/genres', (_req, res) => {
+    res.json(catalogGenresJson())
+  })
+
+  router.get('/catalog', asyncRoute(async (req, res) => {
+    const result = await service.listCatalog({
+      limit: limit(req.query.limit),
+      cursor: decodeCatalogCursor(req.query.cursor)
+    })
+    res.json({
+      items: result.items.map(bookJson),
+      next_cursor: encodeCatalogCursor(result.nextCursor)
+    })
+  }))
+
+  router.get('/catalog/languages/:language', asyncRoute(async (req, res) => {
+    const language = parseCatalogLanguage(req.params.language)
+    const result = await service.listCatalogByLanguage({
+      language,
+      limit: limit(req.query.limit),
+      cursor: decodeLanguageCatalogCursor(req.query.cursor, language)
+    })
+    res.json({
+      contract_version: BOOK_CATALOG_LANGUAGE_CONTRACT_VERSION,
+      language,
+      items: result.items.map(bookJson),
+      next_cursor: encodeLanguageCatalogCursor(result.nextCursor, language)
+    })
+  }))
+
+  router.post('/resolve', express.json({ limit: '16kb' }), asyncRoute(async (req, res) => {
+    const result = await service.resolve(subject(req), parseBookResolveBody(req.body))
+    res.json(bookJson(result))
+  }))
+
+  router.post(
+    '/local',
+    express.json({ limit: '16kb' }),
+    asyncRoute(async (req, res) => {
+      const result = await service.registerLocalBook(
+        subject(req),
+        parseLocalBookBody(req.body)
+      )
+      res.status(result.resolution === 'catalog' ? 200 : 201).json(bookJson(result))
+    })
+  )
+
+  router.post(
+    '/:bookEditionId/local-markup',
+    express.json({ limit: '128kb' }),
+    asyncRoute(async (req, res) => {
+      const result = await service.publishLocalMarkup(
+        subject(req),
+        uuid(req.params.bookEditionId, 'bookEditionId'),
+        parseLocalMarkupBody(req.body)
+      )
+      res.status(result.created ? 201 : 200).json({
+        ...bookJson(result),
+        markup_revision: result.markupRevision
+      })
+    })
+  )
+
+  router.put(
+    '/:bookEditionId/source',
+    express.raw({ type: () => true, limit: uploadMaxBytes }),
+    asyncRoute(async (req, res) => {
+      if (!Buffer.isBuffer(req.body) || !req.body.byteLength) validation('book content: required')
+      const result = await service.uploadLocalSource(
+        subject(req),
+        uuid(req.params.bookEditionId, 'bookEditionId'),
+        req.body,
+        String(req.headers['content-type'] || '').split(';', 1)[0].trim().toLowerCase()
+      )
+      res.status(202).json(bookJson(result))
+    })
+  )
+
+  router.get('/:bookEditionId/source/download', asyncRoute(async (req, res) => {
+    const result = await service.sourceDownload(
+      subject(req),
+      uuid(req.params.bookEditionId, 'bookEditionId')
+    )
+    res.json({ download_url: result.url, expires_at: result.expiresAt })
+  }))
+
+  router.get('/:bookEditionId/identity', asyncRoute(async (req, res) => {
+    const result = await service.identity(
+      subject(req),
+      uuid(req.params.bookEditionId, 'bookEditionId')
+    )
+    res.status(result.status === 'processing' ? 202 : 200).json(bookIdentityJson(result))
+  }))
+
+  router.get('/:bookEditionId/content', asyncRoute(async (req, res) => {
+    const result = await service.fullContent(
+      subject(req),
+      uuid(req.params.bookEditionId, 'bookEditionId')
+    )
+    res.json({
+      contract_version: result.contractVersion,
+      representation: result.representation,
+      book_edition_id: result.bookEditionId,
+      content_hash: result.contentHash,
+      text_length: result.textLength,
+      byte_size: result.byteSize,
+      download_url: result.url,
+      expires_at: result.expiresAt
+    })
+  }))
+
+  router.get('/:bookEditionId/content/chunks', asyncRoute(async (req, res) => {
+    const result = await service.contentChunk(
+      subject(req),
+      uuid(req.params.bookEditionId, 'bookEditionId'),
+      parseBookContentCursor(req.query.cursor)
+    )
+    res.json({
+      contract_version: result.contractVersion,
+      representation: result.representation,
+      book_edition_id: result.bookEditionId,
+      content_hash: result.contentHash,
+      text_length: result.textLength,
+      byte_size: result.byteSize,
+      chunk: {
+        start_byte: result.chunk.startByte,
+        end_byte_exclusive: result.chunk.endByteExclusive,
+        content_hash: result.chunk.contentHash,
+        text: result.chunk.text
+      },
+      section: {
+        key: result.section.key,
+        title: result.section.title,
+        index: result.section.index,
+        start_byte: result.section.startByte,
+        end_byte_exclusive: result.section.endByteExclusive
+      },
+      section_complete: result.sectionComplete,
+      next_cursor: result.nextCursor
+    })
+  }))
+
+  router.get('/:bookEditionId/content/toc', asyncRoute(async (req, res) => {
+    const result = await service.contentToc(
+      subject(req),
+      uuid(req.params.bookEditionId, 'bookEditionId')
+    )
+    res.json({
+      contract_version: result.contractVersion,
+      representation: result.representation,
+      book_edition_id: result.bookEditionId,
+      content_hash: result.contentHash,
+      source: result.source,
+      items: result.items.map(item => ({
+        key: item.key,
+        title: item.title,
+        level: item.level,
+        parent_key: item.parentKey,
+        section_key: item.sectionKey,
+        href: item.href,
+        anchor_resolved: item.anchorResolved,
+        order: item.order,
+        start_byte: item.startByte,
+        end_byte_exclusive: item.endByte
+      }))
+    })
+  }))
+
+  router.get('/:bookEditionId/tts-script/sections/:sectionIndex', asyncRoute(async (req, res) => {
+    const sectionIndex = Number(req.params.sectionIndex)
+    const result = await service.ttsSection(
+      subject(req),
+      uuid(req.params.bookEditionId, 'bookEditionId'),
+      sectionIndex
+    )
+    if (result.retryAfterMs) {
+      res.setHeader('Retry-After', String(Math.max(1, Math.ceil(result.retryAfterMs / 1_000))))
+    }
+    res.status(result.status === 'ready' ? 200 : 202).json(ttsSectionJson(result))
+  }))
+
+  router.get('/:bookEditionId/cover/download', asyncRoute(async (req, res) => {
+    const result = await service.coverDownload(
+      subject(req),
+      uuid(req.params.bookEditionId, 'bookEditionId')
+    )
+    res.json({ download_url: result.url, expires_at: result.expiresAt })
+  }))
+
+  router.get('/:bookEditionId/media/:assetId/download', asyncRoute(async (req, res) => {
+    const result = await service.mediaDownload(
+      subject(req),
+      uuid(req.params.bookEditionId, 'bookEditionId'),
+      uuid(req.params.assetId, 'assetId')
+    )
+    res.json({ download_url: result.url, expires_at: result.expiresAt })
+  }))
+
+  router.get('/:bookEditionId/manifest', asyncRoute(async (req, res) => {
+    const result = await service.manifest(
+      subject(req),
+      uuid(req.params.bookEditionId, 'bookEditionId')
+    )
+    res.status(result.availability === 'processing' ? 202 : 200).json(manifestJson(result))
+  }))
+
+  router.post(
+    '/:bookEditionId/scenes/at',
+    express.json({ limit: '4kb' }),
+    asyncRoute(async (req, res) => {
+      const result = await service.sceneAt(
+        subject(req),
+        uuid(req.params.bookEditionId, 'bookEditionId'),
+        parseSceneAtBody(req.body)
+      )
+      res.status(result.status === 'ready' ? 200 : 202).json({
+        status: result.status,
+        scene_key: result.sceneKey,
+        slot_index: result.slotIndex,
+        anchor_text_offset: result.anchorTextOffset,
+        image_url: result.imageUrl,
+        mime_type: result.mimeType,
+        expires_at: result.expiresAt,
+        poll_after_ms: result.pollAfterMs
+      })
+    })
+  )
+
+  router.get('/:bookEditionId/analysis-shadow/manifest', asyncRoute(async (req, res) => {
+    if (!shadowPreviewEnabled) {
+      throw Object.assign(new Error('Предпросмотр v3-разметки выключен'), {
+        code: 'PREVIEW_DISABLED',
+        status: 404
+      })
+    }
+    const result = await service.shadowManifest(
+      subject(req),
+      uuid(req.params.bookEditionId, 'bookEditionId')
+    )
+    res.json(shadowManifestJson(result))
+  }))
+
+  router.post(
+    '/:bookEditionId/progress',
+    express.json({ limit: '16kb' }),
+    asyncRoute(async (req, res) => {
+      const result = await service.advanceProgress(
+        subject(req),
+        uuid(req.params.bookEditionId, 'bookEditionId'),
+        parseReaderProgressBody(req.body)
+      )
+      res.json({
+        book_edition_id: result.bookEditionId,
+        reader_text_offset: result.readerTextOffset,
+        reading_fraction: result.readingFraction,
+        chapter_key: result.chapterKey,
+        section_index: result.readerSectionIndex,
+        section_fraction: result.readerSectionFraction,
+        warmup: result.warmup,
+        scene_warmup: result.sceneWarmup
+      })
+    })
+  )
+
+  router.use((error, _req, res, next) => {
+    if (Number.isInteger(error?.status) && error.status >= 400 && error.status < 600) {
+      return res.status(error.status).json({
+        error: error.message,
+        code: error.code || 'VALIDATION'
+      })
+    }
+    next(error)
+  })
+
+  return router
+}

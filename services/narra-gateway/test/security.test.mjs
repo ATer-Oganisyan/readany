@@ -5,7 +5,8 @@ import {
   createFixedWindowByteBudget,
   createFixedWindowLimiter,
   createTokenService,
-  isInstallationId
+  isInstallationId,
+  requireBasicAuth
 } from '../security.mjs'
 
 const INSTALLATION_ID = '123e4567-e89b-42d3-a456-426614174000'
@@ -73,4 +74,31 @@ test('fixed-window limiter rejects requests above the configured limit', () => {
   let called = false
   middleware({}, response(), () => { called = true })
   assert.equal(called, true)
+})
+
+test('browser basic auth compares both username and password and sends a challenge', () => {
+  const middleware = requireBasicAuth({
+    username: 'narra',
+    password: 'operator-password-with-32-characters',
+    realm: 'Narra books'
+  })
+  const response = () => ({
+    statusCode: 200,
+    headers: {},
+    setHeader(name, value) { this.headers[name.toLowerCase()] = value },
+    status(code) { this.statusCode = code; return this },
+    json(payload) { this.payload = payload; return this }
+  })
+  const validHeader = `Basic ${Buffer.from('narra:operator-password-with-32-characters').toString('base64')}`
+  let called = false
+  middleware({ headers: { authorization: validHeader } }, response(), () => { called = true })
+  assert.equal(called, true)
+
+  for (const authorization of ['', `Basic ${Buffer.from('narra:wrong').toString('base64')}`]) {
+    const blocked = response()
+    middleware({ headers: { authorization } }, blocked, () => assert.fail('must not continue'))
+    assert.equal(blocked.statusCode, 401)
+    assert.equal(blocked.headers['www-authenticate'], 'Basic realm="Narra books", charset="UTF-8"')
+    assert.equal(blocked.payload.code, 'AUTH')
+  }
 })

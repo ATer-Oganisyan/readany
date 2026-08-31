@@ -10,6 +10,7 @@ standalone Narra repository is not an operations runbook.
 | Runtime | Source | Deployment |
 | --- | --- | --- |
 | Gateway | `services/narra-gateway` | Docker Compose via `deploy-i167.sh` |
+| TEST Gateway and workers | `services/narra-gateway` | Docker Compose on `fun1` |
 | Product analytics | `stats/narra` | systemd via `deploy.sh` |
 
 The first reviewed gateway migration is merge commit `c8e38887efe7` (PR #3).
@@ -55,10 +56,13 @@ are removed from the monitor configuration.
 
 ## Staging policy
 
-There is currently no replacement staging runtime on `i167`. If staging is
-needed later, create an isolated gateway, database, credentials and backup
-policy. Reserve `127.0.0.1:8789` for the staging gateway and
-`127.0.0.1:9911` for staging analytics; neither port is currently assigned.
+The active TEST backend runs on `fun1` and is published as
+`https://api-test.narra.disrupt.builders`. Its Gateway, workers, PostgreSQL and
+MinIO are isolated from production. New test generation must run on `fun1`.
+
+The Gateway and workers previously used on `i167` are stopped. PostgreSQL and
+MinIO remain there only as a reserve data source; `i167` must not be treated as
+the active TEST backend.
 
 Do not restore the old Railway test database by default. Start clean and use
 the retained archive only for a reviewed investigation. Do not re-enable the

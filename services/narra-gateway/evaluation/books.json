@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "canonicalization": "gutenberg-body-v1",
+  "books": [
+    {
+      "stage": 1,
+      "id": "nara-eval-01-pride-prejudice-en-pg1342",
+      "title": "Pride and Prejudice",
+      "author": "Jane Austen",
+      "language": "en",
+      "sourceUrl": "https://www.gutenberg.org/cache/epub/1342/pg1342.txt",
+      "sourcePage": "https://www.gutenberg.org/ebooks/1342",
+      "rawSha256": "74f2665d6e6925fc2c17dec644bec9e87df478a0f1836822125e8acbb3777806",
+      "canonicalSha256": "97acc34c1adc6ccf16a7c99fb41000e7b2182cfefb74fa9d6a5c858d86e1eddc",
+      "canonicalBytes": 737914,
+      "canonicalChars": 728714,
+      "validation": ["bookcoref-gold", "litbank", "pdnc", "openpsychometrics-swcpq"]
+    },
+    {
+      "stage": 2,
+      "id": "nara-eval-02-siddhartha-en-pg2500",
+      "title": "Siddhartha",
+      "author": "Hermann Hesse",
+      "language": "en",
+      "sourceUrl": "https://www.gutenberg.org/cache/epub/2500/pg2500.txt",
+      "sourcePage": "https://www.gutenberg.org/ebooks/2500",
+      "rawSha256": "345b21d95cb61c0756d482230ae4cb8c1858a0cef1835e1ba89d18cd471343a3",
+      "canonicalSha256": "0f24e651a3217c3c7867e2102f43f563e893ef9e2b180edcf8b0d4d0600a92e1",
+      "canonicalBytes": 218758,
+      "canonicalChars": 216174,
+      "validation": ["bookcoref-gold"]
+    },
+    {
+      "stage": 4,
+      "id": "nara-eval-03-little-women-en-pg514",
+      "title": "Little Women",
+      "author": "Louisa May Alcott",
+      "language": "en",
+      "sourceUrl": "https://www.gutenberg.org/cache/epub/514/pg514.txt",
+      "sourcePage": "https://www.gutenberg.org/ebooks/514",
+      "rawSha256": "677d034b4a3d1cea92d075939878f852a7a3ec757dc9ed05ef0c40cab5c1e6de",
+      "canonicalSha256": "c6308b76332136d22a5dfc45e7e4eb8aaa5a8d416ad032fd5544f96af46a0231",
+      "canonicalBytes": 1030871,
+      "canonicalChars": 1007152,
+      "validation": ["litbank", "openpsychometrics-swcpq"]
+    },
+    {
+      "stage": 4,
+      "id": "nara-eval-04-alice-en-pg11",
+      "title": "Alice's Adventures in Wonderland",
+      "author": "Lewis Carroll",
+      "language": "en",
+      "sourceUrl": "https://www.gutenberg.org/cache/epub/11/pg11.txt",
+      "sourcePage": "https://www.gutenberg.org/ebooks/11",
+      "rawSha256": "01b38ea4c710a84bc18d0bd41271a5a1a92b94e97b2812f4dece97d4a694725e",
+      "canonicalSha256": "b44b499274ef98e0bc12c190ee08d9c63480b7c96946101a540a0cb24b3a944c",
+      "canonicalBytes": 151095,
+      "canonicalChars": 144600,
+      "validation": ["litbank", "pdnc"]
+    }
+  ]
+}

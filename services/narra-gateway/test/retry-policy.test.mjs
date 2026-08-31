@@ -1,12 +1,30 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { imageUpstreamError, shouldFallbackAfterImageError } from '../image-policy.mjs'
-import { shouldRetryKandinsky, videoRetryDelay } from '../retry-policy.mjs'
+import {
+  imageEmptyResultError,
+  imageUpstreamError,
+  simplifiedPortraitPrompt,
+  shouldFallbackAfterImageError
+} from '../image-policy.mjs'
+import {
+  shouldRetryKandinsky,
+  shouldRetryKandinskyStatus,
+  videoRetryDelay
+} from '../retry-policy.mjs'
 
-test('Kandinsky censorship is terminal and only rate limits are retried', () => {
+test('Kandinsky retries provider rate limits and transient 5xx network failures', () => {
   assert.equal(shouldRetryKandinsky({ code: 'RATE' }), true)
+  assert.equal(shouldRetryKandinsky({ code: 'NETWORK' }), true)
   assert.equal(shouldRetryKandinsky({ code: 'CENSOR' }), false)
   assert.equal(shouldRetryKandinsky({ code: 'AUTH' }), false)
+  assert.equal(shouldRetryKandinsky({ code: 'TIMEOUT' }), false)
+})
+
+test('Kandinsky status polling keeps the same task after transient transport failures', () => {
+  assert.equal(shouldRetryKandinskyStatus({ code: 'TIMEOUT' }), true)
+  assert.equal(shouldRetryKandinskyStatus({ code: 'NETWORK' }), true)
+  assert.equal(shouldRetryKandinskyStatus({ code: 'CENSOR' }), false)
+  assert.equal(shouldRetryKandinskyStatus({ code: 'AUTH' }), false)
 })
 
 test('provider fallback never bypasses an image censorship decision', () => {
@@ -40,6 +58,29 @@ test('Giga moderation and shared-request 4xx never qualify for provider fallback
   assert.equal(invalid.code, 'VALIDATION')
   assert.equal(shouldFallbackAfterImageError(moderated), false)
   assert.equal(shouldFallbackAfterImageError(invalid), false)
+})
+
+test('an empty successful image response falls back unless it carries moderation evidence', () => {
+  const empty = imageEmptyResultError({
+    provider: 'GigaChat Image', detail: JSON.stringify({ data: [] })
+  })
+  const moderated = imageEmptyResultError({
+    provider: 'GigaChat Image', detail: JSON.stringify({ error: 'blocked by safety policy' })
+  })
+  assert.equal(empty.code, 'NETWORK')
+  assert.equal(shouldFallbackAfterImageError(empty), true)
+  assert.equal(moderated.code, 'CENSOR')
+  assert.equal(shouldFallbackAfterImageError(moderated), false)
+})
+
+test('portrait retry keeps a bounded appearance but drops book metadata', () => {
+  const retry = simplifiedPortraitPrompt(
+    `${'A detailed fictional appearance. '.repeat(30)} Character from the book “Book” by Author.`
+  )
+  assert.ok(retry.length <= 900)
+  assert.match(retry, /fictional appearance/i)
+  assert.doesNotMatch(retry, /Character from the book|Author/)
+  assert.match(retry, /no typography/i)
 })
 
 test('video retries only explicit rate-limit conditions', () => {

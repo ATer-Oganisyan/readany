@@ -1,9 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import { withTimeout } from './concurrency.mjs'
 import { imageUpstreamError, shouldFallbackAfterImageError } from './image-policy.mjs'
+import { requestOptionsForModel } from './model-request-config.mjs'
+import { serviceUrl } from './service-url.mjs'
 
 const RETRYABLE = new Set([408, 409, 429, 500, 502, 503, 504])
-const PURPOSES = ['character_chat', 'structured_task', 'summary', 'scenario', 'memory']
+const PURPOSES = ['assistant', 'character_chat', 'structured_task', 'summary', 'scenario', 'memory']
+const TEXT_PROVIDERS = new Set(['giga', 'litellm'])
 const MODERATION_RESPONSE = /content.?filter|moderation|safety|unsafe|censor|blocked|bad_[a-z_]*lemmas|запрещ|цензур|безопасност/i
 const IMAGE_ERROR_CODES = new Set([
   'AUTH', 'NO_KEY', 'NETWORK', 'RATE', 'TIMEOUT', 'VALIDATION',
@@ -23,34 +26,33 @@ function httpErrorCode(status, detail) {
 // умолчанию и отвечают 400 на любое явное значение. Клиентский контракт при
 // этом температуру шлёт, поэтому убираем её на выходе из шлюза, а не у клиента.
 export function omitsTemperature(providerName, env = process.env) {
-  const raw = providerName === 'openrouter'
-    ? env.OPENROUTER_OMIT_TEMPERATURE
+  const raw = providerName === 'litellm'
+    ? env.LITELLM_OMIT_TEMPERATURE
     : env.LLM_OMIT_TEMPERATURE
   return String(raw ?? '').trim().toLowerCase() === 'true'
 }
 
+function openAiBaseUrl(raw) {
+  const value = String(raw || '').replace(/\/+$/, '')
+  if (!value) return ''
+  return value.endsWith('/v1') ? value : `${value}/v1`
+}
+
 function providerConfig(name, purpose, env) {
-  if (name === 'openrouter') {
+  if (name === 'litellm') {
     return {
       name,
-      baseUrl: String(env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1').replace(/\/+$/, ''),
-      apiKey: String(env.OPENROUTER_API_KEY || '').trim(),
+      baseUrl: openAiBaseUrl(env.LITELLM_BASE_URL),
+      apiKey: String(env.LITELLM_API_KEY || '').trim(),
       model: String(
-        env[`OPENROUTER_MODEL_${purpose.toUpperCase()}`] || env.OPENROUTER_MODEL || ''
+        env[`LITELLM_MODEL_${purpose.toUpperCase()}`] || env.LITELLM_MODEL || ''
       ).trim(),
-      headers: {
-        ...(env.OPENROUTER_HTTP_REFERER ? { 'HTTP-Referer': env.OPENROUTER_HTTP_REFERER } : {}),
-        ...(env.OPENROUTER_APP_NAME ? { 'X-Title': env.OPENROUTER_APP_NAME } : {})
-      }
+      headers: {}
     }
   }
   return {
     name: 'giga',
-    baseUrl: (() => {
-      const value = String(env.LLM_BASE_URL || '').replace(/\/+$/, '')
-      if (!value) return ''
-      return value.endsWith('/v1') ? value : `${value}/v1`
-    })(),
+    baseUrl: openAiBaseUrl(env.LLM_BASE_URL),
     apiKey: String(env.LLM_API_KEY || '').trim(),
     model: String(env[`LLM_MODEL_${purpose.toUpperCase()}`] || env.LLM_MODEL || 'gigachat-3-ultra').trim(),
     headers: {}
@@ -75,9 +77,15 @@ export function maxTokensFor(purpose, stream, env = process.env) {
 export function routeForPurpose(purpose, env = process.env) {
   const suffix = purpose.toUpperCase()
   const primary = String(env[`LLM_ROUTE_${suffix}`] || env.LLM_ROUTE_DEFAULT || 'giga').toLowerCase()
-  const fallback = String(env[`LLM_FALLBACK_${suffix}`] || env.LLM_FALLBACK_DEFAULT || '').toLowerCase()
-  if (!['giga', 'openrouter'].includes(primary)) throw new Error(`Unsupported provider route: ${primary}`)
-  if (fallback && !['giga', 'openrouter'].includes(fallback)) throw new Error(`Unsupported fallback route: ${fallback}`)
+  const fallbackKey = `LLM_FALLBACK_${suffix}`
+  // An explicitly empty purpose fallback disables fallback for this purpose.
+  // This is important for book analysis: BOOK_ANALYSIS_LLM_FALLBACK= must not
+  // silently inherit a global GigaChat fallback.
+  const fallback = String(
+    Object.hasOwn(env, fallbackKey) ? env[fallbackKey] : (env.LLM_FALLBACK_DEFAULT || '')
+  ).toLowerCase()
+  if (!TEXT_PROVIDERS.has(primary)) throw new Error(`Unsupported provider route: ${primary}`)
+  if (fallback && !TEXT_PROVIDERS.has(fallback)) throw new Error(`Unsupported fallback route: ${fallback}`)
   return [primary, fallback].filter((value, index, all) => value && all.indexOf(value) === index)
 }
 
@@ -103,7 +111,9 @@ export function llmRouteReadiness(env = process.env) {
 
 export async function requestChat({
   messages,
-  temperature,
+  tools,
+  toolChoice,
+  parallelToolCalls,
   purpose,
   stream,
   requestId,
@@ -143,24 +153,30 @@ export async function requestChat({
     }
     await onAttempt(startedAttempt)
     try {
+      const modelRequestOptions = requestOptionsForModel({
+        provider: providerName,
+        model: config.model,
+        purpose
+      })
       const response = await fetchImpl(`${config.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${config.apiKey}`,
           'Content-Type': 'application/json',
+          'X-Request-ID': id,
           ...config.headers
         },
         body: JSON.stringify({
           model: config.model,
           messages,
-          ...(omitsTemperature(providerName, env) ? {} : { temperature }),
           max_tokens: maxTokensFor(purpose, stream, env),
           stream,
-          ...(stream && providerName === 'giga'
+          ...(tools ? { tools } : {}),
+          ...(toolChoice !== undefined ? { tool_choice: toolChoice } : {}),
+          ...(parallelToolCalls !== undefined ? { parallel_tool_calls: parallelToolCalls } : {}),
+          ...modelRequestOptions,
+          ...(stream && TEXT_PROVIDERS.has(providerName)
             ? { stream_options: { include_usage: true } }
-            : {}),
-          ...(providerName === 'openrouter'
-            ? { provider: { zdr: true, data_collection: 'deny' } }
             : {})
         }),
         signal: withTimeout(signal, stream ? 180_000 : 120_000)
@@ -171,6 +187,7 @@ export async function requestChat({
         model: config.model,
         status: 'failed',
         http_status: response.status,
+        response_cost: responseCost(response),
         latency_ms: Date.now() - started,
         retry_index: retryIndex
       }
@@ -192,18 +209,13 @@ export async function requestChat({
           console.info(JSON.stringify({ type: 'provider_attempt', request_id: id, purpose, ...attempt }))
           await onAttempt(attempt)
         }
-        const responseCost = (() => {
-          if (providerName !== 'giga') return undefined
-          const value = Number(response.headers.get('x-litellm-response-cost'))
-          return Number.isFinite(value) && value >= 0 && value <= 1_000_000 ? value : undefined
-        })()
         return {
           response,
           requestId: id,
           attempts,
           provider: providerName,
           model: config.model,
-          responseCost,
+          responseCost: terminalAttempt.response_cost,
           finalizeAttempt
         }
       }
@@ -215,7 +227,7 @@ export async function requestChat({
       if (response.status === 400 && /temperature/i.test(detail)) {
         console.error(
           `[llm] ${providerName}/${config.model} не принимает temperature; ` +
-          `выставьте ${providerName === 'openrouter' ? 'OPENROUTER_OMIT_TEMPERATURE' : 'LLM_OMIT_TEMPERATURE'}=true`
+          `выставьте ${providerName === 'litellm' ? 'LITELLM_OMIT_TEMPERATURE' : 'LLM_OMIT_TEMPERATURE'}=true`
         )
       }
       const failedAttempt = {
@@ -262,20 +274,85 @@ export async function requestChat({
   throw error
 }
 
-// ================= Обложки книг (OpenRouter image API) =================
-// Модель и ключ живут только на сервере: клиент не выбирает provider/model.
+// ================= Обложки книг (server-owned image route) =================
+// Prompt policy, model, provider and credentials are owned by the gateway.
+const COVER_IMAGE_PROVIDERS = new Set(['openrouter', 'litellm'])
+const NANO_BANANA_OPENROUTER_MODEL = 'google/gemini-3.1-flash-image'
+const NANO_BANANA_LITELLM_MODEL = `openrouter/${NANO_BANANA_OPENROUTER_MODEL}`
+
+function coverImageTimeoutMs(env, provider) {
+  const raw = env.COVER_IMAGE_TIMEOUT_MS || (
+    provider === 'litellm'
+      ? env.LITELLM_IMAGE_TIMEOUT_MS
+      : env.OPENROUTER_IMAGE_TIMEOUT_MS
+  )
+  const configured = Number(raw || 15 * 60_000)
+  return Number.isSafeInteger(configured) && configured >= 30_000
+    ? Math.min(configured, 30 * 60_000)
+    : 15 * 60_000
+}
+
+function coverProviderBaseUrl(name, raw, env, { openAiCompatible = false } = {}) {
+  const value = String(raw || '').trim()
+  if (!value) return ''
+  const parsed = new URL(value)
+  const analyticsEnvironment = String(
+    env.ANALYTICS_ENV || (env.NODE_ENV === 'production' ? 'production' : 'development')
+  ).trim().toLowerCase()
+  const production = analyticsEnvironment === 'production'
+  const allowInsecureHttp = String(env.ALLOW_INSECURE_LLM_HTTP || '').trim().toLowerCase() === 'true'
+  const allowedInsecureHosts = String(env.LLM_INSECURE_HTTP_HOSTS || '')
+    .split(',')
+    .map((host) => host.trim())
+    .filter(Boolean)
+
+  if (parsed.protocol === 'http:' && production) {
+    throw new Error(`${name} plaintext HTTP is forbidden in production`)
+  }
+  const validated = serviceUrl(name, value, {
+    allowPrivateHttp: false,
+    allowInsecureHttp,
+    allowedInsecureHosts,
+    production: env.NODE_ENV === 'production'
+  })
+  return openAiCompatible ? openAiBaseUrl(validated) : validated.replace(/\/+$/, '')
+}
+
 export function coverImageConfig(env = process.env) {
-  const configuredTimeout = Number(env.OPENROUTER_IMAGE_TIMEOUT_MS || 15 * 60_000)
+  const provider = String(env.COVER_IMAGE_PROVIDER || 'openrouter').trim().toLowerCase()
+  if (!COVER_IMAGE_PROVIDERS.has(provider)) {
+    throw new Error(`Unsupported cover image provider: ${provider}`)
+  }
+  if (provider === 'litellm') {
+    return {
+      provider,
+      label: 'LiteLLM',
+      baseUrl: coverProviderBaseUrl('LITELLM_BASE_URL', env.LITELLM_BASE_URL, env, {
+        openAiCompatible: true
+      }),
+      apiKey: String(env.LITELLM_API_KEY || '').trim(),
+      model: String(env.LITELLM_IMAGE_MODEL || 'openai/gpt-image-2').trim(),
+      fallbackModel: String(
+        env.LITELLM_IMAGE_FALLBACK_MODEL || NANO_BANANA_LITELLM_MODEL
+      ).trim() || null,
+      timeoutMs: coverImageTimeoutMs(env, provider),
+      headers: {}
+    }
+  }
   return {
-    baseUrl: String(env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1').replace(/\/+$/, ''),
+    provider,
+    label: 'OpenRouter',
+    baseUrl: coverProviderBaseUrl(
+      'OPENROUTER_BASE_URL',
+      env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
+      env
+    ),
     apiKey: String(env.OPENROUTER_API_KEY || '').trim(),
     model: String(env.OPENROUTER_IMAGE_MODEL || 'openai/gpt-image-2').trim(),
     fallbackModel: String(
-      env.OPENROUTER_IMAGE_FALLBACK_MODEL || 'google/gemini-2.5-flash-image'
-    ).trim(),
-    timeoutMs: Number.isSafeInteger(configuredTimeout) && configuredTimeout >= 30_000
-      ? Math.min(configuredTimeout, 30 * 60_000)
-      : 15 * 60_000,
+      env.OPENROUTER_IMAGE_FALLBACK_MODEL || NANO_BANANA_OPENROUTER_MODEL
+    ).trim() || null,
+    timeoutMs: coverImageTimeoutMs(env, provider),
     headers: {
       ...(env.OPENROUTER_HTTP_REFERER ? { 'HTTP-Referer': env.OPENROUTER_HTTP_REFERER } : {}),
       ...(env.OPENROUTER_APP_NAME ? { 'X-Title': env.OPENROUTER_APP_NAME } : {})
@@ -311,9 +388,103 @@ export function coverRouteReadiness(env = process.env) {
   const config = coverImageConfig(env)
   return {
     ready: Boolean(config.apiKey && config.baseUrl && config.model),
+    provider: config.provider,
     model: config.model,
     fallbackModel: config.fallbackModel
   }
+}
+
+function liteLlmImageSize(aspectRatio) {
+  if (aspectRatio === '3:2' || aspectRatio === '4:3') return '1536x1024'
+  if (aspectRatio === '1:1') return '1024x1024'
+  return '1024x1536'
+}
+
+function isNanoBananaModel(model) {
+  return /(?:^|\/)google\/gemini-[a-z0-9.-]*image(?:$|[-:])/i.test(model)
+}
+
+function coverImageRequest(config, { prompt, aspectRatio, selectedModel }) {
+  const nanoBanana = isNanoBananaModel(selectedModel)
+  if (config.provider === 'litellm') {
+    return {
+      url: `${config.baseUrl}/images/generations`,
+      body: {
+        model: selectedModel,
+        prompt,
+        n: 1,
+        size: liteLlmImageSize(aspectRatio),
+        ...(nanoBanana
+          ? { aspect_ratio: aspectRatio, resolution: '1K' }
+          : { quality: 'high' }),
+        output_format: 'png'
+      }
+    }
+  }
+  return {
+    url: `${config.baseUrl}/images`,
+    body: {
+      model: selectedModel,
+      prompt,
+      aspect_ratio: aspectRatio,
+      ...(nanoBanana ? { resolution: '1K' } : { quality: 'high' }),
+      output_format: 'png',
+      n: 1
+    }
+  }
+}
+
+function imageMimeTypeFromBase64(value) {
+  const bytes = Buffer.from(value.slice(0, 24), 'base64')
+  if (
+    bytes.byteLength >= 8 &&
+    bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+  ) return 'image/png'
+  if (
+    bytes.byteLength >= 3 &&
+    bytes[0] === 0xff &&
+    bytes[1] === 0xd8 &&
+    bytes[2] === 0xff
+  ) return 'image/jpeg'
+  if (
+    bytes.byteLength >= 12 &&
+    bytes.toString('ascii', 0, 4) === 'RIFF' &&
+    bytes.toString('ascii', 8, 12) === 'WEBP'
+  ) return 'image/webp'
+  return ''
+}
+
+function imagePayloadResult(payload, provider) {
+  const image = payload?.data?.[0]
+  const raw = typeof image?.b64_json === 'string' ? image.b64_json.trim() : ''
+  if (!raw) {
+    const detail = typeof payload?.error?.message === 'string'
+      ? payload.error.message.slice(0, 500)
+      : ''
+    const error = imageUpstreamError({ provider, phase: 'result', detail })
+    if (error.code === 'UNKNOWN' && detail) error.message = `${provider}: ${detail}`
+    throw error
+  }
+  const dataUrl = /^data:(image\/(?:jpeg|png|webp));base64,(.+)$/s.exec(raw)
+  const imageBase64 = dataUrl ? dataUrl[2] : raw
+  return {
+    image: imageBase64,
+    mimeType: imageMimeTypeFromBase64(imageBase64) || image.media_type || dataUrl?.[1] || 'image/png',
+    usage: payload?.usage || image?.usage || null
+  }
+}
+
+function responseCost(response) {
+  const raw = response?.headers?.get?.('x-litellm-response-cost')
+  if (raw == null || !String(raw).trim()) return undefined
+  const value = Number(raw)
+  return Number.isFinite(value) && value >= 0 && value <= 1_000_000 ? value : undefined
+}
+
+function imageAttemptError(error, { requestId, attempts }) {
+  error.requestId = requestId
+  error.attempts = attempts
+  return error
 }
 
 export async function requestCoverImage({
@@ -321,79 +492,117 @@ export async function requestCoverImage({
   aspectRatio = '2:3',
   model,
   requestId,
+  retryIndex = 0,
   env = process.env,
   fetchImpl = fetch,
   signal
 }) {
   const config = coverImageConfig(env)
+  const id = requestId || randomUUID()
   const selectedModel = String(model || config.model).trim()
+  const attemptId = randomUUID()
+  const attempts = []
+  const started = Date.now()
+  const failedAttempt = (error, fields = {}) => {
+    attempts.push({
+      attempt_id: attemptId,
+      event_id: randomUUID(),
+      provider: config.provider,
+      model: selectedModel,
+      status: 'failed',
+      error_code: error?.code || 'UNKNOWN',
+      latency_ms: Date.now() - started,
+      retry_index: retryIndex,
+      ...fields
+    })
+    throw imageAttemptError(error, { requestId: id, attempts })
+  }
   if (!config.apiKey || !config.baseUrl || !selectedModel) {
-    const error = new Error('Обложки: OpenRouter image route не настроен')
+    const error = new Error(`Обложки: ${config.label} image route не настроен`)
     error.status = 503
     error.code = 'NO_KEY'
-    throw error
+    attempts.push({
+      attempt_id: attemptId,
+      event_id: randomUUID(),
+      provider: config.provider,
+      model: selectedModel,
+      status: 'not_configured',
+      error_code: error.code,
+      latency_ms: Date.now() - started,
+      retry_index: retryIndex
+    })
+    throw imageAttemptError(error, { requestId: id, attempts })
   }
+  const request = coverImageRequest(config, { prompt, aspectRatio, selectedModel })
   let response
   try {
-    response = await fetchImpl(`${config.baseUrl}/images`, {
+    response = await fetchImpl(request.url, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${config.apiKey}`,
         'Content-Type': 'application/json',
-        ...(requestId ? { 'X-Request-ID': requestId } : {}),
+        'X-Request-ID': id,
         ...config.headers
       },
-      body: JSON.stringify({
-        model: selectedModel,
-        prompt,
-        aspect_ratio: aspectRatio,
-        quality: 'high',
-        output_format: 'jpeg',
-        output_compression: 90,
-        n: 1
-      }),
+      body: JSON.stringify(request.body),
       signal: withTimeout(signal, config.timeoutMs)
     })
   } catch (error) {
-    throw normalizeImageTransportError(error)
+    failedAttempt(normalizeImageTransportError(error, config.label))
   }
   if (!response.ok) {
     const detail = (await response.text().catch(() => '')).slice(0, 4_000)
-    throw imageUpstreamError({
-      provider: 'OpenRouter',
+    failedAttempt(imageUpstreamError({
+      provider: config.label,
       phase: 'create',
       status: response.status,
       detail
-    })
+    }), { http_status: response.status, response_cost: responseCost(response) })
   }
   let payload
   try {
     payload = await response.json()
   } catch (error) {
-    throw Object.assign(new Error('OpenRouter: некорректный JSON ответа'), {
+    failedAttempt(Object.assign(new Error(`${config.label}: некорректный JSON ответа`), {
       code: 'PARSE',
       status: 502,
       cause: error
-    })
+    }), { http_status: response.status })
   }
-  const image = payload?.data?.[0]
-  if (!image?.b64_json) {
-    const error = new Error(payload?.error?.message || 'OpenRouter: пустой результат')
-    error.code = 'UNKNOWN'
-    throw error
+  let image
+  try {
+    image = imagePayloadResult(payload, config.label)
+  } catch (error) {
+    failedAttempt(error, { http_status: response.status })
   }
+  attempts.push({
+    attempt_id: attemptId,
+    event_id: randomUUID(),
+    provider: config.provider,
+    model: selectedModel,
+    status: 'completed',
+    http_status: response.status,
+    latency_ms: Date.now() - started,
+    retry_index: retryIndex
+  })
   return {
-    image: image.b64_json,
-    mimeType: image.media_type || 'image/jpeg',
-    model: selectedModel
+    ...image,
+    model: selectedModel,
+    provider: config.provider,
+    requestId: id,
+    attempts,
+    responseCost: responseCost(response)
   }
 }
 
 export async function requestCoverImageWithFallback(options) {
   const config = coverImageConfig(options.env)
+  const requestId = options.requestId || randomUUID()
+  let previousAttempts = []
   try {
-    return await requestCoverImage(options)
+    return await requestCoverImage({ ...options, requestId, retryIndex: 0 })
   } catch (error) {
+    previousAttempts = Array.isArray(error?.attempts) ? error.attempts : []
     if (
       !shouldFallbackAfterImageError(error) ||
       !config.fallbackModel ||
@@ -402,10 +611,22 @@ export async function requestCoverImageWithFallback(options) {
       throw error
     }
     console.error(
-      `[image] ${config.model} не удалось, фоллбэк на Nano Banana (${config.fallbackModel}):`,
+      `[image] ${config.provider}/${config.model} не удалось, фоллбэк на ${config.fallbackModel}:`,
       error.message
     )
   }
 
-  return requestCoverImage({ ...options, model: config.fallbackModel })
+  try {
+    const result = await requestCoverImage({
+      ...options,
+      requestId,
+      retryIndex: 1,
+      model: config.fallbackModel
+    })
+    return { ...result, attempts: [...previousAttempts, ...result.attempts] }
+  } catch (error) {
+    error.requestId = requestId
+    error.attempts = [...previousAttempts, ...(Array.isArray(error?.attempts) ? error.attempts : [])]
+    throw error
+  }
 }

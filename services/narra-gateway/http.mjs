@@ -1,6 +1,30 @@
 import https from 'https'
 import { URL } from 'url'
 
+export function normalizeHttpTransportError(error) {
+  if (['TIMEOUT', 'NETWORK', 'CANCELLED'].includes(error?.code)) return error
+  const fingerprint = `${error?.name || ''} ${error?.code || ''} ${error?.message || ''}`.toLowerCase()
+  if (/\b(?:e?timedout|timeout)|timed out|und_err_[a-z_]*timeout/.test(fingerprint)) {
+    return Object.assign(new Error('Upstream request timed out'), {
+      code: 'TIMEOUT',
+      status: 504,
+      cause: error
+    })
+  }
+  if (error?.name === 'AbortError' || /\b(?:aborted|cancelled|canceled)\b/.test(fingerprint)) {
+    return Object.assign(new Error('Upstream request was cancelled'), {
+      code: 'CANCELLED',
+      status: 499,
+      cause: error
+    })
+  }
+  return Object.assign(new Error('Upstream network request failed'), {
+    code: 'NETWORK',
+    status: 502,
+    cause: error
+  })
+}
+
 export function createHttpsAgent({ insecure = false, ca } = {}) {
   return new https.Agent({
     rejectUnauthorized: !insecure,
@@ -110,16 +134,16 @@ export function httpsRequest(urlStr, opts = {}) {
             body,
             headers: res.headers
           }))
-          .catch(reject)
+          .catch((error) => reject(normalizeHttpTransportError(error)))
       }
     )
 
-    req.setTimeout(timeoutMs, () => req.destroy(new Error('TIMEOUT')))
+    req.setTimeout(timeoutMs, () => req.destroy(normalizeHttpTransportError(new Error('TIMEOUT'))))
     if (signal) {
       if (signal.aborted) req.destroy(signal.reason || new Error('ABORTED'))
       else signal.addEventListener('abort', () => req.destroy(signal.reason || new Error('ABORTED')), { once: true })
     }
-    req.on('error', reject)
+    req.on('error', (error) => reject(normalizeHttpTransportError(error)))
     if (body) req.write(body)
     req.end()
   })

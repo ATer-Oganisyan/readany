@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  coverImageConfig,
   coverRouteReadiness,
   llmRouteReadiness,
   maxTokensFor,
@@ -12,16 +13,135 @@ import {
   routeForPurpose
 } from '../providers.mjs'
 
+const PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+
 test('provider route is selected only from server environment', () => {
   const route = routeForPurpose('summary', {
-    LLM_ROUTE_SUMMARY: 'openrouter',
+    LLM_ROUTE_SUMMARY: 'litellm',
     LLM_FALLBACK_SUMMARY: 'giga'
   })
-  assert.deepEqual(route, ['openrouter', 'giga'])
+  assert.deepEqual(route, ['litellm', 'giga'])
+})
+
+test('provider request omits temperature when the caller leaves it unset', async () => {
+  let body
+  let headers
+  const result = await requestChat({
+    messages: [{ role: 'user', content: 'hello' }],
+    purpose: 'structured_task',
+    stream: false,
+    fetchImpl: async (_url, init) => {
+      body = JSON.parse(init.body)
+      headers = new Headers(init.headers)
+      return new Response('{"choices":[{"message":{"content":"{}"}}]}', { status: 200 })
+    },
+    env: {
+      LLM_ROUTE_STRUCTURED_TASK: 'giga',
+      LLM_BASE_URL: 'https://giga.test',
+      LLM_API_KEY: 'giga-key',
+      LLM_MODEL_STRUCTURED_TASK: 'gpt-5.6-luna'
+    }
+  })
+  assert.equal(Object.hasOwn(body, 'temperature'), false)
+  assert.match(headers.get('x-request-id'), /^[0-9a-f-]{36}$/)
+  assert.equal(result.responseCost, undefined)
+  await result.finalizeAttempt()
+})
+
+test('assistant route forwards validated OpenAI tools through the server-owned model route', async () => {
+  let body
+  const tools = [{
+    type: 'function',
+    function: {
+      name: 'list_books',
+      description: 'List local books',
+      parameters: { type: 'object', properties: {} }
+    }
+  }]
+  const result = await requestChat({
+    messages: [{ role: 'user', content: 'Что я читаю?' }],
+    tools,
+    toolChoice: 'auto',
+    parallelToolCalls: false,
+    purpose: 'assistant',
+    stream: true,
+    fetchImpl: async (_url, init) => {
+      body = JSON.parse(init.body)
+      return new Response('data: [DONE]\n\n', { status: 200 })
+    },
+    env: {
+      LLM_ROUTE_ASSISTANT: 'litellm',
+      LITELLM_BASE_URL: 'https://litellm.test/v1',
+      LITELLM_API_KEY: 'proxy-key',
+      LITELLM_MODEL_ASSISTANT: 'openrouter/openai/gpt-5.6-luna'
+    }
+  })
+
+  assert.deepEqual(body.tools, tools)
+  assert.equal(body.tool_choice, 'auto')
+  assert.equal(body.parallel_tool_calls, false)
+  assert.equal(body.model, 'openrouter/openai/gpt-5.6-luna')
+  await result.finalizeAttempt()
+})
+
+test('character chat uses model-aware server sampling and ignores caller temperature', async () => {
+  for (const provider of ['giga', 'litellm']) {
+    let body
+    const isLiteLlm = provider === 'litellm'
+    const result = await requestChat({
+      messages: [{ role: 'user', content: 'hello' }],
+      temperature: 0.1,
+      purpose: 'character_chat',
+      stream: false,
+      fetchImpl: async (_url, init) => {
+        body = JSON.parse(init.body)
+        return new Response('{"choices":[{"message":{"content":"hello"}}]}', { status: 200 })
+      },
+      env: isLiteLlm
+        ? {
+            LLM_ROUTE_CHARACTER_CHAT: 'litellm',
+            LITELLM_BASE_URL: 'https://litellm.test/v1',
+            LITELLM_API_KEY: 'proxy-key',
+            LITELLM_MODEL_CHARACTER_CHAT: 'openrouter/openai/gpt-5.6-luna'
+          }
+        : {
+            LLM_ROUTE_CHARACTER_CHAT: 'giga',
+            LLM_BASE_URL: 'https://giga.test',
+            LLM_API_KEY: 'giga-key',
+            LLM_MODEL_CHARACTER_CHAT: 'gpt-5.6-luna'
+          }
+    })
+    assert.equal(body.temperature, 0.85)
+    assert.equal(body.reasoning_effort, 'none')
+    await result.finalizeAttempt()
+  }
+})
+
+test('unknown models receive no optional sampling parameters', async () => {
+  let body
+  const result = await requestChat({
+    messages: [{ role: 'user', content: 'hello' }],
+    temperature: 0.1,
+    purpose: 'character_chat',
+    stream: false,
+    fetchImpl: async (_url, init) => {
+      body = JSON.parse(init.body)
+      return new Response('{"choices":[{"message":{"content":"hello"}}]}', { status: 200 })
+    },
+    env: {
+      LLM_ROUTE_CHARACTER_CHAT: 'giga',
+      LLM_BASE_URL: 'https://giga.test',
+      LLM_API_KEY: 'giga-key',
+      LLM_MODEL_CHARACTER_CHAT: 'future-model'
+    }
+  })
+  assert.equal(Object.hasOwn(body, 'temperature'), false)
+  assert.equal(Object.hasOwn(body, 'reasoning_effort'), false)
+  await result.finalizeAttempt()
 })
 
 test('readiness requires a complete configured route for every purpose', () => {
-  const broken = llmRouteReadiness({ OPENROUTER_API_KEY: 'key', LLM_ROUTE_DEFAULT: 'openrouter' })
+  const broken = llmRouteReadiness({ LITELLM_API_KEY: 'key', LLM_ROUTE_DEFAULT: 'litellm' })
   assert.equal(broken.ready, false)
   assert.equal(broken.purposes.summary.ready, false)
   const ready = llmRouteReadiness({
@@ -48,7 +168,7 @@ test('llm max_tokens has safe defaults and env overrides with bounds', async () 
   assert.equal(maxTokensFor('summary', false, { LLM_MAX_TOKENS_COMPLETE: '900000' }), 32000)
 
   const bodies = []
-  const fetchImpl = async (url, init) => {
+  const fetchImpl = async (_url, init) => {
     bodies.push(JSON.parse(init.body))
     return new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), {
       status: 200,
@@ -72,16 +192,16 @@ test('llm max_tokens has safe defaults and env overrides with bounds', async () 
   assert.equal(bodies[0].max_tokens, 8000)
 })
 
-test('temperature is dropped only for providers that reject it', async () => {
+test('legacy provider omit flags stay scoped while request sampling remains server-owned', async () => {
   assert.equal(omitsTemperature('giga', {}), false)
   assert.equal(omitsTemperature('giga', { LLM_OMIT_TEMPERATURE: 'true' }), true)
   assert.equal(omitsTemperature('giga', { LLM_OMIT_TEMPERATURE: 'TRUE' }), true)
   assert.equal(omitsTemperature('giga', { LLM_OMIT_TEMPERATURE: 'yes' }), false)
-  assert.equal(omitsTemperature('openrouter', { LLM_OMIT_TEMPERATURE: 'true' }), false)
-  assert.equal(omitsTemperature('openrouter', { OPENROUTER_OMIT_TEMPERATURE: 'true' }), true)
+  assert.equal(omitsTemperature('litellm', { LLM_OMIT_TEMPERATURE: 'true' }), false)
+  assert.equal(omitsTemperature('litellm', { LITELLM_OMIT_TEMPERATURE: 'true' }), true)
 
   const bodies = []
-  const fetchImpl = async (url, init) => {
+  const fetchImpl = async (_url, init) => {
     bodies.push(JSON.parse(init.body))
     return new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), {
       status: 200,
@@ -106,7 +226,7 @@ test('temperature is dropped only for providers that reject it', async () => {
     await result.finalizeAttempt()
   }
   await call(baseEnv)
-  assert.equal(bodies[0].temperature, 0.25)
+  assert.ok(!('temperature' in bodies[0]), 'an unknown model must not inherit caller sampling')
   await call({ ...baseEnv, LLM_OMIT_TEMPERATURE: 'true' })
   assert.ok(!('temperature' in bodies[1]), 'temperature must be absent, not null')
 })
@@ -131,11 +251,11 @@ test('retryable primary failure falls back and keeps one request identity', asyn
     fetchImpl,
     onAttempt: async (attempt) => events.push(attempt),
     env: {
-      LLM_ROUTE_SUMMARY: 'openrouter',
+      LLM_ROUTE_SUMMARY: 'litellm',
       LLM_FALLBACK_SUMMARY: 'giga',
-      OPENROUTER_BASE_URL: 'https://openrouter.test/v1',
-      OPENROUTER_API_KEY: 'or-key',
-      OPENROUTER_MODEL: 'or-model',
+      LITELLM_BASE_URL: 'https://litellm.test/v1',
+      LITELLM_API_KEY: 'proxy-key',
+      LITELLM_MODEL: 'openrouter/model',
       LLM_BASE_URL: 'https://giga.test',
       LLM_API_KEY: 'giga-key',
       LLM_MODEL: 'giga-model'
@@ -147,8 +267,8 @@ test('retryable primary failure falls back and keeps one request identity', asyn
   await result.finalizeAttempt()
   assert.equal(result.attempts.length, 2)
   assert.deepEqual(events.map((attempt) => `${attempt.provider}:${attempt.status}`), [
-    'openrouter:started',
-    'openrouter:failed',
+    'litellm:started',
+    'litellm:failed',
     'giga:started',
     'giga:completed'
   ])
@@ -156,10 +276,10 @@ test('retryable primary failure falls back and keeps one request identity', asyn
   assert.equal(events[0].attempt_id, events[1].attempt_id)
   assert.equal(events[2].attempt_id, events[3].attempt_id)
   assert.deepEqual(calls.map((call) => call.url), [
-    'https://openrouter.test/v1/chat/completions',
+    'https://litellm.test/v1/chat/completions',
     'https://giga.test/v1/chat/completions'
   ])
-  assert.deepEqual(calls[0].body.provider, { zdr: true, data_collection: 'deny' })
+  assert.equal(calls[0].body.provider, undefined)
   assert.equal(calls[1].body.provider, undefined)
 })
 
@@ -174,8 +294,9 @@ test('provider-local auth failure falls back to the configured secondary', async
         : new Response('{"choices":[{"message":{"content":"ok"}}]}', { status: 200 })
     },
     env: {
-      LLM_ROUTE_SUMMARY: 'openrouter', LLM_FALLBACK_SUMMARY: 'giga',
-      OPENROUTER_API_KEY: 'expired', OPENROUTER_MODEL: 'or-model',
+      LLM_ROUTE_SUMMARY: 'litellm', LLM_FALLBACK_SUMMARY: 'giga',
+      LITELLM_BASE_URL: 'https://litellm.test/v1',
+      LITELLM_API_KEY: 'expired', LITELLM_MODEL: 'openrouter/model',
       LLM_BASE_URL: 'https://giga.test', LLM_API_KEY: 'giga-key', LLM_MODEL: 'giga-model'
     }
   })
@@ -231,12 +352,13 @@ for (const [name, response, expected] of [
       onAttempt: async (attempt) => events.push(attempt),
       env: {
         LLM_ROUTE_SUMMARY: 'giga',
-        LLM_FALLBACK_SUMMARY: 'openrouter',
+        LLM_FALLBACK_SUMMARY: 'litellm',
         LLM_BASE_URL: 'https://giga.test',
         LLM_API_KEY: 'giga-key',
         LLM_MODEL: 'giga-model',
-        OPENROUTER_API_KEY: 'or-key',
-        OPENROUTER_MODEL: 'or-model'
+        LITELLM_BASE_URL: 'https://litellm.test/v1',
+        LITELLM_API_KEY: 'proxy-key',
+        LITELLM_MODEL: 'openrouter/model'
       }
     }), (error) => error?.code === expected)
     assert.equal(calls, 1)
@@ -249,10 +371,161 @@ test('cover route readiness and model come only from server environment', () => 
   const configured = coverRouteReadiness({ OPENROUTER_API_KEY: 'or-key' })
   assert.equal(configured.ready, true)
   assert.equal(configured.model, 'openai/gpt-image-2')
-  assert.equal(configured.fallbackModel, 'google/gemini-2.5-flash-image')
+  assert.equal(configured.fallbackModel, 'google/gemini-3.1-flash-image')
   assert.equal(
     coverRouteReadiness({ OPENROUTER_API_KEY: 'or-key', OPENROUTER_IMAGE_MODEL: 'other/image' }).model,
     'other/image'
+  )
+})
+
+test('cover image route can explicitly use LiteLLM without direct OpenRouter credentials', () => {
+  const env = {
+    COVER_IMAGE_PROVIDER: 'litellm',
+    LITELLM_BASE_URL: 'https://litellm.test',
+    LITELLM_API_KEY: 'proxy-key',
+    LITELLM_IMAGE_MODEL: 'gpt-image-2'
+  }
+
+  assert.deepEqual(coverRouteReadiness(env), {
+    ready: true,
+    provider: 'litellm',
+    model: 'gpt-image-2',
+    fallbackModel: 'openrouter/google/gemini-3.1-flash-image'
+  })
+  assert.equal(coverImageConfig(env).baseUrl, 'https://litellm.test/v1')
+})
+
+test('LiteLLM cover request uses the standard images generations contract', async () => {
+  let captured
+  const result = await requestCoverImage({
+    prompt: 'front cover artwork',
+    aspectRatio: '2:3',
+    requestId: 'cover-request-1',
+    fetchImpl: async (url, init) => {
+      captured = {
+        url,
+        headers: new Headers(init.headers),
+        body: JSON.parse(init.body)
+      }
+      return new Response(JSON.stringify({
+        created: 123,
+        data: [{ b64_json: PNG_BASE64, media_type: 'image/jpeg' }]
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    },
+    env: {
+      COVER_IMAGE_PROVIDER: 'litellm',
+      LITELLM_BASE_URL: 'https://litellm.test',
+      LITELLM_API_KEY: 'proxy-key',
+      LITELLM_IMAGE_MODEL: 'gpt-image-2'
+    }
+  })
+
+  assert.equal(result.image, PNG_BASE64)
+  assert.equal(result.mimeType, 'image/png')
+  assert.equal(result.model, 'gpt-image-2')
+  assert.equal(result.provider, 'litellm')
+  assert.equal(result.requestId, 'cover-request-1')
+  assert.equal(result.responseCost, undefined)
+  assert.deepEqual(result.attempts.map(({ status, retry_index: retryIndex }) => ({ status, retryIndex })), [
+    { status: 'completed', retryIndex: 0 }
+  ])
+  assert.equal(captured.url, 'https://litellm.test/v1/images/generations')
+  assert.equal(captured.headers.get('authorization'), 'Bearer proxy-key')
+  assert.equal(captured.headers.get('x-request-id'), 'cover-request-1')
+  assert.deepEqual(captured.body, {
+    model: 'gpt-image-2',
+    prompt: 'front cover artwork',
+    n: 1,
+    size: '1024x1536',
+    quality: 'high',
+    output_format: 'png'
+  })
+})
+
+test('LiteLLM cover route falls back from GPT Image 2 to Nano Banana 2', async () => {
+  const models = []
+  const bodies = []
+  const result = await requestCoverImageWithFallback({
+    prompt: 'front cover artwork',
+    fetchImpl: async (_url, init) => {
+      const body = JSON.parse(init.body)
+      models.push(body.model)
+      bodies.push(body)
+      if (models.length === 1) return new Response('upstream unavailable', { status: 502 })
+      return new Response(JSON.stringify({ data: [{ b64_json: 'bmFuby1iYW5hbmE=' }] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    },
+    env: {
+      COVER_IMAGE_PROVIDER: 'litellm',
+      LITELLM_BASE_URL: 'https://litellm.test',
+      LITELLM_API_KEY: 'proxy-key',
+      LITELLM_IMAGE_MODEL: 'gpt-image-2'
+    }
+  })
+
+  assert.deepEqual(models, [
+    'gpt-image-2',
+    'openrouter/google/gemini-3.1-flash-image'
+  ])
+  assert.equal(result.model, 'openrouter/google/gemini-3.1-flash-image')
+  assert.deepEqual(result.attempts.map(({ status, retry_index: retryIndex }) => ({ status, retryIndex })), [
+    { status: 'failed', retryIndex: 0 },
+    { status: 'completed', retryIndex: 1 }
+  ])
+  assert.equal(bodies[0].quality, 'high')
+  assert.equal(Object.hasOwn(bodies[0], 'resolution'), false)
+  assert.equal(bodies[1].aspect_ratio, '2:3')
+  assert.equal(bodies[1].resolution, '1K')
+  assert.equal(Object.hasOwn(bodies[1], 'quality'), false)
+})
+
+test('LiteLLM cover route requires an explicit staging plaintext allowlist', () => {
+  const base = {
+    COVER_IMAGE_PROVIDER: 'litellm',
+    LITELLM_BASE_URL: 'http://192.0.2.10:4000',
+    LITELLM_API_KEY: 'proxy-key',
+    LITELLM_IMAGE_MODEL: 'gpt-image-2',
+    NODE_ENV: 'production',
+    ANALYTICS_ENV: 'staging'
+  }
+
+  assert.throws(() => coverImageConfig(base), /LITELLM_BASE_URL must use HTTPS/)
+  assert.equal(coverImageConfig({
+    ...base,
+    ALLOW_INSECURE_LLM_HTTP: 'true',
+    LLM_INSECURE_HTTP_HOSTS: '192.0.2.10'
+  }).baseUrl, 'http://192.0.2.10:4000/v1')
+  assert.throws(() => coverImageConfig({
+    ...base,
+    ANALYTICS_ENV: 'production',
+    ALLOW_INSECURE_LLM_HTTP: 'true',
+    LLM_INSECURE_HTTP_HOSTS: '192.0.2.10'
+  }), /plaintext HTTP is forbidden in production/)
+})
+
+test('LiteLLM cover route normalizes standard JSON image errors', async () => {
+  await assert.rejects(
+    requestCoverImage({
+      prompt: 'cover',
+      fetchImpl: async () => new Response(JSON.stringify({
+        error: { message: 'invalid image size', type: 'invalid_request_error' }
+      }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      }),
+      env: {
+        COVER_IMAGE_PROVIDER: 'litellm',
+        LITELLM_BASE_URL: 'https://litellm.test/v1',
+        LITELLM_API_KEY: 'proxy-key',
+        LITELLM_IMAGE_MODEL: 'gpt-image-2'
+      }
+    }),
+    (error) => error?.code === 'VALIDATION' && /LiteLLM/.test(error.message)
   )
 })
 
@@ -272,8 +545,8 @@ test('temporary primary image failure falls back to Nano Banana', async () => {
     env: { OPENROUTER_API_KEY: 'or-key' }
   })
 
-  assert.deepEqual(models, ['openai/gpt-image-2', 'google/gemini-2.5-flash-image'])
-  assert.equal(result.model, 'google/gemini-2.5-flash-image')
+  assert.deepEqual(models, ['openai/gpt-image-2', 'google/gemini-3.1-flash-image'])
+  assert.equal(result.model, 'google/gemini-3.1-flash-image')
 })
 
 test('Nano Banana fallback can be overridden by the server environment', async () => {
@@ -331,8 +604,8 @@ test('raw AbortSignal timeout is normalized and falls back to Nano Banana', asyn
     },
     env: { OPENROUTER_API_KEY: 'or-key' }
   })
-  assert.deepEqual(models, ['openai/gpt-image-2', 'google/gemini-2.5-flash-image'])
-  assert.equal(result.model, 'google/gemini-2.5-flash-image')
+  assert.deepEqual(models, ['openai/gpt-image-2', 'google/gemini-3.1-flash-image'])
+  assert.equal(result.model, 'google/gemini-3.1-flash-image')
 })
 
 test('native transport codes are normalized to the closed image error vocabulary', () => {
@@ -356,7 +629,7 @@ test('cover request sends the server-side image contract to OpenRouter', async (
     fetchImpl: async (url, init) => {
       calls.push({ url, init, body: JSON.parse(init.body) })
       return new Response(
-        JSON.stringify({ data: [{ b64_json: 'aGVsbG8=', media_type: 'image/jpeg' }] }),
+        JSON.stringify({ data: [{ b64_json: PNG_BASE64, media_type: 'image/jpeg' }] }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
       )
     },
@@ -366,7 +639,9 @@ test('cover request sends the server-side image contract to OpenRouter', async (
       OPENROUTER_APP_NAME: 'Narra'
     }
   })
-  assert.deepEqual(result, { image: 'aGVsbG8=', mimeType: 'image/jpeg', model: 'openai/gpt-image-2' })
+  assert.equal(result.image, PNG_BASE64)
+  assert.equal(result.mimeType, 'image/png')
+  assert.equal(result.model, 'openai/gpt-image-2')
   assert.equal(calls.length, 1)
   assert.equal(calls[0].url, 'https://openrouter.test/v1/images')
   assert.equal(new Headers(calls[0].init.headers).get('authorization'), 'Bearer or-key')
@@ -376,10 +651,43 @@ test('cover request sends the server-side image contract to OpenRouter', async (
     prompt: 'front cover artwork',
     aspect_ratio: '2:3',
     quality: 'high',
-    output_format: 'jpeg',
-    output_compression: 90,
+    output_format: 'png',
     n: 1
   })
+})
+
+test('image response exposes exact cost and usage without treating a missing header as zero', async () => {
+  const env = {
+    COVER_IMAGE_PROVIDER: 'litellm',
+    LITELLM_BASE_URL: 'https://litellm.test',
+    LITELLM_API_KEY: 'proxy-key',
+    LITELLM_IMAGE_MODEL: 'gpt-image-2'
+  }
+  const priced = await requestCoverImage({
+    prompt: 'cover',
+    env,
+    fetchImpl: async () => new Response(JSON.stringify({
+      usage: { input_tokens: 10, output_tokens: 20, total_tokens: 30, cost: 0.25 },
+      data: [{ b64_json: PNG_BASE64 }]
+    }), {
+      status: 200,
+      headers: { 'x-litellm-response-cost': '0.25' }
+    })
+  })
+  assert.deepEqual(priced.usage, {
+    input_tokens: 10, output_tokens: 20, total_tokens: 30, cost: 0.25
+  })
+  assert.equal(priced.responseCost, 0.25)
+
+  const unpriced = await requestCoverImage({
+    prompt: 'cover',
+    env,
+    fetchImpl: async () => new Response(JSON.stringify({ data: [{ b64_json: PNG_BASE64 }] }), {
+      status: 200
+    })
+  })
+  assert.equal(unpriced.responseCost, undefined)
+  assert.equal(unpriced.usage, null)
 })
 
 test('OpenRouter image request accepts a server-selected portrait aspect ratio', async () => {

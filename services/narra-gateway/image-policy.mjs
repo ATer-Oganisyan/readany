@@ -6,7 +6,22 @@ function providerError(code, provider, phase, status) {
     `${provider}: ${code === 'CENSOR' ? 'запрос или результат отклонён политикой безопасности' : `ошибка ${phase}${status ? ` (${status})` : ''}`}`
   )
   error.code = code
+  error.phase = phase
+  error.status = status || undefined
   return error
+}
+
+export function simplifiedPortraitPrompt(value) {
+  const prompt = String(value || '')
+  const bookMetadata = prompt.indexOf('Character from the book')
+  const appearance = (bookMetadata >= 0 ? prompt.slice(0, bookMetadata) : prompt)
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 650)
+  return [
+    appearance || 'Fictional adult literary character',
+    'Single fictional adult, waist-up painted portrait, neutral background, no typography, no watermark.'
+  ].join('. ').slice(0, 900)
 }
 
 export function imageUpstreamError({ provider, phase, status = 0, detail = '' }) {
@@ -20,6 +35,15 @@ export function imageUpstreamError({ provider, phase, status = 0, detail = '' })
   if (status >= 400 && status < 500) return providerError('VALIDATION', provider, phase, status)
   if (status >= 500) return providerError('NETWORK', provider, phase, status)
   return providerError('UNKNOWN', provider, phase, status)
+}
+
+export function imageEmptyResultError({ provider, detail = '' }) {
+  return imageUpstreamError({
+    provider,
+    phase: 'result',
+    status: 502,
+    detail
+  })
 }
 
 export function shouldFallbackAfterImageError(error) {

@@ -1,0 +1,144 @@
+{
+  "schemaVersion": 1,
+  "id": "pride-prejudice-swcpq-v1",
+  "source": {
+    "name": "Statistical Which Character Personality Quiz aggregated dataset, January 2025",
+    "url": "https://openpsychometrics.org/tests/characters/data/",
+    "archiveSha256": "251db8592523f187971a3339e517198eb760ed91588e2f561bee104c49b7c604",
+    "license": "CC BY-NC-ND 4.0",
+    "usage": "Local non-commercial read-only evaluation. Do not redistribute this derived fixture without legal review.",
+    "selection": "Four non-physical diagnostic poles per character, each n >= 30, abs(mean - 50) >= 15, and 95% CI wholly on the selected side of 50."
+  },
+  "gates": {
+    "precision": 0.8,
+    "recall": 0.8,
+    "f1": 0.8,
+    "traitCoverage": 0.8,
+    "descriptionCoverage": 0.8,
+    "uiCoreReady": 0.8,
+    "voiceGenderConsistency": 0.8,
+    "contradictionRate": 0.02
+  },
+  "characters": [
+    {
+      "id": "PP/1",
+      "name": "Mr. Darcy",
+      "aliases": ["Darcy", "Mr Darcy", "Mr. Fitzwilliam Darcy", "Fitzwilliam Darcy"],
+      "traits": [
+        { "id": "BAP34", "label": "reserved", "mean": 94.5, "n": 380, "accepted": ["reserved"] },
+        { "id": "BAP28", "label": "loyal", "mean": 10.9, "n": 370, "accepted": ["loyal", "faithful"] },
+        { "id": "BAP75", "label": "self-disciplined", "mean": 87.7, "n": 370, "accepted": ["self-disciplined", "disciplined"] },
+        { "id": "BAP1", "label": "serious", "mean": 86.9, "n": 371, "accepted": ["serious"] }
+      ],
+      "contradictory": ["disloyal", "undisciplined", "frivolous"]
+    },
+    {
+      "id": "PP/2",
+      "name": "Elizabeth Bennet",
+      "aliases": ["Elizabeth", "Lizzy", "Eliza", "Miss Elizabeth", "Miss Elizabeth Bennet"],
+      "traits": [
+        { "id": "BAP357", "label": "opinionated", "mean": 91.6, "n": 61, "accepted": ["opinionated"] },
+        { "id": "BAP163", "label": "independent", "mean": 9.3, "n": 267, "accepted": ["independent", "independent-minded", "self-reliant"] },
+        { "id": "BAP28", "label": "loyal", "mean": 11.5, "n": 359, "accepted": ["loyal", "faithful"] },
+        { "id": "BAP30", "label": "curious", "mean": 13.8, "n": 375, "accepted": ["curious", "inquisitive"] }
+      ],
+      "contradictory": ["dependent", "disloyal", "incurious"]
+    },
+    {
+      "id": "PP/3",
+      "name": "Mr. William Collins",
+      "aliases": ["Mr Collins", "Mr. Collins", "William Collins"],
+      "traits": [
+        { "id": "BAP5", "label": "awkward", "mean": 93.0, "n": 342, "accepted": ["awkward", "socially awkward"] },
+        { "id": "BAP29", "label": "conventional", "mean": 93.0, "n": 312, "accepted": ["conventional", "traditional"] },
+        { "id": "BAP103", "label": "tiresome", "mean": 9.2, "n": 332, "accepted": ["tiresome", "tedious"] },
+        { "id": "BAP171", "label": "close-minded", "mean": 89.8, "n": 263, "accepted": ["close-minded", "closed-minded", "narrow-minded"] }
+      ],
+      "contradictory": ["open-minded", "unconventional"]
+    },
+    {
+      "id": "PP/4",
+      "name": "George Wickham",
+      "aliases": ["Wickham", "Mr Wickham", "Mr. Wickham"],
+      "traits": [
+        { "id": "BAP355", "label": "two-faced", "mean": 8.8, "n": 48, "accepted": ["two-faced", "ingratitude and falsehood"] },
+        { "id": "BAP389", "label": "money-focused", "mean": 91.0, "n": 43, "accepted": ["money-focused", "mercenary"] },
+        { "id": "BAP28", "label": "traitorous", "mean": 90.3, "n": 353, "accepted": ["traitorous", "treacherous"] },
+        { "id": "BAP79", "label": "selfish", "mean": 9.9, "n": 367, "accepted": ["selfish"] }
+      ],
+      "contradictory": ["honest", "loyal", "principled", "selfless"]
+    },
+    {
+      "id": "PP/5",
+      "name": "Charles Bingley",
+      "aliases": ["Bingley", "Mr Bingley", "Mr. Bingley", "Charles"],
+      "traits": [
+        { "id": "BAP121", "label": "genuine", "mean": 88.7, "n": 369, "accepted": ["genuine", "sincere"] },
+        { "id": "BAP125", "label": "good-humored", "mean": 88.3, "n": 340, "accepted": ["good-humored", "good-humoured"] },
+        { "id": "BAP119", "label": "sweet", "mean": 87.6, "n": 357, "accepted": ["sweet"] },
+        { "id": "BAP76", "label": "warm", "mean": 87.3, "n": 360, "accepted": ["warm", "affectionate"] }
+      ],
+      "contradictory": ["cold", "insincere"]
+    },
+    {
+      "id": "PP/6",
+      "name": "Georgiana Darcy",
+      "aliases": ["Georgiana", "Miss Darcy"],
+      "traits": [
+        { "id": "BAP84", "label": "kind", "mean": 89.7, "n": 352, "accepted": ["kind", "amiable"] },
+        { "id": "BAP183", "label": "soft", "mean": 89.3, "n": 63, "accepted": ["soft", "gentle"] },
+        { "id": "BAP121", "label": "genuine", "mean": 85.7, "n": 322, "accepted": ["genuine", "sincere"] },
+        { "id": "BAP217", "label": "unassuming", "mean": 21.7, "n": 59, "accepted": ["unassuming"] }
+      ],
+      "contradictory": ["cruel", "harsh", "pretentious"]
+    },
+    {
+      "id": "PP/7",
+      "name": "Lydia Bennet",
+      "aliases": ["Lydia", "Lydia Wickham"],
+      "traits": [
+        { "id": "BAP26", "label": "foolish", "mean": 92.4, "n": 370, "accepted": ["foolish", "thoughtless"] },
+        { "id": "BAP156", "label": "gossiping", "mean": 7.9, "n": 292, "accepted": ["gossiping", "gossipy"] },
+        { "id": "BAP178", "label": "impatient", "mean": 92.1, "n": 108, "accepted": ["impatient"] },
+        { "id": "BAP35", "label": "emotional", "mean": 8.5, "n": 353, "accepted": ["emotional"] }
+      ],
+      "contradictory": ["patient", "wise"]
+    },
+    {
+      "id": "PP/8",
+      "name": "Jane Bennet",
+      "aliases": ["Jane", "Miss Bennet", "Miss Jane Bennet"],
+      "traits": [
+        { "id": "BAP84", "label": "kind", "mean": 94.3, "n": 354, "accepted": ["kind", "kind-hearted", "benevolent"] },
+        { "id": "BAP31", "label": "respectful", "mean": 92.6, "n": 366, "accepted": ["respectful", "considerate"] },
+        { "id": "BAP28", "label": "loyal", "mean": 7.8, "n": 387, "accepted": ["loyal"] },
+        { "id": "BAP119", "label": "sweet", "mean": 91.5, "n": 341, "accepted": ["sweet"] }
+      ],
+      "contradictory": ["cruel", "disloyal", "disrespectful"]
+    },
+    {
+      "id": "PP/9",
+      "name": "Mrs. Bennet",
+      "aliases": ["Mrs Bennet"],
+      "traits": [
+        { "id": "BAP156", "label": "gossiping", "mean": 8.0, "n": 288, "accepted": ["gossiping", "gossipy"] },
+        { "id": "BAP60", "label": "loud", "mean": 91.3, "n": 349, "accepted": ["loud"] },
+        { "id": "BAP74", "label": "anxious", "mean": 90.2, "n": 321, "accepted": ["anxious"] },
+        { "id": "BAP34", "label": "chatty", "mean": 10.3, "n": 352, "accepted": ["chatty", "voluble", "talkative"] }
+      ],
+      "contradictory": ["calm", "quiet"]
+    },
+    {
+      "id": "PP/10",
+      "name": "Lady Catherine de Bourgh",
+      "aliases": ["Lady Catherine", "Lady Catherine de Bourgh"],
+      "traits": [
+        { "id": "BAP154", "label": "judgemental", "mean": 5.6, "n": 184, "accepted": ["judgemental", "judgmental"] },
+        { "id": "BAP24", "label": "dominant", "mean": 6.8, "n": 378, "accepted": ["dominant", "dictatorial"] },
+        { "id": "BAP217", "label": "pretentious", "mean": 93.2, "n": 72, "accepted": ["pretentious", "self-important"] },
+        { "id": "BAP57", "label": "bossy", "mean": 6.9, "n": 350, "accepted": ["bossy", "overbearing"] }
+      ],
+      "contradictory": ["humble", "unassuming"]
+    }
+  ]
+}

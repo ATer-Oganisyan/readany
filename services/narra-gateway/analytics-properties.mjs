@@ -76,7 +76,7 @@ export function completionProperties({
     : {
         cost_currency: 'USD',
         cost_source: usageCost !== undefined
-          ? (provider === 'openrouter' ? 'openrouter_usage' : 'litellm_usage')
+          ? 'litellm_usage'
           : 'litellm_response_header'
       }
   return Object.fromEntries(

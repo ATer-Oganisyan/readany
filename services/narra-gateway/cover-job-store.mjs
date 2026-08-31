@@ -74,12 +74,16 @@ function extensionFor(mimeType) {
 export function createCoverJobStore({
   dataDir,
   environment = 'production',
+  namespace = 'cover',
   maxJobs = 1_000,
   resultTtlMs = 24 * 60 * 60 * 1000,
   maxResultBytes = 16 * 1024 * 1024,
   now = () => Date.now()
 }) {
-  const root = path.join(dataDir, `cover-jobs-${environment}`)
+  if (!/^[a-z][a-z0-9-]{0,31}$/.test(namespace)) {
+    throw new TypeError('job namespace is invalid')
+  }
+  const root = path.join(dataDir, `${namespace}-jobs-${environment}`)
   const jobsDir = path.join(root, 'jobs')
   const resultsDir = path.join(root, 'results')
   const quarantineDir = path.join(root, 'quarantine')

@@ -1,20 +1,90 @@
-name: narra
+name: ${NARRA_COMPOSE_PROJECT:-narra}
+
+x-book-analysis-database-environment: &book-analysis-database-environment
+  NODE_ENV: production
+  DATABASE_URL: "postgresql://${NARRA_POSTGRES_USER:-readany}:${NARRA_POSTGRES_PASSWORD:?NARRA_POSTGRES_PASSWORD is required}@postgres.railway.internal:5432/${NARRA_POSTGRES_DB:-readany}"
+  DATABASE_SSL_MODE: disable
+
+x-book-analysis-generator-environment: &book-analysis-generator-environment
+  GENERATOR_BASE_URL: http://gateway.railway.internal:8787
+  GENERATOR_SERVICE_TOKEN: ${GENERATOR_SERVICE_TOKEN:?GENERATOR_SERVICE_TOKEN is required}
+  GENERATOR_TIMEOUT_MS: ${BOOK_ANALYSIS_GENERATOR_TIMEOUT_MS:-600000}
+
+x-book-analysis-storage-environment: &book-analysis-storage-environment
+  BOOK_STORAGE_BUCKET: ${NARRA_STORAGE_BUCKET:-narra-books}
+  BOOK_STORAGE_REGION: us-east-1
+  BOOK_STORAGE_ENDPOINT: http://minio.railway.internal:9000
+  BOOK_STORAGE_FORCE_PATH_STYLE: "true"
+  BOOK_STORAGE_ACCESS_KEY_ID: ${NARRA_STORAGE_ACCESS_KEY_ID:-narra-gateway}
+  BOOK_STORAGE_SECRET_ACCESS_KEY: ${NARRA_STORAGE_SECRET_ACCESS_KEY:?NARRA_STORAGE_SECRET_ACCESS_KEY is required}
+
+x-book-analysis-worker: &book-analysis-worker
+  image: ${NARRA_GATEWAY_IMAGE:?NARRA_GATEWAY_IMAGE must contain an immutable image tag}
+  healthcheck:
+    disable: true
+  depends_on:
+    postgres:
+      condition: service_healthy
+    gateway:
+      condition: service_healthy
+  init: true
+  restart: unless-stopped
+  stop_grace_period: 30s
+  read_only: true
+  tmpfs:
+    - /tmp:size=64m,mode=1777
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  pids_limit: 128
+  mem_limit: 1g
+  cpus: 1.0
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "5"
 
 services:
   gateway:
     image: ${NARRA_GATEWAY_IMAGE:?NARRA_GATEWAY_IMAGE must contain an immutable image tag}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
     env_file:
-      - /etc/narra-gateway.env
+      - ${NARRA_ENV_FILE:-/etc/narra-gateway.env}
     environment:
       NODE_ENV: production
       PORT: "8787"
       DATA_DIR: /data
       PERSISTENT_DATA_MOUNT_PATH: /data
       INSTALLATION_SINGLE_REPLICA_ACK: "true"
+      DATABASE_URL: "postgresql://${NARRA_POSTGRES_USER:-readany}:${NARRA_POSTGRES_PASSWORD:?NARRA_POSTGRES_PASSWORD is required}@postgres.railway.internal:5432/${NARRA_POSTGRES_DB:-readany}"
+      DATABASE_SSL_MODE: disable
+      BOOK_BACKEND_REQUIRED: ${BOOK_BACKEND_REQUIRED:-false}
+      BOOK_STORAGE_BUCKET: ${NARRA_STORAGE_BUCKET:-narra-books}
+      BOOK_STORAGE_REGION: us-east-1
+      BOOK_STORAGE_ENDPOINT: http://minio.railway.internal:9000
+      BOOK_STORAGE_PUBLIC_ENDPOINT: ${NARRA_STORAGE_PUBLIC_ENDPOINT:-}
+      BOOK_STORAGE_FORCE_PATH_STYLE: "true"
+      BOOK_STORAGE_ACCESS_KEY_ID: ${NARRA_STORAGE_ACCESS_KEY_ID:-narra-gateway}
+      BOOK_STORAGE_SECRET_ACCESS_KEY: ${NARRA_STORAGE_SECRET_ACCESS_KEY:?NARRA_STORAGE_SECRET_ACCESS_KEY is required}
+      GENERATOR_SERVICE_TOKEN: ${GENERATOR_SERVICE_TOKEN:?GENERATOR_SERVICE_TOKEN is required}
+      CATALOG_INGEST_TOKEN: ${CATALOG_INGEST_TOKEN:?CATALOG_INGEST_TOKEN is required}
+      PRIVATE_MATERIAL_TTL_DAYS: ${PRIVATE_MATERIAL_TTL_DAYS:-7}
+      PRIVATE_MATERIAL_CLEANUP_MS: ${PRIVATE_MATERIAL_CLEANUP_MS:-3600000}
+      PRIVATE_MATERIAL_CLEANUP_BATCH_SIZE: ${PRIVATE_MATERIAL_CLEANUP_BATCH_SIZE:-100}
     ports:
-      - "127.0.0.1:8788:8787"
+      - "127.0.0.1:${NARRA_HOST_PORT:-8788}:8787"
     volumes:
       - gateway-data:/data
+    networks:
+      default:
+        aliases:
+          - gateway.railway.internal
     init: true
     restart: unless-stopped
     stop_grace_period: 30s
@@ -34,7 +104,243 @@ services:
         max-size: 10m
         max-file: "5"
 
+  postgres:
+    image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+    environment:
+      POSTGRES_DB: ${NARRA_POSTGRES_DB:-readany}
+      POSTGRES_USER: ${NARRA_POSTGRES_USER:-readany}
+      POSTGRES_PASSWORD: ${NARRA_POSTGRES_PASSWORD:?NARRA_POSTGRES_PASSWORD is required}
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - book-postgres-data:/var/lib/postgresql/data
+    networks:
+      default:
+        aliases:
+          - postgres.railway.internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 60s
+    shm_size: 256m
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 1g
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
+  minio:
+    image: minio/minio:latest@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    command: ["server", "/data", "--address", ":9000", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${NARRA_MINIO_ROOT_USER:-narra-root}
+      MINIO_ROOT_PASSWORD: ${NARRA_MINIO_ROOT_PASSWORD:?NARRA_MINIO_ROOT_PASSWORD is required}
+    volumes:
+      - book-object-data:/data
+    ports:
+      - "127.0.0.1:${NARRA_MINIO_HOST_PORT:-19000}:9000"
+    networks:
+      default:
+        aliases:
+          - minio.railway.internal
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 30s
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 768m
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
+  minio-init:
+    image: minio/mc:latest@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MC_CONFIG_DIR: /tmp/.mc
+      MINIO_ROOT_USER: ${NARRA_MINIO_ROOT_USER:-narra-root}
+      MINIO_ROOT_PASSWORD: ${NARRA_MINIO_ROOT_PASSWORD:?NARRA_MINIO_ROOT_PASSWORD is required}
+      STORAGE_BUCKET: ${NARRA_STORAGE_BUCKET:-narra-books}
+      STORAGE_ACCESS_KEY_ID: ${NARRA_STORAGE_ACCESS_KEY_ID:-narra-gateway}
+      STORAGE_SECRET_ACCESS_KEY: ${NARRA_STORAGE_SECRET_ACCESS_KEY:?NARRA_STORAGE_SECRET_ACCESS_KEY is required}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        set -eu;
+        mc alias set narra http://minio.railway.internal:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}" --quiet;
+        mc mb --ignore-existing "narra/$${STORAGE_BUCKET}";
+        mc admin user add narra "$${STORAGE_ACCESS_KEY_ID}" "$${STORAGE_SECRET_ACCESS_KEY}" || mc admin user enable narra "$${STORAGE_ACCESS_KEY_ID}";
+        mc admin policy attach narra readwrite --user "$${STORAGE_ACCESS_KEY_ID}"
+    restart: "no"
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 256m
+    cpus: 0.25
+
+  book-markup-worker:
+    profiles: ["book-backend"]
+    image: ${NARRA_GATEWAY_IMAGE:?NARRA_GATEWAY_IMAGE must contain an immutable image tag}
+    command: ["node", "book-markup-worker.mjs"]
+    deploy:
+      replicas: ${BOOK_MARKUP_WORKER_REPLICAS:-4}
+    healthcheck:
+      disable: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      gateway:
+        condition: service_healthy
+    env_file:
+      - ${NARRA_ENV_FILE:-/etc/narra-gateway.env}
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: "postgresql://${NARRA_POSTGRES_USER:-readany}:${NARRA_POSTGRES_PASSWORD:?NARRA_POSTGRES_PASSWORD is required}@postgres.railway.internal:5432/${NARRA_POSTGRES_DB:-readany}"
+      DATABASE_SSL_MODE: disable
+      GENERATOR_BASE_URL: http://gateway.railway.internal:8787
+      GENERATOR_SERVICE_TOKEN: ${GENERATOR_SERVICE_TOKEN:?GENERATOR_SERVICE_TOKEN is required}
+      GENERATOR_TIMEOUT_MS: "600000"
+      BOOK_MARKUP_WORKER_JOB_TYPES: ${BOOK_MARKUP_WORKER_JOB_TYPES:-}
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 30s
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 1g
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
+  book-identity-worker:
+    profiles: ["book-backend"]
+    image: ${NARRA_GATEWAY_IMAGE:?NARRA_GATEWAY_IMAGE must contain an immutable image tag}
+    command: ["node", "book-identity-worker.mjs"]
+    deploy:
+      replicas: ${BOOK_IDENTITY_WORKER_REPLICAS:-1}
+    healthcheck:
+      disable: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      gateway:
+        condition: service_healthy
+    env_file:
+      - ${NARRA_ENV_FILE:-/etc/narra-gateway.env}
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: "postgresql://${NARRA_POSTGRES_USER:-readany}:${NARRA_POSTGRES_PASSWORD:?NARRA_POSTGRES_PASSWORD is required}@postgres.railway.internal:5432/${NARRA_POSTGRES_DB:-readany}"
+      DATABASE_SSL_MODE: disable
+      GENERATOR_BASE_URL: http://gateway.railway.internal:8787
+      GENERATOR_SERVICE_TOKEN: ${GENERATOR_SERVICE_TOKEN:?GENERATOR_SERVICE_TOKEN is required}
+      GENERATOR_TIMEOUT_MS: "600000"
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 30s
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 1g
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
+  book-tts-markup-worker:
+    <<: *book-analysis-worker
+    command: ["node", "book-tts-markup-worker-runner.mjs"]
+    read_only: true
+    deploy:
+      replicas: ${BOOK_TTS_MARKUP_WORKER_REPLICAS:-2}
+    environment:
+      <<: [*book-analysis-database-environment, *book-analysis-storage-environment, *book-analysis-generator-environment]
+
+  book-analysis-prepare:
+    <<: *book-analysis-worker
+    command: ["node", "book-analysis-worker.mjs"]
+    environment:
+      <<: [*book-analysis-database-environment, *book-analysis-storage-environment]
+
+  book-analysis-scan:
+    <<: *book-analysis-worker
+    command: ["node", "book-analysis-scan-worker-runner.mjs"]
+    deploy:
+      replicas: ${BOOK_ANALYSIS_SCAN_REPLICAS:-8}
+    environment:
+      <<: [*book-analysis-database-environment, *book-analysis-storage-environment, *book-analysis-generator-environment]
+
+  book-analysis-resolve:
+    <<: *book-analysis-worker
+    command: ["node", "book-analysis-resolve-worker-runner.mjs"]
+    environment:
+      <<: [*book-analysis-database-environment, *book-analysis-generator-environment]
+
+  book-analysis-synthesize:
+    <<: *book-analysis-worker
+    command: ["node", "book-analysis-stage-worker-runner.mjs", "synthesize"]
+    deploy:
+      replicas: ${BOOK_ANALYSIS_SYNTHESIZE_REPLICAS:-4}
+    environment:
+      <<: [*book-analysis-database-environment, *book-analysis-generator-environment]
+
+  book-analysis-validate:
+    <<: *book-analysis-worker
+    command: ["node", "book-analysis-stage-worker-runner.mjs", "validate"]
+    environment:
+      <<: [*book-analysis-database-environment, *book-analysis-storage-environment]
+
+  book-analysis-publish:
+    <<: *book-analysis-worker
+    command: ["node", "book-analysis-stage-worker-runner.mjs", "publish"]
+    environment:
+      <<: *book-analysis-database-environment
+
 volumes:
   gateway-data:
     external: true
-    name: narra_gateway-data
+    name: ${NARRA_GATEWAY_VOLUME:-narra_gateway-data}
+  book-postgres-data:
+  book-object-data:

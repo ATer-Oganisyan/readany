@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "id": "siddhartha-bookcoref-v1",
+  "goldCount": 9,
+  "significantCount": 8,
+  "source": {
+    "dataset": "BOOKCOREF",
+    "documentId": "siddhartha_2500",
+    "gutenbergId": 2500,
+    "significantProtocol": "minimum descending mention-count prefix covering at least 95 percent of gold mentions, including boundary-frequency ties",
+    "totalMentions": 4933,
+    "aliasPolicy": "BOOKCOREF identity names plus unambiguous referring names and epithets in the source text; generic role words are excluded"
+  },
+  "gates": {
+    "precision": 0.9,
+    "recall": 0.9,
+    "f1": 0.9,
+    "criticalMerges": 0,
+    "duplicateRate": 0.05
+  },
+  "collisionGuards": [
+    {
+      "id": "siddhartha_generation",
+      "surfaces": ["young Siddhartha", "the young Siddhartha"],
+      "goldIds": ["siddhartha", "young_siddhartha"],
+      "reason": "The same generational wording refers to the protagonist early in the book and to his son later; it must not be used as an unconditional global alias."
+    }
+  ],
+  "characters": [
+    {
+      "id": "siddhartha",
+      "name": "Siddhartha",
+      "mentionCount": 2975,
+      "significant": true,
+      "aliases": []
+    },
+    {
+      "id": "govinda",
+      "name": "Govinda",
+      "mentionCount": 483,
+      "significant": true,
+      "aliases": []
+    },
+    {
+      "id": "young_siddhartha",
+      "name": "Young Siddhartha",
+      "mentionCount": 227,
+      "significant": true,
+      "aliases": ["Siddhartha's son", "Siddhartha’s son"]
+    },
+    {
+      "id": "gotama",
+      "name": "Gotama",
+      "mentionCount": 299,
+      "significant": true,
+      "aliases": [
+        "Buddha",
+        "the Buddha",
+        "Gotama Buddha",
+        "the exalted one",
+        "the perfected one"
+      ]
+    },
+    {
+      "id": "kamala",
+      "name": "Kamala",
+      "mentionCount": 377,
+      "significant": true,
+      "aliases": []
+    },
+    {
+      "id": "siddharthas_father",
+      "name": "Siddhartha's Father",
+      "mentionCount": 102,
+      "significant": true,
+      "aliases": ["Siddhartha’s father"]
+    },
+    {
+      "id": "the_samanas",
+      "name": "The Samanas",
+      "mentionCount": 67,
+      "significant": false,
+      "aliases": ["Samanas"]
+    },
+    {
+      "id": "kamaswami",
+      "name": "Kamaswami",
+      "mentionCount": 102,
+      "significant": true,
+      "aliases": []
+    },
+    {
+      "id": "vasudeva",
+      "name": "Vasudeva",
+      "mentionCount": 301,
+      "significant": true,
+      "aliases": []
+    }
+  ],
+  "knownExtras": []
+}
