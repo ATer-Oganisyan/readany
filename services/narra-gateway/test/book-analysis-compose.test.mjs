@@ -165,6 +165,8 @@ test('deploy is pinned to fun1, versioned Compose, backups and one-replica canar
   assert.match(stagingDeploySource, /RestartCount/)
   assert.match(stagingDeploySource, /State\.Health/)
   assert.match(stagingEnvSource, /INSTALLATION_OPERATOR_TOKEN/)
+  assert.match(stagingEnvSource, /BOOK_OPERATOR_USERNAME/)
+  assert.match(stagingEnvSource, /BOOK_OPERATOR_PASSWORD/)
   assert.match(stagingEnvSource, /ANALYTICS_ENV=staging/)
   assert.match(stagingEnvSource, /compose\.env\.\$timestamp/)
 })

@@ -54,6 +54,8 @@ ssh "$REMOTE" \
    && sudo grep -qx 'ANALYTICS_ENV=staging' '$TARGET_ENV' \
    && sudo grep -qx 'BOOK_BACKEND_REQUIRED=true' '$TARGET_ENV' \
    && sudo grep -Eq '^INSTALLATION_OPERATOR_TOKEN=.+$' '$TARGET_ENV' \
+   && sudo grep -Eq '^BOOK_OPERATOR_USERNAME=.+$' '$TARGET_ENV' \
+   && sudo grep -Eq '^BOOK_OPERATOR_PASSWORD=.{20,}$' '$TARGET_ENV' \
    && sudo install -d -o root -g root -m 0755 '$REMOTE_ROOT/releases' '$REMOTE_STAGE'"
 rsync "${FLAGS[@]}" --rsync-path="sudo rsync" "$HERE/" "$REMOTE:$REMOTE_STAGE/"
 
