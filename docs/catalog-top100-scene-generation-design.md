@@ -29,13 +29,12 @@ on-demand: сцена личной книги создаётся только п
 
 ### Провайдер изображений
 
-Сцены должны идти через настроенный image-route LiteLLM с моделью Grok Imagine:
-`LITELLM_BASE_URL=https://lm.multitool.works` и
-`LITELLM_IMAGE_MODEL=openrouter/x-ai/grok-imagine-image-2.0`. В gateway сцена
-использует тот же конфигурируемый route, что и обложки, с форматом `4:3`; прямой
-вызов старого `GigaChat Image` для сцен запрещён. На fan1 такой пробный запрос
-вернул HTTP 402 (доступ/баланс провайдера), поэтому bootstrap-очередь оставлена
-в `queued` до выдачи рабочего Grok-доступа и не считается запущенной.
+Сцены должны идти через настроенный image-route LiteLLM с моделью
+`openai/gpt-image-2`: `LITELLM_BASE_URL=https://lm.multitool.works` и
+`LITELLM_IMAGE_MODEL=openai/gpt-image-2`. В gateway сцена использует тот же
+конфигурируемый route, что и обложки, с форматом `4:3`; прямой вызов старого
+`GigaChat Image` для сцен запрещён. Bootstrap-кампания запускается только после
+успешного пробного запроса этой модели.
 
 ## Канонический поток для мобильного приложения
 
