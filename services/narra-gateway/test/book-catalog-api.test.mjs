@@ -170,15 +170,24 @@ test('catalog JSON adds nullable language and normalized genres without changing
 })
 
 test('catalog cursor round-trips without accepting arbitrary input', () => {
-  const cursor = { createdAt: '2026-08-10T00:00:00.000Z', id: ID }
+  const cursor = { popularityRank: 7, createdAt: '2026-08-10T00:00:00.000Z', id: ID }
   const encoded = encodeCatalogCursor(cursor)
   assert.deepEqual(decodeCatalogCursor(encoded), cursor)
   assert.equal(JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')).v, 1)
+  const legacy = Buffer.from(JSON.stringify({
+    v: 1, created_at: cursor.createdAt, id: cursor.id
+  })).toString('base64url')
+  assert.deepEqual(decodeCatalogCursor(legacy), {
+    popularityRank: null, createdAt: cursor.createdAt, id: cursor.id
+  })
   assert.throws(() => decodeCatalogCursor('not-a-cursor'), /cursor: invalid value/)
+  assert.throws(() => decodeCatalogCursor(Buffer.from(JSON.stringify({
+    v: 1, popularity_rank: 0, created_at: cursor.createdAt, id: cursor.id
+  })).toString('base64url')), /cursor: invalid value/)
 })
 
 test('language catalog cursor is opaque and cannot cross language categories', () => {
-  const cursor = { createdAt: '2026-08-10T00:00:00.000Z', id: ID }
+  const cursor = { popularityRank: null, createdAt: '2026-08-10T00:00:00.000Z', id: ID }
   const encoded = encodeLanguageCatalogCursor(cursor, 'ru')
   assert.equal(
     JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')).v,

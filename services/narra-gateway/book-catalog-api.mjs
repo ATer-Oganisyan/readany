@@ -251,9 +251,16 @@ export function encodeCatalogCursor(cursor) {
   if (!cursor) return null
   return Buffer.from(JSON.stringify({
     v: 1,
+    popularity_rank: cursor.popularityRank ?? null,
     created_at: cursor.createdAt,
     id: cursor.id
   })).toString('base64url')
+}
+
+function catalogCursorPopularityRank(value) {
+  if (value === undefined || value === null) return null
+  if (!Number.isSafeInteger(value) || value < 1) validation('cursor: invalid value')
+  return value
 }
 
 export function decodeCatalogCursor(value) {
@@ -268,7 +275,11 @@ export function decodeCatalogCursor(value) {
     ) {
       validation('cursor: invalid value')
     }
-    return { createdAt: cursor.created_at, id: cursor.id }
+    return {
+      popularityRank: catalogCursorPopularityRank(cursor.popularity_rank),
+      createdAt: cursor.created_at,
+      id: cursor.id
+    }
   } catch (error) {
     if (error?.code === 'VALIDATION') throw error
     validation('cursor: invalid value')
@@ -286,6 +297,7 @@ export function encodeLanguageCatalogCursor(cursor, language) {
   return Buffer.from(JSON.stringify({
     v: BOOK_CATALOG_LANGUAGE_CONTRACT_VERSION,
     language: parseCatalogLanguage(language),
+    popularity_rank: cursor.popularityRank ?? null,
     created_at: cursor.createdAt,
     id: cursor.id
   })).toString('base64url')
@@ -305,7 +317,11 @@ export function decodeLanguageCatalogCursor(value, expectedLanguage) {
     ) {
       validation('cursor: invalid value')
     }
-    return { createdAt: cursor.created_at, id: cursor.id }
+    return {
+      popularityRank: catalogCursorPopularityRank(cursor.popularity_rank),
+      createdAt: cursor.created_at,
+      id: cursor.id
+    }
   } catch (error) {
     if (error?.code === 'VALIDATION') throw error
     validation('cursor: invalid value')

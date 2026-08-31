@@ -91,6 +91,9 @@ function editionRow(row) {
     author: displayAuthor,
     genres: Array.isArray(row.genres) ? row.genres.filter((genre) => typeof genre === 'string') : [],
     language: row.language ?? null,
+    catalogPopularityRank: row.catalog_popularity_rank == null
+      ? null
+      : Number(row.catalog_popularity_rank),
     format: row.format,
     status: row.status,
     sourceStorage: row.source_storage || 'stored',
@@ -1328,6 +1331,7 @@ export function createPostgresBookMarkupRepository(pool, {
                 ), ARRAY[]::text[]) AS genres,
                 edition.language, edition.format, edition.status, edition.source_storage,
                 edition.expires_at, edition.created_at,
+                popularity.popularity_rank AS catalog_popularity_rank,
                 cover.object_key AS cover_object_key,
                 cover.content_hash AS cover_content_hash,
                 cover.mime_type AS cover_mime_type,
@@ -1336,17 +1340,44 @@ export function createPostgresBookMarkupRepository(pool, {
          FROM book_editions AS edition
          LEFT JOIN catalog_book_covers AS cover
            ON cover.book_edition_id = edition.id AND cover.status = 'ready'
+         LEFT JOIN catalog_book_popularity_aliases AS popularity_alias
+           ON popularity_alias.catalog_key = edition.catalog_key
+         LEFT JOIN catalog_book_popularity AS popularity
+           ON popularity.source_key = COALESCE(popularity_alias.source_key, CASE
+             WHEN edition.catalog_key ~ '^narra-ru-top100-.+-[0-9a-f]{8}$' THEN
+               regexp_replace(
+                 substr(edition.catalog_key, length('narra-ru-top100-') + 1),
+                 '-[0-9a-f]{8}$',
+                 ''
+               )
+             WHEN edition.catalog_key ~ '^narra-ru-[0-9]+-.+$' THEN
+               regexp_replace(edition.catalog_key, '^narra-ru-[0-9]+-', '')
+             ELSE edition.catalog_key
+           END)
          WHERE edition.scope = 'catalog'
            AND edition.status IN ('base_ready', 'published')
            AND edition.catalog_hidden_at IS NULL
            AND (
-             $1::timestamptz IS NULL OR
-             (edition.created_at, edition.id) < ($1::timestamptz, $2::uuid)
+             $2::timestamptz IS NULL OR
+             COALESCE(popularity.popularity_rank, 2147483647) >
+               COALESCE($1::integer, 2147483647) OR
+             (
+               COALESCE(popularity.popularity_rank, 2147483647) =
+                 COALESCE($1::integer, 2147483647)
+               AND (edition.created_at, edition.id) < ($2::timestamptz, $3::uuid)
+             )
            )
-           AND ($4::text IS NULL OR edition.language = $4)
-         ORDER BY edition.created_at DESC, edition.id DESC
-         LIMIT $3`,
-        [cursor?.createdAt ?? null, cursor?.id ?? null, limit + 1, language]
+           AND ($5::text IS NULL OR edition.language = $5)
+         ORDER BY popularity.popularity_rank ASC NULLS LAST,
+                  edition.created_at DESC, edition.id DESC
+         LIMIT $4`,
+        [
+          cursor?.popularityRank ?? null,
+          cursor?.createdAt ?? null,
+          cursor?.id ?? null,
+          limit + 1,
+          language
+        ]
       )
       const hasMore = result.rows.length > limit
       const items = result.rows.slice(0, limit).map(editionRow)
@@ -1354,7 +1385,11 @@ export function createPostgresBookMarkupRepository(pool, {
       return {
         items,
         nextCursor: hasMore && last
-          ? { createdAt: last.createdAt, id: last.id }
+          ? {
+              popularityRank: last.catalogPopularityRank,
+              createdAt: last.createdAt,
+              id: last.id
+            }
           : null
       }
     },

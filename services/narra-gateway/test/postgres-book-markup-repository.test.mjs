@@ -138,8 +138,36 @@ test('catalog API prefers the identity worker display metadata', async () => {
   assert.match(pool.queries[0].sql, /edition\.display_title, edition\.display_author/)
   assert.match(pool.queries[0].sql, /array_agg\(link\.genre ORDER BY link\.position\)/)
   assert.match(pool.queries[0].sql, /edition\.catalog_hidden_at IS NULL/)
-  assert.match(pool.queries[0].sql, /edition\.language = \$4/)
-  assert.equal(pool.queries[0].params[3], 'ru')
+  assert.match(pool.queries[0].sql, /edition\.language = \$5/)
+  assert.equal(pool.queries[0].params[4], 'ru')
+})
+
+test('catalog listing keeps popularity in both ordering and cursor pagination', async () => {
+  const createdAt = new Date('2026-08-20T00:00:00.000Z')
+  const row = (id, popularityRank) => ({
+    id, scope: 'catalog', catalog_key: id, content_sha256: id.padEnd(64, 'a'),
+    title: id, author: 'Author', genres: [], language: 'ru', format: 'epub',
+    status: 'base_ready', source_storage: 'stored', expires_at: null,
+    created_at: createdAt, catalog_popularity_rank: popularityRank
+  })
+  const pool = scriptedPool([() => ({ rows: [
+    row('book-1', 1), row('book-2', 2), row('book-3', null)
+  ] })])
+  const repository = createPostgresBookMarkupRepository(pool)
+  const result = await repository.listCatalogBooks({ limit: 2, language: 'ru' })
+
+  assert.deepEqual(result.items.map(({ id }) => id), ['book-1', 'book-2'])
+  assert.deepEqual(result.nextCursor, {
+    popularityRank: 2,
+    createdAt: createdAt.toISOString(),
+    id: 'book-2'
+  })
+  assert.match(pool.queries[0].sql, /JOIN catalog_book_popularity AS popularity/)
+  assert.match(pool.queries[0].sql, /JOIN catalog_book_popularity_aliases AS popularity_alias/)
+  assert.match(pool.queries[0].sql, /COALESCE\(popularity_alias\.source_key, CASE/)
+  assert.match(pool.queries[0].sql, /popularity\.popularity_rank ASC NULLS LAST/)
+  assert.match(pool.queries[0].sql, /COALESCE\(\$1::integer, 2147483647\)/)
+  assert.deepEqual(pool.queries[0].params, [null, null, null, 3, 'ru'])
 })
 
 test('catalog replacement hides only an already published same-language successor', async () => {
@@ -571,5 +599,41 @@ test('catalog replacement migration preserves old editions while hiding them fro
   assert.match(migration, /REFERENCES book_editions\(id\)/)
   assert.match(migration, /ON DELETE SET NULL/)
   assert.match(migration, /catalog_hidden_at IS NULL/)
+  assert.doesNotMatch(migration, /DELETE FROM book_editions/)
+})
+
+test('catalog popularity migration contains the complete deterministic 512-book ranking', async () => {
+  const migration = await readFile(
+    new URL('../migrations/022_catalog_book_popularity.sql', import.meta.url),
+    'utf8'
+  )
+  const sourceKeys = [...migration
+    .match(/unnest\(ARRAY\[(.*?)\]::text\[\]\)/s)[1]
+    .matchAll(/'([a-z0-9-]+)'/g)]
+    .map((entry) => entry[1])
+  assert.equal(sourceKeys.length, 512)
+  assert.equal(new Set(sourceKeys).size, 512)
+  assert.deepEqual(sourceKeys.slice(0, 5), [
+    'vojna-i-mir-tolstoj',
+    'prestuplenie-i-nakazanie',
+    'anna-karenina',
+    'evgenij-onegin',
+    'bratya-karamazovy'
+  ])
+  assert.match(migration, /PRIMARY KEY/)
+  assert.match(migration, /popularity_rank > 0/)
+  const aliases = [...migration
+    .match(/INSERT INTO catalog_book_popularity_aliases.*?VALUES(.*?);/s)[1]
+    .matchAll(/\('([^']+)', '([a-z0-9-]+)'\)/g)]
+    .map((entry) => ({ catalogKey: entry[1], sourceKey: entry[2] }))
+  assert.equal(aliases.length, 67)
+  assert.equal(new Set(aliases.map(({ catalogKey }) => catalogKey)).size, 67)
+  assert.ok(aliases.every(({ sourceKey }) => sourceKeys.includes(sourceKey)))
+  assert.deepEqual(aliases[0], {
+    catalogKey: 'crime-and-punishment',
+    sourceKey: 'prestuplenie-i-nakazanie'
+  })
+  assert.match(migration, /SET catalog_hidden_at = now\(\)/)
+  assert.match(migration, /replaced_by_book_edition_id = superseded\.replacement_id/)
   assert.doesNotMatch(migration, /DELETE FROM book_editions/)
 })
