@@ -19409,6 +19409,19 @@
   ],
   "catalogKeyAliases": [
     {
+      "catalogKey": "narra-ru-top100-vojna-i-mir-tolstoj-f0777e32",
+      "title": "Война и мир",
+      "author": "Лев Николаевич Толстой",
+      "genres": [
+        "historical-fiction",
+        "literary-fiction"
+      ]
+    },
+    {
+      "catalogKey": "narra-ru-top100-bratya-karamazovy-ddb71ca8",
+      "sourceKey": "bratya-karamazovy"
+    },
+    {
       "catalogKey": "narra-ru-038-kavkazskij-plennik-pushkin",
       "sourceKey": "kavkazskij-plennik"
     },

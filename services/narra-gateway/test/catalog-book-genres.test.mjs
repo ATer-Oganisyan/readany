@@ -25,6 +25,10 @@ test('hardcoded catalog data covers all RU and EN books with no more than 20 gen
 })
 
 test('catalog key normalization resolves bulk, evaluation and legacy aliases', () => {
+  assert.equal(
+    normalizeCatalogSourceKey('narra-ru-top100-bratya-karamazovy-ddb71ca8'),
+    'bratya-karamazovy'
+  )
   assert.equal(normalizeCatalogSourceKey('narra-ru-027-aelita'), 'aelita')
   assert.equal(normalizeCatalogSourceKey('narra-en-0001-a-day-with-keats'), 'a-day-with-keats')
   assert.equal(normalizeCatalogSourceKey('eval-v17-b50-aelita'), 'aelita')
@@ -35,6 +39,12 @@ test('catalog key normalization resolves bulk, evaluation and legacy aliases', (
     catalogKey: 'narra-ru-038-kavkazskij-plennik-pushkin'
   }), ['poetry'])
   assert.deepEqual(genresForCatalogBook({ catalogKey: 'seagull' }), ['drama'])
+  assert.deepEqual(genresForCatalogBook({
+    catalogKey: 'narra-ru-top100-vojna-i-mir-tolstoj-f0777e32'
+  }), ['historical-fiction', 'literary-fiction'])
+  assert.deepEqual(genresForCatalogBook({
+    catalogKey: 'narra-ru-top100-bratya-karamazovy-ddb71ca8'
+  }), ['literary-fiction'])
   assert.deepEqual(genresForCatalogBook({ catalogKey: 'not-in-catalog' }), [])
 })
 

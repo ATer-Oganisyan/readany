@@ -88,6 +88,7 @@ for (const alias of data.catalogKeyAliases ?? []) {
 export function normalizeCatalogSourceKey(value) {
   return String(value || '')
     .trim()
+    .replace(/^narra-(?:ru|en)-top100-(.+)-[0-9a-f]{8}$/, '$1')
     .replace(/^narra-(?:ru|en)-\d+-/, '')
     .replace(/^eval-v\d+(?:-b\d+)?-/, '')
 }
