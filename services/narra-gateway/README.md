@@ -453,13 +453,15 @@ REVIEWED_COMMIT="$(git rev-parse HEAD)" \
 ```
 
 The staging deploy builds `readany/narra-gateway:<full-git-sha>` from the
-versioned release directory, validates a no-network candidate, creates and
+versioned release directory, verifies that every already-applied migration is
+still byte-for-byte immutable, validates a no-network candidate, creates and
 checks a PostgreSQL logical dump and gateway-volume archive, records an
 aggregate MinIO inventory, and then starts exactly one canary replica of every
 persistent worker from `compose.i167.yml`. It checks `/ready`, worker health and
 restart counts, protected aggregate metrics, and the public TEST hostname. A
-failed probe restores the previous staging Compose/image while retaining the
-additive database migration and backups for investigation.
+failed probe stores the failed gateway log in the root-only backup and restores
+the previous staging Compose/image. Unrelated one-off containers are not
+removed by this workflow.
 
 Production is not deployed by either of these staging scripts. It must use an
 independent `narra-production-v2` Compose project, PostgreSQL, object storage,

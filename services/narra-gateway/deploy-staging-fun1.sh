@@ -84,6 +84,24 @@ chown -R root:root "$REMOTE_STAGE"
 chmod -R go-w "$REMOTE_STAGE"
 chmod 0755 "$REMOTE_STAGE"/*.sh
 
+postgres_container="$PROJECT-postgres-1"
+minio_volume="${PROJECT}_book-object-data"
+gateway_volume="${PROJECT}_gateway-data"
+test "$(docker inspect --format '{{.State.Running}}' "$postgres_container")" = true
+while IFS='|' read -r filename expected_checksum; do
+  [[ "$filename" =~ ^[0-9]+_[a-z0-9_]+\.sql$ ]]
+  [[ "$expected_checksum" =~ ^[a-f0-9]{64}$ ]]
+  migration="$REMOTE_STAGE/migrations/$filename"
+  if [ ! -f "$migration" ] \
+    || [ "$(sha256sum "$migration" | awk '{print $1}')" != "$expected_checksum" ]; then
+    echo "Applied migration differs from the reviewed release: $filename" >&2
+    exit 1
+  fi
+done < <(
+  docker exec "$postgres_container" sh -c \
+    'PGPASSWORD="$POSTGRES_PASSWORD" psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -F "|" -c "SELECT filename, checksum FROM book_markup_schema_migrations ORDER BY filename"'
+)
+
 docker build --pull \
   --build-arg "GATEWAY_BUILD_VERSION=$HEAD" \
   --tag "$IMAGE" "$REMOTE_STAGE"
@@ -144,9 +162,6 @@ printf '%s\n' "$current_image_id" > "$backup_dir/previous-image-id"
 printf '%s\n' "$current_image_ref" > "$backup_dir/previous-image-ref"
 chmod 0600 "$backup_dir"/*
 
-postgres_container="$PROJECT-postgres-1"
-minio_volume="${PROJECT}_book-object-data"
-gateway_volume="${PROJECT}_gateway-data"
 test "$(docker inspect --format '{{.State.Running}}' "$postgres_container")" = true
 test "$(docker volume inspect --format '{{.Name}}' "$minio_volume")" = "$minio_volume"
 test "$(docker volume inspect --format '{{.Name}}' "$gateway_volume")" = "$gateway_volume"
@@ -205,20 +220,26 @@ mutating=1
 rollback() {
   trap - ERR
   set +e
+  failed_gateway_id="$(docker compose -p "$PROJECT" --env-file "$TARGET_ENV" \
+    -f "$REMOTE_STAGE/compose.i167.yml" "${profiles[@]}" ps -q gateway 2>/dev/null)"
+  if [ -n "$failed_gateway_id" ]; then
+    docker logs --tail 200 "$failed_gateway_id" > "$backup_dir/failed-gateway.log" 2>&1
+    chmod 0600 "$backup_dir/failed-gateway.log"
+  fi
   rollback_files=(-f /srv/narra-stagging/compose.yml)
   test -f /srv/narra-stagging/compose.override.yml \
     && rollback_files+=(-f /srv/narra-stagging/compose.override.yml)
   NARRA_GATEWAY_IMAGE="$current_image_ref" docker compose -p "$PROJECT" \
     --env-file "$TARGET_ENV" "${rollback_files[@]}" \
-    --profile book-backend --profile book-scenes up -d --remove-orphans
+    --profile book-backend --profile book-scenes up -d
   echo "Staging deployment failed; previous Compose and image restart attempted" >&2
-  return 1
+  exit 1
 }
 trap 'if [ "$mutating" = 1 ]; then rollback; fi' ERR
 
 env "${compose_env[@]}" docker compose -p "$PROJECT" --env-file "$TARGET_ENV" \
   -f "$REMOTE_STAGE/compose.i167.yml" "${profiles[@]}" \
-  up -d --remove-orphans "${scales[@]}"
+  up -d "${scales[@]}"
 
 services=(
   gateway

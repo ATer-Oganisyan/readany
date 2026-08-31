@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import { bookIdentityTargetVersion } from '../book-identity.mjs'
@@ -641,12 +642,26 @@ test('book genre migration creates and seeds a normalized many-to-many relation'
     new URL('../migrations/016_book_genres.sql', import.meta.url),
     'utf8'
   )
+  assert.equal(
+    createHash('sha256').update(migration).digest('hex'),
+    '405b5fb11b28e63a29224784a87c50eac06e654794e1cbb1d0d4e568f970acff'
+  )
   assert.match(migration, /CREATE TABLE book_edition_genres/)
   assert.match(migration, /PRIMARY KEY \(book_edition_id, genre\)/)
   assert.match(migration, /WITH source_mapping/)
   assert.match(migration, /'science-fiction'/)
   assert.match(migration, /narra-ru-038-kavkazskij-plennik-pushkin/)
+  assert.doesNotMatch(migration, /narra-ru-top100-/)
   assert.doesNotMatch(migration, /book_genre|genre_source|\bllm\b/i)
+
+  const correction = await readFile(
+    new URL('../migrations/025_catalog_genre_alias_corrections.sql', import.meta.url),
+    'utf8'
+  )
+  assert.match(correction, /narra-ru-top100-vojna-i-mir-tolstoj-f0777e32/)
+  assert.match(correction, /narra-ru-top100-bratya-karamazovy-ddb71ca8/)
+  assert.match(correction, /DELETE FROM book_edition_genres/)
+  assert.match(correction, /INSERT INTO book_edition_genres/)
 })
 
 test('book content navigation migration stores deterministic reader structure', async () => {
