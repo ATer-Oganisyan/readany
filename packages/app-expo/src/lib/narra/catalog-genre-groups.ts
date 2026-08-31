@@ -1,5 +1,5 @@
 import type { BackendCatalogBook } from "./backend-book-api";
-import { CATALOG_GENRE_IDS, type CatalogGenreId, isCatalogGenreId } from "./catalog-genres";
+import { type CatalogGenreId, isCatalogGenreId } from "./catalog-genres";
 
 export type CatalogGenreGroupId = CatalogGenreId | "unclassified";
 
@@ -8,7 +8,7 @@ export interface CatalogGenreGroup<T extends BackendCatalogBook = BackendCatalog
   books: T[];
 }
 
-/** Keeps the shared taxonomy order and preserves the backend order inside each genre. */
+/** Orders genres by their highest-ranked backend book and preserves book order inside each genre. */
 export function groupCatalogBooksByGenre<T extends BackendCatalogBook>(
   books: readonly T[],
 ): CatalogGenreGroup<T>[] {
@@ -22,8 +22,11 @@ export function groupCatalogBooksByGenre<T extends BackendCatalogBook>(
     }
   }
 
-  return [...CATALOG_GENRE_IDS, "unclassified" as const].flatMap((genre) => {
-    const group = byGenre.get(genre);
-    return group?.length ? [{ genre, books: group }] : [];
-  });
+  const rankedGroups = [...byGenre.entries()]
+    .filter(([genre]) => genre !== "unclassified")
+    .map(([genre, groupedBooks]) => ({ genre, books: groupedBooks }));
+  const unclassified = byGenre.get("unclassified");
+  return unclassified?.length
+    ? [...rankedGroups, { genre: "unclassified", books: unclassified }]
+    : rankedGroups;
 }

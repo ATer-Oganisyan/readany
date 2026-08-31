@@ -18,15 +18,16 @@ function book(id: string, genres?: BackendCatalogBook["genres"]): BackendCatalog
 }
 
 describe("catalog genre groups", () => {
-  it("uses canonical genre order while preserving book order inside a group", () => {
+  it("orders genres by their highest-ranked book and preserves book order inside a group", () => {
     const groups = groupCatalogBooksByGenre([
+      book("poetry-1", ["poetry"]),
       book("fantasy-1", ["fantasy"]),
-      book("poetry", ["poetry"]),
+      book("poetry-2", ["poetry"]),
       book("fantasy-2", ["fantasy"]),
     ]);
 
-    expect(groups.map((group) => group.genre)).toEqual(["fantasy", "poetry"]);
-    expect(groups[0]?.books.map((item) => item.bookEditionId)).toEqual(["fantasy-1", "fantasy-2"]);
+    expect(groups.map((group) => group.genre)).toEqual(["poetry", "fantasy"]);
+    expect(groups[0]?.books.map((item) => item.bookEditionId)).toEqual(["poetry-1", "poetry-2"]);
   });
 
   it("places a multi-genre book in every matching group", () => {
@@ -36,9 +37,13 @@ describe("catalog genre groups", () => {
     expect(groups.every((group) => group.books[0]?.bookEditionId === "aelita")).toBe(true);
   });
 
-  it("keeps books from an old cache in an unclassified group", () => {
-    const groups = groupCatalogBooksByGenre([book("without-genre")]);
+  it("keeps books from an old cache in a final unclassified group", () => {
+    const groups = groupCatalogBooksByGenre([book("without-genre"), book("fantasy", ["fantasy"])]);
     expect(groups).toEqual([
+      expect.objectContaining({
+        genre: "fantasy",
+        books: [expect.objectContaining({ title: "fantasy" })],
+      }),
       expect.objectContaining({
         genre: "unclassified",
         books: [expect.objectContaining({ title: "without-genre" })],
