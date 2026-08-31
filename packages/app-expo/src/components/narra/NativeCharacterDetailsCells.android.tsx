@@ -52,11 +52,8 @@ function DetailsRow({
 
 /** Один Expo-компонент: на Android рендерится нативными Compose ListItem. */
 export function NativeCharacterDetailsCells({
-  bio,
-  bioLabel,
   cellBackgroundColor,
-  character,
-  characterLabel,
+  items,
   isDark,
 }: NativeCharacterDetailsCellsProps) {
   const primaryColor = isDark ? "rgba(255,255,255,0.96)" : "rgba(0,0,0,0.9)";
@@ -75,25 +72,24 @@ export function NativeCharacterDetailsCells({
         modifiers={[fillMaxWidth()]}
       >
         <Column modifiers={[fillMaxWidth()]}>
-          <DetailsRow
-            backgroundColor="transparent"
-            label={bioLabel}
-            primaryColor={primaryColor}
-            secondaryColor={secondaryColor}
-            value={bio}
-          />
-          <HorizontalDivider
-            color="rgba(255,255,255,0.2)"
-            thickness={1}
-            modifiers={[fillMaxWidth(), padding(16, 0, 16, 0)]}
-          />
-          <DetailsRow
-            backgroundColor="transparent"
-            label={characterLabel}
-            primaryColor={primaryColor}
-            secondaryColor={secondaryColor}
-            value={character}
-          />
+          {items.map((item, index) => (
+            <Column key={item.key} modifiers={[fillMaxWidth()]}>
+              {index > 0 ? (
+                <HorizontalDivider
+                  color="rgba(255,255,255,0.2)"
+                  thickness={1}
+                  modifiers={[fillMaxWidth(), padding(16, 0, 16, 0)]}
+                />
+              ) : null}
+              <DetailsRow
+                backgroundColor="transparent"
+                label={item.label}
+                primaryColor={primaryColor}
+                secondaryColor={secondaryColor}
+                value={item.value}
+              />
+            </Column>
+          ))}
         </Column>
       </Surface>
     </Host>

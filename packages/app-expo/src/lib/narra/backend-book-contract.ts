@@ -1,5 +1,5 @@
 import { normalizeBookLanguage } from "./book-language";
-import type { NarraCharacter } from "./types";
+import type { NarraCharacter, NarraCharacterProfileDetail } from "./types";
 import { VOICES, assignVoices } from "./voice-rules";
 
 export type BackendRecord = Record<string, unknown>;
@@ -50,6 +50,78 @@ const strings = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 const finite = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
+
+const HIDDEN_PROFILE_FIELDS = new Set([
+  "analysisSource",
+  "chatPlaceholder",
+  "gender",
+  "personalitySnapshots",
+  "personalityTimelineVersion",
+  "unlockFraction",
+  "unlockProgress",
+  "voice",
+]);
+const SNAPSHOT_METADATA_FIELDS = new Set(["cutoffTextOffset", "status"]);
+
+function displayProfileValue(value: unknown): string | string[] | undefined {
+  if (typeof value === "string") return value.trim() || undefined;
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  if (typeof value === "boolean") return value ? "Да" : "Нет";
+  if (!Array.isArray(value)) return undefined;
+  const values = value.flatMap((item) => {
+    if (typeof item === "string") return item.trim() ? [item.trim()] : [];
+    if (typeof item === "number" && Number.isFinite(item)) return [String(item)];
+    const record = backendRecord(item);
+    return typeof record.value === "string" && record.value.trim() ? [record.value.trim()] : [];
+  });
+  return values.length > 0 ? values : undefined;
+}
+
+/**
+ * Keep the backend profile extensible while making the progressive timeline spoiler-safe.
+ * Any field ever present in a snapshot is considered progressive: its final root value is
+ * hidden until a reached snapshot explicitly provides the value.
+ */
+export function backendVisibleProfileDetails(
+  profile: BackendRecord,
+  snapshot: BackendRecord | undefined,
+): NarraCharacterProfileDetail[] {
+  const snapshots = Array.isArray(profile.personalitySnapshots)
+    ? (profile.personalitySnapshots as unknown[]).map(backendRecord)
+    : [];
+  const progressiveKeys = new Set(
+    snapshots.flatMap((item) =>
+      Object.keys(item).filter((key) => !SNAPSHOT_METADATA_FIELDS.has(key)),
+    ),
+  );
+  const visible = { ...profile };
+  for (const key of progressiveKeys) delete visible[key];
+  if (snapshot) {
+    for (const [key, value] of Object.entries(snapshot)) {
+      if (!SNAPSHOT_METADATA_FIELDS.has(key)) visible[key] = value;
+    }
+  }
+  const order = [
+    "role",
+    "description",
+    "traits",
+    "appearancePrompt",
+    "speechStyle",
+    "speechExamples",
+    "greeting",
+  ];
+  return Object.entries(visible)
+    .flatMap(([key, value]) => {
+      if (HIDDEN_PROFILE_FIELDS.has(key)) return [];
+      const displayValue = displayProfileValue(value);
+      return displayValue === undefined ? [] : [{ key, value: displayValue }];
+    })
+    .sort((a, b) => {
+      const aIndex = order.indexOf(a.key);
+      const bIndex = order.indexOf(b.key);
+      return (aIndex < 0 ? order.length : aIndex) - (bIndex < 0 ? order.length : bIndex);
+    });
+}
 
 export function parseBackendBinding(value: unknown, hash: string): BackendBookBinding {
   const raw = backendRecord(value);
@@ -194,6 +266,7 @@ export function backendConfirmedCharacters(
         speechStyle: string(profile.speechStyle),
         speechExamples: strings(profile.speechExamples),
         appearancePrompt: string(profile.appearancePrompt),
+        profileDetails: backendVisibleProfileDetails(profile, snapshot),
         greeting: string(profile.greeting) || undefined,
         chatPlaceholder: string(profile.chatPlaceholder) || undefined,
         unlockProgress: backendUnlockProgress(item, manifest),

@@ -59,11 +59,8 @@ function DetailsRow({
 
 /** Один Expo-компонент: на iOS 26+ рендерится нативной поверхностью Liquid Glass. */
 export function NativeCharacterDetailsCells({
-  bio,
-  bioLabel,
   cellBackgroundColor,
-  character,
-  characterLabel,
+  items,
   isDark,
 }: NativeCharacterDetailsCellsProps) {
   const supportsGlass = Number.parseInt(String(Platform.Version), 10) >= 26;
@@ -97,9 +94,14 @@ export function NativeCharacterDetailsCells({
           padding({ horizontal: 20, top: DETAILS_SECTION_GAP }),
         ]}
       >
-        <DetailsRow label={bioLabel} value={bio} />
-        <Divider modifiers={[overlay({ color: WHITE_20 }), padding({ vertical: 9 })]} />
-        <DetailsRow label={characterLabel} value={character} />
+        {items.map((item, index) => (
+          <VStack key={item.key} alignment="leading" spacing={0}>
+            {index > 0 ? (
+              <Divider modifiers={[overlay({ color: WHITE_20 }), padding({ vertical: 9 })]} />
+            ) : null}
+            <DetailsRow label={item.label} value={item.value} />
+          </VStack>
+        ))}
       </VStack>
     </Host>
   );

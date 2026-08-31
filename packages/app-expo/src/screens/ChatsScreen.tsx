@@ -12,6 +12,7 @@ import { NativeSegmentedPager } from "@/components/ui/native-segmented-pager";
 import { getBookTabLabel } from "@/lib/book/book-tab-label";
 import { countRender } from "@/lib/diagnostics/interaction-performance";
 import { loadBackendCharacterMedia } from "@/lib/narra/backend-character-media";
+import { characterProfileText } from "@/lib/narra/character-profile";
 import {
   type ChatListModel,
   type ChatListRow,
@@ -205,7 +206,7 @@ const ChatsPage = memo(function ChatsPage({
         key: rowKey,
         accessibilityLabel: `${row.character.name}, ${row.bookTitle}`,
         title: row.character.fullName || row.character.name,
-        subtitle: row.character.role,
+        subtitle: characterProfileText(row.character, "description"),
         onPress: () => onOpenChat(row),
         avatar: (
           <CharacterChatAvatar>

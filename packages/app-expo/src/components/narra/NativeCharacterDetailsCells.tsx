@@ -5,26 +5,23 @@ import type { NativeCharacterDetailsCellsProps } from "./NativeCharacterDetailsC
 
 /** Резервное представление для платформ без SwiftUI. */
 export function NativeCharacterDetailsCells({
-  bio,
-  bioLabel,
   cellBackgroundColor,
-  character,
-  characterLabel,
+  items,
   isDark,
 }: NativeCharacterDetailsCellsProps) {
   const primaryColor = isDark ? "rgba(255,255,255,0.96)" : "rgba(0,0,0,0.9)";
 
   return (
     <View style={[styles.group, { backgroundColor: cellBackgroundColor }]}>
-      <View style={styles.row}>
-        <Text style={[styles.label, { color: primaryColor }]}>{bioLabel}</Text>
-        <Text style={[styles.value, { color: primaryColor }]}>{bio}</Text>
-      </View>
-      <View style={styles.divider} />
-      <View style={styles.row}>
-        <Text style={[styles.label, { color: primaryColor }]}>{characterLabel}</Text>
-        <Text style={[styles.value, { color: primaryColor }]}>{character}</Text>
-      </View>
+      {items.map((item, index) => (
+        <View key={item.key}>
+          {index > 0 ? <View style={styles.divider} /> : null}
+          <View style={styles.row}>
+            <Text style={[styles.label, { color: primaryColor }]}>{item.label}</Text>
+            <Text style={[styles.value, { color: primaryColor }]}>{item.value}</Text>
+          </View>
+        </View>
+      ))}
     </View>
   );
 }

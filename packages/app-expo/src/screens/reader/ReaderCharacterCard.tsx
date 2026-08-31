@@ -98,6 +98,7 @@ function formatCharacterTraits(traits: readonly string[]): string {
   const value = traits
     .map((trait) => trait.trim())
     .filter(Boolean)
+    .map((trait) => trait.toLocaleLowerCase("ru-RU"))
     .join(", ");
 
   return value ? `${value[0].toLocaleUpperCase("ru-RU")}${value.slice(1)}` : "";
@@ -360,6 +361,35 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
 
     if (!character || !liveCharacter) return null;
 
+    const backendProfileDetails = liveCharacter.profileDetails ?? [];
+    const traitsDetail = backendProfileDetails.find((detail) => detail.key === "traits");
+    const descriptionDetail = backendProfileDetails.find((detail) => detail.key === "description");
+    const traits = Array.isArray(traitsDetail?.value)
+      ? traitsDetail.value
+      : typeof traitsDetail?.value === "string"
+        ? [traitsDetail.value]
+        : liveCharacter.traits;
+    const formattedTraits = formatCharacterTraits(traits);
+    const profileItems = [
+      ...(formattedTraits
+        ? [
+            {
+              key: "traits",
+              label: t("narra.character", "Характер"),
+              value: formattedTraits,
+            },
+          ]
+        : []),
+      {
+        key: "description",
+        label: t("narra.description", "Описание"),
+        value: descriptionDetail?.value ?? "—",
+      },
+    ].map((detail) => ({
+      ...detail,
+      value: Array.isArray(detail.value) ? detail.value.join("\n") || "—" : detail.value || "—",
+    }));
+
     const displayName = character.fullName || character.name;
     const nameNeedsFitting = nameFit?.name === displayName && nameFit.needsFitting;
     const fittedDisplayName = nameNeedsFitting
@@ -561,11 +591,8 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
           {embedded ? (
             <View style={styles.embeddedDetailsBlock}>
               <NativeCharacterDetailsCells
-                bio={character.role || "—"}
-                bioLabel={t("narra.bio", "Био")}
                 cellBackgroundColor={colors.primary10}
-                character={formatCharacterTraits(character.traits) || "—"}
-                characterLabel={t("narra.character", "Характер")}
+                items={profileItems}
                 isDark={portraitForeground.isDark}
               />
             </View>

@@ -200,8 +200,8 @@
     "writeToCharacter": "Написать",
     "voiceCharacter": "Озвучить",
     "loopingPortraitLabel": "Зацикленный портрет персонажа",
-    "bio": "Био",
     "character": "Характер",
+    "description": "Описание",
     "continueReading": "Продолжить чтение"
   },
   "chats": {

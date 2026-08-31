@@ -107,6 +107,54 @@ describe("backend book contract", () => {
     expect(backendConfirmedCharacters(value, 0.5)[0].traits).toEqual(["early"]);
     expect(backendConfirmedCharacters(value, 0.05)[0].traits).toEqual([]);
   });
+  it("keeps every user-facing backend field from the latest reached snapshot", () => {
+    const value = manifest();
+    value.characters[0].profile = {
+      analysisSource: "v3",
+      role: "Главный герой",
+      appearancePrompt: "Высокий человек в тёмном пальто",
+      customFact: "Любит шахматы",
+      traits: ["финальная черта"],
+      personalitySnapshots: [
+        {
+          cutoffTextOffset: 100,
+          status: "preliminary",
+          traits: [{ value: "наблюдательный", confidence: 0.9 }],
+          relationships: ["Знаком с Анной"],
+        },
+        {
+          cutoffTextOffset: 700,
+          traits: [{ value: "будущая черта" }],
+          relationships: ["Будущий спойлер"],
+        },
+      ],
+    };
+
+    const character = backendConfirmedCharacters(value, 0.5)[0];
+    expect(character.traits).toEqual(["наблюдательный"]);
+    expect(character.profileDetails).toEqual([
+      { key: "role", value: "Главный герой" },
+      { key: "traits", value: ["наблюдательный"] },
+      { key: "appearancePrompt", value: "Высокий человек в тёмном пальто" },
+      { key: "customFact", value: "Любит шахматы" },
+      { key: "relationships", value: ["Знаком с Анной"] },
+    ]);
+  });
+  it("does not expose final values for progressive fields before the first snapshot", () => {
+    const value = manifest();
+    value.characters[0].profile = {
+      role: "Герой",
+      traits: ["спойлер"],
+      secret: "финальный секрет",
+      personalitySnapshots: [
+        { cutoffTextOffset: 700, traits: [{ value: "позже" }], secret: "раскрытый секрет" },
+      ],
+    };
+
+    expect(backendConfirmedCharacters(value, 0.5)[0].profileDetails).toEqual([
+      { key: "role", value: "Герой" },
+    ]);
+  });
   it("validates private upload state conservatively and accepts a registration race to catalog", () => {
     expect(
       parseBackendBinding({ resolution: "private", book_edition_id: "id" }, "hash").sourceUploaded,

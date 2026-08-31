@@ -18,6 +18,13 @@ export interface NarraPassport {
   outfit: string;
 }
 
+export interface NarraCharacterProfileDetail {
+  /** Backend profile key. Kept stable so the UI can localize known fields. */
+  key: string;
+  /** Display-ready backend value. Arrays remain separate to preserve readable lists. */
+  value: string | string[];
+}
+
 export interface NarraCharacter {
   backendManaged?: boolean;
   backendAssets?: BackendCharacterAsset[];
@@ -38,6 +45,8 @@ export interface NarraCharacter {
   speechStyle: string;
   speechExamples: string[];
   appearancePrompt: string;
+  /** Every user-facing field allowed by the latest reached backend snapshot. */
+  profileDetails?: NarraCharacterProfileDetail[];
   passport?: NarraPassport;
   expression?: string;
   /** Fraction of the book (0…0.95) at which the character becomes available. */

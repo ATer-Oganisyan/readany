@@ -59,7 +59,7 @@ export const CharacterChatListRow = memo(function CharacterChatListRow({
             {item.title}
           </Text>
           {item.subtitle ? (
-            <Text style={styles.subtitle} numberOfLines={2}>
+            <Text style={styles.subtitle} numberOfLines={2} ellipsizeMode="tail">
               {item.subtitle}
             </Text>
           ) : null}

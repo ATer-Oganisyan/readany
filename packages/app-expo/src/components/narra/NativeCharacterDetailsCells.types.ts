@@ -1,8 +1,5 @@
 export interface NativeCharacterDetailsCellsProps {
-  bio: string;
-  bioLabel: string;
   cellBackgroundColor: string;
-  character: string;
-  characterLabel: string;
+  items: { key: string; label: string; value: string }[];
   isDark: boolean;
 }

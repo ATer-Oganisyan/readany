@@ -159,8 +159,8 @@
     "writeToCharacter": "Message",
     "voiceCharacter": "Play voice",
     "loopingPortraitLabel": "Looping character portrait",
-    "bio": "Bio",
     "character": "Personality",
+    "description": "Description",
     "continueReading": "Continue reading"
   },
   "chats": {
