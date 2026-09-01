@@ -235,7 +235,7 @@ test('catalog manifest exposes validated v3 as the canonical markup', async () =
                     evidenceIds: ['description-1'],
                     confidence: 0.9
                   },
-                  traits: [{ value: 'смелый', evidenceIds: ['trait-1'], confidence: 0.8 }],
+                  traits: [],
                   personalityTimelineVersion: 'progressive-personality-v1',
                   personalitySnapshots: [{
                     cutoffTextOffset: 200,
@@ -307,21 +307,8 @@ test('catalog manifest exposes validated v3 as the canonical markup', async () =
     'Подробное описание главного героя.'
   )
   assert.equal(preview.characters[0].fullName, '')
-  assert.equal(
-    preview.characters[0].profile.personalityTimelineVersion,
-    'progressive-personality-v1'
-  )
-  assert.deepEqual(preview.characters[0].profile.personalitySnapshots, [{
-    cutoffTextOffset: 200,
-    status: 'preliminary',
-    traits: [{
-      value: 'наблюдательный', confidence: 0.65, evidenceLevel: 'single_scene'
-    }]
-  }, {
-    cutoffTextOffset: 1_000,
-    status: 'supported',
-    traits: [{ value: 'смелый', confidence: 0.8, evidenceLevel: 'repeated' }]
-  }])
+  assert.equal('personalityTimelineVersion' in preview.characters[0].profile, false)
+  assert.equal('personalitySnapshots' in preview.characters[0].profile, false)
   assert.equal(preview.characters[0].bundle.assets.length, REQUIRED_CHARACTER_MEDIA.length)
   assert.equal(preview.markup.analysisVersion, 'book-markup-v3')
   assert.deepEqual(calls, [['manifest', 'character-bundle-v3']])
