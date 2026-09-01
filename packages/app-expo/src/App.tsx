@@ -69,6 +69,10 @@ import { AnimatedNarraFace } from "@/components/chat/animated-narra-face";
 import { MishanaerIcon, type MishanaerIconName } from "@/components/ui/Icon";
 import { UpdateDialog } from "@/components/update/UpdateDialog";
 import { useUpdateChecker } from "@/hooks/use-update-checker";
+import {
+  isNarraAssistantGatewayRequest,
+  narraAssistantGatewayFetch,
+} from "@/lib/ai/narra-assistant-gateway";
 import { startTelemetry } from "@/lib/analytics/telemetry";
 import { startDiagnostics } from "@/lib/diagnostics/diagnostics";
 import { navigationRef } from "@/lib/navigationRef";
@@ -171,7 +175,12 @@ export default function App() {
 
         console.log("[App] bootstrap: import expo/fetch");
         const { fetch: expoFetch } = await import("expo/fetch");
-        setStreamingFetch(expoFetch as typeof globalThis.fetch);
+        setStreamingFetch(((input: RequestInfo | URL, init?: RequestInit) => {
+          if (isNarraAssistantGatewayRequest(input)) {
+            return narraAssistantGatewayFetch(input, init);
+          }
+          return expoFetch(input, init);
+        }) as typeof globalThis.fetch);
 
         console.log("[App] bootstrap: configure audio mode");
         await setAudioModeAsync({
