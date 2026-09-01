@@ -810,7 +810,6 @@ function ReaderContent({ route, navigation }: Props) {
               intent,
               display: (targetAnchor, dataUri) =>
                 bridgeRef.current?.replaceSceneSlot(targetAnchor, dataUri),
-              remove: (targetAnchor) => bridgeRef.current?.removeSceneSlot(targetAnchor),
             },
             action.signal,
           );
