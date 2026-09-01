@@ -71,7 +71,6 @@ const HIDDEN_PROFILE_FIELDS = new Set([
   "voice",
 ]);
 const SNAPSHOT_METADATA_FIELDS = new Set(["cutoffTextOffset", "status"]);
-
 function displayProfileValue(value: unknown): string | string[] | undefined {
   if (typeof value === "string") return value.trim() || undefined;
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
@@ -86,27 +85,14 @@ function displayProfileValue(value: unknown): string | string[] | undefined {
   return values.length > 0 ? values : undefined;
 }
 
-/**
- * Keep the backend profile extensible while making the progressive timeline spoiler-safe.
- * Any field ever present in a snapshot is considered progressive: its final root value is
- * hidden until a reached snapshot explicitly provides the value.
- */
+/** Return the complete public profile supplied by the backend, overlaid with its final snapshot. */
 export function backendVisibleProfileDetails(
   profile: BackendRecord,
-  snapshot: BackendRecord | undefined,
+  finalSnapshot?: BackendRecord,
 ): NarraCharacterProfileDetail[] {
-  const snapshots = Array.isArray(profile.personalitySnapshots)
-    ? (profile.personalitySnapshots as unknown[]).map(backendRecord)
-    : [];
-  const progressiveKeys = new Set(
-    snapshots.flatMap((item) =>
-      Object.keys(item).filter((key) => !SNAPSHOT_METADATA_FIELDS.has(key)),
-    ),
-  );
   const visible = { ...profile };
-  for (const key of progressiveKeys) delete visible[key];
-  if (snapshot) {
-    for (const [key, value] of Object.entries(snapshot)) {
+  if (finalSnapshot) {
+    for (const [key, value] of Object.entries(finalSnapshot)) {
       if (!SNAPSHOT_METADATA_FIELDS.has(key)) visible[key] = value;
     }
   }
@@ -258,33 +244,27 @@ export function backendUnlockProgress(
   return Math.min(0.95, Math.max(0, fraction));
 }
 
-/** Snapshots are applied only when their documented cutoff has already been read. */
+/** Characters use the complete public profile supplied by the backend. */
 export function backendConfirmedCharacters(
   manifest: BackendBookManifest,
-  progress: number,
+  _progress: number,
 ): NarraCharacter[] {
   if (manifest.availability !== "ready") return [];
   const characters: NarraCharacter[] = manifest.characters
     .filter((item) => !item.provisional && item.state !== "unknown")
     .map((item) => {
-      const offset = Math.max(0, Math.min(1, progress)) * (manifest.textLength ?? 0);
-      const hasTimeline = Array.isArray(item.profile.personalitySnapshots);
-      const snapshots = hasTimeline
-        ? (item.profile.personalitySnapshots as unknown[]).map(backendRecord)
-        : [];
-      const snapshot = snapshots
-        .filter((value) => finite(value.cutoffTextOffset) && value.cutoffTextOffset <= offset)
-        .sort((a, b) => Number(b.cutoffTextOffset) - Number(a.cutoffTextOffset))[0];
       const profile = item.profile;
-      // Live v3: profile.traits is the final state, snapshot.traits contains { value, confidence }.
-      // No reached snapshot means no personality evidence yet, not permission to reveal final traits.
-      const traits = hasTimeline
-        ? Array.isArray(snapshot?.traits)
-          ? snapshot.traits.flatMap((value) => {
-              const trait = backendRecord(value);
-              return typeof trait.value === "string" ? [trait.value] : [];
-            })
-          : []
+      const finalSnapshot = Array.isArray(profile.personalitySnapshots)
+        ? (profile.personalitySnapshots as unknown[])
+            .map(backendRecord)
+            .filter((snapshot) => finite(snapshot.cutoffTextOffset))
+            .sort((a, b) => Number(b.cutoffTextOffset) - Number(a.cutoffTextOffset))[0]
+        : undefined;
+      const traits = Array.isArray(finalSnapshot?.traits)
+        ? finalSnapshot.traits.flatMap((value) => {
+            const trait = backendRecord(value);
+            return typeof trait.value === "string" ? [trait.value] : [];
+          })
         : strings(profile.traits);
       return {
         id: item.key,
@@ -298,7 +278,7 @@ export function backendConfirmedCharacters(
         speechStyle: string(profile.speechStyle),
         speechExamples: strings(profile.speechExamples),
         appearancePrompt: string(profile.appearancePrompt),
-        profileDetails: backendVisibleProfileDetails(profile, snapshot),
+        profileDetails: backendVisibleProfileDetails(profile, finalSnapshot),
         greeting: string(profile.greeting) || undefined,
         chatPlaceholder: string(profile.chatPlaceholder) || undefined,
         unlockProgress: backendUnlockProgress(item, manifest),
