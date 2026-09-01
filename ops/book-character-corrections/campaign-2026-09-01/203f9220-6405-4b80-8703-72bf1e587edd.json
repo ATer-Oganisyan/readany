@@ -1,0 +1,16 @@
+{
+  "contractVersion": "book-character-correction-v1",
+  "base": {
+    "markupVersionId": "25f4ba67-752a-4e0a-936c-dc2fed37b7e4",
+    "publicationId": "010c7832-dd25-4227-b251-02b4fb03eaf2",
+    "contentHash": "35130fdd2605af16990be3ee2e097e43ff231f0b222e8efd84edf32d0b809817"
+  },
+  "reason": "«Воскресение»: объединяем Екатерину Маслову с основным профилем Масловой, который охватывает всю книгу и содержит более поздний Personality. LLM не используется.",
+  "changes": [
+    {
+      "characterKey": "character:cb89c5a2c81364c1addb01c815af357cad199cd47761a211",
+      "reason": "Екатерина Маслова и Маслова — один персонаж; физическая запись остаётся в исходной публикации.",
+      "redirectTo": "character:df4105b79ac70e5be907eda35dbf14ee90d308ded59fdf41"
+    }
+  ]
+}

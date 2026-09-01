@@ -151,6 +151,22 @@ test('correction copies grounded fields, redirects a duplicate and remaps refere
   assert.equal(resolveCorrectedCharacterKey('hero-full-name', result.document), 'hero')
 })
 
+test('redirect deterministically caps merged identity evidence without dropping redirected identities entirely', () => {
+  const value = markup()
+  value.characters[0].identityEvidenceIds = Array.from({ length: 64 }, (_, index) =>
+    `target-evidence-${String(index).padStart(2, '0')}`)
+  value.characters[1].identityEvidenceIds = Array.from({ length: 64 }, (_, index) =>
+    `source-evidence-${String(index).padStart(2, '0')}`)
+  value.characters[1].role.evidenceIds = [value.characters[1].identityEvidenceIds[0]]
+  value.characters[1].description.evidenceIds = value.characters[1].identityEvidenceIds.slice(0, 2)
+
+  const result = applyBookCharacterCorrection(correction(), { markup: value, base })
+  const ids = result.markup.characters[0].identityEvidenceIds
+  assert.equal(ids.length, 64)
+  assert.deepEqual(ids.slice(0, 48), value.characters[0].identityEvidenceIds.slice(0, 48))
+  assert.deepEqual(ids.slice(48), value.characters[1].identityEvidenceIds.slice(0, 16))
+})
+
 test('correction can replace or explicitly clear only role and description', () => {
   const document = correction({
     changes: [{

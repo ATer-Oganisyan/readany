@@ -7,6 +7,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const SHA256 = /^[0-9a-f]{64}$/
 const CHARACTER_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/
 const PROFILE_FIELDS = Object.freeze(['role', 'description'])
+const MAX_IDENTITY_EVIDENCE_IDS = 64
+const REDIRECTED_IDENTITY_EVIDENCE_RESERVE = 16
 
 function invalid(message, code = 'CHARACTER_CORRECTION_INVALID', status = 400) {
   throw Object.assign(new Error(message), { code, status })
@@ -247,6 +249,53 @@ function uniqueAliases(values) {
   return result.slice(0, 32)
 }
 
+function uniqueEvidenceIds(values) {
+  return [...new Set(values.filter((value) => typeof value === 'string' && value))]
+}
+
+function roundRobinEvidence(groups) {
+  const result = []
+  const seen = new Set()
+  const normalized = groups.map(uniqueEvidenceIds)
+  const longest = Math.max(0, ...normalized.map((group) => group.length))
+  for (let index = 0; index < longest; index += 1) {
+    for (const group of normalized) {
+      const value = group[index]
+      if (!value || seen.has(value)) continue
+      seen.add(value)
+      result.push(value)
+    }
+  }
+  return result
+}
+
+function mergedIdentityEvidenceIds(target, sources) {
+  const primary = uniqueEvidenceIds(target.identityEvidenceIds ?? [])
+  const redirected = roundRobinEvidence(
+    sources.map((source) => source.identityEvidenceIds ?? [])
+  ).filter((value) => !primary.includes(value))
+  if (primary.length + redirected.length <= MAX_IDENTITY_EVIDENCE_IDS) {
+    return [...primary, ...redirected]
+  }
+
+  const redirectedBudget = Math.min(
+    REDIRECTED_IDENTITY_EVIDENCE_RESERVE,
+    redirected.length
+  )
+  const primaryBudget = Math.min(
+    primary.length,
+    MAX_IDENTITY_EVIDENCE_IDS - redirectedBudget
+  )
+  const result = [
+    ...primary.slice(0, primaryBudget),
+    ...redirected.slice(0, MAX_IDENTITY_EVIDENCE_IDS - primaryBudget)
+  ]
+  if (result.length < MAX_IDENTITY_EVIDENCE_IDS) {
+    result.push(...primary.slice(primaryBudget, MAX_IDENTITY_EVIDENCE_IDS - result.length))
+  }
+  return result
+}
+
 function mapKeys(values, redirects, suppressed) {
   return [...new Set((values ?? [])
     .map((value) => redirects.get(value) ?? value)
@@ -388,25 +437,29 @@ export function applyBookCharacterCorrection(value, { markup, base }) {
     target.aliases = uniqueAliases([...(target.aliases ?? []), ...(change.addAliases ?? [])])
   }
 
+  const redirectSourcesByTarget = new Map()
   for (const [sourceKey, targetKey] of plan.redirects) {
-    const source = characters.get(sourceKey)
+    const sources = redirectSourcesByTarget.get(targetKey) ?? []
+    sources.push(characters.get(sourceKey))
+    redirectSourcesByTarget.set(targetKey, sources)
+  }
+  for (const [targetKey, sources] of redirectSourcesByTarget) {
     const target = characters.get(targetKey)
-    target.aliases = uniqueAliases([
-      ...(target.aliases ?? []),
+    target.aliases = uniqueAliases(sources.reduce((aliases, source) => [
+      ...aliases,
       source.name,
       source.fullName,
       ...(source.aliases ?? [])
-    ])
-    target.identityEvidenceIds = [...new Set([
-      ...(target.identityEvidenceIds ?? []),
-      ...(source.identityEvidenceIds ?? [])
-    ])]
-    target.firstAppearanceTextOffset = Math.min(
-      target.firstAppearanceTextOffset,
-      source.firstAppearanceTextOffset
-    )
-    target.warmupTextOffset = Math.min(target.warmupTextOffset, source.warmupTextOffset)
-    characters.delete(sourceKey)
+    ], target.aliases ?? []))
+    target.identityEvidenceIds = mergedIdentityEvidenceIds(target, sources)
+    for (const source of sources) {
+      target.firstAppearanceTextOffset = Math.min(
+        target.firstAppearanceTextOffset,
+        source.firstAppearanceTextOffset
+      )
+      target.warmupTextOffset = Math.min(target.warmupTextOffset, source.warmupTextOffset)
+      characters.delete(source.characterKey)
+    }
   }
 
   for (const characterKey of plan.suppressed) characters.delete(characterKey)

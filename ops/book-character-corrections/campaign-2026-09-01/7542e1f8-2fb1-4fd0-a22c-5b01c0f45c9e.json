@@ -1,0 +1,16 @@
+{
+  "contractVersion": "book-character-correction-v1",
+  "base": {
+    "markupVersionId": "32922be0-53e4-458a-8e43-b0d389e5f3c0",
+    "publicationId": "0b66ddd8-9099-4935-a75a-abf49ad8bcc3",
+    "contentHash": "0deed8a0e186f4932623d88f96f9b38d918656f765522e100964a1fd908fc08d"
+  },
+  "reason": "«Старуха Изергиль»: объединяем профили «старуха Изергиль» и «Изергиль», не затрагивая отдельные профили её матери, подруги и мужа. LLM не используется.",
+  "changes": [
+    {
+      "characterKey": "character:dec58932cff873640a19a245ca6f1a7927f4ac8fbbc0f748",
+      "reason": "Профиль «Изергиль» описывает ту же рассказчицу; канонический профиль содержит более полный Bio и Personality.",
+      "redirectTo": "character:023f771c1ce888121d23a4d6e45ca648f4b5ff9fdb358e73"
+    }
+  ]
+}

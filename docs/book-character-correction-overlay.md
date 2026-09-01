@@ -169,6 +169,7 @@ npm run operator:character-correction -- disable --book <book-uuid> --hash <enab
 - удаляет suppress-профили из выдаваемого списка и их ссылки из событий, отношений и сюжетных арок;
 - не ставит для suppress-профилей новые media warmup jobs и очищает их `characterKey` в TTS-проекции;
 - переводит участников событий, отношения, сюжетные арки и TTS `characterKey` на сохраняемый ключ;
+- при redirect детерминированно ограничивает объединённый `identityEvidenceIds` контрактным максимумом 64, резервируя до 16 мест для evidence профилей-дублей; claim-level evidence полей не обрезается;
 - дедуплицирует media warmup;
 - сохраняет готовый media bundle дубля, если у канонического ключа его ещё нет;
 - добавляет в manifest метаданные `correction.contract_version`, `version` и `document_hash`.

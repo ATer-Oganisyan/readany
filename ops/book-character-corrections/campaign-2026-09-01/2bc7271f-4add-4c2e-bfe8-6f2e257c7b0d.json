@@ -1,0 +1,33 @@
+{
+  "contractVersion": "book-character-correction-v1",
+  "base": {
+    "markupVersionId": "5aebb234-d4fa-4b8b-9d42-fba30c70e51b",
+    "publicationId": "8680d588-ee91-4252-b07a-0f6faec4e0b4",
+    "contentHash": "a0b7f2a3d663fb4d018e9435bf75c70c428a6b0d9a865c8da538a13f3de5e4b3"
+  },
+  "reason": "«Дворянское гнездо»: объединяем Лаврецкого и Федора Ивановича Лаврецкого, сохраняя более полный Personality и перенося доказанное полное Bio. LLM не используется.",
+  "changes": [
+    {
+      "characterKey": "character:12c11c81010c1530559012ad7774b186280f8eeaa1125194",
+      "reason": "Основной профиль содержит наиболее полный Personality; полный профиль имени содержит более точное Bio и evidence семейного положения.",
+      "set": {
+        "role": {
+          "value": "дворянин и помещик, муж Варвары Павловны",
+          "evidenceIds": [
+            "86a44969-e204-4387-8c45-a29a91affe3e",
+            "fa1d8690-208c-4783-83d4-0cb22b85a95d"
+          ],
+          "confidence": 0.96
+        }
+      },
+      "copy": {
+        "descriptionFrom": "character:1556661b3f0ec8aa7889a69185fbb266f5b5a604406c2ba9"
+      }
+    },
+    {
+      "characterKey": "character:1556661b3f0ec8aa7889a69185fbb266f5b5a604406c2ba9",
+      "reason": "Федор Иванович Лаврецкий и Лаврецкий — один персонаж; исходная запись не удаляется.",
+      "redirectTo": "character:12c11c81010c1530559012ad7774b186280f8eeaa1125194"
+    }
+  ]
+}

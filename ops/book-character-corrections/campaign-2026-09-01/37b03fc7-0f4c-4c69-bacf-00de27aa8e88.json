@@ -1,0 +1,44 @@
+{
+  "contractVersion": "book-character-correction-v1",
+  "base": {
+    "markupVersionId": "a774bc0b-566c-4cbe-ae80-ac3a4540ebdc",
+    "publicationId": "2cb807a1-d05e-4c04-a162-de98ba6c3e6c",
+    "contentHash": "fdb8677af4ac66345a31775badf0be74283939ead1b2fdb14c0d0511c174aeb2"
+  },
+  "reason": "«Пиковая дама»: три опубликованных профиля Анны Федотовны объединяем в наиболее полный профиль; Bio и роль составлены только из evidence этих трёх профилей. LLM не используется.",
+  "changes": [
+    {
+      "characterKey": "character:3b79577d597160cacfb7dff7ff3656c5250aa5b92dd9a6e2",
+      "reason": "Канонический профиль содержит наиболее полный Personality, но роль отсутствует, а Bio описывает только поздний период жизни.",
+      "set": {
+        "role": {
+          "value": "графиня Анна Федотовна, бабушка Томского",
+          "evidenceIds": [
+            "d2804bb9-b330-4ada-ac9a-1b1bcd861aca"
+          ],
+          "confidence": 0.96
+        },
+        "description": {
+          "value": "Анна Федотовна — восьмидесятисемилетняя графиня и бабушка Томского. В молодости она блистала в Париже и узнала тайну трёх карт; к старости сохранила привычки и моду своей молодости, стала своенравной, скупой и властной.",
+          "evidenceIds": [
+            "d2804bb9-b330-4ada-ac9a-1b1bcd861aca",
+            "4e9428e4-d5d7-4f66-b3d8-6c028cfcda1c",
+            "eaa0836f-529e-4c71-b8cd-c4a9b8058e0a",
+            "9fbed96b-017a-4c24-9f11-dc61cedf1e75"
+          ],
+          "confidence": 0.94
+        }
+      }
+    },
+    {
+      "characterKey": "character:128a39dc9074dea6e39bcfb063a42943c852f2137e3ad16d",
+      "reason": "Профиль «бабушка» относится к той же графине Анне Федотовне; исходная запись не удаляется.",
+      "redirectTo": "character:3b79577d597160cacfb7dff7ff3656c5250aa5b92dd9a6e2"
+    },
+    {
+      "characterKey": "character:a31cc158f1f670110e492879a501435fe520cdd9c085304e",
+      "reason": "Профиль «старая графиня» относится к той же Анне Федотовне; исходная запись не удаляется.",
+      "redirectTo": "character:3b79577d597160cacfb7dff7ff3656c5250aa5b92dd9a6e2"
+    }
+  ]
+}
