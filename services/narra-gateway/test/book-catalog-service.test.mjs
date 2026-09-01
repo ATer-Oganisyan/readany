@@ -60,7 +60,7 @@ test('manifest never leaks a future character even when its global bundle is rea
           },
           characters: [
             {
-              characterKey: 'visible', name: 'Visible', fullName: 'Visible Hero',
+              characterKey: 'visible', name: 'visible', fullName: 'visible hero',
               warmupTextOffset: 0, firstAppearanceTextOffset: 20, data: { role: 'hero' },
               bundle: readyBundle('visible')
             },
@@ -79,6 +79,8 @@ test('manifest never leaks a future character even when its global bundle is rea
   })
   const manifest = await service.manifest('reader-1', 'book-1')
   assert.deepEqual(manifest.characters.map(({ characterKey }) => characterKey), ['visible'])
+  assert.equal(manifest.characters[0].name, 'Visible')
+  assert.equal(manifest.characters[0].fullName, 'Visible Hero')
   assert.equal(manifest.characters[0].state, 'ready')
   assert.equal(manifest.characters[0].bundle.assets.length, REQUIRED_CHARACTER_MEDIA.length)
 })
@@ -160,8 +162,8 @@ test('catalog manifest exposes validated v3 as the canonical markup', async () =
               characters: [
                 {
                   characterKey: 'visible',
-                  name: 'Visible',
-                  fullName: 'Visible',
+                  name: 'visible',
+                  fullName: 'visible',
                   aliases: [],
                   identityEvidenceIds: ['identity-visible'],
                   firstAppearanceTextOffset: 900,
@@ -240,6 +242,7 @@ test('catalog manifest exposes validated v3 as the canonical markup', async () =
     [{ characterKey: 'visible', traits: ['смелый'] }]
   )
   assert.equal(preview.characters[0].state, 'ready')
+  assert.equal(preview.characters[0].name, 'Visible')
   assert.equal(
     preview.characters[0].profile.description,
     'Подробное описание главного героя.'
@@ -321,7 +324,7 @@ test('processing v3 manifest exposes only reader-visible provisional characters'
           characters: [
             {
               characterKey: 'provisional:visible',
-              name: 'Джейн', fullName: 'Джейн',
+              name: 'джейн эйр', fullName: '  джейн   эйр ',
               firstAppearanceTextOffset: 100
             },
             {
@@ -347,7 +350,7 @@ test('processing v3 manifest exposes only reader-visible provisional characters'
   })
   assert.deepEqual(manifest.characters, [{
     characterKey: 'provisional:visible',
-    name: 'Джейн',
+    name: 'Джейн Эйр',
     fullName: '',
     firstAppearanceTextOffset: 100,
     provisional: true,
