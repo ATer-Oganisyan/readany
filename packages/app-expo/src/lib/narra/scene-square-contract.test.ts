@@ -105,7 +105,9 @@ describe("square scene contract", () => {
     expect(template).toContain("'  border-radius: 9999px !important;'");
     expect(template).toContain("icon.setAttribute('data-icon', 'inline-start')");
     expect(template).toContain(".readany-scene-action:focus-visible");
-    expect(template).toContain(".readany-scene-action:disabled");
+    expect(template).toContain(
+      "if (_sceneSlotsEnabled) appendSceneAction(box, _sceneSlotLabels.idle)",
+    );
     expect(template).toContain("action.style.setProperty('width', 'auto', 'important')");
   });
 

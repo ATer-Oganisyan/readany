@@ -221,8 +221,10 @@ vi.mock("@/styles/theme", () => ({
   radius: { sm: 6, full: 9999 },
   spacing: { sm: 8, md: 12, lg: 16, xl: 20, xxl: 24 },
   fontSize: { base: 16, xl: 20 },
-  fontWeight: { semibold: "600", normal: "400" },
+  fontWeight: { semibold: "600", medium: "500", normal: "400" },
   largeTitleFontFamily: "SB Serif Condensed Regular",
+  largeTitleFontSize: 40,
+  largeTitleLineHeight: 44,
 }));
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: runtime.t, i18n: runtime.i18n }),
@@ -608,6 +610,38 @@ describe("Search screen behavior with native boundaries replaced", () => {
         header().onChangeText({ nativeEvent: { text } });
     });
     expect(resultKeys(mounted.root)).toEqual(["catalog:dune"]);
+    const duneTitles = hosts(resultsList(mounted.root), "Text").filter(
+      (node) => node.props.children === "Dune",
+    );
+    expect(
+      duneTitles.some(
+        (node) =>
+          node.props.numberOfLines === 2 &&
+          node.props.style.some?.((part: { fontWeight?: string }) => part?.fontWeight === "500"),
+      ),
+    ).toBe(true);
+    expect(duneTitles.length).toBeGreaterThanOrEqual(3);
+    expect(hosts(resultsList(mounted.root), "LinearGradient").length).toBeGreaterThanOrEqual(3);
+    const searchCoverSurface = hosts(resultsList(mounted.root), "AnimatedView").find((node) =>
+      node.props.style.some?.(
+        (part: { width?: number; height?: number }) => part?.width === 38 && part.height != null,
+      ),
+    );
+    expect(
+      searchCoverSurface?.props.style.find?.(
+        (part: { width?: number; height?: number }) => part?.width === 38,
+      )?.height,
+    ).toBeCloseTo(38 * (41 / 28) + 2);
+    expect(
+      searchCoverSurface?.props.style.some?.(
+        (part: { borderRadius?: number }) => part?.borderRadius === 6 * (38 / 140),
+      ),
+    ).toBe(true);
+    expect(
+      hosts(resultsList(mounted.root), "View").some(
+        (node) => node.props.style?.width === 56 && node.props.style?.marginTop === 2,
+      ),
+    ).toBe(true);
     await input("ВОЙНА");
     expect(resultKeys(mounted.root)).toEqual(["catalog:war"]);
     await input("not present in this catalog");
@@ -641,6 +675,7 @@ describe("Search screen behavior with native boundaries replaced", () => {
     await input("Dune");
     expect(resultKeys(mounted.root)).toEqual(["catalog:dune"]);
     expect(position.y).toBe(0);
+    expect(results.props.contentContainerStyle).toContainEqual({ paddingTop: 59 });
     expect(position.scrollToOffsetCalls).toHaveLength(resets + 1);
   });
 
@@ -894,6 +929,22 @@ describe("Category screen behavior with native boundaries replaced", () => {
     if (!list) throw new Error("Expected category grid");
     return list;
   }
+
+  it("wraps a long category title onto at most two lines on iOS", async () => {
+    seedCatalog();
+    const mounted = await render(categoryElement());
+    const title = hosts(mounted.root, "Text").find(
+      (node) => node.props.testID === "catalog-category-title",
+    );
+    expect(title?.props.children).toBe("Художественная литература");
+    expect(title?.props.numberOfLines).toBe(2);
+    expect(title?.props.ellipsizeMode).toBe("tail");
+    expect(grid(mounted.root).props.getItemLayout).toBeUndefined();
+    expect(runtime.navigation.setOptions).toHaveBeenCalledWith({
+      title: "",
+      headerLargeTitleEnabled: false,
+    });
+  });
 
   it("responds to measured viewport height and retains the same grid through focus-only transitions", async () => {
     seedCatalog();

@@ -31,7 +31,7 @@ describe("iOS reader toolbar contract", () => {
     expect(readerToolbar).toContain("speechItem.accessibilityLabel = currentSpeechLabel");
   });
 
-  it("shows a centered system spinner instead of visible loading icon and copy", () => {
+  it("shows only a content-sized system spinner while loading", () => {
     const nativeControls = read(
       "../../../modules/native-controls/ios/ReadAnyNativeControlsModule.swift",
     );
@@ -39,18 +39,10 @@ describe("iOS reader toolbar contract", () => {
       .split("final class ReadAnyReaderToolbar")[1]
       .split("final class ReadAnySceneToolbar")[0];
 
-    expect(readerToolbar).toContain("UIActivityIndicatorView(style: .medium)");
-    expect(readerToolbar).toContain(
-      "indicator.centerXAnchor.constraint(equalTo: speechButton.centerXAnchor)",
-    );
-    expect(readerToolbar).toContain(
-      "indicator.centerYAnchor.constraint(equalTo: speechButton.centerYAnchor)",
-    );
     expect(readerToolbar).toContain("isLoading: speechLoading");
-    expect(readerToolbar).toContain(
-      "configuration.baseForegroundColor = isLoading ? .clear : toolbarTintColor",
-    );
-    expect(readerToolbar).toContain("speechLoadingIndicator.startAnimating()");
-    expect(readerToolbar).toContain("speechLoadingIndicator.stopAnimating()");
+    expect(readerToolbar).toContain("configuration.title = isLoading ? nil : title");
+    expect(readerToolbar).toContain("configuration.image = isLoading ? nil : image");
+    expect(readerToolbar).toContain("configuration.showsActivityIndicator = isLoading");
+    expect(readerToolbar).not.toContain("speechLoadingIndicator");
   });
 });

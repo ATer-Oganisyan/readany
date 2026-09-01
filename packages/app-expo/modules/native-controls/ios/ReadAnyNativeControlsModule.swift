@@ -446,17 +446,6 @@ final class ReadAnyReaderToolbar: ExpoView {
     button.setContentCompressionResistancePriority(.required, for: .horizontal)
     return button
   }()
-  private lazy var speechLoadingIndicator: UIActivityIndicatorView = {
-    let indicator = UIActivityIndicatorView(style: .medium)
-    indicator.translatesAutoresizingMaskIntoConstraints = false
-    indicator.hidesWhenStopped = true
-    speechButton.addSubview(indicator)
-    NSLayoutConstraint.activate([
-      indicator.centerXAnchor.constraint(equalTo: speechButton.centerXAnchor),
-      indicator.centerYAnchor.constraint(equalTo: speechButton.centerYAnchor)
-    ])
-    return indicator
-  }()
   private lazy var charactersButton = makeToolbarButton(action: #selector(handleCharactersPress))
   private lazy var speechItem = makeToolbarItem(button: speechButton)
   private lazy var charactersItem = makeToolbarItem(button: charactersButton)
@@ -581,22 +570,15 @@ final class ReadAnyReaderToolbar: ExpoView {
     isLoading: Bool = false
   ) {
     var configuration = UIButton.Configuration.plain()
-    configuration.title = title
-    configuration.image = image
+    configuration.title = isLoading ? nil : title
+    configuration.image = isLoading ? nil : image
     configuration.imagePlacement = .leading
     configuration.imagePadding = 7
-    configuration.baseForegroundColor = isLoading ? .clear : toolbarTintColor
+    configuration.baseForegroundColor = toolbarTintColor
+    configuration.showsActivityIndicator = isLoading
     button.configuration = configuration
     button.titleLabel?.numberOfLines = 1
     button.accessibilityLabel = title
-
-    guard button === speechButton else { return }
-    speechLoadingIndicator.color = toolbarTintColor
-    if isLoading {
-      speechLoadingIndicator.startAnimating()
-    } else {
-      speechLoadingIndicator.stopAnimating()
-    }
   }
 }
 

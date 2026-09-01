@@ -20,7 +20,11 @@ import {
 } from "@/lib/catalog/bundled-books";
 import { diagnosticErrorReason, recordDiagnostic } from "@/lib/diagnostics/diagnostics";
 import { hapticLight } from "@/lib/haptics";
-import { retryBackendBookSync, useBackendBookStatus } from "@/lib/narra/backend-book-sync";
+import {
+  retryBackendBookAnalysis,
+  retryBackendBookSync,
+  useBackendBookStatus,
+} from "@/lib/narra/backend-book-sync";
 import { importBackendCatalogBook } from "@/lib/narra/backend-catalog-import";
 import { isCatalogBookRevisionCurrent } from "@/lib/narra/backend-catalog-library";
 import { BackendSceneError } from "@/lib/narra/backend-scene";
@@ -850,10 +854,10 @@ function ReaderContent({ route, navigation }: Props) {
         if (backendCode === "MARKUP_FAILED") {
           bridgeRef.current?.setSceneSlotState(anchor, "error");
           toast.error(t("narra.analysisFailed", "Не удалось подготовить книгу"), {
-            description: t(
-              "narra.analysisRetryHint",
-              "Откройте список персонажей, чтобы повторить разметку.",
-            ),
+            action: {
+              label: t("common.retry", "Повторить"),
+              onClick: () => void retryBackendBookAnalysis(bookId).catch(() => undefined),
+            },
           });
           return;
         }
@@ -1555,7 +1559,6 @@ function ReaderContent({ route, navigation }: Props) {
         idle: t("narra.sceneSlotShow", "Сгенерировать сцену"),
         loading: t("narra.sceneSlotDrawing", "Рисуем сцену…"),
         loadingHint: t("narra.sceneSlotDrawingHint", "Обычно 2–3 минуты"),
-        disabled: t("narra.sceneMarkupPending", "Разметка книги ещё готовится"),
         enabled: backendSceneEnabled,
         caption: t("narra.sceneSlotCaption", "Сцена — сгенерировано ИИ"),
         error: t("narra.sceneSlotError", "Попробовать снова"),

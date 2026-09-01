@@ -40,7 +40,7 @@ import {
 import type { WebDavImportSource } from "@readany/core";
 import { useTranslation } from "react-i18next";
 import { Platform } from "react-native";
-import { TabNavigator, useLargeTitleOptions } from "./TabNavigator";
+import { TabNavigator } from "./TabNavigator";
 import { NATIVE_SCROLL_EDGE_EFFECTS } from "./scroll-edge-effects";
 
 export type RootStackParamList = {
@@ -122,7 +122,6 @@ export function RootNavigator() {
   const { _hasHydrated } = useSettingsStore();
   const { colors, isDark } = useTheme();
   const { t } = useTranslation();
-  const largeTitleOptions = useLargeTitleOptions();
 
   if (!_hasHydrated) return null;
 
@@ -160,8 +159,9 @@ export function RootNavigator() {
           name="CatalogCategory"
           component={CatalogCategoryScreen}
           options={({ route }) => ({
-            title: route.params.title,
-            ...largeTitleOptions,
+            ...(Platform.OS === "ios"
+              ? { title: "", headerLargeTitleEnabled: false }
+              : { title: route.params.title }),
             statusBarHidden: false,
             statusBarStyle: isDark ? "light" : "dark",
           })}

@@ -150,9 +150,10 @@ export async function generateBackendReaderScene(
     );
     for (const anchor of change.removedAnchors) input.remove(anchor);
     trace("store");
+    if (change.canonicalAnchor !== input.anchor) return;
     const dataUri = await readSceneDataUri(shared.imageUri, signal);
     if (signal.aborted) throw new BackendSceneError("SCENE_ABORTED");
-    input.display(input.anchor, dataUri);
+    input.display(change.canonicalAnchor, dataUri);
     trace("webview");
   } catch (error) {
     recordDiagnostic("scene_request", {

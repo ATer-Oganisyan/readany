@@ -8,7 +8,6 @@ import {
 import { CharacterPortraitImage } from "@/components/narra/character-portrait-image";
 import { SystemSheetZoomDestination } from "@/components/navigation/SystemSheetZoomDestination";
 import { Text } from "@/components/ui/Typography";
-import { EmptyStateActionButton } from "@/components/ui/empty-state-action-button";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { useBackendBook } from "@/hooks/use-backend-book";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
@@ -16,6 +15,7 @@ import { retryBackendBookAnalysis, useBackendBookStatus } from "@/lib/narra/back
 import { characterBiography } from "@/lib/narra/character-profile";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
 import type { NarraCharacter } from "@/lib/narra/types";
+import { toast } from "@/lib/notifications";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { ChatScreen } from "@/screens/ChatScreen";
 import { NarraCharacterChatScreen } from "@/screens/NarraCharacterChatScreen";
@@ -32,7 +32,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   AccessibilityInfo,
-  ActivityIndicator,
   Easing,
   Platform,
   Animated as RNAnimated,
@@ -319,20 +318,30 @@ function NarraCharactersList({
       ),
     [storedCharacters, book?.progress],
   );
-  const provisional =
-    backendStatus?.manifest?.availability === "processing"
-      ? backendStatus.manifest.characters.filter((item) => item.provisional)
-      : [];
   const isFindingCharacters = backendStatus?.manifest?.availability === "processing";
   const analysisAvailability = backendStatus?.manifest?.availability;
   const analysisTerminal =
     analysisAvailability === "failed" || analysisAvailability === "cancelled";
-  const analysisRetryable =
-    analysisTerminal && backendStatus?.manifest?.analysis?.retryable === true;
   const sourceUnavailable = backendStatus?.error === "SOURCE_UNAVAILABLE";
   const retryAnalysis = useCallback(() => {
     void retryBackendBookAnalysis(bookId).catch(() => undefined);
   }, [bookId]);
+  const shownAnalysisFailureRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!analysisTerminal) {
+      shownAnalysisFailureRef.current = null;
+      return;
+    }
+    const failureKey = `${analysisAvailability}:${backendStatus?.manifest?.analysis?.updatedAt ?? ""}`;
+    if (shownAnalysisFailureRef.current === failureKey) return;
+    shownAnalysisFailureRef.current = failureKey;
+    toast.error(t("narra.analysisFailed", "Не удалось подготовить книгу"), {
+      action: {
+        label: t("common.retry", "Повторить"),
+        onClick: retryAnalysis,
+      },
+    });
+  }, [analysisAvailability, analysisTerminal, backendStatus, retryAnalysis, t]);
   useEffect(() => {
     recordTelemetry("character_opened", { feature: "character" });
   }, []);
@@ -436,30 +445,12 @@ function NarraCharactersList({
         style={styles.scrollView}
       >
         <CharacterChatList items={listItems} />
-        <CharacterChatList
-          items={provisional.map((item) => ({
-            key: `preparing:${item.key}`,
-            title: item.fullName || item.name,
-            subtitle: "Профиль формируется…",
-            accessibilityLabel: `${item.fullName || item.name}: профиль формируется`,
-            dimmed: true,
-            disabled: true,
-            onPress: () => undefined,
-            avatar: (
-              <CharacterChatAvatar muted>
-                <ActivityIndicator />
-              </CharacterChatAvatar>
-            ),
-          }))}
-        />
-        {analysisTerminal || analysisAvailability === "unavailable" ? (
+        {analysisAvailability === "unavailable" ? (
           <View style={styles.analysisState}>
             <Text style={styles.analysisStateTitle}>
               {sourceUnavailable
                 ? t("narra.analysisSourceUnavailable", "Нужен исходный файл книги")
-                : analysisAvailability === "cancelled"
-                  ? t("narra.analysisCancelled", "Разметка книги остановлена")
-                  : t("narra.analysisFailed", "Не удалось подготовить персонажей")}
+                : t("narra.analysisFailed", "Не удалось подготовить персонажей")}
             </Text>
             <Text style={styles.analysisStateDescription}>
               {sourceUnavailable
@@ -472,14 +463,6 @@ function NarraCharactersList({
                     "Книгу можно продолжать читать. Повторите разметку, когда будет удобно.",
                   )}
             </Text>
-            {analysisRetryable && !sourceUnavailable ? (
-              <EmptyStateActionButton
-                label={t("narra.retryAnalysis", "Повторить разметку")}
-                accessibilityLabel={t("narra.retryAnalysis", "Повторить разметку")}
-                disabled={backendStatus?.analysisRetrying === true}
-                onPress={retryAnalysis}
-              />
-            ) : null}
           </View>
         ) : null}
       </ScrollView>

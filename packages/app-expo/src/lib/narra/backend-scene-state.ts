@@ -14,6 +14,41 @@ function anchorForSourceKey(sourceKey: string): string | undefined {
     : undefined;
 }
 
+function offsetFor(book: NarraBookState, anchor: string, id: string): number {
+  const request = book.sceneRequests?.[sceneSourceKeyForAnchor(anchor)];
+  if (backendSceneId(request) === id) {
+    return request?.anchorTextOffset ?? Number.MAX_SAFE_INTEGER;
+  }
+  return book.scenesByBackendId?.[id]?.backendScene?.anchorTextOffset ?? Number.MAX_SAFE_INTEGER;
+}
+
+function canonicalAnchor(
+  book: NarraBookState,
+  id: string,
+  proposed: string,
+  proposedIntent: BackendSceneIntent,
+): string {
+  const anchors = new Set([proposed]);
+  for (const [anchor, boundId] of Object.entries(book.sceneAnchorBindings ?? {})) {
+    if (boundId === id) anchors.add(anchor);
+  }
+  for (const [sourceKey, request] of Object.entries(book.sceneRequests ?? {})) {
+    if (backendSceneId(request) === id) {
+      const anchor = anchorForSourceKey(sourceKey);
+      if (anchor) anchors.add(anchor);
+    }
+  }
+  return [...anchors].sort(
+    (a, b) =>
+      (a === proposed
+        ? (proposedIntent.anchorTextOffset ?? Number.MAX_SAFE_INTEGER)
+        : offsetFor(book, a, id)) -
+        (b === proposed
+          ? (proposedIntent.anchorTextOffset ?? Number.MAX_SAFE_INTEGER)
+          : offsetFor(book, b, id)) || a.localeCompare(b),
+  )[0];
+}
+
 export function withBackendSceneIntent(
   book: NarraBookState,
   anchor: string,
@@ -28,13 +63,31 @@ export function withBackendSceneIntent(
     };
   }
 
+  const canonical = canonicalAnchor(book, id, anchor, intent);
+  const removed = new Set<string>();
+  const bindings = { ...book.sceneAnchorBindings };
+  for (const [boundAnchor, boundId] of Object.entries(bindings)) {
+    if (boundId === id && boundAnchor !== canonical) {
+      delete bindings[boundAnchor];
+      removed.add(boundAnchor);
+    }
+  }
+  bindings[canonical] = id;
+
+  const requests = { ...book.sceneRequests };
+  for (const [key, request] of Object.entries(requests)) {
+    if (backendSceneId(request) === id && key !== sceneSourceKeyForAnchor(canonical)) {
+      const duplicate = anchorForSourceKey(key);
+      if (duplicate) removed.add(duplicate);
+      delete requests[key];
+    }
+  }
+  requests[sceneSourceKeyForAnchor(canonical)] = intent;
+  if (anchor !== canonical) removed.add(anchor);
+
   return {
-    book: {
-      ...book,
-      sceneRequests: { ...book.sceneRequests, [sourceKey]: intent },
-      sceneAnchorBindings: { ...book.sceneAnchorBindings, [anchor]: id },
-    },
-    change: { backendSceneId: id, canonicalAnchor: anchor, removedAnchors: [] },
+    book: { ...book, sceneRequests: requests, sceneAnchorBindings: bindings },
+    change: { backendSceneId: id, canonicalAnchor: canonical, removedAnchors: [...removed] },
   };
 }
 
@@ -47,18 +100,16 @@ export function withBackendSceneAsset(
   const bound = withBackendSceneIntent(book, anchor, intent);
   const id = bound.change.backendSceneId;
   if (!id) return { book: bound.book, change: bound.change };
-  const existing = bound.book.scenesByBackendId?.[id];
-  const assetAnchor = existing?.anchor ?? anchor;
+  const canonical = bound.change.canonicalAnchor;
   return {
     book: {
       ...bound.book,
       scenesByBackendId: {
         ...bound.book.scenesByBackendId,
         [id]: {
-          ...existing,
           ...scene,
-          sourceKey: existing?.sourceKey ?? sceneSourceKeyForAnchor(assetAnchor),
-          anchor: assetAnchor,
+          sourceKey: sceneSourceKeyForAnchor(canonical),
+          anchor: canonical,
           backendScene: intent,
           backendSceneId: id,
         },
@@ -97,13 +148,6 @@ export function migrateBackendSceneState(book: NarraBookState): NarraBookState {
     const intent = scene.backendScene as BackendSceneIntent;
     const result = withBackendSceneAsset(migrated, scene.anchor as string, scene, intent);
     migrated = result.book;
-    for (const duplicate of ordered.slice(1)) {
-      migrated = withBackendSceneIntent(
-        migrated,
-        duplicate.anchor as string,
-        duplicate.backendScene as BackendSceneIntent,
-      ).book;
-    }
     for (const duplicate of candidates) delete migrated.scenes[duplicate.sourceKey];
   }
   for (const [sourceKey, intent] of Object.entries(book.sceneRequests ?? {})) {

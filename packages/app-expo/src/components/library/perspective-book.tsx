@@ -1,7 +1,7 @@
 import { countRender } from "@/lib/diagnostics/interaction-performance";
 import { radius } from "@/styles/theme";
 import { LinearGradient } from "expo-linear-gradient";
-import { type ReactNode, memo, useMemo } from "react";
+import { type ComponentProps, type ReactNode, memo, useMemo } from "react";
 import { type GestureResponderEvent, Pressable, StyleSheet, View } from "react-native";
 import { GestureDetector } from "react-native-gesture-handler";
 import Animated from "react-native-reanimated";
@@ -34,7 +34,6 @@ export const PerspectiveBook = memo(function PerspectiveBook({
 }: PerspectiveBookProps) {
   countRender("catalog.perspective");
   const { pressStyle, gesture } = useCoverPress(disabled);
-  const size = useMemo(() => ({ width, height }), [width, height]);
   const pressableSize = useMemo(() => ({ width }), [width]);
 
   return (
@@ -49,15 +48,47 @@ export const PerspectiveBook = memo(function PerspectiveBook({
         pressRetentionOffset={16}
         style={[pressableSize, disabled && styles.disabled]}
       >
-        <Animated.View style={[pressStyle, styles.book, showShadow && styles.bookShadow, size]}>
-          <View style={[styles.cover, !coverEffects && styles.coverWithoutEffects, size]}>
-            {cover}
-            {coverEffects ? <BookSurfaceEffects /> : null}
-          </View>
-        </Animated.View>
+        <BookSurface
+          width={width}
+          height={height}
+          cover={cover}
+          coverEffects={coverEffects}
+          showShadow={showShadow}
+          style={pressStyle}
+        />
         {footer}
       </Pressable>
     </GestureDetector>
+  );
+});
+
+export const BookSurface = memo(function BookSurface({
+  width,
+  height,
+  cover,
+  coverEffects = true,
+  showShadow = true,
+  borderRadius = radius.sm,
+  style,
+}: {
+  width: number;
+  height: number;
+  cover: ReactNode;
+  coverEffects?: boolean;
+  showShadow?: boolean;
+  borderRadius?: number;
+  style?: ComponentProps<typeof Animated.View>["style"];
+}) {
+  const size = useMemo(() => ({ width, height }), [width, height]);
+  const rounding = useMemo(() => ({ borderRadius }), [borderRadius]);
+
+  return (
+    <Animated.View style={[style, styles.book, showShadow && styles.bookShadow, size, rounding]}>
+      <View style={[styles.cover, !coverEffects && styles.coverWithoutEffects, size, rounding]}>
+        {cover}
+        {coverEffects ? <BookSurfaceEffects borderRadius={borderRadius} /> : null}
+      </View>
+    </Animated.View>
   );
 });
 
@@ -93,7 +124,9 @@ const HORIZONTAL_END = { x: 1, y: 0 };
 
 // This surface is identical on every card. Stable props and a separate memo
 // boundary keep cover/status updates from resubmitting all gradient stops.
-const BookSurfaceEffects = memo(function BookSurfaceEffects() {
+const BookSurfaceEffects = memo(function BookSurfaceEffects({
+  borderRadius,
+}: { borderRadius: number }) {
   return (
     <>
       <LinearGradient
@@ -118,7 +151,7 @@ const BookSurfaceEffects = memo(function BookSurfaceEffects() {
         pointerEvents="none"
         style={StyleSheet.absoluteFill}
       />
-      <View pointerEvents="none" style={styles.coverFinish} />
+      <View pointerEvents="none" style={[styles.coverFinish, { borderRadius }]} />
     </>
   );
 });

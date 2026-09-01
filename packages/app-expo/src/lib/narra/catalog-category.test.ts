@@ -90,7 +90,7 @@ describe("expanded catalog category", () => {
     ).toEqual(["97", "98", "99"]);
   });
 
-  it("wires the pack's small chevron to the root large-title grid and retains cover recovery", () => {
+  it("wires the pack's small chevron to the wrapped category grid and retains cover recovery", () => {
     const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
     const shelf = read("../../components/library/catalog-shelf.tsx");
     const screen = read("../../screens/catalog-category-screen.tsx");
@@ -118,8 +118,10 @@ describe("expanded catalog category", () => {
     );
     expect(search).toContain('navigation.navigate("CatalogCategory"');
     expect(search).toContain("genreId: shelf.id");
-    expect(navigator).toMatch(/name="CatalogCategory"[\s\S]*?\.\.\.largeTitleOptions/);
+    expect(navigator).toMatch(/name="CatalogCategory"[\s\S]*?headerLargeTitleEnabled: false/);
     expect(screen).toContain("numColumns={2}");
+    expect(screen).toContain('testID="catalog-category-title"');
+    expect(screen).toContain("numberOfLines={2}");
     expect(screen).toContain('contentInsetAdjustmentBehavior="automatic"');
     expect(screen).not.toContain("headerSearchBarOptions");
     expect(screen).toContain("retryCatalogCover(book)");

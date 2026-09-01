@@ -18,7 +18,13 @@ import { CATALOG_SHELF_GAP, CATALOG_SHELF_SHADOW_INSETS } from "@/lib/narra/cata
 import { buildCatalogShelves, catalogCategoryCoverWindow } from "@/lib/narra/catalog-shelves";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useLibraryStore } from "@/stores";
-import { spacing, useColors } from "@/styles/theme";
+import {
+  largeTitleFontFamily,
+  largeTitleFontSize,
+  largeTitleLineHeight,
+  spacing,
+  useColors,
+} from "@/styles/theme";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useIsFocused } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -84,6 +90,7 @@ const CategoryGrid = memo(function CategoryGrid({ route, navigation }: Props) {
   }, [catalog.books, catalog.genres, genreId, i18n.resolvedLanguage, t]);
   const books = category?.books ?? EMPTY_BOOKS;
   const title = category?.title ?? route.params.title;
+  const usesWrappedTitle = process.env.EXPO_OS === "ios";
   const cardWidth = (layout.centeredContentWidth - CATALOG_SHELF_GAP) / 2;
   const edgeInset = (layout.width - layout.centeredContentWidth) / 2;
   const grid = useMemo(
@@ -127,7 +134,13 @@ const CategoryGrid = memo(function CategoryGrid({ route, navigation }: Props) {
     if (height > 0) setViewportHeight((current) => (current === height ? current : height));
     markInteraction("category.layout");
   }, []);
-  useLayoutEffect(() => navigation.setOptions({ title }), [navigation, title]);
+  useLayoutEffect(
+    () =>
+      navigation.setOptions(
+        usesWrappedTitle ? { title: "", headerLargeTitleEnabled: false } : { title },
+      ),
+    [navigation, title, usesWrappedTitle],
+  );
   useEffect(
     () =>
       navigation.addListener("focus", () => {
@@ -193,11 +206,31 @@ const CategoryGrid = memo(function CategoryGrid({ route, navigation }: Props) {
         initialNumToRender={grid.initialRows}
         maxToRenderPerBatch={2}
         windowSize={3}
-        getItemLayout={grid.getItemLayout}
+        getItemLayout={usesWrappedTitle ? undefined : grid.getItemLayout}
         onLayout={onLayout}
         viewabilityConfig={viewability}
         onViewableItemsChanged={onViewable}
         renderItem={renderBook}
+        ListHeaderComponent={
+          usesWrappedTitle ? (
+            <View style={{ paddingBottom: spacing.md }}>
+              <Text
+                testID="catalog-category-title"
+                numberOfLines={2}
+                ellipsizeMode="tail"
+                style={{
+                  color: colors.foreground,
+                  fontFamily: largeTitleFontFamily,
+                  fontSize: largeTitleFontSize,
+                  lineHeight: largeTitleLineHeight,
+                  fontWeight: "400",
+                }}
+              >
+                {title}
+              </Text>
+            </View>
+          ) : null
+        }
         {...guard?.touchHandlers}
         {...guard?.scrollHandlers}
         ListEmptyComponent={

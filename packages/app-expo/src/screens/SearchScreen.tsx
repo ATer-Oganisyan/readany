@@ -1,6 +1,8 @@
 import { CharacterChatListRow } from "@/components/chats/character-chat-list";
 import { CatalogBookSkeleton } from "@/components/library/CatalogBookSkeleton";
+import { BookCoverTypography } from "@/components/library/book-cover-typography";
 import { CatalogShelfRow } from "@/components/library/catalog-shelf";
+import { BookSurface } from "@/components/library/perspective-book";
 import { NativeButton } from "@/components/ui/NativeButton";
 import { Text } from "@/components/ui/Typography";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
@@ -9,6 +11,7 @@ import { useBackendCatalog, useBackendCatalogActivity } from "@/hooks/use-backen
 import { useCatalogCover } from "@/hooks/use-catalog-cover";
 import { useCatalogCoverWindow } from "@/hooks/use-catalog-cover-window";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
+import { generatedCoverTextTone } from "@/lib/book/cover-text-contrast";
 import { loadingCoverColorForTitleAuthor } from "@/lib/book/loading-cover-placeholder";
 import { countRender, markInteraction } from "@/lib/diagnostics/interaction-performance";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
@@ -34,7 +37,7 @@ import { NativeSearchQuery } from "@/lib/narra/native-search-query";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useResolvedCovers } from "@/screens/notes/useResolvedCovers";
 import { useLibraryStore } from "@/stores";
-import { type ThemeColors, radius, spacing, useTheme } from "@/styles/theme";
+import { type ThemeColors, fontWeight, radius, spacing, useTheme } from "@/styles/theme";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { Book } from "@readany/core/types";
@@ -60,6 +63,7 @@ import {
   View,
   type ViewToken,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { SearchBarProps } from "react-native-screens";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -446,6 +450,7 @@ const SearchResults = memo(function SearchResults({
   const { t } = useTranslation();
   const layout = useResponsiveLayout();
   const guard = useSwipePressGuard();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(
     () =>
       makeStyles(colors, {
@@ -534,6 +539,7 @@ const SearchResults = memo(function SearchResults({
         style={styles.container}
         contentContainerStyle={[
           styles.searchContent,
+          process.env.EXPO_OS === "ios" && { paddingTop: insets.top },
           !results.length && styles.centeredContent,
           !results.length &&
             keyboardHeight > 0 && { paddingBottom: keyboardHeight + spacing.xxl * 5 },
@@ -578,17 +584,19 @@ const CatalogResultRow = memo(function CatalogResultRow({
         if (guard?.canPress(event) !== false) onOpen(resolved);
       },
       avatar: (
-        <BookListCover
-          title={book.title}
-          author={book.author}
-          coverUri={resolved.coverUri}
-          targetCoverOnly
-        />
+        <BookListCover title={book.title} author={book.author} coverUri={resolved.coverUri} />
       ),
     }),
     [book, guard, onOpen, resolved],
   );
-  return <CharacterChatListRow item={item} separator={separator} />;
+  return (
+    <CharacterChatListRow
+      item={item}
+      separator={separator}
+      titleNumberOfLines={2}
+      titleFontWeight={fontWeight.medium}
+    />
+  );
 });
 const LibraryResultRow = memo(function LibraryResultRow({
   book,
@@ -616,7 +624,14 @@ const LibraryResultRow = memo(function LibraryResultRow({
     }),
     [book, guard, onOpen, uri],
   );
-  return <CharacterChatListRow item={item} separator={separator} />;
+  return (
+    <CharacterChatListRow
+      item={item}
+      separator={separator}
+      titleNumberOfLines={2}
+      titleFontWeight={fontWeight.medium}
+    />
+  );
 });
 
 function equalSets(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
@@ -671,55 +686,66 @@ function BookListCover({
   title,
   author,
   coverUri,
-  targetCoverOnly = false,
 }: {
   title: string;
   author?: string;
   coverUri?: string;
-  targetCoverOnly?: boolean;
 }) {
-  const { colors } = useTheme();
   const [failedCoverUri, setFailedCoverUri] = useState<string>();
   const visibleCoverUri = coverUri && coverUri !== failedCoverUri ? coverUri : undefined;
 
   return (
     <View style={bookListStyles.coverSlot}>
-      <View
-        style={[
-          bookListStyles.cover,
-          {
-            backgroundColor:
-              visibleCoverUri == null && !targetCoverOnly
-                ? loadingCoverColorForTitleAuthor({ title, author })
-                : colors.primary5,
-          },
-        ]}
-      >
-        {visibleCoverUri ? (
-          <Image
-            source={{ uri: visibleCoverUri }}
-            resizeMode="cover"
-            style={StyleSheet.absoluteFill}
-            onError={() => setFailedCoverUri(visibleCoverUri)}
-          />
-        ) : null}
-      </View>
+      <BookSurface
+        width={SEARCH_COVER_WIDTH}
+        height={SEARCH_COVER_HEIGHT}
+        borderRadius={SEARCH_COVER_RADIUS}
+        showShadow={false}
+        cover={
+          <View style={bookListStyles.coverCanvas}>
+            {visibleCoverUri ? (
+              <Image
+                source={{ uri: visibleCoverUri }}
+                resizeMode="cover"
+                style={StyleSheet.absoluteFill}
+                onError={() => setFailedCoverUri(visibleCoverUri)}
+              />
+            ) : (
+              <View
+                style={[
+                  StyleSheet.absoluteFill,
+                  { backgroundColor: loadingCoverColorForTitleAuthor({ title, author }) },
+                ]}
+              />
+            )}
+            <BookCoverTypography
+              title={title}
+              author={author}
+              width={SEARCH_COVER_WIDTH}
+              referenceWidth={SEARCH_COVER_REFERENCE_WIDTH}
+              leftInsetAdjustment={0}
+              textTone={generatedCoverTextTone({ title, author })}
+              coverUri={visibleCoverUri}
+            />
+          </View>
+        }
+      />
     </View>
   );
 }
 
+const SEARCH_COVER_WIDTH = 38;
+const SEARCH_COVER_REFERENCE_WIDTH = 140;
+const SEARCH_COVER_HEIGHT = SEARCH_COVER_WIDTH * (41 / 28) + 2;
+const SEARCH_COVER_RADIUS = radius.sm * (SEARCH_COVER_WIDTH / SEARCH_COVER_REFERENCE_WIDTH);
+
 const bookListStyles = StyleSheet.create({
   coverSlot: {
     width: 56,
-    height: 56,
+    height: SEARCH_COVER_HEIGHT,
+    marginTop: 2,
     alignItems: "center",
     justifyContent: "center",
   },
-  cover: {
-    width: 38,
-    height: 56,
-    overflow: "hidden",
-    borderRadius: radius.sm,
-    borderCurve: "continuous",
-  },
+  coverCanvas: { width: "100%", height: "100%", position: "relative", isolation: "isolate" },
 });

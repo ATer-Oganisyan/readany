@@ -2,7 +2,13 @@ import { Text } from "@/components/ui/Typography";
 import { countRender } from "@/lib/diagnostics/interaction-performance";
 import { type ThemeColors, fontSize, fontWeight, radius, spacing, useTheme } from "@/styles/theme";
 import { type ReactNode, memo } from "react";
-import { type GestureResponderEvent, StyleSheet, TouchableOpacity, View } from "react-native";
+import {
+  type GestureResponderEvent,
+  StyleSheet,
+  type TextStyle,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 export interface CharacterChatListItem {
   key: string;
@@ -34,9 +40,13 @@ export const CharacterChatList = memo(function CharacterChatList({
 export const CharacterChatListRow = memo(function CharacterChatListRow({
   item,
   separator,
+  titleNumberOfLines = 1,
+  titleFontWeight,
 }: {
   item: CharacterChatListItem;
   separator: boolean;
+  titleNumberOfLines?: number;
+  titleFontWeight?: TextStyle["fontWeight"];
 }) {
   countRender("chats.row");
   const { colors } = useTheme();
@@ -55,7 +65,10 @@ export const CharacterChatListRow = memo(function CharacterChatListRow({
       >
         {item.avatar}
         <View style={styles.copy}>
-          <Text style={styles.title} numberOfLines={1}>
+          <Text
+            style={[styles.title, titleFontWeight != null && { fontWeight: titleFontWeight }]}
+            numberOfLines={titleNumberOfLines}
+          >
             {item.title}
           </Text>
           {item.subtitle ? (

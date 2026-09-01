@@ -5613,7 +5613,6 @@ a { color: ${primary} !important; }
       idle: 'Сгенерировать сцену',
       loading: 'Рисуем сцену…',
       loadingHint: 'Обычно 2–3 минуты',
-      disabled: 'Разметка книги ещё готовится',
       caption: 'Сцена — сгенерировано ИИ',
       error: 'Попробовать снова',
     };
@@ -5916,9 +5915,9 @@ a { color: ${primary} !important; }
         box.setAttribute('role', 'status');
         box.setAttribute('aria-label', _sceneSlotLabels.loading);
       } else if (state === 'error') {
-        appendSceneAction(box, _sceneSlotsEnabled ? _sceneSlotLabels.error : _sceneSlotLabels.disabled);
+        if (_sceneSlotsEnabled) appendSceneAction(box, _sceneSlotLabels.error);
       } else {
-        appendSceneAction(box, _sceneSlotsEnabled ? _sceneSlotLabels.idle : _sceneSlotLabels.disabled);
+        if (_sceneSlotsEnabled) appendSceneAction(box, _sceneSlotLabels.idle);
       }
       // The same Primary5 frame is present in every placeholder state.
       appendSceneFlowBorder(box);
@@ -5973,7 +5972,6 @@ a { color: ${primary} !important; }
       action.setAttribute('data-slot', 'button');
       action.setAttribute('data-variant', 'outline');
       action.setAttribute('data-size', 'default');
-      action.disabled = !_sceneSlotsEnabled;
       // EPUB typography enforces SB Serif and the reader font size with
       // !important. Inline important keeps this isolated control on the
       // primitives Body style regardless of the book's own CSS.
