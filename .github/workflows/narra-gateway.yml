@@ -48,6 +48,12 @@ jobs:
         run: bash -n services/narra-gateway/*.sh
 
       - name: Validate production Compose
+        env:
+          CATALOG_INGEST_TOKEN: ci-compose-validation
+          GENERATOR_SERVICE_TOKEN: ci-compose-validation
+          NARRA_MINIO_ROOT_PASSWORD: ci-compose-validation
+          NARRA_POSTGRES_PASSWORD: ci-compose-validation
+          NARRA_STORAGE_SECRET_ACCESS_KEY: ci-compose-validation
         run: |
           sudo install -m 0644 /dev/null /etc/narra-gateway.env
           NARRA_GATEWAY_IMAGE=readany/narra-gateway:ci \

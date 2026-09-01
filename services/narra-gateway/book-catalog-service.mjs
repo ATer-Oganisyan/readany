@@ -98,6 +98,16 @@ function publicCharacterFullName(character) {
     : ''
 }
 
+function publicCharacterTraits(character) {
+  const finalSnapshotTraits = character.personalitySnapshots.at(-1)?.traits
+    ?.map(claimValue)
+    .filter(Boolean)
+    .slice(0, 5) ?? []
+  return finalSnapshotTraits.length
+    ? finalSnapshotTraits
+    : character.traits.map(claimValue).filter(Boolean).slice(0, 5)
+}
+
 function analysisCharacterProfile(character, analysisSource) {
   const gender = claimValue(character.gender)
   const normalizedGender = gender === 'male' || gender === 'female' ? gender : undefined
@@ -109,17 +119,10 @@ function analysisCharacterProfile(character, analysisSource) {
     role: claimValue(character.role) || 'Персонаж истории',
     description: claimValue(character.description),
     gender: normalizedGender,
-    traits: character.traits.map(claimValue).filter(Boolean).slice(0, 5),
-    personalityTimelineVersion: character.personalityTimelineVersion || undefined,
-    personalitySnapshots: character.personalitySnapshots.map((snapshot) => ({
-      cutoffTextOffset: snapshot.cutoffTextOffset,
-      status: snapshot.status,
-      traits: snapshot.traits.map((trait) => ({
-        value: claimValue(trait),
-        confidence: trait.confidence,
-        evidenceLevel: trait.evidenceLevel
-      })).filter(({ value }) => value).slice(0, 5)
-    })),
+    // The evidence-backed timeline remains in canonical markup for audit and
+    // regeneration. The public profile deliberately exposes only its final
+    // state so every client version shows the complete character immediately.
+    traits: publicCharacterTraits(character),
     speechStyle: claimValue(character.speechStyle),
     speechExamples: character.speechExamples.map(claimValue).filter(Boolean).slice(0, 3),
     appearancePrompt,
