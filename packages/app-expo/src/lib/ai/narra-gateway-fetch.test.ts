@@ -356,8 +356,13 @@ describe("Narra gateway installation recovery", () => {
 });
 
 describe("Narra gateway build configuration", () => {
+  afterEach(() => {
+    process.env.EXPO_PUBLIC_NARRA_ENVIRONMENT = "";
+  });
+
   it("uses the test gateway when a native build has no Expo environment", async () => {
     vi.resetModules();
+    process.env.EXPO_PUBLIC_NARRA_ENVIRONMENT = "";
     process.env.EXPO_PUBLIC_NARRA_GATEWAY_URL = "";
     process.env.EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE = "";
 
@@ -365,6 +370,32 @@ describe("Narra gateway build configuration", () => {
 
     expect(gateway.getNarraGatewayConfig()).toEqual({
       baseUrl: "https://api-test.narra.disrupt.builders",
+      authMode: "installation",
+    });
+  });
+
+  it("locks production builds to the production gateway", async () => {
+    vi.resetModules();
+    process.env.EXPO_PUBLIC_NARRA_ENVIRONMENT = "production";
+    process.env.EXPO_PUBLIC_NARRA_GATEWAY_URL = "https://wrong-gateway.example";
+
+    const gateway = await import("./narra-gateway-fetch");
+
+    expect(gateway.getNarraGatewayConfig()).toEqual({
+      baseUrl: "https://api.narra.disrupt.builders",
+      authMode: "installation",
+    });
+  });
+
+  it("allows an explicit gateway override in dev", async () => {
+    vi.resetModules();
+    process.env.EXPO_PUBLIC_NARRA_ENVIRONMENT = "test";
+    process.env.EXPO_PUBLIC_NARRA_GATEWAY_URL = "http://127.0.0.1:8787/";
+
+    const gateway = await import("./narra-gateway-fetch");
+
+    expect(gateway.getNarraGatewayConfig()).toEqual({
+      baseUrl: "http://127.0.0.1:8787",
       authMode: "installation",
     });
   });
