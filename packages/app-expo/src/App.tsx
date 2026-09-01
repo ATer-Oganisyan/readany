@@ -74,7 +74,7 @@ import {
   narraAssistantGatewayFetch,
 } from "@/lib/ai/narra-assistant-gateway";
 import { startTelemetry } from "@/lib/analytics/telemetry";
-import { startDiagnostics } from "@/lib/diagnostics/diagnostics";
+import { startDiagnostics, verifyNarraGatewayBackend } from "@/lib/diagnostics/diagnostics";
 import { navigationRef } from "@/lib/navigationRef";
 import { ExpoPlatformService } from "@/lib/platform/expo-platform-service";
 import { seekActiveTTS, seekActiveTTSBy } from "@/lib/platform/tts-track-controls";
@@ -181,6 +181,9 @@ export default function App() {
           }
           return expoFetch(input, init);
         }) as typeof globalThis.fetch);
+
+        // Verify the server that actually answered without blocking offline startup.
+        void verifyNarraGatewayBackend();
 
         console.log("[App] bootstrap: configure audio mode");
         await setAudioModeAsync({

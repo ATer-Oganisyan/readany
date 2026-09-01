@@ -356,8 +356,13 @@ describe("Narra gateway installation recovery", () => {
 });
 
 describe("Narra gateway build configuration", () => {
+  afterEach(() => {
+    process.env.EXPO_PUBLIC_NARRA_ENVIRONMENT = "";
+  });
+
   it("uses the test gateway when a native build has no Expo environment", async () => {
     vi.resetModules();
+    process.env.EXPO_PUBLIC_NARRA_ENVIRONMENT = "";
     process.env.EXPO_PUBLIC_NARRA_GATEWAY_URL = "";
     process.env.EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE = "";
     process.env.EXPO_PUBLIC_NARRA_ENVIRONMENT = "";
@@ -370,17 +375,78 @@ describe("Narra gateway build configuration", () => {
     });
   });
 
-  it("never falls back to TEST for a production build", async () => {
+  it("locks production builds to the production gateway", async () => {
     vi.resetModules();
-    process.env.EXPO_PUBLIC_NARRA_GATEWAY_URL = "";
-    process.env.EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE = "installation";
     process.env.EXPO_PUBLIC_NARRA_ENVIRONMENT = "production";
+    process.env.EXPO_PUBLIC_NARRA_GATEWAY_URL = "https://wrong-gateway.example";
 
     const gateway = await import("./narra-gateway-fetch");
 
     expect(gateway.getNarraGatewayConfig()).toEqual({
       baseUrl: "https://api.narra.disrupt.builders",
       authMode: "installation",
+    });
+  });
+
+  it("allows an explicit gateway override in dev", async () => {
+    vi.resetModules();
+    process.env.EXPO_PUBLIC_NARRA_ENVIRONMENT = "test";
+    process.env.EXPO_PUBLIC_NARRA_GATEWAY_URL = "http://127.0.0.1:8787/";
+
+    const gateway = await import("./narra-gateway-fetch");
+
+    expect(gateway.getNarraGatewayConfig()).toEqual({
+      baseUrl: "http://127.0.0.1:8787",
+      authMode: "installation",
+    });
+  });
+
+  it("verifies the environment reported by the production hostname", async () => {
+    vi.resetModules();
+    process.env.EXPO_PUBLIC_NARRA_ENVIRONMENT = "production";
+    process.env.EXPO_PUBLIC_NARRA_GATEWAY_URL = "https://wrong-gateway.example";
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse(200, {
+        ok: true,
+        environment: "production",
+        version: "d56f0123",
+      }),
+    );
+    const gateway = await import("./narra-gateway-fetch");
+    gateway.setNarraGatewayFetch(fetchMock);
+
+    await expect(gateway.probeNarraGatewayHealth()).resolves.toEqual({
+      hostname: "api.narra.disrupt.builders",
+      buildEnvironment: "production",
+      expectedEnvironment: "production",
+      environment: "production",
+      version: "d56f0123",
+      ok: true,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.narra.disrupt.builders/health",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it("flags a hostname/environment mismatch", async () => {
+    vi.resetModules();
+    process.env.EXPO_PUBLIC_NARRA_ENVIRONMENT = "production";
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse(200, {
+        ok: true,
+        environment: "staging",
+        version: "d56f0123",
+      }),
+    );
+    const gateway = await import("./narra-gateway-fetch");
+    gateway.setNarraGatewayFetch(fetchMock);
+
+    await expect(gateway.probeNarraGatewayHealth()).resolves.toMatchObject({
+      hostname: "api.narra.disrupt.builders",
+      expectedEnvironment: "production",
+      environment: "staging",
+      ok: false,
     });
   });
 });
