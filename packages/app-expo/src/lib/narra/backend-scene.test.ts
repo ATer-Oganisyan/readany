@@ -8,6 +8,7 @@ vi.mock("./backend-book-api", async (original) => ({
 import { BackendBookError } from "./backend-book-api";
 import {
   type BackendSceneSnapshot,
+  isBackendSceneReady,
   parseBackendScene,
   requestBackendSceneAt,
   resolveBackendScene,
@@ -38,6 +39,13 @@ function clock() {
 }
 
 describe("backend scene contract", () => {
+  it("enables scene generation only after an edition and ready manifest exist", () => {
+    expect(isBackendSceneReady(undefined, undefined)).toBe(false);
+    expect(isBackendSceneReady("edition", undefined)).toBe(false);
+    expect(isBackendSceneReady("edition", "processing")).toBe(false);
+    expect(isBackendSceneReady(undefined, "ready")).toBe(false);
+    expect(isBackendSceneReady("edition", "ready")).toBe(true);
+  });
   it("sends only the captured fraction using the shared authenticated API", async () => {
     network.request.mockResolvedValue(wire());
     const signal = new AbortController().signal;

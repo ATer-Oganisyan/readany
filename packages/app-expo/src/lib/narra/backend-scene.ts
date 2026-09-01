@@ -29,6 +29,13 @@ export class BackendSceneError extends Error {
   }
 }
 
+export function isBackendSceneReady(
+  bookEditionId: string | undefined,
+  availability: string | undefined,
+): boolean {
+  return Boolean(bookEditionId) && availability === "ready";
+}
+
 export function parseBackendScene(value: unknown): BackendSceneSnapshot {
   const raw = backendRecord(value);
   if (raw.error_code === "MARKUP_PROCESSING") {

@@ -27,20 +27,14 @@ import {
 } from "@/lib/narra/backend-book-sync";
 import { importBackendCatalogBook } from "@/lib/narra/backend-catalog-import";
 import { isCatalogBookRevisionCurrent } from "@/lib/narra/backend-catalog-library";
-import { BackendSceneError } from "@/lib/narra/backend-scene";
+import { BackendSceneError, isBackendSceneReady } from "@/lib/narra/backend-scene";
 import { backendSceneMarkupIdentity } from "@/lib/narra/backend-scene-identity";
 import { generateBackendReaderScene, readSceneDataUri } from "@/lib/narra/backend-scene-reader";
 import { backendSceneForAnchor } from "@/lib/narra/backend-scene-state";
 import { buildCharacterNameMatcherSpec } from "@/lib/narra/character-name-matcher";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
-import { narraBackendCode, reportNarraError } from "@/lib/narra/errors";
-import { normalizePersistedNarraMediaUri } from "@/lib/narra/media";
-import { generateNarraSceneImage } from "@/lib/narra/scene-image-openrouter";
-import {
-  sceneImageDataUri,
-  sceneInsertAnchors,
-  sceneSourceKeyForAnchor,
-} from "@/lib/narra/scene-inserts";
+import { narraBackendCode } from "@/lib/narra/errors";
+import { sceneInsertAnchors, sceneSourceKeyForAnchor } from "@/lib/narra/scene-inserts";
 import {
   INITIAL_SCENE_SUGGESTION_STATE,
   advanceSceneSuggestion,
@@ -693,12 +687,14 @@ function ReaderContent({ route, navigation }: Props) {
 
   // ── Narra: кликабельные имена персонажей ────────────────────────────────────
   const narraBookCharacters = useNarraStore((state) => state.books[bookId]?.characters);
-  const backendBindingResolution = useNarraStore(
-    (state) => state.books[bookId]?.backendBinding?.resolution,
+  const backendBookEditionId = useNarraStore(
+    (state) => state.books[bookId]?.backendBinding?.bookEditionId,
   );
   const backendBookStatus = useBackendBookStatus((state) => state.books[bookId]);
-  const backendSceneEnabled =
-    backendBindingResolution !== "private" || backendBookStatus?.manifest?.availability === "ready";
+  const backendSceneEnabled = isBackendSceneReady(
+    backendBookEditionId || book?.bookEditionId,
+    backendBookStatus?.manifest?.availability,
+  );
   const characters = useMemo<NarraCharacter[]>(
     () => (narraBookCharacters ?? []).filter((item) => item.backendManaged),
     [narraBookCharacters],
@@ -727,7 +723,6 @@ function ReaderContent({ route, navigation }: Props) {
   const sceneSuggestionInterval = useNarraStore((state) => state.sceneSuggestionInterval);
   const sceneSuggestionStateRef = useRef(INITIAL_SCENE_SUGGESTION_STATE);
   const narraScenes = useNarraStore((state) => state.books[bookId]?.scenes);
-  const setNarraScene = useNarraStore((state) => state.setScene);
   const narraSceneRequests = useNarraStore((state) => state.books[bookId]?.sceneRequests);
   const narraSceneAnchorBindings = useNarraStore(
     (state) => state.books[bookId]?.sceneAnchorBindings,
@@ -742,20 +737,6 @@ function ReaderContent({ route, navigation }: Props) {
     [sceneSlotActions],
   );
 
-  // Видимый текст страницы — контекст для промпта сцены (как в P6)
-  const collectVisibleSceneExcerpt = useCallback(async () => {
-    const bridge = bridgeRef.current;
-    let excerpt = (await bridge?.getVisibleText())?.trim() ?? "";
-    if (!excerpt) {
-      const visibleSegments = await bridge?.getVisibleTTSSegments(currentCfi || null);
-      excerpt = (visibleSegments ?? [])
-        .map((segment) => segment.text.trim())
-        .filter(Boolean)
-        .join(" ");
-    }
-    return excerpt.trim();
-  }, [currentCfi]);
-
   // Генерация (или перегенерация) сцены для врезки: слот уже показывает
   // плейсхолдер «Рисуем сцену…» — сюда приходим по событию из WebView.
   const runSceneSlotGeneration = useCallback(
@@ -765,7 +746,6 @@ function ReaderContent({ route, navigation }: Props) {
       sceneSlotActions.set(anchor, action);
       // Snapshot BEFORE any await. Paging while the server works cannot change the slot.
       const requestedProgress = progressRef.current;
-      let usesBackend = false;
       try {
         const sourceKey = sceneSourceKeyForAnchor(anchor);
         const bookState = useNarraStore.getState().books[bookId];
@@ -778,63 +758,37 @@ function ReaderContent({ route, navigation }: Props) {
           t("reader.currentPage", "Текущая страница");
         // Catalog identity may be present before the persisted binding has hydrated.
         const edition = bookState?.backendBinding?.bookEditionId || book?.bookEditionId;
-        usesBackend = Boolean(edition);
-        if (edition) {
-          const binding = bookState?.backendBinding;
-          const availability =
-            useBackendBookStatus.getState().books[bookId]?.manifest?.availability;
-          if (binding?.resolution === "private" && availability !== "ready") {
-            retryBackendBookSync(bookId);
-            throw new BackendSceneError(
-              availability === "failed" || availability === "cancelled"
-                ? "MARKUP_FAILED"
-                : "MARKUP_PROCESSING",
-            );
-          }
-          const previous = bookState?.sceneRequests?.[sourceKey] ?? cached?.backendScene;
-          const manifest = bookState?.backendManifest;
-          const intent =
-            previous?.bookEditionId === edition
-              ? previous
-              : {
-                  bookEditionId: edition,
-                  requestedProgress,
-                  markupIdentity: backendSceneMarkupIdentity(manifest, bookState?.backendBinding),
-                };
-          await generateBackendReaderScene(
-            {
-              bookId,
-              anchor,
-              sourceKey,
-              chapter,
-              intent,
-              display: (targetAnchor, dataUri) =>
-                bridgeRef.current?.replaceSceneSlot(targetAnchor, dataUri),
-            },
-            action.signal,
+        const availability = useBackendBookStatus.getState().books[bookId]?.manifest?.availability;
+        if (!edition || !isBackendSceneReady(edition, availability)) {
+          retryBackendBookSync(bookId);
+          throw new BackendSceneError(
+            availability === "failed" || availability === "cancelled"
+              ? "MARKUP_FAILED"
+              : "MARKUP_PROCESSING",
           );
-          return;
         }
-        // Only unbound books retain the independent legacy visible-excerpt path.
-        const excerpt = cached?.excerpt?.trim() || (await collectVisibleSceneExcerpt());
-        if (!excerpt) throw new Error("SCENE_EMPTY_EXCERPT");
-        const imageUri = await generateNarraSceneImage(bookId, chapter, excerpt, characters);
-        if (action.signal.aborted) return;
-        setNarraScene(bookId, {
-          sourceKey,
-          chapter,
-          excerpt,
-          imageUri,
-          generatedAt: Date.now(),
-          anchor,
-        });
-        // Файл читается в RN и передаётся data-URI — WebView не ходит в ФС
-        const base64 = await FileSystem.readAsStringAsync(
-          normalizePersistedNarraMediaUri(imageUri),
-          { encoding: FileSystem.EncodingType.Base64 },
+        const previous = bookState?.sceneRequests?.[sourceKey] ?? cached?.backendScene;
+        const manifest = bookState?.backendManifest;
+        const intent =
+          previous?.bookEditionId === edition
+            ? previous
+            : {
+                bookEditionId: edition,
+                requestedProgress,
+                markupIdentity: backendSceneMarkupIdentity(manifest, bookState?.backendBinding),
+              };
+        await generateBackendReaderScene(
+          {
+            bookId,
+            anchor,
+            sourceKey,
+            chapter,
+            intent,
+            display: (targetAnchor, dataUri) =>
+              bridgeRef.current?.replaceSceneSlot(targetAnchor, dataUri),
+          },
+          action.signal,
         );
-        if (!action.signal.aborted)
-          bridgeRef.current?.replaceSceneSlot(anchor, sceneImageDataUri(base64, imageUri));
       } catch (cause) {
         if (action.signal.aborted) return;
         const backendCode =
@@ -860,25 +814,12 @@ function ReaderContent({ route, navigation }: Props) {
           });
           return;
         }
-        // Native download errors can contain signed URLs. Backend details use the safe journal.
-        if (!usesBackend) reportNarraError("scene_image", cause);
         bridgeRef.current?.setSceneSlotState(anchor, "error");
       } finally {
         sceneSlotActions.delete(anchor);
       }
     },
-    [
-      book?.meta.title,
-      book?.bookEditionId,
-      sceneSlotActions,
-      t,
-      bookId,
-      bookTitle,
-      characters,
-      collectVisibleSceneExcerpt,
-      currentChapter,
-      setNarraScene,
-    ],
+    [book?.meta.title, book?.bookEditionId, sceneSlotActions, t, bookId, bookTitle, currentChapter],
   );
 
   // Врезка восстановлена при загрузке секции — вернуть сохранённую картинку

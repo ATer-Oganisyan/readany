@@ -90,6 +90,7 @@ describe("scene action haptics", () => {
       /sceneState === 'idle' \|\| sceneState === 'error'[\s\S]*?postToRN\('sceneSlotTap'/,
     );
     expect(template).toContain("if (!_sceneSlotsEnabled) return");
+    expect(template).toContain("var _sceneSlotsEnabled = false");
     expect(template).toContain(
       "if (_sceneSlotsEnabled) appendSceneAction(box, _sceneSlotLabels.idle)",
     );
