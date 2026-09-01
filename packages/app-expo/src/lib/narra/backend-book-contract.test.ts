@@ -138,16 +138,16 @@ describe("backend book contract", () => {
     expect(shouldPollBackendManifest({ ...value, availability: "cancelled" }, 1)).toBe(false);
     expect(shouldPollBackendManifest({ ...value, availability: "unavailable" }, 1)).toBe(false);
   });
-  it("does not apply a future personality snapshot", () => {
+  it("shows the complete backend character regardless of personality snapshot progress", () => {
     const value = manifest();
     value.characters[0].profile.personalitySnapshots = [
       { cutoffTextOffset: 100, traits: [{ value: "early" }] },
       { cutoffTextOffset: 700, traits: [{ value: "spoiler" }] },
     ];
-    expect(backendConfirmedCharacters(value, 0.5)[0].traits).toEqual(["early"]);
-    expect(backendConfirmedCharacters(value, 0.05)[0].traits).toEqual([]);
+    expect(backendConfirmedCharacters(value, 0.5)[0].traits).toEqual(["spoiler"]);
+    expect(backendConfirmedCharacters(value, 0.05)[0].traits).toEqual(["spoiler"]);
   });
-  it("keeps every user-facing backend field from the latest reached snapshot", () => {
+  it("keeps every user-facing field from the complete backend profile", () => {
     const value = manifest();
     value.characters[0].profile = {
       analysisSource: "v3",
@@ -171,16 +171,16 @@ describe("backend book contract", () => {
     };
 
     const character = backendConfirmedCharacters(value, 0.5)[0];
-    expect(character.traits).toEqual(["наблюдательный"]);
+    expect(character.traits).toEqual(["будущая черта"]);
     expect(character.profileDetails).toEqual([
       { key: "role", value: "Главный герой" },
-      { key: "traits", value: ["наблюдательный"] },
+      { key: "traits", value: ["будущая черта"] },
       { key: "appearancePrompt", value: "Высокий человек в тёмном пальто" },
       { key: "customFact", value: "Любит шахматы" },
-      { key: "relationships", value: ["Знаком с Анной"] },
+      { key: "relationships", value: ["Будущий спойлер"] },
     ]);
   });
-  it("does not expose final values for progressive fields before the first snapshot", () => {
+  it("shows final snapshot values before the first personality snapshot is reached", () => {
     const value = manifest();
     value.characters[0].profile = {
       role: "Герой",
@@ -193,6 +193,8 @@ describe("backend book contract", () => {
 
     expect(backendConfirmedCharacters(value, 0.5)[0].profileDetails).toEqual([
       { key: "role", value: "Герой" },
+      { key: "traits", value: ["позже"] },
+      { key: "secret", value: "раскрытый секрет" },
     ]);
   });
   it("validates private upload state conservatively and accepts a registration race to catalog", () => {
