@@ -179,6 +179,8 @@ function parseAsset(value: unknown): BackendCharacterAsset[] {
   ];
 }
 
+const CHARACTER_BUNDLE_VERSION = /^character-bundle-v3(?::r[1-9]\d*)?$/;
+
 export function parseBackendManifest(value: unknown): BackendBookManifest {
   const raw = backendRecord(value);
   if (!Array.isArray(raw.characters)) throw new Error("Invalid backend manifest characters");
@@ -235,7 +237,7 @@ export function parseBackendManifest(value: unknown): BackendBookManifest {
           state: item.state === "ready" || item.state === "preparing" ? item.state : "unknown",
           profile: backendRecord(item.profile),
           assets:
-            bundle.version === "character-bundle-v3" && Array.isArray(bundle.assets)
+            CHARACTER_BUNDLE_VERSION.test(string(bundle.version)) && Array.isArray(bundle.assets)
               ? bundle.assets.flatMap(parseAsset)
               : [],
         } satisfies BackendManifestCharacter,

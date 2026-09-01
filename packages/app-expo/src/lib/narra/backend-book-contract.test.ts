@@ -232,4 +232,66 @@ describe("backend book contract", () => {
     expect(value.characters[0].assets).toEqual([]);
     expect(backendConfirmedCharacters(value, 1)).toHaveLength(1);
   });
+  it.each(["character-bundle-v3", "character-bundle-v3:r2", "character-bundle-v3:r37"])(
+    "accepts assets from supported bundle version %s",
+    (version) => {
+      const value = manifest({
+        characters: [
+          {
+            character_key: "id",
+            name: "A",
+            provisional: false,
+            state: "ready",
+            bundle: {
+              version,
+              assets: [
+                {
+                  asset_id: "audio-id",
+                  type: "greeting_audio",
+                  content_hash: "a".repeat(64),
+                  mime_type: "audio/wav",
+                  byte_size: 1024,
+                  download_path: "/v2/books/edition/assets/audio-id",
+                },
+              ],
+            },
+          },
+        ],
+      });
+
+      expect(value.characters[0].assets).toEqual([
+        expect.objectContaining({ assetId: "audio-id", type: "greeting_audio" }),
+      ]);
+    },
+  );
+  it.each(["character-bundle-v2", "character-bundle-v3:r0", "character-bundle-v3:r02"])(
+    "rejects assets from unsupported bundle version %s",
+    (version) => {
+      const value = manifest({
+        characters: [
+          {
+            character_key: "id",
+            name: "A",
+            provisional: false,
+            state: "ready",
+            bundle: {
+              version,
+              assets: [
+                {
+                  asset_id: "audio-id",
+                  type: "greeting_audio",
+                  content_hash: "a".repeat(64),
+                  mime_type: "audio/wav",
+                  byte_size: 1024,
+                  download_path: "/v2/books/edition/assets/audio-id",
+                },
+              ],
+            },
+          },
+        ],
+      });
+
+      expect(value.characters[0].assets).toEqual([]);
+    },
+  );
 });
