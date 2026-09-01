@@ -1647,7 +1647,8 @@ export function createPostgresBookMarkupRepository(pool, {
           ? null
           : Number(positionResult.rows[0].section_fraction)
         const markupResult = await client.query(
-          `SELECT id, schema_version, analysis_version, revision, text_length, published_at
+          `SELECT id, schema_version, analysis_version, revision, input_hash,
+                  text_length, published_at
            FROM book_markup_versions
            WHERE book_edition_id = $1 AND status = 'published'
            LIMIT 1`,
@@ -1728,6 +1729,8 @@ export function createPostgresBookMarkupRepository(pool, {
           readerSectionIndex,
           readerSectionFraction,
           markup: {
+            id: markupRow.id,
+            inputHash: markupRow.input_hash,
             schemaVersion: Number(markupRow.schema_version),
             analysisVersion: markupRow.analysis_version,
             revision: Number(markupRow.revision),
@@ -1752,7 +1755,9 @@ export function createPostgresBookMarkupRepository(pool, {
     }) {
       return transaction(pool, async (client) => {
         const edition = await client.query(
-          `SELECT edition.id, edition.scope, markup.text_length, markup.analysis_version
+          `SELECT edition.id, edition.scope, markup.id AS markup_version_id,
+                  markup.input_hash AS markup_input_hash,
+                  markup.text_length, markup.analysis_version
            FROM book_editions AS edition
            LEFT JOIN book_markup_versions AS markup
              ON markup.book_edition_id = edition.id AND markup.status = 'published'
@@ -1869,6 +1874,8 @@ export function createPostgresBookMarkupRepository(pool, {
         return {
           scope: edition.rows[0].scope,
           analysisVersion: edition.rows[0].analysis_version ?? null,
+          markupVersionId: edition.rows[0].markup_version_id ?? null,
+          markupInputHash: edition.rows[0].markup_input_hash ?? null,
           readerTextOffset,
           readingFraction,
           chapterKey: position.rows[0].chapter_key,

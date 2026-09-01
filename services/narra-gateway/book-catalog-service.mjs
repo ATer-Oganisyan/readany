@@ -21,6 +21,10 @@ import {
 } from './book-content.mjs'
 import { voiceForGender } from './voices.mjs'
 import { createHash, randomUUID } from 'node:crypto'
+import {
+  applyBookCharacterCorrection,
+  resolveCorrectedCharacterKey
+} from './book-character-correction.mjs'
 
 function serviceError(code, message, status) {
   return Object.assign(new Error(message), { code, status })
@@ -215,6 +219,7 @@ function fallbackNavigation(byteSize) {
 export function createBookCatalogService({
   repository,
   analysisRepository = null,
+  correctionRepository = null,
   ttsMarkupRepository = null,
   storage = null,
   bundleVersion = CHARACTER_BUNDLE_VERSION,
@@ -252,6 +257,27 @@ export function createBookCatalogService({
       analysisCreated: analysis.created,
       jobId: analysis.prepareJob.id,
       jobStatus: analysis.prepareJob.status
+    }
+  }
+
+  async function enabledCorrection({ bookEditionId, markup, publicationId = null }) {
+    if (
+      !correctionRepository?.getEnabledCorrection ||
+      !markup?.id || !markup?.inputHash
+    ) return null
+    try {
+      return await correctionRepository.getEnabledCorrection({
+        bookEditionId,
+        markupVersionId: markup.id,
+        publicationId,
+        contentHash: markup.inputHash
+      })
+    } catch (error) {
+      console.error('[book-character-correction] lookup failed; serving base markup', {
+        book_edition_id: bookEditionId,
+        code: error?.code || 'LOOKUP_FAILED'
+      })
+      return null
     }
   }
 
@@ -318,7 +344,40 @@ export function createBookCatalogService({
           }))
       }
     }
-    const markup = normalizeBookMarkupV3(publication.data.markup)
+    const baseMarkup = normalizeBookMarkupV3(publication.data.markup)
+    let markup = baseMarkup
+    let correction = null
+    let redirects = new Map()
+    const enabled = await enabledCorrection({
+      bookEditionId,
+      markup: snapshot.markup,
+      publicationId: publication.id
+    })
+    if (enabled) {
+      try {
+        const projected = applyBookCharacterCorrection(enabled.document, {
+          markup: baseMarkup,
+          base: {
+            markupVersionId: snapshot.markup.id,
+            publicationId: publication.id,
+            contentHash: snapshot.markup.inputHash
+          }
+        })
+        markup = projected.markup
+        redirects = projected.redirects
+        correction = {
+          contractVersion: enabled.contractVersion,
+          version: enabled.correctionVersion,
+          documentHash: enabled.documentHash
+        }
+      } catch (error) {
+        console.error('[book-character-correction] enabled correction rejected at read time', {
+          book_edition_id: bookEditionId,
+          correction_version: enabled.correctionVersion,
+          code: error?.code || 'INVALID'
+        })
+      }
+    }
     let ttsMarkup = { status: 'unavailable', version: 'book-tts-script-v1', revision: null,
       retryAfterMs: null }
     if (ttsMarkupRepository?.ensureBookTtsMarkup) {
@@ -343,6 +402,7 @@ export function createBookCatalogService({
       runId: publication.runId,
       contentHash: publication.contentHash,
       publishedAt: publication.publishedAt,
+      correction,
       readerTextOffset,
       readingFraction: snapshot.readingFraction,
       readerSectionIndex: snapshot.readerSectionIndex,
@@ -355,10 +415,31 @@ export function createBookCatalogService({
         publishedAt: publication.publishedAt
       },
       ttsMarkup,
-      characters: (snapshot.characters || [])
-        .map((media) => {
-          const character = profileByCharacterKey.get(media.characterKey) || media.data
-          if (!character) return null
+      characters: (() => {
+        const mediaByProjectedKey = new Map()
+        const projectedOrder = []
+        const seen = new Set()
+        for (const media of snapshot.characters || []) {
+          const projectedKey = redirects.get(media.characterKey) ?? media.characterKey
+          if (!profileByCharacterKey.has(projectedKey)) continue
+          if (!seen.has(projectedKey)) {
+            projectedOrder.push(projectedKey)
+            seen.add(projectedKey)
+          }
+          const current = mediaByProjectedKey.get(projectedKey)
+          const currentReady = isCompleteCharacterBundle(current?.bundle)
+          const candidateReady = isCompleteCharacterBundle(media?.bundle)
+          if (
+            !current ||
+            (!currentReady && candidateReady) ||
+            (currentReady === candidateReady && media.characterKey === projectedKey)
+          ) {
+            mediaByProjectedKey.set(projectedKey, media)
+          }
+        }
+        return projectedOrder.map((characterKey) => {
+          const character = profileByCharacterKey.get(characterKey)
+          const media = mediaByProjectedKey.get(characterKey)
           const state = isCompleteCharacterBundle(media?.bundle) ? 'ready' : 'preparing'
           return {
             characterKey: character.characterKey,
@@ -379,7 +460,7 @@ export function createBookCatalogService({
               : null
           }
         })
-        .filter(Boolean)
+      })()
     }
   }
 
@@ -638,7 +719,22 @@ export function createBookCatalogService({
         bookEditionId,
         sectionIndex
       })
-      if (section) return section
+      if (section) {
+        const correction = await enabledCorrection({ bookEditionId, markup: snapshot.markup })
+        if (!correction || !section.section?.segments) return section
+        return {
+          ...section,
+          section: {
+            ...section.section,
+            segments: section.section.segments.map((segment) => ({
+              ...segment,
+              characterKey: segment.characterKey
+                ? resolveCorrectedCharacterKey(segment.characterKey, correction)
+                : null
+            }))
+          }
+        }
+      }
       return { status: 'processing', version: 'book-tts-script-v1', revision: null,
         retryAfterMs: 10_000 }
     },
@@ -843,12 +939,25 @@ export function createBookCatalogService({
       })
       if (!progress) throw serviceError('NOT_FOUND', 'Книга не найдена', 404)
 
+      const correction = await enabledCorrection({
+        bookEditionId,
+        markup: progress.markupVersionId && progress.markupInputHash
+          ? { id: progress.markupVersionId, inputHash: progress.markupInputHash }
+          : null
+      })
+
       const charactersDue = analysisRepository
         ? progress.analysisVersion === BOOK_ANALYSIS_MARKUP_VERSION
           ? progress.charactersDue
           : []
         : progress.scope === 'catalog' ? [] : progress.charactersDue
-      const requests = await Promise.allSettled(charactersDue.map((character) =>
+      const correctedDue = [...new Map(charactersDue
+        .map((character) => {
+          const characterKey = resolveCorrectedCharacterKey(character.characterKey, correction)
+          return characterKey ? [characterKey, { ...character, characterKey }] : null
+        })
+        .filter(Boolean)).values()]
+      const requests = await Promise.allSettled(correctedDue.map((character) =>
         ensureCharacterBundle(store, {
           bookEditionId,
           characterKey: character.characterKey,

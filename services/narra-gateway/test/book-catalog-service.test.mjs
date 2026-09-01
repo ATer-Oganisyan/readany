@@ -6,6 +6,8 @@ import { decodeBookContentCursor } from '../book-content.mjs'
 import { createBookCatalogService } from '../book-catalog-service.mjs'
 
 const HASH = 'a'.repeat(64)
+const OVERLAY_MARKUP_ID = '11111111-1111-4111-8111-111111111111'
+const OVERLAY_PUBLICATION_ID = '22222222-2222-4222-8222-222222222222'
 const EDITION = {
   id: 'book-1',
   scope: 'private',
@@ -40,6 +42,63 @@ function readyBundle(characterKey) {
       byteSize: 10,
       status: 'ready'
     }))
+  }
+}
+
+function overlayProfile({ characterKey, name, evidenceIds, role = null, description = null }) {
+  return {
+    characterKey,
+    name,
+    fullName: name,
+    aliases: [],
+    identityEvidenceIds: evidenceIds,
+    firstAppearanceTextOffset: characterKey === 'helene' ? 200 : 100,
+    warmupTextOffset: characterKey === 'helene' ? 150 : 50,
+    role,
+    age: null,
+    gender: null,
+    description,
+    traits: [],
+    personalityTimelineVersion: '',
+    personalitySnapshots: [],
+    speechStyle: null,
+    speechExamples: [],
+    appearance: [],
+    creative: {}
+  }
+}
+
+function redirectDocument() {
+  return {
+    contractVersion: 'book-character-correction-v1',
+    base: {
+      markupVersionId: OVERLAY_MARKUP_ID,
+      publicationId: OVERLAY_PUBLICATION_ID,
+      contentHash: HASH
+    },
+    reason: 'Перенаправляем ошибочный профиль-дубль на существующего персонажа.',
+    changes: [{
+      characterKey: 'helene-bezukhova',
+      reason: 'Полное имя относится к уже существующему персонажу Элен.',
+      redirectTo: 'helene'
+    }]
+  }
+}
+
+function suppressDocument(characterKey = 'mixed-count') {
+  return {
+    contractVersion: 'book-character-correction-v1',
+    base: {
+      markupVersionId: OVERLAY_MARKUP_ID,
+      publicationId: OVERLAY_PUBLICATION_ID,
+      contentHash: HASH
+    },
+    reason: 'Скрываем смешанный профиль без удаления исходной разметки.',
+    changes: [{
+      characterKey,
+      reason: 'Профиль объединяет разные личности и не имеет безопасной цели redirect.',
+      suppress: true
+    }]
   }
 }
 
@@ -263,6 +322,332 @@ test('catalog manifest exposes validated v3 as the canonical markup', async () =
   assert.equal(preview.characters[0].bundle.assets.length, REQUIRED_CHARACTER_MEDIA.length)
   assert.equal(preview.markup.analysisVersion, 'book-markup-v3')
   assert.deepEqual(calls, [['manifest', 'character-bundle-v3']])
+})
+
+test('enabled correction projects profiles and redirects duplicates without mutating the base publication', async () => {
+  const targetEvidence = [
+    '33333333-3333-4333-8333-333333333331',
+    '33333333-3333-4333-8333-333333333332'
+  ]
+  const duplicateEvidence = [
+    '44444444-4444-4444-8444-444444444441',
+    '44444444-4444-4444-8444-444444444442'
+  ]
+  const baseMarkup = {
+    schemaVersion: 3,
+    analysisVersion: 'book-markup-v3',
+    snapshotId: '55555555-5555-4555-8555-555555555555',
+    textLength: 10_000,
+    characters: [
+      overlayProfile({
+        characterKey: 'helene',
+        name: 'Элен',
+        evidenceIds: targetEvidence
+      }),
+      overlayProfile({
+        characterKey: 'helene-bezukhova',
+        name: 'Элен Безухова',
+        evidenceIds: duplicateEvidence,
+        role: {
+          value: 'Светская красавица',
+          evidenceIds: [duplicateEvidence[0]],
+          confidence: 0.9
+        },
+        description: {
+          value: 'Влиятельная светская женщина, чьи поступки меняют судьбы окружающих.',
+          evidenceIds: duplicateEvidence,
+          confidence: 0.9
+        }
+      })
+    ],
+    locations: [],
+    events: [],
+    relationships: [],
+    storyArcs: []
+  }
+  const document = {
+    contractVersion: 'book-character-correction-v1',
+    base: {
+      markupVersionId: OVERLAY_MARKUP_ID,
+      publicationId: OVERLAY_PUBLICATION_ID,
+      contentHash: HASH
+    },
+    reason: 'Исправляем профиль Элен из уже опубликованного профиля-дубля.',
+    changes: [{
+      characterKey: 'helene',
+      reason: 'Переносим подтверждённые роль и описание в сохраняемый ключ.',
+      copy: {
+        roleFrom: 'helene-bezukhova',
+        descriptionFrom: 'helene-bezukhova'
+      }
+    }, {
+      characterKey: 'helene-bezukhova',
+      reason: 'Полное имя относится к той же существующей личности.',
+      redirectTo: 'helene'
+    }]
+  }
+  const service = createBookCatalogService({
+    repository: repository({
+      async getReaderBookManifest() {
+        return {
+          edition: { ...EDITION, scope: 'catalog', catalogKey: 'war-and-peace' },
+          readerTextOffset: 1_000,
+          readingFraction: 0.1,
+          markup: {
+            id: OVERLAY_MARKUP_ID,
+            inputHash: HASH,
+            schemaVersion: 3,
+            analysisVersion: 'book-markup-v3',
+            revision: 1,
+            textLength: 10_000,
+            publishedAt: '2026-08-31T00:00:00.000Z'
+          },
+          characters: [{
+            characterKey: 'helene',
+            name: 'Элен',
+            fullName: 'Элен',
+            bundle: null
+          }, {
+            characterKey: 'helene-bezukhova',
+            name: 'Элен Безухова',
+            fullName: 'Элен Безухова',
+            bundle: readyBundle('helene-bezukhova')
+          }]
+        }
+      }
+    }),
+    analysisRepository: {
+      async getLatestShadowAnalysisPublication() {
+        return {
+          id: OVERLAY_PUBLICATION_ID,
+          runId: '66666666-6666-4666-8666-666666666666',
+          contentHash: HASH,
+          publishedAt: '2026-08-31T00:00:00.000Z',
+          data: { markup: baseMarkup }
+        }
+      }
+    },
+    correctionRepository: {
+      async getEnabledCorrection(input) {
+        assert.deepEqual(input, {
+          bookEditionId: EDITION.id,
+          markupVersionId: OVERLAY_MARKUP_ID,
+          publicationId: OVERLAY_PUBLICATION_ID,
+          contentHash: HASH
+        })
+        return {
+          contractVersion: 'book-character-correction-v1',
+          correctionVersion: 3,
+          documentHash: 'c'.repeat(64),
+          document
+        }
+      }
+    }
+  })
+
+  const result = await service.manifest('reader-1', EDITION.id)
+
+  assert.equal(result.characters.length, 1)
+  assert.equal(result.characters[0].characterKey, 'helene')
+  assert.equal(result.characters[0].profile.role, 'Светская красавица')
+  assert.match(result.characters[0].profile.description, /судьбы окружающих/)
+  assert.equal(result.characters[0].state, 'ready')
+  assert.equal(result.characters[0].bundle.assets.length, REQUIRED_CHARACTER_MEDIA.length)
+  assert.deepEqual(result.correction, {
+    contractVersion: 'book-character-correction-v1',
+    version: 3,
+    documentHash: 'c'.repeat(64)
+  })
+  assert.equal(baseMarkup.characters.length, 2)
+  assert.equal(baseMarkup.characters[0].description, null)
+})
+
+test('enabled correction redirects TTS segments to the retained character key', async () => {
+  const service = createBookCatalogService({
+    repository: repository({
+      async getReaderBookManifest() {
+        return {
+          edition: EDITION,
+          markup: { id: OVERLAY_MARKUP_ID, inputHash: HASH },
+          characters: []
+        }
+      }
+    }),
+    ttsMarkupRepository: {
+      async getBookTtsMarkupSection() {
+        return {
+          status: 'ready',
+          section: {
+            segments: [{ id: 'speech-1', characterKey: 'helene-bezukhova' }]
+          }
+        }
+      }
+    },
+    correctionRepository: {
+      async getEnabledCorrection() {
+        return { document: redirectDocument() }
+      }
+    }
+  })
+
+  const result = await service.ttsSection('reader-1', EDITION.id, 0)
+
+  assert.equal(result.section.segments[0].characterKey, 'helene')
+})
+
+test('enabled correction hides a suppressed profile and its ready media from manifest', async () => {
+  const baseMarkup = {
+    schemaVersion: 3,
+    analysisVersion: 'book-markup-v3',
+    snapshotId: '55555555-5555-4555-8555-555555555555',
+    textLength: 10_000,
+    characters: [
+      overlayProfile({ characterKey: 'visible', name: 'Видимый', evidenceIds: ['visible-1'] }),
+      overlayProfile({ characterKey: 'mixed-count', name: 'граф', evidenceIds: ['mixed-1'] })
+    ],
+    locations: [],
+    events: [],
+    relationships: [],
+    storyArcs: []
+  }
+  const service = createBookCatalogService({
+    repository: repository({
+      async getReaderBookManifest() {
+        return {
+          edition: { ...EDITION, scope: 'catalog' },
+          readerTextOffset: 1_000,
+          readingFraction: 0.1,
+          markup: {
+            id: OVERLAY_MARKUP_ID,
+            inputHash: HASH,
+            schemaVersion: 3,
+            analysisVersion: 'book-markup-v3',
+            revision: 1,
+            textLength: 10_000,
+            publishedAt: '2026-08-31T00:00:00.000Z'
+          },
+          characters: [{
+            characterKey: 'visible', name: 'Видимый', bundle: readyBundle('visible')
+          }, {
+            characterKey: 'mixed-count', name: 'граф', bundle: readyBundle('mixed-count')
+          }]
+        }
+      }
+    }),
+    analysisRepository: {
+      async getLatestShadowAnalysisPublication() {
+        return {
+          id: OVERLAY_PUBLICATION_ID,
+          runId: '66666666-6666-4666-8666-666666666666',
+          contentHash: HASH,
+          publishedAt: '2026-08-31T00:00:00.000Z',
+          data: { markup: baseMarkup }
+        }
+      }
+    },
+    correctionRepository: {
+      async getEnabledCorrection() {
+        return {
+          contractVersion: 'book-character-correction-v1',
+          correctionVersion: 1,
+          documentHash: 'd'.repeat(64),
+          document: suppressDocument()
+        }
+      }
+    }
+  })
+
+  const result = await service.manifest('reader-1', EDITION.id)
+
+  assert.deepEqual(result.characters.map(({ characterKey }) => characterKey), ['visible'])
+  assert.equal(baseMarkup.characters.length, 2)
+})
+
+test('enabled correction deduplicates media warmup for redirected character keys', async () => {
+  const ensured = []
+  const service = createBookCatalogService({
+    repository: repository({
+      async advanceReaderPosition() {
+        return {
+          scope: 'catalog',
+          analysisVersion: 'book-markup-v3',
+          markupVersionId: OVERLAY_MARKUP_ID,
+          markupInputHash: HASH,
+          readerTextOffset: 1_000,
+          readingFraction: 0.1,
+          charactersDue: [
+            { characterKey: 'helene', warmupTextOffset: 50 },
+            { characterKey: 'helene-bezukhova', warmupTextOffset: 60 }
+          ]
+        }
+      },
+      async ensureCharacterBundle(input) {
+        ensured.push(input)
+        return { status: 'queued' }
+      }
+    }),
+    analysisRepository: {
+      async ensureLatestMediaProjection() { return { projected: true } }
+    },
+    correctionRepository: {
+      async getEnabledCorrection() {
+        return { document: redirectDocument() }
+      }
+    }
+  })
+
+  const result = await service.advanceProgress('reader-1', EDITION.id, {
+    progressFraction: 0.1,
+    textOffset: null,
+    chapterKey: null
+  })
+
+  assert.equal(result.warmup.requested, 1)
+  assert.equal(ensured.length, 1)
+  assert.equal(ensured[0].characterKey, 'helene')
+})
+
+test('enabled correction never queues media for a suppressed profile', async () => {
+  const ensured = []
+  const service = createBookCatalogService({
+    repository: repository({
+      async advanceReaderPosition() {
+        return {
+          scope: 'catalog',
+          analysisVersion: 'book-markup-v3',
+          markupVersionId: OVERLAY_MARKUP_ID,
+          markupInputHash: HASH,
+          readerTextOffset: 1_000,
+          readingFraction: 0.1,
+          charactersDue: [
+            { characterKey: 'visible', warmupTextOffset: 50 },
+            { characterKey: 'mixed-count', warmupTextOffset: 60 }
+          ]
+        }
+      },
+      async ensureCharacterBundle(input) {
+        ensured.push(input)
+        return { status: 'queued' }
+      }
+    }),
+    analysisRepository: {
+      async ensureLatestMediaProjection() { return { projected: true } }
+    },
+    correctionRepository: {
+      async getEnabledCorrection() {
+        return { document: suppressDocument() }
+      }
+    }
+  })
+
+  const result = await service.advanceProgress('reader-1', EDITION.id, {
+    progressFraction: 0.1,
+    textOffset: null,
+    chapterKey: null
+  })
+
+  assert.equal(result.warmup.requested, 1)
+  assert.deepEqual(ensured.map(({ characterKey }) => characterKey), ['visible'])
 })
 
 test('catalog manifest does not fall back to legacy v2 while v3 is processing', async () => {

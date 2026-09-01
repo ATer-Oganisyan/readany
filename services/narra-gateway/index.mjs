@@ -80,6 +80,7 @@ import { createPostgresBookAnalysisRepository } from './book-analysis-repository
 import { bookAnalysisPipelineFromEnv } from './book-analysis-pipeline.mjs'
 import { createBookOperatorRouter } from './book-operator-api.mjs'
 import { createPostgresBookOperatorRepository } from './book-operator-repository.mjs'
+import { createPostgresBookCharacterCorrectionRepository } from './book-character-correction-repository.mjs'
 import { createPostgresBookMarkupRepository } from './postgres-book-markup-repository.mjs'
 import { createPostgresBookTtsMarkupRepository } from './book-tts-markup-repository.mjs'
 import { createPostgresPoolFromEnv, runBookMarkupMigrations } from './postgres-runtime.mjs'
@@ -1171,6 +1172,7 @@ let bookMarkupRepository = null
 let bookAnalysisRepository = null
 let bookTtsMarkupRepository = null
 let bookOperatorRepository = null
+let bookCharacterCorrectionRepository = null
 let operationalMetricsRepository = null
 let generationCostLedger = null
 let bookSearchRepository = null
@@ -1209,6 +1211,7 @@ if (process.env.DATABASE_URL) {
   })
   bookTtsMarkupRepository = createPostgresBookTtsMarkupRepository(bookMarkupPool)
   bookOperatorRepository = createPostgresBookOperatorRepository(bookMarkupPool)
+  bookCharacterCorrectionRepository = createPostgresBookCharacterCorrectionRepository(bookMarkupPool)
   operationalMetricsRepository = createOperationalMetricsRepository(bookMarkupPool)
   if (BOOK_SEARCH_ENABLED) {
     bookSearchRepository = createPostgresBookSearchRepository(bookMarkupPool)
@@ -1661,6 +1664,7 @@ if (bookMarkupRepository && bookObjectStorage) {
       password: BOOK_OPERATOR_PASSWORD,
       dashboardRepository: bookOperatorRepository,
       analysisRepository: bookAnalysisRepository,
+      correctionRepository: bookCharacterCorrectionRepository,
       catalogService: catalogIngestService,
       uploadMaxBytes: BOOK_UPLOAD_MAX_BYTES
     }))
@@ -1697,6 +1701,7 @@ if (bookMarkupRepository) {
   app.use('/v2/books', createBookCatalogRouter({
     repository: bookMarkupRepository,
     analysisRepository: bookAnalysisRepository,
+    correctionRepository: bookCharacterCorrectionRepository,
     ttsMarkupRepository: bookTtsMarkupRepository,
     shadowPreviewEnabled: BOOK_SHADOW_PREVIEW_ENABLED,
     storage: bookObjectStorage,
