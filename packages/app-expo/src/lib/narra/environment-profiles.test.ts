@@ -13,12 +13,14 @@ const eas = JSON.parse(readFileSync(new URL("../../../eas.json", import.meta.url
 };
 
 describe("mobile environment profiles", () => {
-  it("keeps the local simulator isolated from TEST and disables analytics", () => {
+  it("keeps the simulator on TEST and disables analytics", () => {
     const profile = eas.build["development-simulator"];
     expect(profile.ios?.simulator).toBe(true);
     expect(profile.channel).toBe("development");
-    expect(profile.env?.EXPO_PUBLIC_NARRA_ENVIRONMENT).toBe("local");
-    expect(profile.env?.EXPO_PUBLIC_NARRA_GATEWAY_URL).toBe("http://127.0.0.1:8787");
+    expect(profile.env?.EXPO_PUBLIC_NARRA_ENVIRONMENT).toBe("test");
+    expect(profile.env?.EXPO_PUBLIC_NARRA_GATEWAY_URL).toBe(
+      "https://api-test.narra.disrupt.builders",
+    );
     expect(profile.env?.EXPO_PUBLIC_NARRA_ANALYTICS_TIER).toBe("none");
   });
 

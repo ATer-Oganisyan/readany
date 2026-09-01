@@ -8,6 +8,33 @@ import {
 afterEach(() => vi.useRealTimers());
 
 describe("private local diagnostics", () => {
+  it("keeps only safe backend verification fields", () => {
+    expect(
+      diagnosticEntry("backend_probe", {
+        host: "api.narra.disrupt.builders",
+        buildEnvironment: "production",
+        expectedEnvironment: "production",
+        environment: "production",
+        version: "d56f0123",
+        ok: true,
+        url: "https://api.narra.disrupt.builders/health?token=secret",
+      })?.data,
+    ).toEqual({
+      host: "api.narra.disrupt.builders",
+      buildEnvironment: "production",
+      expectedEnvironment: "production",
+      environment: "production",
+      version: "d56f0123",
+      ok: true,
+    });
+    expect(
+      diagnosticEntry("backend_probe", {
+        host: "private.example",
+        version: "bad version containing private text",
+      })?.data,
+    ).toEqual({});
+  });
+
   it("keeps scene correlation without allowing signed URLs, tokens or arbitrary IDs", () => {
     const requestId = "22222222-2222-4222-8222-222222222222";
     expect(

@@ -17,7 +17,9 @@
   },
   "scripts": {
     "start": "./script/build_and_run.sh start-lan",
+    "start:prod": "READANY_NARRA_BACKEND=production READANY_METRO_PORT=8082 ./script/build_and_run.sh start-lan",
     "simulator": "./script/build_and_run.sh",
+    "simulator:prod": "READANY_NARRA_BACKEND=production READANY_METRO_PORT=8082 ./script/build_and_run.sh",
     "start:lan": "./script/build_and_run.sh start-lan",
     "rebuild:ios": "./script/build_and_run.sh rebuild-ios",
     "start:clear": "APP_VARIANT=development pnpm run build:reader && APP_VARIANT=development node scripts/configure-native-variant.js && EXPO_NO_METRO_LAZY=1 APP_VARIANT=development expo start --dev-client --scheme readany-dev --clear",

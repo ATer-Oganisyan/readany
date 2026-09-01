@@ -8,9 +8,27 @@ MONOREPO_ROOT="$(cd "$APP_ROOT/../.." && pwd)"
 SIMULATOR_NAME="${READANY_SIMULATOR_NAME:-iPhone 17 Pro}"
 SIMULATOR_ID="${READANY_SIMULATOR_ID:-}"
 METRO_PORT="${READANY_METRO_PORT:-8081}"
-export EXPO_PUBLIC_NARRA_ENVIRONMENT="${EXPO_PUBLIC_NARRA_ENVIRONMENT:-test}"
+NARRA_BACKEND_PROFILE="${READANY_NARRA_BACKEND:-}"
+
+case "$NARRA_BACKEND_PROFILE" in
+  "")
+    export EXPO_PUBLIC_NARRA_ENVIRONMENT="${EXPO_PUBLIC_NARRA_ENVIRONMENT:-test}"
+    export EXPO_PUBLIC_NARRA_GATEWAY_URL="${EXPO_PUBLIC_NARRA_GATEWAY_URL:-https://api-test.narra.disrupt.builders}"
+    ;;
+  test)
+    export EXPO_PUBLIC_NARRA_ENVIRONMENT="test"
+    export EXPO_PUBLIC_NARRA_GATEWAY_URL="https://api-test.narra.disrupt.builders"
+    ;;
+  production|prod)
+    export EXPO_PUBLIC_NARRA_ENVIRONMENT="production"
+    export EXPO_PUBLIC_NARRA_GATEWAY_URL="https://api.narra.disrupt.builders"
+    ;;
+  *)
+    printf '[Narra iOS] ERROR: Unsupported READANY_NARRA_BACKEND: %s\n' "$NARRA_BACKEND_PROFILE" >&2
+    exit 2
+    ;;
+esac
 export EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE="${EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE:-installation}"
-export EXPO_PUBLIC_NARRA_GATEWAY_URL="${EXPO_PUBLIC_NARRA_GATEWAY_URL:-https://api-test.narra.disrupt.builders}"
 export EXPO_PUBLIC_NARRA_ANALYTICS_TIER="${EXPO_PUBLIC_NARRA_ANALYTICS_TIER:-essential}"
 BUNDLE_ID="com.mishanaer.readany.dev"
 if [[ -d "$APP_ROOT/ios/ReadAnyDev.xcworkspace" ]]; then
@@ -57,12 +75,13 @@ Optional environment variables:
   READANY_SIMULATOR_NAME       Simulator name (default: iPhone 17 Pro)
   READANY_SIMULATOR_ID         Exact simulator UDID (takes precedence over name)
   READANY_METRO_PORT           Metro port (default: 8081)
+  READANY_NARRA_BACKEND        Backend profile: test (default) or production
   READANY_DERIVED_DATA_PATH    Canonical DerivedData directory
   READANY_DEVELOPER_DIR        Xcode Developer directory (defaults to DEVELOPER_DIR or xcode-select)
   READANY_ALLOW_PASTEBOARD_SYNC=1
                                Allow automatic Simulator pasteboard sync intentionally
   EXPO_PUBLIC_NARRA_GATEWAY_URL
-                               Gateway URL (default: https://api-test.narra.disrupt.builders)
+                               Custom dev gateway URL when READANY_NARRA_BACKEND is unset
 
 The simulator mode never runs xcodebuild, expo run:ios, prebuild, pod install, or a tunnel.
 USAGE
@@ -226,6 +245,7 @@ run_metro_prepared() {
   else
     log "Starting Metro on localhost:$METRO_PORT"
   fi
+  log "Gateway profile: ${EXPO_PUBLIC_NARRA_ENVIRONMENT:-test} (${EXPO_PUBLIC_NARRA_GATEWAY_URL:-https://api-test.narra.disrupt.builders})"
 
   cd "$APP_ROOT"
   # Keep reader dependencies in the initial bundle: an import() must not need
