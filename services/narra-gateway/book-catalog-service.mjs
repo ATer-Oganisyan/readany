@@ -88,6 +88,14 @@ function claimValue(claim) {
   return typeof claim?.value === 'string' ? claim.value : ''
 }
 
+function publicCharacterProfile(profile) {
+  if (typeof profile?.description !== 'string') return profile
+  return {
+    ...profile,
+    description: profile.description.replace(/^\p{Ll}/u, (letter) => letter.toUpperCase())
+  }
+}
+
 function publicCharacterFullName(character) {
   const name = formatCharacterDisplayName(character?.name).toLocaleLowerCase('ru-RU')
   const fullName = formatCharacterDisplayName(character?.fullName)
@@ -115,7 +123,7 @@ function analysisCharacterProfile(character, analysisSource) {
     .map(claimValue)
     .filter(Boolean)
     .join(', ')
-  return {
+  return publicCharacterProfile({
     role: claimValue(character.role) || 'Персонаж истории',
     description: claimValue(character.description),
     gender: normalizedGender,
@@ -129,7 +137,7 @@ function analysisCharacterProfile(character, analysisSource) {
     greeting: character.creative?.greeting || '',
     voice: voiceForGender(character.creative?.voice, normalizedGender),
     analysisSource
-  }
+  })
 }
 
 function analysisReaderTextOffset(snapshot, textLength) {
@@ -495,7 +503,7 @@ export function createBookCatalogService({
         fullName: publicCharacterFullName(character),
         firstAppearanceTextOffset: character.firstAppearanceTextOffset,
         state,
-        profile: character.data,
+        profile: publicCharacterProfile(character.data),
         bundle: character.bundle?.assets?.length
           ? {
               version: character.bundle.version,

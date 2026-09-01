@@ -120,7 +120,8 @@ test('manifest never leaks a future character even when its global bundle is rea
           characters: [
             {
               characterKey: 'visible', name: 'visible', fullName: 'visible hero',
-              warmupTextOffset: 0, firstAppearanceTextOffset: 20, data: { role: 'hero' },
+              warmupTextOffset: 0, firstAppearanceTextOffset: 20,
+              data: { role: 'hero', description: 'visible biography.' },
               bundle: readyBundle('visible')
             },
             {
@@ -141,6 +142,7 @@ test('manifest never leaks a future character even when its global bundle is rea
   assert.equal(manifest.characters[0].name, 'Visible')
   assert.equal(manifest.characters[0].fullName, 'Visible Hero')
   assert.equal(manifest.characters[0].state, 'ready')
+  assert.equal(manifest.characters[0].profile.description, 'Visible biography.')
   assert.equal(manifest.characters[0].bundle.assets.length, REQUIRED_CHARACTER_MEDIA.length)
 })
 
@@ -231,7 +233,7 @@ test('catalog manifest exposes validated v3 as the canonical markup', async () =
                   age: null,
                   gender: null,
                   description: {
-                    value: 'Подробное описание главного героя.',
+                    value: 'подробное описание главного героя.',
                     evidenceIds: ['description-1'],
                     confidence: 0.9
                   },
