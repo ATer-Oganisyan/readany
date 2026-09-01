@@ -4,6 +4,7 @@ import { createBookAnalysisPrepareWorker } from './book-analysis-prepare-worker.
 import { createBookObjectStorageFromEnv } from './book-object-storage.mjs'
 import { parseEnvInt, parseEnvUuidList } from './env.mjs'
 import { createOperationalLogger } from './operational-log.mjs'
+import { createWorkerHeartbeat } from './worker-heartbeat.mjs'
 import { createPostgresPoolFromEnv, runBookMarkupMigrations } from './postgres-runtime.mjs'
 
 function delay(milliseconds, signal) {
@@ -54,8 +55,16 @@ const storage = createBookObjectStorageFromEnv(process.env)
 if (!storage) throw new Error('BOOK_STORAGE_BUCKET is required for the analysis worker')
 const log = createOperationalLogger({ component: 'analysis-worker' })
 const pool = await createPostgresPoolFromEnv(process.env)
+let heartbeat
 try {
   await runBookMarkupMigrations(pool)
+  heartbeat = createWorkerHeartbeat({
+    pool,
+    workerId,
+    workerType: process.env.WORKER_TYPE || 'book-analysis-prepare',
+    logger: log
+  })
+  await heartbeat.start()
   const repository = createPostgresBookAnalysisRepository(pool)
   const worker = createBookAnalysisPrepareWorker({
     repository,
@@ -92,6 +101,7 @@ try {
     }
   }
 } finally {
+  heartbeat?.stop()
   await pool.end()
   log.info('worker.stopped', 'Воркер подготовки книг остановлен', { worker: workerId })
 }

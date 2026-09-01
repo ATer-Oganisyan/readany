@@ -33,6 +33,8 @@ export interface NarraCharacter {
   name: string;
   fullName: string;
   role: string;
+  /** Canonical backend biography; role remains the safe legacy fallback. */
+  description?: string;
   gender: NarraGender;
   voice: string;
   /** Просодия при повторе голоса из исчерпанного пула (pitch — полутоны, rate — множитель). */
@@ -126,7 +128,7 @@ export interface NarraBookState {
   scenes: Record<string, NarraSceneImage>;
   /** Backend assets are stored once, independently from where they are rendered. */
   scenesByBackendId?: Record<string, NarraSceneImage>;
-  /** One CFI anchor per backend asset. Values point into scenesByBackendId. */
+  /** CFI anchors pointing into scenesByBackendId; several anchors may share one asset. */
   sceneAnchorBindings?: Record<string, string>;
   /** Explicit user intents, retained for retry at the original position; never auto-started. */
   sceneRequests?: Record<string, BackendSceneIntent>;

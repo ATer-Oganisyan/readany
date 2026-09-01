@@ -7,6 +7,7 @@ import { createBookObjectStorageFromEnv } from './book-object-storage.mjs'
 import { createGenerationServiceClient } from './generation-service-client.mjs'
 import { parseEnvBool, parseEnvInt, parseEnvUuidList } from './env.mjs'
 import { createOperationalLogger } from './operational-log.mjs'
+import { createWorkerHeartbeat } from './worker-heartbeat.mjs'
 import { createPostgresPoolFromEnv, runBookMarkupMigrations } from './postgres-runtime.mjs'
 
 const stage = process.argv[2]
@@ -42,8 +43,16 @@ const workerId = String(
 )
 const log = createOperationalLogger({ component: `analysis-${stage}-worker` })
 const pool = await createPostgresPoolFromEnv(process.env)
+let heartbeat
 try {
   await runBookMarkupMigrations(pool)
+  heartbeat = createWorkerHeartbeat({
+    pool,
+    workerId,
+    workerType: process.env.WORKER_TYPE || `book-analysis-${stage}`,
+    logger: log
+  })
+  await heartbeat.start()
   const repository = createPostgresBookAnalysisRepository(pool, {
     mediaGenerationEnabled: parseEnvBool(
       process.env,
@@ -102,6 +111,7 @@ try {
     }
   }
 } finally {
+  heartbeat?.stop()
   await pool.end()
   log.info('worker.stopped', `${stage}-воркер остановлен`, { worker: workerId })
 }

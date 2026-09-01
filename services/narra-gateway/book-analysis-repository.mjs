@@ -20,11 +20,7 @@ import {
   characterMediaIdempotencyKey,
   characterMediaTargetVersion
 } from './book-markup.mjs'
-import {
-  bookMediaFrontier,
-  bookSceneIdempotencyKey,
-  bookSceneSlotsThrough
-} from './book-scenes.mjs'
+import { bookMediaFrontier } from './book-scenes.mjs'
 import {
   BOOK_ANALYSIS_NORMALIZATION_VERSION,
   BOOK_ANALYSIS_PIPELINE_IDS,
@@ -42,8 +38,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const STAGES = new Set(['prepare', 'scan', 'resolve', 'synthesize', 'validate', 'publish'])
 const MAX_PROVISIONAL_CHARACTERS = MAX_PUBLISHED_BOOK_CHARACTERS
 
-function repositoryError(code, message) {
-  return Object.assign(new Error(message), { code })
+function repositoryError(code, message, status) {
+  return Object.assign(new Error(message), { code, ...(status ? { status } : {}) })
 }
 
 function validateIdentifier(value, name, maxLength = 256) {
@@ -665,72 +661,7 @@ export function createPostgresBookAnalysisRepository(pool, {
         ]
       )
     }
-    const source = await client.query(
-      `SELECT run.normalized_text_object_key, run.normalized_text_hash
-       FROM book_analysis_publications AS publication
-       JOIN book_analysis_runs AS run ON run.id = publication.run_id
-       WHERE publication.book_edition_id = $1
-         AND publication.content_hash = $2
-       ORDER BY publication.published_at DESC, publication.id DESC
-       LIMIT 1`,
-      [bookEditionId, markupContentHash]
-    )
-    let queuedScenes = 0
-    if (
-      mediaGenerationEnabled &&
-      source.rows[0]?.normalized_text_object_key && source.rows[0]?.normalized_text_hash
-    ) {
-      const slots = bookSceneSlotsThrough(markup.scenePolicy, markup.textLength, mediaFrontier)
-      for (const slot of slots) {
-        const idempotencyKey = bookSceneIdempotencyKey({
-          bookEditionId,
-          markupContentHash,
-          policyVersion: markup.scenePolicy.version,
-          slotIndex: slot.slotIndex
-        })
-        const targetVersion = `${markup.scenePolicy.version}:${markupContentHash.slice(0, 16)}`
-        const inserted = await client.query(
-          `INSERT INTO generation_jobs (
-             id, idempotency_key, job_type, book_edition_id, character_key,
-             target_version, status, priority, payload
-           ) VALUES ($1, $2, 'scene_image', $3, NULL, $4, 'queued', 45, $5::jsonb)
-           ON CONFLICT (idempotency_key) DO NOTHING
-           RETURNING id`,
-          [
-            idFactory(), idempotencyKey, bookEditionId, targetVersion,
-            JSON.stringify({
-              markup_version_id: markupId,
-              scene_key: slot.sceneKey,
-              slot_index: slot.slotIndex,
-              anchor_text_offset: slot.anchorTextOffset,
-              excerpt_start_text_offset: slot.excerptStartTextOffset,
-              excerpt_end_text_offset: slot.excerptEndTextOffset,
-              normalized_text_object_key: source.rows[0].normalized_text_object_key,
-              normalized_text_hash: source.rows[0].normalized_text_hash
-            })
-          ]
-        )
-        const jobId = inserted.rows[0]?.id || (await client.query(
-          'SELECT id FROM generation_jobs WHERE idempotency_key = $1',
-          [idempotencyKey]
-        )).rows[0]?.id
-        if (!jobId) throw new Error('idempotent scene generation job disappeared')
-        await client.query(
-          `INSERT INTO book_scene_slots (
-             id, book_edition_id, markup_version_id, policy_version, scene_key,
-             slot_index, anchor_text_offset, excerpt_start_text_offset,
-             excerpt_end_text_offset, job_id
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-           ON CONFLICT (markup_version_id, slot_index) DO NOTHING`,
-          [
-            idFactory(), bookEditionId, markupId, markup.scenePolicy.version,
-            slot.sceneKey, slot.slotIndex, slot.anchorTextOffset,
-            slot.excerptStartTextOffset, slot.excerptEndTextOffset, jobId
-          ]
-        )
-        queuedScenes += 1
-      }
-    }
+    const queuedScenes = 0
     await client.query(
       `UPDATE book_editions SET status = 'base_ready', updated_at = now()
        WHERE id = $1 AND status IN ('marking_up', 'generating_portraits', 'failed')`,
@@ -1008,6 +939,167 @@ export function createPostgresBookAnalysisRepository(pool, {
           run: runRow(inserted.rows[0]),
           prepareJob: jobRow(prepareJob.rows[0]),
           created: true
+        }
+      })
+    },
+
+    async retryPrivateAnalysisRun({
+      subjectId,
+      bookEditionId,
+      requestId,
+      priority = 100
+    }) {
+      const safeSubjectId = validateUuid(subjectId, 'subjectId')
+      const safeBookEditionId = validateUuid(bookEditionId, 'bookEditionId')
+      const safeRequestId = validateUuid(requestId, 'requestId')
+      const safePriority = validatePriority(priority)
+      return transaction(pool, async (client) => {
+        const editionResult = await client.query(
+          `SELECT edition.id, edition.content_sha256, edition.expires_at,
+                  file.status AS file_status, file.content_hash AS file_content_hash
+           FROM book_editions AS edition
+           LEFT JOIN book_files AS file ON file.book_edition_id = edition.id
+           WHERE edition.id = $1 AND edition.scope = 'private'
+             AND edition.owner_subject_id = $2::uuid
+           FOR UPDATE OF edition`,
+          [safeBookEditionId, safeSubjectId]
+        )
+        const edition = editionResult.rows[0]
+        if (!edition) {
+          throw repositoryError('NOT_FOUND', 'book edition is unavailable', 404)
+        }
+
+        const previousRequest = await client.query(
+          `SELECT request.book_edition_id AS request_book_edition_id,
+                  request.outcome AS request_outcome,
+                  request.run_created AS request_run_created,
+                  run.*
+           FROM book_analysis_retry_requests AS request
+           LEFT JOIN book_analysis_runs AS run ON run.id = request.run_id
+           WHERE request.owner_subject_id = $1::uuid AND request.request_id = $2::uuid`,
+          [safeSubjectId, safeRequestId]
+        )
+        if (previousRequest.rows[0]) {
+          const previous = previousRequest.rows[0]
+          if (previous.request_book_edition_id !== safeBookEditionId) {
+            throw repositoryError(
+              'ANALYSIS_RETRY_IDEMPOTENCY_CONFLICT',
+              'request_id was already used for another book',
+              409
+            )
+          }
+          return {
+            outcome: previous.request_outcome,
+            run: runRow(previous.id ? previous : null),
+            created: Boolean(previous.request_run_created),
+            idempotent: true
+          }
+        }
+
+        const published = await client.query(
+          `SELECT markup.id
+           FROM book_markup_versions AS markup
+           WHERE markup.book_edition_id = $1
+             AND markup.status = 'published'
+             AND markup.analysis_version = $2
+             AND markup.input_hash = $3
+           LIMIT 1`,
+          [safeBookEditionId, BOOK_ANALYSIS_MARKUP_VERSION, edition.content_sha256]
+        )
+        const latestResult = await client.query(
+          `SELECT * FROM book_analysis_runs
+           WHERE book_edition_id = $1 AND input_hash = $2
+           ORDER BY run_sequence DESC, created_at DESC
+           LIMIT 1 FOR UPDATE`,
+          [safeBookEditionId, edition.content_sha256]
+        )
+        const latest = latestResult.rows[0]
+        if (published.rows[0]) {
+          await client.query(
+            `INSERT INTO book_analysis_retry_requests (
+               owner_subject_id, request_id, book_edition_id, run_id, outcome, run_created
+             ) VALUES ($1::uuid, $2::uuid, $3, $4, 'ready', false)`,
+            [safeSubjectId, safeRequestId, safeBookEditionId, latest?.id ?? null]
+          )
+          return { outcome: 'ready', run: runRow(latest), created: false, idempotent: false }
+        }
+        if (latest && ['queued', 'running'].includes(latest.status)) {
+          await client.query(
+            `INSERT INTO book_analysis_retry_requests (
+               owner_subject_id, request_id, book_edition_id, run_id, outcome, run_created
+             ) VALUES ($1::uuid, $2::uuid, $3, $4, 'active', false)`,
+            [safeSubjectId, safeRequestId, safeBookEditionId, latest.id]
+          )
+          return { outcome: 'active', run: runRow(latest), created: false, idempotent: false }
+        }
+        const sourceAvailable = edition.file_status === 'ready' &&
+          edition.file_content_hash === edition.content_sha256 &&
+          new Date(edition.expires_at).getTime() > Date.now()
+        if (!sourceAvailable) {
+          throw repositoryError(
+            'SOURCE_UNAVAILABLE',
+            'verified private source is unavailable',
+            409
+          )
+        }
+        if (!latest || !['failed', 'cancelled'].includes(latest.status)) {
+          throw repositoryError(
+            'ANALYSIS_NOT_RETRYABLE',
+            'analysis is not in a retryable terminal state',
+            409
+          )
+        }
+
+        const strategy = getBookAnalysisPipeline(latest.pipeline_id)
+        const runSequence = Number(latest.run_sequence ?? 0) + 1
+        const baseIdempotencyKey = bookAnalysisRunIdempotencyKey({
+          bookEditionId: safeBookEditionId,
+          inputHash: edition.content_sha256,
+          pipelineId: strategy.id,
+          pipelineImplementationVersion: latest.pipeline_implementation_version,
+          pipelineVersion: latest.pipeline_version,
+          promptVersion: latest.prompt_version,
+          normalizationVersion: latest.normalization_version,
+          outputSchemaVersion: Number(latest.output_schema_version)
+        })
+        const runId = idFactory()
+        const inserted = await client.query(
+          `INSERT INTO book_analysis_runs (
+             id, idempotency_key, book_edition_id, input_hash,
+             pipeline_version, prompt_version, run_sequence, restarted_from_run_id,
+             pipeline_id, pipeline_implementation_version, normalization_version,
+             output_schema_version
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+           RETURNING *`,
+          [
+            runId, `${baseIdempotencyKey}:retry:${safeRequestId}`,
+            safeBookEditionId, edition.content_sha256,
+            latest.pipeline_version, latest.prompt_version, runSequence, latest.id,
+            latest.pipeline_id, latest.pipeline_implementation_version,
+            latest.normalization_version, latest.output_schema_version
+          ]
+        )
+        await client.query(
+          `INSERT INTO book_analysis_jobs (
+             id, run_id, stage, shard_key, required, priority,
+             pipeline_id, pipeline_implementation_version
+           ) VALUES ($1, $2, 'prepare', 'book', true, $3, $4, $5)`,
+          [
+            idFactory(), runId, safePriority,
+            latest.pipeline_id, latest.pipeline_implementation_version
+          ]
+        )
+        await client.query(
+          `INSERT INTO book_analysis_retry_requests (
+             owner_subject_id, request_id, book_edition_id, run_id, outcome, run_created
+           ) VALUES ($1::uuid, $2::uuid, $3, $4, 'created', true)`,
+          [safeSubjectId, safeRequestId, safeBookEditionId, runId]
+        )
+        return {
+          outcome: 'created',
+          run: runRow(inserted.rows[0]),
+          created: true,
+          idempotent: false
         }
       })
     },

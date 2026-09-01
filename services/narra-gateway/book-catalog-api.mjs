@@ -128,6 +128,11 @@ export function parseSceneAtBody(body) {
   }
 }
 
+export function parseAnalysisRetryBody(body) {
+  exactKeys(body, ['request_id'], 'body')
+  return { requestId: uuid(body.request_id, 'request_id') }
+}
+
 function boundedText(value, name, max, { allowEmpty = false } = {}) {
   if (typeof value !== 'string' || value.length > max || /[\u0000-\u001f]/.test(value)) {
     validation(`${name}: invalid value`)
@@ -426,8 +431,12 @@ export function manifestJson(manifest) {
     reader_section_index: manifest.readerSectionIndex,
     reader_section_fraction: manifest.readerSectionFraction,
     analysis: manifest.analysis && {
+      run_id: manifest.analysis.runId,
       stage: manifest.analysis.stage,
       status: manifest.analysis.status,
+      retryable: manifest.analysis.retryable,
+      error_code: manifest.analysis.errorCode,
+      updated_at: manifest.analysis.updatedAt,
       text_length: manifest.analysis.textLength,
       completed_scan_chunks: manifest.analysis.completedScanChunks,
       total_scan_chunks: manifest.analysis.totalScanChunks
@@ -746,6 +755,32 @@ export function createBookCatalogRouter({
   }))
 
   router.post(
+    '/:bookEditionId/analysis/retry',
+    express.json({ limit: '4kb' }),
+    asyncRoute(async (req, res) => {
+      const result = await service.retryAnalysis(
+        subject(req),
+        uuid(req.params.bookEditionId, 'bookEditionId'),
+        parseAnalysisRetryBody(req.body)
+      )
+      res.status(result.created ? 202 : 200).json({
+        status: result.outcome,
+        created: result.created,
+        idempotent: result.idempotent,
+        run_id: result.run?.id,
+        run_sequence: result.run?.runSequence,
+        analysis: result.run && {
+          stage: result.run.stage,
+          status: result.run.status,
+          retryable: ['failed', 'cancelled'].includes(result.run.status),
+          error_code: result.run.lastErrorCode,
+          updated_at: result.run.updatedAt
+        }
+      })
+    })
+  )
+
+  router.post(
     '/:bookEditionId/scenes/at',
     express.json({ limit: '4kb' }),
     asyncRoute(async (req, res) => {
@@ -754,8 +789,22 @@ export function createBookCatalogRouter({
         uuid(req.params.bookEditionId, 'bookEditionId'),
         parseSceneAtBody(req.body)
       )
-      res.status(result.status === 'ready' ? 200 : 202).json({
+      const responseStatus = result.errorCode === 'MARKUP_FAILED'
+        ? 409
+        : result.status === 'ready' ? 200 : 202
+      res.status(responseStatus).json({
         status: result.status,
+        code: result.errorCode,
+        error_code: result.errorCode,
+        retryable: result.retryable,
+        analysis: result.analysis && {
+          run_id: result.analysis.runId,
+          stage: result.analysis.stage,
+          status: result.analysis.status,
+          retryable: result.analysis.retryable,
+          error_code: result.analysis.errorCode,
+          updated_at: result.analysis.updatedAt
+        },
         scene_key: result.sceneKey,
         slot_index: result.slotIndex,
         anchor_text_offset: result.anchorTextOffset,

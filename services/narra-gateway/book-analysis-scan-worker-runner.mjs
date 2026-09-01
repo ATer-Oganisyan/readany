@@ -5,6 +5,7 @@ import { createBookObjectStorageFromEnv } from './book-object-storage.mjs'
 import { parseEnvInt, parseEnvUuidList } from './env.mjs'
 import { createGenerationServiceClient } from './generation-service-client.mjs'
 import { createOperationalLogger } from './operational-log.mjs'
+import { createWorkerHeartbeat } from './worker-heartbeat.mjs'
 import { createPostgresPoolFromEnv, runBookMarkupMigrations } from './postgres-runtime.mjs'
 
 function delay(milliseconds, signal) {
@@ -60,8 +61,16 @@ const generator = createGenerationServiceClient({
 })
 const log = createOperationalLogger({ component: 'analysis-scan-worker' })
 const pool = await createPostgresPoolFromEnv(process.env)
+let heartbeat
 try {
   await runBookMarkupMigrations(pool)
+  heartbeat = createWorkerHeartbeat({
+    pool,
+    workerId,
+    workerType: process.env.WORKER_TYPE || 'book-analysis-scan',
+    logger: log
+  })
+  await heartbeat.start()
   const repository = createPostgresBookAnalysisRepository(pool)
   const worker = createBookAnalysisScanWorker({
     repository,
@@ -99,6 +108,7 @@ try {
     }
   }
 } finally {
+  heartbeat?.stop()
   await pool.end()
   log.info('worker.stopped', 'Scan-воркер остановлен', { worker: workerId })
 }

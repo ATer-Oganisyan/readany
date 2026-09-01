@@ -175,6 +175,108 @@ test('PostgreSQL creates one isolated rerun and deduplicates concurrent restart 
   }
 })
 
+test('PostgreSQL private retry is owner-scoped, concurrent, idempotent and source-aware', {
+  skip: !connectionString
+}, async () => {
+  const { default: pg } = await import('pg')
+  const pool = new pg.Pool({ connectionString, ssl: false, max: 6 })
+  const bookEditionId = randomUUID()
+  const ownerSubjectId = randomUUID()
+  const foreignSubjectId = randomUUID()
+  const hash = createHash('sha256').update(`private-retry-${bookEditionId}`).digest('hex')
+  try {
+    await runBookMarkupMigrations(pool, { logger: { info() {} } })
+    await pool.query(
+      `INSERT INTO book_editions (
+         id, scope, owner_subject_id, content_sha256, title, author, format,
+         status, source_storage, expires_at
+       ) VALUES (
+         $1, 'private', $2, $3, 'Private Retry', '', 'epub',
+         'marking_up', 'temporary', now() + interval '1 day'
+       )`,
+      [bookEditionId, ownerSubjectId, hash]
+    )
+    await pool.query(
+      `INSERT INTO book_files (
+         book_edition_id, object_key, mime_type, byte_size, content_hash, status
+       ) VALUES ($1, $2, 'application/epub+zip', 10, $3, 'ready')`,
+      [bookEditionId, `private-retry/${bookEditionId}/source`, hash]
+    )
+    const repository = createPostgresBookAnalysisRepository(pool)
+    const first = await repository.ensureAnalysisRun({ bookEditionId, inputHash: hash })
+    await pool.query(
+      `UPDATE book_analysis_jobs SET status = 'cancelled'
+       WHERE run_id = $1 AND status = 'queued'`,
+      [first.run.id]
+    )
+    await pool.query(
+      `UPDATE book_analysis_runs
+       SET status = 'cancelled', last_error_code = 'OPERATOR_CANCELLED' WHERE id = $1`,
+      [first.run.id]
+    )
+
+    const requestIds = [randomUUID(), randomUUID()]
+    const concurrent = await Promise.all(requestIds.map((requestId) =>
+      repository.retryPrivateAnalysisRun({
+        subjectId: ownerSubjectId,
+        bookEditionId,
+        requestId
+      })
+    ))
+    assert.equal(concurrent.filter((value) => value.outcome === 'created').length, 1)
+    assert.equal(concurrent.filter((value) => value.outcome === 'active').length, 1)
+    assert.equal(new Set(concurrent.map((value) => value.run.id)).size, 1)
+    assert.equal(concurrent[0].run.runSequence, 2)
+    assert.equal(concurrent[0].run.restartedFromRunId, first.run.id)
+
+    const repeated = await repository.retryPrivateAnalysisRun({
+      subjectId: ownerSubjectId,
+      bookEditionId,
+      requestId: requestIds[0]
+    })
+    assert.equal(repeated.idempotent, true)
+    assert.equal(repeated.run.id, concurrent[0].run.id)
+    await assert.rejects(
+      repository.retryPrivateAnalysisRun({
+        subjectId: foreignSubjectId,
+        bookEditionId,
+        requestId: randomUUID()
+      }),
+      (error) => error.code === 'NOT_FOUND' && error.status === 404
+    )
+
+    await pool.query(
+      `UPDATE book_analysis_jobs SET status = 'cancelled'
+       WHERE run_id = $1 AND status = 'queued'`,
+      [concurrent[0].run.id]
+    )
+    await pool.query(
+      `UPDATE book_analysis_runs SET status = 'cancelled' WHERE id = $1`,
+      [concurrent[0].run.id]
+    )
+    await pool.query(
+      `UPDATE book_editions SET expires_at = now() - interval '1 second' WHERE id = $1`,
+      [bookEditionId]
+    )
+    await assert.rejects(
+      repository.retryPrivateAnalysisRun({
+        subjectId: ownerSubjectId,
+        bookEditionId,
+        requestId: randomUUID()
+      }),
+      (error) => error.code === 'SOURCE_UNAVAILABLE' && error.status === 409
+    )
+    const runCount = await pool.query(
+      'SELECT count(*)::integer AS count FROM book_analysis_runs WHERE book_edition_id = $1',
+      [bookEditionId]
+    )
+    assert.equal(runCount.rows[0].count, 2)
+  } finally {
+    await pool.query('DELETE FROM book_editions WHERE id = $1', [bookEditionId]).catch(() => {})
+    await pool.end()
+  }
+})
+
 test('PostgreSQL analysis barriers reject incomplete or skipped stages', {
   skip: !connectionString
 }, async () => {

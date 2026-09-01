@@ -15,13 +15,23 @@ import { consumeBackendSceneOperation } from "./backend-scene-operations";
 import { normalizePersistedNarraMediaUri } from "./media";
 import { sceneImageDataUri } from "./scene-inserts";
 
-export async function readSceneDataUri(imageUri: string): Promise<string> {
+export async function readSceneDataUri(imageUri: string, signal?: AbortSignal): Promise<string> {
   const uri = normalizePersistedNarraMediaUri(imageUri);
-  const base64 = await FileSystem.readAsStringAsync(uri, {
-    encoding: FileSystem.EncodingType.Base64,
-  });
-  if (!base64) throw new Error("SCENE_EMPTY_LOCAL_FILE");
-  return sceneImageDataUri(base64, uri);
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (signal?.aborted) throw new BackendSceneError("SCENE_ABORTED");
+    try {
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      if (!base64) throw new Error("SCENE_EMPTY_LOCAL_FILE");
+      return sceneImageDataUri(base64, uri);
+    } catch (error) {
+      lastError = error;
+      if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 75 * (attempt + 1)));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("SCENE_LOCAL_FILE_UNAVAILABLE");
 }
 
 /** Invoked by the inline slot action only. Restoring an insert never starts a job. */
@@ -140,10 +150,9 @@ export async function generateBackendReaderScene(
     );
     for (const anchor of change.removedAnchors) input.remove(anchor);
     trace("store");
-    if (change.canonicalAnchor !== input.anchor) return;
-    const dataUri = await readSceneDataUri(shared.imageUri);
+    const dataUri = await readSceneDataUri(shared.imageUri, signal);
     if (signal.aborted) throw new BackendSceneError("SCENE_ABORTED");
-    input.display(change.canonicalAnchor, dataUri);
+    input.display(input.anchor, dataUri);
     trace("webview");
   } catch (error) {
     recordDiagnostic("scene_request", {

@@ -25,7 +25,7 @@ function sha256(value) {
   return createHash('sha256').update(value).digest('hex')
 }
 
-test('private v3 book prefetches ten percent and resolves a generated scene by reader offset', {
+test('private v3 book generates only the explicitly requested scene by reader offset', {
   skip: !enabled
 }, async () => {
   const { default: pg } = await import('pg')
@@ -131,7 +131,14 @@ test('private v3 book prefetches ten percent and resolves a generated scene by r
        WHERE book_edition_id = $1 AND job_type = 'scene_image'`,
       [bookEditionId]
     )
-    assert.equal(Number(initialJobs.rows[0].count), 2)
+    assert.equal(Number(initialJobs.rows[0].count), 0)
+
+    const pending = await service.sceneAt(subjectId, bookEditionId, {
+      readerTextOffset: 1_000,
+      progressFraction: null
+    })
+    assert.equal(pending.status, 'queued')
+    assert.equal(pending.sceneKey, 'text-interval-v1:0')
 
     let generatedPrompt = ''
     const internal = createInternalGenerationService({
@@ -184,13 +191,13 @@ test('private v3 book prefetches ten percent and resolves a generated scene by r
       sectionIndex: null,
       sectionFraction: null
     })
-    assert.equal(advanced.sceneWarmup.requested, 8)
+    assert.equal(advanced.sceneWarmup.requested, 0)
     const advancedJobs = await pool.query(
       `SELECT count(*)::integer AS count FROM generation_jobs
        WHERE book_edition_id = $1 AND job_type = 'scene_image'`,
       [bookEditionId]
     )
-    assert.equal(Number(advancedJobs.rows[0].count), 8)
+    assert.equal(Number(advancedJobs.rows[0].count), 1)
   } finally {
     await pool.query('DELETE FROM book_editions WHERE id = $1', [bookEditionId]).catch(() => {})
     if (storage) {

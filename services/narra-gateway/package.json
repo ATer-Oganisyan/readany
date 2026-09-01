@@ -29,6 +29,7 @@
     "backfill:book-content-navigation": "node backfill-book-content-navigation.mjs",
     "seed:catalog": "node seed-book-catalog.mjs",
     "retry:book-generation": "node retry-failed-book-generation.mjs",
+    "operator:generation-queue": "node generation-queue-operator.mjs",
     "test": "node --test"
   },
   "engines": {

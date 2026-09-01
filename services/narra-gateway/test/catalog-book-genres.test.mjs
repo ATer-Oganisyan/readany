@@ -48,12 +48,22 @@ test('catalog key normalization resolves bulk, evaluation and legacy aliases', (
   assert.deepEqual(genresForCatalogBook({ catalogKey: 'not-in-catalog' }), [])
 })
 
-test('migration seed is generated from the checked-in catalog table', async () => {
+test('immutable genre seed keeps its applied checksum and catalog deltas use a new migration', async () => {
   const data = await readFile(new URL('../data/catalog-book-genres.json', import.meta.url))
   const migration = await readFile(
     new URL('../migrations/016_book_genres.sql', import.meta.url),
     'utf8'
   )
+  const correction = await readFile(
+    new URL('../migrations/025_catalog_genre_alias_corrections.sql', import.meta.url),
+    'utf8'
+  )
   const checksum = createHash('sha256').update(data).digest('hex')
-  assert.match(migration, new RegExp(`catalog_genres_data_sha256: ${checksum}`))
+  assert.equal(checksum, '827fccf5601c6be889ef1296acfb829f9e704c76723be7008f9ff396aecad13c')
+  assert.match(
+    migration,
+    /catalog_genres_data_sha256: ee2d0228338783795b7ec19149802f95264008f4062f3639781de833cdf39dd3/
+  )
+  assert.match(correction, /narra-ru-top100-vojna-i-mir-tolstoj-f0777e32/)
+  assert.match(correction, /narra-ru-top100-bratya-karamazovy-ddb71ca8/)
 })

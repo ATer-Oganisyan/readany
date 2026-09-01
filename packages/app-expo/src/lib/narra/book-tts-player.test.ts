@@ -213,6 +213,37 @@ describe("book TTS playback integration", () => {
     expect(state).toHaveBeenLastCalledWith("stopped");
     expect(vi.getTimerCount()).toBe(0);
   });
+  it("honors Retry-After for rate limits and adds no paid request before it expires", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    runtime.synth
+      .mockRejectedValueOnce(
+        new NarraServiceError("RATE", "rate limited", undefined, undefined, "HTTP_429", 12_000),
+      )
+      .mockImplementationOnce(async () => {
+        runtime.files.add("file:///ready.wav");
+        return "file:///ready.wav";
+      });
+    await player.speak(["text"], DEFAULT_TTS_CONFIG);
+    await flush();
+    await vi.advanceTimersByTimeAsync(11_999);
+    expect(runtime.synth).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await flush();
+    expect(runtime.synth).toHaveBeenCalledTimes(2);
+  });
+  it.each([
+    ["AUTH", "HTTP_401"],
+    ["REQUEST", "HTTP_400"],
+    ["SERVICE", "HTTP_500"],
+  ] as const)("does not retry terminal %s/%s speech failures", async (code, backendCode) => {
+    runtime.synth.mockRejectedValue(
+      new NarraServiceError(code, "terminal", undefined, undefined, backendCode),
+    );
+    await player.speak(["text"], DEFAULT_TTS_CONFIG);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await flush();
+    expect(runtime.synth).toHaveBeenCalledTimes(1);
+  });
   it("cancels retry delays without requesting another paid segment", async () => {
     runtime.synth.mockRejectedValue(new Error("network"));
     await player.speak(["text"], DEFAULT_TTS_CONFIG);

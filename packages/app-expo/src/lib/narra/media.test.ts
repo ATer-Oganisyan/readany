@@ -780,4 +780,18 @@ describe("book TTS backend contract", () => {
       expect(speechFetchMock).not.toHaveBeenCalled();
     },
   );
+  it("preserves a bounded Retry-After hint without exposing the response body", async () => {
+    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
+      new Response("private provider detail", {
+        status: 429,
+        headers: { "retry-after": "12" },
+      }),
+    );
+    await expect(synthesizeNarraBookSpeech("Текст.", "Che")).rejects.toMatchObject({
+      code: "RATE",
+      backendCode: "HTTP_429",
+      retryAfterMs: 12_000,
+      technicalDetail: "Speech HTTP 429",
+    });
+  });
 });

@@ -62,6 +62,11 @@ describe("backend scene contract", () => {
       "SCENE_INVALID_ASSET",
     );
   });
+  it("surfaces an analysis prerequisite before trying to parse scene fields", () => {
+    expect(() =>
+      parseBackendScene({ status: "processing", error_code: "MARKUP_PROCESSING" }),
+    ).toThrow("MARKUP_PROCESSING");
+  });
   it("handles immediate ready and returns only after local saving", async () => {
     const events: string[] = [];
     const result = await resolveBackendScene(intent, {

@@ -5,6 +5,7 @@ import { createPostgresBookTtsMarkupRepository } from './book-tts-markup-reposit
 import { createBookTtsMarkupWorker } from './book-tts-markup-worker.mjs'
 import { parseEnvInt } from './env.mjs'
 import { createPostgresPoolFromEnv, runBookMarkupMigrations } from './postgres-runtime.mjs'
+import { createWorkerHeartbeat } from './worker-heartbeat.mjs'
 
 const shutdown = new AbortController()
 process.once('SIGTERM', () => shutdown.abort())
@@ -27,9 +28,16 @@ const pollMs = parseEnvInt(process.env, 'BOOK_TTS_MARKUP_WORKER_POLL_MS', 1_000,
 const leaseSeconds = parseEnvInt(process.env, 'BOOK_TTS_MARKUP_JOB_LEASE_SECONDS', 600, 3_600)
 const leaseRenewMs = parseEnvInt(process.env, 'BOOK_TTS_MARKUP_LEASE_RENEW_MS', 60_000, 1_800_000)
 const pool = await createPostgresPoolFromEnv(process.env)
+let heartbeat
 
 try {
   await runBookMarkupMigrations(pool)
+  heartbeat = createWorkerHeartbeat({
+    pool,
+    workerId,
+    workerType: process.env.WORKER_TYPE || 'book-tts-markup'
+  })
+  await heartbeat.start()
   const worker = createBookTtsMarkupWorker({
     repository: createPostgresBookTtsMarkupRepository(pool),
     storage: createBookObjectStorageFromEnv(process.env),
@@ -50,5 +58,6 @@ try {
     if (result.status === 'idle') await delay(pollMs)
   }
 } finally {
+  heartbeat?.stop()
   await pool.end()
 }

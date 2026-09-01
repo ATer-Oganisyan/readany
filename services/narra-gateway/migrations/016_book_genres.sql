@@ -1,5 +1,5 @@
 -- Generated from data/catalog-book-genres.json.
--- catalog_genres_data_sha256: 827fccf5601c6be889ef1296acfb829f9e704c76723be7008f9ff396aecad13c
+-- catalog_genres_data_sha256: ee2d0228338783795b7ec19149802f95264008f4062f3639781de833cdf39dd3
 
 CREATE TABLE book_edition_genres (
   book_edition_id UUID NOT NULL REFERENCES book_editions(id) ON DELETE CASCADE,
@@ -1542,8 +1542,6 @@ WITH source_mapping(language, source_key, title, genres) AS (
 ),
 catalog_key_aliases(catalog_key, genres) AS (
   VALUES
-    ('narra-ru-top100-vojna-i-mir-tolstoj-f0777e32', ARRAY['historical-fiction', 'literary-fiction']::text[]),
-    ('narra-ru-top100-bratya-karamazovy-ddb71ca8', ARRAY['literary-fiction']::text[]),
     ('narra-ru-038-kavkazskij-plennik-pushkin', ARRAY['poetry']::text[]),
     ('narra-ru-054-chernaya-kurica', ARRAY['fantasy', 'children']::text[]),
     ('pushkin-krasavitse', ARRAY['poetry']::text[]),

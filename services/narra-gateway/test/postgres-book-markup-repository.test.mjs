@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import { bookIdentityTargetVersion } from '../book-identity.mjs'
@@ -246,6 +247,88 @@ test('identity polling reports processing without waiting for book markup', asyn
     errorCode: undefined
   })
   assert.ok(pool.queries.some(({ sql }) => /job_type = 'book_identity'/.test(sql)))
+})
+
+test('scene request reports active markup without creating a generation job', async () => {
+  const pool = scriptedPool([
+    () => ({ rows: [{
+      id: 'book-1', scope: 'private', markup_version_id: null,
+      normalized_text_object_key: null, normalized_text_hash: null,
+      analysis_run_id: 'run-1', analysis_stage: 'scan', analysis_status: 'running',
+      analysis_error_code: null, analysis_updated_at: new Date('2026-08-31T12:00:00Z')
+    }] }),
+    () => ({ rows: [] })
+  ])
+  const repository = createPostgresBookMarkupRepository(pool)
+
+  assert.deepEqual(await repository.ensureReaderBookScene({
+    subjectId: '123e4567-e89b-42d3-a456-426614174000',
+    bookEditionId: 'book-1',
+    readerTextOffset: 10
+  }), {
+    status: 'processing', errorCode: 'MARKUP_PROCESSING', retryable: false,
+    analysis: {
+      runId: 'run-1', stage: 'scan', status: 'running', retryable: false,
+      errorCode: undefined, updatedAt: '2026-08-31T12:00:00.000Z'
+    }
+  })
+  assert.equal(pool.queries.some(({ sql }) => /INSERT INTO generation_jobs/.test(sql)), false)
+  assert.match(pool.queries.find(({ sql }) => /latest_run/.test(sql)).sql, /FOR UPDATE OF edition/)
+})
+
+test('scene request reports terminal markup without creating a generation job', async () => {
+  const pool = scriptedPool([
+    () => ({ rows: [{
+      id: 'book-1', scope: 'private', markup_version_id: null,
+      normalized_text_object_key: null, normalized_text_hash: null,
+      analysis_run_id: 'run-1', analysis_stage: 'scan', analysis_status: 'cancelled',
+      analysis_error_code: 'OPERATOR_CANCELLED',
+      analysis_updated_at: new Date('2026-08-31T12:00:00Z')
+    }] }),
+    () => ({ rows: [] })
+  ])
+  const repository = createPostgresBookMarkupRepository(pool)
+
+  const result = await repository.ensureReaderBookScene({
+    subjectId: '123e4567-e89b-42d3-a456-426614174000',
+    bookEditionId: 'book-1',
+    readerTextOffset: 10
+  })
+  assert.equal(result.status, 'failed')
+  assert.equal(result.errorCode, 'MARKUP_FAILED')
+  assert.equal(result.retryable, true)
+  assert.equal(result.analysis.errorCode, 'OPERATOR_CANCELLED')
+  assert.equal(pool.queries.some(({ sql }) => /INSERT INTO generation_jobs/.test(sql)), false)
+})
+
+test('transactions retry a PostgreSQL deadlock with a fresh connection', async () => {
+  let attempts = 0
+  let releases = 0
+  const pool = {
+    async connect() {
+      return {
+        async query(sql) {
+          if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') return { rows: [] }
+          attempts += 1
+          if (attempts === 1) {
+            throw Object.assign(new Error('deadlock detected'), { code: '40P01' })
+          }
+          return { rows: [] }
+        },
+        release() { releases += 1 }
+      }
+    },
+    async query() { return { rows: [] } }
+  }
+  const repository = createPostgresBookMarkupRepository(pool)
+
+  assert.equal(await repository.getReaderBookManifest({
+    subjectId: '123e4567-e89b-42d3-a456-426614174000',
+    bookEditionId: 'book-1',
+    bundleVersion: 'character-bundle-v3'
+  }), null)
+  assert.equal(attempts, 2)
+  assert.equal(releases, 2)
 })
 
 test('catalog content resolves the latest prepared normalized text only for catalog books', async () => {
@@ -559,12 +642,26 @@ test('book genre migration creates and seeds a normalized many-to-many relation'
     new URL('../migrations/016_book_genres.sql', import.meta.url),
     'utf8'
   )
+  assert.equal(
+    createHash('sha256').update(migration).digest('hex'),
+    '405b5fb11b28e63a29224784a87c50eac06e654794e1cbb1d0d4e568f970acff'
+  )
   assert.match(migration, /CREATE TABLE book_edition_genres/)
   assert.match(migration, /PRIMARY KEY \(book_edition_id, genre\)/)
   assert.match(migration, /WITH source_mapping/)
   assert.match(migration, /'science-fiction'/)
   assert.match(migration, /narra-ru-038-kavkazskij-plennik-pushkin/)
+  assert.doesNotMatch(migration, /narra-ru-top100-/)
   assert.doesNotMatch(migration, /book_genre|genre_source|\bllm\b/i)
+
+  const correction = await readFile(
+    new URL('../migrations/025_catalog_genre_alias_corrections.sql', import.meta.url),
+    'utf8'
+  )
+  assert.match(correction, /narra-ru-top100-vojna-i-mir-tolstoj-f0777e32/)
+  assert.match(correction, /narra-ru-top100-bratya-karamazovy-ddb71ca8/)
+  assert.match(correction, /DELETE FROM book_edition_genres/)
+  assert.match(correction, /INSERT INTO book_edition_genres/)
 })
 
 test('book content navigation migration stores deterministic reader structure', async () => {
@@ -636,4 +733,27 @@ test('catalog popularity migration contains the complete deterministic 512-book 
   assert.match(migration, /SET catalog_hidden_at = now\(\)/)
   assert.match(migration, /replaced_by_book_edition_id = superseded\.replacement_id/)
   assert.doesNotMatch(migration, /DELETE FROM book_editions/)
+})
+
+test('private retry migration persists owner-scoped idempotency without mutable publication data', async () => {
+  const migration = await readFile(
+    new URL('../migrations/023_private_analysis_retry.sql', import.meta.url),
+    'utf8'
+  )
+  assert.match(migration, /PRIMARY KEY \(owner_subject_id, request_id\)/)
+  assert.match(migration, /book_edition_id UUID NOT NULL REFERENCES book_editions/)
+  assert.match(migration, /run_id UUID REFERENCES book_analysis_runs/)
+  assert.doesNotMatch(migration, /provider|error_detail|book_text|prompt/i)
+})
+
+test('operational controls use explicit pause state, heartbeats and scene latency timestamps', async () => {
+  const migration = await readFile(
+    new URL('../migrations/024_operational_controls.sql', import.meta.url),
+    'utf8'
+  )
+  assert.match(migration, /CREATE TABLE generation_queue_operations/)
+  assert.match(migration, /ADD COLUMN operator_pause_id UUID/)
+  assert.match(migration, /ADD COLUMN first_download_at TIMESTAMPTZ/)
+  assert.match(migration, /CREATE TABLE worker_heartbeats/)
+  assert.doesNotMatch(migration, /2027|infinity/i)
 })

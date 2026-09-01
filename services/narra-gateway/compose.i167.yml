@@ -21,7 +21,11 @@ x-book-analysis-storage-environment: &book-analysis-storage-environment
 x-book-analysis-worker: &book-analysis-worker
   image: ${NARRA_GATEWAY_IMAGE:?NARRA_GATEWAY_IMAGE must contain an immutable image tag}
   healthcheck:
-    disable: true
+    test: ["CMD", "node", "worker-healthcheck.mjs"]
+    interval: 30s
+    timeout: 5s
+    retries: 3
+    start_period: 30s
   depends_on:
     postgres:
       condition: service_healthy
@@ -79,6 +83,18 @@ services:
       PRIVATE_MATERIAL_CLEANUP_BATCH_SIZE: ${PRIVATE_MATERIAL_CLEANUP_BATCH_SIZE:-100}
     ports:
       - "127.0.0.1:${NARRA_HOST_PORT:-8788}:8787"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8787/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
     volumes:
       - gateway-data:/data
     networks:
@@ -211,9 +227,13 @@ services:
     image: ${NARRA_GATEWAY_IMAGE:?NARRA_GATEWAY_IMAGE must contain an immutable image tag}
     command: ["node", "book-markup-worker.mjs"]
     deploy:
-      replicas: ${BOOK_MARKUP_WORKER_REPLICAS:-4}
+      replicas: ${BOOK_MARKUP_WORKER_REPLICAS:-1}
     healthcheck:
-      disable: true
+      test: ["CMD", "node", "worker-healthcheck.mjs"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     depends_on:
       postgres:
         condition: service_healthy
@@ -228,7 +248,8 @@ services:
       GENERATOR_BASE_URL: http://gateway.railway.internal:8787
       GENERATOR_SERVICE_TOKEN: ${GENERATOR_SERVICE_TOKEN:?GENERATOR_SERVICE_TOKEN is required}
       GENERATOR_TIMEOUT_MS: "600000"
-      BOOK_MARKUP_WORKER_JOB_TYPES: ${BOOK_MARKUP_WORKER_JOB_TYPES:-}
+      BOOK_MARKUP_WORKER_JOB_TYPES: ${BOOK_MARKUP_WORKER_JOB_TYPES:-book_markup,catalog_cover}
+      WORKER_TYPE: book-markup
     init: true
     restart: unless-stopped
     stop_grace_period: 30s
@@ -255,7 +276,11 @@ services:
     deploy:
       replicas: ${BOOK_IDENTITY_WORKER_REPLICAS:-1}
     healthcheck:
-      disable: true
+      test: ["CMD", "node", "worker-healthcheck.mjs"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     depends_on:
       postgres:
         condition: service_healthy
@@ -270,6 +295,7 @@ services:
       GENERATOR_BASE_URL: http://gateway.railway.internal:8787
       GENERATOR_SERVICE_TOKEN: ${GENERATOR_SERVICE_TOKEN:?GENERATOR_SERVICE_TOKEN is required}
       GENERATOR_TIMEOUT_MS: "600000"
+      WORKER_TYPE: book-identity
     init: true
     restart: unless-stopped
     stop_grace_period: 30s
@@ -291,52 +317,114 @@ services:
 
   book-tts-markup-worker:
     <<: *book-analysis-worker
+    profiles: ["tts-markup"]
     command: ["node", "book-tts-markup-worker-runner.mjs"]
     read_only: true
     deploy:
-      replicas: ${BOOK_TTS_MARKUP_WORKER_REPLICAS:-2}
+      replicas: ${BOOK_TTS_MARKUP_WORKER_REPLICAS:-1}
     environment:
       <<: [*book-analysis-database-environment, *book-analysis-storage-environment, *book-analysis-generator-environment]
+      WORKER_TYPE: book-tts-markup
 
   book-analysis-prepare:
     <<: *book-analysis-worker
+    profiles: ["book-backend"]
     command: ["node", "book-analysis-worker.mjs"]
     environment:
       <<: [*book-analysis-database-environment, *book-analysis-storage-environment]
+      WORKER_TYPE: book-analysis-prepare
 
   book-analysis-scan:
     <<: *book-analysis-worker
+    profiles: ["book-backend"]
     command: ["node", "book-analysis-scan-worker-runner.mjs"]
     deploy:
-      replicas: ${BOOK_ANALYSIS_SCAN_REPLICAS:-8}
+      replicas: ${BOOK_ANALYSIS_SCAN_REPLICAS:-1}
     environment:
       <<: [*book-analysis-database-environment, *book-analysis-storage-environment, *book-analysis-generator-environment]
+      WORKER_TYPE: book-analysis-scan
 
   book-analysis-resolve:
     <<: *book-analysis-worker
+    profiles: ["book-backend"]
     command: ["node", "book-analysis-resolve-worker-runner.mjs"]
     environment:
       <<: [*book-analysis-database-environment, *book-analysis-generator-environment]
+      WORKER_TYPE: book-analysis-resolve
 
   book-analysis-synthesize:
     <<: *book-analysis-worker
+    profiles: ["book-backend"]
     command: ["node", "book-analysis-stage-worker-runner.mjs", "synthesize"]
     deploy:
-      replicas: ${BOOK_ANALYSIS_SYNTHESIZE_REPLICAS:-4}
+      replicas: ${BOOK_ANALYSIS_SYNTHESIZE_REPLICAS:-1}
     environment:
       <<: [*book-analysis-database-environment, *book-analysis-generator-environment]
+      WORKER_TYPE: book-analysis-synthesize
 
   book-analysis-validate:
     <<: *book-analysis-worker
+    profiles: ["book-backend"]
     command: ["node", "book-analysis-stage-worker-runner.mjs", "validate"]
     environment:
       <<: [*book-analysis-database-environment, *book-analysis-storage-environment]
+      WORKER_TYPE: book-analysis-validate
 
   book-analysis-publish:
     <<: *book-analysis-worker
+    profiles: ["book-backend"]
     command: ["node", "book-analysis-stage-worker-runner.mjs", "publish"]
     environment:
       <<: *book-analysis-database-environment
+      WORKER_TYPE: book-analysis-publish
+
+  book-media-worker:
+    <<: *book-analysis-worker
+    profiles: ["media"]
+    command: ["node", "book-markup-worker.mjs"]
+    deploy:
+      replicas: ${BOOK_MEDIA_WORKER_REPLICAS:-1}
+    env_file:
+      - ${NARRA_ENV_FILE:-/etc/narra-gateway.env}
+    environment:
+      <<: [*book-analysis-database-environment, *book-analysis-generator-environment]
+      BOOK_MARKUP_WORKER_JOB_TYPES: character_bundle,character_portrait,character_audio,character_animation
+      WORKER_TYPE: book-media
+
+  book-scene-worker:
+    <<: *book-analysis-worker
+    profiles: ["scenes"]
+    command: ["node", "book-markup-worker.mjs"]
+    deploy:
+      replicas: ${BOOK_SCENE_WORKER_REPLICAS:-1}
+    env_file:
+      - ${NARRA_ENV_FILE:-/etc/narra-gateway.env}
+    environment:
+      <<: [*book-analysis-database-environment, *book-analysis-generator-environment]
+      BOOK_MARKUP_WORKER_JOB_TYPES: scene_image
+      WORKER_TYPE: book-scene
+
+  generation-queue-operator:
+    profiles: ["operator-campaigns"]
+    image: ${NARRA_GATEWAY_IMAGE:?NARRA_GATEWAY_IMAGE must contain an immutable image tag}
+    command: ["node", "generation-queue-operator.mjs", "status"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *book-analysis-database-environment
+    init: true
+    restart: "no"
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 256m
+    cpus: 0.25
 
 volumes:
   gateway-data:

@@ -20,14 +20,16 @@ import {
 } from "@/lib/catalog/bundled-books";
 import { diagnosticErrorReason, recordDiagnostic } from "@/lib/diagnostics/diagnostics";
 import { hapticLight } from "@/lib/haptics";
+import { retryBackendBookSync, useBackendBookStatus } from "@/lib/narra/backend-book-sync";
 import { importBackendCatalogBook } from "@/lib/narra/backend-catalog-import";
 import { isCatalogBookRevisionCurrent } from "@/lib/narra/backend-catalog-library";
+import { BackendSceneError } from "@/lib/narra/backend-scene";
 import { backendSceneMarkupIdentity } from "@/lib/narra/backend-scene-identity";
 import { generateBackendReaderScene, readSceneDataUri } from "@/lib/narra/backend-scene-reader";
 import { backendSceneForAnchor } from "@/lib/narra/backend-scene-state";
 import { buildCharacterNameMatcherSpec } from "@/lib/narra/character-name-matcher";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
-import { reportNarraError } from "@/lib/narra/errors";
+import { narraBackendCode, reportNarraError } from "@/lib/narra/errors";
 import { normalizePersistedNarraMediaUri } from "@/lib/narra/media";
 import { generateNarraSceneImage } from "@/lib/narra/scene-image-openrouter";
 import {
@@ -687,6 +689,12 @@ function ReaderContent({ route, navigation }: Props) {
 
   // ── Narra: кликабельные имена персонажей ────────────────────────────────────
   const narraBookCharacters = useNarraStore((state) => state.books[bookId]?.characters);
+  const backendBindingResolution = useNarraStore(
+    (state) => state.books[bookId]?.backendBinding?.resolution,
+  );
+  const backendBookStatus = useBackendBookStatus((state) => state.books[bookId]);
+  const backendSceneEnabled =
+    backendBindingResolution !== "private" || backendBookStatus?.manifest?.availability === "ready";
   const characters = useMemo<NarraCharacter[]>(
     () => (narraBookCharacters ?? []).filter((item) => item.backendManaged),
     [narraBookCharacters],
@@ -768,6 +776,17 @@ function ReaderContent({ route, navigation }: Props) {
         const edition = bookState?.backendBinding?.bookEditionId || book?.bookEditionId;
         usesBackend = Boolean(edition);
         if (edition) {
+          const binding = bookState?.backendBinding;
+          const availability =
+            useBackendBookStatus.getState().books[bookId]?.manifest?.availability;
+          if (binding?.resolution === "private" && availability !== "ready") {
+            retryBackendBookSync(bookId);
+            throw new BackendSceneError(
+              availability === "failed" || availability === "cancelled"
+                ? "MARKUP_FAILED"
+                : "MARKUP_PROCESSING",
+            );
+          }
           const previous = bookState?.sceneRequests?.[sourceKey] ?? cached?.backendScene;
           const manifest = bookState?.backendManifest;
           const intent =
@@ -815,6 +834,29 @@ function ReaderContent({ route, navigation }: Props) {
           bridgeRef.current?.replaceSceneSlot(anchor, sceneImageDataUri(base64, imageUri));
       } catch (cause) {
         if (action.signal.aborted) return;
+        const backendCode =
+          cause instanceof BackendSceneError ? cause.code : narraBackendCode(cause);
+        if (backendCode === "MARKUP_PROCESSING") {
+          retryBackendBookSync(bookId);
+          bridgeRef.current?.setSceneSlotState(anchor, "idle");
+          toast.info(t("narra.analysisProcessing", "Разметка книги ещё готовится"), {
+            description: t(
+              "narra.analysisProcessingHint",
+              "Сцены станут доступны после завершения разметки.",
+            ),
+          });
+          return;
+        }
+        if (backendCode === "MARKUP_FAILED") {
+          bridgeRef.current?.setSceneSlotState(anchor, "error");
+          toast.error(t("narra.analysisFailed", "Не удалось подготовить книгу"), {
+            description: t(
+              "narra.analysisRetryHint",
+              "Откройте список персонажей, чтобы повторить разметку.",
+            ),
+          });
+          return;
+        }
         // Native download errors can contain signed URLs. Backend details use the safe journal.
         if (!usesBackend) reportNarraError("scene_image", cause);
         bridgeRef.current?.setSceneSlotState(anchor, "error");
@@ -856,7 +898,7 @@ function ReaderContent({ route, navigation }: Props) {
       const action = new AbortController();
       sceneSlotActions.set(anchor, action);
       try {
-        const dataUri = await readSceneDataUri(scene.imageUri);
+        const dataUri = await readSceneDataUri(scene.imageUri, action.signal);
         if (!action.signal.aborted) bridgeRef.current?.replaceSceneSlot(anchor, dataUri);
       } catch {
         if (!action.signal.aborted) bridgeRef.current?.setSceneSlotState(anchor, "error");
@@ -1512,12 +1554,14 @@ function ReaderContent({ route, navigation }: Props) {
       JSON.stringify({
         idle: t("narra.sceneSlotShow", "Сгенерировать сцену"),
         loading: t("narra.sceneSlotDrawing", "Рисуем сцену…"),
-        loadingHint: t("narra.sceneSlotDrawingHint", "Это может занять несколько минут"),
+        loadingHint: t("narra.sceneSlotDrawingHint", "Обычно 2–3 минуты"),
+        disabled: t("narra.sceneMarkupPending", "Разметка книги ещё готовится"),
+        enabled: backendSceneEnabled,
         caption: t("narra.sceneSlotCaption", "Сцена — сгенерировано ИИ"),
         error: t("narra.sceneSlotError", "Попробовать снова"),
       }),
     );
-  }, [webViewReady, configureSceneSlots, t]);
+  }, [webViewReady, configureSceneSlots, t, backendSceneEnabled]);
 
   // Якоря сохранённых сцен: WebView восстанавливает врезки при загрузке
   // секций и просит картинки событием sceneSlotRestored

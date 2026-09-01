@@ -54,3 +54,12 @@ export function postBackendProgress(id: string, progress: number, signal?: Abort
     backendJsonPost({ progress_fraction: progress }, signal),
   );
 }
+
+export function postBackendAnalysisRetry(id: string, requestId: string, signal?: AbortSignal) {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId))
+    throw new Error("Invalid analysis retry request id");
+  return backendBookRequest(
+    backendBookPath(id, "analysis/retry"),
+    backendJsonPost({ request_id: requestId }, signal),
+  );
+}

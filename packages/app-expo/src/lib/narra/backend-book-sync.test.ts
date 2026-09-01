@@ -32,6 +32,7 @@ vi.mock("expo-file-system", () => ({
   },
 }));
 vi.mock("expo-file-system/legacy", () => ({ documentDirectory: "file:///documents/" }));
+vi.mock("expo-crypto", () => ({ randomUUID: () => "22222222-2222-4222-8222-222222222222" }));
 vi.mock("@readany/core/services", () => ({
   getPlatformService: () => ({
     getAppDataDir: async () => "file:///documents",
@@ -50,13 +51,25 @@ vi.mock("./backend-book-api", async (original) => {
         api.backendBookPath(id, "progress"),
         api.backendJsonPost({ progress_fraction: progress }, signal),
       ),
+    postBackendAnalysisRetry: (id: string, requestId: string, signal?: AbortSignal) =>
+      runtime.request(
+        api.backendBookPath(id, "analysis/retry"),
+        api.backendJsonPost({ request_id: requestId }, signal),
+      ),
   };
 });
 vi.mock("@/lib/ai/narra-gateway-fetch", () => ({ consumeNarraGatewayResponse: vi.fn() }));
 
 import { useNarraStore } from "@/stores/narra-store";
+import { BackendBookError } from "./backend-book-api";
 import { parseBackendManifest } from "./backend-book-contract";
-import { retainBackendBookSync, startImportedBackendBook } from "./backend-book-sync";
+import {
+  retainBackendBookSync,
+  retryBackendBookAnalysis,
+  startImportedBackendBook,
+  useBackendBookStatus,
+} from "./backend-book-sync";
+import { characterBiography } from "./character-profile";
 
 const ready = {
   availability: "ready",
@@ -93,6 +106,7 @@ beforeEach(() => {
   runtime.hash.mockClear();
   runtime.request.mockReset();
   useNarraStore.setState({ ...initial, books: {} });
+  useBackendBookStatus.setState({ books: {} });
   runtime.request.mockImplementation(async (path: string) => {
     if (path.endsWith("/manifest")) return ready;
     if (path.endsWith("/identity"))
@@ -166,6 +180,64 @@ describe("backend book import and persistence integration", () => {
     });
     expect(useNarraStore.getState().books.local.characters[0].portraitUri).toBeUndefined();
   });
+  it("shows catalog description as bio when role is null", async () => {
+    runtime.request.mockImplementation(async (path: string) => {
+      if (path.endsWith("/manifest"))
+        return {
+          ...ready,
+          characters: [
+            {
+              ...ready.characters[0],
+              profile: { role: null, description: "Био каталожного персонажа." },
+            },
+          ],
+        };
+      return {};
+    });
+
+    await open({
+      ...book(),
+      sourceKind: "catalog",
+      bookEditionId: "catalog-id",
+      contentHash: "a".repeat(64),
+    });
+
+    const character = useNarraStore.getState().books.local.characters[0];
+    expect(character.role).toBe("");
+    expect(character.description).toBe("Био каталожного персонажа.");
+    expect(characterBiography(character)).toBe("Био каталожного персонажа.");
+  });
+  it("shows private-book description as bio when role and description differ", async () => {
+    useNarraStore.getState().setBackendBinding("local", {
+      resolution: "private",
+      bookEditionId: "private-id",
+      contentSha256: "a".repeat(64),
+      sourceUploaded: true,
+    });
+    runtime.request.mockImplementation(async (path: string) => {
+      if (path.endsWith("/manifest"))
+        return {
+          ...ready,
+          characters: [
+            {
+              ...ready.characters[0],
+              profile: {
+                role: "Главный герой",
+                description: "Отдельное описание личного персонажа.",
+              },
+            },
+          ],
+        };
+      return {};
+    });
+
+    await open(book());
+
+    const character = useNarraStore.getState().books.local.characters[0];
+    expect(character.role).toBe("Главный герой");
+    expect(character.description).toBe("Отдельное описание личного персонажа.");
+    expect(characterBiography(character)).toBe("Отдельное описание личного персонажа.");
+  });
   it("resolves a local file to catalog without uploading it", async () => {
     runtime.request.mockResolvedValueOnce({
       resolution: "catalog",
@@ -229,6 +301,59 @@ describe("backend book import and persistence integration", () => {
     await open({ ...book(), contentHash: "a".repeat(64) });
     expect(runtime.request.mock.calls[0][0]).toBe("/v2/books/resolve");
     expect(runtime.request.mock.calls.some((call) => call[1]?.method === "PUT")).toBe(false);
+  });
+
+  it("retries a terminal private run on the same edition with an idempotency request id", async () => {
+    useNarraStore.getState().setBackendBinding("local", {
+      resolution: "private",
+      bookEditionId: "private-id",
+      contentSha256: "a".repeat(64),
+      sourceUploaded: true,
+    });
+    runtime.request.mockResolvedValueOnce({ status: "queued", run_id: "run-2" });
+    await retryBackendBookAnalysis("local");
+    expect(runtime.request).toHaveBeenCalledWith(
+      "/v2/books/private-id/analysis/retry",
+      expect.objectContaining({
+        method: "POST",
+        body: '{"request_id":"22222222-2222-4222-8222-222222222222"}',
+      }),
+    );
+    expect(useBackendBookStatus.getState().books.local).toMatchObject({
+      analysisRetrying: false,
+      error: undefined,
+    });
+    expect(runtime.hash).not.toHaveBeenCalled();
+  });
+
+  it("does not offer analysis retry without a private binding", async () => {
+    await retryBackendBookAnalysis("local");
+    expect(runtime.request).not.toHaveBeenCalled();
+    expect(useBackendBookStatus.getState().books.local).toMatchObject({
+      analysisRetrying: false,
+      error: "ANALYSIS_RETRY_UNAVAILABLE",
+    });
+  });
+
+  it("keeps an expired-source retry terminal and user-safe", async () => {
+    useNarraStore.getState().setBackendBinding("local", {
+      resolution: "private",
+      bookEditionId: "private-id",
+      contentSha256: "a".repeat(64),
+      sourceUploaded: true,
+    });
+    runtime.request.mockRejectedValueOnce(
+      new BackendBookError(409, {
+        code: "SOURCE_UNAVAILABLE",
+        detail: "private storage detail must stay hidden",
+      }),
+    );
+    await expect(retryBackendBookAnalysis("local")).rejects.toMatchObject({ status: 409 });
+    expect(useBackendBookStatus.getState().books.local).toMatchObject({
+      analysisRetrying: false,
+      error: "SOURCE_UNAVAILABLE",
+    });
+    expect(JSON.stringify(useBackendBookStatus.getState())).not.toContain("private storage detail");
   });
 
   it("keeps an imported book alive after a transient error and retries automatically", async () => {

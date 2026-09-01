@@ -31,6 +31,9 @@ export class BackendSceneError extends Error {
 
 export function parseBackendScene(value: unknown): BackendSceneSnapshot {
   const raw = backendRecord(value);
+  if (raw.error_code === "MARKUP_PROCESSING") {
+    throw new BackendSceneError("MARKUP_PROCESSING");
+  }
   if (raw.status === "failed") {
     const code =
       typeof raw.error_code === "string" && /^[A-Z0-9_]{1,80}$/.test(raw.error_code)

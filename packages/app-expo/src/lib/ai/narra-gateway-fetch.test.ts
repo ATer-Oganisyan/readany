@@ -360,11 +360,26 @@ describe("Narra gateway build configuration", () => {
     vi.resetModules();
     process.env.EXPO_PUBLIC_NARRA_GATEWAY_URL = "";
     process.env.EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE = "";
+    process.env.EXPO_PUBLIC_NARRA_ENVIRONMENT = "";
 
     const gateway = await import("./narra-gateway-fetch");
 
     expect(gateway.getNarraGatewayConfig()).toEqual({
       baseUrl: "https://api-test.narra.disrupt.builders",
+      authMode: "installation",
+    });
+  });
+
+  it("never falls back to TEST for a production build", async () => {
+    vi.resetModules();
+    process.env.EXPO_PUBLIC_NARRA_GATEWAY_URL = "";
+    process.env.EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE = "installation";
+    process.env.EXPO_PUBLIC_NARRA_ENVIRONMENT = "production";
+
+    const gateway = await import("./narra-gateway-fetch");
+
+    expect(gateway.getNarraGatewayConfig()).toEqual({
+      baseUrl: "https://api.narra.disrupt.builders",
       authMode: "installation",
     });
   });

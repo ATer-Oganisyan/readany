@@ -2182,7 +2182,16 @@ export function createInternalGenerationService({
     async generateBookTtsMarkup(rawInput, signal) {
       const input = normalizeTtsMarkupAttributionRequest(rawInput)
       return cached(storage, input.idempotencyKey, input, async () => {
-        const response = await completeChat({ messages: ttsMarkupMessages(input), signal })
+        const response = await completeChat({
+          messages: ttsMarkupMessages(input),
+          signal,
+          costContext: {
+            bookEditionId: input.bookEditionId,
+            operation: 'attribute_book_tts_markup',
+            stage: 'tts_markup',
+            metadata: { target_version: input.markupVersion }
+          }
+        })
         return {
           assignments: normalizeBookTtsProviderAssignments(parseJsonObject(response), {
             coreAtoms: input.coreAtoms,
@@ -2675,7 +2684,7 @@ export function createInternalGenerationRouter({ token, service, logger = consol
   const router = express.Router()
   const log = createOperationalLogger({ component: 'book-generator', logger })
   router.use(requireGenerationServiceToken(token))
-  router.use(express.json({ limit: '128kb' }))
+  router.use(express.json({ limit: '1mb' }))
   const endpoint = (operation) => async (req, res) => {
     const startedAt = Date.now()
     const controller = new AbortController()
@@ -2696,6 +2705,12 @@ export function createInternalGenerationRouter({ token, service, logger = consol
         character: req.body?.name,
         character_key: req.body?.characterKey,
         error_code: code,
+        provider_detail: typeof error?.providerDetail === 'string'
+          ? error.providerDetail
+          : undefined,
+        error_detail: typeof error?.message === 'string'
+          ? error.message.replace(/\s+/gu, ' ').trim().slice(0, 1_000)
+          : undefined,
         duration_ms: Date.now() - startedAt
       })
       res.status(status).json({ error: error.message, code })

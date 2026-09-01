@@ -44,17 +44,25 @@ function leaseLost(jobId) {
 }
 
 async function transaction(pool, operation) {
-  const client = await pool.connect()
-  try {
-    await client.query('BEGIN')
-    const result = await operation(client)
-    await client.query('COMMIT')
-    return result
-  } catch (error) {
-    await client.query('ROLLBACK').catch(() => {})
-    throw error
-  } finally {
-    client.release()
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const client = await pool.connect()
+    let retry = false
+    try {
+      await client.query('BEGIN')
+      const result = await operation(client)
+      await client.query('COMMIT')
+      return result
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {})
+      retry = error?.code === '40P01' && attempt < 3
+      if (!retry) throw error
+    } finally {
+      client.release()
+    }
+    if (retry) {
+      const delayMs = 10 * attempt + Math.floor(Math.random() * 20)
+      await new Promise((resolve) => setTimeout(resolve, delayMs))
+    }
   }
 }
 
@@ -254,12 +262,22 @@ export function createPostgresBookMarkupRepository(pool, {
               markup.text_length, markup.input_hash,
               publication.content_hash AS publication_content_hash,
               publication.data->'markup'->'scenePolicy' AS scene_policy,
-              run.normalized_text_object_key, run.normalized_text_hash
+              run.normalized_text_object_key, run.normalized_text_hash,
+              latest_run.id AS analysis_run_id,
+              latest_run.stage AS analysis_stage,
+              latest_run.status AS analysis_status,
+              latest_run.last_error_code AS analysis_error_code,
+              latest_run.updated_at AS analysis_updated_at
        FROM book_editions AS edition
-       JOIN book_markup_versions AS markup
-         ON markup.book_edition_id = edition.id
-        AND markup.status = 'published'
-        AND markup.analysis_version = 'book-markup-v3'
+       LEFT JOIN LATERAL (
+         SELECT value.*
+         FROM book_markup_versions AS value
+         WHERE value.book_edition_id = edition.id
+           AND value.status = 'published'
+           AND value.analysis_version = 'book-markup-v3'
+         ORDER BY value.published_at DESC, value.id DESC
+         LIMIT 1
+       ) AS markup ON true
        LEFT JOIN LATERAL (
          SELECT value.content_hash, value.run_id, value.data
          FROM book_analysis_publications AS value
@@ -269,17 +287,66 @@ export function createPostgresBookMarkupRepository(pool, {
          LIMIT 1
        ) AS publication ON true
        LEFT JOIN book_analysis_runs AS run ON run.id = publication.run_id
+       LEFT JOIN LATERAL (
+         SELECT value.id, value.stage, value.status, value.last_error_code, value.updated_at
+         FROM book_analysis_runs AS value
+         WHERE value.book_edition_id = edition.id
+           AND value.input_hash = edition.content_sha256
+         ORDER BY value.run_sequence DESC, value.created_at DESC, value.id DESC
+         LIMIT 1
+       ) AS latest_run ON true
        WHERE edition.id = $1 AND (
          $2::uuid IS NULL OR
          (edition.scope = 'catalog' AND edition.status IN ('base_ready', 'published')) OR
          (edition.scope = 'private' AND edition.owner_subject_id = $2::uuid
            AND edition.expires_at > now())
        )
-       LIMIT 1 FOR SHARE OF edition, markup`,
+       LIMIT 1 FOR UPDATE OF edition`,
       [bookEditionId, subjectId]
     )
     const row = result.rows[0]
-    if (!row || !row.normalized_text_object_key || !row.normalized_text_hash) return null
+    if (!row) return null
+    if (
+      !row.markup_version_id ||
+      !row.normalized_text_object_key ||
+      !row.normalized_text_hash
+    ) {
+      if (['queued', 'running'].includes(row.analysis_status)) {
+        return {
+          bookEditionId: row.id,
+          scope: row.scope,
+          prerequisite: 'processing',
+          analysis: {
+            runId: row.analysis_run_id,
+            stage: row.analysis_stage,
+            status: row.analysis_status,
+            retryable: false,
+            errorCode: row.analysis_error_code ?? undefined,
+            updatedAt: row.analysis_updated_at instanceof Date
+              ? row.analysis_updated_at.toISOString()
+              : row.analysis_updated_at ?? undefined
+          }
+        }
+      }
+      if (['failed', 'cancelled'].includes(row.analysis_status)) {
+        return {
+          bookEditionId: row.id,
+          scope: row.scope,
+          prerequisite: 'failed',
+          analysis: {
+            runId: row.analysis_run_id,
+            stage: row.analysis_stage,
+            status: row.analysis_status,
+            retryable: row.scope === 'private',
+            errorCode: row.analysis_error_code ?? undefined,
+            updatedAt: row.analysis_updated_at instanceof Date
+              ? row.analysis_updated_at.toISOString()
+              : row.analysis_updated_at ?? undefined
+          }
+        }
+      }
+      return null
+    }
     const textLength = Number(row.text_length)
     return {
       bookEditionId: row.id,
@@ -357,6 +424,7 @@ export function createPostgresBookMarkupRepository(pool, {
     )
     const result = await client.query(
       `SELECT scene.scene_key, scene.slot_index, scene.anchor_text_offset,
+              job.id AS job_id,
               job.status, asset.id AS asset_id, asset.object_key,
               asset.type, asset.content_hash, asset.mime_type, asset.byte_size
        FROM book_scene_slots AS scene
@@ -370,6 +438,7 @@ export function createPostgresBookMarkupRepository(pool, {
     if (!row) throw new Error('durable scene slot disappeared')
     return {
       sceneKey: row.scene_key,
+      jobId: row.job_id,
       slotIndex: Number(row.slot_index),
       anchorTextOffset: Number(row.anchor_text_offset),
       status: row.asset_id ? 'ready' : row.status === 'ready' ? 'failed' : row.status,
@@ -1278,6 +1347,17 @@ export function createPostgresBookMarkupRepository(pool, {
       return transaction(pool, async (client) => {
         const context = await loadSceneContext(client, { subjectId, bookEditionId })
         if (!context) return null
+        if (context.prerequisite) {
+          if (context.scope === 'private') await touchPrivateRetention(client, bookEditionId)
+          return {
+            status: context.prerequisite,
+            errorCode: context.prerequisite === 'processing'
+              ? 'MARKUP_PROCESSING'
+              : 'MARKUP_FAILED',
+            retryable: context.analysis.retryable,
+            analysis: context.analysis
+          }
+        }
         const canonicalOffset = progressFraction != null
           ? Math.round(context.textLength * Math.min(1, Math.max(0, progressFraction)))
           : readerTextOffset
@@ -1292,6 +1372,16 @@ export function createPostgresBookMarkupRepository(pool, {
       })
     },
 
+    async recordSceneDownloadReady(jobId) {
+      if (!UUID.test(String(jobId))) throw new TypeError('jobId must be a UUID')
+      await pool.query(
+        `UPDATE generation_jobs
+         SET first_download_at = coalesce(first_download_at, now())
+         WHERE id = $1 AND job_type = 'scene_image' AND status = 'ready'`,
+        [jobId]
+      )
+    },
+
     async ensureBookScenesThrough({
       subjectId,
       bookEditionId,
@@ -1301,6 +1391,10 @@ export function createPostgresBookMarkupRepository(pool, {
       return transaction(pool, async (client) => {
         const context = await loadSceneContext(client, { subjectId, bookEditionId })
         if (!context) return { requested: 0, ready: 0, pending: 0, failed: 0 }
+        if (context.prerequisite) {
+          if (context.scope === 'private') await touchPrivateRetention(client, bookEditionId)
+          return { requested: 0, ready: 0, pending: 0, failed: 0 }
+        }
         const frontier = bookMediaFrontier({
           scope: context.scope,
           textLength: context.textLength,
@@ -1471,7 +1565,7 @@ export function createPostgresBookMarkupRepository(pool, {
              (scope = 'private' AND owner_subject_id = $2::uuid
                AND expires_at > now())
            )
-           FOR SHARE`,
+           FOR UPDATE`,
           [bookEditionId, subjectId]
         )
         const edition = result.rows[0]
@@ -1530,7 +1624,7 @@ export function createPostgresBookMarkupRepository(pool, {
              (scope = 'private' AND owner_subject_id = $2::uuid
                AND expires_at > now())
            )
-           FOR SHARE`,
+           FOR UPDATE`,
           [bookEditionId, subjectId]
         )
         const edition = editionRow(editionResult.rows[0])
@@ -1667,7 +1761,7 @@ export function createPostgresBookMarkupRepository(pool, {
              (edition.scope = 'private' AND edition.owner_subject_id = $2::uuid
                AND edition.expires_at > now())
            )
-           FOR SHARE OF edition`,
+           FOR UPDATE OF edition`,
           [bookEditionId, subjectId]
         )
         if (!edition.rows[0]) return null
@@ -2098,7 +2192,7 @@ export function createPostgresBookMarkupRepository(pool, {
         const retried = await client.query(
           `WITH candidates AS (
              SELECT id FROM generation_jobs
-             WHERE status = 'failed'
+             WHERE status = 'failed' AND operator_pause_id IS NULL
              ORDER BY updated_at, created_at
              FOR UPDATE SKIP LOCKED
              LIMIT $1
@@ -2206,7 +2300,8 @@ export function createPostgresBookMarkupRepository(pool, {
            SELECT id
            FROM generation_jobs
            WHERE ($4::text[] IS NULL OR job_type = ANY($4::text[]))
-             AND ($5::uuid[] IS NULL OR book_edition_id = ANY($5::uuid[])) AND ((
+             AND ($5::uuid[] IS NULL OR book_edition_id = ANY($5::uuid[]))
+             AND operator_pause_id IS NULL AND ((
              status = 'queued' AND available_at <= now()
            ) OR (
              status = 'running' AND locked_at < now() - make_interval(secs => $2)
