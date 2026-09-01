@@ -244,7 +244,7 @@ run_metro_prepared() {
   else
     log "Starting Metro on localhost:$METRO_PORT"
   fi
-  log "Gateway profile: $EXPO_PUBLIC_NARRA_ENVIRONMENT ($EXPO_PUBLIC_NARRA_GATEWAY_URL)"
+  log "Gateway profile: ${EXPO_PUBLIC_NARRA_ENVIRONMENT:-test} (${EXPO_PUBLIC_NARRA_GATEWAY_URL:-https://api-test.narra.disrupt.builders})"
 
   cd "$APP_ROOT"
   # Keep reader dependencies in the initial bundle: an import() must not need

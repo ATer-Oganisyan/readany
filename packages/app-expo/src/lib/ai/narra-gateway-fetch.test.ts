@@ -399,6 +399,55 @@ describe("Narra gateway build configuration", () => {
       authMode: "installation",
     });
   });
+
+  it("verifies the environment reported by the production hostname", async () => {
+    vi.resetModules();
+    process.env.EXPO_PUBLIC_NARRA_ENVIRONMENT = "production";
+    process.env.EXPO_PUBLIC_NARRA_GATEWAY_URL = "https://wrong-gateway.example";
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse(200, {
+        ok: true,
+        environment: "production",
+        version: "d56f0123",
+      }),
+    );
+    const gateway = await import("./narra-gateway-fetch");
+    gateway.setNarraGatewayFetch(fetchMock);
+
+    await expect(gateway.probeNarraGatewayHealth()).resolves.toEqual({
+      hostname: "api.narra.disrupt.builders",
+      buildEnvironment: "production",
+      expectedEnvironment: "production",
+      environment: "production",
+      version: "d56f0123",
+      ok: true,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.narra.disrupt.builders/health",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it("flags a hostname/environment mismatch", async () => {
+    vi.resetModules();
+    process.env.EXPO_PUBLIC_NARRA_ENVIRONMENT = "production";
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse(200, {
+        ok: true,
+        environment: "staging",
+        version: "d56f0123",
+      }),
+    );
+    const gateway = await import("./narra-gateway-fetch");
+    gateway.setNarraGatewayFetch(fetchMock);
+
+    await expect(gateway.probeNarraGatewayHealth()).resolves.toMatchObject({
+      hostname: "api.narra.disrupt.builders",
+      expectedEnvironment: "production",
+      environment: "staging",
+      ok: false,
+    });
+  });
 });
 
 describe("Narra gateway cancellation", () => {

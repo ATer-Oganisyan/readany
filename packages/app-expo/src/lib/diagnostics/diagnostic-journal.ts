@@ -1,5 +1,6 @@
 const EVENTS = new Set([
   "app_started",
+  "backend_probe",
   "scene_request",
   "app_state",
   "js_stall",
@@ -36,6 +37,9 @@ const BOOLEAN_FIELDS = new Set([
 ]);
 const NUMBER_FIELDS = new Set(["durationMs", "attempt", "code", "delayMs", "build"]);
 const ENUM_FIELDS: Record<string, ReadonlySet<string>> = {
+  buildEnvironment: new Set(["production", "test", "unknown"]),
+  expectedEnvironment: new Set(["production", "staging", "development", "test", "unknown"]),
+  environment: new Set(["production", "staging", "development", "test", "unknown"]),
   state: new Set(["active", "inactive", "background", "unknown", "extension"]),
   reason: new Set([
     "transport",
@@ -65,6 +69,20 @@ export function diagnosticEntry(
   if (!EVENTS.has(event)) return null;
   const safe: DiagnosticEntry["data"] = {};
   for (const [key, value] of Object.entries(data)) {
+    if (event === "backend_probe") {
+      if (
+        key === "host" &&
+        typeof value === "string" &&
+        ["api.narra.disrupt.builders", "api-test.narra.disrupt.builders", "custom"].includes(value)
+      )
+        safe[key] = value;
+      else if (
+        key === "version" &&
+        typeof value === "string" &&
+        /^[A-Za-z0-9_.+-]{1,80}$/.test(value)
+      )
+        safe[key] = value;
+    }
     // Scene diagnostics allow only typed correlation metadata, never raw payloads/URLs.
     if (event === "scene_request") {
       if (

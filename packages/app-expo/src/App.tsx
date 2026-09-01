@@ -70,7 +70,7 @@ import { MishanaerIcon, type MishanaerIconName } from "@/components/ui/Icon";
 import { UpdateDialog } from "@/components/update/UpdateDialog";
 import { useUpdateChecker } from "@/hooks/use-update-checker";
 import { startTelemetry } from "@/lib/analytics/telemetry";
-import { startDiagnostics } from "@/lib/diagnostics/diagnostics";
+import { startDiagnostics, verifyNarraGatewayBackend } from "@/lib/diagnostics/diagnostics";
 import { navigationRef } from "@/lib/navigationRef";
 import { ExpoPlatformService } from "@/lib/platform/expo-platform-service";
 import { seekActiveTTS, seekActiveTTSBy } from "@/lib/platform/tts-track-controls";
@@ -172,6 +172,9 @@ export default function App() {
         console.log("[App] bootstrap: import expo/fetch");
         const { fetch: expoFetch } = await import("expo/fetch");
         setStreamingFetch(expoFetch as typeof globalThis.fetch);
+
+        // Verify the server that actually answered without blocking offline startup.
+        void verifyNarraGatewayBackend();
 
         console.log("[App] bootstrap: configure audio mode");
         await setAudioModeAsync({

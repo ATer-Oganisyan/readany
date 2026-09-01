@@ -19,6 +19,7 @@ const IMAGE_TIMEOUT_MS = 150_000;
 // cover-job POST/GET короткие и используют обычный сетевой таймаут.
 const COVER_TIMEOUT_MS = 180_000;
 const INSTALLATION_TIMEOUT_MS = 15_000;
+const HEALTH_TIMEOUT_MS = 5_000;
 const TEST_NARRA_GATEWAY_URL = "https://api-test.narra.disrupt.builders";
 const PRODUCTION_NARRA_GATEWAY_URL = "https://api.narra.disrupt.builders";
 
@@ -49,6 +50,17 @@ export interface NarraGatewayConfig {
   authMode: "none" | "installation";
 }
 
+export type NarraGatewayEnvironment = "production" | "staging" | "development" | "test" | "unknown";
+
+export interface NarraGatewayHealth {
+  hostname: string;
+  buildEnvironment: "production" | "test" | "unknown";
+  expectedEnvironment: NarraGatewayEnvironment;
+  environment: NarraGatewayEnvironment;
+  version: string;
+  ok: boolean;
+}
+
 export function getNarraGatewayConfig(): NarraGatewayConfig {
   const configuredUrl = process.env.EXPO_PUBLIC_NARRA_GATEWAY_URL?.trim().replace(/\/+$/, "");
   const baseUrl =
@@ -58,6 +70,64 @@ export function getNarraGatewayConfig(): NarraGatewayConfig {
   const authMode =
     process.env.EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE === "none" ? "none" : "installation";
   return { baseUrl, authMode };
+}
+
+function gatewayEnvironment(value: unknown): NarraGatewayEnvironment {
+  return typeof value === "string" &&
+    ["production", "staging", "development", "test"].includes(value)
+    ? (value as NarraGatewayEnvironment)
+    : "unknown";
+}
+
+/**
+ * Verifies the configured public hostname against the environment reported by
+ * that gateway. This route is unauthenticated and does not start AI work.
+ */
+export async function probeNarraGatewayHealth(): Promise<NarraGatewayHealth> {
+  const { baseUrl } = getNarraGatewayConfig();
+  const buildEnvironment =
+    process.env.EXPO_PUBLIC_NARRA_ENVIRONMENT === "production"
+      ? "production"
+      : process.env.EXPO_PUBLIC_NARRA_ENVIRONMENT === "test"
+        ? "test"
+        : "unknown";
+  const expectedEnvironment =
+    baseUrl === PRODUCTION_NARRA_GATEWAY_URL
+      ? "production"
+      : baseUrl === TEST_NARRA_GATEWAY_URL
+        ? "staging"
+        : "unknown";
+  const hostname = new URL(baseUrl).hostname.toLowerCase();
+  const { response, body } = await withGatewayConsumer(
+    async (scope) => {
+      const response = await scope.wait(
+        configuredFetch(`${baseUrl}/health`, {
+          headers: { accept: "application/json" },
+          signal: scope.signal,
+        }),
+      );
+      return { response, body: await readGatewayResponseText(response, scope) };
+    },
+    { timeoutMs: HEALTH_TIMEOUT_MS },
+  );
+  if (!response.ok) throw new Error(`Gateway health returned HTTP ${response.status}`);
+
+  const payload = JSON.parse(body) as { ok?: unknown; environment?: unknown; version?: unknown };
+  const environment = gatewayEnvironment(payload.environment);
+  const version =
+    typeof payload.version === "string" && /^[A-Za-z0-9_.+-]{1,80}$/.test(payload.version)
+      ? payload.version
+      : "unknown";
+  const matchesExpected = expectedEnvironment === "unknown" || environment === expectedEnvironment;
+
+  return {
+    hostname,
+    buildEnvironment,
+    expectedEnvironment,
+    environment,
+    version,
+    ok: payload.ok === true && matchesExpected,
+  };
 }
 
 /** Allows a host app or test to provide the backend contract without patching global fetch. */

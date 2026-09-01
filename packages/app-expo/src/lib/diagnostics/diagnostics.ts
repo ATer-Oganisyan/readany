@@ -2,7 +2,7 @@ import Constants from "expo-constants";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import { AppState, Platform } from "react-native";
-import { createDiagnosticJournal } from "./diagnostic-journal";
+import { createDiagnosticJournal, diagnosticErrorReason } from "./diagnostic-journal";
 
 const directory = `${FileSystem.documentDirectory}narra-diagnostics`;
 const journalPath = `${directory}/events.json`;
@@ -21,6 +21,57 @@ const journal = createDiagnosticJournal({
 
 export const recordDiagnostic = journal.record;
 export { diagnosticErrorReason } from "./diagnostic-journal";
+
+function diagnosticBackendHost(hostname: string): string {
+  return hostname === "api.narra.disrupt.builders" || hostname === "api-test.narra.disrupt.builders"
+    ? hostname
+    : "custom";
+}
+
+function buildEnvironment(): "production" | "test" | "unknown" {
+  if (process.env.EXPO_PUBLIC_NARRA_ENVIRONMENT === "production") return "production";
+  if (process.env.EXPO_PUBLIC_NARRA_ENVIRONMENT === "test") return "test";
+  return "unknown";
+}
+
+/** Checks the responding gateway without delaying or breaking an offline app start. */
+export async function verifyNarraGatewayBackend(): Promise<void> {
+  let hostname = "custom";
+  try {
+    const { getNarraGatewayConfig, probeNarraGatewayHealth } = await import(
+      "@/lib/ai/narra-gateway-fetch"
+    );
+    try {
+      hostname = new URL(getNarraGatewayConfig().baseUrl).hostname;
+    } catch {
+      // Invalid custom URLs are reported without persisting their contents.
+    }
+    const probe = await probeNarraGatewayHealth();
+    const details =
+      `host=${probe.hostname} build=${probe.buildEnvironment} ` +
+      `expected=${probe.expectedEnvironment} actual=${probe.environment} ` +
+      `version=${probe.version} ok=${probe.ok}`;
+    if (probe.ok) console.info(`[NarraGateway] backend verified: ${details}`);
+    else console.error(`[NarraGateway] BACKEND MISMATCH: ${details}`);
+    recordDiagnostic("backend_probe", {
+      host: diagnosticBackendHost(probe.hostname),
+      buildEnvironment: probe.buildEnvironment,
+      expectedEnvironment: probe.expectedEnvironment,
+      environment: probe.environment,
+      version: probe.version,
+      ok: probe.ok,
+    });
+  } catch (error) {
+    const reason = diagnosticErrorReason(error);
+    console.warn(`[NarraGateway] backend verification failed: host=${hostname} reason=${reason}`);
+    recordDiagnostic("backend_probe", {
+      host: diagnosticBackendHost(hostname),
+      buildEnvironment: buildEnvironment(),
+      reason,
+      ok: false,
+    });
+  }
+}
 
 /** Local only. No console interception, analytics upload, user IDs or book contents. */
 export function startDiagnostics(): () => void {
