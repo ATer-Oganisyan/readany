@@ -16,12 +16,14 @@ import {
   getBundledApiKey,
   hasBundledOpenRouterKey,
 } from "@/config/bundled-ai";
+import { DEFAULT_NARRA_CHAT_MODE, type NarraChatMode } from "@/lib/ai/narra-chat-routing";
 import { deleteSecure, loadSecure, saveSecure, withPersist } from "./persist";
 
 export interface SettingsState {
   readSettings: ReadSettings;
   translationConfig: TranslationConfig;
   aiConfig: AIConfig;
+  narraChatMode: NarraChatMode;
   settingsUpdatedAt: number;
   hasCompletedOnboarding: boolean;
   showOnboardingGuide: boolean;
@@ -35,6 +37,7 @@ export interface SettingsState {
   updateAIConfig: (
     updates: Partial<Pick<AIConfig, "temperature" | "maxTokens" | "slidingWindowSize">>,
   ) => void;
+  setNarraChatMode: (mode: NarraChatMode) => void;
   addEndpoint: (endpoint: AIEndpoint) => Promise<void>;
   updateEndpoint: (id: string, updates: Partial<AIEndpoint>) => Promise<void>;
   removeEndpoint: (id: string) => Promise<void>;
@@ -94,7 +97,11 @@ const defaultAIConfig: AIConfig = {
 
 function migrateSettingsState(state: SettingsState): SettingsState {
   const shouldMigrateTokens = state.aiConfig.maxTokens === 4096;
-  if (!shouldMigrateTokens && !hasBundledOpenRouterKey) return state;
+  const narraChatMode = ["proxy-first", "index-first"].includes(state.narraChatMode)
+    ? state.narraChatMode
+    : DEFAULT_NARRA_CHAT_MODE;
+  if (!shouldMigrateTokens && !hasBundledOpenRouterKey && narraChatMode === state.narraChatMode)
+    return state;
 
   let aiConfig = state.aiConfig;
   if (hasBundledOpenRouterKey) {
@@ -121,6 +128,7 @@ function migrateSettingsState(state: SettingsState): SettingsState {
 
   return {
     ...state,
+    narraChatMode,
     aiConfig: {
       ...aiConfig,
       maxTokens: shouldMigrateTokens ? defaultAIConfig.maxTokens : aiConfig.maxTokens,
@@ -475,6 +483,7 @@ export const useSettingsStore = create<SettingsState>()(
       readSettings: defaultReadSettings,
       translationConfig: defaultTranslationConfig,
       aiConfig: defaultAIConfig,
+      narraChatMode: DEFAULT_NARRA_CHAT_MODE,
       settingsUpdatedAt: 0,
       hasCompletedOnboarding: false,
       showOnboardingGuide: true,
@@ -502,6 +511,8 @@ export const useSettingsStore = create<SettingsState>()(
         set((state) => ({
           aiConfig: { ...state.aiConfig, ...updates },
         })),
+
+      setNarraChatMode: (narraChatMode) => set({ narraChatMode }),
 
       addEndpoint: async (endpoint) => {
         // Save API key to secure storage
@@ -673,6 +684,7 @@ export const useSettingsStore = create<SettingsState>()(
           readSettings: defaultReadSettings,
           translationConfig: defaultTranslationConfig,
           aiConfig: defaultAIConfig,
+          narraChatMode: DEFAULT_NARRA_CHAT_MODE,
           _apiKeysLoaded: false,
         });
       },

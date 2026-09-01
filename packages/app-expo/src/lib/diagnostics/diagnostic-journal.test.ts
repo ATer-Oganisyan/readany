@@ -61,6 +61,17 @@ describe("private local diagnostics", () => {
     );
   });
 
+  it("keeps only the allow-listed Narra chat route metadata", () => {
+    expect(
+      diagnosticEntry("narra_chat_route", {
+        mode: "index-first",
+        path: "proxy-fallback",
+        bookId: "must-not-be-recorded",
+        query: "must-not-be-recorded",
+      })?.data,
+    ).toEqual({ mode: "index-first", path: "proxy-fallback" });
+  });
+
   it("persists events for the next app session and sanitizes stored data again", async () => {
     let disk = "[]";
     const io = {

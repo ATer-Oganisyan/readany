@@ -307,6 +307,48 @@ export const makeStyles = (colors: ThemeColors) =>
       color: colors.mutedForeground,
       lineHeight: 20,
     },
+    modeOption: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.md,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+      padding: spacing.md,
+    },
+    modeOptionActive: {
+      borderColor: colors.primary,
+      backgroundColor: withOpacity(colors.primary, 0.08),
+    },
+    modeOptionCopy: { flex: 1, gap: 3 },
+    modeOptionTitle: {
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.medium,
+      color: colors.foreground,
+    },
+    modeOptionTitleActive: { color: colors.primary },
+    modeOptionDescription: {
+      fontSize: fontSize.xs,
+      lineHeight: 18,
+      color: colors.mutedForeground,
+    },
+    modeIndicator: {
+      width: 18,
+      height: 18,
+      borderRadius: 9,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    modeIndicatorActive: { borderColor: colors.primary },
+    modeIndicatorDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: colors.primary,
+    },
 
     paramRow: {
       flexDirection: "row",

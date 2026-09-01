@@ -76,7 +76,19 @@ export function maxTokensFor(purpose, stream, env = process.env) {
 
 export function routeForPurpose(purpose, env = process.env) {
   const suffix = purpose.toUpperCase()
-  const primary = String(env[`LLM_ROUTE_${suffix}`] || env.LLM_ROUTE_DEFAULT || 'giga').toLowerCase()
+  // Narra Assistant is the public mobile proxy path. When LiteLLM is configured,
+  // prefer it by default so the app reaches OpenRouter through the server-owned
+  // route without requiring another environment migration. An explicit
+  // assistant route still wins and keeps provider selection server-owned.
+  const implicitPrimary = purpose === 'assistant' &&
+    env.LITELLM_BASE_URL && env.LITELLM_API_KEY &&
+    (env.LITELLM_MODEL_ASSISTANT || env.LITELLM_MODEL)
+    ? 'litellm'
+    : 'giga'
+  const primary = String(
+    env[`LLM_ROUTE_${suffix}`] ||
+    (implicitPrimary === 'litellm' ? implicitPrimary : (env.LLM_ROUTE_DEFAULT || implicitPrimary))
+  ).toLowerCase()
   const fallbackKey = `LLM_FALLBACK_${suffix}`
   // An explicitly empty purpose fallback disables fallback for this purpose.
   // This is important for book analysis: BOOK_ANALYSIS_LLM_FALLBACK= must not

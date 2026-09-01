@@ -1,6 +1,7 @@
 const EVENTS = new Set([
   "app_started",
   "scene_request",
+  "narra_chat_route",
   "app_state",
   "js_stall",
   "server_start",
@@ -48,6 +49,8 @@ const ENUM_FIELDS: Record<string, ReadonlySet<string>> = {
     "foreground",
   ]),
   format: new Set(["epub", "pdf", "mobi", "azw", "azw3", "fb2", "cbz", "txt", "other"]),
+  mode: new Set(["index-first", "proxy-first"]),
+  path: new Set(["index", "proxy-primary", "proxy-fallback"]),
 };
 
 export interface DiagnosticEntry {

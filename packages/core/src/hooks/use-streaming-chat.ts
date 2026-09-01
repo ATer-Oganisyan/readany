@@ -8,6 +8,7 @@ import {
   toolCallPartToMessageToolCall,
 } from "../ai/tool-call-state";
 import { getAvailableTools } from "../ai/tools";
+import type { ToolDefinition } from "../ai/tools/tool-types";
 import { getBook, getSkills as getDbSkills } from "../db/database";
 import i18n from "../i18n";
 import { getChatStreamingKey, useChatStore } from "../stores/chat-store";
@@ -85,6 +86,15 @@ export interface StreamingChatOptions {
   book?: Book | null;
   semanticContext?: SemanticContext | null;
   bookId?: string;
+  /** Optional product-owned retrieval route (for example Narra's server index). */
+  bookRetrieval?: {
+    isIndexed: boolean;
+    getAvailableTools?: (options: {
+      bookId: string | null;
+      isVectorized: boolean;
+      enabledSkills: Skill[];
+    }) => ToolDefinition[];
+  };
 }
 
 export interface StreamingState {
@@ -392,7 +402,8 @@ export function useStreamingChat(options?: StreamingChatOptions) {
         };
 
         const streamBook = await resolveFreshBook(bookId, options?.book);
-        const streamIsVectorized = streamBook?.isVectorized ?? false;
+        const streamIsVectorized =
+          options?.bookRetrieval?.isIndexed ?? streamBook?.isVectorized ?? false;
 
         await stream.stream({
           thread: threadForStream,
@@ -404,7 +415,7 @@ export function useStreamingChat(options?: StreamingChatOptions) {
           aiConfig: aiConfigOverride || aiConfig,
           deepThinking,
           spoilerFree,
-          getAvailableTools,
+          getAvailableTools: options?.bookRetrieval?.getAvailableTools ?? getAvailableTools,
           onToken: (token) => {
             if (!currentTextPart) {
               currentTextPart = createTextPart("");
@@ -594,6 +605,7 @@ export function useStreamingChat(options?: StreamingChatOptions) {
       loadEnabledSkills,
       options?.book,
       options?.bookId,
+      options?.bookRetrieval,
       options?.semanticContext,
     ],
   );
