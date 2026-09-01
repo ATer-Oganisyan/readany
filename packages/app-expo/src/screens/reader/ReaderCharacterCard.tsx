@@ -10,7 +10,7 @@ import { reportNarraError } from "@/lib/narra/errors";
 import {
   ensureCharacterPortrait,
   generateCharacterPortrait,
-  synthesizeNarraSpeech,
+  synthesizeNarraGatewaySpeech,
 } from "@/lib/narra/media";
 import type { NarraCharacter } from "@/lib/narra/types";
 import { toast } from "@/lib/notifications";
@@ -398,8 +398,8 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
       ? splitNameIntoTwoBalancedLines(displayName)
       : displayName;
 
-    // Проба голоса — существующий синтез ответа чата (synthesizeNarraSpeech):
-    // фраза героя его назначенным голосом; повторный тап останавливает.
+    // Если опубликованное приветствие ещё не скачалось, синтезируем ту же фразу
+    // через аутентифицированный backend (SaluteSpeech); повторный тап останавливает.
     const samplePhrase = (
       liveCharacter.greeting ||
       liveCharacter.speechExamples[0] ||
@@ -421,7 +421,7 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
       void (
         greetingAudio
           ? Promise.resolve(greetingAudio)
-          : synthesizeNarraSpeech(samplePhrase, sampleVoice, {
+          : synthesizeNarraGatewaySpeech(samplePhrase, sampleVoice, {
               prosody: liveCharacter.voiceOverride ? undefined : liveCharacter.voiceProsody,
             })
       )

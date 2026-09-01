@@ -672,8 +672,8 @@ export function synthesizeNarraSpeech(
   );
 }
 
-/** Book reading always uses the authenticated backend, independently of chat/scene TTS. */
-export function synthesizeNarraBookSpeech(
+/** Uses the authenticated backend and SaluteSpeech independently of direct client TTS. */
+export function synthesizeNarraGatewaySpeech(
   text: string,
   voice: string,
   options: NarraSpeechOptions & { signal?: AbortSignal } = {},
@@ -757,4 +757,13 @@ export function synthesizeNarraBookSpeech(
     },
     MEDIA_JOB_ROUTES.tts,
   );
+}
+
+/** Book reading always uses the authenticated backend, independently of chat/scene TTS. */
+export function synthesizeNarraBookSpeech(
+  text: string,
+  voice: string,
+  options: NarraSpeechOptions & { signal?: AbortSignal } = {},
+): Promise<string> {
+  return synthesizeNarraGatewaySpeech(text, voice, options);
 }

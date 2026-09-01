@@ -74,6 +74,7 @@ import {
   portraitPrompt,
   resolvePortraitGenre,
   synthesizeNarraBookSpeech,
+  synthesizeNarraGatewaySpeech,
   synthesizeNarraSpeech,
 } from "./media";
 import { PORTRAIT_PROMPT_CHAR_LIMIT, buildCharacterPortraitPrompt } from "./portrait-prompt";
@@ -685,6 +686,25 @@ describe("book TTS backend contract", () => {
       "media_job_enqueued",
       expect.objectContaining({ provider: "salutespeech" }),
     );
+  });
+  it("offers the same authenticated Gateway path to character voice samples", async () => {
+    vi.stubEnv("EXPO_PUBLIC_NARRA_TTS_PROVIDER", "grok");
+    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(response());
+
+    await expect(
+      synthesizeNarraGatewaySpeech("Реплика героя.", "Che", { prosody: { pitch: -1 } }),
+    ).resolves.toMatch(/speech-.*\.wav$/);
+
+    expect(narraGatewayRequest).toHaveBeenCalledWith(
+      "/v2/speech/synthesize",
+      expect.objectContaining({
+        body: JSON.stringify({
+          ssml: '<speak><prosody rate="100%" pitch="-4%">Реплика героя.</prosody></speak>',
+          voice: "Che",
+        }),
+      }),
+    );
+    expect(speechFetchMock).not.toHaveBeenCalled();
   });
   it("combines rate/prosody with stress marks, sending SSML instead of text", async () => {
     primeCharacterStressForms([{ ...anna, stressedName: "А'нна" }]);
