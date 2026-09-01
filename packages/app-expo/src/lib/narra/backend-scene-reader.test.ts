@@ -50,7 +50,6 @@ const input = (anchor = "anchor") => ({
   chapter: "Chapter",
   intent: { bookEditionId: "edition", markupIdentity: "v3", requestedProgress: 0.385 },
   display: vi.fn(),
-  remove: vi.fn(),
 });
 const state = () => useNarraStore.getState().books.book;
 const backendScene = () => Object.values(state().scenesByBackendId ?? {})[0];
@@ -86,7 +85,7 @@ describe("reader backend scene action and persistence", () => {
     const correlation = runtime.diagnostic.mock.calls.map((args) => args[1].requestId);
     expect(new Set(correlation).size).toBe(1);
   });
-  it("keeps one canonical insert when two anchors resolve to one backend scene", async () => {
+  it("shows the backend scene in every anchor that requested it", async () => {
     const first = input("first-anchor");
     const second = input("second-anchor");
 
@@ -94,13 +93,15 @@ describe("reader backend scene action and persistence", () => {
     await generateBackendReaderScene(second, new AbortController().signal);
 
     expect(Object.keys(state().scenesByBackendId ?? {})).toHaveLength(1);
-    expect(state().sceneAnchorBindings).toEqual({ "first-anchor": expect.any(String) });
-    expect(second.remove).toHaveBeenCalledWith("second-anchor");
+    expect(state().sceneAnchorBindings).toEqual({
+      "first-anchor": expect.any(String),
+      "second-anchor": expect.any(String),
+    });
     expect(first.display).toHaveBeenCalledWith("first-anchor", "data:image/png;base64,aW1hZ2U=");
-    expect(second.display).not.toHaveBeenCalled();
+    expect(second.display).toHaveBeenCalledWith("second-anchor", "data:image/png;base64,aW1hZ2U=");
     expect(
       runtime.diagnostic.mock.calls.filter(([, value]) => value.stage === "webview"),
-    ).toHaveLength(1);
+    ).toHaveLength(2);
   });
   it("failed job is terminal, leaves a retry intent, and never saves/displays another generated scene", async () => {
     runtime.request.mockResolvedValue({ status: "failed" });
