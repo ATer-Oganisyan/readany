@@ -1,0 +1,16 @@
+{
+  "contractVersion": "book-character-correction-v1",
+  "base": {
+    "markupVersionId": "e264ecc2-ba18-4069-b10e-5148b1c375a4",
+    "publicationId": "0b55707a-f634-4849-83eb-4e8aa7116e14",
+    "contentHash": "12667124a28a8c32afe2122c96ed8b6f5806784e1ec30a00c3ccc43e98fbddfc"
+  },
+  "reason": "«Записки сумасшедшего»: объединяем Аксентия Иванова и Аксентия Ивановича в основной профиль Поприщина с полными Bio и Personality. LLM не используется.",
+  "changes": [
+    {
+      "characterKey": "character:9ecafabb51752981b41d253a2ba76dd76ee1e436c21cb204",
+      "reason": "Аксентий Иванович — тот же Аксентий Иванов (Поприщин); исходная запись не удаляется.",
+      "redirectTo": "character:aa865da6bba6eae0947b1a19f05ad2fe4b62ddf4101ceeea"
+    }
+  ]
+}

@@ -73,6 +73,11 @@ test('manifest polling exposes additive TTS markup state without changing book m
   const json = manifestJson({
     source: 'v3', book: {}, availability: 'ready', readerTextOffset: 0,
     readingFraction: 0, markup: null, characters: [],
+    correction: {
+      contractVersion: 'book-character-correction-v1',
+      version: 2,
+      documentHash: 'c'.repeat(64)
+    },
     ttsMarkup: {
       status: 'processing', version: 'book-tts-script-v1', revision: null,
       retryAfterMs: 10_000
@@ -81,6 +86,11 @@ test('manifest polling exposes additive TTS markup state without changing book m
   assert.deepEqual(json.tts_markup, {
     status: 'processing', version: 'book-tts-script-v1', revision: null,
     retry_after_ms: 10_000
+  })
+  assert.deepEqual(json.correction, {
+    contract_version: 'book-character-correction-v1',
+    version: 2,
+    document_hash: 'c'.repeat(64)
   })
 })
 

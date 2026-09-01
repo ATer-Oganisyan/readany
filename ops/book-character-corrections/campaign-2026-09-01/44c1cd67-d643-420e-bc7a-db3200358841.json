@@ -1,0 +1,35 @@
+{
+  "contractVersion": "book-character-correction-v1",
+  "base": {
+    "markupVersionId": "134d6a37-cdb5-4ee4-888e-26a80be04a75",
+    "publicationId": "0bb54c6f-b288-4729-a443-fb454974f167",
+    "contentHash": "4307244c28d390d07be7373e424d298c7ef06fee59c9bf40587a208a559379af"
+  },
+  "reason": "«Вишнёвый сад»: объединяем два подтверждённых профиля Лопахина и два профиля Трофимова, сохраняя каноническими профили с полными Bio и Personality; роль Лопахина восстанавливаем из уже опубликованных evidence. LLM не используется.",
+  "changes": [
+    {
+      "characterKey": "character:cfa111b22d11f09c61224b42389d5e3346eb70d317c9fa84",
+      "reason": "Канонический профиль Лопахина содержит полное Bio и Personality, но опубликован без роли.",
+      "set": {
+        "role": {
+          "value": "купец и новый владелец имения с вишнёвым садом",
+          "evidenceIds": [
+            "cff3ff41-8b94-4b7b-ac94-0f9cd0e88009",
+            "37b0b8f3-bcbb-418c-bfe4-fefa28c06d9a"
+          ],
+          "confidence": 0.98
+        }
+      }
+    },
+    {
+      "characterKey": "character:30983a7a0eb436116154a75d4a6dee643bacd7dceb1d4a7e",
+      "reason": "Поздний профиль полного имени относится к тому же Лопахину; физическая запись остаётся в исходной публикации.",
+      "redirectTo": "character:cfa111b22d11f09c61224b42389d5e3346eb70d317c9fa84"
+    },
+    {
+      "characterKey": "character:a29dee774d002de86074c613c6e13c713320b97e9cf8289c",
+      "reason": "Петя Трофимов и Трофимов Пётр Сергеевич — один персонаж; сохраняем более полный профиль с поддержанным Personality.",
+      "redirectTo": "character:2339591814337fc71a7fb727e33ad68bd50a18cfe14767e6"
+    }
+  ]
+}

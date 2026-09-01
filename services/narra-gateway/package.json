@@ -30,6 +30,7 @@
     "seed:catalog": "node seed-book-catalog.mjs",
     "retry:book-generation": "node retry-failed-book-generation.mjs",
     "operator:generation-queue": "node generation-queue-operator.mjs",
+    "operator:character-correction": "node book-character-correction-operator.mjs",
     "test": "node --test"
   },
   "engines": {

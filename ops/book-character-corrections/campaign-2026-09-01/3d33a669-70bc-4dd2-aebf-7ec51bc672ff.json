@@ -1,0 +1,23 @@
+{
+  "contractVersion": "book-character-correction-v1",
+  "base": {
+    "markupVersionId": "82ad9578-68ab-40f7-9d2d-2427b593d4cd",
+    "publicationId": "251ed520-dc26-46eb-a56b-506a3bb40cb8",
+    "contentHash": "34f4b8e735ea79c747ee32b4f8f149c7a2c5aab4d8979f6c24ffec248ea521e9"
+  },
+  "reason": "«Гроза»: объединяем Бориса и Бориса Григорьевича; ошибочную роль «вольный казак» заменяем уже опубликованной ролью подтверждённого дубля. LLM не используется.",
+  "changes": [
+    {
+      "characterKey": "character:493b1f60a8e6a5c49fb020779f7924a1391ba27ee2a3fea0",
+      "reason": "Канонический профиль содержит полное Bio и Personality, а правильная роль опубликована в профиле полного имени.",
+      "copy": {
+        "roleFrom": "character:596e12e5f86c4a129796eadaa3e64ec5d602dd44a3470f90"
+      }
+    },
+    {
+      "characterKey": "character:596e12e5f86c4a129796eadaa3e64ec5d602dd44a3470f90",
+      "reason": "Борис Григорьевич — тот же Борис; физическая запись остаётся в исходной публикации.",
+      "redirectTo": "character:493b1f60a8e6a5c49fb020779f7924a1391ba27ee2a3fea0"
+    }
+  ]
+}

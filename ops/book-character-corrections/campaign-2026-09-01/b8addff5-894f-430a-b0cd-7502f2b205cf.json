@@ -1,0 +1,26 @@
+{
+  "contractVersion": "book-character-correction-v1",
+  "base": {
+    "markupVersionId": "6a6d1ddb-e6ab-459a-884f-d5b653dbce48",
+    "publicationId": "3b36e0ff-e2a2-472b-bb33-0daa0adad344",
+    "contentHash": "7599e0c667799989034decf987894a12525b96a00bda1e31671dc205d921a493"
+  },
+  "reason": "«Двадцать тысяч лье под водой»: четыре профиля рассказчика-профессора объединяем в именованный профиль Аронакса с полными Bio и Personality. LLM не используется.",
+  "changes": [
+    {
+      "characterKey": "character:5408d1c4293a42d4add5cd4f41ab89c991a8c7ae1d600112",
+      "reason": "Рассказчик является профессором Пьером Аронаксом; исходная запись не удаляется.",
+      "redirectTo": "character:a11fd92f944dbb3442ca4f9be4f6111dec26126e05674d67"
+    },
+    {
+      "characterKey": "character:b1429bfb42ffb48744e59cb4255e7d76f3cf5940f34379b2",
+      "reason": "Обобщённый профиль «профессор» описывает Аронакса; исходная запись не удаляется.",
+      "redirectTo": "character:a11fd92f944dbb3442ca4f9be4f6111dec26126e05674d67"
+    },
+    {
+      "characterKey": "character:5080d3f518f8cdb9c37fd534c4677e00b26dece1de747528",
+      "reason": "Профиль «рассказчик-профессор» описывает Аронакса; исходная запись не удаляется.",
+      "redirectTo": "character:a11fd92f944dbb3442ca4f9be4f6111dec26126e05674d67"
+    }
+  ]
+}

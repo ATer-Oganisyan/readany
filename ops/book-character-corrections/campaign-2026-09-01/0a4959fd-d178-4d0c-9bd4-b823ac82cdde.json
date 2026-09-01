@@ -1,0 +1,24 @@
+{
+  "contractVersion": "book-character-correction-v1",
+  "base": {
+    "markupVersionId": "ebf041df-41de-4b4c-b308-9eae8d9ad44c",
+    "publicationId": "aae2b733-e35e-47af-bd6b-94c7448fcb44",
+    "contentHash": "3dc2de600b6a615e03a7b5d6554ac0cca0196d7ab6bef94b2d09a34e1f461096"
+  },
+  "reason": "«Айвенго»: объединяем Леди Ровену и Ровену, сохраняя профиль с наиболее полным Personality и перенося в него более точные опубликованные role и Bio. LLM не используется.",
+  "changes": [
+    {
+      "characterKey": "character:7556228261160ff6ef58ce827ce9ecbdf684850d61f048a3",
+      "reason": "Профиль Ровены содержит наиболее полный Personality, а точные role и Bio находятся в профиле Леди Ровены.",
+      "copy": {
+        "roleFrom": "character:e7306d0ae84a7450716569f8ad59c4eed8d64cba0db8b836",
+        "descriptionFrom": "character:e7306d0ae84a7450716569f8ad59c4eed8d64cba0db8b836"
+      }
+    },
+    {
+      "characterKey": "character:e7306d0ae84a7450716569f8ad59c4eed8d64cba0db8b836",
+      "reason": "Леди Ровена и Ровена — один персонаж; физическая запись остаётся в исходной публикации.",
+      "redirectTo": "character:7556228261160ff6ef58ce827ce9ecbdf684850d61f048a3"
+    }
+  ]
+}
