@@ -1,0 +1,48 @@
+{
+  "contractVersion": "book-character-correction-v1",
+  "base": {
+    "markupVersionId": "8f65678a-f67a-4508-a4d6-a8b38bafbda1",
+    "publicationId": "e539ce84-a04a-4c2f-af58-fa249d332c9f",
+    "contentHash": "05f2800b905e8eaf913dd51298e81d60561c0b992d25978d42327af54666c3f8"
+  },
+  "reason": "«Игрок»: объединяем два профиля Полины и два профиля Де-Грие; сохраняем канонические профили с наиболее полным Personality и уточняем роли по уже опубликованным evidence. LLM не используется.",
+  "changes": [
+    {
+      "characterKey": "character:e625cc9521ca1a0805ef3ab8e3aa0d63fc65a258fdc6bee2",
+      "reason": "Канонический профиль Полины содержит полные Bio и Personality, но опубликован без роли.",
+      "set": {
+        "role": {
+          "value": "падчерица генерала",
+          "evidenceIds": [
+            "dcd9f5ae-8f8e-4e1a-81ee-152864f0c9a4"
+          ],
+          "confidence": 0.98
+        }
+      }
+    },
+    {
+      "characterKey": "character:fdd6bfefc3e377d349eac074acaf3cf19f05ad0752841866",
+      "reason": "Мисс Полина и Полина Александровна — один персонаж; исходная запись не удаляется.",
+      "redirectTo": "character:e625cc9521ca1a0805ef3ab8e3aa0d63fc65a258fdc6bee2"
+    },
+    {
+      "characterKey": "character:6a7099fd6b5c8422cbcd1fdda2aae9e48e7b9929ad925aa0",
+      "reason": "Канонический профиль Де-Грие содержит полный Personality; объединённая роль подтверждена evidence обоих профилей.",
+      "set": {
+        "role": {
+          "value": "французский маркиз и мелкий процентщик",
+          "evidenceIds": [
+            "1a1adae8-c331-4754-a6ae-60851346f305",
+            "c3b9d3d3-13f7-4266-9836-e10933a89ca6"
+          ],
+          "confidence": 0.96
+        }
+      }
+    },
+    {
+      "characterKey": "character:12b9c24d8bc41a0bf330f5f1fdf2a3c87ee51fc61561997c",
+      "reason": "Маркиз Де-Грие и Де-Грие — один персонаж; исходная запись не удаляется.",
+      "redirectTo": "character:6a7099fd6b5c8422cbcd1fdda2aae9e48e7b9929ad925aa0"
+    }
+  ]
+}

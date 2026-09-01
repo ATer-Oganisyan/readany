@@ -426,6 +426,11 @@ export function manifestJson(manifest) {
     run_id: manifest.runId,
     content_hash: manifest.contentHash,
     published_at: manifest.publishedAt,
+    correction: manifest.correction && {
+      contract_version: manifest.correction.contractVersion,
+      version: manifest.correction.version,
+      document_hash: manifest.correction.documentHash
+    },
     reader_text_offset: manifest.readerTextOffset,
     reading_fraction: manifest.readingFraction,
     reader_section_index: manifest.readerSectionIndex,
@@ -512,6 +517,11 @@ function shadowManifestJson(manifest) {
     run_id: manifest.runId,
     content_hash: manifest.contentHash,
     published_at: manifest.publishedAt,
+    correction: manifest.correction && {
+      contract_version: manifest.correction.contractVersion,
+      version: manifest.correction.version,
+      document_hash: manifest.correction.documentHash
+    },
     reader_text_offset: manifest.readerTextOffset,
     reading_fraction: manifest.readingFraction,
     reader_section_index: manifest.readerSectionIndex,
@@ -537,6 +547,7 @@ function shadowManifestJson(manifest) {
 export function createBookCatalogRouter({
   repository,
   analysisRepository = null,
+  correctionRepository = null,
   ttsMarkupRepository = null,
   shadowPreviewEnabled = false,
   storage = null,
@@ -544,7 +555,7 @@ export function createBookCatalogRouter({
 }) {
   const router = express.Router()
   const service = createBookCatalogService({
-    repository, analysisRepository, ttsMarkupRepository, storage
+    repository, analysisRepository, correctionRepository, ttsMarkupRepository, storage
   })
   const subject = (req) => uuid(req.installation?.sub, 'installation subject')
 

@@ -8,6 +8,7 @@ import {
 import { requireBasicAuth } from './security.mjs'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const SHA256 = /^[0-9a-f]{64}$/
 
 function serviceError(code, message, status) {
   return Object.assign(new Error(message), { code, status })
@@ -42,6 +43,19 @@ function analysisRestartBody(body) {
   }
 }
 
+function correctionActivationBody(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw serviceError('VALIDATION', 'body: expected object', 400)
+  }
+  if (Object.keys(body).some((key) => key !== 'documentHash')) {
+    throw serviceError('VALIDATION', 'body: unsupported field', 400)
+  }
+  if (typeof body.documentHash !== 'string' || !SHA256.test(body.documentHash)) {
+    throw serviceError('VALIDATION', 'documentHash: invalid SHA-256', 400)
+  }
+  return { documentHash: body.documentHash.toLowerCase() }
+}
+
 function asyncRoute(operation) {
   return (req, res, next) => void operation(req, res).catch(next)
 }
@@ -62,6 +76,7 @@ export function createBookOperatorRouter({
   catalogService,
   repository,
   analysisRepository,
+  correctionRepository,
   storage,
   uploadMaxBytes = 50 * 1024 * 1024,
   uiDirectory = new URL('./operator-ui/', import.meta.url).pathname
@@ -76,6 +91,15 @@ export function createBookOperatorRouter({
   }
   if (!analysisRepository || typeof analysisRepository.restartAnalysisRun !== 'function') {
     throw new TypeError('book analysis repository with restart support is required')
+  }
+  if (!correctionRepository || [
+    'getCorrectionState',
+    'previewCorrection',
+    'stageCorrection',
+    'enableCorrection',
+    'disableCorrection'
+  ].some((method) => typeof correctionRepository[method] !== 'function')) {
+    throw new TypeError('book character correction repository is required')
   }
   const ingest = catalogService ?? createCatalogIngestService({
     repository,
@@ -113,6 +137,59 @@ export function createBookOperatorRouter({
     )
     res.json({ operations })
   }))
+
+  router.get('/api/books/:bookEditionId/correction', asyncRoute(async (req, res) => {
+    res.json(missingBook(
+      await correctionRepository.getCorrectionState(uuid(req.params.bookEditionId))
+    ))
+  }))
+
+  router.post(
+    '/api/books/:bookEditionId/correction/preview',
+    express.json({ limit: '256kb' }),
+    asyncRoute(async (req, res) => {
+      res.json(await correctionRepository.previewCorrection(
+        uuid(req.params.bookEditionId),
+        req.body
+      ))
+    })
+  )
+
+  router.put(
+    '/api/books/:bookEditionId/correction',
+    express.json({ limit: '256kb' }),
+    asyncRoute(async (req, res) => {
+      res.json(await correctionRepository.stageCorrection({
+        bookEditionId: uuid(req.params.bookEditionId),
+        document: req.body,
+        operatorId: username
+      }))
+    })
+  )
+
+  router.post(
+    '/api/books/:bookEditionId/correction/enable',
+    express.json({ limit: '1kb' }),
+    asyncRoute(async (req, res) => {
+      res.json(await correctionRepository.enableCorrection({
+        bookEditionId: uuid(req.params.bookEditionId),
+        ...correctionActivationBody(req.body),
+        operatorId: username
+      }))
+    })
+  )
+
+  router.post(
+    '/api/books/:bookEditionId/correction/disable',
+    express.json({ limit: '1kb' }),
+    asyncRoute(async (req, res) => {
+      res.json(await correctionRepository.disableCorrection({
+        bookEditionId: uuid(req.params.bookEditionId),
+        ...correctionActivationBody(req.body),
+        operatorId: username
+      }))
+    })
+  )
 
   router.post(
     '/api/books/:bookEditionId/restart',

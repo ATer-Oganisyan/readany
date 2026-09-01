@@ -66,6 +66,33 @@ function dependencies(overrides = {}) {
         }
       }
     },
+    correctionRepository: {
+      async getCorrectionState(bookEditionId) {
+        calls.push(['correction-state', bookEditionId])
+        return bookEditionId === BOOK_ID
+          ? { base: { bookEditionId }, correction: null, stale: false, effective: false }
+          : null
+      },
+      async previewCorrection(bookEditionId, document) {
+        calls.push(['correction-preview', bookEditionId, document])
+        return { document, documentHash: 'a'.repeat(64), diff: { characters: [] } }
+      },
+      async stageCorrection(input) {
+        calls.push(['correction-stage', input])
+        return {
+          correction: { status: 'draft', documentHash: 'a'.repeat(64) },
+          preview: { document: input.document, documentHash: 'a'.repeat(64) }
+        }
+      },
+      async enableCorrection(input) {
+        calls.push(['correction-enable', input])
+        return { status: 'enabled', documentHash: input.documentHash }
+      },
+      async disableCorrection(input) {
+        calls.push(['correction-disable', input])
+        return { status: 'disabled', documentHash: input.documentHash }
+      }
+    },
     ...overrides
   }
 }
@@ -92,7 +119,12 @@ async function withServer(input, operation) {
 test('operator UI and every API endpoint require the configured browser password', async () => {
   const input = dependencies()
   await withServer(input, async (baseUrl) => {
-    for (const path of ['/operator/', '/operator/review', '/operator/api/books']) {
+    for (const path of [
+      '/operator/',
+      '/operator/review',
+      '/operator/api/books',
+      `/operator/api/books/${BOOK_ID}/correction`
+    ]) {
       const missing = await fetch(`${baseUrl}${path}`)
       assert.equal(missing.status, 401)
       assert.match(missing.headers.get('www-authenticate'), /^Basic /)
@@ -204,6 +236,94 @@ test('operator can safely start a new v3 run for one selected book', async () =>
       { bookEditionId: BOOK_ID, priority: 100 }
     ]])
   })
+})
+
+test('operator correction workflow previews, stages, enables and disables one exact document', async () => {
+  const input = dependencies()
+  const document = {
+    contractVersion: 'book-character-correction-v1',
+    base: {
+      markupVersionId: '22222222-2222-4222-8222-222222222222',
+      publicationId: '33333333-3333-4333-8333-333333333333',
+      contentHash: 'b'.repeat(64)
+    },
+    reason: 'Исправление профиля по существующим данным',
+    changes: [{
+      characterKey: 'character:helene',
+      reason: 'Био было опубликовано в записи-дубле',
+      copy: { descriptionFrom: 'character:helene-duplicate' }
+    }]
+  }
+  const hash = 'a'.repeat(64)
+  await withServer(input, async (baseUrl) => {
+    const state = await fetch(`${baseUrl}/operator/api/books/${BOOK_ID}/correction`, {
+      headers: { authorization: AUTH }
+    })
+    assert.equal(state.status, 200)
+    assert.equal((await state.json()).effective, false)
+
+    const preview = await fetch(
+      `${baseUrl}/operator/api/books/${BOOK_ID}/correction/preview`,
+      {
+        method: 'POST',
+        headers: { authorization: AUTH, 'content-type': 'application/json' },
+        body: JSON.stringify(document)
+      }
+    )
+    assert.equal(preview.status, 200)
+    assert.equal((await preview.json()).documentHash, hash)
+
+    const staged = await fetch(`${baseUrl}/operator/api/books/${BOOK_ID}/correction`, {
+      method: 'PUT',
+      headers: { authorization: AUTH, 'content-type': 'application/json' },
+      body: JSON.stringify(document)
+    })
+    assert.equal(staged.status, 200)
+    assert.equal((await staged.json()).correction.status, 'draft')
+
+    const enabled = await fetch(`${baseUrl}/operator/api/books/${BOOK_ID}/correction/enable`, {
+      method: 'POST',
+      headers: { authorization: AUTH, 'content-type': 'application/json' },
+      body: JSON.stringify({ documentHash: hash })
+    })
+    assert.equal(enabled.status, 200)
+    assert.equal((await enabled.json()).status, 'enabled')
+
+    const disabled = await fetch(`${baseUrl}/operator/api/books/${BOOK_ID}/correction/disable`, {
+      method: 'POST',
+      headers: { authorization: AUTH, 'content-type': 'application/json' },
+      body: JSON.stringify({ documentHash: hash })
+    })
+    assert.equal(disabled.status, 200)
+    assert.equal((await disabled.json()).status, 'disabled')
+  })
+
+  assert.deepEqual(input.calls.map(([name]) => name), [
+    'correction-state',
+    'correction-preview',
+    'correction-stage',
+    'correction-enable',
+    'correction-disable'
+  ])
+  assert.deepEqual(input.calls[3][1], {
+    bookEditionId: BOOK_ID,
+    documentHash: hash,
+    operatorId: 'narra'
+  })
+})
+
+test('operator cannot activate a correction without its reviewed SHA-256 hash', async () => {
+  const input = dependencies()
+  await withServer(input, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/operator/api/books/${BOOK_ID}/correction/enable`, {
+      method: 'POST',
+      headers: { authorization: AUTH, 'content-type': 'application/json' },
+      body: JSON.stringify({ documentHash: 'not-a-hash', force: true })
+    })
+    assert.equal(response.status, 400)
+    assert.equal((await response.json()).code, 'VALIDATION')
+  })
+  assert.deepEqual(input.calls, [])
 })
 
 test('operator restart accepts only the explicit narra or external pipeline selector', async () => {

@@ -23,12 +23,14 @@ export default function AISettingsScreen() {
   const layout = useResponsiveLayout();
   const {
     aiConfig,
+    narraChatMode,
     addEndpoint,
     updateEndpoint,
     removeEndpoint,
     setActiveEndpoint,
     setActiveModel,
     updateAIConfig,
+    setNarraChatMode,
     importAIConfig,
     fetchModels,
   } = useSettingsStore();
@@ -120,6 +122,65 @@ export default function AISettingsScreen() {
           <View
             style={[styles.contentColumn, { width: "100%", maxWidth: layout.centeredContentWidth }]}
           >
+            <View style={styles.sectionCard}>
+              <View style={{ gap: spacing.xs }}>
+                <Text style={styles.sectionTitle}>
+                  {t("settings.narraChatMode", "Режим чата Нары")}
+                </Text>
+                <Text style={styles.sectionDesc}>
+                  {t(
+                    "settings.narraChatModeDescription",
+                    "Ответы всегда идут через backend. Здесь выбирается источник контекста книги.",
+                  )}
+                </Text>
+              </View>
+
+              {(
+                [
+                  {
+                    id: "index-first" as const,
+                    title: t("settings.narraChatIndexFirst", "Сначала индекс"),
+                    description: t(
+                      "settings.narraChatIndexFirstDescription",
+                      "Использовать серверный индекс книги; если он ещё не готов — читать локальный файл.",
+                    ),
+                  },
+                  {
+                    id: "proxy-first" as const,
+                    title: t("settings.narraChatProxyFirst", "Через прокси"),
+                    description: t(
+                      "settings.narraChatProxyFirstDescription",
+                      "Не использовать серверный индекс и читать исходный файл через инструменты чата.",
+                    ),
+                  },
+                ] as const
+              ).map((option) => {
+                const active = narraChatMode === option.id;
+                return (
+                  <TouchableOpacity
+                    key={option.id}
+                    style={[styles.modeOption, active && styles.modeOptionActive]}
+                    activeOpacity={0.75}
+                    onPress={() => setNarraChatMode(option.id)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: active }}
+                  >
+                    <View style={styles.modeOptionCopy}>
+                      <Text
+                        style={[styles.modeOptionTitle, active && styles.modeOptionTitleActive]}
+                      >
+                        {option.title}
+                      </Text>
+                      <Text style={styles.modeOptionDescription}>{option.description}</Text>
+                    </View>
+                    <View style={[styles.modeIndicator, active && styles.modeIndicatorActive]}>
+                      {active ? <View style={styles.modeIndicatorDot} /> : null}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
             {/* Endpoints */}
             <View style={styles.endpointList}>
               {aiConfig.endpoints.map((ep) => {

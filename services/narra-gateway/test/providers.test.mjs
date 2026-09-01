@@ -23,6 +23,24 @@ test('provider route is selected only from server environment', () => {
   assert.deepEqual(route, ['litellm', 'giga'])
 })
 
+test('assistant defaults to the configured LiteLLM proxy while explicit routes still win', () => {
+  const env = {
+    LITELLM_BASE_URL: 'https://litellm.test/v1',
+    LITELLM_API_KEY: 'proxy-key',
+    LITELLM_MODEL: 'gpt-5.6-luna'
+  }
+  assert.deepEqual(routeForPurpose('assistant', env), ['litellm'])
+  assert.deepEqual(routeForPurpose('assistant', {
+    ...env,
+    LLM_ROUTE_DEFAULT: 'giga'
+  }), ['litellm'])
+  assert.deepEqual(routeForPurpose('summary', env), ['giga'])
+  assert.deepEqual(routeForPurpose('assistant', {
+    ...env,
+    LLM_ROUTE_ASSISTANT: 'giga'
+  }), ['giga'])
+})
+
 test('provider request omits temperature when the caller leaves it unset', async () => {
   let body
   let headers

@@ -18,7 +18,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useStreamingChat } from "@/hooks";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { createNarraAssistantAIConfig } from "@/lib/ai/narra-assistant-gateway";
-import { useLibraryStore } from "@/stores";
+import { createNarraIndexedToolProvider } from "@/lib/ai/narra-book-search";
+import { type NarraChatPath, resolveNarraChatRoute } from "@/lib/ai/narra-chat-routing";
+import { recordDiagnostic } from "@/lib/diagnostics/diagnostics";
+import { useLibraryStore, useNarraStore } from "@/stores";
 import { useChatStore } from "@/stores/chat-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import type { AttachedQuote } from "@readany/core/types";
@@ -74,6 +77,42 @@ export function ChatScreen({
     () => (bookId ? books.find((item) => item.id === bookId) : undefined),
     [bookId, books],
   );
+  const narraChatMode = useSettingsStore((state) => state.narraChatMode);
+  const boundBookEditionId = useNarraStore((state) =>
+    bookId ? state.books[bookId]?.backendBinding?.bookEditionId : undefined,
+  );
+  const bookEditionId = book?.bookEditionId ?? boundBookEditionId;
+  const chatRoute = useMemo(
+    () =>
+      resolveNarraChatRoute({
+        mode: narraChatMode,
+        bookId,
+        bookEditionId,
+        isLocallyIndexed: book?.isVectorized,
+      }),
+    [book?.isVectorized, bookEditionId, bookId, narraChatMode],
+  );
+  const spoilerFreeRef = useRef(false);
+  const recordChatPath = useCallback(
+    (path: NarraChatPath) => recordDiagnostic("narra_chat_route", { mode: narraChatMode, path }),
+    [narraChatMode],
+  );
+  const bookRetrieval = useMemo(() => {
+    if (!bookId) return undefined;
+    if (!chatRoute.useServerIndex || !bookEditionId) {
+      return { isIndexed: chatRoute.useLocalIndex };
+    }
+    return {
+      isIndexed: true,
+      getAvailableTools: createNarraIndexedToolProvider({
+        bookId,
+        bookEditionId,
+        hasLocalIndex: chatRoute.useLocalIndex,
+        spoilerFree: () => spoilerFreeRef.current,
+        onPath: recordChatPath,
+      }),
+    };
+  }, [bookEditionId, bookId, chatRoute.useLocalIndex, chatRoute.useServerIndex, recordChatPath]);
   const [quotes, setQuotes] = useState<AttachedQuote[]>([]);
   const headerSafeAreaTop = embedded ? NARRA_CHAT_EMBEDDED_TOP_INSET : insets.top;
   const headerHeight = headerSafeAreaTop + NARRA_CHAT_HEADER_HEIGHT;
@@ -191,7 +230,7 @@ export function ChatScreen({
     sendMessage,
     retryLastMessage,
     stopStream,
-  } = useStreamingChat(bookId ? { book, bookId } : undefined);
+  } = useStreamingChat(bookId ? { book, bookId, bookRetrieval } : undefined);
 
   // Messages - compute directly without useMemo to ensure reactivity
   const activeThread = activeThreadId
@@ -210,16 +249,19 @@ export function ChatScreen({
   // Handlers
   const handleSend = useCallback(
     async (text: string, deepThinking: boolean, spoilerFree: boolean, quotes?: AttachedQuote[]) => {
+      spoilerFreeRef.current = spoilerFree;
+      recordChatPath(chatRoute.initialPath);
       const aiConfig = createNarraAssistantAIConfig(useSettingsStore.getState().aiConfig);
       await sendMessage(text, bookId, deepThinking, spoilerFree, quotes, aiConfig);
     },
-    [bookId, sendMessage],
+    [bookId, chatRoute.initialPath, recordChatPath, sendMessage],
   );
 
   const handleRetry = useCallback(async () => {
+    recordChatPath(chatRoute.initialPath);
     const aiConfig = createNarraAssistantAIConfig(useSettingsStore.getState().aiConfig);
     await retryLastMessage(aiConfig);
-  }, [retryLastMessage]);
+  }, [chatRoute.initialPath, recordChatPath, retryLastMessage]);
 
   const shownChatErrorRef = useRef<string | null>(null);
   useEffect(() => {
