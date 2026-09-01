@@ -30,8 +30,17 @@ export interface BackendManifestCharacter {
   profile: BackendRecord;
   assets: BackendCharacterAsset[];
 }
+export interface BackendAnalysisState {
+  runId?: string;
+  stage?: string;
+  status?: "queued" | "running" | "ready" | "failed" | "cancelled" | "unknown";
+  retryable: boolean;
+  errorCode?: string;
+  updatedAt?: string;
+}
 export interface BackendBookManifest {
-  availability: "ready" | "processing" | "unknown";
+  availability: "ready" | "processing" | "failed" | "cancelled" | "unavailable" | "unknown";
+  analysis?: BackendAnalysisState;
   language?: string | null;
   revision?: number;
   publicationId?: string;
@@ -174,12 +183,34 @@ export function parseBackendManifest(value: unknown): BackendBookManifest {
   const raw = backendRecord(value);
   if (!Array.isArray(raw.characters)) throw new Error("Invalid backend manifest characters");
   const markup = backendRecord(raw.markup);
+  const analysis = backendRecord(raw.analysis);
   const seen = new Set<string>();
   return {
     availability:
-      raw.availability === "ready" || raw.availability === "processing"
+      raw.availability === "ready" ||
+      raw.availability === "processing" ||
+      raw.availability === "failed" ||
+      raw.availability === "cancelled" ||
+      raw.availability === "unavailable"
         ? raw.availability
         : "unknown",
+    analysis:
+      Object.keys(analysis).length > 0
+        ? {
+            runId: string(analysis.run_id) || undefined,
+            stage: string(analysis.stage) || undefined,
+            status: ["queued", "running", "ready", "failed", "cancelled"].includes(
+              string(analysis.status),
+            )
+              ? (string(analysis.status) as BackendAnalysisState["status"])
+              : "unknown",
+            retryable: analysis.retryable === true,
+            errorCode: /^[A-Z0-9_]{1,80}$/.test(string(analysis.error_code))
+              ? string(analysis.error_code)
+              : undefined,
+            updatedAt: string(analysis.updated_at) || undefined,
+          }
+        : undefined,
     language: normalizeBookLanguage(raw.language),
     revision: finite(markup.revision) ? markup.revision : undefined,
     publicationId: string(raw.publication_id) || undefined,
@@ -196,7 +227,7 @@ export function parseBackendManifest(value: unknown): BackendBookManifest {
         {
           key,
           name: string(item.name),
-          fullName: string(item.full_name) || string(item.name),
+          fullName: string(item.full_name),
           firstAppearance: finite(item.first_appearance_text_offset)
             ? Math.max(0, item.first_appearance_text_offset)
             : undefined,
@@ -260,6 +291,7 @@ export function backendConfirmedCharacters(
         name: item.name,
         fullName: item.fullName,
         role: string(profile.role),
+        description: string(profile.description),
         gender: profile.gender === "female" ? "female" : "male",
         voice: typeof profile.voice === "string" && VOICES[profile.voice] ? profile.voice : "",
         traits,

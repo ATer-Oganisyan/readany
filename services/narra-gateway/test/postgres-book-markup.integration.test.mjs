@@ -2,10 +2,90 @@ import assert from 'node:assert/strict'
 import { createHash, randomUUID } from 'node:crypto'
 import test from 'node:test'
 import { REQUIRED_CHARACTER_MEDIA } from '../book-markup.mjs'
+import { createOperationalMetricsRepository } from '../operational-metrics-repository.mjs'
 import { createPostgresBookMarkupRepository } from '../postgres-book-markup-repository.mjs'
 import { runBookMarkupMigrations } from '../postgres-runtime.mjs'
 
 const connectionString = process.env.BOOK_MARKUP_TEST_DATABASE_URL
+
+test('PostgreSQL operational metrics query the migrated schema', {
+  skip: !connectionString
+}, async () => {
+  const { default: pg } = await import('pg')
+  const pool = new pg.Pool({ connectionString, ssl: false, max: 2 })
+  try {
+    await runBookMarkupMigrations(pool, { logger: { info() {} } })
+    const snapshot = await createOperationalMetricsRepository(pool).snapshot({
+      runtime: { providerFailures: [] },
+      concurrency: { speech: { active: 0, waiting: 0, limit: 1 } },
+      buildVersion: 'integration-test'
+    })
+    assert.equal(snapshot.buildVersion, 'integration-test')
+    assert.ok(
+      snapshot.generationQueue.oldestClaimableAgeMs === null ||
+      Number.isFinite(snapshot.generationQueue.oldestClaimableAgeMs)
+    )
+    assert.ok(
+      snapshot.analysisQueue.oldestRunningLeaseAgeMs === null ||
+      Number.isFinite(snapshot.analysisQueue.oldestRunningLeaseAgeMs)
+    )
+    assert.ok(Array.isArray(snapshot.workers))
+  } finally {
+    await pool.end()
+  }
+})
+
+test('PostgreSQL serializes parallel private identity, progress and manifest reads', {
+  skip: !connectionString
+}, async () => {
+  const { default: pg } = await import('pg')
+  const pool = new pg.Pool({ connectionString, ssl: false, max: 12 })
+  const bookEditionId = randomUUID()
+  const subjectId = randomUUID()
+  const hash = createHash('sha256').update(`lock-order-${bookEditionId}`).digest('hex')
+  try {
+    await runBookMarkupMigrations(pool, { logger: { info() {} } })
+    await pool.query(
+      `INSERT INTO book_editions (
+         id, scope, owner_subject_id, content_sha256, title, author, format,
+         status, source_storage, expires_at
+       ) VALUES (
+         $1, 'private', $2, $3, 'Lock Order', '', 'epub',
+         'marking_up', 'temporary', now() + interval '1 day'
+       )`,
+      [bookEditionId, subjectId, hash]
+    )
+    const repository = createPostgresBookMarkupRepository(pool)
+    const operations = []
+    for (let index = 1; index <= 20; index += 1) {
+      operations.push(
+        repository.getReaderBookIdentity({ subjectId, bookEditionId }),
+        repository.advanceReaderPosition({
+          subjectId,
+          bookEditionId,
+          progressFraction: index / 20,
+          chapterKey: `chapter-${index}`
+        }),
+        repository.getReaderBookManifest({
+          subjectId,
+          bookEditionId,
+          bundleVersion: 'character-bundle-v3'
+        })
+      )
+    }
+    const results = await Promise.all(operations)
+    assert.equal(results.length, 60)
+    const position = await pool.query(
+      `SELECT reading_fraction FROM reader_book_positions
+       WHERE subject_id = $1 AND book_edition_id = $2`,
+      [subjectId, bookEditionId]
+    )
+    assert.equal(Number(position.rows[0].reading_fraction), 1)
+  } finally {
+    await pool.query('DELETE FROM book_editions WHERE id = $1', [bookEditionId]).catch(() => {})
+    await pool.end()
+  }
+})
 
 test('PostgreSQL persists markup and independently publishes character media', {
   skip: !connectionString
@@ -181,7 +261,10 @@ test('PostgreSQL persists markup and independently publishes character media', {
     })
     assert.equal(progress.readerTextOffset, 90)
     assert.equal(progress.readingFraction, 0.09)
-    assert.deepEqual(progress.charactersDue.map(({ characterKey }) => characterKey), ['anna'])
+    assert.deepEqual(
+      progress.charactersDue.map(({ characterKey }) => characterKey),
+      ['anna', 'vronsky']
+    )
     const rewind = await repository.advanceReaderPosition({
       subjectId,
       bookEditionId,

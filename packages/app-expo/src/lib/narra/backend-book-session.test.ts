@@ -66,6 +66,19 @@ describe("backend book synchronization lifecycle", () => {
     await vi.advanceTimersByTimeAsync(30_000);
     expect(deps.manifest).toHaveBeenCalledTimes(4);
   });
+  it.each(["failed", "cancelled", "unavailable"] as const)(
+    "publishes %s once and does not leave an infinite manifest poll",
+    async (availability) => {
+      const { session, deps } = setup();
+      vi.mocked(deps.manifest).mockResolvedValue({ ...ready, availability });
+      session.start();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(deps.publish).toHaveBeenCalledTimes(1);
+      expect(deps.manifest).toHaveBeenCalledTimes(1);
+      expect(vi.getTimerCount()).toBe(0);
+      session.stop();
+    },
+  );
   it("honors identity poll_after_ms without delaying manifest", async () => {
     const { session, deps } = setup();
     vi.mocked(deps.identity).mockResolvedValue({ pending: true, delay: 12_000 });

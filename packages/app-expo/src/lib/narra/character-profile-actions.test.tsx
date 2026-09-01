@@ -226,6 +226,7 @@ describe("character profile actions", () => {
       "utf8",
     );
     expect(card.match(/onTalk=\{\(\) => onOpenChat\(character\)\}/g)).toHaveLength(2);
+    expect(card).toContain('label: t("narra.bio", "Био")');
   });
 
   it("shows a static portrait on the character profile", () => {

@@ -89,5 +89,7 @@ describe("scene action haptics", () => {
     expect(template).toMatch(
       /sceneState === 'idle' \|\| sceneState === 'error'[\s\S]*?postToRN\('sceneSlotTap'/,
     );
+    expect(template).toContain("if (!_sceneSlotsEnabled) return");
+    expect(template).toContain("action.disabled = !_sceneSlotsEnabled");
   });
 });

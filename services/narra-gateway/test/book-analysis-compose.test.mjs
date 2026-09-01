@@ -10,6 +10,14 @@ const localCompose = await readFile(
 const envExample = await readFile(new URL('../.env.example', import.meta.url), 'utf8')
 const gatewaySource = await readFile(new URL('../index.mjs', import.meta.url), 'utf8')
 const deploySource = await readFile(new URL('../deploy-i167.sh', import.meta.url), 'utf8')
+const stagingDeploySource = await readFile(
+  new URL('../deploy-staging-fun1.sh', import.meta.url),
+  'utf8'
+)
+const stagingEnvSource = await readFile(
+  new URL('../prepare-staging-env-fun1.sh', import.meta.url),
+  'utf8'
+)
 
 const stages = {
   prepare: '["node", "book-analysis-worker.mjs"]',
@@ -20,21 +28,23 @@ const stages = {
   publish: '["node", "book-analysis-stage-worker-runner.mjs", "publish"]'
 }
 
-test('canonical v3 analysis deploys every stage by default as an independently scalable service', () => {
+test('canonical v3 analysis deploys every stage in the explicit book-backend profile', () => {
   assert.doesNotMatch(compose, /profiles: \["book-analysis-shadow"\]/)
   for (const [stage, command] of Object.entries(stages)) {
     const service = `  book-analysis-${stage}:\n`
     assert.ok(compose.includes(service), `missing ${stage} service`)
     assert.ok(compose.includes(`    command: ${command}`), `wrong ${stage} command`)
+    const section = compose.slice(compose.indexOf(service), compose.indexOf(service) + 500)
+    assert.match(section, /profiles: \["book-backend"\]/)
   }
 })
 
-test('scan stage has parallel workers by default for catalog backfills', () => {
+test('scan stage starts with one canary worker and can be scaled explicitly', () => {
   const scan = compose.slice(
     compose.indexOf('  book-analysis-scan:'),
     compose.indexOf('  book-analysis-resolve:')
   )
-  assert.match(scan, /replicas: \$\{BOOK_ANALYSIS_SCAN_REPLICAS:-8\}/)
+  assert.match(scan, /replicas: \$\{BOOK_ANALYSIS_SCAN_REPLICAS:-1\}/)
 })
 
 test('external research services are isolated in the local-only compose profile', () => {
@@ -60,7 +70,7 @@ test('gateway LLM capacity is aligned with the larger scan pool', () => {
   assert.match(gatewaySource, /envInt\('LLM_CONCURRENCY', 12, 100\)/)
 })
 
-test('markup and synthesis capacity survives a routine compose redeploy', () => {
+test('markup and synthesis start as one-replica canaries and remain explicitly scalable', () => {
   const markup = compose.slice(
     compose.indexOf('  book-markup-worker:'),
     compose.indexOf('  book-analysis-prepare:')
@@ -69,8 +79,8 @@ test('markup and synthesis capacity survives a routine compose redeploy', () => 
     compose.indexOf('  book-analysis-synthesize:'),
     compose.indexOf('  book-analysis-validate:')
   )
-  assert.match(markup, /replicas: \$\{BOOK_MARKUP_WORKER_REPLICAS:-4\}/)
-  assert.match(synthesize, /replicas: \$\{BOOK_ANALYSIS_SYNTHESIZE_REPLICAS:-4\}/)
+  assert.match(markup, /replicas: \$\{BOOK_MARKUP_WORKER_REPLICAS:-1\}/)
+  assert.match(synthesize, /replicas: \$\{BOOK_ANALYSIS_SYNTHESIZE_REPLICAS:-1\}/)
 })
 
 test('book display identity has one separate durable worker', () => {
@@ -81,10 +91,7 @@ test('book display identity has one separate durable worker', () => {
   assert.match(identity, /command: \["node", "book-identity-worker\.mjs"\]/)
   assert.match(identity, /replicas: \$\{BOOK_IDENTITY_WORKER_REPLICAS:-1\}/)
   assert.match(identity, /read_only: true/)
-  assert.match(
-    deploySource,
-    /for worker_service in book-markup-worker book-identity-worker/
-  )
+  assert.match(stagingDeploySource, /--scale book-identity-worker=1/)
 })
 
 test('TTS markup runs as an independently scalable hardened container', () => {
@@ -93,13 +100,14 @@ test('TTS markup runs as an independently scalable hardened container', () => {
     compose.indexOf('  book-analysis-prepare:')
   )
   assert.match(worker, /command: \["node", "book-tts-markup-worker-runner\.mjs"\]/)
-  assert.match(worker, /replicas: \$\{BOOK_TTS_MARKUP_WORKER_REPLICAS:-2\}/)
+  assert.match(worker, /profiles: \["tts-markup"\]/)
+  assert.match(worker, /replicas: \$\{BOOK_TTS_MARKUP_WORKER_REPLICAS:-1\}/)
   assert.match(worker, /read_only: true/)
   assert.match(worker, /book-analysis-database-environment/)
   assert.match(worker, /book-analysis-storage-environment/)
   assert.match(worker, /book-analysis-generator-environment/)
-  assert.match(envExample, /^BOOK_TTS_MARKUP_WORKER_REPLICAS=2$/m)
-  assert.match(deploySource, /for worker_service in book-tts-markup-worker/)
+  assert.match(envExample, /^BOOK_TTS_MARKUP_WORKER_REPLICAS=1$/m)
+  assert.match(stagingDeploySource, /--scale book-tts-markup-worker=1/)
   const publicBooksRouter = gatewaySource.slice(
     gatewaySource.indexOf("app.use('/v2/books'"),
     gatewaySource.indexOf("app.post('/v2/events/batch'")
@@ -117,6 +125,69 @@ test('shadow analysis workers keep the hardened read-only runtime', () => {
   assert.match(compose, /restart: unless-stopped/)
   assert.match(compose, /read_only: true/)
   assert.match(compose, /no-new-privileges:true/)
+  assert.match(compose, /test: \["CMD", "node", "worker-healthcheck\.mjs"\]/)
+})
+
+test('media, scenes, TTS and operator campaigns are isolated profiles', () => {
+  const media = compose.slice(
+    compose.indexOf('  book-media-worker:'),
+    compose.indexOf('  book-scene-worker:')
+  )
+  const scenes = compose.slice(
+    compose.indexOf('  book-scene-worker:'),
+    compose.indexOf('  generation-queue-operator:')
+  )
+  const operator = compose.slice(
+    compose.indexOf('  generation-queue-operator:'),
+    compose.indexOf('\nvolumes:')
+  )
+  assert.match(media, /profiles: \["media"\]/)
+  assert.match(media, /BOOK_MARKUP_WORKER_JOB_TYPES: character_bundle,character_portrait,character_audio,character_animation/)
+  assert.match(scenes, /profiles: \["scenes"\]/)
+  assert.match(scenes, /BOOK_MARKUP_WORKER_JOB_TYPES: scene_image/)
+  assert.match(operator, /profiles: \["operator-campaigns"\]/)
+  assert.match(operator, /restart: "no"/)
+  assert.doesNotMatch(operator, /healthcheck:/)
+})
+
+test('deploy is pinned to fun1, versioned Compose, backups and one-replica canaries', () => {
+  assert.match(deploySource, /deploy-staging-fun1\.sh/)
+  assert.match(stagingDeploySource, /REMOTE="\$\{REMOTE:-fun1\}"/)
+  assert.match(stagingDeploySource, /\[ "\$REMOTE" != "fun1" \]/)
+  assert.match(stagingDeploySource, /ServerAliveInterval=15/)
+  assert.match(stagingDeploySource, /ServerAliveCountMax=12/)
+  assert.match(stagingDeploySource, /profiles=\(--profile book-backend --profile media --profile scenes --profile tts-markup\)/)
+  assert.match(stagingDeploySource, /-f "\$REMOTE_STAGE\/compose\.i167\.yml"/)
+  assert.match(stagingDeploySource, /pg_dump/)
+  assert.match(stagingDeploySource, /SELECT filename, checksum FROM book_markup_schema_migrations/)
+  assert.match(stagingDeploySource, /Applied migration differs from the reviewed release/)
+  assert.match(stagingDeploySource, /gateway-data\.tar\.gz/)
+  assert.match(stagingDeploySource, /minio-inventory-summary/)
+  assert.match(stagingDeploySource, /-e DATABASE_URL=/)
+  assert.match(stagingDeploySource, /-e BOOK_BACKEND_REQUIRED=false/)
+  assert.ok(
+    stagingDeploySource.indexOf('candidate="narra-staging-candidate-') <
+      stagingDeploySource.indexOf('backup_dir="/srv/backups/narra-stagging/')
+  )
+  assert.match(stagingDeploySource, /--scale book-analysis-scan=1/)
+  assert.match(stagingDeploySource, /RestartCount/)
+  assert.match(stagingDeploySource, /State\.Health/)
+  assert.match(stagingDeploySource, /failed-gateway\.log/)
+  assert.doesNotMatch(stagingDeploySource, /--remove-orphans/)
+  assert.match(stagingDeploySource, /echo "Staging deployment failed;[^\n]+\n  exit 1/)
+  assert.match(stagingEnvSource, /INSTALLATION_OPERATOR_TOKEN/)
+  assert.match(stagingEnvSource, /BOOK_OPERATOR_USERNAME/)
+  assert.match(stagingEnvSource, /BOOK_OPERATOR_PASSWORD/)
+  assert.match(stagingEnvSource, /ANALYTICS_ENV=staging/)
+  assert.match(stagingEnvSource, /runtime_keys=\(/)
+  assert.match(stagingEnvSource, /GATEWAY_TOKEN_SECRET/)
+  assert.match(stagingEnvSource, /INSTALLATION_SECRET_PEPPER/)
+  assert.match(stagingEnvSource, /ANALYTICS_HMAC_SECRET/)
+  assert.match(stagingEnvSource, /grep -Fqx -- "\$source_line"/)
+  assert.match(stagingEnvSource, /current_managed_keys=\(/)
+  assert.match(stagingEnvSource, /printf '%s\\n' "\$operator_token_line"/)
+  assert.doesNotMatch(stagingEnvSource, /openssl rand/)
+  assert.match(stagingEnvSource, /compose\.env\.\$timestamp/)
 })
 
 test('stage services receive only the provider credentials they need', () => {
@@ -126,7 +197,7 @@ test('stage services receive only the provider credentials they need', () => {
   )
   const publish = compose.slice(
     compose.indexOf('  book-analysis-publish:'),
-    compose.indexOf('\nvolumes:')
+    compose.indexOf('  book-media-worker:')
   )
   assert.match(resolve, /book-analysis-database-environment/)
   assert.match(resolve, /book-analysis-generator-environment/)

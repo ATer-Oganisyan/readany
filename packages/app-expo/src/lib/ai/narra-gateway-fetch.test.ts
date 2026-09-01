@@ -365,6 +365,7 @@ describe("Narra gateway build configuration", () => {
     process.env.EXPO_PUBLIC_NARRA_ENVIRONMENT = "";
     process.env.EXPO_PUBLIC_NARRA_GATEWAY_URL = "";
     process.env.EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE = "";
+    process.env.EXPO_PUBLIC_NARRA_ENVIRONMENT = "";
 
     const gateway = await import("./narra-gateway-fetch");
 

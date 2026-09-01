@@ -1,6 +1,7 @@
 const { getDefaultConfig } = require("expo/metro-config");
 const { withStorybook } = require("@storybook/react-native/metro/withStorybook");
 const { withUniwindConfig } = require("uniwind/metro");
+const fs = require("node:fs");
 const path = require("node:path");
 
 const projectRoot = __dirname;
@@ -8,15 +9,27 @@ const monorepoRoot = path.resolve(projectRoot, "../..");
 
 const config = getDefaultConfig(projectRoot);
 
-// 1. Watch the monorepo root so Metro can resolve workspace packages,
-// while preserving Expo's defaults for doctor/build compatibility.
-config.watchFolders = Array.from(new Set([...(config.watchFolders ?? []), monorepoRoot]));
-
-// 2. Tell Metro where to find node_modules in a pnpm monorepo
-config.resolver.nodeModulesPaths = [
+// 1. Tell Metro where to find node_modules in a pnpm monorepo.
+const nodeModulesPaths = [
   path.resolve(projectRoot, "node_modules"),
   path.resolve(monorepoRoot, "node_modules"),
 ];
+config.resolver.nodeModulesPaths = nodeModulesPaths;
+
+// 2. Watch the monorepo root and any external node_modules target used by a
+// Git worktree. Metro resolves symlinks to their real path and otherwise
+// rejects Expo virtual modules that live outside the project roots.
+const linkedNodeModules = nodeModulesPaths.flatMap((modulePath) => {
+  try {
+    const realPath = fs.realpathSync(modulePath);
+    return realPath === modulePath ? [] : [realPath];
+  } catch {
+    return [];
+  }
+});
+config.watchFolders = Array.from(
+  new Set([...(config.watchFolders ?? []), monorepoRoot, ...linkedNodeModules]),
+);
 
 // 3. Block large unused modules from being bundled
 config.resolver.blockList = [

@@ -54,6 +54,43 @@ describe("backend book contract", () => {
     expect(characters[0].portraitUri).toBeUndefined();
     expect(characters[0].voice).not.toBe("");
   });
+  it("keeps terminal analysis state safe and preserves a real bio separately from role", () => {
+    const value = manifest({
+      availability: "failed",
+      analysis: {
+        run_id: "run-id",
+        stage: "scan",
+        status: "failed",
+        retryable: true,
+        error_code: "ANALYSIS_FAILED",
+        updated_at: "2026-08-31T12:00:00.000Z",
+        error_detail: "must not be exposed",
+      },
+      characters: [
+        {
+          character_key: "stable-id",
+          name: "Андрей",
+          provisional: false,
+          state: "ready",
+          profile: { role: "Главный герой", description: "Князь и офицер." },
+        },
+      ],
+    });
+    expect(value.analysis).toEqual({
+      runId: "run-id",
+      stage: "scan",
+      status: "failed",
+      retryable: true,
+      errorCode: "ANALYSIS_FAILED",
+      updatedAt: "2026-08-31T12:00:00.000Z",
+    });
+    expect(value.characters[0].fullName).toBe("");
+    expect(value.characters[0].profile).toMatchObject({
+      role: "Главный герой",
+      description: "Князь и офицер.",
+    });
+    expect(JSON.stringify(value)).not.toContain("must not be exposed");
+  });
   it("never promotes processing or unknown availability to confirmed", () => {
     expect(backendConfirmedCharacters(manifest({ availability: "processing" }), 1)).toEqual([]);
     expect(backendConfirmedCharacters(manifest({ availability: "new-state" }), 1)).toEqual([]);
@@ -97,6 +134,9 @@ describe("backend book contract", () => {
     expect(shouldPollBackendManifest(value, 0.3)).toBe(false);
     expect(shouldPollBackendManifest(value, 0.4)).toBe(true);
     expect(shouldPollBackendManifest({ ...value, availability: "processing" }, 0)).toBe(true);
+    expect(shouldPollBackendManifest({ ...value, availability: "failed" }, 1)).toBe(false);
+    expect(shouldPollBackendManifest({ ...value, availability: "cancelled" }, 1)).toBe(false);
+    expect(shouldPollBackendManifest({ ...value, availability: "unavailable" }, 1)).toBe(false);
   });
   it("does not apply a future personality snapshot", () => {
     const value = manifest();

@@ -72,6 +72,14 @@ function firstAudioLatencyBucket(durationMs: number): string {
   return "15s+";
 }
 
+function boundedRetryAfterMs(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const seconds = Number(value);
+  const milliseconds = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(value) - Date.now();
+  if (!Number.isFinite(milliseconds) || milliseconds < 0) return undefined;
+  return Math.max(250, Math.min(60_000, Math.round(milliseconds)));
+}
+
 /**
  * Единая телеметрия медиа-генераций. По умолчанию provider/model гейтвейные
  * (Kandinsky/SaluteSpeech); OpenRouter-путь сцен (scene-image-openrouter.ts)
@@ -701,6 +709,8 @@ export function synthesizeNarraBookSpeech(
               "Не удалось озвучить фрагмент.",
               undefined,
               `Speech HTTP ${response.status}`,
+              `HTTP_${response.status}`,
+              boundedRetryAfterMs(response.headers.get("retry-after")),
             );
           }
           const mime = response.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase();

@@ -2898,6 +2898,7 @@ a { color: ${primary} !important; }
           const sceneAnchor = sceneInsertTarget.getAttribute(SCENE_ANCHOR_ATTR) || '';
           const sceneState = sceneInsertTarget.getAttribute(SCENE_STATE_ATTR) || '';
           if (!sceneAnchor) return;
+          if (!_sceneSlotsEnabled) return;
           if (sceneState === 'idle' || sceneState === 'error') {
             renderSceneInsert(sceneInsertTarget, 'loading', null);
             postToRN('sceneSlotTap', { anchor: sceneAnchor });
@@ -5611,10 +5612,12 @@ a { color: ${primary} !important; }
     var _sceneSlotLabels = {
       idle: 'Сгенерировать сцену',
       loading: 'Рисуем сцену…',
-      loadingHint: 'Это может занять несколько минут',
+      loadingHint: 'Обычно 2–3 минуты',
+      disabled: 'Разметка книги ещё готовится',
       caption: 'Сцена — сгенерировано ИИ',
       error: 'Попробовать снова',
     };
+    var _sceneSlotsEnabled = true;
 
     // Иконка из переданного макета magic-wand-filled.svg. currentColor
     // синхронизирует её с цветом текста и темой ридера.
@@ -5913,9 +5916,9 @@ a { color: ${primary} !important; }
         box.setAttribute('role', 'status');
         box.setAttribute('aria-label', _sceneSlotLabels.loading);
       } else if (state === 'error') {
-        appendSceneAction(box, _sceneSlotLabels.error);
+        appendSceneAction(box, _sceneSlotsEnabled ? _sceneSlotLabels.error : _sceneSlotLabels.disabled);
       } else {
-        appendSceneAction(box, _sceneSlotLabels.idle);
+        appendSceneAction(box, _sceneSlotsEnabled ? _sceneSlotLabels.idle : _sceneSlotLabels.disabled);
       }
       // The same Primary5 frame is present in every placeholder state.
       appendSceneFlowBorder(box);
@@ -5970,6 +5973,7 @@ a { color: ${primary} !important; }
       action.setAttribute('data-slot', 'button');
       action.setAttribute('data-variant', 'outline');
       action.setAttribute('data-size', 'default');
+      action.disabled = !_sceneSlotsEnabled;
       // EPUB typography enforces SB Serif and the reader font size with
       // !important. Inline important keeps this isolated control on the
       // primitives Body style regardless of the book's own CSS.
@@ -6254,9 +6258,20 @@ a { color: ${primary} !important; }
           ? (typeof labelsJson === 'string' ? JSON.parse(labelsJson) : labelsJson)
           : null;
         if (!labels) return;
+        if (typeof labels.enabled === 'boolean') _sceneSlotsEnabled = labels.enabled;
         for (var key in _sceneSlotLabels) {
           if (typeof labels[key] === 'string' && labels[key]) {
             _sceneSlotLabels[key] = labels[key];
+          }
+        }
+        var contents = getRendererContents();
+        for (var i = 0; i < contents.length; i++) {
+          var doc = contents[i].doc;
+          if (!doc) continue;
+          var slots = doc.querySelectorAll('.' + SCENE_INSERT_CLASS);
+          for (var j = 0; j < slots.length; j++) {
+            var state = slots[j].getAttribute(SCENE_STATE_ATTR);
+            if (state === 'idle' || state === 'error') renderSceneInsert(slots[j], state, null);
           }
         }
       } catch (e) {

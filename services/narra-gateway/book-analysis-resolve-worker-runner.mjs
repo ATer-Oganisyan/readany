@@ -4,6 +4,7 @@ import { createBookAnalysisResolveWorker } from './book-analysis-resolve-worker.
 import { createGenerationServiceClient } from './generation-service-client.mjs'
 import { parseEnvInt, parseEnvUuidList } from './env.mjs'
 import { createOperationalLogger } from './operational-log.mjs'
+import { createWorkerHeartbeat } from './worker-heartbeat.mjs'
 import { createPostgresPoolFromEnv, runBookMarkupMigrations } from './postgres-runtime.mjs'
 
 function delay(milliseconds, signal) {
@@ -52,8 +53,16 @@ if (leaseRenewMs >= leaseSeconds * 1_000) {
 
 const log = createOperationalLogger({ component: 'analysis-resolve-worker' })
 const pool = await createPostgresPoolFromEnv(process.env)
+let heartbeat
 try {
   await runBookMarkupMigrations(pool)
+  heartbeat = createWorkerHeartbeat({
+    pool,
+    workerId,
+    workerType: process.env.WORKER_TYPE || 'book-analysis-resolve',
+    logger: log
+  })
+  await heartbeat.start()
   const repository = createPostgresBookAnalysisRepository(pool)
   const worker = createBookAnalysisResolveWorker({
     repository,
@@ -94,6 +103,7 @@ try {
     }
   }
 } finally {
+  heartbeat?.stop()
   await pool.end()
   log.info('worker.stopped', 'Resolve-воркер остановлен', { worker: workerId })
 }

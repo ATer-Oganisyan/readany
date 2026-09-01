@@ -16,6 +16,7 @@ import {
   parseLocalBookBody,
   parseLocalMarkupBody,
   parseReaderProgressBody,
+  parseAnalysisRetryBody,
   parseSceneAtBody,
   manifestJson,
   ttsSectionJson
@@ -55,6 +56,17 @@ test('book catalog router exposes a separate genres endpoint', () => {
     path === '/:bookEditionId/content/toc' && methods.get))
   assert.ok(routes.some(({ path, methods }) =>
     path === '/:bookEditionId/tts-script/sections/:sectionIndex' && methods.get))
+  assert.ok(routes.some(({ path, methods }) =>
+    path === '/:bookEditionId/analysis/retry' && methods.post))
+})
+
+test('analysis retry accepts only an explicit UUID request id', () => {
+  assert.deepEqual(parseAnalysisRetryBody({ request_id: ID }), { requestId: ID })
+  assert.throws(() => parseAnalysisRetryBody({ request_id: 'retry-me' }), /invalid UUID/)
+  assert.throws(
+    () => parseAnalysisRetryBody({ request_id: ID, force: true }),
+    /unknown field/
+  )
 })
 
 test('manifest polling exposes additive TTS markup state without changing book markup', () => {
@@ -70,6 +82,29 @@ test('manifest polling exposes additive TTS markup state without changing book m
     status: 'processing', version: 'book-tts-script-v1', revision: null,
     retry_after_ms: 10_000
   })
+})
+
+test('terminal manifest serializes safe retry metadata without provider detail', () => {
+  const json = manifestJson({
+    source: 'v3', book: {}, availability: 'cancelled', readerTextOffset: 0,
+    readingFraction: 0, markup: null, characters: [],
+    analysis: {
+      runId: ID, stage: 'scan', status: 'cancelled', retryable: true,
+      errorCode: 'OPERATOR_CANCELLED', updatedAt: '2026-08-31T12:00:00.000Z'
+    }
+  })
+  assert.deepEqual(json.analysis, {
+    run_id: ID,
+    stage: 'scan',
+    status: 'cancelled',
+    retryable: true,
+    error_code: 'OPERATOR_CANCELLED',
+    updated_at: '2026-08-31T12:00:00.000Z',
+    text_length: undefined,
+    completed_scan_chunks: undefined,
+    total_scan_chunks: undefined
+  })
+  assert.equal(JSON.stringify(json).includes('provider'), false)
 })
 
 test('TTS section JSON carries exact source ranges and canonical character keys', () => {

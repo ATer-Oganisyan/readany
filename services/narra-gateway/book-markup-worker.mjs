@@ -8,6 +8,7 @@ import {
 import { createPostgresBookMarkupRepository } from './postgres-book-markup-repository.mjs'
 import { createPostgresPoolFromEnv, runBookMarkupMigrations } from './postgres-runtime.mjs'
 import { createOperationalLogger } from './operational-log.mjs'
+import { createWorkerHeartbeat } from './worker-heartbeat.mjs'
 
 function delay(milliseconds, signal) {
   return new Promise((resolve) => {
@@ -38,8 +39,16 @@ if (leaseRenewMs >= leaseSeconds * 1_000) {
 }
 
 const pool = await createPostgresPoolFromEnv(process.env)
+let heartbeat
 try {
   await runBookMarkupMigrations(pool)
+  heartbeat = createWorkerHeartbeat({
+    pool,
+    workerId,
+    workerType: process.env.WORKER_TYPE || 'book-markup',
+    logger: log
+  })
+  await heartbeat.start()
   const baseRepository = createPostgresBookMarkupRepository(pool)
   const repository = {
     ...baseRepository,
@@ -84,6 +93,7 @@ try {
     }
   }
 } finally {
+  heartbeat?.stop()
   await pool.end()
   log.info('worker.stopped', 'Воркер остановлен', { worker: workerId })
 }

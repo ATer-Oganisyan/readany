@@ -8,6 +8,12 @@ const sharedChat = readFileSync(
 );
 
 describe("Narra and character chat UI contract", () => {
+  it("routes Narra assistant messages through the server-owned Gateway", () => {
+    expect(chatScreen).toContain("createNarraAssistantAIConfig");
+    expect(chatScreen).not.toContain("resolveActiveAIConfig");
+    expect(chatScreen).not.toContain("chat.configRequired");
+  });
+
   it("uses the standard top toast for Narra response failures", () => {
     expect(chatScreen).toContain('toast.error(t("chat.responseFailed"');
     expect(chatScreen).toContain('label: t("common.retry", "Повторить")');

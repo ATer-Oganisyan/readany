@@ -20,6 +20,8 @@ export class NarraServiceError extends Error {
      * совсем» от «сейчас недоступно» и решить, повторять ли попытку.
      */
     public readonly backendCode?: string,
+    /** Bounded server hint used only by retry-capable callers. */
+    public readonly retryAfterMs?: number,
   ) {
     super(message);
     this.name = "NarraServiceError";
@@ -87,5 +89,12 @@ export function reportNarraError(scope: string, error: unknown): NarraServiceErr
   });
   return normalized.technicalDetail || error === normalized
     ? normalized
-    : new NarraServiceError(normalized.code, normalized.message, normalized.requestId, detail);
+    : new NarraServiceError(
+        normalized.code,
+        normalized.message,
+        normalized.requestId,
+        detail,
+        normalized.backendCode,
+        normalized.retryAfterMs,
+      );
 }

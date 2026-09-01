@@ -29,6 +29,7 @@ case "$NARRA_BACKEND_PROFILE" in
     ;;
 esac
 export EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE="${EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE:-installation}"
+export EXPO_PUBLIC_NARRA_ANALYTICS_TIER="${EXPO_PUBLIC_NARRA_ANALYTICS_TIER:-essential}"
 BUNDLE_ID="com.mishanaer.readany.dev"
 if [[ -d "$APP_ROOT/ios/ReadAnyDev.xcworkspace" ]]; then
   WORKSPACE="$APP_ROOT/ios/ReadAnyDev.xcworkspace"
@@ -568,6 +569,7 @@ run_rebuild_ios() {
   expected_build="$(expected_build_number)"
   current_fingerprint="$(native_fingerprint)"
   log "Expected build: $expected_build; native fingerprint: ${current_fingerprint:0:12}"
+  log "Gateway profile: $EXPO_PUBLIC_NARRA_ENVIRONMENT ($EXPO_PUBLIC_NARRA_GATEWAY_URL)"
 
   build_canonical_app_if_needed "$expected_build" "$current_fingerprint"
   install_canonical_app_if_needed "$expected_build"
@@ -623,6 +625,7 @@ run_check() {
   log "Automatic pasteboard sync: $(pasteboard_sync_status)"
   log "Simulator: $SIMULATOR_NAME ($SIMULATOR_ID)"
   log "Expected build: $expected_build; installed build: $installed_build"
+  log "Gateway profile: $EXPO_PUBLIC_NARRA_ENVIRONMENT ($EXPO_PUBLIC_NARRA_GATEWAY_URL)"
   log "Metro localhost:$METRO_PORT: $metro_status"
   log "Workspace: $WORKSPACE"
   log "Canonical DerivedData: $DERIVED_DATA_PATH"

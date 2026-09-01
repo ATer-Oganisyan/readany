@@ -4,6 +4,7 @@ import {
   imageEmptyResultError,
   imageUpstreamError,
   simplifiedPortraitPrompt,
+  simplifiedScenePrompt,
   shouldFallbackAfterImageError
 } from '../image-policy.mjs'
 import {
@@ -81,6 +82,19 @@ test('portrait retry keeps a bounded appearance but drops book metadata', () => 
   assert.match(retry, /fictional appearance/i)
   assert.doesNotMatch(retry, /Character from the book|Author/)
   assert.match(retry, /no typography/i)
+})
+
+test('scene retry keeps the action but drops oversized prompt context', () => {
+  const prompt = [
+    `ЖАНР И СТИЛЬ: ${'стиль '.repeat(100)}`,
+    `ДЕЙСТВИЕ — ГЛАВНОЕ: герой открывает дверь. ${'деталь '.repeat(120)}`,
+    `ПЕРСОНАЖИ: ${'описание '.repeat(100)}`
+  ].join('\n\n')
+  const simplified = simplifiedScenePrompt(prompt)
+  assert.match(simplified, /^ДЕЙСТВИЕ — ГЛАВНОЕ:/)
+  assert.match(simplified, /без коллажа, текста/)
+  assert.ok(simplified.length <= 750)
+  assert.doesNotMatch(simplified, /ЖАНР И СТИЛЬ/)
 })
 
 test('video retries only explicit rate-limit conditions', () => {
