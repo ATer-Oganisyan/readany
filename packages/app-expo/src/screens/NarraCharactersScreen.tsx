@@ -13,7 +13,7 @@ import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { useBackendBook } from "@/hooks/use-backend-book";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import { retryBackendBookAnalysis, useBackendBookStatus } from "@/lib/narra/backend-book-sync";
-import { characterProfileText } from "@/lib/narra/character-profile";
+import { characterBiography } from "@/lib/narra/character-profile";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
 import type { NarraCharacter } from "@/lib/narra/types";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
@@ -399,7 +399,7 @@ function NarraCharactersList({
           character: character.name,
         }),
         title: character.fullName || character.name,
-        subtitle: characterProfileText(character, "description"),
+        subtitle: characterBiography(character),
         onPress: () => openCharacterChat(character),
         avatar: (
           <CharacterChatAvatar>

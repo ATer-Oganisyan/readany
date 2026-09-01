@@ -160,6 +160,7 @@
     "voiceCharacter": "Play voice",
     "loopingPortraitLabel": "Looping character portrait",
     "character": "Personality",
+    "bio": "Bio",
     "description": "Description",
     "continueReading": "Continue reading"
   },

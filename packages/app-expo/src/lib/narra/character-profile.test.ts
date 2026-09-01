@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { characterProfileText } from "./character-profile";
+import { characterBiography, characterProfileText } from "./character-profile";
 import type { NarraCharacter } from "./types";
 
 const character = {
@@ -20,5 +20,17 @@ describe("characterProfileText", () => {
 
   it("returns undefined for an absent field", () => {
     expect(characterProfileText(character, "missing")).toBeUndefined();
+  });
+});
+
+describe("characterBiography", () => {
+  it("keeps role as a fallback for a persisted legacy character", () => {
+    expect(
+      characterBiography({
+        role: "  Главный герой  ",
+        description: undefined,
+        profileDetails: [],
+      } as unknown as NarraCharacter),
+    ).toBe("Главный герой");
   });
 });

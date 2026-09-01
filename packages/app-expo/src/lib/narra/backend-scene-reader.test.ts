@@ -43,10 +43,10 @@ const ready = {
   image_url: "https://storage.test/?secret=signed",
   mime_type: "image/png",
 };
-const input = () => ({
+const input = (anchor = "anchor") => ({
   bookId: "book",
-  sourceKey: "page:anchor",
-  anchor: "anchor",
+  sourceKey: `page:${anchor}`,
+  anchor,
   chapter: "Chapter",
   intent: { bookEditionId: "edition", markupIdentity: "v3", requestedProgress: 0.385 },
   display: vi.fn(),
@@ -85,6 +85,26 @@ describe("reader backend scene action and persistence", () => {
     expect(JSON.stringify(runtime.diagnostic.mock.calls)).not.toContain("signed");
     const correlation = runtime.diagnostic.mock.calls.map((args) => args[1].requestId);
     expect(new Set(correlation).size).toBe(1);
+  });
+  it("reuses one backend asset across anchors without removing or hiding the tapped slot", async () => {
+    const first = input("first-anchor");
+    const second = input("second-anchor");
+
+    await generateBackendReaderScene(first, new AbortController().signal);
+    await generateBackendReaderScene(second, new AbortController().signal);
+
+    expect(Object.keys(state().scenesByBackendId ?? {})).toHaveLength(1);
+    expect(state().sceneAnchorBindings).toEqual({
+      "first-anchor": expect.any(String),
+      "second-anchor": expect.any(String),
+    });
+    expect(first.remove).not.toHaveBeenCalled();
+    expect(second.remove).not.toHaveBeenCalled();
+    expect(first.display).toHaveBeenCalledWith("first-anchor", "data:image/png;base64,aW1hZ2U=");
+    expect(second.display).toHaveBeenCalledWith("second-anchor", "data:image/png;base64,aW1hZ2U=");
+    expect(
+      runtime.diagnostic.mock.calls.filter(([, value]) => value.stage === "webview"),
+    ).toHaveLength(2);
   });
   it("failed job is terminal, leaves a retry intent, and never saves/displays another generated scene", async () => {
     runtime.request.mockResolvedValue({ status: "failed" });

@@ -69,6 +69,7 @@ import {
   startImportedBackendBook,
   useBackendBookStatus,
 } from "./backend-book-sync";
+import { characterBiography } from "./character-profile";
 
 const ready = {
   availability: "ready",
@@ -178,6 +179,64 @@ describe("backend book import and persistence integration", () => {
       backendManaged: true,
     });
     expect(useNarraStore.getState().books.local.characters[0].portraitUri).toBeUndefined();
+  });
+  it("shows catalog description as bio when role is null", async () => {
+    runtime.request.mockImplementation(async (path: string) => {
+      if (path.endsWith("/manifest"))
+        return {
+          ...ready,
+          characters: [
+            {
+              ...ready.characters[0],
+              profile: { role: null, description: "Био каталожного персонажа." },
+            },
+          ],
+        };
+      return {};
+    });
+
+    await open({
+      ...book(),
+      sourceKind: "catalog",
+      bookEditionId: "catalog-id",
+      contentHash: "a".repeat(64),
+    });
+
+    const character = useNarraStore.getState().books.local.characters[0];
+    expect(character.role).toBe("");
+    expect(character.description).toBe("Био каталожного персонажа.");
+    expect(characterBiography(character)).toBe("Био каталожного персонажа.");
+  });
+  it("shows private-book description as bio when role and description differ", async () => {
+    useNarraStore.getState().setBackendBinding("local", {
+      resolution: "private",
+      bookEditionId: "private-id",
+      contentSha256: "a".repeat(64),
+      sourceUploaded: true,
+    });
+    runtime.request.mockImplementation(async (path: string) => {
+      if (path.endsWith("/manifest"))
+        return {
+          ...ready,
+          characters: [
+            {
+              ...ready.characters[0],
+              profile: {
+                role: "Главный герой",
+                description: "Отдельное описание личного персонажа.",
+              },
+            },
+          ],
+        };
+      return {};
+    });
+
+    await open(book());
+
+    const character = useNarraStore.getState().books.local.characters[0];
+    expect(character.role).toBe("Главный герой");
+    expect(character.description).toBe("Отдельное описание личного персонажа.");
+    expect(characterBiography(character)).toBe("Отдельное описание личного персонажа.");
   });
   it("resolves a local file to catalog without uploading it", async () => {
     runtime.request.mockResolvedValueOnce({
