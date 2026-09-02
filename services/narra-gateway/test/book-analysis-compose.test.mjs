@@ -9,8 +9,10 @@ const localCompose = await readFile(
 )
 const envExample = await readFile(new URL('../.env.example', import.meta.url), 'utf8')
 const gatewaySource = await readFile(new URL('../index.mjs', import.meta.url), 'utf8')
-const deploySource = await readFile(new URL('../deploy-i167.sh', import.meta.url), 'utf8')
-const stagingDeploySource = await readFile(
+const deploySource = await readFile(new URL('../deploy.sh', import.meta.url), 'utf8')
+const migrateSource = await readFile(new URL('../migrate.sh', import.meta.url), 'utf8')
+const deprecatedDeploySource = await readFile(new URL('../deploy-i167.sh', import.meta.url), 'utf8')
+const deprecatedStagingDeploySource = await readFile(
   new URL('../deploy-staging-fun1.sh', import.meta.url),
   'utf8'
 )
@@ -91,7 +93,7 @@ test('book display identity has one separate durable worker', () => {
   assert.match(identity, /command: \["node", "book-identity-worker\.mjs"\]/)
   assert.match(identity, /replicas: \$\{BOOK_IDENTITY_WORKER_REPLICAS:-1\}/)
   assert.match(identity, /read_only: true/)
-  assert.match(stagingDeploySource, /--scale book-identity-worker=1/)
+  assert.match(deploySource, /book_worker_services=\(book-markup-worker book-identity-worker/)
 })
 
 test('TTS markup runs as an independently scalable hardened container', () => {
@@ -107,7 +109,7 @@ test('TTS markup runs as an independently scalable hardened container', () => {
   assert.match(worker, /book-analysis-storage-environment/)
   assert.match(worker, /book-analysis-generator-environment/)
   assert.match(envExample, /^BOOK_TTS_MARKUP_WORKER_REPLICAS=1$/m)
-  assert.match(stagingDeploySource, /--scale book-tts-markup-worker=1/)
+  assert.match(deploySource, /tts_services=\(book-tts-markup-worker\)/)
   const publicBooksRouter = gatewaySource.slice(
     gatewaySource.indexOf("app.use('/v2/books'"),
     gatewaySource.indexOf("app.post('/v2/events/batch'")
@@ -150,31 +152,41 @@ test('media, scenes, TTS and operator campaigns are isolated profiles', () => {
   assert.doesNotMatch(operator, /healthcheck:/)
 })
 
-test('deploy is pinned to fun1, versioned Compose, backups and one-replica canaries', () => {
-  assert.match(deploySource, /deploy-staging-fun1\.sh/)
-  assert.match(stagingDeploySource, /REMOTE="\$\{REMOTE:-fun1\}"/)
-  assert.match(stagingDeploySource, /\[ "\$REMOTE" != "fun1" \]/)
-  assert.match(stagingDeploySource, /ServerAliveInterval=15/)
-  assert.match(stagingDeploySource, /ServerAliveCountMax=12/)
-  assert.match(stagingDeploySource, /profiles=\(--profile book-backend --profile media --profile scenes --profile tts-markup\)/)
-  assert.match(stagingDeploySource, /-f "\$REMOTE_STAGE\/compose\.i167\.yml"/)
-  assert.match(stagingDeploySource, /pg_dump/)
-  assert.match(stagingDeploySource, /SELECT filename, checksum FROM book_markup_schema_migrations/)
-  assert.match(stagingDeploySource, /Applied migration differs from the reviewed release/)
-  assert.match(stagingDeploySource, /gateway-data\.tar\.gz/)
-  assert.match(stagingDeploySource, /minio-inventory-summary/)
-  assert.match(stagingDeploySource, /-e DATABASE_URL=/)
-  assert.match(stagingDeploySource, /-e BOOK_BACKEND_REQUIRED=false/)
-  assert.ok(
-    stagingDeploySource.indexOf('candidate="narra-staging-candidate-') <
-      stagingDeploySource.indexOf('backup_dir="/srv/backups/narra-stagging/')
+test('database migrations are an explicit one-shot Compose operation', () => {
+  const migration = compose.slice(
+    compose.indexOf('  migrate:'),
+    compose.indexOf('  book-markup-worker:')
   )
-  assert.match(stagingDeploySource, /--scale book-analysis-scan=1/)
-  assert.match(stagingDeploySource, /RestartCount/)
-  assert.match(stagingDeploySource, /State\.Health/)
-  assert.match(stagingDeploySource, /failed-gateway\.log/)
-  assert.doesNotMatch(stagingDeploySource, /--remove-orphans/)
-  assert.match(stagingDeploySource, /echo "Staging deployment failed;[^\n]+\n  exit 1/)
+  assert.match(compose, /DATABASE_AUTO_MIGRATE: "false"/)
+  assert.match(migration, /profiles: \["operations"\]/)
+  assert.match(migration, /command: \["node", "migrate\.mjs"\]/)
+  assert.match(migration, /DATABASE_AUTO_MIGRATE: "true"/)
+  assert.match(migration, /restart: "no"/)
+})
+
+test('deploy uses Docker Compose only and keeps migrations and backups separate', () => {
+  assert.match(deploySource, /mode="default"/)
+  assert.match(deploySource, /add_service gateway/)
+  assert.match(deploySource, /--force-recreate --wait --wait-timeout/)
+  assert.match(deploySource, /up_args\+=\(--no-deps\)/)
+  assert.match(deploySource, /--confirm-stateful-restart/)
+  assert.match(deploySource, /migrate node migrate\.mjs --check/)
+  assert.match(deploySource, /docker compose/)
+  assert.doesNotMatch(deploySource, /\bssh\b|\brsync\b|\bsystemctl\b|\bnpm\b/)
+  assert.doesNotMatch(deploySource, /\bdocker (?!compose\b)/)
+  assert.doesNotMatch(deploySource, /pg_dump|backup-i167/)
+
+  assert.match(migrateSource, /docker compose/)
+  assert.match(migrateSource, /run --rm migrate/)
+  assert.doesNotMatch(migrateSource, /deploy\.sh|backup-i167|pg_dump/)
+
+  assert.match(deprecatedDeploySource, /DEPRECATED/)
+  assert.match(deprecatedDeploySource, /exit 64/)
+  assert.match(deprecatedStagingDeploySource, /DEPRECATED/)
+  assert.match(deprecatedStagingDeploySource, /exit 64/)
+})
+
+test('staging environment preparation preserves existing secrets', () => {
   assert.match(stagingEnvSource, /INSTALLATION_OPERATOR_TOKEN/)
   assert.match(stagingEnvSource, /BOOK_OPERATOR_USERNAME/)
   assert.match(stagingEnvSource, /BOOK_OPERATOR_PASSWORD/)

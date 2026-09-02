@@ -64,3 +64,21 @@ test('migration runner stops when an applied file was edited', async () => {
     /checksum changed/
   )
 })
+
+test('migration check reports pending files without applying them', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'readany-migrations-check-'))
+  await writeFile(join(directory, '001_first.sql'), 'CREATE TABLE first_table (id int);\n')
+  const migrationsUrl = new URL('./', pathToFileURL(join(directory, 'placeholder')))
+  const pool = migrationPool()
+
+  await assert.rejects(
+    () => runBookMarkupMigrations(pool, {
+      migrationsUrl,
+      logger: { info() {} },
+      applyPending: false
+    }),
+    /pending database migrations: 001_first\.sql/
+  )
+  assert.equal(pool.migrations.size, 0)
+  assert.ok(!pool.queries.some(({ sql }) => sql === 'BEGIN'))
+})

@@ -4,6 +4,7 @@ x-book-analysis-database-environment: &book-analysis-database-environment
   NODE_ENV: production
   DATABASE_URL: "postgresql://${NARRA_POSTGRES_USER:-readany}:${NARRA_POSTGRES_PASSWORD:?NARRA_POSTGRES_PASSWORD is required}@postgres.railway.internal:5432/${NARRA_POSTGRES_DB:-readany}"
   DATABASE_SSL_MODE: disable
+  DATABASE_AUTO_MIGRATE: "false"
 
 x-book-analysis-generator-environment: &book-analysis-generator-environment
   GENERATOR_BASE_URL: http://gateway.railway.internal:8787
@@ -68,6 +69,7 @@ services:
       INSTALLATION_SINGLE_REPLICA_ACK: "true"
       DATABASE_URL: "postgresql://${NARRA_POSTGRES_USER:-readany}:${NARRA_POSTGRES_PASSWORD:?NARRA_POSTGRES_PASSWORD is required}@postgres.railway.internal:5432/${NARRA_POSTGRES_DB:-readany}"
       DATABASE_SSL_MODE: disable
+      DATABASE_AUTO_MIGRATE: "false"
       BOOK_BACKEND_REQUIRED: ${BOOK_BACKEND_REQUIRED:-false}
       BOOK_STORAGE_BUCKET: ${NARRA_STORAGE_BUCKET:-narra-books}
       BOOK_STORAGE_REGION: us-east-1
@@ -222,6 +224,29 @@ services:
     mem_limit: 256m
     cpus: 0.25
 
+  migrate:
+    profiles: ["operations"]
+    image: ${NARRA_GATEWAY_IMAGE:?NARRA_GATEWAY_IMAGE must be set}
+    command: ["node", "migrate.mjs"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *book-analysis-database-environment
+      DATABASE_AUTO_MIGRATE: "true"
+    init: true
+    restart: "no"
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 256m
+    cpus: 0.25
+
   book-markup-worker:
     profiles: ["book-backend"]
     image: ${NARRA_GATEWAY_IMAGE:?NARRA_GATEWAY_IMAGE must contain an immutable image tag}
@@ -245,6 +270,7 @@ services:
       NODE_ENV: production
       DATABASE_URL: "postgresql://${NARRA_POSTGRES_USER:-readany}:${NARRA_POSTGRES_PASSWORD:?NARRA_POSTGRES_PASSWORD is required}@postgres.railway.internal:5432/${NARRA_POSTGRES_DB:-readany}"
       DATABASE_SSL_MODE: disable
+      DATABASE_AUTO_MIGRATE: "false"
       GENERATOR_BASE_URL: http://gateway.railway.internal:8787
       GENERATOR_SERVICE_TOKEN: ${GENERATOR_SERVICE_TOKEN:?GENERATOR_SERVICE_TOKEN is required}
       GENERATOR_TIMEOUT_MS: "600000"
@@ -292,6 +318,7 @@ services:
       NODE_ENV: production
       DATABASE_URL: "postgresql://${NARRA_POSTGRES_USER:-readany}:${NARRA_POSTGRES_PASSWORD:?NARRA_POSTGRES_PASSWORD is required}@postgres.railway.internal:5432/${NARRA_POSTGRES_DB:-readany}"
       DATABASE_SSL_MODE: disable
+      DATABASE_AUTO_MIGRATE: "false"
       GENERATOR_BASE_URL: http://gateway.railway.internal:8787
       GENERATOR_SERVICE_TOKEN: ${GENERATOR_SERVICE_TOKEN:?GENERATOR_SERVICE_TOKEN is required}
       GENERATOR_TIMEOUT_MS: "600000"

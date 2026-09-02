@@ -57,7 +57,8 @@ jobs:
         run: |
           sudo install -m 0644 /dev/null /etc/narra-gateway.env
           NARRA_GATEWAY_IMAGE=readany/narra-gateway:ci \
-            docker compose -f services/narra-gateway/compose.i167.yml config >/dev/null
+            docker compose -f services/narra-gateway/compose.i167.yml \
+              --profile operations config >/dev/null
 
       - name: Build production image
         working-directory: services/narra-gateway

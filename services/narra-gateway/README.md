@@ -408,64 +408,18 @@ the Gateway service.
 Copy `.env.example` to `.env` only for local development. Secrets belong in the
 deployment environment and must never be committed or shipped to the Expo app.
 
-## i167 staging and production
+## Backend deployment
 
-The current production inventory, Railway retirement state and staging policy
-are recorded in [`docs/narra-infrastructure.md`](../../docs/narra-infrastructure.md).
-This directory is the canonical gateway source; do not redeploy the historical
-copy from the standalone Narra repository.
+The canonical backend deployer is [`deploy.sh`](./deploy.sh). It runs directly
+on the target host and manages TEST or PROD exclusively through Docker Compose.
+The default deployment recreates only gateway; selected, full, and Git-diff
+modes control workers, PostgreSQL, and MinIO independently.
 
-The test Gateway is the separate i167 deployment rooted at
-`/srv/narra-stagging` and exposed only as
-`https://api-test.narra.disrupt.builders`. Internal development and preview
-builds use that hostname. Store profiles use
-`https://api.narra.disrupt.builders`, but must not be released until the new
-production backend passes its smoke matrix. Do not point a staging verification
-command at the production Gateway or reuse the production Compose project and
-volumes.
+Database migrations use the separate [`migrate.sh`](./migrate.sh) operation.
+Backups are never triggered implicitly by deploy or migration.
 
-The only supported SSH target for the recovery rollout is the local alias
-`fun1`. Historical `i167` filenames remain compatibility names; they are not a
-separate deployment target. `deploy-i167.sh` delegates to the staging-only
-`deploy-staging-fun1.sh` and refuses every other host.
+See [`DEPLOYMENT.md`](./DEPLOYMENT.md) for environment defaults, immutable image
+rules, component groups, migration order, and command examples.
 
-Prepare the existing root-only staging environment once. The command backs up
-the file, verifies the non-secret analytics environment as `staging`, and copies
-the allowlisted effective runtime settings and existing operator credentials
-that only existed in the old container into the canonical environment. Existing
-values are never rotated or overwritten: any difference stops preparation.
-Secret values are never printed:
-
-```bash
-./prepare-staging-env-fun1.sh
-```
-
-Deploy only a clean reviewed commit and pin the exact current staging image ID
-as a compare-and-swap precondition:
-
-```bash
-EXPECTED_REMOTE_IMAGE_ID="$(ssh fun1 \
-  "sudo docker inspect --format '{{.Image}}' narra-stagging-gateway-1")"
-
-EXPECTED_REMOTE_IMAGE_ID="$EXPECTED_REMOTE_IMAGE_ID" \
-REVIEWED_COMMIT="$(git rev-parse HEAD)" \
-./deploy-staging-fun1.sh
-```
-
-The staging deploy builds `readany/narra-gateway:<full-git-sha>` from the
-versioned release directory, verifies that every already-applied migration is
-still byte-for-byte immutable, validates a no-network candidate, creates and
-checks a PostgreSQL logical dump and gateway-volume archive, records an
-aggregate MinIO inventory, and then starts exactly one canary replica of every
-persistent worker from `compose.i167.yml`. It checks `/ready`, worker health and
-restart counts, protected aggregate metrics, and the public TEST hostname. A
-failed probe stores the failed gateway log in the root-only backup and restores
-the previous staging Compose/image. Unrelated one-off containers are not
-removed by this workflow.
-
-Production is not deployed by either of these staging scripts. It must use an
-independent `narra-production-v2` Compose project, PostgreSQL, object storage,
-secrets and gateway volume on a temporary local port. The legacy production
-gateway stays available for nginx rollback until the complete production smoke
-matrix passes. Never point production at staging DB/MinIO or reuse staging
-credentials.
+The historical `deploy-i167.sh` and `deploy-staging-fun1.sh` entrypoints are
+deprecated and disabled.
