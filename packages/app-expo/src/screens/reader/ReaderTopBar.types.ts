@@ -7,4 +7,5 @@ export interface ReaderTopBarProps {
   onClosePress: () => void;
   onAppearancePress: () => void;
   onActionsOpenChange?: (open: boolean) => void;
+  showTrailingActions?: boolean;
 }

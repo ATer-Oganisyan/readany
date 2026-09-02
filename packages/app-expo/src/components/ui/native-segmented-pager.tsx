@@ -22,6 +22,7 @@ interface NativeSegmentedPagerProps {
   accessibilityLabel: string;
   children: ReactElement[];
   scrollableSegments?: boolean;
+  controlVariant?: "segmented" | "tabs";
   controlsStyle?: ViewStyle;
   minimumPageHeight?: number;
   initialPageHeight?: number;
@@ -53,6 +54,7 @@ export const NativeSegmentedPager = forwardRef<
     accessibilityLabel,
     children,
     scrollableSegments = false,
+    controlVariant = "segmented",
     controlsStyle,
     minimumPageHeight = 1,
     initialPageHeight = minimumPageHeight,
@@ -170,6 +172,7 @@ export const NativeSegmentedPager = forwardRef<
           colorScheme={colorScheme}
           accessibilityLabel={accessibilityLabel}
           scrollable={scrollableSegments}
+          variant={controlVariant}
         />
       </View>
       <PagerView

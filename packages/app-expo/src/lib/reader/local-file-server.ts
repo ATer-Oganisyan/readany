@@ -83,10 +83,11 @@ async function startFileServerUnlocked(
 
   // Determine which backend to use (once)
   if (_useNative === null) {
-    // The embedded Lighttpd module can hang during startup/invalidation in a
-    // development client. Prefer the JS TCP server there so Fast Refresh and
-    // reloads stay reliable; production builds still use the native backend.
-    if (__DEV__) {
+    // Keep the established iOS development path unchanged. Android needs the
+    // native backend in development too: serving EPUB ranges on the JS thread
+    // can stall its own health probe. Native startup is bounded below and
+    // still falls back to TCP if the embedded server is unavailable.
+    if (__DEV__ && process.env.EXPO_OS !== "android") {
       _useNative = false;
     } else {
       try {
@@ -119,7 +120,8 @@ async function _startNativeServer(cleanRoot: string): Promise<string> {
     });
     // Cap server.start() so a hung Lighttpd init can't pin the reader on a spinner.
     // On timeout we treat it the same as a throw: stop and fall back to TCP below.
-    const origin = await withTimeout<string>(server.start(), 3000);
+    const startTimeout = __DEV__ && process.env.EXPO_OS === "android" ? 5000 : 3000;
+    const origin = await withTimeout<string>(server.start(), startTimeout);
     _nativeServer = server;
     _serverDocRoot = cleanRoot;
     _serverUrl = origin;

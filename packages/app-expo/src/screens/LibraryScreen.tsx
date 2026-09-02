@@ -3,6 +3,7 @@ import { CatalogBookSkeleton } from "@/components/library/CatalogBookSkeleton";
 import { ConnectedCatalogBookCard } from "@/components/library/ConnectedCatalogBookCard";
 import { GroupCard } from "@/components/library/GroupCard";
 import { GroupPickerSheet } from "@/components/library/GroupPickerSheet";
+import { ImportSourceHeaderMenuButton } from "@/components/library/ImportSourceHeaderMenuButton";
 import { ImportSourceMenuButton } from "@/components/library/ImportSourceMenuButton";
 import { type ExtractorRef, ExtractorWebView } from "@/components/rag/ExtractorWebView";
 import {
@@ -12,7 +13,6 @@ import {
   FolderInputIcon,
   FolderMinusIcon,
   HashIcon,
-  PlusIcon,
   Trash2Icon,
   XIcon,
 } from "@/components/ui/Icon";
@@ -734,16 +734,16 @@ function LibraryScreenContent() {
               <SyncButton size={20} color={colors.mutedForeground} />
             </View>
           ) : null}
-          <TouchableOpacity
-            accessibilityRole="button"
+          <ImportSourceHeaderMenuButton
             accessibilityLabel={t("library.importFirst", "Добавить книгу")}
-            style={s.nativeHeaderButton}
-            onPress={handleOpenImportSources}
+            urlLabel={t("library.importSourceUrl", "Найти по ссылке")}
+            localLabel={t("library.importSourceLocal", "Выбрать файл")}
+            color={colors.primary}
             disabled={isBookImporting}
-            activeOpacity={0.65}
-          >
-            <PlusIcon size={24} color={colors.primary} />
-          </TouchableOpacity>
+            onUrlPress={handleOpenUrlImport}
+            onLocalPress={() => void handleLocalImport()}
+            onFallbackPress={handleOpenImportSources}
+          />
         </View>
       ),
     });
@@ -1157,6 +1157,7 @@ function LibraryScreenContent() {
       onSelect={(index) => selectLibrarySection(index === 0 ? "catalog" : "my-books")}
       colorScheme={isDark ? "dark" : "light"}
       accessibilityLabel={t("library.section", "Раздел библиотеки")}
+      controlVariant="tabs"
       controlsStyle={s.librarySectionTabs}
       minimumPageHeight={libraryPagerMinHeight}
       initialPageHeight={libraryPageMinHeight}

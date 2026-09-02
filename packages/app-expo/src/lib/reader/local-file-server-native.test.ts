@@ -17,6 +17,10 @@ vi.mock("@dr.pogodin/react-native-static-server", () => ({
     stop = native.stop;
   },
 }));
+vi.mock("react-native-tcp-socket", async () => {
+  const net = await import("node:net");
+  return { default: { createServer: net.createServer } };
+});
 
 beforeEach(() => {
   vi.resetModules();
@@ -28,6 +32,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 describe("production native server lifecycle", () => {
@@ -51,6 +56,43 @@ describe("production native server lifecycle", () => {
     expect(native.instances).toBe(1);
     await server.startFileServer("/books", { restart: true });
     expect(native.instances).toBe(2);
+    await server.stopFileServer();
+  });
+});
+
+describe("development backend selection", () => {
+  it("uses the native server in Android development clients", async () => {
+    vi.stubGlobal("__DEV__", true);
+    vi.stubEnv("EXPO_OS", "android");
+    const server = await import("./local-file-server");
+
+    await expect(server.startFileServer("/books")).resolves.toBe("http://127.0.0.1:12001");
+    expect(native.instances).toBe(1);
+    await server.stopFileServer();
+  });
+
+  it("allows the slower first Android native start to finish during prewarm", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("__DEV__", true);
+    vi.stubEnv("EXPO_OS", "android");
+    native.start.mockImplementationOnce(
+      () => new Promise((resolve) => setTimeout(() => resolve("http://127.0.0.1:12001"), 3500)),
+    );
+    const server = await import("./local-file-server");
+
+    const start = server.startFileServer("/books");
+    await vi.advanceTimersByTimeAsync(3501);
+    await expect(start).resolves.toBe("http://127.0.0.1:12001");
+    await server.stopFileServer();
+  });
+
+  it("keeps the existing TCP fallback in iOS development clients", async () => {
+    vi.stubGlobal("__DEV__", true);
+    vi.stubEnv("EXPO_OS", "ios");
+    const server = await import("./local-file-server");
+
+    await expect(server.startFileServer("/books")).resolves.toMatch(/^http:\/\/127\.0\.0\.1:/);
+    expect(native.instances).toBe(0);
     await server.stopFileServer();
   });
 });

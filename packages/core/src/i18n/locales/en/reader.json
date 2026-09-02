@@ -102,7 +102,7 @@
   "bookmarks": {
     "title": "Bookmarks",
     "add": "Bookmark this page",
-    "addCurrent": "Bookmark this page",
+    "addCurrent": "Add bookmark",
     "removeCurrent": "Remove bookmark from this page",
     "remove": "Remove bookmark",
     "added": "Bookmark added",
