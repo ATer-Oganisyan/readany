@@ -1,5 +1,5 @@
 import { countRender } from "@/lib/diagnostics/interaction-performance";
-import { radius } from "@/styles/theme";
+import { radius, useColors } from "@/styles/theme";
 import { LinearGradient } from "expo-linear-gradient";
 import { type ComponentProps, type ReactNode, memo, useMemo } from "react";
 import { type GestureResponderEvent, Pressable, StyleSheet, View } from "react-native";
@@ -20,6 +20,31 @@ interface PerspectiveBookProps {
   accessibilityHint?: string;
 }
 
+function AndroidPressTarget({
+  height,
+  disabled,
+  onPress,
+  accessibilityLabel,
+  accessibilityHint,
+}: Pick<
+  PerspectiveBookProps,
+  "height" | "disabled" | "onPress" | "accessibilityLabel" | "accessibilityHint"
+>) {
+  const colors = useColors();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
+      disabled={disabled}
+      onPress={onPress}
+      pressRetentionOffset={16}
+      android_ripple={{ color: colors.primary5, foreground: true }}
+      style={[styles.androidPressTarget, { height }]}
+    />
+  );
+}
+
 export const PerspectiveBook = memo(function PerspectiveBook({
   width,
   height,
@@ -35,6 +60,28 @@ export const PerspectiveBook = memo(function PerspectiveBook({
   countRender("catalog.perspective");
   const { pressStyle, gesture } = useCoverPress(disabled);
   const pressableSize = useMemo(() => ({ width }), [width]);
+
+  if (process.env.EXPO_OS === "android") {
+    return (
+      <View style={[pressableSize, disabled && styles.disabled]}>
+        <BookSurface
+          width={width}
+          height={height}
+          cover={cover}
+          coverEffects={coverEffects}
+          showShadow={showShadow}
+        />
+        <AndroidPressTarget
+          height={height}
+          disabled={disabled}
+          onPress={onPress}
+          accessibilityLabel={accessibilityLabel}
+          accessibilityHint={accessibilityHint}
+        />
+        {footer}
+      </View>
+    );
+  }
 
   return (
     <GestureDetector gesture={gesture}>
@@ -191,4 +238,12 @@ const styles = StyleSheet.create({
       "inset 0 -1px rgba(0,0,0,0.18), inset 0 2px 2px rgba(255,255,255,0.10), inset 4px 0 4px rgba(0,0,0,0.13)",
   },
   disabled: { opacity: 0.7 },
+  androidPressTarget: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    left: 0,
+    borderRadius: radius.sm,
+    overflow: "hidden",
+  },
 });

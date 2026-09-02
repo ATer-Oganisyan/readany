@@ -144,6 +144,7 @@ function pointerEvent(
   timeStamp: number,
   x = 184,
   y = 400,
+  pointerType = "mouse",
 ): FakeTouchEvent {
   return {
     button: 0,
@@ -152,7 +153,7 @@ function pointerEvent(
     clientY: y,
     isPrimary: true,
     pointerId: 1,
-    pointerType: "mouse",
+    pointerType,
     preventDefault() {},
     stopPropagation() {},
     target: { closest: () => null },
@@ -182,7 +183,7 @@ const STALLED_CLOCK = {
   now: () => 5_000_000,
 };
 
-function createHarness() {
+function createHarness(userAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X)") {
   const messages: string[] = [];
   const turns: string[] = [];
   const runtime: Record<string, unknown> = {
@@ -208,6 +209,7 @@ function createHarness() {
     isNoteTapGuardActive: () => false,
     isPointInAnnotationRange: () => null,
     isPointInNoteRange: () => null,
+    navigator: { userAgent },
     postShowAnnotation() {},
     postToRN(type: string) {
       messages.push(type);
@@ -249,6 +251,12 @@ function createHarness() {
       doc.dispatch("pointerdown", pointerEvent("pointerdown", start, x));
       doc.dispatch("pointerup", pointerEvent("pointerup", start + 40, x));
       doc.dispatch("click", clickEvent(start + 41, x));
+    },
+    touchPointerTap({ x = 184 }: { x?: number } = {}) {
+      const start = clock;
+      clock += 50;
+      doc.dispatch("pointerdown", pointerEvent("pointerdown", start, x, 400, "touch"));
+      doc.dispatch("pointerup", pointerEvent("pointerup", start + 40, x, 400, "touch"));
     },
     syntheticClick({ x = 184 }: { x?: number } = {}) {
       const start = clock;
@@ -356,6 +364,14 @@ describe("Reader interaction recovery", () => {
     expect(harness.messages).toContain("tap");
   });
 
+  it("принимает Android-тап, пришедший только как touch pointer", () => {
+    const harness = createHarness("Mozilla/5.0 (Linux; Android 16)");
+
+    harness.touchPointerTap();
+
+    expect(harness.messages).toContain("tap");
+  });
+
   it("принимает синтетический click от WKWebView без touch и pointer событий", () => {
     const harness = createHarness();
 
@@ -431,6 +447,14 @@ describe("Reader interaction recovery", () => {
     harness.tap({ heldMs: 600, x: 340 });
 
     expect(harness.turns).toEqual([]);
+  });
+
+  it("не теряет спокойный Android-тап длительностью до порога long press", () => {
+    const harness = createHarness("Mozilla/5.0 (Linux; Android 16)");
+
+    harness.tap({ heldMs: 350 });
+
+    expect(harness.messages).toContain("tap");
   });
 
   it("свайпом влево листает вперед, вправо — назад", () => {
