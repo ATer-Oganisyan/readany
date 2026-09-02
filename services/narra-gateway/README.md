@@ -277,6 +277,19 @@ resolve input. An incomplete replacement run fails without replacing the current
 published revision. A new successful publication requeues failed media bundles
 for its characters once; manifest reads do not repeatedly reset failed work.
 
+`BOOK_ANALYSIS_SCAN_POLICY_PROFILE` controls scan retries without creating a new
+pipeline or extractor version. The default `balanced` profile makes one full
+request and, after a semantic rejection or a valid empty response, one adaptive
+split. It always retains observations from a successful half. `conservative`
+keeps the former limit of five semantic attempts, while `fast` accepts the first
+valid `{"observations":[]}` response. Transport failures remain governed by the
+durable job retry limit and are not converted into empty scan results. Chunk and
+adaptive-split sizes can be overridden with the `BOOK_ANALYSIS_SCAN_CHUNK_*` and
+`BOOK_ANALYSIS_SCAN_ADAPTIVE_*` variables; their defaults remain 4,000/2,500–
+5,000/500 and 2,000/500 respectively. Chunk overrides affect only runs prepared
+after the setting changes. The effective non-secret policy is exposed as
+`book_analysis_scan_policy` in `GET /health`.
+
 The v6 scan extractor also retries a fragment instead of caching it when a
 provider returns at least five observations but strict quote validation accepts
 less than 25%. This catches locally lossy responses that whole-book band

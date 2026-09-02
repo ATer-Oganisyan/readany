@@ -18,6 +18,18 @@ x-generator-environment: &generator-environment
   GENERATOR_SERVICE_TOKEN: narra-local-generator-token-0000000000000001
   GENERATOR_TIMEOUT_MS: "600000"
 
+x-scan-policy-environment: &scan-policy-environment
+  BOOK_ANALYSIS_SCAN_POLICY_PROFILE: ${BOOK_ANALYSIS_SCAN_POLICY_PROFILE:-balanced}
+  BOOK_ANALYSIS_SCAN_SEMANTIC_MAX_ATTEMPTS: ${BOOK_ANALYSIS_SCAN_SEMANTIC_MAX_ATTEMPTS:-}
+  BOOK_ANALYSIS_SCAN_EMPTY_OBSERVATION_MODE: ${BOOK_ANALYSIS_SCAN_EMPTY_OBSERVATION_MODE:-}
+  BOOK_ANALYSIS_SCAN_ADAPTIVE_SPLIT_ENABLED: ${BOOK_ANALYSIS_SCAN_ADAPTIVE_SPLIT_ENABLED:-}
+  BOOK_ANALYSIS_SCAN_ADAPTIVE_MIN_CORE_CHARS: ${BOOK_ANALYSIS_SCAN_ADAPTIVE_MIN_CORE_CHARS:-}
+  BOOK_ANALYSIS_SCAN_ADAPTIVE_OVERLAP_CHARS: ${BOOK_ANALYSIS_SCAN_ADAPTIVE_OVERLAP_CHARS:-}
+  BOOK_ANALYSIS_SCAN_CHUNK_TARGET_CHARS: ${BOOK_ANALYSIS_SCAN_CHUNK_TARGET_CHARS:-}
+  BOOK_ANALYSIS_SCAN_CHUNK_MIN_CHARS: ${BOOK_ANALYSIS_SCAN_CHUNK_MIN_CHARS:-}
+  BOOK_ANALYSIS_SCAN_CHUNK_MAX_CHARS: ${BOOK_ANALYSIS_SCAN_CHUNK_MAX_CHARS:-}
+  BOOK_ANALYSIS_SCAN_CHUNK_OVERLAP_CHARS: ${BOOK_ANALYSIS_SCAN_CHUNK_OVERLAP_CHARS:-}
+
 x-analysis-worker: &analysis-worker
   image: narra-gateway-book-analysis-local
   build:
@@ -128,7 +140,7 @@ services:
       gateway-data-init:
         condition: service_completed_successfully
     environment:
-      <<: [*database-environment, *storage-environment]
+      <<: [*database-environment, *storage-environment, *scan-policy-environment]
       PORT: "8787"
       ANALYTICS_ENV: development
       DATA_DIR: /data
@@ -175,14 +187,14 @@ services:
     <<: *analysis-worker
     command: ["node", "book-analysis-worker.mjs"]
     environment:
-      <<: [*database-environment, *storage-environment]
+      <<: [*database-environment, *storage-environment, *scan-policy-environment]
       BOOK_ANALYSIS_RUN_IDS: ${BOOK_ANALYSIS_RUN_IDS:-}
 
   book-analysis-scan:
     <<: *analysis-worker
     command: ["node", "book-analysis-scan-worker-runner.mjs"]
     environment:
-      <<: [*database-environment, *storage-environment, *generator-environment]
+      <<: [*database-environment, *storage-environment, *generator-environment, *scan-policy-environment]
       BOOK_ANALYSIS_RUN_IDS: ${BOOK_ANALYSIS_RUN_IDS:-}
 
   autiobook-adapter:

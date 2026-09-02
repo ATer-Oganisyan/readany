@@ -47,6 +47,33 @@ test('scan stage starts with one canary worker and can be scaled explicitly', ()
   assert.match(scan, /replicas: \$\{BOOK_ANALYSIS_SCAN_REPLICAS:-1\}/)
 })
 
+test('ScanPolicy defaults to balanced and reaches prepare, gateway and scan workers', () => {
+  assert.match(envExample, /^BOOK_ANALYSIS_SCAN_POLICY_PROFILE=balanced$/m)
+  assert.match(
+    compose,
+    /BOOK_ANALYSIS_SCAN_POLICY_PROFILE: \$\{BOOK_ANALYSIS_SCAN_POLICY_PROFILE:-balanced\}/
+  )
+  const gateway = compose.slice(
+    compose.indexOf('\n  gateway:\n'),
+    compose.indexOf('\n  postgres:\n')
+  )
+  const prepare = compose.slice(
+    compose.indexOf('  book-analysis-prepare:'),
+    compose.indexOf('  book-analysis-scan:')
+  )
+  const scan = compose.slice(
+    compose.indexOf('  book-analysis-scan:'),
+    compose.indexOf('  book-analysis-resolve:')
+  )
+  assert.match(gateway, /<<: \*book-analysis-scan-policy-environment/)
+  assert.match(prepare, /\*book-analysis-scan-policy-environment/)
+  assert.match(scan, /\*book-analysis-scan-policy-environment/)
+  assert.match(localCompose, /BOOK_ANALYSIS_SCAN_POLICY_PROFILE: \$\{BOOK_ANALYSIS_SCAN_POLICY_PROFILE:-balanced\}/)
+  assert.match(localCompose, /<<: \[\*database-environment, \*storage-environment, \*scan-policy-environment\]/)
+  assert.match(gatewaySource, /book_analysis_scan_policy:/)
+  assert.match(gatewaySource, /preserve_partial_results: BOOK_ANALYSIS_SCAN_POLICY\.preservePartialResults/)
+})
+
 test('external research services are isolated in the local-only compose profile', () => {
   assert.match(localCompose, /^name: \$\{NARRA_BOOK_ANALYSIS_PROJECT:-narra-book-analysis-local\}$/m)
   const adapter = localCompose.slice(

@@ -8,12 +8,17 @@ import {
   BOOK_ANALYSIS_PIPELINE_NARRA,
   bookAnalysisPipelineForRun
 } from './book-analysis-pipeline.mjs'
+import { createBookAnalysisScanPolicy } from './book-analysis-scan-policy.mjs'
 import { createOperationalLogger } from './operational-log.mjs'
 
 const UTF8_DECODER = new TextDecoder('utf-8', { fatal: true })
 const PARATEXT_SECTION = /^(?:preface|foreword|introduction|contents?|table of contents|предисловие|введение|оглавление|содержание)\s*[.:\]]?$/iu
 const NARRATIVE_SECTION = /^(?:chapter|part|book|prologue|epilogue|глава|часть|книга|пролог|эпилог)\b/iu
-const FINAL_EMPTY_SCAN_ERRORS = new Set(['EVIDENCE_MISMATCH', 'GENERATOR_HTTP_422'])
+const FINAL_EMPTY_SCAN_ERRORS = new Set([
+  'SCAN_EMPTY_OBSERVATIONS',
+  'EVIDENCE_MISMATCH',
+  'GENERATOR_HTTP_422'
+])
 
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex')
@@ -142,6 +147,7 @@ export function createBookAnalysisScanWorker({
   runIds,
   leaseSeconds = 300,
   leaseRenewMs = 60_000,
+  scanPolicy,
   logger = console
 }) {
   if (!repository || !storage || !generator) {
@@ -157,6 +163,7 @@ export function createBookAnalysisScanWorker({
   if (!Number.isSafeInteger(leaseRenewMs) || leaseRenewMs < 1_000 || leaseRenewMs >= leaseSeconds * 1_000) {
     throw new RangeError('leaseRenewMs must be shorter than the job lease')
   }
+  const effectiveScanPolicy = createBookAnalysisScanPolicy(scanPolicy)
   const log = createOperationalLogger({ component: 'analysis-scan', logger })
 
   async function scan(job) {
@@ -213,7 +220,8 @@ export function createBookAnalysisScanWorker({
       sectionTitles,
       contextText,
       coreLocalStartOffset: input.chunk.coreStartOffset - input.chunk.contextStartOffset,
-      coreLocalEndOffset: input.chunk.coreEndOffset - input.chunk.contextStartOffset
+      coreLocalEndOffset: input.chunk.coreEndOffset - input.chunk.contextStartOffset,
+      semanticAttempt: Number.isSafeInteger(job.attempts) ? job.attempts : 1
     })
     const observations = normalizeScanObservations(rawResult, input, contextText)
     const result = await repository.completeScan(job, { extractorVersion, observations })
@@ -267,7 +275,7 @@ export function createBookAnalysisScanWorker({
           FINAL_EMPTY_SCAN_ERRORS.has(errorCode) &&
           Number.isSafeInteger(job.attempts) &&
           Number.isSafeInteger(job.maxAttempts) &&
-          job.attempts >= job.maxAttempts
+          job.attempts >= Math.min(job.maxAttempts, effectiveScanPolicy.semanticMaxAttempts)
         ) {
           const result = await repository.completeScan(job, {
             extractorVersion,
@@ -277,6 +285,8 @@ export function createBookAnalysisScanWorker({
             job: job.id,
             run: job.runId,
             attempts: job.attempts,
+            semantic_max_attempts: effectiveScanPolicy.semanticMaxAttempts,
+            scan_policy: effectiveScanPolicy.profile,
             error_code: errorCode,
             next_stage: result.stage,
             ...bookAnalysisLogContext(job, { startedAt, terminalStatus: 'completed' })

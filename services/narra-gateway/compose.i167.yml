@@ -10,6 +10,18 @@ x-book-analysis-generator-environment: &book-analysis-generator-environment
   GENERATOR_SERVICE_TOKEN: ${GENERATOR_SERVICE_TOKEN:?GENERATOR_SERVICE_TOKEN is required}
   GENERATOR_TIMEOUT_MS: ${BOOK_ANALYSIS_GENERATOR_TIMEOUT_MS:-600000}
 
+x-book-analysis-scan-policy-environment: &book-analysis-scan-policy-environment
+  BOOK_ANALYSIS_SCAN_POLICY_PROFILE: ${BOOK_ANALYSIS_SCAN_POLICY_PROFILE:-balanced}
+  BOOK_ANALYSIS_SCAN_SEMANTIC_MAX_ATTEMPTS: ${BOOK_ANALYSIS_SCAN_SEMANTIC_MAX_ATTEMPTS:-}
+  BOOK_ANALYSIS_SCAN_EMPTY_OBSERVATION_MODE: ${BOOK_ANALYSIS_SCAN_EMPTY_OBSERVATION_MODE:-}
+  BOOK_ANALYSIS_SCAN_ADAPTIVE_SPLIT_ENABLED: ${BOOK_ANALYSIS_SCAN_ADAPTIVE_SPLIT_ENABLED:-}
+  BOOK_ANALYSIS_SCAN_ADAPTIVE_MIN_CORE_CHARS: ${BOOK_ANALYSIS_SCAN_ADAPTIVE_MIN_CORE_CHARS:-}
+  BOOK_ANALYSIS_SCAN_ADAPTIVE_OVERLAP_CHARS: ${BOOK_ANALYSIS_SCAN_ADAPTIVE_OVERLAP_CHARS:-}
+  BOOK_ANALYSIS_SCAN_CHUNK_TARGET_CHARS: ${BOOK_ANALYSIS_SCAN_CHUNK_TARGET_CHARS:-}
+  BOOK_ANALYSIS_SCAN_CHUNK_MIN_CHARS: ${BOOK_ANALYSIS_SCAN_CHUNK_MIN_CHARS:-}
+  BOOK_ANALYSIS_SCAN_CHUNK_MAX_CHARS: ${BOOK_ANALYSIS_SCAN_CHUNK_MAX_CHARS:-}
+  BOOK_ANALYSIS_SCAN_CHUNK_OVERLAP_CHARS: ${BOOK_ANALYSIS_SCAN_CHUNK_OVERLAP_CHARS:-}
+
 x-book-analysis-storage-environment: &book-analysis-storage-environment
   BOOK_STORAGE_BUCKET: ${NARRA_STORAGE_BUCKET:-narra-books}
   BOOK_STORAGE_REGION: us-east-1
@@ -61,6 +73,7 @@ services:
     env_file:
       - ${NARRA_ENV_FILE:-/etc/narra-gateway.env}
     environment:
+      <<: *book-analysis-scan-policy-environment
       NODE_ENV: production
       PORT: "8787"
       DATA_DIR: /data
@@ -331,7 +344,7 @@ services:
     profiles: ["book-backend"]
     command: ["node", "book-analysis-worker.mjs"]
     environment:
-      <<: [*book-analysis-database-environment, *book-analysis-storage-environment]
+      <<: [*book-analysis-database-environment, *book-analysis-storage-environment, *book-analysis-scan-policy-environment]
       WORKER_TYPE: book-analysis-prepare
 
   book-analysis-scan:
@@ -341,7 +354,7 @@ services:
     deploy:
       replicas: ${BOOK_ANALYSIS_SCAN_REPLICAS:-1}
     environment:
-      <<: [*book-analysis-database-environment, *book-analysis-storage-environment, *book-analysis-generator-environment]
+      <<: [*book-analysis-database-environment, *book-analysis-storage-environment, *book-analysis-generator-environment, *book-analysis-scan-policy-environment]
       WORKER_TYPE: book-analysis-scan
 
   book-analysis-resolve:

@@ -151,7 +151,8 @@ test('generator client sends one bounded scan chunk with a stable idempotency ke
     bookAuthor: 'Автор',
     contextText,
     coreLocalStartOffset: 1,
-    coreLocalEndOffset: contextText.length - 1
+    coreLocalEndOffset: contextText.length - 1,
+    semanticAttempt: 2
   }), { observations: [] })
   assert.equal(request.url, 'http://localhost:8790/internal/v1/book-analysis/scan-chunk')
   assert.deepEqual(request.body, {
@@ -163,7 +164,8 @@ test('generator client sends one bounded scan chunk with a stable idempotency ke
     bookAuthor: 'Автор',
     contextText,
     coreLocalStartOffset: 1,
-    coreLocalEndOffset: contextText.length - 1
+    coreLocalEndOffset: contextText.length - 1,
+    semanticAttempt: 2
   })
 })
 
@@ -295,25 +297,27 @@ test('generator client preserves a bounded provider error code for media retries
 })
 
 test('generator client preserves a grounded evidence mismatch for scan retry policy', async () => {
-  const client = createGenerationServiceClient({
-    baseUrl: 'http://localhost:8790',
-    token: TOKEN,
-    production: false,
-    async fetchImpl() {
-      return new Response(JSON.stringify({
-        error: 'internal details stay inside the generation service',
-        code: 'EVIDENCE_MISMATCH'
-      }), { status: 400 })
-    }
-  })
-  await assert.rejects(
-    () => client.scanBookChunk({
-      runId: 'run-1',
-      chunkId: 'chunk-1',
-      extractorVersion: 'book-scan-v4'
-    }),
-    (error) => error.code === 'EVIDENCE_MISMATCH'
-  )
+  for (const code of ['SCAN_EMPTY_OBSERVATIONS', 'EVIDENCE_MISMATCH']) {
+    const client = createGenerationServiceClient({
+      baseUrl: 'http://localhost:8790',
+      token: TOKEN,
+      production: false,
+      async fetchImpl() {
+        return new Response(JSON.stringify({
+          error: 'internal details stay inside the generation service',
+          code
+        }), { status: 400 })
+      }
+    })
+    await assert.rejects(
+      () => client.scanBookChunk({
+        runId: 'run-1',
+        chunkId: 'chunk-1',
+        extractorVersion: 'book-scan-v4'
+      }),
+      (error) => error.code === code
+    )
+  }
 })
 
 test('generator client preserves safe scan validation codes instead of hiding them as HTTP 400', async () => {
