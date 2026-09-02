@@ -77,7 +77,6 @@ module.exports = {
         "expo-build-properties",
         {
           android: {
-            enableProguardInReleaseBuilds: true,
             enableShrinkResourcesInReleaseBuilds: true,
             enableMinifyInReleaseBuilds: true,
             networkInspector: false,
@@ -90,6 +89,7 @@ module.exports = {
           },
         },
       ],
+      "./plugins/withAndroidReleaseOptimization",
       "expo-font",
       [
         "expo-image-picker",

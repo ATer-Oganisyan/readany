@@ -47,6 +47,8 @@
     "sync:catalog-covers:nano": "node scripts/sync-nano-banana-covers.mjs",
     "sync:storybook-covers:nano": "node scripts/sync-nano-storybook-covers.mjs",
     "sync:native-variant": "node scripts/configure-native-variant.js",
+    "verify:android:bundled-audio": "node scripts/verify-android-bundled-audio.mjs",
+    "test:android:bundled-audio-policy": "node --test scripts/verify-android-bundled-audio.test.mjs",
     "lint": "biome check .",
     "test": "vitest run src/lib/narra src/lib/book src/lib/reader src/lib/diagnostics src/lib/ai/narra-gateway-fetch.test.ts src/lib/ai/openrouter-chat.test.ts",
     "eas-build-pre-install": "bash scripts/eas-install-ios-build-tools.sh",
