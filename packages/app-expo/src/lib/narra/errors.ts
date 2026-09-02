@@ -72,7 +72,7 @@ export function normalizeNarraError(error: unknown): NarraServiceError {
   if (/политик[А-Яа-яЁё]* безопасности|safety|content policy|moderation/iu.test(detail)) {
     return new NarraServiceError(
       "SERVICE",
-      "Сервис отклонил эту сцену по правилам безопасности. Попробуйте другую страницу.",
+      "Сервис отклонил эту сцену по правилам безопасности. Нажмите «Заново» — попробуем смягчённый вариант, или выберите другую страницу.",
     );
   }
   return new NarraServiceError("SERVICE", "Не получилось. Попробуйте снова.");

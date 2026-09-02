@@ -38,3 +38,15 @@ describe("RF_IMAGE_COMPLIANCE", () => {
     expect(RF_IMAGE_COMPLIANCE.length).toBeLessThan(900);
   });
 });
+
+describe("дополнения модерации (корнер-кейсы)", () => {
+  it("оба языка содержат телефон доверия для суицидальных сигналов", () => {
+    expect(rfChatCompliance("ru")).toContain("8-800-2000-122");
+    expect(rfChatCompliance("en")).toContain("8-800-2000-122");
+  });
+
+  it("запрещены оценки реальных живых политиков", () => {
+    expect(rfChatCompliance("ru")).toContain("ныне живущих политиках");
+    expect(rfChatCompliance("en")).toContain("real living politicians");
+  });
+});

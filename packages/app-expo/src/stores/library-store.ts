@@ -1,4 +1,5 @@
 import { isLegacyGeneratedBookCover } from "@/lib/book/cover-display";
+import { BANNED_IMPORT_MESSAGE, findBannedImport } from "@/lib/narra/import-blocklist";
 import { deleteLocalCoverJob, getLocalCoverJob } from "@/lib/book/cover-job-repository";
 import { persistCoverFile, verifyCoverPersistence } from "@/lib/book/cover-persistence";
 import { acknowledgeGeneratedBookCover, generateBookCover } from "@/lib/book/generate-book-cover";
@@ -1300,6 +1301,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           ? decodeURIComponent(fileInfo.name)
           : decodeURIComponent(filePath.split("/").pop() || "book");
         try {
+          // L0-модерация: запрещённые в РФ материалы не импортируются вовсе.
+          if (findBannedImport(undefined, undefined, originalName)) {
+            result.failures.push({ name: originalName, error: BANNED_IMPORT_MESSAGE });
+            continue;
+          }
           const ext = originalName.split(".").pop()?.toLowerCase();
           const formatMap: Record<string, Book["format"]> = {
             epub: "epub",
@@ -1473,7 +1479,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
                 });
                 debouncedSave("library-books", get().books);
               } else {
-                await get().addBook(book);
+                const bannedImport = findBannedImport(book.meta?.title, book.meta?.author, fileName);
+              if (bannedImport) throw new Error(BANNED_IMPORT_MESSAGE);
+              await get().addBook(book);
               }
               result.imported.push(book);
               if (!knownBook) {
@@ -1607,7 +1615,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
                 });
                 debouncedSave("library-books", get().books);
               } else {
-                await get().addBook(book);
+                const bannedImport = findBannedImport(book.meta?.title, book.meta?.author, fileName);
+              if (bannedImport) throw new Error(BANNED_IMPORT_MESSAGE);
+              await get().addBook(book);
               }
               result.imported.push(book);
               if (!knownBook) {
@@ -1763,7 +1773,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             });
             debouncedSave("library-books", get().books);
           } else {
-            await get().addBook(book);
+            const bannedImport = findBannedImport(book.meta?.title, book.meta?.author, fileName);
+              if (bannedImport) throw new Error(BANNED_IMPORT_MESSAGE);
+              await get().addBook(book);
           }
           result.imported.push(book);
           if (!knownBook) {
