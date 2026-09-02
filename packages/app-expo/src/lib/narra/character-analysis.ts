@@ -118,12 +118,17 @@ async function runBookCharacterAnalysis(
               "Ты анализируешь художественную книгу для Narra. Выдели до 6 главных персонажей. " +
               'Верни только JSON: {"genre":{"primary":"fanfiction","secondary":["romance"],"confidence":0.94,"evidence":"краткое основание по тексту"},' +
               '"characters":[{"id":"latin-slug","name":"короткое имя",' +
-              '"fullName":"полное имя","stressedName":"имя с ударением","role":"роль","gender":"male|female",' +
+              '"fullName":"полное имя","stressedName":"имя с ударением","role":"роль","gender":"male|female","isNarrator":false,' +
               '"traits":["до 3 коротких черт"],"speechStyle":"манера речи","speechExamples":["2–3 реплики"],' +
               '"greeting":"приветствие читателю","appearanceChapter":1,"unlockFraction":0.0,' +
               '"appearancePrompt":"внешность одной фразой",' +
               '"passport":{"age":25,"build":"телосложение","hair":"волосы","eyes":"глаза",' +
               '"face":"черты лица","outfit":"одежда"}}]}. ' +
+              "Правила имён. name — каноническое имя, которым персонажа чаще всего называют в тексте: одно-два слова, с заглавной буквы (например «Печорин», «Наташа Ростова»). " +
+              "fullName — самая полная форма имени, дословно встречающаяся в тексте книги; если полной формы в тексте нет, повтори name. " +
+              "Никогда не пиши в name и fullName пояснения и заглушки: «неизвестно», «не названо», «не указана», «фамилия неизвестна», «полное имя не названо», скобки с комментариями — запрещены. " +
+              "Не выдумывай имена, которых нет в тексте. Безымянного рассказчика или героя без имени называй: name «Рассказчик» (или «Рассказчица»), fullName так же, isNarrator true. " +
+              "isNarrator — true только для повествователя от первого лица или безымянного рассказчика; у остальных false. " +
               "Жанр определяй по самому тексту, а не только по названию и метаданным. " +
               "primary и secondary выбирай только из: classic, manga, fanfiction, children, poetry, drama, mystery-thriller, science-fiction, adventure, fantasy, horror, romance, historical-fiction, biography-memoir, philosophy, psychology-self-help, business-economics, science-technology, history-politics, literary-fiction. " +
               "Если текст использует персонажей, реальных публичных людей или мир уже существующего произведения в новом вымышленном сюжете, выбирай fanfiction основным жанром, даже если слово «фанфик» отсутствует. Manga выбирай для манги и произведений, явно построенных в традиции манги/аниме. " +

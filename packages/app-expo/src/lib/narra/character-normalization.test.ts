@@ -225,3 +225,66 @@ describe("Narra analysis normalization", () => {
     expect(text).toBe("completion");
   });
 });
+
+describe("normalizeCharacterAnalysisResponse — имена", () => {
+  const base = {
+    role: "герой",
+    gender: "male",
+    traits: [],
+    speechStyle: "",
+    speechExamples: [],
+    appearancePrompt: "",
+    appearanceChapter: 1,
+  };
+
+  it("вычищает заглушки «фамилия неизвестна» из fullName", () => {
+    const [c] = normalizeCharacterAnalysisResponse({
+      characters: [{ ...base, name: "Иван", fullName: "Иван (фамилия неизвестна)" }],
+    });
+    expect(c.name).toBe("Иван");
+    expect(c.fullName).toBe("Иван");
+  });
+
+  it("не подставляет обломок заглушки как имя", () => {
+    const [c] = normalizeCharacterAnalysisResponse({
+      characters: [{ ...base, name: "полное имя не названо", fullName: "Печорин" }],
+    });
+    expect(c.name).toBe("Печорин");
+    expect(c.fullName).toBe("Печорин");
+  });
+
+  it("капитализирует имена с маленькой буквы", () => {
+    const [c] = normalizeCharacterAnalysisResponse({
+      characters: [{ ...base, name: "наташа ростова", fullName: "наташа ростова" }],
+    });
+    expect(c.name).toBe("Наташа Ростова");
+    expect(c.fullName).toBe("Наташа Ростова");
+  });
+
+  it("безымянный рассказчик становится «Рассказчик», а не выдуманное имя", () => {
+    const [c] = normalizeCharacterAnalysisResponse({
+      characters: [{ ...base, name: "имя неизвестно", fullName: "неизвестно", isNarrator: true }],
+    });
+    expect(c.name).toBe("Рассказчик");
+    expect(c.fullName).toBe("Рассказчик");
+    expect(c.isNarrator).toBe(true);
+  });
+
+  it("отбрасывает персонажа, у которого после чистки не осталось имени", () => {
+    const list = normalizeCharacterAnalysisResponse({
+      characters: [
+        { ...base, name: "неизвестно", fullName: "имя не названо" },
+        { ...base, name: "Вера", fullName: "Вера" },
+      ],
+    });
+    expect(list).toHaveLength(1);
+    expect(list[0].name).toBe("Вера");
+  });
+
+  it("отчество без заглушек не трогает", () => {
+    const [c] = normalizeCharacterAnalysisResponse({
+      characters: [{ ...base, name: "Максим Максимыч", fullName: "Максим Максимыч" }],
+    });
+    expect(c.fullName).toBe("Максим Максимыч");
+  });
+});
