@@ -5,4 +5,5 @@ export interface NativeThemePickerProps {
   colorScheme: "light" | "dark";
   accessibilityLabel: string;
   scrollable?: boolean;
+  variant?: "segmented" | "tabs";
 }

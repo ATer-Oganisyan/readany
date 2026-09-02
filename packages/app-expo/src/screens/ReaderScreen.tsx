@@ -418,6 +418,11 @@ function ReaderLoadingChrome({ navigation }: { navigation: Props["navigation"] }
   const ignorePress = () => undefined;
 
   useLayoutEffect(() => {
+    if (process.env.EXPO_OS === "android") {
+      navigation.setOptions({ headerShown: false });
+      return;
+    }
+
     navigation.setOptions({
       headerShown: true,
       headerTransparent: false,
@@ -446,6 +451,27 @@ function ReaderLoadingChrome({ navigation }: { navigation: Props["navigation"] }
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
         <ReaderLoadingIndicator color={colors.primary20} />
       </View>
+      {process.env.EXPO_OS === "android" ? (
+        <View
+          style={{
+            position: "absolute",
+            top: 0,
+            right: 0,
+            left: 0,
+            zIndex: 30,
+            paddingTop: insets.top,
+          }}
+        >
+          <ReaderTopBar
+            tintColor={paperColors.foreground}
+            isDark={isDark}
+            actions={[]}
+            onClosePress={() => navigation.goBack()}
+            onAppearancePress={ignorePress}
+            showTrailingActions={false}
+          />
+        </View>
+      ) : null}
       {Platform.OS === "ios" && (
         <View
           pointerEvents="none"

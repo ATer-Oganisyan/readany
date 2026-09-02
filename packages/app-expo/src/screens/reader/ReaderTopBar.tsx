@@ -23,24 +23,26 @@ export function ReaderTopBar(props: ReaderTopBarProps) {
         <MishanaerIcon name="x" size={22} color={props.tintColor} />
       </Pressable>
 
-      <View style={styles.trailing}>
-        <Pressable
-          accessibilityLabel={t("narra.readerAppearance", "Оформление")}
-          accessibilityRole="button"
-          hitSlop={8}
-          onPress={props.onAppearancePress}
-          style={styles.control}
-        >
-          <MishanaerIcon name="text-t" size={22} color={props.tintColor} />
-        </Pressable>
-        <NativeContextMenuButton
-          accessibilityLabel={t("reader.bookActions", "Действия с книгой")}
-          items={props.actions}
-          onOpenChange={props.onActionsOpenChange}
-          color={props.tintColor}
-          size={CONTROL_SIZE}
-        />
-      </View>
+      {props.showTrailingActions !== false ? (
+        <View style={styles.trailing}>
+          <Pressable
+            accessibilityLabel={t("narra.readerAppearance", "Оформление")}
+            accessibilityRole="button"
+            hitSlop={8}
+            onPress={props.onAppearancePress}
+            style={styles.control}
+          >
+            <MishanaerIcon name="text-t" size={22} color={props.tintColor} />
+          </Pressable>
+          <NativeContextMenuButton
+            accessibilityLabel={t("reader.bookActions", "Действия с книгой")}
+            items={props.actions}
+            onOpenChange={props.onActionsOpenChange}
+            color={props.tintColor}
+            size={CONTROL_SIZE}
+          />
+        </View>
+      ) : null}
     </View>
   );
 }
