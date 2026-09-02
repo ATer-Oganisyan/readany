@@ -105,10 +105,12 @@ Automatic reader scenes use `POST /v2/books/:bookEditionId/scenes/at`. The
 client sends only its reading position; the Gateway resolves the stable scene
 slot from the published v3 markup policy, reads the canonical normalized book
 text, and returns either a signed ready image URL or the durable job status.
-Catalog books warm all scene slots after final markup publication. Private
-books initially warm the first 10% and extend that frontier to 10% beyond the
-reader's reported progress. Provisional markup remains display-only until the
-resolver has published the final markup.
+Starting Gateway, publishing markup, reading a manifest and advancing reader
+progress never enqueue scene jobs. Only an explicit request to
+`POST /v2/books/:bookEditionId/scenes/at` enqueues the matching scene slot.
+The bounded repository backfill remains available for explicit operator
+campaigns, but Gateway never calls it automatically. Provisional markup remains
+display-only until the resolver has published the final markup.
 
 ## Durable book markup and catalog
 

@@ -120,6 +120,11 @@ test('book scenes use the configured image route and landscape aspect ratio', ()
   assert.match(gatewaySource, /aspectRatio: '4:3'/)
 })
 
+test('Gateway never starts the scene backfill automatically', () => {
+  assert.match(gatewaySource, /automatic backfill disabled; on-demand only/)
+  assert.doesNotMatch(gatewaySource, /enqueueBookSceneBackfill\(\)/)
+})
+
 test('shadow analysis workers keep the hardened read-only runtime', () => {
   assert.match(compose, /x-book-analysis-worker: &book-analysis-worker/)
   assert.match(compose, /restart: unless-stopped/)
