@@ -275,6 +275,39 @@ export interface NormalizeCharacterOptions extends AssignVoicesOptions {
   totalChapters?: number;
 }
 
+// Заглушки, которые модель пишет вместо неизвестных частей имени. Такие куски
+// не должны попадать на карточку персонажа («Иван (фамилия неизвестна)» и т.п.).
+const NAME_PLACEHOLDER_PART =
+  /\s*[((\[]?\s*(?:полное\s+)?(?:имя|фамилия|отчество|прозвище)?\s*(?:не\s*(?:известн\p{L}*|назван\p{L}*|указан\p{L}*|упомянут\p{L}*)|неизвестн\p{L}*)\s*[))\]]?\s*/giu;
+const NAME_PLACEHOLDER_ONLY =
+  /^(?:безымянн\p{L}*|неизвестн\p{L}*|не\s*назван\p{L}*|no\s*name|unknown|n\/?a|null|none|-+)$/iu;
+
+/** Чистит имя от заглушек «неизвестно/не названо» и мусорных скобок. */
+export function sanitizeCharacterName(value: unknown): string {
+  let name = String(value ?? "")
+    .normalize("NFKC")
+    .replace(/\s+/gu, " ")
+    .trim();
+  name = name.replace(NAME_PLACEHOLDER_PART, " ").replace(/\s+/gu, " ").trim();
+  name = name.replace(/^[\s,.;:—-]+|[\s,.;:—-]+$/gu, "");
+  name = name.replace(/\(\s*\)|\[\s*\]/gu, "").trim();
+  if (NAME_PLACEHOLDER_ONLY.test(name)) return "";
+  return name;
+}
+
+/** Имя сплошными строчными («наташа ростова») приводим к Title Case;
+ * в смешанном регистре («Поздний герой») поднимаем только первую букву. */
+export function capitalizeCharacterName(value: string): string {
+  if (!value) return value;
+  if (value === value.toLocaleLowerCase("ru")) {
+    return value.replace(
+      /(^|[^\p{L}\p{M}\p{N}])(\p{Ll})/gu,
+      (_, prefix: string, letter: string) => `${prefix}${letter.toUpperCase()}`,
+    );
+  }
+  return value.replace(/^\p{Ll}/u, (letter) => letter.toUpperCase());
+}
+
 export function normalizeCharacterAnalysisResponse(
   input: unknown,
   options: NormalizeCharacterOptions = {},
@@ -284,9 +317,13 @@ export function normalizeCharacterAnalysisResponse(
   const characters = candidates.slice(0, MAX_NARRA_CHARACTERS).flatMap((candidate, index) => {
     if (!candidate || typeof candidate !== "object") return [];
     const raw = candidate as Record<string, unknown>;
-    const fullName = String(raw.fullName || raw.name || "").trim();
+    const isNarrator = Boolean(raw.isNarrator);
+    let rawFullName = sanitizeCharacterName(raw.fullName);
+    let rawName = sanitizeCharacterName(raw.name);
+    if (!rawName && !rawFullName && isNarrator) rawName = "Рассказчик";
+    const fullName = capitalizeCharacterName(rawFullName || rawName);
     if (!fullName) return [];
-    const name = String(raw.name || fullName.split(/\s+/)[0]).trim();
+    const name = capitalizeCharacterName(rawName || fullName.split(/\s+/)[0]);
     // Ударение имени для озвучки (P9): поле опциональное, валидация формы —
     // в stress-markup при построении словаря.
     const stressedName = typeof raw.stressedName === "string" ? raw.stressedName.trim() : "";
@@ -315,7 +352,7 @@ export function normalizeCharacterAnalysisResponse(
         // сгенерирует чат в характере героя (NarraCharacterChatScreen).
         greeting:
           typeof raw.greeting === "string" && raw.greeting.trim() ? raw.greeting.trim() : undefined,
-        isNarrator: Boolean(raw.isNarrator),
+        isNarrator,
       },
     ];
   });
