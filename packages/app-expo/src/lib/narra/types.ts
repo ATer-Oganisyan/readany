@@ -59,6 +59,9 @@ export interface NarraCharacter {
   /** Сгенерированный моделью placeholder с корректно склонённым обращением. */
   chatPlaceholder?: string;
   isNarrator?: boolean;
+  /** false — персонаж не говорит по-человечески (неговорящее животное/предмет):
+   * в чате отвечает описаниями поведения, TTS — голосом рассказчика. */
+  speaksInText?: boolean;
   /** Stable key of a portrait bundled with a catalog book. */
   portraitAssetId?: string;
   portraitUri?: string;

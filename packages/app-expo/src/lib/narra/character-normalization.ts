@@ -353,6 +353,7 @@ export function normalizeCharacterAnalysisResponse(
         greeting:
           typeof raw.greeting === "string" && raw.greeting.trim() ? raw.greeting.trim() : undefined,
         isNarrator,
+        speaksInText: raw.speaksInText === false ? false : undefined,
       },
     ];
   });
@@ -376,6 +377,11 @@ export function normalizeCharacterAnalysisResponse(
   );
   return characters.map((character) => {
     const assignment = plan.assignments[character.id];
+    // Неговорящие персонажи (speaksInText === false) озвучиваются рассказчиком:
+    // у них нет человеческих реплик, только описания поведения.
+    if (character.speaksInText === false) {
+      return { ...character, voice: plan.narratorVoice };
+    }
     return {
       ...character,
       voice: assignment?.voice ?? plan.narratorVoice,

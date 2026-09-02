@@ -288,3 +288,29 @@ describe("normalizeCharacterAnalysisResponse — имена", () => {
     expect(c.fullName).toBe("Максим Максимыч");
   });
 });
+
+describe("normalizeCharacterAnalysisResponse — неговорящие персонажи", () => {
+  const base = {
+    role: "пёс",
+    gender: "female",
+    traits: [],
+    speechStyle: "",
+    speechExamples: [],
+    appearancePrompt: "",
+    appearanceChapter: 1,
+  };
+
+  it("speaksInText=false сохраняется и голос назначается рассказчиком", () => {
+    const characters = normalizeCharacterAnalysisResponse({
+      characters: [
+        { ...base, name: "Каштанка", speaksInText: false },
+        { ...base, name: "Тётка", gender: "female" },
+      ],
+    });
+    expect(characters[0].speaksInText).toBe(false);
+    expect(characters[1].speaksInText).toBeUndefined();
+    expect(characters[0].voice).toBeTruthy();
+    // Неговорящий озвучивается рассказчиком: индивидуальная просодия не назначается.
+    expect(characters[0].voiceProsody).toBeUndefined();
+  });
+});
