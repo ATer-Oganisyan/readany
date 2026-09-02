@@ -246,7 +246,9 @@ function createSession(book: Book, progress: number) {
         void applyBookLanguage(book.id, manifest.language).catch(() => {
           console.warn("[Backend books] Could not persist book language");
         });
-        useNarraStore.getState().applyBackendManifest(book.id, manifest, value);
+        useNarraStore
+          .getState()
+          .applyBackendManifest(book.id, manifest, value, current.meta?.title ?? book.meta?.title);
         status(book.id, {
           manifest,
           error:

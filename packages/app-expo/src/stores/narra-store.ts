@@ -18,6 +18,7 @@ import {
   withNarraChatMessage,
   withNarraMemory,
 } from "@/lib/narra/domain";
+import { applyCuratedPortraitAssets } from "@/lib/narra/curated-portraits";
 import type { NarraGenreAnalysis } from "@/lib/narra/genre-analysis";
 import {
   CURRENT_PORTRAIT_PROMPT_VERSION,
@@ -45,7 +46,12 @@ export interface NarraState {
     source: NonNullable<NarraBookState["backendOriginalSource"]>,
   ) => void;
   setBackendBinding: (bookId: string, binding: BackendBookBinding) => void;
-  applyBackendManifest: (bookId: string, manifest: BackendBookManifest, progress: number) => void;
+  applyBackendManifest: (
+    bookId: string,
+    manifest: BackendBookManifest,
+    progress: number,
+    bookTitle?: string,
+  ) => void;
   books: Record<string, NarraBookState>;
   analyzingBookId: string | null;
   /** Выбор пользователя для голоса нарратора: мужской (Сбер) или женский (Афина). */
@@ -116,7 +122,7 @@ export const useNarraStore = create<NarraState>()(
         if (JSON.stringify(book.backendBinding) === JSON.stringify(backendBinding)) return;
         set({ books: { ...state.books, [bookId]: { ...book, backendBinding } } });
       },
-      applyBackendManifest: (bookId, manifest, progress) => {
+      applyBackendManifest: (bookId, manifest, progress, bookTitle) => {
         if (manifest.availability !== "ready") return;
         const state = get();
         const current = state.books[bookId] ?? emptyNarraBookState(bookId);
@@ -161,7 +167,8 @@ export const useNarraStore = create<NarraState>()(
             voiceOverride: previous.voiceOverride,
           };
         });
-        const next = withNarraCharacters(book, characters, book.analyzedAt ?? Date.now());
+        const curatedCharacters = applyCuratedPortraitAssets(characters, bookTitle);
+        const next = withNarraCharacters(book, curatedCharacters, book.analyzedAt ?? Date.now());
         if (
           next.characters === book.characters &&
           JSON.stringify(book.backendManifest) === JSON.stringify(manifest)
