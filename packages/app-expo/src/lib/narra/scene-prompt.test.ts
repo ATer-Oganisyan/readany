@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   SCENE_ART_DIRECTIONS,
   SCENE_PROMPT_CHAR_LIMIT,
+  SCENE_PROMPT_HARD_LIMIT,
   buildScenePrompt,
   mentionedCharacters,
   passportDescription,
@@ -216,6 +217,38 @@ describe("buildScenePrompt — схема из 5 блоков", () => {
     });
     expect(prompt.length).toBeLessThanOrEqual(SCENE_PROMPT_CHAR_LIMIT);
     expect(prompt).toContain("ДЕЙСТВИЕ момента в движении");
+  });
+
+  it("монструозные паспорта ужимаются под жёсткий потолок гейтвея (4000)", () => {
+    const giants = Array.from({ length: 6 }, (_, index) =>
+      character({
+        id: `giant-${index}`,
+        name: `Персонаж${index}`,
+        fullName: `Персонаж${index} Великолепный`,
+        appearancePrompt: `герой ${index}, ${"очень подробное описание внешности героя. ".repeat(20)}`,
+        passport: {
+          age: 30,
+          gender: "male",
+          build: "могучее телосложение",
+          hair: "длинные волосы",
+          eyes: "серые глаза",
+          face: "резкие черты",
+          outfit: "расшитый серебром камзол с длинным поясом. ".repeat(15),
+        },
+      }),
+    );
+    const prompt = buildScenePrompt({
+      bookTitle: "Книга",
+      chapter: "Глава",
+      excerpt: `${giants.map((hero) => hero.name).join(", ")} сражались во дворе замка. ${"Бой кипел и не утихал ни на мгновение. ".repeat(80)}`,
+      characters: giants,
+      previousExcerpts: ["Сцена первая. ".repeat(60)],
+    });
+    expect(prompt.length).toBeLessThanOrEqual(SCENE_PROMPT_HARD_LIMIT);
+    // Правовой блок и требования к действию не режутся даже при ужатии паспортов.
+    expect(prompt).toContain("ПРАВОВОЕ (РФ)");
+    expect(prompt).toContain("ДЕЙСТВИЕ момента в движении");
+    expect(prompt).toContain("Персонаж0");
   });
 
   it("без упомянутых героев — запрет добавлять лишних людей", () => {

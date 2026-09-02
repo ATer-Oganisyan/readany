@@ -67,7 +67,10 @@ export function findBannedImport(
   fileName?: string,
 ): BannedImportMatch | undefined {
   const haystackTitle = `${normalize(title)} ${normalize(fileName)}`.trim();
-  const haystackAuthor = normalize(author);
+  // Автор часто записан только в имени файла («Моя борьба - Адольф Гитлер.txt»),
+  // а у TXT метаданные автора после конвертации пустые — ищем маркеры автора
+  // по всем трём полям сразу.
+  const haystackAuthor = `${normalize(author)} ${normalize(fileName)} ${normalize(title)}`.trim();
   for (const rule of BANNED_BOOKS) {
     const titleHit = rule.titles.some((needle) => haystackTitle.includes(needle));
     if (!titleHit) continue;

@@ -8,7 +8,11 @@ import { hapticLight } from "@/lib/haptics";
 import { animateNarraImage } from "@/lib/narra/animate-openrouter";
 import { buildSceneMotionPrompt } from "@/lib/narra/animate-prompt";
 import { NarraAudioPlayer } from "@/lib/narra/audio-player";
-import { reportNarraError } from "@/lib/narra/errors";
+import {
+  NARRA_SAFETY_DECLINED_MESSAGE,
+  NARRA_SCENE_SAFETY_RETRY_MESSAGE,
+  reportNarraError,
+} from "@/lib/narra/errors";
 import { normalizePersistedNarraMediaUri, synthesizeNarraSpeech } from "@/lib/narra/media";
 import { generateNarraAudioScenario } from "@/lib/narra/scene-audio";
 import { generateNarraSceneImage as generateSceneImage } from "@/lib/narra/scene-image-openrouter";
@@ -126,7 +130,11 @@ export function NarraSceneScreen({ route, navigation }: Props) {
         generatedAt: Date.now(),
       });
     } catch (cause) {
-      setError(reportNarraError("scene_image", cause).message);
+      const message = reportNarraError("scene_image", cause).message;
+      // На этом экране кнопка «Заново» существует — подсказываем смягчённый повтор.
+      setError(
+        message === NARRA_SAFETY_DECLINED_MESSAGE ? NARRA_SCENE_SAFETY_RETRY_MESSAGE : message,
+      );
     } finally {
       sceneMediaOperationRef.current = "idle";
       setLoading(false);
