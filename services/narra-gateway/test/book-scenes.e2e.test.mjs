@@ -138,7 +138,8 @@ test('private v3 book generates only the explicitly requested scene by reader of
       progressFraction: null
     })
     assert.equal(pending.status, 'queued')
-    assert.equal(pending.sceneKey, 'text-interval-v1:0')
+    assert.equal(pending.sceneKey, 'reader-card-v1:1000')
+    assert.equal(pending.anchorTextOffset, 1_000)
 
     let generatedPrompt = ''
     const internal = createInternalGenerationService({
@@ -174,14 +175,14 @@ test('private v3 book generates only the explicitly requested scene by reader of
       logger: { info() {}, warn() {}, error() {} }
     })
     assert.equal((await worker.runOnce()).status, 'completed')
-    assert.match(generatedPrompt, /Анна открыла дверь/)
+    assert.match(generatedPrompt, /Действие продолжалось/)
 
     const ready = await service.sceneAt(subjectId, bookEditionId, {
       readerTextOffset: 1_000,
       progressFraction: null
     })
     assert.equal(ready.status, 'ready')
-    assert.equal(ready.sceneKey, 'text-interval-v1:0')
+    assert.equal(ready.sceneKey, 'reader-card-v1:1000')
     assert.match(ready.imageUrl, /^http/)
 
     const advanced = await service.advanceProgress(subjectId, bookEditionId, {

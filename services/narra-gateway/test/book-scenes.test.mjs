@@ -2,9 +2,12 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   BOOK_MEDIA_LOOKAHEAD_FRACTION,
+  BOOK_READER_SCENE_CONTEXT_TEXT_LENGTH,
+  BOOK_READER_SCENE_VERSION,
   BOOK_SCENE_INTERVAL_TEXT_LENGTH,
   BOOK_SCENE_POLICY_VERSION,
   bookMediaFrontier,
+  bookReaderSceneAt,
   bookScenePolicy,
   bookSceneSlotAt,
   bookSceneSlotsThrough
@@ -41,6 +44,24 @@ test('the same canonical text range always resolves to the same scene slot', () 
     bookSceneSlotAt(policy, 25_000, 6_000).excerptEndTextOffset,
     bookSceneSlotAt(policy, 25_000, 6_000).anchorTextOffset + 1
   )
+})
+
+test('every reader card gets context immediately before its own text position', () => {
+  const first = bookReaderSceneAt(25_000, 8_000)
+  const second = bookReaderSceneAt(25_000, 10_500)
+
+  assert.deepEqual(first, {
+    policyVersion: BOOK_READER_SCENE_VERSION,
+    sceneKey: 'reader-card-v1:8000',
+    slotIndex: 33_000,
+    anchorTextOffset: 8_000,
+    excerptStartTextOffset: 7_501,
+    excerptEndTextOffset: 8_001
+  })
+  assert.equal(first.excerptEndTextOffset - first.excerptStartTextOffset, BOOK_READER_SCENE_CONTEXT_TEXT_LENGTH)
+  assert.equal(second.sceneKey, 'reader-card-v1:10500')
+  assert.equal(second.excerptStartTextOffset, 10_001)
+  assert.notEqual(first.sceneKey, second.sceneKey)
 })
 
 test('private books keep a ten-percent media lead and catalog books prefetch all media', () => {

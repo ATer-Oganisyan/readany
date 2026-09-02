@@ -301,6 +301,65 @@ test('scene request reports terminal markup without creating a generation job', 
   assert.equal(pool.queries.some(({ sql }) => /INSERT INTO generation_jobs/.test(sql)), false)
 })
 
+test('reader scene request persists the exact card position instead of a shared interval', async () => {
+  const markupHash = 'a'.repeat(64)
+  const pool = scriptedPool([
+    () => ({ rows: [{
+      id: 'book-1', scope: 'catalog', title: 'Книга', author: 'Автор',
+      markup_version_id: 'markup-1', text_length: '25000', input_hash: markupHash,
+      publication_content_hash: markupHash, scene_policy: null,
+      normalized_text_object_key: 'normalized/book-1.txt',
+      normalized_text_hash: 'b'.repeat(64)
+    }] }),
+    (sql, params) => {
+      assert.match(sql, /INSERT INTO generation_jobs/)
+      assert.equal(params[1], `book-1:scene:${markupHash}:reader-card-v1:33000`)
+      assert.equal(params[3], `reader-card-v1:${markupHash.slice(0, 16)}`)
+      assert.deepEqual(JSON.parse(params[5]), {
+        markup_version_id: 'markup-1',
+        scene_key: 'reader-card-v1:8000',
+        slot_index: 33_000,
+        anchor_text_offset: 8_000,
+        excerpt_start_text_offset: 7_501,
+        excerpt_end_text_offset: 8_001,
+        normalized_text_object_key: 'normalized/book-1.txt',
+        normalized_text_hash: 'b'.repeat(64)
+      })
+      return { rows: [{ id: 'job-1', status: 'queued' }] }
+    },
+    (sql, params) => {
+      assert.match(sql, /ON CONFLICT \(markup_version_id, slot_index\) DO NOTHING/)
+      assert.equal(params[3], 'reader-card-v1')
+      assert.equal(params[4], 'reader-card-v1:8000')
+      return { rows: [] }
+    },
+    (sql, params) => {
+      assert.match(sql, /scene\.slot_index = \$2/)
+      assert.deepEqual(params, ['markup-1', 33_000])
+      return { rows: [{
+        scene_key: 'reader-card-v1:8000', slot_index: 33_000,
+        anchor_text_offset: 8_000, job_id: 'job-1', status: 'queued', asset_id: null
+      }] }
+    }
+  ])
+  const repository = createPostgresBookMarkupRepository(pool, {
+    idFactory: () => '123e4567-e89b-42d3-a456-426614174000'
+  })
+
+  assert.deepEqual(await repository.ensureReaderBookScene({
+    subjectId: '123e4567-e89b-42d3-a456-426614174001',
+    bookEditionId: 'book-1',
+    readerTextOffset: 8_000
+  }), {
+    sceneKey: 'reader-card-v1:8000',
+    jobId: 'job-1',
+    slotIndex: 33_000,
+    anchorTextOffset: 8_000,
+    status: 'queued',
+    asset: null
+  })
+})
+
 test('transactions retry a PostgreSQL deadlock with a fresh connection', async () => {
   let attempts = 0
   let releases = 0

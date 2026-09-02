@@ -1,5 +1,7 @@
 export const BOOK_SCENE_POLICY_VERSION = 'text-interval-v1'
 export const BOOK_SCENE_INTERVAL_TEXT_LENGTH = 6_000
+export const BOOK_READER_SCENE_VERSION = 'reader-card-v1'
+export const BOOK_READER_SCENE_CONTEXT_TEXT_LENGTH = 500
 export const BOOK_MEDIA_LOOKAHEAD_FRACTION = 0.1
 
 function positiveTextLength(value, name = 'textLength') {
@@ -72,6 +74,26 @@ export function bookSceneSlotAt(policyValue, textLengthValue, readerTextOffsetVa
   return {
     sceneKey: `${policy.version}:${slotIndex}`,
     slotIndex,
+    anchorTextOffset,
+    excerptStartTextOffset,
+    excerptEndTextOffset
+  }
+}
+
+/** A reader card owns its exact text position instead of sharing a 6k interval. */
+export function bookReaderSceneAt(textLengthValue, readerTextOffsetValue) {
+  const textLength = positiveTextLength(textLengthValue)
+  const anchorTextOffset = textOffset(readerTextOffsetValue, textLength, 'readerTextOffset')
+  const excerptEndTextOffset = Math.min(textLength, anchorTextOffset + 1)
+  const excerptStartTextOffset = Math.max(
+    0,
+    excerptEndTextOffset - BOOK_READER_SCENE_CONTEXT_TEXT_LENGTH
+  )
+  return {
+    policyVersion: BOOK_READER_SCENE_VERSION,
+    sceneKey: `${BOOK_READER_SCENE_VERSION}:${anchorTextOffset}`,
+    // Legacy interval slots are always below textLength, so this range cannot collide.
+    slotIndex: textLength + anchorTextOffset,
     anchorTextOffset,
     excerptStartTextOffset,
     excerptEndTextOffset
