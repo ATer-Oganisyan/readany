@@ -2904,7 +2904,12 @@ a { color: ${primary} !important; }
           if (!_sceneSlotsEnabled) return;
           if (sceneState === 'idle' || sceneState === 'error') {
             renderSceneInsert(sceneInsertTarget, 'loading', null);
-            postToRN('sceneSlotTap', { anchor: sceneAnchor });
+            var progressValue = sceneInsertTarget.getAttribute(SCENE_PROGRESS_ATTR);
+            var progressFraction = progressValue === null ? null : Number(progressValue);
+            postToRN('sceneSlotTap', {
+              anchor: sceneAnchor,
+              progressFraction: Number.isFinite(progressFraction) ? progressFraction : null,
+            });
           }
           return;
         }
@@ -5612,6 +5617,7 @@ a { color: ${primary} !important; }
     var SCENE_INSERT_CLASS = 'readany-scene-insert';
     var SCENE_INSERT_STYLE_ID = 'readany-scene-insert-style';
     var SCENE_ANCHOR_ATTR = 'data-readany-scene-anchor';
+    var SCENE_PROGRESS_ATTR = 'data-readany-scene-progress';
     var SCENE_STATE_ATTR = 'data-readany-scene-state';
     var SCENE_BLOCK_SELECTOR =
       'p, h1, h2, h3, h4, h5, h6, li, blockquote, dd, dt, figcaption, .__readany_br_paragraph';
@@ -6183,7 +6189,7 @@ a { color: ${primary} !important; }
     }
 
     // Вызывается из RN по сигналу счётчика страниц (scene-suggestion.ts)
-    window.insertSceneSlot = function () {
+    window.insertSceneSlot = function (progressFraction) {
       try {
         if (!view || !view.renderer) {
           sceneSlotLog('insert failed: no view/renderer');
@@ -6229,6 +6235,9 @@ a { color: ${primary} !important; }
           return;
         }
         var el = createSceneInsert(doc, anchor, 'idle');
+        if (Number.isFinite(progressFraction)) {
+          el.setAttribute(SCENE_PROGRESS_ATTR, String(progressFraction));
+        }
         host.parentNode.insertBefore(el, host.nextSibling);
         sceneSlotLog('inserted slot at ' + anchor);
       } catch (e) {

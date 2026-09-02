@@ -25,8 +25,8 @@ test('the same canonical text range always resolves to the same scene slot', () 
     sceneKey: 'text-interval-v1:0',
     slotIndex: 0,
     anchorTextOffset: 3_000,
-    excerptStartTextOffset: 0,
-    excerptEndTextOffset: 6_000
+    excerptStartTextOffset: 2_501,
+    excerptEndTextOffset: 3_001
   })
   assert.equal(bookSceneSlotAt(policy, 25_000, 5_999).slotIndex, 0)
   assert.equal(bookSceneSlotAt(policy, 25_000, 6_000).slotIndex, 1)
@@ -34,9 +34,13 @@ test('the same canonical text range always resolves to the same scene slot', () 
     sceneKey: 'text-interval-v1:4',
     slotIndex: 4,
     anchorTextOffset: 24_500,
-    excerptStartTextOffset: 24_000,
-    excerptEndTextOffset: 25_000
+    excerptStartTextOffset: 24_001,
+    excerptEndTextOffset: 24_501
   })
+  assert.equal(
+    bookSceneSlotAt(policy, 25_000, 6_000).excerptEndTextOffset,
+    bookSceneSlotAt(policy, 25_000, 6_000).anchorTextOffset + 1
+  )
 })
 
 test('private books keep a ten-percent media lead and catalog books prefetch all media', () => {

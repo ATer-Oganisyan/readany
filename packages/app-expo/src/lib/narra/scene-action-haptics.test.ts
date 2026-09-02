@@ -50,7 +50,7 @@ function runCallback(expression: ts.Expression, source: ts.SourceFile) {
     ...actions.map((name) => mocks[name]),
     { log: vi.fn() },
   );
-  handler({ anchor: "test-anchor" });
+  handler({ anchor: "test-anchor", progressFraction: 0.42 });
   return { events, mocks };
 }
 
@@ -81,6 +81,10 @@ describe("scene action haptics", () => {
     const [tap] = findCallbacks(screen, ["onSceneSlotTap"]);
     const [restore] = findCallbacks(screen, ["onSceneSlotRestored"]);
     expect(runCallback(tap, screen).events).toEqual(["hapticLight", "runSceneSlotGeneration"]);
+    expect(runCallback(tap, screen).mocks.runSceneSlotGeneration).toHaveBeenCalledWith(
+      "test-anchor",
+      0.42,
+    );
     expect(runCallback(restore, screen).events).toEqual(["handleSceneSlotRestored"]);
     const template = readFileSync(
       new URL("../../../assets/reader/reader.template.html", import.meta.url),
@@ -91,6 +95,8 @@ describe("scene action haptics", () => {
     );
     expect(template).toContain("if (!_sceneSlotsEnabled) return");
     expect(template).toContain("var _sceneSlotsEnabled = false");
+    expect(template).toContain("data-readany-scene-progress");
+    expect(template).toContain("progressFraction: Number.isFinite(progressFraction)");
     expect(template).toContain(
       "if (_sceneSlotsEnabled) appendSceneAction(box, _sceneSlotLabels.idle)",
     );

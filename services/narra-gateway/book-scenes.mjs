@@ -56,20 +56,23 @@ export function bookSceneSlotAt(policyValue, textLengthValue, readerTextOffsetVa
   const slotIndex = Math.floor(
     Math.max(0, readerTextOffset - policy.startTextOffset) / policy.intervalTextLength
   )
-  const excerptStartTextOffset = Math.min(
+  const slotStartTextOffset = Math.min(
     textLength - 1,
     policy.startTextOffset + slotIndex * policy.intervalTextLength
   )
-  const excerptEndTextOffset = Math.min(
+  const slotEndTextOffset = Math.min(
     textLength,
-    excerptStartTextOffset + policy.intervalTextLength
+    slotStartTextOffset + policy.intervalTextLength
   )
+  const anchorTextOffset = slotStartTextOffset + Math.floor(
+    (slotEndTextOffset - slotStartTextOffset) / 2
+  )
+  const excerptEndTextOffset = Math.min(slotEndTextOffset, anchorTextOffset + 1)
+  const excerptStartTextOffset = Math.max(slotStartTextOffset, excerptEndTextOffset - 500)
   return {
     sceneKey: `${policy.version}:${slotIndex}`,
     slotIndex,
-    anchorTextOffset: excerptStartTextOffset + Math.floor(
-      (excerptEndTextOffset - excerptStartTextOffset) / 2
-    ),
+    anchorTextOffset,
     excerptStartTextOffset,
     excerptEndTextOffset
   }
