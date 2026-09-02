@@ -2208,7 +2208,7 @@ function ReaderContent({ route, navigation }: Props) {
   );
 
   const readerToolbarDock =
-    Platform.OS === "ios" ? (
+    Platform.OS === "ios" || Platform.OS === "android" ? (
       <Reanimated.View
         pointerEvents={loading || !showControls ? "none" : "auto"}
         style={[

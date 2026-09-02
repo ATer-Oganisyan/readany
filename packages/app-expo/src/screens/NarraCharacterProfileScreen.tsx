@@ -26,6 +26,10 @@ export function NarraCharacterProfileScreen({ route, navigation }: Props) {
   const character = useNarraStore((state) =>
     state.books[bookId]?.characters.find((item) => item.id === characterId),
   );
+  const androidTitle =
+    Platform.OS === "android"
+      ? character?.fullName || character?.name || t("narra.characterProfile", "Персонаж")
+      : undefined;
   const portraitReady = Boolean(
     character?.backendManaged &&
       isCharacterUnlocked(book?.progress ?? 0, character) &&
@@ -33,6 +37,14 @@ export function NarraCharacterProfileScreen({ route, navigation }: Props) {
   );
 
   useLayoutEffect(() => {
+    if (Platform.OS === "android") {
+      navigation.setOptions({
+        title: androidTitle,
+        contentStyle: { backgroundColor: colors.card },
+      });
+      return;
+    }
+
     navigation.setOptions({
       contentStyle: {
         backgroundColor: Platform.OS === "ios" ? "transparent" : colors.card,
@@ -42,7 +54,7 @@ export function NarraCharacterProfileScreen({ route, navigation }: Props) {
       sheetExpandsWhenScrolledToEdge: portraitReady,
       sheetResizeAnimationEnabled: true,
     });
-  }, [colors.card, navigation, portraitReady]);
+  }, [androidTitle, colors.card, navigation, portraitReady]);
   const openChat = () => {
     if (openedFromChat) {
       navigation.goBack();

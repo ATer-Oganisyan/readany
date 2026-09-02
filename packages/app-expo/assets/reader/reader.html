@@ -2760,7 +2760,10 @@ a { color: ${primary} !important; }
       if (doc.__readany_tap) return;
       doc.__readany_tap = true;
 
-      const MAX_TAP_MS = 250;
+      const isAndroidLike = (() => {
+        try { return /Android/i.test(navigator.userAgent); } catch { return false; }
+      })();
+      const MAX_TAP_MS = isAndroidLike ? 450 : 250;
       const MOVE_THRESHOLD = 12;
       const SELECTION_MOVE_THRESHOLD = 2;
       const SWIPE_MIN_X = 40;
@@ -2983,26 +2986,30 @@ a { color: ${primary} !important; }
         finishTap(e, touch.clientX, touch.clientY, 'touch', null);
       }, { passive: false, capture: true });
 
-      // Device Hub and trackpads deliver a mouse pointer to WKWebView rather
-      // than a synthetic touch. Ignore touch pointers here to avoid handling a
-      // real finger twice on browsers that emit both event families.
+      // Device Hub and some Android WebView versions can deliver only Pointer
+      // Events, including pointerType="touch". A following Touch Event replaces
+      // this state and still finishes exactly once, so supporting both families
+      // also keeps ordinary finger input safe from duplicate handling.
       doc.addEventListener('pointerdown', (e) => {
-        if (e.pointerType !== 'mouse' || e.isPrimary === false || e.button !== 0) return;
+        if (e.pointerType !== 'mouse' && !isAndroidLike) return;
+        if (e.isPrimary === false || (e.pointerType === 'mouse' && e.button !== 0)) return;
         beginTap(e.clientX, e.clientY, e.target, 'pointer', e.pointerId, e.timeStamp);
       }, { passive: true });
 
       doc.addEventListener('pointermove', (e) => {
-        if (e.pointerType !== 'mouse') return;
+        if (e.pointerType !== 'mouse' && !isAndroidLike) return;
+        if (e.isPrimary === false) return;
         moveTap(e.clientX, e.clientY, 'pointer', e.pointerId);
       }, { passive: true });
 
       doc.addEventListener('pointercancel', (e) => {
-        if (e.pointerType !== 'mouse') return;
+        if (e.pointerType !== 'mouse' && !isAndroidLike) return;
         cancelTap('pointer', e.pointerId);
       }, { passive: true });
 
       doc.addEventListener('pointerup', (e) => {
-        if (e.pointerType !== 'mouse' || e.isPrimary === false || e.button !== 0) return;
+        if (e.pointerType !== 'mouse' && !isAndroidLike) return;
+        if (e.isPrimary === false || (e.pointerType === 'mouse' && e.button !== 0)) return;
         finishTap(e, e.clientX, e.clientY, 'pointer', e.pointerId);
       }, { passive: false, capture: true });
 

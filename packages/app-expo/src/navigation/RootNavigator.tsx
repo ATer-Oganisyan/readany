@@ -284,18 +284,30 @@ export function RootNavigator() {
         <Stack.Screen
           name="NarraCharacterProfile"
           component={NarraCharacterProfileScreen}
-          options={{
-            presentation: "formSheet",
-            animation: "slide_from_bottom",
-            headerShown: false,
-            contentStyle: {
-              backgroundColor: Platform.OS === "ios" ? "transparent" : colors.card,
-            },
-            sheetAllowedDetents: [0.78, 1],
-            sheetInitialDetentIndex: 0,
-            sheetGrabberVisible: true,
-            sheetExpandsWhenScrolledToEdge: true,
-          }}
+          options={
+            Platform.OS === "android"
+              ? {
+                  presentation: "card",
+                  animation: "slide_from_right",
+                  headerShown: true,
+                  title: t("narra.characterProfile", "Персонаж"),
+                  statusBarHidden: false,
+                  statusBarStyle: isDark ? "light" : "dark",
+                  contentStyle: { backgroundColor: colors.card },
+                }
+              : {
+                  presentation: "formSheet",
+                  animation: "slide_from_bottom",
+                  headerShown: false,
+                  contentStyle: {
+                    backgroundColor: Platform.OS === "ios" ? "transparent" : colors.card,
+                  },
+                  sheetAllowedDetents: [0.78, 1],
+                  sheetInitialDetentIndex: 0,
+                  sheetGrabberVisible: true,
+                  sheetExpandsWhenScrolledToEdge: true,
+                }
+          }
         />
         <Stack.Screen
           name="NarraScene"
