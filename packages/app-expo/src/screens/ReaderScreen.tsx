@@ -607,7 +607,7 @@ function ReaderContent({ route, navigation }: Props) {
       wordIndex?: number | null,
       text?: string | null,
     ) => void;
-    insertSceneSlot: () => void;
+    insertSceneSlot: (progressFraction: number) => void;
     replaceSceneSlot: (anchor: string, imageDataUri: string) => void;
     setSceneSlotState: (anchor: string, state: "idle" | "loading" | "error") => void;
     removeSceneSlot: (anchor: string) => void;
@@ -766,12 +766,12 @@ function ReaderContent({ route, navigation }: Props) {
   // Генерация (или перегенерация) сцены для врезки: слот уже показывает
   // плейсхолдер «Рисуем сцену…» — сюда приходим по событию из WebView.
   const runSceneSlotGeneration = useCallback(
-    async (anchor: string) => {
+    async (anchor: string, progressAtInsert?: number) => {
       if (sceneSlotActions.has(anchor)) return;
       const action = new AbortController();
       sceneSlotActions.set(anchor, action);
-      // Snapshot BEFORE any await. Paging while the server works cannot change the slot.
-      const requestedProgress = progressRef.current;
+      // Keep the position where the slot appeared; legacy/restored slots fall back to now.
+      const requestedProgress = progressAtInsert ?? progressRef.current;
       try {
         const sourceKey = sceneSourceKeyForAnchor(anchor);
         const bookState = useNarraStore.getState().books[bookId];
@@ -1305,7 +1305,7 @@ function ReaderContent({ route, navigation }: Props) {
           interval: sceneSuggestionInterval,
           step: sceneAdvance.state.step,
         });
-        bridgeRef.current?.insertSceneSlot();
+        bridgeRef.current?.insertSceneSlot(absoluteFraction);
       } else if (sceneAdvance.moved) {
         console.log("[SceneSlot] move counted", {
           pagesTurned: sceneAdvance.state.pagesTurned,
@@ -1392,10 +1392,10 @@ function ReaderContent({ route, navigation }: Props) {
       });
     },
     // Врезки сцен генерируются только по явному тапу.
-    onSceneSlotTap: ({ anchor }) => {
+    onSceneSlotTap: ({ anchor, progressFraction }) => {
       hapticLight();
-      console.log("[SceneSlot] tap → generate", { anchor });
-      void runSceneSlotGeneration(anchor);
+      console.log("[SceneSlot] tap → generate", { anchor, progressFraction });
+      void runSceneSlotGeneration(anchor, progressFraction);
     },
     onSceneSlotRestored: ({ anchor }) => {
       void handleSceneSlotRestored(anchor);

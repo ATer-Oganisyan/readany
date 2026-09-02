@@ -43,6 +43,7 @@ export interface CharacterTapEvent {
 /** Событие врезки сцены в тексте; anchor — CFI блока-якоря вставки. */
 export interface SceneSlotEvent {
   anchor: string;
+  progressFraction?: number;
 }
 
 export type SceneSlotState = "idle" | "loading" | "error";
@@ -758,11 +759,14 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
 
   // ─── Scene Insert Commands (врезки сцен в тексте) ───
   /** Вставить слот «Сгенерировать сцену» в конец видимого фрагмента текста. */
-  const insertSceneSlot = useCallback(() => {
+  const insertSceneSlot = useCallback((progressFraction: number) => {
+    const progress = Number.isFinite(progressFraction)
+      ? Math.min(1, Math.max(0, progressFraction))
+      : 0;
     webViewRef.current?.injectJavaScript(`
         (function() {
           try {
-            if (window.insertSceneSlot) window.insertSceneSlot();
+            if (window.insertSceneSlot) window.insertSceneSlot(${progress});
           } catch(e) { console.error('[WebView] insertSceneSlot error:', e); }
         })();
         true;
@@ -927,7 +931,16 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
           break;
         case "sceneSlotTap":
           if (typeof msg.anchor === "string" && msg.anchor) {
-            cb.onSceneSlotTap?.({ anchor: msg.anchor });
+            cb.onSceneSlotTap?.({
+              anchor: msg.anchor,
+              progressFraction:
+                typeof msg.progressFraction === "number" &&
+                Number.isFinite(msg.progressFraction) &&
+                msg.progressFraction >= 0 &&
+                msg.progressFraction <= 1
+                  ? msg.progressFraction
+                  : undefined,
+            });
           }
           break;
         case "sceneSlotRestored":
