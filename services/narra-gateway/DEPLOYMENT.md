@@ -105,9 +105,39 @@ entire TEST deployment is one local command and one sudo password prompt:
 
 Use `--no-sudo` only when the SSH user has already been provisioned with write
 access to the deployment root, read access to `compose.env`, and permission to
-run Docker Compose. CI cannot answer an interactive sudo prompt, so a future CI
-deploy job must either connect with a dedicated root SSH key or use a reviewed
-non-interactive privilege policy. The sudo password must never be stored in CI.
+run Docker Compose. CI cannot answer an interactive sudo prompt, so CI uses the
+dedicated account prepared below and always passes `--no-sudo`. The sudo
+password must never be stored in CI.
+
+### One-time CI host preparation
+
+Run this once from an administrator workstation for TEST:
+
+```bash
+./prepare-deploy-host.sh --environment test
+```
+
+The command connects to the existing `fun1` target and asks for sudo once. It
+generates a dedicated `~/.ssh/narra-deploy-ci` key pair when absent, creates the
+`narra-deploy` account, installs the public key, grants Docker access, prepares
+`/srv/narra-stagging`, and lets that account read the existing `compose.env`.
+It does not create or modify secret values. Docker Compose and `compose.env`
+must already exist on the target.
+
+For PROD, identify the actual target explicitly:
+
+```bash
+./prepare-deploy-host.sh \
+  --environment prod \
+  --host admin@prod.example.internal
+```
+
+After preparation, store the printed private key in the matching GitHub
+Environment secret (`NARRA_TEST_SSH_KEY` or `NARRA_PROD_SSH_KEY`). CI connects
+as `narra-deploy` and calls `deploy-remote.sh --no-sudo`; neither an SSH
+password nor a sudo password is present in the workflow. Treat this key as a
+privileged production credential, scope it to its environment, and rotate it
+if it may have been exposed.
 
 The target host must provide Bash, `flock`, `sha256sum`, standard file utilities,
 and Docker Compose. The developer machine or CI runner must provide `ssh` and

@@ -418,6 +418,8 @@ are retained automatically by default. The default remote mode uploads through
 the SSH user and performs the complete privileged operation after one sudo
 password prompt; no manual `sudo su` session is required. CI builds and pushes
 the application image to GHCR; the application server only pulls and starts it.
+Use `prepare-deploy-host.sh --environment test` once to create the dedicated
+key-based `narra-deploy` account required for non-interactive CI deployment.
 
 The server-side [`deploy.sh`](./deploy.sh) manages TEST or PROD exclusively
 through Docker Compose. The default deployment recreates only gateway;
