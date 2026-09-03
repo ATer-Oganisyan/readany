@@ -1204,7 +1204,8 @@ if (process.env.DATABASE_URL) {
     required: String(process.env.GENERATION_COST_LEDGER_REQUIRED || 'true').trim().toLowerCase() !== 'false'
   })
   bookMarkupRepository = createPostgresBookMarkupRepository(bookMarkupPool, {
-    privateMaterialTtlDays: PRIVATE_MATERIAL_TTL_DAYS
+    privateMaterialTtlDays: PRIVATE_MATERIAL_TTL_DAYS,
+    beforeCreateReaderScene: reserveSceneJobBudget
   })
   bookAnalysisRepository = createPostgresBookAnalysisRepository(bookMarkupPool, {
     defaultPipelineId: BOOK_ANALYSIS_PIPELINE,

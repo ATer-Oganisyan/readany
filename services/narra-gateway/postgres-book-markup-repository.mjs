@@ -17,6 +17,7 @@ import {
 } from './book-markup.mjs'
 import {
   bookMediaFrontier,
+  bookReaderSceneAt,
   bookSceneIdempotencyKey,
   bookSceneSlotAt,
   bookSceneSlotsThrough,
@@ -152,13 +153,17 @@ async function requireLeasedJob(client, job) {
  */
 export function createPostgresBookMarkupRepository(pool, {
   idFactory = randomUUID,
-  privateMaterialTtlDays = 7
+  privateMaterialTtlDays = 7,
+  beforeCreateReaderScene = async () => {}
 } = {}) {
   if (!pool || typeof pool.connect !== 'function' || typeof pool.query !== 'function') {
     throw new TypeError('a pg-compatible pool is required')
   }
   if (!Number.isSafeInteger(privateMaterialTtlDays) || privateMaterialTtlDays < 1 || privateMaterialTtlDays > 365) {
     throw new RangeError('privateMaterialTtlDays must be between 1 and 365')
+  }
+  if (typeof beforeCreateReaderScene !== 'function') {
+    throw new TypeError('beforeCreateReaderScene must be a function')
   }
 
   async function touchPrivateRetention(client, bookEditionId) {
@@ -362,14 +367,15 @@ export function createPostgresBookMarkupRepository(pool, {
     }
   }
 
-  async function ensureSceneSlot(client, context, slot, priority = 45) {
+  async function ensureSceneSlot(client, context, slot, priority = 45, beforeCreate = async () => {}) {
+    const policyVersion = slot.policyVersion ?? context.policy.version
     const idempotencyKey = bookSceneIdempotencyKey({
       bookEditionId: context.bookEditionId,
       markupContentHash: context.markupContentHash,
-      policyVersion: context.policy.version,
+      policyVersion,
       slotIndex: slot.slotIndex
     })
-    const targetVersion = `${context.policy.version}:${context.markupContentHash.slice(0, 16)}`
+    const targetVersion = `${policyVersion}:${context.markupContentHash.slice(0, 16)}`
     const payload = {
       markup_version_id: context.markupVersionId,
       scene_key: slot.sceneKey,
@@ -393,6 +399,7 @@ export function createPostgresBookMarkupRepository(pool, {
         priority, JSON.stringify(payload)
       ]
     )
+    if (insertedJob.rows[0]) await beforeCreate()
     const job = insertedJob.rows[0] || (await client.query(
       'SELECT * FROM generation_jobs WHERE idempotency_key = $1',
       [idempotencyKey]
@@ -418,7 +425,7 @@ export function createPostgresBookMarkupRepository(pool, {
        ON CONFLICT (markup_version_id, slot_index) DO NOTHING`,
       [
         idFactory(), context.bookEditionId, context.markupVersionId,
-        context.policy.version, slot.sceneKey, slot.slotIndex, slot.anchorTextOffset,
+        policyVersion, slot.sceneKey, slot.slotIndex, slot.anchorTextOffset,
         slot.excerptStartTextOffset, slot.excerptEndTextOffset, job.id
       ]
     )
@@ -1361,12 +1368,17 @@ export function createPostgresBookMarkupRepository(pool, {
         const canonicalOffset = progressFraction != null
           ? Math.round(context.textLength * Math.min(1, Math.max(0, progressFraction)))
           : readerTextOffset
-        const slot = bookSceneSlotAt(
-          context.policy,
+        const slot = bookReaderSceneAt(
           context.textLength,
           Math.min(context.textLength - 1, Math.max(0, canonicalOffset ?? 0))
         )
-        const scene = await ensureSceneSlot(client, context, slot, priority)
+        const scene = await ensureSceneSlot(
+          client,
+          context,
+          slot,
+          priority,
+          () => beforeCreateReaderScene(subjectId)
+        )
         if (context.scope === 'private') await touchPrivateRetention(client, bookEditionId)
         return scene
       })
