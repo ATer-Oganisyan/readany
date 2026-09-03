@@ -30,6 +30,7 @@ vi.mock("./backend-book-api", async (original) => ({
 }));
 vi.mock("./backend-scene-file", () => ({ saveBackendSceneFile: runtime.save }));
 import { useNarraStore } from "@/stores/narra-store";
+import type { BackendSceneIntent } from "./backend-scene";
 import { clearBackendSceneOperationsForTests } from "./backend-scene-operations";
 import { generateBackendReaderScene, readSceneDataUri } from "./backend-scene-reader";
 import { sceneInsertAnchors } from "./scene-inserts";
@@ -48,7 +49,11 @@ const input = (anchor = "anchor") => ({
   sourceKey: `page:${anchor}`,
   anchor,
   chapter: "Chapter",
-  intent: { bookEditionId: "edition", markupIdentity: "v3", requestedProgress: 0.385 },
+  intent: {
+    bookEditionId: "edition",
+    markupIdentity: "v3",
+    requestedProgress: 0.385,
+  } as BackendSceneIntent,
   display: vi.fn(),
 });
 const state = () => useNarraStore.getState().books.book;
@@ -122,6 +127,30 @@ describe("reader backend scene action and persistence", () => {
     );
     expect(JSON.parse(runtime.request.mock.lastCall?.[1].body)).toEqual({
       progress_fraction: 0.385,
+    });
+  });
+  it("replaces a saved interval request with the scene for this exact card", async () => {
+    const action = input();
+    action.intent = {
+      ...action.intent,
+      sceneKey: "text-interval-v1:6",
+      slotIndex: 6,
+      anchorTextOffset: 39000,
+    };
+    runtime.request.mockResolvedValue({
+      ...ready,
+      scene_key: "reader-card-v1:38500",
+      slot_index: 103500,
+      anchor_text_offset: 38500,
+    });
+
+    await generateBackendReaderScene(action, new AbortController().signal);
+
+    expect(runtime.request).toHaveBeenCalledTimes(1);
+    expect(backendScene().backendScene).toMatchObject({
+      sceneKey: "reader-card-v1:38500",
+      slotIndex: 103500,
+      anchorTextOffset: 38500,
     });
   });
   it("an empty/failed download cannot enter the store; a fresh ready URL can recover it", async () => {

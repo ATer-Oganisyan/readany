@@ -48,6 +48,11 @@ export async function generateBackendReaderScene(
 ): Promise<void> {
   const requestId = Crypto.randomUUID();
   let intent = { ...input.intent };
+  if (intent.sceneKey?.startsWith("text-interval-v1:")) {
+    intent.sceneKey = undefined;
+    intent.slotIndex = undefined;
+    intent.anchorTextOffset = undefined;
+  }
   const persistIntent = () => {
     return useNarraStore.getState().setSceneRequest(input.bookId, input.sourceKey, intent);
   };

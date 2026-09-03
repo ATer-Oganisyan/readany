@@ -303,6 +303,7 @@ test('scene request reports terminal markup without creating a generation job', 
 
 test('reader scene request persists the exact card position instead of a shared interval', async () => {
   const markupHash = 'a'.repeat(64)
+  let reservations = 0
   const pool = scriptedPool([
     () => ({ rows: [{
       id: 'book-1', scope: 'catalog', title: 'Книга', author: 'Автор',
@@ -343,7 +344,11 @@ test('reader scene request persists the exact card position instead of a shared 
     }
   ])
   const repository = createPostgresBookMarkupRepository(pool, {
-    idFactory: () => '123e4567-e89b-42d3-a456-426614174000'
+    idFactory: () => '123e4567-e89b-42d3-a456-426614174000',
+    beforeCreateReaderScene: async (subjectId) => {
+      assert.equal(subjectId, '123e4567-e89b-42d3-a456-426614174001')
+      reservations += 1
+    }
   })
 
   assert.deepEqual(await repository.ensureReaderBookScene({
@@ -358,6 +363,41 @@ test('reader scene request persists the exact card position instead of a shared 
     status: 'queued',
     asset: null
   })
+  assert.equal(reservations, 1)
+})
+
+test('reader scene request does not spend image budget for an existing generation', async () => {
+  const markupHash = 'a'.repeat(64)
+  let reservations = 0
+  const pool = scriptedPool([
+    () => ({ rows: [{
+      id: 'book-1', scope: 'catalog', title: 'Книга', author: 'Автор',
+      markup_version_id: 'markup-1', text_length: '25000', input_hash: markupHash,
+      publication_content_hash: markupHash, scene_policy: null,
+      normalized_text_object_key: 'normalized/book-1.txt',
+      normalized_text_hash: 'b'.repeat(64)
+    }] }),
+    () => ({ rows: [] }),
+    () => ({ rows: [{ id: 'job-1', status: 'running' }] }),
+    () => ({ rows: [] }),
+    () => ({ rows: [{
+      scene_key: 'reader-card-v1:8000', slot_index: 33_000,
+      anchor_text_offset: 8_000, job_id: 'job-1', status: 'running', asset_id: null
+    }] })
+  ])
+  const repository = createPostgresBookMarkupRepository(pool, {
+    idFactory: () => '123e4567-e89b-42d3-a456-426614174000',
+    beforeCreateReaderScene: async () => { reservations += 1 }
+  })
+
+  const result = await repository.ensureReaderBookScene({
+    subjectId: '123e4567-e89b-42d3-a456-426614174001',
+    bookEditionId: 'book-1',
+    readerTextOffset: 8_000
+  })
+
+  assert.equal(result.status, 'running')
+  assert.equal(reservations, 0)
 })
 
 test('transactions retry a PostgreSQL deadlock with a fresh connection', async () => {

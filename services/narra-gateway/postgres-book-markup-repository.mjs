@@ -153,13 +153,17 @@ async function requireLeasedJob(client, job) {
  */
 export function createPostgresBookMarkupRepository(pool, {
   idFactory = randomUUID,
-  privateMaterialTtlDays = 7
+  privateMaterialTtlDays = 7,
+  beforeCreateReaderScene = async () => {}
 } = {}) {
   if (!pool || typeof pool.connect !== 'function' || typeof pool.query !== 'function') {
     throw new TypeError('a pg-compatible pool is required')
   }
   if (!Number.isSafeInteger(privateMaterialTtlDays) || privateMaterialTtlDays < 1 || privateMaterialTtlDays > 365) {
     throw new RangeError('privateMaterialTtlDays must be between 1 and 365')
+  }
+  if (typeof beforeCreateReaderScene !== 'function') {
+    throw new TypeError('beforeCreateReaderScene must be a function')
   }
 
   async function touchPrivateRetention(client, bookEditionId) {
@@ -363,7 +367,7 @@ export function createPostgresBookMarkupRepository(pool, {
     }
   }
 
-  async function ensureSceneSlot(client, context, slot, priority = 45) {
+  async function ensureSceneSlot(client, context, slot, priority = 45, beforeCreate = async () => {}) {
     const policyVersion = slot.policyVersion ?? context.policy.version
     const idempotencyKey = bookSceneIdempotencyKey({
       bookEditionId: context.bookEditionId,
@@ -395,6 +399,7 @@ export function createPostgresBookMarkupRepository(pool, {
         priority, JSON.stringify(payload)
       ]
     )
+    if (insertedJob.rows[0]) await beforeCreate()
     const job = insertedJob.rows[0] || (await client.query(
       'SELECT * FROM generation_jobs WHERE idempotency_key = $1',
       [idempotencyKey]
@@ -1367,7 +1372,13 @@ export function createPostgresBookMarkupRepository(pool, {
           context.textLength,
           Math.min(context.textLength - 1, Math.max(0, canonicalOffset ?? 0))
         )
-        const scene = await ensureSceneSlot(client, context, slot, priority)
+        const scene = await ensureSceneSlot(
+          client,
+          context,
+          slot,
+          priority,
+          () => beforeCreateReaderScene(subjectId)
+        )
         if (context.scope === 'private') await touchPrivateRetention(client, bookEditionId)
         return scene
       })
