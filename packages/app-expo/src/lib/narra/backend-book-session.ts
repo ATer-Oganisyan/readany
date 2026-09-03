@@ -1,15 +1,21 @@
-import type { BackendBookBinding, BackendBookManifest } from "./backend-book-contract";
+import type {
+  BackendBookBinding,
+  BackendBookManifest,
+  BackendCharactersPreview,
+} from "./backend-book-contract";
 import { shouldPollBackendManifest } from "./backend-book-contract";
 
 export interface BackendBookSessionDependencies {
   bind(signal: AbortSignal): Promise<BackendBookBinding>;
   progress(binding: BackendBookBinding, progress: number, signal: AbortSignal): Promise<unknown>;
   manifest(binding: BackendBookBinding, signal: AbortSignal): Promise<BackendBookManifest>;
+  preview(binding: BackendBookBinding, signal: AbortSignal): Promise<BackendCharactersPreview>;
   identity(
     binding: BackendBookBinding,
     signal: AbortSignal,
   ): Promise<{ pending: boolean; delay: number }>;
   publish(manifest: BackendBookManifest, progress: number): void;
+  publishPreview(preview: BackendCharactersPreview): void;
   media(manifest: BackendBookManifest, progress: number, signal: AbortSignal): Promise<void>;
   error(error: unknown): void;
   expired(binding: BackendBookBinding): void;
@@ -48,7 +54,7 @@ export class BackendBookSession {
     this.currentProgress = this.normalize(progress);
     this.pendingProgress = Math.max(this.pendingProgress, this.currentProgress);
     if (this.latest?.availability === "ready") this.deps.publish(this.latest, this.currentProgress);
-    if (this.latest) this.loadMedia();
+    if (this.latest?.availability === "ready") this.loadMedia();
     if (this.pendingProgress <= this.sentProgress || this.progressTimer) return;
     this.progressTimer = setTimeout(() => {
       this.progressTimer = undefined;
@@ -84,7 +90,8 @@ export class BackendBookSession {
       this.mediaPending = true;
       return;
     }
-    if (!this.latest || this.controller.signal.aborted) return;
+    if (!this.latest || this.latest.availability !== "ready" || this.controller.signal.aborted)
+      return;
     this.mediaBusy = true;
     this.mediaPending = false;
     void this.deps
@@ -125,9 +132,23 @@ export class BackendBookSession {
       if (signal.aborted) return;
       this.latest = manifest;
       this.deps.publish(manifest, this.currentProgress);
-      this.loadMedia();
+      if (manifest.charactersStatus === "preview_ready") {
+        try {
+          const preview = await this.deps.preview(this.binding, signal);
+          if (signal.aborted) return;
+          const manifestRunId = manifest.analysis?.runId;
+          if (!manifestRunId || !preview.runId || preview.runId === manifestRunId)
+            this.deps.publishPreview(preview);
+          delay = preview.pollAfterMs;
+        } catch (error) {
+          if (!signal.aborted) this.deps.error(error);
+          delay = 5000;
+        }
+      }
+      if (manifest.availability === "ready") this.loadMedia();
       this.errors = 0;
-      if (shouldPollBackendManifest(manifest, this.currentProgress)) delay = 5000;
+      if (shouldPollBackendManifest(manifest, this.currentProgress) && delay === undefined)
+        delay = 5000;
       if (manifest.availability === "unknown") delay = 30_000;
     } catch (error) {
       if (signal.aborted) return;

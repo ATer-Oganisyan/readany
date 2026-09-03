@@ -69,6 +69,16 @@ function missingBook(value) {
   return value
 }
 
+function canonicalOperatorRoot(req) {
+  const queryIndex = req.originalUrl.indexOf('?')
+  const path = queryIndex === -1
+    ? req.originalUrl
+    : req.originalUrl.slice(0, queryIndex)
+  if (path !== req.baseUrl) return null
+  const query = queryIndex === -1 ? '' : req.originalUrl.slice(queryIndex)
+  return `${req.baseUrl}/${query}`
+}
+
 export function createBookOperatorRouter({
   username = 'narra',
   password,
@@ -118,6 +128,11 @@ export function createBookOperatorRouter({
     next()
   })
   router.use(requireBasicAuth({ username, password, realm: 'Narra books' }))
+  router.use((req, res, next) => {
+    const location = canonicalOperatorRoot(req)
+    if (location) return res.redirect(308, location)
+    return next()
+  })
 
   router.get('/api/books', asyncRoute(async (_req, res) => {
     res.json({ books: await dashboardRepository.listBooks() })

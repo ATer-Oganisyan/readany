@@ -80,8 +80,12 @@ All routes below require the existing installation bearer token:
   profiles and appearance fractions produced by the client;
 - `GET /v2/books/:bookEditionId/manifest` returns every stable character profile
   from the published v3 markup. The client filters them by local reading progress.
-  While v3 is processing it may return reader-visible grounded provisional
-  characters from completed scan chunks;
+  Its additive `characters_status` field is `processing`, `preview_ready` or
+  `full_ready` (and mirrors terminal `failed`, `cancelled` or `unavailable`
+  states) without changing the existing `availability` values;
+- `GET /v2/books/:bookEditionId/characters/preview` returns reader-visible,
+  grounded provisional characters from completed scan chunks once
+  `characters_status=preview_ready`. It never returns published full profiles;
 - `POST /v2/books/:bookEditionId/progress` advances the reader's text watermark
   and requests all bundles whose markup-defined warmup offsets were crossed.
 

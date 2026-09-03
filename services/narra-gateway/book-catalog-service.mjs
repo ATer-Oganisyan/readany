@@ -533,6 +533,30 @@ export function createBookCatalogService({
     }
   }
 
+  function charactersStatus(manifest) {
+    if (manifest.availability === 'ready') return 'full_ready'
+    if (
+      manifest.availability === 'processing' &&
+      manifest.characters.some((character) => character.provisional === true)
+    ) return 'preview_ready'
+    return manifest.availability
+  }
+
+  async function readerManifest(subjectId, bookEditionId) {
+    const snapshot = await store.getReaderBookManifest({
+      subjectId,
+      bookEditionId,
+      bundleVersion: analysisRepository
+        ? BOOK_ANALYSIS_CHARACTER_BUNDLE_VERSION
+        : bundleVersion
+    })
+    if (!snapshot) throw serviceError('NOT_FOUND', 'Книга не найдена', 404)
+    const manifest = analysisRepository?.getLatestShadowAnalysisPublication
+      ? await v3Manifest(snapshot, bookEditionId)
+      : legacyManifest(snapshot, bookEditionId)
+    return { ...manifest, charactersStatus: charactersStatus(manifest) }
+  }
+
   return {
     async listCatalog({ limit, cursor }) {
       const result = await store.listCatalogBooks({ limit, cursor })
@@ -900,17 +924,21 @@ export function createBookCatalogService({
     },
 
     async manifest(subjectId, bookEditionId) {
-      const snapshot = await store.getReaderBookManifest({
-        subjectId,
+      return readerManifest(subjectId, bookEditionId)
+    },
+
+    async charactersPreview(subjectId, bookEditionId) {
+      const manifest = await readerManifest(subjectId, bookEditionId)
+      return {
         bookEditionId,
-        bundleVersion: analysisRepository
-          ? BOOK_ANALYSIS_CHARACTER_BUNDLE_VERSION
-          : bundleVersion
-      })
-      if (!snapshot) throw serviceError('NOT_FOUND', 'Книга не найдена', 404)
-      return analysisRepository?.getLatestShadowAnalysisPublication
-        ? v3Manifest(snapshot, bookEditionId)
-        : legacyManifest(snapshot, bookEditionId)
+        status: manifest.charactersStatus,
+        runId: manifest.runId,
+        analysis: manifest.analysis,
+        characters: manifest.charactersStatus === 'preview_ready'
+          ? manifest.characters.filter((character) => character.provisional === true)
+          : [],
+        pollAfterMs: manifest.charactersStatus === 'processing' ? 2_000 : null
+      }
     },
 
     async shadowManifest(subjectId, bookEditionId) {

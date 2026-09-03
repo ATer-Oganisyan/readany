@@ -293,6 +293,7 @@ test('catalog manifest exposes validated v3 as the canonical markup', async () =
 
   assert.equal(preview.source, 'v3')
   assert.equal(preview.availability, 'ready')
+  assert.equal(preview.charactersStatus, 'full_ready')
   assert.equal(preview.publicationId, 'publication-v3')
   assert.equal(preview.readerTextOffset, 1_000)
   assert.deepEqual(
@@ -313,7 +314,14 @@ test('catalog manifest exposes validated v3 as the canonical markup', async () =
   assert.equal('personalitySnapshots' in preview.characters[0].profile, false)
   assert.equal(preview.characters[0].bundle.assets.length, REQUIRED_CHARACTER_MEDIA.length)
   assert.equal(preview.markup.analysisVersion, 'book-markup-v3')
-  assert.deepEqual(calls, [['manifest', 'character-bundle-v3']])
+
+  const charactersPreview = await service.charactersPreview('reader-1', EDITION.id)
+  assert.equal(charactersPreview.status, 'full_ready')
+  assert.deepEqual(charactersPreview.characters, [])
+  assert.deepEqual(calls, [
+    ['manifest', 'character-bundle-v3'],
+    ['manifest', 'character-bundle-v3']
+  ])
 })
 
 test('enabled correction projects profiles and redirects duplicates without mutating the base publication', async () => {
@@ -715,6 +723,7 @@ test('processing v3 manifest exposes only reader-visible provisional characters'
   const manifest = await service.manifest('reader-1', EDITION.id)
 
   assert.equal(manifest.availability, 'processing')
+  assert.equal(manifest.charactersStatus, 'preview_ready')
   assert.equal(manifest.runId, 'run-v3')
   assert.equal(manifest.readerTextOffset, 500)
   assert.deepEqual(manifest.analysis, {
@@ -736,6 +745,11 @@ test('processing v3 manifest exposes only reader-visible provisional characters'
     },
     bundle: null
   }])
+
+  const preview = await service.charactersPreview('reader-1', EDITION.id)
+  assert.equal(preview.status, 'preview_ready')
+  assert.equal(preview.pollAfterMs, null)
+  assert.deepEqual(preview.characters, manifest.characters)
 })
 
 test('terminal private analysis is explicit and retryable without leaking internal detail', async () => {
@@ -771,6 +785,7 @@ test('terminal private analysis is explicit and retryable without leaking intern
   const manifest = await service.manifest('reader-1', EDITION.id)
 
   assert.equal(manifest.availability, 'cancelled')
+  assert.equal(manifest.charactersStatus, 'cancelled')
   assert.deepEqual(manifest.analysis, {
     runId: 'run-v3', stage: 'scan', status: 'cancelled', retryable: true,
     errorCode: 'OPERATOR_CANCELLED', updatedAt: '2026-08-31T12:00:00.000Z',

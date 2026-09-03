@@ -8,6 +8,7 @@ const SHA256 = /^[0-9a-f]{64}$/
 const CHARACTER_KEY = /^[a-z0-9][a-z0-9._-]{0,127}$/i
 const BOOK_FORMATS = new Set(['epub', 'fb2', 'txt', 'pdf'])
 export const BOOK_CATALOG_LANGUAGE_CONTRACT_VERSION = 'book-catalog-language-v1'
+export const BOOK_CHARACTERS_PREVIEW_CONTRACT_VERSION = 'book-characters-preview-v1'
 
 function validation(message) {
   throw Object.assign(new Error(message), { code: 'VALIDATION', status: 400 })
@@ -422,6 +423,7 @@ export function manifestJson(manifest) {
     source: manifest.source,
     book: bookJson(manifest.book),
     availability: manifest.availability,
+    characters_status: manifest.charactersStatus,
     publication_id: manifest.publicationId,
     run_id: manifest.runId,
     content_hash: manifest.contentHash,
@@ -479,6 +481,36 @@ export function manifestJson(manifest) {
         }))
       }
     }))
+  }
+}
+
+export function charactersPreviewJson(preview) {
+  return {
+    contract_version: BOOK_CHARACTERS_PREVIEW_CONTRACT_VERSION,
+    book_edition_id: preview.bookEditionId,
+    status: preview.status,
+    run_id: preview.runId,
+    analysis: preview.analysis && {
+      stage: preview.analysis.stage,
+      status: preview.analysis.status,
+      completed_scan_chunks: preview.analysis.completedScanChunks,
+      total_scan_chunks: preview.analysis.totalScanChunks
+    },
+    characters: preview.status === 'preview_ready'
+      ? preview.characters
+          .filter((character) => character.provisional === true)
+          .map((character) => ({
+            character_key: character.characterKey,
+            name: character.name,
+            full_name: character.fullName,
+            first_appearance_text_offset: character.firstAppearanceTextOffset,
+            provisional: true,
+            state: 'preparing',
+            profile: character.profile,
+            bundle: null
+          }))
+      : [],
+    poll_after_ms: preview.pollAfterMs
   }
 }
 
@@ -763,6 +795,17 @@ export function createBookCatalogRouter({
       uuid(req.params.bookEditionId, 'bookEditionId')
     )
     res.status(result.availability === 'processing' ? 202 : 200).json(manifestJson(result))
+  }))
+
+  router.get('/:bookEditionId/characters/preview', asyncRoute(async (req, res) => {
+    const result = await service.charactersPreview(
+      subject(req),
+      uuid(req.params.bookEditionId, 'bookEditionId')
+    )
+    if (result.pollAfterMs) {
+      res.setHeader('Retry-After', String(Math.max(1, Math.ceil(result.pollAfterMs / 1_000))))
+    }
+    res.status(result.status === 'processing' ? 202 : 200).json(charactersPreviewJson(result))
   }))
 
   router.post(

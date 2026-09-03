@@ -6,6 +6,7 @@ const runtime = vi.hoisted(() => ({
   books: [] as Book[],
   request: vi.fn(),
   hash: vi.fn(async () => "a".repeat(64)),
+  media: vi.fn(async () => {}),
   sourceBytes: new Uint8Array([60, 63, 120, 109, 108, 62]),
 }));
 vi.mock("@/stores/library-store", () => ({
@@ -40,7 +41,9 @@ vi.mock("@readany/core/services", () => ({
   }),
 }));
 vi.mock("./backend-file-hash", () => ({ sha256BackendFile: runtime.hash }));
-vi.mock("./backend-character-media", () => ({ loadBackendCharacterMedia: vi.fn(async () => {}) }));
+vi.mock("./backend-character-media", () => ({
+  loadBackendCharacterMedia: runtime.media,
+}));
 vi.mock("./backend-book-api", async (original) => {
   const api = await original<typeof import("./backend-book-api")>();
   return {
@@ -105,6 +108,7 @@ beforeEach(() => {
   runtime.books = [book()];
   runtime.hash.mockClear();
   runtime.request.mockReset();
+  runtime.media.mockClear();
   useNarraStore.setState({ ...initial, books: {} });
   useBackendBookStatus.setState({ books: {} });
   runtime.request.mockImplementation(async (path: string) => {
@@ -179,6 +183,66 @@ describe("backend book import and persistence integration", () => {
       backendManaged: true,
     });
     expect(useNarraStore.getState().books.local.characters[0].portraitUri).toBeUndefined();
+  });
+  it("polls markup status, keeps preview rows ephemeral, then switches to the full manifest", async () => {
+    let fullReady = false;
+    runtime.request.mockImplementation(async (path: string) => {
+      if (path.endsWith("/manifest"))
+        return fullReady
+          ? ready
+          : {
+              availability: "processing",
+              characters_status: "preview_ready",
+              analysis: { run_id: "run-1", stage: "scan", status: "running" },
+              characters: [],
+            };
+      if (path.endsWith("/characters/preview"))
+        return {
+          contract_version: "book-characters-preview-v1",
+          book_edition_id: "catalog-id",
+          status: "preview_ready",
+          run_id: "run-1",
+          poll_after_ms: 1000,
+          characters: [
+            {
+              character_key: "provisional:hero",
+              name: "Предварительный герой",
+              full_name: "",
+              provisional: true,
+              state: "preparing",
+              profile: { provisional: true },
+              bundle: null,
+            },
+          ],
+        };
+      return {};
+    });
+
+    await open({
+      ...book(),
+      sourceKind: "catalog",
+      bookEditionId: "catalog-id",
+      contentHash: "a".repeat(64),
+    });
+
+    expect(runtime.request.mock.calls.map((call) => call[0])).toContain(
+      "/v2/books/catalog-id/characters/preview",
+    );
+    expect(useBackendBookStatus.getState().books.local.preview?.characters[0]?.name).toBe(
+      "Предварительный герой",
+    );
+    expect(useNarraStore.getState().books.local.characters).toEqual([]);
+    expect(runtime.media).not.toHaveBeenCalled();
+
+    fullReady = true;
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(useBackendBookStatus.getState().books.local.manifest?.charactersStatus).toBe(
+      "full_ready",
+    );
+    expect(useBackendBookStatus.getState().books.local.preview).toBeUndefined();
+    expect(useNarraStore.getState().books.local.characters[0]?.id).toBe("stable");
+    expect(runtime.media).toHaveBeenCalledTimes(1);
   });
   it("shows catalog description as bio when role is null", async () => {
     runtime.request.mockImplementation(async (path: string) => {

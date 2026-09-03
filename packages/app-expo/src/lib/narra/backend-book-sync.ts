@@ -16,7 +16,9 @@ import {
 } from "./backend-book-api";
 import {
   type BackendBookManifest,
+  type BackendCharactersPreview,
   parseBackendBinding,
+  parseBackendCharactersPreview,
   parseBackendManifest,
 } from "./backend-book-contract";
 import { BackendBookSession } from "./backend-book-session";
@@ -26,6 +28,7 @@ import { normalizeBookLanguage } from "./book-language";
 
 interface SyncStatus {
   manifest?: BackendBookManifest;
+  preview?: BackendCharactersPreview;
   error?: string;
   identityError?: string;
   analysisRetrying?: boolean;
@@ -212,6 +215,16 @@ function createSession(book: Book, progress: number) {
         parseBackendManifest(
           await backendBookRequest(backendBookPath(binding.bookEditionId, "manifest"), { signal }),
         ),
+      preview: async (binding, signal) => {
+        const preview = parseBackendCharactersPreview(
+          await backendBookRequest(backendBookPath(binding.bookEditionId, "characters/preview"), {
+            signal,
+          }),
+        );
+        if (preview.bookEditionId !== binding.bookEditionId)
+          throw new Error("Invalid backend characters preview identity");
+        return preview;
+      },
       identity: async (binding, signal) => {
         const result = await backendBookRequest(
           backendBookPath(binding.bookEditionId, "identity"),
@@ -249,8 +262,14 @@ function createSession(book: Book, progress: number) {
         useNarraStore
           .getState()
           .applyBackendManifest(book.id, manifest, value, current.meta?.title ?? book.meta?.title);
+        const previousPreview = useBackendBookStatus.getState().books[book.id]?.preview;
         status(book.id, {
           manifest,
+          preview:
+            manifest.charactersStatus === "preview_ready" &&
+            (!manifest.analysis?.runId || previousPreview?.runId === manifest.analysis.runId)
+              ? previousPreview
+              : undefined,
           error:
             manifest.availability === "unknown"
               ? "UNKNOWN_MANIFEST_STATE"
@@ -262,6 +281,7 @@ function createSession(book: Book, progress: number) {
         if (current.sourceKind === "catalog" && manifest.availability === "processing")
           console.warn("[Backend books] Catalog manifest is unexpectedly processing");
       },
+      publishPreview: (preview) => status(book.id, { preview, error: undefined }),
       media: (_manifest, value, signal) => loadBackendCharacterMedia(book.id, value, signal),
       error: (error) =>
         status(book.id, {

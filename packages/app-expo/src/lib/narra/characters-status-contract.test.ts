@@ -10,16 +10,26 @@ const ruCommon = JSON.parse(
     new URL("../../../../core/src/i18n/locales/ru/common.json", import.meta.url),
     "utf8",
   ),
-) as { narra: { findingCharacters: string } };
+) as {
+  narra: {
+    findingCharacters: string;
+    characterProfilePreparing: string;
+  };
+};
 
 describe("characters processing status", () => {
-  it("shows the processing state in Narra's subtitle without a separate status row", () => {
-    expect(screen).toContain('backendStatus?.manifest?.availability === "processing"');
+  it("shows the processing subtitle and a disabled state for preliminary characters", () => {
+    expect(screen).toContain('const isFindingCharacters = analysisAvailability === "processing"');
     expect(screen).toContain('t("narra.findingCharacters", "Ищу персонажей…")');
+    expect(screen).toContain('backendStatus.preview?.status === "preview_ready"');
+    expect(screen).toContain('charactersStatus === "full_ready"');
+    expect(screen).toContain('t("narra.characterProfilePreparing", "Профиль формируется…")');
+    expect(screen).toContain("disabled: true");
+    expect(screen).toContain("dimmed: true");
     expect(screen).not.toContain("Размечаю книгу…");
-    expect(screen).not.toContain("Профиль формируется…");
     expect(screen).not.toContain("preparing:");
     expect(ruCommon.narra.findingCharacters).toBe("Ищу персонажей…");
+    expect(ruCommon.narra.characterProfilePreparing).toBe("Профиль формируется…");
   });
   it("reports a terminal analysis failure through the standard retry toast", () => {
     expect(screen).toContain('analysisAvailability === "failed"');

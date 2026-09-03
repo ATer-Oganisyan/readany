@@ -310,16 +310,30 @@ function NarraCharactersList({
   const backendStatus = useBackendBookStatus((state) => state.books[bookId]);
   const openingChatRef = useRef(false);
   const storedCharacters = bookState?.characters ?? [];
+  const analysisAvailability = backendStatus?.manifest?.availability;
+  const charactersStatus = backendStatus?.manifest?.charactersStatus;
+  const fullMarkupReady =
+    charactersStatus === "full_ready" ||
+    (!charactersStatus && bookState?.backendManifest?.availability === "ready");
   const visibleCharacters = useMemo(
     () =>
-      storedCharacters.filter(
-        (character) =>
-          character.backendManaged && isCharacterUnlocked(book?.progress ?? 0, character),
-      ),
-    [storedCharacters, book?.progress],
+      fullMarkupReady
+        ? storedCharacters.filter(
+            (character) =>
+              character.backendManaged && isCharacterUnlocked(book?.progress ?? 0, character),
+          )
+        : [],
+    [fullMarkupReady, storedCharacters, book?.progress],
   );
-  const isFindingCharacters = backendStatus?.manifest?.availability === "processing";
-  const analysisAvailability = backendStatus?.manifest?.availability;
+  const preliminaryCharacters = useMemo(
+    () =>
+      backendStatus?.manifest?.charactersStatus === "preview_ready" &&
+      backendStatus.preview?.status === "preview_ready"
+        ? backendStatus.preview.characters
+        : [],
+    [backendStatus?.manifest?.charactersStatus, backendStatus?.preview],
+  );
+  const isFindingCharacters = analysisAvailability === "processing";
   const analysisTerminal =
     analysisAvailability === "failed" || analysisAvailability === "cancelled";
   const sourceUnavailable = backendStatus?.error === "SOURCE_UNAVAILABLE";
@@ -430,6 +444,30 @@ function NarraCharactersList({
         ),
       };
     }),
+    ...preliminaryCharacters.map(
+      (character): CharacterChatListItem => ({
+        key: `preview:${character.key}`,
+        accessibilityLabel: t(
+          "narra.characterProfilePreparingLabel",
+          "Профиль {{character}} формируется",
+          { character: character.fullName || character.name },
+        ),
+        title: character.fullName || character.name,
+        subtitle: t("narra.characterProfilePreparing", "Профиль формируется…"),
+        disabled: true,
+        dimmed: true,
+        onPress: () => undefined,
+        avatar: (
+          <CharacterChatAvatar muted>
+            <InitialsAvatar
+              size={56}
+              userId={`${bookId}:preview:${character.key}`}
+              name={character.fullName || character.name}
+            />
+          </CharacterChatAvatar>
+        ),
+      }),
+    ),
   ];
 
   return (
