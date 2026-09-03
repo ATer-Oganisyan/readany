@@ -50,6 +50,32 @@ and executed under a host-level deployment lock. After a successful operation,
 the `current` symlink is switched to that bundle. Existing release directories
 are accepted only when all three files are byte-for-byte identical.
 
+`current` is the stable server-side entrypoint, so operators never need to find
+a release by commit:
+
+```bash
+/srv/narra-stagging/current/deploy.sh --environment test
+
+/opt/narra-production/current/deploy.sh \
+  --environment prod \
+  --image readany/narra-gateway:<full-git-sha>
+```
+
+After every successful remote operation, old bundles are pruned automatically.
+The five newest releases are retained by default, and the target of `current`
+is never deleted even if it falls outside that set. Change the retention or
+disable cleanup when investigating a release:
+
+```bash
+./deploy-remote.sh --environment test --keep-releases 10
+
+./deploy-remote.sh --environment test --no-release-cleanup
+```
+
+Cleanup removes a directory only when it is an immediate child of `releases`
+and contains exactly the three expected bundle files. An unfamiliar directory
+is reported and skipped instead of being deleted recursively.
+
 The SSH user must be provisioned once with permission to:
 
 - write the environment's deployment root and its `releases` directory;
@@ -65,8 +91,9 @@ Host-key verification is deliberately not disabled. CI must provide a trusted
 will not fall back to an interactive password prompt.
 
 Transport-specific flags are `--host`, `--ssh-port`, `--identity-file`,
-`--remote-root`, `--bundle-version`, and `--transport-dry-run`. All other flags
-are passed to `deploy.sh`.
+`--remote-root`, `--bundle-version`, `--keep-releases`,
+`--no-release-cleanup`, and `--transport-dry-run`. All other flags are passed
+to `deploy.sh`.
 
 The server has no Git checkout, so remote `--from`/`--to` is prohibited. CI
 must calculate changed paths before connecting and pass repeatable

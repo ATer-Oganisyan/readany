@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { chmod, mkdir, mkdtemp, readlink, readdir, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readlink, readdir, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -253,12 +253,24 @@ exec /bin/mv "$@"
   await chmod(flockMock, 0o755)
   await chmod(mvMock, 0o755)
 
+  const releasesDir = join(remoteRoot, 'releases')
+  await mkdir(releasesDir, { recursive: true })
+  for (let index = 1; index <= 4; index += 1) {
+    const oldRelease = join(releasesDir, `old-${index}`)
+    await mkdir(oldRelease)
+    await writeFile(join(oldRelease, 'deploy.sh'), `old deploy ${index}`)
+    await writeFile(join(oldRelease, 'migrate.sh'), `old migrate ${index}`)
+    await writeFile(join(oldRelease, 'compose.i167.yml'), `old compose ${index}`)
+    await utimes(oldRelease, 1_000 + index, 1_000 + index)
+  }
+
   try {
     const result = spawnSync('bash', [remoteDeployScript,
       '--environment', 'test',
       '--host', 'fake-host',
       '--remote-root', remoteRoot,
       '--bundle-version', 'test-bundle',
+      '--keep-releases', '3',
       '--component', 'gateway',
       '--dry-run'
     ], {
@@ -278,8 +290,10 @@ exec /bin/mv "$@"
       await readlink(join(remoteRoot, 'current')),
       join(remoteRoot, 'releases', 'test-bundle')
     )
+    assert.equal((await readdir(releasesDir)).length, 3, result.stdout)
     assert.match(result.stdout, /environment=test mode=selected/)
     assert.match(result.stdout, /services= gateway/)
+    assert.match(result.stdout, /pruned release=/)
   } finally {
     await rm(sandbox, { recursive: true, force: true })
   }

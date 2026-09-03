@@ -413,6 +413,8 @@ deployment environment and must never be committed or shipped to the Expo app.
 Use [`deploy-remote.sh`](./deploy-remote.sh) from a developer machine or CI. It
 copies only `deploy.sh`, `migrate.sh`, and `compose.i167.yml`, then invokes the
 selected operation over SSH. It never copies application source or secrets.
+The stable server entrypoint is `current/deploy.sh`; five deployment bundles
+are retained automatically by default.
 
 The server-side [`deploy.sh`](./deploy.sh) manages TEST or PROD exclusively
 through Docker Compose. The default deployment recreates only gateway;

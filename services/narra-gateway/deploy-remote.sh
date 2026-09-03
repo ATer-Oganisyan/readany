@@ -11,6 +11,8 @@ ssh_port=""
 identity_file=""
 bundle_version=""
 transport_dry_run=0
+keep_releases=5
+release_cleanup=1
 forward_args=()
 
 bundle_files=(
@@ -35,6 +37,9 @@ Remote options:
                                /opt/narra-production in PROD.
   --bundle-version ID          Deployment bundle directory name; defaults to
                                the current Git commit.
+  --keep-releases COUNT        Keep this many newest bundles (default: 5).
+                               The active current bundle is always preserved.
+  --no-release-cleanup         Do not remove old deployment bundles.
   --operation OPERATION        deploy (default), migrate-check, migrate-apply.
   --transport-dry-run          Print SSH/SCP commands without connecting.
   -h, --help                   Show this help.
@@ -89,6 +94,15 @@ while [ "$#" -gt 0 ]; do
       need_value "$@"
       bundle_version="$2"
       shift 2
+      ;;
+    --keep-releases)
+      need_value "$@"
+      keep_releases="$2"
+      shift 2
+      ;;
+    --no-release-cleanup)
+      release_cleanup=0
+      shift
       ;;
     --operation)
       need_value "$@"
@@ -157,6 +171,8 @@ fi
 if [ -n "$identity_file" ]; then
   [ -f "$identity_file" ] || die "identity file not found: $identity_file"
 fi
+[[ "$keep_releases" =~ ^[1-9][0-9]*$ ]] \
+  || die "--keep-releases must be a positive integer"
 
 for file in "${bundle_files[@]}"; do
   [ -f "$file" ] || die "deployment bundle file not found: $file"
@@ -252,11 +268,60 @@ case "$operation" in
     ;;
 esac
 
-remote_invocation="$(shell_join flock -x "$lock_file" "$entrypoint" "${remote_args[@]}")"
+entrypoint_invocation="$(shell_join "$entrypoint" "${remote_args[@]}")"
 quoted_current="$(printf '%q' "$remote_root/current")"
 quoted_current_next="$(printf '%q' "$remote_root/current.next")"
-activate_line="set -euo pipefail; $remote_invocation; ln -sfn $quoted_release $quoted_current_next; mv -Tf -- $quoted_current_next $quoted_current"
-activate_command="$(shell_join bash -lc "$activate_line")"
+cleanup_invocation=":"
+if [ "$release_cleanup" = 1 ]; then
+  read -r -d '' cleanup_script <<'REMOTE_CLEANUP' || true
+set -euo pipefail
+releases_dir="$1"
+current_link="$2"
+keep="$3"
+current_target="$(readlink -f "$current_link")"
+kept=0
+while IFS= read -r candidate; do
+  if [ "$candidate" = "$current_target" ]; then
+    kept=$((kept + 1))
+    continue
+  fi
+  if [ "$kept" -lt "$keep" ]; then
+    kept=$((kept + 1))
+    continue
+  fi
+  case "$candidate" in
+    "$releases_dir"/*)
+      entry_count="$(find "$candidate" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')"
+      if [ "$entry_count" != 3 ] \
+        || [ ! -f "$candidate/deploy.sh" ] \
+        || [ ! -f "$candidate/migrate.sh" ] \
+        || [ ! -f "$candidate/compose.i167.yml" ]; then
+        printf '[deploy-remote] skipped unsafe release directory=%s\n' "$candidate" >&2
+        continue
+      fi
+      rm -- \
+        "$candidate/deploy.sh" \
+        "$candidate/migrate.sh" \
+        "$candidate/compose.i167.yml"
+      rmdir -- "$candidate"
+      printf '[deploy-remote] pruned release=%s\n' "$candidate"
+      ;;
+    *)
+      printf '[deploy-remote] refused path outside releases=%s\n' "$candidate" >&2
+      ;;
+  esac
+done < <(
+  ls -1dt "$releases_dir"/*/ 2>/dev/null | sed 's:/$::'
+)
+REMOTE_CLEANUP
+  cleanup_invocation="$(shell_join \
+    bash -lc "$cleanup_script" cleanup \
+    "$remote_root/releases" "$remote_root/current" "$keep_releases"
+  )"
+fi
+activate_line="set -euo pipefail; $entrypoint_invocation; ln -sfn $quoted_release $quoted_current_next; mv -Tf -- $quoted_current_next $quoted_current; $cleanup_invocation"
+activate_invocation="$(shell_join flock -x "$lock_file" bash -lc "$activate_line")"
+activate_command="$(shell_join bash -lc "$activate_invocation")"
 run ssh "${ssh_args[@]}" "$host" "$activate_command"
 
 if [ "$transport_dry_run" = 1 ]; then
