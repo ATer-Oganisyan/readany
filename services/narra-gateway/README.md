@@ -410,10 +410,14 @@ deployment environment and must never be committed or shipped to the Expo app.
 
 ## Backend deployment
 
-The canonical backend deployer is [`deploy.sh`](./deploy.sh). It runs directly
-on the target host and manages TEST or PROD exclusively through Docker Compose.
-The default deployment recreates only gateway; selected, full, and Git-diff
-modes control workers, PostgreSQL, and MinIO independently.
+Use [`deploy-remote.sh`](./deploy-remote.sh) from a developer machine or CI. It
+copies only `deploy.sh`, `migrate.sh`, and `compose.i167.yml`, then invokes the
+selected operation over SSH. It never copies application source or secrets.
+
+The server-side [`deploy.sh`](./deploy.sh) manages TEST or PROD exclusively
+through Docker Compose. The default deployment recreates only gateway;
+selected, full, and Git-diff modes control workers, PostgreSQL, and MinIO
+independently.
 
 Database migrations use the separate [`migrate.sh`](./migrate.sh) operation.
 Backups are never triggered implicitly by deploy or migration.

@@ -10,6 +10,10 @@ const localCompose = await readFile(
 const envExample = await readFile(new URL('../.env.example', import.meta.url), 'utf8')
 const gatewaySource = await readFile(new URL('../index.mjs', import.meta.url), 'utf8')
 const deploySource = await readFile(new URL('../deploy.sh', import.meta.url), 'utf8')
+const remoteDeploySource = await readFile(
+  new URL('../deploy-remote.sh', import.meta.url),
+  'utf8'
+)
 const migrateSource = await readFile(new URL('../migrate.sh', import.meta.url), 'utf8')
 const deprecatedDeploySource = await readFile(new URL('../deploy-i167.sh', import.meta.url), 'utf8')
 const deprecatedStagingDeploySource = await readFile(
@@ -179,6 +183,14 @@ test('deploy uses Docker Compose only and keeps migrations and backups separate'
   assert.match(migrateSource, /docker compose/)
   assert.match(migrateSource, /run --rm migrate/)
   assert.doesNotMatch(migrateSource, /deploy\.sh|backup-i167|pg_dump/)
+
+  assert.match(remoteDeploySource, /bundle_files=\(/)
+  assert.match(remoteDeploySource, /deploy\.sh/)
+  assert.match(remoteDeploySource, /migrate\.sh/)
+  assert.match(remoteDeploySource, /compose\.i167\.yml/)
+  assert.match(remoteDeploySource, /\bssh\b/)
+  assert.match(remoteDeploySource, /\bscp\b/)
+  assert.doesNotMatch(remoteDeploySource, /Dockerfile|package\.json|index\.mjs/)
 
   assert.match(deprecatedDeploySource, /DEPRECATED/)
   assert.match(deprecatedDeploySource, /exit 64/)

@@ -1,14 +1,95 @@
 # Backend deployment
 
-`deploy.sh` is the only supported backend deploy entrypoint. Run it directly
-on the target host from the versioned gateway directory. It invokes only
-Docker Compose for validation, image pulls, migration checks, container
-recreation, health waiting, and status output. It never uses SSH, rsync,
-systemd, raw `docker`, or npm.
+`deploy-remote.sh` is the supported entrypoint for a developer machine or CI.
+It uploads a fixed three-file deployment bundle over SSH and invokes the
+server-side operation. `deploy.sh` remains the container-management entrypoint
+on the target host. It invokes only Docker Compose for validation, image pulls,
+migration checks, container recreation, health waiting, and status output. It
+never uses SSH, rsync, systemd, raw `docker`, or npm.
 
 `deploy-i167.sh` and `deploy-staging-fun1.sh` are deprecated and disabled.
 The `compose.i167.yml` filename is retained only for compatibility; the file is
 now parameterized by environment and is used for both TEST and PROD.
+
+## Remote entrypoint
+
+The local proxy accepts the same deployment arguments plus SSH transport
+options:
+
+```bash
+# TEST uses the existing fun1 SSH alias by default
+./deploy-remote.sh --environment test --component gateway
+
+# An explicit host may be used from CI or another workstation
+./deploy-remote.sh \
+  --environment test \
+  --host deploy@test.example.internal \
+  --image readany/narra-gateway:test-latest \
+  --component analysis-workers
+
+# PROD has no hard-coded host
+./deploy-remote.sh \
+  --environment prod \
+  --host deploy@prod.example.internal \
+  --image readany/narra-gateway:<full-git-sha>
+```
+
+The proxy always copies exactly this allowlist:
+
+- `deploy.sh`;
+- `migrate.sh`;
+- `compose.i167.yml`.
+
+It never copies the application source, Git metadata, `.env`, SQL migrations,
+Dockerfile, tests, or package files. Runtime code and migrations come from the
+selected Docker image. Secrets stay in the environment-specific `compose.env`
+on the target host.
+
+The files are uploaded into `releases/<bundle-version>`, checked by SHA-256,
+and executed under a host-level deployment lock. After a successful operation,
+the `current` symlink is switched to that bundle. Existing release directories
+are accepted only when all three files are byte-for-byte identical.
+
+The SSH user must be provisioned once with permission to:
+
+- write the environment's deployment root and its `releases` directory;
+- run Docker Compose;
+- read the environment file without modifying or copying it from CI.
+
+The target host must provide Bash, `flock`, `sha256sum`, standard file utilities,
+and Docker Compose. The developer machine or CI runner must provide `ssh` and
+`scp`. These are deployment prerequisites, not application dependencies.
+
+Host-key verification is deliberately not disabled. CI must provide a trusted
+`known_hosts` entry and a dedicated SSH key. The proxy uses SSH batch mode and
+will not fall back to an interactive password prompt.
+
+Transport-specific flags are `--host`, `--ssh-port`, `--identity-file`,
+`--remote-root`, `--bundle-version`, and `--transport-dry-run`. All other flags
+are passed to `deploy.sh`.
+
+The server has no Git checkout, so remote `--from`/`--to` is prohibited. CI
+must calculate changed paths before connecting and pass repeatable
+`--changed-path` arguments.
+
+Remote migrations use the same proxy:
+
+```bash
+./deploy-remote.sh --environment test --operation migrate-check
+./deploy-remote.sh --environment test --operation migrate-apply
+
+./deploy-remote.sh \
+  --environment prod \
+  --host deploy@prod.example.internal \
+  --operation migrate-apply \
+  --image readany/narra-gateway:<full-git-sha> \
+  --confirm
+```
+
+`--transport-dry-run` makes no network connection and prints the complete
+SSH/SCP plan. The ordinary `--dry-run` is forwarded to the server-side tool: it
+still uploads the bundle and connects, but Docker Compose mutations are only
+printed.
 
 ## Environments and image versions
 
