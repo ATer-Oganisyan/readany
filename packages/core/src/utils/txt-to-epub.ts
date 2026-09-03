@@ -12,6 +12,7 @@
  */
 
 import { buildStoreOnlyZip } from "./store-only-zip";
+import { isLikelyWindows1251 } from "./windows-1251";
 
 interface Metadata {
   bookTitle: string;
@@ -71,9 +72,13 @@ const escapeXml = (str: string) => {
 function detectLanguage(text: string): string {
   const sample = text.slice(0, 2000);
   let cjkCount = 0;
+  let cyrillicCount = 0;
   let latinCount = 0;
   for (let i = 0; i < sample.length; i++) {
     const code = sample.charCodeAt(i);
+    if ((code >= 0x0410 && code <= 0x044f) || code === 0x0401 || code === 0x0451) {
+      cyrillicCount++;
+    }
     if (
       (code >= 0x4e00 && code <= 0x9fff) || // CJK Unified Ideographs
       (code >= 0x3400 && code <= 0x4dbf) || // CJK Extension A
@@ -87,6 +92,7 @@ function detectLanguage(text: string): string {
       latinCount++;
     }
   }
+  if (cyrillicCount > 0 && cyrillicCount > cjkCount && cyrillicCount > latinCount) return "ru";
   if (cjkCount > latinCount * 0.5) return "zh";
   return "en";
 }
@@ -614,6 +620,7 @@ export class TxtToEpubConverter {
       return "utf-8";
     } catch {
       const uint8Array = new Uint8Array(buffer);
+      if (isLikelyWindows1251(uint8Array)) return "windows-1251";
       let validBytes = 0;
       let checkedBytes = 0;
       const sampleSize = Math.min(uint8Array.length, 10000);
@@ -690,6 +697,7 @@ export class TxtToEpubConverter {
       return "utf-8";
     } catch {
       let validBytes = 0;
+      if (isLikelyWindows1251(headSample)) return "windows-1251";
       let checkedBytes = 0;
       const sampleSize = Math.min(headSample.length, 10000);
 

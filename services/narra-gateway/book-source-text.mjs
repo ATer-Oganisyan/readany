@@ -1,6 +1,7 @@
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { strFromU8, unzipSync } from 'fflate'
+import { isLikelyWindows1251 } from './book-text-encoding.mjs'
 
 const MAX_EXTRACTED_BYTES = 64 * 1024 * 1024
 const EPUB_TEXT_ENTRY = /\.(?:xhtml?|html?)$/i
@@ -26,6 +27,31 @@ function decodeFb2Markup(bytes) {
       'BOOK_TEXT_INVALID',
       `FB2 cannot be decoded as ${encoding}: ${error.message}`
     )
+  }
+}
+
+function decodePlainText(bytes) {
+  // Respect Unicode BOMs first. Never reinterpret malformed marked Unicode
+  // as Windows-1251.
+  const bomEncoding = bytes[0] === 0xff && bytes[1] === 0xfe ? 'utf-16le'
+    : bytes[0] === 0xfe && bytes[1] === 0xff ? 'utf-16be'
+    : bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf ? 'utf-8'
+    : null
+  if (bomEncoding) {
+    try {
+      return new TextDecoder(bomEncoding, { fatal: true }).decode(bytes)
+    } catch {
+      throw generationError('BOOK_TEXT_INVALID', 'TXT contains malformed Unicode')
+    }
+  }
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+  } catch {
+    if (isLikelyWindows1251(bytes)) {
+      return new TextDecoder('windows-1251', { fatal: true }).decode(bytes)
+    }
+    // Preserve existing validation for unsupported or damaged input.
+    return bytes.toString('utf8')
   }
 }
 
@@ -590,7 +616,7 @@ export async function extractStructuredBookText({ bytes: rawBytes, format, mimeT
         : wholeDocument(text, 'fb2:document', sectionTitle(markup, '')).sections
     }
   } else if (normalizedFormat === 'txt' || normalizedMime.startsWith('text/')) {
-    const text = bytes.toString('utf8').replace(/\r/g, '').trim()
+    const text = decodePlainText(bytes).replace(/\r/g, '').trim()
     const sections = headingSections(text, 'text-section')
     result = {
       text,
