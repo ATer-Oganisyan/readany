@@ -3,6 +3,7 @@ import {
   backendConfirmedCharacters,
   backendUnlockProgress,
   parseBackendBinding,
+  parseBackendCharactersPreview,
   parseBackendManifest,
   shouldPollBackendManifest,
 } from "./backend-book-contract";
@@ -43,7 +44,9 @@ describe("backend book contract", () => {
     expect(manifest({ language: input }).language).toBe(expected);
   });
   it("keeps stable IDs and confirmed profiles usable without portraits", () => {
-    const characters = backendConfirmedCharacters(manifest(), 0.4);
+    const value = manifest();
+    expect(value.charactersStatus).toBe("full_ready");
+    const characters = backendConfirmedCharacters(value, 0.4);
     expect(characters).toHaveLength(1);
     expect(characters[0]).toMatchObject({
       id: "stable-id",
@@ -83,6 +86,8 @@ describe("backend book contract", () => {
       retryable: true,
       errorCode: "ANALYSIS_FAILED",
       updatedAt: "2026-08-31T12:00:00.000Z",
+      completedScanChunks: undefined,
+      totalScanChunks: undefined,
     });
     expect(value.characters[0].fullName).toBe("");
     expect(value.characters[0].profile).toMatchObject({
@@ -90,6 +95,63 @@ describe("backend book contract", () => {
       description: "Князь и офицер.",
     });
     expect(JSON.stringify(value)).not.toContain("must not be exposed");
+  });
+  it("parses the separate provisional roster without promoting it to full markup", () => {
+    const preview = parseBackendCharactersPreview({
+      contract_version: "book-characters-preview-v1",
+      book_edition_id: "edition-1",
+      status: "preview_ready",
+      run_id: "run-1",
+      poll_after_ms: 7000,
+      analysis: {
+        stage: "scan",
+        status: "running",
+        completed_scan_chunks: 4,
+        total_scan_chunks: 20,
+      },
+      characters: [
+        {
+          character_key: "provisional:anna",
+          name: "Анна",
+          full_name: "Анна Каренина",
+          provisional: true,
+          state: "preparing",
+          profile: { role: "Профиль формируется" },
+          bundle: null,
+        },
+        {
+          character_key: "unsafe-final",
+          name: "Финальный",
+          provisional: false,
+          state: "ready",
+        },
+      ],
+    });
+    expect(preview).toMatchObject({
+      bookEditionId: "edition-1",
+      status: "preview_ready",
+      runId: "run-1",
+      pollAfterMs: 7000,
+      analysis: { completedScanChunks: 4, totalScanChunks: 20 },
+    });
+    expect(preview.characters.map((character) => character.key)).toEqual(["provisional:anna"]);
+    expect(backendConfirmedCharacters(manifest({ availability: "processing" }), 1)).toEqual([]);
+  });
+  it("drops provisional rows when the preview endpoint reports full readiness", () => {
+    const preview = parseBackendCharactersPreview({
+      contract_version: "book-characters-preview-v1",
+      book_edition_id: "edition-1",
+      status: "full_ready",
+      characters: [
+        {
+          character_key: "stale",
+          name: "Старый preview",
+          provisional: true,
+          state: "preparing",
+        },
+      ],
+    });
+    expect(preview.characters).toEqual([]);
   });
   it("never promotes processing or unknown availability to confirmed", () => {
     expect(backendConfirmedCharacters(manifest({ availability: "processing" }), 1)).toEqual([]);

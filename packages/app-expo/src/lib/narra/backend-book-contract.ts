@@ -37,9 +37,20 @@ export interface BackendAnalysisState {
   retryable: boolean;
   errorCode?: string;
   updatedAt?: string;
+  completedScanChunks?: number;
+  totalScanChunks?: number;
 }
+export type BackendCharactersStatus =
+  | "processing"
+  | "preview_ready"
+  | "full_ready"
+  | "failed"
+  | "cancelled"
+  | "unavailable"
+  | "unknown";
 export interface BackendBookManifest {
   availability: "ready" | "processing" | "failed" | "cancelled" | "unavailable" | "unknown";
+  charactersStatus: BackendCharactersStatus;
   analysis?: BackendAnalysisState;
   language?: string | null;
   revision?: number;
@@ -47,6 +58,15 @@ export interface BackendBookManifest {
   contentHash?: string;
   textLength?: number;
   characters: BackendManifestCharacter[];
+}
+export interface BackendCharactersPreview {
+  contractVersion: "book-characters-preview-v1";
+  bookEditionId: string;
+  status: BackendCharactersStatus;
+  runId?: string;
+  analysis?: BackendAnalysisState;
+  characters: BackendManifestCharacter[];
+  pollAfterMs: number;
 }
 
 export function backendRecord(value: unknown): BackendRecord {
@@ -59,6 +79,17 @@ const strings = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 const finite = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
+const nonNegativeInteger = (value: unknown): value is number =>
+  Number.isSafeInteger(value) && Number(value) >= 0;
+
+const CHARACTER_STATUSES = new Set<BackendCharactersStatus>([
+  "processing",
+  "preview_ready",
+  "full_ready",
+  "failed",
+  "cancelled",
+  "unavailable",
+]);
 
 const HIDDEN_PROFILE_FIELDS = new Set([
   "analysisSource",
@@ -167,68 +198,122 @@ function parseAsset(value: unknown): BackendCharacterAsset[] {
 
 const CHARACTER_BUNDLE_VERSION = /^character-bundle-v3(?::r[1-9]\d*)?$/;
 
+function parseAnalysis(value: unknown): BackendAnalysisState | undefined {
+  const analysis = backendRecord(value);
+  if (Object.keys(analysis).length === 0) return undefined;
+  return {
+    runId: string(analysis.run_id) || undefined,
+    stage: string(analysis.stage) || undefined,
+    status: ["queued", "running", "ready", "failed", "cancelled"].includes(string(analysis.status))
+      ? (string(analysis.status) as BackendAnalysisState["status"])
+      : "unknown",
+    retryable: analysis.retryable === true,
+    errorCode: /^[A-Z0-9_]{1,80}$/.test(string(analysis.error_code))
+      ? string(analysis.error_code)
+      : undefined,
+    updatedAt: string(analysis.updated_at) || undefined,
+    completedScanChunks: nonNegativeInteger(analysis.completed_scan_chunks)
+      ? Number(analysis.completed_scan_chunks)
+      : undefined,
+    totalScanChunks: nonNegativeInteger(analysis.total_scan_chunks)
+      ? Number(analysis.total_scan_chunks)
+      : undefined,
+  };
+}
+
+function parseCharacters(value: unknown): BackendManifestCharacter[] {
+  if (!Array.isArray(value)) throw new Error("Invalid backend characters");
+  const seen = new Set<string>();
+  return value.flatMap((value) => {
+    const item = backendRecord(value);
+    const key = string(item.character_key);
+    if (!key || !string(item.name) || seen.has(key)) return [];
+    seen.add(key);
+    const bundle = backendRecord(item.bundle);
+    return [
+      {
+        key,
+        name: string(item.name),
+        fullName: string(item.full_name),
+        firstAppearance: finite(item.first_appearance_text_offset)
+          ? Math.max(0, item.first_appearance_text_offset)
+          : undefined,
+        provisional: item.provisional !== false,
+        state: item.state === "ready" || item.state === "preparing" ? item.state : "unknown",
+        profile: backendRecord(item.profile),
+        assets:
+          CHARACTER_BUNDLE_VERSION.test(string(bundle.version)) && Array.isArray(bundle.assets)
+            ? bundle.assets.flatMap(parseAsset)
+            : [],
+      } satisfies BackendManifestCharacter,
+    ];
+  });
+}
+
+function manifestCharactersStatus(
+  rawStatus: unknown,
+  availability: BackendBookManifest["availability"],
+): BackendCharactersStatus {
+  if (availability === "ready") return "full_ready";
+  if (availability === "failed" || availability === "cancelled" || availability === "unavailable")
+    return availability;
+  const value = string(rawStatus) as BackendCharactersStatus;
+  if ((value === "processing" || value === "preview_ready") && CHARACTER_STATUSES.has(value))
+    return value;
+  return availability === "processing" ? "processing" : "unknown";
+}
+
 export function parseBackendManifest(value: unknown): BackendBookManifest {
   const raw = backendRecord(value);
-  if (!Array.isArray(raw.characters)) throw new Error("Invalid backend manifest characters");
   const markup = backendRecord(raw.markup);
-  const analysis = backendRecord(raw.analysis);
-  const seen = new Set<string>();
+  const availability =
+    raw.availability === "ready" ||
+    raw.availability === "processing" ||
+    raw.availability === "failed" ||
+    raw.availability === "cancelled" ||
+    raw.availability === "unavailable"
+      ? raw.availability
+      : "unknown";
   return {
-    availability:
-      raw.availability === "ready" ||
-      raw.availability === "processing" ||
-      raw.availability === "failed" ||
-      raw.availability === "cancelled" ||
-      raw.availability === "unavailable"
-        ? raw.availability
-        : "unknown",
-    analysis:
-      Object.keys(analysis).length > 0
-        ? {
-            runId: string(analysis.run_id) || undefined,
-            stage: string(analysis.stage) || undefined,
-            status: ["queued", "running", "ready", "failed", "cancelled"].includes(
-              string(analysis.status),
-            )
-              ? (string(analysis.status) as BackendAnalysisState["status"])
-              : "unknown",
-            retryable: analysis.retryable === true,
-            errorCode: /^[A-Z0-9_]{1,80}$/.test(string(analysis.error_code))
-              ? string(analysis.error_code)
-              : undefined,
-            updatedAt: string(analysis.updated_at) || undefined,
-          }
-        : undefined,
+    availability,
+    charactersStatus: manifestCharactersStatus(raw.characters_status, availability),
+    analysis: parseAnalysis(raw.analysis),
     language: normalizeBookLanguage(raw.language),
     revision: finite(markup.revision) ? markup.revision : undefined,
     publicationId: string(raw.publication_id) || undefined,
     contentHash: string(raw.content_hash) || undefined,
     textLength:
       finite(markup.text_length) && markup.text_length > 0 ? markup.text_length : undefined,
-    characters: raw.characters.flatMap((value) => {
-      const item = backendRecord(value);
-      const key = string(item.character_key);
-      if (!key || !string(item.name) || seen.has(key)) return [];
-      seen.add(key);
-      const bundle = backendRecord(item.bundle);
-      return [
-        {
-          key,
-          name: string(item.name),
-          fullName: string(item.full_name),
-          firstAppearance: finite(item.first_appearance_text_offset)
-            ? Math.max(0, item.first_appearance_text_offset)
-            : undefined,
-          provisional: item.provisional !== false,
-          state: item.state === "ready" || item.state === "preparing" ? item.state : "unknown",
-          profile: backendRecord(item.profile),
-          assets:
-            CHARACTER_BUNDLE_VERSION.test(string(bundle.version)) && Array.isArray(bundle.assets)
-              ? bundle.assets.flatMap(parseAsset)
-              : [],
-        } satisfies BackendManifestCharacter,
-      ];
-    }),
+    characters: parseCharacters(raw.characters),
+  };
+}
+
+export function parseBackendCharactersPreview(value: unknown): BackendCharactersPreview {
+  const raw = backendRecord(value);
+  if (raw.contract_version !== "book-characters-preview-v1")
+    throw new Error("Invalid backend characters preview contract");
+  const bookEditionId = string(raw.book_edition_id);
+  if (!bookEditionId) throw new Error("Invalid backend characters preview book");
+  const status = CHARACTER_STATUSES.has(raw.status as BackendCharactersStatus)
+    ? (raw.status as BackendCharactersStatus)
+    : "unknown";
+  const previewRows = Array.isArray(raw.characters)
+    ? raw.characters.filter((value) => backendRecord(value).provisional === true)
+    : raw.characters;
+  const characters = parseCharacters(previewRows).filter(
+    (character) => character.provisional && character.state === "preparing",
+  );
+  return {
+    contractVersion: "book-characters-preview-v1",
+    bookEditionId,
+    status,
+    runId: string(raw.run_id) || undefined,
+    analysis: parseAnalysis(raw.analysis),
+    characters: status === "preview_ready" ? characters : [],
+    pollAfterMs:
+      nonNegativeInteger(raw.poll_after_ms) && Number(raw.poll_after_ms) >= 1000
+        ? Math.min(60_000, Number(raw.poll_after_ms))
+        : 5000,
   };
 }
 

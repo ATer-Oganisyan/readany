@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { BackendBookBinding, BackendBookManifest } from "./backend-book-contract";
+import type {
+  BackendBookBinding,
+  BackendBookManifest,
+  BackendCharactersPreview,
+} from "./backend-book-contract";
 import { BackendBookSession, type BackendBookSessionDependencies } from "./backend-book-session";
 
 const binding: BackendBookBinding = {
@@ -8,14 +12,30 @@ const binding: BackendBookBinding = {
   contentSha256: "hash",
   sourceUploaded: true,
 };
-const ready: BackendBookManifest = { availability: "ready", textLength: 1000, characters: [] };
+const ready: BackendBookManifest = {
+  availability: "ready",
+  charactersStatus: "full_ready",
+  textLength: 1000,
+  characters: [],
+};
 function setup(progress = 0.2) {
   const deps: BackendBookSessionDependencies = {
     bind: vi.fn(async () => binding),
     progress: vi.fn(async () => ({})),
     manifest: vi.fn(async () => ready),
+    preview: vi.fn(
+      async (): Promise<BackendCharactersPreview> => ({
+        contractVersion: "book-characters-preview-v1",
+        bookEditionId: "id",
+        status: "preview_ready",
+        runId: "run-1",
+        characters: [],
+        pollAfterMs: 12_000,
+      }),
+    ),
     identity: vi.fn(async () => ({ pending: false, delay: 5000 })),
     publish: vi.fn(),
+    publishPreview: vi.fn(),
     media: vi.fn(async () => {}),
     error: vi.fn(),
     expired: vi.fn(),
@@ -56,15 +76,48 @@ describe("backend book synchronization lifecycle", () => {
   });
   it("polls manifest without rebinding/uploading or reposting unchanged progress", async () => {
     const { session, deps } = setup();
-    vi.mocked(deps.manifest).mockResolvedValue({ ...ready, availability: "processing" });
+    vi.mocked(deps.manifest).mockResolvedValue({
+      ...ready,
+      availability: "processing",
+      charactersStatus: "processing",
+    });
     session.start();
     await vi.advanceTimersByTimeAsync(15_000);
     expect(deps.bind).toHaveBeenCalledTimes(1);
     expect(deps.progress).toHaveBeenCalledTimes(1);
     expect(deps.manifest).toHaveBeenCalledTimes(4);
+    expect(deps.preview).not.toHaveBeenCalled();
     session.stop();
     await vi.advanceTimersByTimeAsync(30_000);
     expect(deps.manifest).toHaveBeenCalledTimes(4);
+  });
+  it("requests and publishes the preliminary variant only after status says it is ready", async () => {
+    const { session, deps } = setup();
+    vi.mocked(deps.manifest).mockResolvedValue({
+      ...ready,
+      availability: "processing",
+      charactersStatus: "preview_ready",
+      analysis: { runId: "run-1", status: "running", retryable: false },
+    });
+    session.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(deps.preview).toHaveBeenCalledTimes(1);
+    expect(deps.publishPreview).toHaveBeenCalledTimes(1);
+    expect(deps.media).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(11_999);
+    expect(deps.manifest).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(deps.manifest).toHaveBeenCalledTimes(2);
+    session.stop();
+  });
+  it("does not request a preliminary variant when full markup is ready", async () => {
+    const { session, deps } = setup();
+    session.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(deps.preview).not.toHaveBeenCalled();
+    expect(deps.publish).toHaveBeenCalledWith(ready, 0.2);
+    expect(deps.media).toHaveBeenCalledTimes(1);
+    session.stop();
   });
   it.each(["failed", "cancelled", "unavailable"] as const)(
     "publishes %s once and does not leave an infinite manifest poll",

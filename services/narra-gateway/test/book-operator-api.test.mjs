@@ -120,6 +120,7 @@ test('operator UI and every API endpoint require the configured browser password
   const input = dependencies()
   await withServer(input, async (baseUrl) => {
     for (const path of [
+      '/operator',
       '/operator/',
       '/operator/review',
       '/operator/api/books',
@@ -134,6 +135,18 @@ test('operator UI and every API endpoint require the configured browser password
       headers: { authorization: `Basic ${Buffer.from('narra:wrong').toString('base64')}` }
     })
     assert.equal(invalid.status, 401)
+  })
+})
+
+test('operator root redirects to its slash-terminated URL so relative UI requests stay scoped', async () => {
+  const input = dependencies()
+  await withServer(input, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/operator?book=${BOOK_ID}`, {
+      headers: { authorization: AUTH },
+      redirect: 'manual'
+    })
+    assert.equal(response.status, 308)
+    assert.equal(response.headers.get('location'), `/operator/?book=${BOOK_ID}`)
   })
 })
 

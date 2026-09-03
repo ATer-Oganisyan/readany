@@ -2,23 +2,25 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   BOOK_CATALOG_LANGUAGE_CONTRACT_VERSION,
+  BOOK_CHARACTERS_PREVIEW_CONTRACT_VERSION,
   bookIdentityJson,
   bookJson,
   catalogGenresJson,
+  charactersPreviewJson,
   createBookCatalogRouter,
   decodeCatalogCursor,
   decodeLanguageCatalogCursor,
   encodeCatalogCursor,
   encodeLanguageCatalogCursor,
-  parseBookResolveBody,
+  manifestJson,
+  parseAnalysisRetryBody,
   parseBookContentCursor,
+  parseBookResolveBody,
   parseCatalogLanguage,
   parseLocalBookBody,
   parseLocalMarkupBody,
   parseReaderProgressBody,
-  parseAnalysisRetryBody,
   parseSceneAtBody,
-  manifestJson,
   ttsSectionJson
 } from '../book-catalog-api.mjs'
 
@@ -58,6 +60,8 @@ test('book catalog router exposes a separate genres endpoint', () => {
     path === '/:bookEditionId/tts-script/sections/:sectionIndex' && methods.get))
   assert.ok(routes.some(({ path, methods }) =>
     path === '/:bookEditionId/analysis/retry' && methods.post))
+  assert.ok(routes.some(({ path, methods }) =>
+    path === '/:bookEditionId/characters/preview' && methods.get))
 })
 
 test('analysis retry accepts only an explicit UUID request id', () => {
@@ -71,7 +75,7 @@ test('analysis retry accepts only an explicit UUID request id', () => {
 
 test('manifest polling exposes additive TTS markup state without changing book markup', () => {
   const json = manifestJson({
-    source: 'v3', book: {}, availability: 'ready', readerTextOffset: 0,
+    source: 'v3', book: {}, availability: 'ready', charactersStatus: 'full_ready', readerTextOffset: 0,
     readingFraction: 0, markup: null, characters: [],
     correction: {
       contractVersion: 'book-character-correction-v1',
@@ -87,11 +91,113 @@ test('manifest polling exposes additive TTS markup state without changing book m
     status: 'processing', version: 'book-tts-script-v1', revision: null,
     retry_after_ms: 10_000
   })
+  assert.equal(json.characters_status, 'full_ready')
   assert.deepEqual(json.correction, {
     contract_version: 'book-character-correction-v1',
     version: 2,
     document_hash: 'c'.repeat(64)
   })
+})
+
+test('character preview JSON is versioned and cannot serialize a full character', () => {
+  const provisional = {
+    characterKey: 'provisional:hero',
+    name: 'Hero',
+    fullName: '',
+    firstAppearanceTextOffset: 42,
+    provisional: true,
+    state: 'preparing',
+    profile: { role: 'Профиль формируется', provisional: true },
+    bundle: null
+  }
+  const full = { ...provisional, characterKey: 'hero', provisional: false, bundle: { assets: [] } }
+  const json = charactersPreviewJson({
+    bookEditionId: ID,
+    status: 'preview_ready',
+    runId: 'run-1',
+    analysis: { stage: 'scan', status: 'running', completedScanChunks: 2, totalScanChunks: 10 },
+    characters: [provisional, full],
+    pollAfterMs: null
+  })
+
+  assert.equal(json.contract_version, BOOK_CHARACTERS_PREVIEW_CONTRACT_VERSION)
+  assert.equal(json.status, 'preview_ready')
+  assert.deepEqual(json.analysis, {
+    stage: 'scan', status: 'running', completed_scan_chunks: 2, total_scan_chunks: 10
+  })
+  assert.deepEqual(json.characters, [{
+    character_key: 'provisional:hero',
+    name: 'Hero',
+    full_name: '',
+    first_appearance_text_offset: 42,
+    provisional: true,
+    state: 'preparing',
+    profile: provisional.profile,
+    bundle: null
+  }])
+  assert.deepEqual(charactersPreviewJson({
+    bookEditionId: ID,
+    status: 'full_ready',
+    characters: [full],
+    pollAfterMs: null
+  }).characters, [])
+})
+
+test('character preview endpoint asks the client to poll until a provisional roster exists', async () => {
+  const repository = {
+    async listCatalogBooks() { return { items: [], nextCursor: null } },
+    async resolveBook() {},
+    async getReaderBookManifest() {
+      return {
+        edition: {
+          id: ID, scope: 'private', contentSha256: 'a'.repeat(64), title: 'Book',
+          author: 'Author', format: 'epub', status: 'marking_up', sourceStorage: 'temporary'
+        },
+        readerTextOffset: 0,
+        readingFraction: 0,
+        markup: null,
+        characters: []
+      }
+    },
+    async advanceReaderPosition() {}
+  }
+  const analysisRepository = {
+    async getLatestShadowAnalysisPublication() { return null },
+    async getLatestAnalysisPreview() {
+      return {
+        run: { id: 'run-1', stage: 'scan', status: 'running', textLength: 1_000 },
+        scan: { completedChunks: 0, totalChunks: 10 },
+        characters: []
+      }
+    }
+  }
+  const router = createBookCatalogRouter({ repository, analysisRepository })
+  const route = router.stack.find((layer) =>
+    layer.route?.path === '/:bookEditionId/characters/preview')
+  let responseStatus = null
+  let retryAfter = null
+  const payload = await new Promise((resolve, reject) => {
+    route.route.stack[0].handle(
+      { params: { bookEditionId: ID }, installation: { sub: ID } },
+      {
+        setHeader(name, value) {
+          if (name === 'Retry-After') retryAfter = value
+        },
+        status(value) {
+          responseStatus = value
+          return this
+        },
+        json: resolve
+      },
+      reject
+    )
+  })
+
+  assert.equal(responseStatus, 202)
+  assert.equal(retryAfter, '2')
+  assert.equal(payload.status, 'processing')
+  assert.equal(payload.poll_after_ms, 2_000)
+  assert.deepEqual(payload.characters, [])
 })
 
 test('terminal manifest serializes safe retry metadata without provider detail', () => {

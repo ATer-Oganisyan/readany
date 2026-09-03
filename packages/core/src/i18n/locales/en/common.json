@@ -140,6 +140,8 @@
     "askAboutBooks": "Ask anything about your books",
     "askAboutBook": "Ask anything about this book",
     "findingCharacters": "Finding characters…",
+    "characterProfilePreparing": "Profile is being prepared…",
+    "characterProfilePreparingLabel": "{{character}}'s profile is being prepared",
     "scene": "Scene",
     "summary": "Summary",
     "summaryExcerpt": "Excerpt",

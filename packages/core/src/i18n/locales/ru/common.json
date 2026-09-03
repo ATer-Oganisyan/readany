@@ -181,6 +181,8 @@
     "askAboutBooks": "Спросите что угодно о книгах",
     "askAboutBook": "Спросите что угодно о книге",
     "findingCharacters": "Ищу персонажей…",
+    "characterProfilePreparing": "Профиль формируется…",
+    "characterProfilePreparingLabel": "Профиль {{character}} формируется",
     "scene": "Сцена",
     "summary": "Краткий пересказ",
     "summaryExcerpt": "Фрагмент",
