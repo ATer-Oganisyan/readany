@@ -93,7 +93,7 @@ test('narra and external cache identities are disjoint for the same content hash
   assert.notEqual(narra, external)
   assert.match(narra, /narra:book-analysis-v51/)
   assert.match(external, /external:external-autiobook-v1\.d532bdd0/)
-  assert.match(external, /normalized-text-v1:schema-3:book-markup-v3/)
+  assert.match(external, /normalized-text-v2:schema-3:book-markup-v3/)
 })
 
 test('external resolve and synthesis never call the narra generator', async () => {
@@ -149,7 +149,7 @@ test('external worker independently verifies evidence and has no narra fallback'
         pipelineId: 'external',
         pipelineImplementationVersion: strategy.implementationVersion,
         extractorVersion: EXTERNAL_ADAPTER_CONTRACT_VERSION,
-        normalizationVersion: 'normalized-text-v1',
+        normalizationVersion: 'normalized-text-v2',
         outputSchemaVersion: 3,
         normalizedTextObjectKey: 'normalized.txt',
         normalizedTextHash: sourceSha256,

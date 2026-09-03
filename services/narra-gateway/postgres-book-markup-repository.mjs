@@ -22,6 +22,7 @@ import {
   bookSceneSlotsThrough,
   normalizeBookScenePolicy
 } from './book-scenes.mjs'
+import { BOOK_ANALYSIS_NORMALIZATION_VERSION } from './book-analysis-pipeline.mjs'
 
 const BOOK_MIME_TYPES = Object.freeze({
   epub: 'application/epub+zip',
@@ -1229,15 +1230,17 @@ export function createPostgresBookMarkupRepository(pool, {
            FROM book_analysis_runs AS run
            WHERE run.book_edition_id = edition.id
              AND run.input_hash = edition.content_sha256
-             AND run.normalization_version = 'normalized-text-v1'
+             AND run.status = 'ready'
+             AND run.normalization_version = ANY($2::text[])
              AND run.normalized_text_object_key IS NOT NULL
              AND run.normalized_text_hash IS NOT NULL
-           ORDER BY run.run_sequence DESC, run.created_at DESC
+           ORDER BY array_position($2::text[], run.normalization_version),
+                    run.run_sequence DESC, run.created_at DESC
            LIMIT 1
          ) AS prepared ON true
          WHERE edition.id = $1 AND edition.scope = 'catalog'
            AND edition.status IN ('base_ready', 'published')`,
-        [bookEditionId]
+        [bookEditionId, [BOOK_ANALYSIS_NORMALIZATION_VERSION, 'normalized-text-v1']]
       )
       const row = result.rows[0]
       if (!row) return null

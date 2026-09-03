@@ -8,6 +8,87 @@ import {
   representativeTextSelection
 } from '../book-source-text.mjs'
 
+function encodeWindows1251(value) {
+  return Buffer.from([...value].map((symbol) => {
+    const codePoint = symbol.codePointAt(0)
+    if (codePoint <= 0x7f) return codePoint
+    if (codePoint >= 0x0410 && codePoint <= 0x042f) return 0xc0 + codePoint - 0x0410
+    if (codePoint >= 0x0430 && codePoint <= 0x044f) return 0xe0 + codePoint - 0x0430
+    if (codePoint === 0x0401) return 0xa8
+    if (codePoint === 0x0451) return 0xb8
+    throw new Error(`test character is not representable in Windows-1251: ${symbol}`)
+  }))
+}
+
+test('FB2 extraction removes embedded binary payloads before text normalization', async () => {
+  const payload = 'A'.repeat(12_000)
+  const source = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<FictionBook>',
+    '<description><title-info><book-title>Тестовая книга</book-title></title-info></description>',
+    '<body><section><title><p>Глава первая</p></title><p>Анна вошла.</p></section></body>',
+    `<binary id="cover" content-type="image/jpeg">${payload}</binary>`,
+    '</FictionBook>'
+  ].join('')
+
+  const structured = await extractStructuredBookText({
+    bytes: Buffer.from(source, 'utf8'),
+    format: 'fb2',
+    mimeType: 'application/x-fictionbook+xml'
+  })
+
+  assert.match(structured.text, /Тестовая книга/)
+  assert.match(structured.text, /Анна вошла\./)
+  assert.doesNotMatch(structured.text, /A{100}/)
+  assert.ok(structured.textLength < 1_000)
+})
+
+test('FB2 extraction honors a Windows-1251 XML declaration', async () => {
+  const source = [
+    '<?xml version="1.0" encoding="windows-1251"?>',
+    '<FictionBook>',
+    '<description><title-info><book-title>Наследие</book-title>',
+    '<author><first-name>Стивен</first-name><last-name>Сэвил</last-name></author>',
+    '</title-info></description>',
+    '<body><section><title><p>Глава первая</p></title><p>Иван вошёл.</p></section></body>',
+    '</FictionBook>'
+  ].join('')
+
+  const structured = await extractStructuredBookText({
+    bytes: encodeWindows1251(source),
+    format: 'fb2',
+    mimeType: 'application/x-fictionbook+xml'
+  })
+
+  assert.match(structured.text, /Наследие/)
+  assert.match(structured.text, /Стивен/)
+  assert.match(structured.text, /Сэвил/)
+  assert.match(structured.text, /Иван вошёл\./)
+  assert.doesNotMatch(structured.text, /\uFFFD/)
+})
+
+test('text extraction rejects replacement-heavy corrupted input before analysis', async () => {
+  await assert.rejects(
+    extractStructuredBookText({
+      bytes: Buffer.from(`Глава\n${'\uFFFD'.repeat(20)} повреждённый текст`, 'utf8'),
+      format: 'txt',
+      mimeType: 'text/plain'
+    }),
+    (error) => error.code === 'BOOK_TEXT_INVALID'
+  )
+})
+
+test('text extraction rejects an unremoved binary-like payload before analysis', async () => {
+  await assert.rejects(
+    extractStructuredBookText({
+      bytes: Buffer.from(`Глава\n${'A'.repeat(8_192)}`, 'utf8'),
+      format: 'txt',
+      mimeType: 'text/plain'
+    }),
+    (error) => error.code === 'BOOK_TEXT_INVALID'
+  )
+})
+
 test('extractBookText reads EPUB spine order and normalizes markup', async () => {
   const epub = zipSync({
     'META-INF/container.xml': strToU8(

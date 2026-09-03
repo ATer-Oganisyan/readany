@@ -57,7 +57,7 @@ test('prepare worker stores normalized text and atomically creates scan input', 
   })
   const result = await worker.runOnce()
   assert.equal(result.status, 'completed')
-  assert.equal(uploaded.objectKey, 'analysis/run-1/normalized-text-v1.txt')
+  assert.equal(uploaded.objectKey, 'analysis/run-1/normalized-text-v2.txt')
   assert.equal(uploaded.bytes.toString('utf8'), text)
   assert.equal(completed.input.textLength, text.length)
   assert.equal(completed.input.contentNavigation.version, 'book-navigation-v1')
@@ -95,4 +95,42 @@ test('prepare worker retries only its leased job after an integrity failure', as
   assert.equal(result.errorCode, 'BOOK_INTEGRITY')
   assert.equal(failed.job.id, 'job-2')
   assert.equal(failed.code, 'BOOK_INTEGRITY')
+})
+
+test('prepare worker fails corrupted extracted text without futile retries', async () => {
+  let failed
+  const repository = {
+    async claimAnalysisJob() {
+      return { id: 'job-3', runId: 'run-3', stage: 'prepare', leaseToken: 'lease-3' }
+    },
+    async getPrepareInput() {
+      return {
+        runId: 'run-3', inputHash: hash, title: 'Книга', format: 'fb2',
+        mimeType: 'application/x-fictionbook+xml', byteSize: bytes.byteLength,
+        objectKey: 'books/source', normalizationVersion: 'normalized-text-v2'
+      }
+    },
+    async renewAnalysisJobLease() {},
+    async completePrepare() { assert.fail('prepare must not complete') },
+    async failAnalysisJob(job, code, options) {
+      failed = { job, code, options }
+      return { status: 'failed' }
+    }
+  }
+  const worker = createBookAnalysisPrepareWorker({
+    repository,
+    storage: { async getBytes() { return { bytes } } },
+    workerId: 'prepare-3',
+    leaseSeconds: 60,
+    leaseRenewMs: 10_000,
+    async extractStructuredText() {
+      throw Object.assign(new Error('corrupted extracted text'), { code: 'BOOK_TEXT_INVALID' })
+    },
+    logger: { info() {}, error() {} }
+  })
+
+  const result = await worker.runOnce()
+  assert.equal(result.status, 'failed')
+  assert.equal(result.errorCode, 'BOOK_TEXT_INVALID')
+  assert.deepEqual(failed.options, { retryable: false })
 })
