@@ -9,8 +9,8 @@ standalone Narra repository is not an operations runbook.
 
 | Runtime | Source | Deployment |
 | --- | --- | --- |
-| Gateway | `services/narra-gateway` | Docker Compose via `deploy-i167.sh` |
-| TEST Gateway and workers | `services/narra-gateway` | Docker Compose on `fun1` |
+| PROD Gateway and workers | `services/narra-gateway` | `deploy.sh --environment prod` on the target host |
+| TEST Gateway and workers | `services/narra-gateway` | `deploy.sh --environment test` on the target host |
 | Product analytics | `stats/narra` | systemd via `deploy.sh` |
 
 The first reviewed gateway migration is merge commit `c8e38887efe7` (PR #3).
@@ -70,9 +70,9 @@ legacy plaintext video upstream. Staging LLM traffic must use an HTTPS provider.
 
 ## Verification and rollback
 
-For gateway deploy, backup, restore and compare-and-swap instructions, use
-`services/narra-gateway/README.md`. For analytics deploy and rollback, use
-`stats/narra/README.md`.
+For gateway deploy targets, image policy and separate migration ordering, use
+`services/narra-gateway/DEPLOYMENT.md`. Backup and restore remain independent
+operator procedures. For analytics deploy and rollback, use `stats/narra/README.md`.
 
 Operational runbooks migrated from the standalone Narra repository live in
 `ops/narra/`:

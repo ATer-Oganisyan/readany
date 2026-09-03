@@ -52,7 +52,11 @@ function checksum(value) {
 
 export async function runBookMarkupMigrations(
   pool,
-  { migrationsUrl = new URL('./migrations/', import.meta.url), logger = console } = {}
+  {
+    migrationsUrl = new URL('./migrations/', import.meta.url),
+    logger = console,
+    applyPending = process.env.DATABASE_AUTO_MIGRATE !== 'false'
+  } = {}
 ) {
   if (!pool || typeof pool.connect !== 'function') {
     throw new TypeError('a pg-compatible pool is required')
@@ -73,6 +77,7 @@ export async function runBookMarkupMigrations(
       .sort()
 
     const applied = []
+    const pending = []
     for (const filename of filenames) {
       const sql = await readFile(new URL(filename, migrationsUrl), 'utf8')
       const sqlChecksum = checksum(sql)
@@ -84,6 +89,10 @@ export async function runBookMarkupMigrations(
         if (existing.rows[0].checksum !== sqlChecksum) {
           throw new Error(`applied migration checksum changed: ${filename}`)
         }
+        continue
+      }
+      if (!applyPending) {
+        pending.push(filename)
         continue
       }
       await client.query('BEGIN')
@@ -101,6 +110,11 @@ export async function runBookMarkupMigrations(
       }
       logger.info?.('[book-markup-migrations] applied', { filename })
       applied.push(filename)
+    }
+    if (pending.length) {
+      throw new Error(
+        `pending database migrations: ${pending.join(', ')}; run migrate.sh before deploy`
+      )
     }
     return { applied }
   } finally {

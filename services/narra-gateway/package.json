@@ -31,6 +31,8 @@
     "retry:book-generation": "node retry-failed-book-generation.mjs",
     "operator:generation-queue": "node generation-queue-operator.mjs",
     "operator:character-correction": "node book-character-correction-operator.mjs",
+    "migrate": "node migrate.mjs",
+    "migrate:check": "node migrate.mjs --check",
     "test": "node --test"
   },
   "engines": {

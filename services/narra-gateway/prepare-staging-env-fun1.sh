@@ -14,8 +14,17 @@ ssh "$REMOTE" "sudo env TARGET_ENV='$TARGET_ENV' CURRENT_CONTAINER='$CURRENT_CON
 set -euo pipefail
 
 test -f "$TARGET_ENV"
-test "$(stat -c %a "$TARGET_ENV")" = 600
-test "$(stat -c %U:%G "$TARGET_ENV")" = root:root
+env_mode="$(stat -c %a "$TARGET_ENV")"
+env_owner="$(stat -c %U "$TARGET_ENV")"
+env_group="$(stat -c %G "$TARGET_ENV")"
+test "$env_owner" = root
+case "$env_mode" in
+  600|640) ;;
+  *)
+    echo "Staging environment permissions must be 600 or 640" >&2
+    exit 1
+    ;;
+esac
 
 require_one() {
   key="$1"
@@ -217,7 +226,7 @@ install -o root -g root -m 0600 "$TARGET_ENV" "$backup_dir/compose.env.$timestam
 
 next="$(mktemp /srv/narra-stagging/compose.env.next.XXXXXX)"
 trap 'rm -f "$next"' EXIT
-install -o root -g root -m 0600 "$TARGET_ENV" "$next"
+install -o root -g "$env_group" -m "$env_mode" "$TARGET_ENV" "$next"
 if [ "$analytics_count" = 0 ]; then
   printf '\nANALYTICS_ENV=staging\n' >> "$next"
 fi
@@ -234,8 +243,8 @@ for key in "${runtime_missing[@]}"; do
   printf '%s\n' "$container_environment" | grep -m1 "^${key}=" >> "$next"
 done
 validate_environment "$next"
-chown root:root "$next"
-chmod 0600 "$next"
+chown "root:$env_group" "$next"
+chmod "$env_mode" "$next"
 mv -f "$next" "$TARGET_ENV"
 trap - EXIT
 
