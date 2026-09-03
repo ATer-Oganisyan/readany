@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { createPostgresBookAnalysisRepository } from './book-analysis-repository.mjs'
 import { createBookAnalysisScanWorker } from './book-analysis-scan-worker.mjs'
+import { createBookAnalysisScanPolicyFromEnv } from './book-analysis-scan-policy.mjs'
 import { createBookObjectStorageFromEnv } from './book-object-storage.mjs'
 import { parseEnvInt, parseEnvUuidList } from './env.mjs'
 import { createGenerationServiceClient } from './generation-service-client.mjs'
@@ -47,6 +48,7 @@ const idleLogMs = parseEnvInt(
   3_600_000
 )
 const runIds = parseEnvUuidList(process.env, 'BOOK_ANALYSIS_RUN_IDS')
+const scanPolicy = createBookAnalysisScanPolicyFromEnv(process.env)
 if (leaseSeconds < 30) throw new Error('BOOK_ANALYSIS_SCAN_LEASE_SECONDS must be at least 30')
 if (leaseRenewMs >= leaseSeconds * 1_000) {
   throw new Error('BOOK_ANALYSIS_SCAN_LEASE_RENEW_MS must be shorter than the job lease')
@@ -79,12 +81,16 @@ try {
     workerId,
     runIds,
     leaseSeconds,
-    leaseRenewMs
+    leaseRenewMs,
+    scanPolicy
   })
   log.info('worker.ready', 'Scan-воркер запущен', {
     worker: workerId,
     stages: ['scan'],
     run_ids: runIds ?? null,
+    scan_policy: scanPolicy.profile,
+    semantic_max_attempts: scanPolicy.semanticMaxAttempts,
+    empty_observation_mode: scanPolicy.emptyObservationMode,
     poll_ms: pollMs,
     lease_seconds: leaseSeconds
   })

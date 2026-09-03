@@ -78,6 +78,7 @@ import { createCatalogIngestRouter } from './catalog-ingest-api.mjs'
 import { createCatalogIngestService } from './catalog-ingest-service.mjs'
 import { createPostgresBookAnalysisRepository } from './book-analysis-repository.mjs'
 import { bookAnalysisPipelineFromEnv } from './book-analysis-pipeline.mjs'
+import { createBookAnalysisScanPolicyFromEnv } from './book-analysis-scan-policy.mjs'
 import { createBookOperatorRouter } from './book-operator-api.mjs'
 import { createPostgresBookOperatorRepository } from './book-operator-repository.mjs'
 import { createPostgresBookCharacterCorrectionRepository } from './book-character-correction-repository.mjs'
@@ -104,6 +105,7 @@ import { withChatCompliance, withImageCompliance } from './rf-compliance.mjs'
 // ================= Конфигурация =================
 const PORT = process.env.PORT || 8787
 const BOOK_ANALYSIS_PIPELINE = bookAnalysisPipelineFromEnv(process.env)
+const BOOK_ANALYSIS_SCAN_POLICY = createBookAnalysisScanPolicyFromEnv(process.env)
 const INSECURE = process.env.ALLOW_INSECURE_TLS === 'true'
 const PRODUCTION = process.env.NODE_ENV === 'production'
 const BUILD_VERSION = String(process.env.GATEWAY_BUILD_VERSION || 'development').slice(0, 120)
@@ -1191,7 +1193,8 @@ const internalGenerationService = bookObjectStorage && generatorServiceToken
       generateScene: generateInternalScene,
       synthesizeSpeech: synthesizeInternalSpeech,
       generateIdleAnimation: generateInternalIdleAnimation,
-      maxBookBytes: BOOK_UPLOAD_MAX_BYTES
+      maxBookBytes: BOOK_UPLOAD_MAX_BYTES,
+      scanPolicy: BOOK_ANALYSIS_SCAN_POLICY
     })
   : null
 if (!internalGenerationService) {
@@ -1407,6 +1410,14 @@ app.get('/health', (_req, res) => {
       sber_ca_verified: SBER_CA_VERIFIED
     },
     llm_routes: llm.purposes,
+    book_analysis_scan_policy: {
+      profile: BOOK_ANALYSIS_SCAN_POLICY.profile,
+      semantic_max_attempts: BOOK_ANALYSIS_SCAN_POLICY.semanticMaxAttempts,
+      empty_observation_mode: BOOK_ANALYSIS_SCAN_POLICY.emptyObservationMode,
+      preserve_partial_results: BOOK_ANALYSIS_SCAN_POLICY.preservePartialResults,
+      adaptive_split: BOOK_ANALYSIS_SCAN_POLICY.adaptiveSplit,
+      chunk: BOOK_ANALYSIS_SCAN_POLICY.chunk
+    },
     analytics_delivery: eventStore.status(),
     installation_registry: {
       storage_verified: installationRegistry.status().storage_verified,

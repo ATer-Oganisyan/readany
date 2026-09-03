@@ -30,15 +30,15 @@ import {
   BOOK_TTS_MARKUP_VERSION,
   normalizeBookTtsProviderAssignments
 } from './book-tts-markup.mjs'
+import { createBookAnalysisScanPolicy } from './book-analysis-scan-policy.mjs'
 
 const IDENTIFIER = /^[a-z0-9][a-z0-9._:-]{0,255}$/i
 const SHA256 = /^[0-9a-f]{64}$/
 const SCOPES = new Set(['catalog', 'private'])
 const LOSSY_SCAN_MIN_PROVIDER_OBSERVATIONS = 5
 const LOSSY_SCAN_MIN_ACCEPTED_FRACTION = 0.25
-const ADAPTIVE_SCAN_MIN_CORE_CHARS = 2_000
-const ADAPTIVE_SCAN_OVERLAP_CHARS = 500
 const ADAPTIVE_SCAN_ERROR_CODES = new Set([
+  'SCAN_EMPTY_OBSERVATIONS',
   'EVIDENCE_MISMATCH',
   'GENERATION_RESULT_INVALID',
   'SCAN_RELATION_PARTICIPANT_MISSING'
@@ -513,7 +513,7 @@ function normalizeScanChunkRequest(input) {
   const body = exactKeys(input, new Set([
     'idempotencyKey', 'runId', 'chunkId', 'extractorVersion',
     'bookTitle', 'bookAuthor', 'sectionTitles', 'contextText',
-    'coreLocalStartOffset', 'coreLocalEndOffset'
+    'coreLocalStartOffset', 'coreLocalEndOffset', 'semanticAttempt'
   ]))
   const runId = identifier(body.runId, 'runId')
   const chunkId = identifier(body.chunkId, 'chunkId')
@@ -531,12 +531,16 @@ function normalizeScanChunkRequest(input) {
   const contextText = body.contextText
   const coreLocalStartOffset = Number(body.coreLocalStartOffset)
   const coreLocalEndOffset = Number(body.coreLocalEndOffset)
+  const semanticAttempt = body.semanticAttempt == null ? 1 : Number(body.semanticAttempt)
   if (
     !Number.isSafeInteger(coreLocalStartOffset) || coreLocalStartOffset < 0 ||
     !Number.isSafeInteger(coreLocalEndOffset) || coreLocalEndOffset <= coreLocalStartOffset ||
     coreLocalEndOffset > contextText.length
   ) {
     invalid('core local offsets do not fit contextText')
+  }
+  if (!Number.isSafeInteger(semanticAttempt) || semanticAttempt < 1) {
+    invalid('semanticAttempt: invalid value')
   }
   return {
     ...body,
@@ -548,7 +552,8 @@ function normalizeScanChunkRequest(input) {
     sectionTitles: boundedStrings(body.sectionTitles, 16, 500),
     contextText,
     coreLocalStartOffset,
-    coreLocalEndOffset
+    coreLocalEndOffset,
+    semanticAttempt
   }
 }
 
@@ -1118,9 +1123,9 @@ function scanMessages(input) {
   ]
 }
 
-function adaptiveSplitBoundary(text, startOffset, endOffset) {
+function adaptiveSplitBoundary(text, startOffset, endOffset, minCoreChars) {
   const coreLength = endOffset - startOffset
-  if (coreLength < ADAPTIVE_SCAN_MIN_CORE_CHARS) return null
+  if (coreLength < minCoreChars) return null
   const target = startOffset + Math.floor(coreLength / 2)
   const minimum = startOffset + Math.floor(coreLength * 0.35)
   const maximum = startOffset + Math.ceil(coreLength * 0.65)
@@ -1143,21 +1148,26 @@ function adaptiveSplitBoundary(text, startOffset, endOffset) {
   return boundary > startOffset && boundary < endOffset ? boundary : null
 }
 
-function adaptiveScanParts(input) {
+function adaptiveScanParts(input, policy) {
+  if (!policy.adaptiveSplit.enabled) return []
   const boundary = adaptiveSplitBoundary(
     input.contextText,
     input.coreLocalStartOffset,
-    input.coreLocalEndOffset
+    input.coreLocalEndOffset,
+    policy.adaptiveSplit.minCoreChars
   )
   if (boundary == null) return []
   return [
     [input.coreLocalStartOffset, boundary],
     [boundary, input.coreLocalEndOffset]
   ].map(([coreStartOffset, coreEndOffset], index) => {
-    const contextStartOffset = Math.max(0, coreStartOffset - ADAPTIVE_SCAN_OVERLAP_CHARS)
+    const contextStartOffset = Math.max(
+      0,
+      coreStartOffset - policy.adaptiveSplit.overlapChars
+    )
     const contextEndOffset = Math.min(
       input.contextText.length,
-      coreEndOffset + ADAPTIVE_SCAN_OVERLAP_CHARS
+      coreEndOffset + policy.adaptiveSplit.overlapChars
     )
     return {
       index,
@@ -1785,6 +1795,7 @@ export function createInternalGenerationService({
   synthesizeSpeech,
   generateIdleAnimation,
   maxBookBytes = 64 * 1024 * 1024,
+  scanPolicy,
   logger = console
 }) {
   if (
@@ -1793,6 +1804,7 @@ export function createInternalGenerationService({
   ) {
     throw new TypeError('storage and all generation providers are required')
   }
+  const effectiveScanPolicy = createBookAnalysisScanPolicy(scanPolicy)
   const log = createOperationalLogger({ component: 'book-generator', logger })
   return {
     async generateBookIdentity(rawInput, signal) {
@@ -2203,13 +2215,18 @@ export function createInternalGenerationService({
 
     async scanBookChunk(rawInput, signal) {
       const input = normalizeScanChunkRequest(rawInput)
+      const { semanticAttempt, ...cacheInput } = input
+      const finalSemanticAttempt = semanticAttempt >= effectiveScanPolicy.semanticMaxAttempts
       const common = {
         run: input.runId,
         chunk: input.chunkId,
-        extractor_version: input.extractorVersion
+        extractor_version: input.extractorVersion,
+        scan_policy: effectiveScanPolicy.profile,
+        semantic_attempt: semanticAttempt,
+        semantic_max_attempts: effectiveScanPolicy.semanticMaxAttempts
       }
-      return cached(storage, input.idempotencyKey, input, async () => {
-        async function scanRange(range, adaptivePart = '') {
+      return cached(storage, input.idempotencyKey, cacheInput, async () => {
+        async function scanRange(range, adaptivePart = '', { acceptProviderEmpty = false } = {}) {
           const rangeCommon = {
             ...common,
             context_chars: range.contextText.length,
@@ -2251,7 +2268,17 @@ export function createInternalGenerationService({
               derived_relationship_character_count: normalized.derivedRelationshipCharacterCount
             }
             if (!normalized.observations.length) {
-              invalid('LLM scan result has no grounded observations', 'EVIDENCE_MISMATCH', {
+              const validProviderEmpty = normalized.providerObservationCount === 0
+              if (acceptProviderEmpty && validProviderEmpty) {
+                log.info('scan.llm_empty', 'Фрагмент не содержит подтверждённых наблюдений', {
+                  ...rangeCommon,
+                  ...counters
+                })
+                return []
+              }
+              invalid('LLM scan result has no grounded observations', validProviderEmpty
+                ? 'SCAN_EMPTY_OBSERVATIONS'
+                : 'EVIDENCE_MISMATCH', {
                 scanCounters: counters
               })
             }
@@ -2276,34 +2303,74 @@ export function createInternalGenerationService({
           coreLocalStartOffset: input.coreLocalStartOffset,
           coreLocalEndOffset: input.coreLocalEndOffset
         }
+        let splitError
         try {
-          return { observations: await scanRange(fullRange) }
-        } catch (error) {
-          const parts = ADAPTIVE_SCAN_ERROR_CODES.has(error?.code)
-            ? adaptiveScanParts(input)
-            : []
-          if (parts.length !== 2) throw error
-          log.warn('scan.adaptive_split', 'Проблемный фрагмент автоматически разделён', {
-            ...common,
-            original_context_chars: input.contextText.length,
-            error_code: error.code,
-            part_count: parts.length
-          })
-          const partResults = await Promise.all(parts.map((part) => cached(
-            storage,
-            `${input.idempotencyKey}:adaptive:${part.index}:${sha256(part.contextText)}`,
-            {
-              extractorVersion: input.extractorVersion,
-              contextHash: sha256(part.contextText),
-              coreLocalStartOffset: part.coreLocalStartOffset,
-              coreLocalEndOffset: part.coreLocalEndOffset
-            },
-            async () => ({
-              observations: await scanRange(part, `${part.index + 1}/${parts.length}`)
+          return {
+            observations: await scanRange(fullRange, '', {
+              acceptProviderEmpty: effectiveScanPolicy.emptyObservationMode === 'accept'
             })
-          )))
-          return { observations: partResults.flatMap(({ observations }) => observations) }
+          }
+        } catch (error) {
+          if (!ADAPTIVE_SCAN_ERROR_CODES.has(error?.code)) throw error
+          splitError = error
         }
+
+        const parts = adaptiveScanParts(input, effectiveScanPolicy)
+        if (parts.length !== 2) {
+          if (!finalSemanticAttempt) throw splitError
+          log.warn('scan.semantic_empty_completed', 'Семантические повторы исчерпаны без наблюдений', {
+            ...common,
+            error_code: splitError.code,
+            adaptive_split_available: false
+          })
+          return { observations: [] }
+        }
+        log.warn('scan.adaptive_split', 'Проблемный фрагмент автоматически разделён', {
+          ...common,
+          original_context_chars: input.contextText.length,
+          error_code: splitError.code,
+          part_count: parts.length
+        })
+        const acceptPartEmpty = finalSemanticAttempt ||
+          effectiveScanPolicy.emptyObservationMode !== 'retry'
+        const partResults = await Promise.allSettled(parts.map((part) => cached(
+          storage,
+          `${input.idempotencyKey}:adaptive:${part.index}:${sha256(part.contextText)}`,
+          {
+            extractorVersion: input.extractorVersion,
+            contextHash: sha256(part.contextText),
+            coreLocalStartOffset: part.coreLocalStartOffset,
+            coreLocalEndOffset: part.coreLocalEndOffset
+          },
+          async () => ({
+            observations: await scanRange(part, `${part.index + 1}/${parts.length}`, {
+              acceptProviderEmpty: acceptPartEmpty
+            })
+          })
+        )))
+        const technicalFailure = partResults.find((result) =>
+          result.status === 'rejected' && !ADAPTIVE_SCAN_ERROR_CODES.has(result.reason?.code)
+        )
+        if (technicalFailure) throw technicalFailure.reason
+        const semanticFailures = partResults.filter((result) => result.status === 'rejected')
+        if (semanticFailures.length && !finalSemanticAttempt) {
+          throw semanticFailures[0].reason
+        }
+        const observations = partResults.flatMap((result) => result.status === 'fulfilled'
+          ? result.value.observations
+          : [])
+        if (semanticFailures.length) {
+          log.warn(
+            'scan.partial_completed',
+            'Успешная половина сохранена после исчерпания семантических повторов',
+            {
+              ...common,
+              failed_part_count: semanticFailures.length,
+              accepted_observation_count: observations.length
+            }
+          )
+        }
+        return { observations }
       })
     },
 

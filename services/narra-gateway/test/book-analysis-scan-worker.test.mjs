@@ -150,6 +150,7 @@ test('scan worker reads and sends only its bounded chunk', async () => {
   assert.deepEqual(generatorRequest.sectionTitles, ['Глава вторая'])
   assert.equal(generatorRequest.coreLocalStartOffset, 8)
   assert.equal(generatorRequest.coreLocalEndOffset, 50)
+  assert.equal(generatorRequest.semanticAttempt, 1)
   assert.equal('normalizedTextObjectKey' in generatorRequest, false)
   assert.equal(completed.value.observations.length, 1)
 })
@@ -284,7 +285,7 @@ test('scan worker completes a final content-level rejection with an empty ground
     attempts: 5,
     maxAttempts: 5
   }
-  for (const code of ['EVIDENCE_MISMATCH', 'GENERATOR_HTTP_422']) {
+  for (const code of ['SCAN_EMPTY_OBSERVATIONS', 'EVIDENCE_MISMATCH', 'GENERATOR_HTTP_422']) {
     let completed
     const worker = createBookAnalysisScanWorker({
       repository: {
@@ -319,7 +320,7 @@ test('scan worker completes a final content-level rejection with an empty ground
   }
 })
 
-test('scan worker still retries an evidence mismatch before the final attempt', async () => {
+test('conservative scan worker still retries an evidence mismatch before the final attempt', async () => {
   const text = 'OVERLAP Анна вошла в комнату. Борис ответил ей. TAIL'
   const input = scanInput(text)
   const job = {
@@ -351,10 +352,52 @@ test('scan worker still retries an evidence mismatch before the final attempt', 
     workerId: 'scan-worker-5',
     leaseSeconds: 60,
     leaseRenewMs: 10_000,
+    scanPolicy: { profile: 'conservative' },
     logger: { info() {}, warn() {}, error() {} }
   })
   const result = await worker.runOnce()
   assert.equal(result.status, 'failed')
   assert.equal(result.errorCode, 'EVIDENCE_MISMATCH')
   assert.equal(failedCode, 'EVIDENCE_MISMATCH')
+})
+
+test('balanced scan worker completes the first semantic rejection without a job retry', async () => {
+  const text = 'OVERLAP Анна вошла в комнату. Борис ответил ей. TAIL'
+  const input = scanInput(text)
+  const job = {
+    id: 'job-balanced',
+    runId: 'run-1',
+    stage: 'scan',
+    leaseToken: 'lease-balanced',
+    attempts: 1,
+    maxAttempts: 5
+  }
+  let completed
+  const worker = createBookAnalysisScanWorker({
+    repository: {
+      async claimAnalysisJob() { return job },
+      async getScanInput() { return input },
+      async renewAnalysisJobLease() {},
+      async completeScan(_candidate, value) {
+        completed = value
+        return { observationCount: 0, stage: 'resolve' }
+      },
+      async failAnalysisJob() { assert.fail('balanced semantic rejection must not retry') }
+    },
+    storage: { async getBytesRange() { return { bytes: Buffer.from(text) } } },
+    generator: {
+      async scanBookChunk() {
+        throw Object.assign(new Error('no grounded observations'), {
+          code: 'SCAN_EMPTY_OBSERVATIONS'
+        })
+      }
+    },
+    workerId: 'scan-worker-balanced',
+    leaseSeconds: 60,
+    leaseRenewMs: 10_000,
+    logger: { info() {}, warn() {}, error() {} }
+  })
+  const result = await worker.runOnce()
+  assert.equal(result.status, 'completed')
+  assert.deepEqual(completed, { extractorVersion: 'book-scan-v17', observations: [] })
 })

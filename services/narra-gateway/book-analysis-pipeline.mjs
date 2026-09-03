@@ -19,7 +19,7 @@ export const BOOK_ANALYSIS_PIPELINE_IDS = Object.freeze([
   BOOK_ANALYSIS_PIPELINE_EXTERNAL
 ])
 
-export const BOOK_ANALYSIS_NORMALIZATION_VERSION = 'normalized-text-v1'
+export const BOOK_ANALYSIS_NORMALIZATION_VERSION = 'normalized-text-v2'
 export const EXTERNAL_ADAPTER_CONTRACT_VERSION = 'autiobook-adapter-v1'
 export const EXTERNAL_UPSTREAM_REVISION = 'd532bdd0a15f2948fd0c99f5e11b92677cb5c3eb'
 export const EXTERNAL_PIPELINE_IMPLEMENTATION_VERSION =

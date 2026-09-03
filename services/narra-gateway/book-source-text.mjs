@@ -4,9 +4,64 @@ import { strFromU8, unzipSync } from 'fflate'
 
 const MAX_EXTRACTED_BYTES = 64 * 1024 * 1024
 const EPUB_TEXT_ENTRY = /\.(?:xhtml?|html?)$/i
+const XML_ENCODING_LABEL = /^[a-z0-9._:-]{1,64}$/i
+const MAX_REPLACEMENT_CHARACTER_FRACTION = 0.0001
+const MIN_SUSPICIOUS_BASE64_RUN = 8_192
 
 function generationError(code, message) {
   return Object.assign(new Error(message), { code })
+}
+
+function decodeFb2Markup(bytes) {
+  const header = bytes.subarray(0, 1_024).toString('latin1')
+  const declared = header.match(/<\?xml\b[^>]*\bencoding\s*=\s*["']([^"']+)["']/i)?.[1]
+  const encoding = String(declared || 'utf-8').trim()
+  if (!XML_ENCODING_LABEL.test(encoding)) {
+    throw generationError('BOOK_TEXT_INVALID', 'FB2 declares an invalid XML encoding')
+  }
+  try {
+    return new TextDecoder(encoding, { fatal: true }).decode(bytes)
+  } catch (error) {
+    throw generationError(
+      'BOOK_TEXT_INVALID',
+      `FB2 cannot be decoded as ${encoding}: ${error.message}`
+    )
+  }
+}
+
+function stripFb2Binary(markup) {
+  return String(markup).replace(
+    /<(?:[\w.-]+:)?binary\b[^>]*>[\s\S]*?<\/(?:[\w.-]+:)?binary\s*>/gi,
+    ' '
+  )
+}
+
+function countReplacementCharacters(text) {
+  let count = 0
+  for (const symbol of text) {
+    if (symbol === '\uFFFD') count += 1
+  }
+  return count
+}
+
+function validateExtractedText(text) {
+  const replacementCharacters = countReplacementCharacters(text)
+  const allowedReplacementCharacters = Math.max(
+    8,
+    Math.floor(text.length * MAX_REPLACEMENT_CHARACTER_FRACTION)
+  )
+  if (replacementCharacters > allowedReplacementCharacters) {
+    throw generationError(
+      'BOOK_TEXT_INVALID',
+      'extracted text contains too many Unicode replacement characters'
+    )
+  }
+  if (new RegExp(`[A-Za-z0-9+/=]{${MIN_SUSPICIOUS_BASE64_RUN},}`).test(text)) {
+    throw generationError(
+      'BOOK_TEXT_INVALID',
+      'extracted text contains a suspicious embedded binary payload'
+    )
+  }
 }
 
 function decodeEntities(value) {
@@ -525,7 +580,7 @@ export async function extractStructuredBookText({ bytes: rawBytes, format, mimeT
     const text = (await processOutput('pdftotext', ['-enc', 'UTF-8', '-', '-'], bytes, signal)).trim()
     result = { text, sections: pdfSections(text) }
   } else if (normalizedFormat === 'fb2' || /(?:xml|fb2)/.test(normalizedMime)) {
-    const markup = bytes.toString('utf8')
+    const markup = stripFb2Binary(decodeFb2Markup(bytes))
     const text = markupToText(markup)
     const sections = headingSections(text, 'fb2-section')
     result = {
@@ -545,6 +600,7 @@ export async function extractStructuredBookText({ bytes: rawBytes, format, mimeT
     throw generationError('BOOK_FORMAT_UNSUPPORTED', `unsupported book format: ${normalizedFormat || normalizedMime}`)
   }
   if (!result.text) throw generationError('BOOK_PARSE_FAILED', 'book contains no readable text')
+  validateExtractedText(result.text)
   if (Buffer.byteLength(result.text, 'utf8') > MAX_EXTRACTED_BYTES) {
     throw generationError('BOOK_TOO_LARGE', 'extracted text exceeds 64 MiB')
   }

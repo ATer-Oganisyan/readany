@@ -862,7 +862,7 @@ export function createPostgresBookAnalysisRepository(pool, {
           'promptVersion'
         )
         const safeNormalizationVersion = validateIdentifier(
-          normalizationVersion ?? inherited?.normalization_version ?? strategy.normalizationVersion,
+          normalizationVersion ?? strategy.normalizationVersion,
           'normalizationVersion'
         )
         const safeOutputSchemaVersion = validateOutputSchemaVersion(
@@ -1051,6 +1051,7 @@ export function createPostgresBookAnalysisRepository(pool, {
         }
 
         const strategy = getBookAnalysisPipeline(latest.pipeline_id)
+        const retryNormalizationVersion = strategy.normalizationVersion
         const runSequence = Number(latest.run_sequence ?? 0) + 1
         const baseIdempotencyKey = bookAnalysisRunIdempotencyKey({
           bookEditionId: safeBookEditionId,
@@ -1059,7 +1060,7 @@ export function createPostgresBookAnalysisRepository(pool, {
           pipelineImplementationVersion: latest.pipeline_implementation_version,
           pipelineVersion: latest.pipeline_version,
           promptVersion: latest.prompt_version,
-          normalizationVersion: latest.normalization_version,
+          normalizationVersion: retryNormalizationVersion,
           outputSchemaVersion: Number(latest.output_schema_version)
         })
         const runId = idFactory()
@@ -1076,7 +1077,7 @@ export function createPostgresBookAnalysisRepository(pool, {
             safeBookEditionId, edition.content_sha256,
             latest.pipeline_version, latest.prompt_version, runSequence, latest.id,
             latest.pipeline_id, latest.pipeline_implementation_version,
-            latest.normalization_version, latest.output_schema_version
+            retryNormalizationVersion, latest.output_schema_version
           ]
         )
         await client.query(

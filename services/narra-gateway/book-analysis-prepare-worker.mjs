@@ -1,8 +1,11 @@
 import { createHash } from 'node:crypto'
 import { createStableBookChunks } from './book-analysis-chunking.mjs'
 import { bookAnalysisLogContext } from './book-analysis-observability.mjs'
+import { BOOK_ANALYSIS_NORMALIZATION_VERSION } from './book-analysis-pipeline.mjs'
 import { extractStructuredBookText } from './book-source-text.mjs'
 import { createOperationalLogger } from './operational-log.mjs'
+
+const NON_RETRYABLE_PREPARE_ERRORS = new Set(['BOOK_TEXT_INVALID'])
 
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex')
@@ -56,7 +59,8 @@ export function createBookAnalysisPrepareWorker({
       text: structured.text,
       sections: structured.sections
     }, chunkOptions)
-    const normalizedTextObjectKey = `analysis/${input.runId}/normalized-text-v1.txt`
+    const normalizationVersion = input.normalizationVersion ?? BOOK_ANALYSIS_NORMALIZATION_VERSION
+    const normalizedTextObjectKey = `analysis/${input.runId}/${normalizationVersion}.txt`
     const normalizedTextHash = sha256(structured.text)
     const uploaded = await storage.putBytes({
       objectKey: normalizedTextObjectKey,
@@ -79,6 +83,7 @@ export function createBookAnalysisPrepareWorker({
     log.info('prepare.completed', 'Книга подготовлена для параллельного анализа', {
       run: input.runId,
       book: input.title,
+      normalization_version: normalizationVersion,
       text_chars: structured.textLength,
       chunk_count: chunks.length
     })
@@ -121,7 +126,9 @@ export function createBookAnalysisPrepareWorker({
         return { status: 'completed', jobId: job.id, runId: job.runId, result }
       } catch (error) {
         const errorCode = safeErrorCode(error)
-        const failure = await repository.failAnalysisJob(job, errorCode)
+        const failure = await repository.failAnalysisJob(job, errorCode, {
+          retryable: !NON_RETRYABLE_PREPARE_ERRORS.has(errorCode)
+        })
         log.error('prepare.failed', 'Подготовка книги завершилась ошибкой', {
           job: job.id,
           run: job.runId,

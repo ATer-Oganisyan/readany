@@ -452,7 +452,8 @@ test('catalog content resolves the latest prepared normalized text only for cata
     navigation: null
   })
   assert.match(pool.queries[0].sql, /edition\.scope = 'catalog'/)
-  assert.match(pool.queries[0].sql, /run\.normalization_version = 'normalized-text-v1'/)
+  assert.match(pool.queries[0].sql, /run\.normalization_version = ANY/)
+  assert.deepEqual(pool.queries[0].params[1], ['normalized-text-v2', 'normalized-text-v1'])
   assert.match(pool.queries[0].sql, /run\.run_sequence DESC/)
 })
 

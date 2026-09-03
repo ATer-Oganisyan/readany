@@ -33,7 +33,7 @@ test('analysis run key binds source and both pipeline versions', () => {
     promptVersion: 'scan-v1'
   }), [
     'book-analysis-cache', 'narra', 'book-analysis-v51', 'a'.repeat(64),
-    'book-analysis-v8', 'scan-v1', 'normalized-text-v1', 'schema-3',
+    'book-analysis-v8', 'scan-v1', 'normalized-text-v2', 'schema-3',
     'book-markup-v3', 'book-1'
   ].join(':'))
 })
@@ -170,7 +170,8 @@ test('restart creates the next isolated run and leaves the previous publication 
   assert.equal(restarted.run.runSequence, 2)
   assert.equal(restarted.run.pipelineId, 'narra')
   assert.equal(restarted.prepareJob.priority, 100)
-  assert.ok(pool.queries.some(({ sql }) => /INSERT INTO book_analysis_runs/.test(sql)))
+  const insertedRun = pool.queries.find(({ sql }) => /INSERT INTO book_analysis_runs/.test(sql))
+  assert.equal(insertedRun.params[10], 'normalized-text-v2')
   assert.ok(pool.queries.every(({ sql }) => !/(UPDATE|DELETE FROM) book_analysis_publications/.test(sql)))
 })
 

@@ -606,6 +606,7 @@ test('internal generation service drops an author copied only from front matter'
   const startOffset = contextText.indexOf(quote)
   const service = createInternalGenerationService({
     storage,
+    scanPolicy: { profile: 'conservative' },
     logger: { info() {}, warn() {}, error() {} },
     async completeChat() {
       return JSON.stringify({ observations: [{
@@ -759,12 +760,208 @@ test('internal generation service adaptively splits only a semantically rejected
   }
 })
 
+test('balanced ScanPolicy confirms a valid empty result with one adaptive split', async () => {
+  const storage = memoryStorage()
+  const contextText = 'Обычный повествовательный текст. '.repeat(180)
+  let chatCalls = 0
+  const service = createInternalGenerationService({
+    storage,
+    logger: { info() {}, warn() {}, error() {} },
+    async completeChat() {
+      chatCalls += 1
+      return JSON.stringify({ observations: [] })
+    },
+    async generatePortrait() { throw new Error('unused') },
+    async synthesizeSpeech() { throw new Error('unused') },
+    async generateIdleAnimation() { throw new Error('unused') }
+  })
+
+  const result = await service.scanBookChunk({
+    idempotencyKey: 'run-empty-balanced:scan:chunk-empty-balanced:book-scan-v17',
+    runId: 'run-empty-balanced',
+    chunkId: 'chunk-empty-balanced',
+    extractorVersion: 'book-scan-v17',
+    bookTitle: 'Книга',
+    bookAuthor: '',
+    contextText,
+    coreLocalStartOffset: 0,
+    coreLocalEndOffset: contextText.length,
+    semanticAttempt: 1
+  })
+
+  assert.deepEqual(result, { observations: [] })
+  assert.equal(chatCalls, 3)
+})
+
+test('fast ScanPolicy accepts the first valid empty result without splitting', async () => {
+  const storage = memoryStorage()
+  const contextText = 'Обычный повествовательный текст. '.repeat(180)
+  let chatCalls = 0
+  const service = createInternalGenerationService({
+    storage,
+    scanPolicy: { profile: 'fast' },
+    logger: { info() {}, warn() {}, error() {} },
+    async completeChat() {
+      chatCalls += 1
+      return JSON.stringify({ observations: [] })
+    },
+    async generatePortrait() { throw new Error('unused') },
+    async synthesizeSpeech() { throw new Error('unused') },
+    async generateIdleAnimation() { throw new Error('unused') }
+  })
+
+  const result = await service.scanBookChunk({
+    idempotencyKey: 'run-empty-fast:scan:chunk-empty-fast:book-scan-v17',
+    runId: 'run-empty-fast',
+    chunkId: 'chunk-empty-fast',
+    extractorVersion: 'book-scan-v17',
+    bookTitle: 'Книга',
+    bookAuthor: '',
+    contextText,
+    coreLocalStartOffset: 0,
+    coreLocalEndOffset: contextText.length
+  })
+
+  assert.deepEqual(result, { observations: [] })
+  assert.equal(chatCalls, 1)
+})
+
+test('balanced ScanPolicy preserves a successful half when the other half is rejected', async () => {
+  const storage = memoryStorage()
+  const quote = 'Анна вошла в комнату.'
+  const contextText = `${'Начало. '.repeat(30)}${quote}${' Продолжение повествования.'.repeat(240)}`
+  let chatCalls = 0
+  const service = createInternalGenerationService({
+    storage,
+    logger: { info() {}, warn() {}, error() {} },
+    async completeChat(input) {
+      chatCalls += 1
+      if (chatCalls === 1) return JSON.stringify({ observations: [] })
+      const content = input.messages[1].content
+      const requestedText = content
+        .slice(content.indexOf('CONTEXT_TEXT_BEGIN') + 'CONTEXT_TEXT_BEGIN\n'.length)
+        .split('\nCONTEXT_TEXT_END')[0]
+      if (requestedText.includes(quote)) {
+        return JSON.stringify({ observations: [{
+          type: 'character_action',
+          entityKind: 'character',
+          entityCandidate: 'Анна',
+          relatedEntityCandidates: [],
+          fact: 'Анна вошла в комнату',
+          evidence: { quote },
+          confidence: 0.95
+        }] })
+      }
+      return JSON.stringify({ observations: [{
+        type: 'character_trait',
+        entityKind: 'character',
+        entityCandidate: 'Борис',
+        relatedEntityCandidates: [],
+        fact: 'Неподтверждённый факт',
+        evidence: { quote: 'Цитаты нет в тексте.' },
+        confidence: 0.9
+      }] })
+    },
+    async generatePortrait() { throw new Error('unused') },
+    async synthesizeSpeech() { throw new Error('unused') },
+    async generateIdleAnimation() { throw new Error('unused') }
+  })
+
+  const result = await service.scanBookChunk({
+    idempotencyKey: 'run-partial:scan:chunk-partial:book-scan-v17',
+    runId: 'run-partial',
+    chunkId: 'chunk-partial',
+    extractorVersion: 'book-scan-v17',
+    bookTitle: 'Книга',
+    bookAuthor: '',
+    contextText,
+    coreLocalStartOffset: 0,
+    coreLocalEndOffset: contextText.length
+  })
+
+  assert.equal(chatCalls, 3)
+  assert.deepEqual(result.observations.map(({ entityCandidate }) => entityCandidate), ['Анна'])
+  assert.equal(
+    contextText.slice(
+      result.observations[0].evidence.startOffset,
+      result.observations[0].evidence.endOffset
+    ),
+    quote
+  )
+})
+
+test('conservative ScanPolicy reuses a successful half and publishes it on the final semantic attempt', async () => {
+  const storage = memoryStorage()
+  const quote = 'Анна вошла в комнату.'
+  const contextText = `${'Начало. '.repeat(30)}${quote}${' Продолжение повествования.'.repeat(240)}`
+  let chatCalls = 0
+  const service = createInternalGenerationService({
+    storage,
+    scanPolicy: { profile: 'conservative', semanticMaxAttempts: 2 },
+    logger: { info() {}, warn() {}, error() {} },
+    async completeChat(input) {
+      chatCalls += 1
+      if (!input.costContext.metadata.adaptive_part) {
+        return JSON.stringify({ observations: [] })
+      }
+      const content = input.messages[1].content
+      const requestedText = content
+        .slice(content.indexOf('CONTEXT_TEXT_BEGIN') + 'CONTEXT_TEXT_BEGIN\n'.length)
+        .split('\nCONTEXT_TEXT_END')[0]
+      if (requestedText.includes(quote)) {
+        return JSON.stringify({ observations: [{
+          type: 'character_action',
+          entityKind: 'character',
+          entityCandidate: 'Анна',
+          relatedEntityCandidates: [],
+          fact: 'Анна вошла в комнату',
+          evidence: { quote },
+          confidence: 0.95
+        }] })
+      }
+      return JSON.stringify({ observations: [{
+        type: 'character_trait',
+        entityKind: 'character',
+        entityCandidate: 'Борис',
+        relatedEntityCandidates: [],
+        fact: 'Неподтверждённый факт',
+        evidence: { quote: 'Цитаты нет в тексте.' },
+        confidence: 0.9
+      }] })
+    },
+    async generatePortrait() { throw new Error('unused') },
+    async synthesizeSpeech() { throw new Error('unused') },
+    async generateIdleAnimation() { throw new Error('unused') }
+  })
+  const request = {
+    idempotencyKey: 'run-conservative-partial:scan:chunk-conservative-partial:book-scan-v17',
+    runId: 'run-conservative-partial',
+    chunkId: 'chunk-conservative-partial',
+    extractorVersion: 'book-scan-v17',
+    bookTitle: 'Книга',
+    bookAuthor: '',
+    contextText,
+    coreLocalStartOffset: 0,
+    coreLocalEndOffset: contextText.length
+  }
+
+  await assert.rejects(
+    () => service.scanBookChunk({ ...request, semanticAttempt: 1 }),
+    (error) => error.code === 'EVIDENCE_MISMATCH'
+  )
+  const result = await service.scanBookChunk({ ...request, semanticAttempt: 2 })
+
+  assert.equal(chatCalls, 5)
+  assert.deepEqual(result.observations.map(({ entityCandidate }) => entityCandidate), ['Анна'])
+})
+
 test('internal generation service retries a scan when evidence filtering drops most provider observations', async () => {
   const storage = memoryStorage()
   const contextText = 'Анна вошла в комнату.'
   const validQuote = 'Анна вошла в комнату.'
   const service = createInternalGenerationService({
     storage,
+    scanPolicy: { profile: 'conservative' },
     logger: { info() {}, warn() {}, error() {} },
     async completeChat() {
       return JSON.stringify({ observations: [
@@ -889,6 +1086,7 @@ test('internal generation service rejects offset repair for an ambiguous exact q
   const quote = 'Анна вошла.'
   const service = createInternalGenerationService({
     storage,
+    scanPolicy: { profile: 'conservative' },
     logger: { info() {}, error() {} },
     async completeChat() {
       return JSON.stringify({ observations: [{
@@ -925,6 +1123,7 @@ test('internal generation service treats overlapping quote occurrences as ambigu
   const quote = 'аа'
   const service = createInternalGenerationService({
     storage,
+    scanPolicy: { profile: 'conservative' },
     logger: { info() {}, warn() {}, error() {} },
     async completeChat() {
       return JSON.stringify({ observations: [{
@@ -962,6 +1161,7 @@ test('internal generation service does not cache an ungrounded scan result', asy
   const contextText = ' Анна вошла. '
   const service = createInternalGenerationService({
     storage,
+    scanPolicy: { profile: 'conservative' },
     logger: {
       info(line) { lines.push(line) },
       warn(line) { lines.push(line) },
