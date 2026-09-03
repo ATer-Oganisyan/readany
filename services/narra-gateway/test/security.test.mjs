@@ -5,6 +5,7 @@ import {
   createFixedWindowByteBudget,
   createFixedWindowLimiter,
   createTokenService,
+  isCorsOriginAllowed,
   isInstallationId,
   requireBasicAuth
 } from '../security.mjs'
@@ -46,6 +47,40 @@ test('bearer and installation formats are strict', () => {
   assert.equal(bearerToken('Basic abc'), '')
   assert.equal(isInstallationId(INSTALLATION_ID), true)
   assert.equal(isInstallationId('device-1'), false)
+})
+
+test('CORS accepts the effective same origin without allowing unrelated origins', () => {
+  const request = {
+    allowedOrigins: new Set(['http://localhost:5173']),
+    protocol: 'https',
+    host: 'api.narra.disrupt.builders'
+  }
+
+  assert.equal(isCorsOriginAllowed({ ...request, origin: undefined }), true)
+  assert.equal(isCorsOriginAllowed({ ...request, origin: 'http://localhost:5173' }), true)
+  assert.equal(
+    isCorsOriginAllowed({ ...request, origin: 'https://api.narra.disrupt.builders' }),
+    true
+  )
+  assert.equal(
+    isCorsOriginAllowed({ ...request, origin: 'https://api.narra.disrupt.builders.evil.test' }),
+    false
+  )
+  assert.equal(
+    isCorsOriginAllowed({ ...request, origin: 'http://api.narra.disrupt.builders' }),
+    false
+  )
+  assert.equal(isCorsOriginAllowed({ ...request, origin: 'not-an-origin' }), false)
+  assert.equal(isCorsOriginAllowed({
+    ...request,
+    allowedOrigins: new Set(['*']),
+    origin: 'https://api.narra.disrupt.builders'
+  }), true)
+  assert.equal(isCorsOriginAllowed({
+    ...request,
+    allowedOrigins: new Set(['*']),
+    origin: 'https://unrelated.example'
+  }), false)
 })
 
 test('fixed-window limiter rejects requests above the configured limit', () => {
