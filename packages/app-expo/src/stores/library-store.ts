@@ -23,6 +23,7 @@ import {
 } from "@/lib/narra/backend-book-sync";
 import { trySha256BackendFile } from "@/lib/narra/backend-file-hash";
 import { normalizeBookLanguage } from "@/lib/narra/book-language";
+import { BANNED_IMPORT_MESSAGE, findBannedImport } from "@/lib/narra/import-blocklist";
 import { queueBook as queueAutoVectorize } from "@/lib/rag/auto-vectorize-service";
 import {
   type ImportBooksResult,
@@ -730,6 +731,37 @@ function ensureUtf8Bytes(bytes: Uint8Array): Uint8Array {
   }
 }
 
+async function removeImportArtifacts(relativePaths: Array<string | undefined>): Promise<void> {
+  const platform = getPlatformService();
+  for (const relativePath of relativePaths) {
+    if (!relativePath) continue;
+    try {
+      await platform.deleteFile(await resolveAppPath(relativePath));
+    } catch (error) {
+      console.warn("[importBooks] Failed to remove blocked import artifact:", relativePath, error);
+    }
+  }
+}
+
+/**
+ * L0-модерация по метаданным: проверяется и новая книга, и повторный импорт
+ * (восстановление удалённой, обновление дубля). Файлы, записанные текущей
+ * итерацией импорта, стираются — запрещённый материал не остаётся на
+ * устройстве. Файлы живой существующей книги не трогаем.
+ */
+async function assertImportNotBanned(
+  book: Book,
+  fileName: string,
+  importTarget: { deletedAt?: number | null } | null,
+  createdRelativePaths: Array<string | undefined>,
+): Promise<void> {
+  if (!findBannedImport(book.meta?.title, book.meta?.author, fileName)) return;
+  if (!importTarget || importTarget.deletedAt) {
+    await removeImportArtifacts(createdRelativePaths);
+  }
+  throw new Error(BANNED_IMPORT_MESSAGE);
+}
+
 /**
  * Copy book to app data directory. Uses OS-level file copy when possible
  * to avoid loading the full file into JS memory.
@@ -1300,6 +1332,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           ? decodeURIComponent(fileInfo.name)
           : decodeURIComponent(filePath.split("/").pop() || "book");
         try {
+          // L0-модерация: запрещённые в РФ материалы не импортируются вовсе.
+          if (findBannedImport(undefined, undefined, originalName)) {
+            result.failures.push({ name: originalName, error: BANNED_IMPORT_MESSAGE });
+            continue;
+          }
           const ext = originalName.split(".").pop()?.toLowerCase();
           const formatMap: Record<string, Book["format"]> = {
             epub: "epub",
@@ -1345,8 +1382,12 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           // of failing as a duplicate or adding a second library row.
           const importTarget = existingKnownBook ?? deletedMatch ?? existingDuplicate ?? null;
           const bookId = importTarget?.id ?? generateId();
-          if (!knownBook && (ext === "txt" || ext === "umd")) {
-            await preserveBackendOriginalSource(bookId, filePath, ext);
+          const preservedSourcePath =
+            !knownBook && (ext === "txt" || ext === "umd")
+              ? `narra-backend-sources/${encodeURIComponent(bookId)}.${ext}`
+              : undefined;
+          if (preservedSourcePath) {
+            await preserveBackendOriginalSource(bookId, filePath, ext ?? "");
           }
           const retainedSourceIdentity = knownBook
             ? {
@@ -1450,6 +1491,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
                 lastOpenedAt: importTarget?.lastOpenedAt ?? Date.now(),
                 ...retainedSourceIdentity,
               };
+
+              await assertImportNotBanned(book, fileName, importTarget, [
+                relativePath,
+                preservedSourcePath,
+              ]);
 
               if (importTarget) {
                 set((state) => ({
@@ -1584,6 +1630,12 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
                 lastOpenedAt: importTarget?.lastOpenedAt ?? Date.now(),
                 ...retainedSourceIdentity,
               };
+
+              await assertImportNotBanned(book, fileName, importTarget, [
+                relativePath,
+                coverUrl,
+                preservedSourcePath,
+              ]);
 
               if (importTarget) {
                 set((state) => ({
@@ -1741,6 +1793,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             lastOpenedAt: importTarget?.lastOpenedAt ?? Date.now(),
             ...retainedSourceIdentity,
           };
+          await assertImportNotBanned(book, fileName, importTarget, [relativePath, coverUrl]);
           if (importTarget) {
             set((state) => ({
               books: state.books.some((candidate) => candidate.id === book.id)

@@ -14,10 +14,14 @@
 // cover-genre чист от зависимостей — правила жанров едины с обложками.
 import { resolveCoverGenreProfile } from "../book/cover-genre";
 import { type NarraGenreAnalysis, narraGenreLabel } from "./genre-analysis";
+import { RF_IMAGE_COMPLIANCE } from "./rf-compliance";
 import type { NarraCharacter } from "./types";
 
 /** Разумный потолок промпта сцены для GPT Image (не лимит провайдера). */
 export const SCENE_PROMPT_CHAR_LIMIT = 2_500;
+
+/** Жёсткий потолок гейтвея: /v2/media/images валидирует prompt ≤ 4000 символов. */
+export const SCENE_PROMPT_HARD_LIMIT = 4_000;
 
 /** Максимум предыдущих сцен книги в блоке контекста серии. */
 export const SCENE_CONTEXT_MAX_PREVIOUS = 2;
@@ -159,7 +163,7 @@ export function buildScenePrompt(input: ScenePromptInput): string {
   const bookRef = `«${input.bookTitle.trim() || "Без названия"}»${author ? ` (${author})` : ""}`;
   const chapter = oneLine(input.chapter);
 
-  const canon = mentionedCharacters(input.excerpt, input.characters)
+  const canonFull = mentionedCharacters(input.excerpt, input.characters)
     .map(
       (character) => `${character.fullName || character.name}: ${passportDescription(character)}`,
     )
@@ -172,29 +176,48 @@ export function buildScenePrompt(input: ScenePromptInput): string {
     .slice(0, SCENE_CONTEXT_MAX_PREVIOUS)
     .map((excerpt) => capText(excerpt, MAX_PREVIOUS_EXCERPT_CHARS));
 
-  const buildBlocks = (excerptLimit: number): string[] => [
-    // 1. Жанр и стиль
-    `ЖАНР И СТИЛЬ (${genre.label}): ${sceneArtDirectionForGenre(genre.id)}`,
-    // 2. Эпоха и мир
-    `ЭПОХА И МИР: сцена из книги ${bookRef}${chapter ? `, глава «${chapter}»` : ""}. Одежда, причёски, предметы, архитектура и антураж строго соответствуют эпохе и миру книги; без современных вещей, если мир книги не современный.`,
-    // 3. Действие — главное требование
-    `ДЕЙСТВИЕ — ГЛАВНОЕ: выдели из отрывка центральное событие (кто что делает) и изобрази ДЕЙСТВИЕ момента в движении, в разгаре жеста. Никаких статичных поз, никаких взглядов в камеру, никакого группового позирования: герои заняты происходящим, композиция динамичная. Отрывок сцены: ${capText(oneLine(input.excerpt), excerptLimit)}`,
-    // 4. Персонажи
-    canon
-      ? `ПЕРСОНАЖИ: в кадре только герои, упомянутые в отрывке; внешность соблюдать дословно — ${canon}. Одежда из сцены важнее паспортной. Не добавляй отсутствующих героев и лишних людей.`
-      : "ПЕРСОНАЖИ: только те, кто действует в отрывке. Не добавляй лишних людей.",
-    // 5. Контекст серии
-    previous.length
-      ? `КОНТЕКСТ СЕРИИ — ранее в книге: ${previous.map((item) => `«${item}»`).join(" ")} Новая иллюстрация продолжает ту же серию: тот же художник, та же палитра и манера.`
-      : "",
-    "Единое пространство и один момент времени, НЕ коллаж. Строго без текста, букв, цифр, надписей, логотипов и водяных знаков.",
-  ];
+  const buildBlocks = (excerptLimit: number, canonLimit = Number.POSITIVE_INFINITY): string[] => {
+    const canon = Number.isFinite(canonLimit) ? capText(canonFull, canonLimit) : canonFull;
+    return [
+      // 1. Жанр и стиль
+      `ЖАНР И СТИЛЬ (${genre.label}): ${sceneArtDirectionForGenre(genre.id)}`,
+      // 2. Эпоха и мир
+      `ЭПОХА И МИР: сцена из книги ${bookRef}${chapter ? `, глава «${chapter}»` : ""}. Одежда, причёски, предметы, архитектура и антураж строго соответствуют эпохе и миру книги; без современных вещей, если мир книги не современный.`,
+      // 3. Действие — главное требование
+      `ДЕЙСТВИЕ — ГЛАВНОЕ: выдели из отрывка центральное событие (кто что делает) и изобрази ДЕЙСТВИЕ момента в движении, в разгаре жеста. Никаких статичных поз, никаких взглядов в камеру, никакого группового позирования: герои заняты происходящим, композиция динамичная. Отрывок сцены: ${capText(oneLine(input.excerpt), excerptLimit)}`,
+      // 4. Персонажи
+      canon
+        ? `ПЕРСОНАЖИ: в кадре только герои, упомянутые в отрывке; внешность соблюдать дословно — ${canon}. Одежда из сцены важнее паспортной. Не добавляй отсутствующих героев и лишних людей.`
+        : "ПЕРСОНАЖИ: только те, кто действует в отрывке. Не добавляй лишних людей.",
+      // 5. Контекст серии
+      previous.length
+        ? `КОНТЕКСТ СЕРИИ — ранее в книге: ${previous.map((item) => `«${item}»`).join(" ")} Новая иллюстрация продолжает ту же серию: тот же художник, та же палитра и манера.`
+        : "",
+      // 6. Правовые рамки РФ: разрешает драму сюжета и любые пары книги, режет привнесённую политику.
+      RF_IMAGE_COMPLIANCE,
+      "Единое пространство и один момент времени, НЕ коллаж. Строго без текста, букв, цифр, надписей, логотипов и водяных знаков.",
+    ];
+  };
 
   let prompt = assemble(buildBlocks(MAX_EXCERPT_CHARS));
   if (prompt.length > SCENE_PROMPT_CHAR_LIMIT) {
     const overflow = prompt.length - SCENE_PROMPT_CHAR_LIMIT;
     const excerptLimit = Math.max(300, MAX_EXCERPT_CHARS - overflow);
     prompt = assemble(buildBlocks(excerptLimit));
+  }
+  // Жёсткий потолок гейтвея: сверх мягкого лимита сначала минимальный отрывок,
+  // затем ужатие паспортов; правовой блок и финальные требования не режутся.
+  if (prompt.length > SCENE_PROMPT_HARD_LIMIT) {
+    prompt = assemble(buildBlocks(300));
+  }
+  if (prompt.length > SCENE_PROMPT_HARD_LIMIT) {
+    const excess = prompt.length - SCENE_PROMPT_HARD_LIMIT;
+    prompt = assemble(buildBlocks(300, Math.max(300, canonFull.length - excess)));
+  }
+  // Страховка от патологии (например, огромное название главы): сервер вернёт
+  // 400 на всё, что длиннее лимита, поэтому обрезка хвоста — меньшее зло.
+  if (prompt.length > SCENE_PROMPT_HARD_LIMIT) {
+    prompt = capText(prompt, SCENE_PROMPT_HARD_LIMIT);
   }
   return prompt;
 }

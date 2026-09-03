@@ -99,6 +99,7 @@ import {
 import { createLocalIdleAnimation } from './local-idle-animation.mjs'
 import { createPrivateMaterialCleanup } from './private-material-cleanup.mjs'
 import { kandinskyImageTimeoutMs, kandinskyRequestTimeoutMs } from './image-timeouts.mjs'
+import { withChatCompliance, withImageCompliance } from './rf-compliance.mjs'
 
 // ================= Конфигурация =================
 const PORT = process.env.PORT || 8787
@@ -1756,6 +1757,9 @@ app.post('/v2/ai/chat/stream', aiLimit, aiDailyLimit, express.json({ limit: '1mb
   try {
     release = await llmGate.acquire(clientSignal)
     const input = parseChatBody(req.body, { stream: true })
+    // Правовые рамки РФ — обязанность сервера: старый или модифицированный
+    // клиент не может их обойти. Идемпотентно к рамке, присланной клиентом.
+    const messages = withChatCompliance(input.messages, input.purpose)
     analyticsOrigin = input.origin
     recordActorAnalytics = input.analyticsTier !== 'none'
     requestPurpose = input.purpose
@@ -1769,6 +1773,7 @@ app.post('/v2/ai/chat/stream', aiLimit, aiDailyLimit, express.json({ limit: '1mb
     }
     const { response: upstream, provider, model, responseCost, finalizeAttempt } = await requestChat({
       ...input,
+      messages,
       requestId,
       stream: true,
       onAttempt: (attempt) => {
@@ -1867,6 +1872,8 @@ app.post('/v2/ai/chat/complete', aiLimit, aiDailyLimit, express.json({ limit: '1
   try {
     release = await llmGate.acquire(clientSignal)
     const input = parseChatBody(req.body)
+    // Диалоговые purposes и здесь получают серверную правовую рамку.
+    const messages = withChatCompliance(input.messages, input.purpose)
     analyticsOrigin = input.origin
     recordActorAnalytics = input.analyticsTier !== 'none'
     requestPurpose = input.purpose
@@ -1880,6 +1887,7 @@ app.post('/v2/ai/chat/complete', aiLimit, aiDailyLimit, express.json({ limit: '1
     }
     const { response: r, provider, model, attempts, responseCost, finalizeAttempt } = await requestChat({
       ...input,
+      messages,
       requestId,
       stream: false,
       onAttempt: (attempt) => {
@@ -2118,7 +2126,11 @@ app.post('/v2/media/images', imageDailyLimit, express.json({ limit: '1mb' }), as
     // Kandinsky в этот путь не входит.
     if (engine === 'openrouter') {
       const aspectRatio = width * 4 === height * 3 ? '3:4' : width === height ? '1:1' : width > height ? '3:2' : '2:3'
-      const image = await requestCoverImageObserved({ prompt, aspectRatio, signal })
+      // Правовой блок добавляет сервер (идемпотентно к клиентскому): политика
+      // не зависит от версии клиента. Kandinsky/gigachat-пути ниже режут запрос
+      // до 950–1000 символов — там блок вытеснил бы сам промпт; эти провайдеры
+      // закрыты собственной модерацией Сбера.
+      const image = await requestCoverImageObserved({ prompt: withImageCompliance(prompt), aspectRatio, signal })
       return res.json({ image: image.image, mime_type: image.mimeType })
     }
     // Вертикальные изображения (обложки) и явный engine='kandinsky' (сцены) — Kandinsky:

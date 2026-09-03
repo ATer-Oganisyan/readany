@@ -7,6 +7,14 @@ export type NarraErrorCode =
   | "SERVICE"
   | "TIMEOUT";
 
+/** Общий safety-отказ: normalizeNarraError используется чатом, анализом и озвучкой. */
+export const NARRA_SAFETY_DECLINED_MESSAGE =
+  "Сервис отклонил эту сцену по правилам безопасности. Попробуйте другую страницу.";
+
+/** Вариант для экрана сцены — там действительно есть кнопка «Заново». */
+export const NARRA_SCENE_SAFETY_RETRY_MESSAGE =
+  "Сервис отклонил эту сцену по правилам безопасности. Нажмите «Заново» — попробуем смягчённый вариант, или выберите другую страницу.";
+
 export class NarraServiceError extends Error {
   constructor(
     public readonly code: NarraErrorCode,
@@ -70,10 +78,7 @@ export function normalizeNarraError(error: unknown): NarraServiceError {
     );
   }
   if (/политик[А-Яа-яЁё]* безопасности|safety|content policy|moderation/iu.test(detail)) {
-    return new NarraServiceError(
-      "SERVICE",
-      "Сервис отклонил эту сцену по правилам безопасности. Попробуйте другую страницу.",
-    );
+    return new NarraServiceError("SERVICE", NARRA_SAFETY_DECLINED_MESSAGE);
   }
   return new NarraServiceError("SERVICE", "Не получилось. Попробуйте снова.");
 }
