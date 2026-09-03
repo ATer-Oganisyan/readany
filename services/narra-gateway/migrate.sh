@@ -107,7 +107,7 @@ esac
 
 case "$environment" in
   test)
-    image="${image:-readany/narra-gateway:test-latest}"
+    image="${image:-ghcr.io/mishanaer/narra-gateway:test-latest}"
     env_file="${env_file:-${NARRA_TEST_ENV_FILE:-/srv/narra-stagging/compose.env}}"
     project="${project:-narra-stagging}"
     ;;

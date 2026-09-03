@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { chmod, mkdir, mkdtemp, readlink, readdir, rm, utimes, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, readlink, readdir, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -9,7 +9,7 @@ import test from 'node:test'
 const deployScript = fileURLToPath(new URL('../deploy.sh', import.meta.url))
 const remoteDeployScript = fileURLToPath(new URL('../deploy-remote.sh', import.meta.url))
 const migrateScript = fileURLToPath(new URL('../migrate.sh', import.meta.url))
-const productionImage = `readany/narra-gateway:${'a'.repeat(40)}`
+const productionImage = `ghcr.io/mishanaer/narra-gateway:${'a'.repeat(40)}`
 
 function run(script, args) {
   return spawnSync('bash', [script, ...args], { encoding: 'utf8' })
@@ -49,7 +49,7 @@ test('selected mode expands worker components without databases', () => {
 test('production rejects mutable image tags', () => {
   const result = run(deployScript, [
     '--environment', 'prod',
-    '--image', 'readany/narra-gateway:latest',
+    '--image', 'ghcr.io/mishanaer/narra-gateway:latest',
     '--dry-run'
   ])
   assert.equal(result.status, 2)
@@ -139,6 +139,7 @@ test('remote deploy uploads only the fixed deployment bundle', () => {
   assert.match(result.stdout, /files= deploy\.sh migrate\.sh compose\.i167\.yml/)
   assert.match(result.stdout, /scp .*deploy\.sh .*migrate\.sh .*compose\.i167\.yml/s)
   assert.match(result.stdout, /deploy\.sh.*--environment.*test.*--component.*gateway/s)
+  assert.match(result.stdout, /ssh -tt .*sudo/)
   assert.doesNotMatch(result.stdout, /Dockerfile|package\.json|index\.mjs|migrate\.mjs/)
   assert.match(result.stdout, /no connection was made/)
 })
@@ -201,12 +202,15 @@ test('remote deploy installs and invokes the bundle through SSH transport', asyn
   const scpMock = join(binDir, 'scp')
   const flockMock = join(binDir, 'flock')
   const mvMock = join(binDir, 'mv')
+  const sudoMock = join(binDir, 'sudo')
+  const sudoLog = join(sandbox, 'sudo.log')
   const bashEnv = join(sandbox, 'bash-env')
   await writeFile(sshMock, `#!/usr/bin/env bash
 set -euo pipefail
 while [ "$#" -gt 0 ]; do
   case "$1" in
     -o|-p|-i) shift 2 ;;
+    -t|-tt) shift ;;
     *) break ;;
   esac
 done
@@ -247,11 +251,17 @@ if [ "$1" = -Tf ]; then
 fi
 exec /bin/mv "$@"
 `)
+  await writeFile(sudoMock, `#!/usr/bin/env bash
+set -euo pipefail
+printf 'sudo\n' >> "$SUDO_LOG"
+exec "$@"
+`)
   await writeFile(bashEnv, `export PATH="${binDir}:$PATH"\n`)
   await chmod(sshMock, 0o755)
   await chmod(scpMock, 0o755)
   await chmod(flockMock, 0o755)
   await chmod(mvMock, 0o755)
+  await chmod(sudoMock, 0o755)
 
   const releasesDir = join(remoteRoot, 'releases')
   await mkdir(releasesDir, { recursive: true })
@@ -278,7 +288,8 @@ exec /bin/mv "$@"
       env: {
         ...process.env,
         BASH_ENV: bashEnv,
-        PATH: `${binDir}:${process.env.PATH}`
+        PATH: `${binDir}:${process.env.PATH}`,
+        SUDO_LOG: sudoLog
       }
     })
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`)
@@ -294,6 +305,7 @@ exec /bin/mv "$@"
     assert.match(result.stdout, /environment=test mode=selected/)
     assert.match(result.stdout, /services= gateway/)
     assert.match(result.stdout, /pruned release=/)
+    assert.equal(await readFile(sudoLog, 'utf8'), 'sudo\n')
   } finally {
     await rm(sandbox, { recursive: true, force: true })
   }

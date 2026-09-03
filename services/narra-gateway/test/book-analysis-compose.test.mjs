@@ -190,6 +190,8 @@ test('deploy uses Docker Compose only and keeps migrations and backups separate'
   assert.match(remoteDeploySource, /compose\.i167\.yml/)
   assert.match(remoteDeploySource, /\bssh\b/)
   assert.match(remoteDeploySource, /\bscp\b/)
+  assert.match(remoteDeploySource, /sudo bash/)
+  assert.match(remoteDeploySource, /DOCKER_CONFIG/)
   assert.doesNotMatch(remoteDeploySource, /Dockerfile|package\.json|index\.mjs/)
 
   assert.match(deprecatedDeploySource, /DEPRECATED/)

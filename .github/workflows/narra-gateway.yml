@@ -63,3 +63,37 @@ jobs:
       - name: Build production image
         working-directory: services/narra-gateway
         run: docker build --build-arg GATEWAY_BUILD_VERSION=ci -t readany/narra-gateway:ci .
+
+  publish-test-image:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: test-and-build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve image name
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/narra-gateway"
+          echo "NARRA_PUBLISHED_IMAGE=$image" >> "$GITHUB_ENV"
+
+      - name: Authenticate to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$GHCR_TOKEN" \
+            | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Build and publish TEST image
+        working-directory: services/narra-gateway
+        run: |
+          docker build --pull \
+            --build-arg "GATEWAY_BUILD_VERSION=$GITHUB_SHA" \
+            --tag "$NARRA_PUBLISHED_IMAGE:$GITHUB_SHA" \
+            --tag "$NARRA_PUBLISHED_IMAGE:test-latest" \
+            .
+          docker push "$NARRA_PUBLISHED_IMAGE:$GITHUB_SHA"
+          docker push "$NARRA_PUBLISHED_IMAGE:test-latest"

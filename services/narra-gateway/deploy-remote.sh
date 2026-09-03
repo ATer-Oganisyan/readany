@@ -13,6 +13,7 @@ bundle_version=""
 transport_dry_run=0
 keep_releases=5
 release_cleanup=1
+sudo_mode=1
 forward_args=()
 
 bundle_files=(
@@ -40,6 +41,9 @@ Remote options:
   --keep-releases COUNT        Keep this many newest bundles (default: 5).
                                The active current bundle is always preserved.
   --no-release-cleanup         Do not remove old deployment bundles.
+  --sudo                       Run the complete remote operation through one
+                               interactive sudo invocation (default).
+  --no-sudo                    Run as the SSH user without privilege escalation.
   --operation OPERATION        deploy (default), migrate-check, migrate-apply.
   --transport-dry-run          Print SSH/SCP commands without connecting.
   -h, --help                   Show this help.
@@ -102,6 +106,14 @@ while [ "$#" -gt 0 ]; do
       ;;
     --no-release-cleanup)
       release_cleanup=0
+      shift
+      ;;
+    --sudo)
+      sudo_mode=1
+      shift
+      ;;
+    --no-sudo)
+      sudo_mode=0
       shift
       ;;
     --operation)
@@ -229,11 +241,19 @@ fi
 
 release_dir="$remote_root/releases/$bundle_version"
 incoming_dir="$remote_root/releases/.incoming-$bundle_version-$$-$RANDOM"
+upload_dir="/tmp/narra-deploy-upload-$bundle_version-$$-$RANDOM"
 lock_file="$remote_root/deploy.lock"
 
 quoted_root="$(printf '%q' "$remote_root")"
 quoted_incoming="$(printf '%q' "$incoming_dir")"
-prepare_line="set -euo pipefail; install -d -m 0755 $quoted_root $quoted_root/releases; test ! -e $quoted_incoming; install -d -m 0755 $quoted_incoming"
+quoted_upload="$(printf '%q' "$upload_dir")"
+if [ "$sudo_mode" = 1 ]; then
+  source_dir="$upload_dir"
+  prepare_line="set -euo pipefail; umask 077; test ! -e $quoted_upload; install -d -m 0700 $quoted_upload"
+else
+  source_dir="$incoming_dir"
+  prepare_line="set -euo pipefail; install -d -m 0755 $quoted_root $quoted_root/releases; test ! -e $quoted_incoming; install -d -m 0755 $quoted_incoming"
+fi
 prepare_command="$(shell_join bash -lc "$prepare_line")"
 
 printf '[deploy-remote] environment=%s operation=%s host=%s bundle=%s\n' \
@@ -241,17 +261,21 @@ printf '[deploy-remote] environment=%s operation=%s host=%s bundle=%s\n' \
 printf '[deploy-remote] files= deploy.sh migrate.sh compose.i167.yml\n'
 
 run ssh "${ssh_args[@]}" "$host" "$prepare_command"
-run scp "${scp_args[@]}" "${bundle_files[@]}" "$host:$incoming_dir/"
+run scp "${scp_args[@]}" "${bundle_files[@]}" "$host:$source_dir/"
 
 deploy_hash="$(sha256_file "$HERE/deploy.sh")"
 migrate_hash="$(sha256_file "$HERE/migrate.sh")"
 compose_hash="$(sha256_file "$HERE/compose.i167.yml")"
 
 quoted_release="$(printf '%q' "$release_dir")"
-finalize_line="set -euo pipefail; test \"\$(sha256sum $quoted_incoming/deploy.sh | awk '{print \$1}')\" = $deploy_hash; test \"\$(sha256sum $quoted_incoming/migrate.sh | awk '{print \$1}')\" = $migrate_hash; test \"\$(sha256sum $quoted_incoming/compose.i167.yml | awk '{print \$1}')\" = $compose_hash; chmod 0755 $quoted_incoming/deploy.sh $quoted_incoming/migrate.sh; chmod 0644 $quoted_incoming/compose.i167.yml; if [ -d $quoted_release ]; then cmp -s $quoted_incoming/deploy.sh $quoted_release/deploy.sh; cmp -s $quoted_incoming/migrate.sh $quoted_release/migrate.sh; cmp -s $quoted_incoming/compose.i167.yml $quoted_release/compose.i167.yml; rm -- $quoted_incoming/deploy.sh $quoted_incoming/migrate.sh $quoted_incoming/compose.i167.yml; rmdir $quoted_incoming; else mv -- $quoted_incoming $quoted_release; fi"
-finalize_invocation="$(shell_join flock -x "$lock_file" bash -lc "$finalize_line")"
-finalize_command="$(shell_join bash -lc "$finalize_invocation")"
-run ssh "${ssh_args[@]}" "$host" "$finalize_command"
+quoted_source="$(printf '%q' "$source_dir")"
+finalize_line="test \"\$(sha256sum $quoted_source/deploy.sh | awk '{print \$1}')\" = $deploy_hash; test \"\$(sha256sum $quoted_source/migrate.sh | awk '{print \$1}')\" = $migrate_hash; test \"\$(sha256sum $quoted_source/compose.i167.yml | awk '{print \$1}')\" = $compose_hash"
+if [ "$sudo_mode" = 1 ]; then
+  finalize_line="$finalize_line; test ! -e $quoted_incoming; install -d -m 0755 $quoted_incoming; install -m 0755 $quoted_source/deploy.sh $quoted_incoming/deploy.sh; install -m 0755 $quoted_source/migrate.sh $quoted_incoming/migrate.sh; install -m 0644 $quoted_source/compose.i167.yml $quoted_incoming/compose.i167.yml; rm -- $quoted_source/deploy.sh $quoted_source/migrate.sh $quoted_source/compose.i167.yml; rmdir -- $quoted_source"
+else
+  finalize_line="$finalize_line; chmod 0755 $quoted_incoming/deploy.sh $quoted_incoming/migrate.sh; chmod 0644 $quoted_incoming/compose.i167.yml"
+fi
+finalize_line="$finalize_line; if [ -d $quoted_release ]; then cmp -s $quoted_incoming/deploy.sh $quoted_release/deploy.sh; cmp -s $quoted_incoming/migrate.sh $quoted_release/migrate.sh; cmp -s $quoted_incoming/compose.i167.yml $quoted_release/compose.i167.yml; rm -- $quoted_incoming/deploy.sh $quoted_incoming/migrate.sh $quoted_incoming/compose.i167.yml; rmdir $quoted_incoming; else mv -- $quoted_incoming $quoted_release; fi"
 
 case "$operation" in
   deploy)
@@ -319,10 +343,18 @@ REMOTE_CLEANUP
     "$remote_root/releases" "$remote_root/current" "$keep_releases"
   )"
 fi
-activate_line="set -euo pipefail; $entrypoint_invocation; ln -sfn $quoted_release $quoted_current_next; mv -Tf -- $quoted_current_next $quoted_current; $cleanup_invocation"
-activate_invocation="$(shell_join flock -x "$lock_file" bash -lc "$activate_line")"
-activate_command="$(shell_join bash -lc "$activate_invocation")"
-run ssh "${ssh_args[@]}" "$host" "$activate_command"
+activate_line="$entrypoint_invocation; ln -sfn $quoted_release $quoted_current_next; mv -Tf -- $quoted_current_next $quoted_current; $cleanup_invocation"
+locked_line="set -euo pipefail; $finalize_line; $activate_line"
+locked_invocation="$(shell_join flock -x "$lock_file" bash -lc "$locked_line")"
+if [ "$sudo_mode" = 1 ]; then
+  privileged_line="set -euo pipefail; if [ -n \"\${SUDO_USER:-}\" ]; then deploy_home=\"\$(getent passwd \"\$SUDO_USER\" | cut -d: -f6)\"; if [ -f \"\$deploy_home/.docker/config.json\" ]; then export DOCKER_CONFIG=\"\$deploy_home/.docker\"; fi; fi; install -d -m 0755 $quoted_root $quoted_root/releases; $locked_invocation"
+  privileged_invocation="$(shell_join sudo bash -lc "$privileged_line")"
+  activate_command="$(shell_join bash -lc "$privileged_invocation")"
+  run ssh -tt "${ssh_args[@]}" "$host" "$activate_command"
+else
+  activate_command="$(shell_join bash -lc "$locked_invocation")"
+  run ssh "${ssh_args[@]}" "$host" "$activate_command"
+fi
 
 if [ "$transport_dry_run" = 1 ]; then
   printf '[deploy-remote] transport dry-run completed; no connection was made\n'

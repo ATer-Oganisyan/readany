@@ -24,14 +24,14 @@ options:
 ./deploy-remote.sh \
   --environment test \
   --host deploy@test.example.internal \
-  --image readany/narra-gateway:test-latest \
+  --image ghcr.io/mishanaer/narra-gateway:test-latest \
   --component analysis-workers
 
 # PROD has no hard-coded host
 ./deploy-remote.sh \
   --environment prod \
   --host deploy@prod.example.internal \
-  --image readany/narra-gateway:<full-git-sha>
+  --image ghcr.io/mishanaer/narra-gateway:<full-git-sha>
 ```
 
 The proxy always copies exactly this allowlist:
@@ -58,7 +58,7 @@ a release by commit:
 
 /opt/narra-production/current/deploy.sh \
   --environment prod \
-  --image readany/narra-gateway:<full-git-sha>
+  --image ghcr.io/mishanaer/narra-gateway:<full-git-sha>
 ```
 
 After every successful remote operation, old bundles are pruned automatically.
@@ -76,24 +76,52 @@ Cleanup removes a directory only when it is an immediate child of `releases`
 and contains exactly the three expected bundle files. An unfamiliar directory
 is reported and skipped instead of being deleted recursively.
 
-The SSH user must be provisioned once with permission to:
+By default, the proxy uploads the three files to a private temporary directory,
+opens one SSH session with a pseudo-terminal, and runs the complete server-side
+operation through one `sudo bash` process. `sudo` asks for the server password
+once; the operator does not run `sudo su`, create deployment directories, copy
+files manually, or invoke Docker separately.
 
-- write the environment's deployment root and its `releases` directory;
-- run Docker Compose;
-- read the environment file without modifying or copying it from CI.
+For a private GHCR package, authenticate the SSH user once on the server. The
+privileged deployment automatically reuses that user's Docker credential file:
+
+```bash
+ssh fun1
+read -rsp 'GHCR token: ' GHCR_TOKEN; echo
+printf '%s' "$GHCR_TOKEN" \
+  | docker login ghcr.io --username <github-user> --password-stdin
+unset GHCR_TOKEN
+exit
+```
+
+Use a classic personal access token with only `read:packages`. This registry
+login is not repeated on later deploys. If the GHCR package is public, skip it.
+After SSH key access and this one-time private-registry login are in place, the
+entire TEST deployment is one local command and one sudo password prompt:
+
+```bash
+./deploy-remote.sh --environment test --component gateway
+```
+
+Use `--no-sudo` only when the SSH user has already been provisioned with write
+access to the deployment root, read access to `compose.env`, and permission to
+run Docker Compose. CI cannot answer an interactive sudo prompt, so a future CI
+deploy job must either connect with a dedicated root SSH key or use a reviewed
+non-interactive privilege policy. The sudo password must never be stored in CI.
 
 The target host must provide Bash, `flock`, `sha256sum`, standard file utilities,
 and Docker Compose. The developer machine or CI runner must provide `ssh` and
 `scp`. These are deployment prerequisites, not application dependencies.
 
 Host-key verification is deliberately not disabled. CI must provide a trusted
-`known_hosts` entry and a dedicated SSH key. The proxy uses SSH batch mode and
-will not fall back to an interactive password prompt.
+`known_hosts` entry and a dedicated SSH key. SSH itself uses batch mode and
+will not request an SSH password; the allocated terminal is used only for the
+single remote sudo prompt.
 
 Transport-specific flags are `--host`, `--ssh-port`, `--identity-file`,
 `--remote-root`, `--bundle-version`, `--keep-releases`,
-`--no-release-cleanup`, and `--transport-dry-run`. All other flags are passed
-to `deploy.sh`.
+`--no-release-cleanup`, `--sudo`, `--no-sudo`, and `--transport-dry-run`. All
+other flags are passed to `deploy.sh`.
 
 The server has no Git checkout, so remote `--from`/`--to` is prohibited. CI
 must calculate changed paths before connecting and pass repeatable
@@ -109,7 +137,7 @@ Remote migrations use the same proxy:
   --environment prod \
   --host deploy@prod.example.internal \
   --operation migrate-apply \
-  --image readany/narra-gateway:<full-git-sha> \
+  --image ghcr.io/mishanaer/narra-gateway:<full-git-sha> \
   --confirm
 ```
 
@@ -120,9 +148,19 @@ printed.
 
 ## Environments and image versions
 
+GitHub Actions builds the gateway on a GitHub-hosted runner after tests pass on
+`main`, then publishes two tags to GHCR:
+
+- `ghcr.io/<repository-owner>/narra-gateway:<full-git-sha>`;
+- `ghcr.io/<repository-owner>/narra-gateway:test-latest`.
+
+No runner or build container is required on the application server. TEST pulls
+`test-latest`; PROD must receive the exact full-SHA tag (or digest) of the image
+that was already tested and published. The server only pulls and starts images.
+
 | Environment | Compose project | Default env file | Gateway port | Image policy |
 |---|---|---|---|---|
-| `test` | `narra-stagging` | `/srv/narra-stagging/compose.env` | `8789` | defaults to mutable `readany/narra-gateway:test-latest` |
+| `test` | `narra-stagging` | `/srv/narra-stagging/compose.env` | `8789` | defaults to mutable `ghcr.io/mishanaer/narra-gateway:test-latest` |
 | `prod` | `narra-production` | `/opt/narra-production/compose.env` | `8788` | explicit immutable image is required |
 
 Production accepts only one of these forms:
@@ -146,7 +184,7 @@ The common operation updates only gateway and never restarts its dependencies:
 ./deploy.sh --environment test
 
 ./deploy.sh --environment prod \
-  --image readany/narra-gateway:<full-git-sha>
+  --image ghcr.io/mishanaer/narra-gateway:<full-git-sha>
 ```
 
 The exact sequence is:
@@ -177,7 +215,7 @@ Use repeatable component groups or exact Compose service names:
 # PostgreSQL only; production additionally requires confirmation
 ./deploy.sh --environment prod \
   --component databases \
-  --image readany/narra-gateway:<full-git-sha> \
+  --image ghcr.io/mishanaer/narra-gateway:<full-git-sha> \
   --confirm-stateful-restart
 ```
 
@@ -208,7 +246,7 @@ targets. Run them as separate operations.
 
 ./deploy.sh --environment prod \
   --mode full \
-  --image readany/narra-gateway:<full-git-sha> \
+  --image ghcr.io/mishanaer/narra-gateway:<full-git-sha> \
   --confirm-stateful-restart
 ```
 
@@ -247,7 +285,7 @@ calling Compose. Always inspect the plan first when using automatic selection:
 ```bash
 ./deploy.sh --environment prod --mode diff \
   --from <previous-release-ref> \
-  --image readany/narra-gateway:<full-git-sha> \
+  --image ghcr.io/mishanaer/narra-gateway:<full-git-sha> \
   --dry-run
 ```
 
@@ -273,10 +311,10 @@ Commands:
 ./migrate.sh --environment test --apply
 
 ./migrate.sh --environment prod --check \
-  --image readany/narra-gateway:<full-git-sha>
+  --image ghcr.io/mishanaer/narra-gateway:<full-git-sha>
 
 ./migrate.sh --environment prod --apply --confirm \
-  --image readany/narra-gateway:<full-git-sha>
+  --image ghcr.io/mishanaer/narra-gateway:<full-git-sha>
 ```
 
 `migrate.sh` uses `docker compose run --rm migrate`. It neither restarts
@@ -298,7 +336,7 @@ Container rollback is a new deploy with the previous immutable image:
 
 ```bash
 ./deploy.sh --environment prod \
-  --image readany/narra-gateway:<previous-full-git-sha>
+  --image ghcr.io/mishanaer/narra-gateway:<previous-full-git-sha>
 ```
 
 Database rollback is not coupled to application rollback. Forward-fix is the

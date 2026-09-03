@@ -414,7 +414,10 @@ Use [`deploy-remote.sh`](./deploy-remote.sh) from a developer machine or CI. It
 copies only `deploy.sh`, `migrate.sh`, and `compose.i167.yml`, then invokes the
 selected operation over SSH. It never copies application source or secrets.
 The stable server entrypoint is `current/deploy.sh`; five deployment bundles
-are retained automatically by default.
+are retained automatically by default. The default remote mode uploads through
+the SSH user and performs the complete privileged operation after one sudo
+password prompt; no manual `sudo su` session is required. CI builds and pushes
+the application image to GHCR; the application server only pulls and starts it.
 
 The server-side [`deploy.sh`](./deploy.sh) manages TEST or PROD exclusively
 through Docker Compose. The default deployment recreates only gateway;

@@ -81,7 +81,7 @@ Execution:
   --dry-run                   Print Compose commands without executing them.
   -h, --help                  Show this help.
 
-TEST defaults to readany/narra-gateway:test-latest. PROD accepts only an image
+TEST defaults to ghcr.io/mishanaer/narra-gateway:test-latest. PROD accepts only an image
 by sha256 digest, full 40-character Git SHA tag, or exact SemVer tag.
 
 Migrations and backups are never executed by this script. Run migrate.sh as a
@@ -210,7 +210,7 @@ fi
 
 case "$environment" in
   test)
-    image="${image:-readany/narra-gateway:test-latest}"
+    image="${image:-ghcr.io/mishanaer/narra-gateway:test-latest}"
     env_file="${env_file:-${NARRA_TEST_ENV_FILE:-/srv/narra-stagging/compose.env}}"
     project="${project:-narra-stagging}"
     host_port=8789
