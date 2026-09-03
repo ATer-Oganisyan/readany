@@ -67,8 +67,6 @@ import { type ToastAnimation, Toaster } from "sonner-native";
 import { CatalogCharacterPortraitPreloader } from "@/components/catalog/CatalogCharacterPortraitPreloader";
 import { AnimatedNarraFace } from "@/components/chat/animated-narra-face";
 import { MishanaerIcon, type MishanaerIconName } from "@/components/ui/Icon";
-import { UpdateDialog } from "@/components/update/UpdateDialog";
-import { useUpdateChecker } from "@/hooks/use-update-checker";
 import {
   isNarraAssistantGatewayRequest,
   narraAssistantGatewayFetch,
@@ -366,7 +364,6 @@ export default function App() {
 function AppInner() {
   const { colors, isDark } = useTheme();
   const loadBooks = useLibraryStore((s) => s.loadBooks);
-  useUpdateChecker();
   useAutoSync(loadBooks);
 
   const toastBackground =
@@ -404,7 +401,6 @@ function AppInner() {
             <RootNavigator />
           </NavigationContainer>
         </ReaderTOCSheetProvider>
-        <UpdateDialog />
         <Toaster
           theme={isDark ? "dark" : "light"}
           position="top-center"
