@@ -1226,7 +1226,6 @@ if (process.env.DATABASE_URL) {
     const identityJobs = await bookMarkupRepository.enqueueMissingBookIdentities()
     const coverJobs = await bookMarkupRepository.enqueueMissingCatalogCovers()
     const characterMediaJobs = await bookMarkupRepository.enqueueCharacterMediaBackfill()
-    const sceneBackfills = await bookMarkupRepository.enqueueBookSceneBackfill()
     console.info('[book-identity] durable backfill checked', {
       jobs: identityJobs.length,
       created: identityJobs.filter((job) => job.created).length
@@ -1239,11 +1238,7 @@ if (process.env.DATABASE_URL) {
       jobs: characterMediaJobs.length,
       created: characterMediaJobs.filter((job) => job.created).length
     })
-    console.info('[book-scenes] durable backfill checked', {
-      books: sceneBackfills.length,
-      requested: sceneBackfills.reduce((total, value) => total + value.requested, 0),
-      pending: sceneBackfills.reduce((total, value) => total + value.pending, 0)
-    })
+    console.info('[book-scenes] automatic backfill disabled; on-demand only')
   } else if (internalGenerationService) {
     console.info('[book-media] generation and startup backfills are disabled')
   }
