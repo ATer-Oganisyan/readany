@@ -58,6 +58,7 @@ import {
   createPersistentBudgetMiddleware,
   createTokenService,
   hashInstallationSecret,
+  isCorsOriginAllowed,
   isInstallationId,
   requireGatewayAuth,
   requireOperatorAuth,
@@ -1034,15 +1035,22 @@ const allowedOrigins = new Set(
 app.disable('x-powered-by')
 app.set('trust proxy', 1)
 app.use(
-  cors({
-    origin(origin, callback) {
-      if (!origin || allowedOrigins.has(origin)) return callback(null, true)
-      callback(new Error('Origin is not allowed'))
-    },
-    methods: ['GET', 'POST'],
-    allowedHeaders: ['Authorization', 'Content-Type', 'X-Audio-Type'],
-    exposedHeaders: ['X-Narra-Auth-Error', 'RateLimit-Reset'],
-    maxAge: 3600
+  cors((req, callback) => {
+    if (!isCorsOriginAllowed({
+      origin: req.headers.origin,
+      allowedOrigins,
+      protocol: req.protocol,
+      host: req.get('host')
+    })) {
+      return callback(new Error('Origin is not allowed'))
+    }
+    callback(null, {
+      origin: true,
+      methods: ['GET', 'POST'],
+      allowedHeaders: ['Authorization', 'Content-Type', 'X-Audio-Type'],
+      exposedHeaders: ['X-Narra-Auth-Error', 'RateLimit-Reset'],
+      maxAge: 3600
+    })
   })
 )
 const tokenSecret = resolveTokenSecret()

@@ -74,6 +74,29 @@ export function bearerToken(header) {
   return match?.[1] || ''
 }
 
+export function isCorsOriginAllowed({ origin, allowedOrigins, protocol, host }) {
+  const suppliedOrigin = String(origin || '').trim()
+  if (!suppliedOrigin) return true
+  if (allowedOrigins?.has(suppliedOrigin)) return true
+
+  const requestProtocol = String(protocol || '').trim().toLowerCase()
+  const requestHost = String(host || '').trim()
+  if (!['http', 'https'].includes(requestProtocol) || !requestHost) return false
+
+  try {
+    const supplied = new URL(suppliedOrigin)
+    if (
+      supplied.username || supplied.password || supplied.pathname !== '/' ||
+      supplied.search || supplied.hash
+    ) {
+      return false
+    }
+    return supplied.origin === new URL(`${requestProtocol}://${requestHost}`).origin
+  } catch {
+    return false
+  }
+}
+
 export function hashInstallationSecret(secret, pepper) {
   if (
     typeof secret !== 'string' ||
