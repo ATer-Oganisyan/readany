@@ -20,6 +20,54 @@ function encodeWindows1251(value) {
   }))
 }
 
+const russianTxt = 'Мастер и Маргарита\nМихаил Булгаков\n\nГлава 1\n' +
+  'Он вошёл в комнату и увидел, что на столе лежит книга. Это был её подарок.\n\n' +
+  'Глава 2\nОна взяла книгу и пошла к окну, но он остался у двери.';
+
+test('TXT detects Russian Windows-1251 without changing the source or section offsets', async () => {
+  const bytes = encodeWindows1251(russianTxt);
+  const original = Buffer.from(bytes);
+  const result = await extractStructuredBookText({ bytes, format: 'txt' });
+  assert.equal(result.text, russianTxt);
+  assert.deepEqual(bytes, original);
+  assert.equal(result.sections.length, 3);
+  assert.equal(result.sections.at(-1).endOffset, russianTxt.length);
+  assert.doesNotMatch(result.text, /[\u4e00-\u9fff\uFFFD]/);
+});
+
+test('TXT preserves UTF-8, including Russian, Chinese, Japanese and ASCII', async () => {
+  for (const text of [russianTxt, '第一章\n这是一本中文小说。', '第一章\nこれは日本語の本です。', 'Chapter 1\nAn English book.']) {
+    assert.equal(await extractBookText({ bytes: Buffer.from(text), format: 'txt' }), text);
+  }
+});
+
+test('TXT honors Unicode BOMs before legacy encoding detection', async () => {
+  const littleEndian = Buffer.from(russianTxt, 'utf16le');
+  for (const bytes of [
+    Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(russianTxt)]),
+    Buffer.concat([Buffer.from([0xff, 0xfe]), littleEndian]),
+    Buffer.concat([Buffer.from([0xfe, 0xff]), Buffer.from(littleEndian).swap16()])
+  ]) {
+    assert.equal(await extractBookText({ bytes, format: 'txt' }), russianTxt);
+  }
+});
+
+test('TXT does not reinterpret malformed marked UTF-8 as Windows-1251', async () => {
+  await assert.rejects(extractBookText({
+    bytes: Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), encodeWindows1251(russianTxt)]),
+    format: 'txt'
+  }), { code: 'BOOK_TEXT_INVALID' });
+});
+
+test('TXT does not guess Windows-1251 for Chinese GBK or arbitrary high bytes', async () => {
+  for (const bytes of [
+    Buffer.from('d5e2cac7d2bbb1bed6d0cec4d0a1cbb5a3acced2c3c7d4dab6c1cae9a3ac', 'hex'),
+    Buffer.alloc(100, 0xff)
+  ]) {
+    await assert.rejects(extractBookText({ bytes, format: 'txt' }), { code: 'BOOK_TEXT_INVALID' });
+  }
+});
+
 test('FB2 extraction removes embedded binary payloads before text normalization', async () => {
   const payload = 'A'.repeat(12_000)
   const source = [
