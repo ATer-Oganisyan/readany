@@ -158,6 +158,58 @@ describe("local import actions", () => {
     expect(runtime.open).not.toHaveBeenCalled();
   });
 
+  it.each(["picker", "local-save", "url-prompt"])(
+    "does not show a late %s error after leaving the import screen",
+    async (stage) => {
+      let rejectPending!: (error: Error) => void;
+      const deferred = () =>
+        new Promise((_resolve, reject) => {
+          rejectPending = reject;
+        });
+      if (stage === "picker") runtime.pick.mockImplementationOnce(deferred);
+      else if (stage === "local-save") runtime.importBooks.mockImplementationOnce(deferred);
+      else runtime.prompt.mockImplementationOnce(deferred);
+      let pending!: Promise<void>;
+      await act(async () => {
+        pending =
+          stage === "url-prompt" ? current.handleOpenUrlImport() : current.handleLocalImport();
+      });
+      await act(async () => {
+        tree.unmount();
+      });
+      await act(async () => {
+        rejectPending(new Error("late native failure"));
+        await pending;
+      });
+      expect(runtime.error).not.toHaveBeenCalled();
+      expect(runtime.complete).not.toHaveBeenCalled();
+      expect(runtime.open).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not start importing a picker result delivered after leaving the screen", async () => {
+    let finish!: (result: unknown) => void;
+    runtime.pick.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    let pending!: Promise<void>;
+    await act(async () => {
+      pending = current.handleLocalImport();
+    });
+    await act(async () => {
+      tree.unmount();
+    });
+    await act(async () => {
+      finish({ canceled: false, assets: [{ uri: "file:///late.epub", name: "late.epub" }] });
+      await pending;
+    });
+    expect(runtime.importBooks).not.toHaveBeenCalled();
+    expect(runtime.success).not.toHaveBeenCalled();
+  });
+
   it("localizes Open in English and keeps each action bound to its saved book", async () => {
     runtime.language = "en";
     const actions: Array<{ label: string; onClick: () => void | Promise<void> }> = [];
@@ -835,24 +887,35 @@ describe("local import actions", () => {
     async (outcome) => {
       let finish!: () => void;
       runtime.importBooks.mockImplementationOnce(
-        () => new Promise((resolve, reject) => {
-          finish = () => outcome === "success"
-            ? resolve({ imported: [{ id: "saved" }], skippedDuplicates: [], failures: [] })
-            : reject(new Error("save failed"));
-        }),
+        () =>
+          new Promise((resolve, reject) => {
+            finish = () =>
+              outcome === "success"
+                ? resolve({ imported: [{ id: "saved" }], skippedDuplicates: [], failures: [] })
+                : reject(new Error("save failed"));
+          }),
       );
       let pending!: Promise<void>;
-      await act(async () => { pending = current.handleOpenUrlImport(); });
+      await act(async () => {
+        pending = current.handleOpenUrlImport();
+      });
       expect(runtime.importBooks).toHaveBeenCalledOnce();
       expect(runtime.loading.mock.lastCall?.[1]).toMatchObject({
-        id: "url-loading", action: undefined, duration: Number.POSITIVE_INFINITY,
+        id: "url-loading",
+        action: undefined,
+        duration: Number.POSITIVE_INFINITY,
       });
       const signal: AbortSignal = runtime.download.mock.calls[0][2].signal;
-      await act(async () => { tree.unmount(); });
+      await act(async () => {
+        tree.unmount();
+      });
       expect(runtime.dismiss).toHaveBeenCalledWith("url-loading");
       expect(signal.aborted).toBe(false);
       expect(runtime.remove).not.toHaveBeenCalled();
-      await act(async () => { finish(); await pending; });
+      await act(async () => {
+        finish();
+        await pending;
+      });
       expect(runtime.remove).toHaveBeenCalledOnce();
       expect(runtime.success).not.toHaveBeenCalled();
       expect(runtime.error).not.toHaveBeenCalled();
@@ -874,10 +937,13 @@ describe("local import actions", () => {
   it.each(["success", "failure"])(
     "does not dismiss a completed URL result on a later unmount (%s)",
     async (outcome) => {
-      if (outcome === "failure") runtime.importBooks.mockRejectedValueOnce(new Error("save failed"));
+      if (outcome === "failure")
+        runtime.importBooks.mockRejectedValueOnce(new Error("save failed"));
       await act(async () => current.handleOpenUrlImport());
       expect(outcome === "success" ? runtime.success : runtime.error).toHaveBeenCalledOnce();
-      await act(async () => { tree.unmount(); });
+      await act(async () => {
+        tree.unmount();
+      });
       expect(runtime.dismiss).not.toHaveBeenCalled();
     },
   );

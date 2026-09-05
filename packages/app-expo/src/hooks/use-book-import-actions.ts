@@ -253,7 +253,8 @@ export function useBookImportActions({
         multiple: true,
         copyToCacheDirectory: true,
       });
-      if (result.canceled || !result.assets || result.assets.length === 0) return;
+      if (!mountedRef.current || result.canceled || !result.assets || result.assets.length === 0)
+        return;
 
       const files = result.assets.map((asset) => ({ uri: asset.uri, name: asset.name }));
       const summary = await importBooks(files);
@@ -262,6 +263,7 @@ export function useBookImportActions({
       const message = error instanceof Error ? error.message : String(error);
       if (!message.includes("Different document picking in progress")) {
         console.error("Import failed:", error);
+        if (!mountedRef.current) return;
         toast.error(t("library.importSourceUrlErrorTitle", "Не получилось добавить книгу"), {
           description: t(importFailureKey(getBookImportFailureCode(error))),
           styles: { description: { display: "flex" } },
@@ -270,7 +272,7 @@ export function useBookImportActions({
       }
     } finally {
       localImportInFlightRef.current = false;
-      setIsPickingImport(false);
+      if (mountedRef.current) setIsPickingImport(false);
     }
   }, [importBooks, showImportSummary, t]);
 
@@ -440,8 +442,7 @@ export function useBookImportActions({
           action: undefined,
         });
       } finally {
-        if (urlLoadingToastRef.current === loadingToastId)
-          urlLoadingToastRef.current = undefined;
+        if (urlLoadingToastRef.current === loadingToastId) urlLoadingToastRef.current = undefined;
         if (urlDownloadControllerRef.current === controller)
           urlDownloadControllerRef.current = null;
         if (mountedRef.current) setIsUrlImporting(false);
@@ -467,6 +468,7 @@ export function useBookImportActions({
       }
     } catch (error) {
       console.error("Native URL prompt failed:", error);
+      if (!mountedRef.current) return;
       toast.error(t("library.importSourceUrlErrorTitle", "Не получилось добавить книгу"), {
         description: t("library.importSourceUrlError", "Проверьте ссылку и попробуйте снова."),
       });
