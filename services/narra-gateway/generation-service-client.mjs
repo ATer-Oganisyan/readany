@@ -105,7 +105,7 @@ export function createGenerationServiceClient({
         ...input
       }, signal)
     },
-    scanBookChunk(input) {
+    scanBookChunk(input, { signal } = {}) {
       return post('internal/v1/book-analysis/scan-chunk', {
         idempotencyKey: [
           input.runId,
@@ -114,7 +114,7 @@ export function createGenerationServiceClient({
           input.extractorVersion
         ].join(':'),
         ...input
-      })
+      }, signal)
     },
     generateBookTtsMarkup(input) {
       return post('internal/v1/book-tts-markup/attribute', {

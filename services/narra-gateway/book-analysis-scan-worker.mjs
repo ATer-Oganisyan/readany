@@ -161,8 +161,9 @@ export function createBookAnalysisScanWorker({
   const effectiveScanPolicy = createBookAnalysisScanPolicy(scanPolicy)
   const log = createOperationalLogger({ component: 'analysis-scan', logger })
 
-  async function scan(job) {
+  async function scan(job, signal) {
     const input = await repository.getScanInput(job)
+    signal.throwIfAborted()
     bookAnalysisPipelineForRun(input)
     if (input.extractorVersion !== extractorVersion) {
       throw scanError(
@@ -184,6 +185,7 @@ export function createBookAnalysisScanWorker({
       endByteExclusive: byteEnd,
       maxBytes: 128 * 1024
     })
+    signal.throwIfAborted()
     let contextText
     try {
       contextText = UTF8_DECODER.decode(stored.bytes)
@@ -217,7 +219,8 @@ export function createBookAnalysisScanWorker({
       coreLocalStartOffset: input.chunk.coreStartOffset - input.chunk.contextStartOffset,
       coreLocalEndOffset: input.chunk.coreEndOffset - input.chunk.contextStartOffset,
       semanticAttempt: Number.isSafeInteger(job.attempts) ? job.attempts : 1
-    })
+    }, { signal })
+    signal.throwIfAborted()
     const observations = normalizeScanObservations(rawResult, input, contextText)
     const result = await repository.completeScan(job, { extractorVersion, observations })
     log.info('scan.completed', 'Фрагмент книги обработан', {
@@ -230,18 +233,27 @@ export function createBookAnalysisScanWorker({
   }
 
   async function withLeaseHeartbeat(job, operation) {
+    const controller = new AbortController()
+    let renewing = false
     const timer = setInterval(() => {
-      void repository.renewAnalysisJobLease(job, { leaseSeconds }).catch((error) => {
+      if (renewing || controller.signal.aborted) return
+      renewing = true
+      void Promise.resolve().then(() => repository.renewAnalysisJobLease(job, { leaseSeconds })).catch((error) => {
+        if (error?.code === 'LEASE_LOST') controller.abort(error)
         log.error('scan.lease_failed', 'Не удалось продлить аренду scan-задания', {
           job: job.id,
           run: job.runId,
           error_code: safeErrorCode(error)
         })
-      })
+      }).finally(() => { renewing = false })
     }, leaseRenewMs)
     timer.unref?.()
     try {
-      return await operation()
+      return await operation(controller.signal)
+    } catch (error) {
+      // A body read may throw AbortError rather than the known lease-loss reason.
+      controller.signal.throwIfAborted()
+      throw error
     } finally {
       clearInterval(timer)
     }
@@ -258,7 +270,7 @@ export function createBookAnalysisScanWorker({
       if (!job) return { status: 'idle' }
       const startedAt = performance.now()
       try {
-        const result = await withLeaseHeartbeat(job, () => scan(job))
+        const result = await withLeaseHeartbeat(job, signal => scan(job, signal))
         log.info('scan.attempt_completed', 'Scan-задание завершено', {
           job: job.id,
           ...bookAnalysisLogContext(job, { startedAt, terminalStatus: 'completed' })
@@ -266,6 +278,10 @@ export function createBookAnalysisScanWorker({
         return { status: 'completed', jobId: job.id, runId: job.runId, result }
       } catch (error) {
         const errorCode = safeErrorCode(error)
+        if (errorCode === 'LEASE_LOST') {
+          // Only the replacement owner may complete, fail or retry this job.
+          return { status: 'failed', jobId: job.id, runId: job.runId, errorCode }
+        }
         if (
           errorCode === 'SCAN_EMPTY_OBSERVATIONS' &&
           Number.isSafeInteger(job.attempts) &&
