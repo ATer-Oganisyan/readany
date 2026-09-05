@@ -85,6 +85,17 @@ temp directory, outside the model-readable fixture root. It is not committed.
 Stop with SIGTERM/SIGINT. Small temp directories are retained for inspection.
 Do not point public/backend production traffic at this listener.
 
+For staged per-request review, publish approvals atomically: after reviewing
+the exact request and prior response, write a separate candidate file, set it
+to0600, then hard-link it to the manifest's approval path without overwrite.
+Do not create the watched approval path with0644 and chmod it later: the50ms
+poller correctly rejects that intermediate unsafe state and stops permanently.
+Only the external reviewer writes approvals; the controller never approves itself.
+On failure the staged controller retains a private `failure.json` containing
+fixed stage/category and `startedCalls` (bridge dispatch count, not proof of CLI
+execution). It never persists raw errors or credentials there. Cleanup failures
+remain outside this diagnostic; missing evidence does not mean zero model calls.
+
 Programmatic `createFixtureBridge({approvedHashes, maxCalls: 1})` supports a
 single controlled canary and returns `{url, token, cwd, close}`. Keep the token
 in memory; do not log it. The test-only `spawnChild` injection is never exposed

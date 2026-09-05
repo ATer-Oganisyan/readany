@@ -61,6 +61,7 @@ export async function createStagedFixtureProvider({ mode = 'mock', fixtureId = '
       }
       active = true;
       let bridge;
+      let failureStage = 'validation';
       try {
         lifetime.throwIfAborted();
         const operation = input.costContext?.operation;
@@ -129,6 +130,7 @@ export async function createStagedFixtureProvider({ mode = 'mock', fixtureId = '
         manifests.push(manifestFile);
         // Notification only: never provide an approval-writing helper.
         onCapture({ manifestFile, phase: operation, sha256 });
+        failureStage = 'approval';
         const deadline = Date.now() + approvalTimeoutMs;
         for (;;) {
           requestSignal.throwIfAborted();
@@ -142,6 +144,7 @@ export async function createStagedFixtureProvider({ mode = 'mock', fixtureId = '
         }
         if (digest(await readFile(manifest.bodyFile)) !== sha256) throw new Error('Captured request changed after review');
         requestSignal.throwIfAborted();
+        failureStage = 'bridge';
         bridge = await createFixtureBridge({ approvedHashes: [sha256], maxCalls: 1,
           ...(mode === 'mock' ? { spawnChild: spawnFixtureChild } : {}) });
         activeBridge = bridge;
@@ -159,7 +162,22 @@ export async function createStagedFixtureProvider({ mode = 'mock', fixtureId = '
         if (typeof content !== 'string' || !content.trim()) throw new Error('Empty or invalid fixture completion');
         await writeFile(manifest.responseFile, JSON.stringify(payload, null, 2), { mode: 0o600, flag: 'wx' });
         return content;
-      } catch (error) { failed = true; stop.abort(error); throw error; }
+      } catch (error) {
+        failed = true; stop.abort(error);
+        // Retain only fixed categories, never arbitrary error text, tokens or CLI output.
+        const category = error.message === 'Approval must be a private regular file <=4096 bytes'
+          ? 'approval_file_unsafe'
+          : error.message === 'Approval does not match exact captured request'
+            ? 'approval_mismatch'
+            : error.message === 'Approval deadline exceeded; campaign stopped'
+              ? 'approval_timeout'
+              : /^Fixture bridge HTTP [0-9]{3}; campaign stopped$/.test(error.message)
+                ? `bridge_http_${error.message.match(/[0-9]{3}/)[0]}` : 'other';
+        await writeFile(join(directory, 'failure.json'), JSON.stringify({
+          stage: failureStage, category, startedCalls: index
+        }, null, 2), { mode: 0o600, flag: 'wx' }).catch(() => {});
+        throw error;
+      }
       finally {
         try { if (bridge) { await bridge.close(); await rm(bridge.cwd, { recursive: true, force: true }); } }
         catch (error) { failed = true; throw error; }

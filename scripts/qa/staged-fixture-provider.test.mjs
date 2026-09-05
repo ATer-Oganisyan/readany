@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
-import { readFile, writeFile, rm, access } from 'node:fs/promises';
+import { readFile, writeFile, rm, access, chmod, link } from 'node:fs/promises';
 import { createStagedFixtureProvider, STAGED_OPERATIONS, STAGED_FIXTURE } from './staged-fixture-provider.mjs';
 import { MULTICHUNK_FIXTURE } from './multichunk-book-fixture.mjs';
 import { createStableBookChunks } from '../../services/narra-gateway/book-analysis-chunking.mjs';
@@ -69,6 +69,23 @@ test('wrong approval SHA latches failure without any model call or retry', async
   await rejected;
   await assert.rejects(provider.completeChat(input(0)), /stopped/);
   assert.equal(runner.calls.length, 0);
+  const failure = JSON.parse(await readFile(`${provider.directory}/failure.json`, 'utf8'));
+  assert.deepEqual(failure, { stage: 'approval', category: 'approval_mismatch', startedCalls: 0 });
+});
+
+test('non-private approval preserves a safe diagnostic without launching CLI', async t => {
+  const { provider, runner, captured } = await setup(t);
+  const pending = provider.completeChat(input(0));
+  const rejected = assert.rejects(pending, /private regular file/);
+  const manifest = await captured(0);
+  const candidate = `${manifest.approvalFile}.candidate`;
+  await writeFile(candidate, JSON.stringify({ approved: true, index: 1, sha256: manifest.sha256, nonce: manifest.nonce }), { mode: 0o644, flag: 'wx' });
+  await chmod(candidate, 0o644);
+  await link(candidate, manifest.approvalFile);
+  await rejected;
+  assert.equal(runner.calls.length, 0);
+  const failure = JSON.parse(await readFile(`${provider.directory}/failure.json`, 'utf8'));
+  assert.deepEqual(failure, { stage: 'approval', category: 'approval_file_unsafe', startedCalls: 0 });
 });
 
 test('post-capture body edits fail closed before execution', async t => {
