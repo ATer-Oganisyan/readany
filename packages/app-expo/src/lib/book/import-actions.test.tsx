@@ -830,6 +830,37 @@ describe("local import actions", () => {
     expect(runtime.dismiss).not.toHaveBeenCalled();
   });
 
+  it.each(["success", "failure"])(
+    "dismisses URL saving feedback on unmount without cancelling the atomic save (%s)",
+    async (outcome) => {
+      let finish!: () => void;
+      runtime.importBooks.mockImplementationOnce(
+        () => new Promise((resolve, reject) => {
+          finish = () => outcome === "success"
+            ? resolve({ imported: [{ id: "saved" }], skippedDuplicates: [], failures: [] })
+            : reject(new Error("save failed"));
+        }),
+      );
+      let pending!: Promise<void>;
+      await act(async () => { pending = current.handleOpenUrlImport(); });
+      expect(runtime.importBooks).toHaveBeenCalledOnce();
+      expect(runtime.loading.mock.lastCall?.[1]).toMatchObject({
+        id: "url-loading", action: undefined, duration: Number.POSITIVE_INFINITY,
+      });
+      const signal: AbortSignal = runtime.download.mock.calls[0][2].signal;
+      await act(async () => { tree.unmount(); });
+      expect(runtime.dismiss).toHaveBeenCalledWith("url-loading");
+      expect(signal.aborted).toBe(false);
+      expect(runtime.remove).not.toHaveBeenCalled();
+      await act(async () => { finish(); await pending; });
+      expect(runtime.remove).toHaveBeenCalledOnce();
+      expect(runtime.success).not.toHaveBeenCalled();
+      expect(runtime.error).not.toHaveBeenCalled();
+      expect(runtime.complete).not.toHaveBeenCalled();
+      expect(runtime.open).not.toHaveBeenCalled();
+    },
+  );
+
   it("keeps prompt cancellation separate from an active download", async () => {
     runtime.prompt.mockResolvedValueOnce(null);
     await act(async () => current.handleOpenUrlImport());
@@ -839,6 +870,17 @@ describe("local import actions", () => {
     await act(async () => current.handleOpenUrlImport());
     expect(runtime.importBooks).toHaveBeenCalledOnce();
   });
+
+  it.each(["success", "failure"])(
+    "does not dismiss a completed URL result on a later unmount (%s)",
+    async (outcome) => {
+      if (outcome === "failure") runtime.importBooks.mockRejectedValueOnce(new Error("save failed"));
+      await act(async () => current.handleOpenUrlImport());
+      expect(outcome === "success" ? runtime.success : runtime.error).toHaveBeenCalledOnce();
+      await act(async () => { tree.unmount(); });
+      expect(runtime.dismiss).not.toHaveBeenCalled();
+    },
+  );
 
   it("aborts an active download on unmount without importing its late result", async () => {
     let finish!: () => void;

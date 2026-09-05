@@ -105,6 +105,7 @@ export function useBookImportActions({
   const localImportInFlightRef = useRef(false);
   const urlImportInFlightRef = useRef(false);
   const urlDownloadControllerRef = useRef<AbortController | null>(null);
+  const urlLoadingToastRef = useRef<ImportToastId | undefined>(undefined);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -112,6 +113,11 @@ export function useBookImportActions({
     return () => {
       mountedRef.current = false;
       urlDownloadControllerRef.current?.abort();
+      // Saving is atomic and must finish, but its screen no longer owns feedback.
+      if (urlLoadingToastRef.current !== undefined) {
+        toast.dismiss(urlLoadingToastRef.current);
+        urlLoadingToastRef.current = undefined;
+      }
     };
   }, []);
 
@@ -307,6 +313,7 @@ export function useBookImportActions({
           duration: Number.POSITIVE_INFINITY,
           action: cancelAction,
         });
+        urlLoadingToastRef.current = loadingToastId;
 
         const timeoutMs = 135_000;
         const ficbook = await withGatewayConsumer(
@@ -392,6 +399,7 @@ export function useBookImportActions({
           return;
         }
         console.info("[BookImport][url] Failed:", error);
+        if (!mountedRef.current) return;
         const errorCode = error instanceof Error ? error.message : "";
         const importCode = getBookImportFailureCode(error);
         const message = importCode
@@ -432,6 +440,8 @@ export function useBookImportActions({
           action: undefined,
         });
       } finally {
+        if (urlLoadingToastRef.current === loadingToastId)
+          urlLoadingToastRef.current = undefined;
         if (urlDownloadControllerRef.current === controller)
           urlDownloadControllerRef.current = null;
         if (mountedRef.current) setIsUrlImporting(false);
