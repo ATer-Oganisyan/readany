@@ -216,6 +216,18 @@ export function extractFb2Metadata(fileBytes: Uint8Array, fileName = "book.fb2")
   };
 }
 
+/** Exact original XML bytes, including its encoding declaration; never ZIP bytes. */
+export async function extractFbzSourceBytes(file: BlobLikeFile): Promise<Uint8Array> {
+  const directory = await parseZipDirectoryFromFile(file);
+  const entry = directory.find((item) => /\.fb2$/i.test(item.filename));
+  requireImportSource(entry && entry.uncompressedSize > 0);
+  requireFb2ImportSize(entry.uncompressedSize);
+  const bytes = await readBytesFromZipFile(file, directory, entry.filename, FB2_IMPORT_MAX_BYTES);
+  requireImportSource(bytes);
+  validateFictionBookXml(decodeXmlBytes(bytes));
+  return bytes;
+}
+
 export async function extractFb2MetadataFromFile(
   file: BlobLikeFile,
   fileName: string,

@@ -1,0 +1,12 @@
+appId: com.mishanaer.readany.dev
+name: Independent QA create current page bookmark
+---
+- runFlow:
+    when:
+      notVisible: Book actions
+    commands:
+      - tapOn:
+          point: 50%,50%
+- tapOn: Book actions
+- tapOn: Add bookmark
+- takeScreenshot: android-continuous-bookmark-created

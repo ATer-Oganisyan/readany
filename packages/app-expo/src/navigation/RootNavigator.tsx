@@ -56,7 +56,7 @@ export type RootStackParamList = {
     highlight?: boolean;
     openTTS?: boolean;
   };
-  ReaderTOC: undefined;
+  ReaderTOC: { tab?: "toc" | "bookmarks" } | undefined;
   BookChat: { bookId: string; selectedText?: string; chapterTitle?: string };
   NarraCharacters: { bookId: string; charactersSheetSourceId?: string };
   NarraCharacterChat: { bookId: string; characterId: string };

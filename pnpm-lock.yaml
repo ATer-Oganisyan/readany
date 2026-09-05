@@ -20,7 +20,7 @@ patchedDependencies:
     hash: fh42b6r6pu2nxnbr7ydhziblui
     path: patches/react-native-screens@4.25.2.patch
   react-native-track-player@4.1.2:
-    hash: nnwlwgrx564vbkryasz7knuaku
+    hash: o6bao4gjeve7crweg4j33vxlqm
     path: patches/react-native-track-player@4.1.2.patch
   sonner-native@0.27.0:
     hash: ihifdizfg4jrdfsjqgenpl6qaq
@@ -471,7 +471,7 @@ importers:
         version: 6.4.1(react-native@0.86.2(@babel/core@7.29.0)(@react-native/metro-config@0.86.2(@babel/core@7.29.0))(@types/react@19.2.17)(react@19.2.3))
       react-native-track-player:
         specifier: ^4.1.2
-        version: 4.1.2(patch_hash=nnwlwgrx564vbkryasz7knuaku)(react-native@0.86.2(@babel/core@7.29.0)(@react-native/metro-config@0.86.2(@babel/core@7.29.0))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3)
+        version: 4.1.2(patch_hash=o6bao4gjeve7crweg4j33vxlqm)(react-native@0.86.2(@babel/core@7.29.0)(@react-native/metro-config@0.86.2(@babel/core@7.29.0))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3)
       react-native-view-shot:
         specifier: ^5.1.0
         version: 5.1.0(react-native@0.86.2(@babel/core@7.29.0)(@react-native/metro-config@0.86.2(@babel/core@7.29.0))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3)
@@ -20285,7 +20285,7 @@ snapshots:
       eventemitter3: 4.0.7
       react-native: 0.86.2(@babel/core@7.29.0)(@react-native/metro-config@0.86.2(@babel/core@7.29.0))(@types/react@19.2.17)(react@19.2.3)
 
-  react-native-track-player@4.1.2(patch_hash=nnwlwgrx564vbkryasz7knuaku)(react-native@0.86.2(@babel/core@7.29.0)(@react-native/metro-config@0.86.2(@babel/core@7.29.0))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3):
+  react-native-track-player@4.1.2(patch_hash=o6bao4gjeve7crweg4j33vxlqm)(react-native@0.86.2(@babel/core@7.29.0)(@react-native/metro-config@0.86.2(@babel/core@7.29.0))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3):
     dependencies:
       react: 19.2.3
       react-native: 0.86.2(@babel/core@7.29.0)(@react-native/metro-config@0.86.2(@babel/core@7.29.0))(@types/react@19.2.17)(react@19.2.3)

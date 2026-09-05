@@ -24,6 +24,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ChapterTranslationMenu } from "./ChapterTranslationBar";
@@ -114,23 +115,34 @@ export function ReaderToolbar({
   const canZoomIn = fixedLayoutZoom < fixedLayoutZoomMax - 0.001;
   const canResetZoom = Math.abs(fixedLayoutZoom - 1) > 0.001;
 
-  const handleToggleBookmark = () => {
-    if (!currentCfi || !bookId) return;
-    if (isBookmarked && existingBookmark) {
-      removeBookmark(existingBookmark.id);
-      toast.success(t("bookmarks.removed"));
-    } else {
-      const snippet = getPageSnippet?.() || "";
-      const label = snippet ? snippet.slice(0, 80) : undefined;
-      addBookmark({
-        id: generateId(),
-        bookId,
-        cfi: currentCfi,
-        label,
-        chapterTitle: tab?.chapterTitle || undefined,
-        createdAt: Date.now(),
-      });
-      toast.success(t("bookmarks.added"));
+  const bookmarkPendingRef = useRef(false);
+  const [bookmarkPending, setBookmarkPending] = useState(false);
+  const handleToggleBookmark = async () => {
+    if (!currentCfi || !bookId || bookmarkPendingRef.current) return;
+    bookmarkPendingRef.current = true;
+    setBookmarkPending(true);
+    try {
+      if (isBookmarked && existingBookmark) {
+        await removeBookmark(existingBookmark.id);
+        toast.success(t("bookmarks.removed"));
+      } else {
+        const snippet = getPageSnippet?.() || "";
+        const label = snippet ? snippet.slice(0, 80) : undefined;
+        await addBookmark({
+          id: generateId(),
+          bookId,
+          cfi: currentCfi,
+          label,
+          chapterTitle: tab?.chapterTitle || undefined,
+          createdAt: Date.now(),
+        });
+        toast.success(t("bookmarks.added"));
+      }
+    } catch {
+      toast.error(t("bookmarks.saveFailed"));
+    } finally {
+      bookmarkPendingRef.current = false;
+      setBookmarkPending(false);
     }
   };
 
@@ -205,6 +217,8 @@ export function ReaderToolbar({
           size="icon"
           className={`h-7 w-7 ${isBookmarked ? "text-primary" : ""}`}
           onClick={handleToggleBookmark}
+          disabled={bookmarkPending}
+          aria-busy={bookmarkPending}
           title={isBookmarked ? t("bookmarks.remove") : t("bookmarks.add")}
         >
           <Bookmark className={`h-3.5 w-3.5 ${isBookmarked ? "fill-current" : ""}`} />

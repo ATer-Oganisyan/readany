@@ -1,5 +1,7 @@
+import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { type ReactTestRenderer, act, create } from "react-test-renderer";
+import ts from "typescript";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useReaderBridge } from "../../hooks/use-reader-bridge";
 
@@ -12,7 +14,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function harness() {
+function harness(onBookmarkSnippet = vi.fn()) {
   let bridge!: ReturnType<typeof useReaderBridge>;
   const messages: string[] = [];
   let visibleText = "";
@@ -32,9 +34,33 @@ function harness() {
       ReactNativeWebView: { postMessage: (message: string) => messages.push(message) },
     },
     handleCommand() {},
+    view: { lastLocation: { cfi: "epubcfi(/6/2!/4/2:8)" } },
+    getVisibleTextSnippet: () => visibleText,
+    doGetVisibleReadingContext: () => ({ text: visibleText, cfi: "epubcfi(/6/2!/4/2:8)" }),
+    postToRN: (type: string, data: object) => messages.push(JSON.stringify({ type, ...data })),
   });
+  const html = readFileSync(
+    new URL("../../../assets/reader/reader.template.html", import.meta.url),
+    "utf8",
+  );
+  const script = html.slice(html.indexOf("<script>") + 8, html.indexOf("\n  </script>"));
+  const ast = ts.createSourceFile(
+    "reader.js",
+    script,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.JS,
+  );
+  const snippet = ast.statements.find(
+    (node) =>
+      ts.isExpressionStatement(node) &&
+      ts.isBinaryExpression(node.expression) &&
+      node.expression.left.getText(ast) === "window.requestPageSnippet",
+  );
+  if (!snippet) throw new Error("Missing actual bookmark snippet implementation");
+  vm.runInContext(snippet.getText(ast), runtime);
   function Harness() {
-    bridge = useReaderBridge({});
+    bridge = useReaderBridge({ onBookmarkSnippet });
     return null;
   }
   act(() => {
@@ -55,6 +81,19 @@ function harness() {
 }
 
 describe("reader text requests", () => {
+  it("round-trips bookmark request identity and actual page CFI through the WebView", () => {
+    const received = vi.fn();
+    const h = harness(received);
+    const requestId = 'bookmark-"quoted"';
+    h.text("Именно эта страница");
+    h.bridge.requestPageSnippet(requestId);
+    h.deliver(0);
+    expect(received).toHaveBeenCalledExactlyOnceWith(
+      "Именно эта страница",
+      requestId,
+      "epubcfi(/6/2!/4/2:8)",
+    );
+  });
   it("exact context is bounded at 600ms and a stale response cannot satisfy the next request", async () => {
     const h = harness();
     h.text("Старая страница");

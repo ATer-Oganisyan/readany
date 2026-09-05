@@ -4814,9 +4814,11 @@ a { color: ${primary} !important; }
         view.renderer.navigationLocked = locked;
       }
     };
-    window.requestPageSnippet = function () {
-      var snippet = getVisibleTextSnippet(80);
-      postToRN('bookmarkSnippet', { textSnippet: snippet || '' });
+    window.requestPageSnippet = function (requestId) {
+      // Whole text-node geometry can include an offscreen paragraph beginning.
+      // An optional bookmark label must describe the exact visible CFI slice.
+      var context = doGetVisibleReadingContext();
+      postToRN('bookmarkSnippet', { textSnippet: context ? context.text.slice(0, 80) : '', requestId: requestId, cfi: context ? context.cfi : undefined });
     };
     window.getVisibleText = function () {
       var result = doGetVisibleText();

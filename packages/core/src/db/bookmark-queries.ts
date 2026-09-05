@@ -1,6 +1,7 @@
 import { sortAnnotationsByPosition } from "../reader/annotation-order";
 import type { Bookmark } from "../types";
-import { getDB, getDeviceId, insertTombstone, nextSyncVersion } from "./db-core";
+import { deleteBookmarkAtomically } from "./bookmark-delete-command";
+import { getDB, getDeviceId, nextSyncVersion } from "./db-core";
 
 export async function getBookmarks(bookId: string): Promise<Bookmark[]> {
   const database = await getDB();
@@ -47,6 +48,5 @@ export async function insertBookmark(bookmark: Bookmark): Promise<void> {
 
 export async function deleteBookmark(id: string): Promise<void> {
   const database = await getDB();
-  await insertTombstone(database, id, "bookmarks");
-  await database.execute("DELETE FROM bookmarks WHERE id = ?", [id]);
+  await deleteBookmarkAtomically(database, id, await getDeviceId(), Date.now());
 }

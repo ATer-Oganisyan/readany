@@ -1,7 +1,9 @@
+import { extractFbzSourceBytes } from "@/lib/book/metadata-extractor";
 import { useLibraryStore } from "@/stores/library-store";
 import { useNarraStore } from "@/stores/narra-store";
 import { getPlatformService } from "@readany/core/services";
 import type { Book } from "@readany/core/types";
+import { fromByteArray } from "base64-js";
 import * as Crypto from "expo-crypto";
 import { File } from "expo-file-system";
 import * as FileSystem from "expo-file-system/legacy";
@@ -55,7 +57,12 @@ function analysisSource(book: Book) {
   const saved = useNarraStore.getState().books[book.id]?.backendOriginalSource;
   // Older UMD imports retained raw UMD, although the reader already uses EPUB.
   const convertedUmd = book.format === "umd" && /\.epub$/i.test(book.filePath);
-  return { original: saved?.format === "umd" ? undefined : saved, convertedUmd };
+  const staleArchive =
+    book.format === "fbz" &&
+    saved?.format === "fb2" &&
+    (saved.derivedFrom?.filePath !== book.filePath ||
+      saved.derivedFrom?.contentHash !== (book.fileHash ?? book.contentHash));
+  return { original: saved?.format === "umd" || staleArchive ? undefined : saved, convertedUmd };
 }
 
 function supportsBackendAnalysis(book: Book): boolean {
@@ -64,8 +71,10 @@ function supportsBackendAnalysis(book: Book): boolean {
   return book.sourceKind === "catalog" || supportsPrivateBookAnalysis(format);
 }
 
-async function sourcePath(book: Book) {
-  const { original } = analysisSource(book);
+async function sourcePath(
+  book: Book,
+  original: ReturnType<typeof analysisSource>["original"] | null = analysisSource(book).original,
+) {
   if (original) return `${FileSystem.documentDirectory}${original.path}`;
   const path = book.filePath;
   if (path.startsWith("/") || path.startsWith("file://")) return path;
@@ -109,9 +118,47 @@ const mimeTypes: Record<string, string> = {
 
 async function bindBook(book: Book, signal: AbortSignal) {
   const store = useNarraStore.getState();
-  const { original, convertedUmd } = analysisSource(book);
+  let { original, convertedUmd } = analysisSource(book);
+  if (book.format === "fbz" && original?.format === "fb2") {
+    const derived = new File(await sourcePath(book, original));
+    // Persisted metadata can outlive the derived file. Recover from the retained
+    // archive instead of retrying an unavailable FB2 forever.
+    if (!derived.exists || derived.size === 0) original = undefined;
+  }
+  if ((original?.format ?? book.format) === "fbz") {
+    // Explicit null bypasses stale persisted metadata when the cache was lost.
+    const bytes = await extractFbzSourceBytes(new File(await sourcePath(book, original ?? null)));
+    if (signal.aborted) throw new Error("Book binding cancelled");
+    const path = `narra-backend-sources/${Crypto.randomUUID()}.fb2`;
+    const uri = `${FileSystem.documentDirectory}${path}`;
+    await FileSystem.makeDirectoryAsync(`${FileSystem.documentDirectory}narra-backend-sources`, {
+      intermediates: true,
+    });
+    try {
+      await FileSystem.writeAsStringAsync(uri, fromByteArray(bytes), {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      const hash = await sha256BackendFile(uri);
+      if (signal.aborted) throw new Error("Book binding cancelled");
+      original = {
+        path,
+        hash,
+        format: "fb2",
+        derivedFrom: {
+          filePath: book.filePath,
+          contentHash: book.fileHash ?? book.contentHash,
+        },
+      };
+      store.setBackendOriginalSource(book.id, original);
+    } catch (error) {
+      await FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
+      throw error;
+    }
+  }
   const format = original?.format ?? (convertedUmd ? "epub" : book.format);
+  const derivedArchive = book.format === "fbz" && original?.format === "fb2";
   let binding = store.books[book.id]?.backendBinding;
+  if (derivedArchive && binding?.contentSha256 !== original?.hash) binding = undefined;
   if (binding && expiredEditions.has(binding.bookEditionId)) binding = undefined;
   // A cancelled upload can have reached the server without its response reaching
   // the client. Resolve again before repeating PUT for a retained uncertain binding.
@@ -129,14 +176,14 @@ async function bindBook(book: Book, signal: AbortSignal) {
     };
   }
   if (!binding) {
-    const path = await sourcePath(book);
+    const path = await sourcePath(book, original ?? null);
     const hash =
       original?.hash ??
       (convertedUmd ? undefined : book.contentHash) ??
       (await sha256BackendFile(path));
     if (signal.aborted) throw new Error("Book binding cancelled");
     // Persist once; subsequent resolve/open never hashes unchanged bytes again.
-    if (!book.contentHash || convertedUmd)
+    if ((!book.contentHash || convertedUmd) && !derivedArchive)
       await useLibraryStore
         .getState()
         .updateBook(book.id, { contentHash: hash, ...(convertedUmd ? { format: "epub" } : {}) });
@@ -171,7 +218,7 @@ async function bindBook(book: Book, signal: AbortSignal) {
     // Blob before it creates the native request. On iOS that conversion can
     // stall, leaving the private edition registered but with no source bytes.
     // Read the file explicitly so fetch receives an unambiguous binary body.
-    const sourceFile = new File(await sourcePath(book));
+    const sourceFile = new File(await sourcePath(book, original ?? null));
     const sourceBytes = await sourceFile.bytes();
     if (sourceBytes.byteLength === 0) throw new Error("Book source is empty");
     const response = await backendBookRequest(backendBookPath(binding.bookEditionId, "source"), {
@@ -190,7 +237,7 @@ async function bindBook(book: Book, signal: AbortSignal) {
     };
     store.setBackendBinding(book.id, binding);
   }
-  if (binding.resolution === "catalog" && book.sourceKind !== "catalog") {
+  if (binding.resolution === "catalog" && book.sourceKind !== "catalog" && !derivedArchive) {
     await useLibraryStore.getState().updateBook(book.id, {
       sourceKind: "catalog",
       bookEditionId: binding.bookEditionId,

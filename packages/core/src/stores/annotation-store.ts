@@ -38,8 +38,8 @@ export interface AnnotationState {
   removeNote: (id: string) => void;
 
   setBookmarks: (bookmarks: Bookmark[]) => void;
-  addBookmark: (bookmark: Bookmark) => void;
-  removeBookmark: (id: string) => void;
+  addBookmark: (bookmark: Bookmark) => Promise<void>;
+  removeBookmark: (id: string) => Promise<void>;
 
   loadAnnotations: (bookId: string) => Promise<void>;
   loadAllHighlights: (limit?: number) => Promise<void>;
@@ -64,6 +64,25 @@ async function refreshDerivedAnnotationState(
 
 let highlightSaveQueue: Promise<void> = Promise.resolve();
 let annotationLoadGeneration = 0;
+let bookmarkWriteQueue: Promise<void> = Promise.resolve();
+let bookmarkRevision = 0;
+
+function enqueueBookmarkWrite(operation: () => Promise<void>): Promise<void> {
+  bookmarkRevision += 1;
+  const saved = bookmarkWriteQueue.then(operation);
+  // Legacy callers may ignore the acknowledgement, but editors can await it.
+  bookmarkWriteQueue = saved.catch((error) => console.error("Bookmark write failed:", error));
+  return saved;
+}
+
+async function readCommittedBookmarks(bookId: string): Promise<Bookmark[]> {
+  for (;;) {
+    const revision = bookmarkRevision;
+    await bookmarkWriteQueue;
+    const rows = await db.getBookmarks(bookId);
+    if (revision === bookmarkRevision) return rows;
+  }
+}
 
 function enqueueHighlightSave(
   operation: () => Promise<void>,
@@ -175,14 +194,32 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
 
   setBookmarks: (bookmarks) => set({ bookmarks: sortAnnotationsByPosition(bookmarks) }),
   addBookmark: (bookmark) => {
-    set((state) => ({ bookmarks: sortAnnotationsByPosition([...state.bookmarks, bookmark]) }));
-    db.insertBookmark(bookmark).catch((err) => console.error("Failed to insert bookmark:", err));
+    const snapshot = { ...bookmark };
+    return enqueueBookmarkWrite(async () => {
+      await db.insertBookmark(snapshot);
+      set((state) =>
+        state.activeBookId === null || state.activeBookId === snapshot.bookId
+          ? {
+              bookmarks: sortAnnotationsByPosition([
+                ...state.bookmarks.filter((item) => item.id !== snapshot.id),
+                snapshot,
+              ]),
+            }
+          : {},
+      );
+      eventBus.emit("annotation:added", {
+        bookId: snapshot.bookId,
+        annotationId: snapshot.id,
+        type: "bookmark",
+      });
+    });
   },
   removeBookmark: (id) => {
-    set((state) => ({
-      bookmarks: state.bookmarks.filter((b) => b.id !== id),
-    }));
-    db.deleteBookmark(id).catch((err) => console.error("Failed to delete bookmark:", err));
+    return enqueueBookmarkWrite(async () => {
+      await db.deleteBookmark(id);
+      set((state) => ({ bookmarks: state.bookmarks.filter((b) => b.id !== id) }));
+      eventBus.emit("annotation:removed", { id, type: "bookmark" });
+    });
   },
 
   loadAnnotations: async (bookId) => {
@@ -194,11 +231,11 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       set({ activeBookId: bookId, highlights: [], notes: [], bookmarks: [] });
     }
     try {
-      const [highlights, notes, bookmarks] = await Promise.all([
+      const [highlights, notes] = await Promise.all([
         db.getHighlights(bookId),
         db.getNotes(bookId),
-        db.getBookmarks(bookId),
       ]);
+      const bookmarks = await readCommittedBookmarks(bookId);
       if (generation !== annotationLoadGeneration || get().activeBookId !== bookId) return;
       set({
         highlights: sortAnnotationsByPosition(highlights.filter((item) => item.bookId === bookId)),

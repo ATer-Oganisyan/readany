@@ -186,7 +186,7 @@ describe("local import actions", () => {
     expect(runtime.complete).toHaveBeenCalledExactlyOnceWith(12);
   });
 
-  it.each([["cbz"], ["mobi"], ["azw"], ["azw3"], ["fbz"], ["epub", "cbz"]])(
+  it.each([["cbz"], ["mobi"], ["azw"], ["azw3"], ["epub", "cbz"]])(
     "does not promise characters for an unsupported-only or mixed-format batch: %j",
     async (...formats) => {
       runtime.language = "en";
@@ -204,7 +204,7 @@ describe("local import actions", () => {
   it("announces enrichment when every imported reader format supports character analysis", async () => {
     runtime.language = "en";
     runtime.importBooks.mockResolvedValueOnce({
-      imported: ["epub", "fb2", "pdf", "txt"].map((format) => ({ id: format, format })),
+      imported: ["epub", "fb2", "fbz", "pdf", "txt"].map((format) => ({ id: format, format })),
       skippedDuplicates: [],
       failures: [],
     });

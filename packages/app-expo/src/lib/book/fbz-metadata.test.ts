@@ -1,7 +1,11 @@
 import { buildStoreOnlyZip, crc32 } from "@readany/core/utils/store-only-zip";
 import pako from "pako";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { extractBookMetadata, extractBookMetadataFromFile } from "./metadata-extractor";
+import {
+  extractBookMetadata,
+  extractBookMetadataFromFile,
+  extractFbzSourceBytes,
+} from "./metadata-extractor";
 
 const utf8 = (text: string) => new TextEncoder().encode(text);
 const title = "Архив — Письмо у реки";
@@ -43,6 +47,20 @@ function trackedFile(bytes: Uint8Array) {
 afterEach(() => vi.restoreAllMocks());
 
 describe("FB2 archive metadata on the actual import entry points", () => {
+  it.each(["utf8", "cp1251"])(
+    "returns exact validated %s XML bytes for analysis, without transcoding",
+    async (encoding) => {
+      const bytes = encoding === "cp1251" ? cp1251(xml("windows-1251")) : utf8(xml());
+      expect(
+        await extractFbzSourceBytes(trackedFile(deflatedZip("nested/BOOK.FB2", bytes))),
+      ).toEqual(bytes);
+    },
+  );
+  it("rejects an oversized expanded source before materializing it for analysis", async () => {
+    await expect(
+      extractFbzSourceBytes(trackedFile(deflatedZip("book.fb2", utf8(xml()), 51 * 1024 * 1024))),
+    ).rejects.toThrow(/50/);
+  });
   it.each(["bytes", "file"] as const)(
     "extracts a deflated nested FB2 title/author through %s",
     async (source) => {

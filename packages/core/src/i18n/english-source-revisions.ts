@@ -11,7 +11,7 @@ export const ENGLISH_SOURCE_REVISIONS = {
   "notes.json": "683f3787f0623036bdf9274313888ad778b25338ddbb103026dfdbc5e56a87af",
   "onboarding.json": "691446f63699c6a6391e3adacc65f2a197943880cdfdf678e1383c8bc298a750",
   "profile.json": "7f64cf3d63d528b5016c75688ba8d8745397e999dc12c31b037355b164a35aed",
-  "reader.json": "f03b9fe8921463311f902d4ad378fb3556c0f559c45b81878551b0ccca4223b5",
+  "reader.json": "a38d52fa5b3a29a5a2861ff3ff44c9d701f062b914c389aee522111af1e27fbf",
   "settings.json": "d7ea3526cf6c5750d0d330dcfbb02396445175f6e1eabfc1ed96854383088d46",
   "stats.json": "3494f4ea5d32428462edbb41a005811b4614399be8391a31ac50592bba8ea48a",
   "translation.json": "d0808cbaae51cd2cfc017d0c0bec9c6fe482adfed8e23e4150a6c440af63aa49",

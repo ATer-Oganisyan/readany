@@ -119,7 +119,12 @@ export interface NarraSummary {
 }
 
 export interface NarraBookState {
-  backendOriginalSource?: { path: string; format: string; hash: string };
+  backendOriginalSource?: {
+    path: string;
+    format: string;
+    hash: string;
+    derivedFrom?: { filePath: string; contentHash?: string };
+  };
   backendBinding?: BackendBookBinding;
   backendManifest?: BackendBookManifest;
   bookId: string;

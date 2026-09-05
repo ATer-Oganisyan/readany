@@ -47,6 +47,22 @@ it("keeps exit controls visible during loading, then clears introductory chrome"
   expect(current.showControls).toBe(false);
 });
 
+it("keeps controls requested by audio preparation visible past the intro timeout", async () => {
+  await act(async () => {
+    tree = create(<Harness />);
+  });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(2000);
+  });
+  await act(async () => current.setShowControls(true));
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(30_000);
+  });
+  expect(current.showControls).toBe(true);
+  await act(async () => current.toggleControls());
+  expect(current.showControls).toBe(false);
+});
+
 it("cancels the initial timer on a manual toggle, blur and unmount", async () => {
   await act(async () => {
     tree = create(<Harness />);

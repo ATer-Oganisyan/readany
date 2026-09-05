@@ -105,7 +105,7 @@ export interface ReaderBridgeCallbacks {
     position: { x: number; y: number; selectionTop: number; selectionBottom: number };
   }) => void;
   onPageSnippet?: (text: string) => void;
-  onBookmarkSnippet?: (text: string) => void;
+  onBookmarkSnippet?: (text: string, requestId?: string, cfi?: string) => void;
   onCharacterTap?: (detail: CharacterTapEvent) => void;
   /** Тап по слоту «Сгенерировать сцену» (или по слоту в состоянии ошибки). */
   onSceneSlotTap?: (detail: SceneSlotEvent) => void;
@@ -404,8 +404,8 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
     [inject],
   );
 
-  const requestPageSnippet = useCallback(() => {
-    inject("window.requestPageSnippet()");
+  const requestPageSnippet = useCallback((requestId: string) => {
+    inject(`window.requestPageSnippet(${JSON.stringify(requestId)})`);
   }, [inject]);
 
   const getVisibleText = useCallback(() => {
@@ -988,7 +988,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
             cb.onPageSnippet?.(msg.textSnippet || "");
             break;
           case "bookmarkSnippet":
-            cb.onBookmarkSnippet?.(msg.textSnippet || "");
+            cb.onBookmarkSnippet?.(msg.textSnippet || "", msg.requestId, msg.cfi);
             break;
           case "characterTap":
             if (msg.characterId) {

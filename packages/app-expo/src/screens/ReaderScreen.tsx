@@ -104,6 +104,7 @@ import { ReaderTopBar } from "./reader/ReaderTopBar";
 // ── Extracted modules ──
 import { ReaderNoteViewModal } from "./reader/ReaderNoteViewModal";
 import { ReaderToolbar, TOOLBAR_HEIGHT } from "./reader/ReaderToolbar";
+import { ReaderTTSPreparationStatus } from "./reader/reader-tts-preparation-status";
 
 const REFLOWABLE_CHARACTERS_PER_LOCATION = 1500;
 const MAX_TRACKED_LOCATION_DELTA = 20;
@@ -585,7 +586,7 @@ function ReaderContent({ route, navigation }: Props) {
   } | null>(null);
 
   const bridgeRef = useRef<{
-    requestPageSnippet: () => void;
+    requestPageSnippet: (requestId: string) => void;
     goNext: () => void;
     search: (query: string) => void;
     clearSearch: () => void;
@@ -945,8 +946,8 @@ function ReaderContent({ route, navigation }: Props) {
   });
 
   // ── Bookmark ───────────────────────────────────────────────────────────────
-  const requestPageSnippet = useCallback(() => {
-    bridgeRef.current?.requestPageSnippet();
+  const requestPageSnippet = useCallback((requestId: string) => {
+    bridgeRef.current?.requestPageSnippet(requestId);
   }, []);
   // Отдача висит на самом действии, а не на появлении ленты закладки: лента
   // показывается и когда пользователь просто перелистнул на уже заложенную
@@ -967,6 +968,8 @@ function ReaderContent({ route, navigation }: Props) {
     requestPageSnippet,
     onBookmarkAdded: handleBookmarkAdded,
     onBookmarkRemoved: handleBookmarkRemoved,
+    onBookmarkError: () =>
+      toast.error(t("bookmarks.saveFailed", "Не удалось изменить закладку. Попробуйте ещё раз.")),
   });
   const { isBookmarked, handleToggleBookmark } = bookmark;
 
@@ -1475,8 +1478,8 @@ function ReaderContent({ route, navigation }: Props) {
     onPageSnippet: (_text: string) => {
       // page snippet handled by bookmark hook if pending
     },
-    onBookmarkSnippet: (text: string) => {
-      bookmark.onBookmarkSnippet(text);
+    onBookmarkSnippet: (text: string, requestId?: string, cfi?: string) => {
+      bookmark.onBookmarkSnippet(text, requestId, cfi);
     },
   });
 
@@ -1715,6 +1718,16 @@ function ReaderContent({ route, navigation }: Props) {
         onPress: handleToggleBookmark,
       },
       {
+        key: "bookmarks",
+        label: t("bookmarks.title", "Закладки"),
+        icon: "bookmark",
+        sfSymbol: "bookmark",
+        onPress: () => {
+          setShowTOC(true);
+          navigation.navigate("ReaderTOC", { tab: "bookmarks" });
+        },
+      },
+      {
         key: "characters",
         label: t("narra.characters", "Персонажи"),
         icon: "people",
@@ -1803,6 +1816,15 @@ function ReaderContent({ route, navigation }: Props) {
     [bridge, updateReadSettings, computeEffectiveFontSize],
   );
 
+  const goToBookmark = useCallback(
+    (cfi: string) => {
+      if (lastCfiRef.current) locationHistoryRef.current.push(lastCfiRef.current);
+      goToCFISafely(cfi);
+      closeTocSheet();
+    },
+    [closeTocSheet, goToCFISafely],
+  );
+
   const readerTOCSheetSession = useMemo(
     () => ({
       bookId,
@@ -1810,8 +1832,9 @@ function ReaderContent({ route, navigation }: Props) {
       currentChapter,
       onClose: closeTocSheet,
       onSelectTocItem: goToTocItem,
+      onSelectBookmark: goToBookmark,
     }),
-    [bookId, closeTocSheet, currentChapter, goToTocItem, toc],
+    [bookId, closeTocSheet, currentChapter, goToTocItem, goToBookmark, toc],
   );
 
   useEffect(() => {
@@ -2261,19 +2284,33 @@ function ReaderContent({ route, navigation }: Props) {
             bottom: 0,
             left: 0,
             zIndex: 30,
-            height: TOOLBAR_HEIGHT + insets.bottom,
+            minHeight: TOOLBAR_HEIGHT + insets.bottom,
             paddingBottom: insets.bottom,
             backgroundColor: "transparent",
           },
           controlsAnimatedStyle,
         ]}
       >
+        <ReaderTTSPreparationStatus
+          preparing={tts.isTTSPreparing}
+          loading={ttsPlayState === "loading"}
+          onCancel={tts.handleTTSStop}
+          error={tts.ttsPreparationError}
+          foreground={readerThemeColors.foreground}
+          background={readerThemeColors.background}
+        />
         <ReaderToolbar
           tintColor={readerThemeColors.foreground}
           isDark={isReaderThemeDark}
           charactersSheetSourceId={charactersSheetSourceId}
           speechState={
-            ttsPlayState === "loading" ? "loading" : ttsPlayState === "playing" ? "playing" : "idle"
+            tts.isTTSPreparing
+              ? "preparing"
+              : ttsPlayState === "loading"
+                ? "loading"
+                : ttsPlayState === "playing"
+                  ? "playing"
+                  : "idle"
           }
           onSpeechPress={() => void tts.handleToggleTTS()}
           onCharactersPress={handleOpenCharacters}

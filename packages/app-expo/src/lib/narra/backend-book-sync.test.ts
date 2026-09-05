@@ -1,4 +1,6 @@
+import { createHash } from "node:crypto";
 import type { Book } from "@readany/core/types";
+import { buildStoreOnlyZip } from "@readany/core/utils/store-only-zip";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { StateCreator } from "zustand";
 
@@ -8,6 +10,8 @@ const runtime = vi.hoisted(() => ({
   hash: vi.fn(async () => "a".repeat(64)),
   media: vi.fn(async () => {}),
   sourceBytes: new Uint8Array([60, 63, 120, 109, 108, 62]),
+  files: new Map<string, Uint8Array>(),
+  missingFiles: new Set<string>(),
 }));
 vi.mock("@/stores/library-store", () => ({
   useLibraryStore: {
@@ -28,11 +32,34 @@ vi.mock("expo-file-system", () => ({
   File: class {
     constructor(public uri: string) {}
     async bytes() {
-      return runtime.sourceBytes;
+      if (runtime.missingFiles.has(this.uri)) throw new Error("File does not exist");
+      return runtime.files.get(this.uri) ?? runtime.sourceBytes;
+    }
+    get exists() {
+      return !runtime.missingFiles.has(this.uri);
+    }
+    get size() {
+      return (runtime.files.get(this.uri) ?? runtime.sourceBytes).length;
+    }
+    slice(start = 0, end = this.size) {
+      return new Blob([new Uint8Array(runtime.files.get(this.uri) ?? runtime.sourceBytes)]).slice(
+        start,
+        end,
+      );
     }
   },
 }));
-vi.mock("expo-file-system/legacy", () => ({ documentDirectory: "file:///documents/" }));
+vi.mock("expo-file-system/legacy", () => ({
+  documentDirectory: "file:///documents/",
+  EncodingType: { Base64: "base64" },
+  makeDirectoryAsync: async () => {},
+  writeAsStringAsync: async (uri: string, data: string) => {
+    runtime.files.set(uri, new Uint8Array(Buffer.from(data, "base64")));
+  },
+  deleteAsync: async (uri: string) => {
+    runtime.files.delete(uri);
+  },
+}));
 vi.mock("expo-crypto", () => ({ randomUUID: () => "22222222-2222-4222-8222-222222222222" }));
 vi.mock("@readany/core/services", () => ({
   getPlatformService: () => ({
@@ -107,6 +134,8 @@ const initial = useNarraStore.getState();
 beforeEach(() => {
   vi.useFakeTimers();
   runtime.books = [book()];
+  runtime.files.clear();
+  runtime.missingFiles.clear();
   runtime.hash.mockClear();
   runtime.request.mockReset();
   runtime.media.mockClear();
@@ -130,6 +159,158 @@ async function open(value: Book) {
 }
 
 describe("backend book import and persistence integration", () => {
+  it.each(["missing", "empty"])(
+    "recovers a %s derived FB2 from the retained original archive before re-upload",
+    async (failure) => {
+      const xml = new TextEncoder().encode(
+        "<FictionBook><description><title-info><book-title>Book</book-title></title-info></description><body><section><p>Анна читает.</p></section></body></FictionBook>",
+      );
+      const archive = buildStoreOnlyZip([{ name: "nested/book.fb2", data: xml }]);
+      const archiveHash = createHash("sha256").update(archive).digest("hex");
+      const xmlHash = createHash("sha256").update(xml).digest("hex");
+      const value = {
+        ...book(),
+        format: "fbz" as const,
+        filePath: "books/recovery.fbz",
+        fileHash: archiveHash,
+        contentHash: archiveHash,
+      };
+      runtime.files.set("file:///documents/books/recovery.fbz", archive);
+      if (failure === "missing") runtime.missingFiles.add("file:///documents/derived.fb2");
+      else runtime.files.set("file:///documents/derived.fb2", new Uint8Array());
+      useNarraStore.getState().setBackendOriginalSource("local", {
+        path: "derived.fb2",
+        format: "fb2",
+        hash: xmlHash,
+        derivedFrom: { filePath: value.filePath, contentHash: archiveHash },
+      });
+      useNarraStore.getState().setBackendBinding("local", {
+        resolution: "private",
+        bookEditionId: "derived-edition",
+        contentSha256: xmlHash,
+        sourceUploaded: false,
+      });
+      runtime.hash.mockImplementationOnce(async (path?: string) => {
+        const bytes = runtime.files.get(path ?? "");
+        if (!bytes) throw new Error("Missing actual derived file");
+        return createHash("sha256").update(bytes).digest("hex");
+      });
+      runtime.request.mockResolvedValueOnce({
+        resolution: "private",
+        book_edition_id: "derived-edition",
+        source_uploaded: false,
+      });
+      await open(value);
+      const upload = runtime.request.mock.calls.find((call) => call[1]?.method === "PUT");
+      expect(upload?.[1].body).toEqual(xml);
+      expect(upload?.[1].headers).toEqual({ "content-type": "application/x-fictionbook+xml" });
+      expect(useNarraStore.getState().books.local.backendOriginalSource?.path).not.toBe(
+        "derived.fb2",
+      );
+      expect(useNarraStore.getState().books.local.backendBinding?.sourceUploaded).toBe(true);
+      expect(runtime.books[0]).toMatchObject({
+        filePath: value.filePath,
+        contentHash: archiveHash,
+      });
+    },
+  );
+  it.each(["story.fbz", "story.fb2.zip"])(
+    "normalizes %s to exact FB2 bytes without replacing archive identity",
+    async (name) => {
+      const xml = new TextEncoder().encode(
+        "<FictionBook><description><title-info><book-title>Book</book-title></title-info></description><body><section><p>Анна читает.</p></section></body></FictionBook>",
+      );
+      const archive = buildStoreOnlyZip([{ name: "nested/book.fb2", data: xml }]);
+      const archiveHash = createHash("sha256").update(archive).digest("hex");
+      const xmlHash = createHash("sha256").update(xml).digest("hex");
+      const value = {
+        ...book(),
+        format: "fbz" as const,
+        filePath: `books/${name}`,
+        contentHash: archiveHash,
+      };
+      runtime.files.set(`file:///documents/books/${name}`, archive);
+      useNarraStore.getState().setBackendOriginalSource("local", {
+        path: "old.fb2",
+        format: "fb2",
+        hash: "old-xml-hash",
+        derivedFrom: { filePath: "books/previous.fbz", contentHash: "old-archive-hash" },
+      });
+      useNarraStore.getState().setBackendBinding("local", {
+        resolution: "private",
+        bookEditionId: "old-edition",
+        contentSha256: "old-xml-hash",
+        sourceUploaded: true,
+      });
+      runtime.hash.mockImplementationOnce(async (path?: string) => {
+        const bytes = runtime.files.get(path ?? "");
+        if (!bytes) throw new Error("Missing actual derived file");
+        return createHash("sha256").update(bytes).digest("hex");
+      });
+      runtime.request
+        .mockResolvedValueOnce({ resolution: "local_registration_required" })
+        .mockResolvedValueOnce({
+          resolution: "private",
+          book_edition_id: "normalized-fb2",
+          source_uploaded: false,
+        });
+      await open(value);
+      const registration = runtime.request.mock.calls.find(([path]) => path === "/v2/books/local");
+      expect(registration).toBeDefined();
+      expect(JSON.parse(registration?.[1].body)).toMatchObject({
+        format: "fb2",
+        content_sha256: xmlHash,
+      });
+      const upload = runtime.request.mock.calls.find((call) => call[1]?.method === "PUT");
+      expect(upload?.[1].headers).toEqual({ "content-type": "application/x-fictionbook+xml" });
+      expect(upload?.[1].body).toEqual(xml);
+      expect(runtime.books[0]).toMatchObject({
+        format: "fbz",
+        filePath: value.filePath,
+        contentHash: archiveHash,
+      });
+      expect(useNarraStore.getState().books.local.backendOriginalSource).toMatchObject({
+        format: "fb2",
+        hash: xmlHash,
+      });
+    },
+  );
+  it("reuses the derived source only for the same archive identity", async () => {
+    const value = {
+      ...book(),
+      format: "fbz" as const,
+      filePath: "books/story.fbz",
+      contentHash: "archive-hash",
+    };
+    useNarraStore.getState().setBackendOriginalSource("local", {
+      path: "derived.fb2",
+      format: "fb2",
+      hash: "xml-hash",
+      derivedFrom: { filePath: value.filePath, contentHash: value.contentHash },
+    });
+    useNarraStore.getState().setBackendBinding("local", {
+      resolution: "private",
+      bookEditionId: "derived-edition",
+      contentSha256: "xml-hash",
+      sourceUploaded: true,
+    });
+    await open(value);
+    expect(runtime.hash).not.toHaveBeenCalled();
+    expect(
+      runtime.request.mock.calls.some(
+        ([path]) => path === "/v2/books/local" || path === "/v2/books/resolve",
+      ),
+    ).toBe(false);
+    expect(useBackendBookStatus.getState().books.local.manifest?.availability).toBe("ready");
+  });
+  it("does not register a corrupt FBZ archive or label it as raw FB2", async () => {
+    const value = { ...book(), format: "fbz" as const, filePath: "books/broken.fbz" };
+    runtime.files.set("file:///documents/books/broken.fbz", new Uint8Array([1, 2, 3]));
+    await open(value);
+    expect(runtime.request).not.toHaveBeenCalled();
+    expect(runtime.hash).not.toHaveBeenCalled();
+    expect(useNarraStore.getState().books.local?.backendOriginalSource).toBeUndefined();
+  });
   it("exposes sync retry completion only after the refreshed manifest is published", async () => {
     useNarraStore.getState().setBackendBinding("local", {
       resolution: "private",
