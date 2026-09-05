@@ -1,4 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
+import { getEventListeners } from "node:events";
 import type { StreamingOptions } from "./streaming";
 
 const agent = vi.hoisted(() => vi.fn());
@@ -52,3 +53,42 @@ it.each(["error-event", "iterator-error"])(
     expect(second.onError).not.toHaveBeenCalled();
   },
 );
+
+it.each(["complete", "error"])("releases per-token abort listeners after %s", async (ending) => {
+  let signal: AbortSignal | undefined;
+  let peak = 0;
+  agent.mockImplementation(async function* (config: { signal: AbortSignal }) {
+    signal = config.signal;
+    for (let index = 0; index < 40; index++) {
+      peak = Math.max(peak, getEventListeners(signal, "abort").length);
+      yield { type: "token", content: "x" };
+    }
+    if (ending === "error") throw new Error("PARSE");
+  });
+  await new StreamingChat().stream(options());
+  expect(signal).toBeDefined();
+  expect(getEventListeners(signal!, "abort")).toHaveLength(0);
+  expect(peak).toBeLessThanOrEqual(1);
+});
+
+it("aborts a pending iterator without retaining cancellation listeners", async () => {
+  let signal: AbortSignal | undefined;
+  let reachedPending!: () => void;
+  const pending = new Promise<void>(resolve => { reachedPending = resolve; });
+  agent.mockImplementation(async function* (config: { signal: AbortSignal }) {
+    signal = config.signal;
+    yield { type: "token", content: "partial" };
+    reachedPending();
+    await new Promise(() => {});
+  });
+  const chat = new StreamingChat();
+  const callbacks = options();
+  const run = chat.stream(callbacks);
+  await pending;
+  chat.abort();
+  await run;
+  expect(callbacks.onAbort).toHaveBeenCalledOnce();
+  expect(callbacks.onComplete).not.toHaveBeenCalled();
+  expect(callbacks.onError).not.toHaveBeenCalled();
+  expect(getEventListeners(signal!, "abort")).toHaveLength(0);
+});

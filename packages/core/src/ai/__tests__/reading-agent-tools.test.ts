@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { getEventListeners } from "node:events";
 import type { AIConfig } from "../../types";
 import { streamReadingAgent } from "../agents/reading-agent";
 import type { ToolDefinition } from "../tools";
@@ -51,6 +52,28 @@ beforeEach(() => {
 });
 
 describe("streamReadingAgent tool registration", () => {
+  it.each(["complete", "error"])("releases event cancellation listeners after %s", async (ending) => {
+    const controller = new AbortController();
+    let peak = 0;
+    createReactAgentMock.mockReturnValue({
+      streamEvents: vi.fn(async function* () {
+        for (let index = 0; index < 40; index++) {
+          peak = Math.max(peak, getEventListeners(controller.signal, "abort").length);
+          yield { event: "qa_tick", data: {} };
+        }
+        if (ending === "error") throw new Error("PARSE");
+      }),
+    });
+    const events = [];
+    for await (const event of streamReadingAgent({
+      aiConfig: makeAIConfig(), book: null, bookId: "book-1", semanticContext: null,
+      enabledSkills: [], isVectorized: false, getAvailableTools, signal: controller.signal,
+    }, "Own event lifecycle fixture")) events.push(event);
+    expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
+    expect(peak).toBeLessThanOrEqual(1);
+    if (ending === "error") expect(events.at(-1)).toMatchObject({ type: "error", error: "PARSE" });
+  });
+
   it("registers fallback tools when only bookId is available", async () => {
     createReactAgentMock.mockReturnValue({
       streamEvents: vi.fn(() => ({
