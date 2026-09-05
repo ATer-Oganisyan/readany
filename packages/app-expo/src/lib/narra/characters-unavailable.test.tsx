@@ -1,14 +1,27 @@
 import type { ComponentProps } from "react";
+import { StrictMode } from "react";
 import { type ReactTestRenderer, act, create } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const runtime = vi.hoisted(() => ({
   language: "ru",
   error: "BOOK_FORMAT_UNSUPPORTED",
-  manifest: undefined as undefined | { availability: string },
+  manifest: undefined as
+    | undefined
+    | {
+        availability: string;
+        analysis?: {
+          runId: string;
+          status: string;
+          stage: string;
+          completedScanChunks?: number;
+          updatedAt?: string;
+        };
+      },
   binding: undefined as undefined | { resolution: string },
   retrySync: vi.fn(async () => {}),
   retryAnalysis: vi.fn(async () => {}),
+  refreshStatus: vi.fn(async () => {}),
   toastError: vi.fn(),
 }));
 vi.mock("react-native", () => ({
@@ -40,6 +53,7 @@ vi.mock("@/lib/analytics/telemetry", () => ({ recordTelemetry: vi.fn() }));
 vi.mock("@/lib/narra/backend-book-sync", () => ({
   retryBackendBookAnalysis: runtime.retryAnalysis,
   retryBackendBookSync: runtime.retrySync,
+  refreshBackendBookStatus: runtime.refreshStatus,
   useBackendBookStatus: (select: (state: unknown) => unknown) =>
     select({ books: { book: { error: runtime.error, manifest: runtime.manifest } } }),
 }));
@@ -85,19 +99,29 @@ beforeEach(() => {
   runtime.manifest = undefined;
   runtime.retrySync.mockReset().mockResolvedValue(undefined);
   runtime.retryAnalysis.mockReset().mockResolvedValue(undefined);
+  runtime.refreshStatus.mockReset().mockResolvedValue(undefined);
   runtime.toastError.mockReset();
 });
 afterEach(async () => {
   await act(async () => tree?.unmount());
+  vi.useRealTimers();
 });
 
-async function mountScreen() {
+async function mountScreen(strict = false) {
   const navigation = { navigate: vi.fn(), goBack: vi.fn() };
   const props = { route: { params: { bookId: "book" } }, navigation } as unknown as ComponentProps<
     typeof NarraCharactersScreen
   >;
   await act(async () => {
-    tree = create(<NarraCharactersScreen {...props} />);
+    tree = create(
+      strict ? (
+        <StrictMode>
+          <NarraCharactersScreen {...props} />
+        </StrictMode>
+      ) : (
+        <NarraCharactersScreen {...props} />
+      ),
+    );
   });
   return navigation;
 }
@@ -110,6 +134,92 @@ function renderedText() {
 }
 
 describe("characters unavailable message", () => {
+  it("keeps running work active and clears its waiting timer on StrictMode unmount", async () => {
+    vi.useFakeTimers();
+    runtime.error = "";
+    runtime.manifest = {
+      availability: "processing",
+      analysis: { runId: "run", status: "running", stage: "scan", completedScanChunks: 1 },
+    };
+    await mountScreen(true);
+    expect(tree.root.findByType("Chats" as never).props.items[0].subtitle).toBe("Ищу персонажей…");
+    expect(vi.getTimerCount()).toBe(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(tree.root.findByType("RetryButton" as never).props.label).toBe("Обновить статус");
+    expect(runtime.toastError).not.toHaveBeenCalled();
+    await act(async () => {
+      tree.unmount();
+    });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it("resets waiting on actual scan progress but not a polling timestamp", async () => {
+    vi.useFakeTimers();
+    runtime.error = "";
+    runtime.manifest = {
+      availability: "processing",
+      analysis: { runId: "run", status: "running", stage: "scan", completedScanChunks: 1 },
+    };
+    const navigation = await mountScreen();
+    const rerender = async () => {
+      await act(async () => {
+        tree.update(
+          <NarraCharactersScreen
+            {...({ route: { params: { bookId: "book" } }, navigation } as unknown as ComponentProps<
+              typeof NarraCharactersScreen
+            >)}
+          />,
+        );
+      });
+    };
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    runtime.manifest.analysis!.updatedAt = "new-poll-time";
+    await rerender();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(tree.root.findAllByType("RetryButton" as never)).toHaveLength(1);
+    runtime.manifest.analysis!.completedScanChunks = 2;
+    await rerender();
+    expect(tree.root.findAllByType("RetryButton" as never)).toHaveLength(0);
+    await act(async () => {
+      tree.unmount();
+    });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it.each([
+    ["ru", "Анализ в очереди. Можно продолжить читать", "Обновить статус"],
+    ["en", "Analysis is queued. You can keep reading", "Refresh status"],
+  ])(
+    "honestly shows queued analysis and refreshes without restarting in %s",
+    async (language, subtitle, label) => {
+      vi.useFakeTimers();
+      runtime.language = language;
+      runtime.error = "";
+      runtime.manifest = {
+        availability: "processing",
+        analysis: { runId: "run", status: "queued", stage: "prepare", completedScanChunks: 0 },
+      };
+      await mountScreen();
+      expect(tree.root.findByType("Chats" as never).props.items[0].subtitle).toBe(subtitle);
+      expect(tree.root.findAllByType("RetryButton" as never)).toHaveLength(0);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      const button = tree.root.findByType("RetryButton" as never);
+      expect(button.props.label).toBe(label);
+      await act(async () => {
+        await button.props.onPress();
+      });
+      expect(runtime.refreshStatus).toHaveBeenCalledExactlyOnceWith("book");
+      expect(runtime.retrySync).not.toHaveBeenCalled();
+      expect(runtime.retryAnalysis).not.toHaveBeenCalled();
+      expect(runtime.toastError).not.toHaveBeenCalled();
+    },
+  );
   it.each([
     ["ru", "Персонажи недоступны для этого формата", "Книгу можно читать."],
     ["en", "Characters are unavailable for this format", "You can keep reading."],

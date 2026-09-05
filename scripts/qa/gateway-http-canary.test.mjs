@@ -6,6 +6,38 @@ import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { approvedFixture, APPROVED_SHA256, runGatewayHttpCanary, mockFixtureChild } from './gateway-http-canary.mjs';
 
+test('character fixture sends the real mounted mobile request through authenticated HTTP', async () => {
+  const tracker = gatewayTracker();
+  let calls = 0;
+  const reply = 'Я заметила течь и позвала Льва: он принёс доску, чтобы помочь.';
+  const result = await runGatewayHttpCanary({ fixtureId: 'character-chat',
+    spawnGatewayChild: tracker.spawnGatewayChild,
+    spawnFixtureChild() {
+      calls++;
+      return heldChild(child => {
+        child.stdout.end(`${JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: reply } })}\n${JSON.stringify({ type: 'turn.completed' })}\n`);
+        child.emit('close', 0);
+      });
+    },
+  });
+  assert.equal(result.fixtureId, 'character-chat');
+  assert.equal(result.sha256, '7d6447e6b37eebc4e482a2381e921be09aa9fc05b9d378dfc65dfa1875c76259');
+  assert.equal(result.result.text, reply);
+  assert.equal(result.result.qualityAccepted, false);
+  assert.equal(result.live, false);
+  assert.equal(calls, 1);
+  await tracker.assertCleaned();
+});
+
+test('unknown fixture is rejected before any process starts', async () => {
+  let started = false;
+  await assert.rejects(runGatewayHttpCanary({ fixtureId: 'arbitrary-book',
+    spawnFixtureChild: () => { started = true; return mockFixtureChild(); },
+    spawnGatewayChild: () => { started = true; throw new Error('must not start'); },
+  }), /Unknown fixed fixture/);
+  assert.equal(started, false);
+});
+
 function gatewayTracker() {
   const calls = [];
   return {

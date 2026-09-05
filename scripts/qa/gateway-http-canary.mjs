@@ -11,14 +11,34 @@ import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { createFixtureBridge, digest, MODEL } from './codex-fixture-bridge.mjs';
+import { captureCharacterChatFixture } from './capture-character-chat-fixture.mjs';
+import { requestChat } from '../../services/narra-gateway/providers.mjs';
 
 const execute = promisify(execFile);
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const SAFE_PATH = '/usr/bin:/bin:/usr/sbin:/sbin';
 export const APPROVED_SHA256 = '9fac970ca53225b2b7ee5a2727c367afd5c1471897072f0253b833acbc785e26';
+// Root reviewed the complete own-story mobile prompt and the exact requestChat
+// envelope. Changing either requires a new independent review, not auto-approval.
+export const APPROVED_CHARACTER_SHA256 = '7d6447e6b37eebc4e482a2381e921be09aa9fc05b9d378dfc65dfa1875c76259';
 const SCOPE = 'actual HTTP installation/register -> gateway chat/complete -> exact fixture bridge; not mobile/full book pipeline';
 
-export async function approvedFixture() {
+export async function approvedFixture(fixtureId = 'analysis') {
+  if (!['analysis', 'character-chat'].includes(fixtureId)) throw new Error('Unknown fixed fixture');
+  if (fixtureId === 'character-chat') {
+    const captured = await captureCharacterChatFixture();
+    let body;
+    const result = await requestChat({ messages: captured.request.messages,
+      purpose: captured.request.purpose, stream: false,
+      env: gatewayEnvironment({ port: 1, dataDir: '', bridge: { url: 'http://127.0.0.1:1', token: 'capture-only' } }),
+      fetchImpl: async (_url, init) => { body = init.body; return new Response('{}'); },
+    });
+    await result.response.text();
+    assert.equal(digest(body), APPROVED_CHARACTER_SHA256, 'Character fixture changed: separate review required');
+    return { live: false, sha256: APPROVED_CHARACTER_SHA256,
+      request: JSON.parse(body), mobileRequest: captured.request,
+      mobileRequestSha256: captured.mobileRequestSha256 };
+  }
   // Reuse the existing canary's actual requestChat serialization. Its default
   // execution captures fetch in memory; --live is never passed here.
   const { stdout } = await execute(process.execPath, [fileURLToPath(new URL('./codex-provider-canary.mjs', import.meta.url))], {
@@ -46,13 +66,17 @@ export function gatewayEnvironment({ port, dataDir, bridge }) {
   };
 }
 
-function validateCompletion(completion) {
+function validateCompletion(completion, fixtureId) {
   // Public gateway contract is {text, request_id, route, attempts}, not the
   // upstream OpenAI envelope used by the lower-level provider canary.
   const content = completion.text;
   assert.equal(completion.attempts, 1, 'canary must not retry or fall back');
   assert.equal(typeof completion.request_id, 'string');
   assert.equal(typeof content, 'string');
+  if (fixtureId === 'character-chat') {
+    assert.ok(content.trim().length > 0 && Buffer.byteLength(content) <= 16384);
+    return { text: content, qualityAccepted: false };
+  }
   const result = JSON.parse(content);
   assert.deepEqual(result.characters.map(character => character.name).sort(), ['Анна', 'Лев']);
   assert.ok(result.characters.every(character => typeof character.trait === 'string' && character.trait.length > 0));
@@ -60,7 +84,7 @@ function validateCompletion(completion) {
   return result;
 }
 
-export function mockFixtureChild() {
+export function mockFixtureChild(fixtureId = 'analysis') {
   const child = new EventEmitter();
   child.stdout = new PassThrough(); child.stderr = new PassThrough(); child.stdin = new PassThrough();
   let closed = false;
@@ -68,23 +92,25 @@ export function mockFixtureChild() {
   child.kill = () => { setImmediate(() => close(null)); return true; };
   child.stdin.on('finish', () => setImmediate(() => {
     if (closed) return;
-    const text = JSON.stringify({ characters: [{ name: 'Анна', trait: 'Спокойная' }, { name: 'Лев', trait: 'Отзывчивый' }], summary: 'Анна и Лев вместе починили лодку и вернулись на берег.' });
+    const text = fixtureId === 'character-chat'
+      ? 'Я заметила течь и позвала Льва: он принёс доску, чтобы помочь.'
+      : JSON.stringify({ characters: [{ name: 'Анна', trait: 'Спокойная' }, { name: 'Лев', trait: 'Отзывчивый' }], summary: 'Анна и Лев вместе починили лодку и вернулись на берег.' });
     child.stdout.end(`${JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text } })}\n${JSON.stringify({ type: 'turn.completed' })}\n`);
     close(0);
   }));
   return child;
 }
 
-export async function runGatewayHttpCanary({ live = false, spawnFixtureChild, spawnGatewayChild = spawn, signal } = {}) {
+export async function runGatewayHttpCanary({ live = false, fixtureId = 'analysis', spawnFixtureChild, spawnGatewayChild = spawn, signal } = {}) {
   if (!live && typeof spawnFixtureChild !== 'function') throw new Error('Non-live mode requires an explicit mock child');
   if (live && spawnFixtureChild) throw new Error('Live mode cannot use a mock child');
-  const fixture = await approvedFixture();
+  const fixture = await approvedFixture(fixtureId);
   signal?.throwIfAborted();
   const dataDir = await mkdtemp(join(tmpdir(), 'narra-gateway-canary-'));
   let bridge; let child; let exited; let childDone = false; let childFailed = false;
   const started = Date.now();
   try {
-    bridge = await createFixtureBridge({ approvedHashes: [APPROVED_SHA256], maxCalls: 1, ...(spawnFixtureChild ? { spawnChild: spawnFixtureChild } : {}) });
+    bridge = await createFixtureBridge({ approvedHashes: [fixture.sha256], maxCalls: 1, ...(spawnFixtureChild ? { spawnChild: spawnFixtureChild } : {}) });
     const reservation = createServer();
     reservation.listen(0, '127.0.0.1'); await once(reservation, 'listening');
     const port = reservation.address().port;
@@ -127,14 +153,17 @@ export async function runGatewayHttpCanary({ live = false, spawnFixtureChild, sp
     assert.equal(typeof registration.token, 'string');
     // Exactly one model-bearing HTTP attempt. No application retries/fallback.
     const requestStarted = Date.now();
-    const completion = await json('/v2/ai/chat/complete', {
+    const completion = await json('/v2/ai/chat/complete', fixture.mobileRequest || {
       messages: fixture.request.messages, purpose: 'structured_task', origin: 'user',
     }, registration.token, 50000);
     const requestElapsedMs = Date.now() - requestStarted;
-    return { live, model: MODEL, sha256: APPROVED_SHA256, elapsedMs: Date.now() - started,
+    return { live, fixtureId, model: MODEL, sha256: fixture.sha256,
+      ...(fixture.mobileRequestSha256 ? { mobileRequestSha256: fixture.mobileRequestSha256 } : {}), elapsedMs: Date.now() - started,
       requestElapsedMs, request_id: completion.request_id,
-      checks: 'registration, authenticated HTTP completion, exact approved provider bytes, JSON schema and two names',
-      result: validateCompletion(completion), scope: SCOPE };
+      checks: fixtureId === 'character-chat'
+        ? 'mounted-screen request capture, registration, authenticated HTTP completion, exact approved upstream bytes, nonempty text; manual quality review required'
+        : 'registration, authenticated HTTP completion, exact approved provider bytes, JSON schema and two names',
+      result: validateCompletion(completion, fixtureId), scope: SCOPE };
   } finally {
     let cleanupError;
     if (child && !childDone) {
@@ -162,15 +191,19 @@ export async function runGatewayHttpCanary({ live = false, spawnFixtureChild, sp
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const flags = process.argv.slice(2);
-  if (flags.length > 1 || flags.some(flag => !['--dry-run', '--mock', '--live'].includes(flag))) throw new Error('Usage: gateway-http-canary.mjs [--dry-run|--mock|--live]');
-  const mode = flags[0] || '--dry-run';
+  const modes = flags.filter(flag => ['--dry-run', '--mock', '--live'].includes(flag));
+  if (flags.length > 2 || modes.length > 1 || new Set(flags).size !== flags.length ||
+    flags.some(flag => !['--dry-run', '--mock', '--live', '--character-chat'].includes(flag)))
+    throw new Error('Usage: gateway-http-canary.mjs [--dry-run|--mock|--live] [--character-chat]');
+  const mode = modes[0] || '--dry-run';
+  const fixtureId = flags.includes('--character-chat') ? 'character-chat' : 'analysis';
   const controller = new AbortController();
   const stop = () => controller.abort(new Error('Canary interrupted'));
   process.once('SIGINT', stop); process.once('SIGTERM', stop);
   try {
     const result = mode === '--dry-run'
-      ? { ...(await approvedFixture()), scope: SCOPE, mode: 'dry-run; no listeners or model execution' }
-      : await runGatewayHttpCanary({ ...(mode === '--live' ? { live: true } : { spawnFixtureChild: mockFixtureChild }), signal: controller.signal });
+      ? { ...(await approvedFixture(fixtureId)), fixtureId, scope: SCOPE, mode: 'dry-run; no listeners or model execution' }
+      : await runGatewayHttpCanary({ fixtureId, ...(mode === '--live' ? { live: true } : { spawnFixtureChild: () => mockFixtureChild(fixtureId) }), signal: controller.signal });
     console.log(JSON.stringify(result));
   } finally { process.off('SIGINT', stop); process.off('SIGTERM', stop); }
 }

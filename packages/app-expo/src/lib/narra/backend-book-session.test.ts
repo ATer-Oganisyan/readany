@@ -74,6 +74,55 @@ describe("backend book synchronization lifecycle", () => {
     expect(deps.progress).toHaveBeenCalledTimes(2);
     session.stop();
   });
+  it("status-only refresh never binds a missing or stopped session", async () => {
+    const { session, deps } = setup();
+    await session.refreshExistingBinding();
+    expect(deps.bind).not.toHaveBeenCalled();
+    expect(deps.manifest).not.toHaveBeenCalled();
+    session.start();
+    await vi.advanceTimersByTimeAsync(0);
+    session.stop();
+    const calls = vi.mocked(deps.manifest).mock.calls.length;
+    await session.refreshExistingBinding();
+    expect(deps.bind).toHaveBeenCalledTimes(1);
+    expect(deps.manifest).toHaveBeenCalledTimes(calls);
+  });
+  it("does not register later after a status-only 404, but explicit ordinary retry still recovers", async () => {
+    const { session, deps } = setup();
+    session.start();
+    await vi.advanceTimersByTimeAsync(0);
+    vi.mocked(deps.manifest).mockRejectedValueOnce("404");
+    await session.refreshExistingBinding();
+    expect(deps.expired).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(deps.bind).toHaveBeenCalledTimes(1);
+    expect(deps.manifest).toHaveBeenCalledTimes(2);
+    await session.refreshExistingBinding();
+    expect(deps.bind).toHaveBeenCalledTimes(1);
+    await session.retry();
+    expect(deps.bind).toHaveBeenCalledTimes(2);
+    expect(deps.manifest).toHaveBeenCalledTimes(3);
+    session.stop();
+  });
+  it("deduplicates status-only refresh with an in-flight manifest without rebinding", async () => {
+    const { session, deps } = setup();
+    let finish!: (value: BackendBookManifest) => void;
+    vi.mocked(deps.manifest).mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    session.start();
+    await vi.advanceTimersByTimeAsync(0);
+    const one = session.refreshExistingBinding();
+    const two = session.refreshExistingBinding();
+    expect(one).toBe(two);
+    expect(deps.bind).toHaveBeenCalledTimes(1);
+    expect(deps.manifest).toHaveBeenCalledTimes(1);
+    finish(ready);
+    await one;
+    session.stop();
+  });
   it("polls manifest without rebinding/uploading or reposting unchanged progress", async () => {
     const { session, deps } = setup();
     vi.mocked(deps.manifest).mockResolvedValue({

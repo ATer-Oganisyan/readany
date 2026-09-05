@@ -14,6 +14,7 @@ import { useBackendBook } from "@/hooks/use-backend-book";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import {
   retryBackendBookAnalysis,
+  refreshBackendBookStatus,
   retryBackendBookSync,
   useBackendBookStatus,
 } from "@/lib/narra/backend-book-sync";
@@ -411,6 +412,25 @@ function NarraCharactersList({
     [backendStatus?.manifest?.charactersStatus, backendStatus?.preview],
   );
   const isFindingCharacters = analysisAvailability === "processing";
+  const analysis = backendStatus?.manifest?.analysis;
+  const analysisQueued =
+    isFindingCharacters && analysis?.status === "queued" && !analysis.completedScanChunks;
+  const [analysisDelayed, setAnalysisDelayed] = useState(false);
+  useEffect(() => {
+    setAnalysisDelayed(false);
+    if (!isFindingCharacters || !isActive) return;
+    // This is only a UI waiting threshold, never a deadline or failed run.
+    const timer = setTimeout(() => setAnalysisDelayed(true), 60_000);
+    return () => clearTimeout(timer);
+  }, [
+    bookId,
+    isActive,
+    isFindingCharacters,
+    analysis?.runId,
+    analysis?.status,
+    analysis?.stage,
+    analysis?.completedScanChunks,
+  ]);
   const analysisTerminal =
     analysisAvailability === "failed" || analysisAvailability === "cancelled";
   const sourceUnavailable = backendStatus?.error === "SOURCE_UNAVAILABLE";
@@ -444,6 +464,17 @@ function NarraCharactersList({
     }
   }, [analysisTerminal, backendStatus?.analysisRetrying, bookId, canRetry, privateBinding, t]);
   const shownAnalysisFailureRef = useRef<string | null>(null);
+  const refreshAnalysisStatus = useCallback(async () => {
+    if (retryingRef.current) return;
+    retryingRef.current = true;
+    setRetrying(true);
+    try {
+      await refreshBackendBookStatus(bookId);
+    } finally {
+      retryingRef.current = false;
+      if (retryMountedRef.current) setRetrying(false);
+    }
+  }, [bookId]);
   useEffect(() => {
     if (!analysisTerminal) {
       shownAnalysisFailureRef.current = null;
@@ -510,9 +541,11 @@ function NarraCharactersList({
       key: "narra",
       accessibilityLabel: t("narra.openNarraBookChat", "Открыть чат с Narra об этой книге"),
       title: "Narra",
-      subtitle: isFindingCharacters
-        ? t("narra.findingCharacters", "Ищу персонажей…")
-        : t("narra.askAboutBook", "Спросите что угодно о книге"),
+      subtitle: analysisQueued
+        ? t("narra.analysisQueued", "Анализ в очереди. Можно продолжить читать")
+        : isFindingCharacters
+          ? t("narra.findingCharacters", "Ищу персонажей…")
+          : t("narra.askAboutBook", "Спросите что угодно о книге"),
       onPress: openBookChat,
       avatar: (
         <CharacterChatAvatar muted>
@@ -588,6 +621,25 @@ function NarraCharactersList({
         style={styles.scrollView}
       >
         <CharacterChatList items={listItems} />
+        {isFindingCharacters && analysisDelayed ? (
+          <View style={styles.analysisState}>
+            <Text style={styles.analysisStateDescription}>
+              {t(
+                "narra.analysisWaitingHint",
+                "Обновлений пока нет. Можно продолжить читать и проверить статус позже.",
+              )}
+            </Text>
+            <NativeButton
+              label={t("narra.refreshAnalysisStatus", "Обновить статус")}
+              onPress={refreshAnalysisStatus}
+              loading={retrying}
+              disabled={retrying}
+              variant="secondary"
+              icon="refresh"
+              style={{ alignSelf: "center" }}
+            />
+          </View>
+        ) : null}
         {analysisAvailability === "unavailable" || analysisTerminal ? (
           <View style={styles.analysisState}>
             <Text style={styles.analysisStateTitle}>

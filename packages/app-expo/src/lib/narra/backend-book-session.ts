@@ -65,6 +65,11 @@ export class BackendBookSession {
   retry() {
     return this.refresh();
   }
+  refreshExistingBinding() {
+    // Status-only action must never register or upload a replacement source.
+    if (!this.binding || this.controller.signal.aborted) return Promise.resolve();
+    return this.refresh(false);
+  }
   stop() {
     this.controller.abort();
     clearTimeout(this.timer);
@@ -105,16 +110,17 @@ export class BackendBookSession {
         if (this.mediaPending) this.loadMedia();
       });
   }
-  private refresh(): Promise<void> {
+  private refresh(allowBinding = true): Promise<void> {
     if (this.controller.signal.aborted) return Promise.resolve();
     if (this.refreshPromise) return this.refreshPromise;
-    const pending = this.refreshOnce().finally(() => {
+    if (!allowBinding && !this.binding) return Promise.resolve();
+    const pending = this.refreshOnce(allowBinding).finally(() => {
       if (this.refreshPromise === pending) this.refreshPromise = undefined;
     });
     this.refreshPromise = pending;
     return pending;
   }
-  private async refreshOnce() {
+  private async refreshOnce(allowBinding: boolean) {
     clearTimeout(this.timer);
     let delay: number | undefined;
     const signal = this.controller.signal;
@@ -174,7 +180,7 @@ export class BackendBookSession {
       delay = Math.min(60_000, 5000 * 2 ** this.errors++);
     } finally {
       if (!signal.aborted && (delay !== undefined || this.pendingProgress > this.sentProgress))
-        this.timer = setTimeout(() => void this.refresh(), delay ?? 1500);
+        this.timer = setTimeout(() => void this.refresh(allowBinding), delay ?? 1500);
     }
   }
 }

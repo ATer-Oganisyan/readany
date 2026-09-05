@@ -501,6 +501,9 @@ export function updateBackendBookProgress(bookId: string, progress: number) {
 export function retryBackendBookSync(bookId: string): Promise<void> {
   return sessions.get(bookId)?.session.retry() ?? Promise.resolve();
 }
+export function refreshBackendBookStatus(bookId: string): Promise<void> {
+  return sessions.get(bookId)?.session.refreshExistingBinding() ?? Promise.resolve();
+}
 
 export async function retryBackendBookAnalysis(bookId: string): Promise<void> {
   const binding = useNarraStore.getState().books[bookId]?.backendBinding;

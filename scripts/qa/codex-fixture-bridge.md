@@ -99,3 +99,29 @@ node scripts/qa/codex-sandbox-probe.mjs
 Neither command calls a model. Model-free tests cover admission, exact hashes,
 unsupported fields, concurrency/budget, quota, deadlines, output bounds,
 disconnect cleanup, malformed CLI output and split UTF-8 Russian text.
+
+## Fixed character-dialogue HTTP checkpoint
+
+`gateway-http-canary.mjs --character-chat` captures the real mounted Anna
+own-story screen, then the real provider serializer, without calling a model.
+Only the separately reviewed upstream SHA256
+`7d6447e6b37eebc4e482a2381e921be09aa9fc05b9d378dfc65dfa1875c76259`
+is accepted. Changed prompts fail closed and require another review.
+
+`--mock --character-chat` exercises actual isolated gateway registration and
+HTTP completion with a fake child. `--live --character-chat` makes exactly one
+contained CLI request through that gateway, without configuring the permanent
+mobile gateway. Both modes await their owned process cleanup.
+
+The mobile request, including temperature0.85, is sent unchanged to the gateway.
+The selected `litellm:gpt-5.6-luna` pair has no sampling override in the current
+server capability table; its upstream request contains only model, messages,
+max_tokens512 and stream:false. This does **not** validate temperature0.85 or
+reasoning_effort:none of other provider/model pairs. The CLI token cap remains
+advisory. No sampling parameters are newly accepted or silently discarded by
+the bridge itself.
+
+Nonempty returned text establishes transport only. The result explicitly leaves
+`qualityAccepted:false` until separate human/agent review of facts, first-person
+voice, style and spoiler scope. This is one turn, not a native chat session,
+stream/tools, generated profile, image, speech or full-book acceptance.
