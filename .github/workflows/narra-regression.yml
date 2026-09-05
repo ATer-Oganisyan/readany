@@ -8,6 +8,8 @@ on:
       - "packages/foliate-js/**"
       - "packages/deslop-primitives/**"
       - "patches/**"
+      - "scripts/qa/expo-factory-race-harness.mm"
+      - "scripts/qa/test-expo-factory-race.mjs"
       - "package.json"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
@@ -21,6 +23,8 @@ on:
       - "packages/foliate-js/**"
       - "packages/deslop-primitives/**"
       - "patches/**"
+      - "scripts/qa/expo-factory-race-harness.mm"
+      - "scripts/qa/test-expo-factory-race.mjs"
       - "package.json"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
@@ -36,6 +40,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  expo-factory-native:
+    # Foundation/ARC + ThreadSanitizer; no simulator, CocoaPods or app build.
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - name: Install patched dependencies without lifecycle builds
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Verify native harness prerequisites
+        run: |
+          node -e 'if (Number(process.versions.node.split(".")[0]) < 22) process.exit(1)'
+          xcrun --find clang++
+          xcrun --sdk macosx --show-sdk-path
+
+      - name: Test actual Expo factory overlap, ownership and publication races
+        run: node scripts/qa/test-expo-factory-race.mjs
+
   mobile-and-core:
     runs-on: ubuntu-latest
     timeout-minutes: 25

@@ -44,6 +44,9 @@
   На backend-fix `fc18c89` оба CI success; gateway33970583820:
   **834 PASS / 0 SKIP**, включая PostgreSQL/S3.
 - Последний core: **84 suites / 675 PASS**.
+- На `c674d74` оба CI success: Regression33971538010 и Gateway33971538008.
+  Для нового нативного factory regression добавлен отдельный macOS CI job;
+  его первый hosted-прогон ещё не принят.
 - Новейший локальный backend без внешней БД:813 PASS,21 SKIP,0 FAIL;
   пропуски требуют отдельного PG/storage-прогона и не считаются PASS.
 - Native iOS/Android сценарии и точные ограничения записаны в отчётах.
@@ -65,6 +68,10 @@
   FBZ→Open→Reader, добавление закладки, листание и сохранение CFI в БД.
   Холодный запуск выявил **P1 native crash** в Expo registration; книга и
   закладка после crash сохранены. Exact jump/cold return не приняты.
+  Гонка factory исправлена с нативными RED→GREEN/ThreadSanitizer тестами;
+  patch вошёл в каноническую iOS-пересборку. Последующая проверка выявила
+  другой P1 — потерянный AppContext при создании Fabric view. Данные целы,
+  стабильность запуска пока не принята.
   Выявлена и исправлена подмена explicit LOCAL-настроек TEST dotenv.
   Реальный собранный accessor и независимое ревью подтверждают LOCAL18787;
   это не подмена полноценной native приёмки проверкой конфигурации.

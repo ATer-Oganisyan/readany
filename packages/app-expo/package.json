@@ -5,6 +5,11 @@
   "main": "index.js",
   "expo": {
     "entryPoint": "./index.js",
+    "autolinking": {
+      "apple": {
+        "buildFromSource": ["expo"]
+      }
+    },
     "install": {
       "exclude": ["react-native-keyboard-controller", "react-native-screens"]
     },
