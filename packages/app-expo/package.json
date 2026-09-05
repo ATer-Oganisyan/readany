@@ -11,7 +11,7 @@
       }
     },
     "install": {
-      "exclude": ["react-native-keyboard-controller", "react-native-screens"]
+      "exclude": ["react-native", "react-native-keyboard-controller", "react-native-screens"]
     },
     "doctor": {
       "reactNativeDirectoryCheck": {
