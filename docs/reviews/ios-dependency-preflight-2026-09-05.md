@@ -142,3 +142,14 @@ The subsequent combined Back/reopen automation did not return to Library;
 the failure screenshot remained Reader. It is not accepted. A separate
 screenshot-guided control-visibility/Back diagnostic is pending; no crash is
 inferred from this failed navigation assertion.
+
+The separate screenshot-guided sequence subsequently passed: hidden controls →
+one center tap → fresh visible X → one X tap → Library with three cards →
+own01 card → actual Reader text without notification. Root inspected both
+Library and [reopened Reader](evidence/ios-rn0863/import-reopened.png), then
+independently compared `/private/tmp/narra-air-own01-final.json` against the
+after-import snapshot: all three IDs, hashes, exact CFI and progress match.
+The earlier combined-flow failure remains recorded; its AX visibility proxy
+is not accepted as a reliable setup. No runtime fix was inferred or applied
+from that failure. This accepts the bounded own01 URL import/Open/Back/reopen
+path on this simulator, not all navigation gestures or import formats.
