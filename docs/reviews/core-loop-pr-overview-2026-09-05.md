@@ -57,6 +57,14 @@
 
 ## Проверки и границы
 
+- Фактический запрос экрана персонажа прошёл отдельный authenticated HTTP
+  gateway и подписку: один живой вызов,6349мс. Записанный completion добавлен
+  в mounted mobile-parser replay с проверкой исходного SHA. 9 capture/HTTP
+  тестов PASS; model-free часть добавлена в CI. Это не native live-loop:
+  ответ содержит неподтверждённое «быстро», качество ещё не принято,
+  постоянный LOCAL provider не перенастроен. Подробности:
+  `docs/reviews/character-chat-http-live-2026-09-05.md`.
+
 - Native QA выявил неполноту pager-фикса: выбран My books, но виден каталог.
   Добавлено ограниченное восстановление потерянной команды,3 RED→GREEN;
   полный RN0.86.3 mobile1665 PASS, TypeScript PASS. После доработки cold-start

@@ -1,7 +1,9 @@
 import type { ReadingContext } from "@readany/core/types/chat";
+import { createHash } from "node:crypto";
 import { StrictMode } from "react";
 import { type ReactTestRenderer, act, create } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import recordedLive from "../../../../../docs/reviews/evidence/character-chat-live-2026-09-05.json";
 
 const runtime = vi.hoisted(() => {
   const messages: Array<{ role: string; content: string; id: string; createdAt: number }> = [];
@@ -129,7 +131,7 @@ afterEach(() => {
 });
 
 describe("character chat screen recovery", () => {
-  it.each(["matching", "other-book"])(
+  it.each(["matching", "other-book", "recorded-live"])(
     "serializes the real Anna chat prompt and commits its parsed reply (%s context)",
     async (contextKind) => {
       // Own short fixture. Existing history/placeholder prevent auxiliary AI calls.
@@ -144,7 +146,11 @@ describe("character chat screen recovery", () => {
         createdAt: 1,
       };
       const question = "Почему ты позвала Льва?";
-      const reply = "Я заметила течь и позвала Льва: он принёс доску, чтобы помочь.";
+      const matchingBook = contextKind !== "other-book";
+      // Offline replay of the actual HTTP completion, not another model call.
+      const reply = contextKind === "recorded-live"
+        ? recordedLive.completion.text
+        : "Я заметила течь и позвала Льва: он принёс доску, чтобы помочь.";
       const originalBook = runtime.book;
       runtime.book = { ...originalBook, meta: { title: "Наша лодка" }, progress: 0.25 };
       runtime.messages.push(history);
@@ -165,18 +171,19 @@ describe("character chat screen recovery", () => {
         chats: { hero: [history] },
       };
       runtime.context = {
-        bookId: contextKind === "matching" ? "book" : "other-book",
-        bookTitle: contextKind === "matching" ? "Наша лодка" : "Чужой роман",
+        bookId: matchingBook ? "book" : "other-book",
+        bookTitle: matchingBook ? "Наша лодка" : "Чужой роман",
         currentChapter: { index: 0, title: "У берега", href: "chapter-one" },
         currentPosition: { cfi: "exact-page", percentage: 25 },
-        surroundingText: contextKind === "matching" ? excerpt : foreignExcerpt,
+        surroundingText: matchingBook ? excerpt : foreignExcerpt,
         recentHighlights: [],
         operationType: "reading",
         timestamp: 1,
       };
       const adapter = vi.fn(
         async (_path: string, _init: RequestInit) =>
-          new Response(JSON.stringify({ text: `  ${reply}  ` })),
+          new Response(JSON.stringify(contextKind === "recorded-live"
+            ? recordedLive.completion : { text: `  ${reply}  ` })),
       );
       setNarraGatewayAdapter(adapter);
       try {
@@ -194,6 +201,11 @@ describe("character chat screen recovery", () => {
         expect(path).toBe("/v2/ai/chat/complete");
         expect(init.method).toBe("POST");
         const body = JSON.parse(String(init.body));
+        if (contextKind === "recorded-live") {
+          const { request_id: _requestId, ...request } = body;
+          expect(createHash("sha256").update(JSON.stringify(request)).digest("hex"))
+            .toBe(recordedLive.mobileRequestSha256);
+        }
         const prompt = body.messages[0].content;
         expect(body).toEqual({
           messages: [
@@ -219,7 +231,7 @@ describe("character chat screen recovery", () => {
           expect(prompt).toContain(fragment);
         expect(prompt).not.toContain(foreignExcerpt);
         expect(prompt).not.toContain(futureText);
-        if (contextKind === "matching") expect(prompt).toContain(excerpt);
+        if (matchingBook) expect(prompt).toContain(excerpt);
         else expect(prompt).not.toContain(excerpt);
         expect(runtime.narra.appendChatMessage).toHaveBeenCalledTimes(2);
         expect(runtime.narra.appendChatMessage).toHaveBeenNthCalledWith(
