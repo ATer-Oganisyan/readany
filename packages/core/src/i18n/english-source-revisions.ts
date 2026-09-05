@@ -6,7 +6,7 @@
 export const ENGLISH_SOURCE_REVISIONS = {
   "chat.json": "d7e912b4f69342fc66bd686fd2dc47e9528fdbf6ff5e73224c7f39a633055177",
   "common.json": "b417028d4f32dcfc2474eb95262347be40809ef44e97963430b1eaf13ef59472",
-  "library.json": "c965a23c762c0cf4999c8cb110eddf0a40a8fbba5ab3d88fba2c76d5f90dce44",
+  "library.json": "f255a6ed1423c5a351aadf5ff1191bbc64fce0f7b9ddab23967ac27e147ebf10",
   "misc.json": "7b47e4fe8a63f11be0ff7b7a82f887bcb7ab65312f8f9ded55a95c6706eec7f7",
   "notes.json": "683f3787f0623036bdf9274313888ad778b25338ddbb103026dfdbc5e56a87af",
   "onboarding.json": "691446f63699c6a6391e3adacc65f2a197943880cdfdf678e1383c8bc298a750",
