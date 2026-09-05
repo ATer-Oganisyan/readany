@@ -4,6 +4,7 @@ import { StrictMode } from "react";
 import { type ReactTestRenderer, act, create } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import recordedLive from "../../../../../docs/reviews/evidence/character-chat-live-2026-09-05.json";
+import groundedLive from "../../../../../docs/reviews/evidence/character-chat-grounding-live-2026-09-05.json";
 
 const runtime = vi.hoisted(() => {
   const messages: Array<{ role: string; content: string; id: string; createdAt: number }> = [];
@@ -132,7 +133,27 @@ afterEach(() => {
 });
 
 describe("character chat screen recovery", () => {
-  it.each(["matching", "other-book", "recorded-live"])(
+  it.each([
+    ["ru", "Не выдавай правдоподобную догадку о причинах поступка за факт", "Лучше опустить неподтверждённую подробность"],
+    ["en", "Do not present a plausible guess about a motive as a fact", "Prefer omitting an unsupported detail"],
+  ])("sends explicit grounded-motive guidance with the actual character request in %s", async (language, motive, omit) => {
+    runtime.language = language;
+    runtime.messages.push({ id: "greeting", role: "assistant", content: "Hello", createdAt: 1 });
+    const adapter = vi.fn(async () => new Response(JSON.stringify({ text: "Ответ" })));
+    setNarraGatewayAdapter(adapter);
+    await act(async () => {
+      tree = create(<NarraCharacterChatScreen embedded bookId="book" characterId="hero" onBack={vi.fn()} />);
+    });
+    await act(async () => {
+      await tree.root.find((node) => String(node.type) === "Chat").props.onSend("Почему?");
+    });
+    expect(adapter).toHaveBeenCalledOnce();
+    const body = JSON.parse(String((adapter.mock.calls[0] as unknown as [string, RequestInit])[1].body));
+    expect(body.messages[0].content).toContain(motive);
+    expect(body.messages[0].content).toContain(omit);
+    expect(body.messages.at(-1)).toEqual({ role: "user", content: "Почему?" });
+  });
+  it.each(["matching", "other-book", "recorded-live", "grounded-live"])(
     "serializes the real Anna chat prompt and commits its parsed reply (%s context)",
     async (contextKind) => {
       // Own short fixture. Existing history/placeholder prevent auxiliary AI calls.
@@ -149,8 +170,10 @@ describe("character chat screen recovery", () => {
       const question = "Почему ты позвала Льва?";
       const matchingBook = contextKind !== "other-book";
       // Offline replay of the actual HTTP completion, not another model call.
-      const reply = contextKind === "recorded-live"
-        ? recordedLive.completion.text
+      const recorded = contextKind === "recorded-live" ? recordedLive
+        : contextKind === "grounded-live" ? groundedLive : undefined;
+      const reply = recorded
+        ? recorded.completion.text
         : "Я заметила течь и позвала Льва: он принёс доску, чтобы помочь.";
       const originalBook = runtime.book;
       runtime.book = { ...originalBook, meta: { title: "Наша лодка" }, progress: 0.25 };
@@ -183,8 +206,8 @@ describe("character chat screen recovery", () => {
       };
       const adapter = vi.fn(
         async (_path: string, _init: RequestInit) =>
-          new Response(JSON.stringify(contextKind === "recorded-live"
-            ? recordedLive.completion : { text: `  ${reply}  ` })),
+          new Response(JSON.stringify(recorded
+            ? recorded.completion : { text: `  ${reply}  ` })),
       );
       setNarraGatewayAdapter(adapter);
       try {
@@ -202,9 +225,24 @@ describe("character chat screen recovery", () => {
         expect(path).toBe("/v2/ai/chat/complete");
         expect(init.method).toBe("POST");
         const body = JSON.parse(String(init.body));
-        if (contextKind === "recorded-live") {
+        if (contextKind === "grounded-live") {
           const { request_id: _requestId, ...request } = body;
           expect(createHash("sha256").update(JSON.stringify(request)).digest("hex"))
+            .toBe(groundedLive.mobileRequestSha256);
+          expect(groundedLive.qualityAccepted).toBe(false);
+        }
+        if (contextKind === "recorded-live") {
+          const { request_id: _requestId, ...request } = body;
+          // Preserve the historical wire snapshot without rewriting its artifact.
+          // Only the newly tested grounding paragraph differs from that revision;
+          // this replay checks response parsing, not a new live model completion.
+          const lines = request.messages[0].content.split("\n") as string[];
+          const legacyLines = lines.filter((line) => !line.startsWith("Разделяй установленные факты и интерпретацию."));
+          expect(lines.length - legacyLines.length).toBe(1);
+          const legacyRequest = { ...request, messages: [
+            { ...request.messages[0], content: legacyLines.join("\n") }, ...request.messages.slice(1),
+          ] };
+          expect(createHash("sha256").update(JSON.stringify(legacyRequest)).digest("hex"))
             .toBe(recordedLive.mobileRequestSha256);
         }
         const prompt = body.messages[0].content;

@@ -21,7 +21,7 @@ test('character fixture sends the real mounted mobile request through authentica
     },
   });
   assert.equal(result.fixtureId, 'character-chat');
-  assert.equal(result.sha256, '7d6447e6b37eebc4e482a2381e921be09aa9fc05b9d378dfc65dfa1875c76259');
+  assert.equal(result.sha256, '9890b4c1a6b41bf86e7ca44ada198e012b3958c8fb81b791e805621aaacc6525');
   assert.equal(result.result.text, reply);
   assert.equal(result.result.qualityAccepted, false);
   assert.equal(result.live, false);

@@ -13,7 +13,7 @@ import { createFixtureBridge, digest, MODEL } from './codex-fixture-bridge.mjs';
 import { captureCharacterProviderFixture } from './capture-character-provider-fixture.mjs';
 import { gatewayEnvironment } from './gateway-http-canary.mjs';
 
-export const CHARACTER_APPROVED_SHA256 = '7d6447e6b37eebc4e482a2381e921be09aa9fc05b9d378dfc65dfa1875c76259';
+export const CHARACTER_APPROVED_SHA256 = '9890b4c1a6b41bf86e7ca44ada198e012b3958c8fb81b791e805621aaacc6525';
 export const MOCK_REPLY = 'Я заметила течь и позвала Льва: он принёс доску, чтобы помочь.';
 const SCOPE = 'Own Anna fixture: captured mobile body -> authenticated gateway HTTP -> exact approved provider bytes. Native UI and live response mobile-parser replay are separate gates. Gateway omits finish_reason: truncation and semantic quality require separate review.';
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));

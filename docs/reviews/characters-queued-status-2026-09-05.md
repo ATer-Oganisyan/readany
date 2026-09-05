@@ -37,3 +37,24 @@ Root выполнил штатный `pnpm test` в изолированной R
 sonner patch и захватил Node-only bundled-audio test как пустую Vitest suite.
 Это не успешный прогон; зависимости MAIN намеренно оставлены для TEST.
 Правильный повтор выше использует штатные test paths и проверенный QA runtime.
+
+## Последующая ограниченная native-приёмка
+
+На LOCAL Air runtime с новым текстом own01 → Characters показывает
+[Analysis is queued. You can keep reading](evidence/ios-rn0863/characters-queued.png).
+Текст сохранился при следующем наблюдении примерно через32с. Sheet закрыт
+жестом за grabber; [Reader снова виден](evidence/ios-rn0863/characters-return-reader.png).
+Root просмотрел обе картинки и независимо сравнил snapshots: все3 ID/CFI/
+progress/hash сохранены. Это приёмка текста очереди и возврата к чтению;
+кнопка после60с и её native-нажатие этим коротким наблюдением не проверены.
+
+Первый неудачный center tap ранее не породил `reader_tap`, нынешний дал ровно
+одно событие и показал controls. Это локализует прежний отказ до RN handler,
+но не доказывает причину. Общее время XCTest tap332/339мс не является временем
+удержания; менять iOS250мс guard по нему нельзя.
+
+Остаётся native accessibility gap: стандартная hierarchy не показывает видимый
+sheet, зато содержит underlying Reader controls. Семантический Close нельзя
+считать кнопкой закрытия sheet. Причина расследуется; жестовое закрытие не
+засчитывается как VoiceOver/AX-приёмка. При отсутствии worker очередь не
+продвигается: новый текст не заменяет рабочую конфигурацию генерации.

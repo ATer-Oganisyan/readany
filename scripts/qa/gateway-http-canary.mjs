@@ -20,7 +20,7 @@ const SAFE_PATH = '/usr/bin:/bin:/usr/sbin:/sbin';
 export const APPROVED_SHA256 = '9fac970ca53225b2b7ee5a2727c367afd5c1471897072f0253b833acbc785e26';
 // Root reviewed the complete own-story mobile prompt and the exact requestChat
 // envelope. Changing either requires a new independent review, not auto-approval.
-export const APPROVED_CHARACTER_SHA256 = '7d6447e6b37eebc4e482a2381e921be09aa9fc05b9d378dfc65dfa1875c76259';
+export const APPROVED_CHARACTER_SHA256 = '9890b4c1a6b41bf86e7ca44ada198e012b3958c8fb81b791e805621aaacc6525';
 const SCOPE = 'actual HTTP installation/register -> gateway chat/complete -> exact fixture bridge; not mobile/full book pipeline';
 
 export async function approvedFixture(fixtureId = 'analysis') {

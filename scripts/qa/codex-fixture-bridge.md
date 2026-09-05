@@ -105,8 +105,10 @@ disconnect cleanup, malformed CLI output and split UTF-8 Russian text.
 `gateway-http-canary.mjs --character-chat` captures the real mounted Anna
 own-story screen, then the real provider serializer, without calling a model.
 Only the separately reviewed upstream SHA256
-`7d6447e6b37eebc4e482a2381e921be09aa9fc05b9d378dfc65dfa1875c76259`
+`9890b4c1a6b41bf86e7ca44ada198e012b3958c8fb81b791e805621aaacc6525`
 is accepted. Changed prompts fail closed and require another review.
+This reviewed revision adds explicit fact-versus-motive interpretation guidance;
+historical artifacts retain the preceding `7d6447...` hash and original replies.
 
 `--mock --character-chat` exercises actual isolated gateway registration and
 HTTP completion with a fake child. `--live --character-chat` makes exactly one
