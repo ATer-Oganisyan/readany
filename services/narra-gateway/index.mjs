@@ -24,6 +24,7 @@ import {
   settleProviderResponse,
   validateChatCompletionPayload
 } from './provider-response.mjs'
+import { createSseFrameRelay } from './sse-frame-relay.mjs'
 import { parseEventBatch } from './events.mjs'
 import { createEventStore } from './event-store.mjs'
 import { createBestEffortEventWriter } from './best-effort-events.mjs'
@@ -1862,23 +1863,24 @@ app.post('/v2/ai/chat/stream', aiLimit, aiDailyLimit, express.json({ limit: '1mb
       consume: async () => {
         let streamedBytes = 0
         usageCollector = createSseUsageCollector()
+        const relay = createSseFrameRelay({
+          validateFrame: frame => usageCollector.push(frame),
+          writeFrame: frame => res.write(frame)
+        })
         for await (const chunk of upstream.body) {
           streamedBytes += Buffer.byteLength(chunk)
           if (streamedBytes > LLM_RESPONSE_MAX_BYTES) {
             await upstream.body.cancel().catch(() => {})
             throw Object.assign(new Error('LLM response exceeded the gateway limit'), { code: 'NETWORK', status: 502 })
           }
-          usageCollector.push(chunk)
-          res.write(chunk)
+          relay.push(chunk)
         }
+        relay.finish()
         return usageCollector.value()
       }
     })
     res.end()
     const finishReason = usageCollector?.finishReason()
-    if (finishReason === 'length') {
-      console.warn(`[llm] ответ обрезан лимитом max_tokens: purpose=${input.purpose} request_id=${requestId}`)
-    }
     if (recordActorAnalytics) {
       await appendInternalEvent(req, 'ai_request_completed', completionProperties({
         requestId,

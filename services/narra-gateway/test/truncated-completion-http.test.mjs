@@ -16,12 +16,27 @@ async function listen(server) {
   return server.address().port
 }
 
-test('public complete rejects provider truncation, frees capacity and allows explicit next request', { timeout: 15000 }, async () => {
+for (const transport of ['complete', 'stream']) {
+test(`public ${transport} rejects provider truncation, frees capacity and allows explicit next request`, { timeout: 15000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'narra-truncated-http-'))
   let calls = 0
   const upstream = createServer(async (req, res) => {
     for await (const _ of req) {}
     calls++
+    if (transport === 'stream') {
+      res.writeHead(200, { 'content-type': 'text/event-stream' })
+      if (calls === 1) {
+        res.write('data: {"choices":[{"delta":{"content":"Unfinished answer"}}]}\n\n')
+        await delay(15)
+        // Real network fragments: the gateway must not expose half a JSON event.
+        res.write('data: {"choices":[{"finish_rea')
+        await delay(15)
+        res.end('son":"length","delta":{}}]}\n\ndata: [DONE]\n\n')
+      } else {
+        res.end('data: {"choices":[{"delta":{"content":"Complete answer."},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n')
+      }
+      return
+    }
     res.writeHead(200, { 'content-type': 'application/json' })
     res.end(JSON.stringify({ choices: [{
       message: { role: 'assistant', content: calls === 1 ? 'Unfinished sentence because' : 'Complete answer.' },
@@ -60,21 +75,38 @@ test('public complete rejects provider truncation, frees capacity and allows exp
     })
     assert.equal(registration.status, 201)
     const { token } = await registration.json()
-    const send = () => fetch(`${base}/v2/ai/chat/complete`, {
+    const send = () => fetch(`${base}/v2/ai/chat/${transport}`, {
       method: 'POST', signal: AbortSignal.timeout(3000),
       headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
       body: JSON.stringify({ purpose: 'character_chat', messages: [{ role: 'user', content: 'Own truncation fixture' }] }),
     })
     const failed = await send()
-    assert.equal(failed.status, 502)
-    const error = await failed.json()
-    assert.equal(error.code, 'PARSE')
-    assert.equal(error.text, undefined)
+    if (transport === 'complete') {
+      assert.equal(failed.status, 502)
+      const error = await failed.json()
+      assert.equal(error.code, 'PARSE')
+      assert.equal(error.text, undefined)
+    } else {
+      assert.equal(failed.status, 200, 'Partial output already sent its headers')
+      const frames = (await failed.text()).trim().split(/\r?\n\r?\n/)
+      assert.equal(frames.length, 2)
+      assert.deepEqual(JSON.parse(frames[0].slice('data: '.length)), {
+        choices: [{ delta: { content: 'Unfinished answer' } }],
+      })
+      assert.equal(frames[1], 'event: error\ndata: {"error":{"code":"PARSE"}}')
+      assert.ok(!frames.some(frame => frame.includes('[DONE]') || frame.includes('finish_rea')))
+    }
     assert.equal(calls, 1)
     assert.equal((await health()).active, 0)
     const retry = await send()
     assert.equal(retry.status, 200)
-    assert.equal((await retry.json()).text, 'Complete answer.')
+    if (transport === 'complete') assert.equal((await retry.json()).text, 'Complete answer.')
+    else {
+      const body = await retry.text()
+      assert.ok(body.includes('Complete answer.'))
+      assert.ok(body.endsWith('data: [DONE]\n\n'))
+      assert.ok(!body.includes('event: error'))
+    }
     assert.equal(calls, 2, 'Only explicit second request generates again')
     assert.equal((await health()).active, 0)
   } finally {
@@ -96,3 +128,4 @@ test('public complete rejects provider truncation, frees capacity and allows exp
     if (cleanupError) throw cleanupError
   }
 })
+}
