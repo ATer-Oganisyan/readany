@@ -1,5 +1,7 @@
-import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
+import { consumeNarraGatewayResponse } from "@/lib/ai/narra-gateway-fetch";
+import { readGatewayResponseBytes } from "@/lib/ai/narra-gateway-consumer";
 import { useNarraStore } from "@/stores/narra-store";
+import { NarraServiceError } from "./errors";
 import { primeCharacterStressForms } from "./stress-markup";
 import type { NarraCharacter, NarraSceneAudioSegment } from "./types";
 import { narratorVoiceFor } from "./voice-rules";
@@ -61,42 +63,60 @@ export function parseNarraAudioScenario(
 export async function generateNarraAudioScenario(
   excerpt: string,
   characters: NarraCharacter[],
+  options: { signal?: AbortSignal } = {},
 ): Promise<NarraSceneAudioSegment[]> {
   // Словарь ударений имён книги (P9) — синтез сегментов сцены пойдёт через
   // synthesizeNarraSpeech, который читает активный словарь.
   primeCharacterStressForms(characters);
   const roster = characters.map((character) => `${character.id}: ${character.fullName}`).join("; ");
-  const response = await narraGatewayRequest("/v2/ai/chat/complete", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      messages: [
-        {
-          role: "system",
-          content: `Разбей фрагмент на сценарий аудиокниги. Верни только JSON-массив [{"type":"narration|speech","character":"id|null","text":"дословный текст"}]. Сохрани текст и порядок. Не добавляй новые реплики. Используй только эти id персонажей: ${roster || "персонажи не определены"}.`,
-        },
-        { role: "user", content: excerpt.slice(0, MAX_SCENE_TEXT_CHARS) },
-      ],
-      temperature: 0.15,
-      purpose: "structured_task",
-      origin: "user",
-      analytics_tier: "essential",
-    }),
-  });
-
-  const body = await response.text();
-  let payload: ScenarioResponse | null = null;
-  try {
-    payload = JSON.parse(body) as ScenarioResponse;
-  } catch {
-    // Some gateway adapters return plain text for chat completions.
-  }
-  if (!response.ok) {
-    throw new Error(payload?.error || body || `AI request failed (${response.status})`);
-  }
-
-  const scenarioText = (payload ? payload.text || payload.content || "" : body).trim();
-  const segments = parseNarraAudioScenario(scenarioText, characters);
-  if (segments.length === 0) throw new Error("Gateway returned an empty audio scenario");
-  return segments;
+  return consumeNarraGatewayResponse(
+    "/v2/ai/chat/complete",
+    {
+      method: "POST",
+      signal: options.signal,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        messages: [
+          {
+            role: "system",
+            content: `Разбей фрагмент на сценарий аудиокниги. Верни только JSON-массив [{"type":"narration|speech","character":"id|null","text":"дословный текст"}]. Сохрани текст и порядок. Не добавляй новые реплики. Используй только эти id персонажей: ${roster || "персонажи не определены"}.`,
+          },
+          { role: "user", content: excerpt.slice(0, MAX_SCENE_TEXT_CHARS) },
+        ],
+        temperature: 0.15,
+        purpose: "structured_task",
+        origin: "user",
+        analytics_tier: "essential",
+      }),
+    },
+    async (response, scope) => {
+      if (!response.ok) {
+        // Provider errors can echo private excerpts; only expose a safe status.
+        void response.body?.cancel().catch(() => {});
+        throw new NarraServiceError(
+          response.status === 401 || response.status === 403
+            ? "AUTH"
+            : response.status === 429
+              ? "RATE"
+              : "SERVICE",
+          "Не удалось подготовить озвучку сцены.",
+          undefined,
+          `Scenario HTTP ${response.status}`,
+        );
+      }
+      const body = new TextDecoder().decode(
+        await readGatewayResponseBytes(response, scope, 256 * 1024),
+      );
+      let payload: ScenarioResponse | null = null;
+      try {
+        payload = JSON.parse(body) as ScenarioResponse;
+      } catch {
+        // Some gateway adapters return plain text for chat completions.
+      }
+      const scenarioText = (payload ? payload.text || payload.content || "" : body).trim();
+      const segments = parseNarraAudioScenario(scenarioText, characters);
+      if (segments.length === 0) throw new Error("Gateway returned an empty audio scenario");
+      return segments;
+    },
+  );
 }

@@ -92,8 +92,9 @@ export function NarraSceneScreen({ route, navigation }: Props) {
   const [audioStatus, setAudioStatus] = useState<AudioStatus>("idle");
   const [textExpanded, setTextExpanded] = useState(false);
   const startedRef = useRef(false);
-  const audioRef = useRef(new NarraAudioPlayer());
+  const [audioPlayer] = useState(() => new NarraAudioPlayer());
   const audioRunRef = useRef(0);
+  const audioControllerRef = useRef<AbortController | null>(null);
   const sceneMediaOperationRef = useRef<"idle" | "image" | "video">("idle");
 
   // Кэш «ожившей» сцены из стора: повторный тап играет без генерации.
@@ -147,45 +148,52 @@ export function NarraSceneScreen({ route, navigation }: Props) {
     void generate();
   }, [generate, imageUri]);
 
-  // Уход с экрана останавливает озвучку и отменяет незавершённую подготовку.
-  useEffect(
-    () => () => {
-      audioRunRef.current += 1;
-      audioRef.current.stop();
-    },
-    [],
-  );
+  const cancelAudio = useCallback(() => {
+    audioRunRef.current += 1;
+    audioControllerRef.current?.abort();
+    audioControllerRef.current = null;
+    audioPlayer.stop();
+  }, [audioPlayer]);
 
   const stopAudio = useCallback(() => {
-    audioRunRef.current += 1;
-    audioRef.current.stop();
+    cancelAudio();
     setAudioStatus("idle");
-  }, []);
+  }, [cancelAudio]);
+
+  // Native stacks can blur without unmounting; both boundaries cancel paid work.
+  useEffect(() => navigation.addListener("blur", stopAudio), [navigation, stopAudio]);
+  useEffect(() => {
+    setAudioStatus("idle");
+    return cancelAudio;
+  }, [bookId, sourceKey, excerpt, cancelAudio]);
 
   const playUri = useCallback(
     (uri: string) =>
       new Promise<void>((resolve) => {
-        audioRef.current.play(uri, resolve, resolve);
+        audioPlayer.play(uri, resolve, resolve);
       }),
-    [],
+    [audioPlayer],
   );
 
   // Озвучка по ролям — как на старом экране: генерация аудио-сценария,
   // синтез сегментов с префетчем следующего и последовательное воспроизведение.
   const playScene = useCallback(async () => {
-    if (audioStatus !== "idle") {
+    // The ref closes the interval before React renders the new button state.
+    if (audioControllerRef.current) {
       stopAudio();
       return;
     }
 
     const runId = audioRunRef.current + 1;
     audioRunRef.current = runId;
+    const controller = new AbortController();
+    audioControllerRef.current = controller;
     setAudioStatus("preparing");
 
     try {
       const segments: NarraSceneAudioSegment[] = cachedAudio?.segments?.length
         ? cachedAudio.segments.map((segment) => ({ ...segment }))
-        : await generateNarraAudioScenario(excerpt, characters);
+        : await generateNarraAudioScenario(excerpt, characters, { signal: controller.signal });
       if (audioRunRef.current !== runId) return;
 
       const createdAt = cachedAudio?.createdAt ?? Date.now();
@@ -197,10 +205,15 @@ export function NarraSceneScreen({ route, navigation }: Props) {
       });
 
       const ensureAudio = async (index: number): Promise<string> => {
+        if (controller.signal.aborted) throw controller.signal.reason;
         const segment = segments[index];
         if (!segment) throw new Error("Audio segment is missing");
         if (segment.audioUri) return normalizePersistedNarraMediaUri(segment.audioUri);
-        const audioUri = await synthesizeNarraSpeech(segment.text, segment.voice);
+        const audioUri = await synthesizeNarraSpeech(segment.text, segment.voice, {
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted || audioRunRef.current !== runId)
+          throw controller.signal.reason ?? new Error("Scene audio was superseded");
         segments[index] = { ...segment, audioUri };
         setSceneAudio(bookId, {
           sourceKey,
@@ -235,20 +248,12 @@ export function NarraSceneScreen({ route, navigation }: Props) {
       }
     } finally {
       if (audioRunRef.current === runId) {
+        controller.abort();
+        audioControllerRef.current = null;
         setAudioStatus("idle");
       }
     }
-  }, [
-    audioStatus,
-    bookId,
-    cachedAudio,
-    characters,
-    excerpt,
-    playUri,
-    setSceneAudio,
-    sourceKey,
-    stopAudio,
-  ]);
+  }, [bookId, cachedAudio, characters, excerpt, playUri, setSceneAudio, sourceKey, stopAudio]);
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -455,7 +460,6 @@ export function NarraSceneScreen({ route, navigation }: Props) {
                 ? t("narra.sceneVoice", "Озвучить")
                 : t("narra.stopVoiceSample", "Остановить озвучку")
             }
-            disabled={audioStatus === "preparing"}
             onPress={() => {
               hapticLight();
               void playScene();
@@ -463,7 +467,10 @@ export function NarraSceneScreen({ route, navigation }: Props) {
             style={({ pressed }) => [styles.ghostPill, pressed && styles.pillPressed]}
           >
             {audioStatus === "preparing" ? (
-              <ActivityIndicator size="small" color={colors.foreground} />
+              <>
+                <ActivityIndicator size="small" color={colors.foreground} />
+                <Text style={styles.ghostPillText}>{t("narra.ttsStop", "Стоп")}</Text>
+              </>
             ) : (
               <Text style={styles.ghostPillText}>
                 {audioStatus === "playing"
