@@ -69,6 +69,7 @@ export const NativeSegmentedPager = forwardRef<
   const swipeGuard = useSwipePressGuard();
   const activePageRef = useRef(-1);
   const pendingPageRef = useRef<number | undefined>(undefined);
+  const reconciledPendingPageRef = useRef(false);
   const [containerWidth, setContainerWidth] = useState(0);
   const [pageHeights, setPageHeights] = useState<Record<number, number>>({});
   const [swiping, setSwiping] = useState(false);
@@ -103,15 +104,25 @@ export const NativeSegmentedPager = forwardRef<
     if (safeSelectedIndex === activePageRef.current) return;
     activePageRef.current = safeSelectedIndex;
     pendingPageRef.current = safeSelectedIndex;
+    reconciledPendingPageRef.current = false;
     pagerRef.current?.setPageWithoutAnimation(safeSelectedIndex);
   }, [safeSelectedIndex]);
 
   const selectPage = useCallback(
     (index: number, animated = true) => {
       const nextIndex = Math.max(0, Math.min(index, Math.max(0, pageCount - 1)));
-      if (nextIndex === activePageRef.current) return;
+      if (nextIndex === activePageRef.current) {
+        // The native adapter can drop an early command before its pages exist.
+        // An explicit repeated selection must still be able to recover it.
+        if (pendingPageRef.current === nextIndex) {
+          reconciledPendingPageRef.current = false;
+          pagerRef.current?.setPageWithoutAnimation(nextIndex);
+        }
+        return;
+      }
       activePageRef.current = nextIndex;
       pendingPageRef.current = nextIndex;
+      reconciledPendingPageRef.current = false;
       onSelect(nextIndex);
       if (animated) pagerRef.current?.setPage(nextIndex);
       else pagerRef.current?.setPageWithoutAnimation(nextIndex);
@@ -201,7 +212,16 @@ export const NativeSegmentedPager = forwardRef<
           // restored selection was sent. Do not persist that obsolete result.
           // Once acknowledged, non-drag selections (including accessibility)
           // continue through the ordinary path below.
-          if (pendingPageRef.current !== undefined && nextIndex !== pendingPageRef.current) return;
+          if (pendingPageRef.current !== undefined && nextIndex !== pendingPageRef.current) {
+            // Ignoring a stale acknowledgement alone can leave the tab label
+            // and physical page different. Retry once per selection, with the
+            // guard set first so even synchronous wrong callbacks stay bounded.
+            if (!reconciledPendingPageRef.current) {
+              reconciledPendingPageRef.current = true;
+              pagerRef.current?.setPageWithoutAnimation(pendingPageRef.current);
+            }
+            return;
+          }
           pendingPageRef.current = undefined;
           // Сравниваем до присваивания: при свайпе пальцем onSelect мог уже
           // обновить selectedIndex, и по нему смену страницы не поймать.

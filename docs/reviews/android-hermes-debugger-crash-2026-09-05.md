@@ -104,3 +104,40 @@ Android prebuild в изолированной копии завершился e
 Есть предупреждение о недостающем expo-system-ui для automatic theme, его
 влияние на тему ещё не проверено. Запущен assembleDebug только arm64-v8a,
 Java17, max-workers2/no-parallel/Xmx2g; APK/новый BuildID пока не подтверждены.
+
+## APK и установка на отдельный Android QA
+
+assembleDebug завершился exit0:824 задачи,3м55с. APK114987571bytes,
+SHA256 `2473951adb3c5c3b8b960682488949a97153580b1a698896ee10fc1f10760a0c`.
+Пакет com.mishanaer.readany.dev,1.3.5/versionCode1, min24/target36,
+фактический ABI только arm64-v8a. Root проверил SHA/aapt и непосредственно
+из APK прочитал Hermes BuildID `ad8f6a3c901d0e6d9eab8b2c375d703499481521`.
+
+На5556 подтверждены AVD Narra_LOCAL_QA_20260905, прежний versionCode1 и
+совпадение сертификатов старого/нового APK. `adb install -r` завершился Success,
+без удаления данных/downgrade. TEST5554 и iOS не менялись.
+
+Первый запуск на отдельном Metro8083 успешен (COLD1071мс, не TTI), но bootstrap
+выявил обращение к TEST backend и ошибку cover502. Это ошибка QA-запуска:
+root использовал обычные EXPO_PUBLIC_NARRA_* вместо предусмотренных проектом
+NARRA_LAUNCH_* overrides. Несмотря EXPO_NO_DOTENV=1, virtual/env включал
+tracked dotenv. UI-прогон остановлен до taps, приложение force-stopped.
+Нельзя утверждать, что первый запуск был LOCAL или что он не сделал сетевых
+запросов к TEST. Получение нового контента/успешная генерация не подтверждены.
+
+Старый Metro8083 остановлен с подтверждённым завершением; новый запущен с
+reserved launch overrides. До повторного открытия скачан полный Android JS
+bundle и выполнен существующий env-only inspector: effectiveProfile строго
+http://127.0.0.1:18787 /development/installation, несмотря virtualEnvironment=test.
+Приложение повторно открыто explicitlocalhost8083. Нативная клиентская проверка
+и воспроизведение debugger-crash с новым Hermes ещё не завершены.
+
+После исправления запуска actual runtime лог подтвердил backend host127.0.0.1,
+actualdevelopment, versionlocal-core-loop-readiness, ok=true. Новый клиентский
+прогон выявил startup mismatch: My books выделена, но показывается пустой каталог;
+повторный тап выбранной вкладки не помогает. Root лично просмотрел screenshot.
+Один цикл Popular→My books восстановил own27card6%; затем Reader→Back→Reader
+прошёл, root сравнил screenshots текста до/после. Потеря книги не подтверждена;
+подтверждён рассинхрон pager, поэтому startup-приёмка остаётся открытой.
+К21:11:15 crash buffer содержит только прежний20:47:43. CDP не использовался,
+exactCFI не проверялся; debugger-crash этим не воспроизведён и не закрыт.
