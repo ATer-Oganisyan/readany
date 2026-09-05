@@ -161,6 +161,35 @@ async function open(value: Book) {
 }
 
 describe("backend book import and persistence integration", () => {
+  it("clears already visible preview and starts the replacement edition without reopening", async () => {
+    runtime.request.mockImplementation(async (path: string) => {
+      if (path === "/v2/books/new-edition/manifest") return ready;
+      if (path.endsWith("/manifest")) return { availability: "processing", characters_status: "preview_ready", characters: [] };
+      if (path.endsWith("/characters/preview")) return {
+        contract_version: "book-characters-preview-v1", book_edition_id: "catalog-id", status: "preview_ready",
+        poll_after_ms: 1000, characters: [{ character_key: "old", name: "Old", full_name: "", provisional: true,
+          state: "preparing", profile: { provisional: true }, bundle: null }],
+      };
+      return {};
+    });
+    await open({ ...book(), sourceKind: "catalog", bookEditionId: "catalog-id", contentHash: "a".repeat(64) });
+    expect(useBackendBookStatus.getState().books.local.preview?.characters[0].name).toBe("Old");
+    useNarraStore.getState().setBackendBinding("local", {
+      resolution: "catalog", bookEditionId: "new-edition", contentSha256: "b".repeat(64), sourceUploaded: true,
+    });
+    expect(useBackendBookStatus.getState().books.local?.preview).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(runtime.request.mock.calls.some(([path]) => path === "/v2/books/new-edition/manifest")).toBe(true);
+    expect(useNarraStore.getState().books.local.characters[0]?.id).toBe("stable");
+    releases.pop()?.();
+    runtime.request.mockClear();
+    useNarraStore.getState().setBackendBinding("local", {
+      resolution: "catalog", bookEditionId: "third-edition", contentSha256: "c".repeat(64), sourceUploaded: true,
+    });
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(runtime.request).not.toHaveBeenCalled();
+    expect(useBackendBookStatus.getState().books.local).toBeUndefined();
+  });
   it.each(["edition", "hash", "deleted"])("ignores pending character preview after %s changes", async (change) => {
     let finish!: (value: unknown) => void;
     runtime.request.mockImplementation(async (path: string) => {
@@ -372,6 +401,12 @@ describe("backend book import and persistence integration", () => {
       contentHash: binding.contentSha256,
     });
     expect(useNarraStore.getState().books.local.backendManifest?.availability).toBe("ready");
+    // Keep the replacement response pending: this test concerns the old cache,
+    // not the independently tested successful publication of the new edition.
+    runtime.request.mockImplementation(async (path: string) => {
+      if (path === "/v2/books/edition-b/manifest") return new Promise(() => {});
+      return {};
+    });
     useNarraStore.getState().setBackendBinding("local", { ...binding, bookEditionId: "edition-b" });
     const before = useNarraStore.getState().books.local;
     const beforeStatus = useBackendBookStatus.getState().books.local;

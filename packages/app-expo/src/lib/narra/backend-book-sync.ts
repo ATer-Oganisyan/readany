@@ -46,8 +46,15 @@ function status(bookId: string, update: Partial<SyncStatus>) {
   }));
 }
 
-const sessions = new Map<string, { session: BackendBookSession; consumers: number }>();
+const sessions = new Map<string, {
+  session: BackendBookSession;
+  consumers: number;
+  unsubscribe?: () => void;
+}>();
 const expiredEditions = new Set<string>();
+// Synchronous store notifications from the active bind attempt must not abort
+// that same attempt (e.g. FBZ archive identity -> extracted FB2 identity).
+const bindingCommits = new Set<string>();
 const bindings = new Map<
   string,
   Promise<NonNullable<ReturnType<typeof useNarraStore.getState>["books"][string]["backendBinding"]>>
@@ -226,7 +233,9 @@ async function bindBook(book: Book, signal: AbortSignal) {
     binding = parseBackendBinding(response, hash);
   }
   assertCurrent();
-  store.setBackendBinding(book.id, binding);
+  bindingCommits.add(book.id);
+  try { store.setBackendBinding(book.id, binding); }
+  finally { bindingCommits.delete(book.id); }
   expectedBinding = useNarraStore.getState().books[book.id]?.backendBinding;
   await applyBookLanguage(book.id, binding.language);
   assertCurrent();
@@ -253,7 +262,9 @@ async function bindBook(book: Book, signal: AbortSignal) {
       sourceUploaded: true,
       expiresAt: typeof response.expires_at === "string" ? response.expires_at : binding.expiresAt,
     };
-    store.setBackendBinding(book.id, binding);
+    bindingCommits.add(book.id);
+    try { store.setBackendBinding(book.id, binding); }
+    finally { bindingCommits.delete(book.id); }
     expectedBinding = useNarraStore.getState().books[book.id]?.backendBinding;
   }
   if (binding.resolution === "catalog" && book.sourceKind !== "catalog" && !derivedArchive) {
@@ -439,11 +450,41 @@ export function retainBackendBookSync(book: Book, progress = book.progress): () 
     const session = createSession(book, progress);
     entry = { session, consumers: 0 };
     sessions.set(book.id, entry);
+    const retained = entry;
+    const bindingKey = () => {
+      const binding = useNarraStore.getState().books[book.id]?.backendBinding;
+      return binding ? JSON.stringify([binding.bookEditionId, binding.contentSha256.toLowerCase()]) : undefined;
+    };
+    let identity = bindingKey();
+    let hasBound = identity !== undefined;
+    retained.unsubscribe = useNarraStore.subscribe(() => {
+      const next = bindingKey();
+      if (next === identity) return;
+      identity = next;
+      // The first binding is produced by this session itself. Subsequent
+      // transport/source changes invalidate its cached manifest and timers.
+      if (bindingCommits.has(book.id)) {
+        hasBound = hasBound || next !== undefined;
+        return;
+      }
+      if (!hasBound) { hasBound = next !== undefined; return; }
+      retained.session.stop();
+      useBackendBookStatus.setState((state) => {
+        const books = { ...state.books };
+        delete books[book.id];
+        return { books };
+      });
+      const current = useLibraryStore.getState().books.find((item) => item.id === book.id);
+      if (!next || !current || current.deletedAt) return;
+      retained.session = createSession(current, current.progress);
+      retained.session.start();
+    });
     session.start();
   }
   entry.consumers++;
   return () => {
     if (--entry.consumers === 0) {
+      entry.unsubscribe?.();
       entry.session.stop();
       if (sessions.get(book.id) === entry) sessions.delete(book.id);
       useBackendBookStatus.setState((state) => {
