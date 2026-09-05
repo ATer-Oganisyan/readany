@@ -22,6 +22,8 @@ checks remain enabled. No network dependency was added to everyday startup.
 - New regression against the actual app manifest failed before the change;
   all four installed-dependency tests pass after it, including existing unrelated
   Expo mismatch and missing-package cases.
+- Isolated checkout `fa364e8` now passes the actual checker. The full mobile
+  suite in that checkout passes 1734 tests; MAIN TypeScript also passes.
 - MAIN still has RN 0.86.2 installed and must remain rejected. Its dependencies
   were not changed because the separate TEST runtime uses them.
 - Isolated iOS project/Pods have not yet been generated. Existing LOCAL iOS
