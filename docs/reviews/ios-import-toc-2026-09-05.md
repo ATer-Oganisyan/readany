@@ -66,3 +66,51 @@ Final inspector16:06:53.195 UTC и read-only SQLite: две прежние кн�
 **Вывод:** удаление локального toast subtree само по себе не устраняет проблему; воспроизведение на восстановленном исходном baseline не позволяет назвать её регрессией именно нового TOC candidate. Возможный общий native/automation/modal контекст требует отдельной диагностики; игнорировать failed AX gate или принимать физический tap за семантическую доступность нельзя. Ни diagnostic A, ни неуспешный candidate не являются принятым shipping-решением.
 
 Последний inspector16:12:06.446 UTC: прежние2books, own27 exactp7 `epubcfi(/6/2!/4/2[chapter-1],/34/1:35,/38/1:252)`, progress0.21747735720599323; own30progress0.031068193886570464. После контролей импорта, Cancel, навигации по строкам, reset или дополнительных UI действий не было. Финально открыт TOC исходного baseline.
+
+## Диагностика высоты sheet: expanded AX PASS, обратный цикл не проверен
+
+На неизменном исходном runtime и уже открытом TOC сохранены `/private/tmp/narra-toc-detent-before.png` и свежий `/private/tmp/narra-toc-detent-before-hierarchy.txt`. Canonical check подтвердил Xcode26.5, pasteboard0, build36, current native fingerprint. Его строка профиля отражала default shell TEST/8081, поскольку check вызван без launch overrides; приложение не перезапускалось и endpoint не менялся. Отдельный correct-Air inspector16:14:24.080 подтвердил фактический LOCAL18787 development/installation.
+
+Разрешённый root **диагностический** swipe за область ручки `(50%,50%)→(50%,20%)`, duration600ms,16:14:34.255–36.020 UTC действительно увеличил sheet до большого detent. Flow `2026-09-05_191428/narra-air-toc-detent` exit0: title Table of Contents и обе строки Свет в мастерской/Последняя переправа появились в AX; semantic Close16:14:36.912–38.577 закрыл TOC. [Кадр08 expanded](evidence/ios-import-toc-2026-09-05/08-expanded-detent-ax-pass.png) лично просмотрен. Inspector16:14:50.808: exactp7 и2books неизменны. Это подтверждает зависимость наблюдаемой AX-доступности от detent/перехода, но **не заменяет приёмку исходного half-sheet** и не является полным VoiceOver тестом.
+
+По следующему GO подготовлен цикл reopen→half→expand→contract→semanticClose без импорта и без cold restart. Он не дошёл до TOC: первая private YAML попытка отклонена parser из-за дробного9.4% (никаких UI действий), затем `191534` завершился на Book actions. Единственный bounded retry `191623` добавил ожидание settled controls и5s assertion, но также FAILED до открытия TOC. Снимок показывает Readerp7 без toolbar после center tap; причина не установлена, дополнительные попытки/restart не выполнялись. Поэтому изменение AX **после обратного уменьшения панели не проверено**, нельзя выводить, что причина только в размере, а не в уведомлении о переходе.
+
+Final inspector16:16:52.803: own27 exactp7/progress0.21747735720599323, own30 unchanged,2books. Устройство оставлено на Reader; действий с TEST/импортом/исходниками не было.
+
+## A/B фильтра снимка Maestro: диагностический PASS, не VoiceOver acceptance
+
+По отдельному разрешению root создан только private `/private/tmp/narra-air-snapshot-diagnostic-config.yaml`:
+
+```yaml
+platform:
+  ios:
+    snapshotKeyHonorModalViews: false
+```
+
+Поддержка `--config` проверена по установленному Maestro help; canonical wrapper передаёт параметры через `maestro ... test "$@"`. Глобальная и репозиторная конфигурация не менялись. После canonical fresh LOCAL launch исполнен **тот же** no-import flow с `test-ios --config=/private/tmp/narra-air-snapshot-diagnostic-config.yaml /private/tmp/narra-air-toc-no-import.yaml`.
+
+Run `2026-09-05_191751/narra-air-toc-no-import` exit0: видимый half-sheet остался того же размера, title и обе строки теперь находятся семантически, semantic Close действительно возвращает Reader. [Кадр09](evidence/ios-import-toc-2026-09-05/09-private-snapshot-filter-disabled.png) лично просмотрен. В actual XCTest log `~/.maestro/tests/2026-09-05_191751/xctest_runner_2026-09-05_191752.log:6` записано `snapshotKeyHonorModalViews configured to value: false`, следующая строка сообщает отключение фильтра для показа элементов позади модальных окон. Это подтверждает применение настройки, а не только запись YAML.
+
+Результат локализует существенную зависимость наблюдаемого дерева от фильтра Maestro/XCTest. Однако расширенное дерево может включать недоступные фоновые элементы; **данный PASS не доказывает корректность VoiceOver, не закрывает исходный AX-дефект и не разрешает использовать настройку как молчаливый обход в приёмочных тестах**. Кнопка Close здесь сверена с видимым sheet и фактическим переходом. Final inspector16:18:18.142 UTC: exactp7,2books, LOCAL18787 unchanged. После этого UI остановлен; импорт/исходники/настройки TEST не затрагивались.
+
+## Финальный функциональный контроль отмены внутри TOC — PASS с явной диагностической настройкой
+
+По отдельному GO выполнен один canonical cold launch исходного runtime, затем `/private/tmp/narra-air-toc-fix-cancel.yaml` с той же **private** настройкой snapshotfalse. Это только функциональный touch/cancel gate, не приёмка стандартного AX или VoiceOver. СерверPID4579 и90s cutoff проверены до старта; никаких source/global config изменений.
+
+Run `2026-09-05_191923/narra-air-toc-fix-cancel`, exit0:
+
+| UTC | Факт |
+| --- | --- |
+|16:19:39.780|Add stalledURL|
+|до16:19:55|Semantic own27→Reader→TOC, title+Downloading+Cancel найдены; [кадр10](evidence/ios-import-toc-2026-09-05/10-functional-visible-toc-cancel.png) лично подтверждает видимую кнопку именно при открытом TOC|
+|16:19:55.731–57.012|Semantic tap Cancel, без coordinate workaround|
+|16:19:57.749|Cancel отсутствует, через18s отAdd, не90s timeout; [кадр11](evidence/ios-import-toc-2026-09-05/11-functional-toc-cancelled.png) показывает TOC без карточки|
+|16:19:57.820–59.574|Semantic Close→Reader|
+|16:20:00.340|Cancel/Downloading не появились повторно в Reader|
+|16:20:06.859|Inspector exactp7/2books, `lsof`8099 только серверLISTEN — соединения приложения нет|
+
+Actual driver log `logs/device-xctest.log`16:19:28.396 подтверждает `snapshotKeyHonorModalViews configured to value: false`. Следовательно исходная сборка функционально умеет отменить импорт при открытом TOC; прежний failure нельзя объявлять доказанным физически неработающим Cancel. Стандартный filtered AX/VoiceOver остаётся отдельным нерешённым вопросом. Own27 exactCFI/progress и own30 не изменились; новых книг нет. После завершения дополнительных UI действий не выполнялось.
+
+Независимое root CDP подтверждение16:20:41.463 UTC (ещё до90s отAdd): routeReader, `toasts=[]`, `mountedChannels.default=1`.
+
+После диагностики выполнен ровно один canonical `hierarchy` **без `--config`**, без нажатий и перезапуска приложения; exit0, результат `/private/tmp/narra-air-normal-hierarchy-after-diagnostic.txt`. В `~/.maestro/tests/2026-09-05_192108/maestro.log:30` драйвер запускается с `snapshotKeyHonorModalViews=null`; actual `xctest_runner_2026-09-05_192109.log:6`16:21:12.923 подтверждает `configured to value: (null)`. Таким образом диагностическое переопределение не оставлено в текущем runner для следующего QA. Глобальные конфигурации не менялись.

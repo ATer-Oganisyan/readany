@@ -21,8 +21,12 @@ No PostgreSQL, S3, book worker, import, speech or real model is exercised.
   succeed through reserved capacity.
 - Invalid input returns 400 without changing held active/waiting counts.
 - Abort held requests, inject provider 503, cancel a stalled HTTP 200 body.
-- Launch 40 mixed requests at 5 ms intervals without awaiting each completion;
-  fourteen background requests complete beside foreground traffic.
+- Hold eleven foreground requests with four more queued. A reserved background
+  request and its queued successor must both complete while all foreground
+  requests remain held. Verify the remaining counts are exactly eleven/four.
+- Launch 40 mixed requests at 5 ms intervals without awaiting each completion.
+  Accepted requests complete with 200; bounded-queue overload may return 429.
+  Record completed/rejected counts separately, including background requests.
 - Actual upstream concurrency never exceeds twelve, sampled queue never exceeds
   sixteen; gateway and upstream work drain completely.
 - Run the existing internal lifecycle metrics HTTP regression separately. Its
@@ -55,5 +59,31 @@ thousand-DAU capacity, model quality, cost, native responsiveness or throughput 
 analysis. Continue the separate mixed-load acceptance plan with explicitly owned
 PG/S3 fixtures, actual jobs/publication, worker faults, long open-arrival traffic,
 CPU and oldest-job age. The present fairness assertion only proves background
-request progress in this declared bounded HTTP burst. No external resources were
+request progress beside explicitly held foreground HTTP requests. No external resources were
 created, no live provider was called and nothing was deployed.
+
+## CI regression and deterministic fairness check
+
+Gateway run33977175887 on `ac74deb` passed the main 849 PostgreSQL/S3 tests,
+but failed the separate mixed smoke assertion that every background burst
+request must return 200. The 47-test job finished with 46 PASS / 1 FAIL.
+Increasing the controlled provider body delay to600ms reproduced the failure:
+the open arrival stream legitimately exceeds the bounded queue. A previous
+all-200 observation is retained above, not treated as a universal guarantee.
+
+The explicit held-request barrier now tests background progress independently
+of burst timing. The burst still rejects unexpected statuses and must include
+successful background work. Injecting a503 into the reserved background request
+must fail the fairness gate; failure samples are retained and owned child/data
+resources are cleaned. Production concurrency and queue limits are unchanged.
+
+A second controlled burst holds all upstream responses until all forty arrivals
+are accounted for. At least twelve must be rejected by the twelve-active /
+sixteen-waiting hard cap before any response is released. This tests overload
+without assuming a fast arrival loop or a particular provider delay. Foreground
+and background reserve checks use separate explicit barriers.
+
+Independent review additionally reproduced client EOF preceding the server's
+permit release. The fairness check now waits for the exact eleven-active /
+four-waiting settled state, while continuously checking held foreground requests.
+It does not issue retries or relax the expected counts.

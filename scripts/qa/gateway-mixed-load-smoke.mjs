@@ -24,7 +24,10 @@ function percentiles(values) {
 }
 
 /** Isolated smoke only: no DB, workers, imports, speech, or production capacity claim. */
-export async function runMixedLoadSmoke() {
+export async function runMixedLoadSmoke({ fixtureBodyDelayMs = 100, fixtureFairnessFailure = false, fixtureHoldBurst = false } = {}) {
+  assert.ok(Number.isInteger(fixtureBodyDelayMs) && fixtureBodyDelayMs >= 0 && fixtureBodyDelayMs <= 1000)
+  assert.equal(typeof fixtureFairnessFailure, 'boolean')
+  assert.equal(typeof fixtureHoldBurst, 'boolean')
   const directory = await mkdtemp(join(tmpdir(), 'narra-mixed-load-'))
   const dataDir = join(directory, 'gateway-data')
   const id = randomUUID()
@@ -42,7 +45,7 @@ export async function runMixedLoadSmoke() {
     const timers = []
     res.once('close', () => { activeProvider--; held.delete(name); timers.forEach(clearTimeout) })
     held.set(name, res)
-    if (name.startsWith('hold-')) return
+    if (name.startsWith('hold-') || (fixtureHoldBurst && name.startsWith('mixed-'))) return
     if (name === 'fault-503') { res.writeHead(503).end('local fixture unavailable'); return }
     if (name === 'stall-body') { res.writeHead(200, { 'content-type': 'application/json' }); res.write('{'); return }
     timers.push(setTimeout(() => {
@@ -52,7 +55,7 @@ export async function runMixedLoadSmoke() {
         res.end(body.stream
           ? 'data: {"choices":[{"index":0,"delta":{"content":"fixture"},"finish_reason":null}]}\n\ndata: [DONE]\n\n'
           : JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'fixture' }, finish_reason: 'stop' }] }))
-      }, 100))
+      }, fixtureBodyDelayMs))
     }, 20))
   })
   async function stopChild() {
@@ -130,25 +133,89 @@ export async function runMixedLoadSmoke() {
     const afterInvalid = await health(); assert.equal(afterInvalid.active, 10); assert.equal(afterInvalid.waiting, 12)
     background.forEach(item => item.controller.abort()); await Promise.all(background.map(item => item.promise))
     await until(async () => { const state = await health(); return state.active === 0 && state.waiting === 0 && activeProvider === 0 }, 'first drain')
+    // Explicit fairness barrier, independent of machine speed and service timers.
+    // Eleven foreground calls stay held, four more queue. Background must use
+    // its reserve AND dispatch its next queued call while foreground stays held.
+    const foregroundHeld = Array.from({ length: 11 }, (_, index) => request(`hold-fg-${index}`))
+    await until(async () => (await health()).active === 11 && foregroundHeld.every(item => held.has(item.sample.name)), 'foreground held')
+    const foregroundQueued = Array.from({ length: 4 }, (_, index) => request(`hold-fg-queued-${index}`))
+    await until(async () => (await health()).waiting === 4, 'foreground queued')
+    const firstBackground = request('hold-fairness-first', 'structured_task')
+    await until(() => held.has(firstBackground.sample.name), 'background reserved admission')
+    const nextBackground = request('hold-fairness-next', 'structured_task', 'stream')
+    await until(async () => { const state = await health(); return state.active === 12 && state.waiting === 5 }, 'background queued beside foreground')
+    held.get(firstBackground.sample.name).writeHead(fixtureFairnessFailure ? 503 : 200, { 'content-type': 'application/json' }).end(JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'fixture' }, finish_reason: 'stop' }] }))
+    await firstBackground.promise
+    assert.equal(firstBackground.sample.status, 200, 'Reserved background must complete successfully')
+    await until(() => held.has(nextBackground.sample.name), 'queued background dispatch while foreground held')
+    assert.ok(foregroundHeld.every(item => held.has(item.sample.name)), 'Foreground barrier must remain held')
+    assert.ok(foregroundQueued.every(item => !held.has(item.sample.name)), 'Foreground reserve must not be overfilled')
+    held.get(nextBackground.sample.name).writeHead(200, { 'content-type': 'text/event-stream' }).end('data: {"choices":[{"index":0,"delta":{"content":"fixture"},"finish_reason":null}]}\n\ndata: [DONE]\n\n')
+    await nextBackground.promise
+    assert.equal(nextBackground.sample.status, 200, 'Queued background must complete beside held foreground')
+    // The client can consume EOF before the gateway's finally releases its
+    // permit. Observe settlement, without releasing any foreground barrier.
+    await until(async () => {
+      assert.ok(foregroundHeld.every(item => held.has(item.sample.name)), 'Foreground barrier must remain held through settlement')
+      assert.ok(foregroundQueued.every(item => !held.has(item.sample.name)), 'Foreground queue must remain blocked through settlement')
+      const state = await health()
+      return state.active === 11 && state.waiting === 4 && activeProvider === 11
+    }, 'background permit settlement beside held foreground')
+    const fairnessState = await health()
+    assert.equal(fairnessState.active, 11); assert.equal(fairnessState.waiting, 4)
+    const foreground = [...foregroundHeld, ...foregroundQueued]
+    foreground.forEach(item => item.controller.abort()); await Promise.all(foreground.map(item => item.promise))
+    await until(async () => { const state = await health(); return state.active === 0 && state.waiting === 0 && activeProvider === 0 }, 'fairness drain')
     const fault = request('fault-503'); await fault.promise; assert.ok([502, 503].includes(fault.sample.status))
     const stalled = request('stall-body'); await until(() => held.has('stall-body'), 'stalled upstream')
     stalled.controller.abort(); await stalled.promise
     assert.equal(stalled.sample.status, 'AbortError')
+    await until(async () => { const state = await health(); return state.active === 0 && state.waiting === 0 && activeProvider === 0 }, 'fault drain')
     for (let index = 0; index < 40; index++) { request(`mixed-${index}`, index % 3 ? 'assistant' : 'structured_task', index % 2 ? 'stream' : 'complete'); await sleep(5) }
+    let heldBurstRejected = null
+    if (fixtureHoldBurst) {
+      // No timer can free a slot until all forty arrivals are accounted for.
+      await until(async () => {
+        const state = await health()
+        const completed = observations.filter(row => row.name.startsWith('mixed-'))
+        assert.ok(completed.every(row => row.status === 429), 'Held burst cannot complete before release')
+        heldBurstRejected = completed.length
+        return state.active + state.waiting + completed.length === 40
+      }, 'held burst arrivals accounted')
+      assert.ok(heldBurstRejected >= 12, 'Forty held arrivals must exceed the 12 active + 16 queue hard cap')
+      await until(() => {
+        for (const [name, response] of held) {
+          if (!name.startsWith('mixed-') || response.writableEnded) continue
+          const stream = Number(name.slice(6)) % 2 === 1
+          response.writeHead(200, { 'content-type': stream ? 'text/event-stream' : 'application/json' }).end(stream
+            ? 'data: {"choices":[{"index":0,"delta":{"content":"fixture"},"finish_reason":null}]}\n\ndata: [DONE]\n\n'
+            : JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'fixture' }, finish_reason: 'stop' }] }))
+        }
+        return observations.filter(row => row.name.startsWith('mixed-')).length === 40
+      }, 'held burst completion')
+    }
     await Promise.all(pending)
     await until(async () => { const state = await health(); return state.active === 0 && state.waiting === 0 && activeProvider === 0 }, 'final drain')
     assert.ok(peakProvider <= 12); assert.ok(healthSamples.every(sample => sample.active <= 12 && sample.waiting <= 16))
     assert.ok(observations.every(sample => [200, 429, 502, 503, 'AbortError'].includes(sample.status)), 'Unexpected request outcome')
     const mixedBackground = observations.filter(row => row.name.startsWith('mixed-') && row.purpose === 'structured_task')
-    assert.ok(mixedBackground.length > 0 && mixedBackground.every(row => row.status === 200), 'Background must progress beside foreground')
+    const mixed = observations.filter(row => row.name.startsWith('mixed-'))
+    assert.equal(mixed.length, 40)
+    assert.ok(mixed.every(row => [200, 429].includes(row.status)), 'Open burst may shed overload, not fail accepted work')
+    assert.ok(mixedBackground.some(row => row.status === 200), 'Open burst must include completed background work')
     // Separate actual-method HTTP accounting regression: explicitly not real PG.
     const ledgerCheck = await exec(process.execPath, ['--test', 'services/narra-gateway/test/internal-lifecycle-metrics.test.mjs'], { cwd: root, env: { PATH: process.env.PATH }, timeout: 10000 })
     const sha = (await exec('git', ['rev-parse', 'HEAD'], { cwd: root })).stdout.trim()
     const report = {
       scope: 'credential-free HTTP concurrency smoke; NOT capacity or PG/S3 pipeline acceptance', sha,
-      upstreamProfile: { headerDelayMs: 20, bodyDelayMs: 100, faultStatus: 503 },
+      upstreamProfile: { headerDelayMs: 20, bodyDelayMs: fixtureBodyDelayMs, heldBurst: fixtureHoldBurst, faultStatus: 503 },
       requests: observations.length, outcomes: observations.reduce((acc, row) => { acc[row.status] = (acc[row.status] ?? 0) + 1; return acc }, {}),
-      checks: { reservedInteractive: interactive.map(row => row.sample.status), invalidBodyStatus: invalid.status, mixedBackgroundCompleted: mixedBackground.length },
+      checks: { reservedInteractive: interactive.map(row => row.sample.status), invalidBodyStatus: invalid.status,
+        backgroundFairness: { completed: 2, foregroundHeld: fairnessState.active, foregroundQueued: fairnessState.waiting },
+        mixedBackgroundCompleted: mixedBackground.filter(row => row.status === 200).length,
+        mixedBackgroundRejected: mixedBackground.filter(row => row.status === 429).length,
+        openBurstCompleted: mixed.filter(row => row.status === 200).length,
+        openBurstRejected: mixed.filter(row => row.status === 429).length, heldBurstRejected },
       latencyMs: Object.fromEntries(['stream', 'complete'].map(transport => {
         const rows = observations.filter(row => row.transport === transport && row.status === 200)
         return [transport, { ttfb: percentiles(rows.map(row => row.ttfbMs)), complete: percentiles(rows.map(row => row.elapsedMs)) }]
@@ -164,6 +231,7 @@ export async function runMixedLoadSmoke() {
     return report
   } catch (error) {
     await writeFile(join(directory, 'failure.txt'), String(error), { mode: 0o600 })
+    await writeFile(join(directory, 'observations.json'), JSON.stringify({ observations, healthSamples, rssSamplesKiB }), { mode: 0o600 })
     error.message += `; evidence: ${directory}`
     throw error
   } finally {
