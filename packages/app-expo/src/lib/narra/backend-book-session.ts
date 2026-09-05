@@ -15,7 +15,7 @@ export interface BackendBookSessionDependencies {
     signal: AbortSignal,
   ): Promise<{ pending: boolean; delay: number }>;
   publish(manifest: BackendBookManifest, progress: number): void;
-  publishPreview(preview: BackendCharactersPreview): void;
+  publishPreview(preview: BackendCharactersPreview, manifest: BackendBookManifest): void;
   media(manifest: BackendBookManifest, progress: number, signal: AbortSignal): Promise<void>;
   error(error: unknown): void;
   expired(binding: BackendBookBinding): void;
@@ -146,7 +146,7 @@ export class BackendBookSession {
           if (signal.aborted) return;
           const manifestRunId = manifest.analysis?.runId;
           if (!manifestRunId || !preview.runId || preview.runId === manifestRunId)
-            this.deps.publishPreview(preview);
+            this.deps.publishPreview(preview, manifest);
           delay = preview.pollAfterMs;
         } catch (error) {
           if (!signal.aborted) this.deps.error(error);

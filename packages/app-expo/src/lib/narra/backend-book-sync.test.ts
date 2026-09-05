@@ -161,6 +161,28 @@ async function open(value: Book) {
 }
 
 describe("backend book import and persistence integration", () => {
+  it.each(["edition", "hash", "deleted"])("ignores pending character preview after %s changes", async (change) => {
+    let finish!: (value: unknown) => void;
+    runtime.request.mockImplementation(async (path: string) => {
+      if (path.endsWith("/manifest")) return { availability: "processing", characters_status: "preview_ready",
+        analysis: { run_id: "run-old", stage: "scan", status: "running" }, characters: [] };
+      if (path.endsWith("/characters/preview")) return new Promise((resolve) => { finish = resolve; });
+      return {};
+    });
+    await open({ ...book(), sourceKind: "catalog", bookEditionId: "catalog-id", contentHash: "a".repeat(64) });
+    expect(finish).toBeTypeOf("function");
+    if (change === "deleted") runtime.books = [];
+    else useNarraStore.getState().setBackendBinding("local", {
+      ...useNarraStore.getState().books.local.backendBinding!,
+      ...(change === "edition" ? { bookEditionId: "new-edition" } : { contentSha256: "b".repeat(64) }),
+    });
+    finish({ contract_version: "book-characters-preview-v1", book_edition_id: "catalog-id",
+      status: "preview_ready", run_id: "run-old", poll_after_ms: 1000,
+      characters: [{ character_key: "old", name: "Старый герой", full_name: "", provisional: true,
+        state: "preparing", profile: { provisional: true }, bundle: null }] });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(useBackendBookStatus.getState().books.local?.preview).toBeUndefined();
+  });
   it.each(["resolve", "source"])("does not replace a newer binding after delayed %s", async (phase) => {
     let finish!: (value: unknown) => void;
     const oldResponse = { resolution: "private", book_edition_id: "old-edition", source_uploaded: phase === "resolve" };

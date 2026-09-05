@@ -403,7 +403,12 @@ function createSession(book: Book, progress: number) {
         if (current.sourceKind === "catalog" && manifest.availability === "processing")
           console.warn("[Backend books] Catalog manifest is unexpectedly processing");
       },
-      publishPreview: (preview) => status(book.id, { preview, error: undefined }),
+      publishPreview: (preview, manifest) => {
+        if (!belongsToCurrentBinding(manifest)) return;
+        const current = useLibraryStore.getState().books.find((item) => item.id === book.id);
+        if (!current || current.deletedAt) return;
+        status(book.id, { preview, error: undefined });
+      },
       media: async (manifest, value, signal) => {
         if (belongsToCurrentBinding(manifest))
           await loadBackendCharacterMedia(book.id, value, signal);
