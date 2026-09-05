@@ -1648,7 +1648,7 @@ app.get('/v2/admin/metrics', operatorAuth, async (_req, res, next) => {
     return res.status(503).json({ error: 'Метрики backend недоступны', code: 'UNAVAILABLE' })
   }
   try {
-    res.json(await operationalMetricsRepository.snapshot({
+    const snapshot = await operationalMetricsRepository.snapshot({
       runtime: operationalRuntimeMetrics(),
       concurrency: {
         llm: llmGate.status(),
@@ -1658,7 +1658,11 @@ app.get('/v2/admin/metrics', operatorAuth, async (_req, res, next) => {
         import: importGate.status()
       },
       buildVersion: BUILD_VERSION
-    }))
+    })
+    // Sample after SQL settles, and expose only bounded aggregate counters to
+    // operators. Accounting may retain this permit after provider work ends.
+    const { active, waiting, limit, queue_limit } = internalChatLifecycleGate.status()
+    res.json({ ...snapshot, internalChatLifecycle: { active, waiting, limit, queue_limit } })
   } catch (error) {
     next(error)
   }
