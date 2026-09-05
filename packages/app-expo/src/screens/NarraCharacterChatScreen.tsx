@@ -136,14 +136,15 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
   const messages = narraBook?.chats?.[characterId] ?? [];
   const memory = narraBook?.memories?.[characterId] ?? "";
   const [sending, setSending] = useState(false);
+  // UI state updates after the event batch; it cannot guard two submissions
+  // delivered to the same render before that update.
+  const sendingRef = useRef(false);
   const [greetingLoading, setGreetingLoading] = useState(false);
   const greetingRequestedRef = useRef(false);
   const placeholderRequestedRef = useRef<string | null>(null);
   const unlocked = Boolean(book && character && isCharacterUnlocked(book.progress, character));
   const characterStatus =
-    sending || greetingLoading
-      ? t("narra.characterTyping", "Печатает…")
-      : undefined;
+    sending || greetingLoading ? t("narra.characterTyping", "Печатает…") : undefined;
   const headerSafeAreaTop =
     embedded || presentedAsSheet ? NARRA_CHAT_EMBEDDED_TOP_INSET : insets.top;
   const headerHeight = headerSafeAreaTop + NARRA_CHAT_HEADER_HEIGHT;
@@ -340,17 +341,18 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
   const send = useCallback(
     async (value: string) => {
       const text = value.trim();
-      if (!text || !book || !character || !unlocked || sending) return;
+      if (!text || !book || !character || !unlocked || sendingRef.current) return;
+      sendingRef.current = true;
       setSending(true);
-      const userMessage: NarraChatMessage = {
-        id: Crypto.randomUUID(),
-        role: "user",
-        content: text,
-        createdAt: Date.now(),
-      };
-      const assistantMessageId = Crypto.randomUUID();
-      append(bookId, characterId, userMessage);
       try {
+        const userMessage: NarraChatMessage = {
+          id: Crypto.randomUUID(),
+          role: "user",
+          content: text,
+          createdAt: Date.now(),
+        };
+        const assistantMessageId = Crypto.randomUUID();
+        append(bookId, characterId, userMessage);
         const content = await completeNarraChat({
           messages: [...conversation, { role: "user", content: text }],
           temperature: 0.85,
@@ -371,6 +373,7 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
           description: reportNarraError("character_chat", error).message,
         });
       } finally {
+        sendingRef.current = false;
         setSending(false);
       }
     },
@@ -383,7 +386,6 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
       conversation,
       messages,
       refreshMemory,
-      sending,
       t,
       unlocked,
     ],

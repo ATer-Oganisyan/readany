@@ -106,31 +106,99 @@ afterEach(() => {
 });
 
 describe("character chat screen recovery", () => {
-  it.each([
-    ["en", "Typing…"],
-    ["ru", "Печатает…"],
-  ])("does not invent online presence and localizes active typing in %s", async (language, typing) => {
-    runtime.language = language;
-    runtime.messages.push({ id: "greeting", role: "assistant", content: "Hello", createdAt: 1 });
-    setNarraGatewayAdapter(async () => new Response(new ReadableStream()));
+  it("admits only one send when the same render receives two submit events", async () => {
+    runtime.messages.push({ id: "greeting", role: "assistant", content: "Привет", createdAt: 1 });
+    const responders: Array<(response: Response) => void> = [];
+    const adapter = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          responders.push(resolve);
+        }),
+    );
+    setNarraGatewayAdapter(adapter);
     await act(async () => {
       tree = create(
         <NarraCharacterChatScreen embedded bookId="book" characterId="hero" onBack={vi.fn()} />,
       );
     });
-    const header = () => tree.root.find((node) => String(node.type) === "Header");
-    expect(header().props.subtitle).toBeUndefined();
-    let sending: Promise<void> | undefined;
-    act(() => {
-      sending = tree.root.find((node) => String(node.type) === "Chat").props.onSend("Hello");
-    });
-    expect(header().props.subtitle).toBe(typing);
+    const send = tree.root.find((node) => String(node.type) === "Chat").props.onSend;
+    let first!: Promise<void>;
+    let duplicate!: Promise<void>;
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(60_001);
-      await sending;
+      first = send("Один вопрос");
+      duplicate = send("Один вопрос");
     });
-    expect(header().props.subtitle).toBeUndefined();
+    const requests = adapter.mock.calls.length;
+    const userMessages = runtime.messages.filter((message) => message.role === "user").length;
+    await act(async () => {
+      for (const respond of responders)
+        respond(new Response(JSON.stringify({ text: "Один ответ" })));
+      await Promise.all([first, duplicate]);
+    });
+    expect(requests).toBe(1);
+    expect(userMessages).toBe(1);
+    expect(runtime.messages.filter((message) => message.content === "Один ответ")).toHaveLength(1);
+    expect(tree.root.find((node) => String(node.type) === "Chat").props.isStreaming).toBe(false);
+    setNarraGatewayAdapter(async () => new Response(JSON.stringify({ text: "Следующий ответ" })));
+    await act(async () => {
+      await send("Следующий вопрос");
+    });
+    expect(runtime.messages.at(-1)?.content).toBe("Следующий ответ");
   });
+
+  it("releases the send lock when saving the outgoing message fails before the request", async () => {
+    runtime.messages.push({ id: "greeting", role: "assistant", content: "Привет", createdAt: 1 });
+    const adapter = vi.fn(async () => new Response(JSON.stringify({ text: "Ответ" })));
+    setNarraGatewayAdapter(adapter);
+    await act(async () => {
+      tree = create(
+        <NarraCharacterChatScreen embedded bookId="book" characterId="hero" onBack={vi.fn()} />,
+      );
+    });
+    const chat = () => tree.root.find((node) => String(node.type) === "Chat");
+    runtime.narra.appendChatMessage.mockImplementationOnce(() => {
+      throw new Error("Local save failed");
+    });
+    await act(async () => {
+      await chat().props.onSend("Вопрос");
+    });
+    expect(adapter).not.toHaveBeenCalled();
+    expect(chat().props.isStreaming).toBe(false);
+    await act(async () => {
+      await chat().props.onSend("Повторный вопрос");
+    });
+    expect(adapter).toHaveBeenCalledOnce();
+    expect(runtime.messages.at(-1)?.content).toBe("Ответ");
+  });
+
+  it.each([
+    ["en", "Typing…"],
+    ["ru", "Печатает…"],
+  ])(
+    "does not invent online presence and localizes active typing in %s",
+    async (language, typing) => {
+      runtime.language = language;
+      runtime.messages.push({ id: "greeting", role: "assistant", content: "Hello", createdAt: 1 });
+      setNarraGatewayAdapter(async () => new Response(new ReadableStream()));
+      await act(async () => {
+        tree = create(
+          <NarraCharacterChatScreen embedded bookId="book" characterId="hero" onBack={vi.fn()} />,
+        );
+      });
+      const header = () => tree.root.find((node) => String(node.type) === "Header");
+      expect(header().props.subtitle).toBeUndefined();
+      let sending: Promise<void> | undefined;
+      act(() => {
+        sending = tree.root.find((node) => String(node.type) === "Chat").props.onSend("Hello");
+      });
+      expect(header().props.subtitle).toBe(typing);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_001);
+        await sending;
+      });
+      expect(header().props.subtitle).toBeUndefined();
+    },
+  );
   it.each(["matching", "other-book", "other-page"])(
     "sends only the matched page context to the gateway (%s)",
     async (kind) => {
