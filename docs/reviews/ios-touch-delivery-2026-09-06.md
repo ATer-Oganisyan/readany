@@ -71,3 +71,9 @@ SHA256 `ba03aec4b73464f067beaa69bbba0d86c8b1a584053877eca8d23a63d873d3df`.
 Это повторение диагностического признака на другом жесте. Оно усиливает
 вывод о сбое синтетического ввода, но причина внутри simulator/driver
 ещё не локализована и общий UI gate не принят.
+
+После осмотра один отдельный cleanup-свайп вернул Reader, что основной агент
+подтвердил по screenshot. Второй physical tap не выполнялся. Сравнение
+`/private/tmp/narra-tap-compare-baseline.json` и
+`/private/tmp/narra-tap-compare-final.json` независимо подтвердило точные
+ID/CFI/progress/contentHash/fileHash всех трёх книг. UI оставлен в Reader.
