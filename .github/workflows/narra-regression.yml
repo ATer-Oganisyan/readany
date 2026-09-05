@@ -10,6 +10,8 @@ on:
       - "patches/**"
       - "scripts/qa/expo-factory-race-harness.mm"
       - "scripts/qa/test-expo-factory-race.mjs"
+      - "scripts/qa/expo-fabric-context-harness.swift"
+      - "scripts/qa/test-expo-fabric-context.mjs"
       - "package.json"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
@@ -25,6 +27,8 @@ on:
       - "patches/**"
       - "scripts/qa/expo-factory-race-harness.mm"
       - "scripts/qa/test-expo-factory-race.mjs"
+      - "scripts/qa/expo-fabric-context-harness.swift"
+      - "scripts/qa/test-expo-fabric-context.mjs"
       - "package.json"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
@@ -70,6 +74,9 @@ jobs:
 
       - name: Test actual Expo factory overlap, ownership and publication races
         run: node scripts/qa/test-expo-factory-race.mjs
+
+      - name: Test cached Fabric initializer teardown and live-context errors
+        run: node scripts/qa/test-expo-fabric-context.mjs
 
   mobile-and-core:
     runs-on: ubuntu-latest

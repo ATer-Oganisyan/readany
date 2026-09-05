@@ -59,3 +59,13 @@ Root и второй runtime-агент подтвердили freeze; в окн
 SQL **после падения** подтвердил книгу и закладку без потери последнего прогресса (`22-after-crash-db.txt`): own44da... progress0.0932045816597114/CFI p3, bookmark f17.../CFI p1. Порт8082 descriptor по-прежнему выдаёт правильную LOCAL Metro ссылку; процесс Metro55388 жив, TEST8081 PID32155 неизменен.
 
 Итог bounded прохода: импорт→Open→чтение, add bookmark, paging и сохранение в DB PASS; визуальный bookmarks panel PASS с accessibility ambiguity. **Exact jump, холодный возврат и полный core loop НЕ приняты**. После доказанного crash никаких слепых restart/rebuild/reset не выполнялось; freeze освобождён, передано root и независимому native reviewer.
+
+## Второй native candidate: другой crash до первого QA-действия
+
+После root canonical rebuild/install (compile исправленного `ExpoReactNativeFactory.mm`, fingerprint `b4842db0752f…`) кратковременно появился LOCAL runtime. Получив GO, QA выполнил только read-only inspector и screenshot: приложение уже отсутствовало, на экране SpringBoard. Ни одного UI tap, повторного cold start или reload QA до этого падения не запускал.
+
+Новый crash зарегистрирован **17:25:33+0300**, build36, PID5829, **EXC_BREAKPOINT/SIGTRAP**, main thread0. Это не прежний permissions SIGSEGV: stack идёт через `ExpoFabricView.injectInitializer`, `ExpoFabricView.swift:212`, затем `RCTComponentViewFactory`. В логе в17:25:22.476 точный fatal: **“The app context has been lost”**. UUID именно новой `Narra.debug.dylib`: `06cb188a-fa70-3198-b921-d83b7f78904f`; UUID launcher в header crash не использовать для идентификации этой правки. Безопасный summary: [24-second-crash-sanitized.json](evidence/isolated-ios-air-2026-09-05/24-second-crash-sanitized.json). Полный unified log в репозиторий не добавлялся.
+
+При установке изменился UUID data container; старый путь больше не существует. После разрешения **нового** пути через wrapper, read-only SQL подтвердил прежние собственную книгу, progress0.0932045816597114/CFI p3 и bookmark/CFI p1: [25-second-crash-own-fixture-db.json](evidence/isolated-ios-air-2026-09-05/25-second-crash-own-fixture-db.json). Это подтверждение сохранности данных, не работоспособности восстановления UI.
+
+Серия из пяти запусков **не начата**, bookmark jump и cold restore всё ещё не приняты. QA остановлен на первом новом crash; root и независимый native reviewer получили evidence. Ожидается следующий явно согласованный GO, без самовольных перезапусков или изменений устройства.

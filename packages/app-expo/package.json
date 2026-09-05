@@ -7,7 +7,7 @@
     "entryPoint": "./index.js",
     "autolinking": {
       "apple": {
-        "buildFromSource": ["expo"]
+        "buildFromSource": ["expo", "expo-modules-core"]
       }
     },
     "install": {
