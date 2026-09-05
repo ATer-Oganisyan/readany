@@ -10,7 +10,7 @@ diff --git a/ios/Fabric/ExpoFabricView.swift b/ios/Fabric/ExpoFabricView.swift
 +        // Cached classes can outlive an outgoing runtime while replacement views
 +        // await main-actor registration. Do not retain or revive the old context.
 +        log.error("Cannot create a view '\(viewName)' from module '\(moduleName)': \(Exceptions.AppContextLost().reason)")
-+        let view = (viewClass as? ExpoFabricView.Type ?? ExpoFabricView.self).init(appContext: nil)
++        let view = ExpoFabricView(appContext: nil)
 +        _ = Unmanaged.passRetained(view)
 +        return view
 +      }

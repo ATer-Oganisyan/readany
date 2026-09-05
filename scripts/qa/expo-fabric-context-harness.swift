@@ -47,12 +47,12 @@ func makeView(_ cls: AnyClass) -> AnyObject {
   typealias New = @convention(c) (AnyClass, Selector) -> Unmanaged<AnyObject>
   return unsafeBitCast(method_getImplementation(method), to: New.self)(cls, selector).takeRetainedValue()
 }
+let mode = CommandLine.arguments[1]
 let cls: AnyClass = objc_allocateClassPair(ExpoFabricView.self, "NarraFabricFixture", 0)!
-objc_registerClassPair(cls)
+if mode != "unregistered" { objc_registerClassPair(cls) }
 var context: AppContext? = AppContext()
 weak var oldContext = context
 ExpoFabricView.injectInitializer(appContext: context!, moduleName: "module", viewName: "view", toViewClass: cls)
-let mode = CommandLine.arguments[1]
 if mode == "missing-module" { context!.moduleRegistry.holder = nil; _ = makeView(cls); exit(2) }
 if mode == "missing-view" { context!.moduleRegistry.holder!.definition.views = [:]; _ = makeView(cls); exit(3) }
 if mode == "create-failed" { context!.moduleRegistry.holder!.definition.views["view"]!.failsCreation = true; _ = makeView(cls); exit(4) }
@@ -71,7 +71,21 @@ context = nil
 precondition(oldContext == nil && contextDeaths == 1)
 autoreleasepool {
   let view = makeView(cls) as! ExpoFabricView
-  precondition(object_getClass(view) === cls && view.appContext == nil && !view.eventsInstalled)
+  let expectedClass: AnyClass = ProcessInfo.processInfo.environment["NARRA_BASE_FALLBACK"] == "1" ? ExpoFabricView.self : cls
+  precondition(object_getClass(view) === expectedClass && view.appContext == nil && !view.eventsInstalled)
+  if mode == "unregistered" {
+    // macOS Foundation may tolerate this, while iOS AX asks additional class
+    // metadata questions. Inspect raw ObjC class before Swift type metadata or
+    // Bundle(for:) can realize/register it implicitly on this host runtime.
+    let instanceClass: AnyClass = object_getClass(view)!
+    let className = String(cString: class_getName(instanceClass))
+    if objc_lookUpClass(className) !== instanceClass {
+      print("UNREGISTERED_INSTANCE_CLASS")
+      exit(87)
+    }
+    _ = Bundle(for: type(of: view))
+    _ = view.responds(to: NSSelectorFromString("narraMissingAccessibilitySelector"))
+  }
 }
 precondition(viewDeaths == 1)
 // Re-registration must restore actual module-backed view construction.

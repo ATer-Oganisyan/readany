@@ -19,7 +19,7 @@ The latest actual diff of **open** [PR #48933](https://github.com/expo/expo/pull
 returns an inert view when the combined context/module guard fails. Its initial
 strong-holder description is obsolete; permanent strong context retention risks
 preventing module teardown. Our candidate is narrower: only a nil weak context
-returns an inert same-class ExpoFabricView, initialized with nil context and
+returns an inert registered base ExpoFabricView, initialized with nil context and
 retained under the existing ObjC initializer convention. Missing module in a
 live context and missing/uncreatable view still reach their original terminal
 errors. No global context holder, fallback to another runtime or event replay.
@@ -41,7 +41,8 @@ executed, not inferred from source text.
 - Old/new contexts deallocate, and inert/real views release correctly; no strong
   global context retention is introduced.
 
-All ten subprocess cases pass locally, including after dependency patching.
+All seventeen subprocess cases pass locally, including the prior candidate
+negative control and installed-candidate transition handling.
 The runner also executes the actual Apple autolinking resolver and asserts
 `configuration.buildFromSource` includes `expo-modules-core`.
 Foundation fixture event setup is not
@@ -57,7 +58,31 @@ is instead the live missing-module branch, this candidate intentionally leaves
 it visible for separate diagnosis. No dependency installation, simulator action,
 app build, data wipe or model request was performed while preparing this change.
 
-## Root installation and native verification
+## Third native crash and candidate correction
+
+`Narra-2026-09-05-173346.ips` (PID 17543) aborts in Objective-C class metadata
+resolution via `NSBundle.bundleForClass` during UIAccessibilityAutomation. The
+first fallback instantiated the cached dynamic wrapper class. Actual Expo
+`makeViewClass` deliberately does not call `objc_registerClassPair` (Expo Go name
+collisions); our first fixture incorrectly registered it and missed this risk.
+
+The corrected candidate allocates `ExpoFabricView(appContext: nil)`, a normal
+registered base class, not the wrapper. Normal module creation already returns
+the concrete view rather than the cached wrapper, and RN's factory does not
+require exact instance-class equality. Neither registering the cached class nor
+disabling accessibility is introduced.
+
+The updated fixture omits class registration in its targeted mode and checks raw
+`object_getClass`/`class_getName` against `objc_lookUpClass` **before** Swift type
+metadata or Bundle access. Dynamic fallback fails this registered-instance
+invariant (exit 87); base fallback passes, then executes Bundle/selector queries,
+reinjection and cleanup. Initial macOS Foundation-only Bundle probes did not
+reproduce the exact iOS SIGABRT; class realization there can change later lookup
+results. This is evidence of corrected class safety, not a claimed AX crash
+reproduction. Repeated native accessibility snapshots and active-screen behavior
+remain mandatory acceptance gates.
+
+## Initial dynamic-fallback installation and native verification
 
 Root subsequently installed the patch with pnpm 9.15.0, preserving dependency
 versions, and added `expo-modules-core` to the Apple source-build allowlist.
@@ -73,9 +98,13 @@ at 9%, and actual taps on My books / that book open a fully rendered Reader.
 The restored CFI matches exactly
 `epubcfi(/6/2!/4/2[chapter-1],/12/1:251,/18/1:113)`.
 Root independently inspected both screenshots, not just inspector state.
-Further repeated-start and bookmark-jump checks are still in progress.
-This does not establish full UIKit component coverage or long-running stability.
+The exact bookmark jump also passed in that first session. The second launch
+then failed in accessibility inspection as described above; the planned five
+starts were not accepted. These observations concern the initial dynamic
+fallback, not acceptance of the subsequently corrected base fallback.
 
 The CI macOS job now also runs this Swift harness. The earlier factory-only
 native job passed on GitHub in run33971889063 (`4300d4e`), together with mobile,
-core and TypeScript; the newly added Fabric job step still needs its hosted run.
+core and TypeScript. The initial Fabric harness also passed on GitHub in
+run33972092397 (`201fed9`), but lacked the unregistered-class case that found the
+next issue. The corrected base-fallback harness still needs its hosted run.
