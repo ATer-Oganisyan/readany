@@ -1,4 +1,5 @@
 import express from 'express'
+import { createDeadlineSignal, requestAbortSignal } from './concurrency.mjs'
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { extractEmbeddedBookCover } from './book-source-cover.mjs'
 import { extractStructuredBookText, representativeTextSelection } from './book-source-text.mjs'
@@ -2747,10 +2748,8 @@ export function createInternalGenerationRouter({ token, service, logger = consol
   router.use(express.json({ limit: '1mb' }))
   const endpoint = (operation) => async (req, res) => {
     const startedAt = Date.now()
-    const controller = new AbortController()
-    const abort = () => controller.abort(new Error('internal generation client disconnected'))
-    req.once('aborted', abort)
-    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(10 * 60_000)])
+    const deadline = createDeadlineSignal(requestAbortSignal(req, res), 10 * 60_000)
+    const { signal } = deadline
     try {
       res.json({ result: await operation(req.body, signal) })
     } catch (error) {
@@ -2775,7 +2774,7 @@ export function createInternalGenerationRouter({ token, service, logger = consol
       })
       res.status(status).json({ error: error.message, code })
     } finally {
-      req.removeListener('aborted', abort)
+      deadline.dispose()
     }
   }
   router.post('/v1/book-markup', endpoint((body, signal) => service.generateBookMarkup(body, signal)))

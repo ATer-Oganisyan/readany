@@ -10,6 +10,15 @@ PostgreSQL schema is in [`migrations/001_book_markup.sql`](migrations/001_book_m
 
 ## LLM request parameters
 
+Public `/v2/ai/chat/complete` and `/v2/ai/chat/stream` wait for admission for at
+most `LLM_QUEUE_TIMEOUT_MS` (default 30000; integer 1–120000). An expired queued
+request returns HTTP 504 with `code: TIMEOUT` and never starts a provider call.
+The queue deadline is disposed on admission: it does not cancel admitted work
+or prematurely release its slot. Provider timeouts remain separate. Internal
+generation retains its 10-minute request deadline and now also cancels when a
+client disconnects after sending the full POST body. This does not bound every
+analytics await or establish a total public end-to-end deadline.
+
 The Gateway, not the client, owns model sampling and reasoning parameters. The
 legacy `temperature` field is still accepted by `/v2/ai/chat/stream` and
 `/v2/ai/chat/complete` for mobile compatibility, but its value is ignored.

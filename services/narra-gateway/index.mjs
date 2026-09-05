@@ -26,9 +26,10 @@ import {
 } from './provider-response.mjs'
 import { parseEventBatch } from './events.mjs'
 import { createEventStore } from './event-store.mjs'
+import { createBestEffortEventWriter } from './best-effort-events.mjs'
 import { readBoundedBody } from './safe-fetch.mjs'
 import { fetchImportSource, importSourceFailure } from './import-source.mjs'
-import { createConcurrencyGate, requestAbortSignal, withTimeout } from './concurrency.mjs'
+import { acquireWithDeadline, createConcurrencyGate, requestAbortSignal, withTimeout } from './concurrency.mjs'
 import { createWorkloadConcurrencyGate, chatWorkload } from './workload-concurrency.mjs'
 import { parseEnvBool, parseEnvInt } from './env.mjs'
 import { listenGateway } from './gateway-listener.mjs'
@@ -232,6 +233,7 @@ const KANDINSKY_REQUEST_TIMEOUT_MS = kandinskyRequestTimeoutMs(process.env)
 const VIDEO_QUEUE_LIMIT = envInt('VIDEO_QUEUE_LIMIT', 4, 100)
 const LLM_CONCURRENCY = envInt('LLM_CONCURRENCY', 12, 100)
 const LLM_QUEUE_LIMIT = envInt('LLM_QUEUE_LIMIT', 16, 500)
+const LLM_QUEUE_TIMEOUT_MS = envInt('LLM_QUEUE_TIMEOUT_MS', 30_000, 120_000)
 // SALUTE_SPEECH_PERS is capped at five upstream streams. Reject a stale or
 // accidental Railway override above the verified upstream scope.
 const SPEECH_CONCURRENCY = envInt('SPEECH_CONCURRENCY', 5, 5)
@@ -1137,6 +1139,8 @@ const eventStore = createEventStore({
   tractionToken: TRACTION_INGEST_TOKEN
 })
 eventStore.start()
+const internalEventWriter = createBestEffortEventWriter({ append: events => eventStore.append(events) })
+let internalAnalyticsDegraded = false
 const coverJobStore = createCoverJobStore({
   dataDir,
   environment: ANALYTICS_ENV,
@@ -1302,7 +1306,7 @@ function actorIdFor(req) {
 
 async function appendInternalEvent(req, eventName, properties, eventId = randomUUID()) {
   try {
-    await eventStore.append([{
+    const outcome = await internalEventWriter.write([{
       event_id: eventId,
       event_name: eventName,
       actor_id: actorIdFor(req),
@@ -1312,6 +1316,11 @@ async function appendInternalEvent(req, eventName, properties, eventId = randomU
       schema_version: 1,
       properties
     }])
+    if (outcome === 'persisted') internalAnalyticsDegraded = false
+    else if (!internalAnalyticsDegraded) {
+      internalAnalyticsDegraded = true
+      console.error('[analytics] bounded internal persistence degraded:', outcome, internalEventWriter.status())
+    }
   } catch (error) {
     // Product requests must keep working if the analytics volume is degraded.
     console.error('[analytics] internal event was not persisted:', error?.message || error)
@@ -1791,7 +1800,7 @@ app.post('/v2/ai/chat/stream', aiLimit, aiDailyLimit, express.json({ limit: '1mb
   let requestPurpose
   try {
     const input = parseChatBody(req.body, { stream: true })
-    release = await llmGate.acquire(clientSignal, { workload: chatWorkload(input) })
+    release = await acquireWithDeadline(llmGate, clientSignal, { workload: chatWorkload(input) }, LLM_QUEUE_TIMEOUT_MS)
     // Правовые рамки РФ — обязанность сервера: старый или модифицированный
     // клиент не может их обойти. Идемпотентно к рамке, присланной клиентом.
     const messages = withChatCompliance(input.messages, input.purpose)
@@ -1906,7 +1915,7 @@ app.post('/v2/ai/chat/complete', aiLimit, aiDailyLimit, express.json({ limit: '1
   let requestPurpose
   try {
     const input = parseChatBody(req.body)
-    release = await llmGate.acquire(clientSignal, { workload: chatWorkload(input) })
+    release = await acquireWithDeadline(llmGate, clientSignal, { workload: chatWorkload(input) }, LLM_QUEUE_TIMEOUT_MS)
     // Диалоговые purposes и здесь получают серверную правовую рамку.
     const messages = withChatCompliance(input.messages, input.purpose)
     analyticsOrigin = input.origin
