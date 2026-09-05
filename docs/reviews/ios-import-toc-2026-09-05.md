@@ -37,3 +37,32 @@
 Expected: видимая кнопка отмены в оглавлении доступна тем же семантическим способом, что в Reader. Actual: карточка видима, но AX-поиск Cancel не находит её до закрытия sheet. Причину в host/modal ownership этим проходом не устанавливаем. Физическое нажатие Cancel внутри TOC намеренно не использовалось и не проверено; VoiceOver целиком не тестировался. Exit0 общего flow означает успешное завершение диагностической последовательности и cleanup, **не PASS доступности TOC**.
 
 Баг передан root до исправлений. Новые UI действия остановлены. Отдельный уже известный дефект перекрытия текста loading-карточкой этим проходом не исправлялся.
+
+## TOC-local host candidate: NOT ACCEPTED (freeze19:02:26)
+
+После stable GO выполнен canonical fresh process без native rebuild. Планировались две приёмки: Cancel непосредственно внутри TOC и отдельный TOC→Reader handoff. Первый flow остановлен на новом AX blocker, второй импорт **не запускался**.
+
+- `2026-09-05_190325/narra-air-toc-fix-cancel`, Add16:03:41.322 UTC; semantic TOC16:03:53.664–56.550; title assertion FAILED16:04:14.055. [Кадр04](evidence/ios-import-toc-2026-09-05/04-candidate-toc-whole-ax-absent.png) показывает полноценное оглавление, его строки и Cancel. Но failed hierarchy `step-029-assertCondition-Table_of_Contents.json` не содержит ни заголовка, ни строк TOC, ни Downloading/Cancel; доступен underlying Reader. Ранний успешный Close assertion поэтому не доказывает доступность Close именно sheet.
+- Свежий canonical hierarchy `/private/tmp/narra-toc-fix-failed-fresh-hierarchy.txt` подтвердил то же состояние; NarraPID56651 ещё имел established соединение8099. Root read-only CDP независимо подтвердил активный route `ReaderTOC-NzT0chGXbp33nYusy1_NS`.
+- Никакой Cancel не исполнялся. К16:05:04 соединение уже закрылось само. После исчезновения toast свежий hierarchy `/private/tmp/narra-toc-fix-after-request-hierarchy.txt`16:05:25 (более103s послеAdd) всё ещё не содержит TOC; screenshot `/private/tmp/narra-toc-fix-after-request.png` показывает sheet без toast. Это **не успешная пользовательская отмена** и не только короткая анимация перехода.
+
+По согласованию с root проведён один дополнительный контроль **без импорта** на том же frozen candidate: canonical cold launch→Library→own27→Book actions→Table of Contents. Flow `2026-09-05_190609/narra-air-toc-no-import` тоже FAILED title AX assertion после actual open и ожидания анимации. [Кадр05](evidence/ios-import-toc-2026-09-05/05-candidate-no-import-toc-ax-absent.png) показывает оглавление без уведомления; сохранённое дерево `step-013-assertCondition-Table_of_Contents.json` не представляет его заголовок. Проверки строк и нажатие Close после failed assertion не выполнялись. Таким образом, blocker воспроизводится без активного импорта и не требует передачи toast между экранами. Конкретная причина пока не установлена; candidate нельзя принимать по одному визуальному виду.
+
+Final inspector16:06:53.195 UTC и read-only SQLite: две прежние книги, own27 exact p7 CFI/progress без изменений, own30 неизменна. Никаких координатных обходов Cancel, reset или изменений TEST. UI оставлен на открытом TOC; новые действия остановлены, source edits не выполнялись. Историческая узкая приёмка Library→Reader остаётся отдельной от проваленной приёмки этого candidate.
+
+## Контролируемое сравнение: дефект нельзя приписать только candidate
+
+По отдельным GO root выполнены ещё два **no-import** холодных прогона тем же `/private/tmp/narra-air-toc-no-import.yaml`. Во всех четырёх сравнениях экран визуально отображается, но title AX assertion не проходит; строки/Close после него не исполняются.
+
+| Вариант | Maestro run | Результат |
+| --- | --- | --- |
+| TOC-local candidate + stalled import |190325|Title/строки/Cancel отсутствуют в AX; отсутствие sheet в свежем дереве сохраняется и после завершения запроса|
+| Тот же candidate, холодный запуск без импорта |190609|Title AX FAIL; [кадр05](evidence/ios-import-toc-2026-09-05/05-candidate-no-import-toc-ax-absent.png)|
+| Diagnostic A: только локальный TOC toast subtree удалён, ownerTOC оставлен; freeze19:08:51 |190922|Title AX FAIL; [кадр06](evidence/ios-import-toc-2026-09-05/06-diagnostic-a-no-import.png)|
+| Исходные четыре mobile-файла точно восстановлены автором до HEAD695dcb1; freeze19:10:48 |191122|Title AX FAIL; [кадр07](evidence/ios-import-toc-2026-09-05/07-original-baseline-no-import.png)|
+
+Артефакты двух контролей: `~/.maestro/tests/2026-09-05_190922/narra-air-toc-no-import` и `~/.maestro/tests/2026-09-05_191122/narra-air-toc-no-import`; каждый содержит `takeScreenshot/toc-no-import-before-ax.png` и `screen-hierarchy/step-013-assertCondition-Table_of_Contents.json`. Поиск в обоих failed деревьях не находит Table of Contents, Свет в мастерской, Последняя переправа. Screenshot каждого лично просмотрен: все эти элементы визуально на месте.
+
+**Вывод:** удаление локального toast subtree само по себе не устраняет проблему; воспроизведение на восстановленном исходном baseline не позволяет назвать её регрессией именно нового TOC candidate. Возможный общий native/automation/modal контекст требует отдельной диагностики; игнорировать failed AX gate или принимать физический tap за семантическую доступность нельзя. Ни diagnostic A, ни неуспешный candidate не являются принятым shipping-решением.
+
+Последний inspector16:12:06.446 UTC: прежние2books, own27 exactp7 `epubcfi(/6/2!/4/2[chapter-1],/34/1:35,/38/1:252)`, progress0.21747735720599323; own30progress0.031068193886570464. После контролей импорта, Cancel, навигации по строкам, reset или дополнительных UI действий не было. Финально открыт TOC исходного baseline.
