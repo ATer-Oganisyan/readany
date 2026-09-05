@@ -1,5 +1,24 @@
 # Подписка → локальный шлюз → модуль провайдеров NARRA
 
+## Повторная живая проверка на 1c54f56
+
+Одна попытка `gateway-http-canary.mjs --live`, Node24: exit0,
+HTTP6200мс, всего6327мс, request ID `7104ddeb-4acf-4749-ad10-79ae1d125371`.
+Точное тело сохранило ранее проверенный SHA; fallback и повторов нет.
+Предварительно8 model-free CLI/HTTP/lifecycle тестов прошли без пропусков.
+Временные gateway/bridge закрыты штатным finally. Работающий LOCAL18787,
+Metro и клиентские настройки не менялись.
+
+[Артефакт повторной проверки](evidence/subscription-http-recheck-2026-09-05.json)
+содержит фактический ответ. Транспорт принят; качество профилей снова не принято:
+trait описывает действие («помог Анне починить лодку»), а не устойчивую черту.
+Это короткий canary prompt, не production synthesis. Нужен новый полноценный
+multi-chunk прогон и клиентская проверка; 6.2с не являются p95 или SLA.
+
+Использован штатный сохранённый вход CLI, без чтения/копирования auth-файлов;
+этот механизм описан в [OpenAI Docs](https://learn.chatgpt.com/docs/non-interactive-mode#authenticate-in-automation).
+Подписочный bridge остаётся ограниченным QA-транспортом, не публичным API.
+
 ## Дополнительный настоящий HTTP-прогон: PASS транспорта
 
 `scripts/qa/gateway-http-canary.mjs --live`, Node24, завершение exit0:
