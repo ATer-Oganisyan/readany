@@ -5,12 +5,18 @@ on:
     paths:
       - "services/narra-gateway/**"
       - "stats/narra/**"
+      - "scripts/qa/book-analysis-pipeline-canary*"
+      - "scripts/qa/multichunk-book-fixture*"
+      - "scripts/qa/gateway-mixed-load-smoke*"
       - ".github/workflows/narra-gateway.yml"
   push:
     branches: [main]
     paths:
       - "services/narra-gateway/**"
       - "stats/narra/**"
+      - "scripts/qa/book-analysis-pipeline-canary*"
+      - "scripts/qa/multichunk-book-fixture*"
+      - "scripts/qa/gateway-mixed-load-smoke*"
       - ".github/workflows/narra-gateway.yml"
 
 permissions:
@@ -94,6 +100,34 @@ jobs:
         run: |
           docker logs narra-ci-minio || true
           docker rm --force narra-ci-minio || true
+
+      - name: Create fresh own-book pipeline databases
+        working-directory: services/narra-gateway
+        env:
+          QA_PROVISION_DB_URL: postgresql://narra_ci:narra_ci_test_only@127.0.0.1:5432/postgres
+        run: |
+          node --input-type=module <<'JS'
+          import pg from 'pg';
+          const client = new pg.Client({ connectionString: process.env.QA_PROVISION_DB_URL });
+          await client.connect();
+          try {
+            await client.query('CREATE DATABASE narra_qa_pipeline_ci_window');
+            await client.query('CREATE DATABASE narra_qa_pipeline_ci_siblings');
+          } finally { await client.end(); }
+          JS
+
+      - name: Test multi-chunk publication and isolated mixed HTTP traffic
+        env:
+          QA_DB_URL: postgresql://narra_ci:narra_ci_test_only@127.0.0.1:5432/narra_qa_pipeline_ci_window
+          QA_DB_CONFIRM: narra_qa_pipeline_ci_window
+          QA_MULTI_DB_URL: postgresql://narra_ci:narra_ci_test_only@127.0.0.1:5432/narra_qa_pipeline_ci_siblings
+          QA_MULTI_DB_CONFIRM: narra_qa_pipeline_ci_siblings
+        # Explicit mock-only fixtures; no Codex CLI, subscription or paid provider.
+        run: >-
+          node --test --test-concurrency=1
+          scripts/qa/book-analysis-pipeline-canary.test.mjs
+          scripts/qa/multichunk-book-fixture.test.mjs
+          scripts/qa/gateway-mixed-load-smoke.test.mjs
 
       - name: Test Stats contract
         working-directory: stats/narra

@@ -16,7 +16,7 @@ import { createBookAnalysisValidateWorker } from '../../services/narra-gateway/b
 import { createBookAnalysisPublishWorker } from '../../services/narra-gateway/book-analysis-publish-worker.mjs';
 import { createInternalGenerationService, createInternalGenerationRouter } from '../../services/narra-gateway/internal-generation-service.mjs';
 import { createGenerationServiceClient } from '../../services/narra-gateway/generation-service-client.mjs';
-import { createStagedFixtureProvider } from './staged-fixture-provider.mjs';
+import { MULTICHUNK_FIXTURE, createMultichunkFixtureModel, assertMultichunkAcceptance } from './multichunk-book-fixture.mjs';
 
 const requireGateway = createRequire(new URL('../../services/narra-gateway/package.json', import.meta.url));
 const quiet = { info() {}, warn() {}, error() {} };
@@ -155,8 +155,12 @@ export function assertFixtureSemanticAcceptance({ observations, traits, live = f
   }
 }
 
-export async function runPipelineCanary({ databaseUrl, confirmation, stagedMock = false, stagedLive = false, onCapture, signal } = {}) {
+export async function runPipelineCanary({ databaseUrl, confirmation, stagedMock = false, stagedLive = false, onCapture, signal, fixtureId = 'window' } = {}) {
   if (typeof stagedMock !== 'boolean' || typeof stagedLive !== 'boolean' || (stagedMock && stagedLive)) throw new Error('Choose exactly one staged mode');
+  if (!['window', 'siblings'].includes(fixtureId)) throw new Error('Unknown own fixture');
+  if (fixtureId === 'siblings' && (stagedMock || stagedLive)) throw new Error('Multi-chunk fixture is mock-only until its separate staged plan is reviewed');
+  const multichunk = fixtureId === 'siblings';
+  const fixture = multichunk ? MULTICHUNK_FIXTURE : FIXTURE;
   const target = validateDedicatedDatabase(databaseUrl, confirmation);
   const { Pool } = requireGateway('pg');
   const pool = new Pool({ connectionString: target.databaseUrl, ssl: false, max: 4, connectionTimeoutMillis: 3000, statement_timeout: 10000 });
@@ -172,7 +176,7 @@ export async function runPipelineCanary({ databaseUrl, confirmation, stagedMock 
     await runBookMarkupMigrations(pool, { logger: quiet });
     const storage = memoryObjectStorage();
     const sourceKey = `canary/${editionId}/source.txt`;
-    const source = await storage.putBytes({ objectKey: sourceKey, bytes: Buffer.from(FIXTURE), mimeType: 'text/plain' });
+    const source = await storage.putBytes({ objectKey: sourceKey, bytes: Buffer.from(fixture), mimeType: 'text/plain' });
     await pool.query("INSERT INTO book_editions(id,scope,owner_subject_id,content_sha256,title,author,format,status,source_storage,expires_at) VALUES($1,'private',$2,$3,'Окно','QA','txt','marking_up','temporary',now() + interval '1 day')", [editionId, randomUUID(), source.contentHash]);
     seeded = true;
     const retention = (await pool.query("SELECT source_storage, expires_at > now() AS unexpired FROM book_editions WHERE id=$1", [editionId])).rows[0];
@@ -182,9 +186,11 @@ export async function runPipelineCanary({ databaseUrl, confirmation, stagedMock 
     const ensured = await repository.ensureAnalysisRun({ bookEditionId: editionId, inputHash: source.contentHash, pipelineId: 'narra' });
     const runId = ensured.run.id;
     const calls = [];
-    const mock = createFixtureModel(calls);
+    const mock = multichunk ? createMultichunkFixtureModel(calls) : createFixtureModel(calls);
     let completeChat = mock;
     if (stagedMock || stagedLive) {
+      // Ordinary mock CI must not load machine-specific subscription tooling.
+      const { createStagedFixtureProvider } = await import('./staged-fixture-provider.mjs');
       let pendingInput;
       staged = await createStagedFixtureProvider({ mode: stagedLive ? 'live' : 'mock', signal, approvalTimeoutMs: 90000, onCapture,
         ...(stagedMock ? {
@@ -224,35 +230,40 @@ export async function runPipelineCanary({ databaseUrl, confirmation, stagedMock 
       ...(staged ? { leaseSeconds: 480, leaseRenewMs: 30000 } : {}) };
     const workers = createCanaryWorkers(common);
     const lifecycle = [];
-    for (const index of [0, 1, 2, 3, 3, 4, 5]) {
+    const sequence = multichunk ? [0, 1, 1, 1, 2, 3, 3, 3, 4, 5] : [0, 1, 2, 3, 3, 4, 5];
+    for (const index of sequence) {
+      signal?.throwIfAborted();
       const result = await workers[index].runOnce();
       lifecycle.push(result);
       assert.equal(result.status, 'completed', `worker ${index}: ${JSON.stringify(result)}`);
     }
     const run = (await pool.query('SELECT status, stage, text_length FROM book_analysis_runs WHERE id=$1', [runId])).rows[0];
     assert.equal(run.status, 'ready');
-    const observations = (await pool.query('SELECT id, observation_type, evidence_quote, evidence_start_offset, evidence_end_offset FROM book_analysis_observations WHERE run_id=$1 ORDER BY evidence_start_offset', [runId])).rows;
+    const observations = (await pool.query('SELECT id, observation_type, entity_candidate, evidence_quote, evidence_start_offset, evidence_end_offset FROM book_analysis_observations WHERE run_id=$1 ORDER BY evidence_start_offset', [runId])).rows;
     const artifacts = (await pool.query('SELECT artifact_kind,status,data FROM book_analysis_artifacts WHERE run_id=$1', [runId])).rows;
     const profile = artifacts.find(row => row.artifact_kind === 'character_profile');
     assert.ok(profile);
-    assertFixtureSemanticAcceptance({ observations, traits: profile.data.profile.traits, live: stagedLive });
-    assert.ok(profile.data.selectedEvidenceIds.every(id => observations.some(row => row.id === id)));
+    if (!multichunk) assertFixtureSemanticAcceptance({ observations, traits: profile.data.profile.traits, live: stagedLive });
+    const profiles = artifacts.filter(row => row.artifact_kind === 'character_profile');
+    for (const item of profiles) assert.ok(item.data.selectedEvidenceIds.every(id => observations.some(row => row.id === id)));
     assert.equal(artifacts.find(row => row.artifact_kind === 'validation_report')?.data.valid, true);
     assert.equal(artifacts.find(row => row.artifact_kind === 'book_markup')?.status, 'published');
     const publications = (await pool.query('SELECT data FROM book_analysis_publications WHERE run_id=$1', [runId])).rows;
     assert.equal(publications.length, 1);
-    assert.equal(publications[0].data.markup.characters.length, 1);
+    assert.equal(publications[0].data.markup.characters.length, multichunk ? 2 : 1);
+    const chunks = (await pool.query('SELECT core_start_offset,core_end_offset,context_start_offset,context_end_offset FROM book_analysis_chunks WHERE run_id=$1 ORDER BY ordinal', [runId])).rows;
+    if (multichunk) assertMultichunkAcceptance({ observations, profiles, markup: publications[0].data.markup, chunks });
     const replay = await repository.ensureAnalysisRun({ bookEditionId: editionId, inputHash: source.contentHash, pipelineId: 'narra' });
     assert.equal(replay.run.id, runId);
     const beforeReplay = calls.length;
     for (const worker of workers) assert.equal((await worker.runOnce()).status, 'idle');
     assert.equal(calls.length, beforeReplay);
-    assert.equal(calls.filter(call => call.operation === 'scan_book_chunk').length, 1);
-    for (const operation of ['synthesize_character_profile', 'recall_character_traits', 'audit_character_profile']) assert.equal(calls.filter(call => call.operation === operation).length, 1);
-    return { live: stagedLive, database: target.database, runId, fixtureHash: source.contentHash, calls,
+    assert.equal(calls.filter(call => call.operation === 'scan_book_chunk').length, multichunk ? 3 : 1);
+    for (const operation of ['synthesize_character_profile', 'recall_character_traits', 'audit_character_profile']) assert.equal(calls.filter(call => call.operation === operation).length, multichunk ? 2 : 1);
+    return { live: stagedLive, fixtureId, chunkCount: chunks.length, characterCount: profiles.length, database: target.database, runId, fixtureHash: source.contentHash, calls,
       ...(staged ? { approvalDirectory: staged.directory, staged: staged.status() } : {}),
       jobsCompleted: lifecycle.length, observations: observations.length, publications: publications.length,
-      traits: profile.data.profile.traits.map(trait => trait.value), idempotent: true,
+      traits: profiles.flatMap(item => item.data.profile.traits.map(trait => trait.value)), idempotent: true,
       scope: `actual workers -> PostgreSQL repository -> loopback generator client/router -> actual internal service with ${stagedLive ? 'separately approved live fixture calls; only this short fixture is tested' : 'mock LLM; not live quality evidence'}` };
   } finally {
     try { await staged?.close(); }
@@ -266,12 +277,13 @@ export async function runPipelineCanary({ databaseUrl, confirmation, stagedMock 
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const flags = process.argv.slice(2);
-  if (flags.length > 1 || flags.some(flag => !['--run-mock', '--stage-mock', '--stage-live', '--dry-run', '--help'].includes(flag))) throw new Error('Use one of --run-mock, --stage-mock, --stage-live, --dry-run or --help');
+  if (flags.length > 1 || flags.some(flag => !['--run-mock', '--run-multichunk-mock', '--stage-mock', '--stage-live', '--dry-run', '--help'].includes(flag))) throw new Error('Use one of --run-mock, --run-multichunk-mock, --stage-mock, --stage-live, --dry-run or --help');
   const controller = new AbortController();
   const stop = () => controller.abort(new Error('Canary interrupted'));
   process.once('SIGINT', stop); process.once('SIGTERM', stop);
-  try { console.log(JSON.stringify(['--run-mock', '--stage-mock', '--stage-live'].includes(flags[0])
+  try { console.log(JSON.stringify(['--run-mock', '--run-multichunk-mock', '--stage-mock', '--stage-live'].includes(flags[0])
     ? await runPipelineCanary({ databaseUrl: process.env.QA_DB_URL, confirmation: process.env.QA_DB_CONFIRM,
+      fixtureId: flags[0] === '--run-multichunk-mock' ? 'siblings' : 'window',
       stagedMock: flags[0] === '--stage-mock', stagedLive: flags[0] === '--stage-live', signal: controller.signal,
       onCapture: metadata => console.log(JSON.stringify(metadata)) })
     : { live: false, dryRun: true, fixture: FIXTURE, fixtureHash: hash(FIXTURE),
