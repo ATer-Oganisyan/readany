@@ -9,6 +9,7 @@ vi.mock("@/lib/ai/narra-gateway-fetch", () => ({
 }));
 vi.mock("@/lib/diagnostics/interaction-performance", () => ({ markInteraction: vi.fn() }));
 vi.mock("@readany/core/services", () => ({ getPlatformService: vi.fn() }));
+vi.mock("expo-crypto", () => ({ randomUUID: vi.fn(() => "isolated-cover-id") }));
 vi.mock("./backend-file-download", () => ({
   downloadVerifiedBackendFile: async ({ destinationPath }: { destinationPath: string }) => {
     fs.files.set(destinationPath, fs.endpoint);

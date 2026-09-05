@@ -118,6 +118,17 @@ const mimeTypes: Record<string, string> = {
 
 async function bindBook(book: Book, signal: AbortSignal) {
   const store = useNarraStore.getState();
+  let expectedBinding = store.books[book.id]?.backendBinding;
+  let expectedHash = book.contentHash;
+  const assertCurrent = () => {
+    const current = useLibraryStore.getState().books.find((item) => item.id === book.id);
+    if (signal.aborted || !current || current.deletedAt ||
+      current.filePath !== book.filePath || current.fileHash !== book.fileHash ||
+      current.contentHash !== expectedHash ||
+      useNarraStore.getState().books[book.id]?.backendBinding !== expectedBinding)
+      throw Object.assign(new Error("Book source replaced during binding"), { name: "StaleBookBindingError" });
+  };
+  assertCurrent();
   let { original, convertedUmd } = analysisSource(book);
   if (book.format === "fbz" && original?.format === "fb2") {
     const derived = new File(await sourcePath(book, original));
@@ -128,7 +139,7 @@ async function bindBook(book: Book, signal: AbortSignal) {
   if ((original?.format ?? book.format) === "fbz") {
     // Explicit null bypasses stale persisted metadata when the cache was lost.
     const bytes = await extractFbzSourceBytes(new File(await sourcePath(book, original ?? null)));
-    if (signal.aborted) throw new Error("Book binding cancelled");
+    assertCurrent();
     const path = `narra-backend-sources/${Crypto.randomUUID()}.fb2`;
     const uri = `${FileSystem.documentDirectory}${path}`;
     await FileSystem.makeDirectoryAsync(`${FileSystem.documentDirectory}narra-backend-sources`, {
@@ -139,7 +150,7 @@ async function bindBook(book: Book, signal: AbortSignal) {
         encoding: FileSystem.EncodingType.Base64,
       });
       const hash = await sha256BackendFile(uri);
-      if (signal.aborted) throw new Error("Book binding cancelled");
+      assertCurrent();
       original = {
         path,
         hash,
@@ -181,16 +192,20 @@ async function bindBook(book: Book, signal: AbortSignal) {
       original?.hash ??
       (convertedUmd ? undefined : book.contentHash) ??
       (await sha256BackendFile(path));
-    if (signal.aborted) throw new Error("Book binding cancelled");
+    assertCurrent();
     // Persist once; subsequent resolve/open never hashes unchanged bytes again.
-    if ((!book.contentHash || convertedUmd) && !derivedArchive)
+    if ((!book.contentHash || convertedUmd) && !derivedArchive) {
+      expectedHash = hash;
       await useLibraryStore
         .getState()
         .updateBook(book.id, { contentHash: hash, ...(convertedUmd ? { format: "epub" } : {}) });
+    }
+    assertCurrent();
     let response = await backendBookRequest(
       "/v2/books/resolve",
       backendJsonPost({ source: "local", content_sha256: hash }, signal),
     );
+    assertCurrent();
     if (response.resolution === "local_registration_required") {
       response = await backendBookRequest(
         "/v2/books/local",
@@ -210,9 +225,11 @@ async function bindBook(book: Book, signal: AbortSignal) {
     }
     binding = parseBackendBinding(response, hash);
   }
-  if (signal.aborted) throw new Error("Book binding cancelled");
+  assertCurrent();
   store.setBackendBinding(book.id, binding);
+  expectedBinding = useNarraStore.getState().books[book.id]?.backendBinding;
   await applyBookLanguage(book.id, binding.language);
+  assertCurrent();
   if (binding.resolution === "private" && !binding.sourceUploaded) {
     // Passing expo-file-system's File directly makes expo/fetch normalize the
     // Blob before it creates the native request. On iOS that conversion can
@@ -220,6 +237,7 @@ async function bindBook(book: Book, signal: AbortSignal) {
     // Read the file explicitly so fetch receives an unambiguous binary body.
     const sourceFile = new File(await sourcePath(book, original ?? null));
     const sourceBytes = await sourceFile.bytes();
+    assertCurrent();
     if (sourceBytes.byteLength === 0) throw new Error("Book source is empty");
     const response = await backendBookRequest(backendBookPath(binding.bookEditionId, "source"), {
       method: "PUT",
@@ -229,13 +247,14 @@ async function bindBook(book: Book, signal: AbortSignal) {
       body: sourceBytes,
       signal,
     });
-    if (signal.aborted) throw new Error("Source upload cancelled");
+    assertCurrent();
     binding = {
       ...binding,
       sourceUploaded: true,
       expiresAt: typeof response.expires_at === "string" ? response.expires_at : binding.expiresAt,
     };
     store.setBackendBinding(book.id, binding);
+    expectedBinding = useNarraStore.getState().books[book.id]?.backendBinding;
   }
   if (binding.resolution === "catalog" && book.sourceKind !== "catalog" && !derivedArchive) {
     await useLibraryStore.getState().updateBook(book.id, {
@@ -389,13 +408,15 @@ function createSession(book: Book, progress: number) {
         if (belongsToCurrentBinding(manifest))
           await loadBackendCharacterMedia(book.id, value, signal);
       },
-      error: (error) =>
+      error: (error) => {
+        if (error instanceof Error && error.name === "StaleBookBindingError") return;
         status(book.id, {
           error:
             error instanceof BackendBookError
               ? (error.backendCode ?? `HTTP_${error.status}`)
               : "CONNECTION",
-        }),
+        });
+      },
       expired: (binding) => expiredEditions.add(binding.bookEditionId),
       isNotFound: (error) => error instanceof BackendBookError && error.status === 404,
     },

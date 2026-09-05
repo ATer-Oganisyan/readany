@@ -1,6 +1,7 @@
 import { markInteraction } from "@/lib/diagnostics/interaction-performance";
 import { getPlatformService } from "@readany/core/services";
 import * as FileSystem from "expo-file-system/legacy";
+import * as Crypto from "expo-crypto";
 import { backendCacheRoot } from "./backend-cache-scope";
 import type { BackendCatalogBook, BackendCatalogGenre } from "./backend-catalog-api";
 import { downloadVerifiedBackendFile } from "./backend-file-download";
@@ -132,16 +133,23 @@ export async function materializeBackendCatalogCover(
 export async function installBackendCatalogCover(
   bookId: string,
   catalogBook: CachedBackendCatalogBook,
+  { isCurrent = () => true }: { isCurrent?: () => boolean } = {},
 ): Promise<string | undefined> {
-  if (!catalogBook.coverUri || !catalogBook.cover) return undefined;
+  if (!catalogBook.coverUri || !catalogBook.cover || !isCurrent()) return undefined;
   const platform = getPlatformService();
   const bytes = await platform.readFile(catalogBook.coverUri);
   const appData = await platform.getAppDataDir();
   const coversDirectory = await platform.joinPath(appData, "covers");
   await platform.mkdir(coversDirectory);
-  const relativePath = `covers/${safeKey(bookId)}-catalog.${coverExtension(
+  const relativePath = `covers/${safeKey(bookId)}-catalog-${Crypto.randomUUID()}.${coverExtension(
     catalogBook.cover.mimeType,
   )}`;
-  await platform.writeFile(await platform.joinPath(appData, relativePath), bytes);
+  const destination = await platform.joinPath(appData, relativePath);
+  if (!isCurrent()) return undefined;
+  await platform.writeFile(destination, bytes);
+  if (!isCurrent()) {
+    await platform.deleteFile(destination);
+    return undefined;
+  }
   return relativePath;
 }

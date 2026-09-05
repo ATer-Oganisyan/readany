@@ -1,6 +1,13 @@
 vi.mock("@/stores/narra-store", () => ({
   useNarraStore: { getState: () => ({ setBackendBinding: vi.fn() }) },
 }));
+vi.mock("@/stores/library-store", () => ({
+  useLibraryStore: {
+    getState: () => ({
+      books: [{ ...IMPORTED_BOOK, bookEditionId: "edition-1", contentHash: "a".repeat(64) }],
+    }),
+  },
+}));
 import type { Book, BookUpdate } from "@readany/core/types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -61,6 +68,66 @@ const CATALOG_BOOK = {
 
 describe("backend catalog import", () => {
   beforeEach(() => vi.clearAllMocks());
+  it("does not commit an installed cover after a manual change during installation", async () => {
+    let finish!: (value: string) => void;
+    mocks.materializeCover.mockResolvedValueOnce("old.jpg");
+    mocks.installCover.mockReturnValueOnce(
+      new Promise<string>((resolve) => {
+        finish = resolve;
+      }),
+    );
+    let current = { ...IMPORTED_BOOK };
+    const updateBook = vi.fn(async (_id: string, update: BookUpdate) => {
+      current = { ...current, ...update, meta: { ...current.meta, ...update.meta } };
+    });
+    await importDownloadedBackendCatalogBook(CATALOG_BOOK, "file:///b.epub", {
+      importBooks: vi.fn(async () => ({
+        imported: [current],
+        skippedDuplicates: [],
+        failures: [],
+      })),
+      updateBook,
+      readBook: () => current,
+    });
+    await vi.waitFor(() => expect(mocks.installCover).toHaveBeenCalled());
+    current = { ...current, meta: { ...current.meta, coverUrl: "manual.jpg" } };
+    finish("old-installed.jpg");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(updateBook).toHaveBeenCalledTimes(1);
+    expect(current.meta.coverUrl).toBe("manual.jpg");
+  });
+  it.each(["rebind", "delete", "manual"])(
+    "does not install a late cover after %s",
+    async (change) => {
+      let finish!: (value: string) => void;
+      mocks.materializeCover.mockReturnValueOnce(
+        new Promise<string>((resolve) => {
+          finish = resolve;
+        }),
+      );
+      let current: Book | undefined = { ...IMPORTED_BOOK };
+      const updateBook = vi.fn(async (_id: string, update: BookUpdate) => {
+        if (current) current = { ...current, ...update, meta: { ...current.meta, ...update.meta } };
+      });
+      await importDownloadedBackendCatalogBook(CATALOG_BOOK, "file:///a.epub", {
+        importBooks: vi.fn(async () => ({
+          imported: [current!],
+          skippedDuplicates: [],
+          failures: [],
+        })),
+        updateBook,
+        readBook: () => current,
+      });
+      if (change === "delete") current = undefined;
+      else if (change === "rebind")
+        current = { ...current!, bookEditionId: "B", contentHash: "b".repeat(64) };
+      else current = { ...current!, meta: { ...current!.meta, coverUrl: "manual.jpg" } };
+      finish("old-a-cover.jpg");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(mocks.installCover).not.toHaveBeenCalled();
+      expect(updateBook).toHaveBeenCalledTimes(1);
+    },
+  );
   it("preserves newer reader metadata when the catalog cover finishes later", async () => {
     let finishCover!: (value: string) => void;
     mocks.materializeCover.mockReturnValueOnce(

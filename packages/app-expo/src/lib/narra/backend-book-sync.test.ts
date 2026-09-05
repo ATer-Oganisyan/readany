@@ -161,6 +161,39 @@ async function open(value: Book) {
 }
 
 describe("backend book import and persistence integration", () => {
+  it.each(["resolve", "source"])("does not replace a newer binding after delayed %s", async (phase) => {
+    let finish!: (value: unknown) => void;
+    const oldResponse = { resolution: "private", book_edition_id: "old-edition", source_uploaded: phase === "resolve" };
+    runtime.request.mockImplementation(async (path: string) => {
+      if (path.endsWith(`/${phase}`)) return new Promise((resolve) => { finish = resolve; });
+      if (path.endsWith("/resolve")) return oldResponse;
+      if (path.endsWith("/manifest")) return ready;
+      return {};
+    });
+    await open({ ...book(), contentHash: "a".repeat(64) });
+    expect(finish).toBeTypeOf("function");
+    const replacement = { resolution: "private" as const, bookEditionId: "new-edition", contentSha256: "b".repeat(64), sourceUploaded: true };
+    useNarraStore.getState().setBackendBinding("local", replacement);
+    finish(phase === "resolve" ? oldResponse : {});
+    await vi.advanceTimersByTimeAsync(0);
+    expect(useNarraStore.getState().books.local.backendBinding).toEqual(replacement);
+    expect(useBackendBookStatus.getState().books.local?.error).toBeUndefined();
+  });
+  it.each(["deleted", "changed-bytes"])("discards resolve after local source is %s without a replacement binding", async (change) => {
+    let finish!: (value: unknown) => void;
+    runtime.request.mockImplementation(async (path: string) => {
+      if (path.endsWith("/resolve")) return new Promise((resolve) => { finish = resolve; });
+      return {};
+    });
+    await open({ ...book(), contentHash: "a".repeat(64) });
+    expect(finish).toBeTypeOf("function");
+    runtime.books = change === "deleted" ? [] : [{ ...runtime.books[0], contentHash: "b".repeat(64) }];
+    finish({ resolution: "private", book_edition_id: "stale", source_uploaded: false });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(useNarraStore.getState().books.local?.backendBinding).toBeUndefined();
+    expect(runtime.request.mock.calls.some(([path]) => path.endsWith("/source"))).toBe(false);
+    expect(useBackendBookStatus.getState().books.local?.error).toBeUndefined();
+  });
   it.each(["ready", "failed", "network-error"])("ignores a delayed %s identity after source replacement", async (resultStatus) => {
     const binding = { resolution: "private" as const, bookEditionId: "old-edition",
       contentSha256: "a".repeat(64), sourceUploaded: true };
