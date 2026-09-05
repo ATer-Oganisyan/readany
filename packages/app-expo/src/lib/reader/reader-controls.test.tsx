@@ -76,7 +76,82 @@ it("cancels the initial timer on a manual toggle, blur and unmount", async () =>
   await act(async () => tree.update(<Harness focused={false} />));
   expect(vi.getTimerCount()).toBe(0);
   await act(async () => tree.update(<Harness />));
-  expect(vi.getTimerCount()).toBe(1);
+  expect(vi.getTimerCount()).toBe(0);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(30_000);
+  });
+  expect(current.showControls).toBe(true);
   await act(async () => tree.unmount());
   expect(vi.getTimerCount()).toBe(0);
+});
+
+it.each([true, false])(
+  "preserves an explicit setter value %s across a sheet round trip",
+  async (visible) => {
+    await act(async () => {
+      tree = create(<Harness />);
+    });
+    await act(async () => current.setShowControls(visible));
+    await act(async () => tree.update(<Harness focused={false} />));
+    await act(async () => tree.update(<Harness />));
+    expect(current.showControls).toBe(visible);
+    expect(vi.getTimerCount()).toBe(0);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(current.showControls).toBe(visible);
+  },
+);
+
+it("preserves explicitly hidden controls on return instead of flashing introductory chrome", async () => {
+  await act(async () => {
+    tree = create(<Harness />);
+  });
+  await act(async () => current.toggleControls());
+  expect(current.showControls).toBe(false);
+  await act(async () => tree.update(<Harness focused={false} />));
+  await act(async () => tree.update(<Harness />));
+  expect(current.showControls).toBe(false);
+});
+
+it("temporarily exposes exit during loading without losing the explicit hidden preference", async () => {
+  await act(async () => {
+    tree = create(<Harness />);
+  });
+  await act(async () => current.setShowControls(false));
+  await act(async () => tree.update(<Harness loading />));
+  expect(current.showControls).toBe(true);
+  expect(vi.getTimerCount()).toBe(0);
+  await act(async () => tree.update(<Harness />));
+  expect(current.showControls).toBe(false);
+});
+
+it("never hides exit during loading even when controls are explicitly dismissed", async () => {
+  await act(async () => {
+    tree = create(<Harness loading />);
+  });
+  await act(async () => current.toggleControls());
+  expect(current.showControls).toBe(true);
+  await act(async () => current.setShowControls((visible) => !visible));
+  expect(current.showControls).toBe(true);
+  await act(async () => tree.update(<Harness />));
+  expect(current.showControls).toBe(false);
+});
+
+it("still introduces controls after focus when no explicit preference exists", async () => {
+  await act(async () => {
+    tree = create(<Harness />);
+  });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(3000);
+  });
+  expect(current.showControls).toBe(false);
+  await act(async () => tree.update(<Harness focused={false} />));
+  await act(async () => tree.update(<Harness />));
+  expect(current.showControls).toBe(true);
+  expect(vi.getTimerCount()).toBe(1);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(3000);
+  });
+  expect(current.showControls).toBe(false);
 });
