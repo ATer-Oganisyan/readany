@@ -1,5 +1,5 @@
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import ru from "../../../../core/src/i18n/locales/ru/library.json";
 import en from "../../../../core/src/i18n/locales/en/library.json";
@@ -13,19 +13,50 @@ vi.mock("react-native", () => ({ Alert: { alert: mocks.alert } }));
 vi.mock("@/lib/notifications", () => ({ toast: { error: mocks.error, success: mocks.success } }));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: mocks.translate }) }));
 import { useBatchBookDelete } from "@/hooks/use-batch-book-delete";
+import { type BookSelectionState, reconcileBookSelection } from "./book-selection-state";
+import { toggleVisibleBookSelection } from "./visible-book-selection";
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let tree: ReactTestRenderer;
 let current: ReturnType<typeof useBatchBookDelete>;
 const remove = vi.fn();
 const settled = vi.fn();
 let selected: string[];
+let selectionMode: boolean;
+let selectNewSession: (ids: string[]) => void;
+let changeCurrentSelection: (ids: string[]) => void;
+let toggleVisibleSelection: (ids: string[]) => void;
 function Harness() {
-  const [ids, setIds] = useState(["a", "b"]);
-  selected = ids;
-  current = useBatchBookDelete(remove, (failed) => {
-    setIds(failed);
+  const [selection, setSelection] = useState<BookSelectionState>({
+    selectionMode: true,
+    selectedBookIds: new Set(["a", "b"]),
+  });
+  const sessionEpoch = useRef(0);
+  selected = [...selection.selectedBookIds];
+  selectionMode = selection.selectionMode;
+  changeCurrentSelection = (ids) =>
+    setSelection((previous) => ({ ...previous, selectedBookIds: new Set(ids) }));
+  toggleVisibleSelection = (visibleIds) =>
+    setSelection((previous) => ({
+      ...previous,
+      selectedBookIds: toggleVisibleBookSelection(previous.selectedBookIds, visibleIds),
+    }));
+  selectNewSession = (next) => {
+    sessionEpoch.current++;
+    setSelection({ selectionMode: next.length > 0, selectedBookIds: new Set(next) });
+  };
+  const batch = useBatchBookDelete(remove, (failed, requested) => {
+    setSelection((previous) => reconcileBookSelection(previous, requested, failed));
     settled(failed);
   });
+  current = {
+    ...batch,
+    requestDelete: (ids) => {
+      const requestedSession = sessionEpoch.current;
+      batch.requestDelete(ids, {
+        canApplySelectionResult: () => requestedSession === sessionEpoch.current,
+      });
+    },
+  };
   return null;
 }
 function translateWith(locale: typeof ru) {
@@ -50,6 +81,104 @@ afterEach(async () => {
   });
 });
 const confirm = () => mocks.alert.mock.lastCall![2][1].onPress();
+it.each([false, true])(
+  "keeps filtered Select all choices when an earlier deletion settles (failure %s)",
+  async (failure) => {
+    await act(() => changeCurrentSelection(["a"]));
+    let release!: () => void;
+    remove.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve, reject) => {
+          release = () => (failure ? reject(Error("disk")) : resolve());
+        }),
+    );
+    let pending!: Promise<void>;
+    await act(() => {
+      current.requestDelete(["a"]);
+      pending = confirm();
+    });
+    // Filter now exposes B; Select all must neither mistake A for B nor
+    // include B in the already confirmed deletion snapshot.
+    await act(() => toggleVisibleSelection(["b"]));
+    expect(selected).toEqual(["a", "b"]);
+    await act(async () => {
+      release();
+      await pending;
+    });
+    expect(selected).toEqual(failure ? ["a", "b"] : ["b"]);
+    expect(selectionMode).toBe(true);
+    expect(remove).toHaveBeenCalledExactlyOnceWith("a");
+    expect(failure ? mocks.error : mocks.success).toHaveBeenCalledOnce();
+  },
+);
+it.each([
+  { action: "add", failure: false, expected: ["b"] },
+  { action: "add", failure: true, expected: ["a", "b"] },
+  { action: "deselect", failure: false, expected: [] },
+  { action: "deselect", failure: true, expected: [] },
+])(
+  "reconciles same-session $action during deletion (failure $failure)",
+  async ({ action, failure, expected }) => {
+    await act(async () => {
+      changeCurrentSelection(["a"]);
+    });
+    let release!: () => void;
+    remove.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve, reject) => {
+          release = () => (failure ? reject(Error("disk")) : resolve());
+        }),
+    );
+    let pending!: Promise<void>;
+    await act(async () => {
+      current.requestDelete(["a"]);
+      pending = confirm();
+    });
+    await act(async () => {
+      changeCurrentSelection(action === "add" ? ["a", "b"] : []);
+    });
+    await act(async () => {
+      release();
+      await pending;
+    });
+    expect(selected).toEqual(expected);
+    expect(selectionMode).toBe(expected.length > 0);
+    expect(remove).toHaveBeenCalledExactlyOnceWith("a");
+    expect(failure ? mocks.error : mocks.success).toHaveBeenCalledOnce();
+  },
+);
+it.each([false, true])(
+  "does not overwrite a new selection after old confirmed deletion settles (failure %s)",
+  async (failure) => {
+    let release!: () => void;
+    remove.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve, reject) => {
+          release = () => (failure ? reject(Error("disk")) : resolve());
+        }),
+    );
+    let pending!: Promise<void>;
+    await act(async () => {
+      current.requestDelete(["a"]);
+      pending = confirm();
+    });
+    await act(async () => {
+      selectNewSession([]);
+    }); // Cancel selection, not the confirmed operation.
+    await act(async () => {
+      selectNewSession(["b"]);
+    });
+    await act(async () => {
+      release();
+      await pending;
+    });
+    expect(remove).toHaveBeenCalledExactlyOnceWith("a");
+    expect(selected).toEqual(["b"]);
+    expect(settled).not.toHaveBeenCalled();
+    expect(current.isDeleting).toBe(false);
+    expect(failure ? mocks.error : mocks.success).toHaveBeenCalledOnce();
+  },
+);
 it("recovers from a throwing native confirmation bridge and allows retry", async () => {
   mocks.alert.mockImplementationOnce(() => {
     throw Error("native bridge unavailable");

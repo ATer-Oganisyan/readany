@@ -5,7 +5,7 @@ import { toast } from "@/lib/notifications";
 
 export function useBatchBookDelete(
   removeBook: (id: string) => Promise<void>,
-  onSettled: (failedIds: string[]) => void,
+  onSettled: (failedIds: string[], requestedIds: string[]) => void,
 ) {
   const { t } = useTranslation();
   const mounted = useRef(true);
@@ -18,7 +18,7 @@ export function useBatchBookDelete(
     };
   }, []);
   const requestDelete = useCallback(
-    (selected: Iterable<string>) => {
+    (selected: Iterable<string>, options?: { canApplySelectionResult?: () => boolean }) => {
       const ids = [...new Set(selected)];
       if (!mounted.current || locked.current || !ids.length) return;
       locked.current = true;
@@ -52,14 +52,16 @@ export function useBatchBookDelete(
                     }
                   }
                   if (!mounted.current) return;
-                  onSettled(failed);
-                  const options = {
+                  // A confirmed operation survives leaving selection mode, but
+                  // its result must not replace a newer selection session.
+                  if (options?.canApplySelectionResult?.() !== false) onSettled(failed, ids);
+                  const toastOptions = {
                     description: t("library.batchDeleteResult", { deleted, failed: failed.length }),
                     styles: { description: { display: "flex" as const } },
                     duration: failed.length ? 8000 : 4000,
                   };
-                  if (failed.length) toast.error(t("library.batchDeleteFailed"), options);
-                  else toast.success(t("library.batchDeleteDone"), options);
+                  if (failed.length) toast.error(t("library.batchDeleteFailed"), toastOptions);
+                  else toast.success(t("library.batchDeleteDone"), toastOptions);
                 } finally {
                   locked.current = false;
                   if (mounted.current) setIsDeleting(false);
