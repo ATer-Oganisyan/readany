@@ -12,6 +12,8 @@ on:
       - "scripts/qa/test-expo-factory-race.mjs"
       - "scripts/qa/expo-fabric-context-harness.swift"
       - "scripts/qa/test-expo-fabric-context.mjs"
+      - "scripts/qa/ios-scene-startup-harness.swift"
+      - "scripts/qa/test-ios-scene-startup.mjs"
       - "package.json"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
@@ -29,6 +31,8 @@ on:
       - "scripts/qa/test-expo-factory-race.mjs"
       - "scripts/qa/expo-fabric-context-harness.swift"
       - "scripts/qa/test-expo-fabric-context.mjs"
+      - "scripts/qa/ios-scene-startup-harness.swift"
+      - "scripts/qa/test-ios-scene-startup.mjs"
       - "package.json"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
@@ -77,6 +81,9 @@ jobs:
 
       - name: Test cached Fabric initializer teardown and live-context errors
         run: node scripts/qa/test-expo-fabric-context.mjs
+
+      - name: Test generated iOS cold-link startup against native launcher admission
+        run: node scripts/qa/test-ios-scene-startup.mjs
 
   mobile-and-core:
     runs-on: ubuntu-latest
