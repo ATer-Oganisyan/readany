@@ -161,6 +161,65 @@ async function open(value: Book) {
 }
 
 describe("backend book import and persistence integration", () => {
+  it.each(["edition-a", "edition-b"])(
+    "isolates changed source bytes and restores conversations (%s)",
+    (edition) => {
+      const store = useNarraStore.getState();
+      const a = {
+        resolution: "private" as const,
+        bookEditionId: "edition-a",
+        contentSha256: "a".repeat(64),
+        sourceUploaded: true,
+      };
+      const b = { ...a, bookEditionId: edition, contentSha256: "b".repeat(64) };
+      store.setBackendBinding("local", a);
+      store.applyBackendManifest(
+        "local",
+        parseBackendManifest({ ...ready, markup: { revision: 9 } }),
+        0.3,
+      );
+      store.appendChatMessage("local", "stable", {
+        id: "a-message",
+        role: "user",
+        content: "Only A",
+        createdAt: 1,
+      });
+      store.setMemory("local", "stable", "Memory A");
+      store.setBackendBinding("local", b);
+      expect(useNarraStore.getState().books.local.characters).toEqual([]);
+      expect(useNarraStore.getState().books.local.chats).toEqual({});
+      expect(useNarraStore.getState().books.local.memories).toEqual({});
+      store.applyBackendManifest("local", parseBackendManifest(ready), 0.3);
+      expect(useNarraStore.getState().books.local.backendManifest?.revision).toBe(1);
+      store.appendChatMessage("local", "stable", {
+        id: "b-message",
+        role: "user",
+        content: "Only B",
+        createdAt: 2,
+      });
+      store.setMemory("local", "stable", "Memory B");
+      // Persisted state must survive an ordinary JSON round trip without nesting
+      // archives or retaining a second copy of the active content.
+      useNarraStore.setState({ books: JSON.parse(JSON.stringify(useNarraStore.getState().books)) });
+      const archived = useNarraStore.getState().books.local.backendContentArchives;
+      expect(Object.keys(archived ?? {})).toEqual([a.contentSha256]);
+      expect(archived?.[a.contentSha256]).not.toHaveProperty("backendContentArchives");
+      store.setBackendBinding("local", { ...a, bookEditionId: "edition-a-renewed" });
+      expect(
+        useNarraStore.getState().books.local.chats.stable.map((message) => message.id),
+      ).toEqual(["a-message"]);
+      expect(useNarraStore.getState().books.local.memories.stable).toBe("Memory A");
+      expect(useNarraStore.getState().books.local.backendManifest).toBeUndefined();
+      store.setBackendBinding("local", b);
+      expect(
+        useNarraStore.getState().books.local.chats.stable.map((message) => message.id),
+      ).toEqual(["b-message"]);
+      expect(useNarraStore.getState().books.local.memories.stable).toBe("Memory B");
+      expect(
+        Object.keys(useNarraStore.getState().books.local.backendContentArchives ?? {}),
+      ).toEqual([a.contentSha256]);
+    },
+  );
   it.each(["same", "wire", "edition", "source"])(
     "manifest completion belongs to its captured binding (%s)",
     async (change) => {

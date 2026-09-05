@@ -119,6 +119,11 @@ export interface NarraSummary {
 }
 
 export interface NarraBookState {
+  /** Inactive source versions; no nested archives or active source file paths. */
+  backendContentArchives?: Record<
+    string,
+    Omit<NarraBookState, "backendContentArchives" | "backendOriginalSource">
+  >;
   backendOriginalSource?: {
     path: string;
     format: string;
