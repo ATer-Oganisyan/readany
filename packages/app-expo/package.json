@@ -125,7 +125,7 @@
     "react": "19.2.3",
     "react-devtools-core": "^7.0.1",
     "react-i18next": "^16.5.4",
-    "react-native": "~0.86.2",
+    "react-native": "0.86.3",
     "react-native-gesture-handler": "~2.32.0",
     "react-native-get-random-values": "~1.11.0",
     "react-native-keyboard-controller": "1.22.4",
@@ -150,6 +150,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.25.0",
+    "@react-native/metro-config": "0.86.3",
     "@storybook/addon-ondevice-actions": "10.4.2",
     "@storybook/addon-ondevice-backgrounds": "10.4.2",
     "@storybook/addon-ondevice-controls": "10.4.2",

@@ -46,3 +46,43 @@ commits [2bfcfa1](https://github.com/facebook/hermes/commit/2bfcfa189dd667ba5cb1
 выбрать совместимый Hermes fix с проверкой native-сборки. Зависимости не менялись,
 патч в сторонний бинарник не внедрялся. Ни debugger fix, ни release stability
 пока не приняты. AI/media-путь этим исследованием не проверялся.
+
+## Кандидат обновления, ещё не установлен
+
+Online `CI=1 pnpm exec expo install --check` рекомендует RN0.86.3 для SDK57.
+Команда exit1 также перечислила двадцать других устаревших Expo-пакетов;
+это не полная зелёная проверка зависимостей. Локальная таблица Expo57.0.14
+ещё указывает0.86.2, поэтому важно различать её и актуальную online-проверку.
+
+Подготовлены manifest/lockfile для RN0.86.3 и согласованного
+@react-native/metro-config0.86.3: без явного metro-config resolver сохранял0.86.2
+и выдавал новый peer-конфликт. После согласования этот конфликт исчез.
+Остальные предупреждения Storybook/TypeScript не устранены этим обновлением.
+Сравнение package keys lockfile: изменилось только семейство @react-native,
+react-native и hermes-compiler (.16→.17), не Expo или backend-зависимости.
+
+Использован Expo upgrading-expo. Выполнен только `pnpm install --lockfile-only
+--ignore-scripts`; установленный RN по-прежнему0.86.2. Работающие Metro и APK
+не обновлены, предыдущие1659 тестов не являются проверкой RN0.86.3.
+Следующий обязательный этап — изолированная установка, тесты и native-build
+с новым BuildID, затем проверка debugger и клиентского цикла.
+
+## Изолированная JS-проверка кандидата
+
+Создан отдельный worktree `/private/tmp/narra-rn0863-c48UDl` из tracked snapshot
+1290cc809a3ef827488c8a07524f6a575e2a3e79; основной worktree не очищался.
+Установка `pnpm install --frozen-lockfile --ignore-scripts` завершилась exit0.
+Фактические версии из установленного дерева: RN0.86.3, Metro0.86.3,
+hermes-compiler250829098.0.17. Node24.20.0.
+
+- Reader assets: build успешен.
+- Mobile: 178 файлов /1659 PASS, 5.68с.
+- Core: 84 файла /675 PASS, 6.00с.
+- Mobile TypeScript: exit0.
+- Независимое сравнение lockfile подтвердило отсутствие посторонних изменений
+  package records и сохранение всех существующих patches.
+
+Основная рабочая папка по-прежнему использует RN0.86.2; её Metro/эмуляторы
+не перенастраивались. Проверка бинарника Hermes и native-build ещё впереди.
+Использование ignore-scripts при установке не является приёмкой всех native
+lifecycle build-шагов. Временная копия сохранена для следующей проверки.
