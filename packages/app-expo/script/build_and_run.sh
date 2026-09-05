@@ -67,6 +67,8 @@ Modes:
   start            Start Metro on localhost for the installed Simulator dev client
   start-lan        Start Metro on LAN for a physical phone
   rebuild-ios      Build/install the canonical iOS dev client, then launch it
+  install-canonical-only
+                   Install current canonical app on an explicit empty simulator; no build/launch
   ios, --ios       Legacy alias for rebuild-ios
   check, --check   Check launch prerequisites and canonical build status
   screenshot PATH Save a screenshot of the selected Simulator
@@ -81,6 +83,8 @@ Optional environment variables:
   READANY_SIMULATOR_NAME       Simulator name (default: iPhone 17 Pro)
   READANY_SIMULATOR_ID         Exact simulator UDID (takes precedence over name)
   READANY_METRO_PORT           Metro port (default: 8081)
+  READANY_STRICT_METRO_LAUNCH=1
+                               Require a verified selected-port URL before launch (automatic for LOCAL)
   READANY_NARRA_BACKEND        Backend profile: test (default) or production
   READANY_DERIVED_DATA_PATH    Canonical DerivedData directory
   READANY_DEVELOPER_DIR        Xcode Developer directory (defaults to DEVELOPER_DIR or xcode-select)
@@ -482,6 +486,13 @@ install_canonical_app_if_needed() {
 }
 
 launch_app() {
+  local verified_url=""
+  if strict_dev_client_launch; then
+    verified_url="$(dev_client_url 2>/dev/null || true)"
+    validate_strict_dev_client_url "$verified_url" \
+      || die "Metro did not provide a valid localhost dev-client URL for port $METRO_PORT; refusing to launch."
+  fi
+
   if [[ "$SIMULATOR_UI_NAME" == "Device Hub" ]]; then
     log "Opening Device Hub from the selected Xcode"
     open -a "$SIMULATOR_UI_APP" "devices://device/open?id=$SIMULATOR_ID"
@@ -491,8 +502,35 @@ launch_app() {
   fi
 
   log "Launching $BUNDLE_ID"
-  xcrun simctl launch --terminate-running-process "$SIMULATOR_ID" "$BUNDLE_ID"
-  open_dev_client_url
+  if [[ -n "$verified_url" ]]; then
+    # A plain launch may auto-connect to the last server before openurl arrives.
+    # Stop an existing process (not-running is harmless), then launch by URL only.
+    xcrun simctl terminate "$SIMULATOR_ID" "$BUNDLE_ID" >/dev/null 2>&1 || true
+    xcrun simctl openurl "$SIMULATOR_ID" "$verified_url" >/dev/null
+  else
+    xcrun simctl launch --terminate-running-process "$SIMULATOR_ID" "$BUNDLE_ID"
+    open_dev_client_url
+  fi
+}
+
+strict_dev_client_launch() {
+  [[ "${READANY_STRICT_METRO_LAUNCH:-0}" == "1" ]] && return 0
+  node -e 'try { process.exit(["localhost", "127.0.0.1", "[::1]", "10.0.2.2"].includes(new URL(process.argv[1]).hostname) ? 0 : 1); } catch { process.exit(0); }' \
+    "${EXPO_PUBLIC_NARRA_GATEWAY_URL:-}"
+}
+
+validate_strict_dev_client_url() {
+  node -e '
+    try {
+      const outer = new URL(process.argv[1]);
+      const inner = new URL(outer.searchParams.get("url"));
+      const valid = outer.protocol === "readany-dev:" && outer.hostname === "expo-development-client"
+        && !outer.username && !outer.password && outer.searchParams.getAll("url").length === 1
+        && inner.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(inner.hostname)
+        && !inner.username && !inner.password && inner.port === process.argv[2];
+      process.exit(valid ? 0 : 1);
+    } catch { process.exit(1); }
+  ' "$1" "$METRO_PORT"
 }
 
 dev_client_url() {
@@ -624,6 +662,66 @@ run_rebuild_ios() {
   run_metro_prepared localhost
 }
 
+run_install_canonical_only() {
+  local expected_build installed_path devices_json applications_json has_app
+  [[ "${READANY_SIMULATOR_ID:-}" =~ ^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$ ]] \
+    || die "install-canonical-only requires an exact READANY_SIMULATOR_ID."
+  SIMULATOR_ID="$READANY_SIMULATOR_ID"
+  check_simulator_prerequisites
+  assert_simulator_ui_matches_toolchain
+  assert_pasteboard_sync_is_safe
+  check_installed_dependencies
+  [[ -d "$CANONICAL_APP" && -f "$FINGERPRINT_FILE" ]] \
+    || die "Canonical app/fingerprint is missing; use rebuild-ios explicitly."
+  [[ "$(<"$FINGERPRINT_FILE")" == "$(native_fingerprint)" ]] \
+    || die "Native fingerprint changed; use rebuild-ios explicitly."
+  expected_build="$(expected_build_number)"
+  [[ "$(app_build_number "$CANONICAL_APP")" == "$expected_build" \
+    && "$(plist_value "$CANONICAL_APP/Info.plist" CFBundleIdentifier)" == "$BUNDLE_ID" \
+    && -n "$(app_binary_hash "$CANONICAL_APP")" ]] \
+    || die "Canonical app identity/build is invalid; use rebuild-ios explicitly."
+  devices_json="$(xcrun simctl list devices available -j)"
+  printf '%s' "$devices_json" | node -e '
+    let text = "";
+    process.stdin.on("data", chunk => text += chunk);
+    process.stdin.on("end", () => {
+      try { process.exit(Object.values(JSON.parse(text).devices || {}).flat().some(d => d.udid === process.argv[1] && d.isAvailable) ? 0 : 1); }
+      catch { process.exit(1); }
+    });
+  ' "$SIMULATOR_ID" || die "Selected simulator is not available."
+  # listapps requires a booted target. Boot only the explicitly validated device;
+  # inspection failures must never be interpreted as an empty app container.
+  boot_simulator
+  applications_json="$(xcrun simctl listapps "$SIMULATOR_ID" | plutil -convert json -o - -- -)" \
+    || die "Cannot inspect target applications; refusing to install."
+  has_app="$(printf '%s' "$applications_json" | node -e '
+    let text = "";
+    process.stdin.on("data", chunk => text += chunk);
+    process.stdin.on("end", () => {
+      try {
+        const apps = JSON.parse(text);
+        if (!apps || typeof apps !== "object" || Array.isArray(apps)) process.exit(1);
+        if (Object.values(apps).some(app => !app || typeof app !== "object" || Array.isArray(app))) process.exit(1);
+        const present = Object.prototype.hasOwnProperty.call(apps, process.argv[1]);
+        if (present && (!apps[process.argv[1]] || typeof apps[process.argv[1]] !== "object")) process.exit(1);
+        process.stdout.write(present ? "yes" : "no");
+      } catch { process.exit(1); }
+    });
+  ' "$BUNDLE_ID")" || die "Malformed target application inventory; refusing to install."
+  if [[ "$has_app" == "yes" ]]; then
+    installed_path="$(xcrun simctl get_app_container "$SIMULATOR_ID" "$BUNDLE_ID" app)" \
+      || die "Cannot inspect installed app container; refusing to replace it."
+    [[ -n "$installed_path" ]] || die "Installed app container path is empty; refusing to replace it."
+    [[ "$(app_build_number "$installed_path")" == "$expected_build" \
+      && "$(app_binary_hash "$installed_path")" == "$(app_binary_hash "$CANONICAL_APP")" ]] \
+      || die "Target already contains a different app build; refusing to replace it in install-canonical-only."
+    log "Target already contains the canonical app; nothing changed."
+    return
+  fi
+  xcrun simctl install "$SIMULATOR_ID" "$CANONICAL_APP"
+  log "Installed existing canonical app on $SIMULATOR_ID without building or launching."
+}
+
 run_check() {
   local expected_build
   local installed_path
@@ -725,6 +823,9 @@ case "$MODE" in
     ;;
   rebuild-ios|rebuild|ios|--ios)
     run_rebuild_ios
+    ;;
+  install-canonical-only)
+    run_install_canonical_only
     ;;
   check|--check)
     run_check
