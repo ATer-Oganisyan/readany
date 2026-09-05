@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { validateDedicatedDatabase, runPipelineCanary, memoryObjectStorage, createFixtureModel, createCanaryWorkers, FIXTURE } from './book-analysis-pipeline-canary.mjs';
+import { readFile, writeFile } from 'node:fs/promises';
+import { validateDedicatedDatabase, runPipelineCanary, memoryObjectStorage, createFixtureModel, createCanaryWorkers, assertFixtureSemanticAcceptance, FIXTURE } from './book-analysis-pipeline-canary.mjs';
 import { createGenerationServiceClient } from '../../services/narra-gateway/generation-service-client.mjs';
 import { createInternalGenerationService } from '../../services/narra-gateway/internal-generation-service.mjs';
 import { BOOK_ANALYSIS_SYNTHESIS_VERSION } from '../../services/narra-gateway/book-analysis-contracts.mjs';
@@ -16,6 +17,7 @@ test('DB guard requires explicit local dedicated name and matching confirmation;
   }
   assert.throws(() => validateDedicatedDatabase(`postgresql://127.0.0.1/${name}`, 'wrong'));
   await assert.rejects(runPipelineCanary(), /Explicit QA_DB_URL/);
+  await assert.rejects(runPipelineCanary({ stagedLive: true, stagedMock: true }), /one staged mode/);
 });
 
 test('own fixture passes actual scan and v14 profile gates with mock model, no database or network', async () => {
@@ -68,11 +70,47 @@ test('memory object ranges use UTF8 bytes, exact bounds, bounded sizes and defen
   await assert.rejects(storage.getBytesRange({ ...request, objectKey: 'missing' }), error => error.name === 'NoSuchKey');
 });
 
+test('live gold accepts grounded extra observations and honesty morphology, while mock stays exact', () => {
+  const boundary = FIXTURE.indexOf(' Однажды');
+  const observations = [
+    { id: 'trait', observation_type: 'character_trait', evidence_quote: FIXTURE.slice(0, boundary), evidence_start_offset: 0, evidence_end_offset: boundary },
+    { id: 'action', observation_type: 'character_action', evidence_quote: FIXTURE.slice(boundary + 1), evidence_start_offset: boundary + 1, evidence_end_offset: FIXTURE.length },
+  ];
+  const extra = { id: 'mention', observation_type: 'character_mention', evidence_quote: 'Анна', evidence_start_offset: 0, evidence_end_offset: 4 };
+  const traits = value => [{ value, evidenceIds: ['trait'] }];
+  for (const value of ['честная', 'ЧЕСТНЫЙ', ' честность ']) {
+    assert.doesNotThrow(() => assertFixtureSemanticAcceptance({ observations: [...observations, extra], traits: traits(value), live: true }));
+  }
+  assert.doesNotThrow(() => assertFixtureSemanticAcceptance({ observations, traits: traits('честная') }));
+  assert.throws(() => assertFixtureSemanticAcceptance({ observations: [...observations, extra], traits: traits('честная') }));
+  assert.throws(() => assertFixtureSemanticAcceptance({ observations, traits: traits('честность') }));
+  for (const invalid of [[], traits('тревожная'), traits('честная и решительная'), [{ value: 'честная', evidenceIds: ['action'] }], [{ value: 'честная', evidenceIds: ['missing'] }]]) {
+    assert.throws(() => assertFixtureSemanticAcceptance({ observations, traits: invalid, live: true }));
+  }
+  assert.throws(() => assertFixtureSemanticAcceptance({ observations: [{ ...observations[0], evidence_quote: 'Анна была тревожной.' }, observations[1]], traits: traits('честная'), live: true }), /unanchored/);
+  assert.throws(() => assertFixtureSemanticAcceptance({ observations: [{ ...observations[0], observation_type: 'character_mention' }, observations[1]], traits: traits('честная'), live: true }), /stable-trait evidence/);
+  assert.throws(() => assertFixtureSemanticAcceptance({ observations: [observations[0], { ...observations[1], observation_type: 'character_mention' }], traits: traits('честная'), live: true }), /action evidence/);
+});
+
 test('actual sequential workers, repository, dedicated PostgreSQL and local generator HTTP lifecycle', {
   skip: !process.env.QA_DB_URL ? 'requires explicitly provisioned empty dedicated QA_DB_URL and QA_DB_CONFIRM' : false,
   timeout: 60000,
 }, async () => {
-  const result = await runPipelineCanary({ databaseUrl: process.env.QA_DB_URL, confirmation: process.env.QA_DB_CONFIRM });
+  const stagedMock = process.env.QA_STAGE_MOCK === 'true';
+  let approvalError;
+  // Explicit separate reviewer actor for MOCK integration only. Never approves live.
+  const onCapture = metadata => {
+    void (async () => {
+      const manifest = JSON.parse(await readFile(metadata.manifestFile, 'utf8'));
+      assert.equal(manifest.mode, 'mock');
+      const body = await readFile(manifest.bodyFile, 'utf8');
+      assert.ok(JSON.parse(body).messages.length > 0);
+      if (manifest.priorResponseFile) assert.ok(JSON.parse(await readFile(manifest.priorResponseFile, 'utf8')).choices);
+      await writeFile(manifest.approvalFile, JSON.stringify({ approved: true, index: manifest.index, sha256: manifest.sha256, nonce: manifest.nonce }), { mode: 0o600, flag: 'wx' });
+    })().catch(error => { approvalError = error; });
+  };
+  const result = await runPipelineCanary({ databaseUrl: process.env.QA_DB_URL, confirmation: process.env.QA_DB_CONFIRM, stagedMock, ...(stagedMock ? { onCapture } : {}) });
+  if (approvalError) throw approvalError;
   assert.equal(result.live, false);
   assert.equal(result.jobsCompleted, 7);
   assert.equal(result.observations, 2);

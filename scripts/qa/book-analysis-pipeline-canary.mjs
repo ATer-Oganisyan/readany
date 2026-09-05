@@ -1,8 +1,10 @@
-// Mock-model pipeline canary. No live AI, bridge, production configuration or DB autodetection.
+// Bounded own-fixture pipeline canary. Live requires explicit --stage-live and
+// external approval for every exact request. No production config/DB autodetection.
 import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { once } from 'node:events';
+import { once, EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
 import { pathToFileURL } from 'node:url';
 import { runBookMarkupMigrations } from '../../services/narra-gateway/postgres-runtime.mjs';
 import { createPostgresBookAnalysisRepository } from '../../services/narra-gateway/book-analysis-repository.mjs';
@@ -14,6 +16,7 @@ import { createBookAnalysisValidateWorker } from '../../services/narra-gateway/b
 import { createBookAnalysisPublishWorker } from '../../services/narra-gateway/book-analysis-publish-worker.mjs';
 import { createInternalGenerationService, createInternalGenerationRouter } from '../../services/narra-gateway/internal-generation-service.mjs';
 import { createGenerationServiceClient } from '../../services/narra-gateway/generation-service-client.mjs';
+import { createStagedFixtureProvider } from './staged-fixture-provider.mjs';
 
 const requireGateway = createRequire(new URL('../../services/narra-gateway/package.json', import.meta.url));
 const quiet = { info() {}, warn() {}, error() {} };
@@ -120,11 +123,44 @@ export function createCanaryWorkers(common) {
   ];
 }
 
-export async function runPipelineCanary({ databaseUrl, confirmation } = {}) {
+export function assertFixtureSemanticAcceptance({ observations, traits, live = false }) {
+  if (!live) assert.equal(observations.length, 2);
+  for (const observation of observations) {
+    const start = Number(observation.evidence_start_offset);
+    const end = Number(observation.evidence_end_offset);
+    assert.ok(Number.isSafeInteger(start) && start >= 0 && Number.isSafeInteger(end) && end > start && end <= FIXTURE.length,
+      'observation must have valid exact-source offsets');
+    assert.equal(FIXTURE.slice(start, end), observation.evidence_quote, 'unanchored observation');
+  }
+  if (!live) {
+    assert.deepEqual(traits.map(trait => trait.value), ['честная']);
+    return;
+  }
+  // Additional grounded scan observations are legal. The fixed story supports
+  // one stable trait, not a new personality inferred from closing one window.
+  const stableEvidence = observations.filter(observation => observation.observation_type === 'character_trait'
+    && Number(observation.evidence_start_offset) < TRAIT_QUOTE.length && /честн/iu.test(observation.evidence_quote));
+  assert.ok(stableEvidence.length > 0, 'live scan must retain grounded stable-trait evidence');
+  assert.ok(observations.some(observation => observation.observation_type === 'character_action'
+    && /закрыла окно/iu.test(observation.evidence_quote)), 'live scan must retain grounded action evidence');
+  assert.ok(Array.isArray(traits) && traits.length > 0, 'live profile must retain honesty');
+  const accepted = new Set(['честная', 'честный', 'честность']);
+  for (const trait of traits) {
+    assert.ok(typeof trait.value === 'string' && accepted.has(trait.value.trim().toLocaleLowerCase('ru-RU')),
+      'unsupported personality trait for this fixture');
+    assert.ok(Array.isArray(trait.evidenceIds) && trait.evidenceIds.length > 0
+      && trait.evidenceIds.every(id => observations.some(observation => observation.id === id))
+      && trait.evidenceIds.some(id => stableEvidence.some(observation => observation.id === id)),
+    'personality trait must cite the grounded stable assertion, not only an action');
+  }
+}
+
+export async function runPipelineCanary({ databaseUrl, confirmation, stagedMock = false, stagedLive = false, onCapture, signal } = {}) {
+  if (typeof stagedMock !== 'boolean' || typeof stagedLive !== 'boolean' || (stagedMock && stagedLive)) throw new Error('Choose exactly one staged mode');
   const target = validateDedicatedDatabase(databaseUrl, confirmation);
   const { Pool } = requireGateway('pg');
   const pool = new Pool({ connectionString: target.databaseUrl, ssl: false, max: 4, connectionTimeoutMillis: 3000, statement_timeout: 10000 });
-  let lock; let server; let seeded = false;
+  let lock; let server; let staged; let seeded = false;
   const editionId = randomUUID();
   try {
     lock = await pool.connect();
@@ -146,14 +182,46 @@ export async function runPipelineCanary({ databaseUrl, confirmation } = {}) {
     const ensured = await repository.ensureAnalysisRun({ bookEditionId: editionId, inputHash: source.contentHash, pipelineId: 'narra' });
     const runId = ensured.run.id;
     const calls = [];
+    const mock = createFixtureModel(calls);
+    let completeChat = mock;
+    if (stagedMock || stagedLive) {
+      let pendingInput;
+      staged = await createStagedFixtureProvider({ mode: stagedLive ? 'live' : 'mock', signal, approvalTimeoutMs: 90000, onCapture,
+        ...(stagedMock ? {
+        spawnFixtureChild() {
+          const child = new EventEmitter();
+          child.stdout = new PassThrough(); child.stderr = new PassThrough(); child.stdin = new PassThrough();
+          let closed = false;
+          const close = code => { if (!closed) { closed = true; child.emit('close', code); } };
+          child.kill = () => { setImmediate(() => close(null)); return true; };
+          child.stdin.on('finish', () => setImmediate(async () => {
+            if (closed) return;
+            try {
+              const text = await mock(pendingInput);
+              child.stdout.end(`${JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text } })}\n${JSON.stringify({ type: 'turn.completed' })}\n`);
+              close(0);
+            } catch { close(1); }
+          }));
+          return child;
+        }, } : {}),
+      });
+      completeChat = input => {
+        pendingInput = input;
+        if (stagedLive) calls.push({ operation: input.costContext?.operation, messagesBytes: Buffer.byteLength(JSON.stringify(input.messages)) });
+        return staged.completeChat(input);
+      };
+    }
     const forbiddenMedia = async () => { throw new Error('Media must never run in pipeline canary'); };
-    const service = createInternalGenerationService({ storage, completeChat: createFixtureModel(calls), generatePortrait: forbiddenMedia, synthesizeSpeech: forbiddenMedia, generateIdleAnimation: forbiddenMedia, logger: quiet });
+    const service = createInternalGenerationService({ storage, completeChat, generatePortrait: forbiddenMedia, synthesizeSpeech: forbiddenMedia, generateIdleAnimation: forbiddenMedia, logger: quiet });
     const token = randomBytes(32).toString('hex');
     const app = requireGateway('express')();
     app.use('/internal', createInternalGenerationRouter({ token, service, logger: quiet }));
     server = app.listen(0, '127.0.0.1'); await once(server, 'listening');
-    const generator = createGenerationServiceClient({ baseUrl: `http://127.0.0.1:${server.address().port}`, token, timeoutMs: 5000, production: false });
-    const common = { repository, storage, generator, runIds: [runId], workerId: `canary-${runId}`, logger: quiet };
+    // Up to three profile phases × (90s review + 50s bridge) = 420s.
+    // QA-only 450s client / 480s lease remain under the router's 600s deadline.
+    const generator = createGenerationServiceClient({ baseUrl: `http://127.0.0.1:${server.address().port}`, token, timeoutMs: staged ? 450000 : 5000, production: false });
+    const common = { repository, storage, generator, runIds: [runId], workerId: `canary-${runId}`, logger: quiet,
+      ...(staged ? { leaseSeconds: 480, leaseRenewMs: 30000 } : {}) };
     const workers = createCanaryWorkers(common);
     const lifecycle = [];
     for (const index of [0, 1, 2, 3, 3, 4, 5]) {
@@ -163,13 +231,11 @@ export async function runPipelineCanary({ databaseUrl, confirmation } = {}) {
     }
     const run = (await pool.query('SELECT status, stage, text_length FROM book_analysis_runs WHERE id=$1', [runId])).rows[0];
     assert.equal(run.status, 'ready');
-    const observations = (await pool.query('SELECT id, evidence_quote, evidence_start_offset, evidence_end_offset FROM book_analysis_observations WHERE run_id=$1 ORDER BY evidence_start_offset', [runId])).rows;
-    assert.equal(observations.length, 2);
-    for (const observation of observations) assert.equal(FIXTURE.slice(Number(observation.evidence_start_offset), Number(observation.evidence_end_offset)), observation.evidence_quote);
+    const observations = (await pool.query('SELECT id, observation_type, evidence_quote, evidence_start_offset, evidence_end_offset FROM book_analysis_observations WHERE run_id=$1 ORDER BY evidence_start_offset', [runId])).rows;
     const artifacts = (await pool.query('SELECT artifact_kind,status,data FROM book_analysis_artifacts WHERE run_id=$1', [runId])).rows;
     const profile = artifacts.find(row => row.artifact_kind === 'character_profile');
     assert.ok(profile);
-    assert.deepEqual(profile.data.profile.traits.map(trait => trait.value), ['честная']);
+    assertFixtureSemanticAcceptance({ observations, traits: profile.data.profile.traits, live: stagedLive });
     assert.ok(profile.data.selectedEvidenceIds.every(id => observations.some(row => row.id === id)));
     assert.equal(artifacts.find(row => row.artifact_kind === 'validation_report')?.data.valid, true);
     assert.equal(artifacts.find(row => row.artifact_kind === 'book_markup')?.status, 'published');
@@ -183,23 +249,33 @@ export async function runPipelineCanary({ databaseUrl, confirmation } = {}) {
     assert.equal(calls.length, beforeReplay);
     assert.equal(calls.filter(call => call.operation === 'scan_book_chunk').length, 1);
     for (const operation of ['synthesize_character_profile', 'recall_character_traits', 'audit_character_profile']) assert.equal(calls.filter(call => call.operation === operation).length, 1);
-    return { live: false, database: target.database, runId, fixtureHash: source.contentHash, calls,
+    return { live: stagedLive, database: target.database, runId, fixtureHash: source.contentHash, calls,
+      ...(staged ? { approvalDirectory: staged.directory, staged: staged.status() } : {}),
       jobsCompleted: lifecycle.length, observations: observations.length, publications: publications.length,
       traits: profile.data.profile.traits.map(trait => trait.value), idempotent: true,
-      scope: 'actual workers -> PostgreSQL repository -> loopback generator client/router -> actual internal service with mock LLM; not live quality evidence' };
+      scope: `actual workers -> PostgreSQL repository -> loopback generator client/router -> actual internal service with ${stagedLive ? 'separately approved live fixture calls; only this short fixture is tested' : 'mock LLM; not live quality evidence'}` };
   } finally {
-    if (server) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
-    try { if (seeded) await pool.query('DELETE FROM book_editions WHERE id=$1', [editionId]); }
-    finally { if (lock) { await lock.query('SELECT pg_advisory_unlock(913576421)').catch(() => {}); lock.release(); } await pool.end(); }
+    try { await staged?.close(); }
+    finally {
+      if (server) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+      try { if (seeded) await pool.query('DELETE FROM book_editions WHERE id=$1', [editionId]); }
+      finally { if (lock) { await lock.query('SELECT pg_advisory_unlock(913576421)').catch(() => {}); lock.release(); } await pool.end(); }
+    }
   }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const flags = process.argv.slice(2);
-  if (flags.length > 1 || flags.some(flag => !['--run-mock', '--dry-run', '--help'].includes(flag))) throw new Error('Only --run-mock, --dry-run or --help are supported; no live mode');
-  console.log(JSON.stringify(flags[0] === '--run-mock'
-    ? await runPipelineCanary({ databaseUrl: process.env.QA_DB_URL, confirmation: process.env.QA_DB_CONFIRM })
+  if (flags.length > 1 || flags.some(flag => !['--run-mock', '--stage-mock', '--stage-live', '--dry-run', '--help'].includes(flag))) throw new Error('Use one of --run-mock, --stage-mock, --stage-live, --dry-run or --help');
+  const controller = new AbortController();
+  const stop = () => controller.abort(new Error('Canary interrupted'));
+  process.once('SIGINT', stop); process.once('SIGTERM', stop);
+  try { console.log(JSON.stringify(['--run-mock', '--stage-mock', '--stage-live'].includes(flags[0])
+    ? await runPipelineCanary({ databaseUrl: process.env.QA_DB_URL, confirmation: process.env.QA_DB_CONFIRM,
+      stagedMock: flags[0] === '--stage-mock', stagedLive: flags[0] === '--stage-live', signal: controller.signal,
+      onCapture: metadata => console.log(JSON.stringify(metadata)) })
     : { live: false, dryRun: true, fixture: FIXTURE, fixtureHash: hash(FIXTURE),
       command: 'QA_DB_URL=postgresql://USER@127.0.0.1:PORT/narra_qa_pipeline_SUFFIX QA_DB_CONFIRM=narra_qa_pipeline_SUFFIX node scripts/qa/book-analysis-pipeline-canary.mjs --run-mock',
-      requirements: 'Fresh empty dedicated database; schema migrations remain, own edition rows are deleted on exit. No DB auto-discovery. No live model calls. Staged capture-stop not implemented.' }));
+      requirements: 'Fresh empty dedicated database; schema migrations remain, own edition rows deleted on exit. Default/dry/mock never execute live models. Only --stage-live enables live execution after externally written step approval (90s deadline). Inspect manifest, exact body and prior response, then create private approval JSON {approved:true,index,sha256,nonce}. Controller never writes approval. Maximum4 calls, pinned own fixture/model.' })); }
+  finally { process.off('SIGINT', stop); process.off('SIGTERM', stop); }
 }
