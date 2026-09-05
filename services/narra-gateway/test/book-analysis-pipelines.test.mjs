@@ -23,6 +23,7 @@ import {
   getBookAnalysisPipeline
 } from '../book-analysis-pipeline.mjs'
 import { resolveBookAnalysisEntities } from '../book-analysis-resolver.mjs'
+import { bookAnalysisRunIdempotencyKey } from '../book-analysis-repository.mjs'
 import { validateBookMarkupV3 } from '../book-analysis-validator.mjs'
 import { compareBookAnalysisPipelines } from '../evaluation/compare-book-analysis-pipelines.mjs'
 import { createExternalBookAdapterClient } from '../external-book-adapter-client.mjs'
@@ -91,9 +92,25 @@ test('narra and external cache identities are disjoint for the same content hash
   const narra = bookAnalysisPipelineCacheKey({ pipelineId: 'narra', contentHash })
   const external = bookAnalysisPipelineCacheKey({ pipelineId: 'external', contentHash })
   assert.notEqual(narra, external)
-  assert.match(narra, /narra:book-analysis-v51/)
+  assert.match(narra, /narra:book-analysis-v52/)
   assert.match(external, /external:external-autiobook-v1\.d532bdd0/)
   assert.match(external, /normalized-text-v2:schema-3:book-markup-v3/)
+})
+
+test('speech recovery gets a new default run identity without falling back to stored v51', () => {
+  const strategy = getBookAnalysisPipeline('narra')
+  assert.equal(strategy.implementationVersion, 'book-analysis-v52')
+  assert.equal(strategy.orchestrationVersion, 'book-analysis-v52')
+  assert.equal(strategy.synthesisVersion, 'character-profile-v15')
+  const source = { bookEditionId: 'same-book', inputHash: 'a'.repeat(64), pipelineId: 'narra', promptVersion: 'book-scan-v17' }
+  const previous = bookAnalysisRunIdempotencyKey({ ...source,
+    pipelineImplementationVersion: 'book-analysis-v51', pipelineVersion: 'book-analysis-v51' })
+  const current = bookAnalysisRunIdempotencyKey({ ...source, pipelineVersion: strategy.orchestrationVersion })
+  assert.notEqual(previous, current)
+  assert.equal(current, bookAnalysisRunIdempotencyKey({ ...source, pipelineVersion: 'book-analysis-v52' }))
+  assert.throws(() => bookAnalysisPipelineForRun({ pipelineId: 'narra', pipelineImplementationVersion: 'book-analysis-v51' }),
+    error => error.code === 'PIPELINE_VERSION_UNSUPPORTED')
+  assert.equal(bookAnalysisPipelineForRun({ pipelineId: 'narra', pipelineImplementationVersion: 'book-analysis-v52' }).synthesisVersion, 'character-profile-v15')
 })
 
 test('external resolve and synthesis never call the narra generator', async () => {

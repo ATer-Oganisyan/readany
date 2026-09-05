@@ -6,6 +6,8 @@ import { createRequire } from 'node:module';
 import { once, EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { pathToFileURL } from 'node:url';
+import { writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { runBookMarkupMigrations } from '../../services/narra-gateway/postgres-runtime.mjs';
 import { createPostgresBookAnalysisRepository } from '../../services/narra-gateway/book-analysis-repository.mjs';
 import { createBookAnalysisPrepareWorker } from '../../services/narra-gateway/book-analysis-prepare-worker.mjs';
@@ -17,6 +19,8 @@ import { createBookAnalysisPublishWorker } from '../../services/narra-gateway/bo
 import { createInternalGenerationService, createInternalGenerationRouter } from '../../services/narra-gateway/internal-generation-service.mjs';
 import { createGenerationServiceClient } from '../../services/narra-gateway/generation-service-client.mjs';
 import { MULTICHUNK_FIXTURE, createMultichunkFixtureModel, assertMultichunkAcceptance } from './multichunk-book-fixture.mjs';
+import { evaluateMultichunkLiveAcceptance } from './multichunk-live-acceptance.mjs';
+import { assertStagedCampaignComplete } from './staged-campaign-acceptance.mjs';
 
 const requireGateway = createRequire(new URL('../../services/narra-gateway/package.json', import.meta.url));
 const quiet = { info() {}, warn() {}, error() {} };
@@ -155,10 +159,10 @@ export function assertFixtureSemanticAcceptance({ observations, traits, live = f
   }
 }
 
-export async function runPipelineCanary({ databaseUrl, confirmation, stagedMock = false, stagedLive = false, onCapture, signal, fixtureId = 'window' } = {}) {
+export async function runPipelineCanary({ databaseUrl, confirmation, stagedMock = false, stagedLive = false, replayCapturedLive = false, onCapture, signal, fixtureId = 'window' } = {}) {
   if (typeof stagedMock !== 'boolean' || typeof stagedLive !== 'boolean' || (stagedMock && stagedLive)) throw new Error('Choose exactly one staged mode');
   if (!['window', 'siblings'].includes(fixtureId)) throw new Error('Unknown own fixture');
-  if (fixtureId === 'siblings' && stagedLive) throw new Error('Multi-chunk fixture is mock-only until its separate staged plan and live quality gate are reviewed');
+  if (typeof replayCapturedLive !== 'boolean' || (replayCapturedLive && (fixtureId !== 'siblings' || stagedMock || stagedLive))) throw new Error('Recorded replay requires siblings with no staged or live execution');
   const multichunk = fixtureId === 'siblings';
   const fixture = multichunk ? MULTICHUNK_FIXTURE : FIXTURE;
   const target = validateDedicatedDatabase(databaseUrl, confirmation);
@@ -186,7 +190,9 @@ export async function runPipelineCanary({ databaseUrl, confirmation, stagedMock 
     const ensured = await repository.ensureAnalysisRun({ bookEditionId: editionId, inputHash: source.contentHash, pipelineId: 'narra' });
     const runId = ensured.run.id;
     const calls = [];
-    const mock = multichunk ? createMultichunkFixtureModel(calls) : createFixtureModel(calls);
+    const mock = replayCapturedLive
+      ? await (await import('./recorded-multichunk-model.mjs')).createRecordedMultichunkModel(calls)
+      : multichunk ? createMultichunkFixtureModel(calls) : createFixtureModel(calls);
     let completeChat = mock;
     if (stagedMock || stagedLive) {
       // Ordinary mock CI must not load machine-specific subscription tooling.
@@ -238,21 +244,37 @@ export async function runPipelineCanary({ databaseUrl, confirmation, stagedMock 
       assert.equal(result.status, 'completed', `worker ${index}: ${JSON.stringify(result)}`);
     }
     const run = (await pool.query('SELECT status, stage, text_length FROM book_analysis_runs WHERE id=$1', [runId])).rows[0];
-    assert.equal(run.status, 'ready');
-    const observations = (await pool.query('SELECT id, observation_type, entity_candidate, evidence_quote, evidence_start_offset, evidence_end_offset FROM book_analysis_observations WHERE run_id=$1 ORDER BY evidence_start_offset', [runId])).rows;
+    const observations = (await pool.query('SELECT id, observation_type, entity_candidate, fact, related_entity_candidates, evidence_quote, evidence_start_offset, evidence_end_offset FROM book_analysis_observations WHERE run_id=$1 ORDER BY evidence_start_offset', [runId])).rows;
     const artifacts = (await pool.query('SELECT artifact_kind,status,data FROM book_analysis_artifacts WHERE run_id=$1', [runId])).rows;
+    const profiles = artifacts.filter(row => row.artifact_kind === 'character_profile');
+    const publications = (await pool.query('SELECT data FROM book_analysis_publications WHERE run_id=$1', [runId])).rows;
+    const chunks = (await pool.query('SELECT core_start_offset,core_end_offset,context_start_offset,context_end_offset FROM book_analysis_chunks WHERE run_id=$1 ORDER BY ordinal', [runId])).rows;
+    // Preserve all own-fixture output before any publication/semantic assertions.
+    // Step responses also remain available if a worker failed before publication.
+    let qualityEvidenceFile;
+    if (staged && multichunk) {
+      qualityEvidenceFile = join(staged.directory, 'pipeline-evidence.json');
+      await writeFile(qualityEvidenceFile, JSON.stringify({ fixtureId, fixtureHash: source.contentHash,
+        live: stagedLive, runId, run, observations, profiles, artifacts, publications,
+        markup: publications[0]?.data?.markup ?? null, chunks, campaign: staged.status(), calls }, null, 2),
+      { mode: 0o600, flag: 'wx' });
+    }
+    if (staged) assertStagedCampaignComplete({ fixtureId, staged: staged.status(), calls });
+    assert.equal(run.status, 'ready');
     const profile = artifacts.find(row => row.artifact_kind === 'character_profile');
     assert.ok(profile);
     if (!multichunk) assertFixtureSemanticAcceptance({ observations, traits: profile.data.profile.traits, live: stagedLive });
-    const profiles = artifacts.filter(row => row.artifact_kind === 'character_profile');
     for (const item of profiles) assert.ok(item.data.selectedEvidenceIds.every(id => observations.some(row => row.id === id)));
     assert.equal(artifacts.find(row => row.artifact_kind === 'validation_report')?.data.valid, true);
     assert.equal(artifacts.find(row => row.artifact_kind === 'book_markup')?.status, 'published');
-    const publications = (await pool.query('SELECT data FROM book_analysis_publications WHERE run_id=$1', [runId])).rows;
     assert.equal(publications.length, 1);
     assert.equal(publications[0].data.markup.characters.length, multichunk ? 2 : 1);
-    const chunks = (await pool.query('SELECT core_start_offset,core_end_offset,context_start_offset,context_end_offset FROM book_analysis_chunks WHERE run_id=$1 ORDER BY ordinal', [runId])).rows;
-    if (multichunk) assertMultichunkAcceptance({ observations, profiles, markup: publications[0].data.markup, chunks });
+    let qualityAssessment;
+    if (multichunk) {
+      const evidence = { observations, profiles, markup: publications[0].data.markup, chunks };
+      if (stagedLive || replayCapturedLive) qualityAssessment = evaluateMultichunkLiveAcceptance(evidence);
+      else assertMultichunkAcceptance(evidence);
+    }
     const replay = await repository.ensureAnalysisRun({ bookEditionId: editionId, inputHash: source.contentHash, pipelineId: 'narra' });
     assert.equal(replay.run.id, runId);
     const beforeReplay = calls.length;
@@ -260,11 +282,13 @@ export async function runPipelineCanary({ databaseUrl, confirmation, stagedMock 
     assert.equal(calls.length, beforeReplay);
     assert.equal(calls.filter(call => call.operation === 'scan_book_chunk').length, multichunk ? 3 : 1);
     for (const operation of ['synthesize_character_profile', 'recall_character_traits', 'audit_character_profile']) assert.equal(calls.filter(call => call.operation === operation).length, multichunk ? 2 : 1);
-    return { live: stagedLive, fixtureId, chunkCount: chunks.length, characterCount: profiles.length, database: target.database, runId, fixtureHash: source.contentHash, calls,
-      ...(staged ? { approvalDirectory: staged.directory, staged: staged.status() } : {}),
+    return { live: stagedLive, replayCapturedLive, fixtureId, chunkCount: chunks.length, characterCount: profiles.length, database: target.database, runId, fixtureHash: source.contentHash, calls,
+      ...(staged ? { approvalDirectory: staged.directory, staged: staged.status(), qualityEvidenceFile } : {}),
+      ...(qualityAssessment ? { qualityAssessment } : {}),
+      ...(replayCapturedLive ? { qualityEvidence: { observations, markup: publications[0].data.markup, chunks } } : {}),
       jobsCompleted: lifecycle.length, observations: observations.length, publications: publications.length,
       traits: profiles.flatMap(item => item.data.profile.traits.map(trait => trait.value)), idempotent: true,
-      scope: `actual workers -> PostgreSQL repository -> loopback generator client/router -> actual internal service with ${stagedLive ? 'separately approved live fixture calls; only this short fixture is tested' : 'mock LLM; not live quality evidence'}` };
+      scope: `actual workers -> PostgreSQL repository -> loopback generator client/router -> actual internal service with ${stagedLive ? 'separately approved live fixture calls; only this short fixture is tested' : replayCapturedLive ? 'recorded own-fixture responses, no new model calls; not a new live run' : 'mock LLM; not live quality evidence'}` };
   } finally {
     try { await staged?.close(); }
     finally {
@@ -277,17 +301,17 @@ export async function runPipelineCanary({ databaseUrl, confirmation, stagedMock 
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const flags = process.argv.slice(2);
-  if (flags.length > 1 || flags.some(flag => !['--run-mock', '--run-multichunk-mock', '--stage-mock', '--stage-live', '--dry-run', '--help'].includes(flag))) throw new Error('Use one of --run-mock, --run-multichunk-mock, --stage-mock, --stage-live, --dry-run or --help');
+  if (flags.length > 1 || flags.some(flag => !['--run-mock', '--run-multichunk-mock', '--stage-mock', '--stage-live', '--stage-multichunk-live', '--dry-run', '--help'].includes(flag))) throw new Error('Use one of --run-mock, --run-multichunk-mock, --stage-mock, --stage-live, --stage-multichunk-live, --dry-run or --help');
   const controller = new AbortController();
   const stop = () => controller.abort(new Error('Canary interrupted'));
   process.once('SIGINT', stop); process.once('SIGTERM', stop);
-  try { console.log(JSON.stringify(['--run-mock', '--run-multichunk-mock', '--stage-mock', '--stage-live'].includes(flags[0])
+  try { console.log(JSON.stringify(['--run-mock', '--run-multichunk-mock', '--stage-mock', '--stage-live', '--stage-multichunk-live'].includes(flags[0])
     ? await runPipelineCanary({ databaseUrl: process.env.QA_DB_URL, confirmation: process.env.QA_DB_CONFIRM,
-      fixtureId: flags[0] === '--run-multichunk-mock' ? 'siblings' : 'window',
-      stagedMock: flags[0] === '--stage-mock', stagedLive: flags[0] === '--stage-live', signal: controller.signal,
+      fixtureId: ['--run-multichunk-mock', '--stage-multichunk-live'].includes(flags[0]) ? 'siblings' : 'window',
+      stagedMock: flags[0] === '--stage-mock', stagedLive: ['--stage-live', '--stage-multichunk-live'].includes(flags[0]), signal: controller.signal,
       onCapture: metadata => console.log(JSON.stringify(metadata)) })
     : { live: false, dryRun: true, fixture: FIXTURE, fixtureHash: hash(FIXTURE),
       command: 'QA_DB_URL=postgresql://USER@127.0.0.1:PORT/narra_qa_pipeline_SUFFIX QA_DB_CONFIRM=narra_qa_pipeline_SUFFIX node scripts/qa/book-analysis-pipeline-canary.mjs --run-mock',
-      requirements: 'Fresh empty dedicated database; schema migrations remain, own edition rows deleted on exit. Default/dry/mock never execute live models. Only --stage-live enables live execution after externally written step approval (90s deadline). Inspect manifest, exact body and prior response, then create private approval JSON {approved:true,index,sha256,nonce}. Controller never writes approval. Maximum4 calls, pinned own fixture/model.' })); }
+      requirements: 'Fresh empty dedicated database; schema migrations remain, own edition rows deleted on exit. Default/dry/mock never execute live models. Explicit --stage-live (window, max4) or --stage-multichunk-live (siblings, max9) requires separately reviewed step approval (90s deadline). Inspect manifest, exact body and prior response, then create private approval JSON {approved:true,index,sha256,nonce}. Controller never writes approval. Pinned own fixture/model. Multi-chunk machine acceptance still requires independent manual review; inspect pipeline-evidence.json.' })); }
   finally { process.off('SIGINT', stop); process.off('SIGTERM', stop); }
 }

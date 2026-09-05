@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import test from 'node:test'
 import { strToU8, zipSync } from 'fflate'
+import { BOOK_ANALYSIS_SYNTHESIS_VERSION } from '../book-analysis-contracts.mjs'
 import {
   createInternalGenerationRouter,
   createInternalGenerationService,
@@ -1656,10 +1657,10 @@ test('current profile synthesis audits traits and rewrites description from cite
     confidence: 0.96
   }]
   const result = await service.synthesizeCharacterProfile({
-    idempotencyKey: 'run-audit:synthesize:snapshot-audit:character:anna:character-profile-v14',
+    idempotencyKey: `run-audit:synthesize:snapshot-audit:character:anna:${BOOK_ANALYSIS_SYNTHESIS_VERSION}`,
     runId: 'run-audit',
     snapshotId: 'snapshot-audit',
-    synthesisVersion: 'character-profile-v14',
+    synthesisVersion: BOOK_ANALYSIS_SYNTHESIS_VERSION,
     bookTitle: 'The Book',
     bookAuthor: 'An Author',
     textLength: 10_000,
@@ -1748,10 +1749,10 @@ test('invalid primary personality timeline falls back to sequential checkpoint s
   }))
 
   const result = await service.synthesizeCharacterProfile({
-    idempotencyKey: 'run-fallback:synthesize:snapshot-fallback:character:hero:character-profile-v14',
+    idempotencyKey: `run-fallback:synthesize:snapshot-fallback:character:hero:${BOOK_ANALYSIS_SYNTHESIS_VERSION}`,
     runId: 'run-fallback',
     snapshotId: 'snapshot-fallback',
-    synthesisVersion: 'character-profile-v14',
+    synthesisVersion: BOOK_ANALYSIS_SYNTHESIS_VERSION,
     bookTitle: 'Книга',
     bookAuthor: 'Автор',
     textLength: 1_000,

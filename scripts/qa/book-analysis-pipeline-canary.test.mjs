@@ -20,7 +20,7 @@ test('DB guard requires explicit local dedicated name and matching confirmation;
   await assert.rejects(runPipelineCanary({ stagedLive: true, stagedMock: true }), /one staged mode/);
 });
 
-test('own fixture passes actual scan and v14 profile gates with mock model, no database or network', async () => {
+test('own fixture passes actual scan and current profile gates with mock model, no database or network', async () => {
   const calls = [];
   const unused = async () => { throw new Error('unexpected media'); };
   const service = createInternalGenerationService({ storage: memoryObjectStorage(), completeChat: createFixtureModel(calls),

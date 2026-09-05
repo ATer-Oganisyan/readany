@@ -7,6 +7,10 @@ on:
       - "stats/narra/**"
       - "scripts/qa/book-analysis-pipeline-canary*"
       - "scripts/qa/multichunk-book-fixture*"
+      - "scripts/qa/multichunk-live-acceptance*"
+      - "scripts/qa/staged-campaign-acceptance*"
+      - "scripts/qa/recorded-multichunk*"
+      - "docs/reviews/evidence/subscription-multichunk-live-2026-09-05.json"
       - "scripts/qa/gateway-mixed-load-smoke*"
       - ".github/workflows/narra-gateway.yml"
   push:
@@ -16,6 +20,10 @@ on:
       - "stats/narra/**"
       - "scripts/qa/book-analysis-pipeline-canary*"
       - "scripts/qa/multichunk-book-fixture*"
+      - "scripts/qa/multichunk-live-acceptance*"
+      - "scripts/qa/staged-campaign-acceptance*"
+      - "scripts/qa/recorded-multichunk*"
+      - "docs/reviews/evidence/subscription-multichunk-live-2026-09-05.json"
       - "scripts/qa/gateway-mixed-load-smoke*"
       - ".github/workflows/narra-gateway.yml"
 
@@ -113,6 +121,7 @@ jobs:
           try {
             await client.query('CREATE DATABASE narra_qa_pipeline_ci_window');
             await client.query('CREATE DATABASE narra_qa_pipeline_ci_siblings');
+            await client.query('CREATE DATABASE narra_qa_pipeline_ci_recorded');
           } finally { await client.end(); }
           JS
 
@@ -122,11 +131,17 @@ jobs:
           QA_DB_CONFIRM: narra_qa_pipeline_ci_window
           QA_MULTI_DB_URL: postgresql://narra_ci:narra_ci_test_only@127.0.0.1:5432/narra_qa_pipeline_ci_siblings
           QA_MULTI_DB_CONFIRM: narra_qa_pipeline_ci_siblings
+          QA_REPLAY_DB_URL: postgresql://narra_ci:narra_ci_test_only@127.0.0.1:5432/narra_qa_pipeline_ci_recorded
+          QA_REPLAY_DB_CONFIRM: narra_qa_pipeline_ci_recorded
         # Explicit mock-only fixtures; no Codex CLI, subscription or paid provider.
         run: >-
           node --test --test-concurrency=1
           scripts/qa/book-analysis-pipeline-canary.test.mjs
           scripts/qa/multichunk-book-fixture.test.mjs
+          scripts/qa/multichunk-live-acceptance.test.mjs
+          scripts/qa/staged-campaign-acceptance.test.mjs
+          scripts/qa/recorded-multichunk-model.test.mjs
+          scripts/qa/recorded-multichunk-pipeline.test.mjs
           scripts/qa/gateway-mixed-load-smoke.test.mjs
 
       - name: Test Stats contract

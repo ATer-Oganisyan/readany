@@ -1673,6 +1673,30 @@ async function synthesizePersonalityCheckpointFallback({
   return snapshots
 }
 
+function fallbackProfileSpeechExamples(evidence, entity, textLength) {
+  const ownerIds = new Set(entity.evidenceIds)
+  const seen = new Set()
+  const result = []
+  // Ownership and source ranges originate in the validated synthesis request;
+  // publication validation still checks each cited quote against the full book.
+  const ordered = evidence.filter((item) =>
+    ownerIds.has(item.id) && item.type === 'character_dialogue' &&
+    typeof item.quote === 'string' && item.quote.trim() && item.quote.length <= 4_000 &&
+    Number.isSafeInteger(item.startOffset) && item.startOffset >= 0 &&
+    Number.isSafeInteger(item.endOffset) && item.endOffset <= textLength &&
+    item.endOffset - item.startOffset === item.quote.length &&
+    Number.isFinite(item.confidence) && item.confidence >= 0 && item.confidence <= 1
+  ).sort((a, b) => a.startOffset - b.startOffset || a.endOffset - b.endOffset ||
+    (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+  for (const item of ordered) {
+    if (seen.has(item.quote)) continue
+    seen.add(item.quote)
+    result.push({ value: item.quote, evidenceIds: [item.id], confidence: item.confidence })
+    if (result.length === 3) break
+  }
+  return result
+}
+
 function normalizeCharacterProfileResult(value, { entity, textLength, evidence, bookLanguage }) {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : null
   if (!source) invalid('LLM profile result is not an object', 'GENERATION_RESULT_INVALID')
@@ -1730,6 +1754,7 @@ function normalizeCharacterProfileResult(value, { entity, textLength, evidence, 
   const traits = filterStableTraits(traitResult.claims, evidenceById, textLength)
   droppedClaimCount += traitResult.dropped + traitResult.claims.length - traits.length
   const generatedDescription = one('description')
+  const generatedSpeechExamples = many('speechExamples', compatibleTypes.speechExamples)
   const profile = normalizeBookAnalysisCharacterProfile({
     role: one('role', compatibleTypes.role),
     age: one('age', compatibleTypes.age),
@@ -1738,7 +1763,9 @@ function normalizeCharacterProfileResult(value, { entity, textLength, evidence, 
     traits,
     appearance: many('appearance', compatibleTypes.appearance),
     speechStyle: one('speechStyle', compatibleTypes.speechStyle),
-    speechExamples: many('speechExamples', compatibleTypes.speechExamples),
+    speechExamples: generatedSpeechExamples.length
+      ? generatedSpeechExamples
+      : fallbackProfileSpeechExamples(evidence, entity, textLength),
     creative: {
       greeting: requestedGreeting && greetingMatchesLanguage(requestedGreeting, bookLanguage)
         ? requestedGreeting

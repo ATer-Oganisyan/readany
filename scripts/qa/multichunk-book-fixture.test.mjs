@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile, stat } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { createStableBookChunks } from '../../services/narra-gateway/book-analysis-chunking.mjs';
 import { MULTICHUNK_FIXTURE, MULTICHUNK_FACTS, assertMultichunkAcceptance } from './multichunk-book-fixture.mjs';
@@ -74,7 +74,7 @@ test('multi-chunk acceptance rejects dropped/duplicate facts, lost relation, gap
 
 test('multi-chunk never enables a live provider implicitly', async () => {
   await assert.rejects(runPipelineCanary({ fixtureId: 'unknown' }), /Unknown own fixture/);
-  await assert.rejects(runPipelineCanary({ fixtureId: 'siblings', stagedLive: true }), /mock-only/);
+  await assert.rejects(runPipelineCanary({ fixtureId: 'siblings', stagedLive: true }), /Explicit QA_DB_URL/);
   await assert.rejects(runPipelineCanary({ fixtureId: 'siblings', stagedMock: true }), /Explicit QA_DB_URL/);
 });
 
@@ -109,6 +109,12 @@ async function runStagedMock() {
   assert.equal(result.observations, 11);
   assert.equal(result.publications, 1);
   assert.equal(result.idempotent, true);
+  const evidence = JSON.parse(await readFile(result.qualityEvidenceFile, 'utf8'));
+  assert.equal(evidence.live, false);
+  assert.equal(evidence.runId, result.runId);
+  assert.equal(evidence.fixtureHash, result.fixtureHash);
+  assert.equal((await stat(result.qualityEvidenceFile)).mode & 0o077, 0);
+  assert.doesNotThrow(() => assertMultichunkAcceptance(evidence));
   console.log(JSON.stringify({ stagedMock: true, requests: captures, approvalDirectory: result.approvalDirectory }));
   return result;
 }
