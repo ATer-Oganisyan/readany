@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, stat, writeFile } from 'node:fs/promises';
 import { validateDedicatedDatabase, runPipelineCanary, memoryObjectStorage, createFixtureModel, createCanaryWorkers, assertFixtureSemanticAcceptance, FIXTURE } from './book-analysis-pipeline-canary.mjs';
 import { createGenerationServiceClient } from '../../services/narra-gateway/generation-service-client.mjs';
 import { createInternalGenerationService } from '../../services/narra-gateway/internal-generation-service.mjs';
@@ -117,4 +117,20 @@ test('actual sequential workers, repository, dedicated PostgreSQL and local gene
   assert.equal(result.publications, 1);
   assert.equal(result.idempotent, true);
   assert.deepEqual(result.traits, ['честная']);
+  if (stagedMock) {
+    assert.ok(result.qualityEvidenceFile, 'every staged fixture must retain the final published profile after DB cleanup');
+    assert.equal((await stat(result.qualityEvidenceFile)).mode & 0o777, 0o600);
+    const evidence = JSON.parse(await readFile(result.qualityEvidenceFile, 'utf8'));
+    assert.equal(evidence.live, false);
+    assert.equal(evidence.fixtureId, 'window');
+    assert.equal(evidence.fixtureHash, result.fixtureHash);
+    assert.equal(evidence.runId, result.runId);
+    assert.equal(evidence.run.status, 'ready');
+    assert.equal(evidence.profiles.length, 1);
+    assert.deepEqual(evidence.profiles[0].data.profile.traits.map(trait => trait.value), result.traits);
+    assert.equal(evidence.publications.length, 1);
+    assert.deepEqual(evidence.markup, evidence.publications[0].data.markup);
+    assert.equal(evidence.markup.characters.length, 1);
+    assert.equal(evidence.calls.length, 4);
+  }
 });

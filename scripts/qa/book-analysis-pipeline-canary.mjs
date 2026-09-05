@@ -252,7 +252,7 @@ export async function runPipelineCanary({ databaseUrl, confirmation, stagedMock 
     // Preserve all own-fixture output before any publication/semantic assertions.
     // Step responses also remain available if a worker failed before publication.
     let qualityEvidenceFile;
-    if (staged && multichunk) {
+    if (staged) {
       qualityEvidenceFile = join(staged.directory, 'pipeline-evidence.json');
       await writeFile(qualityEvidenceFile, JSON.stringify({ fixtureId, fixtureHash: source.contentHash,
         live: stagedLive, runId, run, observations, profiles, artifacts, publications,
