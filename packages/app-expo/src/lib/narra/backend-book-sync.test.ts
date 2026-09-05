@@ -161,6 +161,29 @@ async function open(value: Book) {
 }
 
 describe("backend book import and persistence integration", () => {
+  it.each(["ready", "failed", "network-error"])("ignores a delayed %s identity after source replacement", async (resultStatus) => {
+    const binding = { resolution: "private" as const, bookEditionId: "old-edition",
+      contentSha256: "a".repeat(64), sourceUploaded: true };
+    useNarraStore.getState().setBackendBinding("local", binding);
+    let finish!: (value: unknown) => void;
+    let fail!: (error: Error) => void;
+    runtime.request.mockImplementation(async (path: string) => {
+      if (path.endsWith("/identity")) return new Promise((resolve, reject) => { finish = resolve; fail = reject; });
+      if (path.endsWith("/manifest")) return ready;
+      return {};
+    });
+    await open(book());
+    expect(finish).toBeTypeOf("function");
+    useNarraStore.getState().setBackendBinding("local", {
+      ...binding, bookEditionId: "new-edition", contentSha256: "b".repeat(64),
+    });
+    if (resultStatus === "network-error") fail(new Error("Old network failure"));
+    else finish({ status: resultStatus, title: "Old source title", author: "Old author", error_code: "OLD_FAILURE" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(runtime.books[0].meta.title).toBe("Book");
+    expect(useBackendBookStatus.getState().books.local?.identityError).toBeUndefined();
+    expect(useBackendBookStatus.getState().books.local?.error).toBeUndefined();
+  });
   it.each(["edition-a", "edition-b"])(
     "isolates changed source bytes and restores conversations (%s)",
     (edition) => {

@@ -316,11 +316,23 @@ function createSession(book: Book, progress: number) {
         return preview;
       },
       identity: async (binding, signal) => {
+        const edition = binding.bookEditionId;
+        const sourceHash = binding.contentSha256.toLowerCase();
+        const isCurrent = () => {
+          const current = useNarraStore.getState().books[book.id]?.backendBinding;
+          return !signal.aborted && current?.bookEditionId === edition &&
+            current.contentSha256.toLowerCase() === sourceHash &&
+            useLibraryStore.getState().books.some((item) => item.id === book.id && !item.deletedAt);
+        };
+        if (!isCurrent()) return { pending: false, delay: 5000 };
         const result = await backendBookRequest(
-          backendBookPath(binding.bookEditionId, "identity"),
+          backendBookPath(edition, "identity"),
           { signal },
-        );
-        if (signal.aborted) return { pending: false, delay: 5000 };
+        ).catch((error) => {
+          if (isCurrent()) throw error;
+          return null;
+        });
+        if (!result || !isCurrent()) return { pending: false, delay: 5000 };
         if (
           result.status === "ready" &&
           typeof result.title === "string" &&
