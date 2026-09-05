@@ -1,6 +1,7 @@
 import { markInteraction } from "@/lib/diagnostics/interaction-performance";
 import { getPlatformService } from "@readany/core/services";
 import * as FileSystem from "expo-file-system/legacy";
+import { backendCacheRoot } from "./backend-cache-scope";
 import type { BackendCatalogBook, BackendCatalogGenre } from "./backend-catalog-api";
 import { downloadVerifiedBackendFile } from "./backend-file-download";
 import {
@@ -10,7 +11,9 @@ import {
 } from "./book-language";
 import { createCatalogFileStorage } from "./catalog-storage";
 
-const CACHE_ROOT = `${FileSystem.documentDirectory}narra-backend-catalog`;
+// Module singleton captures the build-time endpoint. Endpoint changes require reload;
+// existing storage instances and their pending writes retain their original scope.
+const CACHE_ROOT = backendCacheRoot(`${FileSystem.documentDirectory}narra-backend-catalog`);
 const COVER_ROOT = `${CACHE_ROOT}/covers`;
 let coverTemporarySequence = 0;
 let coverDirectories: Promise<void> | null = null;

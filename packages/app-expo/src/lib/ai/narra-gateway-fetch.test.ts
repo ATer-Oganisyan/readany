@@ -780,6 +780,11 @@ describe("local gateway credential isolation", () => {
     expect(String(localFetch.mock.calls[0]?.[0])).toMatch(/installations\/register$/);
     expect(JSON.stringify(localFetch.mock.calls)).not.toContain("remote-token");
     expect(JSON.stringify(localFetch.mock.calls)).not.toContain("remote-secret");
+    expect(
+      secureValues.get(
+        `${INSTALLATION_TOKEN_KEY}.local.687474703a2f2f3132372e302e302e313a3138373837`,
+      ),
+    ).toBe("local-token");
     for (const [key, value] of remoteSnapshot) expect(secureValues.get(key)).toBe(value);
 
     // A local app restart reuses local auth without re-registering.

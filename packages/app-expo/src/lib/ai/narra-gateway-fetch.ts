@@ -2,6 +2,7 @@ import * as Crypto from "expo-crypto";
 import * as NativeSecureStore from "expo-secure-store";
 import { fetch as expoFetch } from "expo/fetch";
 import { NarraServiceError } from "../narra/errors";
+import { localNarraGatewayScope } from "./narra-gateway-scope";
 import {
   type GatewayConsumerScope,
   readGatewayResponseText,
@@ -27,14 +28,8 @@ const PRODUCTION_NARRA_GATEWAY_URL = "https://api.narra.disrupt.builders";
 // Keep existing remote keys intact; each local endpoint gets a distinct scope.
 // The endpoint is build-time configuration (switching requires a Metro reload).
 function installationStorageKey(key: string): string {
-  const { baseUrl } = getNarraGatewayConfig();
-  const url = new URL(baseUrl);
-  if (!["localhost", "127.0.0.1", "[::1]", "10.0.2.2"].includes(url.hostname)) return key;
-  const endpoint = `${url.origin}${url.pathname.replace(/\/+$/, "")}`;
-  const encoded = Array.from(endpoint, (char) =>
-    char.charCodeAt(0).toString(16).padStart(2, "0"),
-  ).join("");
-  return `${key}.local.${encoded}`;
+  const scope = localNarraGatewayScope(getNarraGatewayConfig().baseUrl);
+  return scope ? `${key}.local.${scope}` : key;
 }
 
 const SecureStore = {

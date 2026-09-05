@@ -3,6 +3,10 @@ const fs = vi.hoisted(() => ({
   files: new Map<string, number>(),
   download: vi.fn(),
   events: [] as string[],
+  endpoint: "https://api-test.narra.disrupt.builders",
+}));
+vi.mock("@/lib/ai/narra-gateway-fetch", () => ({
+  getNarraGatewayConfig: () => ({ baseUrl: fs.endpoint }),
 }));
 vi.mock("expo-crypto", () => ({
   CryptoDigestAlgorithm: { SHA256: "sha256" },
@@ -54,11 +58,36 @@ const scene = {
 };
 const destination = "file:///documents/narra-media/backend-scene-hash.png";
 beforeEach(() => {
+  fs.endpoint = "https://api-test.narra.disrupt.builders";
   fs.files.clear();
   fs.events = [];
   fs.download.mockReset();
 });
 describe("native backend scene files", () => {
+  it("isolates colliding scene IDs and a late local completion from TEST files", async () => {
+    fs.files.set(destination, 20);
+    fs.endpoint = "http://127.0.0.1:18787";
+    let complete!: () => void;
+    fs.download.mockImplementationOnce(async (_url, file) => {
+      await new Promise<void>((resolve) => {
+        complete = resolve;
+      });
+      fs.files.set(file.uri, 99);
+    });
+    const pending = saveBackendSceneFile(intent, scene);
+    await vi.waitFor(() => expect(complete).toBeTypeOf("function"));
+    fs.endpoint = "https://api-test.narra.disrupt.builders";
+    complete();
+    const localPath = await pending;
+    expect(localPath).not.toBe(destination);
+    expect(fs.files.get(destination)).toBe(20);
+    expect(fs.files.get(localPath)).toBe(99);
+    fs.download.mockImplementationOnce(async (_url, file) => {
+      fs.files.set(file.uri, 30);
+    });
+    expect(await saveBackendSceneFile(intent, scene)).toBe(destination);
+    expect(fs.files.get(localPath)).toBe(99);
+  });
   it("cancels a stalled native download after 60 seconds and releases the timer", async () => {
     vi.useFakeTimers();
     try {
