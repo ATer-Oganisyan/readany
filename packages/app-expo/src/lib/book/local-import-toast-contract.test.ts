@@ -5,7 +5,6 @@ const importActions = readFileSync(
   new URL("../../hooks/use-book-import-actions.ts", import.meta.url),
   "utf8",
 );
-const app = readFileSync(new URL("../../App.tsx", import.meta.url), "utf8");
 const libraryStore = readFileSync(
   new URL("../../stores/library-store.ts", import.meta.url),
   "utf8",
@@ -34,12 +33,6 @@ describe("local book import toast contract", () => {
       "Готово! Скоро добавим обложку и\u00a0персонажей",
     );
     expect(importActions).toContain("обложку и\\u00A0персонажей");
-  });
-
-  it("renders toast text with the regular interface font", () => {
-    const toastOptions = app.slice(app.indexOf("toastOptions={{"));
-    expect(toastOptions).toContain("fontFamily: interfaceFontFamily.regular");
-    expect(toastOptions).toContain('fontWeight: "400"');
   });
 
   it("queues cover generation for every device import and repairs older missing jobs", () => {

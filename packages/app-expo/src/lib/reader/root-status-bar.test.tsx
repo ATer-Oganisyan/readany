@@ -33,6 +33,8 @@ function loadNavigator(platform: "android" | "ios") {
   const dependencies: Record<string, unknown> = {
     "react/jsx-runtime": require("react/jsx-runtime"),
     "react-native": { Platform: { OS: platform } },
+    "@/components/ui/styled-toast-host": { StyledToastHost: Leaf },
+    "@/components/ui/toast-host-owner": { ToastHostSlot: Leaf },
     "@react-navigation/native-stack": {
       createNativeStackNavigator: () => ({ Navigator: NativeNavigator, Screen: NativeScreen }),
     },

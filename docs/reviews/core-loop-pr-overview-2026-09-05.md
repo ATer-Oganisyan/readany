@@ -43,9 +43,12 @@
   попадания в canonical snapshots; повтор без вызовов. Пока mock-only.
   Старый+новый canary и isolated mixed HTTP smoke: локально **12 PASS / 0 SKIP**;
   включены в gateway CI с двумя свежими БД.
+  На `eb15baa` оба CI success: Gateway33973831988 — **839 PASS / 0 SKIP**
+  в полном PG/S3 наборе и отдельно **12 PASS / 0 SKIP** новых canary;
+  Regression33973831996 также success.
 - Mixed HTTP smoke: 67 запросов, 42 успеха, overload/error/23 отмены;
   active/waiting освобождаются. Это не длительная нагрузка PG/S3 и не 1000 DAU.
-- Последний локальный mobile: **173 suites / 1 587 PASS**, TypeScript PASS;
+- Последний локальный mobile: **175 suites / 1 591 PASS**, TypeScript PASS;
   включает подготовительную изоляцию LOCAL кэшей, но не AI-state/SQLite.
 - Оба CI на `9f59d2d` прошли. Gateway run33969207014:
   **831 PASS / 0 SKIP**, включая PostgreSQL и S3. Оба CI на последующем
@@ -62,6 +65,13 @@
 - Новейший локальный backend без внешней БД:813 PASS,21 SKIP,0 FAIL;
   пропуски требуют отдельного PG/storage-прогона и не считаются PASS.
 - Native iOS/Android сценарии и точные ограничения записаны в отчётах.
+- Дополнительный iOS gate: зависший URL→Reader→две страницы→Cancel→повтор
+  той же FBZ завершён без дубля/потери позиции/позднего результата. Найдены
+  перекрытие текста loading toast и AX-модальность уведомления. Для пути
+  Library↔Reader принят отдельный фикс: один host внутри активной читалки,
+  видимые/доступные управление и Cancel, отмена убирает UI/AX/JS уведомление
+  и соединение, позиция сохранена. Другие modal routes и положение постоянного
+  статуса пока не приняты; первые два кандидата отвергнуты реальным QA.
 - Живой локальный HTTP canary генерации по подписке прошёл за7,7с без повторов.
   Это тестовый транспорт на собственном коротком тексте, не production provider,
   не quality gate персонажей и не полный worker/DB/mobile loop.

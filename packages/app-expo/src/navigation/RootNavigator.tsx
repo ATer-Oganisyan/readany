@@ -1,4 +1,6 @@
 import { MissingBookPrompt } from "@/components/shared/MissingBookPrompt";
+import { StyledToastHost } from "@/components/ui/styled-toast-host";
+import { ToastHostSlot } from "@/components/ui/toast-host-owner";
 import type { CachedBackendCatalogBook } from "@/lib/narra/backend-catalog-cache";
 import BadgesScreen from "@/screens/BadgesScreen";
 import { ChatScreen } from "@/screens/ChatScreen";
@@ -39,7 +41,7 @@ import {
 } from "@react-navigation/native-stack";
 import type { WebDavImportSource } from "@readany/core";
 import { useTranslation } from "react-i18next";
-import { Platform } from "react-native";
+import { Platform, View } from "react-native";
 import { TabNavigator } from "./TabNavigator";
 import { NATIVE_SCROLL_EDGE_EFFECTS } from "./scroll-edge-effects";
 
@@ -118,6 +120,17 @@ function NarraCharacterChatRouteScreen(
   );
 }
 
+function ReaderWithToastHost(props: NativeStackScreenProps<RootStackParamList, "Reader">) {
+  return (
+    <View style={{ flex: 1 }}>
+      <ReaderScreen {...props} />
+      <ToastHostSlot readerKey={props.route.key}>
+        <StyledToastHost insideReader />
+      </ToastHostSlot>
+    </View>
+  );
+}
+
 export function RootNavigator() {
   const { _hasHydrated } = useSettingsStore();
   const { colors, isDark } = useTheme();
@@ -183,7 +196,7 @@ export function RootNavigator() {
         />
         <Stack.Screen
           name="Reader"
-          component={ReaderScreen}
+          component={ReaderWithToastHost}
           options={{
             presentation: "fullScreenModal",
             animation: "slide_from_bottom",
