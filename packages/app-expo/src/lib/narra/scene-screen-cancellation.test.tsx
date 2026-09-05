@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   play: vi.fn(),
   stop: vi.fn(),
   report: vi.fn(),
+  validate: vi.fn(),
+  cached: undefined as undefined | { segments: NarraSceneAudioSegment[]; createdAt: number },
   stopped: undefined as undefined | (() => void),
   blur: undefined as undefined | (() => void),
 }));
@@ -52,7 +54,9 @@ vi.mock("@/lib/narra/media", () => ({
   normalizePersistedNarraMediaUri: (uri: string) => uri,
   synthesizeNarraSpeech: mocks.speech,
 }));
-vi.mock("@/lib/narra/scene-audio", () => ({ generateNarraAudioScenario: mocks.scenario }));
+vi.mock("@/lib/narra/scene-audio", () => ({
+  generateNarraAudioScenario: mocks.scenario, validateNarraSceneAudioSegments: mocks.validate,
+}));
 vi.mock("@/lib/narra/scene-image-openrouter", () => ({ generateNarraSceneImage: vi.fn() }));
 vi.mock("@/lib/notifications", () => ({ toast: { error: vi.fn() } }));
 vi.mock("@/navigation/scroll-edge-effects", () => ({ NATIVE_SCROLL_EDGE_EFFECTS: {} }));
@@ -70,6 +74,7 @@ vi.mock("@/stores", () => {
   const book = {
     characters: [],
     scenes: { one: { imageUri: "file://scene.png" }, two: { imageUri: "file://scene.png" } },
+    get sceneAudios() { return { one: mocks.cached }; },
   };
   const state = { books: { book }, setScene: vi.fn(), setSceneAudio: mocks.cache };
   return { useNarraStore: (selector: (value: typeof state) => unknown) => selector(state) };
@@ -102,6 +107,9 @@ beforeEach(async () => {
   vi.clearAllMocks();
   mocks.blur = undefined;
   mocks.stopped = undefined;
+  mocks.cached = undefined;
+  mocks.validate.mockImplementation((segments) => segments.map((item: NarraSceneAudioSegment) => ({ ...item })));
+  mocks.report.mockReturnValue({ message: "Unavailable", code: "SERVICE" });
   mocks.scenario.mockImplementation(() => new Promise(() => {}));
   mocks.speech.mockImplementation(() => new Promise(() => {}));
   await act(async () => {
@@ -218,4 +226,31 @@ it("a successful scene plays each segment once and restores the start button", a
   expect(mocks.speech).toHaveBeenCalledTimes(2);
   expect(button("narra.sceneVoice")).toBeDefined();
   expect(mocks.report).not.toHaveBeenCalled();
+});
+
+it("shows a visible retryable error instead of silently returning to idle", async () => {
+  mocks.scenario.mockRejectedValue(new Error("Fixture provider unavailable"));
+  await act(async () => { button("narra.sceneVoice").props.onPress(); });
+  expect(tree.root.findByProps({ accessibilityRole: "alert" }).props.children).toBe("narra.sceneAudioFailed");
+  expect(button("narra.sceneVoice")).toBeDefined();
+  expect(mocks.speech).not.toHaveBeenCalled();
+  await act(async () => {
+    mocks.scenario.mockImplementation(() => new Promise(() => {}));
+    button("narra.sceneVoice").props.onPress();
+  });
+  expect(tree.root.findAllByProps({ accessibilityRole: "alert" })).toHaveLength(0);
+});
+
+it("rejects invalid cached scenario before playback without a hidden paid repair", async () => {
+  mocks.cached = { segments: [{ ...segment, audioUri: "file://wrong.mp3" }], createdAt: 1 };
+  mocks.validate.mockImplementation(() => { throw new Error("Text mismatch"); });
+  mocks.report.mockReturnValue({ code: "SERVICE", backendCode: "SCENE_AUDIO_TEXT_MISMATCH" });
+  await act(async () => { tree.update(<NarraSceneScreen {...props()} />); });
+  await act(async () => { button("narra.sceneVoice").props.onPress(); });
+  expect(mocks.validate).toHaveBeenCalledWith(mocks.cached.segments, "Окно открыто.");
+  expect(mocks.cache).toHaveBeenCalledWith("book", expect.objectContaining({ sourceKey: "one", segments: [] }));
+  expect(mocks.scenario).not.toHaveBeenCalled();
+  expect(mocks.speech).not.toHaveBeenCalled();
+  expect(mocks.play).not.toHaveBeenCalled();
+  expect(tree.root.findByProps({ accessibilityRole: "alert" }).props.children).toBe("narra.sceneAudioTextMismatch");
 });

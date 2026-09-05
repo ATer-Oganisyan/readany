@@ -14,7 +14,7 @@ import {
   reportNarraError,
 } from "@/lib/narra/errors";
 import { normalizePersistedNarraMediaUri, synthesizeNarraSpeech } from "@/lib/narra/media";
-import { generateNarraAudioScenario } from "@/lib/narra/scene-audio";
+import { generateNarraAudioScenario, validateNarraSceneAudioSegments } from "@/lib/narra/scene-audio";
 import { generateNarraSceneImage as generateSceneImage } from "@/lib/narra/scene-image-openrouter";
 import type { NarraCharacter, NarraSceneAudioSegment } from "@/lib/narra/types";
 import { toast } from "@/lib/notifications";
@@ -90,6 +90,7 @@ export function NarraSceneScreen({ route, navigation }: Props) {
     failed: boolean;
   }>({ uri: null, ready: false, failed: false });
   const [audioStatus, setAudioStatus] = useState<AudioStatus>("idle");
+  const [audioError, setAudioError] = useState<string | null>(null);
   const [textExpanded, setTextExpanded] = useState(false);
   const startedRef = useRef(false);
   const [audioPlayer] = useState(() => new NarraAudioPlayer());
@@ -158,12 +159,14 @@ export function NarraSceneScreen({ route, navigation }: Props) {
   const stopAudio = useCallback(() => {
     cancelAudio();
     setAudioStatus("idle");
+    setAudioError(null);
   }, [cancelAudio]);
 
   // Native stacks can blur without unmounting; both boundaries cancel paid work.
   useEffect(() => navigation.addListener("blur", stopAudio), [navigation, stopAudio]);
   useEffect(() => {
     setAudioStatus("idle");
+    setAudioError(null);
     return cancelAudio;
   }, [bookId, sourceKey, excerpt, cancelAudio]);
 
@@ -189,11 +192,22 @@ export function NarraSceneScreen({ route, navigation }: Props) {
     const controller = new AbortController();
     audioControllerRef.current = controller;
     setAudioStatus("preparing");
+    setAudioError(null);
 
     try {
-      const segments: NarraSceneAudioSegment[] = cachedAudio?.segments?.length
-        ? cachedAudio.segments.map((segment) => ({ ...segment }))
-        : await generateNarraAudioScenario(excerpt, characters, { signal: controller.signal });
+      let segments: NarraSceneAudioSegment[];
+      if (cachedAudio?.segments?.length) {
+        try {
+          segments = validateNarraSceneAudioSegments(cachedAudio.segments, excerpt);
+        } catch (cause) {
+          // Invalidate only this rejected scenario. A new paid attempt requires
+          // the next explicit tap, never an invisible cache-repair retry.
+          setSceneAudio(bookId, { sourceKey, segments: [], createdAt: Date.now() });
+          throw cause;
+        }
+      } else {
+        segments = await generateNarraAudioScenario(excerpt, characters, { signal: controller.signal });
+      }
       if (audioRunRef.current !== runId) return;
 
       const createdAt = cachedAudio?.createdAt ?? Date.now();
@@ -244,7 +258,14 @@ export function NarraSceneScreen({ route, navigation }: Props) {
       }
     } catch (cause) {
       if (audioRunRef.current === runId) {
-        reportNarraError("scene_speech", cause);
+        const normalized = reportNarraError("scene_speech", cause);
+        setAudioError(
+          normalized.backendCode === "SCENE_AUDIO_TOO_LONG"
+            ? "narra.sceneAudioTooLong"
+            : normalized.backendCode?.startsWith("SCENE_AUDIO_")
+              ? "narra.sceneAudioTextMismatch"
+              : "narra.sceneAudioFailed",
+        );
       }
     } finally {
       if (audioRunRef.current === runId) {
@@ -480,6 +501,12 @@ export function NarraSceneScreen({ route, navigation }: Props) {
             )}
           </Pressable>
         </View>
+
+        {audioError ? (
+          <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.placeholderHint}>
+            {t(audioError)}
+          </Text>
+        ) : null}
 
         {/* Полный отрывок — свёрнут по умолчанию */}
         <Pressable

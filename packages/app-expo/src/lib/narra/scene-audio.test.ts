@@ -53,7 +53,7 @@ describe("Narra scene audio", () => {
     request.mockResolvedValueOnce(
       new Response(
         JSON.stringify({
-          text: '[{"type":"speech","character":"shi-qiang","text":"Пойдём."}]',
+          text: '[{"type":"speech","character":"shi-qiang","text":"— Пойдём,"},{"type":"narration","character":null,"text":"— сказал Ши Цян."}]',
         }),
         { status: 200 },
       ),
@@ -61,7 +61,10 @@ describe("Narra scene audio", () => {
 
     await expect(
       generateNarraAudioScenario("— Пойдём, — сказал Ши Цян.", [character]),
-    ).resolves.toEqual([expect.objectContaining({ speaker: "Ши Цян", text: "Пойдём." })]);
+    ).resolves.toEqual([
+      expect.objectContaining({ speaker: "Ши Цян", text: "— Пойдём," }),
+      expect.objectContaining({ speaker: "Рассказчик", text: " — сказал Ши Цян." }),
+    ]);
 
     const [path, init] = request.mock.calls[0] ?? [];
     expect(path).toBe("/v2/ai/chat/complete");
