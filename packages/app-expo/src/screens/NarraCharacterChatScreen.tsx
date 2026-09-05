@@ -107,6 +107,19 @@ function toMessageV2(message: NarraChatMessage, threadId: string): MessageV2 {
 }
 
 export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
+  const bookId = "embedded" in props ? props.bookId : props.route.params.bookId;
+  const characterId = "embedded" in props ? props.characterId : props.route.params.characterId;
+  const binding = useNarraStore((state) => state.books[bookId]?.backendBinding);
+  const key = JSON.stringify([
+    bookId,
+    characterId,
+    binding?.bookEditionId,
+    binding?.contentSha256.toLowerCase(),
+  ]);
+  return <CharacterChatSession key={key} {...props} />;
+}
+
+function CharacterChatSession(props: NarraCharacterChatScreenProps) {
   const embedded = "embedded" in props;
   const presentedAsSheet = Platform.OS === "ios" && !embedded;
   const bookId = embedded ? props.bookId : props.route.params.bookId;
@@ -128,6 +141,48 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
   );
   useBackendBook(book);
   const narraBook = useNarraStore((state) => state.books[bookId]);
+  const mounted = useRef(true);
+  const greetingRequestedRef = useRef(false);
+  const placeholderRequestedRef = useRef<string | null>(null);
+  const requests = useRef(new Set<ReturnType<typeof createCharacterRequestScope>>());
+  useEffect(() => {
+    mounted.current = true;
+    greetingRequestedRef.current = false;
+    placeholderRequestedRef.current = null;
+    return () => {
+      mounted.current = false;
+      for (const request of requests.current) request.dispose();
+      requests.current.clear();
+    };
+  }, []);
+  const renderIdentity = JSON.stringify([
+    narraBook?.backendBinding?.bookEditionId,
+    narraBook?.backendBinding?.contentSha256.toLowerCase(),
+  ]);
+  const startRequest = useCallback(() => {
+    const scope = createCharacterRequestScope({
+      bookId,
+      characterId,
+      readState: useNarraStore.getState,
+      subscribe: useNarraStore.subscribe,
+    });
+    const current = useNarraStore.getState().books[bookId]?.backendBinding;
+    if (
+      !mounted.current ||
+      JSON.stringify([current?.bookEditionId, current?.contentSha256.toLowerCase()]) !==
+        renderIdentity
+    )
+      scope.dispose();
+    const request = {
+      ...scope,
+      dispose: () => {
+        scope.dispose();
+        requests.current.delete(request);
+      },
+    };
+    if (!scope.signal.aborted) requests.current.add(request);
+    return request;
+  }, [bookId, characterId, renderIdentity]);
   const append = useNarraStore((state) => state.appendChatMessage);
   const setMemory = useNarraStore((state) => state.setMemory);
   const updateCharacter = useNarraStore((state) => state.updateCharacter);
@@ -141,8 +196,6 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
   // delivered to the same render before that update.
   const sendingRef = useRef(false);
   const [greetingLoading, setGreetingLoading] = useState(false);
-  const greetingRequestedRef = useRef(false);
-  const placeholderRequestedRef = useRef<string | null>(null);
   const unlocked = Boolean(book && character && isCharacterUnlocked(book.progress, character));
   const characterStatus =
     sending || greetingLoading ? t("narra.characterTyping", "Печатает…") : undefined;
@@ -174,12 +227,7 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
     if (interfaceLanguage === "en" || !book || !character || character.chatPlaceholder) return;
     if (placeholderRequestedRef.current === character.id) return;
     placeholderRequestedRef.current = character.id;
-    const scope = createCharacterRequestScope({
-      bookId,
-      characterId,
-      readState: useNarraStore.getState,
-      subscribe: useNarraStore.subscribe,
-    });
+    const scope = startRequest();
 
     void (async () => {
       try {
@@ -211,7 +259,7 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
         scope.dispose();
       }
     })();
-  }, [book, bookId, character, characterId, interfaceLanguage, updateCharacter]);
+  }, [book, bookId, character, characterId, interfaceLanguage, updateCharacter, startRequest]);
 
   const conversation = useMemo<NarraChatMessageInput[]>(
     () =>
@@ -246,12 +294,7 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
     if (!book || !character || !unlocked) return;
     if (messages.length > 0 || greetingRequestedRef.current) return;
     greetingRequestedRef.current = true;
-    const scope = createCharacterRequestScope({
-      bookId,
-      characterId,
-      readState: useNarraStore.getState,
-      subscribe: useNarraStore.subscribe,
-    });
+    const scope = startRequest();
 
     const appendGreeting = (content: string) => {
       if (!scope.isCurrent()) return;
@@ -304,11 +347,13 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
         if (content) appendGreeting(content);
       } catch (error) {
         // Без приветствия чат остаётся рабочим: читатель может написать первым.
-        if (scope.isCurrent()) reportNarraError("character_greeting", error);
-        greetingRequestedRef.current = false;
+        if (scope.isCurrent()) {
+          reportNarraError("character_greeting", error);
+          greetingRequestedRef.current = false;
+        }
       } finally {
+        if (mounted.current && scope.isCurrent()) setGreetingLoading(false);
         scope.dispose();
-        setGreetingLoading(false);
       }
     })();
   }, [
@@ -320,17 +365,13 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
     messages.length,
     readingExcerpt,
     unlocked,
+    startRequest,
   ]);
 
   const refreshMemory = useCallback(
     async (updatedMessages: NarraChatMessage[]) => {
       if (!character || updatedMessages.length < 4 || updatedMessages.length % 4 !== 0) return;
-      const scope = createCharacterRequestScope({
-        bookId,
-        characterId,
-        readState: useNarraStore.getState,
-        subscribe: useNarraStore.subscribe,
-      });
+      const scope = startRequest();
       try {
         const nextMemory = await completeNarraChat({
           signal: scope.signal,
@@ -366,19 +407,14 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
         scope.dispose();
       }
     },
-    [bookId, character, characterId, interfaceLanguage, memory, setMemory],
+    [bookId, character, characterId, interfaceLanguage, memory, setMemory, startRequest],
   );
 
   const send = useCallback(
     async (value: string) => {
       const text = value.trim();
       if (!text || !book || !character || !unlocked || sendingRef.current) return;
-      const scope = createCharacterRequestScope({
-        bookId,
-        characterId,
-        readState: useNarraStore.getState,
-        subscribe: useNarraStore.subscribe,
-      });
+      const scope = startRequest();
       if (!scope.isCurrent()) {
         scope.dispose();
         return;
@@ -419,7 +455,7 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
       } finally {
         scope.dispose();
         sendingRef.current = false;
-        setSending(false);
+        if (mounted.current) setSending(false);
       }
     },
     [
@@ -431,6 +467,7 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
       conversation,
       messages,
       refreshMemory,
+      startRequest,
       t,
       unlocked,
     ],

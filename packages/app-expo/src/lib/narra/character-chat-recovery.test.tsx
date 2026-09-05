@@ -1,4 +1,5 @@
 import type { ReadingContext } from "@readany/core/types/chat";
+import { StrictMode } from "react";
 import { type ReactTestRenderer, act, create } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -128,6 +129,127 @@ afterEach(() => {
 });
 
 describe("character chat screen recovery", () => {
+  it.each(["greeting", "placeholder"])(
+    "completes %s after StrictMode effect replay",
+    async (kind) => {
+      if (kind === "placeholder") {
+        runtime.initialBook.characters[0].chatPlaceholder = "";
+        runtime.messages.push({
+          id: "greeting",
+          role: "assistant",
+          content: "Привет",
+          createdAt: 1,
+        });
+      }
+      setNarraGatewayAdapter(async () => new Response(JSON.stringify({ text: "Написать герою…" })));
+      await act(async () => {
+        tree = create(
+          <StrictMode>
+            <NarraCharacterChatScreen embedded bookId="book" characterId="hero" onBack={vi.fn()} />
+          </StrictMode>,
+        );
+      });
+      if (kind === "greeting") expect(runtime.messages.at(-1)?.content).toBe("Написать герою…");
+      else
+        expect(runtime.narra.updateCharacter).toHaveBeenCalledWith("book", "hero", {
+          chatPlaceholder: "Написать герою…",
+        });
+      expect(runtime.listeners.size).toBe(0);
+    },
+  );
+  it.each(["greeting", "placeholder"])("restarts %s for the replacement edition", async (kind) => {
+    if (kind === "placeholder") {
+      runtime.initialBook.characters[0].chatPlaceholder = "";
+      runtime.messages.push({ id: "greeting", role: "assistant", content: "Привет", createdAt: 1 });
+    }
+    const responders: Array<(response: Response) => void> = [];
+    setNarraGatewayAdapter(
+      () =>
+        new Promise<Response>((resolve) => {
+          responders.push(resolve);
+        }),
+    );
+    const screen = () => (
+      <NarraCharacterChatScreen embedded bookId="book" characterId="hero" onBack={vi.fn()} />
+    );
+    await act(async () => {
+      tree = create(screen());
+    });
+    expect(responders).toHaveLength(1);
+    await act(async () => {
+      runtime.initialBook.backendBinding = {
+        bookEditionId: "edition-b",
+        contentSha256: "b".repeat(64),
+      };
+      for (const listener of runtime.listeners) listener();
+      tree.update(screen());
+    });
+    expect(responders).toHaveLength(2);
+    await act(async () => {
+      responders[0](new Response(JSON.stringify({ text: "Old result" })));
+      responders[1](new Response(JSON.stringify({ text: "Написать новому герою…" })));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    if (kind === "greeting")
+      expect(runtime.messages.at(-1)?.content).toBe("Написать новому герою…");
+    else
+      expect(runtime.narra.updateCharacter).toHaveBeenCalledWith("book", "hero", {
+        chatPlaceholder: "Написать новому герою…",
+      });
+    expect(runtime.listeners.size).toBe(0);
+  });
+  it.each(["switch", "unmount"])("rejects an old send handler after %s", async (change) => {
+    runtime.messages.push({ id: "greeting", role: "assistant", content: "Привет", createdAt: 1 });
+    const adapter = vi.fn(async () => new Response(JSON.stringify({ text: "Wrong context" })));
+    setNarraGatewayAdapter(adapter);
+    await act(async () => {
+      tree = create(
+        <NarraCharacterChatScreen embedded bookId="book" characterId="hero" onBack={vi.fn()} />,
+      );
+    });
+    const oldSend = tree.root.find((node) => String(node.type) === "Chat").props.onSend;
+    await act(async () => {
+      if (change === "switch")
+        runtime.initialBook.backendBinding = {
+          bookEditionId: "edition-b",
+          contentSha256: "b".repeat(64),
+        };
+      else tree.unmount();
+    });
+    await act(async () => {
+      await oldSend("Старый контекст");
+    });
+    expect(adapter).not.toHaveBeenCalled();
+    expect(runtime.narra.appendChatMessage).not.toHaveBeenCalled();
+  });
+  it("cancels a pending send on unmount and releases its subscription", async () => {
+    runtime.messages.push({ id: "greeting", role: "assistant", content: "Привет", createdAt: 1 });
+    let finish!: (response: Response) => void;
+    setNarraGatewayAdapter(
+      () =>
+        new Promise<Response>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    await act(async () => {
+      tree = create(
+        <NarraCharacterChatScreen embedded bookId="book" characterId="hero" onBack={vi.fn()} />,
+      );
+    });
+    let sent!: Promise<void>;
+    await act(async () => {
+      sent = tree.root.find((node) => String(node.type) === "Chat").props.onSend("Вопрос");
+    });
+    await act(async () => {
+      tree.unmount();
+    });
+    await act(async () => {
+      finish(new Response(JSON.stringify({ text: "Late" })));
+      await sent;
+    });
+    expect(runtime.messages.some((message) => message.content === "Late")).toBe(false);
+    expect(runtime.listeners.size).toBe(0);
+  });
   it.each(["greeting", "placeholder", "memory"])(
     "does not commit stale %s after a source change",
     async (kind) => {
@@ -178,6 +300,10 @@ describe("character chat screen recovery", () => {
       expect(
         runtime.messages.some((message) => message.content === "Написать старому герою…"),
       ).toBe(false);
+      // A fresh greeting can now start after rebind. Closing must clean it too.
+      await act(async () => {
+        tree.unmount();
+      });
       expect(runtime.listeners.size).toBe(0);
     },
   );
