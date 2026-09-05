@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   files: new Map<string, Uint8Array>(),
   insertBook: vi.fn(),
   updateBook: vi.fn(),
+  deleteBook: vi.fn(),
   getBook: vi.fn(),
   getBooks: vi.fn(),
   getGroups: vi.fn(),
@@ -32,6 +33,7 @@ vi.mock("@readany/core/db/database", () => ({
   initDatabase: vi.fn().mockResolvedValue(undefined),
   insertBook: mocks.insertBook,
   updateBook: mocks.updateBook,
+  deleteBook: mocks.deleteBook,
   getBook: mocks.getBook,
   getBooks: mocks.getBooks,
   getGroups: mocks.getGroups,
@@ -189,6 +191,7 @@ describe("mobile library import persistence", () => {
     });
     mocks.insertBook.mockResolvedValue(undefined);
     mocks.updateBook.mockResolvedValue(undefined);
+    mocks.deleteBook.mockReset().mockResolvedValue(undefined);
     mocks.getDeletedBookByFileHash.mockResolvedValue(null);
     mocks.hash.mockResolvedValue("new-file");
     mocks.metadata.mockResolvedValue({ title: "Новая книга", author: "Автор" });
@@ -413,6 +416,54 @@ describe("mobile library import persistence", () => {
     expect(result.failures).toHaveLength(1);
     expect(mocks.insertBook).not.toHaveBeenCalled();
     expect([...mocks.files.keys()]).toEqual(["file:///picked.epub"]);
+  });
+
+  it("does not delay deletion of an unrelated book behind an active import write", async () => {
+    const other = { ...structuredClone(existing), id: "unrelated", fileHash: "other-hash" };
+    useLibraryStore.setState({ books: [structuredClone(existing), other] });
+    mocks.hash.mockResolvedValue("same-file");
+    let release!: () => void;
+    mocks.updateBook.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const pending = useLibraryStore
+      .getState()
+      .importBooks([{ uri: "file:///picked.epub", name: "book.epub" }]);
+    await vi.waitFor(() => expect(mocks.updateBook).toHaveBeenCalledOnce());
+    try {
+      await useLibraryStore.getState().removeBook(other.id);
+      expect(mocks.deleteBook).toHaveBeenCalledExactlyOnceWith(other.id, { preserveData: false });
+      expect(useLibraryStore.getState().isImporting).toBe(true);
+    } finally {
+      release();
+      await pending;
+    }
+    expect(useLibraryStore.getState().books.map((book) => book.id)).toEqual([existing.id]);
+  });
+
+  it("does not turn deletion during source hashing into an unrelated new import", async () => {
+    useLibraryStore.setState({ books: [structuredClone(existing)] });
+    let release!: (hash: string) => void;
+    mocks.hash.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const pending = useLibraryStore
+      .getState()
+      .importBooks([{ uri: "file:///picked.epub", name: "book.epub" }]);
+    await vi.waitFor(() => expect(mocks.hash).toHaveBeenCalledOnce());
+    await useLibraryStore.getState().removeBook(existing.id);
+    release("same-file");
+    const result = await pending;
+    expect(result.imported).toEqual([]);
+    expect(useLibraryStore.getState().books).toEqual([]);
+    expect(mocks.insertBook).not.toHaveBeenCalled();
+    expect(mocks.updateBook).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -644,6 +695,61 @@ describe("mobile library import persistence", () => {
     expect(mocks.updateBook.mock.calls[0][1]).not.toHaveProperty("currentCfi");
   });
 
+  it.each([false, true])(
+    "does not resurrect a book deleted during reimport save (preserveData: %s)",
+    async (preserveData) => {
+      useLibraryStore.setState({ books: [structuredClone(existing)] });
+      mocks.hash.mockResolvedValue("same-file");
+      const rows = new Map<string, Book>([[existing.id, structuredClone(existing)]]);
+      let releaseWrite!: () => void;
+      const writePending = new Promise<void>((resolve) => {
+        releaseWrite = resolve;
+      });
+      mocks.updateBook.mockImplementation(async (id: string, updates: Partial<Book>) => {
+        await writePending;
+        // Match the real UPDATE ... WHERE id = ?: a hard-deleted row is not
+        // inserted; an explicit deletedAt: undefined clears a soft tombstone.
+        const row = rows.get(id);
+        if (row) rows.set(id, { ...row, ...updates });
+      });
+      mocks.deleteBook.mockImplementation(
+        async (id: string, options: { preserveData: boolean }) => {
+          if (options.preserveData) rows.set(id, { ...rows.get(id)!, deletedAt: 123 });
+          else rows.delete(id);
+        },
+      );
+      const pending = useLibraryStore
+        .getState()
+        .importBooks([{ uri: "file:///picked.epub", name: "book.epub" }]);
+      await vi.waitFor(() => expect(mocks.updateBook).toHaveBeenCalledOnce());
+      const removal = useLibraryStore.getState().removeBook(existing.id, { preserveData });
+      expect(useLibraryStore.getState().books).toEqual([]);
+      expect(mocks.deleteBook).not.toHaveBeenCalled();
+      releaseWrite();
+      const result = await pending;
+      await removal;
+      expect(mocks.deleteBook).toHaveBeenCalledExactlyOnceWith(existing.id, { preserveData });
+      expect.soft(useLibraryStore.getState().books).toEqual([]);
+      expect.soft(result.imported).toEqual([]);
+      expect.soft(mocks.backend).not.toHaveBeenCalled();
+      if (preserveData) expect.soft(rows.get(existing.id)?.deletedAt).toBe(123);
+      else expect.soft(rows.has(existing.id)).toBe(false);
+      expect([...mocks.files.keys()]).toEqual(["file:///picked.epub"]);
+      mocks.updateBook.mockResolvedValue(undefined);
+      mocks.getDeletedBookByFileHash.mockResolvedValue(rows.get(existing.id) ?? null);
+      const explicitRetry = await useLibraryStore
+        .getState()
+        .importBooks([{ uri: "file:///picked.epub", name: "book.epub" }]);
+      expect(explicitRetry.failures).toEqual([]);
+      expect(explicitRetry.imported).toHaveLength(1);
+      if (preserveData)
+        expect(explicitRetry.imported[0]).toMatchObject({
+          id: existing.id,
+          progress: existing.progress,
+        });
+    },
+  );
+
   it("publishes a restored book only after its database update succeeds", async () => {
     const deleted = { ...existing, deletedAt: 20 };
     mocks.getBook.mockResolvedValue(deleted);
@@ -656,6 +762,162 @@ describe("mobile library import persistence", () => {
     expect(useLibraryStore.getState().books).toEqual([]);
     expect(mocks.files.get("file:///app/books/existing.epub")).toEqual(bytes("old EPUB"));
     expect(mocks.files.size).toBe(2);
+  });
+
+  it("does not resurrect the first batch book deleted during the second file lookup", async () => {
+    mocks.hash.mockResolvedValue("same-file");
+    let release!: (book: null) => void;
+    mocks.getDeletedBookByFileHash.mockResolvedValueOnce(null).mockImplementationOnce(
+      () =>
+        new Promise<null>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const pending = useLibraryStore.getState().importBooks([
+      { uri: "file:///picked.epub", name: "book.epub" },
+      { uri: "file:///picked.epub", name: "book.epub" },
+    ]);
+    await vi.waitFor(() => expect(mocks.getDeletedBookByFileHash).toHaveBeenCalledTimes(2));
+    const book = useLibraryStore.getState().books[0];
+    await useLibraryStore.getState().removeBook(book.id);
+    release(null);
+    const result = await pending;
+    expect(result.failures).toHaveLength(1);
+    expect(mocks.updateBook).not.toHaveBeenCalled();
+    expect(useLibraryStore.getState().books).toEqual([]);
+    expect([...mocks.files.keys()]).toEqual(["file:///picked.epub"]);
+  });
+
+  it.each([false, true])(
+    "does not revive an explicitly restored book removed during save (%s)",
+    async (preserveData) => {
+      mocks.getBook.mockResolvedValue({ ...existing, deletedAt: 20 });
+      let release!: () => void;
+      mocks.updateBook.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            release = resolve;
+          }),
+      );
+      const pending = useLibraryStore.getState().reimportDeletedBook(existing.id, {
+        uri: "file:///picked.epub",
+        name: "book.epub",
+      });
+      await vi.waitFor(() => expect(mocks.updateBook).toHaveBeenCalledOnce());
+      const removal = useLibraryStore.getState().removeBook(existing.id, { preserveData });
+      expect(mocks.deleteBook).not.toHaveBeenCalled();
+      release();
+      expect(await pending).toBeNull();
+      await removal;
+      expect(mocks.deleteBook).toHaveBeenCalledExactlyOnceWith(existing.id, { preserveData });
+      expect(useLibraryStore.getState().books).toEqual([]);
+      expect([...mocks.files.keys()]).toEqual(["file:///picked.epub"]);
+      expect(useLibraryStore.getState().isImporting).toBe(false);
+    },
+  );
+
+  it("releases removal coordination after a rejected database deletion", async () => {
+    useLibraryStore.setState({ books: [structuredClone(existing)] });
+    mocks.deleteBook.mockRejectedValueOnce(new Error("disk failure"));
+    await useLibraryStore.getState().removeBook(existing.id);
+    mocks.getBook.mockResolvedValue({ ...existing, deletedAt: 20 });
+    const restored = await useLibraryStore.getState().reimportDeletedBook(existing.id, {
+      uri: "file:///picked.epub",
+      name: "book.epub",
+    });
+    expect(restored?.id).toBe(existing.id);
+    await useLibraryStore.getState().removeBook(existing.id);
+    expect(mocks.deleteBook).toHaveBeenCalledTimes(2);
+    expect(useLibraryStore.getState().isImporting).toBe(false);
+  });
+
+  it.each(["import", "restore"])(
+    "invalidates a queued %s requested before deletion",
+    async (kind) => {
+      useLibraryStore.setState({ books: [structuredClone(existing)] });
+      mocks.hash.mockResolvedValue("same-file");
+      let release!: () => void;
+      mocks.updateBook.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            release = resolve;
+          }),
+      );
+      const first = useLibraryStore
+        .getState()
+        .importBooks([{ uri: "file:///picked.epub", name: "book.epub" }]);
+      await vi.waitFor(() => expect(mocks.updateBook).toHaveBeenCalledOnce());
+      const queued =
+        kind === "restore"
+          ? useLibraryStore
+              .getState()
+              .reimportDeletedBook(existing.id, { uri: "file:///picked.epub", name: "book.epub" })
+          : useLibraryStore
+              .getState()
+              .importBooks([{ uri: "file:///picked.epub", name: "book.epub" }]);
+      const removal = useLibraryStore.getState().removeBook(existing.id);
+      release();
+      await first;
+      await removal;
+      await queued;
+      expect(useLibraryStore.getState().books).toEqual([]);
+      expect(mocks.insertBook).not.toHaveBeenCalled();
+      expect(mocks.updateBook).toHaveBeenCalledOnce();
+      expect(useLibraryStore.getState().isImporting).toBe(false);
+    },
+  );
+
+  it("invalidates queued duplicate intent when a new batch book is subsequently hard-deleted", async () => {
+    mocks.hash.mockResolvedValue("same-file");
+    let release!: (value: null) => void;
+    mocks.getDeletedBookByFileHash.mockResolvedValueOnce(null).mockImplementationOnce(
+      () =>
+        new Promise<null>((resolve) => {
+          release = resolve;
+        }),
+    );
+    // Both requests are issued before the first new book has been published.
+    const first = useLibraryStore.getState().importBooks([
+      { uri: "file:///picked.epub", name: "book.epub" },
+      { uri: "file:///picked.epub", name: "book.epub" },
+    ]);
+    const queued = useLibraryStore
+      .getState()
+      .importBooks([{ uri: "file:///picked.epub", name: "book.epub" }]);
+    await vi.waitFor(() => expect(mocks.getDeletedBookByFileHash).toHaveBeenCalledTimes(2));
+    await useLibraryStore.getState().removeBook(useLibraryStore.getState().books[0].id);
+    release(null);
+    await first;
+    const result = await queued;
+    expect(result.imported).toEqual([]);
+    expect(useLibraryStore.getState().books).toEqual([]);
+    expect(mocks.insertBook).toHaveBeenCalledOnce();
+  });
+
+  it("honors a repeated deletion after an explicit restore queued behind pending removal", async () => {
+    useLibraryStore.setState({ books: [structuredClone(existing)] });
+    mocks.getBook.mockResolvedValue({ ...existing, deletedAt: 20 });
+    let release!: () => void;
+    mocks.deleteBook.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const firstRemoval = useLibraryStore.getState().removeBook(existing.id, { preserveData: true });
+    await vi.waitFor(() => expect(mocks.deleteBook).toHaveBeenCalledOnce());
+    const restore = useLibraryStore
+      .getState()
+      .reimportDeletedBook(existing.id, { uri: "file:///picked.epub", name: "book.epub" });
+    const repeatedRemoval = useLibraryStore
+      .getState()
+      .removeBook(existing.id, { preserveData: true });
+    release();
+    await firstRemoval;
+    await repeatedRemoval;
+    expect(await restore).toBeNull();
+    expect(mocks.updateBook).not.toHaveBeenCalled();
+    expect(useLibraryStore.getState().books).toEqual([]);
   });
 
   it("does not publish preserved TXT source when saving the book fails", async () => {

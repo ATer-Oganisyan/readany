@@ -50,7 +50,14 @@ import {
   getBookImportFailureCode,
 } from "@readany/core/import/import-errors";
 import { getPlatformService } from "@readany/core/services";
-import type { Book, BookGroup, BookUpdate, LibraryFilter, SortField, SortOrder } from "@readany/core/types";
+import type {
+  Book,
+  BookGroup,
+  BookUpdate,
+  LibraryFilter,
+  SortField,
+  SortOrder,
+} from "@readany/core/types";
 import { generateId } from "@readany/core/utils";
 import { AppState } from "react-native";
 import { create } from "zustand";
@@ -345,6 +352,12 @@ let coverResumeSubscription: ReturnType<typeof AppState.addEventListener> | unde
 let backendImportResumeSubscription: (() => void) | undefined;
 let importQueue: Promise<void> = Promise.resolve();
 let pendingImports = 0;
+const activeImportTargets = new Map<string, { removed: boolean }>();
+// Invocation-scoped invalidation includes imports waiting for the serial queue.
+// Entries disappear when that invocation settles, rather than retaining tombstones forever.
+const importRemovalScopes = new Set<Map<string, Book | undefined>>();
+const activeImportWrites = new Map<string, Promise<void>>();
+const pendingBookRemovals = new Map<string, { book: Book | undefined; done: Promise<void> }>();
 
 function watchCoverRecovery(): void {
   if (coverResumeSubscription) return;
@@ -1236,36 +1249,55 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   removeBook: async (bookId, options = {}) => {
+    const previousRemoval = pendingBookRemovals.get(bookId);
+    const bookToRemove = get().books.find((b) => b.id === bookId) ?? previousRemoval?.book;
+    for (const scope of importRemovalScopes) scope.set(bookId, bookToRemove ?? scope.get(bookId));
+    if (previousRemoval) return previousRemoval.done;
     const preserveData = options.preserveData ?? false;
-    const bookToRemove = get().books.find((b) => b.id === bookId);
+    const importTarget = activeImportTargets.get(bookId);
+    if (importTarget) importTarget.removed = true;
+    const pendingWrite = activeImportWrites.get(bookId);
+    let finishRemoval!: () => void;
+    const done = new Promise<void>((resolve) => {
+      finishRemoval = resolve;
+    });
+    pendingBookRemovals.set(bookId, { book: bookToRemove, done });
     set((state) => ({ books: state.books.filter((b) => b.id !== bookId) }));
     try {
-      await db.initDatabase();
-      await db.deleteBook(bookId, { preserveData });
-      await deleteLocalCoverJob(bookId);
-    } catch (err) {
-      console.error("Failed to delete book from database:", err);
-    }
-    if (bookToRemove) {
+      // Only an already-started write to this book must settle before its DELETE.
+      // Unrelated imports/conversions must not postpone the durable tombstone.
+      await pendingWrite?.catch(() => {});
       try {
-        const platform = getPlatformService();
-        if (bookToRemove.filePath && isRelativeAppPath(bookToRemove.filePath)) {
-          const absPath = await resolveAppPath(bookToRemove.filePath);
-          await platform.deleteFile(absPath);
-        }
-        if (
-          !preserveData &&
-          bookToRemove.meta.coverUrl &&
-          isRelativeAppPath(bookToRemove.meta.coverUrl)
-        ) {
-          const coverAbsPath = await resolveAppPath(bookToRemove.meta.coverUrl);
-          await platform.deleteFile(coverAbsPath);
-        }
-      } catch {
-        /* file may not exist */
+        await db.initDatabase();
+        await db.deleteBook(bookId, { preserveData });
+        await deleteLocalCoverJob(bookId);
+      } catch (err) {
+        console.error("Failed to delete book from database:", err);
       }
+      if (bookToRemove) {
+        try {
+          const platform = getPlatformService();
+          if (bookToRemove.filePath && isRelativeAppPath(bookToRemove.filePath)) {
+            const absPath = await resolveAppPath(bookToRemove.filePath);
+            await platform.deleteFile(absPath);
+          }
+          if (
+            !preserveData &&
+            bookToRemove.meta.coverUrl &&
+            isRelativeAppPath(bookToRemove.meta.coverUrl)
+          ) {
+            const coverAbsPath = await resolveAppPath(bookToRemove.meta.coverUrl);
+            await platform.deleteFile(coverAbsPath);
+          }
+        } catch {
+          /* file may not exist */
+        }
+      }
+      debouncedSave("library-books", get().books);
+    } finally {
+      pendingBookRemovals.delete(bookId);
+      finishRemoval();
     }
-    debouncedSave("library-books", get().books);
   },
 
   checkpointReadingProgress: (bookId, position) => {
@@ -1296,7 +1328,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     set((state) => ({
       books: state.books.map((b) => {
         if (b.id !== bookId) return b;
-        const book = { ...b, ...updates, meta: updates.meta ? { ...b.meta, ...updates.meta } : b.meta };
+        const book = {
+          ...b,
+          ...updates,
+          meta: updates.meta ? { ...b.meta, ...updates.meta } : b.meta,
+        };
         return updates.progress !== undefined || updates.currentCfi !== undefined
           ? withReadingProgressCheckpoint(book)
           : book;
@@ -1330,6 +1366,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   setSortOrder: (order) => set((state) => ({ filter: { ...state.filter, sortOrder: order } })),
 
   importBooks: async (files) => {
+    const booksAtImportStart = get().books;
+    const duplicateIndex = createImportDuplicateIndex(booksAtImportStart);
+    const removedDuringImport = new Map<string, Book | undefined>();
+    importRemovalScopes.add(removedDuringImport);
     const previousImport = importQueue;
     let releaseImport!: () => void;
     importQueue = new Promise<void>((resolve) => {
@@ -1339,7 +1379,6 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     set({ isImporting: true });
     await previousImport;
     const result = createEmptyImportBooksResult();
-    const duplicateIndex = createImportDuplicateIndex(get().books);
     try {
       try {
         await db.initDatabase();
@@ -1353,6 +1392,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
         const createdPaths: string[] = [];
         let committed = false;
         let failureCode: BookImportFailureCode = "UNKNOWN";
+        let targetScope: { removed: boolean } | undefined;
+        let targetId: string | undefined;
         try {
           // L0-модерация: запрещённые в РФ материалы не импортируются вовсе.
           if (findBannedImport(undefined, undefined, originalName)) {
@@ -1377,19 +1418,56 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           // backend SHA-256 identity, but never block import if that provider
           // does not expose the temporary URL to the hashing module.
           const fileHash = md5 || (await trySha256BackendFile(filePath));
+          const matchesKnownBook = (candidate: Book) =>
+            Boolean(
+              knownBook &&
+                !candidate.deletedAt &&
+                candidate.sourceKind === knownBook.sourceKind &&
+                candidate.bookEditionId === knownBook.bookEditionId &&
+                (candidate.syncStatus !== "local" ||
+                  candidate.revisionId === knownBook.revisionId ||
+                  candidate.contentHash === knownBook.contentHash),
+            );
+          if (
+            [...removedDuringImport.values()].some(
+              (book) =>
+                book && ((fileHash && book.fileHash === fileHash) || matchesKnownBook(book)),
+            )
+          ) {
+            throw new BookImportError(
+              "SOURCE_UNAVAILABLE",
+              "Book was removed while import was pending",
+            );
+          }
+          const initialTarget =
+            booksAtImportStart.find(matchesKnownBook) ??
+            findDuplicateBookByHash(duplicateIndex, fileHash);
 
-          const existingDuplicate = findDuplicateBookByHash(duplicateIndex, fileHash);
-          const existingKnownBook = knownBook
-            ? get().books.find(
-                (candidate) =>
-                  !candidate.deletedAt &&
-                  candidate.sourceKind === knownBook.sourceKind &&
-                  candidate.bookEditionId === knownBook.bookEditionId &&
-                  (candidate.syncStatus !== "local" ||
-                    candidate.revisionId === knownBook.revisionId ||
-                    candidate.contentHash === knownBook.contentHash),
-              )
-            : undefined;
+          // A later explicit import may restore a deleted book, but must wait
+          // for that book's deletion, not race its tombstone/file cleanup.
+          for (const removal of pendingBookRemovals.values()) {
+            if (
+              (fileHash && removal.book?.fileHash === fileHash) ||
+              (knownBook && removal.book?.bookEditionId === knownBook.bookEditionId)
+            ) {
+              await removal.done;
+            }
+          }
+          if (
+            initialTarget &&
+            !get().books.some((book) => book.id === initialTarget.id && !book.deletedAt)
+          ) {
+            throw new BookImportError(
+              "SOURCE_UNAVAILABLE",
+              "Book was removed while import was pending",
+            );
+          }
+          const existingDuplicate = findDuplicateBookByHash(
+            createImportDuplicateIndex(get().books),
+            fileHash,
+          );
+          const existingKnownBook = get().books.find(matchesKnownBook);
+          const observedActiveTarget = existingKnownBook ?? existingDuplicate;
           const deletedMatch = fileHash
             ? await db.getDeletedBookByFileHash(fileHash).catch((err) => {
                 console.warn("[Library] Failed to check deleted book by hash:", err);
@@ -1400,6 +1478,26 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           // of failing as a duplicate or adding a second library row.
           const importTarget = existingKnownBook ?? deletedMatch ?? existingDuplicate ?? null;
           const bookId = importTarget?.id ?? generateId();
+          targetId = importTarget?.id;
+          if (targetId) {
+            targetScope = { removed: false };
+            activeImportTargets.set(targetId, targetScope);
+          }
+          const assertTargetPresent = () => {
+            if (
+              targetScope?.removed ||
+              (targetId && removedDuringImport.has(targetId)) ||
+              (targetId &&
+                (initialTarget?.id === targetId || observedActiveTarget?.id === targetId) &&
+                !get().books.some((book) => book.id === targetId && !book.deletedAt))
+            ) {
+              throw new BookImportError(
+                "SOURCE_UNAVAILABLE",
+                "Book was removed while import was pending",
+              );
+            }
+          };
+          assertTargetPresent();
           // Each attempt owns fresh paths. Existing reader files remain valid
           // until the new bytes and metadata have both been saved successfully.
           const artifactId = importTarget ? `${bookId}-${generateId()}` : bookId;
@@ -1428,6 +1526,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             }
           }
           const commitBook = async (book: Book) => {
+            assertTargetPresent();
             failureCode = "STORAGE_FAILED";
             if (!knownBook && existingDuplicate?.id === book.id) {
               const current = get().books.find((candidate) => candidate.id === book.id);
@@ -1453,7 +1552,14 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
               } = book;
               // Reading and organization may change while the provider copies
               // bytes. Import updates only its own fields in the persisted row.
-              await persistBookUpdate(book.id, { ...updates, deletedAt: undefined });
+              const write = persistBookUpdate(book.id, { ...updates, deletedAt: undefined });
+              activeImportWrites.set(book.id, write);
+              try {
+                await write;
+              } finally {
+                if (activeImportWrites.get(book.id) === write) activeImportWrites.delete(book.id);
+              }
+              assertTargetPresent();
               const current = get().books.find((candidate) => candidate.id === book.id);
               if (current)
                 Object.assign(book, {
@@ -1926,10 +2032,14 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             error: err instanceof Error ? err.message : String(err),
             code,
           });
+        } finally {
+          if (targetId && activeImportTargets.get(targetId) === targetScope)
+            activeImportTargets.delete(targetId);
         }
       }
     } finally {
       pendingImports--;
+      importRemovalScopes.delete(removedDuringImport);
       set({ isImporting: pendingImports > 0 });
       releaseImport();
     }
@@ -1940,12 +2050,42 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     inspectDeletedMobileBookCandidate(bookId, file),
 
   reimportDeletedBook: async (bookId, file) => {
+    const removedDuringImport = new Map<string, Book | undefined>();
+    importRemovalScopes.add(removedDuringImport);
+    const previousImport = importQueue;
+    let releaseImport!: () => void;
+    importQueue = new Promise<void>((resolve) => {
+      releaseImport = resolve;
+    });
+    pendingImports++;
+    set({ isImporting: true });
+    await previousImport;
     const createdPaths: string[] = [];
+    const targetScope = { removed: false };
     try {
+      const assertNotRemoved = () => {
+        if (targetScope.removed || removedDuringImport.has(bookId))
+          throw new BookImportError(
+            "SOURCE_UNAVAILABLE",
+            "Book was removed while import was pending",
+          );
+      };
+      const removal = pendingBookRemovals.get(bookId);
+      if (removal) await removal.done;
+      assertNotRemoved();
+      activeImportTargets.set(bookId, targetScope);
       const restoredBook = await restoreDeletedMobileBook(bookId, file, createdPaths);
       if (!restoredBook) return null;
       await assertImportNotBanned(restoredBook, importFileName(file), null, createdPaths);
-      await persistBookUpdate(restoredBook.id, restoredBook);
+      assertNotRemoved();
+      const write = persistBookUpdate(restoredBook.id, restoredBook);
+      activeImportWrites.set(bookId, write);
+      try {
+        await write;
+      } finally {
+        if (activeImportWrites.get(bookId) === write) activeImportWrites.delete(bookId);
+      }
+      assertNotRemoved();
       set((state) => ({
         books: state.books.some((book) => book.id === restoredBook.id)
           ? state.books.map((book) => (book.id === restoredBook.id ? restoredBook : book))
@@ -1957,6 +2097,12 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       await removeImportArtifacts(createdPaths);
       console.error("Failed to restore deleted book from database:", err);
       return null;
+    } finally {
+      if (activeImportTargets.get(bookId) === targetScope) activeImportTargets.delete(bookId);
+      pendingImports--;
+      importRemovalScopes.delete(removedDuringImport);
+      set({ isImporting: pendingImports > 0 });
+      releaseImport();
     }
   },
 
