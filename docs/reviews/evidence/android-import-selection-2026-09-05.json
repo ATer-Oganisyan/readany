@@ -33,6 +33,37 @@
     "bothRecordsHaveContentHashAfterEnrichment": true,
     "bothRecordsHaveFileHash": false
   },
-  "accepted": false,
-  "reason": "Native selection entry is unreachable; batch deletion and post-fix reimport are not yet verified."
+  "followup": {
+    "javascriptCommit": "2fdf09d",
+    "confirmedAtUtc": "2026-09-05T19:31:23Z",
+    "nativeSelectionToggleAndCancel": "pass",
+    "confirmedDeletionCount": 4,
+    "reportedDeleted": 4,
+    "reportedFailed": 0,
+    "persistedRemainingCount": 2,
+    "disposableRemainingCount": 0,
+    "protectedExactCfiAndProgressMatchBeforeReaderOpen": true,
+    "independentRootComparison": "pass",
+    "postFixReimport": {
+      "result": "pass",
+      "id": "e32544e2-9953-4dde-9d3b-f7ce2051290a",
+      "added": 0,
+      "updated": 1,
+      "matchingCards": 1,
+      "currentCfi": "epubcfi(/6/2!/4,/8/1:147,/12/1:357)",
+      "progress": 0.062148673585706186,
+      "fileHash": "ab9ebf4f20b6e81de165db82d5797a41be564e6d0949f6ac58122be06ffdd4dd",
+      "exactBeforeAfterComparison": "pass",
+      "sameFilePath": true,
+      "reopenedSamePage": true
+    },
+    "finalBadgeVisualCheck": {
+      "javascriptCommit": "95a8e05",
+      "result": "pass",
+      "titlesAndProgressUnobstructed": true,
+      "toggleCancelNormalOpenAndReturn": "pass"
+    }
+  },
+  "accepted": true,
+  "scope": "Only the recorded Android selection/delete/fresh-import/repeat/read sequence and final badge layout; not full product or release acceptance."
 }
