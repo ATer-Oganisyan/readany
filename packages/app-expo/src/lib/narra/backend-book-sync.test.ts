@@ -102,6 +102,7 @@ import {
   useBackendBookStatus,
 } from "./backend-book-sync";
 import { characterBiography } from "./character-profile";
+import { backendSceneMarkupIdentity } from "./backend-scene-identity";
 
 const ready = {
   availability: "ready",
@@ -802,5 +803,91 @@ describe("backend book import and persistence integration", () => {
     store.applyBackendManifest("local", manifest, 0.3);
     expect(useNarraStore.getState().books.local).toBe(previous);
     expect(previous.characters[0].portraitUri).toBe("file:///manual.png");
+  });
+  it("accepts revision one after a same-source edition replacement without losing conversation", () => {
+    const store = useNarraStore.getState();
+    const binding = {
+      resolution: "private" as const,
+      bookEditionId: "old-edition",
+      contentSha256: "a".repeat(64),
+      sourceUploaded: true,
+    };
+    store.setBackendBinding("local", binding);
+    store.applyBackendManifest(
+      "local",
+      parseBackendManifest({ ...ready, markup: { revision: 9 } }),
+      0.3,
+    );
+    store.appendChatMessage("local", "stable", {
+      id: "message",
+      role: "user",
+      content: "Remember our conversation",
+      createdAt: 1,
+    });
+    store.setMemory("local", "stable", "Our conversation memory");
+    store.setSceneRequest("local", "page:anchor", {
+      bookEditionId: binding.bookEditionId,
+      markupIdentity: backendSceneMarkupIdentity(
+        useNarraStore.getState().books.local.backendManifest,
+        binding,
+      ),
+      requestedProgress: 0.3,
+      sceneKey: "old-scene",
+    });
+    store.updateCharacter("local", "stable", {
+      voiceOverride: "manual-voice",
+      portraitUri: "file:///old.png",
+      backendMedia: { primary_portrait: { hash: "old", uri: "file:///old.png" } },
+    });
+    const before = useNarraStore.getState().books.local;
+    store.setBackendBinding("local", { ...binding, bookEditionId: "new-edition" });
+    const rebound = useNarraStore.getState().books.local;
+    expect(rebound.backendManifest).toBeUndefined();
+    expect(rebound.characters[0].backendMedia).toBeUndefined();
+    expect(rebound.characters[0].portraitUri).toBeUndefined();
+    expect(rebound.chats).toBe(before.chats);
+    expect(rebound.memories).toBe(before.memories);
+    expect(rebound.sceneRequests).toEqual({});
+    expect(rebound.sceneAnchorBindings).toEqual({});
+    store.applyBackendManifest("local", parseBackendManifest(ready), 0.3);
+    const after = useNarraStore.getState().books.local;
+    expect(after.backendManifest?.revision).toBe(1);
+    expect(after.chats).toBe(before.chats);
+    expect(after.memories).toBe(before.memories);
+    expect(after.characters[0].voiceOverride).toBe("manual-voice");
+  });
+  it("preserves a manual portrait on same-source rebind and does not reset a binding metadata refresh", () => {
+    const store = useNarraStore.getState();
+    const binding = {
+      resolution: "private" as const,
+      bookEditionId: "old-edition",
+      contentSha256: "a".repeat(64),
+      sourceUploaded: false,
+    };
+    store.setBackendBinding("local", binding);
+    store.applyBackendManifest("local", parseBackendManifest(ready), 0.3);
+    store.updateCharacter("local", "stable", {
+      portraitUri: "file:///manual.png",
+      portraitUriOverridesAsset: true,
+    });
+    const before = useNarraStore.getState().books.local;
+    store.setBackendBinding("local", { ...binding, sourceUploaded: true });
+    const refreshed = useNarraStore.getState().books.local;
+    expect(refreshed.backendManifest).toBe(before.backendManifest);
+    expect(refreshed.characters).toBe(before.characters);
+    store.setBackendBinding("local", { ...binding, sourceUploaded: true });
+    expect(useNarraStore.getState().books.local).toBe(refreshed);
+    store.setBackendBinding("local", {
+      ...binding,
+      bookEditionId: "new-edition",
+      contentSha256: "A".repeat(64),
+    });
+    expect(useNarraStore.getState().books.local.characters[0].portraitUri).toBe(
+      "file:///manual.png",
+    );
+    store.applyBackendManifest("local", parseBackendManifest(ready), 0.3);
+    expect(useNarraStore.getState().books.local.characters[0].portraitUri).toBe(
+      "file:///manual.png",
+    );
   });
 });

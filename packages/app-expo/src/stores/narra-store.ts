@@ -110,15 +110,46 @@ export const useNarraStore = create<NarraState>()(
       setBackendBinding: (bookId, backendBinding) => {
         const state = get();
         const current = state.books[bookId] ?? emptyNarraBookState(bookId);
+        const editionChanged = Boolean(
+          current.backendBinding &&
+            current.backendBinding.bookEditionId !== backendBinding.bookEditionId,
+        );
+        const sameSourceReplacement =
+          editionChanged &&
+          /^[a-f\d]{64}$/i.test(backendBinding.contentSha256) &&
+          current.backendBinding?.contentSha256.toLowerCase() ===
+            backendBinding.contentSha256.toLowerCase();
+        // Private editions can expire while the local book remains unchanged.
+        // Keep its conversation, but never compare the replacement's revision
+        // with the expired edition or reuse its transport-bound assets.
+        const rebound = sameSourceReplacement
+          ? {
+              ...current,
+              backendManifest: undefined,
+              analysisError: undefined,
+              characters: current.characters.map((character) =>
+                character.backendManaged
+                  ? {
+                      ...character,
+                      backendAssets: undefined,
+                      backendMedia: undefined,
+                      portraitUri: character.portraitUriOverridesAsset
+                        ? character.portraitUri
+                        : undefined,
+                    }
+                  : character,
+              ),
+            }
+          : current;
         const previousIdentity = backendSceneMarkupIdentity(
           current.backendManifest,
           current.backendBinding,
         );
-        const nextIdentity = backendSceneMarkupIdentity(current.backendManifest, backendBinding);
+        const nextIdentity = backendSceneMarkupIdentity(rebound.backendManifest, backendBinding);
         const book =
-          previousIdentity === nextIdentity
-            ? current
-            : invalidateBackendScenes(current, backendBinding.bookEditionId, nextIdentity);
+          !editionChanged && previousIdentity === nextIdentity
+            ? rebound
+            : invalidateBackendScenes(rebound, backendBinding.bookEditionId, nextIdentity);
         if (JSON.stringify(book.backendBinding) === JSON.stringify(backendBinding)) return;
         set({ books: { ...state.books, [bookId]: { ...book, backendBinding } } });
       },
