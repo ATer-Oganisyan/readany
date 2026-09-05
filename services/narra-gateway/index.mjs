@@ -1815,6 +1815,11 @@ app.post('/v2/ai/chat/stream', aiLimit, aiDailyLimit, express.json({ limit: '1mb
   const clientSignal = requestAbortSignal(req, res)
   let requestId
   let release
+  const releaseProviderPermit = () => {
+    const ownedRelease = release
+    release = undefined
+    ownedRelease?.()
+  }
   let analyticsOrigin = 'user'
   let recordActorAnalytics = true
   let requestPurpose
@@ -1879,6 +1884,9 @@ app.post('/v2/ai/chat/stream', aiLimit, aiDailyLimit, express.json({ limit: '1mb
         return usageCollector.value()
       }
     })
+    // Provider consumption/finalization is complete. Terminal analytics must
+    // not retain capacity after the client has received its finished answer.
+    releaseProviderPermit()
     res.end()
     const finishReason = usageCollector?.finishReason()
     if (recordActorAnalytics) {
@@ -1895,6 +1903,7 @@ app.post('/v2/ai/chat/stream', aiLimit, aiDailyLimit, express.json({ limit: '1mb
       }))
     }
   } catch (e) {
+    releaseProviderPermit()
     if (requestId && recordActorAnalytics) await appendInternalEvent(req, 'ai_request_failed', {
       request_id: requestId,
       ...(requestPurpose ? { purpose: requestPurpose } : {}),
@@ -1921,7 +1930,7 @@ app.post('/v2/ai/chat/stream', aiLimit, aiDailyLimit, express.json({ limit: '1mb
       res.end()
     }
   } finally {
-    release?.()
+    releaseProviderPermit()
   }
 })
 
