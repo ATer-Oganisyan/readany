@@ -42,6 +42,11 @@
   `docs/reviews/import-unicode-hash-2026-09-05.md`.
   Приёмка выбора/удаления и оставшиеся границы:
   `docs/reviews/library-selection-native-2026-09-05.md`.
+  Следующий проход защищает новый выбор от завершения старого удаления и
+  исправляет Select all после фильтрации (сравнение ID вместо количества).
+  Новая выбранная книга не добавляется к уже подтверждённому удалению.
+  Mobile1733 и TypeScript PASS; новые гонки на устройстве ещё не воспроизведены:
+  `docs/reviews/library-selection-races-2026-09-05.md`.
 - **Чтение:** зависания и пропуск глав, WebView request races, EPUB Range,
   PDF/CBZ rendering/позиции, checkpoint, book-scoped заметки и возврат без
   накопления Reader; управление, тема, контраст и лишние фоновые renders.
