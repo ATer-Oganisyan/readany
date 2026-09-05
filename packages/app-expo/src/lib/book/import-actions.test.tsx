@@ -343,12 +343,12 @@ describe("local import actions", () => {
         failures: [],
       });
       await act(async () => current.handleLocalImport());
-      expect(runtime.success.mock.calls[0][0]).toBe("Done");
+      expect(runtime.success.mock.calls[0][0]).toBe("Import complete. You can start reading");
       expect(runtime.success.mock.calls[0][1].icon).toBeUndefined();
     },
   );
 
-  it("announces enrichment when every imported reader format supports character analysis", async () => {
+  it("reports reading readiness without inventing provider work for supported formats", async () => {
     runtime.language = "en";
     runtime.importBooks.mockResolvedValueOnce({
       imported: ["epub", "fb2", "fbz", "pdf", "txt"].map((format) => ({ id: format, format })),
@@ -356,9 +356,38 @@ describe("local import actions", () => {
       failures: [],
     });
     await act(async () => current.handleLocalImport());
-    expect(runtime.success.mock.calls[0][0]).toBe("Done! We'll add the cover and characters soon");
-    expect(runtime.success.mock.calls[0][1].icon).toBeDefined();
+    expect(runtime.success.mock.calls[0][0]).toBe("Import complete. You can start reading");
+    expect(runtime.success.mock.calls[0][1].icon).toBeUndefined();
   });
+
+  it.each(["ru", "en"] as const)(
+    "own04 import without provider/job confirmation offers reading, not promised AI (%s)",
+    async (language) => {
+      runtime.language = language;
+      const book = { id: "own04", format: "fb2" };
+      runtime.importBooks.mockResolvedValueOnce({
+        imported: [book],
+        skippedDuplicates: [],
+        failures: [],
+      });
+      await act(async () => current.handleLocalImport());
+      const [title, options] = runtime.success.mock.calls[0];
+      expect(title).toBe(
+        language === "ru"
+          ? "Импорт завершён. Можно читать"
+          : "Import complete. You can start reading",
+      );
+      expect(options.icon).toBeUndefined();
+      expect(options.description).toBe(
+        language === "ru"
+          ? "Добавлено: 1 · обновлено: 0 · пропущено: 0 · ошибок: 0"
+          : "Added: 1 · updated: 0 · skipped: 0 · failed: 0",
+      );
+      await act(async () => options.action.onClick());
+      expect(runtime.open).toHaveBeenCalledExactlyOnceWith(book);
+      expect(runtime.download).not.toHaveBeenCalled();
+    },
+  );
 
   it.each(["en", "ru"] as const)(
     "reports update-only import honestly in %s without promising AI",

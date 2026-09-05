@@ -1,39 +1,14 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const importActions = readFileSync(
-  new URL("../../hooks/use-book-import-actions.ts", import.meta.url),
-  "utf8",
-);
 const libraryStore = readFileSync(
   new URL("../../stores/library-store.ts", import.meta.url),
   "utf8",
 );
-const ruLibrary = readFileSync(
-  new URL("../../../../core/src/i18n/locales/ru/library.json", import.meta.url),
-  "utf8",
-);
-const ruLibraryMessages = JSON.parse(ruLibrary) as {
-  library: { localImportEnrichmentPending: string };
-};
 
 describe("local book import toast contract", () => {
-  it("announces background enrichment only after a successful device import", () => {
-    expect(importActions).toContain("showImportSummary(summary, undefined, true)");
-    expect(importActions).toContain("library.localImportEnrichmentPending");
-    expect(importActions).toContain('name: "magic-wand"');
-    expect(importActions).toContain('variant: "filled"');
-
-    const urlImport = importActions.slice(importActions.indexOf("const handleUrlImport"));
-    expect(urlImport).not.toContain("showImportSummary(summary, undefined, true)");
-  });
-
-  it("starts the enrichment toast with the completed state", () => {
-    expect(ruLibraryMessages.library.localImportEnrichmentPending).toBe(
-      "Готово! Скоро добавим обложку и\u00a0персонажей",
-    );
-    expect(importActions).toContain("обложку и\\u00A0персонажей");
-  });
+  // User-facing feedback is exercised through the mounted hook in
+  // import-actions.test.tsx, not source-string assertions about AI promises.
 
   it("queues cover generation for every device import and repairs older missing jobs", () => {
     expect(libraryStore.match(/void queueGeneratedBookCover\(book/g)).toHaveLength(3);

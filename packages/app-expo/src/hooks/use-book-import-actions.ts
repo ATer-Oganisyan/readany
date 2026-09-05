@@ -1,17 +1,14 @@
-import { MishanaerIcon } from "@/components/ui/MishanaerIcon";
 import { withGatewayConsumer } from "@/lib/ai/narra-gateway-consumer";
 import { bookImportFormat, bookImportPickerTypes } from "@/lib/book/import-format";
-import { supportsPrivateBookAnalysis } from "@/lib/narra/backend-book-capabilities";
 import { toast } from "@/lib/notifications";
 import { useLibraryStore } from "@/stores";
-import { useTheme } from "@/styles/ThemeContext";
 import type { Book, ImportBooksResult } from "@readany/core";
 import { getBookImportFailureCode } from "@readany/core/import/import-errors";
 import { getPlatformService } from "@readany/core/services";
 import { generateId } from "@readany/core/utils";
 import * as DocumentPicker from "expo-document-picker";
 import { File as ExpoFile, Paths } from "expo-file-system";
-import { createElement, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Platform } from "react-native";
 import ReadAnyNativeControls from "../../modules/native-controls";
@@ -98,7 +95,6 @@ export function useBookImportActions({
   onOpenImportedBook,
 }: UseBookImportActionsOptions = {}) {
   const { t } = useTranslation();
-  const { colors } = useTheme();
   const importBooks = useLibraryStore((state) => state.importBooks);
   const [isPickingImport, setIsPickingImport] = useState(false);
   const [isUrlImporting, setIsUrlImporting] = useState(false);
@@ -122,7 +118,7 @@ export function useBookImportActions({
   }, []);
 
   const showImportSummary = useCallback(
-    (summary: ImportBooksResult, toastId?: ImportToastId, announceEnrichment = false) => {
+    (summary: ImportBooksResult, toastId?: ImportToastId) => {
       if (!mountedRef.current) return;
       const refreshed = Math.min(
         summary.imported.length,
@@ -136,10 +132,6 @@ export function useBookImportActions({
         summary.failures.length === 0
           ? summary.imported[0]
           : undefined;
-      const canAnnounceEnrichment =
-        announceEnrichment &&
-        added > 0 &&
-        summary.imported.every((book) => supportsPrivateBookAnalysis(book.format));
       onImportComplete?.(summary.imported.length);
       const description = t("library.importResultSummaryWithUpdates", {
         imported: added,
@@ -212,23 +204,8 @@ export function useBookImportActions({
         toast.success(
           added === 0
             ? t("library.importResultUpdated", "Библиотека обновлена")
-            : canAnnounceEnrichment
-              ? t(
-                  "library.localImportEnrichmentPending",
-                  "Готово! Скоро добавим обложку и\u00A0персонажей",
-                )
-              : t("common.success", "Книга добавлена"),
-          canAnnounceEnrichment
-            ? {
-                ...toastOptions,
-                icon: createElement(MishanaerIcon, {
-                  name: "magic-wand",
-                  variant: "filled",
-                  size: 24,
-                  color: colors.primary60,
-                }),
-              }
-            : toastOptions,
+            : t("library.importResultReadyToRead", "Импорт завершён. Можно читать"),
+          toastOptions,
         );
       } else {
         toast.warning(
@@ -239,7 +216,7 @@ export function useBookImportActions({
         );
       }
     },
-    [colors.primary60, onImportComplete, onOpenImportedBook, t],
+    [onImportComplete, onOpenImportedBook, t],
   );
 
   const handleLocalImport = useCallback(async () => {
@@ -258,7 +235,7 @@ export function useBookImportActions({
 
       const files = result.assets.map((asset) => ({ uri: asset.uri, name: asset.name }));
       const summary = await importBooks(files);
-      showImportSummary(summary, undefined, true);
+      showImportSummary(summary);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (!message.includes("Different document picking in progress")) {

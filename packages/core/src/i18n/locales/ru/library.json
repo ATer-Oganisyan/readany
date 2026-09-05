@@ -112,7 +112,7 @@
     "importFailureBlocked": "Эту книгу нельзя добавить из-за ограничений на содержание.",
     "importFailureUnknown": "Не удалось добавить файл. Выберите его ещё раз или используйте другую копию.",
     "importFailureFile": "Файл",
-    "localImportEnrichmentPending": "Готово! Скоро добавим обложку и\u00a0персонажей",
+    "importResultReadyToRead": "Импорт завершён. Можно читать",
     "deleteBookTitle": "Удалить эту книгу?",
     "deleteBookDescription": "Файл книги будет удален с вашей полки.",
     "preserveDeleteDataLabel": "Сохранить заметки и статистику чтения",

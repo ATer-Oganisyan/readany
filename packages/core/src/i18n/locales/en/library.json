@@ -112,7 +112,7 @@
     "importFailureBlocked": "This book cannot be added because of content restrictions.",
     "importFailureUnknown": "This file could not be added. Select it again or choose another copy.",
     "importFailureFile": "File",
-    "localImportEnrichmentPending": "Done! We'll add the cover and characters soon",
+    "importResultReadyToRead": "Import complete. You can start reading",
     "deleteBookTitle": "Remove this book?",
     "deleteBookDescription": "The book file will be removed from your shelf.",
     "preserveDeleteDataLabel": "Keep notes and reading stats",
