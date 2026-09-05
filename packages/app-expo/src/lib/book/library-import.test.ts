@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   insertBook: vi.fn(),
   updateBook: vi.fn(),
   deleteBook: vi.fn(),
+  deleteCoverJob: vi.fn(),
   getBook: vi.fn(),
   getBooks: vi.fn(),
   getGroups: vi.fn(),
@@ -98,7 +99,7 @@ vi.mock("expo-file-system/legacy", () => ({
 vi.mock("react-native", () => ({ AppState: { addEventListener: vi.fn() } }));
 vi.mock("@/lib/book/cover-display", () => ({ isLegacyGeneratedBookCover: () => false }));
 vi.mock("@/lib/book/cover-job-repository", () => ({
-  deleteLocalCoverJob: vi.fn(),
+  deleteLocalCoverJob: mocks.deleteCoverJob,
   getLocalCoverJob: vi.fn().mockResolvedValue(null),
 }));
 vi.mock("@/lib/book/cover-persistence", () => ({
@@ -819,7 +820,9 @@ describe("mobile library import persistence", () => {
   it("releases removal coordination after a rejected database deletion", async () => {
     useLibraryStore.setState({ books: [structuredClone(existing)] });
     mocks.deleteBook.mockRejectedValueOnce(new Error("disk failure"));
-    await useLibraryStore.getState().removeBook(existing.id);
+    await expect(useLibraryStore.getState().removeBook(existing.id)).rejects.toThrow(
+      "disk failure",
+    );
     mocks.getBook.mockResolvedValue({ ...existing, deletedAt: 20 });
     const restored = await useLibraryStore.getState().reimportDeletedBook(existing.id, {
       uri: "file:///picked.epub",
@@ -829,6 +832,163 @@ describe("mobile library import persistence", () => {
     await useLibraryStore.getState().removeBook(existing.id);
     expect(mocks.deleteBook).toHaveBeenCalledTimes(2);
     expect(useLibraryStore.getState().isImporting).toBe(false);
+  });
+
+  it.each([false, true])(
+    "keeps the readable source and library card when deletion fails (%s)",
+    async (preserveData) => {
+      useLibraryStore.setState({ books: [structuredClone(existing)] });
+      const original = bytes("saved source");
+      mocks.files.set("file:///app/books/existing.epub", original);
+      mocks.files.set("file:///app/covers/existing.jpg", bytes("saved cover"));
+      mocks.deleteBook.mockRejectedValueOnce(new Error("storage unavailable"));
+      await expect(
+        useLibraryStore.getState().removeBook(existing.id, { preserveData }),
+      ).rejects.toThrow("storage unavailable");
+      expect(useLibraryStore.getState().books).toEqual([existing]);
+      expect(mocks.files.get("file:///app/books/existing.epub")).toEqual(original);
+      expect(mocks.files.has("file:///app/covers/existing.jpg")).toBe(true);
+      expect(mocks.deleteCoverJob).not.toHaveBeenCalled();
+      await useLibraryStore.getState().removeBook(existing.id, { preserveData });
+      expect(useLibraryStore.getState().books).toEqual([]);
+      expect(mocks.files.has("file:///app/books/existing.epub")).toBe(false);
+    },
+  );
+
+  it("does not turn post-commit cover cleanup failure into a failed book deletion", async () => {
+    useLibraryStore.setState({ books: [structuredClone(existing)] });
+    mocks.files.set("file:///app/books/existing.epub", bytes("saved source"));
+    mocks.deleteCoverJob.mockRejectedValueOnce(new Error("job cleanup unavailable"));
+    await expect(useLibraryStore.getState().removeBook(existing.id)).resolves.toBeUndefined();
+    expect(useLibraryStore.getState().books).toEqual([]);
+    expect(mocks.files.has("file:///app/books/existing.epub")).toBe(false);
+  });
+
+  it("rejects every repeated removal caller when their shared delete fails", async () => {
+    useLibraryStore.setState({ books: [structuredClone(existing)] });
+    let rejectDelete!: (error: Error) => void;
+    mocks.deleteBook.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectDelete = reject;
+        }),
+    );
+    const first = useLibraryStore.getState().removeBook(existing.id);
+    await vi.waitFor(() => expect(mocks.deleteBook).toHaveBeenCalledOnce());
+    const second = useLibraryStore.getState().removeBook(existing.id);
+    const settled = Promise.allSettled([first, second]);
+    const error = new Error("storage unavailable");
+    rejectDelete(error);
+    expect(await settled).toEqual([
+      { status: "rejected", reason: error },
+      { status: "rejected", reason: error },
+    ]);
+    expect(useLibraryStore.getState().books).toEqual([existing]);
+    expect(mocks.deleteBook).toHaveBeenCalledOnce();
+  });
+
+  it("does not keep a stale library reload after the delete commits", async () => {
+    useLibraryStore.setState({ books: [structuredClone(existing)] });
+    let finish!: () => void;
+    mocks.deleteBook.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const removal = useLibraryStore.getState().removeBook(existing.id);
+    await vi.waitFor(() => expect(mocks.deleteBook).toHaveBeenCalledOnce());
+    const other = { ...existing, id: "other", progress: 0.87 };
+    useLibraryStore.getState().setBooks([structuredClone(existing), other]);
+    finish();
+    await removal;
+    expect(useLibraryStore.getState().books).toEqual([other]);
+  });
+
+  it.each([false, true])(
+    "ignores pre-delete database results without losing a later explicit restore (%s)",
+    async (restore) => {
+      useLibraryStore.setState({ books: [structuredClone(existing)], isLoaded: true });
+      let finish!: (books: Book[]) => void;
+      mocks.getBooks.mockImplementationOnce(
+        () =>
+          new Promise<Book[]>((resolve) => {
+            finish = resolve;
+          }),
+      );
+      const loading = useLibraryStore.getState().loadBooks();
+      await vi.waitFor(() => expect(mocks.getBooks).toHaveBeenCalledOnce());
+      await useLibraryStore.getState().removeBook(existing.id);
+      const restored = {
+        ...existing,
+        filePath: "books/new-explicit-restore.epub",
+        currentCfi: "restored-cfi",
+      };
+      if (restore) await useLibraryStore.getState().addBook(restored);
+      const other = { ...existing, id: "other", progress: 0.87 };
+      finish([structuredClone(existing), other]);
+      await loading;
+      const current = useLibraryStore.getState().books;
+      expect(current.find((book) => book.id === existing.id)).toEqual(
+        restore ? restored : undefined,
+      );
+      expect(current.find((book) => book.id === other.id)).toEqual(other);
+    },
+  );
+
+  it("keeps a restored source after a concurrent failed deletion", async () => {
+    mocks.getBook.mockResolvedValue({ ...existing, deletedAt: 20 });
+    let release!: () => void;
+    mocks.updateBook.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const restoring = useLibraryStore
+      .getState()
+      .reimportDeletedBook(existing.id, { uri: "file:///picked.epub", name: "book.epub" });
+    await vi.waitFor(() => expect(mocks.updateBook).toHaveBeenCalledOnce());
+    mocks.deleteBook.mockRejectedValueOnce(new Error("storage unavailable"));
+    const rejected = expect(useLibraryStore.getState().removeBook(existing.id)).rejects.toThrow(
+      "storage unavailable",
+    );
+    release();
+    await rejected;
+    const restored = await restoring;
+    expect(restored?.id).toBe(existing.id);
+    expect(mocks.files.has(`file:///app/${restored?.filePath}`)).toBe(true);
+    expect(useLibraryStore.getState().books).toEqual([restored]);
+  });
+
+  it("keeps the committed reimport readable when the following delete fails", async () => {
+    useLibraryStore.setState({ books: [structuredClone(existing)] });
+    mocks.files.set("file:///app/books/existing.epub", bytes("saved source"));
+    mocks.hash.mockResolvedValue("same-file");
+    let release!: () => void;
+    mocks.updateBook.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const importing = useLibraryStore
+      .getState()
+      .importBooks([{ uri: "file:///picked.epub", name: "book.epub" }]);
+    await vi.waitFor(() => expect(mocks.updateBook).toHaveBeenCalledOnce());
+    mocks.deleteBook.mockRejectedValueOnce(new Error("storage unavailable"));
+    const removal = useLibraryStore.getState().removeBook(existing.id);
+    const rejected = expect(removal).rejects.toThrow("storage unavailable");
+    release();
+    await rejected;
+    const result = await importing;
+    expect(result.failures).toEqual([]);
+    expect(result.imported).toHaveLength(1);
+    const saved = useLibraryStore.getState().books[0];
+    expect(saved.id).toBe(existing.id);
+    expect(saved.progress).toBe(existing.progress);
+    expect(mocks.files.has(`file:///app/${saved.filePath}`)).toBe(true);
+    expect(saved.filePath).toBe(mocks.updateBook.mock.calls[0][1].filePath);
   });
 
   it.each(["import", "restore"])(

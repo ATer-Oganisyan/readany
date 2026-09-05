@@ -71,7 +71,7 @@ describe("streamReadingAgent tool registration", () => {
     }, "Own event lifecycle fixture")) events.push(event);
     expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
     expect(peak).toBeLessThanOrEqual(1);
-    if (ending === "error") expect(events.at(-1)).toMatchObject({ type: "error", error: "PARSE" });
+    if (ending === "error") expect(events[events.length - 1]).toMatchObject({ type: "error", error: "PARSE" });
   });
 
   it("registers fallback tools when only bookId is available", async () => {

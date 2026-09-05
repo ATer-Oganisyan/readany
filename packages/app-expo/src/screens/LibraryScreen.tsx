@@ -67,6 +67,7 @@ import { File as ExpoFile } from "expo-file-system";
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useBatchBookDelete } from "@/hooks/use-batch-book-delete";
 import {
   Alert,
   Modal,
@@ -801,26 +802,14 @@ function LibraryScreenContent() {
     }
   }, [visibleBooks, isAllSelected]);
 
+  const onBatchDeleteSettled = useCallback((failedIds: string[]) => {
+    setSelectedBookIds(new Set(failedIds));
+    setSelectionMode(failedIds.length > 0);
+  }, []);
+  const { requestDelete, isDeleting } = useBatchBookDelete(removeBook, onBatchDeleteSettled);
   const handleBatchDelete = useCallback(() => {
-    if (selectedBookIds.size === 0) return;
-    Alert.alert(
-      t("common.confirm", "确认"),
-      t("library.batchDeleteConfirm", `确定要删除选中的 ${selectedBookIds.size} 本书吗？`),
-      [
-        { text: t("common.cancel", "取消"), style: "cancel" },
-        {
-          text: t("common.delete", "删除"),
-          style: "destructive",
-          onPress: async () => {
-            for (const id of selectedBookIds) {
-              await removeBook(id);
-            }
-            exitSelectionMode();
-          },
-        },
-      ],
-    );
-  }, [selectedBookIds, removeBook, exitSelectionMode, t]);
+    requestDelete(selectedBookIds);
+  }, [requestDelete, selectedBookIds]);
 
   const handleBatchTag = useCallback(() => {
     if (selectedBookIds.size === 0) return;
@@ -994,7 +983,12 @@ function LibraryScreenContent() {
                   <TouchableOpacity style={s.headerBtn} onPress={handleBatchVectorize}>
                     <DatabaseIcon size={18} color={colors.mutedForeground} />
                   </TouchableOpacity>
-                  <TouchableOpacity style={s.headerBtn} onPress={handleBatchDelete}>
+                  <TouchableOpacity
+                    style={s.headerBtn}
+                    onPress={handleBatchDelete}
+                    disabled={isDeleting}
+                    accessibilityState={{ busy: isDeleting, disabled: isDeleting }}
+                  >
                     <Trash2Icon size={18} color={colors.destructive} />
                   </TouchableOpacity>
                 </View>

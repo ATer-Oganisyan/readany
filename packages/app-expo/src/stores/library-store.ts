@@ -357,7 +357,44 @@ const activeImportTargets = new Map<string, { removed: boolean }>();
 // Entries disappear when that invocation settles, rather than retaining tombstones forever.
 const importRemovalScopes = new Set<Map<string, Book | undefined>>();
 const activeImportWrites = new Map<string, Promise<void>>();
-const pendingBookRemovals = new Map<string, { book: Book | undefined; done: Promise<void> }>();
+interface PendingBookRemoval {
+  book: Book | undefined;
+  done: Promise<void>;
+  invalidate: () => void;
+  failed: boolean;
+  error?: unknown;
+}
+const pendingBookRemovals = new Map<string, PendingBookRemoval>();
+const activeBookReloads = new Set<Set<string>>();
+
+function invalidateBookReloads(bookId: string): void {
+  for (const scope of activeBookReloads) scope.add(bookId);
+}
+
+function reconcileDeletedBookReload(
+  snapshot: Book[],
+  invalidated: Set<string>,
+  current: Book[],
+): Book[] {
+  const books = snapshot.filter(
+    (book) => !invalidated.has(book.id) && !pendingBookRemovals.has(book.id),
+  );
+  // A newer explicit restore wins over both an old row and an old deletion.
+  for (const book of current) {
+    if (invalidated.has(book.id) && !pendingBookRemovals.has(book.id)) books.push(book);
+  }
+  return books;
+}
+
+async function waitForPendingBookRemoval(bookId: string): Promise<void> {
+  // Removal only waits for the DB write, never for this import continuation.
+  // A failed delete rolls back its invalidation before releasing this signal.
+  let removal = pendingBookRemovals.get(bookId);
+  while (removal) {
+    await removal.done;
+    removal = pendingBookRemovals.get(bookId);
+  }
+}
 
 function watchCoverRecovery(): void {
   if (coverResumeSubscription) return;
@@ -1120,95 +1157,109 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   activeGroupId: "",
 
   loadBooks: async (deletedTags?: string[]) => {
-    const computeTags = (books: Book[]) => {
-      const tagSet = new Set<string>();
-      for (const b of books) for (const t of b.tags) tagSet.add(t);
-      return [...tagSet].sort();
-    };
-
+    const invalidated = new Set<string>();
+    activeBookReloads.add(invalidated);
     try {
-      const cached = await loadFromFS<Book[]>("library-books");
-      const cachedGroups = await loadFromFS<BookGroup[]>("library-groups");
-      if (!get().isLoaded && cached && cached.length > 0) {
-        const groups = cachedGroups ?? get().groups;
+      const computeTags = (books: Book[]) => {
+        const tagSet = new Set<string>();
+        for (const b of books) for (const t of b.tags) tagSet.add(t);
+        return [...tagSet].sort();
+      };
+
+      try {
+        const cachedSnapshot = await loadFromFS<Book[]>("library-books");
+        const cachedGroups = await loadFromFS<BookGroup[]>("library-groups");
+        const cached =
+          cachedSnapshot && reconcileDeletedBookReload(cachedSnapshot, invalidated, get().books);
+        if (!get().isLoaded && cached && cached.length > 0) {
+          const groups = cachedGroups ?? get().groups;
+          set((state) => ({
+            books: cached,
+            groups,
+            isLoaded: true,
+            allTags: computeTags(cached),
+            activeGroupId: keepActiveGroupId(state.activeGroupId, groups),
+          }));
+        }
+      } catch (err) {
+        console.warn("[Library] Failed to load cached books:", err);
+      }
+
+      try {
+        await db.initDatabase();
+        const atQuery = new Map(
+          get().books.map((book) => [book.id, getReadingProgressCheckpoint(book)]),
+        );
+        const [databaseBooks, groups] = await Promise.all([db.getBooks(), db.getGroups()]);
+
+        // Load saved tags from FS (may include empty tags not assigned to any book)
+        let savedTags: string[] = [];
+        try {
+          const loaded = await loadFromFS<string[]>("library-tags");
+          if (loaded) savedTags = loaded;
+        } catch (err) {
+          console.warn("[Library] Failed to load saved tags:", err);
+        }
+
+        // Remove deleted tags from savedTags
+        const deletedSet = new Set(deletedTags || []);
+        savedTags = savedTags.filter((t) => !deletedSet.has(t));
+
+        const visibleDatabaseBooks = reconcileDeletedBookReload(
+          databaseBooks,
+          invalidated,
+          get().books,
+        );
+        const dbTags = computeTags(visibleDatabaseBooks);
+
+        // Merge: dbTags (from books) + empty tags from FS (not in dbTags and not deleted)
+        const dbTagSet = new Set(dbTags);
+        const emptyTags = savedTags.filter((t) => !dbTagSet.has(t) && !deletedSet.has(t));
+        const allTags = [...dbTags, ...emptyTags].sort();
+
+        // Reading can start from the JSON cache before SQLite finishes loading.
+        // Use current state, not the cache snapshot from before the awaits.
+        const currentBooks = new Map(get().books.map((book) => [book.id, book]));
+        const restored = visibleDatabaseBooks.map((book) => {
+          const current = currentBooks.get(book.id);
+          return restoreReadingProgress(
+            book,
+            current,
+            getReadingProgressCheckpoint(current) !== atQuery.get(book.id),
+          );
+        });
+        const books = restored.map((result) => result.book);
+
         set((state) => ({
-          books: cached,
+          books,
           groups,
           isLoaded: true,
-          allTags: computeTags(cached),
+          allTags,
           activeGroupId: keepActiveGroupId(state.activeGroupId, groups),
         }));
-      }
-    } catch (err) {
-      console.warn("[Library] Failed to load cached books:", err);
-    }
-
-    try {
-      await db.initDatabase();
-      const atQuery = new Map(
-        get().books.map((book) => [book.id, getReadingProgressCheckpoint(book)]),
-      );
-      const [databaseBooks, groups] = await Promise.all([db.getBooks(), db.getGroups()]);
-      const dbTags = computeTags(databaseBooks);
-
-      // Load saved tags from FS (may include empty tags not assigned to any book)
-      let savedTags: string[] = [];
-      try {
-        const loaded = await loadFromFS<string[]>("library-tags");
-        if (loaded) savedTags = loaded;
+        debouncedSave("library-books", books);
+        debouncedSave("library-groups", groups);
+        debouncedSave("library-tags", allTags);
+        for (const { book, repair } of restored) {
+          if (!repair) continue;
+          // Do not hold the local reader behind sync/SQLite retries.
+          void persistBookUpdate(book.id, {
+            progress: repair.progress,
+            currentCfi: repair.currentCfi,
+          })
+            .then(() => acknowledgeSavedProgress(book.id, repair))
+            .catch((error) => {
+              console.warn("[Library] Reading checkpoint remains pending:", error);
+            });
+        }
+        watchCoverRecovery();
+        void repairImportedBookMetadata(books);
       } catch (err) {
-        console.warn("[Library] Failed to load saved tags:", err);
+        console.error("Failed to load books from database:", err);
+        set({ isLoaded: true });
       }
-
-      // Remove deleted tags from savedTags
-      const deletedSet = new Set(deletedTags || []);
-      savedTags = savedTags.filter((t) => !deletedSet.has(t));
-
-      // Merge: dbTags (from books) + empty tags from FS (not in dbTags and not deleted)
-      const dbTagSet = new Set(dbTags);
-      const emptyTags = savedTags.filter((t) => !dbTagSet.has(t) && !deletedSet.has(t));
-      const allTags = [...dbTags, ...emptyTags].sort();
-
-      // Reading can start from the JSON cache before SQLite finishes loading.
-      // Use current state, not the cache snapshot from before the awaits.
-      const currentBooks = new Map(get().books.map((book) => [book.id, book]));
-      const restored = databaseBooks.map((book) => {
-        const current = currentBooks.get(book.id);
-        return restoreReadingProgress(
-          book,
-          current,
-          getReadingProgressCheckpoint(current) !== atQuery.get(book.id),
-        );
-      });
-      const books = restored.map((result) => result.book);
-
-      set((state) => ({
-        books,
-        groups,
-        isLoaded: true,
-        allTags,
-        activeGroupId: keepActiveGroupId(state.activeGroupId, groups),
-      }));
-      debouncedSave("library-books", books);
-      debouncedSave("library-groups", groups);
-      debouncedSave("library-tags", allTags);
-      for (const { book, repair } of restored) {
-        if (!repair) continue;
-        // Do not hold the local reader behind sync/SQLite retries.
-        void persistBookUpdate(book.id, {
-          progress: repair.progress,
-          currentCfi: repair.currentCfi,
-        })
-          .then(() => acknowledgeSavedProgress(book.id, repair))
-          .catch((error) => {
-            console.warn("[Library] Reading checkpoint remains pending:", error);
-          });
-      }
-      watchCoverRecovery();
-      void repairImportedBookMetadata(books);
-    } catch (err) {
-      console.error("Failed to load books from database:", err);
-      set({ isLoaded: true });
+    } finally {
+      activeBookReloads.delete(invalidated);
     }
   },
 
@@ -1250,18 +1301,37 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
   removeBook: async (bookId, options = {}) => {
     const previousRemoval = pendingBookRemovals.get(bookId);
-    const bookToRemove = get().books.find((b) => b.id === bookId) ?? previousRemoval?.book;
-    for (const scope of importRemovalScopes) scope.set(bookId, bookToRemove ?? scope.get(bookId));
-    if (previousRemoval) return previousRemoval.done;
+    if (previousRemoval) {
+      previousRemoval.invalidate();
+      await previousRemoval.done;
+      if (previousRemoval.failed) throw previousRemoval.error;
+      return;
+    }
+    const bookToRemove = get().books.find((b) => b.id === bookId);
+    const priorScopes = new Map<Map<string, Book | undefined>, { had: boolean; book?: Book }>();
+    const priorTargets = new Map<{ removed: boolean }, boolean>();
+    const invalidate = () => {
+      invalidateBookReloads(bookId);
+      for (const scope of importRemovalScopes) {
+        if (!priorScopes.has(scope))
+          priorScopes.set(scope, { had: scope.has(bookId), book: scope.get(bookId) });
+        scope.set(bookId, bookToRemove ?? scope.get(bookId));
+      }
+      const target = activeImportTargets.get(bookId);
+      if (target) {
+        if (!priorTargets.has(target)) priorTargets.set(target, target.removed);
+        target.removed = true;
+      }
+    };
+    invalidate();
     const preserveData = options.preserveData ?? false;
-    const importTarget = activeImportTargets.get(bookId);
-    if (importTarget) importTarget.removed = true;
     const pendingWrite = activeImportWrites.get(bookId);
     let finishRemoval!: () => void;
     const done = new Promise<void>((resolve) => {
       finishRemoval = resolve;
     });
-    pendingBookRemovals.set(bookId, { book: bookToRemove, done });
+    const removal: PendingBookRemoval = { book: bookToRemove, done, invalidate, failed: false };
+    pendingBookRemovals.set(bookId, removal);
     set((state) => ({ books: state.books.filter((b) => b.id !== bookId) }));
     try {
       // Only an already-started write to this book must settle before its DELETE.
@@ -1270,9 +1340,36 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       try {
         await db.initDatabase();
         await db.deleteBook(bookId, { preserveData });
+      } catch (err) {
+        removal.failed = true;
+        removal.error = err;
+        // Preserve earlier successful deletion intents; undo only this failed one.
+        for (const [scope, previous] of priorScopes) {
+          if (!importRemovalScopes.has(scope)) continue;
+          if (previous.had) scope.set(bookId, previous.book);
+          else scope.delete(bookId);
+        }
+        for (const [target, previous] of priorTargets) target.removed = previous;
+        if (bookToRemove) {
+          set((state) => ({
+            books: state.books.some((book) => book.id === bookId)
+              ? state.books
+              : [...state.books, bookToRemove],
+          }));
+          debouncedSave("library-books", get().books);
+        }
+        invalidateBookReloads(bookId);
+        console.error("Failed to delete book from database:", err);
+        throw err;
+      }
+      // A reload may have returned the pre-delete row while SQLite was busy.
+      set((state) => ({ books: state.books.filter((book) => book.id !== bookId) }));
+      invalidateBookReloads(bookId);
+      try {
         await deleteLocalCoverJob(bookId);
       } catch (err) {
-        console.error("Failed to delete book from database:", err);
+        // The durable deletion already succeeded; cleanup must not undo it in UI.
+        console.warn("Failed to clean deleted book cover job:", err);
       }
       if (bookToRemove) {
         try {
@@ -1559,6 +1656,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
               } finally {
                 if (activeImportWrites.get(book.id) === write) activeImportWrites.delete(book.id);
               }
+              await waitForPendingBookRemoval(book.id);
               assertTargetPresent();
               const current = get().books.find((candidate) => candidate.id === book.id);
               if (current)
@@ -2085,6 +2183,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       } finally {
         if (activeImportWrites.get(bookId) === write) activeImportWrites.delete(bookId);
       }
+      await waitForPendingBookRemoval(bookId);
       assertNotRemoved();
       set((state) => ({
         books: state.books.some((book) => book.id === restoredBook.id)
