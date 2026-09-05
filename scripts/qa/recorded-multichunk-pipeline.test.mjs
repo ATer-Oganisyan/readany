@@ -7,6 +7,25 @@ test('recorded own responses cannot combine replay with live or another fixture'
   for (const options of [{ stagedLive: true }, { stagedMock: true }, { fixtureId: 'window' }]) {
     await assert.rejects(runPipelineCanary({ fixtureId: 'siblings', replayCapturedLive: true, ...options }), /Recorded replay requires/);
   }
+  await assert.rejects(runPipelineCanary({ replayRecording: '2026-09-06' }), /requires offline replay/);
+  await assert.rejects(runPipelineCanary({ fixtureId: 'siblings', replayCapturedLive: true, replayRecording: '../../other' }), /requires offline replay/);
+});
+
+test('latest recorded publication passes real workers and repeated ready-run lookup without regeneration', {
+  skip: !process.env.QA_REPLAY_LATEST_DB_URL ? 'requires fresh dedicated QA_REPLAY_LATEST_DB_URL and QA_REPLAY_LATEST_DB_CONFIRM' : false,
+  timeout: 60000,
+}, async () => {
+  const result = await runPipelineCanary({ fixtureId: 'siblings', replayCapturedLive: true, replayRecording: '2026-09-06',
+    databaseUrl: process.env.QA_REPLAY_LATEST_DB_URL, confirmation: process.env.QA_REPLAY_LATEST_DB_CONFIRM });
+  assert.equal(result.live, false);
+  assert.equal(result.replayRecording, '2026-09-06');
+  assert.equal(result.calls.length, 9);
+  assert.equal(result.jobsCompleted, 10);
+  assert.equal(result.observations, 24);
+  assert.equal(result.publications, 1);
+  assert.equal(result.idempotent, true);
+  assert.equal(result.qualityAssessment.machinePassed, true);
+  assert.equal(result.qualityAssessment.qualityComplete, false);
 });
 
 test('captured live omission -> actual PostgreSQL workers -> grounded speech restored without a model retry', {

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import { MULTICHUNK_FACTS, MULTICHUNK_FIXTURE } from './multichunk-book-fixture.mjs';
 import { createStableBookChunks } from '../../services/narra-gateway/book-analysis-chunking.mjs';
 import { evaluateMultichunkLiveAcceptance } from './multichunk-live-acceptance.mjs';
@@ -27,6 +28,49 @@ function gold() {
     core_start_offset: chunk.coreStartOffset, core_end_offset: chunk.coreEndOffset,
   })) };
 }
+
+test('accepts unchanged recorded live publication without declaring full quality complete', () => {
+  const evidence = JSON.parse(readFileSync(new URL('../../docs/reviews/evidence/subscription-multichunk-live-2026-09-06.json', import.meta.url)));
+  const result = evaluateMultichunkLiveAcceptance(evidence);
+  assert.equal(result.machinePassed, true);
+  assert.equal(result.qualityComplete, false);
+});
+
+test('relationship participants, not its display label, identify the grounded pair', () => {
+  const input = gold();
+  input.observations[2].entity_candidate = 'родство Анны и Бориса';
+  input.observations[2].related_entity_candidates = ['Борис', 'Анна'];
+  assert.equal(evaluateMultichunkLiveAcceptance(input).machinePassed, true);
+});
+
+test('exact quoted utterance may retain its source guillemets and terminal period', () => {
+  for (const value of ['«Борис, подожди здесь»', '«Борис, подожди здесь».']) {
+    const input = gold(); input.markup.characters[0].speechExamples[0].value = value;
+    assert.equal(evaluateMultichunkLiveAcceptance(input).machinePassed, true);
+  }
+});
+
+test('relation cannot hide incorrect explicit participants behind a valid label', () => {
+  for (const participants of [[], ['Анна'], ['Анна', 'Анна'], ['Анна', 'Пётр'], ['Анна', 'Борис', 'Пётр'], null, undefined, 'Анна и Борис', { 0: 'Анна', 1: 'Борис', length: 2 }]) {
+    const input = gold(); input.observations[2].related_entity_candidates = participants;
+    assert.throws(() => evaluateMultichunkLiveAcceptance(input));
+  }
+});
+
+test('alternate relation label needs explicit participants and cannot disguise a duplicate', () => {
+  const input = gold(); input.observations[2].entity_candidate = 'родство Анны и Бориса';
+  assert.throws(() => evaluateMultichunkLiveAcceptance(input));
+  input.observations[2].related_entity_candidates = ['Анна', 'Борис'];
+  input.observations.push({ ...input.observations[2], id: 'same-pair-again', entity_candidate: 'другая подпись', related_entity_candidates: ['Борис', 'Анна'] });
+  assert.throws(() => evaluateMultichunkLiveAcceptance(input), /duplicate/);
+});
+
+test('speech formatting never licenses word changes, ellipses, questions or a different speaker', () => {
+  for (const value of ['«Борис, не подожди здесь».', '«Борис, подожди здесь?»', '«Борис, подожди здесь»...', '«Борис, подожди здесь»…', '«Хорошо, Анна».', 'Борис, подожди', '«Борис подожди здесь».']) {
+    const input = gold(); input.markup.characters[0].speechExamples[0].value = value;
+    assert.throws(() => evaluateMultichunkLiveAcceptance(input), /speech example/);
+  }
+});
 
 test('structural gold passes but never claims completed manual quality review', () => {
   const result = evaluateMultichunkLiveAcceptance(gold());

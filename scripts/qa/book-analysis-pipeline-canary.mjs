@@ -159,10 +159,11 @@ export function assertFixtureSemanticAcceptance({ observations, traits, live = f
   }
 }
 
-export async function runPipelineCanary({ databaseUrl, confirmation, stagedMock = false, stagedLive = false, replayCapturedLive = false, onCapture, signal, fixtureId = 'window' } = {}) {
+export async function runPipelineCanary({ databaseUrl, confirmation, stagedMock = false, stagedLive = false, replayCapturedLive = false, replayRecording = '2026-09-05', onCapture, signal, fixtureId = 'window' } = {}) {
   if (typeof stagedMock !== 'boolean' || typeof stagedLive !== 'boolean' || (stagedMock && stagedLive)) throw new Error('Choose exactly one staged mode');
   if (!['window', 'siblings'].includes(fixtureId)) throw new Error('Unknown own fixture');
   if (typeof replayCapturedLive !== 'boolean' || (replayCapturedLive && (fixtureId !== 'siblings' || stagedMock || stagedLive))) throw new Error('Recorded replay requires siblings with no staged or live execution');
+  if (!['2026-09-05', '2026-09-06'].includes(replayRecording) || (!replayCapturedLive && replayRecording !== '2026-09-05')) throw new Error('Fixed recording selection requires offline replay');
   const multichunk = fixtureId === 'siblings';
   const fixture = multichunk ? MULTICHUNK_FIXTURE : FIXTURE;
   const target = validateDedicatedDatabase(databaseUrl, confirmation);
@@ -191,7 +192,7 @@ export async function runPipelineCanary({ databaseUrl, confirmation, stagedMock 
     const runId = ensured.run.id;
     const calls = [];
     const mock = replayCapturedLive
-      ? await (await import('./recorded-multichunk-model.mjs')).createRecordedMultichunkModel(calls)
+      ? await (await import('./recorded-multichunk-model.mjs')).createRecordedMultichunkModel(calls, { recording: replayRecording })
       : multichunk ? createMultichunkFixtureModel(calls) : createFixtureModel(calls);
     let completeChat = mock;
     if (stagedMock || stagedLive) {
@@ -282,7 +283,7 @@ export async function runPipelineCanary({ databaseUrl, confirmation, stagedMock 
     assert.equal(calls.length, beforeReplay);
     assert.equal(calls.filter(call => call.operation === 'scan_book_chunk').length, multichunk ? 3 : 1);
     for (const operation of ['synthesize_character_profile', 'recall_character_traits', 'audit_character_profile']) assert.equal(calls.filter(call => call.operation === operation).length, multichunk ? 2 : 1);
-    return { live: stagedLive, replayCapturedLive, fixtureId, chunkCount: chunks.length, characterCount: profiles.length, database: target.database, runId, fixtureHash: source.contentHash, calls,
+    return { live: stagedLive, replayCapturedLive, ...(replayCapturedLive ? { replayRecording } : {}), fixtureId, chunkCount: chunks.length, characterCount: profiles.length, database: target.database, runId, fixtureHash: source.contentHash, calls,
       ...(staged ? { approvalDirectory: staged.directory, staged: staged.status(), qualityEvidenceFile } : {}),
       ...(qualityAssessment ? { qualityAssessment } : {}),
       ...(replayCapturedLive ? { qualityEvidence: { observations, markup: publications[0].data.markup, chunks } } : {}),

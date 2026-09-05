@@ -5,16 +5,27 @@ import { createHash } from 'node:crypto';
 import { createStableBookChunks } from '../../services/narra-gateway/book-analysis-chunking.mjs';
 import { MULTICHUNK_FIXTURE } from './multichunk-book-fixture.mjs';
 
-const recorded = JSON.parse(readFileSync(new URL('../../docs/reviews/evidence/subscription-multichunk-live-2026-09-05.json', import.meta.url), 'utf8'));
-assert.equal(recorded.fixtureId, 'siblings');
-assert.equal(recorded.fixtureHash, createHash('sha256').update(MULTICHUNK_FIXTURE).digest('hex'));
-assert.equal(recorded.steps.length, 9);
-const chunks = createStableBookChunks({ runId: 'recorded-replay-geometry', text: MULTICHUNK_FIXTURE });
-assert.equal(chunks.length, 3);
-for (const [index, chunk] of chunks.entries()) {
-  for (const [field, column] of [['coreStartOffset','core_start_offset'],['coreEndOffset','core_end_offset'],['contextStartOffset','context_start_offset'],['contextEndOffset','context_end_offset']]) {
-    assert.equal(chunk[field], Number(recorded.chunks[index][column]), 'Recorded chunk geometry changed');
+function readRecording(recording) {
+  assert.ok(['2026-09-05', '2026-09-06'].includes(recording), 'Unknown fixed recording');
+  const recorded = JSON.parse(readFileSync(new URL(`../../docs/reviews/evidence/subscription-multichunk-live-${recording}.json`, import.meta.url), 'utf8'));
+  assert.equal(recorded.fixtureId, 'siblings');
+  assert.equal(recorded.fixtureHash, createHash('sha256').update(MULTICHUNK_FIXTURE).digest('hex'));
+  assert.equal(recorded.steps.length, 9);
+  const chunks = createStableBookChunks({ runId: 'recorded-replay-geometry', text: MULTICHUNK_FIXTURE });
+  assert.equal(chunks.length, 3);
+  for (const [index, chunk] of chunks.entries()) {
+    for (const [field, column] of [['coreStartOffset','core_start_offset'],['coreEndOffset','core_end_offset'],['contextStartOffset','context_start_offset'],['contextEndOffset','context_end_offset']]) {
+      assert.equal(chunk[field], Number(recorded.chunks[index][column]), 'Recorded chunk geometry changed');
+    }
   }
+  if (recording === '2026-09-06') {
+    for (const step of recorded.steps) {
+      assert.equal(step.response.choices.length, 1);
+      assert.equal(step.response.choices[0].finish_reason, 'stop');
+      step.response = JSON.parse(step.response.choices[0].message.content);
+    }
+  }
+  return { recorded, chunks };
 }
 const key = (type, quote, owner) => JSON.stringify([type, quote, owner]);
 function field(content, name) {
@@ -23,8 +34,9 @@ function field(content, name) {
   return JSON.parse(lines[0].slice(name.length + 2));
 }
 
-export function createRecordedMultichunkModel(calls = []) {
+export function createRecordedMultichunkModel(calls = [], { recording = '2026-09-05' } = {}) {
   assert.ok(Array.isArray(calls));
+  const { recorded, chunks } = readRecording(recording);
   const used = new Set();
   return async function completeChat(input) {
     assert.ok(used.size < 9, 'Recorded call budget exceeded');

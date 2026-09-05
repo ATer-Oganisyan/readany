@@ -5,6 +5,11 @@ import { createStableBookChunks } from '../../services/narra-gateway/book-analys
 import { MULTICHUNK_FIXTURE } from './multichunk-book-fixture.mjs';
 import { createRecordedMultichunkModel } from './recorded-multichunk-model.mjs';
 const artifact = JSON.parse(readFileSync(new URL('../../docs/reviews/evidence/subscription-multichunk-live-2026-09-05.json', import.meta.url)));
+test('recording selection cannot load an arbitrary path or unknown capture', () => {
+  for (const recording of ['../../other', '2026-09-07', null, {}]) {
+    assert.throws(() => createRecordedMultichunkModel([], { recording }), /Unknown fixed recording/);
+  }
+});
 const request = (phase, name, mutate = x => x) => {
   const step = artifact.steps.find(s => s.phase === phase && s.subject.character === name);
   const evidence = artifact.observations.filter(o => o.entity_candidate === name).map(o => ({id:`fresh-${o.id}`,type:o.observation_type,quote:o.evidence_quote}));

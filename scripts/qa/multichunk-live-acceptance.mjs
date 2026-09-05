@@ -12,6 +12,20 @@ const normalize = value => typeof value === 'string' ? value.trim().toLocaleLowe
 // interior punctuation, negation, extra assertions, questions and ellipses.
 const relationshipText = value => typeof value === 'string' ? value.trim().replace(/\.$/u, '').trim() : '';
 const utterance = fact => fact.evidence.quote.match(/«([^»]+)»/u)?.[1];
+function isFixturePair(row) {
+  if (!Object.hasOwn(row, 'related_entity_candidates')) {
+    // Historical evidence omitted participant fields and encoded the pair in the label.
+    return ['Анна и Борис', 'Борис и Анна'].includes(row.entity_candidate);
+  }
+  const participants = row.related_entity_candidates;
+  return Array.isArray(participants) && participants.length === 2 &&
+    new Set(participants).size === 2 && participants.every(name => names.includes(name));
+}
+function exactSpeechForms(fact) {
+  const spoken = utterance(fact);
+  return [fact.evidence.quote, spoken, `«${spoken}»`, `«${spoken}».`]
+    .filter(value => typeof value === 'string' && fact.evidence.quote.includes(value));
+}
 const types = new Set(['character_mention', 'character_alias', 'character_action', 'character_dialogue', 'character_trait', 'character_appearance', 'character_role', 'character_age', 'character_gender', 'event', 'location', 'relationship']);
 
 /** Machine evidence checks only; not an automatic judgement of prose semantics. */
@@ -24,16 +38,18 @@ export function evaluateMultichunkLiveAcceptance({ observations, markup, chunks 
     assert.ok(types.has(row.observation_type), 'unknown observation type');
     assert.ok(typeof row.entity_candidate === 'string' && row.entity_candidate.trim(), 'observation owner required');
     if (row.observation_type.startsWith('character_')) assert.ok(names.includes(row.entity_candidate), 'unexpected character owner');
-    if (row.observation_type === 'relationship') assert.ok(['Анна и Борис', 'Борис и Анна'].includes(row.entity_candidate), 'unexpected relationship owner');
+    if (row.observation_type === 'relationship') assert.ok(isFixturePair(row), 'unexpected relationship participants');
     const start = Number(row.evidence_start_offset), end = Number(row.evidence_end_offset);
     assert.ok(Number.isSafeInteger(start) && Number.isSafeInteger(end) && start >= 0 && end > start && end <= MULTICHUNK_FIXTURE.length, 'invalid evidence offsets');
     assert.equal(MULTICHUNK_FIXTURE.slice(start, end), row.evidence_quote, 'evidence must be verbatim');
-    const signature = JSON.stringify([row.observation_type, row.entity_candidate, start, end]);
+    const owner = row.observation_type === 'relationship' ? names : row.entity_candidate;
+    const signature = JSON.stringify([row.observation_type, owner, start, end]);
     assert.ok(!signatures.has(signature), 'duplicate observation occurrence');
     signatures.add(signature); byId.set(row.id, row);
   }
   const supports = (row, fact) => {
-    if (row.observation_type !== fact.type || (row.entity_candidate !== fact.entityCandidate && !(fact.type === 'relationship' && row.entity_candidate === 'Борис и Анна'))) return false;
+    if (row.observation_type !== fact.type || (fact.type === 'relationship'
+      ? !isFixturePair(row) : row.entity_candidate !== fact.entityCandidate)) return false;
     const text = fact.evidence.quote;
     const expectedStart = MULTICHUNK_FIXTURE.indexOf(text);
     const start = Number(row.evidence_start_offset), end = Number(row.evidence_end_offset);
@@ -83,7 +99,7 @@ export function evaluateMultichunkLiveAcceptance({ observations, markup, chunks 
     const dialogue = MULTICHUNK_FACTS[character.name === 'Анна' ? 5 : 6];
     assert.ok(Array.isArray(character.speechExamples) && character.speechExamples.length > 0);
     for (const example of character.speechExamples) {
-      assert.ok([dialogue.evidence.quote, utterance(dialogue)].includes(example.value), 'invented speech example');
+      assert.ok(exactSpeechForms(dialogue).includes(example.value), 'invented speech example');
       checkClaim(example, dialogue);
     }
     assert.ok(Array.isArray(character.personalitySnapshots) && character.personalitySnapshots.length > 0);

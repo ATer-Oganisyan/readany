@@ -917,6 +917,8 @@
   "steps": [
     {
       "index": 1,
+      "phase": "scan_book_chunk",
+      "subject": {"chunkId":"f0a18e47-7a13-57c7-a085-654e3dc2e13e","ordinal":2},
       "requestSha256": "c46ce40f453e93646a5e797d3c21e67b198bce57fabaf1b2770dbd09c9b9ee2b",
       "response": {
         "id": "chatcmpl-99da6470-f8d0-45d3-a258-be05bee7c27f",
@@ -937,6 +939,8 @@
     },
     {
       "index": 2,
+      "phase": "scan_book_chunk",
+      "subject": {"chunkId":"931a4288-200e-5deb-97e9-450b1aafbdf1","ordinal":1},
       "requestSha256": "f54888ceac154a242110eea04ff4921e6d4d304b888cf34fad83ae0911faeadf",
       "response": {
         "id": "chatcmpl-ccb7dddd-75d3-424a-9d7d-6f9c6dfd6252",
@@ -957,6 +961,8 @@
     },
     {
       "index": 3,
+      "phase": "scan_book_chunk",
+      "subject": {"chunkId":"706484fb-be78-5f66-8d1e-8b390361bc30","ordinal":0},
       "requestSha256": "b7c182d13e79549e9d2a0d14882158fe710d81e8c104d8acd1007276a9618935",
       "response": {
         "id": "chatcmpl-93cb2d83-e581-4d61-9708-e1bc001ac143",
@@ -977,6 +983,8 @@
     },
     {
       "index": 4,
+      "phase": "synthesize_character_profile",
+      "subject": {"character":"Борис","entityKey":"character:334a75b9bfe9b517b18471e9941143a91bf376b0982e3ad8"},
       "requestSha256": "0d224e8a159125fc5bf5b46aeb112bca5024377051b69ae87fe6f60533d17f37",
       "response": {
         "id": "chatcmpl-0093db80-064f-4612-aedf-bbcad181874a",
@@ -997,6 +1005,8 @@
     },
     {
       "index": 5,
+      "phase": "recall_character_traits",
+      "subject": {"character":"Борис","entityKey":"character:334a75b9bfe9b517b18471e9941143a91bf376b0982e3ad8"},
       "requestSha256": "b3bf2bd597f373994d716b733e70dcda974d05c3c6dd01d67e4c77db4481a81c",
       "response": {
         "id": "chatcmpl-f028fe65-bb31-47f5-b6e1-153eb7c7c1e5",
@@ -1017,6 +1027,8 @@
     },
     {
       "index": 6,
+      "phase": "audit_character_profile",
+      "subject": {"character":"Борис","entityKey":"character:334a75b9bfe9b517b18471e9941143a91bf376b0982e3ad8"},
       "requestSha256": "a5b97de0c3aa161b2d01a82cd02c0fb77a6fceb8aaddf9f7c2dd8137d5b50427",
       "response": {
         "id": "chatcmpl-298f7890-ea77-43f1-980f-239b9c410621",
@@ -1037,6 +1049,8 @@
     },
     {
       "index": 7,
+      "phase": "synthesize_character_profile",
+      "subject": {"character":"Анна","entityKey":"character:420c0faa64687ecc3e37a213a8be2ce78bf5f8713f39b470"},
       "requestSha256": "401422a1ff5a9cae6fbef42efeeafda13fb06a69a6dc04798981667103d4c7a4",
       "response": {
         "id": "chatcmpl-f14fe8ea-38cf-4ae3-b340-02a864231728",
@@ -1057,6 +1071,8 @@
     },
     {
       "index": 8,
+      "phase": "recall_character_traits",
+      "subject": {"character":"Анна","entityKey":"character:420c0faa64687ecc3e37a213a8be2ce78bf5f8713f39b470"},
       "requestSha256": "a477374ba2d79bfe6aa94d1994d85e439e1ca5293f31d78ff1da3cb81bfc1fe5",
       "response": {
         "id": "chatcmpl-f2930896-0084-4dd1-92a9-7190762dc60c",
@@ -1077,6 +1093,8 @@
     },
     {
       "index": 9,
+      "phase": "audit_character_profile",
+      "subject": {"character":"Анна","entityKey":"character:420c0faa64687ecc3e37a213a8be2ce78bf5f8713f39b470"},
       "requestSha256": "adf3785c9bd9c85a5118d1929ab08c5c012cde8a21b84da9529330296830bac8",
       "response": {
         "id": "chatcmpl-43325755-54bd-4c15-a7b9-0cfacfcb9c61",
