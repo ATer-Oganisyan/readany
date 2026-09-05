@@ -106,6 +106,7 @@ vi.mock("expo-crypto", () => ({ randomUUID: () => `message-${runtime.messages.le
 vi.mock("expo/fetch", () => ({ fetch: vi.fn() }));
 
 import { NarraCharacterChatScreen } from "@/screens/NarraCharacterChatScreen";
+import { toast } from "@/lib/notifications";
 import { setNarraGatewayAdapter } from "../ai/narra-gateway-fetch";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -651,6 +652,39 @@ describe("character chat screen recovery", () => {
     ]);
     expect(chat().props.isStreaming).toBe(false);
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("does not save a rejected truncated completion or retry it automatically", async () => {
+    runtime.messages.push({ id: "greeting", role: "assistant", content: "Привет", createdAt: 1 });
+    const adapter = vi.fn(async () => new Response(JSON.stringify({
+      code: "PARSE",
+      error: "LLM completion was truncated by its output limit",
+      // Even a malformed server error containing text must not become a chat reply.
+      text: "Я хотел сказать, что",
+    }), { status: 502 }));
+    setNarraGatewayAdapter(adapter);
+    await act(async () => {
+      tree = create(
+        <NarraCharacterChatScreen embedded bookId="book" characterId="hero" onBack={vi.fn()} />,
+      );
+    });
+    const chat = () => tree.root.find((node) => String(node.type) === "Chat");
+    await act(async () => { await chat().props.onSend("Мой вопрос"); });
+    expect(adapter).toHaveBeenCalledOnce();
+    expect(runtime.messages.map(({ content }) => content)).toEqual(["Привет", "Мой вопрос"]);
+    expect(runtime.narra.appendChatMessage).toHaveBeenCalledOnce();
+    expect(runtime.narra.setMemory).not.toHaveBeenCalled();
+    expect(chat().props.isStreaming).toBe(false);
+    expect(toast.error).toHaveBeenCalledWith("Не удалось получить ответ", {
+      description: "Ответ оборвался и не был сохранён. Попробуйте ещё раз.",
+    });
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_001); });
+    expect(adapter).toHaveBeenCalledOnce();
+    adapter.mockImplementation(async () => new Response(JSON.stringify({ text: "Полный ответ." })));
+    await act(async () => { await chat().props.onSend("Повторю вопрос"); });
+    expect(adapter).toHaveBeenCalledTimes(2);
+    expect(runtime.messages.at(-1)?.content).toBe("Полный ответ.");
+    expect(chat().props.isStreaming).toBe(false);
   });
 
   it("leaves a failed user message visible and allows another send", async () => {

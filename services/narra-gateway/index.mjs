@@ -1979,9 +1979,6 @@ app.post('/v2/ai/chat/complete', aiLimit, aiDailyLimit, express.json({ limit: '1
       }
     })
     const finishReason = j?.choices?.[0]?.finish_reason
-    if (finishReason === 'length') {
-      console.warn(`[llm] ответ обрезан лимитом max_tokens: purpose=${input.purpose} request_id=${requestId}`)
-    }
     if (recordActorAnalytics) {
       await appendInternalEvent(req, 'ai_request_completed', completionProperties({
         requestId,

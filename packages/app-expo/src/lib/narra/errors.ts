@@ -43,6 +43,12 @@ export function narraBackendCode(error: unknown): string | undefined {
 export function normalizeNarraError(error: unknown): NarraServiceError {
   if (error instanceof NarraServiceError) return error;
   const detail = error instanceof Error ? error.message : String(error);
+  if (detail === "LLM completion was truncated by its output limit") {
+    return new NarraServiceError(
+      "SERVICE",
+      "Ответ оборвался и не был сохранён. Попробуйте ещё раз.",
+    );
+  }
   if (/NARRA_GATEWAY_URL|not configured/i.test(detail)) {
     return new NarraServiceError("CONFIG", "Сервис Narra не настроен в этой сборке.");
   }
