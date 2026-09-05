@@ -11,6 +11,8 @@ interface BookCardActionSheetProps {
   children: ReactElement;
   onDelete: (bookId: string, options?: { preserveData?: boolean }) => void;
   onOpen: (book: Book) => void;
+  isSelectionMode?: boolean;
+  onEnterSelection?: (book: Book) => void;
 }
 
 /**
@@ -22,11 +24,27 @@ export function BookCardActionSheet({
   children,
   onDelete,
   onOpen,
+  isSelectionMode,
+  onEnterSelection,
 }: BookCardActionSheetProps) {
   const { t } = useTranslation();
   const swipePressGuard = useSwipePressGuard();
 
+  // Neither the Android full-card hit target nor the iOS native context menu
+  // may intercept the card's checkbox interaction in selection mode.
+  if (isSelectionMode) return children;
+
   const items: NativeContextMenuItem[] = [
+    ...(onEnterSelection
+      ? [
+          {
+            key: "select",
+            label: t("library.select", "Выбрать"),
+            sfSymbol: "checkmark" as const,
+            onPress: () => onEnterSelection(book),
+          },
+        ]
+      : []),
     {
       key: "delete",
       label: t("common.remove", "Удалить"),

@@ -12,6 +12,18 @@ export const makeStyles = (colors: ThemeColors, cardWidth: number) => {
 
   return StyleSheet.create({
     container: { width: coverWidth },
+    selectionBadge: {
+      position: "absolute",
+      top: 8,
+      left: 8,
+      width: 26,
+      height: 26,
+      borderRadius: radius.full,
+      borderWidth: 2,
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 30,
+    },
     coverWrap: {
       width: coverWidth,
       height: coverHeight,
