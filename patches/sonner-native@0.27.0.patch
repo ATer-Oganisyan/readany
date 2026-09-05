@@ -190,6 +190,42 @@ index a27988c3740c6a15165dfc2aa72d66b7fada1899..483097cde6332b5b648be81301e51b7f
      }
  
      return aStyle;
+diff --git a/lib/module/positioner-utils.js b/lib/module/positioner-utils.js
+--- a/lib/module/positioner-utils.js
++++ b/lib/module/positioner-utils.js
+@@ -1,4 +1,5 @@
+ "use strict";
+ 
++import { Platform } from 'react-native';
+ import { ESTIMATED_TOAST_HEIGHT, OUTSIDE_PRESS_PADDING } from "./constants.js";
+ export const getContainerStyle = position => {
+@@ -17,6 +18,7 @@
+   return {
+     position: 'absolute',
+     width: '100%',
++    ...(Platform.OS === 'android' ? position === 'top-center' ? { bottom: 0 } : { top: 0 } : {}),
+     alignItems: 'center',
+     overflow: 'visible'
+   };
+diff --git a/src/positioner-utils.ts b/src/positioner-utils.ts
+--- a/src/positioner-utils.ts
++++ b/src/positioner-utils.ts
+@@ -1,4 +1,5 @@
+ import type { ViewStyle } from 'react-native';
++import { Platform } from 'react-native';
+ import { ESTIMATED_TOAST_HEIGHT, OUTSIDE_PRESS_PADDING } from './constants';
+ import type { ToastPosition } from './types';
+ 
+@@ -18,6 +19,9 @@
+   return {
+     position: 'absolute',
+     width: '100%',
++    // Absolute toast children do not contribute height. Give Android native
++    // hit-testing/accessibility a viewport while retaining the safe-area edge.
++    ...(Platform.OS === 'android' ? position === 'top-center' ? { bottom: 0 } : { top: 0 } : {}),
+     alignItems: 'center',
+     overflow: 'visible',
+   };
 diff --git a/src/types.ts b/src/types.ts
 index 62eb35eee90fee5a3181b4499f2a709fe41c1984..8d14fd43606ed336a4a8bf5c64e27712ac7db2f2 100644
 --- a/src/types.ts

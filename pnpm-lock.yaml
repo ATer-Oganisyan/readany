@@ -29,7 +29,7 @@ patchedDependencies:
     hash: o6bao4gjeve7crweg4j33vxlqm
     path: patches/react-native-track-player@4.1.2.patch
   sonner-native@0.27.0:
-    hash: ihifdizfg4jrdfsjqgenpl6qaq
+    hash: ti4axzp6hg5mi2ypcimc33rnce
     path: patches/sonner-native@0.27.0.patch
 
 importers:
@@ -489,7 +489,7 @@ importers:
         version: 0.10.1(@babel/core@7.29.0)(@react-native/metro-config@0.86.3(@babel/core@7.29.0))(react-native@0.86.3(@babel/core@7.29.0)(@react-native/metro-config@0.86.3(@babel/core@7.29.0))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3)
       sonner-native:
         specifier: 0.27.0
-        version: 0.27.0(patch_hash=ihifdizfg4jrdfsjqgenpl6qaq)(gkq4crfu2wnr5lnoucwrelvpxm)
+        version: 0.27.0(patch_hash=ti4axzp6hg5mi2ypcimc33rnce)(gkq4crfu2wnr5lnoucwrelvpxm)
       tailwindcss:
         specifier: ^4.3.3
         version: 4.3.3
@@ -21010,7 +21010,7 @@ snapshots:
       dot-case: 3.0.4
       tslib: 2.8.1
 
-  sonner-native@0.27.0(patch_hash=ihifdizfg4jrdfsjqgenpl6qaq)(gkq4crfu2wnr5lnoucwrelvpxm):
+  sonner-native@0.27.0(patch_hash=ti4axzp6hg5mi2ypcimc33rnce)(gkq4crfu2wnr5lnoucwrelvpxm):
     dependencies:
       react: 19.2.3
       react-native: 0.86.3(@babel/core@7.29.0)(@react-native/metro-config@0.86.3(@babel/core@7.29.0))(@types/react@19.2.17)(react@19.2.3)
