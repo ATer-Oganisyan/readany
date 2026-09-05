@@ -130,6 +130,9 @@ export function RootNavigator() {
       <Stack.Navigator
         screenOptions={{
           headerShown: true,
+          // Native screens otherwise default to light status icons on routes
+          // without an override, including notes on a light surface.
+          statusBarStyle: isDark ? "light" : "dark",
           headerTransparent: Platform.OS === "ios",
           headerStyle: {
             backgroundColor: Platform.OS === "ios" ? "transparent" : colors.background,

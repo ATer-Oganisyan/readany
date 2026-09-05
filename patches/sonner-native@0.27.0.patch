@@ -1,5 +1,5 @@
 diff --git a/lib/commonjs/gestures.js b/lib/commonjs/gestures.js
-index 581796369046a65673c5707ccad81eec8561ecf1..d0006ad86a8c5f287688026e4e37f481f6a98af3 100644
+index 581796369046a65673c5707ccad81eec8561ecf1..2d1a0c189621dd4a8d7376de557c6982e7fd3172 100644
 --- a/lib/commonjs/gestures.js
 +++ b/lib/commonjs/gestures.js
 @@ -48,7 +48,7 @@ const ToastSwipeHandler = ({
@@ -11,7 +11,7 @@ index 581796369046a65673c5707ccad81eec8561ecf1..d0006ad86a8c5f287688026e4e37f481
        translate.value = event.translationX;
      } else if (direction === 'up') {
        const isBottomPosition = position === 'bottom-center';
-@@ -71,9 +71,9 @@ const ToastSwipeHandler = ({
+@@ -71,17 +71,19 @@ const ToastSwipeHandler = ({
      if (!enabled) {
        return;
      }
@@ -24,7 +24,8 @@ index 581796369046a65673c5707ccad81eec8561ecf1..d0006ad86a8c5f287688026e4e37f481
        if (Math.abs(translate.value) < 16) {
          translate.value = (0, _reactNativeReanimated.withTiming)(0, {
            easing: _reactNativeReanimated.Easing.elastic(0.8)
-@@ -81,7 +81,8 @@ const ToastSwipeHandler = ({
+         });
++        (0, _reactNativeReanimated.runOnJS)(onFinalize)();
          return;
        }
        if (shouldDismiss) {
@@ -34,7 +35,7 @@ index 581796369046a65673c5707ccad81eec8561ecf1..d0006ad86a8c5f287688026e4e37f481
            easing: _reactNativeReanimated.Easing.inOut(_reactNativeReanimated.Easing.ease)
          }, isDone => {
            if (isDone) {
-@@ -134,7 +135,7 @@ const ToastSwipeHandler = ({
+@@ -134,7 +136,7 @@ const ToastSwipeHandler = ({
    const isAndroid = _reactNative.Platform.OS === 'android';
    const animatedStyle = (0, _reactNativeReanimated.useAnimatedStyle)(() => {
      const aStyle = {
@@ -43,7 +44,7 @@ index 581796369046a65673c5707ccad81eec8561ecf1..d0006ad86a8c5f287688026e4e37f481
          translateX: translate.value
        } : {
          translateY: translate.value * (position === 'bottom-center' ? -1 : 1)
-@@ -143,7 +144,9 @@ const ToastSwipeHandler = ({
+@@ -143,7 +145,9 @@ const ToastSwipeHandler = ({
      if (isAndroid) {
        aStyle.opacity = 1;
      } else {
@@ -55,7 +56,7 @@ index 581796369046a65673c5707ccad81eec8561ecf1..d0006ad86a8c5f287688026e4e37f481
      return aStyle;
    }, [direction, translate]);
 diff --git a/lib/module/gestures.js b/lib/module/gestures.js
-index 006393c2afe8dfe45719948c6df344a925e0c717..5e24a31033b6cb89aacfeddde2dc1eb4fd58c8fd 100644
+index 006393c2afe8dfe45719948c6df344a925e0c717..31c1151794abb361bad80059b1fae1251f1ac795 100644
 --- a/lib/module/gestures.js
 +++ b/lib/module/gestures.js
 @@ -41,7 +41,7 @@ export const ToastSwipeHandler = ({
@@ -67,7 +68,7 @@ index 006393c2afe8dfe45719948c6df344a925e0c717..5e24a31033b6cb89aacfeddde2dc1eb4
        translate.value = event.translationX;
      } else if (direction === 'up') {
        const isBottomPosition = position === 'bottom-center';
-@@ -64,9 +64,9 @@ export const ToastSwipeHandler = ({
+@@ -64,17 +64,19 @@ export const ToastSwipeHandler = ({
      if (!enabled) {
        return;
      }
@@ -80,7 +81,8 @@ index 006393c2afe8dfe45719948c6df344a925e0c717..5e24a31033b6cb89aacfeddde2dc1eb4
        if (Math.abs(translate.value) < 16) {
          translate.value = withTiming(0, {
            easing: Easing.elastic(0.8)
-@@ -74,7 +74,8 @@ export const ToastSwipeHandler = ({
+         });
++        runOnJS(onFinalize)();
          return;
        }
        if (shouldDismiss) {
@@ -90,7 +92,7 @@ index 006393c2afe8dfe45719948c6df344a925e0c717..5e24a31033b6cb89aacfeddde2dc1eb4
            easing: Easing.inOut(Easing.ease)
          }, isDone => {
            if (isDone) {
-@@ -130,7 +131,7 @@ export const ToastSwipeHandler = ({
+@@ -130,7 +132,7 @@ export const ToastSwipeHandler = ({
    const isAndroid = Platform.OS === 'android';
    const animatedStyle = useAnimatedStyle(() => {
      const aStyle = {
@@ -99,7 +101,7 @@ index 006393c2afe8dfe45719948c6df344a925e0c717..5e24a31033b6cb89aacfeddde2dc1eb4
          translateX: translate.value
        } : {
          translateY: translate.value * (position === 'bottom-center' ? -1 : 1)
-@@ -139,7 +140,9 @@ export const ToastSwipeHandler = ({
+@@ -139,7 +141,9 @@ export const ToastSwipeHandler = ({
      if (isAndroid) {
        aStyle.opacity = 1;
      } else {
@@ -111,7 +113,7 @@ index 006393c2afe8dfe45719948c6df344a925e0c717..5e24a31033b6cb89aacfeddde2dc1eb4
      return aStyle;
    }, [direction, translate, windowWidth]);
 diff --git a/lib/typescript/src/types.d.ts b/lib/typescript/src/types.d.ts
-index 88183d28f539d3bd5fd1645b001ede6be37f35b4..7dea78de60d3410b32bbf83090be4bd125232078 100644
+index 88183d28f539d3bd5fd1645b001ede6be37f35b4..0a4fd50496a1104f7e16d4cb870573b205c4d9eb 100644
 --- a/lib/typescript/src/types.d.ts
 +++ b/lib/typescript/src/types.d.ts
 @@ -31,7 +31,7 @@ type PromiseOptions<T = unknown> = {
@@ -124,7 +126,7 @@ index 88183d28f539d3bd5fd1645b001ede6be37f35b4..7dea78de60d3410b32bbf83090be4bd1
  export type ToastEntryExitAnimation = EntryExitAnimationFunction | BaseAnimationBuilder | typeof BaseAnimationBuilder | Keyframe | 'default';
  export type ToastAnimation = {
 diff --git a/src/gestures.tsx b/src/gestures.tsx
-index a27988c3740c6a15165dfc2aa72d66b7fada1899..26cfb8a40e7c1070c6ea8df95e53a38c39d6d73f 100644
+index a27988c3740c6a15165dfc2aa72d66b7fada1899..483097cde6332b5b648be81301e51b7f43a8c1fb 100644
 --- a/src/gestures.tsx
 +++ b/src/gestures.tsx
 @@ -67,7 +67,7 @@ export const ToastSwipeHandler: React.FC<
@@ -136,7 +138,7 @@ index a27988c3740c6a15165dfc2aa72d66b7fada1899..26cfb8a40e7c1070c6ea8df95e53a38c
          translate.value = event.translationX;
        } else if (direction === 'up') {
          const isBottomPosition = position === 'bottom-center';
-@@ -92,9 +92,9 @@ export const ToastSwipeHandler: React.FC<
+@@ -92,20 +92,22 @@ export const ToastSwipeHandler: React.FC<
          return;
        }
  
@@ -149,7 +151,10 @@ index a27988c3740c6a15165dfc2aa72d66b7fada1899..26cfb8a40e7c1070c6ea8df95e53a38c
  
          if (Math.abs(translate.value) < 16) {
            translate.value = withTiming(0, {
-@@ -104,8 +104,9 @@ export const ToastSwipeHandler: React.FC<
+             easing: Easing.elastic(0.8),
+           });
++          runOnJS(onFinalize)();
+           return;
          }
  
          if (shouldDismiss) {
@@ -160,7 +165,7 @@ index a27988c3740c6a15165dfc2aa72d66b7fada1899..26cfb8a40e7c1070c6ea8df95e53a38c
              {
                easing: Easing.inOut(Easing.ease),
              },
-@@ -168,7 +169,7 @@ export const ToastSwipeHandler: React.FC<
+@@ -168,7 +170,7 @@ export const ToastSwipeHandler: React.FC<
    const animatedStyle = useAnimatedStyle(() => {
      const aStyle: ViewStyle = {
        transform: [
@@ -169,7 +174,7 @@ index a27988c3740c6a15165dfc2aa72d66b7fada1899..26cfb8a40e7c1070c6ea8df95e53a38c
            ? { translateX: translate.value }
            : {
                translateY:
-@@ -180,11 +181,10 @@ export const ToastSwipeHandler: React.FC<
+@@ -180,11 +182,10 @@ export const ToastSwipeHandler: React.FC<
      if (isAndroid) {
        aStyle.opacity = 1;
      } else {

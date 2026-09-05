@@ -33,6 +33,9 @@ export interface ISyncAdapter {
   /** Get file size in bytes, or null when unavailable. */
   getFileSize(filePath: string): Promise<number | null>;
 
+  /** Validate a staged book before publishing it (native container admission, when available). */
+  validateBookFile?(filePath: string, format: string): Promise<void>;
+
   /** Max bytes this platform can safely buffer for fallback sync transfers. */
   maxBufferedTransferBytes?: number;
 

@@ -1,0 +1,37 @@
+appId: com.mishanaer.readany.dev
+name: iOS URL failures, redirect duplicate and changed edition
+# Uses only original locally generated QA books, localhost port 8099.
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Library"
+    timeout: 30000
+- tapOn: "Add book"
+- tapOn: "Add from link"
+- assertVisible: "Book link"
+- tapOn: "Cancel"
+- assertVisible: "Library"
+- runFlow:
+    file: flows/ios-import-url-result.yaml
+    env:
+      BOOK_URL: http://127.0.0.1:8099/missing.epub
+      RESULT_TEXT: ".*add the book"
+      EVIDENCE_NAME: ios-url-404
+- runFlow:
+    file: flows/ios-import-url-result.yaml
+    env:
+      BOOK_URL: http://127.0.0.1:8099/17-truncated.epub
+      RESULT_TEXT: "Import failed"
+      EVIDENCE_NAME: ios-url-truncated
+- runFlow:
+    file: flows/ios-import-url-result.yaml
+    env:
+      BOOK_URL: http://127.0.0.1:8099/redirect.epub
+      RESULT_TEXT: "Library updated"
+      EVIDENCE_NAME: ios-url-redirect-duplicate
+- runFlow:
+    file: flows/ios-import-url-result.yaml
+    env:
+      BOOK_URL: http://127.0.0.1:8099/changed-edition/01-river.epub
+      RESULT_TEXT: "Done"
+      EVIDENCE_NAME: ios-url-changed-edition

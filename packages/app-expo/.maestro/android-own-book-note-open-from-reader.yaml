@@ -1,0 +1,22 @@
+appId: com.mishanaer.readany.dev
+name: Android selected book empty-notebook CTA route
+# Own 26-mixed-recovery is already open; allow its initial toolbar to auto-hide.
+---
+- extendedWaitUntil:
+    notVisible: Book actions
+    timeout: 10000
+- tapOn:
+    point: "50%,50%"
+- tapOn: Book actions
+- tapOn: Notes
+- waitForAnimationToEnd:
+    timeout: 5000
+- assertVisible: No notes yet
+- takeScreenshot: android-own-book-empty-notes
+- tapOn:
+    text: Add note
+    below: No notes yet
+- waitForAnimationToEnd:
+    timeout: 5000
+- assertVisible: 26-mixed-recovery
+- takeScreenshot: android-own-book-note-editor

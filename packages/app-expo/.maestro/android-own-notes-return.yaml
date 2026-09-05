@@ -1,0 +1,13 @@
+appId: com.mishanaer.readany.dev
+name: Android returns from two saved scoped notes to reading
+---
+- assertVisible: .*NARRA_ANDROID_QA_BOOK_SCOPE_20260905_EDITED.*
+- assertVisible: .*NARRA_ANDROID_QA_BOOK_SCOPE_20260905_SECOND.*
+- back
+- extendedWaitUntil:
+    visible: Narra Reader
+    timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 5000
+- assertVisible: .*Анна.*
+- takeScreenshot: android-own-notes-return-reader

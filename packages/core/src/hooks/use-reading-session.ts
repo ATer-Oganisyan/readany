@@ -62,22 +62,22 @@ export function setSessionEventSource(source: SessionEventSource): void {
 }
 
 export function useReadingSession(bookId: string | null, tabId?: string) {
-  const {
-    startSession,
-    pauseSession,
-    resumeSession,
-    stopSession,
-    updateActiveTime,
-    saveCurrentSession,
-  } = useReadingSessionStore();
+  const startSession = useReadingSessionStore((state) => state.startSession);
+  const pauseSession = useReadingSessionStore((state) => state.pauseSession);
+  const resumeSession = useReadingSessionStore((state) => state.resumeSession);
+  const stopSession = useReadingSessionStore((state) => state.stopSession);
+  const updateActiveTime = useReadingSessionStore((state) => state.updateActiveTime);
+  const saveCurrentSession = useReadingSessionStore((state) => state.saveCurrentSession);
   const activeTabId = useAppStore((s) => s.activeTabId);
   const isTabActive = tabId ? activeTabId === tabId : true;
+  const bookIdRef = useRef(bookId);
+  bookIdRef.current = bookId;
 
   const detectorRef = useRef(
     createSessionDetector(undefined, (_from, to) => {
       switch (to) {
         case "ACTIVE":
-          if (_from === "STOPPED") startSession(bookId ?? "");
+          if (_from === "STOPPED") startSession(bookIdRef.current ?? "");
           else resumeSession();
           break;
         case "PAUSED":

@@ -1,0 +1,32 @@
+appId: com.mishanaer.readany.dev
+name: iOS notes return, profile and search entry
+---
+- launchApp:
+    stopApp: false
+- takeScreenshot: ios-own-note-saved
+- swipe:
+    start: "50%,12%"
+    end: "50%,94%"
+    duration: 600
+- waitForAnimationToEnd:
+    timeout: 5000
+- assertVisible: "Narra Reader"
+- takeScreenshot: ios-notes-return-reader
+- runFlow:
+    when:
+      notVisible: "Book actions"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- tapOn: "Close"
+- assertVisible: "Library"
+- tapOn:
+    point: "65%,95%"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: ios-profile-main-screen
+- tapOn:
+    point: "89%,95%"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: ios-search-main-screen

@@ -300,43 +300,68 @@ export class ExpoPlatformService implements IPlatformService {
 
   async downloadFile(url: string, filePath: string, options?: FileTransferOptions): Promise<void> {
     const effectiveUrl = options?.allowInsecure ? url.replace(/^https:\/\//i, "http://") : url;
+    const abortError = () =>
+      Object.assign(new Error("File download cancelled"), { name: "AbortError" });
+    if (options?.signal?.aborted) throw abortError();
+    const configuredTimeout = options?.timeoutMs;
+    const timeoutMs =
+      typeof configuredTimeout === "number" &&
+      Number.isFinite(configuredTimeout) &&
+      configuredTimeout > 0
+        ? configuredTimeout
+        : 300_000;
     const controller = new AbortController();
-    const abortFromCaller = () => controller.abort();
-    let didTimeout = false;
-
-    if (options?.signal?.aborted) controller.abort();
-    else options?.signal?.addEventListener("abort", abortFromCaller, { once: true });
-
-    const task = new DownloadTask(effectiveUrl, new File(filePath), {
-      headers: options?.headers,
-      sessionType: "foreground",
-      signal: controller.signal,
-      onProgress: (progress) => {
-        options?.onProgress?.(
-          progress.bytesWritten,
-          progress.totalBytes > 0 ? progress.totalBytes : 0,
-        );
-      },
+    // React Native may not implement AbortSignal.reason. Keep the cause locally
+    // so a network deadline is not reported as a user cancellation.
+    let interruptionError: Error | undefined;
+    const interrupt = (error: Error) => {
+      if (controller.signal.aborted) return;
+      interruptionError = error;
+      controller.abort();
+    };
+    const abortFromCaller = () => interrupt(abortError());
+    options?.signal?.addEventListener("abort", abortFromCaller, { once: true });
+    let onAbort = () => {};
+    const interrupted = new Promise<never>((_resolve, reject) => {
+      onAbort = () => reject(interruptionError ?? abortError());
+      controller.signal.addEventListener("abort", onAbort, { once: true });
     });
-    const timeout = options?.timeoutMs
-      ? setTimeout(() => {
-          didTimeout = true;
-          controller.abort();
-        }, options.timeoutMs)
-      : null;
+    let task: DownloadTask | undefined;
+    let finished = false;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
 
     try {
-      const result = await task.downloadAsync();
-      if (!result) throw new Error(`File download cancelled: ${effectiveUrl}`);
-    } catch (error) {
-      if (didTimeout) {
-        throw new Error(`File download timeout (${options?.timeoutMs}ms): ${effectiveUrl}`);
-      }
-      throw error;
+      task = new DownloadTask(effectiveUrl, new File(filePath), {
+        headers: options?.headers,
+        sessionType: "foreground",
+        signal: controller.signal,
+        onProgress: (progress) => {
+          if (finished || controller.signal.aborted) return;
+          options?.onProgress?.(
+            progress.bytesWritten,
+            progress.totalBytes > 0 ? progress.totalBytes : 0,
+          );
+        },
+      });
+      timeout = setTimeout(() => {
+        interrupt(
+          Object.assign(new Error(`File download timeout (${timeoutMs}ms)`), {
+            name: "TimeoutError",
+          }),
+        );
+      }, timeoutMs);
+      // Native cancellation is requested through the signal. The caller also
+      // settles if a broken native task never acknowledges it; race observes
+      // late native rejection, and late progress cannot revive the loading UI.
+      const result = await Promise.race([task.downloadAsync(), interrupted]);
+      if (controller.signal.aborted) throw interruptionError ?? abortError();
+      if (!result) throw abortError();
     } finally {
+      finished = true;
       if (timeout) clearTimeout(timeout);
       options?.signal?.removeEventListener("abort", abortFromCaller);
-      task.release();
+      controller.signal.removeEventListener("abort", onAbort);
+      task?.release();
     }
   }
 

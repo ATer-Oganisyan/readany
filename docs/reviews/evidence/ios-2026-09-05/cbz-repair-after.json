@@ -1,0 +1,41 @@
+{
+  "at": "2026-09-05T10:05:18.890Z",
+  "book": {
+    "id": "9f1e89f7-e427-42c2-8f14-7b22bd130394",
+    "filePath": "books/9f1e89f7-e427-42c2-8f14-7b22bd130394-f6d3ca02-f732-4833-aa01-5ed2e6a76cc7.cbz",
+    "format": "cbz",
+    "sourceKind": "local",
+    "meta": {
+      "title": "12-river-comic",
+      "author": ""
+    },
+    "addedAt": 1788558560256,
+    "lastOpenedAt": 1788602689624,
+    "updatedAt": 1788602591599,
+    "progress": 0.7499289240041914,
+    "currentCfi": "epubcfi(/6/6)",
+    "isVectorized": false,
+    "vectorizeProgress": 0,
+    "tags": [],
+    "fileHash": "6b40ade28fceeb3541151c47e90074ae119d18dde26772248f1909884c213a8c",
+    "syncStatus": "local",
+    "localProgressCheckpoint": {
+      "version": 1,
+      "source": "[\"9f1e89f7-e427-42c2-8f14-7b22bd130394\",\"cbz\",\"6b40ade28fceeb3541151c47e90074ae119d18dde26772248f1909884c213a8c\"]",
+      "progress": 0.7499289240041914,
+      "currentCfi": "epubcfi(/6/6)",
+      "updatedAt": 1788602690590,
+      "pending": false
+    }
+  },
+  "libraryCount": 20,
+  "repairedFileSha256": "6b40ade28fceeb3541151c47e90074ae119d18dde26772248f1909884c213a8c",
+  "backupSha256": "6b40ade28fceeb3541151c47e90074ae119d18dde26772248f1909884c213a8c",
+  "originalUserBookPresent": true,
+  "nativeArtifact": "2026-09-05_130301",
+  "uiDriverFailure": "Reader AX node absent; screenshot shows river-03.png and p.3 of4",
+  "singleFilePicker": true,
+  "iosPickerTypes": [
+    "*/*"
+  ]
+}

@@ -180,4 +180,36 @@ describe("backend book synchronization lifecycle", () => {
     expect(deps.error).toHaveBeenCalled();
     session.stop();
   });
+  it("keeps explicit retry pending through an already running refresh without duplicating it", async () => {
+    const { session, deps } = setup();
+    let finish!: (value: BackendBookManifest) => void;
+    vi.mocked(deps.manifest).mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    session.start();
+    await vi.advanceTimersByTimeAsync(0);
+    let completed = false;
+    const retry = Promise.resolve(session.retry()).then(() => {
+      completed = true;
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(completed).toBe(false);
+    expect(deps.manifest).toHaveBeenCalledTimes(1);
+    finish(ready);
+    await retry;
+    expect(completed).toBe(true);
+    expect(deps.publish).toHaveBeenCalledWith(ready, 0.2);
+    session.stop();
+  });
+  it("settles retry after a failed refresh is reported and leaves the next attempt usable", async () => {
+    const { session, deps } = setup();
+    vi.mocked(deps.manifest).mockRejectedValueOnce(new Error("offline"));
+    await session.retry();
+    expect(deps.error).toHaveBeenCalledOnce();
+    await session.retry();
+    expect(deps.publish).toHaveBeenCalledWith(ready, 0.2);
+    session.stop();
+  });
 });

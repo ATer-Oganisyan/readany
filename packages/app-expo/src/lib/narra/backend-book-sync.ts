@@ -14,6 +14,7 @@ import {
   postBackendAnalysisRetry,
   postBackendProgress,
 } from "./backend-book-api";
+import { supportsPrivateBookAnalysis } from "./backend-book-capabilities";
 import {
   type BackendBookManifest,
   type BackendCharactersPreview,
@@ -50,8 +51,21 @@ const bindings = new Map<
   Promise<NonNullable<ReturnType<typeof useNarraStore.getState>["books"][string]["backendBinding"]>>
 >();
 
+function analysisSource(book: Book) {
+  const saved = useNarraStore.getState().books[book.id]?.backendOriginalSource;
+  // Older UMD imports retained raw UMD, although the reader already uses EPUB.
+  const convertedUmd = book.format === "umd" && /\.epub$/i.test(book.filePath);
+  return { original: saved?.format === "umd" ? undefined : saved, convertedUmd };
+}
+
+function supportsBackendAnalysis(book: Book): boolean {
+  const { original, convertedUmd } = analysisSource(book);
+  const format = original?.format ?? (convertedUmd ? "epub" : book.format);
+  return book.sourceKind === "catalog" || supportsPrivateBookAnalysis(format);
+}
+
 async function sourcePath(book: Book) {
-  const original = useNarraStore.getState().books[book.id]?.backendOriginalSource;
+  const { original } = analysisSource(book);
   if (original) return `${FileSystem.documentDirectory}${original.path}`;
   const path = book.filePath;
   if (path.startsWith("/") || path.startsWith("file://")) return path;
@@ -59,18 +73,25 @@ async function sourcePath(book: Book) {
   return platform.joinPath(await platform.getAppDataDir(), path);
 }
 
-/** Keep original bytes before a local TXT/UMD conversion changes the file identity. */
+/** Keep original TXT bytes before conversion changes the file identity. */
 export async function preserveBackendOriginalSource(
   bookId: string,
   source: string,
   format: string,
+  options: { artifactId?: string; publish?: boolean; sourceHash?: string } = {},
 ) {
   const directory = `${FileSystem.documentDirectory}narra-backend-sources`;
-  const hash = await sha256BackendFile(source);
-  const path = `narra-backend-sources/${encodeURIComponent(bookId)}.${format}`;
+  const hash =
+    options.sourceHash && /^[a-f\d]{64}$/i.test(options.sourceHash)
+      ? options.sourceHash
+      : await sha256BackendFile(source);
+  const path = `narra-backend-sources/${encodeURIComponent(options.artifactId ?? bookId)}.${format}`;
   await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
   await FileSystem.copyAsync({ from: source, to: `${FileSystem.documentDirectory}${path}` });
-  useNarraStore.getState().setBackendOriginalSource(bookId, { path, format, hash });
+  const original = { path, format, hash };
+  if (options.publish !== false)
+    useNarraStore.getState().setBackendOriginalSource(bookId, original);
+  return original;
 }
 
 const mimeTypes: Record<string, string> = {
@@ -88,7 +109,8 @@ const mimeTypes: Record<string, string> = {
 
 async function bindBook(book: Book, signal: AbortSignal) {
   const store = useNarraStore.getState();
-  const original = store.books[book.id]?.backendOriginalSource;
+  const { original, convertedUmd } = analysisSource(book);
+  const format = original?.format ?? (convertedUmd ? "epub" : book.format);
   let binding = store.books[book.id]?.backendBinding;
   if (binding && expiredEditions.has(binding.bookEditionId)) binding = undefined;
   // A cancelled upload can have reached the server without its response reaching
@@ -108,11 +130,16 @@ async function bindBook(book: Book, signal: AbortSignal) {
   }
   if (!binding) {
     const path = await sourcePath(book);
-    const hash = original?.hash ?? book.contentHash ?? (await sha256BackendFile(path));
+    const hash =
+      original?.hash ??
+      (convertedUmd ? undefined : book.contentHash) ??
+      (await sha256BackendFile(path));
     if (signal.aborted) throw new Error("Book binding cancelled");
     // Persist once; subsequent resolve/open never hashes unchanged bytes again.
-    if (!book.contentHash)
-      await useLibraryStore.getState().updateBook(book.id, { contentHash: hash });
+    if (!book.contentHash || convertedUmd)
+      await useLibraryStore
+        .getState()
+        .updateBook(book.id, { contentHash: hash, ...(convertedUmd ? { format: "epub" } : {}) });
     let response = await backendBookRequest(
       "/v2/books/resolve",
       backendJsonPost({ source: "local", content_sha256: hash }, signal),
@@ -125,7 +152,7 @@ async function bindBook(book: Book, signal: AbortSignal) {
             content_sha256: hash,
             title: book.meta.title,
             author: book.meta.author,
-            format: original?.format ?? book.format,
+            format,
             ...(normalizeBookLanguage(book.meta.language)
               ? { language: normalizeBookLanguage(book.meta.language) }
               : {}),
@@ -150,7 +177,7 @@ async function bindBook(book: Book, signal: AbortSignal) {
     const response = await backendBookRequest(backendBookPath(binding.bookEditionId, "source"), {
       method: "PUT",
       headers: {
-        "content-type": mimeTypes[original?.format ?? book.format] ?? "application/octet-stream",
+        "content-type": mimeTypes[format] ?? "application/octet-stream",
       },
       body: sourceBytes,
       signal,
@@ -298,6 +325,10 @@ function createSession(book: Book, progress: number) {
 }
 
 export function retainBackendBookSync(book: Book, progress = book.progress): () => void {
+  if (!supportsBackendAnalysis(book)) {
+    status(book.id, { error: "BOOK_FORMAT_UNSUPPORTED" });
+    return () => {};
+  }
   let entry = sessions.get(book.id);
   if (!entry) {
     const session = createSession(book, progress);
@@ -321,8 +352,8 @@ export function retainBackendBookSync(book: Book, progress = book.progress): () 
 export function updateBackendBookProgress(bookId: string, progress: number) {
   sessions.get(bookId)?.session.update(progress);
 }
-export function retryBackendBookSync(bookId: string) {
-  sessions.get(bookId)?.session.retry();
+export function retryBackendBookSync(bookId: string): Promise<void> {
+  return sessions.get(bookId)?.session.retry() ?? Promise.resolve();
 }
 
 export async function retryBackendBookAnalysis(bookId: string): Promise<void> {
@@ -352,6 +383,10 @@ const IMPORTED_BOOK_SYNC_DEADLINE_MS = 5 * 60_000;
 
 /** Start server work for an explicitly imported file without blocking its local reader. */
 export function startImportedBackendBook(book: Book): void {
+  if (!supportsBackendAnalysis(book)) {
+    status(book.id, { error: "BOOK_FORMAT_UNSUPPORTED" });
+    return;
+  }
   const stop = () => {
     clearTimeout(deadline);
     unsubscribe?.();

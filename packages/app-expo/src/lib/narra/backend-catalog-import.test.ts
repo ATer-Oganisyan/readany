@@ -1,7 +1,7 @@
 vi.mock("@/stores/narra-store", () => ({
   useNarraStore: { getState: () => ({ setBackendBinding: vi.fn() }) },
 }));
-import type { Book } from "@readany/core/types";
+import type { Book, BookUpdate } from "@readany/core/types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   importBackendCatalogBook,
@@ -61,6 +61,40 @@ const CATALOG_BOOK = {
 
 describe("backend catalog import", () => {
   beforeEach(() => vi.clearAllMocks());
+  it("preserves newer reader metadata when the catalog cover finishes later", async () => {
+    let finishCover!: (value: string) => void;
+    mocks.materializeCover.mockReturnValueOnce(
+      new Promise<string>((resolve) => {
+        finishCover = resolve;
+      }),
+    );
+    mocks.installCover.mockResolvedValueOnce("covers/catalog.jpg");
+    let current = structuredClone(IMPORTED_BOOK);
+    const importBooks = vi
+      .fn()
+      .mockResolvedValue({ imported: [current], skippedDuplicates: [], failures: [] });
+    const updateBook = vi.fn(async (_id: string, updates: BookUpdate) => {
+      current = { ...current, ...updates, meta: { ...current.meta, ...updates.meta } };
+    });
+    await importDownloadedBackendCatalogBook(CATALOG_BOOK, "file:///metadata-race.epub", {
+      importBooks,
+      updateBook,
+    });
+    current = {
+      ...current,
+      meta: { ...current.meta, title: "My edited title", description: "My new description" },
+    };
+    finishCover("file:///cover.jpg");
+    await vi.waitFor(() => expect(updateBook).toHaveBeenCalledTimes(2));
+    expect(current.meta).toMatchObject({
+      title: "My edited title",
+      description: "My new description",
+      coverUrl: "covers/catalog.jpg",
+    });
+    expect(updateBook).toHaveBeenLastCalledWith(current.id, {
+      meta: { coverUrl: "covers/catalog.jpg" },
+    });
+  });
   it.each(["ru", null, undefined])(
     "keeps catalog language %s, or preserves the parser language when unknown",
     async (language) => {

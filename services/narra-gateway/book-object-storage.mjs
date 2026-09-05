@@ -33,11 +33,11 @@ function checksumBase64(hex) {
 async function responseBodyBuffer(body, maxBytes) {
   if (!body) throw new Error('object storage returned an empty body')
   let buffer
-  if (typeof body.transformToByteArray === 'function') {
-    buffer = Buffer.from(await body.transformToByteArray())
-  } else if (Buffer.isBuffer(body) || body instanceof Uint8Array) {
+  if (Buffer.isBuffer(body) || body instanceof Uint8Array) {
     buffer = Buffer.from(body)
   } else if (body[Symbol.asyncIterator]) {
+    // AWS SDK streams also expose transformToByteArray(). Prefer iteration so
+    // an absent/incorrect Content-Length cannot bypass the allocation ceiling.
     const chunks = []
     let total = 0
     for await (const chunk of body) {
@@ -47,6 +47,8 @@ async function responseBodyBuffer(body, maxBytes) {
       chunks.push(bytes)
     }
     buffer = Buffer.concat(chunks, total)
+  } else if (typeof body.transformToByteArray === 'function') {
+    buffer = Buffer.from(await body.transformToByteArray())
   } else {
     throw new Error('object storage returned an unsupported body')
   }
@@ -163,7 +165,14 @@ export function createBookObjectStorage({
         throw new RangeError('maxBytes must be between 1 byte and 512 MiB')
       }
       const result = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }))
-      if (Number(result.ContentLength || 0) > maxBytes) invalid('object exceeds the allowed read size')
+      if (Number(result.ContentLength || 0) > maxBytes) {
+        // Rejecting the headers must release the socket without consuming the body.
+        if (typeof result.Body?.destroy === 'function') result.Body.destroy()
+        else if (typeof result.Body?.cancel === 'function') {
+          Promise.resolve(result.Body.cancel()).catch(() => {})
+        }
+        invalid('object exceeds the allowed read size')
+      }
       return {
         bytes: await responseBodyBuffer(result.Body, maxBytes),
         mimeType: result.ContentType || 'application/octet-stream',
@@ -209,9 +218,10 @@ export function createBookObjectStorage({
       }
     },
 
-    async putBytes({ objectKey: rawObjectKey, bytes: rawBytes, mimeType }) {
+    async putBytes({ objectKey: rawObjectKey, bytes: rawBytes, mimeType, signal }) {
+      signal?.throwIfAborted()
       const key = objectKey(rawObjectKey)
-      const bytes = Buffer.from(rawBytes)
+      const bytes = Buffer.isBuffer(rawBytes) ? rawBytes : Buffer.from(rawBytes)
       if (!bytes.byteLength) invalid('bytes: generated object is empty')
       if (typeof mimeType !== 'string' || !/^[a-z0-9.+-]+\/[a-z0-9.+-]+$/i.test(mimeType)) {
         invalid('mimeType: invalid media type')
@@ -225,7 +235,7 @@ export function createBookObjectStorage({
         ContentType: mimeType,
         ChecksumSHA256: checksumBase64(contentHash),
         Metadata: { content_sha256: contentHash }
-      }))
+      }), { abortSignal: signal })
       return {
         objectKey: key,
         contentHash,

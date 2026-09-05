@@ -1,0 +1,23 @@
+{
+  "at": "2026-09-05T10:48:24.939Z",
+  "libraryCount": 20,
+  "original": {
+    "id": "a0119175-ccbe-42b4-a861-d868a2f4792e",
+    "currentCfi": "epubcfi(/6/6!/4/2/2,/8/1:180,/12/11:147)",
+    "sourceExists": true
+  },
+  "pdf": [
+    {
+      "id": "0e53a2f5-4985-4691-bd68-b2832405f380",
+      "currentCfi": "epubcfi(/6/8)"
+    }
+  ],
+  "cbz": [
+    {
+      "id": "9f1e89f7-e427-42c2-8f14-7b22bd130394",
+      "currentCfi": "epubcfi(/6/6)",
+      "filePath": "books/9f1e89f7-e427-42c2-8f14-7b22bd130394-f6d3ca02-f732-4833-aa01-5ed2e6a76cc7.cbz",
+      "sourceExists": true
+    }
+  ]
+}

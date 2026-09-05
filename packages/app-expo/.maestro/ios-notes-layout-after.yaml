@@ -1,0 +1,25 @@
+appId: com.mishanaer.readany.dev
+name: iOS nonempty book notebook layout and return
+---
+- launchApp:
+    stopApp: false
+- assertVisible: "Narra Reader"
+- runFlow:
+    when:
+      notVisible: "Book actions"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- tapOn: "Book actions"
+- tapOn: "Notes"
+- waitForAnimationToEnd:
+    timeout: 5000
+- assertVisible: "Book note"
+- assertVisible: ".*NARRA QA scoped first: FBZ chapter three.*"
+- assertVisible: ".*NARRA QA scoped second: header action.*"
+- assertVisible: "Edit note"
+- assertVisible: "Close"
+- takeScreenshot: ios-notes-layout-after
+- tapOn: "Close"
+- assertVisible: "Narra Reader"
+- takeScreenshot: ios-notes-layout-return-reader

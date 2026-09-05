@@ -12,6 +12,34 @@ async function persistReadingSession(session: ReadingSession): Promise<void> {
   await runWithDbRetry(() => db.insertReadingSession(session));
 }
 
+type PendingSessionSave = { snapshot: ReadingSession; promise: Promise<boolean> };
+const pendingSessionSaves = new Map<string, PendingSessionSave>();
+
+function hasReadingActivity(session: ReadingSession): boolean {
+  return session.totalActiveTime > 0 || session.pagesRead > 0 || (session.charactersRead ?? 0) > 0;
+}
+
+/** Counters after the saved boundary belong to a new, non-overlapping segment. */
+function unsavedRemainder(current: ReadingSession, saved: ReadingSession): ReadingSession {
+  return {
+    ...current,
+    id: generateId(),
+    startedAt: saved.endedAt ?? current.startedAt,
+    totalActiveTime: Math.max(0, current.totalActiveTime - saved.totalActiveTime),
+    pagesRead: Math.max(0, current.pagesRead - saved.pagesRead),
+    charactersRead: Math.max(0, (current.charactersRead ?? 0) - (saved.charactersRead ?? 0)),
+  };
+}
+
+async function persistStoppedSession(snapshot: ReadingSession): Promise<void> {
+  const pending = pendingSessionSaves.get(snapshot.id);
+  // An autosave may already own this INSERT ID. Wait for its outcome before
+  // writing the fuller stopped snapshot: only its delta remains after success.
+  const remainder =
+    pending && (await pending.promise) ? unsavedRemainder(snapshot, pending.snapshot) : snapshot;
+  if (hasReadingActivity(remainder)) await persistReadingSession(remainder);
+}
+
 export interface ReadingSessionState {
   currentSession: ReadingSession | null;
   sessionState: SessionState;
@@ -64,20 +92,17 @@ export const useReadingSessionStore = create<ReadingSessionState>((set, get) => 
         : null,
     })),
 
-  stopSession: () =>
-    set((state) => {
-      if (state.currentSession && state.currentSession.totalActiveTime > 0) {
-        const session = {
-          ...state.currentSession,
-          state: "STOPPED" as const,
-          endedAt: Date.now(),
-        };
-        persistReadingSession(session).catch((err) =>
-          console.error("Failed to save reading session:", err),
-        );
-      }
-      return { currentSession: null, sessionState: "STOPPED" };
-    }),
+  stopSession: () => {
+    const { currentSession } = get();
+    set({ currentSession: null, sessionState: "STOPPED" });
+    if (currentSession && hasReadingActivity(currentSession)) {
+      persistStoppedSession({
+        ...currentSession,
+        state: "STOPPED" as const,
+        endedAt: Date.now(),
+      }).catch((err) => console.error("Failed to save reading session:", err));
+    }
+  },
 
   updateActiveTime: () =>
     set((state) => ({
@@ -111,28 +136,34 @@ export const useReadingSessionStore = create<ReadingSessionState>((set, get) => 
 
   saveCurrentSession: async () => {
     const { currentSession } = get();
-    if (currentSession && currentSession.totalActiveTime > 0) {
-      try {
-        const session = {
-          ...currentSession,
-          endedAt: Date.now(),
-        };
-        await persistReadingSession(session);
-
-        set({
-          currentSession: {
-            ...currentSession,
-            id: generateId(),
-            startedAt: Date.now(),
-            totalActiveTime: 0,
-            pagesRead: 0,
-            charactersRead: 0,
-          },
-        });
-      } catch (err) {
-        console.error("Failed to save reading session:", err);
-      }
+    if (!currentSession || !hasReadingActivity(currentSession)) return;
+    const pending = pendingSessionSaves.get(currentSession.id);
+    if (pending) {
+      await pending.promise;
+      return;
     }
+    const snapshot = { ...currentSession, endedAt: Date.now() };
+    const promise = persistReadingSession(snapshot)
+      .then(() => {
+        set((state) => {
+          const live = state.currentSession;
+          // A stop or another book may have replaced this segment while the
+          // database was busy. Never resurrect it or replace the new session.
+          if (live?.id !== snapshot.id || live.bookId !== snapshot.bookId) return state;
+          return { currentSession: unsavedRemainder(live, snapshot) };
+        });
+        return true;
+      })
+      .catch((err) => {
+        console.error("Failed to save reading session:", err);
+        return false;
+      })
+      .finally(() => {
+        if (pendingSessionSaves.get(snapshot.id)?.promise === promise)
+          pendingSessionSaves.delete(snapshot.id);
+      });
+    pendingSessionSaves.set(snapshot.id, { snapshot, promise });
+    await promise;
   },
 
   loadStats: async (bookId) => {
@@ -150,7 +181,12 @@ export const useReadingSessionStore = create<ReadingSessionState>((set, get) => 
       >();
       for (const s of sessions) {
         const day = new Date(s.startedAt).toISOString().split("T")[0];
-        const existing = dailyStatsMap.get(day) || { readingTime: 0, pagesRead: 0, charactersRead: 0, sessions: 0 };
+        const existing = dailyStatsMap.get(day) || {
+          readingTime: 0,
+          pagesRead: 0,
+          charactersRead: 0,
+          sessions: 0,
+        };
         dailyStatsMap.set(day, {
           readingTime: existing.readingTime + s.totalActiveTime,
           pagesRead: existing.pagesRead + s.pagesRead,

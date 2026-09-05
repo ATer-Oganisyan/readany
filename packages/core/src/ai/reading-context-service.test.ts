@@ -1,10 +1,10 @@
-import { access, mkdtemp, mkdir as fsMkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
+import { access, mkdir as fsMkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getHighlights } from "../db/database";
-import { setPlatformService, type IPlatformService } from "../services";
+import { type IPlatformService, setPlatformService } from "../services";
 import { readingContextService } from "./reading-context-service";
 
 vi.mock("../db/database", () => ({
@@ -12,6 +12,11 @@ vi.mock("../db/database", () => ({
 }));
 
 const mockedGetHighlights = vi.mocked(getHighlights);
+type Highlights = Awaited<ReturnType<typeof getHighlights>>;
+
+function noteFixture(text: string, cfi: string): Highlights[number] {
+  return { id: cfi, bookId: "book-1", text, cfi, color: "yellow", createdAt: 1, updatedAt: 1 };
+}
 
 type TestPlatform = IPlatformService & {
   deletedFiles: string[];
@@ -202,7 +207,9 @@ describe("readingContextService", () => {
   });
 
   it("keeps the latest snapshot after rapid updates", async () => {
-    mockedGetHighlights.mockResolvedValue([{ text: "Initial", cfi: "epubcfi(/6/2)", note: null }] as any);
+    mockedGetHighlights.mockResolvedValue([
+      { text: "Initial", cfi: "epubcfi(/6/2)", note: null },
+    ] as any);
 
     await readingContextService.updateContext({
       bookId: "book-1",
@@ -233,5 +240,133 @@ describe("readingContextService", () => {
       surroundingText: "second",
       operationType: "selecting",
     });
+  });
+
+  it("publishes the page immediately and only enriches its highlights after a slow database read", async () => {
+    let finish!: (highlights: Highlights) => void;
+    mockedGetHighlights.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const loading = readingContextService.updateContext({
+      bookId: "book-1",
+      currentPosition: { cfi: "page-1", percentage: 10 },
+    });
+    try {
+      expect(readingContextService.getContext()).toMatchObject({
+        bookId: "book-1",
+        currentPosition: { cfi: "page-1" },
+        recentHighlights: [],
+      });
+      await readingContextService.updateContext({
+        bookId: "book-1",
+        currentPosition: { cfi: "page-2", percentage: 20 },
+        surroundingText: "Only the currently visible page.",
+      });
+      readingContextService.updateSelection({
+        text: "Selected now",
+        cfi: "page-2",
+        chapterIndex: 0,
+        chapterTitle: "",
+      });
+    } finally {
+      finish([noteFixture("Recent note", "note-location")]);
+      await loading;
+    }
+    await readingContextService.flushSnapshot();
+    const written = JSON.parse(
+      await readFile(join(root, "readany-store", "reader-context.json"), "utf8"),
+    );
+    expect(written).toMatchObject({
+      currentPosition: { cfi: "page-2", percentage: 20 },
+      surroundingText: "Only the currently visible page.",
+      selection: { text: "Selected now", cfi: "page-2" },
+      recentHighlights: [{ text: "Recent note", cfi: "note-location" }],
+    });
+  });
+
+  it("does not resurrect a closed reader when its highlight lookup completes", async () => {
+    let finish!: (highlights: Highlights) => void;
+    mockedGetHighlights.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const loading = readingContextService.updateContext({
+      bookId: "closed-book",
+      currentPosition: { cfi: "closed-page", percentage: 10 },
+    });
+    readingContextService.clearContext();
+    finish([noteFixture("Old note", "closed-note")]);
+    await loading;
+    await readingContextService.flushSnapshot();
+    expect(readingContextService.getContext()).toBeNull();
+    await expect(
+      readFile(join(root, "readany-store", "reader-context.json"), "utf8"),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it.each(["book-1", "book-2"])(
+    "ignores an old session's highlights after reopening %s",
+    async (nextBookId) => {
+      let finishOld!: (highlights: Highlights) => void;
+      mockedGetHighlights.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishOld = resolve;
+          }),
+      );
+      const old = readingContextService.updateContext({
+        bookId: "book-1",
+        currentPosition: { cfi: "old-page", percentage: 10 },
+      });
+      readingContextService.clearContext();
+      await readingContextService.updateContext({
+        bookId: nextBookId,
+        currentPosition: { cfi: "new-page", percentage: 20 },
+        surroundingText: "New visible text.",
+      });
+      finishOld([noteFixture("Stale note", "old-note")]);
+      await old;
+      await readingContextService.flushSnapshot();
+      const written = JSON.parse(
+        await readFile(join(root, "readany-store", "reader-context.json"), "utf8"),
+      );
+      expect(written).toMatchObject({
+        bookId: nextBookId,
+        currentPosition: { cfi: "new-page", percentage: 20 },
+        surroundingText: "New visible text.",
+      });
+      expect(
+        written.recentHighlights.some(
+          (highlight: { text: string }) => highlight.text === "Stale note",
+        ),
+      ).toBe(false);
+    },
+  );
+
+  it("keeps the current page usable when the highlight database fails", async () => {
+    mockedGetHighlights.mockRejectedValueOnce(new Error("database temporarily unavailable"));
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await expect(
+        readingContextService.updateContext({
+          bookId: "book-1",
+          currentPosition: { cfi: "current-page", percentage: 20 },
+          surroundingText: "Current visible text.",
+        }),
+      ).resolves.toBeUndefined();
+      await readingContextService.flushSnapshot();
+      expect(readingContextService.getContext()).toMatchObject({
+        currentPosition: { cfi: "current-page" },
+        surroundingText: "Current visible text.",
+        recentHighlights: [],
+      });
+    } finally {
+      warning.mockRestore();
+    }
   });
 });

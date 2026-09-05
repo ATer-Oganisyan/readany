@@ -9,6 +9,7 @@ const functionNames = new Set([
   "getActiveSelectionRange",
   "recoverStaleSelectionInteraction",
   "clearDocumentSelection",
+  "getReaderViewportX",
   "attachTapListener",
 ]);
 
@@ -22,7 +23,11 @@ function readReaderMainScript() {
 type Listener = { capture: boolean; callback: (event: FakeTouchEvent) => void };
 
 class FakeWindow {
-  frameElement = null;
+  frameElement: {
+    clientWidth: number;
+    getBoundingClientRect: () => { left: number; width: number };
+    ownerDocument?: { defaultView: unknown };
+  } | null = null;
   private listeners = new Map<string, Array<() => void>>();
 
   addEventListener(type: string, callback: () => void) {
@@ -122,6 +127,35 @@ function extractReaderFunctions() {
   return functions.join("\n");
 }
 
+function extractDocumentLoadListener() {
+  const script = readReaderMainScript();
+  const sourceFile = ts.createSourceFile(
+    "reader.js",
+    script,
+    ts.ScriptTarget.ESNext,
+    true,
+    ts.ScriptKind.JS,
+  );
+  let listener: ts.ArrowFunction | undefined;
+  function visit(node: ts.Node) {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      node.expression.expression.getText(sourceFile) === "el" &&
+      node.expression.name.text === "addEventListener" &&
+      ts.isStringLiteral(node.arguments[0]) &&
+      node.arguments[0].text === "load" &&
+      ts.isArrowFunction(node.arguments[1])
+    ) {
+      listener = node.arguments[1];
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+  if (!listener) throw new Error("Reader document load listener was not found");
+  return script.slice(listener.getStart(sourceFile), listener.end);
+}
+
 function touchEvent(
   type: "touchstart" | "touchmove" | "touchend",
   timeStamp: number,
@@ -183,7 +217,10 @@ const STALLED_CLOCK = {
   now: () => 5_000_000,
 };
 
-function createHarness(userAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X)") {
+function createHarness(
+  userAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X)",
+  attachDocument = true,
+) {
   const messages: string[] = [];
   const turns: string[] = [];
   const runtime: Record<string, unknown> = {
@@ -228,7 +265,9 @@ function createHarness(userAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like
   vm.runInContext(extractReaderFunctions(), runtime);
 
   const doc = new FakeDocument();
-  (runtime.attachTapListener as (document: FakeDocument) => void)(doc);
+  if (attachDocument) {
+    (runtime.attachTapListener as (document: FakeDocument) => void)(doc);
+  }
 
   let clock = 1000;
 
@@ -279,6 +318,77 @@ function createHarness(userAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like
 }
 
 describe("Reader interaction recovery", () => {
+  it.each([
+    [160, "prev"],
+    [800, "tap"],
+    [890, "next"],
+  ] as const)("routes scaled Android comic tap at physical x=%s to %s", (physicalX, expected) => {
+    // Observed Android fixture: device1080px at420dpi (DPR2.625), image595px.
+    // Pointer coordinates inside the scaled iframe are in its unscaled CSS
+    // viewport, while frame bounds and reader width are in outer CSS pixels.
+    const harness = createHarness("Mozilla/5.0 (Linux; Android 16)");
+    const viewportWidth = 1080 / 2.625;
+    const outerWindow = harness.runtime.window as {
+      innerWidth: number;
+      top: { innerWidth: number };
+    };
+    outerWindow.innerWidth = outerWindow.top.innerWidth = viewportWidth;
+    harness.doc.defaultView.frameElement = {
+      clientWidth: 595,
+      getBoundingClientRect: () => ({ left: 0, width: viewportWidth }),
+    };
+    harness.touchPointerTap({ x: (physicalX / 1080) * 595 });
+    expect(harness.turns).toEqual(expected === "tap" ? [] : [expected]);
+    expect(harness.messages).toEqual(expected === "tap" ? ["tap"] : []);
+  });
+
+  it("keeps unscaled reflow chapter coordinates aligned after seven offscreen columns", () => {
+    const harness = createHarness();
+    harness.doc.defaultView.frameElement = {
+      clientWidth: 368 * 20,
+      getBoundingClientRect: () => ({ left: -368 * 7, width: 368 * 20 }),
+    };
+    harness.tap({ x: 368 * 7 + 340 });
+    expect(harness.turns).toEqual(["next"]);
+  });
+
+  it.each(["tap", "syntheticClick"] as const)(
+    "projects scaled, centered iOS page coordinates for %s input",
+    (input) => {
+      const harness = createHarness();
+      harness.doc.defaultView.frameElement = {
+        clientWidth: 595,
+        getBoundingClientRect: () => ({ left: 24, width: 320 }),
+      };
+      harness[input]({ x: ((340 - 24) * 595) / 320 });
+      expect(harness.turns).toEqual(["next"]);
+      expect(harness.messages).toEqual([]);
+    },
+  );
+
+  it("composes nested frame scale and offset before deciding the tap zone", () => {
+    const harness = createHarness();
+    const parentWindow = new FakeWindow();
+    parentWindow.frameElement = {
+      clientWidth: 500,
+      getBoundingClientRect: () => ({ left: 34, width: 300 }),
+    };
+    harness.doc.defaultView.frameElement = {
+      clientWidth: 400,
+      getBoundingClientRect: () => ({ left: 50, width: 200 }),
+      ownerDocument: { defaultView: parentWindow },
+    };
+    harness.tap({ x: 350 }); // outer x = 34 + (50 + 350 * .5) * .6 = 169
+    expect(harness.turns).toEqual([]);
+    expect(harness.messages).toEqual(["tap"]);
+  });
+
+  it("does not wrap a fractional right-edge coordinate into the previous-page zone", () => {
+    const harness = createHarness();
+    harness.tap({ x: 368.00001 });
+    expect(harness.turns).toEqual(["next"]);
+  });
+
   it("слушает жесты и внутри EPUB, и на внешней оболочке Foliate", () => {
     const html = fs.readFileSync(readerTemplatePath, "utf8");
     const outerListenerIndex = html.lastIndexOf("attachTapListener(document);");
@@ -288,22 +398,41 @@ describe("Reader interaction recovery", () => {
     expect(readyIndex).toBeGreaterThan(outerListenerIndex);
   });
 
-  it("подключает ввод и показывает EPUB без ожидания шрифтов документа", () => {
-    const script = readReaderMainScript();
-    const loadListenerStart = script.indexOf("el.addEventListener('load'");
-    const loadListenerEnd = script.indexOf("var snippetTimer", loadListenerStart);
-    const loadListener = script.slice(loadListenerStart, loadListenerEnd);
-    const loadedIndex = loadListener.indexOf("markLoaded();");
-    const tapIndex = loadListener.indexOf("attachTapListener(doc);");
-    const selectionIndex = loadListener.indexOf("attachSelectionListener(doc);");
+  it("подключает ввод и стили EPUB синхронно, даже если fonts.ready не завершается", () => {
+    const harness = createHarness(undefined, false);
+    const doc = Object.assign(harness.doc, { fonts: { ready: new Promise(() => {}) } });
+    const selectedDocuments: FakeDocument[] = [];
+    const styledDocuments: FakeDocument[] = [];
+    const longPressDocuments: FakeDocument[] = [];
+    Object.assign(harness.runtime, {
+      isCurrent: () => true,
+      el: { isFixedLayout: false, renderer: {} },
+      msg: {},
+      attachSelectionListener: (target: FakeDocument) => selectedDocuments.push(target),
+      attachNoteLongPress: (target: FakeDocument) => longPressDocuments.push(target),
+      normalizeBrOnlyParagraphs() {},
+      isVerticalDoc: () => false,
+      applyRendererFlowMode() {},
+      applyDocStyles: (target: FakeDocument) => styledDocuments.push(target),
+      refreshUserAnnotations() {},
+      _rubyMode: null,
+      _characterNameSpec: null,
+      applySceneInserts() {},
+    });
+    const onLoad = vm.runInContext(
+      `(${extractDocumentLoadListener()})`,
+      harness.runtime,
+    ) as (event: { detail: { doc: FakeDocument; index: number; primary: boolean } }) => void;
 
-    expect(loadListener).not.toContain("doc.fonts");
-    expect(loadListener).not.toContain("await ");
-    expect(loadedIndex).toBeGreaterThan(-1);
-    expect(tapIndex).toBeGreaterThan(-1);
-    expect(selectionIndex).toBeGreaterThan(-1);
-    expect(tapIndex).toBeLessThan(loadedIndex);
-    expect(selectionIndex).toBeLessThan(loadedIndex);
+    onLoad({ detail: { doc, index: 0, primary: true } });
+
+    // No microtask, timer or font completion: a real touch must already reach
+    // the actual gesture handler. Reader readiness is separately gated on init.
+    harness.tap();
+    expect(harness.messages).toEqual(["tap"]);
+    expect(selectedDocuments).toEqual([doc]);
+    expect(longPressDocuments).toEqual([doc]);
+    expect(styledDocuments).toEqual([doc]);
   });
 
   it("прогревает четыре начертания SB Serif один раз с ограниченным ожиданием", () => {

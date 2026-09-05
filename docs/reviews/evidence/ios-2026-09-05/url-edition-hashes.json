@@ -1,0 +1,14 @@
+[
+  {
+    "source": "01-river.epub",
+    "bookId": "a177936f-f7fb-46c2-aa3e-5a592a75a16a",
+    "sourceSHA256": "ddca1e91eea8506e18bc5dfa322a8a0b02abad119cfc957a1528d12466994add",
+    "storedSHA256": "ddca1e91eea8506e18bc5dfa322a8a0b02abad119cfc957a1528d12466994add"
+  },
+  {
+    "source": "changed-edition/01-river.epub",
+    "bookId": "119b7f35-28d0-42d6-940e-1a7e1957e92f",
+    "sourceSHA256": "8f53e9d03156f474be03954c267ee004f22915655ecea5ae67f5dbd86c4e8ec1",
+    "storedSHA256": "8f53e9d03156f474be03954c267ee004f22915655ecea5ae67f5dbd86c4e8ec1"
+  }
+]

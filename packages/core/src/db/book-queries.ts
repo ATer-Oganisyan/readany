@@ -1,4 +1,4 @@
-import type { Book } from "../types";
+import type { Book, BookUpdate } from "../types";
 import { eventBus } from "../utils/event-bus";
 import { deleteChunks } from "./chunk-queries";
 import {
@@ -224,7 +224,7 @@ export async function insertBook(book: Book): Promise<void> {
   );
 }
 
-export async function updateBook(id: string, updates: Partial<Book>): Promise<void> {
+export async function updateBook(id: string, updates: BookUpdate): Promise<void> {
   const database = await getDB();
   const sets: string[] = [];
   const values: unknown[] = [];

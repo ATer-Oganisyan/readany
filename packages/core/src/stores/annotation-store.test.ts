@@ -1,7 +1,7 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HighlightWithBook } from "../db/database";
 import type { Highlight } from "../types";
 import { eventBus } from "../utils/event-bus";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const dbMocks = vi.hoisted(() => ({
   insertHighlight: vi.fn(),
@@ -53,6 +53,7 @@ const baseStats = {
 
 function resetAnnotationStore() {
   useAnnotationStore.setState({
+    activeBookId: null,
     highlights: [],
     highlightsWithBooks: [],
     notes: [],
@@ -79,8 +80,9 @@ describe("useAnnotationStore", () => {
   it("adds a highlight and refreshes derived state", async () => {
     const emitSpy = vi.spyOn(eventBus, "emit");
 
-    useAnnotationStore.getState().addHighlight(baseHighlight);
-
+    const saved = useAnnotationStore.getState().addHighlight(baseHighlight);
+    expect(useAnnotationStore.getState().highlights).toEqual([]);
+    await saved;
     expect(useAnnotationStore.getState().highlights).toEqual([baseHighlight]);
 
     await vi.waitFor(() => {
@@ -118,11 +120,13 @@ describe("useAnnotationStore", () => {
     dbMocks.getAllHighlightsWithBooks.mockResolvedValue(refreshed);
     dbMocks.getHighlightStats.mockResolvedValue(refreshedStats);
 
-    useAnnotationStore.getState().updateHighlight("hl-1", {
+    const saved = useAnnotationStore.getState().updateHighlight("hl-1", {
       note: "Updated note",
       updatedAt: 200,
     });
 
+    expect(useAnnotationStore.getState().highlights[0]?.note).toBe("Original note");
+    await saved;
     expect(useAnnotationStore.getState().highlights[0]?.note).toBe("Updated note");
     expect(useAnnotationStore.getState().highlightsWithBooks[0]?.note).toBe("Updated note");
 

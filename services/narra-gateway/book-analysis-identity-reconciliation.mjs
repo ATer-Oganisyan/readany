@@ -31,8 +31,8 @@ const IDENTITY_EVIDENCE_RANK = new Map([
   ['character_age', 7],
   ['character_appearance', 8]
 ])
-const IDENTITY_BRIDGE_CUE = /\b(?:alias|also known as|called|christened|first name|name is|sign(?:s|ed|ature|er)?|letter|writes?|wrote|\u043f\u043e\u0434\u043f\u0438\u0441\p{L}*|\u043f\u0438\u0441\u044c\u043c\p{L}*|\u0437\u043e\u0432\u0443\u0442|\u0438\u043c\u044f)\b/iu
-const FIRST_PERSON_CUE = /\b(?:I|I'm|I\u2019m|I am|me|my|mine|\u044f|\u043c\u0435\u043d\u044f|\u043c\u043d\u0435|\u043c\u043e\u0439|\u043c\u043e\u044f|\u043c\u043e\u0451)\b/iu
+const IDENTITY_BRIDGE_CUE = /(?<![\p{L}\p{N}_])(?:alias|also known as|called|christened|first name|name is|sign(?:s|ed|ature|er)?|letter|writes?|wrote|подпис\p{L}*|письм\p{L}*|зовут|имя)(?![\p{L}\p{N}_])/iu
+const FIRST_PERSON_CUE = /(?<![\p{L}\p{N}_])(?:I|I'm|I\u2019m|I am|me|my|mine|я|меня|мне|мой|моя|моё)(?![\p{L}\p{N}_])/iu
 
 function compareText(left, right) {
   return left < right ? -1 : left > right ? 1 : 0

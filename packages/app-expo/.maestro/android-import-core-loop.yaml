@@ -1,0 +1,14 @@
+appId: com.mishanaer.readany.dev
+name: Android local import and reader smoke
+---
+- runFlow:
+    when:
+      visible: "Continue"
+    commands:
+      - tapOn: "Continue"
+- runFlow:
+    when:
+      visible: "Close"
+    commands:
+      - tapOn: "Close"
+- takeScreenshot: android-library-ready

@@ -1,0 +1,32 @@
+appId: com.mishanaer.readany.dev
+name: Android FBZ chapter one after a saved chapter three location
+# Supply BOOK_TITLE via Maestro -e; only original QA fixtures are in scope.
+---
+- runFlow:
+    file: flows/android-open-fixture.yaml
+    env:
+      BOOK_TITLE: ${BOOK_TITLE}
+- runFlow:
+    when:
+      notVisible: Book actions
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- tapOn: Book actions
+- tapOn: Table of Contents
+- tapOn: Последняя переправа
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: android-boundary-previous-chapter-three
+- runFlow:
+    when:
+      notVisible: Book actions
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- tapOn: Book actions
+- tapOn: Table of Contents
+- tapOn: Письмо у реки
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: android-boundary-start-chapter-one

@@ -63,6 +63,7 @@ startxref
   overflow: clip;
   opacity: 1;
   line-height: 1;
+  -webkit-text-size-adjust: none;
   text-size-adjust: none;
   forced-color-adjust: none;
   transform-origin: 0 0;
@@ -71,13 +72,14 @@ startxref
 }
 .textLayer.highlighting { touch-action: none; }
 .textLayer :is(span, br) {
-  color: transparent;
+  /* Reader themes use an important text color. This selectable overlay must
+     stay invisible: the canvas already paints the actual PDF glyphs. */
+  color: transparent !important;
   position: absolute;
   white-space: pre;
   cursor: text;
   transform-origin: 0% 0%;
 }
-.textLayer --min-font-size: 1;
 .textLayer {
   --min-font-size: 1;
   --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
@@ -136,8 +138,8 @@ startxref
 .annotationLayer .linkAnnotation.hasBorder:hover {
   background-color: rgb(255 255 0 / 0.2);
 }
-`,ZR=async(t,e,A)=>{if(!e)return;let i=A*devicePixelRatio;e.documentElement.style.transform=`scale(${1/devicePixelRatio})`,e.documentElement.style.transformOrigin="top left",e.documentElement.style.setProperty("--total-scale-factor",i),e.documentElement.style.setProperty("--user-unit","1"),e.documentElement.style.setProperty("--scale-round-x","1px"),e.documentElement.style.setProperty("--scale-round-y","1px");let s=t.getViewport({scale:i}),n=document.createElement("canvas");n.height=s.height,n.width=s.width;let a=n.getContext("2d");await t.render({canvasContext:a,viewport:s}).promise;let r=e.querySelector("#canvas");if(!r)return;r.replaceChildren(e.adoptNode(n));let o=e.querySelector(".textLayer");if(o){o.replaceChildren(),await new k5({textContentSource:await t.streamTextContent(),container:o,viewport:s}).render();for(let E of document.querySelectorAll(".hiddenCanvasElement"))Object.assign(E.style,{position:"absolute",top:"0",left:"0",width:"0",height:"0",display:"none"});let l=document.createElement("div");l.className="endOfContent",o.append(l);let h=!1,I=0,d=0,B=0,u=0,f=null,Q=E=>{let x=E;for(;x;){if(x!==document.body&&x.nodeType===1){let y=window.getComputedStyle(x),w=y.overflow+y.overflowY+y.overflowX;if(/(auto|scroll)/.test(w)&&(x.scrollHeight>x.clientHeight||x.scrollWidth>x.clientWidth))return x}if(x.parentElement)x=x.parentElement;else if(x.parentNode?.host)x=x.parentNode.host;else break}return window};o.onpointerdown=E=>{let x=e.getSelection(),y=x&&x.toString().length>0,w=e.elementFromPoint(E.clientX,E.clientY);if(!(w&&(w.tagName==="SPAN"||w.tagName==="P")&&w.textContent.trim().length>0)&&!y){h=!0,I=E.screenX,d=E.screenY;let S=e.defaultView.frameElement;S&&(f=Q(S),f===window?(B=window.scrollX||window.pageXOffset,u=window.scrollY||window.pageYOffset):(B=f.scrollLeft,u=f.scrollTop),o.style.cursor="grabbing")}else o.classList.add("selecting")},o.onpointermove=E=>{if(h&&f){E.preventDefault();let x=E.screenX-I,y=E.screenY-d;f===window?window.scrollTo(B-x,u-y):(f.scrollLeft=B-x,f.scrollTop=u-y)}},o.onpointerup=()=>{h?(h=!1,f=null,o.style.cursor="grab"):o.classList.remove("selecting")},o.onpointerleave=()=>{h&&(h=!1,f=null,o.style.cursor="grab")},e.addEventListener("selectionchange",()=>{let E=e.getSelection();E&&E.toString().length>0?o.style.cursor="text":h||(o.style.cursor="grab")}),o.style.cursor="grab"}let g=e.querySelector(".annotationLayer");if(g){g.replaceChildren();let c={goToDestination:()=>{},getDestinationHash:l=>JSON.stringify(l),addLinkAttributes:(l,h)=>{l.href=h}};try{await new D5({page:t,viewport:s,div:g,linkService:c}).render({annotations:await t.getAnnotations()})}catch{}}},XR=async t=>{let e=t.getViewport({scale:1}),A=`<!DOCTYPE html>
-<html lang="en">
+`,ZR=async(t,e,A)=>{if(!e)return;let i=A*devicePixelRatio;e.documentElement.style.transform=`scale(${1/devicePixelRatio})`,e.documentElement.style.transformOrigin="top left",e.documentElement.style.setProperty("--scale-factor",i),e.documentElement.style.setProperty("--total-scale-factor",i),e.documentElement.style.setProperty("--user-unit","1"),e.documentElement.style.setProperty("--scale-round-x","1px"),e.documentElement.style.setProperty("--scale-round-y","1px");let s=t.getViewport({scale:i}),n=document.createElement("canvas");n.height=s.height,n.width=s.width;let a=n.getContext("2d");await t.render({canvasContext:a,viewport:s}).promise;let r=e.querySelector("#canvas");if(!r)return;r.replaceChildren(e.adoptNode(n));let o=e.querySelector(".textLayer");if(o){o.replaceChildren(),await new k5({textContentSource:await t.streamTextContent(),container:o,viewport:s}).render();for(let E of document.querySelectorAll(".hiddenCanvasElement"))Object.assign(E.style,{position:"absolute",top:"0",left:"0",width:"0",height:"0",display:"none"});let l=document.createElement("div");l.className="endOfContent",o.append(l);let h=!1,I=0,d=0,B=0,u=0,f=null,Q=E=>{let x=E;for(;x;){if(x!==document.body&&x.nodeType===1){let y=window.getComputedStyle(x),w=y.overflow+y.overflowY+y.overflowX;if(/(auto|scroll)/.test(w)&&(x.scrollHeight>x.clientHeight||x.scrollWidth>x.clientWidth))return x}if(x.parentElement)x=x.parentElement;else if(x.parentNode?.host)x=x.parentNode.host;else break}return window};o.onpointerdown=E=>{let x=e.getSelection(),y=x&&x.toString().length>0,w=e.elementFromPoint(E.clientX,E.clientY);if(!(w&&(w.tagName==="SPAN"||w.tagName==="P")&&w.textContent.trim().length>0)&&!y){h=!0,I=E.screenX,d=E.screenY;let S=e.defaultView.frameElement;S&&(f=Q(S),f===window?(B=window.scrollX||window.pageXOffset,u=window.scrollY||window.pageYOffset):(B=f.scrollLeft,u=f.scrollTop),o.style.cursor="grabbing")}else o.classList.add("selecting")},o.onpointermove=E=>{if(h&&f){E.preventDefault();let x=E.screenX-I,y=E.screenY-d;f===window?window.scrollTo(B-x,u-y):(f.scrollLeft=B-x,f.scrollTop=u-y)}},o.onpointerup=()=>{h?(h=!1,f=null,o.style.cursor="grab"):o.classList.remove("selecting")},o.onpointerleave=()=>{h&&(h=!1,f=null,o.style.cursor="grab")},e.addEventListener("selectionchange",()=>{let E=e.getSelection();E&&E.toString().length>0?o.style.cursor="text":h||(o.style.cursor="grab")}),o.style.cursor="grab"}let g=e.querySelector(".annotationLayer");if(g){g.replaceChildren();let c={goToDestination:()=>{},getDestinationHash:l=>JSON.stringify(l),addLinkAttributes:(l,h)=>{l.href=h}};try{await new D5({page:t,viewport:s,div:g,linkService:c}).render({annotations:await t.getAnnotations()})}catch{}}},XR=async t=>{let e=t.getViewport({scale:1}),A=`<!DOCTYPE html>
+<html lang="en" data-readany-pdf>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=${e.width}, height=${e.height}">

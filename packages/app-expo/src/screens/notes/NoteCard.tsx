@@ -1,7 +1,7 @@
-import { Text } from "@/components/ui/Typography";
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
 import { CheckIcon, EditIcon, Trash2Icon, XIcon } from "@/components/ui/Icon";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
+import { Text } from "@/components/ui/Typography";
 import { useColors } from "@/styles/theme";
 import type { HighlightWithBook } from "@readany/core/db/database";
 import { HIGHLIGHT_COLOR_HEX } from "@readany/core/types";
@@ -12,6 +12,7 @@ import { makeStyles } from "./notes-styles";
 export function NoteCard({
   highlight,
   isEditing,
+  isSaving = false,
   editNote,
   setEditNote,
   onStartEdit,
@@ -23,6 +24,7 @@ export function NoteCard({
 }: {
   highlight: HighlightWithBook;
   isEditing: boolean;
+  isSaving?: boolean;
   editNote: string;
   setEditNote: (note: string) => void;
   onStartEdit: () => void;
@@ -37,13 +39,25 @@ export function NoteCard({
 
   return (
     <View style={s.noteCard}>
-      <TouchableOpacity style={s.noteCardTop} onPress={onNavigate}>
-        <View style={[s.colorDot, { backgroundColor: HIGHLIGHT_COLOR_HEX[highlight.color] || colors.amber }]} />
-        <Text style={s.noteQuote} numberOfLines={2}>"{highlight.text}"</Text>
-      </TouchableOpacity>
+      {Boolean(highlight.text?.trim()) && (
+        <TouchableOpacity style={s.noteCardTop} onPress={onNavigate}>
+          <View
+            style={[
+              s.colorDot,
+              { backgroundColor: HIGHLIGHT_COLOR_HEX[highlight.color] || colors.amber },
+            ]}
+          />
+          <Text style={s.noteQuote} numberOfLines={2}>
+            "{highlight.text}"
+          </Text>
+        </TouchableOpacity>
+      )}
 
       {isEditing ? (
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={s.editArea}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={s.editArea}
+        >
           <View style={s.editorContainer}>
             <RichTextEditor
               initialContent={editNote}
@@ -53,13 +67,15 @@ export function NoteCard({
             />
           </View>
           <View style={s.editActions}>
-            <TouchableOpacity style={s.editCancelBtn} onPress={onCancelEdit}>
+            <TouchableOpacity style={s.editCancelBtn} disabled={isSaving} onPress={onCancelEdit}>
               <XIcon size={14} color={colors.mutedForeground} />
               <Text style={s.editCancelText}>{t("common.cancel", "取消")}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={s.editSaveBtn} onPress={onSaveNote}>
+            <TouchableOpacity style={s.editSaveBtn} disabled={isSaving} onPress={onSaveNote}>
               <CheckIcon size={14} color={colors.primaryForeground} />
-              <Text style={s.editSaveText}>{t("common.save", "保存")}</Text>
+              <Text style={s.editSaveText}>
+                {isSaving ? t("notes.saving", "Сохраняем") : t("common.save", "保存")}
+              </Text>
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
@@ -71,10 +87,20 @@ export function NoteCard({
             </TouchableOpacity>
           )}
           <View style={s.noteActions}>
-            <TouchableOpacity style={s.noteActionBtn} onPress={onStartEdit}>
+            <TouchableOpacity
+              style={s.noteActionBtn}
+              accessibilityRole="button"
+              accessibilityLabel={t("notes.editNote", "Редактировать заметку")}
+              onPress={onStartEdit}
+            >
               <EditIcon size={14} color={colors.mutedForeground} />
             </TouchableOpacity>
-            <TouchableOpacity style={s.noteActionBtn} onPress={onDeleteNote}>
+            <TouchableOpacity
+              style={s.noteActionBtn}
+              accessibilityRole="button"
+              accessibilityLabel={t("common.delete", "Удалить")}
+              onPress={onDeleteNote}
+            >
               <Trash2Icon size={14} color={colors.mutedForeground} />
             </TouchableOpacity>
           </View>

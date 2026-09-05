@@ -1,0 +1,36 @@
+appId: com.mishanaer.readany.dev
+name: iOS page theme and font size roundtrip
+# Starts in the actual reading settings sheet; original values Light and 16.
+---
+- launchApp:
+    stopApp: false
+- assertVisible: "Reading settings"
+- tapOn: "Dark"
+- tapOn:
+    text: "Increase"
+    index: 0
+- takeScreenshot: ios-settings-dark-font-17
+- tapOn: "Close"
+- waitForAnimationToEnd:
+    timeout: 5000
+- assertVisible: "Narra Reader"
+- takeScreenshot: ios-reader-dark-font-17
+- runFlow:
+    when:
+      notVisible: "Book actions"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- tapOn: "Book actions"
+- tapOn: "Appearance"
+- assertVisible: "Reading settings"
+- tapOn: "Light"
+- tapOn:
+    text: "Decrease"
+    index: 0
+- takeScreenshot: ios-settings-restored-light-font-16
+- tapOn: "Close"
+- waitForAnimationToEnd:
+    timeout: 5000
+- assertVisible: "Narra Reader"
+- takeScreenshot: ios-reader-restored-light-font-16

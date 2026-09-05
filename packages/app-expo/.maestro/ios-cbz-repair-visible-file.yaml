@@ -1,0 +1,14 @@
+appId: com.mishanaer.readany.dev
+name: iOS missing CBZ physical Files selection and page restoration
+# Visible CBZ icon position is confirmed by the current Files screenshot.
+---
+- assertVisible: ".*12-river-comic.*"
+- tapOn:
+    point: "83%,31%"
+- launchApp:
+    stopApp: false
+- extendedWaitUntil:
+    visible: "p. 3 of 4"
+    timeout: 30000
+- assertVisible: "p. 3 of 4"
+- takeScreenshot: ios-cbz-repaired-same-page

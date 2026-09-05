@@ -10,6 +10,7 @@ import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { useBackendBook } from "@/hooks/use-backend-book";
 import { type NarraChatMessageInput, completeNarraChat } from "@/lib/ai/narra-chat";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
+import { characterReadingContextPrompt } from "@/lib/narra/character-reading-context";
 import { normalizeCharacterChatPlaceholder } from "@/lib/narra/chat-placeholder";
 import { isCharacterUnlocked, normalizeReadingProgress } from "@/lib/narra/domain";
 import { reportNarraError } from "@/lib/narra/errors";
@@ -22,6 +23,7 @@ import { type ThemeColors, useTheme } from "@/styles/theme";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { useReadingContext } from "@readany/core/ai/reading-context-service";
 import type { MessageV2 } from "@readany/core/types/message";
 import * as Crypto from "expo-crypto";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -54,6 +56,7 @@ export function buildCharacterSystemPrompt(
   progress: number,
   memory: string,
   language: "ru" | "en" = "ru",
+  readingExcerpt = "",
 ): string {
   const safeProgress = normalizeReadingProgress(progress);
   if (language === "en") {
@@ -67,7 +70,8 @@ Avoid lists and corporate language. React to the reader's actual words; you may 
 The reader has completed about ${Math.round(safeProgress * 100)}% of the book. Do not reveal events, knowledge, relationships, or character fates beyond that point. If a question risks a spoiler, gently deflect in character and return to events the reader already knows without mentioning rules or restrictions.
 You may evade, but do not lie. Speak honestly about events the reader has already reached and do not invent facts that are not in the book.
 ${rfChatCompliance("en")}
-${memory ? `Your long-term memory of the reader:\n${memory}` : ""}`;
+${memory ? `Your long-term memory of the reader:\n${memory}` : ""}
+${readingExcerpt}`;
   }
   return `Ты — ${character.fullName} из книги «${title}». Полностью оставайся в роли.
 Характер: ${character.traits.join(", ")}.
@@ -79,7 +83,8 @@ ${character.speaksInText === false ? "В книге ты не говоришь �
 Читатель прошёл примерно ${Math.round(safeProgress * 100)}% книги. Не раскрывай события, знания, отношения и судьбы героев дальше этого прогресса. Если вопрос ведёт к спойлеру, мягко уклонись в своём характере и переведи разговор к уже известным событиям — не упоминай правила или ограничения.
 Уклоняться можно, лгать нельзя. О том, что читатель уже прошёл, говори честно: не отрицай своих поступков и событий книги, даже если герою неприятно о них вспоминать. Не выдумывай того, чего в книге нет.
 ${rfChatCompliance("ru")}
-${memory ? `Твоя долговременная память о собеседнике:\n${memory}` : ""}`;
+${memory ? `Твоя долговременная память о собеседнике:\n${memory}` : ""}
+${readingExcerpt}`;
 }
 
 function toMessageV2(message: NarraChatMessage, threadId: string): MessageV2 {
@@ -113,6 +118,13 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
   const { t, i18n } = useTranslation();
   const interfaceLanguage = i18n.resolvedLanguage === "en" ? "en" : "ru";
   const book = useLibraryStore((state) => state.books.find((item) => item.id === bookId));
+  const readingContext = useReadingContext();
+  const readingExcerpt = characterReadingContextPrompt(
+    bookId,
+    book?.currentCfi,
+    readingContext,
+    interfaceLanguage,
+  );
   useBackendBook(book);
   const narraBook = useNarraStore((state) => state.books[bookId]);
   const append = useNarraStore((state) => state.appendChatMessage);
@@ -130,8 +142,8 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
   const unlocked = Boolean(book && character && isCharacterUnlocked(book.progress, character));
   const characterStatus =
     sending || greetingLoading
-      ? t("narra.characterTyping", "Печатает...")
-      : t("narra.characterOnline", "онлайн");
+      ? t("narra.characterTyping", "Печатает…")
+      : undefined;
   const headerSafeAreaTop =
     embedded || presentedAsSheet ? NARRA_CHAT_EMBEDDED_TOP_INSET : insets.top;
   const headerHeight = headerSafeAreaTop + NARRA_CHAT_HEADER_HEIGHT;
@@ -201,12 +213,13 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
                 book.progress,
                 memory,
                 interfaceLanguage,
+                readingExcerpt,
               ),
             },
             ...messages.slice(-18).map(({ role, content }) => ({ role, content })),
           ]
         : [],
-    [book, character, interfaceLanguage, memory, messages],
+    [book, character, interfaceLanguage, memory, messages, readingExcerpt],
   );
 
   const chatMessages = useMemo(() => {
@@ -251,6 +264,7 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
                 book.progress,
                 "",
                 interfaceLanguage,
+                readingExcerpt,
               ),
             },
             {
@@ -275,7 +289,16 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
         setGreetingLoading(false);
       }
     })();
-  }, [book, bookId, character, characterId, interfaceLanguage, messages.length, unlocked]);
+  }, [
+    book,
+    bookId,
+    character,
+    characterId,
+    interfaceLanguage,
+    messages.length,
+    readingExcerpt,
+    unlocked,
+  ]);
 
   const refreshMemory = useCallback(
     async (updatedMessages: NarraChatMessage[]) => {

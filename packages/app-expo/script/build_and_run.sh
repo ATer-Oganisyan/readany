@@ -69,6 +69,12 @@ Modes:
   rebuild-ios      Build/install the canonical iOS dev client, then launch it
   ios, --ios       Legacy alias for rebuild-ios
   check, --check   Check launch prerequisites and canonical build status
+  screenshot PATH Save a screenshot of the selected Simulator
+  logs            Show the last five minutes of NARRA Simulator logs
+  console         Launch the installed dev client with its runtime console
+  test-ios FLOW   Run a local Maestro flow on the selected Simulator
+  hierarchy       Print the selected Simulator accessibility tree
+  data-path       Print the installed app's data-container path for local diagnostics
   help, --help     Show this help
 
 Optional environment variables:
@@ -174,6 +180,11 @@ assert_pasteboard_sync_is_safe() {
   die "Automatic Simulator pasteboard sync is not confirmed off (status: $status) and can freeze the Mac clipboard. Disable Edit > Automatically Sync Pasteboard, or set READANY_ALLOW_PASTEBOARD_SYNC=1 for an intentional one-off test."
 }
 
+check_installed_dependencies() {
+  require_command node
+  node "$APP_ROOT/scripts/check-installed-dependencies.mjs" "$APP_ROOT"
+}
+
 check_common_prerequisites() {
   require_command pnpm
   require_command node
@@ -190,6 +201,7 @@ check_common_prerequisites() {
   resolve_developer_toolchain
 
   [[ -d "$WORKSPACE" ]] || die "Xcode workspace is missing: $WORKSPACE"
+  check_installed_dependencies
   [[ -f "$APP_ROOT/ios/Podfile.lock" ]] || die "ios/Podfile.lock is missing. Do not run prebuild automatically."
   [[ -f "$APP_ROOT/ios/Pods/Manifest.lock" ]] || die "Pods are missing. Restore the main checkout Pods before building."
 
@@ -239,6 +251,7 @@ run_metro_prepared() {
   local host_mode="${1:-localhost}"
   local host_args=(--localhost)
 
+  check_installed_dependencies
   if [[ "$host_mode" == "lan" ]]; then
     host_args=(--lan)
     log "Starting Metro on LAN:$METRO_PORT"
@@ -291,7 +304,20 @@ resolve_simulator_id() {
     });
   ' "$SIMULATOR_NAME")"
 
-  [[ -n "$SIMULATOR_ID" ]] || die "Available simulator not found: $SIMULATOR_NAME"
+  if [[ -z "$SIMULATOR_ID" ]]; then
+    printf '%s' "$devices_json" | node -e '
+      let input = "";
+      process.stdin.setEncoding("utf8");
+      process.stdin.on("data", chunk => { input += chunk; });
+      process.stdin.on("end", () => {
+        const devices = Object.values(JSON.parse(input).devices || {}).flat();
+        const available = devices.filter(device => device.isAvailable);
+        for (const device of available) console.error(`Available simulator: ${device.name} (${device.udid}, ${device.state})`);
+        if (!available.length) console.error("No available simulators. Install a compatible iOS runtime in Xcode Settings > Components.");
+      });
+    '
+    die "Available simulator not found: $SIMULATOR_NAME. Select an available device with READANY_SIMULATOR_NAME."
+  fi
 }
 
 boot_simulator() {
@@ -362,14 +388,25 @@ native_fingerprint() {
       "$APP_ROOT/modules" \
       "$APP_ROOT/plugins" \
       "$MONOREPO_ROOT/patches"; do
-      [[ -d "$directory" ]] && find "$directory" -type f -print
+      # Android module sources and generated build outputs are not iOS inputs.
+      # Shared module metadata, JS, plugins and iOS sources remain fingerprinted.
+      [[ -d "$directory" ]] && find "$directory" \
+        -type d \( -name build -o -name .gradle -o -name .cxx \
+          -o -path "$APP_ROOT/modules/*/android" \) -prune -o \
+        -type f -print
     done
 
     find "$APP_ROOT/scripts" -maxdepth 1 -type f \
       \( -name 'app-variant*' -o -name 'configure-native-variant*' \) -print
     find "$APP_ROOT/ios/Pods/Local Podspecs" -type f -print 2>/dev/null || true
   } | LC_ALL=C sort | while IFS= read -r path; do
-    shasum -a 256 "$path"
+    if [[ "$path" == */package.json ]]; then
+      # Test/run scripts do not change the native binary. Keep all dependency,
+      # entry point and Expo metadata in the fingerprint.
+      node -e 'const fs = require("node:fs"); const value = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); delete value.scripts; process.stdout.write(JSON.stringify(value));' "$path" | shasum -a 256
+    else
+      shasum -a 256 "$path"
+    fi
   done | shasum -a 256 | awk '{print $1}'
 }
 
@@ -506,6 +543,7 @@ check_installed_dev_client() {
   local saved_fingerprint=""
   local current_fingerprint=""
 
+  check_installed_dependencies
   expected_build="$(expected_build_number)"
   installed_path="$(installed_app_path)"
 
@@ -634,6 +672,48 @@ run_check() {
 }
 
 case "$MODE" in
+  logs|console|test-ios|hierarchy|data-path)
+    check_simulator_prerequisites
+    assert_simulator_ui_matches_toolchain
+    assert_pasteboard_sync_is_safe
+    resolve_simulator_id
+    case "$MODE" in
+      data-path)
+        xcrun simctl get_app_container "$SIMULATOR_ID" "$BUNDLE_ID" data
+        ;;
+      logs)
+        xcrun simctl spawn "$SIMULATOR_ID" log show --last 5m --style compact --predicate 'process == "Narra"'
+        ;;
+      console)
+        check_installed_dev_client
+        xcrun simctl launch --terminate-running-process --console "$SIMULATOR_ID" "$BUNDLE_ID"
+        ;;
+      test-ios|hierarchy)
+        require_command maestro
+        check_installed_dev_client
+        if [[ -z "${JAVA_HOME:-}" && -d /opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home ]]; then
+          export JAVA_HOME=/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home
+        fi
+        export MAESTRO_CLI_NO_ANALYTICS=1
+        export MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED=true
+        if [[ "$MODE" == "hierarchy" ]]; then
+          maestro --device "$SIMULATOR_ID" hierarchy
+        else
+          [[ -n "${2:-}" ]] || die "Usage: ./script/build_and_run.sh test-ios FLOW"
+          shift
+          maestro --device "$SIMULATOR_ID" test "$@"
+        fi
+        ;;
+    esac
+    ;;
+  screenshot)
+    [[ -n "${2:-}" ]] || die "Usage: ./script/build_and_run.sh screenshot PATH"
+    resolve_developer_toolchain
+    assert_simulator_ui_matches_toolchain
+    assert_pasteboard_sync_is_safe
+    resolve_simulator_id
+    xcrun simctl io "$SIMULATOR_ID" screenshot "$2"
+    ;;
   simulator|run)
     run_simulator
     ;;

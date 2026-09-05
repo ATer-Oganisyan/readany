@@ -1,0 +1,19 @@
+appId: com.mishanaer.readany.dev
+name: Android book notebook system icons after theme inheritance fix
+# Precondition Library; pass SNAPSHOT for the currently selected theme.
+---
+- runFlow:
+    file: flows/android-open-fixture.yaml
+    env:
+      BOOK_TITLE: 26-mixed-recovery
+- extendedWaitUntil:
+    notVisible: Book actions
+    timeout: 10000
+- tapOn:
+    point: "50%,50%"
+- tapOn: Book actions
+- tapOn: Notes
+- waitForAnimationToEnd:
+    timeout: 5000
+- assertVisible: .*NARRA_ANDROID_QA_BOOK_SCOPE_20260905_EDITED.*
+- takeScreenshot: ${SNAPSHOT}

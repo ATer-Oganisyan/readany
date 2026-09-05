@@ -1,0 +1,46 @@
+appId: com.mishanaer.readany.dev
+name: iOS PDF readable text layer and exact fourth-page restore
+# Continues the fixed-layout scenario at its saved fourth physical page.
+---
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Library"
+    timeout: 30000
+- runFlow:
+    file: flows/ios-open-fixture.yaml
+    env:
+      BOOK_TITLE: "11-river-library"
+      PAGE_LABEL: "p. 4 of 12"
+- takeScreenshot: ios-pdf-text-layer-after
+- tapOn:
+    point: "95%,40%"
+- extendedWaitUntil:
+    visible: "p. 5 of 12"
+    timeout: 15000
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: ios-pdf-next-page-after
+- tapOn:
+    point: "5%,40%"
+- extendedWaitUntil:
+    visible: "p. 4 of 12"
+    timeout: 15000
+- waitForAnimationToEnd:
+    timeout: 5000
+- tapOn:
+    point: "50%,50%"
+- tapOn: "Close"
+- runFlow:
+    file: flows/ios-open-fixture.yaml
+    env:
+      BOOK_TITLE: "11-river-library"
+      PAGE_LABEL: "p. 4 of 12"
+- takeScreenshot: ios-pdf-text-layer-restored-after
+- extendedWaitUntil:
+    notVisible: "Listen"
+    timeout: 10000
+- tapOn:
+    point: "50%,50%"
+- tapOn: "Close"
+- assertVisible: "Library"

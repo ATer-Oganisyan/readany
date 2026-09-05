@@ -1,0 +1,9 @@
+appId: com.mishanaer.readany.dev
+name: Open long original TXT for native position probe
+---
+- runFlow:
+    file: flows/android-open-fixture.yaml
+    env:
+      BOOK_TITLE: 15-large-original
+- assertVisible: ".*Анна.*"
+- takeScreenshot: android-large-reader

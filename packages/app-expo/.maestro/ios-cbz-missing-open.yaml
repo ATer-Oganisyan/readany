@@ -1,0 +1,35 @@
+appId: com.mishanaer.readany.dev
+name: iOS own missing CBZ repair entry
+# Only QA CBZ was reversibly moved to an independently verified backup.
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Library"
+    timeout: 30000
+- assertVisible: "Library"
+- repeat:
+    times: 4
+    commands:
+      - swipe:
+          start: "50%,30%"
+          end: "50%,85%"
+          duration: 200
+- tapOn: "My books"
+- scrollUntilVisible:
+    element:
+      text: "12-river-comic"
+    direction: DOWN
+    centerElement: true
+    timeout: 20000
+- tapOn: "12-river-comic"
+- extendedWaitUntil:
+    visible: "Book file missing"
+    timeout: 10000
+- takeScreenshot: ios-cbz-missing-file-prompt
+- tapOn: "Re-import"
+- extendedWaitUntil:
+    visible: ".*Narra Audit.*"
+    timeout: 15000
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: ios-cbz-repair-files-picker

@@ -12,6 +12,41 @@ const debounce = (f, wait, immediate) => {
     }
 }
 
+// A section may wait on a ZIP range request before it ever creates an iframe.
+// Bound that stage as well, and prevent a closed reader from creating late views.
+const loadSectionResources = (section, signal) => new Promise((resolve, reject) => {
+    let settled = false
+    const finish = (error, value) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        signal.removeEventListener('abort', onAbort)
+        if (error) reject(error)
+        else resolve(value)
+    }
+    const onAbort = () => finish(new DOMException('Section loading cancelled', 'AbortError'))
+    const timer = setTimeout(() => finish(new Error('Book section loading timed out')), 15000)
+    if (signal.aborted) return onAbort()
+    signal.addEventListener('abort', onAbort, { once: true })
+    Promise.resolve().then(async () => {
+        const src = await section.load()
+        if (settled || signal.aborted) throw new DOMException('Section loading cancelled', 'AbortError')
+        const data = await section.loadContent?.()
+        return { src, data }
+    }).then(value => finish(null, value), error => finish(error))
+})
+
+const waitForLayoutFrame = () => new Promise(resolve => {
+    let frame
+    const finish = () => {
+        clearTimeout(timer)
+        cancelAnimationFrame(frame)
+        resolve()
+    }
+    const timer = setTimeout(finish, 100)
+    frame = requestAnimationFrame(finish)
+})
+
 // Transforms ALL children of the container so multi-view layouts
 // animate as a unified whole. Extra elements (e.g. background) are
 // also transformed so they slide in sync with the content.
@@ -49,9 +84,12 @@ const cssAnimateScroll = (element, scrollProp, startValue, endValue, duration, e
     }
 
     let resolved = false
+    let timer
     const cleanup = () => {
         if (resolved) return
         resolved = true
+        clearTimeout(timer)
+        first.removeEventListener('transitionend', onTransitionEnd)
 
         for (const el of allElements) {
             el.style.willChange = ''
@@ -75,7 +113,7 @@ const cssAnimateScroll = (element, scrollProp, startValue, endValue, duration, e
     first.addEventListener('transitionend', onTransitionEnd)
 
     // Fallback timeout in case transitionend doesn't fire
-    setTimeout(cleanup, duration + 50)
+    timer = setTimeout(cleanup, duration + 50)
 })
 
 const lerp = (min, max, x) => x * (max - min) + min
@@ -84,24 +122,40 @@ const easeOutQuad = x => 1 - (1 - x) * (1 - x)
 // CSS-transform animate, this never composites the whole section as a
 // single layer, so it doesn't block when the section exceeds the GPU texture
 // limit — it just changes scroll offset each frame (incremental/tiled).
-const rafAnimateScroll = (a, b, duration, ease, render) => new Promise(resolve => {
+const rafAnimateScroll = (a, b, duration, ease, render) => new Promise((resolve, reject) => {
     let start
+    let frame
+    let timer
+    let settled = false
+    const finish = (error) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        cancelAnimationFrame(frame)
+        if (error) return reject(error)
+        try {
+            render(b)
+            resolve()
+        } catch (error) { reject(error) }
+    }
     const step = now => {
-        if (document.hidden) {
-            render(lerp(a, b, 1))
-            return resolve()
+        if (settled) return
+        if (document.hidden) return finish()
+        try {
+            start ??= now
+            const fraction = Math.min(1, (now - start) / duration)
+            if (fraction >= 1) return finish()
+            render(lerp(a, b, ease(fraction)))
+            frame = requestAnimationFrame(step)
+        } catch (error) {
+            finish(error)
         }
-        start ??= now
-        const fraction = Math.min(1, (now - start) / duration)
-        render(lerp(a, b, ease(fraction)))
-        if (fraction < 1) requestAnimationFrame(step)
-        else resolve()
     }
-    if (document.hidden) {
-        render(lerp(a, b, 1))
-        return resolve()
-    }
-    requestAnimationFrame(step)
+    if (document.hidden || duration <= 0) return finish()
+    // WebKit can suspend frames while the document still reports visible.
+    // Always release the page-turn lock when the animation stops progressing.
+    timer = setTimeout(() => finish(), duration + 100)
+    frame = requestAnimationFrame(step)
 })
 
 // A CSS-transform page-turn must composite the whole section as one layer. Once
@@ -425,6 +479,8 @@ class View {
     #layout = {}
     #contentPages = 0
     #bgImageSize = null
+    #cancelLoad = null
+    #loadSequence = 0
     fontReady = Promise.resolve()
     constructor({ container, onExpand }) {
         this.container = container
@@ -463,9 +519,29 @@ class View {
     }
     async load(src, data, afterLoad, beforeRender) {
         if (typeof src !== 'string') throw new Error(`${src} is not string`)
-        return new Promise(resolve => {
-            this.#iframe.addEventListener('load', async () => {
+        this.#cancelLoad?.()
+        const loadSequence = ++this.#loadSequence
+        return new Promise((resolve, reject) => {
+            let settled = false
+            const finish = (error) => {
+                if (settled) return
+                settled = true
+                clearTimeout(timer)
+                this.#iframe.removeEventListener('load', onLoad)
+                this.#iframe.removeEventListener('error', onError)
+                if (this.#cancelLoad === cancel) this.#cancelLoad = null
+                if (error) reject(error)
+                else resolve()
+            }
+            const cancel = () => finish(new DOMException('Section loading cancelled', 'AbortError'))
+            const onError = () => finish(new Error('Failed to load book section'))
+            const timer = setTimeout(() => finish(new Error('Book section loading timed out')), 15000)
+            this.#cancelLoad = cancel
+            const onLoad = async () => {
+              try {
+                if (settled) return
                 const doc = this.document
+                if (!doc?.body) throw new Error('Book section has no readable document')
                 afterLoad?.(doc)
 
                 this.#iframe.setAttribute('aria-label', doc.title)
@@ -491,6 +567,7 @@ class View {
                     let resolveWait
                     const waited = new Promise(res => { resolveWait = res })
                     img.onload = () => {
+                        if (loadSequence !== this.#loadSequence || this.document !== doc) return resolveWait()
                         this.#bgImageSize = {
                             width: img.naturalWidth,
                             height: img.naturalHeight,
@@ -519,7 +596,8 @@ class View {
                 // Awaiting the background image yields control, so the view may
                 // have been torn down or reloaded meanwhile — don't render into
                 // a stale document.
-                if (this.document !== doc) return resolve()
+                if (settled) return
+                if (this.document !== doc) return cancel()
                 this.#iframe.style.display = 'none'
 
                 this.#vertical = vertical
@@ -535,10 +613,17 @@ class View {
                 // the resize observer above doesn't work in Firefox
                 // (see https://bugzilla.mozilla.org/show_bug.cgi?id=1832939)
                 // until the bug is fixed we can at least account for font load
-                this.fontReady = doc.fonts.ready.then(() => this.expand())
+                this.fontReady = doc.fonts.ready.then(() => {
+                    if (loadSequence === this.#loadSequence && this.document === doc) this.expand()
+                }).catch(() => {})
 
-                resolve()
-            }, { once: true })
+                finish()
+              } catch (error) {
+                finish(error)
+              }
+            }
+            this.#iframe.addEventListener('load', onLoad, { once: true })
+            this.#iframe.addEventListener('error', onError, { once: true })
             if (data) {
                 this.#iframe.srcdoc = data
             } else {
@@ -973,6 +1058,8 @@ class View {
             this.#overlayer.clearHole()
     }
     destroy() {
+        this.#loadSequence++
+        this.#cancelLoad?.()
         if (this.document?.body) this.#observer.unobserve(this.document.body)
         this.destroyLoupe()
     }
@@ -986,6 +1073,7 @@ export class Paginator extends HTMLElement {
         'no-preload', 'no-background', 'no-continuous-scroll',
     ]
     #root = this.attachShadow({ mode: 'closed' })
+    #lifecycle = new AbortController()
     #observer = new ResizeObserver(() => this.render())
     #top
     #background
@@ -1191,17 +1279,17 @@ export class Paginator extends HTMLElement {
 
         this.#observer.observe(this.#container)
         const debouncedScroll = debounce(() => {
-            if (this.scrolled && !this.#isAnimating) {
-                // Skip entirely while stabilizing — preserve #justAnchored
-                // so the first post-stabilization fire still sees it.
-                if (this.#stabilizing) return
-                if (this.#justAnchored) this.#justAnchored = false
-                else this.#afterScroll('scroll')
-                // Backward preloading is handled eagerly in the (non-debounced)
-                // scroll listener below, mirroring the forward buffer.
-            } else if (!this.scrolled) {
-              this.#afterScroll('container-scroll')
+            // A native scroll event also follows programmatic page navigation.
+            // Do not replace its exact saved Range with a temporary page start
+            // while frames/fonts settle, in either reading mode. Keep the echo
+            // guard until stabilization finishes so a late font resize can
+            // still reanchor to the requested text instead of an earlier page.
+            if (this.#stabilizing || this.#isAnimating) return
+            if (this.#justAnchored) {
+                this.#justAnchored = false
+                return
             }
+            this.#afterScroll(this.scrolled ? 'scroll' : 'container-scroll')
         }, 250)
         this.#container.addEventListener('scroll', () => {
             if (!this.#isAnimating) this.dispatchEvent(new Event('scroll'))
@@ -1703,19 +1791,26 @@ export class Paginator extends HTMLElement {
         if (this.#views.size === 0) return
         const primaryView = this.#primaryView
         if (!primaryView) return
+        const wasStabilizing = this.#stabilizing
         this.#stabilizing = true
-        const layout = this.#beforeRender({
-            vertical: this.#vertical,
-            rtl: this.#rtl,
-        })
-        for (const [, view] of this.#views) {
-            if (view.document) view.render(layout)
+        try {
+            const layout = this.#beforeRender({
+                vertical: this.#vertical,
+                rtl: this.#rtl,
+            })
+            for (const [, view] of this.#views) {
+                if (view.document) view.render(layout)
+            }
+            // Scroll synchronously to prevent visible layout shift during resize.
+            // RAF deferral is only needed for initial display and mode switches
+            // (handled by #display), not for resize re-renders.
+            this.#scrollToAnchor(this.#anchor)
+        } finally {
+            // ResizeObserver may run inside an unfinished display/fill. Its
+            // synchronous render must not release that asynchronous owner's
+            // guard and let scroll echoes replace the saved anchor early.
+            this.#stabilizing = wasStabilizing
         }
-        // Scroll synchronously to prevent visible layout shift during resize.
-        // RAF deferral is only needed for initial display and mode switches
-        // (handled by #display), not for resize re-renders.
-        this.#scrollToAnchor(this.#anchor)
-        this.#stabilizing = false
         this.dispatchEvent(new Event('stabilized'))
     }
     get scrolled() {
@@ -2063,10 +2158,9 @@ export class Paginator extends HTMLElement {
                     this.#container[this.scrollProp] = x
                     if (!this.scrolled) this.#replaceBackground()
                 }).then(() => {
-                    this.#isAnimating = false
                     this.#scrollBounds = [offset, this.atStart ? 0 : size, this.atEnd ? 0 : size]
                     this.#afterScroll(reason)
-                })
+                }).finally(() => { this.#isAnimating = false })
             }
             // Slide the per-view backgrounds in lockstep with the content. The
             // content animates via a transform on each view; we re-sync the
@@ -2096,10 +2190,9 @@ export class Paginator extends HTMLElement {
                 offset,
                 300,
             ).then(() => {
-                this.#isAnimating = false
                 this.#scrollBounds = [offset, this.atStart ? 0 : size, this.atEnd ? 0 : size]
                 this.#afterScroll(reason)
-            })
+            }).finally(() => { this.#isAnimating = false })
         } else {
             this.containerPosition = offset
             this.#scrollBounds = [offset, this.atStart ? 0 : size, this.atEnd ? 0 : size]
@@ -2257,7 +2350,7 @@ export class Paginator extends HTMLElement {
             // Wait a frame so ResizeObserver callbacks fire while
             // #filling is still true, preventing onExpand from
             // re-scrolling to a stale anchor position.
-            await new Promise(r => requestAnimationFrame(r))
+            await waitForLayoutFrame()
         } finally {
             this.#filling = false
             this.dispatchEvent(new Event('stabilized'))
@@ -2383,19 +2476,25 @@ export class Paginator extends HTMLElement {
         if (this.#views.has(index) || !this.#canGoToIndex(index)) return
         const section = this.sections[index]
         if (!section || section.linear === 'no') return
-        // Detect a prepend: a section being inserted *above* every currently
-        // loaded view in scrolled mode. The browser suppresses scroll
-        // anchoring while scrollTop is 0, so the inserted section would push
-        // the visible content down and the viewport would drift into the
-        // previous section (readest/readest#4112). Capture the scroll position
-        // before the insertion so it can be restored once the view renders.
-        const firstIndex = this.#sortedViews[0]?.[0]
-        const isPrepend = this.scrolled && firstIndex != null && index < firstIndex
-        const startBefore = isPrepend ? this.#renderedStart : 0
+        let adjacentView
         try {
-            const src = await section.load()
-            const data = await section.loadContent?.()
+            const { src, data } = await loadSectionResources(section, this.#lifecycle.signal)
+            if (this.#lifecycle.signal.aborted || this.#views.has(index)) return
+            // TOC navigation may have replaced the frame range while these
+            // resources loaded. Do not recreate an old disconnected chapter
+            // or replace a frame the foreground navigation has since loaded.
+            const previous = this.#adjacentIndex(-1, index)
+            const next = this.#adjacentIndex(1, index)
+            if (!this.#views.has(previous) && !this.#views.has(next)) return
+            // Capture current geometry immediately before insertion, not
+            // before the resource await: the reader may have scrolled since.
+            // At scrollTop 0 WebKit suppresses anchoring for a prepend, so
+            // compensate once the new frame's actual size is known.
+            const firstIndex = this.#sortedViews[0]?.[0]
+            const isPrepend = this.scrolled && firstIndex != null && index < firstIndex
+            const startBefore = isPrepend ? this.#renderedStart : 0
             const view = this.#createView(index)
+            adjacentView = view
             const afterLoad = doc => {
                 if (doc.head) {
                     const $styleBefore = doc.createElement('style')
@@ -2444,6 +2543,8 @@ export class Paginator extends HTMLElement {
                 },
             }))
         } catch (e) {
+            if (adjacentView && this.#views.get(index) === adjacentView) this.#destroyView(index)
+            if (this.#lifecycle.signal.aborted) return
             console.warn(e)
             console.warn(new Error(`Failed to load adjacent section ${index}`))
         }
@@ -2523,6 +2624,7 @@ export class Paginator extends HTMLElement {
         return index >= 0 && index <= this.sections.length - 1
     }
     async #goTo({ index, anchor, select }) {
+        if (this.#lifecycle.signal.aborted || !this.#canGoToIndex(index)) return
         // Check if the target section has a different writing-mode.
         // If direction changes, we must destroy all views and do a full
         // rebuild via #display — mixed-direction views cannot coexist.
@@ -2602,8 +2704,17 @@ export class Paginator extends HTMLElement {
             } else {
                 const keep = new Set([index])
                 if (!this.noContinuousScroll) {
-                    for (const [i] of this.#views) {
-                        if (Math.abs(i - index) <= 2) keep.add(i)
+                    // Retained frames must form an unbroken reading sequence.
+                    // Keeping chapter 3 across a TOC jump to chapter 1 while
+                    // chapter 2 is absent joins 1 directly to 3 in the layout;
+                    // forward fill only sees the far edge and never loads 2.
+                    for (const dir of [-1, 1]) {
+                        let adjacent = index
+                        for (let count = 0; count < 2; count++) {
+                            adjacent = this.#adjacentIndex(dir, adjacent)
+                            if (adjacent == null || !this.#views.has(adjacent)) break
+                            keep.add(adjacent)
+                        }
                     }
                 }
                 this.#clearViewsExcept(keep)
@@ -2615,15 +2726,16 @@ export class Paginator extends HTMLElement {
                 this.setStyles(this.#styles)
                 this.dispatchEvent(new CustomEvent('load', { detail }))
             }
-            await this.#display(Promise.resolve(this.sections[index].load())
-                .then(async src => {
-                    const data = await this.sections[index].loadContent?.()
-                    return { index, src, data, anchor, onLoad, select }
-                }).catch(e => {
-                    console.warn(e)
-                    console.warn(new Error(`Failed to load section ${index}`))
-                    return {}
-                }))
+            try {
+                await this.#display(loadSectionResources(this.sections[index], this.#lifecycle.signal)
+                    .then(({ src, data }) => ({ index, src, data, anchor, onLoad, select })))
+            } catch (error) {
+                if (this.#views.has(index)) this.#destroyView(index)
+                this.#primaryIndex = this.#views.has(oldIndex) ? oldIndex : -1
+                this.#container.style.opacity = '1'
+                this.#stabilizing = false
+                throw error
+            }
         }
     }
     async goTo(target) {
@@ -2676,6 +2788,7 @@ export class Paginator extends HTMLElement {
             if (this.sections[index]?.linear !== 'no') return index
     }
     async #turnPage(dir, distance) {
+        if (this.#lifecycle.signal.aborted) return
         // A turn requested while another one is in flight is remembered rather
         // than discarded, so a tap during a section load still moves the page.
         // They accumulate as a signed count, so three quick taps move three
@@ -2689,24 +2802,31 @@ export class Paginator extends HTMLElement {
         this.#locked = true
         try {
             const prev = dir === -1
+            // Capture the requested boundary before yielding. Preloading can
+            // append/prepend views while we wait; using the new edge would
+            // skip the very section that has just become ready to read.
+            const sorted = this.#sortedViews
+            const edgeIndex = prev
+                ? sorted[0]?.[0] ?? this.#primaryIndex
+                : sorted[sorted.length - 1]?.[0] ?? this.#primaryIndex
+            const nextIndex = this.#adjacentIndex(dir, edgeIndex)
             const shouldGo = await (prev ? this.#scrollPrev(distance) : this.#scrollNext(distance))
             if (shouldGo) {
                 // Wait for any in-progress background pre-loading to complete —
                 // it may already be loading the section we need, so awaiting
                 // it lets #goTo reuse the view instead of loading from scratch
                 if (this.#fillPromise) await this.#fillPromise
-                const sorted = this.#sortedViews
-                const edgeIndex = prev
-                    ? sorted[0]?.[0] ?? this.#primaryIndex
-                    : sorted[sorted.length - 1]?.[0] ?? this.#primaryIndex
                 // #goTo awaits the section load and the anchor scroll, so the
                 // page counts a following turn reads are already final: it
                 // needs no settle pause on top.
                 await this.#goTo({
-                    index: this.#adjacentIndex(dir, edgeIndex),
+                    index: nextIndex,
                     anchor: prev ? () => 1 : () => 0,
                 })
             }
+        } catch (error) {
+            this.#pendingTurns = 0
+            throw error
         } finally {
             this.#locked = false
         }
@@ -2788,6 +2908,9 @@ export class Paginator extends HTMLElement {
         this.#primaryView?.destroyLoupe()
     }
     destroy() {
+        this.#lifecycle.abort()
+        this.#pendingTurns = 0
+        this.#isAnimating = false
         this.#observer.unobserve(this)
         this.#destroyAllViews()
         this.#mediaQuery.removeEventListener('change', this.#mediaQueryListener)

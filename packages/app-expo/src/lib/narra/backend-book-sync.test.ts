@@ -69,6 +69,7 @@ import { parseBackendManifest } from "./backend-book-contract";
 import {
   retainBackendBookSync,
   retryBackendBookAnalysis,
+  retryBackendBookSync,
   startImportedBackendBook,
   useBackendBookStatus,
 } from "./backend-book-sync";
@@ -129,6 +130,64 @@ async function open(value: Book) {
 }
 
 describe("backend book import and persistence integration", () => {
+  it("exposes sync retry completion only after the refreshed manifest is published", async () => {
+    useNarraStore.getState().setBackendBinding("local", {
+      resolution: "private",
+      bookEditionId: "private-id",
+      contentSha256: "a".repeat(64),
+      sourceUploaded: true,
+    });
+    await open(book());
+    let finish!: (manifest: typeof ready) => void;
+    runtime.request.mockImplementation((path: string) =>
+      path.endsWith("/manifest")
+        ? new Promise((resolve) => {
+            finish = resolve;
+          })
+        : Promise.resolve({}),
+    );
+    let completed = false;
+    const retry = retryBackendBookSync("local").then(() => {
+      completed = true;
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(completed).toBe(false);
+    finish(ready);
+    await retry;
+    expect(completed).toBe(true);
+    expect(useBackendBookStatus.getState().books.local.manifest?.availability).toBe("ready");
+  });
+  it("does not register or keep retrying formats the analysis backend cannot parse", async () => {
+    const unsupported = { ...book(), format: "mobi" as const, filePath: "books/local.mobi" };
+    await open(unsupported);
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(runtime.request).not.toHaveBeenCalled();
+    expect(runtime.hash).not.toHaveBeenCalled();
+    expect(useBackendBookStatus.getState().books.local.error).toBe("BOOK_FORMAT_UNSUPPORTED");
+    expect(runtime.books[0]).toEqual(unsupported);
+  });
+
+  it("uploads the converted EPUB for legacy UMD imports instead of unsupported raw UMD", async () => {
+    useNarraStore.getState().setBackendOriginalSource("local", {
+      path: "raw/local.umd",
+      format: "umd",
+      hash: "old-umd-hash",
+    });
+    runtime.request
+      .mockResolvedValueOnce({ resolution: "local_registration_required" })
+      .mockResolvedValueOnce({
+        resolution: "private",
+        book_edition_id: "converted-umd",
+        source_uploaded: false,
+      });
+    await open({ ...book(), format: "umd", contentHash: "old-umd-hash" });
+    expect(runtime.hash).toHaveBeenCalledWith("file:///documents/books/local.epub");
+    const registration = runtime.request.mock.calls.find(([path]) => path === "/v2/books/local");
+    expect(JSON.parse(registration?.[1].body).format).toBe("epub");
+    const upload = runtime.request.mock.calls.find((call) => call[1]?.method === "PUT");
+    expect(upload?.[1].headers).toEqual({ "content-type": "application/epub+zip" });
+  });
+
   it.each([
     ["EN_us", "en"],
     ["ru-RU", "ru"],

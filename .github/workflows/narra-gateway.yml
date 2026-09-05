@@ -19,14 +19,29 @@ permissions:
 jobs:
   test-and-build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+        env:
+          POSTGRES_USER: narra_ci
+          POSTGRES_PASSWORD: narra_ci_test_only
+          POSTGRES_DB: narra_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U narra_ci -d narra_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: "20"
+          node-version: "24"
           cache: npm
           cache-dependency-path: services/narra-gateway/package-lock.json
 
@@ -34,9 +49,51 @@ jobs:
         working-directory: services/narra-gateway
         run: npm ci
 
-      - name: Test gateway
+      - name: Migrate isolated test database
         working-directory: services/narra-gateway
-        run: npm test
+        env:
+          DATABASE_URL: postgresql://narra_ci:narra_ci_test_only@127.0.0.1:5432/narra_test
+          DATABASE_SSL_MODE: disable
+        # Some integration suites expect the schema to exist before they start.
+        run: npm run migrate
+
+      - name: Start isolated S3-compatible test storage
+        # Same digest/config as compose.book-analysis-local.yml. Test credentials
+        # and loopback binding only; no cloud account or paid provider is used.
+        run: |
+          docker run --detach --rm --name narra-ci-minio \
+            --publish 127.0.0.1:9000:9000 \
+            --env MINIO_ROOT_USER=narra-root \
+            --env MINIO_ROOT_PASSWORD=narra-local-minio-secret \
+            minio/minio:latest@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e \
+            server /data --address :9000 --console-address :9001
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:9000/minio/health/live; then
+              exit 0
+            fi
+            echo "Waiting for local MinIO (${attempt}/30)"
+            sleep 1
+          done
+          docker logs narra-ci-minio
+          exit 1
+
+      - name: Test gateway including PostgreSQL and real S3
+        working-directory: services/narra-gateway
+        env:
+          BOOK_MARKUP_TEST_DATABASE_URL: postgresql://narra_ci:narra_ci_test_only@127.0.0.1:5432/narra_test
+          GENERATION_COST_E2E_DATABASE_URL: postgresql://narra_ci:narra_ci_test_only@127.0.0.1:5432/narra_test
+          BOOK_MARKUP_E2E_DATABASE_URL: postgresql://narra_ci:narra_ci_test_only@127.0.0.1:5432/narra_test
+          BOOK_MARKUP_E2E_S3_ENDPOINT: http://127.0.0.1:9000
+          BOOK_MARKUP_E2E_S3_ACCESS_KEY: narra-root
+          BOOK_MARKUP_E2E_S3_SECRET_KEY: narra-local-minio-secret
+        # Serial files keep durable worker claims isolated between test suites.
+        run: node --test --test-concurrency=1
+
+      - name: Stop isolated S3 test storage
+        if: always()
+        run: |
+          docker logs narra-ci-minio || true
+          docker rm --force narra-ci-minio || true
 
       - name: Test Stats contract
         working-directory: stats/narra
@@ -73,7 +130,7 @@ jobs:
       packages: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Resolve image name
         run: |

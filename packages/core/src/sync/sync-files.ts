@@ -2,7 +2,7 @@
  * Sync file operations — sync book files and covers between local and remote.
  *
  * Remote layout (new): /readany/data/books/{sanitized-title}-{book.id}/{sanitized-title}.{ext}
- * Local layout (unchanged): {appData}/books/{book.id}.{ext} + {appData}/covers/{book.id}.{ext}
+ * Local books use the stored managed artifact; new downloads publish fresh paths after validation.
  *
  * Legacy remote layout (still read for migration + orphan cleanup):
  *   /readany/data/file/{book.id}.{ext}
@@ -10,7 +10,7 @@
  */
 
 import { getDB } from "../db/database";
-import { canonicalBookFilePath } from "./local-book-paths";
+import { canonicalBookFilePath, localBookFilePath } from "./local-book-paths";
 import { getSyncAdapter } from "./sync-adapter";
 import type { ISyncBackend, RemoteFile } from "./sync-backend";
 import {
@@ -138,10 +138,13 @@ async function downloadRemoteFileToPath(
     const tempPath = await makeTempTransferPath(localPath);
     try {
       await backend.getFileToPath(remotePath, tempPath, onProgress);
+      const sourceSize = await adapter.getFileSize(tempPath);
+      if (sourceSize === null || sourceSize <= 0)
+        throw new Error("Downloaded file is empty or unavailable");
       const dir = getDirName(localPath);
       if (dir) await adapter.ensureDir(dir);
       await adapter.copyFile(tempPath, localPath);
-      return null;
+      return sourceSize;
     } catch (e) {
       if (!isDirectFileTransferUnsupported(e)) throw e;
       console.warn(
@@ -157,11 +160,63 @@ async function downloadRemoteFileToPath(
   const data = backend.getWithProgress
     ? await backend.getWithProgress(remotePath, onProgress)
     : await backend.get(remotePath);
+  if (data.length === 0) throw new Error("Downloaded file is empty");
   const dir = getDirName(localPath);
   if (dir) await adapter.ensureDir(dir);
   await adapter.writeFileBytes(localPath, data);
   onProgress?.(data.length, data.length);
   return data.length;
+}
+
+let artifactSequence = 0;
+type StagedBookDownload = { relativePath: string; absolutePath: string; bytes: number | null };
+
+async function discardStagedBook(staged: StagedBookDownload): Promise<void> {
+  try {
+    await getSyncAdapter().deleteFile(staged.absolutePath);
+  } catch (error) {
+    console.warn("[Sync] Failed to clean an unpublished download artifact:", error);
+  }
+}
+
+async function stageBookDownload(
+  backend: ISyncBackend,
+  remotePath: string,
+  bookId: string,
+  filePath: string,
+  onProgress?: (loaded: number, total: number) => void,
+  format?: string,
+): Promise<StagedBookDownload> {
+  const adapter = getSyncAdapter();
+  const canonical = canonicalBookFilePath(bookId, filePath);
+  if (!canonical) throw new Error("Invalid managed book identity");
+  const ext = getExt(canonical);
+  const relativePath = `books/${bookId}-download-${Date.now()}-${++artifactSequence}.${ext}`;
+  const staged = {
+    relativePath,
+    absolutePath: adapter.joinPath(await adapter.getAppDataDir(), relativePath),
+    bytes: null as number | null,
+  };
+  // Never overwrite even an unlikely pre-existing artifact name after a restart.
+  if (await adapter.fileExists(staged.absolutePath))
+    throw new Error("Download artifact already exists");
+  try {
+    staged.bytes = await downloadRemoteFileToPath(
+      backend,
+      remotePath,
+      staged.absolutePath,
+      onProgress,
+    );
+    const size = await adapter.getFileSize(staged.absolutePath);
+    if (size === null || size <= 0 || (staged.bytes !== null && size !== staged.bytes)) {
+      throw new Error("Downloaded book is empty, unavailable or incomplete");
+    }
+    await adapter.validateBookFile?.(staged.absolutePath, format || ext);
+    return staged;
+  } catch (error) {
+    await discardStagedBook(staged);
+    throw error;
+  }
 }
 
 type BookRow = {
@@ -388,7 +443,7 @@ export async function syncFiles(
 
   // --- Compute per-book info ---
   const bookInfos: BookInfo[] = books.map((book) => {
-    const canonicalFilePath = canonicalBookFilePath(book.id, book.file_path, book.format);
+    const canonicalFilePath = localBookFilePath(book.id, book.file_path, book.format);
     const fileExt = canonicalFilePath ? getExt(canonicalFilePath) || "epub" : "";
     const coverExt = book.cover_url ? getExt(book.cover_url) || "jpg" : "";
     const localFilePath = canonicalFilePath ? adapter.joinPath(appDataDir, canonicalFilePath) : "";
@@ -1111,28 +1166,38 @@ function buildUploadFileTask(backend: ISyncBackend, info: BookInfo): FileTask {
 function buildDownloadFileTask(
   backend: ISyncBackend,
   info: BookInfo,
-  setBookSyncStatus: (id: string, status: "local" | "remote") => Promise<void>,
+  _setBookSyncStatus: (id: string, status: "local" | "remote") => Promise<void>,
 ): FileTask {
   const bookTitle = info.book.title || "未知书籍";
   return {
     label: bookTitle,
     run: async (onProgress) => {
       const taskStart = Date.now();
+      let staged: StagedBookDownload | undefined;
       try {
         console.log(`[Sync] 📥 Downloading book: ${bookTitle} ← ${info.remoteFilePath}`);
-        const bytes = await downloadRemoteFileToPath(
+        staged = await stageBookDownload(
           backend,
           info.remoteFilePath,
-          info.localFilePath,
+          info.book.id,
+          info.book.file_path,
           onProgress,
+          info.book.format,
         );
-        await setBookSyncStatus(info.book.id, "local");
+        const { updateBook } = await import("../db/database");
+        await updateBook(info.book.id, { filePath: staged.relativePath, syncStatus: "local" });
+        const bytes = staged.bytes;
+        info.localFilePath = staged.absolutePath;
+        info.book.file_path = staged.relativePath;
+        staged = undefined;
         const size = bytes === null ? "" : ` (${(bytes / 1024 / 1024).toFixed(2)} MB)`;
         console.log(`[Sync] ✓ Downloaded "${bookTitle}"${size} in ${Date.now() - taskStart}ms`);
         return true;
       } catch (e) {
         console.log(`[Sync] ✗ Failed to download "${bookTitle}": ${e}`);
         return false;
+      } finally {
+        if (staged) await discardStagedBook(staged);
       }
     },
   };
@@ -1296,8 +1361,17 @@ async function cleanupLocalOrphans(
       .map((coverUrl) => coverUrl.split(/[\\/]/).pop())
       .filter((fileName): fileName is string => Boolean(fileName)),
   );
+  const currentBookFileNames = new Set(
+    books.map((book) => localBookFilePath(book.id, book.file_path, book.format).split("/").pop()),
+  );
 
   for (const fileName of localManagedBookFiles) {
+    if (currentBookFileNames.has(fileName)) continue;
+    // Keep a living book's copy-on-write artifacts, including a concurrent
+    // unpublished transfer. Failed attempts remove only their own path;
+    // superseded sources remain recoverable until the book itself is removed.
+    const downloadOwner = fileName.match(/^(.+)-download-\d+-\d+\.[a-z0-9]+$/i)?.[1];
+    if (downloadOwner && currentBookIds.has(downloadOwner)) continue;
     const bookId = idFromLocalName(fileName);
     if (bookId && !currentBookIds.has(bookId)) {
       const localPath = adapter.joinPath(appDataDir, "books", fileName);
@@ -1361,20 +1435,37 @@ export async function downloadBookFile(
   filePath: string,
   onProgress?: (progress: { downloaded: number; total: number }) => void,
 ): Promise<DownloadBookOutcome> {
-  const adapter = getSyncAdapter();
   const { setBookSyncStatus, updateBook } = await import("../db/database");
+  let staged: StagedBookDownload | undefined;
+  let keepLocalStatus = false;
 
   try {
-    const localRelativePath = canonicalBookFilePath(bookId, filePath);
+    const localRelativePath = localBookFilePath(bookId, filePath);
+    if (!localRelativePath) throw new Error("Invalid managed book identity");
     const ext = getExt(localRelativePath) || "epub";
 
     // Resolve book title for new-path computation.
     const db = await getDB();
-    const rows = await db.select<{ id: string; title: string }>(
-      "SELECT id, title FROM books WHERE id = ?",
-      [bookId],
-    );
+    const rows = await db.select<{
+      id: string;
+      title: string;
+      format?: string;
+      file_path?: string;
+      sync_status?: string;
+    }>("SELECT id, title, format, file_path, sync_status FROM books WHERE id = ?", [bookId]);
     const book = rows[0] ?? null;
+    if (book?.sync_status === "local") {
+      // A failed refresh must not make the intact offline source unavailable.
+      // A formerly local but missing source still needs the retryable remote state.
+      const adapter = getSyncAdapter();
+      const oldRelativePath = localBookFilePath(bookId, book.file_path ?? filePath, book.format);
+      const oldAbsolutePath = await adapter.joinPath(
+        await adapter.getAppDataDir(),
+        oldRelativePath,
+      );
+      const oldSize = await adapter.getFileSize(oldAbsolutePath);
+      keepLocalStatus = oldSize !== null && oldSize > 0;
+    }
 
     const newPath = book ? buildBookRemoteFile(book, ext) : "";
     const legacyPath = `${REMOTE_FILES}/${bookId}.${ext}`;
@@ -1390,15 +1481,20 @@ export async function downloadBookFile(
       if (!/404|not found/i.test(msg)) sawNon404Error = true;
     };
 
-    const appDataDir = await adapter.getAppDataDir();
-    const localPath = adapter.joinPath(appDataDir, localRelativePath);
     const reportDownloadProgress = (loaded: number, total: number) => {
       if (total > 0) onProgress?.({ downloaded: loaded, total });
     };
     let downloaded = false;
     if (newPath) {
       try {
-        await downloadRemoteFileToPath(backend, newPath, localPath, reportDownloadProgress);
+        staged = await stageBookDownload(
+          backend,
+          newPath,
+          bookId,
+          localRelativePath,
+          reportDownloadProgress,
+          book?.format,
+        );
         downloaded = true;
         console.log(`[Sync] Downloaded ${newPath} (new layout)`);
       } catch (e) {
@@ -1411,81 +1507,47 @@ export async function downloadBookFile(
     }
     if (!downloaded) {
       try {
-        await downloadRemoteFileToPath(backend, legacyPath, localPath, reportDownloadProgress);
+        staged = await stageBookDownload(
+          backend,
+          legacyPath,
+          bookId,
+          localRelativePath,
+          reportDownloadProgress,
+          book?.format,
+        );
         downloaded = true;
         console.log(`[Sync] Downloaded ${legacyPath} (legacy layout)`);
       } catch (e) {
         noteFailure(e);
         const msg = (e as { message?: string })?.message ?? "";
         if (!/404|not found/i.test(msg)) {
-          console.warn(`[Sync] Legacy fetch failed (${msg}); trying title-based fallback`);
+          console.warn(`[Sync] Legacy fetch failed (${msg})`);
         }
       }
     }
-    // Title-based fallback: same book imported separately on each device gets different UUIDs.
-    // The DB sync brings both rows over, but the file is only on one id. Match by sanitized title.
-    if (!downloaded && book?.title) {
-      try {
-        const sanitizedTitle = sanitizeBookTitleForFs(book.title);
-        const entries = await backend.listDir(REMOTE_BOOKS_ROOT);
-        const candidates = entries.filter(
-          (e) =>
-            e.isDirectory &&
-            e.name.startsWith(`${sanitizedTitle}-`) &&
-            parseBookFolderName(e.name) !== null,
-        );
-        for (const folder of candidates) {
-          const folderPath = `${REMOTE_BOOKS_ROOT}/${folder.name}`;
-          const guess = `${folderPath}/${sanitizedTitle}.${ext}`;
-          try {
-            await downloadRemoteFileToPath(backend, guess, localPath, reportDownloadProgress);
-            downloaded = true;
-            console.log(`[Sync] Downloaded via title match: ${guess}`);
-            break;
-          } catch {
-            // Try scanning inside the folder for any file with matching extension
-            try {
-              const inside = await backend.listDir(folderPath);
-              const hit = inside.find(
-                (f) => !f.isDirectory && getExt(f.name).toLowerCase() === ext.toLowerCase(),
-              );
-              if (hit) {
-                const hitPath = `${folderPath}/${hit.name}`;
-                await downloadRemoteFileToPath(backend, hitPath, localPath, reportDownloadProgress);
-                downloaded = true;
-                console.log(`[Sync] Downloaded via folder scan: ${hitPath}`);
-                break;
-              }
-            } catch {}
-          }
-        }
-      } catch (e) {
-        noteFailure(e);
-        console.warn("[Sync] Title-based fallback failed:", e);
-      }
-    }
+    // Fail closed: another UUID with the same title is not source identity.
+    // Substituting its edition would attach this book's CFI/notes to different
+    // text. Keep same-UUID legacy compatibility, but require explicit repair or
+    // source-device upload when neither owned location has the book.
     if (!downloaded) {
       console.log(
         `[Sync] Book file not found on remote (new=${newPath}, legacy=${legacyPath}, title=${book?.title ?? "?"})`,
       );
-      await setBookSyncStatus(bookId, "remote");
+      if (!keepLocalStatus) await setBookSyncStatus(bookId, "remote");
       return sawNon404Error ? "error" : "not-found";
     }
 
-    const localSize = await adapter.getFileSize(localPath);
-    if (localSize === 0) {
-      console.warn(`[Sync] Downloaded empty book file for ${bookId}; keeping it remote`);
-      await setBookSyncStatus(bookId, "remote");
-      return "error";
-    }
-
+    if (!staged) throw new Error("Downloaded book was not staged");
     onProgress?.({ downloaded: 100, total: 100 });
-    await updateBook(bookId, { filePath: localRelativePath, syncStatus: "local" });
+    await updateBook(bookId, { filePath: staged.relativePath, syncStatus: "local" });
+    staged = undefined;
     console.log(`[Sync] ✓ Book ${bookId} downloaded and marked as local`);
     return "ok";
   } catch (e) {
     console.error(`[Sync] Failed to download book ${bookId}:`, e);
-    await setBookSyncStatus(bookId, "remote");
+    if (!keepLocalStatus) await setBookSyncStatus(bookId, "remote");
     return "error";
+  } finally {
+    if (staged) await discardStagedBook(staged);
   }
 }

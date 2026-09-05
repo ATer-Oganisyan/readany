@@ -1,0 +1,45 @@
+appId: com.mishanaer.readany.dev
+name: iOS final system theme and fresh note navigation setup
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Library"
+    timeout: 30000
+- runFlow:
+    file: flows/ios-open-fixture.yaml
+    env:
+      BOOK_TITLE: "11-river-library"
+      PAGE_LABEL: "p. 4 of 12"
+- tapOn:
+    point: "95%,40%"
+- extendedWaitUntil:
+    visible: "p. 5 of 12"
+    timeout: 15000
+- repeat:
+    times: 2
+    commands:
+      - runFlow:
+          when:
+            notVisible: "Book actions"
+          commands:
+            - tapOn:
+                point: "50%,50%"
+- tapOn: "Close"
+- assertVisible: "Library"
+- tapOn:
+    point: "66%,94%"
+- extendedWaitUntil:
+    visible: "Profile"
+    timeout: 10000
+- tapOn: "Dark"
+- extendedWaitUntil:
+    visible: "System"
+    timeout: 10000
+- tapOn: "System"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: ios-system-theme-restored-final
+- tapOn: "Notes"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: ios-global-notebooks-final

@@ -1,0 +1,70 @@
+name: Narra Regression
+
+on:
+  pull_request:
+    paths:
+      - "packages/app-expo/**"
+      - "packages/core/**"
+      - "packages/foliate-js/**"
+      - "packages/deslop-primitives/**"
+      - "patches/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".npmrc"
+      - ".github/workflows/narra-regression.yml"
+  push:
+    branches: [main]
+    paths:
+      - "packages/app-expo/**"
+      - "packages/core/**"
+      - "packages/foliate-js/**"
+      - "packages/deslop-primitives/**"
+      - "patches/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".npmrc"
+      - ".github/workflows/narra-regression.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: narra-regression-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mobile-and-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build reader assets
+        run: pnpm --filter @readany/app-expo build:reader
+
+      - name: Test shared core
+        run: pnpm --filter @readany/core test
+
+      - name: Test mobile reading, import, scenes and persistence
+        run: pnpm --filter @readany/app-expo test
+
+      - name: Typecheck mobile app
+        run: pnpm --filter @readany/app-expo exec tsc --noEmit

@@ -826,7 +826,7 @@ test('fast ScanPolicy accepts the first valid empty result without splitting', a
   assert.equal(chatCalls, 1)
 })
 
-test('balanced ScanPolicy preserves a successful half when the other half is rejected', async () => {
+test('balanced ScanPolicy does not publish an incomplete scan when one half is invalid', async () => {
   const storage = memoryStorage()
   const quote = 'Анна вошла в комнату.'
   const contextText = `${'Начало. '.repeat(30)}${quote}${' Продолжение повествования.'.repeat(240)}`
@@ -867,7 +867,7 @@ test('balanced ScanPolicy preserves a successful half when the other half is rej
     async generateIdleAnimation() { throw new Error('unused') }
   })
 
-  const result = await service.scanBookChunk({
+  await assert.rejects(() => service.scanBookChunk({
     idempotencyKey: 'run-partial:scan:chunk-partial:book-scan-v17',
     runId: 'run-partial',
     chunkId: 'chunk-partial',
@@ -877,24 +877,19 @@ test('balanced ScanPolicy preserves a successful half when the other half is rej
     contextText,
     coreLocalStartOffset: 0,
     coreLocalEndOffset: contextText.length
-  })
+  }), (error) => error.code === 'EVIDENCE_MISMATCH')
 
   assert.equal(chatCalls, 3)
-  assert.deepEqual(result.observations.map(({ entityCandidate }) => entityCandidate), ['Анна'])
-  assert.equal(
-    contextText.slice(
-      result.observations[0].evidence.startOffset,
-      result.observations[0].evidence.endOffset
-    ),
-    quote
-  )
+  assert.equal(storage.objects.size, 1, 'the valid half remains cached for a retry')
 })
 
-test('conservative ScanPolicy reuses a successful half and publishes it on the final semantic attempt', async () => {
+test('conservative ScanPolicy retries only failed work and never publishes a still-invalid half', async () => {
   const storage = memoryStorage()
   const quote = 'Анна вошла в комнату.'
-  const contextText = `${'Начало. '.repeat(30)}${quote}${' Продолжение повествования.'.repeat(240)}`
+  const recoveredQuote = 'Борис закрыл дверь.'
+  const contextText = `${'Начало. '.repeat(30)}${quote}${' Продолжение повествования.'.repeat(240)}${recoveredQuote}`
   let chatCalls = 0
+  let recover = false
   const service = createInternalGenerationService({
     storage,
     scanPolicy: { profile: 'conservative', semanticMaxAttempts: 2 },
@@ -925,7 +920,7 @@ test('conservative ScanPolicy reuses a successful half and publishes it on the f
         entityCandidate: 'Борис',
         relatedEntityCandidates: [],
         fact: 'Неподтверждённый факт',
-        evidence: { quote: 'Цитаты нет в тексте.' },
+        evidence: { quote: recover ? recoveredQuote : 'Цитаты нет в тексте.' },
         confidence: 0.9
       }] })
     },
@@ -949,10 +944,44 @@ test('conservative ScanPolicy reuses a successful half and publishes it on the f
     () => service.scanBookChunk({ ...request, semanticAttempt: 1 }),
     (error) => error.code === 'EVIDENCE_MISMATCH'
   )
-  const result = await service.scanBookChunk({ ...request, semanticAttempt: 2 })
+  await assert.rejects(
+    () => service.scanBookChunk({ ...request, semanticAttempt: 2 }),
+    (error) => error.code === 'EVIDENCE_MISMATCH'
+  )
 
   assert.equal(chatCalls, 5)
-  assert.deepEqual(result.observations.map(({ entityCandidate }) => entityCandidate), ['Анна'])
+  assert.equal(storage.objects.size, 1, 'the valid half is reused without caching incomplete success')
+  recover = true
+  const result = await service.scanBookChunk({ ...request, semanticAttempt: 3 })
+  assert.equal(chatCalls, 7, 'recovery reuses the valid half')
+  assert.deepEqual(result.observations.map(({ entityCandidate }) => entityCandidate), ['Анна', 'Борис'])
+  assert.equal(
+    contextText.slice(result.observations[1].evidence.startOffset, result.observations[1].evidence.endOffset),
+    recoveredQuote
+  )
+  assert.deepEqual(await service.scanBookChunk({ ...request, semanticAttempt: 4 }), result)
+  assert.equal(chatCalls, 7, 'the complete recovered result is cached')
+})
+
+test('final short scans never turn malformed or ungrounded provider responses into cached success', async () => {
+  for (const response of [{ wrong: [] }, { observations: [{ invalid: true }] }]) {
+    const storage = memoryStorage()
+    const service = createInternalGenerationService({
+      storage,
+      logger: { info() {}, warn() {}, error() {} },
+      async completeChat() { return JSON.stringify(response) },
+      async generatePortrait() { throw new Error('unused') },
+      async synthesizeSpeech() { throw new Error('unused') },
+      async generateIdleAnimation() { throw new Error('unused') }
+    })
+    await assert.rejects(() => service.scanBookChunk({
+      idempotencyKey: 'run-invalid:scan:chunk-invalid:book-scan-v17',
+      runId: 'run-invalid', chunkId: 'chunk-invalid', extractorVersion: 'book-scan-v17',
+      bookTitle: 'Книга', bookAuthor: '', contextText: 'Анна вошла в комнату.',
+      coreLocalStartOffset: 0, coreLocalEndOffset: 20, semanticAttempt: 5
+    }), (error) => ['GENERATION_RESULT_INVALID', 'EVIDENCE_MISMATCH'].includes(error.code))
+    assert.equal(storage.objects.size, 0)
+  }
 })
 
 test('internal generation service retries a scan when evidence filtering drops most provider observations', async () => {

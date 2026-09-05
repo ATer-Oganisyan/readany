@@ -47,6 +47,7 @@ function setup(progress = 0.5, unlockProgress = 0.5, cfi = "epubcfi(/6/4)") {
     updateBook,
     bookId: "book",
     progress,
+    progressRef: { current: progress },
     lastCfiRef: { current: cfi },
   });
   const navigate = vi.fn(() => {
@@ -60,6 +61,7 @@ function setup(progress = 0.5, unlockProgress = 0.5, cfi = "epubcfi(/6/4)") {
     isCharacterUnlocked,
     suppressReaderTapUntilRef: { current: 0 },
     publishCharacterProgress,
+    prepareCharacterContext: vi.fn(async () => true),
     navigation: { navigate },
     charactersSheetSourceId: "reader",
   };
@@ -67,9 +69,10 @@ function setup(progress = 0.5, unlockProgress = 0.5, cfi = "epubcfi(/6/4)") {
 }
 
 describe("character entry uses the current reading position", () => {
-  it("publishes a just-unlocked character's progress before the first profile opens", () => {
+  it("publishes a just-unlocked character's progress before the first profile opens", async () => {
     const { bindings, navigate, library } = setup();
     callback("onCharacterTap", bindings)({ characterId: "hero" });
+    await Promise.resolve();
     expect(navigate).toHaveBeenCalledWith("NarraCharacterProfile", {
       bookId: "book",
       characterId: "hero",
@@ -77,9 +80,10 @@ describe("character entry uses the current reading position", () => {
     expect(library.currentCfi).toBe("epubcfi(/6/4)");
   });
 
-  it("publishes progress before opening the characters list and its chats", () => {
+  it("publishes progress before opening the characters list and its chats", async () => {
     const { bindings, navigate } = setup();
     callback("handleOpenCharacters", bindings)();
+    await Promise.resolve();
     expect(navigate).toHaveBeenCalledWith("NarraCharacters", {
       bookId: "book",
       charactersSheetSourceId: "reader",
@@ -99,5 +103,30 @@ describe("character entry uses the current reading position", () => {
     expect(updateBook).not.toHaveBeenCalled();
     expect(library.progress).toBe(0.49);
     expect(library.currentCfi).toBe("previous");
+  });
+
+  it("waits only for bounded local page capture, never the database, before opening", async () => {
+    const { bindings, library, navigate } = setup();
+    let finish!: (current: boolean) => void;
+    bindings.prepareCharacterContext.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    callback("handleOpenCharacters", bindings)();
+    expect(library.currentCfi).toBe("epubcfi(/6/4)");
+    expect(navigate).not.toHaveBeenCalled();
+    finish(true);
+    await Promise.resolve();
+    expect(navigate).toHaveBeenCalledOnce();
+  });
+
+  it("does not open an outdated character sheet after the reader changed during capture", async () => {
+    const { bindings, navigate } = setup();
+    bindings.prepareCharacterContext.mockResolvedValue(false);
+    callback("handleOpenCharacters", bindings)();
+    await Promise.resolve();
+    expect(navigate).not.toHaveBeenCalled();
   });
 });

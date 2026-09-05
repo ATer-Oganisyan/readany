@@ -2317,7 +2317,9 @@ export function createInternalGenerationService({
 
         const parts = adaptiveScanParts(input, effectiveScanPolicy)
         if (parts.length !== 2) {
-          if (!finalSemanticAttempt) throw splitError
+          if (!finalSemanticAttempt || splitError.code !== 'SCAN_EMPTY_OBSERVATIONS') {
+            throw splitError
+          }
           log.warn('scan.semantic_empty_completed', 'Семантические повторы исчерпаны без наблюдений', {
             ...common,
             error_code: splitError.code,
@@ -2353,23 +2355,14 @@ export function createInternalGenerationService({
         )
         if (technicalFailure) throw technicalFailure.reason
         const semanticFailures = partResults.filter((result) => result.status === 'rejected')
-        if (semanticFailures.length && !finalSemanticAttempt) {
+        // A failed half is not evidence that it contains no characters. Its successful sibling
+        // remains cached, so a retry can recover the missing facts without repeating that work.
+        if (semanticFailures.length) {
           throw semanticFailures[0].reason
         }
         const observations = partResults.flatMap((result) => result.status === 'fulfilled'
           ? result.value.observations
           : [])
-        if (semanticFailures.length) {
-          log.warn(
-            'scan.partial_completed',
-            'Успешная половина сохранена после исчерпания семантических повторов',
-            {
-              ...common,
-              failed_part_count: semanticFailures.length,
-              accepted_observation_count: observations.length
-            }
-          )
-        }
         return { observations }
       })
     },

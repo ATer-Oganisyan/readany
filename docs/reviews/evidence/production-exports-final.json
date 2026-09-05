@@ -1,0 +1,37 @@
+{
+  "at": "2026-09-05T10:44:28.871Z",
+  "profile": "eas.json build.production.env",
+  "compilerNode": "24.20.0",
+  "readerSha256": "d90aa52a86faaf117ad70df54e4d993ffca9e8d61bc3a8b7f5914139c6f81159",
+  "pdfSha256": "2ac034b257a653b095253d1b98d6d4431888f9ceeca37918c29f14c8a5702750",
+  "exports": [
+    {
+      "platform": "ios",
+      "file": "/private/tmp/narra-audit-release-final-v5-ios/_expo/static/js/ios/index-ef9be36f32a869fbc7d69bcdc8e143d5.hbc",
+      "bytes": 17163639,
+      "sha256": "b997355b87d03b351c8b96d8fa41b2df70e9030590ec5a68a5824df0f458c34f",
+      "magic": "c61fbc03c103191f",
+      "readerIncluded": true,
+      "pdfIncluded": true,
+      "readerAsset": "assets/23ce9e242d852241404f5a5b7d5c299d",
+      "pdfAsset": "assets/e33c5254120879618916081f7fccf7a2",
+      "logFile": "/private/tmp/narra-audit-export-final-v5-ios.log",
+      "logArchive": "docs/reviews/evidence/production-export-final-v5-ios.txt",
+      "logSha256": "2ba69a6c715c9d9ca0d91d4f47fe90e66d950493e5f7bea0a77f6ae55dc42a1c"
+    },
+    {
+      "platform": "android",
+      "file": "/private/tmp/narra-audit-release-final-v5-android/_expo/static/js/android/index-07359d901a83c62d9c8e9d57347b1376.hbc",
+      "bytes": 17173523,
+      "sha256": "c0ca8080fabd434584599282f95db7082f16aaf4cb5024b3095de3d2d44aaf86",
+      "magic": "c61fbc03c103191f",
+      "readerIncluded": true,
+      "pdfIncluded": true,
+      "readerAsset": "assets/23ce9e242d852241404f5a5b7d5c299d",
+      "pdfAsset": "assets/e33c5254120879618916081f7fccf7a2",
+      "logFile": "/private/tmp/narra-audit-export-final-v5-android.log",
+      "logArchive": "docs/reviews/evidence/production-export-final-v5-android.txt",
+      "logSha256": "172fa74ec487df15b35726613727bf09fdc0bf8c0e2dfee10746a32e799cf1c6"
+    }
+  ]
+}

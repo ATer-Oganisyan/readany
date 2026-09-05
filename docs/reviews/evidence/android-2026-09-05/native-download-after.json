@@ -1,0 +1,36 @@
+{
+  "cleaned": true,
+  "device": "sdk_gphone64_arm64 - 16 - API 36",
+  "functionalPassed": true,
+  "module": "src/lib/platform/expo-platform-service.ts",
+  "noLateProgress": true,
+  "passed": true,
+  "paths": [
+    "file:///data/user/0/com.mishanaer.readany.dev/cache/__narraNativeDownloadQa1788596934026-stall.epub",
+    "file:///data/user/0/com.mishanaer.readany.dev/cache/__narraNativeDownloadQa1788596934026-retry.epub",
+    "file:///data/user/0/com.mishanaer.readany.dev/cache/__narraNativeDownloadQa1788596934026-precancel.epub"
+  ],
+  "platform": "android",
+  "precancel": {
+    "elapsedMs": 1,
+    "fileExists": false,
+    "name": "AbortError"
+  },
+  "progress": 1,
+  "retry": {
+    "bytes": 4054,
+    "elapsedMs": 4731,
+    "zipMagic": [
+      80,
+      75,
+      3,
+      4
+    ]
+  },
+  "timeout": {
+    "elapsedMs": 1779,
+    "message": "File download timeout (1000ms)",
+    "name": "TimeoutError"
+  },
+  "timingPassed": true
+}

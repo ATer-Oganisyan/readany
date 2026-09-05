@@ -462,8 +462,8 @@ export function ChatScreen({
             safeAreaTop={headerSafeAreaTop}
             subtitle={
               isStreaming
-                ? t("narra.characterTyping", "Печатает...")
-                : t("narra.characterOnline", "онлайн")
+                ? t("narra.characterTyping", "Печатает…")
+                : undefined
             }
             title="Narra"
             // Пока без onTrailingPress: профиль Narra появится позже.

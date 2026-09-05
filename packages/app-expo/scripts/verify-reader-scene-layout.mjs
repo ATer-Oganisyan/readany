@@ -5,11 +5,12 @@
  * NODE_PATH may point to the Codex bundled Node packages; no backend is called.
  */
 import assert from "node:assert/strict";
-import { readFile, mkdtemp } from "node:fs/promises";
+import { readFile, mkdtemp, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { readerSceneFlowExpression } from "./qa/reader-scene-flow.mjs";
 
 const require = createRequire(import.meta.url);
 const { webkit, chromium } = require("playwright");
@@ -116,7 +117,8 @@ async function measure(page, anchor) {
 function checkSquare(layout, label) {
   assert.ok(layout.slot.width > 100, `${label}: useful square width ${JSON.stringify(layout)}`);
   assert.ok(Math.abs(layout.slot.width - layout.slot.height) < 1, `${label}: square ${JSON.stringify(layout)}`);
-  assert.ok(Math.abs(layout.slot.y - layout.pageTop) < 1, `${label}: page top ${JSON.stringify(layout)}`);
+  assert.ok(layout.slot.y >= layout.pageTop - 1, `${label}: not above page content ${JSON.stringify(layout)}`);
+  assert.ok(layout.slot.y + layout.slot.height <= layout.pageTop + layout.pageHeight + 1, `${label}: square remains within one page ${JSON.stringify(layout)}`);
   assert.ok(layout.slot.width <= layout.columnWidth + 1, `${label}: within text column`);
   assert.ok(layout.slot.height <= layout.pageHeight + 1, `${label}: within page height`);
   assert.equal(layout.fragments, 1, `${label}: not fragmented`);
@@ -138,8 +140,16 @@ try {
       await page.evaluate(async base64 => {
         setThemeColors({ background: '#282828', foreground: '#ffffffcc', muted: '#ffffff80', primary5: '#ffffff0d', primary8: '#ffffff14', primary10: '#ffffff1a', primary20: '#ffffff33', primary40: '#ffffff66', elevation1: '#1d1d1d', elevation2: '#282828' });
         await openBook({ base64, fileName: 'scene-layout.epub', settings: { fontSize: 20, lineHeight: 1.5, paragraphSpacing: 12, pageMargin: 16, viewMode: 'paginated', paginatedLayout: 'single' } });
+        // Emulate the RN readiness message; no generation/back-end request is made.
+        configureSceneSlots({ enabled: true });
       }, base64);
       await settle(page);
+
+      // Real engine regression for the former four-lines + blank-page orphan.
+      // The old forced break fails `current`; forced/flow are retained as A/B evidence.
+      const flowReport = await page.evaluate(readerSceneFlowExpression());
+      await writeFile(join(artifacts, `${engine.name()}-scene-flow.json`), JSON.stringify(flowReport, null, 2));
+      assert.equal(flowReport.passed, true, `Natural scene flow: ${JSON.stringify(flowReport)}`);
 
       const bookmarkBefore = await page.evaluate(() => {
         const doc = getRendererContents()[0].doc;
@@ -162,7 +172,7 @@ try {
       const initial = await measure(page, anchor);
       checkSquare(initial, `${engine.name()} idle`);
       assert.ok(initial.next.width > initial.columnWidth * 0.8, 'Text below keeps full column width');
-      assert.ok(initial.next.y >= initial.slot.y + initial.slot.height, 'Text starts below the square');
+      assert.ok(initial.next.x >= initial.slot.x + initial.slot.width || initial.next.y >= initial.slot.y + initial.slot.height, 'Text starts below the square or in the following column');
       assert.equal(initial.action.color, 'rgba(255, 255, 255, 0.4)');
       assert.ok(initial.action.font.includes('SB Sans Interface'));
       assert.equal(initial.action.tag, 'button');
@@ -544,7 +554,7 @@ try {
       await page.evaluate(async () => { await import('/foliate/tests/tests.js'); });
       assert.deepEqual(cfiFailures, [], 'Existing Foliate CFI tests');
       assert.deepEqual(pageErrors, [], 'No reader runtime errors');
-      console.log(`${engine.name()}: square, page start, state stability, typography, resize, CFI and restore passed`);
+      console.log(`${engine.name()}: square, natural flow, state stability, typography, resize, CFI and restore passed`);
     } catch (error) {
       failed = true;
       await page.screenshot({ path: join(artifacts, `${engine.name()}-failure.png`) });

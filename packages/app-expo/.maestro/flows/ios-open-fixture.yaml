@@ -1,0 +1,28 @@
+appId: com.mishanaer.readany.dev
+---
+- assertVisible: "Library"
+- repeat:
+    times: 4
+    commands:
+      - swipe:
+          start: "50%,30%"
+          end: "50%,85%"
+          duration: 200
+- tapOn: "My books"
+- scrollUntilVisible:
+    element:
+      text: ${BOOK_TITLE}
+    direction: DOWN
+    timeout: 20000
+    centerElement: true
+- waitForAnimationToEnd:
+    timeout: 5000
+- tapOn: ${BOOK_TITLE}
+- extendedWaitUntil:
+    visible: "Narra Reader"
+    timeout: 30000
+- extendedWaitUntil:
+    visible: ${PAGE_LABEL}
+    timeout: 30000
+- waitForAnimationToEnd:
+    timeout: 5000

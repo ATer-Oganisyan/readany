@@ -1,0 +1,55 @@
+appId: com.mishanaer.readany.dev
+name: Read original EPUB, FB2, FBZ, TXT codecs and UMD on Android
+# Prerequisite: generate-import-audit-fixtures.mjs and native picker import.
+# Never clears an existing app or library.
+---
+- runFlow:
+    file: flows/android-read-fixture.yaml
+    env:
+      BOOK_TITLE: "Аудит 04 - Письмо Windows"
+      EVIDENCE_NAME: android-fb2-cp1251
+- runFlow:
+    file: flows/android-read-fixture.yaml
+    env:
+      BOOK_TITLE: "07-garden-cp1251"
+      EVIDENCE_NAME: android-txt-cp1251
+- runFlow:
+    file: flows/android-read-fixture.yaml
+    env:
+      BOOK_TITLE: "06-library-utf16"
+      EVIDENCE_NAME: android-txt-utf16
+- runFlow:
+    file: flows/android-read-fixture.yaml
+    env:
+      BOOK_TITLE: "05-lantern-utf8"
+      EVIDENCE_NAME: android-txt-utf8
+- runFlow:
+    file: flows/android-read-fixture.yaml
+    env:
+      BOOK_TITLE: "Аудит 03 - Остров FB2"
+      EVIDENCE_NAME: android-fb2-utf8
+- runFlow:
+    file: flows/android-read-fixture.yaml
+    env:
+      BOOK_TITLE: "Аудит 01 - Письмо у реки"
+      EVIDENCE_NAME: android-epub
+- runFlow:
+    file: flows/android-read-fixture.yaml
+    env:
+      BOOK_TITLE: "Аудит 02 - Мастерская 100%"
+      EVIDENCE_NAME: android-epub-filename
+- runFlow:
+    file: flows/android-read-fixture.yaml
+    env:
+      BOOK_TITLE: "08-archive"
+      EVIDENCE_NAME: android-fbz
+- runFlow:
+    file: flows/android-read-fixture.yaml
+    env:
+      BOOK_TITLE: "09-nested.fb2"
+      EVIDENCE_NAME: android-fb2-zip
+- runFlow:
+    file: flows/android-read-fixture.yaml
+    env:
+      BOOK_TITLE: "Аудит 10 - Переправа UMD"
+      EVIDENCE_NAME: android-umd

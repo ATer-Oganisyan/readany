@@ -1,0 +1,19 @@
+appId: com.mishanaer.readany.dev
+name: Import the own fresh FBZ through the Android file picker
+# Own 27-fresh-boundary.fbz is temporarily in Download/NarraAudit.
+---
+- assertVisible: Library
+- tapOn: Add book
+- tapOn: Choose file
+- extendedWaitUntil:
+    visible: Files in NarraAudit
+    timeout: 10000
+- scrollUntilVisible:
+    element: 27-fresh-boundary.fbz
+    direction: DOWN
+    timeout: 20000
+- tapOn: 27-fresh-boundary.fbz
+- extendedWaitUntil:
+    visible: Library
+    timeout: 30000
+- takeScreenshot: android-fresh-boundary-fbz-imported

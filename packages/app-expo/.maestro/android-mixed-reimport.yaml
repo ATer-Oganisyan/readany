@@ -1,0 +1,23 @@
+appId: com.mishanaer.readany.dev
+name: Android original fixture mixed reimport
+# Prerequisite: native picker is open in Download/NarraAudit, original 25-file
+# manifest plus own 26-mixed-recovery.txt are pushed (24 selectable inputs).
+---
+- assertVisible: Files in NarraAudit
+- longPressOn: 01-river.epub
+- tapOn: More options
+- tapOn: Select all
+- assertVisible: 24 selected
+- takeScreenshot: android-audit-24-selected
+- tapOn:
+    text: Select
+    waitToSettleTimeoutMs: 0
+- extendedWaitUntil:
+    visible: Details
+    timeout: 30000
+- takeScreenshot: android-mixed-reimport-library
+- tapOn:
+    text: Details
+    waitToSettleTimeoutMs: 0
+- assertVisible: Files not added
+- takeScreenshot: android-mixed-reimport-details

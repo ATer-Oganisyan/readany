@@ -1,0 +1,39 @@
+appId: com.mishanaer.readany.dev
+name: iOS reading crosses chapter without disabled scene pages
+# Own FBZ and unavailable TEST backend. Saved/generated scenes are not deleted.
+---
+- runFlow: ios-checkpoint-prepare.yaml
+- tapOn:
+    point: "50%,50%"
+- tapOn: "Book actions"
+- tapOn: "Table of Contents"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: ios-scene-gate-toc
+# Half-sheet first row, resolved from earlier actual iPhone 17 Pro Max screenshot.
+- tapOn:
+    point: "42%,62%"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: ios-unavailable-scene-chapter-start
+- repeat:
+    times: 4
+    commands:
+      - tapOn:
+          point: "95%,40%"
+- takeScreenshot: ios-unavailable-scene-after-four
+- repeat:
+    times: 4
+    commands:
+      - tapOn:
+          point: "95%,40%"
+- takeScreenshot: ios-unavailable-scene-after-eight
+- repeat:
+    times: 3
+    commands:
+      - tapOn:
+          point: "95%,40%"
+- waitForAnimationToEnd:
+    timeout: 5000
+- assertVisible: "Narra Reader"
+- takeScreenshot: ios-unavailable-scene-next-chapter

@@ -1,32 +1,25 @@
+import { bookImportPickerTypes } from "@/lib/book/import-format";
 import { toast } from "@/lib/notifications";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useLibraryStore } from "@/stores/library-store";
 import { useMissingBookPromptStore } from "@/stores/missing-book-prompt-store";
+import { StackActions } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { getBook } from "@readany/core/db/database";
 import { getPlatformService } from "@readany/core/services";
 import type { Book } from "@readany/core/types";
 import * as DocumentPicker from "expo-document-picker";
 import type { TFunction } from "i18next";
+import { Platform } from "react-native";
+import { downloadMobileBook, reportMobileBookDownloadFailure } from "./download-mobile-book";
 
 type MobileNavigation = NativeStackNavigationProp<RootStackParamList>;
-
-const BOOK_MIME_TYPES = [
-  "application/epub+zip",
-  "application/pdf",
-  "application/x-mobipocket-ebook",
-  "application/vnd.amazon.ebook",
-  "application/vnd.comicbook+zip",
-  "application/x-fictionbook+xml",
-  "text/plain",
-  "application/octet-stream",
-];
 
 /** Try to open the native document picker, retrying once if another picker is still in progress. */
 async function pickBookFile(): Promise<DocumentPicker.DocumentPickerResult> {
   try {
     return await DocumentPicker.getDocumentAsync({
-      type: BOOK_MIME_TYPES,
+      type: bookImportPickerTypes(Platform.OS),
       multiple: false,
       copyToCacheDirectory: true,
     });
@@ -36,7 +29,7 @@ async function pickBookFile(): Promise<DocumentPicker.DocumentPickerResult> {
       // A previous picker is still lingering — wait and retry once
       await new Promise((r) => setTimeout(r, 800));
       return DocumentPicker.getDocumentAsync({
-        type: BOOK_MIME_TYPES,
+        type: bookImportPickerTypes(Platform.OS),
         multiple: false,
         copyToCacheDirectory: true,
       });
@@ -110,6 +103,31 @@ async function hasAccessibleLocalFile(book: Book): Promise<boolean> {
   }
 }
 
+function navigateToReader(
+  navigation: MobileNavigation,
+  params: RootStackParamList["Reader"],
+): void {
+  const state = navigation.getState();
+  const reader = state.routes.findLast(
+    (route) =>
+      route.name === "Reader" &&
+      route.params &&
+      "bookId" in route.params &&
+      route.params.bookId === params.bookId,
+  );
+  if (reader) {
+    // Return to this exact book's existing reader, closing the notebook and
+    // other screens above it. Plain navigate would push another live Reader.
+    navigation.dispatch({
+      ...StackActions.popTo("Reader", params),
+      source: reader.key,
+      target: state.key,
+    });
+    return;
+  }
+  navigation.navigate("Reader", params);
+}
+
 export async function openMobileBook({
   bookId,
   navigation,
@@ -123,14 +141,24 @@ export async function openMobileBook({
   cfi?: string;
   highlight?: boolean;
 }): Promise<boolean> {
-  const book = await resolveBookForOpen(bookId);
+  let book = await resolveBookForOpen(bookId);
   if (!book) {
     return false;
   }
 
   if (book.syncStatus === "remote") {
-    navigation.navigate("Reader", { bookId, cfi, highlight });
-    return true;
+    const outcome = await downloadMobileBook(book, {
+      loadBooks: useLibraryStore.getState().loadBooks,
+    });
+    if (outcome !== "ok") {
+      reportMobileBookDownloadFailure(outcome, t);
+      return false;
+    }
+    book = await resolveBookForOpen(bookId);
+    if (!book || book.syncStatus !== "local" || !(await hasAccessibleLocalFile(book))) {
+      reportMobileBookDownloadFailure("error", t);
+      return false;
+    }
   }
 
   if (book.syncStatus === "downloading") {
@@ -146,7 +174,7 @@ export async function openMobileBook({
   // A soft-deleted book is no longer in the live store — even if the file
   // still exists on disk we must re-import so it rejoins the store.
   if (!book.deletedAt && (await hasAccessibleLocalFile(book))) {
-    navigation.navigate("Reader", { bookId, cfi, highlight });
+    navigateToReader(navigation, { bookId, cfi, highlight });
     return true;
   }
 
@@ -207,7 +235,7 @@ export async function openMobileBook({
     if (!restoredBook) {
       return false;
     }
-    navigation.navigate("Reader", { bookId, cfi, highlight });
+    navigateToReader(navigation, { bookId, cfi, highlight });
     return true;
   } catch (error) {
     const message =
@@ -219,6 +247,9 @@ export async function openMobileBook({
       return false;
     }
     console.error("[openMobileBook] Reimport failed:", message);
+    toast.error(t("reader.reimportFailed", "Не удалось восстановить книгу"), {
+      description: message,
+    });
   } finally {
     reimportInFlight = false;
   }

@@ -1,0 +1,36 @@
+appId: com.mishanaer.readany.dev
+name: Android URL import cancellation and failure recovery
+# Requires localhost fixture server on 8099 and adb reverse tcp:8099 tcp:8099.
+# redirect.epub is a duplicate after the original mixed import, not a new book.
+---
+- assertVisible: Library
+- tapOn: Add book
+- tapOn: Add from link
+- assertVisible: Book link
+- tapOn:
+    id: android:id/button2
+- assertVisible: Library
+- runFlow:
+    file: flows/android-import-url.yaml
+    env:
+      BOOK_URL: http://127.0.0.1:8099/missing.epub
+      RESULT_TEXT: ".*add the book"
+      EVIDENCE_NAME: android-url-404
+- runFlow:
+    file: flows/android-import-url.yaml
+    env:
+      BOOK_URL: http://127.0.0.1:8099/17-truncated.epub
+      RESULT_TEXT: Import failed
+      EVIDENCE_NAME: android-url-truncated
+- runFlow:
+    file: flows/android-import-url.yaml
+    env:
+      BOOK_URL: http://127.0.0.1:8099/redirect.epub
+      RESULT_TEXT: Already in your library
+      EVIDENCE_NAME: android-url-redirect-duplicate
+- runFlow:
+    file: flows/android-import-url.yaml
+    env:
+      BOOK_URL: http://127.0.0.1:8099/changed-edition/01-river.epub
+      RESULT_TEXT: Done
+      EVIDENCE_NAME: android-url-changed-edition

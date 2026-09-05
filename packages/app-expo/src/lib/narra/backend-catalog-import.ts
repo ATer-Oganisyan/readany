@@ -80,7 +80,7 @@ async function performDownloadedBackendCatalogImport(
         ...catalogBook,
         coverUri,
       });
-      if (coverUrl) await updateBook(importedBook.id, { meta: { ...meta, coverUrl } });
+      if (coverUrl) await updateBook(importedBook.id, { meta: { coverUrl } });
     })
     .catch((error) => {
       console.warn(`[Catalog] Failed to install cover ${catalogBook.catalogKey}:`, error);

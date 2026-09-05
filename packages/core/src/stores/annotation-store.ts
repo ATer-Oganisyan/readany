@@ -18,6 +18,7 @@ export interface HighlightStats {
 }
 
 export interface AnnotationState {
+  activeBookId: string | null;
   highlights: Highlight[];
   highlightsWithBooks: HighlightWithBook[];
   notes: Note[];
@@ -27,7 +28,7 @@ export interface AnnotationState {
   // Actions
   setHighlights: (highlights: Highlight[]) => void;
   addHighlight: (highlight: Highlight) => Promise<void>;
-  updateHighlight: (id: string, updates: Partial<Highlight>) => void;
+  updateHighlight: (id: string, updates: Partial<Highlight>) => Promise<void>;
   removeHighlight: (id: string) => void;
   changeHighlightColor: (id: string, color: HighlightColor) => void;
 
@@ -61,44 +62,70 @@ async function refreshDerivedAnnotationState(
   }
 }
 
-export const useAnnotationStore = create<AnnotationState>((set) => ({
+let highlightSaveQueue: Promise<void> = Promise.resolve();
+let annotationLoadGeneration = 0;
+
+function enqueueHighlightSave(
+  operation: () => Promise<void>,
+  failureMessage: string,
+): Promise<void> {
+  const saved = highlightSaveQueue.then(operation);
+  // Observe failures for legacy fire-and-forget callers, while returning the
+  // original acknowledgement so editors can retain drafts and offer a retry.
+  // Serialize publication/derived refresh with the write, not just its start.
+  highlightSaveQueue = saved.catch((error) => console.error(failureMessage, error));
+  return saved;
+}
+
+export const useAnnotationStore = create<AnnotationState>((set, get) => ({
+  activeBookId: null,
   highlights: [],
   highlightsWithBooks: [],
   notes: [],
   bookmarks: [],
   stats: null,
 
-  setHighlights: (highlights) => set({ highlights: sortAnnotationsByPosition(highlights) }),
-  addHighlight: async (highlight) => {
-    set((state) => ({ highlights: sortAnnotationsByPosition([...state.highlights, highlight]) }));
-    try {
-      await db.insertHighlight(highlight);
+  setHighlights: (highlights) =>
+    set((state) => ({
+      highlights: sortAnnotationsByPosition(
+        highlights.filter(
+          (highlight) => state.activeBookId === null || highlight.bookId === state.activeBookId,
+        ),
+      ),
+    })),
+  addHighlight: (highlight) => {
+    const snapshot = { ...highlight };
+    return enqueueHighlightSave(async () => {
+      await db.insertHighlight(snapshot);
+      set((state) =>
+        state.activeBookId === null || state.activeBookId === snapshot.bookId
+          ? { highlights: sortAnnotationsByPosition([...state.highlights, snapshot]) }
+          : {},
+      );
       eventBus.emit("annotation:added", {
-        bookId: highlight.bookId,
-        annotationId: highlight.id,
+        bookId: snapshot.bookId,
+        annotationId: snapshot.id,
         type: "highlight",
       });
       await refreshDerivedAnnotationState(set);
-    } catch (error) {
-      set((state) => ({ highlights: state.highlights.filter((item) => item.id !== highlight.id) }));
-      console.error("Failed to insert highlight:", error);
-      throw error;
-    }
+    }, "Failed to insert highlight:");
   },
   updateHighlight: (id, updates) => {
-    set((state) => ({
-      highlights: sortAnnotationsByPosition(
-        state.highlights.map((h) => (h.id === id ? { ...h, ...updates } : h)),
-      ),
-      highlightsWithBooks: state.highlightsWithBooks.map((h) =>
-        h.id === id ? { ...h, ...updates } : h,
-      ),
-    }));
-    db.updateHighlight(id, updates)
-      .then(async () => {
-        await refreshDerivedAnnotationState(set);
-      })
-      .catch((err) => console.error("Failed to update highlight:", err));
+    const snapshot = { ...updates };
+    return enqueueHighlightSave(async () => {
+      await db.updateHighlight(id, snapshot);
+      set((state) => ({
+        highlights: sortAnnotationsByPosition(
+          state.highlights
+            .map((h) => (h.id === id ? { ...h, ...snapshot } : h))
+            .filter((h) => state.activeBookId === null || h.bookId === state.activeBookId),
+        ),
+        highlightsWithBooks: state.highlightsWithBooks.map((h) =>
+          h.id === id ? { ...h, ...snapshot } : h,
+        ),
+      }));
+      await refreshDerivedAnnotationState(set);
+    }, "Failed to update highlight:");
   },
   removeHighlight: (id) => {
     set((state) => ({
@@ -159,16 +186,24 @@ export const useAnnotationStore = create<AnnotationState>((set) => ({
   },
 
   loadAnnotations: async (bookId) => {
+    const generation = ++annotationLoadGeneration;
+    // A read belongs to the requested book as soon as it starts. Never leave
+    // the previous book's overlays visible while the new query is pending or
+    // failed, and never let an older request publish into a newer reader.
+    if (get().activeBookId !== bookId) {
+      set({ activeBookId: bookId, highlights: [], notes: [], bookmarks: [] });
+    }
     try {
       const [highlights, notes, bookmarks] = await Promise.all([
         db.getHighlights(bookId),
         db.getNotes(bookId),
         db.getBookmarks(bookId),
       ]);
+      if (generation !== annotationLoadGeneration || get().activeBookId !== bookId) return;
       set({
-        highlights: sortAnnotationsByPosition(highlights),
-        notes: sortAnnotationsByPosition(notes),
-        bookmarks: sortAnnotationsByPosition(bookmarks),
+        highlights: sortAnnotationsByPosition(highlights.filter((item) => item.bookId === bookId)),
+        notes: sortAnnotationsByPosition(notes.filter((item) => item.bookId === bookId)),
+        bookmarks: sortAnnotationsByPosition(bookmarks.filter((item) => item.bookId === bookId)),
       });
     } catch (err) {
       console.error("Failed to load annotations:", err);
@@ -176,8 +211,11 @@ export const useAnnotationStore = create<AnnotationState>((set) => ({
   },
 
   loadAllHighlights: async (limit = 500) => {
+    const generation = ++annotationLoadGeneration;
+    set({ activeBookId: null, highlights: [], notes: [], bookmarks: [] });
     try {
       const highlights = await db.getAllHighlights(limit);
+      if (generation !== annotationLoadGeneration) return;
       set({ highlights: sortAnnotationsByPosition(highlights) });
     } catch (err) {
       console.error("Failed to load all highlights:", err);

@@ -1,0 +1,25 @@
+appId: com.mishanaer.readany.dev
+name: Restore the QA-owned missing CBZ without losing progress
+# Prerequisite: only the known QA CBZ source has been reversibly moved aside;
+# its Library card was opened and the real missing-file prompt is visible.
+---
+- assertVisible: Book file missing
+- takeScreenshot: android-cbz-missing-prompt
+- tapOn: Re-import
+- extendedWaitUntil:
+    visible: Files in NarraAudit
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      text: 12-river-comic.cbz
+    direction: DOWN
+    timeout: 20000
+    centerElement: true
+- tapOn: 12-river-comic.cbz
+- extendedWaitUntil:
+    visible: Narra Reader
+    timeout: 30000
+- waitForAnimationToEnd:
+    timeout: 5000
+- assertVisible: p. 2 of 4
+- takeScreenshot: android-cbz-repaired-same-page

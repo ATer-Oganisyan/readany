@@ -1,0 +1,19 @@
+appId: com.mishanaer.readany.dev
+---
+- assertVisible: Library
+- tapOn: Add book
+- tapOn: Add from link
+- assertVisible: Book link
+- tapOn: Book file or Ficbook story link
+- inputText: ${BOOK_URL}
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: ${EVIDENCE_NAME}-keyboard
+- tapOn:
+    id: android:id/button1
+    waitToSettleTimeoutMs: 0
+- extendedWaitUntil:
+    visible: ${RESULT_TEXT}
+    timeout: 30000
+- takeScreenshot: ${EVIDENCE_NAME}-result
+- assertVisible: Library

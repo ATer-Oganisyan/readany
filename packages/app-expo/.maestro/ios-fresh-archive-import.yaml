@@ -1,0 +1,31 @@
+appId: com.mishanaer.readany.dev
+name: iOS fresh FBZ and nested FB2 ZIP URL import and reading
+# Independent hashes generated from our own stories, without overwriting old books.
+# Start the loopback-only fresh-fixture server on port 8109 first.
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Library"
+    timeout: 30000
+- runFlow:
+    file: flows/ios-import-url.yaml
+    env:
+      BOOK_URL: http://127.0.0.1:8109/27-fresh-metadata.fbz
+      BOOK_TITLE: "Аудит 08 - Архив FBZ"
+      EVIDENCE_NAME: ios-fresh-fbz
+- runFlow:
+    file: flows/ios-read-fixture.yaml
+    env:
+      BOOK_TITLE: "Аудит 08 - Архив FBZ"
+      EVIDENCE_NAME: ios-fresh-fbz
+- runFlow:
+    file: flows/ios-import-url.yaml
+    env:
+      BOOK_URL: http://127.0.0.1:8109/28-fresh-nested.fb2.zip
+      BOOK_TITLE: "Аудит 09 - Вложенный FB2 ZIP"
+      EVIDENCE_NAME: ios-fresh-fb2-zip
+- runFlow:
+    file: flows/ios-read-fixture.yaml
+    env:
+      BOOK_TITLE: "Аудит 09 - Вложенный FB2 ZIP"
+      EVIDENCE_NAME: ios-fresh-fb2-zip

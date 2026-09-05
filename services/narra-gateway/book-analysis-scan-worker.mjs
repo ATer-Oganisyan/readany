@@ -13,12 +13,7 @@ import { createOperationalLogger } from './operational-log.mjs'
 
 const UTF8_DECODER = new TextDecoder('utf-8', { fatal: true })
 const PARATEXT_SECTION = /^(?:preface|foreword|introduction|contents?|table of contents|предисловие|введение|оглавление|содержание)\s*[.:\]]?$/iu
-const NARRATIVE_SECTION = /^(?:chapter|part|book|prologue|epilogue|глава|часть|книга|пролог|эпилог)\b/iu
-const FINAL_EMPTY_SCAN_ERRORS = new Set([
-  'SCAN_EMPTY_OBSERVATIONS',
-  'EVIDENCE_MISMATCH',
-  'GENERATOR_HTTP_422'
-])
+const NARRATIVE_SECTION = /^(?:chapter|part|book|prologue|epilogue|глава|часть|книга|пролог|эпилог)(?![\p{L}\p{N}_])/iu
 
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex')
@@ -272,7 +267,7 @@ export function createBookAnalysisScanWorker({
       } catch (error) {
         const errorCode = safeErrorCode(error)
         if (
-          FINAL_EMPTY_SCAN_ERRORS.has(errorCode) &&
+          errorCode === 'SCAN_EMPTY_OBSERVATIONS' &&
           Number.isSafeInteger(job.attempts) &&
           Number.isSafeInteger(job.maxAttempts) &&
           job.attempts >= Math.min(job.maxAttempts, effectiveScanPolicy.semanticMaxAttempts)

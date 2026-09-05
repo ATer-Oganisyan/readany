@@ -29,7 +29,7 @@ export class BackendBookSession {
   private timer?: ReturnType<typeof setTimeout>;
   private identityTimer?: ReturnType<typeof setTimeout>;
   private progressTimer?: ReturnType<typeof setTimeout>;
-  private busy = false;
+  private refreshPromise?: Promise<void>;
   private pendingProgress: number;
   private sentProgress = -1;
   private errors = 0;
@@ -62,7 +62,7 @@ export class BackendBookSession {
     }, 1500);
   }
   retry() {
-    if (!this.controller.signal.aborted) void this.refresh();
+    return this.refresh();
   }
   stop() {
     this.controller.abort();
@@ -104,9 +104,16 @@ export class BackendBookSession {
         if (this.mediaPending) this.loadMedia();
       });
   }
-  private async refresh() {
-    if (this.busy || this.controller.signal.aborted) return;
-    this.busy = true;
+  private refresh(): Promise<void> {
+    if (this.controller.signal.aborted) return Promise.resolve();
+    if (this.refreshPromise) return this.refreshPromise;
+    const pending = this.refreshOnce().finally(() => {
+      if (this.refreshPromise === pending) this.refreshPromise = undefined;
+    });
+    this.refreshPromise = pending;
+    return pending;
+  }
+  private async refreshOnce() {
     clearTimeout(this.timer);
     let delay: number | undefined;
     const signal = this.controller.signal;
@@ -161,7 +168,6 @@ export class BackendBookSession {
       }
       delay = Math.min(60_000, 5000 * 2 ** this.errors++);
     } finally {
-      this.busy = false;
       if (!signal.aborted && (delay !== undefined || this.pendingProgress > this.sentProgress))
         this.timer = setTimeout(() => void this.refresh(), delay ?? 1500);
     }

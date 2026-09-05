@@ -1,0 +1,25 @@
+appId: com.mishanaer.readany.dev
+name: iOS cached character access while server unavailable
+---
+- launchApp:
+    stopApp: false
+- waitForAnimationToEnd:
+    timeout: 5000
+- runFlow:
+    when:
+      notVisible: "Characters"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- tapOn: "Characters"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: ios-cached-character-list
+- tapOn:
+    point: "50%,75%"
+- waitForAnimationToEnd:
+    timeout: 5000
+- extendedWaitUntil:
+    visible: "Send|Message.*|.*message.*"
+    timeout: 10000
+- takeScreenshot: ios-cached-character-opened

@@ -31,6 +31,7 @@ const getViewport = (doc, viewport) => {
 export class FixedLayout extends HTMLElement {
   static observedAttributes = ["zoom", "zoom-factor", "spread"];
   #root = this.attachShadow({ mode: "closed" });
+  #frameIndexes = new WeakMap();
   #observer = new ResizeObserver(() => this.#render());
   #spreads;
   #index = -1;
@@ -59,7 +60,10 @@ export class FixedLayout extends HTMLElement {
 
     this.#observer.observe(this);
   }
-  attributeChangedCallback(name, _, value) {
+  attributeChangedCallback(name, oldValue, value) {
+    // Reader settings are reapplied from the iframe load event. Reopening the
+    // same spread here removes the frame that has just loaded and loops forever.
+    if (oldValue === value) return;
     switch (name) {
       case "zoom":
         this.#zoom =
@@ -120,8 +124,12 @@ export class FixedLayout extends HTMLElement {
     if (!this.book?.sections?.length) return;
     if (this.book.rendition) this.book.rendition.spread = value;
 
-    const currentSection = this.book.sections[this.index] ?? this.book.sections[0];
+    const currentSection = this.book.sections[this.index];
     this.#spreads = this.#buildSpreads(this.book);
+    // Startup settings configure the spreads; view.init owns the first page.
+    // Starting a navigation here makes its initial next() skip the cover and
+    // lets two asynchronous #showSpread calls replace each other's iframes.
+    if (!currentSection) return;
     const target = currentSection ? this.getSpreadOf(currentSection) : null;
     this.#index = -1;
     await this.goToSpread(
@@ -150,6 +158,7 @@ export class FixedLayout extends HTMLElement {
     iframe.setAttribute("part", "filter");
     this.#root.append(element);
     if (!src) return { blank: true, element, iframe };
+    this.#frameIndexes.set(iframe, index);
     return new Promise((resolve) => {
       iframe.addEventListener(
         "load",
@@ -305,7 +314,9 @@ export class FixedLayout extends HTMLElement {
   async goToSpread(index, side, reason) {
     if (index < 0 || index > this.#spreads.length - 1) return;
     if (index === this.#index) {
-      this.#render(side);
+      this.#side = side ?? this.#side;
+      this.#render();
+      this.#reportLocation(reason);
       return;
     }
     this.#index = index;
@@ -351,8 +362,9 @@ export class FixedLayout extends HTMLElement {
   getContents() {
     return Array.from(this.#root.querySelectorAll("iframe"), (frame) => ({
       doc: frame.contentDocument,
-      // TODO: index, overlayer
-    }));
+      index: this.#frameIndexes.get(frame),
+      // Fixed-layout pages do not currently expose a text annotation overlayer.
+    })).filter(({ doc, index }) => doc && Number.isInteger(index) && index >= 0);
   }
   destroy() {
     this.#observer.unobserve(this);

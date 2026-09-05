@@ -4,6 +4,25 @@ import { createBookObjectStorage } from '../book-object-storage.mjs'
 
 const HASH = 'a'.repeat(64)
 
+test('source upload forwards cancellation to the SDK without duplicating the body buffer', async () => {
+  const controller = new AbortController()
+  const bytes = Buffer.from('bounded source')
+  let sent
+  const storage = createBookObjectStorage({ bucket: 'readany-books', client: {
+    async send(command, options) {
+      sent = { command, options }
+      return new Promise((_resolve, reject) => options.abortSignal.addEventListener(
+        'abort', () => reject(options.abortSignal.reason), { once: true }
+      ))
+    }
+  } })
+  const pending = storage.putBytes({ objectKey: 'books/private/test/source', bytes, mimeType: 'text/plain', signal: controller.signal })
+  assert.equal(sent.command.input.Body, bytes)
+  assert.equal(sent.options.abortSignal, controller.signal)
+  controller.abort(new Error('reader disconnected'))
+  await assert.rejects(pending, /reader disconnected/)
+})
+
 test('object storage readiness verifies access to the configured bucket', async () => {
   let command
   const storage = createBookObjectStorage({
@@ -185,6 +204,46 @@ test('object storage refuses to buffer an oversized object', async () => {
     () => storage.getBytes({ objectKey: 'books/private/source.txt', maxBytes: 10 }),
     /allowed read size/
   )
+})
+
+test('AWS SDK streams are bounded during iteration before whole-body transform can allocate', async () => {
+  let yielded = 0
+  let transformed = false
+  let closed = false
+  const body = {
+    async *[Symbol.asyncIterator]() {
+      try {
+        for (let index = 0; index < 10; index += 1) {
+          yielded += 1
+          yield Buffer.from('1234')
+        }
+      } finally { closed = true }
+    },
+    async transformToByteArray() {
+      transformed = true
+      const chunks = []
+      for await (const chunk of this) chunks.push(chunk)
+      return Buffer.concat(chunks)
+    }
+  }
+  const storage = createBookObjectStorage({
+    client: { async send() { return { Body: body } } },
+    bucket: 'readany-books'
+  })
+  await assert.rejects(storage.getBytes({ objectKey: 'books/private/source.txt', maxBytes: 5 }), /allowed read size/)
+  assert.equal(transformed, false)
+  assert.equal(yielded, 2)
+  assert.equal(closed, true)
+})
+
+test('rejecting oversized response headers also closes the unused object stream', async () => {
+  let destroyed = false
+  const storage = createBookObjectStorage({
+    client: { async send() { return { ContentLength: 100, Body: { destroy() { destroyed = true } } } } },
+    bucket: 'readany-books'
+  })
+  await assert.rejects(storage.getBytes({ objectKey: 'books/private/source.txt', maxBytes: 5 }), /allowed read size/)
+  assert.equal(destroyed, true)
 })
 
 test('object storage reads one exact byte range for a scan worker', async () => {

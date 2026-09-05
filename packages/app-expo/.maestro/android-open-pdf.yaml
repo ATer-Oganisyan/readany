@@ -1,0 +1,8 @@
+appId: com.mishanaer.readany.dev
+name: Open original PDF for native fixed-layout probe
+---
+- runFlow:
+    file: flows/android-open-fixture.yaml
+    env:
+      BOOK_TITLE: 11-river-library
+- takeScreenshot: android-pdf-open

@@ -1,0 +1,19 @@
+appId: com.mishanaer.readany.dev
+name: Android profile theme chooser for statusbar contrast QA
+# Start on Library. Third native bottom tab is Profile on this AVD.
+---
+- assertVisible: Library
+- tapOn:
+    point: "62%,93%"
+- extendedWaitUntil:
+    visible: Profile
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      text: Theme
+    direction: DOWN
+    timeout: 15000
+- tapOn: Theme
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: android-status-theme-chooser

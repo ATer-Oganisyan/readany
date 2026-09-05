@@ -14,6 +14,7 @@
     "./types": "./src/types/index.ts",
     "./types/*": "./src/types/*.ts",
     "./i18n": "./src/i18n/index.ts",
+    "./import/import-errors": "./src/import/import-errors.ts",
     "./utils": "./src/utils/index.ts",
     "./utils/*": "./src/utils/*.ts",
     "./services": "./src/services/index.ts",

@@ -1,0 +1,18 @@
+appId: com.mishanaer.readany.dev
+name: iOS audit book checkpoint preparation and reopen
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Library"
+    timeout: 30000
+- runFlow:
+    file: flows/ios-open-fixture.yaml
+    env:
+      BOOK_TITLE: "Аудит 08 - Архив FBZ"
+      PAGE_LABEL: "Narra Reader"
+- extendedWaitUntil:
+    notVisible: "Listen"
+    timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: ios-checkpoint-loaded-page

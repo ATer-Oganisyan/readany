@@ -71,6 +71,7 @@ import { createCoverJobRunner } from './cover-job-runner.mjs'
 import { bookCoverPrompt } from './catalog-cover-prompt.mjs'
 import { parseSceneJobBody, sceneGenerationPrompt } from './scene-generation.mjs'
 import { createBookCatalogRouter } from './book-catalog-api.mjs'
+import { createBookUploadByteBudget } from './book-upload-admission.mjs'
 import { createBookEmbeddingClientFromEnv } from './book-embedding-client.mjs'
 import { createBookSearchRouter } from './book-search-api.mjs'
 import { createPostgresBookSearchRepository } from './book-search-repository.mjs'
@@ -1387,6 +1388,13 @@ const importByteBudget = createPersistentBudgetMiddleware({
   perInstallationLimit: IMPORT_DAILY_BYTES_MB * 1024 * 1024,
   globalLimit: IMPORT_GLOBAL_DAILY_BYTES_MB * 1024 * 1024
 })
+// Source admission validates Content-Length before reserving exact bytes.
+// Unknown-length requests conservatively reserve the full permitted body cap.
+const bookUploadByteBudget = createBookUploadByteBudget({
+  registry: installationRegistry,
+  perInstallationLimit: IMPORT_DAILY_BYTES_MB * 1024 * 1024,
+  globalLimit: IMPORT_GLOBAL_DAILY_BYTES_MB * 1024 * 1024
+})
 
 app.get('/health', (_req, res) => {
   const llm = llmRouteReadiness()
@@ -1721,7 +1729,9 @@ if (bookMarkupRepository) {
     ttsMarkupRepository: bookTtsMarkupRepository,
     shadowPreviewEnabled: BOOK_SHADOW_PREVIEW_ENABLED,
     storage: bookObjectStorage,
-    uploadMaxBytes: BOOK_UPLOAD_MAX_BYTES
+    uploadMaxBytes: BOOK_UPLOAD_MAX_BYTES,
+    uploadGate: importGate,
+    uploadLimits: [importLimit, importDailyLimit, bookUploadByteBudget]
   }))
 }
 

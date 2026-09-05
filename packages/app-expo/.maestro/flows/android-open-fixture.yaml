@@ -1,0 +1,23 @@
+appId: com.mishanaer.readany.dev
+---
+- extendedWaitUntil:
+    visible: Library
+    timeout: 45000
+- repeat:
+    times: 5
+    commands:
+      - swipe:
+          start: 50%,30%
+          end: 50%,85%
+          duration: 150
+- tapOn: My books
+- scrollUntilVisible:
+    element:
+      text: ${BOOK_TITLE}
+    direction: DOWN
+    timeout: 20000
+    centerElement: true
+- tapOn: ${BOOK_TITLE}
+- extendedWaitUntil:
+    visible: Narra Reader
+    timeout: 30000
