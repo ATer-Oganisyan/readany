@@ -13,7 +13,7 @@
 превращать доступную локальную книгу в неработающую читалку.
 
 Однако «все шесть блоков работают на 10/10» сейчас неверно. При последней
-проверке TEST `/health` отдавал HTML nginx HTTP 502. Живые успешные генерации,
+проверке TEST `/health` отдавал HTML nginx HTTP 502. Полный клиентский AI-loop,
 качество разговора, время до звука и production-нагрузка не приняты.
 Новая TTS-правка проверена на Android, но ещё не на iOS WebView.
 
@@ -30,8 +30,24 @@
 - LLM-резервы для интерактивного диалога и фоновых задач реализованы;
   насыщение, оба HTTP-транспорта и отмена проверены настоящим gateway с
   управляемым локальным upstream. Это не замер нагрузки реальной модели.
-- Последний полный mobile regression: 165 suites / 1483 PASS. После устранения
-  найденной CI ошибки типа в новом тесте локальный TypeScript также PASS.
+- Последний полный mobile regression: **173 suites / 1587 PASS**, core —
+  **675 PASS**, TypeScript PASS. Gateway CI на `2cc00c8`: **835 PASS / 0 SKIP**
+  с PostgreSQL/S3. Нативные factory/Fabric/SceneDelegate harnesses также в CI.
+- Найдена и исправлена проектная причина двойного dev-client cold-start:
+  потеря входящей ссылки в SceneDelegate. После нативной пересборки отдельный
+  Air прошёл 5 полных cold-start сценариев с рабочими controls/AX/закладками,
+  дополнительный noninitial-page cold restore, свежий импорт FBZ, Files cancel,
+  возврат к прежней книге и warm reopen. В собранных логах — 0 lost-context
+  fallback, новых crash reports нет. Предыдущие неудачные кандидаты и границы
+  проверки сохранены в [Air QA](isolated-ios-air-client-qa-2026-09-05.md).
+- Живой staged worker→PostgreSQL→публикация уже прошёл на двух собственных
+  фразах: 4 отдельно проверенных вызова, 7 jobs, подтверждённая черта и
+  идемпотентность. Это не multi-chunk/mobile AI quality gate; подробности в
+  [отчёте canary](book-analysis-pipeline-canary-2026-09-05.md).
+- Добавлены закрытые операторские lifecycle counters для различения занятости
+  модели и ожидания accounting. Измеренная массовая ёмкость этим не доказана;
+  следующий [mixed-load план](mixed-load-acceptance-plan-2026-09-05.md) отделяет
+  реальные HTTP/PG/S3/worker проверки от качества и стоимости провайдеров.
 
 Подробные native-доказательства: `continuous-product-qa-2026-09-05.md`.
 Релизный барьер остаётся: живой AI core loop, качество, здоровый TTS provider,

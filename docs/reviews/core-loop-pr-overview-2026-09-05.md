@@ -36,7 +36,7 @@
 
 ## Проверки и границы
 
-- Последний локальный mobile: **172 suites / 1 584 PASS**, TypeScript PASS;
+- Последний локальный mobile: **173 suites / 1 587 PASS**, TypeScript PASS;
   включает подготовительную изоляцию LOCAL кэшей, но не AI-state/SQLite.
 - Оба CI на `9f59d2d` прошли. Gateway run33969207014:
   **831 PASS / 0 SKIP**, включая PostgreSQL и S3. Оба CI на последующем
@@ -45,8 +45,11 @@
   **834 PASS / 0 SKIP**, включая PostgreSQL/S3.
 - Последний core: **84 suites / 675 PASS**.
 - На `c674d74` оба CI success: Regression33971538010 и Gateway33971538008.
-  Для нового нативного factory regression добавлен отдельный macOS CI job;
-  его первый hosted-прогон ещё не принят.
+  Добавлен отдельный macOS CI job для factory/Fabric/SceneDelegate regressions.
+  На `144e38e` оба CI success (33972748384 / 33972748382), включая нативные
+  harnesses. На backend-правке `2cc00c8` Gateway33972954499:
+  **835 PASS / 0 FAIL / 0 SKIP**, включая PostgreSQL и S3.
+  Regression33972954508 на том же `2cc00c8` также success.
 - Новейший локальный backend без внешней БД:813 PASS,21 SKIP,0 FAIL;
   пропуски требуют отдельного PG/storage-прогона и не считаются PASS.
 - Native iOS/Android сценарии и точные ограничения записаны в отчётах.
@@ -63,15 +66,24 @@
   отдельно проверен и разрешён; ответы независимо проверены агентом.
   Только две собственные фразы: не большая книга, не мобильный AI-loop,
   не gateway cost ledger/S3 и не нагрузочная приёмка.
-- Отдельный iPhone Air получил готовый dev-client36 без пересборки; strict
-  Metro launch исключает промежуточный most-recent запуск. На LOCAL Air приняты
+- Отдельный iPhone Air сначала получил готовый dev-client36; strict
+  Metro launch убрал отдельный plain launch, но не ошибку cold URL в SceneDelegate.
+  На LOCAL Air приняты
   FBZ→Open→Reader, добавление закладки, листание и сохранение CFI в БД.
   Холодный запуск выявил **P1 native crash** в Expo registration; книга и
-  закладка после crash сохранены. Exact jump/cold return не приняты.
+  закладка после crash сохранены. На этом этапе exact jump/cold return не приняты.
   Гонка factory исправлена с нативными RED→GREEN/ThreadSanitizer тестами;
   patch вошёл в каноническую iOS-пересборку. Последующая проверка выявила
   другой P1 — потерянный AppContext при создании Fabric view. Данные целы,
-  стабильность запуска пока не принята.
+  первоначальные fallback-кандидаты не прошли native приёмку: AX-crash,
+  затем исчезнувшие элементы текущего экрана. Исправлена проектная причина
+  двойного cold URL запуска в SceneDelegate; сохранены обычные ссылки и options.
+  После пересборки **5/5 полных cold-start проходов с AX и закладками PASS**,
+  в собранных логах этих сессий fallback0, новых crash reports нет.
+  Дополнительный шестой запуск восстановил точный noninitial CFI страницы3.
+  Свежий FBZ→Open→Reader, открытие/отмена Files picker, возврат к прежней книге
+  и warm dev-client reopen также PASS; позиция страницы3 сохранена.
+  Это bounded dev-client gate, не signed-device/длительная crash-free гарантия.
   Выявлена и исправлена подмена explicit LOCAL-настроек TEST dotenv.
   Реальный собранный accessor и независимое ревью подтверждают LOCAL18787;
   это не подмена полноценной native приёмки проверкой конфигурации.
@@ -81,6 +93,9 @@
   платного вызова, без очереди. Регрессии и независимое ревью прошли.
   Сам запрос всё ещё может ждать зависшую БД; долговечная доставка учёта,
   media-пути и многорепличный лимит этим не исправлены.
+  Operator-only metrics теперь отдельно показывают четыре числовых lifecycle
+  счётчика после SQL snapshot; публичный health не расширен. Auth, зависший ledger,
+  cap1 и позднее обновление счётчика проверены через HTTP; throughput не измерен.
 - TEST при последней проверке — **HTTP 502**. Live AI quality/latency, новый
   TTS на iOS, signed release/физические устройства и production capacity
   **не приняты**. Это stabilization PR, не утверждение «готово к массовому релизу».

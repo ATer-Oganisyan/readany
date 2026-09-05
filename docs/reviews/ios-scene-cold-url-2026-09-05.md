@@ -42,3 +42,47 @@ link arriving only as userActivities is not changed by this patch. Real cold
 start, active UI controls and repeated accessibility snapshots remain required.
 No build, install, data wipe, settings reset, Metro action or provider call was
 performed while preparing this fix.
+
+## Root native acceptance, bounded sample
+
+Root rebuilt and installed only the isolated Air through the canonical wrapper.
+Build36, fingerprint `b7e9985e4b5b`; log
+`/private/tmp/narra-air-scene-startup-fix-build.log` records actual compilation of
+the updated AppDelegate.swift (line 4786). TEST8081 and its library were untouched.
+The complete mobile suite passed **173 files / 1,587 tests**, TypeScript passed.
+GitHub Regression33972748384 passed on `144e38e`, including all three native
+harnesses, mobile/core and TypeScript; Gateway33972748382 also passed.
+
+Native QA completed **5/5 cold launches** between 17:45 and 17:50:47 MSK:
+PIDs 37694, 43946, 46910, 52611, 54786. Each rendered Library/My books, opened
+the own book, exposed Book actions and the Bookmarks sheet, and accepted actual
+bookmark-row interaction with the expected CFI. Accessibility inspection stayed
+enabled. No new crash reports were observed; each PID had zero lost-context
+fallback messages in the collected overlapping five-minute log windows.
+The third run needed a test-flow correction: it had tapped to hide already
+visible controls. A conditional tap restored a valid check; app source did not
+change during the gate. Root independently inspected Library and Bookmarks
+screenshots.
+
+This closes the bounded cold-link startup/controls gate, **not** all iOS crash
+risk, arbitrary reload overlap, signed-device acceptance or mass-release QA.
+The repeated runs used the saved page-1 bookmark. The additional checks completed
+at 17:54:50 MSK:
+
+- A sixth cold start restored page 3 at the exact noninitial CFI
+  `epubcfi(/6/2!/4/2[chapter-1],/12/1:251,/18/1:113)`.
+- A new own FBZ fixture30 imported through URL → Open → Reader, creating book
+  `d9d5f55a-a220-4d9e-a85c-443212d1384e`.
+- The actual Files picker opened and cancelled without losing the library.
+- Returning to own27 preserved the same page-3 CFI.
+- A warm dev-client openLink on port8082 retained PID58515, restored functioning
+  Library/Reader/Bookmarks controls and preserved that noninitial CFI.
+
+All six PIDs had zero fallback messages in the collected log windows; no new
+crash reports were observed. This is a startup/import/return smoke test, not
+long-running soak, live AI/audio or release-signing acceptance.
+
+The executed cold-start and conditional-controls actions are preserved in
+`packages/app-expo/.maestro/ios-air-scene-full.yaml` with repository-relative
+paths. It requires the QA fixture and separate screenshot/CFI verification;
+it does not silently seed/delete books or claim standalone release acceptance.
