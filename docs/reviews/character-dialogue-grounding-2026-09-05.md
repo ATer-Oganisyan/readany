@@ -37,3 +37,7 @@ bytes после удаления только одной новой строк�
 17 model-free capture/HTTP/harness tests PASS до live. Независимый prompt review
 не приравнивался к проверке модельного качества. Постоянный LOCAL18787, его
 workers/providers и TEST не менялись. Полный multimodal AI-loop остаётся открытым.
+
+Финальный штатный isolated mobile-прогон на `e581688`:182 файла /1748 PASS,
+isolated TypeScript PASS. Основные зависимости TEST не менялись. Это регресс
+клиентского кода, не доказательство качества всех будущих модельных ответов.
