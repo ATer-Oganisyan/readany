@@ -294,15 +294,6 @@ function LibraryScreenContent() {
     if (importedCount > 0) libraryPagerRef.current?.selectPage(1);
   }, []);
 
-  const {
-    isPickingImport,
-    isUrlImporting,
-    handleLocalImport,
-    handleOpenImportSources,
-    handleOpenUrlImport,
-  } = useBookImportActions({ onImportComplete: revealImportedBooks });
-  const isBookImporting = isImporting || isPickingImport || isUrlImporting;
-
   useEffect(() => {
     let cancelled = false;
 
@@ -496,6 +487,18 @@ function LibraryScreenContent() {
     },
     [downloadBook, nav, t],
   );
+
+  const {
+    isPickingImport,
+    isUrlImporting,
+    handleLocalImport,
+    handleOpenImportSources,
+    handleOpenUrlImport,
+  } = useBookImportActions({
+    onImportComplete: revealImportedBooks,
+    onOpenImportedBook: handleOpen,
+  });
+  const isBookImporting = isImporting || isPickingImport || isUrlImporting;
 
   const catalogCoverLoadingEnabled = showCatalog && librarySection === "catalog";
 

@@ -5,7 +5,7 @@ import { supportsPrivateBookAnalysis } from "@/lib/narra/backend-book-capabiliti
 import { toast } from "@/lib/notifications";
 import { useLibraryStore } from "@/stores";
 import { useTheme } from "@/styles/ThemeContext";
-import type { ImportBooksResult } from "@readany/core";
+import type { Book, ImportBooksResult } from "@readany/core";
 import { getBookImportFailureCode } from "@readany/core/import/import-errors";
 import { getPlatformService } from "@readany/core/services";
 import { generateId } from "@readany/core/utils";
@@ -30,6 +30,7 @@ function getUrlImportFilename(url: URL): string {
 
 interface UseBookImportActionsOptions {
   onImportComplete?: (importedCount: number) => void;
+  onOpenImportedBook?: (book: Book) => void | Promise<void>;
 }
 
 type ImportToastId = string | number;
@@ -92,7 +93,10 @@ function waitForFicbookDownload<T>(operation: Promise<T>, signal: AbortSignal): 
   });
 }
 
-export function useBookImportActions({ onImportComplete }: UseBookImportActionsOptions = {}) {
+export function useBookImportActions({
+  onImportComplete,
+  onOpenImportedBook,
+}: UseBookImportActionsOptions = {}) {
   const { t } = useTranslation();
   const { colors } = useTheme();
   const importBooks = useLibraryStore((state) => state.importBooks);
@@ -113,11 +117,19 @@ export function useBookImportActions({ onImportComplete }: UseBookImportActionsO
 
   const showImportSummary = useCallback(
     (summary: ImportBooksResult, toastId?: ImportToastId, announceEnrichment = false) => {
+      if (!mountedRef.current) return;
       const refreshed = Math.min(
         summary.imported.length,
         Math.max(0, Math.trunc(summary.refreshedCount || 0)),
       );
       const added = summary.imported.length - refreshed;
+      const singleAddedBook =
+        summary.imported.length === 1 &&
+        added === 1 &&
+        summary.skippedDuplicates.length === 0 &&
+        summary.failures.length === 0
+          ? summary.imported[0]
+          : undefined;
       const canAnnounceEnrichment =
         announceEnrichment &&
         added > 0 &&
@@ -137,7 +149,10 @@ export function useBookImportActions({ onImportComplete }: UseBookImportActionsO
           ...(toastId !== undefined ? URL_IMPORT_TOAST_OPTIONS.styles : {}),
           description: { display: "flex" as const },
         },
-        duration: summary.failures.length ? 8000 : RESULT_TOAST_DURATION_MS,
+        duration:
+          summary.failures.length || (singleAddedBook && onOpenImportedBook)
+            ? 8000
+            : RESULT_TOAST_DURATION_MS,
         id: toastId,
         ...(summary.failures.length
           ? {
@@ -165,7 +180,16 @@ export function useBookImportActions({ onImportComplete }: UseBookImportActionsO
                 },
               },
             }
-          : {}),
+          : singleAddedBook && onOpenImportedBook
+            ? {
+                action: {
+                  label: t("library.importResultOpen", "Открыть"),
+                  onClick: () => {
+                    if (mountedRef.current) return onOpenImportedBook(singleAddedBook);
+                  },
+                },
+              }
+            : {}),
       };
       if (summary.failures.length > 0) {
         if (summary.imported.length > 0 || summary.skippedDuplicates.length > 0) {
@@ -209,7 +233,7 @@ export function useBookImportActions({ onImportComplete }: UseBookImportActionsO
         );
       }
     },
-    [colors.primary60, onImportComplete, t],
+    [colors.primary60, onImportComplete, onOpenImportedBook, t],
   );
 
   const handleLocalImport = useCallback(async () => {

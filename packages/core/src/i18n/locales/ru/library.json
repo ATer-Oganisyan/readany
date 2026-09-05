@@ -100,6 +100,7 @@
     "importResultAlreadyInLibrary": "Уже в библиотеке",
     "importResultEmpty": "Ничего не добавлено",
     "importResultDetails": "Подробнее",
+    "importResultOpen": "Открыть",
     "importResultFailedFiles": "Не добавленные файлы",
     "importResultMoreFailures": "И ещё файлов: {{count}}",
     "importFailureUnsupported": "Этот формат книги не поддерживается. Выберите EPUB, PDF, FB2, TXT или другой поддерживаемый формат книги.",

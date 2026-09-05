@@ -100,6 +100,7 @@
     "importResultAlreadyInLibrary": "Already in your library",
     "importResultEmpty": "Nothing was added",
     "importResultDetails": "Details",
+    "importResultOpen": "Open",
     "importResultFailedFiles": "Files that could not be added",
     "importResultMoreFailures": "And {{count}} more",
     "importFailureUnsupported": "This format is not supported. Choose EPUB, PDF, FB2, TXT, or another supported book format.",

@@ -22,6 +22,7 @@ const runtime = vi.hoisted(() => ({
   remove: vi.fn(),
   alert: vi.fn(),
   complete: vi.fn(),
+  open: vi.fn(),
   translate: vi.fn(),
   language: "ru" as "ru" | "en",
 }));
@@ -83,7 +84,10 @@ import { useBookImportActions } from "@/hooks/use-book-import-actions";
 let current: ReturnType<typeof useBookImportActions>;
 let tree: ReactTestRenderer;
 function Harness() {
-  current = useBookImportActions({ onImportComplete: runtime.complete });
+  current = useBookImportActions({
+    onImportComplete: runtime.complete,
+    onOpenImportedBook: runtime.open,
+  });
   return null;
 }
 
@@ -126,6 +130,97 @@ describe("local import actions", () => {
   afterEach(async () => {
     vi.useRealTimers();
     await act(async () => tree.unmount());
+  });
+
+  it.each(["local", "url"])("offers explicit Open for a single saved %s book", async (source) => {
+    const book = { id: "exact-new-book", format: "fbz" };
+    runtime.importBooks.mockResolvedValueOnce({
+      imported: [book],
+      skippedDuplicates: [],
+      failures: [],
+    });
+    await act(async () =>
+      source === "local" ? current.handleLocalImport() : current.handleOpenUrlImport(),
+    );
+    expect(runtime.open).not.toHaveBeenCalled();
+    const action = runtime.success.mock.lastCall?.[1].action;
+    expect(action).toMatchObject({ label: "Открыть", onClick: expect.any(Function) });
+    await act(async () => action.onClick());
+    expect(runtime.open).toHaveBeenCalledExactlyOnceWith(book);
+  });
+
+  it("ignores a saved toast Open after unmount", async () => {
+    await act(async () => current.handleLocalImport());
+    const action = runtime.success.mock.lastCall?.[1].action;
+    expect(action).toBeDefined();
+    await act(async () => tree.unmount());
+    await act(async () => action.onClick());
+    expect(runtime.open).not.toHaveBeenCalled();
+  });
+
+  it("localizes Open in English and keeps each action bound to its saved book", async () => {
+    runtime.language = "en";
+    const actions = [];
+    for (const id of ["first", "second"]) {
+      runtime.importBooks.mockResolvedValueOnce({
+        imported: [{ id }],
+        skippedDuplicates: [],
+        failures: [],
+      });
+      await act(async () => current.handleLocalImport());
+      actions.push(runtime.success.mock.lastCall?.[1].action);
+    }
+    expect(actions[0].label).toBe("Open");
+    await act(async () => actions[0].onClick());
+    expect(runtime.open).toHaveBeenCalledExactlyOnceWith({ id: "first" });
+  });
+
+  it("does not announce or offer navigation for a save completed after unmount", async () => {
+    let finish!: (summary: unknown) => void;
+    runtime.importBooks.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    let pending!: Promise<void>;
+    await act(async () => {
+      pending = current.handleLocalImport();
+    });
+    await act(async () => tree.unmount());
+    await act(async () => {
+      finish({ imported: [{ id: "late" }], skippedDuplicates: [], failures: [] });
+      await pending;
+    });
+    expect(runtime.success).not.toHaveBeenCalled();
+    expect(runtime.complete).not.toHaveBeenCalled();
+    expect(runtime.open).not.toHaveBeenCalled();
+  });
+
+  it("does not offer Open for a batch or a refreshed duplicate", async () => {
+    for (const summary of [
+      { imported: [{ id: "a" }, { id: "b" }], skippedDuplicates: [], failures: [] },
+      { imported: [{ id: "a" }], refreshedCount: 1, skippedDuplicates: [], failures: [] },
+      { imported: [{ id: "a" }], skippedDuplicates: [{ name: "other.epub" }], failures: [] },
+    ]) {
+      runtime.importBooks.mockResolvedValueOnce(summary);
+      await act(async () => current.handleLocalImport());
+      expect(runtime.success.mock.lastCall?.[1].action).toBeUndefined();
+    }
+    expect(runtime.open).not.toHaveBeenCalled();
+  });
+
+  it("retains Details instead of Open for partial failure", async () => {
+    runtime.importBooks.mockResolvedValueOnce({
+      imported: [{ id: "a" }],
+      skippedDuplicates: [],
+      failures: [{ name: "bad.epub" }],
+    });
+    await act(async () => current.handleLocalImport());
+    expect(runtime.warning.mock.lastCall?.[1].action.label).toBe("Подробнее");
+    await act(async () => runtime.warning.mock.lastCall?.[1].action.onClick());
+    expect(runtime.alert).toHaveBeenCalledOnce();
+    expect(runtime.open).not.toHaveBeenCalled();
   });
 
   it("lets iOS Files select dynamic book types and still delegates source admission to importBooks", async () => {
