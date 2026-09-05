@@ -114,3 +114,31 @@ books. No speculative native touch fix was applied.
 Screenshot: `/private/tmp/narra-air-physical-own27-evidence/2026-09-05_231925/narra-air-physical-own27/takeScreenshot/physical-own27-after.png`.
 Fresh import/Open-dismiss acceptance on `04c4b8c` has not yet run. This remains
 a bounded startup/reader checkpoint, not full iOS core-loop acceptance.
+
+## Fresh URL import / Open dismissal (`04c4b8c`)
+
+The native LOCAL Air flow imported own `01-river.epub` from the local fixture
+server, displayed Open, then opened actual Russian text without the notification.
+Root inspected the after-Open image and complete command timestamps.
+[Before Open](evidence/ios-rn0863/import-before-open.png),
+[Reader after Open](evidence/ios-rn0863/import-after-open.png),
+[native commands](evidence/ios-rn0863/import-open-commands.json).
+
+Open command duration was2462ms; absence was observed678ms after command
+completion (3140ms from command start). The clean Reader screenshot began
+5722ms after Add began, proving disappearance before the8s result timer.
+This accepts dismissal on this native path, **not** a measured <=2s touch SLA:
+automation delivery and observation add unseparated latency.
+
+Root independently compared `/private/tmp/narra-air-before-own01.json` and
+`/private/tmp/narra-air-after-own01.json`: three books, both original IDs and
+exact CFI/progress/hash/filePath/localProgressCheckpoint preserved.
+Fresh book ID `f7be0867-96f7-4560-83ef-87efc4e77685`, progress
+`0.031074336792853093`, CFI `epubcfi(/6/2!/4,/2,/8/1:113)`.
+Android acceptance of this newest dismissal change and other import paths remain
+open; the earlier Android native geometry fix has its separate evidence.
+
+The subsequent combined Back/reopen automation did not return to Library;
+the failure screenshot remained Reader. It is not accepted. A separate
+screenshot-guided control-visibility/Back diagnostic is pending; no crash is
+inferred from this failed navigation assertion.
