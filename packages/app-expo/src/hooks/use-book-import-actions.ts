@@ -139,6 +139,9 @@ export function useBookImportActions({
         skipped: summary.skippedDuplicates.length,
         failed: summary.failures.length,
       });
+      // File imports receive an ID from success(); URL imports reuse their loading ID.
+      // Keep this closure bound to its own result, including after a newer import.
+      let resultToastId = toastId;
       const toastOptions = {
         ...(toastId !== undefined ? URL_IMPORT_TOAST_OPTIONS : {}),
         description,
@@ -183,7 +186,9 @@ export function useBookImportActions({
                 action: {
                   label: t("library.importResultOpen", "Открыть"),
                   onClick: () => {
-                    if (mountedRef.current) return onOpenImportedBook(singleAddedBook);
+                    if (!mountedRef.current) return;
+                    if (resultToastId !== undefined) toast.dismiss(resultToastId);
+                    return onOpenImportedBook(singleAddedBook);
                   },
                 },
               }
@@ -201,7 +206,7 @@ export function useBookImportActions({
           toast.error(t("library.importResultFailed", "Добавление не удалось"), toastOptions);
         }
       } else if (summary.imported.length > 0) {
-        toast.success(
+        resultToastId = toast.success(
           added === 0
             ? t("library.importResultUpdated", "Библиотека обновлена")
             : t("library.importResultReadyToRead", "Импорт завершён. Можно читать"),

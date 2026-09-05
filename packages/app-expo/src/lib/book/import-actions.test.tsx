@@ -133,6 +133,8 @@ describe("local import actions", () => {
   });
 
   it.each(["local", "url"])("offers explicit Open for a single saved %s book", async (source) => {
+    const resultId = source === "local" ? "local-result-owned" : "url-loading";
+    runtime.success.mockReturnValueOnce(resultId);
     const book = { id: "exact-new-book", format: "fbz" };
     runtime.importBooks.mockResolvedValueOnce({
       imported: [book],
@@ -147,15 +149,21 @@ describe("local import actions", () => {
     expect(action).toMatchObject({ label: "Открыть", onClick: expect.any(Function) });
     await act(async () => action.onClick());
     expect(runtime.open).toHaveBeenCalledExactlyOnceWith(book);
+    expect(runtime.dismiss).toHaveBeenCalledExactlyOnceWith(resultId);
+    expect(runtime.dismiss.mock.invocationCallOrder[0]).toBeLessThan(
+      runtime.open.mock.invocationCallOrder[0],
+    );
   });
 
   it("ignores a saved toast Open after unmount", async () => {
+    runtime.success.mockReturnValueOnce("unmounted-result");
     await act(async () => current.handleLocalImport());
     const action = runtime.success.mock.lastCall?.[1].action;
     expect(action).toBeDefined();
     await act(async () => tree.unmount());
     await act(async () => action.onClick());
     expect(runtime.open).not.toHaveBeenCalled();
+    expect(runtime.dismiss).not.toHaveBeenCalled();
   });
 
   it.each(["picker", "local-save", "url-prompt"])(
@@ -214,6 +222,7 @@ describe("local import actions", () => {
     runtime.language = "en";
     const actions: Array<{ label: string; onClick: () => void | Promise<void> }> = [];
     for (const id of ["first", "second"]) {
+      runtime.success.mockReturnValueOnce(`result-${id}`);
       runtime.importBooks.mockResolvedValueOnce({
         imported: [{ id }],
         skippedDuplicates: [],
@@ -225,6 +234,8 @@ describe("local import actions", () => {
     expect(actions[0].label).toBe("Open");
     await act(async () => actions[0].onClick());
     expect(runtime.open).toHaveBeenCalledExactlyOnceWith({ id: "first" });
+    expect(runtime.dismiss).toHaveBeenCalledExactlyOnceWith("result-first");
+    expect(runtime.dismiss).not.toHaveBeenCalledWith("result-second");
   });
 
   it("does not announce or offer navigation for a save completed after unmount", async () => {
