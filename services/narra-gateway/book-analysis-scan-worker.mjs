@@ -183,7 +183,8 @@ export function createBookAnalysisScanWorker({
       objectKey: input.normalizedTextObjectKey,
       startByte: byteStart,
       endByteExclusive: byteEnd,
-      maxBytes: 128 * 1024
+      maxBytes: 128 * 1024,
+      signal
     })
     signal.throwIfAborted()
     let contextText

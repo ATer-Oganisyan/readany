@@ -8,6 +8,30 @@ existing sign-in normally. Subscription limits are respected, not bypassed.
 
 ## Review state
 
+### Current evidence (2026-09-06)
+
+The initial bootstrap-only notes below are historical, not the current limit
+of execution evidence. Subsequent reviewed live runs used the normal ChatGPT
+CLI sign-in: a three-chunk own-book pipeline made nine model calls and published
+two characters; a separate one-turn character HTTP canary also completed.
+See [live pipeline evidence](../../docs/reviews/subscription-multichunk-live-2026-09-06.md),
+[subsequent evaluator/replay checks](../../docs/reviews/multichunk-evaluator-replay-2026-09-06.md)
+and [dialogue evidence](../../docs/reviews/character-dialogue-grounding-2026-09-05.md).
+
+These are bounded text QA checks, not a native full-book/media gate. The live
+pipeline's original post-publication evaluator failed; later offline evaluation
+and PostgreSQL replay passed without changing the recorded model responses.
+Do not report that as a new live run or full quality acceptance.
+
+Read-only local recheck: `codex login status` reports ChatGPT sign-in, while
+the permanent LOCAL gateway has no configured LLM routes and its cover/scene
+workers are disabled. This bridge has not been installed as its general provider.
+The official [authentication documentation](https://learn.chatgpt.com/docs/auth)
+distinguishes local subscription access from general API calls and recommends
+Platform keys for general API usage. No credential files need to be copied.
+
+### Initial bootstrap review (historical)
+
 - Real macOS `codex sandbox` synthetic command containment: 14 checks passed,
   including the exact trusted executable exception and unchanged outside denial.
 - Actual HTTP server with fake child: 21 tests passed, no model requests.

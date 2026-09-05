@@ -30,7 +30,28 @@ function checksumBase64(hex) {
   return Buffer.from(hex, 'hex').toString('base64')
 }
 
-async function responseBodyBuffer(body, maxBytes) {
+async function responseBodyBuffer(body, maxBytes, signal) {
+  const cancel = () => {
+    // AWS GetObject bodies are Node streams; destroy wakes a pending iterator
+    // and closes its socket without an unhandled stream error before iteration.
+    if (typeof body?.destroy === 'function') body.destroy()
+  }
+  signal?.addEventListener('abort', cancel, { once: true })
+  try {
+    if (signal?.aborted) cancel()
+    signal?.throwIfAborted()
+    const bytes = await consumeResponseBodyBuffer(body, maxBytes)
+    signal?.throwIfAborted()
+    return bytes
+  } catch (error) {
+    signal?.throwIfAborted()
+    throw error
+  } finally {
+    signal?.removeEventListener('abort', cancel)
+  }
+}
+
+async function consumeResponseBodyBuffer(body, maxBytes) {
   if (!body) throw new Error('object storage returned an empty body')
   let buffer
   if (Buffer.isBuffer(body) || body instanceof Uint8Array) {
@@ -184,8 +205,10 @@ export function createBookObjectStorage({
       objectKey: rawObjectKey,
       startByte,
       endByteExclusive,
-      maxBytes = 64 * 1024 * 1024
+      maxBytes = 64 * 1024 * 1024,
+      signal
     }) {
+      signal?.throwIfAborted()
       const key = objectKey(rawObjectKey)
       if (
         !Number.isSafeInteger(startByte) || startByte < 0 ||
@@ -200,12 +223,18 @@ export function createBookObjectStorage({
       ) {
         invalid('object range exceeds the allowed read size')
       }
-      const result = await client.send(new GetObjectCommand({
-        Bucket: bucket,
-        Key: key,
-        Range: `bytes=${startByte}-${endByteExclusive - 1}`
-      }))
-      const bytes = await responseBodyBuffer(result.Body, maxBytes)
+      let result
+      try {
+        result = await client.send(new GetObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          Range: `bytes=${startByte}-${endByteExclusive - 1}`
+        }), { abortSignal: signal })
+      } catch (error) {
+        signal?.throwIfAborted()
+        throw error
+      }
+      const bytes = await responseBodyBuffer(result.Body, maxBytes, signal)
       if (bytes.byteLength !== expectedBytes) {
         throw Object.assign(new Error('object storage returned an unexpected byte range'), {
           code: 'STORAGE_RANGE_INTEGRITY'

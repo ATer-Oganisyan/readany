@@ -24,11 +24,11 @@ const result = { observations: [{
   evidence: { quote: text, startOffset: 0, endOffset: text.length }, confidence: 1
 }] }
 
-for (const mode of ['input', 'storage', 'generator', 'generator-abort', 'generator-empty', 'transient', 'renew-pending']) {
+for (const mode of ['input', 'storage', 'storage-abort', 'generator', 'generator-abort', 'generator-empty', 'transient', 'renew-pending']) {
   test(`scan lease lifecycle: ${mode}`, async (t) => {
     t.mock.timers.enable({ apis: ['setInterval'] })
     const entered = deferred(), block = deferred(), renewal = deferred()
-    let models = 0, commits = 0, failures = 0, renewals = 0, modelSignal
+    let models = 0, commits = 0, failures = 0, renewals = 0, modelSignal, storageSignal
     const worker = createBookAnalysisScanWorker({
       workerId: 'own-worker', extractorVersion: 'own-extractor', leaseSeconds: 30, leaseRenewMs: 1000,
       logger: { info() {}, error() {}, warn() {} },
@@ -46,7 +46,14 @@ for (const mode of ['input', 'storage', 'generator', 'generator-abort', 'generat
         async completeScan() { commits++; return { stage: 'resolve' } },
         async failAnalysisJob() { failures++; return { status: 'queued' } }
       },
-      storage: { async getBytesRange() {
+      storage: { async getBytesRange(options) {
+        storageSignal = options.signal
+        if (mode === 'storage-abort') {
+          entered.resolve()
+          await new Promise((_, reject) => options.signal.addEventListener('abort',
+            () => reject(options.signal.reason), { once: true }))
+          assert.fail('aborted storage must not return bytes')
+        }
         if (mode === 'storage') { entered.resolve(); await block.promise }
         return { bytes: Buffer.from(text) }
       } },
@@ -68,13 +75,14 @@ for (const mode of ['input', 'storage', 'generator', 'generator-abort', 'generat
     renewal.resolve()
     if (mode === 'generator-abort') block.reject(new DOMException('Aborted', 'AbortError'))
     else if (mode === 'generator-empty') block.reject(Object.assign(new Error('late empty result'), { code: 'SCAN_EMPTY_OBSERVATIONS' }))
-    else block.resolve()
+    else if (mode !== 'storage-abort') block.resolve()
     const outcome = await running
     const healthy = ['transient', 'renew-pending'].includes(mode)
     assert.equal(models, healthy || mode.startsWith('generator') ? 1 : 0)
     assert.equal(commits, healthy ? 1 : 0)
     assert.equal(failures, 0, 'old owner must not fail or requeue the replacement job')
     if (mode.startsWith('generator')) assert.equal(modelSignal?.aborted, true)
+    if (mode.startsWith('storage')) assert.equal(storageSignal?.aborted, true, 'lease cancellation reaches range storage')
     if (!healthy) assert.equal(outcome.errorCode, 'LEASE_LOST')
     else assert.equal(outcome.status, 'completed')
     assert.equal(observedRenewals, 1, 'heartbeat renewals must not overlap')

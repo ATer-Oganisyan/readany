@@ -144,8 +144,11 @@ test('scan worker reads and sends only its bounded chunk', async () => {
     objectKey: input.normalizedTextObjectKey,
     startByte: 0,
     endByteExclusive: Buffer.byteLength(text),
-    maxBytes: 128 * 1024
+    maxBytes: 128 * 1024,
+    signal: rangeRequest.signal
   })
+  assert.ok(rangeRequest.signal instanceof AbortSignal)
+  assert.equal(rangeRequest.signal.aborted, false)
   assert.equal(generatorRequest.contextText, text)
   assert.deepEqual(generatorRequest.sectionTitles, ['Глава вторая'])
   assert.equal(generatorRequest.coreLocalStartOffset, 8)
