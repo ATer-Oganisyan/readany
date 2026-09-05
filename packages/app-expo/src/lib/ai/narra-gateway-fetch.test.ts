@@ -758,6 +758,29 @@ describe("Narra gateway consumed response lifecycle", () => {
 describe("local gateway credential isolation", () => {
   afterEach(() => vi.unstubAllEnvs());
 
+  it("uses an atomic explicit LOCAL launch profile above TEST dotenv for requests and health", async () => {
+    vi.stubEnv("EXPO_PUBLIC_NARRA_ENVIRONMENT", "test");
+    vi.stubEnv("EXPO_PUBLIC_NARRA_GATEWAY_URL", "https://api-test.narra.disrupt.builders");
+    vi.stubEnv("EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE", "installation");
+    vi.stubEnv("EXPO_PUBLIC_NARRA_LAUNCH_GATEWAY_URL", "http://127.0.0.1:18787");
+    vi.stubEnv("EXPO_PUBLIC_NARRA_LAUNCH_ENVIRONMENT", "development");
+    vi.stubEnv("EXPO_PUBLIC_NARRA_LAUNCH_AUTH_MODE", "none");
+    vi.resetModules();
+    const gateway = await import("./narra-gateway-fetch");
+    expect(gateway.getNarraGatewayConfig()).toEqual({
+      baseUrl: "http://127.0.0.1:18787",
+      authMode: "none",
+    });
+    const request = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        jsonResponse(200, { ok: true, environment: "development", version: "local" }),
+      );
+    gateway.setNarraGatewayFetch(request);
+    expect((await gateway.probeNarraGatewayHealth()).buildEnvironment).toBe("unknown");
+    expect(request.mock.calls[0][0]).toBe("http://127.0.0.1:18787/health");
+  });
+
   it("does not send or replace remote credentials when switching to local and back", async () => {
     vi.resetModules();
     vi.clearAllMocks();

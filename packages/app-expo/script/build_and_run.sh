@@ -269,6 +269,9 @@ run_metro_prepared() {
   # another Metro request after the dev server disconnects or the app resumes.
   APP_VARIANT=development \
     EXPO_NO_METRO_LAZY=1 \
+    EXPO_PUBLIC_NARRA_LAUNCH_GATEWAY_URL="${EXPO_PUBLIC_NARRA_GATEWAY_URL:-https://api-test.narra.disrupt.builders}" \
+    EXPO_PUBLIC_NARRA_LAUNCH_ENVIRONMENT="${EXPO_PUBLIC_NARRA_ENVIRONMENT:-test}" \
+    EXPO_PUBLIC_NARRA_LAUNCH_AUTH_MODE="${EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE:-installation}" \
     NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--dns-result-order=ipv4first" \
     pnpm exec expo start --dev-client --scheme readany-dev "${host_args[@]}" --port "$METRO_PORT"
 }

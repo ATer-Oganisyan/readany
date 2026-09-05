@@ -2,6 +2,7 @@ import Constants from "expo-constants";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import { AppState, Platform } from "react-native";
+import { getEffectiveNarraGatewayProfile } from "../ai/narra-gateway-config";
 import { createDiagnosticJournal, diagnosticErrorReason } from "./diagnostic-journal";
 
 const directory = `${FileSystem.documentDirectory}narra-diagnostics`;
@@ -29,8 +30,13 @@ function diagnosticBackendHost(hostname: string): string {
 }
 
 function buildEnvironment(): "production" | "test" | "unknown" {
-  if (process.env.EXPO_PUBLIC_NARRA_ENVIRONMENT === "production") return "production";
-  if (process.env.EXPO_PUBLIC_NARRA_ENVIRONMENT === "test") return "test";
+  try {
+    const { environment } = getEffectiveNarraGatewayProfile();
+    if (environment === "production") return "production";
+    if (environment === "test") return "test";
+  } catch {
+    /* A rejected launch profile is unknown, never the underlying dotenv label. */
+  }
   return "unknown";
 }
 
