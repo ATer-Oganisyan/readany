@@ -16,14 +16,25 @@ const runtime = vi.hoisted(() => {
     chatPlaceholder: "Написать герою…",
   };
   const narra = {
-    books: { book: { characters: [character], chats: { hero: messages }, memories: {} } },
+    books: {
+      book: {
+        backendBinding: { bookEditionId: "edition-a", contentSha256: "a".repeat(64) },
+        characters: [character],
+        chats: { hero: messages },
+        memories: {},
+      },
+    },
     appendChatMessage: vi.fn((_book: string, _hero: string, message: (typeof messages)[number]) => {
       messages.push(message);
     }),
     setMemory: vi.fn(),
     updateCharacter: vi.fn(),
   };
+  const initialBook = narra.books.book;
+  const listeners = new Set<() => void>();
   return {
+    initialBook,
+    listeners,
     language: "ru",
     messages,
     narra,
@@ -81,6 +92,10 @@ vi.mock("@/stores", () => ({
   useLibraryStore: (select: (state: unknown) => unknown) => select({ books: [runtime.book] }),
   useNarraStore: Object.assign((select: (state: unknown) => unknown) => select(runtime.narra), {
     getState: () => runtime.narra,
+    subscribe: (listener: () => void) => {
+      runtime.listeners.add(listener);
+      return () => runtime.listeners.delete(listener);
+    },
   }),
 }));
 vi.mock("expo-secure-store", () => ({ getItemAsync: vi.fn(), setItemAsync: vi.fn() }));
@@ -98,6 +113,13 @@ beforeEach(() => {
   runtime.messages.length = 0;
   runtime.context = null;
   runtime.language = "ru";
+  runtime.narra.books.book = runtime.initialBook;
+  runtime.initialBook.chats.hero = runtime.messages;
+  runtime.initialBook.backendBinding = {
+    bookEditionId: "edition-a",
+    contentSha256: "a".repeat(64),
+  };
+  runtime.initialBook.characters[0].chatPlaceholder = "Написать герою…";
 });
 afterEach(() => {
   if (tree) act(() => tree.unmount());
@@ -106,6 +128,104 @@ afterEach(() => {
 });
 
 describe("character chat screen recovery", () => {
+  it.each(["greeting", "placeholder", "memory"])(
+    "does not commit stale %s after a source change",
+    async (kind) => {
+      if (kind !== "greeting")
+        runtime.messages.push({
+          id: "greeting",
+          role: "assistant",
+          content: "Привет",
+          createdAt: 1,
+        });
+      if (kind === "placeholder") runtime.initialBook.characters[0].chatPlaceholder = "";
+      if (kind === "memory")
+        runtime.messages.push({ id: "previous", role: "user", content: "Раньше", createdAt: 2 });
+      // Production Zustand actions replace chat arrays; the send callback keeps
+      // its pre-send snapshot rather than the test recorder's mutable array.
+      if (kind === "memory") runtime.initialBook.chats.hero = [...runtime.messages];
+      let finish!: (response: Response) => void;
+      let requests = 0;
+      setNarraGatewayAdapter(() => {
+        requests++;
+        if (kind === "memory" && requests === 1)
+          return Promise.resolve(new Response(JSON.stringify({ text: "Свежий ответ" })));
+        return new Promise<Response>((resolve) => {
+          finish = resolve;
+        });
+      });
+      await act(async () => {
+        tree = create(
+          <NarraCharacterChatScreen embedded bookId="book" characterId="hero" onBack={vi.fn()} />,
+        );
+      });
+      if (kind === "memory")
+        await act(async () => {
+          await tree.root.find((node) => String(node.type) === "Chat").props.onSend("Новый вопрос");
+        });
+      expect(finish).toBeTypeOf("function");
+      await act(async () => {
+        runtime.initialBook.backendBinding = {
+          bookEditionId: "edition-b",
+          contentSha256: "b".repeat(64),
+        };
+        for (const listener of runtime.listeners) listener();
+        finish(new Response(JSON.stringify({ text: "Написать старому герою…" })));
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(runtime.narra.setMemory).not.toHaveBeenCalled();
+      expect(runtime.narra.updateCharacter).not.toHaveBeenCalled();
+      expect(
+        runtime.messages.some((message) => message.content === "Написать старому герою…"),
+      ).toBe(false);
+      expect(runtime.listeners.size).toBe(0);
+    },
+  );
+  it.each(["rebind", "remove", "roundtrip"])(
+    "does not save a pending answer after %s",
+    async (change) => {
+      runtime.messages.push({ id: "greeting", role: "assistant", content: "Привет", createdAt: 1 });
+      let finish!: (response: Response) => void;
+      setNarraGatewayAdapter(
+        () =>
+          new Promise<Response>((resolve) => {
+            finish = resolve;
+          }),
+      );
+      await act(async () => {
+        tree = create(
+          <NarraCharacterChatScreen embedded bookId="book" characterId="hero" onBack={vi.fn()} />,
+        );
+      });
+      let sent!: Promise<void>;
+      await act(async () => {
+        sent = tree.root.find((node) => String(node.type) === "Chat").props.onSend("Вопрос");
+      });
+      await act(async () => {
+        if (change === "remove") Reflect.deleteProperty(runtime.narra.books, "book");
+        else
+          runtime.initialBook.backendBinding = {
+            bookEditionId: "edition-b",
+            contentSha256: "b".repeat(64),
+          };
+        for (const listener of runtime.listeners) listener();
+        if (change === "roundtrip") {
+          runtime.initialBook.backendBinding = {
+            bookEditionId: "edition-a",
+            contentSha256: "a".repeat(64),
+          };
+          for (const listener of runtime.listeners) listener();
+        }
+        finish(new Response(JSON.stringify({ text: "Устаревший ответ" })));
+        await sent;
+      });
+      expect(runtime.messages.some((message) => message.content === "Устаревший ответ")).toBe(
+        false,
+      );
+      expect(runtime.narra.setMemory).not.toHaveBeenCalled();
+      expect(runtime.listeners.size).toBe(0);
+    },
+  );
   it("admits only one send when the same render receives two submit events", async () => {
     runtime.messages.push({ id: "greeting", role: "assistant", content: "Привет", createdAt: 1 });
     const responders: Array<(response: Response) => void> = [];
