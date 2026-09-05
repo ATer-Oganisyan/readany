@@ -41,3 +41,25 @@ Root независимо проверил 3/3 теста захвата: пов
 Это хеш мобильного payload, **не разрешённый хеш provider request**: сервер
 ещё добавляет свои инструкции и параметры. Живой вызов здесь не выполняется;
 прежний подписочный canary и его allowlist не изменены.
+
+Следующий захват `capture-character-provider-fixture.mjs` использует фактические
+`parseChatBody` → `withChatCompliance` → `requestChat`, как HTTP route.
+Проверены один provider fetch, его URL/метод, завершение attempt и отсутствие
+повторного добавления уже присутствующих серверных инструкций. Fetch здесь
+подменён в памяти; ни gateway HTTP, ни CLI модели не запускаются.
+
+Root: 4/4 совместных теста двух захватов PASS; агент независимо повторил
+provider-тест с двумя захватами. Provider payload: 6738 UTF-8 байт,3 сообщения,
+SHA256 `7d6447e6b37eebc4e482a2381e921be09aa9fc05b9d378dfc65dfa1875c76259`.
+Клиентская temperature0.85 сохраняется во входном payload; серверная
+конфигурация litellm/gpt-5.6-luna не передаёт её upstream. CLI-вывод захвата —
+JSONL: фактический provider пишет отдельную строку события до артефакта.
+Хешируется только requestBytes, не весь stdout. Начальные неверные ожидания
+URL без /v1 и статуса succeeded исправлены в harness и не считаются
+исправленными багами приложения.
+
+Оба model-free захвата добавлены в Narra Regression/mobile-and-core; workflow
+также реагирует на изменения gateway и capture-скриптов. Локальная проверка
+workflow через actionlint PASS; новая CI-конфигурация пока не выполнена в GitHub.
+Отдельно root прогнал contracts, rf-compliance, providers и provider-response:
+55/55 PASS. Эти проверки не используют подписку и не оценивают качество модели.
