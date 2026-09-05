@@ -29,7 +29,9 @@ import { createEventStore } from './event-store.mjs'
 import { readBoundedBody } from './safe-fetch.mjs'
 import { fetchImportSource, importSourceFailure } from './import-source.mjs'
 import { createConcurrencyGate, requestAbortSignal, withTimeout } from './concurrency.mjs'
+import { createWorkloadConcurrencyGate, chatWorkload } from './workload-concurrency.mjs'
 import { parseEnvBool, parseEnvInt } from './env.mjs'
+import { listenGateway } from './gateway-listener.mjs'
 import {
   analyticsRoute,
   completionProperties,
@@ -259,7 +261,15 @@ if (COVER_JOB_ATTEMPT_TIMEOUT_SECONDS * 1_000 < minimumCoverAttemptTimeoutMs) {
     'COVER_JOB_ATTEMPT_TIMEOUT_SECONDS must cover every configured cover image model timeout plus 15 seconds'
   )
 }
-const llmGate = createConcurrencyGate({ limit: LLM_CONCURRENCY, queueLimit: LLM_QUEUE_LIMIT, name: 'LLM' })
+const llmGate = createWorkloadConcurrencyGate({
+  limit: LLM_CONCURRENCY, queueLimit: LLM_QUEUE_LIMIT, name: 'LLM',
+  ...Object.fromEntries([
+    ['interactiveReserve', 'LLM_INTERACTIVE_RESERVE'],
+    ['backgroundReserve', 'LLM_BACKGROUND_RESERVE'],
+    ['interactiveQueueReserve', 'LLM_INTERACTIVE_QUEUE_RESERVE'],
+    ['backgroundQueueReserve', 'LLM_BACKGROUND_QUEUE_RESERVE']
+  ].filter(([, key]) => process.env[key] !== undefined).map(([key, envKey]) => [key, Number(process.env[envKey])]))
+})
 const speechGate = createConcurrencyGate({ limit: SPEECH_CONCURRENCY, queueLimit: SPEECH_QUEUE_LIMIT, name: 'Speech' })
 const imageGate = createConcurrencyGate({ limit: IMAGE_CONCURRENCY, queueLimit: IMAGE_QUEUE_LIMIT, name: 'Image' })
 const coverGate = createConcurrencyGate({ limit: COVER_CONCURRENCY, queueLimit: COVER_QUEUE_LIMIT, name: 'Cover' })
@@ -667,7 +677,7 @@ async function completeInternalChat({ messages, signal, costContext }) {
   let providerResult
   let recorded = false
   try {
-    release = await llmGate.acquire(signal)
+    release = await llmGate.acquire(signal, { workload: 'background' })
     providerResult = await requestChat({
       messages,
       purpose: 'structured_task',
@@ -1780,8 +1790,8 @@ app.post('/v2/ai/chat/stream', aiLimit, aiDailyLimit, express.json({ limit: '1mb
   let recordActorAnalytics = true
   let requestPurpose
   try {
-    release = await llmGate.acquire(clientSignal)
     const input = parseChatBody(req.body, { stream: true })
+    release = await llmGate.acquire(clientSignal, { workload: chatWorkload(input) })
     // Правовые рамки РФ — обязанность сервера: старый или модифицированный
     // клиент не может их обойти. Идемпотентно к рамке, присланной клиентом.
     const messages = withChatCompliance(input.messages, input.purpose)
@@ -1895,8 +1905,8 @@ app.post('/v2/ai/chat/complete', aiLimit, aiDailyLimit, express.json({ limit: '1
   let recordActorAnalytics = true
   let requestPurpose
   try {
-    release = await llmGate.acquire(clientSignal)
     const input = parseChatBody(req.body)
+    release = await llmGate.acquire(clientSignal, { workload: chatWorkload(input) })
     // Диалоговые purposes и здесь получают серверную правовую рамку.
     const messages = withChatCompliance(input.messages, input.purpose)
     analyticsOrigin = input.origin
@@ -2458,7 +2468,7 @@ app.use((error, _req, res, _next) => {
   res.status(500).json({ error: 'Внутренняя ошибка gateway', code: 'UNKNOWN' })
 })
 
-const httpServer = app.listen(PORT, () => {
+const httpServer = listenGateway(app, PORT, () => {
   const llm = llmRouteReadiness()
   console.log(`[narra-proxy] слушает :${PORT}`)
   console.log(`  чат(LLM): ${llm.ready ? 'ok' : '—'}  salutespeech: ${SALUTE_KEY ? 'ok' : '—'}  kandinsky: ${KANDINSKY_TOKEN ? 'ok' : '—'}`)

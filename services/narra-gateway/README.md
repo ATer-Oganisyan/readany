@@ -64,6 +64,12 @@ until `configured` is true and a canary event reaches the stats module.
 
 ## Local verification
 
+For a host-only gateway, set `GATEWAY_HOST=127.0.0.1` and a dedicated `PORT`.
+If `GATEWAY_HOST` is unset or empty, Node's existing wildcard deployment binding
+is preserved. Verify the actual listening address before connecting a local client.
+Use a separate local database, object bucket and installation identity; a healthy
+HTTP/database/storage gateway does not imply configured AI providers or running workers.
+
 Use **Node.js 24 LTS** for the gateway and its workers. The release image is
 `node:24.20.0-alpine3.23`, pinned by digest in [`Dockerfile`](Dockerfile);
 `package.json` and `package-lock.json` require Node >=24, and the gateway CI
