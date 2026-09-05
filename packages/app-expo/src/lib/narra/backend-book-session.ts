@@ -51,6 +51,7 @@ export class BackendBookSession {
     void this.refresh();
   }
   update(progress: number) {
+    if (this.controller.signal.aborted) return;
     this.currentProgress = this.normalize(progress);
     this.pendingProgress = Math.max(this.pendingProgress, this.currentProgress);
     if (this.latest?.availability === "ready") this.deps.publish(this.latest, this.currentProgress);
@@ -163,6 +164,10 @@ export class BackendBookSession {
       if (this.binding?.resolution === "private" && this.deps.isNotFound(error)) {
         this.deps.expired(this.binding);
         this.binding = undefined;
+        // The cached manifest belongs to the expired transport identity. A
+        // reader progress event must not publish it during replacement binding.
+        this.latest = undefined;
+        this.mediaPending = false;
         this.sentProgress = -1;
         clearTimeout(this.identityTimer);
       }

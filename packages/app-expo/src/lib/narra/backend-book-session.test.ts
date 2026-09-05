@@ -180,6 +180,49 @@ describe("backend book synchronization lifecycle", () => {
     expect(deps.error).toHaveBeenCalled();
     session.stop();
   });
+  it("does not republish expired profiles while the replacement edition is resolving", async () => {
+    const { session, deps } = setup();
+    await session.retry();
+    vi.mocked(deps.manifest).mockRejectedValueOnce("404");
+    await session.retry();
+    vi.mocked(deps.publish).mockClear();
+    vi.mocked(deps.media).mockClear();
+    session.update(0.4);
+    expect(deps.publish).not.toHaveBeenCalled();
+    expect(deps.media).not.toHaveBeenCalled();
+    // Once the replacement has its own manifest, publishing resumes normally.
+    await session.retry();
+    expect(deps.publish).toHaveBeenCalledWith(ready, 0.4);
+    session.stop();
+  });
+  it("ignores progress updates after the final consumer stops the session", async () => {
+    const { session, deps } = setup();
+    await session.retry();
+    session.stop();
+    vi.mocked(deps.publish).mockClear();
+    session.update(0.8);
+    expect(deps.publish).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it("does not restart queued media work for an expired edition", async () => {
+    const { session, deps } = setup();
+    let finishMedia!: () => void;
+    vi.mocked(deps.media).mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finishMedia = resolve;
+      }),
+    );
+    await session.retry();
+    session.update(0.3);
+    vi.mocked(deps.manifest).mockRejectedValueOnce("404");
+    await session.retry();
+    finishMedia();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(deps.media).toHaveBeenCalledTimes(1);
+    await session.retry();
+    expect(deps.media).toHaveBeenCalledTimes(2);
+    session.stop();
+  });
   it("keeps explicit retry pending through an already running refresh without duplicating it", async () => {
     const { session, deps } = setup();
     let finish!: (value: BackendBookManifest) => void;

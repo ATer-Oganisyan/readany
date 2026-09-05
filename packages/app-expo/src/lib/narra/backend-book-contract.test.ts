@@ -8,6 +8,39 @@ import {
   shouldPollBackendManifest,
 } from "./backend-book-contract";
 
+it("preserves wire source identity separately from publication hash and binds legacy manifests to the request", () => {
+  const binding = { bookEditionId: "edition-a", contentSha256: "a".repeat(64) };
+  const wire = {
+    availability: "ready",
+    characters: [],
+    content_hash: "publication-hash",
+    book: { book_edition_id: binding.bookEditionId, content_sha256: binding.contentSha256 },
+  };
+  const parsed = parseBackendManifest(wire, binding);
+  expect(parsed.bookEditionId).toBe(binding.bookEditionId);
+  expect(parsed.sourceContentSha256).toBe(binding.contentSha256);
+  expect(parsed.contentHash).toBe("publication-hash");
+  const legacy = parseBackendManifest({ availability: "ready", characters: [] }, binding);
+  binding.bookEditionId = "edition-b";
+  expect(legacy.requestIdentity?.bookEditionId).toBe("edition-a");
+  expect(legacy.bookEditionId).toBeUndefined();
+  expect(Object.isFrozen(legacy.requestIdentity)).toBe(true);
+});
+
+it.each([
+  { book_edition_id: "edition-b" },
+  { content_sha256: "b".repeat(64) },
+  { book_edition_id: null },
+  { content_sha256: "invalid" },
+])("rejects contradictory or malformed wire manifest identity %j", (book) => {
+  expect(() =>
+    parseBackendManifest(
+      { availability: "ready", characters: [], book },
+      { bookEditionId: "edition-a", contentSha256: "a".repeat(64) },
+    ),
+  ).toThrow(/manifest|Manifest/);
+});
+
 function manifest(overrides: Record<string, unknown> = {}) {
   return parseBackendManifest({
     availability: "ready",

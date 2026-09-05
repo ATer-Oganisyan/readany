@@ -260,6 +260,16 @@ async function applyBookLanguage(bookId: string, language: unknown) {
 }
 
 function createSession(book: Book, progress: number) {
+  const belongsToCurrentBinding = (manifest: BackendBookManifest) => {
+    const current = useNarraStore.getState().books[book.id]?.backendBinding;
+    return Boolean(
+      current &&
+        manifest.requestIdentity &&
+        current.bookEditionId === manifest.requestIdentity.bookEditionId &&
+        current.contentSha256.toLowerCase() ===
+          manifest.requestIdentity.contentSha256.toLowerCase(),
+    );
+  };
   return new BackendBookSession(
     {
       bind: async (signal) => {
@@ -285,10 +295,16 @@ function createSession(book: Book, progress: number) {
       },
       progress: (binding, value, signal) =>
         postBackendProgress(binding.bookEditionId, value, signal),
-      manifest: async (binding, signal) =>
-        parseBackendManifest(
-          await backendBookRequest(backendBookPath(binding.bookEditionId, "manifest"), { signal }),
-        ),
+      manifest: async (binding, signal) => {
+        const identity = {
+          bookEditionId: binding.bookEditionId,
+          contentSha256: binding.contentSha256,
+        };
+        return parseBackendManifest(
+          await backendBookRequest(backendBookPath(identity.bookEditionId, "manifest"), { signal }),
+          identity,
+        );
+      },
       preview: async (binding, signal) => {
         const preview = parseBackendCharactersPreview(
           await backendBookRequest(backendBookPath(binding.bookEditionId, "characters/preview"), {
@@ -328,6 +344,7 @@ function createSession(book: Book, progress: number) {
         };
       },
       publish: (manifest, value) => {
+        if (!belongsToCurrentBinding(manifest)) return;
         const current = useLibraryStore.getState().books.find((item) => item.id === book.id);
         if (!current || current.deletedAt) return;
         void applyBookLanguage(book.id, manifest.language).catch(() => {
@@ -356,7 +373,10 @@ function createSession(book: Book, progress: number) {
           console.warn("[Backend books] Catalog manifest is unexpectedly processing");
       },
       publishPreview: (preview) => status(book.id, { preview, error: undefined }),
-      media: (_manifest, value, signal) => loadBackendCharacterMedia(book.id, value, signal),
+      media: async (manifest, value, signal) => {
+        if (belongsToCurrentBinding(manifest))
+          await loadBackendCharacterMedia(book.id, value, signal);
+      },
       error: (error) =>
         status(book.id, {
           error:

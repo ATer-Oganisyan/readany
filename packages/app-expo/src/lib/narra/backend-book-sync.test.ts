@@ -98,6 +98,7 @@ import {
   retryBackendBookAnalysis,
   retryBackendBookSync,
   startImportedBackendBook,
+  updateBackendBookProgress,
   useBackendBookStatus,
 } from "./backend-book-sync";
 import { characterBiography } from "./character-profile";
@@ -159,6 +160,90 @@ async function open(value: Book) {
 }
 
 describe("backend book import and persistence integration", () => {
+  it.each(["same", "wire", "edition", "source"])(
+    "manifest completion belongs to its captured binding (%s)",
+    async (change) => {
+      const binding = {
+        resolution: "catalog" as const,
+        bookEditionId: "edition-a",
+        contentSha256: "a".repeat(64),
+        sourceUploaded: true,
+      };
+      useNarraStore.getState().setBackendBinding("local", binding);
+      let resolveManifest!: (value: unknown) => void;
+      runtime.request.mockImplementation(async (path: string) =>
+        path.endsWith("/manifest")
+          ? new Promise((resolve) => {
+              resolveManifest = resolve;
+            })
+          : {},
+      );
+      await open({
+        ...book(),
+        sourceKind: "catalog",
+        bookEditionId: binding.bookEditionId,
+        contentHash: binding.contentSha256,
+      });
+      expect(resolveManifest).toBeTypeOf("function");
+      const switched = change === "edition" || change === "source";
+      if (switched)
+        useNarraStore.getState().setBackendBinding("local", {
+          ...binding,
+          bookEditionId: change === "edition" ? "edition-b" : binding.bookEditionId,
+          contentSha256: change === "source" ? "b".repeat(64) : binding.contentSha256,
+        });
+      const before = useNarraStore.getState().books.local;
+      const beforeStatus = useBackendBookStatus.getState().books.local;
+      resolveManifest({
+        ...ready,
+        language: "en",
+        ...(change === "wire"
+          ? {
+              book: {
+                book_edition_id: binding.bookEditionId,
+                content_sha256: binding.contentSha256,
+              },
+            }
+          : {}),
+      }); // Legacy response provenance must come from request.
+      await vi.advanceTimersByTimeAsync(0);
+      if (!switched) {
+        expect(useNarraStore.getState().books.local.characters[0]?.id).toBe("stable");
+        expect(useBackendBookStatus.getState().books.local.manifest?.availability).toBe("ready");
+        expect(runtime.books[0].meta.language).toBe("en");
+      } else {
+        expect(useNarraStore.getState().books.local).toBe(before);
+        expect(useBackendBookStatus.getState().books.local).toBe(beforeStatus);
+        expect(runtime.books[0].meta.language).toBeUndefined();
+        expect(runtime.media).not.toHaveBeenCalled();
+      }
+    },
+  );
+  it("does not republish a session's cached manifest after external binding replacement", async () => {
+    const binding = {
+      resolution: "catalog" as const,
+      bookEditionId: "edition-a",
+      contentSha256: "a".repeat(64),
+      sourceUploaded: true,
+    };
+    useNarraStore.getState().setBackendBinding("local", binding);
+    await open({
+      ...book(),
+      sourceKind: "catalog",
+      bookEditionId: binding.bookEditionId,
+      contentHash: binding.contentSha256,
+    });
+    expect(useNarraStore.getState().books.local.backendManifest?.availability).toBe("ready");
+    useNarraStore.getState().setBackendBinding("local", { ...binding, bookEditionId: "edition-b" });
+    const before = useNarraStore.getState().books.local;
+    const beforeStatus = useBackendBookStatus.getState().books.local;
+    runtime.media.mockClear();
+    updateBackendBookProgress("local", 0.6);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(useNarraStore.getState().books.local).toBe(before);
+    expect(useBackendBookStatus.getState().books.local).toBe(beforeStatus);
+    expect(runtime.media).not.toHaveBeenCalled();
+  });
   it.each(["missing", "empty"])(
     "recovers a %s derived FB2 from the retained original archive before re-upload",
     async (failure) => {
