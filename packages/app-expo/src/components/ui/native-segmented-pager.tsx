@@ -68,6 +68,7 @@ export const NativeSegmentedPager = forwardRef<
   const pagerRef = useRef<PagerView>(null);
   const swipeGuard = useSwipePressGuard();
   const activePageRef = useRef(-1);
+  const pendingPageRef = useRef<number | undefined>(undefined);
   const [containerWidth, setContainerWidth] = useState(0);
   const [pageHeights, setPageHeights] = useState<Record<number, number>>({});
   const [swiping, setSwiping] = useState(false);
@@ -101,6 +102,7 @@ export const NativeSegmentedPager = forwardRef<
   useLayoutEffect(() => {
     if (safeSelectedIndex === activePageRef.current) return;
     activePageRef.current = safeSelectedIndex;
+    pendingPageRef.current = safeSelectedIndex;
     pagerRef.current?.setPageWithoutAnimation(safeSelectedIndex);
   }, [safeSelectedIndex]);
 
@@ -109,6 +111,7 @@ export const NativeSegmentedPager = forwardRef<
       const nextIndex = Math.max(0, Math.min(index, Math.max(0, pageCount - 1)));
       if (nextIndex === activePageRef.current) return;
       activePageRef.current = nextIndex;
+      pendingPageRef.current = nextIndex;
       onSelect(nextIndex);
       if (animated) pagerRef.current?.setPage(nextIndex);
       else pagerRef.current?.setPageWithoutAnimation(nextIndex);
@@ -142,6 +145,8 @@ export const NativeSegmentedPager = forwardRef<
     (event: { nativeEvent: { pageScrollState: "idle" | "dragging" | "settling" } }) => {
       const state = event.nativeEvent.pageScrollState;
       if (state === "dragging") {
+        // A real gesture may supersede an outstanding programmatic selection.
+        pendingPageRef.current = undefined;
         swipeGuard?.scrollHandlers.onScrollBeginDrag(event);
       } else {
         swipeGuard?.scrollHandlers.onScrollEndDrag(event);
@@ -192,6 +197,12 @@ export const NativeSegmentedPager = forwardRef<
         onPageScrollStateChanged={handlePageScrollStateChanged}
         onPageSelected={({ nativeEvent }) => {
           const nextIndex = nativeEvent.position;
+          // Native initialization/older commands may report their page after a
+          // restored selection was sent. Do not persist that obsolete result.
+          // Once acknowledged, non-drag selections (including accessibility)
+          // continue through the ordinary path below.
+          if (pendingPageRef.current !== undefined && nextIndex !== pendingPageRef.current) return;
+          pendingPageRef.current = undefined;
           // Сравниваем до присваивания: при свайпе пальцем onSelect мог уже
           // обновить selectedIndex, и по нему смену страницы не поймать.
           // Одна отдача на смену страницы — не на dragging и settling.
