@@ -86,3 +86,21 @@ hermes-compiler250829098.0.17. Node24.20.0.
 не перенастраивались. Проверка бинарника Hermes и native-build ещё впереди.
 Использование ignore-scripts при установке не является приёмкой всех native
 lifecycle build-шагов. Временная копия сохранена для следующей проверки.
+
+На той же новой установке root выполнил три native harness без Simulator:
+Expo factory race (включая2000 callbacks и ThreadSanitizer), Fabric context
+teardown и iOS SceneDelegate cold-link. Все exit0; baseline RED и patched GREEN
+сохранены. Это проверка конкретных ObjC++/Swift патчей и startup-сценариев,
+не сборка/запуск всего iOS-приложения и не тест нового Hermes на устройстве.
+
+CI коммита73334722645c7ed2b427487f35d1ab3336fadbf3 завершился успешно:
+[Regression33982637778](https://github.com/mishanaer/Narra/actions/runs/33982637778)
+(mobile-and-core, expo-factory-native) и
+[Gateway33982637773](https://github.com/mishanaer/Narra/actions/runs/33982637773)
+(test-and-build). Publish-test-image пропущен; деплоя не было.
+
+Android prebuild в изолированной копии завершился exit0; package.json не менялся.
+Использованы development variant, EXPO_NO_DOTENV=1 и --no-install, без EAS.
+Есть предупреждение о недостающем expo-system-ui для automatic theme, его
+влияние на тему ещё не проверено. Запущен assembleDebug только arm64-v8a,
+Java17, max-workers2/no-parallel/Xmx2g; APK/новый BuildID пока не подтверждены.

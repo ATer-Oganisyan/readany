@@ -129,6 +129,119 @@ afterEach(() => {
 });
 
 describe("character chat screen recovery", () => {
+  it.each(["matching", "other-book"])(
+    "serializes the real Anna chat prompt and commits its parsed reply (%s context)",
+    async (contextKind) => {
+      // Own short fixture. Existing history/placeholder prevent auxiliary AI calls.
+      const excerpt = "Анна заметила течь в лодке и спокойно позвала Льва. Лев принёс доску.";
+      const futureText = "В финале Анна переехала на СЕВЕРНЫЙ_ОСТРОВ.";
+      const foreignExcerpt = `В чужой книге капитан нашёл ЗОЛОТОЙ_МАЯК. ${futureText}`;
+      const memory = "Читателя зовут Ира; она боится глубокой воды.";
+      const history = {
+        id: "anna-greeting",
+        role: "assistant",
+        content: "Я рядом, Ира.",
+        createdAt: 1,
+      };
+      const question = "Почему ты позвала Льва?";
+      const reply = "Я заметила течь и позвала Льва: он принёс доску, чтобы помочь.";
+      const originalBook = runtime.book;
+      runtime.book = { ...originalBook, meta: { title: "Наша лодка" }, progress: 0.25 };
+      runtime.messages.push(history);
+      runtime.narra.books.book = {
+        ...runtime.initialBook,
+        characters: [
+          {
+            ...runtime.initialBook.characters[0],
+            name: "Анна",
+            fullName: "Анна",
+            traits: ["спокойная", "внимательная"],
+            role: "лодочница",
+            speechStyle: "коротко и тепло",
+          },
+        ],
+        memories: { hero: memory },
+        // Immutable snapshot, like production Zustand; no accidental memory refresh.
+        chats: { hero: [history] },
+      };
+      runtime.context = {
+        bookId: contextKind === "matching" ? "book" : "other-book",
+        bookTitle: contextKind === "matching" ? "Наша лодка" : "Чужой роман",
+        currentChapter: { index: 0, title: "У берега", href: "chapter-one" },
+        currentPosition: { cfi: "exact-page", percentage: 25 },
+        surroundingText: contextKind === "matching" ? excerpt : foreignExcerpt,
+        recentHighlights: [],
+        operationType: "reading",
+        timestamp: 1,
+      };
+      const adapter = vi.fn(
+        async (_path: string, _init: RequestInit) =>
+          new Response(JSON.stringify({ text: `  ${reply}  ` })),
+      );
+      setNarraGatewayAdapter(adapter);
+      try {
+        await act(async () => {
+          tree = create(
+            <NarraCharacterChatScreen embedded bookId="book" characterId="hero" onBack={vi.fn()} />,
+          );
+        });
+        expect(adapter).not.toHaveBeenCalled();
+        await act(async () => {
+          await tree.root.find((node) => String(node.type) === "Chat").props.onSend(question);
+        });
+        expect(adapter).toHaveBeenCalledOnce();
+        const [path, init] = adapter.mock.calls[0];
+        expect(path).toBe("/v2/ai/chat/complete");
+        expect(init.method).toBe("POST");
+        const body = JSON.parse(String(init.body));
+        const prompt = body.messages[0].content;
+        expect(body).toEqual({
+          messages: [
+            { role: "system", content: expect.any(String) },
+            { role: "assistant", content: history.content },
+            { role: "user", content: question },
+          ],
+          temperature: 0.85,
+          purpose: "character_chat",
+          origin: "user",
+          analytics_tier: "essential",
+          request_id: expect.any(String),
+        });
+        for (const fragment of [
+          "Ты — Анна",
+          "Наша лодка",
+          "спокойная, внимательная",
+          "лодочница",
+          "коротко и тепло",
+          "25%",
+          memory,
+        ])
+          expect(prompt).toContain(fragment);
+        expect(prompt).not.toContain(foreignExcerpt);
+        expect(prompt).not.toContain(futureText);
+        if (contextKind === "matching") expect(prompt).toContain(excerpt);
+        else expect(prompt).not.toContain(excerpt);
+        expect(runtime.narra.appendChatMessage).toHaveBeenCalledTimes(2);
+        expect(runtime.narra.appendChatMessage).toHaveBeenNthCalledWith(
+          1,
+          "book",
+          "hero",
+          expect.objectContaining({ role: "user", content: question }),
+        );
+        expect(runtime.narra.appendChatMessage).toHaveBeenNthCalledWith(
+          2,
+          "book",
+          "hero",
+          expect.objectContaining({ role: "assistant", content: reply }),
+        );
+        expect(runtime.messages.at(-1)?.content).toBe(reply);
+        expect(runtime.narra.setMemory).not.toHaveBeenCalled();
+      } finally {
+        runtime.book = originalBook;
+      }
+    },
+  );
+
   it.each(["greeting", "placeholder"])(
     "completes %s after StrictMode effect replay",
     async (kind) => {
