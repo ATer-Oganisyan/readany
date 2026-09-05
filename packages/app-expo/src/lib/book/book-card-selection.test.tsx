@@ -105,7 +105,7 @@ beforeEach(() => {
 afterEach(async () => {
   if (view) await act(() => view.unmount());
 });
-function LibrarySelectionHarness() {
+function LibrarySelectionHarness({ cardWidth = 96 }: { cardWidth?: number }) {
   const [selection, setSelection] = useState(false);
   const [selected, setSelected] = useState(new Set<string>());
   return (
@@ -125,6 +125,7 @@ function LibrarySelectionHarness() {
           onOpen={runtime.open}
           onDelete={runtime.remove}
           isSelectionMode={selection}
+          cardWidth={cardWidth}
           isSelected={selected.has(book.id)}
           onLongPress={(picked) => {
             setSelection(true);
@@ -143,9 +144,9 @@ function LibrarySelectionHarness() {
     </>
   );
 }
-async function render() {
+async function render(cardWidth = 96) {
   await act(() => {
-    view = create(<LibrarySelectionHarness />);
+    view = create(<LibrarySelectionHarness cardWidth={cardWidth} />);
   });
 }
 function menuButtons() {
@@ -209,6 +210,29 @@ it("keeps swipe suppression while selecting", async () => {
   await act(() => checkbox("own-two").props.onPress({}));
   expect(checkbox("own-two").props.accessibilityState.checked).toBe(false);
   expect(runtime.open).not.toHaveBeenCalled();
+});
+
+it("places the rendered selection badge in the bottom-right accessory corner, outside title text", async () => {
+  await render(192);
+  await act(() => overlays()[0].props.onLongPress());
+  await act(() => menuButtons().find((button) => button.text === "Выбрать")!.onPress!());
+  const badge = view.root.findAll(
+    (node) =>
+      String(node.type) === "View" &&
+      Array.isArray(node.props.style) &&
+      node.props.style[0]?.zIndex === 30,
+  )[0];
+  const style = Object.assign({}, ...badge.props.style);
+  expect(style).toMatchObject({ bottom: 8, right: 8, width: 26, height: 26 });
+  expect(style.top).toBeUndefined();
+  expect(style.left).toBeUndefined();
+  const cover = badge.parent!.props.style;
+  const badgeLeft = cover.width - style.right - style.width;
+  const badgeTop = cover.height - style.bottom - style.height;
+  expect(badgeLeft).toBeGreaterThan(cover.width / 2);
+  expect(badgeTop).toBeGreaterThan(cover.height / 2);
+  const progress = view.root.findAll((node) => String(node.type) === "BookCoverTypography")[0];
+  expect(progress.props.bottomAccessory.props.children.props.children).toBe("63%");
 });
 
 it("iOS menu Select unwraps the native host for selection and restores it on Cancel without losing progress", async () => {
