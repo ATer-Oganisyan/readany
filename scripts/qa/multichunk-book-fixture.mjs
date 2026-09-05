@@ -58,7 +58,13 @@ export function createMultichunkFixtureModel(calls = []) {
       }));
       const action = evidence.find(item => item.type === 'character_action');
       assert.ok(action, 'character must retain evidence outside first chunk');
+      const role = evidence.find(item => item.type === 'character_role');
+      if (character.canonicalName === 'Анна') assert.ok(role, 'Anna must retain her explicit profession');
+      const dialogue = evidence.filter(item => item.type === 'character_dialogue');
+      assert.equal(dialogue.length, 1, 'each mock character has one own dialogue example');
       return JSON.stringify({
+        role: role ? { value: 'хранитель архива', evidenceIds: [role.id], confidence: 0.98 } : null,
+        speechExamples: dialogue.map(item => ({ value: item.quote, evidenceIds: [item.id], confidence: 0.98 })),
         traits: [...traitClaims, { value: 'тревожная', evidenceIds: [action.id], confidence: 0.9 }],
         description: { value: `${character.canonicalName} — ${value} персонаж.`, evidenceIds: [trait.id, action.id], confidence: 0.98 },
         personalitySnapshots: field(input, 'PERSONALITY_CHECKPOINTS', []).map(checkpoint => ({
@@ -96,6 +102,16 @@ export function assertMultichunkAcceptance({ observations, profiles, markup, chu
       assert.ok(Number(source.evidence_end_offset) <= cutoff, 'future evidence leaked into earlier personality checkpoint');
     }
   };
+  const assertEvidence = (ids, expected) => {
+    assert.ok(Array.isArray(ids) && ids.length > 0, 'claim must retain evidence');
+    for (const id of ids) {
+      const source = observations.find(row => row.id === id);
+      assert.ok(source, 'claim evidence must exist');
+      assert.equal(source.entity_candidate, expected.entityCandidate, 'claim evidence must belong to its owner');
+      assert.equal(source.observation_type, expected.type, 'claim evidence type must match');
+      assert.equal(source.evidence_quote, expected.evidence.quote, 'claim must cite its exact supporting assertion');
+    }
+  };
   assert.equal(chunks.length, 3, 'must use three production-default chunks');
   let end = 0;
   for (const chunk of chunks) {
@@ -112,6 +128,14 @@ export function assertMultichunkAcceptance({ observations, profiles, markup, chu
   assert.equal(profiles.length, 2);
   assert.deepEqual(markup.characters.map(item => item.name).sort(), ['Анна', 'Борис']);
   for (const character of markup.characters) {
+    if (character.name === 'Анна') {
+      assert.equal(character.role?.value, 'хранитель архива', 'explicit profession must survive publication');
+      assertEvidence(character.role.evidenceIds, MULTICHUNK_FACTS.find(item => item.type === 'character_role'));
+    } else assert.equal(character.role, null, 'no profession is established for Boris');
+    const dialogue = MULTICHUNK_FACTS.find(item => item.type === 'character_dialogue' && item.entityCandidate === character.name);
+    assert.equal(character.speechExamples?.length, 1, 'own dialogue must survive publication');
+    assert.equal(character.speechExamples[0].value, dialogue.evidence.quote, 'speech example must be verbatim, not rewritten');
+    assertEvidence(character.speechExamples[0].evidenceIds, dialogue);
     const expected = character.name === 'Анна' ? ['любознательная', 'честная'] : ['терпеливый'];
     assert.deepEqual(character.traits.map(item => item.value).sort(), expected);
     for (const trait of character.traits) assertTrait(trait, character);
@@ -126,4 +150,7 @@ export function assertMultichunkAcceptance({ observations, profiles, markup, chu
   assert.ok(anna.personalitySnapshots.at(-1).traits.some(item => item.value === 'любознательная'), 'late evidence must eventually appear');
   assert.equal(markup.relationships.length, 1, 'sibling relationship must survive publication');
   assert.deepEqual(new Set([markup.relationships[0].sourceCharacterKey, markup.relationships[0].targetCharacterKey]), new Set(markup.characters.map(item => item.characterKey)));
+  const kinship = MULTICHUNK_FACTS.find(item => item.type === 'relationship');
+  assert.equal(markup.relationships[0].description, kinship.fact, 'published relationship must retain sibling semantics');
+  assertEvidence(markup.relationships[0].evidenceIds, kinship);
 }

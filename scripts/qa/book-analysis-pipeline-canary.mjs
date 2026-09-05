@@ -158,7 +158,7 @@ export function assertFixtureSemanticAcceptance({ observations, traits, live = f
 export async function runPipelineCanary({ databaseUrl, confirmation, stagedMock = false, stagedLive = false, onCapture, signal, fixtureId = 'window' } = {}) {
   if (typeof stagedMock !== 'boolean' || typeof stagedLive !== 'boolean' || (stagedMock && stagedLive)) throw new Error('Choose exactly one staged mode');
   if (!['window', 'siblings'].includes(fixtureId)) throw new Error('Unknown own fixture');
-  if (fixtureId === 'siblings' && (stagedMock || stagedLive)) throw new Error('Multi-chunk fixture is mock-only until its separate staged plan is reviewed');
+  if (fixtureId === 'siblings' && stagedLive) throw new Error('Multi-chunk fixture is mock-only until its separate staged plan and live quality gate are reviewed');
   const multichunk = fixtureId === 'siblings';
   const fixture = multichunk ? MULTICHUNK_FIXTURE : FIXTURE;
   const target = validateDedicatedDatabase(databaseUrl, confirmation);
@@ -192,7 +192,7 @@ export async function runPipelineCanary({ databaseUrl, confirmation, stagedMock 
       // Ordinary mock CI must not load machine-specific subscription tooling.
       const { createStagedFixtureProvider } = await import('./staged-fixture-provider.mjs');
       let pendingInput;
-      staged = await createStagedFixtureProvider({ mode: stagedLive ? 'live' : 'mock', signal, approvalTimeoutMs: 90000, onCapture,
+      staged = await createStagedFixtureProvider({ fixtureId, mode: stagedLive ? 'live' : 'mock', signal, approvalTimeoutMs: 90000, onCapture,
         ...(stagedMock ? {
         spawnFixtureChild() {
           const child = new EventEmitter();
