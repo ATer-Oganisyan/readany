@@ -160,7 +160,7 @@ describe("local import actions", () => {
 
   it("localizes Open in English and keeps each action bound to its saved book", async () => {
     runtime.language = "en";
-    const actions = [];
+    const actions: Array<{ label: string; onClick: () => void | Promise<void> }> = [];
     for (const id of ["first", "second"]) {
       runtime.importBooks.mockResolvedValueOnce({
         imported: [{ id }],
