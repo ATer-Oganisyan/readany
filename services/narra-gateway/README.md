@@ -10,6 +10,15 @@ PostgreSQL schema is in [`migrations/001_book_markup.sql`](migrations/001_book_m
 
 ## LLM request parameters
 
+Internal chat has a separate fail-fast lifecycle cap,
+`INTERNAL_CHAT_LIFECYCLE_LIMIT` (integer 1–100; defaults to `LLM_CONCURRENCY`).
+It covers provider admission through awaited cost recording, with no waiting
+queue; saturation returns `RATE`/429 before provider invocation. The LLM permit
+is released after response consumption/finalization, so hung accounting cannot
+occupy provider capacity for other workloads. Accounting is still awaited:
+caller stalls and durability require separate handling. The cap is per process,
+not a cross-replica accounting limit, and applies only to `completeInternalChat`.
+
 Public `/v2/ai/chat/complete` and `/v2/ai/chat/stream` wait for admission for at
 most `LLM_QUEUE_TIMEOUT_MS` (default 30000; integer 1–120000). An expired queued
 request returns HTTP 504 with `code: TIMEOUT` and never starts a provider call.

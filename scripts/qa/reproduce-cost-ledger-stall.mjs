@@ -4,6 +4,7 @@
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { createWorkloadConcurrencyGate } from '../../services/narra-gateway/workload-concurrency.mjs';
+import { createConcurrencyGate } from '../../services/narra-gateway/concurrency.mjs';
 import { createBestEffortGenerationCostRecorder } from '../../services/narra-gateway/generation-cost-recorder.mjs';
 import { createGenerationCostLedger } from '../../services/narra-gateway/generation-cost-ledger.mjs';
 import { settleProviderResponse, validateChatCompletionPayload } from '../../services/narra-gateway/provider-response.mjs';
@@ -25,6 +26,7 @@ async function bounded(promise) {
 }
 
 const gate = createWorkloadConcurrencyGate({ limit: 1, queueLimit: 2 });
+const lifecycleGate = createConcurrencyGate({ limit: 1, queueLimit: 0, name: 'Internal lifecycle' });
 let completeQuery;
 let queryCalls = 0;
 const mockQuery = new Promise(resolve => { completeQuery = resolve; });
@@ -40,10 +42,10 @@ const requestChat = async () => ({
 });
 // Source supplies executable behavior, not a source-string assertion. All I/O
 // dependencies are explicit; importing index.mjs would start an actual gateway.
-const execute = new Function('llmGate', 'randomUUID', 'requestChat', 'recordProviderAttemptMetric',
+const execute = new Function('internalChatLifecycleGate', 'llmGate', 'randomUUID', 'requestChat', 'recordProviderAttemptMetric',
   'settleProviderResponse', 'readBoundedBody', 'LLM_RESPONSE_MAX_BYTES',
   'validateChatCompletionPayload', 'recordInternalGenerationCost',
-  `${method}; return completeInternalChat;`)(gate, randomUUID, requestChat, () => {},
+  `${method}; return completeInternalChat;`)(lifecycleGate, gate, randomUUID, requestChat, () => {},
   settleProviderResponse, readBoundedBody, 4096, validateChatCompletionPayload, record);
 
 const activeController = new AbortController();
@@ -63,7 +65,7 @@ try {
   await delay(40);
   const state = gate.status();
   observation = { outcome, queryCalls, activeSignalAborted: activeController.signal.aborted,
-    active: state.active, waiting: state.waiting };
+    active: state.active, waiting: state.waiting, lifecycleActive: lifecycleGate.status().active };
 } finally {
   // Always settle our own fake query and queue; no dangling held resources.
   queuedController.abort();
@@ -72,6 +74,7 @@ try {
 }
 const cleanup = gate.status();
 if (cleanup.active !== 0 || cleanup.waiting !== 0) throw new Error('Diagnostic leaked a mock permit');
+if (lifecycleGate.status().active !== 0) throw new Error('Diagnostic leaked lifecycle admission');
 const reproduced = observation.outcome === 'pending' && observation.active === 1 && observation.waiting === 1;
 console.log(JSON.stringify({ reproduced, observation, cleanup: { active: cleanup.active, waiting: cleanup.waiting },
   boundary: 'Actual method/recorder/ledger; fake provider and pool; no external writes' }, null, 2));

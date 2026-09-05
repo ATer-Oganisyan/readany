@@ -232,6 +232,7 @@ const KANDINSKY_IMAGE_TIMEOUT_MS = kandinskyImageTimeoutMs(process.env)
 const KANDINSKY_REQUEST_TIMEOUT_MS = kandinskyRequestTimeoutMs(process.env)
 const VIDEO_QUEUE_LIMIT = envInt('VIDEO_QUEUE_LIMIT', 4, 100)
 const LLM_CONCURRENCY = envInt('LLM_CONCURRENCY', 12, 100)
+const INTERNAL_CHAT_LIFECYCLE_LIMIT = envInt('INTERNAL_CHAT_LIFECYCLE_LIMIT', LLM_CONCURRENCY, 100)
 const LLM_QUEUE_LIMIT = envInt('LLM_QUEUE_LIMIT', 16, 500)
 const LLM_QUEUE_TIMEOUT_MS = envInt('LLM_QUEUE_TIMEOUT_MS', 30_000, 120_000)
 // SALUTE_SPEECH_PERS is capped at five upstream streams. Reject a stale or
@@ -272,6 +273,7 @@ const llmGate = createWorkloadConcurrencyGate({
     ['backgroundQueueReserve', 'LLM_BACKGROUND_QUEUE_RESERVE']
   ].filter(([, key]) => process.env[key] !== undefined).map(([key, envKey]) => [key, Number(process.env[envKey])]))
 })
+const internalChatLifecycleGate = createConcurrencyGate({ limit: INTERNAL_CHAT_LIFECYCLE_LIMIT, queueLimit: 0, name: 'Internal chat lifecycle' })
 const speechGate = createConcurrencyGate({ limit: SPEECH_CONCURRENCY, queueLimit: SPEECH_QUEUE_LIMIT, name: 'Speech' })
 const imageGate = createConcurrencyGate({ limit: IMAGE_CONCURRENCY, queueLimit: IMAGE_QUEUE_LIMIT, name: 'Image' })
 const coverGate = createConcurrencyGate({ limit: COVER_CONCURRENCY, queueLimit: COVER_QUEUE_LIMIT, name: 'Cover' })
@@ -675,10 +677,18 @@ const recordInternalGenerationCost = createBestEffortGenerationCostRecorder({
 
 async function completeInternalChat({ messages, signal, costContext }) {
   let release
+  let releaseLifecycle
+  const releaseProviderPermit = () => {
+    const ownedRelease = release
+    release = undefined
+    ownedRelease?.()
+  }
   const requestId = randomUUID()
   let providerResult
   let recorded = false
   try {
+    // Fail fast before paid work; retain this independent cap through accounting.
+    releaseLifecycle = await internalChatLifecycleGate.acquire(signal)
     release = await llmGate.acquire(signal, { workload: 'background' })
     providerResult = await requestChat({
       messages,
@@ -702,6 +712,9 @@ async function completeInternalChat({ messages, signal, costContext }) {
         return validateChatCompletionPayload(json)
       }
     })
+    // Consumption and attempt finalization have settled; accounting is a
+    // separate awaited operation and must not retain provider capacity.
+    releaseProviderPermit()
     await recordInternalGenerationCost({
       context: costContext,
       modality: 'text',
@@ -713,6 +726,7 @@ async function completeInternalChat({ messages, signal, costContext }) {
     recorded = true
     return payload?.choices?.[0]?.message?.content || ''
   } catch (error) {
+    releaseProviderPermit()
     const attempts = providerResult?.attempts || error?.attempts
     if (!recorded && Array.isArray(attempts) && attempts.length) {
       await recordInternalGenerationCost({
@@ -725,7 +739,8 @@ async function completeInternalChat({ messages, signal, costContext }) {
     }
     throw error
   } finally {
-    release?.()
+    releaseProviderPermit()
+    releaseLifecycle?.()
   }
 }
 

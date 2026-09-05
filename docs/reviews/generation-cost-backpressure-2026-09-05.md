@@ -1,9 +1,41 @@
 # P1: generation cost recording can retain LLM capacity indefinitely
 
-Date: 2026-09-05. Read-only diagnosis plus standalone model-free reproduction.
-No gateway runtime, database settings, billing data or provider configuration changed.
+Date: 2026-09-05. Diagnosis, standalone model-free reproduction and partial source fix.
+No running gateway, database settings, billing data or provider configuration changed.
 
-## Observed behavior
+## Partial fix verified — provider capacity only
+
+`completeInternalChat` now releases its provider permit exactly once after
+response consumption/attempt finalization settles, before awaited accounting.
+The failure path releases after the provider operation rejects, before recording
+its attempts. The accounting call remains awaited with the same input and error
+policy; no detached queue, skipped-record race, DB cancellation or connection
+release was added.
+
+New actual-method behavioral tests in
+`services/narra-gateway/test/internal-chat-cost-permit.test.mjs` reproduced three
+failures before the fix, then passed for success, malformed response and provider
+rejection. They hold finalization to prove no early permit release, hold the
+ledger to prove the next waiter progresses, and settle the ledger to verify the
+original result/error and exactly-once release. Related recorder, ledger,
+provider-response and workload suites: **22 tests passed**.
+
+The standalone probe now exits **0** with `outcome: pending`, `active: 0`,
+`waiting: 0`. **The caller still hangs while the ledger is suspended.** This is
+not accounting durability acceptance. A separate fail-fast
+`internalChatLifecycleGate` now bounds the complete internal-chat lifecycle,
+including awaited accounting, before provider admission. Its validated
+`INTERNAL_CHAT_LIFECYCLE_LIMIT` defaults to `LLM_CONCURRENCY` (1–100), has no
+waiting queue, and rejects saturation with RATE/429 before paid work. It remains
+occupied on request abort until accounting settles. The tests also reproduce
+the missing lifecycle bound RED, then verify saturation makes no second provider
+call and both terminal paths/admission rejection release lifecycle ownership.
+The probe shows `lifecycleActive: 1` while accounting is pending and zero after
+controlled cleanup. This process-local cap covers only `completeInternalChat`,
+not image/speech accounting or cross-replica capacity. A bounded durable delivery
+design remains a separate gate. No live AI or database writes were used.
+
+## Original observed behavior (before partial fix)
 
 `completeInternalChat` in `services/narra-gateway/index.mjs` consumes a successful
 provider response, then awaits `recordInternalGenerationCost` before releasing
@@ -72,9 +104,9 @@ destroy the uncertain connection; never merely race and invoke plain `release()`
 Connection loss can leave commit outcome unknown, so retain/replay the same
 event instead of assuming rollback. [Pool release semantics](https://node-postgres.com/apis/pool).
 
-## Proposed separate implementation gate — not implemented here
+## Further implementation gate
 
-1. Separate provider-slot lifetime from accounting delivery: release the LLM
+1. **Implemented in source:** separate provider-slot lifetime from accounting delivery: release the LLM
    permit after provider consumption/finalization on both success and failure.
    This alone restores a slot but does not solve caller hangs or accounting backlog.
 2. Decide whether this is best-effort statistics or mandatory durable accounting.
