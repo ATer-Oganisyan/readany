@@ -1,5 +1,5 @@
 import * as Crypto from "expo-crypto";
-import * as SecureStore from "expo-secure-store";
+import * as NativeSecureStore from "expo-secure-store";
 import { fetch as expoFetch } from "expo/fetch";
 import { NarraServiceError } from "../narra/errors";
 import {
@@ -22,6 +22,27 @@ const INSTALLATION_TIMEOUT_MS = 15_000;
 const HEALTH_TIMEOUT_MS = 5_000;
 const TEST_NARRA_GATEWAY_URL = "https://api-test.narra.disrupt.builders";
 const PRODUCTION_NARRA_GATEWAY_URL = "https://api.narra.disrupt.builders";
+
+// Local QA must never reuse or reset the installed TEST/production identity.
+// Keep existing remote keys intact; each local endpoint gets a distinct scope.
+// The endpoint is build-time configuration (switching requires a Metro reload).
+function installationStorageKey(key: string): string {
+  const { baseUrl } = getNarraGatewayConfig();
+  const url = new URL(baseUrl);
+  if (!["localhost", "127.0.0.1", "[::1]", "10.0.2.2"].includes(url.hostname)) return key;
+  const endpoint = `${url.origin}${url.pathname.replace(/\/+$/, "")}`;
+  const encoded = Array.from(endpoint, (char) =>
+    char.charCodeAt(0).toString(16).padStart(2, "0"),
+  ).join("");
+  return `${key}.local.${encoded}`;
+}
+
+const SecureStore = {
+  getItemAsync: (key: string) => NativeSecureStore.getItemAsync(installationStorageKey(key)),
+  setItemAsync: (key: string, value: string) =>
+    NativeSecureStore.setItemAsync(installationStorageKey(key), value),
+  deleteItemAsync: (key: string) => NativeSecureStore.deleteItemAsync(installationStorageKey(key)),
+};
 
 type NarraGatewayAdapter = (path: string, init: RequestInit) => Promise<Response>;
 

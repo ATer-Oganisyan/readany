@@ -755,6 +755,71 @@ describe("Narra gateway consumed response lifecycle", () => {
   });
 });
 
+describe("local gateway credential isolation", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("does not send or replace remote credentials when switching to local and back", async () => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    secureValues.clear();
+    vi.stubEnv("EXPO_PUBLIC_NARRA_ENVIRONMENT", "development");
+    vi.stubEnv("EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE", "installation");
+    vi.stubEnv("EXPO_PUBLIC_NARRA_GATEWAY_URL", "http://127.0.0.1:18787");
+    secureValues.set(INSTALLATION_ID_KEY, "remote-id");
+    secureValues.set(INSTALLATION_SECRET_KEY, "remote-secret");
+    secureValues.set(INSTALLATION_TOKEN_KEY, "remote-token");
+    secureValues.set(INSTALLATION_TOKEN_EXPIRY_KEY, String(Date.now() + 900_000));
+    const remoteSnapshot = new Map(secureValues);
+    const localFetch = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(201, { token: "local-token", expires_in: 900 }))
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
+    let gateway = await import("./narra-gateway-fetch");
+    gateway.setNarraGatewayFetch(localFetch);
+    await gateway.narraGatewayRequest("/v2/books/catalog");
+    expect(String(localFetch.mock.calls[0]?.[0])).toMatch(/installations\/register$/);
+    expect(JSON.stringify(localFetch.mock.calls)).not.toContain("remote-token");
+    expect(JSON.stringify(localFetch.mock.calls)).not.toContain("remote-secret");
+    for (const [key, value] of remoteSnapshot) expect(secureValues.get(key)).toBe(value);
+
+    // A local app restart reuses local auth without re-registering.
+    vi.resetModules();
+    gateway = await import("./narra-gateway-fetch");
+    const resumedFetch = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(200, { ok: true }));
+    gateway.setNarraGatewayFetch(resumedFetch);
+    await gateway.narraGatewayRequest("/v2/books/catalog");
+    expect(resumedFetch).toHaveBeenCalledTimes(1);
+    expect(new Headers(resumedFetch.mock.calls[0]?.[1]?.headers).get("authorization")).toBe(
+      "Bearer local-token",
+    );
+
+    // Another local service/port must not inherit this service's credentials.
+    vi.resetModules();
+    vi.stubEnv("EXPO_PUBLIC_NARRA_GATEWAY_URL", "http://127.0.0.1:18788");
+    gateway = await import("./narra-gateway-fetch");
+    const otherFetch = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(201, { token: "other-local-token", expires_in: 900 }))
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
+    gateway.setNarraGatewayFetch(otherFetch);
+    await gateway.narraGatewayRequest("/v2/books/catalog");
+    expect(String(otherFetch.mock.calls[0]?.[0])).toMatch(/installations\/register$/);
+    expect(JSON.stringify(otherFetch.mock.calls)).not.toContain("Bearer local-token");
+
+    // Simulate a Metro reload returning to the original TEST environment.
+    vi.resetModules();
+    vi.stubEnv("EXPO_PUBLIC_NARRA_GATEWAY_URL", "https://api-test.narra.disrupt.builders");
+    gateway = await import("./narra-gateway-fetch");
+    const remoteFetch = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(200, { ok: true }));
+    gateway.setNarraGatewayFetch(remoteFetch);
+    await gateway.narraGatewayRequest("/v2/books/catalog");
+    expect(remoteFetch).toHaveBeenCalledTimes(1);
+    expect(new Headers(remoteFetch.mock.calls[0]?.[1]?.headers).get("authorization")).toBe(
+      "Bearer remote-token",
+    );
+  });
+});
+
 describe("Narra logical request identity", () => {
   it("adds one opaque request id before a request reaches an adapter", async () => {
     vi.resetModules();
