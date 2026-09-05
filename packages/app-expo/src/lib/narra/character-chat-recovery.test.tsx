@@ -236,6 +236,19 @@ describe("character chat screen recovery", () => {
         );
         expect(runtime.messages.at(-1)?.content).toBe(reply);
         expect(runtime.narra.setMemory).not.toHaveBeenCalled();
+        if (contextKind === "matching" && process.env.NARRA_CHARACTER_CANARY_CAPTURE === "1") {
+          const { request_id: _requestId, ...request } = body;
+          console.log(
+            `NARRA_CHARACTER_CANARY_ARTIFACT:${JSON.stringify({
+              fixtureId: "anna-boat-character-chat-v1",
+              path,
+              method: init.method,
+              request,
+              parsedReply: runtime.messages.at(-1)?.content,
+              live: false,
+            })}`,
+          );
+        }
       } finally {
         runtime.book = originalBook;
       }

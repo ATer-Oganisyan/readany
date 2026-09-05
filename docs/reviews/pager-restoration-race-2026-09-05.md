@@ -42,14 +42,14 @@ native-событий на устройстве не записано, поэт�
 Агент:3 RED→GREEN,8 mounted PASS. Root независимо проверил diff и перенёс
 2 файла в изолированную RN0.86.3 установку:178 файлов /1665 PASS, TypeScriptexit0.
 Проверены ограничение при10 неверных событиях, synchronous callback, drag и
-accessibility после подтверждения. Native cold-start gate ещё выполняется.
+accessibility после подтверждения. Результат native cold-start gate — ниже.
 Если адаптер потеряет обе автоматические команды, гарантии авто-восстановления
 нет; это ограничение не скрыто успешными unit-тестами.
 
 ## Native результаты после доработки
 
-На обновлённом5556 /RN0.86.3 /LOCAL8083 первые два cold start подтверждены
-агентом без UI taps (Android Activity COLD1449мс и1208мс; не TTI).
+На обновлённом5556 /RN0.86.3 /LOCAL8083 три последовательных cold start подтверждены
+агентом без UI taps (Android Activity COLD1449мс,1208мс и1368мс; не TTI).
 Root лично просмотрел `/private/tmp/narra-pager-fix-cold1.png`, `-cold2.png`,
 `-cold3.png`: My books выделена и own27card6% видна, вместо пустого каталога.
 Также проверены `-reader.png` и `-return.png`: книга открывается, возврат корректен.
