@@ -1,0 +1,103 @@
+{
+  "commit": "4e4373733508f24528b5a7112ade8e577883f530",
+  "live": true,
+  "fixture": "Анна всегда была честной. Однажды Анна торопливо закрыла окно.",
+  "fixtureSha256": "68a145f2de643d7e646d677e6772ae2323184bcc906a76fe6457ff28c77e5998",
+  "runId": "c0535916-536e-47ae-a0c8-ba3fd85a36a3",
+  "database": "narra_qa_pipeline_20260905_live_window02",
+  "jobsCompleted": 7,
+  "observations": 4,
+  "publications": 1,
+  "traits": [
+    "честность"
+  ],
+  "idempotent": true,
+  "cleanupEditionCount": 0,
+  "steps": [
+    {
+      "index": 1,
+      "phase": "scan_book_chunk",
+      "requestSha256": "6e6c4da0d1feb768b39308ea9a30c9887564105164bc872dc12c77ee431ecbf4",
+      "response": {
+        "id": "chatcmpl-5d74b259-6f99-47a8-86fd-222105178f21",
+        "object": "chat.completion",
+        "created": 1788628329,
+        "model": "gpt-5.6-luna",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "{\"observations\":[{\"type\":\"character_mention\",\"entityKind\":\"character\",\"entityCandidate\":\"Анна\",\"relatedEntityCandidates\":[],\"fact\":\"Анна упомянута в тексте\",\"evidence\":{\"quote\":\"Анна всегда была честной\"},\"confidence\":1.0},{\"type\":\"character_trait\",\"entityKind\":\"character\",\"entityCandidate\":\"Анна\",\"relatedEntityCandidates\":[],\"fact\":\"Анна честная\",\"evidence\":{\"quote\":\"Анна всегда была честной\"},\"confidence\":1.0},{\"type\":\"character_gender\",\"entityKind\":\"character\",\"entityCandidate\":\"Анна\",\"relatedEntityCandidates\":[],\"fact\":\"female\",\"evidence\":{\"quote\":\"Анна всегда была честной\"},\"confidence\":1.0},{\"type\":\"character_action\",\"entityKind\":\"character\",\"entityCandidate\":\"Анна\",\"relatedEntityCandidates\":[],\"fact\":\"Анна торопливо закрыла окно\",\"evidence\":{\"quote\":\"Однажды Анна торопливо закрыла окно\"},\"confidence\":1.0}]}"
+            },
+            "finish_reason": "stop"
+          }
+        ]
+      }
+    },
+    {
+      "index": 2,
+      "phase": "synthesize_character_profile",
+      "requestSha256": "c0f5443324647d5bb0c824b5460a29512586bf0e11e024fd681b95300bd048e9",
+      "response": {
+        "id": "chatcmpl-b07d7930-08f5-404d-907d-4a94d1db5c7d",
+        "object": "chat.completion",
+        "created": 1788628365,
+        "model": "gpt-5.6-luna",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "{\"role\":null,\"age\":null,\"gender\":{\"value\":\"female\",\"evidenceIds\":[\"79cf0d50-65b2-4a7b-968e-a0f2ec28d841\"],\"confidence\":1.0},\"description\":{\"value\":\"Анна всегда была честной.\",\"evidenceIds\":[\"41feeb3d-8563-4f62-a7f6-5a545c372bc0\",\"ffb0d3a1-324c-4be0-91a3-6065ed8767eb\"],\"confidence\":1.0},\"traits\":[{\"value\":\"честность\",\"evidenceIds\":[\"ffb0d3a1-324c-4be0-91a3-6065ed8767eb\"],\"confidence\":1.0}],\"personalitySnapshots\":[{\"cutoffTextOffset\":24,\"traits\":[{\"value\":\"честность\",\"evidenceIds\":[\"ffb0d3a1-324c-4be0-91a3-6065ed8767eb\"],\"confidence\":1.0}]},{\"cutoffTextOffset\":61,\"traits\":[{\"value\":\"честность\",\"evidenceIds\":[\"ffb0d3a1-324c-4be0-91a3-6065ed8767eb\"],\"confidence\":1.0}]}],\"appearance\":[],\"speechStyle\":null,\"speechExamples\":[],\"creative\":{\"greeting\":\"Здравствуйте. Рада вас видеть.\",\"appearancePrompt\":\"\",\"voice\":\"She\"}}"
+            },
+            "finish_reason": "stop"
+          }
+        ]
+      }
+    },
+    {
+      "index": 3,
+      "phase": "recall_character_traits",
+      "requestSha256": "f43f8cd3cbdb20812f38a741df80f7a3bd4e02a9968b3530e4c1f17fde43ce2e",
+      "response": {
+        "id": "chatcmpl-a72b711e-b62a-4f09-95e5-d1cc6cbf673b",
+        "object": "chat.completion",
+        "created": 1788628390,
+        "model": "gpt-5.6-luna",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "{\"traits\":[]}"
+            },
+            "finish_reason": "stop"
+          }
+        ]
+      }
+    },
+    {
+      "index": 4,
+      "phase": "audit_character_profile",
+      "requestSha256": "d76617d98a57f52be0f3c79674f67703779e8e6b330390f215f3d7f02ae59ff4",
+      "response": {
+        "id": "chatcmpl-53dcaa91-e14b-4fd9-9aa3-76387e03a41f",
+        "object": "chat.completion",
+        "created": 1788628421,
+        "model": "gpt-5.6-luna",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "{\"traits\":[{\"index\":0,\"evidenceIds\":[\"ffb0d3a1-324c-4be0-91a3-6065ed8767eb\"]}],\"description\":{\"value\":\"Анна всегда была честной.\",\"evidenceIds\":[\"ffb0d3a1-324c-4be0-91a3-6065ed8767eb\"]}}"
+            },
+            "finish_reason": "stop"
+          }
+        ]
+      }
+    }
+  ],
+  "scope": "Actual workers/PostgreSQL/internal HTTP/official CLI subscription. One own short fixture; memory object storage; no native, images, speech or load acceptance."
+}
