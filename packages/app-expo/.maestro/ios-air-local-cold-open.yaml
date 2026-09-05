@@ -1,0 +1,17 @@
+appId: com.mishanaer.readany.dev
+name: Reopen persisted own book on isolated Air
+---
+- runFlow:
+    when:
+      visible: "Открыть"
+    commands:
+      - tapOn: "Открыть"
+- extendedWaitUntil:
+    visible: "Library"
+    timeout: 30000
+- tapOn: "My books"
+- tapOn: "Аудит 27 - Граница глав"
+- extendedWaitUntil:
+    visible: "Narra Reader"
+    timeout: 20000
+- takeScreenshot: ios-air-cold-restored-reader

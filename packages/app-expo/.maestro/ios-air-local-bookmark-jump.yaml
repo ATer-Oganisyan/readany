@@ -1,0 +1,9 @@
+appId: com.mishanaer.readany.dev
+name: Jump via visible bookmark row on Air
+---
+- tapOn:
+    point: "45%,62%"
+    waitToSettleTimeoutMs: 0
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: ios-air-bookmark-jump

@@ -1,0 +1,7 @@
+appId: com.mishanaer.readany.dev
+name: Confirm first strict LOCAL deep link on isolated Air
+---
+- tapOn: "Открыть"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: ios-air-first-local-open

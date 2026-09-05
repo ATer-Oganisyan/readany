@@ -1,0 +1,142 @@
+{
+  "header": {
+    "app_name": "Narra",
+    "timestamp": "2026-09-05 17:13:50.00 +0300",
+    "app_version": "1.3.5",
+    "slice_uuid": "8e5deeb7-c12b-3f47-a290-11fd9921dee1",
+    "build_version": "36",
+    "platform": 7,
+    "bundleID": "com.mishanaer.readany.dev",
+    "share_with_app_devs": 0,
+    "is_first_party": 0,
+    "bug_type": "309",
+    "os_version": "macOS 26.5 (25F71)",
+    "roots_installed": 0,
+    "name": "Narra",
+    "incident_id": "848E8ED9-8BFB-42D4-97CF-53C7A1CA06FC"
+  },
+  "pid": 91615,
+  "procPath": "/Users/USER/Library/Developer/CoreSimulator/Devices/984D0C64-C0B2-4204-92A9-2C65519089E8/data/Containers/Bundle/Application/1953A7FB-EEC7-436E-9E0E-ACDCA30C9C81/Narra.app/Narra",
+  "exception": {
+    "codes": "0x0000000000000001, 0x00000000003151c8",
+    "rawCodes": [
+      1,
+      3232200
+    ],
+    "type": "EXC_BAD_ACCESS",
+    "signal": "SIGSEGV",
+    "subtype": "KERN_INVALID_ADDRESS at 0x00000000003151c8"
+  },
+  "termination": {
+    "flags": 0,
+    "code": 11,
+    "namespace": "SIGNAL",
+    "indicator": "Segmentation fault: 11",
+    "byProc": "exc handler",
+    "byPid": 91615
+  },
+  "thread": 8,
+  "frames": [
+    {
+      "imageOffset": 11272,
+      "symbol": "objc_msgSend",
+      "symbolLocation": 8,
+      "imageIndex": 18
+    },
+    {
+      "imageOffset": 1722700,
+      "symbol": "mdict_rehashd",
+      "symbolLocation": 184,
+      "imageIndex": 13
+    },
+    {
+      "imageOffset": 1707908,
+      "symbol": "-[__NSDictionaryM setObject:forKey:]",
+      "symbolLocation": 496,
+      "imageIndex": 13
+    },
+    {
+      "imageOffset": 3189420,
+      "sourceLine": 35,
+      "sourceFile": "EXPermissionsService.m",
+      "symbol": "-[EXPermissionsService registerRequesters:]",
+      "imageIndex": 2,
+      "symbolLocation": 300
+    },
+    {
+      "imageOffset": 2342960,
+      "sourceLine": 29,
+      "sourceFile": "ImagePickerModule.swift",
+      "symbol": "closure #1 in ImagePickerModule.definition()",
+      "imageIndex": 2,
+      "symbolLocation": 388
+    },
+    {
+      "imageOffset": 4107944,
+      "sourceLine": 13,
+      "sourceFile": "EventListener.swift",
+      "symbol": "closure #1 in EventListener.init(_:_:)",
+      "imageIndex": 2,
+      "symbolLocation": 84
+    },
+    {
+      "imageOffset": 4108060,
+      "sourceFile": "/<compiler-generated>",
+      "symbol": "partial apply for closure #1 in EventListener.init(_:_:)",
+      "symbolLocation": 28,
+      "imageIndex": 2
+    },
+    {
+      "imageOffset": 4503256,
+      "sourceLine": 162,
+      "sourceFile": "ModuleHolder.swift",
+      "symbol": "closure #1 in ModuleHolder.post(event:)",
+      "imageIndex": 2,
+      "symbolLocation": 180
+    },
+    {
+      "imageOffset": 4503404,
+      "sourceFile": "/<compiler-generated>",
+      "symbol": "partial apply for closure #1 in ModuleHolder.post(event:)",
+      "symbolLocation": 20,
+      "imageIndex": 2
+    },
+    {
+      "imageOffset": 1643996,
+      "symbol": "Sequence.forEach(_:)",
+      "symbolLocation": 432,
+      "imageIndex": 19
+    },
+    {
+      "imageOffset": 4498864,
+      "sourceLine": 161,
+      "sourceFile": "ModuleHolder.swift",
+      "symbol": "ModuleHolder.post(event:)",
+      "imageIndex": 2,
+      "symbolLocation": 132
+    },
+    {
+      "imageOffset": 4498132,
+      "sourceLine": 56,
+      "sourceFile": "ModuleHolder.swift",
+      "symbol": "ModuleHolder.init(appContext:module:name:)",
+      "imageIndex": 2,
+      "symbolLocation": 440
+    },
+    {
+      "imageOffset": 4494200,
+      "sourceFile": "ModuleHolder.swift",
+      "symbol": "ModuleHolder.__allocating_init(appContext:module:name:)",
+      "symbolLocation": 88,
+      "imageIndex": 2
+    },
+    {
+      "imageOffset": 4511032,
+      "sourceLine": 49,
+      "sourceFile": "ModuleRegistry.swift",
+      "symbol": "ModuleRegistry.register(module:name:preventModuleOverriding:)",
+      "imageIndex": 2,
+      "symbolLocation": 260
+    }
+  ]
+}

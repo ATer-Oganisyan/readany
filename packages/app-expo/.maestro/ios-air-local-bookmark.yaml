@@ -1,0 +1,28 @@
+appId: com.mishanaer.readany.dev
+name: Isolated Air bookmark add then page and list
+---
+- assertVisible: "Narra Reader"
+- tapOn:
+    point: "50%,50%"
+- tapOn: "Book actions"
+- tapOn: "Add bookmark.*"
+- takeScreenshot: ios-air-bookmark-added
+- tapOn:
+    point: "95%,50%"
+- waitForAnimationToEnd:
+    timeout: 3000
+- tapOn:
+    point: "95%,50%"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: ios-air-after-pages
+- runFlow:
+    when:
+      notVisible: "Book actions"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- tapOn: "Book actions"
+- tapOn: "Bookmarks"
+- assertVisible: "Bookmarks"
+- takeScreenshot: ios-air-bookmarks-list

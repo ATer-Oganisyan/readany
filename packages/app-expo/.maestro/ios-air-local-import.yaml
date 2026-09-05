@@ -1,0 +1,21 @@
+appId: com.mishanaer.readany.dev
+name: Isolated Air LOCAL fresh FBZ import and read
+---
+- assertVisible: "Add from link"
+- tapOn: "Add from link"
+- tapOn: "Book file or Ficbook story link"
+- inputText: http://127.0.0.1:8089/27-fresh-boundary.fbz
+- tapOn:
+    text: "Add"
+    waitToSettleTimeoutMs: 0
+- extendedWaitUntil:
+    visible: "Open"
+    timeout: 20000
+- takeScreenshot: ios-air-local-import-open
+- tapOn:
+    text: "Open"
+    waitToSettleTimeoutMs: 0
+- extendedWaitUntil:
+    visible: "Narra Reader"
+    timeout: 20000
+- takeScreenshot: ios-air-local-reader

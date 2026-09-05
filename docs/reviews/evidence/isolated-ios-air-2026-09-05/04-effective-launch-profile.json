@@ -1,0 +1,16 @@
+{
+  "processGateway": "http://127.0.0.1:18787",
+  "virtualGateway": "https://api-test.narra.disrupt.builders",
+  "virtualEnvironment": "test",
+  "effectiveProfile": {
+    "baseUrl": "http://127.0.0.1:18787",
+    "environment": "development",
+    "authMode": "installation"
+  },
+  "executedModules": [
+    "../../node_modules/expo/virtual/env.js",
+    "../app-expo?ctx=1122149ada429c11a789cd9dfdcaefb64b6dd8f5",
+    ".env.development",
+    "src/lib/ai/narra-gateway-config.ts"
+  ]
+}
