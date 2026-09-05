@@ -30,6 +30,13 @@
   mobile1709/core697 PASS, TypeScript обоих пакетов PASS. Native и надёжная
   повторная очистка производных данных ещё не приняты:
   `docs/reviews/book-delete-failure-safety-2026-09-05.md`.
+  Свежий Android-прогон выявил дубликат при повторе EPUB с кириллицей:
+  percent-encoded URI не декодировался перед native SHA. Исправление `95d230c`
+  проходит mobile1714/core697 и мобильный TypeScript на точном QA-снимке.
+  Native-повтор ещё не принят: обнаружен недостижимый режим множественного
+  выбора, его UI-цепочка исправляется отдельно. Ранее созданные hashless
+  дубликаты автоматически не объединяются. Детали:
+  `docs/reviews/import-unicode-hash-2026-09-05.md`.
 - **Чтение:** зависания и пропуск глав, WebView request races, EPUB Range,
   PDF/CBZ rendering/позиции, checkpoint, book-scoped заметки и возврат без
   накопления Reader; управление, тема, контраст и лишние фоновые renders.
