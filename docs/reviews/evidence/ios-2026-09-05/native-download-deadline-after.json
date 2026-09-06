@@ -1,0 +1,36 @@
+{
+  "cleaned": true,
+  "device": "iPhone 17 Pro Max",
+  "functionalPassed": true,
+  "module": "src/lib/platform/expo-platform-service.ts",
+  "noLateProgress": true,
+  "passed": true,
+  "paths": [
+    "file:///Users/tsevdnkanduev/Library/Developer/CoreSimulator/Devices/391D4246-C13E-42B6-B7AF-15D3B7FD9DC6/data/Containers/Data/Application/BD6CAA4F-EFBB-4862-9276-A75ED458F60B/Library/Caches/__narraNativeDownloadQa1788596789479-stall.epub",
+    "file:///Users/tsevdnkanduev/Library/Developer/CoreSimulator/Devices/391D4246-C13E-42B6-B7AF-15D3B7FD9DC6/data/Containers/Data/Application/BD6CAA4F-EFBB-4862-9276-A75ED458F60B/Library/Caches/__narraNativeDownloadQa1788596789479-retry.epub",
+    "file:///Users/tsevdnkanduev/Library/Developer/CoreSimulator/Devices/391D4246-C13E-42B6-B7AF-15D3B7FD9DC6/data/Containers/Data/Application/BD6CAA4F-EFBB-4862-9276-A75ED458F60B/Library/Caches/__narraNativeDownloadQa1788596789479-precancel.epub"
+  ],
+  "platform": "ios",
+  "precancel": {
+    "elapsedMs": 0,
+    "fileExists": false,
+    "name": "AbortError"
+  },
+  "progress": 0,
+  "retry": {
+    "bytes": 4054,
+    "elapsedMs": 14,
+    "zipMagic": [
+      80,
+      75,
+      3,
+      4
+    ]
+  },
+  "timeout": {
+    "elapsedMs": 1007,
+    "message": "File download timeout (1000ms)",
+    "name": "TimeoutError"
+  },
+  "timingPassed": true
+}

@@ -1,0 +1,16 @@
+appId: com.mishanaer.readany.dev
+name: iOS reader actions menu inspection
+---
+- launchApp:
+    stopApp: false
+- assertVisible: "Narra Reader"
+- runFlow:
+    when:
+      notVisible: "Book actions"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- tapOn: "Book actions"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: ios-reader-actions-menu

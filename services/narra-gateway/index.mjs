@@ -24,12 +24,16 @@ import {
   settleProviderResponse,
   validateChatCompletionPayload
 } from './provider-response.mjs'
+import { createSseFrameRelay } from './sse-frame-relay.mjs'
 import { parseEventBatch } from './events.mjs'
 import { createEventStore } from './event-store.mjs'
+import { createBestEffortEventWriter } from './best-effort-events.mjs'
 import { readBoundedBody } from './safe-fetch.mjs'
 import { fetchImportSource, importSourceFailure } from './import-source.mjs'
-import { createConcurrencyGate, requestAbortSignal, withTimeout } from './concurrency.mjs'
+import { acquireWithDeadline, createConcurrencyGate, requestAbortSignal, withTimeout } from './concurrency.mjs'
+import { createWorkloadConcurrencyGate, chatWorkload } from './workload-concurrency.mjs'
 import { parseEnvBool, parseEnvInt } from './env.mjs'
+import { listenGateway } from './gateway-listener.mjs'
 import {
   analyticsRoute,
   completionProperties,
@@ -71,6 +75,7 @@ import { createCoverJobRunner } from './cover-job-runner.mjs'
 import { bookCoverPrompt } from './catalog-cover-prompt.mjs'
 import { parseSceneJobBody, sceneGenerationPrompt } from './scene-generation.mjs'
 import { createBookCatalogRouter } from './book-catalog-api.mjs'
+import { createBookUploadByteBudget } from './book-upload-admission.mjs'
 import { createBookEmbeddingClientFromEnv } from './book-embedding-client.mjs'
 import { createBookSearchRouter } from './book-search-api.mjs'
 import { createPostgresBookSearchRepository } from './book-search-repository.mjs'
@@ -228,7 +233,9 @@ const KANDINSKY_IMAGE_TIMEOUT_MS = kandinskyImageTimeoutMs(process.env)
 const KANDINSKY_REQUEST_TIMEOUT_MS = kandinskyRequestTimeoutMs(process.env)
 const VIDEO_QUEUE_LIMIT = envInt('VIDEO_QUEUE_LIMIT', 4, 100)
 const LLM_CONCURRENCY = envInt('LLM_CONCURRENCY', 12, 100)
+const INTERNAL_CHAT_LIFECYCLE_LIMIT = envInt('INTERNAL_CHAT_LIFECYCLE_LIMIT', LLM_CONCURRENCY, 100)
 const LLM_QUEUE_LIMIT = envInt('LLM_QUEUE_LIMIT', 16, 500)
+const LLM_QUEUE_TIMEOUT_MS = envInt('LLM_QUEUE_TIMEOUT_MS', 30_000, 120_000)
 // SALUTE_SPEECH_PERS is capped at five upstream streams. Reject a stale or
 // accidental Railway override above the verified upstream scope.
 const SPEECH_CONCURRENCY = envInt('SPEECH_CONCURRENCY', 5, 5)
@@ -258,7 +265,16 @@ if (COVER_JOB_ATTEMPT_TIMEOUT_SECONDS * 1_000 < minimumCoverAttemptTimeoutMs) {
     'COVER_JOB_ATTEMPT_TIMEOUT_SECONDS must cover every configured cover image model timeout plus 15 seconds'
   )
 }
-const llmGate = createConcurrencyGate({ limit: LLM_CONCURRENCY, queueLimit: LLM_QUEUE_LIMIT, name: 'LLM' })
+const llmGate = createWorkloadConcurrencyGate({
+  limit: LLM_CONCURRENCY, queueLimit: LLM_QUEUE_LIMIT, name: 'LLM',
+  ...Object.fromEntries([
+    ['interactiveReserve', 'LLM_INTERACTIVE_RESERVE'],
+    ['backgroundReserve', 'LLM_BACKGROUND_RESERVE'],
+    ['interactiveQueueReserve', 'LLM_INTERACTIVE_QUEUE_RESERVE'],
+    ['backgroundQueueReserve', 'LLM_BACKGROUND_QUEUE_RESERVE']
+  ].filter(([, key]) => process.env[key] !== undefined).map(([key, envKey]) => [key, Number(process.env[envKey])]))
+})
+const internalChatLifecycleGate = createConcurrencyGate({ limit: INTERNAL_CHAT_LIFECYCLE_LIMIT, queueLimit: 0, name: 'Internal chat lifecycle' })
 const speechGate = createConcurrencyGate({ limit: SPEECH_CONCURRENCY, queueLimit: SPEECH_QUEUE_LIMIT, name: 'Speech' })
 const imageGate = createConcurrencyGate({ limit: IMAGE_CONCURRENCY, queueLimit: IMAGE_QUEUE_LIMIT, name: 'Image' })
 const coverGate = createConcurrencyGate({ limit: COVER_CONCURRENCY, queueLimit: COVER_QUEUE_LIMIT, name: 'Cover' })
@@ -662,11 +678,19 @@ const recordInternalGenerationCost = createBestEffortGenerationCostRecorder({
 
 async function completeInternalChat({ messages, signal, costContext }) {
   let release
+  let releaseLifecycle
+  const releaseProviderPermit = () => {
+    const ownedRelease = release
+    release = undefined
+    ownedRelease?.()
+  }
   const requestId = randomUUID()
   let providerResult
   let recorded = false
   try {
-    release = await llmGate.acquire(signal)
+    // Fail fast before paid work; retain this independent cap through accounting.
+    releaseLifecycle = await internalChatLifecycleGate.acquire(signal)
+    release = await llmGate.acquire(signal, { workload: 'background' })
     providerResult = await requestChat({
       messages,
       purpose: 'structured_task',
@@ -689,6 +713,9 @@ async function completeInternalChat({ messages, signal, costContext }) {
         return validateChatCompletionPayload(json)
       }
     })
+    // Consumption and attempt finalization have settled; accounting is a
+    // separate awaited operation and must not retain provider capacity.
+    releaseProviderPermit()
     await recordInternalGenerationCost({
       context: costContext,
       modality: 'text',
@@ -700,6 +727,7 @@ async function completeInternalChat({ messages, signal, costContext }) {
     recorded = true
     return payload?.choices?.[0]?.message?.content || ''
   } catch (error) {
+    releaseProviderPermit()
     const attempts = providerResult?.attempts || error?.attempts
     if (!recorded && Array.isArray(attempts) && attempts.length) {
       await recordInternalGenerationCost({
@@ -712,7 +740,8 @@ async function completeInternalChat({ messages, signal, costContext }) {
     }
     throw error
   } finally {
-    release?.()
+    releaseProviderPermit()
+    releaseLifecycle?.()
   }
 }
 
@@ -1126,6 +1155,8 @@ const eventStore = createEventStore({
   tractionToken: TRACTION_INGEST_TOKEN
 })
 eventStore.start()
+const internalEventWriter = createBestEffortEventWriter({ append: events => eventStore.append(events) })
+let internalAnalyticsDegraded = false
 const coverJobStore = createCoverJobStore({
   dataDir,
   environment: ANALYTICS_ENV,
@@ -1291,7 +1322,7 @@ function actorIdFor(req) {
 
 async function appendInternalEvent(req, eventName, properties, eventId = randomUUID()) {
   try {
-    await eventStore.append([{
+    const outcome = await internalEventWriter.write([{
       event_id: eventId,
       event_name: eventName,
       actor_id: actorIdFor(req),
@@ -1301,6 +1332,11 @@ async function appendInternalEvent(req, eventName, properties, eventId = randomU
       schema_version: 1,
       properties
     }])
+    if (outcome === 'persisted') internalAnalyticsDegraded = false
+    else if (!internalAnalyticsDegraded) {
+      internalAnalyticsDegraded = true
+      console.error('[analytics] bounded internal persistence degraded:', outcome, internalEventWriter.status())
+    }
   } catch (error) {
     // Product requests must keep working if the analytics volume is degraded.
     console.error('[analytics] internal event was not persisted:', error?.message || error)
@@ -1384,6 +1420,13 @@ const importByteBudget = createPersistentBudgetMiddleware({
   registry: installationRegistry,
   metric: 'import_bytes',
   amount: () => 30 * 1024 * 1024,
+  perInstallationLimit: IMPORT_DAILY_BYTES_MB * 1024 * 1024,
+  globalLimit: IMPORT_GLOBAL_DAILY_BYTES_MB * 1024 * 1024
+})
+// Source admission validates Content-Length before reserving exact bytes.
+// Unknown-length requests conservatively reserve the full permitted body cap.
+const bookUploadByteBudget = createBookUploadByteBudget({
+  registry: installationRegistry,
   perInstallationLimit: IMPORT_DAILY_BYTES_MB * 1024 * 1024,
   globalLimit: IMPORT_GLOBAL_DAILY_BYTES_MB * 1024 * 1024
 })
@@ -1606,7 +1649,7 @@ app.get('/v2/admin/metrics', operatorAuth, async (_req, res, next) => {
     return res.status(503).json({ error: 'Метрики backend недоступны', code: 'UNAVAILABLE' })
   }
   try {
-    res.json(await operationalMetricsRepository.snapshot({
+    const snapshot = await operationalMetricsRepository.snapshot({
       runtime: operationalRuntimeMetrics(),
       concurrency: {
         llm: llmGate.status(),
@@ -1616,7 +1659,11 @@ app.get('/v2/admin/metrics', operatorAuth, async (_req, res, next) => {
         import: importGate.status()
       },
       buildVersion: BUILD_VERSION
-    }))
+    })
+    // Sample after SQL settles, and expose only bounded aggregate counters to
+    // operators. Accounting may retain this permit after provider work ends.
+    const { active, waiting, limit, queue_limit } = internalChatLifecycleGate.status()
+    res.json({ ...snapshot, internalChatLifecycle: { active, waiting, limit, queue_limit } })
   } catch (error) {
     next(error)
   }
@@ -1721,7 +1768,9 @@ if (bookMarkupRepository) {
     ttsMarkupRepository: bookTtsMarkupRepository,
     shadowPreviewEnabled: BOOK_SHADOW_PREVIEW_ENABLED,
     storage: bookObjectStorage,
-    uploadMaxBytes: BOOK_UPLOAD_MAX_BYTES
+    uploadMaxBytes: BOOK_UPLOAD_MAX_BYTES,
+    uploadGate: importGate,
+    uploadLimits: [importLimit, importDailyLimit, bookUploadByteBudget]
   }))
 }
 
@@ -1766,12 +1815,17 @@ app.post('/v2/ai/chat/stream', aiLimit, aiDailyLimit, express.json({ limit: '1mb
   const clientSignal = requestAbortSignal(req, res)
   let requestId
   let release
+  const releaseProviderPermit = () => {
+    const ownedRelease = release
+    release = undefined
+    ownedRelease?.()
+  }
   let analyticsOrigin = 'user'
   let recordActorAnalytics = true
   let requestPurpose
   try {
-    release = await llmGate.acquire(clientSignal)
     const input = parseChatBody(req.body, { stream: true })
+    release = await acquireWithDeadline(llmGate, clientSignal, { workload: chatWorkload(input) }, LLM_QUEUE_TIMEOUT_MS)
     // Правовые рамки РФ — обязанность сервера: старый или модифицированный
     // клиент не может их обойти. Идемпотентно к рамке, присланной клиентом.
     const messages = withChatCompliance(input.messages, input.purpose)
@@ -1814,23 +1868,27 @@ app.post('/v2/ai/chat/stream', aiLimit, aiDailyLimit, express.json({ limit: '1mb
       consume: async () => {
         let streamedBytes = 0
         usageCollector = createSseUsageCollector()
+        const relay = createSseFrameRelay({
+          validateFrame: frame => usageCollector.push(frame),
+          writeFrame: frame => res.write(frame)
+        })
         for await (const chunk of upstream.body) {
           streamedBytes += Buffer.byteLength(chunk)
           if (streamedBytes > LLM_RESPONSE_MAX_BYTES) {
             await upstream.body.cancel().catch(() => {})
             throw Object.assign(new Error('LLM response exceeded the gateway limit'), { code: 'NETWORK', status: 502 })
           }
-          usageCollector.push(chunk)
-          res.write(chunk)
+          relay.push(chunk)
         }
+        relay.finish()
         return usageCollector.value()
       }
     })
+    // Provider consumption/finalization is complete. Terminal analytics must
+    // not retain capacity after the client has received its finished answer.
+    releaseProviderPermit()
     res.end()
     const finishReason = usageCollector?.finishReason()
-    if (finishReason === 'length') {
-      console.warn(`[llm] ответ обрезан лимитом max_tokens: purpose=${input.purpose} request_id=${requestId}`)
-    }
     if (recordActorAnalytics) {
       await appendInternalEvent(req, 'ai_request_completed', completionProperties({
         requestId,
@@ -1845,6 +1903,7 @@ app.post('/v2/ai/chat/stream', aiLimit, aiDailyLimit, express.json({ limit: '1mb
       }))
     }
   } catch (e) {
+    releaseProviderPermit()
     if (requestId && recordActorAnalytics) await appendInternalEvent(req, 'ai_request_failed', {
       request_id: requestId,
       ...(requestPurpose ? { purpose: requestPurpose } : {}),
@@ -1871,7 +1930,7 @@ app.post('/v2/ai/chat/stream', aiLimit, aiDailyLimit, express.json({ limit: '1mb
       res.end()
     }
   } finally {
-    release?.()
+    releaseProviderPermit()
   }
 })
 
@@ -1885,8 +1944,8 @@ app.post('/v2/ai/chat/complete', aiLimit, aiDailyLimit, express.json({ limit: '1
   let recordActorAnalytics = true
   let requestPurpose
   try {
-    release = await llmGate.acquire(clientSignal)
     const input = parseChatBody(req.body)
+    release = await acquireWithDeadline(llmGate, clientSignal, { workload: chatWorkload(input) }, LLM_QUEUE_TIMEOUT_MS)
     // Диалоговые purposes и здесь получают серверную правовую рамку.
     const messages = withChatCompliance(input.messages, input.purpose)
     analyticsOrigin = input.origin
@@ -1931,9 +1990,6 @@ app.post('/v2/ai/chat/complete', aiLimit, aiDailyLimit, express.json({ limit: '1
       }
     })
     const finishReason = j?.choices?.[0]?.finish_reason
-    if (finishReason === 'length') {
-      console.warn(`[llm] ответ обрезан лимитом max_tokens: purpose=${input.purpose} request_id=${requestId}`)
-    }
     if (recordActorAnalytics) {
       await appendInternalEvent(req, 'ai_request_completed', completionProperties({
         requestId,
@@ -2448,7 +2504,7 @@ app.use((error, _req, res, _next) => {
   res.status(500).json({ error: 'Внутренняя ошибка gateway', code: 'UNKNOWN' })
 })
 
-const httpServer = app.listen(PORT, () => {
+const httpServer = listenGateway(app, PORT, () => {
   const llm = llmRouteReadiness()
   console.log(`[narra-proxy] слушает :${PORT}`)
   console.log(`  чат(LLM): ${llm.ready ? 'ok' : '—'}  salutespeech: ${SALUTE_KEY ? 'ok' : '—'}  kandinsky: ${KANDINSKY_TOKEN ? 'ok' : '—'}`)

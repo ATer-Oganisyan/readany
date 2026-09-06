@@ -1,0 +1,20 @@
+{
+  "live": true,
+  "model": "gpt-5.6-luna",
+  "fixtureId": "anna-boat-character-chat-v1",
+  "upstreamSha256": "7d6447e6b37eebc4e482a2381e921be09aa9fc05b9d378dfc65dfa1875c76259",
+  "mobileRequestSha256": "79c29bdd6aa4aa52f5b3246ce55c753aa5cc7793b491a18c460457dc3943a039",
+  "elapsedMs": 6532,
+  "requestElapsedMs": 6349,
+  "completion": {
+    "text": "Я заметила течь и позвала Льва, потому что нужна была доска. Он быстро принёс её — с ним у берега спокойнее.",
+    "request_id": "7fae20aa-9cd2-46e5-86bb-2dcf4bd74c95",
+    "route": "litellm:gpt-5.6-luna",
+    "usage": null,
+    "attempts": 1
+  },
+  "transportPassed": true,
+  "requiresManualReview": true,
+  "qualityAccepted": false,
+  "scope": "Own Anna fixture: captured mobile body -> authenticated gateway HTTP -> exact approved provider bytes. Native UI and live response mobile-parser replay are separate gates. Gateway omits finish_reason: truncation and semantic quality require separate review."
+}

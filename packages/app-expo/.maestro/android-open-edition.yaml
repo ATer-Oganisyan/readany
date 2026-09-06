@@ -1,0 +1,9 @@
+appId: com.mishanaer.readany.dev
+name: Open URL-imported new edition without replacing original
+---
+- runFlow:
+    file: flows/android-open-fixture.yaml
+    env:
+      BOOK_TITLE: Аудит 14 - Новая редакция реки
+- assertVisible: .*Анна.*
+- takeScreenshot: android-url-edition-reading

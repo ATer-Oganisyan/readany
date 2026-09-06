@@ -1,4 +1,4 @@
-import { readGatewayResponseBytes } from "@/lib/ai/narra-gateway-consumer";
+import { readGatewayResponseBytes, withGatewayConsumer } from "@/lib/ai/narra-gateway-consumer";
 import { consumeNarraGatewayResponse, narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
 import * as FileSystem from "expo-file-system/legacy";
@@ -545,6 +545,7 @@ export function generateBookCoverImage(
 }
 
 export interface NarraSpeechOptions {
+  signal?: AbortSignal;
   /** Просодия голоса персонажа из voice-rules (pitch — полутоны, rate — множитель). */
   prosody?: NarraProsody;
   /** Пользовательская скорость воспроизведения (0.5–2, дефолт 1). */
@@ -600,34 +601,6 @@ async function writeSpeechFile(bytes: Uint8Array, extension: "wav" | "mp3"): Pro
   }
 }
 
-/** Прежний путь: гейтвей Narra + SaluteSpeech, SSML с prosody rate/pitch. */
-async function synthesizeViaGateway(
-  trimmed: string,
-  voice: string,
-  options: NarraSpeechOptions | undefined,
-  startedAt: number,
-): Promise<string> {
-  const ssml = buildNarraSpeechSsml(trimmed, options?.prosody, options?.rate);
-  const response = await narraGatewayRequest("/v2/speech/synthesize", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(ssml ? { ssml, voice } : { text: trimmed, voice }),
-  });
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(payload?.error || `Speech synthesis failed (${response.status})`);
-  }
-  const sampleRate = Number(response.headers.get("x-audio-sample-rate"));
-  if (sampleRate === 24_000 || sampleRate === 48_000) {
-    recordTelemetry("tts_first_audio_ready", {
-      sample_rate: sampleRate,
-      first_audio_latency_bucket: firstAudioLatencyBucket(Date.now() - startedAt),
-      origin: "user",
-    });
-  }
-  return writeSpeechFile(new Uint8Array(await response.arrayBuffer()), "wav");
-}
-
 /**
  * Grok TTS через OpenRouter. Просодия персонажа уходит в подбор голоса
  * (grok-voices), пользовательская скорость — на плеер: API Grok не принимает
@@ -639,13 +612,36 @@ async function synthesizeViaGrok(
   options: NarraSpeechOptions | undefined,
   startedAt: number,
 ): Promise<string> {
-  const bytes = await fetchGrokSpeechAudio(trimmed, voice, { prosody: options?.prosody });
-  recordTelemetry("tts_first_audio_ready", {
-    sample_rate: GROK_TTS_SAMPLE_RATE,
-    first_audio_latency_bucket: firstAudioLatencyBucket(Date.now() - startedAt),
-    origin: "user",
-  });
-  return writeSpeechFile(bytes, "mp3");
+  return withGatewayConsumer(
+    async (scope) => {
+      const bytes = await fetchGrokSpeechAudio(trimmed, voice, {
+        prosody: options?.prosody,
+        signal: scope.signal,
+      });
+      scope.throwIfAborted();
+      const saving = writeSpeechFile(bytes, "mp3").then(async (uri) => {
+        try {
+          scope.throwIfAborted();
+          const info = await FileSystem.getInfoAsync(uri);
+          scope.throwIfAborted();
+          if (!info.exists || info.isDirectory || info.size !== bytes.byteLength)
+            throw new NarraServiceError("SERVICE", "Не удалось сохранить звук на устройстве.");
+          return uri;
+        } catch (error) {
+          await FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
+          throw error;
+        }
+      });
+      const uri = await scope.wait(saving);
+      recordTelemetry("tts_first_audio_ready", {
+        sample_rate: GROK_TTS_SAMPLE_RATE,
+        first_audio_latency_bucket: firstAudioLatencyBucket(Date.now() - startedAt),
+        origin: "user",
+      });
+      return uri;
+    },
+    { signal: options?.signal, timeoutMs: 60_000 },
+  );
 }
 
 async function synthesizeNarraSpeechRequest(
@@ -657,9 +653,7 @@ async function synthesizeNarraSpeechRequest(
   // Ударения (P9) размечаются здесь — в единой точке всей озвучки (книга,
   // сцены, чат) — до сборки SSML, чтобы работать и в {text}, и в {ssml}.
   const trimmed = applyActiveStressMarkup(text.slice(0, 12_000));
-  return getNarraTTSProvider() === "grok"
-    ? synthesizeViaGrok(trimmed, voice, options, startedAt)
-    : synthesizeViaGateway(trimmed, voice, options, startedAt);
+  return synthesizeViaGrok(trimmed, voice, options, startedAt);
 }
 
 export function synthesizeNarraSpeech(
@@ -667,6 +661,9 @@ export function synthesizeNarraSpeech(
   voice: string,
   options?: NarraSpeechOptions,
 ): Promise<string> {
+  // The gateway helper owns stress preparation and telemetry, exactly once.
+  if (getNarraTTSProvider() === "gateway")
+    return synthesizeNarraGatewaySpeech(text, voice, options);
   return trackNarraMediaJob("tts", "user", () =>
     synthesizeNarraSpeechRequest(text, voice, options),
   );

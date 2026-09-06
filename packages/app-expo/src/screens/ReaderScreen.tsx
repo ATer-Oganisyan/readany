@@ -9,8 +9,10 @@ import { Text } from "@/components/ui/Typography";
 import { useBackendBook } from "@/hooks/use-backend-book";
 import { useReaderBridge } from "@/hooks/use-reader-bridge";
 import type { RelocateEvent, SelectionEvent, VisibleTTSSegment } from "@/hooks/use-reader-bridge";
+import { useReaderControls } from "@/hooks/use-reader-controls";
 import { durationBucket } from "@/lib/analytics/contract";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
+import { bookImportPickerTypes } from "@/lib/book/import-format";
 import {
   BUNDLED_CATALOG_BOOKS,
   findBundledCatalogBookByTitle,
@@ -32,6 +34,7 @@ import { backendSceneMarkupIdentity } from "@/lib/narra/backend-scene-identity";
 import { generateBackendReaderScene, readSceneDataUri } from "@/lib/narra/backend-scene-reader";
 import { backendSceneForAnchor } from "@/lib/narra/backend-scene-state";
 import { buildCharacterNameMatcherSpec } from "@/lib/narra/character-name-matcher";
+import { captureCharacterReadingContext } from "@/lib/narra/character-reading-context";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
 import { narraBackendCode } from "@/lib/narra/errors";
 import { sceneInsertAnchors, sceneSourceKeyForAnchor } from "@/lib/narra/scene-inserts";
@@ -43,6 +46,7 @@ import type { NarraCharacter } from "@/lib/narra/types";
 import { toast } from "@/lib/notifications";
 import { DEFAULT_READER_FONT_FAMILY } from "@/lib/reader/bundled-reader-font";
 import { getReaderBookmarkCopy } from "@/lib/reader/reader-bookmark-copy";
+import { createReaderProgressPersistence } from "@/lib/reader/reader-progress";
 import { isReaderTransportError } from "@/lib/reader/reader-recovery";
 import {
   READER_BUILD_ID,
@@ -61,17 +65,16 @@ import {
   useTTSStore,
 } from "@/stores";
 import { useMissingBookPromptStore } from "@/stores/missing-book-prompt-store";
+import { flushAllWrites } from "@/stores/persist";
 import { darkColors, lightColors, useTheme } from "@/styles/ThemeContext";
 import { useColors } from "@/styles/theme";
 import { useIsFocused } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { readingContextService } from "@readany/core/ai/reading-context-service";
-import { runWithDbRetry } from "@readany/core/db/write-retry";
 import { useChapterTranslation } from "@readany/core/hooks";
 import { useReadingSession } from "@readany/core/hooks/use-reading-session";
 import type { Book, ReadSettings, TOCItem } from "@readany/core/types";
 import { eventBus } from "@readany/core/utils/event-bus";
-import { throttle } from "@readany/core/utils/throttle";
 import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
@@ -101,6 +104,7 @@ import { ReaderTopBar } from "./reader/ReaderTopBar";
 // ── Extracted modules ──
 import { ReaderNoteViewModal } from "./reader/ReaderNoteViewModal";
 import { ReaderToolbar, TOOLBAR_HEIGHT } from "./reader/ReaderToolbar";
+import { ReaderTTSPreparationStatus } from "./reader/reader-tts-preparation-status";
 
 const REFLOWABLE_CHARACTERS_PER_LOCATION = 1500;
 const MAX_TRACKED_LOCATION_DELTA = 20;
@@ -109,16 +113,6 @@ const MAX_TRACKED_FRACTION_DELTA = 0.08;
 const INITIAL_PROGRESS_RESTORE_GUARD_MS = 1800;
 const PROGRAMMATIC_NAV_GUARD_MS = 1200;
 const CONTROLS_VISIBILITY_ANIMATION_MS = 220;
-const BOOK_MIME_TYPES = [
-  "application/epub+zip",
-  "application/pdf",
-  "application/x-mobipocket-ebook",
-  "application/vnd.amazon.ebook",
-  "application/vnd.comicbook+zip",
-  "application/x-fictionbook+xml",
-  "text/plain",
-  "application/octet-stream",
-];
 
 const BOOK_FORMAT_MIME_TYPES: Partial<Record<string, string>> = {
   epub: "application/epub+zip",
@@ -132,6 +126,26 @@ const BOOK_FORMAT_MIME_TYPES: Partial<Record<string, string>> = {
   fbz: "application/x-zip-compressed-fb2",
   txt: "text/plain",
 };
+
+function selectionSourceKey(
+  selection: SelectionEvent | null | undefined,
+  selectedText: string,
+  chapter: string,
+): string {
+  const cfi = selection?.cfi ?? "";
+  if (cfi && selection?.cfiGranularity === "page") {
+    // A page anchor identifies where to reopen, not which excerpt was selected.
+    // Use all selected UTF-16 code units for a bounded, stable 64-bit cache
+    // fingerprint; this is local cache identity, not a security/content hash.
+    let fingerprint = 0xcbf29ce484222325n;
+    for (let index = 0; index < selectedText.length; index++) {
+      fingerprint ^= BigInt(selectedText.charCodeAt(index));
+      fingerprint = BigInt.asUintN(64, fingerprint * 0x100000001b3n);
+    }
+    return `selection:${cfi}:text:${selectedText.length}:${fingerprint.toString(16)}`;
+  }
+  return `selection:${cfi || `${chapter}:${selectedText.slice(0, 120)}`}`;
+}
 
 function normalizeBookIdentityText(value?: string): string {
   return (value || "").toLowerCase().replace(/[\s\p{P}\p{S}_-]+/gu, "");
@@ -263,7 +277,7 @@ export function ReaderScreen(props: Props) {
       };
       await updateBook(importedBook.id, { meta: normalizedMeta });
       void installBundledCatalogCover(importedBook.id, bundledBook)
-        .then((coverUrl) => updateBook(importedBook.id, { meta: { ...normalizedMeta, coverUrl } }))
+        .then((coverUrl) => updateBook(importedBook.id, { meta: { coverUrl } }))
         .catch((error) =>
           console.warn(`[Catalog] Failed to install cover ${bundledBook.id}:`, error),
         );
@@ -513,7 +527,12 @@ function ReaderContent({ route, navigation }: Props) {
   // State
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showControls, setShowControls] = useState(true);
+  const isFocused = useIsFocused();
+  const { showControls, setShowControls, toggleControls } = useReaderControls(
+    isFocused,
+    loading,
+    CONTROLS_TIMEOUT,
+  );
   const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
   const [showTOC, setShowTOC] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -567,12 +586,13 @@ function ReaderContent({ route, navigation }: Props) {
   } | null>(null);
 
   const bridgeRef = useRef<{
-    requestPageSnippet: () => void;
+    requestPageSnippet: (requestId: string) => void;
     goNext: () => void;
     search: (query: string) => void;
     clearSearch: () => void;
     navigateSearch: (index: number) => void;
     getVisibleText: () => Promise<string>;
+    getVisibleReadingContext: () => Promise<{ text: string; cfi: string } | null>;
     getVisibleTTSSegments: (alignCfi?: string | null) => Promise<TTSSegment[]>;
     getChapterParagraphs: () => Promise<Array<{ id: string; text: string; tagName: string }>>;
     getTTSSegmentContext: (
@@ -659,7 +679,6 @@ function ReaderContent({ route, navigation }: Props) {
     [systemFontScale],
   );
 
-  const controlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const controlsVisibility = useSharedValue(1);
   const controlsAnimatedStyle = useAnimatedStyle(() => ({
     opacity: controlsVisibility.value,
@@ -681,35 +700,63 @@ function ReaderContent({ route, navigation }: Props) {
 
   const incrementPagesRead = useReadingSessionStore((s) => s.incrementPagesRead);
   const incrementCharactersRead = useReadingSessionStore((s) => s.incrementCharactersRead);
-  const readingActiveTime = useReadingSessionStore(
-    (state) => state.currentSession?.totalActiveTime ?? 0,
+  const hasQualifiedReadingTime = useReadingSessionStore(
+    (state) =>
+      state.currentSession?.bookId === bookId && state.currentSession.totalActiveTime >= 60_000,
   );
-  const qualifiedReadingRecordedRef = useRef(false);
+  const qualifiedReadingRecordedRef = useRef<string | null>(null);
   const { sendEvent } = useReadingSession(bookId); // Added useReadingSession hook
-  const { books, updateBook } = useLibraryStore();
+  const { books, updateBook, checkpointReadingProgress } = useLibraryStore();
   const setGoToCfiFn = useReaderStore((s) => s.setGoToCfiFn);
 
-  // Throttled progress save (same as desktop - 5 seconds)
-  const throttledSaveProgress = useRef(
-    throttle((bId: string, prog: number, cfi: string) => {
-      updateBook(bId, {
-        progress: prog,
-        currentCfi: cfi,
-      });
-    }, 5000),
-  ).current;
+  const progressPersistence = useMemo(
+    () =>
+      createReaderProgressPersistence(
+        (position) => updateBook(bookId, position),
+        (error) => console.error("Failed to save reading progress:", error),
+      ),
+    [bookId, updateBook],
+  );
+  const flushReaderProgress = useCallback(() => {
+    const databaseWrite = progressPersistence.flush();
+    // Flush the library snapshot immediately too: a busy database must not delay it.
+    return Promise.all([databaseWrite, flushAllWrites()]);
+  }, [progressPersistence]);
   const publishCharacterProgress = useCallback(() => {
     // Character screens read the library store, not the reader's live position.
     // Publish before navigating so the five-second save throttle cannot relock a hero.
     if (!lastCfiRef.current) return;
     void updateBook(bookId, {
-      progress,
+      progress: progressRef.current,
       currentCfi: lastCfiRef.current,
     });
-  }, [bookId, progress, updateBook]);
-  const { loadAnnotations, highlights } = useAnnotationStore();
+  }, [bookId, updateBook]);
+  const { loadAnnotations, highlights: storedHighlights } = useAnnotationStore();
+  const highlights = useMemo(
+    () => storedHighlights.filter((highlight) => highlight.bookId === bookId),
+    [bookId, storedHighlights],
+  );
   const book = useMemo(() => books.find((b) => b.id === bookId), [books, bookId]);
   const activeReaderLoadIdRef = useRef<string | null>(null);
+  const prepareCharacterContext = useCallback(async () => {
+    const readerId = activeReaderLoadIdRef.current;
+    const cfi = lastCfiRef.current;
+    if (!readerId || !cfi) return true;
+    return captureCharacterReadingContext({
+      position: { bookId, cfi, readerId },
+      currentPosition: () =>
+        activeReaderLoadIdRef.current
+          ? { bookId, cfi: lastCfiRef.current, readerId: activeReaderLoadIdRef.current }
+          : null,
+      readVisible: () => bridgeRef.current?.getVisibleReadingContext() ?? Promise.resolve(null),
+      publish: (text) => {
+        const context = readingContextService.getContext();
+        if (context?.bookId !== bookId || context.currentPosition.cfi !== cfi) return;
+        // Same-book updates are synchronous; no highlights/DB or AI is awaited.
+        void readingContextService.updateContext({ bookId, surroundingText: text });
+      },
+    });
+  }, [bookId]);
 
   // ── Narra: кликабельные имена персонажей ────────────────────────────────────
   const narraBookCharacters = useNarraStore((state) => state.books[bookId]?.characters);
@@ -880,14 +927,17 @@ function ReaderContent({ route, navigation }: Props) {
   );
 
   useEffect(() => {
-    if (qualifiedReadingRecordedRef.current || readingActiveTime < 60_000) return;
-    qualifiedReadingRecordedRef.current = true;
+    if (!hasQualifiedReadingTime || qualifiedReadingRecordedRef.current === bookId) return;
+    const session = useReadingSessionStore.getState().currentSession;
+    if (session?.bookId !== bookId || session.totalActiveTime < 60_000) return;
+    qualifiedReadingRecordedRef.current = bookId;
+    const readingActiveTime = session.totalActiveTime;
     recordTelemetry("reading_session_qualified", {
       book_kind: book && findBundledCatalogBookByTitle(book.meta.title) ? "builtin" : "imported",
       duration_seconds: Math.round(readingActiveTime / 1_000),
       duration_bucket: durationBucket(readingActiveTime),
     });
-  }, [book, readingActiveTime]);
+  }, [book, bookId, hasQualifiedReadingTime]);
 
   // ── System safe area ────────────────────────────────────────────────────────
   const { stableTopInset, insets } = useReaderSystemInfo({
@@ -896,8 +946,8 @@ function ReaderContent({ route, navigation }: Props) {
   });
 
   // ── Bookmark ───────────────────────────────────────────────────────────────
-  const requestPageSnippet = useCallback(() => {
-    bridgeRef.current?.requestPageSnippet();
+  const requestPageSnippet = useCallback((requestId: string) => {
+    bridgeRef.current?.requestPageSnippet(requestId);
   }, []);
   // Отдача висит на самом действии, а не на появлении ленты закладки: лента
   // показывается и когда пользователь просто перелистнул на уже заложенную
@@ -918,6 +968,8 @@ function ReaderContent({ route, navigation }: Props) {
     requestPageSnippet,
     onBookmarkAdded: handleBookmarkAdded,
     onBookmarkRemoved: handleBookmarkRemoved,
+    onBookmarkError: () =>
+      toast.error(t("bookmarks.saveFailed", "Не удалось изменить закладку. Попробуйте ещё раз.")),
   });
   const { isBookmarked, handleToggleBookmark } = bookmark;
 
@@ -1032,34 +1084,20 @@ function ReaderContent({ route, navigation }: Props) {
   const ttsPlayState = useTTSStore((s) => s.playState);
 
   // Focus & foreground state for volume paging whitelist
-  const isFocused = useIsFocused();
   useBackendBook(book, isFocused, progress);
   const [appActive, setAppActive] = useState(true);
 
   useEffect(() => {
-    if (!isFocused) return;
-
-    setShowControls(true);
-    if (controlsTimer.current) clearTimeout(controlsTimer.current);
-    controlsTimer.current = setTimeout(() => {
-      setShowControls(false);
-      controlsTimer.current = null;
-    }, CONTROLS_TIMEOUT);
-
-    return () => {
-      if (controlsTimer.current) {
-        clearTimeout(controlsTimer.current);
-        controlsTimer.current = null;
-      }
-    };
-  }, [isFocused]);
+    const sub = AppState.addEventListener("change", (s: AppStateStatus) => {
+      setAppActive(s === "active");
+      if (s === "inactive" || s === "background") void flushReaderProgress();
+    });
+    return () => sub.remove();
+  }, [flushReaderProgress]);
 
   useEffect(() => {
-    const sub = AppState.addEventListener("change", (s: AppStateStatus) =>
-      setAppActive(s === "active"),
-    );
-    return () => sub.remove();
-  }, []);
+    if (!isFocused) void flushReaderProgress();
+  }, [isFocused, flushReaderProgress]);
 
   // A rebuilt HTML asset must replace the WebView even after Fast Refresh.
   // biome-ignore lint/correctness/useExhaustiveDependencies: the generated build ID changes on HMR, unlike an ordinary imported constant.
@@ -1082,24 +1120,6 @@ function ReaderContent({ route, navigation }: Props) {
       cancelled = true;
     };
   }, [READER_BUILD_ID, readerHtmlUri]);
-
-  // Controls toggle — declared before bridge so onTap can reference it without TS error
-  const toggleControls = useCallback(() => {
-    const willShow = !showControls;
-    setShowControls(willShow);
-
-    if (controlsTimer.current) {
-      clearTimeout(controlsTimer.current);
-      controlsTimer.current = null;
-    }
-
-    if (willShow) {
-      controlsTimer.current = setTimeout(() => {
-        setShowControls(false);
-        controlsTimer.current = null;
-      }, CONTROLS_TIMEOUT);
-    }
-  }, [showControls]);
 
   useEffect(() => {
     controlsVisibility.value = withTiming(showControls ? 1 : 0, {
@@ -1195,12 +1215,19 @@ function ReaderContent({ route, navigation }: Props) {
         setProgress(absoluteFraction);
       }
 
-      // «стр. N из M» по всей книге — из foliate location (нет в scrolled/fixed)
-      setBookLocation(detail.location?.total ? detail.location : null);
+      // Fixed layouts expose physical pages; reflowable books retain estimated
+      // text locations. The header adds one to its zero-based current value.
+      setBookLocation(
+        detail.isFixedLayout && detail.page?.total
+          ? { current: detail.page.current - 1, total: detail.page.total }
+          : detail.location?.total
+            ? detail.location
+            : null,
+      );
 
       const trackingSuppressed = Date.now() < progressTrackingGuardUntilRef.current;
 
-      if (detail.location?.total) {
+      if (!detail.isFixedLayout && detail.location?.total) {
         const totalBookCharacters = totalBookCharactersRef.current;
         const fraction = absoluteFraction;
         if (totalBookCharacters && totalBookCharacters > 0) {
@@ -1286,8 +1313,10 @@ function ReaderContent({ route, navigation }: Props) {
         }
         lastCfiRef.current = detail.cfi;
         setCurrentCfi(detail.cfi);
-        // Use throttled save instead of immediate update
-        throttledSaveProgress(bookId, absoluteFraction, detail.cfi);
+        // Journal every displayed page locally; only the database write is throttled.
+        // Android process termination does not guarantee a final AppState event.
+        checkpointReadingProgress(bookId, { progress: absoluteFraction, currentCfi: detail.cfi });
+        progressPersistence.update(absoluteFraction, detail.cfi);
       }
 
       // Врезки сцен: перелистывания считает foliate relocate, собственной
@@ -1296,7 +1325,8 @@ function ReaderContent({ route, navigation }: Props) {
       const sceneAdvance = advanceSceneSuggestion(
         sceneSuggestionStateRef.current,
         detail,
-        sceneSuggestionInterval,
+        // Track the current page but discard suggestion backlog until AI is usable.
+        backendSceneEnabled ? sceneSuggestionInterval : 0,
         trackingSuppressed,
       );
       sceneSuggestionStateRef.current = sceneAdvance.state;
@@ -1345,6 +1375,7 @@ function ReaderContent({ route, navigation }: Props) {
           cfi: detail.cfi || "",
           percentage: absoluteFraction * 100,
         },
+        surroundingText: "",
       });
     },
     onTocReady: (items: TOCItem[]) => {
@@ -1386,9 +1417,9 @@ function ReaderContent({ route, navigation }: Props) {
       if (!character || !isCharacterUnlocked(progress, character)) return;
       suppressReaderTapUntilRef.current = Date.now() + 400;
       publishCharacterProgress();
-      navigation.navigate("NarraCharacterProfile", {
-        bookId,
-        characterId: character.id,
+      void prepareCharacterContext().then((current) => {
+        if (!current) return;
+        navigation.navigate("NarraCharacterProfile", { bookId, characterId: character.id });
       });
     },
     // Врезки сцен генерируются только по явному тапу.
@@ -1447,8 +1478,8 @@ function ReaderContent({ route, navigation }: Props) {
     onPageSnippet: (_text: string) => {
       // page snippet handled by bookmark hook if pending
     },
-    onBookmarkSnippet: (text: string) => {
-      bookmark.onBookmarkSnippet(text);
+    onBookmarkSnippet: (text: string, requestId?: string, cfi?: string) => {
+      bookmark.onBookmarkSnippet(text, requestId, cfi);
     },
   });
 
@@ -1622,13 +1653,13 @@ function ReaderContent({ route, navigation }: Props) {
               book?.meta.title ||
               t("reader.currentExcerpt", "Текущий фрагмент"),
             excerpt: selectedText,
-            sourceKey: `selection:${cfi || `${currentChapter}:${selectedText.slice(0, 120)}`}`,
+            sourceKey: selectionSourceKey(activeSelection, selectedText, currentChapter),
           });
           break;
         case "generate-scene":
           openScene(
             selectedText,
-            `selection:${cfi || `${currentChapter}:${selectedText.slice(0, 120)}`}`,
+            selectionSourceKey(activeSelection, selectedText, currentChapter),
           );
           break;
         case "speak":
@@ -1650,8 +1681,16 @@ function ReaderContent({ route, navigation }: Props) {
 
   const handleOpenCharacters = useCallback(() => {
     publishCharacterProgress();
-    navigation.navigate("NarraCharacters", { bookId, charactersSheetSourceId });
-  }, [bookId, charactersSheetSourceId, navigation, publishCharacterProgress]);
+    void prepareCharacterContext().then((current) => {
+      if (current) navigation.navigate("NarraCharacters", { bookId, charactersSheetSourceId });
+    });
+  }, [
+    bookId,
+    charactersSheetSourceId,
+    navigation,
+    prepareCharacterContext,
+    publishCharacterProgress,
+  ]);
 
   const openTOCSheet = useCallback(() => {
     setShowTOC(true);
@@ -1677,6 +1716,16 @@ function ReaderContent({ route, navigation }: Props) {
         icon: "bookmark",
         sfSymbol: isBookmarked ? "bookmark.slash" : "bookmark",
         onPress: handleToggleBookmark,
+      },
+      {
+        key: "bookmarks",
+        label: t("bookmarks.title", "Закладки"),
+        icon: "bookmark",
+        sfSymbol: "bookmark",
+        onPress: () => {
+          setShowTOC(true);
+          navigation.navigate("ReaderTOC", { tab: "bookmarks" });
+        },
       },
       {
         key: "characters",
@@ -1767,6 +1816,15 @@ function ReaderContent({ route, navigation }: Props) {
     [bridge, updateReadSettings, computeEffectiveFontSize],
   );
 
+  const goToBookmark = useCallback(
+    (cfi: string) => {
+      if (lastCfiRef.current) locationHistoryRef.current.push(lastCfiRef.current);
+      goToCFISafely(cfi);
+      closeTocSheet();
+    },
+    [closeTocSheet, goToCFISafely],
+  );
+
   const readerTOCSheetSession = useMemo(
     () => ({
       bookId,
@@ -1774,8 +1832,9 @@ function ReaderContent({ route, navigation }: Props) {
       currentChapter,
       onClose: closeTocSheet,
       onSelectTocItem: goToTocItem,
+      onSelectBookmark: goToBookmark,
     }),
-    [bookId, closeTocSheet, currentChapter, goToTocItem, toc],
+    [bookId, closeTocSheet, currentChapter, goToTocItem, goToBookmark, toc],
   );
 
   useEffect(() => {
@@ -1826,21 +1885,12 @@ function ReaderContent({ route, navigation }: Props) {
   // Save progress immediately on unmount
   useEffect(() => {
     return () => {
-      if (lastCfiRef.current) {
-        const db = require("@readany/core/db/database");
-        runWithDbRetry(
-          () =>
-            db.updateBook(bookId, {
-              progress: progressRef.current,
-              currentCfi: lastCfiRef.current,
-            }),
-          { attempts: 10, initialDelayMs: 150 },
-        ).catch((err: Error) => console.error("Failed to save progress on unmount:", err));
-      }
-      const { useSyncStore } = require("@readany/core/stores/sync-store");
-      useSyncStore.getState().syncNow?.();
+      void flushReaderProgress().then(() => {
+        const { useSyncStore } = require("@readany/core/stores/sync-store");
+        useSyncStore.getState().syncNow?.();
+      });
     };
-  }, [bookId]);
+  }, [flushReaderProgress]);
 
   // Serving the file and staging the fonts needs no WebView, so it starts with
   // the screen instead of waiting for the reader bundle to finish parsing.
@@ -1934,6 +1984,7 @@ function ReaderContent({ route, navigation }: Props) {
     loadBook();
     return () => {
       cancelled = true;
+      if (activeReaderLoadIdRef.current === loadId) activeReaderLoadIdRef.current = null;
     };
   }, [bookId, book?.filePath, loadAttempt, prepareReaderHost, webViewReady]);
 
@@ -2027,7 +2078,7 @@ function ReaderContent({ route, navigation }: Props) {
 
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: BOOK_MIME_TYPES,
+        type: bookImportPickerTypes(Platform.OS),
         multiple: false,
         copyToCacheDirectory: true,
       });
@@ -2138,7 +2189,13 @@ function ReaderContent({ route, navigation }: Props) {
 
   // Navigate to CFI when book is loaded (from NotesPage or AI citation navigation)
   useEffect(() => {
-    if (!webViewReady || loading || !cfi || cfi === lastNavigatedCfiRef.current) return;
+    if (!cfi) {
+      // Clearing the route acknowledges this request, not this destination
+      // forever: another note may later target the very same page or excerpt.
+      lastNavigatedCfiRef.current = undefined;
+      return;
+    }
+    if (!webViewReady || loading || error || cfi === lastNavigatedCfiRef.current) return;
     goToCFISafely(cfi);
     lastNavigatedCfiRef.current = cfi;
     navigation.setParams({ bookId, cfi: undefined, highlight: undefined });
@@ -2153,7 +2210,7 @@ function ReaderContent({ route, navigation }: Props) {
       };
       setTimeout(doFlash, 100);
     }
-  }, [webViewReady, loading, cfi, shouldHighlight, goToCFISafely, navigation, bookId]);
+  }, [webViewReady, loading, error, cfi, shouldHighlight, goToCFISafely, navigation, bookId]);
 
   // Return to the active narration fragment when navigating from the mini player.
   useEffect(() => {
@@ -2176,7 +2233,16 @@ function ReaderContent({ route, navigation }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [bookId, currentCfi, goToCFISafely, loading, navigation, openTTS, webViewReady]);
+  }, [
+    bookId,
+    currentCfi,
+    goToCFISafely,
+    loading,
+    navigation,
+    openTTS,
+    webViewReady,
+    setShowControls,
+  ]);
 
   // Mirror of readerToolbarDock at the top edge: same animated container, same
   // clock, so both bars fade together on a centre tap and on the timeout.
@@ -2218,19 +2284,33 @@ function ReaderContent({ route, navigation }: Props) {
             bottom: 0,
             left: 0,
             zIndex: 30,
-            height: TOOLBAR_HEIGHT + insets.bottom,
+            minHeight: TOOLBAR_HEIGHT + insets.bottom,
             paddingBottom: insets.bottom,
             backgroundColor: "transparent",
           },
           controlsAnimatedStyle,
         ]}
       >
+        <ReaderTTSPreparationStatus
+          preparing={tts.isTTSPreparing}
+          loading={ttsPlayState === "loading"}
+          onCancel={tts.handleTTSStop}
+          error={tts.ttsPreparationError}
+          foreground={readerThemeColors.foreground}
+          background={readerThemeColors.background}
+        />
         <ReaderToolbar
           tintColor={readerThemeColors.foreground}
           isDark={isReaderThemeDark}
           charactersSheetSourceId={charactersSheetSourceId}
           speechState={
-            ttsPlayState === "loading" ? "loading" : ttsPlayState === "playing" ? "playing" : "idle"
+            tts.isTTSPreparing
+              ? "preparing"
+              : ttsPlayState === "loading"
+                ? "loading"
+                : ttsPlayState === "playing"
+                  ? "playing"
+                  : "idle"
           }
           onSpeechPress={() => void tts.handleToggleTTS()}
           onCharactersPress={handleOpenCharacters}

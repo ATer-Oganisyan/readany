@@ -1,0 +1,7 @@
+appId: com.mishanaer.readany.dev
+name: Independent QA own fixture picker
+---
+- assertVisible: Library
+- tapOn: Add book
+- tapOn: Choose file
+- takeScreenshot: android-continuous-qa-picker

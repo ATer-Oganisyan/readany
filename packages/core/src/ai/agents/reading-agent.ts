@@ -1003,14 +1003,16 @@ export async function* streamReadingAgent(
       if (isAborted()) {
         return { done: true, value: undefined };
       }
+      let onAbort: (() => void) | undefined;
       const abortPromise = new Promise<IteratorResult<unknown>>((resolve) => {
-        const onAbort = () => {
-          signal?.removeEventListener("abort", onAbort);
-          resolve({ done: true, value: undefined });
-        };
-        signal?.addEventListener("abort", onAbort);
+        onAbort = () => resolve({ done: true, value: undefined });
+        signal?.addEventListener("abort", onAbort, { once: true });
       });
-      return Promise.race([iterator.next(), abortPromise]);
+      try {
+        return await Promise.race([iterator.next(), abortPromise]);
+      } finally {
+        if (onAbort) signal?.removeEventListener("abort", onAbort);
+      }
     };
 
     const iterator = eventStream[Symbol.asyncIterator]();

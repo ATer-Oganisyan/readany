@@ -1,0 +1,10 @@
+appId: com.mishanaer.readany.dev
+name: iOS repair picker control with a different QA file
+# Diagnostic only; NEVER confirm reconnecting a different book.
+---
+- assertVisible: ".*11-river-library.*"
+- tapOn:
+    point: "50%,30%"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: ios-repair-picker-pdf-control

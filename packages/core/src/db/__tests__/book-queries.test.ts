@@ -27,6 +27,7 @@ const coreMocks = vi.hoisted(() => ({
 const dependencyMocks = vi.hoisted(() => ({
   deleteThreadsByBookId: vi.fn(),
   deleteChunks: vi.fn(),
+  deleteBookAtomically: vi.fn(),
 }));
 
 const eventBusMocks = vi.hoisted(() => ({
@@ -38,6 +39,9 @@ vi.mock("../thread-queries", () => ({
   deleteThreadsByBookId: dependencyMocks.deleteThreadsByBookId,
 }));
 vi.mock("../chunk-queries", () => ({ deleteChunks: dependencyMocks.deleteChunks }));
+vi.mock("../book-delete-command", () => ({
+  deleteBookAtomically: dependencyMocks.deleteBookAtomically,
+}));
 vi.mock("../../utils/event-bus", () => ({ eventBus: eventBusMocks }));
 
 const { getBooks, getBook, getDeletedBookByFileHash, insertBook, updateBook, deleteBook } =
@@ -73,6 +77,7 @@ describe("book-queries", () => {
     coreMocks.insertTombstone.mockResolvedValue(undefined);
     dependencyMocks.deleteThreadsByBookId.mockResolvedValue(undefined);
     dependencyMocks.deleteChunks.mockResolvedValue(undefined);
+    dependencyMocks.deleteBookAtomically.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -337,15 +342,14 @@ describe("book-queries", () => {
         ["book-1"],
       );
       expect(mockExecute).not.toHaveBeenCalledWith("DELETE FROM books WHERE id = ?", ["book-1"]);
-      expect(dependencyMocks.deleteThreadsByBookId).toHaveBeenCalledWith("book-1");
       expect(dependencyMocks.deleteChunks).toHaveBeenCalledWith("book-1");
-      expect(mockExecute).toHaveBeenCalledWith(expect.stringContaining("UPDATE books"), [
-        expect.any(Number),
-        3000,
-        1,
-        "device-1",
+      expect(dependencyMocks.deleteBookAtomically).toHaveBeenCalledWith(
+        mockDb,
         "book-1",
-      ]);
+        true,
+        "device-1",
+        expect.any(Number),
+      );
     });
 
     it("hard-deletes everything when preserveData is not requested", async () => {
@@ -357,21 +361,17 @@ describe("book-queries", () => {
 
       await deleteBook("book-1");
 
-      expect(mockExecute).toHaveBeenCalledWith("DELETE FROM highlights WHERE book_id = ?", [
+      expect(dependencyMocks.deleteBookAtomically).toHaveBeenCalledWith(
+        mockDb,
         "book-1",
-      ]);
-      expect(mockExecute).toHaveBeenCalledWith("DELETE FROM notes WHERE book_id = ?", ["book-1"]);
-      expect(mockExecute).toHaveBeenCalledWith("DELETE FROM bookmarks WHERE book_id = ?", [
-        "book-1",
-      ]);
-      expect(mockExecute).toHaveBeenCalledWith("DELETE FROM reading_sessions WHERE book_id = ?", [
-        "book-1",
-      ]);
-      expect(mockExecute).toHaveBeenCalledWith("DELETE FROM books WHERE id = ?", ["book-1"]);
-      expect(coreMocks.insertTombstone).toHaveBeenCalledWith(mockDb, "hl-1", "highlights");
-      expect(coreMocks.insertTombstone).toHaveBeenCalledWith(mockDb, "note-1", "notes");
-      expect(coreMocks.insertTombstone).toHaveBeenCalledWith(mockDb, "bm-1", "bookmarks");
-      expect(coreMocks.insertTombstone).toHaveBeenCalledWith(mockDb, "book-1", "books");
+        false,
+        "device-1",
+        expect.any(Number),
+      );
+      expect(dependencyMocks.deleteChunks).toHaveBeenCalledWith("book-1");
+      expect(dependencyMocks.deleteBookAtomically.mock.invocationCallOrder[0]).toBeLessThan(
+        dependencyMocks.deleteChunks.mock.invocationCallOrder[0],
+      );
     });
   });
 });

@@ -10,6 +10,8 @@ import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { useBackendBook } from "@/hooks/use-backend-book";
 import { type NarraChatMessageInput, completeNarraChat } from "@/lib/ai/narra-chat";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
+import { characterReadingContextPrompt } from "@/lib/narra/character-reading-context";
+import { createCharacterRequestScope } from "@/lib/narra/character-request-scope";
 import { normalizeCharacterChatPlaceholder } from "@/lib/narra/chat-placeholder";
 import { isCharacterUnlocked, normalizeReadingProgress } from "@/lib/narra/domain";
 import { reportNarraError } from "@/lib/narra/errors";
@@ -22,6 +24,7 @@ import { type ThemeColors, useTheme } from "@/styles/theme";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { useReadingContext } from "@readany/core/ai/reading-context-service";
 import type { MessageV2 } from "@readany/core/types/message";
 import * as Crypto from "expo-crypto";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -54,6 +57,7 @@ export function buildCharacterSystemPrompt(
   progress: number,
   memory: string,
   language: "ru" | "en" = "ru",
+  readingExcerpt = "",
 ): string {
   const safeProgress = normalizeReadingProgress(progress);
   if (language === "en") {
@@ -66,8 +70,10 @@ ${character.speaksInText === false ? "You do not speak human language in the boo
 Avoid lists and corporate language. React to the reader's actual words; you may disagree, joke, and ask questions.
 The reader has completed about ${Math.round(safeProgress * 100)}% of the book. Do not reveal events, knowledge, relationships, or character fates beyond that point. If a question risks a spoiler, gently deflect in character and return to events the reader already knows without mentioning rules or restrictions.
 You may evade, but do not lie. Speak honestly about events the reader has already reached and do not invent facts that are not in the book.
+Separate established facts from interpretation. Do not present a plausible guess about a motive as a fact: a question beginning with “why” does not establish a hidden intention, urgency, danger, inability, or earlier relationship. Prefer omitting an unsupported detail to inventing an explanation. If an interpretation is useful, mark it briefly as uncertain in your own voice. Stay natural and in character; do not turn the answer into a source-analysis report.
 ${rfChatCompliance("en")}
-${memory ? `Your long-term memory of the reader:\n${memory}` : ""}`;
+${memory ? `Your long-term memory of the reader:\n${memory}` : ""}
+${readingExcerpt}`;
   }
   return `Ты — ${character.fullName} из книги «${title}». Полностью оставайся в роли.
 Характер: ${character.traits.join(", ")}.
@@ -78,8 +84,10 @@ ${character.speaksInText === false ? "В книге ты не говоришь �
 Не используй списки и канцелярит. Реагируй на конкретные слова собеседника, можешь спорить, шутить и задавать вопросы.
 Читатель прошёл примерно ${Math.round(safeProgress * 100)}% книги. Не раскрывай события, знания, отношения и судьбы героев дальше этого прогресса. Если вопрос ведёт к спойлеру, мягко уклонись в своём характере и переведи разговор к уже известным событиям — не упоминай правила или ограничения.
 Уклоняться можно, лгать нельзя. О том, что читатель уже прошёл, говори честно: не отрицай своих поступков и событий книги, даже если герою неприятно о них вспоминать. Не выдумывай того, чего в книге нет.
+Разделяй установленные факты и интерпретацию. Не выдавай правдоподобную догадку о причинах поступка за факт: вопрос «почему» не доказывает скрытое намерение, срочность, опасность, невозможность справиться или прежние отношения. Лучше опустить неподтверждённую подробность, чем придумывать объяснение. Если интерпретация полезна, коротко обозначь её неуверенность своим голосом. Оставайся живым персонажем, не превращай ответ в отчёт об источниках.
 ${rfChatCompliance("ru")}
-${memory ? `Твоя долговременная память о собеседнике:\n${memory}` : ""}`;
+${memory ? `Твоя долговременная память о собеседнике:\n${memory}` : ""}
+${readingExcerpt}`;
 }
 
 function toMessageV2(message: NarraChatMessage, threadId: string): MessageV2 {
@@ -101,6 +109,19 @@ function toMessageV2(message: NarraChatMessage, threadId: string): MessageV2 {
 }
 
 export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
+  const bookId = "embedded" in props ? props.bookId : props.route.params.bookId;
+  const characterId = "embedded" in props ? props.characterId : props.route.params.characterId;
+  const binding = useNarraStore((state) => state.books[bookId]?.backendBinding);
+  const key = JSON.stringify([
+    bookId,
+    characterId,
+    binding?.bookEditionId,
+    binding?.contentSha256.toLowerCase(),
+  ]);
+  return <CharacterChatSession key={key} {...props} />;
+}
+
+function CharacterChatSession(props: NarraCharacterChatScreenProps) {
   const embedded = "embedded" in props;
   const presentedAsSheet = Platform.OS === "ios" && !embedded;
   const bookId = embedded ? props.bookId : props.route.params.bookId;
@@ -113,8 +134,57 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
   const { t, i18n } = useTranslation();
   const interfaceLanguage = i18n.resolvedLanguage === "en" ? "en" : "ru";
   const book = useLibraryStore((state) => state.books.find((item) => item.id === bookId));
+  const readingContext = useReadingContext();
+  const readingExcerpt = characterReadingContextPrompt(
+    bookId,
+    book?.currentCfi,
+    readingContext,
+    interfaceLanguage,
+  );
   useBackendBook(book);
   const narraBook = useNarraStore((state) => state.books[bookId]);
+  const mounted = useRef(true);
+  const greetingRequestedRef = useRef(false);
+  const placeholderRequestedRef = useRef<string | null>(null);
+  const requests = useRef(new Set<ReturnType<typeof createCharacterRequestScope>>());
+  useEffect(() => {
+    mounted.current = true;
+    greetingRequestedRef.current = false;
+    placeholderRequestedRef.current = null;
+    return () => {
+      mounted.current = false;
+      for (const request of requests.current) request.dispose();
+      requests.current.clear();
+    };
+  }, []);
+  const renderIdentity = JSON.stringify([
+    narraBook?.backendBinding?.bookEditionId,
+    narraBook?.backendBinding?.contentSha256.toLowerCase(),
+  ]);
+  const startRequest = useCallback(() => {
+    const scope = createCharacterRequestScope({
+      bookId,
+      characterId,
+      readState: useNarraStore.getState,
+      subscribe: useNarraStore.subscribe,
+    });
+    const current = useNarraStore.getState().books[bookId]?.backendBinding;
+    if (
+      !mounted.current ||
+      JSON.stringify([current?.bookEditionId, current?.contentSha256.toLowerCase()]) !==
+        renderIdentity
+    )
+      scope.dispose();
+    const request = {
+      ...scope,
+      dispose: () => {
+        scope.dispose();
+        requests.current.delete(request);
+      },
+    };
+    if (!scope.signal.aborted) requests.current.add(request);
+    return request;
+  }, [bookId, characterId, renderIdentity]);
   const append = useNarraStore((state) => state.appendChatMessage);
   const setMemory = useNarraStore((state) => state.setMemory);
   const updateCharacter = useNarraStore((state) => state.updateCharacter);
@@ -124,14 +194,13 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
   const messages = narraBook?.chats?.[characterId] ?? [];
   const memory = narraBook?.memories?.[characterId] ?? "";
   const [sending, setSending] = useState(false);
+  // UI state updates after the event batch; it cannot guard two submissions
+  // delivered to the same render before that update.
+  const sendingRef = useRef(false);
   const [greetingLoading, setGreetingLoading] = useState(false);
-  const greetingRequestedRef = useRef(false);
-  const placeholderRequestedRef = useRef<string | null>(null);
   const unlocked = Boolean(book && character && isCharacterUnlocked(book.progress, character));
   const characterStatus =
-    sending || greetingLoading
-      ? t("narra.characterTyping", "Печатает...")
-      : t("narra.characterOnline", "онлайн");
+    sending || greetingLoading ? t("narra.characterTyping", "Печатает…") : undefined;
   const headerSafeAreaTop =
     embedded || presentedAsSheet ? NARRA_CHAT_EMBEDDED_TOP_INSET : insets.top;
   const headerHeight = headerSafeAreaTop + NARRA_CHAT_HEADER_HEIGHT;
@@ -160,10 +229,12 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
     if (interfaceLanguage === "en" || !book || !character || character.chatPlaceholder) return;
     if (placeholderRequestedRef.current === character.id) return;
     placeholderRequestedRef.current = character.id;
+    const scope = startRequest();
 
     void (async () => {
       try {
         const completion = await completeNarraChat({
+          signal: scope.signal,
           messages: [
             {
               role: "system",
@@ -181,13 +252,16 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
           analyticsTier: "none",
         });
         const placeholder = normalizeCharacterChatPlaceholder(completion);
-        if (placeholder) updateCharacter(bookId, characterId, { chatPlaceholder: placeholder });
+        if (placeholder && scope.isCurrent())
+          updateCharacter(bookId, characterId, { chatPlaceholder: placeholder });
       } catch (error) {
         // Generic fallback stays grammatically correct and keeps chat usable offline.
-        reportNarraError("character_chat_placeholder", error);
+        if (scope.isCurrent()) reportNarraError("character_chat_placeholder", error);
+      } finally {
+        scope.dispose();
       }
     })();
-  }, [book, bookId, character, characterId, interfaceLanguage, updateCharacter]);
+  }, [book, bookId, character, characterId, interfaceLanguage, updateCharacter, startRequest]);
 
   const conversation = useMemo<NarraChatMessageInput[]>(
     () =>
@@ -201,12 +275,13 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
                 book.progress,
                 memory,
                 interfaceLanguage,
+                readingExcerpt,
               ),
             },
             ...messages.slice(-18).map(({ role, content }) => ({ role, content })),
           ]
         : [],
-    [book, character, interfaceLanguage, memory, messages],
+    [book, character, interfaceLanguage, memory, messages, readingExcerpt],
   );
 
   const chatMessages = useMemo(() => {
@@ -221,8 +296,10 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
     if (!book || !character || !unlocked) return;
     if (messages.length > 0 || greetingRequestedRef.current) return;
     greetingRequestedRef.current = true;
+    const scope = startRequest();
 
     const appendGreeting = (content: string) => {
+      if (!scope.isCurrent()) return;
       const state = useNarraStore.getState();
       if ((state.books[bookId]?.chats?.[characterId]?.length ?? 0) > 0) return;
       state.appendChatMessage(bookId, characterId, {
@@ -235,6 +312,7 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
 
     if (character.greeting && interfaceLanguage !== "en") {
       appendGreeting(character.greeting);
+      scope.dispose();
       return;
     }
 
@@ -242,6 +320,7 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
     void (async () => {
       try {
         const content = await completeNarraChat({
+          signal: scope.signal,
           messages: [
             {
               role: "system",
@@ -251,6 +330,7 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
                 book.progress,
                 "",
                 interfaceLanguage,
+                readingExcerpt,
               ),
             },
             {
@@ -269,19 +349,34 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
         if (content) appendGreeting(content);
       } catch (error) {
         // Без приветствия чат остаётся рабочим: читатель может написать первым.
-        reportNarraError("character_greeting", error);
-        greetingRequestedRef.current = false;
+        if (scope.isCurrent()) {
+          reportNarraError("character_greeting", error);
+          greetingRequestedRef.current = false;
+        }
       } finally {
-        setGreetingLoading(false);
+        if (mounted.current && scope.isCurrent()) setGreetingLoading(false);
+        scope.dispose();
       }
     })();
-  }, [book, bookId, character, characterId, interfaceLanguage, messages.length, unlocked]);
+  }, [
+    book,
+    bookId,
+    character,
+    characterId,
+    interfaceLanguage,
+    messages.length,
+    readingExcerpt,
+    unlocked,
+    startRequest,
+  ]);
 
   const refreshMemory = useCallback(
     async (updatedMessages: NarraChatMessage[]) => {
       if (!character || updatedMessages.length < 4 || updatedMessages.length % 4 !== 0) return;
+      const scope = startRequest();
       try {
         const nextMemory = await completeNarraChat({
+          signal: scope.signal,
           messages: [
             {
               role: "system",
@@ -306,35 +401,46 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
           origin: "background",
           analyticsTier: "none",
         });
-        if (nextMemory) setMemory(bookId, characterId, nextMemory.slice(0, 900));
+        if (nextMemory && scope.isCurrent())
+          setMemory(bookId, characterId, nextMemory.slice(0, 900));
       } catch {
         // Memory refresh is background-only and must not make a successful chat look failed.
+      } finally {
+        scope.dispose();
       }
     },
-    [bookId, character, characterId, interfaceLanguage, memory, setMemory],
+    [bookId, character, characterId, interfaceLanguage, memory, setMemory, startRequest],
   );
 
   const send = useCallback(
     async (value: string) => {
       const text = value.trim();
-      if (!text || !book || !character || !unlocked || sending) return;
+      if (!text || !book || !character || !unlocked || sendingRef.current) return;
+      const scope = startRequest();
+      if (!scope.isCurrent()) {
+        scope.dispose();
+        return;
+      }
+      sendingRef.current = true;
       setSending(true);
-      const userMessage: NarraChatMessage = {
-        id: Crypto.randomUUID(),
-        role: "user",
-        content: text,
-        createdAt: Date.now(),
-      };
-      const assistantMessageId = Crypto.randomUUID();
-      append(bookId, characterId, userMessage);
       try {
+        const userMessage: NarraChatMessage = {
+          id: Crypto.randomUUID(),
+          role: "user",
+          content: text,
+          createdAt: Date.now(),
+        };
+        const assistantMessageId = Crypto.randomUUID();
+        append(bookId, characterId, userMessage);
         const content = await completeNarraChat({
+          signal: scope.signal,
           messages: [...conversation, { role: "user", content: text }],
           temperature: 0.85,
           purpose: "character_chat",
           origin: "user",
           analyticsTier: "essential",
         });
+        if (!scope.isCurrent()) return;
         const assistantMessage: NarraChatMessage = {
           id: assistantMessageId,
           role: "assistant",
@@ -344,11 +450,14 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
         append(bookId, characterId, assistantMessage);
         void refreshMemory([...messages, userMessage, assistantMessage]);
       } catch (error) {
-        toast.error(t("narra.chatFailedTitle", "Не удалось получить ответ"), {
-          description: reportNarraError("character_chat", error).message,
-        });
+        if (scope.isCurrent())
+          toast.error(t("narra.chatFailedTitle", "Не удалось получить ответ"), {
+            description: reportNarraError("character_chat", error).message,
+          });
       } finally {
-        setSending(false);
+        scope.dispose();
+        sendingRef.current = false;
+        if (mounted.current) setSending(false);
       }
     },
     [
@@ -360,7 +469,7 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
       conversation,
       messages,
       refreshMemory,
-      sending,
+      startRequest,
       t,
       unlocked,
     ],

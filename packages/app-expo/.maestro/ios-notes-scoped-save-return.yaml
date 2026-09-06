@@ -1,0 +1,42 @@
+appId: com.mishanaer.readany.dev
+name: iOS book notes save, add again, cancel and return
+# Only new original QA notes; no preexisting user note is edited or deleted.
+---
+- launchApp:
+    stopApp: false
+- assertVisible: "Cancel"
+- tapOn: "Start writing…"
+- inputText: "NARRA QA scoped first: FBZ chapter three."
+- tapOn: "Save note"
+- extendedWaitUntil:
+    visible: ".*NARRA QA scoped first: FBZ chapter three.*"
+    timeout: 10000
+- takeScreenshot: ios-notes-scoped-first-saved
+- tapOn: "Add note"
+- assertVisible: "Cancel"
+- tapOn: "Cancel"
+- assertVisible: ".*NARRA QA scoped first: FBZ chapter three.*"
+- tapOn: "Add note"
+- tapOn: "Start writing…"
+- inputText: "NARRA QA discard candidate."
+- tapOn: "Cancel"
+- assertVisible: "Discard changes?"
+- takeScreenshot: ios-note-discard-confirmation
+- tapOn: "Keep editing"
+- assertVisible: ".*NARRA QA discard candidate.*"
+- tapOn: "Cancel"
+- tapOn: "Discard"
+- assertNotVisible: ".*NARRA QA discard candidate.*"
+- assertVisible: ".*NARRA QA scoped first: FBZ chapter three.*"
+- tapOn: "Add note"
+- tapOn: "Start writing…"
+- inputText: "NARRA QA scoped second: header action."
+- tapOn: "Save note"
+- extendedWaitUntil:
+    visible: ".*NARRA QA scoped second: header action.*"
+    timeout: 10000
+- assertVisible: ".*NARRA QA scoped first: FBZ chapter three.*"
+- takeScreenshot: ios-notes-two-book-scoped-after
+- tapOn: "Close"
+- assertVisible: "Narra Reader"
+- takeScreenshot: ios-notes-return-reader-after

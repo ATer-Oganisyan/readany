@@ -1,0 +1,29 @@
+appId: com.mishanaer.readany.dev
+name: iOS native inline note update and reader return
+# The caret's actual position was inspected. Insertion is into this own QA note only.
+---
+- launchApp:
+    stopApp: false
+- assertVisible: "Save"
+- inputText: "[edited]"
+- tapOn: "Save"
+- extendedWaitUntil:
+    visible: ".*edited.*"
+    timeout: 10000
+- assertVisible: "Edit note"
+- takeScreenshot: ios-pdf-inline-note-updated
+- tapOn: "Close"
+- assertVisible: "Narra Reader"
+- assertVisible: "p. 4 of 12"
+- takeScreenshot: ios-pdf-inline-note-return-reader
+- repeat:
+    times: 2
+    commands:
+      - runFlow:
+          when:
+            notVisible: "Book actions"
+          commands:
+            - tapOn:
+                point: "50%,50%"
+- tapOn: "Close"
+- assertVisible: "Library"

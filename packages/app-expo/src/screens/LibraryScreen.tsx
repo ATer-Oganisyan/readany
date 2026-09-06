@@ -31,6 +31,11 @@ import { useBackendCatalog, useBackendCatalogActivity } from "@/hooks/use-backen
 import { useBookImportActions } from "@/hooks/use-book-import-actions";
 import { useCatalogCoverWindow } from "@/hooks/use-catalog-cover-window";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
+import { type BookSelectionState, reconcileBookSelection } from "@/lib/book/book-selection-state";
+import {
+  areAllVisibleBooksSelected,
+  toggleVisibleBookSelection,
+} from "@/lib/book/visible-book-selection";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
 import type { CachedBackendCatalogBook } from "@/lib/narra/backend-catalog-cache";
 import { findReadableLibraryBookForCatalogBook } from "@/lib/narra/backend-catalog-library";
@@ -67,6 +72,7 @@ import { File as ExpoFile } from "expo-file-system";
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useBatchBookDelete } from "@/hooks/use-batch-book-delete";
 import {
   Alert,
   Modal,
@@ -213,8 +219,11 @@ function LibraryScreenContent() {
   const [librarySection, setLibrarySection] = useState<LibrarySection>(
     requestedSection ?? "catalog",
   );
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedBookIds, setSelectedBookIds] = useState<Set<string>>(new Set());
+  const [{ selectionMode, selectedBookIds }, setBookSelection] = useState<BookSelectionState>({
+    selectionMode: false,
+    selectedBookIds: new Set(),
+  });
+  const selectionSessionEpoch = useRef(0);
   const [showGroupPicker, setShowGroupPicker] = useState(false);
   const [batchTagBookIds, setBatchTagBookIds] = useState<string[]>([]);
   const [groupNameModal, setGroupNameModal] = useState<{
@@ -293,15 +302,6 @@ function LibraryScreenContent() {
   const revealImportedBooks = useCallback((importedCount: number) => {
     if (importedCount > 0) libraryPagerRef.current?.selectPage(1);
   }, []);
-
-  const {
-    isPickingImport,
-    isUrlImporting,
-    handleLocalImport,
-    handleOpenImportSources,
-    handleOpenUrlImport,
-  } = useBookImportActions({ onImportComplete: revealImportedBooks });
-  const isBookImporting = isImporting || isPickingImport || isUrlImporting;
 
   useEffect(() => {
     let cancelled = false;
@@ -496,6 +496,18 @@ function LibraryScreenContent() {
     },
     [downloadBook, nav, t],
   );
+
+  const {
+    isPickingImport,
+    isUrlImporting,
+    handleLocalImport,
+    handleOpenImportSources,
+    handleOpenUrlImport,
+  } = useBookImportActions({
+    onImportComplete: revealImportedBooks,
+    onOpenImportedBook: handleOpen,
+  });
+  const isBookImporting = isImporting || isPickingImport || isUrlImporting;
 
   const catalogCoverLoadingEnabled = showCatalog && librarySection === "catalog";
 
@@ -770,54 +782,44 @@ function LibraryScreenContent() {
     librarySection === "my-books" && !isMyBooksEmptyState ? 1 : libraryPageMinHeight;
 
   const toggleBookSelection = useCallback((book: Book) => {
-    setSelectedBookIds((prev) => {
-      const next = new Set(prev);
+    setBookSelection((prev) => {
+      const next = new Set(prev.selectedBookIds);
       if (next.has(book.id)) next.delete(book.id);
       else next.add(book.id);
-      return next;
+      return { ...prev, selectedBookIds: next };
     });
   }, []);
 
   const enterSelectionMode = useCallback((book: Book) => {
-    setSelectionMode(true);
-    setSelectedBookIds(new Set([book.id]));
+    selectionSessionEpoch.current++;
+    setBookSelection({ selectionMode: true, selectedBookIds: new Set([book.id]) });
   }, []);
 
   const exitSelectionMode = useCallback(() => {
-    setSelectionMode(false);
-    setSelectedBookIds(new Set());
+    selectionSessionEpoch.current++;
+    setBookSelection({ selectionMode: false, selectedBookIds: new Set() });
   }, []);
 
-  const isAllSelected = visibleBooks.length > 0 && selectedBookIds.size === visibleBooks.length;
+  const visibleBookIds = useMemo(() => visibleBooks.map((book) => book.id), [visibleBooks]);
+  const isAllSelected = areAllVisibleBooksSelected(selectedBookIds, visibleBookIds);
 
   const toggleSelectAll = useCallback(() => {
-    if (isAllSelected) {
-      setSelectedBookIds(new Set());
-    } else {
-      setSelectedBookIds(new Set(visibleBooks.map((b) => b.id)));
-    }
-  }, [visibleBooks, isAllSelected]);
+    setBookSelection((prev) => ({
+      ...prev,
+      selectedBookIds: toggleVisibleBookSelection(prev.selectedBookIds, visibleBookIds),
+    }));
+  }, [visibleBookIds]);
 
+  const onBatchDeleteSettled = useCallback((failedIds: string[], requestedIds: string[]) => {
+    setBookSelection((prev) => reconcileBookSelection(prev, requestedIds, failedIds));
+  }, []);
+  const { requestDelete, isDeleting } = useBatchBookDelete(removeBook, onBatchDeleteSettled);
   const handleBatchDelete = useCallback(() => {
-    if (selectedBookIds.size === 0) return;
-    Alert.alert(
-      t("common.confirm", "确认"),
-      t("library.batchDeleteConfirm", `确定要删除选中的 ${selectedBookIds.size} 本书吗？`),
-      [
-        { text: t("common.cancel", "取消"), style: "cancel" },
-        {
-          text: t("common.delete", "删除"),
-          style: "destructive",
-          onPress: async () => {
-            for (const id of selectedBookIds) {
-              await removeBook(id);
-            }
-            exitSelectionMode();
-          },
-        },
-      ],
-    );
-  }, [selectedBookIds, removeBook, exitSelectionMode, t]);
+    const requestedSession = selectionSessionEpoch.current;
+    requestDelete(selectedBookIds, {
+      canApplySelectionResult: () => selectionSessionEpoch.current === requestedSession,
+    });
+  }, [requestDelete, selectedBookIds]);
 
   const handleBatchTag = useCallback(() => {
     if (selectedBookIds.size === 0) return;
@@ -991,7 +993,12 @@ function LibraryScreenContent() {
                   <TouchableOpacity style={s.headerBtn} onPress={handleBatchVectorize}>
                     <DatabaseIcon size={18} color={colors.mutedForeground} />
                   </TouchableOpacity>
-                  <TouchableOpacity style={s.headerBtn} onPress={handleBatchDelete}>
+                  <TouchableOpacity
+                    style={s.headerBtn}
+                    onPress={handleBatchDelete}
+                    disabled={isDeleting}
+                    accessibilityState={{ busy: isDeleting, disabled: isDeleting }}
+                  >
                     <Trash2Icon size={18} color={colors.destructive} />
                   </TouchableOpacity>
                 </View>

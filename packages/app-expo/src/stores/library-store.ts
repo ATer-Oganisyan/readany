@@ -1,5 +1,4 @@
 import { isLegacyGeneratedBookCover } from "@/lib/book/cover-display";
-import { ensureTxtUtf8Bytes } from "@/lib/book/txt-encoding";
 import { deleteLocalCoverJob, getLocalCoverJob } from "@/lib/book/cover-job-repository";
 import { persistCoverFile, verifyCoverPersistence } from "@/lib/book/cover-persistence";
 import { acknowledgeGeneratedBookCover, generateBookCover } from "@/lib/book/generate-book-cover";
@@ -8,11 +7,22 @@ import {
   isSuspiciousBookTitle,
   isTechnicalBookTitle,
 } from "@/lib/book/generate-book-title";
+import { bookImportFormat, importFileName } from "@/lib/book/import-format";
 import {
   createRangeReadableFile,
   extractBookMetadata,
   extractBookMetadataFromFile,
+  validateBookImportSource,
 } from "@/lib/book/metadata-extractor";
+import {
+  type ReadingProgressCheckpoint,
+  acknowledgeReadingProgress,
+  getReadingProgressCheckpoint,
+  preserveReadingProgressCheckpoint,
+  restoreReadingProgress,
+  withReadingProgressCheckpoint,
+} from "@/lib/book/reading-progress-checkpoint";
+import { ensureTxtUtf8Bytes } from "@/lib/book/txt-encoding";
 import { shouldRefreshBundledCatalogCover } from "@/lib/catalog/bundled-book-definitions";
 import {
   findBundledCatalogBookByTitle,
@@ -34,8 +44,20 @@ import {
 } from "@readany/core";
 import * as db from "@readany/core/db/database";
 import { runWithDbRetry } from "@readany/core/db/write-retry";
+import {
+  BookImportError,
+  type BookImportFailureCode,
+  getBookImportFailureCode,
+} from "@readany/core/import/import-errors";
 import { getPlatformService } from "@readany/core/services";
-import type { Book, BookGroup, LibraryFilter, SortField, SortOrder } from "@readany/core/types";
+import type {
+  Book,
+  BookGroup,
+  BookUpdate,
+  LibraryFilter,
+  SortField,
+  SortOrder,
+} from "@readany/core/types";
 import { generateId } from "@readany/core/utils";
 import { AppState } from "react-native";
 import { create } from "zustand";
@@ -115,7 +137,11 @@ export interface LibraryState {
   setActiveGroupId: (groupId: string) => void;
   addBook: (book: Book) => Promise<void>;
   removeBook: (bookId: string, options?: RemoveBookOptions) => Promise<void>;
-  updateBook: (bookId: string, updates: Partial<Book>) => Promise<void>;
+  updateBook: (bookId: string, updates: BookUpdate) => Promise<void>;
+  checkpointReadingProgress: (
+    bookId: string,
+    position: { progress: number; currentCfi: string },
+  ) => void;
   setFilter: (filter: Partial<LibraryFilter>) => void;
   setViewMode: (mode: LibraryViewMode) => void;
   setSortField: (field: SortField) => void;
@@ -260,7 +286,9 @@ async function extractMobileImportMetadata(params: {
     return extractBookMetadataFromFile(rangeReadable, format, fileName);
   }
 
-  if (format === "mobi" || format === "azw" || format === "azw3") {
+  if (format === "fbz" || format === "mobi" || format === "azw" || format === "azw3") {
+    // FB2 archives use the bounded directory/entry reader too; routing them to
+    // the filename fallback silently discarded the parsed title and author.
     const rangeReadable = await createRangeReadableFile(filePath, fileSize);
     return extractBookMetadataFromFile(rangeReadable, format, fileName);
   }
@@ -271,6 +299,15 @@ async function extractMobileImportMetadata(params: {
     coverBytes: null,
     coverMimeType: null,
   };
+}
+
+async function validateMobileImportFile(
+  filePath: string,
+  format: Book["format"],
+  size: number,
+): Promise<void> {
+  if (format === "txt" || format === "umd") return;
+  await validateBookImportSource(await createRangeReadableFile(filePath, size), format);
 }
 
 async function resolveImportedBookIdentity(params: {
@@ -313,6 +350,51 @@ const coverGenerationInFlight = new Set<string>();
 let coverGenerationQueue: Promise<void> = Promise.resolve();
 let coverResumeSubscription: ReturnType<typeof AppState.addEventListener> | undefined;
 let backendImportResumeSubscription: (() => void) | undefined;
+let importQueue: Promise<void> = Promise.resolve();
+let pendingImports = 0;
+const activeImportTargets = new Map<string, { removed: boolean }>();
+// Invocation-scoped invalidation includes imports waiting for the serial queue.
+// Entries disappear when that invocation settles, rather than retaining tombstones forever.
+const importRemovalScopes = new Set<Map<string, Book | undefined>>();
+const activeImportWrites = new Map<string, Promise<void>>();
+interface PendingBookRemoval {
+  book: Book | undefined;
+  done: Promise<void>;
+  invalidate: () => void;
+  failed: boolean;
+  error?: unknown;
+}
+const pendingBookRemovals = new Map<string, PendingBookRemoval>();
+const activeBookReloads = new Set<Set<string>>();
+
+function invalidateBookReloads(bookId: string): void {
+  for (const scope of activeBookReloads) scope.add(bookId);
+}
+
+function reconcileDeletedBookReload(
+  snapshot: Book[],
+  invalidated: Set<string>,
+  current: Book[],
+): Book[] {
+  const books = snapshot.filter(
+    (book) => !invalidated.has(book.id) && !pendingBookRemovals.has(book.id),
+  );
+  // A newer explicit restore wins over both an old row and an old deletion.
+  for (const book of current) {
+    if (invalidated.has(book.id) && !pendingBookRemovals.has(book.id)) books.push(book);
+  }
+  return books;
+}
+
+async function waitForPendingBookRemoval(bookId: string): Promise<void> {
+  // Removal only waits for the DB write, never for this import continuation.
+  // A failed delete rolls back its invalidation before releasing this signal.
+  let removal = pendingBookRemovals.get(bookId);
+  while (removal) {
+    await removal.done;
+    removal = pendingBookRemovals.get(bookId);
+  }
+}
 
 function watchCoverRecovery(): void {
   if (coverResumeSubscription) return;
@@ -681,7 +763,7 @@ async function assertImportNotBanned(
   if (!importTarget || importTarget.deletedAt) {
     await removeImportArtifacts(createdRelativePaths);
   }
-  throw new Error(BANNED_IMPORT_MESSAGE);
+  throw new BookImportError("CONTENT_BLOCKED", BANNED_IMPORT_MESSAGE);
 }
 
 /**
@@ -720,40 +802,40 @@ async function copyBookToAppData(
   return { relativePath, absPath };
 }
 
-async function persistBookUpdate(bookId: string, updates: Partial<Book>): Promise<void> {
+async function persistBookUpdate(bookId: string, updates: BookUpdate): Promise<void> {
   await runWithDbRetry(() => db.updateBook(bookId, updates));
+}
+
+function acknowledgeSavedProgress(bookId: string, checkpoint: ReadingProgressCheckpoint): void {
+  const books = useLibraryStore.getState().books;
+  const next = books.map((book) =>
+    book.id === bookId ? acknowledgeReadingProgress(book, checkpoint) : book,
+  );
+  if (next.every((book, index) => book === books[index])) return;
+  useLibraryStore.setState({ books: next });
+  debouncedSave("library-books", next);
 }
 
 async function restoreDeletedMobileBook(
   bookId: string,
   fileInfo: { uri: string; name?: string },
+  createdPaths: string[],
 ): Promise<Book | null> {
   await db.initDatabase();
   const originalBook = await db.getBook(bookId, { includeDeleted: true });
   if (!originalBook) return null;
 
   const filePath = fileInfo.uri;
-  const originalName = fileInfo.name
-    ? decodeURIComponent(fileInfo.name)
-    : decodeURIComponent(filePath.split("/").pop() || "book");
+  const originalName = importFileName(fileInfo);
   const ext = originalName.split(".").pop()?.toLowerCase();
-  const formatMap: Record<string, Book["format"]> = {
-    epub: "epub",
-    pdf: "pdf",
-    mobi: "mobi",
-    azw: "azw",
-    azw3: "azw3",
-    cbz: "cbz",
-    cbr: "cbz",
-    fb2: "fb2",
-    fbz: "fbz",
-    txt: "txt",
-    umd: "umd",
-  };
-  const format: Book["format"] = formatMap[ext || ""] || "epub";
+  const format = bookImportFormat(originalName);
   const fileName = originalName;
   const platform = getPlatformService();
-  const { size: fileSize, md5: fileHash } = await getMobileFileStat(filePath);
+  const { size: fileSize, md5 } = await getMobileFileStat(filePath);
+  if (!fileSize) throw new Error("Файл книги пуст или недоступен. Выберите его ещё раз.");
+  await validateMobileImportFile(filePath, format, fileSize);
+  const fileHash = md5 || (await trySha256BackendFile(filePath));
+  const artifactId = `${bookId}-${generateId()}`;
 
   if (ext === "txt") {
     const sourceBytes = await platform.readFile(filePath);
@@ -786,7 +868,8 @@ async function restoreDeletedMobileBook(
 
     const conversion = await new TxtToEpubConverter().convertToBytes({ file: txtFile });
     await ensureAppSubDir("books");
-    const relativePath = `books/${bookId}.epub`;
+    const relativePath = `books/${artifactId}.epub`;
+    createdPaths.push(relativePath);
     await platform.writeFile(await resolveAppPath(relativePath), conversion.epubBytes);
 
     return {
@@ -833,14 +916,16 @@ async function restoreDeletedMobileBook(
       file: umdFile,
     });
     await ensureAppSubDir("books");
-    const relativePath = `books/${bookId}.epub`;
+    const relativePath = `books/${artifactId}.epub`;
+    createdPaths.push(relativePath);
     await platform.writeFile(await resolveAppPath(relativePath), conversion.epubBytes);
 
     let coverUrl = originalBook.meta.coverUrl;
     if (conversion.coverBytes && conversion.coverBytes.length > 0) {
       try {
         await ensureAppSubDir("covers");
-        const coverRelPath = `covers/${bookId}-original.jpg`;
+        const coverRelPath = `covers/${artifactId}-original.jpg`;
+        createdPaths.push(coverRelPath);
         await platform.writeFile(await resolveAppPath(coverRelPath), conversion.coverBytes);
         coverUrl = coverRelPath;
       } catch (coverErr) {
@@ -851,7 +936,7 @@ async function restoreDeletedMobileBook(
     return {
       ...originalBook,
       filePath: relativePath,
-      format: "umd",
+      format: "epub",
       meta: {
         ...originalBook.meta,
         title: conversion.bookTitle || originalBook.meta.title || fileName.replace(/\.\w+$/i, ""),
@@ -868,7 +953,8 @@ async function restoreDeletedMobileBook(
     };
   }
 
-  const { relativePath } = await copyBookToAppData(bookId, ext || "epub", filePath);
+  createdPaths.push(`books/${artifactId}.${ext}`);
+  const { relativePath } = await copyBookToAppData(artifactId, ext || "epub", filePath);
 
   let title = originalBook.meta.title || fileName.replace(/\.\w+$/i, "") || "Untitled";
   let author = originalBook.meta.author || "";
@@ -892,7 +978,8 @@ async function restoreDeletedMobileBook(
       const mimeType = meta.coverMimeType || "image/jpeg";
       const coverExt = mimeType.includes("png") ? "png" : "jpg";
       await ensureAppSubDir("covers");
-      const coverRelPath = `covers/${bookId}-original.${coverExt}`;
+      const coverRelPath = `covers/${artifactId}-original.${coverExt}`;
+      createdPaths.push(coverRelPath);
       await platform.writeFile(await resolveAppPath(coverRelPath), meta.coverBytes);
       coverUrl = coverRelPath;
     }
@@ -936,24 +1023,9 @@ async function inspectDeletedMobileBookCandidate(
   if (!originalBook) return null;
 
   const filePath = fileInfo.uri;
-  const originalName = fileInfo.name
-    ? decodeURIComponent(fileInfo.name)
-    : decodeURIComponent(filePath.split("/").pop() || "book");
+  const originalName = importFileName(fileInfo);
   const ext = originalName.split(".").pop()?.toLowerCase();
-  const formatMap: Record<string, Book["format"]> = {
-    epub: "epub",
-    pdf: "pdf",
-    mobi: "mobi",
-    azw: "azw",
-    azw3: "azw3",
-    cbz: "cbz",
-    cbr: "cbz",
-    fb2: "fb2",
-    fbz: "fbz",
-    txt: "txt",
-    umd: "umd",
-  };
-  const format: Book["format"] = formatMap[ext || ""] || "epub";
+  const format = bookImportFormat(originalName);
   const fileName = originalName;
   const { size: fileSize, md5: fileHash } = await getMobileFileStat(filePath);
 
@@ -1085,67 +1157,109 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   activeGroupId: "",
 
   loadBooks: async (deletedTags?: string[]) => {
-    const computeTags = (books: Book[]) => {
-      const tagSet = new Set<string>();
-      for (const b of books) for (const t of b.tags) tagSet.add(t);
-      return [...tagSet].sort();
-    };
-
+    const invalidated = new Set<string>();
+    activeBookReloads.add(invalidated);
     try {
-      const cached = await loadFromFS<Book[]>("library-books");
-      const cachedGroups = await loadFromFS<BookGroup[]>("library-groups");
-      if (cached && cached.length > 0) {
-        const groups = cachedGroups ?? get().groups;
+      const computeTags = (books: Book[]) => {
+        const tagSet = new Set<string>();
+        for (const b of books) for (const t of b.tags) tagSet.add(t);
+        return [...tagSet].sort();
+      };
+
+      try {
+        const cachedSnapshot = await loadFromFS<Book[]>("library-books");
+        const cachedGroups = await loadFromFS<BookGroup[]>("library-groups");
+        const cached =
+          cachedSnapshot && reconcileDeletedBookReload(cachedSnapshot, invalidated, get().books);
+        if (!get().isLoaded && cached && cached.length > 0) {
+          const groups = cachedGroups ?? get().groups;
+          set((state) => ({
+            books: cached,
+            groups,
+            isLoaded: true,
+            allTags: computeTags(cached),
+            activeGroupId: keepActiveGroupId(state.activeGroupId, groups),
+          }));
+        }
+      } catch (err) {
+        console.warn("[Library] Failed to load cached books:", err);
+      }
+
+      try {
+        await db.initDatabase();
+        const atQuery = new Map(
+          get().books.map((book) => [book.id, getReadingProgressCheckpoint(book)]),
+        );
+        const [databaseBooks, groups] = await Promise.all([db.getBooks(), db.getGroups()]);
+
+        // Load saved tags from FS (may include empty tags not assigned to any book)
+        let savedTags: string[] = [];
+        try {
+          const loaded = await loadFromFS<string[]>("library-tags");
+          if (loaded) savedTags = loaded;
+        } catch (err) {
+          console.warn("[Library] Failed to load saved tags:", err);
+        }
+
+        // Remove deleted tags from savedTags
+        const deletedSet = new Set(deletedTags || []);
+        savedTags = savedTags.filter((t) => !deletedSet.has(t));
+
+        const visibleDatabaseBooks = reconcileDeletedBookReload(
+          databaseBooks,
+          invalidated,
+          get().books,
+        );
+        const dbTags = computeTags(visibleDatabaseBooks);
+
+        // Merge: dbTags (from books) + empty tags from FS (not in dbTags and not deleted)
+        const dbTagSet = new Set(dbTags);
+        const emptyTags = savedTags.filter((t) => !dbTagSet.has(t) && !deletedSet.has(t));
+        const allTags = [...dbTags, ...emptyTags].sort();
+
+        // Reading can start from the JSON cache before SQLite finishes loading.
+        // Use current state, not the cache snapshot from before the awaits.
+        const currentBooks = new Map(get().books.map((book) => [book.id, book]));
+        const restored = visibleDatabaseBooks.map((book) => {
+          const current = currentBooks.get(book.id);
+          return restoreReadingProgress(
+            book,
+            current,
+            getReadingProgressCheckpoint(current) !== atQuery.get(book.id),
+          );
+        });
+        const books = restored.map((result) => result.book);
+
         set((state) => ({
-          books: cached,
+          books,
           groups,
           isLoaded: true,
-          allTags: computeTags(cached),
+          allTags,
           activeGroupId: keepActiveGroupId(state.activeGroupId, groups),
         }));
-      }
-    } catch (err) {
-      console.warn("[Library] Failed to load cached books:", err);
-    }
-
-    try {
-      await db.initDatabase();
-      const [books, groups] = await Promise.all([db.getBooks(), db.getGroups()]);
-      const dbTags = computeTags(books);
-
-      // Load saved tags from FS (may include empty tags not assigned to any book)
-      let savedTags: string[] = [];
-      try {
-        const loaded = await loadFromFS<string[]>("library-tags");
-        if (loaded) savedTags = loaded;
+        debouncedSave("library-books", books);
+        debouncedSave("library-groups", groups);
+        debouncedSave("library-tags", allTags);
+        for (const { book, repair } of restored) {
+          if (!repair) continue;
+          // Do not hold the local reader behind sync/SQLite retries.
+          void persistBookUpdate(book.id, {
+            progress: repair.progress,
+            currentCfi: repair.currentCfi,
+          })
+            .then(() => acknowledgeSavedProgress(book.id, repair))
+            .catch((error) => {
+              console.warn("[Library] Reading checkpoint remains pending:", error);
+            });
+        }
+        watchCoverRecovery();
+        void repairImportedBookMetadata(books);
       } catch (err) {
-        console.warn("[Library] Failed to load saved tags:", err);
+        console.error("Failed to load books from database:", err);
+        set({ isLoaded: true });
       }
-
-      // Remove deleted tags from savedTags
-      const deletedSet = new Set(deletedTags || []);
-      savedTags = savedTags.filter((t) => !deletedSet.has(t));
-
-      // Merge: dbTags (from books) + empty tags from FS (not in dbTags and not deleted)
-      const dbTagSet = new Set(dbTags);
-      const emptyTags = savedTags.filter((t) => !dbTagSet.has(t) && !deletedSet.has(t));
-      const allTags = [...dbTags, ...emptyTags].sort();
-
-      set((state) => ({
-        books,
-        groups,
-        isLoaded: true,
-        allTags,
-        activeGroupId: keepActiveGroupId(state.activeGroupId, groups),
-      }));
-      debouncedSave("library-books", books);
-      debouncedSave("library-groups", groups);
-      debouncedSave("library-tags", allTags);
-      watchCoverRecovery();
-      void repairImportedBookMetadata(books);
-    } catch (err) {
-      console.error("Failed to load books from database:", err);
-      set({ isLoaded: true });
+    } finally {
+      activeBookReloads.delete(invalidated);
     }
   },
 
@@ -1179,61 +1293,168 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     }),
 
   addBook: async (book) => {
+    await db.initDatabase();
+    await runWithDbRetry(() => db.insertBook(book));
     set((state) => ({ books: [...state.books, book] }));
-    try {
-      await db.initDatabase();
-      await db.insertBook(book);
-    } catch (err) {
-      console.error("Failed to insert book into database:", err);
-    }
     debouncedSave("library-books", get().books);
   },
 
   removeBook: async (bookId, options = {}) => {
-    const preserveData = options.preserveData ?? false;
+    const previousRemoval = pendingBookRemovals.get(bookId);
+    if (previousRemoval) {
+      previousRemoval.invalidate();
+      await previousRemoval.done;
+      if (previousRemoval.failed) throw previousRemoval.error;
+      return;
+    }
     const bookToRemove = get().books.find((b) => b.id === bookId);
+    const priorScopes = new Map<Map<string, Book | undefined>, { had: boolean; book?: Book }>();
+    const priorTargets = new Map<{ removed: boolean }, boolean>();
+    const invalidate = () => {
+      invalidateBookReloads(bookId);
+      for (const scope of importRemovalScopes) {
+        if (!priorScopes.has(scope))
+          priorScopes.set(scope, { had: scope.has(bookId), book: scope.get(bookId) });
+        scope.set(bookId, bookToRemove ?? scope.get(bookId));
+      }
+      const target = activeImportTargets.get(bookId);
+      if (target) {
+        if (!priorTargets.has(target)) priorTargets.set(target, target.removed);
+        target.removed = true;
+      }
+    };
+    invalidate();
+    const preserveData = options.preserveData ?? false;
+    const pendingWrite = activeImportWrites.get(bookId);
+    let finishRemoval!: () => void;
+    const done = new Promise<void>((resolve) => {
+      finishRemoval = resolve;
+    });
+    const removal: PendingBookRemoval = { book: bookToRemove, done, invalidate, failed: false };
+    pendingBookRemovals.set(bookId, removal);
     set((state) => ({ books: state.books.filter((b) => b.id !== bookId) }));
     try {
-      await db.initDatabase();
-      await db.deleteBook(bookId, { preserveData });
-      await deleteLocalCoverJob(bookId);
-    } catch (err) {
-      console.error("Failed to delete book from database:", err);
-    }
-    if (bookToRemove) {
+      // Only an already-started write to this book must settle before its DELETE.
+      // Unrelated imports/conversions must not postpone the durable tombstone.
+      await pendingWrite?.catch(() => {});
       try {
-        const platform = getPlatformService();
-        if (bookToRemove.filePath && isRelativeAppPath(bookToRemove.filePath)) {
-          const absPath = await resolveAppPath(bookToRemove.filePath);
-          await platform.deleteFile(absPath);
+        await db.initDatabase();
+        await db.deleteBook(bookId, { preserveData });
+      } catch (err) {
+        removal.failed = true;
+        removal.error = err;
+        // Preserve earlier successful deletion intents; undo only this failed one.
+        for (const [scope, previous] of priorScopes) {
+          if (!importRemovalScopes.has(scope)) continue;
+          if (previous.had) scope.set(bookId, previous.book);
+          else scope.delete(bookId);
         }
-        if (
-          !preserveData &&
-          bookToRemove.meta.coverUrl &&
-          isRelativeAppPath(bookToRemove.meta.coverUrl)
-        ) {
-          const coverAbsPath = await resolveAppPath(bookToRemove.meta.coverUrl);
-          await platform.deleteFile(coverAbsPath);
+        for (const [target, previous] of priorTargets) target.removed = previous;
+        if (bookToRemove) {
+          set((state) => ({
+            books: state.books.some((book) => book.id === bookId)
+              ? state.books
+              : [...state.books, bookToRemove],
+          }));
+          debouncedSave("library-books", get().books);
         }
-      } catch {
-        /* file may not exist */
+        invalidateBookReloads(bookId);
+        console.error("Failed to delete book from database:", err);
+        throw err;
       }
+      // A reload may have returned the pre-delete row while SQLite was busy.
+      set((state) => ({ books: state.books.filter((book) => book.id !== bookId) }));
+      invalidateBookReloads(bookId);
+      try {
+        await deleteLocalCoverJob(bookId);
+      } catch (err) {
+        // The durable deletion already succeeded; cleanup must not undo it in UI.
+        console.warn("Failed to clean deleted book cover job:", err);
+      }
+      if (bookToRemove) {
+        try {
+          const platform = getPlatformService();
+          if (bookToRemove.filePath && isRelativeAppPath(bookToRemove.filePath)) {
+            const absPath = await resolveAppPath(bookToRemove.filePath);
+            await platform.deleteFile(absPath);
+          }
+          if (
+            !preserveData &&
+            bookToRemove.meta.coverUrl &&
+            isRelativeAppPath(bookToRemove.meta.coverUrl)
+          ) {
+            const coverAbsPath = await resolveAppPath(bookToRemove.meta.coverUrl);
+            await platform.deleteFile(coverAbsPath);
+          }
+        } catch {
+          /* file may not exist */
+        }
+      }
+      debouncedSave("library-books", get().books);
+    } finally {
+      pendingBookRemovals.delete(bookId);
+      finishRemoval();
     }
-    debouncedSave("library-books", get().books);
+  },
+
+  checkpointReadingProgress: (bookId, position) => {
+    if (
+      !Number.isFinite(position.progress) ||
+      position.progress < 0 ||
+      position.progress > 1 ||
+      !position.currentCfi ||
+      position.currentCfi.length > 65_536
+    )
+      return;
+    const current = get().books.find((book) => book.id === bookId);
+    if (
+      !current ||
+      (current.progress === position.progress && current.currentCfi === position.currentCfi)
+    )
+      return;
+    const updated = withReadingProgressCheckpoint({ ...current, ...position });
+    const books = get().books.map((book) => (book.id === bookId ? updated : book));
+    set({ books });
+    // Page changes must reach the local journal before the five-second DB throttle.
+    // The existing short debounce coalesces animation relocates; background flush
+    // still commits immediately. No DB work runs on this interaction path.
+    debouncedSave("library-books", books);
   },
 
   updateBook: async (bookId, updates) => {
     set((state) => ({
-      books: state.books.map((b) => (b.id === bookId ? { ...b, ...updates } : b)),
+      books: state.books.map((b) => {
+        if (b.id !== bookId) return b;
+        const book = {
+          ...b,
+          ...updates,
+          meta: updates.meta ? { ...b.meta, ...updates.meta } : b.meta,
+        };
+        return updates.progress !== undefined || updates.currentCfi !== undefined
+          ? withReadingProgressCheckpoint(book)
+          : book;
+      }),
       allTags:
         updates.tags !== undefined
           ? Array.from(new Set([...state.allTags, ...updates.tags])).sort()
           : state.allTags,
     }));
+    const checkpoint =
+      updates.progress !== undefined || updates.currentCfi !== undefined
+        ? getReadingProgressCheckpoint(get().books.find((book) => book.id === bookId))
+        : undefined;
     debouncedSave("library-books", get().books);
-    await persistBookUpdate(bookId, updates).catch((err) =>
-      console.error("Failed to update book in database:", err),
-    );
+    try {
+      await persistBookUpdate(
+        bookId,
+        checkpoint
+          ? { ...updates, progress: checkpoint.progress, currentCfi: checkpoint.currentCfi }
+          : updates,
+      );
+      if (checkpoint) acknowledgeSavedProgress(bookId, checkpoint);
+    } catch (err) {
+      console.error("Failed to update book in database:", err);
+    }
   },
 
   setFilter: (filter) => set((state) => ({ filter: { ...state.filter, ...filter } })),
@@ -1242,58 +1463,108 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   setSortOrder: (order) => set((state) => ({ filter: { ...state.filter, sortOrder: order } })),
 
   importBooks: async (files) => {
+    const booksAtImportStart = get().books;
+    const duplicateIndex = createImportDuplicateIndex(booksAtImportStart);
+    const removedDuringImport = new Map<string, Book | undefined>();
+    importRemovalScopes.add(removedDuringImport);
+    const previousImport = importQueue;
+    let releaseImport!: () => void;
+    importQueue = new Promise<void>((resolve) => {
+      releaseImport = resolve;
+    });
+    pendingImports++;
     set({ isImporting: true });
+    await previousImport;
     const result = createEmptyImportBooksResult();
-    const duplicateIndex = createImportDuplicateIndex(get().books);
     try {
-      await db.initDatabase();
+      try {
+        await db.initDatabase();
+      } catch (cause) {
+        throw new BookImportError("STORAGE_FAILED", "Import database unavailable", { cause });
+      }
       for (const fileInfo of files) {
         const filePath = fileInfo.uri;
         const knownBook = fileInfo.knownBook;
-        const originalName = fileInfo.name
-          ? decodeURIComponent(fileInfo.name)
-          : decodeURIComponent(filePath.split("/").pop() || "book");
+        const originalName = importFileName(fileInfo);
+        const createdPaths: string[] = [];
+        let committed = false;
+        let failureCode: BookImportFailureCode = "UNKNOWN";
+        let targetScope: { removed: boolean } | undefined;
+        let targetId: string | undefined;
         try {
           // L0-модерация: запрещённые в РФ материалы не импортируются вовсе.
           if (findBannedImport(undefined, undefined, originalName)) {
-            result.failures.push({ name: originalName, error: BANNED_IMPORT_MESSAGE });
+            result.failures.push({
+              name: originalName,
+              error: BANNED_IMPORT_MESSAGE,
+              code: "CONTENT_BLOCKED",
+            });
             continue;
           }
           const ext = originalName.split(".").pop()?.toLowerCase();
-          const formatMap: Record<string, Book["format"]> = {
-            epub: "epub",
-            pdf: "pdf",
-            mobi: "mobi",
-            azw: "azw",
-            azw3: "azw3",
-            cbz: "cbz",
-            cbr: "cbz",
-            fb2: "fb2",
-            fbz: "fbz",
-            txt: "txt",
-            umd: "umd",
-          };
-          const format: Book["format"] = formatMap[ext || ""] || "epub";
+          const format = bookImportFormat(originalName);
           const fileName = originalName;
           const platform = getPlatformService();
+          failureCode = "SOURCE_UNAVAILABLE";
           const { size: fileSize, md5 } = await getMobileFileStat(filePath);
+          if (!fileSize)
+            throw new BookImportError("EMPTY_SOURCE", "Book source is empty or unavailable");
+          await validateMobileImportFile(filePath, format, fileSize);
+          failureCode = "UNKNOWN";
           // MD5 is unavailable for some iOS document-provider URLs. Try the
           // backend SHA-256 identity, but never block import if that provider
           // does not expose the temporary URL to the hashing module.
           const fileHash = md5 || (await trySha256BackendFile(filePath));
+          const matchesKnownBook = (candidate: Book) =>
+            Boolean(
+              knownBook &&
+                !candidate.deletedAt &&
+                candidate.sourceKind === knownBook.sourceKind &&
+                candidate.bookEditionId === knownBook.bookEditionId &&
+                (candidate.syncStatus !== "local" ||
+                  candidate.revisionId === knownBook.revisionId ||
+                  candidate.contentHash === knownBook.contentHash),
+            );
+          if (
+            [...removedDuringImport.values()].some(
+              (book) =>
+                book && ((fileHash && book.fileHash === fileHash) || matchesKnownBook(book)),
+            )
+          ) {
+            throw new BookImportError(
+              "SOURCE_UNAVAILABLE",
+              "Book was removed while import was pending",
+            );
+          }
+          const initialTarget =
+            booksAtImportStart.find(matchesKnownBook) ??
+            findDuplicateBookByHash(duplicateIndex, fileHash);
 
-          const existingDuplicate = findDuplicateBookByHash(duplicateIndex, fileHash);
-          const existingKnownBook = knownBook
-            ? get().books.find(
-                (candidate) =>
-                  !candidate.deletedAt &&
-                  candidate.sourceKind === knownBook.sourceKind &&
-                  candidate.bookEditionId === knownBook.bookEditionId &&
-                  (candidate.syncStatus !== "local" ||
-                    candidate.revisionId === knownBook.revisionId ||
-                    candidate.contentHash === knownBook.contentHash),
-              )
-            : undefined;
+          // A later explicit import may restore a deleted book, but must wait
+          // for that book's deletion, not race its tombstone/file cleanup.
+          for (const removal of pendingBookRemovals.values()) {
+            if (
+              (fileHash && removal.book?.fileHash === fileHash) ||
+              (knownBook && removal.book?.bookEditionId === knownBook.bookEditionId)
+            ) {
+              await removal.done;
+            }
+          }
+          if (
+            initialTarget &&
+            !get().books.some((book) => book.id === initialTarget.id && !book.deletedAt)
+          ) {
+            throw new BookImportError(
+              "SOURCE_UNAVAILABLE",
+              "Book was removed while import was pending",
+            );
+          }
+          const existingDuplicate = findDuplicateBookByHash(
+            createImportDuplicateIndex(get().books),
+            fileHash,
+          );
+          const existingKnownBook = get().books.find(matchesKnownBook);
+          const observedActiveTarget = existingKnownBook ?? existingDuplicate;
           const deletedMatch = fileHash
             ? await db.getDeletedBookByFileHash(fileHash).catch((err) => {
                 console.warn("[Library] Failed to check deleted book by hash:", err);
@@ -1304,13 +1575,119 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           // of failing as a duplicate or adding a second library row.
           const importTarget = existingKnownBook ?? deletedMatch ?? existingDuplicate ?? null;
           const bookId = importTarget?.id ?? generateId();
-          const preservedSourcePath =
-            !knownBook && (ext === "txt" || ext === "umd")
-              ? `narra-backend-sources/${encodeURIComponent(bookId)}.${ext}`
-              : undefined;
-          if (preservedSourcePath) {
-            await preserveBackendOriginalSource(bookId, filePath, ext ?? "");
+          targetId = importTarget?.id;
+          if (targetId) {
+            targetScope = { removed: false };
+            activeImportTargets.set(targetId, targetScope);
           }
+          const assertTargetPresent = () => {
+            if (
+              targetScope?.removed ||
+              (targetId && removedDuringImport.has(targetId)) ||
+              (targetId &&
+                (initialTarget?.id === targetId || observedActiveTarget?.id === targetId) &&
+                !get().books.some((book) => book.id === targetId && !book.deletedAt))
+            ) {
+              throw new BookImportError(
+                "SOURCE_UNAVAILABLE",
+                "Book was removed while import was pending",
+              );
+            }
+          };
+          assertTargetPresent();
+          // Each attempt owns fresh paths. Existing reader files remain valid
+          // until the new bytes and metadata have both been saved successfully.
+          const artifactId = importTarget ? `${bookId}-${generateId()}` : bookId;
+          const preservedSourcePath =
+            !knownBook && ext === "txt"
+              ? `narra-backend-sources/${encodeURIComponent(artifactId)}.${ext}`
+              : undefined;
+          let preparedOriginal:
+            | Awaited<ReturnType<typeof preserveBackendOriginalSource>>
+            | undefined;
+          if (preservedSourcePath) {
+            createdPaths.push(preservedSourcePath);
+            try {
+              preparedOriginal = await preserveBackendOriginalSource(bookId, filePath, ext ?? "", {
+                artifactId,
+                publish: false,
+                sourceHash: fileHash,
+              });
+            } catch (error) {
+              // The converted EPUB remains sufficient for reading and backend
+              // analysis when the document provider cannot preserve its source.
+              console.warn(
+                "[importBooks] Original source unavailable; using converted EPUB:",
+                error,
+              );
+            }
+          }
+          const commitBook = async (book: Book) => {
+            assertTargetPresent();
+            failureCode = "STORAGE_FAILED";
+            if (!knownBook && existingDuplicate?.id === book.id) {
+              const current = get().books.find((candidate) => candidate.id === book.id);
+              if (current && current.fileHash === fileHash) {
+                // Re-reading identical bytes may repair an earlier charset bug,
+                // but must not discard a reader's valid custom title/author.
+                for (const key of ["title", "author"] as const) {
+                  const value = current.meta[key];
+                  if (value?.trim() && !value.includes("\ufffd")) book.meta[key] = value;
+                }
+              }
+            }
+            if (importTarget) {
+              const {
+                progress,
+                currentCfi,
+                nativeLocator,
+                totalCharacters,
+                tags,
+                groupId,
+                lastOpenedAt,
+                ...updates
+              } = book;
+              // Reading and organization may change while the provider copies
+              // bytes. Import updates only its own fields in the persisted row.
+              const write = persistBookUpdate(book.id, { ...updates, deletedAt: undefined });
+              activeImportWrites.set(book.id, write);
+              try {
+                await write;
+              } finally {
+                if (activeImportWrites.get(book.id) === write) activeImportWrites.delete(book.id);
+              }
+              await waitForPendingBookRemoval(book.id);
+              assertTargetPresent();
+              const current = get().books.find((candidate) => candidate.id === book.id);
+              if (current)
+                Object.assign(book, {
+                  progress: current.progress,
+                  currentCfi: current.currentCfi,
+                  nativeLocator: current.nativeLocator,
+                  totalCharacters: current.totalCharacters,
+                  tags: current.tags,
+                  groupId: current.groupId,
+                  lastOpenedAt: current.lastOpenedAt,
+                });
+              if (current) Object.assign(book, preserveReadingProgressCheckpoint(book, current));
+              set((state) => ({
+                books: state.books.some((candidate) => candidate.id === book.id)
+                  ? state.books.map((candidate) => (candidate.id === book.id ? book : candidate))
+                  : [...state.books, book],
+              }));
+              debouncedSave("library-books", get().books);
+            } else {
+              await get().addBook(book);
+            }
+            committed = true;
+            failureCode = "UNKNOWN";
+            if (preparedOriginal)
+              useNarraStore.getState().setBackendOriginalSource(book.id, preparedOriginal);
+            // Keep imported inclusive for catalog callers, but distinguish a
+            // refreshed active record from a new/restored library entry in UI.
+            if (importTarget && !importTarget.deletedAt)
+              result.refreshedCount = (result.refreshedCount ?? 0) + 1;
+          };
           const retainedSourceIdentity = knownBook
             ? {
                 sourceKind: knownBook.sourceKind,
@@ -1327,297 +1704,269 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
                 }
               : {};
 
-          console.log(
-            `[importBooks] Importing: name=${fileName}, format=${format}, uri=${filePath}`,
-          );
+          console.log(`[importBooks] Importing: name=${fileName}, format=${format}`);
 
           // For TXT files: convert to EPUB bytes directly, skip Blob/File (slow in RN)
           if (ext === "txt") {
-            try {
-              const { TxtToEpubConverter } = await import("@readany/core/utils/txt-to-epub");
-              const sourceBytes = await platform.readFile(filePath);
+            const { TxtToEpubConverter } = await import("@readany/core/utils/txt-to-epub");
+            failureCode = "SOURCE_UNAVAILABLE";
+            const sourceBytes = await platform.readFile(filePath);
+            failureCode = "CORRUPT_SOURCE";
 
-              // Hermes only supports UTF-8 in TextDecoder. Convert GBK/GB18030
-              // etc. to UTF-8 using text-encoding polyfill before passing to converter.
-              const bytes = ensureUtf8Bytes(sourceBytes);
+            // Hermes only supports UTF-8 in TextDecoder. Convert GBK/GB18030
+            // etc. to UTF-8 using text-encoding polyfill before passing to converter.
+            const bytes = ensureUtf8Bytes(sourceBytes);
 
-              // React Native Blob/File constructor doesn't support ArrayBuffer/Uint8Array.
-              // Create a File-like shim that provides the methods TxtToEpubConverter needs.
-              const txtFile = {
-                name: fileName,
-                size: bytes.byteLength,
-                type: "text/plain",
-                arrayBuffer: () =>
-                  Promise.resolve(
-                    bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
-                  ),
-                slice: (start?: number, end?: number) => {
-                  const sliced = bytes.slice(start ?? 0, end ?? bytes.byteLength);
-                  return {
-                    arrayBuffer: () =>
-                      Promise.resolve(
-                        sliced.buffer.slice(
-                          sliced.byteOffset,
-                          sliced.byteOffset + sliced.byteLength,
-                        ),
-                      ),
-                    size: sliced.byteLength,
-                  };
-                },
-                stream: () =>
-                  new ReadableStream({
-                    start(controller) {
-                      controller.enqueue(bytes);
-                      controller.close();
-                    },
-                  }),
-              } as unknown as File;
+            // React Native Blob/File constructor doesn't support ArrayBuffer/Uint8Array.
+            // Create a File-like shim that provides the methods TxtToEpubConverter needs.
+            const txtFile = {
+              name: fileName,
+              size: bytes.byteLength,
+              type: "text/plain",
+              arrayBuffer: () =>
+                Promise.resolve(
+                  bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+                ),
+              slice: (start?: number, end?: number) => {
+                const sliced = bytes.slice(start ?? 0, end ?? bytes.byteLength);
+                return {
+                  arrayBuffer: () =>
+                    Promise.resolve(
+                      sliced.buffer.slice(sliced.byteOffset, sliced.byteOffset + sliced.byteLength),
+                    ),
+                  size: sliced.byteLength,
+                };
+              },
+              stream: () =>
+                new ReadableStream({
+                  start(controller) {
+                    controller.enqueue(bytes);
+                    controller.close();
+                  },
+                }),
+            } as unknown as File;
 
-              // Use convertToBytes: pure-JS ZIP builder, no Blob bridge
-              const converter = new TxtToEpubConverter();
-              const conversion = await converter.convertToBytes({ file: txtFile });
+            // Use convertToBytes: pure-JS ZIP builder, no Blob bridge
+            const converter = new TxtToEpubConverter();
+            const conversion = await converter.convertToBytes({ file: txtFile });
 
-              // Write EPUB bytes directly to final app data location
-              await ensureAppSubDir("books");
-              const relativePath = `books/${bookId}.epub`;
-              const absPath = await resolveAppPath(relativePath);
-              await platform.writeFile(absPath, conversion.epubBytes);
+            // Write EPUB bytes directly to final app data location
+            failureCode = "STORAGE_FAILED";
+            await ensureAppSubDir("books");
+            const relativePath = `books/${artifactId}.epub`;
+            createdPaths.push(relativePath);
+            const absPath = await resolveAppPath(relativePath);
+            await platform.writeFile(absPath, conversion.epubBytes);
 
-              // TXT-converted EPUBs have no cover, and title is already known from converter.
-              // Skip metadata extraction entirely — saves a full EPUB re-parse.
-              const title =
-                knownBook?.title ||
-                conversion.bookTitle ||
-                fileName.replace(/\.\w+$/i, "") ||
-                "Untitled";
-              const book: Book = {
-                id: bookId,
-                filePath: relativePath,
-                format: "epub",
-                meta: {
-                  ...(importTarget?.meta ?? {}),
-                  title,
-                  author: knownBook?.author || "",
-                  coverUrl: importTarget?.meta.coverUrl,
-                },
-                groupId: importTarget?.groupId,
-                progress: importTarget?.progress ?? 0,
-                currentCfi: importTarget?.currentCfi,
-                isVectorized: false,
-                vectorizeProgress: 0,
-                tags: importTarget?.tags ?? [],
-                fileHash,
-                syncStatus: "local",
-                addedAt: importTarget?.addedAt ?? Date.now(),
-                updatedAt: Date.now(),
-                lastOpenedAt: importTarget?.lastOpenedAt ?? Date.now(),
-                ...retainedSourceIdentity,
-              };
+            // TXT-converted EPUBs have no cover, and title is already known from converter.
+            // Skip metadata extraction entirely — saves a full EPUB re-parse.
+            const title =
+              knownBook?.title ||
+              conversion.bookTitle ||
+              fileName.replace(/\.\w+$/i, "") ||
+              "Untitled";
+            const book: Book = {
+              ...importTarget,
+              deletedAt: undefined,
+              id: bookId,
+              filePath: relativePath,
+              format: "epub",
+              meta: {
+                ...(importTarget?.meta ?? {}),
+                title,
+                author: knownBook?.author || importTarget?.meta.author || "",
+                coverUrl: importTarget?.meta.coverUrl,
+              },
+              groupId: importTarget?.groupId,
+              progress: importTarget?.progress ?? 0,
+              currentCfi: importTarget?.currentCfi,
+              isVectorized: false,
+              vectorizeProgress: 0,
+              tags: importTarget?.tags ?? [],
+              fileHash,
+              syncStatus: "local",
+              addedAt: importTarget?.addedAt ?? Date.now(),
+              updatedAt: Date.now(),
+              lastOpenedAt: importTarget?.lastOpenedAt ?? Date.now(),
+              ...retainedSourceIdentity,
+            };
 
-              await assertImportNotBanned(book, fileName, importTarget, [
-                relativePath,
-                preservedSourcePath,
-              ]);
+            await assertImportNotBanned(book, fileName, importTarget, [
+              relativePath,
+              preservedSourcePath,
+            ]);
 
-              if (importTarget) {
-                set((state) => ({
-                  books: state.books.some((candidate) => candidate.id === book.id)
-                    ? state.books.map((candidate) => (candidate.id === book.id ? book : candidate))
-                    : [...state.books, book],
-                }));
-                await db.updateBook(book.id, {
-                  filePath: book.filePath,
-                  format: book.format,
-                  meta: book.meta,
-                  deletedAt: undefined,
-                  progress: book.progress,
-                  currentCfi: book.currentCfi,
-                  isVectorized: false,
-                  vectorizeProgress: 0,
-                  tags: book.tags,
-                  fileHash: book.fileHash,
-                  syncStatus: "local",
-                  lastOpenedAt: Date.now(),
-                });
-                debouncedSave("library-books", get().books);
-              } else {
-                await get().addBook(book);
-              }
-              result.imported.push(book);
-              if (!knownBook) {
-                startImportedBackendBook(book);
-                void queueGeneratedBookCover(book);
-              }
-
-              if (fileHash) {
-                duplicateIndex.byHash.set(fileHash, book);
-              }
-              console.log(`[importBooks] TXT imported as EPUB: ${title}`);
-
-              // Auto-vectorize if enabled. Keep failures isolated so a
-              // successful import doesn't get reported as a failed import.
-              try {
-                if (knownBook) continue;
-                const vmState = useVectorModelStore.getState();
-                if (
-                  vmState.autoVectorizeOnImport &&
-                  vmState.vectorModelEnabled &&
-                  vmState.hasVectorCapability() &&
-                  shouldAutoVectorizeMobile("txt")
-                ) {
-                  const base64 = bytesToBase64(conversion.epubBytes);
-                  queueAutoVectorize(book, base64, "application/epub+zip");
-                }
-              } catch (autoVectorizeErr) {
-                console.warn(
-                  `[importBooks] Auto-vectorize enqueue failed for ${fileName}:`,
-                  autoVectorizeErr,
-                );
-              }
-              continue;
-            } catch (convErr) {
-              console.error("[importBooks] TXT conversion failed:", convErr);
-              throw convErr;
+            await commitBook(book);
+            result.imported.push(book);
+            if (!knownBook) {
+              startImportedBackendBook(book);
+              void queueGeneratedBookCover(book);
             }
+
+            if (fileHash) {
+              duplicateIndex.byHash.set(fileHash, book);
+            }
+            console.log(`[importBooks] TXT imported as EPUB: ${title}`);
+
+            // Auto-vectorize if enabled. Keep failures isolated so a
+            // successful import doesn't get reported as a failed import.
+            try {
+              if (knownBook) continue;
+              const vmState = useVectorModelStore.getState();
+              if (
+                vmState.autoVectorizeOnImport &&
+                vmState.vectorModelEnabled &&
+                vmState.hasVectorCapability() &&
+                shouldAutoVectorizeMobile("txt")
+              ) {
+                const base64 = bytesToBase64(conversion.epubBytes);
+                queueAutoVectorize(book, base64, "application/epub+zip");
+              }
+            } catch (autoVectorizeErr) {
+              console.warn(
+                `[importBooks] Auto-vectorize enqueue failed for ${fileName}:`,
+                autoVectorizeErr,
+              );
+            }
+            continue;
           }
 
           // For UMD files: parse + convert to EPUB bytes inline (Chinese mobile ebook format)
           if (ext === "umd") {
-            try {
-              const [{ UmdToEpubConverter }, pakoMod] = await Promise.all([
-                import("@readany/core/utils/umd-to-epub"),
-                import("pako"),
-              ]);
-              const pako = pakoMod.default || pakoMod;
-              const sourceBytes = await platform.readFile(filePath);
+            const [{ UmdToEpubConverter }, pakoMod] = await Promise.all([
+              import("@readany/core/utils/umd-to-epub"),
+              import("pako"),
+            ]);
+            const pako = pakoMod.default || pakoMod;
+            failureCode = "SOURCE_UNAVAILABLE";
+            const sourceBytes = await platform.readFile(filePath);
+            failureCode = "CORRUPT_SOURCE";
 
-              // File-like shim — same approach as TXT branch (RN Blob/File
-              // constructors don't accept ArrayBuffer/Uint8Array).
-              const umdFile = {
-                name: fileName,
-                size: sourceBytes.byteLength,
-                type: "application/octet-stream",
-                arrayBuffer: () =>
-                  Promise.resolve(
-                    sourceBytes.buffer.slice(
-                      sourceBytes.byteOffset,
-                      sourceBytes.byteOffset + sourceBytes.byteLength,
-                    ),
+            // File-like shim — same approach as TXT branch (RN Blob/File
+            // constructors don't accept ArrayBuffer/Uint8Array).
+            const umdFile = {
+              name: fileName,
+              size: sourceBytes.byteLength,
+              type: "application/octet-stream",
+              arrayBuffer: () =>
+                Promise.resolve(
+                  sourceBytes.buffer.slice(
+                    sourceBytes.byteOffset,
+                    sourceBytes.byteOffset + sourceBytes.byteLength,
                   ),
-              } as unknown as File;
+                ),
+            } as unknown as File;
 
-              const converter = new UmdToEpubConverter((b) => pako.inflate(b));
-              const conversion = await converter.convertToBytes({ file: umdFile });
+            const converter = new UmdToEpubConverter((b) => pako.inflate(b));
+            const conversion = await converter.convertToBytes({ file: umdFile });
 
-              await ensureAppSubDir("books");
-              const relativePath = `books/${bookId}.epub`;
-              const absPath = await resolveAppPath(relativePath);
-              await platform.writeFile(absPath, conversion.epubBytes);
+            failureCode = "STORAGE_FAILED";
+            await ensureAppSubDir("books");
+            const relativePath = `books/${artifactId}.epub`;
+            createdPaths.push(relativePath);
+            const absPath = await resolveAppPath(relativePath);
+            await platform.writeFile(absPath, conversion.epubBytes);
 
-              let coverUrl: string | undefined;
-              if (conversion.coverBytes && conversion.coverBytes.length > 0) {
-                try {
-                  await ensureAppSubDir("covers");
-                  const coverRelPath = `covers/${bookId}-original.jpg`;
-                  const coverAbsPath = await resolveAppPath(coverRelPath);
-                  await platform.writeFile(coverAbsPath, conversion.coverBytes);
-                  coverUrl = coverRelPath;
-                } catch (coverErr) {
-                  console.warn(`[importBooks] Failed to save UMD cover for ${fileName}:`, coverErr);
-                }
-              }
-
-              const title = conversion.bookTitle || fileName.replace(/\.\w+$/i, "") || "Untitled";
-              const author = conversion.author || "";
-              const book: Book = {
-                id: bookId,
-                filePath: relativePath,
-                format: "umd",
-                meta: {
-                  ...(importTarget?.meta ?? {}),
-                  title,
-                  author,
-                  coverUrl: coverUrl || importTarget?.meta.coverUrl,
-                },
-                groupId: importTarget?.groupId,
-                progress: importTarget?.progress ?? 0,
-                currentCfi: importTarget?.currentCfi,
-                isVectorized: false,
-                vectorizeProgress: 0,
-                tags: importTarget?.tags ?? [],
-                fileHash,
-                syncStatus: "local",
-                addedAt: importTarget?.addedAt ?? Date.now(),
-                updatedAt: Date.now(),
-                lastOpenedAt: importTarget?.lastOpenedAt ?? Date.now(),
-                ...retainedSourceIdentity,
-              };
-
-              await assertImportNotBanned(book, fileName, importTarget, [
-                relativePath,
-                coverUrl,
-                preservedSourcePath,
-              ]);
-
-              if (importTarget) {
-                set((state) => ({
-                  books: state.books.some((candidate) => candidate.id === book.id)
-                    ? state.books.map((candidate) => (candidate.id === book.id ? book : candidate))
-                    : [...state.books, book],
-                }));
-                await db.updateBook(book.id, {
-                  filePath: book.filePath,
-                  format: book.format,
-                  meta: book.meta,
-                  deletedAt: undefined,
-                  progress: book.progress,
-                  currentCfi: book.currentCfi,
-                  isVectorized: false,
-                  vectorizeProgress: 0,
-                  tags: book.tags,
-                  fileHash: book.fileHash,
-                  syncStatus: "local",
-                  lastOpenedAt: Date.now(),
-                });
-                debouncedSave("library-books", get().books);
-              } else {
-                await get().addBook(book);
-              }
-              result.imported.push(book);
-              if (!knownBook) {
-                startImportedBackendBook(book);
-                void queueGeneratedBookCover(book);
-              }
-              if (fileHash) {
-                duplicateIndex.byHash.set(fileHash, book);
-              }
-              console.log(`[importBooks] UMD imported as EPUB: ${title}`);
-
+            let coverUrl: string | undefined;
+            if (conversion.coverBytes && conversion.coverBytes.length > 0) {
               try {
-                const vmState = useVectorModelStore.getState();
-                if (
-                  vmState.autoVectorizeOnImport &&
-                  vmState.vectorModelEnabled &&
-                  vmState.hasVectorCapability() &&
-                  shouldAutoVectorizeMobile("umd")
-                ) {
-                  const base64 = bytesToBase64(conversion.epubBytes);
-                  queueAutoVectorize(book, base64, "application/epub+zip");
-                }
-              } catch (autoVectorizeErr) {
-                console.warn(
-                  `[importBooks] Auto-vectorize enqueue failed for ${fileName}:`,
-                  autoVectorizeErr,
-                );
+                await ensureAppSubDir("covers");
+                const coverRelPath = `covers/${artifactId}-original.jpg`;
+                createdPaths.push(coverRelPath);
+                const coverAbsPath = await resolveAppPath(coverRelPath);
+                await platform.writeFile(coverAbsPath, conversion.coverBytes);
+                coverUrl = coverRelPath;
+              } catch (coverErr) {
+                console.warn(`[importBooks] Failed to save UMD cover for ${fileName}:`, coverErr);
               }
-              continue;
-            } catch (convErr) {
-              console.error("[importBooks] UMD conversion failed:", convErr);
-              throw convErr;
             }
+
+            const title = conversion.bookTitle || fileName.replace(/\.\w+$/i, "") || "Untitled";
+            const author = conversion.author || "";
+            const book: Book = {
+              ...importTarget,
+              deletedAt: undefined,
+              id: bookId,
+              filePath: relativePath,
+              format: "epub",
+              meta: {
+                ...(importTarget?.meta ?? {}),
+                title,
+                author,
+                coverUrl: coverUrl || importTarget?.meta.coverUrl,
+              },
+              groupId: importTarget?.groupId,
+              progress: importTarget?.progress ?? 0,
+              currentCfi: importTarget?.currentCfi,
+              isVectorized: false,
+              vectorizeProgress: 0,
+              tags: importTarget?.tags ?? [],
+              fileHash,
+              syncStatus: "local",
+              addedAt: importTarget?.addedAt ?? Date.now(),
+              updatedAt: Date.now(),
+              lastOpenedAt: importTarget?.lastOpenedAt ?? Date.now(),
+              ...retainedSourceIdentity,
+            };
+
+            await assertImportNotBanned(book, fileName, importTarget, [
+              relativePath,
+              coverUrl,
+              preservedSourcePath,
+            ]);
+
+            await commitBook(book);
+            result.imported.push(book);
+            if (!knownBook) {
+              startImportedBackendBook(book);
+              void queueGeneratedBookCover(book);
+            }
+            if (fileHash) {
+              duplicateIndex.byHash.set(fileHash, book);
+            }
+            console.log(`[importBooks] UMD imported as EPUB: ${title}`);
+
+            try {
+              const vmState = useVectorModelStore.getState();
+              if (
+                vmState.autoVectorizeOnImport &&
+                vmState.vectorModelEnabled &&
+                vmState.hasVectorCapability() &&
+                shouldAutoVectorizeMobile("umd")
+              ) {
+                const base64 = bytesToBase64(conversion.epubBytes);
+                queueAutoVectorize(book, base64, "application/epub+zip");
+              }
+            } catch (autoVectorizeErr) {
+              console.warn(
+                `[importBooks] Auto-vectorize enqueue failed for ${fileName}:`,
+                autoVectorizeErr,
+              );
+            }
+            continue;
           }
 
-          const { relativePath } = await copyBookToAppData(bookId, ext || "epub", filePath);
+          let relativePath: string | undefined;
+          if (importTarget?.filePath && fileHash) {
+            const existingPath = isRelativeAppPath(importTarget.filePath)
+              ? await resolveAppPath(importTarget.filePath)
+              : importTarget.filePath;
+            // Reuse verified identical bytes. A damaged/missing local file still
+            // gets replaced from the selected source, without touching it early.
+            if (
+              (await getMobileFileStat(existingPath).catch(() => ({ size: 0 }))).size > 0 &&
+              (await trySha256BackendFile(existingPath)) === fileHash
+            ) {
+              relativePath = importTarget.filePath;
+            }
+          }
+          if (!relativePath) {
+            failureCode = "STORAGE_FAILED";
+            createdPaths.push(`books/${artifactId}.${ext}`);
+            relativePath = (await copyBookToAppData(artifactId, ext || "epub", filePath))
+              .relativePath;
+            failureCode = "UNKNOWN";
+          }
           console.log(`[importBooks] File copied. relativePath: ${relativePath}`);
 
           // Extract metadata (title, author, cover) from book content
@@ -1651,24 +2000,14 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
                 subjects: meta.subjects,
               };
 
-              const identity = await resolveImportedBookIdentity({
-                fileName,
-                title,
-                author,
-                description: meta.description,
-                textSample: meta.textSample,
-                forceGemini: shouldGenerateIdentity,
-              });
-              title = identity.title;
-              author = identity.author;
-
               // Save cover image to app data
               if (meta.coverBytes && meta.coverBytes.length > 0) {
                 try {
                   const mimeType = meta.coverMimeType || "image/jpeg";
                   const coverExt = mimeType.includes("png") ? "png" : "jpg";
                   await ensureAppSubDir("covers");
-                  const coverRelPath = `covers/${bookId}-original.${coverExt}`;
+                  const coverRelPath = `covers/${artifactId}-original.${coverExt}`;
+                  createdPaths.push(coverRelPath);
                   const coverAbsPath = await resolveAppPath(coverRelPath);
                   console.log(`[importBooks] Saving cover to: ${coverAbsPath}`);
                   const platform = getPlatformService();
@@ -1688,6 +2027,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             `[importBooks] Final book: title="${title}", author="${author}", coverUrl="${coverUrl}"`,
           );
           const book: Book = {
+            ...importTarget,
+            deletedAt: undefined,
             id: bookId,
             filePath: relativePath,
             format,
@@ -1715,35 +2056,15 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             lastOpenedAt: importTarget?.lastOpenedAt ?? Date.now(),
             ...retainedSourceIdentity,
           };
-          await assertImportNotBanned(book, fileName, importTarget, [relativePath, coverUrl]);
-          if (importTarget) {
-            set((state) => ({
-              books: state.books.some((candidate) => candidate.id === book.id)
-                ? state.books.map((candidate) => (candidate.id === book.id ? book : candidate))
-                : [...state.books, book],
-            }));
-            await db.updateBook(book.id, {
-              filePath: book.filePath,
-              format: book.format,
-              meta: book.meta,
-              deletedAt: undefined,
-              progress: book.progress,
-              currentCfi: book.currentCfi,
-              isVectorized: false,
-              vectorizeProgress: 0,
-              tags: book.tags,
-              fileHash: book.fileHash,
-              syncStatus: "local",
-              lastOpenedAt: Date.now(),
-            });
-            debouncedSave("library-books", get().books);
-          } else {
-            await get().addBook(book);
-          }
+          await assertImportNotBanned(book, fileName, importTarget, createdPaths);
+          await commitBook(book);
           result.imported.push(book);
           if (!knownBook) {
             startImportedBackendBook(book);
             void queueGeneratedBookCover(book, coverContext);
+            if (shouldGenerateIdentity || isSuspiciousBookTitle(title, fileName)) {
+              void repairSuspiciousBookTitles([book]);
+            }
           }
 
           if (fileHash) {
@@ -1789,15 +2110,36 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             );
           }
         } catch (err) {
-          console.error(`Failed to import ${fileInfo.uri}:`, err);
+          if (!committed) await removeImportArtifacts(createdPaths);
+          const code = getBookImportFailureCode(err) ?? failureCode;
+          const filename = originalName.replace(/\\/g, "/").split("/").pop();
+          if (
+            code === "UNSUPPORTED_FORMAT" ||
+            code === "EMPTY_SOURCE" ||
+            code === "CORRUPT_SOURCE" ||
+            code === "SOURCE_TOO_LARGE" ||
+            code === "CONTENT_BLOCKED"
+          ) {
+            // Expected validation rejection is not an application crash/LogBox error.
+            console.info("[importBooks] Source rejected:", { filename, code });
+          } else {
+            console.error("[importBooks] Import failed:", { filename, code }, err);
+          }
           result.failures.push({
             name: originalName,
             error: err instanceof Error ? err.message : String(err),
+            code,
           });
+        } finally {
+          if (targetId && activeImportTargets.get(targetId) === targetScope)
+            activeImportTargets.delete(targetId);
         }
       }
     } finally {
-      set({ isImporting: false });
+      pendingImports--;
+      importRemovalScopes.delete(removedDuringImport);
+      set({ isImporting: pendingImports > 0 });
+      releaseImport();
     }
     return result;
   },
@@ -1806,40 +2148,61 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     inspectDeletedMobileBookCandidate(bookId, file),
 
   reimportDeletedBook: async (bookId, file) => {
-    const restoredBook = await restoreDeletedMobileBook(bookId, file);
-    if (!restoredBook) return null;
-
-    set((state) => {
-      const exists = state.books.some((book) => book.id === restoredBook.id);
-      return {
-        books: exists
+    const removedDuringImport = new Map<string, Book | undefined>();
+    importRemovalScopes.add(removedDuringImport);
+    const previousImport = importQueue;
+    let releaseImport!: () => void;
+    importQueue = new Promise<void>((resolve) => {
+      releaseImport = resolve;
+    });
+    pendingImports++;
+    set({ isImporting: true });
+    await previousImport;
+    const createdPaths: string[] = [];
+    const targetScope = { removed: false };
+    try {
+      const assertNotRemoved = () => {
+        if (targetScope.removed || removedDuringImport.has(bookId))
+          throw new BookImportError(
+            "SOURCE_UNAVAILABLE",
+            "Book was removed while import was pending",
+          );
+      };
+      const removal = pendingBookRemovals.get(bookId);
+      if (removal) await removal.done;
+      assertNotRemoved();
+      activeImportTargets.set(bookId, targetScope);
+      const restoredBook = await restoreDeletedMobileBook(bookId, file, createdPaths);
+      if (!restoredBook) return null;
+      await assertImportNotBanned(restoredBook, importFileName(file), null, createdPaths);
+      assertNotRemoved();
+      const write = persistBookUpdate(restoredBook.id, restoredBook);
+      activeImportWrites.set(bookId, write);
+      try {
+        await write;
+      } finally {
+        if (activeImportWrites.get(bookId) === write) activeImportWrites.delete(bookId);
+      }
+      await waitForPendingBookRemoval(bookId);
+      assertNotRemoved();
+      set((state) => ({
+        books: state.books.some((book) => book.id === restoredBook.id)
           ? state.books.map((book) => (book.id === restoredBook.id ? restoredBook : book))
           : [...state.books, restoredBook],
-      };
-    });
-
-    try {
-      await db.updateBook(restoredBook.id, {
-        filePath: restoredBook.filePath,
-        format: restoredBook.format,
-        meta: restoredBook.meta,
-        deletedAt: undefined,
-        progress: restoredBook.progress,
-        currentCfi: restoredBook.currentCfi,
-        isVectorized: false,
-        vectorizeProgress: 0,
-        tags: restoredBook.tags,
-        fileHash: restoredBook.fileHash,
-        syncStatus: "local",
-        lastOpenedAt: restoredBook.lastOpenedAt,
-      });
+      }));
       debouncedSave("library-books", get().books);
+      return restoredBook;
     } catch (err) {
+      await removeImportArtifacts(createdPaths);
       console.error("Failed to restore deleted book from database:", err);
       return null;
+    } finally {
+      if (activeImportTargets.get(bookId) === targetScope) activeImportTargets.delete(bookId);
+      pendingImports--;
+      importRemovalScopes.delete(removedDuringImport);
+      set({ isImporting: pendingImports > 0 });
+      releaseImport();
     }
-
-    return restoredBook;
   },
 
   setActiveTag: (tag) => set({ activeTag: tag, activeGroupId: "" }),

@@ -1,15 +1,8 @@
-import type { Book } from "../types";
+import type { Book, BookUpdate } from "../types";
 import { eventBus } from "../utils/event-bus";
+import { deleteBookAtomically } from "./book-delete-command";
 import { deleteChunks } from "./chunk-queries";
-import {
-  getDB,
-  getDeviceId,
-  insertTombstone,
-  nextSyncVersion,
-  nextUpdatedAt,
-  parseJSON,
-} from "./db-core";
-import { deleteThreadsByBookId } from "./thread-queries";
+import { getDB, getDeviceId, nextSyncVersion, nextUpdatedAt, parseJSON } from "./db-core";
 
 interface BookRow {
   id: string;
@@ -224,7 +217,7 @@ export async function insertBook(book: Book): Promise<void> {
   );
 }
 
-export async function updateBook(id: string, updates: Partial<Book>): Promise<void> {
+export async function updateBook(id: string, updates: BookUpdate): Promise<void> {
   const database = await getDB();
   const sets: string[] = [];
   const values: unknown[] = [];
@@ -386,50 +379,12 @@ export async function setBookSyncStatus(id: string, syncStatus: Book["syncStatus
 export async function deleteBook(id: string, options: DeleteBookOptions = {}): Promise<void> {
   const database = await getDB();
   const preserveData = options.preserveData ?? false;
-
-  if (preserveData) {
-    const deletedAt = Date.now();
-
-    // Keep notes/highlights/bookmarks and reading sessions, but remove chat
-    // threads and vector chunks tied to the deleted book payload.
-    await deleteThreadsByBookId(id);
+  await deleteBookAtomically(database, id, preserveData, await getDeviceId(), Date.now());
+  // This derived cache lives in readany_local.db, outside the committed main
+  // command. Its failure cannot truthfully mean the book deletion rolled back.
+  try {
     await deleteChunks(id);
-
-    const deviceId = await getDeviceId();
-    const syncVersion = await nextSyncVersion(database, "books");
-    const updatedAt = await nextUpdatedAt(database, "books", id);
-    await database.execute(
-      `UPDATE books
-       SET deleted_at = ?, is_vectorized = 0, vectorize_progress = 0,
-           updated_at = ?, sync_version = ?, last_modified_by = ?
-       WHERE id = ?`,
-      [deletedAt, updatedAt, syncVersion, deviceId, id],
-    );
-    return;
+  } catch {
+    console.warn("[DB] Book deletion committed; local chunk cleanup failed");
   }
-
-  const [highlightRows, noteRows, bookmarkRows] = await Promise.all([
-    database.select<{ id: string }>("SELECT id FROM highlights WHERE book_id = ?", [id]),
-    database.select<{ id: string }>("SELECT id FROM notes WHERE book_id = ?", [id]),
-    database.select<{ id: string }>("SELECT id FROM bookmarks WHERE book_id = ?", [id]),
-  ]);
-
-  for (const row of highlightRows) {
-    await insertTombstone(database, row.id, "highlights");
-  }
-  for (const row of noteRows) {
-    await insertTombstone(database, row.id, "notes");
-  }
-  for (const row of bookmarkRows) {
-    await insertTombstone(database, row.id, "bookmarks");
-  }
-
-  await database.execute("DELETE FROM highlights WHERE book_id = ?", [id]);
-  await database.execute("DELETE FROM notes WHERE book_id = ?", [id]);
-  await database.execute("DELETE FROM bookmarks WHERE book_id = ?", [id]);
-  await database.execute("DELETE FROM reading_sessions WHERE book_id = ?", [id]);
-  await deleteThreadsByBookId(id);
-  await deleteChunks(id);
-  await insertTombstone(database, id, "books");
-  await database.execute("DELETE FROM books WHERE id = ?", [id]);
 }

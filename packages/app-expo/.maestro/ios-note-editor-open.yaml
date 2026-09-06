@@ -1,0 +1,10 @@
+appId: com.mishanaer.readany.dev
+name: iOS own book new note editor
+---
+- launchApp:
+    stopApp: false
+- assertVisible: "No notes yet"
+- tapOn: "Add note"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: ios-own-book-note-editor

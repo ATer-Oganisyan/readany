@@ -1,0 +1,16 @@
+appId: com.mishanaer.readany.dev
+name: Android save the original QA marker to the selected book
+# Prerequisite: own 26-mixed-recovery note editor is open, no pre-existing content.
+---
+- assertVisible: 26-mixed-recovery
+- tapOn: Start writing…
+- inputText: NARRA_ANDROID_QA_BOOK_SCOPE_20260905_1218
+- waitForAnimationToEnd:
+    timeout: 5000
+- assertVisible: .*NARRA_ANDROID_QA_BOOK_SCOPE_20260905_1218.*
+- takeScreenshot: android-own-book-note-keyboard
+- tapOn: Save note
+- extendedWaitUntil:
+    visible: .*NARRA_ANDROID_QA_BOOK_SCOPE_20260905_1218.*
+    timeout: 10000
+- takeScreenshot: android-own-book-note-saved

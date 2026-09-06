@@ -9,6 +9,7 @@
  * Optimized: only decompresses the 2-3 ZIP entries needed for metadata
  * (container.xml, OPF, cover image) instead of the entire EPUB.
  */
+import { BookImportError } from "@readany/core/import/import-errors";
 import pako from "pako";
 
 export interface ExtractedMeta {
@@ -38,6 +39,149 @@ interface BlobLikeFile {
 const EPUB_TEXT_ENTRY_MAX_BYTES = 4 * 1024 * 1024;
 const EPUB_COVER_ENTRY_MAX_BYTES = 24 * 1024 * 1024;
 const FB2_METADATA_MAX_BYTES = 2 * 1024 * 1024;
+const ZIP_DIRECTORY_MAX_BYTES = 4 * 1024 * 1024;
+// Full XML validation and the reader both materialize the document. Match the
+// gateway's default 50 MiB book-upload limit for raw and archived FB2 alike;
+// a small ZIP must not expand into an arbitrarily large native allocation.
+const FB2_IMPORT_MAX_BYTES = 50 * 1024 * 1024;
+
+const INVALID_IMPORT_SOURCE =
+  "Файл книги повреждён или не содержит читаемых страниц. Выберите другую копию.";
+
+function requireImportSource(condition: unknown): asserts condition {
+  if (!condition) throw new BookImportError("CORRUPT_SOURCE", INVALID_IMPORT_SOURCE);
+}
+
+function requireFb2ImportSize(size: number): void {
+  if (size > FB2_IMPORT_MAX_BYTES) {
+    throw new BookImportError(
+      "SOURCE_TOO_LARGE",
+      "Документ FB2 слишком большой: максимум 50 МБ после распаковки. Выберите меньшую копию книги.",
+    );
+  }
+}
+
+function validateFictionBookXml(xml: string): void {
+  const withoutComments = xml.replace(/<!--[\s\S]*?-->|<\?[\s\S]*?\?>/g, "");
+  requireImportSource(/<(?:[\w.-]+:)?FictionBook\b/i.test(withoutComments));
+  requireImportSource(/<\/(?:[\w.-]+:)?FictionBook\s*>\s*$/i.test(withoutComments.trim()));
+  const body = extractElementInnerXml(xml, "body");
+  requireImportSource(body && cleanXmlText(body).trim());
+  // A root closing tag alone does not make truncated/mismatched inner markup valid.
+  const tokens =
+    withoutComments
+      .replace(/<!\[CDATA\[[\s\S]*?\]\]>|<!DOCTYPE[^>]*(?:\[[\s\S]*?\]\s*)?>/gi, "")
+      .match(/<(?:"[^"]*"|'[^']*'|[^'">])*>/g) ?? [];
+  const stack: string[] = [];
+  for (const token of tokens) {
+    if (/^<!/.test(token) || /\/\s*>$/.test(token)) continue;
+    const name = token.match(/^<\/?\s*([^\s/>]+)/)?.[1];
+    requireImportSource(name);
+    if (token.startsWith("</")) requireImportSource(stack.pop() === name);
+    else stack.push(name);
+  }
+  requireImportSource(stack.length === 0);
+}
+
+/** Validate the actual container before publishing a library entry, independently of optional metadata. */
+export async function validateBookImportSource(file: BlobLikeFile, format: string): Promise<void> {
+  const size = file.size ?? 0;
+  if (size === 0) throw new BookImportError("EMPTY_SOURCE", "Book source is empty");
+  requireImportSource(Number.isSafeInteger(size) && size > 0);
+  if (format === "txt" || format === "umd") return; // Their converters validate the source.
+  if (format === "fb2") {
+    requireFb2ImportSize(size);
+    // XML is already consumed by the reader as a whole; do not accept a valid prefix of a truncated file.
+    const bytes = new Uint8Array(await file.slice(0, size).arrayBuffer());
+    requireFb2ImportSize(bytes.byteLength);
+    requireImportSource(bytes.byteLength === size);
+    validateFictionBookXml(decodeXmlBytes(bytes));
+    return;
+  }
+  if (format === "pdf") {
+    const first = new TextDecoder().decode(await file.slice(0, Math.min(size, 1024)).arrayBuffer());
+    const last = new TextDecoder().decode(
+      await file.slice(Math.max(0, size - 65_536), size).arrayBuffer(),
+    );
+    requireImportSource(/%PDF-\d\.\d/.test(first) && /startxref\s+\d+\s+%%EOF/.test(last));
+    return;
+  }
+  if (format === "mobi" || format === "azw" || format === "azw3") {
+    requireImportSource(await parseMobiHeader(file));
+    return;
+  }
+  const directory = await parseZipDirectoryFromFile(file);
+  requireImportSource(directory.length > 0);
+  requireImportSource(
+    directory.every(
+      (entry) =>
+        entry.localHeaderOffset >= 0 && entry.localHeaderOffset + 30 + entry.compressedSize <= size,
+    ),
+  );
+  if (format === "fbz") {
+    const entry = directory.find((item) => /\.fb2$/i.test(item.filename));
+    requireImportSource(entry && entry.uncompressedSize > 0);
+    requireFb2ImportSize(entry.uncompressedSize);
+    const bytes = await readBytesFromZipFile(file, directory, entry.filename, FB2_IMPORT_MAX_BYTES);
+    requireImportSource(bytes);
+    validateFictionBookXml(decodeXmlBytes(bytes));
+    return;
+  }
+  if (format === "cbz") {
+    requireImportSource(
+      directory.some(
+        (entry) =>
+          /\.(png|jpe?g|gif|webp|avif|bmp)$/i.test(entry.filename) && entry.uncompressedSize > 0,
+      ),
+    );
+    return;
+  }
+  requireImportSource(format === "epub");
+  const container = await readTextFromZipFile(
+    file,
+    directory,
+    "META-INF/container.xml",
+    EPUB_TEXT_ENTRY_MAX_BYTES,
+  );
+  requireImportSource(container);
+  const opfPath = parseAttribute(container, "rootfile", "full-path");
+  requireImportSource(opfPath);
+  const opf = await readTextFromZipFile(file, directory, opfPath, EPUB_TEXT_ENTRY_MAX_BYTES);
+  requireImportSource(opf && /<\/(?:[\w.-]+:)?package\s*>/i.test(opf));
+  requireImportSource(/<spine\b[^>]*>[\s\S]*?<itemref\b[\s\S]*?<\/spine\s*>/i.test(opf));
+  const firstHref = findFirstSpineTextHref(opf);
+  requireImportSource(firstHref);
+  const base = opfPath.includes("/") ? opfPath.slice(0, opfPath.lastIndexOf("/") + 1) : "";
+  let decoded = firstHref;
+  try {
+    decoded = decodeURIComponent(firstHref);
+  } catch {
+    /* literal % is legal in ZIP names */
+  }
+  const normalizePath = (path: string) => {
+    const parts: string[] = [];
+    for (const part of path.split("/")) {
+      if (part === "..") parts.pop();
+      else if (part && part !== ".") parts.push(part);
+    }
+    return parts.join("/");
+  };
+  const candidates = new Set(
+    [base + decoded, base + firstHref].map((path) => normalizePath(path.split("#")[0] ?? path)),
+  );
+  const chapter = directory.find((entry) => candidates.has(entry.filename));
+  requireImportSource(chapter && chapter.uncompressedSize > 0);
+  // Validate ordinary first chapters too, without decompressing an unbounded chapter just for admission.
+  if (chapter.uncompressedSize <= EPUB_TEXT_ENTRY_MAX_BYTES) {
+    const text = await readTextFromZipFile(
+      file,
+      directory,
+      chapter.filename,
+      EPUB_TEXT_ENTRY_MAX_BYTES,
+    );
+    requireImportSource(text && /<(?:[\w.-]+:)?(?:html|svg)\b/i.test(text));
+  }
+}
 
 // ─── FB2 extraction ────────────────────────────────────────────────
 
@@ -72,6 +216,18 @@ export function extractFb2Metadata(fileBytes: Uint8Array, fileName = "book.fb2")
   };
 }
 
+/** Exact original XML bytes, including its encoding declaration; never ZIP bytes. */
+export async function extractFbzSourceBytes(file: BlobLikeFile): Promise<Uint8Array> {
+  const directory = await parseZipDirectoryFromFile(file);
+  const entry = directory.find((item) => /\.fb2$/i.test(item.filename));
+  requireImportSource(entry && entry.uncompressedSize > 0);
+  requireFb2ImportSize(entry.uncompressedSize);
+  const bytes = await readBytesFromZipFile(file, directory, entry.filename, FB2_IMPORT_MAX_BYTES);
+  requireImportSource(bytes);
+  validateFictionBookXml(decodeXmlBytes(bytes));
+  return bytes;
+}
+
 export async function extractFb2MetadataFromFile(
   file: BlobLikeFile,
   fileName: string,
@@ -79,6 +235,20 @@ export async function extractFb2MetadataFromFile(
   const end = Math.min(file.size || FB2_METADATA_MAX_BYTES, FB2_METADATA_MAX_BYTES);
   const bytes = new Uint8Array(await file.slice(0, end).arrayBuffer());
   return extractFb2Metadata(bytes, fileName);
+}
+
+async function extractFbzMetadata(
+  directory: ZipDirectoryEntry[],
+  readEntry: (path: string) => Promise<Uint8Array | null>,
+  fileName: string,
+): Promise<ExtractedMeta> {
+  const entry = directory.find((item) => /\.fb2$/i.test(item.filename));
+  if (!entry) throw new Error("FB2 archive contains no FB2 document");
+  const bytes = await readEntry(entry.filename);
+  if (!bytes) throw new Error("FB2 archive metadata is unavailable or exceeds its size limit");
+  // Reuse the XML decoder, including UTF-16/CP1251 support on Hermes. A missing
+  // title falls back to the user's archive name, not an arbitrary inner path.
+  return extractFb2Metadata(bytes, fileName.replace(/\.fb2\.zip$|\.fbz$/i, ".fb2"));
 }
 
 // ─── EPUB extraction ────────────────────────────────────────────────
@@ -210,7 +380,7 @@ export async function extractBookMetadata(
   fileName: string,
 ): Promise<ExtractedMeta> {
   const fallback: ExtractedMeta = {
-    title: fileName.replace(/\.\w+$/i, "") || "Untitled",
+    title: fileName.replace(/\.fb2\.zip$|\.\w+$/i, "") || "Untitled",
     author: "",
     coverBytes: null,
     coverMimeType: null,
@@ -222,6 +392,14 @@ export async function extractBookMetadata(
         return await extractEpubMetadata(fileBytes);
       case "fb2":
         return extractFb2Metadata(fileBytes, fileName);
+      case "fbz": {
+        const directory = parseZipDirectory(fileBytes);
+        return await extractFbzMetadata(
+          directory,
+          async (path) => readBytesFromZip(fileBytes, directory, path, FB2_METADATA_MAX_BYTES),
+          fileName,
+        );
+      }
       default:
         return fallback;
     }
@@ -237,7 +415,7 @@ export async function extractBookMetadataFromFile(
   fileName: string,
 ): Promise<ExtractedMeta> {
   const fallback: ExtractedMeta = {
-    title: fileName.replace(/\.\w+$/i, "") || "Untitled",
+    title: fileName.replace(/\.fb2\.zip$|\.\w+$/i, "") || "Untitled",
     author: "",
     coverBytes: null,
     coverMimeType: null,
@@ -253,6 +431,14 @@ export async function extractBookMetadataFromFile(
         return await extractMobiMetadata(file, fileName);
       case "fb2":
         return await extractFb2MetadataFromFile(file, fileName);
+      case "fbz": {
+        const directory = await parseZipDirectoryFromFile(file);
+        return await extractFbzMetadata(
+          directory,
+          (path) => readBytesFromZipFile(file, directory, path, FB2_METADATA_MAX_BYTES),
+          fileName,
+        );
+      }
       default:
         return fallback;
     }
@@ -677,9 +863,10 @@ function parseZipDirectory(buf: Uint8Array): ZipDirectoryEntry[] {
   const cdCount = view.getUint16(eocdOffset + 10, true);
   const cdSize = view.getUint32(eocdOffset + 12, true);
 
-  if (cdOffset < 0 || cdOffset >= buf.byteLength) return [];
-  const cdEnd = Math.min(buf.byteLength, cdOffset + cdSize);
-  return parseZipCentralDirectory(buf.slice(cdOffset, cdEnd), cdCount);
+  if (cdSize <= 0 || cdSize > ZIP_DIRECTORY_MAX_BYTES || cdOffset + cdSize > eocdOffset) {
+    return [];
+  }
+  return parseZipCentralDirectory(buf.subarray(cdOffset, cdOffset + cdSize), cdCount);
 }
 
 async function parseZipDirectoryFromFile(file: BlobLikeFile): Promise<ZipDirectoryEntry[]> {
@@ -703,7 +890,13 @@ async function parseZipDirectoryFromFile(file: BlobLikeFile): Promise<ZipDirecto
   const cdCount = view.getUint16(eocdOffset + 10, true);
   const cdSize = view.getUint32(eocdOffset + 12, true);
   const cdOffset = view.getUint32(eocdOffset + 16, true);
-  if (cdOffset < 0 || cdSize <= 0 || cdOffset + cdSize > fileSize) return [];
+  if (
+    cdSize <= 0 ||
+    cdSize > ZIP_DIRECTORY_MAX_BYTES ||
+    cdOffset + cdSize > tailStart + eocdOffset
+  ) {
+    return [];
+  }
 
   const cdBuffer = new Uint8Array(await file.slice(cdOffset, cdOffset + cdSize).arrayBuffer());
   return parseZipCentralDirectory(cdBuffer, cdCount);
@@ -726,7 +919,8 @@ function parseZipCentralDirectory(buf: Uint8Array, cdCount: number): ZipDirector
     const commentLen = view.getUint16(pos + 32, true);
     const localHeaderOffset = view.getUint32(pos + 42, true);
 
-    const filename = new TextDecoder().decode(buf.slice(pos + 46, pos + 46 + filenameLen));
+    if (pos + 46 + filenameLen + extraLen + commentLen > buf.byteLength) return [];
+    const filename = new TextDecoder().decode(buf.subarray(pos + 46, pos + 46 + filenameLen));
 
     entries.push({
       filename,
@@ -745,33 +939,75 @@ function parseZipCentralDirectory(buf: Uint8Array, cdCount: number): ZipDirector
 /**
  * Decompress a single ZIP entry on demand.
  */
-function decompressEntry(buf: Uint8Array, entry: ZipDirectoryEntry): Uint8Array | null {
+function decompressEntry(
+  buf: Uint8Array,
+  entry: ZipDirectoryEntry,
+  maxUncompressedSize: number,
+): Uint8Array | null {
+  if (!isZipEntryWithinLimit(entry, maxUncompressedSize)) return null;
   const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
 
   if (entry.localHeaderOffset + 30 > buf.byteLength) return null;
+  if (view.getUint32(entry.localHeaderOffset, true) !== 0x04034b50) return null;
 
   const localFilenameLen = view.getUint16(entry.localHeaderOffset + 26, true);
   const localExtraLen = view.getUint16(entry.localHeaderOffset + 28, true);
   const dataStart = entry.localHeaderOffset + 30 + localFilenameLen + localExtraLen;
 
+  if (dataStart + entry.compressedSize > buf.byteLength) return null;
+  return decodeZipEntry(
+    buf.subarray(dataStart, dataStart + entry.compressedSize),
+    entry,
+    maxUncompressedSize,
+  );
+}
+
+function isZipEntryWithinLimit(entry: ZipDirectoryEntry, maxUncompressedSize: number): boolean {
+  return (
+    entry.compressedSize > 0 &&
+    entry.compressedSize <= maxUncompressedSize &&
+    entry.uncompressedSize <= maxUncompressedSize
+  );
+}
+
+function decodeZipEntry(
+  data: Uint8Array,
+  entry: ZipDirectoryEntry,
+  maxUncompressedSize: number,
+): Uint8Array | null {
   if (entry.compressionMethod === 0) {
-    // Stored (no compression)
-    if (dataStart + entry.compressedSize > buf.byteLength) return null;
-    return buf.slice(dataStart, dataStart + entry.compressedSize);
+    return data.byteLength === entry.uncompressedSize ? data : null;
   }
-
-  if (entry.compressionMethod === 8) {
-    // Deflated
-    if (dataStart + entry.compressedSize > buf.byteLength) return null;
-    try {
-      const compressed = buf.slice(dataStart, dataStart + entry.compressedSize);
-      return pako.inflateRaw(compressed);
-    } catch {
-      return null;
+  if (entry.compressionMethod !== 8) return null;
+  try {
+    // ZIP sizes are untrusted. Stop inflation as chunks arrive, before pako can
+    // allocate the whole output of an entry whose declared size was forged.
+    const limit = Math.min(maxUncompressedSize, entry.uncompressedSize);
+    const inflater = new pako.Inflate({ raw: true, chunkSize: 64 * 1024 });
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    let completed = false;
+    inflater.onData = (chunk) => {
+      const bytes = chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk);
+      total += bytes.byteLength;
+      if (total > limit) throw new Error("ZIP entry exceeds its metadata size limit");
+      chunks.push(bytes);
+    };
+    inflater.onEnd = (status) => {
+      completed = status === 0;
+    };
+    inflater.push(data, true);
+    if (!completed || total !== entry.uncompressedSize) return null;
+    const result = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      result.set(chunk, offset);
+      offset += chunk.byteLength;
     }
+    return result;
+  } catch {
+    return null;
   }
-
-  return null;
 }
 
 async function decompressEntryFromFile(
@@ -779,13 +1015,7 @@ async function decompressEntryFromFile(
   entry: ZipDirectoryEntry,
   maxUncompressedSize: number,
 ): Promise<Uint8Array | null> {
-  if (
-    entry.compressedSize <= 0 ||
-    entry.compressedSize > maxUncompressedSize ||
-    entry.uncompressedSize > maxUncompressedSize
-  ) {
-    return null;
-  }
+  if (!isZipEntryWithinLimit(entry, maxUncompressedSize)) return null;
 
   const header = new Uint8Array(
     await file.slice(entry.localHeaderOffset, entry.localHeaderOffset + 30).arrayBuffer(),
@@ -799,23 +1029,12 @@ async function decompressEntryFromFile(
   const localExtraLen = view.getUint16(28, true);
   const dataStart = entry.localHeaderOffset + 30 + localFilenameLen + localExtraLen;
   const dataEnd = dataStart + entry.compressedSize;
+  if (file.size !== undefined && dataEnd > file.size) return null;
 
   const data = new Uint8Array(await file.slice(dataStart, dataEnd).arrayBuffer());
   if (data.byteLength !== entry.compressedSize) return null;
 
-  if (entry.compressionMethod === 0) {
-    return data;
-  }
-
-  if (entry.compressionMethod === 8) {
-    try {
-      return pako.inflateRaw(data);
-    } catch {
-      return null;
-    }
-  }
-
-  return null;
+  return decodeZipEntry(data, entry, maxUncompressedSize);
 }
 
 /**
@@ -835,8 +1054,7 @@ function findAndDecompress(
     entry = directory.find((e) => e.filename.toLowerCase() === lower);
   }
   if (!entry) return null;
-  if (entry.uncompressedSize > maxUncompressedSize) return null;
-  return decompressEntry(buf, entry);
+  return decompressEntry(buf, entry, maxUncompressedSize);
 }
 
 async function findAndDecompressFromFile(
@@ -913,13 +1131,44 @@ function extractElementInnerXml(xml: string, tagName: string): string {
 }
 
 function decodeXmlBytes(bytes: Uint8Array): string {
+  if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
+    return new TextDecoder("utf-8").decode(bytes);
+  }
   if (bytes[0] === 0xff && bytes[1] === 0xfe) {
     return decodeUtf16(bytes.subarray(2), true);
   }
   if (bytes[0] === 0xfe && bytes[1] === 0xff) {
     return decodeUtf16(bytes.subarray(2), false);
   }
-  return new TextDecoder("utf-8").decode(bytes);
+  // XML without a BOM can still declare UTF-16; identify its byte order before
+  // trying to read the declaration as UTF-8.
+  if (bytes[0] === 0x3c && bytes[1] === 0) return decodeUtf16(bytes, true);
+  if (bytes[0] === 0 && bytes[1] === 0x3c) return decodeUtf16(bytes, false);
+  const prefix = new TextDecoder("utf-8").decode(bytes.subarray(0, 512));
+  const declaration = prefix.match(/^\s*<\?xml\b[^?]*\?>/i)?.[0];
+  const encoding =
+    declaration?.match(/\bencoding\s*=\s*(["'])([^"']+)\1/i)?.[2]?.toLowerCase() || "utf-8";
+  if (/^(windows-1251|cp-?1251|x-cp1251|x-windows-1251)$/.test(encoding)) {
+    // Hermes only implements UTF-8. Keep the small CP1251 table local instead
+    // of silently replacing Cyrillic or loading a multi-megabyte charset table.
+    const upper = "ЂЃ‚ѓ„…†‡€‰Љ‹ЊЌЋЏђ‘’“”•–—\u0098™љ›њќћџ\u00a0ЎўЈ¤Ґ¦§Ё©Є«¬\u00ad®Ї°±Ііґµ¶·ё№є»јЅѕї";
+    let text = "";
+    for (let start = 0; start < bytes.length; start += 8192) {
+      const chunk: string[] = [];
+      for (const byte of bytes.subarray(start, start + 8192)) {
+        chunk.push(
+          byte < 0x80
+            ? String.fromCharCode(byte)
+            : byte >= 0xc0
+              ? String.fromCharCode(0x410 + byte - 0xc0)
+              : (upper[byte - 0x80] ?? "\ufffd"),
+        );
+      }
+      text += chunk.join("");
+    }
+    return text;
+  }
+  return new TextDecoder(encoding).decode(bytes);
 }
 
 function decodeUtf16(bytes: Uint8Array, littleEndian: boolean): string {

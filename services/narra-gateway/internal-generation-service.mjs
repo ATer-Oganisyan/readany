@@ -1,4 +1,5 @@
 import express from 'express'
+import { createDeadlineSignal, requestAbortSignal } from './concurrency.mjs'
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { extractEmbeddedBookCover } from './book-source-cover.mjs'
 import { extractStructuredBookText, representativeTextSelection } from './book-source-text.mjs'
@@ -1672,6 +1673,30 @@ async function synthesizePersonalityCheckpointFallback({
   return snapshots
 }
 
+function fallbackProfileSpeechExamples(evidence, entity, textLength) {
+  const ownerIds = new Set(entity.evidenceIds)
+  const seen = new Set()
+  const result = []
+  // Ownership and source ranges originate in the validated synthesis request;
+  // publication validation still checks each cited quote against the full book.
+  const ordered = evidence.filter((item) =>
+    ownerIds.has(item.id) && item.type === 'character_dialogue' &&
+    typeof item.quote === 'string' && item.quote.trim() && item.quote.length <= 4_000 &&
+    Number.isSafeInteger(item.startOffset) && item.startOffset >= 0 &&
+    Number.isSafeInteger(item.endOffset) && item.endOffset <= textLength &&
+    item.endOffset - item.startOffset === item.quote.length &&
+    Number.isFinite(item.confidence) && item.confidence >= 0 && item.confidence <= 1
+  ).sort((a, b) => a.startOffset - b.startOffset || a.endOffset - b.endOffset ||
+    (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+  for (const item of ordered) {
+    if (seen.has(item.quote)) continue
+    seen.add(item.quote)
+    result.push({ value: item.quote, evidenceIds: [item.id], confidence: item.confidence })
+    if (result.length === 3) break
+  }
+  return result
+}
+
 function normalizeCharacterProfileResult(value, { entity, textLength, evidence, bookLanguage }) {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : null
   if (!source) invalid('LLM profile result is not an object', 'GENERATION_RESULT_INVALID')
@@ -1729,6 +1754,7 @@ function normalizeCharacterProfileResult(value, { entity, textLength, evidence, 
   const traits = filterStableTraits(traitResult.claims, evidenceById, textLength)
   droppedClaimCount += traitResult.dropped + traitResult.claims.length - traits.length
   const generatedDescription = one('description')
+  const generatedSpeechExamples = many('speechExamples', compatibleTypes.speechExamples)
   const profile = normalizeBookAnalysisCharacterProfile({
     role: one('role', compatibleTypes.role),
     age: one('age', compatibleTypes.age),
@@ -1737,7 +1763,9 @@ function normalizeCharacterProfileResult(value, { entity, textLength, evidence, 
     traits,
     appearance: many('appearance', compatibleTypes.appearance),
     speechStyle: one('speechStyle', compatibleTypes.speechStyle),
-    speechExamples: many('speechExamples', compatibleTypes.speechExamples),
+    speechExamples: generatedSpeechExamples.length
+      ? generatedSpeechExamples
+      : fallbackProfileSpeechExamples(evidence, entity, textLength),
     creative: {
       greeting: requestedGreeting && greetingMatchesLanguage(requestedGreeting, bookLanguage)
         ? requestedGreeting
@@ -2317,7 +2345,9 @@ export function createInternalGenerationService({
 
         const parts = adaptiveScanParts(input, effectiveScanPolicy)
         if (parts.length !== 2) {
-          if (!finalSemanticAttempt) throw splitError
+          if (!finalSemanticAttempt || splitError.code !== 'SCAN_EMPTY_OBSERVATIONS') {
+            throw splitError
+          }
           log.warn('scan.semantic_empty_completed', 'Семантические повторы исчерпаны без наблюдений', {
             ...common,
             error_code: splitError.code,
@@ -2353,23 +2383,14 @@ export function createInternalGenerationService({
         )
         if (technicalFailure) throw technicalFailure.reason
         const semanticFailures = partResults.filter((result) => result.status === 'rejected')
-        if (semanticFailures.length && !finalSemanticAttempt) {
+        // A failed half is not evidence that it contains no characters. Its successful sibling
+        // remains cached, so a retry can recover the missing facts without repeating that work.
+        if (semanticFailures.length) {
           throw semanticFailures[0].reason
         }
         const observations = partResults.flatMap((result) => result.status === 'fulfilled'
           ? result.value.observations
           : [])
-        if (semanticFailures.length) {
-          log.warn(
-            'scan.partial_completed',
-            'Успешная половина сохранена после исчерпания семантических повторов',
-            {
-              ...common,
-              failed_part_count: semanticFailures.length,
-              accepted_observation_count: observations.length
-            }
-          )
-        }
         return { observations }
       })
     },
@@ -2754,10 +2775,8 @@ export function createInternalGenerationRouter({ token, service, logger = consol
   router.use(express.json({ limit: '1mb' }))
   const endpoint = (operation) => async (req, res) => {
     const startedAt = Date.now()
-    const controller = new AbortController()
-    const abort = () => controller.abort(new Error('internal generation client disconnected'))
-    req.once('aborted', abort)
-    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(10 * 60_000)])
+    const deadline = createDeadlineSignal(requestAbortSignal(req, res), 10 * 60_000)
+    const { signal } = deadline
     try {
       res.json({ result: await operation(req.body, signal) })
     } catch (error) {
@@ -2782,7 +2801,7 @@ export function createInternalGenerationRouter({ token, service, logger = consol
       })
       res.status(status).json({ error: error.message, code })
     } finally {
-      req.removeListener('aborted', abort)
+      deadline.dispose()
     }
   }
   router.post('/v1/book-markup', endpoint((body, signal) => service.generateBookMarkup(body, signal)))

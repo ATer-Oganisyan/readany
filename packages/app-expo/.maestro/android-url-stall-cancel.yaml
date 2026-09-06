@@ -1,0 +1,26 @@
+appId: com.mishanaer.readany.dev
+name: Android stalled URL cancellation
+---
+- assertVisible: Library
+- tapOn: Add book
+- tapOn: Add from link
+- assertVisible: Book link
+- tapOn: Book file or Ficbook story link
+- inputText: http://127.0.0.1:8099/stall.epub
+- tapOn:
+    id: android:id/button1
+    waitToSettleTimeoutMs: 0
+- takeScreenshot: android-url-stall-loading
+- extendedWaitUntil:
+    visible: Cancel
+    timeout: 10000
+- tapOn:
+    text: Cancel
+    waitToSettleTimeoutMs: 0
+- assertVisible: Library
+- takeScreenshot: android-url-stall-cancelled
+- tapOn: Add book
+- tapOn: Add from link
+- assertVisible: Book link
+- tapOn:
+    id: android:id/button2

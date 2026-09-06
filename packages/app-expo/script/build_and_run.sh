@@ -67,14 +67,24 @@ Modes:
   start            Start Metro on localhost for the installed Simulator dev client
   start-lan        Start Metro on LAN for a physical phone
   rebuild-ios      Build/install the canonical iOS dev client, then launch it
+  install-canonical-only
+                   Install current canonical app on an explicit empty simulator; no build/launch
   ios, --ios       Legacy alias for rebuild-ios
   check, --check   Check launch prerequisites and canonical build status
+  screenshot PATH Save a screenshot of the selected Simulator
+  logs            Show the last five minutes of NARRA Simulator logs
+  console         Launch the installed dev client with its runtime console
+  test-ios FLOW   Run a local Maestro flow on the selected Simulator
+  hierarchy       Print the selected Simulator accessibility tree
+  data-path       Print the installed app's data-container path for local diagnostics
   help, --help     Show this help
 
 Optional environment variables:
   READANY_SIMULATOR_NAME       Simulator name (default: iPhone 17 Pro)
   READANY_SIMULATOR_ID         Exact simulator UDID (takes precedence over name)
   READANY_METRO_PORT           Metro port (default: 8081)
+  READANY_STRICT_METRO_LAUNCH=1
+                               Require a verified selected-port URL before launch (automatic for LOCAL)
   READANY_NARRA_BACKEND        Backend profile: test (default) or production
   READANY_DERIVED_DATA_PATH    Canonical DerivedData directory
   READANY_DEVELOPER_DIR        Xcode Developer directory (defaults to DEVELOPER_DIR or xcode-select)
@@ -174,6 +184,11 @@ assert_pasteboard_sync_is_safe() {
   die "Automatic Simulator pasteboard sync is not confirmed off (status: $status) and can freeze the Mac clipboard. Disable Edit > Automatically Sync Pasteboard, or set READANY_ALLOW_PASTEBOARD_SYNC=1 for an intentional one-off test."
 }
 
+check_installed_dependencies() {
+  require_command node
+  node "$APP_ROOT/scripts/check-installed-dependencies.mjs" "$APP_ROOT"
+}
+
 check_common_prerequisites() {
   require_command pnpm
   require_command node
@@ -190,6 +205,7 @@ check_common_prerequisites() {
   resolve_developer_toolchain
 
   [[ -d "$WORKSPACE" ]] || die "Xcode workspace is missing: $WORKSPACE"
+  check_installed_dependencies
   [[ -f "$APP_ROOT/ios/Podfile.lock" ]] || die "ios/Podfile.lock is missing. Do not run prebuild automatically."
   [[ -f "$APP_ROOT/ios/Pods/Manifest.lock" ]] || die "Pods are missing. Restore the main checkout Pods before building."
 
@@ -239,6 +255,7 @@ run_metro_prepared() {
   local host_mode="${1:-localhost}"
   local host_args=(--localhost)
 
+  check_installed_dependencies
   if [[ "$host_mode" == "lan" ]]; then
     host_args=(--lan)
     log "Starting Metro on LAN:$METRO_PORT"
@@ -252,6 +269,9 @@ run_metro_prepared() {
   # another Metro request after the dev server disconnects or the app resumes.
   APP_VARIANT=development \
     EXPO_NO_METRO_LAZY=1 \
+    EXPO_PUBLIC_NARRA_LAUNCH_GATEWAY_URL="${EXPO_PUBLIC_NARRA_GATEWAY_URL:-https://api-test.narra.disrupt.builders}" \
+    EXPO_PUBLIC_NARRA_LAUNCH_ENVIRONMENT="${EXPO_PUBLIC_NARRA_ENVIRONMENT:-test}" \
+    EXPO_PUBLIC_NARRA_LAUNCH_AUTH_MODE="${EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE:-installation}" \
     NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--dns-result-order=ipv4first" \
     pnpm exec expo start --dev-client --scheme readany-dev "${host_args[@]}" --port "$METRO_PORT"
 }
@@ -291,7 +311,20 @@ resolve_simulator_id() {
     });
   ' "$SIMULATOR_NAME")"
 
-  [[ -n "$SIMULATOR_ID" ]] || die "Available simulator not found: $SIMULATOR_NAME"
+  if [[ -z "$SIMULATOR_ID" ]]; then
+    printf '%s' "$devices_json" | node -e '
+      let input = "";
+      process.stdin.setEncoding("utf8");
+      process.stdin.on("data", chunk => { input += chunk; });
+      process.stdin.on("end", () => {
+        const devices = Object.values(JSON.parse(input).devices || {}).flat();
+        const available = devices.filter(device => device.isAvailable);
+        for (const device of available) console.error(`Available simulator: ${device.name} (${device.udid}, ${device.state})`);
+        if (!available.length) console.error("No available simulators. Install a compatible iOS runtime in Xcode Settings > Components.");
+      });
+    '
+    die "Available simulator not found: $SIMULATOR_NAME. Select an available device with READANY_SIMULATOR_NAME."
+  fi
 }
 
 boot_simulator() {
@@ -362,14 +395,25 @@ native_fingerprint() {
       "$APP_ROOT/modules" \
       "$APP_ROOT/plugins" \
       "$MONOREPO_ROOT/patches"; do
-      [[ -d "$directory" ]] && find "$directory" -type f -print
+      # Android module sources and generated build outputs are not iOS inputs.
+      # Shared module metadata, JS, plugins and iOS sources remain fingerprinted.
+      [[ -d "$directory" ]] && find "$directory" \
+        -type d \( -name build -o -name .gradle -o -name .cxx \
+          -o -path "$APP_ROOT/modules/*/android" \) -prune -o \
+        -type f -print
     done
 
     find "$APP_ROOT/scripts" -maxdepth 1 -type f \
       \( -name 'app-variant*' -o -name 'configure-native-variant*' \) -print
     find "$APP_ROOT/ios/Pods/Local Podspecs" -type f -print 2>/dev/null || true
   } | LC_ALL=C sort | while IFS= read -r path; do
-    shasum -a 256 "$path"
+    if [[ "$path" == */package.json ]]; then
+      # Test/run scripts do not change the native binary. Keep all dependency,
+      # entry point and Expo metadata in the fingerprint.
+      node -e 'const fs = require("node:fs"); const value = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); delete value.scripts; process.stdout.write(JSON.stringify(value));' "$path" | shasum -a 256
+    else
+      shasum -a 256 "$path"
+    fi
   done | shasum -a 256 | awk '{print $1}'
 }
 
@@ -445,6 +489,13 @@ install_canonical_app_if_needed() {
 }
 
 launch_app() {
+  local verified_url=""
+  if strict_dev_client_launch; then
+    verified_url="$(dev_client_url 2>/dev/null || true)"
+    validate_strict_dev_client_url "$verified_url" \
+      || die "Metro did not provide a valid localhost dev-client URL for port $METRO_PORT; refusing to launch."
+  fi
+
   if [[ "$SIMULATOR_UI_NAME" == "Device Hub" ]]; then
     log "Opening Device Hub from the selected Xcode"
     open -a "$SIMULATOR_UI_APP" "devices://device/open?id=$SIMULATOR_ID"
@@ -454,8 +505,35 @@ launch_app() {
   fi
 
   log "Launching $BUNDLE_ID"
-  xcrun simctl launch --terminate-running-process "$SIMULATOR_ID" "$BUNDLE_ID"
-  open_dev_client_url
+  if [[ -n "$verified_url" ]]; then
+    # A plain launch may auto-connect to the last server before openurl arrives.
+    # Stop an existing process (not-running is harmless), then launch by URL only.
+    xcrun simctl terminate "$SIMULATOR_ID" "$BUNDLE_ID" >/dev/null 2>&1 || true
+    xcrun simctl openurl "$SIMULATOR_ID" "$verified_url" >/dev/null
+  else
+    xcrun simctl launch --terminate-running-process "$SIMULATOR_ID" "$BUNDLE_ID"
+    open_dev_client_url
+  fi
+}
+
+strict_dev_client_launch() {
+  [[ "${READANY_STRICT_METRO_LAUNCH:-0}" == "1" ]] && return 0
+  node -e 'try { process.exit(["localhost", "127.0.0.1", "[::1]", "10.0.2.2"].includes(new URL(process.argv[1]).hostname) ? 0 : 1); } catch { process.exit(0); }' \
+    "${EXPO_PUBLIC_NARRA_GATEWAY_URL:-}"
+}
+
+validate_strict_dev_client_url() {
+  node -e '
+    try {
+      const outer = new URL(process.argv[1]);
+      const inner = new URL(outer.searchParams.get("url"));
+      const valid = outer.protocol === "readany-dev:" && outer.hostname === "expo-development-client"
+        && !outer.username && !outer.password && outer.searchParams.getAll("url").length === 1
+        && inner.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(inner.hostname)
+        && !inner.username && !inner.password && inner.port === process.argv[2];
+      process.exit(valid ? 0 : 1);
+    } catch { process.exit(1); }
+  ' "$1" "$METRO_PORT"
 }
 
 dev_client_url() {
@@ -506,6 +584,7 @@ check_installed_dev_client() {
   local saved_fingerprint=""
   local current_fingerprint=""
 
+  check_installed_dependencies
   expected_build="$(expected_build_number)"
   installed_path="$(installed_app_path)"
 
@@ -586,6 +665,66 @@ run_rebuild_ios() {
   run_metro_prepared localhost
 }
 
+run_install_canonical_only() {
+  local expected_build installed_path devices_json applications_json has_app
+  [[ "${READANY_SIMULATOR_ID:-}" =~ ^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$ ]] \
+    || die "install-canonical-only requires an exact READANY_SIMULATOR_ID."
+  SIMULATOR_ID="$READANY_SIMULATOR_ID"
+  check_simulator_prerequisites
+  assert_simulator_ui_matches_toolchain
+  assert_pasteboard_sync_is_safe
+  check_installed_dependencies
+  [[ -d "$CANONICAL_APP" && -f "$FINGERPRINT_FILE" ]] \
+    || die "Canonical app/fingerprint is missing; use rebuild-ios explicitly."
+  [[ "$(<"$FINGERPRINT_FILE")" == "$(native_fingerprint)" ]] \
+    || die "Native fingerprint changed; use rebuild-ios explicitly."
+  expected_build="$(expected_build_number)"
+  [[ "$(app_build_number "$CANONICAL_APP")" == "$expected_build" \
+    && "$(plist_value "$CANONICAL_APP/Info.plist" CFBundleIdentifier)" == "$BUNDLE_ID" \
+    && -n "$(app_binary_hash "$CANONICAL_APP")" ]] \
+    || die "Canonical app identity/build is invalid; use rebuild-ios explicitly."
+  devices_json="$(xcrun simctl list devices available -j)"
+  printf '%s' "$devices_json" | node -e '
+    let text = "";
+    process.stdin.on("data", chunk => text += chunk);
+    process.stdin.on("end", () => {
+      try { process.exit(Object.values(JSON.parse(text).devices || {}).flat().some(d => d.udid === process.argv[1] && d.isAvailable) ? 0 : 1); }
+      catch { process.exit(1); }
+    });
+  ' "$SIMULATOR_ID" || die "Selected simulator is not available."
+  # listapps requires a booted target. Boot only the explicitly validated device;
+  # inspection failures must never be interpreted as an empty app container.
+  boot_simulator
+  applications_json="$(xcrun simctl listapps "$SIMULATOR_ID" | plutil -convert json -o - -- -)" \
+    || die "Cannot inspect target applications; refusing to install."
+  has_app="$(printf '%s' "$applications_json" | node -e '
+    let text = "";
+    process.stdin.on("data", chunk => text += chunk);
+    process.stdin.on("end", () => {
+      try {
+        const apps = JSON.parse(text);
+        if (!apps || typeof apps !== "object" || Array.isArray(apps)) process.exit(1);
+        if (Object.values(apps).some(app => !app || typeof app !== "object" || Array.isArray(app))) process.exit(1);
+        const present = Object.prototype.hasOwnProperty.call(apps, process.argv[1]);
+        if (present && (!apps[process.argv[1]] || typeof apps[process.argv[1]] !== "object")) process.exit(1);
+        process.stdout.write(present ? "yes" : "no");
+      } catch { process.exit(1); }
+    });
+  ' "$BUNDLE_ID")" || die "Malformed target application inventory; refusing to install."
+  if [[ "$has_app" == "yes" ]]; then
+    installed_path="$(xcrun simctl get_app_container "$SIMULATOR_ID" "$BUNDLE_ID" app)" \
+      || die "Cannot inspect installed app container; refusing to replace it."
+    [[ -n "$installed_path" ]] || die "Installed app container path is empty; refusing to replace it."
+    [[ "$(app_build_number "$installed_path")" == "$expected_build" \
+      && "$(app_binary_hash "$installed_path")" == "$(app_binary_hash "$CANONICAL_APP")" ]] \
+      || die "Target already contains a different app build; refusing to replace it in install-canonical-only."
+    log "Target already contains the canonical app; nothing changed."
+    return
+  fi
+  xcrun simctl install "$SIMULATOR_ID" "$CANONICAL_APP"
+  log "Installed existing canonical app on $SIMULATOR_ID without building or launching."
+}
+
 run_check() {
   local expected_build
   local installed_path
@@ -634,6 +773,48 @@ run_check() {
 }
 
 case "$MODE" in
+  logs|console|test-ios|hierarchy|data-path)
+    check_simulator_prerequisites
+    assert_simulator_ui_matches_toolchain
+    assert_pasteboard_sync_is_safe
+    resolve_simulator_id
+    case "$MODE" in
+      data-path)
+        xcrun simctl get_app_container "$SIMULATOR_ID" "$BUNDLE_ID" data
+        ;;
+      logs)
+        xcrun simctl spawn "$SIMULATOR_ID" log show --last 5m --style compact --predicate 'process == "Narra"'
+        ;;
+      console)
+        check_installed_dev_client
+        xcrun simctl launch --terminate-running-process --console "$SIMULATOR_ID" "$BUNDLE_ID"
+        ;;
+      test-ios|hierarchy)
+        require_command maestro
+        check_installed_dev_client
+        if [[ -z "${JAVA_HOME:-}" && -d /opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home ]]; then
+          export JAVA_HOME=/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home
+        fi
+        export MAESTRO_CLI_NO_ANALYTICS=1
+        export MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED=true
+        if [[ "$MODE" == "hierarchy" ]]; then
+          maestro --device "$SIMULATOR_ID" hierarchy
+        else
+          [[ -n "${2:-}" ]] || die "Usage: ./script/build_and_run.sh test-ios FLOW"
+          shift
+          maestro --device "$SIMULATOR_ID" test "$@"
+        fi
+        ;;
+    esac
+    ;;
+  screenshot)
+    [[ -n "${2:-}" ]] || die "Usage: ./script/build_and_run.sh screenshot PATH"
+    resolve_developer_toolchain
+    assert_simulator_ui_matches_toolchain
+    assert_pasteboard_sync_is_safe
+    resolve_simulator_id
+    xcrun simctl io "$SIMULATOR_ID" screenshot "$2"
+    ;;
   simulator|run)
     run_simulator
     ;;
@@ -645,6 +826,9 @@ case "$MODE" in
     ;;
   rebuild-ios|rebuild|ios|--ios)
     run_rebuild_ios
+    ;;
+  install-canonical-only)
+    run_install_canonical_only
     ;;
   check|--check)
     run_check

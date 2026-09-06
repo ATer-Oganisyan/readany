@@ -1,0 +1,42 @@
+appId: com.mishanaer.readany.dev
+name: iOS three PDF note returns reuse the active reader
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Library"
+    timeout: 30000
+- runFlow:
+    file: flows/ios-open-fixture.yaml
+    env:
+      BOOK_TITLE: "11-river-library"
+      PAGE_LABEL: "p. 4 of 12"
+- repeat:
+    times: 3
+    commands:
+      - tapOn:
+          point: "95%,40%"
+      - extendedWaitUntil:
+          visible: "p. 5 of 12"
+          timeout: 15000
+      - repeat:
+          times: 2
+          commands:
+            - runFlow:
+                when:
+                  notVisible: "Book actions"
+                commands:
+                  - tapOn:
+                      point: "50%,50%"
+      - tapOn: "Book actions"
+      - tapOn: "Notes"
+      - extendedWaitUntil:
+          visible: ".*NARRA QA PDF page anchor final 20260905.*"
+          timeout: 15000
+      - waitForAnimationToEnd:
+          timeout: 5000
+      - tapOn: ".*NARRA QA PDF page anchor final 20260905.*"
+      - extendedWaitUntil:
+          visible: "p. 4 of 12"
+          timeout: 15000
+- takeScreenshot: ios-pdf-three-note-returns-page-four
+# Keep Reader open for independent read-only route count/key inspection.

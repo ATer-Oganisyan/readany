@@ -1,0 +1,20 @@
+appId: com.mishanaer.readany.dev
+name: iOS repaired CBZ remains on its original third page
+---
+- launchApp:
+    stopApp: false
+- extendedWaitUntil:
+    visible: "p. 3 of 4"
+    timeout: 15000
+- takeScreenshot: ios-cbz-repaired-confirmed-third-page
+- repeat:
+    times: 2
+    commands:
+      - runFlow:
+          when:
+            notVisible: "Book actions"
+          commands:
+            - tapOn:
+                point: "50%,50%"
+- tapOn: "Close"
+- assertVisible: "Library"

@@ -1,0 +1,45 @@
+appId: com.mishanaer.readany.dev
+name: iOS URL loading stays cancellable and leaves navigation available
+---
+- runFlow:
+    when:
+      visible: "Files that could not be added"
+    commands:
+      - tapOn: "Close"
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Library"
+    timeout: 30000
+- tapOn: "Add book"
+- tapOn: "Add from link"
+- assertVisible: "Book link"
+- tapOn: "Book file or Ficbook story link"
+- inputText: http://127.0.0.1:8099/stall.epub
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: ios-url-prompt-keyboard
+- tapOn:
+    text: "Add"
+    waitToSettleTimeoutMs: 0
+- extendedWaitUntil:
+    visible: "Cancel"
+    timeout: 10000
+- takeScreenshot: ios-url-cancellable-loading
+- tapOn:
+    point: "25%,21%"
+- takeScreenshot: ios-url-loading-popular-tab
+- tapOn:
+    point: "75%,21%"
+- tapOn:
+    point: "26%,87%"
+    waitToSettleTimeoutMs: 0
+- extendedWaitUntil:
+    notVisible: "Cancel"
+    timeout: 10000
+- takeScreenshot: ios-url-cancelled
+- tapOn: "Add book"
+- tapOn: "Add from link"
+- assertVisible: "Book link"
+- tapOn: "Cancel"
+- assertVisible: "Library"

@@ -49,6 +49,10 @@ export type BackendCharactersStatus =
   | "unavailable"
   | "unknown";
 export interface BackendBookManifest {
+  bookEditionId?: string;
+  sourceContentSha256?: string;
+  /** Captured request provenance; never inferred from mutable state after await. */
+  requestIdentity?: Readonly<Pick<BackendBookBinding, "bookEditionId" | "contentSha256">>;
   availability: "ready" | "processing" | "failed" | "cancelled" | "unavailable" | "unknown";
   charactersStatus: BackendCharactersStatus;
   analysis?: BackendAnalysisState;
@@ -263,8 +267,28 @@ function manifestCharactersStatus(
   return availability === "processing" ? "processing" : "unknown";
 }
 
-export function parseBackendManifest(value: unknown): BackendBookManifest {
+export function parseBackendManifest(
+  value: unknown,
+  expectedBinding?: Pick<BackendBookBinding, "bookEditionId" | "contentSha256">,
+): BackendBookManifest {
   const raw = backendRecord(value);
+  const wireBook = backendRecord(raw.book);
+  const bookEditionId = wireBook.book_edition_id;
+  const sourceContentSha256 = wireBook.content_sha256;
+  if (bookEditionId !== undefined && (typeof bookEditionId !== "string" || !bookEditionId.trim()))
+    throw new Error("Invalid manifest book identity");
+  if (
+    sourceContentSha256 !== undefined &&
+    (typeof sourceContentSha256 !== "string" || !/^[a-f\d]{64}$/i.test(sourceContentSha256))
+  )
+    throw new Error("Invalid manifest source identity");
+  if (
+    expectedBinding &&
+    ((bookEditionId !== undefined && bookEditionId !== expectedBinding.bookEditionId) ||
+      (sourceContentSha256 !== undefined &&
+        sourceContentSha256.toLowerCase() !== expectedBinding.contentSha256.toLowerCase()))
+  )
+    throw new Error("Manifest does not match requested book");
   const markup = backendRecord(raw.markup);
   const availability =
     raw.availability === "ready" ||
@@ -275,6 +299,15 @@ export function parseBackendManifest(value: unknown): BackendBookManifest {
       ? raw.availability
       : "unknown";
   return {
+    bookEditionId: typeof bookEditionId === "string" ? bookEditionId : undefined,
+    sourceContentSha256:
+      typeof sourceContentSha256 === "string" ? sourceContentSha256.toLowerCase() : undefined,
+    requestIdentity: expectedBinding
+      ? Object.freeze({
+          bookEditionId: expectedBinding.bookEditionId,
+          contentSha256: expectedBinding.contentSha256,
+        })
+      : undefined,
     availability,
     charactersStatus: manifestCharactersStatus(raw.characters_status, availability),
     analysis: parseAnalysis(raw.analysis),

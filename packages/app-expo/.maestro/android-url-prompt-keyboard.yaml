@@ -1,0 +1,14 @@
+appId: com.mishanaer.readany.dev
+name: Android native URL prompt layout
+# Leaves the real dialog open for scripts/qa/android-url-prompt-layout.mjs.
+---
+- assertVisible: Library
+- tapOn: Add book
+- tapOn: Add from link
+- assertVisible: Book link
+- tapOn: Book file or Ficbook story link
+- inputText: http://127.0.0.1:8099/missing.epub
+- assertVisible: http://127.0.0.1:8099/missing.epub
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: android-native-url-prompt

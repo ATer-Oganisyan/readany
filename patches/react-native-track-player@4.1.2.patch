@@ -452,23 +452,39 @@ index afa6b0f335714de0cc8741d5bbdd51b4e04bb3bb..32eab06c5f29e8fa8389b65872bf33d8
  import com.facebook.react.modules.core.DeviceEventManagerModule
  import com.google.android.exoplayer2.ui.R as ExoPlayerR
  import kotlinx.coroutines.*
-@@ -94,11 +99,47 @@ class MusicService : HeadlessJsTaskService() {
+@@ -94,11 +99,74 @@ class MusicService : HeadlessJsTaskService() {
      private var compactCapabilities: List<Capability> = emptyList()
  
      override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
 -        startTask(getTaskConfig(intent))
-+        startTaskWithReactHost(getTaskConfig(intent))
++        // A sticky restart after process death has no in-memory queue to resume.
++        // Do not recreate an idle JS runtime or promote an empty background service.
++        if (intent == null) {
++            if (::player.isInitialized && player.items.isNotEmpty()) return START_STICKY
++            stopSelf(startId)
++            return START_NOT_STICKY
++        }
          startAndStopEmptyNotificationToAvoidANR()
++        startTaskWithReactHost(getTaskConfig(intent))
          return START_STICKY
      }
  
++    private var serviceDestroyed = false
++    private var reactHostStartGeneration = 0
++    private var cancelPendingReactHostStart: (() -> Unit)? = null
++    private var taskReactContext: ReactContext? = null
++
 +    /**
 +     * React Native 0.82+ no longer exposes ReactNativeHost in New Architecture apps.
 +     * HeadlessJsTaskService can still fall back to that removed API when bridgeless
 +     * mode is not enabled, so use the application's ReactHost explicitly.
 +     */
 +    private fun startTaskWithReactHost(taskConfig: HeadlessJsTaskConfig) {
++        if (serviceDestroyed) return
 +        val reactHost = (application as? ReactApplication)?.reactHost ?: return
++        val generation = ++reactHostStartGeneration
++        cancelPendingReactHostStart?.invoke()
++        cancelPendingReactHostStart = null
 +        val reactContext = reactHost.currentReactContext
 +
 +        if (reactContext != null) {
@@ -476,21 +492,32 @@ index afa6b0f335714de0cc8741d5bbdd51b4e04bb3bb..32eab06c5f29e8fa8389b65872bf33d8
 +            return
 +        }
 +
++        // Multiple setup intents must not leave orphan initialization listeners.
 +        val listener = object : ReactInstanceEventListener {
 +            override fun onReactContextInitialized(context: ReactContext) {
-+                invokeStartTask(context, taskConfig)
 +                reactHost.removeReactInstanceEventListener(this)
++                if (generation != reactHostStartGeneration) return
++                cancelPendingReactHostStart = null
++                if (!serviceDestroyed) invokeStartTask(context, taskConfig)
 +            }
 +        }
 +
++        cancelPendingReactHostStart = { reactHost.removeReactInstanceEventListener(listener) }
 +        reactHost.addReactInstanceEventListener(listener)
 +        reactHost.start()
 +    }
 +
 +    private fun invokeStartTask(reactContext: ReactContext, taskConfig: HeadlessJsTaskConfig) {
-+        val taskContext = HeadlessJsTaskContext.getInstance(reactContext)
-+        taskContext.addTaskEventListener(this)
 +        UiThreadUtil.runOnUiThread {
++            if (serviceDestroyed) return@runOnUiThread
++            if (taskReactContext !== reactContext) {
++                taskReactContext?.let {
++                    HeadlessJsTaskContext.getInstance(it).removeTaskEventListener(this)
++                }
++            }
++            taskReactContext = reactContext
++            val taskContext = HeadlessJsTaskContext.getInstance(reactContext)
++            taskContext.addTaskEventListener(this)
 +            taskContext.startTask(taskConfig)
 +        }
 +    }
@@ -501,7 +528,7 @@ index afa6b0f335714de0cc8741d5bbdd51b4e04bb3bb..32eab06c5f29e8fa8389b65872bf33d8
      /**
       * Workaround for the "Context.startForegroundService() did not then call Service.startForeground()"
       * within 5s" ANR and crash by creating an empty notification and stopping it right after. For more
-@@ -741,7 +782,7 @@ class MusicService : HeadlessJsTaskService() {
+@@ -741,7 +809,7 @@ class MusicService : HeadlessJsTaskService() {
  
      @MainThread
      private fun emit(event: String, data: Bundle? = null) {
@@ -510,7 +537,7 @@ index afa6b0f335714de0cc8741d5bbdd51b4e04bb3bb..32eab06c5f29e8fa8389b65872bf33d8
              ?.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
              ?.emit(event, data?.let { Arguments.fromBundle(it) })
      }
-@@ -751,7 +792,7 @@ class MusicService : HeadlessJsTaskService() {
+@@ -751,7 +819,7 @@ class MusicService : HeadlessJsTaskService() {
          val payload = Arguments.createArray()
          data.forEach { payload.pushMap(Arguments.fromBundle(it)) }
  
@@ -519,14 +546,18 @@ index afa6b0f335714de0cc8741d5bbdd51b4e04bb3bb..32eab06c5f29e8fa8389b65872bf33d8
              ?.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
              ?.emit(event, payload)
      }
-@@ -798,7 +839,18 @@ class MusicService : HeadlessJsTaskService() {
+@@ -798,7 +866,22 @@ class MusicService : HeadlessJsTaskService() {
  
      @MainThread
      override fun onDestroy() {
 -        super.onDestroy()
-+        currentReactContext()?.let {
++        serviceDestroyed = true
++        cancelPendingReactHostStart?.invoke()
++        cancelPendingReactHostStart = null
++        taskReactContext?.let {
 +            HeadlessJsTaskContext.getInstance(it).removeTaskEventListener(this)
 +        }
++        taskReactContext = null
 +
 +        try {
 +            super.onDestroy()

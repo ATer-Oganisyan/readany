@@ -341,6 +341,8 @@ function startPlayback(
 
 export interface TTSState {
   playState: TTSPlayState;
+  /** Stop/Pause (including sleep timer), never natural playback completion. */
+  explicitCancellationEpoch: number;
   currentText: string;
   currentSegmentText: string;
   config: TTSConfig;
@@ -377,6 +379,7 @@ export const useTTSStore = create<TTSState>()(
     "tts",
     (set, get) => ({
       playState: "stopped",
+      explicitCancellationEpoch: 0,
       currentText: "",
       currentSegmentText: "",
       config: DEFAULT_TTS_CONFIG,
@@ -464,6 +467,9 @@ export const useTTSStore = create<TTSState>()(
       pause: () => {
         console.log("[TTSStore] pause called");
         clearRespeakTimer();
+        // Preparation/EOF continuation can be pending while the player is
+        // stopped. Cancel that intent without clearing its resumable queue.
+        set({ explicitCancellationEpoch: get().explicitCancellationEpoch + 1 });
         const { playState } = get();
         if (playState !== "playing" && playState !== "loading") return;
         _activeTTS?.pause();
@@ -521,6 +527,7 @@ export const useTTSStore = create<TTSState>()(
         _sessionSegments = [];
         _sessionCurrentIndex = 0;
         set({
+          explicitCancellationEpoch: get().explicitCancellationEpoch + 1,
           playState: "stopped",
           currentText: "",
           currentSegmentText: "",
@@ -666,6 +673,7 @@ export const useTTSStore = create<TTSState>()(
     }),
     {
       playState: "stopped" as const,
+      explicitCancellationEpoch: 0,
       currentText: "",
       currentSegmentText: "",
       currentChunkIndex: 0,

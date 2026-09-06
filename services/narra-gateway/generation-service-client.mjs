@@ -52,7 +52,8 @@ export function createGenerationServiceClient({
     throw new Error('GENERATOR_TIMEOUT_MS must be between 1 and 900000')
   }
 
-  async function post(path, body) {
+  async function post(path, body, signal) {
+    signal?.throwIfAborted()
     const response = await fetchImpl(new URL(path, `${url}/`), {
       method: 'POST',
       headers: {
@@ -61,7 +62,9 @@ export function createGenerationServiceClient({
         accept: 'application/json'
       },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(timeoutMs)
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
+        : AbortSignal.timeout(timeoutMs)
     })
     const payload = await readJson(response)
     if (!response.ok) {
@@ -90,7 +93,7 @@ export function createGenerationServiceClient({
         ...input
       })
     },
-    synthesizeCharacterProfile(input) {
+    synthesizeCharacterProfile(input, { signal } = {}) {
       return post('internal/v1/book-analysis/synthesize-character', {
         idempotencyKey: [
           input.runId,
@@ -100,9 +103,9 @@ export function createGenerationServiceClient({
           input.synthesisVersion
         ].join(':'),
         ...input
-      })
+      }, signal)
     },
-    scanBookChunk(input) {
+    scanBookChunk(input, { signal } = {}) {
       return post('internal/v1/book-analysis/scan-chunk', {
         idempotencyKey: [
           input.runId,
@@ -111,7 +114,7 @@ export function createGenerationServiceClient({
           input.extractorVersion
         ].join(':'),
         ...input
-      })
+      }, signal)
     },
     generateBookTtsMarkup(input) {
       return post('internal/v1/book-tts-markup/attribute', {

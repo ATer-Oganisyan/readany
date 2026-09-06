@@ -1,7 +1,13 @@
 import * as Crypto from "expo-crypto";
-import * as SecureStore from "expo-secure-store";
+import * as NativeSecureStore from "expo-secure-store";
 import { fetch as expoFetch } from "expo/fetch";
 import { NarraServiceError } from "../narra/errors";
+import { localNarraGatewayScope } from "./narra-gateway-scope";
+import {
+  getEffectiveNarraGatewayProfile,
+  TEST_NARRA_GATEWAY_URL,
+  PRODUCTION_NARRA_GATEWAY_URL,
+} from "./narra-gateway-config";
 import {
   type GatewayConsumerScope,
   readGatewayResponseText,
@@ -20,8 +26,21 @@ const IMAGE_TIMEOUT_MS = 150_000;
 const COVER_TIMEOUT_MS = 180_000;
 const INSTALLATION_TIMEOUT_MS = 15_000;
 const HEALTH_TIMEOUT_MS = 5_000;
-const TEST_NARRA_GATEWAY_URL = "https://api-test.narra.disrupt.builders";
-const PRODUCTION_NARRA_GATEWAY_URL = "https://api.narra.disrupt.builders";
+
+// Local QA must never reuse or reset the installed TEST/production identity.
+// Keep existing remote keys intact; each local endpoint gets a distinct scope.
+// The endpoint is build-time configuration (switching requires a Metro reload).
+function installationStorageKey(key: string): string {
+  const scope = localNarraGatewayScope(getNarraGatewayConfig().baseUrl);
+  return scope ? `${key}.local.${scope}` : key;
+}
+
+const SecureStore = {
+  getItemAsync: (key: string) => NativeSecureStore.getItemAsync(installationStorageKey(key)),
+  setItemAsync: (key: string, value: string) =>
+    NativeSecureStore.setItemAsync(installationStorageKey(key), value),
+  deleteItemAsync: (key: string) => NativeSecureStore.deleteItemAsync(installationStorageKey(key)),
+};
 
 type NarraGatewayAdapter = (path: string, init: RequestInit) => Promise<Response>;
 
@@ -62,13 +81,7 @@ export interface NarraGatewayHealth {
 }
 
 export function getNarraGatewayConfig(): NarraGatewayConfig {
-  const configuredUrl = process.env.EXPO_PUBLIC_NARRA_GATEWAY_URL?.trim().replace(/\/+$/, "");
-  const baseUrl =
-    process.env.EXPO_PUBLIC_NARRA_ENVIRONMENT === "production"
-      ? PRODUCTION_NARRA_GATEWAY_URL
-      : configuredUrl || TEST_NARRA_GATEWAY_URL;
-  const authMode =
-    process.env.EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE === "none" ? "none" : "installation";
+  const { baseUrl, authMode } = getEffectiveNarraGatewayProfile();
   return { baseUrl, authMode };
 }
 
@@ -85,10 +98,11 @@ function gatewayEnvironment(value: unknown): NarraGatewayEnvironment {
  */
 export async function probeNarraGatewayHealth(): Promise<NarraGatewayHealth> {
   const { baseUrl } = getNarraGatewayConfig();
+  const { environment: effectiveEnvironment } = getEffectiveNarraGatewayProfile();
   const buildEnvironment =
-    process.env.EXPO_PUBLIC_NARRA_ENVIRONMENT === "production"
+    effectiveEnvironment === "production"
       ? "production"
-      : process.env.EXPO_PUBLIC_NARRA_ENVIRONMENT === "test"
+      : effectiveEnvironment === "test"
         ? "test"
         : "unknown";
   const expectedEnvironment =

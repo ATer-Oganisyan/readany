@@ -1,0 +1,10 @@
+appId: com.mishanaer.readany.dev
+name: Open original CBZ for native fixed-layout probe
+# A visible WebView alone is not a passing CBZ render. Inspect page image and
+# run scripts/qa/android-reader-position.mjs to assert loaded image dimensions.
+---
+- runFlow:
+    file: flows/android-open-fixture.yaml
+    env:
+      BOOK_TITLE: 12-river-comic
+- takeScreenshot: android-cbz-open

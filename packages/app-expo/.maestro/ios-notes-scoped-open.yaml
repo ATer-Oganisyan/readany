@@ -1,0 +1,27 @@
+appId: com.mishanaer.readany.dev
+name: iOS own book notebook scope and native actions
+---
+- launchApp:
+    stopApp: false
+- assertVisible: "Narra Reader"
+- runFlow:
+    when:
+      notVisible: "Book actions"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- tapOn: "Book actions"
+- tapOn: "Notes"
+- waitForAnimationToEnd:
+    timeout: 5000
+- assertVisible: "No notes yet"
+- assertNotVisible: ".*NARRA QA: chapter-three checkpoint.*"
+- assertVisible: "Close"
+- takeScreenshot: ios-notes-book-scope-after
+- tapOn:
+    text: "Add note"
+    index: 0
+- waitForAnimationToEnd:
+    timeout: 5000
+- assertVisible: "Cancel"
+- takeScreenshot: ios-note-editor-actions-after

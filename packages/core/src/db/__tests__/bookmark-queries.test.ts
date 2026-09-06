@@ -139,8 +139,11 @@ describe("bookmark-queries", () => {
       mockExecute.mockResolvedValue(undefined);
 
       await deleteBookmark("bm-1");
-      expect(coreMocks.insertTombstone).toHaveBeenCalledWith(mockDb, "bm-1", "bookmarks");
-      expect(mockExecute).toHaveBeenCalledWith("DELETE FROM bookmarks WHERE id = ?", ["bm-1"]);
+      expect(mockExecute).toHaveBeenCalledWith(
+        "INSERT INTO bookmark_delete_commands (id, deleted_at, device_id) VALUES (?, ?, ?)",
+        ["bm-1", expect.any(Number), "device-1"],
+      );
+      expect(coreMocks.insertTombstone).not.toHaveBeenCalled();
     });
   });
 });

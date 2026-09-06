@@ -16,6 +16,11 @@
 
 import { getBundledApiKey, hasBundledOpenRouterKey } from "@/config/bundled-ai";
 import { fetch } from "expo/fetch";
+import {
+  readGatewayResponseBytes,
+  withGatewayConsumer,
+  type GatewayConsumerScope,
+} from "@/lib/ai/narra-gateway-consumer";
 import { NarraServiceError } from "./errors";
 import { resolveGrokVoice } from "./grok-voices";
 import type { NarraProsody } from "./voice-rules";
@@ -35,69 +40,98 @@ export interface GrokSpeechOptions {
   signal?: AbortSignal;
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function delay(ms: number, scope: GatewayConsumerScope): Promise<void> {
+  scope.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(scope.signal.reason);
+    };
+    const timer = setTimeout(() => {
+      scope.signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    scope.signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 function isRetriableStatus(status: number): boolean {
   return status === 408 || status === 429 || status >= 500;
 }
 
-/** Текст ошибки без ключа и без тела книги — оно попадает в логи. */
-function safeDetail(body: string): string {
-  return body.replace(/\s+/g, " ").trim().slice(0, 200);
-}
-
 async function requestOnce(
   body: string,
-  signal: AbortSignal | undefined,
+  scope: GatewayConsumerScope,
   apiKey: string,
 ): Promise<Uint8Array> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  const onAbort = () => controller.abort();
-  signal?.addEventListener("abort", onAbort);
-  try {
-    const response = await fetch(SPEECH_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body,
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      const detail = safeDetail(await response.text().catch(() => ""));
-      throw new NarraServiceError(
-        response.status === 401 || response.status === 403
-          ? "AUTH"
-          : response.status === 429
-            ? "RATE"
-            : isRetriableStatus(response.status)
-              ? "SERVICE"
-              : "REQUEST",
-        "Не удалось озвучить фрагмент.",
-        undefined,
-        `Grok TTS ${response.status}${detail ? `: ${detail}` : ""}`,
-      );
+  scope.throwIfAborted();
+  const pendingResponse = fetch(SPEECH_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body,
+    signal: scope.signal,
+  }).then((response) => {
+    if (scope.signal.aborted) {
+      void response.body?.cancel().catch(() => {});
+      scope.throwIfAborted();
     }
+    return response;
+  });
+  const response = await scope.wait(pendingResponse);
 
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (bytes.byteLength === 0) {
-      throw new NarraServiceError(
-        "SERVICE",
-        "Не удалось озвучить фрагмент.",
-        undefined,
-        "Grok TTS returned an empty audio body",
-      );
-    }
-    return bytes;
-  } finally {
-    clearTimeout(timeout);
-    signal?.removeEventListener("abort", onAbort);
+  if (!response.ok) {
+    // Provider errors may echo credentials or book text. Never read/log them.
+    void response.body?.cancel().catch(() => {});
+    throw new NarraServiceError(
+      response.status === 401 || response.status === 403
+        ? "AUTH"
+        : response.status === 429
+          ? "RATE"
+          : isRetriableStatus(response.status)
+            ? "SERVICE"
+            : "REQUEST",
+      "Не удалось озвучить фрагмент.",
+      undefined,
+      `Grok TTS HTTP ${response.status}`,
+    );
   }
+
+  const maxBytes = 16 * 1024 * 1024;
+  const mime = response.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase();
+  if (
+    mime &&
+    !["audio/mpeg", "audio/mp3", "audio/x-mp3", "application/octet-stream"].includes(mime)
+  ) {
+    void response.body?.cancel().catch(() => {});
+    throw new NarraServiceError("REQUEST", "Сервис вернул неподдерживаемый формат озвучки.");
+  }
+  if (Number(response.headers.get("content-length")) > maxBytes) {
+    void response.body?.cancel().catch(() => {});
+    throw new NarraServiceError("REQUEST", "Ответ озвучки превышает допустимый размер.");
+  }
+  let bytes: Uint8Array;
+  try {
+    bytes = await readGatewayResponseBytes(response, scope, maxBytes);
+  } catch {
+    scope.throwIfAborted();
+    // Headers already succeeded. Do not pay for another generation when its
+    // body is oversized/broken; never expose native/provider body diagnostics.
+    throw new NarraServiceError("REQUEST", "Не удалось загрузить звук.");
+  }
+  const id3 = bytes.length >= 10 && bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33;
+  const frame = bytes.length >= 4 && bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0;
+  if (!id3 && !frame) {
+    throw new NarraServiceError(
+      "REQUEST",
+      "Не удалось озвучить фрагмент.",
+      undefined,
+      "Grok TTS returned invalid MP3 audio",
+    );
+  }
+  return bytes;
 }
 
 /**
@@ -127,20 +161,25 @@ export async function fetchGrokSpeechAudio(
   });
   const apiKey = getBundledApiKey({ provider: "openrouter" });
 
-  let lastError: unknown;
-  for (let attempt = 1; attempt <= MAX_REQUEST_ATTEMPTS; attempt++) {
-    try {
-      return await requestOnce(body, options.signal, apiKey);
-    } catch (error) {
-      lastError = error;
-      if (options.signal?.aborted) throw error;
-      const retriable =
-        error instanceof NarraServiceError
-          ? error.code === "SERVICE" || error.code === "RATE" || error.code === "TIMEOUT"
-          : true;
-      if (!retriable || attempt === MAX_REQUEST_ATTEMPTS) throw error;
-      await delay(RETRY_DELAY_MS);
-    }
-  }
-  throw lastError;
+  return withGatewayConsumer(
+    async (scope) => {
+      let lastError: unknown;
+      for (let attempt = 1; attempt <= MAX_REQUEST_ATTEMPTS; attempt++) {
+        try {
+          return await requestOnce(body, scope, apiKey);
+        } catch (error) {
+          lastError = error;
+          scope.throwIfAborted();
+          const retriable =
+            error instanceof NarraServiceError
+              ? error.code === "SERVICE" || error.code === "RATE" || error.code === "TIMEOUT"
+              : true;
+          if (!retriable || attempt === MAX_REQUEST_ATTEMPTS) throw error;
+          await delay(RETRY_DELAY_MS, scope);
+        }
+      }
+      throw lastError;
+    },
+    { signal: options.signal, timeoutMs: REQUEST_TIMEOUT_MS },
+  );
 }

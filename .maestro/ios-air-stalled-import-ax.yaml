@@ -1,0 +1,45 @@
+# Air 984D0C64-C0B2-4204-92A9-2C65519089E8 only, canonical wrapper.
+# Prerequisites: cold LOCAL8082 Library, own27 fixture already imported;
+# loopback8099 fixture server /stall.epub must stall90s. No profile/reset here.
+# Inspect BEFORE screenshot visually as well as AX; AX alone is insufficient.
+appId: com.mishanaer.readany.dev
+---
+- extendedWaitUntil:
+    visible: "Library"
+    timeout: 30000
+- tapOn: "My books"
+- tapOn: "Add book"
+- tapOn: "Add from link"
+- tapOn: "Book file or Ficbook story link"
+- inputText: http://127.0.0.1:8099/stall.epub
+- tapOn:
+    text: "Add"
+    waitToSettleTimeoutMs: 0
+- extendedWaitUntil:
+    visible: "Cancel"
+    timeout: 10000
+- assertVisible: "Аудит 27 - Граница глав"
+- assertVisible: "Downloading"
+- assertVisible: "Cancel"
+- takeScreenshot: ax-library-and-cancel
+- tapOn: "Аудит 27 - Граница глав"
+- extendedWaitUntil:
+    visible: "Narra Reader"
+    timeout: 10000
+- runFlow:
+    when:
+      notVisible: "Book actions"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- assertVisible: "Book actions"
+- assertVisible: "Cancel"
+- takeScreenshot: ax3-before-cancel
+- tapOn:
+    text: "Cancel"
+    waitToSettleTimeoutMs: 0
+- extendedWaitUntil:
+    notVisible: "Cancel"
+    timeout: 10000
+- assertVisible: "Narra Reader"
+- takeScreenshot: ax3-after-cancel

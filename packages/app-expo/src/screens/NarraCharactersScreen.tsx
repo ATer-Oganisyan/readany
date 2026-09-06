@@ -7,11 +7,17 @@ import {
 } from "@/components/chats/character-chat-list";
 import { CharacterPortraitImage } from "@/components/narra/character-portrait-image";
 import { SystemSheetZoomDestination } from "@/components/navigation/SystemSheetZoomDestination";
+import { NativeButton } from "@/components/ui/NativeButton";
 import { Text } from "@/components/ui/Typography";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { useBackendBook } from "@/hooks/use-backend-book";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
-import { retryBackendBookAnalysis, useBackendBookStatus } from "@/lib/narra/backend-book-sync";
+import {
+  retryBackendBookAnalysis,
+  refreshBackendBookStatus,
+  retryBackendBookSync,
+  useBackendBookStatus,
+} from "@/lib/narra/backend-book-sync";
 import { characterBiography } from "@/lib/narra/character-profile";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
 import type { NarraCharacter } from "@/lib/narra/types";
@@ -55,6 +61,9 @@ type SheetContent =
 const _MAX_AUTOMATIC_PORTRAIT_ATTEMPTS = 2;
 const CONTENT_EXIT_DURATION_MS = 100;
 const CONTENT_ENTER_DURATION_MS = 100;
+// Native animation/rAF callbacks may be interrupted or never delivered. The
+// visible destination must still become interactive once JS is running again.
+const CONTENT_TRANSITION_TIMEOUT_MS = 600;
 const CONTENT_EXIT_EASING = Easing.bezier(0.4, 0, 1, 1);
 const CONTENT_ENTER_EASING = Easing.bezier(0.2, 0, 0, 1);
 const USES_CHARACTERS_SHEET = Platform.OS === "ios";
@@ -108,6 +117,9 @@ function NarraCharactersSheetFlow({ route, navigation }: Props) {
   const [content, setContent] = useState<SheetContent>({ kind: "characters" });
   const [isTransitioning, setIsTransitioning] = useState(false);
   const transitionFrameRef = useRef<number | null>(null);
+  const transitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const transitionGenerationRef = useRef(0);
+  const transitionTargetRef = useRef<SheetContent>({ kind: "characters" });
   const transitioningRef = useRef(false);
   const mountedRef = useRef(true);
   const listOpacity = useRef(new RNAnimated.Value(1)).current;
@@ -117,18 +129,24 @@ function NarraCharactersSheetFlow({ route, navigation }: Props) {
   const [reduceMotion, setReduceMotion] = useState(false);
   const { colors } = useTheme();
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
       mountedRef.current = false;
+      transitionGenerationRef.current++;
+      if (transitionTimeoutRef.current !== null) {
+        clearTimeout(transitionTimeoutRef.current);
+        transitionTimeoutRef.current = null;
+      }
       if (transitionFrameRef.current !== null) {
         cancelAnimationFrame(transitionFrameRef.current);
+        transitionFrameRef.current = null;
       }
       listOpacity.stopAnimation();
       chatCoverOpacity.stopAnimation();
       transitioningRef.current = false;
-    },
-    [chatCoverOpacity, listOpacity],
-  );
+    };
+  }, [chatCoverOpacity, listOpacity]);
 
   useEffect(() => {
     let active = true;
@@ -144,13 +162,55 @@ function NarraCharactersSheetFlow({ route, navigation }: Props) {
   }, []);
 
   const finishTransition = useCallback(() => {
+    if (!mountedRef.current) return;
     transitioningRef.current = false;
-    if (mountedRef.current) setIsTransitioning(false);
+    transitionGenerationRef.current++;
+    if (transitionTimeoutRef.current !== null) {
+      clearTimeout(transitionTimeoutRef.current);
+      transitionTimeoutRef.current = null;
+    }
+    if (transitionFrameRef.current !== null) {
+      cancelAnimationFrame(transitionFrameRef.current);
+      transitionFrameRef.current = null;
+    }
+    listOpacity.stopAnimation();
+    chatCoverOpacity.stopAnimation();
+    const target = transitionTargetRef.current;
+    listOpacity.setValue(target.kind === "characters" ? 1 : 0);
+    chatCoverOpacity.setValue(target.kind === "characters" ? 1 : 0);
+    setContent(target);
+    setIsTransitioning(false);
+  }, [chatCoverOpacity, listOpacity]);
+
+  const isCurrentTransition = useCallback((generation: number) => {
+    return (
+      mountedRef.current &&
+      transitioningRef.current &&
+      transitionGenerationRef.current === generation
+    );
   }, []);
 
+  const beginTransition = useCallback(
+    (target: SheetContent) => {
+      if (!mountedRef.current || transitioningRef.current) return null;
+      const generation = ++transitionGenerationRef.current;
+      transitionTargetRef.current = target;
+      transitioningRef.current = true;
+      setIsTransitioning(true);
+      listOpacity.stopAnimation();
+      chatCoverOpacity.stopAnimation();
+      transitionTimeoutRef.current = setTimeout(() => {
+        if (isCurrentTransition(generation)) finishTransition();
+      }, CONTENT_TRANSITION_TIMEOUT_MS);
+      return generation;
+    },
+    [chatCoverOpacity, finishTransition, isCurrentTransition, listOpacity],
+  );
+
   const fadeIn = useCallback(
-    (value: RNAnimated.Value, onComplete: () => void) => {
+    (value: RNAnimated.Value, generation: number) => {
       transitionFrameRef.current = requestAnimationFrame(() => {
+        if (!isCurrentTransition(generation)) return;
         transitionFrameRef.current = null;
         animateOpacity({
           value,
@@ -158,23 +218,19 @@ function NarraCharactersSheetFlow({ route, navigation }: Props) {
           duration: CONTENT_ENTER_DURATION_MS,
           easing: CONTENT_ENTER_EASING,
           reduceMotion,
-          onComplete,
+          onComplete: () => {
+            if (isCurrentTransition(generation)) finishTransition();
+          },
         });
       });
     },
-    [reduceMotion],
+    [finishTransition, isCurrentTransition, reduceMotion],
   );
 
   const showCharacters = useCallback(() => {
     if (transitioningRef.current || content.kind === "characters") return;
-    if (transitionFrameRef.current !== null) {
-      cancelAnimationFrame(transitionFrameRef.current);
-      transitionFrameRef.current = null;
-    }
-    listOpacity.stopAnimation();
-    chatCoverOpacity.stopAnimation();
-    transitioningRef.current = true;
-    setIsTransitioning(true);
+    const generation = beginTransition({ kind: "characters" });
+    if (generation === null) return;
 
     animateOpacity({
       value: chatCoverOpacity,
@@ -183,17 +239,26 @@ function NarraCharactersSheetFlow({ route, navigation }: Props) {
       easing: CONTENT_EXIT_EASING,
       reduceMotion,
       onComplete: () => {
+        if (!isCurrentTransition(generation)) return;
         setContent({ kind: "characters" });
-        fadeIn(listOpacity, finishTransition);
+        fadeIn(listOpacity, generation);
       },
     });
-  }, [chatCoverOpacity, content.kind, fadeIn, finishTransition, listOpacity, reduceMotion]);
+  }, [
+    beginTransition,
+    chatCoverOpacity,
+    content.kind,
+    fadeIn,
+    isCurrentTransition,
+    listOpacity,
+    reduceMotion,
+  ]);
 
   const showChat = useCallback(
     (nextContent: Exclude<SheetContent, { kind: "characters" }>) => {
       if (transitioningRef.current || content.kind !== "characters") return;
-      transitioningRef.current = true;
-      setIsTransitioning(true);
+      const generation = beginTransition(nextContent);
+      if (generation === null) return;
 
       animateOpacity({
         value: listOpacity,
@@ -202,6 +267,7 @@ function NarraCharactersSheetFlow({ route, navigation }: Props) {
         easing: CONTENT_EXIT_EASING,
         reduceMotion,
         onComplete: () => {
+          if (!isCurrentTransition(generation)) return;
           chatCoverOpacity.setValue(reduceMotion ? 0 : 1);
           setContent(nextContent);
 
@@ -211,6 +277,7 @@ function NarraCharactersSheetFlow({ route, navigation }: Props) {
           }
 
           transitionFrameRef.current = requestAnimationFrame(() => {
+            if (!isCurrentTransition(generation)) return;
             transitionFrameRef.current = null;
             animateOpacity({
               value: chatCoverOpacity,
@@ -218,13 +285,23 @@ function NarraCharactersSheetFlow({ route, navigation }: Props) {
               duration: CONTENT_ENTER_DURATION_MS,
               easing: CONTENT_ENTER_EASING,
               reduceMotion: false,
-              onComplete: finishTransition,
+              onComplete: () => {
+                if (isCurrentTransition(generation)) finishTransition();
+              },
             });
           });
         },
       });
     },
-    [chatCoverOpacity, content.kind, finishTransition, listOpacity, reduceMotion],
+    [
+      beginTransition,
+      chatCoverOpacity,
+      content.kind,
+      finishTransition,
+      isCurrentTransition,
+      listOpacity,
+      reduceMotion,
+    ],
   );
 
   const showBookChat = useCallback(() => {
@@ -310,7 +387,8 @@ function NarraCharactersList({
   const backendStatus = useBackendBookStatus((state) => state.books[bookId]);
   const openingChatRef = useRef(false);
   const storedCharacters = bookState?.characters ?? [];
-  const analysisAvailability = backendStatus?.manifest?.availability;
+  const analysisAvailability =
+    backendStatus?.manifest?.availability ?? (backendStatus?.error ? "unavailable" : undefined);
   const charactersStatus = backendStatus?.manifest?.charactersStatus;
   const fullMarkupReady =
     charactersStatus === "full_ready" ||
@@ -334,13 +412,69 @@ function NarraCharactersList({
     [backendStatus?.manifest?.charactersStatus, backendStatus?.preview],
   );
   const isFindingCharacters = analysisAvailability === "processing";
+  const analysis = backendStatus?.manifest?.analysis;
+  const analysisQueued =
+    isFindingCharacters && analysis?.status === "queued" && !analysis.completedScanChunks;
+  const [analysisDelayed, setAnalysisDelayed] = useState(false);
+  useEffect(() => {
+    setAnalysisDelayed(false);
+    if (!isFindingCharacters || !isActive) return;
+    // This is only a UI waiting threshold, never a deadline or failed run.
+    const timer = setTimeout(() => setAnalysisDelayed(true), 60_000);
+    return () => clearTimeout(timer);
+  }, [
+    bookId,
+    isActive,
+    isFindingCharacters,
+    analysis?.runId,
+    analysis?.status,
+    analysis?.stage,
+    analysis?.completedScanChunks,
+  ]);
   const analysisTerminal =
     analysisAvailability === "failed" || analysisAvailability === "cancelled";
   const sourceUnavailable = backendStatus?.error === "SOURCE_UNAVAILABLE";
-  const retryAnalysis = useCallback(() => {
-    void retryBackendBookAnalysis(bookId).catch(() => undefined);
-  }, [bookId]);
+  const formatUnsupported = backendStatus?.error === "BOOK_FORMAT_UNSUPPORTED";
+  const canRetry = !!book && !sourceUnavailable && !formatUnsupported;
+  const privateBinding = bookState?.backendBinding?.resolution === "private";
+  const [retrying, setRetrying] = useState(false);
+  const retryingRef = useRef(false);
+  const retryMountedRef = useRef(true);
+  useEffect(() => {
+    retryMountedRef.current = true;
+    return () => {
+      retryMountedRef.current = false;
+    };
+  }, []);
+  const retryCharacters = useCallback(async () => {
+    if (!canRetry || retryingRef.current || backendStatus?.analysisRetrying) return;
+    retryingRef.current = true;
+    setRetrying(true);
+    try {
+      // A missing binding or failed download is not a failed analysis run.
+      // Reconnect/rebind first; only a terminal private run can be restarted.
+      if (analysisTerminal && privateBinding) await retryBackendBookAnalysis(bookId);
+      else await retryBackendBookSync(bookId);
+    } catch {
+      if (retryMountedRef.current)
+        toast.error(t("narra.analysisFailed", "Не удалось загрузить персонажей"));
+    } finally {
+      retryingRef.current = false;
+      if (retryMountedRef.current) setRetrying(false);
+    }
+  }, [analysisTerminal, backendStatus?.analysisRetrying, bookId, canRetry, privateBinding, t]);
   const shownAnalysisFailureRef = useRef<string | null>(null);
+  const refreshAnalysisStatus = useCallback(async () => {
+    if (retryingRef.current) return;
+    retryingRef.current = true;
+    setRetrying(true);
+    try {
+      await refreshBackendBookStatus(bookId);
+    } finally {
+      retryingRef.current = false;
+      if (retryMountedRef.current) setRetrying(false);
+    }
+  }, [bookId]);
   useEffect(() => {
     if (!analysisTerminal) {
       shownAnalysisFailureRef.current = null;
@@ -349,13 +483,15 @@ function NarraCharactersList({
     const failureKey = `${analysisAvailability}:${backendStatus?.manifest?.analysis?.updatedAt ?? ""}`;
     if (shownAnalysisFailureRef.current === failureKey) return;
     shownAnalysisFailureRef.current = failureKey;
-    toast.error(t("narra.analysisFailed", "Не удалось подготовить книгу"), {
-      action: {
-        label: t("common.retry", "Повторить"),
-        onClick: retryAnalysis,
-      },
+    toast.error(t("narra.analysisFailed", "Не удалось загрузить персонажей"), {
+      action: canRetry
+        ? {
+            label: t("common.retry", "Повторить"),
+            onClick: retryCharacters,
+          }
+        : undefined,
     });
-  }, [analysisAvailability, analysisTerminal, backendStatus, retryAnalysis, t]);
+  }, [analysisAvailability, analysisTerminal, backendStatus, canRetry, retryCharacters, t]);
   useEffect(() => {
     recordTelemetry("character_opened", { feature: "character" });
   }, []);
@@ -405,9 +541,11 @@ function NarraCharactersList({
       key: "narra",
       accessibilityLabel: t("narra.openNarraBookChat", "Открыть чат с Narra об этой книге"),
       title: "Narra",
-      subtitle: isFindingCharacters
-        ? t("narra.findingCharacters", "Ищу персонажей…")
-        : t("narra.askAboutBook", "Спросите что угодно о книге"),
+      subtitle: analysisQueued
+        ? t("narra.analysisQueued", "Анализ в очереди. Можно продолжить читать")
+        : isFindingCharacters
+          ? t("narra.findingCharacters", "Ищу персонажей…")
+          : t("narra.askAboutBook", "Спросите что угодно о книге"),
       onPress: openBookChat,
       avatar: (
         <CharacterChatAvatar muted>
@@ -483,24 +621,61 @@ function NarraCharactersList({
         style={styles.scrollView}
       >
         <CharacterChatList items={listItems} />
-        {analysisAvailability === "unavailable" ? (
+        {isFindingCharacters && analysisDelayed ? (
+          <View style={styles.analysisState}>
+            <Text style={styles.analysisStateDescription}>
+              {t(
+                "narra.analysisWaitingHint",
+                "Обновлений пока нет. Можно продолжить читать и проверить статус позже.",
+              )}
+            </Text>
+            <NativeButton
+              label={t("narra.refreshAnalysisStatus", "Обновить статус")}
+              onPress={refreshAnalysisStatus}
+              loading={retrying}
+              disabled={retrying}
+              variant="secondary"
+              icon="refresh"
+              style={{ alignSelf: "center" }}
+            />
+          </View>
+        ) : null}
+        {analysisAvailability === "unavailable" || analysisTerminal ? (
           <View style={styles.analysisState}>
             <Text style={styles.analysisStateTitle}>
-              {sourceUnavailable
-                ? t("narra.analysisSourceUnavailable", "Нужен исходный файл книги")
-                : t("narra.analysisFailed", "Не удалось подготовить персонажей")}
+              {formatUnsupported
+                ? t("narra.analysisFormatUnsupported", "Персонажи недоступны для этого формата")
+                : sourceUnavailable
+                  ? t("narra.analysisSourceUnavailable", "Нужен исходный файл книги")
+                  : t("narra.analysisFailed", "Не удалось загрузить персонажей")}
             </Text>
             <Text style={styles.analysisStateDescription}>
-              {sourceUnavailable
+              {formatUnsupported
                 ? t(
-                    "narra.analysisSourceUnavailableHint",
-                    "Импортируйте тот же файл снова — локальное чтение останется доступным.",
+                    "narra.analysisFormatUnsupportedHint",
+                    "Книгу можно читать. Для персонажей добавьте версию EPUB, FB2, TXT или PDF.",
                   )
-                : t(
-                    "narra.analysisFailedHint",
-                    "Книгу можно продолжать читать. Повторите разметку, когда будет удобно.",
-                  )}
+                : sourceUnavailable
+                  ? t(
+                      "narra.analysisSourceUnavailableHint",
+                      "Добавьте тот же исходный файл снова для подготовки персонажей. Можно продолжать читать — прогресс сохранён.",
+                    )
+                  : t(
+                      "narra.analysisFailedHint",
+                      "Можно продолжать читать. Попробуйте загрузить персонажей ещё раз.",
+                    )}
             </Text>
+            {canRetry ? (
+              <NativeButton
+                label={t("common.retry", "Повторить")}
+                onPress={retryCharacters}
+                loading={retrying || !!backendStatus?.analysisRetrying}
+                disabled={retrying || !!backendStatus?.analysisRetrying}
+                variant="secondary"
+                icon="refresh"
+                style={{ alignSelf: "center" }}
+              />
+            ) : null}
           </View>
         ) : null}
       </ScrollView>

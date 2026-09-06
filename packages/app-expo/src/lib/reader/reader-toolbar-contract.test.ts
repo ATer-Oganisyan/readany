@@ -9,7 +9,7 @@ describe("iOS reader toolbar contract", () => {
   it("uses the compact localized stop action", () => {
     const toolbar = read("../../screens/reader/ReaderToolbar.ios.tsx");
 
-    expect(toolbar).toContain('speechStopLabel={t("tts.stopShort", "Стоп")}');
+    expect(toolbar).toContain('t("tts.stopShort", "Стоп")');
     expect(toolbar).not.toContain('speechStopLabel={t("common.stop"');
   });
 

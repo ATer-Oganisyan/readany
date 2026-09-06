@@ -16,7 +16,11 @@ export const TOOLBAR_HEIGHT = 64;
 export function ReaderToolbar(props: ReaderToolbarProps) {
   const { t } = useTranslation();
   const speechLabel =
-    props.speechState === "playing" ? t("tts.stopShort", "Стоп") : t("reader.listen", "Слушать");
+    props.speechState === "preparing"
+      ? t("reader.cancelAudioPreparation", "Отменить подготовку")
+      : props.speechState === "playing"
+        ? t("tts.stopShort", "Стоп")
+        : t("reader.listen", "Слушать");
 
   return (
     <View style={styles.container}>
@@ -35,7 +39,7 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
             ) : (
               <Icon
                 source={
-                  props.speechState === "playing"
+                  props.speechState === "playing" || props.speechState === "preparing"
                     ? getFilledIconImageSource("stop")
                     : getFilledIconImageSource("headphones")
                 }

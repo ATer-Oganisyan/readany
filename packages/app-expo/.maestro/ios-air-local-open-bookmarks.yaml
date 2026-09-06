@@ -1,0 +1,12 @@
+appId: com.mishanaer.readany.dev
+name: Open bookmarks while reader controls are visible
+---
+- tapOn:
+    point: "50%,50%"
+    waitToSettleTimeoutMs: 0
+- tapOn:
+    text: "Book actions"
+    waitToSettleTimeoutMs: 0
+- tapOn: "Bookmarks"
+- assertVisible: "Bookmarks"
+- takeScreenshot: ios-air-bookmarks-list-confirmed

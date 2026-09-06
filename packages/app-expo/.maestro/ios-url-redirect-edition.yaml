@@ -1,0 +1,19 @@
+appId: com.mishanaer.readany.dev
+name: iOS redirect reimport and changed edition recovery
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Library"
+    timeout: 30000
+- runFlow:
+    file: flows/ios-import-url-result.yaml
+    env:
+      BOOK_URL: http://127.0.0.1:8099/redirect.epub
+      RESULT_TEXT: "Library updated"
+      EVIDENCE_NAME: ios-url-redirect-existing-updated
+- runFlow:
+    file: flows/ios-import-url-result.yaml
+    env:
+      BOOK_URL: http://127.0.0.1:8099/changed-edition/01-river.epub
+      RESULT_TEXT: "Done"
+      EVIDENCE_NAME: ios-url-changed-edition

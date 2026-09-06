@@ -1,7 +1,9 @@
+import { withGatewayConsumer } from "@/lib/ai/narra-gateway-consumer";
 import { getPlatformService } from "@readany/core/services";
 import * as FileSystem from "expo-file-system/legacy";
 import { requestBackendDownloadUrl } from "./backend-catalog-api";
 import { sha256BackendFile } from "./backend-file-hash";
+import { NarraServiceError } from "./errors";
 
 const MAX_DOWNLOAD_ATTEMPTS = 3;
 const DOWNLOAD_ATTEMPT_TIMEOUT_MS = 135_000;
@@ -69,24 +71,40 @@ async function verifyDownloadedFile({
 export async function downloadVerifiedBackendFile(options: VerifiedBackendDownload): Promise<void> {
   const platform = getPlatformService();
   if (!platform.downloadFile) throw new Error("Platform file downloader is unavailable");
+  const downloadFile = platform.downloadFile.bind(platform);
   let lastError: unknown;
   for (let attempt = 1; attempt <= MAX_DOWNLOAD_ATTEMPTS; attempt += 1) {
     throwIfAborted(options.signal);
     await FileSystem.deleteAsync(options.destinationPath, { idempotent: true });
     try {
-      const url = await requestBackendDownloadUrl(options.downloadPath, options.signal);
+      const timeoutMs = options.attemptTimeoutMs ?? DOWNLOAD_ATTEMPT_TIMEOUT_MS;
+      await withGatewayConsumer(
+        async (scope) => {
+          const url = await scope.wait(
+            requestBackendDownloadUrl(options.downloadPath, scope.signal),
+          );
+          scope.throwIfAborted();
+          await scope.wait(
+            downloadFile(url, options.destinationPath, {
+              signal: scope.signal,
+              timeoutMs,
+            }),
+          );
+          scope.throwIfAborted();
+          await scope.wait(verifyDownloadedFile(options));
+          scope.throwIfAborted();
+        },
+        { signal: options.signal, timeoutMs },
+      );
       throwIfAborted(options.signal);
-      await platform.downloadFile(url, options.destinationPath, {
-        signal: options.signal,
-        timeoutMs: options.attemptTimeoutMs ?? DOWNLOAD_ATTEMPT_TIMEOUT_MS,
-      });
-      throwIfAborted(options.signal);
-      await verifyDownloadedFile(options);
       return;
     } catch (error) {
       lastError = error;
       await FileSystem.deleteAsync(options.destinationPath, { idempotent: true });
       if (options.signal?.aborted || isBackendDownloadAbort(error)) throw abortError();
+      // A native transfer may ignore abort and still own this destination.
+      // Do not start another writer on the same file after our hard deadline.
+      if (error instanceof NarraServiceError && error.code === "TIMEOUT") throw error;
       if (attempt < MAX_DOWNLOAD_ATTEMPTS) await retryDelay(attempt, options.signal);
     }
   }

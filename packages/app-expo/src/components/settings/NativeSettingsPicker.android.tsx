@@ -1,3 +1,4 @@
+import { useTheme } from "@/styles/theme";
 import { interfaceFontFamily } from "@deslop/primitives/native";
 import { Picker } from "@expo/ui";
 import { Host, Row, Text } from "@expo/ui/jetpack-compose";
@@ -11,6 +12,8 @@ export function NativeSettingsPicker({
   onValueChange,
   colorScheme,
 }: NativeSettingsPickerProps) {
+  const { colors } = useTheme();
+
   return (
     <Host matchContents={{ vertical: true }} colorScheme={colorScheme} style={{ width: "100%" }}>
       <Row
@@ -19,6 +22,7 @@ export function NativeSettingsPicker({
         modifiers={[fillMaxWidth(), padding(16, 4, 8, 4)]}
       >
         <Text
+          color={colors.foreground}
           maxLines={1}
           overflow="ellipsis"
           style={{ fontFamily: interfaceFontFamily.regular, fontSize: 16, lineHeight: 22 }}

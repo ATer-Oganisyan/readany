@@ -33,9 +33,9 @@ export const WEBDAV_IMPORT_SUPPORTED_EXTENSIONS = [
   "azw",
   "azw3",
   "cbz",
-  "cbr",
   "fb2",
   "fbz",
+  "fb2.zip",
   "txt",
   "umd",
 ] as const;
@@ -70,6 +70,7 @@ export function normalizeWebDavImportRoot(path?: string): string | undefined {
 }
 
 export function getWebDavImportExtension(name: string): string | undefined {
+  if (name.toLowerCase().endsWith(".fb2.zip")) return "fb2.zip";
   const lastDot = name.lastIndexOf(".");
   if (lastDot < 0 || lastDot === name.length - 1) return undefined;
   return name.slice(lastDot + 1).toLowerCase();

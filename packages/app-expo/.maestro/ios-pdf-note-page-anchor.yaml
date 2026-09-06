@@ -1,0 +1,65 @@
+appId: com.mishanaer.readany.dev
+name: iOS PDF selected note returns from a later page to its saved page
+env:
+  NOTE_TEXT: "NARRA QA PDF page anchor final 20260905."
+# New own note; the earlier empty-CFI reproduction is preserved separately.
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Library"
+    timeout: 30000
+- runFlow:
+    file: flows/ios-open-fixture.yaml
+    env:
+      BOOK_TITLE: "11-river-library"
+      PAGE_LABEL: "p. 4 of 12"
+- extendedWaitUntil:
+    notVisible: "Listen"
+    timeout: 10000
+- longPressOn:
+    point: "29%,31%"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: ios-pdf-anchor-selected-word
+# Native selection menu is visible but absent in the Maestro AX hierarchy.
+- tapOn:
+    point: "20%,35%"
+- extendedWaitUntil:
+    visible: "Cancel"
+    timeout: 10000
+- tapOn: "Start writing…"
+- inputText: ${NOTE_TEXT}
+- tapOn: "Save note"
+- extendedWaitUntil:
+    visible: "Narra Reader"
+    timeout: 10000
+# First center touch dismisses the retained selection.
+- tapOn:
+    point: "50%,50%"
+- tapOn:
+    point: "95%,40%"
+- extendedWaitUntil:
+    visible: "p. 5 of 12"
+    timeout: 15000
+- takeScreenshot: ios-pdf-anchor-away-page-five
+- repeat:
+    times: 2
+    commands:
+      - runFlow:
+          when:
+            notVisible: "Book actions"
+          commands:
+            - tapOn:
+                point: "50%,50%"
+- tapOn: "Book actions"
+- tapOn: "Notes"
+- extendedWaitUntil:
+    visible: ".*${NOTE_TEXT}.*"
+    timeout: 15000
+- takeScreenshot: ios-pdf-page-anchor-note
+- tapOn: ".*${NOTE_TEXT}.*"
+- extendedWaitUntil:
+    visible: "Narra Reader"
+    timeout: 15000
+- assertVisible: "p. 4 of 12"
+- takeScreenshot: ios-pdf-note-restored-page-four

@@ -1,0 +1,19 @@
+appId: com.mishanaer.readany.dev
+name: Android existing book notebook can add a second scoped note
+---
+- assertVisible: .*NARRA_ANDROID_QA_BOOK_SCOPE_20260905_1218.*
+- tapOn: Add note
+- waitForAnimationToEnd:
+    timeout: 5000
+- assertVisible: 26-mixed-recovery
+- tapOn: Start writing…
+- inputText: NARRA_ANDROID_QA_BOOK_SCOPE_20260905_SECOND
+- waitForAnimationToEnd:
+    timeout: 5000
+- assertVisible: .*NARRA_ANDROID_QA_BOOK_SCOPE_20260905_SECOND.*
+- tapOn: Save note
+- extendedWaitUntil:
+    visible: .*NARRA_ANDROID_QA_BOOK_SCOPE_20260905_SECOND.*
+    timeout: 10000
+- assertVisible: .*NARRA_ANDROID_QA_BOOK_SCOPE_20260905_1218.*
+- takeScreenshot: android-own-book-two-notes

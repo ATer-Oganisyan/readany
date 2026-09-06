@@ -29,8 +29,9 @@ export function createBookAnalysisSynthesizeWorker({
   }
   const log = createOperationalLogger({ component: 'analysis-synthesize', logger })
 
-  async function synthesize(job) {
+  async function synthesize(job, signal) {
     const input = await repository.getSynthesizeInput(job)
+    signal.throwIfAborted()
     const strategy = bookAnalysisPipelineForRun({
       ...input,
       pipelineId: input.pipelineId ?? BOOK_ANALYSIS_PIPELINE_NARRA
@@ -39,8 +40,10 @@ export function createBookAnalysisSynthesizeWorker({
       const synthesized = await strategy.synthesizeCharacter({
         input,
         generator,
-        synthesisVersion
+        synthesisVersion,
+        signal
       })
+      signal.throwIfAborted()
       return repository.completeCharacterSynthesis(job, {
         snapshotId: input.snapshot.id,
         ...synthesized
@@ -66,11 +69,25 @@ export function createBookAnalysisSynthesizeWorker({
   }
 
   async function withLeaseHeartbeat(job, operation) {
+    const controller = new AbortController()
+    let renewing = false
     const timer = setInterval(() => {
-      void repository.renewAnalysisJobLease(job, { leaseSeconds }).catch(() => {})
+      if (renewing || controller.signal.aborted) return
+      renewing = true
+      void Promise.resolve().then(() => repository.renewAnalysisJobLease(job, { leaseSeconds }))
+        .catch((error) => {
+          // A transient database failure is not proof that another worker owns the job.
+          if (error?.code === 'LEASE_LOST') controller.abort(error)
+        }).finally(() => { renewing = false })
     }, leaseRenewMs)
     timer.unref?.()
-    try { return await operation() } finally { clearInterval(timer) }
+    try {
+      return await operation(controller.signal)
+    } catch (error) {
+      // Fetch may report AbortError while reading a body instead of our lease reason.
+      controller.signal.throwIfAborted()
+      throw error
+    } finally { clearInterval(timer) }
   }
 
   return {
@@ -83,7 +100,7 @@ export function createBookAnalysisSynthesizeWorker({
       if (!job) return { status: 'idle' }
       const startedAt = performance.now()
       try {
-        const result = await withLeaseHeartbeat(job, () => synthesize(job))
+        const result = await withLeaseHeartbeat(job, (signal) => synthesize(job, signal))
         log.info('synthesis.completed', 'Задание синтеза завершено', {
           job: job.id, run: job.runId, shard: job.shardKey, next_stage: result.stage,
           ...bookAnalysisLogContext(job, { startedAt, terminalStatus: 'completed' })
@@ -91,6 +108,13 @@ export function createBookAnalysisSynthesizeWorker({
         return { status: 'completed', jobId: job.id, runId: job.runId, result }
       } catch (error) {
         const errorCode = safeErrorCode(error)
+        if (errorCode === 'LEASE_LOST') {
+          log.error('synthesis.lease_lost', 'Синтез остановлен после потери задания', {
+            job: job.id, run: job.runId, error_code: errorCode
+          })
+          // The new owner alone may complete, fail or retry this job.
+          return { status: 'failed', jobId: job.id, runId: job.runId, errorCode }
+        }
         const failure = await repository.failAnalysisJob(job, errorCode)
         log.error('synthesis.failed', 'Задание синтеза завершилось ошибкой', {
           job: job.id, run: job.runId, error_code: errorCode, retry_status: failure.status,

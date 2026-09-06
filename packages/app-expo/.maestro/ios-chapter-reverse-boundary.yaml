@@ -1,0 +1,35 @@
+appId: com.mishanaer.readany.dev
+name: iOS cold chapter one to TOC three to previous chapter
+# Begin after cold prepare restored chapter one, without warmed chapter two.
+---
+- launchApp:
+    stopApp: false
+- assertVisible: "Narra Reader"
+- runFlow:
+    when:
+      notVisible: "Book actions"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- tapOn: "Book actions"
+- tapOn: "Table of Contents"
+- waitForAnimationToEnd:
+    timeout: 5000
+- tapOn:
+    point: "42%,73%"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: ios-reverse-third-chapter-start
+- tapOn:
+    point: "5%,40%"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: ios-reverse-second-chapter-end
+- repeat:
+    times: 3
+    commands:
+      - tapOn:
+          point: "5%,40%"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: ios-reverse-second-chapter-after-three

@@ -2,6 +2,7 @@ import express from 'express'
 import { createBookCatalogService } from './book-catalog-service.mjs'
 import { isCatalogBookLanguage, normalizeBookLanguage } from './book-language.mjs'
 import { CATALOG_GENRES, CATALOG_GENRE_DATA_VERSION } from './catalog-book-genres.mjs'
+import { createBookUploadAdmission } from './book-upload-admission.mjs'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const SHA256 = /^[0-9a-f]{64}$/
@@ -105,7 +106,10 @@ export function parseReaderProgressBody(body) {
 }
 
 export function parseSceneAtBody(body) {
-  exactKeys(body, ['reader_text_offset', 'progress_fraction'], 'body')
+  exactKeys(body, ['reader_text_offset', 'progress_fraction', 'retry_failed'], 'body')
+  if (body.retry_failed !== undefined && typeof body.retry_failed !== 'boolean') {
+    validation('retry_failed: expected a boolean')
+  }
   const hasTextOffset = body.reader_text_offset !== undefined
   const hasFraction = body.progress_fraction !== undefined
   if (hasTextOffset === hasFraction) {
@@ -125,7 +129,8 @@ export function parseSceneAtBody(body) {
   }
   return {
     readerTextOffset: hasTextOffset ? body.reader_text_offset : null,
-    progressFraction: hasFraction ? body.progress_fraction : null
+    progressFraction: hasFraction ? body.progress_fraction : null,
+    ...(body.retry_failed === true ? { retryFailed: true } : {})
   }
 }
 
@@ -583,7 +588,10 @@ export function createBookCatalogRouter({
   ttsMarkupRepository = null,
   shadowPreviewEnabled = false,
   storage = null,
-  uploadMaxBytes = 50 * 1024 * 1024
+  uploadMaxBytes = 50 * 1024 * 1024,
+  uploadGate = null,
+  uploadLimits = [],
+  uploadTimeoutMs = 120_000
 }) {
   const router = express.Router()
   const service = createBookCatalogService({
@@ -656,14 +664,40 @@ export function createBookCatalogRouter({
 
   router.put(
     '/:bookEditionId/source',
-    express.raw({ type: () => true, limit: uploadMaxBytes }),
+    createBookUploadAdmission({
+      gate: uploadGate,
+      maxBytes: uploadMaxBytes,
+      timeoutMs: uploadTimeoutMs,
+      async authorize(req) {
+        const subjectId = subject(req)
+        const bookEditionId = uuid(req.params.bookEditionId, 'bookEditionId')
+        if (!storage || typeof repository.canUploadPrivateBookSource !== 'function') {
+          throw Object.assign(new Error('Загрузка книги временно недоступна'), {
+            code: 'UPLOAD_UNAVAILABLE', status: 503
+          })
+        }
+        if (!await repository.canUploadPrivateBookSource({ subjectId, bookEditionId })) {
+          throw Object.assign(new Error('Локальная книга не найдена'), { code: 'NOT_FOUND', status: 404 })
+        }
+      }
+    }),
+    ...uploadLimits.map((middleware) => (req, res, next) => {
+      if (!req.bookUploadSignal.aborted) return middleware(req, res, next)
+    }),
+    (req, _res, next) => {
+      // A slow quota journal must not start reading after the deadline/close.
+      if (!req.bookUploadSignal.aborted) next()
+    },
+    express.raw({ type: () => true, limit: uploadMaxBytes, inflate: false }),
     asyncRoute(async (req, res) => {
+      req.bookUploadSignal.throwIfAborted()
       if (!Buffer.isBuffer(req.body) || !req.body.byteLength) validation('book content: required')
       const result = await service.uploadLocalSource(
         subject(req),
         uuid(req.params.bookEditionId, 'bookEditionId'),
         req.body,
-        String(req.headers['content-type'] || '').split(';', 1)[0].trim().toLowerCase()
+        String(req.headers['content-type'] || '').split(';', 1)[0].trim().toLowerCase(),
+        { signal: req.bookUploadSignal }
       )
       res.status(202).json(bookJson(result))
     })

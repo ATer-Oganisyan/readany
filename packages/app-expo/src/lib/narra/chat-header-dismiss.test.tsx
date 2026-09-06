@@ -57,6 +57,39 @@ describe("chat sheet close control", () => {
     );
   });
 
+  it("keeps the character title accessible and clickable without inventing an online subtitle", () => {
+    const openProfile = vi.fn();
+    act(() => {
+      tree = create(
+        <NarraChatHeader
+          title="Анна"
+          backLabel="Назад"
+          onBack={vi.fn()}
+          onTitlePress={openProfile}
+        />,
+      );
+    });
+    const title = tree.root.find(
+      (node) => String(node.type) === "Pressable" && node.props.accessibilityLabel === "Анна",
+    );
+    expect(title.props.accessibilityRole).toBe("button");
+    expect(title.props.disabled).toBe(false);
+    act(() => title.props.onPress());
+    expect(openProfile).toHaveBeenCalledOnce();
+  });
+
+  it("does not turn an ordinary Narra title into a nonfunctional button", () => {
+    act(() => {
+      tree = create(<NarraChatHeader title="Narra" backLabel="Назад" onBack={vi.fn()} />);
+    });
+    expect(
+      tree.root.findAll(
+        (node) =>
+          String(node.type) === "Pressable" && node.props.accessibilityLabel?.startsWith("Narra"),
+      ),
+    ).toHaveLength(0);
+  });
+
   it("uses a close action and sheet inset only for standalone iOS character chats", () => {
     const screen = readFileSync(
       new URL("../../screens/NarraCharacterChatScreen.tsx", import.meta.url),

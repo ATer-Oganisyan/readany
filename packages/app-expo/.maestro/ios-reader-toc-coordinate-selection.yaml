@@ -1,0 +1,24 @@
+appId: com.mishanaer.readany.dev
+name: iOS visible TOC row selection and notes
+# Native half-sheet is visible on iPhone 17 Pro Max; labels are absent in AX snapshot.
+# Physical target was resolved from the actual screenshot, not guessed from source.
+---
+- launchApp:
+    stopApp: false
+- tapOn:
+    point: "42%,73%"
+- waitForAnimationToEnd:
+    timeout: 5000
+- assertVisible: "Narra Reader"
+- takeScreenshot: ios-toc-last-chapter-open
+- runFlow:
+    when:
+      notVisible: "Book actions"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- tapOn: "Book actions"
+- tapOn: "Notes"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: ios-book-notes-screen

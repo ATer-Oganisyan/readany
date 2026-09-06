@@ -1,7 +1,12 @@
 import { hash } from "@dr.pogodin/react-native-fs";
 
 export async function sha256BackendFile(path: string): Promise<string> {
-  return hash(path, "sha256");
+  // Expo file URIs encode Unicode, spaces and literal percent signs. RNFS only
+  // strips file:// before opening a native filesystem path; it does not decode.
+  // Decode local URI paths exactly once (%2520 -> literal %20). Raw paths and
+  // opaque content:// document identifiers must retain their original spelling.
+  const nativePath = path.startsWith("file:///") ? decodeURIComponent(path.slice(7)) : path;
+  return hash(nativePath, "sha256");
 }
 
 /**

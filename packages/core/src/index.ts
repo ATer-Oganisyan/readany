@@ -58,6 +58,7 @@ export type {
   WebDavImportSourceKind,
 } from "./import/webdav-import-types";
 export type { ImportBooksResult, ImportDuplicateIndex } from "./import/import-dedupe";
+export type { BookImportFailureCode } from "./import/import-errors";
 
 // EPUB services
 export { inspectEpubBytes } from "./epub/inspect";
@@ -76,4 +77,8 @@ export type {
 export { readEpubChapterFromBookFile, readEpubChapterFromDraft } from "./epub/chapter";
 export type { EpubChapterReadResult } from "./epub/chapter";
 export { searchKnowledge } from "./knowledge/search";
-export type { KnowledgeSearchHit, KnowledgeSearchResult, KnowledgeSearchSource } from "./knowledge/search";
+export type {
+  KnowledgeSearchHit,
+  KnowledgeSearchResult,
+  KnowledgeSearchSource,
+} from "./knowledge/search";

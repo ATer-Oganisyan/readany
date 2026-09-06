@@ -1,0 +1,20 @@
+{
+  "platform": "iOS Air isolated LOCAL",
+  "bookId": "44da976d-50a6-4dd8-95e7-208dbeacc4cf",
+  "identicalFixtureAndInstalledSha256": "e8c0288c81ed16c26ac22affc8ab02b95a22cd8ab5481ed626caf95a77cf79f8",
+  "beforeCfi": "epubcfi(/6/2!/4/2[chapter-1],/12/1:251,/18/1:113)",
+  "afterCancelAndRepeatCfi": "epubcfi(/6/2!/4/2[chapter-1],/22/1:324,/28/1:183)",
+  "afterProgress": 0.15534096943285233,
+  "bookCountBeforeAndAfter": 2,
+  "downloadSubmitUtc": "2026-09-05T15:05:07.045Z",
+  "cancelTapUtc": "2026-09-05T15:06:00.016Z",
+  "cancelAbsentUtc": "2026-09-05T15:06:02.021Z",
+  "finalStateUtc": "2026-09-05T15:07:19.755Z",
+  "repeat": {"added":0,"updated":1,"skipped":0,"failed":0,"openActionVisible":false},
+  "physicalReadingWhileDownloading": true,
+  "latePhantomOrToastObserved": false,
+  "axHierarchyBookTitlePresentDuringToast": false,
+  "physicalBookTapWorksDuringToast": true,
+  "loadingToastOverlapsReaderText": true,
+  "voiceOverAcceptance": false
+}

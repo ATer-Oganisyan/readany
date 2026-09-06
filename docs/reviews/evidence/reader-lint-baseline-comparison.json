@@ -1,0 +1,503 @@
+{
+  "stage": "final-v5",
+  "date": "2026-09-05",
+  "config": "biome.json (same config for both)",
+  "command": "pnpm exec biome check --config-path=/Users/tsevdnkanduev/Narra/biome.json --max-diagnostics=none --reporter=json <file>",
+  "baselineSha": "8d9d6bb",
+  "baselineFileMatchesGitBlob": true,
+  "baselineFile": "/private/tmp/narra-reader-lint.Lzcyfx/ReaderScreen.baseline.tsx",
+  "currentFile": "packages/app-expo/src/screens/ReaderScreen.tsx",
+  "baselineExit": 1,
+  "currentExit": 1,
+  "baselineSummary": {
+    "changed": 0,
+    "unchanged": 1,
+    "matches": 0,
+    "duration": {
+      "secs": 0,
+      "nanos": 58546542
+    },
+    "errors": 35,
+    "warnings": 3,
+    "skipped": 0,
+    "suggestedFixesSkipped": 0,
+    "diagnosticsNotPrinted": 0
+  },
+  "currentSummary": {
+    "changed": 0,
+    "unchanged": 1,
+    "matches": 0,
+    "duration": {
+      "secs": 0,
+      "nanos": 33079625
+    },
+    "errors": 35,
+    "warnings": 3,
+    "skipped": 0,
+    "suggestedFixesSkipped": 0,
+    "diagnosticsNotPrinted": 0
+  },
+  "diagnosticMultisetIdentical": true,
+  "added": [],
+  "removed": [],
+  "baseline": [
+    {
+      "category": "lint/suspicious/noExplicitAny",
+      "severity": "warning",
+      "description": "Unexpected any. Specify a different type.",
+      "line": 1925
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: suppressProgressTracking",
+      "line": 964
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook specifies more dependencies than necessary: bookId",
+      "line": 964
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: t",
+      "line": 1567
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: t",
+      "line": 1590
+    },
+    {
+      "category": "lint/correctness/noUnusedVariables",
+      "severity": "warning",
+      "description": "This variable is unused.",
+      "line": 1742
+    },
+    {
+      "category": "lint/correctness/noUnusedVariables",
+      "severity": "warning",
+      "description": "This variable is unused.",
+      "line": 1750
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: book",
+      "line": 1802
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: loadAnnotations",
+      "line": 1802
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: updateBook",
+      "line": 1802
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: book.meta.title",
+      "line": 1802
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: t",
+      "line": 1802
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook specifies more dependencies than necessary: prepareReaderHost",
+      "line": 1849
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: book.currentCfi",
+      "line": 1856
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: book.totalCharacters",
+      "line": 1856
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: readSettings.followSystemFontScale",
+      "line": 1856
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: readSettings.viewMode",
+      "line": 1856
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook specifies more dependencies than necessary: prepareReaderHost",
+      "line": 1856
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: readSettings.paragraphSpacing",
+      "line": 1856
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: readSettings.paginatedLayout",
+      "line": 1856
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: readSettings.pageMargin",
+      "line": 1856
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: readSettings.lineHeight",
+      "line": 1856
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: readSettings.fontTheme",
+      "line": 1856
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: computeEffectiveFontSize",
+      "line": 1856
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: readSettings.fontSize",
+      "line": 1856
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: bridge.setThemeColors",
+      "line": 1856
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: book.format",
+      "line": 1856
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: bridge.openBook",
+      "line": 1856
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: book",
+      "line": 2024
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: book.meta.title",
+      "line": 2024
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: bridge.setThemeColors",
+      "line": 2083
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook specifies more dependencies than necessary: themeMode",
+      "line": 2083
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook specifies more dependencies than necessary: systemFontScale",
+      "line": 2107
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: bridge.addAnnotation",
+      "line": 2127
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook specifies more dependencies than necessary: bookId",
+      "line": 2135
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: bridge.flashHighlight",
+      "line": 2140
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: tts.resolvedTTSSegmentCfi",
+      "line": 2159
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: tts.ttsDisplaySegments[0]?.cfi",
+      "line": 2159
+    }
+  ],
+  "current": [
+    {
+      "category": "lint/suspicious/noExplicitAny",
+      "severity": "warning",
+      "description": "Unexpected any. Specify a different type.",
+      "line": 1952
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: suppressProgressTracking",
+      "line": 1013
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook specifies more dependencies than necessary: bookId",
+      "line": 1013
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: t",
+      "line": 1595
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: t",
+      "line": 1618
+    },
+    {
+      "category": "lint/correctness/noUnusedVariables",
+      "severity": "warning",
+      "description": "This variable is unused.",
+      "line": 1778
+    },
+    {
+      "category": "lint/correctness/noUnusedVariables",
+      "severity": "warning",
+      "description": "This variable is unused.",
+      "line": 1786
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: book",
+      "line": 1838
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: loadAnnotations",
+      "line": 1838
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: updateBook",
+      "line": 1838
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: book.meta.title",
+      "line": 1838
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: t",
+      "line": 1838
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook specifies more dependencies than necessary: prepareReaderHost",
+      "line": 1876
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: book.currentCfi",
+      "line": 1883
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: book.totalCharacters",
+      "line": 1883
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: readSettings.followSystemFontScale",
+      "line": 1883
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: readSettings.viewMode",
+      "line": 1883
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook specifies more dependencies than necessary: prepareReaderHost",
+      "line": 1883
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: readSettings.paragraphSpacing",
+      "line": 1883
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: readSettings.paginatedLayout",
+      "line": 1883
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: readSettings.pageMargin",
+      "line": 1883
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: readSettings.lineHeight",
+      "line": 1883
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: readSettings.fontTheme",
+      "line": 1883
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: computeEffectiveFontSize",
+      "line": 1883
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: readSettings.fontSize",
+      "line": 1883
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: bridge.setThemeColors",
+      "line": 1883
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: book.format",
+      "line": 1883
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: bridge.openBook",
+      "line": 1883
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: book",
+      "line": 2052
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: book.meta.title",
+      "line": 2052
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: bridge.setThemeColors",
+      "line": 2111
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook specifies more dependencies than necessary: themeMode",
+      "line": 2111
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook specifies more dependencies than necessary: systemFontScale",
+      "line": 2135
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: bridge.addAnnotation",
+      "line": 2155
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook specifies more dependencies than necessary: bookId",
+      "line": 2163
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: bridge.flashHighlight",
+      "line": 2168
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: tts.resolvedTTSSegmentCfi",
+      "line": 2193
+    },
+    {
+      "category": "lint/correctness/useExhaustiveDependencies",
+      "severity": "error",
+      "description": "This hook does not specify all of its dependencies: tts.ttsDisplaySegments[0]?.cfi",
+      "line": 2193
+    }
+  ]
+}

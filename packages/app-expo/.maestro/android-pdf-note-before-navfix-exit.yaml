@@ -1,0 +1,16 @@
+appId: com.mishanaer.readany.dev
+name: Android safely unwinds the reproduced duplicate-reader stack
+# BEFORE only: Tabs / Reader(PDF) / Notes(PDF) / Reader(PDF).
+---
+- back
+- extendedWaitUntil:
+    visible: .*NARRA_ANDROID_PDF_PAGE3.*
+    timeout: 10000
+- back
+- extendedWaitUntil:
+    visible: Narra Reader
+    timeout: 10000
+- back
+- extendedWaitUntil:
+    visible: Library
+    timeout: 10000

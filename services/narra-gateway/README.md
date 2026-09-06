@@ -10,6 +10,24 @@ PostgreSQL schema is in [`migrations/001_book_markup.sql`](migrations/001_book_m
 
 ## LLM request parameters
 
+Internal chat has a separate fail-fast lifecycle cap,
+`INTERNAL_CHAT_LIFECYCLE_LIMIT` (integer 1–100; defaults to `LLM_CONCURRENCY`).
+It covers provider admission through awaited cost recording, with no waiting
+queue; saturation returns `RATE`/429 before provider invocation. The LLM permit
+is released after response consumption/finalization, so hung accounting cannot
+occupy provider capacity for other workloads. Accounting is still awaited:
+caller stalls and durability require separate handling. The cap is per process,
+not a cross-replica accounting limit, and applies only to `completeInternalChat`.
+
+Public `/v2/ai/chat/complete` and `/v2/ai/chat/stream` wait for admission for at
+most `LLM_QUEUE_TIMEOUT_MS` (default 30000; integer 1–120000). An expired queued
+request returns HTTP 504 with `code: TIMEOUT` and never starts a provider call.
+The queue deadline is disposed on admission: it does not cancel admitted work
+or prematurely release its slot. Provider timeouts remain separate. Internal
+generation retains its 10-minute request deadline and now also cancels when a
+client disconnects after sending the full POST body. This does not bound every
+analytics await or establish a total public end-to-end deadline.
+
 The Gateway, not the client, owns model sampling and reasoning parameters. The
 legacy `temperature` field is still accepted by `/v2/ai/chat/stream` and
 `/v2/ai/chat/complete` for mobile compatibility, but its value is ignored.
@@ -64,10 +82,41 @@ until `configured` is true and a canary event reaches the stats module.
 
 ## Local verification
 
+For a host-only gateway, set `GATEWAY_HOST=127.0.0.1` and a dedicated `PORT`.
+If `GATEWAY_HOST` is unset or empty, Node's existing wildcard deployment binding
+is preserved. Verify the actual listening address before connecting a local client.
+Use a separate local database, object bucket and installation identity; a healthy
+HTTP/database/storage gateway does not imply configured AI providers or running workers.
+
+Use **Node.js 24 LTS** for the gateway and its workers. The release image is
+`node:24.20.0-alpine3.23`, pinned by digest in [`Dockerfile`](Dockerfile);
+`package.json` and `package-lock.json` require Node >=24, and the gateway CI
+tracks the 24.x line. This is gateway-only, not an Expo SDK/runtime upgrade.
+Node 20 is EOL; see the official [Node.js release schedule](https://nodejs.org/en/about/previous-releases).
+
 ```bash
-npm install
+node --version
+npm ci
 npm test
 ```
+
+The full release gate also needs the isolated PostgreSQL and S3 services in
+[gateway CI](../../.github/workflows/narra-gateway.yml). Without the test service
+environment, integration tests can be skipped. On 2026-09-05 the complete local
+suite passed on the official Node 24.20.0 macOS arm64 binary: **807 passed,
+0 skipped**, including the ZIP64 and query-parser regressions.
+
+Before accepting a new runtime image, build the pinned Dockerfile and smoke-test
+the resulting image on the deployment architecture: `node --version`,
+`ffmpeg -version`, `pdftotext -v`, non-root startup/health, and isolated PG/S3
+integration. Alpine uses musl, so native host tests are not equivalent to image
+tests; see the official [Node image documentation](https://github.com/nodejs/docker-node/blob/main/README.md#nodealpine).
+The local Linux ARM64 image build and smoke passed: non-root startup, health,
+12 security cases, genuine 12-page PDF extraction, and ffmpeg. See
+[container evidence and exact limits](../../docs/reviews/backend-container-qa-2026-09-05.md).
+The image smoke did not connect PG/S3; their full integration ran on the host.
+Hosted CI, deployment topology, real AI providers, and capacity remain unverified.
+See [release-readiness evidence and limits](../../docs/reviews/backend-release-readiness-2026-09-05.md).
 
 ## Durable image jobs
 
@@ -282,10 +331,12 @@ for its characters once; manifest reads do not repeatedly reset failed work.
 `BOOK_ANALYSIS_SCAN_POLICY_PROFILE` controls scan retries without creating a new
 pipeline or extractor version. The default `balanced` profile makes one full
 request and, after a semantic rejection or a valid empty response, one adaptive
-split. It always retains observations from a successful half. `conservative`
+split. It caches observations from a successful half for reuse on retry, but a
+malformed or ungrounded half must recover before the chunk can complete. `conservative`
 keeps the former limit of five semantic attempts, while `fast` accepts the first
-valid `{"observations":[]}` response. Transport failures remain governed by the
-durable job retry limit and are not converted into empty scan results. Chunk and
+valid `{"observations":[]}` response. Transport and validation failures remain
+governed by the durable job retry limit and are not converted into empty scan
+results, including on the last attempt. Chunk and
 adaptive-split sizes can be overridden with the `BOOK_ANALYSIS_SCAN_CHUNK_*` and
 `BOOK_ANALYSIS_SCAN_ADAPTIVE_*` variables; their defaults remain 4,000/2,500–
 5,000/500 and 2,000/500 respectively. Chunk overrides affect only runs prepared

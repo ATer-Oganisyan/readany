@@ -1,5 +1,6 @@
 import * as Crypto from "expo-crypto";
 import { Directory, File, Paths } from "expo-file-system";
+import { backendCacheRoot } from "./backend-cache-scope";
 import type { BackendSceneIntent, BackendSceneSnapshot } from "./backend-scene";
 
 /** A signed URL is consumed immediately; it is never persisted in the store. */
@@ -10,11 +11,13 @@ export async function saveBackendSceneFile(
   onMove?: (bytes: number, mime: string) => void,
 ): Promise<string> {
   if (!scene.imageUrl || !scene.mimeType) throw new Error("SCENE_ASSET_MISSING");
+  const directory = new Directory(
+    backendCacheRoot(new Directory(Paths.document, "narra-media").uri),
+  );
   const key = await Crypto.digestStringAsync(
     Crypto.CryptoDigestAlgorithm.SHA256,
     JSON.stringify([intent.bookEditionId, intent.markupIdentity, scene.sceneKey]),
   );
-  const directory = new Directory(Paths.document, "narra-media");
   directory.create({ intermediates: true, idempotent: true });
   const extension =
     scene.mimeType === "image/png" ? "png" : scene.mimeType === "image/jpeg" ? "jpg" : "webp";

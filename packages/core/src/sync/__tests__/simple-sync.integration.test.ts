@@ -40,6 +40,7 @@ const TABLE_COLUMNS: Record<string, string[]> = {
   books: [
     "id",
     "file_path",
+    "file_hash",
     "format",
     "title",
     "author",
@@ -213,6 +214,11 @@ class FakeSyncDb {
           timestamp: row[timestampCol] ?? 0,
           ...(includeDeletedAt ? { deleted_at: row.deleted_at ?? null } : {}),
           ...(includeCoverUrl ? { cover_url: row.cover_url ?? null } : {}),
+          ...Object.fromEntries(
+            ["file_path", "file_hash", "sync_status"]
+              .filter((field) => extraSelects.includes(`${field} AS ${field}`))
+              .map((field) => [field, row[field] ?? null]),
+          ),
         })) as T[];
     }
 
@@ -550,6 +556,46 @@ describe("simple sync convergence", () => {
     expect(target.get("books", "book-1")?.file_path).toBe("books/book-1.epub");
     expect(target.get("books", "book-1")?.sync_status).toBe("remote");
   });
+
+  it.each([true, false])(
+    "keeps this device's artifact only for matching source identity: %s",
+    async (sameSource) => {
+      const target = new FakeSyncDb();
+      target.insert(
+        "books",
+        bookRow({
+          file_path: "books/book-1-download-123-1.epub",
+          file_hash: "same-source",
+          updated_at: 1000,
+        }),
+      );
+      dbMocks.currentDb = target;
+      dbMocks.currentDeviceId = "device-local";
+      await applyChanges({
+        deviceId: "device-remote",
+        timestamp: 2000,
+        since: 0,
+        tables: {
+          books: {
+            records: [
+              bookRow({
+                title: "Remote edited title",
+                file_path: "file:///foreign/book.epub",
+                file_hash: sameSource ? "same-source" : "new-source",
+                updated_at: 2000,
+              }),
+            ],
+            deletedIds: [],
+          },
+        },
+      });
+      expect(target.get("books", "book-1")?.title).toBe("Remote edited title");
+      expect(target.get("books", "book-1")?.file_path).toBe(
+        sameSource ? "books/book-1-download-123-1.epub" : "books/book-1.epub",
+      );
+      expect(target.get("books", "book-1")?.sync_status).toBe(sameSource ? "local" : "remote");
+    },
+  );
 
   it("keeps a newer local record when an older remote tombstone arrives", async () => {
     const target = new FakeSyncDb();

@@ -1,4 +1,4 @@
-import type { LibraryState } from "@/stores/library-store";
+import { type LibraryState, useLibraryStore } from "@/stores/library-store";
 import { useNarraStore } from "@/stores/narra-store";
 import type { Book } from "@readany/core/types";
 import {
@@ -14,6 +14,7 @@ import { normalizeBookLanguage } from "./book-language";
 
 interface ImportBackendCatalogBookOptions extends Pick<LibraryState, "importBooks" | "updateBook"> {
   signal?: AbortSignal;
+  readBook?: (bookId: string) => Book | undefined;
 }
 
 const activeCatalogImports = new Map<string, Promise<Book>>();
@@ -21,7 +22,12 @@ const activeCatalogImports = new Map<string, Promise<Book>>();
 async function performDownloadedBackendCatalogImport(
   catalogBook: CachedBackendCatalogBook,
   sourcePath: string,
-  { importBooks, updateBook, signal }: ImportBackendCatalogBookOptions,
+  {
+    importBooks,
+    updateBook,
+    signal,
+    readBook = (id) => useLibraryStore.getState().books.find((book) => book.id === id),
+  }: ImportBackendCatalogBookOptions,
 ): Promise<Book> {
   if (signal?.aborted) throw signal.reason ?? new Error("catalog-import-aborted");
   const result = await importBooks([
@@ -67,6 +73,17 @@ async function performDownloadedBackendCatalogImport(
     contentSha256: catalogBook.contentSha256,
     sourceUploaded: true,
   });
+  const initialCover = readBook(importedBook.id)?.meta.coverUrl;
+  const isCurrentCover = () => {
+    const current = readBook(importedBook.id);
+    return Boolean(
+      current &&
+        !current.deletedAt &&
+        current.bookEditionId === catalogBook.bookEditionId &&
+        current.contentHash?.toLowerCase() === catalogBook.contentSha256.toLowerCase() &&
+        current.meta.coverUrl === initialCover,
+    );
+  };
   // Обложка не нужна для чтения. Не держим ридер на лоадере, пока она
   // скачивается и копируется; карточка обновится отдельно уже после открытия.
   void materializeBackendCatalogCover(catalogBook, signal)
@@ -75,12 +92,17 @@ async function performDownloadedBackendCatalogImport(
       return undefined;
     })
     .then(async (materializedCoverUri) => {
+      if (!isCurrentCover()) return;
       const coverUri = materializedCoverUri ?? catalogBook.coverUri;
-      const coverUrl = await installBackendCatalogCover(importedBook.id, {
-        ...catalogBook,
-        coverUri,
-      });
-      if (coverUrl) await updateBook(importedBook.id, { meta: { ...meta, coverUrl } });
+      const coverUrl = await installBackendCatalogCover(
+        importedBook.id,
+        {
+          ...catalogBook,
+          coverUri,
+        },
+        { isCurrent: isCurrentCover },
+      );
+      if (coverUrl && isCurrentCover()) await updateBook(importedBook.id, { meta: { coverUrl } });
     })
     .catch((error) => {
       console.warn(`[Catalog] Failed to install cover ${catalogBook.catalogKey}:`, error);
@@ -118,7 +140,7 @@ export function importDownloadedBackendCatalogBook(
  */
 export async function importBackendCatalogBook(
   catalogBook: CachedBackendCatalogBook,
-  { importBooks, updateBook, signal }: ImportBackendCatalogBookOptions,
+  { importBooks, updateBook, signal, readBook }: ImportBackendCatalogBookOptions,
 ): Promise<Book> {
   let temporarySource: string | null = null;
   try {
@@ -127,6 +149,7 @@ export async function importBackendCatalogBook(
       importBooks,
       updateBook,
       signal,
+      readBook,
     });
   } finally {
     await cleanupBackendCatalogSource(temporarySource).catch((error) => {

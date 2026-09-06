@@ -15,7 +15,7 @@ export interface BackendBookSessionDependencies {
     signal: AbortSignal,
   ): Promise<{ pending: boolean; delay: number }>;
   publish(manifest: BackendBookManifest, progress: number): void;
-  publishPreview(preview: BackendCharactersPreview): void;
+  publishPreview(preview: BackendCharactersPreview, manifest: BackendBookManifest): void;
   media(manifest: BackendBookManifest, progress: number, signal: AbortSignal): Promise<void>;
   error(error: unknown): void;
   expired(binding: BackendBookBinding): void;
@@ -29,7 +29,7 @@ export class BackendBookSession {
   private timer?: ReturnType<typeof setTimeout>;
   private identityTimer?: ReturnType<typeof setTimeout>;
   private progressTimer?: ReturnType<typeof setTimeout>;
-  private busy = false;
+  private refreshPromise?: Promise<void>;
   private pendingProgress: number;
   private sentProgress = -1;
   private errors = 0;
@@ -51,6 +51,7 @@ export class BackendBookSession {
     void this.refresh();
   }
   update(progress: number) {
+    if (this.controller.signal.aborted) return;
     this.currentProgress = this.normalize(progress);
     this.pendingProgress = Math.max(this.pendingProgress, this.currentProgress);
     if (this.latest?.availability === "ready") this.deps.publish(this.latest, this.currentProgress);
@@ -62,7 +63,12 @@ export class BackendBookSession {
     }, 1500);
   }
   retry() {
-    if (!this.controller.signal.aborted) void this.refresh();
+    return this.refresh();
+  }
+  refreshExistingBinding() {
+    // Status-only action must never register or upload a replacement source.
+    if (!this.binding || this.controller.signal.aborted) return Promise.resolve();
+    return this.refresh(false);
   }
   stop() {
     this.controller.abort();
@@ -104,9 +110,17 @@ export class BackendBookSession {
         if (this.mediaPending) this.loadMedia();
       });
   }
-  private async refresh() {
-    if (this.busy || this.controller.signal.aborted) return;
-    this.busy = true;
+  private refresh(allowBinding = true): Promise<void> {
+    if (this.controller.signal.aborted) return Promise.resolve();
+    if (this.refreshPromise) return this.refreshPromise;
+    if (!allowBinding && !this.binding) return Promise.resolve();
+    const pending = this.refreshOnce(allowBinding).finally(() => {
+      if (this.refreshPromise === pending) this.refreshPromise = undefined;
+    });
+    this.refreshPromise = pending;
+    return pending;
+  }
+  private async refreshOnce(allowBinding: boolean) {
     clearTimeout(this.timer);
     let delay: number | undefined;
     const signal = this.controller.signal;
@@ -138,7 +152,7 @@ export class BackendBookSession {
           if (signal.aborted) return;
           const manifestRunId = manifest.analysis?.runId;
           if (!manifestRunId || !preview.runId || preview.runId === manifestRunId)
-            this.deps.publishPreview(preview);
+            this.deps.publishPreview(preview, manifest);
           delay = preview.pollAfterMs;
         } catch (error) {
           if (!signal.aborted) this.deps.error(error);
@@ -156,14 +170,17 @@ export class BackendBookSession {
       if (this.binding?.resolution === "private" && this.deps.isNotFound(error)) {
         this.deps.expired(this.binding);
         this.binding = undefined;
+        // The cached manifest belongs to the expired transport identity. A
+        // reader progress event must not publish it during replacement binding.
+        this.latest = undefined;
+        this.mediaPending = false;
         this.sentProgress = -1;
         clearTimeout(this.identityTimer);
       }
       delay = Math.min(60_000, 5000 * 2 ** this.errors++);
     } finally {
-      this.busy = false;
       if (!signal.aborted && (delay !== undefined || this.pendingProgress > this.sentProgress))
-        this.timer = setTimeout(() => void this.refresh(), delay ?? 1500);
+        this.timer = setTimeout(() => void this.refresh(allowBinding), delay ?? 1500);
     }
   }
 }

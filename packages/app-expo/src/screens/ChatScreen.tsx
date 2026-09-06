@@ -1,6 +1,6 @@
 import { Text } from "@/components/ui/Typography";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
-import { toast } from "@/lib/notifications";
+import { spacingPixels } from "@deslop/primitives";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import type { RouteProp } from "@react-navigation/native";
@@ -236,6 +236,19 @@ export function ChatScreen({
   const activeThread = activeThreadId
     ? threads.find((thread) => thread.id === activeThreadId)
     : null;
+  const [attemptedError, setAttemptedError] = useState<Error | null>(null);
+  const activeError =
+    !isStreaming && error && error !== attemptedError &&
+    activeThread?.id === errorThreadId &&
+    contextThreads.some((thread) => thread.id === errorThreadId)
+      ? error : null;
+  const retryScope = useRef({ bookId, activeThreadId, activeError });
+  retryScope.current = { bookId, activeThreadId, activeError };
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
 
   const activeCurrentMessage =
     activeThread?.id === currentMessage?.threadId ? currentMessage : null;
@@ -249,37 +262,25 @@ export function ChatScreen({
   // Handlers
   const handleSend = useCallback(
     async (text: string, deepThinking: boolean, spoilerFree: boolean, quotes?: AttachedQuote[]) => {
+      setAttemptedError(error);
       spoilerFreeRef.current = spoilerFree;
       recordChatPath(chatRoute.initialPath);
       const aiConfig = createNarraAssistantAIConfig(useSettingsStore.getState().aiConfig);
       await sendMessage(text, bookId, deepThinking, spoilerFree, quotes, aiConfig);
     },
-    [bookId, chatRoute.initialPath, recordChatPath, sendMessage],
+    [bookId, chatRoute.initialPath, error, recordChatPath, sendMessage],
   );
 
   const handleRetry = useCallback(async () => {
+    if (!mounted.current || !activeError || retryScope.current.bookId !== bookId ||
+      retryScope.current.activeThreadId !== activeThreadId ||
+      retryScope.current.activeError !== activeError) return;
+    retryScope.current.activeError = null;
+    setAttemptedError(activeError);
     recordChatPath(chatRoute.initialPath);
     const aiConfig = createNarraAssistantAIConfig(useSettingsStore.getState().aiConfig);
     await retryLastMessage(aiConfig);
-  }, [chatRoute.initialPath, recordChatPath, retryLastMessage]);
-
-  const shownChatErrorRef = useRef<string | null>(null);
-  useEffect(() => {
-    const activeError = error && activeThread?.id === errorThreadId ? error : null;
-    if (!activeError) {
-      shownChatErrorRef.current = null;
-      return;
-    }
-    const errorKey = `${errorThreadId}:${activeError.message}`;
-    if (shownChatErrorRef.current === errorKey) return;
-    shownChatErrorRef.current = errorKey;
-    toast.error(t("chat.responseFailed", "Не удалось получить ответ"), {
-      action: {
-        label: t("common.retry", "Повторить"),
-        onClick: () => void handleRetry(),
-      },
-    });
-  }, [activeThread?.id, error, errorThreadId, handleRetry, t]);
+  }, [activeError, activeThreadId, bookId, chatRoute.initialPath, recordChatPath, retryLastMessage]);
 
   const handleNewThread = useCallback(() => {
     if (bookId) {
@@ -462,8 +463,8 @@ export function ChatScreen({
             safeAreaTop={headerSafeAreaTop}
             subtitle={
               isStreaming
-                ? t("narra.characterTyping", "Печатает...")
-                : t("narra.characterOnline", "онлайн")
+                ? t("narra.characterTyping", "Печатает…")
+                : undefined
             }
             title="Narra"
             // Пока без onTrailingPress: профиль Narra появится позже.
@@ -476,6 +477,21 @@ export function ChatScreen({
           />
           {/* Content */}
           <View style={s.content}>
+            {activeError && (
+              <View style={{ marginTop: headerHeight, paddingHorizontal: spacingPixels[16], paddingVertical: spacingPixels[8], backgroundColor: colors.background }}>
+                <Text selectable accessibilityRole="alert" accessibilityLiveRegion="polite">
+                  {t("chat.responseFailed", "Не удалось получить ответ")}
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={t("common.retry", "Повторить")}
+                  onPress={handleRetry}
+                  style={{ minHeight: 48, justifyContent: "center" }}
+                >
+                  <Text style={{ color: colors.primary }}>{t("common.retry", "Повторить")}</Text>
+                </Pressable>
+              </View>
+            )}
             <NarraChat
               messages={allMessages}
               isStreaming={isStreaming}
@@ -490,7 +506,7 @@ export function ChatScreen({
               showModeControls={false}
               showScrollToBottomButton={false}
               showTypingIndicator={false}
-              topInset={headerHeight}
+              topInset={activeError ? 0 : headerHeight}
             />
           </View>
         </View>

@@ -1,0 +1,21 @@
+diff --git a/ios/Fabric/ExpoFabricView.swift b/ios/Fabric/ExpoFabricView.swift
+--- a/ios/Fabric/ExpoFabricView.swift
++++ b/ios/Fabric/ExpoFabricView.swift
+@@ -208,7 +208,16 @@
+   internal static func injectInitializer(appContext: AppContext, moduleName: String, viewName: String, toViewClass viewClass: AnyClass) {
+     // The default initializer for native views. It will be called by Fabric.
+     let newBlock: @convention(block) () -> Any = {[weak appContext] in
+-      guard let appContext, let moduleHolder = appContext.moduleRegistry.get(moduleHolderForName: moduleName) else {
++      guard let appContext else {
++        // Cached classes can outlive an outgoing runtime while replacement views
++        // await main-actor registration. Do not retain or revive the old context.
++        log.error("Cannot create a view '\(viewName)' from module '\(moduleName)': \(Exceptions.AppContextLost().reason)")
++        let view = ExpoFabricView(appContext: nil)
++        _ = Unmanaged.passRetained(view)
++        return view
++      }
++      // A missing module in a live context is not a teardown fallback.
++      guard let moduleHolder = appContext.moduleRegistry.get(moduleHolderForName: moduleName) else {
+         fatalError(Exceptions.AppContextLost().reason)
+       }
+       guard let view = moduleHolder.definition.views[viewName]?.createView(appContext: appContext) else {

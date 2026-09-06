@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { downloadVerifiedBackendFile } from "./backend-file-download";
 
 const mocks = vi.hoisted(() => ({
@@ -27,6 +27,7 @@ vi.mock("./backend-file-hash", () => ({
 }));
 
 describe("verified backend file download", () => {
+  afterEach(() => vi.useRealTimers());
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.deleteAsync.mockResolvedValue(undefined);
@@ -92,4 +93,66 @@ describe("verified backend file download", () => {
     expect(mocks.requestBackendDownloadUrl).toHaveBeenCalledTimes(1);
     expect(mocks.downloadFile).toHaveBeenCalledTimes(1);
   });
+
+  it("does not complete an import cancelled while its checksum is being verified", async () => {
+    const controller = new AbortController();
+    let finishHash!: (hash: string) => void;
+    mocks.requestBackendDownloadUrl.mockResolvedValue("https://objects.example/book");
+    mocks.downloadFile.mockResolvedValue(undefined);
+    mocks.sha256BackendFile.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          finishHash = resolve;
+        }),
+    );
+    const download = downloadVerifiedBackendFile({
+      downloadPath: "/v2/books/book-1/source/download",
+      destinationPath: "file:///cache/book.epub",
+      expectedSha256: "a".repeat(64),
+      label: "Backend catalog source",
+      signal: controller.signal,
+    });
+    const outcome = download.then(
+      () => "success",
+      (error: Error) => error.name,
+    );
+    await vi.waitFor(() => expect(finishHash).toBeTypeOf("function"));
+    controller.abort();
+    finishHash("a".repeat(64));
+    expect(await outcome).toBe("AbortError");
+    expect(mocks.requestBackendDownloadUrl).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["download", "checksum"])(
+    "settles an uncooperative native %s at the attempt deadline without overlapping writers",
+    async (stage) => {
+      vi.useFakeTimers();
+      mocks.requestBackendDownloadUrl.mockResolvedValue("https://objects.example/book");
+      mocks.downloadFile.mockResolvedValue(undefined);
+      if (stage === "download")
+        mocks.downloadFile.mockImplementationOnce(() => new Promise(() => {}));
+      else mocks.sha256BackendFile.mockImplementationOnce(() => new Promise(() => {}));
+      let outcome = "pending";
+      void downloadVerifiedBackendFile({
+        downloadPath: "/v2/books/book-1/source/download",
+        destinationPath: "file:///cache/book.epub",
+        expectedSha256: "a".repeat(64),
+        label: "Backend catalog source",
+        attemptTimeoutMs: 20,
+      }).then(
+        () => {
+          outcome = "success";
+        },
+        (error: { code: string }) => {
+          outcome = error.code;
+        },
+      );
+      await vi.advanceTimersByTimeAsync(20);
+      expect(outcome).toBe("TIMEOUT");
+      expect(mocks.requestBackendDownloadUrl).toHaveBeenCalledOnce();
+      expect(mocks.downloadFile).toHaveBeenCalledOnce();
+      expect(mocks.deleteAsync).toHaveBeenCalledTimes(2);
+      expect(vi.getTimerCount()).toBe(0);
+    },
+  );
 });

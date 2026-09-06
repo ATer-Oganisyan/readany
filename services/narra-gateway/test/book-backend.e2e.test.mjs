@@ -76,9 +76,9 @@ test('local-only book flows through derived markup, warmup and temporary media d
       async generateBookMarkup() {
         throw new Error('local source must never be processed by the backend')
       },
-      async generateCharacterBundle(input) {
+      async generateCharacterBundle(input, requiredMedia = REQUIRED_CHARACTER_MEDIA) {
         const assets = []
-        for (const type of REQUIRED_CHARACTER_MEDIA) {
+        for (const type of requiredMedia) {
           const body = Buffer.from(`${input.characterKey}:${type}:v1`)
           const contentHash = sha256(body)
           const objectKey = `books/private/${subjectId}/${contentSha256}/hero/${type}`
@@ -101,7 +101,13 @@ test('local-only book flows through derived markup, warmup and temporary media d
       }
     }
     const worker = createGenerationWorker({
-      repository,
+      repository: {
+        ...repository,
+        claimGenerationJob: (workerId, options) => repository.claimGenerationJob(workerId, {
+          ...options,
+          bookEditionIds: [bookEditionId]
+        })
+      },
       generator,
       workerId: 'book-backend-e2e',
       logger: { error() {} },
@@ -115,7 +121,16 @@ test('local-only book flows through derived markup, warmup and temporary media d
     })
     assert.equal(warmed.readerTextOffset, 110_000)
     assert.equal(warmed.warmup.requested, 1)
-    assert.equal((await worker.runOnce()).status, 'completed')
+    // Media are independent durable jobs (animation depends on the portrait).
+    // Do not pick jobs left by another integration test sharing the database.
+    let completed = 0
+    for (let attempt = 0; attempt <= REQUIRED_CHARACTER_MEDIA.length; attempt += 1) {
+      const result = await worker.runOnce()
+      if (result.status === 'idle') break
+      assert.equal(result.status, 'completed', JSON.stringify(result))
+      completed += 1
+    }
+    assert.ok(completed > 0)
     assert.deepEqual((await service.manifest(subjectId, bookEditionId)).characters, [])
 
     await service.advanceProgress(subjectId, bookEditionId, {

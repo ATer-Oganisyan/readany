@@ -1,0 +1,195 @@
+{
+  "result": {
+    "type": "object",
+    "value": {
+      "cfi": "epubcfi(/6/6)",
+      "sections": 12,
+      "frames": [
+        {
+          "url": "blob:file:///5f0eaa93-5f43-4a63-a493-faac3d5f9df4",
+          "bodyColor": "rgba(17, 17, 17, 0.8)",
+          "layer": {
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            },
+            "scale": "1.8184874590705424",
+            "totalScale": "1.8184874590705424",
+            "style": "width: round(down, var(--scale-factor) * 595px, var(--scale-round-x, 1px)); height: round(down, var(--scale-factor) * 842px, var(--scale-round-y, 1px)); cursor: grab;"
+          },
+          "canvas": {
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            },
+            "width": 1082,
+            "height": 1531
+          },
+          "spans": [
+            {
+              "text": "Audit 11 - The River Library - Chapter 2",
+              "rect": {
+                "x": 0,
+                "y": 0,
+                "width": 0,
+                "height": 0
+              },
+              "color": "rgba(0, 0, 0, 0)",
+              "fontSize": "160.027px",
+              "transform": "none",
+              "style": "left: 7.56%; top: 4.57%; font-size: calc(var(--scale-factor)*88.00px); font-family: sans-serif; transform: scaleX(1.03172) scale(0.125);"
+            },
+            {
+              "text": "Leo, their neighbour and the librarian, brought a map of the old crossing.",
+              "rect": {
+                "x": 0,
+                "y": 0,
+                "width": 0,
+                "height": 0
+              },
+              "color": "rgba(0, 0, 0, 0)",
+              "fontSize": "160.027px",
+              "transform": "none",
+              "style": "left: 7.56%; top: 8.14%; font-size: calc(var(--scale-factor)*88.00px); font-family: sans-serif; transform: scaleX(1.00464) scale(0.125);"
+            },
+            {
+              "text": "Together they read the diary and planned a safe route to the island garden.",
+              "rect": {
+                "x": 0,
+                "y": 0,
+                "width": 0,
+                "height": 0
+              },
+              "color": "rgba(0, 0, 0, 0)",
+              "fontSize": "160.027px",
+              "transform": "none",
+              "style": "left: 7.56%; top: 9.92%; font-size: calc(var(--scale-factor)*88.00px); font-family: sans-serif; transform: scaleX(1.01073) scale(0.125);"
+            },
+            {
+              "text": "At sunrise the friends crossed the river and opened the forgotten library.",
+              "rect": {
+                "x": 0,
+                "y": 0,
+                "width": 0,
+                "height": 0
+              },
+              "color": "rgba(0, 0, 0, 0)",
+              "fontSize": "160.027px",
+              "transform": "none",
+              "style": "left: 7.56%; top: 11.7%; font-size: calc(var(--scale-factor)*88.00px); font-family: sans-serif; transform: scaleX(1.00085) scale(0.125);"
+            },
+            {
+              "text": "They marked this place in the notebook so they could return the next day.",
+              "rect": {
+                "x": 0,
+                "y": 0,
+                "width": 0,
+                "height": 0
+              },
+              "color": "rgba(0, 0, 0, 0)",
+              "fontSize": "160.027px",
+              "transform": "none",
+              "style": "left: 7.56%; top: 13.48%; font-size: calc(var(--scale-factor)*88.00px); font-family: sans-serif; transform: scaleX(1.00706) scale(0.125);"
+            }
+          ]
+        },
+        {
+          "url": "blob:file:///6b6472e3-3319-4385-9e76-26b1ee95b4e6",
+          "bodyColor": "rgba(17, 17, 17, 0.8)",
+          "layer": {
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 412.19049072265625,
+              "height": 583.2380981445312
+            },
+            "scale": "1.8184874590705424",
+            "totalScale": "1.8184874590705424",
+            "style": "width: round(down, var(--scale-factor) * 595px, var(--scale-round-x, 1px)); height: round(down, var(--scale-factor) * 842px, var(--scale-round-y, 1px)); cursor: grab;"
+          },
+          "canvas": {
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 412.19049072265625,
+              "height": 583.2380981445312
+            },
+            "width": 1082,
+            "height": 1531
+          },
+          "spans": [
+            {
+              "text": "Audit 11 - The River Library - Chapter 3",
+              "rect": {
+                "x": 31.160999298095703,
+                "y": 26.65306282043457,
+                "width": 14.895252227783203,
+                "height": 1.2188197374343872
+              },
+              "color": "rgba(0, 0, 0, 0)",
+              "fontSize": "16px",
+              "transform": "matrix(0.128964, 0, 0, 0.125, 0, 0)",
+              "style": "left: 7.56%; top: 4.57%; font-size: calc(var(--scale-factor)*88.00px); font-family: sans-serif; transform: scaleX(1.03172) scale(0.125);"
+            },
+            {
+              "text": "Together they read the diary and planned a safe route to the island garden.",
+              "rect": {
+                "x": 31.160999298095703,
+                "y": 47.47392272949219,
+                "width": 27.461973190307617,
+                "height": 1.218822717666626
+              },
+              "color": "rgba(0, 0, 0, 0)",
+              "fontSize": "16px",
+              "transform": "matrix(0.126342, 0, 0, 0.125, 0, 0)",
+              "style": "left: 7.56%; top: 8.14%; font-size: calc(var(--scale-factor)*88.00px); font-family: sans-serif; transform: scaleX(1.01073) scale(0.125);"
+            },
+            {
+              "text": "At sunrise the friends crossed the river and opened the forgotten library.",
+              "rect": {
+                "x": 31.160999298095703,
+                "y": 57.85714340209961,
+                "width": 26.429357528686523,
+                "height": 1.2188197374343872
+              },
+              "color": "rgba(0, 0, 0, 0)",
+              "fontSize": "16px",
+              "transform": "matrix(0.125106, 0, 0, 0.125, 0, 0)",
+              "style": "left: 7.56%; top: 9.92%; font-size: calc(var(--scale-factor)*88.00px); font-family: sans-serif; transform: scaleX(1.00085) scale(0.125);"
+            },
+            {
+              "text": "They marked this place in the notebook so they could return the next day.",
+              "rect": {
+                "x": 31.160999298095703,
+                "y": 68.23809814453125,
+                "width": 26.964855194091797,
+                "height": 1.2188197374343872
+              },
+              "color": "rgba(0, 0, 0, 0)",
+              "fontSize": "16px",
+              "transform": "matrix(0.125883, 0, 0, 0.125, 0, 0)",
+              "style": "left: 7.56%; top: 11.7%; font-size: calc(var(--scale-factor)*88.00px); font-family: sans-serif; transform: scaleX(1.00706) scale(0.125);"
+            },
+            {
+              "text": "Anna found a letter beside the river. Her brother Michael repaired the boat.",
+              "rect": {
+                "x": 31.160999298095703,
+                "y": 78.61904907226562,
+                "width": 27.68391990661621,
+                "height": 1.2188197374343872
+              },
+              "color": "rgba(0, 0, 0, 0)",
+              "fontSize": "16px",
+              "transform": "matrix(0.125862, 0, 0, 0.125, 0, 0)",
+              "style": "left: 7.56%; top: 13.48%; font-size: calc(var(--scale-factor)*88.00px); font-family: sans-serif; transform: scaleX(1.0069) scale(0.125);"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

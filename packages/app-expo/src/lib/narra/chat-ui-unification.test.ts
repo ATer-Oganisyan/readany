@@ -14,12 +14,6 @@ describe("Narra and character chat UI contract", () => {
     expect(chatScreen).not.toContain("chat.configRequired");
   });
 
-  it("uses the standard top toast for Narra response failures", () => {
-    expect(chatScreen).toContain('toast.error(t("chat.responseFailed"');
-    expect(chatScreen).toContain('label: t("common.retry", "Повторить")');
-    expect(chatScreen).not.toContain("errorMessage={");
-  });
-
   it("does not keep a custom inline error inside the shared chat", () => {
     expect(sharedChat).not.toContain("errorState");
     expect(sharedChat).not.toContain("retryLabel");

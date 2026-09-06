@@ -1,0 +1,6 @@
+appId: com.mishanaer.readany.dev
+name: Android empty library import entry
+---
+- tapOn: "My books"
+- takeScreenshot: android-empty-library
+- tapOn: "Add"

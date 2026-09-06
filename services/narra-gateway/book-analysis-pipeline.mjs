@@ -155,7 +155,8 @@ function narraProfileRequest(input) {
   }
 }
 
-async function synthesizeNarraCharacter({ input, generator, synthesisVersion }) {
+async function synthesizeNarraCharacter({ input, generator, synthesisVersion, signal }) {
+  signal?.throwIfAborted()
   const request = narraProfileRequest(input)
   const generated = await generator.synthesizeCharacterProfile({
     runId: input.runId,
@@ -166,7 +167,7 @@ async function synthesizeNarraCharacter({ input, generator, synthesisVersion }) 
     textLength: input.textLength,
     entity: request.entity,
     evidence: request.selectedEvidence
-  })
+  }, { signal })
   return {
     synthesisVersion,
     selectedEvidenceIds: request.selectedEvidence.map(({ id }) => id),

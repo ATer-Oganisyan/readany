@@ -1,0 +1,14 @@
+appId: com.mishanaer.readany.dev
+name: iOS original book characters context and return
+---
+- runFlow: ios-original-book-open.yaml
+- runFlow:
+    when:
+      notVisible: "Characters"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- tapOn: "Characters"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: ios-original-characters-sheet

@@ -1,0 +1,32 @@
+{
+  "cleaned": true,
+  "module": "src/lib/platform/expo-platform-service.ts",
+  "noLateProgress": true,
+  "passed": false,
+  "paths": [
+    "file:///data/user/0/com.mishanaer.readany.dev/cache/__narraNativeDownloadQa1788596605016-stall.epub",
+    "file:///data/user/0/com.mishanaer.readany.dev/cache/__narraNativeDownloadQa1788596605016-retry.epub",
+    "file:///data/user/0/com.mishanaer.readany.dev/cache/__narraNativeDownloadQa1788596605016-precancel.epub"
+  ],
+  "precancel": {
+    "elapsedMs": 0,
+    "fileExists": false,
+    "name": "AbortError"
+  },
+  "progress": 1,
+  "retry": {
+    "bytes": 4054,
+    "elapsedMs": 35,
+    "zipMagic": [
+      80,
+      75,
+      3,
+      4
+    ]
+  },
+  "timeout": {
+    "elapsedMs": 1089,
+    "message": "File download cancelled",
+    "name": "AbortError"
+  }
+}

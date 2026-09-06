@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.net.Uri
 import android.text.InputType
+import android.view.Gravity
 import android.widget.EditText
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.exception.CodedException
@@ -17,6 +18,7 @@ import java.io.FileInputStream
 import java.io.InputStream
 import java.net.URL
 import java.util.Locale
+import kotlin.math.roundToInt
 
 class ReadAnyNativeControlsModule : Module() {
   override fun definition() = ModuleDefinition {
@@ -48,7 +50,14 @@ class ReadAnyNativeControlsModule : Module() {
           hint = placeholder
           inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
           isSingleLine = true
-          setPadding(48, 0, 48, 0)
+          // Zero vertical padding lets Android's underline overlap the URL text.
+          // Keep the system field, but size its touch target and insets in dp.
+          val density = resources.displayMetrics.density
+          val horizontalPadding = (16 * density).roundToInt()
+          val verticalPadding = (12 * density).roundToInt()
+          setPadding(horizontalPadding, verticalPadding, horizontalPadding, verticalPadding)
+          minHeight = (48 * density).roundToInt()
+          gravity = Gravity.START or Gravity.CENTER_VERTICAL
         }
         var completed = false
         fun resolveOnce(value: String?) {

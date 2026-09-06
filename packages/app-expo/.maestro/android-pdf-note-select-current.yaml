@@ -1,0 +1,9 @@
+appId: com.mishanaer.readany.dev
+name: Android selects a PDF word on the already open original page
+---
+- assertVisible: Narra Reader
+- longPressOn:
+    point: "305,644"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: android-pdf-anchor-selected-word

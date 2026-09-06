@@ -1,7 +1,11 @@
 import type { Book } from "../types";
+import type { BookImportFailureCode } from "./import-errors";
 
 export interface ImportBooksResult {
+  /** Successful imports, including refreshed books, for existing catalog callers. */
   imported: Book[];
+  /** Subset of imported that updated an active record; absent for older importers. */
+  refreshedCount?: number;
   skippedDuplicates: Array<{
     name: string;
     existingBook: Book;
@@ -9,6 +13,8 @@ export interface ImportBooksResult {
   failures: Array<{
     name: string;
     error: string;
+    /** Optional for older/desktop importers. Raw error is diagnostic, never UI copy. */
+    code?: BookImportFailureCode;
   }>;
 }
 

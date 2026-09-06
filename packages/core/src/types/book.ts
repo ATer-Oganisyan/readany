@@ -74,6 +74,9 @@ export interface BookGroup {
   updatedAt: number;
 }
 
+/** Metadata writes are field patches, matching the database's column-level updates. */
+export type BookUpdate = Omit<Partial<Book>, "meta"> & { meta?: Partial<BookMeta> };
+
 export type ViewMode = "paginated" | "scroll";
 export type PaginatedLayout = "single" | "double";
 

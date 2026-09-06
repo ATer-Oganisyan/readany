@@ -1,0 +1,12 @@
+
+> @readany/app-expo@1.3.5 test /Users/tsevdnkanduev/Narra/packages/app-expo
+> vitest run src/stores src/lib/narra src/lib/book src/lib/reader src/lib/diagnostics src/lib/ai/narra-gateway-fetch.test.ts src/lib/ai/narra-chat.test.ts src/lib/ai/openrouter-chat.test.ts
+
+
+ RUN  v4.1.2 /Users/tsevdnkanduev/Narra/packages/app-expo
+
+
+ Test Files  155 passed (155)
+      Tests  1402 passed (1402)
+   Start at  13:43:15
+   Duration  4.04s (transform 3.73s, setup 0ms, import 10.47s, tests 12.73s, environment 9ms)

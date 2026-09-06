@@ -21,8 +21,23 @@ export function canonicalBookFilePath(
   format?: unknown,
 ): string {
   const id = String(bookId || "").trim();
+  if (!/^[\p{L}\p{N}_-]+$/u.test(id)) return "";
   const ext = getPathExtension(filePath) || normalizeExtension(format) || DEFAULT_BOOK_EXTENSION;
   return id ? `books/${id}.${ext}` : "";
+}
+
+/** Keep this device's managed artifact; foreign paths must never become write targets. */
+export function localBookFilePath(bookId: unknown, filePath: unknown, format?: unknown): string {
+  const canonical = canonicalBookFilePath(bookId, filePath, format);
+  if (!canonical) return "";
+  if (
+    typeof filePath === "string" &&
+    /^books\/[^/\\:%?#]+$/.test(filePath) &&
+    [...filePath].every((character) => character.charCodeAt(0) >= 32) &&
+    !filePath.slice(6).startsWith(".")
+  )
+    return filePath;
+  return canonical;
 }
 
 export function canonicalBookCoverPath(bookId: unknown, coverUrl: unknown): string | null {

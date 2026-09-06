@@ -3090,4 +3090,4 @@ F({
       });
   },
 });
-export { ut as BlobReader, dt as BlobWriter, ft as TextWriter, Ht as ZipReader, F as configure };
+export { ct as Reader, ut as BlobReader, dt as BlobWriter, ft as TextWriter, Ht as ZipReader, F as configure };
