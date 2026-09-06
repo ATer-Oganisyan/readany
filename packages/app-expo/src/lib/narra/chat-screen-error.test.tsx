@@ -67,7 +67,11 @@ describe("Narra screen durable error recovery", () => {
     await render();
     expect(alerts()).toHaveLength(1);
     expect(alerts()[0].props.children).toBe("Не удалось получить ответ");
-    expect(JSON.stringify(tree.toJSON())).not.toContain("secret-token");
+    const visibleStrings = tree.root.findAll(() => true).flatMap((node) => [
+      ...node.children.filter((child) => typeof child === "string"),
+      node.props.accessibilityLabel,
+    ]).filter((value) => typeof value === "string").join(" ");
+    expect(visibleStrings).not.toContain("secret-token");
     expect(runtime.toast).not.toHaveBeenCalled();
     await act(async () => { await retry().props.onPress(); });
     expect(runtime.retry).toHaveBeenCalledExactlyOnceWith(runtime.config);

@@ -33,12 +33,16 @@ export function getCompressibleMessages(thread: Thread, slidingWindowSize: numbe
     .filter((message) => message.role === "user" || message.role === "assistant");
 }
 
+function checkCancellation(signal?: AbortSignal): void {
+  if (signal?.aborted) throw signal.reason ?? new Error("Memory preparation stopped");
+}
+
 export async function maybeCompressThreadMemory(
   thread: Thread,
   aiConfig: AIConfig,
   signal?: AbortSignal,
 ): Promise<Thread> {
-  signal?.throwIfAborted();
+  checkCancellation(signal);
   const slidingWindowSize = aiConfig.slidingWindowSize || 8;
   const compressible = getCompressibleMessages(thread, slidingWindowSize);
   if (compressible.length < MIN_COMPRESSIBLE_MESSAGES) return thread;
@@ -49,7 +53,7 @@ export async function maybeCompressThreadMemory(
       maxTokens: 700,
       streaming: false,
     });
-    signal?.throwIfAborted();
+    checkCancellation(signal);
 
     const source = buildSource(thread.memorySummary, compressible);
     const response = await model.invoke(
@@ -65,7 +69,7 @@ export async function maybeCompressThreadMemory(
       ],
       { signal },
     );
-    signal?.throwIfAborted();
+    checkCancellation(signal);
 
     const content =
       typeof response.content === "string"
@@ -87,7 +91,7 @@ export async function maybeCompressThreadMemory(
       memoryMessageCount,
     };
   } catch (error) {
-    signal?.throwIfAborted();
+    checkCancellation(signal);
     console.warn("[chat-memory] Failed to compress thread memory:", error);
     return thread;
   }

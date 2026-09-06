@@ -106,6 +106,10 @@ export interface StreamingState {
 const activeStreams = new Map<string, StreamingChat>();
 const preparingStreams = new Map<string, AbortController>();
 
+function checkPreparation(signal: AbortSignal): void {
+  if (signal.aborted) throw signal.reason ?? new Error("Preparation stopped");
+}
+
 function awaitPreparation<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const cleanup = () => signal.removeEventListener("abort", abort);
@@ -346,7 +350,7 @@ export function useStreamingChat(options?: StreamingChatOptions) {
         const preparationSignal = preparation.signal;
 
         const enabledSkills = await awaitPreparation(loadEnabledSkills(), preparationSignal);
-        preparationSignal.throwIfAborted();
+        checkPreparation(preparationSignal);
 
         const updatedThread: Thread = reusableUserMessage
           ? thread
@@ -358,7 +362,7 @@ export function useStreamingChat(options?: StreamingChatOptions) {
           maybeCompressThreadMemory(updatedThread, aiConfigOverride || aiConfig, preparationSignal),
           preparationSignal,
         );
-        preparationSignal.throwIfAborted();
+        checkPreparation(preparationSignal);
         if (threadForStream.memoryMessageCount !== updatedThread.memoryMessageCount) {
           useChatStore.setState((storeState) => ({
             threads: storeState.threads.map((item) =>
@@ -439,7 +443,7 @@ export function useStreamingChat(options?: StreamingChatOptions) {
         const streamIsVectorized =
           options?.bookRetrieval?.isIndexed ?? streamBook?.isVectorized ?? false;
 
-        preparationSignal.throwIfAborted();
+        checkPreparation(preparationSignal);
         preparingStreams.delete(sessionKey);
         await stream.stream({
           thread: threadForStream,
@@ -673,7 +677,7 @@ export function useStreamingChat(options?: StreamingChatOptions) {
       preparingStreams.delete(streamingKey);
       activeStreams.delete(streamingKey);
       failedRequests.delete(streamingKey);
-      preparation.abort(new DOMException("Preparation stopped", "AbortError"));
+      preparation.abort(Object.assign(new Error("Preparation stopped"), { name: "AbortError" }));
       finishStreamingSession(streamingKey);
       return;
     }
