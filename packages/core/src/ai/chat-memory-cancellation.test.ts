@@ -55,3 +55,14 @@ it("legacy callers without a signal still persist memory", async () => {
   expect(result.memorySummary).toBe("Own summary");
   expect(ports.write).toHaveBeenCalledWith("own", "Own summary", 5);
 });
+
+it("supports native signals without throwIfAborted or reason", async () => {
+  const controller = new AbortController();
+  Object.defineProperty(controller.signal, "throwIfAborted", { value: undefined });
+  Object.defineProperty(controller.signal, "reason", { value: undefined });
+  await expect(maybeCompressThreadMemory(thread, config, controller.signal)).resolves.toMatchObject({ memorySummary: "Own summary" });
+  ports.create.mockClear();
+  controller.abort();
+  await expect(maybeCompressThreadMemory(thread, config, controller.signal)).rejects.toThrow("Memory preparation stopped");
+  expect(ports.create).not.toHaveBeenCalled();
+});
