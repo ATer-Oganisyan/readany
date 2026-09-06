@@ -36,7 +36,9 @@ export function getCompressibleMessages(thread: Thread, slidingWindowSize: numbe
 export async function maybeCompressThreadMemory(
   thread: Thread,
   aiConfig: AIConfig,
+  signal?: AbortSignal,
 ): Promise<Thread> {
+  signal?.throwIfAborted();
   const slidingWindowSize = aiConfig.slidingWindowSize || 8;
   const compressible = getCompressibleMessages(thread, slidingWindowSize);
   if (compressible.length < MIN_COMPRESSIBLE_MESSAGES) return thread;
@@ -47,18 +49,23 @@ export async function maybeCompressThreadMemory(
       maxTokens: 700,
       streaming: false,
     });
+    signal?.throwIfAborted();
 
     const source = buildSource(thread.memorySummary, compressible);
-    const response = await model.invoke([
-      new SystemMessage(
-        [
-          "You compress chat history for a reading assistant.",
-          "Produce durable memory only: user preferences, decisions, book-specific facts already established, unresolved tasks, and useful context for future replies.",
-          "Do not include filler conversation. Keep it concise, neutral, and in the user's language when clear.",
-        ].join("\n"),
-      ),
-      new HumanMessage(source),
-    ]);
+    const response = await model.invoke(
+      [
+        new SystemMessage(
+          [
+            "You compress chat history for a reading assistant.",
+            "Produce durable memory only: user preferences, decisions, book-specific facts already established, unresolved tasks, and useful context for future replies.",
+            "Do not include filler conversation. Keep it concise, neutral, and in the user's language when clear.",
+          ].join("\n"),
+        ),
+        new HumanMessage(source),
+      ],
+      { signal },
+    );
+    signal?.throwIfAborted();
 
     const content =
       typeof response.content === "string"
@@ -80,6 +87,7 @@ export async function maybeCompressThreadMemory(
       memoryMessageCount,
     };
   } catch (error) {
+    signal?.throwIfAborted();
     console.warn("[chat-memory] Failed to compress thread memory:", error);
     return thread;
   }
