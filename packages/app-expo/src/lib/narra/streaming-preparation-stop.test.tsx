@@ -64,6 +64,29 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+it("a second failure with identical text exposes a fresh error for retry recovery", async () => {
+  let root!: ReactTestRenderer;
+  const fail = async () => act(() => {
+    useChatStore.setState({ streamingSessions: {
+      "own-book": { key: "own-book", threadId: "own-thread", isStreaming: false,
+        errorMessage: "Own storage unavailable" } as any,
+    } });
+  });
+  await act(async () => { root = create(<Probe />); });
+  try {
+    await fail();
+    const firstError = current.error;
+    expect(firstError?.message).toBe("Own storage unavailable");
+    await act(() => root.update(<Probe />));
+    expect(current.error).toBe(firstError);
+    await fail();
+    expect(current.error?.message).toBe(firstError?.message);
+    expect(current.error).not.toBe(firstError);
+  } finally {
+    await act(() => root.unmount());
+  }
+});
+
 it("Stop in another book cannot cancel the first book's preparation", async () => {
   const block = deferred<any>(),
     entered = deferred<void>();
