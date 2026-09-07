@@ -1,5 +1,9 @@
 # Изменения Backend/API для каталога iOS
 
+> Устарело: это snapshot ветки и TestFlight 43, а не текущий API-контракт.
+> См. [`docs/architecture/components/client-and-reader.md`](../architecture/components/client-and-reader.md)
+> и исполняемые routes в `services/narra-gateway`.
+
 Ветка: `codex/testflight-43-ui-polish`
 Репозиторий: `Narra2`
 Срез: перед TestFlight build 43

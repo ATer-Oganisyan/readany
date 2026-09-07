@@ -1,5 +1,9 @@
 # Narra infrastructure
 
+> Deprecated: host inventory and deployment commands in this document have
+> diverged from the current deployment contract. Use
+> [`services/narra-gateway/DEPLOYMENT.md`](../../services/narra-gateway/DEPLOYMENT.md).
+
 This document records the production ownership boundary after the 5 August
 2026 migration from Railway to `i167` (`158.160.163.167`). It is the current
 source of truth for Narra server operations. The historical release plan in the

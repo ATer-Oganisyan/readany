@@ -1,5 +1,9 @@
 # Book markup backend
 
+> Deprecated: this transitional contract predates the current v3 pipeline and
+> character-bundle implementation. See
+> [`docs/architecture/components/book-enrichment.md`](../architecture/components/book-enrichment.md).
+
 This document fixes the implementation boundaries for server-side book markup.
 
 ## Domain rules

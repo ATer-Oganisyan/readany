@@ -1,5 +1,9 @@
 # План миграции каталожного ридера на Expo/React Native
 
+> Устарело как неисполненный target state: текущий catalog reader продолжает
+> использовать WebView/Foliate. См.
+> [`docs/architecture/components/client-and-reader.md`](../architecture/components/client-and-reader.md).
+
 Статус: draft для согласования
 Дата: 2026-08-25
 Область: книги из каталога Narra на iOS и Android

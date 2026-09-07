@@ -2,7 +2,13 @@
 
 ## Статус
 
-Код overlay подготовлен в ветке `codex/character-correction-overlay`. Он не развёрнут и не применён ни к одной книге. Мобильное приложение не изменялось.
+Код overlay находится в `main`: schema, repository, operator API/CLI и read-time
+projection являются частью текущего gateway. Документ описывает source-level
+контракт. Факт включения overlay для конкретной книги и состояние конкретного
+стенда нужно проверять операторскими командами; из репозитория это не следует.
+
+Каноническая роль overlay в полном pipeline описана в
+[`docs/architecture/components/book-enrichment.md`](./architecture/components/book-enrichment.md).
 
 Overlay предназначен для исправления уже опубликованной `book-markup-v3`, когда повторный полный анализ книги создаёт больше риска и затрат, чем пользы. Он не меняет исходную публикацию, не перезапускает pipeline и не создаёт новые `characterKey`.
 

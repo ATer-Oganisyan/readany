@@ -1,8 +1,9 @@
 # Narra module for Traction
 
-The current production inventory, Railway retirement state and staging policy
-are recorded in [`docs/narra-infrastructure.md`](../../docs/narra-infrastructure.md).
-This directory is the canonical Narra analytics source.
+The current gateway deployment contract is recorded in
+[`services/narra-gateway/DEPLOYMENT.md`](../../services/narra-gateway/DEPLOYMENT.md).
+This directory is the canonical Narra analytics source; verify live host state
+operationally rather than relying on historical inventory documents.
 
 Independent FastAPI + SQLite product analytics module for `stats.multitool.works/p/narra/`.
 
@@ -228,13 +229,11 @@ Staging uses a separate endpoint/database/token with
 server-controlled header; a mismatch is rejected before storage so staging
 cannot silently pollute production metrics.
 
-The Railway staging service was retired on 5 August 2026 together with the
-rest of the Railway project (see `docs/narra-infrastructure.md`). There is no
-staging runtime at the moment. If staging is recreated, follow the staging
-policy in that document: an isolated database, token and backup policy, with
-`127.0.0.1:9911` reserved for staging analytics on `i167`, and the same
-environment-mismatch rejection described above. A staging token, database or
-volume must never be shared with production.
+The 5 August 2026 Railway retirement and the former host inventory are retained
+in `docs/deprecated/narra-infrastructure.md` as historical evidence. Any new
+staging runtime must use an isolated database, token and backup policy, and the
+same environment-mismatch rejection described above. A staging token, database
+or volume must never be shared with production.
 
 The app itself protects `/`, `/summary` and `/dashboard` with HTTP Basic Auth;
 this prevents any direct service domain from bypassing Traction's access

@@ -236,7 +236,8 @@ Cloud S3 и платные AI API для этих тестов не нужны.
    `INSTALLATION_SINGLE_REPLICA_ACK=true`; `compose.i167.yml` запускает один gateway
    по умолчанию, без `deploy.replicas` для gateway, с одним host port. Это
    эксплуатационное обязательство, не автоматическое обнаружение второго процесса.
-   Runbook `docs/narra-infrastructure.md` запрещает второго writer. Не включать
+   Исторический deployment report
+   `docs/deprecated/narra-infrastructure.md` запрещает второго writer. Не включать
    gateway autoscaling/overlapping deployments до общей атомарной registry/quota.
 
 2. **Справедливость очередей ограничена.** Analysis claims чередуют книги одного
