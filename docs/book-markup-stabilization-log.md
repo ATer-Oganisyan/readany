@@ -15,7 +15,7 @@
   на восьми замороженных observation snapshots или детерминированный повторный фильтр
   сохранённого результата. Ни TEST, ни production не изменялись.
 - Фактический размер scan core: около 4 000 символов, overlap 500. Числа v17 в
-  `book-analysis-v3.md` устарели.
+  `docs/deprecated/book-analysis-v3.md` устарели.
 
 ## Что считаем приемлемым
 
