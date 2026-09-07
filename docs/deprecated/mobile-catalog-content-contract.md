@@ -1,5 +1,9 @@
 # Контракты мобильного каталога Narra
 
+> Устарело: документ привязан к прежнему backend build и TEST snapshot.
+> Актуальные границы клиента и server API описаны в
+> [`docs/architecture`](../architecture/README.md) и исполняемых router contracts.
+
 Документ соответствует backend `main-0d5ce201`, развёрнутому на TEST:
 
 `https://api-test.narra.disrupt.builders`

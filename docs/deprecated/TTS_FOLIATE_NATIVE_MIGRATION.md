@@ -1,5 +1,8 @@
 # TTS 迁移到 foliate-js 自带 TTS class
 
+> 已归档：这是未完成分支的迁移计划，不是当前运行时架构。当前状态见
+> [`docs/architecture/components/book-enrichment.md`](../architecture/components/book-enrichment.md)。
+
 分支：`refactor/tts-use-foliate-native`
 
 ## 目标
@@ -146,4 +149,3 @@ EdgeTTSPlayer.speak([texts])
 
 引擎改造（原 Phase 1）和 SSML 重构（原 Phase 2）**都不需要做**了。
 保留 `edge-tts-metadata.ts` 解析器以备将来要消费 WordBoundary/SentenceBoundary 时直接用。
-

@@ -1,5 +1,9 @@
 # Предгенерация сцен каталога: топ‑100 и дальнейший prefetch
 
+> Устарело: описанный автоматический prefetch не является текущей политикой;
+> startup явно оставляет сцены on-demand. См.
+> [`docs/architecture/components/media-generation.md`](../architecture/components/media-generation.md).
+
 Дата: 31 августа 2026 г.
 
 ## Цель

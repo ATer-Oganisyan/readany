@@ -1,5 +1,8 @@
 # Narra: локальный план поиска и narrative graph
 
+> Устарело как план ветки: код уже находится в `main`, но его запуск остаётся
+> явным. Текущее описание: [`docs/architecture/components/ai-and-retrieval.md`](../architecture/components/ai-and-retrieval.md).
+
 ## Границы текущей работы
 
 - Реализация выполняется только локально в ветке `codex/book-search-backend`.

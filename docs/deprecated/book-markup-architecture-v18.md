@@ -1,5 +1,8 @@
 # Текущая архитектура разметки книг
 
+> Устарело: версии и статус больше не соответствуют `main`. Актуальное описание:
+> [`docs/architecture/components/book-enrichment.md`](../architecture/components/book-enrichment.md).
+
 - Статус: фактическая архитектура текущей ветки на 19 августа 2026 года.
 - Версия pipeline: `book-analysis-v49`.
 - Публичный артефакт: `book-markup-v3`, schema `3`.

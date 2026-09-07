@@ -4,9 +4,10 @@ The server-side Narra boundary for ReadAny. It owns installation authentication,
 provider credentials and routing, logical request telemetry, provider-attempt
 telemetry, and the durable outbox to the Narra Traction module.
 
-The staged book-markup backend contract is documented in
-[`docs/book-markup-backend.md`](../../docs/book-markup-backend.md). Its first
-PostgreSQL schema is in [`migrations/001_book_markup.sql`](migrations/001_book_markup.sql).
+The current book-enrichment architecture is documented in
+[`docs/architecture/components/book-enrichment.md`](../../docs/architecture/components/book-enrichment.md).
+Its migration history starts in
+[`migrations/001_book_markup.sql`](migrations/001_book_markup.sql).
 
 ## LLM request parameters
 
@@ -274,15 +275,15 @@ sudo docker compose --env-file /srv/narra-stagging/compose.env \
 
 ### Parallel book analysis pipeline
 
-The v11 analysis pipeline produces canonical v3 markup. Its immutable audit
+The current versioned analysis pipeline produces canonical v3 markup. Its immutable audit
 publication uses the internal `shadow` channel name, then atomically materializes
 the reader-visible v3 revision and media jobs. Start one idempotent run for a
 verified stored book directly in the Gateway container, inspect its stage/job
 counters, read the publication, or create a new isolated rerun:
 
-The complete architecture, evidence filtering rules, versioning contract,
-failure handling, scaling guidance and operator runbook are documented in
-[`docs/book-analysis-v3.md`](../../docs/book-analysis-v3.md).
+The architecture, evidence filtering rules, versioning boundary and failure
+handling are documented in
+[`docs/architecture/components/book-enrichment.md`](../../docs/architecture/components/book-enrichment.md).
 
 ```bash
 docker compose exec gateway npm run book-analysis -- \

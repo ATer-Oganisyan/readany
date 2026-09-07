@@ -1,5 +1,8 @@
 # Переключаемые pipeline разметки книг
 
+> Устарело: документ фиксирует прежние версии pipeline. Актуальное описание:
+> [`docs/architecture/components/book-enrichment.md`](../architecture/components/book-enrichment.md).
+
 ## Результат
 
 Новые analysis runs выбирают одну из двух независимых стратегий:
