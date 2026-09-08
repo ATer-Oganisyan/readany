@@ -1,0 +1,17 @@
+diff --git a/apple/RNCWebViewImpl.m b/apple/RNCWebViewImpl.m
+index 7f5c24d6e2cfb26eddbc513bf17a81c24a7273e2..8d87fd6fbf37dc7bb21bb8efc8c15bbc46174d38 100644
+--- a/apple/RNCWebViewImpl.m
++++ b/apple/RNCWebViewImpl.m
+@@ -886,8 +886,10 @@ - (void)visitSource
+ 
+ #if !TARGET_OS_OSX
+ -(void)setMenuItems:(NSArray<NSDictionary *> *)menuItems {
+-    _menuItems = menuItems;
+-    _webView.menuItems = menuItems;
++    // Fabric represents a removed menuItems prop as an empty array.
++    // An empty custom menu must not disable WKWebView's native Copy action.
++    _menuItems = menuItems.count > 0 ? menuItems : nil;
++    _webView.menuItems = _menuItems;
+ }
+ 
+ -(void)setSuppressMenuItems:(NSArray<NSString *> *)suppressMenuItems {
