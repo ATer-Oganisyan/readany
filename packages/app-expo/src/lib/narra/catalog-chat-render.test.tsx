@@ -57,6 +57,7 @@ vi.mock("react-native", () => ({
 vi.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 59, right: 0, bottom: 34, left: 0 }),
 }));
+vi.mock("@/components/ui/ScrollViewMarker", () => ({ ScrollViewMarker: "ScrollViewMarker" }));
 vi.mock("@/styles/theme", () => ({
   useTheme: () => runtime.theme,
   useColors: () => runtime.theme.colors,

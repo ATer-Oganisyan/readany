@@ -5,6 +5,7 @@ import {
   type CharacterChatListItem,
 } from "@/components/chats/character-chat-list";
 import { CharacterPortraitImage } from "@/components/narra/character-portrait-image";
+import { ScrollViewMarker } from "@/components/ui/ScrollViewMarker";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import { EmptyStateActionButton } from "@/components/ui/empty-state-action-button";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
@@ -20,6 +21,7 @@ import {
 } from "@/lib/narra/chat-list-model";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import type { TabParamList } from "@/navigation/TabNavigator";
+import { NATIVE_SCROLL_EDGE_EFFECTS } from "@/navigation/scroll-edge-effects";
 import { useLibraryStore, useNarraStore } from "@/stores";
 import type { NarraState } from "@/stores/narra-store";
 import { type ThemeColors, spacing, useTheme } from "@/styles/theme";
@@ -129,40 +131,42 @@ const ChatsContent = memo(function ChatsContent({ model }: { model: ChatListMode
   return (
     <>
       <ChatPortraitWorker rows={rows} />
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        style={styles.container}
-        contentContainerStyle={styles.content}
-      >
-        <NativeSegmentedPager
-          values={segmentValues}
-          selectedIndex={selectedSegmentIndex}
-          onSelect={selectChatPage}
-          colorScheme={isDark ? "dark" : "light"}
-          accessibilityLabel={t("chats.bookFilter", "Фильтр по книге")}
-          scrollableSegments
-          controlsStyle={styles.tabs}
-          minimumPageHeight={Math.max(1, viewportHeight - insets.top - insets.bottom - 120)}
+      <ScrollViewMarker style={styles.container} scrollEdgeEffects={NATIVE_SCROLL_EDGE_EFFECTS}>
+        <ScrollView
+          contentInsetAdjustmentBehavior="automatic"
+          style={styles.container}
+          contentContainerStyle={styles.content}
         >
-          {segmentValues.map((_, index) => {
-            const pageBookId = index === 0 ? "all" : (model.books[index - 1]?.id ?? "all");
-            return (
-              <View key={pageBookId}>
-                <ChatsPage
-                  pageBookId={pageBookId}
-                  rows={
-                    pageBookId === "all"
-                      ? model.allRows
-                      : (model.rowsByBook.get(pageBookId) ?? EMPTY_ROWS)
-                  }
-                  onOpenChat={openChat}
-                  onOpenNarraChat={openNarraChat}
-                />
-              </View>
-            );
-          })}
-        </NativeSegmentedPager>
-      </ScrollView>
+          <NativeSegmentedPager
+            values={segmentValues}
+            selectedIndex={selectedSegmentIndex}
+            onSelect={selectChatPage}
+            colorScheme={isDark ? "dark" : "light"}
+            accessibilityLabel={t("chats.bookFilter", "Фильтр по книге")}
+            scrollableSegments
+            controlsStyle={styles.tabs}
+            minimumPageHeight={Math.max(1, viewportHeight - insets.top - insets.bottom - 120)}
+          >
+            {segmentValues.map((_, index) => {
+              const pageBookId = index === 0 ? "all" : (model.books[index - 1]?.id ?? "all");
+              return (
+                <View key={pageBookId}>
+                  <ChatsPage
+                    pageBookId={pageBookId}
+                    rows={
+                      pageBookId === "all"
+                        ? model.allRows
+                        : (model.rowsByBook.get(pageBookId) ?? EMPTY_ROWS)
+                    }
+                    onOpenChat={openChat}
+                    onOpenNarraChat={openNarraChat}
+                  />
+                </View>
+              );
+            })}
+          </NativeSegmentedPager>
+        </ScrollView>
+      </ScrollViewMarker>
     </>
   );
 });
