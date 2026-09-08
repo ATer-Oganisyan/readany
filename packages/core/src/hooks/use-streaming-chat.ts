@@ -104,35 +104,6 @@ export interface StreamingState {
 }
 
 const activeStreams = new Map<string, StreamingChat>();
-const preparingStreams = new Map<string, AbortController>();
-
-function checkPreparation(signal: AbortSignal): void {
-  if (signal.aborted) throw signal.reason ?? new Error("Preparation stopped");
-}
-
-function awaitPreparation<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const cleanup = () => signal.removeEventListener("abort", abort);
-    const abort = () => {
-      cleanup();
-      reject(signal.reason);
-    };
-    signal.addEventListener("abort", abort, { once: true });
-    if (signal.aborted) abort();
-    // Observe both outcomes even after cancellation; the underlying DB read may
-    // be non-cancellable, but must never resume this request or reject unhandled.
-    operation.then(
-      (value) => {
-        cleanup();
-        resolve(value);
-      },
-      (error) => {
-        cleanup();
-        reject(error);
-      },
-    );
-  });
-}
 interface FailedChatRequest {
   content: string;
   bookId?: string;
@@ -170,10 +141,7 @@ export function useStreamingChat(options?: StreamingChatOptions) {
   };
   const error = useMemo(
     () => (streamingSession?.errorMessage ? new Error(streamingSession.errorMessage) : null),
-    // A new failed attempt may have the same message (e.g. a DB write fails
-    // before startStreamingSession clears the previous error). Preserve error
-    // identity only within that session snapshot, not across failed attempts.
-    [streamingSession],
+    [streamingSession?.errorMessage],
   );
 
   const createThread = useChatStore((s) => s.createThread);
@@ -259,7 +227,6 @@ export function useStreamingChat(options?: StreamingChatOptions) {
       };
       let clearPendingPublish: (() => void) | null = null;
       let userMessagePersisted = false;
-      let preparation: AbortController | undefined;
 
       const rememberFailedRequest = () => {
         failedRequests.set(sessionKey, {
@@ -348,12 +315,8 @@ export function useStreamingChat(options?: StreamingChatOptions) {
 
         const stream = new StreamingChat();
         activeStreams.set(sessionKey, stream);
-        preparation = new AbortController();
-        preparingStreams.set(sessionKey, preparation);
-        const preparationSignal = preparation.signal;
 
-        const enabledSkills = await awaitPreparation(loadEnabledSkills(), preparationSignal);
-        checkPreparation(preparationSignal);
+        const enabledSkills = await loadEnabledSkills();
 
         const updatedThread: Thread = reusableUserMessage
           ? thread
@@ -361,11 +324,10 @@ export function useStreamingChat(options?: StreamingChatOptions) {
               ...thread,
               messages: [...thread.messages, userMessage],
             };
-        const threadForStream = await awaitPreparation(
-          maybeCompressThreadMemory(updatedThread, aiConfigOverride || aiConfig, preparationSignal),
-          preparationSignal,
+        const threadForStream = await maybeCompressThreadMemory(
+          updatedThread,
+          aiConfigOverride || aiConfig,
         );
-        checkPreparation(preparationSignal);
         if (threadForStream.memoryMessageCount !== updatedThread.memoryMessageCount) {
           useChatStore.setState((storeState) => ({
             threads: storeState.threads.map((item) =>
@@ -439,15 +401,10 @@ export function useStreamingChat(options?: StreamingChatOptions) {
           finishStreamingSession(sessionKey);
         };
 
-        const streamBook = await awaitPreparation(
-          resolveFreshBook(bookId, options?.book),
-          preparationSignal,
-        );
+        const streamBook = await resolveFreshBook(bookId, options?.book);
         const streamIsVectorized =
           options?.bookRetrieval?.isIndexed ?? streamBook?.isVectorized ?? false;
 
-        checkPreparation(preparationSignal);
-        preparingStreams.delete(sessionKey);
         await stream.stream({
           thread: threadForStream,
           book: streamBook,
@@ -629,9 +586,6 @@ export function useStreamingChat(options?: StreamingChatOptions) {
         });
       } catch (err) {
         clearPendingPublish?.();
-        if (preparation?.signal.aborted) return;
-        if (preparation && preparingStreams.get(sessionKey) === preparation)
-          preparingStreams.delete(sessionKey);
         const errorMessage = err instanceof Error ? err.message : "Unknown error";
         rememberFailedRequest();
         failStreamingSession(sessionKey, errorMessage);
@@ -675,17 +629,8 @@ export function useStreamingChat(options?: StreamingChatOptions) {
   );
 
   const stopStream = useCallback(() => {
-    const preparation = preparingStreams.get(streamingKey);
-    if (preparation) {
-      preparingStreams.delete(streamingKey);
-      activeStreams.delete(streamingKey);
-      failedRequests.delete(streamingKey);
-      preparation.abort(Object.assign(new Error("Preparation stopped"), { name: "AbortError" }));
-      finishStreamingSession(streamingKey);
-      return;
-    }
     activeStreams.get(streamingKey)?.abort();
-  }, [streamingKey, finishStreamingSession]);
+  }, [streamingKey]);
 
   return {
     ...state,

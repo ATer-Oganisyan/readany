@@ -1,5 +1,4 @@
 import { Text } from "@/components/ui/Typography";
-import { CheckIcon } from "@/components/ui/Icon";
 import { useSwipePressGuard } from "@/components/ui/swipe-press-guard";
 import { isGeneratedBookCoverPath, shouldRenderCoverTypography } from "@/lib/book/cover-display";
 import { generatedCoverTextTone } from "@/lib/book/cover-text-contrast";
@@ -46,10 +45,6 @@ export const BookCard = memo(function BookCard({
   onOpen,
   onDelete,
   cardWidth = 96,
-  isSelectionMode = false,
-  isSelected = false,
-  onSelect,
-  onLongPress,
 }: BookCardProps) {
   const colors = useColors();
   const s = makeStyles(colors, cardWidth);
@@ -83,28 +78,20 @@ export const BookCard = memo(function BookCard({
   const progressPercent = Math.round(Math.max(0, Math.min(1, book.progress ?? 0)) * 100);
 
   return (
-    <BookCardActionSheet
-      book={book}
-      onOpen={onOpen}
-      onDelete={onDelete}
-      isSelectionMode={isSelectionMode}
-      onEnterSelection={onLongPress}
-    >
+    <BookCardActionSheet book={book} onOpen={onOpen} onDelete={onDelete}>
       <Pressable
         onPress={(event) => {
           if (swipePressGuard?.canPress(event) === false) return;
-          if (isSelectionMode) onSelect?.(book);
-          else onOpen(book);
+          onOpen(book);
         }}
         onPressIn={onPressIn}
         onPressOut={onPressOut}
         // Небольшой сдвиг пальца не должен отменять нажатие.
         pressRetentionOffset={16}
         style={s.container}
-        accessibilityRole={isSelectionMode ? "checkbox" : "button"}
-        accessibilityState={isSelectionMode ? { checked: isSelected } : undefined}
+        accessibilityRole="button"
         accessibilityLabel={book.meta.title}
-        accessibilityHint={isSelectionMode ? undefined : t("notes.openBook", "Открыть")}
+        accessibilityHint={t("notes.openBook", "Открыть")}
       >
         <Animated.View style={pressStyle}>
           {/* Cover — 28:41 aspect ratio */}
@@ -156,21 +143,6 @@ export const BookCard = memo(function BookCard({
             {book.syncStatus === "remote" && (
               <View style={s.remoteOverlay}>
                 <Text style={s.remoteOverlayText}>{t("home.remote", "需下载")}</Text>
-              </View>
-            )}
-            {isSelectionMode && (
-              <View
-                pointerEvents="none"
-                accessible={false}
-                style={[
-                  s.selectionBadge,
-                  {
-                    backgroundColor: isSelected ? colors.primary : colors.background,
-                    borderColor: colors.primary,
-                  },
-                ]}
-              >
-                {isSelected && <CheckIcon size={16} color={colors.primaryForeground} />}
               </View>
             )}
           </View>

@@ -173,22 +173,19 @@ class FB2Converter {
 
 const parseXML = async (blob) => {
   const buffer = await blob.arrayBuffer();
-  const bytes = new Uint8Array(buffer);
-  let encoding = "utf-8";
-  if ((bytes[0] === 0xff && bytes[1] === 0xfe) || (bytes[0] === 0x3c && bytes[1] === 0)) {
-    encoding = "utf-16le";
-  } else if ((bytes[0] === 0xfe && bytes[1] === 0xff) || (bytes[0] === 0 && bytes[1] === 0x3c)) {
-    encoding = "utf-16be";
-  } else if (!(bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf)) {
-    // Inspect only the declaration, before parsing. DOMParser receives a JS
-    // string, so it cannot correct an earlier decode with the wrong charset.
-    const prefix = new TextDecoder("utf-8").decode(bytes.subarray(0, 512));
-    const declaration = prefix.match(/^\s*<\?xml\b[^?]*\?>/i)?.[0];
-    encoding = declaration?.match(/\bencoding\s*=\s*(["'])([^"']+)\1/i)?.[2] || encoding;
-  }
-  const str = new TextDecoder(encoding).decode(buffer);
+  const str = new TextDecoder("utf-8").decode(buffer);
   const parser = new DOMParser();
-  return parser.parseFromString(str, MIME.XML);
+  const doc = parser.parseFromString(str, MIME.XML);
+  const encoding =
+    doc.xmlEncoding ||
+    // `Document.xmlEncoding` is deprecated, and already removed in Firefox
+    // so parse the XML declaration manually
+    str.match(/^<\?xml\s+version\s*=\s*["']1.\d+"\s+encoding\s*=\s*["']([A-Za-z0-9._-]*)["']/)?.[1];
+  if (encoding && encoding.toLowerCase() !== "utf-8") {
+    const str = new TextDecoder(encoding).decode(buffer);
+    return parser.parseFromString(str, MIME.XML);
+  }
+  return doc;
 };
 
 const style = URL.createObjectURL(

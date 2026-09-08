@@ -1,38 +1,5 @@
 const { withAppDelegate, withInfoPlist } = require("expo/config-plugins");
 
-const OLD_COLD_START = '    factory.startReactNative(withModuleName: "main", in: window, launchOptions: nil)';
-const COLD_START = `    // Let dev-launcher suppress most-recent before the explicit cold URL arrives.
-    // Ordinary application links keep their existing launch/forward behavior.
-    var launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
-    if let context = connectionOptions.urlContexts.first(where: { $0.url.host == "expo-development-client" }) {
-      launchOptions = [.url: context.url]
-    }
-    factory.startReactNative(withModuleName: "main", in: window, launchOptions: launchOptions)`;
-const OLD_FORWARD_URL = '      _ = appDelegate.application(UIApplication.shared, open: context.url, options: [:])';
-const FORWARD_URL = `      var options: [UIApplication.OpenURLOptionsKey: Any] = [.openInPlace: context.options.openInPlace]
-      if let sourceApplication = context.options.sourceApplication { options[.sourceApplication] = sourceApplication }
-      if let annotation = context.options.annotation { options[.annotation] = annotation }
-      _ = appDelegate.application(UIApplication.shared, open: context.url, options: options)`;
-
-function migrateSceneDelegate(contents) {
-  const start = contents.indexOf("class SceneDelegate: UIResponder, UIWindowSceneDelegate");
-  if (start < 0) throw new Error("Generated SceneDelegate was not found");
-  // Skip strings and comments while finding this class's closing brace. Do not
-  // rewrite matching snippets in user-owned sibling classes or AppDelegate.
-  const tokens = /\/\/[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|[{}]/g;
-  tokens.lastIndex = start;
-  let depth = 0;
-  for (let token; (token = tokens.exec(contents)); ) {
-    if (token[0] === "{") depth++;
-    if (token[0] === "}" && --depth === 0) {
-      const end = tokens.lastIndex;
-      const scene = contents.slice(start, end).replace(OLD_COLD_START, COLD_START).split(OLD_FORWARD_URL).join(FORWARD_URL);
-      return contents.slice(0, start) + scene + contents.slice(end);
-    }
-  }
-  throw new Error("Generated SceneDelegate boundary was not found");
-}
-
 const SCENE_CONFIGURATION_METHOD = `
   public func application(
     _ application: UIApplication,
@@ -73,10 +40,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     let window = UIWindow(windowScene: windowScene)
     self.window = window
     appDelegate.window = window
-${COLD_START}
+    factory.startReactNative(withModuleName: "main", in: window, launchOptions: nil)
 
     for context in connectionOptions.urlContexts {
-${FORWARD_URL}
+      _ = appDelegate.application(UIApplication.shared, open: context.url, options: [:])
     }
     for userActivity in connectionOptions.userActivities {
       _ = appDelegate.application(
@@ -90,7 +57,7 @@ ${FORWARD_URL}
   func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
     guard let appDelegate else { return }
     for context in URLContexts {
-${FORWARD_URL}
+      _ = appDelegate.application(UIApplication.shared, open: context.url, options: [:])
     }
   }
 
@@ -184,8 +151,6 @@ module.exports = function withIosSceneLifecycle(config) {
         `${SCENE_DELEGATE}class ReactNativeDelegate: ExpoReactNativeFactoryDelegate {`,
       );
     }
-    // Migrate the prior generated delegate in place; retain unrelated overrides.
-    contents = migrateSceneDelegate(contents);
     if (!contents.includes("NarraRootViewController()")) {
       contents = contents.replace(
         "class ReactNativeDelegate: ExpoReactNativeFactoryDelegate {\n  // Extension point for config-plugins\n",

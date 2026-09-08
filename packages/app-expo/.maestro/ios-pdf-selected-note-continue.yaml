@@ -1,8 +1,0 @@
-appId: com.mishanaer.readany.dev
-name: iOS visible PDF selection menu to final saved note
----
-- launchApp:
-    stopApp: false
-- tapOn:
-    point: "20%,35%"
-- runFlow: flows/ios-selected-note-save.yaml

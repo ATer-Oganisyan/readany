@@ -99,8 +99,9 @@ export function NarraChatComposer<TMessage extends IMessage>({
             placeholder={inputProps?.placeholder ?? ""}
             style={styles.field}
           />
-          {/* Отправка и отмена должны различаться не только accessibility label,
-              но и видимым знаком, в том числе во время подготовки ответа. */}
+          {/* Своя кнопка вместо AIInput.Submit: тот трёхликий контрол подменяет
+              глиф на диктовку и стоп, а отправка в чате Narra всегда читается
+              одной стрелкой вверх. */}
           <Pressable
             accessibilityLabel={sendLabel}
             accessibilityRole="button"
@@ -115,12 +116,7 @@ export function NarraChatComposer<TMessage extends IMessage>({
               pressed && styles.submitPressed,
             ]}
           >
-            <MishanaerIcon
-              name={isStreaming ? "stop" : "arrow-up"}
-              variant={isStreaming ? "filled" : "stroke"}
-              size={SUBMIT_GLYPH}
-              color={colors.primaryForeground}
-            />
+            <MishanaerIcon name="arrow-up" size={SUBMIT_GLYPH} color={colors.primaryForeground} />
           </Pressable>
         </AIInput.Row>
       </AIInput>

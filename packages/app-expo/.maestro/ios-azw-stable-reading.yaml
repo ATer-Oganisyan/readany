@@ -1,8 +1,0 @@
-appId: com.mishanaer.readany.dev
-name: iOS AZW stable text after ten pages
----
-- runFlow:
-    file: flows/ios-read-fixture.yaml
-    env:
-      BOOK_TITLE: "Аудит 25 - Письмо AZW"
-      EVIDENCE_NAME: ios-azw-stable

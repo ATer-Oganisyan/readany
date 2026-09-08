@@ -588,7 +588,6 @@ export class WebDavClient {
       headers: this.getAuthHeaders(),
       allowInsecure: this.allowInsecure,
       onProgress,
-      timeoutMs: TRANSFER_TIMEOUT_MS,
     });
     this.hadAuthSuccess = true;
     console.log(`[WebDAV] GET ${logPath} completed in ${Date.now() - startTime}ms`);

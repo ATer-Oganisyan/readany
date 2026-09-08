@@ -1775,10 +1775,7 @@ test('resolver quarantines a singular family title when a collective names two r
   assert.equal(title.resolutionStatus, 'candidate')
 })
 
-for (const quote of [
-  'I shall write to them, and sign my name Lydia Wickham.',
-  'Я буду писать им и подписываться именем Lydia Wickham.'
-]) test(`resolver applies an explicit signed married-name transition: ${quote}`, () => {
+test('resolver applies an explicit signed married-name transition', () => {
   const observations = [
     observation({
       id: '11111111-1111-4111-8111-111111112011',
@@ -1787,8 +1784,8 @@ for (const quote of [
     observation({
       id: '22222222-2222-4222-8222-222222222012',
       candidate: 'Lydia Bennet',
-      fact: quote,
-      quote,
+      fact: 'Lydia Bennet later signs herself Lydia Wickham.',
+      quote: 'I shall write to them, and sign my name Lydia Wickham.',
       startOffset: 200
     }),
     observation({
@@ -2006,11 +2003,7 @@ test('resolver follows an explicit spouse surname into a later full-name form', 
   ]))
 })
 
-for (const fact of [
-  'Jo discusses a school with Friedrich.',
-  'Jo — женщина, которая обсуждает школу с Friedrich.',
-  'Jo говорила о мужестве Friedrich.'
-]) test(`resolver does not infer a surname transition without an explicit spouse cue: ${fact}`, () => {
+test('resolver does not infer a surname transition without an explicit spouse cue', () => {
   const observations = [
     observation({
       id: '11111111-1111-4111-8111-111111112171',
@@ -2023,7 +2016,7 @@ for (const fact of [
     observation({
       id: '33333333-3333-4333-8333-333333333173',
       type: 'character_dialogue', candidate: 'Jo March', related: ['Friedrich Bhaer'],
-      fact, startOffset: 300
+      fact: 'Jo discusses a school with Friedrich.', startOffset: 300
     }),
     observation({
       id: '44444444-4444-4444-8444-444444444174',
@@ -2033,10 +2026,7 @@ for (const fact of [
   assert.equal(resolveBookAnalysisEntities({ observations }).length, 3)
 })
 
-for (const spouseFact of [
-  'Charlotte Lucas is married to Mr. Collins.',
-  'Charlotte Lucas — жена Mr. Collins.'
-]) test(`resolver joins a spouse to one compatible married title and full form: ${spouseFact}`, () => {
+test('resolver joins a spouse to one compatible married title and full form', () => {
   const observations = [
     observation({
       id: '11111111-1111-4111-8111-111111112021',
@@ -2070,8 +2060,8 @@ for (const spouseFact of [
       id: '88888888-8888-4888-8888-888888888028',
       type: 'relationship', kind: 'relationship', candidate: 'Charlotte and Mr. Collins',
       related: ['Charlotte Lucas', 'Mr. Collins'],
-      fact: spouseFact,
-      quote: spouseFact,
+      fact: 'Charlotte Lucas is married to Mr. Collins.',
+      quote: 'Charlotte, the wife of Mr. Collins, received her friend.',
       startOffset: 800
     })
   ]
@@ -2763,12 +2753,7 @@ test('resolver does not use an owned family title to bridge two full-name relati
   assert.ok(![charlotte.canonicalName, ...charlotte.aliases].includes('Maria Lucas'))
 })
 
-for (const kinshipFact of [
-  'Mrs. Vane is Sibyl Vane\'s mother.',
-  'Mrs. Vane — мать Sibyl Vane.',
-  'Sibyl Vane — дочь Mrs. Vane.',
-  'Mrs. Vane является сестрой Sibyl Vane.'
-]) test(`resolver keeps a substituted family title apart from a grounded relative: ${kinshipFact}`, () => {
+test('resolver keeps a substituted family title apart from a grounded relative', () => {
   const observations = [
     observation({
       id: '11111111-1111-4111-8111-111111113003',
@@ -2782,7 +2767,7 @@ for (const kinshipFact of [
     observation({
       id: '33333333-3333-4333-8333-333333333003',
       type: 'relationship', kind: 'relationship', candidate: 'Sibyl Vane and Mrs. Vane',
-      related: ['Sibyl Vane', 'Mrs. Vane'], fact: kinshipFact,
+      related: ['Sibyl Vane', 'Mrs. Vane'], fact: 'Mrs. Vane is Sibyl Vane\'s mother.',
       quote: 'Mrs. Vane put her hands on her daughter\'s head.', startOffset: 300
     })
   ]

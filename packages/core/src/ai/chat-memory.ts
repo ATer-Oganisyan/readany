@@ -33,16 +33,10 @@ export function getCompressibleMessages(thread: Thread, slidingWindowSize: numbe
     .filter((message) => message.role === "user" || message.role === "assistant");
 }
 
-function checkCancellation(signal?: AbortSignal): void {
-  if (signal?.aborted) throw signal.reason ?? new Error("Memory preparation stopped");
-}
-
 export async function maybeCompressThreadMemory(
   thread: Thread,
   aiConfig: AIConfig,
-  signal?: AbortSignal,
 ): Promise<Thread> {
-  checkCancellation(signal);
   const slidingWindowSize = aiConfig.slidingWindowSize || 8;
   const compressible = getCompressibleMessages(thread, slidingWindowSize);
   if (compressible.length < MIN_COMPRESSIBLE_MESSAGES) return thread;
@@ -53,23 +47,18 @@ export async function maybeCompressThreadMemory(
       maxTokens: 700,
       streaming: false,
     });
-    checkCancellation(signal);
 
     const source = buildSource(thread.memorySummary, compressible);
-    const response = await model.invoke(
-      [
-        new SystemMessage(
-          [
-            "You compress chat history for a reading assistant.",
-            "Produce durable memory only: user preferences, decisions, book-specific facts already established, unresolved tasks, and useful context for future replies.",
-            "Do not include filler conversation. Keep it concise, neutral, and in the user's language when clear.",
-          ].join("\n"),
-        ),
-        new HumanMessage(source),
-      ],
-      { signal },
-    );
-    checkCancellation(signal);
+    const response = await model.invoke([
+      new SystemMessage(
+        [
+          "You compress chat history for a reading assistant.",
+          "Produce durable memory only: user preferences, decisions, book-specific facts already established, unresolved tasks, and useful context for future replies.",
+          "Do not include filler conversation. Keep it concise, neutral, and in the user's language when clear.",
+        ].join("\n"),
+      ),
+      new HumanMessage(source),
+    ]);
 
     const content =
       typeof response.content === "string"
@@ -91,7 +80,6 @@ export async function maybeCompressThreadMemory(
       memoryMessageCount,
     };
   } catch (error) {
-    checkCancellation(signal);
     console.warn("[chat-memory] Failed to compress thread memory:", error);
     return thread;
   }

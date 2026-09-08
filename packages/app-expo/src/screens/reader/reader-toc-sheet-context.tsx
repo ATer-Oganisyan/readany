@@ -8,7 +8,6 @@ export interface ReaderTOCSheetSession {
   currentChapter: string;
   onClose: () => void;
   onSelectTocItem: (href: string) => void;
-  onSelectBookmark?: (cfi: string) => void;
 }
 
 interface ReaderTOCSheetContextValue {

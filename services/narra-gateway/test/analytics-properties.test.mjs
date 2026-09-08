@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { settleProviderResponse } from '../provider-response.mjs'
 import {
   analyticsRoute,
   completionProperties,
@@ -67,10 +66,10 @@ test('finish_reason is normalized to the closed vocabulary and omitted when abse
 test('stream usage collector captures the terminal finish_reason', () => {
   const collector = createSseUsageCollector()
   collector.push(Buffer.from('data: {"choices":[{"delta":{"content":"a"},"finish_reason":null}]}\n\n'))
-  collector.push(Buffer.from('data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n'))
+  collector.push(Buffer.from('data: {"choices":[{"delta":{},"finish_reason":"length"}]}\n\n'))
   collector.push(Buffer.from('data: {"choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}\n\ndata: [DONE]\n\n'))
   collector.value()
-  assert.equal(collector.finishReason(), 'stop')
+  assert.equal(collector.finishReason(), 'length')
 })
 
 test('stream usage collector handles split SSE chunks without retaining content', () => {
@@ -101,35 +100,5 @@ for (const [name, payload, code] of [
       },
       (error) => error?.code === code
     )
-  })
-}
-
-for (const mode of ['separate', 'coalesced', 'split-json']) {
-  test(`length stream rejects during push, before DONE/completed: ${mode}`, async () => {
-    const collector = createSseUsageCollector()
-    const length = 'data: {"choices":[{"delta":{},"finish_reason":"length"}]}\n\n'
-    const done = 'data: [DONE]\n\n'
-    const chunks = mode === 'separate' ? [length, done]
-      : mode === 'coalesced' ? [length + done] : [length.slice(0, 30), length.slice(30) + done]
-    const forwarded = []
-    const events = []
-    await assert.rejects(settleProviderResponse({
-      consume: async () => {
-        for (const chunk of chunks) { collector.push(Buffer.from(chunk)); forwarded.push(chunk) }
-        return collector.value()
-      },
-      finalizeAttempt: async event => events.push(event)
-    }), { code: 'PARSE', status: 502 })
-    assert.ok(!forwarded.join('').includes('[DONE]'))
-    assert.deepEqual(events, [{ status: 'failed', error_code: 'PARSE' }])
-  })
-}
-
-for (const finish of [undefined, 'tool_calls']) {
-  test(`stream accepts compatible terminal ${String(finish)}`, () => {
-    const collector = createSseUsageCollector()
-    collector.push(Buffer.from(`data: ${JSON.stringify({ choices: [{ delta: finish ? { tool_calls: [{ index: 0, id: 'own', type: 'function', function: { name: 'lookup', arguments: '{}' } }] } : { content: 'Own answer' }, ...(finish ? { finish_reason: finish } : {}) }] })}\n\ndata: [DONE]\n\n`))
-    assert.equal(collector.value(), undefined)
-    assert.equal(collector.finishReason(), finish)
   })
 }

@@ -113,15 +113,6 @@ export class MobileSyncAdapter implements ISyncAdapter {
     file.write(data);
   }
 
-  async validateBookFile(filePath: string, format: string): Promise<void> {
-    const { createRangeReadableFile, validateBookImportSource } = await import(
-      "@/lib/book/metadata-extractor"
-    );
-    const size = await this.getFileSize(filePath);
-    if (!size) throw new Error("Downloaded book is empty or unavailable");
-    await validateBookImportSource(await createRangeReadableFile(filePath, size), format);
-  }
-
   async copyFile(src: string, dest: string): Promise<void> {
     const srcFile = new File(src);
     const destFile = new File(dest);

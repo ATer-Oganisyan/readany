@@ -52,7 +52,7 @@ describe("backend scene contract", () => {
     await requestBackendSceneAt("edition/id", 0.385, signal);
     expect(network.request).toHaveBeenLastCalledWith(
       "/v2/books/edition%2Fid/scenes/at",
-      expect.objectContaining({ method: "POST", body: '{"progress_fraction":0.385}', signal: expect.any(AbortSignal) }),
+      expect.objectContaining({ method: "POST", body: '{"progress_fraction":0.385}', signal }),
     );
     for (const value of [-1, 1.1, Number.NaN, Number.POSITIVE_INFINITY])
       await expect(requestBackendSceneAt("edition", value)).rejects.toThrow(

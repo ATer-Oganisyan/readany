@@ -1,8 +1,0 @@
-appId: com.mishanaer.readany.dev
-name: Remove Expo dev menu overlay from client hit targets
----
-- swipe:
-    start: "50%,90%"
-    end: "50%,65%"
-    duration: 700
-- takeScreenshot: ios-air-dev-tools-toggle

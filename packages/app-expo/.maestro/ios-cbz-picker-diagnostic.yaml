@@ -1,9 +1,0 @@
-appId: com.mishanaer.readany.dev
-name: iOS CBZ picker diagnostic selection
----
-- assertVisible: ".*12-river-comic.*"
-- doubleTapOn:
-    point: "83%,37%"
-- waitForAnimationToEnd:
-    timeout: 5000
-- takeScreenshot: ios-cbz-after-double-tap

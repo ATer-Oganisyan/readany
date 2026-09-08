@@ -125,18 +125,14 @@ export class StreamingChat {
         if (signal.aborted) {
           return { done: true, value: undefined };
         }
-        let onAbort: (() => void) | undefined;
         const abortPromise = new Promise<IteratorResult<unknown>>((resolve) => {
-          onAbort = () => resolve({ done: true, value: undefined });
-          signal.addEventListener("abort", onAbort, { once: true });
+          const onAbort = () => {
+            signal.removeEventListener("abort", onAbort);
+            resolve({ done: true, value: undefined });
+          };
+          signal.addEventListener("abort", onAbort);
         });
-        try {
-          return await Promise.race([iterator.next(), abortPromise]);
-        } finally {
-          // A normal token/error also settles this wait. Do not retain one
-          // closure per token until somebody eventually presses Stop.
-          if (onAbort) signal.removeEventListener("abort", onAbort);
-        }
+        return Promise.race([iterator.next(), abortPromise]);
       };
 
       const iterator = stream[Symbol.asyncIterator]();

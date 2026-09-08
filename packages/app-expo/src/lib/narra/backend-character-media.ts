@@ -3,12 +3,12 @@ import { useNarraStore } from "@/stores/narra-store";
 import * as Crypto from "expo-crypto";
 import * as FileSystem from "expo-file-system/legacy";
 import type { BackendCharacterAsset } from "./backend-book-contract";
-import { backendCacheRoot } from "./backend-cache-scope";
 import { downloadVerifiedBackendFile } from "./backend-file-download";
 import { sha256BackendFile } from "./backend-file-hash";
 import { isCharacterUnlocked } from "./domain";
 import type { NarraCharacter } from "./types";
 
+const root = `${FileSystem.documentDirectory}narra-backend-media`;
 interface AssetRequest {
   promise: Promise<string>;
   controller: AbortController;
@@ -51,7 +51,6 @@ export async function materializeBackendCharacterAsset(
   signal?: AbortSignal,
 ): Promise<string> {
   if (signal?.aborted) throw mediaCancellationError();
-  const root = backendCacheRoot(`${FileSystem.documentDirectory}narra-backend-media`);
   const directory = `${root}/${encodeURIComponent(edition)}/${asset.type}`;
   const extension =
     asset.mimeType === "image/png"

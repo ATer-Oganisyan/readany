@@ -95,14 +95,13 @@ const GENERATIONAL_CHARACTER_TOKENS = new Set([
   'старшая', 'младший', 'младшая', 'сын', 'дочь', 'мать', 'отец', 'сестра', 'брат'
 ])
 const NAME_CONNECTOR_TOKENS = new Set(['of', 'de', 'del', 'della', 'di', 'du', 'van', 'von'])
-// JavaScript's \b only recognizes ASCII word characters, so Cyrillic cues need Unicode bounds.
-const SIGNED_NAME_CUE = /\b(?:sign(?:s|ed|ing)?\s+(?:my|her|his|their|the)\s+name|sign(?:s|ed|ing)?\s+(?:myself|herself|himself|themself|themselves)\s+(?:as\s+)?)\b|(?<![\p{L}\p{N}_])подпис\p{L}*\s+(?:именем|как)(?![\p{L}\p{N}_])/iu
-const LETTER_SIGNATURE_CUE = /\b(?:signer|signature|signed)\b|(?<![\p{L}\p{N}_])(?:подпис\p{L}*|автор\p{L}*)(?![\p{L}\p{N}_])/iu
-const LETTER_REPLY_CUE = /\b(?:answer(?:ed|ing)?|repl(?:y|ied|ies|ying)|thank(?:ed|ing)?)\b|(?<![\p{L}\p{N}_])(?:ответ\p{L}*|отвеч\p{L}*|поблагодар\p{L}*|благодар\p{L}*)(?![\p{L}\p{N}_])/iu
-const LETTER_CUE = /\b(?:letter|note|epistle)\b|(?<![\p{L}\p{N}_])(?:письм\p{L}*|записк\p{L}*|послани\p{L}*)(?![\p{L}\p{N}_])/iu
+const SIGNED_NAME_CUE = /\b(?:sign(?:s|ed|ing)?\s+(?:my|her|his|their|the)\s+name|sign(?:s|ed|ing)?\s+(?:myself|herself|himself|themself|themselves)\s+(?:as\s+)?)\b|\bподпис\p{L}*\s+(?:именем|как)\b/iu
+const LETTER_SIGNATURE_CUE = /\b(?:signer|signature|signed)\b|\b(?:подпис\p{L}*|автор\p{L}*)\b/iu
+const LETTER_REPLY_CUE = /\b(?:answer(?:ed|ing)?|repl(?:y|ied|ies|ying)|thank(?:ed|ing)?)\b|\b(?:ответ\p{L}*|отвеч\p{L}*|поблагодар\p{L}*|благодар\p{L}*)\b/iu
+const LETTER_CUE = /\b(?:letter|note|epistle)\b|\b(?:письм\p{L}*|записк\p{L}*|послани\p{L}*)\b/iu
 const FIRST_NAME_DECLARATION_CUE = /\bmy first name is\s+([\p{L}'’.-]+)/iu
-const SPOUSE_CUE = /\b(?:wife|husband|spouse|marri(?:ed|age)|wedding|engaged\s+to\s+be\s+married)\b|(?<![\p{L}\p{N}_])(?:жен[аыуе]|женой|женою|ж[её]ны|ж[её]н|женат\p{L}*|женить\p{L}*|женил\p{L}*|муж(?:а|у|ем|е)?|супруг\p{L}*|брак\p{L}*|свадьб\p{L}*|помолв\p{L}*)(?![\p{L}\p{N}_])/iu
-const DISTINCT_KINSHIP_CUE = /\b(?:mother|father|daughter|son|sister|brother|parent|child|aunt|uncle|niece|nephew|wife|husband|spouse)\b|(?<![\p{L}\p{N}_])(?:мать|матер(?:и|ью|ей|ям|ями|ях)|отец|отц\p{L}*|дочь|дочер\p{L}*|сын\p{L}*|сестр\p{L}*|сест[её]р|брат\p{L}*|родител\p{L}*|реб[её]н\p{L}*|т[её]т\p{L}*|дяд\p{L}*|племян\p{L}*|жен[аыуе]|женой|женою|ж[её]ны|ж[её]н|муж(?:а|у|ем|е)?|супруг\p{L}*)(?![\p{L}\p{N}_])/iu
+const SPOUSE_CUE = /\b(?:wife|husband|spouse|marri(?:ed|age)|wedding|engaged\s+to\s+be\s+married)\b|\b(?:жен\p{L}*|муж\p{L}*|супруг\p{L}*|брак\p{L}*|свадьб\p{L}*|помолв\p{L}*)\b/iu
+const DISTINCT_KINSHIP_CUE = /\b(?:mother|father|daughter|son|sister|brother|parent|child|aunt|uncle|niece|nephew|wife|husband|spouse)\b|\b(?:мать|отец|дочь|сын|сестра|брат|родител\p{L}*|ребен\p{L}*|тет\p{L}*|дяд\p{L}*|племян\p{L}*|жен\p{L}*|муж\p{L}*|супруг\p{L}*)\b/iu
 const OWNED_KINSHIP_GENDERS = new Map([
   ['father', 'male'], ['son', 'male'],
   ['brother', 'male'],
@@ -299,8 +298,8 @@ function attributedObservationGender(observation) {
   const value = remainder.match(attribution)?.[0]
   if (!value) return null
   const described = remainder.slice(value.length)
-  if (/^(?:male|man|boy|son|мужчина|мальчик|сын)(?![\p{L}\p{N}_])/iu.test(described)) return 'male'
-  if (/^(?:female|woman|girl|daughter|женщина|девушка|девочка|дочь)(?![\p{L}\p{N}_])/iu.test(described)) return 'female'
+  if (/^(?:male|man|boy|son|мужчина|мальчик|сын)\b/iu.test(described)) return 'male'
+  if (/^(?:female|woman|girl|daughter|женщина|девушка|девочка|дочь)\b/iu.test(described)) return 'female'
   return null
 }
 

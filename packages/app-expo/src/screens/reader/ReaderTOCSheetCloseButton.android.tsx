@@ -3,7 +3,6 @@ import { Host, Icon, IconButton } from "@expo/ui/jetpack-compose";
 import type { ReaderTOCSheetCloseButtonProps } from "./ReaderTOCSheetCloseButton.types";
 
 export function ReaderTOCSheetCloseButton({
-  accessibilityLabel,
   colorScheme,
   foregroundColor,
   onPress,
@@ -15,7 +14,7 @@ export function ReaderTOCSheetCloseButton({
           source={getStrokeIconImageSource("x")}
           size={24}
           tint={foregroundColor}
-          contentDescription={accessibilityLabel}
+          contentDescription="Close"
         />
       </IconButton>
     </Host>

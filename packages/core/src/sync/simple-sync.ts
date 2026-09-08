@@ -17,11 +17,7 @@ import {
 } from "../db/database";
 import { runSerializedDbTask } from "../db/write-retry";
 import { getPlatformService } from "../services/platform";
-import {
-  canonicalBookCoverPath,
-  canonicalBookFilePath,
-  localBookFilePath,
-} from "./local-book-paths";
+import { canonicalBookCoverPath, canonicalBookFilePath } from "./local-book-paths";
 import type { ISyncBackend } from "./sync-backend";
 import type { SyncFilesOptions } from "./sync-files";
 import type { SyncProgress } from "./sync-types";
@@ -37,9 +33,6 @@ interface ExistingRecordState {
   timestamp: number;
   deletedAt?: number | null;
   coverUrl?: string | null;
-  filePath?: string | null;
-  fileHash?: string | null;
-  syncStatus?: string | null;
 }
 
 export interface SimpleSyncOptions {
@@ -343,19 +336,16 @@ export async function applyChanges(
             skipped++;
           } else {
             try {
-              const coveredRecord = preserveLocalCustomBookCover(safeRecord, localState);
-              const localRecord =
-                tableName === "books"
-                  ? localizeSyncedBookRecord(coveredRecord, localState)
-                  : coveredRecord;
-              await upsertRecord(db, tableName, localRecord, pk);
+              await upsertRecord(
+                db,
+                tableName,
+                preserveLocalCustomBookCover(safeRecord, localState),
+                pk,
+              );
               applied++;
               existingRecords.set(String(pkValue), {
                 timestamp: remoteTs,
                 deletedAt: normalizeDeletedAt(record.deleted_at),
-                filePath: localRecord.file_path as string | undefined,
-                fileHash: localRecord.file_hash as string | undefined,
-                syncStatus: localRecord.sync_status as string | undefined,
               });
             } catch (error) {
               if (isForeignKeyConstraintError(error)) {
@@ -425,7 +415,8 @@ async function upsertRecord(
   record: Record<string, unknown>,
   pk: string,
 ): Promise<void> {
-  const filteredRecord = await filterRecordToExistingColumns(db, table, record);
+  const localRecord = table === "books" ? localizeSyncedBookRecord(record) : record;
+  const filteredRecord = await filterRecordToExistingColumns(db, table, localRecord);
   const columns = Object.keys(filteredRecord);
   if (columns.length === 0 || !columns.includes(pk)) return;
 
@@ -452,25 +443,16 @@ async function upsertRecord(
   );
 }
 
-function localizeSyncedBookRecord(
-  record: Record<string, unknown>,
-  localState?: ExistingRecordState,
-): Record<string, unknown> {
+function localizeSyncedBookRecord(record: Record<string, unknown>): Record<string, unknown> {
   const id = record.id;
   const filePath = canonicalBookFilePath(id, record.file_path, record.format);
-  if (!filePath) throw new Error("Invalid synced book identity");
-  const preserveLocalSource =
-    localState?.syncStatus === "local" &&
-    !!localState.fileHash &&
-    localState.fileHash === record.file_hash &&
-    !!localState.filePath &&
-    localBookFilePath(id, localState.filePath, record.format) === localState.filePath;
+  if (!filePath) return record;
 
   return {
     ...record,
-    file_path: preserveLocalSource ? localState.filePath : filePath,
+    file_path: filePath,
     cover_url: canonicalBookCoverPath(id, record.cover_url),
-    sync_status: preserveLocalSource ? "local" : "remote",
+    sync_status: "remote",
   };
 }
 
@@ -575,13 +557,6 @@ async function loadExistingRecordStates(
   const deletedAtSelect = columns.has("deleted_at") ? ", deleted_at AS deleted_at" : "";
   const coverUrlSelect =
     tableName === "books" && columns.has("cover_url") ? ", cover_url AS cover_url" : "";
-  const sourceSelect =
-    tableName === "books"
-      ? ["file_path", "file_hash", "sync_status"]
-          .filter((field) => columns.has(field))
-          .map((field) => `, ${field} AS ${field}`)
-          .join("")
-      : "";
 
   const chunkSize = 200;
   for (let offset = 0; offset < ids.length; offset += chunkSize) {
@@ -592,11 +567,8 @@ async function loadExistingRecordStates(
       timestamp: number | null;
       deleted_at?: number | null;
       cover_url?: string | null;
-      file_path?: string | null;
-      file_hash?: string | null;
-      sync_status?: string | null;
     }>(
-      `SELECT ${pk} AS id, ${timestampCol} AS timestamp${deletedAtSelect}${coverUrlSelect}${sourceSelect} FROM ${tableName} WHERE ${pk} IN (${placeholders})`,
+      `SELECT ${pk} AS id, ${timestampCol} AS timestamp${deletedAtSelect}${coverUrlSelect} FROM ${tableName} WHERE ${pk} IN (${placeholders})`,
       chunk,
     );
 
@@ -605,9 +577,6 @@ async function loadExistingRecordStates(
         timestamp: row.timestamp ?? 0,
         deletedAt: normalizeDeletedAt(row.deleted_at),
         coverUrl: row.cover_url,
-        filePath: row.file_path,
-        fileHash: row.file_hash,
-        syncStatus: row.sync_status,
       });
     }
   }

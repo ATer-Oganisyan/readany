@@ -1,35 +1,12 @@
 import assert from 'node:assert/strict'
 import { createHash, randomUUID } from 'node:crypto'
-import test, { after } from 'node:test'
+import test from 'node:test'
 import { REQUIRED_CHARACTER_MEDIA } from '../book-markup.mjs'
 import { createOperationalMetricsRepository } from '../operational-metrics-repository.mjs'
 import { createPostgresBookMarkupRepository } from '../postgres-book-markup-repository.mjs'
 import { runBookMarkupMigrations } from '../postgres-runtime.mjs'
 
-let connectionString = process.env.BOOK_MARKUP_TEST_DATABASE_URL
-if (connectionString) {
-  // This suite exercises global queue/backfill/purge APIs. Edition filters on
-  // claims alone cannot isolate it from other concurrently running test files.
-  const { default: pg } = await import('pg')
-  const admin = new pg.Pool({ connectionString, ssl: false, max: 1, connectionTimeoutMillis: 3000 })
-  const database = `narra_qa_markup_${randomUUID().replaceAll('-', '')}`
-  try {
-    assert.equal((await admin.query('SELECT 1 FROM pg_database WHERE datname = $1', [database])).rowCount, 0)
-    await admin.query(`CREATE DATABASE "${database}"`)
-  } catch (error) {
-    await admin.end()
-    throw error
-  }
-  after(async () => {
-    try {
-      await admin.query(`DROP DATABASE "${database}"`)
-      assert.equal((await admin.query('SELECT 1 FROM pg_database WHERE datname = $1', [database])).rowCount, 0)
-    } finally { await admin.end() }
-  })
-  const isolatedUrl = new URL(connectionString)
-  isolatedUrl.pathname = `/${database}`
-  connectionString = isolatedUrl.toString()
-}
+const connectionString = process.env.BOOK_MARKUP_TEST_DATABASE_URL
 
 test('PostgreSQL operational metrics query the migrated schema', {
   skip: !connectionString

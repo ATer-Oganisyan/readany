@@ -36,14 +36,10 @@ export function ReaderToolbar({
     <NativeReaderToolbar
       tintColor={props.tintColor}
       isDark={props.isDark}
-      speechActive={speechState === "playing" || speechState === "preparing"}
+      speechActive={speechState === "playing"}
       speechLoading={speechState === "loading"}
       speechLabel={t("reader.listen", "Слушать")}
-      speechStopLabel={
-        speechState === "preparing"
-          ? t("reader.cancelAudioPreparation", "Отменить подготовку")
-          : t("tts.stopShort", "Стоп")
-      }
+      speechStopLabel={t("tts.stopShort", "Стоп")}
       speechLoadingLabel={t("reader.audioLoading", "Загрузка аудио")}
       charactersLabel={t("narra.characters", "Персонажи")}
       charactersSheetSourceId={charactersSheetSourceId}

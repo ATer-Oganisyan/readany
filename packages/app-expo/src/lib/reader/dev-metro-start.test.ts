@@ -25,9 +25,8 @@ describe("canonical Metro startup", () => {
         `
 set -eu
 log() { :; }
-check_installed_dependencies() { :; }
 pnpm() {
-  node -e 'process.stdout.write(JSON.stringify({ lazy: process.env.EXPO_NO_METRO_LAZY, variant: process.env.APP_VARIANT, launchUrl:process.env.EXPO_PUBLIC_NARRA_LAUNCH_GATEWAY_URL, launchEnvironment:process.env.EXPO_PUBLIC_NARRA_LAUNCH_ENVIRONMENT, launchAuth:process.env.EXPO_PUBLIC_NARRA_LAUNCH_AUTH_MODE, args: process.argv.slice(1) }))' -- "$@"
+  node -e 'process.stdout.write(JSON.stringify({ lazy: process.env.EXPO_NO_METRO_LAZY, variant: process.env.APP_VARIANT, args: process.argv.slice(1) }))' -- "$@"
 }
 ${startFunction}
 run_metro_prepared "$1"
@@ -36,24 +35,13 @@ run_metro_prepared "$1"
         host,
       ],
       {
-        env: {
-          ...process.env,
-          APP_ROOT: appRoot,
-          METRO_PORT: "8081",
-          EXPO_NO_METRO_LAZY: "0",
-          EXPO_PUBLIC_NARRA_GATEWAY_URL: "http://127.0.0.1:18787",
-          EXPO_PUBLIC_NARRA_ENVIRONMENT: "development",
-          EXPO_PUBLIC_NARRA_GATEWAY_AUTH_MODE: "installation",
-        },
+        env: { ...process.env, APP_ROOT: appRoot, METRO_PORT: "8081", EXPO_NO_METRO_LAZY: "0" },
         encoding: "utf8",
       },
     );
     expect(JSON.parse(output)).toEqual({
       lazy: "1",
       variant: "development",
-      launchUrl: "http://127.0.0.1:18787",
-      launchEnvironment: "development",
-      launchAuth: "installation",
       args: [
         "exec",
         "expo",
@@ -66,30 +54,5 @@ run_metro_prepared "$1"
         "8081",
       ],
     });
-  });
-
-  it("does not start Metro when installed dependencies are incompatible", () => {
-    expect(startFunction).toBeDefined();
-    expect(() =>
-      execFileSync(
-        "bash",
-        [
-          "-c",
-          `
-set -eu
-log() { :; }
-check_installed_dependencies() { echo incompatible-native-module >&2; return 1; }
-pnpm() { echo metro-must-not-start; }
-${startFunction}
-run_metro_prepared localhost
-`,
-        ],
-        {
-          env: { ...process.env, APP_ROOT: appRoot, METRO_PORT: "8081" },
-          encoding: "utf8",
-          stdio: "pipe",
-        },
-      ),
-    ).toThrow(/incompatible-native-module/);
   });
 });

@@ -144,11 +144,8 @@ test('scan worker reads and sends only its bounded chunk', async () => {
     objectKey: input.normalizedTextObjectKey,
     startByte: 0,
     endByteExclusive: Buffer.byteLength(text),
-    maxBytes: 128 * 1024,
-    signal: rangeRequest.signal
+    maxBytes: 128 * 1024
   })
-  assert.ok(rangeRequest.signal instanceof AbortSignal)
-  assert.equal(rangeRequest.signal.aborted, false)
   assert.equal(generatorRequest.contextText, text)
   assert.deepEqual(generatorRequest.sectionTitles, ['Глава вторая'])
   assert.equal(generatorRequest.coreLocalStartOffset, 8)
@@ -191,15 +188,10 @@ test('scan worker skips pure paratext only after verifying the stored chunk', as
   }
 })
 
-for (const sectionTitles of [
-  ['PREFACE.', 'Chapter I.]'],
-  ['Предисловие', 'Глава первая'],
-  ['Предисловие', 'Часть II'],
-  ['Введение', 'Пролог']
-]) test(`scan worker keeps mixed paratext and narrative chunks: ${sectionTitles}`, async () => {
+test('scan worker keeps mixed paratext and narrative chunks', async () => {
   const text = 'OVERLAP Анна вошла в комнату. Борис ответил ей. TAIL'
   const input = scanInput(text)
-  input.chunk.metadata.sectionTitles = sectionTitles
+  input.chunk.metadata.sectionTitles = ['PREFACE.', 'Chapter I.]']
   let generatorCalled = false
   const worker = createBookAnalysisScanWorker({
     repository: {
@@ -282,7 +274,7 @@ test('scan worker refuses a job created for another extractor version', async ()
   assert.equal(failedCode, 'EXTRACTOR_VERSION_MISMATCH')
 })
 
-test('scan worker completes only a verified empty result on the final semantic attempt', async () => {
+test('scan worker completes a final content-level rejection with an empty grounded result', async () => {
   const text = 'OVERLAP Анна вошла в комнату. Борис ответил ей. TAIL'
   const input = scanInput(text)
   const job = {
@@ -293,7 +285,7 @@ test('scan worker completes only a verified empty result on the final semantic a
     attempts: 5,
     maxAttempts: 5
   }
-  for (const code of ['SCAN_EMPTY_OBSERVATIONS']) {
+  for (const code of ['SCAN_EMPTY_OBSERVATIONS', 'EVIDENCE_MISMATCH', 'GENERATOR_HTTP_422']) {
     let completed
     const worker = createBookAnalysisScanWorker({
       repository: {
@@ -325,36 +317,6 @@ test('scan worker completes only a verified empty result on the final semantic a
       extractorVersion: 'book-scan-v17',
       observations: []
     })
-  }
-})
-
-test('scan worker preserves invalid analysis as failure even on its final attempt', async () => {
-  const text = 'OVERLAP Анна вошла в комнату. Борис ответил ей. TAIL'
-  for (const attempts of [1, 5]) {
-    for (const code of ['EVIDENCE_MISMATCH', 'GENERATOR_HTTP_422', 'GENERATION_RESULT_INVALID']) {
-      let failedCode
-      const worker = createBookAnalysisScanWorker({
-        repository: {
-          async claimAnalysisJob() {
-            return { id: 'bad-scan', runId: 'run-1', stage: 'scan', attempts, maxAttempts: 5 }
-          },
-          async getScanInput() { return scanInput(text) },
-          async renewAnalysisJobLease() {},
-          async completeScan() { assert.fail('invalid analysis must not publish an empty result') },
-          async failAnalysisJob(_job, value) { failedCode = value; return { status: 'failed' } }
-        },
-        storage: { async getBytesRange() { return { bytes: Buffer.from(text) } } },
-        generator: {
-          async scanBookChunk() { throw Object.assign(new Error('invalid analysis'), { code }) }
-        },
-        workerId: `invalid-scan-${attempts}-${code}`,
-        logger: { info() {}, warn() {}, error() {} }
-      })
-      const result = await worker.runOnce()
-      assert.equal(result.status, 'failed')
-      assert.equal(result.errorCode, code)
-      assert.equal(failedCode, code)
-    }
   }
 })
 

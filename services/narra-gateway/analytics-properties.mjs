@@ -138,9 +138,6 @@ export function createSseUsageCollector({ maxBufferedBytes = 512 * 1024 } = {}) 
         throw protocolError('CENSOR', 'LLM stream was blocked by content safety', 422)
       }
       if (Array.isArray(parsed?.choices)) {
-        if (parsed.choices.some(choice => choice?.finish_reason === 'length')) {
-          throw protocolError('PARSE', 'LLM completion was truncated by its output limit')
-        }
         for (const choice of parsed.choices) {
           if (choice?.finish_reason) finishReason = choice.finish_reason
         }

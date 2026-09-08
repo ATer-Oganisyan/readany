@@ -5,13 +5,13 @@
  */
 export const ENGLISH_SOURCE_REVISIONS = {
   "chat.json": "d7e912b4f69342fc66bd686fd2dc47e9528fdbf6ff5e73224c7f39a633055177",
-  "common.json": "63982ec6f840155c415c3aa8139db00b9a0f9af8e2ecaab15c67bbe5a544b466",
-  "library.json": "7392597400f0bc8312879dce78c86dcccee4e4e3e9d2c28fba80b5f977dfaa02",
+  "common.json": "44b2d86b294a28d31c746866d068430ef1f9ed22f71e6e5b97cb7f9d61bd5249",
+  "library.json": "3b40365c5a5a647181c8096bb3232b5b9c05efc66aa7523209a42cb97964e43a",
   "misc.json": "7b47e4fe8a63f11be0ff7b7a82f887bcb7ab65312f8f9ded55a95c6706eec7f7",
-  "notes.json": "683f3787f0623036bdf9274313888ad778b25338ddbb103026dfdbc5e56a87af",
+  "notes.json": "3737b673efeaff04113de518a4c0d237fe2f8858e6133998afa994871ec5380d",
   "onboarding.json": "691446f63699c6a6391e3adacc65f2a197943880cdfdf678e1383c8bc298a750",
-  "profile.json": "7f64cf3d63d528b5016c75688ba8d8745397e999dc12c31b037355b164a35aed",
-  "reader.json": "a38d52fa5b3a29a5a2861ff3ff44c9d701f062b914c389aee522111af1e27fbf",
+  "profile.json": "8d29fc22f31cdb7b74b3e6d61980be6caa612a5747e8c67148a07a68a5245b74",
+  "reader.json": "9ff9a95445dceff6d1e74dd1ab5176cd11e4e70aaeb53327acf80415378b2cd7",
   "settings.json": "d7ea3526cf6c5750d0d330dcfbb02396445175f6e1eabfc1ed96854383088d46",
   "stats.json": "3494f4ea5d32428462edbb41a005811b4614399be8391a31ac50592bba8ea48a",
   "translation.json": "d0808cbaae51cd2cfc017d0c0bec9c6fe482adfed8e23e4150a6c440af63aa49",

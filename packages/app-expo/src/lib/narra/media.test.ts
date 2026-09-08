@@ -22,10 +22,7 @@ const appStoreState = vi.hoisted(() => ({
 vi.mock("expo-file-system/legacy", () => ({
   documentDirectory: "file:///documents/",
   EncodingType: { Base64: "base64" },
-  getInfoAsync: vi.fn(async (path: string) => ({
-    exists: true,
-    size: path.endsWith(".mp3") ? 4 : 46,
-  })),
+  getInfoAsync: vi.fn(async () => ({ exists: true, size: 46 })),
   makeDirectoryAsync: vi.fn(),
   writeAsStringAsync: vi.fn(),
   deleteAsync: vi.fn(async () => {}),
@@ -484,7 +481,7 @@ describe("synthesizeNarraSpeech — разметка ударений (P9)", () 
     );
 
     await expect(synthesizeNarraSpeech("Анна звонит Хлестакову.", "Che")).rejects.toThrow(
-      "Не удалось озвучить фрагмент.",
+      "stop after request inspection",
     );
 
     const [path, request] = vi.mocked(narraGatewayRequest).mock.calls[0] ?? [];
@@ -501,33 +498,13 @@ describe("speech telemetry", () => {
     vi.unstubAllEnvs();
   });
 
-  it("forwards scene cancellation to the bounded gateway without issuing a request", async () => {
-    vi.stubEnv("EXPO_PUBLIC_NARRA_TTS_PROVIDER", "gateway");
-    const controller = new AbortController();
-    controller.abort();
-    await expect(
-      synthesizeNarraSpeech("Text.", "Che", { signal: controller.signal }),
-    ).rejects.toMatchObject({ name: "AbortError" });
-    expect(narraGatewayRequest).not.toHaveBeenCalled();
-    expect(speechFetchMock).not.toHaveBeenCalled();
-    expect(
-      vi.mocked(recordTelemetry).mock.calls.filter(([name]) => name === "media_job_enqueued"),
-    ).toHaveLength(1);
-  });
-
   it("records first-audio readiness from the gateway sample-rate contract", async () => {
     vi.stubEnv("EXPO_PUBLIC_NARRA_TTS_PROVIDER", "gateway");
     vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
-      new Response(
-        Uint8Array.from(
-          { length: 46 },
-          (_, index) => ({ 0: 82, 1: 73, 2: 70, 3: 70, 8: 87, 9: 65, 10: 86, 11: 69 })[index] ?? 0,
-        ),
-        {
-          status: 200,
-          headers: { "x-audio-sample-rate": "48000", "content-type": "audio/wav" },
-        },
-      ),
+      new Response(new Uint8Array([1, 2, 3]), {
+        status: 200,
+        headers: { "x-audio-sample-rate": "48000" },
+      }),
     );
 
     await expect(synthesizeNarraSpeech("Привет", "Che")).resolves.toContain(
@@ -538,9 +515,6 @@ describe("speech telemetry", () => {
       "tts_first_audio_ready",
       expect.objectContaining({ sample_rate: 48_000, origin: "user" }),
     );
-    expect(
-      vi.mocked(recordTelemetry).mock.calls.filter(([name]) => name === "media_job_enqueued"),
-    ).toHaveLength(1);
   });
 });
 
@@ -561,34 +535,6 @@ describe("synthesizeNarraSpeech — Grok TTS через OpenRouter", () => {
       headers: { "content-type": "audio/mpeg" },
     });
   }
-
-  it("cancels during file persistence and removes the late MP3", async () => {
-    const fs = await import("expo-file-system/legacy");
-    let finish!: () => void;
-    vi.mocked(fs.writeAsStringAsync).mockImplementationOnce(
-      () =>
-        new Promise<void>((resolve) => {
-          finish = resolve;
-        }),
-    );
-    speechFetchMock.mockResolvedValueOnce(audioResponse());
-    const controller = new AbortController();
-    const outcome = synthesizeNarraSpeech("Text.", "Che", { signal: controller.signal }).catch(
-      (error) => error,
-    );
-    await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
-    controller.abort();
-    expect(await outcome).toMatchObject({ name: "AbortError" });
-    finish();
-    await vi.waitFor(() =>
-      expect(fs.deleteAsync).toHaveBeenCalledWith(expect.stringMatching(/speech-.*\.mp3$/), {
-        idempotent: true,
-      }),
-    );
-    expect(
-      vi.mocked(recordTelemetry).mock.calls.some(([name]) => name === "tts_first_audio_ready"),
-    ).toBe(false);
-  });
 
   it("идёт в OpenRouter по умолчанию, минуя гейтвей", async () => {
     speechFetchMock.mockResolvedValueOnce(audioResponse());

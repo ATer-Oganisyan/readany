@@ -23,8 +23,8 @@ test('scan prompt and extractor share the cache-isolating v15 version', () => {
 })
 
 test('resolver, profile and scan fallback changes isolate versioned caches', () => {
-  assert.equal(BOOK_ANALYSIS_PIPELINE_VERSION, 'book-analysis-v52')
-  assert.equal(BOOK_ANALYSIS_SYNTHESIS_VERSION, 'character-profile-v15')
+  assert.equal(BOOK_ANALYSIS_PIPELINE_VERSION, 'book-analysis-v51')
+  assert.equal(BOOK_ANALYSIS_SYNTHESIS_VERSION, 'character-profile-v14')
   assert.equal(BOOK_ANALYSIS_IDENTITY_RECONCILIATION_VERSION, 'character-identity-v22')
 })
 

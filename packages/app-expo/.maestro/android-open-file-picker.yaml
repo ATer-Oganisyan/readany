@@ -1,6 +1,0 @@
-appId: com.mishanaer.readany.dev
-name: Android populated library native file import entry
----
-- assertVisible: Library
-- tapOn: Add book
-- tapOn: Choose file

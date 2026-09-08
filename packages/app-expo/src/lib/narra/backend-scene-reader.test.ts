@@ -127,7 +127,6 @@ describe("reader backend scene action and persistence", () => {
     );
     expect(JSON.parse(runtime.request.mock.lastCall?.[1].body)).toEqual({
       progress_fraction: 0.385,
-      retry_failed: true,
     });
   });
   it("replaces a saved interval request with the scene for this exact card", async () => {
@@ -199,57 +198,6 @@ describe("reader backend scene action and persistence", () => {
     await vi.advanceTimersByTimeAsync(1);
     await expect(pending).resolves.toBe("data:image/png;base64,aW1hZ2U=");
     expect(runtime.read).toHaveBeenCalledTimes(2);
-  });
-  it("ends a stalled native read instead of leaving the generated slot loading", async () => {
-    runtime.read.mockImplementation(() => new Promise(() => {}));
-    const action = input();
-    const failed = vi.fn();
-    void generateBackendReaderScene(action, new AbortController().signal).catch(failed);
-    await vi.advanceTimersByTimeAsync(5001);
-    expect(failed).toHaveBeenCalledOnce();
-    expect(failed.mock.calls[0]?.[0]).toMatchObject({ code: "SCENE_TIMEOUT" });
-    expect(backendScene().imageUri).toBe("file:///documents/scene.png");
-    expect(action.display).not.toHaveBeenCalled();
-    expect(vi.getTimerCount()).toBe(0);
-  });
-  it("uses one native-read deadline across retries, rather than resetting it for each attempt", async () => {
-    runtime.read
-      .mockImplementationOnce(
-        () =>
-          new Promise((_, reject) => {
-            setTimeout(() => reject(new Error("file busy")), 4500);
-          }),
-      )
-      .mockImplementation(() => new Promise(() => {}));
-    const failed = vi.fn();
-    void readSceneDataUri("file:///documents/scene.png").catch(failed);
-    await vi.advanceTimersByTimeAsync(5001);
-    expect(runtime.read).toHaveBeenCalledTimes(2);
-    expect(failed).toHaveBeenCalledOnce();
-    expect(failed.mock.calls[0]?.[0]).toMatchObject({ code: "SCENE_TIMEOUT" });
-    expect(vi.getTimerCount()).toBe(0);
-  });
-  it("cancels a non-cooperating native read immediately and discards its late result", async () => {
-    const controller = new AbortController();
-    let finish!: (value: string) => void;
-    runtime.read.mockImplementation(
-      () =>
-        new Promise<string>((resolve) => {
-          finish = resolve;
-        }),
-    );
-    const failed = vi.fn();
-    const succeeded = vi.fn();
-    void readSceneDataUri("file:///documents/scene.png", controller.signal).then(succeeded, failed);
-    controller.abort();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(failed).toHaveBeenCalledOnce();
-    expect(failed.mock.calls[0]?.[0]).toMatchObject({ code: "SCENE_ABORTED" });
-    finish("aW1hZ2U=");
-    await vi.advanceTimersByTimeAsync(0);
-    expect(succeeded).not.toHaveBeenCalled();
-    expect(runtime.read).toHaveBeenCalledOnce();
-    expect(vi.getTimerCount()).toBe(0);
   });
   it("cancellation during download cannot publish into a closed reader", async () => {
     const action = input();

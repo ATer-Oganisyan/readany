@@ -53,14 +53,6 @@ export function validateChatCompletionPayload(payload) {
       { code: censored ? 'CENSOR' : 'PARSE', status: censored ? 422 : 502 }
     )
   }
-  // HTTP 200 can still contain an explicitly truncated answer. Reject during
-  // consumption so the attempt is finalized as failed, not a saved success.
-  // Providers that omit finish_reason remain compatible; no retry is initiated.
-  if (payload.choices.some(choice => choice?.finish_reason === 'length')) {
-    throw Object.assign(new Error('LLM completion was truncated by its output limit'), {
-      code: 'PARSE', status: 502
-    })
-  }
   return payload
 }
 

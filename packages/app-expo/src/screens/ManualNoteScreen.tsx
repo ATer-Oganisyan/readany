@@ -9,7 +9,7 @@ import { useAnnotationStore, useLibraryStore } from "@/stores";
 import { headingFontFamily, spacing, useColors } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { generateId } from "@readany/core/utils";
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Platform, StyleSheet, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -32,127 +32,72 @@ export function ManualNoteScreen({ navigation, route }: Props) {
     existingNote &&
       (existingNote.cfi || existingNote.text || existingNote.chapterTitle === "Заметка к книге"),
   );
-  const initialBookId = existingNoteHasBook
-    ? existingNote?.bookId || ""
-    : route.params?.bookId || "";
-  const [bookId, setBookId] = useState(initialBookId);
+  const [bookId, setBookId] = useState(
+    existingNoteHasBook ? existingNote?.bookId || "" : route.params?.bookId || "",
+  );
   const [content, setContent] = useState(existingNote?.note || "");
   const [saving, setSaving] = useState(false);
-  const savePendingRef = useRef(false);
-  const [savedDraft, setSavedDraft] = useState<{ id: string; bookId: string; note: string } | null>(
-    null,
-  );
-  const savedDraftRef = useRef<typeof savedDraft>(null);
   const selectedBook = useMemo(() => books.find((book) => book.id === bookId), [bookId, books]);
-  const initialDraftRef = useRef({ bookId: initialBookId, note: existingNote?.note?.trim() ?? "" });
-  const currentDraftRef = useRef({ bookId: initialBookId, note: content });
-  // Native callbacks can precede React's commit, including on the final save
-  // frame. Update the snapshots in the handlers rather than waiting to render.
-  const changeContent = useCallback((note: string) => {
-    currentDraftRef.current.note = note;
-    setContent(note);
-  }, []);
-  const selectBook = useCallback((id: string) => {
-    currentDraftRef.current.bookId = id;
-    setBookId(id);
-  }, []);
-
-  const requestCancel = useCallback(() => {
-    if (savePendingRef.current) return;
-    const current = currentDraftRef.current;
-    const baseline = savedDraftRef.current ?? initialDraftRef.current;
-    const hasUnsavedChanges =
-      current.note.trim() !== baseline.note ||
-      (Boolean(current.note.trim() || baseline.note) && current.bookId !== baseline.bookId);
-    if (!hasUnsavedChanges) {
-      navigation.goBack();
-      return;
-    }
-    Alert.alert(
-      t("notes.discardChangesTitle", "Не сохранять изменения?"),
-      t("notes.discardChangesDescription", "Изменения в этой заметке будут потеряны."),
-      [
-        { text: t("notes.keepEditing", "Продолжить редактирование"), style: "cancel" },
-        {
-          text: t("notes.discardChanges", "Не сохранять"),
-          style: "destructive",
-          onPress: () => navigation.goBack(),
-        },
-      ],
-    );
-  }, [navigation, t]);
 
   const chooseBook = useCallback(() => {
     Alert.alert(t("notes.chooseBook", "Выберите книгу"), undefined, [
-      { text: t("common.noBook", "Без книги"), onPress: () => selectBook("") },
+      { text: t("common.noBook", "Без книги"), onPress: () => setBookId("") },
       ...books.slice(0, 6).map((book) => ({
         text: book.meta.title,
-        onPress: () => selectBook(book.id),
+        onPress: () => setBookId(book.id),
       })),
       { text: t("common.cancel", "Отмена"), style: "cancel" as const },
     ]);
-  }, [books, selectBook, t]);
+  }, [books, t]);
 
   const save = useCallback(async () => {
-    const note = currentDraftRef.current.note.trim();
-    if (!note || savePendingRef.current) return;
+    const note = content.trim();
+    if (!note || saving) return;
 
-    savePendingRef.current = true;
     setSaving(true);
     const now = Date.now();
-    const bookToSave = books.find((book) => book.id === currentDraftRef.current.bookId);
-    const savedBookId = bookToSave?.id ?? "";
-    const existingId = savedDraftRef.current?.id ?? existingNote?.id;
-    const savedId = existingId ?? generateId();
     try {
-      if (existingId) {
-        await updateHighlight(existingId, {
-          bookId: savedBookId,
+      if (existingNote) {
+        updateHighlight(existingNote.id, {
+          bookId: selectedBook?.id ?? "",
           note,
-          chapterTitle: bookToSave ? "Заметка к книге" : undefined,
+          chapterTitle: selectedBook ? "Заметка к книге" : undefined,
           updatedAt: now,
         });
-      } else {
-        await addHighlight({
-          id: savedId,
-          bookId: savedBookId,
-          cfi: route.params?.cfi ?? "",
-          text: route.params?.text ?? "",
-          color: "yellow",
-          note,
-          chapterTitle: route.params?.chapterTitle ?? (bookToSave ? "Заметка к книге" : undefined),
-          createdAt: now,
-          updatedAt: now,
-        });
-      }
-      // Native input can deliver more changes while SQLite is writing. Keep
-      // that newer draft open and remember the committed id so its next Save
-      // updates the same note instead of inserting a duplicate.
-      savedDraftRef.current = { id: savedId, bookId: savedBookId, note };
-      setSavedDraft(savedDraftRef.current);
-      if (
-        currentDraftRef.current.note.trim() === note &&
-        currentDraftRef.current.bookId === savedBookId
-      ) {
         navigation.goBack();
+        return;
       }
+
+      await addHighlight({
+        id: generateId(),
+        bookId: selectedBook?.id ?? "",
+        cfi: route.params?.cfi ?? "",
+        text: route.params?.text ?? "",
+        color: "yellow",
+        note,
+        chapterTitle: route.params?.chapterTitle ?? (selectedBook ? "Заметка к книге" : undefined),
+        createdAt: now,
+        updatedAt: now,
+      });
+      navigation.goBack();
     } catch (error) {
       console.error("[ManualNoteScreen] Failed to save note:", error);
       toast.error(t("notes.saveFailed", "Не получилось сохранить заметку"), {
         description: t("common.tryAgain", "Попробуйте ещё раз"),
       });
     } finally {
-      savePendingRef.current = false;
       setSaving(false);
     }
   }, [
     addHighlight,
-    books,
+    content,
     existingNote,
     navigation,
     route.params?.cfi,
     route.params?.chapterTitle,
     route.params?.text,
+    saving,
+    selectedBook,
     t,
     updateHighlight,
   ]);
@@ -161,25 +106,15 @@ export function ManualNoteScreen({ navigation, route }: Props) {
     const canSave = Boolean(content.trim()) && !saving;
 
     navigation.setOptions({
-      title:
-        existingNote || savedDraft
-          ? t("notes.editNote", "Редактировать заметку")
-          : t("notes.newNote", "Новая заметка"),
+      title: existingNote
+        ? t("notes.editNote", "Редактировать заметку")
+        : t("notes.newNote", "Новая заметка"),
       headerTransparent: Platform.OS === "ios",
       headerStyle: {
         backgroundColor: Platform.OS === "ios" ? "transparent" : colors.background,
       },
       ...(Platform.OS === "ios"
         ? {
-            unstable_headerLeftItems: () => [
-              {
-                type: "button" as const,
-                label: t("common.cancel", "Отмена"),
-                accessibilityLabel: t("common.cancel", "Отмена"),
-                disabled: saving,
-                onPress: requestCancel,
-              },
-            ],
             unstable_headerRightItems: () => [
               {
                 type: "menu" as const,
@@ -197,13 +132,13 @@ export function ManualNoteScreen({ navigation, route }: Props) {
                       type: "action" as const,
                       label: t("common.noBook", "Без книги"),
                       state: bookId ? ("off" as const) : ("on" as const),
-                      onPress: () => selectBook(""),
+                      onPress: () => setBookId(""),
                     },
                     ...books.map((book) => ({
                       type: "action" as const,
                       label: book.meta.title,
                       state: book.id === bookId ? ("on" as const) : ("off" as const),
-                      onPress: () => selectBook(book.id),
+                      onPress: () => setBookId(book.id),
                     })),
                   ],
                 },
@@ -265,11 +200,8 @@ export function ManualNoteScreen({ navigation, route }: Props) {
     content,
     existingNote,
     navigation,
-    requestCancel,
     save,
     saving,
-    savedDraft,
-    selectBook,
     selectedBook?.meta.title,
     t,
   ]);
@@ -280,7 +212,7 @@ export function ManualNoteScreen({ navigation, route }: Props) {
       edges={["bottom"]}
     >
       <View style={styles.content}>
-        <NativeNoteEditor initialValue={existingNote?.note} onChange={changeContent} autoFocus />
+        <NativeNoteEditor initialValue={existingNote?.note} onChange={setContent} autoFocus />
       </View>
     </SafeAreaView>
   );

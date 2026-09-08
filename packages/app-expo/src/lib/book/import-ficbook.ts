@@ -28,8 +28,6 @@
  */
 
 import { type ZipEntry, buildStoreOnlyZip } from "@readany/core/utils/store-only-zip";
-import { withGatewayConsumer } from "../ai/narra-gateway-consumer";
-import { NarraServiceError } from "../narra/errors";
 
 export const FICBOOK_ORIGIN = "https://ficbook.net";
 
@@ -418,9 +416,6 @@ export function buildFicbookEpub(input: FicbookEpubInput): Uint8Array {
 
 export interface FicbookFetchOptions {
   fetchImpl?: typeof globalThis.fetch;
-  signal?: AbortSignal;
-  /** Called only after a chapter has finished downloading and parsing. */
-  onProgress?: (progress: { completed: number; total: number }) => void;
   /** Пауза между запросами глав; в тестах передавайте 0. */
   chapterDelayMs?: number;
   /** Максимальное ожидание одного ответа Фикбука; в тестах можно уменьшить. */
@@ -435,59 +430,34 @@ async function resolveFetch(options: FicbookFetchOptions): Promise<typeof global
   return expoFetch as unknown as typeof globalThis.fetch;
 }
 
-function throwIfCancelled(signal?: AbortSignal): void {
-  if (signal?.aborted) {
-    throw (
-      signal.reason ?? Object.assign(new Error("Ficbook import cancelled"), { name: "AbortError" })
-    );
-  }
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  throwIfCancelled(signal);
-  return new Promise((resolve, reject) => {
-    const onAbort = () => {
-      clearTimeout(timer);
-      signal?.removeEventListener("abort", onAbort);
-      try {
-        throwIfCancelled(signal);
-      } catch (error) {
-        reject(error);
-      }
-    };
-    const timer = setTimeout(() => {
-      signal?.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
-}
-
-async function fetchFicbookResponse<T>(
+async function fetchFicbookResponse(
   fetchImpl: typeof globalThis.fetch,
   url: string,
   requestTimeoutMs: number,
-  consume: (response: Response) => Promise<T>,
-  signal?: AbortSignal,
-): Promise<T> {
+): Promise<Response> {
+  const controller = new AbortController();
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      controller.abort();
+      reject(new FicbookImportError("ficbook-timeout"));
+    }, requestTimeoutMs);
+  });
+
   try {
-    return await withGatewayConsumer(
-      async (scope) => {
-        const response = await scope.wait(
-          fetchImpl(url, { headers: REQUEST_HEADERS, signal: scope.signal }),
-        );
-        scope.throwIfAborted();
-        return scope.wait(consume(response));
-      },
-      { signal, timeoutMs: requestTimeoutMs },
-    );
+    return await Promise.race([
+      fetchImpl(url, { headers: REQUEST_HEADERS, signal: controller.signal }),
+      timeoutPromise,
+    ]);
   } catch (error) {
-    throwIfCancelled(signal);
     if (error instanceof FicbookImportError) throw error;
-    if (error instanceof NarraServiceError && error.code === "TIMEOUT") {
-      throw new FicbookImportError("ficbook-timeout");
-    }
     throw new FicbookImportError("ficbook-network");
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
   }
 }
 
@@ -495,54 +465,46 @@ async function fetchFicbookHtml(
   fetchImpl: typeof globalThis.fetch,
   url: string,
   requestTimeoutMs: number,
-  signal?: AbortSignal,
 ): Promise<string> {
-  return fetchFicbookResponse(
-    fetchImpl,
-    url,
-    requestTimeoutMs,
-    async (response) => {
-      if (response.status === 403 || response.status === 429) {
-        throw new FicbookImportError("ficbook-blocked");
-      }
-      if (response.status === 404) throw new FicbookImportError("ficbook-not-found");
-      if (!response.ok) throw new FicbookImportError("ficbook-network");
-      // Headers are not a complete response: keep the deadline through body consumption.
-      return response.text();
-    },
-    signal,
-  );
+  let response: Response;
+  try {
+    response = await fetchFicbookResponse(fetchImpl, url, requestTimeoutMs);
+  } catch (error) {
+    if (error instanceof FicbookImportError) throw error;
+    throw new FicbookImportError("ficbook-network");
+  }
+  if (response.status === 403 || response.status === 429) {
+    throw new FicbookImportError("ficbook-blocked");
+  }
+  if (response.status === 404) {
+    throw new FicbookImportError("ficbook-not-found");
+  }
+  if (!response.ok) {
+    throw new FicbookImportError("ficbook-network");
+  }
+  return await response.text();
 }
 
 async function fetchCover(
   fetchImpl: typeof globalThis.fetch,
   coverUrl: string,
   requestTimeoutMs: number,
-  signal?: AbortSignal,
 ): Promise<{ bytes: Uint8Array; mimeType: string } | null> {
   try {
-    return await fetchFicbookResponse(
-      fetchImpl,
-      coverUrl,
-      requestTimeoutMs,
-      async (response) => {
-        if (!response.ok) return null;
-        const bytes = new Uint8Array(await response.arrayBuffer());
-        if (bytes.length === 0) return null;
-        const contentType = response.headers.get("content-type");
-        const mimeType =
-          contentType?.split(";")[0]?.trim() ||
-          (coverUrl.endsWith(".png")
-            ? "image/png"
-            : coverUrl.endsWith(".webp")
-              ? "image/webp"
-              : "image/jpeg");
-        return { bytes, mimeType };
-      },
-      signal,
-    );
+    const response = await fetchFicbookResponse(fetchImpl, coverUrl, requestTimeoutMs);
+    if (!response.ok) return null;
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.length === 0) return null;
+    const contentType = response.headers.get("content-type");
+    const mimeType =
+      contentType?.split(";")[0]?.trim() ||
+      (coverUrl.endsWith(".png")
+        ? "image/png"
+        : coverUrl.endsWith(".webp")
+          ? "image/webp"
+          : "image/jpeg");
+    return { bytes, mimeType };
   } catch {
-    throwIfCancelled(signal);
     // Обложка — не повод ронять импорт.
     return null;
   }
@@ -562,47 +524,34 @@ export async function importFicbookFromUrl(
   rawUrl: string,
   options: FicbookFetchOptions = {},
 ): Promise<FicbookImportResult> {
-  const { signal } = options;
-  throwIfCancelled(signal);
   const ref = parseFicbookUrl(rawUrl);
   if (!ref) {
     throw new FicbookImportError("ficbook-parse");
   }
 
   const fetchImpl = await resolveFetch(options);
-  throwIfCancelled(signal);
   const chapterDelayMs = options.chapterDelayMs ?? DEFAULT_CHAPTER_DELAY_MS;
   const requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
 
   const workUrl = `${FICBOOK_ORIGIN}/readfic/${ref.workId}`;
-  const workHtml = await fetchFicbookHtml(fetchImpl, workUrl, requestTimeoutMs, signal);
-  throwIfCancelled(signal);
+  const workHtml = await fetchFicbookHtml(fetchImpl, workUrl, requestTimeoutMs);
   const work = parseFicbookWorkPage(workHtml, ref.workId);
 
   const chapters: FicbookChapter[] = [];
   if (work.inlineChapter) {
     chapters.push(work.inlineChapter);
-    options.onProgress?.({ completed: 1, total: 1 });
   } else {
     // Последовательно, с паузой: параллельная качка глав — верный путь под 429.
     for (const [index, chapterRef] of work.chapters.entries()) {
-      throwIfCancelled(signal);
       if (index > 0 && chapterDelayMs > 0) {
-        await sleep(chapterDelayMs, signal);
+        await sleep(chapterDelayMs);
       }
-      const chapterHtml = await fetchFicbookHtml(
-        fetchImpl,
-        chapterRef.url,
-        requestTimeoutMs,
-        signal,
-      );
-      throwIfCancelled(signal);
+      const chapterHtml = await fetchFicbookHtml(fetchImpl, chapterRef.url, requestTimeoutMs);
       const chapter = parseFicbookChapterPage(chapterHtml);
       chapters.push({
         title: chapter.title || chapterRef.title,
         paragraphs: chapter.paragraphs,
       });
-      options.onProgress?.({ completed: chapters.length, total: work.chapters.length });
     }
   }
 
@@ -610,11 +559,7 @@ export async function importFicbookFromUrl(
     throw new FicbookImportError("ficbook-parse");
   }
 
-  throwIfCancelled(signal);
-  const cover = work.coverUrl
-    ? await fetchCover(fetchImpl, work.coverUrl, requestTimeoutMs, signal)
-    : null;
-  throwIfCancelled(signal);
+  const cover = work.coverUrl ? await fetchCover(fetchImpl, work.coverUrl, requestTimeoutMs) : null;
 
   const epubBytes = buildFicbookEpub({
     workId: ref.workId,
