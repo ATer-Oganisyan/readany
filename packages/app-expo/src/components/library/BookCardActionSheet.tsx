@@ -17,7 +17,7 @@ interface BookCardActionSheetProps {
 
 /**
  * The historical name is kept to avoid a noisy migration. The visible control
- * is now a platform menu: SwiftUI Menu/UIMenu on iOS and a native dialog on Android.
+ * is now a native context menu on iOS and Android.
  */
 export function BookCardActionSheet({
   book,
