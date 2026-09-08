@@ -170,10 +170,7 @@ export function useStreamingChat(options?: StreamingChatOptions) {
   };
   const error = useMemo(
     () => (streamingSession?.errorMessage ? new Error(streamingSession.errorMessage) : null),
-    // A new failed attempt may have the same message (e.g. a DB write fails
-    // before startStreamingSession clears the previous error). Preserve error
-    // identity only within that session snapshot, not across failed attempts.
-    [streamingSession],
+    [streamingSession?.errorMessage],
   );
 
   const createThread = useChatStore((s) => s.createThread);

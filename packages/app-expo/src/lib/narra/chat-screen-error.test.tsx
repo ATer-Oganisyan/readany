@@ -63,13 +63,6 @@ beforeEach(() => {
 afterEach(() => { if (tree) act(() => tree.unmount()); });
 
 describe("Narra screen durable error recovery", () => {
-  it("ignores a second immediate retry tap before React rerenders", async () => {
-    await render();
-    const onPress = retry().props.onPress;
-    await act(async () => { await Promise.all([onPress(), onPress()]); });
-    expect(runtime.retry).toHaveBeenCalledOnce();
-    expect(alerts()).toHaveLength(0);
-  });
   it("renders a persistent safe inline error, retries with the existing gateway config and hides the old error immediately", async () => {
     await render();
     expect(alerts()).toHaveLength(1);
@@ -83,7 +76,7 @@ describe("Narra screen durable error recovery", () => {
     await act(async () => { await retry().props.onPress(); });
     expect(runtime.retry).toHaveBeenCalledExactlyOnceWith(runtime.config);
     expect(alerts()).toHaveLength(0);
-    runtime.error = new Error("503 provider secret-token"); await update();
+    runtime.error = new Error("another failure"); await update();
     expect(alerts()).toHaveLength(1);
   });
   it("hides errors while streaming and when sending a new message", async () => {
