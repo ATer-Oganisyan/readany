@@ -1,5 +1,5 @@
 export const NATIVE_SCROLL_EDGE_EFFECTS = {
-  top: "soft",
+  top: "hard",
   bottom: "automatic",
   left: "automatic",
   right: "automatic",
