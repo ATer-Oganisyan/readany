@@ -8,10 +8,11 @@ import {
   Host,
   Icon,
   IconButton,
+  RNHostView,
   Text,
 } from "@expo/ui/jetpack-compose";
 import { size as frameSize } from "@expo/ui/jetpack-compose/modifiers";
-import { useCallback, useState } from "react";
+import { type ReactElement, useCallback, useState } from "react";
 import type { NativeContextMenuButtonProps } from "./NativeContextMenuButton.types";
 
 const bodyTypography = typographyStyles.find((style) => style.name === "Body");
@@ -28,9 +29,15 @@ export function NativeContextMenuButton({
   size = 40,
   color,
   onOpenChange,
-}: NativeContextMenuButtonProps) {
+  renderTrigger,
+  expanded: controlledExpanded,
+}: NativeContextMenuButtonProps & {
+  renderTrigger?: (openMenu: () => void) => ReactElement;
+  expanded?: boolean;
+}) {
   const colors = useColors();
-  const [expanded, setExpanded] = useState(false);
+  const [menuExpanded, setExpanded] = useState(false);
+  const expanded = controlledExpanded ?? menuExpanded;
   const iconColor = color ?? colors.foreground;
 
   const setOpen = useCallback(
@@ -49,18 +56,22 @@ export function NativeContextMenuButton({
   return (
     <Host matchContents>
       <DropdownMenu expanded={expanded} color={colors.card} onDismissRequest={() => setOpen(false)}>
-        <IconButton
-          onClick={() => setOpen(true)}
-          modifiers={[frameSize(size, size)]}
-          colors={{ contentColor: iconColor }}
-        >
-          <Icon
-            source={getStrokeIconImageSource(resolveSystemIconName(sfSymbol))}
-            size={20}
-            tint={iconColor}
-            contentDescription={accessibilityLabel}
-          />
-        </IconButton>
+        {renderTrigger ? (
+          <RNHostView matchContents>{renderTrigger(() => setOpen(true))}</RNHostView>
+        ) : (
+          <IconButton
+            onClick={() => setOpen(true)}
+            modifiers={[frameSize(size, size)]}
+            colors={{ contentColor: iconColor }}
+          >
+            <Icon
+              source={getStrokeIconImageSource(resolveSystemIconName(sfSymbol))}
+              size={20}
+              tint={iconColor}
+              contentDescription={accessibilityLabel}
+            />
+          </IconButton>
+        )}
 
         <DropdownMenu.Items>
           {items.map((item) => {
