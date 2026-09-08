@@ -1,4 +1,10 @@
-import { type ThemeColors, fontSize, fontWeight, headingFontFamily, radius } from "@/styles/theme";
+import {
+  type ThemeColors,
+  fontSize,
+  fontWeight,
+  headingFontFamily,
+  radius,
+} from "@/styles/theme";
 import { StyleSheet } from "react-native";
 
 export const makeStyles = (colors: ThemeColors) =>
@@ -190,14 +196,7 @@ export const makeStyles = (colors: ThemeColors) =>
     },
     noteText: { fontSize: fontSize.xs, color: colors.mutedForeground, lineHeight: 16 },
     noteActions: { flexDirection: "row", justifyContent: "flex-end", gap: 4, marginTop: 8 },
-    noteActionBtn: {
-      padding: 6,
-      minWidth: 48,
-      minHeight: 48,
-      alignItems: "center",
-      justifyContent: "center",
-      borderRadius: radius.sm,
-    },
+    noteActionBtn: { padding: 6, borderRadius: radius.sm },
     editArea: { marginTop: 8 },
     editorContainer: {
       flex: 1,

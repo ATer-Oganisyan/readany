@@ -287,8 +287,6 @@
 
     // State
     let view = null;
-    let bookOpenSequence = 0;
-    let bookOpenController = null;
     let currentBook = null;
     let searchGenerator = null;
     let searchResults = [];
@@ -1673,7 +1671,7 @@
           await handleExtractBookTextSample(msg);
           break;
         case 'getChapterParagraphs':
-          handleGetChapterParagraphs(msg.requestId);
+          handleGetChapterParagraphs();
           break;
         case 'getTTSSegmentContext':
           await ensureTTSEngine();
@@ -1688,96 +1686,10 @@
       }
     }
 
-    // Range loading is EPUB-only: other archives must use their own makeBook parser.
-    async function loadEpubFromRanges(msg, signal) {
-      if (!/\.epub$/i.test(msg.fileName || '')) return null;
-      signal.throwIfAborted();
-      const head = await fetch(msg.uri, { method: 'HEAD', signal });
-      signal.throwIfAborted();
-      const size = Number(head.headers.get('Content-Length'));
-      if (!head.ok || head.headers.get('Accept-Ranges')?.trim().toLowerCase() !== 'bytes' ||
-          !Number.isSafeInteger(size) || size <= 0) return null;
-
-      const { configure, Reader, ZipReader, TextWriter, BlobWriter } = window._zipJs;
-      configure({ useWebWorkers: false });
-      let closed = false;
-      const checkActive = () => {
-        signal.throwIfAborted();
-        if (closed) throw new DOMException('Book range reader closed', 'AbortError');
-      };
-      // Entry.getData consumes Reader.readable, not just readUint8Array. Reuse
-      // the actual vendored base class so its stream offsets/chunking stay valid.
-      const rangeReader = new class extends Reader {
-        constructor() { super(); this.size = size; }
-        async readUint8Array(offset, length) {
-          checkActive();
-          if (!Number.isSafeInteger(offset) || !Number.isSafeInteger(length) ||
-              offset < 0 || length < 0 || offset > size)
-            throw new RangeError('Invalid book byte range');
-          if (length === 0) return new Uint8Array();
-          if (offset === size) throw new RangeError('Book byte range is past EOF');
-          const end = offset + Math.min(length, size - offset) - 1;
-          const response = await fetch(msg.uri, { headers: { Range: `bytes=${offset}-${end}` }, signal });
-          checkActive();
-          if (response.status !== 206 || response.headers.get('Content-Range') !== `bytes ${offset}-${end}/${size}`) {
-            response.body?.cancel().catch(() => {});
-            throw new Error('Server returned an invalid book byte range');
-          }
-          const bytes = new Uint8Array(await response.arrayBuffer());
-          checkActive();
-          if (bytes.length !== end - offset + 1) throw new Error('Truncated book byte range');
-          return bytes;
-        }
-      }();
-      const zipReader = new ZipReader(rangeReader);
-      let book = null;
-      try {
-        const entries = await zipReader.getEntries();
-        checkActive();
-        const map = new Map(entries.map(entry => [entry.filename, entry]));
-        const load = writer => (name, ...args) => {
-          checkActive();
-          return map.has(name) ? map.get(name).getData(writer(...args), { signal }) : null;
-        };
-        book = new window._EPUB({ entries,
-          loadText: load(() => new TextWriter()),
-          loadBlob: load(type => new BlobWriter(type)),
-          getSize: name => map.get(name)?.uncompressedSize ?? 0,
-        });
-        await book.init();
-        checkActive();
-        const destroy = book.destroy.bind(book);
-        book.destroy = () => {
-          if (closed) return;
-          closed = true;
-          try { destroy(); } finally { void zipReader.close().catch(() => {}); }
-        };
-        return book;
-      } catch (error) {
-        closed = true;
-        try { book?.destroy(); } finally { await zipReader.close(); }
-        throw error;
-      }
-    }
-
     // ─── Book loading ───
     async function openBook(msg) {
-      const INITIAL_NAVIGATION_TIMEOUT_MS = 30_000;
-      const openSequence = ++bookOpenSequence;
-      let openingFailed = false;
-      let openingView = null;
-      const isCurrent = () => !openingFailed && openSequence === bookOpenSequence;
-      bookOpenController?.abort();
-      const controller = new AbortController();
-      bookOpenController = controller;
-      const signal = controller.signal;
       const container = document.getElementById('reader-container');
       const loading = document.getElementById('loading');
-      const loadingError = document.getElementById('loading-error');
-      if (loadingError) {
-        loadingError.hidden = true;
-        loadingError.textContent = '';
-      }
       if (loading) loading.classList.remove('hidden');
       if (view) {
         try { if (typeof view.close === 'function') view.close(); } catch (closeError) {
@@ -1799,7 +1711,7 @@
       try {
         let hasSignalledLoaded = false;
         const markLoaded = () => {
-          if (!isCurrent() || hasSignalledLoaded) return;
+          if (hasSignalledLoaded) return;
           hasSignalledLoaded = true;
           if (loading) loading.classList.add('hidden');
           postToRN('loaded', { loadId: msg.loadId });
@@ -1822,20 +1734,65 @@
             })}`
           });
 
+          // Try Range-based lazy loading for ZIP-based formats (EPUB, CBZ, FBZ)
+          // This avoids loading the entire file into memory — only reads
+          // the ZIP central directory (~few KB) then fetches entries on demand.
+          const isZipFormat = /\.(epub|cbz|fb2\.zip|fbz)$/i.test(msg.fileName || '');
           let lazyBook = null;
-          try {
-            lazyBook = await loadEpubFromRanges(msg, signal);
-          } catch (lazyErr) {
-            if (signal.aborted || !isCurrent()) return;
-            console.warn('[Reader] Lazy loading failed, falling back to full fetch:', lazyErr);
+
+          if (isZipFormat) {
+            try {
+              // HEAD request to get file size and check Range support
+              const headRes = await fetch(msg.uri, { method: 'HEAD' });
+              const acceptRanges = headRes.headers.get('Accept-Ranges');
+              const contentLength = parseInt(headRes.headers.get('Content-Length'), 10);
+
+              if (acceptRanges === 'bytes' && contentLength > 0) {
+                // Create a HttpRangeReader compatible with zip.js's ZipReader
+                const bookUri = msg.uri;
+                const rangeReader = {
+                  size: contentLength,
+                  async readUint8Array(offset, length) {
+                    const end = Math.min(offset + length - 1, contentLength - 1);
+                    const res = await fetch(bookUri, {
+                      headers: { 'Range': `bytes=${offset}-${end}` }
+                    });
+                    if (!res.ok && res.status !== 206) {
+                      throw new Error(`Range request failed: ${res.status}`);
+                    }
+                    return new Uint8Array(await res.arrayBuffer());
+                  }
+                };
+
+                // Use zip.js and EPUB from the bundled globals
+                const { configure, ZipReader, TextWriter, BlobWriter } = window._zipJs;
+                configure({ useWebWorkers: false });
+                const zipReader = new ZipReader(rangeReader);
+                const entries = await zipReader.getEntries();
+                const map = new Map(entries.map(entry => [entry.filename, entry]));
+
+                const load = (f) => (name, ...args) =>
+                  map.has(name) ? f(map.get(name), ...args) : null;
+                const loadText = load(entry => entry.getData(new TextWriter()));
+                const loadBlob = load((entry, type) => entry.getData(new BlobWriter(type)));
+                const getSize = (name) => map.get(name)?.uncompressedSize ?? 0;
+                const loader = { entries, loadText, loadBlob, getSize };
+
+                // Initialize EPUB from lazy loader
+                const EPUB = window._EPUB;
+                lazyBook = await new EPUB(loader).init();
+              }
+            } catch (lazyErr) {
+              console.warn('[Reader] Lazy loading failed, falling back to full fetch:', lazyErr);
+              lazyBook = null;
+            }
           }
-          if (!isCurrent()) { lazyBook?.destroy(); return; }
 
           // Try Range-based lazy loading for PDF
           // pdf.js natively supports Range requests via url + disableAutoFetch
           if (!lazyBook && /\.pdf$/i.test(msg.fileName || '')) {
             try {
-              const headRes = await fetch(msg.uri, { method: 'HEAD', signal });
+              const headRes = await fetch(msg.uri, { method: 'HEAD' });
               const acceptRanges = headRes.headers.get('Accept-Ranges');
               const contentLength = parseInt(headRes.headers.get('Content-Length'), 10);
 
@@ -1843,19 +1800,16 @@
                 lazyBook = await window._makePDFFromURL(msg.uri, msg.fileName || 'book.pdf');
               }
             } catch (pdfLazyErr) {
-              if (signal.aborted || !isCurrent()) return;
               console.warn('[Reader] PDF lazy loading failed, falling back to full fetch:', pdfLazyErr);
               lazyBook = null;
             }
           }
 
           if (!lazyBook) {
-            signal.throwIfAborted();
-            const res = await fetch(msg.uri, { signal });
+            const res = await fetch(msg.uri);
             const isLocalFileStatus = res.status === 0 && /^file:\/\//i.test(msg.uri);
             if (!res.ok && !isLocalFileStatus) throw new Error(`Failed to fetch: ${res.status}`);
             const blob = await res.blob();
-            signal.throwIfAborted();
             file = new File([blob], msg.fileName || 'book.epub', {
               type: msg.mimeType || blob.type || 'application/octet-stream'
             });
@@ -1868,22 +1822,16 @@
         }
 
         const book = (file && file.sections) ? file : await makeBook(file);
-        if (!isCurrent()) {
-          book.destroy?.();
-          return;
-        }
         currentBook = book;
         attachBookTransformHandler(book);
 
         const el = document.createElement('foliate-view');
-        openingView = el;
         el.cfiFilter = sceneCfiFilter;
         readerElement = el;
         el.style.width = '100%';
         el.style.height = '100%';
 
         el.addEventListener('load', (e) => {
-          if (!isCurrent()) return;
           const { doc, index, primary } = e.detail;
           // A loaded EPUB document must become interactive synchronously. Font
           // preparation is an optimization and must never hold gesture wiring.
@@ -1910,6 +1858,7 @@
           // The fixed SB Serif family is warmed once in the outer document
           // before Foliate creates its section documents. Every section still
           // receives the @font-face CSS, while WebKit reuses the same font data.
+          markLoaded();
           refreshUserAnnotations(100);
           // Auto-inject ruby annotations if enabled
           if (_rubyMode && (_rubyWordDict || _rubyCharDict)) {
@@ -1925,7 +1874,6 @@
 
         var snippetTimer = null;
         el.addEventListener('relocate', (e) => {
-          if (!isCurrent()) return;
           hideFootnoteTip();
           const detail = e.detail;
           const previousSectionIndex = currentSectionIndex;
@@ -1940,27 +1888,13 @@
           } else if (typeof detail.index === 'number') {
             currentSectionIndex = detail.index;
           }
-          const isFixedLayout = !!(view && view.isFixedLayout);
-          // PDF/comic sections are physical pages. SectionProgress estimates
-          // text locations from section bytes, which would count image sizes.
-          if (isFixedLayout) {
-            const fixedIndex = view.renderer && view.renderer.index;
-            if (Number.isInteger(fixedIndex) && fixedIndex >= 0) {
-              currentSectionIndex = fixedIndex;
-            }
-            if (view.book && view.book.sections && view.book.sections.length) {
-              relocatedSectionTotal = view.book.sections.length;
-            }
-          }
           const rendererPage = view && view.renderer && typeof view.renderer.page === 'number'
             ? view.renderer.page
             : null;
           const rendererPages = view && view.renderer && typeof view.renderer.pages === 'number'
             ? view.renderer.pages
             : null;
-          const actualPage = isFixedLayout && relocatedSectionTotal > 0
-            ? { current: currentSectionIndex + 1, total: relocatedSectionTotal }
-            : rendererPage != null && rendererPages != null && rendererPages > 2
+          const actualPage = rendererPage != null && rendererPages != null && rendererPages > 2
             ? {
                 current: Math.max(1, Math.min(rendererPage, rendererPages - 2)),
                 total: Math.max(1, rendererPages - 2),
@@ -1969,9 +1903,8 @@
           postToRN('relocate', {
             loadId: msg.loadId,
             fraction: detail.fraction,
-            isFixedLayout,
             section: { current: currentSectionIndex, total: relocatedSectionTotal },
-            location: isFixedLayout ? undefined : detail.location,
+            location: detail.location,
             page: actualPage,
             tocItem: detail.tocItem,
             pageItem: detail.pageItem,
@@ -1983,7 +1916,6 @@
           // Extract text after page render settles
           if (snippetTimer) clearTimeout(snippetTimer);
           snippetTimer = setTimeout(() => {
-            if (!isCurrent()) return;
             var snippet = getVisibleTextSnippet(80);
             if (snippet) postToRN('pageSnippet', { textSnippet: snippet });
           }, 300);
@@ -2091,14 +2023,8 @@
         // fixed reader family. Warm those files once per WebView. The bounded
         // wait keeps the first frame stable without ever deadlocking the book.
         await waitForBundledReaderFontWarmup();
-        if (!isCurrent()) return;
 
         await el.open(book);
-        if (!isCurrent()) {
-          el.close();
-          el.remove();
-          return;
-        }
 
         if (book.sections) {
           totalSections = book.sections.length;
@@ -2135,74 +2061,28 @@
           applyFixedLayoutRendererSettings(renderer, currentPaginatedLayout);
         }
 
-        // An iframe load is earlier than completed navigation (especially the
-        // first half of a fixed-layout spread). Do not let RN's pending note
-        // jump race against a still-running initial saved-position restore.
-        let initialNavigationTimer;
-        let onInitialNavigationAbort;
-        try {
-          await Promise.race([
-            (async () => {
-              if (msg.lastLocation) {
-                try {
-                  await el.init({ lastLocation: msg.lastLocation });
-                } catch (err) {
-                  if (!isCurrent()) return;
-                  console.warn('[WebView] Failed to init with lastLocation, going to start:', err);
-                  await el.goToFraction(Number.isFinite(msg.fallbackFraction) ? msg.fallbackFraction : 0);
-                }
-              } else if (el.isFixedLayout && !Number.isFinite(msg.fallbackFraction)) {
-                await el.init({});
-              } else {
-                await el.goToFraction(Number.isFinite(msg.fallbackFraction) ? msg.fallbackFraction : 0);
-              }
-            })(),
-            new Promise((_, reject) => {
-              initialNavigationTimer = setTimeout(() => {
-                reject(new Error('Initial book navigation timed out'));
-              }, INITIAL_NAVIGATION_TIMEOUT_MS);
-              onInitialNavigationAbort = () => reject(signal.reason || new Error('Book opening cancelled'));
-              signal.addEventListener('abort', onInitialNavigationAbort, { once: true });
-              if (signal.aborted) onInitialNavigationAbort();
-            }),
-          ]);
-        } finally {
-          clearTimeout(initialNavigationTimer);
-          if (onInitialNavigationAbort) signal.removeEventListener('abort', onInitialNavigationAbort);
+        if (el.isFixedLayout) {
+          await el.init({});
+        } else if (msg.lastLocation) {
+          try {
+            await el.init({ lastLocation: msg.lastLocation });
+          } catch (err) {
+            console.warn('[WebView] Failed to init with lastLocation, going to start:', err);
+            await el.goToFraction(Number.isFinite(msg.fallbackFraction) ? msg.fallbackFraction : 0);
+          }
+        } else {
+          await el.goToFraction(Number.isFinite(msg.fallbackFraction) ? msg.fallbackFraction : 0);
         }
-        if (!isCurrent()) return;
-        markLoaded();
 
         // Measuring parses every section of the book on this thread, which
         // starves tap handling for as long as it runs. RN asks for it only
         // when it has no count stored for this book yet.
-        if (isCurrent() && msg.measureTextMetrics) scheduleBookTextMetrics(book);
+        if (msg.measureTextMetrics) scheduleBookTextMetrics(book);
 
       } catch (err) {
-        if (!isCurrent()) return;
-        // Invalidate this opening's late iframe/relocate callbacks before
-        // disposing it, but report its error below rather than hiding it via
-        // the sequence guard. Never dispose a replacement book's view.
-        openingFailed = true;
-        controller.abort(err);
-        if (openingView) {
-          try { openingView.close?.(); } catch (_) {}
-          try { openingView.remove?.(); } catch (_) {}
-          if (view === openingView) {
-            view = null;
-            readerElement = null;
-            currentBook = null;
-          }
-        }
         console.error('[WebView] Error in openBook:', err);
         const message = `${String(err)}${msg?.uri ? ` (${msg.uri})` : ''}`;
-        if (loading) {
-          loading.classList.remove('hidden');
-        }
-        if (loadingError) {
-          loadingError.hidden = false;
-          loadingError.textContent = message;
-        }
+        loading.innerHTML = '<div class="error-text">' + escapeHtml(message) + '</div>';
         postToRN('error', { message, loadId: msg.loadId });
       }
     }
@@ -2556,12 +2436,6 @@
       if (!doc || !doc.head) return;
       const styleId = '__readany_reader_overrides__';
       let el = doc.getElementById(styleId);
-      // PDF.js positions selectable text against its canvas. Reflow font-size,
-      // family and line-height overrides would detach that text from the page.
-      if (doc.documentElement?.hasAttribute?.('data-readany-pdf')) {
-        if (el) el.remove();
-        return;
-      }
       if (!el) {
         el = doc.createElement('style');
         el.id = styleId;
@@ -2832,16 +2706,7 @@ a { color: ${primary} !important; }
         );
         syncReaderOverrideStylesForDoc(doc, themedStyles);
       }
-      // Android WebView opens its native selection ActionMode from this event.
-      // Cancelling it leaves selection handles visible but removes every action.
-      // Keep the existing iOS behavior; repeated settings updates need only one listener.
-      const isAndroidLike = (() => {
-        try { return /Android/i.test(navigator.userAgent); } catch { return false; }
-      })();
-      if (!isAndroidLike && !doc.__readany_contextmenu_blocked) {
-        doc.__readany_contextmenu_blocked = true;
-        doc.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); return false; }, true);
-      }
+      doc.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); return false; }, true);
     }
 
     function isImageOnlyAnchor(anchor) {
@@ -2888,27 +2753,6 @@ a { color: ${primary} !important; }
       if (!isSceneUiNode(sel.anchorNode) && !isSceneUiNode(sel.focusNode)) return false;
       clearDocumentSelection(doc);
       return true;
-    }
-
-    // Event coordinates inside a CSS-scaled fixed-layout iframe are unscaled.
-    // Project them through each frame into the reader viewport before choosing
-    // a page-turn zone. Adding only frame.left (or wrapping with modulo) can
-    // turn a right-hand comic tap into a left-hand tap on a phone.
-    function getReaderViewportX(doc, clientX) {
-      let viewportX = clientX;
-      let sourceWindow = doc && doc.defaultView;
-      for (let depth = 0; sourceWindow && sourceWindow !== window && depth < 10; depth++) {
-        let iframe;
-        try { iframe = sourceWindow.frameElement; } catch { break; }
-        if (!iframe) break;
-        const rect = iframe.getBoundingClientRect();
-        const layoutWidth = iframe.clientWidth || sourceWindow.innerWidth;
-        const scale = Number.isFinite(layoutWidth) && layoutWidth > 0 && rect.width > 0
-          ? rect.width / layoutWidth : 1;
-        viewportX = rect.left + viewportX * scale;
-        sourceWindow = iframe.ownerDocument && iframe.ownerDocument.defaultView;
-      }
-      return viewportX;
     }
 
     // ─── Tap detection ───
@@ -3086,10 +2930,10 @@ a { color: ${primary} !important; }
 
         let viewW;
         try { viewW = window.top.innerWidth || window.innerWidth; } catch { viewW = window.innerWidth; }
-        if (!Number.isFinite(viewW) || viewW <= 0) return;
-        const viewportX = getReaderViewportX(doc, clientX);
-        if (!Number.isFinite(viewportX)) return;
-        const normalizedX = Math.max(0, Math.min(viewW, viewportX));
+        const iframe = doc.defaultView && doc.defaultView.frameElement;
+        const iframeLeft = iframe ? iframe.getBoundingClientRect().left : 0;
+        const viewportX = clientX + iframeLeft;
+        const normalizedX = ((viewportX % viewW) + viewW) % viewW;
         e.preventDefault();
         e.stopPropagation();
 
@@ -3311,21 +3155,13 @@ a { color: ${primary} !important; }
         if (view && view.getCFI) {
           const contents = view.renderer && view.renderer.getContents ? view.renderer.getContents() : [];
           const found = contents.find(c => c.doc === doc);
-          if (found && Number.isInteger(found.index) && found.index >= 0) {
-            // Fixed-layout renderers navigate by page. PDF text-layer DOM is
-            // regenerated on zoom, so persist its stable page address rather
-            // than claiming an exact, durable text-range anchor.
-            cfi = (view.isFixedLayout
-              ? view.getCFI(found.index)
-              : view.getCFI(found.index, range)) || '';
-          }
+          if (found) cfi = view.getCFI(found.index, range) || '';
         }
       } catch { /* ignore */ }
 
       postToRN('selection', {
         text,
         cfi,
-        cfiGranularity: view && view.isFixedLayout ? 'page' : 'range',
         position: {
           x: iframeRect.left + rect.left + rect.width / 2,
           y: iframeRect.top + firstRect.top - 4,
@@ -3437,64 +3273,6 @@ a { color: ${primary} !important; }
         var result = normalizeTTSText(texts.join(' '));
         return result.length > maxLen ? result.slice(0, maxLen) : result;
       } catch (e) { return ''; }
-    }
-
-    // Chat must never consume a full paragraph merely because one line is visible.
-    // Foliate publishes a precise viewport CFI. Its live DOM Range can drift
-    // when character-name wrappers replace text nodes without a new relocation.
-    function doGetVisibleReadingContext() {
-      try {
-        var location = view && view.lastLocation;
-        var cfi = location && location.cfi;
-        if (!location || !location.range || typeof cfi !== 'string' || !cfi.trim() ||
-            typeof view.resolveCFI !== 'function' || typeof view.getCFI !== 'function' ||
-            !view.renderer || typeof view.renderer.getContents !== 'function') return null;
-        var resolved = view.resolveCFI(cfi);
-        if (!resolved || typeof resolved.anchor !== 'function') return null;
-        var contents = view.renderer.getContents();
-        var content = contents && contents.find(function(item) {
-          return item && item.index === resolved.index && item.doc;
-        });
-        if (!content) return null;
-        var range = resolved.anchor(content.doc);
-        // CFI.toRange can fall back to a whole element/document when an address
-        // is no longer resolvable. Never pass that broader text to character chat.
-        if (!range || typeof range.cloneContents !== 'function' ||
-            view.getCFI(resolved.index, range) !== cfi) return null;
-        var excluded = /^(rt|rp|script|style|noscript)$/i;
-        // cloneContents omits the common ancestor itself. If the whole range
-        // is inside ruby pronunciation or a script, reject before cloning.
-        var ancestor = range.commonAncestorContainer;
-        while (ancestor) {
-          if (ancestor.nodeType === 1 && excluded.test(ancestor.localName || ancestor.nodeName)) return null;
-          ancestor = ancestor.parentNode;
-        }
-        var fragment = range.cloneContents();
-        var text = '';
-        var block = /^(p|div|section|article|li|h[1-6]|blockquote|pre|br|tr)$/i;
-        function append(value) {
-          text += value.slice(0, Math.max(0, 4000 - text.length));
-        }
-        function collect(node) {
-          if (!node || text.length >= 4000) return;
-          if (node.nodeType === 3 || node.nodeType === 4) {
-            append(node.nodeValue || '');
-            return;
-          }
-          var tag = node.localName || node.nodeName || '';
-          if (node.nodeType === 1 && excluded.test(tag)) return;
-          if (block.test(tag) && text) append('\n');
-          for (var child = node.firstChild; child && text.length < 4000; child = child.nextSibling) {
-            collect(child);
-          }
-          if (block.test(tag)) append('\n');
-        }
-        collect(fragment);
-        text = text.replace(/\s+/g, ' ').trim().slice(0, 4000);
-        return text ? { text: text, cfi: cfi } : null;
-      } catch (error) {
-        return null;
-      }
     }
 
     // Get all visible text for TTS (no length limit)
@@ -4279,28 +4057,7 @@ a { color: ${primary} !important; }
               if (
                 sentenceStart.compareBoundaryPoints(rangeCtor.START_TO_START, visibilityStart) < 0
               ) {
-                const sentenceEnd = range.cloneRange();
-                sentenceEnd.collapse(false);
-                if (sentenceEnd.compareBoundaryPoints(rangeCtor.START_TO_START, visibilityStart) <= 0) {
-                  continue;
-                }
-                // The sentence began on the previous page. Keep its visible
-                // continuation, using the filtered text-node offsets so ruby,
-                // footnotes and other excluded nodes cannot enter the audio.
-                const firstVisibleNode = positionedNodes.find((item) =>
-                  visibilityStart.comparePoint(item.node, item.node.nodeValue.length) > 0
-                );
-                if (!firstVisibleNode) continue;
-                start = Math.max(start, firstVisibleNode.start + (
-                  visibilityStart.startContainer === firstVisibleNode.node
-                    ? visibilityStart.startOffset
-                    : 0
-                ));
-                while (start < end && /\s/u.test(absoluteText[start])) start++;
-                if (start >= end) continue;
-                const clippedStart = resolveTextPosition(positionedNodes, start, false);
-                if (!clippedStart) continue;
-                range.setStart(clippedStart.node, clippedStart.offset);
+                continue;
               }
               if (
                 sentenceStart.compareBoundaryPoints(rangeCtor.START_TO_START, visibilityEnd) >= 0
@@ -4441,11 +4198,6 @@ a { color: ${primary} !important; }
         const renderer = view && view.renderer;
         const contents = getRendererContents();
         if (!renderer || !contents.length) return [];
-
-        // The toolbar deliberately supplies no native CFI: React may still
-        // hold the previous page. Read the current WebView location here,
-        // after engine preparation, and re-resolve its immutable address.
-        alignCfi = alignCfi || (view.lastLocation && view.lastLocation.cfi) || null;
 
         // Relocation CFIs are ranges spanning the page that is actually on
         // screen. Prefer that exact DOM range when the native reader supplies
@@ -4814,17 +4566,14 @@ a { color: ${primary} !important; }
         view.renderer.navigationLocked = locked;
       }
     };
-    window.requestPageSnippet = function (requestId) {
-      // Whole text-node geometry can include an offscreen paragraph beginning.
-      // An optional bookmark label must describe the exact visible CFI slice.
-      var context = doGetVisibleReadingContext();
-      postToRN('bookmarkSnippet', { textSnippet: context ? context.text.slice(0, 80) : '', requestId: requestId, cfi: context ? context.cfi : undefined });
+    window.requestPageSnippet = function () {
+      var snippet = getVisibleTextSnippet(80);
+      postToRN('bookmarkSnippet', { textSnippet: snippet || '' });
     };
     window.getVisibleText = function () {
       var result = doGetVisibleText();
       return JSON.stringify(result);
     };
-    window.getVisibleReadingContext = doGetVisibleReadingContext;
     window.doGetVisibleTTSSegments = async function (alignCfi, requestId) {
       // After page navigation (goNext/goPrev) the renderer takes time to load the
       // new chapter. Poll until getRendererContents() returns at least one content
@@ -4869,8 +4618,8 @@ a { color: ${primary} !important; }
       const segments = await getSectionTTSSegmentsFromBook(sectionIndex, count);
       postToRN('sectionTTSSegments', { requestId: requestId || null, segments });
     };
-    window.doGetChapterParagraphs = function (requestId) {
-      handleGetChapterParagraphs(requestId);
+    window.doGetChapterParagraphs = function () {
+      handleGetChapterParagraphs();
     };
     window.doInjectChapterTranslations = function (results, visibility) {
       return handleInjectChapterTranslations(results, visibility);
@@ -5222,7 +4971,7 @@ a { color: ${primary} !important; }
 
     // ─── Chapter Translation Handlers ───
 
-    function handleGetChapterParagraphs(requestId) {
+    function handleGetChapterParagraphs() {
       try {
         // First try: view.renderer.getContents()
         var doc = null;
@@ -5249,7 +4998,7 @@ a { color: ${primary} !important; }
         }
 
         if (!doc) {
-          postToRN('chapterParagraphs', { requestId, paragraphs: [], error: 'no document found (view=' + !!view + ', renderer=' + !!renderer + ', iframes=' + document.querySelectorAll('iframe').length + ')' });
+          postToRN('chapterParagraphs', { paragraphs: [], error: 'no document found (view=' + !!view + ', renderer=' + !!renderer + ', iframes=' + document.querySelectorAll('iframe').length + ')' });
           return;
         }
 
@@ -5265,9 +5014,9 @@ a { color: ${primary} !important; }
           paragraphs.push({ id: id, text: text, tagName: el.tagName.toLowerCase() });
         }
 
-        postToRN('chapterParagraphs', { requestId, paragraphs: paragraphs });
+        postToRN('chapterParagraphs', { paragraphs: paragraphs });
       } catch (err) {
-        postToRN('chapterParagraphs', { requestId, paragraphs: [], error: String(err) });
+        postToRN('chapterParagraphs', { paragraphs: [], error: String(err) });
       }
     }
 
@@ -5859,8 +5608,7 @@ a { color: ${primary} !important; }
     };
 
     // ─── Врезки сцен внутри текста (Narra) ───
-    // Поток: RN шлёт insertSceneSlot → после видимого абзаца в потоке текста встаёт блок
-    // целиком. На новую страницу он переносится, только если не помещается в остатке.
+    // Поток: RN шлёт insertSceneSlot → после видимого абзаца, с новой страницы, встаёт блок
     // «Сгенерировать сцену» с иконкой волшебной палочки. Тап → блок переключается в
     // плейсхолдер «Рисуем сцену…» и шлёт sceneSlotTap в RN; RN генерирует
     // картинку и возвращает её data-URI командой replaceSceneSlot. Якорь врезки —
@@ -5928,6 +5676,8 @@ a { color: ${primary} !important; }
         '  clear: both !important;',
         '  overflow: hidden !important;',
         '  border-radius: 12px;',
+        '  -webkit-column-break-before: always !important;',
+        '  break-before: column !important;',
         '  -webkit-column-break-inside: avoid !important;',
         '  break-inside: avoid !important;',
         '  -webkit-user-select: none;',
@@ -6441,9 +6191,6 @@ a { color: ${primary} !important; }
     // Вызывается из RN по сигналу счётчика страниц (scene-suggestion.ts)
     window.insertSceneSlot = function (progressFraction) {
       try {
-        // A relocate message may arrive after RN has disabled backend scenes.
-        // Never reserve a page for a new action the reader cannot use.
-        if (!_sceneSlotsEnabled) return;
         if (!view || !view.renderer) {
           sceneSlotLog('insert failed: no view/renderer');
           return;
@@ -6538,13 +6285,6 @@ a { color: ${primary} !important; }
           var slots = doc.querySelectorAll('.' + SCENE_INSERT_CLASS);
           for (var j = 0; j < slots.length; j++) {
             var state = slots[j].getAttribute(SCENE_STATE_ATTR);
-            var anchor = slots[j].getAttribute(SCENE_ANCHOR_ATTR);
-            if (!_sceneSlotsEnabled && state === 'idle' && _sceneRestoreAnchors.indexOf(anchor) < 0) {
-              // Remove only transient, unrequested offers. Saved images and
-              // loading/error requests keep their anchors and lifecycle.
-              removeSceneInsertElement(slots[j]);
-              continue;
-            }
             if (state === 'idle' || state === 'error') renderSceneInsert(slots[j], state, null);
           }
         }
@@ -6568,15 +6308,12 @@ a { color: ${primary} !important; }
       renderSceneInsert(el, next, null);
     };
 
-    function removeSceneInsertElement(el) {
+    window.removeSceneSlot = function (anchor) {
+      var el = findSceneInsert(anchor);
       var box = el && el.querySelector('.readany-scene-box');
       if (box && box.__readanyBorderObserver) box.__readanyBorderObserver.disconnect();
       if (box && box.__readanyDisposeLoader) box.__readanyDisposeLoader();
       if (el && el.parentNode) el.parentNode.removeChild(el);
-    }
-
-    window.removeSceneSlot = function (anchor) {
-      removeSceneInsertElement(findSceneInsert(anchor));
     };
   </script>
 

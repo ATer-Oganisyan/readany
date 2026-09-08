@@ -1,10 +1,5 @@
 {
   "reader": {
-    "preparingAudioText": "Preparing text…",
-    "loadingAudioText": "Loading audio…",
-    "cancelAudioPreparation": "Cancel preparation",
-    "audioPreparationEmpty": "No readable text on this page. Try another page.",
-    "audioPreparationFailed": "Couldn't prepare the text. Tap Listen to retry.",
     "processStopped": "The reader stopped. Tap Retry",
     "untitled": "Untitled",
     "loadingBook": "Opening book…",
@@ -112,15 +107,12 @@
     "remove": "Remove bookmark",
     "added": "Bookmark added",
     "removed": "Bookmark removed",
-    "saveFailed": "Could not update the bookmark. Please try again.",
-    "loadFailed": "Could not load bookmarks. Please try again.",
     "pullToAdd": "Pull down to add bookmark",
     "releaseToAdd": "Release to add bookmark",
     "pullToRemove": "Pull down to remove bookmark",
     "releaseToRemove": "Release to remove bookmark",
     "empty": "No bookmarks yet",
-    "emptyHint": "Use the bookmark button in the toolbar to mark pages",
-    "mobileEmptyHint": "Open Book actions (…) while reading, then choose Add bookmark to this page."
+    "emptyHint": "Use the bookmark button in the toolbar to mark pages"
   },
   "highlights": {
     "yellow": "Yellow",

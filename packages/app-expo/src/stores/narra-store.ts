@@ -110,70 +110,16 @@ export const useNarraStore = create<NarraState>()(
       setBackendBinding: (bookId, backendBinding) => {
         const state = get();
         const current = state.books[bookId] ?? emptyNarraBookState(bookId);
-        const editionChanged = Boolean(
-          current.backendBinding &&
-            current.backendBinding.bookEditionId !== backendBinding.bookEditionId,
-        );
-        const sameSourceReplacement =
-          editionChanged &&
-          /^[a-f\d]{64}$/i.test(backendBinding.contentSha256) &&
-          current.backendBinding?.contentSha256.toLowerCase() ===
-            backendBinding.contentSha256.toLowerCase();
-        const previousHash = current.backendBinding?.contentSha256.toLowerCase();
-        const nextHash = backendBinding.contentSha256.toLowerCase();
-        const sourceChanged = Boolean(
-          previousHash &&
-            /^[a-f\d]{64}$/.test(previousHash) &&
-            /^[a-f\d]{64}$/.test(nextHash) &&
-            previousHash !== nextHash,
-        );
-        let content = current;
-        if (sourceChanged && previousHash) {
-          const { backendContentArchives, backendOriginalSource, ...snapshot } = current;
-          const archives = { ...backendContentArchives, [previousHash]: snapshot };
-          const restored = archives[nextHash];
-          // The active version lives only at the top level; never recursively
-          // snapshot the archive or restore a stale source-file location.
-          delete archives[nextHash];
-          content = {
-            ...(restored ?? emptyNarraBookState(bookId)),
-            backendOriginalSource,
-            backendContentArchives: archives,
-          };
-        }
-        // Private editions can expire while the local book remains unchanged.
-        // Keep its conversation, but never compare the replacement's revision
-        // with the expired edition or reuse its transport-bound assets.
-        const rebound =
-          sameSourceReplacement || sourceChanged
-            ? {
-                ...content,
-                backendManifest: undefined,
-                analysisError: undefined,
-                characters: content.characters.map((character) =>
-                  character.backendManaged
-                    ? {
-                        ...character,
-                        backendAssets: undefined,
-                        backendMedia: undefined,
-                        portraitUri: character.portraitUriOverridesAsset
-                          ? character.portraitUri
-                          : undefined,
-                      }
-                    : character,
-                ),
-              }
-            : content;
         const previousIdentity = backendSceneMarkupIdentity(
           current.backendManifest,
           current.backendBinding,
         );
-        const nextIdentity = backendSceneMarkupIdentity(rebound.backendManifest, backendBinding);
+        const nextIdentity = backendSceneMarkupIdentity(current.backendManifest, backendBinding);
         const book =
-          !editionChanged && previousIdentity === nextIdentity
-            ? rebound
-            : invalidateBackendScenes(rebound, backendBinding.bookEditionId, nextIdentity);
-        if (JSON.stringify(current.backendBinding) === JSON.stringify(backendBinding)) return;
+          previousIdentity === nextIdentity
+            ? current
+            : invalidateBackendScenes(current, backendBinding.bookEditionId, nextIdentity);
+        if (JSON.stringify(book.backendBinding) === JSON.stringify(backendBinding)) return;
         set({ books: { ...state.books, [bookId]: { ...book, backendBinding } } });
       },
       applyBackendManifest: (bookId, manifest, progress, bookTitle) => {

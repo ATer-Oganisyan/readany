@@ -19,7 +19,6 @@ export function consumeBackendSceneOperation<T>(
   start: (signal: AbortSignal) => Promise<T>,
   consumerSignal: AbortSignal,
 ): Promise<T> {
-  if (consumerSignal.aborted) return Promise.reject(abortError());
   let operation = operations.get(id) as SharedOperation<T> | undefined;
   if (!operation) {
     const controller = new AbortController();
@@ -30,13 +29,7 @@ export function consumeBackendSceneOperation<T>(
       promise: Promise.resolve(undefined as T),
     };
     const ownedOperation = operation;
-    let started: Promise<T>;
-    try {
-      started = start(controller.signal);
-    } catch (error) {
-      started = Promise.reject(error);
-    }
-    operation.promise = started.finally(() => {
+    operation.promise = start(controller.signal).finally(() => {
       ownedOperation.settled = true;
       if (operations.get(id) === ownedOperation) operations.delete(id);
     });
@@ -51,10 +44,7 @@ export function consumeBackendSceneOperation<T>(
       finished = true;
       consumerSignal.removeEventListener("abort", onAbort);
       operation.consumers -= 1;
-      if (operation.consumers === 0 && !operation.settled) {
-        if (operations.get(id) === operation) operations.delete(id);
-        operation.controller.abort();
-      }
+      if (operation.consumers === 0 && !operation.settled) operation.controller.abort();
     };
     const onAbort = () => {
       release();

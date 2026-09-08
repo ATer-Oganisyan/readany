@@ -84,47 +84,18 @@ export async function requestBackendSceneAt(
   edition: string,
   progress: number,
   signal?: AbortSignal,
-  retryFailed = false,
 ) {
   if (!edition || !Number.isFinite(progress) || progress < 0 || progress > 1)
     throw new BackendSceneError("SCENE_INVALID_POSITION");
   return parseBackendScene(
-    await boundedSceneOperation(
-      async (activeSignal) => {
-        const post = (retry: boolean) =>
-          backendBookRequest(
-            backendBookPath(edition, "scenes/at"),
-            backendJsonPost(
-              { progress_fraction: progress, ...(retry ? { retry_failed: true } : {}) },
-              activeSignal,
-            ),
-          );
-        try {
-          return await post(retryFailed);
-        } catch (error) {
-          const payload = error instanceof BackendBookError ? backendRecord(error.payload) : {};
-          if (
-            !retryFailed ||
-            !(error instanceof BackendBookError) ||
-            error.status !== 400 ||
-            payload.code !== "VALIDATION" ||
-            (payload.error ?? payload.message) !== "body.retry_failed: unknown field"
-          )
-            throw error;
-          // Older gateways reject unknown keys. Their legacy endpoint already
-          // retries failed jobs; this fallback only preserves rollout compatibility.
-          throwIfAborted(activeSignal);
-          return post(false);
-        }
-      },
-      SCENE_REQUEST_TIMEOUT_MS,
-      signal,
+    await backendBookRequest(
+      backendBookPath(edition, "scenes/at"),
+      backendJsonPost({ progress_fraction: progress }, signal),
     ),
   );
 }
 
 export const BACKEND_SCENE_DEADLINE_MS = 5 * 60 * 1000;
-const SCENE_REQUEST_TIMEOUT_MS = 30_000;
 export type SceneStage =
   | "request"
   | "queued"
@@ -137,12 +108,7 @@ export type SceneStage =
   | "failed"
   | "aborted";
 interface SceneDependencies {
-  request(
-    edition: string,
-    progress: number,
-    signal?: AbortSignal,
-    retryFailed?: boolean,
-  ): Promise<BackendSceneSnapshot>;
+  request(edition: string, progress: number, signal?: AbortSignal): Promise<BackendSceneSnapshot>;
   save(snapshot: BackendSceneSnapshot, signal?: AbortSignal): Promise<string>;
   onSnapshot?(snapshot: BackendSceneSnapshot): void;
   trace?(stage: SceneStage, attempt: number, code?: number): void;
@@ -151,47 +117,6 @@ interface SceneDependencies {
 }
 function throwIfAborted(signal?: AbortSignal) {
   if (signal?.aborted) throw new BackendSceneError("SCENE_ABORTED");
-}
-
-/** Settle even if a native request ignores AbortSignal; late results are discarded. */
-export function boundedSceneOperation<T>(
-  start: (signal: AbortSignal) => Promise<T>,
-  timeoutMs: number,
-  signal?: AbortSignal,
-): Promise<T> {
-  throwIfAborted(signal);
-  const controller = new AbortController();
-  return new Promise<T>((resolve, reject) => {
-    let settled = false;
-    const finish = (error: unknown, value?: T) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      signal?.removeEventListener("abort", abort);
-      if (error) reject(error);
-      else resolve(value as T);
-    };
-    const abort = () => {
-      finish(new BackendSceneError("SCENE_ABORTED"));
-      controller.abort();
-    };
-    const timer = setTimeout(
-      () => {
-        finish(new BackendSceneError("SCENE_REQUEST_TIMEOUT"));
-        controller.abort();
-      },
-      Math.max(1, timeoutMs),
-    );
-    signal?.addEventListener("abort", abort, { once: true });
-    try {
-      start(controller.signal).then(
-        (value) => finish(undefined, value),
-        (error) => finish(error),
-      );
-    } catch (error) {
-      finish(error);
-    }
-  });
 }
 export function waitForScenePoll(ms: number, signal?: AbortSignal): Promise<void> {
   throwIfAborted(signal);
@@ -209,7 +134,7 @@ export function waitForScenePoll(ms: number, signal?: AbortSignal): Promise<void
 }
 function terminal(error: unknown) {
   return (
-    (error instanceof BackendSceneError && error.code !== "SCENE_REQUEST_TIMEOUT") ||
+    error instanceof BackendSceneError ||
     (error instanceof BackendBookError && [400, 404, 409, 422].includes(error.status))
   );
 }
@@ -228,15 +153,8 @@ export async function resolveBackendScene(
   let attempt = 0;
   const poll = async (recovery = false) => {
     throwIfAborted(signal);
-    attempt += 1;
-    deps.trace?.(recovery ? "recovery" : "request", attempt);
-    const pollDeadline = recovery ? now() + SCENE_REQUEST_TIMEOUT_MS : deadline;
-    const allowance = () => Math.max(1, Math.min(SCENE_REQUEST_TIMEOUT_MS, pollDeadline - now()));
-    const snapshot = await boundedSceneOperation(
-      (activeSignal) => deps.request(bookEditionId, requestedProgress, activeSignal, attempt === 1),
-      allowance(),
-      signal,
-    );
+    deps.trace?.(recovery ? "recovery" : "request", ++attempt);
+    const snapshot = await deps.request(bookEditionId, requestedProgress, signal);
     throwIfAborted(signal);
     if (snapshot.status === "failed") throw new BackendSceneError("SCENE_FAILED");
     if (sceneKey && snapshot.sceneKey !== sceneKey)
@@ -246,11 +164,7 @@ export async function resolveBackendScene(
     deps.trace?.(snapshot.status, attempt);
     if (snapshot.status === "ready") {
       deps.trace?.("download", attempt);
-      const imageUri = await boundedSceneOperation(
-        (activeSignal) => deps.save(snapshot, activeSignal),
-        allowance(),
-        signal,
-      );
+      const imageUri = await deps.save(snapshot, signal);
       throwIfAborted(signal);
       deps.trace?.("saved", attempt);
       return { ready: true as const, imageUri, snapshot };
@@ -287,8 +201,6 @@ export async function resolveBackendScene(
       error instanceof BackendBookError ? error.status : undefined,
     );
     if (signal?.aborted) throw new BackendSceneError("SCENE_ABORTED");
-    if (error instanceof BackendSceneError && error.code === "SCENE_REQUEST_TIMEOUT")
-      throw new BackendSceneError("SCENE_TIMEOUT");
     if (terminal(error)) throw error;
     // Preserve the actual recovery failure instead of mislabelling it a failed backend job.
     throw error;

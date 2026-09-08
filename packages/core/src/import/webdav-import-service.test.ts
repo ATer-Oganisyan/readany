@@ -7,7 +7,7 @@ import {
   resolveWebDavImportServerPath,
   toWebDavImportRelativePath,
 } from "./webdav-import-service";
-import { isImportableWebDavBookName, type WebDavImportSource } from "./webdav-import-types";
+import type { WebDavImportSource } from "./webdav-import-types";
 
 function createSource(overrides: Partial<WebDavImportSource> = {}): WebDavImportSource {
   return {
@@ -21,12 +21,6 @@ function createSource(overrides: Partial<WebDavImportSource> = {}): WebDavImport
 }
 
 describe("webdav import path helpers", () => {
-  it("offers reader-compatible archives and rejects RAR comics", () => {
-    expect(isImportableWebDavBookName("novel.FB2.ZIP")).toBe(true);
-    expect(isImportableWebDavBookName("comic.cbz")).toBe(true);
-    expect(isImportableWebDavBookName("comic.cbr")).toBe(false);
-    expect(isImportableWebDavBookName("archive.zip")).toBe(false);
-  });
   it("builds root prefix when url does not include remote root", () => {
     const source = createSource({
       url: "https://dav.example.com/library",

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   FICBOOK_ORIGIN,
   FicbookImportError,
@@ -210,7 +210,6 @@ describe("extractFb2Metadata", () => {
 });
 
 describe("importFicbookFromUrl (сеть замокана)", () => {
-  afterEach(() => vi.useRealTimers());
   const coverBytes = new Uint8Array([0x52, 0x49, 0x46, 0x46, 1, 2, 3, 4]);
 
   function createFetchMock(pages: Record<string, string>, calls: string[]) {
@@ -242,19 +241,13 @@ describe("importFicbookFromUrl (сеть замокана)", () => {
       calls,
     ) as typeof globalThis.fetch;
 
-    const onProgress = vi.fn();
     const result = await importFicbookFromUrl("https://ficbook.net/readfic/13141244", {
       fetchImpl,
       chapterDelayMs: 0,
-      onProgress,
     });
 
     expect(result.title).toBe("Удивительные приключения «Фоксглав»");
     expect(result.chapterCount).toBe(2);
-    expect(onProgress.mock.calls).toEqual([
-      [{ completed: 1, total: 2 }],
-      [{ completed: 2, total: 2 }],
-    ]);
     expect(result.fileName).toBe("Удивительные приключения «Фоксглав».epub");
     expect(calls.slice(0, 3)).toEqual([
       `${FICBOOK_ORIGIN}/readfic/13141244`,
@@ -345,44 +338,6 @@ describe("importFicbookFromUrl (сеть замокана)", () => {
     ).rejects.toMatchObject({ message: "ficbook-timeout" });
   });
 
-  it("зависшее тело HTML после headers тоже ограничено дедлайном", async () => {
-    let signal: AbortSignal | null | undefined;
-    const fetchImpl = (async (_input, init) => {
-      signal = init?.signal;
-      return { ok: true, status: 200, text: () => new Promise(() => {}) };
-    }) as typeof globalThis.fetch;
-    const outcome = await Promise.race([
-      importFicbookFromUrl("https://ficbook.net/readfic/424179", {
-        fetchImpl,
-        requestTimeoutMs: 5,
-      }).then(
-        () => "success",
-        (error) => error.message,
-      ),
-      new Promise((resolve) => setTimeout(() => resolve("still-pending"), 40)),
-    ]);
-    expect(outcome).toBe("ficbook-timeout");
-    expect(signal?.aborted).toBe(true);
-  });
-
-  it("зависшее тело обложки не блокирует готовый EPUB", async () => {
-    const fetchImpl = (async (input) => {
-      if (String(input).includes("fanfic-covers")) {
-        return { ok: true, arrayBuffer: () => new Promise(() => {}) };
-      }
-      return new Response(String(input).endsWith("/13141244") ? workMultiHtml : chapterHtml);
-    }) as typeof globalThis.fetch;
-    const outcome = await Promise.race([
-      importFicbookFromUrl("https://ficbook.net/readfic/13141244", {
-        fetchImpl,
-        chapterDelayMs: 0,
-        requestTimeoutMs: 5,
-      }),
-      new Promise((resolve) => setTimeout(() => resolve("still-pending"), 40)),
-    ]);
-    expect(outcome).toMatchObject({ chapterCount: 2 });
-  });
-
   it("недоступная обложка не ломает импорт", async () => {
     const calls: string[] = [];
     const fetchImpl = (async (input: RequestInfo | URL) => {
@@ -404,120 +359,5 @@ describe("importFicbookFromUrl (сеть замокана)", () => {
     const meta = await extractEpubMetadata(result.epubBytes);
     expect(result.chapterCount).toBe(2);
     expect(meta.coverBytes).toBeNull();
-  });
-
-  it.each(["headers", "body", "cover"] as const)(
-    "caller cancellation interrupts stalled %s and does not become a network failure",
-    async (phase) => {
-      vi.useFakeTimers();
-      const controller = new AbortController();
-      let requestSignal: AbortSignal | null | undefined;
-      const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-        requestSignal = init?.signal;
-        if (phase === "headers") return new Promise<Response>(() => {});
-        if (phase === "body")
-          return { ok: true, status: 200, text: () => new Promise(() => {}) } as Response;
-        if (String(input).includes("fanfic-covers"))
-          return { ok: true, arrayBuffer: () => new Promise(() => {}) } as Response;
-        return new Response(String(input).endsWith("/13141244") ? workMultiHtml : chapterHtml);
-      });
-      let outcome = "pending";
-      const pending = importFicbookFromUrl(`${FICBOOK_ORIGIN}/readfic/13141244`, {
-        fetchImpl,
-        signal: controller.signal,
-        chapterDelayMs: 0,
-      }).then(
-        () => {
-          outcome = "success";
-        },
-        (error) => {
-          outcome = error.name;
-        },
-      );
-      await vi.advanceTimersByTimeAsync(0);
-      expect(fetchImpl).toHaveBeenCalled();
-      controller.abort();
-      await vi.advanceTimersByTimeAsync(0);
-      expect(outcome).toBe("AbortError");
-      expect(requestSignal?.aborted).toBe(true);
-      expect(vi.getTimerCount()).toBe(0);
-      await pending;
-    },
-  );
-
-  it("does not start a request when already cancelled", async () => {
-    const controller = new AbortController();
-    controller.abort();
-    const fetchImpl = vi.fn(async () => new Response(workSingleHtml));
-    await expect(
-      importFicbookFromUrl(`${FICBOOK_ORIGIN}/readfic/424179`, {
-        fetchImpl,
-        signal: controller.signal,
-      }),
-    ).rejects.toMatchObject({ name: "AbortError" });
-    expect(fetchImpl).not.toHaveBeenCalled();
-  });
-
-  it("cancels the inter-chapter delay without requesting later chapters or a cover", async () => {
-    vi.useFakeTimers();
-    const controller = new AbortController();
-    const calls: string[] = [];
-    const fetchImpl = createFetchMock(
-      {
-        [`${FICBOOK_ORIGIN}/readfic/13141244`]: workMultiHtml,
-        [`${FICBOOK_ORIGIN}/readfic/13141244/33732395`]: chapterHtml,
-        [`${FICBOOK_ORIGIN}/readfic/13141244/33732677`]: chapterHtml,
-      },
-      calls,
-    );
-    let outcome = "pending";
-    const pending = importFicbookFromUrl(`${FICBOOK_ORIGIN}/readfic/13141244`, {
-      fetchImpl,
-      signal: controller.signal,
-      chapterDelayMs: 400,
-    }).then(
-      () => {
-        outcome = "success";
-      },
-      (error) => {
-        outcome = error.name;
-      },
-    );
-    await vi.advanceTimersByTimeAsync(0);
-    expect(calls).toHaveLength(2);
-    controller.abort();
-    await vi.advanceTimersByTimeAsync(1000);
-    expect(outcome).toBe("AbortError");
-    expect(calls).toHaveLength(2);
-    expect(vi.getTimerCount()).toBe(0);
-    await pending;
-  });
-
-  it("ignores late headers after abort instead of starting body consumption", async () => {
-    const controller = new AbortController();
-    let finish!: (response: Response) => void;
-    const fetchImpl = vi.fn(
-      () =>
-        new Promise<Response>((resolve) => {
-          finish = resolve;
-        }),
-    );
-    const pending = importFicbookFromUrl(`${FICBOOK_ORIGIN}/readfic/424179`, {
-      fetchImpl,
-      signal: controller.signal,
-    });
-    const outcome = pending.then(
-      () => "success",
-      (error) => error.name,
-    );
-    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledOnce());
-    controller.abort();
-    expect(await outcome).toBe("AbortError");
-    const response = new Response(workSingleHtml);
-    const readBody = vi.spyOn(response, "text");
-    finish(response);
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(readBody).not.toHaveBeenCalled();
   });
 });

@@ -29,17 +29,9 @@ import { sortAnnotationsByPosition } from "@readany/core/reader";
 import type { Highlight } from "@readany/core/types";
 import { eventBus } from "@readany/core/utils/event-bus";
 /** Notes list plus the existing per-book annotation detail view. */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  Platform,
-  ScrollView,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { ActivityIndicator, Alert, Image, ScrollView, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { HighlightCard } from "./notes/HighlightCard";
 import { NoteCard } from "./notes/NoteCard";
@@ -130,13 +122,6 @@ export function NotesView({
   const [detailTab, setDetailTab] = useState<DetailTab>("notes");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editNote, setEditNote] = useState("");
-  const [savingNoteId, setSavingNoteId] = useState<string | null>(null);
-  const noteSavePendingRef = useRef(false);
-  const currentEditRef = useRef({ id: editingId, note: editNote });
-  const changeEditNote = useCallback((note: string) => {
-    currentEditRef.current.note = note;
-    setEditNote(note);
-  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -144,12 +129,10 @@ export function NotesView({
       loadAllHighlightsWithBooks(500).finally(() => setIsLoading(false));
 
       return () => {
-        // A pushed note editor must not turn a Reader's notebook into global notes.
-        setSelectedBookId(initialBookId || null);
-        currentEditRef.current.id = null;
+        setSelectedBookId(null);
         setEditingId(null);
       };
-    }, [initialBookId, loadAllHighlightsWithBooks]),
+    }, [loadAllHighlightsWithBooks]),
   );
 
   useEffect(() => {
@@ -163,7 +146,6 @@ export function NotesView({
   useEffect(() => {
     if (initialBookId) {
       setSelectedBookId(initialBookId);
-      currentEditRef.current.id = null;
       setEditingId(null);
       setDetailTab("notes");
     }
@@ -284,10 +266,7 @@ export function NotesView({
     const chapters: { chapter: string; items: HighlightWithBook[] }[] = [];
     const chapterMap = new Map<string, HighlightWithBook[]>();
     for (const h of currentList) {
-      const chapter =
-        h.chapterTitle === "Заметка к книге"
-          ? t("notes.bookNote", "Заметка к книге")
-          : h.chapterTitle || t("notes.unknownChapter", "未知章节");
+      const chapter = h.chapterTitle || t("notes.unknownChapter", "未知章节");
       const arr = chapterMap.get(chapter) || [];
       arr.push(h);
       chapterMap.set(chapter, arr);
@@ -342,40 +321,20 @@ export function NotesView({
   );
 
   const startEditNote = useCallback((highlight: HighlightWithBook) => {
-    currentEditRef.current = { id: highlight.id, note: highlight.note || "" };
     setEditingId(highlight.id);
     setEditNote(highlight.note || "");
   }, []);
 
   const saveNote = useCallback(
-    async (id: string) => {
-      if (noteSavePendingRef.current || currentEditRef.current.id !== id) return;
-      noteSavePendingRef.current = true;
-      setSavingNoteId(id);
-      const submittedNote = currentEditRef.current.note;
-      try {
-        await updateHighlight(id, { note: submittedNote || undefined });
-        // Input may have changed, or another note may have been opened while
-        // SQLite was writing. Only close the exact draft that was submitted.
-        if (currentEditRef.current.id === id && currentEditRef.current.note === submittedNote) {
-          currentEditRef.current = { id: null, note: "" };
-          setEditingId(null);
-          setEditNote("");
-        }
-      } catch {
-        toast.error(t("notes.saveFailed", "Не получилось сохранить заметку"), {
-          description: t("common.tryAgain", "Попробуйте ещё раз"),
-        });
-      } finally {
-        noteSavePendingRef.current = false;
-        setSavingNoteId(null);
-      }
+    (id: string) => {
+      updateHighlight(id, { note: editNote || undefined });
+      setEditingId(null);
+      setEditNote("");
     },
-    [updateHighlight, t],
+    [updateHighlight, editNote],
   );
 
   const cancelEdit = useCallback(() => {
-    currentEditRef.current = { id: null, note: "" };
     setEditingId(null);
     setEditNote("");
   }, []);
@@ -428,12 +387,7 @@ export function NotesView({
       <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={edges}>
         {/* Detail header - hide entirely when from reader and empty */}
         {!(hideDetailHeader && selectedBook.highlights.length === 0) && (
-          <View
-            style={[
-              s.detailHeader,
-              hideDetailHeader && Platform.OS === "ios" && { paddingTop: nativeHeaderHeight },
-            ]}
-          >
+          <View style={s.detailHeader}>
             {!hideDetailHeader && (
               <View style={s.detailHeaderTop}>
                 {/* Back button - return to list when in tab navigation */}
@@ -572,9 +526,8 @@ export function NotesView({
                         key={item.id}
                         highlight={item}
                         isEditing={editingId === item.id}
-                        isSaving={savingNoteId === item.id}
                         editNote={editNote}
-                        setEditNote={changeEditNote}
+                        setEditNote={setEditNote}
                         onStartEdit={() => startEditNote(item)}
                         onSaveNote={() => saveNote(item.id)}
                         onCancelEdit={cancelEdit}
@@ -601,7 +554,7 @@ export function NotesView({
     );
   }
 
-  if ((selectedBookId && !selectedBook) || noteSections.length === 0) {
+  if (noteSections.length === 0) {
     return (
       <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={edges}>
         <ScrollViewMarker style={{ flex: 1 }} scrollEdgeEffects={NATIVE_SCROLL_EDGE_EFFECTS}>
@@ -624,10 +577,7 @@ export function NotesView({
               <EmptyStateActionButton
                 label={t("notes.addNote", "Добавить заметку")}
                 accessibilityLabel={t("notes.addNote", "Добавить заметку")}
-                onPress={() => {
-                  if (selectedBookId) nav.navigate("ManualNote", { bookId: selectedBookId });
-                  else nav.navigate("ManualNote");
-                }}
+                onPress={() => nav.navigate("ManualNote")}
               />
             </CenteredEmptyState>
           </ScrollView>

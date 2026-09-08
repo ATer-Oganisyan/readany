@@ -368,7 +368,7 @@ export function createPostgresBookMarkupRepository(pool, {
     }
   }
 
-  async function ensureSceneSlot(client, context, slot, priority = 45, beforeCreate = async () => {}, retryFailed = false) {
+  async function ensureSceneSlot(client, context, slot, priority = 45, beforeCreate = async () => {}) {
     const policyVersion = slot.policyVersion ?? context.policy.version
     const idempotencyKey = bookSceneIdempotencyKey({
       bookEditionId: context.bookEditionId,
@@ -406,20 +406,16 @@ export function createPostgresBookMarkupRepository(pool, {
       [idempotencyKey]
     )).rows[0]
     if (!job) throw new Error('idempotent scene generation job disappeared')
-    if (job.status === 'failed' && retryFailed) {
-      const retried = await client.query(
+    if (job.status === 'failed' && priority >= 70) {
+      await client.query(
         `UPDATE generation_jobs
          SET status = 'queued', attempts = 0, last_error_code = NULL,
              available_at = now(), locked_at = NULL, locked_by = NULL,
              lease_token = NULL, updated_at = now()
-         WHERE id = $1 AND status = 'failed'
-         RETURNING id`,
+         WHERE id = $1 AND status = 'failed'`,
         [job.id]
       )
-      if (retried.rows.length) {
-        await beforeCreate()
-        job.status = 'queued'
-      }
+      job.status = 'queued'
     }
     await client.query(
       `INSERT INTO book_scene_slots (
@@ -749,18 +745,6 @@ export function createPostgresBookMarkupRepository(pool, {
         await touchPrivateRetention(client, result.rows[0].id)
         return editionRow(result.rows[0])
       })
-    },
-
-    async canUploadPrivateBookSource({ subjectId, bookEditionId }) {
-      // Read-only preflight before buffering the source. The write transaction
-      // below repeats this check to cover revocation/expiry races.
-      const result = await pool.query(
-        `SELECT 1 FROM book_editions
-         WHERE id = $1::uuid AND scope = 'private' AND owner_subject_id = $2::uuid
-           AND expires_at > now()`,
-        [bookEditionId, subjectId]
-      )
-      return result.rows.length > 0
     },
 
     async beginPrivateBookUpload({
@@ -1368,7 +1352,6 @@ export function createPostgresBookMarkupRepository(pool, {
       bookEditionId,
       readerTextOffset = null,
       progressFraction = null,
-      retryFailed = false,
       priority = 70
     }) {
       return transaction(pool, async (client) => {
@@ -1397,8 +1380,7 @@ export function createPostgresBookMarkupRepository(pool, {
           context,
           slot,
           priority,
-          () => beforeCreateReaderScene(subjectId),
-          retryFailed
+          () => beforeCreateReaderScene(subjectId)
         )
         if (context.scope === 'private') await touchPrivateRetention(client, bookEditionId)
         return scene

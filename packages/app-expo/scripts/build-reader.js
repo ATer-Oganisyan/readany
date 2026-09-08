@@ -14,10 +14,7 @@ const CHARACTER_NAME_MATCHER = path.resolve(
   __dirname,
   "../src/lib/narra/character-name-matcher.ts",
 );
-const COVER_PRESS_CONFIG = path.resolve(
-  __dirname,
-  "../src/components/library/cover-press-config.ts",
-);
+const COVER_PRESS_CONFIG = path.resolve(__dirname, "../src/components/library/cover-press-config.ts");
 const SCENE_PIXEL_LOADER = path.resolve(__dirname, "../src/lib/reader/scene-pixel-loader.ts");
 const ASSETS_DIR = path.resolve(__dirname, "../assets/reader");
 const TEMPLATE = path.resolve(ASSETS_DIR, "reader.template.html");
@@ -97,7 +94,7 @@ async function buildReader() {
     import { makeBook, View } from "${foliate}/view.js";
     import { Overlayer } from "${foliate}/overlayer.js";
     import * as CFI from "${foliate}/epubcfi.js";
-    import { configure, Reader, ZipReader, BlobReader, TextWriter, BlobWriter } from "${foliate}/vendor/zip.js";
+    import { configure, ZipReader, BlobReader, TextWriter, BlobWriter } from "${foliate}/vendor/zip.js";
     import { EPUB } from "${foliate}/epub.js";
     import { extractPDFChapters, makePDFFromURL } from "${foliate}/pdf.js";
     import { findCharacterNameMatches } from "${CHARACTER_NAME_MATCHER.replace(/\\/g, "/")}";
@@ -113,7 +110,7 @@ async function buildReader() {
     window.CFI = CFI;
 
     // Expose zip.js and EPUB for lazy Range-based loading in reader template
-    window._zipJs = { configure, Reader, ZipReader, BlobReader, TextWriter, BlobWriter };
+    window._zipJs = { configure, ZipReader, BlobReader, TextWriter, BlobWriter };
     window._EPUB = EPUB;
     window._makePDFFromURL = makePDFFromURL;
     window._extractPDFChapters = extractPDFChapters;

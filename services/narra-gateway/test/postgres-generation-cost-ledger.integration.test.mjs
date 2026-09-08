@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { createHash, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 import {
   createGenerationCostLedger,
@@ -16,20 +16,19 @@ test('PostgreSQL cost ledger resolves a book from an analysis run and reports ex
   const client = await pool.connect()
   const bookEditionId = randomUUID()
   const runId = randomUUID()
-  const inputHash = createHash('sha256').update(`own-cost-fixture-${bookEditionId}`).digest('hex')
   try {
     await client.query('BEGIN')
     await client.query(
       `INSERT INTO book_editions (
          id, scope, catalog_key, content_sha256, title, author, format, status
        ) VALUES ($1, 'catalog', $2, $3, 'Synthetic cost test', '', 'txt', 'draft')`,
-      [bookEditionId, `cost-test-${bookEditionId}`, inputHash]
+      [bookEditionId, `cost-test-${bookEditionId}`, 'a'.repeat(64)]
     )
     await client.query(
       `INSERT INTO book_analysis_runs (
          id, idempotency_key, book_edition_id, pipeline_version, prompt_version, input_hash
        ) VALUES ($1, $2, $3, 'pipeline-test', 'prompt-test', $4)`,
-      [runId, `cost-test-run-${runId}`, bookEditionId, inputHash]
+      [runId, `cost-test-run-${runId}`, bookEditionId, 'b'.repeat(64)]
     )
     const ledger = createGenerationCostLedger(client)
     await ledger.record({

@@ -74,55 +74,6 @@ describe("backend book synchronization lifecycle", () => {
     expect(deps.progress).toHaveBeenCalledTimes(2);
     session.stop();
   });
-  it("status-only refresh never binds a missing or stopped session", async () => {
-    const { session, deps } = setup();
-    await session.refreshExistingBinding();
-    expect(deps.bind).not.toHaveBeenCalled();
-    expect(deps.manifest).not.toHaveBeenCalled();
-    session.start();
-    await vi.advanceTimersByTimeAsync(0);
-    session.stop();
-    const calls = vi.mocked(deps.manifest).mock.calls.length;
-    await session.refreshExistingBinding();
-    expect(deps.bind).toHaveBeenCalledTimes(1);
-    expect(deps.manifest).toHaveBeenCalledTimes(calls);
-  });
-  it("does not register later after a status-only 404, but explicit ordinary retry still recovers", async () => {
-    const { session, deps } = setup();
-    session.start();
-    await vi.advanceTimersByTimeAsync(0);
-    vi.mocked(deps.manifest).mockRejectedValueOnce("404");
-    await session.refreshExistingBinding();
-    expect(deps.expired).toHaveBeenCalledOnce();
-    await vi.advanceTimersByTimeAsync(60_000);
-    expect(deps.bind).toHaveBeenCalledTimes(1);
-    expect(deps.manifest).toHaveBeenCalledTimes(2);
-    await session.refreshExistingBinding();
-    expect(deps.bind).toHaveBeenCalledTimes(1);
-    await session.retry();
-    expect(deps.bind).toHaveBeenCalledTimes(2);
-    expect(deps.manifest).toHaveBeenCalledTimes(3);
-    session.stop();
-  });
-  it("deduplicates status-only refresh with an in-flight manifest without rebinding", async () => {
-    const { session, deps } = setup();
-    let finish!: (value: BackendBookManifest) => void;
-    vi.mocked(deps.manifest).mockReturnValueOnce(
-      new Promise((resolve) => {
-        finish = resolve;
-      }),
-    );
-    session.start();
-    await vi.advanceTimersByTimeAsync(0);
-    const one = session.refreshExistingBinding();
-    const two = session.refreshExistingBinding();
-    expect(one).toBe(two);
-    expect(deps.bind).toHaveBeenCalledTimes(1);
-    expect(deps.manifest).toHaveBeenCalledTimes(1);
-    finish(ready);
-    await one;
-    session.stop();
-  });
   it("polls manifest without rebinding/uploading or reposting unchanged progress", async () => {
     const { session, deps } = setup();
     vi.mocked(deps.manifest).mockResolvedValue({
@@ -227,81 +178,6 @@ describe("backend book synchronization lifecycle", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(deps.publish).toHaveBeenCalled();
     expect(deps.error).toHaveBeenCalled();
-    session.stop();
-  });
-  it("does not republish expired profiles while the replacement edition is resolving", async () => {
-    const { session, deps } = setup();
-    await session.retry();
-    vi.mocked(deps.manifest).mockRejectedValueOnce("404");
-    await session.retry();
-    vi.mocked(deps.publish).mockClear();
-    vi.mocked(deps.media).mockClear();
-    session.update(0.4);
-    expect(deps.publish).not.toHaveBeenCalled();
-    expect(deps.media).not.toHaveBeenCalled();
-    // Once the replacement has its own manifest, publishing resumes normally.
-    await session.retry();
-    expect(deps.publish).toHaveBeenCalledWith(ready, 0.4);
-    session.stop();
-  });
-  it("ignores progress updates after the final consumer stops the session", async () => {
-    const { session, deps } = setup();
-    await session.retry();
-    session.stop();
-    vi.mocked(deps.publish).mockClear();
-    session.update(0.8);
-    expect(deps.publish).not.toHaveBeenCalled();
-    expect(vi.getTimerCount()).toBe(0);
-  });
-  it("does not restart queued media work for an expired edition", async () => {
-    const { session, deps } = setup();
-    let finishMedia!: () => void;
-    vi.mocked(deps.media).mockReturnValueOnce(
-      new Promise<void>((resolve) => {
-        finishMedia = resolve;
-      }),
-    );
-    await session.retry();
-    session.update(0.3);
-    vi.mocked(deps.manifest).mockRejectedValueOnce("404");
-    await session.retry();
-    finishMedia();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(deps.media).toHaveBeenCalledTimes(1);
-    await session.retry();
-    expect(deps.media).toHaveBeenCalledTimes(2);
-    session.stop();
-  });
-  it("keeps explicit retry pending through an already running refresh without duplicating it", async () => {
-    const { session, deps } = setup();
-    let finish!: (value: BackendBookManifest) => void;
-    vi.mocked(deps.manifest).mockReturnValueOnce(
-      new Promise((resolve) => {
-        finish = resolve;
-      }),
-    );
-    session.start();
-    await vi.advanceTimersByTimeAsync(0);
-    let completed = false;
-    const retry = Promise.resolve(session.retry()).then(() => {
-      completed = true;
-    });
-    await vi.advanceTimersByTimeAsync(0);
-    expect(completed).toBe(false);
-    expect(deps.manifest).toHaveBeenCalledTimes(1);
-    finish(ready);
-    await retry;
-    expect(completed).toBe(true);
-    expect(deps.publish).toHaveBeenCalledWith(ready, 0.2);
-    session.stop();
-  });
-  it("settles retry after a failed refresh is reported and leaves the next attempt usable", async () => {
-    const { session, deps } = setup();
-    vi.mocked(deps.manifest).mockRejectedValueOnce(new Error("offline"));
-    await session.retry();
-    expect(deps.error).toHaveBeenCalledOnce();
-    await session.retry();
-    expect(deps.publish).toHaveBeenCalledWith(ready, 0.2);
     session.stop();
   });
 });

@@ -24,7 +24,6 @@ class ReadingContextService {
   private listeners: Set<ReadingContextListener> = new Set();
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private snapshotWriteQueue: Promise<void> = Promise.resolve();
-  private contextGeneration = 0;
 
   subscribe(listener: ReadingContextListener): () => void {
     this.listeners.add(listener);
@@ -33,7 +32,7 @@ class ReadingContextService {
   }
 
   private notify() {
-    for (const listener of this.listeners) listener(this.context);
+    this.listeners.forEach((listener) => listener(this.context));
   }
 
   private debouncedNotify() {
@@ -83,48 +82,32 @@ class ReadingContextService {
 
   async updateContext(partial: Partial<ReadingContext>): Promise<void> {
     if (!partial.bookId) {
-      this.clearContext();
+      this.context = null;
+      this.notify();
+      this.scheduleSnapshotWrite();
       return;
     }
 
     const now = Date.now();
 
     if (!this.context || this.context.bookId !== partial.bookId) {
-      const generation = ++this.contextGeneration;
-      // Page capture and character navigation must not wait for SQLite. Publish
-      // the live page now; a later lookup may enrich only this reader session.
+      const highlights = await getHighlights(partial.bookId);
+      const recentHighlights = highlights.slice(0, 5).map((h) => ({
+        text: h.text,
+        cfi: h.cfi,
+        note: h.note,
+      }));
+
       this.context = {
         bookId: partial.bookId,
         bookTitle: partial.bookTitle || "",
         currentChapter: partial.currentChapter || { index: 0, title: "", href: "" },
         currentPosition: partial.currentPosition || { cfi: "", percentage: 0 },
         surroundingText: partial.surroundingText || "",
-        recentHighlights: [],
+        recentHighlights,
         operationType: partial.operationType || "reading",
         timestamp: now,
       };
-      this.debouncedNotify();
-      this.scheduleSnapshotWrite();
-
-      try {
-        const highlights = await getHighlights(partial.bookId);
-        if (generation !== this.contextGeneration || this.context?.bookId !== partial.bookId) {
-          return;
-        }
-        // Preserve page turns, selection and captured text received while the
-        // lookup was pending, including updates within the same book.
-        this.context = {
-          ...this.context,
-          recentHighlights: highlights.slice(0, 5).map((highlight) => ({
-            text: highlight.text,
-            cfi: highlight.cfi,
-            note: highlight.note,
-          })),
-        };
-      } catch (error) {
-        console.warn("[ReadingContext] Failed to load recent highlights:", error);
-        return;
-      }
     } else {
       this.context = {
         ...this.context,
@@ -211,9 +194,6 @@ class ReadingContextService {
   }
 
   clearContext(): void {
-    this.contextGeneration += 1;
-    if (this.debounceTimer) clearTimeout(this.debounceTimer);
-    this.debounceTimer = null;
     this.context = null;
     this.notify();
     this.scheduleSnapshotWrite();

@@ -1,9 +1,0 @@
-appId: com.mishanaer.readany.dev
-name: One physical iOS page tap for the armed checkpoint observer
-# Run only after the read-only observer emits armed for this audit book.
----
-- launchApp:
-    stopApp: false
-- assertVisible: "Narra Reader"
-- tapOn:
-    point: "95%,40%"

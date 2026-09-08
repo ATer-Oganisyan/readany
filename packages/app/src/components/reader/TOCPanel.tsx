@@ -11,7 +11,6 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
 import type { TOCItem } from "./FoliateViewer";
 
 type PanelTab = "toc" | "bookmarks";
@@ -277,19 +276,6 @@ export function TOCPanel({
   const bookmarks = useAnnotationStore((s) => s.bookmarks);
   const removeBookmark = useAnnotationStore((s) => s.removeBookmark);
   const bookBookmarks = bookmarks.filter((b) => b.bookId === bookId);
-  const pendingDeletes = useRef(new Set<string>());
-  const handleDeleteBookmark = async (id: string) => {
-    if (pendingDeletes.current.has(id)) return;
-    pendingDeletes.current.add(id);
-    try {
-      await removeBookmark(id);
-      toast.success(t("bookmarks.removed"));
-    } catch {
-      toast.error(t("bookmarks.saveFailed"));
-    } finally {
-      pendingDeletes.current.delete(id);
-    }
-  };
 
   const tocWithPath = useMemo(() => flattenTOCWithPath(tocItems), [tocItems]);
   const currentItem = useMemo(
@@ -411,7 +397,7 @@ export function TOCPanel({
               key={bm.id}
               bookmark={bm}
               onClick={() => onGoToCfi?.(bm.cfi)}
-              onDelete={() => void handleDeleteBookmark(bm.id)}
+              onDelete={() => removeBookmark(bm.id)}
             />
           ))}
         </div>

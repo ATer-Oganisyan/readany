@@ -105,33 +105,6 @@ test('identity reconciliation request is bounded, stable and exposes relationshi
     BOOK_IDENTITY_RECONCILIATION_LIMITS.maxRequestBytes)
 })
 
-test('identity reconciliation includes a Russian name declaration in its bounded evidence', () => {
-  const anna = character(1, 'Анна')
-  const annaPetrova = character(2, 'Анна Петрова')
-  const observations = [
-    observation(1, 'Анна', 'Анна вошла.'),
-    observation(2, 'Анна Петрова', 'Анна Петрова села.'),
-    observation(3, 'Анна', 'Она смотрела в окно.'),
-    observation(4, 'Анна', 'Меня зовут Анна.')
-  ]
-  observations[3].evidence.quote = 'Меня зовут Анна.'
-  observations[3].evidence.startOffset = 150
-  anna.evidenceIds = ['evidence:01', 'evidence:03', 'evidence:04']
-  const request = requestFor([anna, annaPetrova], observations)
-  const evidence = request.roster.find(({ entityKey }) => entityKey === anna.entityKey).evidence
-  assert.ok(evidence.some(({ id }) => id === 'evidence:04'))
-})
-
-test('identity reconciliation detects a Russian first-person reference to a named persona', () => {
-  const captain = character(1, 'The Captain')
-  const john = character(2, 'John Smith')
-  const observations = [observation(1, 'The Captain'), observation(2, 'John Smith')]
-  observations[0].fact = 'Меня зовут John Smith.'
-  observations[0].evidence.quote = 'Я John Smith.'
-  const request = requestFor([captain, john], observations)
-  assert.ok(request.candidatePairs.some(({ signals }) => signals.includes('persona_self_reference')))
-})
-
 test('identity reconciliation accepts grounded edges and blocks unknown or forbidden merges', () => {
   const alice = character(1, 'Elizabeth')
   const lizzy = character(2, 'Lizzy')

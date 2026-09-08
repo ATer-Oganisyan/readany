@@ -2,13 +2,6 @@ import { describe, expect, it } from "vitest";
 import { normalizeNarraError } from "./errors";
 
 describe("Narra error messages", () => {
-  it("explains a truncated completion without calling it a request quota", () => {
-    expect(normalizeNarraError(new Error("LLM completion was truncated by its output limit")))
-      .toMatchObject({
-        code: "SERVICE",
-        message: "Ответ оборвался и не был сохранён. Попробуйте ещё раз.",
-      });
-  });
   it("separates book extraction failures from generic service failures", () => {
     expect(
       normalizeNarraError(new Error("TypeError: Load failed while extracting a book text sample")),

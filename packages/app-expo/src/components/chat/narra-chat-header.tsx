@@ -75,43 +75,42 @@ export function NarraChatHeader({
     </View>
   );
 
-  const titleControl =
-    subtitle || onTitlePress ? (
-      glassAvailable ? (
-        <GlassView
-          colorScheme={isDark ? "dark" : "light"}
-          glassEffectStyle="regular"
-          isInteractive={Boolean(onTitlePress)}
-          style={styles.titleGlass}
-        >
-          <Pressable
-            accessibilityLabel={subtitle ? `${title}, ${subtitle}` : title}
-            accessibilityRole={onTitlePress ? "button" : undefined}
-            disabled={!onTitlePress}
-            onPress={onTitlePress}
-            style={styles.titlePressable}
-          >
-            {titleContent}
-          </Pressable>
-        </GlassView>
-      ) : (
+  const titleControl = subtitle ? (
+    glassAvailable ? (
+      <GlassView
+        colorScheme={isDark ? "dark" : "light"}
+        glassEffectStyle="regular"
+        isInteractive={Boolean(onTitlePress)}
+        style={styles.titleGlass}
+      >
         <Pressable
-          accessibilityLabel={subtitle ? `${title}, ${subtitle}` : title}
+          accessibilityLabel={`${title}, ${subtitle}`}
           accessibilityRole={onTitlePress ? "button" : undefined}
           disabled={!onTitlePress}
           onPress={onTitlePress}
-          style={[
-            styles.titleGlass,
-            styles.fallbackSurface,
-            { backgroundColor: colors.elevation1, borderColor: colors.border },
-          ]}
+          style={styles.titlePressable}
         >
           {titleContent}
         </Pressable>
-      )
+      </GlassView>
     ) : (
-      titleContent
-    );
+      <Pressable
+        accessibilityLabel={`${title}, ${subtitle}`}
+        accessibilityRole={onTitlePress ? "button" : undefined}
+        disabled={!onTitlePress}
+        onPress={onTitlePress}
+        style={[
+          styles.titleGlass,
+          styles.fallbackSurface,
+          { backgroundColor: colors.elevation1, borderColor: colors.border },
+        ]}
+      >
+        {titleContent}
+      </Pressable>
+    )
+  ) : (
+    titleContent
+  );
 
   const backControl = (
     <Pressable

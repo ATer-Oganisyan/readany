@@ -1,7 +1,0 @@
-appId: com.mishanaer.readany.dev
-name: Independent QA stable library gate
----
-- extendedWaitUntil:
-    visible: Library
-    timeout: 60000
-- takeScreenshot: android-continuous-qa-library

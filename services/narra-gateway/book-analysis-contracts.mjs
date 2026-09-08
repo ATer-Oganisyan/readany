@@ -1,4 +1,4 @@
-export const BOOK_ANALYSIS_PIPELINE_VERSION = 'book-analysis-v52'
+export const BOOK_ANALYSIS_PIPELINE_VERSION = 'book-analysis-v51'
 export const BOOK_ANALYSIS_MARKUP_VERSION = 'book-markup-v3'
 export const BOOK_ANALYSIS_CHARACTER_BUNDLE_VERSION = 'character-bundle-v3'
 import { normalizeBookScenePolicy } from './book-scenes.mjs'
@@ -6,7 +6,7 @@ import { normalizeBookScenePolicy } from './book-scenes.mjs'
 export const BOOK_ANALYSIS_SCHEMA_VERSION = 3
 export const BOOK_ANALYSIS_PROMPT_VERSION = 'book-scan-v17'
 export const BOOK_ANALYSIS_EXTRACTOR_VERSION = 'book-scan-v17'
-export const BOOK_ANALYSIS_SYNTHESIS_VERSION = 'character-profile-v15'
+export const BOOK_ANALYSIS_SYNTHESIS_VERSION = 'character-profile-v14'
 export const BOOK_ANALYSIS_IDENTITY_RECONCILIATION_VERSION = 'character-identity-v22'
 
 export const BOOK_ANALYSIS_STAGES = Object.freeze([

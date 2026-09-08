@@ -35,7 +35,7 @@ describe("characters processing status", () => {
     expect(screen).toContain('analysisAvailability === "failed"');
     expect(screen).toContain('analysisAvailability === "cancelled"');
     expect(screen).toContain(
-      'toast.error(t("narra.analysisFailed", "Не удалось загрузить персонажей")',
+      'toast.error(t("narra.analysisFailed", "Не удалось подготовить книгу")',
     );
     expect(screen).toContain('label: t("common.retry", "Повторить")');
     expect(screen).toContain("retryBackendBookAnalysis(bookId)");

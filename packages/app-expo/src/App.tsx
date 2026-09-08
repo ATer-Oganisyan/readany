@@ -1,13 +1,6 @@
 import "./global.css";
 
 import { Text } from "@/components/ui/Typography";
-import { StyledToastHost } from "@/components/ui/styled-toast-host";
-import { AnimatedNarraFace } from "@/components/chat/animated-narra-face";
-import {
-  ToastHostOwner,
-  ToastHostSlot,
-  type ToastHostRoute,
-} from "@/components/ui/toast-host-owner";
 /**
  * Narra Expo App — Root component
  *
@@ -35,17 +28,24 @@ if (typeof navigator !== "undefined" && !navigator.userAgent) {
 import { PanelUIThemeBridge } from "@/styles/panelui-theme-bridge";
 import {
   interfaceFontAssets,
+  interfaceFontFamily,
   serifCondensedFontAssets,
   serifTextFontAssets,
 } from "@deslop/primitives/native";
 import { DarkTheme, DefaultTheme, NavigationContainer } from "@react-navigation/native";
 import { useFonts } from "expo-font";
+import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { PanelUIProvider } from "panelui-native";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { AppState, LogBox, Platform, View, useColorScheme } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { LogBox, Platform, StyleSheet, View, useColorScheme } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import {
+  type EntryExitAnimationFunction,
+  SnappySpringConfig,
+  withSpring,
+} from "react-native-reanimated";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { rnSessionEventSource } from "@/hooks";
@@ -62,8 +62,11 @@ import TrackPlayer, {
   Event as TrackEvent,
   Capability,
 } from "react-native-track-player";
+import { type ToastAnimation, Toaster } from "sonner-native";
 
 import { CatalogCharacterPortraitPreloader } from "@/components/catalog/CatalogCharacterPortraitPreloader";
+import { AnimatedNarraFace } from "@/components/chat/animated-narra-face";
+import { MishanaerIcon, type MishanaerIconName } from "@/components/ui/Icon";
 import {
   isNarraAssistantGatewayRequest,
   narraAssistantGatewayFetch,
@@ -78,7 +81,6 @@ import { MobileSyncAdapter } from "@/lib/sync/sync-adapter-mobile";
 import { RootNavigator } from "@/navigation/RootNavigator";
 import { ReaderTOCSheetProvider } from "@/screens/reader/reader-toc-sheet-context";
 import { useLibraryStore } from "@/stores/library-store";
-import { flushAllWrites } from "@/stores/persist";
 import {
   type ThemeMode,
   ThemeProvider,
@@ -86,6 +88,25 @@ import {
   useTheme,
 } from "@/styles/ThemeContext";
 import { useAutoSync } from "@readany/core/hooks/use-auto-sync";
+
+const toastEnterAnimation: EntryExitAnimationFunction = () => {
+  "worklet";
+
+  return {
+    initialValues: {
+      opacity: 1,
+      transform: [{ translateY: -20 }],
+    },
+    animations: {
+      transform: [
+        {
+          translateY: withSpring(0, SnappySpringConfig),
+        },
+      ],
+    },
+  };
+};
+const TOAST_ANIMATION = { enter: toastEnterAnimation } satisfies ToastAnimation;
 
 // iOS New-Arch + expo-dev-client cold-start: when dev-client swaps its boot
 // RCTInstance for the app's instance, RCTTurboModuleManager waits up to 10s for
@@ -116,12 +137,6 @@ export default function App() {
 
   useEffect(() => startTelemetry(), []);
   useEffect(() => startDiagnostics(), []);
-  useEffect(() => {
-    const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "inactive" || state === "background") void flushAllWrites();
-    });
-    return () => subscription.remove();
-  }, []);
 
   useEffect(() => {
     async function bootstrap() {
@@ -351,8 +366,15 @@ function AppInner() {
   const loadBooks = useLibraryStore((s) => s.loadBooks);
   useAutoSync(loadBooks);
 
-  const [toastRoute, setToastRoute] = useState<ToastHostRoute>();
-  const syncToastRoute = useCallback(() => setToastRoute(navigationRef.getCurrentRoute()), []);
+  const toastBackground =
+    Platform.OS === "ios" && isLiquidGlassAvailable() ? (
+      <GlassView
+        colorScheme={isDark ? "dark" : "light"}
+        glassEffectStyle="regular"
+        pointerEvents="none"
+        style={StyleSheet.absoluteFill}
+      />
+    ) : undefined;
 
   const navTheme = useMemo(
     () => ({
@@ -374,22 +396,82 @@ function AppInner() {
       <SafeAreaProvider>
         <CatalogCharacterPortraitPreloader />
         {Platform.OS !== "ios" && <StatusBar style={isDark ? "light" : "dark"} />}
-        <ToastHostOwner route={toastRoute}>
-          <ReaderTOCSheetProvider>
-            <NavigationContainer
-              theme={navTheme}
-              ref={navigationRef}
-              onReady={syncToastRoute}
-              onStateChange={syncToastRoute}
-            >
-              <RootNavigator />
-            </NavigationContainer>
-          </ReaderTOCSheetProvider>
-          <ToastHostSlot>
-            <StyledToastHost />
-          </ToastHostSlot>
-        </ToastHostOwner>
+        <ReaderTOCSheetProvider>
+          <NavigationContainer theme={navTheme} ref={navigationRef}>
+            <RootNavigator />
+          </NavigationContainer>
+        </ReaderTOCSheetProvider>
+        <Toaster
+          theme={isDark ? "dark" : "light"}
+          position="top-center"
+          duration={4000}
+          visibleToasts={2}
+          enableStacking
+          richColors={false}
+          animation={TOAST_ANIMATION}
+          swipeToDismissDirection="horizontal"
+          backgroundComponent={toastBackground}
+          icons={{
+            success: <ToastIcon name="check-circle" color={colors.primary60} />,
+            error: <ToastIcon name="x-hexagon" color={colors.primary60} />,
+            warning: <ToastIcon name="exclamation-triangle" color={colors.primary60} />,
+            info: <ToastIcon name="exclamation-circle" color={colors.primary60} />,
+            loading: <ToastLoadingIcon color={colors.primary60} />,
+          }}
+          toastOptions={{
+            style: {
+              backgroundColor: colors.card,
+              borderRadius: 24,
+              borderCurve: "continuous",
+              paddingHorizontal: 20,
+            },
+            titleStyle: {
+              color: colors.cardForeground,
+              fontFamily: interfaceFontFamily.regular,
+              fontSize: 16,
+              fontWeight: "400",
+            },
+            descriptionStyle: {
+              display: "none",
+            },
+            toastContentStyle: {
+              alignItems: "center",
+            },
+          }}
+        />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }
+
+function ToastIcon({
+  name,
+  color,
+}: {
+  name: MishanaerIconName;
+  color: string;
+}) {
+  return (
+    <View pointerEvents="none" style={styles.toastIcon}>
+      <MishanaerIcon name={name} size={24} color={color} />
+    </View>
+  );
+}
+
+function ToastLoadingIcon({ color }: { color: string }) {
+  return (
+    <View pointerEvents="none" style={styles.toastIcon}>
+      <AnimatedNarraFace width={23} height={24} color={color} />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  toastIcon: {
+    alignItems: "center",
+    flexShrink: 0,
+    height: 24,
+    justifyContent: "center",
+    width: 24,
+  },
+});

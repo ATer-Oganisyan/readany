@@ -70,16 +70,6 @@ describe("interface localization", () => {
     expect(i18n.t("tabs.library")).toBe("Библиотека");
   });
 
-  it.each([
-    ["en", "Library section"],
-    ["ru", "Раздел библиотеки"],
-  ])("localizes the native library tab accessibility label in %s", async (language, label) => {
-    await i18nReady;
-    await i18n.changeLanguage(language);
-    expect(i18n.exists("library.section")).toBe(true);
-    expect(i18n.t("library.section", "Раздел библиотеки")).toBe(label);
-  });
-
   it("uses Russian only for a Russian system locale", async () => {
     const russian = localizationPlatform("ru-RU");
     setPlatformService(russian.service);

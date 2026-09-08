@@ -36,9 +36,7 @@ describe("square scene contract", () => {
     expect(source).toContain("const SCENE_HEIGHT = 1024;");
   });
 
-  // Natural column flow is measured by scripts/qa/reader-scene-flow.mjs inside
-  // an actual WebView and by verify-reader-scene-layout.mjs, not by this source check.
-  it("reserves one page-bounded unfragmented square without renumbering book text", () => {
+  it("reserves one page-bounded square and starts it on a new column", () => {
     const template = readFileSync(
       fileURLToPath(new URL("../../../assets/reader/reader.template.html", import.meta.url)),
       "utf8",
@@ -50,8 +48,7 @@ describe("square scene contract", () => {
     expect(template).not.toContain("function sizeSceneInsertToHost(el, host)");
     expect(template).toContain("'  width: var(--readany-scene-side) !important;'");
     expect(template).toContain("'  height: var(--readany-scene-side) !important;'");
-    expect(template).toContain("'  break-inside: avoid !important;'");
-    expect(template).toContain("'  -webkit-column-break-inside: avoid !important;'");
+    expect(template).toContain("'  break-before: column !important;'");
     expect(template).toContain("'  margin: 0 auto 24px !important;'");
     expect(template).toContain("img.style.setProperty('height', '100%', 'important')");
     expect(template).toContain("el.setAttribute('cfi-inert', '')");

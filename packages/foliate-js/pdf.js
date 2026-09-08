@@ -29,7 +29,6 @@ const TEXT_LAYER_CSS = `
   overflow: clip;
   opacity: 1;
   line-height: 1;
-  -webkit-text-size-adjust: none;
   text-size-adjust: none;
   forced-color-adjust: none;
   transform-origin: 0 0;
@@ -38,14 +37,13 @@ const TEXT_LAYER_CSS = `
 }
 .textLayer.highlighting { touch-action: none; }
 .textLayer :is(span, br) {
-  /* Reader themes use an important text color. This selectable overlay must
-     stay invisible: the canvas already paints the actual PDF glyphs. */
-  color: transparent !important;
+  color: transparent;
   position: absolute;
   white-space: pre;
   cursor: text;
   transform-origin: 0% 0%;
 }
+.textLayer --min-font-size: 1;
 .textLayer {
   --min-font-size: 1;
   --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
@@ -118,9 +116,6 @@ const render = async (page, doc, zoom) => {
 
   doc.documentElement.style.transform = `scale(${1 / devicePixelRatio})`;
   doc.documentElement.style.transformOrigin = "top left";
-  // Foliate's installed PDF.js v4 TextLayer sizes fonts and its container with
-  // --scale-factor. Keep the v5 name too; both layers share the canvas viewport.
-  doc.documentElement.style.setProperty("--scale-factor", scale);
   doc.documentElement.style.setProperty("--total-scale-factor", scale);
   doc.documentElement.style.setProperty("--user-unit", "1");
   doc.documentElement.style.setProperty("--scale-round-x", "1px");
@@ -296,7 +291,7 @@ const renderPage = async (page) => {
   const viewport = page.getViewport({ scale: 1 });
 
   const data = `<!DOCTYPE html>
-<html lang="en" data-readany-pdf>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=${viewport.width}, height=${viewport.height}">

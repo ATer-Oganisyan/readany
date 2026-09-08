@@ -152,13 +152,7 @@ export function assembleBookMarkupV3({
     candidate.entityKind === 'relationship' && candidate.resolutionStatus !== 'rejected'
   ).slice(0, 2_048)) {
     const evidence = evidenceFor(entity, observationsById)
-    // The resolver also recovers explicit participants from composite labels
-    // (e.g. "Анна и Лев"). Keep raw participant order where present, then add
-    // recovered identities, but never reference a character outside publication.
-    const characterKeys = [...new Set([
-      ...relatedKeys(evidence, characterIndex),
-      ...(entity.data?.relatedCharacterEntityKeys ?? [])
-    ])].filter((key) => includedCharacterKeys.has(key))
+    const characterKeys = relatedKeys(evidence, characterIndex)
     if (characterKeys.length < 2) continue
     relationships.push({
       relationshipKey: entity.entityKey,

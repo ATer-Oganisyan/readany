@@ -257,49 +257,6 @@ describe("book TTS playback integration", () => {
 });
 
 describe("book TTS config changes", () => {
-  it.each(["pause", "sleep"])(
-    "%s cancels pending intent but retains the paused queue",
-    async (action) => {
-      const { useTTSStore, setTTSPlayerFactories } = await import("@/stores/tts-store");
-      const fake = {
-        speak: vi.fn(async () => {}),
-        stop: vi.fn(),
-        pause: vi.fn(),
-        resume: vi.fn(),
-        onChunkChange: undefined as ((index: number) => void) | undefined,
-        onEnd: undefined as (() => void) | undefined,
-      };
-      setTTSPlayerFactories({ createEdgeTTS: () => fake });
-      useTTSStore.setState({ config: { ...DEFAULT_TTS_CONFIG, rate: 1 }, playState: "stopped" });
-      try {
-        useTTSStore.getState().play(["first", "second"]);
-        fake.onChunkChange?.(1);
-        const epoch = useTTSStore.getState().explicitCancellationEpoch;
-        fake.stop.mockClear();
-        if (action === "sleep") {
-          useTTSStore.getState().setSleepTimer(1);
-          await vi.advanceTimersByTimeAsync(60_000);
-        } else useTTSStore.getState().pause();
-        expect(useTTSStore.getState()).toMatchObject({
-          playState: "paused",
-          currentChunkIndex: 1,
-          totalChunks: 2,
-          currentSegmentText: "second",
-          explicitCancellationEpoch: epoch + 1,
-        });
-        expect(fake.stop).not.toHaveBeenCalled();
-        useTTSStore.getState().resume();
-        expect(fake.resume).toHaveBeenCalledOnce();
-        expect(fake.speak).toHaveBeenCalledOnce();
-        fake.onEnd?.();
-        expect(useTTSStore.getState().playState).toBe("stopped");
-        expect(useTTSStore.getState().explicitCancellationEpoch).toBe(epoch + 1);
-      } finally {
-        useTTSStore.getState().stop();
-        setTTSPlayerFactories({});
-      }
-    },
-  );
   it.each([false, true])(
     "resumes with the correct SSML rate after a paused config change: %s",
     async (changed) => {

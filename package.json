@@ -42,8 +42,6 @@
       "@types/react": "~19.2.2"
     },
     "patchedDependencies": {
-      "expo-modules-core@57.0.11": "patches/expo-modules-core@57.0.11.patch",
-      "expo@57.0.14": "patches/expo@57.0.14.patch",
       "@langchain/core": "patches/@langchain__core.patch",
       "react-native-screens@4.25.2": "patches/react-native-screens@4.25.2.patch",
       "react-native-track-player@4.1.2": "patches/react-native-track-player@4.1.2.patch",

@@ -7,10 +7,8 @@ import {
   BackendSceneError,
   type BackendSceneIntent,
   backendSceneId,
-  boundedSceneOperation,
   requestBackendSceneAt,
   resolveBackendScene,
-  waitForScenePoll,
 } from "./backend-scene";
 import { saveBackendSceneFile } from "./backend-scene-file";
 import { consumeBackendSceneOperation } from "./backend-scene-operations";
@@ -19,37 +17,21 @@ import { sceneImageDataUri } from "./scene-inserts";
 
 export async function readSceneDataUri(imageUri: string, signal?: AbortSignal): Promise<string> {
   const uri = normalizePersistedNarraMediaUri(imageUri);
-  try {
-    // Native file reads have no AbortSignal. Bound all retries together and
-    // reject on cancellation even if the underlying native promise never settles.
-    return await boundedSceneOperation(
-      async (activeSignal) => {
-        let lastError: unknown;
-        for (let attempt = 0; attempt < 3; attempt += 1) {
-          if (activeSignal.aborted) throw new BackendSceneError("SCENE_ABORTED");
-          try {
-            const base64 = await FileSystem.readAsStringAsync(uri, {
-              encoding: FileSystem.EncodingType.Base64,
-            });
-            if (activeSignal.aborted) throw new BackendSceneError("SCENE_ABORTED");
-            if (!base64) throw new Error("SCENE_EMPTY_LOCAL_FILE");
-            return sceneImageDataUri(base64, uri);
-          } catch (error) {
-            if (activeSignal.aborted) throw new BackendSceneError("SCENE_ABORTED");
-            lastError = error;
-            if (attempt < 2) await waitForScenePoll(75 * (attempt + 1), activeSignal);
-          }
-        }
-        throw lastError instanceof Error ? lastError : new Error("SCENE_LOCAL_FILE_UNAVAILABLE");
-      },
-      5000,
-      signal,
-    );
-  } catch (error) {
-    if (error instanceof BackendSceneError && error.code === "SCENE_REQUEST_TIMEOUT")
-      throw new BackendSceneError("SCENE_TIMEOUT");
-    throw error;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (signal?.aborted) throw new BackendSceneError("SCENE_ABORTED");
+    try {
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      if (!base64) throw new Error("SCENE_EMPTY_LOCAL_FILE");
+      return sceneImageDataUri(base64, uri);
+    } catch (error) {
+      lastError = error;
+      if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 75 * (attempt + 1)));
+    }
   }
+  throw lastError instanceof Error ? lastError : new Error("SCENE_LOCAL_FILE_UNAVAILABLE");
 }
 
 /** Invoked by the inline slot action only. Restoring an insert never starts a job. */
@@ -94,7 +76,6 @@ export async function generateBackendReaderScene(
         intent.bookEditionId,
         intent.requestedProgress,
         signal,
-        true,
       );
       intent = {
         ...intent,
@@ -115,13 +96,13 @@ export async function generateBackendReaderScene(
         const result = await resolveBackendScene(
           sharedIntent,
           {
-            request: (edition, progress, activeSignal, retryFailed) => {
+            request: (edition, progress, activeSignal) => {
               if (initial) {
                 const snapshot = initial;
                 initial = undefined;
                 return Promise.resolve(snapshot);
               }
-              return requestBackendSceneAt(edition, progress, activeSignal, retryFailed);
+              return requestBackendSceneAt(edition, progress, activeSignal);
             },
             save: (scene, activeSignal) =>
               saveBackendSceneFile(sharedIntent, scene, activeSignal, (bytes, mime) => {

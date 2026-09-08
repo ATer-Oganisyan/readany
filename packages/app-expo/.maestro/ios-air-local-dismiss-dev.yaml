@@ -1,8 +1,0 @@
-appId: com.mishanaer.readany.dev
-name: Dismiss first Expo dev client introduction
----
-- tapOn: "Continue"
-- extendedWaitUntil:
-    visible: "Library"
-    timeout: 30000
-- takeScreenshot: ios-air-empty-library

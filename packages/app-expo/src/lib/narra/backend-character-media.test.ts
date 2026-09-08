@@ -10,10 +10,6 @@ const runtime = vi.hoisted(() => ({
   libraryState: { books: [] as unknown[] },
   narraState: { books: {} as Record<string, unknown> },
   serial: 0,
-  endpoint: "https://api-test.narra.disrupt.builders",
-}));
-vi.mock("@/lib/ai/narra-gateway-fetch", () => ({
-  getNarraGatewayConfig: () => ({ baseUrl: runtime.endpoint }),
 }));
 vi.mock("expo-crypto", () => ({ randomUUID: () => `temporary-${++runtime.serial}` }));
 vi.mock("expo-file-system/legacy", () => ({
@@ -48,7 +44,6 @@ const asset: BackendCharacterAsset = {
   downloadPath: "/v2/books/id/media/id/download",
 };
 beforeEach(() => {
-  runtime.endpoint = "https://api-test.narra.disrupt.builders";
   vi.clearAllMocks();
   runtime.info.mockResolvedValue({ exists: false });
   runtime.download.mockResolvedValue(undefined);
@@ -58,43 +53,6 @@ beforeEach(() => {
   runtime.narraState.books = {};
 });
 describe("verified character media cache", () => {
-  it("separates same asset IDs across endpoints and retains a late writer's scope", async () => {
-    const files = new Map<string, number>();
-    runtime.info.mockImplementation(async (path) => ({
-      exists: files.has(path),
-      size: files.get(path),
-      isDirectory: false,
-    }));
-    runtime.move.mockImplementation(async ({ from, to }) => {
-      files.set(to, files.get(from)!);
-      files.delete(from);
-    });
-    runtime.remove.mockImplementation(async (path) => {
-      files.delete(path);
-    });
-    runtime.download.mockImplementation(async ({ destinationPath }) => {
-      files.set(destinationPath, 42);
-    });
-    const remote = await materializeBackendCharacterAsset("scope-collision", asset);
-    runtime.endpoint = "http://127.0.0.1:18787";
-    let finish!: () => void;
-    runtime.download.mockImplementationOnce(async ({ destinationPath }) => {
-      await new Promise<void>((resolve) => {
-        finish = resolve;
-      });
-      files.set(destinationPath, 42);
-    });
-    const pending = materializeBackendCharacterAsset("scope-collision", asset);
-    await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
-    runtime.endpoint = "https://api-test.narra.disrupt.builders";
-    finish();
-    const local = await pending;
-    expect(local).not.toBe(remote);
-    expect(files.has(remote)).toBe(true);
-    expect(files.has(local)).toBe(true);
-    expect(await materializeBackendCharacterAsset("scope-collision", asset)).toBe(remote);
-    expect(runtime.download).toHaveBeenCalledTimes(2);
-  });
   it("moves only verified temporary files and passes exact hash/size to the downloader", async () => {
     const uri = await materializeBackendCharacterAsset("download", asset);
     expect(runtime.download).toHaveBeenCalledWith(

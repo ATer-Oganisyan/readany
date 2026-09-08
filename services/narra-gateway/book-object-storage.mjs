@@ -30,35 +30,14 @@ function checksumBase64(hex) {
   return Buffer.from(hex, 'hex').toString('base64')
 }
 
-async function responseBodyBuffer(body, maxBytes, signal) {
-  const cancel = () => {
-    // AWS GetObject bodies are Node streams; destroy wakes a pending iterator
-    // and closes its socket without an unhandled stream error before iteration.
-    if (typeof body?.destroy === 'function') body.destroy()
-  }
-  signal?.addEventListener('abort', cancel, { once: true })
-  try {
-    if (signal?.aborted) cancel()
-    signal?.throwIfAborted()
-    const bytes = await consumeResponseBodyBuffer(body, maxBytes)
-    signal?.throwIfAborted()
-    return bytes
-  } catch (error) {
-    signal?.throwIfAborted()
-    throw error
-  } finally {
-    signal?.removeEventListener('abort', cancel)
-  }
-}
-
-async function consumeResponseBodyBuffer(body, maxBytes) {
+async function responseBodyBuffer(body, maxBytes) {
   if (!body) throw new Error('object storage returned an empty body')
   let buffer
-  if (Buffer.isBuffer(body) || body instanceof Uint8Array) {
+  if (typeof body.transformToByteArray === 'function') {
+    buffer = Buffer.from(await body.transformToByteArray())
+  } else if (Buffer.isBuffer(body) || body instanceof Uint8Array) {
     buffer = Buffer.from(body)
   } else if (body[Symbol.asyncIterator]) {
-    // AWS SDK streams also expose transformToByteArray(). Prefer iteration so
-    // an absent/incorrect Content-Length cannot bypass the allocation ceiling.
     const chunks = []
     let total = 0
     for await (const chunk of body) {
@@ -68,8 +47,6 @@ async function consumeResponseBodyBuffer(body, maxBytes) {
       chunks.push(bytes)
     }
     buffer = Buffer.concat(chunks, total)
-  } else if (typeof body.transformToByteArray === 'function') {
-    buffer = Buffer.from(await body.transformToByteArray())
   } else {
     throw new Error('object storage returned an unsupported body')
   }
@@ -186,14 +163,7 @@ export function createBookObjectStorage({
         throw new RangeError('maxBytes must be between 1 byte and 512 MiB')
       }
       const result = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }))
-      if (Number(result.ContentLength || 0) > maxBytes) {
-        // Rejecting the headers must release the socket without consuming the body.
-        if (typeof result.Body?.destroy === 'function') result.Body.destroy()
-        else if (typeof result.Body?.cancel === 'function') {
-          Promise.resolve(result.Body.cancel()).catch(() => {})
-        }
-        invalid('object exceeds the allowed read size')
-      }
+      if (Number(result.ContentLength || 0) > maxBytes) invalid('object exceeds the allowed read size')
       return {
         bytes: await responseBodyBuffer(result.Body, maxBytes),
         mimeType: result.ContentType || 'application/octet-stream',
@@ -205,10 +175,8 @@ export function createBookObjectStorage({
       objectKey: rawObjectKey,
       startByte,
       endByteExclusive,
-      maxBytes = 64 * 1024 * 1024,
-      signal
+      maxBytes = 64 * 1024 * 1024
     }) {
-      signal?.throwIfAborted()
       const key = objectKey(rawObjectKey)
       if (
         !Number.isSafeInteger(startByte) || startByte < 0 ||
@@ -223,18 +191,12 @@ export function createBookObjectStorage({
       ) {
         invalid('object range exceeds the allowed read size')
       }
-      let result
-      try {
-        result = await client.send(new GetObjectCommand({
-          Bucket: bucket,
-          Key: key,
-          Range: `bytes=${startByte}-${endByteExclusive - 1}`
-        }), { abortSignal: signal })
-      } catch (error) {
-        signal?.throwIfAborted()
-        throw error
-      }
-      const bytes = await responseBodyBuffer(result.Body, maxBytes, signal)
+      const result = await client.send(new GetObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Range: `bytes=${startByte}-${endByteExclusive - 1}`
+      }))
+      const bytes = await responseBodyBuffer(result.Body, maxBytes)
       if (bytes.byteLength !== expectedBytes) {
         throw Object.assign(new Error('object storage returned an unexpected byte range'), {
           code: 'STORAGE_RANGE_INTEGRITY'
@@ -247,10 +209,9 @@ export function createBookObjectStorage({
       }
     },
 
-    async putBytes({ objectKey: rawObjectKey, bytes: rawBytes, mimeType, signal }) {
-      signal?.throwIfAborted()
+    async putBytes({ objectKey: rawObjectKey, bytes: rawBytes, mimeType }) {
       const key = objectKey(rawObjectKey)
-      const bytes = Buffer.isBuffer(rawBytes) ? rawBytes : Buffer.from(rawBytes)
+      const bytes = Buffer.from(rawBytes)
       if (!bytes.byteLength) invalid('bytes: generated object is empty')
       if (typeof mimeType !== 'string' || !/^[a-z0-9.+-]+\/[a-z0-9.+-]+$/i.test(mimeType)) {
         invalid('mimeType: invalid media type')
@@ -264,7 +225,7 @@ export function createBookObjectStorage({
         ContentType: mimeType,
         ChecksumSHA256: checksumBase64(contentHash),
         Metadata: { content_sha256: contentHash }
-      }), { abortSignal: signal })
+      }))
       return {
         objectKey: key,
         contentHash,

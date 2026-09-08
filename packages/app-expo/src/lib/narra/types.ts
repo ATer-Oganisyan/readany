@@ -119,17 +119,7 @@ export interface NarraSummary {
 }
 
 export interface NarraBookState {
-  /** Inactive source versions; no nested archives or active source file paths. */
-  backendContentArchives?: Record<
-    string,
-    Omit<NarraBookState, "backendContentArchives" | "backendOriginalSource">
-  >;
-  backendOriginalSource?: {
-    path: string;
-    format: string;
-    hash: string;
-    derivedFrom?: { filePath: string; contentHash?: string };
-  };
+  backendOriginalSource?: { path: string; format: string; hash: string };
   backendBinding?: BackendBookBinding;
   backendManifest?: BackendBookManifest;
   bookId: string;

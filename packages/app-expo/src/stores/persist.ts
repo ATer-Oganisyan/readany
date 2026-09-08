@@ -34,21 +34,12 @@ export function debouncedSave(key: string, data: unknown): void {
     pendingWrites.delete(key);
     const dataToWrite = pendingData.get(key);
     pendingData.delete(key);
-    queueWrite(key, dataToWrite);
+    const promise = writeToFS(key, dataToWrite);
+    writePromises.set(key, promise);
+    promise.finally(() => writePromises.delete(key));
   }, DEBOUNCE_MS);
 
   pendingWrites.set(key, timer);
-}
-
-function queueWrite(key: string, data: unknown): void {
-  // Native writes may finish out of order. Each store has its own queue; unrelated
-  // stores still write concurrently, and flush waits for the complete current tail.
-  const previous = writePromises.get(key) ?? Promise.resolve();
-  const promise = previous.then(() => writeToFS(key, data));
-  writePromises.set(key, promise);
-  void promise.finally(() => {
-    if (writePromises.get(key) === promise) writePromises.delete(key);
-  });
 }
 
 async function writeToFS(key: string, data: unknown): Promise<void> {
@@ -62,29 +53,13 @@ async function writeToFS(key: string, data: unknown): Promise<void> {
 }
 
 export async function loadFromFS<T>(key: string): Promise<T | null> {
-  let text: string;
   try {
     await ensureDir();
     const filePath = `${STORE_DIR}/${key}.json`;
-    text = await FileSystem.readAsStringAsync(filePath);
+    const text = await FileSystem.readAsStringAsync(filePath);
+    return JSON.parse(text) as T;
   } catch {
     return null;
-  }
-  try {
-    return JSON.parse(text) as T;
-  } catch (error) {
-    console.error(`Failed to read persisted ${key}:`, error);
-    await quarantineSnapshot(key);
-    return null;
-  }
-}
-
-async function quarantineSnapshot(key: string): Promise<void> {
-  const filePath = `${STORE_DIR}/${key}.json`;
-  try {
-    await FileSystem.moveAsync({ from: filePath, to: `${filePath}.corrupt-${Date.now()}` });
-  } catch (error) {
-    console.error(`Failed to preserve invalid ${key} snapshot:`, error);
   }
 }
 
@@ -95,7 +70,9 @@ export async function flushAllWrites(): Promise<void> {
     const data = pendingData.get(key);
     pendingData.delete(key);
     if (data !== undefined) {
-      queueWrite(key, data);
+      const promise = writeToFS(key, data);
+      writePromises.set(key, promise);
+      promise.finally(() => writePromises.delete(key));
     }
   }
   await Promise.all(writePromises.values());
@@ -127,58 +104,39 @@ export function withPersist<T extends object>(
     const state = creator(wrappedSet, get, api);
 
     // Load persisted data and notify when done
-    void loadFromFS<T>(key)
-      .then(async (persisted) => {
-        let migrated: T | null = null;
-        if (persisted != null) {
-          try {
-            if (typeof persisted !== "object" || Array.isArray(persisted)) {
-              throw new Error("Persisted store must be an object");
-            }
-            migrated = migrate ? migrate(persisted) : persisted;
-          } catch (error) {
-            console.error(`Failed to migrate persisted ${key}:`, error);
-            await quarantineSnapshot(key);
-          }
-        }
-        if (migrated) {
-          // Merge persisted data with current state (don't replace methods)
-          const currentState = get();
-          const mergedState = {
-            ...currentState,
-            ...migrated,
-            ...(resetAfterHydrate ?? {}),
-            _hasHydrated: true,
-          };
-          (set as (state: T, replace: true) => void)(mergedState as T, true);
-        } else {
-          const currentState = get();
-          const mergedState = { ...currentState, ...(resetAfterHydrate ?? {}), _hasHydrated: true };
-          (set as (state: T, replace: true) => void)(mergedState as T, true);
-        }
-        persistLoaded = true;
+    loadFromFS<T>(key).then(async (persisted) => {
+      if (persisted) {
+        const migrated = migrate ? migrate(persisted) : persisted;
+        // Merge persisted data with current state (don't replace methods)
+        const currentState = get();
+        const mergedState = {
+          ...currentState,
+          ...migrated,
+          ...(resetAfterHydrate ?? {}),
+          _hasHydrated: true,
+        };
+        (set as (state: T, replace: true) => void)(mergedState as T, true);
+      } else {
+        const currentState = get();
+        const mergedState = { ...currentState, ...(resetAfterHydrate ?? {}), _hasHydrated: true };
+        (set as (state: T, replace: true) => void)(mergedState as T, true);
+      }
+      persistLoaded = true;
 
-        const hydratedState = (
-          api as StoreApi<T & { loadApiKeys?: () => Promise<void> }>
-        ).getState();
-        if (typeof hydratedState.loadApiKeys === "function") {
-          await hydratedState.loadApiKeys();
-        }
+      const hydratedState = (api as StoreApi<T & { loadApiKeys?: () => Promise<void> }>).getState();
+      if (typeof hydratedState.loadApiKeys === "function") {
+        await hydratedState.loadApiKeys();
+      }
 
-        // Dispatch event to notify that persist is loaded
-        if (
-          typeof window !== "undefined" &&
-          typeof window.dispatchEvent === "function" &&
-          typeof CustomEvent !== "undefined"
-        ) {
-          window.dispatchEvent(new CustomEvent("persist:loaded", { detail: { key } }));
-        }
-      })
-      .catch((error) => {
-        console.error(`Failed to finish hydration of ${key}:`, error);
-        persistLoaded = true;
-        set({ ...get(), _hasHydrated: true } as T);
-      });
+      // Dispatch event to notify that persist is loaded
+      if (
+        typeof window !== "undefined" &&
+        typeof window.dispatchEvent === "function" &&
+        typeof CustomEvent !== "undefined"
+      ) {
+        window.dispatchEvent(new CustomEvent("persist:loaded", { detail: { key } }));
+      }
+    });
 
     return state;
   };

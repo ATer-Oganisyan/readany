@@ -59,13 +59,6 @@ describe("sync-files", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSelect.mockResolvedValue([]);
-    mockAdapter.fileExists.mockResolvedValue(false);
-    mockAdapter.getFileSize.mockImplementation(async (path: string) => {
-      const write = [...mockAdapter.writeFileBytes.mock.calls]
-        .reverse()
-        .find(([target]) => target === path);
-      return write ? (write[1] as Uint8Array).length : 5;
-    });
     mockAdapter.listFiles.mockResolvedValue([]);
     mockAdapter.maxBufferedTransferBytes = undefined;
   });
@@ -444,7 +437,7 @@ describe("sync-files", () => {
       );
       expect(mockAdapter.copyFile).toHaveBeenCalledWith(
         expect.stringMatching(/^\/tmp\/readany-transfer-.*\.epub$/),
-        expect.stringMatching(/^\/appdata\/books\/book-1-download-.*\.epub$/),
+        "/appdata/books/book-1.epub",
       );
       expect(mockAdapter.writeFileBytes).not.toHaveBeenCalled();
       expect(backend.get).not.toHaveBeenCalled();
@@ -978,32 +971,6 @@ describe("sync-files", () => {
   });
 
   describe("downloadBookFile", () => {
-    it("preserves an existing local file when the downloaded source is empty", async () => {
-      mockSelect.mockResolvedValue([{ id: "book-1", title: "Test Book" }]);
-      const finalPath = "/appdata/books/book-1.epub";
-      const original = new Uint8Array([1, 2, 3, 4]);
-      const files = new Map([[finalPath, original]]);
-      mockAdapter.copyFile.mockImplementation(async (from: string, to: string) => {
-        const source = files.get(from);
-        if (!source) throw new Error("Missing source");
-        files.set(to, source);
-      });
-      mockAdapter.getFileSize.mockImplementation(
-        async (path: string) => files.get(path)?.length ?? 0,
-      );
-      const backend = createMockBackend({
-        getFileToPath: vi.fn(async (_remote: string, target: string) => {
-          files.set(target, new Uint8Array());
-        }),
-      });
-      try {
-        expect(await downloadBookFile(backend, "book-1", "books/book-1.epub")).toBe("error");
-        expect(files.get(finalPath)).toEqual(original);
-        expect(mockUpdateBook).not.toHaveBeenCalled();
-      } finally {
-        mockAdapter.copyFile.mockReset();
-      }
-    });
     it("downloads via the new layout when the book is in DB", async () => {
       mockSelect.mockResolvedValue([{ id: "book-1", title: "Test Book" }]);
 
@@ -1019,7 +986,7 @@ describe("sync-files", () => {
       );
       expect(mockAdapter.writeFileBytes).toHaveBeenCalled();
       expect(mockUpdateBook).toHaveBeenCalledWith("book-1", {
-        filePath: expect.stringMatching(/^books\/book-1-download-.*\.epub$/),
+        filePath: "books/book-1.epub",
         syncStatus: "local",
       });
     });
@@ -1041,12 +1008,12 @@ describe("sync-files", () => {
       );
       expect(mockAdapter.copyFile).toHaveBeenCalledWith(
         expect.stringMatching(/^\/tmp\/readany-transfer-.*\.epub$/),
-        expect.stringMatching(/^\/appdata\/books\/book-1-download-.*\.epub$/),
+        "/appdata/books/book-1.epub",
       );
       expect(mockAdapter.writeFileBytes).not.toHaveBeenCalled();
       expect(backend.get).not.toHaveBeenCalled();
       expect(mockUpdateBook).toHaveBeenCalledWith("book-1", {
-        filePath: expect.stringMatching(/^books\/book-1-download-.*\.epub$/),
+        filePath: "books/book-1.epub",
         syncStatus: "local",
       });
     });
@@ -1067,10 +1034,10 @@ describe("sync-files", () => {
       expect(result).toBe("ok");
       expect(mockAdapter.copyFile).toHaveBeenCalledWith(
         expect.stringMatching(/^\/tmp\/readany-transfer-.*\.epub$/),
-        expect.stringMatching(/^\/appdata\/books\/book-1-download-.*\.epub$/),
+        "/appdata/books/book-1.epub",
       );
       expect(mockUpdateBook).toHaveBeenCalledWith("book-1", {
-        filePath: expect.stringMatching(/^books\/book-1-download-.*\.epub$/),
+        filePath: "books/book-1.epub",
         syncStatus: "local",
       });
     });
@@ -1096,7 +1063,7 @@ describe("sync-files", () => {
       expect(result).toBe("ok");
       expect(getMock).toHaveBeenCalledWith(`${REMOTE_FILES}/book-1.epub`);
       expect(mockUpdateBook).toHaveBeenCalledWith("book-1", {
-        filePath: expect.stringMatching(/^books\/book-1-download-.*\.epub$/),
+        filePath: "books/book-1.epub",
         syncStatus: "local",
       });
     });

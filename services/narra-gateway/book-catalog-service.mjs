@@ -602,14 +602,13 @@ export function createBookCatalogService({
       return bookBinding(edition)
     },
 
-    async uploadLocalSource(subjectId, bookEditionId, bytes, contentType, { signal } = {}) {
-      signal?.throwIfAborted()
+    async uploadLocalSource(subjectId, bookEditionId, bytes, contentType) {
       if (typeof store.beginPrivateBookUpload !== 'function' ||
           typeof store.completePrivateBookUpload !== 'function') {
         throw new TypeError('private book upload repository is incomplete')
       }
       if (!storage) throw serviceError('UPLOAD_UNAVAILABLE', 'Загрузка книги временно недоступна', 503)
-      const sourceBytes = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes)
+      const sourceBytes = Buffer.from(bytes)
       if (!sourceBytes.byteLength) {
         throw serviceError('VALIDATION', 'Файл книги пуст', 400)
       }
@@ -623,16 +622,13 @@ export function createBookCatalogService({
         mimeType: contentType,
         byteSize: sourceBytes.byteLength
       })
-      signal?.throwIfAborted()
       if (!prepared) throw serviceError('NOT_FOUND', 'Локальная книга не найдена', 404)
       if (prepared.uploadRequired) {
         const stored = await storage.putBytes({
           objectKey: prepared.file.objectKey,
           bytes: sourceBytes,
-          mimeType: prepared.file.mimeType,
-          signal
+          mimeType: prepared.file.mimeType
         })
-        signal?.throwIfAborted()
         if (stored.contentHash !== prepared.file.contentSha256 ||
             stored.byteSize !== prepared.file.byteSize) {
           throw serviceError('UPLOAD_INTEGRITY', 'Хранилище вернуло другой checksum', 409)
@@ -641,7 +637,6 @@ export function createBookCatalogService({
       const edition = prepared.uploadRequired
         ? await store.completePrivateBookUpload({ subjectId, bookEditionId })
         : prepared.edition
-      signal?.throwIfAborted()
       if (!edition) throw serviceError('NOT_FOUND', 'Локальная книга не найдена', 404)
       await store.enqueueBookIdentity?.({ bookEditionId })
       const analysis = await ensureCanonicalAnalysis(edition)
@@ -872,7 +867,7 @@ export function createBookCatalogService({
       return storage.createDownload(asset)
     },
 
-    async sceneAt(subjectId, bookEditionId, { readerTextOffset, progressFraction, retryFailed = false }) {
+    async sceneAt(subjectId, bookEditionId, { readerTextOffset, progressFraction }) {
       if (typeof store.ensureReaderBookScene !== 'function') {
         throw new TypeError('repository.ensureReaderBookScene is required')
       }
@@ -883,8 +878,7 @@ export function createBookCatalogService({
         subjectId,
         bookEditionId,
         readerTextOffset,
-        progressFraction,
-        ...(retryFailed ? { retryFailed: true } : {})
+        progressFraction
       })
       if (!scene) throw serviceError('NOT_FOUND', 'Книга или сцена не найдена', 404)
       if (scene.errorCode) {

@@ -13,7 +13,12 @@ import { createOperationalLogger } from './operational-log.mjs'
 
 const UTF8_DECODER = new TextDecoder('utf-8', { fatal: true })
 const PARATEXT_SECTION = /^(?:preface|foreword|introduction|contents?|table of contents|предисловие|введение|оглавление|содержание)\s*[.:\]]?$/iu
-const NARRATIVE_SECTION = /^(?:chapter|part|book|prologue|epilogue|глава|часть|книга|пролог|эпилог)(?![\p{L}\p{N}_])/iu
+const NARRATIVE_SECTION = /^(?:chapter|part|book|prologue|epilogue|глава|часть|книга|пролог|эпилог)\b/iu
+const FINAL_EMPTY_SCAN_ERRORS = new Set([
+  'SCAN_EMPTY_OBSERVATIONS',
+  'EVIDENCE_MISMATCH',
+  'GENERATOR_HTTP_422'
+])
 
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex')
@@ -161,9 +166,8 @@ export function createBookAnalysisScanWorker({
   const effectiveScanPolicy = createBookAnalysisScanPolicy(scanPolicy)
   const log = createOperationalLogger({ component: 'analysis-scan', logger })
 
-  async function scan(job, signal) {
+  async function scan(job) {
     const input = await repository.getScanInput(job)
-    signal.throwIfAborted()
     bookAnalysisPipelineForRun(input)
     if (input.extractorVersion !== extractorVersion) {
       throw scanError(
@@ -183,10 +187,8 @@ export function createBookAnalysisScanWorker({
       objectKey: input.normalizedTextObjectKey,
       startByte: byteStart,
       endByteExclusive: byteEnd,
-      maxBytes: 128 * 1024,
-      signal
+      maxBytes: 128 * 1024
     })
-    signal.throwIfAborted()
     let contextText
     try {
       contextText = UTF8_DECODER.decode(stored.bytes)
@@ -220,8 +222,7 @@ export function createBookAnalysisScanWorker({
       coreLocalStartOffset: input.chunk.coreStartOffset - input.chunk.contextStartOffset,
       coreLocalEndOffset: input.chunk.coreEndOffset - input.chunk.contextStartOffset,
       semanticAttempt: Number.isSafeInteger(job.attempts) ? job.attempts : 1
-    }, { signal })
-    signal.throwIfAborted()
+    })
     const observations = normalizeScanObservations(rawResult, input, contextText)
     const result = await repository.completeScan(job, { extractorVersion, observations })
     log.info('scan.completed', 'Фрагмент книги обработан', {
@@ -234,27 +235,18 @@ export function createBookAnalysisScanWorker({
   }
 
   async function withLeaseHeartbeat(job, operation) {
-    const controller = new AbortController()
-    let renewing = false
     const timer = setInterval(() => {
-      if (renewing || controller.signal.aborted) return
-      renewing = true
-      void Promise.resolve().then(() => repository.renewAnalysisJobLease(job, { leaseSeconds })).catch((error) => {
-        if (error?.code === 'LEASE_LOST') controller.abort(error)
+      void repository.renewAnalysisJobLease(job, { leaseSeconds }).catch((error) => {
         log.error('scan.lease_failed', 'Не удалось продлить аренду scan-задания', {
           job: job.id,
           run: job.runId,
           error_code: safeErrorCode(error)
         })
-      }).finally(() => { renewing = false })
+      })
     }, leaseRenewMs)
     timer.unref?.()
     try {
-      return await operation(controller.signal)
-    } catch (error) {
-      // A body read may throw AbortError rather than the known lease-loss reason.
-      controller.signal.throwIfAborted()
-      throw error
+      return await operation()
     } finally {
       clearInterval(timer)
     }
@@ -271,7 +263,7 @@ export function createBookAnalysisScanWorker({
       if (!job) return { status: 'idle' }
       const startedAt = performance.now()
       try {
-        const result = await withLeaseHeartbeat(job, signal => scan(job, signal))
+        const result = await withLeaseHeartbeat(job, () => scan(job))
         log.info('scan.attempt_completed', 'Scan-задание завершено', {
           job: job.id,
           ...bookAnalysisLogContext(job, { startedAt, terminalStatus: 'completed' })
@@ -279,12 +271,8 @@ export function createBookAnalysisScanWorker({
         return { status: 'completed', jobId: job.id, runId: job.runId, result }
       } catch (error) {
         const errorCode = safeErrorCode(error)
-        if (errorCode === 'LEASE_LOST') {
-          // Only the replacement owner may complete, fail or retry this job.
-          return { status: 'failed', jobId: job.id, runId: job.runId, errorCode }
-        }
         if (
-          errorCode === 'SCAN_EMPTY_OBSERVATIONS' &&
+          FINAL_EMPTY_SCAN_ERRORS.has(errorCode) &&
           Number.isSafeInteger(job.attempts) &&
           Number.isSafeInteger(job.maxAttempts) &&
           job.attempts >= Math.min(job.maxAttempts, effectiveScanPolicy.semanticMaxAttempts)
