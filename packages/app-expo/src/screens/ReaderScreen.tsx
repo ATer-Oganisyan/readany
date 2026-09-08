@@ -28,11 +28,11 @@ import {
 import { importBackendCatalogBook } from "@/lib/narra/backend-catalog-import";
 import { isCatalogBookRevisionCurrent } from "@/lib/narra/backend-catalog-library";
 import { BackendSceneError, isBackendSceneReady } from "@/lib/narra/backend-scene";
+import { loadBackendCharacterMedia } from "@/lib/narra/backend-character-media";
 import { backendSceneMarkupIdentity } from "@/lib/narra/backend-scene-identity";
 import { generateBackendReaderScene, readSceneDataUri } from "@/lib/narra/backend-scene-reader";
 import { backendSceneForAnchor } from "@/lib/narra/backend-scene-state";
 import { buildCharacterNameMatcherSpec } from "@/lib/narra/character-name-matcher";
-import { isCharacterUnlocked } from "@/lib/narra/domain";
 import { narraBackendCode } from "@/lib/narra/errors";
 import { sceneInsertAnchors, sceneSourceKeyForAnchor } from "@/lib/narra/scene-inserts";
 import {
@@ -725,22 +725,12 @@ function ReaderContent({ route, navigation }: Props) {
     () => (narraBookCharacters ?? []).filter((item) => item.backendManaged),
     [narraBookCharacters],
   );
-  // Ключ состава открытых персонажей: спека пересобирается только при unlock,
-  // а не на каждом изменении прогресса
-  const unlockedCharacterIdsKey = useMemo(
-    () =>
-      characters
-        .filter((character) => isCharacterUnlocked(progress, character))
-        .map((character) => character.id)
-        .join(","),
-    [characters, progress],
+  // Match the complete cast: a visible name can open its character before the
+  // approximate backend progress threshold. Matching still rejects ambiguous names.
+  const characterNameSpecJson = useMemo(
+    () => (characters.length ? JSON.stringify(buildCharacterNameMatcherSpec(characters)) : null),
+    [characters],
   );
-  const characterNameSpecJson = useMemo(() => {
-    const unlockedIds = new Set(unlockedCharacterIdsKey.split(",").filter(Boolean));
-    if (unlockedIds.size === 0) return null;
-    const unlocked = characters.filter((character) => unlockedIds.has(character.id));
-    return JSON.stringify(buildCharacterNameMatcherSpec(unlocked));
-  }, [characters, unlockedCharacterIdsKey]);
 
   // ── Narra: врезки сцен внутри текста раз в N страниц (P6 → P14) ─────────────
   // Счётчик перелистываний прежний (scene-suggestion.ts); по сигналу в конец
@@ -1380,10 +1370,21 @@ function ReaderContent({ route, navigation }: Props) {
       }
       toggleControls();
     },
+    onCharactersEncountered: ({ characterIds, loadId }) => {
+      if (loadId !== activeReaderLoadIdRef.current) return;
+      let changed = false;
+      for (const id of characterIds) {
+        if (characters.some((character) => character.id === id && !character.encounteredInReader)) {
+          useNarraStore.getState().updateCharacter(bookId, id, { encounteredInReader: true });
+          changed = true;
+        }
+      }
+      if (changed) void loadBackendCharacterMedia(bookId, progress).catch(() => undefined);
+    },
     onCharacterTap: ({ characterId }) => {
       const character = characters.find((item) => item.id === characterId);
-      // Запертые персонажи не размечаются, но на случай гонки — двойная проверка
-      if (!character || !isCharacterUnlocked(progress, character)) return;
+      if (!character) return;
+      useNarraStore.getState().updateCharacter(bookId, character.id, { encounteredInReader: true });
       suppressReaderTapUntilRef.current = Date.now() + 400;
       publishCharacterProgress();
       navigation.navigate("NarraCharacterProfile", {

@@ -98,6 +98,7 @@ export interface ReaderBridgeCallbacks {
   }) => void;
   onPageSnippet?: (text: string) => void;
   onBookmarkSnippet?: (text: string) => void;
+  onCharactersEncountered?: (detail: { characterIds: string[]; loadId?: string }) => void;
   onCharacterTap?: (detail: CharacterTapEvent) => void;
   /** Тап по слоту «Сгенерировать сцену» (или по слоту в состоянии ошибки). */
   onSceneSlotTap?: (detail: SceneSlotEvent) => void;
@@ -920,6 +921,13 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
           break;
         case "bookmarkSnippet":
           cb.onBookmarkSnippet?.(msg.textSnippet || "");
+          break;
+        case "charactersEncountered":
+          if (Array.isArray(msg.characterIds))
+            cb.onCharactersEncountered?.({
+              characterIds: msg.characterIds.filter((id: unknown) => typeof id === "string"),
+              loadId: msg.loadId,
+            });
           break;
         case "characterTap":
           if (msg.characterId) {
