@@ -96,7 +96,9 @@ export function AudiobookPlayerContent(props: AudiobookPlayerContentProps) {
   return (
     <Host
       colorScheme={isDark ? "dark" : "light"}
-      matchContents={{ vertical: true }}
+      // This single-line layout is 309pt including the sheet’s bottom safe area.
+      // Reserve it before SwiftUI measures, so fitToContents cannot resize mid-transition.
+      style={{ height: 309 - bottom }}
       ignoreSafeArea="container"
     >
       <VStack spacing={0}>
