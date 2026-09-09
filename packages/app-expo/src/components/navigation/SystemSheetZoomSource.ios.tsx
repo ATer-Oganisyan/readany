@@ -7,6 +7,7 @@ export const SystemSheetZoomSource = requireNativeView(
   "SystemSheetZoomSourceView",
 ) as ComponentType<ViewProps & { sourceId: string }>;
 
-export function prepareSheetZoom(sourceId: string): Promise<void> {
-  return requireNativeModule("ReadAnyNativeControls").prepareSheetZoom(sourceId);
+export async function prepareSheetZoom(sourceId: string): Promise<void> {
+  // Older development clients can open the sheet without preparing the zoom.
+  await requireNativeModule("ReadAnyNativeControls").prepareSheetZoom?.(sourceId);
 }
