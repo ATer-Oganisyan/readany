@@ -173,6 +173,7 @@ const styles = StyleSheet.create({
   },
   artist: {
     fontSize: 13,
+    mixBlendMode: "multiply",
   },
   button: {
     padding: 6,
