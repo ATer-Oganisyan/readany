@@ -505,6 +505,7 @@ function ReaderContent({ route, navigation }: Props) {
   const { register: registerTOCSheet, unregister: unregisterTOCSheet } = useReaderTOCSheet();
   const { bookId, cfi, highlight: shouldHighlight, openTTS } = route.params;
   const charactersSheetSourceId = `reader-characters-${bookId}`;
+  const speechSheetSourceId = `reader-audiobook-${bookId}`;
   const { t } = useTranslation();
   const bookmarkCopy = useMemo(() => getReaderBookmarkCopy(t), [t]);
   const isIPadLayout = Platform.OS === "ios" && Platform.isPad;
@@ -1660,6 +1661,17 @@ function ReaderContent({ route, navigation }: Props) {
 
   const openReaderAppearance = useCallback(() => setShowSettings(true), []);
 
+  const openAudiobookPlayer = useCallback(async () => {
+    const current = useTTSStore.getState();
+    if (current.currentBookId !== bookId || current.playState === "stopped") {
+      await tts.handleToggleTTS();
+    }
+    const started = useTTSStore.getState();
+    if (started.currentBookId === bookId && started.playState !== "stopped") {
+      navigation.navigate("AudiobookPlayer", { sourceId: speechSheetSourceId });
+    }
+  }, [bookId, navigation, speechSheetSourceId, tts.handleToggleTTS]);
+
   const readerActions = useMemo<NativeContextMenuItem[]>(
     () => [
       {
@@ -1697,7 +1709,7 @@ function ReaderContent({ route, navigation }: Props) {
         label: t("reader.speak", "Озвучить"),
         icon: "headphones",
         sfSymbol: "headphones",
-        onPress: () => void tts.handleToggleTTS(),
+        onPress: () => void openAudiobookPlayer(),
       },
     ],
     [
@@ -1708,7 +1720,7 @@ function ReaderContent({ route, navigation }: Props) {
       navigation,
       openTOCSheet,
       t,
-      tts.handleToggleTTS,
+      openAudiobookPlayer,
     ],
   );
 
@@ -2229,10 +2241,11 @@ function ReaderContent({ route, navigation }: Props) {
           tintColor={readerThemeColors.foreground}
           isDark={isReaderThemeDark}
           charactersSheetSourceId={charactersSheetSourceId}
+          speechSheetSourceId={speechSheetSourceId}
           speechState={
             ttsPlayState === "loading" ? "loading" : ttsPlayState === "playing" ? "playing" : "idle"
           }
-          onSpeechPress={() => void tts.handleToggleTTS()}
+          onSpeechPress={() => void openAudiobookPlayer()}
           onCharactersPress={handleOpenCharacters}
         />
       </Reanimated.View>

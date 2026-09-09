@@ -15,6 +15,7 @@ interface NativeReaderToolbarProps {
   speechLoadingLabel: string;
   charactersLabel: string;
   charactersSheetSourceId: string;
+  speechSheetSourceId: string;
   onSpeechPress: () => void;
   onCharactersPress: () => void;
   style: { width: "100%"; height: number };
@@ -28,6 +29,7 @@ const NativeReaderToolbar = requireNativeView(
 export function ReaderToolbar({
   speechState,
   charactersSheetSourceId = "",
+  speechSheetSourceId = "",
   ...props
 }: ReaderToolbarProps) {
   const { t } = useTranslation();
@@ -43,6 +45,7 @@ export function ReaderToolbar({
       speechLoadingLabel={t("reader.audioLoading", "Загрузка аудио")}
       charactersLabel={t("narra.characters", "Персонажи")}
       charactersSheetSourceId={charactersSheetSourceId}
+      speechSheetSourceId={speechSheetSourceId}
       onSpeechPress={props.onSpeechPress}
       onCharactersPress={props.onCharactersPress}
       style={{ width: "100%", height: TOOLBAR_HEIGHT }}

@@ -145,6 +145,7 @@ const STROKE_ICONS = [
 ];
 
 const FILLED_ICONS = [
+  "fast-backward",
   "arrow-rotate-ccw-up",
   "bell",
   "bin",
@@ -159,6 +160,8 @@ const FILLED_ICONS = [
   "magnifying-glass",
   "pencil-square",
   "person",
+  "play",
+  "pause",
   "stop",
 ];
 

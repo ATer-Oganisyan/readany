@@ -17,6 +17,7 @@ import {
   StorybookScreen,
   getStorybookItemTitle,
 } from "@/screens/StorybookScreen";
+import { AudiobookPlayerScreen } from "@/screens/audiobook-player-screen";
 import { CatalogCategoryScreen } from "@/screens/catalog-category-screen";
 import { WebDavImportBrowserScreen } from "@/screens/library/WebDavImportBrowserScreen";
 import { ReaderTOCSheetScreen } from "@/screens/reader/reader-toc-sheet-screen";
@@ -57,6 +58,7 @@ export type RootStackParamList = {
     openTTS?: boolean;
   };
   ReaderTOC: undefined;
+  AudiobookPlayer: { sourceId?: string } | undefined;
   BookChat: { bookId: string; selectedText?: string; chapterTitle?: string };
   NarraCharacters: { bookId: string; charactersSheetSourceId?: string };
   NarraCharacterChat: { bookId: string; characterId: string };
@@ -212,6 +214,26 @@ export function RootNavigator() {
             sheetExpandsWhenScrolledToEdge: true,
             sheetResizeAnimationEnabled: true,
             sheetCornerRadius: 24,
+          }}
+        />
+        <Stack.Screen
+          name="AudiobookPlayer"
+          component={AudiobookPlayerScreen}
+          options={{
+            presentation: "formSheet",
+            headerShown: false,
+            sheetAllowedDetents: Platform.OS === "ios" ? "fitToContents" : [0.5],
+            sheetGrabberVisible: true,
+            contentStyle: {
+              backgroundColor:
+                Platform.OS === "ios"
+                  ? isDark
+                    ? colors.elevation2
+                    : colors.background
+                  : colors.card,
+            },
+            statusBarHidden: false,
+            statusBarStyle: isDark ? "light" : "dark",
           }}
         />
         <Stack.Screen

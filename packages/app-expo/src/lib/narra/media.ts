@@ -698,6 +698,10 @@ export function synthesizeNarraGatewaySpeech(
         async (response, scope) => {
           if (!response.ok) {
             // Do not log provider bodies: they may echo the book text.
+            const dailyLimitReached =
+              response.status === 429 &&
+              (response.headers.get("ratelimit-daily-remaining") === "0" ||
+                response.headers.get("ratelimit-global-remaining") === "0");
             throw new NarraServiceError(
               response.status === 401 || response.status === 403
                 ? "AUTH"
@@ -706,10 +710,12 @@ export function synthesizeNarraGatewaySpeech(
                   : response.status >= 500 || response.status === 408
                     ? "SERVICE"
                     : "REQUEST",
-              "Не удалось озвучить фрагмент.",
+              dailyLimitReached
+                ? "Дневной лимит озвучки исчерпан. Повторите после обновления лимита."
+                : "Не удалось озвучить фрагмент.",
               undefined,
               `Speech HTTP ${response.status}`,
-              `HTTP_${response.status}`,
+              dailyLimitReached ? "DAILY_LIMIT" : `HTTP_${response.status}`,
               boundedRetryAfterMs(response.headers.get("retry-after")),
             );
           }

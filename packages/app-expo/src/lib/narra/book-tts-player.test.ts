@@ -21,6 +21,7 @@ vi.mock("expo-file-system", () => ({
   },
 }));
 vi.mock("react-native", () => ({
+  Alert: { alert: vi.fn() },
   AppState: { addEventListener: () => ({ remove() {} }) },
   Platform: { OS: "ios" },
   Image: { resolveAssetSource: () => ({ uri: "art" }) },
@@ -56,6 +57,7 @@ vi.mock("react-native-track-player", () => ({
     }),
     getQueue: vi.fn(async () => runtime.queue),
     getActiveTrack: vi.fn(async () => runtime.queue[0]),
+    getActiveTrackIndex: vi.fn(async () => undefined),
     getPlaybackState: vi.fn(async () => ({ state: "playing" })),
     getProgress: vi.fn(async () => ({ position: 0, duration: 100 })),
     retry: vi.fn(async () => {}),
@@ -83,6 +85,7 @@ vi.mock("../platform/track-player-dashscope-player", () => ({
   TrackPlayerDashScopeTTSPlayer: class {},
 }));
 vi.mock("../platform/track-player-system-player", () => ({ TrackPlayerSystemTTSPlayer: class {} }));
+import { Alert } from "react-native";
 import TrackPlayer from "react-native-track-player";
 import { TrackPlayerEdgeTTSPlayer } from "../platform/track-player-edge-player";
 import { NarraServiceError } from "./errors";
@@ -114,9 +117,19 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 describe("book TTS playback integration", () => {
-  it("keeps sentence order, buffers eight, and applies speed only in the synthesis request", async () => {
+  it("buffers only eight sentences, refills as playback advances, and preserves order and speed", async () => {
     const sentences = Array.from({ length: 10 }, (_, i) => `Sentence ${i}.`);
     await player.speak(sentences, { ...DEFAULT_TTS_CONFIG, rate: 1.5 });
+    await flush();
+    expect(runtime.synth).toHaveBeenCalledTimes(8);
+    expect(runtime.queue.map((item) => item.id)).toEqual(
+      sentences.slice(0, 8).map((_, i) => `tts-chunk-${i}`),
+    );
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(runtime.synth).toHaveBeenCalledTimes(8);
+    for (const callback of runtime.listeners.get("track") ?? []) {
+      callback({ track: { id: "tts-chunk-2" } });
+    }
     await flush();
     expect(runtime.queue.map((item) => item.id)).toEqual(sentences.map((_, i) => `tts-chunk-${i}`));
     expect(TrackPlayer.play).toHaveBeenCalledTimes(1);
@@ -231,6 +244,21 @@ describe("book TTS playback integration", () => {
     await flush();
     expect(runtime.synth).toHaveBeenCalledTimes(2);
   });
+  it("stops without retries and explains a daily speech limit", async () => {
+    const message = "Дневной лимит озвучки исчерпан.";
+    runtime.synth.mockRejectedValue(
+      new NarraServiceError("RATE", message, undefined, undefined, "DAILY_LIMIT"),
+    );
+    const state = vi.fn();
+    player.onStateChange = state;
+    await player.speak(["first", "second", "third", "fourth"], DEFAULT_TTS_CONFIG);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(runtime.synth).toHaveBeenCalledTimes(3);
+    expect(TrackPlayer.play).not.toHaveBeenCalled();
+    expect(state).toHaveBeenLastCalledWith("stopped");
+    expect(Alert.alert).toHaveBeenCalledExactlyOnceWith("Озвучка недоступна", message);
+    expect(vi.getTimerCount()).toBe(0);
+  });
   it.each([
     ["AUTH", "HTTP_401"],
     ["REQUEST", "HTTP_400"],
@@ -294,4 +322,76 @@ describe("book TTS config changes", () => {
       }
     },
   );
+});
+
+describe("full chapter timeline", () => {
+  it("keeps chapter coordinates when starting mid-chapter, appending, and seeking outside the queue", async () => {
+    const { useTTSStore, setTTSPlayerFactories } = await import("@/stores/tts-store");
+    const { findNarrationChapter } = await import("../tts-chapter-progress");
+    const fake = {
+      speak: vi.fn(async () => {}),
+      append: vi.fn(),
+      stop: vi.fn(),
+      pause: vi.fn(),
+      resume: vi.fn(),
+    };
+    setTTSPlayerFactories({ createEdgeTTS: () => fake });
+    useTTSStore.getState().stop();
+    useTTSStore.setState({ config: DEFAULT_TTS_CONFIG, currentBookId: "book" });
+    const segments = Array.from({ length: 10 }, (_, i) => ({
+      text: `sentence ${i}`,
+      cfi: `epubcfi(/6/2!/4/${i * 2 + 2},/1:0,/1:10)`,
+      paragraphId: `p${i}`,
+    }));
+    const locate = () => {
+      const state = useTTSStore.getState();
+      return findNarrationChapter(
+        state.narrationChapters,
+        state.segmentCfis[state.currentChunkIndex],
+      );
+    };
+    try {
+      useTTSStore.getState().setNarrationChapter({ id: "chapter", title: "Chapter", segments });
+      useTTSStore.getState().play(segments.slice(5, 7));
+      expect(locate()?.index).toBe(5);
+      expect(locate()?.chapter.segments).toHaveLength(10);
+      useTTSStore.getState().append(segments.slice(7));
+      expect(locate()?.index).toBe(5);
+      expect(locate()?.chapter.segments).toHaveLength(10);
+      useTTSStore.getState().skipSentence(-1);
+      expect(locate()?.index).toBe(4);
+      expect(fake.speak).toHaveBeenLastCalledWith(
+        segments.slice(4).map((s) => s.text),
+        expect.anything(),
+      );
+      useTTSStore.getState().skipSentence(1);
+      expect(locate()?.index).toBe(5);
+      useTTSStore.getState().seekChapterSegment("chapter", 0);
+      expect(locate()?.index).toBe(0);
+      expect(fake.speak).toHaveBeenLastCalledWith(
+        segments.map((s) => s.text),
+        expect.anything(),
+      );
+      const callsAtStart = fake.speak.mock.calls.length;
+      useTTSStore.getState().skipSentence(-1);
+      expect(fake.speak).toHaveBeenCalledTimes(callsAtStart);
+      useTTSStore.getState().seekChapterSegment("chapter", 10);
+      expect(locate()?.index).toBe(9);
+      expect(fake.speak).toHaveBeenLastCalledWith(["sentence 9"], expect.anything());
+      const callsAtEnd = fake.speak.mock.calls.length;
+      useTTSStore.getState().skipSentence(1);
+      expect(fake.speak).toHaveBeenCalledTimes(callsAtEnd);
+      const seekInReader = vi.fn();
+      useTTSStore.setState({ onSeekChapterSegment: seekInReader });
+      useTTSStore.getState().skipSentence(-1);
+      expect(seekInReader).toHaveBeenCalledWith(segments[8]);
+      useTTSStore.getState().seekChapterSegment("chapter", 3);
+      expect(seekInReader).toHaveBeenCalledWith(segments[3]);
+      useTTSStore.getState().setCurrentBook("Other book", "Chapter", "other");
+      expect(locate()).toBeNull();
+    } finally {
+      useTTSStore.getState().stop();
+      setTTSPlayerFactories({});
+    }
+  });
 });
