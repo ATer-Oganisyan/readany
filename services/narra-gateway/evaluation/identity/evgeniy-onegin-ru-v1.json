@@ -1,0 +1,382 @@
+{
+  "schemaVersion": 1,
+  "id": "evgeniy-onegin-ru-v1",
+  "goldCount": 26,
+  "significantCount": 13,
+  "source": {
+    "dataset": "narra-catalog-ru-web-gold",
+    "language": "ru",
+    "title": "Евгений Онегин",
+    "author": "Александр Пушкин",
+    "bookEditionId": "3c1ab592-0228-4931-ba74-5003fb463c1b",
+    "normalizedTextSha256": "dd0275d4ab15332ed585dfc23c49a1762a8b28a09b311306f33c5e4ef83c219c",
+    "textLength": 162355,
+    "chapterCount": 8,
+    "rosterProtocol": "roster taken from the reference pages listed in references[]; only entities those pages present as characters of this work are gold",
+    "mentionCountProtocol": "narra-name-endings-v1: word-bounded stem+NAME_ENDINGS matching of the surface forms in surfaceForms[], deduplicated by text offset, computed against the normalized text with the sha256 above (same rule as packages/app-expo/src/lib/narra/character-name-matcher.ts)",
+    "significantProtocol": "minimum descending mention-count prefix covering at least 95 percent of gold mentions, including boundary-frequency ties, restricted to characters the text names with a proper noun; characters marked unnamed:true stay gold but are excluded from the gated tier",
+    "totalMentions": 413,
+    "namedMentions": 398,
+    "significantBoundaryMentionCount": 3,
+    "references": [
+      "https://ru.wikipedia.org/wiki/Список_персонажей_романа_«Евгений_Онегин»",
+      "https://ru.wikipedia.org/wiki/Евгений_Онегин",
+      "https://kratko.rustih.ru/aleksandr-pushkin-geroi-evgenij-onegin/"
+    ],
+    "publishedRosterCap": 20,
+    "publishedRosterCapNote": "book-markup-v3 публикует не более MAX_PUBLISHED_BOOK_CHARACTERS=20 персонажей (book-character-selection.mjs, character-frequency-v1). Полнота по всему gold ограничена этим потолком сверху; гейты считаются по significant-ярусу, который в обеих книгах меньше 20."
+  },
+  "gates": {
+    "precision": 0.9,
+    "recall": 0.9,
+    "f1": 0.9,
+    "criticalMerges": 0,
+    "duplicateRate": 0.05
+  },
+  "characters": [
+    {
+      "id": "tatyana_larina",
+      "name": "Татьяна Ларина",
+      "mentionCount": 143,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 30271,
+      "aliases": [
+        "Татьяна",
+        "Таня",
+        "Татьяна Дмитриевна"
+      ]
+    },
+    {
+      "id": "evgeny_onegin",
+      "name": "Евгений Онегин",
+      "mentionCount": 141,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 0,
+      "aliases": [
+        "Онегин",
+        "Евгений"
+      ]
+    },
+    {
+      "id": "olga_larina",
+      "name": "Ольга Ларина",
+      "mentionCount": 32,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 29154,
+      "aliases": [
+        "Ольга",
+        "Оля"
+      ]
+    },
+    {
+      "id": "vladimir_lensky",
+      "name": "Владимир Ленский",
+      "mentionCount": 23,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 23716,
+      "aliases": [
+        "Ленский",
+        "Владимир"
+      ]
+    },
+    {
+      "id": "zaretsky",
+      "name": "Зарецкий",
+      "mentionCount": 9,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 88693,
+      "aliases": []
+    },
+    {
+      "id": "buyanov",
+      "name": "Буянов",
+      "mentionCount": 6,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 80919,
+      "aliases": []
+    },
+    {
+      "id": "monsieur_triquet",
+      "name": "Мосье Трике",
+      "mentionCount": 6,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 81132,
+      "aliases": [
+        "Трике",
+        "Господин Трике",
+        "Месье Трике"
+      ]
+    },
+    {
+      "id": "narrator",
+      "name": "Рассказчик",
+      "mentionCount": 6,
+      "significant": false,
+      "unnamed": true,
+      "firstMentionTextOffset": 62026,
+      "aliases": [
+        "Автор",
+        "Повествователь"
+      ]
+    },
+    {
+      "id": "onegin_uncle",
+      "name": "Дядя Онегина",
+      "mentionCount": 5,
+      "significant": false,
+      "unnamed": true,
+      "firstMentionTextOffset": 942,
+      "aliases": [
+        "Дядя Евгения Онегина",
+        "Дядя Онегина"
+      ]
+    },
+    {
+      "id": "praskovya_larina",
+      "name": "Прасковья Ларина",
+      "mentionCount": 5,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 33551,
+      "aliases": [
+        "Прасковья",
+        "Ларина",
+        "Мать Татьяны",
+        "Госпожа Ларина"
+      ]
+    },
+    {
+      "id": "dmitry_larin",
+      "name": "Дмитрий Ларин",
+      "mentionCount": 4,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 34894,
+      "aliases": [
+        "Ларин",
+        "Отец Татьяны"
+      ]
+    },
+    {
+      "id": "petushkov",
+      "name": "Петушков",
+      "mentionCount": 4,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 80888,
+      "aliases": []
+    },
+    {
+      "id": "tatyana_husband",
+      "name": "Муж Татьяны",
+      "mentionCount": 4,
+      "significant": false,
+      "unnamed": true,
+      "firstMentionTextOffset": 123710,
+      "aliases": [
+        "Важный генерал",
+        "Князь N",
+        "Муж Татьяны"
+      ]
+    },
+    {
+      "id": "kharlikov",
+      "name": "Панфил Харликов",
+      "mentionCount": 3,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 81098,
+      "aliases": [
+        "Харликов",
+        "Панфил"
+      ]
+    },
+    {
+      "id": "princess_alina",
+      "name": "Княжна Алина",
+      "mentionCount": 3,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 32530,
+      "aliases": [
+        "Алина"
+      ]
+    },
+    {
+      "id": "pustyakov",
+      "name": "Пустяков",
+      "mentionCount": 3,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 80725,
+      "aliases": []
+    },
+    {
+      "id": "agafon",
+      "name": "Агафон",
+      "mentionCount": 2,
+      "significant": false,
+      "unnamed": false,
+      "firstMentionTextOffset": 74597,
+      "aliases": []
+    },
+    {
+      "id": "anisya",
+      "name": "Анисья",
+      "mentionCount": 2,
+      "significant": false,
+      "unnamed": false,
+      "firstMentionTextOffset": 109955,
+      "aliases": [
+        "Ключница Анисья"
+      ]
+    },
+    {
+      "id": "dunya",
+      "name": "Дуня",
+      "mentionCount": 2,
+      "significant": false,
+      "unnamed": false,
+      "firstMentionTextOffset": 26043,
+      "aliases": []
+    },
+    {
+      "id": "flyanov",
+      "name": "Флянов",
+      "mentionCount": 2,
+      "significant": false,
+      "unnamed": false,
+      "firstMentionTextOffset": 81007,
+      "aliases": []
+    },
+    {
+      "id": "guillot",
+      "name": "Гильо",
+      "mentionCount": 2,
+      "significant": false,
+      "unnamed": false,
+      "firstMentionTextOffset": 95874,
+      "aliases": []
+    },
+    {
+      "id": "gvozdin",
+      "name": "Гвоздин",
+      "mentionCount": 2,
+      "significant": false,
+      "unnamed": false,
+      "firstMentionTextOffset": 80736,
+      "aliases": []
+    },
+    {
+      "id": "andryushka",
+      "name": "Андрюшка",
+      "mentionCount": 1,
+      "significant": false,
+      "unnamed": false,
+      "firstMentionTextOffset": 38063,
+      "aliases": []
+    },
+    {
+      "id": "filipyevna",
+      "name": "Филипьевна",
+      "mentionCount": 1,
+      "significant": false,
+      "unnamed": false,
+      "firstMentionTextOffset": 50965,
+      "aliases": [
+        "Няня Татьяны",
+        "Филипьевна"
+      ]
+    },
+    {
+      "id": "pykhtin",
+      "name": "Пыхтин",
+      "mentionCount": 1,
+      "significant": false,
+      "unnamed": false,
+      "firstMentionTextOffset": 113365,
+      "aliases": []
+    },
+    {
+      "id": "skotinin",
+      "name": "Скотинины",
+      "mentionCount": 1,
+      "significant": false,
+      "unnamed": false,
+      "firstMentionTextOffset": 80790,
+      "aliases": [
+        "Скотинин"
+      ]
+    }
+  ],
+  "knownExtras": [
+    {
+      "id": "x_byron",
+      "name": "Байрон",
+      "kind": "historical"
+    },
+    {
+      "id": "x_napoleon",
+      "name": "Наполеон",
+      "kind": "historical"
+    },
+    {
+      "id": "x_richardson",
+      "name": "Ричардсон",
+      "kind": "historical"
+    },
+    {
+      "id": "x_grandison",
+      "name": "Грандисон",
+      "kind": "literary"
+    },
+    {
+      "id": "x_didlo",
+      "name": "Дидло",
+      "kind": "historical"
+    },
+    {
+      "id": "x_istomina",
+      "name": "Истомина",
+      "kind": "historical"
+    },
+    {
+      "id": "x_kaverin",
+      "name": "Каверин",
+      "kind": "historical"
+    },
+    {
+      "id": "x_chaadaev",
+      "name": "Чаадаев",
+      "kind": "historical"
+    },
+    {
+      "id": "x_talon",
+      "name": "Талон",
+      "kind": "historical"
+    }
+  ],
+  "collisionGuards": [
+    {
+      "id": "larin_surname",
+      "surfaces": [
+        "Ларины",
+        "Семейство Лариных"
+      ],
+      "goldIds": [
+        "dmitry_larin",
+        "praskovya_larina",
+        "tatyana_larina",
+        "olga_larina"
+      ],
+      "reason": "фамилия Ларин(а/ы) сама по себе делится между отцом, матерью и двумя дочерьми"
+    }
+  ]
+}
