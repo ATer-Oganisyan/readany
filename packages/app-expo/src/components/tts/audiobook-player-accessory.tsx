@@ -10,6 +10,7 @@ import { useColors } from "@/styles/theme";
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
 import { Image, Platform, PlatformColor, Pressable, StyleSheet, Text, View } from "react-native";
+import PreviousParagraphIcon from "../../../assets/icons/sentence-backward.svg";
 import { AudiobookCover } from "./audiobook-cover";
 // Source: expo-ui-examples/mini-player/mini-player-accessory.tsx (MIT).
 
@@ -79,14 +80,11 @@ export function AudiobookPlayerAccessory({
           onPress={onPrevious}
           hitSlop={8}
         >
-          <Image
-            source={getFilledIconImageSource("fast-backward")}
-            style={{
-              width: 18,
-              height: 18,
-              tintColor: LABEL,
-              opacity: previousIndex === null ? 0.35 : 1,
-            }}
+          <PreviousParagraphIcon
+            width={18}
+            height={18}
+            color={LABEL}
+            opacity={previousIndex === null ? 0.35 : 1}
           />
         </Pressable>
       </SystemSheetZoomSource>
@@ -132,14 +130,11 @@ export function AudiobookPlayerAccessory({
         hitSlop={8}
         style={styles.button}
       >
-        <Image
-          source={getFilledIconImageSource("fast-backward")}
-          style={{
-            width: 22,
-            height: 22,
-            tintColor: LABEL,
-            opacity: previousIndex === null ? 0.35 : 1,
-          }}
+        <PreviousParagraphIcon
+          width={22}
+          height={22}
+          color={LABEL}
+          opacity={previousIndex === null ? 0.35 : 1}
         />
       </Pressable>
     </SystemSheetZoomSource>

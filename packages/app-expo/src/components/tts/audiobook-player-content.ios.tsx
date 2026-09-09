@@ -1,5 +1,6 @@
 // Source: SchroederNathan/expo-ui-examples/src/examples/mini-player/player-screen.tsx
 // MIT: vendor/expo-ui-examples-LICENSE.txt. Transport layout adapted to a native sheet.
+import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { useTheme } from "@/styles/ThemeContext";
 import {
   bodyTypography,
@@ -32,11 +33,12 @@ import {
   lineLimit,
   minimumScaleFactor,
   monospacedDigit,
+  multilineTextAlignment,
   padding,
   truncationMode,
 } from "@expo/ui/swift-ui/modifiers";
 import { useTranslation } from "react-i18next";
-import { PlatformColor, View, useWindowDimensions } from "react-native";
+import { PlatformColor, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import PreviousSentenceIcon from "../../../assets/icons/sentence-backward.svg";
 import NextSentenceIcon from "../../../assets/icons/sentence-forward.svg";
@@ -86,36 +88,40 @@ function SentenceButton({
 export function AudiobookPlayerContent(props: AudiobookPlayerContentProps) {
   const { t } = useTranslation();
   const { isDark } = useTheme();
-  const { width } = useWindowDimensions();
+  const layout = useResponsiveLayout();
+  const { width } = layout;
   const { bottom } = useSafeAreaInsets();
   const { player } = props;
   const contentInset = 33;
   const contentW = Math.min(width - contentInset * 2, 408);
-  const headerExtraWidth = contentInset - spacingPixels[24];
+  const columns = layout.isTabletLandscape ? 5 : layout.isTablet ? 4 : 2;
+  const catalogCoverWidth = Math.floor(
+    (layout.centeredContentWidth - spacingPixels[16] * (columns - 1)) / columns,
+  );
+  const coverHeight = catalogCoverWidth * (41 / 28) * 0.6;
 
   return (
     <Host
       colorScheme={isDark ? "dark" : "light"}
-      // This single-line layout is 309pt including the sheet’s bottom safe area.
+      // Keep the existing controls height and reserve the centered cover before opening.
       // Reserve it before SwiftUI measures, so fitToContents cannot resize mid-transition.
-      style={{ height: 309 - bottom }}
+      style={{ height: 309 + coverHeight + spacingPixels[24] + spacingPixels[20] - bottom }}
       ignoreSafeArea="container"
     >
       <VStack spacing={0}>
-        <HStack
-          spacing={spacingPixels[16]}
-          modifiers={[
-            frame({ width: contentW + headerExtraWidth }),
-            padding({ top: 34, leading: headerExtraWidth }),
-          ]}
+        <VStack
+          spacing={spacingPixels[24]}
+          modifiers={[frame({ width: contentW }), padding({ top: 34 + spacingPixels[20] })]}
         >
-          <RNHostView matchContents>
-            <AudiobookCover height={56} showShadow={false} />
-          </RNHostView>
+          <VStack modifiers={[frame({ width: coverHeight * (28 / 41), height: coverHeight })]}>
+            <RNHostView matchContents>
+              <AudiobookCover height={coverHeight} />
+            </RNHostView>
+          </VStack>
           <VStack
-            alignment="leading"
+            alignment="center"
             spacing={spacingPixels[4]}
-            modifiers={[frame({ maxWidth: Number.POSITIVE_INFINITY, alignment: "leading" })]}
+            modifiers={[frame({ width: contentW, height: 56, alignment: "center" })]}
           >
             <Text
               modifiers={[
@@ -125,7 +131,8 @@ export function AudiobookPlayerContent(props: AudiobookPlayerContentProps) {
                 minimumScaleFactor(title20Typography.fontSize / title24Typography.fontSize),
                 truncationMode("tail"),
                 fixedSize({ horizontal: false, vertical: true }),
-                frame({ maxWidth: Number.POSITIVE_INFINITY, alignment: "leading" }),
+                multilineTextAlignment("center"),
+                frame({ maxWidth: Number.POSITIVE_INFINITY, alignment: "center" }),
               ]}
             >
               {props.title}
@@ -135,6 +142,7 @@ export function AudiobookPlayerContent(props: AudiobookPlayerContentProps) {
                 modifiers={[
                   font({ family: largeTitleFontFamily, size: bodyTypography.fontSize }),
                   dim,
+                  multilineTextAlignment("center"),
                   lineLimit(1),
                 ]}
               >
@@ -142,7 +150,7 @@ export function AudiobookPlayerContent(props: AudiobookPlayerContentProps) {
               </Text>
             ) : null}
           </VStack>
-        </HStack>
+        </VStack>
 
         <Slider
           value={player.localPosition}
