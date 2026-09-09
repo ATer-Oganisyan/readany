@@ -96,6 +96,7 @@
     "language": "Язык",
     "discussWithAI": "Обсудить с ИИ",
     "listen": "Слушать",
+    "audio": "Аудио",
     "textSettings": "Текст",
     "searchTimedOut": "Поиск занял слишком долго. Попробуйте фразу покороче."
   },

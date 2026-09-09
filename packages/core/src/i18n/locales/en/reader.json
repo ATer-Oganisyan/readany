@@ -96,6 +96,7 @@
     "language": "Language",
     "discussWithAI": "Discuss with AI",
     "listen": "Listen",
+    "audio": "Audio",
     "textSettings": "Text",
     "searchTimedOut": "Search is taking too long. Try a shorter phrase."
   },

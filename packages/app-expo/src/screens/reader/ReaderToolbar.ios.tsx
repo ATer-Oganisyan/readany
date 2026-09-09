@@ -27,7 +27,6 @@ const NativeReaderToolbar = requireNativeView(
 ) as ComponentType<NativeReaderToolbarProps>;
 
 export function ReaderToolbar({
-  speechState,
   charactersSheetSourceId = "",
   speechSheetSourceId = "",
   ...props
@@ -38,9 +37,9 @@ export function ReaderToolbar({
     <NativeReaderToolbar
       tintColor={props.tintColor}
       isDark={props.isDark}
-      speechActive={speechState === "playing"}
-      speechLoading={speechState === "loading"}
-      speechLabel={t("reader.listen", "Слушать")}
+      speechActive={false}
+      speechLoading={false}
+      speechLabel={t("reader.audio", "Аудио")}
       speechStopLabel={t("tts.stopShort", "Стоп")}
       speechLoadingLabel={t("reader.audioLoading", "Загрузка аудио")}
       charactersLabel={t("narra.characters", "Персонажи")}
