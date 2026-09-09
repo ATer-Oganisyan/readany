@@ -131,8 +131,9 @@ export function AudiobookPlayerAccessory({
         style={styles.button}
       >
         <PreviousParagraphIcon
-          width={22}
-          height={22}
+          width={18}
+          height={18}
+          style={{ margin: 2 }}
           color={LABEL}
           opacity={previousIndex === null ? 0.35 : 1}
         />
