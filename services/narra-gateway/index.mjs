@@ -17,6 +17,8 @@ import {
   coverImageConfig,
   coverRouteReadiness,
   llmRouteReadiness,
+  mediaImageQualityForDimensions,
+  normalizeImageQuality,
   requestChat,
   requestCoverImageWithFallback
 } from './providers.mjs'
@@ -249,6 +251,11 @@ const SCENE_JOB_MAX_ATTEMPTS = envInt('SCENE_JOB_MAX_ATTEMPTS', 3, 10)
 const SCENE_JOB_ATTEMPT_TIMEOUT_SECONDS = envInt('SCENE_JOB_ATTEMPT_TIMEOUT_SECONDS', 15 * 60, 60 * 60)
 const SCENE_JOB_WORKER_ENABLED = parseEnvBool(process.env, 'SCENE_JOB_WORKER_ENABLED', true)
 const coverProviderConfig = coverImageConfig()
+const COVER_IMAGE_QUALITY = normalizeImageQuality(process.env.COVER_IMAGE_QUALITY)
+const CHARACTER_PORTRAIT_IMAGE_QUALITY = normalizeImageQuality(
+  process.env.CHARACTER_PORTRAIT_IMAGE_QUALITY
+)
+const SCENE_IMAGE_QUALITY = normalizeImageQuality(process.env.SCENE_IMAGE_QUALITY)
 const coverProviderCallsPerAttempt =
   coverProviderConfig.fallbackModel && coverProviderConfig.fallbackModel !== coverProviderConfig.model ? 2 : 1
 const minimumCoverAttemptTimeoutMs =
@@ -821,11 +828,12 @@ async function generateInternalPortrait(prompt, signal, costContext = null) {
   }
 }
 
-async function measuredInternalImageRequest({ prompt, aspectRatio, signal, costContext }) {
+async function measuredInternalImageRequest({ prompt, aspectRatio, quality, signal, costContext }) {
   try {
     const generated = await requestCoverImageObserved({
       prompt,
       aspectRatio,
+      quality,
       requestId: randomUUID(),
       signal
     })
@@ -858,6 +866,7 @@ async function generateInternalCover(prompt, signal, costContext) {
     const generated = await measuredInternalImageRequest({
       prompt,
       aspectRatio: '2:3',
+      quality: COVER_IMAGE_QUALITY,
       costContext,
       signal
     })
@@ -883,6 +892,7 @@ async function generateInternalCharacterPortrait(prompt, signal, costContext) {
     const generated = await measuredInternalImageRequest({
       prompt,
       aspectRatio: '3:4',
+      quality: CHARACTER_PORTRAIT_IMAGE_QUALITY,
       costContext,
       signal
     })
@@ -910,6 +920,7 @@ async function generateInternalScene(prompt, signal, costContext) {
       generated = await measuredInternalImageRequest({
         prompt,
         aspectRatio: '4:3',
+        quality: SCENE_IMAGE_QUALITY,
         costContext,
         signal
       })
@@ -921,6 +932,7 @@ async function generateInternalScene(prompt, signal, costContext) {
       generated = await measuredInternalImageRequest({
         prompt: simplifiedScenePrompt(prompt),
         aspectRatio: '4:3',
+        quality: SCENE_IMAGE_QUALITY,
         costContext,
         signal
       })
@@ -2136,16 +2148,27 @@ app.post('/v2/media/images', imageDailyLimit, express.json({ limit: '1mb' }), as
   try {
     release = await imageGate.acquire(signal)
     const { prompt, width, height, engine } = parseImageBody(req.body)
-    // OpenRouter выбирается клиентом только по назначению (портрет); ключ и
-    // модель по-прежнему остаются на сервере. Provider fallback — Nano Banana;
-    // Kandinsky в этот путь не входит.
+    // OpenRouter выбирается клиентом для legacy-портретов и selected-text сцен;
+    // ключ и модель по-прежнему остаются на сервере. Вертикальные размеры
+    // используют portrait quality, квадратные и горизонтальные — scene quality.
+    // Provider fallback — Nano Banana; Kandinsky в этот путь не входит.
     if (engine === 'openrouter') {
       const aspectRatio = width * 4 === height * 3 ? '3:4' : width === height ? '1:1' : width > height ? '3:2' : '2:3'
       // Правовой блок добавляет сервер (идемпотентно к клиентскому): политика
       // не зависит от версии клиента. Kandinsky/gigachat-пути ниже режут запрос
       // до 950–1000 символов — там блок вытеснил бы сам промпт; эти провайдеры
       // закрыты собственной модерацией Сбера.
-      const image = await requestCoverImageObserved({ prompt: withImageCompliance(prompt), aspectRatio, signal })
+      const image = await requestCoverImageObserved({
+        prompt: withImageCompliance(prompt),
+        aspectRatio,
+        quality: mediaImageQualityForDimensions({
+          width,
+          height,
+          portraitQuality: CHARACTER_PORTRAIT_IMAGE_QUALITY,
+          sceneQuality: SCENE_IMAGE_QUALITY
+        }),
+        signal
+      })
       return res.json({ image: image.image, mime_type: image.mimeType })
     }
     // Вертикальные изображения (обложки) и явный engine='kandinsky' (сцены) — Kandinsky:
@@ -2402,7 +2425,11 @@ app.post('/v2/media/cover', coverDailyLimit, express.json({ limit: '64kb' }), as
   try {
     release = await coverGate.acquire(signal)
     const { prompt } = parseCoverBody(req.body)
-    const cover = await requestCoverImageObserved({ prompt, signal })
+    const cover = await requestCoverImageObserved({
+      prompt,
+      quality: COVER_IMAGE_QUALITY,
+      signal
+    })
     res.json({ image: cover.image, mime_type: cover.mimeType })
   } catch (e) {
     res.status(e.status || statusFor(e.code)).json({ error: e.message, code: e.code || 'UNKNOWN' })
