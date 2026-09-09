@@ -289,8 +289,26 @@ export async function requestChat({
 // ================= Обложки книг (server-owned image route) =================
 // Prompt policy, model, provider and credentials are owned by the gateway.
 const COVER_IMAGE_PROVIDERS = new Set(['openrouter', 'litellm'])
+const IMAGE_QUALITIES = new Set(['low', 'medium', 'high'])
 const NANO_BANANA_OPENROUTER_MODEL = 'google/gemini-3.1-flash-image'
 const NANO_BANANA_LITELLM_MODEL = `openrouter/${NANO_BANANA_OPENROUTER_MODEL}`
+
+export function normalizeImageQuality(value = 'high') {
+  const quality = String(value || 'high').trim().toLowerCase()
+  if (!IMAGE_QUALITIES.has(quality)) {
+    throw new Error(`Unsupported image quality: ${quality}`)
+  }
+  return quality
+}
+
+export function mediaImageQualityForDimensions({
+  width,
+  height,
+  portraitQuality = 'high',
+  sceneQuality = 'high'
+}) {
+  return normalizeImageQuality(height > width ? portraitQuality : sceneQuality)
+}
 
 function coverImageTimeoutMs(env, provider) {
   const raw = env.COVER_IMAGE_TIMEOUT_MS || (
@@ -416,7 +434,7 @@ function isNanoBananaModel(model) {
   return /(?:^|\/)google\/gemini-[a-z0-9.-]*image(?:$|[-:])/i.test(model)
 }
 
-function coverImageRequest(config, { prompt, aspectRatio, selectedModel }) {
+function coverImageRequest(config, { prompt, aspectRatio, selectedModel, quality }) {
   const nanoBanana = isNanoBananaModel(selectedModel)
   if (config.provider === 'litellm') {
     return {
@@ -428,7 +446,7 @@ function coverImageRequest(config, { prompt, aspectRatio, selectedModel }) {
         size: liteLlmImageSize(aspectRatio),
         ...(nanoBanana
           ? { aspect_ratio: aspectRatio, resolution: '1K' }
-          : { quality: 'high' }),
+          : { quality }),
         output_format: 'png'
       }
     }
@@ -439,7 +457,7 @@ function coverImageRequest(config, { prompt, aspectRatio, selectedModel }) {
       model: selectedModel,
       prompt,
       aspect_ratio: aspectRatio,
-      ...(nanoBanana ? { resolution: '1K' } : { quality: 'high' }),
+      ...(nanoBanana ? { resolution: '1K' } : { quality }),
       output_format: 'png',
       n: 1
     }
@@ -502,6 +520,7 @@ function imageAttemptError(error, { requestId, attempts }) {
 export async function requestCoverImage({
   prompt,
   aspectRatio = '2:3',
+  quality = 'high',
   model,
   requestId,
   retryIndex = 0,
@@ -512,6 +531,7 @@ export async function requestCoverImage({
   const config = coverImageConfig(env)
   const id = requestId || randomUUID()
   const selectedModel = String(model || config.model).trim()
+  const selectedQuality = normalizeImageQuality(quality)
   const attemptId = randomUUID()
   const attempts = []
   const started = Date.now()
@@ -545,7 +565,12 @@ export async function requestCoverImage({
     })
     throw imageAttemptError(error, { requestId: id, attempts })
   }
-  const request = coverImageRequest(config, { prompt, aspectRatio, selectedModel })
+  const request = coverImageRequest(config, {
+    prompt,
+    aspectRatio,
+    selectedModel,
+    quality: selectedQuality
+  })
   let response
   try {
     response = await fetchImpl(request.url, {

@@ -35,7 +35,11 @@ OpenRouter-specific request fields. Covers independently select
 `COVER_IMAGE_PROVIDER=litellm|openrouter`. The LiteLLM image route uses
 `LITELLM_BASE_URL`, `LITELLM_API_KEY`, `LITELLM_IMAGE_MODEL` and the standard
 `POST /v1/images/generations` contract; direct `OPENROUTER_*` remains a separate
-compatibility route. Provider credentials never enter the mobile contract.
+compatibility route. `COVER_IMAGE_QUALITY`, `CHARACTER_PORTRAIT_IMAGE_QUALITY`
+and `SCENE_IMAGE_QUALITY` independently select `low`, `medium` or `high` for
+GPT Image requests. The legacy `/v2/media/images` route treats vertical images
+as portraits and square or landscape images as scenes. Provider credentials
+never enter the mobile contract.
 
 GPT-5.6 Luna's model and reasoning modes are documented by
 [OpenAI](https://developers.openai.com/api/docs/models/gpt-5.6-luna), while
