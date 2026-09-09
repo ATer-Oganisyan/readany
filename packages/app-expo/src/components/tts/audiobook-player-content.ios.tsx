@@ -170,7 +170,7 @@ export function AudiobookPlayerContent(props: AudiobookPlayerContentProps) {
         />
         <HStack
           spacing={spacingPixels[8]}
-          modifiers={[frame({ width: contentW }), padding({ top: 11 })]}
+          modifiers={[frame({ width: contentW }), padding({ top: spacingPixels[4] })]}
         >
           <Text
             modifiers={[font({ family: fontFamily.regular, size: fontSize.xs }), dim, lineLimit(1)]}
