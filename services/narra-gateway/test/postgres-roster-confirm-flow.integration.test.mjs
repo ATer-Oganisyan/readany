@@ -300,6 +300,33 @@ test('the book pass sees the whole inventory and re-issues nothing it did not ch
       roster.rows.map(({ canonical_name: name }) => name),
       ['Аркадий Кирсанов', 'Евгений Базаров']
     )
+
+    // Полный заход ставит карточки остальных окон. Раньше их не ставил никто:
+    // карточки появлялись только у персонажей первых глав, а подтверждённый
+    // состав всей книги оставался строками в таблице без единой карточки.
+    assert.ok(result.cardJobsCreated > 0, 'полный заход не поставил карточки')
+    const cards = await pool.query(
+      `SELECT character_key, card_window_index, priority FROM generation_jobs
+        WHERE analysis_run_id = $1 AND job_type = 'character_card'
+        ORDER BY card_window_index`,
+      [runId]
+    )
+    const windows = cards.rows.map(({ card_window_index: index }) => Number(index))
+    assert.deepEqual([...new Set(windows)], [0, 1], 'карточки поставлены не во все окна')
+    // Персонаж принадлежит окну своего первого упоминания, а не окну захода.
+    const bazarov = cards.rows.find(({ character_key: key }) => key.includes('bazarov'))
+    assert.equal(Number(bazarov.card_window_index), 1)
+    // Фоновые окна не обгоняют первые главы.
+    const first = cards.rows.find(({ card_window_index: index }) => Number(index) === 0)
+    assert.ok(Number(first.priority) > Number(bazarov.priority))
+
+    // Второй полный заход ничего не дублирует: окно вышло из `queued`.
+    const again = await pool.query(
+      `SELECT count(*)::int AS n FROM generation_jobs
+        WHERE analysis_run_id = $1 AND job_type = 'character_card'`,
+      [runId]
+    )
+    assert.equal(again.rows[0].n, cards.rows.length)
   } finally {
     await isolated.release()
   }

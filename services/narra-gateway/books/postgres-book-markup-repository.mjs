@@ -2927,12 +2927,39 @@ export function createPostgresBookMarkupRepository(pool, {
           )
         }
 
+        // Оконный заход ставит карточки своего окна, полный — всех остальных.
+        //
+        // Раньше карточки ставил только оконный заход, и полный подтверждал
+        // состав вхолостую: 79 персонажей «Обломова» получали строку в roster
+        // и ни одной карточки. Персонаж принадлежит своему окну по первому
+        // упоминанию, поэтому полный заход обходит окна, а не ставит всё в одно.
+        //
+        // Окно, карточки которого уже поставлены, выходит из статуса `queued`,
+        // и повторно оно не берётся — окно первых глав здесь не задевается.
         let cardJobsCreated = 0
-        if (windowIndex !== null && !skipped) {
-          const enqueued = await enqueueCardWindowJobs(client, {
-            runId, bookEditionId, windowIndex, priority: CARD_MEDIA_PRIORITY.foreground
-          })
-          cardJobsCreated = enqueued.created
+        if (!skipped) {
+          if (windowIndex !== null) {
+            const enqueued = await enqueueCardWindowJobs(client, {
+              runId, bookEditionId, windowIndex, priority: CARD_MEDIA_PRIORITY.foreground
+            })
+            cardJobsCreated = enqueued.created
+          } else {
+            const pending = await client.query(
+              `SELECT window_index FROM book_card_windows
+                WHERE run_id = $1 AND status = 'queued'
+                ORDER BY window_index`,
+              [runId]
+            )
+            for (const pendingWindow of pending.rows) {
+              const enqueued = await enqueueCardWindowJobs(client, {
+                runId,
+                bookEditionId,
+                windowIndex: pendingWindow.window_index,
+                priority: CARD_MEDIA_PRIORITY.background
+              })
+              cardJobsCreated += enqueued.created
+            }
+          }
         }
 
         // Полный заход ставится после окна: он длинный, и держать за ним
