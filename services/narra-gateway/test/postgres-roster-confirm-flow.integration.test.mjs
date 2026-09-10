@@ -305,24 +305,37 @@ test('the book pass sees the whole inventory and re-issues nothing it did not ch
   }
 })
 
-test('a lone candidate still becomes a character and gets a card', {
+test('a lone candidate is classified by the model and gets a card', {
   skip: !connectionString
 }, async () => {
-  // Отсутствие пар для слияния — не отсутствие персонажей. У окна 1 кандидат
-  // один: сливать не с кем и звать модель незачем, но герой есть. Раньше такая
-  // ветка писала пустой состав, карточек никто не ставил, и единственный
-  // настоящий персонаж окна оставался без карточки навсегда.
+  // Отсутствие пар для слияния — не отсутствие персонажей: раньше такая ветка
+  // писала пустой состав, и единственный герой окна оставался без карточки.
+  // Спрашивать при этом всё равно надо модель: `kindHint` — эвристика, она даёт
+  // `unknown` на «По дороге шла Анна. Корзину несла Анна.», и довериться ей
+  // значило бы либо потерять героя, либо выдать карточку месту.
   const isolated = await createIsolatedPostgres(connectionString)
   const { pool } = isolated
   try {
     const repository = createPostgresBookMarkupRepository(pool)
     const { bookEditionId, runId } = await seed(pool)
+    // Подсказка инвентаря нарочно неопределённая: решает классификация модели.
+    await pool.query(
+      `UPDATE book_name_inventory
+       SET document = jsonb_set(document, '{candidates,2,kindHint}', '"unknown"')
+       WHERE run_id = $1`,
+      [runId]
+    )
     const requests = []
     const result = await runner(repository, { onRequest: (r) => requests.push(r) }).run(
       await claimRosterJob(pool, { bookEditionId, runId, windowIndex: 1 })
     )
 
-    assert.deepEqual(requests, [], 'модель звали, хотя сливать не с чем')
+    assert.equal(requests.length, 1, 'единственного кандидата не спросили у модели')
+    assert.deepEqual(
+      requests[0].roster.map(({ candidateKey }) => candidateKey),
+      ['name:bazarov']
+    )
+    assert.deepEqual(requests[0].candidatePairs, [], 'пар быть не может: кандидат один')
     assert.equal(result.characterCount, 1)
     const roster = await pool.query(
       'SELECT character_key, canonical_name FROM book_character_roster WHERE run_id = $1',
@@ -330,7 +343,7 @@ test('a lone candidate still becomes a character and gets a card', {
     )
     assert.deepEqual(
       roster.rows.map(({ canonical_name: name }) => name),
-      ['Базаров']
+      ['Евгений Базаров']
     )
     // И карточка ему поставлена — ради этого всё и делается.
     assert.ok(result.cardJobsCreated > 0, 'карточка одинокому персонажу не поставлена')

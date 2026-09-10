@@ -293,6 +293,72 @@ test('published cards are listed for the manifest, newest revision only', {
   }
 })
 
+test('the manifest sees one run of cards, not two', {
+  skip: !connectionString
+}, async () => {
+  // Выключение прежней ревизии ограничено `run_id`, поэтому после повторного
+  // анализа включёнными остаются и старые карточки. Без ограничения по прогону
+  // читатель получал бы старую и новую карточку с одним и тем же
+  // `characterKey` — то есть одного героя дважды.
+  const isolated = await createIsolatedPostgres(connectionString)
+  const { pool } = isolated
+  try {
+    const repository = createPostgresBookMarkupRepository(pool)
+    const first = await seed(pool)
+    const characterKey = 'char:hero'
+
+    const publish = async ({ runId, name }) => {
+      await seedCharacter(pool, { runId, characterKey, startOffset: 1_000 })
+      const jobId = await insertCardJob(pool, {
+        bookEditionId: first.bookEditionId, runId, characterKey, windowIndex: 0
+      })
+      const job = await claimJob(pool, jobId)
+      await repository.publishCharacterCard(job, {
+        runId,
+        bookEditionId: first.bookEditionId,
+        characterKey,
+        windowIndex: 0,
+        cardRevision: 1,
+        fragmentSetHash: hash(`frags:${runId}`),
+        normalizedTextHash: hash('normalized'),
+        promptVersion: 'character-card-prompt-v1',
+        mediaPriority: CARD_MEDIA_PRIORITY.foreground,
+        card: cardDocument({
+          characterKey,
+          name,
+          firstMentionTextOffset: 1_000,
+          windowEndOffset: 40_000
+        })
+      })
+    }
+
+    await publish({ runId: first.runId, name: 'Из первого прогона' })
+    const second = await seed(pool, { bookEditionId: first.bookEditionId, runSequence: 2 })
+    await publish({ runId: second.runId, name: 'Из второго прогона' })
+
+    // Обе карточки включены — иначе тест ничего не проверяет.
+    const enabled = await pool.query(
+      `SELECT run_id FROM book_character_cards
+       WHERE book_edition_id = $1 AND character_key = $2 AND enabled`,
+      [first.bookEditionId, characterKey]
+    )
+    assert.equal(enabled.rows.length, 2)
+
+    const cards = await repository.listPublishedCharacterCards(first.bookEditionId)
+    assert.equal(cards.length, 1, 'читателю отдали одного героя дважды')
+    assert.equal(cards[0].name, 'Из второго прогона')
+
+    // Прогон можно назвать явно — например, чтобы посмотреть прежний.
+    const older = await repository.listPublishedCharacterCards(first.bookEditionId, {
+      runId: first.runId
+    })
+    assert.equal(older.length, 1)
+    assert.equal(older[0].name, 'Из первого прогона')
+  } finally {
+    await isolated.release()
+  }
+})
+
 test('a portrait is drawn from the card of its own analysis run', {
   skip: !connectionString
 }, async () => {

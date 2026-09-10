@@ -177,16 +177,52 @@ test('the request stays inside its byte budget and carries only known candidates
   assert.equal(request.roster[0].candidateKey, 'name:c0')
 })
 
-test('a single candidate gives no request: there is nothing to reconcile', () => {
+test('a single candidate is still asked about: classification is not a heuristic', () => {
+  // Сливать при одном кандидате не с чем, но классифицировать надо: `kindHint`
+  // — эвристика, и на «По дороге шла Анна. Корзину несла Анна.» она даёт
+  // `unknown`. Раньше запрос тут не собирался вовсе, и единственный герой окна
+  // оставался без карточки; довериться подсказке значило бы выдать карточку
+  // месту.
+  const request = buildRosterConfirmationRequest({
+    runId: 'run-1',
+    bookEditionId: 'edition-1',
+    title: 'Книга',
+    candidates: [KITTY]
+  })
+  assert.equal(request.roster.length, 1)
+  assert.deepEqual(request.candidatePairs, [])
+  assert.deepEqual(request.forbiddenPairs, [])
+})
+
+test('no candidates at all still gives no request', () => {
   assert.equal(
     buildRosterConfirmationRequest({
       runId: 'run-1',
       bookEditionId: 'edition-1',
       title: 'Книга',
-      candidates: [KITTY]
+      candidates: []
     }),
     null
   )
+})
+
+test('a merge is impossible when the request offered no pairs', () => {
+  // Пустой список пар не «разрешает всё», а запрещает всё: слияние принимается
+  // только по паре из запроса.
+  const request = buildRosterConfirmationRequest({
+    runId: 'run-1',
+    bookEditionId: 'edition-1',
+    title: 'Книга',
+    candidates: [KITTY]
+  })
+  const confirmation = validateRosterConfirmation({
+    request,
+    response: {
+      classifications: [{ candidateKey: KITTY.candidateKey, kind: 'person', canonicalName: 'Китти' }],
+      merges: [{ leftKey: KITTY.candidateKey, rightKey: 'name:someone', basis: 'name_variant' }]
+    }
+  })
+  assert.deepEqual(confirmation.acceptedMerges, [])
 })
 
 test('the validator accepts only merges the request actually offered', () => {

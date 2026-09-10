@@ -2105,11 +2105,16 @@ export function normalizeRosterConfirmationRequest(input) {
   if (body.idempotencyKey !== expectedKey) {
     invalid('idempotencyKey does not match roster confirmation request')
   }
-  if (!Array.isArray(body.roster) || body.roster.length < 2 || body.roster.length > 128) {
-    invalid('roster: expected between 2 and 128 candidates')
+  // Один кандидат — законный запрос: сливать не с чем, но классифицировать
+  // надо, иначе единственный герой окна остаётся без карточки, а место может
+  // её получить. Пар при этом нет, и это не ошибка — слияние всё равно
+  // принимается только по паре из запроса, а пустой список пар запрещает их
+  // все.
+  if (!Array.isArray(body.roster) || body.roster.length < 1 || body.roster.length > 128) {
+    invalid('roster: expected between 1 and 128 candidates')
   }
-  if (!Array.isArray(body.candidatePairs) || !body.candidatePairs.length) {
-    invalid('candidatePairs: expected a non-empty array')
+  if (!Array.isArray(body.candidatePairs)) {
+    invalid('candidatePairs: expected an array')
   }
   const keys = new Set()
   for (const [index, item] of body.roster.entries()) {

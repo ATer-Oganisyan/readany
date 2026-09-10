@@ -104,45 +104,23 @@ export function createRosterConfirmRunner({
         fragments
       })
       if (!request) {
-        // Отсутствие пар для слияния — не отсутствие персонажей, и путать это
-        // нельзя. При одном кандидате сливать действительно не с чем и звать
-        // модель незачем, но герой-то есть: раньше такая ветка писала пустой
-        // состав, карточек никто не ставил, и единственный настоящий персонаж
-        // окна оставался без карточки навсегда.
-        //
-        // Классификация в этом случае берётся из детерминированной подсказки
-        // инвентаря: спросить модель не о чем — вариантов имени нет, — а
-        // подсказка на то и подсказка.
-        const solo = candidates
-          .filter((candidate) => candidate.kindHint === 'person')
-          .map((candidate) => ({
-            characterKey: `char:${candidate.candidateKey.replace(/^name:/, '')}`,
-            candidateKeys: [candidate.candidateKey],
-            canonicalName: candidate.displayName,
-            names: [...new Set([
-              candidate.displayName,
-              ...(candidate.aliases ?? []),
-              ...(candidate.fullName ? [candidate.fullName] : [])
-            ])].filter(Boolean),
-            mentionCount: candidate.count,
-            firstMentionTextOffset: candidate.firstMentionTextOffset,
-            chapterCount: candidate.chapterCount,
-            tier: candidate.tier === 'significant' ? 'significant' : 'roster'
-          }))
-        log.info('roster.unconfirmed', 'Сливать не с чем, состав взят из инвентаря', {
+        // Ни одного кандидата — законный исход, а не ошибка: у книги может не
+        // быть персонажей в первых главах. Единственный кандидат сюда уже не
+        // попадает: его классифицирует модель, потому что `kindHint` —
+        // эвристика, и по ней место рискует получить карточку, а герой с
+        // неопределённой подсказкой — не получить.
+        log.info('roster.empty', 'Подтверждать некого', {
           job: job.id,
           run: input.runId,
-          window_index: input.windowIndex,
-          candidate_count: candidates.length,
-          character_count: solo.length
+          window_index: input.windowIndex
         })
         return repository.completeRosterConfirmation(job, {
           runId: input.runId,
           bookEditionId: input.bookEditionId,
           windowIndex: input.windowIndex,
-          roster: solo,
-          revisions: rosterRevisionsAfterConfirmation(input.previousRoster ?? [], solo),
-          skipped: false
+          roster: [],
+          revisions: [],
+          skipped: true
         })
       }
 

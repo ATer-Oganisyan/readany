@@ -2963,19 +2963,33 @@ export function createPostgresBookMarkupRepository(pool, {
      * список появится вместе с сохранением подтверждённого roster, а до тех
      * пор клиенту честнее показать меньше, чем выдумать пустые строки.
      */
-    async listPublishedCharacterCards(bookEditionId, { bundleVersion = null } = {}) {
+    async listPublishedCharacterCards(bookEditionId, { bundleVersion = null, runId = null } = {}) {
       const result = await pool.query(
-        `SELECT card.character_key, card.document, card.first_mention_text_offset,
+        // Карточки одного прогона, а не все включённые у издания. Выключение
+        // прежней ревизии ограничено `run_id`, поэтому после повторного анализа
+        // включёнными остаются и старые карточки: без этого ограничения
+        // читатель получал бы старую и новую карточку с одним и тем же
+        // `characterKey`. Актуальным считается прогон последней записанной
+        // карточки — тот, который сейчас наполняет книгу.
+        `WITH current_run AS (
+           SELECT run_id FROM book_character_cards
+           WHERE book_edition_id = $1 AND enabled
+             AND ($3::uuid IS NULL OR run_id = $3)
+           ORDER BY created_at DESC, run_id DESC
+           LIMIT 1
+         )
+         SELECT card.character_key, card.document, card.first_mention_text_offset,
                 bundle.id AS bundle_id, bundle.status AS bundle_status,
                 bundle.media_revision
          FROM book_character_cards AS card
+         JOIN current_run ON current_run.run_id = card.run_id
          LEFT JOIN character_media_bundles AS bundle
            ON bundle.book_edition_id = card.book_edition_id
           AND bundle.character_key = card.character_key
           AND ($2::text IS NULL OR bundle.bundle_version = $2)
          WHERE card.book_edition_id = $1 AND card.enabled
          ORDER BY card.first_mention_text_offset, card.character_key`,
-        [bookEditionId, bundleVersion]
+        [bookEditionId, bundleVersion, runId]
       )
       return result.rows.map((row) => {
         // Документ перепроверяется контрактом: строка неизменяема, но

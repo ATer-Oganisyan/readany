@@ -339,7 +339,12 @@ export function buildRosterConfirmationRequest({
     .sort((left, right) =>
       right.count - left.count || compareText(left.candidateKey, right.candidateKey))
     .slice(0, maxCandidates)
-  if (ordered.length < 2) return null
+  // Одного кандидата тоже спрашивают. Сливать при нём не с чем, но
+  // классификация остаётся вопросом к модели: `kindHint` — эвристика, и на
+  // «По дороге шла Анна. Корзину несла Анна.» она даёт `unknown`. Раньше запрос
+  // при одном кандидате не собирался вовсе, и единственный герой окна оставался
+  // без карточки — либо, если довериться подсказке, карточку получило бы место.
+  if (!ordered.length) return null
 
   const forbiddenPairs = rosterForbiddenPairs(ordered, { fragments })
   const candidatePairs = rosterCandidatePairs(ordered, { forbiddenPairs })
