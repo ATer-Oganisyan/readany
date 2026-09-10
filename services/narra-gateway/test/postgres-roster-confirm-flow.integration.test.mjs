@@ -305,21 +305,41 @@ test('the book pass sees the whole inventory and re-issues nothing it did not ch
   }
 })
 
-test('a window with nothing to confirm finishes without calling the model', {
+test('a lone candidate still becomes a character and gets a card', {
   skip: !connectionString
 }, async () => {
+  // Отсутствие пар для слияния — не отсутствие персонажей. У окна 1 кандидат
+  // один: сливать не с кем и звать модель незачем, но герой есть. Раньше такая
+  // ветка писала пустой состав, карточек никто не ставил, и единственный
+  // настоящий персонаж окна оставался без карточки навсегда.
   const isolated = await createIsolatedPostgres(connectionString)
   const { pool } = isolated
   try {
     const repository = createPostgresBookMarkupRepository(pool)
     const { bookEditionId, runId } = await seed(pool)
-    // У окна 1 свой кандидат один: сливать не с кем, и звать модель незачем.
     const requests = []
     const result = await runner(repository, { onRequest: (r) => requests.push(r) }).run(
       await claimRosterJob(pool, { bookEditionId, runId, windowIndex: 1 })
     )
-    assert.deepEqual(requests, [])
-    assert.equal(result.characterCount, 0)
+
+    assert.deepEqual(requests, [], 'модель звали, хотя сливать не с чем')
+    assert.equal(result.characterCount, 1)
+    const roster = await pool.query(
+      'SELECT character_key, canonical_name FROM book_character_roster WHERE run_id = $1',
+      [runId]
+    )
+    assert.deepEqual(
+      roster.rows.map(({ canonical_name: name }) => name),
+      ['Базаров']
+    )
+    // И карточка ему поставлена — ради этого всё и делается.
+    assert.ok(result.cardJobsCreated > 0, 'карточка одинокому персонажу не поставлена')
+    const jobs = await pool.query(
+      `SELECT character_key FROM generation_jobs
+       WHERE analysis_run_id = $1 AND job_type = 'character_card'`,
+      [runId]
+    )
+    assert.deepEqual(jobs.rows.map(({ character_key: key }) => key), ['char:bazarov'])
   } finally {
     await isolated.release()
   }

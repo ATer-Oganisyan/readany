@@ -172,17 +172,48 @@ export async function restoreBook(client, snapshot, { replace = false } = {}) {
   const order = [...BY_EDITION, ...BY_RUN, ...BY_MARKUP_VERSION, ...BY_BUNDLE]
   const report = { restored: {}, extra: {} }
 
+  // Область снимка — одна книга, и удалять `--replace` вправе только внутри
+  // неё. Без этого ограничения запрос выбирал все строки таблицы, которых нет в
+  // снимке, то есть прогоны, задания и медиа **других изданий**, и `--replace`
+  // сносил бы их заодно. Ограничение строится из тех же ключей, по которым
+  // снимок и собирался.
+  const runIds = (snapshot.tables.book_analysis_runs ?? []).map(({ id }) => id).filter(Boolean)
+  const markupVersionIds = (snapshot.tables.book_markup_versions ?? [])
+    .map(({ id }) => id).filter(Boolean)
+  const bundleIds = (snapshot.tables.character_media_bundles ?? [])
+    .map(({ id }) => id).filter(Boolean)
+  const scopeOf = (table) => {
+    if (BY_EDITION.includes(table)) {
+      return { column: 'book_edition_id', values: [snapshot.bookEditionId] }
+    }
+    if (BY_RUN.includes(table)) return { column: 'run_id', values: runIds }
+    if (BY_MARKUP_VERSION.includes(table)) {
+      return { column: 'markup_version_id', values: markupVersionIds }
+    }
+    if (BY_BUNDLE.includes(table)) return { column: 'bundle_id', values: bundleIds }
+    return null
+  }
+
   await client.query('BEGIN')
   try {
     for (const table of [...order].reverse()) {
       if (!present.has(table) || !(table in snapshot.tables)) continue
+      const scope = scopeOf(table)
+      // Нет области — нет и права удалять: молча снести строки, происхождение
+      // которых непонятно, хуже, чем оставить лишнее.
+      if (!scope || !scope.values.length) continue
+      // Лишнее ищется по `id`, а он есть не у всех: `book_card_windows` и
+      // `book_character_fragments` ключуются парой (run_id, …). Раньше такой
+      // запрос падал, ошибку глотал `.catch`, и вся транзакция
+      // восстановления оказывалась оборванной — без единого слова о причине.
+      const types = await columnTypes(client, table)
+      if (!types.has('id')) continue
       const keep = snapshot.tables[table].map(({ id }) => id).filter(Boolean)
-      if (!keep.length) continue
       const surplus = await client.query(
-        `SELECT id FROM ${table} WHERE id <> ALL($1::uuid[])
-           AND id IN (SELECT id FROM ${table})`,
-        [keep]
-      ).catch(() => ({ rows: [] }))
+        `SELECT id FROM ${table}
+         WHERE ${scope.column} = ANY($1::uuid[]) AND id <> ALL($2::uuid[])`,
+        [scope.values, keep]
+      )
       if (surplus.rows.length) {
         report.extra[table] = surplus.rows.length
         if (replace) {

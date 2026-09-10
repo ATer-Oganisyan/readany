@@ -350,8 +350,13 @@ export function createBookCatalogService({
       // карточки были не видны клиенту вообще: манифест ждал публикации,
       // которой по замыслу ещё нет, и читатель видел «профиль формируется» над
       // готовой карточкой.
-      const cards = typeof analysisRepository.listPublishedCharacterCards === 'function'
-        ? await analysisRepository.listPublishedCharacterCards(bookEditionId)
+      // Карточки лежат в репозитории разметки, а не анализа: это разные
+      // объекты в сборке приложения (`repository: bookMarkupRepository`,
+      // `analysisRepository: bookAnalysisRepository`), и вызов на втором из них
+      // всегда возвращал бы пусто — то есть карточки так и не доехали бы до
+      // читателя, а ошибки бы никто не увидел.
+      const cards = typeof store.listPublishedCharacterCards === 'function'
+        ? await store.listPublishedCharacterCards(bookEditionId)
         : []
       const preview = typeof analysisRepository.getLatestAnalysisPreview === 'function'
         ? await analysisRepository.getLatestAnalysisPreview(bookEditionId)

@@ -525,31 +525,38 @@ export function createPostgresBookMarkupRepository(pool, {
         if (row.status !== 'queued') {
           return { status: row.status, windowIndex, created: 0, jobs: [] }
         }
-        // Персонажи окна: первое упоминание внутри диапазона состава этого
-        // окна и хотя бы один фрагмент до барьера — без фрагментов карточку
-        // строить нечем. Фрагменты считаются по барьеру, состав — по
-        // `assign_*`: это разные границы, и смешивать их нельзя.
+        // Карточки ставятся по **подтверждённым** персонажам, а не по
+        // кандидатам инвентаря. Раньше запрос группировал сырые фрагменты по
+        // их `name:*`, и подтверждение оказывалось выброшенным: слитые Аркадий
+        // и Кирсанов получали по отдельной карточке, а место, которое модель
+        // отнесла к `other`, получало карточку наравне с людьми. Состав окна
+        // берётся по первому упоминанию персонажа в диапазоне `assign_*`,
+        // фрагменты — по барьеру и по всем ключам кандидатов, из которых
+        // персонаж собран: это разные границы, и смешивать их нельзя.
         const characters = await client.query(
-          `SELECT character_key, MIN(start_offset)::bigint AS first_offset,
-                  COUNT(*)::int AS fragment_count
-           FROM book_character_fragments
-           WHERE run_id = $1 AND start_offset < $2
-           GROUP BY character_key
-           HAVING MIN(start_offset) >= $3 AND MIN(start_offset) < $4
-           ORDER BY MIN(start_offset), character_key`,
+          `SELECT roster.character_key, roster.canonical_name, roster.names,
+                  roster.candidate_keys, roster.mention_count,
+                  roster.first_mention_text_offset,
+                  COUNT(fragment.fragment_id)::int AS fragment_count
+           FROM book_character_roster AS roster
+           LEFT JOIN book_character_fragments AS fragment
+             ON fragment.run_id = roster.run_id
+            AND fragment.character_key = ANY(roster.candidate_keys)
+            AND fragment.start_offset < $2
+           WHERE roster.run_id = $1
+             AND roster.first_mention_text_offset >= $3
+             AND roster.first_mention_text_offset < $4
+           GROUP BY roster.character_key, roster.canonical_name, roster.names,
+                    roster.candidate_keys, roster.mention_count,
+                    roster.first_mention_text_offset
+           HAVING COUNT(fragment.fragment_id) > 0
+           ORDER BY roster.first_mention_text_offset, roster.character_key`,
           [runId, row.end_offset, row.assign_start_offset, row.assign_end_offset]
         )
-        // Имя и его варианты приходят в задание вместе с ним: генератор читает
-        // их только из payload, и без них он получал технический ключ вместо
-        // имени, пустые варианты и нулевую частотность — а на абзаце с
-        // несколькими героями по ключу целевого персонажа не определить.
-        const names = await inventoryNamesByKey(client, runId)
         const jobs = []
         for (const character of characters.rows) {
           const idempotencyKey =
             `${runId}:character-card:${windowIndex}:${character.character_key}`
-          const named = names.get(character.character_key) ??
-            names.get(characterIdentityKey(character.character_key)) ?? null
           const inserted = await client.query(
             `INSERT INTO generation_jobs (
                id, idempotency_key, job_type, book_edition_id, character_key,
@@ -563,10 +570,12 @@ export function createPostgresBookMarkupRepository(pool, {
               JSON.stringify({
                 card_revision: 1,
                 fragment_count: Number(character.fragment_count),
-                first_mention_text_offset: Number(character.first_offset),
-                character_name: named?.name ?? null,
-                character_names: named?.names ?? [],
-                mention_count: named?.mentionCount ?? null
+                first_mention_text_offset: Number(character.first_mention_text_offset),
+                // Имя приходит подтверждённое: генератор читает его только из
+                // payload, и без него получал технический ключ вместо имени.
+                character_name: character.canonical_name,
+                character_names: character.names ?? [],
+                mention_count: Number(character.mention_count)
               }),
               runId, windowIndex
             ]
@@ -2865,6 +2874,11 @@ export function createPostgresBookMarkupRepository(pool, {
       skipped = false
     }) {
       return transaction(pool, async (client) => {
+        // Аренда проверяется и блокируется до записи. Подтверждение ходит в
+        // модель минутами, аренда за это время может истечь, и задание заберёт
+        // другой исполнитель; без проверки прежний записал бы свой результат
+        // поверх чужой работы и сбросил бы новую аренду.
+        await requireLeasedJob(client, job)
         for (const character of roster) {
           await client.query(
             `INSERT INTO book_character_roster (
@@ -3162,6 +3176,10 @@ export function createPostgresBookMarkupRepository(pool, {
                 COALESCE(job.payload->>'mention_count',
                          candidate.value->>'count') AS mention_count,
                 candidate.value->>'fullName' AS character_full_name,
+                roster.candidate_keys,
+                roster.canonical_name AS roster_name,
+                roster.names AS roster_names,
+                roster.mention_count AS roster_mention_count,
                 job.payload->>'card_revision' AS card_revision
          FROM generation_jobs AS job
          JOIN book_editions AS edition ON edition.id = job.book_edition_id
@@ -3170,6 +3188,9 @@ export function createPostgresBookMarkupRepository(pool, {
            ON card_window.run_id = job.analysis_run_id
           AND card_window.window_index = job.card_window_index
          LEFT JOIN book_name_inventory AS inventory ON inventory.run_id = job.analysis_run_id
+         LEFT JOIN book_character_roster AS roster
+           ON roster.run_id = job.analysis_run_id
+          AND roster.character_key = job.character_key
          LEFT JOIN LATERAL (
            SELECT value
            FROM jsonb_array_elements(COALESCE(inventory.document->'candidates', '[]'::jsonb))
@@ -3186,23 +3207,33 @@ export function createPostgresBookMarkupRepository(pool, {
       )
       if (!result.rows[0]) throw leaseLost(job.id)
       const row = result.rows[0]
+      // Фрагменты читаются по ключам кандидатов подтверждённого персонажа, а
+      // не по ключу задания: персонаж собран из нескольких кандидатов
+      // инвентаря, и фрагменты лежат под их ключами. Связь явная — она в
+      // строке roster, — а не восстанавливается из общей части ключа.
+      const candidateKeys = row.candidate_keys?.length
+        ? row.candidate_keys
+        : [job.characterKey]
       const fragments = await pool.query(
         `SELECT fragment_id, paragraph_index, chapter_index,
                 start_offset, end_offset, mention_count
          FROM book_character_fragments
-         WHERE run_id = $1 AND character_key = $2
+         WHERE run_id = $1 AND character_key = ANY($2::text[])
            AND start_offset >= $3 AND end_offset <= $4
          ORDER BY start_offset, fragment_id`,
-        [row.analysis_run_id, job.characterKey, row.start_offset, row.end_offset]
+        [row.analysis_run_id, candidateKeys, row.start_offset, row.end_offset]
       )
       if (!fragments.rows.length) {
         const error = new Error(`character ${job.characterKey} has no fragments in its card window`)
         error.code = 'CARD_FRAGMENTS_MISSING'
         throw error
       }
+      // Подтверждённое имя сильнее инвентарного: инвентарь знает кандидата,
+      // roster — человека.
       const names = [...new Set([
-        row.character_name,
+        row.roster_name ?? row.character_name,
         row.character_full_name,
+        ...(Array.isArray(row.roster_names) ? row.roster_names : []),
         ...(Array.isArray(row.character_names) ? row.character_names : [])
       ].filter((value) => typeof value === 'string' && value.trim()))]
       return {
@@ -3225,9 +3256,9 @@ export function createPostgresBookMarkupRepository(pool, {
           chapterIndexes: (row.chapter_indexes ?? []).map(Number)
         },
         character: {
-          canonicalName: row.character_name ?? names[0] ?? job.characterKey,
+          canonicalName: row.roster_name ?? row.character_name ?? names[0] ?? job.characterKey,
           names,
-          mentionCount: Number(row.mention_count ?? 0),
+          mentionCount: Number(row.roster_mention_count ?? row.mention_count ?? 0),
           firstMentionTextOffset: Number(fragments.rows[0].start_offset)
         },
         fragments: fragments.rows.map((fragment) => ({

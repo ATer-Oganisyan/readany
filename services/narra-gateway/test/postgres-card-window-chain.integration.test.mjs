@@ -97,6 +97,18 @@ async function seedBook(pool, { chapterCount = 6, charactersPerWindow = 2 } = {}
          ) VALUES ($1, $2, $3, $4, $5, $6, $7, 1)`,
         [runId, characterKey, `frag:${characterKey}:0`, index, chapter.index, offset, offset + 50]
       )
+      // Карточки ставятся по подтверждённому составу, а не по сырым кандидатам
+      // инвентаря: иначе подтверждение оказалось бы выброшено — слитые
+      // персонажи получили бы по карточке, а отсеянное место получило бы
+      // карточку наравне с людьми. Поэтому фикстура пишет и roster.
+      await pool.query(
+        `INSERT INTO book_character_roster (
+           run_id, character_key, canonical_name, names, candidate_keys,
+           mention_count, first_mention_text_offset, tier, window_index
+         ) VALUES ($1, $2, $3, ARRAY[$3]::text[], ARRAY[$2]::text[], 10, $4, 'significant', NULL)
+         ON CONFLICT (run_id, character_key) DO NOTHING`,
+        [runId, characterKey, `Герой ${chapter.index}-${index}`, offset]
+      )
     }
   }
   return {
@@ -269,16 +281,22 @@ test('a card job carries the character name, its variants and its mention count'
     const repository = createPostgresBookMarkupRepository(pool)
     const book = await seedBook(pool, { chapterCount: 4, charactersPerWindow: 1 })
     const characterKey = 'char:c0-0'
-    // Инвентарь именует кандидата `name:…`, подтверждение отдаёт персонажа
-    // `char:…`. Записать сюда тот же ключ, что у фрагмента, значило бы спрятать
-    // ровно ту ошибку, из-за которой генератор получал технический ключ вместо
-    // имени.
+    // Имя приходит из подтверждённого состава, а не из инвентаря: персонаж
+    // собран из нескольких кандидатов, и связь между ними — строка roster, а не
+    // совпадение по общей части ключа. Инвентарь здесь нарочно называет
+    // кандидата иначе: если победит он, значит подтверждение выброшено.
+    await pool.query(
+      `UPDATE book_character_roster
+       SET canonical_name = 'Раскольников',
+           names = ARRAY['Раскольников', 'Родион Романович Раскольников', 'Родя']::text[],
+           mention_count = 976
+       WHERE run_id = $1 AND character_key = $2`,
+      [book.runId, characterKey]
+    )
     const candidates = [{
       candidateKey: 'name:c0-0',
-      displayName: 'Раскольников',
-      fullName: 'Родион Романович Раскольников',
-      aliases: ['Родя', 'Родион Романыч'],
-      count: 976
+      displayName: 'инвентарное имя, которое не должно победить',
+      count: 1
     }]
     await pool.query(
       `INSERT INTO book_name_inventory (
@@ -306,7 +324,7 @@ test('a card job carries the character name, its variants and its mention count'
     assert.equal(payload.rows[0].payload.character_name, 'Раскольников')
     assert.equal(payload.rows[0].payload.mention_count, 976)
     assert.deepEqual(payload.rows[0].payload.character_names, [
-      'Раскольников', 'Родион Романович Раскольников', 'Родя', 'Родион Романыч'
+      'Раскольников', 'Родион Романович Раскольников', 'Родя'
     ])
   } finally {
     await isolated.release()
@@ -317,8 +335,8 @@ test('a job queued without names still reaches the model with a name', {
   skip: !connectionString
 }, async () => {
   // Запасной путь чтения задания: payload пуст (так ставились задания до того,
-  // как имена стали писаться в него), и имя обязано найтись в инвентаре —
-  // несмотря на то, что ключи там с другим префиксом.
+  // как имена стали писаться в него), и имя обязано найтись в подтверждённом
+  // составе — по строке roster, а не по совпадению префиксов ключа.
   const isolated = await createIsolatedPostgres(connectionString)
   const { pool } = isolated
   try {
@@ -335,16 +353,22 @@ test('a job queued without names still reaches the model with a name', {
         JSON.stringify({
           candidates: [{
             candidateKey: 'name:c0-0',
-            displayName: 'Раскольников',
-            fullName: 'Родион Романович Раскольников',
-            aliases: ['Родя'],
-            count: 976
+            displayName: 'инвентарное имя, которое не должно победить',
+            count: 1
           }]
         }),
         hash('inventory')
       ]
     )
 
+    await pool.query(
+      `UPDATE book_character_roster
+       SET canonical_name = 'Раскольников',
+           names = ARRAY['Раскольников', 'Родион Романович Раскольников', 'Родя']::text[],
+           mention_count = 976
+       WHERE run_id = $1 AND character_key = $2`,
+      [book.runId, characterKey]
+    )
     const jobId = randomUUID()
     await pool.query(
       `INSERT INTO generation_jobs (

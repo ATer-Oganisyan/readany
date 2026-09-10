@@ -1461,11 +1461,10 @@ test('a cards-pipeline book serves its cards before v3 is published', async () =
           markup: null,
           characters: []
         }
-      }
-    }),
-    analysisRepository: {
-      async getLatestShadowAnalysisPublication() { return null },
-      async getLatestAnalysisPreview() { return null },
+      },
+      // Карточки лежат в репозитории разметки, а не анализа: в сборке
+      // приложения это разные объекты, и подделка не на том из них скрыла бы,
+      // что манифест спрашивает не у того, у кого метод есть.
       async listPublishedCharacterCards() {
         return [
           {
@@ -1494,6 +1493,10 @@ test('a cards-pipeline book serves its cards before v3 is published', async () =
           }
         ]
       }
+    }),
+    analysisRepository: {
+      async getLatestShadowAnalysisPublication() { return null },
+      async getLatestAnalysisPreview() { return null }
     }
   })
 
@@ -1535,8 +1538,7 @@ test('without cards the manifest keeps its previous processing behaviour', async
     }),
     analysisRepository: {
       async getLatestShadowAnalysisPublication() { return null },
-      async getLatestAnalysisPreview() { return null },
-      async listPublishedCharacterCards() { return [] }
+      async getLatestAnalysisPreview() { return null }
     }
   })
   const manifest = await service.manifest('reader-1', EDITION.id)
