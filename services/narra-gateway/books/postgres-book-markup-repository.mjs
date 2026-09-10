@@ -27,7 +27,14 @@ import {
 } from '../generation/book-scenes.mjs'
 import { BOOK_ANALYSIS_NORMALIZATION_VERSION } from '../analysis/book-analysis-pipeline.mjs'
 import { BOOK_ANALYSIS_CHARACTER_BUNDLE_VERSION } from '../analysis/book-analysis-contracts.mjs'
-import { CARD_MEDIA_PRIORITY } from '../analysis/book-character-card.mjs'
+import {
+  CARD_MEDIA_PRIORITY,
+  CHARACTER_CARD_TARGET_VERSION
+} from '../analysis/book-character-card.mjs'
+import {
+  cardWindowChapterFrontier,
+  nextCardWindow
+} from '../analysis/book-card-window-schedule.mjs'
 import {
   characterCardProjection,
   validateCharacterCard
@@ -2389,7 +2396,11 @@ export function createPostgresBookMarkupRepository(pool, {
             // Карточка неизменяема, но её ревизию могут выключить, и рисовать
             // портрет по выключенной карточке — то же, что рисовать по
             // устаревшему тексту.
-            `(NOT (job.payload ? 'card_revision') OR EXISTS (
+            //
+            // Само задание карточки под этот гейт не попадает: оно карточку и
+            // создаёт, и требовать от него уже существующей карточки значило бы
+            // никогда его не выдать.
+            `(job.job_type = 'character_card' OR NOT (job.payload ? 'card_revision') OR EXISTS (
                SELECT 1 FROM book_character_cards AS card
                WHERE card.book_edition_id = job.book_edition_id
                  AND card.character_key = job.character_key
@@ -2487,6 +2498,151 @@ export function createPostgresBookMarkupRepository(pool, {
         [job.id, job.leaseToken]
       )
       if (!result.rows[0]) throw leaseLost(job.id)
+    },
+
+    /**
+     * Ставит карточки одного окна и отмечает окно работающим.
+     *
+     * Персонаж попадает в окно, если его первое упоминание лежит внутри окна:
+     * `book_card_windows` задаёт барьер, а не набор героев, и один и тот же
+     * персонаж не должен получить карточку дважды — за это отвечает уникальный
+     * индекс по (прогон, окно, персонаж).
+     */
+    async enqueueCardWindow({ runId, bookEditionId, windowIndex, priority }) {
+      return transaction(pool, async (client) => {
+        const window = await client.query(
+          `SELECT start_offset, end_offset, priority_class, status
+           FROM book_card_windows
+           WHERE run_id = $1 AND window_index = $2
+           FOR UPDATE`,
+          [runId, windowIndex]
+        )
+        if (!window.rows[0]) {
+          const error = new Error(`card window ${windowIndex} does not exist`)
+          error.code = 'CARD_WINDOW_MISSING'
+          throw error
+        }
+        const row = window.rows[0]
+        if (row.status !== 'queued') {
+          return { status: row.status, windowIndex, created: 0, jobs: [] }
+        }
+        // Персонажи окна: первое упоминание внутри окна и хотя бы один
+        // фрагмент — без фрагментов карточку строить нечем.
+        const characters = await client.query(
+          `SELECT character_key, MIN(start_offset)::bigint AS first_offset,
+                  COUNT(*)::int AS fragment_count
+           FROM book_character_fragments
+           WHERE run_id = $1 AND start_offset < $3
+           GROUP BY character_key
+           HAVING MIN(start_offset) >= $2 AND MIN(start_offset) < $3
+           ORDER BY MIN(start_offset), character_key`,
+          [runId, row.start_offset, row.end_offset]
+        )
+        const jobs = []
+        for (const character of characters.rows) {
+          const idempotencyKey =
+            `${runId}:character-card:${windowIndex}:${character.character_key}`
+          const inserted = await client.query(
+            `INSERT INTO generation_jobs (
+               id, idempotency_key, job_type, book_edition_id, character_key,
+               target_version, status, priority, payload, analysis_run_id, card_window_index
+             ) VALUES ($1, $2, 'character_card', $3, $4, $5, 'queued', $6, $7::jsonb, $8, $9)
+             ON CONFLICT (idempotency_key) DO NOTHING
+             RETURNING id`,
+            [
+              idFactory(), idempotencyKey, bookEditionId, character.character_key,
+              CHARACTER_CARD_TARGET_VERSION, priority,
+              JSON.stringify({
+                card_revision: 1,
+                fragment_count: Number(character.fragment_count),
+                first_mention_text_offset: Number(character.first_offset)
+              }),
+              runId, windowIndex
+            ]
+          )
+          if (inserted.rows[0]) jobs.push(inserted.rows[0].id)
+        }
+        await client.query(
+          `UPDATE book_card_windows
+           SET status = CASE WHEN $3 > 0 THEN 'running' ELSE 'ready' END,
+               started_at = COALESCE(started_at, now()),
+               finished_at = CASE WHEN $3 > 0 THEN NULL ELSE now() END
+           WHERE run_id = $1 AND window_index = $2`,
+          [runId, windowIndex, jobs.length]
+        )
+        return {
+          status: jobs.length ? 'running' : 'ready',
+          windowIndex,
+          priorityClass: row.priority_class,
+          created: jobs.length,
+          jobs
+        }
+      })
+    },
+
+    /**
+     * Закрывает окно, когда его карточки закончились, и ставит следующее.
+     *
+     * Следующее окно ставится только после того, как предыдущее закрыто: иначе
+     * очередь заполнится фоновыми заданиями большой книги, и окно первых глав
+     * следующей книги будет ждать за ними.
+     */
+    async advanceCardWindows({ runId, bookEditionId, scope, readerTextOffset = 0 }) {
+      const windows = await pool.query(
+        `SELECT window_index, start_offset, end_offset, chapter_indexes,
+                priority_class, status
+         FROM book_card_windows WHERE run_id = $1 ORDER BY window_index`,
+        [runId]
+      )
+      if (!windows.rows.length) return { closed: [], enqueued: null }
+      const closed = []
+      for (const row of windows.rows) {
+        if (row.status !== 'running') continue
+        const pending = await pool.query(
+          `SELECT count(*)::int AS count FROM generation_jobs
+           WHERE analysis_run_id = $1 AND card_window_index = $2
+             AND job_type = 'character_card' AND status IN ('queued', 'running')`,
+          [runId, row.window_index]
+        )
+        if (Number(pending.rows[0].count) > 0) continue
+        await pool.query(
+          `UPDATE book_card_windows
+           SET status = 'ready', finished_at = COALESCE(finished_at, now())
+           WHERE run_id = $1 AND window_index = $2 AND status = 'running'`,
+          [runId, row.window_index]
+        )
+        closed.push(row.window_index)
+      }
+      const refreshed = closed.length
+        ? (await pool.query(
+            `SELECT window_index, start_offset, end_offset, chapter_indexes,
+                    priority_class, status
+             FROM book_card_windows WHERE run_id = $1 ORDER BY window_index`,
+            [runId]
+          )).rows
+        : windows.rows
+      const scheduleWindows = refreshed.map((row) => ({
+        windowIndex: Number(row.window_index),
+        startOffset: Number(row.start_offset),
+        endOffset: Number(row.end_offset),
+        chapterIndexes: (row.chapter_indexes ?? []).map(Number),
+        priorityClass: row.priority_class,
+        status: row.status
+      }))
+      const maxChapterIndex = cardWindowChapterFrontier({
+        scope,
+        windows: scheduleWindows,
+        readerTextOffset
+      })
+      const next = nextCardWindow({ windows: scheduleWindows, maxChapterIndex })
+      if (!next) return { closed, enqueued: null, maxChapterIndex }
+      const enqueued = await this.enqueueCardWindow({
+        runId,
+        bookEditionId,
+        windowIndex: next.windowIndex,
+        priority: next.priority
+      })
+      return { closed, enqueued, maxChapterIndex }
     },
 
     /**

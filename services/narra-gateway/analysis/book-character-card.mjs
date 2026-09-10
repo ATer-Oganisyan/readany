@@ -29,6 +29,8 @@ import {
 } from './book-character-card-contract.mjs'
 
 export const CHARACTER_CARD_JOB_TYPE = 'character_card'
+/** target_version задания карточки: контракт, а не ревизия медиа. */
+export const CHARACTER_CARD_TARGET_VERSION = 'character-card-v1'
 
 /**
  * Приоритеты медиа персонажа, поставленного от карточки (P4 work order'а).

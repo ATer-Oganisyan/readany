@@ -11,7 +11,7 @@ import assert from 'node:assert/strict'
 import { createHash, randomUUID } from 'node:crypto'
 import test from 'node:test'
 import { createPostgresBookMarkupRepository } from '../books/postgres-book-markup-repository.mjs'
-import { runBookMarkupMigrations } from '../db/postgres-runtime.mjs'
+import { createIsolatedPostgres } from './support/isolated-postgres.mjs'
 import { CARD_MEDIA_PRIORITY } from '../analysis/book-character-card.mjs'
 import { validateCharacterCard } from '../analysis/book-character-card-contract.mjs'
 
@@ -49,21 +49,6 @@ function cardDocument({ characterKey, name, firstMentionTextOffset, windowEndOff
     },
     createdAt: '2026-09-10T10:00:00Z'
   })
-}
-
-/**
- * Тест обязан убрать за собой книгу.
- *
- * База интеграционных тестов общая, а `claimGenerationJob` без фильтра
- * забирает задание с наибольшим приоритетом по всей очереди. Портреты окна
- * первых глав стоят с приоритетом 65 против дефолтных 50, поэтому оставленные
- * здесь задания перехватывал бы соседний тест разметки — и падал бы он, а не
- * этот. Каскад по `book_editions` снимает прогон, окна, фрагменты, карточки и
- * задания одним DELETE.
- */
-async function cleanup(pool, bookEditionId) {
-  if (!bookEditionId) return
-  await pool.query('DELETE FROM book_editions WHERE id = $1', [bookEditionId])
 }
 
 async function seed(pool) {
@@ -151,13 +136,10 @@ async function claimJob(pool, jobId, workerId = 'test-worker') {
 test('migrations 027 and 028 apply and enforce the card invariants', {
   skip: !connectionString
 }, async () => {
-  const { default: pg } = await import('pg')
-  const pool = new pg.Pool({ connectionString, ssl: false, max: 4 })
-  let created = null
+  const isolated = await createIsolatedPostgres(connectionString)
+  const { pool } = isolated
   try {
-    await runBookMarkupMigrations(pool, { logger: { info() {} } })
     const { bookEditionId, runId } = await seed(pool)
-    created = bookEditionId
     await seedCharacter(pool, { runId, characterKey: 'char:a', startOffset: 1_000 })
 
     const document = cardDocument({
@@ -197,22 +179,18 @@ test('migrations 027 and 028 apply and enforce the card invariants', {
       /generation_jobs_card_window_v1/
     )
   } finally {
-    await cleanup(pool, created)
-    await pool.end()
+    await isolated.release()
   }
 })
 
 test('a card publishes its media at the window priority and the portrait waits for the card', {
   skip: !connectionString
 }, async () => {
-  const { default: pg } = await import('pg')
-  const pool = new pg.Pool({ connectionString, ssl: false, max: 4 })
-  let created = null
+  const isolated = await createIsolatedPostgres(connectionString)
+  const { pool } = isolated
   try {
-    await runBookMarkupMigrations(pool, { logger: { info() {} } })
     const repository = createPostgresBookMarkupRepository(pool)
     const { bookEditionId, runId } = await seed(pool)
-    created = bookEditionId
 
     // Фоновое окно публикуется первым по времени — приоритет всё равно должен
     // поставить портрет первых глав впереди.
@@ -311,7 +289,6 @@ test('a card publishes its media at the window priority and the portrait waits f
       null
     )
   } finally {
-    await cleanup(pool, created)
-    await pool.end()
+    await isolated.release()
   }
 })
