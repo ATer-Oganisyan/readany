@@ -13,6 +13,7 @@ import test from 'node:test'
 import {
   BOOK_ANALYSIS_PIPELINE_CARDS,
   BOOK_ANALYSIS_PIPELINE_NARRA,
+  bookAnalysisAssignedPipelineForEdition,
   bookAnalysisCardsEditionsFromEnv,
   bookAnalysisPipelineForEdition
 } from '../analysis/book-analysis-pipeline.mjs'
@@ -56,4 +57,22 @@ test('the list cannot take a pipeline away, only assign cards', () => {
   const env = { BOOK_ANALYSIS_PIPELINE: 'external', BOOK_ANALYSIS_CARDS_EDITIONS: CRIME }
   assert.equal(bookAnalysisPipelineForEdition(CRIME, env), BOOK_ANALYSIS_PIPELINE_CARDS)
   assert.equal(bookAnalysisPipelineForEdition(OTHER, env), 'external')
+})
+
+test('an assignment is distinguishable from the default pipeline', () => {
+  // Репозиторию мало ответа «narra»: при перезапуске он наследует конвейер
+  // предыдущего прогона, и ему нужно знать, названа книга поимённо или просто
+  // не названа. Назначение сильнее наследования, настройка по умолчанию — нет.
+  const env = { BOOK_ANALYSIS_CARDS_EDITIONS: CRIME }
+  assert.equal(bookAnalysisAssignedPipelineForEdition(CRIME, env), BOOK_ANALYSIS_PIPELINE_CARDS)
+  assert.equal(bookAnalysisAssignedPipelineForEdition(OTHER, env), null)
+  assert.equal(bookAnalysisAssignedPipelineForEdition(null, env), null)
+  assert.equal(
+    bookAnalysisAssignedPipelineForEdition(OTHER, { BOOK_ANALYSIS_PIPELINE: 'external' }),
+    null
+  )
+  assert.equal(
+    bookAnalysisPipelineForEdition(OTHER, { BOOK_ANALYSIS_PIPELINE: 'external' }),
+    'external'
+  )
 })

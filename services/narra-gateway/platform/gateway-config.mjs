@@ -1,4 +1,8 @@
-import { bookAnalysisPipelineFromEnv } from '../analysis/book-analysis-pipeline.mjs'
+import {
+  bookAnalysisAssignedPipelineForEdition,
+  bookAnalysisCardsEditionsFromEnv,
+  bookAnalysisPipelineFromEnv
+} from '../analysis/book-analysis-pipeline.mjs'
 import { createBookAnalysisScanPolicyFromEnv } from '../analysis/book-analysis-scan-policy.mjs'
 import { createConcurrencyGate } from './concurrency.mjs'
 import { parseEnvBool, parseEnvInt } from './env.mjs'
@@ -18,6 +22,12 @@ import { verifiedSberCertificates } from '../providers/sber-tls.mjs'
 export function loadGatewayConfig(env = process.env) {
   const PORT = env.PORT || 8787
   const BOOK_ANALYSIS_PIPELINE = bookAnalysisPipelineFromEnv(env)
+  // Список разбирается на старте, а не при создании прогона: оператор,
+  // опечатавшийся в идентификаторе книги, узнаёт об этом сразу.
+  bookAnalysisCardsEditionsFromEnv(env)
+  const BOOK_ANALYSIS_PIPELINE_FOR_EDITION = (bookEditionId) => (
+    bookAnalysisAssignedPipelineForEdition(bookEditionId, env)
+  )
   const BOOK_ANALYSIS_SCAN_POLICY = createBookAnalysisScanPolicyFromEnv(env)
   const INSECURE = env.ALLOW_INSECURE_TLS === 'true'
   const PRODUCTION = env.NODE_ENV === 'production'
@@ -246,6 +256,7 @@ export function loadGatewayConfig(env = process.env) {
   return Object.freeze({
     PORT,
     BOOK_ANALYSIS_PIPELINE,
+    BOOK_ANALYSIS_PIPELINE_FOR_EDITION,
     BOOK_ANALYSIS_SCAN_POLICY,
     INSECURE,
     PRODUCTION,

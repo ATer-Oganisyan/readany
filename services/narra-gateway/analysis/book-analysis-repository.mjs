@@ -411,6 +411,9 @@ export function bookAnalysisRunIdempotencyKey({
 export function createPostgresBookAnalysisRepository(pool, {
   idFactory = randomUUID,
   defaultPipelineId = BOOK_ANALYSIS_PIPELINE_NARRA,
+  // Конвейер, назначенный изданию поимённо. Возвращает id конвейера или null:
+  // null означает «этой книге ничего не назначено», а не «взять narra».
+  pipelineForEdition = () => null,
   mediaGenerationEnabled = true
 } = {}) {
   if (!pool || typeof pool.connect !== 'function' || typeof pool.query !== 'function') {
@@ -420,6 +423,13 @@ export function createPostgresBookAnalysisRepository(pool, {
     defaultPipelineId,
     'defaultPipelineId'
   )
+  if (typeof pipelineForEdition !== 'function') {
+    throw new TypeError('pipelineForEdition must be a function')
+  }
+  function assignedPipelineId(bookEditionId) {
+    const assigned = pipelineForEdition(bookEditionId)
+    return assigned ? normalizeBookAnalysisPipelineId(assigned, 'pipelineForEdition') : null
+  }
   if (typeof mediaGenerationEnabled !== 'boolean') {
     throw new TypeError('mediaGenerationEnabled must be a boolean')
   }
@@ -697,14 +707,16 @@ export function createPostgresBookAnalysisRepository(pool, {
     async ensureAnalysisRun({
       bookEditionId,
       inputHash,
-      pipelineId = repositoryDefaultPipelineId,
+      pipelineId = null,
       pipelineVersion,
       promptVersion,
       normalizationVersion = BOOK_ANALYSIS_NORMALIZATION_VERSION,
       outputSchemaVersion = BOOK_ANALYSIS_SCHEMA_VERSION,
       priority = 50
     }) {
-      const strategy = getBookAnalysisPipeline(pipelineId)
+      const strategy = getBookAnalysisPipeline(
+        pipelineId ?? assignedPipelineId(bookEditionId) ?? repositoryDefaultPipelineId
+      )
       const selectedPipelineVersion = validateIdentifier(
         pipelineVersion ?? strategy.orchestrationVersion,
         'pipelineVersion'
@@ -848,7 +860,10 @@ export function createPostgresBookAnalysisRepository(pool, {
         )
         const previous = previousResult.rows[0]
         const strategy = getBookAnalysisPipeline(
-          pipelineId ?? previous?.pipeline_id ?? repositoryDefaultPipelineId
+          pipelineId
+            ?? assignedPipelineId(safeBookEditionId)
+            ?? previous?.pipeline_id
+            ?? repositoryDefaultPipelineId
         )
         const inherited = previous?.pipeline_id === strategy.id ? previous : null
         const safePipelineVersion = validateIdentifier(
