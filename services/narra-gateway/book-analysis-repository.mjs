@@ -1,4 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { transaction } from './postgres-runtime.mjs'
+import {
+  claimJobSql,
+  claimOrderSql,
+  expireExhaustedLeasesSql,
+  renewLeaseSql
+} from './pg-job-queue.mjs'
 import {
   BOOK_ANALYSIS_CHARACTER_BUNDLE_VERSION,
   BOOK_ANALYSIS_MARKUP_VERSION,
@@ -347,21 +354,6 @@ async function requireStageInput(pool, job, stage) {
   )
   if (!result.rows[0]) throw repositoryError('LEASE_LOST', `analysis job lease lost: ${job.id}`)
   return result.rows[0]
-}
-
-async function transaction(pool, operation) {
-  const client = await pool.connect()
-  try {
-    await client.query('BEGIN')
-    const result = await operation(client)
-    await client.query('COMMIT')
-    return result
-  } catch (error) {
-    await client.query('ROLLBACK').catch(() => {})
-    throw error
-  } finally {
-    client.release()
-  }
 }
 
 async function requireLeasedJob(client, job, expectedStage) {
@@ -1267,15 +1259,15 @@ export function createPostgresBookAnalysisRepository(pool, {
       validateLeaseSeconds(leaseSeconds)
       return transaction(pool, async (client) => {
         const exhausted = await client.query(
-          `UPDATE book_analysis_jobs
-           SET status = 'failed', last_error_code = 'LEASE_EXPIRED',
-               locked_at = NULL, lease_expires_at = NULL, locked_by = NULL,
-               lease_token = NULL, updated_at = now()
-           WHERE stage = ANY($1::text[]) AND status = 'running'
-             AND pipeline_id = ANY($2::text[])
-             AND ($3::uuid[] IS NULL OR run_id = ANY($3::uuid[]))
-             AND lease_expires_at <= now() AND attempts >= max_attempts
-           RETURNING run_id`,
+          expireExhaustedLeasesSql({
+            table: 'book_analysis_jobs',
+            where: [
+              'job.stage = ANY($1::text[])',
+              'job.pipeline_id = ANY($2::text[])',
+              '($3::uuid[] IS NULL OR job.run_id = ANY($3::uuid[]))'
+            ],
+            returning: 'job.run_id'
+          }),
           [allowedStages, allowedPipelineIds, allowedRunIds]
         )
         if (exhausted.rows.length) {
@@ -1288,50 +1280,43 @@ export function createPostgresBookAnalysisRepository(pool, {
         }
         const leaseToken = idFactory()
         const result = await client.query(
-          `WITH candidate AS (
-             SELECT job.id, run.input_hash AS source_hash
-             FROM book_analysis_jobs AS job
-             JOIN book_analysis_runs AS run ON run.id = job.run_id
-             WHERE job.stage = ANY($2::text[]) AND run.stage = job.stage
-               AND job.pipeline_id = ANY($5::text[])
-               AND ($6::uuid[] IS NULL OR run.id = ANY($6::uuid[]))
-               AND job.pipeline_id = run.pipeline_id
-               AND job.pipeline_implementation_version = run.pipeline_implementation_version
-               AND run.status IN ('queued', 'running')
-               AND job.attempts < job.max_attempts
-               AND (
-                 (job.status = 'queued' AND job.available_at <= now()) OR
-               (job.status = 'running' AND job.lease_expires_at <= now())
-               )
-               AND (
-                 job.stage <> 'synthesize' OR job.shard_key <> 'book' OR
+          claimJobSql({
+            table: 'book_analysis_jobs',
+            select: ['run.input_hash AS source_hash'],
+            from: 'JOIN book_analysis_runs AS run ON run.id = job.run_id',
+            where: [
+              'job.stage = ANY($2::text[]) AND run.stage = job.stage',
+              'job.pipeline_id = ANY($5::text[])',
+              '($6::uuid[] IS NULL OR run.id = ANY($6::uuid[]))',
+              'job.pipeline_id = run.pipeline_id',
+              'job.pipeline_implementation_version = run.pipeline_implementation_version',
+              "run.status IN ('queued', 'running')",
+              // Итоговый book-shard синтеза ждёт все обязательные шарды персонажей.
+              `(job.stage <> 'synthesize' OR job.shard_key <> 'book' OR
                  NOT EXISTS (
                    SELECT 1 FROM book_analysis_jobs AS dependency
                    WHERE dependency.run_id = job.run_id
                      AND dependency.stage = 'synthesize'
                      AND dependency.required AND dependency.shard_key <> 'book'
                      AND dependency.status <> 'ready'
-                 )
-               )
-             ORDER BY job.priority DESC,
-               (
+                 ))`
+            ],
+            // Справедливость к ретраям: run, который дольше всех не двигался
+            // на этой стадии, забирают раньше свежих.
+            orderBy: claimOrderSql({
+              before: [`(
                  SELECT MAX(sibling.updated_at)
                  FROM book_analysis_jobs AS sibling
                  WHERE sibling.run_id = job.run_id
                    AND sibling.stage = job.stage
                    AND sibling.attempts > 0
-               ) ASC NULLS FIRST,
-               job.available_at, job.created_at
-             FOR UPDATE OF job SKIP LOCKED
-             LIMIT 1
-           )
-           UPDATE book_analysis_jobs AS job
-           SET status = 'running', attempts = attempts + 1,
-               locked_at = now(), lease_expires_at = now() + make_interval(secs => $3),
-               locked_by = $1, lease_token = $4::uuid, updated_at = now()
-           FROM candidate
-           WHERE job.id = candidate.id
-           RETURNING job.*, candidate.source_hash`,
+               ) ASC NULLS FIRST`]
+            }),
+            lockedBy: '$1',
+            leaseSeconds: '$3',
+            leaseToken: '$4',
+            returning: 'job.*, candidate.source_hash'
+          }),
           [worker, allowedStages, leaseSeconds, leaseToken, allowedPipelineIds, allowedRunIds]
         )
         const job = jobRow(result.rows[0])
@@ -1350,11 +1335,12 @@ export function createPostgresBookAnalysisRepository(pool, {
     async renewAnalysisJobLease(job, { leaseSeconds = 300 } = {}) {
       validateLeaseSeconds(leaseSeconds)
       const result = await pool.query(
-        `UPDATE book_analysis_jobs
-         SET locked_at = now(), lease_expires_at = now() + make_interval(secs => $3),
-             updated_at = now()
-         WHERE id = $1 AND status = 'running' AND lease_token = $2::uuid
-         RETURNING id`,
+        renewLeaseSql({
+          table: 'book_analysis_jobs',
+          id: '$1',
+          leaseToken: '$2',
+          leaseSeconds: '$3'
+        }),
         [job.id, job.leaseToken, leaseSeconds]
       )
       if (!result.rows[0]) throw repositoryError('LEASE_LOST', `analysis job lease lost: ${job.id}`)

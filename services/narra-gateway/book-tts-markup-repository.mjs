@@ -3,6 +3,20 @@ import {
   BOOK_TTS_MARKUP_VERSION,
   bookTtsScriptContentHash
 } from './book-tts-markup.mjs'
+import { assertLeaseSeconds, claimJobSql, jobQueueColumns, renewLeaseSql } from './pg-job-queue.mjs'
+
+const TTS_QUEUE = 'book_tts_markup_jobs'
+// Очередь TTS не приоритизирует и не откладывает задания и держит собственные
+// имена колонок аренды.
+const TTS_COLUMNS = jobQueueColumns({
+  attempts: 'attempt_count',
+  maxAttempts: null,
+  priority: null,
+  availableAt: null,
+  lockedAt: null,
+  lockedBy: 'lease_owner',
+  errorCode: 'error_code'
+})
 
 function statusRow(row) {
   if (!row) return null
@@ -96,23 +110,18 @@ export function createPostgresBookTtsMarkupRepository(pool, { idFactory = random
     },
 
     async claimJob(workerId, { leaseSeconds = 300 } = {}) {
+      assertLeaseSeconds(leaseSeconds)
       const leaseToken = idFactory()
       const result = await pool.query(
-        `WITH candidate AS (
-           SELECT id FROM book_tts_markup_jobs
-           WHERE status = 'queued'
-              OR (status = 'running' AND lease_expires_at < now())
-           ORDER BY created_at, id
-           FOR UPDATE SKIP LOCKED
-           LIMIT 1
-         )
-         UPDATE book_tts_markup_jobs AS job
-         SET status = 'running', lease_owner = $1, lease_token = $2,
-             lease_expires_at = now() + ($3 * interval '1 second'),
-             attempt_count = attempt_count + 1, error_code = NULL, updated_at = now()
-         FROM candidate
-         WHERE job.id = candidate.id
-         RETURNING job.*`,
+        claimJobSql({
+          table: TTS_QUEUE,
+          columns: TTS_COLUMNS,
+          orderBy: 'job.created_at, job.id',
+          lockedBy: '$1',
+          leaseToken: '$2',
+          leaseSeconds: '$3',
+          clearErrorCode: true
+        }),
         [workerId, leaseToken, leaseSeconds]
       )
       return claimedRow(result.rows[0])
@@ -151,13 +160,20 @@ export function createPostgresBookTtsMarkupRepository(pool, { idFactory = random
     },
 
     async renewJobLease(job, { leaseSeconds = 300 } = {}) {
+      assertLeaseSeconds(leaseSeconds)
       const result = await pool.query(
-        `UPDATE book_tts_markup_jobs
-         SET lease_expires_at = now() + ($3 * interval '1 second'), updated_at = now()
-         WHERE id = $1 AND lease_token = $2 AND status = 'running'`,
+        renewLeaseSql({
+          table: TTS_QUEUE,
+          columns: TTS_COLUMNS,
+          id: '$1',
+          leaseToken: '$2',
+          leaseSeconds: '$3'
+        }),
         [job.id, job.leaseToken, leaseSeconds]
       )
-      if (result.rowCount !== 1) throw Object.assign(new Error('TTS markup lease is stale'), { code: 'LEASE_LOST' })
+      if (!result.rows[0]) {
+        throw Object.assign(new Error('TTS markup lease is stale'), { code: 'LEASE_LOST' })
+      }
     },
 
     async completeJob(job, script) {

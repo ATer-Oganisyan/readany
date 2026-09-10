@@ -22,14 +22,7 @@ changed_paths=()
 services=()
 
 gateway_services=(gateway)
-analysis_services=(
-  book-analysis-prepare
-  book-analysis-scan
-  book-analysis-resolve
-  book-analysis-synthesize
-  book-analysis-validate
-  book-analysis-publish
-)
+analysis_services=(book-analysis-worker)
 book_worker_services=(book-markup-worker book-identity-worker "${analysis_services[@]}")
 media_services=(book-media-worker)
 scene_services=(book-scene-worker)
@@ -286,26 +279,11 @@ select_from_changed_path() {
     services/narra-gateway/index.mjs)
       add_service gateway
       ;;
-    services/narra-gateway/book-analysis-scan-worker.mjs|services/narra-gateway/book-analysis-scan-worker-runner.mjs)
-      add_service book-analysis-scan
+    services/narra-gateway/book-analysis-*worker.mjs)
+      add_many "${analysis_services[@]}"
       ;;
-    services/narra-gateway/book-analysis-resolve-worker.mjs|services/narra-gateway/book-analysis-resolve-worker-runner.mjs)
-      add_service book-analysis-resolve
-      ;;
-    services/narra-gateway/book-analysis-prepare-worker.mjs|services/narra-gateway/book-analysis-worker.mjs)
-      add_service book-analysis-prepare
-      ;;
-    services/narra-gateway/book-analysis-synthesize-worker.mjs)
-      add_service book-analysis-synthesize
-      ;;
-    services/narra-gateway/book-analysis-validate-worker.mjs)
-      add_service book-analysis-validate
-      ;;
-    services/narra-gateway/book-analysis-publish-worker.mjs)
-      add_service book-analysis-publish
-      ;;
-    services/narra-gateway/book-analysis-stage-worker-runner.mjs)
-      add_many book-analysis-synthesize book-analysis-validate
+    services/narra-gateway/worker-runtime.mjs)
+      add_many "${worker_services[@]}"
       ;;
     services/narra-gateway/book-identity-worker.mjs)
       add_service book-identity-worker
@@ -406,6 +384,12 @@ compose=(
   --profile scenes
   --profile tts-markup
   --profile operations
+  # Профили ниже ничего не разворачивают — `up` получает явный список сервисов,
+  # — но делают определение проекта полным. Без них Compose считает сервисы этих
+  # профилей чужими, и `--remove-orphans` снёс бы пул анализа и операторский
+  # воркер заодно с настоящими сиротами.
+  --profile book-analysis-pool
+  --profile operator-campaigns
 )
 
 print_command() {
@@ -439,7 +423,14 @@ if [ "$application_selected" = 1 ]; then
   run "${compose[@]}" run --rm --no-deps migrate node migrate.mjs --check
 fi
 
-up_args=(up -d --force-recreate --wait --wait-timeout "$wait_timeout" --pull never)
+# --remove-orphans снимает контейнеры сервисов, которых в compose уже нет.
+# Ради этого он и добавлен: шесть прежних раннеров анализа заменены одним
+# book-analysis-worker, и на уже развёрнутой установке их контейнеры `up` не
+# трогал — в списке сервисов их нет. Они продолжали работать и забирать задания
+# вместе с новым воркером, а следующие деплои их не обновляли. Сироты
+# определяются по всему проекту, поэтому список профилей выше обязан покрывать
+# весь compose-файл; это закреплено тестом.
+up_args=(up -d --force-recreate --wait --wait-timeout "$wait_timeout" --remove-orphans --pull never)
 if [ "$mode" != "full" ]; then
   up_args+=(--no-deps)
 fi

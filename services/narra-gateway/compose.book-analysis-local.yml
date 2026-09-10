@@ -183,16 +183,9 @@ services:
       retries: 24
       start_period: 10s
 
-  book-analysis-prepare:
+  book-analysis-worker:
     <<: *analysis-worker
     command: ["node", "book-analysis-worker.mjs"]
-    environment:
-      <<: [*database-environment, *storage-environment, *scan-policy-environment]
-      BOOK_ANALYSIS_RUN_IDS: ${BOOK_ANALYSIS_RUN_IDS:-}
-
-  book-analysis-scan:
-    <<: *analysis-worker
-    command: ["node", "book-analysis-scan-worker-runner.mjs"]
     environment:
       <<: [*database-environment, *storage-environment, *generator-environment, *scan-policy-environment]
       BOOK_ANALYSIS_RUN_IDS: ${BOOK_ANALYSIS_RUN_IDS:-}
@@ -230,40 +223,12 @@ services:
   book-analysis-external:
     <<: *analysis-worker
     profiles: ["book-analysis-external"]
-    command: ["node", "book-analysis-external-worker-runner.mjs"]
+    command: ["node", "book-analysis-worker.mjs", "external"]
     environment:
       <<: [*database-environment, *storage-environment]
       AUTIOBOOK_ADAPTER_BASE_URL: http://autiobook-adapter.railway.internal:8080
       AUTIOBOOK_ADAPTER_TOKEN: ${AUTIOBOOK_ADAPTER_TOKEN:-narra-local-autiobook-token-000000000001}
       AUTIOBOOK_ADAPTER_TIMEOUT_MS: ${AUTIOBOOK_ADAPTER_TIMEOUT_MS:-3600000}
-
-  book-analysis-resolve:
-    <<: *analysis-worker
-    command: ["node", "book-analysis-resolve-worker-runner.mjs"]
-    environment:
-      <<: [*database-environment, *generator-environment]
-      BOOK_ANALYSIS_RUN_IDS: ${BOOK_ANALYSIS_RUN_IDS:-}
-
-  book-analysis-synthesize:
-    <<: *analysis-worker
-    command: ["node", "book-analysis-stage-worker-runner.mjs", "synthesize"]
-    environment:
-      <<: [*database-environment, *generator-environment]
-      BOOK_ANALYSIS_RUN_IDS: ${BOOK_ANALYSIS_RUN_IDS:-}
-
-  book-analysis-validate:
-    <<: *analysis-worker
-    command: ["node", "book-analysis-stage-worker-runner.mjs", "validate"]
-    environment:
-      <<: [*database-environment, *storage-environment]
-      BOOK_ANALYSIS_RUN_IDS: ${BOOK_ANALYSIS_RUN_IDS:-}
-
-  book-analysis-publish:
-    <<: *analysis-worker
-    command: ["node", "book-analysis-stage-worker-runner.mjs", "publish"]
-    environment:
-      <<: *database-environment
-      BOOK_ANALYSIS_RUN_IDS: ${BOOK_ANALYSIS_RUN_IDS:-}
 
 volumes:
   postgres-data:

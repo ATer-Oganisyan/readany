@@ -1,11 +1,20 @@
 import { randomUUID } from 'node:crypto'
+import {
+  assertLeaseSeconds,
+  claimJobSql,
+  expireExhaustedLeasesSql,
+  renewLeaseSql
+} from './pg-job-queue.mjs'
+import { repositoryError, transaction } from './postgres-runtime.mjs'
+
+const SEARCH_QUEUE = 'book_search_jobs'
+// Задания видны только через свой индекс и его edition: scope-фильтр —
+// граница каталога и приватных книг, а не оптимизация.
+const SEARCH_JOB_FROM = `JOIN book_search_indexes AS index ON index.id = job.index_id
+           JOIN book_editions AS edition ON edition.id = index.book_edition_id`
 
 const JOB_TYPES = new Set(['lexical', 'embedding', 'graph', 'story_arc'])
 const BOOK_SCOPES = new Set(['catalog', 'private'])
-
-function repositoryError(code, message) {
-  return Object.assign(new Error(message), { code })
-}
 
 function identifier(value, name, max = 240) {
   if (typeof value !== 'string' || !value.trim() || value.length > max) {
@@ -64,21 +73,6 @@ function indexRow(row) {
     vectorChunkCount: Number(row.vector_chunk_count),
     createdAt: row.created_at,
     updatedAt: row.updated_at
-  }
-}
-
-async function transaction(pool, operation) {
-  const client = await pool.connect()
-  try {
-    await client.query('BEGIN')
-    const result = await operation(client)
-    await client.query('COMMIT')
-    return result
-  } catch (error) {
-    await client.query('ROLLBACK').catch(() => {})
-    throw error
-  } finally {
-    client.release()
   }
 }
 
@@ -223,19 +217,19 @@ export function createPostgresBookSearchRepository(pool, { idFactory = randomUUI
       const allowedTypes = [...new Set(types.map(jobType))]
       if (!Array.isArray(scopes) || !scopes.length) throw new TypeError('scopes must not be empty')
       const allowedScopes = [...new Set(scopes.map(bookScope))]
-      positiveInteger(leaseSeconds, 'leaseSeconds', 3600)
+      assertLeaseSeconds(leaseSeconds)
       return transaction(pool, async (client) => {
         const exhausted = await client.query(
-          `UPDATE book_search_jobs AS job
-           SET status = 'failed', last_error_code = 'LEASE_EXPIRED',
-               locked_at = NULL, lease_expires_at = NULL, locked_by = NULL,
-               lease_token = NULL, updated_at = now()
-           FROM book_search_indexes AS index, book_editions AS edition
-           WHERE job.index_id = index.id AND index.book_edition_id = edition.id
-             AND job.job_type = ANY($1::text[]) AND edition.scope = ANY($2::text[])
-             AND job.status = 'running' AND job.lease_expires_at <= now()
-             AND job.attempts >= job.max_attempts
-           RETURNING job.index_id`,
+          expireExhaustedLeasesSql({
+            table: SEARCH_QUEUE,
+            from: 'FROM book_search_indexes AS index, book_editions AS edition',
+            where: [
+              'job.index_id = index.id AND index.book_edition_id = edition.id',
+              'job.job_type = ANY($1::text[])',
+              'edition.scope = ANY($2::text[])'
+            ],
+            returning: 'job.index_id'
+          }),
           [allowedTypes, allowedScopes]
         )
         if (exhausted.rows.length) {
@@ -248,27 +242,14 @@ export function createPostgresBookSearchRepository(pool, { idFactory = randomUUI
         }
         const leaseToken = idFactory()
         const claimed = await client.query(
-          `WITH candidate AS (
-             SELECT job.id FROM book_search_jobs AS job
-             JOIN book_search_indexes AS index ON index.id = job.index_id
-             JOIN book_editions AS edition ON edition.id = index.book_edition_id
-             WHERE job.job_type = ANY($2::text[])
-               AND edition.scope = ANY($3::text[])
-               AND job.attempts < job.max_attempts
-               AND (
-                 (job.status = 'queued' AND job.available_at <= now()) OR
-                 (job.status = 'running' AND job.lease_expires_at <= now())
-               )
-             ORDER BY job.priority DESC, job.available_at, job.created_at
-             FOR UPDATE OF job SKIP LOCKED
-             LIMIT 1
-           )
-           UPDATE book_search_jobs AS job
-           SET status = 'running', attempts = attempts + 1, locked_at = now(),
-               lease_expires_at = now() + make_interval(secs => $4),
-               locked_by = $1, lease_token = $5::uuid, updated_at = now()
-           FROM candidate WHERE job.id = candidate.id
-           RETURNING job.*`,
+          claimJobSql({
+            table: SEARCH_QUEUE,
+            from: SEARCH_JOB_FROM,
+            where: ['job.job_type = ANY($2::text[])', 'edition.scope = ANY($3::text[])'],
+            lockedBy: '$1',
+            leaseSeconds: '$4',
+            leaseToken: '$5'
+          }),
           [worker, allowedTypes, allowedScopes, leaseSeconds, leaseToken]
         )
         return jobRow(claimed.rows[0])
@@ -276,13 +257,14 @@ export function createPostgresBookSearchRepository(pool, { idFactory = randomUUI
     },
 
     async renewJobLease(job, { leaseSeconds = 300 } = {}) {
-      positiveInteger(leaseSeconds, 'leaseSeconds', 3600)
+      assertLeaseSeconds(leaseSeconds)
       const result = await pool.query(
-        `UPDATE book_search_jobs
-         SET locked_at = now(), lease_expires_at = now() + make_interval(secs => $3),
-             updated_at = now()
-         WHERE id = $1 AND status = 'running' AND lease_token = $2::uuid
-         RETURNING id`,
+        renewLeaseSql({
+          table: SEARCH_QUEUE,
+          id: '$1',
+          leaseToken: '$2',
+          leaseSeconds: '$3'
+        }),
         [job.id, job.leaseToken, leaseSeconds]
       )
       if (!result.rows[0]) throw repositoryError('LEASE_LOST', `search job lease lost: ${job.id}`)

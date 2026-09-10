@@ -4,6 +4,7 @@ import {
   normalizeBookCharacterCorrection
 } from './book-character-correction.mjs'
 import { BOOK_ANALYSIS_MARKUP_VERSION } from './book-analysis-contracts.mjs'
+import { transaction } from './postgres-runtime.mjs'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const SHA256 = /^[0-9a-f]{64}$/
@@ -161,21 +162,6 @@ function previewValue(base, result) {
       role: character.role,
       description: character.description
     }))
-  }
-}
-
-async function transaction(pool, operation) {
-  const client = await pool.connect()
-  try {
-    await client.query('BEGIN')
-    const value = await operation(client)
-    await client.query('COMMIT')
-    return value
-  } catch (error) {
-    await client.query('ROLLBACK').catch(() => {})
-    throw error
-  } finally {
-    client.release()
   }
 }
 

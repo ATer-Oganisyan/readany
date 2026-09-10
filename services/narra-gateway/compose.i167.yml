@@ -366,57 +366,32 @@ services:
       <<: [*book-analysis-database-environment, *book-analysis-storage-environment, *book-analysis-generator-environment]
       WORKER_TYPE: book-tts-markup
 
-  book-analysis-prepare:
+  # Все шесть стадий канонического анализа обслуживает один воркер: очередь
+  # book_analysis_jobs общая, claimAnalysisJob фильтрует по стадии. Разделение
+  # на процессы — вопрос масштабирования, а не схемы.
+  book-analysis-worker:
     <<: *book-analysis-worker
     profiles: ["book-backend"]
     command: ["node", "book-analysis-worker.mjs"]
-    environment:
-      <<: [*book-analysis-database-environment, *book-analysis-storage-environment, *book-analysis-scan-policy-environment]
-      WORKER_TYPE: book-analysis-prepare
-
-  book-analysis-scan:
-    <<: *book-analysis-worker
-    profiles: ["book-backend"]
-    command: ["node", "book-analysis-scan-worker-runner.mjs"]
     deploy:
-      replicas: ${BOOK_ANALYSIS_SCAN_REPLICAS:-1}
+      replicas: ${BOOK_ANALYSIS_WORKER_REPLICAS:-1}
     environment:
       <<: [*book-analysis-database-environment, *book-analysis-storage-environment, *book-analysis-generator-environment, *book-analysis-scan-policy-environment]
-      WORKER_TYPE: book-analysis-scan
+      WORKER_TYPE: book-analysis
 
-  book-analysis-resolve:
+  # Опциональный пул под горячие стадии: тот же образ и та же точка входа,
+  # но опрашивается только BOOK_ANALYSIS_POOL_STAGES. Включается профилем,
+  # когда одного воркера перестаёт хватать по пропускной способности.
+  book-analysis-pool:
     <<: *book-analysis-worker
-    profiles: ["book-backend"]
-    command: ["node", "book-analysis-resolve-worker-runner.mjs"]
-    environment:
-      <<: [*book-analysis-database-environment, *book-analysis-generator-environment]
-      WORKER_TYPE: book-analysis-resolve
-
-  book-analysis-synthesize:
-    <<: *book-analysis-worker
-    profiles: ["book-backend"]
-    command: ["node", "book-analysis-stage-worker-runner.mjs", "synthesize"]
+    profiles: ["book-analysis-pool"]
+    command: ["node", "book-analysis-worker.mjs"]
     deploy:
-      replicas: ${BOOK_ANALYSIS_SYNTHESIZE_REPLICAS:-1}
+      replicas: ${BOOK_ANALYSIS_POOL_REPLICAS:-2}
     environment:
-      <<: [*book-analysis-database-environment, *book-analysis-generator-environment]
-      WORKER_TYPE: book-analysis-synthesize
-
-  book-analysis-validate:
-    <<: *book-analysis-worker
-    profiles: ["book-backend"]
-    command: ["node", "book-analysis-stage-worker-runner.mjs", "validate"]
-    environment:
-      <<: [*book-analysis-database-environment, *book-analysis-storage-environment]
-      WORKER_TYPE: book-analysis-validate
-
-  book-analysis-publish:
-    <<: *book-analysis-worker
-    profiles: ["book-backend"]
-    command: ["node", "book-analysis-stage-worker-runner.mjs", "publish"]
-    environment:
-      <<: *book-analysis-database-environment
-      WORKER_TYPE: book-analysis-publish
+      <<: [*book-analysis-database-environment, *book-analysis-storage-environment, *book-analysis-generator-environment, *book-analysis-scan-policy-environment]
+      WORKER_TYPE: book-analysis-pool
+      BOOK_ANALYSIS_STAGES: ${BOOK_ANALYSIS_POOL_STAGES:-scan}
 
   book-media-worker:
     <<: *book-analysis-worker

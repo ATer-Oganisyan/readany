@@ -251,22 +251,23 @@ docker compose exec gateway npm run book-analysis -- \
   result --run-id <analysis-run-uuid>
 ```
 
-The isolated `book-analysis-shadow` profile has one service per pipeline stage.
-Each service claims only its own PostgreSQL jobs, so replicas can be changed
-independently without changing the Gateway or the mobile contract. For a test
-environment, a typical initial allocation is:
+All six pipeline stages share the `book_analysis_jobs` queue, so one
+`book-analysis-worker` service claims every stage by default:
 
 ```bash
-docker compose --profile book-analysis-shadow up -d \
-  --scale book-analysis-prepare=1 \
-  --scale book-analysis-scan=3 \
-  --scale book-analysis-resolve=1 \
-  --scale book-analysis-synthesize=3 \
-  --scale book-analysis-validate=1 \
-  --scale book-analysis-publish=1
+docker compose --profile book-backend up -d book-analysis-worker
 ```
 
-The profile is disabled by default. Starting its workers does not enqueue books;
+When a single worker stops keeping up, add a pool for the hot stages instead of
+splitting the pipeline into one container per stage. The pool runs the same
+image and entrypoint and is filtered by `BOOK_ANALYSIS_STAGES`:
+
+```bash
+BOOK_ANALYSIS_POOL_STAGES=scan BOOK_ANALYSIS_POOL_REPLICAS=3 \
+  docker compose --profile book-backend --profile book-analysis-pool up -d
+```
+
+The pool profile is disabled by default. Starting its workers does not enqueue books;
 only ingestion, `start`, or an explicit `restart` enqueues analysis. The internal
 `shadow` publication is the immutable audit source for the canonical v3 reader
 projection; retained v2 rows are not selected by the mobile manifest.
