@@ -397,3 +397,196 @@ test('pairs invisible to token overlap are kept when the pair budget is hit', ()
     'пара по соседству вытеснена парами перекрытия'
   )
 })
+
+test('candidates the model gave one canonical name become one character', () => {
+  // Найдено третьей книгой бенчмарка: на «Преступлении и наказании» модель
+  // назвала «Родион Романович Раскольников» четырёх разных кандидатов, а пары
+  // между ними в запрос не попали — их не породил генератор. В ростер ушли
+  // четыре дубля, каждый со своей карточкой, своим портретом и своим слотом
+  // публикации. Одинаковое каноническое имя — это заявление модели о
+  // тождестве, и оно объединяет так же, как явное слияние.
+  const candidates = [
+    candidate({ candidateKey: 'name:raskolnikov', displayName: 'Раскольников', count: 767 }),
+    candidate({ candidateKey: 'name:rodion-romanych', displayName: 'Родион Романыч', count: 265 }),
+    candidate({ candidateKey: 'name:romanovich', displayName: 'Романович', count: 39 })
+  ]
+  const request = buildRosterConfirmationRequest({
+    runId: 'run-1',
+    bookEditionId: 'edition-1',
+    title: 'Преступление и наказание',
+    author: 'Фёдор Достоевский',
+    inventoryVersion: 'name-inventory-v1',
+    normalizedTextHash: 'a'.repeat(64),
+    candidates
+  })
+  const confirmation = validateRosterConfirmation({
+    request,
+    response: {
+      classifications: candidates.map(({ candidateKey }) => ({
+        candidateKey,
+        kind: 'person',
+        canonicalName: 'Родион Романович Раскольников'
+      })),
+      merges: []
+    }
+  })
+
+  assert.equal(confirmation.acceptedMerges.length, 2)
+  assert.ok(confirmation.acceptedMerges.every(({ basis }) => basis === 'name_variant'))
+  const roster = applyRosterConfirmation({ request, candidates, confirmation })
+  assert.equal(roster.length, 1)
+  assert.equal(roster[0].canonicalName, 'Родион Романович Раскольников')
+  assert.equal(roster[0].mentionCount, 767 + 265 + 39)
+})
+
+test('one canonical name does not merge two people the rules keep apart', () => {
+  // Защита, из-за которой правило безопасно: запрет сильнее имени. Мужа и жену
+  // модель вправе назвать одинаково — «Свидригайловы», — и слить их всё равно
+  // нельзя.
+  const candidates = [
+    candidate({
+      candidateKey: 'name:arkadiy',
+      displayName: 'Аркадий Иванович Свидригайлов',
+      honorificGender: 'male',
+      count: 204
+    }),
+    candidate({
+      candidateKey: 'name:marfa',
+      displayName: 'Марфа Петровна Свидригайлова',
+      honorificGender: 'female',
+      count: 161
+    })
+  ]
+  const request = buildRosterConfirmationRequest({
+    runId: 'run-1',
+    bookEditionId: 'edition-1',
+    title: 'Преступление и наказание',
+    author: 'Фёдор Достоевский',
+    inventoryVersion: 'name-inventory-v1',
+    normalizedTextHash: 'a'.repeat(64),
+    candidates
+  })
+  const confirmation = validateRosterConfirmation({
+    request,
+    response: {
+      classifications: candidates.map(({ candidateKey }) => ({
+        candidateKey,
+        kind: 'person',
+        canonicalName: 'Свидригайлов'
+      })),
+      merges: []
+    }
+  })
+
+  assert.deepEqual(confirmation.acceptedMerges, [])
+  assert.ok(confirmation.rejected.some(({ reason }) =>
+    reason === 'same_canonical_name_but_gender_conflict'))
+  assert.equal(applyRosterConfirmation({ request, candidates, confirmation }).length, 2)
+})
+
+test('one canonical name given to a place does not pull it into a character', () => {
+  const candidates = [
+    candidate({ candidateKey: 'name:sonya', displayName: 'Соня', count: 268 }),
+    candidate({ candidateKey: 'name:sennaya', displayName: 'Сенная', count: 17, kindHint: 'place' })
+  ]
+  const request = buildRosterConfirmationRequest({
+    runId: 'run-1',
+    bookEditionId: 'edition-1',
+    title: 'Преступление и наказание',
+    author: 'Фёдор Достоевский',
+    inventoryVersion: 'name-inventory-v1',
+    normalizedTextHash: 'a'.repeat(64),
+    candidates
+  })
+  const confirmation = validateRosterConfirmation({
+    request,
+    response: {
+      classifications: [
+        { candidateKey: 'name:sonya', kind: 'person', canonicalName: 'Соня Мармеладова' },
+        { candidateKey: 'name:sennaya', kind: 'place', canonicalName: 'Соня Мармеладова' }
+      ],
+      merges: []
+    }
+  })
+
+  assert.deepEqual(confirmation.acceptedMerges, [])
+  const roster = applyRosterConfirmation({ request, candidates, confirmation })
+  assert.deepEqual(roster.map(({ canonicalName }) => canonicalName), ['Соня Мармеладова'])
+  assert.equal(roster[0].mentionCount, 268)
+})
+
+test('a surname and a name-patronymic of one person merge despite sharing paragraphs', () => {
+  // Запрет по со-упоминанию ложен именно здесь: «Раскольников» и «Родион
+  // Романыч» стоят в одних абзацах потому, что это один человек, а не два
+  // участника. Общего токена у них нет, генератор пар их не видит, и
+  // единственное свидетельство тождества — одинаковое каноническое имя.
+  const candidates = [
+    candidate({ candidateKey: 'name:raskolnikov', displayName: 'Раскольников', count: 767 }),
+    candidate({ candidateKey: 'name:rodion-romanych', displayName: 'Родион Романыч', count: 265 })
+  ]
+  const shared = [1, 2, 3, 4, 5, 6, 7, 8]
+  const fragments = fragmentsFor([
+    ['name:raskolnikov', shared],
+    ['name:rodion-romanych', shared]
+  ])
+  const request = buildRosterConfirmationRequest({
+    runId: 'run-1',
+    bookEditionId: 'edition-1',
+    title: 'Преступление и наказание',
+    author: 'Фёдор Достоевский',
+    inventoryVersion: 'name-inventory-v1',
+    normalizedTextHash: 'a'.repeat(64),
+    candidates,
+    fragments
+  })
+  // Со-упоминание действительно запрещает пару — и это остаётся правдой.
+  assert.ok(request.forbiddenPairs.some(({ reason }) => reason === 'co_mentioned_participants'))
+
+  const confirmation = validateRosterConfirmation({
+    request,
+    response: {
+      classifications: candidates.map(({ candidateKey }) => ({
+        candidateKey,
+        kind: 'person',
+        canonicalName: 'Родион Романович Раскольников'
+      })),
+      merges: []
+    }
+  })
+  assert.equal(confirmation.acceptedMerges.length, 1)
+  assert.equal(applyRosterConfirmation({ request, candidates, confirmation }).length, 1)
+})
+
+test('an explicit merge on a co-mentioned pair is still refused', () => {
+  // Перебивает запрет только одноимённость, и только по со-упоминанию. Явное
+  // слияние по запрещённой паре остаётся невозможным: модель не должна
+  // изобретать связи там, где правила сказали «нет».
+  const candidates = [
+    candidate({ candidateKey: 'name:elinor', displayName: 'Elinor', count: 100 }),
+    candidate({ candidateKey: 'name:marianne', displayName: 'Marianne', count: 90 })
+  ]
+  const shared = [1, 2, 3, 4, 5, 6]
+  const request = buildRosterConfirmationRequest({
+    runId: 'run-1',
+    bookEditionId: 'edition-1',
+    title: 'Sense and Sensibility',
+    author: 'Jane Austen',
+    inventoryVersion: 'name-inventory-v1',
+    normalizedTextHash: 'a'.repeat(64),
+    candidates,
+    fragments: fragmentsFor([['name:elinor', shared], ['name:marianne', shared]])
+  })
+  const confirmation = validateRosterConfirmation({
+    request,
+    response: {
+      classifications: candidates.map(({ candidateKey, displayName }) => ({
+        candidateKey,
+        kind: 'person',
+        canonicalName: displayName
+      })),
+      merges: [{ leftKey: 'name:elinor', rightKey: 'name:marianne', basis: 'name_variant' }]
+    }
+  })
+  assert.deepEqual(confirmation.acceptedMerges, [])
+  assert.equal(applyRosterConfirmation({ request, candidates, confirmation }).length, 2)
+})

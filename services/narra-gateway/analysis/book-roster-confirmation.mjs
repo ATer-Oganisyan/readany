@@ -454,6 +454,75 @@ export function validateRosterConfirmation({ request, response }) {
     seenEdges.add(edge)
     acceptedMerges.push({ leftKey, rightKey, basis })
   }
+
+  /*
+   * Одно каноническое имя — один человек.
+   *
+   * Слияние принимается только по паре из `candidatePairs`, и это правильно:
+   * модель не должна изобретать связи. Но у неё есть второй, независимый способ
+   * заявить тождество — поле `canonicalName`, которое она заполняет по каждому
+   * кандидату сама. На «Преступлении и наказании» это разошлось громко: модель
+   * назвала «Родион Романович Раскольников» четыре разных кандидата
+   * (char:raskolnikov, char:rodion-romanych, char:romanovich и ещё один),
+   * «Авдотья Романовна Раскольникова» — четыре, «Софья Семёновна Мармеладова» —
+   * три, а пары между ними в запрос не попали, потому что их не породил
+   * генератор кандидатов. В ростер ушли дубли, каждый со своей карточкой и
+   * своим портретом, и каждый занял слот публикации.
+   *
+   * Поэтому одинаковое каноническое имя объединяет кандидатов так же, как
+   * явное слияние, и с теми же ограничениями: только людей, только когда
+   * между компонентами нет запрета. Запреты и есть та защита, из-за которой
+   * правило безопасно: два героя, стоящие в одних абзацах или разного пола,
+   * не сольются, даже если модель назвала их одинаково.
+   */
+  // Из двух запретов одноимённость перебивает только один, и это измеренное
+  // различие, а не смягчение правила. `co_mentioned_participants` говорит о
+  // поверхностях, а не о людях: фамилия и имя-отчество одного героя стоят в
+  // одних абзацах по устройству русской прозы — рассказчик зовёт «Раскольников»,
+  // персонажи «Родион Романыч», и это одна сцена. На этой книге запрет по
+  // со-упоминанию ложно держал четыре пары из двадцати одной, и среди них
+  // Раскольникова, Свидригайлова и Лебезятникова — то есть оставлял
+  // расщеплённым главного героя. `gender_conflict` не перебивает ничто:
+  // цена ошибки несимметрична, и слитые муж с женой не исправляются.
+  const genderConflicts = new Set(request.forbiddenPairs
+    .filter(({ reason }) => reason === 'gender_conflict')
+    .map(({ leftKey, rightKey }) => pairKey(leftKey, rightKey)))
+  const personKeys = new Set(classifications
+    .filter(({ kind }) => kind === 'person')
+    .map(({ candidateKey }) => candidateKey))
+  const byCanonicalName = new Map()
+  for (const item of classifications) {
+    if (!personKeys.has(item.candidateKey)) continue
+    const key = normalizedName(item.canonicalName)
+    if (!key) continue
+    const members = byCanonicalName.get(key) ?? []
+    members.push(item.candidateKey)
+    byCanonicalName.set(key, members)
+  }
+  for (const members of byCanonicalName.values()) {
+    if (members.length < 2) continue
+    const ordered = [...members].sort(compareText)
+    const [anchor] = ordered
+    for (const candidateKey of ordered.slice(1)) {
+      const edge = pairKey(anchor, candidateKey)
+      if (seenEdges.has(edge)) continue
+      if (
+        genderConflicts.has(edge) ||
+        crossesForbidden(sets, anchor, candidateKey, genderConflicts)
+      ) {
+        rejected.push({
+          kind: 'merge',
+          leftKey: anchor,
+          rightKey: candidateKey,
+          reason: 'same_canonical_name_but_gender_conflict'
+        })
+        continue
+      }
+      if (!sets.union(anchor, candidateKey)) continue
+      seenEdges.add(edge)
+      acceptedMerges.push({ leftKey: anchor, rightKey: candidateKey, basis: 'name_variant' })
+    }
+  }
   return { classifications, acceptedMerges, rejected }
 }
 
