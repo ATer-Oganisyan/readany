@@ -262,3 +262,26 @@ test('deploy maps every analysis worker source file onto the single service', ()
   assert.match(deploySource, /book-analysis-\*worker\.mjs\)/)
   assert.match(deploySource, /worker-runtime\.mjs\)/)
 })
+
+test('deploy declares every profile the compose file uses, so orphan removal is safe', () => {
+  // `--remove-orphans` снимает контейнеры сервисов, которых в compose нет, — и
+  // ради этого он добавлен: шесть прежних раннеров анализа заменены одним
+  // воркером, и на развёрнутой установке их контейнеры иначе продолжали бы
+  // забирать задания. Но сироты считаются по **активным** профилям: стоит
+  // забыть профиль, и Compose сочтёт чужими его собственные сервисы. На момент
+  // добавления так и было — deploy объявлял пять профилей из семи, и под
+  // удаление попадали пул анализа и операторский воркер.
+  const declared = new Set([...deploySource.matchAll(/--profile\s+([\w-]+)/g)]
+    .map(([, profile]) => profile))
+  const used = new Set([...compose.matchAll(/profiles:\s*\[([^\]]*)\]/g)]
+    .flatMap(([, list]) => list.split(',').map((value) => value.trim().replace(/["']/g, '')))
+    .filter(Boolean))
+
+  assert.ok(used.size > 0, 'в compose-файле не найдено ни одного профиля')
+  const missing = [...used].filter((profile) => !declared.has(profile)).sort()
+  assert.deepEqual(missing, [], `deploy не объявляет профили: ${missing.join(', ')}`)
+})
+
+test('deploy removes orphaned containers when it recreates services', () => {
+  assert.match(deploySource, /up_args=\(up[^)]*--remove-orphans/)
+})
