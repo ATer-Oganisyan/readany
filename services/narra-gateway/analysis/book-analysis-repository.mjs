@@ -38,11 +38,17 @@ import {
   getBookAnalysisPipeline,
   normalizeBookAnalysisPipelineId
 } from './book-analysis-pipeline.mjs'
+import { ROSTER_CONFIRMATION_VERSION } from './book-roster-confirmation.mjs'
 import { isSupportedVoice } from '../providers/voices.mjs'
 
 const SHA256 = /^[0-9a-f]{64}$/
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const STAGES = new Set(['prepare', 'scan', 'resolve', 'synthesize', 'validate', 'publish'])
+/**
+ * Приоритет первого подтверждения — тот же foreground, что у карточек окна
+ * первых глав: читатель ждёт именно его.
+ */
+const CARDS_FIRST_WINDOW_PRIORITY = 65
 const MAX_PROVISIONAL_CHARACTERS = MAX_PUBLISHED_BOOK_CHARACTERS
 
 function repositoryError(code, message, status) {
@@ -1581,6 +1587,35 @@ export function createPostgresBookAnalysisRepository(pool, {
            WHERE id = $1 AND lease_token = $2::uuid`,
           [job.id, job.leaseToken, JSON.stringify({ textLength, chunkCount: chunks.length })]
         )
+        // Первое звено цепочки. У конвейера карточек после Prepare нет ни одной
+        // стадийной задачи, и без этой постановки прогон замер бы на
+        // `synthesize` навсегда: подтверждение состава ставит карточки своего
+        // окна и полный заход по книге, но само себя поставить не может.
+        //
+        // Ставится подтверждение окна первых глав, а не всей книги: замер на
+        // «Отцах и детях» показал, что полный заход — 328 секунд из 540 до
+        // первых героев, то есть больше половины ожидания читателя.
+        if (!usesScanJobs) {
+          const firstWindow = (cardWindows?.windows ?? [])[0]
+          if (firstWindow) {
+            await client.query(
+              `INSERT INTO generation_jobs (
+                 id, idempotency_key, job_type, book_edition_id, target_version,
+                 status, priority, payload, analysis_run_id, card_window_index
+               ) VALUES ($1, $2, 'roster_confirm', $3, $4, 'queued', $5, '{}'::jsonb, $6, $7)
+               ON CONFLICT DO NOTHING`,
+              [
+                idFactory(),
+                `${job.runId}:roster-confirm:window-${firstWindow.windowIndex}`,
+                run.rows[0].book_edition_id,
+                ROSTER_CONFIRMATION_VERSION,
+                CARDS_FIRST_WINDOW_PRIORITY,
+                job.runId,
+                firstWindow.windowIndex
+              ]
+            )
+          }
+        }
         await client.query(
           `UPDATE book_analysis_runs SET stage = $2 WHERE id = $1`,
           [job.runId, nextStage]

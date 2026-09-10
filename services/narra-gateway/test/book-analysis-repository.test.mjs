@@ -478,7 +478,9 @@ test('a cards run prepares without scan jobs and waits at synthesize', async () 
       id: 'run-1', text_length: '100', pipeline_id: 'cards',
       pipeline_implementation_version: 'cards-v1'
     }] }),
-    // update run, insert chunk, insert fragment — и ни одного scan-задания.
+    // update run, insert chunk, insert card window, insert fragment —
+    // и ни одного scan-задания.
+    () => ({ rows: [] }),
     () => ({ rows: [] }),
     () => ({ rows: [] }),
     () => ({ rows: [] }),
@@ -486,6 +488,7 @@ test('a cards run prepares without scan jobs and waits at synthesize', async () 
       chunk_count: 1, first_ordinal: 0, last_ordinal: 0,
       first_offset: '0', last_offset: '100', covered_chars: '100', discontinuity_count: 0
     }] }),
+    () => ({ rows: [] }),
     () => ({ rows: [] }),
     () => ({ rows: [] })
   ])
@@ -505,6 +508,17 @@ test('a cards run prepares without scan jobs and waits at synthesize', async () 
         id: 'chunk-1', ordinal: 0, coreStartOffset: 0, coreEndOffset: 100,
         contextStartOffset: 0, contextEndOffset: 100, contentHash: 'b'.repeat(64), metadata: {}
       }],
+      cardWindows: {
+        windows: [{
+          windowIndex: 0,
+          startOffset: 0,
+          endOffset: 100,
+          assignStartOffset: 0,
+          assignEndOffset: 100,
+          chapterIndexes: [0],
+          priorityClass: 'foreground'
+        }]
+      },
       characterFragments: {
         characters: [{
           characterKey: 'name:hero',
@@ -534,4 +548,12 @@ test('a cards run prepares without scan jobs and waits at synthesize', async () 
   const advance = pool.queries.find(({ sql: value }) =>
     /UPDATE book_analysis_runs SET stage = \$2/.test(value))
   assert.equal(advance.params[1], 'synthesize')
+  // Первое звено цепочки: без него прогон замер бы на `synthesize` навсегда —
+  // подтверждение ставит карточки и полный заход, но само себя поставить не может.
+  const confirm = pool.queries.find(({ sql: value }) =>
+    /INSERT INTO generation_jobs[\s\S]*roster_confirm/.test(value))
+  assert.ok(confirm, 'подтверждение первого окна не поставлено')
+  assert.match(confirm.params[1], /:roster-confirm:window-0$/)
+  assert.equal(confirm.params[4], 65)
+  assert.equal(confirm.params[6], 0)
 })
