@@ -434,7 +434,92 @@ function isNanoBananaModel(model) {
   return /(?:^|\/)google\/gemini-[a-z0-9.-]*image(?:$|[-:])/i.test(model)
 }
 
-function coverImageRequest(config, { prompt, aspectRatio, selectedModel, quality }) {
+/** Предел на одну референсную картинку: портрет заведомо меньше. */
+const MAX_REFERENCE_IMAGE_BYTES = 8 * 1024 * 1024
+export const MAX_REFERENCE_IMAGES = 3
+
+/**
+ * Умеет ли модель принимать картинки на вход.
+ *
+ * Проверка по имени модели, а не по попытке: неподдерживаемый вход роутер
+ * отвергает по-разному — от 400 до молчаливого игнорирования, — и полагаться на
+ * это в пути, где картинка либо есть, либо сцена рисуется без неё, нельзя.
+ * Kandinsky картинок на вход не принимает и остаётся текстовым fallback'ом.
+ */
+export function imageInputSupported(model) {
+  const value = String(model || '')
+  return isNanoBananaModel(value) || /(?:^|\/)(?:openai\/)?gpt-image/i.test(value)
+}
+
+function referenceImageParts(referenceImages) {
+  return referenceImages.slice(0, MAX_REFERENCE_IMAGES).map(({ bytes, mimeType, label }) => {
+    if (!Buffer.isBuffer(bytes) || !bytes.byteLength || bytes.byteLength > MAX_REFERENCE_IMAGE_BYTES) {
+      const error = new Error('референсная картинка не проходит проверку размера')
+      error.code = 'REFERENCE_IMAGE_INVALID'
+      error.status = 400
+      throw error
+    }
+    return {
+      label: String(label || ''),
+      mimeType: /^image\/(?:jpeg|png|webp)$/.test(String(mimeType)) ? mimeType : 'image/png',
+      base64: bytes.toString('base64')
+    }
+  })
+}
+
+/**
+ * Запрос с референсными картинками.
+ *
+ * Форма зависит от роутера, и это ровно тот spike, который work order требовал
+ * до P5: LiteLLM повторяет OpenAI `/images/edits` с multipart, OpenRouter
+ * принимает картинки частями сообщения chat completions. Обе формы здесь
+ * собраны по документации провайдеров и **на живом роутере не проверены** —
+ * ключей image-маршрута в этом окружении нет. Поэтому путь без референсов
+ * остался буквально прежним, а с референсами включается только для моделей,
+ * которые вход картинками объявляют.
+ */
+function referenceImageRequest(config, { prompt, aspectRatio, selectedModel, quality, parts }) {
+  if (config.provider === 'litellm') {
+    const form = new FormData()
+    form.append('model', selectedModel)
+    form.append('prompt', prompt)
+    form.append('n', '1')
+    form.append('size', liteLlmImageSize(aspectRatio))
+    form.append('output_format', 'png')
+    if (!isNanoBananaModel(selectedModel)) form.append('quality', quality)
+    for (const [index, part] of parts.entries()) {
+      form.append(
+        'image[]',
+        new Blob([Buffer.from(part.base64, 'base64')], { type: part.mimeType }),
+        `reference-${index + 1}.${part.mimeType === 'image/jpeg' ? 'jpg' : 'png'}`
+      )
+    }
+    return { url: `${config.baseUrl}/images/edits`, form, shape: 'images_edits' }
+  }
+  return {
+    url: `${config.baseUrl}/chat/completions`,
+    shape: 'chat_image_parts',
+    body: {
+      model: selectedModel,
+      modalities: ['image', 'text'],
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: prompt },
+          ...parts.map((part) => ({
+            type: 'image_url',
+            image_url: { url: `data:${part.mimeType};base64,${part.base64}` }
+          }))
+        ]
+      }]
+    }
+  }
+}
+
+function coverImageRequest(config, { prompt, aspectRatio, selectedModel, quality, parts = [] }) {
+  if (parts.length) {
+    return referenceImageRequest(config, { prompt, aspectRatio, selectedModel, quality, parts })
+  }
   const nanoBanana = isNanoBananaModel(selectedModel)
   if (config.provider === 'litellm') {
     return {
@@ -484,6 +569,26 @@ function imageMimeTypeFromBase64(value) {
   return ''
 }
 
+function chatImagePayloadResult(payload, provider) {
+  const images = payload?.choices?.[0]?.message?.images
+  const url = Array.isArray(images) ? images[0]?.image_url?.url : null
+  const dataUrl = typeof url === 'string'
+    ? /^data:(image\/(?:jpeg|png|webp));base64,(.+)$/s.exec(url)
+    : null
+  if (!dataUrl) {
+    throw imageUpstreamError({
+      provider,
+      phase: 'result',
+      detail: 'chat-ответ не содержит картинки'
+    })
+  }
+  return {
+    image: dataUrl[2],
+    mimeType: imageMimeTypeFromBase64(dataUrl[2]) || dataUrl[1],
+    usage: payload?.usage ?? null
+  }
+}
+
 function imagePayloadResult(payload, provider) {
   const image = payload?.data?.[0]
   const raw = typeof image?.b64_json === 'string' ? image.b64_json.trim() : ''
@@ -522,6 +627,7 @@ export async function requestCoverImage({
   aspectRatio = '2:3',
   quality = 'high',
   model,
+  referenceImages = [],
   requestId,
   retryIndex = 0,
   env = process.env,
@@ -565,11 +671,19 @@ export async function requestCoverImage({
     })
     throw imageAttemptError(error, { requestId: id, attempts })
   }
+  // Референсы прикладываются только к модели, которая вход картинками
+  // объявляет. Иначе они молча отбрасываются, и сцена рисуется по тексту:
+  // отсутствие портрета — это худшая картинка, а не упавшее задание.
+  const parts = referenceImages.length && imageInputSupported(selectedModel)
+    ? referenceImageParts(referenceImages)
+    : []
+  const referenceImagesDropped = referenceImages.length > 0 && parts.length === 0
   const request = coverImageRequest(config, {
     prompt,
     aspectRatio,
     selectedModel,
-    quality: selectedQuality
+    quality: selectedQuality,
+    parts
   })
   let response
   try {
@@ -577,11 +691,12 @@ export async function requestCoverImage({
       method: 'POST',
       headers: {
         Authorization: `Bearer ${config.apiKey}`,
-        'Content-Type': 'application/json',
+        // multipart сам ставит boundary в Content-Type, поэтому его не задаём.
+        ...(request.form ? {} : { 'Content-Type': 'application/json' }),
         'X-Request-ID': id,
         ...config.headers
       },
-      body: JSON.stringify(request.body),
+      body: request.form ?? JSON.stringify(request.body),
       signal: withTimeout(signal, config.timeoutMs)
     })
   } catch (error) {
@@ -608,7 +723,9 @@ export async function requestCoverImage({
   }
   let image
   try {
-    image = imagePayloadResult(payload, config.label)
+    image = request.shape === 'chat_image_parts'
+      ? chatImagePayloadResult(payload, config.label)
+      : imagePayloadResult(payload, config.label)
   } catch (error) {
     failedAttempt(error, { http_status: response.status })
   }
@@ -627,6 +744,8 @@ export async function requestCoverImage({
     model: selectedModel,
     provider: config.provider,
     requestId: id,
+    referenceImageCount: parts.length,
+    referenceImagesDropped,
     attempts,
     responseCost: responseCost(response)
   }

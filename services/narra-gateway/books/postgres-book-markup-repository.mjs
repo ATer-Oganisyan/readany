@@ -2591,13 +2591,29 @@ export function createPostgresBookMarkupRepository(pool, {
       )
       if (!result.rows[0]) throw leaseLost(job.id)
       const row = result.rows[0]
+      // Портрет ищется по готовому ассету, а не по соглашению об именах:
+      // решение D4 требует прикладывать к сцене именно тот портрет, который
+      // действительно опубликован.
       const characters = await pool.query(
-        `SELECT character_key, name, full_name, data
-         FROM book_characters
-         WHERE markup_version_id = $1
-           AND first_appearance_text_offset <= $2
-         ORDER BY sort_order, character_key`,
-        [row.markup_version_id, row.excerpt_end_text_offset]
+        `SELECT character.character_key, character.name, character.full_name, character.data,
+                portrait.object_key AS portrait_object_key
+         FROM book_characters AS character
+         LEFT JOIN LATERAL (
+           SELECT asset.object_key
+           FROM character_bundle_assets AS link
+           JOIN character_media_bundles AS bundle ON bundle.id = link.bundle_id
+           JOIN media_assets AS asset ON asset.id = link.asset_id
+           WHERE bundle.book_edition_id = $3
+             AND bundle.character_key = character.character_key
+             AND link.asset_type = 'primary_portrait'
+             AND asset.status = 'ready'
+           ORDER BY bundle.media_revision DESC
+           LIMIT 1
+         ) AS portrait ON true
+         WHERE character.markup_version_id = $1
+           AND character.first_appearance_text_offset <= $2
+         ORDER BY character.sort_order, character.character_key`,
+        [row.markup_version_id, row.excerpt_end_text_offset, job.bookEditionId]
       )
       return {
         bookEditionId: job.bookEditionId,
@@ -2617,7 +2633,8 @@ export function createPostgresBookMarkupRepository(pool, {
           characterKey: character.character_key,
           name: character.name,
           fullName: character.full_name,
-          profile: character.data
+          profile: character.data,
+          portraitObjectKey: character.portrait_object_key ?? ''
         }))
       }
     },

@@ -101,6 +101,9 @@ test('the prompt states the barrier, the citation rule and the no-outcomes rule'
   assert.match(system, /fragmentIds — только id из FRAGMENTS/)
   assert.match(system, /bio не рассказывает исходов/)
   assert.match(system, /Не достраивай события за их пределами/)
+  // Аудит удаляет черту, подкреплённую одним абзацем, поэтому требование двух
+  // ссылок должно стоять в промпте, а не оставаться неявным правилом сервера.
+  assert.match(system, /НЕ МЕНЕЕ ДВУХ разных fragmentIds/)
   const user = messages[1].content
   assert.match(user, /BOOK_LANGUAGE: en/)
   assert.match(user, /SCENE_GAP_CHARS: 2000/)

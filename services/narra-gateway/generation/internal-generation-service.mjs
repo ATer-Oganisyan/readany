@@ -7,7 +7,7 @@ import { voiceForGender } from '../providers/voices.mjs'
 import { catalogCoverPrompt } from './catalog-cover-prompt.mjs'
 import { normalizeBookDisplayIdentity } from '../books/book-identity.mjs'
 import { buildCharacterPortraitPrompt } from './character-portrait-prompt.mjs'
-import { sceneGenerationPrompt } from './scene-generation.mjs'
+import { sceneGenerationPrompt, sceneMentionedCharacters } from './scene-generation.mjs'
 import {
   BOOK_ANALYSIS_SYNTHESIS_VERSION
 } from '../analysis/book-analysis-contracts.mjs'
@@ -81,6 +81,7 @@ export function createInternalGenerationService({
   generateIdleAnimation,
   maxBookBytes = 64 * 1024 * 1024,
   scanPolicy,
+  maxReferenceImages = 3,
   logger = console
 }) {
   if (
@@ -943,6 +944,36 @@ export function createInternalGenerationService({
           input.excerptEndTextOffset
         ).trim()
         if (!excerpt) invalid('scene excerpt is empty', 'GENERATION_RESULT_INVALID')
+        const sceneCharacters = input.characters.map(sceneCharacter).filter(({ name }) => name)
+        // Портреты грузятся только для тех, кто в отрывке действительно
+        // упомянут, и не более чем `maxReferenceImages`: сцена с пятью
+        // приложенными лицами перестаёт быть сценой одного момента.
+        const mentioned = sceneMentionedCharacters(excerpt, sceneCharacters)
+        const referenceImages = []
+        for (const character of mentioned) {
+          if (referenceImages.length >= maxReferenceImages) break
+          if (!character.portraitObjectKey) continue
+          try {
+            const portrait = await storage.getBytes({
+              objectKey: character.portraitObjectKey,
+              maxBytes: 32 * 1024 * 1024
+            })
+            referenceImages.push({
+              bytes: portrait.bytes,
+              mimeType: portrait.mimeType || 'image/png',
+              label: character.fullName || character.name
+            })
+            character.hasPortrait = true
+          } catch (error) {
+            // Пропавший портрет — не причина не рисовать сцену: остаётся
+            // текстовый паспорт внешности.
+            log.warn('scene.portrait_unavailable', 'Портрет персонажа не прочитан', {
+              ...common,
+              character_key: character.characterKey,
+              error_code: typeof error?.code === 'string' ? error.code : 'UNKNOWN'
+            })
+          }
+        }
         const prompt = sceneGenerationPrompt({
           bookTitle: input.bookTitle,
           bookAuthor: input.bookAuthor,
@@ -951,15 +982,19 @@ export function createInternalGenerationService({
           genreId: '',
           chapter: '',
           excerpt,
-          characters: input.characters.map(sceneCharacter).filter(({ name }) => name),
+          characters: sceneCharacters,
           previousExcerpts: []
         })
         const generated = await generateScene(prompt, signal, {
           bookEditionId: input.bookEditionId,
           operation: 'generate_book_scene',
           stage: 'scene',
-          metadata: { scene_key: input.sceneKey, slot_index: input.slotIndex }
-        })
+          metadata: {
+            scene_key: input.sceneKey,
+            slot_index: input.slotIndex,
+            reference_image_count: referenceImages.length
+          }
+        }, { referenceImages })
         const safeTargetVersion = input.targetVersion.replace(/[^a-z0-9._-]+/gi, '-')
         const asset = await storage.putBytes({
           objectKey: `generated/${input.scope}/${input.bookEditionId}/scenes/${safeTargetVersion}/${input.slotIndex}.${imageExtension(generated.mimeType)}`,
@@ -969,6 +1004,8 @@ export function createInternalGenerationService({
         log.info('scene.ready', 'Иллюстрация сцены создана и сохранена', {
           ...common,
           provider: generated.provider,
+          reference_image_count: referenceImages.length,
+          reference_images_dropped: generated.referenceImagesDropped === true,
           bytes: asset.byteSize,
           duration_ms: Date.now() - startedAt
         })

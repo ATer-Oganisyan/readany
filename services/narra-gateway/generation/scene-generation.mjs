@@ -1,3 +1,7 @@
+import {
+  buildCharacterNameMatcherSpec,
+  findCharacterNameMatches
+} from '../analysis/character-name-matcher.mjs'
 import { resolveCoverGenreProfile } from './cover-genre.mjs'
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -95,7 +99,7 @@ function character(value, index) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     invalid(`characters[${index}]: нужен объект`)
   }
-  const allowed = new Set(['name', 'full_name', 'role', 'gender', 'appearance'])
+  const allowed = new Set(['name', 'full_name', 'role', 'gender', 'appearance', 'has_portrait'])
   if (Object.keys(value).some((key) => !allowed.has(key))) {
     invalid(`characters[${index}]: неизвестное поле`)
   }
@@ -104,7 +108,8 @@ function character(value, index) {
     fullName: text(value.full_name, `characters[${index}].full_name`, 240),
     role: text(value.role, `characters[${index}].role`, 400),
     gender: text(value.gender, `characters[${index}].gender`, 32),
-    appearance: text(value.appearance, `characters[${index}].appearance`, 1_500)
+    appearance: text(value.appearance, `characters[${index}].appearance`, 1_500),
+    hasPortrait: value.has_portrait === true
   }
 }
 
@@ -150,13 +155,34 @@ function clipped(value, max) {
   return `${cut.replace(/[\s,.;:!?…—-]+$/u, '')}…`
 }
 
-function mentionedCharacters(excerpt, characters) {
-  const normalizedExcerpt = excerpt.toLocaleLowerCase('ru')
-  return characters.filter((value) =>
-    [value.name, value.fullName]
-      .filter((name) => name.trim().length > 1)
-      .some((name) => normalizedExcerpt.includes(name.toLocaleLowerCase('ru')))
+/**
+ * Кто действительно упомянут в отрывке.
+ *
+ * Раньше здесь была подстрока в нижнем регистре, и на русском тексте она
+ * промахивалась на каждой косвенной форме: «Гленарвану», «с Паганелем»,
+ * «Раскольникова» не содержат именительной формы имени. Теперь работает тот же
+ * матчер, что размечает имена в ридере и считает упоминания в инвентаре, —
+ * значит, «упомянут» здесь означает то же, что и во всём остальном конвейере.
+ *
+ * Правило однозначности матчера тоже к месту: одиночную фамилию при двух
+ * однофамильцах он не приписывает никому, и в промпт сцены не попадёт внешность
+ * не того человека.
+ */
+export function sceneMentionedCharacters(excerpt, characters) {
+  const named = characters
+    .map((value, index) => ({ value, index }))
+    .filter(({ value }) => String(value.name || '').trim().length > 1)
+  if (!named.length) return []
+  const spec = buildCharacterNameMatcherSpec(named.map(({ value, index }) => ({
+    id: String(index),
+    name: value.name,
+    fullName: value.fullName || '',
+    aliases: []
+  })))
+  const matched = new Set(
+    findCharacterNameMatches(excerpt, spec).map(({ characterId }) => characterId)
   )
+  return named.filter(({ index }) => matched.has(String(index))).map(({ value }) => value)
 }
 
 function genreProfile(input) {
@@ -176,12 +202,19 @@ function promptValues(input) {
   const book = `«${input.bookTitle}»${input.bookAuthor ? ` (${input.bookAuthor})` : ''}${
     input.chapter ? `, глава «${input.chapter}»` : ''
   }`
-  const canon = mentionedCharacters(input.excerpt, input.characters)
+  const mentioned = sceneMentionedCharacters(input.excerpt, input.characters)
+  // Решение D4: если портрет приложен картинкой, текстовый паспорт внешности не
+  // передаётся вовсе. Два описания одного лица — это два разных лица на выходе,
+  // и побеждает обычно текст, потому что его модель читает буквальнее.
+  const withPortrait = mentioned.filter(({ hasPortrait }) => hasPortrait)
+  const canon = mentioned
+    .filter(({ hasPortrait }) => !hasPortrait)
     .map((value) => {
       const appearance = value.appearance || [value.role, value.gender].filter(Boolean).join(', ')
       return `${value.fullName || value.name}${appearance ? `: ${appearance}` : ''}`
     })
     .join('; ')
+  const portraits = withPortrait.map((value) => value.fullName || value.name).join(', ')
   const previous = input.previousExcerpts
     .slice(0, 2)
     .map((value) => `«${clipped(value, 180)}»`)
@@ -192,6 +225,7 @@ function promptValues(input) {
     book,
     excerpt: clipped(input.excerpt, 1_200),
     canon,
+    portraits,
     previous
   }
 }
@@ -202,14 +236,18 @@ function assemblePrompt(values, limits) {
   const book = clipped(values.book, limits.book)
   const excerpt = clipped(values.excerpt, limits.excerpt)
   const canon = clipped(values.canon, limits.canon)
+  const portraits = clipped(values.portraits, limits.portraits)
   const previous = clipped(values.previous, limits.previous)
   return [
     `ЖАНР И СТИЛЬ (${genreLabel}): ${artDirection}`,
     `ЭПОХА И МИР: ${book}. Одежда, причёски, предметы, архитектура и антураж строго из мира книги; без анахронизмов.`,
     `ДЕЙСТВИЕ — ГЛАВНОЕ: центральное событие в движении, в разгаре жеста; без статичных поз, взглядов в камеру и группового позирования. Отрывок: ${excerpt}`,
+    portraits
+      ? `ПЕРСОНАЖИ С ПОРТРЕТОМ: ${portraits} — внешность строго по приложенным портретам, лица не менять.`
+      : '',
     canon
       ? `ПЕРСОНАЖИ: только упомянутые; внешность дословно: ${canon}. Одежда из сцены важнее паспортной; без лишних людей.`
-      : 'ПЕРСОНАЖИ: только те, кто действует в отрывке; без лишних людей.',
+      : (portraits ? '' : 'ПЕРСОНАЖИ: только те, кто действует в отрывке; без лишних людей.'),
     previous
       ? `КОНТЕКСТ СЕРИИ: ${previous} Тот же художник, палитра и манера.`
       : '',
@@ -231,6 +269,9 @@ export function sceneGenerationPrompt(input) {
     previous: values.previous ? 40 : 0,
     excerpt: 80,
     canon: values.canon ? 60 : 0,
+    // Имена персонажей с портретом не сокращаются: без них модель не поймёт,
+    // к кому относятся приложенные картинки.
+    portraits: values.portraits.length,
     book: 40,
     artDirection: 60,
     genreLabel: 18
