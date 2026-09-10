@@ -30,10 +30,12 @@ export const EXTERNAL_EVIDENCE_PROFILE_VERSION = 'external-evidence-profile-v1'
 // Версия меняется всякий раз, когда меняется поведение конвейера: по ней
 // считается ключ прогона, и прогоны разных версий не переиспользуются.
 //
-// v2: соседство имён снимает запрет по со-упоминанию, `mentioned` отделяет
-// названное лицо от действующего, карточка требует утверждений вместо строк.
+// v2: `mentioned` отделяет названное лицо от действующего, карточка требует
+//     утверждений вместо строк.
 // v3: полное русское имя, названное однажды, связывает фамилию с отчеством.
-export const CARDS_PIPELINE_IMPLEMENTATION_VERSION = 'cards-v3'
+// v4: запрет по со-упоминанию снова абсолютен — снятый по соседству, он дал
+//     склейку тридцати трёх кандидатов «Обломова» в одного человека.
+export const CARDS_PIPELINE_IMPLEMENTATION_VERSION = 'cards-v4'
 export const CARDS_PIPELINE_INVENTORY_VERSION = 'name-inventory-v1'
 export const CARDS_PIPELINE_CARD_VERSION = 'character-card-v1'
 export const CARDS_PIPELINE_CONFIRMATION_VERSION = 'roster-confirm-v1'

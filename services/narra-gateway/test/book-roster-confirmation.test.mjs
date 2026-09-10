@@ -628,38 +628,36 @@ test('an explicit merge on a co-mentioned pair is still refused', () => {
   assert.equal(applyRosterConfirmation({ request, candidates, confirmation }).length, 2)
 })
 
-test('names that stand next to each other survive the co-mention veto', () => {
-  // «Обломов» и «Илья» стоят в одних абзацах постоянно — это обычный русский
-  // приём, когда одного человека называют то по имени, то по фамилии. Запрет
-  // по со-упоминанию держал ровно ту пару, которую надо было слить: до модели
-  // она не доходила, и «Обломов» с «Ильёй» остались двумя людьми, а «Штольц» с
-  // «Андреем» — ещё двумя.
+test('the co-mention veto stays absolute, because no share of it separates people', () => {
+  // Пробовали снимать его соседством: в диалогах имена стоят рядом постоянно
+  // («сказал Обломов Захару»), и на «Обломове» это дало склейку тридцати трёх
+  // кандидатов в одного человека — вместе с Захаром, Штольцем и Обломовкой.
+  //
+  // Сама доля со-упоминаний персонажей тоже не разделяет: у пар, которые надо
+  // слить, она от 1 % до 80 %, у пар разных людей — от 3 % до 30 %. Диапазоны
+  // перекрываются целиком.
   const rows = [
     candidate({
       candidateKey: 'name:oblomov',
       displayName: 'Обломов',
       count: 1185,
-      adjacentNames: [{ candidateKey: 'name:ilya', count: 2 }]
+      adjacentNames: [{ candidateKey: 'name:zahar', count: 11 }]
     }),
     candidate({
-      candidateKey: 'name:ilya',
-      displayName: 'Илья',
-      count: 318,
-      adjacentNames: [{ candidateKey: 'name:oblomov', count: 2 }]
+      candidateKey: 'name:zahar',
+      displayName: 'Захар',
+      count: 598,
+      adjacentNames: [{ candidateKey: 'name:oblomov', count: 11 }]
     })
   ]
   const fragments = fragmentsFor([
     ['name:oblomov', [1, 2, 3, 4, 5]],
-    ['name:ilya', [1, 2, 3, 6, 7]]
+    ['name:zahar', [1, 2, 3, 6, 7]]
   ])
-  assert.deepEqual(rosterForbiddenPairs(rows, { fragments }), [])
-  const pairs = rosterCandidatePairs(rows, { forbiddenPairs: [] })
-  assert.equal(pairs.length, 1)
-  assert.ok(pairs[0].signals.includes('adjacent_full_name'))
-
-  // Двое участников сцены рядом не стоят, и запрет для них остаётся.
-  const apart = rows.map((row) => ({ ...row, adjacentNames: [] }))
-  assert.equal(rosterForbiddenPairs(apart, { fragments })[0].reason, 'co_mentioned_participants')
+  const forbidden = rosterForbiddenPairs(rows, { fragments })
+  assert.equal(forbidden.length, 1)
+  assert.equal(forbidden[0].reason, 'co_mentioned_participants')
+  assert.deepEqual(rosterCandidatePairs(rows, { forbiddenPairs: forbidden }), [])
 })
 
 test('adjacency does not reconcile a gender conflict', () => {
