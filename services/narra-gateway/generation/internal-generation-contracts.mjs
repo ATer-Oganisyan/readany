@@ -15,6 +15,23 @@ import {
 import {
   BOOK_TTS_MARKUP_VERSION
 } from '../tts/book-tts-markup.mjs'
+import { MAX_CARD_TRAITS } from '../analysis/book-character-card-contract.mjs'
+import {
+  APPEARANCE_TRAIT_EVIDENCE,
+  BLOCKED_TRAIT_KEYS,
+  CONJOINED_TRAIT_VALUE,
+  CORRECTED_HEARSAY_TRAIT_EVIDENCE,
+  DIRECT_ONLY_TRAIT_KEYS,
+  NEGATED_TRAIT_PATTERNS,
+  TEMPORARY_TRAIT_MARKERS,
+  TEMPORARY_TRAIT_PHRASES,
+  TRAIT_CONFLICT_KEYS,
+  durableTraitPhrasing,
+  normalizedTraitValue,
+  quoteNamesTrait,
+  traitConceptKey,
+  traitMentionIndices
+} from '../analysis/personality-trait-lexicon.mjs'
 
 /**
  * Контракты внутреннего generation API: нормализация и валидация запросов и
@@ -1227,99 +1244,29 @@ function normalizeGroundedProfileClaims(rawClaims, name, evidenceById, allowedTy
   return { claims, dropped }
 }
 
-const BLOCKED_PERSONALITY_VALUES = new Set([
-  'accomplished', 'admiring', 'artistic', 'beautiful', 'female', 'handsome', 'happy',
-  'housewifely', 'male', 'musical', 'rich', 'storytelling', 'strong', 'talented', 'wealthy',
-  'артистичный', 'богатый', 'женщина', 'красивый', 'мужчина', 'музыкальный',
-  'сильный', 'счастливый', 'талантливый', 'умелый', 'хозяйственный'
-])
-const DIRECT_ONLY_PERSONALITY_VALUES = new Set([
-  'anxious', 'distressed', 'worried',
-  'встревоженный', 'обеспокоенный', 'тревожный'
-])
 const MIN_PERSONALITY_CLAIM_CONFIDENCE = 0.8
-const PERSONALITY_SYNONYMS = new Map([
-  ['kind hearted', 'kind'], ['kindly', 'kind'], ['good natured', 'kind'],
-  ['self reliant', 'independent'], ['strong willed', 'determined'],
-  ['добросердечный', 'добрый'], ['добродушный', 'добрый'],
-  ['самостоятельный', 'независимый']
-])
-const PERSONALITY_CONFLICTS = [
-  ['good tempered', 'quick tempered'],
-  ['humble', 'vain'],
-  ['honest', 'dishonest'],
-  ['kind', 'cruel'],
-  ['principled', 'unprincipled'],
-  ['responsible', 'irresponsible'],
-  ['selfish', 'selfless'],
-  ['добрый', 'жестокий'],
-  ['ответственный', 'безответственный'],
-  ['скромный', 'тщеславный'],
-  ['честный', 'нечестный']
-]
-const TEMPORARY_TRAIT_MARKERS = new Set([
-  'appeared', 'felt', 'looked', 'momentarily', 'seemed', 'temporarily', 'today',
-  'выглядел', 'выглядела', 'казался', 'казалась', 'сегодня', 'чувствовал',
-  'чувствовала'
-])
-const TEMPORARY_TRAIT_PHRASES = [
-  ['wore', 'off'], ['soon', 'passed'], ['ceased', 'to', 'be'], ['no', 'longer'],
-  ['only', 'at', 'first'], ['now', 'and', 'then'], ['вскоре', 'прошло'],
-  ['больше', 'не'], ['только', 'сначала']
-]
-const DURABLE_TRAIT_ATTRIBUTION = /\b(?:by nature|constitutionally|habitually|always|never|chief (?:defect|quality|virtue)|made (?:him|her|them) (?:an? )?(?:very )?)\b/iu
-const APPEARANCE_TRAIT_EVIDENCE = /\b(?:countenance|facial expression|expression on (?:his|her|their) face|выражени[ея] лица|лицо выражало)\b/iu
-const CORRECTED_HEARSAY_TRAIT_EVIDENCE = /\b(?:said|thought|reported|believed|supposed|rumou?red|считали|говорили|полагали)\b[^.!?]{0,160}\b(?:but|however|only|но|однако|лишь)\b/iu
-const NEGATED_PERSONALITY_PATTERNS = new Map([
-  ['honest', /\b(?:dishonest|lack(?:ed|ing)? honesty|not honest|without honesty)\b/iu],
-  ['kind', /\b(?:cruel|not kind|unkind)\b/iu],
-  ['principled', /\b(?:lack(?:ed|ing)? (?:in )?principle|not principled|unprincipled|want of principle|without principle)\b/iu],
-  ['responsible', /\b(?:irresponsible|not responsible)\b/iu],
-  ['selfish', /\b(?:selfless|not selfish)\b/iu],
-  ['добрый', /\b(?:жесток(?:ий|ая)|недобр(?:ый|ая)|не добр(?:ый|ая))\b/iu],
-  ['ответственный', /\b(?:безответственн(?:ый|ая)|не ответственн(?:ый|ая))\b/iu],
-  ['честный', /\b(?:нечестн(?:ый|ая)|не честн(?:ый|ая))\b/iu]
-])
 
+/**
+ * Словари черт живут в `generation/personality-trait-lexicon.mjs`: они выросли
+ * до размера, на котором внутри этого файла их уже нельзя было прочитать
+ * целиком, а прочитать нужно — от их полноты зависит, что аудит считает чертой.
+ * Там же русская морфология: сравнение по основе, а не по строке.
+ */
 function normalizedPersonalityValue(value) {
-  return String(value || '')
-    .normalize('NFKC')
-    .toLocaleLowerCase('ru-RU')
-    .replace(/ё/g, 'е')
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
-    .trim()
-    .replace(/\s+/g, ' ')
+  return normalizedTraitValue(value)
 }
 
 function personalityConcept(value) {
-  const normalized = normalizedPersonalityValue(value)
-  return PERSONALITY_SYNONYMS.get(normalized) ?? normalized
+  return traitConceptKey(value)
 }
 
 function quoteSupportsTraitLexeme(value, quote) {
-  const valueTokens = normalizedPersonalityValue(value).split(' ')
-    .filter((token) => token.length >= 3)
-  const quoteTokens = normalizedPersonalityValue(quote).split(' ')
-    .filter((token) => token.length >= 3)
-  return valueTokens.some((valueToken) => quoteTokens.some((quoteToken) => {
-    if (valueToken === quoteToken) return true
-    if (valueToken.length < 4 || quoteToken.length < 4) return false
-    const prefixLength = Math.min(5, valueToken.length, quoteToken.length)
-    return prefixLength >= 4 && valueToken.slice(0, prefixLength) === quoteToken.slice(0, prefixLength)
-  }))
+  return quoteNamesTrait(value, quote)
 }
 
 function temporaryTraitAttribution(value, quote) {
-  const valueTokens = normalizedPersonalityValue(value).split(' ')
-    .filter((token) => token.length >= 3)
-  const quoteTokens = normalizedPersonalityValue(quote).split(' ').filter(Boolean)
-  const traitIndices = quoteTokens.flatMap((quoteToken, index) => valueTokens.some((valueToken) => {
-    if (valueToken === quoteToken) return true
-    if (valueToken.length < 4 || quoteToken.length < 4) return false
-    const prefixLength = Math.min(5, valueToken.length, quoteToken.length)
-    return valueToken.slice(0, prefixLength) === quoteToken.slice(0, prefixLength)
-  }) ? [index] : [])
-  return traitIndices.some((index) => {
+  const quoteTokens = normalizedTraitValue(quote).split(' ').filter(Boolean)
+  return traitMentionIndices(value, quoteTokens).some((index) => {
     const nearby = quoteTokens.slice(Math.max(0, index - 6), index + 7)
     if (nearby.some((token) => TEMPORARY_TRAIT_MARKERS.has(token))) return true
     return TEMPORARY_TRAIT_PHRASES.some((phrase) => nearby.some((_, start) =>
@@ -1329,9 +1276,8 @@ function temporaryTraitAttribution(value, quote) {
 }
 
 function durableTraitAttribution(value, quote) {
-  if (!quoteSupportsTraitLexeme(value, quote)) return false
-  if (DURABLE_TRAIT_ATTRIBUTION.test(quote)) return true
-  return /\b(?:is|was|were)\s+(?:an?\s+)?(?:very\s+)?[\p{L}-]+(?:\s+[\p{L}-]+){0,2}\s+(?:man|woman|person|boy|girl)\b/iu.test(quote)
+  if (!quoteNamesTrait(value, quote)) return false
+  return durableTraitPhrasing(quote, value)
 }
 
 function traitSceneOffsets(evidence, sceneGap) {
@@ -1348,12 +1294,15 @@ function traitSceneOffsets(evidence, sceneGap) {
   return scenes
 }
 
-function traitSupport(claim, evidenceById, textLength, sceneGapOverride) {
+function traitSupport(claim, evidenceById, textLength, sceneGapOverride, options = {}) {
+  const { minConfidence = MIN_PERSONALITY_CLAIM_CONFIDENCE, reject = () => {} } = options
   const value = normalizedPersonalityValue(claim.value)
   const words = value.split(' ').filter(Boolean)
-  if (!value || words.length > 5 || BLOCKED_PERSONALITY_VALUES.has(value) ||
-      /\b(?:and|or|и|или)\b/iu.test(value) ||
-      claim.confidence < MIN_PERSONALITY_CLAIM_CONFIDENCE) return null
+  if (!value) return reject(claim, 'empty_value')
+  if (words.length > 5) return reject(claim, 'too_many_words')
+  if (BLOCKED_TRAIT_KEYS.has(personalityConcept(value))) return reject(claim, 'not_a_trait')
+  if (CONJOINED_TRAIT_VALUE.test(value)) return reject(claim, 'two_traits_in_one')
+  if (claim.confidence < minConfidence) return reject(claim, 'low_confidence')
   const evidence = claim.evidenceIds.map((id) => evidenceById.get(id)).filter(Boolean)
   const relevant = evidence.filter(({ type }) =>
     type === 'character_trait' || type === 'character_action' || type === 'character_dialogue'
@@ -1364,19 +1313,21 @@ function traitSupport(claim, evidenceById, textLength, sceneGapOverride) {
     return !APPEARANCE_TRAIT_EVIDENCE.test(text) &&
       !CORRECTED_HEARSAY_TRAIT_EVIDENCE.test(text)
   })
-  if (!supporting.length) return null
+  if (!supporting.length) return reject(claim, 'no_usable_evidence')
   const evidenceText = supporting.map(({ fact, quote }) => `${fact || ''} ${quote || ''}`).join(' ')
-  const contradiction = NEGATED_PERSONALITY_PATTERNS.get(personalityConcept(value))
-  if (contradiction?.test(evidenceText)) return null
+  const contradiction = NEGATED_TRAIT_PATTERNS.get(personalityConcept(value))
+  if (contradiction?.test(evidenceText)) return reject(claim, 'contradicted_by_quote')
   const direct = supporting.filter(({ type, quote }) =>
     !temporaryTraitAttribution(value, quote) &&
     quoteSupportsTraitLexeme(value, quote) &&
     (type === 'character_trait' || durableTraitAttribution(value, quote))
   )
-  if (DIRECT_ONLY_PERSONALITY_VALUES.has(personalityConcept(value)) && !direct.length) return null
+  if (DIRECT_ONLY_TRAIT_KEYS.has(personalityConcept(value)) && !direct.length) {
+    return reject(claim, 'state_without_direct_statement')
+  }
   const sceneGap = sceneGapOverride ?? Math.max(2_000, Math.ceil(textLength * 0.02))
   const scenes = traitSceneOffsets(supporting, sceneGap)
-  if (!direct.length && scenes.length < 2) return null
+  if (!direct.length && scenes.length < 2) return reject(claim, 'single_scene')
   const offsets = supporting.map(({ startOffset }) => startOffset)
   return {
     claim,
@@ -1399,6 +1350,9 @@ function compareTraitSupport(left, right) {
   return compareTraitStrength(left, right) || left.concept.localeCompare(right.concept)
 }
 
+/** Сколько черт оставляет аудит профиля персонажа. */
+export const MAX_PROFILE_TRAITS = 4
+
 /**
  * @param {object} [options]
  * @param {number} [options.sceneGap] чем считать «другую сцену».
@@ -1407,19 +1361,48 @@ function compareTraitSupport(left, right) {
  *   абзац, и абзацы не пересекаются: два процитированных фрагмента уже два
  *   разных места книги, а порог в 2% окна для них недостижим и снимал все
  *   черты подряд.
+ * @param {number} [options.maxTraits] потолок числа черт. Он был зашит
+ *   константой 4, и это молча решало за карточку: промпт обещает модели
+ *   MAX_TRAITS=6, контракт карточки допускает 6, а срез оставлял 4 — все
+ *   сильные карточки Верна встали ровно на 4, то есть решал потолок, а не
+ *   доказательства.
+ * @param {number} [options.minConfidence] порог самооценки модели. У профиля
+ *   уверенность приходит из отдельного вызова-аудита и потому что-то значит;
+ *   у карточки её выставляет тот же вызов, который сделал утверждение, поэтому
+ *   независимого свидетельства в ней нет — там порог снимается, и решают
+ *   доказательства: два фрагмента или прямое авторское утверждение.
+ * @param {(claim: object, reason: string) => void} [options.onReject] куда
+ *   сообщать о снятой черте. Без этого аудит удалял черты, не считая их:
+ *   `droppedTraitCount` оставался нулём там, где черты исчезли, и настраивать
+ *   фильтр было нечем.
  */
-export function filterStableTraits(claims, evidenceById, textLength, { sceneGap } = {}) {
+export function filterStableTraits(claims, evidenceById, textLength, {
+  sceneGap,
+  maxTraits = MAX_PROFILE_TRAITS,
+  minConfidence = MIN_PERSONALITY_CLAIM_CONFIDENCE,
+  onReject = null
+} = {}) {
+  const report = (claim, reason) => {
+    if (onReject) onReject(claim, reason)
+    return null
+  }
   const byConcept = new Map()
   for (const claim of claims) {
-    const support = traitSupport(claim, evidenceById, textLength, sceneGap)
+    const support = traitSupport(claim, evidenceById, textLength, sceneGap, {
+      minConfidence,
+      reject: report
+    })
     if (!support) continue
     const current = byConcept.get(support.concept)
     if (!current || compareTraitSupport(support, current) < 0) {
+      if (current) report(current.claim, 'duplicate_concept')
       byConcept.set(support.concept, support)
+    } else {
+      report(claim, 'duplicate_concept')
     }
   }
   const removed = new Set()
-  for (const [leftConcept, rightConcept] of PERSONALITY_CONFLICTS) {
+  for (const [leftConcept, rightConcept] of TRAIT_CONFLICT_KEYS) {
     const left = byConcept.get(leftConcept)
     const right = byConcept.get(rightConcept)
     if (!left || !right) continue
@@ -1431,11 +1414,15 @@ export function filterStableTraits(claims, evidenceById, textLength, { sceneGap 
       removed.add(rightConcept)
     }
   }
-  return [...byConcept.values()]
-    .filter(({ concept }) => !removed.has(concept))
+  const ranked = [...byConcept.values()]
+    .filter(({ concept }) => {
+      if (!removed.has(concept)) return true
+      report(byConcept.get(concept).claim, 'conflicting_pair')
+      return false
+    })
     .sort(compareTraitSupport)
-    .slice(0, 4)
-    .map(({ claim }) => claim)
+  for (const { claim } of ranked.slice(maxTraits)) report(claim, 'over_cap')
+  return ranked.slice(0, maxTraits).map(({ claim }) => claim)
 }
 
 const DESCRIPTION_FALLBACK_PRIORITY = new Map([
@@ -2018,12 +2005,28 @@ export function normalizeCharacterCardResult(value, input) {
       withConfidence: true
     }))
     .filter(Boolean)
+  // Причины снятия собираются, а не теряются: без них `droppedTraitCount`
+  // оставался нулём там, где черты исчезли, и две итерации правки промпта шли
+  // против невидимого фильтра.
+  const traitRejections = {}
   const stable = filterStableTraits(
     traitCandidates.map(({ value: traitValue, fragmentIds: ids, confidence }) =>
       ({ value: traitValue, evidenceIds: ids, confidence })),
     evidenceById,
     windowLength,
-    { sceneGap: 1 }
+    {
+      sceneGap: 1,
+      maxTraits: MAX_CARD_TRAITS,
+      // Уверенность карточки выставляет тот же вызов, который сделал
+      // утверждение: независимого свидетельства в ней нет, и порог по ней
+      // отбрасывал честно осторожную черту, тогда как не названная
+      // уверенность подставлялась ровно на пороге и проходила. Решают
+      // доказательства.
+      minConfidence: 0,
+      onReject: (_claim, reason) => {
+        traitRejections[reason] = (traitRejections[reason] ?? 0) + 1
+      }
+    }
   )
   const traits = stable.map(({ value: traitValue, evidenceIds, confidence }) => ({
     value: traitValue,
@@ -2068,7 +2071,8 @@ export function normalizeCharacterCardResult(value, input) {
     card,
     providerTraitCount: Array.isArray(source.traits) ? source.traits.length : 0,
     acceptedTraitCount: traits.length,
-    droppedTraitCount: Math.max(0, traitCandidates.length - traits.length)
+    droppedTraitCount: Math.max(0, traitCandidates.length - traits.length),
+    traitRejections
   }
 }
 

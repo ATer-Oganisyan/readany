@@ -372,6 +372,13 @@ export function finalizeCharacterCard({
       windowFragmentCount: windowFragments.length,
       droppedTraitCount: traitResult.dropped + Math.max(0, traitResult.kept.length - traits.length),
       droppedLocationCount: locationResult.dropped,
+      // Что именно снял аудит устойчивости, и по какой причине. Считает
+      // `filterStableTraits` на стороне генератора; здесь эти числа только
+      // переносятся в отчёт, потому что иначе они теряются между двумя
+      // приёмками, и снятие черт остаётся невидимым.
+      providerTraitCount: result?.providerTraitCount ?? null,
+      stableTraitCount: result?.acceptedTraitCount ?? null,
+      traitRejections: result?.traitRejections ?? {},
       roleAccepted: Boolean(role),
       citedFragmentCount: validated.referencedFragmentCount ?? 0
     }

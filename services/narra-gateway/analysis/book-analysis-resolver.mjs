@@ -95,13 +95,87 @@ const GENERATIONAL_CHARACTER_TOKENS = new Set([
   'старшая', 'младший', 'младшая', 'сын', 'дочь', 'мать', 'отец', 'сестра', 'брат'
 ])
 const NAME_CONNECTOR_TOKENS = new Set(['of', 'de', 'del', 'della', 'di', 'du', 'van', 'von'])
-const SIGNED_NAME_CUE = /\b(?:sign(?:s|ed|ing)?\s+(?:my|her|his|their|the)\s+name|sign(?:s|ed|ing)?\s+(?:myself|herself|himself|themself|themselves)\s+(?:as\s+)?)\b|\bподпис\p{L}*\s+(?:именем|как)\b/iu
-const LETTER_SIGNATURE_CUE = /\b(?:signer|signature|signed)\b|\b(?:подпис\p{L}*|автор\p{L}*)\b/iu
-const LETTER_REPLY_CUE = /\b(?:answer(?:ed|ing)?|repl(?:y|ied|ies|ying)|thank(?:ed|ing)?)\b|\b(?:ответ\p{L}*|отвеч\p{L}*|поблагодар\p{L}*|благодар\p{L}*)\b/iu
-const LETTER_CUE = /\b(?:letter|note|epistle)\b|\b(?:письм\p{L}*|записк\p{L}*|послани\p{L}*)\b/iu
+/**
+ * Границы слова для кириллицы.
+ *
+ * `\b` в JavaScript определён по ASCII: между пробелом и «ж» границы для него
+ * нет, поэтому `/\bжена\b/u` не совпадает никогда. Русские половины всех
+ * подсказок ниже были написаны именно так и не срабатывали ни разу — на русской
+ * книге резолвер работал без родственных и брачных подсказок вообще, а тесты
+ * этого не показывали, потому что восемь из десяти замороженных фикстур
+ * англоязычные. Здесь границы заданы lookaround'ом по `\p{L}`, который работает
+ * в обеих письменностях.
+ *
+ * `trailing: false` — для шаблонов, кончающихся на `\s+`: замыкающая граница
+ * после пробела запрещала бы следующее слово, тогда как `\b` там её допускал.
+ */
+function wordBounded(pattern, { trailing = true } = {}) {
+  const tail = trailing ? '(?!\\p{L})' : ''
+  return new RegExp(`(?<!\\p{L})(?:${pattern})${tail}`, 'iu')
+}
+
+/**
+ * Русские падежные формы перечислены, а не срезаны префиксом.
+ *
+ * Префикс дешевле, но `жен\p{L}*` совпадает с «женщина», а `муж\p{L}*` — с
+ * «мужество» и «мужик», которых у Достоевского на страницу по нескольку. Такая
+ * подсказка гасит слияние там, где о браке речи нет, поэтому формы выписаны, а
+ * ложные соседи закрыты отрицательным просмотром.
+ */
+const RU_SPOUSE_FORMS = [
+  'жен(?!щин)\\p{L}*',
+  'муж(?!еств|ик|чин)\\p{L}*',
+  'супруг\\p{L}*',
+  'брак\\p{L}*',
+  'свадьб\\p{L}*',
+  'помолв\\p{L}*',
+  'венча\\p{L}*'
+].join('|')
+
+const RU_KINSHIP_FORMS = [
+  'мат(?:ь|ери|ерью|ерям|ерями|ерях)',
+  'мамаш\\p{L}*',
+  'от(?:ец|ца|цу|цом|це|цы|цов|цам)',
+  'доч(?:ь|ери|ерью|ерям|ерями|ерях|ек)',
+  'сын(?:а|у|ом|е|ы|ов|овья|овей|овьям|овьями)?',
+  'сестр(?:а|ы|е|у|ой|ою|ам|ах|ами)|сестер',
+  'брат(?:а|у|ом|е|ья|ьев|ьям|ьями|ьях)?',
+  'родител\\p{L}*',
+  'ребен(?:ок|ка|ку|ком|ке)|дет(?:и|ей|ям|ьми|ях)',
+  'тет(?:я|и|е|ю|ей|ею|ка|ки|ке|ку|кой|кою)',
+  'дяд(?:я|и|е|ю|ей|ею|ька|ьки|ьке)',
+  'племянн\\p{L}*',
+  RU_SPOUSE_FORMS
+].join('|')
+
+const SIGNED_NAME_CUE = wordBounded([
+  'sign(?:s|ed|ing)?\\s+(?:my|her|his|their|the)\\s+name',
+  '|sign(?:s|ed|ing)?\\s+(?:myself|herself|himself|themself|themselves)\\s+(?:as\\s+)?',
+  '|подпис\\p{L}*\\s+(?:именем|как)\\s*'
+].join(''), { trailing: false })
+const LETTER_SIGNATURE_CUE = wordBounded([
+  'signer|signature|signed',
+  '|подпис(?!чик)\\p{L}*|автор\\p{L}*'
+].join(''))
+const LETTER_REPLY_CUE = wordBounded([
+  'answer(?:ed|ing)?|repl(?:y|ied|ies|ying)|thank(?:ed|ing)?',
+  '|ответ(?!ствен)\\p{L}*|отвеч\\p{L}*|поблагодар\\p{L}*|благодар\\p{L}*'
+].join(''))
+const LETTER_CUE = wordBounded([
+  'letter|note|epistle',
+  // «письменный» — не письмо.
+  '|письм(?!енн)\\p{L}*|записк\\p{L}*|послани\\p{L}*|весточк\\p{L}*'
+].join(''))
 const FIRST_NAME_DECLARATION_CUE = /\bmy first name is\s+([\p{L}'’.-]+)/iu
-const SPOUSE_CUE = /\b(?:wife|husband|spouse|marri(?:ed|age)|wedding|engaged\s+to\s+be\s+married)\b|\b(?:жен\p{L}*|муж\p{L}*|супруг\p{L}*|брак\p{L}*|свадьб\p{L}*|помолв\p{L}*)\b/iu
-const DISTINCT_KINSHIP_CUE = /\b(?:mother|father|daughter|son|sister|brother|parent|child|aunt|uncle|niece|nephew|wife|husband|spouse)\b|\b(?:мать|отец|дочь|сын|сестра|брат|родител\p{L}*|ребен\p{L}*|тет\p{L}*|дяд\p{L}*|племян\p{L}*|жен\p{L}*|муж\p{L}*|супруг\p{L}*)\b/iu
+const SPOUSE_CUE = wordBounded([
+  'wife|husband|spouse|marri(?:ed|age)|wedding|engaged\\s+to\\s+be\\s+married',
+  `|${RU_SPOUSE_FORMS}`
+].join(''))
+const DISTINCT_KINSHIP_CUE = wordBounded([
+  'mother|father|daughter|son|sister|brother|parent|child|aunt|uncle|niece|nephew',
+  '|wife|husband|spouse',
+  `|${RU_KINSHIP_FORMS}`
+].join(''))
 const OWNED_KINSHIP_GENDERS = new Map([
   ['father', 'male'], ['son', 'male'],
   ['brother', 'male'],
@@ -2472,5 +2546,24 @@ export function resolveBookAnalysisEntities({ observations: rawObservations, ide
   )
   return entities
 }
+
+/**
+ * Подсказки идентичности, вынесенные наружу ради регрессионного теста.
+ *
+ * Русские половины всех шести были написаны внутри `\b`, который в JavaScript
+ * определён по ASCII, и потому не срабатывали ни разу: на русской книге
+ * резолвер работал без них, а тесты этого не показывали, потому что шли на
+ * англоязычных фикстурах. Проверять каждую через `resolveBookAnalysisEntities`
+ * неудобно — подсказка гасит один узкий путь слияния и в других сценариях
+ * невидима, — поэтому регрессия закреплена на самих шаблонах.
+ */
+export const BOOK_IDENTITY_CUES = Object.freeze({
+  signedName: SIGNED_NAME_CUE,
+  letterSignature: LETTER_SIGNATURE_CUE,
+  letterReply: LETTER_REPLY_CUE,
+  letter: LETTER_CUE,
+  spouse: SPOUSE_CUE,
+  distinctKinship: DISTINCT_KINSHIP_CUE
+})
 
 export const BOOK_ANALYSIS_ALIAS_CONFIDENCE = ALIAS_CONFIDENCE

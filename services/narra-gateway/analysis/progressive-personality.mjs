@@ -1,3 +1,5 @@
+import { CONJOINED_TRAIT_VALUE } from './personality-trait-lexicon.mjs'
+
 const PERSONALITY_EVIDENCE_TYPES = new Set([
   'character_trait',
   'character_action',
@@ -76,7 +78,7 @@ function normalizedTraitValue(value, name) {
   const trimmed = value.trim().replace(/\s+/gu, ' ')
   const words = normalizedText(trimmed).split(' ').filter(Boolean)
   if (!trimmed || trimmed.length > 120 || words.length > 5 ||
-      /\b(?:and|or|и|или)\b/iu.test(trimmed)) {
+      CONJOINED_TRAIT_VALUE.test(trimmed)) {
     invalid(`${name}.value is invalid`)
   }
   return trimmed

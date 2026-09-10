@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   cardSceneGapChars,
   characterCardMessages,
+  filterStableTraits,
   normalizeCharacterCardRequest,
   normalizeCharacterCardResult
 } from '../generation/internal-generation-contracts.mjs'
@@ -134,6 +135,92 @@ test('the trait audit keeps a two-scene trait and drops a single-scene one', () 
   assert.deepEqual(result.card.traits.map(({ value }) => value), ['observant'])
   assert.equal(result.providerTraitCount, 2)
   assert.equal(result.droppedTraitCount, 1)
+})
+
+test('the audit says what it removed and why', () => {
+  // Раньше снятия были не видны: `droppedTraitCount` считал только
+  // необоснованные ссылки, и две итерации правки промпта шли против фильтра,
+  // вывод которого нельзя было прочитать.
+  const normalized = normalizeCharacterCardRequest(request())
+  const result = normalizeCharacterCardResult({
+    bio: { value: 'Elizabeth lives at Longbourn.', fragmentIds: ['frag:char:elizabeth:0'] },
+    traits: [
+      { value: 'kind', fragmentIds: ['frag:char:elizabeth:0'], confidence: 0.9 },
+      { value: 'beautiful', fragmentIds: ['frag:char:elizabeth:1', 'frag:char:elizabeth:2'], confidence: 0.9 },
+      { value: 'kind and honest', fragmentIds: ['frag:char:elizabeth:1', 'frag:char:elizabeth:2'], confidence: 0.9 }
+    ],
+    gender: 'female'
+  }, normalized)
+
+  assert.deepEqual(result.card.traits, [])
+  assert.deepEqual(result.traitRejections, {
+    single_scene: 1,
+    not_a_trait: 1,
+    two_traits_in_one: 1
+  })
+})
+
+test('the card audit keeps up to MAX_TRAITS, not a hidden four', () => {
+  // Промпт обещает модели MAX_TRAITS=6, контракт карточки допускает 6, а срез
+  // в `filterStableTraits` оставлял 4 — и все сильные карточки Верна встали
+  // ровно на 4, то есть решал потолок, а не доказательства.
+  const fragments = Array.from({ length: 14 }, (_, index) =>
+    fragment(index, `Elizabeth showed her quality number ${index} again.`, index * 3_000))
+  const normalized = normalizeCharacterCardRequest(request({ fragments }))
+  const values = ['observant', 'loyal', 'brave', 'patient', 'curious', 'stubborn', 'generous']
+  const result = normalizeCharacterCardResult({
+    bio: { value: 'Elizabeth lives at Longbourn.', fragmentIds: [fragments[0].id] },
+    traits: values.map((value, index) => ({
+      value,
+      fragmentIds: [fragments[index].id, fragments[index + 7].id],
+      confidence: 0.9
+    })),
+    gender: 'female'
+  }, normalized)
+
+  assert.equal(result.card.traits.length, 6)
+  assert.equal(result.traitRejections.over_cap, 1)
+})
+
+test('a hedged confidence survives on the card path and dies on the profile path', () => {
+  // На карточке уверенность выставляет тот же вызов, который сделал
+  // утверждение: независимого свидетельства в ней нет. У профиля она приходит
+  // из отдельного вызова-аудита, и там порог остаётся.
+  const normalized = normalizeCharacterCardRequest(request())
+  const result = normalizeCharacterCardResult({
+    bio: { value: 'Elizabeth lives at Longbourn.', fragmentIds: ['frag:char:elizabeth:0'] },
+    traits: [{
+      value: 'observant',
+      fragmentIds: ['frag:char:elizabeth:1', 'frag:char:elizabeth:2'],
+      confidence: 0.62
+    }],
+    gender: 'female'
+  }, normalized)
+  assert.deepEqual(result.card.traits.map(({ value }) => value), ['observant'])
+
+  // Цитаты обязаны различаться: аудит считает сценой место книги, а два
+  // дословно одинаковых абзаца — одно место, не два.
+  const evidenceById = new Map([
+    ['frag:char:elizabeth:1', 'Elizabeth observed that the guest was watching her.'],
+    ['frag:char:elizabeth:2', 'Elizabeth observed the same habit again and said nothing.']
+  ].map(([id, quote], index) => [id, {
+    id,
+    type: 'character_action',
+    fact: '',
+    quote,
+    startOffset: index * 40_000,
+    confidence: 1
+  }]))
+  const profileClaims = [{
+    value: 'observant',
+    evidenceIds: [...evidenceById.keys()],
+    confidence: 0.62
+  }]
+  assert.deepEqual(filterStableTraits(profileClaims, evidenceById, 100_000), [])
+  assert.deepEqual(
+    filterStableTraits(profileClaims, evidenceById, 100_000, { minConfidence: 0 }),
+    profileClaims
+  )
 })
 
 test('a blocked personality value never becomes a trait', () => {
