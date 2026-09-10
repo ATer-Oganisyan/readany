@@ -41,6 +41,12 @@ export function createCharacterCardRunner({
   if (!repository || !storage || !generator) {
     throw new TypeError('repository, storage and generator are required')
   }
+  // Цепочка окон — часть контракта воркера, а не необязательное украшение:
+  // без неё книга получит карточки только первых глав, и заметить это можно
+  // будет лишь по тому, что остальные окна навсегда остались `queued`.
+  if (typeof repository.advanceCardWindows !== 'function') {
+    throw new TypeError('repository must advance card windows')
+  }
   const log = createOperationalLogger({ component: 'character-card', logger })
 
   async function readNormalizedText(input) {
@@ -128,6 +134,23 @@ export function createCharacterCardRunner({
         media_status: published?.media?.status ?? 'unknown',
         duration_ms: Date.now() - startedAt
       })
+      // Цепочку окон двигает тот, кто закончил карточку: окно закрывается,
+      // когда его карточки кончились, и следующее ставится тогда же. До этого
+      // цепочку не двигал никто — окна после первого не ставились вовсе, и
+      // книга получала карточки только первых глав.
+      const advanced = await repository.advanceCardWindows({
+        runId: input.runId,
+        bookEditionId: input.bookEditionId
+      })
+      if (advanced?.closed?.length || advanced?.enqueued?.created) {
+        log.info('card.window_advanced', 'Окно карточек продвинуто', {
+          run: input.runId,
+          edition: input.bookEditionId,
+          closed: advanced.closed,
+          enqueued_window: advanced.enqueued?.windowIndex ?? null,
+          enqueued_cards: advanced.enqueued?.created ?? 0
+        })
+      }
       return {
         characterKey: input.characterKey,
         cardRevision: finalized.cardRevision,

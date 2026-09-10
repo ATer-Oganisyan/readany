@@ -2727,6 +2727,14 @@ export function createPostgresBookMarkupRepository(pool, {
         [runId]
       )
       if (!windows.rows.length) return { closed: [], enqueued: null }
+      // Область видимости — свойство книги, а не аргумент вызывающего:
+      // воркер карточки о ней не знает, а ошибиться здесь значит либо
+      // остановить каталог, либо раскатать приватную книгу вперёд читателя.
+      const bookScope = scope ?? (await pool.query(
+        'SELECT scope FROM book_editions WHERE id = $1',
+        [bookEditionId]
+      )).rows[0]?.scope
+      if (!bookScope) return { closed: [], enqueued: null }
       const closed = []
       for (const row of windows.rows) {
         if (row.status !== 'running') continue
@@ -2762,12 +2770,26 @@ export function createPostgresBookMarkupRepository(pool, {
         status: row.status
       }))
       const maxChapterIndex = cardWindowChapterFrontier({
-        scope,
+        scope: bookScope,
         windows: scheduleWindows,
         readerTextOffset
       })
       const next = nextCardWindow({ windows: scheduleWindows, maxChapterIndex })
       if (!next) return { closed, enqueued: null, maxChapterIndex }
+      // Дальше первого окна цепочка не идёт, пока состав книги не подтверждён
+      // целиком. До полного захода roster знает только героев первых глав, и
+      // остальные окна выбрали бы пустоту: каждое встало бы `ready` без единой
+      // карточки, и цепочка добежала бы до конца книги вхолостую.
+      const bookPass = await pool.query(
+        `SELECT 1 FROM generation_jobs
+          WHERE analysis_run_id = $1 AND job_type = 'roster_confirm'
+            AND card_window_index IS NULL AND status = 'ready'
+          LIMIT 1`,
+        [runId]
+      )
+      if (!bookPass.rows.length) {
+        return { closed, enqueued: null, maxChapterIndex, waitingForBookRoster: true }
+      }
       const enqueued = await this.enqueueCardWindow({
         runId,
         bookEditionId,
@@ -2927,39 +2949,12 @@ export function createPostgresBookMarkupRepository(pool, {
           )
         }
 
-        // Оконный заход ставит карточки своего окна, полный — всех остальных.
-        //
-        // Раньше карточки ставил только оконный заход, и полный подтверждал
-        // состав вхолостую: 79 персонажей «Обломова» получали строку в roster
-        // и ни одной карточки. Персонаж принадлежит своему окну по первому
-        // упоминанию, поэтому полный заход обходит окна, а не ставит всё в одно.
-        //
-        // Окно, карточки которого уже поставлены, выходит из статуса `queued`,
-        // и повторно оно не берётся — окно первых глав здесь не задевается.
         let cardJobsCreated = 0
-        if (!skipped) {
-          if (windowIndex !== null) {
-            const enqueued = await enqueueCardWindowJobs(client, {
-              runId, bookEditionId, windowIndex, priority: CARD_MEDIA_PRIORITY.foreground
-            })
-            cardJobsCreated = enqueued.created
-          } else {
-            const pending = await client.query(
-              `SELECT window_index FROM book_card_windows
-                WHERE run_id = $1 AND status = 'queued'
-                ORDER BY window_index`,
-              [runId]
-            )
-            for (const pendingWindow of pending.rows) {
-              const enqueued = await enqueueCardWindowJobs(client, {
-                runId,
-                bookEditionId,
-                windowIndex: pendingWindow.window_index,
-                priority: CARD_MEDIA_PRIORITY.background
-              })
-              cardJobsCreated += enqueued.created
-            }
-          }
+        if (windowIndex !== null && !skipped) {
+          const enqueued = await enqueueCardWindowJobs(client, {
+            runId, bookEditionId, windowIndex, priority: CARD_MEDIA_PRIORITY.foreground
+          })
+          cardJobsCreated = enqueued.created
         }
 
         // Полный заход ставится после окна: он длинный, и держать за ним

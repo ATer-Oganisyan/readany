@@ -301,32 +301,43 @@ test('the book pass sees the whole inventory and re-issues nothing it did not ch
       ['Аркадий Кирсанов', 'Евгений Базаров']
     )
 
-    // Полный заход ставит карточки остальных окон. Раньше их не ставил никто:
-    // карточки появлялись только у персонажей первых глав, а подтверждённый
-    // состав всей книги оставался строками в таблице без единой карточки.
-    assert.ok(result.cardJobsCreated > 0, 'полный заход не поставил карточки')
+    // Пока карточки первого окна не закончились, цепочка стоит: окно N+1 не
+    // ставится поверх работающего окна N.
+    const heldWindows = await pool.query(
+      `SELECT window_index, status FROM book_card_windows
+        WHERE run_id = $1 ORDER BY window_index`,
+      [runId]
+    )
+    assert.deepEqual(
+      heldWindows.rows.map(({ status }) => status),
+      ['running', 'queued']
+    )
+
+    // Карточки первого окна закончились — цепочка идёт дальше, и второе окно
+    // получает своих героев. Раньше её не двигал никто: окна после первого не
+    // ставились вовсе, и книга получала карточки только первых глав.
+    await pool.query(
+      `UPDATE generation_jobs SET status = 'ready'
+        WHERE analysis_run_id = $1 AND job_type = 'character_card'`,
+      [runId]
+    )
+    const advanced = await repository.advanceCardWindows({ runId, bookEditionId })
+    assert.deepEqual(advanced.closed, [0])
+    assert.equal(Number(advanced.enqueued.windowIndex), 1)
+    assert.ok(advanced.enqueued.created > 0, 'второе окно осталось без карточек')
+
     const cards = await pool.query(
       `SELECT character_key, card_window_index, priority FROM generation_jobs
         WHERE analysis_run_id = $1 AND job_type = 'character_card'
         ORDER BY card_window_index`,
       [runId]
     )
-    const windows = cards.rows.map(({ card_window_index: index }) => Number(index))
-    assert.deepEqual([...new Set(windows)], [0, 1], 'карточки поставлены не во все окна')
     // Персонаж принадлежит окну своего первого упоминания, а не окну захода.
     const bazarov = cards.rows.find(({ character_key: key }) => key.includes('bazarov'))
     assert.equal(Number(bazarov.card_window_index), 1)
     // Фоновые окна не обгоняют первые главы.
     const first = cards.rows.find(({ card_window_index: index }) => Number(index) === 0)
     assert.ok(Number(first.priority) > Number(bazarov.priority))
-
-    // Второй полный заход ничего не дублирует: окно вышло из `queued`.
-    const again = await pool.query(
-      `SELECT count(*)::int AS n FROM generation_jobs
-        WHERE analysis_run_id = $1 AND job_type = 'character_card'`,
-      [runId]
-    )
-    assert.equal(again.rows[0].n, cards.rows.length)
   } finally {
     await isolated.release()
   }

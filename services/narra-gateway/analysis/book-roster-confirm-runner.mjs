@@ -156,6 +156,18 @@ export function createRosterConfirmRunner({
         skipped: false
       })
 
+      // Полный заход — тот, кого цепочка окон ждала: до него состав книги
+      // известен лишь по первым главам. Подтвердив его, двигаем цепочку сами,
+      // иначе следующее окно не поставит никто: воркер карточки двигает её
+      // после карточки, а карточек за пределами первого окна ещё нет.
+      let advanced = null
+      if (input.windowIndex === null) {
+        advanced = await repository.advanceCardWindows({
+          runId: input.runId,
+          bookEditionId: input.bookEditionId
+        })
+      }
+
       log.info('roster.confirmed', 'Состав книги подтверждён', {
         job: job.id,
         run: input.runId,
@@ -166,8 +178,9 @@ export function createRosterConfirmRunner({
         accepted_merge_count: confirmation.acceptedMerges.length,
         rejected_count: confirmation.rejected.length,
         revision_count: revisions.length,
-        card_jobs_created: result?.cardJobsCreated ?? 0,
+        card_jobs_created: (result?.cardJobsCreated ?? 0) + (advanced?.enqueued?.created ?? 0),
         next_confirmation: result?.nextConfirmation ?? 'none',
+        advanced_window: advanced?.enqueued?.windowIndex ?? null,
         duration_ms: Date.now() - startedAt
       })
       return {

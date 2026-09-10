@@ -623,6 +623,9 @@ test('the worker dispatches a character card job to the card runner', async () =
       published = payload
       return { status: 'published', cardId: 'card-1' }
     },
+    async advanceCardWindows() {
+      return { closed: [], enqueued: null }
+    },
     async failGenerationJob() { assert.fail('job must not fail') }
   }
   const generator = {
