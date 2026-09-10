@@ -432,7 +432,12 @@ services:
     env_file:
       - ${NARRA_ENV_FILE:-/etc/narra-gateway.env}
     environment:
-      <<: [*book-analysis-database-environment, *book-analysis-generator-environment]
+      # Хранилище обязательно: и подтверждение состава, и карточка читают
+      # нормализованный текст книги, чтобы взять цитату по смещению. Без него
+      # оба задания отказываются работать (ROSTER_STORAGE_UNAVAILABLE,
+      # CARD_STORAGE_UNAVAILABLE) — в отличие от media- и scene-воркеров,
+      # которым хранилище ни к чему.
+      <<: [*book-analysis-database-environment, *book-analysis-storage-environment, *book-analysis-generator-environment]
       BOOK_MARKUP_WORKER_JOB_TYPES: character_card,roster_confirm
       WORKER_TYPE: book-card
 

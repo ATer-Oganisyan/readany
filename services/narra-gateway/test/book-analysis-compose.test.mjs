@@ -296,6 +296,9 @@ test('every job type the queue produces has a worker that claims it', () => {
   const cards = compose.split('book-card-worker:')[1] ?? ''
   assert.match(cards, /profiles: \["cards"\]/)
   assert.match(cards, /BOOK_MARKUP_WORKER_JOB_TYPES: character_card,roster_confirm/)
+  // Оба типа заданий читают нормализованный текст книги, чтобы взять цитату по
+  // смещению, и без хранилища отказываются работать вовсе.
+  assert.match(cards, /\*book-analysis-storage-environment/)
 
   const claimed = new Set(
     [...compose.matchAll(/BOOK_MARKUP_WORKER_JOB_TYPES:\s*(?:\$\{BOOK_MARKUP_WORKER_JOB_TYPES:-)?([\w,]+)/g)]
