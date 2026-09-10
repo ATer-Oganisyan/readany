@@ -207,6 +207,92 @@ test('migrations 027 and 028 apply and enforce the card invariants', {
   }
 })
 
+test('published cards are listed for the manifest, newest revision only', {
+  skip: !connectionString
+}, async () => {
+  // До последнего окна книга на pipeline=cards не публикует v3, и это
+  // единственный источник персонажей для читателя.
+  const isolated = await createIsolatedPostgres(connectionString)
+  const { pool } = isolated
+  try {
+    const repository = createPostgresBookMarkupRepository(pool)
+    const { bookEditionId, runId } = await seed(pool)
+    for (const [characterKey, offset] of [['char:early', 1_000], ['char:late', 120_000]]) {
+      await seedCharacter(pool, { runId, characterKey, startOffset: offset })
+      const jobId = await insertCardJob(pool, {
+        bookEditionId, runId, characterKey, windowIndex: offset > 100_000 ? 5 : 0
+      })
+      const job = await claimJob(pool, jobId)
+      await repository.publishCharacterCard(job, {
+        runId,
+        bookEditionId,
+        characterKey,
+        windowIndex: offset > 100_000 ? 5 : 0,
+        cardRevision: 1,
+        fragmentSetHash: hash(`frags:${characterKey}`),
+        normalizedTextHash: hash('normalized'),
+        promptVersion: 'character-card-prompt-v1',
+        mediaPriority: CARD_MEDIA_PRIORITY.foreground,
+        card: cardDocument({
+          characterKey,
+          name: characterKey,
+          firstMentionTextOffset: offset,
+          windowEndOffset: offset > 100_000 ? 160_000 : 40_000
+        })
+      })
+    }
+
+    const cards = await repository.listPublishedCharacterCards(bookEditionId)
+    assert.deepEqual(cards.map(({ characterKey }) => characterKey), ['char:early', 'char:late'])
+    assert.equal(cards[0].firstAppearanceTextOffset, 1_000)
+    assert.equal(cards[0].cardStatus, 'ready')
+    assert.ok(cards[0].appearancePrompt, 'проекция карточки пуста')
+    // Портрет доезжает вместе с карточкой, а не вторым запросом.
+    assert.ok(cards[0].bundle, 'медиа-бандл не отдан')
+
+    // Новая ревизия выключает прежнюю: персонаж остаётся один. Ревизия
+    // приписана следующему окну не случайно — уникальный индекс держит «один
+    // персонаж, одно окно, одна карточка», и переиздание после более полного
+    // подтверждения приходит именно из того окна, где узнали больше.
+    const jobId = randomUUID()
+    await pool.query(
+      `INSERT INTO generation_jobs (
+         id, idempotency_key, job_type, book_edition_id, character_key,
+         target_version, status, priority, payload, analysis_run_id, card_window_index
+       ) VALUES ($1, $2, 'character_card', $3, 'char:early', 'character-card-v1', 'queued', 65,
+         '{}'::jsonb, $4, 1)`,
+      [jobId, `${runId}:card:char:early:revision-2`, bookEditionId, runId]
+    )
+    const job = await claimJob(pool, jobId)
+    await repository.publishCharacterCard(job, {
+      runId,
+      bookEditionId,
+      characterKey: 'char:early',
+      windowIndex: 1,
+      cardRevision: 2,
+      fragmentSetHash: hash('frags:char:early:2'),
+      normalizedTextHash: hash('normalized'),
+      promptVersion: 'character-card-prompt-v1',
+      mediaPriority: CARD_MEDIA_PRIORITY.foreground,
+      card: cardDocument({
+        characterKey: 'char:early',
+        name: 'Ранний, вторая ревизия',
+        firstMentionTextOffset: 1_000,
+        windowEndOffset: 40_000
+      })
+    })
+
+    const afterRevision = await repository.listPublishedCharacterCards(bookEditionId)
+    assert.equal(afterRevision.filter(({ characterKey }) => characterKey === 'char:early').length, 1)
+    assert.equal(
+      afterRevision.find(({ characterKey }) => characterKey === 'char:early').name,
+      'Ранний, вторая ревизия'
+    )
+  } finally {
+    await isolated.release()
+  }
+})
+
 test('a portrait is drawn from the card of its own analysis run', {
   skip: !connectionString
 }, async () => {

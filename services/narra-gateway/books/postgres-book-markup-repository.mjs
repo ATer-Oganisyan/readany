@@ -2733,6 +2733,53 @@ export function createPostgresBookMarkupRepository(pool, {
     },
 
     /**
+     * Включённые карточки книги для манифеста.
+     *
+     * До последнего окна книга на `pipeline=cards` не публикует v3 (решение
+     * D2), и это единственный источник персонажей для читателя. Отдаётся
+     * проекция карточки — те же поля, что читает клиент у профиля v3, — плюс
+     * медиа-бандл, чтобы портрет доехал вместе с карточкой, а не вторым
+     * запросом.
+     *
+     * Берётся последняя включённая ревизия каждого персонажа: карточка
+     * неизменяема, а новая ревизия выключает прежнюю в той же транзакции.
+     * Персонажи roster, у которых карточки ещё нет, сюда не попадают: их
+     * список появится вместе с сохранением подтверждённого roster, а до тех
+     * пор клиенту честнее показать меньше, чем выдумать пустые строки.
+     */
+    async listPublishedCharacterCards(bookEditionId, { bundleVersion = null } = {}) {
+      const result = await pool.query(
+        `SELECT card.character_key, card.document, card.first_mention_text_offset,
+                bundle.id AS bundle_id, bundle.status AS bundle_status,
+                bundle.media_revision
+         FROM book_character_cards AS card
+         LEFT JOIN character_media_bundles AS bundle
+           ON bundle.book_edition_id = card.book_edition_id
+          AND bundle.character_key = card.character_key
+          AND ($2::text IS NULL OR bundle.bundle_version = $2)
+         WHERE card.book_edition_id = $1 AND card.enabled
+         ORDER BY card.first_mention_text_offset, card.character_key`,
+        [bookEditionId, bundleVersion]
+      )
+      return result.rows.map((row) => {
+        // Документ перепроверяется контрактом: строка неизменяема, но
+        // правленная руками строка не должна доехать до читателя как валидная.
+        const projection = characterCardProjection(validateCharacterCard(row.document))
+        return {
+          ...projection,
+          firstAppearanceTextOffset: Number(row.first_mention_text_offset),
+          bundle: row.bundle_id
+            ? {
+                id: row.bundle_id,
+                status: row.bundle_status,
+                mediaRevision: Number(row.media_revision ?? 1)
+              }
+            : null
+        }
+      })
+    },
+
+    /**
      * Вход медиа-задания, поставленного от карточки.
      *
      * Проекция карточки отдаёт ровно те поля, которые читает построитель
