@@ -12,6 +12,7 @@ import {
   ROSTER_CONFIRM_JOB_TYPE,
   createRosterConfirmRunner
 } from '../analysis/book-roster-confirm-runner.mjs'
+import { unexpectedErrorMessage } from '../analysis/book-analysis-observability.mjs'
 
 export const BOOK_MARKUP_WORKER_JOB_TYPES = Object.freeze([
   'book_markup',
@@ -556,6 +557,7 @@ export function createGenerationWorker({
           edition: job.bookEditionId,
           character_key: job.characterKey,
           error_code: errorCode,
+          error_message: unexpectedErrorMessage(error, errorCode),
           duration_ms: Date.now() - startedAt
         }
         if (failure?.status === 'queued') {
