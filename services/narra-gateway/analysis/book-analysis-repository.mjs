@@ -1394,6 +1394,8 @@ export function createPostgresBookAnalysisRepository(pool, {
       sections,
       contentNavigation,
       chunks,
+      nameInventory = null,
+      cardWindows = null,
       scanPriority = 50
     }) {
       validateIdentifier(normalizedTextObjectKey, 'normalizedTextObjectKey', 900)
@@ -1453,6 +1455,47 @@ export function createPostgresBookAnalysisRepository(pool, {
               chunk.coreStartOffset, chunk.coreEndOffset,
               chunk.contextStartOffset, chunk.contextEndOffset,
               chunk.contentHash, JSON.stringify(chunk.metadata ?? {})
+            ]
+          )
+        }
+        // Инвентарь и окна карточек пишутся в той же транзакции, что и чанки:
+        // они посчитаны по тому же нормализованному тексту, и частично
+        // записанный Prepare оставил бы окна от одного текста, а чанки от
+        // другого. Отсутствие инвентаря — законное состояние: сканирующий
+        // пайплайн его не читает.
+        if (nameInventory) {
+          const document = JSON.stringify(nameInventory)
+          await client.query(
+            `INSERT INTO book_name_inventory (
+               run_id, inventory_version, normalized_text_hash, text_length,
+               chapter_count, total_mentions, roster_count, significant_count,
+               document, document_hash
+             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)
+             ON CONFLICT (run_id) DO NOTHING`,
+            [
+              job.runId,
+              nameInventory.inventoryVersion,
+              normalizedTextHash,
+              textLength,
+              nameInventory.chapterCount,
+              nameInventory.totalMentions,
+              nameInventory.thresholds.rosterCount,
+              nameInventory.thresholds.significantCount,
+              document,
+              sha256(document)
+            ]
+          )
+        }
+        for (const window of cardWindows?.windows ?? []) {
+          await client.query(
+            `INSERT INTO book_card_windows (
+               run_id, window_index, start_offset, end_offset,
+               chapter_indexes, priority_class, status
+             ) VALUES ($1, $2, $3, $4, $5::integer[], $6, 'queued')
+             ON CONFLICT (run_id, window_index) DO NOTHING`,
+            [
+              job.runId, window.windowIndex, window.startOffset, window.endOffset,
+              window.chapterIndexes, window.priorityClass
             ]
           )
         }

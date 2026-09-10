@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto'
+import { buildBookNameInventory } from './book-name-inventory.mjs'
+import { buildBookCardWindows } from './book-card-windows.mjs'
 import { createStableBookChunks } from './book-analysis-chunking.mjs'
 import { bookAnalysisLogContext } from './book-analysis-observability.mjs'
 import { BOOK_ANALYSIS_NORMALIZATION_VERSION } from './book-analysis-pipeline.mjs'
@@ -26,6 +28,8 @@ export function createBookAnalysisPrepareWorker({
   maxBookBytes = 64 * 1024 * 1024,
   chunkOptions,
   extractStructuredText = extractStructuredBookText,
+  buildNameInventory = buildBookNameInventory,
+  buildCardWindows = buildBookCardWindows,
   logger = console
 }) {
   if (!repository || !storage) throw new TypeError('repository and storage are required')
@@ -72,20 +76,49 @@ export function createBookAnalysisPrepareWorker({
         code: 'BOOK_INTEGRITY'
       })
     }
+    // Инвентарь имён считается здесь, потому что здесь уже лежит полный
+    // нормализованный текст и ни одного LLM-вызова: считать частотность позже
+    // значило бы второй раз читать книгу из хранилища. Сбой инвентаря не роняет
+    // Prepare — сканирующий пайплайн от него не зависит, и обратная
+    // совместимость важнее полноты нового артефакта.
+    let nameInventory = null
+    let cardWindows = null
+    try {
+      nameInventory = buildNameInventory({
+        text: structured.text,
+        navigation: structured.navigation,
+        normalizedTextHash
+      })
+      cardWindows = buildCardWindows({
+        text: structured.text,
+        navigation: structured.navigation
+      })
+    } catch (error) {
+      log.error('prepare.name_inventory_failed', 'Инвентарь имён не построен', {
+        run: input.runId,
+        error_code: safeErrorCode(error)
+      })
+    }
     const result = await repository.completePrepare(job, {
       normalizedTextObjectKey,
       normalizedTextHash,
       textLength: structured.textLength,
       sections: structured.sections,
       contentNavigation: structured.navigation,
-      chunks
+      chunks,
+      nameInventory,
+      cardWindows
     })
     log.info('prepare.completed', 'Книга подготовлена для параллельного анализа', {
       run: input.runId,
       book: input.title,
       normalization_version: normalizationVersion,
       text_chars: structured.textLength,
-      chunk_count: chunks.length
+      chunk_count: chunks.length,
+      inventory_version: nameInventory?.inventoryVersion ?? 'none',
+      inventory_roster_count: nameInventory?.thresholds.rosterCount ?? 0,
+      inventory_significant_count: nameInventory?.thresholds.significantCount ?? 0,
+      card_window_count: cardWindows?.windows.length ?? 0
     })
     return result
   }
