@@ -102,6 +102,17 @@ export function createGenerationServiceClient({
         ...input
       })
     },
+    confirmBookRoster(input) {
+      return post('internal/v1/book-analysis/confirm-roster', {
+        idempotencyKey: [
+          input.runId,
+          'roster-confirm',
+          input.inventoryVersion,
+          input.promptVersion
+        ].join(':'),
+        ...input
+      })
+    },
     generateCharacterCard(input) {
       return post('internal/v1/book-analysis/synthesize-character-card', {
         idempotencyKey: [

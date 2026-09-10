@@ -194,3 +194,39 @@ test('a missing name falls back to the requested character name', () => {
   const result = normalizeCharacterCardResult({ gender: 'female' }, normalized)
   assert.equal(result.card.name, 'Elizabeth')
 })
+
+test('two distinct cited fragments count as two scenes for a card', () => {
+  // У профиля персонажа наблюдения могут повторять одну сцену, поэтому там
+  // сцены разносятся на 2% длины текста. У карточки фрагмент — это абзац, и
+  // порог в 2% окна для двух процитированных абзацев недостижим: он снимал
+  // все черты подряд, что и показал прогон на двух книгах каталога.
+  const normalized = normalizeRosterableRequest()
+  const result = normalizeCharacterCardResult({
+    traits: [{
+      value: 'observant',
+      // Соседние абзацы, между ними меньше 2 000 символов.
+      fragmentIds: ['frag:char:elizabeth:0', 'frag:char:elizabeth:1'],
+      confidence: 0.9
+    }],
+    gender: 'female'
+  }, normalized)
+  assert.deepEqual(result.card.traits.map(({ value }) => value), ['observant'])
+})
+
+test('one cited fragment is still not enough for a trait', () => {
+  const normalized = normalizeRosterableRequest()
+  const result = normalizeCharacterCardResult({
+    traits: [{ value: 'observant', fragmentIds: ['frag:char:elizabeth:0'], confidence: 0.9 }],
+    gender: 'female'
+  }, normalized)
+  assert.deepEqual(result.card.traits, [])
+})
+
+function normalizeRosterableRequest() {
+  return normalizeCharacterCardRequest(request({
+    fragments: [
+      fragment(0, 'Elizabeth Bennet lived at Longbourn with her four sisters.', 0),
+      fragment(1, 'Elizabeth observed that the guest was watching her closely.', 400)
+    ]
+  }))
+}

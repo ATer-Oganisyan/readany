@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  MAX_CANDIDATE_PAIRS,
   MAX_REQUEST_BYTES,
   ROSTER_CONFIRMATION_VERSION,
   applyRosterConfirmation,
@@ -313,4 +314,86 @@ test('a null request validates to nothing rather than throwing', () => {
     acceptedMerges: [],
     rejected: []
   })
+})
+
+test('an adjacent full name becomes a candidate pair that token overlap cannot see', () => {
+  // «Евгений» и «Онегин» — одно лицо, но общей основы у форм нет: ни
+  // перекрытие токенов, ни лексикон уменьшительных такую пару не находят.
+  // Находит её соседство имён в тексте.
+  const pairs = rosterCandidatePairs([
+    candidate({
+      candidateKey: 'name:onegin',
+      displayName: 'Онегин',
+      count: 92,
+      adjacentNames: [{ candidateKey: 'name:evgeniy', count: 1 }]
+    }),
+    candidate({
+      candidateKey: 'name:evgeniy',
+      displayName: 'Евгений',
+      count: 49,
+      adjacentNames: [{ candidateKey: 'name:onegin', count: 6 }]
+    })
+  ])
+  assert.equal(pairs.length, 1)
+  assert.deepEqual(pairs[0].signals, ['adjacent_full_name'])
+  assert.equal(pairs[0].adjacentCount, 6)
+})
+
+test('a single accidental adjacency is not enough for a pair', () => {
+  const pairs = rosterCandidatePairs([
+    candidate({
+      candidateKey: 'name:olga',
+      displayName: 'Ольга',
+      adjacentNames: [{ candidateKey: 'name:larin', count: 1 }]
+    }),
+    candidate({
+      candidateKey: 'name:larin',
+      displayName: 'Ларин',
+      adjacentNames: [{ candidateKey: 'name:olga', count: 1 }]
+    })
+  ])
+  assert.deepEqual(pairs, [])
+})
+
+test('adjacency never overrides a forbidden pair', () => {
+  const rows = [
+    candidate({
+      candidateKey: 'name:mr-bennet',
+      displayName: 'Mr Bennet',
+      honorificGender: 'male',
+      adjacentNames: [{ candidateKey: 'name:mrs-bennet', count: 9 }]
+    }),
+    candidate({
+      candidateKey: 'name:mrs-bennet',
+      displayName: 'Mrs Bennet',
+      honorificGender: 'female',
+      adjacentNames: [{ candidateKey: 'name:mr-bennet', count: 9 }]
+    })
+  ]
+  const forbidden = rosterForbiddenPairs(rows)
+  assert.equal(forbidden.length, 1)
+  assert.deepEqual(rosterCandidatePairs(rows, { forbiddenPairs: forbidden }), [])
+})
+
+test('pairs invisible to token overlap are kept when the pair budget is hit', () => {
+  // Порядок важен: при упоре в потолок терять надо пары, которые видит и
+  // перекрытие токенов, а не единственный источник для этой пары.
+  const overlapping = Array.from({ length: MAX_CANDIDATE_PAIRS }, (_, index) => candidate({
+    candidateKey: `name:shared${index}`,
+    displayName: `Shared${index} Bennet`
+  }))
+  const pairs = rosterCandidatePairs([
+    ...overlapping,
+    candidate({
+      candidateKey: 'name:onegin',
+      displayName: 'Онегин',
+      adjacentNames: [{ candidateKey: 'name:evgeniy', count: 6 }]
+    }),
+    candidate({ candidateKey: 'name:evgeniy', displayName: 'Евгений' })
+  ])
+  assert.equal(pairs.length, MAX_CANDIDATE_PAIRS)
+  assert.ok(
+    pairs.some((pair) => pair.signals.includes('adjacent_full_name')),
+    'пара по соседству вытеснена парами перекрытия'
+  )
 })

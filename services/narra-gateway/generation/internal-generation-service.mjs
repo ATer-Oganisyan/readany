@@ -31,6 +31,7 @@ import {
   cached,
   characterCardMessages,
   characterKey,
+  rosterConfirmationMessages,
   greetingFallback,
   greetingMatchesLanguage,
   imageExtension,
@@ -42,6 +43,8 @@ import {
   normalizeBundleRequest,
   normalizeCatalogCoverRequest,
   normalizeCharacterCardRequest,
+  normalizeRosterConfirmationRequest,
+  normalizeRosterConfirmationResult,
   normalizeCharacterCardResult,
   normalizeCharacterProfileResult,
   normalizeCharacterSynthesisRequest,
@@ -514,6 +517,49 @@ export function createInternalGenerationService({
           location_count: normalized.card.locations.length
         })
         return { card: normalized.card }
+      })
+    },
+
+    /**
+     * Подтверждение roster: один вызов на книгу.
+     *
+     * Модель решает только «человек или нет» и «одно имя или два». Границы
+     * решены правилами и переданы в запросе, а ответ всё равно проверит шлюз:
+     * принять пару, которой не было в CANDIDATE_PAIRS, он не может.
+     */
+    async confirmBookRoster(rawInput, signal) {
+      const input = normalizeRosterConfirmationRequest(rawInput)
+      const common = {
+        run: input.runId,
+        candidate_count: input.roster.length,
+        candidate_pair_count: input.candidatePairs.length,
+        forbidden_pair_count: input.forbiddenPairs.length
+      }
+      return cached(storage, input.idempotencyKey, input, async () => {
+        log.info('roster.confirm_started', 'Подтверждаю roster инвентаря имён', common)
+        const response = await completeChat({
+          messages: rosterConfirmationMessages(input),
+          signal,
+          costContext: {
+            bookEditionId: input.bookEditionId,
+            analysisRunId: input.runId,
+            operation: 'confirm_book_roster',
+            stage: 'roster',
+            metadata: {
+              inventory_version: input.inventoryVersion,
+              prompt_version: input.promptVersion
+            }
+          }
+        })
+        const normalized = normalizeRosterConfirmationResult(parseJsonObject(response), input)
+        log.info('roster.confirm_completed', 'Roster подтверждён', {
+          ...common,
+          provider_classification_count: normalized.providerClassificationCount,
+          accepted_classification_count: normalized.classifications.length,
+          provider_merge_count: normalized.providerMergeCount,
+          accepted_shape_merge_count: normalized.merges.length
+        })
+        return normalized
       })
     },
 
@@ -1135,6 +1181,10 @@ export function createInternalGenerationRouter({ token, service, logger = consol
   router.post(
     '/v1/book-analysis/synthesize-character-card',
     endpoint((body, signal) => service.synthesizeCharacterCard(body, signal))
+  )
+  router.post(
+    '/v1/book-analysis/confirm-roster',
+    endpoint((body, signal) => service.confirmBookRoster(body, signal))
   )
   return router
 }

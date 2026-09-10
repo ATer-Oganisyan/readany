@@ -772,6 +772,12 @@ export function buildBookNameInventory({
         honorificGender: part.honorific ? NAME_HONORIFICS.get(part.honorific) ?? null : null,
         surfaceForms,
         clusterKeys: formList.map(({ clusterKey }) => clusterKey),
+        adjacentClusterKeys: [...new Map(group.clusters.flatMap((cluster) =>
+          [...cluster.partners].filter(([partnerKey]) =>
+            links.find(partnerKey) !== group.root))).entries()]
+          .map(([clusterKey, count]) => ({ clusterKey, count }))
+          .sort((left, right) => right.count - left.count)
+          .slice(0, 8),
         count: part.count,
         midSentenceCount: Math.round(stats.midSentenceCount * share),
         sentenceInitialRatio: rounded(1 - stats.midSentenceCount / stats.count),
@@ -820,6 +826,33 @@ export function buildBookNameInventory({
     if (singulars.some((value) => (countByDisplay.get(value) ?? 0) > candidate.count)) {
       candidate.kindHint = 'group'
     }
+  }
+
+  // Соседство имён: «Евгений» стоит рядом с «Онегиным» и это одно лицо, но
+  // общей основы у форм нет, и правило перекрытия токенов такую пару не видит.
+  // Здесь она сохраняется как признак — не как склейка: решает подтверждение
+  // roster, потому что рядом стоят и «Ольга» с «Ларин».
+  const candidateByClusterKey = new Map()
+  for (const candidate of candidates) {
+    for (const clusterKey of candidate.clusterKeys) {
+      const current = candidateByClusterKey.get(clusterKey)
+      // Кластер, разделённый по обращению, принадлежит нескольким строкам:
+      // соседство приписываем самой частой из них.
+      if (!current || current.count < candidate.count) candidateByClusterKey.set(clusterKey, candidate)
+    }
+  }
+  for (const candidate of candidates) {
+    const adjacent = new Map()
+    for (const { clusterKey, count } of candidate.adjacentClusterKeys ?? []) {
+      const other = candidateByClusterKey.get(clusterKey)
+      if (!other || other.candidateKey === candidate.candidateKey) continue
+      adjacent.set(other.candidateKey, (adjacent.get(other.candidateKey) ?? 0) + count)
+    }
+    candidate.adjacentNames = [...adjacent.entries()]
+      .map(([candidateKey, count]) => ({ candidateKey, count }))
+      .sort((left, right) => right.count - left.count)
+      .slice(0, 8)
+    delete candidate.adjacentClusterKeys
   }
 
   // Ярус `significant` — минимальный убывающий по частоте префикс по

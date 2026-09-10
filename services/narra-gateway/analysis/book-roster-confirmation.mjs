@@ -41,6 +41,13 @@ export const ROSTER_MERGE_BASES = Object.freeze([
 /** Со-упоминание как двух участников: столько общих абзацев и такая их доля. */
 const CO_MENTION_MIN = 3
 const CO_MENTION_SHARE = 0.2
+/**
+ * Сколько раз имена должны встретиться подряд, чтобы пара попала в кандидаты.
+ * «Евгений Онегин» и «Владимир Ленский» — одно лицо на два кандидата, но общей
+ * основы у форм нет, и перекрытие токенов такую пару не видит вовсе. Порог
+ * держит от случайного соседства двух разных людей в одной фразе.
+ */
+const ADJACENT_NAME_MIN = 2
 
 const KINDS = new Set(ROSTER_CANDIDATE_KINDS)
 const BASES = new Set(ROSTER_MERGE_BASES)
@@ -211,27 +218,41 @@ export function rosterCandidatePairs(candidates, { forbiddenPairs = [] } = {}) {
       if (blocked.has(key)) continue
       const nameSignal = namePairSignal(left, right)
       const lexicon = lexiconPairs.get(key)
-      if (!nameSignal && !lexicon) continue
+      const adjacency = Math.max(
+        adjacentCount(left, right.candidateKey),
+        adjacentCount(right, left.candidateKey)
+      )
+      const adjacent = adjacency >= ADJACENT_NAME_MIN
+      if (!nameSignal && !lexicon && !adjacent) continue
       const [leftKey, rightKey] = [left.candidateKey, right.candidateKey].sort(compareText)
       rows.push({
         leftKey,
         rightKey,
         signals: [
           ...(nameSignal ? [nameSignal] : []),
-          ...(lexicon ? ['nickname_lexicon'] : [])
+          ...(lexicon ? ['nickname_lexicon'] : []),
+          ...(adjacent ? ['adjacent_full_name'] : [])
         ],
+        adjacentCount: adjacent ? adjacency : 0,
         lexiconCanonical: lexicon?.canonical ?? ''
       })
     }
   }
-  // Лексиконные пары идут первыми: их не видит ни одно другое правило, поэтому
-  // при упоре в потолок терять надо не их.
+  // Первыми идут пары, которых не видит перекрытие токенов: лексикон и
+  // соседство. При упоре в потолок терять надо не их.
+  const unseenByOverlap = (row) =>
+    Number(!row.signals.includes('nickname_lexicon') && !row.signals.includes('adjacent_full_name'))
   return rows.sort((left, right) =>
-    Number(!left.signals.includes('nickname_lexicon')) -
-      Number(!right.signals.includes('nickname_lexicon')) ||
+    unseenByOverlap(left) - unseenByOverlap(right) ||
+    right.adjacentCount - left.adjacentCount ||
     compareText(left.leftKey, right.leftKey) ||
     compareText(left.rightKey, right.rightKey)
   ).slice(0, MAX_CANDIDATE_PAIRS)
+}
+
+function adjacentCount(candidate, otherKey) {
+  return (candidate.adjacentNames ?? [])
+    .find(({ candidateKey }) => candidateKey === otherKey)?.count ?? 0
 }
 
 function candidateFragments(fragments, characterKey, limit) {
