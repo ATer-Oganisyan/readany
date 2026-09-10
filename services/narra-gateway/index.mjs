@@ -1,5 +1,8 @@
 import express from 'express'
 import { loadGatewayConfig } from './gateway-config.mjs'
+import { httpErr, statusFor } from './gateway-errors.mjs'
+import { createKandinskyImageClient } from './provider-kandinsky-image.mjs'
+import { createKandinskyVideoClient } from './provider-kandinsky-video.mjs'
 import cors from 'cors'
 import { createHmac, randomUUID } from 'crypto'
 import path from 'node:path'
@@ -191,276 +194,26 @@ async function getToken(scope, basicKey, oauthUrl) {
   return token
 }
 
-function httpErr(code, message) {
-  const e = new Error(message)
-  e.code = code
-  return e
-}
-function statusFor(code) {
-  return { NO_KEY: 400, VALIDATION: 400, AUTH: 401, CENSOR: 422, RATE: 429, TIMEOUT: 504, NETWORK: 502 }[code] || 500
-}
-
-// ================= Kandinsky 6.0 (kandinskylab) =================
-// Стиль задаётся на клиенте (единая арт-дирекция), сервер не добавляет свой.
-const STYLE_SUFFIX = ''
-
-function kHeaders() {
-  return { Authorization: `Bearer ${KANDINSKY_TOKEN}`, 'Content-Type': 'application/json' }
-}
-
-// подбираем поддерживаемое разрешение по ориентации
-function resolutionFor(width, height) {
-  if (height > width * 1.15) return '768x1280'
-  if (width > height * 1.15) return '1280x768'
-  return '1024x1024'
-}
-
-// Kandinsky не любит параллельных запросов — сериализуем и ретраим лимит.
-let kandinskyChain = Promise.resolve()
-let kandinskyPending = 0
-function kandinskyQueued(prompt, width, height, signal) {
-  if (kandinskyPending >= KANDINSKY_QUEUE_LIMIT) throw httpErr('RATE', 'Kandinsky: очередь переполнена')
-  kandinskyPending += 1
-  const run = kandinskyChain
-    .then(() => {
-      if (signal?.aborted) throw signal.reason || new Error('client disconnected')
-      return kandinskyWithRetry(prompt, width, height, signal)
-    })
-    .finally(() => { kandinskyPending -= 1 })
-  kandinskyChain = run.catch(() => {})
-  return run
-}
-async function kandinskyWithRetry(prompt, width, height, signal, attempts = 3) {
-  for (let i = 0; i < attempts; i++) {
-    try {
-      return await kandinskyGenerate(prompt, width, height, signal)
-    } catch (e) {
-      if (shouldRetryKandinsky(e) && i < attempts - 1) {
-        console.error(`[kandinsky] временная ошибка ${e.code}, жду 20с (попытка ${i + 2}/${attempts})`)
-        await abortableDelay(20000, signal)
-        continue
-      }
-      throw e
-    }
-  }
-}
-
-async function kandinskyGenerate(prompt, width = 768, height = 1024, signal) {
-  const resolution = resolutionFor(width, height)
-  const deadline = Date.now() + KANDINSKY_IMAGE_TIMEOUT_MS
-  const requestTimeoutMs = () => Math.max(
-    1,
-    Math.min(KANDINSKY_REQUEST_TIMEOUT_MS, deadline - Date.now())
-  )
-  // 1) создать задачу
-  const runRes = await httpsRequest(`${KANDINSKY_HOST}/tasks/k6-image-t2i`, {
-    method: 'POST',
-    insecure: INSECURE,
-    timeoutMs: requestTimeoutMs(),
-    signal,
-    headers: kHeaders(),
-    body: JSON.stringify({ params: { query: `${prompt}${STYLE_SUFFIX}`.slice(0, 950), resolution } })
-  })
-  if (runRes.status >= 400) {
-    throw imageUpstreamError({
-      provider: 'Kandinsky',
-      phase: 'create',
-      status: runRes.status,
-      detail: runRes.body
-    })
-  }
-  const taskId = JSON.parse(runRes.body).task_id
-  if (!taskId) throw httpErr('UNKNOWN', 'Kandinsky: нет task_id')
-
-  // 2) поллинг статуса
-  let done = false
-  while (Date.now() < deadline) {
-    await abortableDelay(4000, signal)
-    let st
-    try {
-      st = await httpsRequest(`${KANDINSKY_HOST}/tasks/${taskId}`, {
-        insecure: INSECURE,
-        timeoutMs: 20000,
-        signal,
-        headers: kHeaders()
-      })
-    } catch (error) {
-      if (shouldRetryKandinskyStatus(error)) continue
-      throw error
-    }
-    if (st.status >= 400) {
-      const upstreamError = imageUpstreamError({
-        provider: 'Kandinsky',
-        phase: 'status',
-        status: st.status,
-        detail: st.body
-      })
-      if (['NETWORK', 'RATE'].includes(upstreamError.code)) continue
-      throw upstreamError
-    }
-    const statusBody = JSON.parse(st.body)
-    const status = String(statusBody.status || '').toLowerCase()
-    if (status === 'done') {
-      done = true
-      break
-    }
-    if (status === 'failed' || status === 'error') {
-      throw imageEmptyResultError({
-        provider: 'Kandinsky',
-        detail: statusBody.error || statusBody.detail || statusBody.message
-      })
-    }
-  }
-  if (!done) {
-    throw httpErr(
-      'TIMEOUT',
-      `Kandinsky: таймаут (${Math.round(KANDINSKY_IMAGE_TIMEOUT_MS / 1000)}с)`
-    )
-  }
-
-  // 3) забрать результат (бинарный PNG)
-  const resImg = await httpsRequest(`${KANDINSKY_HOST}/tasks/${taskId}/result`, {
-    insecure: INSECURE,
-    timeoutMs: requestTimeoutMs(),
-    signal,
-    binary: true,
-    headers: { Authorization: `Bearer ${KANDINSKY_TOKEN}` }
-  })
-  if (resImg.status >= 400) {
-    throw imageUpstreamError({
-      provider: 'Kandinsky',
-      phase: 'result',
-      status: resImg.status,
-      detail: resImg.body
-    })
-  }
-  if (!resImg.body?.length) {
-    throw imageEmptyResultError({ provider: 'Kandinsky' })
-  }
-  return resImg.body.toString('base64')
-}
-
-// ================= Видео (Kandinsky video API) =================
-// Видеосервер не терпит параллельных запросов (429 LIMIT_EXHAUSTED) — очередь + ретраи.
-let videoChain = Promise.resolve()
-let videoPending = 0
-function videoTask(taskType, params, signal) {
-  if (videoPending >= VIDEO_QUEUE_LIMIT) throw httpErr('RATE', 'Видео: очередь переполнена')
-  videoPending += 1
-  const run = videoChain
-    .then(() => {
-      if (signal?.aborted) throw signal.reason || new Error('client disconnected')
-      return videoTaskRetry(taskType, params, signal)
-    })
-    .finally(() => { videoPending -= 1 })
-  videoChain = run.catch(() => {})
-  return run
-}
-async function abortableDelay(milliseconds, signal) {
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(resolve, milliseconds)
-    if (signal) signal.addEventListener('abort', () => {
-      clearTimeout(timer)
-      reject(signal.reason || new Error('client disconnected'))
-    }, { once: true })
-  })
-}
-async function videoTaskRetry(taskType, params, signal, attempts = 3) {
-  for (let i = 0; i < attempts; i++) {
-    try {
-      return await videoTaskRaw(taskType, params, signal)
-    } catch (e) {
-      const wait = videoRetryDelay(e)
-      if (wait && i < attempts - 1) {
-        // 'concurrent' — заняты все GPU-слоты, освободятся через минуты; 'rate' — секунды
-        console.error(`[video] лимит (${wait === 45_000 ? 'слоты заняты' : 'частота'}), жду ${wait / 1000}с (${i + 2}/${attempts})`)
-        await abortableDelay(wait, signal)
-        continue
-      }
-      throw e
-    }
-  }
-}
-
-async function videoTaskRaw(taskType, params, signal) {
-  if (!VIDEO_BASE_URL) throw httpErr('NO_KEY', 'Видео: VIDEO_BASE_URL не задан')
-  const create = await fetch(`${VIDEO_BASE_URL}/tasks/${taskType}`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${KANDINSKY_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ censor: true, params }),
-    signal: withTimeout(signal, 30_000)
-  })
-  if (!create.ok) {
-    const t = await create.text().catch(() => '')
-    throw imageUpstreamError({
-      provider: 'Kandinsky video',
-      phase: 'create',
-      status: create.status,
-      detail: t
-    })
-  }
-  const { task_id } = await create.json()
-  if (!task_id) throw httpErr('UNKNOWN', 'Видео: сервер не вернул task_id')
-
-  const deadline = Date.now() + 480_000
-  while (Date.now() < deadline) {
-    await abortableDelay(5000, signal)
-    const st = await fetch(`${VIDEO_BASE_URL}/tasks/${task_id}`, {
-      headers: { Authorization: `Bearer ${KANDINSKY_TOKEN}` },
-      signal: withTimeout(signal, 20_000)
-    })
-    if (!st.ok) continue
-    const j = await st.json()
-    const status = String(j.status || '').toLowerCase()
-    if (status === 'done') {
-      const r = await fetch(`${VIDEO_BASE_URL}/tasks/${task_id}/result`, {
-        headers: { Authorization: `Bearer ${KANDINSKY_TOKEN}` },
-        signal: withTimeout(signal, 60_000)
-      })
-      if (!r.ok) {
-        const detail = await r.text().catch(() => '')
-        throw imageUpstreamError({
-          provider: 'Kandinsky video',
-          phase: 'result',
-          status: r.status,
-          detail
-        })
-      }
-      return Buffer.from(await r.arrayBuffer()).toString('base64')
-    }
-    if (status === 'failed' || status === 'error') {
-      throw imageUpstreamError({
-        provider: 'Kandinsky video',
-        phase: 'status',
-        detail: j.error || j.detail || j.message
-      })
-    }
-  }
-  console.error(`[video] ${taskType} таймаут 480с`)
-  throw httpErr('TIMEOUT', 'Видео: таймаут (8 мин)')
-}
-
-// говорящая голова: портрет + аудио (с ретраем)
-async function gigaAvatar(image, audio, query, signal) {
-  const params = {
-    query: query || 'talking character portrait, front view, natural facial motion, subtle head movement',
-    image,
-    audio
-  }
-  return videoTask('giga_avatar', params, signal)
-}
-
-// idle-анимация портрета (без звука). Бьютификатор отключён — он падает на воркере.
-// С ретраем: видео-воркер иногда падает разово.
-async function animatePortrait(image, query, quality, signal) {
-  const model = quality === 'hd' ? 'k5-i2v-hd' : 'k5-i2v-lite'
-  const params = {
-    query: query || 'he stays still, only blinks slowly and breathes subtly, locked camera, fixed framing, no zoom',
-    image,
-    beautificator: 'disabled'
-  }
-  return videoTask(model, params, signal)
-}
+// ================= Клиенты провайдеров =================
+const kandinskyImages = createKandinskyImageClient({
+  token: KANDINSKY_TOKEN,
+  host: KANDINSKY_HOST,
+  insecure: INSECURE,
+  queueLimit: KANDINSKY_QUEUE_LIMIT,
+  imageTimeoutMs: KANDINSKY_IMAGE_TIMEOUT_MS,
+  requestTimeoutMs: KANDINSKY_REQUEST_TIMEOUT_MS
+})
+const kandinskyVideo = createKandinskyVideoClient({
+  token: KANDINSKY_TOKEN,
+  baseUrl: VIDEO_BASE_URL,
+  queueLimit: VIDEO_QUEUE_LIMIT
+})
+const kandinskyQueued = (prompt, width, height, signal) =>
+  kandinskyImages.generate(prompt, width, height, signal)
+const gigaAvatar = (image, audio, query, signal) =>
+  kandinskyVideo.gigaAvatar(image, audio, query, signal)
+const animatePortrait = (image, query, quality, signal) =>
+  kandinskyVideo.animatePortrait(image, query, quality, signal)
 
 const recordInternalGenerationCost = createBestEffortGenerationCostRecorder({
   getLedger: () => generationCostLedger

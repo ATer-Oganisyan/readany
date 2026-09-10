@@ -61,3 +61,45 @@ export function requestAbortSignal(req, res) {
 export function withTimeout(signal, milliseconds) {
   return signal ? AbortSignal.any([signal, AbortSignal.timeout(milliseconds)]) : AbortSignal.timeout(milliseconds)
 }
+
+/**
+ * Пауза, которую отменяет abort клиента: обычный setTimeout продолжает держать
+ * очередь провайдера после того, как запрос уже никому не нужен.
+ */
+export async function abortableDelay(milliseconds, signal) {
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, milliseconds)
+    if (signal) signal.addEventListener('abort', () => {
+      clearTimeout(timer)
+      reject(signal.reason || new Error('client disconnected'))
+    }, { once: true })
+  })
+}
+
+/**
+ * Строгая последовательная очередь: провайдеры Kandinsky отвечают 429 на
+ * параллельные запросы, поэтому вызовы выстраиваются в цепочку, а глубина
+ * ожидания ограничена, чтобы очередь не росла бесконечно.
+ */
+export function createSerialQueue({ limit, onOverflow }) {
+  if (!Number.isSafeInteger(limit) || limit < 1) throw new TypeError('limit must be a positive integer')
+  let chain = Promise.resolve()
+  let pending = 0
+  return {
+    get pending() {
+      return pending
+    },
+    run(task, signal) {
+      if (pending >= limit) throw onOverflow()
+      pending += 1
+      const run = chain
+        .then(() => {
+          if (signal?.aborted) throw signal.reason || new Error('client disconnected')
+          return task()
+        })
+        .finally(() => { pending -= 1 })
+      chain = run.catch(() => {})
+      return run
+    }
+  }
+}
