@@ -420,13 +420,27 @@ function traitStemsAgree(left, right) {
   return longer.length - shorter.length <= MAX_STEM_EXTENSION
 }
 
-/** Индексы слов цитаты, в которых названа черта. */
+/**
+ * Индексы слов цитаты, в которых названа черта.
+ *
+ * Слово нормализуется здесь, а не у вызывающего. Основы, с которыми идёт
+ * сравнение, нормализованы, а слово из живой цитаты приходит с пунктуацией и
+ * заглавной буквы; `traitStem` кириллическую проверку на таком слове не проходит
+ * и возвращает его как есть. Отсюда наблюдаемое поведение: «Он от природы был
+ * злым» черту сохраняло, а «Он от природы был злым.» — снимало как
+ * `single_scene`, потому что точка в конце превращала «злым» в слово, которого
+ * правило не узнаёт. Соответствие позициям исходной цитаты при этом сохраняется:
+ * нормализуется каждый токен по отдельности, список не переупорядочивается и не
+ * прореживается.
+ */
 export function traitMentionIndices(value, quoteTokens) {
   const valueStems = normalizedTraitValue(value).split(' ')
     .filter((token) => token.length >= 3)
     .map((token) => traitStem(token, MIN_LEXEME_STEM_LENGTH))
   return quoteTokens.flatMap((quoteToken, index) => {
-    const quoteStem = traitStem(quoteToken, MIN_LEXEME_STEM_LENGTH)
+    const normalized = normalizedTraitValue(quoteToken)
+    if (normalized.length < 3) return []
+    const quoteStem = traitStem(normalized, MIN_LEXEME_STEM_LENGTH)
     return valueStems.some((valueStem) => traitStemsAgree(valueStem, quoteStem)) ? [index] : []
   })
 }

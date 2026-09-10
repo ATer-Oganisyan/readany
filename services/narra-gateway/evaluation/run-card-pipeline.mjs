@@ -151,27 +151,64 @@ export function isEventStream(text) {
   return /^\s*(?::|data:|event:)/m.test(String(text))
 }
 
-export function contentFromEventStream(text) {
+/**
+ * Разбор потока целиком: не только текст, но и то, дошёл ли он до конца.
+ *
+ * Непустой `content` сам по себе успехом не является. Поток может оборваться
+ * после первых дельт — тогда придёт обрезанный JSON вроде `{"classifications": [`
+ * — или принести событие ошибки уже после начала ответа. И то и другое надо
+ * повторять, а не отдавать вызывающему: разбор JSON идёт вне цикла повторов, и
+ * обрезанный ответ роняет прогон вместо повторного запроса.
+ *
+ * Признак завершённости — `[DONE]` или `finish_reason` у выбора; провайдеры
+ * шлют либо то, либо другое, поэтому годится любой.
+ */
+export function parseEventStream(text) {
   let content = ''
+  let done = false
+  let error = null
+  let events = 0
   for (const line of String(text).split('\n')) {
     const trimmed = line.trim()
     if (!trimmed.startsWith('data:')) continue
     const data = trimmed.slice(5).trim()
-    if (!data || data === '[DONE]') continue
+    if (!data) continue
+    events += 1
+    if (data === '[DONE]') {
+      done = true
+      continue
+    }
     let event = null
     try {
       event = JSON.parse(data)
     } catch {
       continue
     }
+    if (event?.error) {
+      error = typeof event.error === 'string'
+        ? event.error
+        : String(event.error.message ?? JSON.stringify(event.error)).slice(0, 300)
+      continue
+    }
     const choice = event?.choices?.[0]
+    if (choice?.finish_reason) done = true
     const piece = choice?.delta?.content ?? choice?.message?.content
     if (typeof piece === 'string') content += piece
   }
-  return content
+  return { content, done, error, events }
 }
 
-export function createModelClient(env = process.env) {
+/** Только текст ответа. Полнота потока — у {@link parseEventStream}. */
+export function contentFromEventStream(text) {
+  return parseEventStream(text).content
+}
+
+/**
+ * Клиент модели. `postJsonImpl` подменяется тестом: решение «вернуть или
+ * повторить» принимается здесь, и проверять его надо здесь же, а не по разбору
+ * потока в отрыве от цикла повторов.
+ */
+export function createModelClient(env = process.env, { postJsonImpl = postJson } = {}) {
   const baseUrl = String(env.JUDGE_BASE_URL || env.LITELLM_BASE_URL || '').replace(/\/$/, '')
   const apiKey = env.JUDGE_API_KEY || env.LITELLM_API_KEY
   const model = env.JUDGE_MODEL || env.LITELLM_MODEL
@@ -195,7 +232,7 @@ export function createModelClient(env = process.env) {
     let lastError = null
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
       try {
-        const response = await postJson({
+        const response = await postJsonImpl({
           url: `${baseUrl}/chat/completions`,
           apiKey,
           body: { model, messages, temperature: 0, ...(stream ? { stream: true } : {}) },
@@ -203,8 +240,23 @@ export function createModelClient(env = process.env) {
         })
         if (response.status >= 200 && response.status < 300) {
           if (stream) {
-            const content = contentFromEventStream(response.text)
-            if (content) return content
+            const parsed = parseEventStream(response.text)
+            if (parsed.error) {
+              throw Object.assign(
+                new Error(`model stream reported an error: ${parsed.error}`),
+                { code: 'MODEL_STREAM_ERROR' }
+              )
+            }
+            // Ответ отдаётся только у дошедшего до конца потока. Оборванный
+            // поток с непустым `content` — это обрезанный JSON, и повторить его
+            // дешевле, чем уронить прогон на разборе.
+            if (parsed.content && parsed.done) return parsed.content
+            if (parsed.content) {
+              throw Object.assign(
+                new Error('model stream ended without a completion marker'),
+                { code: 'MODEL_STREAM_TRUNCATED' }
+              )
+            }
             // Пустой ответ при потоке значит одно из двух, и различать их
             // обязательно. Если в теле есть события SSE, поток кончился до
             // первого куска ответа — рассуждение шло, ответ не начался; это

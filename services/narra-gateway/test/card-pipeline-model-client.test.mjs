@@ -12,7 +12,12 @@
 
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { contentFromEventStream, isEventStream } from '../evaluation/run-card-pipeline.mjs'
+import {
+  contentFromEventStream,
+  createModelClient,
+  isEventStream,
+  parseEventStream
+} from '../evaluation/run-card-pipeline.mjs'
 
 function sse(...events) {
   return `${events.map((event) => `data: ${JSON.stringify(event)}`).join('\n\n')}\n\ndata: [DONE]\n\n`
@@ -100,4 +105,108 @@ test('a non-stream body yields nothing here, so the caller can fall back', () =>
 test('an empty stream is an empty answer, not a crash', () => {
   assert.equal(contentFromEventStream(''), '')
   assert.equal(contentFromEventStream('data: [DONE]\n'), '')
+})
+
+test('a stream that stopped mid-answer is not reported as finished', () => {
+  // Непустой content успехом не является. Обрыв после первых дельт даёт
+  // обрезанный JSON вроде «{"classifications": [», а разбор идёт вне цикла
+  // повторов — значит, прогон падает вместо повторного запроса.
+  const truncated = [
+    'data: {"choices":[{"delta":{"content":"{\\"classifications\\": ["}}]}'
+  ].join('\n')
+  const parsed = parseEventStream(truncated)
+  assert.equal(parsed.content, '{"classifications": [')
+  assert.equal(parsed.done, false)
+  assert.equal(parsed.error, null)
+})
+
+test('a completion marker or a finish reason both count as finished', () => {
+  const withDone = 'data: {"choices":[{"delta":{"content":"ок"}}]}\n\ndata: [DONE]\n'
+  assert.deepEqual(
+    { content: parseEventStream(withDone).content, done: parseEventStream(withDone).done },
+    { content: 'ок', done: true }
+  )
+  const withFinishReason = 'data: {"choices":[{"delta":{"content":"ок"},"finish_reason":"stop"}]}\n'
+  assert.equal(parseEventStream(withFinishReason).done, true)
+})
+
+test('an error event after the first deltas is surfaced, not swallowed', () => {
+  const text = [
+    'data: {"choices":[{"delta":{"content":"нача"}}]}',
+    'data: {"error":{"message":"upstream gone"}}'
+  ].join('\n')
+  const parsed = parseEventStream(text)
+  assert.equal(parsed.content, 'нача')
+  assert.equal(parsed.error, 'upstream gone')
+  assert.equal(parsed.done, false)
+})
+
+const ENV = {
+  JUDGE_BASE_URL: 'https://example.invalid/v1',
+  JUDGE_API_KEY: 'k',
+  JUDGE_MODEL: 'm',
+  MODEL_MAX_ATTEMPTS: '2'
+}
+
+function stubbedClient(responses) {
+  const calls = []
+  const complete = createModelClient(ENV, {
+    postJsonImpl: async (request) => {
+      calls.push(request)
+      return responses[Math.min(calls.length - 1, responses.length - 1)]
+    }
+  })
+  return { complete, calls }
+}
+
+test('a truncated stream is retried instead of returned to the caller', async () => {
+  // Ровно то, что воспроизводилось: клиент отдавал обрезанное
+  // «{"classifications": [» после одной попытки при разрешённых двух, и разбор
+  // JSON падал уже вне цикла повторов.
+  const truncated = {
+    status: 200,
+    text: 'data: {"choices":[{"delta":{"content":"{\\"classifications\\": ["}}]}\n'
+  }
+  const complete2 = {
+    status: 200,
+    text: 'data: {"choices":[{"delta":{"content":"{\\"ok\\": true}"}}]}\n\ndata: [DONE]\n'
+  }
+  const { complete, calls } = stubbedClient([truncated, complete2])
+  assert.equal(await complete([{ role: 'user', content: 'x' }]), '{"ok": true}')
+  assert.equal(calls.length, 2)
+})
+
+test('a truncated stream on the last attempt fails loudly, naming the truncation', async () => {
+  const truncated = {
+    status: 200,
+    text: 'data: {"choices":[{"delta":{"content":"{\\"classifications\\": ["}}]}\n'
+  }
+  const { complete, calls } = stubbedClient([truncated])
+  await assert.rejects(
+    complete([{ role: 'user', content: 'x' }]),
+    (error) => error.code === 'MODEL_STREAM_TRUNCATED'
+  )
+  assert.equal(calls.length, 2)
+})
+
+test('an error event in the stream is retried and then named', async () => {
+  const failed = {
+    status: 200,
+    text: 'data: {"choices":[{"delta":{"content":"на"}}]}\ndata: {"error":{"message":"upstream gone"}}\n'
+  }
+  const { complete } = stubbedClient([failed])
+  await assert.rejects(
+    complete([{ role: 'user', content: 'x' }]),
+    (error) => error.code === 'MODEL_STREAM_ERROR' && /upstream gone/.test(error.message)
+  )
+})
+
+test('a complete stream is returned on the first attempt', async () => {
+  const ok = {
+    status: 200,
+    text: 'data: {"choices":[{"delta":{"content":"{}"},"finish_reason":"stop"}]}\n'
+  }
+  const { complete, calls } = stubbedClient([ok])
+  assert.equal(await complete([{ role: 'user', content: 'x' }]), '{}')
+  assert.equal(calls.length, 1)
 })

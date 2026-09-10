@@ -9,7 +9,10 @@
 
 import assert from 'node:assert/strict'
 import { createHash, randomUUID } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
+import path from 'node:path'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 import { createPostgresBookMarkupRepository } from '../books/postgres-book-markup-repository.mjs'
 import { createIsolatedPostgres } from './support/isolated-postgres.mjs'
 import { CARD_MEDIA_PRIORITY } from '../analysis/book-character-card.mjs'
@@ -19,6 +22,7 @@ import {
 } from '../analysis/book-card-windows.mjs'
 
 const connectionString = process.env.BOOK_MARKUP_TEST_DATABASE_URL
+const directory = path.dirname(fileURLToPath(import.meta.url))
 
 function hash(value) {
   return createHash('sha256').update(value).digest('hex')
@@ -256,8 +260,12 @@ test('a card job carries the character name, its variants and its mention count'
     const repository = createPostgresBookMarkupRepository(pool)
     const book = await seedBook(pool, { chapterCount: 4, charactersPerWindow: 1 })
     const characterKey = 'char:c0-0'
+    // Инвентарь именует кандидата `name:…`, подтверждение отдаёт персонажа
+    // `char:…`. Записать сюда тот же ключ, что у фрагмента, значило бы спрятать
+    // ровно ту ошибку, из-за которой генератор получал технический ключ вместо
+    // имени.
     const candidates = [{
-      candidateKey: characterKey,
+      candidateKey: 'name:c0-0',
       displayName: 'Раскольников',
       fullName: 'Родион Романович Раскольников',
       aliases: ['Родя', 'Родион Романыч'],
@@ -291,6 +299,113 @@ test('a card job carries the character name, its variants and its mention count'
     assert.deepEqual(payload.rows[0].payload.character_names, [
       'Раскольников', 'Родион Романович Раскольников', 'Родя', 'Родион Романыч'
     ])
+  } finally {
+    await isolated.release()
+  }
+})
+
+test('a job queued without names still reaches the model with a name', {
+  skip: !connectionString
+}, async () => {
+  // Запасной путь чтения задания: payload пуст (так ставились задания до того,
+  // как имена стали писаться в него), и имя обязано найтись в инвентаре —
+  // несмотря на то, что ключи там с другим префиксом.
+  const isolated = await createIsolatedPostgres(connectionString)
+  const { pool } = isolated
+  try {
+    const repository = createPostgresBookMarkupRepository(pool)
+    const book = await seedBook(pool, { chapterCount: 4, charactersPerWindow: 1 })
+    const characterKey = 'char:c0-0'
+    await pool.query(
+      `INSERT INTO book_name_inventory (
+         run_id, inventory_version, normalized_text_hash, text_length, chapter_count,
+         total_mentions, roster_count, significant_count, document, document_hash
+       ) VALUES ($1, 'name-inventory-v1', $2, $3, 4, 976, 1, 1, $4::jsonb, $5)`,
+      [
+        book.runId, hash(`text:${book.runId}`), book.textLength,
+        JSON.stringify({
+          candidates: [{
+            candidateKey: 'name:c0-0',
+            displayName: 'Раскольников',
+            fullName: 'Родион Романович Раскольников',
+            aliases: ['Родя'],
+            count: 976
+          }]
+        }),
+        hash('inventory')
+      ]
+    )
+
+    const jobId = randomUUID()
+    await pool.query(
+      `INSERT INTO generation_jobs (
+         id, idempotency_key, job_type, book_edition_id, character_key,
+         target_version, status, priority, payload, analysis_run_id, card_window_index
+       ) VALUES ($1, $2, 'character_card', $3, $4, 'character-card-v1', 'running', 65,
+         '{}'::jsonb, $5, 0)`,
+      [jobId, `${book.runId}:legacy:${characterKey}`, book.bookEditionId, characterKey, book.runId]
+    )
+    const leaseToken = randomUUID()
+    await pool.query(
+      `UPDATE generation_jobs SET locked_at = now(), locked_by = 'w', lease_token = $2
+       WHERE id = $1`,
+      [jobId, leaseToken]
+    )
+
+    const input = await repository.getCharacterCardInput({
+      id: jobId,
+      bookEditionId: book.bookEditionId,
+      characterKey,
+      leaseToken
+    })
+    assert.equal(input.character.canonicalName, 'Раскольников')
+    assert.equal(input.character.mentionCount, 976)
+    assert.ok(input.character.names.includes('Родион Романович Раскольников'))
+    assert.notEqual(input.character.canonicalName, characterKey)
+  } finally {
+    await isolated.release()
+  }
+})
+
+test('the migration backfills window assignment ranges that are disjoint and non-empty', {
+  skip: !connectionString
+}, async () => {
+  // Смещённый на одно окно досчёт давал первому окну [0, 0]: LAG отсутствовал, а
+  // start_offset равен нулю. Окно не отвечало ни за кого, а второе забирало обе
+  // первые главы и уводило ранних героев из foreground-окна.
+  const isolated = await createIsolatedPostgres(connectionString)
+  const { pool } = isolated
+  try {
+    const book = await seedBook(pool, { chapterCount: 4, charactersPerWindow: 0 })
+    // Возвращаем таблицу в состояние «до миграции»: строки старого прогона
+    // пришли без этих колонок.
+    await pool.query(
+      `ALTER TABLE book_card_windows
+         ALTER COLUMN assign_start_offset DROP NOT NULL,
+         ALTER COLUMN assign_end_offset DROP NOT NULL`
+    )
+    await pool.query(
+      'UPDATE book_card_windows SET assign_start_offset = NULL, assign_end_offset = NULL WHERE run_id = $1',
+      [book.runId]
+    )
+    const migration = await readFile(
+      path.join(directory, '..', 'migrations', '030_card_window_assignment.sql'),
+      'utf8'
+    )
+    await pool.query(migration)
+
+    const rows = await pool.query(
+      `SELECT window_index, assign_start_offset AS start, assign_end_offset AS "end"
+       FROM book_card_windows WHERE run_id = $1 ORDER BY window_index`,
+      [book.runId]
+    )
+    const ranges = rows.rows.map(({ start, end }) => [Number(start), Number(end)])
+    for (const [index, [start, end]] of ranges.entries()) {
+      assert.ok(end > start, `окно ${index} получило пустой диапазон ${start}..${end}`)
+      if (index > 0) assert.equal(start, ranges[index - 1][1], `разрыв перед окном ${index}`)
+    }
+    assert.equal(ranges[0][0], 0)
+    assert.equal(ranges.at(-1)[1], book.textLength)
   } finally {
     await isolated.release()
   }

@@ -25,6 +25,7 @@ import {
   durableTraitPhrasing,
   quoteNamesTrait,
   traitConceptKey,
+  traitMentionIndices,
   traitStem
 } from '../analysis/personality-trait-lexicon.mjs'
 import { filterStableTraits } from '../generation/internal-generation-service.mjs'
@@ -152,6 +153,23 @@ test('a permanent-disposition phrase has to stand next to the trait it makes per
   assert.equal(durableTraitPhrasing(far, 'трусливый'), false)
   assert.ok(durableTraitPhrasing(far), 'без черты проверяется вся цитата')
   assert.ok(durableTraitPhrasing('Она и всегда была застенчива.', 'застенчивая'))
+})
+
+test('punctuation and case in the quote do not hide the trait', () => {
+  // Слово из живой цитаты приходит с точкой и с заглавной, а основы, с которыми
+  // идёт сравнение, нормализованы. Из-за этого «Он от природы был злым» черту
+  // сохраняло, а «Он от природы был злым.» снимало как single_scene: точка
+  // делала слово тем, которого правило не узнаёт.
+  for (const quote of [
+    'Он от природы был злым',
+    'Он от природы был злым.',
+    '«Он от природы был злым!»',
+    'ОН ОТ ПРИРОДЫ БЫЛ ЗЛЫМ'
+  ]) {
+    assert.ok(durableTraitPhrasing(quote, 'злой'), quote)
+  }
+  assert.deepEqual(traitMentionIndices('злой', ['Он', 'был', 'злым.']), [2])
+  assert.deepEqual(traitMentionIndices('злой', ['Он', 'был', 'добрым.']), [])
 })
 
 test('the trait lexeme is found by stem, not by a five-letter prefix', () => {

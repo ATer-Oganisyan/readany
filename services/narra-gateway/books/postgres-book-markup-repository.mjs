@@ -507,6 +507,20 @@ export function createPostgresBookMarkupRepository(pool, {
    * payload задания остаётся приоритетным: когда поток подведут, он положит в
    * задание подтверждённые имена, и они перекроют инвентарные.
    */
+  /**
+   * Общая часть ключей кандидата и подтверждённого персонажа.
+   *
+   * Одна сущность живёт под двумя именами: инвентарь зовёт её
+   * `name:raskolnikov`, подтверждение — `char:raskolnikov`, и второе строится из
+   * первого заменой префикса (`applyRosterConfirmation`). Пока подтверждённый
+   * roster не сохраняется в базу, связь между ними восстанавливается только так;
+   * когда стадийный поток положит roster с его `candidateKeys`, связь станет
+   * явной, а эта функция — ненужной.
+   */
+  function characterIdentityKey(key) {
+    return String(key ?? '').replace(/^(?:name|char):/, '')
+  }
+
   async function inventoryNamesByKey(client, runId) {
     const result = await client.query(
       `SELECT document->'candidates' AS candidates
@@ -515,9 +529,10 @@ export function createPostgresBookMarkupRepository(pool, {
     )
     const candidates = result.rows[0]?.candidates
     if (!Array.isArray(candidates)) return new Map()
-    return new Map(candidates
-      .filter((candidate) => typeof candidate?.candidateKey === 'string')
-      .map((candidate) => [candidate.candidateKey, {
+    const names = new Map()
+    for (const candidate of candidates) {
+      if (typeof candidate?.candidateKey !== 'string') continue
+      const entry = {
         name: candidate.displayName ?? candidate.candidateKey,
         names: [...new Set([
           candidate.displayName,
@@ -525,7 +540,16 @@ export function createPostgresBookMarkupRepository(pool, {
           ...(Array.isArray(candidate.aliases) ? candidate.aliases : [])
         ].filter((value) => typeof value === 'string' && value.trim()))],
         mentionCount: Number.isFinite(candidate.count) ? candidate.count : 0
-      }]))
+      }
+      // Ключ кладётся и как есть, и без префикса. Инвентарь именует кандидата
+      // `name:raskolnikov`, а подтверждение отдаёт персонажа
+      // `char:raskolnikov` — `applyRosterConfirmation` строит второй из первого
+      // ровно этой заменой. Из-за разных префиксов поиск по ключу задания не
+      // находил ничего, и генератор получал технический ключ вместо имени.
+      names.set(candidate.candidateKey, entry)
+      names.set(characterIdentityKey(candidate.candidateKey), entry)
+    }
+    return names
   }
 
   /**
@@ -2600,7 +2624,8 @@ export function createPostgresBookMarkupRepository(pool, {
         for (const character of characters.rows) {
           const idempotencyKey =
             `${runId}:character-card:${windowIndex}:${character.character_key}`
-          const named = names.get(character.character_key) ?? null
+          const named = names.get(character.character_key) ??
+            names.get(characterIdentityKey(character.character_key)) ?? null
           const inserted = await client.query(
             `INSERT INTO generation_jobs (
                id, idempotency_key, job_type, book_edition_id, character_key,
@@ -2899,7 +2924,11 @@ export function createPostgresBookMarkupRepository(pool, {
          LEFT JOIN LATERAL (
            SELECT value
            FROM jsonb_array_elements(COALESCE(inventory.document->'candidates', '[]'::jsonb))
-           WHERE value->>'candidateKey' = job.character_key
+           -- Сравниваются ключи без префикса: инвентарь пишет
+           -- name:raskolnikov, подтверждение — char:raskolnikov, и прямое
+           -- сравнение не находило ничего.
+           WHERE regexp_replace(value->>'candidateKey', '^(name|char):', '')
+                 = regexp_replace(job.character_key, '^(name|char):', '')
            LIMIT 1
          ) AS candidate ON true
          WHERE job.id = $1 AND job.job_type = 'character_card'
