@@ -205,11 +205,7 @@ export function rosterForbiddenPairs(candidates, { fragments = null } = {}) {
         : [rightParagraphs, leftParagraphs]
       for (const paragraph of smaller) if (larger.has(paragraph)) shared += 1
       if (shared >= CO_MENTION_MIN && shared >= CO_MENTION_SHARE * smaller.size) {
-        const adjacency = Math.max(
-          adjacentCount(left, right.candidateKey),
-          adjacentCount(right, left.candidateKey)
-        )
-        if (adjacency >= ADJACENT_NAME_MIN) continue
+        if (adjacentAsOneName(left, right)) continue
         values.set(key, { leftKey, rightKey, reason: 'co_mentioned_participants' })
       }
     }
@@ -240,11 +236,8 @@ export function rosterCandidatePairs(candidates, { forbiddenPairs = [] } = {}) {
       if (blocked.has(key)) continue
       const nameSignal = namePairSignal(left, right)
       const lexicon = lexiconPairs.get(key)
-      const adjacency = Math.max(
-        adjacentCount(left, right.candidateKey),
-        adjacentCount(right, left.candidateKey)
-      )
-      const adjacent = adjacency >= ADJACENT_NAME_MIN
+      const adjacency = adjacentAsOneName(left, right)
+      const adjacent = adjacency > 0
       if (!nameSignal && !lexicon && !adjacent) continue
       const [leftKey, rightKey] = [left.candidateKey, right.candidateKey].sort(compareText)
       rows.push({
@@ -275,6 +268,48 @@ export function rosterCandidatePairs(candidates, { forbiddenPairs = [] } = {}) {
 function adjacentCount(candidate, otherKey) {
   return (candidate.adjacentNames ?? [])
     .find(({ candidateKey }) => candidateKey === otherKey)?.count ?? 0
+}
+
+const RUSSIAN_PATRONYMIC = /(?:ович|евич|ич|овна|евна|ична|инична|оглы|кызы)$/u
+
+function hasGivenAndPatronymic(candidate) {
+  return candidateNames(candidate).some((name) => {
+    const tokens = identityTokens(name)
+    return tokens.length === 2 && RUSSIAN_PATRONYMIC.test(tokens[1])
+  })
+}
+
+function hasBareSurname(candidate) {
+  return candidateNames(candidate).some((name) => {
+    const tokens = identityTokens(name)
+    return tokens.length === 1 && !RUSSIAN_PATRONYMIC.test(tokens[0])
+  })
+}
+
+/**
+ * Стоят ли эти два имени в тексте как одно имя одного человека.
+ *
+ * Обычному соседству нужен повтор: рядом оказываются и «Ольга» с «Лариным», и
+ * это ничего не значит. Но «Григорий Александрович» рядом с «Печориным» — не
+ * соседство двух имён, а канонический полный русский формат, названный
+ * целиком. В «Герое нашего времени» он назван ровно один раз на весь роман, и
+ * порога в два повтора для него взяться неоткуда: Печорин и «Григорий
+ * Александрович» так и остались двумя людьми.
+ *
+ * Поэтому имя с отчеством рядом с голой фамилией засчитывается с первого раза.
+ * Обратная сторона узкая: пара всё равно идёт к модели вместе с цитатами, а не
+ * сливается сама.
+ */
+function adjacentAsOneName(left, right) {
+  const adjacency = Math.max(
+    adjacentCount(left, right.candidateKey),
+    adjacentCount(right, left.candidateKey)
+  )
+  if (adjacency >= ADJACENT_NAME_MIN) return adjacency
+  const fullNameShape =
+    (hasGivenAndPatronymic(left) && hasBareSurname(right)) ||
+    (hasGivenAndPatronymic(right) && hasBareSurname(left))
+  return adjacency >= 1 && fullNameShape ? adjacency : 0
 }
 
 function candidateFragments(fragments, characterKey, limit) {

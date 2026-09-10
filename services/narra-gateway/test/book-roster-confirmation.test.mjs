@@ -703,3 +703,61 @@ test('a named-but-absent person is not a character and gets no card', () => {
   })
   assert.deepEqual(roster.map(({ canonicalName }) => canonicalName), ['Печорин'])
 })
+
+test('a full Russian name said once is enough to pair the surname with the patronymic', () => {
+  // «Григорием Александровичем Печориным» сказано ровно один раз на весь
+  // роман, а порог соседства требует двух: Печорин и «Григорий Александрович»
+  // так и остались двумя людьми — 79 упоминаний и 58. Имя с отчеством рядом с
+  // голой фамилией — это не случайное соседство, а полный формат имени.
+  const pairs = rosterCandidatePairs([
+    candidate({
+      candidateKey: 'name:pechorin',
+      displayName: 'Печорин',
+      count: 79,
+      adjacentNames: []
+    }),
+    candidate({
+      candidateKey: 'name:grigoriy-aleksandrovich',
+      displayName: 'Григорий Александрович',
+      count: 58,
+      adjacentNames: [{ candidateKey: 'name:pechorin', count: 1 }]
+    })
+  ])
+  assert.equal(pairs.length, 1)
+  assert.ok(pairs[0].signals.includes('adjacent_full_name'))
+})
+
+test('a single adjacency between two bare names is still not enough', () => {
+  // Послабление узкое: «Ольга» и «Ларин» рядом один раз — по-прежнему ничего.
+  const pairs = rosterCandidatePairs([
+    candidate({
+      candidateKey: 'name:olga',
+      displayName: 'Ольга',
+      adjacentNames: [{ candidateKey: 'name:larin', count: 1 }]
+    }),
+    candidate({
+      candidateKey: 'name:larin',
+      displayName: 'Ларин',
+      adjacentNames: [{ candidateKey: 'name:olga', count: 1 }]
+    })
+  ])
+  assert.deepEqual(pairs, [])
+})
+
+test('two patronymic forms are not a full name, so one adjacency proves nothing', () => {
+  // Полный формат — это имя с отчеством плюс фамилия. «Иван Иванович» рядом с
+  // «Петром Петровичем» — двое собеседников, а не один человек.
+  const pairs = rosterCandidatePairs([
+    candidate({
+      candidateKey: 'name:ivan-ivanovich',
+      displayName: 'Иван Иванович',
+      adjacentNames: [{ candidateKey: 'name:petr-petrovich', count: 1 }]
+    }),
+    candidate({
+      candidateKey: 'name:petr-petrovich',
+      displayName: 'Пётр Петрович',
+      adjacentNames: [{ candidateKey: 'name:ivan-ivanovich', count: 1 }]
+    })
+  ])
+  assert.deepEqual(pairs, [])
+})
