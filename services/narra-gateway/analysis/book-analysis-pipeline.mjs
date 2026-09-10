@@ -27,7 +27,10 @@ export const EXTERNAL_UPSTREAM_REVISION = 'd532bdd0a15f2948fd0c99f5e11b92677cb5c
 export const EXTERNAL_PIPELINE_IMPLEMENTATION_VERSION =
   'external-autiobook-v1.d532bdd0'
 export const EXTERNAL_EVIDENCE_PROFILE_VERSION = 'external-evidence-profile-v1'
-export const CARDS_PIPELINE_IMPLEMENTATION_VERSION = 'cards-v1'
+// v2: соседство имён снимает запрет по со-упоминанию, `mentioned` отделяет
+// названное лицо от действующего, карточка требует утверждений вместо строк.
+// Прогоны v1 несравнимы с этими и не должны переиспользоваться.
+export const CARDS_PIPELINE_IMPLEMENTATION_VERSION = 'cards-v2'
 export const CARDS_PIPELINE_INVENTORY_VERSION = 'name-inventory-v1'
 export const CARDS_PIPELINE_CARD_VERSION = 'character-card-v1'
 export const CARDS_PIPELINE_CONFIRMATION_VERSION = 'roster-confirm-v1'

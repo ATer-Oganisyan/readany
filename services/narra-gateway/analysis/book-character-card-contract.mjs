@@ -16,7 +16,7 @@
  */
 
 export const CHARACTER_CARD_CONTRACT_VERSION = 'character-card-v1'
-export const CHARACTER_CARD_PROMPT_VERSION = 'character-card-prompt-v1'
+export const CHARACTER_CARD_PROMPT_VERSION = 'character-card-prompt-v2'
 
 /**
  * Сколько черт просить у модели. Просим с запасом: аудит стабильности черт

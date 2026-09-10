@@ -21,7 +21,7 @@ import { NAME_HONORIFICS } from './book-name-inventory.mjs'
 import { splitHonorificNames } from './book-character-fragments.mjs'
 
 export const ROSTER_CONFIRMATION_VERSION = 'roster-confirm-v1'
-export const ROSTER_CONFIRMATION_PROMPT_VERSION = 'roster-confirm-prompt-v1'
+export const ROSTER_CONFIRMATION_PROMPT_VERSION = 'roster-confirm-prompt-v2'
 
 export const MAX_CONFIRMATION_CANDIDATES = 128
 export const MAX_FRAGMENTS_PER_CANDIDATE = 2
