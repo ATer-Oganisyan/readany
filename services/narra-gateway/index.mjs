@@ -380,12 +380,20 @@ async function generateInternalPortrait(prompt, signal, costContext = null) {
   }
 }
 
-async function measuredInternalImageRequest({ prompt, aspectRatio, quality, signal, costContext }) {
+async function measuredInternalImageRequest({
+  prompt,
+  aspectRatio,
+  quality,
+  referenceImages = [],
+  signal,
+  costContext
+}) {
   try {
     const generated = await requestCoverImageObserved({
       prompt,
       aspectRatio,
       quality,
+      referenceImages,
       requestId: randomUUID(),
       signal
     })
@@ -463,7 +471,7 @@ async function generateInternalCharacterPortrait(prompt, signal, costContext) {
   }
 }
 
-async function generateInternalScene(prompt, signal, costContext) {
+async function generateInternalScene(prompt, signal, costContext, { referenceImages = [] } = {}) {
   let release
   try {
     release = await imageGate.acquire(signal)
@@ -473,6 +481,7 @@ async function generateInternalScene(prompt, signal, costContext) {
         prompt,
         aspectRatio: '4:3',
         quality: SCENE_IMAGE_QUALITY,
+        referenceImages,
         costContext,
         signal
       })

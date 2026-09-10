@@ -102,6 +102,31 @@ export function createGenerationServiceClient({
         ...input
       })
     },
+    confirmBookRoster(input) {
+      return post('internal/v1/book-analysis/confirm-roster', {
+        idempotencyKey: [
+          input.runId,
+          'roster-confirm',
+          Number.isSafeInteger(input.windowIndex) && input.windowIndex >= 0
+            ? `window-${input.windowIndex}`
+            : 'book',
+          input.inventoryVersion,
+          input.promptVersion
+        ].join(':'),
+        ...input
+      })
+    },
+    generateCharacterCard(input) {
+      return post('internal/v1/book-analysis/synthesize-character-card', {
+        idempotencyKey: [
+          input.runId,
+          'character-card',
+          input.characterKey,
+          input.promptVersion
+        ].join(':'),
+        ...input
+      })
+    },
     scanBookChunk(input) {
       return post('internal/v1/book-analysis/scan-chunk', {
         idempotencyKey: [

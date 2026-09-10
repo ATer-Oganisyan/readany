@@ -26,6 +26,20 @@ import {
   normalizeBookScenePolicy
 } from '../generation/book-scenes.mjs'
 import { BOOK_ANALYSIS_NORMALIZATION_VERSION } from '../analysis/book-analysis-pipeline.mjs'
+import { BOOK_ANALYSIS_CHARACTER_BUNDLE_VERSION } from '../analysis/book-analysis-contracts.mjs'
+import {
+  CARD_MEDIA_PRIORITY,
+  CHARACTER_CARD_TARGET_VERSION
+} from '../analysis/book-character-card.mjs'
+import { ROSTER_CONFIRMATION_VERSION } from '../analysis/book-roster-confirmation.mjs'
+import {
+  cardWindowChapterFrontier,
+  nextCardWindow
+} from '../analysis/book-card-window-schedule.mjs'
+import {
+  characterCardProjection,
+  validateCharacterCard
+} from '../analysis/book-character-card-contract.mjs'
 
 const BOOK_MIME_TYPES = Object.freeze({
   epub: 'application/epub+zip',
@@ -485,17 +499,239 @@ export function createPostgresBookMarkupRepository(pool, {
     return { ...jobRow(existing.rows[0]), created: false, ...spec }
   }
 
+  /**
+   * Постановка карточек одного окна внутри уже открытой транзакции.
+   *
+   * Вынесено из `enqueueCardWindow`, потому что подтверждение состава ставит
+   * карточки своего окна в той же транзакции, в которой пишет roster: иначе
+   * roster оказался бы записан, а карточек никто бы не поставил, и по прогону
+   * было бы не понять, чего он ждёт.
+   */
+  async function enqueueCardWindowJobs(client, { runId, bookEditionId, windowIndex, priority }) {
+        const window = await client.query(
+          `SELECT start_offset, end_offset, assign_start_offset, assign_end_offset,
+                  priority_class, status
+           FROM book_card_windows
+           WHERE run_id = $1 AND window_index = $2
+           FOR UPDATE`,
+          [runId, windowIndex]
+        )
+        if (!window.rows[0]) {
+          const error = new Error(`card window ${windowIndex} does not exist`)
+          error.code = 'CARD_WINDOW_MISSING'
+          throw error
+        }
+        const row = window.rows[0]
+        if (row.status !== 'queued') {
+          return { status: row.status, windowIndex, created: 0, jobs: [] }
+        }
+        // Карточки ставятся по **подтверждённым** персонажам, а не по
+        // кандидатам инвентаря. Раньше запрос группировал сырые фрагменты по
+        // их `name:*`, и подтверждение оказывалось выброшенным: слитые Аркадий
+        // и Кирсанов получали по отдельной карточке, а место, которое модель
+        // отнесла к `other`, получало карточку наравне с людьми. Состав окна
+        // берётся по первому упоминанию персонажа в диапазоне `assign_*`,
+        // фрагменты — по барьеру и по всем ключам кандидатов, из которых
+        // персонаж собран: это разные границы, и смешивать их нельзя.
+        const characters = await client.query(
+          `SELECT roster.character_key, roster.canonical_name, roster.names,
+                  roster.candidate_keys, roster.mention_count,
+                  roster.first_mention_text_offset,
+                  COUNT(fragment.fragment_id)::int AS fragment_count
+           FROM book_character_roster AS roster
+           LEFT JOIN book_character_fragments AS fragment
+             ON fragment.run_id = roster.run_id
+            AND fragment.character_key = ANY(roster.candidate_keys)
+            AND fragment.start_offset < $2
+           WHERE roster.run_id = $1
+             AND roster.first_mention_text_offset >= $3
+             AND roster.first_mention_text_offset < $4
+           GROUP BY roster.character_key, roster.canonical_name, roster.names,
+                    roster.candidate_keys, roster.mention_count,
+                    roster.first_mention_text_offset
+           HAVING COUNT(fragment.fragment_id) > 0
+           ORDER BY roster.first_mention_text_offset, roster.character_key`,
+          [runId, row.end_offset, row.assign_start_offset, row.assign_end_offset]
+        )
+        const jobs = []
+        for (const character of characters.rows) {
+          const idempotencyKey =
+            `${runId}:character-card:${windowIndex}:${character.character_key}`
+          const inserted = await client.query(
+            `INSERT INTO generation_jobs (
+               id, idempotency_key, job_type, book_edition_id, character_key,
+               target_version, status, priority, payload, analysis_run_id, card_window_index
+             ) VALUES ($1, $2, 'character_card', $3, $4, $5, 'queued', $6, $7::jsonb, $8, $9)
+             ON CONFLICT (idempotency_key) DO NOTHING
+             RETURNING id`,
+            [
+              idFactory(), idempotencyKey, bookEditionId, character.character_key,
+              CHARACTER_CARD_TARGET_VERSION, priority,
+              JSON.stringify({
+                card_revision: 1,
+                fragment_count: Number(character.fragment_count),
+                first_mention_text_offset: Number(character.first_mention_text_offset),
+                // Имя приходит подтверждённое: генератор читает его только из
+                // payload, и без него получал технический ключ вместо имени.
+                character_name: character.canonical_name,
+                character_names: character.names ?? [],
+                mention_count: Number(character.mention_count)
+              }),
+              runId, windowIndex
+            ]
+          )
+          if (inserted.rows[0]) jobs.push(inserted.rows[0].id)
+        }
+        await client.query(
+          `UPDATE book_card_windows
+           SET status = CASE WHEN $3 > 0 THEN 'running' ELSE 'ready' END,
+               started_at = COALESCE(started_at, now()),
+               finished_at = CASE WHEN $3 > 0 THEN NULL ELSE now() END
+           WHERE run_id = $1 AND window_index = $2`,
+          [runId, windowIndex, jobs.length]
+        )
+        return {
+          status: jobs.length ? 'running' : 'ready',
+          windowIndex,
+          priorityClass: row.priority_class,
+          created: jobs.length,
+          jobs
+        }
+  }
+
+  /**
+   * Имя персонажа и его варианты из инвентаря прогона, по ключу кандидата.
+   *
+   * Единственный сохранённый источник имён на момент постановки карточки —
+   * документ инвентаря: подтверждённый roster в базе ещё не живёт, его пишет
+   * стадийный поток, который пока не подведён. Поэтому имена берутся отсюда, а
+   * payload задания остаётся приоритетным: когда поток подведут, он положит в
+   * задание подтверждённые имена, и они перекроют инвентарные.
+   */
+  /**
+   * Общая часть ключей кандидата и подтверждённого персонажа.
+   *
+   * Одна сущность живёт под двумя именами: инвентарь зовёт её
+   * `name:raskolnikov`, подтверждение — `char:raskolnikov`, и второе строится из
+   * первого заменой префикса (`applyRosterConfirmation`). Пока подтверждённый
+   * roster не сохраняется в базу, связь между ними восстанавливается только так;
+   * когда стадийный поток положит roster с его `candidateKeys`, связь станет
+   * явной, а эта функция — ненужной.
+   */
+  function characterIdentityKey(key) {
+    return String(key ?? '').replace(/^(?:name|char):/, '')
+  }
+
+  async function inventoryNamesByKey(client, runId) {
+    const result = await client.query(
+      `SELECT document->'candidates' AS candidates
+       FROM book_name_inventory WHERE run_id = $1`,
+      [runId]
+    )
+    const candidates = result.rows[0]?.candidates
+    if (!Array.isArray(candidates)) return new Map()
+    const names = new Map()
+    for (const candidate of candidates) {
+      if (typeof candidate?.candidateKey !== 'string') continue
+      const entry = {
+        name: candidate.displayName ?? candidate.candidateKey,
+        names: [...new Set([
+          candidate.displayName,
+          candidate.fullName,
+          ...(Array.isArray(candidate.aliases) ? candidate.aliases : [])
+        ].filter((value) => typeof value === 'string' && value.trim()))],
+        mentionCount: Number.isFinite(candidate.count) ? candidate.count : 0
+      }
+      // Ключ кладётся и как есть, и без префикса. Инвентарь именует кандидата
+      // `name:raskolnikov`, а подтверждение отдаёт персонажа
+      // `char:raskolnikov` — `applyRosterConfirmation` строит второй из первого
+      // ровно этой заменой. Из-за разных префиксов поиск по ключу задания не
+      // находил ничего, и генератор получал технический ключ вместо имени.
+      names.set(candidate.candidateKey, entry)
+      names.set(characterIdentityKey(candidate.candidateKey), entry)
+    }
+    return names
+  }
+
+  /**
+   * Источник медиа персонажа: опубликованная разметка или включённая карточка.
+   *
+   * Различается только этот запрос — постановка bundle, пересчёт ревизии и
+   * вставка заданий у обоих путей общие. У карточки роль `source_markup_hash`
+   * играет хэш её документа, поэтому ревизия медиа меняется ровно тогда, когда
+   * включается новая `card_revision`, и ни секундой раньше: карточка
+   * неизменяема, значит и портрет по ней переспрашивать незачем.
+   */
+  async function characterCardMediaSource(
+    client,
+    { bookEditionId, characterKey, bundleVersion, runId }
+  ) {
+    if (!runId) {
+      const error = new Error('runId is required to pick a card as the media source')
+      error.code = 'CARD_MEDIA_SOURCE_RUN_REQUIRED'
+      throw error
+    }
+    // Прогон обязателен. Уникальность карточки и выключение прежней ревизии
+    // ограничены `run_id`, поэтому после повторного анализа одной книги
+    // включённых карточек одного персонажа может быть несколько — по одной на
+    // прогон. Запрос без фильтра брал любую через LIMIT 1: новая карточка
+    // получала медиа предыдущего анализа, а смена её документа портрет не
+    // обновляла, потому что `source_markup_hash` в bundle оставался чужим.
+    const result = await client.query(
+      `SELECT card.document_hash AS source_markup_hash,
+              card.card_revision, card.run_id, card.window_index,
+              bundle.id AS bundle_id, bundle.status AS bundle_status,
+              bundle.source_markup_hash AS previous_source_markup_hash,
+              bundle.media_revision
+       FROM book_character_cards AS card
+       LEFT JOIN character_media_bundles AS bundle
+         ON bundle.book_edition_id = card.book_edition_id
+        AND bundle.character_key = card.character_key
+        AND bundle.bundle_version = $3
+       WHERE card.book_edition_id = $1 AND card.character_key = $2 AND card.enabled
+         AND card.run_id = $4
+       ORDER BY card.card_revision DESC
+       LIMIT 1
+       FOR UPDATE OF card`,
+      [bookEditionId, characterKey, bundleVersion, runId]
+    )
+    const row = result.rows[0]
+    if (!row) return null
+    return {
+      row,
+      payload: {
+        card_revision: Number(row.card_revision),
+        analysis_run_id: row.run_id,
+        card_window_index: Number(row.window_index)
+      }
+    }
+  }
+
   async function ensureCharacterMediaJobs({
     bookEditionId,
     characterKey,
     bundleVersion,
-    priority
+    priority,
+    sourceKind = 'markup',
+    runId = null,
+    client: outerClient = null
   }) {
-    return transaction(pool, async (client) => {
+    const body = async (client) => {
       await client.query(
         `SELECT pg_advisory_xact_lock(hashtext($1 || ':' || $2 || ':' || $3))`,
         [bookEditionId, characterKey, bundleVersion]
       )
+      if (sourceKind === 'card') {
+        const resolved = await characterCardMediaSource(client, {
+          bookEditionId, characterKey, bundleVersion, runId
+        })
+        if (!resolved) {
+          const error = new Error('no enabled character card is available for media generation')
+          error.code = 'CARD_MEDIA_SOURCE_MISSING'
+          throw error
+        }
+        return ensureFromSource(client, resolved.row, resolved.payload)
+      }
       const source = await client.query(
         `SELECT markup.id AS markup_version_id,
                 COALESCE(publication.content_hash,
@@ -524,6 +760,10 @@ export function createPostgresBookMarkupRepository(pool, {
       )
       const row = source.rows[0]
       if (!row) throw new Error('published character is unavailable for media generation')
+      return ensureFromSource(client, row, { markup_version_id: row.markup_version_id })
+    }
+
+    async function ensureFromSource(client, row, payloadExtras) {
       let bundleId = row.bundle_id
       let mediaRevision = Number(row.media_revision ?? 1)
       const sourceMarkupHash = row.source_markup_hash
@@ -607,7 +847,7 @@ export function createPostgresBookMarkupRepository(pool, {
               bundle_version: bundleVersion,
               source_markup_hash: sourceMarkupHash,
               media_revision: mediaRevision,
-              markup_version_id: row.markup_version_id
+              ...payloadExtras
             })
           ]
         )
@@ -637,7 +877,12 @@ export function createPostgresBookMarkupRepository(pool, {
         bundleId,
         mediaRevision
       }
-    })
+    }
+
+    // Постановка медиа от карточки идёт в транзакции самой карточки: карточка
+    // без поставленного портрета — молчаливая дыра, которую потом никто не
+    // заметит. Путь от разметки открывает транзакцию сам, как и раньше.
+    return outerClient ? body(outerClient) : transaction(pool, body)
   }
 
   return {
@@ -2319,6 +2564,21 @@ export function createPostgresBookMarkupRepository(pool, {
                  AND portrait.job_type = 'character_portrait'
                  AND portrait.status = 'ready'
              ))`,
+            // Медиа от карточки ждёт включённую карточку той же ревизии.
+            // Карточка неизменяема, но её ревизию могут выключить, и рисовать
+            // портрет по выключенной карточке — то же, что рисовать по
+            // устаревшему тексту.
+            //
+            // Само задание карточки под этот гейт не попадает: оно карточку и
+            // создаёт, и требовать от него уже существующей карточки значило бы
+            // никогда его не выдать.
+            `(job.job_type = 'character_card' OR NOT (job.payload ? 'card_revision') OR EXISTS (
+               SELECT 1 FROM book_character_cards AS card
+               WHERE card.book_edition_id = job.book_edition_id
+                 AND card.character_key = job.character_key
+                 AND card.card_revision = (job.payload->>'card_revision')::integer
+                 AND card.enabled
+             ))`,
             // Обложка не рисуется, пока identity книги ещё в очереди.
             `(job.job_type <> 'catalog_cover' OR NOT EXISTS (
                SELECT 1 FROM generation_jobs AS identity
@@ -2412,7 +2672,395 @@ export function createPostgresBookMarkupRepository(pool, {
       if (!result.rows[0]) throw leaseLost(job.id)
     },
 
+    /**
+     * Ставит карточки одного окна и отмечает окно работающим.
+     *
+     * Барьер окна и его состав героев — разные вещи. Барьер (`start_offset`,
+     * `end_offset`) у всех окон начинается с нуля: карточка персонажа из главы 5
+     * опирается на весь текст до конца главы 6. Состав задаёт отдельный
+     * диапазон `assign_*`, посчитанный тем же правилом, что
+     * `cardWindowIndexForOffset`. Пока состав брался из барьера, каждый ранний
+     * персонаж выбирался заново в каждом следующем окне, а персонаж главы 2
+     * получал карточку уже по первым двум главам — не по правилу D1.
+     */
+    async enqueueCardWindow({ runId, bookEditionId, windowIndex, priority }) {
+      return transaction(pool, async (client) =>
+        enqueueCardWindowJobs(client, { runId, bookEditionId, windowIndex, priority }))
+    },
+
+    /**
+     * Закрывает окно, когда его карточки закончились, и ставит следующее.
+     *
+     * Следующее окно ставится только после того, как предыдущее закрыто: иначе
+     * очередь заполнится фоновыми заданиями большой книги, и окно первых глав
+     * следующей книги будет ждать за ними.
+     */
+    async advanceCardWindows({ runId, bookEditionId, scope, readerTextOffset = 0 }) {
+      const windows = await pool.query(
+        `SELECT window_index, start_offset, end_offset, chapter_indexes,
+                priority_class, status
+         FROM book_card_windows WHERE run_id = $1 ORDER BY window_index`,
+        [runId]
+      )
+      if (!windows.rows.length) return { closed: [], enqueued: null }
+      const closed = []
+      for (const row of windows.rows) {
+        if (row.status !== 'running') continue
+        const pending = await pool.query(
+          `SELECT count(*)::int AS count FROM generation_jobs
+           WHERE analysis_run_id = $1 AND card_window_index = $2
+             AND job_type = 'character_card' AND status IN ('queued', 'running')`,
+          [runId, row.window_index]
+        )
+        if (Number(pending.rows[0].count) > 0) continue
+        await pool.query(
+          `UPDATE book_card_windows
+           SET status = 'ready', finished_at = COALESCE(finished_at, now())
+           WHERE run_id = $1 AND window_index = $2 AND status = 'running'`,
+          [runId, row.window_index]
+        )
+        closed.push(row.window_index)
+      }
+      const refreshed = closed.length
+        ? (await pool.query(
+            `SELECT window_index, start_offset, end_offset, chapter_indexes,
+                    priority_class, status
+             FROM book_card_windows WHERE run_id = $1 ORDER BY window_index`,
+            [runId]
+          )).rows
+        : windows.rows
+      const scheduleWindows = refreshed.map((row) => ({
+        windowIndex: Number(row.window_index),
+        startOffset: Number(row.start_offset),
+        endOffset: Number(row.end_offset),
+        chapterIndexes: (row.chapter_indexes ?? []).map(Number),
+        priorityClass: row.priority_class,
+        status: row.status
+      }))
+      const maxChapterIndex = cardWindowChapterFrontier({
+        scope,
+        windows: scheduleWindows,
+        readerTextOffset
+      })
+      const next = nextCardWindow({ windows: scheduleWindows, maxChapterIndex })
+      if (!next) return { closed, enqueued: null, maxChapterIndex }
+      const enqueued = await this.enqueueCardWindow({
+        runId,
+        bookEditionId,
+        windowIndex: next.windowIndex,
+        priority: next.priority
+      })
+      return { closed, enqueued, maxChapterIndex }
+    },
+
+    /**
+     * Вход задания подтверждения состава.
+     *
+     * Кандидаты берутся из инвентаря, а не из отдельной таблицы: инвентарь —
+     * и есть их источник, и второй источник истины тут не нужен. Фрагменты
+     * читаются целиком, даже когда подтверждается одно окно: по ним считаются
+     * со-упоминания, а это защита от слияния двух участников одной сцены, и
+     * считать её по части книги значит ослабить.
+     */
+    async getRosterConfirmationInput(job) {
+      const result = await pool.query(
+        `SELECT job.analysis_run_id, job.card_window_index,
+                edition.title, edition.author, edition.language,
+                run.normalized_text_object_key, run.normalized_text_hash, run.text_length,
+                inventory.inventory_version, inventory.document AS inventory_document,
+                card_window.start_offset, card_window.end_offset,
+                card_window.assign_start_offset, card_window.assign_end_offset
+         FROM generation_jobs AS job
+         JOIN book_editions AS edition ON edition.id = job.book_edition_id
+         JOIN book_analysis_runs AS run ON run.id = job.analysis_run_id
+         LEFT JOIN book_name_inventory AS inventory ON inventory.run_id = job.analysis_run_id
+         LEFT JOIN book_card_windows AS card_window
+           ON card_window.run_id = job.analysis_run_id
+          AND card_window.window_index = job.card_window_index
+         WHERE job.id = $1 AND job.job_type = 'roster_confirm'
+           AND job.status = 'running' AND job.lease_token = $2::uuid`,
+        [job.id, job.leaseToken]
+      )
+      if (!result.rows[0]) throw leaseLost(job.id)
+      const row = result.rows[0]
+      const candidates = Array.isArray(row.inventory_document?.candidates)
+        ? row.inventory_document.candidates
+        : []
+      if (!candidates.length) {
+        const error = new Error(`run ${row.analysis_run_id} has no name inventory to confirm`)
+        error.code = 'ROSTER_INVENTORY_MISSING'
+        throw error
+      }
+      const fragments = await pool.query(
+        `SELECT character_key, fragment_id, paragraph_index, chapter_index,
+                start_offset, end_offset, mention_count
+         FROM book_character_fragments
+         WHERE run_id = $1
+         ORDER BY character_key, start_offset`,
+        [row.analysis_run_id]
+      )
+      const byCharacter = new Map()
+      for (const fragment of fragments.rows) {
+        const entry = byCharacter.get(fragment.character_key) ?? []
+        entry.push({
+          fragmentId: fragment.fragment_id,
+          characterKey: fragment.character_key,
+          paragraphIndex: Number(fragment.paragraph_index),
+          chapterIndex: Number(fragment.chapter_index),
+          startOffset: Number(fragment.start_offset),
+          endOffset: Number(fragment.end_offset),
+          mentionCount: Number(fragment.mention_count)
+        })
+        byCharacter.set(fragment.character_key, entry)
+      }
+      const previous = await pool.query(
+        `SELECT character_key, canonical_name, names, candidate_keys, mention_count,
+                first_mention_text_offset, tier
+         FROM book_character_roster WHERE run_id = $1`,
+        [row.analysis_run_id]
+      )
+      return {
+        runId: row.analysis_run_id,
+        bookEditionId: job.bookEditionId,
+        windowIndex: row.card_window_index === null ? null : Number(row.card_window_index),
+        title: row.title,
+        author: row.author ?? '',
+        language: row.language ?? '',
+        textLength: Number(row.text_length),
+        normalizedTextObjectKey: row.normalized_text_object_key,
+        normalizedTextHash: row.normalized_text_hash,
+        inventoryVersion: row.inventory_version ?? '',
+        window: row.start_offset === null
+          ? null
+          : {
+              startOffset: Number(row.start_offset),
+              endOffset: Number(row.end_offset),
+              assignStartOffset: Number(row.assign_start_offset),
+              assignEndOffset: Number(row.assign_end_offset)
+            },
+        candidates,
+        fragments: {
+          characters: [...byCharacter.entries()].map(([characterKey, entry]) => ({
+            characterKey,
+            fragments: entry
+          }))
+        },
+        previousRoster: previous.rows.map((character) => ({
+          characterKey: character.character_key,
+          canonicalName: character.canonical_name,
+          names: character.names ?? [],
+          candidateKeys: character.candidate_keys ?? [],
+          mentionCount: Number(character.mention_count),
+          firstMentionTextOffset: Number(character.first_mention_text_offset),
+          tier: character.tier
+        }))
+      }
+    },
+
+    /**
+     * Запись подтверждённого состава и постановка следующего шага.
+     *
+     * Всё одной транзакцией: roster, карточки окна и следующий заход
+     * подтверждения. Частичный результат оставил бы прогон в состоянии, из
+     * которого не видно, что делать дальше, — roster записан, а карточек никто
+     * не поставил.
+     */
+    async completeRosterConfirmation(job, {
+      runId,
+      bookEditionId,
+      windowIndex,
+      roster,
+      revisions = [],
+      skipped = false
+    }) {
+      return transaction(pool, async (client) => {
+        // Аренда проверяется и блокируется до записи. Подтверждение ходит в
+        // модель минутами, аренда за это время может истечь, и задание заберёт
+        // другой исполнитель; без проверки прежний записал бы свой результат
+        // поверх чужой работы и сбросил бы новую аренду.
+        await requireLeasedJob(client, job)
+        for (const character of roster) {
+          await client.query(
+            `INSERT INTO book_character_roster (
+               run_id, character_key, canonical_name, names, candidate_keys,
+               mention_count, first_mention_text_offset, tier, window_index
+             ) VALUES ($1, $2, $3, $4::text[], $5::text[], $6, $7, $8, $9)
+             ON CONFLICT (run_id, character_key) DO UPDATE SET
+               canonical_name = EXCLUDED.canonical_name,
+               names = EXCLUDED.names,
+               candidate_keys = EXCLUDED.candidate_keys,
+               mention_count = EXCLUDED.mention_count,
+               first_mention_text_offset = EXCLUDED.first_mention_text_offset,
+               tier = EXCLUDED.tier,
+               window_index = EXCLUDED.window_index,
+               confirmed_at = now()`,
+            [
+              runId, character.characterKey, character.canonicalName,
+              character.names ?? [], character.candidateKeys ?? [],
+              character.mentionCount, character.firstMentionTextOffset,
+              character.tier, windowIndex
+            ]
+          )
+        }
+
+        let cardJobsCreated = 0
+        if (windowIndex !== null && !skipped) {
+          const enqueued = await enqueueCardWindowJobs(client, {
+            runId, bookEditionId, windowIndex, priority: CARD_MEDIA_PRIORITY.foreground
+          })
+          cardJobsCreated = enqueued.created
+        }
+
+        // Полный заход ставится после окна: он длинный, и держать за ним
+        // первые карточки незачем.
+        let nextConfirmation = 'none'
+        if (windowIndex !== null) {
+          const inserted = await client.query(
+            `INSERT INTO generation_jobs (
+               id, idempotency_key, job_type, book_edition_id,
+               target_version, status, priority, payload, analysis_run_id
+             ) VALUES ($1, $2, 'roster_confirm', $3, $4, 'queued', $5, '{}'::jsonb, $6)
+             ON CONFLICT DO NOTHING
+             RETURNING id`,
+            [
+              idFactory(), `${runId}:roster-confirm:book`, bookEditionId,
+              ROSTER_CONFIRMATION_VERSION, CARD_MEDIA_PRIORITY.background, runId
+            ]
+          )
+          nextConfirmation = inserted.rows[0] ? 'book' : 'already_queued'
+        }
+
+        await client.query(
+          `UPDATE generation_jobs
+           SET status = 'ready', result = $2::jsonb, last_error_code = NULL,
+               locked_at = NULL, locked_by = NULL, lease_token = NULL, updated_at = now()
+           WHERE id = $1`,
+          [job.id, JSON.stringify({
+            window_index: windowIndex,
+            character_count: roster.length,
+            revision_count: revisions.length,
+            card_jobs_created: cardJobsCreated,
+            next_confirmation: nextConfirmation,
+            skipped
+          })]
+        )
+        return { cardJobsCreated, nextConfirmation, characterCount: roster.length }
+      })
+    },
+
+    /**
+     * Включённые карточки книги для манифеста.
+     *
+     * До последнего окна книга на `pipeline=cards` не публикует v3 (решение
+     * D2), и это единственный источник персонажей для читателя. Отдаётся
+     * проекция карточки — те же поля, что читает клиент у профиля v3, — плюс
+     * медиа-бандл, чтобы портрет доехал вместе с карточкой, а не вторым
+     * запросом.
+     *
+     * Берётся последняя включённая ревизия каждого персонажа: карточка
+     * неизменяема, а новая ревизия выключает прежнюю в той же транзакции.
+     * Персонажи roster, у которых карточки ещё нет, сюда не попадают: их
+     * список появится вместе с сохранением подтверждённого roster, а до тех
+     * пор клиенту честнее показать меньше, чем выдумать пустые строки.
+     */
+    async listPublishedCharacterCards(bookEditionId, { bundleVersion = null, runId = null } = {}) {
+      const result = await pool.query(
+        // Карточки одного прогона, а не все включённые у издания. Выключение
+        // прежней ревизии ограничено `run_id`, поэтому после повторного анализа
+        // включёнными остаются и старые карточки: без этого ограничения
+        // читатель получал бы старую и новую карточку с одним и тем же
+        // `characterKey`. Актуальным считается прогон последней записанной
+        // карточки — тот, который сейчас наполняет книгу.
+        `WITH current_run AS (
+           SELECT run_id FROM book_character_cards
+           WHERE book_edition_id = $1 AND enabled
+             AND ($3::uuid IS NULL OR run_id = $3)
+           ORDER BY created_at DESC, run_id DESC
+           LIMIT 1
+         )
+         SELECT card.character_key, card.document, card.first_mention_text_offset,
+                bundle.id AS bundle_id, bundle.status AS bundle_status,
+                bundle.media_revision
+         FROM book_character_cards AS card
+         JOIN current_run ON current_run.run_id = card.run_id
+         LEFT JOIN character_media_bundles AS bundle
+           ON bundle.book_edition_id = card.book_edition_id
+          AND bundle.character_key = card.character_key
+          AND ($2::text IS NULL OR bundle.bundle_version = $2)
+         WHERE card.book_edition_id = $1 AND card.enabled
+         ORDER BY card.first_mention_text_offset, card.character_key`,
+        [bookEditionId, bundleVersion, runId]
+      )
+      return result.rows.map((row) => {
+        // Документ перепроверяется контрактом: строка неизменяема, но
+        // правленная руками строка не должна доехать до читателя как валидная.
+        const projection = characterCardProjection(validateCharacterCard(row.document))
+        return {
+          ...projection,
+          firstAppearanceTextOffset: Number(row.first_mention_text_offset),
+          bundle: row.bundle_id
+            ? {
+                id: row.bundle_id,
+                status: row.bundle_status,
+                mediaRevision: Number(row.media_revision ?? 1)
+              }
+            : null
+        }
+      })
+    },
+
+    /**
+     * Вход медиа-задания, поставленного от карточки.
+     *
+     * Проекция карточки отдаёт ровно те поля, которые читает построитель
+     * промпта портрета (`appearancePrompt`, `description`, `role`, `age`), и
+     * приветствие для audio. Поэтому портрет по карточке рисуется тем же
+     * промптом, что и по профилю, — без второй ветки в генераторе.
+     */
+    async getCharacterCardBundleInput(job) {
+      const result = await pool.query(
+        `SELECT card.document, card.first_mention_text_offset,
+                edition.scope, edition.title, edition.author
+         FROM generation_jobs AS job
+         JOIN book_editions AS edition ON edition.id = job.book_edition_id
+         JOIN book_character_cards AS card
+           ON card.book_edition_id = job.book_edition_id
+          AND card.character_key = job.character_key
+          AND card.card_revision = (job.payload->>'card_revision')::integer
+          -- Прогон из payload, а не любая включённая карточка: иначе портрет
+          -- рисуется по карточке другого анализа той же книги.
+          AND card.run_id = (job.payload->>'analysis_run_id')::uuid
+          AND card.enabled
+         WHERE job.id = $1 AND job.status = 'running' AND job.lease_token = $2::uuid`,
+        [job.id, job.leaseToken]
+      )
+      if (!result.rows[0]) throw leaseLost(job.id)
+      const row = result.rows[0]
+      // Хранимый документ перепроверяется контрактом до проекции: строка
+      // карточки неизменяема, но правленная руками строка не должна доехать до
+      // промпта портрета как валидная.
+      const projection = characterCardProjection(validateCharacterCard(row.document))
+      return {
+        bookEditionId: job.bookEditionId,
+        characterKey: projection.characterKey,
+        name: projection.name,
+        fullName: projection.fullName || projection.name,
+        firstAppearanceTextOffset: Number(row.first_mention_text_offset),
+        warmupTextOffset: Number(row.first_mention_text_offset),
+        character: projection,
+        scope: row.scope,
+        bookTitle: row.title,
+        bookAuthor: row.author,
+        bundleVersion: job.targetVersion
+      }
+    },
+
     async getCharacterBundleInput(job) {
+      // Задание, несущее `card_revision`, читает карточку, а не разметку: на
+      // момент постановки опубликованной разметки может ещё не быть вовсе.
+      if (job.payload?.card_revision != null) {
+        return this.getCharacterCardBundleInput(job)
+      }
       const result = await pool.query(
         `SELECT character.character_key, character.name, character.full_name,
                 character.first_appearance_text_offset, character.warmup_text_offset,
@@ -2466,13 +3114,29 @@ export function createPostgresBookMarkupRepository(pool, {
       )
       if (!result.rows[0]) throw leaseLost(job.id)
       const row = result.rows[0]
+      // Портрет ищется по готовому ассету, а не по соглашению об именах:
+      // решение D4 требует прикладывать к сцене именно тот портрет, который
+      // действительно опубликован.
       const characters = await pool.query(
-        `SELECT character_key, name, full_name, data
-         FROM book_characters
-         WHERE markup_version_id = $1
-           AND first_appearance_text_offset <= $2
-         ORDER BY sort_order, character_key`,
-        [row.markup_version_id, row.excerpt_end_text_offset]
+        `SELECT character.character_key, character.name, character.full_name, character.data,
+                portrait.object_key AS portrait_object_key
+         FROM book_characters AS character
+         LEFT JOIN LATERAL (
+           SELECT asset.object_key
+           FROM character_bundle_assets AS link
+           JOIN character_media_bundles AS bundle ON bundle.id = link.bundle_id
+           JOIN media_assets AS asset ON asset.id = link.asset_id
+           WHERE bundle.book_edition_id = $3
+             AND bundle.character_key = character.character_key
+             AND link.asset_type = 'primary_portrait'
+             AND asset.status = 'ready'
+           ORDER BY bundle.media_revision DESC
+           LIMIT 1
+         ) AS portrait ON true
+         WHERE character.markup_version_id = $1
+           AND character.first_appearance_text_offset <= $2
+         ORDER BY character.sort_order, character.character_key`,
+        [row.markup_version_id, row.excerpt_end_text_offset, job.bookEditionId]
       )
       return {
         bookEditionId: job.bookEditionId,
@@ -2492,9 +3156,213 @@ export function createPostgresBookMarkupRepository(pool, {
           characterKey: character.character_key,
           name: character.name,
           fullName: character.full_name,
-          profile: character.data
+          profile: character.data,
+          portraitObjectKey: character.portrait_object_key ?? ''
         }))
       }
+    },
+
+    /**
+     * Вход задания карточки персонажа.
+     *
+     * Цитаты фрагментов здесь не возвращаются: в `book_character_fragments`
+     * текст не дублируется, и раннер восстанавливает его из нормализованного
+     * текста по этим же смещениям. Возвращается ровно окно этого задания —
+     * фрагмент за его границей в выборку не попадает, и это тот же
+     * спойлер-барьер, только выраженный в WHERE.
+     */
+    async getCharacterCardInput(job) {
+      const result = await pool.query(
+        `SELECT job.analysis_run_id, job.card_window_index,
+                edition.title, edition.author, edition.language,
+                run.normalized_text_object_key, run.normalized_text_hash,
+                run.text_length,
+                card_window.start_offset, card_window.end_offset, card_window.chapter_indexes,
+                card_window.priority_class,
+                inventory.inventory_version,
+                -- Payload приоритетен, инвентарь — запас: задание, поставленное
+                -- до того, как имена стали писаться в payload, всё равно должно
+                -- дойти до модели с именем, а не с техническим ключом.
+                COALESCE(job.payload->>'character_name',
+                         candidate.value->>'displayName') AS character_name,
+                COALESCE(job.payload->'character_names',
+                         candidate.value->'aliases') AS character_names,
+                COALESCE(job.payload->>'mention_count',
+                         candidate.value->>'count') AS mention_count,
+                candidate.value->>'fullName' AS character_full_name,
+                roster.candidate_keys,
+                roster.canonical_name AS roster_name,
+                roster.names AS roster_names,
+                roster.mention_count AS roster_mention_count,
+                job.payload->>'card_revision' AS card_revision
+         FROM generation_jobs AS job
+         JOIN book_editions AS edition ON edition.id = job.book_edition_id
+         JOIN book_analysis_runs AS run ON run.id = job.analysis_run_id
+         JOIN book_card_windows AS card_window
+           ON card_window.run_id = job.analysis_run_id
+          AND card_window.window_index = job.card_window_index
+         LEFT JOIN book_name_inventory AS inventory ON inventory.run_id = job.analysis_run_id
+         LEFT JOIN book_character_roster AS roster
+           ON roster.run_id = job.analysis_run_id
+          AND roster.character_key = job.character_key
+         LEFT JOIN LATERAL (
+           SELECT value
+           FROM jsonb_array_elements(COALESCE(inventory.document->'candidates', '[]'::jsonb))
+           -- Сравниваются ключи без префикса: инвентарь пишет
+           -- name:raskolnikov, подтверждение — char:raskolnikov, и прямое
+           -- сравнение не находило ничего.
+           WHERE regexp_replace(value->>'candidateKey', '^(name|char):', '')
+                 = regexp_replace(job.character_key, '^(name|char):', '')
+           LIMIT 1
+         ) AS candidate ON true
+         WHERE job.id = $1 AND job.job_type = 'character_card'
+           AND job.status = 'running' AND job.lease_token = $2::uuid`,
+        [job.id, job.leaseToken]
+      )
+      if (!result.rows[0]) throw leaseLost(job.id)
+      const row = result.rows[0]
+      // Фрагменты читаются по ключам кандидатов подтверждённого персонажа, а
+      // не по ключу задания: персонаж собран из нескольких кандидатов
+      // инвентаря, и фрагменты лежат под их ключами. Связь явная — она в
+      // строке roster, — а не восстанавливается из общей части ключа.
+      const candidateKeys = row.candidate_keys?.length
+        ? row.candidate_keys
+        : [job.characterKey]
+      const fragments = await pool.query(
+        `SELECT fragment_id, paragraph_index, chapter_index,
+                start_offset, end_offset, mention_count
+         FROM book_character_fragments
+         WHERE run_id = $1 AND character_key = ANY($2::text[])
+           AND start_offset >= $3 AND end_offset <= $4
+         ORDER BY start_offset, fragment_id`,
+        [row.analysis_run_id, candidateKeys, row.start_offset, row.end_offset]
+      )
+      if (!fragments.rows.length) {
+        const error = new Error(`character ${job.characterKey} has no fragments in its card window`)
+        error.code = 'CARD_FRAGMENTS_MISSING'
+        throw error
+      }
+      // Подтверждённое имя сильнее инвентарного: инвентарь знает кандидата,
+      // roster — человека.
+      const names = [...new Set([
+        row.roster_name ?? row.character_name,
+        row.character_full_name,
+        ...(Array.isArray(row.roster_names) ? row.roster_names : []),
+        ...(Array.isArray(row.character_names) ? row.character_names : [])
+      ].filter((value) => typeof value === 'string' && value.trim()))]
+      return {
+        runId: row.analysis_run_id,
+        bookEditionId: job.bookEditionId,
+        characterKey: job.characterKey,
+        windowIndex: Number(row.card_window_index),
+        title: row.title,
+        author: row.author ?? '',
+        language: row.language ?? '',
+        textLength: Number(row.text_length),
+        normalizedTextObjectKey: row.normalized_text_object_key,
+        normalizedTextHash: row.normalized_text_hash,
+        inventoryVersion: row.inventory_version ?? '',
+        cardRevision: Number(row.card_revision ?? 1),
+        priorityClass: row.priority_class,
+        window: {
+          startOffset: Number(row.start_offset),
+          endOffset: Number(row.end_offset),
+          chapterIndexes: (row.chapter_indexes ?? []).map(Number)
+        },
+        character: {
+          canonicalName: row.roster_name ?? row.character_name ?? names[0] ?? job.characterKey,
+          names,
+          mentionCount: Number(row.roster_mention_count ?? row.mention_count ?? 0),
+          firstMentionTextOffset: Number(fragments.rows[0].start_offset)
+        },
+        fragments: fragments.rows.map((fragment) => ({
+          fragmentId: fragment.fragment_id,
+          characterKey: job.characterKey,
+          paragraphIndex: Number(fragment.paragraph_index),
+          chapterIndex: Number(fragment.chapter_index),
+          startOffset: Number(fragment.start_offset),
+          endOffset: Number(fragment.end_offset),
+          mentionCount: Number(fragment.mention_count)
+        }))
+      }
+    },
+
+    /**
+     * Запись карточки. Строка неизменяема, поэтому вставка идёт с
+     * `ON CONFLICT DO NOTHING` по (run, персонаж, ревизия): повторная попытка
+     * задания не создаёт вторую карточку и не переписывает первую. Прежняя
+     * включённая ревизия выключается в той же транзакции — частичное состояние
+     * с двумя включёнными карточками одного героя ридер увидеть не должен.
+     */
+    async publishCharacterCard(job, {
+      runId,
+      bookEditionId,
+      characterKey,
+      windowIndex,
+      cardRevision,
+      fragmentSetHash,
+      normalizedTextHash,
+      promptVersion,
+      mediaPriority = CARD_MEDIA_PRIORITY.background,
+      card
+    }) {
+      return transaction(pool, async (client) => {
+        await requireLeasedJob(client, job)
+        const document = JSON.stringify(card)
+        await client.query(
+          `UPDATE book_character_cards SET enabled = FALSE
+           WHERE run_id = $1 AND character_key = $2 AND enabled AND card_revision <> $3`,
+          [runId, characterKey, cardRevision]
+        )
+        const inserted = await client.query(
+          `INSERT INTO book_character_cards (
+             id, run_id, book_edition_id, character_key, card_revision, window_index,
+             enabled, first_mention_text_offset, window_start_offset, window_end_offset,
+             document, document_hash, fragment_set_hash, normalized_text_hash, prompt_version
+           ) VALUES (
+             $1, $2, $3, $4, $5, $6, TRUE, $7, $8, $9, $10::jsonb, $11, $12, $13, $14
+           )
+           ON CONFLICT (run_id, character_key, card_revision) DO NOTHING
+           RETURNING id`,
+          [
+            idFactory(), runId, bookEditionId, characterKey, cardRevision, windowIndex,
+            card.firstMentionTextOffset, card.cardWindow.startOffset, card.cardWindow.endOffset,
+            document, createHash('sha256').update(document).digest('hex'),
+            fragmentSetHash, normalizedTextHash, promptVersion
+          ]
+        )
+        // Портрет ставится здесь же и по хэшу этой карточки: `appearancePrompt`
+        // берётся из неё, поэтому revision медиа меняется только вместе с
+        // новой `card_revision`.
+        const media = await ensureCharacterMediaJobs({
+          bookEditionId,
+          characterKey,
+          bundleVersion: BOOK_ANALYSIS_CHARACTER_BUNDLE_VERSION,
+          priority: mediaPriority,
+          sourceKind: 'card',
+          runId,
+          client
+        })
+        await client.query(
+          `UPDATE generation_jobs
+           SET status = 'ready', result = $2::jsonb, last_error_code = NULL,
+               locked_at = NULL, locked_by = NULL, lease_token = NULL, updated_at = now()
+           WHERE id = $1`,
+          [job.id, JSON.stringify({
+            character_key: characterKey,
+            card_revision: cardRevision,
+            trait_count: card.traits.length,
+            inserted: Boolean(inserted.rows[0]),
+            media_status: media.status,
+            media_revision: media.mediaRevision
+          })]
+        )
+        return {
+          status: inserted.rows[0] ? 'published' : 'existing',
+          cardId: inserted.rows[0]?.id ?? null,
+          media
+        }
+      })
     },
 
     async getCatalogCoverInput(job) {

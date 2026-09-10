@@ -1,0 +1,401 @@
+{
+  "schemaVersion": 1,
+  "id": "deti-kapitana-granta-ru-v1",
+  "goldCount": 26,
+  "significantCount": 15,
+  "source": {
+    "dataset": "narra-catalog-ru-web-gold",
+    "language": "ru",
+    "title": "Дети капитана Гранта",
+    "author": "Жюль Верн",
+    "bookEditionId": "b704994b-d1ef-4779-8c09-afb454c55c8e",
+    "normalizedTextSha256": "4b3cdf05ad57bf96f201f147255bf5bade4aada1a8df61432cebe53c40a3e72c",
+    "textLength": 1094491,
+    "chapterCount": 67,
+    "rosterProtocol": "roster taken from the reference pages listed in references[]; only entities those pages present as characters of this work are gold",
+    "mentionCountProtocol": "narra-name-endings-v1: word-bounded stem+NAME_ENDINGS matching of the surface forms in surfaceForms[], deduplicated by text offset, computed against the normalized text with the sha256 above (same rule as packages/app-expo/src/lib/narra/character-name-matcher.ts)",
+    "significantProtocol": "minimum descending mention-count prefix covering at least 95 percent of gold mentions, including boundary-frequency ties, restricted to characters the text names with a proper noun; characters marked unnamed:true stay gold but are excluded from the gated tier",
+    "totalMentions": 5641,
+    "namedMentions": 5641,
+    "significantBoundaryMentionCount": 55,
+    "references": [
+      "https://ru.wikipedia.org/wiki/Дети_капитана_Гранта",
+      "https://fanfics.me/fandom1438/heroes",
+      "https://obrazovaka.ru/books/vern/deti-kapitana-granta"
+    ],
+    "publishedRosterCap": 20,
+    "publishedRosterCapNote": "book-markup-v3 публикует не более MAX_PUBLISHED_BOOK_CHARACTERS=20 персонажей (book-character-selection.mjs, character-frequency-v1). Полнота по всему gold ограничена этим потолком сверху; гейты считаются по significant-ярусу, который в обеих книгах меньше 20."
+  },
+  "gates": {
+    "precision": 0.9,
+    "recall": 0.9,
+    "f1": 0.9,
+    "criticalMerges": 0,
+    "duplicateRate": 0.05
+  },
+  "characters": [
+    {
+      "id": "edward_glenarvan",
+      "name": "Эдуард Гленарван",
+      "mentionCount": 1254,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 487,
+      "aliases": [
+        "Гленарван",
+        "Лорд Гленарван",
+        "Эдуард"
+      ]
+    },
+    {
+      "id": "jacques_paganel",
+      "name": "Жак Паганель",
+      "mentionCount": 1028,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 70941,
+      "aliases": [
+        "Паганель",
+        "Жак Элиасен Франсуа Мари Паганель"
+      ]
+    },
+    {
+      "id": "macnabbs",
+      "name": "Мак-Наббс",
+      "mentionCount": 653,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 781,
+      "aliases": [
+        "Майор",
+        "Майор Мак-Наббс",
+        "Мак-Наббс"
+      ]
+    },
+    {
+      "id": "john_mangles",
+      "name": "Джон Манглс",
+      "mentionCount": 449,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 1101,
+      "aliases": [
+        "Манглс",
+        "Джон Манглс"
+      ]
+    },
+    {
+      "id": "helena_glenarvan",
+      "name": "Элен Гленарван",
+      "mentionCount": 382,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 754,
+      "aliases": [
+        "Элен",
+        "Леди Элен",
+        "Леди Гленарван",
+        "Элен Гленарван"
+      ]
+    },
+    {
+      "id": "robert_grant",
+      "name": "Роберт Грант",
+      "mentionCount": 348,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 32904,
+      "aliases": [
+        "Роберт"
+      ]
+    },
+    {
+      "id": "ayrton",
+      "name": "Айртон",
+      "mentionCount": 337,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 483361,
+      "aliases": [
+        "Том Айртон",
+        "Бен Джойс"
+      ]
+    },
+    {
+      "id": "mary_grant",
+      "name": "Мери Грант",
+      "mentionCount": 285,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 2960,
+      "aliases": [
+        "Мери",
+        "Мисс Грант",
+        "Мэри Грант",
+        "Мэри"
+      ]
+    },
+    {
+      "id": "thalcave",
+      "name": "Талькав",
+      "mentionCount": 165,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 193142,
+      "aliases": []
+    },
+    {
+      "id": "wilson",
+      "name": "Вильсон",
+      "mentionCount": 125,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 126520,
+      "aliases": []
+    },
+    {
+      "id": "mulready",
+      "name": "Мюльреди",
+      "mentionCount": 110,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 126531,
+      "aliases": []
+    },
+    {
+      "id": "harry_grant",
+      "name": "Гарри Грант",
+      "mentionCount": 82,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 36618,
+      "aliases": [
+        "Гарри",
+        "Капитан Грант"
+      ]
+    },
+    {
+      "id": "tom_austin",
+      "name": "Том Остин",
+      "mentionCount": 77,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 5540,
+      "aliases": [
+        "Остин"
+      ]
+    },
+    {
+      "id": "olbinett",
+      "name": "Олбинет",
+      "mentionCount": 59,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 54821,
+      "aliases": [
+        "Мистер Олбинет",
+        "Ольбинет"
+      ]
+    },
+    {
+      "id": "kai_koumou",
+      "name": "Кай-Куму",
+      "mentionCount": 55,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 905575,
+      "aliases": [
+        "Каи-Куму"
+      ]
+    },
+    {
+      "id": "paddy_omoore",
+      "name": "Падди О’Мур",
+      "mentionCount": 51,
+      "significant": false,
+      "unnamed": false,
+      "firstMentionTextOffset": 478201,
+      "aliases": [
+        "О’Мур",
+        "Падди"
+      ]
+    },
+    {
+      "id": "thaouka",
+      "name": "Таука",
+      "mentionCount": 43,
+      "significant": false,
+      "unnamed": false,
+      "firstMentionTextOffset": 199648,
+      "aliases": []
+    },
+    {
+      "id": "toline",
+      "name": "Толине",
+      "mentionCount": 36,
+      "significant": false,
+      "unnamed": false,
+      "firstMentionTextOffset": 586985,
+      "aliases": []
+    },
+    {
+      "id": "will_halley",
+      "name": "Уилл Холли",
+      "mentionCount": 34,
+      "significant": false,
+      "unnamed": false,
+      "firstMentionTextOffset": 771261,
+      "aliases": [
+        "Холли",
+        "Билл Галлей",
+        "Вилл Холли"
+      ]
+    },
+    {
+      "id": "kara_tete",
+      "name": "Кара-Тете",
+      "mentionCount": 27,
+      "significant": false,
+      "unnamed": false,
+      "firstMentionTextOffset": 933296,
+      "aliases": []
+    },
+    {
+      "id": "manuel_ipharaguerre",
+      "name": "Мануэль Ифарагер",
+      "mentionCount": 13,
+      "significant": false,
+      "unnamed": false,
+      "firstMentionTextOffset": 289631,
+      "aliases": [
+        "Ифарагер",
+        "Мануэль"
+      ]
+    },
+    {
+      "id": "paterson",
+      "name": "Патерсон",
+      "mentionCount": 12,
+      "significant": false,
+      "unnamed": false,
+      "firstMentionTextOffset": 662416,
+      "aliases": [
+        "Мишель Патерсон",
+        "Сэнди Патерсон",
+        "Братья Патерсон"
+      ]
+    },
+    {
+      "id": "arabella",
+      "name": "Арабелла",
+      "mentionCount": 7,
+      "significant": false,
+      "unnamed": false,
+      "firstMentionTextOffset": 1091459,
+      "aliases": [
+        "Мисс Арабелла"
+      ]
+    },
+    {
+      "id": "hawkins",
+      "name": "Хокинс",
+      "mentionCount": 5,
+      "significant": false,
+      "unnamed": false,
+      "firstMentionTextOffset": 107069,
+      "aliases": [
+        "Гаукинс"
+      ]
+    },
+    {
+      "id": "mrs_olbinett",
+      "name": "Миссис Олбинет",
+      "mentionCount": 3,
+      "significant": false,
+      "unnamed": false,
+      "firstMentionTextOffset": 54865,
+      "aliases": []
+    },
+    {
+      "id": "joe_bell",
+      "name": "Джо Белл",
+      "mentionCount": 1,
+      "significant": false,
+      "unnamed": false,
+      "firstMentionTextOffset": 1077242,
+      "aliases": []
+    }
+  ],
+  "knownExtras": [
+    {
+      "id": "x_cook",
+      "name": "Кук",
+      "kind": "historical"
+    },
+    {
+      "id": "x_burke",
+      "name": "Бёрк",
+      "kind": "historical"
+    },
+    {
+      "id": "x_livingstone",
+      "name": "Ливингстон",
+      "kind": "historical"
+    },
+    {
+      "id": "x_halley_astronomer",
+      "name": "Галлей",
+      "kind": "historical"
+    },
+    {
+      "id": "x_columbus",
+      "name": "Колумб",
+      "kind": "historical"
+    },
+    {
+      "id": "x_magellan",
+      "name": "Магеллан",
+      "kind": "historical"
+    }
+  ],
+  "collisionGuards": [
+    {
+      "id": "glenarvan_surname",
+      "surfaces": [
+        "Гленарваны",
+        "Чета Гленарван"
+      ],
+      "goldIds": [
+        "edward_glenarvan",
+        "helena_glenarvan"
+      ],
+      "reason": "фамилия Гленарван делится между лордом Эдуардом и леди Элен"
+    },
+    {
+      "id": "grant_surname",
+      "surfaces": [
+        "Грант",
+        "Гранты",
+        "Дети капитана Гранта"
+      ],
+      "goldIds": [
+        "harry_grant",
+        "mary_grant",
+        "robert_grant"
+      ],
+      "reason": "фамилия Грант делится между отцом и двумя детьми"
+    },
+    {
+      "id": "olbinett_surname",
+      "surfaces": [
+        "Олбинеты",
+        "Чета Олбинет"
+      ],
+      "goldIds": [
+        "olbinett",
+        "mrs_olbinett"
+      ],
+      "reason": "фамилия Олбинет делится между стюардом и его женой"
+    }
+  ]
+}

@@ -293,12 +293,71 @@ export function createBookCatalogService({
     }
   }
 
+  /**
+   * Персонажи манифеста из карточек.
+   *
+   * Карточки появляются по окнам, а не разом, поэтому у книги на
+   * `pipeline=cards` часть героев уже готова, а часть ещё нет. Готовая карточка
+   * отдаётся целиком; персонаж roster без карточки — прежним teaser'ом, как и
+   * при v3-превью, чтобы клиенту не понадобилось второе состояние.
+   *
+   * Unlock остаётся по `firstAppearanceTextOffset`: карточка построена по окну
+   * своего появления, но показывать её раньше, чем читатель до героя дошёл,
+   * незачем.
+   */
+  function cardManifestCharacters(cards, readerTextOffset, source) {
+    return cards
+      .filter((card) => Number(card.firstAppearanceTextOffset) <= readerTextOffset)
+      .map((card) => {
+        const ready = card.cardStatus !== 'pending'
+        return {
+          characterKey: card.characterKey,
+          name: formatCharacterDisplayName(card.name),
+          fullName: publicCharacterFullName(card),
+          firstAppearanceTextOffset: Number(card.firstAppearanceTextOffset),
+          provisional: !ready,
+          state: ready ? 'ready' : 'preparing',
+          profile: {
+            role: ready ? (card.role ?? '') : 'Профиль формируется',
+            description: ready ? (card.description ?? '') : '',
+            traits: ready ? (card.traits ?? []) : [],
+            locations: ready ? (card.locations ?? []) : [],
+            gender: ready ? (card.gender ?? '') : '',
+            age: ready ? (card.age ?? '') : '',
+            speechStyle: '',
+            speechExamples: [],
+            appearancePrompt: ready ? (card.appearancePrompt ?? '') : '',
+            greeting: ready ? (card.greeting ?? '') : '',
+            analysisSource: source,
+            provisional: !ready
+          },
+          bundle: card.bundle ?? null
+        }
+      })
+      .sort((left, right) =>
+        left.firstAppearanceTextOffset - right.firstAppearanceTextOffset ||
+        left.characterKey.localeCompare(right.characterKey, 'ru'))
+  }
+
   async function v3Manifest(snapshot, bookEditionId, source = 'v3') {
     if (!analysisRepository || typeof analysisRepository.getLatestShadowAnalysisPublication !== 'function') {
       throw serviceError('ANALYSIS_UNAVAILABLE', 'Разметка v3 временно недоступна', 503)
     }
     const publication = await analysisRepository.getLatestShadowAnalysisPublication(bookEditionId)
     if (!publication?.data?.markup) {
+      // Книга на `pipeline=cards` не публикует v3 до последнего окна (решение
+      // D2), поэтому персонажей до тех пор отдают карточки. Без этого чтения
+      // карточки были не видны клиенту вообще: манифест ждал публикации,
+      // которой по замыслу ещё нет, и читатель видел «профиль формируется» над
+      // готовой карточкой.
+      // Карточки лежат в репозитории разметки, а не анализа: это разные
+      // объекты в сборке приложения (`repository: bookMarkupRepository`,
+      // `analysisRepository: bookAnalysisRepository`), и вызов на втором из них
+      // всегда возвращал бы пусто — то есть карточки так и не доехали бы до
+      // читателя, а ошибки бы никто не увидел.
+      const cards = typeof store.listPublishedCharacterCards === 'function'
+        ? await store.listPublishedCharacterCards(bookEditionId)
+        : []
       const preview = typeof analysisRepository.getLatestAnalysisPreview === 'function'
         ? await analysisRepository.getLatestAnalysisPreview(bookEditionId)
         : null
@@ -309,7 +368,12 @@ export function createBookCatalogService({
       const terminalStatus = ['failed', 'cancelled'].includes(preview?.run?.status)
         ? preview.run.status
         : null
-      const availability = terminalStatus ?? (preview ? 'processing' : 'unavailable')
+      // Карточки сами по себе означают, что книга обрабатывается: они
+      // появляются по окнам, и пока окна не кончились, публикации v3 ещё нет.
+      // Без этого готовые карточки отдавались при availability=unavailable, и
+      // клиент считал книгу необработанной.
+      const availability = terminalStatus ??
+        ((preview || cards.length) ? 'processing' : 'unavailable')
       return {
         source,
         book: bookBinding(snapshot.edition),
@@ -333,27 +397,29 @@ export function createBookCatalogService({
               totalScanChunks: preview.scan.totalChunks
             }
           : null,
-        characters: (preview?.characters ?? [])
-          .filter((character) => character.firstAppearanceTextOffset <= readerTextOffset)
-          .map((character) => ({
-            characterKey: character.characterKey,
-            name: formatCharacterDisplayName(character.name),
-            fullName: publicCharacterFullName(character),
-            firstAppearanceTextOffset: character.firstAppearanceTextOffset,
-            provisional: true,
-            state: 'preparing',
-            profile: {
-              role: 'Профиль формируется',
-              traits: [],
-              speechStyle: '',
-              speechExamples: [],
-              appearancePrompt: '',
-              greeting: '',
-              analysisSource: source,
-              provisional: true
-            },
-            bundle: null
-          }))
+        characters: cards.length
+          ? cardManifestCharacters(cards, readerTextOffset, source)
+          : (preview?.characters ?? [])
+            .filter((character) => character.firstAppearanceTextOffset <= readerTextOffset)
+            .map((character) => ({
+              characterKey: character.characterKey,
+              name: formatCharacterDisplayName(character.name),
+              fullName: publicCharacterFullName(character),
+              firstAppearanceTextOffset: character.firstAppearanceTextOffset,
+              provisional: true,
+              state: 'preparing',
+              profile: {
+                role: 'Профиль формируется',
+                traits: [],
+                speechStyle: '',
+                speechExamples: [],
+                appearancePrompt: '',
+                greeting: '',
+                analysisSource: source,
+                provisional: true
+              },
+              bundle: null
+            }))
       }
     }
     const baseMarkup = normalizeBookMarkupV3(publication.data.markup)

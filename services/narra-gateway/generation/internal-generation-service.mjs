@@ -7,7 +7,7 @@ import { voiceForGender } from '../providers/voices.mjs'
 import { catalogCoverPrompt } from './catalog-cover-prompt.mjs'
 import { normalizeBookDisplayIdentity } from '../books/book-identity.mjs'
 import { buildCharacterPortraitPrompt } from './character-portrait-prompt.mjs'
-import { sceneGenerationPrompt } from './scene-generation.mjs'
+import { sceneGenerationPrompt, sceneMentionedCharacters } from './scene-generation.mjs'
 import {
   BOOK_ANALYSIS_SYNTHESIS_VERSION
 } from '../analysis/book-analysis-contracts.mjs'
@@ -29,7 +29,9 @@ import {
   CHUNK_LABELS,
   adaptiveScanParts,
   cached,
+  characterCardMessages,
   characterKey,
+  rosterConfirmationMessages,
   greetingFallback,
   greetingMatchesLanguage,
   imageExtension,
@@ -40,6 +42,10 @@ import {
   normalizeBookSceneRequest,
   normalizeBundleRequest,
   normalizeCatalogCoverRequest,
+  normalizeCharacterCardRequest,
+  normalizeRosterConfirmationRequest,
+  normalizeRosterConfirmationResult,
+  normalizeCharacterCardResult,
   normalizeCharacterProfileResult,
   normalizeCharacterSynthesisRequest,
   normalizeCharacters,
@@ -75,6 +81,7 @@ export function createInternalGenerationService({
   generateIdleAnimation,
   maxBookBytes = 64 * 1024 * 1024,
   scanPolicy,
+  maxReferenceImages = 3,
   logger = console
 }) {
   if (
@@ -470,6 +477,93 @@ export function createInternalGenerationService({
       })
     },
 
+    /**
+     * Карточка персонажа по фрагментам его окна: один вызов на персонажа.
+     *
+     * Вход — абзацы книги внутри окна, а не наблюдения другого вызова, поэтому
+     * запрос отвергается, если хоть один фрагмент лежит за окном: то, чего
+     * модель не увидит, она и не расскажет.
+     */
+    async synthesizeCharacterCard(rawInput, signal) {
+      const input = normalizeCharacterCardRequest(rawInput)
+      const common = {
+        run: input.runId,
+        character_key: input.characterKey,
+        fragment_count: input.fragments.length,
+        window_end_offset: input.cardWindow.endOffset
+      }
+      return cached(storage, input.idempotencyKey, input, async () => {
+        log.info('card.started', 'Формирую карточку персонажа по фрагментам окна', common)
+        const response = await completeChat({
+          messages: characterCardMessages(input),
+          signal,
+          costContext: {
+            bookEditionId: input.bookEditionId,
+            analysisRunId: input.runId,
+            operation: 'synthesize_character_card',
+            stage: 'card',
+            metadata: {
+              character_key: input.characterKey,
+              prompt_version: input.promptVersion
+            }
+          }
+        })
+        const normalized = normalizeCharacterCardResult(parseJsonObject(response), input)
+        log.info('card.completed', 'Карточка персонажа готова', {
+          ...common,
+          provider_trait_count: normalized.providerTraitCount,
+          accepted_trait_count: normalized.acceptedTraitCount,
+          dropped_trait_count: normalized.droppedTraitCount,
+          bio_present: Boolean(normalized.card.bio),
+          location_count: normalized.card.locations.length
+        })
+        return { card: normalized.card }
+      })
+    },
+
+    /**
+     * Подтверждение roster: один вызов на книгу.
+     *
+     * Модель решает только «человек или нет» и «одно имя или два». Границы
+     * решены правилами и переданы в запросе, а ответ всё равно проверит шлюз:
+     * принять пару, которой не было в CANDIDATE_PAIRS, он не может.
+     */
+    async confirmBookRoster(rawInput, signal) {
+      const input = normalizeRosterConfirmationRequest(rawInput)
+      const common = {
+        run: input.runId,
+        candidate_count: input.roster.length,
+        candidate_pair_count: input.candidatePairs.length,
+        forbidden_pair_count: input.forbiddenPairs.length
+      }
+      return cached(storage, input.idempotencyKey, input, async () => {
+        log.info('roster.confirm_started', 'Подтверждаю roster инвентаря имён', common)
+        const response = await completeChat({
+          messages: rosterConfirmationMessages(input),
+          signal,
+          costContext: {
+            bookEditionId: input.bookEditionId,
+            analysisRunId: input.runId,
+            operation: 'confirm_book_roster',
+            stage: 'roster',
+            metadata: {
+              inventory_version: input.inventoryVersion,
+              prompt_version: input.promptVersion
+            }
+          }
+        })
+        const normalized = normalizeRosterConfirmationResult(parseJsonObject(response), input)
+        log.info('roster.confirm_completed', 'Roster подтверждён', {
+          ...common,
+          provider_classification_count: normalized.providerClassificationCount,
+          accepted_classification_count: normalized.classifications.length,
+          provider_merge_count: normalized.providerMergeCount,
+          accepted_shape_merge_count: normalized.merges.length
+        })
+        return normalized
+      })
+    },
+
     async generateBookTtsMarkup(rawInput, signal) {
       const input = normalizeTtsMarkupAttributionRequest(rawInput)
       return cached(storage, input.idempotencyKey, input, async () => {
@@ -850,6 +944,36 @@ export function createInternalGenerationService({
           input.excerptEndTextOffset
         ).trim()
         if (!excerpt) invalid('scene excerpt is empty', 'GENERATION_RESULT_INVALID')
+        const sceneCharacters = input.characters.map(sceneCharacter).filter(({ name }) => name)
+        // Портреты грузятся только для тех, кто в отрывке действительно
+        // упомянут, и не более чем `maxReferenceImages`: сцена с пятью
+        // приложенными лицами перестаёт быть сценой одного момента.
+        const mentioned = sceneMentionedCharacters(excerpt, sceneCharacters)
+        const referenceImages = []
+        for (const character of mentioned) {
+          if (referenceImages.length >= maxReferenceImages) break
+          if (!character.portraitObjectKey) continue
+          try {
+            const portrait = await storage.getBytes({
+              objectKey: character.portraitObjectKey,
+              maxBytes: 32 * 1024 * 1024
+            })
+            referenceImages.push({
+              bytes: portrait.bytes,
+              mimeType: portrait.mimeType || 'image/png',
+              label: character.fullName || character.name
+            })
+            character.hasPortrait = true
+          } catch (error) {
+            // Пропавший портрет — не причина не рисовать сцену: остаётся
+            // текстовый паспорт внешности.
+            log.warn('scene.portrait_unavailable', 'Портрет персонажа не прочитан', {
+              ...common,
+              character_key: character.characterKey,
+              error_code: typeof error?.code === 'string' ? error.code : 'UNKNOWN'
+            })
+          }
+        }
         const prompt = sceneGenerationPrompt({
           bookTitle: input.bookTitle,
           bookAuthor: input.bookAuthor,
@@ -858,15 +982,19 @@ export function createInternalGenerationService({
           genreId: '',
           chapter: '',
           excerpt,
-          characters: input.characters.map(sceneCharacter).filter(({ name }) => name),
+          characters: sceneCharacters,
           previousExcerpts: []
         })
         const generated = await generateScene(prompt, signal, {
           bookEditionId: input.bookEditionId,
           operation: 'generate_book_scene',
           stage: 'scene',
-          metadata: { scene_key: input.sceneKey, slot_index: input.slotIndex }
-        })
+          metadata: {
+            scene_key: input.sceneKey,
+            slot_index: input.slotIndex,
+            reference_image_count: referenceImages.length
+          }
+        }, { referenceImages })
         const safeTargetVersion = input.targetVersion.replace(/[^a-z0-9._-]+/gi, '-')
         const asset = await storage.putBytes({
           objectKey: `generated/${input.scope}/${input.bookEditionId}/scenes/${safeTargetVersion}/${input.slotIndex}.${imageExtension(generated.mimeType)}`,
@@ -876,6 +1004,8 @@ export function createInternalGenerationService({
         log.info('scene.ready', 'Иллюстрация сцены создана и сохранена', {
           ...common,
           provider: generated.provider,
+          reference_image_count: referenceImages.length,
+          reference_images_dropped: generated.referenceImagesDropped === true,
           bytes: asset.byteSize,
           duration_ms: Date.now() - startedAt
         })
@@ -1084,6 +1214,14 @@ export function createInternalGenerationRouter({ token, service, logger = consol
   router.post(
     '/v1/book-analysis/synthesize-character',
     endpoint((body, signal) => service.synthesizeCharacterProfile(body, signal))
+  )
+  router.post(
+    '/v1/book-analysis/synthesize-character-card',
+    endpoint((body, signal) => service.synthesizeCharacterCard(body, signal))
+  )
+  router.post(
+    '/v1/book-analysis/confirm-roster',
+    endpoint((body, signal) => service.confirmBookRoster(body, signal))
   )
   return router
 }

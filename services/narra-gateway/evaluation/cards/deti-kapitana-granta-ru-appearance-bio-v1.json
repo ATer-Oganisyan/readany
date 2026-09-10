@@ -1,0 +1,658 @@
+{
+  "schemaVersion": 1,
+  "id": "deti-kapitana-granta-ru-appearance-bio-v1",
+  "identityFixture": "deti-kapitana-granta-ru-v1",
+  "cardFixture": "deti-kapitana-granta-ru-card-v1",
+  "source": {
+    "language": "ru",
+    "title": "Дети капитана Гранта",
+    "author": "Жюль Верн",
+    "bookEditionId": "b704994b-d1ef-4779-8c09-afb454c55c8e",
+    "normalizedTextSha256": "4b3cdf05ad57bf96f201f147255bf5bade4aada1a8df61432cebe53c40a3e72c",
+    "scope": "только главные персонажи; проверяется внешность и биография",
+    "factProtocol": "каждый core-факт подтверждён либо дословной цитатой с offset в нормализованном тексте, либо ссылкой из references[]; offset указывает на место, где факт впервые раскрыт",
+    "references": [
+      "https://ru.wikipedia.org/wiki/Дети_капитана_Гранта",
+      "https://briefly.ru/vern/deti_kapitana_granta/",
+      "https://obrazovaka.ru/books/vern/deti-kapitana-granta"
+    ]
+  },
+  "gates": {
+    "appearanceCoreCoverage": 0.7,
+    "appearanceMajorContradictions": 0,
+    "appearanceInventionRate": 0.1,
+    "portraitUsableRate": 0.9,
+    "bioCoreCoverage": 0.6,
+    "bioMajorContradictions": 0,
+    "bioInventionRate": 0.1
+  },
+  "characters": [
+    {
+      "id": "edward_glenarvan",
+      "name": "Эдуард Гленарван",
+      "appearance": {
+        "describedInText": true,
+        "facts": [
+          {
+            "id": "age_32",
+            "value": "тридцать два года",
+            "importance": "core",
+            "quote": "Эдуарду Гленарвану было тридцать два года.",
+            "quoteOffset": 26658
+          },
+          {
+            "id": "tall",
+            "value": "высокого роста",
+            "importance": "core",
+            "quote": "Он был высокого роста",
+            "quoteOffset": 26684
+          },
+          {
+            "id": "stern_features_kind_eyes",
+            "value": "несколько суровые черты лица при необыкновенно добрых глазах",
+            "importance": "core",
+            "quote": "с несколько суровыми чертами лица, но необыкновенно добрыми глазами",
+            "quoteOffset": 26712
+          }
+        ],
+        "forbidden": []
+      },
+      "biography": {
+        "facts": [
+          {
+            "id": "scottish_lord",
+            "value": "шотландский лорд, владелец Малькольм-Касла и яхты «Дункан»",
+            "importance": "core",
+            "revealedAtOffset": 5859
+          },
+          {
+            "id": "yacht_club",
+            "value": "член Темзинского королевского яхт-клуба",
+            "importance": "detail",
+            "revealedAtOffset": 26600
+          },
+          {
+            "id": "married_to_helen",
+            "value": "женат на Элен, дочери путешественника Туффнеля",
+            "importance": "core",
+            "revealedAtOffset": 27300
+          },
+          {
+            "id": "finds_the_bottle",
+            "value": "находит в акуле бутылку с документами капитана Гранта",
+            "importance": "core",
+            "revealedAtOffset": 8000
+          },
+          {
+            "id": "mounts_expedition",
+            "value": "снаряжает экспедицию по 37-й параллели после отказа адмиралтейства",
+            "importance": "core",
+            "revealedAtOffset": 46400
+          },
+          {
+            "id": "kills_kara_tete",
+            "value": "убивает вождя Кара-Тете в Новой Зеландии",
+            "importance": "detail",
+            "revealedAtOffset": 933296
+          },
+          {
+            "id": "maroons_ayrton",
+            "value": "высаживает Айртона на остров Табор вместо передачи властям",
+            "importance": "detail",
+            "revealedAtOffset": 1086000
+          }
+        ]
+      }
+    },
+    {
+      "id": "helena_glenarvan",
+      "name": "Элен Гленарван",
+      "appearance": {
+        "describedInText": true,
+        "facts": [
+          {
+            "id": "age_22",
+            "value": "двадцать два года",
+            "importance": "core",
+            "quote": "Мисс Элен была двадцатидвухлетней блондинкой",
+            "quoteOffset": 27900
+          },
+          {
+            "id": "blonde",
+            "value": "блондинка",
+            "importance": "core",
+            "quote": "двадцатидвухлетней блондинкой",
+            "quoteOffset": 27900
+          },
+          {
+            "id": "blue_eyes",
+            "value": "глаза голубые, как воды шотландских озёр весенним утром",
+            "importance": "core",
+            "quote": "с глазами голубыми, как воды шотландских озер в прекрасное весеннее утро",
+            "quoteOffset": 27940
+          }
+        ],
+        "forbidden": []
+      },
+      "biography": {
+        "facts": [
+          {
+            "id": "not_noble",
+            "value": "не дворянка, но шотландка; для Гленарвана это было выше дворянства",
+            "importance": "core",
+            "revealedAtOffset": 27300
+          },
+          {
+            "id": "daughter_of_traveller",
+            "value": "дочь путешественника Туффнеля, отдавшего жизнь географической науке",
+            "importance": "core",
+            "revealedAtOffset": 27200
+          },
+          {
+            "id": "orphan_in_kilpatrick",
+            "value": "осталась сиротой в Кильпатрике, жила в одиночестве и нужде",
+            "importance": "core",
+            "revealedAtOffset": 27500
+          },
+          {
+            "id": "good_lady_of_luss",
+            "value": "крестьяне и слуги зовут её «доброй хозяйкой Люсса»",
+            "importance": "detail",
+            "revealedAtOffset": 28100
+          },
+          {
+            "id": "proposes_expedition",
+            "value": "именно она предлагает «Дункан» для поисков и настаивает на экспедиции",
+            "importance": "core",
+            "revealedAtOffset": 46400
+          },
+          {
+            "id": "takes_in_the_children",
+            "value": "принимает Мери и Роберта в Малькольм-Касле и поддерживает их",
+            "importance": "core",
+            "revealedAtOffset": 30819
+          }
+        ]
+      }
+    },
+    {
+      "id": "jacques_paganel",
+      "name": "Жак Паганель",
+      "appearance": {
+        "describedInText": true,
+        "note": "Внешность Паганеля собирается по репликам: долговязый незнакомец, очки и подзорная труба, около сорока лет. Татуировка появляется только в самом финале.",
+        "facts": [
+          {
+            "id": "lanky",
+            "value": "долговязый, длинный и худой",
+            "importance": "core",
+            "quote": "его так бесцеремонно окликает какой-то долговязый незнакомец",
+            "quoteOffset": 66924
+          },
+          {
+            "id": "spectacles",
+            "value": "в очках, с подзорной трубой",
+            "importance": "core",
+            "quoteOffset": 75715
+          },
+          {
+            "id": "about_forty",
+            "value": "около сорока лет",
+            "importance": "detail"
+          }
+        ],
+        "forbidden": [
+          {
+            "id": "tattoo_before_the_end",
+            "value": "татуировка маори и геральдическая птица на груди",
+            "reason": "раскрывается на offset 1093646, в самом финале книги; в карточке это спойлер и портрет с ней неверен для всей книги"
+          }
+        ]
+      },
+      "biography": {
+        "facts": [
+          {
+            "id": "geographic_society",
+            "value": "секретарь Парижского географического общества, член многих научных обществ",
+            "importance": "core",
+            "revealedAtOffset": 70941
+          },
+          {
+            "id": "boarded_wrong_ship",
+            "value": "по рассеянности сел не на то судно: собирался в Индию на «Шотландию», попал на «Дункан»",
+            "importance": "core",
+            "revealedAtOffset": 72098
+          },
+          {
+            "id": "absent_minded",
+            "value": "знаменит своей рассеянностью; учил не тот язык (португальский вместо испанского)",
+            "importance": "core",
+            "revealedAtOffset": 120000
+          },
+          {
+            "id": "erudite",
+            "value": "энциклопедически эрудирован, снабжает экспедицию географическими сведениями",
+            "importance": "core",
+            "revealedAtOffset": 80000
+          },
+          {
+            "id": "decodes_the_documents",
+            "value": "предлагает новые прочтения документа из бутылки и трижды меняет маршрут поисков",
+            "importance": "core",
+            "revealedAtOffset": 90000
+          },
+          {
+            "id": "marries_arabella",
+            "value": "в финале женится на мисс Арабелле, кузине майора",
+            "importance": "detail",
+            "revealedAtOffset": 1091459
+          }
+        ]
+      }
+    },
+    {
+      "id": "macnabbs",
+      "name": "Мак-Наббс",
+      "appearance": {
+        "describedInText": true,
+        "facts": [
+          {
+            "id": "age_50",
+            "value": "лет пятидесяти",
+            "importance": "core",
+            "quote": "Это был человек лет пятидесяти",
+            "quoteOffset": 51880
+          },
+          {
+            "id": "regular_calm_face",
+            "value": "правильное, спокойное лицо",
+            "importance": "core",
+            "quote": "с правильным, спокойным лицом",
+            "quoteOffset": 51910
+          }
+        ],
+        "forbidden": []
+      },
+      "biography": {
+        "facts": [
+          {
+            "id": "major_and_cousin",
+            "value": "майор, двоюродный брат Гленарвана",
+            "importance": "core",
+            "revealedAtOffset": 51800
+          },
+          {
+            "id": "imperturbable",
+            "value": "никогда ни с кем не спорит и не выходит из себя; нравственное мужество, сила духа",
+            "importance": "core",
+            "revealedAtOffset": 51950
+          },
+          {
+            "id": "scot_to_the_bone",
+            "value": "шотландец с головы до ног, держится старинных обычаев",
+            "importance": "detail",
+            "revealedAtOffset": 52400
+          },
+          {
+            "id": "distrusts_ayrton",
+            "value": "единственный, кто с самого начала не доверяет Айртону",
+            "importance": "core",
+            "revealedAtOffset": 560000
+          }
+        ]
+      }
+    },
+    {
+      "id": "john_mangles",
+      "name": "Джон Манглс",
+      "appearance": {
+        "describedInText": false,
+        "note": "Портрета Джона Манглса в тексте нет. Оборот «с несколько суровыми чертами лица» встречается в книге ровно один раз и относится к Гленарвану (offset 26712).",
+        "facts": [],
+        "forbidden": [
+          {
+            "id": "glenarvan_features",
+            "value": "суровые черты лица",
+            "reason": "это приметы Гленарвана; перенос их на Манглса — смешение персонажей"
+          }
+        ]
+      },
+      "biography": {
+        "facts": [
+          {
+            "id": "captain_of_duncan",
+            "value": "капитан яхты «Дункан»",
+            "importance": "core",
+            "revealedAtOffset": 1088
+          },
+          {
+            "id": "raised_by_glenarvans",
+            "value": "шотландец, вырос под покровительством семьи Гленарванов",
+            "importance": "detail",
+            "revealedAtOffset": 47000
+          },
+          {
+            "id": "excellent_seaman",
+            "value": "превосходный моряк: ведёт «Дункан» и спасает экспедицию в шторм у Новой Зеландии",
+            "importance": "core",
+            "revealedAtOffset": 780000
+          },
+          {
+            "id": "loves_mary",
+            "value": "влюблён в Мери Грант и в финале женится на ней",
+            "importance": "core",
+            "revealedAtOffset": 1090000
+          }
+        ]
+      }
+    },
+    {
+      "id": "mary_grant",
+      "name": "Мери Грант",
+      "appearance": {
+        "describedInText": true,
+        "facts": [
+          {
+            "id": "age_16",
+            "value": "лет шестнадцати",
+            "importance": "core",
+            "quote": "Сестре было лет шестнадцать.",
+            "quoteOffset": 30990
+          },
+          {
+            "id": "pretty_tired_face",
+            "value": "хорошенькое, немного утомлённое личико; глаза, пролившие немало слёз",
+            "importance": "core",
+            "quote": "Ее хорошенькое, немного утомленное личико, глаза, уже, видимо, пролившие немало слез",
+            "quoteOffset": 31010
+          },
+          {
+            "id": "modest_courageous",
+            "value": "скромное и в то же время мужественное выражение лица",
+            "importance": "core",
+            "quote": "скромное и в то же время мужественное выражение лица",
+            "quoteOffset": 31090
+          },
+          {
+            "id": "poor_but_neat",
+            "value": "бедная, но опрятная одежда",
+            "importance": "core",
+            "quote": "бедная, но опрятная одежда",
+            "quoteOffset": 31140
+          }
+        ],
+        "forbidden": [
+          {
+            "id": "wrong_age",
+            "value": "возраст четырнадцать лет или младше",
+            "reason": "в тексте прямо сказано «лет шестнадцать»"
+          }
+        ]
+      },
+      "biography": {
+        "facts": [
+          {
+            "id": "daughter_of_harry",
+            "value": "дочь капитана Гарри Гранта, старшая сестра Роберта",
+            "importance": "core",
+            "revealedAtOffset": 30819
+          },
+          {
+            "id": "raised_her_brother",
+            "value": "после исчезновения отца одна растила брата, работая день и ночь и отказывая себе во всём",
+            "importance": "core",
+            "revealedAtOffset": 34000
+          },
+          {
+            "id": "comes_to_malcolm_castle",
+            "value": "приходит в Малькольм-Касл после объявления о найденных документах",
+            "importance": "core",
+            "revealedAtOffset": 30819
+          },
+          {
+            "id": "joins_expedition",
+            "value": "отправляется в экспедицию на «Дункане» вместе с братом",
+            "importance": "core",
+            "revealedAtOffset": 60000
+          },
+          {
+            "id": "marries_mangles",
+            "value": "в финале выходит замуж за Джона Манглса",
+            "importance": "detail",
+            "revealedAtOffset": 1090000
+          }
+        ]
+      }
+    },
+    {
+      "id": "robert_grant",
+      "name": "Роберт Грант",
+      "appearance": {
+        "describedInText": true,
+        "facts": [
+          {
+            "id": "age_12",
+            "value": "мальчик лет двенадцати",
+            "importance": "core",
+            "quote": "Она держала за руку мальчика лет двенадцати.",
+            "quoteOffset": 31262
+          },
+          {
+            "id": "resolute_look",
+            "value": "очень решительный вид; держится покровителем сестры",
+            "importance": "core",
+            "quote": "У него был очень решительный вид.",
+            "quoteOffset": 31320
+          },
+          {
+            "id": "resembles_sister",
+            "value": "сильно похож на сестру",
+            "importance": "detail",
+            "quote": "Сходство между ними было так велико",
+            "quoteOffset": 30930
+          }
+        ],
+        "forbidden": [
+          {
+            "id": "tearful_lost_child",
+            "value": "заплаканный, растерянный ребёнок как основная примета",
+            "reason": "текст подчёркивает обратное — решительность; слёзы отнесены к сестре"
+          }
+        ]
+      },
+      "biography": {
+        "facts": [
+          {
+            "id": "son_of_harry",
+            "value": "сын капитана Гарри Гранта, младший брат Мери",
+            "importance": "core",
+            "revealedAtOffset": 32893
+          },
+          {
+            "id": "saved_by_thalcave",
+            "value": "унесён кондором и спасён выстрелом Талькава в Кордильерах",
+            "importance": "core",
+            "revealedAtOffset": 186000
+          },
+          {
+            "id": "becomes_a_sailor",
+            "value": "проходит путь от мальчика до смелого моряка; в финале становится моряком",
+            "importance": "core",
+            "revealedAtOffset": 1090000
+          },
+          {
+            "id": "brave_and_eager",
+            "value": "рвётся в опасные предприятия наравне со взрослыми",
+            "importance": "detail",
+            "revealedAtOffset": 200000
+          }
+        ]
+      }
+    },
+    {
+      "id": "ayrton",
+      "name": "Айртон",
+      "appearance": {
+        "describedInText": true,
+        "facts": [
+          {
+            "id": "age_45",
+            "value": "человек лет сорока пяти",
+            "importance": "core",
+            "quote": "Это был человек лет сорока пяти",
+            "quoteOffset": 484074
+          },
+          {
+            "id": "stern_face_bright_eyes",
+            "value": "суровое лицо и блестящие глаза, глубоко сидящие под густыми бровями",
+            "importance": "core",
+            "quote": "с суровым лицом и блестящими глазами, глубоко сидевшими под густыми бровями",
+            "quoteOffset": 484110
+          },
+          {
+            "id": "gaunt_but_strong",
+            "value": "худой, но необычайно сильный; весь из костей и нервов",
+            "importance": "core",
+            "quote": "Несмотря на свою худобу, он, должно быть, обладал незаурядной силой",
+            "quoteOffset": 484200
+          },
+          {
+            "id": "broad_shouldered_medium_height",
+            "value": "широк в плечах, среднего роста",
+            "importance": "core",
+            "quote": "Он был широк в плечах, среднего роста.",
+            "quoteOffset": 484330
+          },
+          {
+            "id": "resolute_energetic",
+            "value": "решительная осанка, умное и энергичное, резко очерченное лицо",
+            "importance": "detail",
+            "quote": "Его решительная осанка, умное и энергичное, хотя и резко очерченное лицо",
+            "quoteOffset": 484380
+          }
+        ],
+        "forbidden": [
+          {
+            "id": "impassive_face",
+            "value": "бесстрастное лицо, невыразительный или сдержанный взгляд",
+            "reason": "текст даёт прямо противоположное: блестящие глаза и энергичное лицо"
+          }
+        ]
+      },
+      "biography": {
+        "facts": [
+          {
+            "id": "boatswain_of_britannia",
+            "value": "боцман «Британии», представляется единственным спасшимся с судна Гранта",
+            "importance": "core",
+            "revealedAtOffset": 483361
+          },
+          {
+            "id": "found_at_paddy",
+            "value": "найден экспедицией на ферме ирландца Падди О’Мура в Австралии",
+            "importance": "core",
+            "revealedAtOffset": 483278
+          },
+          {
+            "id": "leads_expedition_astray",
+            "value": "вызывается проводником и уводит экспедицию в засаду",
+            "importance": "core",
+            "revealedAtOffset": 500000
+          },
+          {
+            "id": "is_ben_joyce",
+            "value": "на самом деле Бен Джойс, главарь банды беглых каторжников",
+            "importance": "core",
+            "revealedAtOffset": 633059
+          },
+          {
+            "id": "marooned_on_tabor",
+            "value": "в обмен на признание высажен на необитаемый остров Табор",
+            "importance": "detail",
+            "revealedAtOffset": 1086000
+          }
+        ]
+      }
+    },
+    {
+      "id": "thalcave",
+      "name": "Талькав",
+      "appearance": {
+        "describedInText": true,
+        "note": "Один из самых подробных портретов книги: рост, раскраска лица, плащ из шкуры гуанако.",
+        "facts": [
+          {
+            "id": "very_tall",
+            "value": "чрезвычайно высокого роста, выше шести футов",
+            "importance": "core",
+            "quote": "человека чрезвычайно высокого роста... Рост его превышал шесть футов.",
+            "quoteOffset": 186265
+          },
+          {
+            "id": "broad_long_hair",
+            "value": "широкоплеч, с длинными волосами, схваченными кожаным ремешком",
+            "importance": "core",
+            "quote": "был широкоплеч, с длинными волосами, схваченными кожаным ремешком",
+            "quoteOffset": 186420
+          },
+          {
+            "id": "painted_face",
+            "value": "смуглое лицо раскрашено: брови красной краской, нижние веки чёрной, лоб белой",
+            "importance": "core",
+            "quote": "Его смуглое лицо было раскрашено: брови — красной краской, нижние веки — черной, а лоб — белой",
+            "quoteOffset": 186520
+          },
+          {
+            "id": "guanaco_cloak",
+            "value": "великолепный плащ из шкуры гуанако, одежда патагонского индейца",
+            "importance": "core",
+            "quote": "на нем был великолепный плащ из шкуры гуа",
+            "quoteOffset": 186650
+          },
+          {
+            "id": "long_rifle",
+            "value": "держит длинное ружьё",
+            "importance": "detail",
+            "quote": "Он держал длинное ружье.",
+            "quoteOffset": 186390
+          }
+        ],
+        "forbidden": []
+      },
+      "biography": {
+        "facts": [
+          {
+            "id": "patagonian_guide",
+            "value": "патагонский индеец, проводник экспедиции по пампасам",
+            "importance": "core",
+            "revealedAtOffset": 193312
+          },
+          {
+            "id": "saves_robert",
+            "value": "спасает Роберта, сбив выстрелом кондора",
+            "importance": "core",
+            "revealedAtOffset": 186100
+          },
+          {
+            "id": "owns_thaouka",
+            "value": "хозяин лошади Тауки, которой очень дорожит",
+            "importance": "core",
+            "revealedAtOffset": 199198
+          },
+          {
+            "id": "sacrifices_thaouka",
+            "value": "во время наводнения отдаёт Тауку, чтобы увести волков от товарищей",
+            "importance": "detail",
+            "revealedAtOffset": 250000
+          },
+          {
+            "id": "parts_at_the_atlantic",
+            "value": "расстаётся с экспедицией на берегу Атлантики, отказавшись плыть дальше",
+            "importance": "core",
+            "revealedAtOffset": 280000
+          }
+        ]
+      }
+    }
+  ]
+}

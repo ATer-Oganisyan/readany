@@ -5,6 +5,7 @@ import {
   createGenerationWorker,
   parseBookMarkupWorkerJobTypes
 } from '../generation/generation-worker.mjs'
+import { createBookObjectStorageFromEnv } from './book-object-storage.mjs'
 import { createPostgresBookMarkupRepository } from './postgres-book-markup-repository.mjs'
 import { createPostgresPoolFromEnv, runBookMarkupMigrations } from '../db/postgres-runtime.mjs'
 import { createOperationalLogger } from '../platform/operational-log.mjs'
@@ -65,13 +66,23 @@ try {
     token: process.env.GENERATOR_SERVICE_TOKEN,
     timeoutMs: parseEnvInt(process.env, 'GENERATOR_TIMEOUT_MS', 300_000, 900_000)
   })
-  const worker = createGenerationWorker({ repository, generator, workerId, leaseRenewMs })
+  // Хранилище нужно только заданию карточки персонажа: оно читает
+  // нормализованный текст, чтобы восстановить цитаты фрагментов по смещениям.
+  const storage = createBookObjectStorageFromEnv(process.env)
+  const worker = createGenerationWorker({
+    repository,
+    generator,
+    workerId,
+    storage,
+    leaseRenewMs
+  })
   log.info('worker.ready', 'Воркер запущен и готов принимать задания', {
     worker: workerId,
     poll_ms: pollMs,
     lease_seconds: leaseSeconds,
     job_types: jobTypes,
-    book_edition_ids: bookEditionIds ?? null
+    book_edition_ids: bookEditionIds ?? null,
+    object_storage: Boolean(storage)
   })
   let lastIdleLogAt = 0
   while (!shutdown.signal.aborted) {

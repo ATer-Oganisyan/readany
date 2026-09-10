@@ -1,0 +1,568 @@
+{
+  "schemaVersion": 1,
+  "id": "prestuplenie-i-nakazanie-ru-v1",
+  "goldCount": 31,
+  "significantCount": 18,
+  "source": {
+    "dataset": "narra-catalog-ru-web-gold",
+    "language": "ru",
+    "title": "Преступление и наказание",
+    "author": "Фёдор Достоевский",
+    "bookEditionId": "bef16434-1e57-4088-a9e0-aa3883797e1f",
+    "normalizedTextSha256": "0a411ec25ffcd83b3da39899157b9d3e5c71186ef6c0adba88212511a3272e9a",
+    "textLength": 1076293,
+    "chapterCount": 39,
+    "rosterProtocol": "roster taken from the reference pages listed in references[]; only entities those pages present as characters of this work are gold",
+    "mentionCountProtocol": "narra-name-endings-phrase-v1: computed by evaluation/count-identity-mentions.mjs from the surfaces in name+aliases against the normalized text with the sha256 above — the NAME_ENDINGS word forms of the reader matcher applied to the whole surface, spans merged longest-first without overlap. Unlike the Verne and Onegin fixtures, whose counts were assembled by hand, every number here is regenerable from the text by one command and is pinned by test/book-analysis-character-cards-ru.test.mjs",
+    "significantProtocol": "minimum descending mention-count prefix covering at least 95 percent of gold mentions, including boundary-frequency ties, restricted to characters the text names with a proper noun; characters marked unnamed:true stay gold but are excluded from the gated tier",
+    "totalMentions": 4043,
+    "namedMentions": 4043,
+    "significantBoundaryMentionCount": 54,
+    "references": [
+      "https://ru.wikipedia.org/wiki/Преступление_и_наказание",
+      "https://obrazovaka.ru/sochinenie/prestuplenie-i-nakazanie/glavnye-geroi-harakteristika.html",
+      "https://www.literaturus.ru/2020/09/vse-geroi-prestuplenie-i-nakazanie-personazhi-spisok.html",
+      "https://theocrat.ru/geroi-romana-prestuplenie-i-nakazanie.html"
+    ],
+    "publishedRosterCap": 20,
+    "publishedRosterCapNote": "book-markup-v3 публикует не более MAX_PUBLISHED_BOOK_CHARACTERS=20 персонажей (book-character-selection.mjs, character-frequency-v1). Полнота по всему gold ограничена этим потолком сверху; ярус significant этой книги тоже больше 20 не бывает.",
+    "homonymNote": "Миколка — два разных лица: мужик из сна Раскольникова (111947..117536) и красильщик Николай Дементьев, который берёт вину на себя (с 685491). Ссылочные страницы называют так только красильщика, поэтому поверхность принадлежит ему; счёт упоминаний включает и сон."
+  },
+  "gates": {
+    "precision": 0.9,
+    "recall": 0.9,
+    "f1": 0.9,
+    "criticalMerges": 0,
+    "duplicateRate": 0.05
+  },
+  "characters": [
+    {
+      "id": "rodion_raskolnikov",
+      "name": "Раскольников",
+      "mentionCount": 976,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 8788,
+      "aliases": [
+        "Родион Раскольников",
+        "Родион Романович Раскольников",
+        "Родион Романович",
+        "Родион Романыч",
+        "Родион",
+        "Родя",
+        "Роденька",
+        "Родька"
+      ]
+    },
+    {
+      "id": "dmitry_razumikhin",
+      "name": "Разумихин",
+      "mentionCount": 380,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 101617,
+      "aliases": [
+        "Дмитрий Прокофьич Разумихин",
+        "Дмитрий Прокофьевич Разумихин",
+        "Дмитрий Прокофьич",
+        "Дмитрий Прокофьевич",
+        "Вразумихин"
+      ]
+    },
+    {
+      "id": "dunya_raskolnikova",
+      "name": "Авдотья Романовна",
+      "mentionCount": 367,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 58334,
+      "aliases": [
+        "Дуня",
+        "Дунечка",
+        "Дуня Раскольникова",
+        "Авдотья Романовна Раскольникова",
+        "Авдотья"
+      ]
+    },
+    {
+      "id": "sonya_marmeladova",
+      "name": "Соня",
+      "mentionCount": 364,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 30541,
+      "aliases": [
+        "Соня Мармеладова",
+        "Сонечка",
+        "Софья Семеновна",
+        "Софья Семёновна",
+        "Софья Семеновна Мармеладова",
+        "Софья"
+      ]
+    },
+    {
+      "id": "pyotr_luzhin",
+      "name": "Петр Петрович Лужин",
+      "mentionCount": 287,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 66823,
+      "aliases": [
+        "Лужин",
+        "Петр Петрович",
+        "Пётр Петрович Лужин"
+      ]
+    },
+    {
+      "id": "katerina_marmeladova",
+      "name": "Катерина Ивановна",
+      "mentionCount": 223,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 25260,
+      "aliases": [
+        "Катерина Ивановна Мармеладова",
+        "Катерина"
+      ]
+    },
+    {
+      "id": "arkady_svidrigailov",
+      "name": "Свидригайлов",
+      "mentionCount": 218,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 59491,
+      "aliases": [
+        "Аркадий Иванович Свидригайлов",
+        "Аркадий Иванович"
+      ]
+    },
+    {
+      "id": "porfiry_petrovich",
+      "name": "Порфирий Петрович",
+      "mentionCount": 206,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 259795,
+      "aliases": [
+        "Порфирий"
+      ]
+    },
+    {
+      "id": "pulcheria_raskolnikova",
+      "name": "Пульхерия Александровна",
+      "mentionCount": 127,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 78153,
+      "aliases": [
+        "Пульхерия Александровна Раскольникова",
+        "Пульхерия"
+      ]
+    },
+    {
+      "id": "andrey_lebezyatnikov",
+      "name": "Андрей Семенович Лебезятников",
+      "mentionCount": 101,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 21657,
+      "aliases": [
+        "Лебезятников",
+        "Андрей Семенович",
+        "Андрей Семёнович"
+      ]
+    },
+    {
+      "id": "zametov",
+      "name": "Заметов",
+      "mentionCount": 91,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 191041,
+      "aliases": [
+        "Александр Григорьевич Заметов",
+        "Александр Григорьевич"
+      ]
+    },
+    {
+      "id": "zosimov",
+      "name": "Зосимов",
+      "mentionCount": 91,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 232986,
+      "aliases": []
+    },
+    {
+      "id": "nikolay_dementyev",
+      "name": "Николай Дементьев",
+      "mentionCount": 85,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 111947,
+      "aliases": [
+        "Миколка",
+        "Миколай Дементьев",
+        "Миколай",
+        "Николай"
+      ]
+    },
+    {
+      "id": "marfa_svidrigailova",
+      "name": "Марфа Петровна",
+      "mentionCount": 83,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 59759,
+      "aliases": [
+        "Марфа Петровна Свидригайлова",
+        "Марфа"
+      ]
+    },
+    {
+      "id": "nastasya",
+      "name": "Настасья",
+      "mentionCount": 82,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 53422,
+      "aliases": [
+        "Настенька"
+      ]
+    },
+    {
+      "id": "amalia_lippevekhzel",
+      "name": "Амалия Ивановна Липпевехзель",
+      "mentionCount": 75,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 30086,
+      "aliases": [
+        "Амалия Ивановна",
+        "Амалия Людвиговна",
+        "Амалия Федоровна",
+        "Липпевехзель",
+        "Амалия"
+      ]
+    },
+    {
+      "id": "lizaveta",
+      "name": "Лизавета",
+      "mentionCount": 56,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 122240,
+      "aliases": [
+        "Лизавета Ивановна"
+      ]
+    },
+    {
+      "id": "semyon_marmeladov",
+      "name": "Мармеладов",
+      "mentionCount": 54,
+      "significant": true,
+      "unnamed": false,
+      "firstMentionTextOffset": 19998,
+      "aliases": [
+        "Семен Захарович Мармеладов",
+        "Семен Захарович",
+        "Семен Захарыч",
+        "Семён Захарович"
+      ]
+    },
+    {
+      "id": "mitrey",
+      "name": "Митрей",
+      "mentionCount": 30,
+      "significant": false,
+      "unnamed": false,
+      "firstMentionTextOffset": 169916,
+      "aliases": [
+        "Митька"
+      ]
+    },
+    {
+      "id": "ilya_petrovich",
+      "name": "Илья Петрович",
+      "mentionCount": 29,
+      "significant": false,
+      "unnamed": false,
+      "firstMentionTextOffset": 193798,
+      "aliases": [
+        "Порох"
+      ]
+    },
+    {
+      "id": "nikodim_fomich",
+      "name": "Никодим Фомич",
+      "mentionCount": 23,
+      "significant": false,
+      "unnamed": false,
+      "firstMentionTextOffset": 197299,
+      "aliases": [
+        "Никодим"
+      ]
+    },
+    {
+      "id": "alena_ivanovna",
+      "name": "Алена Ивановна",
+      "mentionCount": 16,
+      "significant": false,
+      "unnamed": false,
+      "firstMentionTextOffset": 11205,
+      "aliases": [
+        "Алёна Ивановна",
+        "Алена"
+      ]
+    },
+    {
+      "id": "reslich",
+      "name": "Ресслих",
+      "mentionCount": 16,
+      "significant": false,
+      "unnamed": false,
+      "firstMentionTextOffset": 471822,
+      "aliases": [
+        "Гертруда Карловна"
+      ]
+    },
+    {
+      "id": "kapernaumov",
+      "name": "Капернаумов",
+      "mentionCount": 13,
+      "significant": false,
+      "unnamed": false,
+      "firstMentionTextOffset": 34742,
+      "aliases": []
+    },
+    {
+      "id": "praskovya_zarnicyna",
+      "name": "Прасковья Павловна",
+      "mentionCount": 13,
+      "significant": false,
+      "unnamed": false,
+      "firstMentionTextOffset": 191849,
+      "aliases": [
+        "Зарницына"
+      ]
+    },
+    {
+      "id": "vakhrushin",
+      "name": "Вахрушин",
+      "mentionCount": 12,
+      "significant": false,
+      "unnamed": false,
+      "firstMentionTextOffset": 57566,
+      "aliases": [
+        "Афанасий Иванович Вахрушин",
+        "Афанасий Иванович"
+      ]
+    },
+    {
+      "id": "dushkin",
+      "name": "Душкин",
+      "mentionCount": 8,
+      "significant": false,
+      "unnamed": false,
+      "firstMentionTextOffset": 264896,
+      "aliases": []
+    },
+    {
+      "id": "chebarov",
+      "name": "Чебаров",
+      "mentionCount": 6,
+      "significant": false,
+      "unnamed": false,
+      "firstMentionTextOffset": 191952,
+      "aliases": []
+    },
+    {
+      "id": "luiza_ivanovna",
+      "name": "Луиза Ивановна",
+      "mentionCount": 6,
+      "significant": false,
+      "unnamed": false,
+      "firstMentionTextOffset": 187887,
+      "aliases": [
+        "Лавиза Ивановна"
+      ]
+    },
+    {
+      "id": "darya_frantsevna",
+      "name": "Дарья Францевна",
+      "mentionCount": 4,
+      "significant": false,
+      "unnamed": false,
+      "firstMentionTextOffset": 32296,
+      "aliases": []
+    },
+    {
+      "id": "natalya_egorovna",
+      "name": "Наталья Егоровна",
+      "mentionCount": 1,
+      "significant": false,
+      "unnamed": false,
+      "firstMentionTextOffset": 242150,
+      "aliases": []
+    }
+  ],
+  "knownExtras": [
+    {
+      "id": "x_kokh",
+      "name": "Кох",
+      "aliases": [],
+      "kind": "minor_character"
+    },
+    {
+      "id": "x_pestryakov",
+      "name": "Пестряков",
+      "aliases": [],
+      "kind": "minor_character"
+    },
+    {
+      "id": "x_polechka",
+      "name": "Полечка",
+      "aliases": [
+        "Поленька",
+        "Поля"
+      ],
+      "kind": "minor_character"
+    },
+    {
+      "id": "x_kolya",
+      "name": "Коля",
+      "aliases": [],
+      "kind": "minor_character"
+    },
+    {
+      "id": "x_lenya",
+      "name": "Леня",
+      "aliases": [
+        "Лидочка"
+      ],
+      "kind": "minor_character"
+    },
+    {
+      "id": "x_napoleon",
+      "name": "Наполеон",
+      "aliases": [],
+      "kind": "historical"
+    },
+    {
+      "id": "x_magomet",
+      "name": "Магомет",
+      "aliases": [],
+      "kind": "historical"
+    },
+    {
+      "id": "x_newton",
+      "name": "Ньютон",
+      "aliases": [],
+      "kind": "historical"
+    },
+    {
+      "id": "x_schiller",
+      "name": "Шиллер",
+      "aliases": [],
+      "kind": "historical"
+    },
+    {
+      "id": "x_lazarus",
+      "name": "Лазарь",
+      "aliases": [],
+      "kind": "biblical"
+    },
+    {
+      "id": "x_raphael",
+      "name": "Рафаэль",
+      "aliases": [],
+      "kind": "historical"
+    },
+    {
+      "id": "x_radishchev",
+      "name": "Радищев",
+      "aliases": [],
+      "kind": "historical"
+    }
+  ],
+  "collisionGuards": [
+    {
+      "id": "raskolnikov_surname",
+      "surfaces": [
+        "Раскольников",
+        "Раскольникова",
+        "Раскольниковы"
+      ],
+      "goldIds": [
+        "rodion_raskolnikov",
+        "pulcheria_raskolnikova",
+        "dunya_raskolnikova"
+      ],
+      "reason": "фамилия Раскольников делится между Родионом, его матерью и сестрой; падежные формы мужского и женского рода в правиле NAME_ENDINGS неразличимы, поэтому поверхность принадлежит Родиону — так его называют ссылочные страницы"
+    },
+    {
+      "id": "marmeladov_surname",
+      "surfaces": [
+        "Мармеладов",
+        "Мармеладова",
+        "Мармеладовы"
+      ],
+      "goldIds": [
+        "semyon_marmeladov",
+        "katerina_marmeladova",
+        "sonya_marmeladova"
+      ],
+      "reason": "фамилия Мармеладов делится между Семёном Захаровичем, его женой и Соней"
+    },
+    {
+      "id": "svidrigailov_surname",
+      "surfaces": [
+        "Свидригайлов",
+        "Свидригайлова",
+        "Свидригайловы"
+      ],
+      "goldIds": [
+        "arkady_svidrigailov",
+        "marfa_svidrigailova"
+      ],
+      "reason": "фамилия Свидригайлов делится между Аркадием Ивановичем и Марфой Петровной"
+    },
+    {
+      "id": "dmitry_given_name",
+      "surfaces": [
+        "Дмитрий"
+      ],
+      "goldIds": [
+        "dmitry_razumikhin",
+        "mitrey"
+      ],
+      "reason": "имя Дмитрий носят Разумихин и красильщик Митрей, которого в показаниях называют Дмитрием; поверхность не отдана никому"
+    },
+    {
+      "id": "ivanovna_patronymic",
+      "surfaces": [
+        "Ивановна"
+      ],
+      "goldIds": [
+        "alena_ivanovna",
+        "katerina_marmeladova",
+        "amalia_lippevekhzel",
+        "luiza_ivanovna"
+      ],
+      "reason": "отчество Ивановна носят четыре разных женщины; без имени поверхность неразрешима"
+    },
+    {
+      "id": "petrovich_patronymic",
+      "surfaces": [
+        "Петрович"
+      ],
+      "goldIds": [
+        "porfiry_petrovich",
+        "ilya_petrovich",
+        "pyotr_luzhin"
+      ],
+      "reason": "отчество Петрович носят Порфирий, Илья и Лужин; без имени поверхность неразрешима"
+    }
+  ]
+}

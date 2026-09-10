@@ -2130,6 +2130,8 @@ test('internal router exposes all worker endpoints', () => {
       '/v1/book-tts-markup/attribute',
       '/v1/book-analysis/scan-chunk',
     '/v1/book-analysis/reconcile-character-identities',
-    '/v1/book-analysis/synthesize-character'
+    '/v1/book-analysis/synthesize-character',
+    '/v1/book-analysis/synthesize-character-card',
+    '/v1/book-analysis/confirm-roster'
   ])
 })

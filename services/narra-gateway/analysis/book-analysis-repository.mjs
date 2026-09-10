@@ -38,11 +38,17 @@ import {
   getBookAnalysisPipeline,
   normalizeBookAnalysisPipelineId
 } from './book-analysis-pipeline.mjs'
+import { ROSTER_CONFIRMATION_VERSION } from './book-roster-confirmation.mjs'
 import { isSupportedVoice } from '../providers/voices.mjs'
 
 const SHA256 = /^[0-9a-f]{64}$/
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const STAGES = new Set(['prepare', 'scan', 'resolve', 'synthesize', 'validate', 'publish'])
+/**
+ * Приоритет первого подтверждения — тот же foreground, что у карточек окна
+ * первых глав: читатель ждёт именно его.
+ */
+const CARDS_FIRST_WINDOW_PRIORITY = 65
 const MAX_PROVISIONAL_CHARACTERS = MAX_PUBLISHED_BOOK_CHARACTERS
 
 function repositoryError(code, message, status) {
@@ -1394,6 +1400,9 @@ export function createPostgresBookAnalysisRepository(pool, {
       sections,
       contentNavigation,
       chunks,
+      nameInventory = null,
+      cardWindows = null,
+      characterFragments = null,
       scanPriority = 50
     }) {
       validateIdentifier(normalizedTextObjectKey, 'normalizedTextObjectKey', 900)
@@ -1456,7 +1465,78 @@ export function createPostgresBookAnalysisRepository(pool, {
             ]
           )
         }
-        for (const scanJob of strategy.createScanJobs(chunks)) {
+        // Инвентарь и окна карточек пишутся в той же транзакции, что и чанки:
+        // они посчитаны по тому же нормализованному тексту, и частично
+        // записанный Prepare оставил бы окна от одного текста, а чанки от
+        // другого. Отсутствие инвентаря — законное состояние: сканирующий
+        // пайплайн его не читает.
+        if (nameInventory) {
+          const document = JSON.stringify(nameInventory)
+          await client.query(
+            `INSERT INTO book_name_inventory (
+               run_id, inventory_version, normalized_text_hash, text_length,
+               chapter_count, total_mentions, roster_count, significant_count,
+               document, document_hash
+             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)
+             ON CONFLICT (run_id) DO NOTHING`,
+            [
+              job.runId,
+              nameInventory.inventoryVersion,
+              normalizedTextHash,
+              textLength,
+              nameInventory.chapterCount,
+              nameInventory.totalMentions,
+              nameInventory.thresholds.rosterCount,
+              nameInventory.thresholds.significantCount,
+              document,
+              sha256(document)
+            ]
+          )
+        }
+        for (const window of cardWindows?.windows ?? []) {
+          await client.query(
+            `INSERT INTO book_card_windows (
+               run_id, window_index, start_offset, end_offset,
+               assign_start_offset, assign_end_offset,
+               chapter_indexes, priority_class, status
+             ) VALUES ($1, $2, $3, $4, $5, $6, $7::integer[], $8, 'queued')
+             ON CONFLICT (run_id, window_index) DO NOTHING`,
+            [
+              job.runId, window.windowIndex, window.startOffset, window.endOffset,
+              // Состав окна — не его барьер: см. `withAssignmentRanges`.
+              window.assignStartOffset ?? window.startOffset,
+              window.assignEndOffset ?? window.endOffset,
+              window.chapterIndexes, window.priorityClass
+            ]
+          )
+        }
+        // Фрагменты пишутся здесь же и по тому же тексту, что инвентарь и
+        // окна: они и есть evidence карточки, и разъехаться с окнами им нельзя.
+        for (const entry of characterFragments?.characters ?? []) {
+          for (const fragment of entry.fragments ?? []) {
+            await client.query(
+              `INSERT INTO book_character_fragments (
+                 run_id, character_key, fragment_id, paragraph_index, chapter_index,
+                 start_offset, end_offset, mention_count
+               ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+               ON CONFLICT (run_id, fragment_id) DO NOTHING`,
+              [
+                job.runId, entry.characterKey, fragment.fragmentId,
+                fragment.paragraphIndex, fragment.chapterIndex,
+                fragment.startOffset, fragment.endOffset,
+                fragment.mentionOffsets?.length ?? fragment.mentionCount ?? 1
+              ]
+            )
+          }
+        }
+        // У конвейера карточек сканирующей стадии нет: персонажей нашёл
+        // детерминированный инвентарь, а дальше работа идёт заданиями
+        // `generation_jobs`. Прогон при этом остаётся на `synthesize` — это
+        // честное «персонажей делают», — а различает его от обычного
+        // синтеза `pipeline_id` в соседней колонке.
+        const usesScanJobs = strategy.scanScope !== 'none'
+        const nextStage = usesScanJobs ? 'scan' : 'synthesize'
+        for (const scanJob of usesScanJobs ? strategy.createScanJobs(chunks) : []) {
           await client.query(
             `INSERT INTO book_analysis_jobs (
                id, run_id, stage, shard_key, chunk_id, required, priority,
@@ -1507,11 +1587,40 @@ export function createPostgresBookAnalysisRepository(pool, {
            WHERE id = $1 AND lease_token = $2::uuid`,
           [job.id, job.leaseToken, JSON.stringify({ textLength, chunkCount: chunks.length })]
         )
+        // Первое звено цепочки. У конвейера карточек после Prepare нет ни одной
+        // стадийной задачи, и без этой постановки прогон замер бы на
+        // `synthesize` навсегда: подтверждение состава ставит карточки своего
+        // окна и полный заход по книге, но само себя поставить не может.
+        //
+        // Ставится подтверждение окна первых глав, а не всей книги: замер на
+        // «Отцах и детях» показал, что полный заход — 328 секунд из 540 до
+        // первых героев, то есть больше половины ожидания читателя.
+        if (!usesScanJobs) {
+          const firstWindow = (cardWindows?.windows ?? [])[0]
+          if (firstWindow) {
+            await client.query(
+              `INSERT INTO generation_jobs (
+                 id, idempotency_key, job_type, book_edition_id, target_version,
+                 status, priority, payload, analysis_run_id, card_window_index
+               ) VALUES ($1, $2, 'roster_confirm', $3, $4, 'queued', $5, '{}'::jsonb, $6, $7)
+               ON CONFLICT DO NOTHING`,
+              [
+                idFactory(),
+                `${job.runId}:roster-confirm:window-${firstWindow.windowIndex}`,
+                run.rows[0].book_edition_id,
+                ROSTER_CONFIRMATION_VERSION,
+                CARDS_FIRST_WINDOW_PRIORITY,
+                job.runId,
+                firstWindow.windowIndex
+              ]
+            )
+          }
+        }
         await client.query(
-          `UPDATE book_analysis_runs SET stage = 'scan' WHERE id = $1`,
-          [job.runId]
+          `UPDATE book_analysis_runs SET stage = $2 WHERE id = $1`,
+          [job.runId, nextStage]
         )
-        return { textLength, chunkCount: chunks.length, stage: 'scan' }
+        return { textLength, chunkCount: chunks.length, stage: nextStage }
       })
     },
 
