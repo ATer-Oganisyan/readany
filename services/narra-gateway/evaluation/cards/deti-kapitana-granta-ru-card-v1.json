@@ -1,0 +1,795 @@
+{
+  "schemaVersion": 1,
+  "id": "deti-kapitana-granta-ru-card-v1",
+  "identityFixture": "deti-kapitana-granta-ru-v1",
+  "source": {
+    "language": "ru",
+    "title": "Дети капитана Гранта",
+    "bookEditionId": "b704994b-d1ef-4779-8c09-afb454c55c8e",
+    "normalizedTextSha256": "4b3cdf05ad57bf96f201f147255bf5bade4aada1a8df61432cebe53c40a3e72c",
+    "textLength": 1094491,
+    "chapterSource": "headings detected in the normalized text; content_navigation returned no chapter segments for this edition, so D1 cannot use it as published",
+    "cardWindowRule": "D1: [0, endOffset of the chapter following the chapter that contains firstMentionTextOffset]",
+    "references": [
+      "https://ru.wikipedia.org/wiki/Дети_капитана_Гранта",
+      "https://fanfics.me/fandom1438/heroes",
+      "https://obrazovaka.ru/books/vern/deti-kapitana-granta"
+    ]
+  },
+  "gates": {
+    "genderAccuracy": 0.95,
+    "fullNameCoverage": 0.9,
+    "appearanceCoverage": 0.9,
+    "traitsInRange": 0.9,
+    "traitLanguagePurity": 1.0,
+    "nonCharacterRows": 0,
+    "spoilerViolations": 0
+  },
+  "chapters": [
+    {
+      "index": 0,
+      "title": "Глава I",
+      "startOffset": 181,
+      "endOffset": 10758
+    },
+    {
+      "index": 1,
+      "title": "Глава II",
+      "startOffset": 10758,
+      "endOffset": 24131
+    },
+    {
+      "index": 2,
+      "title": "Глава III",
+      "startOffset": 24131,
+      "endOffset": 35887
+    },
+    {
+      "index": 3,
+      "title": "Глава IV",
+      "startOffset": 35887,
+      "endOffset": 45841
+    },
+    {
+      "index": 4,
+      "title": "Глава V",
+      "startOffset": 45841,
+      "endOffset": 58308
+    },
+    {
+      "index": 5,
+      "title": "Глава VI",
+      "startOffset": 58308,
+      "endOffset": 71451
+    },
+    {
+      "index": 6,
+      "title": "Глава VII",
+      "startOffset": 71451,
+      "endOffset": 82033
+    },
+    {
+      "index": 7,
+      "title": "Глава VIII",
+      "startOffset": 82033,
+      "endOffset": 94104
+    },
+    {
+      "index": 8,
+      "title": "Глава IX",
+      "startOffset": 94104,
+      "endOffset": 112123
+    },
+    {
+      "index": 9,
+      "title": "Глава X",
+      "startOffset": 112123,
+      "endOffset": 128617
+    },
+    {
+      "index": 10,
+      "title": "Глава XI",
+      "startOffset": 128617,
+      "endOffset": 142858
+    },
+    {
+      "index": 11,
+      "title": "Глава XII",
+      "startOffset": 142858,
+      "endOffset": 156714
+    },
+    {
+      "index": 12,
+      "title": "Глава XIII",
+      "startOffset": 156714,
+      "endOffset": 173658
+    },
+    {
+      "index": 13,
+      "title": "Глава XIV",
+      "startOffset": 173658,
+      "endOffset": 185679
+    },
+    {
+      "index": 14,
+      "title": "Глава XV",
+      "startOffset": 185679,
+      "endOffset": 198588
+    },
+    {
+      "index": 15,
+      "title": "Глава XVI",
+      "startOffset": 198588,
+      "endOffset": 217364
+    },
+    {
+      "index": 16,
+      "title": "Глава XVII",
+      "startOffset": 217364,
+      "endOffset": 234974
+    },
+    {
+      "index": 17,
+      "title": "Глава XVIII",
+      "startOffset": 234974,
+      "endOffset": 253043
+    },
+    {
+      "index": 18,
+      "title": "Глава XIX",
+      "startOffset": 253043,
+      "endOffset": 269829
+    },
+    {
+      "index": 19,
+      "title": "Глава XX",
+      "startOffset": 269829,
+      "endOffset": 283702
+    },
+    {
+      "index": 20,
+      "title": "Глава XXI",
+      "startOffset": 283702,
+      "endOffset": 297985
+    },
+    {
+      "index": 21,
+      "title": "Глава XXII",
+      "startOffset": 297985,
+      "endOffset": 329688
+    },
+    {
+      "index": 22,
+      "title": "Глава XXIV",
+      "startOffset": 329688,
+      "endOffset": 344848
+    },
+    {
+      "index": 23,
+      "title": "Глава XXV",
+      "startOffset": 344848,
+      "endOffset": 358669
+    },
+    {
+      "index": 24,
+      "title": "Глава XXVI",
+      "startOffset": 358669,
+      "endOffset": 372621
+    },
+    {
+      "index": 25,
+      "title": "Глава I",
+      "startOffset": 372621,
+      "endOffset": 390551
+    },
+    {
+      "index": 26,
+      "title": "Глава II",
+      "startOffset": 390551,
+      "endOffset": 407259
+    },
+    {
+      "index": 27,
+      "title": "Глава III",
+      "startOffset": 407259,
+      "endOffset": 423858
+    },
+    {
+      "index": 28,
+      "title": "Глава IV",
+      "startOffset": 423858,
+      "endOffset": 447437
+    },
+    {
+      "index": 29,
+      "title": "Глава V",
+      "startOffset": 447437,
+      "endOffset": 465582
+    },
+    {
+      "index": 30,
+      "title": "Глава VI",
+      "startOffset": 465582,
+      "endOffset": 483350
+    },
+    {
+      "index": 31,
+      "title": "Глава VII",
+      "startOffset": 483350,
+      "endOffset": 501936
+    },
+    {
+      "index": 32,
+      "title": "Глава VIII",
+      "startOffset": 501936,
+      "endOffset": 515610
+    },
+    {
+      "index": 33,
+      "title": "Глава IX",
+      "startOffset": 515610,
+      "endOffset": 530501
+    },
+    {
+      "index": 34,
+      "title": "Глава X",
+      "startOffset": 530501,
+      "endOffset": 547677
+    },
+    {
+      "index": 35,
+      "title": "Глава XI",
+      "startOffset": 547677,
+      "endOffset": 566293
+    },
+    {
+      "index": 36,
+      "title": "Глава XII",
+      "startOffset": 566293,
+      "endOffset": 583134
+    },
+    {
+      "index": 37,
+      "title": "Глава XIII",
+      "startOffset": 583134,
+      "endOffset": 601080
+    },
+    {
+      "index": 38,
+      "title": "Глава XIV",
+      "startOffset": 601080,
+      "endOffset": 621154
+    },
+    {
+      "index": 39,
+      "title": "Глава XV",
+      "startOffset": 621154,
+      "endOffset": 658160
+    },
+    {
+      "index": 40,
+      "title": "Глава XVII",
+      "startOffset": 658160,
+      "endOffset": 679053
+    },
+    {
+      "index": 41,
+      "title": "Глава XVIII",
+      "startOffset": 679053,
+      "endOffset": 698297
+    },
+    {
+      "index": 42,
+      "title": "Глава XIX",
+      "startOffset": 698297,
+      "endOffset": 715886
+    },
+    {
+      "index": 43,
+      "title": "Глава XX",
+      "startOffset": 715886,
+      "endOffset": 732873
+    },
+    {
+      "index": 44,
+      "title": "Глава XXI",
+      "startOffset": 732873,
+      "endOffset": 749765
+    },
+    {
+      "index": 45,
+      "title": "Глава XXII",
+      "startOffset": 749765,
+      "endOffset": 766163
+    },
+    {
+      "index": 46,
+      "title": "Глава I",
+      "startOffset": 766163,
+      "endOffset": 780379
+    },
+    {
+      "index": 47,
+      "title": "Глава II",
+      "startOffset": 780379,
+      "endOffset": 795753
+    },
+    {
+      "index": 48,
+      "title": "Глава III",
+      "startOffset": 795753,
+      "endOffset": 810694
+    },
+    {
+      "index": 49,
+      "title": "Глава IV",
+      "startOffset": 810694,
+      "endOffset": 825033
+    },
+    {
+      "index": 50,
+      "title": "Глава V",
+      "startOffset": 825033,
+      "endOffset": 852653
+    },
+    {
+      "index": 51,
+      "title": "Глава VII",
+      "startOffset": 852653,
+      "endOffset": 865296
+    },
+    {
+      "index": 52,
+      "title": "Глава VIII",
+      "startOffset": 865296,
+      "endOffset": 885316
+    },
+    {
+      "index": 53,
+      "title": "Глава IX",
+      "startOffset": 885316,
+      "endOffset": 900543
+    },
+    {
+      "index": 54,
+      "title": "Глава X",
+      "startOffset": 900543,
+      "endOffset": 919521
+    },
+    {
+      "index": 55,
+      "title": "Глава XI",
+      "startOffset": 919521,
+      "endOffset": 937178
+    },
+    {
+      "index": 56,
+      "title": "Глава XII",
+      "startOffset": 937178,
+      "endOffset": 951501
+    },
+    {
+      "index": 57,
+      "title": "Глава XIII",
+      "startOffset": 951501,
+      "endOffset": 966715
+    },
+    {
+      "index": 58,
+      "title": "Глава XIV",
+      "startOffset": 966715,
+      "endOffset": 986863
+    },
+    {
+      "index": 59,
+      "title": "Глава XV",
+      "startOffset": 986863,
+      "endOffset": 1001524
+    },
+    {
+      "index": 60,
+      "title": "Глава XVI",
+      "startOffset": 1001524,
+      "endOffset": 1017146
+    },
+    {
+      "index": 61,
+      "title": "Глава XVII",
+      "startOffset": 1017146,
+      "endOffset": 1028955
+    },
+    {
+      "index": 62,
+      "title": "Глава XVIII",
+      "startOffset": 1028955,
+      "endOffset": 1039943
+    },
+    {
+      "index": 63,
+      "title": "Глава XIX",
+      "startOffset": 1039943,
+      "endOffset": 1055829
+    },
+    {
+      "index": 64,
+      "title": "Глава XX",
+      "startOffset": 1055829,
+      "endOffset": 1070575
+    },
+    {
+      "index": 65,
+      "title": "Глава XXI",
+      "startOffset": 1070575,
+      "endOffset": 1087927
+    },
+    {
+      "index": 66,
+      "title": "Глава XXII",
+      "startOffset": 1087927,
+      "endOffset": 1094491
+    }
+  ],
+  "characters": [
+    {
+      "id": "edward_glenarvan",
+      "name": "Эдуард Гленарван",
+      "significant": true,
+      "fullName": "Эдуард Гленарван",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 487,
+      "spoilers": []
+    },
+    {
+      "id": "jacques_paganel",
+      "name": "Жак Паганель",
+      "significant": true,
+      "fullName": "Жак Элиасен Франсуа Мари Паганель",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 70941,
+      "spoilers": [
+        {
+          "id": "paganel_marries_arabella",
+          "label": "Паганель женится на мисс Арабелле",
+          "revealedAtOffset": 1091459,
+          "markers": [
+            "женит",
+            "арабелл",
+            "брак"
+          ]
+        },
+        {
+          "id": "paganel_maori_tattoo",
+          "label": "Паганель вытатуирован маори: геральдическая птица на груди",
+          "revealedAtOffset": 1093646,
+          "markers": [
+            "татуиров",
+            "геральдическ",
+            "клюв",
+            "птица на груди"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "macnabbs",
+      "name": "Мак-Наббс",
+      "significant": true,
+      "fullName": "Мак-Наббс",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 781,
+      "spoilers": []
+    },
+    {
+      "id": "john_mangles",
+      "name": "Джон Манглс",
+      "significant": true,
+      "fullName": "Джон Манглс",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 1101,
+      "spoilers": []
+    },
+    {
+      "id": "helena_glenarvan",
+      "name": "Элен Гленарван",
+      "significant": true,
+      "fullName": "Элен Гленарван",
+      "gender": "female",
+      "kind": "person",
+      "firstMentionTextOffset": 754,
+      "spoilers": []
+    },
+    {
+      "id": "robert_grant",
+      "name": "Роберт Грант",
+      "significant": true,
+      "fullName": "Роберт Грант",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 32904,
+      "spoilers": []
+    },
+    {
+      "id": "ayrton",
+      "name": "Айртон",
+      "significant": true,
+      "fullName": "Том Айртон",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 483361,
+      "spoilers": [
+        {
+          "id": "ayrton_is_ben_joyce",
+          "label": "Айртон оказывается Беном Джойсом, главарём каторжников",
+          "revealedAtOffset": 633059,
+          "markers": [
+            "бен джойс",
+            "бена джойса",
+            "беном джойсом",
+            "главар",
+            "банд",
+            "предател",
+            "каторжник",
+            "измен"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mary_grant",
+      "name": "Мери Грант",
+      "significant": true,
+      "fullName": "Мери Грант",
+      "gender": "female",
+      "kind": "person",
+      "firstMentionTextOffset": 2960,
+      "spoilers": []
+    },
+    {
+      "id": "thalcave",
+      "name": "Талькав",
+      "significant": true,
+      "fullName": "Талькав",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 193142,
+      "spoilers": []
+    },
+    {
+      "id": "wilson",
+      "name": "Вильсон",
+      "significant": true,
+      "fullName": "Вильсон",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 126520,
+      "spoilers": []
+    },
+    {
+      "id": "mulready",
+      "name": "Мюльреди",
+      "significant": true,
+      "fullName": "Мюльреди",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 126531,
+      "spoilers": []
+    },
+    {
+      "id": "harry_grant",
+      "name": "Гарри Грант",
+      "significant": true,
+      "fullName": "Гарри Грант",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 36618,
+      "spoilers": [
+        {
+          "id": "grant_found_on_tabor",
+          "label": "Гарри Грант найден на острове Табор и возвращается в Шотландию",
+          "revealedAtOffset": 1082893,
+          "markers": [
+            "табор",
+            "найден",
+            "спасён",
+            "спасен",
+            "вернул"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tom_austin",
+      "name": "Том Остин",
+      "significant": true,
+      "fullName": "Том Остин",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 5540,
+      "spoilers": []
+    },
+    {
+      "id": "olbinett",
+      "name": "Олбинет",
+      "significant": true,
+      "fullName": "Олбинет",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 54821,
+      "spoilers": []
+    },
+    {
+      "id": "kai_koumou",
+      "name": "Кай-Куму",
+      "significant": true,
+      "fullName": "Кай-Куму",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 905575,
+      "spoilers": []
+    },
+    {
+      "id": "paddy_omoore",
+      "name": "Падди О’Мур",
+      "significant": false,
+      "fullName": "Падди О’Мур",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 478201,
+      "spoilers": []
+    },
+    {
+      "id": "thaouka",
+      "name": "Таука",
+      "significant": false,
+      "fullName": "Таука",
+      "gender": null,
+      "kind": "animal",
+      "firstMentionTextOffset": 199648,
+      "spoilers": []
+    },
+    {
+      "id": "toline",
+      "name": "Толине",
+      "significant": false,
+      "fullName": "Толине",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 586985,
+      "spoilers": []
+    },
+    {
+      "id": "will_halley",
+      "name": "Уилл Холли",
+      "significant": false,
+      "fullName": "Уилл Холли",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 771261,
+      "spoilers": []
+    },
+    {
+      "id": "kara_tete",
+      "name": "Кара-Тете",
+      "significant": false,
+      "fullName": "Кара-Тете",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 933296,
+      "spoilers": [
+        {
+          "id": "kara_tete_killed",
+          "label": "Кара-Тете убит Гленарваном",
+          "revealedAtOffset": 933296,
+          "markers": [
+            "убит",
+            "погиб",
+            "мертв",
+            "мёртв",
+            "похорон"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manuel_ipharaguerre",
+      "name": "Мануэль Ифарагер",
+      "significant": false,
+      "fullName": "Мануэль Ифарагер",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 289631,
+      "spoilers": []
+    },
+    {
+      "id": "paterson",
+      "name": "Патерсон",
+      "significant": false,
+      "fullName": "Братья Патерсон",
+      "gender": null,
+      "kind": "group",
+      "firstMentionTextOffset": 662416,
+      "spoilers": []
+    },
+    {
+      "id": "arabella",
+      "name": "Арабелла",
+      "significant": false,
+      "fullName": "Арабелла",
+      "gender": "female",
+      "kind": "person",
+      "firstMentionTextOffset": 1091459,
+      "spoilers": []
+    },
+    {
+      "id": "hawkins",
+      "name": "Хокинс",
+      "significant": false,
+      "fullName": "Хокинс",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 107069,
+      "spoilers": []
+    },
+    {
+      "id": "mrs_olbinett",
+      "name": "Миссис Олбинет",
+      "significant": false,
+      "fullName": "Миссис Олбинет",
+      "gender": "female",
+      "kind": "person",
+      "firstMentionTextOffset": 54865,
+      "spoilers": []
+    },
+    {
+      "id": "joe_bell",
+      "name": "Джо Белл",
+      "significant": false,
+      "fullName": "Джо Белл",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 1077242,
+      "spoilers": []
+    }
+  ],
+  "nonCharacters": [
+    {
+      "name": "Дункан",
+      "kind": "vessel",
+      "reason": "яхта, а не персонаж"
+    },
+    {
+      "name": "Британия",
+      "kind": "vessel",
+      "reason": "судно, а не персонаж"
+    },
+    {
+      "name": "Маккуори",
+      "kind": "vessel",
+      "reason": "бриг, а не персонаж"
+    },
+    {
+      "name": "Майор",
+      "kind": "generic-label",
+      "reason": "звание Мак-Наббса, отдельной карточки быть не должно"
+    },
+    {
+      "name": "Капитан Грант",
+      "kind": "generic-label",
+      "reason": "обращение к Гарри Гранту, отдельной карточки быть не должно"
+    },
+    {
+      "name": "Мисс Грант",
+      "kind": "generic-label",
+      "reason": "обращение к Мери Грант, отдельной карточки быть не должно"
+    },
+    {
+      "name": "Леди Гленарван",
+      "kind": "generic-label",
+      "reason": "обращение к Элен, отдельной карточки быть не должно"
+    }
+  ]
+}

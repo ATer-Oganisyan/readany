@@ -1,0 +1,364 @@
+[
+  {
+    "judgeId": "edward_glenarvan::гленарван",
+    "goldId": "edward_glenarvan",
+    "goldName": "Эдуард Гленарван",
+    "rowName": "Гленарван",
+    "promptVersion": "character-card-judge-v1",
+    "verdict": {
+      "appearance": {
+        "coveredFactIds": ["tall", "stern_features_kind_eyes"],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "portraitUsable": true,
+        "score": 0.8,
+        "rationale": "Рост и связка «суровые черты — добрые глаза» переданы почти дословно. Потерян возраст: тридцать два года, а карточка возраст не указывает вовсе."
+      },
+      "biography": {
+        "coveredFactIds": ["scottish_lord", "mounts_expedition"],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "score": 0.45,
+        "rationale": "Титул и решение снарядить экспедицию на месте. Ни жены, ни находки бутылки — то есть завязки книги в биографии нет. Спойлеры про Кара-Тете и Табор корректно отсутствуют."
+      }
+    }
+  },
+  {
+    "judgeId": "helena_glenarvan::леди-элен",
+    "goldId": "helena_glenarvan",
+    "goldName": "Элен Гленарван",
+    "rowName": "Леди Элен",
+    "promptVersion": "character-card-judge-v1",
+    "verdict": {
+      "appearance": {
+        "coveredFactIds": [],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "portraitUsable": false,
+        "score": 0.0,
+        "rationale": "appearancePrompt пуст, хотя Верн даёт полный портрет: двадцатидвухлетняя блондинка с голубыми, как шотландские озёра, глазами. Портрет по этой карточке не нарисовать."
+      },
+      "biography": {
+        "coveredFactIds": ["takes_in_the_children"],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [
+          {
+            "cardClaim": "храбрая женщина помогла раненому добраться до повозки",
+            "why": "эпизод с раненым Мюльреди в Австралии, offset ~742000 — подлинный, но взят из глубины книги, далеко за окном карточки"
+          }
+        ],
+        "score": 0.3,
+        "rationale": "Из пяти core-фактов покрыт один. Ни сиротства в Кильпатрике, ни отца-путешественника, ни того, что экспедицию предложила именно она, — а это её главный поступок в романе."
+      }
+    }
+  },
+  {
+    "judgeId": "helena_glenarvan::леди-гленарван",
+    "goldId": "helena_glenarvan",
+    "goldName": "Элен Гленарван",
+    "rowName": "Леди Гленарван",
+    "promptVersion": "character-card-judge-v1",
+    "verdict": {
+      "appearance": {
+        "coveredFactIds": [],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "portraitUsable": false,
+        "score": 0.0,
+        "rationale": "Вторая карточка того же человека, и снова пустой appearancePrompt."
+      },
+      "biography": {
+        "coveredFactIds": ["takes_in_the_children"],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "score": 0.25,
+        "rationale": "Ещё беднее первой: жена лорда и участие к детям, больше ничего. Две карточки одного персонажа делят между собой один и тот же единственный факт."
+      }
+    }
+  },
+  {
+    "judgeId": "jacques_paganel::паганель",
+    "goldId": "jacques_paganel",
+    "goldName": "Жак Паганель",
+    "rowName": "Паганель",
+    "promptVersion": "character-card-judge-v1",
+    "verdict": {
+      "appearance": {
+        "coveredFactIds": ["lanky", "about_forty"],
+        "contradictions": [
+          {
+            "factId": "tattoo_before_the_end",
+            "cardClaim": "на груди — геральдическая птица, впившаяся клювом в сердце",
+            "goldSays": "татуировка маори появляется только на offset 1093646, в самом финале; всю книгу Паганель без неё",
+            "severity": "major"
+          }
+        ],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "portraitUsable": false,
+        "score": 0.2,
+        "rationale": "Долговязость и возраст верны, но очков — самой узнаваемой приметы Паганеля — нет, зато есть финальная татуировка. Портрет по такому паспорту будет неверен для всей книги и вдобавок выдаёт развязку."
+      },
+      "biography": {
+        "coveredFactIds": ["geographic_society", "absent_minded"],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "score": 0.35,
+        "rationale": "Должность и рассеянность есть. Но не сказано главное — что он сел не на то судно; сказано лишь, что он направлялся в Индию. Пропущены эрудиция и перечитывание документа, на котором держится сюжет."
+      }
+    }
+  },
+  {
+    "judgeId": "macnabbs::мак-наббс",
+    "goldId": "macnabbs",
+    "goldName": "Мак-Наббс",
+    "rowName": "Мак-Наббс",
+    "promptVersion": "character-card-judge-v1",
+    "verdict": {
+      "appearance": {
+        "coveredFactIds": ["age_50", "regular_calm_face"],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "portraitUsable": true,
+        "score": 0.85,
+        "rationale": "Оба core-факта переданы точно: около пятидесяти, спокойное лицо. Портрет небогатый, но текст большего и не даёт."
+      },
+      "biography": {
+        "coveredFactIds": ["major_and_cousin", "imperturbable"],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "score": 0.6,
+        "rationale": "Звание, родство с Гленарваном и невозмутимость на месте. Не хватает того, что майор единственный с самого начала не доверяет Айртону."
+      }
+    }
+  },
+  {
+    "judgeId": "macnabbs::майор",
+    "goldId": "macnabbs",
+    "goldName": "Мак-Наббс",
+    "rowName": "Майор",
+    "promptVersion": "character-card-judge-v1",
+    "verdict": {
+      "appearance": {
+        "coveredFactIds": ["regular_calm_face"],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "portraitUsable": false,
+        "score": 0.25,
+        "rationale": "«Литературный портрет Майора… сдержанная поза, спокойный взгляд» — это указание стиля, а не приметы: ни возраста, ни лица. По такому паспорту получится безликий человек, не узнаваемый как Мак-Наббс."
+      },
+      "biography": {
+        "coveredFactIds": ["imperturbable"],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "score": 0.2,
+        "rationale": "Вторая карточка того же человека знает о нём меньше первой и даже не называет его родство с Гленарваном. Черты двух карточек противоречат друг другу: здесь «всегда присоединяется к общему мнению», а в traits — «критично оценивает обстоятельства»."
+      }
+    }
+  },
+  {
+    "judgeId": "john_mangles::джон-манглс",
+    "goldId": "john_mangles",
+    "goldName": "Джон Манглс",
+    "rowName": "Джон Манглс",
+    "promptVersion": "character-card-judge-v1",
+    "verdict": {
+      "appearance": {
+        "coveredFactIds": [],
+        "contradictions": [
+          {
+            "factId": "glenarvan_features",
+            "cardClaim": "у него немного суровые черты лица",
+            "goldSays": "оборот «с несколько суровыми чертами лица» встречается в книге один раз и относится к Гленарвану (offset 26712); портрета Манглса в тексте нет",
+            "severity": "major"
+          }
+        ],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "portraitUsable": false,
+        "score": 0.0,
+        "rationale": "Единственная физическая примета в карточке заимствована у другого персонажа. Это смешение, а не описание."
+      },
+      "biography": {
+        "coveredFactIds": ["captain_of_duncan"],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "score": 0.35,
+        "rationale": "Должность верна. Морское мастерство, спасение экспедиции у Новой Зеландии и линия с Мери отсутствуют; отсутствие последней оправдано окном карточки."
+      }
+    }
+  },
+  {
+    "judgeId": "mary_grant::мери-грант",
+    "goldId": "mary_grant",
+    "goldName": "Мери Грант",
+    "rowName": "Мери Грант",
+    "promptVersion": "character-card-judge-v1",
+    "verdict": {
+      "appearance": {
+        "coveredFactIds": [],
+        "contradictions": [
+          {
+            "factId": "wrong_age",
+            "cardClaim": "четырнадцатилетняя",
+            "goldSays": "«Сестре было лет шестнадцать» (offset 30990)",
+            "severity": "major"
+          }
+        ],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "portraitUsable": false,
+        "score": 0.0,
+        "rationale": "appearancePrompt пуст, а единственная внешняя характеристика — возраст — занижена на два года. При этом вторая карточка того же персонажа («Мисс Грант») содержит полный и точный портрет."
+      },
+      "biography": {
+        "coveredFactIds": ["raised_her_brother"],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [
+          {
+            "cardClaim": "сестра милосердия",
+            "why": "Мери и Элен названы «сёстрами милосердия» при раненом Мюльреди на offset 742537 — эпизод подлинный, но это роль из глубины книги, а не занятие героини"
+          }
+        ],
+        "score": 0.3,
+        "rationale": "Самоотверженность ради брата передана хорошо. Роль «сестра милосердия» вынесена в заголовок карточки, хотя в книге это единичный эпизод далеко за окном."
+      }
+    }
+  },
+  {
+    "judgeId": "mary_grant::мисс-грант",
+    "goldId": "mary_grant",
+    "goldName": "Мери Грант",
+    "rowName": "Мисс Грант",
+    "promptVersion": "character-card-judge-v1",
+    "verdict": {
+      "appearance": {
+        "coveredFactIds": ["age_16", "pretty_tired_face", "modest_courageous", "poor_but_neat"],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "portraitUsable": true,
+        "score": 0.95,
+        "rationale": "Все четыре core-приметы сцены прихода в Малькольм-Касл переданы точно, включая бедную, но опрятную одежду. Лучший паспорт внешности во всей книге — и он достался дублирующей строке."
+      },
+      "biography": {
+        "coveredFactIds": ["daughter_of_harry", "joins_expedition"],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "score": 0.45,
+        "rationale": "Отец и участие в путешествии названы. Годы, отданные брату, — то, что есть в первой карточке, — здесь потеряны: две половины одного человека знают разное."
+      }
+    }
+  },
+  {
+    "judgeId": "robert_grant::роберт",
+    "goldId": "robert_grant",
+    "goldName": "Роберт Грант",
+    "rowName": "Роберт",
+    "promptVersion": "character-card-judge-v1",
+    "verdict": {
+      "appearance": {
+        "coveredFactIds": [],
+        "contradictions": [
+          {
+            "factId": "tearful_lost_child",
+            "cardClaim": "мальчик с влажными от слёз глазами и маленьким растерянным лицом",
+            "goldSays": "«У него был очень решительный вид» (offset 31320); слёзы в этой сцене отнесены к сестре",
+            "severity": "major"
+          }
+        ],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "portraitUsable": false,
+        "score": 0.1,
+        "rationale": "Возраста нет, а характер лица перевёрнут: текст подчёркивает решительность мальчика, считающего себя защитником сестры, карточка рисует растерянного плаксу. Портрет получится противоположным по смыслу."
+      },
+      "biography": {
+        "coveredFactIds": ["son_of_harry", "becomes_a_sailor"],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "score": 0.5,
+        "rationale": "Родство и будущее моряка переданы верно. Спасение Талькавом от кондора — центральный эпизод Роберта — отсутствует."
+      }
+    }
+  },
+  {
+    "judgeId": "ayrton::айртон",
+    "goldId": "ayrton",
+    "goldName": "Айртон",
+    "rowName": "Айртон",
+    "promptVersion": "character-card-judge-v1",
+    "verdict": {
+      "appearance": {
+        "coveredFactIds": ["age_45"],
+        "contradictions": [
+          {
+            "factId": "impassive_face",
+            "cardClaim": "с суровым, бесстрастным лицом; сдержанный взгляд",
+            "goldSays": "«с суровым лицом и блестящими глазами, глубоко сидевшими под густыми бровями», лицо «умное и энергичное»",
+            "severity": "major"
+          }
+        ],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "portraitUsable": false,
+        "score": 0.15,
+        "rationale": "Верен только возраст. Худоба, костистая сила, широкие плечи и средний рост пропущены, а блестящие глубоко посаженные глаза заменены на бесстрастный сдержанный взгляд — прямая инверсия."
+      },
+      "biography": {
+        "coveredFactIds": ["boatswain_of_britannia", "is_ben_joyce"],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "score": 0.4,
+        "rationale": "Формально покрыты два core-факта, но второй из них — разоблачение Бена Джойса — раскрыт на offset 633059, далеко за окном карточки. Здесь полнота биографии и спойлер-барьер прямо противоречат друг другу."
+      }
+    }
+  },
+  {
+    "judgeId": "thalcave::талькав",
+    "goldId": "thalcave",
+    "goldName": "Талькав",
+    "rowName": "Талькав",
+    "promptVersion": "character-card-judge-v1",
+    "verdict": {
+      "appearance": {
+        "coveredFactIds": [],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [
+          {
+            "cardClaim": "умное и спокойное лицо, выражающее сочувствие",
+            "why": "перекликается с текстом, но это выражение лица, а не приметы внешности"
+          }
+        ],
+        "portraitUsable": false,
+        "score": 0.05,
+        "rationale": "Ни одной из четырёх core-примет: рост выше шести футов, широкие плечи, длинные волосы под кожаным ремешком, раскрашенное лицо и плащ из шкуры гуанако. У книги это один из самых подробных портретов, а карточка сводит патагонского индейца к «спокойному лицу»."
+      },
+      "biography": {
+        "coveredFactIds": ["patagonian_guide"],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "score": 0.25,
+        "rationale": "Только роль проводника. Спасение Роберта выстрелом в кондора, Таука и расставание на берегу Атлантики — всё, чем Талькав памятен, — отсутствует."
+      }
+    }
+  }
+]
