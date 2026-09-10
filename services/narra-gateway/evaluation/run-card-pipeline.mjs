@@ -18,7 +18,7 @@
 
 import { createHash, randomUUID } from 'node:crypto'
 import { readFile, writeFile } from 'node:fs/promises'
-import { request as httpsRequest } from 'node:https'
+import { Agent, request as httpsRequest } from 'node:https'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -85,6 +85,14 @@ function parseJson(raw) {
  */
 function postJson({ url, apiKey, body, timeoutMs }) {
   return new Promise((resolve, reject) => {
+    let settled = false
+    const finish = (handler) => (value) => {
+      if (settled) return
+      settled = true
+      handler(value)
+    }
+    const succeed = finish(resolve)
+    const fail = finish(reject)
     const payload = Buffer.from(JSON.stringify(body), 'utf8')
     const target = new URL(url)
     const call = httpsRequest({
@@ -92,15 +100,24 @@ function postJson({ url, apiKey, body, timeoutMs }) {
       port: target.port || 443,
       path: `${target.pathname}${target.search}`,
       method: 'POST',
+      // Соединение закрывается вместе с ответом. Держать keep-alive здесь
+      // нечего: между вызовами модели проходят минуты, простаивающее
+      // соединение провайдер рвёт сам, и сброс приходит на уже завершённый
+      // запрос — тот самый `ECONNRESET: socket hang up`, который уронил прогон
+      // «Преступления и наказания» посреди подтверждения roster, минуя цикл
+      // повторов.
+      agent: new Agent({ keepAlive: false }),
       headers: {
         'content-type': 'application/json',
         'content-length': payload.byteLength,
+        connection: 'close',
         authorization: `Bearer ${apiKey}`
       }
     }, (response) => {
       const chunks = []
       response.on('data', (chunk) => chunks.push(chunk))
-      response.on('end', () => resolve({
+      response.on('error', fail)
+      response.on('end', () => succeed({
         status: response.statusCode ?? 0,
         text: Buffer.concat(chunks).toString('utf8')
       }))
@@ -108,7 +125,7 @@ function postJson({ url, apiKey, body, timeoutMs }) {
     call.setTimeout(timeoutMs, () => {
       call.destroy(Object.assign(new Error('model request timed out'), { code: 'MODEL_TIMEOUT' }))
     })
-    call.on('error', reject)
+    call.on('error', fail)
     call.end(payload)
   })
 }
@@ -119,9 +136,10 @@ export function createModelClient(env = process.env) {
   const model = env.JUDGE_MODEL || env.LITELLM_MODEL
   const timeoutMs = Number(env.MODEL_TIMEOUT_MS || 1_800_000)
   if (!baseUrl || !apiKey || !model) return null
+  const attempts = Number(env.MODEL_MAX_ATTEMPTS || 5)
   return async (messages) => {
     let lastError = null
-    for (let attempt = 1; attempt <= 3; attempt += 1) {
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
       try {
         const response = await postJson({
           url: `${baseUrl}/chat/completions`,
@@ -137,8 +155,23 @@ export function createModelClient(env = process.env) {
         if (response.status < 500) throw lastError
       } catch (error) {
         lastError = error
-        if (attempt === 3) throw error
+        if (attempt === attempts) throw error
       }
+      // Пауза между попытками, а не три подряд.
+      //
+      // Прогон «Преступления и наказания» упал на подтверждении roster с тремя
+      // HTTP 503 «upstream connect error … connection termination»: шлюз
+      // провайдера сдаётся на длинном рассуждении, и три мгновенных повтора
+      // приходят в ту же перегрузку. Ждать здесь дешевле, чем терять час
+      // прогона: запрос всё равно занимает минуты.
+      const waitMs = Math.min(60_000, 2_000 * 2 ** (attempt - 1))
+      process.stderr.write(`${JSON.stringify({
+        stage: 'model_retry',
+        attempt,
+        waitMs,
+        reason: String(lastError?.message ?? '').slice(0, 200)
+      })}\n`)
+      await new Promise((resolve) => { setTimeout(resolve, waitMs) })
     }
     throw lastError ?? new Error('model request failed')
   }

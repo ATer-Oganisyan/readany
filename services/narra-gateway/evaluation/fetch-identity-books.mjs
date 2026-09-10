@@ -39,7 +39,8 @@ export const IDENTITY_BOOK_SOURCES = Object.freeze({
     url: 'https://raw.githubusercontent.com/dbamman/litbank/master/coref/brat/514_little_women_brat.txt'
   },
   'deti-kapitana-granta-ru-v1': { kind: 'catalog' },
-  'evgeniy-onegin-ru-v1': { kind: 'catalog' }
+  'evgeniy-onegin-ru-v1': { kind: 'catalog' },
+  'prestuplenie-i-nakazanie-ru-v1': { kind: 'catalog' }
 })
 
 function sha256(value) {
@@ -64,7 +65,8 @@ export async function listIdentityFixturePaths() {
 }
 
 function pinnedTextHash(source) {
-  return source?.canonicalTextSha256 || source?.textSha256 || ''
+  return source?.canonicalTextSha256 || source?.textSha256 ||
+    source?.normalizedTextSha256 || ''
 }
 
 /**
@@ -80,9 +82,6 @@ export async function loadIdentityBookText({
   const id = String(fixture?.id || '')
   const configured = IDENTITY_BOOK_SOURCES[id]
   if (!configured) return { id, status: 'unavailable', reason: 'no_configured_source' }
-  if (configured.kind === 'catalog') {
-    return { id, status: 'unavailable', reason: 'catalog_text_not_public' }
-  }
   const pinned = pinnedTextHash(fixture.source ?? {})
   const cachePath = path.join(outputDirectory, `${id}.txt`)
   try {
@@ -99,6 +98,13 @@ export async function loadIdentityBookText({
     if (error.code !== 'ENOENT') throw error
   }
   if (!allowFetch) return { id, status: 'unavailable', reason: 'not_cached' }
+  // Текст каталожной книги не лежит в открытом источнике: он живёт в MinIO
+  // рядом с прогоном. Скачать его здесь нечем — но если оператор положил его в
+  // кэш сам (`fetch-catalog-roster.mjs --text`), выше он уже прочитан, и
+  // русские фикстуры измеряются тем же скриптом, что английские.
+  if (configured.kind === 'catalog') {
+    return { id, status: 'unavailable', reason: 'catalog_text_not_public' }
+  }
 
   const gutenbergId = configured.gutenbergId ?? fixture.source?.gutenbergId
   const url = configured.kind === 'raw'

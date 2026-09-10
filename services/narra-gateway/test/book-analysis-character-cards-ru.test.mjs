@@ -35,6 +35,14 @@ const BOOKS = {
     roster: path.join(directory, 'fixtures', 'deti-kapitana-granta-v3-catalog-roster.json'),
     appearanceBio: path.join(evaluation, 'cards', 'deti-kapitana-granta-ru-appearance-bio-v1.json'),
     verdicts: path.join(directory, 'fixtures', 'deti-kapitana-granta-v3-judge-verdicts.json')
+  },
+  // Третья русская книга бенчмарка: проза, самый трудный русский случай имён —
+  // три Раскольниковых, три Мармеладовых, два Свидригайлова и Миколка, который
+  // в романе означает двух разных людей. Карточных фикстур у неё пока нет:
+  // добавлен ярус идентичности, на котором конвейеры и сравниваются.
+  crime: {
+    identity: path.join(evaluation, 'identity', 'prestuplenie-i-nakazanie-ru-v1.json'),
+    roster: path.join(directory, 'fixtures', 'prestuplenie-i-nakazanie-v3-catalog-roster.json')
   }
 }
 
@@ -42,7 +50,7 @@ async function load(slug) {
   const paths = BOOKS[slug]
   const [identity, cards, rawIdentity, roster] = await Promise.all([
     loadIdentityFixture(paths.identity),
-    loadCardFixture(paths.cards),
+    paths.cards ? loadCardFixture(paths.cards) : null,
     readFile(paths.identity, 'utf8').then(JSON.parse),
     readFile(paths.roster, 'utf8').then(JSON.parse)
   ])
@@ -66,6 +74,84 @@ test('frozen Captain Grant fixture keeps its immutable denominators', async () =
   assert.equal(
     fixture.characters.reduce((sum, { mentionCount }) => sum + mentionCount, 0),
     5641
+  )
+})
+
+test('frozen Crime and Punishment fixture keeps its immutable denominators', async () => {
+  const fixture = await loadIdentityFixture(BOOKS.crime.identity)
+  assert.equal(fixture.characters.length, 31)
+  assert.equal(fixture.characters.filter(({ significant }) => significant).length, 18)
+  assert.equal(
+    fixture.characters.reduce((sum, { mentionCount }) => sum + mentionCount, 0),
+    4043
+  )
+})
+
+test('the Crime and Punishment fixture pins every surface it shares between identities', async () => {
+  // Общая фамилия — главный источник и слияний, и дублей в этой книге, поэтому
+  // фикстура обязана называть её вслух: поверхность принадлежит одному gold, а
+  // остальные носители перечислены рядом.
+  const raw = JSON.parse(await readFile(BOOKS.crime.identity, 'utf8'))
+  const guards = new Map(raw.collisionGuards.map((guard) => [guard.id, guard]))
+  assert.deepEqual(
+    [...guards.keys()].sort(),
+    [
+      'dmitry_given_name',
+      'ivanovna_patronymic',
+      'marmeladov_surname',
+      'petrovich_patronymic',
+      'raskolnikov_surname',
+      'svidrigailov_surname'
+    ]
+  )
+  assert.deepEqual(guards.get('raskolnikov_surname').goldIds, [
+    'rodion_raskolnikov',
+    'pulcheria_raskolnikova',
+    'dunya_raskolnikova'
+  ])
+  // Ни одна общая поверхность не записана псевдонимом двум персонажам: иначе
+  // loadIdentityFixture отказался бы загрузить фикстуру, и это правильно.
+  const owners = new Map()
+  for (const character of raw.characters) {
+    for (const surface of [character.name, ...character.aliases]) {
+      assert.equal(owners.has(surface), false, `поверхность ${surface} у двух gold`)
+      owners.set(surface, character.id)
+    }
+  }
+})
+
+test('book-markup-v3 Crime and Punishment roster splits two identities and misses the victim', async () => {
+  const { identity, roster } = await load('crime')
+  const score = scoreFrozenIdentity({ fixture: identity, input: roster })
+
+  assert.deepEqual(score.significant, {
+    tp: 15,
+    fn: 3,
+    duplicateRows: 3,
+    mergeRows: 0,
+    unmatchedRows: 0,
+    predictionCount: 18,
+    precision: 0.833333,
+    recall: 0.833333,
+    f1: 0.833333
+  })
+  assert.equal(score.full.duplicateRate, 0.15)
+  assert.equal(score.gate.passed, false)
+  // Соню публикуют дважды, красильщика — трижды: «Миколка», «Миколай
+  // Дементьев» и «Николай Дементьев» — это один человек.
+  assert.deepEqual(
+    score.classifications.duplicateGroups.map(({ gold }) => gold.id),
+    ['nikolay_dementyev', 'sonya_marmeladova']
+  )
+  assert.deepEqual(
+    score.classifications.significantFn.map(({ name }) => name),
+    ['Марфа Петровна', 'Амалия Ивановна Липпевехзель', 'Лизавета']
+  )
+  // Старуху-процентщицу конвейер не публикует вовсе. Ярус significant этого не
+  // ловит: по имени её называют шестнадцать раз, всё остальное — «старуха».
+  assert.deepEqual(
+    score.classifications.fn.filter(({ id }) => id === 'alena_ivanovna').length,
+    1
   )
 })
 
