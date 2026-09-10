@@ -26,11 +26,13 @@ analysis_services=(book-analysis-worker)
 book_worker_services=(book-markup-worker book-identity-worker "${analysis_services[@]}")
 media_services=(book-media-worker)
 scene_services=(book-scene-worker)
+card_services=(book-card-worker)
 tts_services=(book-tts-markup-worker)
 worker_services=(
   "${book_worker_services[@]}"
   "${media_services[@]}"
   "${scene_services[@]}"
+  "${card_services[@]}"
   "${tts_services[@]}"
 )
 runtime_services=(gateway "${worker_services[@]}")
@@ -53,7 +55,7 @@ Modes:
 
 Selection (repeatable, selected mode):
   --component gateway|workers|book-workers|analysis-workers
-              |media-workers|scene-workers|tts-workers
+              |media-workers|scene-workers|card-workers|tts-workers
               |runtime|databases|storage|stateful|all
   --service COMPOSE_SERVICE
 
@@ -257,6 +259,7 @@ add_component() {
     analysis-workers) add_many "${analysis_services[@]}" ;;
     media-workers) add_many "${media_services[@]}" ;;
     scene-workers) add_many "${scene_services[@]}" ;;
+    card-workers) add_many "${card_services[@]}" ;;
     tts-workers) add_many "${tts_services[@]}" ;;
     runtime) add_many "${runtime_services[@]}" ;;
     databases) add_service postgres ;;
@@ -382,6 +385,7 @@ compose=(
   --profile book-backend
   --profile media
   --profile scenes
+  --profile cards
   --profile tts-markup
   --profile operations
   # Профили ниже ничего не разворачивают — `up` получает явный список сервисов,

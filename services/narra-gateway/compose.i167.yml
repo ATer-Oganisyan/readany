@@ -419,6 +419,23 @@ services:
       BOOK_MARKUP_WORKER_JOB_TYPES: scene_image
       WORKER_TYPE: book-scene
 
+  # Карточки персонажей и подтверждение состава — отдельный воркер, а не
+  # довесок к book-markup-worker. Обе задачи ходят в модель и держат слот
+  # минутами, а в очереди book-markup-worker стоит разметка книги: смешав их,
+  # мы бы отдали импорт новой книги в заложники канареечной раскатке карточек.
+  book-card-worker:
+    <<: *book-analysis-worker
+    profiles: ["cards"]
+    command: ["node", "books/book-markup-worker.mjs"]
+    deploy:
+      replicas: ${BOOK_CARD_WORKER_REPLICAS:-2}
+    env_file:
+      - ${NARRA_ENV_FILE:-/etc/narra-gateway.env}
+    environment:
+      <<: [*book-analysis-database-environment, *book-analysis-generator-environment]
+      BOOK_MARKUP_WORKER_JOB_TYPES: character_card,roster_confirm
+      WORKER_TYPE: book-card
+
   generation-queue-operator:
     profiles: ["operator-campaigns"]
     image: ${NARRA_GATEWAY_IMAGE:?NARRA_GATEWAY_IMAGE must contain an immutable image tag}
