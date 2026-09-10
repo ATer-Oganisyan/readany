@@ -3,7 +3,10 @@ import {
   BOOK_ANALYSIS_EXTRACTOR_VERSION,
   normalizeBookAnalysisObservation
 } from './book-analysis-contracts.mjs'
-import { bookAnalysisLogContext } from './book-analysis-observability.mjs'
+import {
+  bookAnalysisLogContext,
+  unexpectedErrorMessage
+} from './book-analysis-observability.mjs'
 import {
   BOOK_ANALYSIS_PIPELINE_NARRA,
   bookAnalysisPipelineForRun
@@ -298,6 +301,7 @@ export function createBookAnalysisScanWorker({
           job: job.id,
           run: job.runId,
           error_code: errorCode,
+          error_message: unexpectedErrorMessage(error, errorCode),
           retry_status: failure.status,
           ...bookAnalysisLogContext(job, {
             startedAt,

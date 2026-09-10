@@ -887,3 +887,71 @@ test('a named canary edition overrides the pipeline inherited from its previous 
     await pool.end()
   }
 })
+
+test('the cards pipeline advances from prepare straight to synthesize', {
+  skip: !connectionString
+}, async () => {
+  // Триггер из 005 требовал ровно один шаг по цепочке стадий, а у конвейера
+  // карточек сканирующей стадии нет: Prepare переводит прогон сразу в
+  // synthesize. В продакшене это выглядело как prepare-задание, падающее с
+  // error_code=UNKNOWN до исчерпания попыток, — ни одна книга канареечной
+  // раскатки не двигалась дальше Prepare.
+  const { default: pg } = await import('pg')
+  const pool = new pg.Pool({ connectionString, ssl: false, max: 2 })
+  const bookEditionId = randomUUID()
+  const inputHash = createHash('sha256').update(`stage-flow-${bookEditionId}`).digest('hex')
+  const advance = async (runId) => {
+    await pool.query(
+      `UPDATE book_analysis_jobs SET status = 'ready'
+        WHERE run_id = $1 AND stage = 'prepare'`,
+      [runId]
+    )
+    await pool.query(
+      `UPDATE book_analysis_runs SET status = 'running' WHERE id = $1`,
+      [runId]
+    )
+    await pool.query(
+      `UPDATE book_analysis_runs SET stage = 'synthesize' WHERE id = $1`,
+      [runId]
+    )
+  }
+  try {
+    await runBookMarkupMigrations(pool, { logger: { info() {} } })
+    await pool.query(
+      `INSERT INTO book_editions (
+         id, scope, catalog_key, content_sha256, title, author, format, status
+       ) VALUES ($1, 'catalog', $2, $3, 'Stage Flow Test', '', 'epub', 'marking_up')`,
+      [bookEditionId, `stage-flow-${bookEditionId}`, inputHash]
+    )
+    await pool.query(
+      `INSERT INTO book_files (
+         book_edition_id, object_key, mime_type, byte_size, content_hash, status
+       ) VALUES ($1, $2, 'application/epub+zip', 10, $3, 'ready')`,
+      [bookEditionId, `books/${bookEditionId}.epub`, inputHash]
+    )
+    const repository = createPostgresBookAnalysisRepository(pool)
+
+    const cards = await repository.ensureAnalysisRun({
+      bookEditionId,
+      inputHash,
+      pipelineId: 'cards'
+    })
+    await advance(cards.run.id)
+    const cardsRow = await pool.query(
+      'SELECT stage FROM book_analysis_runs WHERE id = $1',
+      [cards.run.id]
+    )
+    assert.equal(cardsRow.rows[0].stage, 'synthesize')
+
+    // Остальные конвейеры по-прежнему обязаны идти по шагам: послабление
+    // касается только карточек.
+    const narra = await repository.ensureAnalysisRun({ bookEditionId, inputHash })
+    await assert.rejects(
+      advance(narra.run.id),
+      /analysis stages must advance exactly one step/
+    )
+  } finally {
+    await pool.query('DELETE FROM book_editions WHERE id = $1', [bookEditionId]).catch(() => {})
+    await pool.end()
+  }
+})

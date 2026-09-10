@@ -1,6 +1,9 @@
 import { assembleBookMarkupV3 } from './book-analysis-assembler.mjs'
 import { BOOK_ANALYSIS_SYNTHESIS_VERSION } from './book-analysis-contracts.mjs'
-import { bookAnalysisLogContext } from './book-analysis-observability.mjs'
+import {
+  bookAnalysisLogContext,
+  unexpectedErrorMessage
+} from './book-analysis-observability.mjs'
 import {
   BOOK_ANALYSIS_PIPELINE_NARRA,
   bookAnalysisPipelineForRun
@@ -93,7 +96,9 @@ export function createBookAnalysisSynthesizeWorker({
         const errorCode = safeErrorCode(error)
         const failure = await repository.failAnalysisJob(job, errorCode)
         log.error('synthesis.failed', 'Задание синтеза завершилось ошибкой', {
-          job: job.id, run: job.runId, error_code: errorCode, retry_status: failure.status,
+          job: job.id, run: job.runId, error_code: errorCode,
+          error_message: unexpectedErrorMessage(error, errorCode),
+          retry_status: failure.status,
           ...bookAnalysisLogContext(job, {
             startedAt,
             terminalStatus: failure.status,
