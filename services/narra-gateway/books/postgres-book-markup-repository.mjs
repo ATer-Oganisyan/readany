@@ -2435,15 +2435,39 @@ export function createPostgresBookMarkupRepository(pool, {
       return results
     },
 
-    async retryFailedGenerationJobs({ limit = 100 } = {}) {
+    /**
+     * Повтор провалившихся заданий генерации, с необязательным сужением.
+     *
+     * Без сужения повтор берёт самые старые провалы очереди. На установке, где
+     * их десятки тысяч, это значит «повторить чужое»: адресно вернуть в работу
+     * три задания конкретной книги было нечем, и оставался ручной UPDATE по
+     * продовой базе. Фильтры и добавлены под это — операторская задача, а не
+     * запрос в psql.
+     */
+    async retryFailedGenerationJobs({ limit = 100, jobTypes = null, bookEditionIds = null } = {}) {
       if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1_000) {
         throw new RangeError('retry limit must be between 1 and 1000')
+      }
+      const safeJobTypes = jobTypes === null ? null : [...new Set(jobTypes)]
+      if (safeJobTypes !== null && !safeJobTypes.length) {
+        throw new RangeError('jobTypes must name at least one job type')
+      }
+      const safeEditionIds = bookEditionIds === null
+        ? null
+        : [...new Set(bookEditionIds)].map((value) => {
+          if (!UUID.test(String(value))) throw new TypeError('bookEditionId must be a UUID')
+          return String(value)
+        })
+      if (safeEditionIds !== null && !safeEditionIds.length) {
+        throw new RangeError('bookEditionIds must name at least one edition')
       }
       return transaction(pool, async (client) => {
         const retried = await client.query(
           `WITH candidates AS (
              SELECT id FROM generation_jobs
              WHERE status = 'failed' AND operator_pause_id IS NULL
+               AND ($2::text[] IS NULL OR job_type = ANY($2::text[]))
+               AND ($3::uuid[] IS NULL OR book_edition_id = ANY($3::uuid[]))
              ORDER BY updated_at, created_at
              FOR UPDATE SKIP LOCKED
              LIMIT $1
@@ -2455,7 +2479,7 @@ export function createPostgresBookMarkupRepository(pool, {
            FROM candidates
            WHERE job.id = candidates.id
            RETURNING job.*`,
-          [limit]
+          [limit, safeJobTypes, safeEditionIds]
         )
         const characterJobs = retried.rows.filter((row) => row.character_key)
         for (const row of characterJobs) {
